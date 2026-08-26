@@ -1,39 +1,30 @@
-# Slime Automation
+# Colossus Prototype
 
-직접 가르쳐 숙련시키고, 분열로 늘리고, 합성으로 행동을 조합하는 모바일 자동화 게임.
-
-현재 상태: M0~M2 플레이 구현 완료. 교육, 자동 벌목, 코칭, 숙련 성장이 동작한다.
+보스의 패턴을 파악하고 신체 부위를 공략하는 세로형 모바일 액션 게임 프로토타입.
 
 [브라우저에서 플레이](https://jinha1226.github.io/PROJ_S/)
 
-구현된 범위:
+현재 플레이 범위:
 
-- Godot 4.6 모바일 Web 프로젝트 설정
-- GameState, SlimeState, SkillProgress, InventoryState
-- 정적 Definition 기본 클래스와 BalanceDefinition
-- 10Hz 고정 틱 Simulation과 GameSession
-- JSON 직렬화 왕복과 canonical SHA-256 상태 해시
-- 초기 상태·ID·결정론 검증용 헤드리스 테스트
-- 슬라임 선택 → 숲 터치 방식의 벌목 교육
-- 시설 작업 슬롯, 이동, 5초 벌목, 자동 반복 생산
-- 사이클당 한 번의 일반·정확 코칭
-- 벌목 숙련 Lv.1~5와 작업 속도 반영
-- 모바일 터치용 작업장 UI와 진행 피드백
-- 전체 시설과 이동 경로를 한눈에 보는 탑다운 작업장
-- 자동 진행 오버뷰와 슬라임 선택형 집중 코칭 모드
-- 코칭 타이밍 원형 신호와 고정 틱 사이 렌더 보간
-- 코칭 성공 시 충격파·점프·파편·진동 피드백
-- 확장된 월드와 핀치·버튼·휠 줌, 확대 상태 드래그 이동
+- 세로형 탑다운 보스 아레나
+- 이동, 조건부 자동공격, 스태미나 회피
+- 정확 회피와 강화 반격
+- 휩쓸기, 충격파, 돌진 패턴
+- 직접 터치로 왼팔, 오른팔, 핵 선택
+- 팔 파괴에 따른 보스 패턴 변화
+- 거리에 따라 보스 전체와 목표 부위를 오가는 자동 카메라
+- 타격 정지, 화면 흔들림, 슬로모션, 파괴 이펙트
+- 사망·승리 후 즉시 재도전
+
+조작:
+
+- 모바일: 왼쪽 아래 드래그로 이동, 오른쪽 아래 `DODGE`, 보스 부위 터치로 목표 선택
+- PC: WASD/방향키 이동, Space 회피, 보스 부위 클릭
+
+설계 기준은 [보스전 프로토타입 문서](docs/BOSS_PROTOTYPE.md)를 참고한다.
 
 테스트:
 
     godot --headless --path . --script res://tests/test_runner.gd
 
-구현을 시작할 때 다음 문서를 순서대로 읽는다.
-
-1. [문서 인덱스](docs/README.md)
-2. [설계·구현 가이드](docs/IMPLEMENTATION_GUIDE.md)
-3. [기술 명세](docs/TECHNICAL_SPEC.md)
-4. [테스트 계획](docs/TEST_PLAN.md)
-
-기존 PROJ_G 낚시 프로젝트와 코드를 공유하지 않는다. Web export와 GitHub Actions 구성 방식만 필요할 때 참고한다.
+기존 슬라임 자동화 설계와 구현 파일은 프로토타입 비교 및 Git 이력 보존 목적으로 남겨두었다. 현재 메인 씬은 `presentation/views/boss_battle_view.gd`를 사용한다.
