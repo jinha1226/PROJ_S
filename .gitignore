@@ -4,3 +4,7 @@ build/*
 export/
 *.tmp
 *.log
+previews/
+assets/duel3d/*.blend*
+assets/duel3d/player_rigged.glb
+assets/duel3d/boss_rigged.glb
