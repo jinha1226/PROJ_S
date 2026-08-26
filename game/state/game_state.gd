@@ -34,7 +34,7 @@ func to_dict() -> Dictionary:
 		"simulation_tick": simulation_tick,
 		"next_entity_number": next_entity_number,
 		"slimes": _serialize_state_dictionary(slimes),
-		"facilities": _deep_string_key_copy(facilities),
+		"facilities": _serialize_state_dictionary(facilities),
 		"inventories": _serialize_state_dictionary(inventories),
 		"unlocked_content_ids": _deep_string_key_copy(unlocked_content_ids),
 		"goal_states": _deep_string_key_copy(goal_states),
@@ -71,7 +71,15 @@ static func from_dict(data: Dictionary) -> GameState:
 			normalized["owner_id"] = str(normalized.get("owner_id", inventory_key))
 			state.inventories[StringName(str(inventory_key))] = InventoryState.from_dict(normalized)
 
-	state.facilities = _variant_to_dictionary(data.get("facilities", {}))
+	var raw_facilities: Variant = data.get("facilities", {})
+	if typeof(raw_facilities) == TYPE_DICTIONARY:
+		for facility_key: Variant in raw_facilities.keys():
+			var facility_data: Variant = raw_facilities[facility_key]
+			if typeof(facility_data) != TYPE_DICTIONARY:
+				continue
+			var normalized: Dictionary = facility_data.duplicate(true)
+			normalized["id"] = str(normalized.get("id", facility_key))
+			state.facilities[StringName(str(facility_key))] = FacilityState.from_dict(normalized)
 	state.goal_states = _variant_to_dictionary(data.get("goal_states", data.get("goals", {})))
 	state.unlocked_content_ids = _normalize_unlocks(data.get("unlocked_content_ids", data.get("unlocks", {})))
 	return state
@@ -114,6 +122,16 @@ func validate(content_registry: Variant = null) -> PackedStringArray:
 		if inventory.owner_id != StringName(str(inventory_key)):
 			errors.append("GameState inventory key does not match InventoryState.owner_id")
 		for error: String in inventory.validate(content_registry):
+			errors.append(error)
+
+	for facility_key: Variant in facilities.keys():
+		var facility: Variant = facilities[facility_key]
+		if not facility is FacilityState:
+			errors.append("GameState facility %s is not FacilityState" % str(facility_key))
+			continue
+		if facility.id != StringName(str(facility_key)):
+			errors.append("GameState facility key does not match FacilityState.id")
+		for error: String in facility.validate():
 			errors.append(error)
 
 	if typeof(content_registry) == TYPE_OBJECT and content_registry != null and content_registry.has_method("validate_state_content"):

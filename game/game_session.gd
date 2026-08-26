@@ -3,17 +3,25 @@ extends RefCounted
 
 signal state_replaced(state: GameState)
 signal interaction_pause_changed(paused: bool)
+signal domain_event(event: Dictionary)
 
 const CURRENT_SCHEMA_VERSION := 1
 const CURRENT_CONTENT_VERSION := 1
 
 var state: GameState
 var simulation: Simulation
+var content_registry: ContentRegistry
+var inventory_system: InventorySystem
+var proficiency_system: ProficiencySystem
+var job_system: JobSystem
+var assignment_system: AssignmentSystem
+var coaching_system: CoachingSystem
 
 
 func new_game() -> void:
+	content_registry = ContentRegistry.new()
 	state = _create_initial_state()
-	simulation = Simulation.new(state)
+	_build_runtime_systems()
 	state_replaced.emit(state)
 
 
@@ -34,16 +42,15 @@ func load_game(snapshot: Dictionary) -> CommandResult:
 			{"snapshot_schema": snapshot_schema, "current_schema": CURRENT_SCHEMA_VERSION}
 		)
 
+	if content_registry == null:
+		content_registry = ContentRegistry.new()
 	var candidate := GameState.from_dict(snapshot)
-	var errors := candidate.validate()
+	var errors := candidate.validate(content_registry)
 	if not errors.is_empty():
 		return CommandResult.failure(&"INVALID_STATE", {"errors": Array(errors)})
 
 	state = candidate
-	if simulation == null:
-		simulation = Simulation.new(state)
-	else:
-		simulation.set_state(state)
+	_build_runtime_systems()
 	state_replaced.emit(state)
 	return CommandResult.success()
 
@@ -51,7 +58,28 @@ func load_game(snapshot: Dictionary) -> CommandResult:
 func advance_ticks(tick_count: int) -> CommandResult:
 	if simulation == null:
 		return CommandResult.failure(&"SESSION_NOT_READY")
-	return simulation.advance_ticks(tick_count)
+	var result := simulation.advance_ticks(tick_count)
+	if result.ok:
+		_publish_events(result.payload.get("events", []))
+	return result
+
+
+func teach(slime_id: StringName, target_id: StringName, job_id: StringName) -> CommandResult:
+	if assignment_system == null:
+		return CommandResult.failure(&"SESSION_NOT_READY")
+	var result := assignment_system.teach(slime_id, target_id, job_id)
+	if result.ok:
+		_publish_events(result.payload.get("events", []))
+	return result
+
+
+func coach(slime_id: StringName, cycle_id: int) -> CommandResult:
+	if coaching_system == null:
+		return CommandResult.failure(&"SESSION_NOT_READY")
+	var result := coaching_system.coach(slime_id, cycle_id, simulation.interaction_paused)
+	if result.ok:
+		_publish_events(result.payload.get("events", []))
+	return result
 
 
 func set_interaction_pause(paused: bool) -> void:
@@ -70,7 +98,24 @@ func create_snapshot() -> Dictionary:
 func validate_state() -> PackedStringArray:
 	if state == null:
 		return PackedStringArray(["GameSession.state is null"])
-	return state.validate()
+	return state.validate(content_registry)
+
+
+func _build_runtime_systems() -> void:
+	inventory_system = InventorySystem.new(state)
+	proficiency_system = ProficiencySystem.new(state, content_registry)
+	job_system = JobSystem.new(state, content_registry, inventory_system, proficiency_system)
+	assignment_system = AssignmentSystem.new(state, content_registry, job_system)
+	coaching_system = CoachingSystem.new(state, content_registry, proficiency_system)
+	simulation = Simulation.new(state, job_system)
+
+
+func _publish_events(events: Variant) -> void:
+	if typeof(events) != TYPE_ARRAY:
+		return
+	for event: Variant in events:
+		if typeof(event) == TYPE_DICTIONARY:
+			domain_event.emit(event)
 
 
 func _create_initial_state() -> GameState:
@@ -98,12 +143,12 @@ func _create_initial_state() -> GameState:
 	initial.inventories[&"town_storage"] = town_storage
 
 	initial.facilities = {
-		"habitat": _facility_state("habitat", true, false, 0, 0, {"population_capacity": 4}),
-		"forest": _facility_state("forest", true, false, 0, 1),
-		"crystal_mine": _facility_state("crystal_mine", false, true, 0, 1),
-		"fusion_pool": _facility_state("fusion_pool", false, true, 0, 0),
-		"ark": _facility_state("ark", true, false, 0, 1, {"repair_enabled": false}),
-		"town_storage": _facility_state("town_storage", true, false, 0, 0),
+		&"habitat": _facility_state(&"habitat", true, false, 0, 0, 4),
+		&"forest": _facility_state(&"forest", true, false, 0, 1),
+		&"crystal_mine": _facility_state(&"crystal_mine", false, true, 0, 1),
+		&"fusion_pool": _facility_state(&"fusion_pool", false, true, 0, 0),
+		&"ark": _facility_state(&"ark", true, false, 0, 1, 0, false),
+		&"town_storage": _facility_state(&"town_storage", true, false, 0, 0),
 	}
 
 	initial.unlocked_content_ids = {
@@ -120,23 +165,21 @@ func _create_initial_state() -> GameState:
 
 
 static func _facility_state(
-	facility_id: String,
+	facility_id: StringName,
 	enabled: bool,
 	locked: bool,
 	tier: int,
 	worker_slots: int,
-	extra: Dictionary = {}
-) -> Dictionary:
-	var result := {
-		"id": facility_id,
-		"definition_id": facility_id,
-		"enabled": enabled,
-		"locked": locked,
-		"tier": tier,
-		"worker_slots": worker_slots,
-		"active_worker_ids": [],
-	}
-	result.merge(extra, true)
+	population_capacity: int = 0,
+	repair_enabled: bool = false
+) -> FacilityState:
+	var result := FacilityState.new(facility_id)
+	result.enabled = enabled
+	result.locked = locked
+	result.tier = tier
+	result.worker_slots = worker_slots
+	result.population_capacity = population_capacity
+	result.repair_enabled = repair_enabled
 	return result
 
 

@@ -6,9 +6,9 @@ var definition_id: StringName = &"basic_slime"
 var display_name: String = ""
 var skill_memories: Dictionary = {}
 var memory_capacity: int = 1
-var routine: Array = []
+var routine: Array[RoutineStep] = []
 var routine_cursor: int = 0
-var current_job: Dictionary = {}
+var current_job: JobRuntime
 var division_meter: int = 0
 var generation: int = 0
 var parent_ids: Array[StringName] = []
@@ -19,6 +19,7 @@ var next_cycle_number: int = 1
 
 func _init(p_id: StringName = &"") -> void:
 	id = p_id
+	current_job = JobRuntime.new(p_id)
 
 
 func to_dict() -> Dictionary:
@@ -40,9 +41,9 @@ func to_dict() -> Dictionary:
 		"display_name": display_name,
 		"skill_memories": serialized_skills,
 		"memory_capacity": memory_capacity,
-		"routine": routine.duplicate(true),
+		"routine": _serialize_routine(),
 		"routine_cursor": routine_cursor,
-		"current_job": current_job.duplicate(true),
+		"current_job": current_job.to_dict(),
 		"division_meter": division_meter,
 		"generation": generation,
 		"parent_ids": serialized_parents,
@@ -57,9 +58,17 @@ static func from_dict(data: Dictionary) -> SlimeState:
 	state.definition_id = StringName(str(data.get("definition_id", "basic_slime")))
 	state.display_name = str(data.get("display_name", ""))
 	state.memory_capacity = int(data.get("memory_capacity", 1))
-	state.routine = _array_copy(data.get("routine", []))
+	var raw_routine: Variant = data.get("routine", [])
+	if typeof(raw_routine) == TYPE_ARRAY:
+		for step_data: Variant in raw_routine:
+			if typeof(step_data) == TYPE_DICTIONARY:
+				state.routine.append(RoutineStep.from_dict(step_data))
 	state.routine_cursor = int(data.get("routine_cursor", 0))
-	state.current_job = _dictionary_copy(data.get("current_job", {}))
+	var raw_job: Variant = data.get("current_job", {})
+	if typeof(raw_job) == TYPE_DICTIONARY and not raw_job.is_empty():
+		var normalized_job: Dictionary = raw_job.duplicate(true)
+		normalized_job["slime_id"] = str(normalized_job.get("slime_id", state.id))
+		state.current_job = JobRuntime.from_dict(normalized_job)
 	state.division_meter = int(data.get("division_meter", 0))
 	state.generation = int(data.get("generation", 0))
 	state.fusion_tier = int(data.get("fusion_tier", 0))
@@ -118,13 +127,9 @@ func validate(content_registry: Variant = null) -> PackedStringArray:
 		for error: String in progress.validate(content_registry):
 			errors.append("%s: %s" % [str(id), error])
 
-	for step: Variant in routine:
-		if typeof(step) != TYPE_DICTIONARY:
-			errors.append("SlimeState routine step must be a Dictionary during M0")
-			continue
-		var skill_id := StringName(str(step.get("skill_id", "")))
-		if skill_id != &"" and not skill_memories.has(skill_id):
-			errors.append("SlimeState routine references an unowned skill: %s" % str(skill_id))
+	for step: RoutineStep in routine:
+		if step.skill_id != &"" and not skill_memories.has(step.skill_id):
+			errors.append("SlimeState routine references an unowned skill: %s" % str(step.skill_id))
 
 	if routine.is_empty():
 		if routine_cursor != 0:
@@ -132,20 +137,15 @@ func validate(content_registry: Variant = null) -> PackedStringArray:
 	elif routine_cursor < 0 or routine_cursor >= routine.size():
 		errors.append("SlimeState.routine_cursor is outside the routine")
 
-	if not current_job.is_empty():
-		var current_slime_id := StringName(str(current_job.get("slime_id", "")))
-		if current_slime_id != id:
-			errors.append("SlimeState.current_job references another slime")
+	if current_job == null:
+		errors.append("SlimeState.current_job is null")
+	elif current_job.slime_id != id:
+		errors.append("SlimeState.current_job references another slime")
 	return errors
 
 
-static func _array_copy(value: Variant) -> Array:
-	if typeof(value) != TYPE_ARRAY:
-		return []
-	return value.duplicate(true)
-
-
-static func _dictionary_copy(value: Variant) -> Dictionary:
-	if typeof(value) != TYPE_DICTIONARY:
-		return {}
-	return value.duplicate(true)
+func _serialize_routine() -> Array[Dictionary]:
+	var serialized: Array[Dictionary] = []
+	for step: RoutineStep in routine:
+		serialized.append(step.to_dict())
+	return serialized
