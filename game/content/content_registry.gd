@@ -68,8 +68,11 @@ func _build_m1_content() -> void:
 	job_logging.required_skill_id = &"logging"
 	job_logging.job_kind = &"PRODUCTION"
 	job_logging.allowed_target_tags = [&"forest"]
-	job_logging.base_duration_ticks = 50
-	job_logging.movement_duration_ticks = 5
+	job_logging.base_duration_ticks = 30
+	job_logging.movement_duration_ticks = 3
+	job_logging.normal_coaching_progress_ratio = 0.25
+	job_logging.perfect_window_ticks = 7
+	job_logging.min_duration_ticks = 10
 	job_logging.outputs = {"wood": 1}
 	jobs[job_logging.id] = job_logging
 

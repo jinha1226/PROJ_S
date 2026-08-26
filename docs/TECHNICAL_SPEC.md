@@ -459,19 +459,19 @@ available amount는 amounts에서 예약량을 제외해 계산하거나, 예약
 
 | ID | skill | kind | duration | input | output |
 |---|---|---|---:|---|---|
-| job_logging | logging | PRODUCTION | 50틱 | 없음 | wood 1 |
+| job_logging | logging | PRODUCTION | 30틱 | 없음 | wood 1 |
 | job_mining | mining | PRODUCTION | 60틱 | 없음 | crystal 1 |
 | job_repair_ark | repairing | CONSTRUCTION | 40틱 | wood 2, crystal 1 | ark progress 1 |
 
 공통값:
 
-    movement_duration_ticks: 5
+    movement_duration_ticks: 3
     passive_xp: 1
-    normal_coaching_progress_ratio: 0.15
+    normal_coaching_progress_ratio: 0.25
     normal_coaching_xp: 1
-    perfect_window_ticks: 8
+    perfect_window_ticks: 7
     perfect_coaching_xp: 3
-    min_duration_ticks: 15
+    min_duration_ticks: 10
 
 ### FacilityDefinition
 

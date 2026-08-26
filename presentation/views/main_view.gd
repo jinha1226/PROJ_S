@@ -206,6 +206,7 @@ func _on_slime_pressed(slime_id: StringName) -> void:
 	var slime := _session.state.slimes.get(slime_id) as SlimeState
 	if slime == null:
 		return
+	_world.play_tap_feedback()
 	if _selected_slime_id != slime_id:
 		_selected_slime_id = slime_id
 		if slime.skill_memories.has(&"logging"):
@@ -271,6 +272,7 @@ func _on_domain_event(event: Dictionary) -> void:
 			_set_feedback("+1 WOOD — Momo keeps going", 12)
 		"coaching_resolved":
 			var result_type := str(event.get("payload", {}).get("result_type", "NORMAL"))
+			_world.play_coaching_feedback(StringName(result_type))
 			_set_feedback("PERFECT! Instant finish" if result_type == "PERFECT" else "Nice coaching! Work sped up", 14)
 		"proficiency_changed":
 			_set_feedback("LEVEL UP! Logging is faster now", 20)

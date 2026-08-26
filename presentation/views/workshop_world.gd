@@ -23,6 +23,9 @@ var game_state: GameState
 var selected_slime_id: StringName = &""
 var interpolation_alpha: float = 0.0
 var _elapsed: float = 0.0
+var _tap_feedback_elapsed: float = 99.0
+var _coach_feedback_elapsed: float = 99.0
+var _coach_feedback_kind: StringName = &""
 var _forest_rect := Rect2()
 var _slime_position := Vector2.ZERO
 var _forest_center := Vector2.ZERO
@@ -40,6 +43,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	_tap_feedback_elapsed += delta
+	_coach_feedback_elapsed += delta
 	queue_redraw()
 
 
@@ -55,12 +60,26 @@ func set_interpolation_alpha(alpha: float) -> void:
 	interpolation_alpha = clampf(alpha, 0.0, 0.999)
 
 
+func play_tap_feedback() -> void:
+	_tap_feedback_elapsed = 0.0
+	queue_redraw()
+
+
+func play_coaching_feedback(result_type: StringName) -> void:
+	_coach_feedback_kind = result_type
+	_coach_feedback_elapsed = 0.0
+	Input.vibrate_handheld(90 if result_type == &"PERFECT" else 45, 0.75 if result_type == &"PERFECT" else 0.45)
+	queue_redraw()
+
+
 func _draw() -> void:
 	_update_layout_points()
 	_draw_ground()
 	_draw_paths()
 	_draw_facilities()
 	_draw_slime()
+	_draw_tap_feedback()
+	_draw_coaching_feedback()
 	_draw_mode_badge()
 
 
@@ -185,6 +204,10 @@ func _draw_slime() -> void:
 	if slime == null:
 		return
 	_slime_position = _calculate_slime_position(slime)
+	if _coach_feedback_elapsed < _coach_feedback_duration():
+		var bounce_progress := _coach_feedback_elapsed / _coach_feedback_duration()
+		var bounce_height := 29.0 if _coach_feedback_kind == &"PERFECT" else 15.0
+		_slime_position.y -= sin(bounce_progress * PI) * bounce_height
 	var selected := selected_slime_id == slime.id
 	var pulse := sin(_elapsed * 5.5)
 
@@ -210,6 +233,73 @@ func _draw_slime() -> void:
 		_draw_centered_text("FOCUS", _slime_position + Vector2(0.0, -78.0), 15, HIGHLIGHT)
 
 	_draw_centered_text(slime.display_name, _slime_position + Vector2(0.0, 70.0), 16, Color("203b3f"))
+
+
+func _draw_tap_feedback() -> void:
+	const TAP_DURATION := 0.28
+	if _tap_feedback_elapsed >= TAP_DURATION:
+		return
+	var progress := _tap_feedback_elapsed / TAP_DURATION
+	var color := Color("fff2ae")
+	color.a = (1.0 - progress) * 0.9
+	draw_arc(_slime_position, 44.0 + progress * 42.0, 0.0, TAU, 40, color, 8.0 * (1.0 - progress) + 1.0, true)
+
+
+func _draw_coaching_feedback() -> void:
+	var duration := _coach_feedback_duration()
+	if _coach_feedback_elapsed >= duration:
+		return
+	var progress := clampf(_coach_feedback_elapsed / duration, 0.0, 1.0)
+	var fade := 1.0 - progress
+	var perfect := _coach_feedback_kind == &"PERFECT"
+	var effect_color := PERFECT_RING if perfect else Color("7cf2cb")
+
+	var flash_color := effect_color
+	flash_color.a = fade * (0.25 if perfect else 0.12)
+	draw_rect(Rect2(Vector2.ZERO, size), flash_color)
+
+	for ring_index: int in range(3 if perfect else 2):
+		var delayed_progress := clampf(progress * 1.45 - float(ring_index) * 0.18, 0.0, 1.0)
+		if delayed_progress <= 0.0:
+			continue
+		var ring_color := effect_color
+		ring_color.a = (1.0 - delayed_progress) * (0.95 - float(ring_index) * 0.18)
+		var radius := 48.0 + delayed_progress * (165.0 if perfect else 110.0)
+		draw_arc(_slime_position, radius, 0.0, TAU, 56, ring_color, maxf(1.0, 11.0 * (1.0 - delayed_progress)), true)
+
+	var ray_count := 14 if perfect else 9
+	for ray_index: int in range(ray_count):
+		var angle := TAU * float(ray_index) / float(ray_count) + 0.13
+		var inner_radius := 54.0 + progress * 46.0
+		var outer_radius := inner_radius + (34.0 if perfect else 22.0) * fade
+		var ray_color := effect_color
+		ray_color.a = fade
+		draw_line(
+			_slime_position + Vector2.from_angle(angle) * inner_radius,
+			_slime_position + Vector2.from_angle(angle) * outer_radius,
+			ray_color,
+			6.0 if perfect else 4.0,
+			true
+		)
+
+	# Deterministic chips make the hit read clearly without allocating particle nodes.
+	for chip_index: int in range(10 if perfect else 6):
+		var chip_angle := -PI * 0.9 + float(chip_index) * PI * 1.8 / float(9 if perfect else 5)
+		var chip_distance := progress * (130.0 + float(chip_index % 3) * 18.0)
+		var chip_position := _slime_position + Vector2.from_angle(chip_angle) * chip_distance
+		chip_position.y += progress * progress * 54.0
+		var chip_color := Color("ffe28a") if chip_index % 2 == 0 else Color("9e653f")
+		chip_color.a = fade
+		draw_circle(chip_position, (7.0 if perfect else 5.0) * fade + 1.0, chip_color)
+
+	var message := "PERFECT!" if perfect else "NICE!"
+	var message_color := Color("fff1a8") if perfect else Color("d9fff0")
+	message_color.a = minf(1.0, fade * 1.8)
+	_draw_centered_text(message, _slime_position + Vector2(0.0, -112.0 - progress * 58.0), 32 if perfect else 25, message_color)
+
+
+func _coach_feedback_duration() -> float:
+	return 0.95 if _coach_feedback_kind == &"PERFECT" else 0.62
 
 
 func _draw_work_animation(slime: SlimeState) -> void:
