@@ -16,7 +16,7 @@ concurrency:
 
 env:
   GODOT_VERSION: 4.6.2
-  XDG_DATA_HOME: ${{ runner.temp }}/godot-data
+  XDG_DATA_HOME: /tmp/godot-data
 
 jobs:
   build:
