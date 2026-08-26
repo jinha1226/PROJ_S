@@ -1,0 +1,30 @@
+; Engine configuration file.
+; Prefer editing this file through the Godot editor after the project is bootstrapped.
+
+config_version=5
+
+[application]
+
+config/name="Slime Automation"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+run/main_scene="res://presentation/scenes/main.tscn"
+
+[autoload]
+
+App="*res://app/app.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/window_width_override=360
+window/size/window_height_override=640
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
