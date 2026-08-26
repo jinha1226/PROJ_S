@@ -2,6 +2,7 @@ extends SceneTree
 
 const StateValidationSuite = preload("res://tests/test_state_validation.gd")
 const GameplaySuite = preload("res://tests/test_gameplay.gd")
+const WorkshopCameraSuite = preload("res://tests/test_workshop_camera.gd")
 
 
 func _init() -> void:
@@ -10,9 +11,11 @@ func _init() -> void:
 	failures.append_array(state_suite.run())
 	var gameplay_suite = GameplaySuite.new()
 	failures.append_array(gameplay_suite.run())
+	var camera_suite = WorkshopCameraSuite.new()
+	failures.append_array(camera_suite.run())
 
 	if failures.is_empty():
-		print("M0-M2 TESTS PASSED (state, assignment, jobs, coaching, proficiency, determinism)")
+		print("M0-M2 TESTS PASSED (state, gameplay, determinism, workshop camera)")
 		quit(0)
 		return
 

@@ -98,6 +98,7 @@ func _build_interface() -> void:
 	_population_label = _counter(counters, "SLIMES", "1 / 4")
 
 	_world = WorkshopWorld.new()
+	_world.set_content_registry(_session.content_registry)
 	_world.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_world.slime_pressed.connect(_on_slime_pressed)
 	_world.forest_pressed.connect(_on_forest_pressed)

@@ -18,8 +18,11 @@ const SLIME_BODY := Color("72e0b3")
 const SLIME_DARK := Color("243f4d")
 const WORK_RING := Color("d8fff0")
 const PERFECT_RING := Color("ff9f43")
+const WORLD_SIZE := Vector2(1120.0, 1040.0)
+const ZOOM_STEP := 1.20
 
 var game_state: GameState
+var content_registry: ContentRegistry
 var selected_slime_id: StringName = &""
 var interpolation_alpha: float = 0.0
 var _elapsed: float = 0.0
@@ -33,6 +36,25 @@ var _mine_center := Vector2.ZERO
 var _ark_center := Vector2.ZERO
 var _fusion_center := Vector2.ZERO
 var _habitat_center := Vector2.ZERO
+var _zoom: float = 1.0
+var _min_zoom: float = 0.5
+var _max_zoom: float = 1.5
+var _camera_center := WORLD_SIZE * 0.5
+var _camera_initialized: bool = false
+var _last_control_size := Vector2.ZERO
+var _zoom_out_rect := Rect2()
+var _zoom_reset_rect := Rect2()
+var _zoom_in_rect := Rect2()
+var _active_touches: Dictionary = {}
+var _single_touch_start := Vector2.ZERO
+var _touch_dragged: bool = false
+var _gesture_is_pinch: bool = false
+var _pinch_last_distance: float = 0.0
+var _mouse_pressed: bool = false
+var _mouse_dragged: bool = false
+var _mouse_press_position := Vector2.ZERO
+var _mouse_last_position := Vector2.ZERO
+var _last_touch_event_msec: int = -10000
 
 
 func _ready() -> void:
@@ -50,6 +72,10 @@ func _process(delta: float) -> void:
 
 func set_game_state(p_state: GameState) -> void:
 	game_state = p_state
+
+
+func set_content_registry(p_registry: ContentRegistry) -> void:
+	content_registry = p_registry
 
 
 func set_selection(slime_id: StringName) -> void:
@@ -73,38 +99,44 @@ func play_coaching_feedback(result_type: StringName) -> void:
 
 
 func _draw() -> void:
+	_configure_camera()
 	_update_layout_points()
+	draw_rect(Rect2(Vector2.ZERO, size), FOREST_DARK)
+	_apply_camera_transform()
 	_draw_ground()
 	_draw_paths()
 	_draw_facilities()
 	_draw_slime()
 	_draw_tap_feedback()
 	_draw_coaching_feedback()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	_draw_mode_badge()
+	_draw_zoom_controls()
 
 
 func _update_layout_points() -> void:
-	_forest_center = Vector2(size.x * 0.20, size.y * 0.24)
-	_mine_center = Vector2(size.x * 0.79, size.y * 0.22)
-	_ark_center = Vector2(size.x * 0.51, size.y * 0.47)
-	_fusion_center = Vector2(size.x * 0.20, size.y * 0.73)
-	_habitat_center = Vector2(size.x * 0.78, size.y * 0.74)
+	_forest_center = Vector2(WORLD_SIZE.x * 0.17, WORLD_SIZE.y * 0.19)
+	_mine_center = Vector2(WORLD_SIZE.x * 0.83, WORLD_SIZE.y * 0.18)
+	_ark_center = Vector2(WORLD_SIZE.x * 0.50, WORLD_SIZE.y * 0.48)
+	_fusion_center = Vector2(WORLD_SIZE.x * 0.18, WORLD_SIZE.y * 0.80)
+	_habitat_center = Vector2(WORLD_SIZE.x * 0.82, WORLD_SIZE.y * 0.80)
 	_forest_rect = Rect2(_forest_center - Vector2(112.0, 112.0), Vector2(224.0, 224.0))
 
 
 func _draw_ground() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), MAP_GRASS)
+	draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), MAP_GRASS)
 	var tile_size := 56.0
-	var columns := ceili(size.x / tile_size)
-	var rows := ceili(size.y / tile_size)
+	var columns := ceili(WORLD_SIZE.x / tile_size)
+	var rows := ceili(WORLD_SIZE.y / tile_size)
 	for row: int in range(rows):
 		for column: int in range(columns):
 			if (row + column) % 2 == 0:
 				draw_rect(Rect2(column * tile_size, row * tile_size, tile_size, tile_size), MAP_GRASS_ALT)
-	for index: int in range(26):
-		var x := fmod(float(index * 83 + 31), maxf(size.x, 1.0))
-		var y := fmod(float(index * 137 + 77), maxf(size.y, 1.0))
+	for index: int in range(48):
+		var x := fmod(float(index * 83 + 31), WORLD_SIZE.x)
+		var y := fmod(float(index * 137 + 77), WORLD_SIZE.y)
 		draw_circle(Vector2(x, y), 3.0, Color("9dc17c88"))
+	draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), Color("d9efc777"), false, 8.0)
 
 
 func _draw_paths() -> void:
@@ -256,7 +288,7 @@ func _draw_coaching_feedback() -> void:
 
 	var flash_color := effect_color
 	flash_color.a = fade * (0.25 if perfect else 0.12)
-	draw_rect(Rect2(Vector2.ZERO, size), flash_color)
+	draw_rect(Rect2(Vector2.ZERO, WORLD_SIZE), flash_color)
 
 	for ring_index: int in range(3 if perfect else 2):
 		var delayed_progress := clampf(progress * 1.45 - float(ring_index) * 0.18, 0.0, 1.0)
@@ -358,20 +390,226 @@ func _draw_mode_badge() -> void:
 	draw_string(ThemeDB.fallback_font, Vector2(28.0, 39.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
 
 
-func _gui_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+func _draw_zoom_controls() -> void:
+	var total_width := 184.0
+	var button_height := 46.0
+	var start_x := size.x - total_width - 14.0
+	var start_y := size.y - button_height - 12.0
+	_zoom_out_rect = Rect2(start_x, start_y, 48.0, button_height)
+	_zoom_reset_rect = Rect2(start_x + 54.0, start_y, 76.0, button_height)
+	_zoom_in_rect = Rect2(start_x + 136.0, start_y, 48.0, button_height)
+
+	for rect: Rect2 in [_zoom_out_rect, _zoom_reset_rect, _zoom_in_rect]:
+		draw_rect(rect, Color("243b3cdd"))
+		draw_rect(rect, Color("d9efc788"), false, 2.0)
+	_draw_centered_text("−", _zoom_out_rect.get_center() + Vector2(0.0, -2.0), 25, Color("f5f0dc"))
+	_draw_centered_text("%d%%" % int(round(_zoom / maxf(_min_zoom, 0.001) * 100.0)), _zoom_reset_rect.get_center() + Vector2(0.0, -2.0), 15, Color("e5f3db"))
+	_draw_centered_text("+", _zoom_in_rect.get_center() + Vector2(0.0, -2.0), 24, Color("f5f0dc"))
+	draw_string(ThemeDB.fallback_font, Vector2(18.0, size.y - 27.0), "PINCH · DRAG", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("e5f3dbcc"))
+
+
+func _configure_camera() -> void:
+	if size.x <= 0.0 or size.y <= 0.0 or size.is_equal_approx(_last_control_size):
 		return
-	if game_state != null and not game_state.slimes.is_empty() and event.position.distance_to(_slime_position) <= 86.0:
+	var previous_min := _min_zoom
+	var normalized_zoom := _zoom / maxf(previous_min, 0.001)
+	_min_zoom = minf(size.x / WORLD_SIZE.x, size.y / WORLD_SIZE.y) * 0.94
+	_max_zoom = _min_zoom * 2.8
+	if not _camera_initialized:
+		_zoom = _min_zoom
+		_camera_center = WORLD_SIZE * 0.5
+		_camera_initialized = true
+	else:
+		_zoom = clampf(_min_zoom * normalized_zoom, _min_zoom, _max_zoom)
+	_last_control_size = size
+	_clamp_camera()
+
+
+func _apply_camera_transform() -> void:
+	var origin := size * 0.5 - _camera_center * _zoom
+	draw_set_transform(origin, 0.0, Vector2.ONE * _zoom)
+
+
+func _screen_to_world(screen_position: Vector2) -> Vector2:
+	return (screen_position - size * 0.5) / maxf(_zoom, 0.001) + _camera_center
+
+
+func _zoom_at(screen_position: Vector2, requested_zoom: float) -> void:
+	_configure_camera()
+	var next_zoom := clampf(requested_zoom, _min_zoom, _max_zoom)
+	if is_equal_approx(next_zoom, _zoom):
+		return
+	var anchor_world := _screen_to_world(screen_position)
+	_zoom = next_zoom
+	_camera_center = anchor_world - (screen_position - size * 0.5) / _zoom
+	_clamp_camera()
+	queue_redraw()
+
+
+func _reset_camera() -> void:
+	_configure_camera()
+	_zoom = _min_zoom
+	_camera_center = WORLD_SIZE * 0.5
+	queue_redraw()
+
+
+func _pan_camera(screen_delta: Vector2) -> void:
+	if _zoom <= _min_zoom + 0.001:
+		return
+	_camera_center -= screen_delta / _zoom
+	_clamp_camera()
+	queue_redraw()
+
+
+func _clamp_camera() -> void:
+	var half_view := size / maxf(_zoom * 2.0, 0.001)
+	if half_view.x >= WORLD_SIZE.x * 0.5:
+		_camera_center.x = WORLD_SIZE.x * 0.5
+	else:
+		_camera_center.x = clampf(_camera_center.x, half_view.x, WORLD_SIZE.x - half_view.x)
+	if half_view.y >= WORLD_SIZE.y * 0.5:
+		_camera_center.y = WORLD_SIZE.y * 0.5
+	else:
+		_camera_center.y = clampf(_camera_center.y, half_view.y, WORLD_SIZE.y - half_view.y)
+
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		_last_touch_event_msec = Time.get_ticks_msec()
+		_handle_screen_touch(event)
+		accept_event()
+		return
+	if event is InputEventScreenDrag:
+		_last_touch_event_msec = Time.get_ticks_msec()
+		_handle_screen_drag(event)
+		accept_event()
+		return
+	if event is InputEventMagnifyGesture:
+		_zoom_at(event.position, _zoom * event.factor)
+		accept_event()
+		return
+	if event is InputEventMouseButton:
+		# Mobile browsers may emit an emulated mouse event after the real touch event.
+		if Time.get_ticks_msec() - _last_touch_event_msec < 400:
+			accept_event()
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			_zoom_at(event.position, _zoom * ZOOM_STEP)
+			accept_event()
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			_zoom_at(event.position, _zoom / ZOOM_STEP)
+			accept_event()
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_handle_mouse_button(event)
+			accept_event()
+			return
+	if event is InputEventMouseMotion and _mouse_pressed:
+		var mouse_delta: Vector2 = event.position - _mouse_last_position
+		_mouse_last_position = event.position
+		if event.position.distance_to(_mouse_press_position) > 9.0:
+			_mouse_dragged = true
+		if _mouse_dragged:
+			_pan_camera(mouse_delta)
+		accept_event()
+
+
+func _handle_mouse_button(event: InputEventMouseButton) -> void:
+	if event.pressed:
+		_mouse_pressed = true
+		_mouse_dragged = false
+		_mouse_press_position = event.position
+		_mouse_last_position = event.position
+		return
+	if not _mouse_pressed:
+		return
+	_mouse_pressed = false
+	if not _mouse_dragged:
+		_handle_screen_tap(event.position)
+
+
+func _handle_screen_touch(event: InputEventScreenTouch) -> void:
+	if event.pressed:
+		_active_touches[event.index] = event.position
+		if _active_touches.size() == 1:
+			_single_touch_start = event.position
+			_touch_dragged = false
+			_gesture_is_pinch = false
+		elif _active_touches.size() >= 2:
+			_gesture_is_pinch = true
+			_touch_dragged = true
+			_pinch_last_distance = _first_two_touch_distance()
+		return
+
+	var should_tap := _active_touches.has(event.index) and _active_touches.size() == 1 and not _touch_dragged and not _gesture_is_pinch
+	_active_touches.erase(event.index)
+	if should_tap:
+		_handle_screen_tap(event.position)
+	if _active_touches.is_empty():
+		_pinch_last_distance = 0.0
+		_touch_dragged = false
+		_gesture_is_pinch = false
+
+
+func _handle_screen_drag(event: InputEventScreenDrag) -> void:
+	if not _active_touches.has(event.index):
+		return
+	_active_touches[event.index] = event.position
+	if _active_touches.size() >= 2:
+		var current_distance := _first_two_touch_distance()
+		if _pinch_last_distance > 0.0 and current_distance > 0.0:
+			_zoom_at(_first_two_touch_center(), _zoom * current_distance / _pinch_last_distance)
+		_pinch_last_distance = current_distance
+		_gesture_is_pinch = true
+		_touch_dragged = true
+		return
+	if event.position.distance_to(_single_touch_start) > 10.0:
+		_touch_dragged = true
+	if _touch_dragged:
+		_pan_camera(event.relative)
+
+
+func _first_two_touch_distance() -> float:
+	var positions := _first_two_touch_positions()
+	return positions[0].distance_to(positions[1]) if positions.size() == 2 else 0.0
+
+
+func _first_two_touch_center() -> Vector2:
+	var positions := _first_two_touch_positions()
+	return (positions[0] + positions[1]) * 0.5 if positions.size() == 2 else size * 0.5
+
+
+func _first_two_touch_positions() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	for raw_position: Variant in _active_touches.values():
+		positions.append(raw_position as Vector2)
+		if positions.size() == 2:
+			break
+	return positions
+
+
+func _handle_screen_tap(screen_position: Vector2) -> void:
+	if _zoom_out_rect.has_point(screen_position):
+		_zoom_at(size * 0.5, _zoom / ZOOM_STEP)
+		return
+	if _zoom_reset_rect.has_point(screen_position):
+		_reset_camera()
+		return
+	if _zoom_in_rect.has_point(screen_position):
+		_zoom_at(size * 0.5, _zoom * ZOOM_STEP)
+		return
+
+	var world_position := _screen_to_world(screen_position)
+	var slime_hit_radius := maxf(86.0, 54.0 / maxf(_zoom, 0.001))
+	if game_state != null and not game_state.slimes.is_empty() and world_position.distance_to(_slime_position) <= slime_hit_radius:
 		var slime := game_state.slimes.values()[0] as SlimeState
 		slime_pressed.emit(slime.id)
-		accept_event()
 		return
-	if _forest_rect.has_point(event.position):
+	if _forest_rect.has_point(world_position):
 		forest_pressed.emit()
-		accept_event()
 		return
 	background_pressed.emit()
-	accept_event()
 
 
 func _selected_slime_is_untrained() -> bool:
@@ -382,10 +620,9 @@ func _selected_slime_is_untrained() -> bool:
 
 
 func _get_current_job(slime: SlimeState) -> JobDefinition:
-	if slime.current_job.job_id == &"":
+	if slime.current_job.job_id == &"" or content_registry == null:
 		return null
-	# The first slice has one job. Keeping lookup local avoids presentation state owning definitions.
-	return App.game_session.content_registry.get_job(slime.current_job.job_id)
+	return content_registry.get_job(slime.current_job.job_id)
 
 
 func _draw_top_tree(center: Vector2, scale_factor: float) -> void:
