@@ -4,6 +4,7 @@ const StateValidationSuite = preload("res://tests/test_state_validation.gd")
 const GameplaySuite = preload("res://tests/test_gameplay.gd")
 const WorkshopCameraSuite = preload("res://tests/test_workshop_camera.gd")
 const BossBattleSuite = preload("res://tests/test_boss_battle.gd")
+const BackviewDuelSuite = preload("res://tests/test_backview_duel.gd")
 
 
 func _init() -> void:
@@ -16,9 +17,11 @@ func _init() -> void:
 	failures.append_array(camera_suite.run())
 	var boss_battle_suite = BossBattleSuite.new()
 	failures.append_array(boss_battle_suite.run())
+	var backview_duel_suite = BackviewDuelSuite.new()
+	failures.append_array(backview_duel_suite.run())
 
 	if failures.is_empty():
-		print("TESTS PASSED (legacy systems and boss combat prototype)")
+		print("TESTS PASSED (legacy systems, top-down boss, and backview duel)")
 		quit(0)
 		return
 
