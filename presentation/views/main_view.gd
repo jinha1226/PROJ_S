@@ -23,6 +23,7 @@ var _coach_button: Button
 var _world: WorkshopWorld
 var _feedback_text: String = ""
 var _feedback_until_tick: int = -1
+var _progress_target: float = 0.0
 
 
 func _ready() -> void:
@@ -39,8 +40,31 @@ func _process(delta: float) -> void:
 		_tick_accumulator -= TICK_SECONDS
 		_session.advance_ticks(1)
 		advanced = true
+	if _world != null:
+		_world.set_interpolation_alpha(_tick_accumulator / TICK_SECONDS)
 	if advanced:
 		_refresh_state()
+	_update_interpolated_progress()
+	if _progress_bar != null:
+		var smoothing := 1.0 - exp(-12.0 * delta)
+		_progress_bar.value = lerpf(float(_progress_bar.value), _progress_target, smoothing)
+
+
+func _update_interpolated_progress() -> void:
+	if _session == null or _session.state == null or _world == null:
+		return
+	var slime := _session.state.slimes.values()[0] as SlimeState
+	if slime == null:
+		return
+	var runtime := slime.current_job
+	match runtime.phase:
+		JobRuntime.MOVING:
+			_progress_target = 100.0 * (float(runtime.elapsed_ticks) + _world.interpolation_alpha) / maxf(1.0, float(runtime.movement_ticks))
+		JobRuntime.WORKING:
+			_progress_target = 100.0 * (float(runtime.elapsed_ticks) + _world.interpolation_alpha) / maxf(1.0, float(runtime.duration_ticks))
+		_:
+			_progress_target = 0.0
+	_progress_target = clampf(_progress_target, 0.0, 100.0)
 
 
 func _build_interface() -> void:
@@ -77,9 +101,11 @@ func _build_interface() -> void:
 	_world.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_world.slime_pressed.connect(_on_slime_pressed)
 	_world.forest_pressed.connect(_on_forest_pressed)
+	_world.background_pressed.connect(_on_background_pressed)
 	content.add_child(_world)
 
 	var context_panel := PanelContainer.new()
+	context_panel.custom_minimum_size = Vector2(0.0, 184.0)
 	context_panel.add_theme_stylebox_override("panel", _panel_style(PANEL, PANEL_BORDER, 22))
 	content.add_child(context_panel)
 	var context_margin := MarginContainer.new()
@@ -103,7 +129,8 @@ func _build_interface() -> void:
 	context_box.add_child(_progress_bar)
 	_coach_button = _button("COACH • SPEED UP")
 	_coach_button.pressed.connect(_on_coach_pressed)
-	_coach_button.visible = false
+	_coach_button.disabled = true
+	_coach_button.text = "SELECT MOMO FOR FOCUS"
 	context_box.add_child(_coach_button)
 
 
@@ -122,56 +149,89 @@ func _refresh_state() -> void:
 	var slime := state.slimes.values()[0] as SlimeState
 	var logging := slime.skill_memories.get(&"logging") as SkillProgress
 	var runtime := slime.current_job
-	_progress_bar.value = 0.0
-	_coach_button.visible = false
+	var focused := _selected_slime_id == slime.id
+	_progress_target = 0.0
+	_coach_button.disabled = true
 
 	if logging == null:
 		_status_label.text = "Momo is waiting"
-		_detail_label.text = "Select Momo, then tap the forest"
-		_instruction_label.text = "Tap Momo, then tap the forest"
+		_detail_label.text = "One tap selects a slime; its next tap is contextual"
+		if focused:
+			_instruction_label.text = "Focus mode • Tap the forest to teach logging"
+			_coach_button.text = "TAP FOREST TO TEACH"
+		else:
+			_instruction_label.text = "Overview running • Tap Momo to focus"
+			_coach_button.text = "SELECT MOMO TO TEACH"
 		_apply_feedback()
 		return
 
 	var skill_definition := _session.content_registry.get_skill(&"logging")
 	var next_xp := 0 if logging.level >= 5 else skill_definition.level_xp_requirements[logging.level - 1]
 	var xp_text := "MAX" if logging.level >= 5 else "%d / %d XP" % [logging.xp, next_xp]
-	_instruction_label.text = "Momo learned logging — coaching is optional"
+	_instruction_label.text = "Focus mode • Tap Momo when the ring reaches orange" if focused else "Overview running automatically • Tap Momo to focus"
 	match runtime.phase:
 		JobRuntime.IDLE:
 			_status_label.text = "Choosing the next tree..."
+			_coach_button.text = "STARTING NEXT JOB" if focused else "OVERVIEW • AUTO RUNNING"
 		JobRuntime.MOVING:
 			_status_label.text = "Momo is heading to the forest"
-			_progress_bar.value = 100.0 * float(runtime.elapsed_ticks) / maxf(1.0, float(runtime.movement_ticks))
+			_progress_target = 100.0 * (float(runtime.elapsed_ticks) + _world.interpolation_alpha) / maxf(1.0, float(runtime.movement_ticks))
+			_coach_button.text = "MOVING TO WORK" if focused else "OVERVIEW • AUTO RUNNING"
 		JobRuntime.WORKING:
-			var ratio := float(runtime.elapsed_ticks) / maxf(1.0, float(runtime.duration_ticks))
+			var ratio := (float(runtime.elapsed_ticks) + _world.interpolation_alpha) / maxf(1.0, float(runtime.duration_ticks))
+			ratio = clampf(ratio, 0.0, 1.0)
 			_status_label.text = "Chopping wood... %d%%" % int(ratio * 100.0)
-			_progress_bar.value = ratio * 100.0
-			_coach_button.visible = not runtime.coaching_used
-			if _coach_button.visible:
-				var remaining := runtime.duration_ticks - runtime.elapsed_ticks
+			_progress_target = ratio * 100.0
+			if not focused:
+				_coach_button.text = "OVERVIEW • AUTO RUNNING"
+			elif runtime.coaching_used:
+				_coach_button.text = "COACHED • AUTO RUNNING"
+			else:
+				var remaining := float(runtime.duration_ticks - runtime.elapsed_ticks) - _world.interpolation_alpha
 				var job := _session.content_registry.get_job(runtime.job_id)
-				_coach_button.text = "PERFECT COACH!" if remaining <= job.perfect_window_ticks else "COACH • SPEED UP"
+				_coach_button.disabled = false
+				_coach_button.text = "PERFECT! TAP MOMO NOW" if remaining <= float(job.perfect_window_ticks) else "COACH • SPEED UP"
 		JobRuntime.BLOCKED:
 			_status_label.text = "Waiting for an open work spot"
+			_coach_button.text = "WAITING FOR WORK" if focused else "OVERVIEW • AUTO RUNNING"
 		JobRuntime.BLOCKED_OUTPUT:
 			_status_label.text = "Storage is full"
+			_coach_button.text = "STORAGE FULL" if focused else "OVERVIEW • AUTO RUNNING"
 	var split_requirement := _session.content_registry.balance.division_requirement(slime.skill_memories.size())
 	_detail_label.text = "Logging Lv.%d  •  %s  •  Split %d/%d" % [logging.level, xp_text, slime.division_meter, split_requirement]
 	_apply_feedback()
 
 
 func _on_slime_pressed(slime_id: StringName) -> void:
-	_selected_slime_id = &"" if _selected_slime_id == slime_id else slime_id
-	if _selected_slime_id == &"":
-		_set_feedback("Selection cleared", 8)
+	var slime := _session.state.slimes.get(slime_id) as SlimeState
+	if slime == null:
+		return
+	if _selected_slime_id != slime_id:
+		_selected_slime_id = slime_id
+		if slime.skill_memories.has(&"logging"):
+			_set_feedback("Focus mode — tap Momo when the ring reaches orange", 18)
+		else:
+			_set_feedback("Focus mode — now tap the forest", 15)
+	elif not slime.skill_memories.has(&"logging"):
+		_set_feedback("Now tap the forest to teach logging", 12)
+	elif slime.current_job.phase == JobRuntime.WORKING and not slime.current_job.coaching_used:
+		_attempt_coach(slime)
+		return
+	elif slime.current_job.coaching_used:
+		_set_feedback("Already coached — a new timing ring appears next job", 15)
 	else:
-		_set_feedback("Momo selected — tap the forest", 12)
+		_set_feedback("Momo is moving — coaching opens during work", 12)
 	_refresh_state()
 
 
 func _on_forest_pressed() -> void:
 	if _selected_slime_id == &"":
 		_set_feedback("Select Momo first", 12)
+		_refresh_state()
+		return
+	var slime := _session.state.slimes.get(_selected_slime_id) as SlimeState
+	if slime != null and slime.skill_memories.has(&"logging"):
+		_set_feedback("Logging is already automated", 12)
 		_refresh_state()
 		return
 	var result := _session.teach(_selected_slime_id, &"forest", &"job_logging")
@@ -185,9 +245,23 @@ func _on_forest_pressed() -> void:
 
 func _on_coach_pressed() -> void:
 	var slime := _session.state.slimes.values()[0] as SlimeState
+	_attempt_coach(slime)
+
+
+func _attempt_coach(slime: SlimeState) -> void:
+	if slime == null:
+		return
 	var result := _session.coach(slime.id, slime.current_job.cycle_id)
 	if not result.ok:
 		_set_feedback(_friendly_error(result.code), 12)
+	_refresh_state()
+
+
+func _on_background_pressed() -> void:
+	if _selected_slime_id == &"":
+		return
+	_selected_slime_id = &""
+	_set_feedback("Overview mode — the workshop keeps running automatically", 14)
 	_refresh_state()
 
 
@@ -240,9 +314,11 @@ func _button(caption: String) -> Button:
 	button.add_theme_font_size_override("font_size", 18)
 	button.add_theme_color_override("font_color", Color("2c2633"))
 	button.add_theme_color_override("font_hover_color", Color("2c2633"))
+	button.add_theme_color_override("font_disabled_color", Color("a8bdd0"))
 	button.add_theme_stylebox_override("normal", _panel_style(COACH, Color("ffd49c"), 18))
 	button.add_theme_stylebox_override("hover", _panel_style(COACH.lightened(0.08), Color("ffe2b7"), 18))
 	button.add_theme_stylebox_override("pressed", _panel_style(COACH.darkened(0.12), Color("d27c43"), 18))
+	button.add_theme_stylebox_override("disabled", _panel_style(Color("314762"), Color("526b82"), 18))
 	return button
 
 
