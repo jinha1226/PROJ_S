@@ -7,6 +7,11 @@ const RelationshipSystemScript = preload("res://sim/systems/relationship_system.
 const MovementSystemScript = preload("res://sim/systems/movement_system.gd")
 const ExposureSystemScript = preload("res://sim/systems/exposure_system.gd")
 const ActorCoordinatorScript = preload("res://sim/systems/actor_coordinator.gd")
+const PartyCoordinatorScript = preload("res://sim/systems/party_encounter_coordinator.gd")
+const PartyActionScript = preload("res://sim/party_action_command.gd")
+const PartyRequestScript = preload("res://sim/party_turn_request.gd")
+const PartyPlanScript = preload("res://sim/party_turn_plan.gd")
+const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const WeightedPathfinderScript = preload("res://sim/weighted_pathfinder.gd")
 const WorldStateScript = preload("res://sim/world_state.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
@@ -14,6 +19,7 @@ const StepResultScript = preload("res://sim/sim_step_result.gd")
 const PreviewScript = preload("res://sim/sim_action_preview.gd")
 const TimingScript = preload("res://sim/action_timing_table.gd")
 const ClockScript = preload("res://sim/world_clock.gd")
+const Int64CodecScript = preload("res://sim/int64_codec.gd")
 
 const MAX_SCHEDULE_OCCURRENCES_PER_STEP := 1024
 const MAX_INT64 := 9223372036854775807
@@ -26,6 +32,7 @@ var relationships
 var movement
 var exposure
 var actor_coordinator
+var party_coordinator
 var pathfinder
 
 
@@ -64,7 +71,7 @@ func step(command):
 	# canonical pre-step image so such a rejection also rolls back the command,
 	# earlier same-time cadence work, time, schedules, IDs and RNG.
 	var rollback_snapshot: Dictionary = {}
-	if world.encounter_lab != null:
+	if world.encounter_lab != null or world.party_encounter != null:
 		rollback_snapshot = world.snapshot()
 		assert(not rollback_snapshot.is_empty(), "A settled Phase 3 lab must snapshot before stepping")
 	var event_start: int = world.events.size()
@@ -74,6 +81,17 @@ func step(command):
 	var end_time: int = plan["end_time"]
 	world.begin_step(processed_step_index)
 	var root_event = _resolve_command(command, plan)
+	if root_event == null or (world.party_encounter != null and not party_coordinator.reconcile_liveness()):
+		var failed_restore = WorldStateScript.from_snapshot(rollback_snapshot)
+		if failed_restore != null:
+			world = failed_restore
+			_rebuild_systems()
+		return StepResultScript.new(false, false, "command_resolution_failed")
+	if world.party_encounter != null and world.party_encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
+		var party_state = world.party_encounter
+		party_state.group_anchor = world.entities[party_state.protagonist_id].position
+		for member_id in party_state.party_member_ids:
+			if party_state.member(member_id).presence == "GROUPED": world.entities[member_id].position = party_state.group_anchor
 	var immediate_ids: Array[int] = []
 	for index in range(event_start, world.events.size()):
 		immediate_ids.append(world.events[index].id)
@@ -147,6 +165,7 @@ func _rebuild_systems() -> void:
 	exposure = ExposureSystemScript.new(world, movement)
 	pathfinder = WeightedPathfinderScript.new(world, movement)
 	actor_coordinator = ActorCoordinatorScript.new(world, movement, relationships, damage)
+	party_coordinator = PartyCoordinatorScript.new(world, movement, damage, pathfinder, environment, exposure)
 
 
 func assess_move(actor_id: int, destination: Vector2i):
@@ -167,6 +186,144 @@ func assess_destination(entity_id: int, position: Vector2i):
 
 func find_path(entity_id: int, goal: Vector2i) -> Dictionary:
 	return pathfinder.find_path(entity_id, goal).duplicate(true)
+
+
+func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
+	return party_coordinator.preview_deployment(preset_id, companion_ids).duplicate(true)
+
+
+func deploy_party(plan: Variant):
+	if not plan is Dictionary:
+		return StepResultScript.new(false, false, "invalid_deployment_plan")
+	var rollback = world.snapshot()
+	var result = party_coordinator.commit_deployment(plan.duplicate(true))
+	if result is Dictionary:
+		if result.has("restored_world") and result.restored_world != null: world = result.restored_world
+		elif rollback != null: world = WorldStateScript.from_snapshot(rollback)
+		_rebuild_systems()
+		return StepResultScript.new(false, false, str(result.get("reason", "deployment_failed")))
+	return result
+
+
+func preview_party_turn(request):
+	return party_coordinator.preview_party_turn(request)
+
+
+func step_party_turn(plan):
+	if not plan is PartyTurnPlan:
+		return StepResultScript.new(false, false, "invalid_party_plan")
+	var supplied: Dictionary = plan.to_dict()
+	var supplied_error := _accepted_party_plan_shape_error(supplied)
+	if not supplied_error.is_empty():
+		return StepResultScript.new(false, false, supplied_error)
+	if not bool(supplied.accepted):
+		return StepResultScript.new(false, false, str(supplied.reason))
+	var request_error := PartyRequestScript.wire_error(supplied.get("canonical_request"))
+	if not request_error.is_empty():
+		return StepResultScript.new(false, false, request_error)
+	var request = PartyRequestScript.from_dict(supplied.canonical_request)
+	if request == null:
+		return StepResultScript.new(false, false, "invalid_party_request")
+	if world.party_encounter == null or str(supplied.base_fingerprint) != JSON.stringify(world.snapshot()).sha256_text() \
+			or str(supplied.base_step) != str(world.step_index) or str(supplied.base_time) != str(world.world_time) \
+			or str(supplied.base_revision) != str(world.party_encounter.revision):
+		return StepResultScript.new(false, false, "stale_party_plan")
+	var authoritative_plan = party_coordinator.preview_party_turn(request)
+	var authoritative: Dictionary = authoritative_plan.to_dict()
+	if not bool(authoritative.get("accepted", false)):
+		return StepResultScript.new(false, false, str(authoritative.get("reason", "stale_party_plan")))
+	if supplied != authoritative:
+		return StepResultScript.new(false, false, "party_plan_mismatch")
+	var rollback_value: Variant = world.snapshot()
+	if not rollback_value is Dictionary:
+		return StepResultScript.new(false, false, "party_snapshot_unavailable")
+	var rollback: Dictionary = rollback_value
+	if rollback.is_empty():
+		return StepResultScript.new(false, false, "party_snapshot_unavailable")
+	var event_start: int = world.events.size()
+	var start_time: int = world.world_time
+	var cost: int = int(authoritative.total_time_cost)
+	if cost <= 0 or world.step_index == MAX_INT64 or start_time > MAX_WORLD_TIME - cost:
+		return StepResultScript.new(false, false, "time_overflow")
+	world.begin_step(world.step_index + 1)
+	var leaf_index := 0
+	for row in authoritative.actor_rows:
+		var action: Dictionary = row.action
+		var actor_id := int(str(action.actor_id))
+		var leaf = null
+		match str(action.type):
+			"HOLD":
+				leaf = world.emit_event("action.hold", actor_id, -1, world.entities[actor_id].position, int(row.time_cost))
+			"MOVE":
+				var destination := Vector2i(int(action.destination[0]), int(action.destination[1]))
+				var terrain_id := str(world.tile_at(destination).terrain)
+				leaf = movement.commit_preflighted_move(actor_id, destination, terrain_id, int(row.time_cost))
+			"MELEE":
+				var target_id := int(str(action.target_id))
+				var target = world.entities.get(target_id)
+				leaf = world.emit_event("action.melee_attack", actor_id, target_id, target.position, 22, -1,
+					{"combat_ruleset_id": "fixed-melee-v1"}) if target != null else null
+				if leaf != null and target.is_alive():
+					var health_before: int = target.health
+					var applied: int = damage.apply_damage(target, 22, "physical", leaf.id)
+					if applied != mini(22, health_before):
+						return _rollback_party_step(rollback, "party_turn_failed")
+		if leaf == null or party_coordinator.fail_after_leaf_index == leaf_index \
+				or party_coordinator.fail_point == "party_leaf":
+			return _rollback_party_step(rollback, "party_turn_failed")
+		if bool(row.get("overridden", false)):
+			var member = world.party_encounter.member(actor_id)
+			var composure: int = member.personality_profile.value("composure") if member.personality_profile != null else 500
+			var protagonist_id:int=world.party_encounter.protagonist_id
+			var personal=world.personal_relations.get("%d:%d"%[actor_id,protagonist_id])
+			var stress_delta: int = 20 + int((999 - composure) / 20) \
+				+ (int(personal.grievance / 5) if personal != null else 0) \
+				- (int(personal.gratitude / 10) if personal != null else 0)
+			stress_delta = maxi(1, stress_delta)
+			member.stress = clampi(member.stress + stress_delta, 0, 1000)
+			if world.emit_event("party.override_committed", actor_id, -1, world.entities[actor_id].position,
+					stress_delta, leaf.id) == null or party_coordinator.fail_point == "turn_override_event":
+				return _rollback_party_step(rollback, "party_turn_failed")
+		world.party_encounter.member(actor_id).busy_until = start_time + int(row.time_cost)
+		leaf_index += 1
+	if not party_coordinator.reconcile_liveness():
+		return _rollback_party_step(rollback, "party_turn_failed")
+	var end_time: int = start_time + cost
+	var occurrence_index := 0
+	while not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time) <= end_time:
+		var entry: Dictionary = world.take_next_schedule()
+		if occurrence_index >= authoritative.timeline.size():
+			return _rollback_party_step(rollback, "party_schedule_mismatch")
+		var expected: Dictionary = authoritative.timeline[occurrence_index]
+		if str(expected.kind) != str(entry.kind) or str(expected.at_time) != str(entry.due_time) \
+				or str(expected.schedule_id) != str(entry.schedule_id):
+			return _rollback_party_step(rollback, "party_schedule_mismatch")
+		world.world_time = int(entry.due_time)
+		if not _dispatch_schedule(entry) or party_coordinator.fail_point == "party_schedule":
+			return _rollback_party_step(rollback, "actor_tick_failed")
+		if int(entry.repeat_interval) > 0:
+			world.requeue_repeating(entry)
+		occurrence_index += 1
+	if occurrence_index != authoritative.timeline.size():
+		return _rollback_party_step(rollback, "party_schedule_mismatch")
+	world.world_time = end_time
+	if not party_coordinator.reconcile_liveness():
+		return _rollback_party_step(rollback, "party_turn_failed")
+	world.finish_step()
+	if not world.world_state_error().is_empty():
+		return _rollback_party_step(rollback, "party_turn_semantic_failure")
+	var result_events: Array = world.events_since(event_start)
+	return StepResultScript.new(true, true, "ok", result_events, {"processed_step_index": world.step_index,
+		"start_time": start_time, "end_time": end_time, "time_cost": cost, "timeline": authoritative.timeline.duplicate(true),
+		"root_event_id": result_events[0].id if not result_events.is_empty() else -1})
+
+
+func regroup_party():
+	var rollback = world.snapshot(); var result = party_coordinator.regroup()
+	if result is Dictionary:
+		world = result.get("restored_world", WorldStateScript.from_snapshot(rollback)); _rebuild_systems()
+		return StepResultScript.new(false, false, str(result.get("reason", "regroup_failed")))
+	return result
 
 
 func _plan_action(command) -> Dictionary:
@@ -277,6 +434,11 @@ func _validate_command(command) -> String:
 		return "invalid_command_object"
 	if not (command.type is int):
 		return "command_type_not_integer"
+	if world.party_encounter != null:
+		if world.party_encounter.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
+			return "party_specialized_flow_required"
+		if not command.actor_id is int or command.actor_id != world.party_encounter.protagonist_id:
+			return "party_protagonist_command_required"
 	if int(command.type) < int(CommandScript.Type.WAIT) or int(command.type) > int(CommandScript.Type.MOVE):
 		return "unknown_command"
 	if not (command.actor_id is int):
@@ -313,6 +475,9 @@ func _validate_command(command) -> String:
 func _resolve_command(command, plan: Dictionary):
 	match command.type:
 		CommandScript.Type.WAIT:
+			if world.party_encounter != null and world.entities.has(command.actor_id):
+				return world.emit_event("action.wait", command.actor_id, -1,
+					world.entities[command.actor_id].position)
 			return world.emit_event("action.wait", command.actor_id)
 		CommandScript.Type.IGNITE:
 			var action = world.emit_event("action.ignite", command.actor_id, -1, command.position, command.power)
@@ -336,11 +501,53 @@ func _dispatch_schedule(entry: Dictionary) -> bool:
 	match str(entry["kind"]):
 		"system.environment_tick":
 			environment.process_tick()
+			if world.party_encounter != null:
+				return party_coordinator.reconcile_liveness() \
+					and party_coordinator.fail_point != "after_environment_tick"
 			return true
 		"system.actor_tick":
-			return actor_coordinator.process_tick()
+			if world.encounter_lab != null: return actor_coordinator.process_tick()
+			if world.party_encounter != null: return party_coordinator.process_tick()
+			return true
 		_:
 			return false
+
+
+func _accepted_party_plan_shape_error(data: Variant) -> String:
+	if not data is Dictionary:
+		return "invalid_party_plan_shape"
+	if not data.get("accepted") is bool:
+		return "invalid_party_plan_accepted"
+	if not bool(data.accepted):
+		var rejected_keys: Array = data.keys(); rejected_keys.sort()
+		if rejected_keys != ["accepted", "actor_rows", "base_fingerprint", "reason"] \
+				or not data.get("reason") is String or not data.get("actor_rows") is Array \
+				or not data.get("base_fingerprint") is String:
+			return "invalid_party_plan_shape"
+		return ""
+	var keys: Array = data.keys(); keys.sort()
+	if keys != ["accepted", "actor_rows", "base_fingerprint", "base_revision", "base_step",
+			"base_time", "canonical_request", "plan_hash", "reason", "timeline", "total_time_cost"]:
+		return "invalid_party_plan_keys"
+	for key in ["base_revision", "base_step", "base_time"]:
+		if not Int64CodecScript.is_canonical(data.get(key)) or Int64CodecScript.parse(data.get(key), key) < 0:
+			return "noncanonical_party_plan_%s" % key
+	if not data.get("reason") is String or str(data.reason) != "ok" \
+			or not data.get("base_fingerprint") is String or str(data.base_fingerprint).length() != 64 \
+			or not data.get("plan_hash") is String or str(data.plan_hash).length() != 64 \
+			or not data.get("actor_rows") is Array or data.actor_rows.is_empty() \
+			or not data.get("timeline") is Array or not data.get("total_time_cost") is int \
+			or int(data.total_time_cost) <= 0 or int(data.total_time_cost) > 10000:
+		return "invalid_party_plan_shape"
+	return ""
+
+
+func _rollback_party_step(snapshot_before: Dictionary, reason: String):
+	var restored = WorldStateScript.from_snapshot(snapshot_before)
+	if restored != null:
+		world = restored
+		_rebuild_systems()
+	return StepResultScript.new(false, false, reason)
 
 
 func _assert_event_partition(result_events: Array, timeline: Array) -> void:

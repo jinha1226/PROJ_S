@@ -65,6 +65,50 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 	return _failure("path_unreachable")
 
 
+func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
+	if not world.entities.has(actor_id) or not world.entities[actor_id].is_alive():
+		return _failure("actor_not_found")
+	var start: Vector2i = world.entities[actor_id].position
+	var goal_set: Dictionary = {}
+	for value in goals:
+		if not value is Vector2i: continue
+		var goal: Vector2i = value
+		if not world.in_bounds(goal): continue
+		var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(goal).terrain)
+		if definition.is_empty() or not bool(definition.get("passable", false)) \
+				or _occupant(goal, actor_id, occupancy_projection) != -1: continue
+		goal_set[_key(goal)] = goal
+	if goal_set.is_empty(): return _failure("path_unreachable")
+	if goal_set.has(_key(start)):
+		return {"found":true,"reason":"already_there","path":[start],"total_cost":0,"steps":0,"goal":start}
+	var open: Array[Dictionary] = [{"position":start,"cost":0,"steps":0,"sequence":0}]
+	var sequence := 1
+	var best: Dictionary = {_key(start):[0,0]}
+	var previous: Dictionary = {}
+	while not open.is_empty():
+		open.sort_custom(_open_less)
+		var node: Dictionary = open.pop_front(); var position: Vector2i = node.position
+		var known: Array = best.get(_key(position), [])
+		if known.is_empty() or int(node.cost) != int(known[0]) or int(node.steps) != int(known[1]): continue
+		if goal_set.has(_key(position)):
+			var path: Array[Vector2i] = [position]; var cursor := position
+			while cursor != start:
+				cursor = previous[_key(cursor)]; path.push_front(cursor)
+			return {"found":true,"reason":"ok","path":path,"total_cost":int(node.cost),
+				"steps":int(node.steps),"goal":position}
+		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
+			var next: Vector2i = position + direction
+			if not _can_step(actor_id, position, next, occupancy_projection): continue
+			var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(next).terrain)
+			var next_cost: int = int(node.cost) + int(definition.move_time_cost)
+			var next_steps: int = int(node.steps) + 1; var next_key := _key(next)
+			var old: Array = best.get(next_key, [])
+			if not old.is_empty() and (next_cost > int(old[0]) or (next_cost == int(old[0]) and next_steps >= int(old[1]))): continue
+			best[next_key] = [next_cost,next_steps]; previous[next_key] = position
+			open.append({"position":next,"cost":next_cost,"steps":next_steps,"sequence":sequence}); sequence += 1
+	return _failure("path_unreachable")
+
+
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
 	if not world.in_bounds(to):
 		return false

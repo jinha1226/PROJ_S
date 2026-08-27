@@ -126,7 +126,7 @@ func discharge(position: Vector2i, power: int, cause_id: int) -> bool:
 			int(item["parent_id"]),
 			{"distance": distance, "from_position": [from_position.x, from_position.y]}
 		)
-		for entity in world.entities_at(current):
+		for entity in world.exposed_entities_at(current):
 			damage_requests.append({"entity": entity, "amount": remaining_power,
 				"damage_type": "electric", "cause_id": arc_event.id})
 		for neighbor in world.cardinal_neighbors(current):
@@ -155,7 +155,7 @@ func process_tick() -> void:
 			if tile.fire <= 0 or tile.fire_damage_eligible_time < 0 \
 					or world.world_time < tile.fire_damage_eligible_time:
 				continue
-			for entity in world.entities_at(position):
+			for entity in world.exposed_entities_at(position):
 				fire_damage_requests.append({"entity": entity,
 					"amount": mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, tile.fire),
 					"damage_type": "fire", "cause_id": tile.fire_source_event_id})

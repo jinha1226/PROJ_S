@@ -1,8 +1,8 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 4
-const RULESET_VERSION := "phase3-dungeon-personality-lab-v1"
+const SNAPSHOT_VERSION := 5
+const RULESET_VERSION := "phase4-party-encounter-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
 const HAZARD_AFFINITY_RULESET_ID := "hazard-affinity-v1"
@@ -30,6 +30,8 @@ const AgentStateScript = preload("res://sim/agent_state.gd")
 const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
+const PartyEncounterStateScript = preload("res://sim/party_encounter_state.gd")
+const PartyMemberStateScript = preload("res://sim/party_member_state.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 var width: int
@@ -45,6 +47,7 @@ var species_relations
 var personal_relations: Dictionary = {}
 var agent_states: Dictionary = {}
 var encounter_lab = null
+var party_encounter = null
 var scheduled_entries: Array[Dictionary] = []
 var next_schedule_id: int = 1
 
@@ -164,15 +167,45 @@ func bootstrap_set_world_time(p_world_time: int) -> bool:
 
 
 func entities_at(position: Vector2i) -> Array:
+	return occupying_entities_at(position)
+
+
+func occupying_entities_at(position: Vector2i) -> Array:
 	var result: Array = []
 	var ids: Array = entities.keys()
 	ids.sort()
 	for entity_id in ids:
 		var entity = entities[entity_id]
 		var state = agent_states.get(entity_id)
-		if entity.position == position and entity.is_alive() and (state == null or state.encounter_status == "ACTIVE"):
+		var party_state = party_member_state(entity_id)
+		var party_occupies: bool = party_state == null or party_state.presence == "DEPLOYED"
+		if entity.position == position and entity.is_alive() and party_occupies \
+				and (state == null or state.encounter_status == "ACTIVE"):
 			result.append(entity)
 	return result
+
+
+func exposed_entities_at(position: Vector2i) -> Array:
+	var result: Array = []
+	var ids: Array = entities.keys(); ids.sort()
+	for entity_id in ids:
+		var entity = entities[entity_id]
+		if not entity.is_alive(): continue
+		var party_state = party_member_state(entity_id)
+		if party_state != null:
+			if party_state.presence == "DEPLOYED" and entity.position == position:
+				result.append(entity)
+			elif party_state.presence == "GROUPED" and party_encounter.group_anchor == position:
+				result.append(entity)
+			continue
+		var state = agent_states.get(entity_id)
+		if entity.position == position and (state == null or state.encounter_status == "ACTIVE"):
+			result.append(entity)
+	return result
+
+
+func party_member_state(entity_id: int):
+	return null if party_encounter == null else party_encounter.member(entity_id)
 
 
 func blocking_entity_at(position: Vector2i, except_entity_id: int = -1):
@@ -418,6 +451,7 @@ func snapshot() -> Variant:
 		"next_schedule_id": str(next_schedule_id), "scheduled_entries": schedule_rows,
 		"agent_states": agent_rows,
 		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
+		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
 		"tiles": tile_rows, "entities": entity_rows, "events": event_rows,
 		"species_relations": species_relations.to_dict(), "personal_relations": relation_rows,
 	}
@@ -475,6 +509,7 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 		var state = AgentStateScript.from_dict(row)
 		restored.agent_states[state.entity_id] = state
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
+	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
 	restored.scheduled_entries.clear()
 	for row in data.get("scheduled_entries", []):
 		restored.scheduled_entries.append(_schedule_from_dict(row))
@@ -510,6 +545,19 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	var header_error := snapshot_header_error(data)
 	if not header_error.is_empty():
 		return header_error
+	var top_keys: Array = data.keys(); top_keys.sort()
+	if top_keys != ["agent_states", "calendar_ruleset_id", "combat_ruleset_id", "decision_ruleset_id",
+			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
+			"keyed_hash_ruleset_id", "next_entity_id", "next_event_id", "next_schedule_id",
+			"party_encounter", "personal_relations", "personality_generator_ruleset_id",
+			"personality_schema_id", "rng_state", "ruleset_version", "scheduled_entries",
+			"score_combiner_id", "seed", "snapshot_version", "species_relations", "step_index",
+			"terrain_ruleset_id", "tiles", "width", "world_time"]:
+		return "invalid_snapshot_top_level_keys"
+	if not data.has("encounter_lab") or not data.has("party_encounter"):
+		return "missing_encounter_mode_key"
+	if data.get("encounter_lab") != null and data.get("party_encounter") != null:
+		return "encounter_mode_conflict"
 	if not _is_small_int(data.get("width"), 1, MAX_DIMENSION):
 		return "invalid_width"
 	if not _is_small_int(data.get("height"), 1, MAX_DIMENSION):
@@ -684,6 +732,11 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 				or lab.appearance_event_ids.size() != 4: return "invalid_encounter_lab"
 		for id in lab.appearance_event_ids:
 			if not Int64CodecScript.is_canonical(id): return "noncanonical_appearance_event"
+	if data.get("encounter_lab") != null and data.get("party_encounter") != null:
+		return "encounter_mode_conflict"
+	if data.get("party_encounter") != null:
+		var party_error := PartyEncounterStateScript.wire_error(data.party_encounter, restored_width, restored_height)
+		if not party_error.is_empty(): return party_error
 	if not (data.get("scheduled_entries") is Array):
 		return "invalid_schedules_shape"
 	var schedules: Array = data["scheduled_entries"]
@@ -768,6 +821,8 @@ func _restored_state_error() -> String:
 	var dimension_validation := dimensions_error(width, height)
 	if not dimension_validation.is_empty():
 		return dimension_validation
+	if encounter_lab != null and party_encounter != null:
+		return "encounter_mode_conflict"
 	if tiles.size() != width * height:
 		return "snapshot_tile_count_mismatch"
 	for tile in tiles:
@@ -793,7 +848,9 @@ func _restored_state_error() -> String:
 		if entity.id != entity_id or not in_bounds(entity.position):
 			return "entity_identity_or_position_invalid"
 		var actor_state = agent_states.get(entity_id)
-		if entity.is_alive() and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
+		var party_state = party_member_state(entity_id)
+		if entity.is_alive() and (party_state == null or party_state.presence == "DEPLOYED") \
+				and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
 			if not _terrain_is_passable(entity.position):
 				return "live_entity_on_impassable_terrain"
 			var occupancy_key := "%d:%d" % [entity.position.x, entity.position.y]
@@ -1316,6 +1373,9 @@ func _restored_state_error() -> String:
 			if entities[lead_id].is_alive() and agent_states[lead_id].encounter_status == "ACTIVE": active_lead_count += 1
 		if encounter_lab.phase == "COMPLETE" and active_lead_count != 0: return "complete_with_active_lead"
 		if encounter_lab.phase == "ACTIVE" and active_lead_count == 0: return "active_without_live_lead"
+	if party_encounter != null:
+		var party_error := _party_runtime_error()
+		if not party_error.is_empty(): return party_error
 	if next_schedule_id <= 0:
 		return "nonpositive_next_schedule_id"
 	var schedule_ids: Dictionary = {}
@@ -1376,6 +1436,477 @@ func _restored_state_error() -> String:
 			or not actor_entry["payload"].is_empty():
 		return "invalid_actor_schedule_contract"
 	return ""
+
+
+func _party_runtime_error() -> String:
+	if width != 15 or height != 15: return "party_fixture_dimensions_invalid"
+	if party_encounter.safe_phase not in PartyEncounterStateScript.PHASES: return "unknown_party_phase"
+	if party_encounter.protagonist_id <= 0 or not entities.has(party_encounter.protagonist_id): return "party_protagonist_missing"
+	if party_encounter.party_member_ids.size() < 1 or party_encounter.party_member_ids.size() > 64: return "party_roster_size_invalid"
+	if party_encounter.enemy_ids.is_empty() or party_encounter.enemy_ids.size() > 64: return "party_enemy_size_invalid"
+	var previous_id := 0
+	var deployed := 0
+	var slots: Array[int] = []
+	var deployed_cells: Dictionary = {}
+	var party_ids: Dictionary = {}
+	for roster_index in range(party_encounter.party_member_ids.size()):
+		var member_id: int = party_encounter.party_member_ids[roster_index]
+		if member_id <= previous_id or not entities.has(member_id) or not party_encounter.member_rows.has(member_id): return "party_member_reference_invalid"
+		previous_id = member_id
+		party_ids[member_id] = true
+		var member = party_encounter.member_rows[member_id]
+		if member.entity_id != member_id or member.roster_slot != roster_index or member.roster_slot in slots \
+				or not PartyMemberStateScript.wire_error(member.to_dict()).is_empty() \
+				or member.busy_until < 0 or member.busy_until > MAX_WORLD_TIME:
+			return "party_member_state_invalid"
+		slots.append(member.roster_slot)
+		if member.presence == "DEPLOYED":
+			deployed += 1
+			if not entities[member_id].is_alive() or not _terrain_is_passable(entities[member_id].position):
+				return "deployed_party_position_invalid"
+			var deployed_key := "%d:%d" % [entities[member_id].position.x, entities[member_id].position.y]
+			if deployed_cells.has(deployed_key): return "duplicate_deployed_party_position"
+			deployed_cells[deployed_key] = member_id
+		if (entities[member_id].health == 0) != (member.presence == "DEFEATED"): return "party_health_presence_mismatch"
+		if member.presence == "GROUPED" and entities[member_id].position != party_encounter.group_anchor: return "grouped_position_mismatch"
+	slots.sort()
+	for slot in range(slots.size()):
+		if slots[slot] != slot: return "party_roster_slots_not_continuous"
+	if party_encounter.party_member_ids[0] != party_encounter.protagonist_id or party_encounter.member_rows[party_encounter.protagonist_id].roster_slot != 0:
+		return "party_protagonist_roster_invalid"
+	for member_id in party_encounter.party_member_ids:
+		var expected_role := "PROTAGONIST" if member_id == party_encounter.protagonist_id else "COMPANION"
+		if party_encounter.member_rows[member_id].role != expected_role: return "party_role_invalid"
+	if deployed > 3: return "too_many_deployed_party"
+	var alive_enemies := 0; previous_id = 0
+	for enemy_id in party_encounter.enemy_ids:
+		if enemy_id <= previous_id or party_ids.has(enemy_id) or not entities.has(enemy_id) \
+				or not party_encounter.enemy_busy_rows.has(enemy_id): return "party_enemy_reference_invalid"
+		previous_id = enemy_id
+		var enemy_busy: int = party_encounter.enemy_busy_rows[enemy_id]
+		if enemy_busy < 0 or enemy_busy > MAX_WORLD_TIME: return "party_enemy_busy_invalid"
+		if entities[enemy_id].is_alive(): alive_enemies += 1
+	if party_encounter.enemy_busy_rows.size() != party_encounter.enemy_ids.size(): return "party_enemy_busy_set_mismatch"
+	if not in_bounds(party_encounter.group_anchor) or party_encounter.facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		return "party_anchor_or_facing_invalid"
+	var hero = entities[party_encounter.protagonist_id]
+	var hero_member = party_encounter.member_rows[party_encounter.protagonist_id]
+	if party_encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE", "CONTACT"] \
+			and hero.position != party_encounter.group_anchor:
+		return "party_protagonist_anchor_mismatch"
+	if (party_encounter.contact_kind == "NONE") != (party_encounter.contact_enemy_id == -1): return "party_contact_identity_invalid"
+	if party_encounter.contact_enemy_id != -1 and party_encounter.contact_enemy_id not in party_encounter.enemy_ids:
+		return "party_contact_enemy_invalid"
+	match party_encounter.safe_phase:
+		"GROUPED":
+			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies == 0 \
+					or party_encounter.contact_kind != "NONE" or party_encounter.formation_id != "NONE":
+				return "grouped_phase_invalid"
+			for member_id in party_encounter.party_member_ids:
+				if member_id != hero.id and entities[member_id].is_alive() \
+						and party_encounter.member_rows[member_id].presence != "GROUPED": return "grouped_companion_presence_invalid"
+		"GROUPED_COMPLETE":
+			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies != 0 \
+					or party_encounter.contact_kind != "NONE" or party_encounter.contact_enemy_id != -1 \
+					or party_encounter.formation_id != "NONE": return "grouped_complete_phase_invalid"
+			for member_id in party_encounter.party_member_ids:
+				if member_id != hero.id and entities[member_id].is_alive() \
+						and party_encounter.member_rows[member_id].presence != "GROUPED": return "grouped_companion_presence_invalid"
+		"CONTACT":
+			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 \
+					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id != "NONE" \
+					or not entities[party_encounter.contact_enemy_id].is_alive(): return "contact_phase_invalid"
+			for member_id in party_encounter.party_member_ids:
+				if member_id != hero.id and entities[member_id].is_alive() \
+						and party_encounter.member_rows[member_id].presence != "GROUPED": return "contact_companion_presence_invalid"
+		"ENGAGED":
+			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed < 1 or alive_enemies == 0 \
+					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id == "NONE":
+				return "engaged_phase_invalid"
+			for member_id in party_encounter.party_member_ids:
+				if party_encounter.member_rows[member_id].presence == "GROUPED": return "engaged_grouped_member_invalid"
+		"REGROUP_READY":
+			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed < 1 or alive_enemies != 0 \
+					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id == "NONE": return "regroup_ready_phase_invalid"
+		"PARTY_DEFEATED":
+			if hero.is_alive() or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
+			if party_encounter.formation_id != "NONE" and party_encounter.contact_kind == "NONE": return "party_defeated_formation_invalid"
+	if party_encounter.safe_phase == "PARTY_DEFEATED":
+		var protagonist_death_found := false
+		for event in events:
+			if event.type == "entity.died" and event.target_id == hero.id:
+				protagonist_death_found = true; break
+		if not protagonist_death_found: return "party_defeat_event_missing"
+	return _party_event_correlation_error()
+
+
+func _party_event_correlation_error() -> String:
+	var hero_id: int = party_encounter.protagonist_id
+	var contact_types := ["encounter.detected", "encounter.party_ambush", "encounter.enemy_ambush"]
+	var contact_events: Array = []
+	for event in events:
+		if event.type in contact_types: contact_events.append(event)
+	var contact = null
+	if contact_events.size() > 1: return "party_contact_event_count_invalid"
+	var contact_required: bool = party_encounter.contact_kind != "NONE" \
+		or party_encounter.safe_phase == "GROUPED_COMPLETE"
+	if contact_events.is_empty():
+		if contact_required: return "party_contact_event_missing"
+	else:
+		contact = contact_events[0]
+		var contact_keys: Array = contact.data.keys(); contact_keys.sort()
+		if contact_keys != ["contact_kind", "enemy_id", "enemy_position", "facing"] \
+				or contact.data.get("contact_kind") not in ["DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"] \
+				or not Int64CodecScript.is_canonical(contact.data.get("enemy_id")) \
+				or not _party_metadata_position(contact.data.get("enemy_position")) \
+				or not _party_metadata_facing(contact.data.get("facing")):
+			return "party_contact_event_data_mismatch"
+		var contact_kind: String = str(contact.data.contact_kind)
+		var contact_enemy_id := Int64CodecScript.parse(contact.data.enemy_id, "contact enemy")
+		var contact_enemy_position := Vector2i(int(contact.data.enemy_position[0]), int(contact.data.enemy_position[1]))
+		var contact_facing := Vector2i(int(contact.data.facing[0]), int(contact.data.facing[1]))
+		if contact_enemy_id not in party_encounter.enemy_ids:
+			return "party_contact_enemy_invalid"
+		var hero_history: Dictionary = _party_entity_position_at_event(hero_id, contact.id)
+		var enemy_history: Dictionary = _party_entity_position_at_event(contact_enemy_id, contact.id)
+		if not bool(hero_history.ok) or not bool(enemy_history.ok) \
+				or hero_history.position != contact.position \
+				or enemy_history.position != contact_enemy_position:
+			return "party_contact_position_history_mismatch"
+		if party_encounter.safe_phase == "CONTACT" and entities[contact_enemy_id].position != contact_enemy_position:
+			return "party_contact_live_enemy_position_mismatch"
+		var nearest_rows: Array = []
+		for enemy_id in party_encounter.enemy_ids:
+			if not _party_alive_at_event(enemy_id, contact.id): continue
+			var history: Dictionary = _party_entity_position_at_event(enemy_id, contact.id)
+			if not bool(history.ok): return "party_contact_enemy_history_invalid"
+			nearest_rows.append({"entity_id":enemy_id, "position":history.position,
+				"distance":_party_distance(contact.position, history.position)})
+		nearest_rows.sort_custom(func(a:Dictionary,b:Dictionary):
+			return int(a.distance) < int(b.distance) if int(a.distance) != int(b.distance) \
+				else int(a.entity_id) < int(b.entity_id))
+		if nearest_rows.is_empty() or int(nearest_rows[0].entity_id) != contact_enemy_id \
+				or nearest_rows[0].position != contact_enemy_position:
+			return "party_contact_nearest_enemy_mismatch"
+		var distance: int = int(nearest_rows[0].distance)
+		var party_detects: bool = distance <= party_encounter.party_detection_radius
+		var enemy_detects: bool = distance <= party_encounter.enemy_detection_radius
+		var derived_kind := "DETECTED" if party_detects and enemy_detects \
+			else ("PARTY_AMBUSH" if party_detects else ("ENEMY_AMBUSH" if enemy_detects else "NONE"))
+		var derived_facing := _party_cardinal_facing(contact_enemy_position - contact.position)
+		var derived_type: String = {"DETECTED":"encounter.detected", "PARTY_AMBUSH":"encounter.party_ambush",
+			"ENEMY_AMBUSH":"encounter.enemy_ambush"}.get(derived_kind, "")
+		var expected_actor: int = contact_enemy_id if derived_kind == "ENEMY_AMBUSH" else hero_id
+		var expected_target: int = hero_id if derived_kind == "ENEMY_AMBUSH" else contact_enemy_id
+		if derived_kind == "NONE" or contact_kind != derived_kind or contact_facing != derived_facing \
+				or contact.type != derived_type or contact.actor_id != expected_actor or contact.target_id != expected_target \
+				or contact.cause_id != -1 or contact.magnitude != 0:
+			return "party_contact_event_semantic_mismatch"
+		if party_encounter.facing != derived_facing:
+			return "party_contact_state_facing_mismatch"
+		if party_encounter.contact_kind != "NONE" and (party_encounter.contact_kind != derived_kind \
+				or party_encounter.contact_enemy_id != contact_enemy_id \
+				or party_encounter.group_anchor != contact.position):
+			return "party_contact_state_mismatch"
+		var root_rows: Array = []
+		for event in events:
+			if event.id >= contact.id: break
+			if event.step_index == contact.step_index and event.actor_id == hero_id \
+					and event.type in ["action.wait", "action.move"]: root_rows.append(event)
+		if root_rows.size() > 1: return "party_contact_root_count_invalid"
+		if not root_rows.is_empty():
+			var root = root_rows[0]
+			if root.type == "action.move":
+				if not _party_move_event_is_canonical(root) or root.position != contact.position:
+					return "party_contact_move_root_mismatch"
+			else:
+				var root_history: Dictionary = _party_entity_position_at_event(hero_id, root.id)
+				if root.target_id != -1 or root.position != contact.position or root.cause_id != -1 \
+						or root.magnitude != 0 or not root.data.is_empty() or not bool(root_history.ok) \
+						or root_history.position != contact.position:
+					return "party_contact_wait_root_mismatch"
+
+	var completed_rows: Array = []; var member_events: Array = []
+	for event in events:
+		if event.type == "party.deployment_completed": completed_rows.append(event)
+		elif event.type == "party.member_deployed": member_events.append(event)
+	if completed_rows.size() > 1: return "party_deployment_completed_count_invalid"
+	var deployment_completed = null
+	var historical_formation := "NONE"
+	var selected_companions: Array[int] = []
+	if completed_rows.is_empty():
+		if not member_events.is_empty() or party_encounter.formation_id != "NONE" \
+				or party_encounter.safe_phase in ["ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE"]:
+			return "party_deployment_history_missing"
+	else:
+		if contact == null: return "party_deployment_contact_missing"
+		deployment_completed = completed_rows[0]
+		var completed_keys: Array = deployment_completed.data.keys(); completed_keys.sort()
+		if completed_keys != ["companion_ids", "formation_id"] \
+				or deployment_completed.data.get("formation_id") not in ["WEDGE", "LINE", "COLUMN"] \
+				or not deployment_completed.data.get("companion_ids") is Array \
+				or deployment_completed.data.companion_ids.size() > 2:
+			return "party_deployment_completed_data_invalid"
+		historical_formation = str(deployment_completed.data.formation_id)
+		var previous_id := 0
+		for wire in deployment_completed.data.companion_ids:
+			if not Int64CodecScript.is_canonical(wire): return "party_deployment_companion_id_invalid"
+			var companion_id := Int64CodecScript.parse(wire, "deployment companion")
+			if companion_id <= previous_id or companion_id == hero_id \
+					or companion_id not in party_encounter.party_member_ids:
+				return "party_deployment_companion_id_invalid"
+			selected_companions.append(companion_id); previous_id = companion_id
+		if deployment_completed.actor_id != hero_id or deployment_completed.target_id != -1 \
+				or deployment_completed.position != contact.position \
+				or deployment_completed.cause_id != contact.id or deployment_completed.id <= contact.id \
+				or deployment_completed.magnitude != 0:
+			return "party_deployment_completed_semantic_mismatch"
+		if party_encounter.formation_id != "NONE" and party_encounter.formation_id != historical_formation:
+			return "party_deployment_state_formation_mismatch"
+		if member_events.size() != selected_companions.size(): return "party_member_deployed_set_mismatch"
+		var completed_index := _event_index(deployment_completed.id)
+		if completed_index < member_events.size(): return "party_deployment_event_order_invalid"
+		var reserved := {_party_position_key(contact.position):hero_id}
+		for offset in range(member_events.size()):
+			var event = member_events[offset]; var companion_id := selected_companions[offset]
+			if events[completed_index-member_events.size()+offset].id != event.id \
+					or event.actor_id != companion_id or event.target_id != -1 or event.cause_id != contact.id \
+					or event.magnitude != 0 or event.id <= contact.id:
+				return "party_deployment_event_order_invalid"
+			var member = party_encounter.member(companion_id)
+			var preset_position: Vector2i = contact.position + _party_formation_offset(historical_formation, offset,
+				Vector2i(int(contact.data.facing[0]), int(contact.data.facing[1])))
+			var event_keys: Array = event.data.keys(); event_keys.sort()
+			if member == null or member.roster_slot <= 0 or party_encounter.party_member_ids[member.roster_slot] != companion_id \
+					or event_keys != ["formation_id", "formation_index", "placement", "preset_position", "roster_slot"] \
+					or event.data != {"formation_id":historical_formation, "formation_index":offset,
+						"placement":str(event.data.get("placement", "")),
+						"preset_position":[preset_position.x,preset_position.y], "roster_slot":member.roster_slot} \
+					or event.data.placement not in ["preset", "fallback"] \
+					or not in_bounds(event.position) or not _terrain_is_passable(event.position):
+				return "party_member_deployed_semantic_mismatch"
+			var preset_valid := _party_historical_deployment_cell_valid(preset_position, reserved, contact.position, contact.id)
+			var expected_position: Variant = preset_position if preset_valid \
+				else _party_historical_fallback(contact.position, reserved, contact.id)
+			var expected_placement := "preset" if preset_valid else "fallback"
+			if expected_position == null or event.position != expected_position \
+					or str(event.data.placement) != expected_placement:
+				return "party_member_deployed_geometry_mismatch"
+			var chain_error := _party_deployment_move_chain_error(companion_id, event.id, event.position)
+			if not chain_error.is_empty(): return chain_error
+			reserved[_party_position_key(event.position)] = companion_id
+		if party_encounter.safe_phase not in ["GROUPED_COMPLETE"] \
+				and not (party_encounter.safe_phase == "PARTY_DEFEATED" and party_encounter.formation_id == "NONE"):
+			for member_id in party_encounter.party_member_ids:
+				if member_id == hero_id: continue
+				var member = party_encounter.member(member_id)
+				var was_selected: bool = member_id in selected_companions
+				if entities[member_id].is_alive() and ((was_selected and member.presence != "DEPLOYED") \
+						or (not was_selected and member.presence != "DORMANT")):
+					return "party_member_deployed_set_mismatch"
+
+	var victory = null; var victory_rows: Array = []
+	var starts: Array = []; var completions: Array = []; var regroup_members: Array = []
+	for event in events:
+		if event.type == "party.victory": victory_rows.append(event)
+		elif event.type == "party.regroup_started": starts.append(event)
+		elif event.type == "party.member_regrouped": regroup_members.append(event)
+		elif event.type == "party.regroup_completed": completions.append(event)
+	if victory_rows.size() > 1: return "party_victory_event_count_invalid"
+	var victory_required: bool = party_encounter.safe_phase in ["REGROUP_READY", "GROUPED_COMPLETE"] \
+		or not starts.is_empty() or not completions.is_empty()
+	if victory_rows.is_empty():
+		if victory_required: return "party_victory_event_count_invalid"
+	else:
+		victory = victory_rows[0]
+		var latest_enemy_death_id := -1
+		for event in events:
+			if event.id >= victory.id: break
+			if event.type == "entity.died" and event.target_id in party_encounter.enemy_ids:
+				latest_enemy_death_id = event.id
+		var victory_cause = event_by_id(victory.cause_id)
+		var victory_history: Dictionary = _party_entity_position_at_event(hero_id, victory.id)
+		if victory.actor_id != hero_id or victory.target_id != -1 or victory.magnitude != 0 \
+				or not victory.data.is_empty() or latest_enemy_death_id <= 0 \
+				or victory.cause_id != latest_enemy_death_id or victory_cause == null \
+				or victory_cause.type != "entity.died" or victory_cause.target_id not in party_encounter.enemy_ids \
+				or not bool(victory_history.ok) or victory.position != victory_history.position:
+			return "party_victory_event_semantic_mismatch"
+		for enemy_id in party_encounter.enemy_ids:
+			if _party_alive_at_event(enemy_id, victory.id): return "party_victory_before_last_enemy_death"
+
+	var has_regroup_history := not starts.is_empty() or not completions.is_empty() or not regroup_members.is_empty()
+	if party_encounter.safe_phase == "GROUPED_COMPLETE" and not has_regroup_history:
+		return "party_regroup_event_count_invalid"
+	if has_regroup_history:
+		if starts.size() != 1 or completions.size() != 1 or victory == null:
+			return "party_regroup_event_count_invalid"
+		var root = starts[0]; var completed = completions[0]
+		var root_history: Dictionary = _party_entity_position_at_event(hero_id, root.id)
+		if root.actor_id != hero_id or root.target_id != -1 or root.cause_id != -1 or root.magnitude != 0 \
+				or not root.data.is_empty() or root.position != victory.position or not bool(root_history.ok) \
+				or root_history.position != victory.position or root.id <= victory.id \
+				or completed.actor_id != hero_id or completed.target_id != -1 or completed.cause_id != root.id \
+				or completed.position != victory.position or completed.magnitude != 0 \
+				or not completed.data.is_empty() or completed.id <= root.id:
+			return "party_regroup_root_or_completed_mismatch"
+		var root_index := _event_index(root.id); var completed_index := _event_index(completed.id)
+		if completed_index-root_index-1 != regroup_members.size(): return "party_regroup_event_order_invalid"
+		var seen_regrouped: Dictionary = {}; var previous_slot := 0
+		for offset in range(regroup_members.size()):
+			var event = regroup_members[offset]
+			if events[root_index+1+offset].id != event.id or event.actor_id == hero_id \
+					or event.actor_id not in party_encounter.party_member_ids or seen_regrouped.has(event.actor_id):
+				return "party_member_regrouped_order_invalid"
+			var member = party_encounter.member(event.actor_id)
+			if member == null or member.roster_slot <= previous_slot or event.target_id != hero_id \
+					or event.position != victory.position or event.cause_id != root.id \
+					or event.magnitude != 0 or not event.data.is_empty():
+				return "party_member_regrouped_semantic_mismatch"
+			seen_regrouped[event.actor_id] = true; previous_slot = member.roster_slot
+		for member_id in party_encounter.party_member_ids:
+			if member_id == hero_id: continue
+			if _party_alive_at_event(member_id, root.id) != seen_regrouped.has(member_id):
+				return "party_member_regrouped_set_mismatch"
+	if party_encounter.safe_phase == "PARTY_DEFEATED" and party_encounter.contact_kind == "NONE" \
+			and contact != null and not has_regroup_history:
+		return "party_cleared_contact_without_regroup_history"
+	return ""
+
+
+func _event_index(event_id: int) -> int:
+	for index in range(events.size()):
+		if events[index].id == event_id: return index
+	return -1
+
+
+func _first_death_event(entity_id: int):
+	for event in events:
+		if event.type == "entity.died" and event.target_id == entity_id: return event
+	return null
+
+
+func _party_alive_at_event(entity_id: int, event_id: int) -> bool:
+	var death = _first_death_event(entity_id)
+	return death == null or death.id > event_id
+
+
+func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
+	if not entities.has(entity_id): return {"ok":false,"position":Vector2i(-1,-1)}
+	var cursor: Vector2i = entities[entity_id].position
+	for index in range(events.size()-1, -1, -1):
+		var event = events[index]
+		if event.id <= event_id: break
+		if event.type != "action.move" or event.actor_id != entity_id: continue
+		if not _party_move_event_is_canonical(event) \
+				or Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1])) != cursor:
+			return {"ok":false,"position":Vector2i(-1,-1)}
+		cursor = Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+	return {"ok":true,"position":cursor}
+
+
+func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_position: Vector2i) -> String:
+	var cursor := initial_position
+	for event in events:
+		if event.id <= event_id or event.actor_id != entity_id: continue
+		if event.type == "party.member_regrouped": return ""
+		if event.type != "action.move": continue
+		if not _party_move_event_is_canonical(event) \
+				or event.data.from_position != [cursor.x,cursor.y]:
+			return "party_member_move_history_mismatch"
+		cursor = event.position
+	return "" if entities.has(entity_id) and entities[entity_id].position == cursor \
+		else "party_member_deployed_position_mismatch"
+
+
+func _party_move_event_is_canonical(event) -> bool:
+	var keys: Array = event.data.keys(); keys.sort()
+	if keys != ["from_position", "move_time_cost", "terrain_id", "to_position"] \
+			or not _party_metadata_position(event.data.get("from_position")) \
+			or not _party_metadata_position(event.data.get("to_position")) \
+			or not event.data.get("terrain_id") is String or not event.data.get("move_time_cost") is int:
+		return false
+	var from_position := Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+	var to_position := Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
+	var definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
+	return event.target_id == -1 and event.cause_id == -1 and event.position == to_position \
+		and _party_distance(from_position,to_position) == 1 and not definition.is_empty() \
+		and bool(definition.get("passable",false)) and tile_at(to_position).terrain == event.data.terrain_id \
+		and int(event.data.move_time_cost) == int(definition.move_time_cost) \
+		and event.magnitude == int(event.data.move_time_cost)
+
+
+func _party_historical_deployment_cell_valid(position: Vector2i, reserved: Dictionary,
+		anchor: Vector2i, contact_event_id: int) -> bool:
+	if not in_bounds(position) or reserved.has(_party_position_key(position)) \
+			or not _terrain_is_passable(position) \
+			or _party_historical_blocker_at(position, contact_event_id) != -1:
+		return false
+	var delta := position-anchor
+	if absi(delta.x) == 1 and absi(delta.y) == 1:
+		for flank in [anchor+Vector2i(delta.x,0),anchor+Vector2i(0,delta.y)]:
+			if not in_bounds(flank) or not _terrain_is_passable(flank) \
+					or reserved.has(_party_position_key(flank)) \
+					or _party_historical_blocker_at(flank, contact_event_id) != -1:
+				return false
+	return true
+
+
+func _party_historical_fallback(anchor: Vector2i, reserved: Dictionary, contact_event_id: int):
+	var candidates: Array = []
+	for radius in [1,2]:
+		for y in range(anchor.y-radius,anchor.y+radius+1):
+			for x in range(anchor.x-radius,anchor.x+radius+1):
+				var position := Vector2i(x,y)
+				if _party_distance(anchor,position) == radius \
+						and _party_historical_deployment_cell_valid(position,reserved,anchor,contact_event_id):
+					candidates.append(position)
+		if not candidates.is_empty(): break
+	candidates.sort_custom(func(a:Vector2i,b:Vector2i):
+		var am:=absi(a.x-anchor.x)+absi(a.y-anchor.y); var bm:=absi(b.x-anchor.x)+absi(b.y-anchor.y)
+		return am < bm if am != bm else (a.y < b.y if a.y != b.y else a.x < b.x))
+	return null if candidates.is_empty() else candidates[0]
+
+
+func _party_historical_blocker_at(position: Vector2i, contact_event_id: int) -> int:
+	var ids: Array = entities.keys(); ids.sort()
+	for entity_id in ids:
+		if entity_id in party_encounter.party_member_ids and entity_id != party_encounter.protagonist_id: continue
+		if not _party_alive_at_event(entity_id,contact_event_id): continue
+		var history: Dictionary = _party_entity_position_at_event(entity_id,contact_event_id)
+		if not bool(history.ok): return -2
+		if history.position == position: return entity_id
+	return -1
+
+
+func _party_formation_offset(formation_id: String, index: int, facing: Vector2i) -> Vector2i:
+	var back := -facing; var right := Vector2i(-facing.y,facing.x); var left := -right
+	if formation_id == "WEDGE": return back+(left if index == 0 else right)
+	if formation_id == "LINE": return left if index == 0 else right
+	return back*(index+1)
+
+
+func _party_cardinal_facing(delta: Vector2i) -> Vector2i:
+	return Vector2i(0,signi(delta.y)) if absi(delta.y) >= absi(delta.x) \
+		else Vector2i(signi(delta.x),0)
+
+
+func _party_metadata_position(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and value[0] is int and value[1] is int \
+		and in_bounds(Vector2i(int(value[0]),int(value[1])))
+
+
+func _party_metadata_facing(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and value[0] is int and value[1] is int \
+		and Vector2i(int(value[0]),int(value[1])) in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
+
+
+func _party_distance(a: Vector2i, b: Vector2i) -> int:
+	return maxi(absi(a.x-b.x),absi(a.y-b.y))
+
+
+func _party_position_key(position: Vector2i) -> String:
+	return "%d:%d"%[position.x,position.y]
 
 
 func _runtime_position_is_valid(position: Vector2i, allow_sentinel: bool) -> bool:

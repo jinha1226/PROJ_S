@@ -92,7 +92,7 @@ func _blockers_at(position: Vector2i, actor_id: int, projection: Dictionary) -> 
 		if value is int and int(value) > 0 and int(value) != actor_id:
 			blockers.append(int(value))
 	else:
-		for entity in world.entities_at(position):
+		for entity in world.occupying_entities_at(position):
 			if entity.id != actor_id:
 				blockers.append(entity.id)
 	blockers.sort()
@@ -117,6 +117,7 @@ func commit_preflighted_move(actor_id: int, destination: Vector2i, terrain_id: S
 			"terrain_id": terrain_id,
 			"move_time_cost": move_time_cost,
 		})
-	assert(event != null, "Validated MOVE event emission must succeed")
+	if event == null:
+		return null
 	actor.position = destination
 	return event

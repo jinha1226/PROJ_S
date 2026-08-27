@@ -15,8 +15,9 @@ func test_snapshot_v3_header_and_json_round_trip_preserve_all_state() -> bool:
 	var source: Dictionary = sim.snapshot()
 	check_eq([source.snapshot_version, source.ruleset_version,
 		source.terrain_ruleset_id, source.hazard_affinity_ruleset_id],
-		[4, "phase3-dungeon-personality-lab-v1", "terrain-registry-v1", "hazard-affinity-v1"],
-		"v4 semantic header")
+		[5, "phase4-party-encounter-v1", "terrain-registry-v1", "hazard-affinity-v1"],
+		"v5 semantic header")
+	check(source.has("party_encounter") and source.party_encounter == null, "v5 canonical party null")
 	check_eq([source.personality_schema_id, source.decision_ruleset_id, source.score_combiner_id],
 		["personality-facets-v1", "dungeon-hierarchical-utility-v1", "weighted-sum-v1"], "phase3 registries")
 	var parsed = JSON.parse_string(JSON.stringify(source))
