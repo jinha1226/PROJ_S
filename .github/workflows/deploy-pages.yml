@@ -53,9 +53,11 @@ jobs:
           mkdir -p build/web
           ./godot --headless --path . --export-release Web build/web/index.html
           touch build/web/.nojekyll
+          cp assets/fonts/NanumSquareR.LICENSE.txt build/web/
           test -s build/web/index.html
           test -s build/web/index.wasm
           test -s build/web/index.pck
+          test -s build/web/NanumSquareR.LICENSE.txt
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
