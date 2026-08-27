@@ -6,6 +6,7 @@ const WorkshopCameraSuite = preload("res://tests/test_workshop_camera.gd")
 const BossBattleSuite = preload("res://tests/test_boss_battle.gd")
 const BackviewDuelSuite = preload("res://tests/test_backview_duel.gd")
 const MocapMotionSuite = preload("res://tests/test_mocap_motion.gd")
+const RunnerCombatSuite = preload("res://tests/test_runner_combat.gd")
 
 
 func _init() -> void:
@@ -22,9 +23,11 @@ func _init() -> void:
 	failures.append_array(backview_duel_suite.run())
 	var mocap_motion_suite = MocapMotionSuite.new()
 	failures.append_array(mocap_motion_suite.run())
+	var runner_combat_suite = RunnerCombatSuite.new()
+	failures.append_array(runner_combat_suite.run())
 
 	if failures.is_empty():
-		print("TESTS PASSED (legacy systems, duel prototypes, and mocap motion)")
+		print("TESTS PASSED (legacy systems, duel prototypes, mocap, and runner combat)")
 		quit(0)
 		return
 

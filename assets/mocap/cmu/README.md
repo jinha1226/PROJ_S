@@ -3,6 +3,11 @@
 This spike uses `02_07` (swordplay) from the Carnegie Mellon University
 Graphics Lab Motion Capture Database.
 
+The side-view runner prototype also uses `02_03` (run/jog). Its raw BVH is
+stored as `02_03_run.bvh`; `02_03_run_2d.json` contains one clean 23-frame
+stride loop sampled at 30 fps. Rebuild it with
+`tools/blender/export_cmu_run_2d.py`.
+
 - Original source: <https://mocap.cs.cmu.edu/>
 - BVH conversion mirror: <https://github.com/una-dinosauria/cmu-mocap>
 - Runtime clip: `02_07_swordplay_game.json` (73 frames at 30 fps)

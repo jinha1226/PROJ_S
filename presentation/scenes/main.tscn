@@ -1,6 +1,7 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://presentation/views/mocap_motion_view.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://presentation/scenes/sideview_runner.tscn" id="1_runner"]
 
-[node name="Main" type="Node3D"]
-script = ExtResource("1_main")
+[node name="Main" type="Node"]
+
+[node name="SideviewRunner" parent="." instance=ExtResource("1_runner")]
