@@ -73,12 +73,69 @@ func recent_events(limit: int = 20) -> Array[Dictionary]:
 	for event in sim.world.events.slice(start): rows.append(event.to_dict())
 	return rows.duplicate(true)
 
+func recent_event_log(limit: int = 24) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if sim == null or limit <= 0: return rows
+	var start := maxi(0, sim.world.events.size() - limit)
+	for event in sim.world.events.slice(start):
+		rows.append({
+			"event_id": event.id,
+			"world_time": event.world_time,
+			"type": event.type,
+			"actor_id": event.actor_id,
+			"target_id": event.target_id,
+			"cause_id": event.cause_id,
+			"message": _event_log_message(event),
+		})
+	return rows.duplicate(true)
+
 func last_result_summary() -> Dictionary:
 	if _last_result == null: return {"available": false}
 	return {"available": true, "accepted": _last_result.accepted, "reason": _last_result.reason,
 		"start_time": _last_result.start_time, "end_time": _last_result.end_time,
 		"time_cost": _last_result.time_cost, "timeline": _last_result.timeline.duplicate(true),
-		"events": recent_events()}
+		"events": recent_events(), "event_log": recent_event_log()}
+
+func _event_log_message(event) -> String:
+	var actor_name := _event_entity_name(event.actor_id)
+	var target_name := _event_entity_name(event.target_id)
+	match str(event.type):
+		"encounter.threat_appeared":
+			return "%s 출현 · %s 앞" % [actor_name, target_name]
+		"perception.threat_noticed":
+			return "%s이(가) %s 발견" % [actor_name, target_name]
+		"ai.mental_mode_changed":
+			return "%s 심리 전환 · %s → %s" % [actor_name,
+				str(event.data.get("from_mode", "?")), str(event.data.get("to_mode", "?"))]
+		"ai.decision_selected":
+			return "%s 반응 선택 · %s" % [actor_name,
+				_reaction_log_label(str(event.data.get("reaction_id", "?")))]
+		"action.move":
+			return "%s 이동 → (%d,%d)" % [actor_name, event.position.x, event.position.y]
+		"action.melee_attack":
+			return "%s이(가) %s 공격" % [actor_name, target_name]
+		"action.hold":
+			return "%s 대기·방어" % actor_name
+		"action.freeze":
+			return "%s 공포로 얼어붙음" % actor_name
+		"encounter.actor_escaped":
+			return "%s 전투 이탈" % actor_name
+		"combat.physical_damage":
+			return "%s 피해 -%d" % [target_name, int(event.magnitude)]
+		"entity.died":
+			return "%s 사망" % target_name
+		_:
+			return "%s · %s → %s" % [str(event.type), actor_name, target_name]
+
+func _event_entity_name(entity_id: int) -> String:
+	if entity_id <= 0: return "-"
+	if sim != null and sim.world.entities.has(entity_id):
+		return str(sim.world.entities[entity_id].display_name)
+	return "#%d" % entity_id
+
+func _reaction_log_label(reaction_id: String) -> String:
+	return str({"ENGAGE": "교전", "PROTECT": "보호", "FLEE": "후퇴", "TAKE_COVER": "엄폐",
+		"HOLD": "대기", "FREEZE": "얼어붙기"}.get(reaction_id, reaction_id))
 
 func observe_lab() -> Dictionary:
 	if sim == null: return {}

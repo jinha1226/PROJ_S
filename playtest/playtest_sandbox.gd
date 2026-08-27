@@ -3,15 +3,18 @@ extends Control
 
 const SessionScript = preload("res://playtest/playtest_session.gd")
 const GridScript = preload("res://playtest/playtest_grid_view.gd")
+const KoreanUIFont: FontFile = preload("res://assets/fonts/NanumSquareR.ttf")
 
 var session
 var grid
 var summaries: GridContainer
 var inspector: RichTextLabel
+var event_log: RichTextLabel
 var drawer: RichTextLabel
 var auto_timer: Timer
 var auto_running := false
 var drawer_open := false
+var log_open := false
 
 func _ready() -> void:
 	_build_ui()
@@ -25,6 +28,10 @@ func initialize_for_headless_test(custom_session = null) -> void:
 
 func _build_ui() -> void:
 	if grid != null: return
+	var ui_theme := Theme.new()
+	ui_theme.default_font = KoreanUIFont
+	ui_theme.default_font_size = 13
+	theme = ui_theme
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var background := ColorRect.new(); background.color = Color("#0b1018")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(background)
@@ -47,7 +54,10 @@ func _build_ui() -> void:
 	var second := HBoxContainer.new(); root.add_child(second)
 	_add_button(second, "리셋", _reset)
 	_add_button(second, "불러오기", _load)
+	_add_button(second, "사건 로그", _toggle_event_log)
 	_add_button(second, "계산 근거", _toggle_drawer)
+	event_log = RichTextLabel.new(); event_log.name = "EventLog"; event_log.visible = false
+	event_log.custom_minimum_size.y = 116; event_log.bbcode_enabled = true; event_log.scroll_active = true; root.add_child(event_log)
 	drawer = RichTextLabel.new(); drawer.name = "CalculationDrawer"; drawer.visible = false
 	drawer.custom_minimum_size.y = 136; drawer.bbcode_enabled = true; drawer.scroll_active = true; root.add_child(drawer)
 	auto_timer = Timer.new(); auto_timer.name = "AutoTimer"; auto_timer.wait_time = 0.4; auto_timer.timeout.connect(func():
@@ -74,9 +84,23 @@ func _refresh() -> void:
 		summaries.add_child(button)
 	var detail: Dictionary = session.inspect_reaction(session.selected_lead_id)
 	inspector.text = _inspector_text(detail)
+	event_log.text = _event_log_text(session.recent_event_log(24))
 	drawer.text = _drawer_text(detail)
 	grid.selected_trial_slot = int(detail.get("identity", {}).get("trial_slot", -1))
 	grid.queue_redraw()
+
+func _event_log_text(rows: Array[Dictionary]) -> String:
+	var status: Dictionary = session.lab_status() if session != null else {}
+	var lines: Array[String] = ["[b]최근 세계 사건[/b] · T%s · %s" % [
+		str(status.get("world_time", 0)), str(status.get("phase", "?"))]]
+	if rows.is_empty():
+		lines.append("아직 사건이 없습니다. ‘다음 tick’을 눌러 조우를 시작하세요.")
+		return "\n".join(lines)
+	for index in range(rows.size() - 1, -1, -1):
+		var row: Dictionary = rows[index]
+		lines.append("[color=#8fa3b8]T%04d · #%s[/color] %s" % [
+			int(row.world_time), str(row.event_id), str(row.message)])
+	return "\n".join(lines)
 
 func _inspector_text(detail: Dictionary) -> String:
 	if detail.is_empty(): return "lead를 선택하세요"
@@ -190,8 +214,15 @@ func _save() -> void:
 	_pause_auto(); session.save_slot(); _refresh()
 func _load() -> void:
 	_pause_auto(); session.load_slot(); _refresh()
+func _toggle_event_log() -> void:
+	if drawer_open: return
+	log_open = not log_open
+	event_log.visible = log_open
+	inspector.visible = not log_open
 func _toggle_drawer() -> void:
-	_pause_auto(); drawer_open = not drawer_open; drawer.visible = drawer_open; inspector.visible = not drawer_open
+	_pause_auto(); drawer_open = not drawer_open; drawer.visible = drawer_open
+	event_log.visible = log_open and not drawer_open
+	inspector.visible = not log_open and not drawer_open
 func _on_grid_pressed(position: Vector2i) -> void:
 	var observation: Dictionary = session.observe_lab()
 	for cell in observation.cells:

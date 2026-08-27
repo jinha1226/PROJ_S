@@ -36,6 +36,11 @@ func test_session_element_commands_and_returned_results_are_detached() -> bool:
 	inspect.candidates.clear(); inspect.personality.facet_rows[0].base_value = 999
 	var events: Array[Dictionary] = session.recent_events(20)
 	if not events.is_empty(): events[0].type = "tampered"
+	var event_log: Array[Dictionary] = session.recent_event_log(20)
+	check(not event_log.is_empty(), "presentation event log available")
+	check(event_log.any(func(row: Dictionary): return str(row.message).contains("발견") \
+			or str(row.message).contains("반응 선택")), "event log has readable Korean messages")
+	if not event_log.is_empty(): event_log[0].message = "tampered"
 	check_eq(session.snapshot_json(), before, "inspector and events detached")
 	return finish()
 

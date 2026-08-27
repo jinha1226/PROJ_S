@@ -19,6 +19,13 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		_check_layout(sandbox, viewport_size, "closed")
+		sandbox._toggle_event_log()
+		await process_frame
+		_check_layout(sandbox, viewport_size, "event-log")
+		var log_time: int = sandbox.session.lab_status().world_time
+		sandbox._advance(1)
+		if sandbox.session.lab_status().world_time <= log_time:
+			failures.append("%s event log blocked progress" % viewport_size)
 		sandbox._toggle_drawer()
 		await process_frame
 		_check_layout(sandbox, viewport_size, "drawer")

@@ -7,9 +7,29 @@ func test_main_scene_instantiates_as_control_with_session_dto() -> bool:
 	var sandbox = Scene.instantiate()
 	sandbox.initialize_for_headless_test(Session.new(7, 77))
 	check(sandbox is Control, "main root control")
+	check(sandbox.get_theme_default_font().has_char("한".unicode_at(0)), "root theme embeds Hangul font")
+	check(sandbox.grid.get_theme_default_font().has_char("글".unicode_at(0)), "grid inherits Hangul font")
 	check_eq(sandbox.grid.visible_cell_count(), 225, "15x15 detached grid")
 	check_eq(sandbox.summaries.get_child_count(), 4, "four lead summary buttons")
 	check(sandbox.inspector.text.contains("객관"), "reaction inspector populated")
+	check(sandbox.event_log.text.contains("아직 사건이 없습니다"), "empty event log guidance")
+	sandbox.free()
+	return finish()
+
+func test_world_event_log_updates_without_blocking_progress() -> bool:
+	var sandbox = Scene.instantiate()
+	var session = Session.new(7, 770)
+	sandbox.initialize_for_headless_test(session)
+	sandbox._toggle_event_log()
+	check(sandbox.event_log.visible and not sandbox.inspector.visible, "event log replaces inspector")
+	var before: int = session.lab_status().world_time
+	sandbox._advance(1)
+	check(session.lab_status().world_time > before, "event log allows live progress")
+	check(sandbox.event_log.text.contains("최근 세계 사건"), "event log header")
+	check(sandbox.event_log.text.contains("위협") or sandbox.event_log.text.contains("반응 선택"),
+		"readable world events rendered")
+	sandbox._toggle_event_log()
+	check(not sandbox.event_log.visible and sandbox.inspector.visible, "inspector restored")
 	sandbox.free()
 	return finish()
 
