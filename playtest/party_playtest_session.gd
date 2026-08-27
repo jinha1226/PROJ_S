@@ -11,8 +11,8 @@ const PersonalityRegistryScript = preload("res://sim/personality_definition_regi
 const WorldStateScript = preload("res://sim/world_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 
-const SESSION_FORMAT_VERSION := 1
-const SAVE_PATH := "user://living_world_party_encounter_v1.json"
+const SESSION_FORMAT_VERSION := 2
+const SAVE_PATH := "user://living_world_party_encounter_v2.json"
 const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
 
@@ -102,13 +102,16 @@ func party_cards() -> Array[Dictionary]:
 				"position": wire.position, "fire_score": wire.fire_score, "water_score": wire.water_score, "electric_score": wire.electric_score,
 				"poison_score": wire.poison_score, "total_risk": wire.total_risk}
 		var expected_action = _action_presentation(preview_by_actor.get(member_id, null))
+		var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
+		var emotion := _emotion_presentation(member, entity)
 		var override_state := "PENDING"
 		if expected_action != null: override_state = str(expected_action.source)
 		elif member.role == "PROTAGONIST": override_state = "DIRECT"
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": entity.is_alive(),
 			"status_ids": member.status_ids.duplicate(), "presence": member.presence, "logical_position": [logical.x,logical.y],
-			"element_exposure": exposure, "stress": member.stress, "override_state": override_state,
+			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
+			"emotion": emotion, "override_state": override_state,
 			"expected_action": expected_action})
 	return rows.duplicate(true)
 
@@ -153,17 +156,91 @@ func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 
 func set_actor_action(actor_id: int, action_type: String, destination: Array = [], target_id: int = -1) -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return _rejection_dto("session_not_initialized")
-	var action = null
-	match action_type:
-		"HOLD": action = ActionScript.hold(actor_id)
-		"MOVE":
-			if destination.size() != 2 or not destination[0] is int or not destination[1] is int:
-				return _rejection_dto("invalid_party_destination")
-			action = ActionScript.move_to(actor_id, Vector2i(int(destination[0]), int(destination[1])))
-		"MELEE": action = ActionScript.melee(actor_id, target_id)
-		_: return _rejection_dto("invalid_party_action")
+	var action = _make_action(actor_id, action_type, destination, target_id)
+	if action == null: return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action")
 	var state = sim.world.party_encounter
 	return begin_turn(action) if actor_id == state.protagonist_id else override_companion(actor_id, action)
+
+
+func preview_actor_action(actor_id: int, action_type: String, destination: Array = [],
+		target_id: int = -1) -> Dictionary:
+	# UI hover/tap preview must not mutate the pending direct action or overrides.
+	if sim == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var action = _make_action(actor_id, action_type, destination, target_id)
+	if action == null:
+		return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action")
+	var state = sim.world.party_encounter
+	var direct = action if actor_id == state.protagonist_id else _protagonist_draft
+	if direct == null:
+		return _rejection_dto("turn_draft_required")
+	var overrides: Array = []
+	var ids: Array = _overrides.keys()
+	if actor_id != state.protagonist_id and not ids.has(actor_id): ids.append(actor_id)
+	ids.sort()
+	for id in ids:
+		overrides.append({"actor_id": id,
+			"action": action if int(id) == actor_id else _overrides[id]})
+	var preview: Dictionary = sim.preview_party_turn(RequestScript.new(direct, overrides)).to_dict().duplicate(true)
+	preview["message"] = reason_message(str(preview.get("reason", "invalid_party_plan")))
+	return preview
+
+
+func turn_intent_overlays() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if _protagonist_draft == null: return rows
+	for card in party_cards():
+		if not card.expected_action is Dictionary: continue
+		var action: Dictionary = card.expected_action
+		rows.append({"actor_id": int(card.entity_id), "actor_name": str(card.display_name),
+			"from_position": card.logical_position.duplicate(true), "source": str(action.source),
+			"source_label": str(action.source_label), "source_color": str(action.source_color),
+			"line_style": _overlay_line_style(str(action.source)),
+			"marker_style": _overlay_marker_style(str(action.source)),
+			"type": str(action.type), "type_label": str(action.type_label),
+			"destination": action.destination.duplicate(true), "target_id": int(action.target_id),
+			"target_position": action.target_position.duplicate(true), "reason": str(action.reason),
+			"automatic_suggestion": _overlay_suggestion(action.get("automatic_suggestion", null),
+				card.logical_position) if str(action.source) == "OVERRIDE" else null})
+	return rows.duplicate(true)
+
+
+func turn_summary_lines() -> Array[String]:
+	var lines: Array[String] = []
+	for row in turn_intent_overlays():
+		var detail := str(row.type_label)
+		if row.type == "MOVE": detail += " (%d,%d)" % [int(row.destination[0]), int(row.destination[1])]
+		elif row.type == "MELEE": detail += " %s" % _name(int(row.target_id))
+		var line := "%s · %s: %s" % [str(row.actor_name), str(row.source_label), detail]
+		if row.automatic_suggestion is Dictionary:
+			line += " / 원래 제안: %s" % _overlay_action_text(row.automatic_suggestion)
+		line += " — %s" % str(row.reason)
+		lines.append(line)
+	return lines
+
+func _overlay_suggestion(value: Variant, from_position: Array) -> Variant:
+	if not value is Dictionary: return null
+	var target_position := [-1,-1]
+	var target_id := int(value.get("target_id",-1))
+	if target_id > 0 and sim.world.entities.has(target_id):
+		target_position = [sim.world.entities[target_id].position.x,sim.world.entities[target_id].position.y]
+	return {"source":"SUGGESTED","source_label":"원래 자동 제안","source_color":"#75c8ff",
+		"line_style":"DASHED_THIN","marker_style":"CIRCLE",
+		"type":str(value.get("type","HOLD")),"type_label":str(value.get("type_label","대기")),
+		"from_position":from_position.duplicate(true),"destination":value.get("destination",[-1,-1]).duplicate(true),
+		"target_id":target_id,"target_name":str(value.get("target_name","")),
+		"target_position":target_position}.duplicate(true)
+
+func _overlay_action_text(action: Dictionary) -> String:
+	if str(action.type)=="MOVE":return "이동 (%d,%d)"%[int(action.destination[0]),int(action.destination[1])]
+	if str(action.type)=="MELEE":return "공격 %s"%str(action.get("target_name","적"))
+	return "대기"
+
+func _overlay_line_style(source: String) -> String:
+	return {"OVERRIDE":"SOLID_THICK","DIRECT":"SOLID","SUGGESTED":"DASHED_THIN"}.get(source,"SOLID")
+
+func _overlay_marker_style(source: String) -> String:
+	return {"OVERRIDE":"SQUARE","DIRECT":"DIAMOND","SUGGESTED":"CIRCLE"}.get(source,"CIRCLE")
 
 func preview_exploration(command) -> Dictionary:
 	if party_status().view_mode != "EXPLORATION": return _rejection_dto("exploration_phase_required")
@@ -243,11 +320,6 @@ func commit_turn() -> Dictionary:
 	if result.accepted: _clear_draft()
 	return _result_dto(result)
 
-func regroup() -> Dictionary:
-	var result = sim.regroup_party()
-	if result.accepted: command_journal.append({"kind":"regroup"})
-	return _result_dto(result)
-
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
 	for index in range(start, sim.world.events.size()):
@@ -298,7 +370,6 @@ func load_session_json(encoded: String) -> Dictionary:
 					var action=ActionScript.from_dict(override.action)
 					replay.override_companion(Int64CodecScript.parse(override.actor_id,"override actor"),action)
 				replay_result=replay.commit_turn()
-			"regroup": replay_result=replay.regroup()
 		if not bool(replay_result.get("accepted",false)):return _rejection_dto("party_journal_replay_failed")
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
@@ -335,8 +406,6 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys != ["kind", "request"]: return "invalid_party_turn_journal"
 				var request_error := RequestScript.wire_error(row.get("request"))
 				if not request_error.is_empty(): return request_error
-			"regroup":
-				if keys != ["kind"]: return "invalid_regroup_journal"
 			_: return "unknown_party_journal_kind"
 	return ""
 
@@ -347,6 +416,16 @@ func _canonical_action_copy(action: Variant):
 	if action == null or not action is PartyActionCommand:
 		return null
 	return ActionScript.from_dict(action.to_dict())
+
+func _make_action(actor_id: int, action_type: String, destination: Array, target_id: int):
+	match action_type:
+		"HOLD": return ActionScript.hold(actor_id)
+		"MOVE":
+			if destination.size() != 2 or not destination[0] is int or not destination[1] is int:
+				return null
+			return ActionScript.move_to(actor_id, Vector2i(int(destination[0]), int(destination[1])))
+		"MELEE": return ActionScript.melee(actor_id, target_id)
+	return null
 
 func _clear_draft() -> void: _protagonist_draft = null; _overrides.clear(); _draft_fingerprint = ""
 
@@ -363,22 +442,68 @@ func _action_presentation(row: Variant) -> Variant:
 		return null
 	var action: Dictionary = row.action
 	var source := str(row.get("source", "SUGGESTED"))
-	var source_label: String = {"DIRECT":"직접", "OVERRIDE":"지정", "SUGGESTED":"자동"}.get(source, "자동")
+	var source_label: String = {"DIRECT":"직접 예정", "OVERRIDE":"개별 덮어쓰기", "SUGGESTED":"자동 제안"}.get(source, "자동 제안")
 	var source_color: String = {"DIRECT":"#ffd467", "OVERRIDE":"#ff9f68", "SUGGESTED":"#75c8ff"}.get(source, "#75c8ff")
 	var action_type := str(action.get("type", "HOLD"))
 	var target_id := Int64CodecScript.parse(action.get("target_id", "-1"), "presentation target")
 	var destination: Array = action.get("destination", [-1,-1]).duplicate(true)
 	var action_text := "대기"
 	var target_name := ""
+	var actor_id := int(row.get("actor_id", -1))
+	var target_position := [-1, -1]
+	var reason := "상황을 지켜봅니다."
 	if action_type == "MOVE": action_text = "이동 (%d,%d)" % [int(destination[0]), int(destination[1])]
 	elif action_type == "MELEE":
 		target_name = _name(target_id)
 		action_text = "%s 공격" % target_name
+		target_position = [sim.world.entities[target_id].position.x, sim.world.entities[target_id].position.y] \
+			if sim.world.entities.has(target_id) else [-1, -1]
+	if action_type == "MOVE":
+		reason = "목표에 접근할 길을 골랐습니다." if source == "SUGGESTED" else "선택한 칸으로 이동합니다."
+	elif action_type == "MELEE":
+		reason = "인접한 적을 공격할 수 있습니다."
+	elif source == "SUGGESTED":
+		reason = "위험과 거리를 보고 자리를 지킵니다."
+	if source == "OVERRIDE": reason = "자동 제안 대신 개별 지시를 따릅니다."
+	var resolution_note := str(row.get("resolution_note", ""))
+	if resolution_note == "destination_conflict_suggested_hold":
+		reason = "이동 경로가 충돌해 이번 턴에는 자리를 지킵니다."
+	var automatic_suggestion = null
+	if row.get("suggestion") is Dictionary:
+		var suggested: Dictionary = row.suggestion
+		var suggested_type := str(suggested.get("type", "HOLD"))
+		var suggested_destination: Array = suggested.get("destination", [-1, -1]).duplicate(true)
+		var suggested_target := Int64CodecScript.parse(suggested.get("target_id", "-1"), "suggestion target")
+		automatic_suggestion = {"type": suggested_type,
+			"type_label": {"HOLD":"대기", "MOVE":"이동", "MELEE":"공격"}.get(suggested_type, "대기"),
+			"destination": suggested_destination, "target_id": suggested_target,
+			"target_name": _name(suggested_target) if suggested_target > 0 else ""}
+	if source != "OVERRIDE": automatic_suggestion = null
 	return {"source": source, "source_label": source_label, "source_color": source_color,
 		"type": action_type, "type_label": {"HOLD":"대기", "MOVE":"이동", "MELEE":"공격"}.get(action_type, "대기"),
-		"destination": destination, "target_id": target_id, "target_name": target_name,
+		"actor_id": actor_id, "destination": destination, "target_id": target_id,
+		"target_name": target_name, "target_position": target_position, "reason": reason,
 		"text": "%s · %s" % [source_label, action_text], "overridden": bool(row.get("overridden", false)),
-		"resolution_note": str(row.get("resolution_note", ""))}.duplicate(true)
+		"automatic_suggestion": automatic_suggestion,
+		"resolution_note": resolution_note}.duplicate(true)
+
+func _emotion_presentation(member, entity) -> Dictionary:
+	var health_percent: int = int(entity.health * 100 / maxi(1, entity.max_health))
+	var boldness := 500
+	var composure := 500
+	if member.personality_profile != null:
+		boldness = member.personality_profile.value("boldness")
+		composure = member.personality_profile.value("composure")
+	var label := "침착"; var icon := "●"; var reason := "건강과 긴장이 안정적입니다."
+	if health_percent <= 30 or member.stress >= 750:
+		if boldness >= 600 and composure >= 450:
+			label = "용기를 냄"; icon = "◆"; reason = "생존 위협 속에서 대담한 본성이 드러납니다."
+		else:
+			label = "겁먹음"; icon = "!"; reason = "낮은 체력과 높은 긴장으로 생존 본능이 앞섭니다."
+	elif member.stress >= 350 or health_percent <= 60:
+		label = "긴장"; icon = "▲"; reason = "위험이 커져 경계하고 있습니다."
+	return {"icon":icon, "label":label, "reason":reason,
+		"health_percent":health_percent}.duplicate(true)
 
 func reason_message(reason: String) -> String:
 	return {
@@ -415,10 +540,10 @@ func _event_message(event) -> String:
 		"action.melee_attack": return "%s %s 공격했다." % [_subject(actor),_object(target)]
 		"combat.physical_damage": return "%s %d의 피해를 입었다." % [_subject(target),event.magnitude]
 		"party.override_committed": return "%s 지시한 행동으로 계획을 바꿨다." % _topic(actor)
-		"party.victory": return "마지막 적이 쓰러졌다. 파티를 재집결할 수 있다."
+		"party.victory": return "마지막 적이 쓰러졌다. 파티가 즉시 한곳으로 모이기 시작했다."
 		"party.regroup_started": return "주인공이 동료들을 불러 모았다."
 		"party.member_regrouped": return "%s 주인공 곁으로 돌아왔다." % _subject(actor)
-		"party.regroup_completed": return "파티가 다시 한 무리로 길을 나설 준비를 마쳤다."
+		"party.regroup_completed": return "전투가 끝났다. 파티가 자동으로 재집결해 다시 한 무리로 탐험을 시작한다."
 		"action.hold": return "%s 자리를 지켰다." % _subject(actor)
 		"entity.died": return "%s 쓰러졌다." % _subject(target)
 	return "세계에 변화가 일어났다."

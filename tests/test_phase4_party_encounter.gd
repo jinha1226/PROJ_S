@@ -33,14 +33,13 @@ func test_generic_sim_commands_are_phase_gated_and_transactional() -> bool:
 	var contact = Session.new(); var contact_state = contact.sim.world.party_encounter
 	contact.commit_exploration(Command.wait(contact_state.protagonist_id))
 	var engaged = _engaged()
-	var ready = _ready_for_regroup()
 	var defeated = Session.new(); var defeated_state = defeated.sim.world.party_encounter
 	defeated.sim.world.entities[defeated_state.protagonist_id].health = 5
 	check(defeated.sim.world.bootstrap_set_fire(defeated_state.group_anchor, 100) != null, "phase gate defeat fixture")
 	check(defeated.sim.step(Command.wait(defeated_state.protagonist_id)).accepted, "exploration element death allowed")
 	check_eq(defeated.party_status().safe_phase, "PARTY_DEFEATED", "defeat fixture terminal")
 
-	for row in [["CONTACT", contact], ["ENGAGED", engaged], ["REGROUP_READY", ready], ["PARTY_DEFEATED", defeated]]:
+	for row in [["CONTACT", contact], ["ENGAGED", engaged], ["PARTY_DEFEATED", defeated]]:
 		var label: String = row[0]; var session = row[1]; var status: Dictionary = session.party_status()
 		var before: Dictionary = session.sim.snapshot(); var hero_id := int(status.protagonist_id)
 		var preview = session.sim.preview(Command.wait(hero_id))
@@ -106,7 +105,7 @@ func test_party_turn_preview_is_pure_override_commits_and_stale_rejects() -> boo
 	var stale=session.sim.step_party_turn(stale_plan); check(not stale.accepted,"stale rejected"); check_eq(stale.reason,"stale_party_plan","stale reason")
 	return finish()
 
-func test_victory_waits_for_explicit_regroup_and_fault_injection_rolls_back() -> bool:
+func test_victory_automatically_regroups_in_the_killing_turn_and_fault_rolls_back() -> bool:
 	var session=_engaged(); var state=session.sim.world.party_encounter; var hero=state.protagonist_id; var enemy=state.enemy_ids[0]
 	var before=JSON.stringify(session.sim.snapshot()); var preview=session.sim.preview_party_turn(load("res://sim/party_turn_request.gd").new(Action.hold(hero),[]))
 	session.sim.party_coordinator.fail_after_leaf_index=2; var failed=session.sim.step_party_turn(preview)
@@ -116,19 +115,42 @@ func test_victory_waits_for_explicit_regroup_and_fault_injection_rolls_back() ->
 		session.sim.world.entities[hero].position + Vector2i.RIGHT), "enemy fixture follows canonical move history")
 	session.sim.world.entities[enemy].health=22
 	var action=Action.melee(hero,enemy); session.begin_turn(action); var committed=session.commit_turn()
-	check(committed.accepted,"killing turn accepted"); check_eq(session.party_status().safe_phase,"REGROUP_READY","victory does not auto group")
-	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(session.sim.snapshot()))).snapshot(),session.sim.snapshot(),"regroup-ready round trip")
-	check(session.sim.world.occupying_entities_at(session.sim.world.entities[hero].position).size()>=1,"deployed state remains")
-	var regrouped=session.regroup(); check(regrouped.accepted,"explicit regroup")
-	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","group complete")
+	check(committed.accepted,"killing turn accepted"); check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","victory automatically groups")
 	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(session.sim.snapshot()))).snapshot(),session.sim.snapshot(),"grouped-complete round trip")
+	var event_types:Array=[]; for event in committed.event_ids: event_types.append(session.sim.world.event_by_id(event).type)
+	check("party.victory" in event_types and "party.regroup_started" in event_types and "party.regroup_completed" in event_types,"same turn owns complete victory chain")
+	var victory=session.sim.world.events.filter(func(event):return event.type=="party.victory")[0]
+	var started=session.sim.world.events.filter(func(event):return event.type=="party.regroup_started")[0]
+	check_eq(started.cause_id,victory.id,"regroup starts from victory cause")
+	check_eq(started.step_index,victory.step_index,"victory and regroup same step")
 	var occupants:=0; for y in range(15): for x in range(15): occupants+=session.sim.world.occupying_entities_at(Vector2i(x,y)).size()
 	check_eq(occupants,1,"only protagonist occupies after regroup")
 	return finish()
 
+func test_automatic_regroup_runs_after_due_environment_tick_at_deployed_positions() -> bool:
+	var session=_engaged(); var world=session.sim.world; var state=world.party_encounter
+	var hero=state.protagonist_id; var companion=state.party_member_ids[1]; var enemy=state.enemy_ids[0]
+	check(_relocate_with_move_events(session.sim,enemy,world.entities[hero].position+Vector2i.RIGHT),"enemy adjacent")
+	world.entities[enemy].health=22
+	var deployed_position:Vector2i=world.entities[companion].position; var health_before:int=world.entities[companion].health
+	var ignition=world.emit_event("environment.ignited",-1,-1,deployed_position,100)
+	var tile=world.tile_at(deployed_position); tile.fire=100; tile.fire_source_event_id=ignition.id; tile.fire_damage_eligible_time=world.world_time
+	var request=Request.new(Action.melee(hero,enemy),[{"actor_id":companion,"action":Action.hold(companion)}])
+	var result=session.sim.step_party_turn(session.sim.preview_party_turn(request))
+	check(result.accepted,"killing turn with due environment tick accepted")
+	check(world.entities[companion].health<health_before,"environment evaluates companion at deployed combat tile")
+	check_eq(state.safe_phase,"GROUPED_COMPLETE","finalizer groups only after cadence")
+	check_eq(world.entities[companion].position,state.group_anchor,"companion grouped after environment resolution")
+	var damage_index:=-1; var regroup_index:=-1
+	for index in range(world.events.size()):
+		if world.events[index].type=="combat.fire_damage" and world.events[index].target_id==companion:damage_index=index
+		if world.events[index].type=="party.regroup_started":regroup_index=index
+	check(damage_index>=0 and regroup_index>damage_index,"environment damage precedes automatic regroup events")
+	return finish()
+
 func test_snapshot_v5_strict_xor_round_trip_and_v4_rejection() -> bool:
 	var session=Session.new(); var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(snapshot.snapshot_version,5,"snapshot v5"); check_eq(snapshot.ruleset_version,"phase4-party-encounter-v1","ruleset")
+	check_eq(snapshot.snapshot_version,5,"snapshot v5"); check_eq(snapshot.ruleset_version,"phase4-party-encounter-v2","ruleset")
 	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot))).snapshot(),snapshot,"party round trip")
 	var conflict=snapshot.duplicate(true); conflict.encounter_lab={}
 	check_eq(WorldState.snapshot_restore_error(conflict),"encounter_mode_conflict","xor wire")
@@ -214,7 +236,7 @@ func test_grouped_fire_and_electric_deaths_reconcile_before_contact_and_restore(
 	return finish()
 
 func test_grouped_complete_exploration_move_synchronizes_anchor_positions_and_exposure() -> bool:
-	var session = _ready_for_regroup(); check(session.regroup().accepted, "regroup accepted")
+	var session = _ready_for_regroup(); check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","auto regroup fixture")
 	var before_anchor: Array = session.party_status().anchor
 	var moved = session.commit_exploration_direction(Vector2i.LEFT)
 	check(moved.accepted, "post-regroup exploration move")
@@ -264,7 +286,7 @@ func test_staged_melee_emits_overkill_intent_once_and_damage_once() -> bool:
 	var damage_total := 0
 	for event in result.events: if event.type == "combat.physical_damage": damage_total += event.magnitude
 	check_eq(damage_total, 10, "damage normalized to remaining health")
-	check_eq(session.party_status().safe_phase, "REGROUP_READY", "overkill still settles victory")
+	check_eq(session.party_status().safe_phase, "GROUPED_COMPLETE", "overkill automatically settles and regroups")
 	return finish()
 
 func test_enemy_ambushers_resolve_by_id_and_rubble_move_sets_actual_busy_cost() -> bool:
@@ -395,10 +417,9 @@ func test_snapshot_party_semantic_tamper_table_is_rejected() -> bool:
 	contact_session.commit_exploration(Command.wait(contact_state.protagonist_id)); var contact = contact_session.sim.snapshot()
 	var engaged_session = _engaged(); var engaged = engaged_session.sim.snapshot()
 	var ready_session = _ready_for_regroup(); var ready = ready_session.sim.snapshot()
-	var complete_session = _ready_for_regroup(); check(complete_session.regroup().accepted, "tamper regroup fixture")
-	var complete = complete_session.sim.snapshot()
+	var complete = ready.duplicate(true)
 	var two_enemy_ready_session = _ready_for_regroup_two_enemies()
-	check_eq(two_enemy_ready_session.party_status().safe_phase, "REGROUP_READY", "two-enemy tamper fixture")
+	check_eq(two_enemy_ready_session.party_status().safe_phase, "GROUPED_COMPLETE", "two-enemy tamper fixture")
 	var two_enemy_ready = two_enemy_ready_session.sim.snapshot()
 	var cases: Array = []
 	var overlap = grouped.duplicate(true); overlap.party_encounter.enemy_ids[0] = overlap.party_encounter.party_member_ids[2]
@@ -414,6 +435,7 @@ func test_snapshot_party_semantic_tamper_table_is_rejected() -> bool:
 	moved_anchor.entities[1].position = [8,7]; moved_anchor.entities[2].position = [8,7]
 	cases.append(["anchor companions moved without protagonist", moved_anchor])
 	var bad_phase = grouped.duplicate(true); bad_phase.party_encounter.safe_phase = "PARTY_DEFEATED"; cases.append(["false defeat", bad_phase])
+	var settled_ready=complete.duplicate(true); settled_ready.party_encounter.safe_phase="REGROUP_READY"; cases.append(["settled regroup-ready forbidden in v2",settled_ready])
 	var duplicate_position = engaged.duplicate(true); duplicate_position.entities[1].position = duplicate_position.entities[0].position.duplicate(); cases.append(["duplicate deployed", duplicate_position])
 	var impassable = engaged.duplicate(true); var hero_pos: Array = impassable.entities[0].position; var tile_index := int(hero_pos[1]) * 15 + int(hero_pos[0])
 	impassable.tiles[tile_index].terrain = "wall"; cases.append(["impassable deployed", impassable])
@@ -466,6 +488,10 @@ func test_snapshot_party_semantic_tamper_table_is_rejected() -> bool:
 	var regroup_member_cause = complete.duplicate(true)
 	_snapshot_event(regroup_member_cause, "party.member_regrouped").cause_id = _snapshot_event(regroup_member_cause, "party.victory").id
 	cases.append(["regroup member cause", regroup_member_cause])
+	var regroup_root_cause=complete.duplicate(true); _snapshot_event(regroup_root_cause,"party.regroup_started").cause_id=-1
+	cases.append(["regroup root must be caused by victory",regroup_root_cause])
+	var regroup_step=complete.duplicate(true); _snapshot_event(regroup_step,"party.regroup_started").step_index="0"
+	cases.append(["victory and regroup must share step",regroup_step])
 	var regroup_completed_position = complete.duplicate(true); _snapshot_event(regroup_completed_position, "party.regroup_completed").position = [0,0]
 	cases.append(["regroup completed position", regroup_completed_position])
 	var correlated_regroup = complete.duplicate(true); correlated_regroup.party_encounter.group_anchor = [8,7]
@@ -512,11 +538,13 @@ func test_deployment_turn_victory_and_regroup_faults_rollback_every_surface() ->
 	victory_session.sim.party_coordinator.fail_point = "victory_event"; var victory_result = victory_session.sim.step_party_turn(victory_plan)
 	check(not victory_result.accepted, "victory event fault"); check_eq(victory_session.sim.snapshot(), victory_before, "victory fault rollback")
 
-	var ready = _ready_for_regroup(); var ready_snapshot = ready.sim.snapshot()
-	for point in ["regroup_started_event", "regroup_member_event", "regroup_completed_event", "regroup_environment_tick", "regroup_actor_tick"]:
-		var sim = Simulator.from_snapshot(ready_snapshot); sim.party_coordinator.fail_point = point
-		var regroup_result = sim.regroup_party(); check(not regroup_result.accepted, "%s rejected" % point)
-		check_eq(sim.snapshot(), ready_snapshot, "%s rollback" % point)
+	for point in ["automatic_regroup_after_victory", "automatic_regroup_started_event", "automatic_regroup_member_event", "automatic_regroup_completed_event"]:
+		var automatic = _engaged(); var automatic_state = automatic.sim.world.party_encounter; var automatic_enemy = automatic_state.enemy_ids[0]
+		check(_relocate_with_move_events(automatic.sim, automatic_enemy, automatic.sim.world.entities[automatic_state.protagonist_id].position+Vector2i.RIGHT), "%s enemy fixture"%point)
+		automatic.sim.world.entities[automatic_enemy].health=22
+		var automatic_plan=automatic.sim.preview_party_turn(Request.new(Action.melee(automatic_state.protagonist_id,automatic_enemy),[])); var automatic_before=automatic.sim.snapshot()
+		automatic.sim.party_coordinator.fail_point=point; var automatic_result=automatic.sim.step_party_turn(automatic_plan)
+		check(not automatic_result.accepted,"%s rejected"%point); check_eq(automatic.sim.snapshot(),automatic_before,"%s full killing-turn rollback"%point)
 	return finish()
 
 func _engaged():

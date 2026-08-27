@@ -2,15 +2,19 @@
 
 ## 현재 완료 기준
 
-시간·지형·MOVE·노출 코어는 다음 계약을 만족한 상태에서만 다음 단계의 기반으로 본다.
-
-> 아래의 snapshot v3·4방향 MOVE는 마지막 안정 baseline의 완료 계약이다. 현재 작업 트리의 snapshot v4·8방향·actor cadence는 Phase 3용 미완성 변경이며, 기존 회귀 92개가 다시 모두 통과하기 전에는 완료 상태로 간주하지 않는다.
+2026-08-28 기준 Phase 3 성격·행동 실험실과 Phase 4 동일-grid 파티 조우가 완료됐다.
+snapshot v5, 8방향 MOVE, environment/actor 이중 cadence, 최대 3인 파티 배치,
+동료 제안/override, 파티 턴 원자 commit, 승리 턴의 zero-time 자동 재집결을 현재
+안정 계약으로 삼는다. 360×640과 450×800 UI는 D-pad 없이 15×15 grid 터치를
+사용하며 큰 글씨, 두 번 탭 이동 미리보기/확정, 행동 overlay, HP·stress·준비·파생
+감정을 갖춘 3인 동시 노출 Party HUD를 제공한다. 비인접 auto-walk는 구현하지 않았고
+P1 FOV/LOS 뒤다.
 
 - 유효한 플레이어 결정 수 `step_index`와 실제 경과 `world_time`이 분리됨
 - 행동은 시작 시 commit되고 `(start, end]` 예약을 완전히 처리한 뒤 정착됨
 - 환경 cadence가 절대시간 100 배수에서 drift 없이 실행됨
 - `preview()`는 공개 예약만 표시하고 상태·RNG·ID를 바꾸지 않음
-- snapshot v3가 registry ID·예약 큐·화재 eligibility와 모든 64비트 시간/ID 참조를 보존함
+- snapshot v5가 registry ID·파티 조우·예약 큐·화재 eligibility와 모든 64비트 시간/ID 참조를 보존함
 - 거부 입력과 overflow가 commit 전 전체 무변경으로 끝남
 - terrain registry가 통과·점유·이동 비용의 유일한 authority임
 - MOVE가 시작 시 commit되고 행동 구간의 환경 틱이 새 위치를 봄
@@ -19,22 +23,23 @@
 ## 현재 고정 개발 순서
 
 ```text
-시간 코어·타임라인 (완료)
-→ TerrainRegistry·MOVE (완료)
-→ ExposureSample·종족 affinity (완료)
-→ Playtest Sandbox 유지·각 단계 시나리오 추가
-→ 던전 성격 반응 실험실 + 8방향 경로 + 15×15 비교 UI (Phase 3)
-→ 한 공간의 파티 조우·관계 기반 보호/이탈
-→ 플레이어 FOV·미니맵·먼 타일 auto-walk
-→ 범용 위험 인지·종족 affinity 기반 안전 경로
-→ 몬스터 먹이·영역·무리 생태
-→ 10명 NPC 자율 마을·일과·욕구
-→ 목격·도움·피해·faction·소문
-→ 독·DOT와 원소 상호작용 확장
-→ 동료 1명에서 최대 3명
+완료: 시간/지형/노출 → Phase 3 성격 실험실 → Phase 4 최대 3인 파티 조우·UX
+P0: 전투 규칙 v1 — 명중·방어·상태·다운/죽음
+P1: FOV/LOS·미니맵 → 먼 타일 auto-walk·affinity 안전 경로
+    → 동료 성격/관계/체력 임계 행동
+P2: multi encounter·몬스터 영역/무리/생태·세계시간
+    → 아이템/장비/루팅 → 목격/기억/소문
 ```
 
-Phase 3의 구현 계약과 테스트 기준은 `docs/PHASE3_DUNGEON_PERSONALITY_LAB_IMPLEMENTATION_PROMPT.ko.md`를 단일 기준으로 삼는다. 개인 성향·행동 AI의 연구 근거와 장기 확장 규칙은 `docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다. 마을 구현 문서는 보류된 backlog다. 기존 아래 절 번호는 장기 설계 원칙으로 유지하되, 실제 구현 우선순위는 위 순서를 따른다.
+- P0 완료 기준: 같은 파티 턴에서 명중·방어·상태·다운/죽음의 preview/commit/event/snapshot이 결정론적으로 일치하고 플레이 가능한 한 전투가 끝난다.
+- P1 완료 기준: FOV/LOS가 공개한 타일만으로 먼 타일 auto-walk와 affinity 안전 경로를 계획하며, 동료의 성격·관계·현재 HP가 예고된 행동과 실제 행동에 같은 근거로 반영된다.
+- P2 완료 기준: 여러 조우와 몬스터 영역·무리 상태가 세계시간에 따라 이어지고, 전리품과 목격·기억·소문이 save/load 뒤에도 같은 인과 사슬을 보존한다.
+
+Phase 3의 구현 계약은 `docs/PHASE3_DUNGEON_PERSONALITY_LAB_IMPLEMENTATION_PROMPT.ko.md`,
+Phase 4의 현재 계약은 `docs/PHASE4_PARTY_ENCOUNTER_DEPLOYMENT_IMPLEMENTATION_PROMPT.ko.md`의
+최상단 UX 개정을 따른다. 개인 성향·행동 AI의 연구 근거와 장기 확장 규칙은
+`docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다. 마을 구현 문서는 보류된
+backlog다. 기존 아래 절 번호는 장기 설계 원칙으로 유지하되 실제 우선순위는 위 P0–P2다.
 
 ### 1. TerrainRegistry·MOVE (완료)
 

@@ -70,11 +70,59 @@ func reconcile_liveness() -> bool:
 			world.entities[state.protagonist_id].position, 0, victory_cause_id)
 		if victory == null:
 			return false
+		# This intermediate phase exists only inside the active party-turn
+		# transaction. Remaining cadence must still see deployed combat positions.
 		state.safe_phase = "REGROUP_READY"
 		state.revision += 1
 	elif presence_changed:
 		state.revision += 1
 	return not _fault("reconcile_liveness")
+
+
+func finalize_automatic_regroup() -> bool:
+	# Victory is not a second player decision. The killing party turn owns the
+	# regroup chain so a failure anywhere below rolls the whole turn
+	# back through Simulator.step_party_turn(). REGROUP_READY remains a readable
+	# legacy wire phase, but production progression never publishes it.
+	var state = world.party_encounter
+	if state == null or state.safe_phase != "REGROUP_READY":
+		return true
+	var protagonist = world.entities.get(state.protagonist_id)
+	if protagonist == null or not protagonist.is_alive():
+		return false
+	if _fault("automatic_regroup_after_victory"):
+		return false
+	var victory_id := -1
+	for index in range(world.events.size() - 1, -1, -1):
+		if world.events[index].type == "party.victory":
+			victory_id = world.events[index].id
+			break
+	if victory_id <= 0:
+		return false
+	var root = world.emit_event("party.regroup_started", protagonist.id, -1,
+		protagonist.position, 0, victory_id)
+	if root == null or _fault("automatic_regroup_started_event"):
+		return false
+	state.group_anchor = protagonist.position
+	for member_id in state.party_member_ids:
+		if member_id == protagonist.id or not world.entities[member_id].is_alive():
+			continue
+		state.member(member_id).presence = "GROUPED"
+		world.entities[member_id].position = state.group_anchor
+		if world.emit_event("party.member_regrouped", member_id, protagonist.id,
+				state.group_anchor, 0, root.id) == null \
+				or _fault("automatic_regroup_member_event"):
+			return false
+	if world.emit_event("party.regroup_completed", protagonist.id, -1,
+			state.group_anchor, 0, root.id) == null \
+			or _fault("automatic_regroup_completed_event"):
+		return false
+	state.safe_phase = "GROUPED_COMPLETE"
+	state.formation_id = "NONE"
+	state.contact_kind = "NONE"
+	state.contact_enemy_id = -1
+	state.revision += 1
+	return true
 
 func _detect_contact() -> bool:
 	var state = world.party_encounter
@@ -230,7 +278,9 @@ func preview_party_turn(request) -> PartyTurnPlan:
 	if world.world_time > MAX_WORLD_TIME - max_cost: return PlanScript.new({"accepted":false,"reason":"time_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	var schedule_plan := _schedule_preflight(world.world_time + max_cost)
 	if not str(schedule_plan.reason).is_empty(): return PlanScript.new({"accepted":false,"reason":str(schedule_plan.reason),"actor_rows":[],"base_fingerprint":_fingerprint()})
-	var conservative_events := rows.size() * 4 + 1
+	# Include action/damage/death/override rows and the worst-case victory plus
+	# zero-time regroup chain (root, every living companion, completion).
+	var conservative_events: int = rows.size() * 4 + state.party_member_ids.size() + 4
 	conservative_events += schedule_plan.occurrences.size() * (world.tiles.size() * 4 + world.entities.size() * 6 + 4)
 	if not world.has_event_id_headroom(conservative_events): return PlanScript.new({"accepted":false,"reason":"event_id_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	var timeline: Array = []
@@ -241,55 +291,6 @@ func preview_party_turn(request) -> PartyTurnPlan:
 		"actor_rows": rows, "total_time_cost": max_cost, "timeline": timeline}
 	data["plan_hash"] = _hash_without(data, "plan_hash")
 	return PlanScript.new(data)
-
-func regroup():
-	var state = world.party_encounter
-	if state == null or state.safe_phase != "REGROUP_READY" or not world.is_settled(): return _result(false, "regroup_not_ready")
-	var protagonist = world.entities[state.protagonist_id]
-	if not protagonist.is_alive(): return _result(false, "protagonist_dead")
-	if world.step_index == MAX_INT64: return _result(false, "step_index_overflow")
-	if world.world_time > MAX_WORLD_TIME - 100: return _result(false, "time_overflow")
-	var schedule_plan := _schedule_preflight(world.world_time + 100)
-	if not str(schedule_plan.reason).is_empty(): return _result(false, str(schedule_plan.reason))
-	var regroup_event_bound: int = state.party_member_ids.size() + 2 \
-		+ schedule_plan.occurrences.size() * (world.tiles.size() * 4 + world.entities.size() * 6 + 4)
-	if not world.has_event_id_headroom(regroup_event_bound): return _result(false, "event_id_overflow")
-	var event_start = world.events.size(); world.begin_step(world.step_index + 1)
-	var root = world.emit_event("party.regroup_started", protagonist.id, -1, protagonist.position, 0)
-	if root == null or _fault("regroup_started_event"): return {"reason": "event_emission_failed"}
-	state.group_anchor = protagonist.position
-	for member_id in state.party_member_ids:
-		if member_id == protagonist.id or not world.entities[member_id].is_alive(): continue
-		state.member(member_id).presence = "GROUPED"; world.entities[member_id].position = state.group_anchor
-		if world.emit_event("party.member_regrouped", member_id, protagonist.id, state.group_anchor, 0, root.id) == null \
-				or _fault("regroup_member_event"):
-			return {"reason": "event_emission_failed"}
-	if world.emit_event("party.regroup_completed", protagonist.id, -1, state.group_anchor, 0, root.id) == null \
-			or _fault("regroup_completed_event"):
-		return {"reason": "event_emission_failed"}
-	var end_time: int = world.world_time + 100
-	while not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time) <= end_time:
-		var entry: Dictionary = world.take_next_schedule(); world.world_time = int(entry.due_time)
-		if entry.kind == "system.environment_tick":
-			if environment == null: return {"reason": "environment_unavailable"}
-			environment.process_tick()
-			if not reconcile_liveness() or _fault("regroup_environment_tick"): return {"reason": "regroup_schedule_failed"}
-		elif entry.kind == "system.actor_tick":
-			if not process_tick() or _fault("regroup_actor_tick"): return {"reason": "regroup_schedule_failed"}
-		else:
-			return {"reason": "unknown_schedule_kind"}
-		if int(entry.repeat_interval) > 0: world.requeue_repeating(entry)
-	world.world_time = end_time
-	if not protagonist.is_alive() or state.safe_phase != "REGROUP_READY": return {"reason": "regroup_interrupted"}
-	for member_id in state.party_member_ids:
-		if member_id != state.protagonist_id and world.entities[member_id].is_alive():
-			state.member(member_id).presence = "GROUPED"
-			world.entities[member_id].position = state.group_anchor
-	state.safe_phase = "GROUPED_COMPLETE"; state.formation_id = "NONE"
-	state.contact_kind = "NONE"; state.contact_enemy_id = -1; state.revision += 1
-	world.finish_step()
-	if not world.world_state_error().is_empty(): return {"reason": "regroup_semantic_failure"}
-	return _result(true, "ok", world.events_since(event_start), 100)
 
 func _turn_rejection(request) -> String:
 	if world.party_encounter == null or world.party_encounter.safe_phase != "ENGAGED" or not world.is_settled(): return "party_turn_phase_required"

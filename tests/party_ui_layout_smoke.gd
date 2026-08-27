@@ -25,7 +25,9 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	_validate_layout(sandbox,"%s %s EXPLORATION"%[viewport_size,preset])
 	var initial_actors:=0; for cell in sandbox.session.observe_party_world().cells: initial_actors+=cell.actors.size()
 	if initial_actors!=1: failures.append("%s %s pre-contact actor visibility"%[viewport_size,preset])
-	await _press(sandbox,"ExploreHold")
+	for button_name in ["ExploreN","ExploreNE","ExploreE","ExploreSE","ExploreS","ExploreSW","ExploreW","ExploreNW","ExploreHold"]:
+		if _button(sandbox,button_name)!=null: failures.append("%s %s legacy D-pad remains %s"%[viewport_size,preset,button_name])
+	await _explore_wait(sandbox)
 	_validate_layout(sandbox,"%s %s CONTACT"%[viewport_size,preset])
 	var contact_actors:=0; for cell in sandbox.session.observe_party_world().cells: contact_actors+=cell.actors.size()
 	if contact_actors!=2: failures.append("%s %s contact enemy reveal"%[viewport_size,preset])
@@ -53,6 +55,8 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 				or sandbox.grid.actor_in_world_cell(destination)!=-1: continue
 		await _press(sandbox,"MemberCard%d"%companion)
 		await _touch_cell(sandbox,destination)
+		if sandbox.find_child("MovePreviewSummary",true,false)==null: failures.append("%s %s move preview summary missing"%[viewport_size,preset])
+		await _touch_cell(sandbox,destination)
 		var found_override:=false
 		for row in sandbox.session.party_cards():
 			if int(row.entity_id)==companion and row.expected_action is Dictionary and str(row.expected_action.source)=="OVERRIDE": found_override=true
@@ -62,7 +66,16 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	for row in sandbox.session.party_cards():
 		if int(row.entity_id)==companion and row.expected_action is Dictionary and str(row.expected_action.source)=="OVERRIDE": override_visible=true
 	if not override_visible: failures.append("%s %s companion override not visible"%[viewport_size,preset])
+	if sandbox.grid._secondary_intent_overlays.size()!=1: failures.append("%s %s original suggestion secondary overlay missing"%[viewport_size,preset])
+	var summary=sandbox.find_child("TurnSummary",true,false) as Label
+	var detail=sandbox.find_child("ExpectedAction",true,false) as Label
+	if summary==null or not "원래 제안" in summary.text: failures.append("%s %s original suggestion absent from turn summary"%[viewport_size,preset])
+	if detail==null or not "개별 지시:" in detail.text or not "원래 제안:" in detail.text: failures.append("%s %s override/original detail absent"%[viewport_size,preset])
+	if sandbox.find_child("IntentLegend",true,false)==null: failures.append("%s %s intent legend missing"%[viewport_size,preset])
 	await _press(sandbox,"OverrideClear")
+	if not sandbox.grid._secondary_intent_overlays.is_empty(): failures.append("%s %s clear left secondary overlay"%[viewport_size,preset])
+	summary=sandbox.find_child("TurnSummary",true,false) as Label
+	if summary!=null and "원래 제안" in summary.text: failures.append("%s %s clear left dual summary"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s COMBAT_COMPANION_AUTO"%[viewport_size,preset])
 	var hero:=int(status.protagonist_id); await _press(sandbox,"MemberCard%d"%hero)
 	var enemy:=int(sandbox.session.party_status().visible_enemy_ids[0]); await _touch_entity(sandbox,enemy)
@@ -70,7 +83,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	if not _button(sandbox,"OverrideClear").disabled: failures.append("%s %s enemy tap exposed companion controls"%[viewport_size,preset])
 	var melee_ready_checked:=false
 	for combat_turn in range(12):
-		if sandbox.session.party_status().safe_phase=="REGROUP_READY": break
+		if sandbox.session.party_status().safe_phase=="GROUPED_COMPLETE": break
 		var hero_position:=Vector2i.ZERO
 		for card in sandbox.session.party_cards():
 			if int(card.entity_id)==hero:
@@ -92,18 +105,19 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 			for direction in directions:
 				if direction==Vector2i.ZERO: continue
 				await _touch_cell(sandbox,hero_position+direction)
+				await _touch_cell(sandbox,hero_position+direction)
 				var draft:Dictionary=sandbox.session.current_turn_preview()
 				if bool(draft.get("accepted",false)) and str(draft.actor_rows[0].action.type)=="MOVE":
 					moved_toward_enemy=true; break
 			if not moved_toward_enemy: await _press(sandbox,"ActorHold")
 		await _press(sandbox,"TurnConfirm")
-	if sandbox.session.party_status().safe_phase!="REGROUP_READY": failures.append("%s %s victory phase"%[viewport_size,preset])
-	_validate_layout(sandbox,"%s %s REGROUP"%[viewport_size,preset])
-	await _press(sandbox,"RegroupConfirm")
-	if sandbox.session.party_status().safe_phase!="GROUPED_COMPLETE": failures.append("%s %s regroup phase"%[viewport_size,preset])
+	if sandbox.session.party_status().safe_phase!="GROUPED_COMPLETE": failures.append("%s %s automatic regroup phase"%[viewport_size,preset])
+	if _button(sandbox,"RegroupConfirm")!=null: failures.append("%s %s manual regroup button remains"%[viewport_size,preset])
+	if not sandbox.grid._intent_overlays.is_empty(): failures.append("%s %s stale combat overlays"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s GROUPED_COMPLETE"%[viewport_size,preset])
 	var old_anchor:Array=sandbox.session.party_status().anchor
-	await _press(sandbox,"ExploreW")
+	await _touch_cell(sandbox,Vector2i(int(old_anchor[0])-1,int(old_anchor[1])))
+	await _touch_cell(sandbox,Vector2i(int(old_anchor[0])-1,int(old_anchor[1])))
 	if sandbox.session.party_status().anchor==old_anchor: failures.append("%s %s grouped-complete anchor stale"%[viewport_size,preset])
 	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.mapping_signature()!=mapping: failures.append("%s %s grid identity/mapping changed"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s POST_REGROUP_MOVE"%[viewport_size,preset])
@@ -143,10 +157,14 @@ func _touch_entity(sandbox,entity_id:int)->void:
 		if position!=Vector2i(-1,-1): break
 	await _touch_cell(sandbox,position)
 
+func _explore_wait(sandbox)->void:
+	var hero:=int(sandbox.session.party_status().protagonist_id)
+	await _touch_entity(sandbox,hero); await _touch_entity(sandbox,hero)
+
 func _validate_layout(sandbox,label:String)->void:
-	var viewport_size:Vector2=sandbox.size; var expected:=330.0 if viewport_size.x>=450 else 300.0
+	var viewport_size:Vector2=sandbox.size; var expected:=405.0 if viewport_size.x>=450 else 348.0
 	if sandbox.grid.size.x+0.1<expected or sandbox.grid.size.y+0.1<expected: failures.append("%s grid below budget"%label)
-	if sandbox.grid.cell_size_px()<20.0: failures.append("%s cell below 20"%label)
+	if sandbox.grid.cell_size_px()<23.19: failures.append("%s cell below 23.2"%label)
 	if sandbox.cards.get_child_count()!=3: failures.append("%s card count"%label)
 	_validate_card_content(sandbox,label)
 	var root_box=sandbox.get_node("PartyLayout"); var prior_end:=-100000.0
@@ -162,10 +180,12 @@ func _validate_layout(sandbox,label:String)->void:
 		var control:=node as Control
 		if not control.visible: continue
 		var global_rect:=control.get_global_rect()
-		if global_rect.position.x<-0.1 or global_rect.end.x>viewport_size.x+0.1 \
-				or global_rect.position.y<-0.1 or global_rect.end.y>viewport_size.y+0.1:
+		if not _inside_scroll(control) and (global_rect.position.x<-0.1 or global_rect.end.x>viewport_size.x+0.1 \
+				or global_rect.position.y<-0.1 or global_rect.end.y>viewport_size.y+0.1):
 			failures.append("%s child bounds %s %s"%[label,control.name,global_rect])
 		if control is Button and (control.size.x<43.9 or control.size.y<43.9): failures.append("%s touch target %s %s"%[label,control.name,control.size])
+		if control is Label and control.get_theme_font_size("font_size")<16: failures.append("%s font below 16 %s"%[label,control.name])
+		if control is Button and control.get_theme_font_size("font_size")<18: failures.append("%s button font below 18 %s"%[label,control.name])
 	var deck_prior:=-100000.0
 	for child in sandbox.deck.get_children():
 		if child is Control and child.visible:
@@ -188,7 +208,7 @@ func _validate_card_content(sandbox,label:String)->void:
 		var portrait:=card.find_child("Portrait",true,false) as TextureRect
 		if portrait==null or not portrait.texture is AtlasTexture:
 			failures.append("%s card portrait missing %s"%[label,card.name])
-		for node_name in ["MemberName","MemberState","MemberElements","ExpectedAction"]:
+		for node_name in ["MemberName","MemberState","StressState","Readiness","EmotionState"]:
 			var text_label:=card.find_child(node_name,true,false) as Label
 			if text_label==null:
 				failures.append("%s missing card row %s/%s"%[label,card.name,node_name]); continue
@@ -203,3 +223,10 @@ func _collect_controls(node:Node,rows:Array[Node])->void:
 	for child in node.get_children():
 		if child is Control: rows.append(child)
 		_collect_controls(child,rows)
+
+func _inside_scroll(control:Control)->bool:
+	var node:Node=control.get_parent()
+	while node!=null:
+		if node is ScrollContainer:return true
+		node=node.get_parent()
+	return false

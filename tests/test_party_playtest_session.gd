@@ -9,6 +9,7 @@ func test_facade_dtos_are_detached_and_save_load_preserves_contact() -> bool:
 	var session=Session.new(); var status=session.party_status(); status.safe_phase="CORRUPTED"
 	var cards=session.party_cards(); cards[0].element_exposure.total_risk=999
 	check_eq(session.party_status().safe_phase,"GROUPED","status detached")
+	check_eq(session.party_status().session_format_version,2,"session v2 surface")
 	check(session.party_cards()[0].element_exposure.total_risk!=999,"nested cards detached")
 	var hero=session.sim.world.party_encounter.protagonist_id; session.commit_exploration(Command.wait(hero))
 	var encoded=session.save_session_json(); var restored=Session.new(1,2); var loaded=restored.load_session_json(encoded)
@@ -29,6 +30,54 @@ func test_override_clear_is_per_companion_and_logs_are_korean_narrative() -> boo
 	check("계획을 바꿨다" in text,"override narrative")
 	return finish()
 
+func test_preview_preserves_other_overrides_and_override_keeps_original_suggestion() -> bool:
+	var session=Session.new(); var state=session.sim.world.party_encounter; var hero=state.protagonist_id
+	session.commit_exploration(Command.wait(hero)); session.preview_deployment("LINE",state.party_member_ids.slice(1)); session.commit_deployment()
+	check(session.begin_turn(Action.hold(hero)).accepted,"direct draft")
+	var first=state.party_member_ids[1]; var second=state.party_member_ids[2]
+	check(session.override_companion(first,Action.hold(first)).accepted,"first override")
+	var candidate=session.preview_actor_action(second,"HOLD")
+	var sources:Dictionary={}
+	for row in candidate.actor_rows:sources[int(row.actor_id)]=str(row.source)
+	check_eq(sources[first],"OVERRIDE","candidate preview retains existing companion override")
+	check_eq(sources[second],"OVERRIDE","candidate preview includes selected companion override")
+	check(session.override_companion(second,Action.hold(second)).accepted,"second override")
+	var overridden:Dictionary;var second_position:Array=[];var second_name:=""
+	for card in session.party_cards():
+		if int(card.entity_id)==second:
+			overridden=card.expected_action;second_position=card.logical_position;second_name=str(card.display_name)
+	check(overridden.automatic_suggestion is Dictionary,"override DTO preserves original automatic suggestion")
+	var original=overridden.automatic_suggestion.duplicate(true)
+	var overlay:Dictionary
+	for row in session.turn_intent_overlays():
+		if int(row.actor_id)==second:overlay=row;break
+	check_eq(overlay.source,"OVERRIDE","actual overlay remains override")
+	check_eq(overlay.line_style,"SOLID_THICK","override overlay is solid and thick")
+	check_eq(overlay.marker_style,"SQUARE","override overlay uses square marker")
+	check(overlay.automatic_suggestion is Dictionary,"overlay carries detached original suggestion")
+	check_eq(overlay.automatic_suggestion.source,"SUGGESTED","secondary overlay source is suggested")
+	check_eq(overlay.automatic_suggestion.line_style,"DASHED_THIN","original suggestion is thin dashed")
+	check_eq(overlay.automatic_suggestion.marker_style,"CIRCLE","original suggestion uses circle marker")
+	check_eq(overlay.automatic_suggestion.from_position,second_position,"secondary overlay has complete origin")
+	var summary:="\n".join(session.turn_summary_lines())
+	check("개별 덮어쓰기" in summary and "원래 제안" in summary,"turn summary renders override and original simultaneously")
+	var detached=session.turn_intent_overlays();var detached_index:=-1
+	for index in range(detached.size()):if int(detached[index].actor_id)==second:detached_index=index
+	detached[detached_index].automatic_suggestion.from_position[0]=999
+	check(session.turn_intent_overlays()[detached_index].automatic_suggestion.from_position[0]!=999,"nested secondary overlay is detached")
+	check(session.clear_companion_override(second).accepted,"clear override")
+	for card in session.party_cards():
+		if int(card.entity_id)==second:
+			check_eq(card.expected_action.source,"SUGGESTED","clear restores suggested source")
+			check_eq(card.expected_action.type,original.type,"clear restores original suggested action")
+	var cleared_overlay:Dictionary
+	for row in session.turn_intent_overlays():if int(row.actor_id)==second:cleared_overlay=row
+	check(cleared_overlay.get("automatic_suggestion",null)==null,"clear removes dual overlay")
+	var cleared_line:=""
+	for line in session.turn_summary_lines():if line.begins_with(second_name+" ·"):cleared_line=line
+	check(not "원래 제안" in cleared_line,"clear leaves one automatic suggestion line for cleared actor")
+	return finish()
+
 func test_full_exploration_deployment_turn_regroup_journal_replays_exactly() -> bool:
 	var session = Session.new(333,444); var journey_ok := _play_full_journey(session, "COLUMN")
 	check(journey_ok, "full canonical journey reached grouped complete")
@@ -36,7 +85,8 @@ func test_full_exploration_deployment_turn_regroup_journal_replays_exactly() -> 
 	var move = session.commit_exploration_direction(Vector2i.LEFT); check(move.accepted, "post-regroup move journaled")
 	var encoded := session.save_session_json(); var decoded = JSON.parse_string(encoded)
 	check_eq(decoded.keys().size(), 5, "exact session top key count")
-	check(decoded.journal.size() >= 5, "journal includes exploration/deployment/turns/regroup")
+	check(decoded.journal.size() >= 4, "journal includes exploration/deployment/turns without separate regroup")
+	for row in decoded.journal: check(str(row.kind)!="regroup","automatic regroup adds no journal command")
 	var restored = Session.new(1,2); var loaded = restored.load_session_json(encoded)
 	check(bool(loaded.accepted), "full load accepted: %s" % str(loaded))
 	check_eq(restored.sim.snapshot(), session.sim.snapshot(), "full journal snapshot exact")
@@ -126,7 +176,7 @@ func _play_full_journey(session, formation: String) -> bool:
 	if not session.commit_deployment().accepted: return false
 	for index in range(20):
 		status = session.party_status()
-		if status.safe_phase == "REGROUP_READY": break
+		if status.safe_phase == "GROUPED_COMPLETE": break
 		if status.safe_phase != "ENGAGED": return false
 		var hero_id := int(status.protagonist_id); var hero_position := Vector2i.ZERO
 		for card in session.party_cards():
@@ -147,5 +197,4 @@ func _play_full_journey(session, formation: String) -> bool:
 				if bool(preview.accepted): break
 			if not bool(preview.get("accepted",false)): preview = session.set_actor_action(hero_id, "HOLD")
 		if not bool(preview.get("accepted",false)) or not session.commit_turn().accepted: return false
-	if session.party_status().safe_phase != "REGROUP_READY": return false
-	return bool(session.regroup().accepted)
+	return session.party_status().safe_phase == "GROUPED_COMPLETE"

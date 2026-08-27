@@ -2,7 +2,7 @@ class_name SimWorldState
 extends RefCounted
 
 const SNAPSHOT_VERSION := 5
-const RULESET_VERSION := "phase4-party-encounter-v1"
+const RULESET_VERSION := "phase4-party-encounter-v2"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
 const HAZARD_AFFINITY_RULESET_ID := "hazard-affinity-v1"
@@ -1526,8 +1526,10 @@ func _party_runtime_error() -> String:
 			for member_id in party_encounter.party_member_ids:
 				if party_encounter.member_rows[member_id].presence == "GROUPED": return "engaged_grouped_member_invalid"
 		"REGROUP_READY":
-			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed < 1 or alive_enemies != 0 \
-					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id == "NONE": return "regroup_ready_phase_invalid"
+			# v2 publishes victory only after the zero-time automatic finalizer.
+			# REGROUP_READY is an active-step implementation state and is never a
+			# valid decision-boundary snapshot.
+			return "regroup_ready_not_settled"
 		"PARTY_DEFEATED":
 			if hero.is_alive() or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
 			if party_encounter.formation_id != "NONE" and party_encounter.contact_kind == "NONE": return "party_defeated_formation_invalid"
@@ -1743,12 +1745,14 @@ func _party_event_correlation_error() -> String:
 			return "party_regroup_event_count_invalid"
 		var root = starts[0]; var completed = completions[0]
 		var root_history: Dictionary = _party_entity_position_at_event(hero_id, root.id)
-		if root.actor_id != hero_id or root.target_id != -1 or root.cause_id != -1 or root.magnitude != 0 \
+		if root.actor_id != hero_id or root.target_id != -1 or root.cause_id != victory.id or root.magnitude != 0 \
 				or not root.data.is_empty() or root.position != victory.position or not bool(root_history.ok) \
 				or root_history.position != victory.position or root.id <= victory.id \
+				or root.step_index != victory.step_index \
 				or completed.actor_id != hero_id or completed.target_id != -1 or completed.cause_id != root.id \
 				or completed.position != victory.position or completed.magnitude != 0 \
-				or not completed.data.is_empty() or completed.id <= root.id:
+				or not completed.data.is_empty() or completed.id <= root.id \
+				or completed.step_index != victory.step_index or completed.world_time != root.world_time:
 			return "party_regroup_root_or_completed_mismatch"
 		var root_index := _event_index(root.id); var completed_index := _event_index(completed.id)
 		if completed_index-root_index-1 != regroup_members.size(): return "party_regroup_event_order_invalid"

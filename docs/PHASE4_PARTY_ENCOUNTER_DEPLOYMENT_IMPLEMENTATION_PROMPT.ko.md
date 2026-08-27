@@ -1,5 +1,38 @@
 # Phase 4 구현 프롬프트 — 동일 월드 파티 조우·배치·재집결
 
+## 0A. 2026-08-28 자동 재집결 UX 개정 — 최우선 계약
+
+이 절은 아래 문서의 `REGROUP_READY` 명시 입력, `+100` 재집결 command,
+`PartyPlaytestSession.regroup()`, `RegroupConfirm`, journal `regroup`, ruleset/session v1
+기술을 모두 대체한다. 충돌 시 이 절이 authoritative하다.
+
+- 마지막 적을 죽인 `party turn` 하나가 `party.victory → party.regroup_started →
+  party.member_regrouped* → party.regroup_completed`를 같은 `step_index` 안에서 원자적으로
+  commit한다. `party.regroup_started.cause_id`는 `party.victory.id`다.
+- 살상 행동 뒤 예정된 environment/actor cadence를 먼저 기존 DEPLOYED 위치에서 모두
+  처리한다. 그 뒤 `finish_step()` 직전 zero-time finalizer가 토큰을 합친다. 별도 시간,
+  step, 입력, 버튼, journal row가 없다.
+- `REGROUP_READY`는 transaction 내부의 transient 호환 상태일 뿐이다. v2의 settled
+  snapshot에는 나타날 수 없고 restore validator가 거부한다. 정상 UI가 `REGROUP` 화면을
+  관찰해서도 안 된다.
+- snapshot은 v5를 유지하되 `RULESET_VERSION="phase4-party-encounter-v2"`,
+  `PartyPlaytestSession.SESSION_FORMAT_VERSION=2`, save path는
+  `user://living_world_party_encounter_v2.json`이다. v1 ruleset/session을 조용히 해석하지 않는다.
+- UI는 전투 종료 즉시 자동 재집결 완료와 탐험 재개를 한국어로 알린다. 수동 재집결
+  surface는 없다.
+
+이번 UX 기준은 탐험 D-pad를 제거하고 동일 15×15 grid를 기본 이동 입력으로 쓴다.
+탐험과 전투 MOVE 모두 1차 타일 탭은 순수 preview, 동일 칸 2차 탭은 선택/이동
+확정이다. 비인접 칸은 상태를 바꾸지 않고 “장거리 이동은 아직 지원하지 않습니다”라고
+알린다. 장거리 auto-walk는 FOV/LOS와 함께 후속 단계다.
+
+grid 아래에는 최대 3인의 고정 Party HUD를 둬 360px 폭에서도 세 초상화를 동시에
+보인다. 각 슬롯은 atlas 얼굴/상반신 확대 crop, 이름, 실제 HP current/max와 bar,
+가짜 MP 대신 실제 busy 기반 행동 준비/행동 중, stress 수치와 bar, HP·stress·personality로
+결정론적으로 파생한 감정 icon+한국어를 표시한다. 원소와 행동 근거는 선택 상세
+ScrollContainer로 내린다. 파티 턴 일괄 확정, 동료 자동 제안과 override 동시 표시,
+보조 16px·본문 18px·핵심 20–24px 및 44px 터치 타깃 계약은 유지한다.
+
 ## 0. Sol High에게 주는 단일 목표
 
 이 저장소에 아래 플레이 흐름을 구현하라.

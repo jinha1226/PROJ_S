@@ -309,6 +309,8 @@ func step_party_turn(plan):
 	world.world_time = end_time
 	if not party_coordinator.reconcile_liveness():
 		return _rollback_party_step(rollback, "party_turn_failed")
+	if not party_coordinator.finalize_automatic_regroup():
+		return _rollback_party_step(rollback, "party_turn_failed")
 	world.finish_step()
 	if not world.world_state_error().is_empty():
 		return _rollback_party_step(rollback, "party_turn_semantic_failure")
@@ -316,14 +318,6 @@ func step_party_turn(plan):
 	return StepResultScript.new(true, true, "ok", result_events, {"processed_step_index": world.step_index,
 		"start_time": start_time, "end_time": end_time, "time_cost": cost, "timeline": authoritative.timeline.duplicate(true),
 		"root_event_id": result_events[0].id if not result_events.is_empty() else -1})
-
-
-func regroup_party():
-	var rollback = world.snapshot(); var result = party_coordinator.regroup()
-	if result is Dictionary:
-		world = result.get("restored_world", WorldStateScript.from_snapshot(rollback)); _rebuild_systems()
-		return StepResultScript.new(false, false, str(result.get("reason", "regroup_failed")))
-	return result
 
 
 func _plan_action(command) -> Dictionary:
