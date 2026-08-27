@@ -3,14 +3,14 @@ extends Control
 
 const CombatModel = preload("res://game/runner/runner_combat_model.gd")
 const RUN_CLIP_PATH := "res://assets/mocap/cmu/02_03_run_2d.json"
-const BASE_HEIGHT := 720.0
-const GROUND_Y := 545.0
-const PLAYER_X_RATIO := 0.285
-const MIN_PLAYER_X := 300.0
+const BASE_HEIGHT := 1280.0
+const GROUND_Y := 895.0
+const PLAYER_X_RATIO := 0.27
+const MIN_PLAYER_X := 180.0
 const BASE_SPEED := 405.0
 const MAX_SPEED := 540.0
 const RUN_STRIDE := 126.0
-const RUN_POSE_SCALE := 70.0
+const RUN_POSE_SCALE := 84.0
 
 var combat: RunnerCombatModel = CombatModel.new()
 var world_speed := 0.0
@@ -187,7 +187,7 @@ func _build_ui() -> void:
 	_distance_label.position = Vector2(-210, 20)
 	_distance_label.size = Vector2(184, 30)
 	_distance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_distance_label.add_theme_font_size_override("font_size", 21)
+	_distance_label.add_theme_font_size_override("font_size", 25)
 	_distance_label.add_theme_color_override("font_color", Color("eaf8ff"))
 	add_child(_distance_label)
 
@@ -196,36 +196,36 @@ func _build_ui() -> void:
 	_combo_label.position = Vector2(-210, 50)
 	_combo_label.size = Vector2(184, 26)
 	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_combo_label.add_theme_font_size_override("font_size", 15)
+	_combo_label.add_theme_font_size_override("font_size", 18)
 	_combo_label.add_theme_color_override("font_color", Color("ffbc66"))
 	add_child(_combo_label)
 
 	_health_label = Label.new()
 	_health_label.position = Vector2(26, 82)
-	_health_label.add_theme_font_size_override("font_size", 19)
+	_health_label.add_theme_font_size_override("font_size", 22)
 	_health_label.add_theme_color_override("font_color", Color("ff786f"))
 	add_child(_health_label)
 
 	_status_label = Label.new()
 	_status_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_status_label.position = Vector2(-230, 25)
+	_status_label.position = Vector2(-230, 116)
 	_status_label.size = Vector2(460, 42)
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_status_label.add_theme_font_size_override("font_size", 18)
+	_status_label.add_theme_font_size_override("font_size", 21)
 	_status_label.add_theme_color_override("font_color", Color("d9edf2"))
 	add_child(_status_label)
 
 	_dodge_button = _make_action_button("DODGE", Color("1b8798"))
 	_dodge_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	_dodge_button.position = Vector2(24, -92)
-	_dodge_button.size = Vector2(148, 64)
+	_dodge_button.position = Vector2(24, -122)
+	_dodge_button.size = Vector2(164, 88)
 	_dodge_button.button_down.connect(_request_dodge)
 	add_child(_dodge_button)
 
 	_attack_button = _make_action_button("ATTACK", Color("ca4f35"))
 	_attack_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_attack_button.position = Vector2(-172, -92)
-	_attack_button.size = Vector2(148, 64)
+	_attack_button.position = Vector2(-188, -122)
+	_attack_button.size = Vector2(164, 88)
 	_attack_button.button_down.connect(_request_attack)
 	add_child(_attack_button)
 
@@ -241,7 +241,7 @@ func _build_ui() -> void:
 func _make_action_button(text_value: String, color: Color) -> Button:
 	var button := Button.new()
 	button.text = text_value
-	button.add_theme_font_size_override("font_size", 19)
+	button.add_theme_font_size_override("font_size", 25)
 	button.add_theme_color_override("font_color", Color.WHITE)
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_color_override("font_pressed_color", Color.WHITE)
@@ -436,7 +436,7 @@ func _update_speed_lines(delta: float) -> void:
 	if world_speed > BASE_SPEED * 0.98 and _rng.randf() < delta * 7.0:
 		_speed_lines.append({
 			"x": _virtual_width() + 30.0,
-			"y": _rng.randf_range(135.0, 500.0),
+			"y": _rng.randf_range(250.0, 840.0),
 			"length": _rng.randf_range(55.0, 145.0),
 			"life": _rng.randf_range(0.22, 0.38),
 		})
@@ -506,8 +506,8 @@ func _draw_sky(virtual_width: float) -> void:
 
 
 func _draw_parallax(virtual_width: float) -> void:
-	_draw_mountain_layer(virtual_width, 0.08, 355.0, Color("12283a"), 390.0, 150.0)
-	_draw_mountain_layer(virtual_width, 0.18, 430.0, Color("17384a"), 310.0, 112.0)
+	_draw_mountain_layer(virtual_width, 0.08, 620.0, Color("12283a"), 390.0, 245.0)
+	_draw_mountain_layer(virtual_width, 0.18, 760.0, Color("17384a"), 310.0, 180.0)
 	var ruin_spacing := 270.0
 	var ruin_offset := -fmod(world_offset * 0.34, ruin_spacing)
 	for index in range(-1, int(virtual_width / ruin_spacing) + 2):
@@ -734,7 +734,7 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	var y := float(enemy["y"])
 	var state := String(enemy["state"])
 	var brute := bool(enemy["brute"])
-	var size_scale := 1.28 if brute else 1.0
+	var size_scale := 1.42 if brute else 1.12
 	var bob := sin(float(enemy["phase"]) * 2.0) * 4.0
 	var center := Vector2(x, y - 67.0 * size_scale + bob)
 	if state == "telegraph":
