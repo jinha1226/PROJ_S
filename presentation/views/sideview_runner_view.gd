@@ -2,13 +2,13 @@ class_name SideviewRunnerView
 extends Control
 
 const CombatModel = preload("res://game/runner/runner_combat_model.gd")
-const RUN_CLIP_PATH := "res://assets/mocap/cmu/02_03_run_2d.json"
+const RUN_CLIP_PATH := "res://assets/mocap/cmu/09_06_fast_run_2d.json"
 const BASE_HEIGHT := 1280.0
 const GROUND_Y := 895.0
 const PLAYER_X_RATIO := 0.27
 const MIN_PLAYER_X := 180.0
-const BASE_SPEED := 405.0
-const MAX_SPEED := 540.0
+const BASE_SPEED := 540.0
+const MAX_SPEED := 720.0
 const RUN_STRIDE := 126.0
 const RUN_POSE_SCALE := 84.0
 
@@ -80,7 +80,7 @@ func _process(delta: float) -> void:
 		speed_target = BASE_SPEED * 0.48
 	elif combat.combo >= 4:
 		speed_target = BASE_SPEED + minf(95.0, float(combat.combo - 3) * 16.0)
-	world_speed = move_toward(world_speed, speed_target, visual_delta * 245.0)
+	world_speed = move_toward(world_speed, speed_target, visual_delta * 430.0)
 	world_offset += world_speed * visual_delta
 	distance_m += world_speed * visual_delta / 52.0
 	_advance_run_motion(visual_delta)

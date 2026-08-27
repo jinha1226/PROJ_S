@@ -2,7 +2,7 @@ class_name RunnerCombatTests
 extends RefCounted
 
 const CombatModel = preload("res://game/runner/runner_combat_model.gd")
-const RUN_CLIP_PATH := "res://assets/mocap/cmu/02_03_run_2d.json"
+const RUN_CLIP_PATH := "res://assets/mocap/cmu/09_06_fast_run_2d.json"
 
 
 func run() -> Array[String]:

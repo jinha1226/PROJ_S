@@ -1,4 +1,4 @@
-"""Convert CMU 02_03 run/jog BVH into a compact side-view joint clip."""
+"""Convert CMU 09_06 fast run BVH into a compact side-view joint clip."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import bpy
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SOURCE = PROJECT_ROOT / "assets" / "mocap" / "cmu" / "02_03_run.bvh"
-OUTPUT = PROJECT_ROOT / "assets" / "mocap" / "cmu" / "02_03_run_2d.json"
-# One clean stride loop. Source frames 118 and 26 are near-identical poses;
-# stop one sample before the duplicate so runtime interpolation stays smooth.
+SOURCE = PROJECT_ROOT / "assets" / "mocap" / "cmu" / "09_06_fast_run.bvh"
+OUTPUT = PROJECT_ROOT / "assets" / "mocap" / "cmu" / "09_06_fast_run_2d.json"
+# One clean sprint stride. Source frames 114 and 26 are near-identical;
+# stop one sample before the duplicate for seamless runtime interpolation.
 START_FRAME = 26
-END_FRAME = 114
+END_FRAME = 110
 SOURCE_STEP = 4
 
 JOINTS = (
@@ -87,7 +87,7 @@ def main() -> None:
         )
 
     payload = {
-        "source": "CMU Graphics Lab Motion Capture Database 02_03 run/jog",
+        "source": "CMU Graphics Lab Motion Capture Database 09_06 run",
         "fps": 30,
         "joints": names,
         "root_forward": root_forward,
