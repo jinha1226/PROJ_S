@@ -1,0 +1,394 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://playtest/playtest_sandbox.gd" id="1_sandbox"]
+[ext_resource type="Script" path="res://playtest/playtest_grid_view.gd" id="2_grid"]
+
+[node name="PlaytestSandbox" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_sandbox")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.035, 0.047, 0.065, 1)
+
+[node name="SafeMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="MainColumn" type="VBoxContainer" parent="SafeMargin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Hud" type="PanelContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+
+[node name="HudMargin" type="MarginContainer" parent="SafeMargin/MainColumn/Hud"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
+
+[node name="HudRows" type="VBoxContainer" parent="SafeMargin/MainColumn/Hud/HudMargin"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="Top" type="HBoxContainer" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows"]
+layout_mode = 2
+
+[node name="Hp" type="Label" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "HP --/--  HUMAN"
+
+[node name="Time" type="Label" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows/Top"]
+layout_mode = 2
+text = "D1 00:00  T0 S0"
+horizontal_alignment = 2
+
+[node name="Bottom" type="HBoxContainer" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows"]
+layout_mode = 2
+
+[node name="Seed" type="Label" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Seed 0007  DEBUG OMNI"
+
+[node name="NextTick" type="Label" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows/Bottom"]
+layout_mode = 2
+text = "다음 환경 T100"
+
+[node name="MenuButton" type="Button" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows/Bottom"]
+custom_minimum_size = Vector2(44, 24)
+layout_mode = 2
+text = "메뉴"
+
+[node name="GameOver" type="Label" parent="SafeMargin/MainColumn/Hud/HudMargin/HudRows"]
+visible = false
+layout_mode = 2
+text = "GAME OVER · 마지막 입력은 정착됨"
+horizontal_alignment = 1
+
+[node name="GridPanel" type="PanelContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 270)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="GridView" type="Control" parent="SafeMargin/MainColumn/GridPanel"]
+custom_minimum_size = Vector2(0, 270)
+layout_mode = 2
+mouse_filter = 0
+script = ExtResource("2_grid")
+
+[node name="Inspection" type="PanelContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 112)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="SafeMargin/MainColumn/Inspection"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 4
+
+[node name="Rows" type="VBoxContainer" parent="SafeMargin/MainColumn/Inspection/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="Title" type="Label" parent="SafeMargin/MainColumn/Inspection/Margin/Rows"]
+layout_mode = 2
+text = "선택 칸 없음"
+
+[node name="Traversal" type="Label" parent="SafeMargin/MainColumn/Inspection/Margin/Rows"]
+layout_mode = 2
+text = "이동 평가 없음"
+
+[node name="Objective" type="Label" parent="SafeMargin/MainColumn/Inspection/Margin/Rows"]
+layout_mode = 2
+text = "객관  불 0  다음틱피해 0  물 0  젖음 0"
+
+[node name="Evaluation" type="Label" parent="SafeMargin/MainColumn/Inspection/Margin/Rows"]
+layout_mode = 2
+text = "평가  불 0  물 0  총 위험 0"
+
+[node name="Electric" type="Label" parent="SafeMargin/MainColumn/Inspection/Margin/Rows"]
+layout_mode = 2
+text = "객관  전도 0  전기위험 없음  독 0 · 평가 전기 0 독 0"
+
+[node name="Timeline" type="PanelContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+
+[node name="TimelineLabel" type="Label" parent="SafeMargin/MainColumn/Timeline"]
+layout_mode = 2
+text = "예상: 선택한 인접 칸의 timeline"
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="Actions" type="HBoxContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Move" type="Button" parent="SafeMargin/MainColumn/Actions"]
+custom_minimum_size = Vector2(44, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "이동"
+disabled = true
+
+[node name="Wait" type="Button" parent="SafeMargin/MainColumn/Actions"]
+custom_minimum_size = Vector2(44, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "대기"
+tooltip_text = "WAIT 100"
+
+[node name="Ignite" type="Button" parent="SafeMargin/MainColumn/Actions"]
+custom_minimum_size = Vector2(44, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "불"
+tooltip_text = "IGNITE power 70"
+
+[node name="Water" type="Button" parent="SafeMargin/MainColumn/Actions"]
+custom_minimum_size = Vector2(44, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "물"
+tooltip_text = "POUR_WATER power 60"
+
+[node name="Discharge" type="Button" parent="SafeMargin/MainColumn/Actions"]
+custom_minimum_size = Vector2(44, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "방전"
+tooltip_text = "DISCHARGE power 40"
+
+[node name="Recent" type="PanelContainer" parent="SafeMargin/MainColumn"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="SafeMargin/MainColumn/Recent"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
+
+[node name="Rows" type="VBoxContainer" parent="SafeMargin/MainColumn/Recent/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="Summary" type="Label" parent="SafeMargin/MainColumn/Recent/Margin/Rows"]
+layout_mode = 2
+text = "최근: session 준비 중"
+text_overrun_behavior = 3
+
+[node name="Event" type="Label" parent="SafeMargin/MainColumn/Recent/Margin/Rows"]
+layout_mode = 2
+text = "사건 없음"
+text_overrun_behavior = 3
+
+[node name="DrawerButton" type="Button" parent="SafeMargin/MainColumn/Recent/Margin/Rows"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+text = "로그 펼치기"
+
+[node name="InputShield" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Drawer" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -470.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Margin" type="MarginContainer" parent="Drawer"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Rows" type="VBoxContainer" parent="Drawer/Margin"]
+layout_mode = 2
+
+[node name="Header" type="HBoxContainer" parent="Drawer/Margin/Rows"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Drawer/Margin/Rows/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "EVENTS · TIMELINE · REPLAY"
+
+[node name="Close" type="Button" parent="Drawer/Margin/Rows/Header"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+text = "닫기"
+
+[node name="LogText" type="TextEdit" parent="Drawer/Margin/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+editable = false
+wrap_mode = 1
+
+[node name="CopyReplay" type="Button" parent="Drawer/Margin/Rows"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "accepted command journal 복사"
+
+[node name="MenuSheet" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 74.0
+offset_right = -18.0
+offset_bottom = -48.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="MenuSheet"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="Rows" type="VBoxContainer" parent="MenuSheet/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+text = "PLAYTEST SETTINGS"
+
+[node name="SpeciesLabel" type="Label" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+text = "Species (변경 시 arena reset)"
+
+[node name="Species" type="HBoxContainer" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+
+[node name="Human" type="Button" parent="MenuSheet/Margin/Rows/Species"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "HUMAN"
+
+[node name="Amphibian" type="Button" parent="MenuSheet/Margin/Rows/Species"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "AMPHIBIAN"
+
+[node name="Dwarf" type="Button" parent="MenuSheet/Margin/Rows/Species"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "DWARF"
+
+[node name="SeedRow" type="HBoxContainer" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MenuSheet/Margin/Rows/SeedRow"]
+layout_mode = 2
+text = "Seed"
+
+[node name="SeedValue" type="SpinBox" parent="MenuSheet/Margin/Rows/SeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 2147483647.0
+value = 7.0
+allow_greater = true
+allow_lesser = true
+
+[node name="ResetRow" type="HBoxContainer" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+
+[node name="Reset" type="Button" parent="MenuSheet/Margin/Rows/ResetRow"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "같은 seed 리셋"
+
+[node name="NewSeed" type="Button" parent="MenuSheet/Margin/Rows/ResetRow"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "새 seed"
+
+[node name="SlotRow" type="HBoxContainer" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+
+[node name="Save" type="Button" parent="MenuSheet/Margin/Rows/SlotRow"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "SAVE SLOT"
+
+[node name="Load" type="Button" parent="MenuSheet/Margin/Rows/SlotRow"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "LOAD SLOT"
+
+[node name="CopySnapshot" type="Button" parent="MenuSheet/Margin/Rows"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "SNAPSHOT JSON 복사"
+
+[node name="Legend" type="Label" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+text = "Legend\n. floor  : stone  = wood  + metal\n, rubble  ~ shallow water  # wall\n@ player  F fire  W wetness\n\nArrow/WASD 이동 · Space/. 대기\n1 불 · 2 물 · 3 방전 · L 로그\nDEBUG OMNISCIENT: 시야 제한 없는 개발 화면"
+
+[node name="Status" type="Label" parent="MenuSheet/Margin/Rows"]
+layout_mode = 2
+text = ""
+
+[node name="Close" type="Button" parent="MenuSheet/Margin/Rows"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "닫기"
+
+[node name="ResetConfirmation" type="ConfirmationDialog" parent="."]
+title = "현재 실행을 버리고 재시작"
+dialog_text = "accepted command journal이 비어 있지 않습니다. 현재 실행을 버리고 species를 변경할까요?"
+ok_button_text = "재시작"
+cancel_button_text = "취소"

@@ -1,34 +1,46 @@
 ; Engine configuration file.
-; Prefer editing this file through the Godot editor after the project is bootstrapped.
+; The simulator remains headless-testable; the main scene is a developer sandbox.
 
 config_version=5
 
 [application]
 
-config/name="Rift Runner Prototype"
-config/features=PackedStringArray("4.6", "GL Compatibility")
-run/main_scene="res://presentation/scenes/main.tscn"
-
-[autoload]
-
-App="*res://app/app.gd"
+config/name="Living World Simulator"
+config/features=PackedStringArray("4.6")
+run/main_scene="res://playtest/playtest_sandbox.tscn"
 
 [display]
 
-window/size/viewport_width=720
-window/size/viewport_height=1280
-window/size/window_width_override=360
-window/size/window_height_override=640
+window/size/viewport_width=450
+window/size/viewport_height=800
+window/size/window_width_override=450
+window/size/window_height_override=800
 window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
-window/handheld/orientation=1
 
-[input_devices]
+[input]
 
-pointing/emulate_mouse_from_touch=true
+move_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":65), Object(InputEventKey,"keycode":4194311)]
+}
+move_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":68), Object(InputEventKey,"keycode":4194313)]
+}
+move_up={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":87), Object(InputEventKey,"keycode":4194320)]
+}
+move_down={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":83), Object(InputEventKey,"keycode":4194322)]
+}
+wait={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":32), Object(InputEventKey,"physical_keycode":46)]
+}
 
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-textures/default_filters/use_nearest_mipmap_filter=false

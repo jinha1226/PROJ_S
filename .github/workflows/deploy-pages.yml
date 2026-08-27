@@ -16,14 +16,16 @@ concurrency:
 
 env:
   GODOT_VERSION: 4.6.2
+  XDG_CONFIG_HOME: /tmp/godot-config
   XDG_DATA_HOME: /tmp/godot-data
+  XDG_CACHE_HOME: /tmp/godot-cache
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download Godot and Web templates
         shell: bash
@@ -42,7 +44,7 @@ jobs:
         run: ./godot --headless --path . --editor --quit
 
       - name: Run headless tests
-        run: ./godot --headless --path . --script res://tests/test_runner.gd
+        run: ./godot --headless --path . --script res://tests/run_tests.gd
 
       - name: Export Web build
         shell: bash
@@ -59,7 +61,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload Web artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: build/web
 
