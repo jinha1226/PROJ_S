@@ -22,6 +22,7 @@ var command_journal: Array[Dictionary] = []
 var selected_lead_id: int = -1
 var _status_reason := "reset"
 var _last_result = null
+var _last_step_event_start: int = 0
 
 func _init(p_world_seed: int = DEFAULT_WORLD_SEED, p_personality_seed: Variant = DEFAULT_PERSONALITY_SEED) -> void:
 	reset_lab(p_world_seed, int(p_personality_seed) if p_personality_seed is int else DEFAULT_PERSONALITY_SEED)
@@ -31,7 +32,8 @@ func reset_lab(p_world_seed: int, p_personality_seed: int) -> bool:
 	if candidate == null or not _bootstrap_lab(candidate, p_personality_seed):
 		_status_reason = "lab_bootstrap_failed"; return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
-	command_journal = []; _last_result = null; _status_reason = "reset"
+	command_journal = []; _last_result = null; _last_step_event_start = candidate.world.events.size()
+	_status_reason = "reset"
 	var roster: Array[Dictionary] = lead_roster(); selected_lead_id = int(roster[0].entity_id) if not roster.is_empty() else -1
 	return true
 
@@ -50,6 +52,50 @@ func lab_status() -> Dictionary:
 		"session_format_version": SESSION_FORMAT_VERSION}.duplicate(true)
 
 func world_status() -> Dictionary: return lab_status()
+
+func progress_status() -> Dictionary:
+	if sim == null: return {"schema_version": 1, "ok": false, "reason": "session_not_initialized"}
+	var active_leads := 0
+	var alive_threats := 0
+	var alive_allies := 0
+	for entity_id in _actor_ids("LEAD"):
+		var lead_state = sim.world.agent_states[entity_id]
+		if sim.world.entities[entity_id].is_alive() and lead_state.encounter_status == "ACTIVE":
+			active_leads += 1
+	for entity_id in _actor_ids("MELEE_THREAT"):
+		if sim.world.entities[entity_id].is_alive(): alive_threats += 1
+	for entity_id in _actor_ids("PASSIVE_ALLY"):
+		if sim.world.entities[entity_id].is_alive(): alive_allies += 1
+	var resolved_trials := 0
+	for trial_slot in range(4):
+		var lead_id := _actor_id_for_slot("LEAD", trial_slot)
+		var threat_id := _actor_id_for_slot("MELEE_THREAT", trial_slot)
+		if lead_id <= 0 or threat_id <= 0: continue
+		var lead_active: bool = sim.world.entities[lead_id].is_alive() \
+			and sim.world.agent_states[lead_id].encounter_status == "ACTIVE"
+		if not lead_active or not sim.world.entities[threat_id].is_alive(): resolved_trials += 1
+	var last_advance := {"available": _last_result != null, "accepted": false, "reason": "",
+		"processed_ticks": 0, "emitted_event_count": 0, "start_time": sim.world.world_time,
+		"end_time": sim.world.world_time, "latest_salient_event": {}}
+	if _last_result != null:
+		last_advance.accepted = bool(_last_result.accepted)
+		last_advance.reason = str(_last_result.reason)
+		last_advance.start_time = int(_last_result.start_time)
+		last_advance.end_time = int(_last_result.end_time)
+		if _last_result.accepted:
+			last_advance.processed_ticks = int((_last_result.end_time - _last_result.start_time) / 100)
+			var event_start := clampi(_last_step_event_start, 0, sim.world.events.size())
+			last_advance.emitted_event_count = sim.world.events.size() - event_start
+			last_advance.latest_salient_event = _latest_salient_event(event_start)
+	var phase_id := str(sim.world.encounter_lab.phase)
+	var display_phase_id := "RESOLVED" if phase_id == "ACTIVE" and resolved_trials >= 4 else phase_id
+	return {"schema_version": 1, "ok": true, "tick_index": int(sim.world.world_time / 100),
+		"world_time": sim.world.world_time, "step_index": sim.world.step_index,
+		"phase_id": phase_id, "display_phase_id": display_phase_id,
+		"phase_label": _phase_label(display_phase_id), "total_trials": 4,
+		"active_trials": 4 - resolved_trials, "resolved_trials": resolved_trials,
+		"active_leads": active_leads, "alive_threats": alive_threats,
+		"alive_allies": alive_allies, "last_advance": last_advance}.duplicate(true)
 
 func snapshot_json() -> String:
 	return "" if sim == null else JSON.stringify(sim.snapshot())
@@ -130,8 +176,37 @@ func _event_log_message(event) -> String:
 func _event_entity_name(entity_id: int) -> String:
 	if entity_id <= 0: return "-"
 	if sim != null and sim.world.entities.has(entity_id):
+		var state = sim.world.agent_states.get(entity_id)
+		if state != null and state.trial_slot >= 0:
+			var role_label := str({"LEAD": "주인공", "PASSIVE_ALLY": "동료",
+				"MELEE_THREAT": "고블린"}.get(state.controller_kind, ""))
+			if not role_label.is_empty(): return "%s %d" % [role_label, state.trial_slot + 1]
 		return str(sim.world.entities[entity_id].display_name)
 	return "#%d" % entity_id
+
+func _phase_label(phase_id: String) -> String:
+	return str({"ARMED": "조우 대기", "ACTIVE": "전투 진행", "RESOLVED": "결과 확정",
+		"COMPLETE": "실험 종료"}.get(phase_id, phase_id))
+
+func _latest_salient_event(start_index: int) -> Dictionary:
+	var selected = null
+	var selected_priority := -1
+	for event_index in range(start_index, sim.world.events.size()):
+		var event = sim.world.events[event_index]
+		var priority := _salient_event_priority(str(event.type))
+		if priority >= selected_priority:
+			selected = event
+			selected_priority = priority
+	if selected == null: return {}
+	return {"event_id": selected.id, "world_time": selected.world_time, "type": selected.type,
+		"message": _event_log_message(selected)}
+
+func _salient_event_priority(event_type: String) -> int:
+	return int({"entity.died": 100, "encounter.actor_escaped": 95,
+		"combat.physical_damage": 90, "action.melee_attack": 80,
+		"encounter.threat_appeared": 75, "ai.mental_mode_changed": 70,
+		"action.freeze": 68, "action.move": 60, "perception.threat_noticed": 55,
+		"ai.decision_selected": 50, "action.hold": 10}.get(event_type, 20))
 
 func _reaction_log_label(reaction_id: String) -> String:
 	return str({"ENGAGE": "교전", "PROTECT": "보호", "FLEE": "후퇴", "TAKE_COVER": "엄폐",
@@ -238,7 +313,9 @@ func advance_ticks(count: int = 1) -> Dictionary:
 	# canonical observer sentinel also lets the surviving chambers continue when
 	# the first lead dies or escapes.
 	var command = CommandScript.wait_for(count * 100, -1)
-	var result = sim.step(command); _last_result = result; _status_reason = result.reason
+	var event_start: int = sim.world.events.size()
+	var result = sim.step(command); _last_result = result; _last_step_event_start = event_start
+	_status_reason = result.reason
 	if result.accepted: command_journal.append(command.to_dict().duplicate(true))
 	return {"ok": result.accepted, "reason": result.reason, "processed_step_index": result.processed_step_index,
 		"start_time": result.start_time, "end_time": result.end_time, "timeline": result.timeline.duplicate(true),
@@ -293,7 +370,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	sim = restored; world_seed = checked_world_seed; personality_seed = checked_personality_seed
 	command_journal.clear()
 	for command_row in canonical_journal: command_journal.append(command_row.duplicate(true))
-	_status_reason = "loaded"; _last_result = null
+	_status_reason = "loaded"; _last_result = null; _last_step_event_start = restored.world.events.size()
 	var roster: Array[Dictionary] = lead_roster(); selected_lead_id = int(roster[0].entity_id) if not roster.is_empty() else -1
 	return {"ok": true, "reason": "ok"}
 
@@ -330,6 +407,11 @@ func _actor_ids(kind: String) -> Array:
 		if sim.world.agent_states[id].controller_kind == kind: ids.append(id)
 	ids.sort_custom(func(a, b): return sim.world.agent_states[a].trial_slot < sim.world.agent_states[b].trial_slot)
 	return ids
+
+func _actor_id_for_slot(kind: String, trial_slot: int) -> int:
+	for entity_id in _actor_ids(kind):
+		if sim.world.agent_states[entity_id].trial_slot == trial_slot: return entity_id
+	return -1
 
 func _glyph(state) -> String:
 	if state == null: return ""

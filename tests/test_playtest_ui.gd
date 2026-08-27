@@ -33,6 +33,49 @@ func test_world_event_log_updates_without_blocking_progress() -> bool:
 	sandbox.free()
 	return finish()
 
+func test_progress_banner_and_auto_control_make_each_advance_visible() -> bool:
+	var sandbox = Scene.instantiate()
+	var session = Session.new(7, 7701)
+	sandbox.initialize_for_headless_test(session)
+	check(sandbox.progress_banner.text.contains("턴 0") and sandbox.progress_banner.text.contains("1턴을 누르면"),
+		"initial action is explicit")
+	check_eq(sandbox.auto_button.text, "자동 시작", "auto starts with a readable state")
+	sandbox._advance(1)
+	check(sandbox.progress_banner.text.contains("턴 1") \
+		and sandbox.progress_banner.text.contains("방금 +1턴") \
+		and sandbox.progress_banner.text.contains("사건"), "advance result stays visible")
+	sandbox._toggle_auto()
+	check(sandbox.auto_running and sandbox.auto_button.text == "자동 정지" \
+		and sandbox.progress_banner.text.contains("자동 켜짐"), "running auto state is explicit")
+	sandbox._toggle_auto()
+	check(not sandbox.auto_running and sandbox.auto_button.text == "자동 시작", "stopped auto state is explicit")
+	sandbox._save()
+	check(sandbox.progress_banner.text.contains("저장 완료"), "save result is visible")
+	sandbox._load()
+	check(sandbox.progress_banner.text.contains("불러오기 완료"), "load result is visible")
+	sandbox.free()
+	return finish()
+
+func test_all_resolved_trials_stop_progress_controls_without_core_mutation() -> bool:
+	var sandbox = Scene.instantiate()
+	var session = Session.new()
+	sandbox.initialize_for_headless_test(session)
+	sandbox.auto_running = true
+	for _attempt in range(10):
+		if session.progress_status().active_trials == 0: break
+		sandbox._advance(10)
+	var status: Dictionary = session.progress_status()
+	check_eq(status.display_phase_id, "RESOLVED", "zero remaining rooms use resolved presentation phase")
+	check(sandbox.progress_banner.text.contains("결과 확정") \
+		and sandbox.progress_banner.text.contains("결과가 모두 정해졌습니다"), "completion is unmistakable")
+	check(not sandbox.auto_running and sandbox.one_turn_button.disabled \
+		and sandbox.ten_turn_button.disabled and sandbox.auto_button.disabled,
+		"resolved comparison cannot silently keep advancing")
+	sandbox._save()
+	check(sandbox.progress_banner.text.contains("저장 완료"), "resolved state still reports save result")
+	sandbox.free()
+	return finish()
+
 func test_character_atlas_maps_every_lab_role_without_touching_sim_state() -> bool:
 	var sandbox = Scene.instantiate()
 	var session = Session.new(7, 771)
@@ -49,6 +92,10 @@ func test_character_atlas_maps_every_lab_role_without_touching_sim_state() -> bo
 		"unknown actors keep glyph fallback")
 	check_eq(sandbox.grid.actor_frame_index({"controller_kind": "LEAD", "trial_slot": 0,
 		"is_player": true}), -1, "nested player keeps legacy glyph fallback")
+	var compact_sprite: Vector2 = sandbox.grid.actor_sprite_size(23.0)
+	check(compact_sprite.y >= 36.0 and compact_sprite.y > 24.0, "compact actor is visibly larger than old cap")
+	var full_sprite: Vector2 = sandbox.grid.actor_sprite_size(28.0)
+	check_eq(full_sprite.y, 44.0, "full grid actor uses the complete source frame")
 	var snapshot := session.snapshot_json()
 	sandbox.grid.queue_redraw()
 	check_eq(session.snapshot_json(), snapshot, "presentation mapping leaves deterministic world untouched")

@@ -28,6 +28,42 @@ func test_session_inspect_preview_commit_and_status_are_authoritative() -> bool:
 	check(after.last_decision_event_id > 0 and after.candidates.size() == 6, "trace and all mode gates exposed")
 	return finish()
 
+func test_progress_status_separates_turns_commands_and_salient_events() -> bool:
+	var session = PlaytestSession.new(1021, 5021)
+	var initial: Dictionary = session.progress_status()
+	check_eq(initial.tick_index, 0, "initial turn")
+	check_eq(initial.step_index, 0, "initial command count")
+	check_eq(initial.phase_label, "조우 대기", "readable initial phase")
+	check_eq(initial.active_trials, 4, "four unresolved trials")
+	check(not initial.last_advance.available, "no fabricated initial advance")
+	var before := session.snapshot_json()
+	initial.active_trials = 0; initial.last_advance.latest_salient_event["message"] = "tampered"
+	check_eq(session.snapshot_json(), before, "progress DTO is detached")
+	check(session.advance_ticks(1).ok, "first visible turn")
+	var first: Dictionary = session.progress_status()
+	check_eq(first.tick_index, 1, "one simulation turn")
+	check_eq(first.step_index, 1, "one external command")
+	check_eq(first.phase_label, "전투 진행", "activation is visible")
+	check_eq(first.last_advance.processed_ticks, 1, "one processed tick")
+	check(first.last_advance.emitted_event_count > 0, "event count reported")
+	check(not first.last_advance.latest_salient_event.is_empty() \
+		and str(first.last_advance.latest_salient_event.message).contains("고블린"),
+		"salient Korean event reported")
+	check(session.advance_ticks(10).ok, "ten visible turns")
+	var tenth: Dictionary = session.progress_status()
+	check_eq(tenth.tick_index, 11, "world turn count accumulates")
+	check_eq(tenth.step_index, 2, "ten-turn batch remains one command")
+	check_eq(tenth.last_advance.processed_ticks, 10, "batch size is explicit")
+	var resolved_session = PlaytestSession.new()
+	for _attempt in range(10):
+		if resolved_session.progress_status().active_trials == 0: break
+		check(resolved_session.advance_ticks(10).ok, "default comparison continues to outcome")
+	var resolved: Dictionary = resolved_session.progress_status()
+	check_eq(resolved.active_trials, 0, "all chamber outcomes become decided")
+	check_eq(resolved.display_phase_id, "RESOLVED", "presentation phase cannot contradict zero rooms")
+	check_eq(resolved.phase_label, "결과 확정", "resolved phase is readable")
+	return finish()
+
 func test_session_element_commands_and_returned_results_are_detached() -> bool:
 	var session = PlaytestSession.new(103, 503)
 	check(session.advance_ticks(1).ok, "activation")

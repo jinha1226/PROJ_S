@@ -9,6 +9,7 @@ const MAX_CELL_SIZE := 28.0
 const CHARACTER_ATLAS: Texture2D = preload("res://assets/sprites/character_atlas.png")
 const CHARACTER_FRAME_SIZE := Vector2i(36, 44)
 const CHARACTER_ATLAS_COLUMNS := 3
+const ACTOR_HEIGHT_IN_TILES := 1.6
 
 const TERRAIN_COLORS := {
 	"floor": Color("#505762"),
@@ -138,6 +139,16 @@ func actor_frame_index(entity: Dictionary) -> int:
 	return -1
 
 
+func actor_sprite_size(cell_size: float) -> Vector2:
+	if cell_size <= 0.0:
+		return Vector2.ZERO
+	var sprite_height := minf(float(CHARACTER_FRAME_SIZE.y), floorf(cell_size * ACTOR_HEIGHT_IN_TILES))
+	if sprite_height < 8.0:
+		return Vector2.ZERO
+	var sprite_width := roundf(sprite_height * float(CHARACTER_FRAME_SIZE.x) / float(CHARACTER_FRAME_SIZE.y))
+	return Vector2(sprite_width, sprite_height)
+
+
 func _gui_input(event: InputEvent) -> void:
 	var pressed := false
 	var pointer_position := Vector2.ZERO
@@ -162,6 +173,7 @@ func _draw() -> void:
 	var cell_size := cell_size_px()
 	if cell_size <= 0.0:
 		return
+	var visible_rows: Array[Dictionary] = []
 	for local_y in range(GRID_DIAMETER):
 		for local_x in range(GRID_DIAMETER):
 			var local_cell := Vector2i(local_x, local_y)
@@ -175,10 +187,21 @@ func _draw() -> void:
 				draw_rect(cell_rect, Color("#030508"), true)
 				continue
 			var cell: Dictionary = _cells[key]
-			_draw_cell(cell_rect, world_position, cell)
+			visible_rows.append({"cell_rect": cell_rect, "world_position": world_position, "cell": cell})
+			_draw_cell_base(cell_rect, cell)
+	# Static terrain glyphs are drawn before actors. Actors use their own pass so
+	# their feet remain tied to a tile while the portrait can overlap tiles above.
+	for row in visible_rows:
+		if not _cell_has_actor_content(row.cell, row.world_position):
+			_draw_cell_content(row.cell_rect, row.world_position, row.cell)
+	for row in visible_rows:
+		if _cell_has_actor_content(row.cell, row.world_position):
+			_draw_cell_content(row.cell_rect, row.world_position, row.cell)
+	for row in visible_rows:
+		_draw_cell_overlay(row.cell_rect, row.world_position, row.cell)
 
 
-func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) -> void:
+func _draw_cell_base(cell_rect: Rect2, cell: Dictionary) -> void:
 	var terrain_id := str(cell.get("terrain_id", cell.get("terrain", "floor")))
 	var base_color: Color = TERRAIN_COLORS.get(terrain_id, Color("#3e4650"))
 	draw_rect(cell_rect.grow(-1.0), base_color, true)
@@ -194,6 +217,20 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 		var fire_alpha: float = 0.25 + 0.45 * clampf(float(fire) / 100.0, 0.0, 1.0)
 		draw_rect(cell_rect.grow(-3.0), Color(0.95, 0.2, 0.06, fire_alpha), true)
 
+
+func _cell_has_actor_content(cell: Dictionary, world_position: Vector2i) -> bool:
+	if bool(cell.get("has_corpse", false)) or bool(cell.get("is_player", false)) \
+			or (_has_player and world_position == _player_position) \
+			or not str(cell.get("entity_glyph", "")).is_empty():
+		return true
+	var entities: Array = cell.get("entities", [])
+	for entity in entities:
+		if entity is Dictionary: return true
+	return false
+
+
+func _draw_cell_content(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) -> void:
+	var terrain_id := str(cell.get("terrain_id", cell.get("terrain", "floor")))
 	var glyph := str(cell.get("glyph", TERRAIN_GLYPHS.get(terrain_id, "?")))
 	if bool(cell.get("has_corpse", false)):
 		glyph = "x"
@@ -235,6 +272,11 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 		var glyph_pos := cell_rect.position + Vector2((cell_rect.size.x - glyph_size.x) * 0.5, (cell_rect.size.y + glyph_size.y) * 0.5 - 2.0)
 		draw_string(font, glyph_pos, glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color("#f5f7fa"))
 
+
+func _draw_cell_overlay(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) -> void:
+	var font := get_theme_default_font()
+	var fire := int(cell.get("fire_intensity", cell.get("fire", 0)))
+	var wetness := int(cell.get("wetness", 0))
 	if fire > 0:
 		draw_string(font, cell_rect.position + Vector2(3, 11), "F%d" % fire, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color("#fff0d5"))
 	elif wetness > 0:
@@ -262,19 +304,21 @@ func _draw_actor_sprite(cell_rect: Rect2, entity: Dictionary) -> bool:
 	var source_rect := Rect2(
 		Vector2(
 			(frame_index % CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.x,
-			(frame_index / CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.y
+			floori(float(frame_index) / float(CHARACTER_ATLAS_COLUMNS)) * CHARACTER_FRAME_SIZE.y
 		),
 		Vector2(CHARACTER_FRAME_SIZE)
 	)
-	var sprite_height := minf(24.0, floorf(cell_rect.size.y - 2.0))
-	if sprite_height < 8.0:
+	var sprite_size := actor_sprite_size(cell_rect.size.x)
+	if sprite_size == Vector2.ZERO:
 		return false
-	var sprite_width := roundf(sprite_height * float(CHARACTER_FRAME_SIZE.x) / float(CHARACTER_FRAME_SIZE.y))
-	var sprite_size := Vector2(sprite_width, sprite_height)
 	var sprite_position := Vector2(
 		roundf(cell_rect.get_center().x - sprite_size.x * 0.5),
-		roundf(cell_rect.end.y - sprite_size.y - 1.0)
+		roundf(cell_rect.end.y - sprite_size.y + 1.0)
 	)
+	var shadow_half_width := minf(cell_rect.size.x * 0.34, sprite_size.x * 0.34)
+	var shadow_y := roundf(cell_rect.end.y - 2.0)
+	draw_line(Vector2(cell_rect.get_center().x - shadow_half_width, shadow_y),
+		Vector2(cell_rect.get_center().x + shadow_half_width, shadow_y), Color(0.02, 0.03, 0.05, 0.65), 3.0)
 	draw_texture_rect_region(CHARACTER_ATLAS, Rect2(sprite_position, sprite_size), source_rect)
 	if str(entity.get("controller_kind", "")) == "LEAD":
 		_draw_lead_badge(cell_rect, int(entity.get("trial_slot", -1)))
