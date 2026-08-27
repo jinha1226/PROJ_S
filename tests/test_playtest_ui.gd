@@ -33,6 +33,28 @@ func test_world_event_log_updates_without_blocking_progress() -> bool:
 	sandbox.free()
 	return finish()
 
+func test_character_atlas_maps_every_lab_role_without_touching_sim_state() -> bool:
+	var sandbox = Scene.instantiate()
+	var session = Session.new(7, 771)
+	sandbox.initialize_for_headless_test(session)
+	check(sandbox.grid.CHARACTER_ATLAS != null, "character atlas loads")
+	check_eq(Vector2i(sandbox.grid.CHARACTER_ATLAS.get_size()), Vector2i(108, 88),
+		"six-frame mobile atlas dimensions")
+	for trial_slot in range(4):
+		check_eq(sandbox.grid.actor_frame_index({"controller_kind": "LEAD", "trial_slot": trial_slot}),
+			trial_slot, "lead %d has a distinct frame" % (trial_slot + 1))
+	check_eq(sandbox.grid.actor_frame_index({"controller_kind": "PASSIVE_ALLY"}), 4, "ally frame")
+	check_eq(sandbox.grid.actor_frame_index({"controller_kind": "MELEE_THREAT"}), 5, "goblin frame")
+	check_eq(sandbox.grid.actor_frame_index({"controller_kind": "UNKNOWN", "glyph": "?"}), -1,
+		"unknown actors keep glyph fallback")
+	check_eq(sandbox.grid.actor_frame_index({"controller_kind": "LEAD", "trial_slot": 0,
+		"is_player": true}), -1, "nested player keeps legacy glyph fallback")
+	var snapshot := session.snapshot_json()
+	sandbox.grid.queue_redraw()
+	check_eq(session.snapshot_json(), snapshot, "presentation mapping leaves deterministic world untouched")
+	sandbox.free()
+	return finish()
+
 func test_grid_has_exact_world_coordinate_mapping() -> bool:
 	var sandbox = Scene.instantiate()
 	sandbox.initialize_for_headless_test(Session.new(7, 78))

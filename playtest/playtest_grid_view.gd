@@ -6,6 +6,9 @@ signal world_cell_pressed(position: Vector2i)
 const GRID_RADIUS := 7
 const GRID_DIAMETER := GRID_RADIUS * 2 + 1
 const MAX_CELL_SIZE := 28.0
+const CHARACTER_ATLAS: Texture2D = preload("res://assets/sprites/character_atlas.png")
+const CHARACTER_FRAME_SIZE := Vector2i(36, 44)
+const CHARACTER_ATLAS_COLUMNS := 3
 
 const TERRAIN_COLORS := {
 	"floor": Color("#505762"),
@@ -39,6 +42,7 @@ var selected_trial_slot: int = -1
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_ALL
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	resized.connect(queue_redraw)
 
 
@@ -120,6 +124,20 @@ func visible_cell_count() -> int:
 	return _cells.size()
 
 
+func actor_frame_index(entity: Dictionary) -> int:
+	if bool(entity.get("is_player", false)):
+		return -1
+	match str(entity.get("controller_kind", "")):
+		"LEAD":
+			var trial_slot := int(entity.get("trial_slot", -1))
+			return trial_slot if trial_slot >= 0 and trial_slot < 4 else -1
+		"PASSIVE_ALLY":
+			return 4
+		"MELEE_THREAT":
+			return 5
+	return -1
+
+
 func _gui_input(event: InputEvent) -> void:
 	var pressed := false
 	var pointer_position := Vector2.ZERO
@@ -180,14 +198,19 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 	if bool(cell.get("has_corpse", false)):
 		glyph = "x"
 	var entities: Array = cell.get("entities", [])
+	var sprite_entity: Dictionary = {}
+	var has_entity_player := false
 	for entity in entities:
 		if not entity is Dictionary:
 			continue
+		if sprite_entity.is_empty() and bool(entity.get("alive", true)) and actor_frame_index(entity) >= 0:
+			sprite_entity = entity
 		if not str(entity.get("glyph", "")).is_empty():
 			glyph = str(entity.glyph)
 			break
 		if bool(entity.get("is_player", false)):
 			glyph = "@"
+			has_entity_player = true
 			break
 		if not str(entity.get("role_glyph", "")).is_empty():
 			glyph = str(entity.get("role_glyph"))
@@ -198,13 +221,19 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 			glyph = str(entity.get("kind", "e")).left(1).to_lower()
 	if cell.has("entity_glyph") and not str(cell.entity_glyph).is_empty():
 		glyph = str(cell.entity_glyph)
-	if bool(cell.get("is_player", false)) or (_has_player and world_position == _player_position):
+	var is_player_cell := has_entity_player or bool(cell.get("is_player", false)) \
+		or (_has_player and world_position == _player_position)
+	if is_player_cell:
 		glyph = "@"
 	var font := get_theme_default_font()
-	var font_size := int(clamp(cell_rect.size.x * 0.48, 13.0, 22.0))
-	var glyph_size := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var glyph_pos := cell_rect.position + Vector2((cell_rect.size.x - glyph_size.x) * 0.5, (cell_rect.size.y + glyph_size.y) * 0.5 - 2.0)
-	draw_string(font, glyph_pos, glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color("#f5f7fa"))
+	var actor_drawn := false
+	if not is_player_cell and not sprite_entity.is_empty():
+		actor_drawn = _draw_actor_sprite(cell_rect, sprite_entity)
+	if not actor_drawn:
+		var font_size := int(clamp(cell_rect.size.x * 0.48, 13.0, 22.0))
+		var glyph_size := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var glyph_pos := cell_rect.position + Vector2((cell_rect.size.x - glyph_size.x) * 0.5, (cell_rect.size.y + glyph_size.y) * 0.5 - 2.0)
+		draw_string(font, glyph_pos, glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color("#f5f7fa"))
 
 	if fire > 0:
 		draw_string(font, cell_rect.position + Vector2(3, 11), "F%d" % fire, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color("#fff0d5"))
@@ -224,6 +253,45 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 		var local := _trial_local(world_position)
 		if local.x in [0, 5] or local.y in [0, 5]:
 			draw_rect(cell_rect.grow(-0.5), Color("#f2c94c"), false, 1.5)
+
+
+func _draw_actor_sprite(cell_rect: Rect2, entity: Dictionary) -> bool:
+	var frame_index := actor_frame_index(entity)
+	if frame_index < 0 or CHARACTER_ATLAS == null:
+		return false
+	var source_rect := Rect2(
+		Vector2(
+			(frame_index % CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.x,
+			(frame_index / CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.y
+		),
+		Vector2(CHARACTER_FRAME_SIZE)
+	)
+	var sprite_height := minf(24.0, floorf(cell_rect.size.y - 2.0))
+	if sprite_height < 8.0:
+		return false
+	var sprite_width := roundf(sprite_height * float(CHARACTER_FRAME_SIZE.x) / float(CHARACTER_FRAME_SIZE.y))
+	var sprite_size := Vector2(sprite_width, sprite_height)
+	var sprite_position := Vector2(
+		roundf(cell_rect.get_center().x - sprite_size.x * 0.5),
+		roundf(cell_rect.end.y - sprite_size.y - 1.0)
+	)
+	draw_texture_rect_region(CHARACTER_ATLAS, Rect2(sprite_position, sprite_size), source_rect)
+	if str(entity.get("controller_kind", "")) == "LEAD":
+		_draw_lead_badge(cell_rect, int(entity.get("trial_slot", -1)))
+	return true
+
+
+func _draw_lead_badge(cell_rect: Rect2, trial_slot: int) -> void:
+	if trial_slot < 0 or trial_slot >= 4 or cell_rect.size.x < 18.0:
+		return
+	var center := Vector2(roundf(cell_rect.position.x + 5.0), roundf(cell_rect.position.y + 5.0))
+	draw_circle(center, 4.0, Color("#101722"))
+	draw_circle(center, 4.0, Color("#f2c94c"), false, 1.0)
+	var label := str(trial_slot + 1)
+	var font := get_theme_default_font()
+	var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8)
+	draw_string(font, center + Vector2(-label_size.x * 0.5, label_size.y * 0.38),
+		label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color("#ffffff"))
 
 
 func _trial_slot(position: Vector2i) -> int:
