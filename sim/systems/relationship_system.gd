@@ -2,6 +2,7 @@ class_name RelationshipSystem
 extends RefCounted
 
 const PersonalRelationScript = preload("res://sim/personal_relation.gd")
+const FixedPointScript = preload("res://sim/fixed_point.gd")
 const TRUST_DELTA_LIMIT := 40
 const FEAR_DELTA_LIMIT := 30
 
@@ -22,11 +23,11 @@ func record_aid(observer_id: int, helper_id: int, source_event_id: int, magnitud
 	var amount := clampi(magnitude, 1, 100)
 	relation.gratitude = clampi(relation.gratitude + amount, 0, 100)
 	relation.personal_trust_delta = clampi(
-		relation.personal_trust_delta + ceili(float(amount) / 10.0),
+		relation.personal_trust_delta + FixedPointScript.trunc_div(amount + 9, 10),
 		-TRUST_DELTA_LIMIT, TRUST_DELTA_LIMIT
 	)
 	relation.personal_fear_delta = clampi(
-		relation.personal_fear_delta - floori(float(amount) / 20.0),
+		relation.personal_fear_delta - FixedPointScript.trunc_div(amount, 20),
 		-FEAR_DELTA_LIMIT, FEAR_DELTA_LIMIT
 	)
 	world.emit_event(
@@ -47,11 +48,11 @@ func record_harm(observer_id: int, attacker_id: int, source_event_id: int, magni
 	var amount := clampi(magnitude, 1, 100)
 	relation.grievance = clampi(relation.grievance + amount, 0, 100)
 	relation.personal_trust_delta = clampi(
-		relation.personal_trust_delta - ceili(float(amount) / 5.0),
+		relation.personal_trust_delta - FixedPointScript.trunc_div(amount + 4, 5),
 		-TRUST_DELTA_LIMIT, TRUST_DELTA_LIMIT
 	)
 	relation.personal_fear_delta = clampi(
-		relation.personal_fear_delta + ceili(float(amount) / 4.0),
+		relation.personal_fear_delta + FixedPointScript.trunc_div(amount + 3, 4),
 		-FEAR_DELTA_LIMIT, FEAR_DELTA_LIMIT
 	)
 	world.emit_event(
@@ -81,7 +82,8 @@ func effective_relation(observer_id: int, subject_id: int) -> Dictionary:
 	var trust := clampi(int(base["base_trust"]) + trust_delta, -100, 100)
 	var fear := clampi(int(base["base_fear"]) + fear_delta, 0, 100)
 	var hostility := clampi(
-		int(base["base_hostility"]) + floori(float(grievance) / 5.0) - floori(float(gratitude) / 10.0),
+		int(base["base_hostility"]) + FixedPointScript.trunc_div(grievance, 5) \
+			- FixedPointScript.trunc_div(gratitude, 10),
 		0, 100
 	)
 	return {
@@ -90,13 +92,25 @@ func effective_relation(observer_id: int, subject_id: int) -> Dictionary:
 		"hostility": hostility,
 		"gratitude": gratitude,
 		"grievance": grievance,
+		"species_base": base.duplicate(true),
+		"personal": {"trust_delta": trust_delta, "fear_delta": fear_delta,
+			"gratitude": gratitude, "grievance": grievance},
 		"disposition": _disposition(trust, fear, hostility),
 	}
 
 
 func _valid_interaction(observer_id: int, subject_id: int, source_event_id: int) -> bool:
-	return (observer_id != subject_id and world.entities.has(observer_id)
-		and world.entities.has(subject_id) and world.event_by_id(source_event_id) != null)
+	if observer_id == subject_id or not world.entities.has(observer_id) \
+			or not world.entities.has(subject_id) or world.event_by_id(source_event_id) == null:
+		return false
+	var observer_state = world.agent_states.get(observer_id)
+	var subject_state = world.agent_states.get(subject_id)
+	if observer_state != null and subject_state != null \
+			and world.entities[observer_id].tags.has("lab_actor") \
+			and world.entities[subject_id].tags.has("lab_actor") \
+			and observer_state.trial_slot != subject_state.trial_slot:
+		return false
+	return true
 
 
 func _get_or_create(observer_id: int, subject_id: int):

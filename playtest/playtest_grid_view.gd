@@ -3,9 +3,9 @@ extends Control
 
 signal world_cell_pressed(position: Vector2i)
 
-const GRID_RADIUS := 4
+const GRID_RADIUS := 7
 const GRID_DIAMETER := GRID_RADIUS * 2 + 1
-const MAX_CELL_SIZE := 44.0
+const MAX_CELL_SIZE := 28.0
 
 const TERRAIN_COLORS := {
 	"floor": Color("#505762"),
@@ -33,6 +33,7 @@ var _selection := Vector2i.ZERO
 var _has_selection := false
 var _player_position := Vector2i.ZERO
 var _has_player := false
+var selected_trial_slot: int = -1
 
 
 func _ready() -> void:
@@ -182,9 +183,15 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 	for entity in entities:
 		if not entity is Dictionary:
 			continue
+		if not str(entity.get("glyph", "")).is_empty():
+			glyph = str(entity.glyph)
+			break
 		if bool(entity.get("is_player", false)):
 			glyph = "@"
 			break
+		if not str(entity.get("role_glyph", "")).is_empty():
+			glyph = str(entity.get("role_glyph"))
+			continue
 		if not bool(entity.get("alive", true)):
 			glyph = "x"
 		elif glyph != "x":
@@ -213,6 +220,21 @@ func _draw_cell(cell_rect: Rect2, world_position: Vector2i, cell: Dictionary) ->
 		draw_rect(cell_rect.grow(-2.0), Color("#f1b84b"), false, 1.5)
 	if _has_selection and world_position == _selection:
 		draw_rect(cell_rect.grow(-1.5), Color("#ffd84d"), false, 3.0)
+	if selected_trial_slot >= 0 and _trial_slot(world_position) == selected_trial_slot:
+		var local := _trial_local(world_position)
+		if local.x in [0, 5] or local.y in [0, 5]:
+			draw_rect(cell_rect.grow(-0.5), Color("#f2c94c"), false, 1.5)
+
+
+func _trial_slot(position: Vector2i) -> int:
+	if position.x < 1 or position.x > 13 or position.y < 1 or position.y > 13 or position.x == 7 or position.y == 7:
+		return -1
+	return (1 if position.x >= 8 else 0) + (2 if position.y >= 8 else 0)
+
+
+func _trial_local(position: Vector2i) -> Vector2i:
+	var slot := _trial_slot(position)
+	return position - Vector2i(8 if slot % 2 == 1 else 1, 8 if slot >= 2 else 1)
 
 
 func _position_key(position: Vector2i) -> String:

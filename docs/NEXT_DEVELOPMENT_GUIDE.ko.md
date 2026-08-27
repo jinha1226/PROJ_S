@@ -4,6 +4,8 @@
 
 시간·지형·MOVE·노출 코어는 다음 계약을 만족한 상태에서만 다음 단계의 기반으로 본다.
 
+> 아래의 snapshot v3·4방향 MOVE는 마지막 안정 baseline의 완료 계약이다. 현재 작업 트리의 snapshot v4·8방향·actor cadence는 Phase 3용 미완성 변경이며, 기존 회귀 92개가 다시 모두 통과하기 전에는 완료 상태로 간주하지 않는다.
+
 - 유효한 플레이어 결정 수 `step_index`와 실제 경과 `world_time`이 분리됨
 - 행동은 시작 시 commit되고 `(start, end]` 예약을 완전히 처리한 뒤 정착됨
 - 환경 cadence가 절대시간 100 배수에서 drift 없이 실행됨
@@ -14,19 +16,25 @@
 - MOVE가 시작 시 commit되고 행동 구간의 환경 틱이 새 위치를 봄
 - ExposureSample과 종족 affinity 평가가 세계를 바꾸지 않는 detached projection임
 
-## 고정 개발 순서
+## 현재 고정 개발 순서
 
 ```text
 시간 코어·타임라인 (완료)
 → TerrainRegistry·MOVE (완료)
 → ExposureSample·종족 affinity (완료)
 → Playtest Sandbox 유지·각 단계 시나리오 추가
-→ 범용 안전 타일 선택 AI
-→ 불·물·전기 exposure 연결 확장
-→ 독·DOT
-→ 인지·관계·기억
+→ 던전 성격 반응 실험실 + 8방향 경로 + 15×15 비교 UI (Phase 3)
+→ 한 공간의 파티 조우·관계 기반 보호/이탈
+→ 플레이어 FOV·미니맵·먼 타일 auto-walk
+→ 범용 위험 인지·종족 affinity 기반 안전 경로
+→ 몬스터 먹이·영역·무리 생태
+→ 10명 NPC 자율 마을·일과·욕구
+→ 목격·도움·피해·faction·소문
+→ 독·DOT와 원소 상호작용 확장
 → 동료 1명에서 최대 3명
 ```
+
+Phase 3의 구현 계약과 테스트 기준은 `docs/PHASE3_DUNGEON_PERSONALITY_LAB_IMPLEMENTATION_PROMPT.ko.md`를 단일 기준으로 삼는다. 개인 성향·행동 AI의 연구 근거와 장기 확장 규칙은 `docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다. 마을 구현 문서는 보류된 backlog다. 기존 아래 절 번호는 장기 설계 원칙으로 유지하되, 실제 구현 우선순위는 위 순서를 따른다.
 
 ### 1. TerrainRegistry·MOVE (완료)
 
@@ -37,7 +45,7 @@
 - 동일 시각 다중 actor의 목표 충돌은 아직 player-step 비범위이며, 후속 자율 AI coordinator에서 예약 순서와 독립적인 명시적 동점 규칙을 먼저 고정한다.
 - preview에는 이동 종료 시각과 이미 공개 가능한 예약만 표시한다.
 
-완료 상태: registry v1, 점유 producer/restore 대칭, 네 방향 MOVE, 지형 비용, start-commit, snapshot v3·timeline·JSON 재개 회귀로 고정했다.
+안정 baseline 완료 상태: registry v1, 점유 producer/restore 대칭, 네 방향 MOVE, 지형 비용, start-commit, snapshot v3·timeline·JSON 재개 회귀로 고정했다. 8방향 MOVE와 snapshot v4는 Phase 3 정착 항목이다.
 
 ### 2. ExposureSample·종족 affinity (완료)
 

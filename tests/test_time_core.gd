@@ -68,7 +68,8 @@ func test_preview_is_pure_and_matches_actual_markers() -> bool:
 	check_eq(preview.processed_step_index, 2, "preview next step")
 	check_eq(_marker_signature(preview.timeline), [
 		["action.start", 80, -1], ["system.environment_tick", 100, 1],
-		["system.environment_tick", 200, 1], ["actor.ready", 240, -1]], "preview markers")
+		["system.actor_tick", 100, 2], ["system.environment_tick", 200, 1],
+		["system.actor_tick", 200, 2], ["actor.ready", 240, -1]], "preview markers")
 	var result = sim.step(Command.discharge(Vector2i.ZERO, 40))
 	check_eq(result.time_cost, preview.time_cost, "preview cost parity")
 	check_eq(result.start_time, preview.start_time, "preview start parity")
@@ -103,13 +104,17 @@ func test_wait_boundaries_and_due_at_end_precedes_ready() -> bool:
 		var sim = Simulator.new(1, 1, duration)
 		var result = sim.step(Command.wait_for(duration))
 		var environment_count := 0
+		var actor_count := 0
 		for marker in result.timeline:
 			if marker["kind"] == "system.environment_tick":
 				environment_count += 1
+			elif marker["kind"] == "system.actor_tick": actor_count += 1
 		check_eq(environment_count, duration / 100, "environment count for %d" % duration)
+		check_eq(actor_count, duration / 100, "actor count for %d" % duration)
 		check_eq(result.timeline.back()["at_time"], duration, "ready time")
 		if duration % 100 == 0:
-			check_eq(result.timeline[-2]["kind"], "system.environment_tick", "due before ready")
+			check_eq(result.timeline[-3]["kind"], "system.environment_tick", "environment before actor")
+			check_eq(result.timeline[-2]["kind"], "system.actor_tick", "actor due before ready")
 			check_eq(result.timeline[-2]["at_time"], duration, "due at exact end")
 	return finish()
 
@@ -124,8 +129,9 @@ func test_same_time_schedules_use_priority_then_schedule_id() -> bool:
 		if marker["kind"] == "system.environment_tick":
 			ids.append(marker["schedule_id"])
 	check_eq(ids, [early_id, 1, late_id], "same-time stable order")
-	check_eq(sim.world.scheduled_entries.size(), 1, "one-shots removed")
+	check_eq(sim.world.scheduled_entries.size(), 2, "one-shots removed; canonical repeats remain")
 	check_eq(sim.world.scheduled_entries[0]["due_time"], 200, "repeat drift-free")
+	check_eq(sim.world.scheduled_entries[1]["due_time"], 200, "actor repeat drift-free")
 	return finish()
 
 

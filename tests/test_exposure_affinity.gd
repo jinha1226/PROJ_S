@@ -222,7 +222,7 @@ func test_destination_inspection_reports_terrain_cost_even_when_not_adjacent() -
 	var actor = sim.world.add_entity("human", "Inspector", Vector2i.ZERO, 100, [], "human")
 	var distant = sim.assess_destination(actor.id, Vector2i(2, 0))
 	check(not distant.traversal.accepted, "distant destination is not a legal one-step MOVE")
-	check_eq(distant.traversal.reason, "move_not_cardinal_adjacent", "distant reason")
+	check_eq(distant.traversal.reason, "move_not_adjacent", "distant reason")
 	check_eq([distant.sample.move_time_cost, distant.move_time_cost, distant.speed_tier],
 		[130, 130, "SLOW"], "inspection still reports authoritative terrain timing")
 	var current = sim.assess_destination(actor.id, Vector2i.ZERO)

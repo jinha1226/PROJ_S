@@ -3,371 +3,310 @@ extends RefCounted
 
 const SimulatorScript = preload("res://sim/simulator.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
-const StepResultScript = preload("res://sim/sim_step_result.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
-const ClockScript = preload("res://sim/world_clock.gd")
+const PersonalityRegistry = preload("res://sim/personality_definition_registry.gd")
+const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 
-const ARENA_WIDTH := 32
-const ARENA_HEIGHT := 48
-const DEFAULT_SEED := 7
-const DEFAULT_SPECIES := "human"
-const SAVE_PATH := "user://playtest_slot_v1.json"
+const ARENA_WIDTH := 15
+const ARENA_HEIGHT := 15
+const DEFAULT_WORLD_SEED := 7
+const DEFAULT_PERSONALITY_SEED := 20260827
+const SESSION_FORMAT_VERSION := 2
+const SAVE_PATH := "user://living_world_personality_lab_v2.json"
 
 var sim
-var seed: int = DEFAULT_SEED
-var species_id: String = DEFAULT_SPECIES
-var selection_position: Vector2i = Vector2i.ZERO
+var world_seed: int = DEFAULT_WORLD_SEED
+var personality_seed: int = DEFAULT_PERSONALITY_SEED
 var command_journal: Array[Dictionary] = []
-var _player_id: int = -1
+var selected_lead_id: int = -1
+var _status_reason := "reset"
 var _last_result = null
-var _status_reason: String = "reset"
 
+func _init(p_world_seed: int = DEFAULT_WORLD_SEED, p_personality_seed: Variant = DEFAULT_PERSONALITY_SEED) -> void:
+	reset_lab(p_world_seed, int(p_personality_seed) if p_personality_seed is int else DEFAULT_PERSONALITY_SEED)
 
-func _init(p_seed: int = DEFAULT_SEED, p_species_id: String = DEFAULT_SPECIES) -> void:
-	reset(p_seed, p_species_id)
-
-
-func reset(p_seed: int, p_species_id: String) -> bool:
-	var checked_species := p_species_id.to_lower()
-	if checked_species.is_empty():
-		checked_species = DEFAULT_SPECIES
-	var candidate = SimulatorScript.create(ARENA_WIDTH, ARENA_HEIGHT, p_seed)
-	if candidate == null or not _bootstrap_arena(candidate, checked_species):
-		_status_reason = "arena_bootstrap_failed"
-		return false
-	var player = _find_player_in(candidate)
-	if player == null:
-		_status_reason = "player_missing_after_bootstrap"
-		return false
-	sim = candidate
-	seed = p_seed
-	species_id = checked_species
-	_player_id = player.id
-	selection_position = player.position
-	command_journal = []
-	_last_result = null
-	_status_reason = "reset"
+func reset_lab(p_world_seed: int, p_personality_seed: int) -> bool:
+	var candidate = SimulatorScript.create(ARENA_WIDTH, ARENA_HEIGHT, p_world_seed)
+	if candidate == null or not _bootstrap_lab(candidate, p_personality_seed):
+		_status_reason = "lab_bootstrap_failed"; return false
+	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
+	command_journal = []; _last_result = null; _status_reason = "reset"
+	var roster: Array[Dictionary] = lead_roster(); selected_lead_id = int(roster[0].entity_id) if not roster.is_empty() else -1
 	return true
 
+func reset(p_seed: int, _legacy_species: Variant = null) -> bool:
+	return reset_lab(p_seed, personality_seed)
 
-func player_id() -> int:
-	return _player_id
-
-
-func player_state() -> Dictionary:
-	if sim == null or not sim.world.entities.has(_player_id):
-		return {}
-	var player = sim.world.entities[_player_id]
-	return {
-		"id": player.id, "kind": player.kind, "display_name": player.display_name,
-		"position": [player.position.x, player.position.y], "health": player.health,
-		"max_health": player.max_health, "hp": player.health, "max_hp": player.max_health,
-		"alive": player.is_alive(),
-		"species_id": player.species_id, "faction_id": player.faction_id,
-		"tags": player.tags.duplicate(),
-	}
-
-
-func world_status() -> Dictionary:
-	if sim == null:
-		return {"ok": false, "reason": "session_not_initialized"}
-	var next_environment_time := -1
-	for entry in sim.world.scheduled_entries:
-		if entry["kind"] == "system.environment_tick":
-			next_environment_time = int(entry["due_time"])
-			break
-	return {
-		"ok": true, "reason": _status_reason, "seed": seed,
-		"species_id": species_id, "width": sim.world.width, "height": sim.world.height,
+func lab_status() -> Dictionary:
+	if sim == null: return {"ok": false, "reason": "session_not_initialized"}
+	return {"ok": true, "reason": _status_reason, "world_seed": world_seed,
+		"personality_seed": personality_seed, "width": sim.world.width, "height": sim.world.height,
 		"step_index": sim.world.step_index, "world_time": sim.world.world_time,
-		"next_environment_time": next_environment_time,
-		"calendar": ClockScript.project(sim.world.world_time).duplicate(true),
-		"command_count": command_journal.size(), "player": player_state(),
-		"selection_position": [selection_position.x, selection_position.y],
-	}
+		"phase": sim.world.encounter_lab.phase, "selected_lead_id": selected_lead_id,
+		"command_count": command_journal.size(),
+		"ruleset_version": sim.world.RULESET_VERSION,
+		"snapshot_version": sim.world.SNAPSHOT_VERSION,
+		"session_format_version": SESSION_FORMAT_VERSION}.duplicate(true)
 
-
-func select_position(position: Vector2i) -> bool:
-	if sim == null or not sim.world.in_bounds(position):
-		return false
-	selection_position = position
-	return true
-
-
-func view_visible_cells(radius: int = 4) -> Array[Dictionary]:
-	var rows: Array[Dictionary] = []
-	if sim == null or radius < 0:
-		return rows
-	var checked_radius := mini(radius, 4)
-	var player_data := player_state()
-	if player_data.is_empty():
-		return rows
-	var player_position := Vector2i(player_data.position[0], player_data.position[1])
-	var diameter := checked_radius * 2 + 1
-	var minimum_center_x := mini(checked_radius, sim.world.width - 1)
-	var maximum_center_x := maxi(minimum_center_x, sim.world.width - checked_radius - 1)
-	var minimum_center_y := mini(checked_radius, sim.world.height - 1)
-	var maximum_center_y := maxi(minimum_center_y, sim.world.height - checked_radius - 1)
-	var center := Vector2i(
-		clampi(player_position.x, minimum_center_x, maximum_center_x),
-		clampi(player_position.y, minimum_center_y, maximum_center_y))
-	var start := center - Vector2i(checked_radius, checked_radius)
-	for local_y in range(diameter):
-		for local_x in range(diameter):
-			var position := start + Vector2i(local_x, local_y)
-			if not sim.world.in_bounds(position):
-				continue
-			var tile = sim.world.tile_at(position)
-			var terrain: Dictionary = TerrainRegistryScript.definition(tile.terrain)
-			var entity_rows: Array[Dictionary] = []
-			var entity_ids: Array = sim.world.entities.keys()
-			entity_ids.sort()
-			for entity_id in entity_ids:
-				var entity = sim.world.entities[entity_id]
-				if entity.position != position:
-					continue
-				entity_rows.append({
-					"id": entity.id, "kind": entity.kind, "display_name": entity.display_name,
-					"alive": entity.is_alive(), "health": entity.health,
-					"species_id": entity.species_id, "is_player": entity.id == _player_id,
-				})
-			rows.append({
-				"position": [position.x, position.y], "local_position": [local_x, local_y],
-				"terrain_id": tile.terrain, "passable": terrain.get("passable", false),
-				"move_time_cost": terrain.get("move_time_cost", 0),
-				"terrain_water_exposure": terrain.get("terrain_water_exposure", 0),
-				"fire": tile.fire, "wetness": tile.wetness,
-				"conductivity": tile.effective_conductivity(), "entities": entity_rows,
-				"selected": position == selection_position,
-			})
-	return rows
-
-
-func inspect_destination(position: Vector2i):
-	if sim == null:
-		return null
-	return sim.assess_destination(_player_id, position)
-
-
-func preview_move(position: Vector2i):
-	if sim == null:
-		return null
-	return sim.preview(CommandScript.move_to(_player_id, position))
-
-
-func commit_move(position: Vector2i):
-	return _commit(CommandScript.move_to(_player_id, position))
-
-
-func commit_wait():
-	return _commit(CommandScript.wait(_player_id))
-
-
-func commit_ignite(position: Vector2i):
-	return _commit(CommandScript.ignite(position, 70, _player_id))
-
-
-func commit_water(position: Vector2i):
-	return _commit(CommandScript.pour_water(position, 60, _player_id))
-
-
-func commit_discharge(position: Vector2i):
-	return _commit(CommandScript.discharge(position, 40, _player_id))
-
-
-func save_slot() -> Dictionary:
-	if sim == null:
-		return {"ok": false, "reason": "session_not_initialized"}
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file == null:
-		return {"ok": false, "reason": "save_open_failed"}
-	file.store_string(_session_json())
-	_status_reason = "save_ok"
-	return {"ok": true, "reason": "ok"}
-
-
-func load_slot() -> Dictionary:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return {"ok": false, "reason": "save_slot_missing"}
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if file == null:
-		return {"ok": false, "reason": "load_open_failed"}
-	return load_session_json(file.get_as_text())
-
-
-func load_session_json(encoded: String) -> Dictionary:
-	var parser := JSON.new()
-	if parser.parse(encoded) != OK:
-		return {"ok": false, "reason": "invalid_session_json"}
-	var parsed: Variant = parser.data
-	if not (parsed is Dictionary) \
-			or typeof(parsed.get("session_format_version")) not in [TYPE_INT, TYPE_FLOAT] \
-			or float(parsed.get("session_format_version")) != 1.0:
-		return {"ok": false, "reason": "invalid_session_json"}
-	if not Int64CodecScript.is_canonical(parsed.get("seed")) \
-			or not (parsed.get("species_id") is String) \
-			or not (parsed.get("snapshot") is Dictionary) \
-			or not (parsed.get("command_journal") is Array):
-		return {"ok": false, "reason": "invalid_session_shape"}
-	var candidate = SimulatorScript.from_snapshot(parsed["snapshot"])
-	if candidate == null:
-		return {"ok": false, "reason": "invalid_snapshot"}
-	if candidate.world.width != ARENA_WIDTH or candidate.world.height != ARENA_HEIGHT:
-		return {"ok": false, "reason": "arena_shape_mismatch"}
-	var candidate_players: Array = _player_entities_in(candidate)
-	if candidate_players.size() != 1:
-		return {"ok": false, "reason": "player_count_invalid"}
-	var candidate_player = candidate_players[0]
-	var parsed_seed: int = Int64CodecScript.parse(parsed["seed"], "playtest seed")
-	if candidate.world.seed != parsed_seed \
-			or candidate_player.species_id != parsed["species_id"]:
-		return {"ok": false, "reason": "session_metadata_mismatch"}
-	var checked_journal: Array[Dictionary] = []
-	var decoded_journal: Array = []
-	for row in parsed["command_journal"]:
-		if not (row is Dictionary):
-			return {"ok": false, "reason": "invalid_command_journal"}
-		var decoded_command = CommandScript.from_dict(row)
-		if decoded_command == null:
-			return {"ok": false, "reason": "invalid_command_journal"}
-		checked_journal.append(decoded_command.to_dict())
-		decoded_journal.append(decoded_command)
-	var replay = SimulatorScript.create(ARENA_WIDTH, ARENA_HEIGHT, parsed_seed)
-	if replay == null or not _bootstrap_arena(replay, str(parsed["species_id"])):
-		return {"ok": false, "reason": "journal_replay_bootstrap_failed"}
-	for replay_command in decoded_journal:
-		var replay_result = replay.step(replay_command)
-		if not replay_result.accepted:
-			return {"ok": false, "reason": "journal_replay_rejected"}
-	if replay.snapshot() != candidate.snapshot():
-		return {"ok": false, "reason": "journal_snapshot_mismatch"}
-	sim = candidate
-	seed = parsed_seed
-	species_id = str(parsed["species_id"])
-	_player_id = candidate_player.id
-	selection_position = candidate_player.position
-	command_journal = checked_journal
-	_last_result = null
-	_status_reason = "load_ok"
-	return {"ok": true, "reason": "ok"}
-
+func world_status() -> Dictionary: return lab_status()
 
 func snapshot_json() -> String:
-	return JSON.stringify(sim.snapshot()) if sim != null else ""
-
+	return "" if sim == null else JSON.stringify(sim.snapshot())
 
 func command_journal_json() -> String:
 	return JSON.stringify(command_journal)
 
+func journal_json() -> String: return command_journal_json()
 
-func journal_json() -> String:
-	return command_journal_json()
+func player_state() -> Dictionary:
+	if sim == null or selected_lead_id <= 0: return {}
+	var entity = sim.world.entities[selected_lead_id]
+	return {"id": entity.id, "position": [entity.position.x, entity.position.y], "health": entity.health,
+		"max_health": entity.max_health, "hp": entity.health, "max_hp": entity.max_health,
+		"alive": entity.is_alive(), "species_id": entity.species_id, "display_name": entity.display_name}
 
-
-func recent_events(limit: int = 10) -> Array[Dictionary]:
+func recent_events(limit: int = 20) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	if sim == null or limit <= 0:
-		return rows
-	var first := maxi(0, sim.world.events.size() - limit)
-	for index in range(first, sim.world.events.size()):
-		rows.append(sim.world.events[index].to_dict())
-	return rows
-
+	if sim == null: return rows
+	var start := maxi(0, sim.world.events.size() - maxi(0, limit))
+	for event in sim.world.events.slice(start): rows.append(event.to_dict())
+	return rows.duplicate(true)
 
 func last_result_summary() -> Dictionary:
-	if _last_result == null:
-		return {"available": false, "reason": _status_reason, "events": [], "timeline": []}
-	var event_rows: Array[Dictionary] = []
-	for event in _last_result.events:
-		event_rows.append(event.to_dict())
-	return {
-		"available": true, "accepted": _last_result.accepted,
-		"consumes_time": _last_result.consumes_time, "reason": _last_result.reason,
-		"processed_step_index": _last_result.processed_step_index,
+	if _last_result == null: return {"available": false}
+	return {"available": true, "accepted": _last_result.accepted, "reason": _last_result.reason,
 		"start_time": _last_result.start_time, "end_time": _last_result.end_time,
-		"time_cost": _last_result.time_cost, "speed_tier": _last_result.speed_tier,
-		"root_event_id": _last_result.root_event_id, "events": event_rows,
-		"timeline": _last_result.timeline.duplicate(true),
-	}
+		"time_cost": _last_result.time_cost, "timeline": _last_result.timeline.duplicate(true),
+		"events": recent_events()}
 
+func observe_lab() -> Dictionary:
+	if sim == null: return {}
+	var cells: Array[Dictionary] = []
+	for y in range(ARENA_HEIGHT):
+		for x in range(ARENA_WIDTH):
+			var position := Vector2i(x, y); var tile = sim.world.tile_at(position)
+			var entities: Array[Dictionary] = []
+			var ids: Array = sim.world.entities.keys(); ids.sort()
+			for id in ids:
+				var entity = sim.world.entities[id]; var state = sim.world.agent_states.get(id)
+				if entity.position != position or not entity.is_alive() or (state != null and state.encounter_status != "ACTIVE"): continue
+				if state != null and state.controller_kind == "MELEE_THREAT" and sim.world.encounter_lab.phase == "ARMED": continue
+				entities.append({"entity_id": id, "display_name": entity.display_name, "controller_kind": "" if state == null else state.controller_kind,
+					"trial_slot": -1 if state == null else state.trial_slot, "glyph": _glyph(state), "health": entity.health,
+					"current_reaction": "" if state == null else state.current_reaction})
+			cells.append({"position": [x, y], "terrain_id": tile.terrain,
+				"passable": bool(TerrainRegistryScript.definition(tile.terrain).passable), "entities": entities})
+	return {"schema_version": 1, "sampled_step_index": sim.world.step_index,
+		"sampled_world_time": sim.world.world_time, "phase": sim.world.encounter_lab.phase,
+		"width": ARENA_WIDTH, "height": ARENA_HEIGHT, "cells": cells,
+		"slots": _slot_summaries()}.duplicate(true)
 
-func _commit(command):
-	if sim == null:
-		return null
-	var result = sim.step(command)
-	_last_result = StepResultScript.new(
-		result.accepted, result.consumes_time, result.reason, result.events,
-		{"processed_step_index": result.processed_step_index,
-			"start_time": result.start_time, "end_time": result.end_time,
-			"time_cost": result.time_cost, "speed_tier": result.speed_tier,
-			"timeline": result.timeline, "root_event_id": result.root_event_id})
-	_status_reason = result.reason
-	if result.accepted:
-		command_journal.append(command.to_dict().duplicate(true))
-	var player = sim.world.entities.get(_player_id)
-	if player != null:
-		selection_position = player.position
+func observe_window(_center: Vector2i = Vector2i(7, 7), _radius: int = 7) -> Dictionary: return observe_lab()
+func view_visible_cells(_radius: int = 7) -> Array[Dictionary]: return observe_lab().get("cells", [])
+
+func lead_roster() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if sim == null: return rows
+	for id in _actor_ids("LEAD"):
+		var entity = sim.world.entities[id]; var state = sim.world.agent_states[id]
+		rows.append({"entity_id": id, "trial_slot": state.trial_slot, "name": entity.display_name,
+			"position": [entity.position.x, entity.position.y], "health": entity.health, "max_health": entity.max_health,
+			"alive": entity.is_alive(), "encounter_status": state.encounter_status,
+			"personality": state.personality_profile.facet_rows.duplicate(true), "fear": state.fear, "anger": state.anger,
+			"mental_mode": state.mental_mode, "reaction": state.current_reaction, "activity": state.current_activity})
+	return rows.duplicate(true)
+
+func inspect_reaction(entity_id: int) -> Dictionary:
+	if sim == null or not sim.world.agent_states.has(entity_id): return {}
+	var state = sim.world.agent_states[entity_id]; var entity = sim.world.entities[entity_id]
+	if state.controller_kind != "LEAD": return {}
+	var appraisal: Dictionary = sim.actor_coordinator.threat_appraisal(entity_id)
+	var all_candidates: Array[Dictionary] = []
+	for action_id in sim.actor_coordinator.DecisionRegistry.ACTION_IDS:
+		var candidate: Dictionary
+		if sim.actor_coordinator.DecisionRegistry.mode(state.mental_mode).candidate_action_ids.has(action_id):
+			var found := false
+			for row in sim.actor_coordinator.evaluate_candidates(entity_id):
+				if row.reaction_id == action_id: candidate = row; found = true; break
+			if not found: continue
+		else:
+			candidate = {"reaction_id": action_id, "legal": false, "rejection_reason": "MODE_GATE",
+				"score": 0, "base_score": 0, "gates": [{"gate_id": "mode", "veto": true, "reason": "MODE_GATE"}],
+				"considerations": []}
+		all_candidates.append(_candidate_dto(candidate))
+	var threat_relation: Dictionary = sim.relationships.effective_relation(entity_id, state.active_threat_id) if state.active_threat_id > 0 else {}
+	var ally_id := -1
+	for candidate_id in sim.world.agent_states:
+		var candidate_state = sim.world.agent_states[candidate_id]
+		if candidate_state.trial_slot == state.trial_slot and candidate_state.controller_kind == "PASSIVE_ALLY":
+			ally_id = candidate_id; break
+	var ally_relation: Dictionary = sim.relationships.effective_relation(entity_id, ally_id) if ally_id > 0 else {}
+	var recent: Array[Dictionary] = []
+	for event in sim.world.events:
+		if event.actor_id == entity_id or event.target_id == entity_id or event.id == state.threat_notice_event_id:
+			recent.append(event.to_dict())
+	while recent.size() > 12: recent.pop_front()
+	var last_trace: Dictionary = {}
+	if state.last_decision_event_id > 0:
+		var event = sim.world.event_by_id(state.last_decision_event_id)
+		if event != null: last_trace = event.data.duplicate(true)
+	return {"schema_version": 1, "identity": {"entity_id": entity.id, "name": entity.display_name,
+			"trial_slot": state.trial_slot, "position": [entity.position.x, entity.position.y],
+			"health": entity.health, "max_health": entity.max_health, "encounter_status": state.encounter_status},
+		"personality": {"facet_rows": state.personality_profile.facet_rows.duplicate(true),
+			"labels": _personality_labels(state.personality_profile)},
+		"emotion": {"fear": state.fear, "anger": state.anger, "mental_mode": state.mental_mode,
+			"emotion_updated_time": state.emotion_updated_time, "mental_mode_since": state.mental_mode_since},
+		"appraisal": appraisal.duplicate(true), "threat_relation": threat_relation.duplicate(true),
+		"ally_relation": ally_relation.duplicate(true),
+		"candidates": all_candidates, "selected_reaction": state.current_reaction,
+		"current_activity": state.current_activity, "target_entity_id": state.intent_target_entity_id,
+		"target_position": [state.intent_target_position.x, state.intent_target_position.y],
+		"busy_until": state.busy_until, "commitment_until": state.commitment_until,
+		"action_history_rows": state.action_history_rows.duplicate(true),
+		"last_decision_event_id": state.last_decision_event_id, "last_trace": last_trace,
+		"recent_events": recent}.duplicate(true)
+
+func inspect_entity(entity_id: int) -> Dictionary: return inspect_reaction(entity_id)
+
+func select_lead(entity_id: int) -> bool:
+	if sim == null or not sim.world.agent_states.has(entity_id) or sim.world.agent_states[entity_id].controller_kind != "LEAD": return false
+	selected_lead_id = entity_id; return true
+
+func advance_ticks(count: int = 1) -> Dictionary:
+	if count not in [1, 10]: return {"ok": false, "reason": "unsupported_tick_count"}
+	if sim == null: return {"ok": false, "reason": "session_not_initialized"}
+	# WAIT is a lab clock command, not an action owned by one lead. Keeping the
+	# canonical observer sentinel also lets the surviving chambers continue when
+	# the first lead dies or escapes.
+	var command = CommandScript.wait_for(count * 100, -1)
+	var result = sim.step(command); _last_result = result; _status_reason = result.reason
+	if result.accepted: command_journal.append(command.to_dict().duplicate(true))
+	return {"ok": result.accepted, "reason": result.reason, "processed_step_index": result.processed_step_index,
+		"start_time": result.start_time, "end_time": result.end_time, "timeline": result.timeline.duplicate(true),
+		"phase": sim.world.encounter_lab.phase}.duplicate(true)
+
+func advance_minutes(minutes: int) -> Dictionary:
+	return advance_ticks(1 if minutes == 1 else 10) if minutes in [1, 10] else {"ok": false, "reason": "unsupported_tick_count"}
+
+func save_slot() -> Dictionary:
+	if sim == null: return {"ok": false, "reason": "session_not_initialized"}
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null: return {"ok": false, "reason": "save_open_failed"}
+	file.store_string(save_session_json())
+	return {"ok": true, "reason": "ok", "path": SAVE_PATH}
+
+func load_slot() -> Dictionary:
+	if not FileAccess.file_exists(SAVE_PATH): return {"ok": false, "reason": "save_missing"}
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null: return {"ok": false, "reason": "load_open_failed"}
+	return load_session_json(file.get_as_text())
+
+func save_session_json() -> String:
+	if sim == null: return ""
+	return JSON.stringify({"session_format_version": SESSION_FORMAT_VERSION, "world_seed": str(world_seed),
+		"personality_seed": str(personality_seed), "snapshot": sim.snapshot(),
+		"command_journal": command_journal.duplicate(true)})
+
+func load_session_json(encoded: String) -> Dictionary:
+	var parser := JSON.new()
+	if parser.parse(encoded) != OK or not (parser.data is Dictionary): return {"ok": false, "reason": "invalid_session_json"}
+	var data: Dictionary = parser.data
+	if data.get("session_format_version") != SESSION_FORMAT_VERSION: return {"ok": false, "reason": "unsupported_session_version"}
+	if not Int64CodecScript.is_canonical(data.get("world_seed")) or not Int64CodecScript.is_canonical(data.get("personality_seed")) \
+			or not (data.get("snapshot") is Dictionary) or not (data.get("command_journal") is Array):
+		return {"ok": false, "reason": "invalid_session_wire"}
+	var restored = SimulatorScript.from_snapshot(data.snapshot)
+	if restored == null or restored.world.width != ARENA_WIDTH or restored.world.height != ARENA_HEIGHT or restored.world.encounter_lab == null:
+		return {"ok": false, "reason": "snapshot_restore_failed"}
+	var checked_world_seed: int = Int64CodecScript.parse(data.world_seed, "world seed")
+	var checked_personality_seed: int = Int64CodecScript.parse(data.personality_seed, "personality seed")
+	if restored.world.seed != checked_world_seed or restored.world.encounter_lab.personality_seed != checked_personality_seed:
+		return {"ok": false, "reason": "session_metadata_mismatch"}
+	var replay = SimulatorScript.create(ARENA_WIDTH, ARENA_HEIGHT, checked_world_seed)
+	if replay == null or not _bootstrap_lab(replay, checked_personality_seed): return {"ok": false, "reason": "journal_bootstrap_failed"}
+	var canonical_journal: Array[Dictionary] = []
+	for command_row in data.command_journal:
+		var command = CommandScript.from_dict(command_row) if command_row is Dictionary else null
+		if command == null or command.type != CommandScript.Type.WAIT or not replay.step(command).accepted:
+			return {"ok": false, "reason": "journal_replay_rejected"}
+		canonical_journal.append(command.to_dict().duplicate(true))
+	if replay.snapshot() != restored.snapshot(): return {"ok": false, "reason": "journal_snapshot_mismatch"}
+	sim = restored; world_seed = checked_world_seed; personality_seed = checked_personality_seed
+	command_journal.clear()
+	for command_row in canonical_journal: command_journal.append(command_row.duplicate(true))
+	_status_reason = "loaded"; _last_result = null
+	var roster: Array[Dictionary] = lead_roster(); selected_lead_id = int(roster[0].entity_id) if not roster.is_empty() else -1
+	return {"ok": true, "reason": "ok"}
+
+func _bootstrap_lab(candidate, p_personality_seed: int) -> bool:
+	for x in range(ARENA_WIDTH):
+		for y in range(ARENA_HEIGHT):
+			if x in [0, 7, 14] or y in [0, 7, 14]:
+				if not candidate.world.bootstrap_set_terrain(Vector2i(x, y), "wall"): return false
+	for slot in range(4):
+		if not candidate.world.bootstrap_set_terrain(_semantic(slot, "pillar"), "wall"): return false
+	candidate.world.encounter_lab = EncounterLabStateScript.new(p_personality_seed)
+	candidate.world.species_relations.set_relation("human", "human", 45, 0, 0)
+	candidate.world.species_relations.set_relation("human", "goblin", -25, 45, 55)
+	candidate.world.species_relations.set_relation("goblin", "human", -30, 15, 70)
+	for slot in range(4):
+		var lead = candidate.world.add_lab_actor("LEAD", slot, _semantic(slot, "lead"), "Lead %d" % (slot + 1), "human", 100)
+		var ally = candidate.world.add_lab_actor("PASSIVE_ALLY", slot, _semantic(slot, "ally"), "Ally %d" % (slot + 1), "human", 100)
+		var threat = candidate.world.add_lab_actor("MELEE_THREAT", slot, _semantic(slot, "threat"), "Threat %d" % (slot + 1), "goblin", 90)
+		if lead == null or ally == null or threat == null: return false
+		candidate.world.agent_states[lead.id].personality_profile = PersonalityRegistry.generate(p_personality_seed, slot)
+		candidate.world.agent_states[threat.id].intent_target_entity_id = ally.id
+	return candidate.world.world_state_error().is_empty()
+
+func _origin(slot: int) -> Vector2i: return Vector2i(1 if slot % 2 == 0 else 8, 1 if slot < 2 else 8)
+func _semantic(slot: int, name: String) -> Vector2i:
+	var local: Vector2i = {"threat": Vector2i(3,1), "pillar": Vector2i(2,2), "cover": Vector2i(1,3),
+		"intercept": Vector2i(3,3), "lead": Vector2i(2,4), "ally": Vector2i(3,4), "retreat": Vector2i(1,5)}[name]
+	return _origin(slot) + local
+
+func _actor_ids(kind: String) -> Array:
+	var ids: Array = []
+	if sim == null: return ids
+	for id in sim.world.agent_states:
+		if sim.world.agent_states[id].controller_kind == kind: ids.append(id)
+	ids.sort_custom(func(a, b): return sim.world.agent_states[a].trial_slot < sim.world.agent_states[b].trial_slot)
+	return ids
+
+func _glyph(state) -> String:
+	if state == null: return ""
+	if state.controller_kind == "LEAD": return str(state.trial_slot + 1)
+	if state.controller_kind == "PASSIVE_ALLY": return "a"
+	return "M"
+
+func _slot_summaries() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for row in lead_roster():
+		rows.append({"trial_slot": row.trial_slot, "entity_id": row.entity_id, "fear": row.fear,
+			"mental_mode": row.mental_mode, "reaction": row.reaction, "dominant_facets": _dominant(row.personality)})
+	return rows
+
+func _dominant(rows: Array) -> Array[String]:
+	var sorted: Array = rows.duplicate(true); sorted.sort_custom(func(a: Dictionary, b: Dictionary):
+		var ad: int = absi(int(a.base_value) - 500); var bd: int = absi(int(b.base_value) - 500)
+		return ad > bd if ad != bd else str(a.facet_id) < str(b.facet_id))
+	var result: Array[String] = []
+	for row in sorted.slice(0, mini(2, sorted.size())): result.append(str(row.facet_id))
 	return result
 
+func _personality_labels(profile) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for facet in PersonalityRegistry.definitions():
+		var value: int = profile.value(facet.facet_id)
+		rows.append({"facet_id": facet.facet_id, "base_value": value,
+			"label": facet.high_label if value >= facet.neutral_value else facet.low_label})
+	return rows
 
-func _session_json() -> String:
-	return JSON.stringify({
-		"session_format_version": 1, "seed": str(seed), "species_id": species_id,
-		"snapshot": sim.snapshot(), "command_journal": command_journal.duplicate(true),
-	})
-
-
-func _bootstrap_arena(candidate, checked_species: String) -> bool:
-	for x in range(ARENA_WIDTH):
-		if not candidate.world.bootstrap_set_terrain(Vector2i(x, 0), "wall") \
-				or not candidate.world.bootstrap_set_terrain(Vector2i(x, ARENA_HEIGHT - 1), "wall"):
-			return false
-	for y in range(1, ARENA_HEIGHT - 1):
-		if not candidate.world.bootstrap_set_terrain(Vector2i(0, y), "wall") \
-				or not candidate.world.bootstrap_set_terrain(Vector2i(ARENA_WIDTH - 1, y), "wall"):
-			return false
-	for x in range(8, 13):
-		for y in range(8, 11):
-			if not candidate.world.bootstrap_set_terrain(Vector2i(x, y), "shallow_water"):
-				return false
-	for x in range(15, 20):
-		for y in range(12, 15):
-			if not candidate.world.bootstrap_set_terrain(Vector2i(x, y), "rubble"):
-				return false
-	for x in range(5, 11):
-		if not candidate.world.bootstrap_set_terrain(Vector2i(x, 20), "wood_floor"):
-			return false
-	for y in range(24, 31):
-		if not candidate.world.bootstrap_set_terrain(Vector2i(22, y), "metal"):
-			return false
-	for y in range(4, 18):
-		if y != 10 and not candidate.world.bootstrap_set_terrain(Vector2i(14, y), "wall"):
-			return false
-	var player = candidate.world.add_entity(
-		"player", checked_species.capitalize(), Vector2i(4, 4), 100, ["player"],
-		checked_species, "party")
-	if player == null:
-		return false
-	if candidate.world.add_entity(
-			"goblin", "Arena Goblin", Vector2i(10, 18), 100, ["arena_npc"],
-			"goblin", "arena") == null:
-		return false
-	candidate.world.tile_at(Vector2i(6, 4)).flammability = 100
-	return candidate.world.bootstrap_set_fire(Vector2i(6, 4), 60) != null
-
-
-func _find_player_in(candidate):
-	var players: Array = _player_entities_in(candidate)
-	return players[0] if not players.is_empty() else null
-
-
-func _player_entities_in(candidate) -> Array:
-	var players: Array = []
-	var ids: Array = candidate.world.entities.keys()
-	ids.sort()
-	for entity_id in ids:
-		var entity = candidate.world.entities[entity_id]
-		if entity.tags.has("player"):
-			players.append(entity)
-	return players
+func _candidate_dto(candidate: Dictionary) -> Dictionary:
+	var target = candidate.get("target_position", Vector2i(-1, -1))
+	return {"reaction_id": candidate.reaction_id, "legal": bool(candidate.legal),
+		"rejection_reason": str(candidate.rejection_reason), "score": int(candidate.score),
+		"base_score": int(candidate.base_score), "gates": candidate.gates.duplicate(true),
+		"considerations": candidate.considerations.duplicate(true),
+		"target_position": [target.x, target.y] if target is Vector2i else [-1, -1]}

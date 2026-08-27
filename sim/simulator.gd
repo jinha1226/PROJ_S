@@ -6,6 +6,8 @@ const DamageSystemScript = preload("res://sim/systems/damage_system.gd")
 const RelationshipSystemScript = preload("res://sim/systems/relationship_system.gd")
 const MovementSystemScript = preload("res://sim/systems/movement_system.gd")
 const ExposureSystemScript = preload("res://sim/systems/exposure_system.gd")
+const ActorCoordinatorScript = preload("res://sim/systems/actor_coordinator.gd")
+const WeightedPathfinderScript = preload("res://sim/weighted_pathfinder.gd")
 const WorldStateScript = preload("res://sim/world_state.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
 const StepResultScript = preload("res://sim/sim_step_result.gd")
@@ -23,6 +25,8 @@ var environment
 var relationships
 var movement
 var exposure
+var actor_coordinator
+var pathfinder
 
 
 func _init(width: int, height: int, seed: int = 1) -> void:
@@ -56,6 +60,13 @@ func step(command):
 			"start_time": world.world_time, "end_time": world.world_time,
 			"time_cost": 0, "speed_tier": "", "timeline": [], "root_event_id": -1,
 		})
+	# A scheduled handler is allowed to reject its complete frozen batch. Keep a
+	# canonical pre-step image so such a rejection also rolls back the command,
+	# earlier same-time cadence work, time, schedules, IDs and RNG.
+	var rollback_snapshot: Dictionary = {}
+	if world.encounter_lab != null:
+		rollback_snapshot = world.snapshot()
+		assert(not rollback_snapshot.is_empty(), "A settled Phase 3 lab must snapshot before stepping")
 	var event_start: int = world.events.size()
 	var timeline: Array = plan["timeline"].duplicate(true)
 	var processed_step_index: int = world.step_index + 1
@@ -81,7 +92,15 @@ func step(command):
 			and marker["schedule_id"] == entry["schedule_id"], "Preview/actual schedule mismatch")
 		var tick_event_start: int = world.events.size()
 		var schedule_id_before: int = world.next_schedule_id
-		_dispatch_schedule(entry)
+		if not _dispatch_schedule(entry):
+			var restored = WorldStateScript.from_snapshot(rollback_snapshot)
+			assert(restored != null, "Validated pre-step snapshot must restore")
+			world = restored
+			_rebuild_systems()
+			return StepResultScript.new(false, false, "actor_tick_failed", [], {
+				"processed_step_index": -1, "start_time": start_time,
+				"end_time": start_time, "time_cost": 0, "speed_tier": "",
+				"timeline": [], "root_event_id": -1})
 		assert(world.next_schedule_id == schedule_id_before, "Phase 1 handlers cannot create logical schedules")
 		var tick_ids: Array[int] = []
 		for index in range(tick_event_start, world.events.size()):
@@ -126,6 +145,8 @@ func _rebuild_systems() -> void:
 	relationships = RelationshipSystemScript.new(world)
 	movement = MovementSystemScript.new(world)
 	exposure = ExposureSystemScript.new(world, movement)
+	pathfinder = WeightedPathfinderScript.new(world, movement)
+	actor_coordinator = ActorCoordinatorScript.new(world, movement, relationships, damage)
 
 
 func assess_move(actor_id: int, destination: Vector2i):
@@ -142,6 +163,10 @@ func evaluate_exposure_for_entity(entity_id: int, position: Vector2i):
 
 func assess_destination(entity_id: int, position: Vector2i):
 	return exposure.assess_destination(entity_id, position)
+
+
+func find_path(entity_id: int, goal: Vector2i) -> Dictionary:
+	return pathfinder.find_path(entity_id, goal).duplicate(true)
 
 
 func _plan_action(command) -> Dictionary:
@@ -167,8 +192,12 @@ func _plan_action(command) -> Dictionary:
 	if not occurrence_plan["reason"].is_empty():
 		return _rejected_plan(occurrence_plan["reason"], start_time)
 	var occurrences: Array = occurrence_plan["occurrences"]
+	for occurrence in occurrences:
+		if str(occurrence["kind"]) == "system.actor_tick" \
+				and int(occurrence["due_time"]) > MAX_WORLD_TIME - 10000:
+			return _rejected_plan("time_overflow", start_time)
 	var per_tick_bound := _saturating_add(_saturating_multiply(world.tiles.size(), 4),
-		_saturating_add(_saturating_multiply(world.entities.size(), 2), 1))
+		_saturating_add(_saturating_multiply(world.entities.size(), 10), 1))
 	var conservative_event_count := _saturating_add(4,
 		_saturating_add(_saturating_multiply(world.tiles.size(), 2),
 			_saturating_multiply(world.entities.size(), 2)))
@@ -183,10 +212,11 @@ func _plan_action(command) -> Dictionary:
 		"action.start", start_time, 0, command.actor_id, -1, -1,
 		"timeline.action_start")]
 	for occurrence in occurrences:
+		var presentation := "timeline.actor_tick" if occurrence["kind"] == "system.actor_tick" else "timeline.environment_tick"
 		timeline.append(_timeline_entry(
 			str(occurrence["kind"]), int(occurrence["due_time"]),
 			int(occurrence["due_time"]) - start_time, -1, int(occurrence["owner_id"]),
-			int(occurrence["schedule_id"]), "timeline.environment_tick"))
+			int(occurrence["schedule_id"]), presentation))
 	timeline.append(_timeline_entry(
 		"actor.ready", end_time, cost, command.actor_id, -1, -1,
 		"timeline.actor_ready"))
@@ -219,7 +249,7 @@ func _enumerate_occurrences(end_time: int) -> Dictionary:
 				return {"reason": "schedule_budget_exceeded", "occurrences": []}
 			if int(entry["repeat_interval"]) <= 0:
 				break
-			if int(entry["due_time"]) > MAX_INT64 - int(entry["repeat_interval"]):
+			if int(entry["due_time"]) > MAX_WORLD_TIME - int(entry["repeat_interval"]):
 				return {"reason": "time_overflow", "occurrences": []}
 			entry["due_time"] = int(entry["due_time"]) + int(entry["repeat_interval"])
 	occurrences.sort_custom(func(a: Dictionary, b: Dictionary):
@@ -302,12 +332,15 @@ func _resolve_command(command, plan: Dictionary):
 	return null
 
 
-func _dispatch_schedule(entry: Dictionary) -> void:
+func _dispatch_schedule(entry: Dictionary) -> bool:
 	match str(entry["kind"]):
 		"system.environment_tick":
 			environment.process_tick()
+			return true
+		"system.actor_tick":
+			return actor_coordinator.process_tick()
 		_:
-			assert(false, "Unknown schedule kind: %s" % str(entry["kind"]))
+			return false
 
 
 func _assert_event_partition(result_events: Array, timeline: Array) -> void:

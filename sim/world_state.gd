@@ -1,12 +1,19 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 3
-const RULESET_VERSION := "phase2-move-exposure-v1"
+const SNAPSHOT_VERSION := 4
+const RULESET_VERSION := "phase3-dungeon-personality-lab-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
 const HAZARD_AFFINITY_RULESET_ID := "hazard-affinity-v1"
+const PERSONALITY_SCHEMA_ID := "personality-facets-v1"
+const PERSONALITY_GENERATOR_RULESET_ID := "personality-lab-latin-hypercube-v1"
+const KEYED_HASH_RULESET_ID := "sha256-u31-v1"
+const DECISION_RULESET_ID := "dungeon-hierarchical-utility-v1"
+const SCORE_COMBINER_ID := "weighted-sum-v1"
+const COMBAT_RULESET_ID := "fixed-melee-v1"
 const ENVIRONMENT_INTERVAL := 100
+const ACTOR_INTERVAL := 100
 const MAX_WORLD_TIME := 9223372036854775707
 const MAX_SAFE_JSON_INTEGER := 9007199254740991
 const MAX_DIMENSION := 4096
@@ -19,6 +26,11 @@ const SpeciesRelationTableScript = preload("res://sim/species_relation_table.gd"
 const PersonalRelationScript = preload("res://sim/personal_relation.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+const AgentStateScript = preload("res://sim/agent_state.gd")
+const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
+const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
+const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
+const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 var width: int
 var height: int
@@ -31,6 +43,8 @@ var entities: Dictionary = {}
 var events: Array = []
 var species_relations
 var personal_relations: Dictionary = {}
+var agent_states: Dictionary = {}
+var encounter_lab = null
 var scheduled_entries: Array[Dictionary] = []
 var next_schedule_id: int = 1
 
@@ -52,7 +66,8 @@ func _init(p_width: int, p_height: int, p_seed: int = 1) -> void:
 		return
 	for index in range(width * height):
 		tiles.append(SimTileScript.new())
-	schedule_entry("system.environment_tick", ENVIRONMENT_INTERVAL, 100, -1, -1, ENVIRONMENT_INTERVAL)
+	_insert_schedule_entry("system.environment_tick", ENVIRONMENT_INTERVAL, 100, -1, -1, ENVIRONMENT_INTERVAL, {})
+	_insert_schedule_entry("system.actor_tick", ACTOR_INTERVAL, 200, -1, -1, ACTOR_INTERVAL, {})
 
 
 static func dimensions_error(p_width: int, p_height: int) -> String:
@@ -83,6 +98,16 @@ func cardinal_neighbors(position: Vector2i) -> Array[Vector2i]:
 	return result
 
 
+func movement_neighbors(position: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for direction in [Vector2i.UP, Vector2i(1, -1), Vector2i.RIGHT, Vector2i(1, 1),
+			Vector2i.DOWN, Vector2i(-1, 1), Vector2i.LEFT, Vector2i(-1, -1)]:
+		var candidate: Vector2i = position + direction
+		if in_bounds(candidate):
+			result.append(candidate)
+	return result
+
+
 func add_entity(kind: String, display_name: String, position: Vector2i,
 		max_health: int = 100, tags: Array = [], species_id: String = "",
 		faction_id: String = ""):
@@ -106,13 +131,46 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	return entity
 
 
+func add_lab_actor(controller_kind: String, trial_slot: int, position: Vector2i,
+		display_name: String, species_id: String, max_health: int = 100):
+	if not AgentStateScript.CONTROLLERS.has(controller_kind) or trial_slot < 0 or trial_slot > 3:
+		return null
+	var entity = add_entity(controller_kind.to_lower(), display_name, position, max_health,
+		["lab_actor", controller_kind.to_lower()], species_id, "lab")
+	if entity == null:
+		return null
+	var state = AgentStateScript.new(entity.id, controller_kind, trial_slot)
+	state.busy_until = world_time
+	state.intent_started_time = world_time
+	state.emotion_updated_time = world_time
+	agent_states[entity.id] = state
+	return entity
+
+
+func bootstrap_set_world_time(p_world_time: int) -> bool:
+	if _active_step_index != -1 or step_index != 0 or not events.is_empty() \
+			or p_world_time < 0 or p_world_time > MAX_WORLD_TIME - ENVIRONMENT_INTERVAL:
+		return false
+	world_time = p_world_time
+	var next_boundary: int = (world_time / ENVIRONMENT_INTERVAL + 1) * ENVIRONMENT_INTERVAL
+	for entry in scheduled_entries:
+		entry["due_time"] = next_boundary
+	_sort_schedules()
+	for state in agent_states.values():
+		state.emotion_updated_time = world_time
+		state.busy_until = world_time
+		state.intent_started_time = world_time
+	return true
+
+
 func entities_at(position: Vector2i) -> Array:
 	var result: Array = []
 	var ids: Array = entities.keys()
 	ids.sort()
 	for entity_id in ids:
 		var entity = entities[entity_id]
-		if entity.position == position and entity.is_alive():
+		var state = agent_states.get(entity_id)
+		if entity.position == position and entity.is_alive() and (state == null or state.encounter_status == "ACTIVE"):
 			result.append(entity)
 	return result
 
@@ -220,8 +278,15 @@ func emit_event(type: String, actor_id: int = -1, target_id: int = -1,
 func event_by_id(event_id: int):
 	if event_id <= 0 or event_id >= _next_event_id:
 		return null
-	var event = events[event_id - 1]
-	return event if event.id == event_id else null
+	var low := 0
+	var high := events.size() - 1
+	while low <= high:
+		var midpoint: int = low + (high - low) / 2
+		var event = events[midpoint]
+		if event.id == event_id: return event
+		if event.id < event_id: low = midpoint + 1
+		else: high = midpoint - 1
+	return null
 
 
 func events_since(index: int) -> Array:
@@ -236,15 +301,9 @@ func has_event_id_headroom(maximum_new_events: int) -> bool:
 func schedule_entry(kind: String, due_time: int, priority: int = 100,
 		owner_id: int = -1, source_event_id: int = -1, repeat_interval: int = 0,
 		payload: Dictionary = {}) -> int:
-	# The stable state has exactly one canonical environment cadence. The public
-	# producer cannot create a state that the current snapshot contract refuses.
-	if not scheduled_entries.is_empty() or next_schedule_id != 1 or world_time != 0 \
-			or kind != "system.environment_tick" or due_time != ENVIRONMENT_INTERVAL \
-			or priority != 100 or owner_id != -1 or source_event_id != -1 \
-			or repeat_interval != ENVIRONMENT_INTERVAL or not payload.is_empty():
-		return -1
-	return _insert_schedule_entry(
-		kind, due_time, priority, owner_id, source_event_id, repeat_interval, payload)
+	# Canonical schedules are installed atomically by construction/bootstrap.
+	# Runtime producers cannot add logical cadence IDs.
+	return -1
 
 
 # Test-only escape hatch for occurrence ordering/budget fixtures. A queue made
@@ -260,7 +319,7 @@ func _schedule_fixture_entry(kind: String, due_time: int, priority: int = 100,
 func _insert_schedule_entry(kind: String, due_time: int, priority: int,
 		owner_id: int, source_event_id: int, repeat_interval: int,
 		payload: Dictionary) -> int:
-	if kind != "system.environment_tick" or due_time <= world_time \
+	if not ["system.environment_tick", "system.actor_tick"].has(kind) or due_time <= world_time \
 			or due_time > MAX_WORLD_TIME or repeat_interval < 0 \
 			or repeat_interval > MAX_WORLD_TIME \
 			or (repeat_interval > 0 \
@@ -335,17 +394,30 @@ func snapshot() -> Variant:
 	var schedule_rows: Array = []
 	for entry in scheduled_entries:
 		schedule_rows.append(_schedule_to_dict(entry))
+	var agent_rows: Array = []
+	var agent_ids: Array = agent_states.keys()
+	agent_ids.sort()
+	for entity_id in agent_ids:
+		agent_rows.append(agent_states[entity_id].to_dict())
 	return {
 		"snapshot_version": SNAPSHOT_VERSION,
 		"ruleset_version": RULESET_VERSION,
 		"calendar_ruleset_id": CALENDAR_RULESET_ID,
 		"terrain_ruleset_id": TERRAIN_RULESET_ID,
 		"hazard_affinity_ruleset_id": HAZARD_AFFINITY_RULESET_ID,
+		"personality_schema_id": PERSONALITY_SCHEMA_ID,
+		"personality_generator_ruleset_id": PERSONALITY_GENERATOR_RULESET_ID,
+		"keyed_hash_ruleset_id": KEYED_HASH_RULESET_ID,
+		"decision_ruleset_id": DECISION_RULESET_ID,
+		"score_combiner_id": SCORE_COMBINER_ID,
+		"combat_ruleset_id": COMBAT_RULESET_ID,
 		"width": width, "height": height,
 		"step_index": str(step_index), "world_time": str(world_time), "seed": str(seed),
 		"rng_state": str(rng.state),
 		"next_entity_id": str(_next_entity_id), "next_event_id": str(_next_event_id),
 		"next_schedule_id": str(next_schedule_id), "scheduled_entries": schedule_rows,
+		"agent_states": agent_rows,
+		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
 		"tiles": tile_rows, "entities": entity_rows, "events": event_rows,
 		"species_relations": species_relations.to_dict(), "personal_relations": relation_rows,
 	}
@@ -398,6 +470,11 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 		var relation = PersonalRelationScript.from_dict(row)
 		var relation_key := "%d:%d" % [relation.observer_id, relation.subject_id]
 		restored.personal_relations[relation_key] = relation
+	restored.agent_states.clear()
+	for row in data.get("agent_states", []):
+		var state = AgentStateScript.from_dict(row)
+		restored.agent_states[state.entity_id] = state
+	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.scheduled_entries.clear()
 	for row in data.get("scheduled_entries", []):
 		restored.scheduled_entries.append(_schedule_from_dict(row))
@@ -421,6 +498,11 @@ static func snapshot_header_error(data: Dictionary) -> String:
 	if not (data.get("hazard_affinity_ruleset_id") is String) \
 			or data["hazard_affinity_ruleset_id"] != HAZARD_AFFINITY_RULESET_ID:
 		return "unsupported_hazard_affinity_ruleset"
+	for pair in [["personality_schema_id", PERSONALITY_SCHEMA_ID],
+			["personality_generator_ruleset_id", PERSONALITY_GENERATOR_RULESET_ID],
+			["keyed_hash_ruleset_id", KEYED_HASH_RULESET_ID], ["decision_ruleset_id", DECISION_RULESET_ID],
+			["score_combiner_id", SCORE_COMBINER_ID], ["combat_ruleset_id", COMBAT_RULESET_ID]]:
+		if not (data.get(pair[0]) is String) or data.get(pair[0]) != pair[1]: return "unsupported_%s" % pair[0]
 	return ""
 
 
@@ -504,6 +586,9 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 			return "invalid_event_magnitude"
 		if not _is_json_safe_metadata(row.get("data")):
 			return "invalid_event_data"
+		if row.get("type") == "ai.decision_selected":
+			var trace_error := _decision_trace_wire_error(row.get("data"))
+			if not trace_error.is_empty(): return trace_error
 	if not (data.get("species_relations") is Dictionary) \
 			or not (data["species_relations"].get("rows") is Array):
 		return "invalid_species_relations_shape"
@@ -529,6 +614,10 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	for row in data["personal_relations"]:
 		if not (row is Dictionary):
 			return "invalid_personal_relation_shape"
+		var relation_keys: Array = row.keys(); relation_keys.sort()
+		if relation_keys != ["gratitude", "grievance", "observer_id", "personal_fear_delta",
+				"personal_trust_delta", "processed_source_event_ids", "subject_id"]:
+			return "invalid_personal_relation_keys"
 		for key in ["observer_id", "subject_id"]:
 			if not Int64CodecScript.is_canonical(row.get(key)):
 				return "noncanonical_relation_%s" % key
@@ -546,29 +635,78 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		for value in row["processed_source_event_ids"]:
 			if not Int64CodecScript.is_canonical(value):
 				return "noncanonical_relation_source"
+	if not (data.get("agent_states") is Array):
+		return "invalid_agent_states_shape"
+	var agent_ids: Dictionary = {}
+	for row in data["agent_states"]:
+		if not (row is Dictionary) or not Int64CodecScript.is_canonical(row.get("entity_id")) \
+				or not (row.get("controller_kind") is String) or not AgentStateScript.CONTROLLERS.has(row.controller_kind):
+			return "invalid_agent_state_shape"
+		var agent_id := Int64CodecScript.parse(row["entity_id"], "agent ID")
+		if not entity_ids.has(agent_id) or agent_ids.has(agent_id):
+			return "invalid_or_duplicate_agent_entity"
+		agent_ids[agent_id] = true
+		if not _is_small_int(row.get("trial_slot"), 0, 3) or row.get("encounter_status") not in AgentStateScript.ENCOUNTER_STATUSES:
+			return "invalid_agent_trial_or_status"
+		for key in ["busy_until", "intent_target_entity_id", "intent_started_time", "emotion_updated_time",
+				"mental_mode_since", "active_threat_id", "threat_notice_event_id", "last_seen_time",
+				"guarded_until", "commitment_until", "last_decision_time", "last_decision_event_id"]:
+			if not Int64CodecScript.is_canonical(row.get(key)):
+				return "noncanonical_agent_%s" % key
+		if row.get("current_activity") not in AgentStateScript.ACTIVITIES or row.get("current_reaction") not in AgentStateScript.REACTIONS \
+				or row.get("mental_mode") not in AgentStateScript.MODES:
+			return "unknown_agent_activity_or_mode"
+		if not _is_position(row.get("intent_target_position"), restored_width, restored_height, true):
+			return "invalid_agent_target_position"
+		if not _is_position(row.get("last_seen_position"), restored_width, restored_height, true) \
+				or not _is_small_int(row.get("fear"), 0, 2000) or not _is_small_int(row.get("anger"), 0, 2000):
+			return "invalid_agent_affect"
+		if row.controller_kind == "LEAD":
+			var profile_error := PersonalityRegistryScript.profile_wire_error(row.get("personality_profile"))
+			if not profile_error.is_empty(): return profile_error
+		elif row.has("personality_profile"):
+			return "personality_forbidden_for_controller"
+		if not (row.get("action_history_rows") is Array) or row.action_history_rows.size() > 8:
+			return "invalid_action_history_shape"
+		var previous_action := ""
+		for history in row.action_history_rows:
+			if not (history is Dictionary) or history.get("action_id") not in DecisionRegistryScript.ACTION_IDS \
+					or (not previous_action.is_empty() and str(history.action_id) <= previous_action): return "invalid_action_history"
+			for key in ["cooldown_until", "last_committed_time"]:
+				if not Int64CodecScript.is_canonical(history.get(key)): return "noncanonical_action_history"
+			if not _is_small_int(history.get("consecutive_commit_count"), 0, MAX_SMALL_VALUE): return "invalid_action_repeat_count"
+			previous_action = str(history.action_id)
+	if data.get("encounter_lab") != null:
+		var lab = data.encounter_lab
+		if not (lab is Dictionary) or not Int64CodecScript.is_canonical(lab.get("personality_seed")) \
+				or lab.get("phase") not in EncounterLabStateScript.PHASES or not Int64CodecScript.is_canonical(lab.get("activation_time")) \
+				or lab.get("threat_profile_id") != "lab-melee-threat-v1" or not (lab.get("appearance_event_ids") is Array) \
+				or lab.appearance_event_ids.size() != 4: return "invalid_encounter_lab"
+		for id in lab.appearance_event_ids:
+			if not Int64CodecScript.is_canonical(id): return "noncanonical_appearance_event"
 	if not (data.get("scheduled_entries") is Array):
 		return "invalid_schedules_shape"
 	var schedules: Array = data["scheduled_entries"]
-	if schedules.size() != 1:
-		return "invalid_environment_schedule_count"
-	if not (schedules[0] is Dictionary):
-		return "invalid_schedule_shape"
-	var schedule: Dictionary = schedules[0]
-	for key in ["schedule_id", "due_time", "owner_id", "source_event_id", "repeat_interval"]:
-		if not Int64CodecScript.is_canonical(schedule.get(key)):
-			return "noncanonical_schedule_%s" % key
-	if schedule.get("kind") != "system.environment_tick" \
-			or not _is_small_int(schedule.get("priority"), 100, 100):
-		return "invalid_environment_schedule_kind_or_priority"
-	if schedule.get("repeat_interval") != "100" or schedule.get("owner_id") != "-1" \
-			or schedule.get("source_event_id") != "-1" or not (schedule.get("payload") is Dictionary) \
-			or not schedule["payload"].is_empty():
-		return "invalid_environment_schedule_contract"
-	if not _is_json_safe_metadata(schedule["payload"]):
-		return "invalid_schedule_payload"
+	if schedules.size() != 2:
+		return "invalid_canonical_schedule_count"
 	var expected_due := parsed_time - (parsed_time % ENVIRONMENT_INTERVAL) + ENVIRONMENT_INTERVAL
-	if Int64CodecScript.parse(schedule["due_time"], "schedule due") != expected_due:
-		return "invalid_environment_schedule_cadence"
+	for index in range(2):
+		if not (schedules[index] is Dictionary):
+			return "invalid_schedule_shape"
+		var schedule: Dictionary = schedules[index]
+		for key in ["schedule_id", "due_time", "owner_id", "source_event_id", "repeat_interval"]:
+			if not Int64CodecScript.is_canonical(schedule.get(key)):
+				return "noncanonical_schedule_%s" % key
+		var expected_kind := "system.environment_tick" if index == 0 else "system.actor_tick"
+		var expected_priority := 100 if index == 0 else 200
+		if schedule.get("kind") != expected_kind or not _is_small_int(schedule.get("priority"), expected_priority, expected_priority):
+			return "invalid_canonical_schedule_kind_or_priority"
+		if schedule.get("repeat_interval") != "100" or schedule.get("owner_id") != "-1" \
+				or schedule.get("source_event_id") != "-1" or not (schedule.get("payload") is Dictionary) \
+				or not schedule["payload"].is_empty() or not _is_json_safe_metadata(schedule["payload"]):
+			return "invalid_canonical_schedule_contract"
+		if Int64CodecScript.parse(schedule["due_time"], "schedule due") != expected_due:
+			return "invalid_canonical_schedule_cadence"
 	return ""
 
 
@@ -654,7 +792,8 @@ func _restored_state_error() -> String:
 		var entity = entities[entity_id]
 		if entity.id != entity_id or not in_bounds(entity.position):
 			return "entity_identity_or_position_invalid"
-		if entity.is_alive():
+		var actor_state = agent_states.get(entity_id)
+		if entity.is_alive() and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
 			if not _terrain_is_passable(entity.position):
 				return "live_entity_on_impassable_terrain"
 			var occupancy_key := "%d:%d" % [entity.position.x, entity.position.y]
@@ -697,6 +836,167 @@ func _restored_state_error() -> String:
 			return "event_position_invalid"
 		if not _is_valid_event_data(event.data):
 			return "event_data_invalid"
+		if event.type == "ai.decision_selected":
+			var trace_error := _decision_trace_wire_error(event.data)
+			if not trace_error.is_empty(): return trace_error
+			if not agent_states.has(event.actor_id) or int(event.data.get("trial_slot", -1)) != agent_states[event.actor_id].trial_slot:
+				return "decision_trace_actor_slot_mismatch"
+			var decision_state = agent_states[event.actor_id]
+			if decision_state.controller_kind != "LEAD" or event.data.mental_mode not in AgentStateScript.MODES:
+				return "decision_trace_actor_invalid"
+			var profile_wire := {"profile_schema_version": 1,
+				"generation_ruleset_id": PERSONALITY_GENERATOR_RULESET_ID,
+				"facet_rows": event.data.personality_facet_rows}
+			if not PersonalityRegistryScript.profile_wire_error(profile_wire).is_empty() \
+					or event.data.personality_facet_rows != decision_state.personality_profile.facet_rows:
+				return "decision_trace_personality_invalid"
+			var mode_evidence: Dictionary = event.data.mode_transition_evidence
+			var mode_source_id := Int64CodecScript.parse(mode_evidence.source_event_id, "mode evidence source")
+			var mode_source = event_by_id(mode_source_id)
+			if mode_source == null or mode_source.type != "perception.threat_noticed" \
+					or mode_source.actor_id != event.actor_id or mode_source.id >= event.id:
+				return "mode_transition_source_invalid"
+			if bool(mode_evidence.transitioned):
+				var transition_event = event_by_id(event.cause_id)
+				if transition_event == null or transition_event.type != "ai.mental_mode_changed" \
+						or transition_event.actor_id != event.actor_id \
+						or transition_event.cause_id != mode_source_id \
+						or transition_event.data.get("from_mode") != mode_evidence.from_mode \
+						or transition_event.data.get("to_mode") != mode_evidence.to_mode \
+						or transition_event.data.get("panic_pressure") != mode_evidence.panic_pressure \
+						or event.data.mental_mode != mode_evidence.to_mode:
+					return "mode_transition_evidence_mismatch"
+			elif mode_evidence.from_mode != mode_evidence.to_mode \
+					or mode_evidence.to_mode != event.data.mental_mode or event.cause_id != mode_source_id:
+				return "mode_transition_evidence_mismatch"
+			var seen_candidate_ids: Dictionary = {}
+			for candidate in event.data.candidates:
+				if seen_candidate_ids.has(candidate.reaction_id): return "decision_trace_candidate_duplicate"
+				seen_candidate_ids[candidate.reaction_id] = true
+				var definition = DecisionRegistryScript.action(candidate.reaction_id)
+				if definition == null or candidate.base_score != definition.base_score \
+						or candidate.considerations.size() != definition.considerations.size() \
+						or candidate.gates.size() != definition.gates.size():
+					return "decision_trace_definition_mismatch"
+				var trace_target_id := Int64CodecScript.parse(candidate.target_entity_id, "trace target")
+				if trace_target_id > 0 and (not agent_states.has(trace_target_id) \
+						or agent_states[trace_target_id].trial_slot != agent_states[event.actor_id].trial_slot):
+					return "decision_trace_cross_chamber_target"
+				var trace_position := Vector2i(int(candidate.target_position[0]), int(candidate.target_position[1]))
+				if trace_position != Vector2i(-1, -1) and (not in_bounds(trace_position) \
+						or _trial_slot_for_position(trace_position) != decision_state.trial_slot):
+					return "decision_trace_cross_chamber_position"
+				var expected_considerations: Dictionary = {}
+				for definition_row in definition.considerations:
+					expected_considerations[definition_row.consideration_id] = definition_row
+				var seen_considerations: Dictionary = {}
+				var recomputed_score: int = candidate.base_score
+				for consideration in candidate.considerations:
+					var expected = expected_considerations.get(consideration.consideration_id)
+					if expected == null or seen_considerations.has(consideration.consideration_id) \
+							or consideration.input_id != expected.input_id \
+							or consideration.curve_id != expected.curve_id \
+							or consideration.signed_weight_milli != expected.signed_weight_milli \
+							or consideration.raw_input != consideration.normalized_input \
+							or consideration.curve_output != DecisionRegistryScript.evaluate_curve(consideration.curve_id, consideration.normalized_input) \
+							or consideration.contribution != FixedPointScript.weighted_contribution(consideration.curve_output, consideration.signed_weight_milli):
+						return "decision_trace_consideration_definition_mismatch"
+					seen_considerations[consideration.consideration_id] = true
+					recomputed_score = clampi(recomputed_score + int(consideration.contribution), -1000000, 1000000)
+					for evidence_wire in consideration.evidence_ids:
+						var evidence_id := Int64CodecScript.parse(evidence_wire, "trace evidence")
+						var evidence_event = event_by_id(evidence_id)
+						if evidence_event == null: return "decision_trace_evidence_missing"
+						if evidence_event.id >= event.id or evidence_event.world_time > event.world_time:
+							return "decision_trace_evidence_not_older"
+						if evidence_event.type != "perception.threat_noticed" \
+								or evidence_event.actor_id != event.actor_id \
+								or not agent_states.has(evidence_event.target_id) \
+								or agent_states[evidence_event.target_id].trial_slot != decision_state.trial_slot:
+							return "decision_trace_evidence_actor_mismatch"
+				var seen_gate_ids: Dictionary = {}
+				for gate in candidate.gates:
+					var matching_gate := false
+					for gate_definition in definition.gates:
+						if gate.gate_id == gate_definition.gate_id: matching_gate = true; break
+					if not matching_gate or seen_gate_ids.has(gate.gate_id): return "decision_trace_gate_definition_mismatch"
+					seen_gate_ids[gate.gate_id] = true
+					for evidence_wire in gate.evidence_ids:
+						var evidence_id := Int64CodecScript.parse(evidence_wire, "trace evidence")
+						var evidence_event = event_by_id(evidence_id)
+						if evidence_event == null: return "decision_trace_evidence_missing"
+						if evidence_event.id >= event.id or evidence_event.world_time > event.world_time:
+							return "decision_trace_evidence_not_older"
+						if evidence_event.type != "perception.threat_noticed" \
+								or evidence_event.actor_id != event.actor_id \
+								or not agent_states.has(evidence_event.target_id) \
+								or agent_states[evidence_event.target_id].trial_slot != decision_state.trial_slot:
+							return "decision_trace_evidence_actor_mismatch"
+				for gate_definition in definition.gates:
+					if not seen_gate_ids.has(gate_definition.gate_id): return "decision_trace_gate_definition_mismatch"
+				var any_veto := false
+				var expected_rejection_reason := ""
+				for gate in candidate.gates:
+					if gate.veto:
+						any_veto = true
+						if expected_rejection_reason.is_empty(): expected_rejection_reason = gate.reason
+				if candidate.legal == any_veto or candidate.rejection_reason != expected_rejection_reason:
+					return "decision_trace_legality_mismatch"
+				if recomputed_score != candidate.score: return "decision_trace_score_mismatch"
+			var expected_candidates = DecisionRegistryScript.mode(event.data.mental_mode).candidate_action_ids
+			if seen_candidate_ids.size() != expected_candidates.size(): return "decision_trace_mode_candidates_incomplete"
+			for expected_action_id in expected_candidates:
+				if not seen_candidate_ids.has(expected_action_id): return "decision_trace_mode_candidates_incomplete"
+			var switch_evidence: Dictionary = event.data.switch_evidence
+			if switch_evidence.selected_reaction != event.data.reaction_id \
+					or switch_evidence.retained != event.data.retained:
+				return "switch_evidence_selected_mismatch"
+			var challenger_found := false
+			for candidate in event.data.candidates:
+				if candidate.reaction_id == switch_evidence.challenger_reaction:
+					challenger_found = true
+					if candidate.score != switch_evidence.challenger_score: return "switch_evidence_score_mismatch"
+			if not challenger_found: return "switch_evidence_challenger_missing"
+			var previous_reaction: String = str(switch_evidence.previous_reaction)
+			var switch_reason: String = str(switch_evidence.reason_code)
+			var parsed_commitment := Int64CodecScript.parse(switch_evidence.commitment_until, "trace commitment")
+			var parsed_cooldown := Int64CodecScript.parse(switch_evidence.challenger_cooldown_until, "trace cooldown")
+			if parsed_commitment < 0 or parsed_commitment > MAX_WORLD_TIME \
+					or parsed_cooldown < 0 or parsed_cooldown > MAX_WORLD_TIME:
+				return "switch_evidence_time_invalid"
+			if previous_reaction == "NONE":
+				if switch_reason != "entered" or switch_evidence.retained: return "switch_evidence_reason_invalid"
+			elif switch_reason == "mode_transition_reset":
+				if not bool(mode_evidence.transitioned) or switch_evidence.retained: return "switch_evidence_reason_invalid"
+			else:
+				var previous_definition = DecisionRegistryScript.action(previous_reaction)
+				if previous_definition == null or switch_evidence.switch_margin != previous_definition.switch_margin:
+					return "switch_evidence_margin_invalid"
+				if switch_evidence.retained != (switch_reason in ["continued_best", "retained_commitment", "retained_margin"]) \
+						or (switch_evidence.retained and switch_evidence.selected_reaction != previous_reaction) \
+						or (not switch_evidence.retained and switch_evidence.selected_reaction == previous_reaction):
+					return "switch_evidence_reason_invalid"
+			if not seen_candidate_ids.has(event.data.reaction_id): return "decision_trace_selected_candidate_missing"
+			for candidate in event.data.candidates:
+				if candidate.reaction_id == event.data.reaction_id:
+					if not candidate.legal or candidate.score != event.data.selected_score:
+						return "decision_trace_selected_score_mismatch"
+					if Int64CodecScript.parse(candidate.target_entity_id, "selected target") != event.target_id:
+						return "decision_trace_selected_target_mismatch"
+					var selected_position := Vector2i(int(candidate.target_position[0]), int(candidate.target_position[1]))
+					if event.data.semantic_target != _lab_semantic_name(decision_state.trial_slot, selected_position):
+						return "decision_trace_semantic_target_mismatch"
+			if event.target_id > 0 and (not agent_states.has(event.target_id) \
+					or agent_states[event.target_id].trial_slot != decision_state.trial_slot):
+				return "decision_event_cross_chamber_target"
+			var decision_cause = event_by_id(event.cause_id)
+			if decision_cause == null: return "decision_event_cause_missing"
+			if decision_cause.type == "ai.mental_mode_changed":
+				if decision_cause.actor_id != event.actor_id: return "decision_event_mode_cause_actor_mismatch"
+				decision_cause = event_by_id(decision_cause.cause_id)
+			if decision_cause == null or decision_cause.type != "perception.threat_noticed" \
+					or decision_cause.actor_id != event.actor_id:
+				return "decision_event_perception_cause_invalid"
 		if event.cause_id == -1:
 			if event.instigator_id != event.actor_id:
 				return "root_instigator_mismatch"
@@ -708,6 +1008,82 @@ func _restored_state_error() -> String:
 				return "event_cause_time_invalid"
 			if event.instigator_id != cause.instigator_id:
 				return "derived_instigator_mismatch"
+		if encounter_lab != null:
+			var event_actor_state = agent_states.get(event.actor_id)
+			if event.type in ["action.move", "action.melee_attack", "action.hold", "action.freeze", "encounter.actor_escaped"] \
+					and event_actor_state != null and event_actor_state.controller_kind == "LEAD":
+				var leaf_cause = event_by_id(event.cause_id)
+				if leaf_cause == null or leaf_cause.type != "ai.decision_selected" \
+						or leaf_cause.actor_id != event.actor_id or leaf_cause.world_time != event.world_time:
+					return "lead_leaf_decision_cause_invalid"
+				var allowed_leaf_types: Dictionary = {
+					"ENGAGE": ["action.move", "action.melee_attack"],
+					"PROTECT": ["action.move", "action.melee_attack"],
+					"FLEE": ["action.move", "encounter.actor_escaped"],
+					"TAKE_COVER": ["action.move", "action.hold"],
+					"HOLD": ["action.hold"], "FREEZE": ["action.freeze"],
+				}
+				var leaf_reaction: String = str(leaf_cause.data.get("reaction_id", ""))
+				if not allowed_leaf_types.has(leaf_reaction) or event.type not in allowed_leaf_types[leaf_reaction]:
+					return "reaction_leaf_mapping_invalid"
+				var semantic_position := Vector2i(-1, -1)
+				for candidate in leaf_cause.data.candidates:
+					if candidate.reaction_id == leaf_reaction:
+						semantic_position = Vector2i(int(candidate.target_position[0]), int(candidate.target_position[1]))
+						break
+				if semantic_position == Vector2i(-1, -1): return "reaction_leaf_target_missing"
+				if event.type in ["action.hold", "action.freeze", "encounter.actor_escaped"] \
+						and event.position != semantic_position:
+					return "reaction_leaf_semantic_position_invalid"
+			if event.type == "action.move":
+				var move_keys: Array = event.data.keys(); move_keys.sort()
+				if move_keys != ["from_position", "move_time_cost", "terrain_id", "to_position"] \
+						or not _is_position(event.data.get("from_position"), width, height, false) \
+						or not _is_position(event.data.get("to_position"), width, height, false) \
+						or not (event.data.get("terrain_id") is String) \
+						or not (event.data.get("move_time_cost") is int):
+					return "move_event_payload_invalid"
+				var move_from := Vector2i(int(event.data.from_position[0]), int(event.data.from_position[1]))
+				var move_to := Vector2i(int(event.data.to_position[0]), int(event.data.to_position[1]))
+				var move_definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
+				if event_actor_state == null or _trial_slot_for_position(move_from) != event_actor_state.trial_slot \
+						or _trial_slot_for_position(move_to) != event_actor_state.trial_slot \
+						or maxi(absi(move_to.x - move_from.x), absi(move_to.y - move_from.y)) != 1 \
+						or event.position != move_to or tile_at(move_to).terrain != event.data.terrain_id \
+						or move_definition.is_empty() or not bool(move_definition.passable) \
+						or event.data.move_time_cost != move_definition.move_time_cost \
+						or event.magnitude != event.data.move_time_cost:
+					return "move_event_semantic_invalid"
+			if event.type == "action.melee_attack":
+				var melee_target_state = agent_states.get(event.target_id)
+				if event_actor_state == null or melee_target_state == null \
+						or event_actor_state.trial_slot != melee_target_state.trial_slot \
+						or _trial_slot_for_position(event.position) != event_actor_state.trial_slot \
+						or event.data != {"combat_ruleset_id": "fixed-melee-v1"} \
+						or event.magnitude != (22 if event_actor_state.controller_kind == "LEAD" else 18):
+					return "melee_event_semantic_invalid"
+			if event.type == "action.hold" and (event.target_id != -1 or event.magnitude != 1 or not event.data.is_empty()):
+				return "hold_event_semantic_invalid"
+			if event.type == "action.freeze" and (event.target_id != -1 or event.magnitude < 1 \
+					or event.magnitude > 4 or not event.data.is_empty()):
+				return "freeze_event_semantic_invalid"
+			if event.type == "encounter.actor_escaped" and (event.target_id != -1 \
+					or event.magnitude != 1 or not event.data.is_empty()):
+				return "escape_event_semantic_invalid"
+			if event.type == "combat.physical_damage":
+				var attack_cause = event_by_id(event.cause_id)
+				if event.actor_id != -1 or attack_cause == null or attack_cause.type != "action.melee_attack" \
+						or attack_cause.target_id != event.target_id or attack_cause.position != event.position \
+						or event.data != {"damage_type": "physical"} \
+						or event.magnitude <= 0 or event.magnitude > attack_cause.magnitude:
+					return "physical_damage_chain_invalid"
+			if event.type == "entity.died" and str(event.data.get("damage_type", "")) == "physical":
+				var damage_cause = event_by_id(event.cause_id)
+				if event.actor_id != -1 or event.magnitude != 0 \
+						or event.data != {"damage_type": "physical"} \
+						or damage_cause == null or damage_cause.type != "combat.physical_damage" \
+						or damage_cause.target_id != event.target_id or damage_cause.position != event.position:
+					return "physical_death_chain_invalid"
 		for reference_id in [event.actor_id, event.target_id, event.instigator_id]:
 			if reference_id != -1 and (reference_id <= 0 or not entities.has(reference_id)):
 				return "event_entity_reference_invalid"
@@ -752,6 +1128,13 @@ func _restored_state_error() -> String:
 			return "relation_entity_missing"
 		if relation_key != "%d:%d" % [relation.observer_id, relation.subject_id]:
 			return "relation_key_mismatch"
+		var relation_observer_state = agent_states.get(relation.observer_id)
+		var relation_subject_state = agent_states.get(relation.subject_id)
+		if relation_observer_state != null and relation_subject_state != null \
+				and entities[relation.observer_id].tags.has("lab_actor") \
+				and entities[relation.subject_id].tags.has("lab_actor") \
+				and relation_observer_state.trial_slot != relation_subject_state.trial_slot:
+			return "cross_chamber_relation_invalid"
 		if relation.personal_trust_delta < -40 or relation.personal_trust_delta > 40 \
 				or relation.personal_fear_delta < -30 or relation.personal_fear_delta > 30 \
 				or relation.gratitude < 0 or relation.gratitude > 100 \
@@ -764,6 +1147,175 @@ func _restored_state_error() -> String:
 			if unique_sources.has(source_id):
 				return "relationship_source_duplicated"
 			unique_sources[source_id] = true
+	for entity_id in agent_states:
+		var state = agent_states[entity_id]
+		if not entities.has(entity_id) or state.entity_id != entity_id \
+				or not entities[entity_id].tags.has("lab_actor") or not AgentStateScript.CONTROLLERS.has(state.controller_kind):
+			return "agent_entity_or_controller_invalid"
+		if state.trial_slot < 0 or state.trial_slot > 3 or state.encounter_status not in AgentStateScript.ENCOUNTER_STATUSES \
+				or state.fear < 0 or state.fear > 2000 or state.anger < 0 or state.anger > 2000 \
+				or state.emotion_updated_time < 0 or state.emotion_updated_time > world_time \
+				or state.busy_until < 0 or state.busy_until > MAX_WORLD_TIME \
+				or state.intent_started_time < 0 or state.intent_started_time > world_time \
+				or state.mental_mode_since < 0 or state.mental_mode_since > world_time \
+				or state.guarded_until < 0 or state.guarded_until > MAX_WORLD_TIME \
+				or state.commitment_until < 0 or state.commitment_until > MAX_WORLD_TIME \
+				or state.last_seen_time < -1 or state.last_seen_time > world_time \
+				or state.last_decision_time < -1 or state.last_decision_time > world_time \
+				or state.current_activity not in AgentStateScript.ACTIVITIES \
+				or state.current_reaction not in AgentStateScript.REACTIONS or state.mental_mode not in AgentStateScript.MODES:
+			return "agent_state_invalid"
+		if state.controller_kind == "LEAD":
+			var profile_error := PersonalityRegistryScript.profile_error(state.personality_profile)
+			if not profile_error.is_empty(): return profile_error
+		elif state.personality_profile != null: return "personality_forbidden_for_controller"
+		if state.intent_target_entity_id != -1 and not entities.has(state.intent_target_entity_id):
+			return "agent_intent_target_missing"
+		if state.intent_target_position != Vector2i(-1, -1) and not in_bounds(state.intent_target_position):
+			return "agent_intent_position_invalid"
+		if state.intent_target_position != Vector2i(-1, -1) \
+				and _trial_slot_for_position(state.intent_target_position) != state.trial_slot:
+			return "agent_intent_position_cross_chamber"
+		if state.last_decision_event_id != -1:
+			var decision = event_by_id(state.last_decision_event_id)
+			if decision == null or decision.type != "ai.decision_selected" or decision.actor_id != entity_id \
+					or decision.world_time != state.last_decision_time:
+				return "last_decision_event_invalid"
+			if state.current_reaction != "NONE" and decision.data.reaction_id != state.current_reaction:
+				return "last_decision_reaction_mismatch"
+			var committed_leaf_events := events.filter(func(event):
+				return event.cause_id == decision.id and event.actor_id == entity_id \
+					and event.type in ["action.move", "action.melee_attack", "action.hold", "action.freeze", "encounter.actor_escaped"])
+			if committed_leaf_events.size() != 1: return "last_decision_leaf_missing"
+			var expected_activity: Dictionary = {"action.move": "MOVE", "action.melee_attack": "MELEE_ATTACK",
+				"action.hold": "HOLD", "action.freeze": "FREEZE", "encounter.actor_escaped": "ESCAPE"}
+			if state.current_activity != expected_activity[committed_leaf_events[0].type]:
+				return "last_decision_activity_mismatch"
+		var previous_action := ""
+		for history in state.action_history_rows:
+			if history.action_id not in DecisionRegistryScript.ACTION_IDS or (not previous_action.is_empty() and history.action_id <= previous_action) \
+					or history.cooldown_until < 0 or history.cooldown_until > MAX_WORLD_TIME \
+					or history.last_committed_time < -1 or history.last_committed_time > world_time \
+					or history.consecutive_commit_count < 0: return "action_history_invalid"
+			previous_action = history.action_id
+		if state.current_reaction != "NONE":
+			var current_history: Dictionary = state.history(state.current_reaction)
+			if int(current_history.last_committed_time) < 0 \
+					or int(current_history.last_committed_time) != state.last_decision_time \
+					or int(current_history.consecutive_commit_count) <= 0:
+				return "current_reaction_history_invalid"
+	if encounter_lab != null:
+		if width != 15 or height != 15 or entities.size() != 12:
+			return "lab_fixture_dimensions_or_entity_count_invalid"
+		for y in range(15):
+			for x in range(15):
+				var fixture_position := Vector2i(x, y)
+				var fixture_wall: bool = x in [0, 7, 14] or y in [0, 7, 14] \
+						or fixture_position in [Vector2i(3, 3), Vector2i(10, 3), Vector2i(3, 10), Vector2i(10, 10)]
+				var expected_terrain := "wall" if fixture_wall else "floor"
+				if tile_at(fixture_position).terrain != expected_terrain:
+					return "lab_fixture_terrain_invalid"
+		if encounter_lab.phase not in EncounterLabStateScript.PHASES or encounter_lab.activation_time != 100 \
+				or encounter_lab.appearance_event_ids.size() != 4: return "encounter_lab_invalid"
+		var fixture_actors: Dictionary = {}
+		for slot in range(4): fixture_actors[slot] = {}
+		for entity_id in agent_states:
+			var state = agent_states[entity_id]
+			var slot_rows: Dictionary = fixture_actors[state.trial_slot]
+			if slot_rows.has(state.controller_kind): return "duplicate_lab_controller_slot"
+			slot_rows[state.controller_kind] = entity_id
+			fixture_actors[state.trial_slot] = slot_rows
+		if agent_states.size() != 12: return "invalid_lab_actor_count"
+		for slot in range(4):
+			if not fixture_actors[slot].has_all(["LEAD", "PASSIVE_ALLY", "MELEE_THREAT"]):
+				return "missing_lab_controller_slot"
+			var controller_order := ["LEAD", "PASSIVE_ALLY", "MELEE_THREAT"]
+			for role_index in range(controller_order.size()):
+				var controller_kind: String = controller_order[role_index]
+				var fixture_id: int = fixture_actors[slot][controller_kind]
+				var fixture_entity = entities[fixture_id]
+				var expected_kind := controller_kind.to_lower()
+				var expected_species := "goblin" if controller_kind == "MELEE_THREAT" else "human"
+				var expected_max_health := 90 if controller_kind == "MELEE_THREAT" else 100
+				var expected_name := ("Lead" if controller_kind == "LEAD" else ("Ally" if controller_kind == "PASSIVE_ALLY" else "Threat")) \
+						+ " %d" % (slot + 1)
+				if fixture_id != slot * 3 + role_index + 1 or fixture_entity.kind != expected_kind \
+						or fixture_entity.display_name != expected_name or fixture_entity.species_id != expected_species \
+						or fixture_entity.faction_id != "lab" or fixture_entity.max_health != expected_max_health \
+						or fixture_entity.tags != ["lab_actor", expected_kind]:
+					return "lab_fixture_actor_identity_invalid"
+		var appearance_ids_seen: Dictionary = {}
+		for slot in range(4):
+			var appearance_id: int = encounter_lab.appearance_event_ids[slot]
+			if encounter_lab.phase == "ARMED" and appearance_id != -1: return "armed_appearance_forbidden"
+			if encounter_lab.phase != "ARMED" and appearance_id == -1: return "active_appearance_missing"
+			if appearance_id != -1:
+				if appearance_ids_seen.has(appearance_id): return "appearance_event_duplicate"
+				appearance_ids_seen[appearance_id] = true
+				var event = event_by_id(appearance_id)
+				if event == null or event.type != "encounter.threat_appeared" \
+						or int(event.data.get("trial_slot", -1)) != slot \
+						or event.actor_id != fixture_actors[slot].MELEE_THREAT \
+						or event.target_id != fixture_actors[slot].LEAD \
+						or event.position != _lab_semantic_position(slot, "threat"):
+					return "appearance_event_invalid"
+		for slot in range(4):
+			var lead_id: int = fixture_actors[slot].LEAD
+			var ally_id: int = fixture_actors[slot].PASSIVE_ALLY
+			var threat_id: int = fixture_actors[slot].MELEE_THREAT
+			var lead_state = agent_states[lead_id]
+			var ally_state = agent_states[ally_id]
+			var threat_state = agent_states[threat_id]
+			if ally_state.encounter_status != "ACTIVE" or threat_state.encounter_status != "ACTIVE":
+				return "non_lead_escape_invalid"
+			if lead_state.encounter_status == "ESCAPED":
+				if not entities[lead_id].is_alive() or lead_state.current_activity != "ESCAPE" \
+						or lead_state.last_decision_event_id <= 0:
+					return "escaped_lead_state_invalid"
+				var escape_events := events.filter(func(event):
+					return event.type == "encounter.actor_escaped" and event.actor_id == lead_id)
+				if escape_events.size() != 1 or escape_events[0].cause_id != lead_state.last_decision_event_id \
+						or escape_events[0].position != entities[lead_id].position:
+					return "escaped_lead_event_invalid"
+			if encounter_lab.phase == "ARMED":
+				if lead_state.active_threat_id != -1 or lead_state.threat_notice_event_id != -1:
+					return "armed_perception_forbidden"
+				if lead_state.last_seen_position != Vector2i(-1, -1) or lead_state.last_seen_time != -1:
+					return "armed_last_seen_forbidden"
+				if entities[lead_id].position != _lab_semantic_position(slot, "lead") \
+						or entities[ally_id].position != _lab_semantic_position(slot, "ally") \
+						or entities[threat_id].position != _lab_semantic_position(slot, "threat"):
+					return "armed_fixture_position_invalid"
+			else:
+				if lead_state.active_threat_id != threat_id: return "active_threat_slot_invalid"
+				var notice = event_by_id(lead_state.threat_notice_event_id)
+				if notice == null or notice.type != "perception.threat_noticed" \
+						or notice.actor_id != lead_id or notice.target_id != threat_id \
+						or notice.cause_id != encounter_lab.appearance_event_ids[slot] \
+						or int(notice.data.get("trial_slot", -1)) != slot \
+						or notice.position != event_by_id(encounter_lab.appearance_event_ids[slot]).position \
+						or _trial_slot_for_position(notice.position) != slot:
+					return "threat_notice_event_invalid"
+				if lead_state.last_seen_position != notice.position \
+						or lead_state.last_seen_time != notice.world_time:
+					return "last_seen_perception_mismatch"
+			if threat_state.intent_target_entity_id != -1:
+				var threat_target_state = agent_states.get(threat_state.intent_target_entity_id)
+				if threat_target_state == null or threat_target_state.trial_slot != slot \
+						or threat_target_state.controller_kind not in ["PASSIVE_ALLY", "LEAD"]:
+					return "threat_intent_target_invalid"
+			for actor_id in [lead_id, ally_id, threat_id]:
+				var actor_state = agent_states[actor_id]
+				if actor_state.intent_target_entity_id != -1:
+					var intent_target_state = agent_states.get(actor_state.intent_target_entity_id)
+					if intent_target_state == null or intent_target_state.trial_slot != slot:
+						return "actor_intent_cross_chamber"
+		var active_lead_count := 0
+		for slot in range(4):
+			var lead_id: int = fixture_actors[slot].LEAD
+			if entities[lead_id].is_alive() and agent_states[lead_id].encounter_status == "ACTIVE": active_lead_count += 1
+		if encounter_lab.phase == "COMPLETE" and active_lead_count != 0: return "complete_with_active_lead"
+		if encounter_lab.phase == "ACTIVE" and active_lead_count == 0: return "active_without_live_lead"
 	if next_schedule_id <= 0:
 		return "nonpositive_next_schedule_id"
 	var schedule_ids: Dictionary = {}
@@ -791,7 +1343,7 @@ func _restored_state_error() -> String:
 				or int(entry["priority"]) < -MAX_SMALL_VALUE \
 				or int(entry["priority"]) > MAX_SMALL_VALUE:
 			return "schedule_time_invalid"
-		if entry["kind"] != "system.environment_tick" \
+		if not ["system.environment_tick", "system.actor_tick"].has(entry["kind"]) \
 				or not _entity_reference_is_valid(entry["owner_id"]) \
 				or (entry["source_event_id"] != -1 \
 					and event_by_id(entry["source_event_id"]) == null):
@@ -804,9 +1356,10 @@ func _restored_state_error() -> String:
 		prior_key = key
 	if next_schedule_id <= max_schedule_id:
 		return "next_schedule_id_collision"
-	if scheduled_entries.size() != 1:
-		return "invalid_environment_schedule_count"
+	if scheduled_entries.size() != 2:
+		return "invalid_canonical_schedule_count"
 	var environment_entry: Dictionary = scheduled_entries[0]
+	var actor_entry: Dictionary = scheduled_entries[1]
 	if environment_entry["kind"] != "system.environment_tick" \
 			or environment_entry["priority"] != 100 \
 			or environment_entry["repeat_interval"] != ENVIRONMENT_INTERVAL:
@@ -817,6 +1370,11 @@ func _restored_state_error() -> String:
 	var next_cadence := world_time - (world_time % ENVIRONMENT_INTERVAL) + ENVIRONMENT_INTERVAL
 	if environment_entry["due_time"] != next_cadence:
 		return "invalid_environment_schedule_cadence"
+	if actor_entry["kind"] != "system.actor_tick" or actor_entry["priority"] != 200 \
+			or actor_entry["repeat_interval"] != ACTOR_INTERVAL or actor_entry["due_time"] != next_cadence \
+			or actor_entry["owner_id"] != -1 or actor_entry["source_event_id"] != -1 \
+			or not actor_entry["payload"].is_empty():
+		return "invalid_actor_schedule_contract"
 	return ""
 
 
@@ -876,6 +1434,29 @@ static func _lexicographic_not_less(a: Array, b: Array) -> bool:
 	return a.size() >= b.size()
 
 
+static func _trial_slot_for_position(position: Vector2i) -> int:
+	if position.x >= 1 and position.x <= 6 and position.y >= 1 and position.y <= 6: return 0
+	if position.x >= 8 and position.x <= 13 and position.y >= 1 and position.y <= 6: return 1
+	if position.x >= 1 and position.x <= 6 and position.y >= 8 and position.y <= 13: return 2
+	if position.x >= 8 and position.x <= 13 and position.y >= 8 and position.y <= 13: return 3
+	return -1
+
+
+static func _lab_semantic_position(slot: int, semantic_name: String) -> Vector2i:
+	var origin := Vector2i(1 if slot % 2 == 0 else 8, 1 if slot < 2 else 8)
+	var local: Vector2i = {"threat": Vector2i(3, 1), "cover": Vector2i(1, 3),
+		"intercept": Vector2i(3, 3), "lead": Vector2i(2, 4),
+		"ally": Vector2i(3, 4), "retreat": Vector2i(1, 5)}.get(semantic_name, Vector2i(-100, -100))
+	return origin + local
+
+
+static func _lab_semantic_name(slot: int, position: Vector2i) -> String:
+	for semantic_name in ["threat", "cover", "intercept", "lead", "ally", "retreat"]:
+		if _lab_semantic_position(slot, semantic_name) == position: return semantic_name
+	var origin := Vector2i(1 if slot % 2 == 0 else 8, 1 if slot < 2 else 8)
+	return "tile.%d.%d" % [position.x - origin.x, position.y - origin.y]
+
+
 static func _is_valid_event_data(value: Variant) -> bool:
 	match typeof(value):
 		TYPE_INT:
@@ -894,3 +1475,115 @@ static func _is_valid_event_data(value: Variant) -> bool:
 			return true
 		_:
 			return false
+
+
+static func _decision_trace_wire_error(data: Variant) -> String:
+	if not (data is Dictionary): return "invalid_decision_trace_shape"
+	var trace_keys: Array = data.keys(); trace_keys.sort()
+	if trace_keys != ["appraisal", "candidates", "conflict_lost", "mental_mode",
+			"mode_transition_evidence", "personality_facet_rows", "reaction_id", "retained",
+			"selected_score", "semantic_target", "switch_evidence", "trace_schema_version", "trial_slot"] \
+			or data.get("trace_schema_version") != 1 \
+			or not _is_small_int(data.get("trial_slot"), 0, 3) \
+			or not (data.get("reaction_id") is String) or data.reaction_id not in DecisionRegistryScript.ACTION_IDS \
+			or data.get("mental_mode") not in AgentStateScript.MODES \
+			or not (data.get("candidates") is Array) or data.candidates.size() > 6 \
+			or not _is_small_int(data.get("selected_score"), -1000000, 1000000) \
+			or not (data.get("retained") is bool) or not (data.get("conflict_lost") is bool) \
+			or not (data.get("semantic_target") is String) or not _stable_id(data.semantic_target, 64) \
+			or not (data.get("appraisal") is Dictionary) or not (data.get("personality_facet_rows") is Array):
+		return "invalid_decision_trace_shape"
+	var mode_evidence = data.get("mode_transition_evidence")
+	if not (mode_evidence is Dictionary): return "invalid_mode_transition_evidence"
+	var mode_keys: Array = mode_evidence.keys(); mode_keys.sort()
+	if mode_keys != ["enter_threshold", "exit_threshold", "from_mode", "panic_pressure", "policy_id",
+			"source_event_id", "to_mode", "transitioned"] \
+			or not (mode_evidence.get("transitioned") is bool) \
+			or mode_evidence.get("policy_id") != "panic-hysteresis-v1" \
+			or mode_evidence.get("from_mode") not in AgentStateScript.MODES \
+			or mode_evidence.get("to_mode") not in AgentStateScript.MODES \
+			or not _is_small_int(mode_evidence.get("panic_pressure"), 0, 2000) \
+			or mode_evidence.get("enter_threshold") != 850 or mode_evidence.get("exit_threshold") != 500 \
+			or not Int64CodecScript.is_canonical(mode_evidence.get("source_event_id")):
+		return "invalid_mode_transition_evidence"
+	var switch_evidence = data.get("switch_evidence")
+	if not (switch_evidence is Dictionary): return "invalid_switch_evidence"
+	var switch_keys: Array = switch_evidence.keys(); switch_keys.sort()
+	if switch_keys != ["challenger_cooldown_until", "challenger_reaction", "challenger_score",
+			"commitment_until", "current_score", "previous_reaction", "reason_code", "retained",
+			"selected_reaction", "switch_margin"] \
+			or switch_evidence.get("previous_reaction") not in AgentStateScript.REACTIONS \
+			or switch_evidence.get("challenger_reaction") not in DecisionRegistryScript.ACTION_IDS \
+			or switch_evidence.get("selected_reaction") not in DecisionRegistryScript.ACTION_IDS \
+			or not _is_small_int(switch_evidence.get("current_score"), -1000000, 1000000) \
+			or not _is_small_int(switch_evidence.get("challenger_score"), -1000000, 1000000) \
+			or not _is_small_int(switch_evidence.get("switch_margin"), 0, 10000) \
+			or not Int64CodecScript.is_canonical(switch_evidence.get("commitment_until")) \
+			or not Int64CodecScript.is_canonical(switch_evidence.get("challenger_cooldown_until")) \
+			or not (switch_evidence.get("retained") is bool) \
+			or switch_evidence.get("reason_code") not in ["entered", "continued_best", "retained_commitment",
+				"retained_margin", "switched", "switched_illegal", "mode_transition_reset"]:
+		return "invalid_switch_evidence"
+	if JSON.stringify(data).to_utf8_buffer().size() > 32768:
+		return "oversized_decision_trace"
+	for candidate in data.candidates:
+		if not (candidate is Dictionary): return "invalid_decision_trace_candidate"
+		var candidate_keys: Array = candidate.keys(); candidate_keys.sort()
+		if candidate_keys != ["base_score", "considerations", "gates", "legal", "reaction_id",
+				"rejection_reason", "score", "target_entity_id", "target_position"] \
+				or candidate.get("reaction_id") not in DecisionRegistryScript.ACTION_IDS \
+				or not (candidate.get("legal") is bool) or not (candidate.get("rejection_reason") is String) \
+				or not _ascii_reason(candidate.rejection_reason, 96) \
+				or not _is_small_int(candidate.get("score"), -1000000, 1000000) \
+				or not _is_small_int(candidate.get("base_score"), -10000, 10000) \
+				or not Int64CodecScript.is_canonical(candidate.get("target_entity_id")) \
+				or not (candidate.get("target_position") is Array) or candidate.target_position.size() != 2 \
+				or not _is_small_int(candidate.target_position[0], -1, MAX_DIMENSION - 1) \
+				or not _is_small_int(candidate.target_position[1], -1, MAX_DIMENSION - 1) \
+				or not (candidate.get("gates") is Array) or candidate.gates.size() > 8 \
+				or not (candidate.get("considerations") is Array) or candidate.considerations.size() > 12:
+			return "invalid_decision_trace_candidate"
+		for gate in candidate.gates:
+			if not (gate is Dictionary): return "invalid_decision_trace_gate"
+			var gate_keys: Array = gate.keys(); gate_keys.sort()
+			if gate_keys != ["evidence_ids", "gate_id", "reason", "veto"] \
+					or not _stable_id(gate.get("gate_id"), 64) \
+					or not (gate.get("veto") is bool) or not (gate.get("reason") is String) \
+					or not _ascii_reason(gate.reason, 96) or not (gate.get("evidence_ids") is Array) \
+					or gate.evidence_ids.size() > 4: return "invalid_decision_trace_gate"
+			for evidence_id in gate.evidence_ids:
+				if not Int64CodecScript.is_canonical(evidence_id): return "invalid_decision_trace_evidence"
+		for consideration in candidate.considerations:
+			if not (consideration is Dictionary): return "invalid_decision_trace_consideration"
+			var consideration_keys: Array = consideration.keys(); consideration_keys.sort()
+			if consideration_keys != ["consideration_id", "contribution", "curve_id", "curve_output",
+					"evidence_ids", "input_id", "normalized_input", "raw_input", "reason",
+					"signed_weight_milli", "veto"] \
+					or not _stable_id(consideration.get("consideration_id"), 64) \
+					or not _stable_id(consideration.get("input_id"), 64) \
+					or not _stable_id(consideration.get("curve_id"), 64) \
+					or not _is_small_int(consideration.get("raw_input"), 0, 1000) \
+					or not _is_small_int(consideration.get("normalized_input"), 0, 1000) \
+					or not _is_small_int(consideration.get("curve_output"), 0, 1000) \
+					or not _is_small_int(consideration.get("signed_weight_milli"), -2000, 2000) \
+					or not _is_small_int(consideration.get("contribution"), -2000, 2000) \
+					or not (consideration.get("veto") is bool) or not _ascii_reason(consideration.get("reason"), 96) \
+					or not (consideration.get("evidence_ids") is Array) or consideration.evidence_ids.size() > 4:
+				return "invalid_decision_trace_consideration"
+			for evidence_id in consideration.evidence_ids:
+				if not Int64CodecScript.is_canonical(evidence_id): return "invalid_decision_trace_evidence"
+	return ""
+
+
+static func _stable_id(value: Variant, maximum_bytes: int) -> bool:
+	if not (value is String) or value.is_empty() or value.to_utf8_buffer().size() > maximum_bytes: return false
+	for code in value.to_ascii_buffer():
+		if not ((code >= 97 and code <= 122) or (code >= 48 and code <= 57) or code in [46, 95, 45]): return false
+	return true
+
+
+static func _ascii_reason(value: Variant, maximum_bytes: int) -> bool:
+	if not (value is String) or value.to_utf8_buffer().size() > maximum_bytes: return false
+	for code in value.to_ascii_buffer():
+		if code < 32 or code > 126: return false
+	return true

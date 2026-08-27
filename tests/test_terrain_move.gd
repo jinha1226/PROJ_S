@@ -97,19 +97,20 @@ func test_terrain_and_live_occupancy_producer_restore_domains_match() -> bool:
 
 
 func test_move_cardinal_success_and_geometry_rejections() -> bool:
-	for destination in [Vector2i(1, 0), Vector2i(2, 1), Vector2i(1, 2), Vector2i(0, 1)]:
+	for destination in [Vector2i(1, 0), Vector2i(2, 1), Vector2i(1, 2), Vector2i(0, 1),
+			Vector2i(0, 0), Vector2i(2, 0), Vector2i(2, 2), Vector2i(0, 2)]:
 		var sim = Simulator.new(3, 3, 4)
 		var actor = sim.world.add_entity("human", "Mover", Vector2i.ONE)
 		var result = sim.step(Command.move_to(actor.id, destination))
-		check(result.accepted, "cardinal MOVE accepted")
-		check_eq(actor.position, destination, "cardinal position")
-	for destination in [Vector2i.ONE, Vector2i(2, 2), Vector2i(1, 3)]:
+		check(result.accepted, "8-direction MOVE accepted")
+		check_eq(actor.position, destination, "adjacent position")
+	for destination in [Vector2i.ONE, Vector2i(1, 3)]:
 		var sim = Simulator.new(3, 3, 5)
 		var actor = sim.world.add_entity("human", "Mover", Vector2i.ONE)
 		var before: Dictionary = sim.snapshot()
 		var result = sim.step(Command.move_to(actor.id, destination))
-		check(not result.accepted, "non-cardinal MOVE rejected")
-		check_eq(result.reason, "move_not_cardinal_adjacent", "geometry reason")
+		check(not result.accepted, "non-adjacent MOVE rejected")
+		check_eq(result.reason, "move_not_adjacent", "geometry reason")
 		check_eq(sim.snapshot(), before, "geometry rejection no-op")
 	return finish()
 
@@ -197,7 +198,8 @@ func test_move_start_commit_controls_due_tick_damage_and_ready_order() -> bool:
 	var leaving_actor = leave.world.add_entity("human", "Leave", Vector2i.ZERO)
 	var left = leave.step(Command.move_to(leaving_actor.id, Vector2i(1, 0)))
 	check_eq(leaving_actor.health, 100, "start commit escapes old burning tile")
-	check_eq(left.timeline[-2].kind, "system.environment_tick", "due=end before ready")
+	check_eq(left.timeline[-3].kind, "system.environment_tick", "environment due first")
+	check_eq(left.timeline[-2].kind, "system.actor_tick", "actor due before ready")
 	check_eq(left.timeline[-2].at_time, 100, "due at MOVE end")
 	check_eq(left.timeline.back().kind, "actor.ready", "ready last")
 	return finish()

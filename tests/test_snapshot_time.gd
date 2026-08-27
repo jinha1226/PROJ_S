@@ -15,12 +15,15 @@ func test_snapshot_v3_header_and_json_round_trip_preserve_all_state() -> bool:
 	var source: Dictionary = sim.snapshot()
 	check_eq([source.snapshot_version, source.ruleset_version,
 		source.terrain_ruleset_id, source.hazard_affinity_ruleset_id],
-		[3, "phase2-move-exposure-v1", "terrain-registry-v1", "hazard-affinity-v1"],
-		"v3 semantic header")
+		[4, "phase3-dungeon-personality-lab-v1", "terrain-registry-v1", "hazard-affinity-v1"],
+		"v4 semantic header")
+	check_eq([source.personality_schema_id, source.decision_ruleset_id, source.score_combiner_id],
+		["personality-facets-v1", "dungeon-hierarchical-utility-v1", "weighted-sum-v1"], "phase3 registries")
 	var parsed = JSON.parse_string(JSON.stringify(source))
 	var restored = Simulator.from_snapshot(parsed)
 	check_eq(restored.snapshot(), sim.snapshot(), "canonical JSON round trip")
 	check_eq(restored.world.scheduled_entries[0]["due_time"], 300, "schedule restored")
+	check_eq(restored.world.scheduled_entries[1]["due_time"], 300, "actor schedule restored")
 	return finish()
 
 
@@ -57,6 +60,7 @@ func test_large_exact_world_time_and_entity_id_survive_json() -> bool:
 	seed_snapshot["step_index"] = "9007199254740993"
 	seed_snapshot["next_entity_id"] = "9007199254740993"
 	seed_snapshot.scheduled_entries[0].due_time = "9007199254741000"
+	seed_snapshot.scheduled_entries[1].due_time = "9007199254741000"
 	var restored = Simulator.from_snapshot(JSON.parse_string(JSON.stringify(seed_snapshot)))
 	var entity = restored.world.add_entity("test", "Large ID", Vector2i.ZERO)
 	check_eq(entity.id, 9007199254740993, "large entity ID exact")
@@ -102,10 +106,10 @@ func test_snapshot_wire_validator_rejects_numeric_overflow_and_bad_cadence() -> 
 	check_eq(WorldState.snapshot_wire_error(fractional), "noncanonical_event_id", "fractional ID rejected")
 	var cadence := base.duplicate(true)
 	cadence.scheduled_entries[0].due_time = "101"
-	check_eq(WorldState.snapshot_wire_error(cadence), "invalid_environment_schedule_cadence", "bad cadence rejected")
+	check_eq(WorldState.snapshot_wire_error(cadence), "invalid_canonical_schedule_cadence", "bad cadence rejected")
 	var unknown := base.duplicate(true)
 	unknown.scheduled_entries[0].kind = "system.unknown"
-	check_eq(WorldState.snapshot_wire_error(unknown), "invalid_environment_schedule_kind_or_priority", "unknown kind rejected")
+	check_eq(WorldState.snapshot_wire_error(unknown), "invalid_canonical_schedule_kind_or_priority", "unknown kind rejected")
 	check(Simulator.from_snapshot(unknown) == null, "unknown kind returns null")
 	var missing := base.duplicate(true)
 	missing.scheduled_entries = []
@@ -195,6 +199,7 @@ func test_time_and_event_id_overflow_are_rejected_before_commit() -> bool:
 	var near_limit: Dictionary = Simulator.new(1, 1, 1).snapshot()
 	near_limit.world_time = "9223372036854775657"
 	near_limit.scheduled_entries[0].due_time = "9223372036854775700"
+	near_limit.scheduled_entries[1].due_time = "9223372036854775700"
 	var sim = Simulator.from_snapshot(near_limit)
 	var before: Dictionary = sim.snapshot()
 	var time_result = sim.step(Command.wait_for(100))

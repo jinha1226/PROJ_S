@@ -1,0 +1,273 @@
+class_name DecisionRulesetRegistry
+extends RefCounted
+
+const FixedPointScript = preload("res://sim/fixed_point.gd")
+
+const RULESET_ID := "dungeon-hierarchical-utility-v1"
+const SCORE_COMBINER_ID := "weighted-sum-v1"
+const SCORE_MIN := -1000000
+const SCORE_MAX := 1000000
+const ACTION_IDS := ["ENGAGE", "PROTECT", "FLEE", "TAKE_COVER", "HOLD", "FREEZE"]
+const MODE_IDS := ["NORMAL", "PANIC"]
+
+class CurveDef extends RefCounted:
+	var def_version := 1
+	var curve_id: String
+	var control_points: Array[Vector2i] = []
+	func _init(p_id: String, points: Array) -> void:
+		curve_id = p_id
+		for point in points: control_points.append(Vector2i(int(point[0]), int(point[1])))
+
+class GateDef extends RefCounted:
+	var def_version := 1
+	var gate_id: String
+	var evaluator_id: String
+	func _init(p_id: String, p_evaluator: String) -> void:
+		gate_id = p_id; evaluator_id = p_evaluator
+
+class ConsiderationDef extends RefCounted:
+	var def_version := 1
+	var consideration_id: String
+	var evaluator_id := "normalized-input-v1"
+	var input_id: String
+	var curve_id: String
+	var signed_weight_milli: int
+	func _init(p_id: String, p_input: String, p_curve: String, p_weight: int) -> void:
+		consideration_id = p_id; input_id = p_input; curve_id = p_curve; signed_weight_milli = p_weight
+
+class ActionDef extends RefCounted:
+	var def_version := 1
+	var action_id: String
+	var decision_tier: int
+	var base_score: int
+	var allowed_mode_ids: Array[String] = []
+	var tie_break_rank: int
+	var commitment_duration: int
+	var cooldown_duration: int
+	var switch_margin: int
+	var candidate_provider_id: String
+	var gates: Array = []
+	var considerations: Array = []
+	var intent_builder_id: String
+	var interrupt_policy_id := "commitment-switch-v1"
+	func _init(p_id: String, p_modes: Array, p_rank: int, p_base: int,
+			p_commit: int, p_cooldown: int, p_margin: int, p_provider: String, p_builder: String) -> void:
+		action_id = p_id; decision_tier = 100; base_score = p_base; tie_break_rank = p_rank
+		for mode in p_modes: allowed_mode_ids.append(str(mode))
+		commitment_duration = p_commit; cooldown_duration = p_cooldown; switch_margin = p_margin
+		candidate_provider_id = p_provider; intent_builder_id = p_builder
+
+class MentalModeDef extends RefCounted:
+	var def_version := 1
+	var mode_id: String
+	var candidate_action_ids: Array[String] = []
+	var tie_break_rank: int
+	var transition_policy_id := "panic-hysteresis-v1"
+	func _init(p_id: String, p_actions: Array, p_rank: int) -> void:
+		mode_id = p_id; tie_break_rank = p_rank
+		for action in p_actions: candidate_action_ids.append(str(action))
+
+static var _curves: Dictionary = {}
+static var _actions: Dictionary = {}
+static var _modes: Dictionary = {}
+
+
+static func _ensure() -> void:
+	if not _actions.is_empty(): return
+	_curves = {
+		"linear_up": CurveDef.new("linear_up", [[0, 0], [1000, 1000]]),
+		"linear_down": CurveDef.new("linear_down", [[0, 1000], [1000, 0]]),
+		"threshold_up": CurveDef.new("threshold_up", [[0, 0], [499, 0], [500, 1000], [1000, 1000]]),
+		"threshold_down": CurveDef.new("threshold_down", [[0, 1000], [499, 1000], [500, 0], [1000, 0]]),
+	}
+	_modes = {
+		"NORMAL": MentalModeDef.new("NORMAL", ["ENGAGE", "PROTECT", "FLEE", "TAKE_COVER", "HOLD"], 0),
+		"PANIC": MentalModeDef.new("PANIC", ["FLEE", "FREEZE"], 1),
+	}
+	_add_action("ENGAGE", ["NORMAL"], 0, 100, 200, 100, 100, "threat-v1", "engage-v1", [
+		_c("engage.aggression", "facet.aggression", "linear_up", 300),
+		_c("engage.boldness", "facet.boldness", "linear_up", 250),
+		_c("engage.attack_drive", "appraisal.attack_drive", "linear_up", 500),
+		_c("engage.threat", "appraisal.perceived_threat", "linear_up", -400)])
+	_add_action("PROTECT", ["NORMAL"], 1, 60, 200, 100, 100, "ally-threatened-v1", "protect-v1", [
+		_c("protect.altruism", "facet.altruism", "linear_up", 300),
+		_c("protect.trust", "relation.ally_trust", "linear_up", 100),
+		_c("protect.targeted", "context.ally_targeted", "linear_up", 150),
+		_c("protect.panic", "appraisal.panic_pressure", "linear_up", -300)])
+	_add_action("FLEE", ["NORMAL", "PANIC"], 2, 100, 200, 100, 100, "retreat-v1", "flee-v1", [
+		_c("flee.threat", "appraisal.perceived_threat", "linear_up", 500),
+		_c("flee.hp", "context.hp_loss", "linear_up", 400),
+		_c("flee.fear", "affect.fear", "linear_up", 400),
+		_c("flee.boldness", "facet.boldness", "linear_up", -300)])
+	_add_action("TAKE_COVER", ["NORMAL"], 3, 180, 200, 200, 100, "cover-v1", "cover-v1", [
+		_c("cover.threat", "appraisal.perceived_threat", "linear_up", 350),
+		_c("cover.composure", "facet.composure", "linear_up", 150)])
+	_add_action("HOLD", ["NORMAL"], 4, 200, 100, 0, 50, "self-v1", "hold-v1", [
+		_c("hold.composure", "facet.composure", "linear_up", 200),
+		_c("hold.threat", "appraisal.perceived_threat", "linear_up", -250)])
+	_add_action("FREEZE", ["PANIC"], 5, 100, 0, 0, 0, "self-v1", "freeze-v1", [
+		_c("freeze.panic", "appraisal.panic_pressure", "linear_up", 500),
+		_c("freeze.composure", "facet.composure", "linear_down", 300)])
+
+
+static func _c(id: String, input: String, curve: String, weight: int):
+	return ConsiderationDef.new(id, input, curve, weight)
+
+
+static func _add_action(id: String, modes: Array, rank: int, base: int, commitment: int,
+		cooldown: int, margin: int, provider: String, builder: String, considerations: Array) -> void:
+	var action = ActionDef.new(id, modes, rank, base, commitment, cooldown, margin, provider, builder)
+	action.gates = [GateDef.new("alive-ready", "alive-ready-v1"), GateDef.new("mode", "mode-v1"),
+		GateDef.new("target", "target-valid-v1"), GateDef.new("cooldown", "cooldown-v1")]
+	action.considerations = considerations
+	_actions[id] = action
+
+
+static func action(action_id: String): _ensure(); return _copy_action(_actions.get(action_id))
+static func mode(mode_id: String): _ensure(); return _copy_mode(_modes.get(mode_id))
+static func curve(curve_id: String): _ensure(); return _copy_curve(_curves.get(curve_id))
+static func actions() -> Array:
+	_ensure(); var ids: Array = _actions.keys(); ids.sort(); return ids.map(func(id): return _copy_action(_actions[id]))
+static func modes() -> Array: _ensure(); return [_copy_mode(_modes.NORMAL), _copy_mode(_modes.PANIC)]
+
+static func _copy_curve(source):
+	if source == null: return null
+	var points: Array = []
+	for p in source.control_points: points.append([p.x, p.y])
+	return CurveDef.new(source.curve_id, points)
+
+static func _copy_mode(source):
+	if source == null: return null
+	return MentalModeDef.new(source.mode_id, source.candidate_action_ids, source.tie_break_rank)
+
+static func _copy_action(source):
+	if source == null: return null
+	var copy = ActionDef.new(source.action_id, source.allowed_mode_ids, source.tie_break_rank, source.base_score,
+		source.commitment_duration, source.cooldown_duration, source.switch_margin, source.candidate_provider_id, source.intent_builder_id)
+	copy.decision_tier = source.decision_tier; copy.interrupt_policy_id = source.interrupt_policy_id
+	for gate in source.gates: copy.gates.append(GateDef.new(gate.gate_id, gate.evaluator_id))
+	for c in source.considerations: copy.considerations.append(ConsiderationDef.new(c.consideration_id, c.input_id, c.curve_id, c.signed_weight_milli))
+	return copy
+
+
+static func evaluate_curve(curve_id: String, raw_input: int) -> int:
+	_ensure()
+	var definition = _curves.get(curve_id)
+	if definition == null: return -1
+	var x := clampi(raw_input, 0, 1000)
+	for index in range(definition.control_points.size() - 1):
+		var a: Vector2i = definition.control_points[index]
+		var b: Vector2i = definition.control_points[index + 1]
+		if x >= a.x and x <= b.x:
+			return FixedPointScript.interpolate(x, a.x, a.y, b.x, b.y)
+	return -1
+
+
+static func evaluate(action_def, inputs: Dictionary) -> Dictionary:
+	var score: int = action_def.base_score
+	var rows: Array[Dictionary] = []
+	for consideration in action_def.considerations:
+		if not inputs.has(consideration.input_id) or not (inputs[consideration.input_id] is int):
+			return {"error": "missing_or_invalid_input:%s" % consideration.input_id,
+				"base_score": action_def.base_score, "score": SCORE_MIN, "considerations": []}
+		var raw := clampi(int(inputs.get(consideration.input_id, 0)), 0, 1000)
+		var output := evaluate_curve(consideration.curve_id, raw)
+		var contribution := FixedPointScript.weighted_contribution(output, consideration.signed_weight_milli)
+		score = clampi(score + contribution, SCORE_MIN, SCORE_MAX)
+		rows.append({"consideration_id": consideration.consideration_id, "input_id": consideration.input_id,
+			"raw_input": raw, "normalized_input": raw, "curve_id": consideration.curve_id,
+			"curve_output": output, "signed_weight_milli": consideration.signed_weight_milli,
+			"contribution": contribution, "veto": false, "reason": "", "evidence_ids": []})
+	return {"error": "", "base_score": action_def.base_score, "score": score, "considerations": rows}
+
+
+static func validation_error() -> String:
+	_ensure()
+	var curve_ids: Array = _curves.keys(); curve_ids.sort()
+	var expected_curve_ids := ["linear_down", "linear_up", "threshold_down", "threshold_up"]
+	if curve_ids != expected_curve_ids: return "unknown_or_missing_curve"
+	var action_keys: Array = _actions.keys(); action_keys.sort()
+	var expected_action_keys: Array = ACTION_IDS.duplicate(); expected_action_keys.sort()
+	if action_keys != expected_action_keys: return "unknown_or_missing_action"
+	var mode_keys: Array = _modes.keys(); mode_keys.sort()
+	var expected_mode_keys: Array = MODE_IDS.duplicate(); expected_mode_keys.sort()
+	if mode_keys != expected_mode_keys: return "unknown_or_missing_mode"
+	for curve_id in curve_ids:
+		var d = _curves[curve_id]
+		if d.def_version != 1 or d.curve_id != curve_id or not _stable_id(curve_id): return "invalid_curve_identity"
+		if d.control_points.size() < 2 or d.control_points.size() > 8: return "invalid_curve_point_count"
+		if d.control_points[0].x != 0 or d.control_points[-1].x != 1000: return "invalid_curve_endpoints"
+		for i in range(d.control_points.size()):
+			var p: Vector2i = d.control_points[i]
+			if p.y < 0 or p.y > 1000 or (i > 0 and p.x <= d.control_points[i - 1].x): return "invalid_curve_points"
+	var ranks: Dictionary = {}
+	var mode_ranks: Dictionary = {}
+	var global_gate_ids: Dictionary = {}
+	var global_consideration_ids: Dictionary = {}
+	var allowed_inputs := ["facet.aggression", "facet.altruism", "facet.boldness", "facet.composure",
+		"appraisal.attack_drive", "appraisal.perceived_threat", "appraisal.panic_pressure",
+		"context.hp_loss", "context.ally_targeted", "relation.ally_trust", "affect.fear"]
+	var providers := ["threat-v1", "ally-threatened-v1", "retreat-v1", "cover-v1", "self-v1"]
+	var builders := ["engage-v1", "protect-v1", "flee-v1", "cover-v1", "hold-v1", "freeze-v1"]
+	for action_id in ACTION_IDS:
+		var a = _actions.get(action_id)
+		if a == null: return "missing_action"
+		if a.def_version != 1 or a.action_id != action_id or a.decision_tier < 0 or a.decision_tier > 1000:
+			return "invalid_action_identity"
+		if ranks.has(a.tie_break_rank): return "duplicate_action_tie_break_rank"
+		ranks[a.tie_break_rank] = true
+		if a.tie_break_rank < 0 or not _stable_id(a.action_id.to_lower()): return "invalid_action_rank_or_id"
+		if a.base_score < -10000 or a.base_score > 10000 or a.considerations.size() > 12 \
+				or a.commitment_duration < 0 or a.commitment_duration > 10000 or a.cooldown_duration < 0 \
+				or a.cooldown_duration > 10000 or a.switch_margin < 0 or a.switch_margin > 10000:
+			return "invalid_action_range"
+		if a.candidate_provider_id not in providers or a.intent_builder_id not in builders \
+				or a.interrupt_policy_id != "commitment-switch-v1": return "unknown_action_strategy"
+		var allowed_modes_seen := {}
+		if a.allowed_mode_ids.is_empty(): return "missing_allowed_mode"
+		for allowed_mode_id in a.allowed_mode_ids:
+			if allowed_mode_id not in MODE_IDS or allowed_modes_seen.has(allowed_mode_id): return "invalid_allowed_mode"
+			allowed_modes_seen[allowed_mode_id] = true
+			if not _modes[allowed_mode_id].candidate_action_ids.has(action_id): return "allowed_mode_reverse_reference_missing"
+		var gate_ids := {}; var consideration_ids := {}
+		if a.gates.size() != 4: return "invalid_gate_count"
+		for gate in a.gates:
+			var scoped_gate_id := "%s.%s" % [action_id.to_lower(), gate.gate_id]
+			if gate.def_version != 1 or not _stable_id(gate.gate_id) or not _stable_id(gate.evaluator_id) \
+					or gate_ids.has(gate.gate_id) or global_gate_ids.has(scoped_gate_id) \
+					or gate.evaluator_id not in ["alive-ready-v1", "mode-v1", "target-valid-v1", "cooldown-v1"]:
+				return "invalid_or_duplicate_gate"
+			gate_ids[gate.gate_id] = true
+			global_gate_ids[scoped_gate_id] = true
+		for c in a.considerations:
+			if c.def_version != 1 or not _stable_id(c.consideration_id) or not _stable_id(c.evaluator_id) \
+					or not _stable_id(c.input_id) or not _stable_id(c.curve_id) \
+					or consideration_ids.has(c.consideration_id) or global_consideration_ids.has(c.consideration_id) \
+					or c.evaluator_id != "normalized-input-v1" \
+					or c.input_id not in allowed_inputs or not _curves.has(c.curve_id) or absi(c.signed_weight_milli) > 2000:
+				return "invalid_or_duplicate_consideration"
+			consideration_ids[c.consideration_id] = true
+			global_consideration_ids[c.consideration_id] = true
+			if c.input_id.begins_with("facet.") and absi(c.signed_weight_milli) > 300: return "personality_weight_too_large"
+			if c.input_id.begins_with("relation.") and absi(c.signed_weight_milli) > 500: return "relation_weight_too_large"
+	for mode_id in MODE_IDS:
+		var m = _modes.get(mode_id)
+		if m == null: return "missing_mode"
+		if m.def_version != 1 or m.mode_id != mode_id or not _stable_id(mode_id.to_lower()) \
+				or m.transition_policy_id != "panic-hysteresis-v1" or m.tie_break_rank < 0 \
+				or mode_ranks.has(m.tie_break_rank): return "invalid_or_duplicate_mode"
+		mode_ranks[m.tie_break_rank] = true
+		var candidates_seen := {}
+		for action_id in m.candidate_action_ids:
+			if candidates_seen.has(action_id) or not _actions.has(action_id) or not _actions[action_id].allowed_mode_ids.has(mode_id): return "invalid_mode_action_cross_reference"
+			candidates_seen[action_id] = true
+	if not _modes.NORMAL.candidate_action_ids.has("HOLD") or not _modes.PANIC.candidate_action_ids.has("FREEZE"):
+		return "missing_mode_fallback"
+	return ""
+
+
+static func _stable_id(value: String) -> bool:
+	if value.is_empty() or value.to_utf8_buffer().size() > 64: return false
+	for code in value.to_ascii_buffer():
+		if not ((code >= 97 and code <= 122) or (code >= 48 and code <= 57) or code in [46, 95, 45]): return false
+	return true
