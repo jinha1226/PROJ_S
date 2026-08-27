@@ -11,6 +11,9 @@ func test_main_scene_instantiates_as_control_with_session_dto() -> bool:
 	check(sandbox.grid.get_theme_default_font().has_char("글".unicode_at(0)), "grid inherits Hangul font")
 	check_eq(sandbox.grid.visible_cell_count(), 225, "15x15 detached grid")
 	check_eq(sandbox.summaries.get_child_count(), 4, "four lead summary buttons")
+	check(str(sandbox.summaries.get_child(0).text).contains("상황 살피는 중") \
+		and not str(sandbox.summaries.get_child(0).text).contains("공포"),
+		"lead summary starts with a short activity phrase instead of an internal fear value")
 	check(sandbox.inspector.text.contains("객관"), "reaction inspector populated")
 	check(sandbox.event_log.text.contains("아직 사건이 없습니다"), "empty event log guidance")
 	sandbox.free()
@@ -26,8 +29,10 @@ func test_world_event_log_updates_without_blocking_progress() -> bool:
 	sandbox._advance(1)
 	check(session.lab_status().world_time > before, "event log allows live progress")
 	check(sandbox.event_log.text.contains("최근 세계 사건"), "event log header")
-	check(sandbox.event_log.text.contains("위협") or sandbox.event_log.text.contains("반응 선택"),
-		"readable world events rendered")
+	check(sandbox.event_log.text.contains("발견했다.") or sandbox.event_log.text.contains("기로 했다."),
+		"natural world incident sentences rendered")
+	check(not sandbox.event_log.text.contains("반응 선택") and not sandbox.event_log.text.contains("NORMAL"),
+		"event log does not expose internal decision or mode names")
 	sandbox._toggle_event_log()
 	check(not sandbox.event_log.visible and sandbox.inspector.visible, "inspector restored")
 	sandbox.free()
@@ -35,15 +40,19 @@ func test_world_event_log_updates_without_blocking_progress() -> bool:
 
 func test_progress_banner_and_auto_control_make_each_advance_visible() -> bool:
 	var sandbox = Scene.instantiate()
-	var session = Session.new(7, 7701)
+	var session = Session.new()
 	sandbox.initialize_for_headless_test(session)
 	check(sandbox.progress_banner.text.contains("턴 0") and sandbox.progress_banner.text.contains("1턴을 누르면"),
 		"initial action is explicit")
 	check_eq(sandbox.auto_button.text, "자동 시작", "auto starts with a readable state")
 	sandbox._advance(1)
-	check(sandbox.progress_banner.text.contains("턴 1") \
-		and sandbox.progress_banner.text.contains("방금 +1턴") \
-		and sandbox.progress_banner.text.contains("사건"), "advance result stays visible")
+	check(sandbox.progress_banner.text.contains("턴 1"), "advance result stays visible")
+	check(sandbox.progress_banner.text.contains("용기를 내어") \
+		or sandbox.progress_banner.text.contains("겁을 먹고") \
+		or sandbox.progress_banner.text.contains("지키러 나섰다"),
+		"top banner foregrounds a meaningful character incident")
+	for summary in sandbox.summaries.get_children():
+		check(not str(summary.text).contains("공포"), "summary card keeps fear number in the inspector")
 	sandbox._toggle_auto()
 	check(sandbox.auto_running and sandbox.auto_button.text == "자동 정지" \
 		and sandbox.progress_banner.text.contains("자동 켜짐"), "running auto state is explicit")

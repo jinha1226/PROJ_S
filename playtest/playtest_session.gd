@@ -146,32 +146,98 @@ func _event_log_message(event) -> String:
 	var actor_name := _event_entity_name(event.actor_id)
 	var target_name := _event_entity_name(event.target_id)
 	match str(event.type):
+		"action.wait":
+			return "시간이 한 턴 흘렀다."
 		"encounter.threat_appeared":
-			return "%s 출현 · %s 앞" % [actor_name, target_name]
+			return "%s %s 앞에 나타났다." % [_subject(actor_name), target_name]
 		"perception.threat_noticed":
-			return "%s이(가) %s 발견" % [actor_name, target_name]
+			return "%s %s 발견했다." % [_subject(actor_name), _object(target_name)]
 		"ai.mental_mode_changed":
-			return "%s 심리 전환 · %s → %s" % [actor_name,
-				str(event.data.get("from_mode", "?")), str(event.data.get("to_mode", "?"))]
+			return _mental_mode_event_message(event, actor_name)
 		"ai.decision_selected":
-			return "%s 반응 선택 · %s" % [actor_name,
-				_reaction_log_label(str(event.data.get("reaction_id", "?")))]
+			return _decision_event_message(event, actor_name, target_name)
 		"action.move":
-			return "%s 이동 → (%d,%d)" % [actor_name, event.position.x, event.position.y]
+			return "%s (%d,%d)로 움직였다." % [_subject(actor_name), event.position.x, event.position.y]
 		"action.melee_attack":
-			return "%s이(가) %s 공격" % [actor_name, target_name]
+			return "%s %s 공격했다." % [_subject(actor_name), _object(target_name)]
 		"action.hold":
-			return "%s 대기·방어" % actor_name
+			return "%s 자리를 지키며 방어했다." % _subject(actor_name)
 		"action.freeze":
-			return "%s 공포로 얼어붙음" % actor_name
+			return "%s 두려움에 얼어붙었다." % _subject(actor_name)
 		"encounter.actor_escaped":
-			return "%s 전투 이탈" % actor_name
+			return "%s 전투에서 달아났다." % _subject(actor_name)
 		"combat.physical_damage":
-			return "%s 피해 -%d" % [target_name, int(event.magnitude)]
+			return "%s 공격을 맞아 %d의 피해를 입었다." % [_subject(target_name), int(event.magnitude)]
 		"entity.died":
-			return "%s 사망" % target_name
+			return "%s 쓰러졌다." % _subject(target_name)
 		_:
-			return "%s · %s → %s" % [str(event.type), actor_name, target_name]
+			return "기록되지 않은 사건이 일어났다."
+
+func _mental_mode_event_message(event, actor_name: String) -> String:
+	var from_mode := str(event.data.get("from_mode", ""))
+	var to_mode := str(event.data.get("to_mode", ""))
+	if from_mode == "NORMAL" and to_mode == "PANIC":
+		return "%s 위협에 겁을 먹고 평정심을 잃었다." % _subject(actor_name)
+	if from_mode == "PANIC" and to_mode == "NORMAL":
+		return "%s 마음을 추스르고 평정을 되찾았다." % _subject(actor_name)
+	return "%s 마음가짐이 달라졌다." % _topic(actor_name)
+
+func _decision_event_message(event, actor_name: String, target_name: String) -> String:
+	var reaction_id := str(event.data.get("reaction_id", ""))
+	var retained := bool(event.data.get("retained", false))
+	var switch_evidence: Dictionary = event.data.get("switch_evidence", {}) \
+		if event.data.get("switch_evidence", {}) is Dictionary else {}
+	var previous_reaction := str(switch_evidence.get("previous_reaction", "NONE"))
+	var returned_from_danger: bool = previous_reaction in ["FLEE", "TAKE_COVER", "FREEZE"]
+	match reaction_id:
+		"ENGAGE":
+			var opponent := target_name if event.target_id > 0 else "적"
+			if retained:
+				return "%s 계속 %s에게 맞서기로 했다." % [_subject(actor_name), opponent]
+			if returned_from_danger:
+				return "%s 용기를 내어 다시 %s에게 맞서기로 했다." % [_subject(actor_name), opponent]
+			return "%s %s에게 맞서기로 했다." % [_subject(actor_name), opponent]
+		"PROTECT":
+			var ally := _object(target_name) if event.target_id > 0 else "동료를"
+			if retained:
+				return "%s 계속 %s 지키기로 했다." % [_subject(actor_name), ally]
+			if returned_from_danger:
+				return "%s 용기를 내어 %s 지키러 나섰다." % [_subject(actor_name), ally]
+			return "%s %s 지키러 나섰다." % [_subject(actor_name), ally]
+		"FLEE":
+			return "%s %s위험을 피해 물러나기로 했다." % [
+				_subject(actor_name), "계속 " if retained else ""]
+		"TAKE_COVER":
+			return "%s %s몸을 숨길 곳을 찾기로 했다." % [
+				_subject(actor_name), "계속 " if retained else ""]
+		"HOLD":
+			return "%s %s자리를 지키며 버티기로 했다." % [
+				_subject(actor_name), "계속 " if retained else ""]
+		"FREEZE":
+			return "%s %s두려움에 사로잡혀 움직이지 못했다." % [
+				_subject(actor_name), "여전히 " if retained else ""]
+		_:
+			return "%s 상황을 지켜보기로 했다." % _subject(actor_name)
+
+func _subject(value: String) -> String:
+	return value + ("이" if _has_final_consonant(value) else "가")
+
+func _object(value: String) -> String:
+	return value + ("을" if _has_final_consonant(value) else "를")
+
+func _topic(value: String) -> String:
+	return value + ("은" if _has_final_consonant(value) else "는")
+
+func _has_final_consonant(value: String) -> bool:
+	for index in range(value.length() - 1, -1, -1):
+		var code := value.unicode_at(index)
+		if code in [9, 10, 13, 32]: continue
+		if code >= 0xAC00 and code <= 0xD7A3:
+			return (code - 0xAC00) % 28 != 0
+		if code >= 48 and code <= 57:
+			return str(code - 48) in ["0", "1", "3", "6", "7", "8"]
+		return false
+	return false
 
 func _event_entity_name(entity_id: int) -> String:
 	if entity_id <= 0: return "-"
@@ -193,7 +259,7 @@ func _latest_salient_event(start_index: int) -> Dictionary:
 	var selected_priority := -1
 	for event_index in range(start_index, sim.world.events.size()):
 		var event = sim.world.events[event_index]
-		var priority := _salient_event_priority(str(event.type))
+		var priority := _salient_event_priority(event)
 		if priority >= selected_priority:
 			selected = event
 			selected_priority = priority
@@ -201,12 +267,16 @@ func _latest_salient_event(start_index: int) -> Dictionary:
 	return {"event_id": selected.id, "world_time": selected.world_time, "type": selected.type,
 		"message": _event_log_message(selected)}
 
-func _salient_event_priority(event_type: String) -> int:
+func _salient_event_priority(event) -> int:
+	var event_type := str(event.type)
+	if event_type == "ai.decision_selected":
+		return int({"PROTECT": 85, "FREEZE": 85, "ENGAGE": 84, "FLEE": 84,
+			"TAKE_COVER": 83, "HOLD": 82}.get(str(event.data.get("reaction_id", "")), 81))
 	return int({"entity.died": 100, "encounter.actor_escaped": 95,
-		"combat.physical_damage": 90, "action.melee_attack": 80,
-		"encounter.threat_appeared": 75, "ai.mental_mode_changed": 70,
-		"action.freeze": 68, "action.move": 60, "perception.threat_noticed": 55,
-		"ai.decision_selected": 50, "action.hold": 10}.get(event_type, 20))
+		"combat.physical_damage": 90, "ai.mental_mode_changed": 86,
+		"action.melee_attack": 80, "encounter.threat_appeared": 75, "action.freeze": 68,
+		"action.move": 60, "perception.threat_noticed": 55,
+		"action.hold": 10, "action.wait": 0}.get(event_type, 20))
 
 func _reaction_log_label(reaction_id: String) -> String:
 	return str({"ENGAGE": "교전", "PROTECT": "보호", "FLEE": "후퇴", "TAKE_COVER": "엄폐",

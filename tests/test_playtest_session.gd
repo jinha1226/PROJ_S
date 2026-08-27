@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 
 const PlaytestSession = preload("res://playtest/playtest_session.gd")
+const SimEventScript = preload("res://sim/sim_event.gd")
 
 func test_session_reset_and_visible_view_are_deterministic_and_detached() -> bool:
 	var first = PlaytestSession.new(101, 501)
@@ -47,8 +48,16 @@ func test_progress_status_separates_turns_commands_and_salient_events() -> bool:
 	check_eq(first.last_advance.processed_ticks, 1, "one processed tick")
 	check(first.last_advance.emitted_event_count > 0, "event count reported")
 	check(not first.last_advance.latest_salient_event.is_empty() \
-		and str(first.last_advance.latest_salient_event.message).contains("고블린"),
-		"salient Korean event reported")
+		and str(first.last_advance.latest_salient_event.message).ends_with("."),
+		"salient event is presented as a Korean sentence")
+	var narrative_session = PlaytestSession.new()
+	check(narrative_session.advance_ticks(1).ok, "default first turn for narrative status")
+	var narrative: Dictionary = narrative_session.progress_status().last_advance.latest_salient_event
+	check_eq(narrative.get("type", ""), "ai.decision_selected",
+		"meaningful decision outranks routine first-turn movement")
+	check(str(narrative.get("message", "")).contains("동료") \
+		and str(narrative.get("message", "")).contains("지키러 나섰다"),
+		"first-turn banner tells a concrete protective decision")
 	check(session.advance_ticks(10).ok, "ten visible turns")
 	var tenth: Dictionary = session.progress_status()
 	check_eq(tenth.tick_index, 11, "world turn count accumulates")
@@ -74,10 +83,47 @@ func test_session_element_commands_and_returned_results_are_detached() -> bool:
 	if not events.is_empty(): events[0].type = "tampered"
 	var event_log: Array[Dictionary] = session.recent_event_log(20)
 	check(not event_log.is_empty(), "presentation event log available")
-	check(event_log.any(func(row: Dictionary): return str(row.message).contains("발견") \
-			or str(row.message).contains("반응 선택")), "event log has readable Korean messages")
+	check(event_log.any(func(row: Dictionary): return str(row.message).contains("발견했다") \
+			or str(row.message).contains("기로 했다")), "event log has natural Korean incident sentences")
+	check(not event_log.any(func(row: Dictionary): return str(row.message).contains("반응 선택") \
+			or str(row.message).contains("NORMAL") or str(row.message).contains("PANIC")),
+		"presentation messages hide internal state names")
 	if not event_log.is_empty(): event_log[0].message = "tampered"
 	check_eq(session.snapshot_json(), before, "inspector and events detached")
+	return finish()
+
+func test_event_presentation_maps_mode_and_decision_payloads_without_mutating_core() -> bool:
+	var session = PlaytestSession.new(7, 9001)
+	var lead_id: int = session._actor_id_for_slot("LEAD", 0)
+	var ally_id: int = session._actor_id_for_slot("PASSIVE_ALLY", 0)
+	var threat_id: int = session._actor_id_for_slot("MELEE_THREAT", 0)
+	var position: Vector2i = session.sim.world.entities[lead_id].position
+	var snapshot_before := session.snapshot_json()
+	var journal_before := session.command_journal_json()
+	var panic_event = SimEventScript.new(9001, 0, 100, "ai.mental_mode_changed",
+		lead_id, threat_id, position, 900, -1, -1,
+		{"from_mode": "NORMAL", "to_mode": "PANIC", "panic_pressure": 900})
+	var recovery_event = SimEventScript.new(9002, 0, 200, "ai.mental_mode_changed",
+		lead_id, threat_id, position, 400, -1, -1,
+		{"from_mode": "PANIC", "to_mode": "NORMAL", "panic_pressure": 400})
+	var engage_event = SimEventScript.new(9003, 0, 200, "ai.decision_selected",
+		lead_id, threat_id, position, 800, -1, -1,
+		{"reaction_id": "ENGAGE", "retained": false,
+			"switch_evidence": {"previous_reaction": "TAKE_COVER"}})
+	var protect_event = SimEventScript.new(9004, 0, 200, "ai.decision_selected",
+		lead_id, ally_id, position, 700, -1, -1,
+		{"reaction_id": "PROTECT", "retained": false,
+			"switch_evidence": {"previous_reaction": "NONE"}})
+	check_eq(session._event_log_message(panic_event),
+		"주인공 1이 위협에 겁을 먹고 평정심을 잃었다.", "panic becomes an incident sentence")
+	check_eq(session._event_log_message(recovery_event),
+		"주인공 1이 마음을 추스르고 평정을 되찾았다.", "panic recovery becomes an incident sentence")
+	check_eq(session._event_log_message(engage_event),
+		"주인공 1이 용기를 내어 다시 고블린 1에게 맞서기로 했다.", "return to combat is explicit")
+	check_eq(session._event_log_message(protect_event),
+		"주인공 1이 동료 1을 지키러 나섰다.", "protect decision states its human meaning")
+	check_eq(session.snapshot_json(), snapshot_before, "event presentation leaves deterministic snapshot untouched")
+	check_eq(session.command_journal_json(), journal_before, "event presentation leaves journal untouched")
 	return finish()
 
 func test_session_save_load_and_invalid_load_are_transactional() -> bool:

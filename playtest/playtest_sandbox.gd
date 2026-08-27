@@ -99,8 +99,8 @@ func _refresh() -> void:
 		var button := Button.new(); button.name = "Lead%d" % (int(row.trial_slot) + 1)
 		button.clip_text = true
 		var selected_mark := "▶" if int(row.entity_id) == session.selected_lead_id else "#"
-		button.text = "%s%d HP%d · 공포%d · %s" % [selected_mark, int(row.trial_slot) + 1,
-			int(row.health), int(row.fear), _reaction_label(str(row.reaction))]
+		button.text = "%s%d · HP%d · %s" % [selected_mark, int(row.trial_slot) + 1,
+			int(row.health), _lead_activity_text(row)]
 		var lead_color: Color = LEAD_UI_COLORS[int(row.trial_slot)]
 		button.add_theme_color_override("font_color", lead_color)
 		button.add_theme_color_override("font_hover_color", lead_color.lightened(0.15))
@@ -149,10 +149,10 @@ func _progress_text(status: Dictionary) -> String:
 		return first_line + "\n" + ("1턴을 누르면 네 방에서 고블린이 동시에 나타납니다" \
 			if str(status.phase_id) == "ARMED" else "1턴 또는 자동 시작으로 관찰을 계속하세요")
 	if not bool(last.accepted): return first_line + "\n진행 실패 · %s" % str(last.reason)
-	var second_line := "방금 +%d턴 · 사건 %d건" % [int(last.processed_ticks), int(last.emitted_event_count)]
 	var salient: Dictionary = last.latest_salient_event
-	if not salient.is_empty(): second_line += " · " + str(salient.message)
-	return first_line + "\n" + second_line
+	if not salient.is_empty(): return first_line + "\n" + str(salient.message)
+	return first_line + "\n방금 +%d턴 · 사건 %d건" % [
+		int(last.processed_ticks), int(last.emitted_event_count)]
 
 func _event_log_text(rows: Array[Dictionary]) -> String:
 	var status: Dictionary = session.progress_status() if session != null else {}
@@ -258,6 +258,20 @@ func _dominant_labels(rows: Array) -> Array[String]:
 func _reaction_label(reaction_id: String) -> String:
 	return str({"NONE": "관찰", "ENGAGE": "교전", "PROTECT": "보호", "FLEE": "후퇴",
 		"TAKE_COVER": "엄폐", "HOLD": "대기", "FREEZE": "얼어붙기"}.get(reaction_id, reaction_id))
+
+func _lead_activity_text(row: Dictionary) -> String:
+	if not bool(row.get("alive", true)): return "쓰러짐"
+	if str(row.get("encounter_status", "ACTIVE")) == "ESCAPED": return "전투에서 이탈"
+	var reaction_id := str(row.get("reaction", "NONE"))
+	match reaction_id:
+		"ENGAGE": return "맞서는 중"
+		"PROTECT": return "동료 지키는 중"
+		"FLEE":
+			return "겁먹고 후퇴 중" if str(row.get("mental_mode", "NORMAL")) == "PANIC" else "물러나는 중"
+		"TAKE_COVER": return "몸을 숨기는 중"
+		"HOLD": return "자리 지키는 중"
+		"FREEZE": return "겁에 질려 굳음"
+		_: return "상황 살피는 중"
 
 func _mode_label(mode_id: String) -> String:
 	return str({"NORMAL": "평정", "PANIC": "공황"}.get(mode_id, mode_id))
