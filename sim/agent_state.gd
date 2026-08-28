@@ -29,7 +29,6 @@ var active_threat_id: int = -1
 var threat_notice_event_id: int = -1
 var last_seen_position := Vector2i(-1, -1)
 var last_seen_time: int = -1
-var guarded_until: int = 0
 var commitment_until: int = 0
 var action_history_rows: Array[Dictionary] = []
 var last_decision_time: int = -1
@@ -64,7 +63,7 @@ func to_dict() -> Dictionary:
 		"mental_mode_since": str(mental_mode_since), "active_threat_id": str(active_threat_id),
 		"threat_notice_event_id": str(threat_notice_event_id),
 		"last_seen_position": [last_seen_position.x, last_seen_position.y],
-		"last_seen_time": str(last_seen_time), "guarded_until": str(guarded_until),
+		"last_seen_time": str(last_seen_time),
 		"commitment_until": str(commitment_until), "action_history_rows": [],
 		"last_decision_time": str(last_decision_time), "last_decision_event_id": str(last_decision_event_id)}
 	for history_row in action_history_rows:
@@ -78,7 +77,7 @@ func to_dict() -> Dictionary:
 static func from_dict(row: Dictionary):
 	var state = load("res://sim/agent_state.gd").new(Int64CodecScript.parse(row.entity_id, "actor entity ID"), str(row.controller_kind), int(row.trial_slot))
 	state.encounter_status = str(row.encounter_status)
-	for field in ["busy_until", "intent_target_entity_id", "intent_started_time", "emotion_updated_time", "mental_mode_since", "active_threat_id", "threat_notice_event_id", "last_seen_time", "guarded_until", "commitment_until", "last_decision_time", "last_decision_event_id"]:
+	for field in ["busy_until", "intent_target_entity_id", "intent_started_time", "emotion_updated_time", "mental_mode_since", "active_threat_id", "threat_notice_event_id", "last_seen_time", "commitment_until", "last_decision_time", "last_decision_event_id"]:
 		state.set(field, Int64CodecScript.parse(row[field], field))
 	state.current_activity = str(row.current_activity); state.current_reaction = str(row.current_reaction)
 	state.fear = int(row.fear); state.anger = int(row.anger); state.mental_mode = str(row.mental_mode)

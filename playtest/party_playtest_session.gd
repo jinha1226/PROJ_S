@@ -30,6 +30,15 @@ var _overrides: Dictionary = {}
 var _draft_fingerprint := ""
 var _exploration_route = null
 
+func _combatant_status_ids(entity_id: int) -> Array[String]:
+	var result: Array[String] = []
+	if sim == null or sim.world == null: return result
+	var combatant = sim.world.combatant_states.get(entity_id)
+	if combatant == null: return result
+	for row in combatant.status_rows: result.append(str(row.status_id))
+	result.sort()
+	return result
+
 func _init(p_world_seed: int = DEFAULT_WORLD_SEED, p_personality_seed: int = DEFAULT_PERSONALITY_SEED) -> void:
 	reset_party(p_world_seed, p_personality_seed)
 
@@ -64,7 +73,7 @@ func party_status() -> Dictionary:
 	var visible_enemy_ids: Array = []
 	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 		for enemy_id in state.enemy_ids:
-			if sim.world.entities[enemy_id].is_alive(): visible_enemy_ids.append(enemy_id)
+			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
 		"contact_kind": state.contact_kind, "formation_id": state.formation_id, "anchor": [state.group_anchor.x,state.group_anchor.y],
@@ -155,7 +164,7 @@ func party_cards() -> Array[Dictionary]:
 		var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 		var exposure := {"applicable": false, "sampled_step_index": sim.world.step_index, "sampled_world_time": sim.world.world_time,
 			"position": [-1,-1], "fire_score": 0, "water_score": 0, "electric_score": 0, "poison_score": 0, "total_risk": 0}
-		if member.presence in ["DEPLOYED", "GROUPED"] and entity.is_alive():
+		if member.presence in ["DEPLOYED", "GROUPED"] and sim.world.is_environment_exposed(member_id):
 			var evaluated = sim.evaluate_exposure_for_entity(member_id, logical); var wire: Dictionary = evaluated.evaluation.to_dict()
 			exposure = {"applicable": true, "sampled_step_index": int(wire.sampled_step_index), "sampled_world_time": int(wire.sampled_world_time),
 				"position": wire.position, "fire_score": wire.fire_score, "water_score": wire.water_score, "electric_score": wire.electric_score,
@@ -167,8 +176,8 @@ func party_cards() -> Array[Dictionary]:
 		if expected_action != null: override_state = str(expected_action.source)
 		elif member.role == "PROTAGONIST": override_state = "DIRECT"
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
-			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": entity.is_alive(),
-			"status_ids": member.status_ids.duplicate(), "presence": member.presence, "logical_position": [logical.x,logical.y],
+			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
+			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
 			"emotion": emotion, "override_state": override_state,
 			"expected_action": expected_action})
@@ -179,7 +188,7 @@ func available_companion_ids() -> Array:
 	if sim == null or sim.world.party_encounter == null: return ids
 	var state = sim.world.party_encounter
 	for member_id in state.party_member_ids:
-		if member_id != state.protagonist_id and sim.world.entities[member_id].is_alive(): ids.append(member_id)
+		if member_id != state.protagonist_id and sim.world.is_autonomous_target(member_id): ids.append(member_id)
 	return ids.duplicate()
 
 func deployment_draft() -> Dictionary:
@@ -200,7 +209,7 @@ func enemy_targets() -> Array[Dictionary]:
 	for enemy_id in status.get("visible_enemy_ids", []):
 		var entity = sim.world.entities[int(enemy_id)]
 		rows.append({"entity_id": entity.id, "display_name": entity.display_name, "health": entity.health,
-			"max_health": entity.max_health, "alive": entity.is_alive(), "position": [entity.position.x, entity.position.y]})
+			"max_health": entity.max_health, "alive": sim.world.is_unresolved_enemy(enemy_id), "position": [entity.position.x, entity.position.y]})
 	return rows.duplicate(true)
 
 func commit_exploration_direction(direction: Vector2i) -> Dictionary:
@@ -452,7 +461,7 @@ func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
 			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
 				"viewer_id":resolved_viewer})
 	var viewer = sim.world.entities[resolved_viewer]
-	if not viewer.is_alive():
+	if not sim.world.can_act(resolved_viewer, sim.world.world_time):
 		return _rejection_dto("inspect_viewer_dead", null, null,
 			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
 				"viewer_id":resolved_viewer})
@@ -470,7 +479,7 @@ func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
 	for entity in sim.world.occupying_entities_at(position):
 		var member = sim.world.party_member_state(entity.id)
 		occupants.append({"entity_id":entity.id,"display_name":str(entity.display_name),
-			"health":entity.health,"max_health":entity.max_health,"alive":entity.is_alive(),
+			"health":entity.health,"max_health":entity.max_health,"alive":sim.world.occupies_tile(entity.id),
 			"kind":str(entity.kind),"species_id":str(entity.species_id),
 			"faction_id":str(entity.faction_id),"tags":entity.tags.duplicate(),
 			"role":str(member.role) if member != null else "",
@@ -517,7 +526,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var compact_exposure := {"applicable":false,"sampled_step_index":sim.world.step_index,
 		"sampled_world_time":sim.world.world_time,"position":[-1,-1],"fire_score":0,
 		"water_score":0,"electric_score":0,"poison_score":0,"total_risk":0}
-	if member.presence in ["DEPLOYED","GROUPED"] and entity.is_alive():
+	if member.presence in ["DEPLOYED","GROUPED"] and sim.world.is_environment_exposed(entity_id):
 		var evaluated = sim.evaluate_exposure_for_entity(entity_id, logical)
 		if evaluated != null:
 			var sample_wire: Dictionary = evaluated.sample.to_dict()
@@ -571,9 +580,9 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
 		"entity_id":entity_id,"roster_slot":int(member.roster_slot),"role":str(member.role),
 		"display_name":str(entity.display_name),"health":int(entity.health),
-		"max_health":int(entity.max_health),"alive":entity.is_alive(),
+		"max_health":int(entity.max_health),"alive":sim.world.occupies_tile(entity_id),
 		"kind":str(entity.kind),"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
-		"faction_id":str(entity.faction_id),"status_ids":member.status_ids.duplicate(),
+		"faction_id":str(entity.faction_id),"status_ids":_combatant_status_ids(entity_id),
 		"presence":str(member.presence),"logical_position":[logical.x,logical.y],
 		"busy_until":int(member.busy_until),
 		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
@@ -877,7 +886,7 @@ func _reason_details(reason: String, action: Variant, request: Variant,
 		if sim.world.entities.has(actor_id):
 			var entity = sim.world.entities[actor_id]
 			details["actor_name"] = str(entity.display_name)
-			details["alive"] = bool(entity.is_alive())
+			details["alive"] = bool(sim.world.occupies_tile(entity.id))
 			details["from_position"] = [entity.position.x, entity.position.y]
 		var state = sim.world.party_encounter
 		var member = state.member(actor_id) if state != null else null

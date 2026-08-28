@@ -27,18 +27,24 @@ func _init(p_world, p_movement, p_damage, p_pathfinder, p_environment = null, p_
 	environment = p_environment; exposure = p_exposure
 	melee = MeleeScript.new(world, damage)
 
-func process_tick() -> bool:
+func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: int,
+		tick_start_can_act_ids: Dictionary, allow_victory: bool = true) -> bool:
+	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
+			or actor_schedule_id <= 0 or due_time != world.world_time:
+		return false
 	if world.party_encounter == null: return true
-	if not reconcile_liveness(): return false
+	if not reconcile_liveness(allow_victory): return false
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
-		if encounter.safe_phase == "GROUPED": return _detect_contact()
+		if encounter.safe_phase == "GROUPED": return _detect_contact(processed_step_index,
+			actor_schedule_id, due_time, tick_start_can_act_ids)
 		return true
-	if encounter.safe_phase == "ENGAGED": return _enemy_batch()
+	if encounter.safe_phase == "ENGAGED": return _enemy_batch(processed_step_index,
+		actor_schedule_id, due_time, tick_start_can_act_ids, allow_victory)
 	return true
 
-func reconcile_liveness() -> bool:
+func reconcile_liveness(allow_victory: bool = true) -> bool:
 	if world.party_encounter == null:
 		return true
 	var state = world.party_encounter
@@ -49,10 +55,10 @@ func reconcile_liveness() -> bool:
 		var member = state.member(member_id)
 		if member == null:
 			return false
-		if not world.entities[member_id].is_alive() and member.presence != "DEFEATED":
+		if world.combatant_states[member_id].life_state == "DEAD" and member.presence != "DEFEATED":
 			member.presence = "DEFEATED"
 			presence_changed = true
-	var protagonist_alive: bool = world.entities[state.protagonist_id].is_alive()
+	var protagonist_alive: bool = world.combatant_states[state.protagonist_id].life_state == "ACTIVE"
 	if not protagonist_alive:
 		if state.safe_phase != "PARTY_DEFEATED":
 			state.safe_phase = "PARTY_DEFEATED"
@@ -60,7 +66,7 @@ func reconcile_liveness() -> bool:
 		elif presence_changed:
 			state.revision += 1
 		return not _fault("reconcile_liveness")
-	if state.safe_phase == "ENGAGED" and not _has_alive_enemy():
+	if allow_victory and state.safe_phase == "ENGAGED" and not _has_alive_enemy():
 		if _fault("victory_event"):
 			return false
 		var victory_cause_id := _last_enemy_death_event_id()
@@ -88,7 +94,7 @@ func finalize_automatic_regroup() -> bool:
 	if state == null or state.safe_phase != "REGROUP_READY":
 		return true
 	var protagonist = world.entities.get(state.protagonist_id)
-	if protagonist == null or not protagonist.is_alive():
+	if protagonist == null or not world.can_act(protagonist.id, world.world_time):
 		return false
 	if _fault("automatic_regroup_after_victory"):
 		return false
@@ -105,7 +111,7 @@ func finalize_automatic_regroup() -> bool:
 		return false
 	state.group_anchor = protagonist.position
 	for member_id in state.party_member_ids:
-		if member_id == protagonist.id or not world.entities[member_id].is_alive():
+		if member_id == protagonist.id or not world.occupies_tile(member_id):
 			continue
 		state.member(member_id).presence = "GROUPED"
 		world.entities[member_id].position = state.group_anchor
@@ -124,10 +130,11 @@ func finalize_automatic_regroup() -> bool:
 	state.revision += 1
 	return true
 
-func _detect_contact() -> bool:
+func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time: int,
+		tick_start_can_act_ids: Dictionary) -> bool:
 	var state = world.party_encounter
 	var protagonist = world.entities[state.protagonist_id]
-	if not protagonist.is_alive():
+	if not world.can_act(protagonist.id, world.world_time):
 		return reconcile_liveness()
 	state.group_anchor = protagonist.position
 	for member_id in state.party_member_ids:
@@ -152,20 +159,106 @@ func _detect_contact() -> bool:
 	if state.contact_kind == "ENEMY_AMBUSH":
 		var ambushers: Array = []
 		for enemy_id in state.enemy_ids:
-			if world.entities[enemy_id].is_alive():
+			if tick_start_can_act_ids.has(enemy_id) \
+					and world.is_autonomous_target(enemy_id):
 				ambushers.append(enemy_id)
 		ambushers.sort()
+		var rows: Array[Dictionary] = []
 		for enemy_id in ambushers:
-			var enemy = world.entities[enemy_id]
+			rows.append({"enemy_id": enemy_id,
+				"original_action_order": rows.size(),
+				"melee": melee.can_attack(enemy_id, state.protagonist_id)})
+		var melee_rows: Array[Dictionary] = []
+		for row in rows:
+			if bool(row.melee): melee_rows.append(row)
+		melee_rows.sort_custom(func(a: Dictionary, b: Dictionary):
+			if int(a.enemy_id) != int(b.enemy_id):
+				return int(a.enemy_id) < int(b.enemy_id)
+			return int(a.original_action_order) < int(b.original_action_order))
+		var context := "PARTY_AMBUSH/%d/%d" % [actor_schedule_id, due_time]
+		var frozen_intents: Array = []
+		for ordinal in range(melee_rows.size()):
+			var row: Dictionary = melee_rows[ordinal]
+			var assessment: Dictionary = melee.assess_attack(int(row.enemy_id),
+				state.protagonist_id, "SUGGESTED", processed_step_index,
+				due_time, context, ordinal)
+			var frozen = melee.freeze_assessment(assessment,
+				protagonist.health, int(row.original_action_order), true)
+			if assessment.is_empty() or frozen == null:
+				return false
+			frozen_intents.append(frozen)
+		var projected_results: Array = melee.project_batch(frozen_intents)
+		if projected_results.size() != frozen_intents.size():
+			return false
+		var canonical_batch: bool = not frozen_intents.is_empty()
+		var frozen_by_actor: Dictionary = {}
+		var resolution_by_ordinal: Dictionary = {}
+		if canonical_batch:
+			for frozen in frozen_intents:
+				frozen_by_actor[int(str(frozen.assessment.attacker_id))] = frozen
+			for resolution in projected_results:
+				resolution_by_ordinal[int(resolution.action_data.intent_ordinal)] = resolution
+		var pending_results: Array[Dictionary] = []
+		for row in rows:
+			var enemy_id := int(row.enemy_id)
 			var opening = null
-			if melee.can_attack(enemy_id, state.protagonist_id):
-				opening = melee.commit_attack(enemy_id, state.protagonist_id, 14, contact.id)
+			if bool(row.melee):
+				var frozen = frozen_by_actor.get(enemy_id)
+				var ordinal := int(frozen.assessment.intent_ordinal) if frozen != null else -1
+				var resolution = resolution_by_ordinal.get(ordinal)
+				if not canonical_batch or frozen == null or resolution == null:
+					return false
+				var assessment: Dictionary = frozen.assessment
+				var target_position := Vector2i(int(assessment.target_position[0]),
+					int(assessment.target_position[1]))
+				opening = world.emit_event("action.melee_attack", enemy_id,
+					state.protagonist_id, target_position,
+					int(assessment.base_damage), contact.id, resolution.action_data)
+				if opening != null:
+					pending_results.append({"action": opening, "intent": frozen,
+						"resolution": resolution})
 			else:
-				opening = world.emit_event("action.hold", enemy_id, -1, enemy.position, 100, contact.id)
+				opening = _commit_hold(enemy_id, 100, contact.id)
 			if opening == null or _fault("ambush_leaf"):
 				return false
 			state.enemy_busy_rows[enemy_id] = world.world_time + 100
-	state.safe_phase = "CONTACT"; state.revision += 1
+		pending_results.sort_custom(func(a: Dictionary, b: Dictionary):
+			return int(a.resolution.action_data.intent_ordinal) \
+				< int(b.resolution.action_data.intent_ordinal))
+		for pending in pending_results:
+			var action = pending.action
+			var resolution = pending.resolution
+			var target = world.entities.get(action.target_id)
+			var target_state = world.combatant_states.get(action.target_id)
+			if target == null or target_state == null \
+					or target.health != resolution.target_health_before \
+					or target_state.life_state != resolution.target_life_before:
+				return false
+			if resolution.outcome == "OVERKILL_SKIP":
+				continue
+			if resolution.outcome == "MISS":
+				if world.emit_event("combat.attack_missed", -1, action.target_id,
+						action.position, 0, action.id, {"schema_version": 1,
+							"combat_ruleset_id": MeleeScript.COMBAT_RULESET_ID,
+							"outcome": "MISS"}) == null:
+					return false
+			elif resolution.outcome == "HIT":
+				var applied: Dictionary = damage.apply_canonical_active_damage(target,
+					resolution.final_damage, "physical", action.id, action.position,
+					processed_step_index, resolution.target_health_before,
+					resolution.terminal_immediate, resolution.bleed_proc_succeeded)
+				if not bool(applied.accepted) \
+						or int(applied.applied_health_damage) \
+						!= resolution.target_health_before - resolution.target_health_after:
+					return false
+			else:
+				return false
+			if target.health != resolution.target_health_after \
+					or target_state.life_state != resolution.target_life_after:
+				return false
+	if state.safe_phase != "PARTY_DEFEATED":
+		state.safe_phase = "CONTACT"
+	state.revision += 1
 	if not reconcile_liveness():
 		return false
 	return true
@@ -180,7 +273,7 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 		var companion = state.member(companion_id)
 		if not value is int or selected.has(companion_id) or companion_id == state.protagonist_id \
 				or companion == null or companion.role != "COMPANION" or companion.presence != "GROUPED" \
-				or not world.entities.has(companion_id) or not world.entities[companion_id].is_alive():
+				or not world.entities.has(companion_id) or not world.can_act(companion_id, world.world_time):
 			rejected.reason = "invalid_companion_ids"; return rejected
 		selected.append(companion_id)
 	selected.sort_custom(func(a, b):
@@ -205,21 +298,27 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	rejected.base_fingerprint = _fingerprint(); rejected["plan_hash"] = _hash_without(rejected, "plan_hash")
 	return rejected.duplicate(true)
 
-func commit_deployment(plan: Variant):
+func deployment_commit_error(plan: Variant) -> String:
 	var plan_error := _deployment_plan_error(plan)
 	if not plan_error.is_empty():
-		return _result(false, plan_error)
+		return plan_error
 	if not bool(plan.accepted):
-		return _result(false, str(plan.reason))
+		return str(plan.reason)
 	if str(plan.base_fingerprint) != _fingerprint():
-		return _result(false, "stale_deployment_plan")
+		return "stale_deployment_plan"
 	var authoritative: Dictionary = preview_deployment(str(plan.preset_id), plan.companion_ids.duplicate())
 	if not bool(authoritative.get("accepted", false)):
-		return _result(false, "stale_deployment_plan")
+		return "stale_deployment_plan"
 	if plan != authoritative:
-		return _result(false, "deployment_plan_mismatch")
+		return "deployment_plan_mismatch"
+	return ""
+
+
+func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int):
+	if processed_step_index <= 0 or world._active_step_index != processed_step_index:
+		return {"reason": "invalid_processed_step_index"}
+	var authoritative: Dictionary = plan
 	var event_start: int = world.events.size(); var state = world.party_encounter
-	world.begin_step(world.step_index + 1)
 	var contact_cause_id := _contact_event_id()
 	if contact_cause_id <= 0:
 		return {"reason": "contact_event_missing"}
@@ -241,7 +340,7 @@ func commit_deployment(plan: Variant):
 		if id != state.protagonist_id and _fault("deployment_member_event"):
 			return {"reason": "injected_deployment_failure"}
 	for id in state.party_member_ids:
-		if id != state.protagonist_id and not selected.has(id) and world.entities[id].is_alive(): state.member(id).presence = "DORMANT"
+		if id != state.protagonist_id and not selected.has(id) and world.occupies_tile(id): state.member(id).presence = "DORMANT"
 	if state.contact_kind == "PARTY_AMBUSH":
 		for enemy_id in state.enemy_ids: state.enemy_busy_rows[enemy_id] = world.world_time + 100
 	var companion_wires: Array = []
@@ -251,12 +350,14 @@ func commit_deployment(plan: Variant):
 			"companion_ids": companion_wires})
 	if completed == null or _fault("deployment_completed_event"):
 		return {"reason": "event_emission_failed"}
-	state.formation_id = str(authoritative.preset_id); state.safe_phase = "ENGAGED"; state.revision += 1; world.finish_step()
-	if not world.world_state_error().is_empty():
-		return {"reason": "deployment_semantic_failure"}
-	return _result(true, "ok", world.events_since(event_start), 0)
+	state.formation_id = str(authoritative.preset_id); state.safe_phase = "ENGAGED"; state.revision += 1
+	return _result(true, "ok", world.events_since(event_start), 0, processed_step_index)
 
-func preview_party_turn(request) -> PartyTurnPlan:
+func preview_party_turn(request, processed_step_index: int,
+		attack_start_world_time: int) -> PartyTurnPlan:
+	if processed_step_index <= 0 or attack_start_world_time != world.world_time:
+		return PlanScript.new({"accepted": false, "reason": "invalid_processed_step_context",
+			"actor_rows": [], "base_fingerprint": _fingerprint()})
 	var rejection := _turn_rejection(request)
 	if not rejection.is_empty(): return PlanScript.new({"accepted": false, "reason": rejection, "actor_rows": [], "base_fingerprint": _fingerprint()})
 	var state = world.party_encounter; var rows: Array = []
@@ -265,16 +366,35 @@ func preview_party_turn(request) -> PartyTurnPlan:
 	for member_id in state.party_member_ids:
 		if member_id == state.protagonist_id: continue
 		var member = state.member(member_id)
-		if member.presence != "DEPLOYED" or not world.entities[member_id].is_alive() or member.busy_until > world.world_time: continue
+		if member.presence != "DEPLOYED" or not world.can_act(member_id, world.world_time) or member.busy_until > world.world_time: continue
 		var suggested = _suggest(member_id, direct)
 		var action = overrides.get(member_id, suggested)
 		var source := "OVERRIDE" if overrides.has(member_id) else "SUGGESTED"
 		var row = _action_row(action, source, member.roster_slot); row["suggestion"] = suggested.to_dict(); row["overridden"] = overrides.has(member_id) and action.to_dict() != suggested.to_dict(); rows.append(row)
 	var conflict_error := _resolve_move_conflicts(rows)
 	if not conflict_error.is_empty(): return PlanScript.new({"accepted": false, "reason": conflict_error, "actor_rows": [], "base_fingerprint": _fingerprint()})
+	var batch_context: String = "PARTY_TURN/%d" % processed_step_index
+	var melee_rows: Array[Dictionary] = []
+	for row_index in range(rows.size()):
+		var row: Dictionary = rows[row_index]
+		if str(row.action.type) == "MELEE":
+			melee_rows.append({"row_index": row_index, "actor_id": int(row.action.actor_id),
+				"target_id": int(row.action.target_id)})
+		else:
+			row.combat_assessment = null; rows[row_index] = row
+	melee_rows.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.target_id) != int(b.target_id): return int(a.target_id) < int(b.target_id)
+		if int(a.actor_id) != int(b.actor_id): return int(a.actor_id) < int(b.actor_id)
+		return int(a.row_index) < int(b.row_index))
+	for melee_ordinal in range(melee_rows.size()):
+		var row_index := int(melee_rows[melee_ordinal].row_index)
+		var row: Dictionary = rows[row_index]
+		var assessment: Dictionary = melee.assess_attack(int(row.action.actor_id), int(row.action.target_id),
+			str(row.source), processed_step_index, attack_start_world_time, batch_context, melee_ordinal)
+		if assessment.is_empty(): return PlanScript.new({"accepted":false,"reason":"combat_assessment_failed","actor_rows":[],"base_fingerprint":_fingerprint()})
+		row.combat_assessment = assessment; rows[row_index] = row
 	var max_cost := 0
 	for row in rows: max_cost = maxi(max_cost, int(row.time_cost))
-	if world.step_index == MAX_INT64: return PlanScript.new({"accepted":false,"reason":"step_index_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	if world.world_time > MAX_WORLD_TIME - max_cost: return PlanScript.new({"accepted":false,"reason":"time_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	var schedule_plan := _schedule_preflight(world.world_time + max_cost)
 	if not str(schedule_plan.reason).is_empty(): return PlanScript.new({"accepted":false,"reason":str(schedule_plan.reason),"actor_rows":[],"base_fingerprint":_fingerprint()})
@@ -289,7 +409,7 @@ func preview_party_turn(request) -> PartyTurnPlan:
 	var data := {"accepted": true, "reason": "ok", "canonical_request": request.to_dict(), "base_step": str(world.step_index),
 		"base_time": str(world.world_time), "base_revision": str(state.revision), "base_fingerprint": _fingerprint(),
 		"actor_rows": rows, "total_time_cost": max_cost, "timeline": timeline}
-	data["plan_hash"] = _hash_without(data, "plan_hash")
+	data["plan_hash"] = PlanScript.canonical_hash(data)
 	return PlanScript.new(data)
 
 func _turn_rejection(request) -> String:
@@ -315,13 +435,13 @@ func _turn_rejection(request) -> String:
 func _action_error(action) -> String:
 	if action == null or action.type not in ActionScript.TYPES or not world.entities.has(action.actor_id): return "invalid_party_action"
 	var state = world.party_encounter; var member = state.member(action.actor_id)
-	if member == null or member.presence != "DEPLOYED" or not world.entities[action.actor_id].is_alive(): return "party_actor_unavailable"
+	if member == null or member.presence != "DEPLOYED" or not world.can_act(action.actor_id, world.world_time): return "party_actor_unavailable"
 	if member.busy_until > world.world_time: return "party_actor_busy"
 	if action.type == "MOVE":
 		var assessment = movement.assess_move(action.actor_id, action.destination); return "" if assessment.accepted else assessment.reason
 	if action.type == "MELEE":
 		if action.target_id not in state.enemy_ids or not world.entities.has(action.target_id) \
-				or not world.entities[action.target_id].is_alive() or not melee.can_attack(action.actor_id, action.target_id):
+				or not world.is_explicit_melee_target(action.target_id) or not melee.can_attack(action.actor_id, action.target_id):
 			return "melee_not_legal"
 	return ""
 
@@ -334,7 +454,7 @@ func _suggest(actor_id: int, protagonist_action):
 	var relation: Dictionary = _relation_values(actor_id)
 	var enemies: Array = []
 	for enemy_id in world.party_encounter.enemy_ids:
-		if world.entities[enemy_id].is_alive(): enemies.append(world.entities[enemy_id])
+		if world.is_autonomous_target(enemy_id): enemies.append(world.entities[enemy_id])
 	enemies.sort_custom(func(a,b): return a.id < b.id)
 	if enemies.is_empty(): return ActionScript.hold(actor_id)
 	var focus_id := _direct_focus_enemy_id(protagonist_action, enemies)
@@ -403,7 +523,7 @@ func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 	var cost := PARTY_ACTION_COST
 	if action.type == "MOVE": cost = int(TerrainRegistryScript.definition(world.tile_at(action.destination).terrain).move_time_cost)
 	return {"actor_id": action.actor_id, "roster_slot": roster_slot, "source": source, "action": action.to_dict(), "time_cost": cost,
-		"resolution_note": "", "suggestion": null, "overridden": false}
+		"resolution_note": "", "suggestion": null, "overridden": false, "combat_assessment": null}
 
 func _resolve_move_conflicts(rows: Array) -> String:
 	var by_destination: Dictionary = {}
@@ -425,17 +545,75 @@ func _resolve_move_conflicts(rows: Array) -> String:
 			contenders[index].action = ActionScript.hold(int(contenders[index].actor_id)).to_dict(); contenders[index].time_cost = 100; contenders[index].resolution_note = "destination_conflict_suggested_hold"
 	return ""
 
-func _enemy_batch() -> bool:
+func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: int,
+		tick_start_can_act_ids: Dictionary, allow_victory: bool = true) -> bool:
+	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
+			or actor_schedule_id <= 0 or due_time != world.world_time:
+		return false
 	var state = world.party_encounter; var enemies: Array = state.enemy_ids.duplicate(); enemies.sort()
+	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
 		var enemy = world.entities[enemy_id]
-		if not enemy.is_alive() or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
+		if not tick_start_can_act_ids.has(enemy_id) \
+				or not world.can_act(enemy_id, world.world_time) \
+				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
 		var target = _nearest_deployed_party(enemy.position)
 		if target == null: continue
+		rows.append({"enemy_id": enemy_id, "target_id": target.id,
+			"original_action_order": rows.size(),
+			"melee": melee.can_attack(enemy_id, target.id)})
+	var melee_rows: Array[Dictionary] = []
+	for row in rows:
+		if bool(row.melee): melee_rows.append(row)
+	melee_rows.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.target_id) != int(b.target_id): return int(a.target_id) < int(b.target_id)
+		if int(a.enemy_id) != int(b.enemy_id): return int(a.enemy_id) < int(b.enemy_id)
+		return int(a.original_action_order) < int(b.original_action_order))
+	var context := "PARTY_ENEMY/%d/%d" % [actor_schedule_id, due_time]
+	var frozen_intents: Array = []
+	for ordinal in range(melee_rows.size()):
+		var row: Dictionary = melee_rows[ordinal]
+		var target = world.entities.get(int(row.target_id))
+		var assessment: Dictionary = melee.assess_attack(int(row.enemy_id), int(row.target_id),
+			"SUGGESTED", processed_step_index, due_time, context, ordinal)
+		var frozen = melee.freeze_assessment(assessment,
+			target.health if target != null else -1, int(row.original_action_order),
+			int(row.target_id) == state.protagonist_id)
+		if assessment.is_empty() or frozen == null: return false
+		frozen_intents.append(frozen)
+	var projected_results: Array = melee.project_batch(frozen_intents)
+	if projected_results.size() != frozen_intents.size():
+		return false
+	var canonical_batch: bool = not frozen_intents.is_empty()
+	var frozen_by_actor: Dictionary = {}
+	var resolution_by_actor: Dictionary = {}
+	if canonical_batch:
+		for frozen in frozen_intents:
+			frozen_by_actor[int(str(frozen.assessment.attacker_id))] = frozen
+		for resolution in projected_results:
+			resolution_by_actor[int(str(resolution.action_data.get("intent_ordinal", -1)))] = resolution
+	var pending_results: Array[Dictionary] = []
+	for row in rows:
+		var enemy_id := int(row.enemy_id)
+		var enemy = world.entities[enemy_id]
+		var target = world.entities.get(int(row.target_id))
 		var action_cost := 100
 		var action_event = null
-		if melee.can_attack(enemy_id, target.id):
-			action_event = melee.commit_attack(enemy_id, target.id, 14, -1)
+		if bool(row.melee):
+			var frozen = frozen_by_actor.get(enemy_id)
+			var ordinal := int(frozen.assessment.intent_ordinal) if frozen != null else -1
+			var resolution = resolution_by_actor.get(ordinal)
+			if not canonical_batch or frozen == null or resolution == null:
+				return false
+			var assessment: Dictionary = frozen.assessment
+			var frozen_position := Vector2i(int(assessment.target_position[0]),
+				int(assessment.target_position[1]))
+			action_event = world.emit_event("action.melee_attack", enemy_id,
+				int(row.target_id), frozen_position, int(assessment.base_damage), -1,
+				resolution.action_data)
+			if action_event != null:
+				pending_results.append({"action": action_event, "intent": frozen,
+					"resolution": resolution})
 		else:
 			var direction := Vector2i(signi(target.position.x-enemy.position.x), signi(target.position.y-enemy.position.y))
 			var assessment = movement.assess_move(enemy_id, enemy.position + direction)
@@ -443,25 +621,59 @@ func _enemy_batch() -> bool:
 				action_cost = int(TerrainRegistryScript.definition(assessment.terrain_id).move_time_cost)
 				action_event = movement.commit_preflighted_move(enemy_id, enemy.position + direction, str(assessment.terrain_id), action_cost)
 			else:
-				action_event = world.emit_event("action.hold", enemy_id, -1, enemy.position, 100)
+				action_event = _commit_hold(enemy_id, 100)
 		if action_event == null or _fault("enemy_leaf"):
 			return false
 		if world.world_time > MAX_WORLD_TIME - action_cost:
 			return false
 		state.enemy_busy_rows[enemy_id] = world.world_time + action_cost
-	return reconcile_liveness()
+	pending_results.sort_custom(func(a: Dictionary, b: Dictionary):
+		return int(a.resolution.action_data.intent_ordinal) \
+			< int(b.resolution.action_data.intent_ordinal))
+	for pending in pending_results:
+		var action = pending.action
+		var resolution = pending.resolution
+		var target = world.entities.get(action.target_id)
+		var target_state = world.combatant_states.get(action.target_id)
+		if target == null or target_state == null \
+				or target.health != resolution.target_health_before \
+				or target_state.life_state != resolution.target_life_before:
+			return false
+		if resolution.outcome == "OVERKILL_SKIP":
+			continue
+		if resolution.outcome == "MISS":
+			if world.emit_event("combat.attack_missed", -1, action.target_id,
+					action.position, 0, action.id, {"schema_version": 1,
+						"combat_ruleset_id": MeleeScript.COMBAT_RULESET_ID,
+						"outcome": "MISS"}) == null:
+				return false
+		elif resolution.outcome == "HIT":
+			var applied: Dictionary = damage.apply_canonical_active_damage(target,
+				resolution.final_damage, "physical", action.id, action.position,
+				processed_step_index, resolution.target_health_before,
+				resolution.terminal_immediate, resolution.bleed_proc_succeeded)
+			if not bool(applied.accepted) \
+					or int(applied.applied_health_damage) \
+					!= resolution.target_health_before - resolution.target_health_after:
+				return false
+		else:
+			return false
+		if target.health != resolution.target_health_after \
+				or target_state.life_state != resolution.target_life_after:
+			return false
+	return reconcile_liveness(allow_victory)
 
 func _nearest_alive_enemy(position: Vector2i):
 	var candidates: Array = []
 	for id in world.party_encounter.enemy_ids:
-		if world.entities[id].is_alive(): candidates.append(world.entities[id])
+		if world.is_unresolved_enemy(id): candidates.append(world.entities[id])
 	candidates.sort_custom(func(a,b): var ad = _distance(position,a.position); var bd = _distance(position,b.position); return ad < bd if ad != bd else a.id < b.id)
 	return null if candidates.is_empty() else candidates[0]
 
 func _nearest_deployed_party(position: Vector2i):
 	var candidates: Array = []
 	for id in world.party_encounter.party_member_ids:
-		if world.party_encounter.member(id).presence == "DEPLOYED" and world.entities[id].is_alive(): candidates.append(world.entities[id])
+		if world.party_encounter.member(id).presence == "DEPLOYED" and world.is_autonomous_target(id): candidates.append(world.entities[id])
 	candidates.sort_custom(func(a,b): var ad = _distance(position,a.position); var bd = _distance(position,b.position); return ad < bd if ad != bd else a.id < b.id)
 	return null if candidates.is_empty() else candidates[0]
 
@@ -477,6 +689,21 @@ func _deployment_cell_valid(position: Vector2i, reserved: Dictionary, anchor: Ve
 					or not bool(TerrainRegistryScript.definition(world.tile_at(flank).terrain).get("passable",false)):
 				return false
 	return true
+
+
+func _commit_hold(actor_id: int, magnitude: int, cause_id: int = -1):
+	if not world.entities.has(actor_id) or not world.combatant_states.has(actor_id) \
+			or world.world_time > MAX_WORLD_TIME - 200:
+		return null
+	var hold = world.emit_event("action.hold", actor_id, -1,
+		world.entities[actor_id].position, magnitude, cause_id)
+	if hold == null: return null
+	var combatant = world.combatant_states[actor_id]
+	var candidate_until: int = hold.world_time + 200
+	if candidate_until > combatant.guarded_until:
+		combatant.guarded_until = candidate_until
+		combatant.guard_source_event_id = hold.id
+	return hold
 
 func _fallback_cell(anchor: Vector2i, reserved: Dictionary):
 	var candidates: Array = []
@@ -575,7 +802,7 @@ func _has_alive_enemy() -> bool:
 	if world.party_encounter == null:
 		return false
 	for enemy_id in world.party_encounter.enemy_ids:
-		if world.entities.has(enemy_id) and world.entities[enemy_id].is_alive():
+		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id):
 			return true
 	return false
 
@@ -597,6 +824,9 @@ func _relation_values(observer_id:int)->Dictionary:
 	var personal=world.personal_relations.get("%d:%d"%[observer_id,protagonist_id])
 	return {"trust":clampi(int(base.base_trust)+(int(personal.personal_trust_delta) if personal!=null else 0),-100,100),
 		"gratitude":int(personal.gratitude) if personal!=null else 0,"grievance":int(personal.grievance) if personal!=null else 0}
-func _result(accepted: bool, reason: String, events: Array = [], cost: int = 0):
+func _result(accepted: bool, reason: String, events: Array, cost: int,
+		processed_step_index: int):
 	return load("res://sim/sim_step_result.gd").new(accepted, accepted and cost > 0, reason, events,
-		{"processed_step_index": world.step_index if accepted else -1, "start_time": world.world_time-cost, "end_time": world.world_time, "time_cost": cost, "timeline": [], "root_event_id": events[0].id if not events.is_empty() else -1})
+		{"processed_step_index": processed_step_index if accepted else -1,
+		"start_time": world.world_time-cost, "end_time": world.world_time, "time_cost": cost,
+		"timeline": [], "root_event_id": events[0].id if not events.is_empty() else -1})

@@ -34,7 +34,7 @@ func process_tick() -> void:
 	for entity_id in ids:
 		var entity = world.entities.get(entity_id)
 		var state = world.agent_states[entity_id]
-		if entity == null or not entity.is_alive() or state.busy_until > now:
+		if entity == null or not world.can_act(entity_id, now) or state.busy_until > now:
 			continue
 		intents.append(_decide(entity_id, projection, now))
 	_resolve_destination_conflicts(intents)
@@ -117,7 +117,7 @@ func _append_social_candidates(candidates: Array[Dictionary], actor_id: int,
 	var ids: Array = world.agent_states.keys()
 	ids.sort()
 	for target_id in ids:
-		if target_id == actor_id or not world.entities[target_id].is_alive():
+		if target_id == actor_id or not world.is_autonomous_target(target_id):
 			continue
 		var effective: Dictionary = relationships.effective_relation(actor_id, target_id)
 		var relation = world.personal_relations.get("%d:%d" % [actor_id, target_id], null)
@@ -341,7 +341,7 @@ func _occupancy_projection() -> Dictionary:
 	ids.sort()
 	for entity_id in ids:
 		var entity = world.entities[entity_id]
-		if entity.is_alive():
+		if world.occupies_tile(entity_id):
 			result["%d:%d" % [entity.position.x, entity.position.y]] = entity_id
 	return result
 

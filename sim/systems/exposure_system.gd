@@ -61,7 +61,7 @@ func sample(position: Vector2i):
 
 
 func evaluate_for_entity(entity_id: int, position: Vector2i):
-	if not world.entities.has(entity_id) or not world.entities[entity_id].is_alive():
+	if not world.entities.has(entity_id) or not world.is_environment_exposed(entity_id):
 		return null
 	var sampled = sample(position)
 	if sampled == null:
@@ -72,7 +72,7 @@ func evaluate_for_entity(entity_id: int, position: Vector2i):
 
 
 func assess_destination(entity_id: int, position: Vector2i):
-	if not world.entities.has(entity_id) or not world.entities[entity_id].is_alive():
+	if not world.entities.has(entity_id) or not world.can_act(entity_id, world.world_time):
 		return null
 	var traversal = movement_system.assess_move(entity_id, position)
 	var evaluated = evaluate_for_entity(entity_id, position)

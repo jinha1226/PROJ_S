@@ -62,8 +62,12 @@ func test_direct_and_spread_ignition_share_wetness_rule() -> bool:
 		check(sim.world.bootstrap_set_wetness(Vector2i(x, 0), 50) != null,
 			"valid wet fixture")
 	var root = sim.world.emit_event("test.ignition_source")
-	check(not sim.environment.try_ignite(Vector2i(0, 0), 40, root.id, "environment.ignited"), "direct blocked")
-	check(not sim.environment.try_ignite(Vector2i(2, 0), 40, root.id, "environment.fire_spread", Vector2i(1, 0)), "spread blocked")
+	sim.world.begin_step(1)
+	check(not sim.environment.try_ignite(Vector2i(0, 0), 40, root.id, 1,
+		"environment.ignited"), "direct blocked")
+	check(not sim.environment.try_ignite(Vector2i(2, 0), 40, root.id, 1,
+		"environment.fire_spread", Vector2i(1, 0)), "spread blocked")
+	sim.world.finish_step()
 	check_eq([sim.world.tile_at(Vector2i(0, 0)).fire,
 		sim.world.tile_at(Vector2i(0, 0)).wetness],
 		[sim.world.tile_at(Vector2i(2, 0)).fire,
@@ -114,8 +118,11 @@ func test_spread_preview_matches_wetness_then_flammability_formula() -> bool:
 	var candidates: Dictionary = sim.environment._collect_spread_candidates(burning_positions)
 	check_eq(candidates[target_position][0]["resulting_fire"], 30,
 		"min(max(100 - 20, 0), 30) preview")
-	check(sim.environment.try_ignite(target_position, 100, source.id, "environment.fire_spread", source_position),
+	sim.world.begin_step(1)
+	check(sim.environment.try_ignite(target_position, 100, source.id, 1,
+		"environment.fire_spread", source_position),
 		"matching actual ignition succeeds")
+	sim.world.finish_step()
 	check_eq(target.fire, 30, "actual ignition uses the same formula")
 	_check_snapshot_round_trip(sim, "spread preview fixture")
 	return finish()
@@ -254,8 +261,12 @@ func test_damage_and_death_are_emitted_once() -> bool:
 	var sim = Simulator.new(1, 1, 6)
 	var target = sim.world.add_entity("goblin", "Fragile", Vector2i.ZERO, 10)
 	var source = sim.world.emit_event("test.attack")
-	check_eq(sim.damage.apply_damage(target, 50, "fire", source.id), 10, "normalized lethal damage")
-	check_eq(sim.damage.apply_damage(target, 50, "electric", source.id), 0, "dead target ignored")
+	sim.world.begin_step(1)
+	check_eq(sim.damage.apply_damage(target, 50, "fire", source.id, target.position,
+		1), 10, "normalized lethal damage")
+	check_eq(sim.damage.apply_damage(target, 50, "electric", source.id, target.position,
+		1), 0, "dead target ignored")
+	sim.world.finish_step()
 	check_eq(count_events(sim.world.events, "entity.died"), 1, "single death event")
 	check_eq(count_events(sim.world.events, "combat.fire_damage"), 1, "single damage event")
 	return finish()

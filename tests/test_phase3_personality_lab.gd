@@ -149,14 +149,13 @@ func test_lab_bootstrap_activation_symmetry_and_detached_observation() -> bool:
 
 func test_actor_batch_preflight_failure_is_atomic_and_decisions_precede_leaves() -> bool:
 	var armed = Session.new(7, 1234)
-	armed.sim.world.world_time = 100
 	var armed_roster: Array[Dictionary] = armed.lead_roster()
 	var last_lead_id: int = armed_roster[-1].entity_id
 	armed.sim.world.agent_states[last_lead_id].personality_profile.facet_rows[-1].base_value = 1000
 	var armed_rows_before: Array = []
 	for actor_id in armed.sim.world.agent_states: armed_rows_before.append(armed.sim.world.agent_states[actor_id].to_dict())
 	armed_rows_before.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.entity_id) < int(b.entity_id))
-	check(not armed.sim.actor_coordinator.process_tick(), "post-perception preflight failure injected")
+	check(not armed.advance_ticks(1).ok, "post-perception preflight failure injected")
 	check_eq(armed.sim.world.encounter_lab.phase, "ARMED", "activation phase rollback")
 	check_eq(armed.sim.world.events.size(), 0, "appearance/perception event rollback")
 	check_eq(armed.sim.world._next_event_id, 1, "activation event ID rollback")
@@ -178,7 +177,6 @@ func test_actor_batch_preflight_failure_is_atomic_and_decisions_precede_leaves()
 	check(last_decision >= 0 and last_decision < first_leaf, "all lead decisions precede every leaf")
 
 	var world = session.sim.world
-	world.world_time = 200
 	var state_rows: Array = []
 	for actor_id in world.agent_states.keys(): state_rows.append(world.agent_states[actor_id].to_dict())
 	state_rows.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.entity_id) < int(b.entity_id))
@@ -187,7 +185,8 @@ func test_actor_batch_preflight_failure_is_atomic_and_decisions_precede_leaves()
 	positions.sort_custom(func(a: Array, b: Array): return int(a[0]) < int(b[0]))
 	var event_count: int = world.events.size()
 	world._next_event_id = 9223372036854775806
-	check(not session.sim.actor_coordinator.process_tick(), "last-actor event headroom preflight rejects batch")
+	check(not session.advance_ticks(1).ok, "last-actor event headroom preflight rejects batch")
+	world = session.sim.world
 	var after_rows: Array = []
 	for actor_id in world.agent_states.keys(): after_rows.append(world.agent_states[actor_id].to_dict())
 	after_rows.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.entity_id) < int(b.entity_id))
@@ -211,15 +210,31 @@ func test_batch_start_alive_attackers_finish_and_damage_order_is_stable() -> boo
 		var state = world.agent_states[actor_id]
 		if state.trial_slot == 0 and state.controller_kind == "PASSIVE_ALLY": ally_id = actor_id
 		if state.trial_slot != 0: state.busy_until = 10000
-	world.world_time = 200
 	world.entities[ally_id].health = 0
+	world.combatant_states[ally_id].life_state = "DEAD"
+	world.combatant_states[ally_id].guarded_until = 0
+	world.combatant_states[ally_id].guard_source_event_id = -1
+	world.combatant_states[ally_id].recovery_lock_until = 0
+	world.combatant_states[ally_id].recovery_source_event_id = -1
+	world.combatant_states[ally_id].status_rows.clear()
 	world.entities[lead_id].position = world.entities[threat_id].position + Vector2i(0, 1)
 	world.entities[lead_id].health = 100
 	world.entities[threat_id].health = 10
 	lead_state.busy_until = 0; lead_state.current_reaction = "ENGAGE"; lead_state.commitment_until = 1000
 	world.agent_states[threat_id].busy_until = 0
 	var event_start: int = world.events.size()
-	check(session.sim.actor_coordinator.process_tick(), "two-attack batch commits")
+	var processed_step_index: int = world.step_index + 1
+	world.begin_step(processed_step_index)
+	var batch_ok := true
+	while not world.scheduled_entries.is_empty() \
+			and int(world.scheduled_entries[0].due_time) <= 200:
+		var entry: Dictionary = world.take_next_schedule()
+		world.world_time = int(entry.due_time)
+		batch_ok = session.sim._dispatch_schedule(entry, processed_step_index) and batch_ok
+		if int(entry.repeat_interval) > 0: world.requeue_repeating(entry)
+	world.world_time = 200
+	world.finish_step()
+	check(batch_ok, "two-attack batch commits through explicit outer dispatch")
 	var attack_events: Array = world.events.slice(event_start).filter(func(e): return e.type == "action.melee_attack")
 	check_eq(attack_events.size(), 2, "both batch-start-alive attacks emit")
 	check_eq(world.entities[threat_id].health, 0, "lead attack kills threat")
@@ -239,7 +254,7 @@ func test_diagonal_flanks_block_terrain_and_live_occupancy() -> bool:
 	var flank = occupied_sim.world.add_entity("human", "Flank", Vector2i(2, 1))
 	check_eq(occupied_sim.assess_move(occupied_actor.id, Vector2i(2, 2)).reason,
 		"move_diagonal_flank_occupied", "living flank blocks diagonal")
-	flank.health = 0
+	check(occupied_sim.world.bootstrap_set_combatant_life_state(flank.id, "DEAD"), "dead flank life fixture")
 	check(occupied_sim.assess_move(occupied_actor.id, Vector2i(2, 2)).accepted, "corpse flank does not block")
 	var session = Session.new(7, 127)
 	check(session.advance_ticks(1).ok, "lab activation")
@@ -383,7 +398,8 @@ func test_snapshot_rejects_status_time_fixture_relation_and_combat_semantic_tamp
 	var cross_attack := valid.duplicate(true)
 	for event in cross_attack.events:
 		if event.type == "action.melee_attack": event.target_id = threats[1].entity_id; break
-	check_eq(WorldState.snapshot_restore_error(cross_attack), "melee_event_semantic_invalid", "cross-room melee rejected")
+	check_eq(WorldState.snapshot_restore_error(cross_attack),
+		"canonical_melee_guard_source_invalid", "cross-room melee rejected")
 	var leaf_type_tamper := valid.duplicate(true)
 	for event in leaf_type_tamper.events:
 		if event.type == "action.move" and event.cause_id != "-1": event.type = "action.freeze"; break
@@ -405,7 +421,8 @@ func test_snapshot_rejects_status_time_fixture_relation_and_combat_semantic_tamp
 		var damage = death_rewire.events[int(event.cause_id) - 1]
 		event.cause_id = damage.cause_id
 		break
-	check_eq(WorldState.snapshot_restore_error(death_rewire), "physical_death_chain_invalid", "death must cite damage")
+	check_eq(WorldState.snapshot_restore_error(death_rewire),
+		"canonical_bleedout_death_invalid", "death must cite damage")
 	return finish()
 
 func test_actor_tick_failure_and_cross_chamber_relation_are_transactional_no_ops() -> bool:
@@ -503,7 +520,8 @@ func test_hundred_seed_soak_twenty_ticks() -> bool:
 		check(session.advance_ticks(10).ok, "seed %d ticks 1" % seed)
 		check(session.advance_ticks(10).ok, "seed %d ticks 2" % seed)
 		check_eq(session.observe_lab().cells.size(), 225, "seed %d cells" % seed)
-		check(session.sim.world.world_state_error().is_empty(), "seed %d settled valid" % seed)
+		var settled_error: String = session.sim.world.world_state_error()
+		check(settled_error.is_empty(), "seed %d settled valid (%s)" % [seed, settled_error])
 		var occupancy: Dictionary = {}
 		for actor_id in session.sim.world.agent_states:
 			var state = session.sim.world.agent_states[actor_id]

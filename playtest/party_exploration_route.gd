@@ -166,7 +166,7 @@ func _validate_next_step() -> Dictionary:
 		return {"accepted": false, "reason": "route_exploration_phase_required"}
 	var actor_id := int(_active.get("actor_id", -1))
 	if not _owner().sim.world.entities.has(actor_id) \
-			or not _owner().sim.world.entities[actor_id].is_alive():
+			or not _owner().sim.world.can_act(actor_id, _owner().sim.world.world_time):
 		return {"accepted": false, "reason": "route_actor_dead"}
 	var next_index := int(_active.get("completed_steps", 0)) + 1
 	if next_index <= 0 or next_index >= _active.get("path", []).size():
@@ -248,7 +248,7 @@ func _build_plan(goal: Vector2i) -> Dictionary:
 		return base
 	var actor_id := int(status.protagonist_id)
 	var actor = _owner().sim.world.entities.get(actor_id)
-	if actor == null or not actor.is_alive():
+	if actor == null or not _owner().sim.world.can_act(actor_id, _owner().sim.world.world_time):
 		base["reason"] = "route_actor_dead"
 		return base
 	base["actor_id"] = actor_id
@@ -310,7 +310,7 @@ func _build_step(index: int, from_position: Vector2i, to_position: Vector2i,
 		var member_id := int(member_id_value)
 		var member = state.member(member_id)
 		var entity = _owner().sim.world.entities.get(member_id)
-		if entity == null or not entity.is_alive() \
+		if entity == null or not _owner().sim.world.is_environment_exposed(member_id) \
 				or (member.presence != "GROUPED" and member_id != state.protagonist_id):
 			continue
 		var evaluated = _owner().sim.evaluate_exposure_for_entity(member_id, to_position)

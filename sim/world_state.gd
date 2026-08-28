@@ -1,8 +1,8 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 5
-const RULESET_VERSION := "phase4-party-encounter-v2"
+const SNAPSHOT_VERSION := 6
+const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
 const HAZARD_AFFINITY_RULESET_ID := "hazard-affinity-v1"
@@ -11,7 +11,13 @@ const PERSONALITY_GENERATOR_RULESET_ID := "personality-lab-latin-hypercube-v1"
 const KEYED_HASH_RULESET_ID := "sha256-u31-v1"
 const DECISION_RULESET_ID := "dungeon-hierarchical-utility-v1"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
-const COMBAT_RULESET_ID := "fixed-melee-v1"
+const COMBAT_RULESET_ID := "deterministic-melee-resolution-v1"
+const COMBAT_PROFILE_RULESET_ID := "combat-profile-registry-v1"
+const COMBATANT_SCHEMA_ID := "combatant-state-v1"
+const AGENT_STATE_SCHEMA_ID := "agent-state-v2"
+const LIFE_RULESET_ID := "active-downed-dead-v1"
+const STATUS_RULESET_ID := "bounded-status-lifecycle-v1"
+const PARTY_MEMBER_SCHEMA_ID := "party-member-v2"
 const ENVIRONMENT_INTERVAL := 100
 const ACTOR_INTERVAL := 100
 const MAX_WORLD_TIME := 9223372036854775707
@@ -33,6 +39,11 @@ const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const PartyEncounterStateScript = preload("res://sim/party_encounter_state.gd")
 const PartyMemberStateScript = preload("res://sim/party_member_state.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
+const CombatantStateScript = preload("res://sim/combatant_state.gd")
+const CombatProfileRegistryScript = preload("res://sim/combat_profile_registry.gd")
+const StatusRegistryScript = preload("res://sim/status_registry.gd")
+const MeleeCombatSystemScript = preload("res://sim/systems/melee_combat_system.gd")
+const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 
 var width: int
 var height: int
@@ -46,6 +57,7 @@ var events: Array = []
 var species_relations
 var personal_relations: Dictionary = {}
 var agent_states: Dictionary = {}
+var combatant_states: Dictionary = {}
 var encounter_lab = null
 var party_encounter = null
 var scheduled_entries: Array[Dictionary] = []
@@ -129,7 +141,10 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 		_next_entity_id, kind, display_name, position, max_health, checked_tags,
 		species_id, faction_id
 	)
+	var combatant = CombatantStateScript.new(entity.id,
+		CombatProfileRegistryScript.profile_id_for_kind(kind))
 	entities[entity.id] = entity
+	combatant_states[entity.id] = combatant
 	_next_entity_id += 1
 	return entity
 
@@ -179,7 +194,7 @@ func occupying_entities_at(position: Vector2i) -> Array:
 		var state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
 		var party_occupies: bool = party_state == null or party_state.presence == "DEPLOYED"
-		if entity.position == position and entity.is_alive() and party_occupies \
+		if entity.position == position and occupies_tile(entity_id) and party_occupies \
 				and (state == null or state.encounter_status == "ACTIVE"):
 			result.append(entity)
 	return result
@@ -190,7 +205,7 @@ func exposed_entities_at(position: Vector2i) -> Array:
 	var ids: Array = entities.keys(); ids.sort()
 	for entity_id in ids:
 		var entity = entities[entity_id]
-		if not entity.is_alive(): continue
+		if not is_environment_exposed(entity_id): continue
 		var party_state = party_member_state(entity_id)
 		if party_state != null:
 			if party_state.presence == "DEPLOYED" and entity.position == position:
@@ -206,6 +221,55 @@ func exposed_entities_at(position: Vector2i) -> Array:
 
 func party_member_state(entity_id: int):
 	return null if party_encounter == null else party_encounter.member(entity_id)
+
+
+func can_act(entity_id: int, at_time: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state == "ACTIVE" and at_time >= state.recovery_lock_until
+
+
+func occupies_tile(entity_id: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state != "DEAD"
+
+
+func is_environment_exposed(entity_id: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state in ["ACTIVE", "DOWNED"]
+
+
+func is_explicit_melee_target(entity_id: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state in ["ACTIVE", "DOWNED"]
+
+
+func is_autonomous_target(entity_id: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state == "ACTIVE"
+
+
+func is_unresolved_enemy(entity_id: int) -> bool:
+	var state = combatant_states.get(entity_id)
+	return state != null and state.life_state != "DEAD"
+
+
+# Compatibility seam for pre-Phase-5 bootstrap fixtures. It is deliberately
+# unavailable after any operation has begun and is never called by production
+# runtime or snapshot decoding. The HP and life authorities move atomically.
+func bootstrap_set_combatant_life_state(entity_id: int, life_state: String) -> bool:
+	if _active_step_index != -1 or step_index != 0 or world_time != 0 \
+			or encounter_lab != null or party_encounter != null \
+			or not events.is_empty() or life_state != "DEAD" \
+			or not entities.has(entity_id) or not combatant_states.has(entity_id):
+		return false
+	entities[entity_id].health = 0
+	var state = combatant_states[entity_id]
+	state.life_state = "DEAD"
+	state.guarded_until = 0; state.guard_source_event_id = -1
+	state.downed_at = -1; state.downed_resolve_at = -1; state.downed_source_event_id = -1
+	state.recovery_lock_until = 0; state.recovery_source_event_id = -1
+	state.status_rows.clear()
+	return true
 
 
 func blocking_entity_at(position: Vector2i, except_entity_id: int = -1):
@@ -417,7 +481,8 @@ func snapshot() -> Variant:
 	for entity_id in entity_ids:
 		entity_rows.append(entities[entity_id].to_dict())
 	var event_rows: Array = []
-	for event in events:
+	for event_index in range(events.size()):
+		var event = events[event_index]
 		event_rows.append(event.to_dict())
 	var relation_rows: Array = []
 	var relation_keys: Array = personal_relations.keys()
@@ -432,6 +497,9 @@ func snapshot() -> Variant:
 	agent_ids.sort()
 	for entity_id in agent_ids:
 		agent_rows.append(agent_states[entity_id].to_dict())
+	var combatant_rows: Array = []
+	var combatant_ids: Array = combatant_states.keys(); combatant_ids.sort()
+	for entity_id in combatant_ids: combatant_rows.append(combatant_states[entity_id].to_dict())
 	return {
 		"snapshot_version": SNAPSHOT_VERSION,
 		"ruleset_version": RULESET_VERSION,
@@ -444,12 +512,18 @@ func snapshot() -> Variant:
 		"decision_ruleset_id": DECISION_RULESET_ID,
 		"score_combiner_id": SCORE_COMBINER_ID,
 		"combat_ruleset_id": COMBAT_RULESET_ID,
+		"combat_profile_ruleset_id": COMBAT_PROFILE_RULESET_ID,
+		"combatant_schema_id": COMBATANT_SCHEMA_ID,
+		"agent_state_schema_id": AGENT_STATE_SCHEMA_ID,
+		"life_ruleset_id": LIFE_RULESET_ID,
+		"status_ruleset_id": STATUS_RULESET_ID,
+		"party_member_schema_id": PARTY_MEMBER_SCHEMA_ID,
 		"width": width, "height": height,
 		"step_index": str(step_index), "world_time": str(world_time), "seed": str(seed),
 		"rng_state": str(rng.state),
 		"next_entity_id": str(_next_entity_id), "next_event_id": str(_next_event_id),
 		"next_schedule_id": str(next_schedule_id), "scheduled_entries": schedule_rows,
-		"agent_states": agent_rows,
+		"agent_states": agent_rows, "combatant_states": combatant_rows,
 		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
 		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
 		"tiles": tile_rows, "entities": entity_rows, "events": event_rows,
@@ -508,6 +582,10 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 	for row in data.get("agent_states", []):
 		var state = AgentStateScript.from_dict(row)
 		restored.agent_states[state.entity_id] = state
+	restored.combatant_states.clear()
+	for row in data.get("combatant_states", []):
+		var combatant = CombatantStateScript.from_dict(row)
+		restored.combatant_states[combatant.entity_id] = combatant
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
 	restored.scheduled_entries.clear()
@@ -536,7 +614,11 @@ static func snapshot_header_error(data: Dictionary) -> String:
 	for pair in [["personality_schema_id", PERSONALITY_SCHEMA_ID],
 			["personality_generator_ruleset_id", PERSONALITY_GENERATOR_RULESET_ID],
 			["keyed_hash_ruleset_id", KEYED_HASH_RULESET_ID], ["decision_ruleset_id", DECISION_RULESET_ID],
-			["score_combiner_id", SCORE_COMBINER_ID], ["combat_ruleset_id", COMBAT_RULESET_ID]]:
+			["score_combiner_id", SCORE_COMBINER_ID], ["combat_ruleset_id", COMBAT_RULESET_ID],
+			["combat_profile_ruleset_id", COMBAT_PROFILE_RULESET_ID],
+			["combatant_schema_id", COMBATANT_SCHEMA_ID], ["agent_state_schema_id", AGENT_STATE_SCHEMA_ID],
+			["life_ruleset_id", LIFE_RULESET_ID], ["status_ruleset_id", STATUS_RULESET_ID],
+			["party_member_schema_id", PARTY_MEMBER_SCHEMA_ID]]:
 		if not (data.get(pair[0]) is String) or data.get(pair[0]) != pair[1]: return "unsupported_%s" % pair[0]
 	return ""
 
@@ -546,12 +628,13 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if not header_error.is_empty():
 		return header_error
 	var top_keys: Array = data.keys(); top_keys.sort()
-	if top_keys != ["agent_states", "calendar_ruleset_id", "combat_ruleset_id", "decision_ruleset_id",
+	if top_keys != ["agent_state_schema_id", "agent_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
+			"combat_ruleset_id", "combatant_schema_id", "combatant_states", "decision_ruleset_id",
 			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
-			"keyed_hash_ruleset_id", "next_entity_id", "next_event_id", "next_schedule_id",
-			"party_encounter", "personal_relations", "personality_generator_ruleset_id",
+			"keyed_hash_ruleset_id", "life_ruleset_id", "next_entity_id", "next_event_id", "next_schedule_id",
+			"party_encounter", "party_member_schema_id", "personal_relations", "personality_generator_ruleset_id",
 			"personality_schema_id", "rng_state", "ruleset_version", "scheduled_entries",
-			"score_combiner_id", "seed", "snapshot_version", "species_relations", "step_index",
+			"score_combiner_id", "seed", "snapshot_version", "species_relations", "status_ruleset_id", "step_index",
 			"terrain_ruleset_id", "tiles", "width", "world_time"]:
 		return "invalid_snapshot_top_level_keys"
 	if not data.has("encounter_lab") or not data.has("party_encounter"):
@@ -583,7 +666,10 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if not (data.get("tiles") is Array) or data["tiles"].size() != restored_width * restored_height:
 		return "invalid_tiles_shape"
 	for row in data["tiles"]:
-		if not (row is Dictionary) or not (row.get("terrain") is String):
+		if not (row is Dictionary) or not _exact_keys(row, ["base_conductivity",
+				"fire", "fire_damage_eligible_time", "fire_source_event_id", "flammability",
+				"terrain", "wetness", "wetness_source_event_id"]) \
+				or not (row.get("terrain") is String):
 			return "invalid_tile_shape"
 		if not TerrainRegistryScript.has(row["terrain"]):
 			return "unknown_terrain_id"
@@ -597,7 +683,8 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		return "invalid_entities_shape"
 	var entity_ids: Dictionary = {}
 	for row in data["entities"]:
-		if not (row is Dictionary):
+		if not (row is Dictionary) or not _exact_keys(row, ["display_name", "faction_id",
+				"health", "id", "kind", "max_health", "position", "species_id", "tags"]):
 			return "invalid_entity_shape"
 		if not Int64CodecScript.is_canonical(row.get("id")):
 			return "noncanonical_entity_id"
@@ -619,10 +706,24 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		for tag in row["tags"]:
 			if not (tag is String):
 				return "invalid_entity_tag"
+	if not data.get("combatant_states") is Array: return "invalid_combatant_states_shape"
+	var combatant_ids: Dictionary = {}
+	var previous_combatant_id := 0
+	for row in data.combatant_states:
+		var combatant_error := CombatantStateScript.wire_error(row)
+		if not combatant_error.is_empty(): return combatant_error
+		var combatant_id := Int64CodecScript.parse(row.entity_id, "combatant ID")
+		if combatant_id <= previous_combatant_id or combatant_ids.has(combatant_id):
+			return "duplicate_or_unsorted_combatant_states"
+		if not entity_ids.has(combatant_id): return "orphan_combatant_state"
+		combatant_ids[combatant_id] = true; previous_combatant_id = combatant_id
+	if combatant_ids.size() != entity_ids.size(): return "combatant_entity_set_mismatch"
 	if not (data.get("events") is Array):
 		return "invalid_events_shape"
 	for row in data["events"]:
-		if not (row is Dictionary) or not (row.get("type") is String) \
+		if not (row is Dictionary) or not _exact_keys(row, ["actor_id", "cause_id", "data",
+				"id", "instigator_id", "magnitude", "position", "step_index", "target_id", "type",
+				"world_time"]) or not (row.get("type") is String) \
 				or row["type"].is_empty():
 			return "invalid_event_shape"
 		for key in ["id", "step_index", "world_time", "actor_id", "target_id", "cause_id", "instigator_id"]:
@@ -694,11 +795,19 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		if not entity_ids.has(agent_id) or agent_ids.has(agent_id):
 			return "invalid_or_duplicate_agent_entity"
 		agent_ids[agent_id] = true
+		var agent_keys: Array = row.keys(); agent_keys.sort()
+		var expected_agent_keys := ["action_history_rows", "active_threat_id", "anger", "busy_until",
+			"commitment_until", "controller_kind", "current_activity", "current_reaction", "emotion_updated_time",
+			"encounter_status", "entity_id", "fear", "intent_started_time", "intent_target_entity_id",
+			"intent_target_position", "last_decision_event_id", "last_decision_time", "last_seen_position",
+			"last_seen_time", "mental_mode", "mental_mode_since", "threat_notice_event_id", "trial_slot"]
+		if row.controller_kind == "LEAD": expected_agent_keys.append("personality_profile"); expected_agent_keys.sort()
+		if agent_keys != expected_agent_keys: return "invalid_agent_state_keys"
 		if not _is_small_int(row.get("trial_slot"), 0, 3) or row.get("encounter_status") not in AgentStateScript.ENCOUNTER_STATUSES:
 			return "invalid_agent_trial_or_status"
 		for key in ["busy_until", "intent_target_entity_id", "intent_started_time", "emotion_updated_time",
 				"mental_mode_since", "active_threat_id", "threat_notice_event_id", "last_seen_time",
-				"guarded_until", "commitment_until", "last_decision_time", "last_decision_event_id"]:
+				"commitment_until", "last_decision_time", "last_decision_event_id"]:
 			if not Int64CodecScript.is_canonical(row.get(key)):
 				return "noncanonical_agent_%s" % key
 		if row.get("current_activity") not in AgentStateScript.ACTIVITIES or row.get("current_reaction") not in AgentStateScript.REACTIONS \
@@ -747,6 +856,9 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		if not (schedules[index] is Dictionary):
 			return "invalid_schedule_shape"
 		var schedule: Dictionary = schedules[index]
+		if not _exact_keys(schedule, ["due_time", "kind", "owner_id", "payload", "priority",
+				"repeat_interval", "schedule_id", "source_event_id"]):
+			return "invalid_schedule_shape"
 		for key in ["schedule_id", "due_time", "owner_id", "source_event_id", "repeat_interval"]:
 			if not Int64CodecScript.is_canonical(schedule.get(key)):
 				return "noncanonical_schedule_%s" % key
@@ -823,6 +935,11 @@ func _restored_state_error() -> String:
 		return dimension_validation
 	if encounter_lab != null and party_encounter != null:
 		return "encounter_mode_conflict"
+	var profile_registry_error := CombatProfileRegistryScript.registry_error()
+	if not profile_registry_error.is_empty(): return profile_registry_error
+	var status_registry_error := StatusRegistryScript.registry_error()
+	if not status_registry_error.is_empty(): return status_registry_error
+	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
 	if tiles.size() != width * height:
 		return "snapshot_tile_count_mismatch"
 	for tile in tiles:
@@ -845,11 +962,80 @@ func _restored_state_error() -> String:
 		if not (entity_id is int) or entity_id <= 0:
 			return "invalid_entity_id"
 		var entity = entities[entity_id]
+		var combatant = combatant_states.get(entity_id)
+		if combatant == null or combatant.entity_id != entity_id: return "combatant_entity_set_mismatch"
+		if combatant.combat_profile_id != CombatProfileRegistryScript.profile_id_for_kind(entity.kind) \
+				or not CombatProfileRegistryScript.has(combatant.combat_profile_id):
+			return "combatant_profile_kind_mismatch"
+		if combatant.life_state == "ACTIVE":
+			if entity.health < 1 or entity.health > entity.max_health: return "active_health_invariant"
+			if combatant.guarded_until < 0 or combatant.guarded_until > MAX_WORLD_TIME \
+					or combatant.downed_at != -1 or combatant.downed_resolve_at != -1 \
+					or combatant.downed_source_event_id != -1 \
+					or combatant.recovery_lock_until < 0 or combatant.recovery_lock_until > MAX_WORLD_TIME:
+				return "active_combatant_sentinel_invalid"
+			if (combatant.guarded_until == 0 and combatant.guard_source_event_id != -1) \
+					or (combatant.guarded_until > 0 and combatant.guard_source_event_id <= 0):
+				return "guard_source_sentinel_invalid"
+			if (combatant.recovery_lock_until == 0 and combatant.recovery_source_event_id != -1) \
+					or (combatant.recovery_lock_until > 0 and combatant.recovery_source_event_id <= 0):
+				return "recovery_source_sentinel_invalid"
+			if combatant.guard_source_event_id > 0:
+				var guard_source = event_by_id(combatant.guard_source_event_id)
+				if guard_source == null or guard_source.type != "action.hold" \
+						or guard_source.actor_id != entity_id or guard_source.world_time > world_time \
+						or guard_source.world_time > MAX_WORLD_TIME - 200 \
+						or combatant.guarded_until != guard_source.world_time + 200:
+					return "guard_source_event_invalid"
+			if combatant.recovery_source_event_id > 0:
+				var recovery_source = event_by_id(combatant.recovery_source_event_id)
+				if recovery_source == null or recovery_source.type != "entity.recovered" \
+						or recovery_source.target_id != entity_id or recovery_source.world_time > world_time \
+						or recovery_source.world_time > MAX_WORLD_TIME - 100 \
+						or combatant.recovery_lock_until != recovery_source.world_time + 100:
+					return "recovery_source_event_invalid"
+		elif combatant.life_state == "DOWNED":
+			if entity.health != 0: return "downed_health_invariant"
+			if combatant.guarded_until != 0 or combatant.guard_source_event_id != -1 \
+					or combatant.downed_at < 0 or combatant.downed_at > world_time \
+					or combatant.downed_source_event_id <= 0 \
+					or combatant.recovery_lock_until != 0 or combatant.recovery_source_event_id != -1:
+				return "downed_combatant_sentinel_invalid"
+			if combatant.downed_resolve_at <= world_time or combatant.downed_resolve_at > MAX_WORLD_TIME:
+				return "downed_resolve_time_invalid"
+			if combatant.downed_at > MAX_WORLD_TIME - 200: return "downed_resolve_time_invalid"
+			var expected_downed_resolve: int = (combatant.downed_at / 100 + 1) * 100 + 100
+			if combatant.downed_resolve_at != expected_downed_resolve: return "downed_resolve_time_invalid"
+			var downed_source = event_by_id(combatant.downed_source_event_id)
+			if downed_source == null or downed_source.type != "entity.downed" \
+					or downed_source.target_id != entity_id or downed_source.world_time != combatant.downed_at:
+				return "downed_source_event_invalid"
+		else:
+			if combatant.life_state != "DEAD" or entity.health != 0: return "dead_health_invariant"
+			if combatant.guarded_until != 0 or combatant.guard_source_event_id != -1 \
+					or combatant.downed_at != -1 or combatant.downed_resolve_at != -1 \
+					or combatant.downed_source_event_id != -1 or combatant.recovery_lock_until != 0 \
+					or combatant.recovery_source_event_id != -1 or not combatant.status_rows.is_empty():
+				return "dead_combatant_sentinel_invalid"
+		if combatant.status_rows.size() > 1: return "runtime_status_bound_exceeded"
+		var previous_status := ""
+		for status in combatant.status_rows:
+			if not StatusRegistryScript.has(status.status_id) or (not previous_status.is_empty() and status.status_id <= previous_status):
+				return "unknown_duplicate_or_unsorted_status"
+			previous_status = status.status_id
+			if status.status_id != "BLEEDING" or status.applied_at < 0 or status.applied_at > status.refreshed_at \
+					or status.refreshed_at > world_time or status.next_tick_at <= world_time \
+					or status.next_tick_at % ACTOR_INTERVAL != 0 \
+					or status.expires_at < status.next_tick_at \
+					or status.expires_at % ACTOR_INTERVAL != 0 or status.source_event_id <= 0:
+				return "combat_status_semantic_invalid"
+			if combatant.life_state == "DOWNED" and status.next_tick_at > combatant.downed_resolve_at:
+				return "downed_status_after_lifecycle_deadline"
 		if entity.id != entity_id or not in_bounds(entity.position):
 			return "entity_identity_or_position_invalid"
 		var actor_state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
-		if entity.is_alive() and (party_state == null or party_state.presence == "DEPLOYED") \
+		if combatant.life_state != "DEAD" and (party_state == null or party_state.presence == "DEPLOYED") \
 				and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
 			if not _terrain_is_passable(entity.position):
 				return "live_entity_on_impassable_terrain"
@@ -1065,6 +1251,12 @@ func _restored_state_error() -> String:
 				return "event_cause_time_invalid"
 			if event.instigator_id != cause.instigator_id:
 				return "derived_instigator_mismatch"
+		if event.type == "action.melee_attack":
+			var action_semantic_error := _melee_action_event_error(event)
+			if not action_semantic_error.is_empty(): return action_semantic_error
+		if event.type == "action.hold":
+			var hold_semantic_error := _hold_event_error(event)
+			if not hold_semantic_error.is_empty(): return hold_semantic_error
 		if encounter_lab != null:
 			var event_actor_state = agent_states.get(event.actor_id)
 			if event.type in ["action.move", "action.melee_attack", "action.hold", "action.freeze", "encounter.actor_escaped"] \
@@ -1113,11 +1305,12 @@ func _restored_state_error() -> String:
 					return "move_event_semantic_invalid"
 			if event.type == "action.melee_attack":
 				var melee_target_state = agent_states.get(event.target_id)
+				var canonical_melee: bool = event.data.get("schema_version") == 1 \
+					and event.data.get("combat_ruleset_id") == COMBAT_RULESET_ID
 				if event_actor_state == null or melee_target_state == null \
 						or event_actor_state.trial_slot != melee_target_state.trial_slot \
 						or _trial_slot_for_position(event.position) != event_actor_state.trial_slot \
-						or event.data != {"combat_ruleset_id": "fixed-melee-v1"} \
-						or event.magnitude != (22 if event_actor_state.controller_kind == "LEAD" else 18):
+						or not canonical_melee:
 					return "melee_event_semantic_invalid"
 			if event.type == "action.hold" and (event.target_id != -1 or event.magnitude != 1 or not event.data.is_empty()):
 				return "hold_event_semantic_invalid"
@@ -1127,23 +1320,54 @@ func _restored_state_error() -> String:
 			if event.type == "encounter.actor_escaped" and (event.target_id != -1 \
 					or event.magnitude != 1 or not event.data.is_empty()):
 				return "escape_event_semantic_invalid"
-			if event.type == "combat.physical_damage":
-				var attack_cause = event_by_id(event.cause_id)
-				if event.actor_id != -1 or attack_cause == null or attack_cause.type != "action.melee_attack" \
-						or attack_cause.target_id != event.target_id or attack_cause.position != event.position \
-						or event.data != {"damage_type": "physical"} \
-						or event.magnitude <= 0 or event.magnitude > attack_cause.magnitude:
-					return "physical_damage_chain_invalid"
-			if event.type == "entity.died" and str(event.data.get("damage_type", "")) == "physical":
-				var damage_cause = event_by_id(event.cause_id)
-				if event.actor_id != -1 or event.magnitude != 0 \
-						or event.data != {"damage_type": "physical"} \
-						or damage_cause == null or damage_cause.type != "combat.physical_damage" \
-						or damage_cause.target_id != event.target_id or damage_cause.position != event.position:
-					return "physical_death_chain_invalid"
+		if event.type == "combat.physical_damage":
+			var physical_cause = event_by_id(event.cause_id)
+			var valid_physical_source: bool = physical_cause != null \
+					and physical_cause.type in ["action.melee_attack", "status.tick"]
+			var cause_is_canonical: bool = physical_cause != null \
+					and physical_cause.data.get("schema_version") == 1
+			var expected_requested: int = physical_cause.magnitude if physical_cause != null else 0
+			if physical_cause != null and physical_cause.type == "action.melee_attack" \
+					and cause_is_canonical:
+				expected_requested = int(physical_cause.data.get("final_damage", 0))
+			var valid_physical_data: bool = cause_is_canonical \
+				and _canonical_damage_data_error(
+					event, "physical", expected_requested).is_empty()
+			if event.actor_id != -1 or not valid_physical_source \
+					or physical_cause.target_id != event.target_id or physical_cause.position != event.position \
+					or physical_cause.step_index != event.step_index \
+					or physical_cause.world_time != event.world_time or not valid_physical_data \
+					or event.magnitude <= 0 or event.magnitude > physical_cause.magnitude:
+				return "physical_damage_chain_invalid"
+		if event.type in ["combat.fire_damage", "combat.electric_damage"]:
+			var typed_damage_type: String = str(event.type).trim_prefix("combat.") \
+				.trim_suffix("_damage")
+			var typed_damage_error := ""
+			if event.data.get("schema_version") == 1:
+				typed_damage_error = _canonical_typed_damage_event_error(event)
+			elif event.data == {"damage_type": typed_damage_type}:
+				typed_damage_error = _legacy_typed_damage_event_error(event, typed_damage_type)
+			else:
+				typed_damage_error = "typed_damage_schema_invalid"
+			if not typed_damage_error.is_empty(): return typed_damage_error
+		if event.type == "entity.died" and event.data.get("schema_version") != 1:
+			var legacy_death_error := _legacy_death_event_error(event)
+			if not legacy_death_error.is_empty(): return legacy_death_error
 		for reference_id in [event.actor_id, event.target_id, event.instigator_id]:
 			if reference_id != -1 and (reference_id <= 0 or not entities.has(reference_id)):
 				return "event_entity_reference_invalid"
+	var miss_history_error := _canonical_miss_history_error()
+	if not miss_history_error.is_empty(): return miss_history_error
+	var hit_history_error := _canonical_hit_history_error()
+	if not hit_history_error.is_empty(): return hit_history_error
+	var overkill_history_error := _canonical_overkill_history_error()
+	if not overkill_history_error.is_empty(): return overkill_history_error
+	var status_history_error := _status_history_error()
+	if not status_history_error.is_empty(): return status_history_error
+	var lifecycle_history_error := _lifecycle_history_error()
+	if not lifecycle_history_error.is_empty(): return lifecycle_history_error
+	var guard_history_error := _guard_history_error()
+	if not guard_history_error.is_empty(): return guard_history_error
 	for tile_index in range(tiles.size()):
 		var tile = tiles[tile_index]
 		if (tile.fire == 0) != (tile.fire_source_event_id == -1):
@@ -1215,7 +1439,6 @@ func _restored_state_error() -> String:
 				or state.busy_until < 0 or state.busy_until > MAX_WORLD_TIME \
 				or state.intent_started_time < 0 or state.intent_started_time > world_time \
 				or state.mental_mode_since < 0 or state.mental_mode_since > world_time \
-				or state.guarded_until < 0 or state.guarded_until > MAX_WORLD_TIME \
 				or state.commitment_until < 0 or state.commitment_until > MAX_WORLD_TIME \
 				or state.last_seen_time < -1 or state.last_seen_time > world_time \
 				or state.last_decision_time < -1 or state.last_decision_time > world_time \
@@ -1326,7 +1549,7 @@ func _restored_state_error() -> String:
 			if ally_state.encounter_status != "ACTIVE" or threat_state.encounter_status != "ACTIVE":
 				return "non_lead_escape_invalid"
 			if lead_state.encounter_status == "ESCAPED":
-				if not entities[lead_id].is_alive() or lead_state.current_activity != "ESCAPE" \
+				if combatant_states[lead_id].life_state != "ACTIVE" or lead_state.current_activity != "ESCAPE" \
 						or lead_state.last_decision_event_id <= 0:
 					return "escaped_lead_state_invalid"
 				var escape_events := events.filter(func(event):
@@ -1370,7 +1593,7 @@ func _restored_state_error() -> String:
 		var active_lead_count := 0
 		for slot in range(4):
 			var lead_id: int = fixture_actors[slot].LEAD
-			if entities[lead_id].is_alive() and agent_states[lead_id].encounter_status == "ACTIVE": active_lead_count += 1
+			if combatant_states[lead_id].life_state == "ACTIVE" and agent_states[lead_id].encounter_status == "ACTIVE": active_lead_count += 1
 		if encounter_lab.phase == "COMPLETE" and active_lead_count != 0: return "complete_with_active_lead"
 		if encounter_lab.phase == "ACTIVE" and active_lead_count == 0: return "active_without_live_lead"
 	if party_encounter != null:
@@ -1438,6 +1661,1291 @@ func _restored_state_error() -> String:
 	return ""
 
 
+func _melee_action_event_error(event) -> String:
+	if event.actor_id <= 0 or event.target_id <= 0 or event.actor_id == event.target_id \
+			or not entities.has(event.actor_id) or not entities.has(event.target_id) \
+			or event.position == Vector2i(-1, -1):
+		return "melee_event_envelope_invalid"
+	var attacker_state = combatant_states[event.actor_id]
+	var target_state = combatant_states[event.target_id]
+	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
+	var target_profile: Dictionary = CombatProfileRegistryScript.profile(target_state.combat_profile_id)
+	var base_damage: int = int(attacker_profile.get("power", 0))
+	var armor_reduction: int = mini(int(target_profile.get("armor_flat", 0)), maxi(0, base_damage - 1))
+	var after_armor: int = base_damage - armor_reduction
+	var action_keys := ["armor_flat", "armor_reduction", "attack_start_world_time", "attacker_profile_id",
+		"base_damage", "batch_context", "bleed_chance_milli", "bleed_proc_succeeded",
+		"bleed_roll_milli", "combat_ruleset_id", "commitment_hash", "final_damage",
+		"frozen_guarded_until", "guard_reduction", "guard_source_event_id", "guarded",
+		"hit_chance_milli", "hit_roll_milli", "intent_mode", "intent_ordinal", "outcome",
+		"processed_step_index", "schema_version", "target_evasion_milli", "target_life_at_batch_start",
+		"target_profile_id"]
+	if not _exact_keys(event.data, action_keys) or event.data.get("schema_version") != 1 \
+			or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID:
+		return "canonical_melee_event_data_invalid"
+	for key in ["processed_step_index", "attack_start_world_time", "frozen_guarded_until",
+			"guard_source_event_id"]:
+		if not Int64CodecScript.is_canonical(event.data.get(key)):
+			return "canonical_melee_event_int64_invalid"
+	for key in ["intent_ordinal", "hit_chance_milli", "hit_roll_milli", "bleed_chance_milli",
+			"bleed_roll_milli", "base_damage", "target_evasion_milli", "armor_flat",
+			"armor_reduction", "guard_reduction", "final_damage"]:
+		if not event.data.get(key) is int:
+			return "canonical_melee_event_scalar_invalid"
+	if not event.data.get("guarded") is bool or not event.data.get("bleed_proc_succeeded") is bool \
+			or not event.data.get("batch_context") is String \
+			or not event.data.get("commitment_hash") is String:
+		return "canonical_melee_event_scalar_invalid"
+	var processed_step: int = Int64CodecScript.parse(event.data.processed_step_index, "action processed step")
+	var attack_start: int = Int64CodecScript.parse(event.data.attack_start_world_time, "action start")
+	var frozen_guarded_until: int = Int64CodecScript.parse(event.data.frozen_guarded_until, "frozen guard")
+	var guard_source_id: int = Int64CodecScript.parse(event.data.guard_source_event_id, "frozen guard source")
+	if processed_step != event.step_index or attack_start != event.world_time \
+			or frozen_guarded_until < 0 or frozen_guarded_until > MAX_WORLD_TIME \
+			or (frozen_guarded_until == 0) != (guard_source_id == -1) \
+			or (frozen_guarded_until > 0 and guard_source_id <= 0) \
+			or not _combat_batch_context_valid(str(event.data.batch_context), processed_step, attack_start):
+		return "canonical_melee_event_context_invalid"
+	if guard_source_id > 0:
+		var frozen_guard_source = event_by_id(guard_source_id)
+		if frozen_guard_source == null or frozen_guard_source.type != "action.hold" \
+				or frozen_guard_source.actor_id != event.target_id or frozen_guard_source.id >= event.id \
+				or frozen_guard_source.world_time + 200 != frozen_guarded_until:
+			return "canonical_melee_guard_source_invalid"
+	if event.data.attacker_profile_id != attacker_state.combat_profile_id \
+			or event.data.target_profile_id != target_state.combat_profile_id \
+			or event.data.target_evasion_milli != int(target_profile.evasion_milli) \
+			or event.data.armor_flat != int(target_profile.armor_flat) \
+			or event.data.base_damage != base_damage or event.data.armor_reduction != armor_reduction \
+			or event.magnitude != base_damage:
+		return "canonical_melee_profile_formula_invalid"
+	var hit_chance: int = clampi(500 + int(attacker_profile.accuracy_milli) \
+		- int(target_profile.evasion_milli), 50, 950)
+	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
+		- int(target_profile.bleed_resist_milli), 0, 1000)
+	var target_life: String = str(event.data.target_life_at_batch_start)
+	var intent_mode: String = str(event.data.intent_mode)
+	var outcome: String = str(event.data.outcome)
+	if target_life not in ["ACTIVE", "DOWNED"] or intent_mode not in ["STRIKE", "FINISHER"] \
+			or outcome not in ["HIT", "MISS", "OVERKILL_SKIP", "FINISHER"] \
+			or int(event.data.intent_ordinal) < 0:
+		return "canonical_melee_intent_invalid"
+	var key: String = MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
+		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id)
+	var hit_roll: int = MeleeCombatSystemScript.lane_roll_milli(key, "HIT")
+	var bleed_roll: int = MeleeCombatSystemScript.lane_roll_milli(key, "BLEED")
+	if event.data.commitment_hash != MeleeCombatSystemScript.commitment_hash(key) \
+			or event.data.hit_roll_milli != hit_roll or event.data.bleed_roll_milli != bleed_roll:
+		return "canonical_melee_commitment_invalid"
+	if target_life == "DOWNED":
+		if intent_mode != "FINISHER" or outcome not in ["FINISHER", "OVERKILL_SKIP"] \
+				or event.data.hit_chance_milli != 1000 or event.data.bleed_chance_milli != 0 \
+				or event.data.guarded or event.data.guard_reduction != 0 \
+				or event.data.final_damage != 0 or event.data.bleed_proc_succeeded:
+			return "canonical_melee_finisher_formula_invalid"
+		return ""
+	var expected_guarded: bool = attack_start < frozen_guarded_until
+	var expected_guard_reduction: int = int(after_armor * 250 / 1000) if expected_guarded else 0
+	var normal_damage: int = maxi(1, after_armor - expected_guard_reduction)
+	if intent_mode != "STRIKE" or event.data.hit_chance_milli != hit_chance \
+			or event.data.bleed_chance_milli != bleed_chance \
+			or event.data.guarded != expected_guarded \
+			or event.data.guard_reduction != expected_guard_reduction:
+		return "canonical_melee_strike_formula_invalid"
+	var roll_hits: bool = hit_roll < hit_chance
+	if outcome == "HIT":
+		if not roll_hits or event.data.final_damage != normal_damage \
+				or event.data.bleed_proc_succeeded != (bleed_roll < bleed_chance):
+			return "canonical_melee_hit_outcome_invalid"
+	elif outcome == "MISS":
+		if roll_hits or event.data.final_damage != 0 or event.data.bleed_proc_succeeded:
+			return "canonical_melee_miss_outcome_invalid"
+	elif outcome == "OVERKILL_SKIP":
+		if event.data.final_damage != 0 or event.data.bleed_proc_succeeded:
+			return "canonical_melee_overkill_outcome_invalid"
+	else:
+		return "canonical_melee_strike_outcome_invalid"
+	return ""
+
+
+func _canonical_miss_history_error() -> String:
+	var consumed_miss_ids: Dictionary = {}
+	for action in events:
+		if action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 1 \
+				or action.data.get("outcome") != "MISS":
+			continue
+		var direct_children: Array = []
+		for candidate in events:
+			if candidate.cause_id == action.id and candidate.type in [
+					"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+				direct_children.append(candidate)
+		if direct_children.size() != 1:
+			return "canonical_miss_result_cardinality_invalid"
+		var miss = direct_children[0]
+		if miss.type != "combat.attack_missed" \
+				or miss.actor_id != -1 or miss.target_id != action.target_id \
+				or miss.position != action.position or miss.magnitude != 0 \
+				or miss.cause_id != action.id or miss.instigator_id != action.instigator_id \
+				or miss.step_index != action.step_index or miss.world_time != action.world_time \
+				or not _exact_keys(miss.data, ["combat_ruleset_id", "outcome", "schema_version"]) \
+				or miss.data.get("schema_version") != 1 \
+				or miss.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+				or miss.data.get("outcome") != "MISS":
+			return "canonical_attack_missed_invalid"
+		if consumed_miss_ids.has(miss.id):
+			return "canonical_attack_missed_consumed_twice"
+		consumed_miss_ids[miss.id] = true
+	for event in events:
+		if event.type == "combat.attack_missed" \
+				and (event.data.get("schema_version") != 1 \
+				or not consumed_miss_ids.has(event.id)):
+			return "canonical_attack_missed_unconsumed"
+	return ""
+
+
+func _canonical_hit_history_error() -> String:
+	var consumed_physical_ids: Dictionary = {}
+	for action in events:
+		if action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 1 \
+				or action.data.get("outcome") != "HIT":
+			continue
+		var direct_children: Array = []
+		for candidate in events:
+			if candidate.cause_id == action.id and candidate.type in [
+					"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+				direct_children.append(candidate)
+		if direct_children.size() != 1:
+			return "canonical_hit_result_cardinality_invalid"
+		var damage = direct_children[0]
+		var requested_damage: int = int(action.data.get("final_damage", 0))
+		if damage.type != "combat.physical_damage" \
+				or damage.actor_id != -1 or damage.target_id != action.target_id \
+				or damage.position != action.position or damage.magnitude <= 0 \
+				or damage.magnitude > requested_damage or damage.cause_id != action.id \
+				or damage.instigator_id != action.instigator_id \
+				or damage.step_index != action.step_index or damage.world_time != action.world_time \
+				or not _canonical_damage_data_error(
+					damage, "physical", requested_damage).is_empty():
+			return "canonical_hit_physical_child_invalid"
+		if consumed_physical_ids.has(damage.id):
+			return "canonical_hit_physical_consumed_twice"
+		consumed_physical_ids[damage.id] = true
+	for event in events:
+		if event.type != "combat.physical_damage" \
+				or event.data.get("schema_version") != 1:
+			continue
+		var source = event_by_id(event.cause_id)
+		if source != null and source.type == "action.melee_attack" \
+				and source.data.get("schema_version") == 1 \
+				and source.data.get("outcome") == "HIT" \
+				and not consumed_physical_ids.has(event.id):
+			return "canonical_hit_physical_unconsumed"
+	return ""
+
+
+func _canonical_overkill_history_error() -> String:
+	var batch_groups: Dictionary = {}
+	for action in events:
+		if action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 1:
+			continue
+		var group_key := "%d|%d|%s" % [action.step_index, action.world_time,
+			str(action.data.get("batch_context", ""))]
+		var group_actions: Array = batch_groups.get(group_key, [])
+		group_actions.append(action)
+		batch_groups[group_key] = group_actions
+	for group_key in batch_groups:
+		var group_actions: Array = batch_groups[group_key]
+		var first_action_id: int = int(group_actions[0].id)
+		var seen_actor_ids: Dictionary = {}
+		for action in group_actions:
+			first_action_id = mini(first_action_id, int(action.id))
+			if seen_actor_ids.has(action.actor_id):
+				return "canonical_melee_batch_actor_duplicate"
+			seen_actor_ids[action.actor_id] = true
+		var canonical_order: Array = group_actions.duplicate()
+		canonical_order.sort_custom(func(a, b):
+			if a.target_id != b.target_id: return a.target_id < b.target_id
+			return a.actor_id < b.actor_id)
+		for expected_ordinal in range(canonical_order.size()):
+			if int(canonical_order[expected_ordinal].data.get("intent_ordinal", -1)) \
+					!= expected_ordinal:
+				return "canonical_melee_batch_sort_invalid"
+		var frozen_positions: Dictionary = {}
+		for action in group_actions:
+			for entity_id in [action.actor_id, action.target_id]:
+				if frozen_positions.has(entity_id):
+					continue
+				var projection := _canonical_batch_start_position(entity_id, first_action_id,
+					int(action.step_index), int(action.world_time))
+				if not bool(projection.ok):
+					return "canonical_melee_batch_position_history_invalid"
+				frozen_positions[entity_id] = projection.position
+			var attacker_position: Vector2i = frozen_positions[action.actor_id]
+			var target_position: Vector2i = frozen_positions[action.target_id]
+			if action.position != target_position \
+					or maxi(absi(attacker_position.x - target_position.x),
+						absi(attacker_position.y - target_position.y)) != 1:
+				return "canonical_melee_batch_frozen_position_invalid"
+		var frozen_life: Dictionary = {}
+		for action in group_actions:
+			for entity_id in [action.actor_id, action.target_id]:
+				if frozen_life.has(entity_id):
+					continue
+				var projection := _canonical_life_at_event(entity_id, first_action_id)
+				if not bool(projection.ok):
+					return "canonical_melee_batch_life_history_invalid"
+				frozen_life[entity_id] = projection
+			var attacker_life: Dictionary = frozen_life[action.actor_id]
+			var target_life: Dictionary = frozen_life[action.target_id]
+			if str(target_life.life_state) != str(action.data.target_life_at_batch_start):
+				return "canonical_melee_batch_target_life_invalid"
+			if str(attacker_life.life_state) != "ACTIVE" \
+					or int(action.world_time) < int(attacker_life.recovery_lock_until):
+				return "canonical_melee_batch_attacker_cannot_act"
+		var frozen_guards: Dictionary = {}
+		for action in group_actions:
+			if not frozen_guards.has(action.target_id):
+				var projection := _canonical_guard_at_event(action.target_id, first_action_id,
+					int(action.step_index), int(action.world_time))
+				if not bool(projection.ok):
+					return "canonical_melee_batch_guard_history_invalid"
+				frozen_guards[action.target_id] = projection
+			var expected_guard: Dictionary = frozen_guards[action.target_id]
+			if Int64CodecScript.parse(action.data.frozen_guarded_until,
+					"frozen guard time") != int(expected_guard.guarded_until) \
+					or Int64CodecScript.parse(action.data.guard_source_event_id,
+						"frozen guard source") != int(expected_guard.source_event_id):
+				return "canonical_melee_batch_guard_projection_invalid"
+		var seen_ordinals: Dictionary = {}
+		for action in group_actions:
+			var ordinal: int = int(action.data.get("intent_ordinal", -1))
+			if ordinal < 0 or seen_ordinals.has(ordinal):
+				return "canonical_melee_batch_ordinal_invalid"
+			seen_ordinals[ordinal] = true
+		for expected_ordinal in range(group_actions.size()):
+			if not seen_ordinals.has(expected_ordinal):
+				return "canonical_melee_batch_ordinal_invalid"
+		var prefix_max_id := first_action_id
+		for action in group_actions:
+			prefix_max_id = maxi(prefix_max_id, int(action.id))
+			for candidate in events:
+				if candidate.cause_id == action.id \
+						and candidate.type == "party.override_committed":
+					prefix_max_id = maxi(prefix_max_id, int(candidate.id))
+		var result_drivers: Array = []
+		for action in group_actions:
+			var outcome: String = str(action.data.get("outcome", ""))
+			var expected_driver_type: String = {
+				"MISS": "combat.attack_missed",
+				"HIT": "combat.physical_damage",
+				"FINISHER": "combat.downed_damage",
+			}.get(outcome, "")
+			var direct_drivers: Array = []
+			for candidate in events:
+				if candidate.cause_id == action.id and candidate.type in [
+						"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+					direct_drivers.append(candidate)
+			if outcome == "OVERKILL_SKIP":
+				if not direct_drivers.is_empty():
+					return "canonical_overkill_result_child_invalid"
+				continue
+			if expected_driver_type.is_empty() or direct_drivers.size() != 1 \
+					or direct_drivers[0].type != expected_driver_type:
+				return "canonical_melee_result_driver_invalid"
+			var driver = direct_drivers[0]
+			if driver.id <= prefix_max_id:
+				return "canonical_melee_result_before_action_prefix"
+			result_drivers.append({"ordinal":int(action.data.intent_ordinal), "id":driver.id,
+				"step_index":driver.step_index, "world_time":driver.world_time})
+		result_drivers.sort_custom(func(a: Dictionary, b: Dictionary):
+			return int(a.ordinal) < int(b.ordinal))
+		var previous_driver_id := -1
+		for driver in result_drivers:
+			if int(driver.id) <= previous_driver_id:
+				return "canonical_melee_result_driver_order_invalid"
+			previous_driver_id = int(driver.id)
+		for driver_index in range(result_drivers.size() - 1):
+			var driver: Dictionary = result_drivers[driver_index]
+			var next_driver: Dictionary = result_drivers[driver_index + 1]
+			var tail_max_id := _canonical_melee_result_tail_max_id(int(driver.id),
+				int(driver.step_index), int(driver.world_time))
+			if tail_max_id >= int(next_driver.id):
+				return "canonical_melee_result_tail_order_invalid"
+		for action in group_actions:
+			if action.data.get("outcome") != "OVERKILL_SKIP":
+				continue
+			for candidate in events:
+				if candidate.cause_id == action.id and candidate.type in [
+						"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+					return "canonical_overkill_result_child_invalid"
+			var transition_proven := false
+			var overkill_ordinal: int = int(action.data.intent_ordinal)
+			for earlier_action in group_actions:
+				if int(earlier_action.data.intent_ordinal) >= overkill_ordinal \
+						or earlier_action.target_id != action.target_id:
+					continue
+				var earlier_outcome: String = str(earlier_action.data.get("outcome", ""))
+				if earlier_outcome == "HIT":
+					var hit_damage = null
+					for candidate in events:
+						if candidate.cause_id == earlier_action.id \
+								and candidate.type == "combat.physical_damage" \
+								and candidate.data.get("schema_version") == 1:
+							hit_damage = candidate
+							break
+					if hit_damage == null:
+						continue
+					for candidate in events:
+						if candidate.cause_id == hit_damage.id \
+								and candidate.type == "entity.downed" \
+								and candidate.data.get("schema_version") == 1 \
+								and candidate.target_id == action.target_id:
+							transition_proven = true
+							break
+				elif earlier_outcome == "FINISHER":
+					var result_children: Array = []
+					for candidate in events:
+						if candidate.cause_id == earlier_action.id and candidate.type in [
+								"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+							result_children.append(candidate)
+					if result_children.size() != 1:
+						continue
+					var pressure = result_children[0]
+					if pressure.type != "combat.downed_damage" \
+							or pressure.data.get("schema_version") != 1 \
+							or pressure.data.get("reason") != "FINISHER" \
+							or pressure.target_id != action.target_id:
+						continue
+					var death_children: Array = []
+					for candidate in events:
+						if candidate.cause_id == pressure.id and candidate.type == "entity.died":
+							death_children.append(candidate)
+					if death_children.size() == 1:
+						var death = death_children[0]
+						transition_proven = death.data.get("schema_version") == 1 \
+								and death.data.get("reason") == "FINISHER" \
+								and death.target_id == action.target_id
+				if transition_proven:
+					break
+			if not transition_proven:
+				return "canonical_overkill_transition_missing"
+	return ""
+
+
+func _canonical_melee_result_tail_max_id(driver_id: int, processed_step: int,
+		attack_time: int) -> int:
+	var owned_ids := {driver_id:true}
+	var tail_max_id := driver_id
+	var resolution_types := ["combat.attack_missed", "combat.physical_damage",
+		"combat.downed_damage", "entity.downed", "entity.recovered", "entity.died",
+		"status.applied", "status.refreshed", "status.expired"]
+	for event in events:
+		if event.id <= driver_id or event.step_index != processed_step \
+				or event.world_time != attack_time or not owned_ids.has(event.cause_id) \
+				or event.type not in resolution_types \
+				or event.data.get("schema_version") != 1:
+			continue
+		owned_ids[event.id] = true
+		tail_max_id = maxi(tail_max_id, event.id)
+	return tail_max_id
+
+
+func _canonical_batch_start_position(entity_id: int, first_action_id: int,
+		processed_step: int, attack_time: int) -> Dictionary:
+	var boundary_projection: Dictionary = _entity_position_at_event(entity_id, first_action_id)
+	if not bool(boundary_projection.ok):
+		return {"ok":false, "position":Vector2i(-1, -1)}
+	var boundary_position: Vector2i = boundary_projection.position
+	var frozen_position := boundary_position
+	for index in range(_event_index(first_action_id) - 1, -1, -1):
+		var event = events[index]
+		if event.step_index != processed_step or event.world_time != attack_time \
+				or event.type != "action.move" or event.actor_id != entity_id:
+			continue
+		var move_positions := _canonical_move_positions(event)
+		if not bool(move_positions.ok) or move_positions.to != frozen_position:
+			return {"ok":false, "position":Vector2i(-1, -1)}
+		frozen_position = move_positions.from
+	var final_projection := boundary_position
+	var grouped_with_protagonist := false
+	for event in events:
+		if event.id < first_action_id:
+			continue
+		if event.type == "party.member_regrouped" and event.actor_id == entity_id:
+			final_projection = event.position
+			grouped_with_protagonist = true
+			continue
+		if grouped_with_protagonist and party_encounter != null \
+				and event.type == "action.move" \
+				and event.actor_id == party_encounter.protagonist_id:
+			var grouped_move := _canonical_move_positions(event)
+			if not bool(grouped_move.ok) or grouped_move.from != final_projection:
+				return {"ok":false, "position":Vector2i(-1, -1)}
+			final_projection = grouped_move.to
+			continue
+		if event.actor_id != entity_id:
+			continue
+		if event.type == "action.move":
+			var move_positions := _canonical_move_positions(event)
+			if not bool(move_positions.ok) or move_positions.from != final_projection:
+				return {"ok":false, "position":Vector2i(-1, -1)}
+			final_projection = move_positions.to
+		elif event.type in ["party.member_deployed", "party.deployment_completed"]:
+			final_projection = event.position
+			if event.type == "party.member_deployed":
+				grouped_with_protagonist = false
+	if not entities.has(entity_id) or entities[entity_id].position != final_projection:
+		return {"ok":false, "position":Vector2i(-1, -1)}
+	return {"ok":true, "position":frozen_position}
+
+
+func _canonical_life_at_event(entity_id: int, event_boundary_id: int) -> Dictionary:
+	if not entities.has(entity_id):
+		return {"ok":false}
+	var life_state := "ACTIVE"
+	var recovery_lock_until := 0
+	for event in events:
+		if event.id >= event_boundary_id:
+			break
+		if event.target_id != entity_id:
+			continue
+		if event.type == "entity.downed":
+			if event.data.get("schema_version") != 1 or life_state != "ACTIVE" \
+					or not _exact_keys(event.data, ["downed_resolve_at", "life_ruleset_id",
+						"previous_life_state", "schema_version", "terminal_immediate"]) \
+					or event.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or event.data.get("previous_life_state") != "ACTIVE" \
+					or not Int64CodecScript.is_canonical(event.data.get("downed_resolve_at")) \
+					or not event.data.get("terminal_immediate") is bool:
+				return {"ok":false}
+			life_state = "DOWNED"
+			recovery_lock_until = 0
+		elif event.type == "entity.recovered":
+			if event.data.get("schema_version") != 1 or life_state != "DOWNED" \
+					or not _exact_keys(event.data, ["life_ruleset_id", "recovered_health",
+						"recovery_lock_until", "schema_version"]) \
+					or event.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or not Int64CodecScript.is_canonical(event.data.get("recovery_lock_until")):
+				return {"ok":false}
+			life_state = "ACTIVE"
+			recovery_lock_until = Int64CodecScript.parse(
+				event.data.recovery_lock_until, "historical recovery lock")
+		elif event.type == "entity.died":
+			if event.data.get("schema_version") == 1:
+				if not _exact_keys(event.data, ["damage_type", "life_ruleset_id",
+						"previous_life_state", "reason", "schema_version"]) \
+						or event.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+						or event.data.get("previous_life_state") != life_state:
+					return {"ok":false}
+			elif not _legacy_death_event_error(event).is_empty():
+				return {"ok":false}
+			life_state = "DEAD"
+			recovery_lock_until = 0
+	return {"ok":true, "life_state":life_state,
+		"recovery_lock_until":recovery_lock_until}
+
+
+func _canonical_guard_at_event(entity_id: int, event_boundary_id: int,
+		processed_step: int, attack_time: int) -> Dictionary:
+	if not entities.has(entity_id):
+		return {"ok":false}
+	var guarded_until := 0
+	var source_event_id := -1
+	for event in events:
+		if event.id >= event_boundary_id:
+			break
+		if event.type == "action.hold" and event.actor_id == entity_id:
+			if event.step_index == processed_step and event.world_time == attack_time:
+				continue
+			if event.world_time > MAX_WORLD_TIME - 200:
+				return {"ok":false}
+			var candidate: int = event.world_time + 200
+			if candidate > guarded_until:
+				guarded_until = candidate
+				source_event_id = event.id
+		elif event.type in ["entity.downed", "entity.recovered", "entity.died"] \
+				and event.target_id == entity_id:
+			guarded_until = 0
+			source_event_id = -1
+	return {"ok":true, "guarded_until":guarded_until,
+		"source_event_id":source_event_id}
+
+
+func _canonical_move_positions(event) -> Dictionary:
+	if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
+			or not _is_position(event.data.get("from_position"), width, height, false) \
+			or not _is_position(event.data.get("to_position"), width, height, false) \
+			or not event.data.get("move_time_cost") is int \
+			or not event.data.get("terrain_id") is String:
+		return {"ok":false}
+	var from_position := Vector2i(int(event.data.from_position[0]), int(event.data.from_position[1]))
+	var to_position := Vector2i(int(event.data.to_position[0]), int(event.data.to_position[1]))
+	if event.position != to_position:
+		return {"ok":false}
+	return {"ok":true, "from":from_position, "to":to_position}
+
+
+func _hold_event_error(event) -> String:
+	if event.actor_id <= 0 or not entities.has(event.actor_id) or event.target_id != -1 \
+			or event.position == Vector2i(-1, -1) or not event.data.is_empty():
+		return "hold_event_envelope_invalid"
+	var position_history: Dictionary = _entity_position_at_event(event.actor_id, event.id)
+	if not bool(position_history.ok) or event.position != position_history.position:
+		return "hold_event_actor_position_invalid"
+	var expected_magnitude: int = 1 if agent_states.has(event.actor_id) else 100
+	if event.magnitude != expected_magnitude:
+		return "hold_event_magnitude_invalid"
+	if event.cause_id != -1:
+		var source = event_by_id(event.cause_id)
+		if source == null or source.step_index != event.step_index or source.world_time != event.world_time \
+				or (agent_states.has(event.actor_id) \
+					and (source.type != "ai.decision_selected" or source.actor_id != event.actor_id)) \
+				or (not agent_states.has(event.actor_id) and source.type != "encounter.enemy_ambush"):
+			return "hold_event_cause_invalid"
+	return ""
+
+
+func _canonical_damage_data_error(event, damage_type: String, expected_requested: int) -> String:
+	if not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id", "damage_type",
+			"requested_damage", "schema_version"]) or event.data.get("schema_version") != 1 \
+			or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+			or event.data.get("damage_type") != damage_type \
+			or not event.data.get("requested_damage") is int \
+			or not event.data.get("applied_health_damage") is int \
+			or int(event.data.requested_damage) <= 0 \
+			or int(event.data.applied_health_damage) != event.magnitude \
+			or (expected_requested > 0 and int(event.data.requested_damage) != expected_requested):
+		return "canonical_damage_data_invalid"
+	return ""
+
+
+func _canonical_typed_damage_event_error(event) -> String:
+	var damage_type: String = str(event.type).trim_prefix("combat.").trim_suffix("_damage")
+	if damage_type not in ["fire", "electric"] or event.actor_id != -1 \
+			or event.target_id <= 0 or not entities.has(event.target_id) \
+			or event.magnitude <= 0 \
+			or not _canonical_damage_data_error(event, damage_type, 0).is_empty():
+		return "canonical_typed_damage_envelope_or_data_invalid"
+	var requested_damage: int = int(event.data.requested_damage)
+	if event.magnitude > requested_damage:
+		return "canonical_typed_damage_applied_exceeds_requested"
+	return _canonical_environment_damage_source_error(
+		event, damage_type, requested_damage, false)
+
+
+func _legacy_typed_damage_event_error(event, damage_type: String) -> String:
+	if damage_type not in ["fire", "electric"] or event.actor_id != -1 \
+			or event.target_id <= 0 or not entities.has(event.target_id) \
+			or event.magnitude <= 0 or event.data != {"damage_type": damage_type}:
+		return "legacy_typed_damage_envelope_or_data_invalid"
+	return _canonical_environment_damage_source_error(
+		event, damage_type, event.magnitude, true)
+
+
+func _canonical_environment_damage_source_error(event, damage_type: String,
+		requested_damage: int, allow_clamped_pressure: bool) -> String:
+	var source = event_by_id(event.cause_id)
+	if source == null or source.actor_id != -1 or source.target_id != -1 \
+			or source.position != event.position or source.magnitude <= 0 or source.magnitude > 100 \
+			or source.instigator_id != event.instigator_id:
+		return "canonical_typed_damage_source_envelope_invalid"
+	if damage_type == "fire":
+		if source.type not in ["environment.ignited", "environment.fire_spread"] \
+				or source.step_index > event.step_index or source.world_time > event.world_time \
+				or requested_damage > mini(
+					EnvironmentRulesScript.FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK,
+					source.magnitude):
+			return "canonical_fire_damage_source_invalid"
+		if not source.data.is_empty():
+			if not _exact_keys(source.data, ["from_position"]) \
+					or not _is_position(source.data.get("from_position"), width, height, true):
+				return "canonical_fire_damage_source_data_invalid"
+			var from_position := Vector2i(
+				int(source.data.from_position[0]), int(source.data.from_position[1]))
+			if source.type == "environment.ignited" and from_position != Vector2i(-1, -1):
+				return "canonical_fire_damage_source_data_invalid"
+			if source.type == "environment.fire_spread" \
+					and (from_position == Vector2i(-1, -1) \
+					or absi(from_position.x - source.position.x) \
+						+ absi(from_position.y - source.position.y) != 1):
+				return "canonical_fire_damage_source_data_invalid"
+		return ""
+	if source.type != "environment.electric_arc" \
+			or source.step_index != event.step_index or source.world_time != event.world_time \
+			or (requested_damage > source.magnitude if allow_clamped_pressure \
+				else requested_damage != source.magnitude) \
+			or not _exact_keys(source.data, ["distance", "from_position"]) \
+			or not source.data.get("distance") is int or int(source.data.distance) < 0 \
+			or not _is_position(source.data.get("from_position"), width, height, true):
+		return "canonical_electric_damage_source_invalid"
+	var arc_distance: int = int(source.data.distance)
+	var arc_from := Vector2i(int(source.data.from_position[0]), int(source.data.from_position[1]))
+	if (arc_distance == 0) != (arc_from == Vector2i(-1, -1)) \
+			or (arc_distance > 0 and absi(arc_from.x - source.position.x) \
+				+ absi(arc_from.y - source.position.y) != 1):
+		return "canonical_electric_damage_source_data_invalid"
+	return ""
+
+
+func _legacy_death_event_error(event) -> String:
+	if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+			or event.magnitude != 0 or not _exact_keys(event.data, ["damage_type"]):
+		return "legacy_death_event_envelope_invalid"
+	var damage_type: String = str(event.data.get("damage_type", ""))
+	if damage_type not in ["physical", "fire", "electric"]:
+		return "legacy_death_damage_type_invalid"
+	var damage_driver = event_by_id(event.cause_id)
+	if damage_driver == null or damage_driver.type != "combat.%s_damage" % damage_type \
+			or damage_driver.actor_id != -1 or damage_driver.target_id != event.target_id \
+			or damage_driver.position != event.position or damage_driver.magnitude <= 0 \
+			or damage_driver.step_index != event.step_index \
+			or damage_driver.world_time != event.world_time \
+			or damage_driver.data != {"damage_type": damage_type}:
+		return "legacy_death_damage_driver_invalid"
+	return ""
+
+
+static func _combat_batch_context_valid(context: String, processed_step: int,
+		attack_start: int) -> bool:
+	var parts: PackedStringArray = context.split("/")
+	if parts.size() == 2 and parts[0] == "PARTY_TURN":
+		return Int64CodecScript.is_canonical(parts[1]) \
+			and Int64CodecScript.parse(parts[1], "party context step") == processed_step
+	if parts.size() != 3 or parts[0] not in ["PARTY_ENEMY", "PARTY_AMBUSH", "PHASE3_ACTOR"] \
+			or not Int64CodecScript.is_canonical(parts[1]) \
+			or not Int64CodecScript.is_canonical(parts[2]):
+		return false
+	var schedule_id: int = Int64CodecScript.parse(parts[1], "combat context schedule")
+	return schedule_id >= (-1 if parts[0] == "PARTY_AMBUSH" else 1) \
+		and Int64CodecScript.parse(parts[2], "combat context time") == attack_start
+
+
+func _status_history_error() -> String:
+	var projected: Dictionary = {}
+	var last_tick_ids: Dictionary = {}
+	var projected_life: Dictionary = {}
+	for entity_id in entities: projected_life[entity_id] = "ACTIVE"
+	var definition: Dictionary = StatusRegistryScript.definition("BLEEDING")
+	var interval: int = int(definition.get("tick_interval", 0))
+	var tick_damage: int = int(definition.get("tick_damage", 0))
+	var extension: int = interval * (int(definition.get("tick_count_after_apply_or_refresh", 0)) - 1)
+	if interval != ACTOR_INTERVAL or tick_damage <= 0 or extension != 200:
+		return "status_registry_runtime_mismatch"
+	for event_index in range(events.size()):
+		var event = events[event_index]
+		if event.type == "entity.downed" and event.data.get("schema_version") == 1:
+			projected_life[event.target_id] = "DOWNED"
+		elif event.type == "entity.recovered" and event.data.get("schema_version") == 1:
+			projected_life[event.target_id] = "ACTIVE"
+		elif event.type == "entity.died":
+			projected_life[event.target_id] = "DEAD"
+		if event.type not in ["status.applied", "status.refreshed", "status.tick", "status.expired"]:
+			continue
+		if event.actor_id != -1 or not entities.has(event.target_id):
+			return "status_event_envelope_invalid"
+		var owner_id: int = event.target_id
+		var status_key := "%d:BLEEDING" % owner_id
+		match event.type:
+			"status.applied", "status.refreshed":
+				if str(projected_life.get(owner_id, "DEAD")) == "DEAD":
+					return "status_apply_owner_life_invalid"
+				if event.magnitude != 0 or not _exact_keys(event.data, ["expires_at", "next_tick_at",
+						"schema_version", "status_id", "status_ruleset_id", "tick_damage"]) \
+						or event.data.get("schema_version") != 1 \
+						or event.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+						or event.data.get("status_id") != "BLEEDING" \
+						or event.data.get("tick_damage") != tick_damage \
+						or not Int64CodecScript.is_canonical(event.data.get("next_tick_at")) \
+						or not Int64CodecScript.is_canonical(event.data.get("expires_at")):
+					return "status_apply_or_refresh_data_invalid"
+				var damage_source = event_by_id(event.cause_id)
+				var damage_driver = event_by_id(damage_source.cause_id) if damage_source != null else null
+				if damage_source == null or damage_source.type != "combat.physical_damage" \
+						or not _canonical_damage_data_error(damage_source, "physical",
+							int(damage_driver.data.get("final_damage", 0)) if damage_driver != null else 0).is_empty() \
+						or damage_driver == null or damage_driver.type != "action.melee_attack" \
+						or damage_driver.data.get("schema_version") != 1 \
+						or damage_driver.data.get("outcome") != "HIT" \
+						or damage_driver.data.get("bleed_proc_succeeded") != true \
+						or damage_source.target_id != owner_id or damage_source.position != event.position \
+						or damage_source.step_index != event.step_index \
+						or damage_source.world_time != event.world_time:
+					return "status_apply_or_refresh_cause_invalid"
+				if event.world_time > MAX_WORLD_TIME - interval - extension:
+					return "status_apply_or_refresh_time_overflow"
+				var strict_boundary: int = _strict_next_actor_boundary(event.world_time)
+				var expected_next: int = strict_boundary
+				var expected_expires: int = strict_boundary + extension
+				var applied_at: int = event.world_time
+				if event.type == "status.applied":
+					if projected.has(status_key): return "duplicate_status_apply"
+				else:
+					if not projected.has(status_key): return "status_refresh_without_apply"
+					var old_row: Dictionary = projected[status_key]
+					applied_at = int(old_row.applied_at)
+					expected_next = int(old_row.next_tick_at)
+					expected_expires = maxi(int(old_row.expires_at), strict_boundary + extension)
+				var encoded_next: int = Int64CodecScript.parse(event.data.next_tick_at, "status next tick")
+				var encoded_expires: int = Int64CodecScript.parse(event.data.expires_at, "status expiry")
+				if encoded_next != expected_next or encoded_expires != expected_expires:
+					return "status_apply_or_refresh_cadence_invalid"
+				projected[status_key] = {"status_id": "BLEEDING", "applied_at": applied_at,
+					"refreshed_at": event.world_time, "next_tick_at": expected_next,
+					"expires_at": expected_expires, "source_event_id": event.id}
+				last_tick_ids.erase(status_key)
+			"status.tick":
+				if event.magnitude != tick_damage or not projected.has(status_key) \
+						or not _exact_keys(event.data, ["scheduled_tick_at", "schema_version", "status_id",
+							"status_ruleset_id", "tick_damage"]) \
+						or event.data.get("schema_version") != 1 \
+						or event.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+						or event.data.get("status_id") != "BLEEDING" \
+						or event.data.get("tick_damage") != tick_damage \
+						or not Int64CodecScript.is_canonical(event.data.get("scheduled_tick_at")):
+					return "status_tick_data_invalid"
+				var tick_row: Dictionary = projected[status_key]
+				var owner_position: Dictionary = _entity_position_at_event(owner_id, event.id)
+				if not bool(owner_position.ok) or event.position != owner_position.position:
+					return "status_tick_owner_position_invalid"
+				var scheduled_tick: int = Int64CodecScript.parse(event.data.scheduled_tick_at, "scheduled status tick")
+				if scheduled_tick != int(tick_row.next_tick_at) or event.world_time != scheduled_tick \
+						or scheduled_tick > int(tick_row.expires_at) \
+						or event.cause_id != int(tick_row.source_event_id):
+					return "status_tick_cadence_or_source_invalid"
+				if event_index + 1 >= events.size(): return "status_tick_damage_child_missing"
+				var tick_child = events[event_index + 1]
+				var owner_life: String = str(projected_life.get(owner_id, "DEAD"))
+				var expected_child_type := "combat.physical_damage" if owner_life == "ACTIVE" \
+					else ("combat.downed_damage" if owner_life == "DOWNED" else "")
+				if expected_child_type.is_empty() or tick_child.type != expected_child_type:
+					return "status_tick_life_child_invalid"
+				if tick_child.cause_id != event.id or tick_child.target_id != owner_id \
+						or tick_child.position != event.position or tick_child.step_index != event.step_index \
+						or tick_child.world_time != event.world_time:
+					return "status_tick_damage_child_invalid"
+				if tick_child.type == "combat.physical_damage" \
+						and not _canonical_damage_data_error(tick_child, "physical", tick_damage).is_empty():
+					return "status_tick_damage_child_invalid"
+				if tick_child.type == "combat.downed_damage" \
+						and (tick_child.actor_id != -1 or tick_child.magnitude != tick_damage \
+						or not _exact_keys(tick_child.data, ["applied_health_damage", "combat_ruleset_id",
+							"damage_type", "reason", "requested_damage", "schema_version"]) \
+						or tick_child.data.get("schema_version") != 1 \
+						or tick_child.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+						or tick_child.data.get("damage_type") != "physical" \
+						or tick_child.data.get("requested_damage") != tick_damage \
+						or tick_child.data.get("applied_health_damage") != 0 \
+						or tick_child.data.get("reason") != "BLEEDOUT"):
+					return "status_tick_downed_damage_child_invalid"
+				if int(tick_row.next_tick_at) > MAX_WORLD_TIME - interval:
+					return "status_tick_time_overflow"
+				tick_row.next_tick_at = int(tick_row.next_tick_at) + interval
+				projected[status_key] = tick_row
+				last_tick_ids[status_key] = event.id
+			"status.expired":
+				if event.magnitude != 0 or not projected.has(status_key) \
+						or not _exact_keys(event.data, ["reason", "schema_version", "status_id", "status_ruleset_id"]) \
+						or event.data.get("schema_version") != 1 \
+						or event.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+						or event.data.get("status_id") != "BLEEDING" \
+						or event.data.get("reason") not in ["NATURAL", "OWNER_DIED"]:
+					return "status_expire_data_invalid"
+				var expiring_row: Dictionary = projected[status_key]
+				if event.data.reason == "NATURAL":
+					if not last_tick_ids.has(status_key) or event.cause_id != int(last_tick_ids[status_key]) \
+							or event.world_time != int(expiring_row.expires_at) \
+							or int(expiring_row.next_tick_at) <= int(expiring_row.expires_at):
+						return "natural_status_expire_cause_invalid"
+					var natural_tick = event_by_id(event.cause_id)
+					if natural_tick == null or natural_tick.step_index != event.step_index \
+							or natural_tick.world_time != event.world_time or natural_tick.position != event.position:
+						return "natural_status_expire_envelope_invalid"
+				else:
+					var death_driver = event_by_id(event.cause_id)
+					if death_driver == null or death_driver.type not in ["combat.downed_damage", "entity.downed"] \
+							or death_driver.target_id != owner_id or death_driver.position != event.position \
+							or death_driver.step_index != event.step_index \
+							or death_driver.world_time != event.world_time:
+						return "owner_death_status_expire_cause_invalid"
+					if death_driver.type == "entity.downed" \
+							and (party_encounter == null \
+							or party_encounter.protagonist_id != owner_id \
+							or death_driver.actor_id != -1 or death_driver.magnitude != 0 \
+							or not _exact_keys(death_driver.data, ["downed_resolve_at", "life_ruleset_id",
+								"previous_life_state", "schema_version", "terminal_immediate"]) \
+							or death_driver.data.get("schema_version") != 1 \
+							or death_driver.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+							or death_driver.data.get("previous_life_state") != "ACTIVE" \
+							or not Int64CodecScript.is_canonical(
+								death_driver.data.get("downed_resolve_at")) \
+							or Int64CodecScript.parse(death_driver.data.downed_resolve_at,
+								"terminal downed resolve") != -1 \
+							or death_driver.data.get("terminal_immediate") != true):
+						return "owner_death_status_expire_downed_driver_invalid"
+				projected.erase(status_key)
+				last_tick_ids.erase(status_key)
+	for entity_id in entities:
+		var final_key := "%d:BLEEDING" % int(entity_id)
+		var actual_rows: Array = combatant_states[entity_id].status_rows
+		if projected.has(final_key):
+			if actual_rows.size() != 1: return "status_projection_row_missing"
+			var expected_row: Dictionary = projected[final_key]
+			var actual = actual_rows[0]
+			if actual.status_id != expected_row.status_id \
+					or actual.applied_at != int(expected_row.applied_at) \
+					or actual.refreshed_at != int(expected_row.refreshed_at) \
+					or actual.next_tick_at != int(expected_row.next_tick_at) \
+					or actual.expires_at != int(expected_row.expires_at) \
+					or actual.source_event_id != int(expected_row.source_event_id):
+				return "status_projection_row_mismatch"
+		elif not actual_rows.is_empty():
+			return "status_row_without_event_history"
+	return ""
+
+
+# Checkpoint-A accepts canonical lifecycle history before the runtime transition
+# machinery lands. Start with the fresh FINISHER chain and validate every link
+# without relying on encounter mode or the final row as provenance.
+func _lifecycle_history_error() -> String:
+	var projected_life: Dictionary = {}
+	var projected_downed: Dictionary = {}
+	var projected_recovery: Dictionary = {}
+	var lifecycle_touched: Dictionary = {}
+	var active_bleed_owners: Dictionary = {}
+	var consumed_canonical_lifecycle_ids: Dictionary = {}
+	for entity_id in entities:
+		projected_life[entity_id] = "ACTIVE"
+	for event_index in range(events.size()):
+		var event = events[event_index]
+		if event.type in ["status.applied", "status.refreshed"]:
+			active_bleed_owners[event.target_id] = true
+			continue
+		if event.type == "status.expired":
+			active_bleed_owners.erase(event.target_id)
+			continue
+		if event.type == "entity.died" and event.data.get("schema_version") != 1:
+			var terminal_error := _legacy_death_event_error(event)
+			if not terminal_error.is_empty(): return terminal_error
+			if projected_life[event.target_id] != "ACTIVE":
+				return "legacy_death_life_projection_invalid"
+			projected_life[event.target_id] = "DEAD"
+			projected_downed.erase(event.target_id)
+			projected_recovery.erase(event.target_id)
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.type == "entity.downed" and event.data.get("schema_version") == 1:
+			if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+					or event.magnitude != 0 \
+					or projected_life[event.target_id] != "ACTIVE" \
+					or not _exact_keys(event.data, ["downed_resolve_at", "life_ruleset_id",
+						"previous_life_state", "schema_version", "terminal_immediate"]) \
+					or event.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or event.data.get("previous_life_state") != "ACTIVE" \
+					or not Int64CodecScript.is_canonical(event.data.get("downed_resolve_at")) \
+					or not event.data.get("terminal_immediate") is bool:
+				return "canonical_downed_event_invalid"
+			var damage_driver = event_by_id(event.cause_id)
+			if damage_driver == null or damage_driver.type not in ["combat.physical_damage",
+					"combat.fire_damage", "combat.electric_damage"] \
+					or damage_driver.data.get("schema_version") != 1 \
+					or damage_driver.target_id != event.target_id \
+					or damage_driver.position != event.position \
+					or damage_driver.step_index != event.step_index \
+					or damage_driver.world_time != event.world_time or damage_driver.magnitude <= 0:
+				return "canonical_downed_damage_driver_invalid"
+			var protagonist: bool = party_encounter != null \
+					and party_encounter.protagonist_id == event.target_id
+			var encoded_deadline: int = Int64CodecScript.parse(
+				event.data.downed_resolve_at, "downed resolve time")
+			if protagonist:
+				if encoded_deadline != -1 or event.data.terminal_immediate != true:
+					return "canonical_downed_terminal_mismatch"
+				var party_death_index: int = event_index + 1
+				if active_bleed_owners.has(event.target_id):
+					if party_death_index >= events.size():
+						return "canonical_party_defeat_expiry_missing"
+					var party_owner_expiry = events[party_death_index]
+					if party_owner_expiry.type != "status.expired" \
+							or party_owner_expiry.actor_id != -1 \
+							or party_owner_expiry.target_id != event.target_id \
+							or party_owner_expiry.position != event.position \
+							or party_owner_expiry.magnitude != 0 \
+							or party_owner_expiry.cause_id != event.id \
+							or party_owner_expiry.instigator_id != event.instigator_id \
+							or party_owner_expiry.step_index != event.step_index \
+							or party_owner_expiry.world_time != event.world_time \
+							or not _exact_keys(party_owner_expiry.data, ["reason", "schema_version",
+								"status_id", "status_ruleset_id"]) \
+							or party_owner_expiry.data.get("schema_version") != 1 \
+							or party_owner_expiry.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+							or party_owner_expiry.data.get("status_id") != "BLEEDING" \
+							or party_owner_expiry.data.get("reason") != "OWNER_DIED":
+						return "canonical_party_defeat_expiry_invalid"
+					party_death_index += 1
+				if party_death_index >= events.size():
+					return "canonical_party_defeat_death_missing"
+				var party_death = events[party_death_index]
+				var party_damage_type: String = str(damage_driver.data.get("damage_type", ""))
+				if party_damage_type not in ["physical", "fire", "electric"] \
+						or party_death.type != "entity.died" or party_death.actor_id != -1 \
+						or party_death.target_id != event.target_id \
+						or party_death.position != event.position or party_death.magnitude != 0 \
+						or party_death.cause_id != event.id \
+						or party_death.instigator_id != event.instigator_id \
+						or party_death.step_index != event.step_index \
+						or party_death.world_time != event.world_time \
+						or not _exact_keys(party_death.data, ["damage_type", "life_ruleset_id",
+							"previous_life_state", "reason", "schema_version"]) \
+						or party_death.data.get("schema_version") != 1 \
+						or party_death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+						or party_death.data.get("previous_life_state") != "DOWNED" \
+						or party_death.data.get("reason") != "PARTY_DEFEAT" \
+						or party_death.data.get("damage_type") != party_damage_type:
+					return "canonical_party_defeat_death_invalid"
+				var party_final_state = combatant_states[event.target_id]
+				if party_final_state.life_state != "DEAD" or entities[event.target_id].health != 0:
+					return "canonical_party_defeat_projection_mismatch"
+				consumed_canonical_lifecycle_ids[event.id] = true
+				if consumed_canonical_lifecycle_ids.has(party_death.id):
+					return "canonical_lifecycle_event_consumed_twice"
+				consumed_canonical_lifecycle_ids[party_death.id] = true
+				projected_life[event.target_id] = "DEAD"
+				projected_downed.erase(event.target_id)
+				projected_recovery.erase(event.target_id)
+				lifecycle_touched[event.target_id] = true
+				continue
+			else:
+				if event.world_time > MAX_WORLD_TIME - 200 \
+						or encoded_deadline != _strict_next_actor_boundary(event.world_time) + 100 \
+						or event.data.terminal_immediate != false:
+					return "canonical_downed_deadline_mismatch"
+			consumed_canonical_lifecycle_ids[event.id] = true
+			projected_life[event.target_id] = "DOWNED"
+			projected_downed[event.target_id] = {"event_id": event.id,
+				"downed_at": event.world_time, "resolve_at": encoded_deadline}
+			projected_recovery.erase(event.target_id)
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.type == "entity.recovered" and event.data.get("schema_version") == 1:
+			if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+					or projected_life[event.target_id] != "DOWNED" \
+					or not projected_downed.has(event.target_id) \
+					or active_bleed_owners.has(event.target_id) \
+					or not _exact_keys(event.data, ["life_ruleset_id", "recovered_health",
+						"recovery_lock_until", "schema_version"]) \
+					or event.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or not event.data.get("recovered_health") is int \
+					or not Int64CodecScript.is_canonical(event.data.get("recovery_lock_until")):
+				return "canonical_recovery_event_invalid"
+			var downed_projection: Dictionary = projected_downed[event.target_id]
+			var downed_source = event_by_id(int(downed_projection.event_id))
+			var expected_health: int = maxi(1, int((entities[event.target_id].max_health + 9) / 10))
+			var encoded_lock: int = Int64CodecScript.parse(
+				event.data.recovery_lock_until, "recovery lock time")
+			var position_history: Dictionary = _entity_position_at_event(event.target_id, event.id)
+			if downed_source == null or event.cause_id != downed_source.id \
+					or event.world_time != int(downed_projection.resolve_at) \
+					or event.step_index < downed_source.step_index \
+					or event.world_time <= downed_source.world_time \
+					or not bool(position_history.ok) or event.position != position_history.position \
+					or event.magnitude != expected_health \
+					or event.data.recovered_health != expected_health \
+					or event.world_time > MAX_WORLD_TIME - 100 \
+					or encoded_lock != event.world_time + 100:
+				return "canonical_recovery_projection_invalid"
+			consumed_canonical_lifecycle_ids[event.id] = true
+			projected_life[event.target_id] = "ACTIVE"
+			projected_downed.erase(event.target_id)
+			projected_recovery[event.target_id] = {"event_id": event.id,
+				"health": expected_health, "lock_until": encoded_lock}
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.type in ["combat.physical_damage", "combat.fire_damage",
+				"combat.electric_damage"] and projected_recovery.has(event.target_id) \
+				and projected_life.get(event.target_id) == "ACTIVE":
+			var projected_damage_type: String = str(event.type).trim_prefix("combat.").trim_suffix("_damage")
+			var canonical_damage: bool = event.data.get("schema_version") == 1
+			var valid_damage_data: bool = _canonical_damage_data_error(
+				event, projected_damage_type, 0).is_empty() if canonical_damage \
+				else event.data == {"damage_type": projected_damage_type}
+			var recovery_health: Dictionary = projected_recovery[event.target_id]
+			if event.actor_id != -1 or event.magnitude <= 0 or not valid_damage_data \
+					or event.magnitude > int(recovery_health.health):
+				return "post_recovery_damage_projection_invalid"
+			recovery_health.health = int(recovery_health.health) - event.magnitude
+			projected_recovery[event.target_id] = recovery_health
+		if event.type != "combat.downed_damage" or event.data.get("schema_version") != 1:
+			continue
+		if event.data.get("reason") == "BLEEDOUT":
+			if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+					or event.magnitude <= 0 or projected_life[event.target_id] != "DOWNED" \
+					or not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id",
+						"damage_type", "reason", "requested_damage", "schema_version"]) \
+					or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+					or event.data.get("damage_type") != "physical" \
+					or event.data.get("requested_damage") != event.magnitude \
+					or event.data.get("applied_health_damage") != 0:
+				return "canonical_bleedout_damage_invalid"
+			var bleed_tick = event_by_id(event.cause_id)
+			if bleed_tick == null or bleed_tick.type != "status.tick" \
+					or bleed_tick.actor_id != -1 or bleed_tick.target_id != event.target_id \
+					or bleed_tick.position != event.position or bleed_tick.magnitude != event.magnitude \
+					or bleed_tick.step_index != event.step_index \
+					or bleed_tick.world_time != event.world_time \
+					or bleed_tick.instigator_id != event.instigator_id \
+					or not _exact_keys(bleed_tick.data, ["scheduled_tick_at", "schema_version",
+						"status_id", "status_ruleset_id", "tick_damage"]) \
+					or bleed_tick.data.get("schema_version") != 1 \
+					or bleed_tick.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+					or bleed_tick.data.get("status_id") != "BLEEDING" \
+					or bleed_tick.data.get("tick_damage") != event.magnitude \
+					or not Int64CodecScript.is_canonical(bleed_tick.data.get("scheduled_tick_at")) \
+					or Int64CodecScript.parse(bleed_tick.data.scheduled_tick_at,
+						"bleedout scheduled tick") != event.world_time:
+				return "canonical_bleedout_source_invalid"
+			var expiry_index: int = event_index + 1
+			if expiry_index >= events.size(): return "canonical_bleedout_expiry_missing"
+			var owner_expiry = events[expiry_index]
+			if owner_expiry.type != "status.expired" or owner_expiry.actor_id != -1 \
+					or owner_expiry.target_id != event.target_id \
+					or owner_expiry.position != event.position or owner_expiry.magnitude != 0 \
+					or owner_expiry.cause_id != event.id or owner_expiry.instigator_id != event.instigator_id \
+					or owner_expiry.step_index != event.step_index \
+					or owner_expiry.world_time != event.world_time \
+					or not _exact_keys(owner_expiry.data, ["reason", "schema_version", "status_id",
+						"status_ruleset_id"]) or owner_expiry.data.get("schema_version") != 1 \
+					or owner_expiry.data.get("status_ruleset_id") != STATUS_RULESET_ID \
+					or owner_expiry.data.get("status_id") != "BLEEDING" \
+					or owner_expiry.data.get("reason") != "OWNER_DIED":
+				return "canonical_bleedout_expiry_invalid"
+			var bleedout_death_index: int = expiry_index + 1
+			if bleedout_death_index >= events.size(): return "canonical_bleedout_death_missing"
+			var bleedout_death = events[bleedout_death_index]
+			if bleedout_death.type != "entity.died" or bleedout_death.actor_id != -1 \
+					or bleedout_death.target_id != event.target_id \
+					or bleedout_death.position != event.position or bleedout_death.magnitude != 0 \
+					or bleedout_death.cause_id != event.id \
+					or bleedout_death.instigator_id != event.instigator_id \
+					or bleedout_death.step_index != event.step_index \
+					or bleedout_death.world_time != event.world_time \
+					or not _exact_keys(bleedout_death.data, ["damage_type", "life_ruleset_id",
+						"previous_life_state", "reason", "schema_version"]) \
+					or bleedout_death.data.get("schema_version") != 1 \
+					or bleedout_death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or bleedout_death.data.get("previous_life_state") != "DOWNED" \
+					or bleedout_death.data.get("reason") != "BLEEDOUT" \
+					or bleedout_death.data.get("damage_type") != "physical":
+				return "canonical_bleedout_death_invalid"
+			var bleedout_final_state = combatant_states[event.target_id]
+			if bleedout_final_state.life_state != "DEAD" or entities[event.target_id].health != 0:
+				return "canonical_bleedout_projection_mismatch"
+			consumed_canonical_lifecycle_ids[event.id] = true
+			if consumed_canonical_lifecycle_ids.has(bleedout_death.id):
+				return "canonical_lifecycle_event_consumed_twice"
+			consumed_canonical_lifecycle_ids[bleedout_death.id] = true
+			projected_life[event.target_id] = "DEAD"
+			projected_downed.erase(event.target_id)
+			projected_recovery.erase(event.target_id)
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.data.get("reason") == "HAZARD":
+			var hazard_damage_type: String = str(event.data.get("damage_type", ""))
+			if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+					or event.magnitude <= 0 or projected_life[event.target_id] != "DOWNED" \
+					or hazard_damage_type not in ["fire", "electric"] \
+					or not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id",
+						"damage_type", "reason", "requested_damage", "schema_version"]) \
+					or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+					or event.data.get("requested_damage") != event.magnitude \
+					or event.data.get("applied_health_damage") != 0:
+				return "canonical_hazard_damage_invalid"
+			var hazard_source_error := _canonical_environment_damage_source_error(
+				event, hazard_damage_type, event.magnitude, false)
+			if not hazard_source_error.is_empty(): return "canonical_hazard_source_invalid"
+			var hazard_death_index: int = event_index + 1
+			if hazard_death_index >= events.size(): return "canonical_hazard_death_missing"
+			var hazard_death = events[hazard_death_index]
+			if hazard_death.type != "entity.died" or hazard_death.actor_id != -1 \
+					or hazard_death.target_id != event.target_id \
+					or hazard_death.position != event.position or hazard_death.magnitude != 0 \
+					or hazard_death.cause_id != event.id \
+					or hazard_death.instigator_id != event.instigator_id \
+					or hazard_death.step_index != event.step_index \
+					or hazard_death.world_time != event.world_time \
+					or not _exact_keys(hazard_death.data, ["damage_type", "life_ruleset_id",
+						"previous_life_state", "reason", "schema_version"]) \
+					or hazard_death.data.get("schema_version") != 1 \
+					or hazard_death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or hazard_death.data.get("previous_life_state") != "DOWNED" \
+					or hazard_death.data.get("reason") != "HAZARD" \
+					or hazard_death.data.get("damage_type") != hazard_damage_type:
+				return "canonical_hazard_death_invalid"
+			var hazard_final_state = combatant_states[event.target_id]
+			if hazard_final_state.life_state != "DEAD" or entities[event.target_id].health != 0:
+				return "canonical_hazard_projection_mismatch"
+			consumed_canonical_lifecycle_ids[event.id] = true
+			if consumed_canonical_lifecycle_ids.has(hazard_death.id):
+				return "canonical_lifecycle_event_consumed_twice"
+			consumed_canonical_lifecycle_ids[hazard_death.id] = true
+			projected_life[event.target_id] = "DEAD"
+			projected_downed.erase(event.target_id)
+			projected_recovery.erase(event.target_id)
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+				or event.magnitude <= 0 \
+				or projected_life[event.target_id] != "DOWNED" \
+				or not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id",
+					"damage_type", "reason", "requested_damage", "schema_version"]) \
+				or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+				or event.data.get("damage_type") != "physical" \
+				or event.data.get("reason") != "FINISHER" \
+				or event.data.get("requested_damage") != event.magnitude \
+				or event.data.get("applied_health_damage") != 0:
+			return "canonical_finisher_damage_invalid"
+		var action = event_by_id(event.cause_id)
+		if action == null or action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 1 \
+				or action.data.get("intent_mode") != "FINISHER" \
+				or action.data.get("outcome") != "FINISHER" \
+				or action.data.get("target_life_at_batch_start") != "DOWNED" \
+				or action.target_id != event.target_id or action.position != event.position \
+				or action.step_index != event.step_index or action.world_time != event.world_time \
+				or event.magnitude != int(action.data.get("base_damage", 0)) \
+					- int(action.data.get("armor_reduction", 0)):
+			return "canonical_finisher_source_invalid"
+		var death_index := event_index + 1
+		while death_index < events.size() and events[death_index].type == "status.expired" \
+				and events[death_index].cause_id == event.id:
+			death_index += 1
+		if death_index >= events.size(): return "canonical_finisher_death_missing"
+		var death = events[death_index]
+		if death.type != "entity.died" or death.actor_id != -1 \
+				or death.target_id != event.target_id or death.position != event.position \
+				or death.magnitude != 0 or death.cause_id != event.id \
+				or death.step_index != event.step_index or death.world_time != event.world_time \
+				or not _exact_keys(death.data, ["damage_type", "life_ruleset_id",
+					"previous_life_state", "reason", "schema_version"]) \
+				or death.data.get("schema_version") != 1 \
+				or death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+				or death.data.get("previous_life_state") != "DOWNED" \
+				or death.data.get("reason") != "FINISHER" \
+				or death.data.get("damage_type") != "physical":
+			return "canonical_finisher_death_invalid"
+		var final_state = combatant_states[event.target_id]
+		if final_state.life_state != "DEAD" or entities[event.target_id].health != 0:
+			return "canonical_finisher_projection_mismatch"
+		consumed_canonical_lifecycle_ids[event.id] = true
+		if consumed_canonical_lifecycle_ids.has(death.id):
+			return "canonical_lifecycle_event_consumed_twice"
+		consumed_canonical_lifecycle_ids[death.id] = true
+		projected_life[event.target_id] = "DEAD"
+		projected_downed.erase(event.target_id)
+		projected_recovery.erase(event.target_id)
+		lifecycle_touched[event.target_id] = true
+	for action in events:
+		if action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 1 \
+				or action.data.get("outcome") != "FINISHER":
+			continue
+		var result_children: Array = []
+		for candidate in events:
+			if candidate.cause_id == action.id and candidate.type in [
+					"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+				result_children.append(candidate)
+		if result_children.size() != 1:
+			return "canonical_finisher_result_cardinality_invalid"
+		var pressure = result_children[0]
+		if pressure.type != "combat.downed_damage" \
+				or pressure.data.get("schema_version") != 1 \
+				or pressure.data.get("reason") != "FINISHER" \
+				or not consumed_canonical_lifecycle_ids.has(pressure.id):
+			return "canonical_finisher_result_child_invalid"
+	var reserved_lifecycle_types := ["entity.downed", "entity.recovered", "entity.died",
+		"combat.downed_damage"]
+	for reserved_event in events:
+		if reserved_event.type not in reserved_lifecycle_types:
+			continue
+		if reserved_event.data.get("schema_version") == 1:
+			if not consumed_canonical_lifecycle_ids.has(reserved_event.id):
+				return "canonical_lifecycle_event_unconsumed"
+		elif reserved_event.type != "entity.died":
+			return "reserved_lifecycle_schema_invalid"
+	var pristine_bootstrap: bool = step_index == 0 and world_time == 0 \
+			and events.is_empty() and encounter_lab == null and party_encounter == null
+	for entity_id in combatant_states:
+		if combatant_states[entity_id].life_state == "DEAD" \
+				and not lifecycle_touched.has(entity_id) and not pristine_bootstrap:
+			return "dead_without_pristine_bootstrap"
+	for entity_id in lifecycle_touched:
+		var final_state = combatant_states[entity_id]
+		match str(projected_life[entity_id]):
+			"DOWNED":
+				var expected_downed: Dictionary = projected_downed[entity_id]
+				if final_state.life_state != "DOWNED" or entities[entity_id].health != 0 \
+						or final_state.downed_at != int(expected_downed.downed_at) \
+						or final_state.downed_resolve_at != int(expected_downed.resolve_at) \
+						or final_state.downed_source_event_id != int(expected_downed.event_id):
+					return "canonical_downed_projection_mismatch"
+			"ACTIVE":
+				if not projected_recovery.has(entity_id):
+					return "canonical_lifecycle_projection_mismatch"
+				var expected_recovery: Dictionary = projected_recovery[entity_id]
+				if final_state.life_state != "ACTIVE" \
+						or entities[entity_id].health != int(expected_recovery.health) \
+						or final_state.downed_at != -1 or final_state.downed_resolve_at != -1 \
+						or final_state.downed_source_event_id != -1 \
+						or final_state.recovery_lock_until != int(expected_recovery.lock_until) \
+						or final_state.recovery_source_event_id != int(expected_recovery.event_id):
+					return "canonical_recovery_final_state_mismatch"
+			"DEAD":
+				if final_state.life_state != "DEAD" or entities[entity_id].health != 0:
+					return "canonical_death_projection_mismatch"
+	return ""
+
+
+func _guard_history_error() -> String:
+	var projected: Dictionary = {}
+	for entity_id in entities:
+		projected[entity_id] = {"guarded_until": 0, "source_event_id": -1}
+	for event in events:
+		if event.type == "action.hold":
+			if event.world_time > MAX_WORLD_TIME - 200:
+				return "guard_projection_time_overflow"
+			var candidate: int = event.world_time + 200
+			var row: Dictionary = projected[event.actor_id]
+			if candidate > int(row.guarded_until):
+				row.guarded_until = candidate
+				row.source_event_id = event.id
+				projected[event.actor_id] = row
+		elif event.type in ["entity.downed", "entity.recovered", "entity.died"] \
+				and event.target_id > 0 and projected.has(event.target_id):
+			projected[event.target_id] = {"guarded_until": 0, "source_event_id": -1}
+	for entity_id in entities:
+		var combatant = combatant_states[entity_id]
+		if combatant.life_state != "ACTIVE":
+			continue
+		var expected: Dictionary = projected[entity_id]
+		if combatant.guarded_until != int(expected.guarded_until) \
+				or combatant.guard_source_event_id != int(expected.source_event_id):
+			return "guard_projection_mismatch"
+	return ""
+
+
+static func _strict_next_actor_boundary(value: int) -> int:
+	return (value / ACTOR_INTERVAL + 1) * ACTOR_INTERVAL
+
+
+static func _exact_keys(value: Variant, expected: Array) -> bool:
+	if not value is Dictionary: return false
+	var actual_keys: Array = value.keys(); actual_keys.sort()
+	var expected_keys: Array = expected.duplicate(); expected_keys.sort()
+	return actual_keys == expected_keys
+
+
 func _party_runtime_error() -> String:
 	if width != 15 or height != 15: return "party_fixture_dimensions_invalid"
 	if party_encounter.safe_phase not in PartyEncounterStateScript.PHASES: return "unknown_party_phase"
@@ -1462,12 +2970,12 @@ func _party_runtime_error() -> String:
 		slots.append(member.roster_slot)
 		if member.presence == "DEPLOYED":
 			deployed += 1
-			if not entities[member_id].is_alive() or not _terrain_is_passable(entities[member_id].position):
+			if combatant_states[member_id].life_state == "DEAD" or not _terrain_is_passable(entities[member_id].position):
 				return "deployed_party_position_invalid"
 			var deployed_key := "%d:%d" % [entities[member_id].position.x, entities[member_id].position.y]
 			if deployed_cells.has(deployed_key): return "duplicate_deployed_party_position"
 			deployed_cells[deployed_key] = member_id
-		if (entities[member_id].health == 0) != (member.presence == "DEFEATED"): return "party_health_presence_mismatch"
+		if (combatant_states[member_id].life_state == "DEAD") != (member.presence == "DEFEATED"): return "party_life_presence_mismatch"
 		if member.presence == "GROUPED" and entities[member_id].position != party_encounter.group_anchor: return "grouped_position_mismatch"
 	slots.sort()
 	for slot in range(slots.size()):
@@ -1485,7 +2993,7 @@ func _party_runtime_error() -> String:
 		previous_id = enemy_id
 		var enemy_busy: int = party_encounter.enemy_busy_rows[enemy_id]
 		if enemy_busy < 0 or enemy_busy > MAX_WORLD_TIME: return "party_enemy_busy_invalid"
-		if entities[enemy_id].is_alive(): alive_enemies += 1
+		if combatant_states[enemy_id].life_state != "DEAD": alive_enemies += 1
 	if party_encounter.enemy_busy_rows.size() != party_encounter.enemy_ids.size(): return "party_enemy_busy_set_mismatch"
 	if not in_bounds(party_encounter.group_anchor) or party_encounter.facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		return "party_anchor_or_facing_invalid"
@@ -1499,28 +3007,28 @@ func _party_runtime_error() -> String:
 		return "party_contact_enemy_invalid"
 	match party_encounter.safe_phase:
 		"GROUPED":
-			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies == 0 \
+			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies == 0 \
 					or party_encounter.contact_kind != "NONE" or party_encounter.formation_id != "NONE":
 				return "grouped_phase_invalid"
 			for member_id in party_encounter.party_member_ids:
-				if member_id != hero.id and entities[member_id].is_alive() \
+				if member_id != hero.id and combatant_states[member_id].life_state != "DEAD" \
 						and party_encounter.member_rows[member_id].presence != "GROUPED": return "grouped_companion_presence_invalid"
 		"GROUPED_COMPLETE":
-			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies != 0 \
+			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies != 0 \
 					or party_encounter.contact_kind != "NONE" or party_encounter.contact_enemy_id != -1 \
 					or party_encounter.formation_id != "NONE": return "grouped_complete_phase_invalid"
 			for member_id in party_encounter.party_member_ids:
-				if member_id != hero.id and entities[member_id].is_alive() \
+				if member_id != hero.id and combatant_states[member_id].life_state != "DEAD" \
 						and party_encounter.member_rows[member_id].presence != "GROUPED": return "grouped_companion_presence_invalid"
 		"CONTACT":
-			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed != 1 \
+			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed != 1 \
 					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id != "NONE" \
-					or not entities[party_encounter.contact_enemy_id].is_alive(): return "contact_phase_invalid"
+					or combatant_states[party_encounter.contact_enemy_id].life_state == "DEAD": return "contact_phase_invalid"
 			for member_id in party_encounter.party_member_ids:
-				if member_id != hero.id and entities[member_id].is_alive() \
+				if member_id != hero.id and combatant_states[member_id].life_state != "DEAD" \
 						and party_encounter.member_rows[member_id].presence != "GROUPED": return "contact_companion_presence_invalid"
 		"ENGAGED":
-			if not hero.is_alive() or hero_member.presence != "DEPLOYED" or deployed < 1 or alive_enemies == 0 \
+			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed < 1 or alive_enemies == 0 \
 					or party_encounter.contact_kind == "NONE" or party_encounter.formation_id == "NONE":
 				return "engaged_phase_invalid"
 			for member_id in party_encounter.party_member_ids:
@@ -1531,7 +3039,7 @@ func _party_runtime_error() -> String:
 			# valid decision-boundary snapshot.
 			return "regroup_ready_not_settled"
 		"PARTY_DEFEATED":
-			if hero.is_alive() or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
+			if combatant_states[hero.id].life_state != "DEAD" or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
 			if party_encounter.formation_id != "NONE" and party_encounter.contact_kind == "NONE": return "party_defeated_formation_invalid"
 	if party_encounter.safe_phase == "PARTY_DEFEATED":
 		var protagonist_death_found := false
@@ -1703,7 +3211,7 @@ func _party_event_correlation_error() -> String:
 				if member_id == hero_id: continue
 				var member = party_encounter.member(member_id)
 				var was_selected: bool = member_id in selected_companions
-				if entities[member_id].is_alive() and ((was_selected and member.presence != "DEPLOYED") \
+				if combatant_states[member_id].life_state != "DEAD" and ((was_selected and member.presence != "DEPLOYED") \
 						or (not was_selected and member.presence != "DORMANT")):
 					return "party_member_deployed_set_mismatch"
 
@@ -1775,6 +3283,64 @@ func _party_event_correlation_error() -> String:
 	if party_encounter.safe_phase == "PARTY_DEFEATED" and party_encounter.contact_kind == "NONE" \
 			and contact != null and not has_regroup_history:
 		return "party_cleared_contact_without_regroup_history"
+	var override_error := _party_override_history_error()
+	if not override_error.is_empty(): return override_error
+	return ""
+
+
+func _party_override_history_error() -> String:
+	var hero_id: int = party_encounter.protagonist_id
+	var consumed_leaf_ids: Dictionary = {}
+	var leaf_types := ["action.move", "action.hold", "action.melee_attack"]
+	var result_types := ["combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]
+	for override_index in range(events.size()):
+		var override = events[override_index]
+		if override.type != "party.override_committed": continue
+		if override.actor_id == hero_id or override.actor_id not in party_encounter.party_member_ids:
+			return "party_override_actor_invalid"
+		var member = party_encounter.member(override.actor_id)
+		if member == null or member.role != "COMPANION" or member.personality_profile == null:
+			return "party_override_actor_invalid"
+		if override.target_id != -1 or not override.data.is_empty():
+			return "party_override_envelope_invalid"
+		var leaf = event_by_id(override.cause_id)
+		if leaf == null or leaf.type not in leaf_types or leaf.actor_id != override.actor_id \
+				or leaf.step_index != override.step_index or leaf.world_time != override.world_time:
+			return "party_override_leaf_invalid"
+		var nearest_leaf = null
+		for prior_index in range(override_index - 1, -1, -1):
+			if events[prior_index].type in leaf_types:
+				nearest_leaf = events[prior_index]
+				break
+		if nearest_leaf == null or nearest_leaf.id != leaf.id:
+			return "party_override_leaf_invalid"
+		if consumed_leaf_ids.has(leaf.id):
+			return "party_override_duplicate"
+		consumed_leaf_ids[leaf.id] = true
+		var historical_position: Dictionary = _entity_position_at_event(override.actor_id, override.id)
+		if not bool(historical_position.get("ok", false)) \
+				or override.position != historical_position.position:
+			return "party_override_position_invalid"
+		var composure: int = member.personality_profile.value("composure")
+		var personal = personal_relations.get("%d:%d" % [override.actor_id, hero_id])
+		var expected_magnitude: int = 20 + int((999 - composure) / 20) \
+				+ (int(personal.grievance / 5) if personal != null else 0) \
+				- (int(personal.gratitude / 10) if personal != null else 0)
+		expected_magnitude = maxi(1, expected_magnitude)
+		if override.magnitude != expected_magnitude:
+			return "party_override_magnitude_invalid"
+		var canonical_leaf: bool = leaf.type != "action.melee_attack" \
+				or leaf.data.get("schema_version") == 1
+		if canonical_leaf:
+			var leaf_index: int = _event_index(leaf.id)
+			if leaf_index < 0 or override_index != leaf_index + 1 \
+					or override.id != leaf.id + 1:
+				return "party_override_leaf_invalid"
+		if leaf.type == "action.melee_attack" and leaf.data.get("schema_version") == 1:
+			for candidate in events:
+				if candidate.cause_id == leaf.id and candidate.type in result_types \
+						and candidate.id < override.id:
+					return "party_override_order_invalid"
 	return ""
 
 
@@ -1806,6 +3372,56 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 				or Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1])) != cursor:
 			return {"ok":false,"position":Vector2i(-1,-1)}
 		cursor = Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+	return {"ok":true,"position":cursor}
+
+
+func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
+	if not entities.has(entity_id): return {"ok":false,"position":Vector2i(-1,-1)}
+	# Prefer a historical actor-position anchor and replay forward. Party
+	# deployment/regroup events are explicit teleport boundaries, so this path
+	# remains valid even when the final snapshot position is the regroup anchor.
+	var anchored := false
+	var historical_cursor := Vector2i(-1, -1)
+	var actor_position_types := ["action.freeze", "action.wait", "encounter.actor_escaped"]
+	for event in events:
+		if event.id >= event_id: break
+		if event.actor_id != entity_id: continue
+		if event.type == "action.move":
+			if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
+					or not _is_position(event.data.get("from_position"), width, height, false) \
+					or not _is_position(event.data.get("to_position"), width, height, false):
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			var from_position := Vector2i(int(event.data.from_position[0]), int(event.data.from_position[1]))
+			var to_position := Vector2i(int(event.data.to_position[0]), int(event.data.to_position[1]))
+			if event.position != to_position or (anchored and historical_cursor != from_position):
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor = to_position
+			anchored = true
+		elif event.type in ["party.member_deployed", "party.member_regrouped",
+				"party.deployment_completed"]:
+			historical_cursor = event.position
+			anchored = true
+		elif event.type in actor_position_types:
+			if anchored and historical_cursor != event.position:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor = event.position
+			anchored = true
+	if anchored:
+		return {"ok":true,"position":historical_cursor}
+	var cursor: Vector2i = entities[entity_id].position
+	for index in range(events.size() - 1, -1, -1):
+		var event = events[index]
+		if event.id <= event_id: break
+		if event.type != "action.move" or event.actor_id != entity_id: continue
+		if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
+				or not _is_position(event.data.get("from_position"), width, height, false) \
+				or not _is_position(event.data.get("to_position"), width, height, false):
+			return {"ok":false,"position":Vector2i(-1,-1)}
+		var from_position := Vector2i(int(event.data.from_position[0]), int(event.data.from_position[1]))
+		var to_position := Vector2i(int(event.data.to_position[0]), int(event.data.to_position[1]))
+		if event.position != to_position or to_position != cursor:
+			return {"ok":false,"position":Vector2i(-1,-1)}
+		cursor = from_position
 	return {"ok":true,"position":cursor}
 
 

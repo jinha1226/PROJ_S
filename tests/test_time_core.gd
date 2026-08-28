@@ -123,11 +123,24 @@ func test_same_time_schedules_use_priority_then_schedule_id() -> bool:
 	var sim = Simulator.new(1, 1, 3)
 	var early_id: int = sim.world._schedule_fixture_entry("system.environment_tick", 100, 50)
 	var late_id: int = sim.world._schedule_fixture_entry("system.environment_tick", 100, 150)
-	var result = sim.step(Command.wait())
+	var command = Command.wait()
+	var plan: Dictionary = sim._plan_action(command)
+	var processed_step_index: int = int(plan.processed_step_index)
+	check(plan.accepted and processed_step_index == 1, "fixture outer plan accepted")
+	sim.world.begin_step(processed_step_index)
+	check(sim._resolve_command(command, plan, processed_step_index) != null, "fixture root commits")
 	var ids: Array = []
-	for marker in result.timeline:
-		if marker["kind"] == "system.environment_tick":
-			ids.append(marker["schedule_id"])
+	for occurrence in plan._occurrences:
+		var entry: Dictionary = sim.world.take_next_schedule()
+		check_eq([entry.kind, entry.due_time, entry.schedule_id],
+			[occurrence.kind, occurrence.due_time, occurrence.schedule_id],
+			"planned occurrence dispatches exactly")
+		sim.world.world_time = int(entry.due_time)
+		check(sim._dispatch_schedule(entry, processed_step_index), "scheduled handler accepts explicit step")
+		if entry.kind == "system.environment_tick": ids.append(entry.schedule_id)
+		if int(entry.repeat_interval) > 0: sim.world.requeue_repeating(entry)
+	sim.world.world_time = int(plan.end_time)
+	sim.world.finish_step()
 	check_eq(ids, [early_id, 1, late_id], "same-time stable order")
 	check_eq(sim.world.scheduled_entries.size(), 2, "one-shots removed; canonical repeats remain")
 	check_eq(sim.world.scheduled_entries[0]["due_time"], 200, "repeat drift-free")

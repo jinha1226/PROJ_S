@@ -63,7 +63,7 @@ func test_malformed_command_journal_returns_null_and_step_is_noop() -> bool:
 func test_unknown_dead_actor_and_defensive_power_are_rejected() -> bool:
 	var sim = Simulator.new(2, 2, 3)
 	var actor = sim.world.add_entity("goblin", "Dead", Vector2i.ZERO)
-	actor.health = 0
+	check(sim.world.bootstrap_set_combatant_life_state(actor.id, "DEAD"), "dead command fixture")
 	var unknown_wire := {
 		"type": 999, "actor_id": "-1", "position": [0, 0], "power": 1,
 		"wait_duration_time_units": 100,
@@ -79,8 +79,10 @@ func test_unknown_dead_actor_and_defensive_power_are_rejected() -> bool:
 		check_eq(sim.snapshot(), before, "rejected state remains exact")
 	var root = sim.world.emit_event("test.root")
 	var event_count: int = sim.world.events.size()
-	check(not sim.environment.ignite(Vector2i.ZERO, 0, root.id), "execution layer rejects zero")
-	check(not sim.environment.discharge(Vector2i.ZERO, 101, root.id), "execution layer rejects 101")
+	sim.world.begin_step(1)
+	check(not sim.environment.ignite(Vector2i.ZERO, 0, root.id, 1), "execution layer rejects zero")
+	check(not sim.environment.discharge(Vector2i.ZERO, 101, root.id, 1), "execution layer rejects 101")
+	sim.world.finish_step()
 	check_eq(sim.world.events.size(), event_count, "defensive rejection creates no effects")
 	return finish()
 

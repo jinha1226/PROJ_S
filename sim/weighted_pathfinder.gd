@@ -14,7 +14,7 @@ func _init(p_world, p_movement = null) -> void:
 
 
 func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary = {}) -> Dictionary:
-	if not world.entities.has(actor_id) or not world.entities[actor_id].is_alive():
+	if not world.entities.has(actor_id) or not world.can_act(actor_id, world.world_time):
 		return _failure("actor_not_found")
 	if not world.in_bounds(goal):
 		return _failure("out_of_bounds")
@@ -66,7 +66,7 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 
 
 func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
-	if not world.entities.has(actor_id) or not world.entities[actor_id].is_alive():
+	if not world.entities.has(actor_id) or not world.can_act(actor_id, world.world_time):
 		return _failure("actor_not_found")
 	var start: Vector2i = world.entities[actor_id].position
 	var goal_set: Dictionary = {}

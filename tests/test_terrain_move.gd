@@ -70,7 +70,7 @@ func test_terrain_and_live_occupancy_producer_restore_domains_match() -> bool:
 	check(sim.world.add_entity("goblin", "Blocked", Vector2i.ZERO) == null,
 		"second live entity rejected")
 	check_eq(sim.world._next_entity_id, occupied_id_before, "occupied rejection no ID")
-	corpse.health = 0
+	check(sim.world.bootstrap_set_combatant_life_state(corpse.id, "DEAD"), "corpse life fixture")
 	var living = sim.world.add_entity("goblin", "Living", Vector2i.ZERO)
 	check(living != null, "corpse does not block")
 	var valid: Dictionary = sim.snapshot()
@@ -80,6 +80,7 @@ func test_terrain_and_live_occupancy_producer_restore_domains_match() -> bool:
 
 	var duplicate: Dictionary = valid.duplicate(true)
 	duplicate.entities[0].health = 100
+	duplicate.combatant_states[0].life_state = "ACTIVE"
 	check_eq(WorldState.snapshot_restore_error(duplicate), "live_occupancy_capacity_exceeded",
 		"duplicate live occupancy rejected")
 	var on_wall: Dictionary = valid.duplicate(true)
@@ -123,7 +124,7 @@ func test_move_actor_bounds_wall_occupancy_and_death_rejections_are_noops() -> b
 	var occupied = sim.step(Command.move_to(actor.id, Vector2i(1, 0)))
 	check_eq(occupied.reason, "move_destination_occupied", "occupied reason")
 	check_eq(sim.snapshot(), occupied_before, "occupied no-op")
-	blocker.health = 0
+	check(sim.world.bootstrap_set_combatant_life_state(blocker.id, "DEAD"), "blocker life fixture")
 	check(sim.step(Command.move_to(actor.id, Vector2i(1, 0))).accepted, "corpse destination allowed")
 
 	var wall = Simulator.new(2, 1, 7)
@@ -144,7 +145,7 @@ func test_move_actor_bounds_wall_occupancy_and_death_rejections_are_noops() -> b
 		Command.move_to(999, Vector2i(1, 0))]:
 		check(not edge.step(command).accepted, "invalid actor rejected")
 		check_eq(edge.snapshot(), edge_before, "invalid actor no-op")
-	edge_actor.health = 0
+	check(edge.world.bootstrap_set_combatant_life_state(edge_actor.id, "DEAD"), "dead actor life fixture")
 	var dead_before: Dictionary = edge.snapshot()
 	check_eq(edge.step(Command.move_to(edge_actor.id, Vector2i(1, 0))).reason,
 		"actor_dead", "dead reason")

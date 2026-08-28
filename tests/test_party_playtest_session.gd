@@ -249,7 +249,7 @@ func test_party_rejection_feedback_preserves_draft_busy_dormant_and_conflict_det
 
 
 func test_committed_results_project_detached_visual_effects_only_from_events() -> bool:
-	var session = _engaged_with_companions([]); var state = session.sim.world.party_encounter
+	var session = _engaged_with_companions([], 2); var state = session.sim.world.party_encounter
 	var hero = state.protagonist_id; var enemy = state.enemy_ids[0]
 	check(_relocate_with_move_events(session.sim,enemy,
 		session.sim.world.entities[hero].position+Vector2i.RIGHT),"effect enemy canonical relocation")
@@ -284,7 +284,7 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 	check(session.sim.world.event_by_id(first_event_id).position.x != 999,"effect DTO has no event reference")
 	check(session.commit_turn().visual_effects.is_empty(),"rejected commit has no effects")
 
-	var lethal = _engaged_with_companions([]); var lethal_state = lethal.sim.world.party_encounter
+	var lethal = _engaged_with_companions([], 44); var lethal_state = lethal.sim.world.party_encounter
 	var lethal_hero = lethal_state.protagonist_id; var lethal_enemy = lethal_state.enemy_ids[0]
 	check(_relocate_with_move_events(lethal.sim,lethal_enemy,
 		lethal.sim.world.entities[lethal_hero].position+Vector2i.RIGHT),"lethal enemy canonical relocation")
@@ -292,7 +292,8 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 	check(lethal.begin_turn(Action.melee(lethal_hero,lethal_enemy)).accepted,"lethal preview")
 	var lethal_result = lethal.commit_turn(); check(lethal_result.accepted,"lethal commit")
 	check_eq(lethal_result.visual_effects.map(func(row):return row.kind),
-		["SLASH","HIT_FLASH","FLOATING_AMOUNT","DEATH"],"death projects once after damage")
+		["SLASH","HIT_FLASH","FLOATING_AMOUNT","HIT_FLASH","FLOATING_AMOUNT","DEATH"],
+		"BLEEDOUT death projects once after physical and downed-pressure effects")
 	return finish()
 
 
@@ -486,31 +487,129 @@ func test_long_route_ephemeral_state_load_and_direct_command_contracts() -> bool
 
 
 func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() -> bool:
-	var session=Session.new();var state=session.sim.world.party_encounter;var hero=state.protagonist_id
+	var session=Session.new(1);var state=session.sim.world.party_encounter;var hero=state.protagonist_id
 	check(session.commit_exploration(Command.wait(hero)).accepted,"log contact")
 	check(session.preview_deployment("LINE",[state.party_member_ids[1]]).accepted,"log deploy preview")
 	check(session.commit_deployment().accepted,"log deploy")
 	state=session.sim.world.party_encounter;var companion=state.party_member_ids[1]
-	for turn in range(12):
+	var enemy_id: int = state.enemy_ids[0]
+	var finisher_previewed := false; var finisher_committed := false
+	var finisher_commit_event_ids: Array = []
+	for turn in range(20):
 		if session.party_status().safe_phase!="ENGAGED":break
-		check(session.begin_turn(Action.hold(hero)).accepted,"automatic combat draft %d"%turn)
-		check(session.commit_turn().accepted,"automatic combat commit %d"%turn)
+		var enemy_downed: bool = session.sim.world.combatant_states[enemy_id].life_state == "DOWNED"
+		var hero_position: Vector2i = session.sim.world.entities[hero].position
+		var enemy_position: Vector2i = session.sim.world.entities[enemy_id].position
+		var distance := maxi(absi(hero_position.x-enemy_position.x),
+			absi(hero_position.y-enemy_position.y))
+		var preview: Dictionary = {"accepted":false}
+		var finisher_this_turn := false
+		if enemy_downed and distance == 1:
+			preview = session.set_actor_action(hero,"MELEE",[],enemy_id)
+			check(bool(preview.get("accepted",false)),"fresh explicit finisher preview %d"%turn)
+			var hero_row: Dictionary = {}
+			var autonomous_companion_melee: Array = []
+			for row in preview.get("actor_rows",[]):
+				if int(row.get("actor_id",-1)) == hero: hero_row = row
+				if int(row.get("actor_id",-1)) == companion \
+						and str(row.get("action",{}).get("type","")) == "MELEE":
+					autonomous_companion_melee.append(row)
+			check(not hero_row.is_empty() and str(hero_row.get("action",{}).get("type","")) == "MELEE" \
+				and int(str(hero_row.get("action",{}).get("target_id","-1"))) == enemy_id,
+				"facade exposes fresh hero target action")
+			var combat_assessment: Variant = hero_row.get("combat_assessment")
+			check(combat_assessment is Dictionary \
+				and str(combat_assessment.get("intent_mode","")) == "FINISHER" \
+				and str(combat_assessment.get("target_life_state","")) == "DOWNED",
+				"facade exposes explicit FINISHER assessment")
+			check(autonomous_companion_melee.is_empty(),
+				"autonomous companion does not select DOWNED target")
+			finisher_this_turn = bool(preview.get("accepted",false))
+			finisher_previewed = finisher_previewed or finisher_this_turn
+		elif enemy_downed and distance > 1:
+			var ranked_paths: Array = []
+			for direction in [Vector2i.UP,Vector2i(1,-1),Vector2i.RIGHT,
+					Vector2i(1,1),Vector2i.DOWN,Vector2i(-1,1),Vector2i.LEFT,
+					Vector2i(-1,-1)]:
+				var adjacent: Vector2i = enemy_position + direction
+				if not session.sim.world.in_bounds(adjacent) \
+						or session.sim.world.blocking_entity_at(adjacent,hero) != null:
+					continue
+				var candidate: Dictionary = session.sim.find_path(hero,adjacent)
+				if bool(candidate.get("found",false)) and candidate.get("path",[]).size()>1:
+					ranked_paths.append({"path":candidate.path,
+						"cost":int(candidate.total_cost),"steps":int(candidate.steps),
+						"goal":adjacent})
+			ranked_paths.sort_custom(func(a:Dictionary,b:Dictionary):
+				if int(a.cost)!=int(b.cost):return int(a.cost)<int(b.cost)
+				if int(a.steps)!=int(b.steps):return int(a.steps)<int(b.steps)
+				var ag:Vector2i=a.goal;var bg:Vector2i=b.goal
+				return ag.y<bg.y if ag.y!=bg.y else ag.x<bg.x)
+			check(not ranked_paths.is_empty(),"DOWNED target has a reachable adjacent cell")
+			if not ranked_paths.is_empty():
+				var destination: Vector2i = ranked_paths[0].path[1]
+				preview = session.begin_turn(Action.move_to(hero,destination))
+			check(bool(preview.get("accepted",false)),
+				"hero facade approach MOVE preview %d"%turn)
+			var approach_row: Dictionary = {}
+			var downed_companion_melee: Array = []
+			for row in preview.get("actor_rows",[]):
+				if int(row.get("actor_id",-1)) == hero: approach_row = row
+				if enemy_downed and int(row.get("actor_id",-1)) == companion \
+						and str(row.get("action",{}).get("type","")) == "MELEE":
+					downed_companion_melee.append(row)
+			check(not approach_row.is_empty() \
+				and str(approach_row.get("action",{}).get("type","")) == "MOVE",
+				"hero approaches through exact facade MOVE row")
+			if enemy_downed:
+				check(downed_companion_melee.is_empty(),
+					"autonomous companion excludes DOWNED target during hero approach")
+		else:
+			preview = session.begin_turn(Action.hold(hero))
+			check(bool(preview.get("accepted",false)),"automatic combat draft %d"%turn)
+		var committed: Dictionary = session.commit_turn()
+		check(bool(committed.get("accepted",false)),"automatic combat commit %d"%turn)
+		if enemy_downed and bool(committed.get("accepted",false)):
+			for event_id in committed.get("event_ids",[]):
+				var event = session.sim.world.event_by_id(int(event_id))
+				check(event == null or event.actor_id != enemy_id \
+					or not event.type.begins_with("action."),
+					"DOWNED enemy emits no autonomous action during fresh hero resolution")
+		if finisher_this_turn and bool(committed.get("accepted",false)):
+			finisher_committed = true
+			finisher_commit_event_ids = committed.get("event_ids",[]).duplicate()
 	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","automatic companion fixture wins")
+	check(finisher_previewed and finisher_committed,
+		"DOWNED enemy is finished through a fresh facade turn")
 	var log=session.combat_log(8,80)
 	check(log.groups is Array and log.row_count>0,"grouped combat log populated")
 	var rows:Array=[]
 	for group in log.groups:rows.append_array(group.rows)
-	var companion_melee:Dictionary={};var attributed_damage:Dictionary={};var attributed_death:Dictionary={}
+	var companion_melee:Dictionary={};var attributed_damage:Dictionary={}
+	var finisher_melee:Dictionary={};var finisher_pressure:Dictionary={};var attributed_death:Dictionary={}
 	for row in rows:
 		if row.type=="action.melee_attack" and int(row.actor_id)==companion:companion_melee=row
 		if str(row.type).begins_with("combat.") and int(row.instigator_id)==companion:attributed_damage=row
-		if row.type=="entity.died" and int(row.instigator_id)==companion:attributed_death=row
+		if row.type=="action.melee_attack" and int(row.actor_id)==hero \
+				and str(row.data.get("outcome",""))=="FINISHER":finisher_melee=row
+		if row.type=="combat.downed_damage" and int(row.instigator_id)==hero:finisher_pressure=row
+		if row.type=="entity.died" and int(row.target_id)==enemy_id:attributed_death=row
 	check(not companion_melee.is_empty(),"automatic companion melee retained")
 	check(not attributed_damage.is_empty(),"automatic companion damage attributed")
-	check_eq(int(attributed_damage.cause_id),int(companion_melee.event_id),"damage exact melee cause")
-	check("나래의 공격으로" in str(attributed_damage.message),"Korean damage attribution")
-	check(not attributed_death.is_empty(),"companion death attribution retained through regroup")
-	check_eq(int(attributed_death.cause_id),int(attributed_damage.event_id),"death exact damage cause")
+	if not attributed_damage.is_empty() and not companion_melee.is_empty():
+		check_eq(int(attributed_damage.cause_id),int(companion_melee.event_id),"damage exact melee cause")
+		check("나래의 공격으로" in str(attributed_damage.message),"Korean damage attribution")
+	check(not finisher_melee.is_empty() and int(finisher_melee.event_id) in finisher_commit_event_ids,
+		"committed facade turn exposes explicit FINISHER event")
+	check(not finisher_pressure.is_empty(),"hero finisher pressure attribution retained")
+	if not finisher_pressure.is_empty() and not finisher_melee.is_empty():
+		check_eq(int(finisher_pressure.cause_id),int(finisher_melee.event_id),
+			"finisher pressure exact melee cause")
+	check(not attributed_death.is_empty(),"explicit finisher death retained through regroup")
+	if not attributed_death.is_empty() and not finisher_pressure.is_empty():
+		check_eq(int(attributed_death.cause_id),int(finisher_pressure.event_id),
+			"death exact finisher pressure cause")
+		check_eq(int(attributed_death.instigator_id),hero,"final death attribution is hero finisher")
 	check_eq(session.combat_log(0,80).groups,[],"zero turns returns zero groups")
 	var detached=session.combat_log();detached.groups[0].rows[0].data["corrupted"]=true
 	check(not session.combat_log().groups[0].rows[0].data.has("corrupted"),"combat log nested DTO detached")
@@ -532,7 +631,7 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 	for row in overkill_rows:
 		if row.type=="action.melee_attack" and int(row.actor_id) in [overkill_hero,overkill_companion]:melee_count+=1
 		if row.type=="action.melee_attack" and int(row.actor_id)==overkill_companion:companion_intent_count+=1
-		if str(row.type).begins_with("combat.") and int(row.target_id)==overkill_enemy:damage_count+=1
+		if row.type=="combat.physical_damage" and int(row.target_id)==overkill_enemy:damage_count+=1
 		if row.type=="entity.died" and int(row.target_id)==overkill_enemy:death_count+=1
 	check_eq(melee_count,2,"both simultaneous hero/companion intents logged")
 	check_eq(companion_intent_count,1,"automatic companion overkill intent retained")
@@ -597,8 +696,8 @@ func _check_rejection_noop(session, producer: Callable, expected_reason: String,
 	return result
 
 
-func _engaged_with_companions(roster_slots: Array):
-	var session = Session.new(); var state = session.sim.world.party_encounter
+func _engaged_with_companions(roster_slots: Array, world_seed: int = 44):
+	var session = Session.new(world_seed); var state = session.sim.world.party_encounter
 	var selected: Array = []
 	for slot in roster_slots:
 		selected.append(state.party_member_ids[int(slot)])

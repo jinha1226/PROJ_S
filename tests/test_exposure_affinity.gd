@@ -13,10 +13,14 @@ func test_fire_and_wetness_sources_have_strict_semantics() -> bool:
 	var producer_root = producer.world.emit_event("test.ignite_attempt")
 	var producer_before: Dictionary = producer.snapshot()
 	var producer_event_id: int = producer.world._next_event_id
+	producer.world.begin_step(1)
 	check(not producer.environment.try_ignite(
-		Vector2i.ZERO, 70, producer_root.id, "test.fire"),
+		Vector2i.ZERO, 70, producer_root.id, 1, "test.fire"),
 		"unknown fire producer type rejected")
-	check_eq(producer.snapshot(), producer_before, "unknown fire type no-op")
+	producer.world.finish_step()
+	var expected_after_rejection: Dictionary = producer_before.duplicate(true)
+	expected_after_rejection.step_index = "1"
+	check_eq(producer.snapshot(), expected_after_rejection, "unknown fire type mutates only outer step")
 	check_eq(producer.world._next_event_id, producer_event_id,
 		"unknown fire type consumes no event ID")
 
@@ -125,7 +129,7 @@ func test_exposure_out_of_bounds_active_and_returned_dto_are_detached() -> bool:
 	var fresh = sim.evaluate_exposure_for_entity(actor.id, Vector2i.ZERO)
 	check_eq([fresh.sample.fire_intensity, fresh.affinity.fire_tolerance,
 		fresh.evaluation.total_risk], [0, 20, 0], "fresh detached values")
-	actor.health = 0
+	check(sim.world.bootstrap_set_combatant_life_state(actor.id, "DEAD"), "dead exposure fixture")
 	check(sim.evaluate_exposure_for_entity(actor.id, Vector2i.ZERO) == null,
 		"dead entity evaluation null")
 	check(sim.evaluate_exposure_for_entity(999, Vector2i.ZERO) == null,

@@ -18,17 +18,21 @@ func _init(p_world, p_damage_system) -> void:
 	damage_system = p_damage_system
 
 
-func ignite(position: Vector2i, power: int, cause_id: int) -> bool:
-	if power < 1 or power > 100:
+func ignite(position: Vector2i, power: int, cause_id: int,
+		processed_step_index: int) -> bool:
+	if power < 1 or power > 100 or not _processed_step_matches(processed_step_index):
 		return false
-	return try_ignite(position, power, cause_id, "environment.ignited")
+	return try_ignite(position, power, cause_id, processed_step_index,
+		"environment.ignited")
 
 
 func try_ignite(position: Vector2i, power: int, cause_id: int,
+		processed_step_index: int,
 		success_event_type: String = "environment.ignited",
 		from_position: Vector2i = Vector2i(-1, -1)) -> bool:
 	if success_event_type != "environment.ignited" \
-			and success_event_type != "environment.fire_spread":
+			and success_event_type != "environment.fire_spread" \
+			or not _processed_step_matches(processed_step_index):
 		return false
 	var tile = world.tile_at(position)
 	var preview := _preview_ignite(tile, power)
@@ -86,8 +90,9 @@ func _preview_ignite(tile, power: int) -> Dictionary:
 		"resulting_fire": mini(remaining_power, tile.flammability)}
 
 
-func apply_water(position: Vector2i, amount: int, cause_id: int) -> bool:
-	if amount < 1 or amount > 100:
+func apply_water(position: Vector2i, amount: int, cause_id: int,
+		processed_step_index: int) -> bool:
+	if amount < 1 or amount > 100 or not _processed_step_matches(processed_step_index):
 		return false
 	var tile = world.tile_at(position)
 	var actual_increase := mini(amount, 100 - tile.wetness)
@@ -101,8 +106,9 @@ func apply_water(position: Vector2i, amount: int, cause_id: int) -> bool:
 	return true
 
 
-func discharge(position: Vector2i, power: int, cause_id: int) -> bool:
-	if power < 1 or power > 100:
+func discharge(position: Vector2i, power: int, cause_id: int,
+		processed_step_index: int) -> bool:
+	if power < 1 or power > 100 or not _processed_step_matches(processed_step_index):
 		return false
 	var queue: Array[Dictionary] = [{
 		"position": position, "distance": 0, "parent_id": cause_id,
@@ -133,11 +139,13 @@ func discharge(position: Vector2i, power: int, cause_id: int) -> bool:
 			if not visited.has(neighbor) and world.tile_at(neighbor).effective_conductivity() >= CONDUCTION_THRESHOLD:
 				queue.append({"position": neighbor, "distance": distance + 1,
 					"parent_id": arc_event.id, "from_position": current})
-	_apply_damage_requests(damage_requests)
+	_apply_damage_requests(damage_requests, processed_step_index)
 	return true
 
 
-func process_tick() -> void:
+func process_tick(processed_step_index: int) -> bool:
+	if processed_step_index <= 0 or world._active_step_index != processed_step_index:
+		return false
 	var burning_positions: Array[Vector2i] = []
 	for y in range(world.height):
 		for x in range(world.width):
@@ -146,7 +154,7 @@ func process_tick() -> void:
 				burning_positions.append(position)
 	for position in burning_positions:
 		_tick_existing_fire(position)
-	_apply_spread_candidates(_collect_spread_candidates(burning_positions))
+	_apply_spread_candidates(_collect_spread_candidates(burning_positions), processed_step_index)
 	var fire_damage_requests: Array[Dictionary] = []
 	for y in range(world.height):
 		for x in range(world.width):
@@ -159,8 +167,9 @@ func process_tick() -> void:
 				fire_damage_requests.append({"entity": entity,
 					"amount": mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, tile.fire),
 					"damage_type": "fire", "cause_id": tile.fire_source_event_id})
-	_apply_damage_requests(fire_damage_requests)
+	_apply_damage_requests(fire_damage_requests, processed_step_index)
 	_decay_wetness()
+	return true
 
 
 func _tick_existing_fire(position: Vector2i) -> void:
@@ -212,7 +221,7 @@ func _collect_spread_candidates(burning_positions: Array[Vector2i]) -> Dictionar
 	return by_target
 
 
-func _apply_spread_candidates(by_target: Dictionary) -> void:
+func _apply_spread_candidates(by_target: Dictionary, processed_step_index: int) -> void:
 	var targets: Array = by_target.keys()
 	targets.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y or (a.y == b.y and a.x < b.x))
 	for target in targets:
@@ -228,13 +237,18 @@ func _apply_spread_candidates(by_target: Dictionary) -> void:
 		var winner: Dictionary = candidates[0]
 		if world.rng.randi_range(1, 100) <= int(winner["chance"]):
 			try_ignite(target, int(winner["power"]), int(winner["cause_id"]),
-				"environment.fire_spread", winner["source"])
+				processed_step_index, "environment.fire_spread", winner["source"])
 
 
-func _apply_damage_requests(requests: Array[Dictionary]) -> void:
+func _apply_damage_requests(requests: Array[Dictionary], processed_step_index: int) -> void:
 	for request in requests:
 		damage_system.apply_damage(request["entity"], int(request["amount"]),
-			str(request["damage_type"]), int(request["cause_id"]))
+			str(request["damage_type"]), int(request["cause_id"]),
+			request["entity"].position, processed_step_index)
+
+
+func _processed_step_matches(processed_step_index: int) -> bool:
+	return processed_step_index > 0 and processed_step_index == world._active_step_index
 
 
 func _decay_wetness() -> void:

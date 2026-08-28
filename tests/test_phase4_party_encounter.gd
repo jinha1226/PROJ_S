@@ -150,12 +150,12 @@ func test_automatic_regroup_runs_after_due_environment_tick_at_deployed_position
 
 func test_snapshot_v5_strict_xor_round_trip_and_v4_rejection() -> bool:
 	var session=Session.new(); var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(snapshot.snapshot_version,5,"snapshot v5"); check_eq(snapshot.ruleset_version,"phase4-party-encounter-v2","ruleset")
+	check_eq(snapshot.snapshot_version,6,"snapshot v6"); check_eq(snapshot.ruleset_version,"phase5-combat-status-lifecycle-v1","ruleset")
 	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot))).snapshot(),snapshot,"party round trip")
 	var conflict=snapshot.duplicate(true); conflict.encounter_lab={}
 	check_eq(WorldState.snapshot_restore_error(conflict),"encounter_mode_conflict","xor wire")
-	var old=snapshot.duplicate(true); old.snapshot_version=4
-	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","no v4 migration")
+	var old=snapshot.duplicate(true); old.snapshot_version=5
+	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","no v5 migration")
 	var noncanonical=snapshot.duplicate(true); noncanonical.party_encounter.revision=0
 	check_eq(WorldState.snapshot_restore_error(noncanonical),"noncanonical_party_revision","party int64 strict")
 	return finish()
@@ -174,7 +174,7 @@ func test_rehashed_party_and_deployment_forgery_never_executes() -> bool:
 		var before := JSON.stringify(session.sim.snapshot())
 		var result = session.sim.step_party_turn(Plan.new(forged))
 		check(not result.accepted, "rehashed party forgery rejected")
-		check_eq(result.reason, "party_plan_mismatch", "forgery mismatch reason")
+		check_eq(result.reason, "stale_or_tampered_combat_plan", "forgery mismatch reason")
 		check_eq(JSON.stringify(session.sim.snapshot()), before, "forgery is exact no-op")
 	var malformed = original.duplicate(true); malformed.canonical_request.protagonist_action.actor_id = "01"
 	var malformed_result = session.sim.step_party_turn(Plan.new(_rehash(malformed)))

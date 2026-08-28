@@ -13,8 +13,6 @@ const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const PANIC_ENTER_THRESHOLD := 850
 const PANIC_EXIT_THRESHOLD := 500
 const THREAT_POWER_NORM := 760
-const LEAD_ATTACK := 22
-const THREAT_ATTACK := 18
 const MAX_WORLD_TIME := 9223372036854775707
 
 var world
@@ -33,7 +31,11 @@ func _init(p_world, p_movement, p_relationships, p_damage) -> void:
 	pathfinder = WeightedPathfinderScript.new(world, movement)
 	combat = MeleeCombatSystemScript.new(world, damage)
 
-func process_tick() -> bool:
+func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: int,
+		tick_start_can_act_ids: Dictionary) -> bool:
+	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
+			or actor_schedule_id <= 0 or due_time != world.world_time:
+		return false
 	if _test_force_tick_failure: return false
 	if world.encounter_lab == null: return true
 	var now: int = world.world_time
@@ -55,18 +57,19 @@ func process_tick() -> bool:
 	# Perception is already chamber-filtered; affect and mode update even while busy.
 	for actor_id in leads:
 		var state = world.agent_states[actor_id]
-		if state.encounter_status == "ACTIVE" and world.entities[actor_id].is_alive():
+		if state.encounter_status == "ACTIVE" and world.is_autonomous_target(actor_id):
 			_update_affect(state, threat_appraisal(actor_id), now)
 	var mode_transitions: Array[Dictionary] = []
 	for actor_id in leads:
 		var state = world.agent_states[actor_id]
-		if state.encounter_status == "ACTIVE" and world.entities[actor_id].is_alive():
+		if state.encounter_status == "ACTIVE" and world.is_autonomous_target(actor_id):
 			var transition: Dictionary = _project_mode(state, now)
 			if not transition.is_empty(): mode_transitions.append(transition)
 	var intents: Array[Dictionary] = []
 	for actor_id in leads:
 		var state = world.agent_states[actor_id]
-		if state.encounter_status == "ACTIVE" and world.entities[actor_id].is_alive() and state.busy_until <= now:
+		if tick_start_can_act_ids.has(actor_id) and state.encounter_status == "ACTIVE" \
+				and world.can_act(actor_id, now) and state.busy_until <= now:
 			var lead_intent: Dictionary = _decide_lead(actor_id, projection)
 			var actor_transition: Dictionary = {}
 			for transition in mode_transitions:
@@ -78,13 +81,15 @@ func process_tick() -> bool:
 				lead_intent.switch_evidence.reason_code = "mode_transition_reset"
 			intents.append(lead_intent)
 	for actor_id in _actor_ids("MELEE_THREAT"):
-		if world.entities[actor_id].is_alive() and world.agent_states[actor_id].encounter_status == "ACTIVE" \
+		if tick_start_can_act_ids.has(actor_id) and world.is_autonomous_target(actor_id) \
+				and world.agent_states[actor_id].encounter_status == "ACTIVE" \
 				and world.agent_states[actor_id].busy_until <= now:
 			if now == world.encounter_lab.activation_time:
 				intents.append(_simple_intent(actor_id, "HOLD", "HOLD", -1, world.entities[actor_id].position, 0, 999))
 			else: intents.append(_decide_threat(actor_id, projection))
 	for actor_id in _actor_ids("PASSIVE_ALLY"):
-		if world.entities[actor_id].is_alive() and world.agent_states[actor_id].encounter_status == "ACTIVE" \
+		if tick_start_can_act_ids.has(actor_id) and world.is_autonomous_target(actor_id) \
+				and world.agent_states[actor_id].encounter_status == "ACTIVE" \
 				and world.agent_states[actor_id].busy_until <= now:
 			intents.append(_simple_intent(actor_id, "HOLD", "HOLD", -1, world.entities[actor_id].position, 0, 999))
 	_resolve_conflicts(intents)
@@ -97,7 +102,13 @@ func process_tick() -> bool:
 		_restore_agent_rows(original_agent_rows)
 		if not activation_rollback.is_empty(): _rollback_activation(activation_rollback)
 		return false
-	_commit_batch(intents, mode_transitions, projection, now)
+	var frozen_batch: Dictionary = _freeze_melee_batch(intents, processed_step_index,
+		actor_schedule_id, due_time)
+	if not bool(frozen_batch.get("ok", false)):
+		return false
+	if not _commit_batch(intents, mode_transitions, projection, now, processed_step_index,
+			actor_schedule_id, due_time, frozen_batch):
+		return false
 	_update_complete()
 	return true
 
@@ -107,7 +118,7 @@ func threat_appraisal(actor_id: int) -> Dictionary:
 	if state.controller_kind != "LEAD" or state.personality_profile == null: return {}
 	var actor = world.entities[actor_id]
 	var threat = world.entities.get(state.active_threat_id)
-	var has_threat: bool = threat != null and threat.is_alive() and _same_slot(actor_id, threat.id)
+	var has_threat: bool = threat != null and world.is_autonomous_target(threat.id) and _same_slot(actor_id, threat.id)
 	var distance: int = 99 if not has_threat else maxi(absi(actor.position.x - threat.position.x), absi(actor.position.y - threat.position.y))
 	var distance_pressure: int = clampi(1000 - maxi(0, distance - 1) * 160, 0, 1000) if has_threat else 0
 	var objective: int = FixedPointScript.trunc_div(2 * THREAT_POWER_NORM + distance_pressure, 3) if has_threat else 0
@@ -115,7 +126,7 @@ func threat_appraisal(actor_id: int) -> Dictionary:
 	var relation: Dictionary = relationships.effective_relation(actor_id, state.active_threat_id) if has_threat else {}
 	var ally_id: int = _slot_actor(state.trial_slot, "PASSIVE_ALLY")
 	var ally_relation: Dictionary = relationships.effective_relation(actor_id, ally_id) if ally_id > 0 else {}
-	var ally_active: bool = ally_id > 0 and world.entities[ally_id].is_alive() \
+	var ally_active: bool = ally_id > 0 and world.is_autonomous_target(ally_id) \
 		and world.agent_states[ally_id].encounter_status == "ACTIVE"
 	var ally_targeted: bool = has_threat and ally_active \
 		and world.agent_states[state.active_threat_id].intent_target_entity_id == ally_id
@@ -274,7 +285,7 @@ func _evaluate_candidate(actor_id: int, action_id: String, appraisal: Dictionary
 		var veto := false; var gate_reason := ""
 		match gate_definition.evaluator_id:
 			"alive-ready-v1":
-				veto = not world.entities[actor_id].is_alive() or state.encounter_status != "ACTIVE" or state.busy_until > world.world_time
+				veto = not world.can_act(actor_id, world.world_time) or state.encounter_status != "ACTIVE" or state.busy_until > world.world_time
 				if veto: gate_reason = "actor_not_alive_or_ready"
 			"mode-v1":
 				veto = not definition.allowed_mode_ids.has(state.mental_mode)
@@ -314,7 +325,7 @@ func _provide_candidate(actor_id: int, provider_id: String, appraisal: Dictionar
 		"threat-v1":
 			result.target_entity_id = state.active_threat_id
 			if state.active_threat_id <= 0 or not world.entities.has(state.active_threat_id) \
-					or not world.entities[state.active_threat_id].is_alive() or not _same_slot(actor_id, state.active_threat_id):
+					or not world.is_autonomous_target(state.active_threat_id) or not _same_slot(actor_id, state.active_threat_id):
 				result.legal = false; result.reason = "threat_not_perceived"
 			else:
 				result.target_position = world.entities[state.active_threat_id].position
@@ -380,10 +391,10 @@ func _project_threat_targets() -> void:
 	for actor_id in _actor_ids("MELEE_THREAT"):
 		var state = world.agent_states[actor_id]
 		var target_id := _slot_actor(state.trial_slot, "PASSIVE_ALLY")
-		if target_id <= 0 or not world.entities[target_id].is_alive() \
+		if target_id <= 0 or not world.is_autonomous_target(target_id) \
 				or world.agent_states[target_id].encounter_status != "ACTIVE":
 			target_id = _slot_actor(state.trial_slot, "LEAD")
-			if target_id <= 0 or not world.entities[target_id].is_alive() \
+			if target_id <= 0 or not world.is_autonomous_target(target_id) \
 					or world.agent_states[target_id].encounter_status != "ACTIVE": target_id = -1
 		state.intent_target_entity_id = target_id
 
@@ -460,7 +471,7 @@ func _batch_preflight(intents: Array[Dictionary], mode_transitions: Array[Dictio
 		var actor_id := int(intent.get("actor_id", -1))
 		if not world.entities.has(actor_id) or not world.agent_states.has(actor_id): return "actor_missing"
 		var state = world.agent_states[actor_id]
-		if not world.entities[actor_id].is_alive() or state.encounter_status != "ACTIVE": return "actor_not_active"
+		if not world.can_act(actor_id, world.world_time) or state.encounter_status != "ACTIVE": return "actor_not_active"
 		if state.controller_kind == "LEAD" and not PersonalityRegistry.profile_error(state.personality_profile).is_empty():
 			return "invalid_personality_profile"
 		var target_id := int(intent.get("target_entity_id", -1))
@@ -493,7 +504,60 @@ func _batch_preflight(intents: Array[Dictionary], mode_transitions: Array[Dictio
 	return "" if world.has_event_id_headroom(maximum_events) else "event_id_overflow"
 
 
-func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionary], _projection: Dictionary, now: int) -> void:
+func _freeze_melee_batch(intents: Array[Dictionary], processed_step_index: int,
+		actor_schedule_id: int, due_time: int) -> Dictionary:
+	var candidates: Array[Dictionary] = []
+	for original_action_order in range(intents.size()):
+		var intent: Dictionary = intents[original_action_order]
+		if bool(intent.get("conflict_lost", false)) \
+				or str(intent.get("leaf_action_id", "")) != "MELEE_ATTACK":
+			continue
+		candidates.append({"actor_id": int(intent.actor_id),
+			"target_id": int(intent.leaf_target_entity_id),
+			"original_action_order": original_action_order})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.target_id) != int(b.target_id): return int(a.target_id) < int(b.target_id)
+		if int(a.actor_id) != int(b.actor_id): return int(a.actor_id) < int(b.actor_id)
+		return int(a.original_action_order) < int(b.original_action_order))
+	var context := "PHASE3_ACTOR/%d/%d" % [actor_schedule_id, due_time]
+	var rows: Dictionary = {}
+	var frozen_intents: Array = []
+	for ordinal in range(candidates.size()):
+		var candidate: Dictionary = candidates[ordinal]
+		var actor_id := int(candidate.actor_id)
+		var target_id := int(candidate.target_id)
+		var target = world.entities.get(target_id)
+		if target == null:
+			return {"ok": false, "canonical": false, "rows": {}}
+		var assessment: Dictionary = combat.assess_attack(actor_id, target_id, "SUGGESTED",
+			processed_step_index, due_time, context, ordinal)
+		var frozen = combat.freeze_assessment(assessment, target.health,
+			int(candidate.original_action_order))
+		if assessment.is_empty() or frozen == null:
+			return {"ok": false, "canonical": false, "rows": {}}
+		frozen_intents.append(frozen)
+		rows[actor_id] = {"intent": frozen, "resolution": null}
+	var projected: Array = combat.project_batch(frozen_intents)
+	var supported: bool = projected.size() == frozen_intents.size()
+	if supported:
+		for resolution in projected:
+			var ordinal := int(resolution.action_data.get("intent_ordinal", -1))
+			if ordinal < 0 or ordinal >= frozen_intents.size() \
+					or resolution.outcome not in ["MISS", "HIT", "OVERKILL_SKIP"]:
+				supported = false
+				break
+			var frozen = frozen_intents[ordinal]
+			var actor_id := int(str(frozen.assessment.attacker_id))
+			if not rows.has(actor_id):
+				supported = false
+				break
+			rows[actor_id].resolution = resolution
+	return {"ok": true, "canonical": supported, "rows": rows}
+
+
+func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionary], _projection: Dictionary,
+			now: int, processed_step_index: int, actor_schedule_id: int, due_time: int,
+			frozen_batch: Dictionary) -> bool:
 	var mode_event_ids: Dictionary = {}
 	mode_transitions.sort_custom(func(a: Dictionary, b: Dictionary):
 		return int(a.trial_slot) < int(b.trial_slot) if int(a.trial_slot) != int(b.trial_slot) else int(a.actor_id) < int(b.actor_id))
@@ -518,6 +582,8 @@ func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionar
 		decision_events[actor_id] = decision
 
 	var damage_requests: Array[Dictionary] = []
+	var canonical_batch: bool = bool(frozen_batch.get("canonical", false))
+	var frozen_rows: Dictionary = frozen_batch.get("rows", {})
 	for intent in intents:
 		if bool(intent.get("conflict_lost", false)): continue
 		var actor_id := int(intent.actor_id); var state = world.agent_states[actor_id]
@@ -529,18 +595,33 @@ func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionar
 				movement.commit_preflighted_move(actor_id, intent.leaf_position, str(intent.move_terrain_id), move_cost, cause_id)
 				state.busy_until = now + move_cost
 			"MELEE_ATTACK":
-				var amount: int = LEAD_ATTACK if state.controller_kind == "LEAD" else THREAT_ATTACK
 				var target_id := int(intent.leaf_target_entity_id)
-				var action = world.emit_event("action.melee_attack", actor_id, target_id,
-					world.entities[target_id].position, amount, cause_id, {"combat_ruleset_id": "fixed-melee-v1"})
+				var frozen_row: Dictionary = frozen_rows.get(actor_id, {})
+				var frozen = frozen_row.get("intent")
+				var resolution = frozen_row.get("resolution")
+				var action = null
+				if not canonical_batch or frozen == null or resolution == null:
+					return false
+				var assessment: Dictionary = frozen.assessment
+				var frozen_position := Vector2i(int(assessment.target_position[0]),
+					int(assessment.target_position[1]))
+				action = world.emit_event("action.melee_attack", actor_id, target_id,
+					frozen_position, int(assessment.base_damage), cause_id,
+					resolution.action_data)
 				assert(action != null, "Preflighted attack event must commit")
 				damage_requests.append({"target_id": target_id, "attacker_id": actor_id,
-					"action_event_id": action.id, "amount": amount, "event_position": action.position})
+					"action_event_id": action.id, "amount": action.magnitude,
+					"event_position": action.position, "intent": frozen,
+					"resolution": resolution})
 				state.busy_until = now + 100
 			"HOLD":
 				var hold = world.emit_event("action.hold", actor_id, -1, world.entities[actor_id].position, 1, cause_id)
 				assert(hold != null, "Preflighted HOLD event must commit")
-				state.busy_until = now + 100; state.guarded_until = now + 200
+				state.busy_until = now + 100
+				var combatant = world.combatant_states[actor_id]
+				var candidate_until := now + 200
+				if candidate_until > combatant.guarded_until:
+					combatant.guarded_until = candidate_until; combatant.guard_source_event_id = hold.id
 			"FREEZE":
 				var quanta: int = 1 + FixedPointScript.trunc_div(999 - state.personality_profile.value("composure"), 250)
 				var freeze = world.emit_event("action.freeze", actor_id, -1, world.entities[actor_id].position, quanta, cause_id)
@@ -553,16 +634,47 @@ func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionar
 		_commit_intent_state(intent, decision, now)
 
 	damage_requests.sort_custom(func(a: Dictionary, b: Dictionary):
+		if canonical_batch:
+			return int(a.intent.assessment.intent_ordinal) < int(b.intent.assessment.intent_ordinal)
 		if int(a.target_id) != int(b.target_id): return int(a.target_id) < int(b.target_id)
 		if int(a.attacker_id) != int(b.attacker_id): return int(a.attacker_id) < int(b.attacker_id)
 		return int(a.action_event_id) < int(b.action_event_id))
 	for request in damage_requests:
-		var target = world.entities[int(request.target_id)]
-		var amount := int(request.amount)
-		var target_state = world.agent_states.get(target.id)
-		if target_state != null and now < target_state.guarded_until:
-			amount -= FixedPointScript.trunc_div(amount * 250, 1000)
-		damage.apply_damage(target, amount, "physical", int(request.action_event_id), request.event_position)
+		if not canonical_batch:
+			return false
+		var resolution = request.resolution
+		var canonical_target = world.entities.get(int(request.target_id))
+		var canonical_state = world.combatant_states.get(int(request.target_id))
+		if canonical_target == null or canonical_state == null \
+				or canonical_target.health != resolution.target_health_before \
+				or canonical_state.life_state != resolution.target_life_before:
+			return false
+		if resolution.outcome == "MISS":
+			var miss = world.emit_event("combat.attack_missed", -1, int(request.target_id),
+				request.event_position, 0, int(request.action_event_id),
+				{"schema_version": 1,
+					"combat_ruleset_id": MeleeCombatSystemScript.COMBAT_RULESET_ID,
+					"outcome": "MISS"})
+			if miss == null: return false
+		elif resolution.outcome == "OVERKILL_SKIP":
+			pass
+		elif resolution.outcome == "HIT":
+			var applied: Dictionary = damage.apply_canonical_active_damage(canonical_target,
+				resolution.final_damage, "physical", int(request.action_event_id),
+				request.event_position, processed_step_index,
+				resolution.target_health_before, resolution.terminal_immediate,
+				resolution.bleed_proc_succeeded)
+			var expected_applied: int = resolution.target_health_before \
+				- resolution.target_health_after
+			if not bool(applied.accepted) \
+					or int(applied.applied_health_damage) != expected_applied:
+				return false
+		else:
+			return false
+		if canonical_target.health != resolution.target_health_after \
+				or canonical_state.life_state != resolution.target_life_after:
+			return false
+	return true
 
 
 func _commit_intent_state(intent: Dictionary, decision, now: int) -> void:
@@ -628,7 +740,7 @@ func _trace_candidates(candidates: Array) -> Array:
 func _update_complete() -> void:
 	if world.encounter_lab.phase != "ACTIVE": return
 	for actor_id in _actor_ids("LEAD"):
-		if world.entities[actor_id].is_alive() and world.agent_states[actor_id].encounter_status == "ACTIVE": return
+		if world.is_autonomous_target(actor_id) and world.agent_states[actor_id].encounter_status == "ACTIVE": return
 	world.encounter_lab.phase = "COMPLETE"
 
 func _actor_ids(kind: String) -> Array:
@@ -667,6 +779,6 @@ func _occupancy_projection() -> Dictionary:
 	var ids: Array = world.entities.keys(); ids.sort()
 	for id in ids:
 		var entity = world.entities[id]; var state = world.agent_states.get(id)
-		if entity.is_alive() and (state == null or state.encounter_status == "ACTIVE"):
+		if world.occupies_tile(id) and (state == null or state.encounter_status == "ACTIVE"):
 			result["%d:%d" % [entity.position.x, entity.position.y]] = id
 	return result

@@ -36,7 +36,7 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 		return TraversalAssessmentScript.new(base)
 	var actor = world.entities[actor_id]
 	base["from_position"] = actor.position
-	if not actor.is_alive():
+	if not world.can_act(actor_id, world.world_time):
 		base["reason"] = "actor_dead"
 		return TraversalAssessmentScript.new(base)
 	var delta: Vector2i = destination - actor.position

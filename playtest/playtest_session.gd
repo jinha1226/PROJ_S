@@ -60,20 +60,20 @@ func progress_status() -> Dictionary:
 	var alive_allies := 0
 	for entity_id in _actor_ids("LEAD"):
 		var lead_state = sim.world.agent_states[entity_id]
-		if sim.world.entities[entity_id].is_alive() and lead_state.encounter_status == "ACTIVE":
+		if sim.world.is_autonomous_target(entity_id) and lead_state.encounter_status == "ACTIVE":
 			active_leads += 1
 	for entity_id in _actor_ids("MELEE_THREAT"):
-		if sim.world.entities[entity_id].is_alive(): alive_threats += 1
+		if sim.world.is_autonomous_target(entity_id): alive_threats += 1
 	for entity_id in _actor_ids("PASSIVE_ALLY"):
-		if sim.world.entities[entity_id].is_alive(): alive_allies += 1
+		if sim.world.is_autonomous_target(entity_id): alive_allies += 1
 	var resolved_trials := 0
 	for trial_slot in range(4):
 		var lead_id := _actor_id_for_slot("LEAD", trial_slot)
 		var threat_id := _actor_id_for_slot("MELEE_THREAT", trial_slot)
 		if lead_id <= 0 or threat_id <= 0: continue
-		var lead_active: bool = sim.world.entities[lead_id].is_alive() \
+		var lead_active: bool = sim.world.is_autonomous_target(lead_id) \
 			and sim.world.agent_states[lead_id].encounter_status == "ACTIVE"
-		if not lead_active or not sim.world.entities[threat_id].is_alive(): resolved_trials += 1
+		if not lead_active or not sim.world.is_unresolved_enemy(threat_id): resolved_trials += 1
 	var last_advance := {"available": _last_result != null, "accepted": false, "reason": "",
 		"processed_ticks": 0, "emitted_event_count": 0, "start_time": sim.world.world_time,
 		"end_time": sim.world.world_time, "latest_salient_event": {}}
@@ -110,7 +110,7 @@ func player_state() -> Dictionary:
 	var entity = sim.world.entities[selected_lead_id]
 	return {"id": entity.id, "position": [entity.position.x, entity.position.y], "health": entity.health,
 		"max_health": entity.max_health, "hp": entity.health, "max_hp": entity.max_health,
-		"alive": entity.is_alive(), "species_id": entity.species_id, "display_name": entity.display_name}
+		"alive": sim.world.occupies_tile(entity.id), "species_id": entity.species_id, "display_name": entity.display_name}
 
 func recent_events(limit: int = 20) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
@@ -292,7 +292,7 @@ func observe_lab() -> Dictionary:
 			var ids: Array = sim.world.entities.keys(); ids.sort()
 			for id in ids:
 				var entity = sim.world.entities[id]; var state = sim.world.agent_states.get(id)
-				if entity.position != position or not entity.is_alive() or (state != null and state.encounter_status != "ACTIVE"): continue
+				if entity.position != position or not sim.world.occupies_tile(entity.id) or (state != null and state.encounter_status != "ACTIVE"): continue
 				if state != null and state.controller_kind == "MELEE_THREAT" and sim.world.encounter_lab.phase == "ARMED": continue
 				entities.append({"entity_id": id, "display_name": entity.display_name, "controller_kind": "" if state == null else state.controller_kind,
 					"trial_slot": -1 if state == null else state.trial_slot, "glyph": _glyph(state), "health": entity.health,
@@ -314,7 +314,7 @@ func lead_roster() -> Array[Dictionary]:
 		var entity = sim.world.entities[id]; var state = sim.world.agent_states[id]
 		rows.append({"entity_id": id, "trial_slot": state.trial_slot, "name": entity.display_name,
 			"position": [entity.position.x, entity.position.y], "health": entity.health, "max_health": entity.max_health,
-			"alive": entity.is_alive(), "encounter_status": state.encounter_status,
+			"alive": sim.world.occupies_tile(entity.id), "encounter_status": state.encounter_status,
 			"personality": state.personality_profile.facet_rows.duplicate(true), "fear": state.fear, "anger": state.anger,
 			"mental_mode": state.mental_mode, "reaction": state.current_reaction, "activity": state.current_activity})
 	return rows.duplicate(true)
