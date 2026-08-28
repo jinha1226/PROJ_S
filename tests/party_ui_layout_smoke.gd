@@ -12,6 +12,9 @@ func _init()->void: call_deferred("_run")
 func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
+		await _exploration_route_and_popover(viewport_size)
+		await _portrait_detail_modal(viewport_size)
+		await _combat_log_history(viewport_size)
 		for preset in ["WEDGE","LINE","COLUMN"]:
 			await _journey(viewport_size,preset)
 		await _wide_camera_fallback(viewport_size)
@@ -20,6 +23,201 @@ func _run()->void:
 	for failure in failures: printerr("FAIL "+failure)
 	print("---- party UI layout smoke: %d journeys + %d wide fallbacks, %d failed ----"%[6,2,failures.size()])
 	quit(1 if not failures.is_empty() else 0)
+
+func _exploration_route_and_popover(viewport_size:Vector2)->void:
+	var session=Session.new();var status:Dictionary=session.party_status()
+	var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1]));var far_goal:=Vector2i(-1,-1)
+	for candidate in [origin+Vector2i(-3,0),origin+Vector2i(0,3),origin+Vector2i(0,-3)]:
+		var probe:Dictionary=session.preview_exploration_route(candidate)
+		if bool(probe.get("accepted",false)) and int(probe.get("total_steps",0))>=3:far_goal=candidate
+		session.cancel_exploration_route()
+		if far_goal!=Vector2i(-1,-1):break
+	if far_goal==Vector2i(-1,-1):failures.append("%s no far route fixture"%viewport_size);return
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame;await process_frame
+	var before_world:Dictionary=session.sim.snapshot();var before_journal:Array=session.command_journal.duplicate(true)
+	if not _touch_cell_now(sandbox,far_goal):sandbox.queue_free();await process_frame;return
+	if session.sim.snapshot()!=before_world or session.command_journal!=before_journal:
+		failures.append("%s far-route first ScreenTouch mutated world/journal"%viewport_size)
+	await process_frame;await process_frame
+	var preview:Dictionary=session.exploration_route_draft();var spec:Dictionary=sandbox.grid.route_draw_spec()
+	if not bool(preview.get("accepted",false)) or int(preview.get("total_steps",0))<3:
+		failures.append("%s far-route first ScreenTouch did not retain preview"%viewport_size)
+	if spec.segments.size()!=int(preview.get("total_steps",0)):
+		failures.append("%s route overlay omitted steps %d/%d"%[viewport_size,spec.segments.size(),preview.get("total_steps",0)])
+	_validate_tile_popover(sandbox,viewport_size,"FAR_PREVIEW",true)
+	var start_step:int=int(session.sim.world.step_index)
+	if not _touch_cell_now(sandbox,far_goal):sandbox.queue_free();await process_frame;return
+	if session.sim.world.step_index!=start_step+1:
+		failures.append("%s same-goal second ScreenTouch must start with exactly one hop: %d→%d"%[viewport_size,start_step,session.sim.world.step_index])
+	var frame_guard:=0
+	while bool(session.exploration_route_state().get("active",false)) and frame_guard<16:
+		var prior_step:int=int(session.sim.world.step_index);await process_frame
+		var delta:int=int(session.sim.world.step_index)-prior_step
+		if delta!=1:failures.append("%s route frame committed %d hops instead of one"%[viewport_size,delta])
+		frame_guard+=1
+	var finished:Dictionary=session.exploration_route_state()
+	if not bool(finished.get("completed",false)) or session.party_status().anchor!=[far_goal.x,far_goal.y]:
+		failures.append("%s route did not finish at exact goal: %s"%[viewport_size,finished])
+	sandbox.queue_free();await process_frame
+
+	var contact_session=Session.new();var contact_status:Dictionary=contact_session.party_status()
+	var contact_origin:=Vector2i(int(contact_status.anchor[0]),int(contact_status.anchor[1]));var contact_goal:=contact_origin+Vector2i(3,0)
+	var contact=Sandbox.new();contact.size=viewport_size;contact.initialize_for_headless_test(contact_session)
+	contact.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);contact.size=viewport_size;root.add_child(contact)
+	await process_frame;await process_frame
+	var contact_before:int=int(contact_session.sim.world.step_index)
+	_touch_cell_now(contact,contact_goal);await process_frame;await process_frame
+	_touch_cell_now(contact,contact_goal)
+	var stopped:Dictionary=contact_session.exploration_route_state();var stopped_step:int=int(contact_session.sim.world.step_index)
+	if contact_session.party_status().safe_phase!="CONTACT" or str(stopped.get("stop_reason",""))!="route_contact":
+		failures.append("%s route contact did not stop with facade state: %s"%[viewport_size,stopped])
+	if stopped_step!=contact_before+1:failures.append("%s contact route committed more than one hop"%viewport_size)
+	if str(stopped.get("message",""))!=contact.notice_text:failures.append("%s contact stop facade message not shown"%viewport_size)
+	await process_frame;await process_frame
+	if contact_session.sim.world.step_index!=stopped_step:failures.append("%s contact stop left queued movement"%viewport_size)
+	contact.queue_free();await process_frame
+
+func _portrait_detail_modal(viewport_size:Vector2)->void:
+	var session=Session.new();var initial:Dictionary=session.party_status()
+	var anchor:=Vector2i(int(initial.anchor[0]),int(initial.anchor[1]))
+	if session.sim.world.bootstrap_set_fire(anchor,100)==null:failures.append("%s modal exposure fixture"%viewport_size)
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame;await process_frame
+	var hero:=int(initial.protagonist_id);var companion:=int(initial.party_member_ids[1])
+	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),false)
+	await process_frame;await process_frame
+	if sandbox.selected_member_id!=companion or sandbox.member_detail_modal.visible:
+		failures.append("%s portrait first touch must only select"%viewport_size)
+	_touch_control_now(_button(sandbox,"MemberCard%d"%hero),false)
+	await process_frame;await process_frame
+	if sandbox.selected_member_id!=hero or sandbox.member_detail_modal.visible:
+		failures.append("%s different portrait second touch opened modal"%viewport_size)
+	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),false)
+	await process_frame;await process_frame
+	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),true)
+	if not sandbox.member_detail_modal.visible or not sandbox.grid.modal_open:
+		failures.append("%s native portrait double_tap did not open modal"%viewport_size)
+	await process_frame;await process_frame
+	_validate_member_modal(sandbox,viewport_size)
+	var blocked_world:Dictionary=session.sim.snapshot();var blocked_journal:Array=session.command_journal.duplicate(true)
+	var blocked_route:Dictionary=session.exploration_route_state();var blocked_selection:int=int(sandbox.selected_member_id)
+	_touch_cell_now(sandbox,anchor+Vector2i.LEFT)
+	await process_frame;await process_frame
+	if session.sim.snapshot()!=blocked_world or session.command_journal!=blocked_journal or session.exploration_route_state()!=blocked_route:
+		failures.append("%s modal backdrop touch leaked to grid/session"%viewport_size)
+	if sandbox.selected_member_id!=blocked_selection:failures.append("%s modal backdrop changed selection"%viewport_size)
+	if not sandbox.member_detail_modal.visible or not sandbox.grid.modal_open:failures.append("%s modal panel touch unexpectedly closed modal"%viewport_size)
+	_touch_screen_now(sandbox.get_global_rect().position+Vector2(4,4),2)
+	if sandbox.member_detail_modal.visible or sandbox.grid.modal_open:failures.append("%s backdrop did not close modal gate"%viewport_size)
+	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),true)
+	await process_frame;await process_frame
+	if not sandbox.member_detail_modal.visible:failures.append("%s detail modal failed to reopen"%viewport_size)
+	_touch_control_now(sandbox.member_detail_close,false)
+	if sandbox.member_detail_modal.visible or sandbox.grid.modal_open:failures.append("%s actual close touch did not release modal gate"%viewport_size)
+	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),true);await process_frame;await process_frame
+	_press_escape_now();await process_frame
+	if sandbox.member_detail_modal.visible or sandbox.grid.modal_open:failures.append("%s Escape did not release modal gate"%viewport_size)
+
+	var route_goal:=anchor+Vector2i(-5,0)
+	_touch_cell_now(sandbox,route_goal);await process_frame;await process_frame
+	_touch_cell_now(sandbox,route_goal)
+	# Wait through one route frame and then through the same frame's deferred layout
+	# queue, without crossing another process_frame (which would advance another hop).
+	await process_frame;await create_timer(0.0).timeout
+	var paused_at:int=int(session.sim.world.step_index)
+	if not bool(session.exploration_route_state().get("active",false)):failures.append("%s modal pause route fixture not active"%viewport_size)
+	var route_before_card:Dictionary=session.exploration_route_state();var route_card:Button=_button(sandbox,"MemberCard%d"%companion)
+	_touch_control_now(route_card,false)
+	if sandbox.selected_member_id!=companion:
+		failures.append("%s active-route first portrait tap selected %d not %d"%[viewport_size,sandbox.selected_member_id,companion])
+	var route_after_card:Dictionary=session.exploration_route_state()
+	if route_after_card!=route_before_card:
+		failures.append("%s active-route first portrait tap changed route %s -> %s"%[viewport_size,route_before_card,route_after_card])
+	_touch_control_now(route_card,true)
+	await process_frame;await process_frame
+	if session.sim.world.step_index!=paused_at:failures.append("%s active route advanced behind modal"%viewport_size)
+	if not sandbox.route_paused_by_modal:failures.append("%s active route was not marked paused"%viewport_size)
+	_touch_control_now(sandbox.member_detail_close,false)
+	var resume_before:int=int(session.sim.world.step_index);await process_frame
+	if session.sim.world.step_index!=resume_before+1:failures.append("%s closing modal did not resume exactly one route hop"%viewport_size)
+	sandbox._cancel_active_route();sandbox.queue_free();await process_frame
+
+func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
+	var modal:Control=sandbox.member_detail_modal;var panel:PanelContainer=sandbox.member_detail_panel
+	var body:Label=sandbox.member_detail_body;var scroll:ScrollContainer=sandbox.member_detail_scroll
+	if not modal.is_visible_in_tree():failures.append("%s detail modal not visible in tree"%viewport_size);return
+	if modal.mouse_filter!=Control.MOUSE_FILTER_STOP or (modal.find_child("MemberDetailScrim",true,false) as Control).mouse_filter!=Control.MOUSE_FILTER_STOP:
+		failures.append("%s modal/scrim does not block input"%viewport_size)
+	var viewport_rect:Rect2=sandbox.get_global_rect();var panel_rect:=panel.get_global_rect()
+	if not _rect_contains(viewport_rect,panel_rect):failures.append("%s detail panel outside viewport %s"%[viewport_size,panel_rect])
+	var max_width:=420.0 if viewport_size.x>=450.0 else 336.0
+	if panel.size.x>max_width+0.1 or panel_rect.position.x<11.9 or panel_rect.position.y<11.9 \
+			or panel_rect.end.x>viewport_rect.end.x-11.9 or panel_rect.end.y>viewport_rect.end.y-11.9:
+		failures.append("%s detail panel margin/width %s"%[viewport_size,panel_rect])
+	if sandbox.member_detail_close.size.x<43.9 or sandbox.member_detail_close.size.y<43.9 \
+			or sandbox.member_detail_close.get_theme_font_size("font_size")<18:
+		failures.append("%s detail close accessibility"%viewport_size)
+	if body.get_theme_font_size("font_size")<16:failures.append("%s detail body font below 16"%viewport_size)
+	var line_height:=body.get_theme_font("font").get_height(body.get_theme_font_size("font_size"))
+	if body.custom_minimum_size.y+0.5<float(body.get_line_count())*line_height:
+		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
+	if not _rect_contains(panel_rect,scroll.get_global_rect()):failures.append("%s detail scroll outside panel"%viewport_size)
+	for token in ["HP ","스트레스","준비:","감정:","종족/역할:","상태 효과:","성격:","원소 친화/내성:","현재 노출:","행동 제안:","관계"]:
+		if not token in body.text:failures.append("%s detail modal missing %s"%[viewport_size,token])
+	var detail:Dictionary=sandbox.session.inspect_party_member(sandbox.selected_member_id)
+	var expected_fire:=int(detail.get("current_exposure",{}).get("risk",{}).get("fire",0))
+	if expected_fire<=0 or not "현재 노출: 불 %d"%expected_fire in body.text:
+		failures.append("%s detail modal lost nested current exposure %d"%[viewport_size,expected_fire])
+
+func _combat_log_history(viewport_size:Vector2)->void:
+	var session=Session.new();var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
+	var all_ids:Array=state.party_member_ids.duplicate();all_ids.append_array(state.enemy_ids)
+	for entity_id in all_ids:
+		var entity=session.sim.world.entities[int(entity_id)];entity.max_health=10000;entity.health=10000
+	if not session.commit_exploration(Command.wait(hero)).accepted:failures.append("%s log contact fixture"%viewport_size);return
+	if not session.preview_deployment("LINE",session.available_companion_ids()).accepted or not session.commit_deployment().accepted:
+		failures.append("%s log deployment fixture"%viewport_size);return
+	for turn_index in range(8):
+		if not session.set_actor_action(hero,"HOLD").accepted or not session.commit_turn().accepted:
+			failures.append("%s log history fixture turn %d"%[viewport_size,turn_index]);return
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame;await process_frame
+	await _press(sandbox,"ActorHold");await _press(sandbox,"TurnConfirm")
+	await process_frame;await process_frame;await process_frame
+	var history:Dictionary=session.combat_log(8,80)
+	if int(history.get("group_count",0))!=8:failures.append("%s combat log did not retain exact recent 8 turns: %s"%[viewport_size,history.get("group_count",0)])
+	if sandbox.log_label.text!=sandbox._combat_log_text(history):failures.append("%s rendered combat log diverges from facade DTO"%viewport_size)
+	if not "전투 기록 · 최근 8턴" in sandbox.log_label.text:failures.append("%s combat log section title missing"%viewport_size)
+	var companion_ids:Array=state.party_member_ids.duplicate();companion_ids.erase(hero)
+	var companion_attack:=false;var companion_damage:=false;var numeric_damage:=false
+	for group in history.get("groups",[]):
+		if not group is Dictionary:continue
+		if not "턴 %d"%int(group.get("step_index",0)) in sandbox.log_label.text:failures.append("%s combat log turn boundary missing"%viewport_size)
+		for row in group.get("rows",[]):
+			if not row is Dictionary:continue
+			var message:=str(row.get("message",""))
+			if not message in sandbox.log_label.text:failures.append("%s combat log omitted row %s"%[viewport_size,message])
+			if str(row.get("type",""))=="action.melee_attack" and int(row.get("actor_id",-1)) in companion_ids:
+				companion_attack=true
+				if not str(row.get("actor_name","")) in message:failures.append("%s companion attack lost actor name"%viewport_size)
+			if str(row.get("type","")).begins_with("combat.") and int(row.get("instigator_id",-1)) in companion_ids:
+				companion_damage=true
+				if not str(row.get("instigator_name","")) in message:failures.append("%s companion damage lost instigator name"%viewport_size)
+			if int(row.get("magnitude",0))>0 and str(int(row.magnitude)) in message:numeric_damage=true
+	if not companion_attack or not companion_damage:failures.append("%s combat log lacks automatic companion attack/damage attribution"%viewport_size)
+	if not numeric_damage:failures.append("%s combat log lacks visible damage number"%viewport_size)
+	if _scroll_ancestor(sandbox.log_label)!=sandbox.info_scroll:failures.append("%s combat log is outside InformationScroll"%viewport_size)
+	var bar:VScrollBar=sandbox.info_scroll.get_v_scroll_bar();var expected_bottom:=maxi(0,int(bar.max_value-bar.page))
+	if absi(sandbox.info_scroll.scroll_vertical-expected_bottom)>1:
+		failures.append("%s latest combat commit did not scroll log to bottom %d/%d"%[viewport_size,sandbox.info_scroll.scroll_vertical,expected_bottom])
+	var retained_text:String=sandbox.log_label.text;sandbox.info_scroll.scroll_vertical=0;await process_frame;await process_frame
+	if sandbox.info_scroll.scroll_vertical!=0 or sandbox.log_label.text!=retained_text:
+		failures.append("%s user cannot scroll retained combat history"%viewport_size)
+	sandbox.queue_free();await process_frame
 
 func _journey(viewport_size:Vector2,preset:String)->void:
 	var sandbox=Sandbox.new(); sandbox.size=viewport_size; sandbox.initialize_for_headless_test(Session.new())
@@ -142,6 +340,13 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 			if not moved_toward_enemy: await _press(sandbox,"ActorHold")
 		await _press(sandbox,"TurnConfirm")
 	if sandbox.session.party_status().safe_phase!="GROUPED_COMPLETE": failures.append("%s %s automatic regroup phase"%[viewport_size,preset])
+	var victory_history:Dictionary=sandbox.session.combat_log(8,80);var death_row_visible:=false
+	for victory_group in victory_history.get("groups",[]):
+		if not victory_group is Dictionary:continue
+		for victory_row in victory_group.get("rows",[]):
+			if victory_row is Dictionary and str(victory_row.get("type",""))=="entity.died":
+				death_row_visible=str(victory_row.get("message","")) in sandbox.log_label.text
+	if not death_row_visible:failures.append("%s %s enemy death absent from expanded combat log"%[viewport_size,preset])
 	if _button(sandbox,"RegroupConfirm")!=null: failures.append("%s %s manual regroup button remains"%[viewport_size,preset])
 	if not sandbox.grid._intent_overlays.is_empty(): failures.append("%s %s stale combat overlays"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s GROUPED_COMPLETE"%[viewport_size,preset])
@@ -314,6 +519,53 @@ func _touch_cell(sandbox,position:Vector2i)->void:
 	root.push_input(event,true);await process_frame
 	var release:=InputEventScreenTouch.new();release.index=0;release.pressed=false;release.position=global_position
 	root.push_input(release,true);await process_frame;await process_frame
+
+func _touch_cell_now(sandbox,position:Vector2i,touch_index:int=0)->bool:
+	var local_position:Vector2=sandbox.grid.world_to_pixel_center(position)
+	if local_position==Vector2(-1,-1):failures.append("ScreenTouch target outside camera %s"%position);return false
+	var global_position:Vector2=sandbox.grid.get_global_rect().position+local_position
+	if not sandbox.get_global_rect().has_point(global_position):failures.append("ScreenTouch target outside viewport %s at %s"%[position,global_position]);return false
+	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=global_position
+	root.push_input(press,true)
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=global_position
+	root.push_input(release,true);return true
+
+func _touch_control_now(control:Control,native_double:bool=false,touch_index:int=1)->bool:
+	if control==null or not control.is_visible_in_tree():failures.append("unreachable touch control");return false
+	var rect:=control.get_global_rect();var center:=rect.get_center()
+	if not root.get_visible_rect().has_point(center):failures.append("touch control outside viewport %s"%rect);return false
+	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=center;press.double_tap=native_double
+	root.push_input(press,true)
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=center;release.double_tap=native_double
+	root.push_input(release,true);return true
+
+func _touch_screen_now(position:Vector2,touch_index:int=2)->void:
+	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=position
+	root.push_input(press,true)
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=position
+	root.push_input(release,true)
+
+func _press_escape_now()->void:
+	var event:=InputEventKey.new();event.keycode=KEY_ESCAPE;event.physical_keycode=KEY_ESCAPE;event.pressed=true
+	root.push_input(event,true)
+
+func _validate_tile_popover(sandbox,viewport_size:Vector2,label:String,expects_retap:bool)->void:
+	var popover:PanelContainer=sandbox.tile_popover;var text_label:Label=sandbox.tile_popover_label
+	if popover==null or not popover.visible or not popover.is_visible_in_tree():failures.append("%s %s tile popover hidden"%[viewport_size,label]);return
+	var viewport_rect:Rect2=sandbox.get_global_rect();var popover_rect:=popover.get_global_rect()
+	if not _rect_contains(viewport_rect,popover_rect):failures.append("%s %s tile popover outside viewport %s"%[viewport_size,label,popover_rect])
+	if popover_rect.position.x<viewport_rect.position.x+11.9 or popover_rect.position.y<viewport_rect.position.y+11.9 \
+			or popover_rect.end.x>viewport_rect.end.x-11.9 or popover_rect.end.y>viewport_rect.end.y-11.9:
+		failures.append("%s %s tile popover violates 12px clamp %s"%[viewport_size,label,popover_rect])
+	if popover.size.x>minf(280.0,viewport_size.x-24.0)+0.1:failures.append("%s %s tile popover too wide %s"%[viewport_size,label,popover.size])
+	if popover.mouse_filter!=Control.MOUSE_FILTER_IGNORE or text_label.mouse_filter!=Control.MOUSE_FILTER_IGNORE:
+		failures.append("%s %s tile popover intercepts second touch"%[viewport_size,label])
+	if text_label.get_theme_font_size("font_size")<16:failures.append("%s %s tile popover font below 16"%[viewport_size,label])
+	if text_label.get_visible_line_count()<text_label.get_line_count():
+		failures.append("%s %s tile popover clips lines visible=%d total=%d size=%s"%[viewport_size,label,text_label.get_visible_line_count(),text_label.get_line_count(),popover.size])
+	for token in ["이동","불","물","전기","독","위험"]:
+		if not token in text_label.text:failures.append("%s %s tile popover missing %s"%[viewport_size,label,token])
+	if expects_retap and not "다시" in text_label.text:failures.append("%s %s exploration retap guidance missing"%[viewport_size,label])
 
 func _touch_entity(sandbox,entity_id:int)->void:
 	var position:=Vector2i(-1,-1)

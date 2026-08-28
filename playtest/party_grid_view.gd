@@ -17,6 +17,9 @@ var _actors: Array[Dictionary] = []
 var _ghosts: Array[Dictionary] = []
 var _intent_overlays: Array[Dictionary] = []
 var _secondary_intent_overlays: Array[Dictionary] = []
+var _route_path: Array[Vector2i] = []
+var _route_completed_steps := 0
+var _route_valid := false
 var modal_open := false
 var selected_actor_id := -1
 var selected_target_id := -1
@@ -153,6 +156,57 @@ func clear_cursor_preview() -> void:
 	preview_destination = Vector2i(-1, -1); cursor_cell = Vector2i(-1, -1)
 	preview_valid = false; queue_redraw()
 
+func set_route_overlay(path: Array, completed_steps: int = 0, valid: bool = true) -> void:
+	_route_path.clear()
+	for value in path:
+		var point := Vector2i(-1,-1)
+		if value is Vector2i:
+			point = value
+		elif value is Array and value.size() == 2:
+			point = Vector2i(int(value[0]),int(value[1]))
+		elif value is Dictionary:
+			var raw: Variant = value.get("position",value.get("to_position",[]))
+			if raw is Array and raw.size() == 2:
+				point = Vector2i(int(raw[0]),int(raw[1]))
+		if _world_in_bounds(point) and (_route_path.is_empty() or _route_path[-1] != point):
+			_route_path.append(point)
+	_route_completed_steps = clampi(completed_steps,0,maxi(0,_route_path.size()-1))
+	_route_valid = valid and _route_path.size() >= 2
+	queue_redraw()
+
+func clear_route_overlay() -> void:
+	_route_path.clear();_route_completed_steps=0;_route_valid=false;queue_redraw()
+
+func route_draw_spec() -> Dictionary:
+	var color_hex := "#65f29a" if _route_valid else "#ff6b78"
+	var path_rows: Array = []
+	var segments: Array = []
+	var markers: Array = []
+	for point in _route_path:
+		path_rows.append([point.x,point.y])
+	for index in range(maxi(0,_route_path.size()-1)):
+		var from: Vector2i = _route_path[index]
+		var to: Vector2i = _route_path[index+1]
+		var visible := is_world_cell_visible(from) and is_world_cell_visible(to)
+		segments.append({"index":index,"from_position":[from.x,from.y],"to_position":[to.x,to.y],
+			"from_pixel":world_to_pixel_center(from),"to_pixel":world_to_pixel_center(to),
+			"visible":visible,"completed":index<_route_completed_steps,
+			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,
+			"line_width":2.5 if index<_route_completed_steps else 4.0})
+	for index in range(_route_path.size()):
+		var position: Vector2i = _route_path[index]
+		var kind := "STEP"
+		if index == 0:kind="START"
+		elif index == _route_path.size()-1:kind="GOAL"
+		elif index == _route_completed_steps+1:kind="NEXT"
+		markers.append({"index":index,"position":[position.x,position.y],
+			"pixel_center":world_to_pixel_center(position),"visible":is_world_cell_visible(position),
+			"kind":kind,"completed":index<=_route_completed_steps,
+			"color_hex":"#607b87" if index<=_route_completed_steps else color_hex,
+			"radius":maxf(3.0,cell_size_px()*(0.20 if kind in ["START","GOAL"] else 0.12))})
+	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
+		"segments":segments,"markers":markers,"color_hex":color_hex}.duplicate(true)
+
 func set_intent_overlays(rows: Array) -> void:
 	_intent_overlays.clear(); _secondary_intent_overlays.clear()
 	for row in rows:
@@ -247,6 +301,7 @@ func _draw() -> void:
 		_draw_actor(actor, cell, false)
 	for ghost in _ghosts:
 		_draw_actor(ghost, cell, true)
+	_draw_route_overlay()
 	for intent in _secondary_intent_overlays:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
@@ -294,8 +349,25 @@ func _draw_cursor_preview() -> void:
 	var destination_rect := world_cell_rect(cursor_cell)
 	draw_rect(destination_rect.grow(-1), Color(color, 0.20), true)
 	draw_rect(destination_rect.grow(-1), color, false, 4.0)
-	if preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
+	if _route_path.size() < 2 and preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
+
+func _draw_route_overlay() -> void:
+	if _route_path.size()<2:return
+	var spec:=route_draw_spec()
+	for segment in spec.segments:
+		if not bool(segment.visible):continue
+		draw_line(segment.from_pixel,segment.to_pixel,Color(str(segment.color_hex)),float(segment.line_width),true)
+	for marker in spec.markers:
+		if not bool(marker.visible):continue
+		var center:Vector2=marker.pixel_center;var radius:=float(marker.radius);var color:=Color(str(marker.color_hex))
+		match str(marker.kind):
+			"GOAL":
+				draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
+					center+Vector2(0,radius),center+Vector2(-radius,0)]),Color(color,0.55))
+			"START":draw_arc(center,radius,0,TAU,16,color,2.0)
+			"NEXT":draw_circle(center,radius,Color(color,0.90))
+			_:draw_circle(center,radius,Color(color,0.65))
 
 func _draw_intent(intent: Dictionary) -> void:
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return

@@ -23,14 +23,21 @@
 
 이번 UX 기준은 탐험 D-pad를 제거하고 동일 15×15 grid를 기본 이동 입력으로 쓴다.
 탐험과 전투 MOVE 모두 1차 타일 탭은 순수 preview, 동일 칸 2차 탭은 선택/이동
-확정이다. 비인접 칸은 상태를 바꾸지 않고 “장거리 이동은 아직 지원하지 않습니다”라고
-알린다. 장거리 auto-walk는 FOV/LOS와 함께 후속 단계다.
+확정이다. 인접 칸은 기존 1칸 MOVE를 그대로 확정한다. 비인접 칸의 1차 탭은 현재
+전체 world 기준 `WeightedPathfinder` 경로·비용·동행자별 위험 ceiling을 순수 preview하고,
+동일 칸 2차 탭부터 호출당 기존 1칸 MOVE를 하나씩 실행한다. 접촉·사망·stale·새
+점유/대각 모서리 장애·위험 증가·core 거부에서 즉시 부분 정지한다. 별도 teleport,
+core command, `auto_walk` journal kind는 없다. 이는 개발 sandbox용 route macro이며
+FOV/LOS와 관찰 범위·affinity 안전 경로 정책은 여전히 후속 단계다.
 
 grid 아래에는 최대 3인의 고정 Party HUD를 둬 360px 폭에서도 세 초상화를 동시에
 보인다. 각 슬롯은 atlas 얼굴/상반신 확대 crop, 이름, 실제 HP current/max와 bar,
 가짜 MP 대신 실제 busy 기반 행동 준비/행동 중, stress 수치와 bar, HP·stress·personality로
-결정론적으로 파생한 감정 icon+한국어를 표시한다. 원소와 행동 근거는 선택 상세
-ScrollContainer로 내린다. 파티 턴 일괄 확정, 동료 자동 제안과 override 동시 표시,
+결정론적으로 파생한 감정 icon+한국어를 표시한다. card 첫 tap은 즉시 선택하고 같은
+card double tap만 full-screen 상세 modal을 연다. 원소 affinity·현재 exposure·행동 근거·
+관계는 session inspector DTO를 소비하는 modal ScrollContainer에 둔다. 선택 타일의
+terrain·이동비용·불/물/전기/독 위험은 mouse-ignore floating popover가 맡고, 상시 card나
+context deck에 중복하지 않는다. 파티 턴 일괄 확정, 동료 자동 제안과 override 동시 표시,
 보조 16px·본문 18px·핵심 20–24px 및 44px 터치 타깃 계약은 유지한다.
 
 같은 world 좌표와 같은 `PartyGridView` 인스턴스를 유지하되 camera window는 phase에
@@ -58,6 +65,11 @@ event에서 투영된 `SLASH/HIT_FLASH/FLOATING_AMOUNT/DEATH`를 UI에 전달하
 `effect_id`로 중복 재생을 막되 같은 `event_id`의 hit flash와 floating amount는 모두
 한 번씩 보인다. 지속 banner와 grid border/tone은 detached `presentation_state()`의
 `banner/grid_style`을 소비한다.
+
+`InformationScroll`의 narrative 영역은 `전투 기록 · 최근 8턴`을 유지한다. facade
+`combat_log(8,80)`의 turn group과 row 순서를 그대로 사용해 자동 동료 공격, 피해 대상과
+수치, instigator/cause, 사망을 이름과 함께 표시한다. 최신 combat commit 뒤 bottom을
+보이되 새 root layout sibling을 추가하지 않고 과거 8턴으로 다시 scroll할 수 있어야 한다.
 
 `GROUPED_COMPLETE` presentation은 transient `notice_text`가 아니라 phase에서 직접
 도출한다. `banner.title=승리 · 자동 재집결`, `tone=VICTORY`, green `grid_style`을
@@ -381,6 +393,12 @@ observe_party_world() -> Dictionary
 party_cards() -> Array[Dictionary]
 preview_exploration(command: SimCommand) -> Dictionary
 commit_exploration(command: SimCommand) -> Dictionary
+preview_exploration_route(goal: Variant) -> Dictionary
+exploration_route_draft() -> Dictionary
+exploration_route_state() -> Dictionary
+start_exploration_route(goal: Variant, plan_hash: String) -> Dictionary
+continue_exploration_route() -> Dictionary
+cancel_exploration_route() -> Dictionary
 preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary
 commit_deployment() -> Dictionary
 begin_turn(protagonist_action: PartyActionCommand) -> Dictionary
@@ -390,6 +408,9 @@ current_turn_preview() -> Dictionary
 commit_turn() -> Dictionary
 regroup() -> Dictionary
 recent_event_log(limit: int = 24) -> Array[Dictionary]
+combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary
+inspect_tile(position: Variant, viewer_id: int = -1) -> Dictionary
+inspect_party_member(entity_id: int) -> Dictionary
 save_session_json() -> String
 load_session_json(encoded: String) -> Dictionary
 ```
@@ -413,9 +434,24 @@ portrait 예산:
 | ENGAGED 고정 action dock | 44 px, 18px font | 44 px, 18px font |
 | ENGAGED 고정 ActionArea 합계 | 84 px(내부 gap 2 포함) | 84 px(내부 gap 2 포함) |
 
-가로 padding은 총 12 px 이하, horizontal scroll은 금지한다. 세 member card는 항상 한 줄에 보이며 각각 portrait/name, HP, status, 4-element compact indicator, suggestion/override badge를 가진다. 선택 card만 상세 문구를 context deck에 펼친다.
+가로 padding은 총 12 px 이하, horizontal scroll은 금지한다. 세 member card는 항상 한 줄에
+보이며 각각 portrait/name, 실제 HP·stress, readiness, 감정 상태를 가진다. 상시
+4-element row는 두지 않는다. card 첫 tap은 선택만 하고, 같은 card의 native touch
+double tap/mouse double click 또는 350ms·24px fallback만 `MemberDetailModal`을 연다.
+modal은 viewport 12px margin, 360에서 최대 336px·450에서 최대 420px 폭, 16px scroll body,
+44px/18pt close를 사용한다. full-screen scrim은 input을 STOP하고 backdrop·close·Escape로
+닫으며 열린 동안 `grid.modal_open=true`다. 진행 중 route는 modal 동안 pause하고 닫힌 다음
+프레임부터 한 hop씩 재개한다. 첫 tap 선택과 두 번째 double tap은 route draft를 지우지
+않고 같은 진행 상태를 modal 앞뒤로 보존한다.
 
 모든 버튼과 card touch target은 최소 44×44 px다. grid actor sprite는 cell 안에서 그리되 actor hit rect는 44×44 px로 확장한다. 겹치는 hit rect는 `(pointer와 center 거리, protagonist 우선, roster_slot, entity_id)`로 선택한다. grid 밖, camera crop 밖 click과 modal open 중 world input은 no-op이다.
+
+어떤 grid tile을 첫 선택해도 `inspect_tile(position, selected_member)`의 terrain, 이동 비용,
+불/물/전기/독/총 위험을 `TileRiskPopover`에 표시한다. popover 폭은
+`min(280,viewport-24)`, font는 16px 이상, actual wrapped line 전체가 보이는 높이이며
+viewport 12px 안으로 clamp한다. panel과 모든 child는 `MOUSE_FILTER_IGNORE`라 같은 tile의
+두 번째 tap이 grid로 그대로 전달된다. 두 번째 tap 안내는 EXPLORATION route에서만 보이고
+COMBAT에는 인접 한 칸 계약을 명시한다.
 
 context deck 내용:
 
@@ -527,6 +563,16 @@ UI:
 - ENGAGED ActionArea는 viewport 최하단에서 information scroll과 독립이다. feedback의 모든 wrapped line이 실제 보이고, 세 버튼은 실제 viewport input으로 눌리며 44 px 이상·18 px font다.
 - EXPLORATION/CONTACT/PREVIEW/GROUPED_COMPLETE에서는 ActionArea가 hidden/minimum 0이고, CONTACT 배치 버튼은 실제 scroll viewport 안에서 접근된다.
 - 모든 touch target 44 px, actor hit rect 44 px, overlap tie-break가 결정론적이다.
+- 먼 탐험 타일의 actual ScreenTouch 첫 입력은 world/journal 무변경 full-route preview이고,
+  같은 goal 두 번째 입력은 첫 hop 하나만 시작한다. 이후 각 process frame은 최대 한 hop이며
+  contact/stale/blocker/risk/reject에서 facade message와 함께 즉시 멈춘다.
+- route overlay가 모든 edge와 START/NEXT/GOAL marker를 detached draw spec으로 보존한다.
+- 360×640과 450×800에서 tile popover는 viewport 안에 clamp되고 모든 wrapped line이 보이며,
+  mouse-ignore 때문에 같은 tile 두 번째 tap을 차단하지 않는다.
+- 실제 native portrait touch는 첫 tap 선택, 같은 card double tap 상세 modal을 지킨다.
+  modal은 underlying grid를 막고 backdrop/close/Escape로 닫히며 active route를 pause/resume한다.
+- 전투 기록은 facade의 최근 8 turn group을 `InformationScroll` 안에서 보존하고 자동 동료의
+  공격·피해 이름/수치와 사망을 표시하며 최신 commit 뒤 bottom과 과거 scroll 양쪽이 가능하다.
 - preview/reject는 visual effect가 없고 accepted commit 효과는 `effect_id`별 한 번만 그린다.
 - fresh·save/load-restored `GROUPED_COMPLETE`는 local notice 없이도 같은 VICTORY banner/green grid style을 보이며 과거 효과를 replay하지 않는다.
 - companion 하나 override/clear가 다른 companion draft를 바꾸지 않는다.

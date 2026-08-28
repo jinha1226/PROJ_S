@@ -330,6 +330,256 @@ func test_phase_presentation_state_is_detached_persistent_and_defeat_derived() -
 	return finish()
 
 
+func test_long_route_preview_is_pure_detached_and_each_call_commits_one_existing_move() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter;var hero=state.protagonist_id
+	session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,14)
+	var before=session.sim.snapshot();var journal_before=session.command_journal.duplicate(true)
+	var preview=session.preview_exploration_route(Vector2i(9,7))
+	check(preview.accepted,"route preview accepted: %s"%str(preview))
+	check_eq(session.sim.snapshot(),before,"route preview world/RNG pure")
+	check_eq(session.command_journal,journal_before,"route preview journal pure")
+	var authoritative=session.sim.find_path(hero,Vector2i(9,7));var authoritative_wire:Array=[]
+	for position in authoritative.path:authoritative_wire.append([position.x,position.y])
+	check_eq(preview.path,authoritative_wire,"weighted path exact")
+	check_eq(preview.total_steps,2,"route total steps")
+	check_eq(preview.total_cost,200,"route total cost")
+	check_eq(preview.steps[0].member_risk_ceilings.size(),3,"all living grouped travellers have ceilings")
+	var hash:=str(preview.plan_hash);preview.path[1][0]=99
+	preview.steps[0].member_risk_ceilings[0].total=999
+	var fresh=session.exploration_route_draft()
+	check_eq(fresh.path[1],authoritative_wire[1],"route nested path detached")
+	check(fresh.steps[0].member_risk_ceilings[0].total!=999,"route nested risks detached")
+	var started=session.start_exploration_route(Vector2i(9,7),hash)
+	check(started.accepted and started.active and not started.terminal,"start advances one and remains active")
+	check_eq(session.sim.world.entities[hero].position,
+		Vector2i(int(authoritative_wire[1][0]),int(authoritative_wire[1][1])),"start exactly one cell")
+	check_eq(session.sim.world.step_index,1,"start exactly one core step")
+	check_eq(session.sim.world.world_time,100,"start exact first cost")
+	check_eq(session.command_journal.size(),1,"start one existing journal row")
+	check_eq(session.command_journal[0].kind,"exploration","no route journal kind")
+	check_eq(int(session.command_journal[0].command.type),int(Command.Type.MOVE),"journal primitive move")
+	check_eq(started.completed_steps,1,"started cursor")
+	var event_moves:=0
+	for event in session.sim.world.events:
+		if event.type=="action.move" and event.actor_id==hero:event_moves+=1
+	check_eq(event_moves,1,"one action.move after one facade call")
+	started.path[0][0]=999
+	check(session.exploration_route_state().path[0][0]!=999,"active route result detached")
+	var completed=session.continue_exploration_route()
+	check(completed.accepted and completed.completed and completed.terminal,"second call completes")
+	check_eq(session.sim.world.entities[hero].position,Vector2i(9,7),"continue exactly next cell")
+	check_eq(session.sim.world.step_index,2,"continue exactly one more core step")
+	check_eq(session.sim.world.world_time,200,"route exact accumulated timing")
+	check_eq(session.command_journal.size(),2,"one journal row per hop")
+	check_eq(session.continue_exploration_route().stop_reason,"route_completed","terminal state stable")
+	return finish()
+
+
+func test_long_route_stops_on_contact_blocker_risk_stale_death_and_combat() -> bool:
+	var contact=Session.new();var contact_state=contact.sim.world.party_encounter
+	var contact_preview=contact.preview_exploration_route(Vector2i(10,7))
+	var contact_result=contact.start_exploration_route(Vector2i(10,7),str(contact_preview.plan_hash))
+	check(contact_result.accepted and contact_result.terminal,"contact hop stays accepted")
+	check_eq(contact_result.stop_reason,"route_contact","contact exact stop")
+	check_eq(contact.party_status().safe_phase,"CONTACT","contact authoritative phase")
+	check_eq(contact.command_journal.size(),1,"contact keeps accepted partial hop")
+
+	var blocked=Session.new();var blocked_state=blocked.sim.world.party_encounter
+	var blocked_enemy=blocked_state.enemy_ids[0];blocked.sim.world.entities[blocked_enemy].position=Vector2i(14,14)
+	var blocked_preview=blocked.preview_exploration_route(Vector2i(10,7))
+	check(blocked.start_exploration_route(Vector2i(10,7),str(blocked_preview.plan_hash)).active,"block fixture first hop")
+	var blocked_route=blocked.exploration_route_state();var blocked_next:Array=blocked_route.path[2]
+	blocked.sim.world.entities[blocked_enemy].position=Vector2i(int(blocked_next[0]),int(blocked_next[1]))
+	var before_blocked=blocked.sim.snapshot();var blocker_result=blocked.continue_exploration_route()
+	check_eq(blocker_result.reason,"move_destination_occupied","new blocker exact authority reason")
+	check(not blocker_result.accepted and blocker_result.terminal,"blocker stops before failing hop")
+	check_eq(blocked.sim.snapshot(),before_blocked,"blocked failing hop exact no-op")
+	check_eq(blocked.command_journal.size(),1,"blocker preserves only accepted prefix")
+
+	var risky=Session.new();var risky_state=risky.sim.world.party_encounter
+	risky.sim.world.entities[risky_state.enemy_ids[0]].position=Vector2i(14,14)
+	var risky_preview=risky.preview_exploration_route(Vector2i(10,7))
+	check(risky.start_exploration_route(Vector2i(10,7),str(risky_preview.plan_hash)).active,"risk fixture first hop")
+	var risky_route=risky.exploration_route_state();var risky_next:Array=risky_route.path[2]
+	var next_tile=risky.sim.world.tile_at(Vector2i(int(risky_next[0]),int(risky_next[1])));next_tile.fire=100
+	var before_risk=risky.sim.snapshot();var risk_result=risky.continue_exploration_route()
+	check_eq(risk_result.reason,"route_hazard_increased","risk ceiling exact stop")
+	check_eq(risky.sim.snapshot(),before_risk,"risk stop exact no-op")
+	check_eq(risky.command_journal.size(),1,"risk preserves accepted prefix")
+
+	var stale=Session.new();var stale_state=stale.sim.world.party_encounter
+	stale.sim.world.entities[stale_state.enemy_ids[0]].position=Vector2i(14,14)
+	var stale_preview=stale.preview_exploration_route(Vector2i(9,7))
+	stale_state.member(stale_state.party_member_ids[1]).stress=1
+	var before_stale=stale.sim.snapshot();var stale_result=stale.start_exploration_route(Vector2i(9,7),str(stale_preview.plan_hash))
+	check_eq(stale_result.reason,"route_stale","unrelated world mutation stales plan")
+	check_eq(stale.sim.snapshot(),before_stale,"stale start no-op")
+	check(stale.command_journal.is_empty(),"stale start no journal")
+
+	var defeated=Session.new();var defeated_state=defeated.sim.world.party_encounter
+	defeated.sim.world.entities[defeated_state.protagonist_id].health=5
+	var lethal_path:Dictionary=defeated.sim.find_path(defeated_state.protagonist_id,Vector2i(9,7))
+	var lethal_cell:Vector2i=lethal_path.path[1]
+	check(defeated.sim.world.bootstrap_set_fire(lethal_cell,100)!=null,"route defeat fire")
+	var defeat_preview=defeated.preview_exploration_route(Vector2i(9,7))
+	var defeat_result=defeated.start_exploration_route(Vector2i(9,7),str(defeat_preview.plan_hash))
+	check(defeat_result.accepted and defeat_result.terminal,"lethal accepted hop terminal")
+	check_eq(defeat_result.stop_reason,"route_party_defeated","death exact stop")
+	check_eq(defeated.party_status().safe_phase,"PARTY_DEFEATED","death authoritative phase")
+
+	var combat=_engaged_with_companions([]);var combat_before=combat.sim.snapshot()
+	var combat_route=combat.preview_exploration_route(Vector2i(1,1))
+	check_eq(combat_route.reason,"route_exploration_phase_required","combat long route rejected")
+	check_eq(combat.sim.snapshot(),combat_before,"combat route rejection no-op")
+
+	var diagonal=Session.new();var diagonal_state=diagonal.sim.world.party_encounter
+	diagonal.sim.world.entities[diagonal_state.enemy_ids[0]].position=Vector2i(14,14)
+	var diagonal_preview=diagonal.preview_exploration_route(Vector2i(9,5))
+	var diagonal_first:=Vector2i(int(diagonal_preview.path[1][0]),int(diagonal_preview.path[1][1]))
+	check(absi(diagonal_first.x-7)==1 and absi(diagonal_first.y-7)==1,"diagonal fixture first edge")
+	var flank:=Vector2i(diagonal_first.x,7)
+	check(diagonal.sim.world.bootstrap_set_terrain(flank,"wall"),"new diagonal flank wall")
+	var diagonal_before=diagonal.sim.snapshot()
+	var diagonal_result=diagonal.start_exploration_route(Vector2i(9,5),str(diagonal_preview.plan_hash))
+	check_eq(diagonal_result.reason,"move_diagonal_flank_blocked","diagonal blockage exact stop")
+	check_eq(diagonal.sim.snapshot(),diagonal_before,"diagonal failing hop no-op")
+
+	var failed=Session.new();var failed_state=failed.sim.world.party_encounter
+	var failed_preview=failed.preview_exploration_route(Vector2i(10,7))
+	failed.sim.party_coordinator.fail_point="contact_event"
+	var failed_before=failed.sim.snapshot();var failed_result=failed.start_exploration_route(
+		Vector2i(10,7),str(failed_preview.plan_hash))
+	check(not failed_result.accepted,"route cadence failure rejected")
+	check_eq(failed_result.reason,"actor_tick_failed","route preserves atomic core failure")
+	check_eq(failed.sim.snapshot(),failed_before,"failed hop full rollback")
+	check(failed.command_journal.is_empty(),"failed hop no journal")
+	return finish()
+
+
+func test_long_route_ephemeral_state_load_and_direct_command_contracts() -> bool:
+	var source=Session.new();check(_play_full_journey(source,"WEDGE"),"route load canonical journey")
+	var hero=source.sim.world.party_encounter.protagonist_id
+	var origin:Vector2i=source.sim.world.entities[hero].position
+	var goal:=origin+Vector2i(2,0)
+	if goal.x>=source.sim.world.width:goal=origin-Vector2i(2,0)
+	var preview=source.preview_exploration_route(goal)
+	check(preview.accepted,"post-regroup route preview")
+	var partial=source.start_exploration_route(goal,str(preview.plan_hash))
+	check(partial.accepted and partial.active,"post-regroup one-hop partial")
+	var restored=Session.new(1,2);var loaded=restored.load_session_json(source.save_session_json())
+	check(loaded.accepted,"partial route save load accepted")
+	check_eq(restored.sim.snapshot(),source.sim.snapshot(),"accepted hop journal replays exactly")
+	check_eq(restored.exploration_route_state().reason,"route_preview_required","valid load clears ephemeral route")
+
+	var target=Session.new();target.sim.world.entities[target.sim.world.party_encounter.enemy_ids[0]].position=Vector2i(14,14)
+	var target_preview=target.preview_exploration_route(Vector2i(10,7))
+	check(target.start_exploration_route(Vector2i(10,7),str(target_preview.plan_hash)).active,"invalid load target active")
+	var route_before=target.exploration_route_state();var world_before=target.sim.snapshot()
+	var malformed=JSON.parse_string(source.save_session_json());malformed["extra"]=true
+	check(not target.load_session_json(JSON.stringify(malformed)).accepted,"invalid load rejected")
+	check_eq(target.sim.snapshot(),world_before,"invalid load preserves active world")
+	check_eq(target.exploration_route_state(),route_before,"invalid load preserves ephemeral route transactionally")
+	var direct=target.commit_exploration(Command.wait(target.sim.world.party_encounter.protagonist_id))
+	check(direct.accepted,"direct command remains supported")
+	check_eq(target.exploration_route_state().reason,"route_preview_required","direct command cancels route")
+	return finish()
+
+
+func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter;var hero=state.protagonist_id
+	check(session.commit_exploration(Command.wait(hero)).accepted,"log contact")
+	check(session.preview_deployment("LINE",[state.party_member_ids[1]]).accepted,"log deploy preview")
+	check(session.commit_deployment().accepted,"log deploy")
+	state=session.sim.world.party_encounter;var companion=state.party_member_ids[1]
+	for turn in range(12):
+		if session.party_status().safe_phase!="ENGAGED":break
+		check(session.begin_turn(Action.hold(hero)).accepted,"automatic combat draft %d"%turn)
+		check(session.commit_turn().accepted,"automatic combat commit %d"%turn)
+	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","automatic companion fixture wins")
+	var log=session.combat_log(8,80)
+	check(log.groups is Array and log.row_count>0,"grouped combat log populated")
+	var rows:Array=[]
+	for group in log.groups:rows.append_array(group.rows)
+	var companion_melee:Dictionary={};var attributed_damage:Dictionary={};var attributed_death:Dictionary={}
+	for row in rows:
+		if row.type=="action.melee_attack" and int(row.actor_id)==companion:companion_melee=row
+		if str(row.type).begins_with("combat.") and int(row.instigator_id)==companion:attributed_damage=row
+		if row.type=="entity.died" and int(row.instigator_id)==companion:attributed_death=row
+	check(not companion_melee.is_empty(),"automatic companion melee retained")
+	check(not attributed_damage.is_empty(),"automatic companion damage attributed")
+	check_eq(int(attributed_damage.cause_id),int(companion_melee.event_id),"damage exact melee cause")
+	check("나래의 공격으로" in str(attributed_damage.message),"Korean damage attribution")
+	check(not attributed_death.is_empty(),"companion death attribution retained through regroup")
+	check_eq(int(attributed_death.cause_id),int(attributed_damage.event_id),"death exact damage cause")
+	check_eq(session.combat_log(0,80).groups,[],"zero turns returns zero groups")
+	var detached=session.combat_log();detached.groups[0].rows[0].data["corrupted"]=true
+	check(not session.combat_log().groups[0].rows[0].data.has("corrupted"),"combat log nested DTO detached")
+	var restored=Session.new(1,2);check(restored.load_session_json(session.save_session_json()).accepted,"combat log load")
+	check_eq(restored.combat_log(8,80),log,"combat log/cause/order exact after replay")
+
+	var overkill=_engaged_with_companions([1]);var overkill_state=overkill.sim.world.party_encounter
+	var overkill_enemy=overkill_state.enemy_ids[0];var overkill_hero=overkill_state.protagonist_id
+	var overkill_companion=overkill_state.party_member_ids[1]
+	check(_relocate_with_move_events(overkill.sim,overkill_enemy,
+		overkill.sim.world.entities[overkill_hero].position+Vector2i.RIGHT),"overkill canonical enemy relocation")
+	overkill.sim.world.entities[overkill_enemy].health=10
+	check(overkill.begin_turn(Action.melee(overkill_hero,overkill_enemy)).accepted,"overkill automatic draft")
+	var overkill_result=overkill.commit_turn()
+	check(overkill_result.accepted,"overkill automatic commit: %s"%str(overkill_result))
+	var overkill_rows:Array=[]
+	for group in overkill.combat_log(1,80).groups:overkill_rows.append_array(group.rows)
+	var melee_count:=0;var companion_intent_count:=0;var damage_count:=0;var death_count:=0
+	for row in overkill_rows:
+		if row.type=="action.melee_attack" and int(row.actor_id) in [overkill_hero,overkill_companion]:melee_count+=1
+		if row.type=="action.melee_attack" and int(row.actor_id)==overkill_companion:companion_intent_count+=1
+		if str(row.type).begins_with("combat.") and int(row.target_id)==overkill_enemy:damage_count+=1
+		if row.type=="entity.died" and int(row.target_id)==overkill_enemy:death_count+=1
+	check_eq(melee_count,2,"both simultaneous hero/companion intents logged")
+	check_eq(companion_intent_count,1,"automatic companion overkill intent retained")
+	check_eq(damage_count,1,"overkill emits/logs actual damage once")
+	check_eq(death_count,1,"overkill death logged once")
+	return finish()
+
+
+func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter
+	var before=session.sim.snapshot();var journal_before=session.command_journal.duplicate(true)
+	var tile=session.inspect_tile(Vector2i(0,0),state.party_member_ids[2])
+	check(tile.accepted,"distant tile inspection accepted")
+	check_eq(tile.position,[0,0],"tile exact position")
+	check_eq(tile.terrain_id,"floor","tile terrain")
+	check_eq(tile.move_time_cost,100,"tile cost")
+	check_eq(tile.traversal.reason,"move_not_adjacent","distant traversal authority retained")
+	check_eq(tile.viewer.species_id,"goblin","viewer species")
+	check_eq(tile.affinity.species_id,"goblin","viewer affinity")
+	check(tile.sample is Dictionary and tile.provenance is Dictionary,"raw sample provenance exposed")
+	check_eq(session.sim.snapshot(),before,"tile inspection snapshot/RNG pure")
+	check_eq(session.command_journal,journal_before,"tile inspection journal pure")
+	tile.sample.source_event_ids.append("999");tile.risk.total=999
+	var tile_fresh=session.inspect_tile(Vector2i(0,0),state.party_member_ids[2])
+	check(not tile_fresh.sample.source_event_ids.has("999") and tile_fresh.risk.total!=999,"tile nested detached")
+	var invalid_before=session.sim.snapshot();var invalid=session.inspect_tile(Vector2i(-1,0))
+	check_eq(invalid.reason,"inspect_tile_out_of_bounds","tile OOB total rejection")
+	check_eq(session.sim.snapshot(),invalid_before,"tile OOB no-op")
+
+	var hero=session.inspect_party_member(state.protagonist_id)
+	check(hero.accepted and hero.personality_profile==null,"protagonist null personality explicit")
+	check(not hero.personality_available and not hero.personality_note.is_empty(),"protagonist null profile explained")
+	var companion=session.inspect_party_member(state.party_member_ids[1])
+	check(companion.accepted,"companion inspection")
+	check_eq(companion.personality_facets.size(),4,"all personality facets")
+	check_eq(companion.species_affinity.species_id,"human","species affinity")
+	check_eq(companion.relation_rows.size(),2,"effective relation to other party members")
+	check(companion.current_exposure.applicable,"current full exposure")
+	companion.personality_facets[0].value=9999;companion.relation_rows[0].personal.gratitude=999
+	var companion_fresh=session.inspect_party_member(state.party_member_ids[1])
+	check(companion_fresh.personality_facets[0].value!=9999,"member personality detached")
+	check(companion_fresh.relation_rows[0].personal.gratitude!=999,"member relation detached")
+	check_eq(session.sim.snapshot(),before,"member inspectors snapshot/RNG pure")
+	check_eq(session.command_journal,journal_before,"member inspectors journal pure")
+	return finish()
+
+
 func _check_rejection_noop(session, producer: Callable, expected_reason: String,
 		korean_fragment: String, label: String) -> Dictionary:
 	var snapshot_before = session.sim.snapshot()

@@ -10,6 +10,9 @@ const RequestScript = preload("res://sim/party_turn_request.gd")
 const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
 const WorldStateScript = preload("res://sim/world_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
+const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_registry.gd")
+const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
 
 const SESSION_FORMAT_VERSION := 2
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -25,6 +28,7 @@ var _deployment_plan: Dictionary = {}
 var _protagonist_draft = null
 var _overrides: Dictionary = {}
 var _draft_fingerprint := ""
+var _exploration_route = null
 
 func _init(p_world_seed: int = DEFAULT_WORLD_SEED, p_personality_seed: int = DEFAULT_PERSONALITY_SEED) -> void:
 	reset_party(p_world_seed, p_personality_seed)
@@ -49,6 +53,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int) -> bool:
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
+	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
+	else: _exploration_route.clear()
 	return true
 
 func party_status() -> Dictionary:
@@ -313,12 +319,43 @@ func preview_exploration(command) -> Dictionary:
 	return _feedback_dto({"accepted": preview.accepted, "reason": preview.reason,
 		"time_cost": preview.time_cost}, null, null, context)
 
+
+func preview_exploration_route(goal: Variant) -> Dictionary:
+	return _exploration_route.preview(goal)
+
+
+func exploration_route_draft() -> Dictionary:
+	return _exploration_route.draft()
+
+
+func exploration_route_state() -> Dictionary:
+	return _exploration_route.state()
+
+
+func start_exploration_route(goal: Variant, plan_hash: String) -> Dictionary:
+	return _exploration_route.start(goal, plan_hash)
+
+
+func continue_exploration_route() -> Dictionary:
+	return _exploration_route.continue_route()
+
+
+func cancel_exploration_route() -> Dictionary:
+	return _exploration_route.cancel()
+
+
 func commit_exploration(command) -> Dictionary:
+	_exploration_route.cancel_for_direct_command()
+	return _commit_exploration_one(command, false)
+
+
+func _commit_exploration_one(command, preserve_route: bool) -> Dictionary:
 	var preview := preview_exploration(command)
 	if not preview.accepted: return preview
 	var result = sim.step(command)
 	if result.accepted: command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
+	if not preserve_route: _exploration_route.cancel_for_direct_command()
 	return _result_dto(result, null, null, _exploration_context(command))
 
 func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
@@ -328,6 +365,7 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	return dto.duplicate(true)
 
 func commit_deployment() -> Dictionary:
+	_exploration_route.cancel_for_direct_command()
 	if _deployment_plan.is_empty(): return _rejection_dto("deployment_preview_required")
 	var request = {"preset_id": _deployment_plan.get("preset_id", ""), "companion_ids": _deployment_plan.get("companion_ids", []).duplicate()}
 	var result = sim.deploy_party(_deployment_plan)
@@ -338,6 +376,7 @@ func commit_deployment() -> Dictionary:
 	return _result_dto(result)
 
 func begin_turn(protagonist_action) -> Dictionary:
+	_exploration_route.cancel_for_direct_command()
 	var copied_action = _canonical_action_copy(protagonist_action)
 	if copied_action == null: return _rejection_dto("invalid_party_action")
 	var previous_action = _protagonist_draft
@@ -379,6 +418,7 @@ func current_turn_preview() -> Dictionary:
 	return _feedback_dto(preview, _protagonist_draft, request)
 
 func commit_turn() -> Dictionary:
+	_exploration_route.cancel_for_direct_command()
 	var preview := current_turn_preview()
 	if not bool(preview.get("accepted",false)): return preview
 	var request = RequestScript.from_dict(preview.canonical_request)
@@ -391,11 +431,206 @@ func commit_turn() -> Dictionary:
 	if result.accepted: _clear_draft()
 	return _result_dto(result, null, request)
 
+
+func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized", null, null,
+			{"action_type":"INSPECT_TILE"})
+	var parsed := _inspection_position(position_value)
+	if not bool(parsed.get("ok", false)):
+		return _rejection_dto("invalid_tile_position", null, null,
+			{"action_type":"INSPECT_TILE"})
+	var position: Vector2i = parsed.position
+	if not sim.world.in_bounds(position):
+		return _rejection_dto("inspect_tile_out_of_bounds", null, null,
+			{"action_type":"INSPECT_TILE", "position":[position.x,position.y]})
+	var resolved_viewer := viewer_id
+	if resolved_viewer == -1:
+		resolved_viewer = int(sim.world.party_encounter.protagonist_id)
+	if not sim.world.entities.has(resolved_viewer):
+		return _rejection_dto("inspect_viewer_not_found", null, null,
+			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
+				"viewer_id":resolved_viewer})
+	var viewer = sim.world.entities[resolved_viewer]
+	if not viewer.is_alive():
+		return _rejection_dto("inspect_viewer_dead", null, null,
+			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
+				"viewer_id":resolved_viewer})
+	var assessment = sim.assess_destination(resolved_viewer, position)
+	if assessment == null or assessment.sample == null \
+			or assessment.affinity == null or assessment.evaluation == null:
+		return _rejection_dto("tile_inspection_unavailable", null, null,
+			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
+				"viewer_id":resolved_viewer})
+	var sample: Dictionary = assessment.sample.to_dict()
+	var affinity: Dictionary = assessment.affinity.to_dict()
+	var evaluation: Dictionary = assessment.evaluation.to_dict()
+	var definition: Dictionary = TerrainRegistryScript.definition(str(sample.terrain_id))
+	var occupants: Array = []
+	for entity in sim.world.occupying_entities_at(position):
+		var member = sim.world.party_member_state(entity.id)
+		occupants.append({"entity_id":entity.id,"display_name":str(entity.display_name),
+			"health":entity.health,"max_health":entity.max_health,"alive":entity.is_alive(),
+			"kind":str(entity.kind),"species_id":str(entity.species_id),
+			"faction_id":str(entity.faction_id),"tags":entity.tags.duplicate(),
+			"role":str(member.role) if member != null else "",
+			"presence":str(member.presence) if member != null else "",
+			"roster_slot":int(member.roster_slot) if member != null else -1})
+	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
+		"position":[position.x,position.y],"terrain_id":str(sample.terrain_id),
+		"terrain_label":_terrain_label(str(sample.terrain_id)),
+		"presentation_key":str(definition.get("presentation_key", "")),
+		"passable":bool(sample.passable),"move_time_cost":int(sample.move_time_cost),
+		"speed_tier":str(assessment.speed_tier),"occupants":occupants,
+		"traversal":assessment.traversal.to_dict() if assessment.traversal != null else null,
+		"sample":sample,"provenance":{"sampled_step_index":int(sample.sampled_step_index),
+			"sampled_world_time":int(sample.sampled_world_time),
+			"after_event_id":int(sample.after_event_id),
+			"next_environment_time":int(sample.next_environment_time),
+			"source_event_ids":_int_array(sample.source_event_ids),
+			"fire_source_event_id":int(sample.fire_source_event_id),
+			"wetness_source_event_id":int(sample.wetness_source_event_id)},
+		"viewer":{"entity_id":resolved_viewer,"display_name":str(viewer.display_name),
+			"species_id":str(viewer.species_id)},"affinity":affinity,
+		"risk":{"species_id":str(evaluation.species_id),
+			"fire":int(evaluation.fire_score),"water":int(evaluation.water_score),
+			"electric":int(evaluation.electric_score),"poison":int(evaluation.poison_score),
+			"total":int(evaluation.total_risk)}}
+	return _feedback_dto(dto, null, null, {"action_type":"INSPECT_TILE",
+		"position":[position.x,position.y],"viewer_id":resolved_viewer})
+
+
+func inspect_party_member(entity_id: int) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized", null, null,
+			{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
+	var state = sim.world.party_encounter
+	var member = state.member(entity_id)
+	if member == null or not sim.world.entities.has(entity_id):
+		return _rejection_dto("party_member_not_found", null, null,
+			{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
+	var entity = sim.world.entities[entity_id]
+	var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (
+		state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
+	var full_exposure := {"applicable":false,"position":[logical.x,logical.y],
+		"sample":null,"affinity":null,"risk":null}
+	var compact_exposure := {"applicable":false,"sampled_step_index":sim.world.step_index,
+		"sampled_world_time":sim.world.world_time,"position":[-1,-1],"fire_score":0,
+		"water_score":0,"electric_score":0,"poison_score":0,"total_risk":0}
+	if member.presence in ["DEPLOYED","GROUPED"] and entity.is_alive():
+		var evaluated = sim.evaluate_exposure_for_entity(entity_id, logical)
+		if evaluated != null:
+			var sample_wire: Dictionary = evaluated.sample.to_dict()
+			var affinity_wire: Dictionary = evaluated.affinity.to_dict()
+			var risk_wire: Dictionary = evaluated.evaluation.to_dict()
+			full_exposure = {"applicable":true,"position":[logical.x,logical.y],
+				"sample":sample_wire,"affinity":affinity_wire,
+				"risk":{"species_id":str(risk_wire.species_id),
+					"fire":int(risk_wire.fire_score),"water":int(risk_wire.water_score),
+					"electric":int(risk_wire.electric_score),"poison":int(risk_wire.poison_score),
+					"total":int(risk_wire.total_risk)}}
+			compact_exposure = {"applicable":true,"sampled_step_index":int(risk_wire.sampled_step_index),
+				"sampled_world_time":int(risk_wire.sampled_world_time),"position":risk_wire.position,
+				"fire_score":int(risk_wire.fire_score),"water_score":int(risk_wire.water_score),
+				"electric_score":int(risk_wire.electric_score),"poison_score":int(risk_wire.poison_score),
+				"total_risk":int(risk_wire.total_risk)}
+	var expected_action: Variant = _pure_expected_action(entity_id)
+	var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
+	var emotion := _emotion_presentation(member, entity)
+	var personality_profile = null
+	var personality_facets: Array = []
+	if member.personality_profile != null:
+		personality_profile = member.personality_profile.to_dict()
+		for row in member.personality_profile.facet_rows:
+			var labels: Array = PersonalityRegistryScript.LABELS.get(str(row.facet_id), ["낮음","높음"])
+			personality_facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
+				"low_label":str(labels[0]),"high_label":str(labels[1])})
+	var relation_rows: Array = []
+	var relation_ids: Array = state.party_member_ids.duplicate()
+	relation_ids.sort_custom(func(a,b):
+		var member_a=state.member(int(a));var member_b=state.member(int(b))
+		return int(member_a.roster_slot)<int(member_b.roster_slot) \
+			if int(member_a.roster_slot)!=int(member_b.roster_slot) else int(a)<int(b))
+	for subject_id_value in relation_ids:
+		var subject_id := int(subject_id_value)
+		if subject_id == entity_id or not sim.world.entities.has(subject_id): continue
+		var relation: Dictionary = sim.relationships.effective_relation(entity_id,subject_id)
+		relation_rows.append({"subject_id":subject_id,
+			"subject_name":str(sim.world.entities[subject_id].display_name),
+			"subject_species_id":str(sim.world.entities[subject_id].species_id),
+			"trust":int(relation.get("trust",0)),"fear":int(relation.get("fear",0)),
+			"hostility":int(relation.get("hostility",0)),
+			"gratitude":int(relation.get("gratitude",0)),
+			"grievance":int(relation.get("grievance",0)),
+			"disposition":str(relation.get("disposition","NEUTRAL")),
+			"species_base":relation.get("species_base",{}).duplicate(true),
+			"personal":relation.get("personal",{}).duplicate(true)})
+	var override_state := "PENDING"
+	if expected_action is Dictionary: override_state = str(expected_action.source)
+	elif member.role == "PROTAGONIST": override_state = "DIRECT"
+	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
+		"entity_id":entity_id,"roster_slot":int(member.roster_slot),"role":str(member.role),
+		"display_name":str(entity.display_name),"health":int(entity.health),
+		"max_health":int(entity.max_health),"alive":entity.is_alive(),
+		"kind":str(entity.kind),"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
+		"faction_id":str(entity.faction_id),"status_ids":member.status_ids.duplicate(),
+		"presence":str(member.presence),"logical_position":[logical.x,logical.y],
+		"busy_until":int(member.busy_until),
+		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
+		"stress":int(member.stress),"readiness":readiness,"emotion":emotion,
+		"override_state":override_state,"expected_action":expected_action,
+		"element_exposure":compact_exposure,"current_exposure":full_exposure,
+		"personality_profile":personality_profile,"personality_available":personality_profile != null,
+		"personality_facets":personality_facets,
+		"personality_note":"주인공은 생성형 성격 프로필을 사용하지 않습니다." \
+			if personality_profile == null else "결정론적 성격 프로필",
+		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
+		"relation_rows":relation_rows}
+	return _feedback_dto(dto, null, null,
+		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
+
+
+func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
+	var checked_turn_limit := clampi(turn_limit,0,64)
+	var checked_row_limit := clampi(row_limit,0,500)
+	var selected_steps: Array = []
+	if checked_turn_limit > 0 and checked_row_limit > 0:
+		for index in range(sim.world.events.size()-1,-1,-1):
+			var step_index := int(sim.world.events[index].step_index)
+			if not selected_steps.has(step_index):
+				selected_steps.append(step_index)
+				if selected_steps.size() >= checked_turn_limit: break
+	selected_steps.sort()
+	var selected_events: Array = []
+	for event in sim.world.events:
+		if selected_steps.has(int(event.step_index)): selected_events.append(event)
+	if selected_events.size() > checked_row_limit:
+		selected_events = selected_events.slice(selected_events.size()-checked_row_limit)
+	var groups_by_step: Dictionary = {}
+	var ordered_steps: Array = []
+	for event in selected_events:
+		var step_index := int(event.step_index)
+		if not groups_by_step.has(step_index):
+			groups_by_step[step_index]={"step_index":step_index,"start_time":int(event.world_time),
+				"end_time":int(event.world_time),"rows":[]}
+			ordered_steps.append(step_index)
+		var group: Dictionary = groups_by_step[step_index]
+		group.end_time = int(event.world_time)
+		group.rows.append(_combat_event_row(event))
+		groups_by_step[step_index]=group
+	var groups: Array = []
+	for step_index in ordered_steps: groups.append(groups_by_step[step_index])
+	return {"schema_version":PRESENTATION_SCHEMA_VERSION,"turn_limit":checked_turn_limit,
+		"row_limit":checked_row_limit,"group_count":groups.size(),
+		"row_count":selected_events.size(),"groups":groups}.duplicate(true)
+
+
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
 	for index in range(start, sim.world.events.size()):
 		var event = sim.world.events[index]
-		rows.append({"event_id":event.id,"step_index":event.step_index,"world_time":event.world_time,"message":_event_message(event)})
+		rows.append({"event_id":event.id,"step_index":event.step_index,
+			"world_time":event.world_time,"message":_event_message(event)})
 	return rows.duplicate(true)
 
 func save_session_json() -> String:
@@ -446,7 +681,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
-	_deployment_plan.clear(); _clear_draft()
+	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
 
 func _journal_wire_error(journal: Array) -> String:
@@ -549,6 +784,83 @@ func _exploration_context(command) -> Dictionary:
 		"destination": [command.position.x, command.position.y] if action_type == "MOVE" else [-1,-1]}
 
 
+func _inspection_position(value: Variant) -> Dictionary:
+	if value is Vector2i:
+		return {"ok":true,"position":value}
+	if value is Array and value.size() == 2 and value[0] is int and value[1] is int:
+		return {"ok":true,"position":Vector2i(int(value[0]),int(value[1]))}
+	return {"ok":false,"position":Vector2i(-1,-1)}
+
+
+func _int_array(values: Array) -> Array:
+	var result: Array = []
+	for value in values: result.append(int(value))
+	return result
+
+
+func _terrain_label(terrain_id: String) -> String:
+	return {"floor":"바닥","stone_floor":"돌바닥","wood_floor":"나무바닥",
+		"metal":"금속 바닥","rubble":"잔해","shallow_water":"얕은 물",
+		"wall":"벽"}.get(terrain_id,terrain_id)
+
+
+func _pure_expected_action(entity_id: int) -> Variant:
+	if _protagonist_draft == null \
+			or _draft_fingerprint != JSON.stringify(sim.snapshot()).sha256_text():
+		return null
+	var preview: Dictionary = sim.preview_party_turn(_pending_turn_request()).to_dict().duplicate(true)
+	for row in preview.get("actor_rows", []):
+		if int(row.get("actor_id",-1)) == entity_id:
+			return _action_presentation(row)
+	return null
+
+
+func _combat_event_row(event) -> Dictionary:
+	var event_type := str(event.type)
+	var damage_type := str(event.data.get("damage_type", ""))
+	var cause_type := ""
+	if int(event.cause_id) > 0:
+		var cause = sim.world.event_by_id(int(event.cause_id))
+		if cause != null: cause_type = str(cause.type)
+	return {"event_id":int(event.id),"type":event_type,
+		"step_index":int(event.step_index),"world_time":int(event.world_time),
+		"actor_id":int(event.actor_id),"actor_name":_event_entity_name(int(event.actor_id)),
+		"target_id":int(event.target_id),"target_name":_event_entity_name(int(event.target_id)),
+		"instigator_id":int(event.instigator_id),
+		"instigator_name":_event_entity_name(int(event.instigator_id)),
+		"position":[event.position.x,event.position.y],"magnitude":int(event.magnitude),
+		"damage_type":damage_type,"cause_id":int(event.cause_id),"cause_type":cause_type,
+		"category":_event_category(event_type),"tone":_event_tone(event_type),
+		"data":event.data.duplicate(true),"message":_event_message(event)}
+
+
+func _event_entity_name(entity_id: int) -> String:
+	return str(sim.world.entities[entity_id].display_name) \
+		if entity_id > 0 and sim.world.entities.has(entity_id) else ""
+
+
+func _event_category(event_type: String) -> String:
+	if event_type == "entity.died": return "DEATH"
+	if event_type.begins_with("combat."): return "DAMAGE"
+	if event_type.begins_with("action.") or event_type == "party.override_committed": return "ACTION"
+	if event_type.begins_with("encounter.") or event_type == "party.deployment_completed" \
+			or event_type == "party.member_deployed": return "ENCOUNTER"
+	if event_type.begins_with("party.victory") or event_type.begins_with("party.regroup") \
+			or event_type == "party.member_regrouped": return "OUTCOME"
+	if event_type.begins_with("environment."): return "ENVIRONMENT"
+	return "WORLD"
+
+
+func _event_tone(event_type: String) -> String:
+	if event_type == "entity.died": return "DEFEAT"
+	if event_type.begins_with("combat."): return "DANGER"
+	if event_type == "party.victory" or event_type.begins_with("party.regroup") \
+			or event_type == "party.member_regrouped": return "VICTORY"
+	if event_type.begins_with("encounter."): return "WARNING"
+	if event_type.begins_with("action."): return "ACTION"
+	return "INFO"
+
+
 func _reason_details(reason: String, action: Variant, request: Variant,
 		context: Dictionary) -> Dictionary:
 	if reason == "ok":
@@ -632,6 +944,11 @@ func _destination_conflict_details(request: Variant) -> Dictionary:
 
 
 func _reason_category(reason: String) -> String:
+	if reason.begins_with("route_") or reason == "invalid_route_goal":
+		return "ROUTE"
+	if reason.begins_with("inspect_") or reason.ends_with("_inspection_unavailable") \
+			or reason in ["invalid_tile_position","party_member_not_found"]:
+		return "INSPECTION"
 	if reason.begins_with("move_") or reason == "destination_conflict":
 		return "MOVEMENT"
 	if reason in ["turn_draft_required", "party_actor_busy", "party_actor_unavailable",
@@ -794,6 +1111,33 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"protagonist_command_required":"주인공만 탐험 이동을 지시할 수 있습니다.",
 		"invalid_exploration_direction":"올바른 방향을 선택하세요.",
 		"invalid_exploration_action":"탐험에서는 이동하거나 대기할 수 있습니다.",
+		"invalid_route_goal":"목적지 좌표가 올바르지 않습니다.",
+		"route_preview_required":"먼저 먼 목적지의 경로를 확인하세요.",
+		"route_not_active":"진행 중인 장거리 이동이 없습니다.",
+		"route_already_active":"이미 장거리 이동을 진행하고 있습니다.",
+		"route_plan_mismatch":"변경되거나 손상된 경로 계획은 시작할 수 없습니다.",
+		"route_stale":"세계가 바뀌어 장거리 이동을 멈췄습니다. 경로를 다시 확인하세요.",
+		"route_exploration_phase_required":"전투나 조우 중에는 장거리 이동을 할 수 없습니다.",
+		"route_goal_out_of_bounds":"지도 밖을 장거리 목적지로 선택할 수 없습니다.",
+		"route_actor_dead":"주인공이 쓰러져 장거리 이동을 계속할 수 없습니다.",
+		"route_already_at_goal":"이미 선택한 목적지에 있습니다.",
+		"route_unavailable":"목적지까지 안전하게 이어지는 경로가 없습니다.",
+		"route_destination_unavailable":"경로의 다음 칸을 확인할 수 없어 이동을 멈췄습니다.",
+		"route_path_changed":"지형이나 장애물이 바뀌어 장거리 이동을 멈췄습니다.",
+		"route_position_changed":"현재 위치가 계획과 달라 장거리 이동을 멈췄습니다.",
+		"route_party_changed":"이동 중인 파티 구성이 바뀌어 장거리 이동을 멈췄습니다.",
+		"route_hazard_increased":"미리 본 경로보다 위험이 커져 이동을 멈췄습니다.",
+		"route_step_rejected":"다음 한 칸을 이동할 수 없어 장거리 이동을 멈췄습니다.",
+		"route_contact":"적과 조우해 장거리 이동을 즉시 멈췄습니다.",
+		"route_party_defeated":"파티가 쓰러져 장거리 이동을 즉시 멈췄습니다.",
+		"route_completed":"목적지에 도착했습니다.",
+		"route_cancelled":"장거리 이동을 취소했습니다.",
+		"invalid_tile_position":"확인할 타일 좌표가 올바르지 않습니다.",
+		"inspect_tile_out_of_bounds":"지도 밖의 타일은 확인할 수 없습니다.",
+		"inspect_viewer_not_found":"타일 위험을 판단할 인물을 찾을 수 없습니다.",
+		"inspect_viewer_dead":"쓰러진 인물의 기준으로 타일 위험을 판단할 수 없습니다.",
+		"tile_inspection_unavailable":"현재 타일 정보를 확인할 수 없습니다.",
+		"party_member_not_found":"선택한 파티원의 상세 정보를 찾을 수 없습니다.",
 		"invalid_party_action":"지원하지 않는 행동입니다.",
 		"invalid_party_destination":"이동 위치가 올바르지 않습니다.",
 		"melee_target_required":"공격할 적을 선택하세요.",
@@ -834,20 +1178,31 @@ func _event_message(event) -> String:
 		"party.deployment_completed": return "파티가 전투 대형을 갖췄다."
 		"action.move": return "%s (%d,%d)로 움직였다." % [_subject(actor),event.position.x,event.position.y]
 		"action.melee_attack": return "%s %s 공격했다." % [_subject(actor),_object(target)]
-		"combat.physical_damage": return "%s %d의 피해를 입었다." % [_subject(target),event.magnitude]
 		"party.override_committed": return "%s 지시한 행동으로 계획을 바꿨다." % _topic(actor)
 		"party.victory": return "마지막 적이 쓰러졌다. 파티가 즉시 한곳으로 모이기 시작했다."
 		"party.regroup_started": return "주인공이 동료들을 불러 모았다."
 		"party.member_regrouped": return "%s 주인공 곁으로 돌아왔다." % _subject(actor)
 		"party.regroup_completed": return "전투가 끝났다. 파티가 자동으로 재집결해 다시 한 무리로 탐험을 시작한다."
 		"action.hold": return "%s 자리를 지켰다." % _subject(actor)
-		"entity.died": return "%s 쓰러졌다." % _subject(target)
+		"entity.died":
+			if int(event.instigator_id) > 0:
+				return "%s 공격으로 %s 쓰러졌다." % [
+					_possessive(_name(event.instigator_id)),_subject(target)]
+			return "환경 영향으로 %s 쓰러졌다." % _subject(target)
+	if str(event.type).begins_with("combat.") and str(event.type).ends_with("_damage"):
+		if int(event.instigator_id) > 0:
+			return "%s 공격으로 %s %d 피해를 입었다." % [
+				_possessive(_name(event.instigator_id)),_subject(target),int(event.magnitude)]
+		var hazard_label: String = {"fire":"불길","electric":"감전","water":"물",
+			"poison":"독","physical":"환경 충격"}.get(str(event.data.get("damage_type","")),"환경 영향")
+		return "%s 때문에 %s %d 피해를 입었다." % [hazard_label,_subject(target),int(event.magnitude)]
 	return "세계에 변화가 일어났다."
 
 func _name(entity_id: int) -> String: return str(sim.world.entities[entity_id].display_name) if entity_id > 0 and sim.world.entities.has(entity_id) else "대상"
 func _subject(value:String)->String: return value + ("이" if _has_final(value) else "가")
 func _object(value:String)->String: return value + ("을" if _has_final(value) else "를")
 func _topic(value:String)->String: return value + ("은" if _has_final(value) else "는")
+func _possessive(value:String)->String: return value + ("의")
 func _has_final(value:String)->bool:
 	if value.is_empty(): return false
 	var code := value.unicode_at(value.length()-1); return code >= 0xAC00 and code <= 0xD7A3 and (code-0xAC00)%28 != 0

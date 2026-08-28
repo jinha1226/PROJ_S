@@ -102,10 +102,31 @@ func test_visual_effect_rows_render_once_per_effect_and_share_event_without_loss
 	check_eq(sandbox.grid.visual_effect_draw_spec(sandbox.grid._active_visual_effects[0]).primitive,"FLASH_RING","effect draw spec is detached")
 	sandbox.free();return finish()
 
+func test_route_overlay_draw_spec_preserves_each_step_and_is_detached() -> bool:
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(Session.new())
+	sandbox.grid.size=sandbox.grid.custom_minimum_size
+	var path:Array=[[7,7],[6,7],[5,7],[4,7]]
+	sandbox.grid.set_route_overlay(path,1,true)
+	var spec:Dictionary=sandbox.grid.route_draw_spec()
+	check_eq(spec.path,path,"route draw spec preserves authoritative path")
+	check_eq(spec.segments.size(),3,"route draws every edge instead of destination shortcut")
+	check(bool(spec.segments[0].completed) and not bool(spec.segments[1].completed),"completed and next segments are distinct")
+	check_eq(spec.markers[0].kind,"START","route start marker")
+	check_eq(spec.markers[2].kind,"NEXT","route next-step marker")
+	check_eq(spec.markers[3].kind,"GOAL","route goal marker")
+	spec.path[0][0]=-99;spec.segments[0].from_position[0]=-99
+	var fresh:Dictionary=sandbox.grid.route_draw_spec()
+	check_eq(fresh.path[0],[7,7],"route path DTO is detached")
+	check_eq(fresh.segments[0].from_position,[7,7],"route segment DTO is detached")
+	sandbox.grid.clear_route_overlay();check(sandbox.grid.route_draw_spec().path.is_empty(),"route overlay clears explicitly")
+	sandbox.free();return finish()
+
 func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_contact() -> bool:
 	var sandbox=Sandbox.new(); sandbox.size=Vector2(360,640); sandbox.initialize_for_headless_test(Session.new()); sandbox.grid.size=sandbox.grid.custom_minimum_size
 	for button_name in ["ExploreN","ExploreNE","ExploreE","ExploreSE","ExploreS","ExploreSW","ExploreW","ExploreNW","ExploreHold"]:
 		check(_button(sandbox,button_name)==null,"legacy D-pad absent: %s"%button_name)
+	var exploration_notice:=str((sandbox.find_child("ActionStatus",true,false) as Label).text)
+	check("이동할 목적지" in exploration_notice and not "인접한 빈 칸" in exploration_notice,"exploration guidance advertises long-route destination")
 	var status:Dictionary=sandbox.session.party_status(); var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1])); var destination:=origin+Vector2i.RIGHT
 	var hero:=int(status.protagonist_id);var companion:=int(status.party_member_ids[1])
 	_press(sandbox,"MemberCard%d"%companion)
@@ -115,9 +136,9 @@ func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_cont
 	check(sandbox.pending_move_valid and sandbox.pending_move_mode=="EXPLORATION","first tap stores strong preview")
 	check_eq(sandbox.grid.cursor_cell,destination,"preview highlights exact destination")
 	var move_summary:=str((sandbox.find_child("MovePreviewSummary",true,false) as Label).text)
-	check("한 번 더" in move_summary,"second-tap guidance visible")
+	check("다시" in move_summary,"second-tap guidance visible")
 	check_eq(sandbox.pending_move_actor_id,hero,"exploration grid preview always belongs to representative hero")
-	check("대표 이동: 주인공" in move_summary and not "나래 이동 예정" in move_summary,"summary actor matches hero execution despite companion detail selection")
+	check("대표 경로: 주인공" in move_summary and not "나래 이동 예정" in move_summary,"summary actor matches hero execution despite companion detail selection")
 	sandbox._on_cell(destination); sandbox._refresh()
 	check_eq(sandbox.session.party_status().safe_phase,"CONTACT","exact second tap commits one move and contact")
 	check_eq(sandbox.session.sim.world.step_index,int(before.step_index)+1,"exactly one exploration step")
@@ -131,16 +152,34 @@ func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_cont
 	check(invalid.session.sim.world.bootstrap_set_terrain(origin+Vector2i.LEFT,"wall"),"wall preview fixture")
 	var wall_before=invalid.session.sim.snapshot(); invalid._on_cell(origin+Vector2i.LEFT); invalid._refresh()
 	check_eq(invalid.session.sim.snapshot(),wall_before,"wall preview is no-op")
-	check("지형" in invalid.notice_text,"wall rejection is immediate Korean")
-	var invalid_before=invalid.session.sim.snapshot()
-	invalid._on_cell(origin+Vector2i(3,0)); invalid._refresh()
-	check_eq(invalid.session.sim.snapshot(),invalid_before,"nonadjacent preview is no-op")
-	check("장거리 이동은 아직 지원하지 않습니다" in invalid.notice_text,"nonadjacent reason is honest Korean")
+	check(str(invalid.route_preview.reason_code)!="ok","wall rejection keeps facade reason")
+	check_eq(invalid.notice_text,invalid.route_preview.message,"wall rejection shows facade Korean message")
+	check(invalid.tile_popover.visible and str(invalid.route_preview.message) in invalid.tile_popover_label.text,"invalid route message is visible in tile popover")
+	var far=Sandbox.new();far.size=Vector2(360,640);far.initialize_for_headless_test(Session.new());far.grid.size=far.grid.custom_minimum_size
+	var far_goal:=Vector2i(-1,-1)
+	for candidate in [origin+Vector2i(-3,0),origin+Vector2i(0,3),origin+Vector2i(0,-3)]:
+		var probe:Dictionary=far.session.preview_exploration_route(candidate)
+		if bool(probe.get("accepted",false)) and int(probe.get("total_steps",0))>=3:far_goal=candidate
+		far.session.cancel_exploration_route()
+		if far_goal!=Vector2i(-1,-1):break
+	check(far_goal!=Vector2i(-1,-1),"far route fixture exists")
+	var far_before:Dictionary=far.session.sim.snapshot();far._on_cell(far_goal);far._refresh()
+	check_eq(far.session.sim.snapshot(),far_before,"far first tap is pure preview")
+	check(bool(far.route_preview.get("accepted",false)) and int(far.route_preview.total_steps)>=3,"far route preview exposes full plan")
+	check_eq(far.grid.route_draw_spec().segments.size(),int(far.route_preview.total_steps),"full far path is drawn")
+	var first_hop:Array=far.route_preview.path[1];far._on_cell(far_goal);far._refresh()
+	check_eq(far.session.sim.world.step_index,int(far_before.step_index)+1,"route start commits exactly one step")
+	check_eq(far.session.party_status().anchor,first_hop,"route start stops at first hop instead of teleporting")
+	check(bool(far.session.exploration_route_state().active),"unfinished far route remains active for frame continuation")
+	var replan_step:int=int(far.session.sim.world.step_index);far._on_cell(origin);far._refresh()
+	var replanned:Dictionary=far.session.exploration_route_draft()
+	check_eq(far.session.sim.world.step_index,replan_step,"new tile cancels active route without an extra hop")
+	check(bool(replanned.get("accepted",false)) and replanned.goal==[origin.x,origin.y],"new tile safely replans from current position")
 	var wait=Sandbox.new(); wait.size=Vector2(360,640); wait.initialize_for_headless_test(Session.new()); var wait_before=wait.session.sim.snapshot()
 	wait._on_actor(int(wait.session.party_status().protagonist_id)); wait._refresh()
 	check_eq(wait.session.sim.snapshot(),wait_before,"hero-cell first tap previews wait without mutation")
 	check(wait.pending_exploration_wait and "대기" in wait.notice_text,"occupied hero cell is consumed as clear wait preview")
-	wait.free(); invalid.free(); sandbox.free(); return finish()
+	wait.free();far.free();invalid.free();sandbox.free();return finish()
 
 func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engaged() -> bool:
 	for preset in ["WEDGE","LINE","COLUMN"]:
@@ -366,7 +405,10 @@ func test_screen_touch_routes_exact_world_cells_at_both_portrait_sizes() -> bool
 	return finish()
 
 func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion() -> bool:
-	var sandbox=Sandbox.new(); sandbox.size=Vector2(360,640); sandbox.initialize_for_headless_test(Session.new())
+	var custom_session=Session.new();var initial_status:Dictionary=custom_session.party_status()
+	var initial_position:=Vector2i(int(initial_status.anchor[0]),int(initial_status.anchor[1]))
+	check(custom_session.sim.world.bootstrap_set_fire(initial_position,100)!=null,"member exposure fixture")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(custom_session)
 	check_eq(sandbox.cards.get_child_count(),3,"all three HUD portraits present together")
 	for member_id in sandbox.session.party_status().party_member_ids:
 		var card := _button(sandbox,"MemberCard%d"%int(member_id))
@@ -381,9 +423,18 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 		check(card.find_child("StressBar", true, false) != null, "card has stress bar")
 		check(card.find_child("Readiness", true, false) != null, "card has real readiness state")
 		check(card.find_child("EmotionState", true, false) != null, "card has derived emotion icon and text")
-	var detail:=sandbox.find_child("MemberElements",true,false) as Label
-	for component in ["불","물","전","독"]:check(detail!=null and component in detail.text,"selected detail shows %s"%component)
 	var hero:=int(sandbox.session.party_status().protagonist_id); var calm:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
+	sandbox._on_actor(hero);sandbox._refresh()
+	check(sandbox.find_child("MemberElements",true,false)==null,"static member element row is removed")
+	check(sandbox.tile_popover.visible,"actor tile opens floating terrain risk popover")
+	for component in ["불","물","전기","독"]:check(component in sandbox.tile_popover_label.text,"tile popover shows %s risk"%component)
+	var member_detail:Dictionary=sandbox.session.inspect_party_member(hero)
+	var exposure_fire:=int(member_detail.current_exposure.risk.fire)
+	check(exposure_fire>0,"member detail fixture has real fire exposure")
+	var detail_text:=sandbox._member_detail_text(member_detail)
+	check("현재 노출: 불 %d"%exposure_fire in detail_text,"detail reads nested current_exposure.risk")
+	for required in ["HP ","스트레스","준비:","감정:","종족/역할:","원소 친화/내성:","행동 제안:","관계"]:
+		check(required in detail_text,"member modal detail includes %s"%required)
 	sandbox.session.sim.world.entities[hero].health=20; sandbox._refresh()
 	var threatened:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
 	check(calm!=threatened and "겁먹음" in threatened,"low HP deterministically exposes survival emotion")

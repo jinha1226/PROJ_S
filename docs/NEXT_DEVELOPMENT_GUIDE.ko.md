@@ -16,7 +16,16 @@ fallback해 전원을 계속 보이고, compact cluster는 9×9를 유지한다.
 `CombatActionArea`가 보이며, 16px 자동 줄바꿈 `ActionFeedback` 아래 44px/18pt 행동
 dock을 둔다. facade의 한국어 거부 `message`는 이 고정 feedback에 즉시 남고,
 commit event에서 투영한 slash/hit/피해량/death 효과만 중복 없이 재생한다. 비인접
-auto-walk는 구현하지 않았고 P1 FOV/LOS 뒤다.
+타일은 개발 sandbox의 결정론적 route macro로 미리 보고, 같은 목적지를 다시 누른 뒤
+기존 1칸 `MOVE`를 호출마다 하나씩 실행한다. 이 route는 아직 FOV가 아닌 전체 world
+기준이며 affinity로 경로 비용을 바꾸지 않는다. P1에서는 관찰 가능한 셀과 위험 선호를
+이 실행 primitive 앞의 정책으로 추가한다. 선택한 타일 위에는 terrain·이동비용과
+불/물/전기/독 위험을 detached inspector DTO에서 읽은 floating popover를 띄우며,
+popover의 모든 child는 touch를 통과시켜 같은 목적지 두 번째 tap을 막지 않는다.
+파티 card 첫 tap은 즉시 선택, 같은 card의 native double tap만 전체 화면 상세 modal을
+열고 modal 동안 grid와 자동 경로를 막거나 일시정지한다. 전투 사건은
+`InformationScroll`의 `전투 기록 · 최근 8턴`에 turn 경계, 이름, 피해 수치, 자동 동료의
+공격·피해·사망 attribution을 보존해 표시한다.
 
 `GROUPED_COMPLETE`의 `presentation_state()`는 transient UI 문구와 무관하게
 `VICTORY` tone, `승리 · 자동 재집결` banner, green grid style을 계속 반환한다.
@@ -37,7 +46,7 @@ auto-walk는 구현하지 않았고 P1 FOV/LOS 뒤다.
 ```text
 완료: 시간/지형/노출 → Phase 3 성격 실험실 → Phase 4 최대 3인 파티 조우·UX
 P0: 전투 규칙 v1 — 명중·방어·상태·다운/죽음
-P1: FOV/LOS·미니맵 → 먼 타일 auto-walk·affinity 안전 경로
+P1: FOV/LOS·미니맵 → 관찰 범위·affinity를 반영한 안전 경로 정책
     → 동료 성격/관계/체력 임계 행동
 P2: multi encounter·몬스터 영역/무리/생태·세계시간
     → 아이템/장비/루팅 → 목격/기억/소문
@@ -106,6 +115,48 @@ HazardAffinity
 - SAVE/LOAD와 seed·accepted command journal로 보고된 현상을 즉시 재현할 수 있게 한다.
 
 완료 기준: 자동 회귀와 headless smoke가 통과하고, 5분 플레이 시나리오를 seed·journal·snapshot으로 다시 실행할 수 있다.
+
+#### 3.1 PartyPlaytestSession route·inspection 계약
+
+- `preview_exploration_route(goal)`은 현재 `WeightedPathfinder` 경로, 지형 비용과 각
+  살아 있는 동행자의 4원소 위험 ceiling을 동결한 detached draft를 반환한다.
+- `start_exploration_route(goal, plan_hash)`와 `continue_exploration_route()`는 호출당
+  기존 인접 `SimCommand.MOVE`를 최대 하나만 제출한다. 순간이동, 별도 core command,
+  `auto_walk` journal row는 없다.
+- 매 hop 전에 phase·생존·현재 위치·weighted suffix·다음 이동 legality·위험 ceiling을
+  다시 검사한다. 접촉·사망·새 점유/모서리 장애·경로 변화·위험 증가·core 거부에서
+  즉시 멈추며, 이미 accepted된 prefix만 기존 `exploration` journal로 남는다.
+- route draft/진행 상태는 snapshot과 save에 넣지 않는다. 정상 reset/load는 이를
+  지우고, 잘못된 load는 live world·journal과 함께 그대로 보존한다.
+- `combat_log(8, 80)`은 core event를 바꾸지 않고 step별 cause/instigator attribution을
+  보존한 한국어 DTO를 반환한다. `inspect_tile(position, viewer_id)`와
+  `inspect_party_member(id)`는 distant sample·affinity·관계·성격을 포함한 deep-detached
+  projection이며 UI가 `sim/world`를 직접 읽는 우회로가 아니다.
+
+#### 3.2 PartyEncounterSandbox 모바일 표시 계약
+
+- 탐험 grid의 첫 tap은 `preview_exploration_route`만 호출하고 world·journal을 바꾸지
+  않는다. 같은 goal+plan hash의 두 번째 tap은 첫 hop 하나만 시작하며, 이후 hop은
+  `process_frame`마다 `continue_exploration_route`를 정확히 한 번만 호출한다. 새 타일,
+  접촉, 패배, stale path, blocker, 위험 증가와 facade 거부는 동기 loop 없이 즉시
+  cancel/stop feedback으로 전환한다. 전투의 MOVE는 기존 인접 한 칸 two-tap을 유지한다.
+- `PartyGridView`의 route overlay는 facade가 준 전체 path를 detached copy로 받아
+  segment와 START/NEXT/GOAL marker를 그린다. camera crop, world↔pixel mapping, FOV
+  의미를 바꾸지 않으며 창 밖 step은 input surface가 아니다.
+- `TileRiskPopover`는 grid 위 floating `PanelContainer`다. 폭은
+  `min(280, viewport-24)`, font는 16px 이상이고 실제 wrapped line 수만큼 높이를 잡아
+  viewport 12px 안으로 clamp한다. panel과 모든 child는 `MOUSE_FILTER_IGNORE`이며
+  탐험 preview에서만 두 번째 tap 안내를 표시한다.
+- 파티 card의 native `InputEventScreenTouch.double_tap` 또는 mouse double click과
+  동일 card·350ms·24px fallback만 `MemberDetailModal`을 연다. scrim은 full viewport
+  `STOP`, body margin은 12px, 폭은 360에서 최대 336px·450에서 최대 420px,
+  close는 44px/18pt, scroll body는 16px 이상이다. 열려 있는 동안
+  `grid.modal_open=true`이며 backdrop, close, Escape로 닫는다. route가 active면 modal
+  동안 pause하고 닫은 다음 프레임부터 한 hop씩 재개한다. 첫 tap 선택과 두 번째
+  double tap 사이에도 route draft를 지우지 않아 modal이 같은 진행 상태를 보존한다.
+- `NarrativeLog`는 새 root sibling이 아니라 기존 `InformationScroll` 안에 두고
+  `combat_log(8,80)`의 group/row 순서를 그대로 표시한다. 최신 combat commit 뒤 bottom을
+  보이되 사용자가 위로 scroll해 최근 8턴 전체를 다시 읽을 수 있어야 한다.
 
 ### 4. 범용 안전 타일 선택 AI
 
