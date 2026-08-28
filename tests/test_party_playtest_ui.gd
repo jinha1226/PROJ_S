@@ -3,6 +3,7 @@ extends "res://tests/test_case.gd"
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
+const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
@@ -500,6 +501,77 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 	var threatened:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
 	check(calm!=threatened and "겁먹음" in threatened,"low HP deterministically exposes survival emotion")
 	sandbox.free(); return finish()
+
+func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var sandbox=_engaged_sandbox("LINE",viewport_size)
+		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
+		check(sandbox.session.prepare_auto_combat_plan().active,
+			"%s placeholder plan prepared"%viewport_size);sandbox._refresh()
+		check(not sandbox.grid.has_method("speech_bubble_draw_specs"),
+			"%s grid owns no speech-bubble API"%viewport_size)
+		var hero_card:=_button(sandbox,"MemberCard%d"%hero)
+		check(hero_card.find_child("CompanionSpeechStrip",true,false)==null,
+			"%s protagonist card never speaks"%viewport_size)
+		var bubbles:Array=sandbox.session.companion_speech_bubbles()
+		check_eq(bubbles.size(),2,"%s two companion speeches"%viewport_size)
+		for bubble in bubbles:
+			var card:=_button(sandbox,"MemberCard%d"%int(bubble.actor_id))
+			var strip:=card.find_child("CompanionSpeechStrip",true,false) as PanelContainer
+			var text:=card.find_child("CompanionSpeechText",true,false) as Label
+			check(strip!=null and text!=null,"%s companion owns its card speech"%viewport_size)
+			if strip==null or text==null:continue
+			var lines:=text.text.split("\n")
+			check_eq(lines.size(),2,"%s card speech is exactly two lines"%viewport_size)
+			check_eq([str(lines[0]),str(lines[1])],
+				[str(bubble.headline),str(bubble.reason_summary)],
+				"%s card binds only its own headline and reason"%viewport_size)
+			check(str(lines[0]) in ["공격할게.","이동할게.","엄호할게.","대기할게."],
+				"%s fixed headline vocabulary"%viewport_size)
+			check(str(lines[1]).length()<=14,"%s compact reason stays on one line"%viewport_size)
+			check_eq(str(strip.get_meta("full_reason","")),str(bubble.reason),
+				"%s full Korean reason remains available off-strip"%viewport_size)
+			check(text.get_theme_font_size("font_size")>=12,
+				"%s compact speech font is at least 12px"%viewport_size)
+			check(strip.mouse_filter==Control.MOUSE_FILTER_IGNORE \
+				and text.mouse_filter==Control.MOUSE_FILTER_IGNORE,
+				"%s speech cannot intercept portrait input"%viewport_size)
+		var companion:=int(bubbles[0].actor_id)
+		check(sandbox.session.override_companion(companion,Action.hold(companion)).accepted,
+			"%s companion override accepted"%viewport_size);sandbox._refresh()
+		var overridden:=_button(sandbox,"MemberCard%d"%companion).find_child(
+			"CompanionSpeechText",true,false) as Label
+		check_eq(overridden.text,"대기할게.\n지시를 따라서",
+			"%s override refreshes the same card strip"%viewport_size)
+		check_eq(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size(),2,
+			"%s secondary suggestion creates no extra strip"%viewport_size)
+		check(sandbox.session.clear_companion_override(companion).accepted,
+			"%s companion override clears"%viewport_size);sandbox._refresh()
+		var cleared:=_button(sandbox,"MemberCard%d"%companion).find_child(
+			"CompanionSpeechText",true,false) as Label
+		check(cleared.text!="대기할게.\n지시를 따라서",
+			"%s clear restores automatic card speech"%viewport_size)
+		check(sandbox.session.replace_auto_combat_protagonist_action(Action.hold(hero)).accepted,
+			"%s hero finalizes plan"%viewport_size)
+		check(sandbox.session.commit_turn().accepted,"%s plan commits"%viewport_size);sandbox._refresh()
+		check(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty(),
+			"%s no stale strip survives between plans"%viewport_size)
+		if sandbox.session.party_status().safe_phase=="ENGAGED":
+			check(sandbox.session.prepare_auto_combat_plan().active,
+				"%s next plan prepares"%viewport_size);sandbox._refresh()
+			check_eq(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size(),2,
+				"%s next turn immediately refreshes both cards"%viewport_size)
+		sandbox.free()
+	var exploration=Sandbox.new();exploration.size=Vector2(360,640)
+	exploration.initialize_for_headless_test(Session.new())
+	check(exploration.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty(),
+		"exploration hides companion speech")
+	var hero:=int(exploration.session.party_status().protagonist_id)
+	check(exploration.session.commit_exploration(Command.wait(hero)).accepted,"contact fixture")
+	exploration._refresh()
+	check(exploration.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty(),
+		"contact hides companion speech")
+	exploration.free();return finish()
 
 func test_enemy_tap_targets_without_selecting_enemy_and_rejections_are_visible() -> bool:
 	var sandbox=_engaged_sandbox("WEDGE"); var status:Dictionary=sandbox.session.party_status()

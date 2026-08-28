@@ -341,170 +341,6 @@ func set_intent_overlays(rows: Array) -> void:
 	queue_redraw()
 
 
-func speech_bubble_draw_specs() -> Array[Dictionary]:
-	# Speech is derived from the primary intent overlays only. In particular, an
-	# overridden actor's secondary automatic suggestion never gains a second bubble.
-	var intents: Array[Dictionary] = []
-	for raw in _intent_overlays:
-		if not _intent_is_companion(raw): continue
-		intents.append(raw.duplicate(true))
-	intents.sort_custom(func(a:Dictionary,b:Dictionary):
-		return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99)) \
-			if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)) \
-			else int(a.get("actor_id",-1)) < int(b.get("actor_id",-1)))
-	var specs: Array[Dictionary] = []
-	var occupied: Array[Rect2] = []
-	var bounds_limit := grid_rect().grow(-4.0)
-	for index in range(intents.size()):
-		var intent: Dictionary = intents[index]
-		var actor_position := _visible_intent_actor_position(intent)
-		var action_type := str(intent.get("type","HOLD"))
-		var source := str(intent.get("source","SUGGESTED"))
-		var reason := str(intent.get("reason","상황을 지켜봅니다."))
-		var headline := str(intent.get("speech_headline",""))
-		if headline.is_empty(): headline = _speech_headline(intent)
-		var visible := actor_position != Vector2i(-1,-1) and bounds_limit.size.x >= 80.0 \
-			and bounds_limit.size.y >= 48.0
-		var bubble_bounds := Rect2()
-		var tail_points: Array[Vector2] = []
-		var font_size := maxi(12,mini(16,int(round(cell_size_px()*0.48))))
-		var text_lines: Array[String] = [headline]
-		if visible:
-			var bubble_width := minf(bounds_limit.size.x,
-				clampf(grid_rect().size.x*0.44,132.0,176.0))
-			var max_chars := maxi(8,int(floor((bubble_width-16.0)/float(font_size))))
-			text_lines.append_array(_wrap_speech_reason(reason,max_chars))
-			var line_height := float(font_size)*1.28
-			var bubble_size := Vector2(bubble_width,
-				maxf(48.0,12.0+line_height*float(text_lines.size())))
-			var actor_center := world_to_pixel_center(actor_position)
-			bubble_bounds = _place_speech_bubble(actor_center,bubble_size,index,
-				bounds_limit,occupied)
-			visible = bubble_bounds.size != Vector2.ZERO
-			if visible:
-				occupied.append(bubble_bounds)
-				tail_points = _speech_tail_points(bubble_bounds,actor_center)
-		specs.append({"actor_id":int(intent.get("actor_id",-1)),
-			"actor_name":str(intent.get("actor_name","")),
-			"roster_slot":int(intent.get("roster_slot",99)), "role":"COMPANION",
-			"actor_position":[actor_position.x,actor_position.y],
-			"action_type":action_type, "source":source,
-			"headline":headline, "reason":reason,
-			"visible":visible, "bounds":bubble_bounds,
-			"tail_points":tail_points, "text_lines":text_lines,
-			"font_size":font_size, "fill_hex":"#09121DF2",
-			"border_hex":str(intent.get("source_color",{
-				"OVERRIDE":"#ff9f68","SUGGESTED":"#75c8ff"}.get(source,"#75c8ff"))),
-			"text_hex":"#F5F8FC"})
-	return specs.duplicate(true)
-
-
-func _intent_is_companion(intent: Dictionary) -> bool:
-	if intent.has("role"):
-		return str(intent.get("role","")) == "COMPANION"
-	var actor_id := int(intent.get("actor_id",-1))
-	for actor in _actors:
-		if int(actor.get("entity_id",-1)) != actor_id: continue
-		return not bool(actor.get("is_protagonist",false)) \
-			and str(actor.get("faction_id","")) == "party" \
-			and not bool(actor.get("is_enemy",false))
-	return false
-
-
-func _visible_intent_actor_position(intent: Dictionary) -> Vector2i:
-	var actor_id := int(intent.get("actor_id",-1))
-	for actor in _actors:
-		if int(actor.get("entity_id",-1)) != actor_id \
-				or bool(actor.get("is_protagonist",false)): continue
-		var position := _position_from_actor(actor)
-		if is_world_cell_visible(position) and AsciiStyleScript.visibility_state(
-				_cells.get(_key(position),{})) == "VISIBLE":
-			return position
-	return Vector2i(-1,-1)
-
-
-func _speech_headline(intent: Dictionary) -> String:
-	var action_type := str(intent.get("type","HOLD"))
-	if action_type == "MELEE": return "공격할게."
-	if action_type == "MOVE": return "이동할게."
-	if str(intent.get("source","SUGGESTED")) == "OVERRIDE" \
-			or str(intent.get("resolution_note","")) == "destination_conflict_suggested_hold":
-		return "대기할게."
-	return "엄호할게."
-
-
-func _wrap_speech_reason(value: String, max_chars: int) -> Array[String]:
-	var lines: Array[String] = []
-	var remaining := value.strip_edges()
-	while remaining.length() > max_chars:
-		var cut := max_chars
-		var prefix := remaining.substr(0,mini(remaining.length(),max_chars+1))
-		var space := prefix.rfind(" ")
-		if space >= maxi(1,max_chars/2): cut = space
-		var line := remaining.substr(0,cut).strip_edges()
-		if not line.is_empty(): lines.append(line)
-		remaining = remaining.substr(cut).strip_edges()
-	if not remaining.is_empty(): lines.append(remaining)
-	if lines.is_empty(): lines.append("상황을 지켜봅니다.")
-	return lines
-
-
-func _place_speech_bubble(actor_center: Vector2, bubble_size: Vector2, index: int,
-		limit: Rect2, occupied: Array[Rect2]) -> Rect2:
-	var gap := maxf(8.0,cell_size_px()*0.42)
-	var above := actor_center+Vector2(-bubble_size.x*0.5,-bubble_size.y-gap)
-	var below := actor_center+Vector2(-bubble_size.x*0.5,gap)
-	var left := actor_center+Vector2(-bubble_size.x-gap,-bubble_size.y*0.5)
-	var right := actor_center+Vector2(gap,-bubble_size.y*0.5)
-	var candidates: Array[Vector2] = []
-	if index%2 == 0:
-		candidates.append_array([above,right,left,below])
-	else:
-		candidates.append_array([below,left,right,above])
-	for position in candidates:
-		var candidate := _clamp_speech_rect(Rect2(position,bubble_size),limit)
-		if _speech_rect_is_free(candidate,occupied): return candidate
-	var fallback_positions: Array[Vector2] = []
-	fallback_positions.append(limit.position)
-	fallback_positions.append(Vector2(limit.end.x-bubble_size.x,limit.position.y))
-	fallback_positions.append(Vector2(limit.position.x,limit.end.y-bubble_size.y))
-	fallback_positions.append(limit.end-bubble_size)
-	for position in fallback_positions:
-		var candidate := _clamp_speech_rect(Rect2(position,bubble_size),limit)
-		if _speech_rect_is_free(candidate,occupied): return candidate
-	return Rect2()
-
-
-func _clamp_speech_rect(value: Rect2, limit: Rect2) -> Rect2:
-	if value.size.x > limit.size.x or value.size.y > limit.size.y: return Rect2()
-	return Rect2(Vector2(clampf(value.position.x,limit.position.x,limit.end.x-value.size.x),
-		clampf(value.position.y,limit.position.y,limit.end.y-value.size.y)),value.size)
-
-
-func _speech_rect_is_free(candidate: Rect2, occupied: Array[Rect2]) -> bool:
-	if candidate.size == Vector2.ZERO: return false
-	for prior in occupied:
-		if candidate.grow(3.0).intersects(prior.grow(3.0)): return false
-	return true
-
-
-func _speech_tail_points(bounds: Rect2, actor_center: Vector2) -> Array[Vector2]:
-	var delta := actor_center-bounds.get_center()
-	var base := bounds.get_center()
-	var tangent := Vector2.RIGHT
-	if absf(delta.y) >= absf(delta.x):
-		base = Vector2(clampf(actor_center.x,bounds.position.x+8.0,bounds.end.x-8.0),
-			bounds.end.y if delta.y >= 0.0 else bounds.position.y)
-		tangent = Vector2.RIGHT
-	else:
-		base = Vector2(bounds.end.x if delta.x >= 0.0 else bounds.position.x,
-			clampf(actor_center.y,bounds.position.y+8.0,bounds.end.y-8.0))
-		tangent = Vector2.DOWN
-	var toward_bubble := (bounds.get_center()-actor_center).normalized()
-	if toward_bubble == Vector2.ZERO: toward_bubble = Vector2.UP
-	var tip := actor_center+toward_bubble*cell_size_px()*0.30
-	return [tip,base-tangent*5.0,base+tangent*5.0]
-
 func grid_rect() -> Rect2:
 	var extent := minf(size.x,size.y); return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
 func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
@@ -732,7 +568,6 @@ func _draw() -> void:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
 		_draw_intent(intent)
-	_draw_speech_bubbles()
 	_draw_actor_selection_overlays()
 	_draw_cursor_preview()
 	for effect in _active_visual_effects:_draw_visual_effect(effect)
@@ -852,30 +687,6 @@ func _draw_exploration_companion_follow_plan()->void:
 			draw_rect(Rect2(center-badge_size*0.5,badge_size),Color(str(risk_badge.color_hex)),false,1.2)
 			_draw_centered_text(get_theme_default_font(),str(risk_badge.text),center,
 				maxi(8,int(cell_size_px()*0.25)),Color(str(risk_badge.color_hex)))
-
-
-func _draw_speech_bubbles() -> void:
-	var font := get_theme_default_font()
-	for spec in speech_bubble_draw_specs():
-		if not bool(spec.visible): continue
-		var bounds: Rect2 = spec.bounds
-		var fill := Color(str(spec.fill_hex))
-		var border := Color(str(spec.border_hex))
-		var tail := PackedVector2Array()
-		for point in spec.tail_points: tail.append(point)
-		if tail.size() == 3:
-			draw_colored_polygon(tail,fill)
-			draw_polyline(PackedVector2Array([tail[0],tail[1],tail[2],tail[0]]),
-				border,1.5,true)
-		draw_rect(bounds,fill,true)
-		draw_rect(bounds,border,false,1.8)
-		var font_size := int(spec.font_size)
-		var line_height := float(font_size)*1.28
-		var baseline := bounds.position+Vector2(8.0,8.0+float(font_size))
-		for line_index in range(spec.text_lines.size()):
-			draw_string(font,baseline+Vector2(0.0,line_height*float(line_index)),
-				str(spec.text_lines[line_index]),HORIZONTAL_ALIGNMENT_LEFT,
-				bounds.size.x-16.0,font_size,Color(str(spec.text_hex)))
 
 
 func _draw_actor_selection_overlays()->void:

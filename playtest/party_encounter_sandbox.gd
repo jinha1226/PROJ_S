@@ -259,8 +259,16 @@ func _refresh()->void:
 	if pending_move_actor_id>0:grid.set_cursor_preview(pending_move_actor_id,pending_move_origin,pending_move_destination,pending_move_valid)
 	else:grid.clear_cursor_preview()
 	_refresh_tile_popover(status)
+	var companion_speech_by_actor:Dictionary={}
+	if safe_phase=="ENGAGED" and str(status.view_mode)=="COMBAT" \
+			and not bool(status.terminal) and not run_complete \
+			and session.has_method("companion_speech_bubbles"):
+		for speech in session.companion_speech_bubbles():
+			if speech is Dictionary:
+				companion_speech_by_actor[int(speech.get("actor_id",-1))]=speech.duplicate(true)
 	_clear_container(cards)
-	for row in session.party_cards():_add_member_card(row)
+	for row in session.party_cards():
+		_add_member_card(row,companion_speech_by_actor.get(int(row.entity_id),{}))
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
 	action_feedback_label.visible=true
@@ -427,7 +435,7 @@ func auto_flow_state()->Dictionary:
 		"override_edit":auto_override_edit,"plan_hash":auto_combat_plan_hash,
 		"follow_plan":exploration_follow_plan.duplicate(true)}.duplicate(true)
 
-func _add_member_card(row:Dictionary)->void:
+func _add_member_card(row:Dictionary,speech:Dictionary={})->void:
 	var button:=Button.new(); var member_id:=int(row.entity_id); button.name="MemberCard%d"%member_id
 	button.custom_minimum_size=Vector2(44,160); button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
@@ -437,7 +445,10 @@ func _add_member_card(row:Dictionary)->void:
 	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,2)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; button.add_child(inset)
 	var stack:=VBoxContainer.new(); stack.name="CardStack"; stack.add_theme_constant_override("separation",0); stack.mouse_filter=Control.MOUSE_FILTER_IGNORE; inset.add_child(stack)
-	var heading:=HBoxContainer.new(); heading.name="CardHeading"; heading.alignment=BoxContainer.ALIGNMENT_CENTER; heading.mouse_filter=Control.MOUSE_FILTER_IGNORE; stack.add_child(heading)
+	if not speech.is_empty():_add_companion_speech_strip(stack,speech)
+	var heading:=HBoxContainer.new(); heading.name="CardHeading"; heading.alignment=BoxContainer.ALIGNMENT_CENTER
+	heading.custom_minimum_size.y=54;heading.add_theme_constant_override("separation",0)
+	heading.mouse_filter=Control.MOUSE_FILTER_IGNORE; stack.add_child(heading)
 	var portrait_view=PortraitScript.new();portrait_view.name="Portrait";portrait_view.custom_minimum_size=Vector2(52,54)
 	var portrait_actor:Dictionary=row.duplicate(true);var detail:Dictionary=session.inspect_party_member(member_id)
 	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
@@ -445,17 +456,50 @@ func _add_member_card(row:Dictionary)->void:
 	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
 	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
 	portrait_view.set_actor(portrait_actor);heading.add_child(portrait_view)
-	var name_label:=_card_label(("▶" if member_id==selected_member_id else "")+str(row.display_name),"MemberName",FONT_BODY); name_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; stack.add_child(name_label)
-	stack.add_child(_card_label("HP %d/%d"%[int(row.health),int(row.max_health)],"MemberState",FONT_AUX))
-	stack.add_child(_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX))
+	var identity:=VBoxContainer.new();identity.name="CardIdentity";identity.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	identity.add_theme_constant_override("separation",0);identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;heading.add_child(identity)
+	var name_label:=_card_label(str(row.display_name),"MemberName",FONT_AUX)
+	name_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	identity.add_child(name_label)
+	var ready_label:=_card_label("준비" if str(row.readiness)=="행동 준비" else "행동중","Readiness",FONT_AUX)
+	ready_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;identity.add_child(ready_label)
+	var emotion_label:=_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX)
+	emotion_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	identity.add_child(emotion_label)
+	var vitals_text:=HBoxContainer.new();vitals_text.name="VitalsText";vitals_text.add_theme_constant_override("separation",2)
+	vitals_text.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(vitals_text)
+	var health_text:=_card_label("HP %d"%int(row.health),"MemberState",FONT_AUX)
+	health_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;health_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(health_text)
+	var stress_text:=_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX)
+	stress_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stress_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(stress_text)
 	var bars:=HBoxContainer.new(); bars.name="VitalsBars"; bars.add_theme_constant_override("separation",3); stack.add_child(bars)
 	var health_bar:=_bar("HealthBar",int(row.health),int(row.max_health),Color("#62d98b")); health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(health_bar)
 	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
-	var state_row:=HBoxContainer.new(); state_row.name="StateRow"; state_row.add_theme_constant_override("separation",2); stack.add_child(state_row)
-	var ready_label:=_card_label("준비" if str(row.readiness)=="행동 준비" else "행동중","Readiness",FONT_AUX); ready_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL; state_row.add_child(ready_label)
-	state_row.add_child(_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX))
 	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
 	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
+
+func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
+	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip";strip.custom_minimum_size.y=36
+	strip.mouse_filter=Control.MOUSE_FILTER_IGNORE;strip.clip_contents=true
+	strip.set_meta("actor_id",int(speech.get("actor_id",-1)))
+	strip.set_meta("source",str(speech.get("source","SUGGESTED")))
+	strip.set_meta("full_reason",str(speech.get("reason","")))
+	var source:=str(speech.get("source","SUGGESTED"))
+	var style:=StyleBoxFlat.new();style.bg_color=Color("#101C28")
+	style.border_color=Color("#ff9f68" if source=="OVERRIDE" else "#75c8ff")
+	style.set_border_width_all(1);style.set_corner_radius_all(4)
+	style.content_margin_left=3;style.content_margin_right=3
+	style.content_margin_top=1;style.content_margin_bottom=1
+	strip.add_theme_stylebox_override("panel",style);parent.add_child(strip)
+	var text:=Label.new();text.name="CompanionSpeechText"
+	text.text="%s\n%s"%[str(speech.get("headline","엄호할게.")),
+		str(speech.get("reason_summary","자리를 지키려고"))]
+	text.max_lines_visible=2;text.clip_text=true
+	text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	text.add_theme_font_size_override("font_size",12)
+	text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	text.mouse_filter=Control.MOUSE_FILTER_IGNORE;strip.add_child(text)
 
 func _bar(node_name:String,value:int,maximum:int,color:Color)->ProgressBar:
 	var bar:=ProgressBar.new(); bar.name=node_name; bar.min_value=0; bar.max_value=maximum; bar.value=value

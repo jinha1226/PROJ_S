@@ -98,6 +98,10 @@ func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> 
 		var expected_headline:String={"MELEE":"공격할게.","MOVE":"이동할게.",
 			"HOLD":"엄호할게."}.get(str(bubble.action_type),"엄호할게.")
 		check_eq(bubble.headline,expected_headline,"suggested action headline is fixed")
+		check_eq(bubble.reason_summary,{"MELEE":"적이 가까워서","MOVE":"길이 열려서",
+			"HOLD":"자리를 지키려고"}.get(str(bubble.action_type),"자리를 지키려고"),
+			"card speech receives a meaning-preserving short reason")
+		check(str(bubble.reason_summary).length()<=14,"card reason summary stays one-line compact")
 	check_eq(session.save_session_json(),wire_before,
 		"speech and placeholder projections never enter session save state")
 	var first_id:=int(bubbles[0].actor_id)
@@ -114,6 +118,7 @@ func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> 
 	check_eq([overridden.source,overridden.action_type,overridden.headline],
 		["OVERRIDE","HOLD","대기할게."],"override updates primary speech immediately")
 	check("개별 지시" in str(overridden.reason),"override keeps its action-reason meaning")
+	check_eq(overridden.reason_summary,"지시를 따라서","override reason is compact on the card")
 	check(session.clear_companion_override(first_id).accepted,"speech override clears")
 	var restored:Dictionary={}
 	for bubble in session.companion_speech_bubbles():

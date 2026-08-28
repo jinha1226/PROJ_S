@@ -3,6 +3,7 @@ extends SceneTree
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
+const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
@@ -14,6 +15,7 @@ func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
 		await _auto_showcase_and_combat_flow(viewport_size)
+		await _companion_card_speech_layout(viewport_size)
 		await _mvp_run_objective_and_restart(viewport_size)
 		await _exploration_route_and_popover(viewport_size)
 		await _portrait_detail_modal(viewport_size)
@@ -84,6 +86,83 @@ func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
 	if session.sim.world.step_index!=turn_step+1 or session.command_journal.size()!=turn_journal+1 \
 			or sandbox.auto_combat_pending:
 		failures.append("%s auto hero action duplicated or remained pending"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _companion_card_speech_layout(viewport_size:Vector2)->void:
+	var session=Session.new();var hero:=int(session.party_status().protagonist_id)
+	if not session.commit_exploration(Command.wait(hero)).accepted:
+		failures.append("%s card speech CONTACT fixture rejected"%viewport_size);return
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session,true)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame
+	if not sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty():
+		failures.append("%s CONTACT shows companion card speech"%viewport_size)
+	await process_frame
+	if session.party_status().safe_phase!="ENGAGED":
+		failures.append("%s card speech auto fixture did not engage"%viewport_size)
+		sandbox.queue_free();await process_frame;return
+	await process_frame
+	var label:="%s CARD_SPEECH"%viewport_size
+	_validate_layout(sandbox,label)
+	if sandbox.grid.has_method("speech_bubble_draw_specs"):
+		failures.append("%s grid still exposes speech bubbles"%label)
+	var bubbles:Array=session.companion_speech_bubbles()
+	if bubbles.size()!=2:failures.append("%s expected two companion speeches"%label)
+	var strip_rects:Array[Rect2]=[];var first_strip:PanelContainer=null;var first_actor:=-1
+	var hero_card:Button=_button(sandbox,"MemberCard%d"%hero)
+	if hero_card.find_child("CompanionSpeechStrip",true,false)!=null:
+		failures.append("%s protagonist has card speech"%label)
+	for bubble in bubbles:
+		var actor_id:=int(bubble.actor_id);var card:Button=_button(sandbox,"MemberCard%d"%actor_id)
+		var strip:=card.find_child("CompanionSpeechStrip",true,false) as PanelContainer
+		var text:=card.find_child("CompanionSpeechText",true,false) as Label
+		if strip==null or text==null:
+			failures.append("%s missing speech on actor %d"%[label,actor_id]);continue
+		if first_strip==null:first_strip=strip;first_actor=actor_id
+		var lines:=text.text.split("\n")
+		if lines.size()!=2 or str(lines[0])!=str(bubble.headline) \
+				or str(lines[1])!=str(bubble.reason_summary):
+			failures.append("%s actor %d speech is not exact two-line compact DTO: %s"%[label,actor_id,text.text])
+		if str(lines[1]).length()>14:failures.append("%s actor %d speech reason too long"%[label,actor_id])
+		if text.get_theme_font_size("font_size")<12:failures.append("%s actor %d speech font below 12"%[label,actor_id])
+		if strip.mouse_filter!=Control.MOUSE_FILTER_IGNORE or text.mouse_filter!=Control.MOUSE_FILTER_IGNORE:
+			failures.append("%s actor %d speech intercepts input"%[label,actor_id])
+		var card_rect:=card.get_global_rect();var strip_rect:=strip.get_global_rect()
+		if not _rect_contains(card_rect,strip_rect):failures.append("%s actor %d speech leaves card %s"%[label,actor_id,strip_rect])
+		if strip_rect.intersects(sandbox.grid.get_global_rect()):failures.append("%s actor %d speech covers map"%[label,actor_id])
+		if strip_rect.intersects(sandbox.combat_action_area.get_global_rect()):failures.append("%s actor %d speech covers bottom actions"%[label,actor_id])
+		if text.get_line_count()!=2 or text.get_visible_line_count()!=2:
+			failures.append("%s actor %d speech lines clipped %d/%d"%[label,actor_id,text.get_visible_line_count(),text.get_line_count()])
+		strip_rects.append(strip_rect)
+	if strip_rects.size()==2 and strip_rects[0].intersects(strip_rects[1]):
+		failures.append("%s companion speech strips overlap"%label)
+	if first_strip!=null:
+		_touch_control_now(first_strip,false,7);await process_frame;await process_frame
+		if sandbox.selected_member_id!=first_actor or sandbox.member_detail_modal.visible:
+			failures.append("%s speech-area first tap did not select its portrait"%label)
+		first_strip=_button(sandbox,"MemberCard%d"%first_actor).find_child(
+			"CompanionSpeechStrip",true,false) as PanelContainer
+		_touch_control_now(first_strip,true,7);await process_frame;await process_frame
+		if not sandbox.member_detail_modal.visible:
+			failures.append("%s speech-area double tap did not open portrait detail"%label)
+		else:_touch_control_now(sandbox.member_detail_close,false,7)
+		await process_frame;await process_frame
+	var override_actor:=int(bubbles[0].actor_id) if not bubbles.is_empty() else -1
+	if override_actor>0:
+		if not session.override_companion(override_actor,Action.hold(override_actor)).accepted:
+			failures.append("%s card speech override rejected"%label)
+		sandbox._refresh();await process_frame;await process_frame
+		var override_text:=(_button(sandbox,"MemberCard%d"%override_actor).find_child(
+			"CompanionSpeechText",true,false) as Label).text
+		if override_text!="대기할게.\n지시를 따라서":failures.append("%s override speech stale: %s"%[label,override_text])
+		if sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size()!=2:
+			failures.append("%s secondary suggestion created extra card speech"%label)
+		if not session.clear_companion_override(override_actor).accepted:
+			failures.append("%s card speech clear rejected"%label)
+		sandbox._refresh();await process_frame;await process_frame
+		var cleared_text:=(_button(sandbox,"MemberCard%d"%override_actor).find_child(
+			"CompanionSpeechText",true,false) as Label).text
+		if cleared_text==override_text:failures.append("%s clear did not refresh card speech"%label)
 	sandbox.queue_free();await process_frame
 
 func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
@@ -621,6 +700,8 @@ func _terminal(viewport_size:Vector2)->void:
 	_validate_layout(sandbox,"%s TERMINAL"%viewport_size)
 	if sandbox.find_child("TerminalOverlay",true,false)==null: failures.append("%s terminal overlay missing"%viewport_size)
 	if sandbox.find_child("TurnConfirm",true,false)!=null: failures.append("%s terminal confirm visible"%viewport_size)
+	if not sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty():
+		failures.append("%s terminal companion speech visible"%viewport_size)
 	if not "패배" in sandbox.phase_label.text:failures.append("%s terminal phase banner missing"%viewport_size)
 	if str(sandbox.grid._presentation_style.get("style_id",""))!="DEFEAT" or str(sandbox.grid._presentation_style.get("border_hex",""))!="#8f5367":
 		failures.append("%s terminal presentation style missing"%viewport_size)
@@ -906,7 +987,10 @@ func _validate_layout(sandbox,label:String,expected_cells_override:int=-1)->void
 				or global_rect.position.y<-0.1 or global_rect.end.y>viewport_size.y+0.1):
 			failures.append("%s child bounds %s %s"%[label,control.name,global_rect])
 		if control is Button and (control.size.x<43.9 or control.size.y<43.9): failures.append("%s touch target %s %s"%[label,control.name,control.size])
-		if control is Label and control.get_theme_font_size("font_size")<16: failures.append("%s font below 16 %s"%[label,control.name])
+		if control is Label:
+			var minimum_font:=12 if control.name=="CompanionSpeechText" else 16
+			if control.get_theme_font_size("font_size")<minimum_font:
+				failures.append("%s font below %d %s"%[label,minimum_font,control.name])
 		if control is Button and control.get_theme_font_size("font_size")<18: failures.append("%s button font below 18 %s"%[label,control.name])
 	var deck_prior:=-100000.0
 	for child in sandbox.deck.get_children():

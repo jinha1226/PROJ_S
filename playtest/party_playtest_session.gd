@@ -482,6 +482,8 @@ func turn_intent_overlays() -> Array[Dictionary]:
 			"resolution_note":resolution_note,
 			"speech_headline":_companion_speech_headline(str(action.type),
 				str(action.source), resolution_note) if role == "COMPANION" else "",
+			"speech_reason_summary":_companion_speech_reason_summary(str(action.type),
+				str(action.source), resolution_note) if role == "COMPANION" else "",
 			"automatic_suggestion": _overlay_suggestion(action.get("automatic_suggestion", null),
 				card.logical_position) if str(action.source) == "OVERRIDE" else null})
 	return rows.duplicate(true)
@@ -499,6 +501,7 @@ func companion_speech_bubbles() -> Array[Dictionary]:
 			"from_position":intent.from_position.duplicate(true),
 			"source":str(intent.source), "action_type":str(intent.type),
 			"headline":str(intent.speech_headline), "reason":str(intent.reason),
+			"reason_summary":str(intent.speech_reason_summary),
 			"resolution_note":str(intent.resolution_note)})
 	bubbles.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.roster_slot) < int(b.roster_slot) \
@@ -514,6 +517,15 @@ func _companion_speech_headline(action_type: String, source: String,
 	if source == "OVERRIDE" or resolution_note == "destination_conflict_suggested_hold":
 		return "대기할게."
 	return "엄호할게."
+
+
+func _companion_speech_reason_summary(action_type: String, source: String,
+		resolution_note: String) -> String:
+	if source == "OVERRIDE": return "지시를 따라서"
+	if resolution_note == "destination_conflict_suggested_hold": return "길이 겹쳐서"
+	if action_type == "MELEE": return "적이 가까워서"
+	if action_type == "MOVE": return "길이 열려서"
+	return "자리를 지키려고"
 
 
 func turn_summary_lines() -> Array[String]:
