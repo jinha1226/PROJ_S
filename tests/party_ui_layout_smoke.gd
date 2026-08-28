@@ -4,6 +4,7 @@ const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
 var failures:Array[String]=[]
 
@@ -12,6 +13,7 @@ func _init()->void: call_deferred("_run")
 func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
+		await _auto_showcase_and_combat_flow(viewport_size)
 		await _exploration_route_and_popover(viewport_size)
 		await _portrait_detail_modal(viewport_size)
 		await _combat_log_history(viewport_size)
@@ -23,6 +25,65 @@ func _run()->void:
 	for failure in failures: printerr("FAIL "+failure)
 	print("---- party UI layout smoke: %d journeys + %d wide fallbacks, %d failed ----"%[6,2,failures.size()])
 	quit(1 if not failures.is_empty() else 0)
+
+func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
+	var main=Sandbox.new();main.size=viewport_size
+	main.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);main.size=viewport_size;root.add_child(main)
+	await process_frame
+	if str(main.session.party_status().get("scenario_id",""))!="SHOWCASE_V1" or not main.auto_orchestration_enabled:
+		failures.append("%s main sandbox did not start SHOWCASE auto mode"%viewport_size)
+	main.queue_free();await process_frame
+
+	var session=Session.new();var hero:=int(session.party_status().protagonist_id)
+	if not session.commit_exploration(Command.wait(hero)).accepted:
+		failures.append("%s auto CONTACT fixture rejected"%viewport_size);return
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session,true)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	var deploy_step:=int(session.sim.world.step_index);var deploy_journal:int=session.command_journal.size()
+	await process_frame
+	if session.party_status().safe_phase!="CONTACT" or session.sim.world.step_index!=deploy_step \
+			or session.command_journal.size()!=deploy_journal:
+		failures.append("%s first deployment render barrier mutated session"%viewport_size)
+	await process_frame
+	if session.party_status().safe_phase!="ENGAGED":
+		failures.append("%s second deployment barrier did not engage"%viewport_size);sandbox.queue_free();await process_frame;return
+	if session.turn_intent_overlays().size()!=2:
+		failures.append("%s ENGAGED placeholder omitted companion suggestions"%viewport_size)
+	if sandbox.find_child("TurnConfirm",true,false)!=null:
+		failures.append("%s auto mode created TurnConfirm"%viewport_size)
+	var turn_step:=int(session.sim.world.step_index);var turn_journal:int=session.command_journal.size()
+	var hold_button:=_button(sandbox,"ActorHold")
+	if hold_button==null or not hold_button.is_visible_in_tree():
+		failures.append("%s auto hero HOLD unreachable"%viewport_size)
+		sandbox.queue_free();await process_frame;return
+	var hold_center:=hold_button.get_global_rect().get_center()
+	var hold_press:=InputEventMouseButton.new();hold_press.button_index=MOUSE_BUTTON_LEFT
+	hold_press.pressed=true;hold_press.button_mask=MOUSE_BUTTON_MASK_LEFT
+	hold_press.position=hold_center;hold_press.global_position=hold_center
+	root.push_input(hold_press,true)
+	await process_frame
+	if session.sim.world.step_index!=turn_step or session.command_journal.size()!=turn_journal:
+		failures.append("%s pressed-frame mutated auto combat"%viewport_size)
+	var hold_release:=InputEventMouseButton.new();hold_release.button_index=MOUSE_BUTTON_LEFT
+	hold_release.pressed=false;hold_release.button_mask=0
+	hold_release.position=hold_center;hold_release.global_position=hold_center
+	root.push_input(hold_release,true)
+	await process_frame
+	if session.sim.world.step_index!=turn_step or session.command_journal.size()!=turn_journal \
+			or not sandbox.auto_combat_pending or sandbox.auto_combat_render_stage!=0:
+		failures.append("%s release dispatch omitted pending final plan"%viewport_size)
+	await process_frame
+	if session.sim.world.step_index!=turn_step or session.command_journal.size()!=turn_journal \
+			or not sandbox.auto_combat_pending or sandbox.auto_combat_render_stage!=1:
+		failures.append("%s rendered final-plan frame mutated or dropped pending"%viewport_size)
+	await process_frame
+	if session.sim.world.step_index!=turn_step+1 or session.command_journal.size()!=turn_journal+1:
+		failures.append("%s auto hero action did not commit exactly once"%viewport_size)
+	await process_frame
+	if session.sim.world.step_index!=turn_step+1 or session.command_journal.size()!=turn_journal+1 \
+			or sandbox.auto_combat_pending:
+		failures.append("%s auto hero action duplicated or remained pending"%viewport_size)
+	sandbox.queue_free();await process_frame
 
 func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	var session=Session.new();var status:Dictionary=session.party_status()
@@ -302,14 +363,14 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	var grid_id=sandbox.grid.get_instance_id(); var exploration_mapping=sandbox.grid.mapping_signature()
 	_validate_layout(sandbox,"%s %s EXPLORATION"%[viewport_size,preset])
 	var initial_actors:=0; for cell in sandbox.session.observe_party_world().cells: initial_actors+=cell.actors.size()
-	if initial_actors!=1: failures.append("%s %s pre-contact actor visibility"%[viewport_size,preset])
+	if initial_actors!=3: failures.append("%s %s pre-contact actor visibility"%[viewport_size,preset])
 	for button_name in ["ExploreN","ExploreNE","ExploreE","ExploreSE","ExploreS","ExploreSW","ExploreW","ExploreNW","ExploreHold"]:
 		if _button(sandbox,button_name)!=null: failures.append("%s %s legacy D-pad remains %s"%[viewport_size,preset,button_name])
 	await _explore_wait(sandbox)
 	_validate_layout(sandbox,"%s %s CONTACT"%[viewport_size,preset])
 	if sandbox.grid.mapping_signature()!=exploration_mapping: failures.append("%s %s contact changed full-view mapping"%[viewport_size,preset])
 	var contact_actors:=0; for cell in sandbox.session.observe_party_world().cells: contact_actors+=cell.actors.size()
-	if contact_actors!=2: failures.append("%s %s contact enemy reveal"%[viewport_size,preset])
+	if contact_actors!=4: failures.append("%s %s contact enemy reveal"%[viewport_size,preset])
 	if not _button(sandbox,"DeployConfirm").disabled: failures.append("%s %s pre-preset confirm enabled"%[viewport_size,preset])
 	sandbox._on_deploy_confirm(); await process_frame
 	if not "먼저" in str(sandbox.find_child("ActionStatus",true,false).text): failures.append("%s %s rejected confirm invisible"%[viewport_size,preset])
@@ -335,7 +396,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	if sandbox.session.sim.snapshot()!=draft_snapshot:failures.append("%s %s draft-required button changed world"%[viewport_size,preset])
 	await _press(sandbox,"MemberCard%d"%hero)
 	await _press(sandbox,"ActorHold")
-	if str(draft_required.message) in sandbox.action_feedback_label.text or not "턴 확정" in sandbox.action_feedback_label.text:
+	if str(draft_required.message) in sandbox.action_feedback_label.text or not "실행" in sandbox.action_feedback_label.text:
 		failures.append("%s %s accepted action did not replace stale rejection feedback"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s COMBAT_HERO_DIRECT"%[viewport_size,preset])
 	await _press(sandbox,"MemberCard%d"%companion)
@@ -432,8 +493,16 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	if sandbox.combat_action_dock.visible or sandbox.combat_action_dock.is_visible_in_tree():failures.append("%s %s combat dock remains after victory"%[viewport_size,preset])
 	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s victory banner missing"%[viewport_size,preset])
 	var old_anchor:Array=sandbox.session.party_status().anchor
-	await _touch_cell(sandbox,Vector2i(int(old_anchor[0])-1,int(old_anchor[1])))
-	await _touch_cell(sandbox,Vector2i(int(old_anchor[0])-1,int(old_anchor[1])))
+	var regroup_goal:=Vector2i(-1,-1);var regroup_origin:=Vector2i(int(old_anchor[0]),int(old_anchor[1]))
+	for direction in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+		var candidate:Vector2i=regroup_origin+direction
+		if sandbox.grid.actor_in_world_cell(candidate)!=-1:continue
+		var probe:Dictionary=sandbox.session.preview_exploration_route(candidate)
+		sandbox.session.cancel_exploration_route()
+		if bool(probe.get("accepted",false)):regroup_goal=candidate;break
+	if regroup_goal==Vector2i(-1,-1):failures.append("%s %s no follower-free regroup move"%[viewport_size,preset])
+	else:
+		sandbox._refresh();await _touch_cell(sandbox,regroup_goal);await _touch_cell(sandbox,regroup_goal)
 	if sandbox.session.party_status().anchor==old_anchor: failures.append("%s %s grouped-complete anchor stale"%[viewport_size,preset])
 	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.mapping_signature()!=exploration_mapping: failures.append("%s %s grid identity/restored mapping changed"%[viewport_size,preset])
 	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s post-regroup move lost persistent victory banner"%[viewport_size,preset])
@@ -852,8 +921,8 @@ func _validate_card_content(sandbox,label:String)->void:
 		if content_rect.position.x<card_rect.position.x-0.1 or content_rect.end.x>card_rect.end.x+0.1 \
 				or content_rect.position.y<card_rect.position.y-0.1 or content_rect.end.y>card_rect.end.y+0.1:
 			failures.append("%s card content bounds clip %s content=%s card=%s"%[label,card.name,content_rect,card_rect])
-		var portrait:=card.find_child("Portrait",true,false) as TextureRect
-		if portrait==null or not portrait.texture is AtlasTexture:
+		var portrait:=card.find_child("Portrait",true,false)
+		if not portrait is AsciiPortrait or portrait.actor_dto().is_empty():
 			failures.append("%s card portrait missing %s"%[label,card.name])
 		for node_name in ["MemberName","MemberState","StressState","Readiness","EmotionState"]:
 			var text_label:=card.find_child(node_name,true,false) as Label

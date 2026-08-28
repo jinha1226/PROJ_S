@@ -19,7 +19,11 @@ func test_grouped_members_are_exposed_but_do_not_occupy_or_block() -> bool:
 	for row in cards: check(bool(row.element_exposure.applicable),"grouped exposure applicable")
 	var observation=session.observe_party_world(); var actors:=0
 	for cell in observation.cells: actors += cell.actors.size()
-	check_eq(actors,1,"only protagonist rendered before contact")
+	check_eq(actors,3,"protagonist and two presentation followers render before contact")
+	check_eq(world.occupying_entities_at(state.group_anchor).size(),1,
+		"presentation followers do not become authoritative occupants")
+	check_eq(world.blocking_entity_at(state.group_anchor).id,state.protagonist_id,
+		"presentation followers never become blockers")
 	return finish()
 
 func test_generic_sim_commands_are_phase_gated_and_transactional() -> bool:

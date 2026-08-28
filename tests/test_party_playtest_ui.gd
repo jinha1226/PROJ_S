@@ -4,6 +4,7 @@ const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
 func test_same_grid_keeps_full_mapping_through_contact() -> bool:
 	var sandbox=Sandbox.new(); sandbox.size=Vector2(450,800); sandbox.initialize_for_headless_test(Session.new())
@@ -243,11 +244,11 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		sandbox.grid.size=sandbox.grid.custom_minimum_size
 		var grid_id=sandbox.grid.get_instance_id(); var full_mapping=sandbox.grid.mapping_signature()
 		var actor_count:=0; for cell in sandbox.session.observe_party_world().cells: actor_count += cell.actors.size()
-		check_eq(actor_count,1,"%s enemies hidden before contact"%preset)
+		check_eq(actor_count,3,"%s party presentation actors visible before contact"%preset)
 		_explore_wait(sandbox)
 		check_eq(sandbox.session.party_status().safe_phase,"CONTACT","%s contact"%preset)
 		actor_count=0; for cell in sandbox.session.observe_party_world().cells: actor_count += cell.actors.size()
-		check_eq(actor_count,2,"%s enemy revealed at contact"%preset)
+		check_eq(actor_count,4,"%s enemy joins three party presentation actors at contact"%preset)
 		var initial_confirm:Button=_button(sandbox,"DeployConfirm"); check(initial_confirm.disabled,"confirm disabled before preset")
 		sandbox._on_deploy_confirm(); sandbox._refresh(); check("먼저" in str(sandbox.find_child("ActionStatus",true,false).text),"visible confirm rejection")
 		_press(sandbox,"Preset%s"%preset)
@@ -281,7 +282,7 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check(sandbox.action_feedback_label.get_theme_font_size("font_size")>=16,"%s fixed feedback font"%preset)
 		check_eq(_button(sandbox,"ActorHold").text,"선택 대기","%s dock hold label"%preset)
 		check_eq(_button(sandbox,"OverrideClear").text,"자동 제안 복원","%s dock restore label"%preset)
-		check_eq(_button(sandbox,"TurnConfirm").text,"턴 확정","%s dock confirm label"%preset)
+		check_eq(_button(sandbox,"TurnConfirm").text,"지금 실행","%s legacy dock execute label"%preset)
 		sandbox.free()
 	return finish()
 
@@ -466,11 +467,11 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 	check_eq(sandbox.cards.get_child_count(),3,"all three HUD portraits present together")
 	for member_id in sandbox.session.party_status().party_member_ids:
 		var card := _button(sandbox,"MemberCard%d"%int(member_id))
-		var portrait := card.find_child("Portrait", true, false) as TextureRect
-		check(portrait != null and portrait.texture is AtlasTexture, "member card has AtlasTexture portrait")
+		var portrait := card.find_child("Portrait", true, false)
+		check(portrait is AsciiPortrait, "member card has code-native ASCII portrait")
 		check(portrait.custom_minimum_size.x>=52 and portrait.custom_minimum_size.y>=54,"portrait is enlarged")
-		var region:Vector2=(portrait.texture as AtlasTexture).region.size
-		check(region.x<36 and region.y<44,"portrait crops face and upper body")
+		check(not portrait.actor_dto().is_empty() and not str(portrait.actor_draw_spec().glyph).is_empty(),
+			"portrait owns detached actor data and glyph")
 		check(card.find_child("MemberName", true, false) != null, "card has controlled name row")
 		check(card.find_child("MemberState", true, false) != null, "card has HP/status/presence row")
 		check(card.find_child("HealthBar", true, false) != null, "card has HP bar")

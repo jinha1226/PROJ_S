@@ -4,11 +4,14 @@ extends Control
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
+const ActionScript=preload("res://sim/party_action_command.gd")
+const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
 const FONT_AUX:=16
 const FONT_BODY:=18
 const FONT_KEY:=22
 const TOUCH_TARGET:=44
+const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 
 var session
 var grid
@@ -57,14 +60,38 @@ var _last_card_tap_position:=Vector2(-10000,-10000)
 var _direct_card_touch_id:=-1
 var _direct_card_touch_msec:=-1000
 var _scroll_log_after_refresh:=false
+var auto_orchestration_enabled:=false
+var auto_generation:=0
+var auto_deployment_pending:=false
+var auto_deployment_fallback:=false
+var auto_deployment_signature:=""
+var auto_deployment_step_index:=-1
+var auto_deployment_render_stage:=0
+var auto_combat_pending:=false
+var auto_combat_fallback:=false
+var auto_combat_plan_hash:=""
+var auto_combat_step_index:=-1
+var auto_combat_render_stage:=0
+var auto_override_edit:=false
+var auto_phase:=""
+var exploration_follow_plan:Dictionary={}
+var _initialized_for_headless_test:=false
 
 func _ready()->void:
 	_build_ui()
-	if session==null: session=SessionScript.new()
+	if not _initialized_for_headless_test and session==null:
+		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
+			SessionScript.DEFAULT_PERSONALITY_SEED,SessionScript.SHOWCASE_SCENARIO_ID)
+		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
-func initialize_for_headless_test(custom_session=null)->void:
+	if _initialized_for_headless_test and auto_orchestration_enabled:
+		_arm_pending_auto_after_tree_entry()
+func initialize_for_headless_test(custom_session=null,auto_orchestration:bool=false)->void:
 	if grid==null: _build_ui()
-	session=custom_session if custom_session!=null else SessionScript.new(); _refresh()
+	_initialized_for_headless_test=true
+	session=custom_session if custom_session!=null else SessionScript.new()
+	auto_orchestration_enabled=auto_orchestration
+	_reset_auto_flow();_refresh()
 
 func _build_ui()->void:
 	if grid!=null:return
@@ -152,6 +179,9 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
+	if auto_orchestration_enabled:
+		_orchestrate_auto_phase(status)
+		status=session.party_status()
 	var safe_phase:=str(status.safe_phase)
 	if _action_feedback_phase!=safe_phase:
 		action_feedback_text="";_action_feedback_phase=safe_phase
@@ -178,9 +208,11 @@ func _refresh()->void:
 		var route_state:Dictionary=session.exploration_route_state()
 		var state_matches_local:=route_preview.is_empty() or _route_goal(route_state)==_route_goal(route_preview)
 		if bool(route_state.get("has_preview",false)) and state_matches_local:
-			route_preview=route_state.duplicate(true);_apply_route_overlay(route_state)
-		elif route_preview.is_empty() or not bool(route_preview.get("accepted",false)):grid.clear_route_overlay()
-	else:grid.clear_route_overlay()
+			route_preview=route_state.duplicate(true);_apply_route_overlay(route_state);_apply_companion_follow_plan(route_state)
+		elif route_preview.is_empty() or not bool(route_preview.get("accepted",false)):
+			grid.clear_route_overlay();_clear_companion_follow_plan()
+	else:
+		grid.clear_route_overlay();_clear_companion_follow_plan()
 	if pending_move_actor_id>0:grid.set_cursor_preview(pending_move_actor_id,pending_move_origin,pending_move_destination,pending_move_valid)
 	else:grid.clear_cursor_preview()
 	_refresh_tile_popover(status)
@@ -199,13 +231,121 @@ func _refresh()->void:
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
 
+func _reset_auto_flow()->void:
+	auto_generation+=1
+	auto_deployment_pending=false;auto_deployment_fallback=false
+	auto_deployment_signature="";auto_deployment_step_index=-1;auto_deployment_render_stage=0
+	auto_combat_pending=false;auto_combat_fallback=false
+	auto_combat_plan_hash="";auto_combat_step_index=-1;auto_combat_render_stage=0
+	auto_override_edit=false;auto_phase="";exploration_follow_plan.clear()
+
+func _arm_pending_auto_after_tree_entry()->void:
+	if not is_inside_tree():return
+	if auto_deployment_pending and auto_deployment_render_stage==0:
+		get_tree().process_frame.connect(_advance_auto_deployment_preview.bind(auto_generation),CONNECT_ONE_SHOT)
+	elif auto_combat_pending and auto_combat_render_stage==0:
+		_arm_auto_combat_preview(auto_generation)
+
+func _orchestrate_auto_phase(status:Dictionary)->void:
+	var phase:=str(status.get("safe_phase",""))
+	if phase!=auto_phase:
+		auto_generation+=1;auto_deployment_pending=false;auto_combat_pending=false
+		auto_deployment_signature="";auto_combat_plan_hash=""
+		auto_deployment_render_stage=0;auto_combat_render_stage=0
+		auto_deployment_fallback=false;auto_combat_fallback=false;auto_override_edit=false
+		auto_phase=phase
+	match phase:
+		"CONTACT":
+			if not auto_deployment_pending and not auto_deployment_fallback:_prepare_auto_deployment(status)
+		"ENGAGED":
+			var planning:Dictionary=session.auto_combat_planning_state()
+			if not bool(planning.get("active",false)):planning=session.prepare_auto_combat_plan()
+			if not bool(planning.get("accepted",false)):
+				auto_combat_fallback=true
+				action_feedback_text=str(planning.get("message","자동 계획을 준비할 수 없습니다. 행동을 직접 지정하세요."))
+		_:
+			auto_deployment_pending=false;auto_combat_pending=false
+
+func _prepare_auto_deployment(status:Dictionary)->void:
+	var companion_ids:Array=session.available_companion_ids()
+	for preset in AUTO_FORMATION_ORDER:
+		var result:Dictionary=session.preview_deployment(preset,companion_ids)
+		if not bool(result.get("accepted",false)):continue
+		var draft:Dictionary=session.deployment_draft()
+		auto_generation+=1;auto_deployment_pending=true;auto_deployment_render_stage=0
+		auto_deployment_signature=JSON.stringify(draft)
+		auto_deployment_step_index=int(status.get("step_index",-1))
+		notice_text="%s 대형을 자동 배치합니다."%{"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대"}.get(preset,preset)
+		action_feedback_text="자동 배치 미리보기"
+		if is_inside_tree():
+			get_tree().process_frame.connect(_advance_auto_deployment_preview.bind(auto_generation),CONNECT_ONE_SHOT)
+		return
+	auto_deployment_fallback=true
+	notice_text="자동 배치가 불가능합니다. 대형을 직접 선택하세요."
+	action_feedback_text=notice_text
+
+func _advance_auto_deployment_preview(expected_generation:int)->void:
+	if not auto_orchestration_enabled or not auto_deployment_pending or expected_generation!=auto_generation:return
+	var status:Dictionary=session.party_status()
+	if str(status.get("safe_phase",""))!="CONTACT" or member_detail_modal.visible \
+			or bool(grid.pointer_gesture_state().get("active",false)):
+		_cancel_auto_pending(true);_request_refresh();return
+	auto_deployment_render_stage=1
+	if is_inside_tree():
+		get_tree().process_frame.connect(_commit_auto_deployment.bind(expected_generation),CONNECT_ONE_SHOT)
+
+func _commit_auto_deployment(expected_generation:int)->void:
+	if not auto_orchestration_enabled or not auto_deployment_pending or expected_generation!=auto_generation:return
+	var status:Dictionary=session.party_status()
+	var pointer_active:=bool(grid.pointer_gesture_state().get("active",false))
+	var draft:Dictionary=session.deployment_draft()
+	if str(status.get("safe_phase",""))!="CONTACT" or int(status.get("step_index",-1))!=auto_deployment_step_index \
+			or pointer_active or member_detail_modal.visible or not bool(draft.get("accepted",false)) \
+			or JSON.stringify(draft)!=auto_deployment_signature:
+		_cancel_auto_pending(true);_request_refresh();return
+	auto_deployment_pending=false
+	var result:Dictionary=session.commit_deployment()
+	if not bool(result.get("accepted",false)):auto_deployment_fallback=true
+	_record_result(result,true,"자동 배치 불가")
+	_refresh()
+
+func _cancel_auto_pending(use_manual_fallback:bool=false)->void:
+	auto_generation+=1;auto_deployment_pending=false;auto_combat_pending=false
+	auto_deployment_signature="";auto_combat_plan_hash=""
+	auto_deployment_render_stage=0;auto_combat_render_stage=0
+	if use_manual_fallback:
+		var phase:=str(session.party_status().get("safe_phase","")) if session!=null else ""
+		if phase=="CONTACT":auto_deployment_fallback=true
+		elif phase=="ENGAGED":auto_combat_fallback=true
+
+func _apply_companion_follow_plan(route_state:Dictionary)->void:
+	exploration_follow_plan=session.exploration_companion_follow_plan(route_state) \
+		if session.has_method("exploration_companion_follow_plan") else {}
+	if grid.has_method("set_exploration_companion_follow_plan"):
+		grid.call("set_exploration_companion_follow_plan",exploration_follow_plan)
+	elif grid.has_method("set_companion_follow_plan"):
+		grid.call("set_companion_follow_plan",exploration_follow_plan)
+
+func _clear_companion_follow_plan()->void:
+	exploration_follow_plan.clear()
+	if grid.has_method("set_exploration_companion_follow_plan"):
+		grid.call("set_exploration_companion_follow_plan",{})
+	elif grid.has_method("set_companion_follow_plan"):
+		grid.call("set_companion_follow_plan",{})
+
+func auto_flow_state()->Dictionary:
+	return {"enabled":auto_orchestration_enabled,"phase":auto_phase,"generation":auto_generation,
+		"deployment_pending":auto_deployment_pending,"deployment_fallback":auto_deployment_fallback,
+		"deployment_render_stage":auto_deployment_render_stage,
+		"combat_pending":auto_combat_pending,"combat_fallback":auto_combat_fallback,
+		"combat_render_stage":auto_combat_render_stage,
+		"override_edit":auto_override_edit,"plan_hash":auto_combat_plan_hash,
+		"follow_plan":exploration_follow_plan.duplicate(true)}.duplicate(true)
+
 func _add_member_card(row:Dictionary)->void:
 	var button:=Button.new(); var member_id:=int(row.entity_id); button.name="MemberCard%d"%member_id
 	button.custom_minimum_size=Vector2(44,160); button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
-	var portrait:=AtlasTexture.new(); portrait.atlas=GridScript.CHARACTER_ATLAS; var frame:=0 if str(row.role)=="PROTAGONIST" else 4
-	var frame_origin:=Vector2((frame%GridScript.CHARACTER_ATLAS_COLUMNS)*GridScript.CHARACTER_FRAME_SIZE.x,floori(float(frame)/GridScript.CHARACTER_ATLAS_COLUMNS)*GridScript.CHARACTER_FRAME_SIZE.y)
-	portrait.region=Rect2(frame_origin+Vector2(4,0),Vector2(28,32))
 	button.modulate=Color("#d8f3ff") if member_id==selected_member_id else Color.WHITE
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,3)
@@ -213,8 +353,13 @@ func _add_member_card(row:Dictionary)->void:
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; button.add_child(inset)
 	var stack:=VBoxContainer.new(); stack.name="CardStack"; stack.add_theme_constant_override("separation",0); stack.mouse_filter=Control.MOUSE_FILTER_IGNORE; inset.add_child(stack)
 	var heading:=HBoxContainer.new(); heading.name="CardHeading"; heading.alignment=BoxContainer.ALIGNMENT_CENTER; heading.mouse_filter=Control.MOUSE_FILTER_IGNORE; stack.add_child(heading)
-	var portrait_view:=TextureRect.new(); portrait_view.name="Portrait"; portrait_view.texture=portrait; portrait_view.custom_minimum_size=Vector2(52,54)
-	portrait_view.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; portrait_view.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED; portrait_view.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST; portrait_view.mouse_filter=Control.MOUSE_FILTER_IGNORE; heading.add_child(portrait_view)
+	var portrait_view=PortraitScript.new();portrait_view.name="Portrait";portrait_view.custom_minimum_size=Vector2(52,54)
+	var portrait_actor:Dictionary=row.duplicate(true);var detail:Dictionary=session.inspect_party_member(member_id)
+	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
+	portrait_actor["species_id"]=str(detail.get("species_id",portrait_actor.get("species_id","human")))
+	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
+	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
+	portrait_view.set_actor(portrait_actor);heading.add_child(portrait_view)
 	var name_label:=_card_label(("▶" if member_id==selected_member_id else "")+str(row.display_name),"MemberName",FONT_BODY); name_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; stack.add_child(name_label)
 	stack.add_child(_card_label("HP %d/%d"%[int(row.health),int(row.max_health)],"MemberState",FONT_AUX))
 	stack.add_child(_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX))
@@ -257,6 +402,9 @@ func _exploration_deck()->void:
 func _deployment_deck(deployment:Dictionary)->void:
 	var preset_label:String={"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대","NONE":"미선택"}.get(str(deployment.preset_id),"미선택")
 	_add_notice(notice_text if not notice_text.is_empty() else "배치 대형: %s · %s"%[preset_label,str(deployment.message)])
+	if auto_orchestration_enabled and auto_deployment_pending:
+		_add_notice("%s 대형 ghost를 확인한 뒤 자동으로 전투를 시작합니다."%preset_label,"AutoDeploymentPreview",FONT_AUX)
+		_selected_detail();return
 	var controls:=HBoxContainer.new(); controls.name="FormationControls"; deck.add_child(controls)
 	for preset in ["WEDGE","LINE","COLUMN"]:
 		var button:=_add_button(controls,{"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대"}[preset],"Preset%s"%preset,_on_preset.bind(preset)); button.toggle_mode=true; button.button_pressed=str(deployment.preset_id)==preset
@@ -265,6 +413,12 @@ func _deployment_deck(deployment:Dictionary)->void:
 func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	if bool(status.terminal):_add_notice("파티가 패배했습니다. 주인공이 쓰러져 더 행동할 수 없습니다.","TerminalOverlay",FONT_KEY); return
 	var actor_name:=_selected_name(); var instruction:="%s 선택 · 빈 칸은 이동, 적은 공격"%actor_name
+	if auto_orchestration_enabled:
+		var planning:Dictionary=session.auto_combat_planning_state()
+		if bool(planning.get("placeholder",false)):
+			instruction="동료 제안이 준비되었습니다 · 주인공의 실제 행동을 선택하세요."
+		elif auto_combat_pending:instruction="최종 계획을 표시했습니다 · 잠시 뒤 자동 실행합니다."
+		elif auto_override_edit:instruction="동료 지시 편집 중 · 준비되면 지금 실행을 누르세요."
 	if not notice_text.is_empty():instruction=notice_text
 	elif not bool(preview.get("accepted",false)):instruction+=" · "+str(preview.get("message","주인공 행동을 먼저 지정하세요."))
 	_add_notice(instruction)
@@ -286,15 +440,36 @@ func _legacy_regroup_notice()->void:_add_notice("승리했습니다. 호환 상�
 func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
 	if str(status.safe_phase)!="ENGAGED":return
 	combat_action_area.visible=true;combat_action_dock.visible=true
+	if auto_orchestration_enabled:
+		_build_auto_combat_action_area(status);return
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text
-	elif bool(preview.get("accepted",false)):action_feedback_label.text="행동 준비 완료 · 필요하면 수정한 뒤 턴을 확정하세요."
-	else:action_feedback_label.text="행동 지정 → 턴 확정\n빈 칸 이동 · 적 공격 · 선택 대기"
+	elif bool(preview.get("accepted",false)):action_feedback_label.text="행동 준비 완료 · 필요하면 수정한 뒤 실행하세요."
+	else:action_feedback_label.text="행동 지정 → 실행\n빈 칸 이동 · 적 공격 · 선택 대기"
 	var hold:=_add_button(combat_action_dock,"선택 대기","ActorHold",_on_actor_hold)
 	hold.size_flags_stretch_ratio=1.0
 	var clear:=_add_button(combat_action_dock,"자동 제안 복원","OverrideClear",_on_override_clear)
 	clear.size_flags_stretch_ratio=1.35;clear.disabled=selected_member_id==int(status.protagonist_id)
-	var confirm:=_add_button(combat_action_dock,"턴 확정","TurnConfirm",_on_turn_confirm)
+	var confirm:=_add_button(combat_action_dock,"지금 실행","TurnConfirm",_on_turn_confirm)
 	confirm.size_flags_stretch_ratio=0.9;confirm.disabled=not bool(preview.get("accepted",false))
+
+func _build_auto_combat_action_area(status:Dictionary)->void:
+	var planning:Dictionary=session.auto_combat_planning_state()
+	if auto_combat_pending:
+		action_feedback_label.text="최종 행동과 동료 제안을 표시 중입니다."
+		combat_action_dock.visible=false;return
+	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text
+	elif bool(planning.get("placeholder",false)):action_feedback_label.text="동료 제안 준비 완료 · 주인공 행동을 선택하세요."
+	elif auto_override_edit:action_feedback_label.text="개별 지시 편집 중 · 준비되면 지금 실행"
+	else:action_feedback_label.text="행동 선택 시 최종 계획을 보여 준 뒤 자동 실행합니다."
+	var protagonist_id:=int(status.get("protagonist_id",-1))
+	var hold_text:="주인공 대기" if selected_member_id==protagonist_id else "개별 대기"
+	var hold:=_add_button(combat_action_dock,hold_text,"ActorHold",_on_actor_hold);hold.size_flags_stretch_ratio=1.0
+	if selected_member_id!=protagonist_id:
+		var clear:=_add_button(combat_action_dock,"자동 제안 복원","OverrideClear",_on_override_clear)
+		clear.size_flags_stretch_ratio=1.35
+	if bool(planning.get("commit_ready",false)) and (auto_override_edit or auto_combat_fallback):
+		var execute:=_add_button(combat_action_dock,"지금 실행","AutoExecute",_on_auto_execute)
+		execute.size_flags_stretch_ratio=0.9
 
 func _selected_detail()->void:
 	for row in session.party_cards():
@@ -312,6 +487,9 @@ func _selected_detail()->void:
 
 func _select_member(member_id:int,display_name:String)->void:
 	var view_mode:=str(session.party_status().get("view_mode",""))
+	if auto_orchestration_enabled and view_mode=="COMBAT" \
+			and member_id!=int(session.party_status().get("protagonist_id",-1)):
+		_cancel_auto_pending(true);auto_override_edit=true
 	selected_member_id=member_id;selected_target_id=-1;notice_text="%s 선택"%display_name
 	action_feedback_text="%s 선택 · 행동을 지정하세요."%display_name
 	if view_mode=="COMBAT":_clear_move_preview()
@@ -351,6 +529,7 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 	_select_member(member_id,display_name)
 
 func _open_member_detail(member_id:int)->void:
+	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
@@ -368,6 +547,7 @@ func _close_member_detail()->void:
 	member_detail_modal.visible=false;grid.modal_open=false
 	var resume:=route_paused_by_modal;route_paused_by_modal=false
 	if resume:_schedule_route_continue()
+	elif auto_orchestration_enabled:_request_refresh()
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_member_detail()
@@ -389,24 +569,113 @@ func _measure_member_detail_body()->void:
 	member_detail_body.custom_minimum_size.y=maxf(line_height,float(member_detail_body.get_line_count())*line_height+8.0)
 func _on_explore(direction:Vector2i)->void:_record_result(session.commit_exploration_direction(direction),true); _request_refresh()
 func _on_preset(preset:String)->void:
+	if auto_orchestration_enabled:_cancel_auto_pending(true);auto_deployment_fallback=true
 	var result:Dictionary=session.preview_deployment(preset,session.available_companion_ids()); notice_text="%s 대형: %s"%[{"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대"}[preset],str(result.message)]
 	action_feedback_text="대형 미리보기 완료 · 배치 확정을 누르세요." if bool(result.get("accepted",false)) else str(result.get("message","배치할 수 없습니다."));_request_refresh()
 func _on_deploy_confirm()->void:
+	if auto_orchestration_enabled:_cancel_auto_pending(true);auto_deployment_fallback=true
 	var draft:Dictionary=session.deployment_draft()
 	if not bool(draft.accepted):notice_text=str(draft.message);_set_action_rejection(draft,"배치 확정 불가")
 	else:_record_result(session.commit_deployment(),true)
 	_request_refresh()
 func _on_actor_hold()->void:
-	_clear_move_preview();_record_result(session.set_actor_action(selected_member_id,"HOLD"),false,"%s 대기 불가"%_selected_name());_request_refresh()
+	_clear_move_preview()
+	if auto_orchestration_enabled:_stage_auto_combat_action("HOLD")
+	else:_record_result(session.set_actor_action(selected_member_id,"HOLD"),false,"%s 대기 불가"%_selected_name());_request_refresh()
 func _on_override_clear()->void:
-	_clear_move_preview();_record_result(session.clear_companion_override(selected_member_id),false,"%s 자동 제안 복원 불가"%_selected_name());_request_refresh()
+	_clear_move_preview()
+	if auto_orchestration_enabled:
+		_cancel_auto_pending(false);auto_override_edit=true
+	_record_result(session.clear_companion_override(selected_member_id),false,"%s 자동 제안 복원 불가"%_selected_name());_request_refresh()
 func _on_turn_confirm()->void:
+	if auto_orchestration_enabled:_on_auto_execute();return
 	var current:Dictionary=session.current_turn_preview()
 	if not bool(current.get("accepted",false)):_record_result(current,false,"턴 확정 불가")
 	else:
 		_record_result(session.commit_turn(),true,"",true); _clear_move_preview()
 		if session.party_status().safe_phase=="GROUPED_COMPLETE":notice_text="승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
-	_request_refresh()
+		_request_refresh()
+
+func _on_auto_execute()->void:
+	var planning:Dictionary=session.auto_combat_planning_state()
+	if not bool(planning.get("commit_ready",false)):
+		_set_action_rejection(planning,"실행 불가");_request_refresh();return
+	auto_override_edit=false;auto_combat_fallback=false
+	_schedule_auto_combat_commit(planning)
+
+func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id:int=-1)->void:
+	var status:Dictionary=session.party_status();var protagonist_id:=int(status.get("protagonist_id",-1))
+	_cancel_auto_pending(false)
+	if selected_member_id==protagonist_id:
+		var action=_make_party_action(selected_member_id,action_type,destination,target_id)
+		var planning:Dictionary=session.replace_auto_combat_protagonist_action(action)
+		if not bool(planning.get("accepted",false)) or not bool(planning.get("commit_ready",false)):
+			auto_combat_fallback=true;_set_action_rejection(planning,"%s 행동 불가"%_selected_name());_request_refresh();return
+		auto_override_edit=false;auto_combat_fallback=false
+		notice_text="";action_feedback_text="최종 계획을 확인했습니다."
+		_schedule_auto_combat_commit(planning)
+	else:
+		auto_override_edit=true
+		var result:Dictionary=session.set_actor_action(selected_member_id,action_type,destination,target_id)
+		_record_result(result,false,"%s 개별 지시 불가"%_selected_name());_request_refresh()
+
+func _make_party_action(actor_id:int,action_type:String,destination:Array,target_id:int):
+	if action_type=="HOLD":return ActionScript.hold(actor_id)
+	if action_type=="MOVE" and destination.size()==2:
+		return ActionScript.move_to(actor_id,Vector2i(int(destination[0]),int(destination[1])))
+	if action_type=="MELEE" and target_id>0:return ActionScript.melee(actor_id,target_id)
+	return null
+
+func _schedule_auto_combat_commit(planning:Dictionary)->void:
+	var plan_hash:=str(planning.get("plan_hash",""))
+	if not bool(planning.get("commit_ready",false)) or plan_hash.is_empty():
+		auto_combat_fallback=true;return
+	var status:Dictionary=session.party_status()
+	auto_generation+=1;auto_combat_pending=true;auto_combat_fallback=false;auto_combat_render_stage=0
+	auto_combat_plan_hash=plan_hash;auto_combat_step_index=int(status.get("step_index",-1))
+	action_feedback_text="최종 계획 표시 · 자동 실행 대기"
+	_request_refresh();call_deferred("_arm_auto_combat_preview",auto_generation)
+
+func _arm_auto_combat_preview(expected_generation:int)->void:
+	if not auto_orchestration_enabled or not auto_combat_pending or expected_generation!=auto_generation:return
+	if is_inside_tree():
+		get_tree().process_frame.connect(_advance_auto_combat_preview.bind(expected_generation),CONNECT_ONE_SHOT)
+
+func _advance_auto_combat_preview(expected_generation:int)->void:
+	if not auto_orchestration_enabled or not auto_combat_pending or expected_generation!=auto_generation:return
+	var status:Dictionary=session.party_status()
+	if str(status.get("safe_phase",""))!="ENGAGED" or member_detail_modal.visible \
+			or bool(grid.pointer_gesture_state().get("active",false)):
+		_cancel_auto_pending(true);_request_refresh();return
+	auto_combat_render_stage=1
+	if is_inside_tree():
+		get_tree().process_frame.connect(_commit_auto_combat_plan.bind(expected_generation),CONNECT_ONE_SHOT)
+
+func _commit_auto_combat_plan(expected_generation:int)->void:
+	if not auto_orchestration_enabled or not auto_combat_pending or expected_generation!=auto_generation:return
+	var status:Dictionary=session.party_status();var planning:Dictionary=session.auto_combat_planning_state()
+	var pointer_active:=bool(grid.pointer_gesture_state().get("active",false))
+	if str(status.get("safe_phase",""))!="ENGAGED" or bool(status.get("terminal",false)) \
+			or int(status.get("step_index",-1))!=auto_combat_step_index or pointer_active \
+			or member_detail_modal.visible or auto_override_edit \
+			or not bool(planning.get("commit_ready",false)) \
+			or str(planning.get("plan_hash",""))!=auto_combat_plan_hash:
+		_cancel_auto_pending(true);_request_refresh();return
+	auto_combat_pending=false;auto_generation+=1
+	var result:Dictionary=session.commit_turn()
+	if not bool(result.get("accepted",false)):auto_combat_fallback=true
+	_record_result(result,true,"자동 실행 불가",true);_clear_move_preview()
+	if session.party_status().safe_phase=="GROUPED_COMPLETE":notice_text="승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
+	_refresh()
+
+func flush_auto_flow_for_headless_test()->Dictionary:
+	if auto_deployment_pending:
+		if auto_deployment_render_stage==0:_advance_auto_deployment_preview(auto_generation)
+		else:_commit_auto_deployment(auto_generation)
+	elif auto_combat_pending:
+		if auto_combat_render_stage==0:_advance_auto_combat_preview(auto_generation)
+		else:_commit_auto_combat_plan(auto_generation)
+	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
@@ -434,7 +703,10 @@ func _on_cell(position:Vector2i)->void:
 	selected_target_id=-1
 	var preview:Dictionary=session.preview_actor_action(selected_member_id,"MOVE",[position.x,position.y])
 	var same:=pending_move_mode=="COMBAT" and pending_move_actor_id==selected_member_id and pending_move_destination==position
-	if same and pending_move_valid:_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),false,"%s 이동 불가"%_selected_name()); _clear_move_preview()
+	if same and pending_move_valid:
+		if auto_orchestration_enabled:_stage_auto_combat_action("MOVE",[position.x,position.y])
+		else:_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),false,"%s 이동 불가"%_selected_name())
+		_clear_move_preview()
 	else:
 		pending_move_mode="COMBAT"; pending_exploration_wait=false
 		pending_move_actor_id=selected_member_id; pending_move_origin=_selected_position(); pending_move_destination=position
@@ -447,6 +719,14 @@ func _on_cell(position:Vector2i)->void:
 func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
+	if status.view_mode=="EXPLORATION" and entity_id!=int(status.protagonist_id) \
+			and entity_id in status.party_member_ids:
+		# Grouped companions are presentation-only followers during exploration.
+		# Tapping their glyph must retain the map's primary navigation contract,
+		# rather than selecting a logical actor that still occupies the hero anchor.
+		var follower_cell:=_exploration_follower_display_position(entity_id)
+		if follower_cell!=Vector2i(-1,-1):
+			_on_cell(follower_cell);return
 	if status.view_mode=="EXPLORATION" and entity_id==int(status.protagonist_id):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
@@ -460,11 +740,29 @@ func _on_actor(entity_id:int)->void:
 		_request_refresh(); return
 	if entity_id in status.visible_enemy_ids:
 		selected_target_id=entity_id; _clear_move_preview()
-		if status.view_mode=="COMBAT" and not bool(status.terminal):_record_result(session.set_actor_action(selected_member_id,"MELEE",[],entity_id),false,"%s 공격 불가"%_selected_name())
+		if status.view_mode=="COMBAT" and not bool(status.terminal):
+			if auto_orchestration_enabled:_stage_auto_combat_action("MELEE",[],entity_id)
+			else:_record_result(session.set_actor_action(selected_member_id,"MELEE",[],entity_id),false,"%s 공격 불가"%_selected_name())
 		_request_refresh(); return
 	if entity_id in status.party_member_ids:
+		if auto_orchestration_enabled and status.view_mode=="COMBAT" and entity_id!=int(status.protagonist_id):
+			_cancel_auto_pending(true);auto_override_edit=true
 		selected_member_id=entity_id;selected_target_id=-1;notice_text="파티원을 선택했습니다."
 		action_feedback_text="%s 선택 · 행동을 지정하세요."%_selected_name();_clear_move_preview();_request_refresh()
+
+func _exploration_follower_display_position(entity_id:int)->Vector2i:
+	var observation:Dictionary=session.observe_party_world()
+	for cell_value in observation.get("cells",[]):
+		if not cell_value is Dictionary:continue
+		var cell:Dictionary=cell_value
+		for actor_value in cell.get("actors",[]):
+			if not actor_value is Dictionary:continue
+			var actor:Dictionary=actor_value
+			if int(actor.get("entity_id",-1))!=entity_id \
+					or str(actor.get("display_role","")).to_upper()!="FOLLOWER":continue
+			var raw:Variant=actor.get("display_position",cell.get("position",[]))
+			if raw is Array and raw.size()==2:return Vector2i(int(raw[0]),int(raw[1]))
+	return Vector2i(-1,-1)
 
 func _selected_name()->String:
 	for row in session.party_cards():if int(row.entity_id)==selected_member_id:return str(row.display_name)
@@ -534,6 +832,17 @@ func _continue_route_on_frame(expected_generation:int)->void:
 		_schedule_route_continue()
 
 func _on_grid_pointer_started()->void:
+	var cancelled_auto:=auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending)
+	if cancelled_auto:
+		_cancel_auto_pending(true)
+		var phase:=str(session.party_status().get("safe_phase","")) if session!=null else ""
+		if phase=="CONTACT":
+			notice_text="자동 배치를 멈췄습니다. 대형을 직접 선택하세요."
+			action_feedback_text="대형 선택 → 배치 실행"
+		elif phase=="ENGAGED":
+			notice_text="자동 실행을 멈췄습니다. 현재 계획을 확인하세요."
+			action_feedback_text="행동 계획 확인 → 지금 실행"
+		_request_refresh()
 	route_paused_by_pointer=true
 
 func _on_grid_pointer_finished(_outcome:String)->void:
@@ -559,11 +868,13 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 		grid.play_effects(result.get("visual_effects",[]))
 	if bool(result.get("accepted",false)):
 		if scroll_combat_log:_scroll_log_after_refresh=true
-		notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else "행동이 준비되었습니다. 턴 확정을 누르세요."
+		notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
+			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
+	if auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending):_cancel_auto_pending(true)
 	var message:=str(result.get("message","행동을 처리할 수 없습니다."))
 	action_feedback_text=message if prefix.is_empty() else "%s: %s"%[prefix,message]
 
@@ -724,11 +1035,11 @@ func _scroll_information_to_latest_log()->void:
 func _update_action_feedback(status:Dictionary)->void:
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text;return
 	match str(status.safe_phase):
-		"CONTACT":action_feedback_label.text="대형 선택 → 배치 확정"
+		"CONTACT":action_feedback_label.text="자동 대형 미리보기" if auto_orchestration_enabled and not auto_deployment_fallback else "대형 선택 → 배치 실행"
 		"GROUPED_COMPLETE":action_feedback_label.text="승리 · 자동 재집결 완료 · 탐험 이동을 선택하세요."
 		_:
 			if str(status.view_mode)=="EXPLORATION":action_feedback_label.text="이동 목적지 미리보기 → 같은 칸을 한 번 더 눌러 이동"
-			elif str(status.view_mode)=="COMBAT":action_feedback_label.text="행동 지정 → 턴 확정"
+			elif str(status.view_mode)=="COMBAT":action_feedback_label.text="행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행"
 			else:action_feedback_label.text="다음 행동을 선택하세요."
 func _add_notice(value:String,node_name:String="ActionStatus",font_size:int=FONT_BODY)->Label:
 	var label:=Label.new(); label.name=node_name; label.text=value; label.custom_minimum_size.y=44; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size))
@@ -762,7 +1073,7 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		style.bg_color=Color("#4a2028"); style.border_color=Color(str(grid_style.get("border_hex","#ff7a80")))
 		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
 		phase_label.add_theme_font_size_override("font_size",FONT_BODY)
-		phase_label.text="⚔ %s · 행동 지정 → 턴 확정\n시간 %d · %s"%[title,int(status.world_time),contact_text]
+		phase_label.text="⚔ %s · %s\n시간 %d · %s"%[title,"행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행",int(status.world_time),contact_text]
 		phase_label.add_theme_color_override("font_color",Color("#fff0e8")); grid.set_combat_emphasis(true)
 	elif tone=="VICTORY":
 		style.bg_color=Color("#173c32"); style.border_color=Color(str(grid_style.get("border_hex","#62d98b")))

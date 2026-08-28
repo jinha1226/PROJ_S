@@ -46,6 +46,9 @@ jobs:
       - name: Run headless tests
         run: ./godot --headless --path . --script res://tests/run_tests.gd
 
+      - name: Run Party UI layout smoke
+        run: ./godot --headless --path . --script res://tests/party_ui_layout_smoke.gd
+
       - name: Export Web build
         shell: bash
         run: |

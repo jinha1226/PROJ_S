@@ -13,22 +13,27 @@ const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_registry.gd")
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
+const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 
-const SESSION_FORMAT_VERSION := 2
+const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
-const SAVE_PATH := "user://living_world_party_encounter_v2.json"
+const SAVE_PATH := "user://living_world_party_encounter_v3.json"
 const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
+const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
+const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 
 var sim
 var world_seed := DEFAULT_WORLD_SEED
 var personality_seed := DEFAULT_PERSONALITY_SEED
+var scenario_id := REGRESSION_SCENARIO_ID
 var command_journal: Array[Dictionary] = []
 var _deployment_plan: Dictionary = {}
 var _protagonist_draft = null
 var _overrides: Dictionary = {}
 var _draft_fingerprint := ""
 var _exploration_route = null
+var _protagonist_placeholder := false
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -39,28 +44,41 @@ func _combatant_status_ids(entity_id: int) -> Array[String]:
 	result.sort()
 	return result
 
-func _init(p_world_seed: int = DEFAULT_WORLD_SEED, p_personality_seed: int = DEFAULT_PERSONALITY_SEED) -> void:
-	reset_party(p_world_seed, p_personality_seed)
+func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
+		p_personality_seed: int = DEFAULT_PERSONALITY_SEED,
+		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> void:
+	reset_party(p_world_seed, p_personality_seed, p_scenario_id)
 
-func reset_party(p_world_seed: int, p_personality_seed: int) -> bool:
+func reset_party(p_world_seed: int, p_personality_seed: int,
+		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> bool:
+	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
 	var candidate = SimulatorScript.create(15, 15, p_world_seed)
 	if candidate == null: return false
-	var protagonist = candidate.world.add_entity("hero", "주인공", Vector2i(7,7), 120, ["party_member"], "human", "party")
-	var narae = candidate.world.add_entity("companion", "나래", Vector2i(6,7), 95, ["party_member"], "human", "party")
-	var miru = candidate.world.add_entity("companion", "미루", Vector2i(7,6), 105, ["party_member"], "goblin", "party")
-	var enemy = candidate.world.add_entity("melee_enemy", "고블린", Vector2i(11,7), 60, ["party_enemy"], "goblin", "enemy")
+	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
+	if showcase and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
+	var hero_position := VisualTestMapScript.HERO_POSITION if showcase else Vector2i(7,7)
+	var narae_position := Vector2i(1,12) if showcase else Vector2i(6,7)
+	var miru_position := Vector2i(2,11) if showcase else Vector2i(7,6)
+	var enemy_position := VisualTestMapScript.ENEMY_POSITION if showcase else Vector2i(11,7)
+	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, ["party_member"], "human", "party")
+	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95, ["party_member"], "human", "party")
+	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105, ["party_member"], "goblin", "party")
+	var enemy = candidate.world.add_entity("melee_enemy", "고블린", enemy_position, 60, ["party_enemy"], "goblin", "enemy")
 	if protagonist == null or narae == null or miru == null or enemy == null: return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
 	state.party_member_ids.append_array([protagonist.id, narae.id, miru.id]); state.enemy_ids.append(enemy.id)
-	state.group_anchor = protagonist.position; state.party_detection_radius = 4; state.enemy_detection_radius = 3
+	state.group_anchor = protagonist.position
+	state.party_detection_radius = 3 if showcase else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
 	state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
 	state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 1))
 	state.enemy_busy_rows[enemy.id] = 0
 	narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
+	if showcase and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
+	scenario_id = p_scenario_id
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
@@ -81,7 +99,7 @@ func party_status() -> Dictionary:
 		"protagonist_id": state.protagonist_id, "party_member_ids": state.party_member_ids.duplicate(),
 		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
-			"session_format_version": SESSION_FORMAT_VERSION}.duplicate(true)
+			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
 
 
 func presentation_state() -> Dictionary:
@@ -138,21 +156,139 @@ func presentation_state() -> Dictionary:
 func observe_party_world() -> Dictionary:
 	var status := party_status()
 	var hide_enemies: bool = str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
+	var hero_position := Vector2i(int(status.protagonist_position[0]),
+		int(status.protagonist_position[1]))
+	var visible: Dictionary = VisualTestMapScript.visible_cells(sim.world, hero_position, scenario_id)
+	# The controlled actor is always a valid presentation anchor. Keep this
+	# explicit so grouped followers can safely fall back to the hero cell even if
+	# a future LOS implementation accidentally omits its origin.
+	visible[_position_key(hero_position)] = true
+	var follower_positions := _grouped_follower_display_positions(visible)
+	var followers_by_cell: Dictionary = {}
+	for member_id_value in follower_positions:
+		var member_id := int(member_id_value)
+		var follower_position: Vector2i = follower_positions[member_id]
+		var follower_key := _position_key(follower_position)
+		if not followers_by_cell.has(follower_key): followers_by_cell[follower_key] = []
+		followers_by_cell[follower_key].append(member_id)
 	var cells: Array = []
 	for y in range(sim.world.height):
 		for x in range(sim.world.width):
-			var position := Vector2i(x,y); var actors: Array = []
+			var position := Vector2i(x,y)
+			var visibility_state := "VISIBLE" if visible.has(_position_key(position)) else "UNSEEN"
+			if visibility_state == "UNSEEN":
+				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
+					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
+					"effective_conductivity":0, "actors":[]})
+				continue
+			var actors: Array = []
 			for entity in sim.world.occupying_entities_at(position):
-				var member = sim.world.party_member_state(entity.id)
 				var is_enemy: bool = entity.id in sim.world.party_encounter.enemy_ids
 				if is_enemy and hide_enemies: continue
-				actors.append({"entity_id": entity.id, "display_name": entity.display_name, "health": entity.health,
-					"is_protagonist": member != null and member.role == "PROTAGONIST", "roster_slot": member.roster_slot if member != null else 99,
-					"faction_id": entity.faction_id, "presence": member.presence if member != null else "DEPLOYED",
-					"is_enemy": is_enemy, "sprite_frame": 0 if member != null and member.role == "PROTAGONIST" else (4 if member != null else 5)})
-			cells.append({"position": [x,y], "terrain_id": sim.world.tile_at(position).terrain, "actors": actors})
+				actors.append(_actor_observation(entity, position, position, ""))
+			for member_id_value in followers_by_cell.get(_position_key(position), []):
+				var member_id := int(member_id_value)
+				if sim.world.entities.has(member_id):
+					actors.append(_actor_observation(sim.world.entities[member_id],
+						sim.world.party_encounter.group_anchor, position, "FOLLOWER"))
+			actors.sort_custom(func(a: Dictionary, b: Dictionary):
+				return int(a.roster_slot) < int(b.roster_slot) \
+					if int(a.roster_slot) != int(b.roster_slot) \
+					else int(a.entity_id) < int(b.entity_id))
+			var tile = sim.world.tile_at(position)
+			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
+				"feature_id":VisualTestMapScript.feature_id_at(scenario_id, position),
+				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
+				"wetness":int(tile.wetness),
+				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
-		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225}}.duplicate(true)
+		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225},
+		"visibility":{"mode":"LOS_RADIUS" if scenario_id == SHOWCASE_SCENARIO_ID else "FULL",
+			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if scenario_id == SHOWCASE_SCENARIO_ID else 15,
+			"memory_supported":false}}.duplicate(true)
+
+
+func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) -> Dictionary:
+	var result: Dictionary = {}
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return result
+	var state = sim.world.party_encounter
+	var anchor: Vector2i = state.group_anchor
+	var facing: Vector2i = state.facing
+	if facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		facing = Vector2i.RIGHT
+	var used := {_position_key(anchor):true}
+	# Presentation followers should avoid every authoritative occupant when a
+	# distinct visible cell exists. Their logical position and occupancy remain
+	# the grouped anchor; this set is only a renderer-placement constraint.
+	for entity_id_value in sim.world.entities:
+		var entity_id := int(entity_id_value)
+		if sim.world.occupies_tile(entity_id):
+			used[_position_key(sim.world.entities[entity_id].position)] = true
+	var follower_ids: Array = []
+	for member_id_value in state.party_member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		if member_id != state.protagonist_id and member != null \
+				and member.presence == "GROUPED" and sim.world.occupies_tile(member_id):
+			follower_ids.append(member_id)
+	follower_ids.sort_custom(func(a, b):
+		var member_a = state.member(int(a)); var member_b = state.member(int(b))
+		return int(member_a.roster_slot) < int(member_b.roster_slot) \
+			if int(member_a.roster_slot) != int(member_b.roster_slot) else int(a) < int(b))
+	var adjacent_offsets := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT,
+		Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	for follower_index in range(follower_ids.size()):
+		var candidates: Array[Vector2i] = [anchor - facing * (follower_index + 1)]
+		for offset in adjacent_offsets:
+			var fallback: Vector2i = anchor + offset
+			if fallback not in candidates: candidates.append(fallback)
+		for candidate in candidates:
+			var key := _position_key(candidate)
+			if not sim.world.in_bounds(candidate) or used.has(key): continue
+			if not presentation_visible.is_empty() and not presentation_visible.has(key): continue
+			var terrain := TerrainRegistryScript.definition(str(sim.world.tile_at(candidate).terrain))
+			if terrain.is_empty() or not bool(terrain.get("passable", false)): continue
+			result[int(follower_ids[follower_index])] = candidate
+			used[key] = true
+			break
+		# Visibility is more important than separation. At tight corners there may
+		# be no free visible floor, so overlap the hero presentation instead of
+		# silently dropping a party member from the observation DTO.
+		if not result.has(int(follower_ids[follower_index])):
+			result[int(follower_ids[follower_index])] = anchor
+	return result
+
+
+func _actor_observation(entity, logical_position: Vector2i,
+		display_position: Vector2i, display_role_override: String) -> Dictionary:
+	var member = sim.world.party_member_state(entity.id)
+	var is_enemy: bool = entity.id in sim.world.party_encounter.enemy_ids
+	var combatant = sim.world.combatant_states.get(entity.id)
+	var actor_facing := _actor_facing(entity.id, is_enemy)
+	var display_role := display_role_override
+	if display_role.is_empty():
+		display_role = "ENEMY" if is_enemy else ("PROTAGONIST" \
+			if member != null and member.role == "PROTAGONIST" else ("COMPANION" \
+			if member != null else "ACTOR"))
+	return {"entity_id":entity.id, "display_name":entity.display_name,
+		"kind":str(entity.kind), "species_id":str(entity.species_id),
+		"health":entity.health, "max_health":entity.max_health,
+		"life_state":str(combatant.life_state) if combatant != null else "DEAD",
+		"status_ids":_combatant_status_ids(entity.id),
+		"guarded":combatant != null and combatant.life_state == "ACTIVE" \
+			and sim.world.world_time < combatant.guarded_until,
+		"facing":[actor_facing.x, actor_facing.y],
+		"logical_position":[logical_position.x, logical_position.y],
+		"display_position":[display_position.x, display_position.y],
+		"display_role":display_role,
+		"is_protagonist":member != null and member.role == "PROTAGONIST",
+		"roster_slot":member.roster_slot if member != null else 99,
+		"faction_id":entity.faction_id,
+		"presence":member.presence if member != null else "DEPLOYED",
+		"is_enemy":is_enemy,
+		"sprite_frame":0 if member != null and member.role == "PROTAGONIST" \
+			else (4 if member != null else 5)}
 
 func party_cards() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var state = sim.world.party_encounter
@@ -169,12 +305,15 @@ func party_cards() -> Array[Dictionary]:
 			exposure = {"applicable": true, "sampled_step_index": int(wire.sampled_step_index), "sampled_world_time": int(wire.sampled_world_time),
 				"position": wire.position, "fire_score": wire.fire_score, "water_score": wire.water_score, "electric_score": wire.electric_score,
 				"poison_score": wire.poison_score, "total_risk": wire.total_risk}
-		var expected_action = _action_presentation(preview_by_actor.get(member_id, null))
+		var expected_action = null if _protagonist_placeholder \
+				and member.role == "PROTAGONIST" \
+			else _action_presentation(preview_by_actor.get(member_id, null))
 		var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
 		var emotion := _emotion_presentation(member, entity)
 		var override_state := "PENDING"
 		if expected_action != null: override_state = str(expected_action.source)
-		elif member.role == "PROTAGONIST": override_state = "DIRECT"
+		elif member.role == "PROTAGONIST":
+			override_state = "PENDING" if _protagonist_placeholder else "DIRECT"
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
@@ -333,6 +472,52 @@ func preview_exploration_route(goal: Variant) -> Dictionary:
 	return _exploration_route.preview(goal)
 
 
+func exploration_companion_follow_plan(route_value: Dictionary = {}) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {"schema_version":1, "accepted":false,
+			"reason":"session_not_initialized", "path":[], "companion_rows":[]}
+	var route: Dictionary = route_value.duplicate(true) if not route_value.is_empty() \
+		else _exploration_route.state()
+	var path: Variant = route.get("path", [])
+	if not bool(route.get("accepted", false)) or not path is Array or path.size() < 2:
+		return {"schema_version":1, "accepted":false,
+			"reason":str(route.get("reason", "route_preview_required")),
+			"path":[], "companion_rows":[]}.duplicate(true)
+	var state = sim.world.party_encounter
+	var rows: Array = []
+	var completed_steps := clampi(int(route.get("completed_steps", 0)), 0, path.size() - 1)
+	var next_index := mini(path.size() - 1, completed_steps + 1)
+	for member_id in state.party_member_ids:
+		if member_id == state.protagonist_id: continue
+		var member = state.member(member_id)
+		if member == null or member.presence != "GROUPED" \
+				or not sim.world.is_environment_exposed(member_id): continue
+		var maxima := {"fire":0, "water":0, "electric":0, "poison":0, "total":0}
+		for step in route.get("steps", []):
+			if not step is Dictionary: continue
+			for risk in step.get("member_risk_ceilings", []):
+				if not risk is Dictionary or int(risk.get("entity_id", -1)) != member_id:
+					continue
+				for component in maxima.keys():
+					maxima[component] = maxi(int(maxima[component]), int(risk.get(component, 0)))
+		var entity = sim.world.entities[member_id]
+		rows.append({"entity_id":member_id, "display_name":str(entity.display_name),
+			"roster_slot":int(member.roster_slot), "species_id":str(entity.species_id),
+			"source":"SUGGESTED", "mode":"FOLLOW_ROUTE",
+			"from_position":path[completed_steps].duplicate(true),
+			"next_position":path[next_index].duplicate(true),
+			"goal":path[-1].duplicate(true), "path":path.duplicate(true),
+			"component_maxima":maxima.duplicate(true),
+			"max_total_risk":int(maxima.total)})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.roster_slot) < int(b.roster_slot) if int(a.roster_slot) != int(b.roster_slot) \
+			else int(a.entity_id) < int(b.entity_id))
+	return {"schema_version":1, "accepted":true, "reason":"ok",
+		"path":path.duplicate(true), "completed_steps":completed_steps,
+		"next_position":path[next_index].duplicate(true),
+		"companion_rows":rows}.duplicate(true)
+
+
 func exploration_route_draft() -> Dictionary:
 	return _exploration_route.draft()
 
@@ -391,11 +576,90 @@ func begin_turn(protagonist_action) -> Dictionary:
 	var previous_action = _protagonist_draft
 	var previous_overrides := _overrides.duplicate()
 	var previous_fingerprint := _draft_fingerprint
-	_protagonist_draft = copied_action; _overrides.clear(); _draft_fingerprint = JSON.stringify(sim.snapshot()).sha256_text()
+	var previous_placeholder := _protagonist_placeholder
+	_protagonist_draft = copied_action; _overrides.clear()
+	_protagonist_placeholder = false
+	_draft_fingerprint = JSON.stringify(sim.snapshot()).sha256_text()
 	var preview := current_turn_preview()
 	if not bool(preview.get("accepted", false)):
-		_protagonist_draft = previous_action; _overrides = previous_overrides; _draft_fingerprint = previous_fingerprint
+		_protagonist_draft = previous_action; _overrides = previous_overrides
+		_draft_fingerprint = previous_fingerprint
+		_protagonist_placeholder = previous_placeholder
 	return preview
+
+
+func prepare_auto_combat_plan() -> Dictionary:
+	_exploration_route.cancel_for_direct_command()
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _auto_planning_empty("session_not_initialized")
+	var state = sim.world.party_encounter
+	if state.safe_phase != "ENGAGED" or not sim.world.is_settled():
+		return _auto_planning_empty("party_turn_phase_required")
+	if _protagonist_draft != null:
+		if _draft_fingerprint == JSON.stringify(sim.snapshot()).sha256_text():
+			return auto_combat_planning_state()
+		_clear_draft()
+	_protagonist_draft = ActionScript.hold(state.protagonist_id)
+	_overrides.clear()
+	_protagonist_placeholder = true
+	_draft_fingerprint = JSON.stringify(sim.snapshot()).sha256_text()
+	return auto_combat_planning_state()
+
+
+func auto_combat_planning_state() -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _auto_planning_empty("session_not_initialized")
+	if _protagonist_draft == null:
+		return _auto_planning_empty("turn_draft_required")
+	var preview: Dictionary = current_turn_preview()
+	if _protagonist_draft == null:
+		return _auto_planning_empty(str(preview.get("reason", "stale_turn_draft")))
+	var accepted := bool(preview.get("accepted", false))
+	var override_ids: Array = _overrides.keys(); override_ids.sort()
+	return {"schema_version":1, "active":true, "accepted":accepted,
+		"reason":str(preview.get("reason", "ok")),
+		"placeholder":_protagonist_placeholder,
+		"protagonist_action_selected":not _protagonist_placeholder,
+		"commit_ready":accepted and not _protagonist_placeholder,
+		"plan_hash":str(preview.get("plan_hash", "")),
+		"overridden_companion_ids":override_ids.duplicate(),
+		"preview":preview.duplicate(true)}.duplicate(true)
+
+
+func replace_auto_combat_protagonist_action(protagonist_action) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _auto_planning_empty("session_not_initialized")
+	var state = sim.world.party_encounter
+	if state.safe_phase != "ENGAGED" or not sim.world.is_settled():
+		return _auto_planning_empty("party_turn_phase_required")
+	var copied_action = _canonical_action_copy(protagonist_action)
+	if copied_action == null or copied_action.actor_id != state.protagonist_id:
+		return _auto_planning_empty("protagonist_action_required")
+	var previous_action = _protagonist_draft
+	var previous_overrides := _overrides.duplicate()
+	var previous_fingerprint := _draft_fingerprint
+	var previous_placeholder := _protagonist_placeholder
+	_protagonist_draft = copied_action
+	_protagonist_placeholder = false
+	_draft_fingerprint = JSON.stringify(sim.snapshot()).sha256_text()
+	var preview := current_turn_preview()
+	if not bool(preview.get("accepted", false)):
+		_protagonist_draft = previous_action; _overrides = previous_overrides
+		_draft_fingerprint = previous_fingerprint
+		_protagonist_placeholder = previous_placeholder
+		var rejected := auto_combat_planning_state()
+		rejected["accepted"] = false
+		rejected["reason"] = str(preview.get("reason", "invalid_party_action"))
+		rejected["rejected_preview"] = preview.duplicate(true)
+		return rejected.duplicate(true)
+	return auto_combat_planning_state()
+
+
+func _auto_planning_empty(reason: String) -> Dictionary:
+	return {"schema_version":1, "active":false, "accepted":false,
+		"reason":reason, "placeholder":false,
+		"protagonist_action_selected":false, "commit_ready":false,
+		"plan_hash":"", "overridden_companion_ids":[], "preview":{}}.duplicate(true)
 
 func override_companion(entity_id: int, action) -> Dictionary:
 	if _protagonist_draft == null:
@@ -428,6 +692,8 @@ func current_turn_preview() -> Dictionary:
 
 func commit_turn() -> Dictionary:
 	_exploration_route.cancel_for_direct_command()
+	if _protagonist_placeholder:
+		return _rejection_dto("protagonist_action_required")
 	var preview := current_turn_preview()
 	if not bool(preview.get("accepted",false)): return preview
 	var request = RequestScript.from_dict(preview.canonical_request)
@@ -643,17 +909,21 @@ func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	return rows.duplicate(true)
 
 func save_session_json() -> String:
-	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,"world_seed":str(world_seed),"personality_seed":str(personality_seed),
-		"snapshot":sim.snapshot(),"journal":command_journal.duplicate(true)})
+	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,
+		"scenario_id":scenario_id,"world_seed":str(world_seed),
+		"personality_seed":str(personality_seed),"snapshot":sim.snapshot(),
+		"journal":command_journal.duplicate(true)})
 
 func load_session_json(encoded: String) -> Dictionary:
 	var decoded = JSON.parse_string(encoded)
 	if not decoded is Dictionary:
 		return _rejection_dto("invalid_party_session")
 	var top_keys: Array = decoded.keys(); top_keys.sort()
-	if top_keys != ["journal", "personality_seed", "session_format_version", "snapshot", "world_seed"] \
+	if top_keys != ["journal", "personality_seed", "scenario_id", "session_format_version", "snapshot", "world_seed"] \
 			or not _integer(decoded.get("session_format_version")) \
 			or int(decoded.session_format_version) != SESSION_FORMAT_VERSION \
+			or not decoded.get("scenario_id") is String \
+			or not VisualTestMapScript.has_scenario(str(decoded.scenario_id)) \
 			or not decoded.get("snapshot") is Dictionary \
 			or not Int64CodecScript.is_canonical(decoded.get("world_seed")) \
 			or not Int64CodecScript.is_canonical(decoded.get("personality_seed")) \
@@ -667,7 +937,9 @@ func load_session_json(encoded: String) -> Dictionary:
 		return _rejection_dto(restore_reason if not restore_reason.is_empty() else "invalid_party_snapshot")
 	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
-	var replay = load("res://playtest/party_playtest_session.gd").new(parsed_world_seed, parsed_personality_seed)
+	var parsed_scenario_id := str(decoded.scenario_id)
+	var replay = load("res://playtest/party_playtest_session.gd").new(
+		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
@@ -688,6 +960,7 @@ func load_session_json(encoded: String) -> Dictionary:
 		if not bool(replay_result.get("accepted",false)):return _rejection_dto("party_journal_replay_failed")
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
+	scenario_id = parsed_scenario_id
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
@@ -742,7 +1015,9 @@ func _make_action(actor_id: int, action_type: String, destination: Array, target
 		"MELEE": return ActionScript.melee(actor_id, target_id)
 	return null
 
-func _clear_draft() -> void: _protagonist_draft = null; _overrides.clear(); _draft_fingerprint = ""
+func _clear_draft() -> void:
+	_protagonist_draft = null; _overrides.clear(); _draft_fingerprint = ""
+	_protagonist_placeholder = false
 
 
 func _pending_turn_request():
@@ -1208,6 +1483,11 @@ func _event_message(event) -> String:
 	return "세계에 변화가 일어났다."
 
 func _name(entity_id: int) -> String: return str(sim.world.entities[entity_id].display_name) if entity_id > 0 and sim.world.entities.has(entity_id) else "대상"
+func _position_key(position:Vector2i)->String:return "%d:%d"%[position.x,position.y]
+func _actor_facing(entity_id:int,is_enemy:bool)->Vector2i:
+	var state=sim.world.party_encounter
+	var facing:Vector2i=state.facing if state!=null else Vector2i.RIGHT
+	return -facing if is_enemy else facing
 func _subject(value:String)->String: return value + ("이" if _has_final(value) else "가")
 func _object(value:String)->String: return value + ("을" if _has_final(value) else "를")
 func _topic(value:String)->String: return value + ("은" if _has_final(value) else "는")
