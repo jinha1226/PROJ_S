@@ -14,6 +14,7 @@ const CHARACTER_FRAME_SIZE := Vector2i(36,44)
 const CHARACTER_ATLAS_COLUMNS := 3
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
+const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
@@ -166,20 +167,27 @@ func clear_transient_visuals()->void:
 	cursor_cell=Vector2i(-1,-1);selected_actor_id=-1;selected_target_id=-1
 	_reset_pointer_gesture();set_process(false);queue_redraw()
 
-func visual_effect_draw_spec(effect:Dictionary)->Dictionary:
+func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionary:
 	var world_value=effect.get("world_position",[-1,-1]);var world_position:=Vector2i(-1,-1)
 	if world_value is Array and world_value.size()==2:world_position=Vector2i(int(world_value[0]),int(world_value[1]))
 	var kind:=str(effect.get("kind",""));var damage_type:=str(effect.get("damage_type","physical"))
 	var color_hex:String={"fire":"#ff7a55","water":"#67c9ff","electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(damage_type,"#fff0df")
 	if kind=="DEATH":color_hex="#ff6b78"
+	var duration_ms:=900 if kind in ["FLOATING_AMOUNT","DEATH"] else 520
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var started_at:=int(effect.get("started_at_ms",now))
+	var age_ratio:=clampf(float(maxi(0,now-started_at))/float(duration_ms),0.0,1.0)
+	var pixel_center:=world_to_pixel_center(world_position)
+	if kind=="FLOATING_AMOUNT":pixel_center.y-=cell_size_px()*0.52*age_ratio
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":{"SLASH":"SLASH_LINES","HIT_FLASH":"FLASH_RING","FLOATING_AMOUNT":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"),
 		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
-		"pixel_center":world_to_pixel_center(world_position),"color_hex":color_hex,
+		"pixel_center":pixel_center,"color_hex":color_hex,"age_ratio":age_ratio,
+		"opacity":clampf(1.0-age_ratio*0.88,0.12,1.0),
 		"line_width":4.0 if kind in ["SLASH","DEATH"] else 3.0,
-		"radius":cell_size_px()*(0.34 if kind=="HIT_FLASH" else 0.28),
+		"radius":cell_size_px()*(0.34+0.10*age_ratio if kind=="HIT_FLASH" else 0.28),
 		"text":str(effect.get("text","")),"font_size":18,
-		"duration_ms":900 if kind in ["FLOATING_AMOUNT","DEATH"] else 520}.duplicate(true)
+		"duration_ms":duration_ms}.duplicate(true)
 
 func _process(_delta:float)->void:
 	if _active_visual_effects.is_empty():set_process(false);return
@@ -329,7 +337,8 @@ func route_draw_spec() -> Dictionary:
 			"color_hex":"#607b87" if index<=_route_completed_steps else color_hex,
 			"radius":maxf(3.0,cell_size_px()*(0.20 if kind in ["START","GOAL"] else 0.12))})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
-		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,"color_hex":color_hex}.duplicate(true)
+		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,
+		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
 	_intent_overlays.clear(); _secondary_intent_overlays.clear()
@@ -400,6 +409,23 @@ func actor_render_order() -> Array:
 
 func actor_draw_spec(actor:Dictionary,ghost:bool=false)->Dictionary:
 	return AsciiStyleScript.actor_spec(actor,ghost)
+
+func diorama_layer_order()->Array:
+	return DioramaScript.layer_order()
+
+func diorama_cell_draw_spec(position:Vector2i)->Dictionary:
+	if not _world_in_bounds(position):
+		return DioramaScript.cell_spec(position,{}, {})
+	var neighbors:={
+		"N":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.UP),{})),
+		"E":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.RIGHT),{})),
+		"S":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.DOWN),{})),
+		"W":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.LEFT),{})),
+	}
+	return DioramaScript.cell_spec(position,_cells.get(_key(position),{}),neighbors)
+
+func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
+	return DioramaScript.hazard_floor_spec(position,_cells.get(_key(position),{}))
 
 func _position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("display_position",actor.get("position",[]))
@@ -553,17 +579,27 @@ func _empty_cell_center_zone(position:Vector2i,pointer:Vector2)->bool:
 	var inset:=cell_size_px()*0.25
 	return world_cell_rect(position).grow(-inset).has_point(pointer)
 
+func _diorama_visibility_state(row:Dictionary)->String:
+	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
+
 func _draw() -> void:
-	for y in range(visible_cell_count):
-		for x in range(visible_cell_count):
-			var p := view_origin+Vector2i(x,y); var row: Dictionary = _cells.get(_key(p),{}); var rect := world_cell_rect(p)
-			_draw_ascii_tile(rect,row)
-	_draw_route_tiles()
+	draw_rect(grid_rect(),Color("#030609"),true)
+	_draw_ground_pass("MEMORY")
+	_draw_ground_pass("VISIBLE")
+	_draw_material_mark_pass("MEMORY")
+	_draw_material_mark_pass("VISIBLE")
+	_draw_wall_shadow_pass("MEMORY")
+	_draw_wall_shadow_pass("VISIBLE")
+	_draw_wall_pass("MEMORY")
+	_draw_wall_pass("VISIBLE")
+	_draw_ground_features()
+	_draw_ground_hazards()
+	_draw_route_ground_marks()
 	_draw_follower_footprints()
-	for visual_row in _sorted_visual_actor_rows():
-		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost))
 	_draw_route_overlay()
 	_draw_exploration_companion_follow_plan()
+	for visual_row in _sorted_visual_actor_rows():
+		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost))
 	for intent in _secondary_intent_overlays:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
@@ -571,31 +607,230 @@ func _draw() -> void:
 	_draw_actor_selection_overlays()
 	_draw_cursor_preview()
 	for effect in _active_visual_effects:_draw_visual_effect(effect)
+	_draw_fov_edge_haze()
 	var style_id:=str(_presentation_style.get("style_id","DEFAULT"))
 	if combat_emphasis or bool(_presentation_style.get("vignette",false)):
 		var border:=Color(str(_presentation_style.get("border_hex","#ff7a80")))
 		draw_rect(grid_rect().grow(-2),border,false,4.0 if style_id=="COMBAT" else 2.5)
 
-func _draw_ascii_tile(rect:Rect2,row:Dictionary)->void:
-	var visibility:Dictionary=AsciiStyleScript.visibility_spec(row)
-	if not bool(visibility.draw_terrain):
-		draw_rect(rect,Color("#030609"),true);return
-	var spec:Dictionary=AsciiStyleScript.terrain_spec(row)
-	var opacity:=float(spec.opacity)
-	var depth:=maxf(1.0,floorf(rect.size.x*float(spec.depth_ratio)))
-	var edge:=_visual_color(str(spec.edge_hex),opacity)
-	var base:=_visual_color(str(spec.base_hex),opacity)
-	draw_rect(rect,edge,true)
-	var top_rect:=Rect2(rect.position,Vector2(maxf(1.0,rect.size.x-depth),maxf(1.0,rect.size.y-depth)))
-	draw_rect(top_rect.grow(-0.5),base,true)
-	if bool(spec.raised):
-		draw_line(Vector2(top_rect.position.x,top_rect.end.y),top_rect.end,edge,maxf(2.0,depth),false)
-		draw_line(Vector2(top_rect.end.x,top_rect.position.y),top_rect.end,edge,maxf(2.0,depth),false)
-	var font:=get_theme_default_font();var font_size:=maxi(10,int(floor(rect.size.x*(0.58 if bool(spec.raised) else 0.46))))
-	_draw_centered_text(font,str(spec.glyph),top_rect.get_center()+Vector2(1,1),font_size,_visual_color("#05090d",opacity*0.72))
-	_draw_centered_text(font,str(spec.glyph),top_rect.get_center(),font_size,_visual_color(str(spec.glyph_hex),opacity))
-	if str(visibility.state)=="VISIBLE":_draw_feature_cue(rect,str(row.get("feature_id","")))
-	_draw_hazard_cues(rect,row)
+func _draw_ground_pass(visibility_state:String)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)!=visibility_state:continue
+			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
+			if not bool(terrain.visible) or str(terrain.terrain_id)=="wall":continue
+			_draw_ground_surface(position,row,terrain,visibility_state=="MEMORY")
+
+func _draw_ground_surface(position:Vector2i,row:Dictionary,terrain:Dictionary,
+		memory:bool)->void:
+	var rect:=world_cell_rect(position)
+	var overlap:=clampf(cell_size_px()*0.045,1.0,2.0)
+	var base:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),memory)
+	var terrain_id:=str(terrain.terrain_id)
+	if terrain_id in ["wood_floor","metal","rubble","shallow_water"]:
+		var substrate:=_diorama_color("#1d2d38",0.82*float(terrain.opacity),memory)
+		draw_rect(rect.grow(overlap).intersection(grid_rect()),substrate,true)
+		_draw_connected_material_blob(rect,diorama_cell_draw_spec(position),base,terrain_id)
+	else:
+		draw_rect(rect.grow(overlap).intersection(grid_rect()),base,true)
+
+func _draw_connected_material_blob(rect:Rect2,spec:Dictionary,color:Color,
+		terrain_id:String)->void:
+	var cell:=rect.size.x
+	var mask:=int(spec.get("connected_mask",0))
+	if terrain_id in ["wood_floor","metal"]:
+		var inset:=cell*0.08
+		draw_rect(rect.grow(-inset),color,true)
+	else:
+		draw_colored_polygon(_ellipse_points(rect.get_center(),cell*0.48,cell*0.43),color)
+	var bridge_width:=cell*(0.72 if terrain_id in ["wood_floor","metal"] else 0.56)
+	var center:=rect.get_center()
+	if mask&DioramaScript.NORTH:
+		draw_rect(Rect2(Vector2(center.x-bridge_width*0.5,rect.position.y-1.0),
+			Vector2(bridge_width,cell*0.56)),color,true)
+	if mask&DioramaScript.EAST:
+		draw_rect(Rect2(Vector2(center.x,center.y-bridge_width*0.5),
+			Vector2(cell*0.56+1.0,bridge_width)),color,true)
+	if mask&DioramaScript.SOUTH:
+		draw_rect(Rect2(Vector2(center.x-bridge_width*0.5,center.y),
+			Vector2(bridge_width,cell*0.56+1.0)),color,true)
+	if mask&DioramaScript.WEST:
+		draw_rect(Rect2(Vector2(rect.position.x-1.0,center.y-bridge_width*0.5),
+			Vector2(cell*0.56+1.0,bridge_width)),color,true)
+
+func _draw_material_mark_pass(visibility_state:String)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)!=visibility_state:continue
+			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
+			if str(terrain.terrain_id)=="wall":continue
+			_draw_material_mark(world_cell_rect(position),terrain,
+				diorama_cell_draw_spec(position).get("material_mark",{}),
+				visibility_state=="MEMORY")
+
+func _draw_material_mark(rect:Rect2,terrain:Dictionary,mark_value:Variant,
+		memory:bool)->void:
+	if not mark_value is Dictionary:return
+	var mark:Dictionary=mark_value
+	if not bool(mark.get("visible",false)):return
+	var offset:Vector2=mark.get("offset",Vector2.ZERO)
+	var center:=rect.get_center()+Vector2(offset.x*rect.size.x,offset.y*rect.size.y)
+	var color:=_diorama_color(str(terrain.glyph_hex),float(mark.get("opacity",0.2)),memory)
+	var cell:=rect.size.x;var variant:=int(mark.get("variant",0))
+	match str(mark.get("kind","NONE")):
+		"DUST":
+			draw_circle(center,maxf(1.0,cell*0.035),color)
+		"CRACK":
+			var sign_x:=-1.0 if variant%2==0 else 1.0
+			draw_line(center+Vector2(-cell*0.16*sign_x,-cell*0.07),center,
+				color,maxf(1.0,cell*0.035),true)
+			draw_line(center,center+Vector2(cell*0.12*sign_x,cell*0.10),
+				color,maxf(1.0,cell*0.035),true)
+		"PLANK":
+			var horizontal:=variant%2==0
+			var axis:=Vector2(cell*0.38,0) if horizontal else Vector2(0,cell*0.38)
+			draw_line(center-axis,center+axis,color,maxf(1.0,cell*0.045),true)
+		"SHEEN":
+			var diagonal:=Vector2(cell*0.28,-cell*0.17)
+			draw_line(center-diagonal,center+diagonal,color,maxf(1.0,cell*0.050),true)
+		"DEBRIS":
+			_draw_centered_text(get_theme_default_font(),str(mark.get("glyph",",")),center,
+				maxi(8,int(cell*0.34)),color)
+			draw_circle(center+Vector2(cell*0.18,-cell*0.12),maxf(1.0,cell*0.035),color)
+		"RIPPLE":
+			draw_arc(center,cell*0.19,0.12*PI,0.88*PI,10,color,maxf(1.0,cell*0.040),true)
+			draw_arc(center+Vector2(cell*0.09,cell*0.10),cell*0.13,1.08*PI,1.92*PI,8,
+				color,maxf(1.0,cell*0.032),true)
+
+func _draw_wall_shadow_pass(visibility_state:String)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)!=visibility_state \
+					or str(row.get("terrain_id",row.get("terrain","floor")))!="wall":continue
+			var spec:=diorama_cell_draw_spec(position)
+			var exposed:=int(spec.get("exposed_mask",0))
+			var rect:=world_cell_rect(position);var cell:=rect.size.x
+			var alpha:=0.20 if visibility_state=="VISIBLE" else 0.07
+			var shadow:=Color(0.01,0.025,0.035,alpha)
+			if exposed&DioramaScript.SOUTH:
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(rect.position.x+cell*0.12,rect.end.y-cell*0.18),
+					Vector2(rect.end.x-cell*0.12,rect.end.y-cell*0.18),
+					Vector2(rect.end.x+cell*0.16,rect.end.y+cell*0.28),
+					Vector2(rect.position.x+cell*0.18,rect.end.y+cell*0.28),
+				]),shadow)
+			if exposed&DioramaScript.EAST:
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(rect.end.x-cell*0.18,rect.position.y+cell*0.10),
+					Vector2(rect.end.x,rect.position.y+cell*0.16),
+					Vector2(rect.end.x+cell*0.28,rect.end.y+cell*0.20),
+					Vector2(rect.end.x+cell*0.12,rect.end.y-cell*0.04),
+				]),shadow)
+
+func _draw_wall_pass(visibility_state:String)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)!=visibility_state:continue
+			var terrain:=AsciiStyleScript.terrain_spec(row)
+			if str(terrain.terrain_id)!="wall":continue
+			var spec:=diorama_cell_draw_spec(position);var connected:=int(spec.connected_mask)
+			var rect:=world_cell_rect(position);var cell:=rect.size.x
+			var depth:=maxf(3.0,cell*0.18);var overlap:=clampf(cell*0.045,1.0,2.0)
+			var top_width:=rect.size.x+overlap if connected&DioramaScript.EAST else rect.size.x-depth
+			var top_height:=rect.size.y+overlap if connected&DioramaScript.SOUTH else rect.size.y-depth
+			var top_rect:=Rect2(rect.position-Vector2(overlap,overlap),
+				Vector2(top_width+overlap,top_height+overlap))
+			var top:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),visibility_state=="MEMORY")
+			var face:=_diorama_color(str(terrain.edge_hex),float(terrain.opacity),visibility_state=="MEMORY")
+			draw_rect(top_rect,top,true)
+			if not connected&DioramaScript.SOUTH:
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(top_rect.position.x,top_rect.end.y),top_rect.end,
+					Vector2(rect.end.x,rect.end.y),Vector2(rect.position.x,rect.end.y),
+				]),face)
+			if not connected&DioramaScript.EAST:
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(top_rect.end.x,top_rect.position.y),top_rect.end,
+					rect.end,Vector2(rect.end.x,rect.position.y),
+				]),_diorama_color("#0b151d",float(terrain.opacity),visibility_state=="MEMORY"))
+			if not connected&DioramaScript.NORTH:
+				draw_line(top_rect.position,Vector2(top_rect.end.x,top_rect.position.y),
+					_diorama_color(str(terrain.glyph_hex),0.22,visibility_state=="MEMORY"),maxf(1.0,cell*0.035),true)
+			_draw_material_mark(top_rect,terrain,spec.material_mark,visibility_state=="MEMORY")
+
+func _draw_ground_features()->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)=="VISIBLE":
+				_draw_feature_cue(world_cell_rect(position),str(row.get("feature_id","")))
+
+func _draw_ground_hazards()->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y);var spec:=diorama_hazard_draw_spec(position)
+			if bool(spec.get("visible",false)):_draw_ground_hazard(world_cell_rect(position),spec)
+
+func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
+	var center:=rect.get_center();var cell:=rect.size.x;var phase:=int(spec.get("phase",0))
+	if int(spec.get("wetness",0))>0:
+		var wet:=Color(0.32,0.78,1.0,float(spec.wet_reflection_alpha))
+		draw_colored_polygon(_ellipse_points(center+Vector2(0,cell*0.12),cell*0.41,cell*0.22),wet)
+		var shift:=(float(phase)-1.5)*cell*0.035
+		draw_line(center+Vector2(-cell*0.31,shift),center+Vector2(cell*0.25,shift-cell*0.05),
+			Color(0.65,0.92,1.0,wet.a*1.35),maxf(1.0,cell*0.040),true)
+	if int(spec.get("fire",0))>0:
+		var glow_alpha:=float(spec.fire_glow_alpha)
+		draw_circle(center,cell*0.48,Color(1.0,0.26,0.08,glow_alpha*0.22))
+		draw_circle(center+Vector2(0,cell*0.08),cell*0.29,Color(1.0,0.45,0.13,glow_alpha*0.48))
+		_draw_centered_text(get_theme_default_font(),"*",center-Vector2(0,cell*0.02),
+			maxi(10,int(cell*0.55)),Color(1.0,0.70,0.25,0.88))
+	if int(spec.get("conductivity",0))>=25:
+		var arc:=Color(0.70,0.94,1.0,float(spec.arc_alpha))
+		var direction:=-1.0 if phase%2==0 else 1.0
+		var points:=PackedVector2Array([
+			center+Vector2(-cell*0.32,cell*0.12*direction),
+			center+Vector2(-cell*0.08,-cell*0.13*direction),
+			center+Vector2(cell*0.04,cell*0.08*direction),
+			center+Vector2(cell*0.31,-cell*0.15*direction),
+		])
+		draw_polyline(points,arc,maxf(1.0,cell*0.045),true)
+
+func _draw_fov_edge_haze()->void:
+	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y);var spec:=diorama_cell_draw_spec(position)
+			if not bool(spec.get("visible",false)):continue
+			var mask:=int(spec.get("fov_edge_mask",0));var rect:=world_cell_rect(position)
+			var color:=Color(0.015,0.03,0.045,0.46 if str(spec.visibility_state)=="VISIBLE" else 0.27)
+			if mask&DioramaScript.NORTH:draw_rect(Rect2(rect.position,Vector2(rect.size.x,thickness)),color,true)
+			if mask&DioramaScript.EAST:draw_rect(Rect2(Vector2(rect.end.x-thickness,rect.position.y),Vector2(thickness,rect.size.y)),color,true)
+			if mask&DioramaScript.SOUTH:draw_rect(Rect2(Vector2(rect.position.x,rect.end.y-thickness),Vector2(rect.size.x,thickness)),color,true)
+			if mask&DioramaScript.WEST:draw_rect(Rect2(rect.position,Vector2(thickness,rect.size.y)),color,true)
+
+func _diorama_color(value:String,opacity:float,memory:bool)->Color:
+	var color:=Color(value)
+	if memory:
+		var luminance:=color.r*0.299+color.g*0.587+color.b*0.114
+		color=color.lerp(Color(luminance,luminance,luminance,1.0),0.68)
+	color.a*=clampf(opacity,0.0,1.0)
+	return color
+
+func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector2Array:
+	var points:=PackedVector2Array()
+	for index in range(16):
+		var angle:=TAU*float(index)/16.0
+		points.append(center+Vector2(cos(angle)*radius_x,sin(angle)*radius_y))
+	return points
 
 func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
 	var spec:Dictionary=AsciiStyleScript.feature_spec(feature_id)
@@ -627,11 +862,13 @@ func _visual_color(value:String,opacity:float)->Color:
 func _draw_visual_effect(effect:Dictionary)->void:
 	var spec:=visual_effect_draw_spec(effect)
 	if not bool(spec.visible):return
-	var center:Vector2=spec.pixel_center;var color:=Color(str(spec.color_hex));var radius:=float(spec.radius);var width:=float(spec.line_width)
+	var center:Vector2=spec.pixel_center;var color:=Color(str(spec.color_hex));color.a*=float(spec.opacity)
+	var radius:=float(spec.radius);var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 	match str(spec.primitive):
 		"SLASH_LINES":
-			draw_line(center+Vector2(-radius,radius),center+Vector2(radius,-radius),color,width)
-			draw_line(center+Vector2(-radius*0.55,radius),center+Vector2(radius,radius*-0.55),color,maxf(2.0,width-1.0))
+			var drift:=Vector2(radius*0.30,-radius*0.20)*float(spec.age_ratio)
+			draw_line(center+Vector2(-radius,radius)+drift,center+Vector2(radius,-radius)+drift,color,width)
+			draw_line(center+Vector2(-radius*0.55,radius)-drift*0.45,center+Vector2(radius,radius*-0.55)-drift*0.45,color,maxf(1.4,width-1.0))
 		"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
 		"TEXT":draw_string(get_theme_default_font(),center+Vector2(-16,-radius),str(spec.text),HORIZONTAL_ALIGNMENT_CENTER,32,int(spec.font_size),color)
 		"DEATH_CROSS":
@@ -642,9 +879,25 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
 	var p := Vector2i(int(actor.position[0]),int(actor.position[1])); var rect := world_cell_rect(p)
 	if not is_world_cell_visible(p):return
-	var figure_height:=clampf(cell*1.46,28.0,50.0);var figure_width:=figure_height*0.72
+	var figure_height:=clampf(cell*1.46,28.0,50.0);var figure_width:=cell*0.72
 	var bounds:=Rect2(Vector2(rect.get_center().x-figure_width*0.5,rect.end.y-figure_height+1.0),Vector2(figure_width,figure_height))
-	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true)
+	bounds.position+=_actor_recoil_offset(actor)
+	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true,true)
+
+func _actor_recoil_offset(actor:Dictionary)->Vector2:
+	var position:=_position_from_actor(actor);var entity_id:=int(actor.get("entity_id",-1))
+	for effect in _active_visual_effects:
+		if str(effect.get("kind",""))!="HIT_FLASH":continue
+		var effect_position:=_array_to_world_position(effect.get("world_position",[]))
+		if int(effect.get("target_id",-1))!=entity_id and effect_position!=position:continue
+		var spec:=visual_effect_draw_spec(effect)
+		var age:=float(spec.age_ratio)
+		if age>0.42:continue
+		var event_id:=int(effect.get("event_id",0));var direction:=-1.0 if event_id%2==0 else 1.0
+		var amplitude:=2.0+float(absi(event_id)%3)
+		var envelope:=1.0-age/0.42
+		return Vector2(direction*amplitude*envelope,-amplitude*0.28*envelope)
+	return Vector2.ZERO
 
 func _draw_follower_footprints()->void:
 	for actor in _actors:
@@ -708,9 +961,9 @@ func _draw_actor_selection_overlays()->void:
 func _draw_cursor_preview() -> void:
 	if cursor_cell.x < 0 or not is_world_cell_visible(cursor_cell): return
 	var color := Color("#65f29a") if preview_valid else Color("#ff5f68")
-	var destination_rect := world_cell_rect(cursor_cell)
-	draw_rect(destination_rect.grow(-1), Color(color, 0.20), true)
-	draw_rect(destination_rect.grow(-1), color, false, 4.0)
+	var center:=world_to_pixel_center(cursor_cell);var radius:=cell_size_px()*0.36
+	draw_circle(center,radius,Color(color,0.10))
+	draw_arc(center,radius,0,TAU,20,color,3.0)
 	if _route_path.size() < 2 and preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
 
@@ -719,7 +972,8 @@ func _draw_route_overlay() -> void:
 	var spec:=route_draw_spec()
 	for segment in spec.segments:
 		if not bool(segment.visible):continue
-		draw_line(segment.from_pixel,segment.to_pixel,Color(str(segment.color_hex)),float(segment.line_width),true)
+		_draw_chalk_segment(segment.from_pixel,segment.to_pixel,
+			Color(str(segment.color_hex)),minf(2.5,float(segment.line_width)))
 	for cue in spec.direction_cues:
 		if not bool(cue.visible):continue
 		var points:=PackedVector2Array()
@@ -734,15 +988,26 @@ func _draw_route_overlay() -> void:
 					center+Vector2(0,radius),center+Vector2(-radius,0)]),Color(color,0.55))
 			"START":draw_arc(center,radius,0,TAU,16,color,2.0)
 			"NEXT":draw_circle(center,radius,Color(color,0.90))
-			_:draw_circle(center,radius,Color(color,0.65))
+			_:draw_circle(center,radius,Color(color,0.42))
 
-func _draw_route_tiles()->void:
+func _draw_route_ground_marks()->void:
 	if _route_path.size()<2:return
 	for tile in route_draw_spec().tiles:
 		if not bool(tile.visible):continue
-		var fill:=Color(str(tile.fill_hex));fill.a=float(tile.fill_alpha)
-		draw_rect(tile.pixel_rect,fill,true)
-		draw_rect(tile.pixel_rect,Color(str(tile.border_hex)),false,float(tile.border_width))
+		var center:Vector2=tile.pixel_rect.get_center();var color:=Color(str(tile.fill_hex))
+		var radius:=maxf(1.5,cell_size_px()*(0.10 if str(tile.kind) in ["START","GOAL","NEXT"] else 0.065))
+		draw_circle(center,radius,Color(color,0.28 if not bool(tile.completed) else 0.16))
+		if str(tile.kind)=="GOAL":draw_arc(center,cell_size_px()*0.31,0,TAU,20,Color(color,0.76),2.0)
+
+func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
+	var delta:=to-from
+	if delta.length()<1.0:return
+	var dash_count:=maxi(3,int(ceil(delta.length()/maxf(5.0,cell_size_px()*0.22))))
+	for index in range(dash_count):
+		if index%2==1:continue
+		var start:=from+delta*(float(index)/float(dash_count))
+		var finish:=from+delta*(minf(1.0,float(index+1)/float(dash_count)))
+		draw_line(start,finish,Color(color,0.74),width,true)
 
 func _draw_intent(intent: Dictionary) -> void:
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return

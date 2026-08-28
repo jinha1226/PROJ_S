@@ -36,7 +36,7 @@ func _draw() -> void:
 
 
 static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
-		spec: Dictionary, draw_shadow: bool = true) -> void:
+		spec: Dictionary, draw_shadow: bool = true, world_context: bool = false) -> void:
 	if bounds.size.x <= 1.0 or bounds.size.y <= 1.0:
 		return
 	var opacity := clampf(float(spec.get("opacity", 1.0)), 0.0, 1.0)
@@ -45,12 +45,13 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	var outline := _color(str(spec.get("outline_hex", "#0a1016")), opacity)
 	var shadow := _color(str(spec.get("shadow_hex", "#03070b")), opacity*0.72)
 	var life_state := str(spec.get("life_state", "ACTIVE"))
+	var equipment: Dictionary = spec.get("equipment", {})
+	if life_state=="DEAD":equipment={}
 	if draw_shadow:
-		var shadow_y := bounds.end.y - maxf(1.0,bounds.size.y*0.035)
-		var shadow_half := bounds.size.x*(0.38 if life_state=="DOWNED" else 0.27)
-		canvas.draw_line(Vector2(bounds.get_center().x-shadow_half,shadow_y),
-			Vector2(bounds.get_center().x+shadow_half,shadow_y),shadow,
-			maxf(2.0,bounds.size.y*0.075),true)
+		_draw_ground_shadow(canvas,bounds,equipment,shadow,life_state,world_context)
+	_draw_lantern_glow(canvas,bounds,equipment,opacity,world_context)
+	_draw_equipment_segments(canvas,bounds,equipment.get("back_segments",[]),
+		outline,opacity)
 	var limb_width := maxf(1.4,bounds.size.y*0.045)
 	if bool(spec.get("draw_limbs", true)):
 		for raw_segment in spec.get("limb_segments", []):
@@ -72,6 +73,13 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 		if life_state=="ACTIVE":
 			var facing_point := _point(bounds,spec.get("facing_point",Vector2(0,-0.24)))
 			canvas.draw_circle(facing_point,maxf(1.0,head_radius*0.34),highlight)
+	_draw_equipment_segments(canvas,bounds,equipment.get("front_segments",[]),
+		outline,opacity)
+	_draw_equipment_polyline(canvas,bounds,equipment.get("front_polyline",[]),
+		outline,_color("#dce4e5",opacity),maxf(1.4,bounds.size.y*0.035))
+	_draw_equipment_shield(canvas,bounds,equipment.get("shield_points",[]),
+		outline,opacity)
+	_draw_lantern_body(canvas,bounds,equipment,outline,opacity)
 	for raw_segment in spec.get("guard_segments", []):
 		if raw_segment is Array and raw_segment.size()==2:
 			canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
@@ -79,6 +87,101 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	if bool(spec.get("bleeding",false)):
 		_draw_centered_glyph(canvas,font,"!",_point(bounds,Vector2(0.36,-0.31)),
 			maxi(11,int(bounds.size.y*0.24)),_color("#ff5364",opacity))
+
+
+static func _draw_ground_shadow(canvas: CanvasItem, bounds: Rect2,
+		equipment: Dictionary, shadow: Color, life_state: String,
+		world_context: bool) -> void:
+	var shadow_spec: Dictionary = equipment.get("shadow", {})
+	var center := Vector2(bounds.get_center().x,
+		bounds.end.y-maxf(1.0,bounds.size.y*0.025))
+	var width_ratio := float(shadow_spec.get("width_ratio",0.58))
+	if life_state=="DOWNED":width_ratio=0.82
+	var radius_x:=maxf(2.0,bounds.size.x*width_ratio*0.5)
+	var radius_y:=maxf(1.2,bounds.size.y*float(shadow_spec.get("height_ratio",0.075)))
+	canvas.draw_colored_polygon(_ellipse_points(center,radius_x,radius_y),shadow)
+	if not world_context or life_state=="DEAD":return
+	var length_ratio:=float(shadow_spec.get("length_ratio",0.26))
+	var reach:=Vector2(bounds.size.x*0.18,bounds.size.y*length_ratio*0.46)
+	var long_shadow:=PackedVector2Array([
+		center+Vector2(-radius_x*0.72,0.0), center+Vector2(radius_x*0.72,0.0),
+		center+reach+Vector2(radius_x*0.38,radius_y*0.35),
+		center+reach+Vector2(-radius_x*0.38,radius_y*0.35),
+	])
+	canvas.draw_colored_polygon(long_shadow,_color("#020507",shadow.a*0.56))
+
+
+static func _draw_lantern_glow(canvas: CanvasItem,bounds:Rect2,equipment:Dictionary,
+		opacity:float,world_context:bool)->void:
+	var lantern:Dictionary=equipment.get("lantern",{})
+	if not bool(lantern.get("visible",false)):return
+	var center:=_point(bounds,lantern.get("center",Vector2.ZERO))
+	var radius:=maxf(2.0,bounds.size.y*float(lantern.get("radius_ratio",0.075)))
+	var glow_scale:=3.1 if world_context else 1.8
+	var glow:=_color(str(lantern.get("color_hex","#ffc45c")),opacity)
+	canvas.draw_circle(center,radius*glow_scale,_with_alpha(glow,0.055 if world_context else 0.08))
+	canvas.draw_circle(center,radius*glow_scale*0.58,_with_alpha(glow,0.11 if world_context else 0.13))
+
+
+static func _draw_lantern_body(canvas:CanvasItem,bounds:Rect2,equipment:Dictionary,
+		outline:Color,opacity:float)->void:
+	var lantern:Dictionary=equipment.get("lantern",{})
+	if not bool(lantern.get("visible",false)):return
+	var center:=_point(bounds,lantern.get("center",Vector2.ZERO))
+	var radius:=maxf(2.0,bounds.size.y*float(lantern.get("radius_ratio",0.075)))
+	var color:=_color(str(lantern.get("color_hex","#ffc45c")),opacity)
+	canvas.draw_circle(center,radius+1.0,outline)
+	canvas.draw_circle(center,radius,color)
+	canvas.draw_arc(center+Vector2(0,-radius*0.8),radius*0.72,PI,TAU,8,color,
+		maxf(1.0,bounds.size.y*0.020),true)
+
+
+static func _draw_equipment_segments(canvas:CanvasItem,bounds:Rect2,segments:Variant,
+		outline:Color,opacity:float)->void:
+	if not segments is Array:return
+	for raw in segments:
+		if not raw is Dictionary:continue
+		var row:Dictionary=raw
+		var from:=_point(bounds,row.get("from",Vector2.ZERO))
+		var to:=_point(bounds,row.get("to",Vector2.ZERO))
+		var width:=maxf(1.2,bounds.size.y*float(row.get("width_ratio",0.032)))
+		canvas.draw_line(from,to,outline,width+1.4,true)
+		canvas.draw_line(from,to,_color(str(row.get("color_hex","#dce4e5")),opacity),width,true)
+
+
+static func _draw_equipment_polyline(canvas:CanvasItem,bounds:Rect2,points:Variant,
+		outline:Color,color:Color,width:float)->void:
+	if not points is Array or points.size()<2:return
+	var projected:=PackedVector2Array()
+	for point in points:projected.append(_point(bounds,point))
+	canvas.draw_polyline(projected,outline,width+1.4,true)
+	canvas.draw_polyline(projected,color,width,true)
+
+
+static func _draw_equipment_shield(canvas:CanvasItem,bounds:Rect2,points:Variant,
+		outline:Color,opacity:float)->void:
+	if not points is Array or points.size()<3:return
+	var projected:=PackedVector2Array()
+	for point in points:projected.append(_point(bounds,point))
+	canvas.draw_colored_polygon(projected,_color("#477793",opacity*0.72))
+	var closed:=PackedVector2Array(projected)
+	closed.append(projected[0])
+	canvas.draw_polyline(closed,outline,maxf(1.2,bounds.size.y*0.030),true)
+	canvas.draw_polyline(closed,_color("#8fd5ed",opacity),maxf(1.0,bounds.size.y*0.018),true)
+
+
+static func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector2Array:
+	var result:=PackedVector2Array()
+	for index in range(16):
+		var angle:=TAU*float(index)/16.0
+		result.append(center+Vector2(cos(angle)*radius_x,sin(angle)*radius_y))
+	return result
+
+
+static func _with_alpha(color:Color,alpha:float)->Color:
+	var result:=color
+	result.a*=clampf(alpha,0.0,1.0)
+	return result
 
 
 static func _point(bounds: Rect2, normalized: Variant) -> Vector2:

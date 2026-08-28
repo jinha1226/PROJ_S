@@ -3,6 +3,7 @@ extends "res://tests/test_case.gd"
 const Style = preload("res://playtest/ascii_visual_style.gd")
 const Portrait = preload("res://playtest/ascii_actor_portrait.gd")
 const Grid = preload("res://playtest/party_grid_view.gd")
+const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 
 
 func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
@@ -257,6 +258,133 @@ func test_follow_plan_is_detached_offset_dashed_cued_risked_and_clearable() -> b
 	grid.set_exploration_companion_follow_plan({})
 	var cleared:Dictionary=grid.exploration_companion_follow_draw_spec()
 	check(not cleared.active and cleared.rows.is_empty(),"empty DTO clears follow rendering")
+	grid.free();return finish()
+
+
+func test_diorama_connected_masks_cover_all_cardinals_without_unseen_leak() -> bool:
+	var wall := {"terrain_id":"wall","visibility_state":"VISIBLE"}
+	var floor := {"terrain_id":"stone_floor","visibility_state":"VISIBLE"}
+	var directions := ["N","E","S","W"]
+	for expected_mask in range(16):
+		var neighbors: Dictionary = {}
+		for bit in range(4):
+			neighbors[directions[bit]] = (wall if expected_mask & (1 << bit) else floor).duplicate(true)
+		var spec: Dictionary = Diorama.cell_spec(Vector2i(7,7),wall,neighbors)
+		check_eq(spec.connected_mask,expected_mask,"cardinal connected mask %d"%expected_mask)
+	var memory_wall:=wall.duplicate(true);memory_wall.visibility_state="MEMORY"
+	var unseen_wall:=wall.duplicate(true);unseen_wall.visibility_state="UNSEEN"
+	var mixed:Dictionary=Diorama.cell_spec(Vector2i(7,7),wall,{
+		"N":memory_wall,"E":unseen_wall,"S":floor,"W":floor,
+		"NE":wall,
+	})
+	check_eq(mixed.connected_mask,Diorama.NORTH,
+		"known memory connects while unseen and diagonal data do not")
+	var hidden:Dictionary=Diorama.cell_spec(Vector2i(7,7),unseen_wall,{
+		"N":wall,"E":wall,"S":wall,"W":wall,
+	})
+	check(not hidden.visible and hidden.connected_mask==0 and hidden.terrain_id.is_empty(),
+		"unseen center exposes neither terrain nor silhouette")
+	return finish()
+
+
+func test_diorama_hash_marks_and_layer_order_are_fixed_and_detached() -> bool:
+	var vectors := [
+		[Vector2i(0,0),0,0],
+		[Vector2i(7,11),0,310339678],
+		[Vector2i(7,11),1,377919465],
+		[Vector2i(-3,5),9,1539742877],
+		[Vector2i(14,14),97,1329410547],
+	]
+	for row in vectors:
+		check_eq(Diorama.visual_hash(row[0],row[1]),row[2],
+			"stable visual hash %s/%s"%[row[0],row[1]])
+	var first:Dictionary=Diorama.material_mark_spec(Vector2i(5,12),"wood_floor")
+	var second:Dictionary=Diorama.material_mark_spec(Vector2i(5,12),"wood_floor")
+	check_eq(first,second,"material marks are coordinate-deterministic")
+	first.kind="CORRUPTED"
+	check(Diorama.material_mark_spec(Vector2i(5,12),"wood_floor").kind!="CORRUPTED",
+		"material mark specs are detached")
+	var expected_layers := ["VOID","MEMORY_GROUND","VISIBLE_GROUND","MATERIAL_MARKS",
+		"WALL_SHADOWS","WALL_TOPS_AND_FACES","GROUND_FEATURES","VISIBLE_HAZARDS",
+		"GROUND_ROUTES","ACTOR_GROUNDING","ACTORS","INTENTS_AND_SELECTION",
+		"EFFECTS","FOV_EDGE_AND_VIGNETTE"]
+	var layers:Array=Diorama.layer_order()
+	check_eq(layers,expected_layers,"diorama draw layers are explicit")
+	layers.clear()
+	check_eq(Diorama.layer_order(),expected_layers,"layer order getter is detached")
+	return finish()
+
+
+func test_diorama_sanitizer_and_hazards_are_memory_unseen_safe() -> bool:
+	var raw := {"position":[4,5],"terrain_id":"wall","feature_id":"run_exit_open",
+		"visibility_state":"MEMORY","fire_intensity":90,"fire":91,"wetness":92,
+		"effective_conductivity":93,"conductivity":94,"base_conductivity":95,
+		"actors":[{"entity_id":9}],"secret":"must disappear"}
+	var memory:Dictionary=Diorama.sanitize_observed_cell(raw)
+	check_eq(memory,{"visibility_state":"MEMORY","terrain_id":"wall"},
+		"memory sanitizer whitelists static terrain only")
+	var memory_hazard:Dictionary=Diorama.hazard_floor_spec(Vector2i(4,5),raw)
+	check_eq([memory_hazard.visible,memory_hazard.fire,memory_hazard.wetness,
+		memory_hazard.conductivity],[false,0,0,0],"memory aliases cannot leak live hazards")
+	var unseen_raw:=raw.duplicate(true);unseen_raw.visibility_state="UNSEEN"
+	check_eq(Diorama.sanitize_observed_cell(unseen_raw),{"visibility_state":"UNSEEN"},
+		"unseen sanitizer exposes no authoritative fields")
+	var visible_raw:=raw.duplicate(true);visible_raw.visibility_state="VISIBLE"
+	var visible_hazard:Dictionary=Diorama.hazard_floor_spec(Vector2i(4,5),visible_raw)
+	check(visible_hazard.visible and visible_hazard.fire==90 and visible_hazard.wetness==92 \
+		and visible_hazard.conductivity==93,"visible hazards produce a floor-layer spec")
+	memory.terrain_id="CORRUPTED"
+	check_eq(str(raw.terrain_id),"wall","sanitizer output is detached from observation")
+	return finish()
+
+
+func test_diorama_equipment_roles_are_distinct_visual_only_specs() -> bool:
+	var cases := [
+		[{"is_protagonist":true,"faction_id":"enemy","species_id":"goblin","roster_slot":1},
+			"HERO_SWORD_LANTERN"],
+		[{"faction_id":"party","species_id":"human","roster_slot":1},
+			"COMPANION_SPEAR_SHIELD"],
+		[{"faction_id":"party","species_id":"goblin","roster_slot":2},
+			"COMPANION_TOOL_DAGGER"],
+		[{"faction_id":"enemy","species_id":"goblin","roster_slot":99},"GOBLIN_SAW"],
+		[{"faction_id":"neutral","species_id":"human","inventory":["legendary_sword"]},"NONE"],
+	]
+	for row in cases:
+		var actor:Dictionary=row[0];var before:=actor.duplicate(true)
+		var spec:Dictionary=Diorama.equipment_spec(actor)
+		check_eq(spec.equipment_id,row[1],"role equipment %s"%row[1])
+		check_eq(actor,before,"equipment projection never mutates or consumes inventory")
+	check(Diorama.equipment_spec(cases[0][0]).lantern.visible,
+		"hero lantern has a code-native light primitive")
+	check(not Diorama.equipment_spec(cases[1][0]).shield_points.is_empty(),
+		"slot one shield has a code-native silhouette")
+	check(not Diorama.equipment_spec(cases[3][0]).front_polyline.is_empty(),
+		"goblin saw has a code-native silhouette")
+	return finish()
+
+
+func test_diorama_route_style_preserves_mapping_and_actor_hit_authority() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:cell.actors.append({"entity_id":77,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(77)
+	check_eq(grid.diorama_layer_order(),Diorama.layer_order(),
+		"grid forwards pure layer order")
+	check_eq(grid.diorama_cell_draw_spec(Vector2i(7,7)).connected_mask,15,
+		"visible same-terrain cross connects")
+	grid.set_route_overlay([[6,7],[7,7],[8,7]],0,true)
+	var route:Dictionary=grid.route_draw_spec()
+	check_eq([route.render_style,route.draw_tile_cards],["CHALK_CENTERLINE",false],
+		"route renders as chalk centerline without tile cards")
+	check_eq(grid.mapping_signature(),mapping,"diorama and route never alter grid mapping")
+	check_eq(grid.actor_hit_rect(77),hit,"equipment never enlarges actor hit authority")
+	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(7,7))),Vector2i(7,7),
+		"logical cell center roundtrip remains exact")
+	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),77,
+		"visual equipment adds no competing hit surface")
 	grid.free();return finish()
 
 

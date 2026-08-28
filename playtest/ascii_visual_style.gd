@@ -1,6 +1,8 @@
 class_name AsciiVisualStyle
 extends RefCounted
 
+const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
+
 const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 
@@ -121,6 +123,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var facing := normalized_facing(actor.get("facing", [0, 1]))
 	var geometry := _pose_geometry(life_state, facing)
 	var guarded := bool(actor.get("guarded", false))
+	var equipment := DioramaScript.equipment_spec(actor)
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
@@ -131,6 +134,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"body_center":geometry.body_center, "head_center":geometry.head_center,
 		"facing_point":geometry.facing_point, "limb_segments":geometry.limb_segments,
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
+		"equipment":equipment,
 		"draw_head":life_state != "DEAD", "draw_limbs":life_state != "DEAD",
 	}.duplicate(true)
 
