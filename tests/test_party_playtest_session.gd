@@ -5,6 +5,80 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Request=preload("res://sim/party_turn_request.gd")
 
+func test_new_expedition_personality_seed_profiles_replay_refresh_and_restart_are_deterministic() -> bool:
+	var seed:=Session.new_expedition_personality_seed(123456)
+	check_eq(seed,Session.new_expedition_personality_seed(123456),"entropy normalization deterministic")
+	var session=Session.new(44,seed,"SHOWCASE_V1")
+	var summary:Dictionary=session.party_personality_summary()
+	check_eq(summary.companion_rows.size(),2,"two companion personality rows")
+	check(str(summary.companion_rows[0].archetype_id)!=str(summary.companion_rows[1].archetype_id),
+		"new-expedition companions use distinct archetypes")
+	var distance:=0
+	for index in range(4):
+		var first:int=int(summary.companion_rows[0].facet_rows[index].base_value)
+		var second:int=int(summary.companion_rows[1].facet_rows[index].base_value)
+		check(first>=Session.NEW_EXPEDITION_FACET_MIN and first<=Session.NEW_EXPEDITION_FACET_MAX,
+			"first companion facet bounded")
+		check(second>=Session.NEW_EXPEDITION_FACET_MIN and second<=Session.NEW_EXPEDITION_FACET_MAX,
+			"second companion facet bounded")
+		distance+=absi(first-second)
+	check(distance>=Session.NEW_EXPEDITION_MIN_PROFILE_DISTANCE,"companion profile distance guaranteed")
+	var before:=session.save_session_json()
+	for iteration in range(8):
+		var detached:Dictionary=session.party_personality_summary();detached.companion_rows[0].facet_rows[0].base_value=9999
+		session.inspect_party_member(int(summary.companion_rows[0].actor_id))
+	check_eq(session.save_session_json(),before,"summary/inspect refresh path never rerolls or mutates")
+
+	check(session.commit_exploration_direction(Vector2i.ZERO).accepted,"journal fixture advances deterministically")
+	var encoded:=session.save_session_json();var restored=Session.new(1,2)
+	check(restored.load_session_json(encoded).accepted,"seed/profile save-load command replay accepted")
+	check_eq([restored.personality_seed,restored.party_personality_summary()],
+		[seed,session.party_personality_summary()],"seed and actual profiles survive replay exactly")
+
+	var reroll_seed:=Session.new_expedition_personality_seed(654321,seed)
+	check(reroll_seed!=seed,"avoid seed guarantees a different new expedition")
+	session.sim.world.party_encounter.safe_phase="PARTY_DEFEATED"
+	var restarted:Dictionary=session.restart_with_personality_seed(reroll_seed)
+	check(restarted.accepted,"explicit boundary seed restarts terminal run")
+	var expected=Session.new(44,reroll_seed,"SHOWCASE_V1")
+	check_eq(session.sim.snapshot(),expected.sim.snapshot(),"reroll restart rebuilds exact explicit-seed snapshot")
+	check(session.command_journal.is_empty(),"reroll restart clears prior command journal")
+	check_eq(session.personality_seed,reroll_seed,"reroll restart stores issued seed")
+	return finish()
+
+func test_32_new_expedition_seeds_cover_archetypes_and_only_legal_personality_actions() -> bool:
+	var action_counts:={"HOLD":0,"MOVE":0,"MELEE":0};var archetype_ids:Dictionary={}
+	for entropy_seed in range(1,33):
+		var seed:=Session.new_expedition_personality_seed(entropy_seed)
+		var session=Session.new(44,seed);var state=session.sim.world.party_encounter
+		for row in session.party_personality_summary().companion_rows:
+			archetype_ids[str(row.archetype_id)]=true
+		check(session.commit_exploration(Command.wait(state.protagonist_id)).accepted,
+			"seed %d reaches contact"%entropy_seed)
+		check(session.preview_deployment("WEDGE",session.available_companion_ids()).accepted,
+			"seed %d has legal wedge"%entropy_seed)
+		check(session.commit_deployment().accepted,"seed %d engages"%entropy_seed)
+		var distant=session.sim.preview_party_turn(Request.new(Action.hold(state.protagonist_id),[])).to_dict()
+		for row in distant.actor_rows:
+			if int(row.actor_id)==int(state.protagonist_id):continue
+			var action_type:=str(row.action.type);check(action_type in ["HOLD","MOVE"],
+				"distant suggestion remains legal HOLD/MOVE")
+			action_counts[action_type]+=1
+		var companion:=int(state.party_member_ids[1]);var enemy:=int(state.enemy_ids[0])
+		check(_relocate_with_move_events(session.sim,enemy,
+			session.sim.world.entities[companion].position+Vector2i.RIGHT),
+			"seed %d creates legal adjacent fixture"%entropy_seed)
+		var adjacent=session.sim.preview_party_turn(Request.new(Action.hold(state.protagonist_id),[])).to_dict()
+		for row in adjacent.actor_rows:
+			if int(row.actor_id)!=companion:continue
+			var action_type:=str(row.action.type);check(action_type in ["HOLD","MELEE"],
+				"adjacent suggestion cannot invent an illegal move")
+			action_counts[action_type]+=1
+	check(action_counts.HOLD>0 and action_counts.MOVE>0 and action_counts.MELEE>0,
+		"32 seeds cover hold/move/melee through legal distance fixtures: %s"%str(action_counts))
+	check(archetype_ids.size()>=4,"32 seeds cover multiple archetypes: %s"%str(archetype_ids.keys()))
+	return finish()
+
 func test_facade_dtos_are_detached_and_save_load_preserves_contact() -> bool:
 	var session=Session.new(); var status=session.party_status(); status.safe_phase="CORRUPTED"
 	var cards=session.party_cards(); cards[0].element_exposure.total_risk=999

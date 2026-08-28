@@ -7,6 +7,53 @@ const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
+func test_party_card_layout_specs_and_detached_render_support_one_two_three_members() -> bool:
+	for viewport_width in [360.0,450.0]:
+		var sandbox=Sandbox.new();sandbox.size=Vector2(viewport_width,640 if viewport_width==360.0 else 800)
+		sandbox.initialize_for_headless_test(Session.new())
+		var all_rows:Array=sandbox.session.party_cards()
+		for count in [1,2,3]:
+			var rows:Array=[]
+			for index in range(count):rows.append(all_rows[index].duplicate(true))
+			var speeches:Array=[]
+			if count>=2:
+				speeches.append({"actor_id":int(rows[1].entity_id),"source":"SUGGESTED",
+					"headline":"이동할게.","reason_summary":"길이 열려서","reason":"목표에 접근할 길을 골랐습니다."})
+			var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
+			check_eq([str(spec.layout_id),int(spec.effective_count)],
+				[["SPOTLIGHT","DUAL","COMPACT"][count-1],count],
+				"%s width count %d layout"%[viewport_width,count])
+			check(int(spec.font_size)>=12,"card layout font floor")
+			check_eq(sandbox.cards.get_child_count(),count,"renderer uses DTO row count")
+			for index in range(count):
+				var card:=sandbox.cards.get_child(index) as Button
+				var portrait:=card.find_child("Portrait",true,false) as Control
+				check(card.custom_minimum_size.x>=float(spec.card_min_width),"card deterministic minimum width")
+				check(portrait.custom_minimum_size.x>=float(spec.portrait_min_size[0]) \
+					and portrait.custom_minimum_size.y>=float(spec.portrait_min_size[1]),
+					"count %d portrait budget"%count)
+				check(portrait.mouse_filter==Control.MOUSE_FILTER_IGNORE,"portrait cannot steal card taps")
+				var speech:=card.find_child("CompanionSpeechStrip",true,false)
+				if index==0:check(speech==null,"hero never receives speech strip")
+				elif index==1:check(speech!=null,"companion owns compact speech strip")
+			if count==1:
+				var hero_card:=sandbox.cards.get_child(0) as Button
+				check(hero_card.find_child("SpotlightDetails",true,false)!=null,"single member uses horizontal spotlight")
+				check("/" in str((hero_card.find_child("MemberState",true,false) as Label).text),
+					"spotlight shows exact HP maximum")
+		var detached:=sandbox.party_card_layout_spec(2,viewport_width);detached.portrait_min_size[0]=1
+		check_eq(int(sandbox.party_card_layout_spec(2,viewport_width).portrait_min_size[0]),68,
+			"layout spec is deeply detached")
+		check_eq(int(sandbox.party_card_layout_spec(0,viewport_width).effective_count),0,"zero rows safely empty")
+		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),3,"over-cap rows safely clamp")
+		var companion_detail:Dictionary=sandbox.session.inspect_party_member(int(all_rows[1].entity_id))
+		check(str(companion_detail.personality_archetype.label) in sandbox._member_detail_text(companion_detail),
+			"detail modal exposes short Korean archetype")
+		var log_text:=sandbox._combat_log_text(sandbox.session.combat_log())
+		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies rerolled archetypes")
+		sandbox.free()
+	return finish()
+
 func test_same_grid_keeps_full_mapping_through_contact() -> bool:
 	var sandbox=Sandbox.new(); sandbox.size=Vector2(450,800); sandbox.initialize_for_headless_test(Session.new())
 	sandbox.grid.size=sandbox.grid.custom_minimum_size

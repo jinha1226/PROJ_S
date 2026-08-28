@@ -22,6 +22,24 @@ const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
+const NEW_EXPEDITION_FACET_MIN := 100
+const NEW_EXPEDITION_FACET_MAX := 899
+const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
+const NEW_EXPEDITION_SEED_LIMIT := 2147483646
+const PERSONALITY_ARCHETYPES := [
+	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
+		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
+	{"archetype_id":"CALM_GUARDIAN", "label":"침착한 수호자",
+		"center":{"aggression":360,"altruism":760,"boldness":540,"composure":800}},
+	{"archetype_id":"QUICK_SCOUT", "label":"기민한 척후",
+		"center":{"aggression":620,"altruism":400,"boldness":650,"composure":470}},
+	{"archetype_id":"KIND_SUPPORT", "label":"다정한 지원가",
+		"center":{"aggression":330,"altruism":820,"boldness":470,"composure":630}},
+	{"archetype_id":"CAUTIOUS_SENTINEL", "label":"신중한 파수꾼",
+		"center":{"aggression":280,"altruism":570,"boldness":290,"composure":810}},
+	{"archetype_id":"FIERY_CHARGER", "label":"불같은 돌격수",
+		"center":{"aggression":830,"altruism":350,"boldness":740,"composure":300}},
+]
 
 var sim
 var world_seed := DEFAULT_WORLD_SEED
@@ -48,6 +66,57 @@ func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_personality_seed: int = DEFAULT_PERSONALITY_SEED,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> void:
 	reset_party(p_world_seed, p_personality_seed, p_scenario_id)
+
+
+static func new_expedition_personality_seed(entropy_seed: int,
+		avoid_seed: int = -1) -> int:
+	# This function is deliberately pure. The UI supplies entropy once at the
+	# new-expedition boundary; constructor, save/load, refresh and replay never
+	# consult Time or an RNG. Existing explicit seeds remain byte-reproducible.
+	var normalized := entropy_seed % NEW_EXPEDITION_SEED_LIMIT
+	if normalized < 0: normalized += NEW_EXPEDITION_SEED_LIMIT
+	for attempt in range(4096):
+		var candidate := 1 + (normalized + attempt * 104729) % NEW_EXPEDITION_SEED_LIMIT
+		if candidate == avoid_seed: continue
+		if _new_expedition_seed_is_suitable(candidate): return candidate
+	# The search space is intentionally generous; retain a deterministic fallback
+	# rather than introducing a second nondeterministic draw if rules evolve.
+	return 1 + (normalized + 4096 * 104729) % NEW_EXPEDITION_SEED_LIMIT
+
+
+static func personality_archetype(profile) -> Dictionary:
+	if profile == null: return {}
+	var best: Dictionary = {}
+	var best_distance := 9223372036854775807
+	for archetype_value in PERSONALITY_ARCHETYPES:
+		var archetype: Dictionary = archetype_value
+		var center: Dictionary = archetype.center
+		var distance := 0
+		for facet_id in PersonalityRegistryScript.FACET_IDS:
+			var delta := int(profile.value(facet_id)) - int(center[facet_id])
+			distance += delta * delta
+		if distance < best_distance:
+			best_distance = distance; best = archetype
+	return {"archetype_id":str(best.get("archetype_id","")),
+		"label":str(best.get("label","")), "distance":best_distance}.duplicate(true)
+
+
+static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
+	var profiles: Array = [PersonalityRegistryScript.generate(candidate_seed,0),
+		PersonalityRegistryScript.generate(candidate_seed,1)]
+	var archetype_ids: Array[String] = []
+	for profile in profiles:
+		if profile == null: return false
+		for facet_id in PersonalityRegistryScript.FACET_IDS:
+			var value := int(profile.value(facet_id))
+			if value < NEW_EXPEDITION_FACET_MIN or value > NEW_EXPEDITION_FACET_MAX:
+				return false
+		archetype_ids.append(str(personality_archetype(profile).get("archetype_id","")))
+	if archetype_ids[0] == archetype_ids[1]: return false
+	var distance := 0
+	for facet_id in PersonalityRegistryScript.FACET_IDS:
+		distance += absi(int(profiles[0].value(facet_id))-int(profiles[1].value(facet_id)))
+	return distance >= NEW_EXPEDITION_MIN_PROFILE_DISTANCE
 
 func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> bool:
@@ -211,6 +280,49 @@ func restart_same_run() -> Dictionary:
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
 		"scenario_id":scenario_id, "run_progress":run_progress()})
+
+
+func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
+	var progress := run_progress()
+	if not bool(progress.available):
+		return _rejection_dto("run_restart_unavailable")
+	if str(progress.run_state) not in ["COMPLETE", "DEFEATED"]:
+		return _rejection_dto("run_restart_not_ready")
+	if p_personality_seed == personality_seed:
+		return _rejection_dto("personality_seed_unchanged")
+	var frozen_world_seed := world_seed
+	var frozen_scenario_id := scenario_id
+	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id):
+		return _rejection_dto("run_restart_failed")
+	return _feedback_dto({"accepted":true, "reason":"ok",
+		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
+		"scenario_id":scenario_id, "run_progress":run_progress()})
+
+
+func party_personality_summary() -> Dictionary:
+	var rows: Array = []
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {"schema_version":1,"personality_seed":str(personality_seed),
+			"companion_rows":rows}.duplicate(true)
+	var state = sim.world.party_encounter
+	for member_id_value in state.party_member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		if member == null or member.role != "COMPANION" \
+				or member.personality_profile == null \
+				or not sim.world.entities.has(member_id):
+			continue
+		var archetype := personality_archetype(member.personality_profile)
+		rows.append({"actor_id":member_id,"roster_slot":int(member.roster_slot),
+			"display_name":str(sim.world.entities[member_id].display_name),
+			"archetype_id":str(archetype.get("archetype_id","")),
+			"archetype_label":str(archetype.get("label","")),
+			"facet_rows":member.personality_profile.facet_rows.duplicate(true)})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.roster_slot)<int(b.roster_slot) if int(a.roster_slot)!=int(b.roster_slot) \
+			else int(a.actor_id)<int(b.actor_id))
+	return {"schema_version":1,"personality_seed":str(personality_seed),
+		"companion_rows":rows}.duplicate(true)
 
 func observe_party_world() -> Dictionary:
 	var status := party_status()
@@ -956,8 +1068,10 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var emotion := _emotion_presentation(member, entity)
 	var personality_profile = null
 	var personality_facets: Array = []
+	var personality_archetype_dto: Dictionary = {}
 	if member.personality_profile != null:
 		personality_profile = member.personality_profile.to_dict()
+		personality_archetype_dto = personality_archetype(member.personality_profile)
 		for row in member.personality_profile.facet_rows:
 			var labels: Array = PersonalityRegistryScript.LABELS.get(str(row.facet_id), ["낮음","높음"])
 			personality_facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
@@ -998,9 +1112,10 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
-		"personality_facets":personality_facets,
+		"personality_facets":personality_facets,"personality_archetype":personality_archetype_dto,
 		"personality_note":"주인공은 생성형 성격 프로필을 사용하지 않습니다." \
-			if personality_profile == null else "결정론적 성격 프로필",
+			if personality_profile == null else "%s · 결정론적 성격 프로필" \
+				% str(personality_archetype_dto.get("label","분류되지 않은 성향")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
 		"relation_rows":relation_rows}
 	return _feedback_dto(dto, null, null,
@@ -1561,6 +1676,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"run_restart_unavailable":"이 시나리오는 다시 시작할 원정이 없습니다.",
 			"run_restart_not_ready":"원정을 완료하거나 실패한 뒤 다시 시작할 수 있습니다.",
 			"run_restart_failed":"같은 원정을 다시 준비하지 못했습니다.",
+			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
 		"deployment_space_unavailable":"동료가 설 수 있는 빈 칸이 부족합니다.",

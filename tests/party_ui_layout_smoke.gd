@@ -14,6 +14,7 @@ func _init()->void: call_deferred("_run")
 func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
+		await _party_card_count_layouts(viewport_size)
 		await _auto_showcase_and_combat_flow(viewport_size)
 		await _companion_card_speech_layout(viewport_size)
 		await _mvp_run_objective_and_restart(viewport_size)
@@ -29,12 +30,61 @@ func _run()->void:
 	print("---- party UI layout smoke: %d journeys + %d wide fallbacks, %d failed ----"%[6,2,failures.size()])
 	quit(1 if not failures.is_empty() else 0)
 
+func _party_card_count_layouts(viewport_size:Vector2)->void:
+	var session=_engaged_session([1,2],"WEDGE")
+	session.prepare_auto_combat_plan()
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame;await process_frame
+	var all_rows:Array=session.party_cards();var speeches:Array=session.companion_speech_bubbles()
+	for count in [1,2,3]:
+		var rows:Array=[]
+		for index in range(count):rows.append(all_rows[index].duplicate(true))
+		var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
+		await process_frame;await process_frame
+		var expected_layout:String=["SPOTLIGHT","DUAL","COMPACT"][count-1]
+		if str(spec.layout_id)!=expected_layout or sandbox.cards.get_child_count()!=count:
+			failures.append("%s party count %d layout/render mismatch"%[viewport_size,count]);continue
+		var party_rect:Rect2=sandbox.cards.get_global_rect();var viewport_rect:Rect2=sandbox.get_global_rect()
+		if not _rect_contains(viewport_rect,party_rect):
+			failures.append("%s count %d party area outside viewport %s"%[viewport_size,count,party_rect])
+		if sandbox.grid.get_global_rect().intersects(party_rect):
+			failures.append("%s count %d party area overlaps map"%[viewport_size,count])
+		if sandbox.combat_action_area.visible and sandbox.combat_action_area.get_global_rect().intersects(party_rect):
+			failures.append("%s count %d party area overlaps fixed action dock"%[viewport_size,count])
+		var previous_rect:=Rect2()
+		for index in range(count):
+			var card:=sandbox.cards.get_child(index) as Button;var card_rect:=card.get_global_rect()
+			if not _rect_contains(party_rect,card_rect):
+				failures.append("%s count %d card %d outside party area"%[viewport_size,count,index])
+			if index>0 and previous_rect.intersects(card_rect):
+				failures.append("%s count %d cards overlap"%[viewport_size,count])
+			previous_rect=card_rect
+			var portrait:=card.find_child("Portrait",true,false) as Control
+			if portrait==null or not _rect_contains(card_rect,portrait.get_global_rect()) \
+					or portrait.custom_minimum_size.x<float(spec.portrait_min_size[0]):
+				failures.append("%s count %d portrait bounds/budget"%[viewport_size,count])
+			for label_name in ["MemberName","Readiness","EmotionState","MemberState","StressState"]:
+				var label:=card.find_child(label_name,true,false) as Label
+				if label==null or label.get_theme_font_size("font_size")<12 \
+						or not _rect_contains(card_rect,label.get_global_rect()):
+					failures.append("%s count %d %s bounds/font"%[viewport_size,count,label_name])
+			var strip:=card.find_child("CompanionSpeechStrip",true,false) as PanelContainer
+			if index==0 and strip!=null:failures.append("%s count %d hero speech present"%[viewport_size,count])
+			elif index>0 and strip!=null and (strip.mouse_filter!=Control.MOUSE_FILTER_IGNORE \
+					or not _rect_contains(card_rect,strip.get_global_rect())):
+				failures.append("%s count %d speech input/bounds"%[viewport_size,count])
+	sandbox.queue_free();await process_frame
+
 func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
 	var main=Sandbox.new();main.size=viewport_size
+	main.set_personality_entropy_source_for_headless_test(func():return 123456)
 	main.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);main.size=viewport_size;root.add_child(main)
 	await process_frame
 	if str(main.session.party_status().get("scenario_id",""))!="SHOWCASE_V1" or not main.auto_orchestration_enabled:
 		failures.append("%s main sandbox did not start SHOWCASE auto mode"%viewport_size)
+	if int(main.session.personality_seed)!=Session.new_expedition_personality_seed(123456):
+		failures.append("%s main sandbox did not issue boundary personality seed"%viewport_size)
 	main.queue_free();await process_frame
 
 	var session=Session.new();var hero:=int(session.party_status().protagonist_id)
@@ -216,6 +266,8 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	if restart==null or not restart.is_visible_in_tree() or sandbox.combat_action_dock.get_child_count()!=1 \
 			or sandbox.action_feedback_label.visible:
 		failures.append("%s complete fixed area is not one restart button"%label)
+	if restart!=null and restart.text!="새 성격으로 다시 시작":
+		failures.append("%s restart button does not explain personality reroll"%label)
 	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
 			or not sandbox.grid.route_draw_spec().segments.is_empty():
 		failures.append("%s complete left stale camera/action overlays"%label)
@@ -230,6 +282,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox.selected_tile=exit;sandbox.selected_tile_inspection={"accepted":true}
 	sandbox.member_detail_modal.visible=true;sandbox.grid.modal_open=true
 	sandbox._scroll_log_after_refresh=true
+	var personality_seed_before:=int(session.personality_seed)
 	if restart!=null:restart.pressed.emit()
 	await process_frame;await process_frame
 	var fresh:Dictionary=session.run_progress()
@@ -238,6 +291,8 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 		failures.append("%s restart replaced grid or lost 15x15 mapping"%label)
 	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
 		failures.append("%s restart did not restore fresh run progress"%label)
+	if int(session.personality_seed)==personality_seed_before:
+		failures.append("%s UI new-personality restart did not reroll seed"%label)
 	if sandbox.auto_deployment_pending or sandbox.auto_combat_pending or not sandbox.route_preview.is_empty() \
 			or sandbox.member_detail_modal.visible or sandbox.grid.modal_open \
 			or not sandbox.grid._active_visual_effects.is_empty() or not sandbox.grid._played_effect_ids.is_empty():

@@ -85,12 +85,13 @@ var _reward_emphasis_pending:=false
 var _reward_emphasis_count:=0
 var _reward_emphasis_tween:Tween
 var _run_locked_exit_feedback:=false
+var _personality_entropy_source:Callable
 
 func _ready()->void:
 	_build_ui()
 	if not _initialized_for_headless_test and session==null:
 		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
-			SessionScript.DEFAULT_PERSONALITY_SEED,SessionScript.SHOWCASE_SCENARIO_ID)
+			_issue_new_personality_seed(),SessionScript.SHOWCASE_SCENARIO_ID)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
 	if _initialized_for_headless_test and auto_orchestration_enabled:
@@ -101,6 +102,18 @@ func initialize_for_headless_test(custom_session=null,auto_orchestration:bool=fa
 	session=custom_session if custom_session!=null else SessionScript.new()
 	auto_orchestration_enabled=auto_orchestration
 	_reset_auto_flow();_refresh()
+
+func set_personality_entropy_source_for_headless_test(source:Callable)->void:
+	_personality_entropy_source=source
+
+func _issue_new_personality_seed(avoid_seed:int=-1)->int:
+	var entropy_seed:=0
+	if _personality_entropy_source.is_valid():
+		entropy_seed=int(_personality_entropy_source.call())
+	else:
+		var entropy:=RandomNumberGenerator.new();entropy.randomize()
+		entropy_seed=int(entropy.randi())
+	return SessionScript.new_expedition_personality_seed(entropy_seed,avoid_seed)
 
 func _build_ui()->void:
 	if grid!=null:return
@@ -230,7 +243,10 @@ func _refresh()->void:
 	var combat_zoomed:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
-	_apply_portrait_budget(combat_zoomed,combat_actions_visible,run_available,run_terminal)
+	var party_rows:Array=session.party_cards()
+	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
+	_apply_portrait_budget(combat_zoomed,combat_actions_visible,run_available,run_terminal,
+		int(card_layout.get("party_height",160)))
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
@@ -266,9 +282,7 @@ func _refresh()->void:
 		for speech in session.companion_speech_bubbles():
 			if speech is Dictionary:
 				companion_speech_by_actor[int(speech.get("actor_id",-1))]=speech.duplicate(true)
-	_clear_container(cards)
-	for row in session.party_cards():
-		_add_member_card(row,companion_speech_by_actor.get(int(row.entity_id),{}))
+	_render_party_cards(party_rows,companion_speech_by_actor,card_layout)
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
 	action_feedback_label.visible=true
@@ -435,27 +449,93 @@ func auto_flow_state()->Dictionary:
 		"override_edit":auto_override_edit,"plan_hash":auto_combat_plan_hash,
 		"follow_plan":exploration_follow_plan.duplicate(true)}.duplicate(true)
 
-func _add_member_card(row:Dictionary,speech:Dictionary={})->void:
+func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
+	var effective_count:=clampi(count,0,3)
+	if effective_count==0:
+		return {"layout_id":"EMPTY","requested_count":count,"effective_count":0,
+			"party_height":0,"gap":0,"card_min_width":0,
+			"portrait_min_size":[0,0],"font_size":FONT_AUX}.duplicate(true)
+	var gap:=4
+	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
+	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
+		"effective_count":effective_count,"party_height":160,"gap":gap,
+		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
+		"portrait_min_size":[52,54],"font_size":FONT_AUX}
+	if effective_count==1:
+		spec.layout_id="SPOTLIGHT";spec.party_height=112
+		spec.portrait_min_size=[88,88]
+	elif effective_count==2:
+		spec.layout_id="DUAL";spec.party_height=150
+		spec.portrait_min_size=[68,68]
+	return spec.duplicate(true)
+
+func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
+	var speech_by_actor:Dictionary={}
+	for speech in speeches:
+		if speech is Dictionary:
+			speech_by_actor[int(speech.get("actor_id",-1))]=speech.duplicate(true)
+	var spec:=party_card_layout_spec(rows.size(),size.x)
+	_render_party_cards(rows,speech_by_actor,spec)
+	return spec.duplicate(true)
+
+func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)->void:
+	_clear_container(cards)
+	cards.custom_minimum_size.y=int(spec.get("party_height",160))
+	cards.add_theme_constant_override("separation",int(spec.get("gap",4)))
+	var effective_count:=mini(rows.size(),int(spec.get("effective_count",0)))
+	for index in range(effective_count):
+		var row:Variant=rows[index]
+		if row is Dictionary:
+			_add_member_card(row,speech_by_actor.get(int(row.get("entity_id",-1)),{}),spec)
+
+func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
+	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(3,size.x)
 	var button:=Button.new(); var member_id:=int(row.entity_id); button.name="MemberCard%d"%member_id
-	button.custom_minimum_size=Vector2(44,160); button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
+	button.custom_minimum_size=Vector2(float(spec.get("card_min_width",44)),float(spec.get("party_height",160)))
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
 	button.modulate=Color("#d8f3ff") if member_id==selected_member_id else Color.WHITE
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,3)
 	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,2)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; button.add_child(inset)
+	if str(spec.get("layout_id","COMPACT"))=="SPOTLIGHT":
+		_add_spotlight_card_content(inset,row,speech,spec)
+	else:
+		_add_stacked_card_content(inset,row,speech,spec)
+	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
+	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
+
+func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,
+		spec:Dictionary)->void:
+	var stack:=HBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",8)
+	stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(stack)
+	var portrait_view=_member_portrait(row,spec);stack.add_child(portrait_view)
+	var details:=VBoxContainer.new();details.name="SpotlightDetails"
+	details.size_flags_horizontal=Control.SIZE_EXPAND_FILL;details.add_theme_constant_override("separation",1)
+	details.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(details)
+	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():
+		_add_companion_speech_strip(details,speech)
+	var name_label:=_card_label(str(row.display_name),"MemberName",FONT_BODY)
+	name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;details.add_child(name_label)
+	var state_line:=HBoxContainer.new();state_line.name="SpotlightState"
+	state_line.mouse_filter=Control.MOUSE_FILTER_IGNORE;details.add_child(state_line)
+	var ready_label:=_card_label("준비" if str(row.readiness)=="행동 준비" else "행동중","Readiness",FONT_AUX)
+	ready_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;state_line.add_child(ready_label)
+	var emotion_label:=_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX)
+	emotion_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	state_line.add_child(emotion_label)
+	_add_vitals(details,row,true)
+
+func _add_stacked_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,
+		spec:Dictionary)->void:
 	var stack:=VBoxContainer.new(); stack.name="CardStack"; stack.add_theme_constant_override("separation",0); stack.mouse_filter=Control.MOUSE_FILTER_IGNORE; inset.add_child(stack)
-	if not speech.is_empty():_add_companion_speech_strip(stack,speech)
+	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
 	var heading:=HBoxContainer.new(); heading.name="CardHeading"; heading.alignment=BoxContainer.ALIGNMENT_CENTER
-	heading.custom_minimum_size.y=54;heading.add_theme_constant_override("separation",0)
+	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
+	heading.custom_minimum_size.y=float(portrait_size[1]);heading.add_theme_constant_override("separation",0)
 	heading.mouse_filter=Control.MOUSE_FILTER_IGNORE; stack.add_child(heading)
-	var portrait_view=PortraitScript.new();portrait_view.name="Portrait";portrait_view.custom_minimum_size=Vector2(52,54)
-	var portrait_actor:Dictionary=row.duplicate(true);var detail:Dictionary=session.inspect_party_member(member_id)
-	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
-	portrait_actor["species_id"]=str(detail.get("species_id",portrait_actor.get("species_id","human")))
-	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
-	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
-	portrait_view.set_actor(portrait_actor);heading.add_child(portrait_view)
+	var portrait_view=_member_portrait(row,spec);heading.add_child(portrait_view)
 	var identity:=VBoxContainer.new();identity.name="CardIdentity";identity.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	identity.add_theme_constant_override("separation",0);identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;heading.add_child(identity)
 	var name_label:=_card_label(str(row.display_name),"MemberName",FONT_AUX)
@@ -466,17 +546,32 @@ func _add_member_card(row:Dictionary,speech:Dictionary={})->void:
 	var emotion_label:=_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX)
 	emotion_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	identity.add_child(emotion_label)
+	_add_vitals(stack,row,false)
+
+func _member_portrait(row:Dictionary,spec:Dictionary):
+	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
+	var portrait_view=PortraitScript.new();portrait_view.name="Portrait"
+	portrait_view.custom_minimum_size=Vector2(float(portrait_size[0]),float(portrait_size[1]))
+	portrait_view.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var member_id:=int(row.entity_id);var portrait_actor:Dictionary=row.duplicate(true)
+	var detail:Dictionary=session.inspect_party_member(member_id)
+	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
+	portrait_actor["species_id"]=str(detail.get("species_id",portrait_actor.get("species_id","human")))
+	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
+	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
+	portrait_view.set_actor(portrait_actor);return portrait_view
+
+func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	var vitals_text:=HBoxContainer.new();vitals_text.name="VitalsText";vitals_text.add_theme_constant_override("separation",2)
-	vitals_text.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(vitals_text)
-	var health_text:=_card_label("HP %d"%int(row.health),"MemberState",FONT_AUX)
+	vitals_text.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(vitals_text)
+	var hp_value:="HP %d/%d"%[int(row.health),int(row.max_health)] if show_exact_max else "HP %d"%int(row.health)
+	var health_text:=_card_label(hp_value,"MemberState",FONT_AUX)
 	health_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;health_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(health_text)
 	var stress_text:=_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX)
 	stress_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stress_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(stress_text)
-	var bars:=HBoxContainer.new(); bars.name="VitalsBars"; bars.add_theme_constant_override("separation",3); stack.add_child(bars)
+	var bars:=HBoxContainer.new(); bars.name="VitalsBars"; bars.add_theme_constant_override("separation",3);parent.add_child(bars)
 	var health_bar:=_bar("HealthBar",int(row.health),int(row.max_health),Color("#62d98b")); health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(health_bar)
 	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
-	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
-	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
 
 func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip";strip.custom_minimum_size.y=36
@@ -538,7 +633,7 @@ func _run_complete_deck(progress:Dictionary)->void:
 func _build_run_restart_area()->void:
 	combat_action_area.visible=true;combat_action_area.custom_minimum_size.y=TOUCH_TARGET
 	action_feedback_label.visible=false;combat_action_dock.visible=true
-	var restart:=_add_button(combat_action_dock,"같은 원정 다시 시작","RestartSameRun",_on_restart_same_run)
+	var restart:=_add_button(combat_action_dock,"새 성격으로 다시 시작","RestartSameRun",_on_restart_with_new_personality)
 	restart.size_flags_stretch_ratio=1.0
 
 func _deployment_deck(deployment:Dictionary)->void:
@@ -713,6 +808,17 @@ func _on_restart_same_run()->void:
 	if not result is Dictionary or not bool(result.get("accepted",false)):
 		var message:="이 원정을 다시 시작할 수 없습니다." if not result is Dictionary \
 			else str(result.get("message","이 원정을 다시 시작할 수 없습니다."))
+		notice_text=message;action_feedback_text=message;_request_refresh();return
+	_reset_run_ui_transients();_request_refresh()
+
+func _on_restart_with_new_personality()->void:
+	if session==null or not session.has_method("restart_with_personality_seed"):
+		notice_text="새 성격으로 원정을 다시 시작할 수 없습니다.";_request_refresh();return
+	var fresh_seed:=_issue_new_personality_seed(int(session.personality_seed))
+	var result:Variant=session.call("restart_with_personality_seed",fresh_seed)
+	if not result is Dictionary or not bool(result.get("accepted",false)):
+		var message:="새 성격으로 원정을 다시 시작할 수 없습니다." if not result is Dictionary \
+			else str(result.get("message","새 성격으로 원정을 다시 시작할 수 없습니다."))
 		notice_text=message;action_feedback_text=message;_request_refresh();return
 	_reset_run_ui_transients();_request_refresh()
 
@@ -1179,7 +1285,8 @@ func _member_detail_text(detail:Dictionary)->String:
 		var facets:Array[String]=[]
 		for row in profile.get("facet_rows",[]):
 			if row is Dictionary:facets.append("%s %d"%[_facet_label(str(row.get("facet_id",""))),int(row.get("base_value",0))])
-		lines.append("성격: "+" · ".join(facets))
+		var archetype:Dictionary=detail.get("personality_archetype",{}) if detail.get("personality_archetype",{}) is Dictionary else {}
+		lines.append("성격: %s · %s"%[str(archetype.get("label","분류되지 않은 성향"))," · ".join(facets)])
 	else:lines.append("성격: 주인공 직접 지휘")
 	var affinity:Dictionary=detail.get("species_affinity",{}) if detail.get("species_affinity",{}) is Dictionary else {}
 	lines.append("원소 친화/내성: 불 %d · 물 %d · 전기 %d · 독 %d"%[int(affinity.get("fire_tolerance",0)),
@@ -1208,7 +1315,15 @@ func _member_detail_text(detail:Dictionary)->String:
 	return "\n".join(lines)
 
 func _combat_log_text(history:Dictionary)->String:
-	var lines:Array[String]=["전투 기록 · 최근 8턴"]
+	var lines:Array[String]=[]
+	if session!=null and session.has_method("party_personality_summary"):
+		var summary:Variant=session.call("party_personality_summary")
+		if summary is Dictionary:
+			var companion_parts:Array[String]=[]
+			for row in summary.get("companion_rows",[]):
+				if row is Dictionary:companion_parts.append("%s: %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","성향 미상"))])
+			if not companion_parts.is_empty():lines.append("이번 원정 성향 · "+" · ".join(companion_parts))
+	lines.append("전투 기록 · 최근 8턴")
 	var groups:Variant=history.get("groups",[])
 	if not groups is Array or groups.is_empty():
 		lines.append("아직 전투 사건이 없습니다.");return "\n".join(lines)
@@ -1252,7 +1367,7 @@ func _species(value:String)->String:return {"human":"인간","goblin":"고블린
 func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _apply_portrait_budget(combat_zoomed:bool,combat_actions_visible:bool,
-		run_available:bool=false,run_terminal:bool=false)->void:
+		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0; phase_panel.custom_minimum_size.y=52 if wide else 48
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
@@ -1263,7 +1378,7 @@ func _apply_portrait_budget(combat_zoomed:bool,combat_actions_visible:bool,
 		grid.custom_minimum_size=Vector2(405,405) if wide else Vector2(276,276) \
 			if run_available and (run_terminal or _run_locked_exit_feedback) \
 			else (Vector2(316,316) if run_available else Vector2(348,348))
-	cards.custom_minimum_size.y=160; info_scroll.custom_minimum_size.y=30
+	cards.custom_minimum_size.y=maxi(0,party_height); info_scroll.custom_minimum_size.y=30
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var contact_text:String={"NONE":"탐색 중","DETECTED":"상호 발견","PARTY_AMBUSH":"파티 선제","ENEMY_AMBUSH":"적 매복"}.get(str(status.contact_kind),"탐색 중")
