@@ -14,6 +14,7 @@ func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
 		await _auto_showcase_and_combat_flow(viewport_size)
+		await _mvp_run_objective_and_restart(viewport_size)
 		await _exploration_route_and_popover(viewport_size)
 		await _portrait_detail_modal(viewport_size)
 		await _combat_log_history(viewport_size)
@@ -84,6 +85,108 @@ func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
 			or sandbox.auto_combat_pending:
 		failures.append("%s auto hero action duplicated or remained pending"%viewport_size)
 	sandbox.queue_free();await process_frame
+
+func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,Session.SHOWCASE_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session,true)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
+	await process_frame;await process_frame
+	var label:="%s MVP_RUN"%viewport_size
+	var objective:Label=sandbox.run_objective_label;var objective_bar:PanelContainer=sandbox.run_objective_bar
+	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<43.9 \
+			or objective.get_theme_font_size("font_size")<18:
+		failures.append("%s objective bar accessibility"%label)
+	if objective.text!="목표 · 고블린을 쓰러뜨리세요" or sandbox.reward_badge.visible:
+		failures.append("%s initial objective/reward %s"%[label,objective.text])
+	_validate_run_objective_geometry(sandbox,label+" INITIAL")
+	var grid_id:int=sandbox.grid.get_instance_id()
+	var state=session.sim.world.party_encounter;var near_exit:=Vector2i(12,1);var exit:=Vector2i(13,1)
+	state.group_anchor=near_exit;state.facing=Vector2i.RIGHT
+	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=near_exit
+	sandbox._refresh();await process_frame;await process_frame
+	var locked_before:Dictionary=session.sim.snapshot();var journal_before:Array=session.command_journal.duplicate(true)
+	await _touch_cell(sandbox,exit)
+	if sandbox.action_feedback_label.text!="적을 쓰러뜨리면 출구가 열립니다." \
+			or not sandbox.combat_action_area.is_visible_in_tree() or sandbox.combat_action_dock.visible:
+		failures.append("%s locked exit fixed feedback unavailable"%label)
+	if session.sim.snapshot()!=locked_before or session.command_journal!=journal_before:
+		failures.append("%s locked exit touch mutated authority"%label)
+	sandbox._on_tile_long_pressed(exit);await process_frame;await process_frame
+	if not sandbox.tile_popover.visible or not "출구 · 잠김" in sandbox.tile_popover_label.text:
+		failures.append("%s locked exit inspector text"%label)
+	_validate_run_objective_geometry(sandbox,label+" LOCKED")
+
+	# This direct smoke fixture models a restored EXIT_OPEN save. A refresh must
+	# synchronize the badge without replaying the live reward emphasis.
+	state.safe_phase="GROUPED_COMPLETE";sandbox._refresh();await process_frame;await process_frame
+	if objective.text!="보상 +1 · 출구가 열렸습니다" or not sandbox.reward_badge.visible \
+			or sandbox.reward_badge.text!="$ 1":
+		failures.append("%s persistent reward/open objective"%label)
+	if sandbox._reward_emphasis_count!=0:
+		failures.append("%s loaded progress replayed reward emphasis"%label)
+	sandbox._on_tile_long_pressed(exit);await process_frame;await process_frame
+	if not "출구 · 열림" in sandbox.tile_popover_label.text:
+		failures.append("%s open exit inspector text"%label)
+
+	state.group_anchor=exit
+	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=exit
+	sandbox._hide_tile_popover();sandbox._refresh();await process_frame;await process_frame
+	if not bool(session.run_progress().complete) or objective.text!="원정 완료 · 보상 1":
+		failures.append("%s complete objective"%label)
+	var restart:=_button(sandbox,"RestartSameRun")
+	if restart==null or not restart.is_visible_in_tree() or sandbox.combat_action_dock.get_child_count()!=1 \
+			or sandbox.action_feedback_label.visible:
+		failures.append("%s complete fixed area is not one restart button"%label)
+	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
+			or not sandbox.grid.route_draw_spec().segments.is_empty():
+		failures.append("%s complete left stale camera/action overlays"%label)
+	_validate_run_objective_geometry(sandbox,label+" COMPLETE")
+
+	# Dirty every presentation seam that must not cross a run boundary.
+	sandbox.grid.play_effects([{"effect_id":"restart-smoke","event_id":99991,"order":0,
+		"kind":"HIT_FLASH","damage_type":"physical","world_position":[13,1],"text":""}])
+	sandbox.grid.set_route_overlay([[13,1],[12,1]],0,true)
+	sandbox.auto_deployment_pending=true;sandbox.auto_combat_pending=true
+	sandbox.route_preview={"accepted":true,"path":[[13,1],[12,1]]}
+	sandbox.selected_tile=exit;sandbox.selected_tile_inspection={"accepted":true}
+	sandbox.member_detail_modal.visible=true;sandbox.grid.modal_open=true
+	sandbox._scroll_log_after_refresh=true
+	if restart!=null:restart.pressed.emit()
+	await process_frame;await process_frame
+	var fresh:Dictionary=session.run_progress()
+	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.visible_cell_count!=15 \
+			or sandbox.grid.view_origin!=Vector2i.ZERO:
+		failures.append("%s restart replaced grid or lost 15x15 mapping"%label)
+	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
+		failures.append("%s restart did not restore fresh run progress"%label)
+	if sandbox.auto_deployment_pending or sandbox.auto_combat_pending or not sandbox.route_preview.is_empty() \
+			or sandbox.member_detail_modal.visible or sandbox.grid.modal_open \
+			or not sandbox.grid._active_visual_effects.is_empty() or not sandbox.grid._played_effect_ids.is_empty():
+		failures.append("%s restart retained UI/grid transient state"%label)
+	if _button(sandbox,"RestartSameRun")!=null or sandbox.combat_action_area.visible:
+		failures.append("%s restart left terminal controls"%label)
+	if objective.text!="목표 · 고블린을 쓰러뜨리세요" or sandbox.reward_badge.visible:
+		failures.append("%s restart objective did not return to initial"%label)
+	_validate_run_objective_geometry(sandbox,label+" RESTARTED")
+	sandbox.queue_free();await process_frame
+
+func _validate_run_objective_geometry(sandbox,label:String)->void:
+	var viewport:Rect2=sandbox.get_global_rect();var bar:=sandbox.run_objective_bar as Control
+	if not bar.is_visible_in_tree() or not _rect_contains(viewport,bar.get_global_rect()):
+		failures.append("%s objective outside viewport %s"%[label,bar.get_global_rect()]);return
+	var phase_rect:Rect2=sandbox.phase_panel.get_global_rect();var bar_rect:Rect2=bar.get_global_rect()
+	var grid_rect:Rect2=sandbox.grid.get_global_rect()
+	if phase_rect.end.y>bar_rect.position.y+0.1 or bar_rect.end.y>grid_rect.position.y+0.1:
+		failures.append("%s objective overlaps phase/grid"%label)
+	var text:=sandbox.run_objective_label as Label;var font:Font=text.get_theme_font("font")
+	var rendered:=font.get_string_size(text.text,HORIZONTAL_ALIGNMENT_LEFT,-1,text.get_theme_font_size("font_size"))
+	if rendered.x>text.size.x+0.5 or rendered.y>text.size.y+0.5:
+		failures.append("%s objective text clips rendered=%s box=%s"%[label,rendered,text.size])
+	for child in sandbox.root_layout.get_children():
+		if child is Control and child.is_visible_in_tree() and not _rect_contains(viewport,child.get_global_rect()):
+			failures.append("%s root child outside viewport %s %s"%[label,child.name,child.get_global_rect()])
+	if sandbox.info_scroll.size.y<29.9:
+		failures.append("%s information scroll below 30px %s"%[label,sandbox.info_scroll.size])
 
 func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	var session=Session.new();var status:Dictionary=session.party_status()

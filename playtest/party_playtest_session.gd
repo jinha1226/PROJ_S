@@ -153,8 +153,68 @@ func presentation_state() -> Dictionary:
 		"combat_style_active": phase_id in ["ENGAGED", "PARTY_DEFEATED"],
 		"banner": banner, "grid_style": grid_style}.duplicate(true)
 
+
+func run_progress() -> Dictionary:
+	var unavailable := {"schema_version":VisualTestMapScript.RUN_MANIFEST_SCHEMA_VERSION,
+		"available":false, "scenario_id":scenario_id, "objective_id":"",
+		"run_state":"UNAVAILABLE", "entry_position":[], "exit_position":[],
+		"encounter_cleared":false,
+		"reward":{"reward_id":"", "amount":0, "granted":false},
+		"exit":{"feature_id":"", "open":false},
+		"complete":false, "terminal":false}
+	var manifest: Dictionary = VisualTestMapScript.run_manifest(scenario_id)
+	if manifest.is_empty() or sim == null or sim.world == null \
+			or sim.world.party_encounter == null:
+		return unavailable.duplicate(true)
+	var state = sim.world.party_encounter
+	var hero = sim.world.entities.get(state.protagonist_id)
+	if hero == null:
+		return unavailable.duplicate(true)
+	var encounter_cleared: bool = state.safe_phase in ["REGROUP_READY", "GROUPED_COMPLETE"]
+	var exit_position := Vector2i(int(manifest.exit.position[0]),
+		int(manifest.exit.position[1]))
+	var complete: bool = state.safe_phase == "GROUPED_COMPLETE" \
+		and hero.position == exit_position
+	var terminal: bool = complete or state.safe_phase == "PARTY_DEFEATED"
+	var run_state := "EXPLORE"
+	if state.safe_phase == "PARTY_DEFEATED": run_state = "DEFEATED"
+	elif complete: run_state = "COMPLETE"
+	elif encounter_cleared: run_state = "EXIT_OPEN"
+	elif state.safe_phase in ["CONTACT", "ENGAGED", "REGROUP_READY"]:
+		run_state = "ENCOUNTER"
+	return {"schema_version":int(manifest.schema_version), "available":true,
+		"scenario_id":str(manifest.scenario_id),
+		"objective_id":str(manifest.objective_id), "run_state":run_state,
+		"entry_position":manifest.entry.position.duplicate(true),
+		"exit_position":manifest.exit.position.duplicate(true),
+		"encounter_cleared":encounter_cleared,
+		"reward":{"reward_id":str(manifest.reward.reward_id),
+			"amount":int(manifest.reward.amount) if encounter_cleared else 0,
+			"granted":encounter_cleared},
+		"exit":{"feature_id":str(manifest.exit.open_feature_id) if encounter_cleared \
+			else str(manifest.exit.locked_feature_id), "open":encounter_cleared},
+		"complete":complete, "terminal":terminal}.duplicate(true)
+
+
+func restart_same_run() -> Dictionary:
+	var progress := run_progress()
+	if not bool(progress.available):
+		return _rejection_dto("run_restart_unavailable")
+	if str(progress.run_state) not in ["COMPLETE", "DEFEATED"]:
+		return _rejection_dto("run_restart_not_ready")
+	var frozen_world_seed := world_seed
+	var frozen_personality_seed := personality_seed
+	var frozen_scenario_id := scenario_id
+	if not reset_party(frozen_world_seed, frozen_personality_seed,
+			frozen_scenario_id):
+		return _rejection_dto("run_restart_failed")
+	return _feedback_dto({"accepted":true, "reason":"ok",
+		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
+		"scenario_id":scenario_id, "run_progress":run_progress()})
+
 func observe_party_world() -> Dictionary:
 	var status := party_status()
+	var progress := run_progress()
 	var hide_enemies: bool = str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
 	var hero_position := Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
@@ -197,7 +257,7 @@ func observe_party_world() -> Dictionary:
 					else int(a.entity_id) < int(b.entity_id))
 			var tile = sim.world.tile_at(position)
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
-				"feature_id":VisualTestMapScript.feature_id_at(scenario_id, position),
+				"feature_id":_run_feature_id_at(position, progress),
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
@@ -364,6 +424,7 @@ func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 	return commit_exploration(command)
 
 func set_actor_action(actor_id: int, action_type: String, destination: Array = [], target_id: int = -1) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	if sim == null or sim.world.party_encounter == null: return _rejection_dto("session_not_initialized")
 	var action = _make_action(actor_id, action_type, destination, target_id)
 	if action == null:
@@ -377,6 +438,7 @@ func set_actor_action(actor_id: int, action_type: String, destination: Array = [
 func preview_actor_action(actor_id: int, action_type: String, destination: Array = [],
 		target_id: int = -1) -> Dictionary:
 	# UI hover/tap preview must not mutate the pending direct action or overrides.
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	if sim == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	var action = _make_action(actor_id, action_type, destination, target_id)
@@ -457,6 +519,10 @@ func _overlay_marker_style(source: String) -> String:
 	return {"OVERRIDE":"SQUARE","DIRECT":"DIAMOND","SUGGESTED":"CIRCLE"}.get(source,"CIRCLE")
 
 func preview_exploration(command) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if _command_targets_locked_exit(command):
+		return _rejection_dto("exit_locked", null, null,
+			_exploration_context(command))
 	if party_status().view_mode != "EXPLORATION": return _rejection_dto("exploration_phase_required")
 	if command == null or command.actor_id != sim.world.party_encounter.protagonist_id:
 		return _rejection_dto("protagonist_command_required")
@@ -469,6 +535,10 @@ func preview_exploration(command) -> Dictionary:
 
 
 func preview_exploration_route(goal: Variant) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if _position_is_locked_exit(goal):
+		return _rejection_dto("exit_locked", null, null,
+			{"action_type":"ROUTE", "destination":_position_wire_value(goal)})
 	return _exploration_route.preview(goal)
 
 
@@ -527,11 +597,20 @@ func exploration_route_state() -> Dictionary:
 
 
 func start_exploration_route(goal: Variant, plan_hash: String) -> Dictionary:
-	return _exploration_route.start(goal, plan_hash)
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if _position_is_locked_exit(goal):
+		return _rejection_dto("exit_locked", null, null,
+			{"action_type":"ROUTE", "destination":_position_wire_value(goal)})
+	var result: Dictionary = _exploration_route.start(goal, plan_hash)
+	if _run_is_complete(): _clear_run_completion_transients()
+	return result
 
 
 func continue_exploration_route() -> Dictionary:
-	return _exploration_route.continue_route()
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	var result: Dictionary = _exploration_route.continue_route()
+	if _run_is_complete(): _clear_run_completion_transients()
+	return result
 
 
 func cancel_exploration_route() -> Dictionary:
@@ -539,8 +618,14 @@ func cancel_exploration_route() -> Dictionary:
 
 
 func commit_exploration(command) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if _command_targets_locked_exit(command):
+		return _rejection_dto("exit_locked", null, null,
+			_exploration_context(command))
 	_exploration_route.cancel_for_direct_command()
-	return _commit_exploration_one(command, false)
+	var result: Dictionary = _commit_exploration_one(command, false)
+	if _run_is_complete(): _clear_run_completion_transients()
+	return result
 
 
 func _commit_exploration_one(command, preserve_route: bool) -> Dictionary:
@@ -553,12 +638,14 @@ func _commit_exploration_one(command, preserve_route: bool) -> Dictionary:
 	return _result_dto(result, null, null, _exploration_context(command))
 
 func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	_deployment_plan = sim.preview_deployment(preset_id, companion_ids)
 	var dto: Dictionary = deployment_draft()
 	dto.erase("has_preview")
 	return dto.duplicate(true)
 
 func commit_deployment() -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	_exploration_route.cancel_for_direct_command()
 	if _deployment_plan.is_empty(): return _rejection_dto("deployment_preview_required")
 	var request = {"preset_id": _deployment_plan.get("preset_id", ""), "companion_ids": _deployment_plan.get("companion_ids", []).duplicate()}
@@ -570,6 +657,7 @@ func commit_deployment() -> Dictionary:
 	return _result_dto(result)
 
 func begin_turn(protagonist_action) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	_exploration_route.cancel_for_direct_command()
 	var copied_action = _canonical_action_copy(protagonist_action)
 	if copied_action == null: return _rejection_dto("invalid_party_action")
@@ -589,6 +677,7 @@ func begin_turn(protagonist_action) -> Dictionary:
 
 
 func prepare_auto_combat_plan() -> Dictionary:
+	if _run_is_complete(): return _auto_planning_empty("run_complete")
 	_exploration_route.cancel_for_direct_command()
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _auto_planning_empty("session_not_initialized")
@@ -607,6 +696,7 @@ func prepare_auto_combat_plan() -> Dictionary:
 
 
 func auto_combat_planning_state() -> Dictionary:
+	if _run_is_complete(): return _auto_planning_empty("run_complete")
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _auto_planning_empty("session_not_initialized")
 	if _protagonist_draft == null:
@@ -627,6 +717,7 @@ func auto_combat_planning_state() -> Dictionary:
 
 
 func replace_auto_combat_protagonist_action(protagonist_action) -> Dictionary:
+	if _run_is_complete(): return _auto_planning_empty("run_complete")
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _auto_planning_empty("session_not_initialized")
 	var state = sim.world.party_encounter
@@ -662,6 +753,7 @@ func _auto_planning_empty(reason: String) -> Dictionary:
 		"plan_hash":"", "overridden_companion_ids":[], "preview":{}}.duplicate(true)
 
 func override_companion(entity_id: int, action) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	if _protagonist_draft == null:
 		return _rejection_dto("turn_draft_required", action, null, {"actor_id": entity_id})
 	var copied_action = _canonical_action_copy(action)
@@ -678,12 +770,14 @@ func override_companion(entity_id: int, action) -> Dictionary:
 	return preview
 
 func clear_companion_override(entity_id: int) -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	if _protagonist_draft == null:
 		return _rejection_dto("turn_draft_required", null, null,
 			{"actor_id": entity_id, "action_type": "CLEAR_OVERRIDE"})
 	_overrides.erase(entity_id); return current_turn_preview()
 
 func current_turn_preview() -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	if _protagonist_draft == null: return _rejection_dto("turn_draft_required")
 	if _draft_fingerprint != JSON.stringify(sim.snapshot()).sha256_text(): _clear_draft(); return _rejection_dto("stale_turn_draft")
 	var request = _pending_turn_request()
@@ -691,6 +785,7 @@ func current_turn_preview() -> Dictionary:
 	return _feedback_dto(preview, _protagonist_draft, request)
 
 func commit_turn() -> Dictionary:
+	if _run_is_complete(): return _rejection_dto("run_complete")
 	_exploration_route.cancel_for_direct_command()
 	if _protagonist_placeholder:
 		return _rejection_dto("protagonist_action_required")
@@ -1068,6 +1163,53 @@ func _exploration_context(command) -> Dictionary:
 		"destination": [command.position.x, command.position.y] if action_type == "MOVE" else [-1,-1]}
 
 
+func _run_feature_id_at(position: Vector2i, progress: Dictionary) -> String:
+	if bool(progress.get("available", false)):
+		var exit_position: Variant = progress.get("exit_position", [])
+		if exit_position is Array and exit_position.size() == 2 \
+				and position == Vector2i(int(exit_position[0]), int(exit_position[1])):
+			return str(progress.get("exit", {}).get("feature_id", ""))
+		var entry_position: Variant = progress.get("entry_position", [])
+		if entry_position is Array and entry_position.size() == 2 \
+				and position == Vector2i(int(entry_position[0]), int(entry_position[1])):
+			return "run_entry"
+	return VisualTestMapScript.feature_id_at(scenario_id, position)
+
+
+func _run_is_complete() -> bool:
+	var progress := run_progress()
+	return bool(progress.get("available", false)) and bool(progress.get("complete", false))
+
+
+func _position_is_locked_exit(value: Variant) -> bool:
+	var progress := run_progress()
+	if not bool(progress.get("available", false)) \
+			or bool(progress.get("exit", {}).get("open", false)):
+		return false
+	var parsed := _inspection_position(value)
+	var exit_position: Variant = progress.get("exit_position", [])
+	return bool(parsed.get("ok", false)) and exit_position is Array \
+		and exit_position.size() == 2 and parsed.position == Vector2i(
+			int(exit_position[0]), int(exit_position[1]))
+
+
+func _command_targets_locked_exit(command: Variant) -> bool:
+	return command != null and command is SimCommand \
+		and int(command.type) == int(CommandScript.Type.MOVE) \
+		and _position_is_locked_exit(command.position)
+
+
+func _position_wire_value(value: Variant) -> Array:
+	var parsed := _inspection_position(value)
+	return [parsed.position.x, parsed.position.y] if bool(parsed.get("ok", false)) else []
+
+
+func _clear_run_completion_transients() -> void:
+	_deployment_plan.clear()
+	_clear_draft()
+	if _exploration_route != null: _exploration_route.clear()
+
+
 func _inspection_position(value: Variant) -> Dictionary:
 	if value is Vector2i:
 		return {"ok":true,"position":value}
@@ -1228,6 +1370,9 @@ func _destination_conflict_details(request: Variant) -> Dictionary:
 
 
 func _reason_category(reason: String) -> String:
+	if reason in ["exit_locked", "run_complete", "run_restart_unavailable",
+			"run_restart_not_ready", "run_restart_failed"]:
+		return "RUN"
 	if reason.begins_with("route_") or reason == "invalid_route_goal":
 		return "ROUTE"
 	if reason.begins_with("inspect_") or reason.ends_with("_inspection_unavailable") \
@@ -1363,7 +1508,12 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			return "선택한 파티원은 쓰러져 행동할 수 없습니다."
 		return "선택한 파티원은 지금 행동할 수 없습니다."
 	var mapped: Dictionary = {
-		"ok":"준비되었습니다.", "deployment_preview_required":"먼저 대형을 선택하세요.",
+			"ok":"준비되었습니다.", "deployment_preview_required":"먼저 대형을 선택하세요.",
+			"exit_locked":"적을 쓰러뜨리면 출구가 열립니다.",
+			"run_complete":"이미 원정을 완료했습니다. 같은 원정을 다시 시작할 수 있습니다.",
+			"run_restart_unavailable":"이 시나리오는 다시 시작할 원정이 없습니다.",
+			"run_restart_not_ready":"원정을 완료하거나 실패한 뒤 다시 시작할 수 있습니다.",
+			"run_restart_failed":"같은 원정을 다시 준비하지 못했습니다.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
 		"deployment_space_unavailable":"동료가 설 수 있는 빈 칸이 부족합니다.",

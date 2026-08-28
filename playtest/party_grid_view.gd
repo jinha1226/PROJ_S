@@ -156,6 +156,16 @@ func play_effects(rows:Array)->int:
 func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids.has(event_id)
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
 
+func clear_transient_visuals()->void:
+	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
+	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
+	_route_path.clear();_route_completed_steps=0;_route_valid=false
+	_exploration_follow_plan.clear()
+	preview_actor_id=-1;preview_origin=Vector2i(-1,-1)
+	preview_destination=Vector2i(-1,-1);preview_valid=false
+	cursor_cell=Vector2i(-1,-1);selected_actor_id=-1;selected_target_id=-1
+	_reset_pointer_gesture();set_process(false);queue_redraw()
+
 func visual_effect_draw_spec(effect:Dictionary)->Dictionary:
 	var world_value=effect.get("world_position",[-1,-1]);var world_position:=Vector2i(-1,-1)
 	if world_value is Array and world_value.size()==2:world_position=Vector2i(int(world_value[0]),int(world_value[1]))
@@ -583,7 +593,16 @@ func _draw_ascii_tile(rect:Rect2,row:Dictionary)->void:
 	var font:=get_theme_default_font();var font_size:=maxi(10,int(floor(rect.size.x*(0.58 if bool(spec.raised) else 0.46))))
 	_draw_centered_text(font,str(spec.glyph),top_rect.get_center()+Vector2(1,1),font_size,_visual_color("#05090d",opacity*0.72))
 	_draw_centered_text(font,str(spec.glyph),top_rect.get_center(),font_size,_visual_color(str(spec.glyph_hex),opacity))
+	if str(visibility.state)=="VISIBLE":_draw_feature_cue(rect,str(row.get("feature_id","")))
 	_draw_hazard_cues(rect,row)
+
+func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
+	var spec:Dictionary=AsciiStyleScript.feature_spec(feature_id)
+	if not bool(spec.visible):return
+	var center:=rect.get_center();var font:=get_theme_default_font()
+	var font_size:=maxi(11,int(floor(rect.size.x*0.62)))
+	_draw_centered_text(font,str(spec.glyph),center+Vector2(1,1),font_size,Color("#05090d"))
+	_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
 	var spec:Dictionary=AsciiStyleScript.hazard_spec(row);var font:=get_theme_default_font()

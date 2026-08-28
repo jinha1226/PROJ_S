@@ -70,6 +70,22 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 		"conductivity":conductivity, "cues":cues}.duplicate(true)
 
 
+static func feature_spec(feature_id: String) -> Dictionary:
+	var definitions := {
+		"run_entry":{"glyph":"<", "color_hex":"#65BFFF"},
+		"run_exit_locked":{"glyph":"X", "color_hex":"#A36A73"},
+		"run_exit_open":{"glyph":">", "color_hex":"#75D7A0"},
+		"open_door":{"glyph":"+", "color_hex":"#E8B95C"},
+	}
+	if not definitions.has(feature_id):
+		return {"visible":false, "feature_id":"", "glyph":"",
+			"color_hex":"#FFFFFF"}.duplicate(true)
+	var definition: Dictionary = definitions[feature_id]
+	return {"visible":true, "feature_id":feature_id,
+		"glyph":str(definition.glyph),
+		"color_hex":str(definition.color_hex)}.duplicate(true)
+
+
 static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var species_id := str(actor.get("species_id", "")).to_lower()
 	var faction_id := str(actor.get("faction_id", "")).to_lower()

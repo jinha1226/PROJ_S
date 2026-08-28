@@ -4,6 +4,7 @@ extends RefCounted
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 const SHOWCASE_FOV_RADIUS := 6
+const RUN_MANIFEST_SCHEMA_VERSION := 1
 const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
@@ -24,6 +25,8 @@ const SHOWCASE_ROWS := [
 
 const HERO_POSITION := Vector2i(2, 12)
 const ENEMY_POSITION := Vector2i(12, 3)
+const ENTRY_POSITION := Vector2i(2, 12)
+const EXIT_POSITION := Vector2i(13, 1)
 const OPEN_DOOR_POSITION := Vector2i(7, 6)
 const WET_METAL_POSITION := Vector2i(3, 10)
 const WET_WOOD_POSITION := Vector2i(4, 12)
@@ -44,6 +47,22 @@ const _TERRAIN_BY_GLYPH := {
 
 static func has_scenario(scenario_id: String) -> bool:
 	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID]
+
+
+static func run_manifest(scenario_id: String) -> Dictionary:
+	if scenario_id != SHOWCASE_SCENARIO_ID:
+		return {}
+	return {
+		"schema_version":RUN_MANIFEST_SCHEMA_VERSION,
+		"scenario_id":SHOWCASE_SCENARIO_ID,
+		"objective_id":"CLEAR_SINGLE_ENCOUNTER_AND_EXIT",
+		"entry":{"position":[ENTRY_POSITION.x,ENTRY_POSITION.y],
+			"feature_id":"run_entry"},
+		"exit":{"position":[EXIT_POSITION.x,EXIT_POSITION.y],
+			"locked_feature_id":"run_exit_locked",
+			"open_feature_id":"run_exit_open"},
+		"reward":{"reward_id":"SHOWCASE_VICTORY_TOKEN","amount":1},
+	}.duplicate(true)
 
 
 static func apply_showcase_terrain(world) -> bool:

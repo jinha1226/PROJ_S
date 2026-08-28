@@ -18,6 +18,9 @@ var grid
 var root_layout:VBoxContainer
 var phase_panel:PanelContainer
 var phase_label:Label
+var run_objective_bar:PanelContainer
+var run_objective_label:Label
+var reward_badge:Label
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -76,6 +79,12 @@ var auto_override_edit:=false
 var auto_phase:=""
 var exploration_follow_plan:Dictionary={}
 var _initialized_for_headless_test:=false
+var _run_progress_initialized:=false
+var _observed_reward_granted:=false
+var _reward_emphasis_pending:=false
+var _reward_emphasis_count:=0
+var _reward_emphasis_tween:Tween
+var _run_locked_exit_feedback:=false
 
 func _ready()->void:
 	_build_ui()
@@ -103,6 +112,29 @@ func _build_ui()->void:
 	phase_panel=PanelContainer.new(); phase_panel.name="PhaseBanner"; phase_panel.custom_minimum_size.y=48; root_layout.add_child(phase_panel)
 	phase_label=Label.new(); phase_label.name="PhaseStatus"; phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 	phase_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; phase_panel.add_child(phase_label)
+	run_objective_bar=PanelContainer.new();run_objective_bar.name="RunObjectiveBar"
+	run_objective_bar.custom_minimum_size.y=TOUCH_TARGET;run_objective_bar.visible=false;root_layout.add_child(run_objective_bar)
+	var objective_style:=StyleBoxFlat.new();objective_style.bg_color=Color("#122233")
+	objective_style.border_color=Color("#36536b");objective_style.set_border_width_all(1)
+	objective_style.set_corner_radius_all(6);objective_style.content_margin_left=8
+	objective_style.content_margin_right=8;objective_style.content_margin_top=3;objective_style.content_margin_bottom=3
+	run_objective_bar.add_theme_stylebox_override("panel",objective_style)
+	var objective_row:=HBoxContainer.new();objective_row.name="RunObjectiveRow"
+	objective_row.add_theme_constant_override("separation",6);run_objective_bar.add_child(objective_row)
+	run_objective_label=Label.new();run_objective_label.name="RunObjectiveText"
+	run_objective_label.add_theme_font_size_override("font_size",FONT_BODY)
+	run_objective_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	run_objective_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	run_objective_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;objective_row.add_child(run_objective_label)
+	reward_badge=Label.new();reward_badge.name="RewardBadge";reward_badge.text="$ 1"
+	reward_badge.custom_minimum_size=Vector2(52,TOUCH_TARGET-8);reward_badge.visible=false
+	reward_badge.add_theme_font_size_override("font_size",FONT_BODY)
+	reward_badge.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	reward_badge.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	var reward_style:=StyleBoxFlat.new();reward_style.bg_color=Color("#2b402d")
+	reward_style.border_color=Color("#75d7a0");reward_style.set_border_width_all(2)
+	reward_style.set_corner_radius_all(6);reward_badge.add_theme_stylebox_override("normal",reward_style)
+	objective_row.add_child(reward_badge)
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
@@ -182,6 +214,13 @@ func _refresh()->void:
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
 		status=session.party_status()
+	var run_progress:=_current_run_progress()
+	var run_available:=bool(run_progress.get("available",false))
+	var run_complete:=bool(run_progress.get("complete",false))
+	var run_terminal:=run_available and bool(run_progress.get("terminal",false))
+	var run_exit:Dictionary=run_progress.get("exit",{}) if run_progress.get("exit",{}) is Dictionary else {}
+	if bool(run_exit.get("open",false)) or run_terminal:_run_locked_exit_feedback=false
+	_update_run_objective_bar(run_progress)
 	var safe_phase:=str(status.safe_phase)
 	if _action_feedback_phase!=safe_phase:
 		action_feedback_text="";_action_feedback_phase=safe_phase
@@ -189,22 +228,26 @@ func _refresh()->void:
 			route_generation+=1;route_continue_pending=false;route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
 	var combat_zoomed:=str(status.view_mode)=="COMBAT"
-	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal)
-	_apply_portrait_budget(combat_zoomed,combat_actions_visible)
+	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
+		or run_terminal or _run_locked_exit_feedback
+	_apply_portrait_budget(combat_zoomed,combat_actions_visible,run_available,run_terminal)
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
 	_apply_phase_banner(status,presentation)
 	var deployment:Dictionary=session.deployment_draft(); var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" else []
 	var observation:Dictionary=session.observe_party_world()
-	var intent_overlays:Array=session.turn_intent_overlays() if combat_zoomed else []
+	var intent_overlays:Array=session.turn_intent_overlays() if combat_zoomed and not run_complete else []
 	grid.set_observation(observation,ghosts)
 	grid.set_view_window(9 if combat_zoomed else 15,_camera_focus_points(observation,intent_overlays),
 		_camera_priority_points(observation))
 	grid.set_presentation_style(presentation.get("grid_style",{}))
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
-	if str(status.view_mode)=="EXPLORATION":
+	if run_complete:
+		route_generation+=1;route_continue_pending=false;route_preview.clear()
+		grid.clear_route_overlay();_clear_companion_follow_plan();_clear_move_preview()
+	elif str(status.view_mode)=="EXPLORATION":
 		var route_state:Dictionary=session.exploration_route_state()
 		var state_matches_local:=route_preview.is_empty() or _route_goal(route_state)==_route_goal(route_preview)
 		if bool(route_state.get("has_preview",false)) and state_matches_local:
@@ -220,16 +263,58 @@ func _refresh()->void:
 	for row in session.party_cards():_add_member_card(row)
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
+	action_feedback_label.visible=true
 	combat_action_area.visible=combat_actions_visible;_update_action_feedback(status)
-	match str(status.view_mode):
-		"EXPLORATION":_exploration_deck()
-		"ENCOUNTER_PREVIEW":_deployment_deck(deployment)
-		"COMBAT":_combat_deck(status,session.current_turn_preview())
-		"REGROUP":_legacy_regroup_notice()
+	if _run_locked_exit_feedback and not run_terminal and safe_phase!="ENGAGED":
+		combat_action_area.custom_minimum_size.y=TOUCH_TARGET
+	if run_complete:_run_complete_deck(run_progress)
+	else:
+		match str(status.view_mode):
+			"EXPLORATION":_exploration_deck()
+			"ENCOUNTER_PREVIEW":_deployment_deck(deployment)
+			"COMBAT":_combat_deck(status,session.current_turn_preview())
+			"REGROUP":_legacy_regroup_notice()
+	if run_terminal:_build_run_restart_area()
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
+
+func _current_run_progress()->Dictionary:
+	if session!=null and session.has_method("run_progress"):
+		var value:Variant=session.call("run_progress")
+		if value is Dictionary:return value.duplicate(true)
+	return {"schema_version":1,"available":false,"scenario_id":"","objective_id":"",
+		"run_state":"UNAVAILABLE","entry_position":[],"exit_position":[],
+		"encounter_cleared":false,"reward":{"reward_id":"","amount":0,"granted":false},
+		"exit":{"feature_id":"","open":false},"complete":false,"terminal":false}
+
+func _update_run_objective_bar(progress:Dictionary)->void:
+	var available:=bool(progress.get("available",false))
+	run_objective_bar.visible=available
+	if not available:
+		_run_progress_initialized=false;_observed_reward_granted=false
+		_reward_emphasis_pending=false;return
+	var state:=str(progress.get("run_state","EXPLORE"))
+	run_objective_label.text={
+		"EXIT_OPEN":"보상 +1 · 출구가 열렸습니다",
+		"COMPLETE":"원정 완료 · 보상 1",
+		"DEFEATED":"원정 실패",
+	}.get(state,"목표 · 고블린을 쓰러뜨리세요")
+	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
+	var granted:=bool(reward.get("granted",false))
+	reward_badge.visible=granted;reward_badge.text="$ %d"%int(reward.get("amount",0))
+	if _reward_emphasis_pending and granted:_play_reward_emphasis()
+	_reward_emphasis_pending=false;_observed_reward_granted=granted;_run_progress_initialized=true
+
+func _play_reward_emphasis()->void:
+	_reward_emphasis_count+=1
+	if reward_badge==null:return
+	if _reward_emphasis_tween!=null and _reward_emphasis_tween.is_valid():_reward_emphasis_tween.kill()
+	reward_badge.modulate=Color("#fff0a6")
+	if not is_inside_tree():reward_badge.modulate=Color.WHITE;return
+	_reward_emphasis_tween=create_tween()
+	_reward_emphasis_tween.tween_property(reward_badge,"modulate",Color.WHITE,0.45)
 
 func _reset_auto_flow()->void:
 	auto_generation+=1
@@ -399,6 +484,19 @@ func _exploration_deck()->void:
 			summary+="\n같은 목적지를 다시 누르면 한 칸씩 이동합니다." if pending_move_valid else "\n"+notice_text
 		_add_notice(summary,"MovePreviewSummary",FONT_KEY)
 	_selected_detail()
+
+func _run_complete_deck(progress:Dictionary)->void:
+	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
+	_add_notice("원정 완료 · 고블린을 쓰러뜨리고 출구에 도달했습니다.\n보상 $ %d"%int(reward.get("amount",1)),
+		"RunCompleteSummary",FONT_KEY)
+	_selected_detail()
+
+func _build_run_restart_area()->void:
+	combat_action_area.visible=true;combat_action_area.custom_minimum_size.y=TOUCH_TARGET
+	action_feedback_label.visible=false;combat_action_dock.visible=true
+	var restart:=_add_button(combat_action_dock,"같은 원정 다시 시작","RestartSameRun",_on_restart_same_run)
+	restart.size_flags_stretch_ratio=1.0
+
 func _deployment_deck(deployment:Dictionary)->void:
 	var preset_label:String={"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대","NONE":"미선택"}.get(str(deployment.preset_id),"미선택")
 	_add_notice(notice_text if not notice_text.is_empty() else "배치 대형: %s · %s"%[preset_label,str(deployment.message)])
@@ -568,6 +666,36 @@ func _measure_member_detail_body()->void:
 	var line_height:=font.get_height(member_detail_body.get_theme_font_size("font_size"))
 	member_detail_body.custom_minimum_size.y=maxf(line_height,float(member_detail_body.get_line_count())*line_height+8.0)
 func _on_explore(direction:Vector2i)->void:_record_result(session.commit_exploration_direction(direction),true); _request_refresh()
+func _on_restart_same_run()->void:
+	if session==null or not session.has_method("restart_same_run"):
+		notice_text="이 원정을 다시 시작할 수 없습니다.";_request_refresh();return
+	var result:Variant=session.call("restart_same_run")
+	if not result is Dictionary or not bool(result.get("accepted",false)):
+		var message:="이 원정을 다시 시작할 수 없습니다." if not result is Dictionary \
+			else str(result.get("message","이 원정을 다시 시작할 수 없습니다."))
+		notice_text=message;action_feedback_text=message;_request_refresh();return
+	_reset_run_ui_transients();_request_refresh()
+
+func _reset_run_ui_transients()->void:
+	_reset_auto_flow();route_generation+=1;route_continue_pending=false
+	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
+	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
+	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
+	_pending_card_pointer.clear();_last_card_tap_id=-1;_last_card_tap_msec=-1000
+	_last_card_tap_position=Vector2(-10000,-10000);_direct_card_touch_id=-1;_direct_card_touch_msec=-1000
+	_scroll_log_after_refresh=false;_run_locked_exit_feedback=false
+	_reward_emphasis_pending=false;_run_progress_initialized=false;_observed_reward_granted=false
+	if _reward_emphasis_tween!=null and _reward_emphasis_tween.is_valid():_reward_emphasis_tween.kill()
+	if reward_badge!=null:reward_badge.modulate=Color.WHITE
+	if member_detail_modal!=null:member_detail_modal.visible=false
+	if grid!=null:
+		grid.modal_open=false;grid.cancel_pointer_gesture()
+		if grid.has_method("clear_transient_visuals"):grid.call("clear_transient_visuals")
+		else:
+			grid.clear_route_overlay();grid.clear_cursor_preview();grid.set_intent_overlays([])
+			grid.set_selection(-1,-1)
+	if info_scroll!=null:info_scroll.scroll_vertical=0
+
 func _on_preset(preset:String)->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true);auto_deployment_fallback=true
 	var result:Dictionary=session.preview_deployment(preset,session.available_companion_ids()); notice_text="%s 대형: %s"%[{"WEDGE":"쐐기","LINE":"횡대","COLUMN":"종대"}[preset],str(result.message)]
@@ -679,8 +807,14 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 func _on_cell(position:Vector2i)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
-	if bool(status.terminal):return
+	var progress:=_current_run_progress()
+	if bool(progress.get("terminal",false)) or bool(status.terminal):return
 	if status.view_mode=="EXPLORATION":
+		if _is_locked_visible_run_exit(position,progress):
+			_run_locked_exit_feedback=true
+			notice_text="적을 쓰러뜨리면 출구가 열립니다."
+			action_feedback_text=notice_text;_request_refresh();return
+		_run_locked_exit_feedback=false
 		var active_state:Dictionary=session.exploration_route_state()
 		var same_goal:=pending_move_mode=="EXPLORATION" and not pending_exploration_wait \
 			and pending_move_destination==position and pending_move_valid and not bool(active_state.get("active",false))
@@ -719,6 +853,7 @@ func _on_cell(position:Vector2i)->void:
 func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
+	if bool(_current_run_progress().get("terminal",false)):return
 	if status.view_mode=="EXPLORATION" and entity_id!=int(status.protagonist_id) \
 			and entity_id in status.party_member_ids:
 		# Grouped companions are presentation-only followers during exploration.
@@ -749,6 +884,17 @@ func _on_actor(entity_id:int)->void:
 			_cancel_auto_pending(true);auto_override_edit=true
 		selected_member_id=entity_id;selected_target_id=-1;notice_text="파티원을 선택했습니다."
 		action_feedback_text="%s 선택 · 행동을 지정하세요."%_selected_name();_clear_move_preview();_request_refresh()
+
+func _is_locked_visible_run_exit(position:Vector2i,progress:Dictionary)->bool:
+	if not bool(progress.get("available",false)):return false
+	var exit:Dictionary=progress.get("exit",{}) if progress.get("exit",{}) is Dictionary else {}
+	if bool(exit.get("open",false)):return false
+	var raw:Variant=progress.get("exit_position",[])
+	if not raw is Array or raw.size()!=2 or position!=Vector2i(int(raw[0]),int(raw[1])):return false
+	for cell in session.observe_party_world().get("cells",[]):
+		if cell is Dictionary and cell.get("position",[])==[position.x,position.y]:
+			return str(cell.get("visibility_state","UNSEEN"))=="VISIBLE"
+	return false
 
 func _exploration_follower_display_position(entity_id:int)->Vector2i:
 	var observation:Dictionary=session.observe_party_world()
@@ -867,6 +1013,12 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		grid.play_effects(result.get("visual_effects",[]))
 	if bool(result.get("accepted",false)):
+		# Only a committed live UI action may arm the reward highlight. A loaded
+		# save or an arbitrary refresh synchronizes the badge without replaying it.
+		if _run_progress_initialized and not _observed_reward_granted:
+			var progress:=_current_run_progress()
+			var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
+			_reward_emphasis_pending=bool(reward.get("granted",false))
 		if scroll_combat_log:_scroll_log_after_refresh=true
 		notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
 			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
@@ -945,6 +1097,12 @@ func _tile_popover_text(inspection:Dictionary,route:Dictionary)->String:
 	var total:=int(risk.get("total_risk",risk.get("total",fire+water+electric+poison)))
 	var lines:Array[String]=["%s · %s · 이동 %d"%[terrain,passable,int(inspection.get("move_time_cost",0))],
 		"위험  불 %d · 물 %d · 전기 %d · 독 %d"%[fire,water,electric,poison]]
+	var progress:=_current_run_progress()
+	var exit_raw:Variant=progress.get("exit_position",[])
+	if bool(progress.get("available",false)) and exit_raw is Array and exit_raw.size()==2 \
+			and selected_tile==Vector2i(int(exit_raw[0]),int(exit_raw[1])):
+		var exit:Dictionary=progress.get("exit",{}) if progress.get("exit",{}) is Dictionary else {}
+		lines.append("출구 · %s"%("열림" if bool(exit.get("open",false)) else "잠김"))
 	if _route_goal(route)==selected_tile and not bool(route.get("accepted",false)) and not route.is_empty():
 		lines.append(str(route.get("message","이 칸으로 이동할 수 없습니다.")))
 	elif bool(route.get("has_preview",false)) and _route_goal(route)==selected_tile:
@@ -1034,6 +1192,9 @@ func _scroll_information_to_latest_log()->void:
 
 func _update_action_feedback(status:Dictionary)->void:
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text;return
+	var progress:=_current_run_progress()
+	if bool(progress.get("complete",false)):
+		action_feedback_label.text="원정 완료";return
 	match str(status.safe_phase):
 		"CONTACT":action_feedback_label.text="자동 대형 미리보기" if auto_orchestration_enabled and not auto_deployment_fallback else "대형 선택 → 배치 실행"
 		"GROUPED_COMPLETE":action_feedback_label.text="승리 · 자동 재집결 완료 · 탐험 이동을 선택하세요."
@@ -1055,12 +1216,18 @@ func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"
 func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)
 func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
-func _apply_portrait_budget(combat_zoomed:bool,combat_actions_visible:bool)->void:
+func _apply_portrait_budget(combat_zoomed:bool,combat_actions_visible:bool,
+		run_available:bool=false,run_terminal:bool=false)->void:
 	var wide:=size.x>=450.0; phase_panel.custom_minimum_size.y=52 if wide else 48
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
-	if combat_zoomed:grid.custom_minimum_size=Vector2(360,360) if wide else Vector2(300,300)
-	else:grid.custom_minimum_size=Vector2(405,405) if wide else Vector2(348,348)
+	if combat_zoomed:
+		grid.custom_minimum_size=Vector2(360,360) if wide else Vector2(248,248) \
+			if run_available else Vector2(300,300)
+	else:
+		grid.custom_minimum_size=Vector2(405,405) if wide else Vector2(276,276) \
+			if run_available and (run_terminal or _run_locked_exit_feedback) \
+			else (Vector2(316,316) if run_available else Vector2(348,348))
 	cards.custom_minimum_size.y=160; info_scroll.custom_minimum_size.y=30
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:

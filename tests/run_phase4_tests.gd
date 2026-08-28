@@ -5,6 +5,7 @@ const TEST_FILES := [
 	"test_party_playtest_session.gd",
 	"test_party_playtest_ui.gd",
 	"test_party_auto_flow.gd",
+	"test_party_mvp_run.gd",
 ]
 
 func _init() -> void:
