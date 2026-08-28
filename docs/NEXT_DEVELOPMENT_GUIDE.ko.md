@@ -5,10 +5,22 @@
 2026-08-28 기준 Phase 3 성격·행동 실험실과 Phase 4 동일-grid 파티 조우가 완료됐다.
 snapshot v5, 8방향 MOVE, environment/actor 이중 cadence, 최대 3인 파티 배치,
 동료 제안/override, 파티 턴 원자 commit, 승리 턴의 zero-time 자동 재집결을 현재
-안정 계약으로 삼는다. 360×640과 450×800 UI는 D-pad 없이 15×15 grid 터치를
-사용하며 큰 글씨, 두 번 탭 이동 미리보기/확정, 행동 overlay, HP·stress·준비·파생
-감정을 갖춘 3인 동시 노출 Party HUD를 제공한다. 비인접 auto-walk는 구현하지 않았고
-P1 FOV/LOS 뒤다.
+안정 계약으로 삼는다. 360×640과 450×800 UI는 D-pad 없이 같은 15×15 world grid를
+터치한다. 탐험·조우·배치 preview에서는 15×15 전체를, 배치 확정 뒤 전투에서는 같은
+`PartyGridView` 인스턴스의 결정론적 9×9 camera crop을 보여 준다. actor와 intent의 필수
+좌표 범위가 어느 축이든 9칸 창을 넘으면 같은 grid에서 원점 15×15 전체 창으로
+fallback해 전원을 계속 보이고, compact cluster는 9×9를 유지한다. 승리·자동 재집결 뒤
+원점 15×15 mapping으로 정확히 돌아온다. 이는 FOV가 아니라 표시 camera다. 큰 글씨,
+두 번 탭 이동 미리보기/확정, 행동 overlay, HP·stress·준비·파생 감정을 갖춘 3인 동시
+노출 Party HUD를 제공한다. ENGAGED에서만 정보 scroll 밖의 고정 하단
+`CombatActionArea`가 보이며, 16px 자동 줄바꿈 `ActionFeedback` 아래 44px/18pt 행동
+dock을 둔다. facade의 한국어 거부 `message`는 이 고정 feedback에 즉시 남고,
+commit event에서 투영한 slash/hit/피해량/death 효과만 중복 없이 재생한다. 비인접
+auto-walk는 구현하지 않았고 P1 FOV/LOS 뒤다.
+
+`GROUPED_COMPLETE`의 `presentation_state()`는 transient UI 문구와 무관하게
+`VICTORY` tone, `승리 · 자동 재집결` banner, green grid style을 계속 반환한다.
+따라서 save/load 뒤 새 sandbox도 같은 승리 상태를 보이며 commit 효과는 재생하지 않는다.
 
 - 유효한 플레이어 결정 수 `step_index`와 실제 경과 `world_time`이 분리됨
 - 행동은 시작 시 commit되고 `(start, end]` 예약을 완전히 처리한 뒤 정착됨

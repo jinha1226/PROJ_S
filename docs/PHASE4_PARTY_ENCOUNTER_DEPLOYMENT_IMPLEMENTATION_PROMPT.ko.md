@@ -33,6 +33,37 @@ grid 아래에는 최대 3인의 고정 Party HUD를 둬 360px 폭에서도 세 
 ScrollContainer로 내린다. 파티 턴 일괄 확정, 동료 자동 제안과 override 동시 표시,
 보조 16px·본문 18px·핵심 20–24px 및 44px 터치 타깃 계약은 유지한다.
 
+같은 world 좌표와 같은 `PartyGridView` 인스턴스를 유지하되 camera window는 phase에
+따라 바뀐다. EXPLORATION·CONTACT·배치 preview와 승리 후 자동 재집결은 원점 기준
+15×15 전체, 배치 확정 뒤 ENGAGED는 party/enemy cluster를 중심으로 clamp한 9×9다.
+선택 actor/target이 crop 밖이면 다시 포함하도록 recenter한다. actor와 intent를 합친 필수
+focus bounds가 x/y 어느 축이든 9칸 창보다 넓으면 같은 grid의 원점 15×15 전체 창으로
+fallback해 필수 actor를 하나도 숨기지 않는다. compact cluster는 계속 9×9다. `world_cell_rect`,
+`world_to_pixel_center`, 역 mapping과 pointer 입력은 `view_origin + visible_cell_count`를
+유일한 authority로 쓰며 crop 밖 world cell은 입력할 수 없다. 이 camera crop은 후속
+FOV/LOS와 무관하다.
+
+ENGAGED에는 `⚔ 전투 중` banner/테두리를 계속 표시한다. `CombatActionArea`는
+`InformationScroll` 밖 `PartyLayout`의 마지막 고정 sibling이며, 자동 줄바꿈
+`ActionFeedback`과 최하단 `CombatActionDock`을 차례로 가진다. dock은 `선택 대기`,
+`자동 제안 복원`, `턴 확정`만 가진다. facade가 준 한국어 거부 `message`는 reason token을
+UI에서 다시 번역하지 않고 fixed feedback에 즉시 표시하며 scroll 이동과 무관하게 남는다.
+설명·turn summary·선택 상세는 scroll 안 `ContextDeck`에 남고 버튼을 중복하지 않는다.
+ActionArea는 ENGAGED에서만 높이 84px로 보이고 다른 phase에는 숨김/minimum 0이다.
+승리 직후 banner는 `승리 · 자동 재집결`을 알리고 area를 숨기며 15×15로 zoom-out한다.
+
+facade의 모든 feedback은 구조화된 `reason_code/reason_details/message`와
+`visual_effects` field를 갖는다. preview/reject는 빈 효과 배열이다. accepted commit만
+event에서 투영된 `SLASH/HIT_FLASH/FLOATING_AMOUNT/DEATH`를 UI에 전달하며,
+`effect_id`로 중복 재생을 막되 같은 `event_id`의 hit flash와 floating amount는 모두
+한 번씩 보인다. 지속 banner와 grid border/tone은 detached `presentation_state()`의
+`banner/grid_style`을 소비한다.
+
+`GROUPED_COMPLETE` presentation은 transient `notice_text`가 아니라 phase에서 직접
+도출한다. `banner.title=승리 · 자동 재집결`, `tone=VICTORY`, green `grid_style`을
+다음 phase 전까지 유지한다. save/load 뒤 새 sandbox도 같은 banner/style을 즉시
+보이고 과거 commit의 `visual_effects`는 다시 재생하지 않는다.
+
 ## 0. Sol High에게 주는 단일 목표
 
 이 저장소에 아래 플레이 흐름을 구현하라.
@@ -367,27 +398,35 @@ load_session_json(encoded: String) -> Dictionary
 
 ## 14. 같은 grid scene과 모바일 UI 예산
 
-`PartyEncounterSandbox`는 시작부터 끝까지 `PartyGridView` 하나를 유지한다. phase 전환 때 scene reload, grid 교체, 별도 combat viewport를 금지한다. 테스트는 `grid.get_instance_id()`와 world cell→pixel mapping이 EXPLORATION부터 regroup 이후까지 동일함을 확인한다.
+`PartyEncounterSandbox`는 시작부터 끝까지 `PartyGridView` 하나를 유지한다. phase 전환 때 scene reload, grid 교체, 별도 combat viewport를 금지한다. world 좌표계는 항상 15×15지만 pixel mapping은 camera window에 따라 의도적으로 바뀐다. 테스트는 같은 `grid.get_instance_id()`, 15×15→9×9→15×15 전환, 승리 뒤 원점 full-view mapping의 exact 복귀를 확인한다.
 
 portrait 예산:
 
 | 영역 | 360×640 | 450×800 |
 |---|---:|---:|
-| top phase/status bar | 40 px | 48 px |
-| 15×15 grid | 300×300 px | 330×330 px |
-| three-card strip | 108 px 이하 | 138 px 이하 |
-| context deck | 남은 180 px 이하 | 남은 260 px 이하 |
+| top phase/banner | 48 px | 52 px |
+| 탐험·조우 15×15 grid | 348×348 px | 405×405 px |
+| 전투 9×9 grid | 300×300 px | 360×360 px |
+| three-card strip | 160 px | 160 px |
+| scroll 정보 영역 | 남는 높이, 최소 30 px | 남는 높이, 최소 30 px |
+| ENGAGED 고정 ActionFeedback | 38 px, 16px font | 38 px, 16px font |
+| ENGAGED 고정 action dock | 44 px, 18px font | 44 px, 18px font |
+| ENGAGED 고정 ActionArea 합계 | 84 px(내부 gap 2 포함) | 84 px(내부 gap 2 포함) |
 
 가로 padding은 총 12 px 이하, horizontal scroll은 금지한다. 세 member card는 항상 한 줄에 보이며 각각 portrait/name, HP, status, 4-element compact indicator, suggestion/override badge를 가진다. 선택 card만 상세 문구를 context deck에 펼친다.
 
-모든 버튼과 card touch target은 최소 44×44 px다. grid actor sprite는 cell 안에서 그리되 actor hit rect는 최소 28×28 px로 확장한다. 겹치는 hit rect는 `(pointer와 center 거리, protagonist 우선, roster_slot, entity_id)`로 선택한다. grid 밖 click과 modal open 중 world input은 no-op이다.
+모든 버튼과 card touch target은 최소 44×44 px다. grid actor sprite는 cell 안에서 그리되 actor hit rect는 44×44 px로 확장한다. 겹치는 hit rect는 `(pointer와 center 거리, protagonist 우선, roster_slot, entity_id)`로 선택한다. grid 밖, camera crop 밖 click과 modal open 중 world input은 no-op이다.
 
 context deck 내용:
 
 - EXPLORATION: 8방향/대기와 탐지 상태
 - ENCOUNTER_PREVIEW: WEDGE/LINE/COLUMN, 배치 순서, 확정
-- COMBAT: 주인공 HOLD/MOVE/MELEE, 동료 suggestion 두 개, 개별 override/복원, 턴 확정
-- REGROUP: 전투 결과와 큰 `재집결` 버튼
+- COMBAT: 행동 설명, turn summary, 동료 suggestion과 개별 override의 실제/원래 제안 동시 표시
+- GROUPED_COMPLETE: 승리·자동 재집결 완료와 탐험 재개 설명
+
+COMBAT 조작 버튼은 context deck 항목이 아니라 scroll 밖 고정 `CombatActionArea`의
+`CombatActionDock`에만 있다. 비전투 phase에는 ActionArea 전체가 layout에서 빠지고,
+CONTACT의 44px 배치 버튼은 최소 30px 정보 viewport 안에서 scroll해 실제 접근 가능하다.
 
 360×640과 450×800에서 overlap, clipping, horizontal overflow, 20 px 미만 cell, phase 변경 중 selection 상실이 없어야 한다.
 
@@ -481,9 +520,15 @@ regroup/snapshot/session:
 
 UI:
 
-- 같은 grid instance ID와 225-cell coordinate mapping이 전 phase에서 유지된다.
-- 360×640, 450×800에서 세 카드·context deck·grid가 overlap/overflow 없이 들어간다.
-- 모든 touch target 44 px, actor hit rect 28 px, overlap tie-break가 결정론적이다.
+- 같은 grid instance ID를 유지하면서 compact 전투의 15×15→9×9→15×15가 전환되고 마지막 full mapping이 처음과 정확히 같다.
+- 필수 actor/intent bounds가 9칸을 넘으면 전투 중에도 same-grid 15×15 fallback으로 모두 보이며, 360px 폭 cell은 20px 이상이다.
+- crop 양 끝 world↔pixel round trip이 정확하고 off-window cell의 pixel/hit/input surface가 없다.
+- 360×640, 450×800에서 세 카드·context deck·grid·하단 ActionArea가 overlap/overflow 없이 들어간다.
+- ENGAGED ActionArea는 viewport 최하단에서 information scroll과 독립이다. feedback의 모든 wrapped line이 실제 보이고, 세 버튼은 실제 viewport input으로 눌리며 44 px 이상·18 px font다.
+- EXPLORATION/CONTACT/PREVIEW/GROUPED_COMPLETE에서는 ActionArea가 hidden/minimum 0이고, CONTACT 배치 버튼은 실제 scroll viewport 안에서 접근된다.
+- 모든 touch target 44 px, actor hit rect 44 px, overlap tie-break가 결정론적이다.
+- preview/reject는 visual effect가 없고 accepted commit 효과는 `effect_id`별 한 번만 그린다.
+- fresh·save/load-restored `GROUPED_COMPLETE`는 local notice 없이도 같은 VICTORY banner/green grid style을 보이며 과거 효과를 replay하지 않는다.
 - companion 하나 override/clear가 다른 companion draft를 바꾸지 않는다.
 - modal/focus loss/echo input 중 commit되지 않는다.
 - 한국어 log에 raw `ENGAGED`, `MELEE`, `party.override_committed`가 노출되지 않는다.

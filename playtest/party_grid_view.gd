@@ -9,6 +9,9 @@ const COLORS := {"floor":Color("#344351"),"wall":Color("#111923"),"shallow_water
 const CHARACTER_ATLAS: Texture2D = preload("res://assets/sprites/character_atlas.png")
 const CHARACTER_FRAME_SIZE := Vector2i(36,44)
 const CHARACTER_ATLAS_COLUMNS := 3
+var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
+var visible_cell_count := GRID_SIZE
+var view_origin := Vector2i.ZERO
 var _cells: Dictionary = {}
 var _actors: Array[Dictionary] = []
 var _ghosts: Array[Dictionary] = []
@@ -22,13 +25,20 @@ var preview_actor_id := -1
 var preview_origin := Vector2i(-1, -1)
 var preview_destination := Vector2i(-1, -1)
 var preview_valid := false
+var combat_emphasis := false
+var _presentation_style: Dictionary = {}
+var _active_visual_effects: Array[Dictionary] = []
+var _played_effect_ids: Dictionary = {}
+var _played_effect_event_ids: Dictionary = {}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; resized.connect(queue_redraw)
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; clip_contents=true; resized.connect(queue_redraw)
+	set_process(false)
 
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	_cells.clear(); _actors.clear(); _ghosts.clear()
+	world_grid_size=Vector2i(maxi(1,int(observation.get("width",GRID_SIZE))),maxi(1,int(observation.get("height",GRID_SIZE))))
 	for raw in observation.get("cells",[]):
 		var row: Dictionary = raw.duplicate(true); var p := Vector2i(int(row.position[0]),int(row.position[1])); _cells[_key(p)] = row
 		for actor in row.get("actors",[]):
@@ -46,6 +56,90 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
 	queue_redraw()
+
+func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=[])->void:
+	visible_cell_count=clampi(cell_count,1,mini(world_grid_size.x,world_grid_size.y))
+	if visible_cell_count>=world_grid_size.x and visible_cell_count>=world_grid_size.y:
+		view_origin=Vector2i.ZERO; queue_redraw(); return
+	var minimum:=Vector2i(world_grid_size.x-1,world_grid_size.y-1); var maximum:=Vector2i.ZERO; var found:=false
+	for source in [focus_points,priority_points]:
+		for raw in source:
+			if not raw is Vector2i:continue
+			var point:=raw as Vector2i
+			if not _world_in_bounds(point):continue
+			minimum=Vector2i(mini(minimum.x,point.x),mini(minimum.y,point.y))
+			maximum=Vector2i(maxi(maximum.x,point.x),maxi(maximum.y,point.y)); found=true
+	if found and (maximum.x-minimum.x>visible_cell_count-1 or maximum.y-minimum.y>visible_cell_count-1):
+		visible_cell_count=mini(world_grid_size.x,world_grid_size.y)
+		view_origin=Vector2i.ZERO;queue_redraw();return
+	var center:=Vector2i(world_grid_size.x/2,world_grid_size.y/2)
+	if found:center=Vector2i((minimum.x+maximum.x)/2,(minimum.y+maximum.y)/2)
+	var next_origin:=center-Vector2i(visible_cell_count/2,visible_cell_count/2)
+	if found:
+		var minimum_origin:=Vector2i(maxi(0,maximum.x-visible_cell_count+1),maxi(0,maximum.y-visible_cell_count+1))
+		var maximum_origin:=Vector2i(mini(minimum.x,world_grid_size.x-visible_cell_count),mini(minimum.y,world_grid_size.y-visible_cell_count))
+		next_origin=Vector2i(clampi(next_origin.x,minimum_origin.x,maximum_origin.x),clampi(next_origin.y,minimum_origin.y,maximum_origin.y))
+	next_origin=_clamp_view_origin(next_origin)
+	view_origin=next_origin; queue_redraw()
+
+func set_combat_emphasis(enabled:bool)->void:combat_emphasis=enabled;queue_redraw()
+
+func set_presentation_style(value:Dictionary)->void:
+	_presentation_style=value.duplicate(true)
+	combat_emphasis=str(_presentation_style.get("style_id",""))=="COMBAT"
+	queue_redraw()
+
+func play_effects(rows:Array)->int:
+	var started_at:=Time.get_ticks_msec();var appended:=0
+	for raw in rows:
+		if not raw is Dictionary:continue
+		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
+		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
+		var row:Dictionary=raw.duplicate(true);row["started_at_ms"]=started_at
+		_active_visual_effects.append(row);_played_effect_ids[effect_id]=true
+		_played_effect_event_ids[event_id]=true;appended+=1
+	if appended==0:return 0
+	_active_visual_effects.sort_custom(func(a,b):
+		if int(a.get("order",0))!=int(b.get("order",0)):return int(a.get("order",0))<int(b.get("order",0))
+		return str(a.get("effect_id",""))<str(b.get("effect_id","")))
+	if _active_visual_effects.size()>48:_active_visual_effects=_active_visual_effects.slice(_active_visual_effects.size()-48)
+	set_process(true);queue_redraw();return appended
+
+func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids.has(event_id)
+func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
+
+func visual_effect_draw_spec(effect:Dictionary)->Dictionary:
+	var world_value=effect.get("world_position",[-1,-1]);var world_position:=Vector2i(-1,-1)
+	if world_value is Array and world_value.size()==2:world_position=Vector2i(int(world_value[0]),int(world_value[1]))
+	var kind:=str(effect.get("kind",""));var damage_type:=str(effect.get("damage_type","physical"))
+	var color_hex:String={"fire":"#ff7a55","water":"#67c9ff","electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(damage_type,"#fff0df")
+	if kind=="DEATH":color_hex="#ff6b78"
+	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
+		"kind":kind,"primitive":{"SLASH":"SLASH_LINES","HIT_FLASH":"FLASH_RING","FLOATING_AMOUNT":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"),
+		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
+		"pixel_center":world_to_pixel_center(world_position),"color_hex":color_hex,
+		"line_width":4.0 if kind in ["SLASH","DEATH"] else 3.0,
+		"radius":cell_size_px()*(0.34 if kind=="HIT_FLASH" else 0.28),
+		"text":str(effect.get("text","")),"font_size":18,
+		"duration_ms":900 if kind in ["FLOATING_AMOUNT","DEATH"] else 520}.duplicate(true)
+
+func _process(_delta:float)->void:
+	if _active_visual_effects.is_empty():set_process(false);return
+	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
+	for effect in _active_visual_effects:
+		var spec:=visual_effect_draw_spec(effect)
+		if now-int(effect.get("started_at_ms",now))<int(spec.duration_ms):retained.append(effect)
+	_active_visual_effects=retained
+	if _active_visual_effects.is_empty():set_process(false)
+	queue_redraw()
+
+func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
+func is_world_cell_visible(position:Vector2i)->bool:return view_bounds().has_point(position)
+func _world_in_bounds(position:Vector2i)->bool:
+	return position.x>=0 and position.y>=0 and position.x<world_grid_size.x and position.y<world_grid_size.y
+func _clamp_view_origin(origin:Vector2i)->Vector2i:
+	return Vector2i(clampi(origin.x,0,maxi(0,world_grid_size.x-visible_cell_count)),
+		clampi(origin.y,0,maxi(0,world_grid_size.y-visible_cell_count)))
 
 func set_selection(actor_id: int, target_id: int = -1) -> void:
 	selected_actor_id = actor_id; selected_target_id = target_id; queue_redraw()
@@ -70,17 +164,32 @@ func set_intent_overlays(rows: Array) -> void:
 
 func grid_rect() -> Rect2:
 	var extent := minf(size.x,size.y); return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
-func cell_size_px() -> float: return grid_rect().size.x / GRID_SIZE
+func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
-	var rect := grid_rect(); var cell := cell_size_px(); return Rect2(rect.position+Vector2(position.x,position.y)*cell,Vector2(cell,cell))
-func world_to_pixel_center(position: Vector2i) -> Vector2: return world_cell_rect(position).get_center()
+	if not is_world_cell_visible(position):return Rect2()
+	var rect := grid_rect(); var cell := cell_size_px(); var local:=position-view_origin
+	return Rect2(rect.position+Vector2(local.x,local.y)*cell,Vector2(cell,cell))
+func world_to_pixel_center(position: Vector2i) -> Vector2:
+	if not is_world_cell_visible(position):return Vector2(-1,-1)
+	return world_cell_rect(position).get_center()
+func pixel_to_world_cell(pointer:Vector2)->Vector2i:
+	var rect:=grid_rect()
+	if not rect.has_point(pointer):return Vector2i(-1,-1)
+	var local:=pointer-rect.position;var cell:=cell_size_px()
+	var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
+	if local_cell.x<0 or local_cell.y<0 or local_cell.x>=visible_cell_count or local_cell.y>=visible_cell_count:return Vector2i(-1,-1)
+	return view_origin+local_cell
 func mapping_signature() -> Array:
-	var rows: Array = []; for y in range(15): for x in range(15): rows.append(world_to_pixel_center(Vector2i(x,y)))
+	var rows: Array = [[view_origin.x,view_origin.y],visible_cell_count,[world_grid_size.x,world_grid_size.y]]
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var world:=view_origin+Vector2i(x,y); rows.append([[world.x,world.y],world_to_pixel_center(world)])
 	return rows
 func actor_hit_rect(entity_id: int) -> Rect2:
 	for actor in _actors:
 		if int(actor.entity_id) == entity_id:
-			var p := Vector2i(int(actor.position[0]),int(actor.position[1])); return Rect2(world_to_pixel_center(p)-Vector2(22,22),Vector2(44,44))
+			var p := Vector2i(int(actor.position[0]),int(actor.position[1]))
+			if is_world_cell_visible(p):return Rect2(world_to_pixel_center(p)-Vector2(22,22),Vector2(44,44))
 	return Rect2()
 func actor_at_pointer(pointer: Vector2) -> int:
 	var matches: Array = []
@@ -111,10 +220,8 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton: pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT; pointer = event.position
 	elif event is InputEventScreenTouch: pressed = event.pressed; pointer = event.position
 	if not pressed: return
-	var rect := grid_rect()
-	if not rect.has_point(pointer): return
-	var local := pointer-rect.position; var cell := cell_size_px(); var p := Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
-	if p.x < 0 or p.y < 0 or p.x >= 15 or p.y >= 15: return
+	var p:=pixel_to_world_cell(pointer)
+	if p==Vector2i(-1,-1):return
 	var actor_id := actor_in_world_cell(p)
 	if actor_id > 0:
 		actor_pressed.emit(actor_id)
@@ -132,9 +239,9 @@ func _empty_cell_center_zone(position:Vector2i,pointer:Vector2)->bool:
 
 func _draw() -> void:
 	var cell := cell_size_px()
-	for y in range(15):
-		for x in range(15):
-			var p := Vector2i(x,y); var row: Dictionary = _cells.get(_key(p),{}); var rect := world_cell_rect(p)
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var p := view_origin+Vector2i(x,y); var row: Dictionary = _cells.get(_key(p),{}); var rect := world_cell_rect(p)
 			draw_rect(rect,COLORS.get(str(row.get("terrain_id","floor")),COLORS.floor),true); draw_rect(rect,Color("#617183"),false,1)
 	for actor in _actors:
 		_draw_actor(actor, cell, false)
@@ -145,10 +252,30 @@ func _draw() -> void:
 	for intent in _intent_overlays:
 		_draw_intent(intent)
 	_draw_cursor_preview()
+	for effect in _active_visual_effects:_draw_visual_effect(effect)
+	var style_id:=str(_presentation_style.get("style_id","DEFAULT"))
+	if combat_emphasis or bool(_presentation_style.get("vignette",false)):
+		var border:=Color(str(_presentation_style.get("border_hex","#ff7a80")))
+		draw_rect(grid_rect().grow(-2),border,false,4.0 if style_id=="COMBAT" else 2.5)
+
+func _draw_visual_effect(effect:Dictionary)->void:
+	var spec:=visual_effect_draw_spec(effect)
+	if not bool(spec.visible):return
+	var center:Vector2=spec.pixel_center;var color:=Color(str(spec.color_hex));var radius:=float(spec.radius);var width:=float(spec.line_width)
+	match str(spec.primitive):
+		"SLASH_LINES":
+			draw_line(center+Vector2(-radius,radius),center+Vector2(radius,-radius),color,width)
+			draw_line(center+Vector2(-radius*0.55,radius),center+Vector2(radius,radius*-0.55),color,maxf(2.0,width-1.0))
+		"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
+		"TEXT":draw_string(get_theme_default_font(),center+Vector2(-16,-radius),str(spec.text),HORIZONTAL_ALIGNMENT_CENTER,32,int(spec.font_size),color)
+		"DEATH_CROSS":
+			draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
+			draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
 
 func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
 	var p := Vector2i(int(actor.position[0]),int(actor.position[1])); var rect := world_cell_rect(p)
+	if not is_world_cell_visible(p):return
 	var frame := int(actor.get("sprite_frame", 4 if ghost else 0))
 	var source := Rect2(Vector2((frame % CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.x,
 		floori(float(frame) / CHARACTER_ATLAS_COLUMNS) * CHARACTER_FRAME_SIZE.y), Vector2(CHARACTER_FRAME_SIZE))
@@ -162,27 +289,30 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
 	if ghost: draw_rect(rect.grow(-2),Color(0.45,0.8,1.0,0.75),false,1.5)
 
 func _draw_cursor_preview() -> void:
-	if cursor_cell.x < 0: return
+	if cursor_cell.x < 0 or not is_world_cell_visible(cursor_cell): return
 	var color := Color("#65f29a") if preview_valid else Color("#ff5f68")
 	var destination_rect := world_cell_rect(cursor_cell)
 	draw_rect(destination_rect.grow(-1), Color(color, 0.20), true)
 	draw_rect(destination_rect.grow(-1), color, false, 4.0)
-	if preview_origin.x >= 0:
+	if preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
 
 func _draw_intent(intent: Dictionary) -> void:
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return
 	var origin := Vector2i(int(intent.from_position[0]), int(intent.from_position[1]))
+	if not is_world_cell_visible(origin):return
 	var spec := intent_draw_spec(intent)
 	var color := Color(str(spec.color_hex))
 	var action_type := str(spec.action_type)
 	if action_type == "MOVE" and intent.get("destination") is Array and intent.destination.size() == 2:
 		var destination := Vector2i(int(intent.destination[0]), int(intent.destination[1]))
+		if not is_world_cell_visible(destination):return
 		_draw_arrow(world_to_pixel_center(origin), world_to_pixel_center(destination), color,
 			float(spec.line_width), bool(spec.dashed))
 		_draw_source_marker(destination, str(spec.marker_style), color)
 	elif action_type == "MELEE" and intent.get("target_position") is Array and intent.target_position.size() == 2:
 		var target := Vector2i(int(intent.target_position[0]), int(intent.target_position[1]))
+		if not is_world_cell_visible(target):return
 		_draw_arrow(world_to_pixel_center(origin), world_to_pixel_center(target), color,
 			float(spec.line_width), bool(spec.dashed))
 		var center := world_to_pixel_center(target); var radius := cell_size_px() * 0.28

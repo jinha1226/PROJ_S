@@ -12,6 +12,7 @@ const WorldStateScript = preload("res://sim/world_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 
 const SESSION_FORMAT_VERSION := 2
+const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_party_encounter_v2.json"
 const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
@@ -64,8 +65,60 @@ func party_status() -> Dictionary:
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
 		"protagonist_id": state.protagonist_id, "party_member_ids": state.party_member_ids.duplicate(),
 		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
-		"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
-		"session_format_version": SESSION_FORMAT_VERSION}.duplicate(true)
+			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
+			"session_format_version": SESSION_FORMAT_VERSION}.duplicate(true)
+
+
+func presentation_state() -> Dictionary:
+	if sim == null or sim.world.party_encounter == null:
+		return {"schema_version": PRESENTATION_SCHEMA_VERSION, "phase_id": "UNINITIALIZED",
+			"mode": "UNAVAILABLE", "terminal": false, "combat_style_active": false,
+			"banner": {"visible": true, "key": "session_unavailable",
+				"title": "세션을 준비할 수 없습니다.", "subtitle": "", "tone": "ERROR"},
+			"grid_style": {"style_id": "DEFAULT", "tint_hex": "#ffffff",
+				"border_hex": "#617183", "vignette": false}}.duplicate(true)
+	var status := party_status()
+	var phase_id := str(status.safe_phase)
+	var mode := "EXPLORATION"
+	var banner := {"visible": true, "key": "exploration", "title": "탐험",
+		"subtitle": "파티가 한 무리로 이동합니다.", "tone": "CALM"}
+	var grid_style := {"style_id": "EXPLORATION", "tint_hex": "#ffffff",
+		"border_hex": "#617183", "vignette": false}
+	match phase_id:
+		"CONTACT":
+			mode = "ENCOUNTER"
+			banner = {"visible": true, "key": "encounter_contact", "title": "조우",
+				"subtitle": "전투 대형을 선택하세요.", "tone": "WARNING"}
+			grid_style = {"style_id": "ENCOUNTER", "tint_hex": "#fff2d6",
+				"border_hex": "#e8b95c", "vignette": true}
+		"ENGAGED":
+			mode = "COMBAT"
+			banner = {"visible": true, "key": "combat_active", "title": "전투 중",
+				"subtitle": "파티 행동을 계획하고 한꺼번에 확정하세요.", "tone": "COMBAT"}
+			grid_style = {"style_id": "COMBAT", "tint_hex": "#ffe4dc",
+				"border_hex": "#ff776d", "vignette": true}
+		"REGROUP_READY":
+			mode = "REGROUP"
+			banner = {"visible": true, "key": "combat_victory", "title": "승리",
+				"subtitle": "파티가 자동으로 재집결합니다.", "tone": "VICTORY"}
+			grid_style = {"style_id": "REGROUP", "tint_hex": "#e5fff0",
+				"border_hex": "#62d98b", "vignette": false}
+		"GROUPED_COMPLETE":
+			mode = "EXPLORATION"
+			banner = {"visible": true, "key": "combat_victory_complete", "title": "승리 · 자동 재집결",
+				"subtitle": "탐험 재개", "tone": "VICTORY"}
+			grid_style = {"style_id": "VICTORY", "tint_hex": "#e5fff0",
+				"border_hex": "#62d98b", "vignette": true}
+		"PARTY_DEFEATED":
+			mode = "DEFEAT"
+			banner = {"visible": true, "key": "party_defeated", "title": "패배",
+				"subtitle": "주인공이 쓰러져 더 행동할 수 없습니다.", "tone": "DEFEAT"}
+			grid_style = {"style_id": "DEFEAT", "tint_hex": "#d5c6cf",
+				"border_hex": "#8f5367", "vignette": true}
+	return {"schema_version": PRESENTATION_SCHEMA_VERSION, "phase_id": phase_id,
+		"mode": mode, "terminal": bool(status.terminal),
+		"combat_style_active": phase_id in ["ENGAGED", "PARTY_DEFEATED"],
+		"banner": banner, "grid_style": grid_style}.duplicate(true)
 
 func observe_party_world() -> Dictionary:
 	var status := party_status()
@@ -125,14 +178,15 @@ func available_companion_ids() -> Array:
 
 func deployment_draft() -> Dictionary:
 	if _deployment_plan.is_empty():
-		return {"has_preview": false, "accepted": false, "reason": "deployment_preview_required",
-			"message": reason_message("deployment_preview_required"), "preset_id": "NONE", "companion_ids": [], "placements": []}
-	return {"has_preview": true, "accepted": bool(_deployment_plan.get("accepted", false)),
+		return _feedback_dto({"has_preview": false, "accepted": false,
+			"reason": "deployment_preview_required", "preset_id": "NONE",
+			"companion_ids": [], "placements": []}, null, null, {"action_type": "DEPLOY"})
+	return _feedback_dto({"has_preview": true, "accepted": bool(_deployment_plan.get("accepted", false)),
 		"reason": str(_deployment_plan.get("reason", "invalid_deployment_plan")),
-		"message": reason_message(str(_deployment_plan.get("reason", "invalid_deployment_plan"))),
 		"preset_id": str(_deployment_plan.get("preset_id", "NONE")),
 		"companion_ids": _deployment_plan.get("companion_ids", []).duplicate(true),
-		"placements": _deployment_plan.get("placements", []).duplicate(true)}.duplicate(true)
+		"placements": _deployment_plan.get("placements", []).duplicate(true)}, null, null,
+		{"action_type": "DEPLOY"})
 
 func enemy_targets() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
@@ -146,7 +200,8 @@ func enemy_targets() -> Array[Dictionary]:
 func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 	if direction not in [Vector2i.ZERO, Vector2i.UP, Vector2i(1,-1), Vector2i.RIGHT, Vector2i(1,1),
 			Vector2i.DOWN, Vector2i(-1,1), Vector2i.LEFT, Vector2i(-1,-1)]:
-		return _rejection_dto("invalid_exploration_direction")
+		return _rejection_dto("invalid_exploration_direction", null, null,
+			{"action_type": "MOVE", "direction": [direction.x, direction.y]})
 	var status := party_status()
 	if not bool(status.get("ok", false)): return _rejection_dto(str(status.get("reason", "session_not_initialized")))
 	var hero_id := int(status.protagonist_id)
@@ -157,7 +212,10 @@ func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 func set_actor_action(actor_id: int, action_type: String, destination: Array = [], target_id: int = -1) -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return _rejection_dto("session_not_initialized")
 	var action = _make_action(actor_id, action_type, destination, target_id)
-	if action == null: return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action")
+	if action == null:
+		return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action",
+			null, null, {"actor_id": actor_id, "action_type": action_type,
+				"destination": destination.duplicate(true), "target_id": target_id})
 	var state = sim.world.party_encounter
 	return begin_turn(action) if actor_id == state.protagonist_id else override_companion(actor_id, action)
 
@@ -169,11 +227,13 @@ func preview_actor_action(actor_id: int, action_type: String, destination: Array
 		return _rejection_dto("session_not_initialized")
 	var action = _make_action(actor_id, action_type, destination, target_id)
 	if action == null:
-		return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action")
+		return _rejection_dto("invalid_party_destination" if action_type == "MOVE" else "invalid_party_action",
+			null, null, {"actor_id": actor_id, "action_type": action_type,
+				"destination": destination.duplicate(true), "target_id": target_id})
 	var state = sim.world.party_encounter
 	var direct = action if actor_id == state.protagonist_id else _protagonist_draft
 	if direct == null:
-		return _rejection_dto("turn_draft_required")
+		return _rejection_dto("turn_draft_required", action)
 	var overrides: Array = []
 	var ids: Array = _overrides.keys()
 	if actor_id != state.protagonist_id and not ids.has(actor_id): ids.append(actor_id)
@@ -181,9 +241,9 @@ func preview_actor_action(actor_id: int, action_type: String, destination: Array
 	for id in ids:
 		overrides.append({"actor_id": id,
 			"action": action if int(id) == actor_id else _overrides[id]})
-	var preview: Dictionary = sim.preview_party_turn(RequestScript.new(direct, overrides)).to_dict().duplicate(true)
-	preview["message"] = reason_message(str(preview.get("reason", "invalid_party_plan")))
-	return preview
+	var request = RequestScript.new(direct, overrides)
+	var preview: Dictionary = sim.preview_party_turn(request).to_dict().duplicate(true)
+	return _feedback_dto(preview, action, request)
 
 
 func turn_intent_overlays() -> Array[Dictionary]:
@@ -244,11 +304,14 @@ func _overlay_marker_style(source: String) -> String:
 
 func preview_exploration(command) -> Dictionary:
 	if party_status().view_mode != "EXPLORATION": return _rejection_dto("exploration_phase_required")
-	if command == null or command.actor_id != sim.world.party_encounter.protagonist_id: return _rejection_dto("protagonist_command_required")
-	if int(command.type) not in [int(CommandScript.Type.WAIT), int(CommandScript.Type.MOVE)]: return _rejection_dto("invalid_exploration_action")
+	if command == null or command.actor_id != sim.world.party_encounter.protagonist_id:
+		return _rejection_dto("protagonist_command_required")
+	var context := _exploration_context(command)
+	if int(command.type) not in [int(CommandScript.Type.WAIT), int(CommandScript.Type.MOVE)]:
+		return _rejection_dto("invalid_exploration_action", null, null, context)
 	var preview = sim.preview(command)
-	return {"accepted": preview.accepted, "reason": preview.reason, "message": reason_message(preview.reason),
-		"time_cost": preview.time_cost}.duplicate(true)
+	return _feedback_dto({"accepted": preview.accepted, "reason": preview.reason,
+		"time_cost": preview.time_cost}, null, null, context)
 
 func commit_exploration(command) -> Dictionary:
 	var preview := preview_exploration(command)
@@ -256,7 +319,7 @@ func commit_exploration(command) -> Dictionary:
 	var result = sim.step(command)
 	if result.accepted: command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
-	return _result_dto(result)
+	return _result_dto(result, null, null, _exploration_context(command))
 
 func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	_deployment_plan = sim.preview_deployment(preset_id, companion_ids)
@@ -287,38 +350,46 @@ func begin_turn(protagonist_action) -> Dictionary:
 	return preview
 
 func override_companion(entity_id: int, action) -> Dictionary:
-	if _protagonist_draft == null: return _rejection_dto("turn_draft_required")
+	if _protagonist_draft == null:
+		return _rejection_dto("turn_draft_required", action, null, {"actor_id": entity_id})
 	var copied_action = _canonical_action_copy(action)
-	if copied_action == null or copied_action.actor_id != entity_id: return _rejection_dto("override_actor_mismatch")
+	if copied_action == null or copied_action.actor_id != entity_id:
+		return _rejection_dto("override_actor_mismatch", copied_action, null, {"actor_id": entity_id})
 	var had_previous := _overrides.has(entity_id); var previous = _overrides.get(entity_id)
 	_overrides[entity_id] = copied_action
+	var candidate_request = _pending_turn_request()
 	var preview := current_turn_preview()
 	if not bool(preview.get("accepted", false)):
+		preview = _feedback_dto(preview, copied_action, candidate_request)
 		if had_previous: _overrides[entity_id] = previous
 		else: _overrides.erase(entity_id)
 	return preview
 
 func clear_companion_override(entity_id: int) -> Dictionary:
-	if _protagonist_draft == null: return _rejection_dto("turn_draft_required")
+	if _protagonist_draft == null:
+		return _rejection_dto("turn_draft_required", null, null,
+			{"actor_id": entity_id, "action_type": "CLEAR_OVERRIDE"})
 	_overrides.erase(entity_id); return current_turn_preview()
 
 func current_turn_preview() -> Dictionary:
 	if _protagonist_draft == null: return _rejection_dto("turn_draft_required")
 	if _draft_fingerprint != JSON.stringify(sim.snapshot()).sha256_text(): _clear_draft(); return _rejection_dto("stale_turn_draft")
-	var rows: Array = []; var ids: Array = _overrides.keys(); ids.sort()
-	for id in ids: rows.append({"actor_id":id,"action":_overrides[id]})
-	var preview: Dictionary = sim.preview_party_turn(RequestScript.new(_protagonist_draft, rows)).to_dict().duplicate(true)
-	preview["message"] = reason_message(str(preview.get("reason", "invalid_party_plan")))
-	return preview
+	var request = _pending_turn_request()
+	var preview: Dictionary = sim.preview_party_turn(request).to_dict().duplicate(true)
+	return _feedback_dto(preview, _protagonist_draft, request)
 
 func commit_turn() -> Dictionary:
 	var preview := current_turn_preview()
 	if not bool(preview.get("accepted",false)): return preview
-	var plan_data := preview.duplicate(true); plan_data.erase("message")
+	var request = RequestScript.from_dict(preview.canonical_request)
+	var plan_data := preview.duplicate(true)
+	for facade_key in ["message", "reason_code", "reason_details", "visual_effect_schema_version",
+			"visual_effects"]:
+		plan_data.erase(facade_key)
 	var plan = load("res://sim/party_turn_plan.gd").new(plan_data); var result = sim.step_party_turn(plan)
 	if result.accepted: command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})
 	if result.accepted: _clear_draft()
-	return _result_dto(result)
+	return _result_dto(result, null, request)
 
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
@@ -376,7 +447,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft()
-	return {"accepted":true,"reason":"ok", "message":reason_message("ok")}
+	return _feedback_dto({"accepted":true,"reason":"ok"})
 
 func _journal_wire_error(journal: Array) -> String:
 	for row in journal:
@@ -429,13 +500,189 @@ func _make_action(actor_id: int, action_type: String, destination: Array, target
 
 func _clear_draft() -> void: _protagonist_draft = null; _overrides.clear(); _draft_fingerprint = ""
 
-func _result_dto(result) -> Dictionary:
-	var ids: Array = []; for event in result.events: ids.append(event.id)
-	return {"accepted":result.accepted,"reason":result.reason,"message":reason_message(result.reason),"consumes_time":result.consumes_time,"step_index":result.processed_step_index,
-		"start_time":result.start_time,"end_time":result.end_time,"time_cost":result.time_cost,"event_ids":ids}.duplicate(true)
 
-func _rejection_dto(reason: String) -> Dictionary:
-	return {"accepted": false, "reason": reason, "message": reason_message(reason)}
+func _pending_turn_request():
+	var rows: Array = []
+	var ids: Array = _overrides.keys()
+	ids.sort()
+	for id in ids:
+		rows.append({"actor_id":id,"action":_overrides[id]})
+	return RequestScript.new(_protagonist_draft, rows)
+
+func _result_dto(result, action: Variant = null, request: Variant = null,
+		context: Dictionary = {}) -> Dictionary:
+	var ids: Array = []
+	for event in result.events:
+		ids.append(event.id)
+	var dto := {"accepted":result.accepted,"reason":result.reason,
+		"consumes_time":result.consumes_time,"step_index":result.processed_step_index,
+		"start_time":result.start_time,"end_time":result.end_time,"time_cost":result.time_cost,
+		"event_ids":ids,"visual_effects":_visual_effects_from_result(result)}
+	return _feedback_dto(dto, action, request, context)
+
+
+func _rejection_dto(reason: String, action: Variant = null, request: Variant = null,
+		context: Dictionary = {}) -> Dictionary:
+	return _feedback_dto({"accepted": false, "reason": reason}, action, request, context)
+
+
+func _feedback_dto(value: Dictionary, action: Variant = null, request: Variant = null,
+		context: Dictionary = {}) -> Dictionary:
+	var dto := value.duplicate(true)
+	var reason := str(dto.get("reason", "invalid_party_action"))
+	var details := _reason_details(reason, action, request, context)
+	dto["reason"] = reason
+	dto["reason_code"] = reason
+	dto["reason_details"] = details
+	dto["message"] = reason_message(reason, details)
+	dto["visual_effect_schema_version"] = PRESENTATION_SCHEMA_VERSION
+	if not dto.get("visual_effects") is Array:
+		dto["visual_effects"] = []
+	return dto.duplicate(true)
+
+
+func _exploration_context(command) -> Dictionary:
+	if command == null:
+		return {}
+	var action_type := "MOVE" if int(command.type) == int(CommandScript.Type.MOVE) else "HOLD"
+	return {"actor_id": int(command.actor_id), "action_type": action_type,
+		"destination": [command.position.x, command.position.y] if action_type == "MOVE" else [-1,-1]}
+
+
+func _reason_details(reason: String, action: Variant, request: Variant,
+		context: Dictionary) -> Dictionary:
+	if reason == "ok":
+		return {}
+	var details := context.duplicate(true)
+	details["category"] = _reason_category(reason)
+	if action is PartyActionCommand:
+		details["actor_id"] = int(action.actor_id)
+		details["action_type"] = str(action.type)
+		details["destination"] = [action.destination.x, action.destination.y]
+		details["target_id"] = int(action.target_id)
+	var actor_id := int(details.get("actor_id", -1))
+	if sim != null and sim.world != null and actor_id > 0:
+		if sim.world.entities.has(actor_id):
+			var entity = sim.world.entities[actor_id]
+			details["actor_name"] = str(entity.display_name)
+			details["alive"] = bool(entity.is_alive())
+			details["from_position"] = [entity.position.x, entity.position.y]
+		var state = sim.world.party_encounter
+		var member = state.member(actor_id) if state != null else null
+		if member != null:
+			details["presence"] = str(member.presence)
+			details["busy_until"] = int(member.busy_until)
+			details["remaining_time"] = maxi(0, int(member.busy_until) - int(sim.world.world_time))
+			details["is_deployed"] = str(member.presence) == "DEPLOYED"
+	var destination: Variant = details.get("destination", null)
+	if str(details.get("action_type", "")) == "MOVE" and destination is Array \
+			and destination.size() == 2 and actor_id > 0 and sim != null \
+			and sim.world != null and sim.world.entities.has(actor_id):
+		var assessment = sim.assess_move(actor_id, Vector2i(int(destination[0]), int(destination[1])))
+		var assessment_dto: Dictionary = assessment.to_dict()
+		details["movement_assessment"] = assessment_dto
+		details["terrain_id"] = str(assessment_dto.terrain_id)
+		details["blocking_entity_ids"] = assessment_dto.blocking_entity_ids.duplicate()
+		var blocker_names: Array[String] = []
+		for blocker_id in assessment_dto.blocking_entity_ids:
+			blocker_names.append(_name(int(blocker_id)))
+		details["blocking_entity_names"] = blocker_names
+		details["sampled_world_time"] = int(assessment_dto.sampled_world_time)
+	if reason == "destination_conflict":
+		var conflict := _destination_conflict_details(request)
+		for key in conflict:
+			details[key] = conflict[key]
+	return details.duplicate(true)
+
+
+func _destination_conflict_details(request: Variant) -> Dictionary:
+	if request == null or not request is PartyTurnRequest:
+		return {}
+	var direct_actions: Array = []
+	if request.protagonist_action != null:
+		direct_actions.append(request.protagonist_action)
+	for row in request.overrides:
+		if row is Dictionary and row.get("action") != null:
+			direct_actions.append(row.action)
+	var grouped: Dictionary = {}
+	for action in direct_actions:
+		if action == null or str(action.type) != "MOVE":
+			continue
+		var key := "%d:%d" % [action.destination.x, action.destination.y]
+		if not grouped.has(key):
+			grouped[key] = []
+		grouped[key].append(action)
+	var keys: Array = grouped.keys()
+	keys.sort()
+	for key in keys:
+		var contenders: Array = grouped[key]
+		if contenders.size() < 2:
+			continue
+		var ids: Array[int] = []
+		var names: Array[String] = []
+		for contender in contenders:
+			ids.append(int(contender.actor_id))
+		ids.sort()
+		for id in ids:
+			names.append(_name(id))
+		var position := str(key).split(":")
+		return {"conflict_destination": [int(position[0]), int(position[1])],
+			"conflicting_actor_ids": ids, "conflicting_actor_names": names}
+	return {}
+
+
+func _reason_category(reason: String) -> String:
+	if reason.begins_with("move_") or reason == "destination_conflict":
+		return "MOVEMENT"
+	if reason in ["turn_draft_required", "party_actor_busy", "party_actor_unavailable",
+			"override_actor_not_deployed", "override_actor_mismatch", "melee_not_legal"]:
+		return "PARTY_ACTION"
+	if "deployment" in reason or reason in ["unknown_formation", "invalid_companion_ids",
+			"too_many_deployed_party"]:
+		return "DEPLOYMENT"
+	if "overflow" in reason or reason == "schedule_budget_exceeded":
+		return "CAPACITY"
+	if "session" in reason or "journal" in reason or "snapshot" in reason:
+		return "SESSION"
+	return "REQUEST"
+
+
+func _visual_effects_from_result(result) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if result == null or not bool(result.accepted):
+		return rows
+	var order := 0
+	for event in result.events:
+		var event_type := str(event.type)
+		if event_type == "action.melee_attack":
+			rows.append(_visual_effect_row(event, "SLASH", "slash", order,
+				"physical", int(event.magnitude), ""))
+			order += 1
+		elif event_type.begins_with("combat.") and event_type.ends_with("_damage"):
+			var damage_type := str(event.data.get("damage_type", "physical"))
+			rows.append(_visual_effect_row(event, "HIT_FLASH", "hit_flash", order,
+				damage_type, int(event.magnitude), ""))
+			order += 1
+			rows.append(_visual_effect_row(event, "FLOATING_AMOUNT", "floating_amount", order,
+				damage_type, int(event.magnitude), "-%d" % int(event.magnitude)))
+			order += 1
+		elif event_type == "entity.died":
+			var death_type := str(event.data.get("damage_type", "physical"))
+			rows.append(_visual_effect_row(event, "DEATH", "death", order,
+				death_type, 0, ""))
+			order += 1
+	return rows.duplicate(true)
+
+
+func _visual_effect_row(event, kind: String, suffix: String, order: int,
+		damage_type: String, magnitude: int, text: String) -> Dictionary:
+	return {"effect_id":"%d:%s" % [int(event.id),suffix], "event_id":int(event.id),
+		"order":order, "kind":kind, "source_event_type":str(event.type),
+		"step_index":int(event.step_index), "world_time":int(event.world_time),
+		"actor_id":int(event.actor_id), "target_id":int(event.target_id),
+		"instigator_id":int(event.instigator_id), "cause_id":int(event.cause_id),
+		"world_position":[event.position.x,event.position.y], "damage_type":damage_type,
+		"magnitude":magnitude, "text":text}.duplicate(true)
 
 func _action_presentation(row: Variant) -> Variant:
 	if not row is Dictionary or not row.get("action") is Dictionary:
@@ -505,28 +752,77 @@ func _emotion_presentation(member, entity) -> Dictionary:
 	return {"icon":icon, "label":label, "reason":reason,
 		"health_percent":health_percent}.duplicate(true)
 
-func reason_message(reason: String) -> String:
-	return {
+func reason_message(reason: String, details: Dictionary = {}) -> String:
+	if reason == "party_actor_busy":
+		var remaining := int(details.get("remaining_time", 0))
+		return "선택한 파티원은 아직 행동 중입니다. (%d 시간 남음)" % remaining \
+			if remaining > 0 else "선택한 파티원은 아직 행동 중입니다."
+	if reason == "party_actor_unavailable":
+		if not bool(details.get("alive", true)) or str(details.get("presence", "")) == "DEFEATED":
+			return "선택한 파티원은 쓰러져 행동할 수 없습니다."
+		return "선택한 파티원은 지금 행동할 수 없습니다."
+	var mapped: Dictionary = {
 		"ok":"준비되었습니다.", "deployment_preview_required":"먼저 대형을 선택하세요.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
-		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "deployment_space_unavailable":"동료가 설 자리가 부족합니다.",
-		"stale_deployment_plan":"세계가 바뀌었습니다. 대형을 다시 선택하세요.", "deployment_plan_mismatch":"변조된 배치 계획은 확정할 수 없습니다.",
-		"turn_draft_required":"주인공 행동을 먼저 지정하세요.", "stale_turn_draft":"세계가 바뀌어 행동을 다시 지정해야 합니다.",
-		"party_turn_phase_required":"지금은 파티 턴을 확정할 수 없습니다.", "protagonist_action_required":"주인공 행동이 필요합니다.",
-		"party_actor_unavailable":"선택한 파티원은 행동할 수 없습니다.", "party_actor_busy":"선택한 파티원은 아직 준비되지 않았습니다.",
-		"melee_not_legal":"인접한 살아 있는 적만 공격할 수 있습니다.", "move_not_adjacent":"한 칸 이내로만 이동할 수 있습니다.",
-		"move_destination_occupied":"그 칸은 이미 점유되어 있습니다.", "move_terrain_blocked":"그 지형으로 이동할 수 없습니다.",
-		"destination_conflict":"두 직접 지시가 같은 칸을 요구합니다.", "party_plan_mismatch":"변조된 파티 계획은 확정할 수 없습니다.",
-		"stale_party_plan":"세계가 바뀌어 턴을 다시 계획해야 합니다.", "regroup_not_ready":"아직 재집결할 수 없습니다.",
-		"protagonist_dead":"주인공이 쓰러져 재집결할 수 없습니다.", "exploration_phase_required":"지금은 탐험 이동을 할 수 없습니다.",
-		"protagonist_command_required":"주인공만 탐험 이동을 지시할 수 있습니다.", "invalid_exploration_direction":"올바른 방향을 선택하세요.",
+		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
+		"deployment_space_unavailable":"동료가 설 수 있는 빈 칸이 부족합니다.",
+		"stale_deployment_plan":"세계가 바뀌었습니다. 대형을 다시 선택하세요.",
+		"deployment_plan_mismatch":"변경되거나 손상된 배치 계획은 확정할 수 없습니다.",
+		"turn_draft_required":"동료를 지시하려면 먼저 주인공 행동을 선택하세요.",
+		"stale_turn_draft":"세계가 바뀌어 행동을 다시 지정해야 합니다.",
+		"party_turn_phase_required":"지금은 파티 턴을 확정할 수 없습니다.",
+		"protagonist_action_required":"주인공 행동이 필요합니다.",
+		"override_actor_not_deployed":"이번 전투에 배치되지 않은 예비 동료입니다.",
+		"override_actor_mismatch":"선택한 동료와 지시 대상이 다릅니다.",
+		"duplicate_or_unsorted_override":"동료별 지시는 한 번씩만 지정할 수 있습니다.",
+		"melee_not_legal":"인접한 살아 있는 적만 공격할 수 있습니다.",
+		"move_requires_actor":"이동할 파티원을 먼저 선택하세요.",
+		"actor_not_found":"선택한 파티원을 찾을 수 없습니다.",
+		"actor_dead":"쓰러진 파티원은 이동할 수 없습니다.",
+		"move_not_adjacent":"인접한 8방향 한 칸으로만 이동할 수 있습니다.",
+		"move_out_of_bounds":"지도 밖으로 이동할 수 없습니다.",
+		"move_destination_occupied":"다른 인물이 그 칸을 점유하고 있습니다.",
+		"move_terrain_blocked":"벽 또는 통과할 수 없는 지형입니다.",
+		"move_diagonal_flank_blocked":"벽 모서리를 가로질러 대각선으로 이동할 수 없습니다.",
+		"move_diagonal_flank_occupied":"다른 인물이 막은 모서리를 가로질러 대각선으로 이동할 수 없습니다.",
+		"destination_conflict":"두 개 이상의 직접 이동 지시가 같은 칸을 요구합니다.",
+		"party_plan_mismatch":"변경되거나 손상된 파티 계획은 확정할 수 없습니다.",
+		"stale_party_plan":"세계가 바뀌어 턴을 다시 계획해야 합니다.",
+		"regroup_not_ready":"아직 재집결할 수 없습니다.",
+		"protagonist_dead":"주인공이 쓰러져 재집결할 수 없습니다.",
+		"exploration_phase_required":"지금은 탐험 이동을 할 수 없습니다.",
+		"protagonist_command_required":"주인공만 탐험 이동을 지시할 수 있습니다.",
+		"invalid_exploration_direction":"올바른 방향을 선택하세요.",
 		"invalid_exploration_action":"탐험에서는 이동하거나 대기할 수 있습니다.",
-		"invalid_party_action":"지원하지 않는 행동입니다.", "invalid_party_destination":"이동 위치가 올바르지 않습니다.",
-		"override_actor_mismatch":"선택한 동료와 지시 대상이 다릅니다.", "party_turn_failed":"파티 턴이 취소되어 이전 상태로 돌아갔습니다.",
-		"actor_tick_failed":"세계 처리에 실패해 이전 상태로 돌아갔습니다.", "party_journal_replay_failed":"저장 기록을 재생할 수 없습니다.",
-		"party_journal_snapshot_mismatch":"저장 기록과 스냅샷이 일치하지 않습니다.", "invalid_party_session":"저장 데이터 형식이 올바르지 않습니다.",
-		"invalid_party_session_wire":"저장 데이터가 정규 형식이 아닙니다.", "session_not_initialized":"세션이 준비되지 않았습니다."
-	}.get(reason, "행동을 처리할 수 없습니다: %s" % reason)
+		"invalid_party_action":"지원하지 않는 행동입니다.",
+		"invalid_party_destination":"이동 위치가 올바르지 않습니다.",
+		"melee_target_required":"공격할 적을 선택하세요.",
+		"move_destination_required":"이동할 칸을 선택하세요.",
+		"party_target_forbidden":"이 행동에는 공격 대상을 지정할 수 없습니다.",
+		"party_destination_forbidden":"이 행동에는 이동 칸을 지정할 수 없습니다.",
+		"party_turn_failed":"파티 턴이 취소되어 이전 상태로 돌아갔습니다.",
+		"actor_tick_failed":"세계 처리에 실패해 이전 상태로 돌아갔습니다.",
+		"party_schedule_mismatch":"세계 처리 순서가 바뀌어 파티 턴을 취소했습니다.",
+		"party_turn_semantic_failure":"파티 턴을 안전하게 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"party_snapshot_unavailable":"안전한 복원 지점을 만들 수 없어 행동을 취소했습니다.",
+		"schedule_budget_exceeded":"한 번에 처리할 세계 변화가 너무 많습니다. 더 짧은 행동을 선택하세요.",
+		"step_index_overflow":"더 이상 턴 기록을 추가할 수 없습니다.",
+		"time_overflow":"더 이상 세계 시간을 진행할 수 없습니다.",
+		"event_id_overflow":"더 이상 사건 기록을 추가할 수 없습니다.",
+		"party_journal_replay_failed":"저장 기록을 재생할 수 없습니다.",
+		"party_journal_snapshot_mismatch":"저장 기록과 스냅샷이 일치하지 않습니다.",
+		"invalid_party_session":"저장 데이터 형식이 올바르지 않습니다.",
+		"invalid_party_session_wire":"저장 데이터가 정규 형식이 아닙니다.",
+		"session_not_initialized":"세션이 준비되지 않았습니다."
+	}
+	if mapped.has(reason):
+		return str(mapped[reason])
+	if reason.begins_with("invalid_") or reason.begins_with("noncanonical_") \
+			or reason.begins_with("duplicate_or_unsorted_") or reason.begins_with("unknown_"):
+		return "요청 또는 저장 데이터 형식이 올바르지 않습니다."
+	if reason.ends_with("_failed") or reason.ends_with("_failure"):
+		return "처리에 실패해 이전 상태로 안전하게 돌아갔습니다."
+	return "요청을 처리할 수 없습니다. 상태를 확인하고 다시 시도하세요."
 
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)

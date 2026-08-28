@@ -169,6 +169,210 @@ func test_submitted_action_values_and_party_plan_storage_are_canonical_copies() 
 	check_eq(stored_request.overrides[0].action.type, "HOLD", "request constructor copies override action")
 	return finish()
 
+
+func test_movement_rejection_feedback_is_structured_korean_and_pure() -> bool:
+	var wall = Session.new(); var wall_state = wall.sim.world.party_encounter; var hero = wall_state.protagonist_id
+	check(wall.sim.world.bootstrap_set_terrain(Vector2i(6,7), "wall"), "wall fixture")
+	_check_rejection_noop(wall, func(): return wall.preview_exploration(Command.move_to(hero,Vector2i(6,7))),
+		"move_terrain_blocked", "벽", "wall")
+	_check_rejection_noop(wall, func(): return wall.preview_exploration(Command.move_to(hero,Vector2i(4,7))),
+		"move_not_adjacent", "한 칸", "not adjacent")
+
+	var occupied = Session.new(); var occupied_state = occupied.sim.world.party_encounter
+	var enemy = occupied_state.enemy_ids[0]; occupied.sim.world.entities[enemy].position = Vector2i(6,7)
+	var occupied_result = _check_rejection_noop(occupied,
+		func(): return occupied.preview_exploration(Command.move_to(occupied_state.protagonist_id,Vector2i(6,7))),
+		"move_destination_occupied", "점유", "occupied")
+	check_eq(occupied_result.reason_details.blocking_entity_ids,[enemy],"occupied blocker ID preserved")
+	check_eq(occupied_result.reason_details.blocking_entity_names,["고블린"],"occupied blocker name projected")
+
+	var bounds = Session.new(); var bounds_state = bounds.sim.world.party_encounter
+	bounds_state.group_anchor = Vector2i(0,7)
+	for member_id in bounds_state.party_member_ids: bounds.sim.world.entities[member_id].position = bounds_state.group_anchor
+	_check_rejection_noop(bounds,
+		func(): return bounds.preview_exploration(Command.move_to(bounds_state.protagonist_id,Vector2i(-1,7))),
+		"move_out_of_bounds", "지도 밖", "out of bounds")
+
+	var corner_wall = Session.new(); var corner_state = corner_wall.sim.world.party_encounter
+	check(corner_wall.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall"),"corner wall fixture")
+	_check_rejection_noop(corner_wall,
+		func(): return corner_wall.preview_exploration(Command.move_to(corner_state.protagonist_id,Vector2i(6,6))),
+		"move_diagonal_flank_blocked", "벽 모서리", "diagonal wall")
+
+	var corner_actor = Session.new(); var corner_actor_state = corner_actor.sim.world.party_encounter
+	corner_actor.sim.world.entities[corner_actor_state.enemy_ids[0]].position = Vector2i(6,7)
+	_check_rejection_noop(corner_actor,
+		func(): return corner_actor.preview_exploration(Command.move_to(corner_actor_state.protagonist_id,Vector2i(6,6))),
+		"move_diagonal_flank_occupied", "막은 모서리", "diagonal actor")
+	return finish()
+
+
+func test_party_rejection_feedback_preserves_draft_busy_dormant_and_conflict_details() -> bool:
+	var draft = _engaged_with_companions([]); var draft_state = draft.sim.world.party_encounter
+	var dormant = draft_state.party_member_ids[1]
+	_check_rejection_noop(draft, func(): return draft.preview_actor_action(dormant,"HOLD"),
+		"turn_draft_required", "동료를 지시하려면 먼저 주인공 행동을 선택하세요.", "draft")
+	check(draft.begin_turn(Action.hold(draft_state.protagonist_id)).accepted,"solo hero draft")
+	var dormant_before: Dictionary = draft.current_turn_preview()
+	var dormant_result = draft.set_actor_action(dormant,"HOLD")
+	check_eq(dormant_result.reason,"override_actor_not_deployed","dormant exact reason")
+	check_eq(dormant_result.reason_code,"override_actor_not_deployed","dormant reason code")
+	check("예비 동료" in dormant_result.message and not "override_actor_not_deployed" in dormant_result.message,
+		"dormant Korean hides raw token")
+	check_eq(dormant_result.reason_details.actor_id,dormant,"dormant actor detail")
+	check_eq(dormant_result.reason_details.presence,"DORMANT","dormant presence detail")
+	check_eq(draft.current_turn_preview().canonical_request,dormant_before.canonical_request,"dormant rejection restores overrides")
+
+	var busy = _engaged_with_companions([1]); var busy_state = busy.sim.world.party_encounter
+	var busy_actor = busy_state.party_member_ids[1]
+	busy_state.member(busy_actor).busy_until = busy.sim.world.world_time + 37
+	check(busy.begin_turn(Action.hold(busy_state.protagonist_id)).accepted,"busy hero draft")
+	var busy_result = busy.set_actor_action(busy_actor,"HOLD")
+	check_eq(busy_result.reason,"party_actor_busy","busy exact reason")
+	check_eq(busy_result.reason_details.remaining_time,37,"busy remaining time")
+	check("37 시간 남음" in busy_result.message,"busy Korean remaining time")
+	check(busy_result.visual_effects.is_empty(),"busy rejection has no effects")
+
+	var conflict = _engaged_with_companions([1]); var conflict_state = conflict.sim.world.party_encounter
+	var companion = conflict_state.party_member_ids[1]; conflict.sim.world.entities[companion].position = Vector2i(9,7)
+	check(conflict.begin_turn(Action.move_to(conflict_state.protagonist_id,Vector2i(8,7))).accepted,"conflict hero move")
+	var before_conflict := JSON.stringify(conflict.sim.snapshot())
+	var conflict_result = conflict.set_actor_action(companion,"MOVE",[8,7])
+	check_eq(conflict_result.reason,"destination_conflict","conflict exact reason")
+	check_eq(conflict_result.reason_details.conflict_destination,[8,7],"conflict destination detail")
+	check_eq(conflict_result.reason_details.conflicting_actor_ids,
+		[conflict_state.protagonist_id,companion],"conflict actor IDs")
+	check("같은 칸" in conflict_result.message and not "destination_conflict" in conflict_result.message,
+		"conflict Korean hides raw token")
+	check_eq(JSON.stringify(conflict.sim.snapshot()),before_conflict,"conflict preview world no-op")
+	return finish()
+
+
+func test_committed_results_project_detached_visual_effects_only_from_events() -> bool:
+	var session = _engaged_with_companions([]); var state = session.sim.world.party_encounter
+	var hero = state.protagonist_id; var enemy = state.enemy_ids[0]
+	check(_relocate_with_move_events(session.sim,enemy,
+		session.sim.world.entities[hero].position+Vector2i.RIGHT),"effect enemy canonical relocation")
+	var preview = session.begin_turn(Action.melee(hero,enemy))
+	check(preview.accepted and preview.visual_effects.is_empty(),"preview never predicts visual effects")
+	var committed = session.commit_turn(); check(committed.accepted,"damage turn committed: %s" % str(committed))
+	if not committed.accepted:
+		return finish()
+	var hero_effects: Array = committed.visual_effects.filter(func(row):return int(row.instigator_id)==hero)
+	var all_orders: Array = committed.visual_effects.map(func(row):return int(row.order))
+	check_eq(all_orders,range(committed.visual_effects.size()),"all effects retain committed event traversal order")
+	var previous_event_index := -1
+	for effect in committed.visual_effects:
+		var event_index: int = committed.event_ids.find(int(effect.event_id))
+		check(event_index >= previous_event_index,"effect events follow result event order")
+		previous_event_index = event_index
+	check_eq(hero_effects.map(func(row):return row.kind),
+		["SLASH","HIT_FLASH","FLOATING_AMOUNT"],"nonlethal event effects exact order")
+	check(hero_effects[0].order < hero_effects[1].order and hero_effects[1].order < hero_effects[2].order,
+		"effect order stable")
+	check_eq(hero_effects[1].event_id,hero_effects[2].event_id,"damage effects share event")
+	check_eq(hero_effects[1].cause_id,hero_effects[0].event_id,"damage cites slash action")
+	check_eq(hero_effects[2].text,"-22","floating applied amount")
+	check_eq(hero_effects[1].world_position,
+		[session.sim.world.entities[enemy].position.x,session.sim.world.entities[enemy].position.y],"hit world position")
+	var effect_ids: Array = committed.visual_effects.map(func(row):return row.effect_id)
+	var unique_ids: Dictionary = {}; for effect_id in effect_ids: unique_ids[effect_id]=true
+	check_eq(unique_ids.size(),effect_ids.size(),"effect IDs dedupe-safe")
+	var snapshot_after: Dictionary = session.sim.snapshot(); var first_event_id := int(hero_effects[0].event_id)
+	hero_effects[0].world_position[0] = 999
+	check_eq(session.sim.snapshot(),snapshot_after,"effect DTO mutation cannot touch core")
+	check(session.sim.world.event_by_id(first_event_id).position.x != 999,"effect DTO has no event reference")
+	check(session.commit_turn().visual_effects.is_empty(),"rejected commit has no effects")
+
+	var lethal = _engaged_with_companions([]); var lethal_state = lethal.sim.world.party_encounter
+	var lethal_hero = lethal_state.protagonist_id; var lethal_enemy = lethal_state.enemy_ids[0]
+	check(_relocate_with_move_events(lethal.sim,lethal_enemy,
+		lethal.sim.world.entities[lethal_hero].position+Vector2i.RIGHT),"lethal enemy canonical relocation")
+	lethal.sim.world.entities[lethal_enemy].health = 20
+	check(lethal.begin_turn(Action.melee(lethal_hero,lethal_enemy)).accepted,"lethal preview")
+	var lethal_result = lethal.commit_turn(); check(lethal_result.accepted,"lethal commit")
+	check_eq(lethal_result.visual_effects.map(func(row):return row.kind),
+		["SLASH","HIT_FLASH","FLOATING_AMOUNT","DEATH"],"death projects once after damage")
+	return finish()
+
+
+func test_phase_presentation_state_is_detached_persistent_and_defeat_derived() -> bool:
+	var initial = Session.new(); var initial_snapshot = initial.sim.snapshot()
+	check_eq(initial.presentation_state().mode,"EXPLORATION","initial presentation mode")
+	check_eq(initial.sim.snapshot(),initial_snapshot,"presentation projection pure")
+	var engaged = _engaged_with_companions([]); var combat = engaged.presentation_state()
+	check_eq(combat.mode,"COMBAT","engaged presentation mode")
+	check(combat.combat_style_active and combat.banner.title=="전투 중","persistent combat banner/style")
+	combat.banner.title="CORRUPTED"; combat.grid_style.tint_hex="#000000"
+	check_eq(engaged.presentation_state().banner.title,"전투 중","presentation banner detached")
+	check(engaged.presentation_state().grid_style.tint_hex!="#000000","presentation style detached")
+	var victory=Session.new();check(_play_full_journey(victory,"WEDGE"),"victory presentation journey")
+	var victory_presentation:Dictionary=victory.presentation_state()
+	check_eq(victory_presentation.phase_id,"GROUPED_COMPLETE","victory presentation derives from persistent phase")
+	check_eq(victory_presentation.banner.title,"승리 · 자동 재집결","persistent victory title")
+	check_eq(victory_presentation.banner.tone,"VICTORY","persistent victory tone")
+	check_eq(victory_presentation.grid_style.style_id,"VICTORY","persistent victory grid style")
+	check_eq(victory_presentation.grid_style.border_hex,"#62d98b","persistent victory green border")
+	var restored_victory=Session.new(1,2);var loaded_victory:Dictionary=restored_victory.load_session_json(victory.save_session_json())
+	check(bool(loaded_victory.accepted),"victory session restores")
+	check_eq(restored_victory.presentation_state(),victory_presentation,"restored victory presentation is exact and history-independent")
+
+	var defeated = Session.new(); var defeated_state = defeated.sim.world.party_encounter
+	defeated.sim.world.entities[defeated_state.protagonist_id].health=5
+	check(defeated.sim.world.bootstrap_set_fire(defeated_state.group_anchor,100)!=null,"defeat fire fixture")
+	check(defeated.commit_exploration(Command.wait(defeated_state.protagonist_id)).accepted,"defeat settles")
+	var defeat = defeated.presentation_state()
+	check_eq(defeat.mode,"DEFEAT","defeat derives from safe phase")
+	check(defeat.terminal and defeat.combat_style_active and defeat.banner.title=="패배","defeat banner/style persistent")
+	check_eq(defeat.banner.tone,"DEFEAT","defeat presentation tone")
+	check_eq(defeat.grid_style.style_id,"DEFEAT","defeat grid style")
+	check_eq(defeat.grid_style.border_hex,"#8f5367","defeat presentation border")
+	return finish()
+
+
+func _check_rejection_noop(session, producer: Callable, expected_reason: String,
+		korean_fragment: String, label: String) -> Dictionary:
+	var snapshot_before = session.sim.snapshot()
+	var journal_before: Array = session.command_journal.duplicate(true)
+	var result: Dictionary = producer.call()
+	check(not bool(result.get("accepted",true)), "%s rejected" % label)
+	check_eq(result.get("reason"),expected_reason,"%s original reason" % label)
+	check_eq(result.get("reason_code"),expected_reason,"%s reason code" % label)
+	check(korean_fragment in str(result.get("message","")),"%s Korean feedback" % label)
+	check(not expected_reason in str(result.get("message","")),"%s raw token hidden" % label)
+	check(result.get("reason_details") is Dictionary,"%s structured details" % label)
+	check(result.get("visual_effects",[]).is_empty(),"%s rejection has no effects" % label)
+	check_eq(session.sim.snapshot(),snapshot_before,"%s snapshot/RNG/world no-op" % label)
+	check_eq(session.command_journal,journal_before,"%s journal no-op" % label)
+	return result
+
+
+func _engaged_with_companions(roster_slots: Array):
+	var session = Session.new(); var state = session.sim.world.party_encounter
+	var selected: Array = []
+	for slot in roster_slots:
+		selected.append(state.party_member_ids[int(slot)])
+	check(session.commit_exploration(Command.wait(state.protagonist_id)).accepted,"engaged helper contact")
+	check(session.preview_deployment("LINE",selected).accepted,"engaged helper deployment preview")
+	check(session.commit_deployment().accepted,"engaged helper deployment commit")
+	return session
+
+
+func _relocate_with_move_events(sim, entity_id: int, target: Vector2i) -> bool:
+	for attempt in range(64):
+		var current: Vector2i = sim.world.entities[entity_id].position
+		if current == target:
+			return true
+		var delta := target-current
+		var direction := Vector2i(signi(delta.x),signi(delta.y))
+		var destination := current+direction
+		var assessment = sim.movement.assess_move(entity_id,destination)
+		if not assessment.accepted:
+			return false
+		if sim.movement.commit_preflighted_move(entity_id,destination,str(assessment.terrain_id),100)==null:
+			return false
+	return false
+
 func _play_full_journey(session, formation: String) -> bool:
 	var status: Dictionary = session.party_status()
 	if not session.commit_exploration_direction(Vector2i.ZERO).accepted: return false
