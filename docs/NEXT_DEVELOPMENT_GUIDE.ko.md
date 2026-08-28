@@ -19,9 +19,11 @@ commit event에서 투영한 slash/hit/피해량/death 효과만 중복 없이 �
 타일은 개발 sandbox의 결정론적 route macro로 미리 보고, 같은 목적지를 다시 누른 뒤
 기존 1칸 `MOVE`를 호출마다 하나씩 실행한다. 이 route는 아직 FOV가 아닌 전체 world
 기준이며 affinity로 경로 비용을 바꾸지 않는다. P1에서는 관찰 가능한 셀과 위험 선호를
-이 실행 primitive 앞의 정책으로 추가한다. 선택한 타일 위에는 terrain·이동비용과
-불/물/전기/독 위험을 detached inspector DTO에서 읽은 floating popover를 띄우며,
-popover의 모든 child는 touch를 통과시켜 같은 목적지 두 번째 tap을 막지 않는다.
+이 실행 primitive 앞의 정책으로 추가한다. 전체 route 타일에는 반투명 highlight를,
+각 edge에는 숫자 없는 방향 chevron을 그려 line과 START/NEXT/GOAL marker를 보강한다.
+같은 타일을 약 500ms 길게 누를 때만 terrain·이동비용과 불/물/전기/독 위험을 detached
+inspector DTO에서 읽은 floating popover로 띄운다. 짧은 tap은 popover를 열지 않으며,
+popover의 모든 child는 touch를 통과시켜 그 다음 짧은 tap을 막지 않는다.
 파티 card 첫 tap은 즉시 선택, 같은 card의 native double tap만 전체 화면 상세 modal을
 열고 modal 동안 grid와 자동 경로를 막거나 일시정지한다. 전투 사건은
 `InformationScroll`의 `전투 기록 · 최근 8턴`에 turn 경계, 이름, 피해 수치, 자동 동료의
@@ -141,12 +143,21 @@ HazardAffinity
   접촉, 패배, stale path, blocker, 위험 증가와 facade 거부는 동기 loop 없이 즉시
   cancel/stop feedback으로 전환한다. 전투의 MOVE는 기존 인접 한 칸 two-tap을 유지한다.
 - `PartyGridView`의 route overlay는 facade가 준 전체 path를 detached copy로 받아
-  segment와 START/NEXT/GOAL marker를 그린다. camera crop, world↔pixel mapping, FOV
-  의미를 바꾸지 않으며 창 밖 step은 input surface가 아니다.
+  반투명 tile highlight, segment, 숫자 없는 방향 chevron과 START/NEXT/GOAL marker를
+  그린다. camera crop, world↔pixel mapping, FOV 의미를 바꾸지 않으며 창 밖 step은
+  input surface가 아니다.
 - `TileRiskPopover`는 grid 위 floating `PanelContainer`다. 폭은
   `min(280, viewport-24)`, font는 16px 이상이고 실제 wrapped line 수만큼 높이를 잡아
   viewport 12px 안으로 clamp한다. panel과 모든 child는 `MOUSE_FILTER_IGNORE`이며
-  탐험 preview에서만 두 번째 tap 안내를 표시한다.
+  탐험 preview에서만 두 번째 tap 안내를 표시한다. 일반 선택 tap으로는 열리지 않고,
+  빈 타일이나 actor 타일의 같은 지점을 약 500ms 길게 누를 때만 `inspect_tile`을
+  호출한다. touch drag/mouse motion이 14px을 넘으면 tap과 long press를 함께 취소하며,
+  long press를 소비한 release는 이동·대기·선택 signal을 다시 내지 않는다.
+- grid pointer target은 press 때 exact cell, center-zone, 44px actor tie-break 순으로 한 번
+  동결하고 짧은 release 때 그대로 emit한다. 짧은 tap은 release에서만 확정한다. 진행 중
+  route는 pointer가 눌린 동안 pause하고, short release의 cancel/replan이면 재개하지 않으며
+  slop을 넘은 drag도 실제 pointer release까지 pause ownership을 유지한다. drag cancel 또는
+  long inspection의 release 뒤에는 다음 frame부터 한 hop씩 재개한다.
 - 파티 card의 native `InputEventScreenTouch.double_tap` 또는 mouse double click과
   동일 card·350ms·24px fallback만 `MemberDetailModal`을 연다. scrim은 full viewport
   `STOP`, body margin은 12px, 폭은 360에서 최대 336px·450에서 최대 420px,

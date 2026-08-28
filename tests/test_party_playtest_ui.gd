@@ -38,22 +38,69 @@ func test_gui_input_routes_actor_slop_without_stealing_adjacent_cell_centers() -
 		var near_actor:=InputEventScreenTouch.new();near_actor.pressed=true
 		near_actor.position=sandbox.grid.world_to_pixel_center(hero_position)+Vector2(15,0)
 		sandbox.grid._gui_input(near_actor)
-		check_eq(actor_events,[hero],"%s actor center +15 routes through 44px actor hit helper"%viewport_size)
+		check(actor_events.is_empty() and world_events.is_empty(),"%s press alone cannot select or move"%viewport_size)
+		var near_release:=InputEventScreenTouch.new();near_release.pressed=false
+		near_release.position=sandbox.grid.world_to_pixel_center(hero_position+Vector2i.RIGHT)
+		sandbox.grid._gui_input(near_release)
+		check_eq(actor_events,[hero],"%s press-time actor target stays immutable through <=14px release movement"%viewport_size)
 		check(world_events.is_empty(),"%s actor slop is not misrouted as movement"%viewport_size)
 		sandbox._clear_move_preview();actor_events.clear();world_events.clear()
 		var adjacent:=hero_position+Vector2i.RIGHT
 		var exact_empty:=InputEventScreenTouch.new();exact_empty.pressed=true
 		exact_empty.position=sandbox.grid.world_to_pixel_center(adjacent)
 		sandbox.grid._gui_input(exact_empty)
+		check(actor_events.is_empty() and world_events.is_empty(),"%s empty-cell press alone is pure"%viewport_size)
+		var empty_release:=InputEventScreenTouch.new();empty_release.pressed=false;empty_release.position=exact_empty.position
+		sandbox.grid._gui_input(empty_release)
 		check(actor_events.is_empty(),"%s adjacent empty center is not stolen by hero slop"%viewport_size)
 		check_eq(world_events,[adjacent],"%s adjacent center routes exact world cell"%viewport_size)
 		actor_events.clear();world_events.clear()
 		var outside:=InputEventScreenTouch.new();outside.pressed=true
 		outside.position=sandbox.grid.grid_rect().position+Vector2(-1,sandbox.grid.cell_size_px()*0.5)
-		sandbox.grid._gui_input(outside)
+		sandbox.grid._gui_input(outside);outside.pressed=false;sandbox.grid._gui_input(outside)
 		check(actor_events.is_empty() and world_events.is_empty(),"%s outside grid emits no route"%viewport_size)
 		sandbox.free()
 	return finish()
+
+func test_grid_gesture_rejects_wrong_release_cancel_modal_and_emulated_mouse_duplicate() -> bool:
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(Session.new())
+	sandbox.grid.size=sandbox.grid.custom_minimum_size
+	var status:Dictionary=sandbox.session.party_status();var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1]))
+	var destination:=origin+Vector2i.RIGHT;var pointer:Vector2=sandbox.grid.world_to_pixel_center(destination)
+	var routed:Array=[];sandbox.grid.world_cell_pressed.connect(func(cell):routed.append(cell))
+	var press:=InputEventScreenTouch.new();press.index=21;press.pressed=true;press.position=pointer
+	sandbox.grid._gui_input(press)
+	var wrong_release:=InputEventScreenTouch.new();wrong_release.index=22;wrong_release.pressed=false;wrong_release.position=pointer
+	sandbox.grid._gui_input(wrong_release)
+	check(routed.is_empty() and bool(sandbox.grid.pointer_gesture_state().active),"wrong touch index cannot finish another gesture")
+	var correct_release:=InputEventScreenTouch.new();correct_release.index=21;correct_release.pressed=false;correct_release.position=pointer
+	sandbox.grid._gui_input(correct_release)
+	check_eq(routed,[destination],"matching release emits the stored target once")
+	var mouse_press:=InputEventMouseButton.new();mouse_press.button_index=MOUSE_BUTTON_LEFT;mouse_press.pressed=true;mouse_press.position=pointer
+	var mouse_release:=InputEventMouseButton.new();mouse_release.button_index=MOUSE_BUTTON_LEFT;mouse_release.pressed=false;mouse_release.position=pointer
+	sandbox.grid._gui_input(mouse_press);sandbox.grid._gui_input(mouse_release)
+	check_eq(routed,[destination],"immediate touch-emulated mouse pair is suppressed")
+	routed.clear();press.index=23;sandbox.grid._gui_input(press)
+	var os_cancel:=InputEventScreenTouch.new();os_cancel.index=23;os_cancel.pressed=false;os_cancel.canceled=true;os_cancel.position=pointer
+	sandbox.grid._gui_input(os_cancel)
+	check(routed.is_empty() and not bool(sandbox.grid.pointer_gesture_state().active),"OS-cancelled touch emits nothing and clears pending target")
+	press.index=24;sandbox.grid._gui_input(press);sandbox.grid.modal_open=true
+	var modal_release:=InputEventScreenTouch.new();modal_release.index=24;modal_release.pressed=false;modal_release.position=pointer
+	sandbox.grid._gui_input(modal_release)
+	check(routed.is_empty() and not bool(sandbox.grid.pointer_gesture_state().active),"modal gate cancels a pending grid gesture")
+	sandbox.grid.modal_open=false;press.index=25;sandbox.grid._gui_input(press)
+	sandbox.grid.set_view_window(15,[origin]);correct_release.index=25;sandbox.grid._gui_input(correct_release)
+	check(routed.is_empty(),"camera refresh cancels stale press target before release")
+	press.index=26;sandbox.grid._gui_input(press)
+	var drag:=InputEventScreenDrag.new();drag.index=26;drag.position=pointer+Vector2(20,0);drag.relative=Vector2(20,0)
+	sandbox.grid._gui_input(drag)
+	var dragged_state:Dictionary=sandbox.grid.pointer_gesture_state()
+	check(bool(dragged_state.active) and bool(dragged_state.cancelled),"drag slop cancels target but retains pointer ownership until release")
+	check(routed.is_empty(),"drag cancellation emits no target before release")
+	var drag_release:=InputEventScreenTouch.new();drag_release.index=26;drag_release.pressed=false;drag_release.position=pointer+Vector2(20,0)
+	sandbox.grid._gui_input(drag_release)
+	check(routed.is_empty() and not bool(sandbox.grid.pointer_gesture_state().active),"drag release emits nothing and ends ownership")
+	sandbox.free();return finish()
 
 func test_hold_draw_spec_drives_dashed_secondary_and_solid_override_primitives() -> bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(Session.new())
@@ -110,14 +157,21 @@ func test_route_overlay_draw_spec_preserves_each_step_and_is_detached() -> bool:
 	var spec:Dictionary=sandbox.grid.route_draw_spec()
 	check_eq(spec.path,path,"route draw spec preserves authoritative path")
 	check_eq(spec.segments.size(),3,"route draws every edge instead of destination shortcut")
+	check_eq(spec.tiles.size(),path.size(),"every route cell gets a translucent highlight")
+	check_eq(spec.direction_cues.size(),spec.segments.size(),"every route edge gets a directional cue without step numbers")
+	check(float(spec.tiles[2].fill_alpha)>=0.18 and bool(spec.tiles[2].visible),"future route tiles remain visibly highlighted")
+	check_eq(spec.direction_cues[1].points.size(),3,"direction cue is a compact chevron")
 	check(bool(spec.segments[0].completed) and not bool(spec.segments[1].completed),"completed and next segments are distinct")
 	check_eq(spec.markers[0].kind,"START","route start marker")
 	check_eq(spec.markers[2].kind,"NEXT","route next-step marker")
 	check_eq(spec.markers[3].kind,"GOAL","route goal marker")
-	spec.path[0][0]=-99;spec.segments[0].from_position[0]=-99
+	spec.path[0][0]=-99;spec.segments[0].from_position[0]=-99;spec.tiles[0].position[0]=-99
+	spec.direction_cues[0].points[0]=Vector2(-99,-99)
 	var fresh:Dictionary=sandbox.grid.route_draw_spec()
 	check_eq(fresh.path[0],[7,7],"route path DTO is detached")
 	check_eq(fresh.segments[0].from_position,[7,7],"route segment DTO is detached")
+	check_eq(fresh.tiles[0].position,[7,7],"route tile highlight DTO is detached")
+	check(fresh.direction_cues[0].points[0]!=Vector2(-99,-99),"route direction DTO is detached")
 	sandbox.grid.clear_route_overlay();check(sandbox.grid.route_draw_spec().path.is_empty(),"route overlay clears explicitly")
 	sandbox.free();return finish()
 
@@ -154,7 +208,9 @@ func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_cont
 	check_eq(invalid.session.sim.snapshot(),wall_before,"wall preview is no-op")
 	check(str(invalid.route_preview.reason_code)!="ok","wall rejection keeps facade reason")
 	check_eq(invalid.notice_text,invalid.route_preview.message,"wall rejection shows facade Korean message")
-	check(invalid.tile_popover.visible and str(invalid.route_preview.message) in invalid.tile_popover_label.text,"invalid route message is visible in tile popover")
+	check(not invalid.tile_popover.visible,"ordinary invalid tap shows feedback but never opens risk popover")
+	invalid._on_tile_long_pressed(origin+Vector2i.LEFT)
+	check(invalid.tile_popover.visible and str(invalid.route_preview.message) in invalid.tile_popover_label.text,"explicit long inspection includes rejected route message")
 	var far=Sandbox.new();far.size=Vector2(360,640);far.initialize_for_headless_test(Session.new());far.grid.size=far.grid.custom_minimum_size
 	var far_goal:=Vector2i(-1,-1)
 	for candidate in [origin+Vector2i(-3,0),origin+Vector2i(0,3),origin+Vector2i(0,-3)]:
@@ -247,11 +303,9 @@ func test_combat_crop_roundtrip_recenter_and_offwindow_touch_are_authoritative()
 		var routed:Array=[]; grid.world_cell_pressed.connect(func(position):routed.append(position))
 		bounds=grid.view_bounds()
 		for world_position in [bounds.position,bounds.position+bounds.size-Vector2i.ONE]:
-			var touch:=InputEventScreenTouch.new();touch.pressed=true;touch.position=grid.world_to_pixel_center(world_position)
-			grid._gui_input(touch)
+			_grid_screen_touch(grid,grid.world_to_pixel_center(world_position))
 		check_eq(routed,[bounds.position,bounds.position+bounds.size-Vector2i.ONE],"%s real edge touches emit cropped world cells"%viewport_size)
-		var off_touch:=InputEventScreenTouch.new();off_touch.pressed=true;off_touch.position=grid.world_to_pixel_center(offwindow)
-		grid._gui_input(off_touch)
+		_grid_screen_touch(grid,grid.world_to_pixel_center(offwindow))
 		check_eq(routed.size(),2,"%s off-window projection cannot emit input"%viewport_size)
 		grid.set_view_window(9,[Vector2i(7,7)],[Vector2i(14,14)])
 		check(grid.is_world_cell_visible(Vector2i(14,14)),"%s priority target recenters into view"%viewport_size)
@@ -399,7 +453,7 @@ func test_screen_touch_routes_exact_world_cells_at_both_portrait_sizes() -> bool
 		var routed: Array = []; sandbox.grid.actor_pressed.connect(func(id): routed.append(id))
 		var outside := InputEventScreenTouch.new(); outside.pressed = true
 		outside.position = sandbox.grid.grid_rect().position + Vector2(-1.0, sandbox.grid.cell_size_px() * 0.5)
-		sandbox.grid._gui_input(outside)
+		sandbox.grid._gui_input(outside);outside.pressed=false;sandbox.grid._gui_input(outside)
 		check(routed.is_empty(), "%s touch outside grid never routes edge actor" % viewport_size)
 		sandbox.free()
 	return finish()
@@ -426,7 +480,11 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 	var hero:=int(sandbox.session.party_status().protagonist_id); var calm:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
 	sandbox._on_actor(hero);sandbox._refresh()
 	check(sandbox.find_child("MemberElements",true,false)==null,"static member element row is removed")
-	check(sandbox.tile_popover.visible,"actor tile opens floating terrain risk popover")
+	check(not sandbox.tile_popover.visible,"ordinary actor tap never opens terrain risk popover")
+	sandbox._on_tile_long_pressed(initial_position)
+	check(sandbox.tile_popover.visible,"actor-tile long inspection opens floating terrain risk popover")
+	check("짧게 누르면 경로를 미리 봅니다" in sandbox.tile_popover_label.text and not "다시" in sandbox.tile_popover_label.text,
+		"inspection without matching route preview describes the actual next short tap")
 	for component in ["불","물","전기","독"]:check(component in sandbox.tile_popover_label.text,"tile popover shows %s risk"%component)
 	var member_detail:Dictionary=sandbox.session.inspect_party_member(hero)
 	var exposure_fire:=int(member_detail.current_exposure.risk.fire)
@@ -646,8 +704,13 @@ func _press(root, node_name:String) -> void:
 	_button(root,node_name).pressed.emit(); root._refresh()
 
 func _screen_touch(sandbox, position: Vector2i) -> void:
-	var event := InputEventScreenTouch.new(); event.pressed = true; event.position = sandbox.grid.world_to_pixel_center(position)
-	sandbox.grid._gui_input(event)
+	_grid_screen_touch(sandbox.grid,sandbox.grid.world_to_pixel_center(position))
+
+func _grid_screen_touch(grid,position:Vector2,touch_index:int=0)->void:
+	var event:=InputEventScreenTouch.new();event.index=touch_index;event.pressed=true;event.position=position
+	grid._gui_input(event)
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=position
+	grid._gui_input(release)
 
 func _explore_wait(sandbox) -> void:
 	var hero:=int(sandbox.session.party_status().protagonist_id)

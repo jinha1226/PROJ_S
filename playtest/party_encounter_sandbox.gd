@@ -38,6 +38,7 @@ var route_preview:Dictionary={}
 var route_generation:=0
 var route_continue_pending:=false
 var route_paused_by_modal:=false
+var route_paused_by_pointer:=false
 var selected_tile:=Vector2i(-1,-1)
 var selected_tile_view_mode:=""
 var selected_tile_inspection:Dictionary={}
@@ -76,7 +77,10 @@ func _build_ui()->void:
 	phase_label=Label.new(); phase_label.name="PhaseStatus"; phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 	phase_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; phase_panel.add_child(phase_label)
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
-	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor); root_layout.add_child(grid)
+	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
+	grid.tile_long_pressed.connect(_on_tile_long_pressed)
+	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
+	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
 	cards=HBoxContainer.new(); cards.name="PartyCards"; cards.custom_minimum_size.y=160
 	cards.add_theme_constant_override("separation",4); root_layout.add_child(cards)
 	info_scroll=ScrollContainer.new(); info_scroll.name="InformationScroll"; info_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
@@ -145,6 +149,7 @@ func _layout_floating_surfaces()->void:
 
 func _refresh()->void:
 	if session==null:return
+	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
 	var safe_phase:=str(status.safe_phase)
@@ -352,7 +357,7 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_title.text="%s 상세"%str(detail.get("display_name","파티원"))
 	member_detail_body.text=_member_detail_text(detail)
 	member_detail_scroll.scroll_vertical=0
-	member_detail_modal.visible=true;grid.modal_open=true
+	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
 	var route_state:Dictionary=session.exploration_route_state()
 	route_paused_by_modal=bool(route_state.get("active",false))
 	_layout_floating_surfaces();call_deferred("_measure_member_detail_body")
@@ -404,8 +409,8 @@ func _on_turn_confirm()->void:
 	_request_refresh()
 func _on_cell(position:Vector2i)->void:
 	var status:Dictionary=session.party_status()
+	_hide_tile_popover()
 	if bool(status.terminal):return
-	_show_tile_inspection(position,status)
 	if status.view_mode=="EXPLORATION":
 		var active_state:Dictionary=session.exploration_route_state()
 		var same_goal:=pending_move_mode=="EXPLORATION" and not pending_exploration_wait \
@@ -441,8 +446,7 @@ func _on_cell(position:Vector2i)->void:
 	_request_refresh()
 func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
-	var actor_position:=_actor_position(entity_id)
-	if actor_position!=Vector2i(-1,-1):_show_tile_inspection(actor_position,status)
+	_hide_tile_popover()
 	if status.view_mode=="EXPLORATION" and entity_id==int(status.protagonist_id):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
@@ -480,14 +484,6 @@ func _action_only(action:Dictionary)->String:
 func _selected_position()->Vector2i:
 	for row in session.party_cards():if int(row.entity_id)==selected_member_id:return Vector2i(int(row.logical_position[0]),int(row.logical_position[1]))
 	return Vector2i(-1,-1)
-func _actor_position(entity_id:int)->Vector2i:
-	for cell in session.observe_party_world().get("cells",[]):
-		if not cell is Dictionary or not cell.get("position",[]) is Array or cell.position.size()!=2:continue
-		for actor in cell.get("actors",[]):
-			if actor is Dictionary and int(actor.get("entity_id",-1))==entity_id:
-				return Vector2i(int(cell.position[0]),int(cell.position[1]))
-	return Vector2i(-1,-1)
-
 func _apply_route_state(value:Dictionary)->void:
 	route_preview=value.duplicate(true)
 	var from_value:Variant=value.get("from",[-1,-1]);var goal_value:Variant=value.get("goal",[-1,-1])
@@ -523,7 +519,7 @@ func _consume_route_result(result:Dictionary)->void:
 	_update_tile_popover_route(result)
 
 func _schedule_route_continue()->void:
-	if route_continue_pending or route_paused_by_modal or not is_inside_tree():return
+	if route_continue_pending or route_paused_by_modal or route_paused_by_pointer or not is_inside_tree():return
 	var state:Dictionary=session.exploration_route_state()
 	if not bool(state.get("active",false)) or bool(state.get("completed",false)) or bool(state.get("terminal",false)):return
 	route_continue_pending=true
@@ -531,11 +527,19 @@ func _schedule_route_continue()->void:
 
 func _continue_route_on_frame(expected_generation:int)->void:
 	route_continue_pending=false
-	if expected_generation!=route_generation or route_paused_by_modal or member_detail_modal.visible:return
+	if expected_generation!=route_generation or route_paused_by_modal or route_paused_by_pointer or member_detail_modal.visible:return
 	var result:Dictionary=session.continue_exploration_route()
 	_consume_route_result(result);_refresh()
 	if bool(result.get("active",false)) and not bool(result.get("completed",false)) and not bool(result.get("terminal",false)):
 		_schedule_route_continue()
+
+func _on_grid_pointer_started()->void:
+	route_paused_by_pointer=true
+
+func _on_grid_pointer_finished(_outcome:String)->void:
+	if not route_paused_by_pointer:return
+	route_paused_by_pointer=false
+	if not route_paused_by_modal:_schedule_route_continue()
 
 func _cancel_active_route()->void:
 	route_generation+=1;route_continue_pending=false
@@ -568,6 +572,12 @@ func _show_tile_inspection(position:Vector2i,status:Dictionary)->void:
 	var inspection:Dictionary=session.inspect_tile(position,viewer_id)
 	if not bool(inspection.get("accepted",false)):_hide_tile_popover();return
 	selected_tile=position;selected_tile_view_mode=str(status.get("view_mode",""));selected_tile_inspection=inspection.duplicate(true);_render_tile_popover()
+
+func _on_tile_long_pressed(position:Vector2i)->void:
+	if session==null:return
+	var status:Dictionary=session.party_status()
+	if not bool(status.get("ok",false)):return
+	_show_tile_inspection(position,status)
 
 func _refresh_tile_popover(status:Dictionary)->void:
 	if selected_tile==Vector2i(-1,-1) or not grid.is_world_cell_visible(selected_tile):
@@ -635,9 +645,9 @@ func _tile_popover_text(inspection:Dictionary,route:Dictionary)->String:
 		var route_line:="경로 %d칸 · 시간 %d · 최고 위험 %d · %d/%d"%[int(route.get("total_steps",0)),
 			int(route.get("total_cost",0)),route_risk,int(route.get("completed_steps",0)),int(route.get("total_steps",0))]
 		if selected_tile_view_mode=="EXPLORATION" and not bool(route.get("active",false)) and not bool(route.get("completed",false)):
-			route_line+=" · 다시 눌러 시작"
+			route_line+=" · 짧게 다시 눌러 이동 시작"
 		lines.append(route_line)
-	elif selected_tile_view_mode=="EXPLORATION":lines.append("총 위험 %d · 목적지를 다시 누르면 한 칸씩 이동합니다."%total)
+	elif selected_tile_view_mode=="EXPLORATION":lines.append("총 위험 %d · 짧게 누르면 경로를 미리 봅니다."%total)
 	elif selected_tile_view_mode=="COMBAT":lines.append("총 위험 %d · 전투 이동은 인접한 한 칸만 선택합니다."%total)
 	else:lines.append("총 위험 %d · 현재 타일 정보"%total)
 	return "\n".join(lines)

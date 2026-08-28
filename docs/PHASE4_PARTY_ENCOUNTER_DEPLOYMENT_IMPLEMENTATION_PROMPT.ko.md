@@ -35,9 +35,10 @@ grid 아래에는 최대 3인의 고정 Party HUD를 둬 360px 폭에서도 세 
 가짜 MP 대신 실제 busy 기반 행동 준비/행동 중, stress 수치와 bar, HP·stress·personality로
 결정론적으로 파생한 감정 icon+한국어를 표시한다. card 첫 tap은 즉시 선택하고 같은
 card double tap만 full-screen 상세 modal을 연다. 원소 affinity·현재 exposure·행동 근거·
-관계는 session inspector DTO를 소비하는 modal ScrollContainer에 둔다. 선택 타일의
-terrain·이동비용·불/물/전기/독 위험은 mouse-ignore floating popover가 맡고, 상시 card나
-context deck에 중복하지 않는다. 파티 턴 일괄 확정, 동료 자동 제안과 override 동시 표시,
+관계는 session inspector DTO를 소비하는 modal ScrollContainer에 둔다. 같은 타일을 약
+500ms 길게 누를 때만 terrain·이동비용·불/물/전기/독 위험을 mouse-ignore floating
+popover로 열며, 일반 선택 tap이나 상시 card/context deck에 중복하지 않는다. 파티 턴
+일괄 확정, 동료 자동 제안과 override 동시 표시,
 보조 16px·본문 18px·핵심 20–24px 및 44px 터치 타깃 계약은 유지한다.
 
 같은 world 좌표와 같은 `PartyGridView` 인스턴스를 유지하되 camera window는 phase에
@@ -446,12 +447,22 @@ modal은 viewport 12px margin, 360에서 최대 336px·450에서 최대 420px �
 
 모든 버튼과 card touch target은 최소 44×44 px다. grid actor sprite는 cell 안에서 그리되 actor hit rect는 44×44 px로 확장한다. 겹치는 hit rect는 `(pointer와 center 거리, protagonist 우선, roster_slot, entity_id)`로 선택한다. grid 밖, camera crop 밖 click과 modal open 중 world input은 no-op이다.
 
-어떤 grid tile을 첫 선택해도 `inspect_tile(position, selected_member)`의 terrain, 이동 비용,
-불/물/전기/독/총 위험을 `TileRiskPopover`에 표시한다. popover 폭은
+빈 타일과 actor 타일 모두 같은 지점을 약 500ms 길게 누를 때만
+`inspect_tile(position, selected_member)`의 terrain, 이동 비용, 불/물/전기/독/총 위험을
+`TileRiskPopover`에 표시한다. 짧은 선택 tap은 popover를 절대 열지 않고 기존
+preview/같은-goal 두 번째 tap만 수행한다. popover 폭은
 `min(280,viewport-24)`, font는 16px 이상, actual wrapped line 전체가 보이는 높이이며
 viewport 12px 안으로 clamp한다. panel과 모든 child는 `MOUSE_FILTER_IGNORE`라 같은 tile의
-두 번째 tap이 grid로 그대로 전달된다. 두 번째 tap 안내는 EXPLORATION route에서만 보이고
-COMBAT에는 인접 한 칸 계약을 명시한다.
+다음 짧은 tap이 grid로 그대로 전달된다. touch와 mouse 모두 press target을 동결한 뒤
+release에서만 short tap을 확정한다. 14px을 넘는 drag는 short/long을 모두 취소하고,
+long press를 소비한 release는 world/actor signal을 0회 낸다. 두 번째 tap 안내는
+EXPLORATION route에서만 보이고 COMBAT에는 인접 한 칸 계약을 명시한다.
+
+먼 route overlay는 기존 line과 START/NEXT/GOAL marker를 유지하면서 전체 path tile에
+반투명 highlight를 깔고 각 segment에 숫자 없는 방향 chevron을 표시한다. 진행 중 route는
+grid pointer press 동안 pause한다. short release가 cancel/replan한 route는 재개하지 않고,
+slop을 넘은 drag도 실제 release까지 pause ownership을 유지한다. drag cancel이나 long
+inspection이면 release 다음 frame부터 다시 한 hop씩 진행한다.
 
 context deck 내용:
 
@@ -566,9 +577,16 @@ UI:
 - 먼 탐험 타일의 actual ScreenTouch 첫 입력은 world/journal 무변경 full-route preview이고,
   같은 goal 두 번째 입력은 첫 hop 하나만 시작한다. 이후 각 process frame은 최대 한 hop이며
   contact/stale/blocker/risk/reject에서 facade message와 함께 즉시 멈춘다.
-- route overlay가 모든 edge와 START/NEXT/GOAL marker를 detached draw spec으로 보존한다.
-- 360×640과 450×800에서 tile popover는 viewport 안에 clamp되고 모든 wrapped line이 보이며,
-  mouse-ignore 때문에 같은 tile 두 번째 tap을 차단하지 않는다.
+- route overlay가 모든 path tile highlight, edge, 방향 chevron과 START/NEXT/GOAL marker를
+  detached draw spec으로 보존하며 숫자 clutter 없이 목적지까지 명확히 이어진다.
+- 360×640과 450×800 실제 root input에서 100ms 미만 short release만 preview/second-start를
+  수행한다. touch/mouse 500ms 이상 hold만 tile popover를 열고, popover는 viewport 안에
+  clamp되어 모든 wrapped line이 보이며 다음 short tap을 차단하지 않는다. long release는
+  world/journal/draft를 바꾸지 않고, 14px 초과 ScreenDrag는 tap과 popover 모두 취소한다.
+- active route의 pointer hold는 queued continuation을 멈추며 drag가 slop을 넘어도 물리적
+  release 전에는 재개하지 않는다. long/drag release 뒤 다음 frame부터 정확히 한 hop씩
+  재개한다. wrong touch index, OS cancel, modal/camera refresh와
+  touch 직후 emulated mouse duplicate는 저장한 target을 emit하지 않는다.
 - 실제 native portrait touch는 첫 tap 선택, 같은 card double tap 상세 modal을 지킨다.
   modal은 underlying grid를 막고 backdrop/close/Escape로 닫히며 active route를 pause/resume한다.
 - 전투 기록은 facade의 최근 8 turn group을 `InformationScroll` 안에서 보존하고 자동 동료의

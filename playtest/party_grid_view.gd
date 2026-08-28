@@ -3,12 +3,18 @@ extends Control
 
 signal world_cell_pressed(position: Vector2i)
 signal actor_pressed(entity_id: int)
+signal tile_long_pressed(position: Vector2i)
+signal pointer_gesture_started()
+signal pointer_gesture_finished(outcome: String)
 
 const GRID_SIZE := 15
 const COLORS := {"floor":Color("#344351"),"wall":Color("#111923"),"shallow_water":Color("#215e71"),"rubble":Color("#6a5b3d")}
 const CHARACTER_ATLAS: Texture2D = preload("res://assets/sprites/character_atlas.png")
 const CHARACTER_FRAME_SIZE := Vector2i(36,44)
 const CHARACTER_ATLAS_COLUMNS := 3
+const LONG_PRESS_SECONDS := 0.50
+const POINTER_SLOP_PX := 14.0
+const EMULATED_MOUSE_SUPPRESS_MSEC := 300
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -33,13 +39,29 @@ var _presentation_style: Dictionary = {}
 var _active_visual_effects: Array[Dictionary] = []
 var _played_effect_ids: Dictionary = {}
 var _played_effect_event_ids: Dictionary = {}
+var _pointer_gesture_active := false
+var _pointer_gesture_kind := ""
+var _pointer_gesture_index := -1
+var _pointer_gesture_cell := Vector2i(-1,-1)
+var _pointer_gesture_target_kind := ""
+var _pointer_gesture_target_actor_id := -1
+var _pointer_gesture_start := Vector2.ZERO
+var _pointer_gesture_last := Vector2.ZERO
+var _pointer_gesture_long_fired := false
+var _pointer_gesture_cancelled := false
+var _pointer_gesture_generation := 0
+var _suppress_mouse_until_msec := -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; clip_contents=true; resized.connect(queue_redraw)
 	set_process(false)
 
+func _exit_tree()->void:
+	_reset_pointer_gesture()
+
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
+	cancel_pointer_gesture()
 	_cells.clear(); _actors.clear(); _ghosts.clear()
 	world_grid_size=Vector2i(maxi(1,int(observation.get("width",GRID_SIZE))),maxi(1,int(observation.get("height",GRID_SIZE))))
 	for raw in observation.get("cells",[]):
@@ -61,6 +83,7 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	queue_redraw()
 
 func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=[])->void:
+	cancel_pointer_gesture()
 	visible_cell_count=clampi(cell_count,1,mini(world_grid_size.x,world_grid_size.y))
 	if visible_cell_count>=world_grid_size.x and visible_cell_count>=world_grid_size.y:
 		view_origin=Vector2i.ZERO; queue_redraw(); return
@@ -180,19 +203,38 @@ func clear_route_overlay() -> void:
 func route_draw_spec() -> Dictionary:
 	var color_hex := "#65f29a" if _route_valid else "#ff6b78"
 	var path_rows: Array = []
+	var tiles: Array = []
 	var segments: Array = []
+	var direction_cues: Array = []
 	var markers: Array = []
-	for point in _route_path:
+	for index in range(_route_path.size()):
+		var point:Vector2i=_route_path[index]
 		path_rows.append([point.x,point.y])
+		var visible:=is_world_cell_visible(point)
+		var completed:=index<=_route_completed_steps
+		var kind:="START" if index==0 else ("GOAL" if index==_route_path.size()-1 else ("NEXT" if index==_route_completed_steps+1 else "STEP"))
+		tiles.append({"index":index,"position":[point.x,point.y],"visible":visible,
+			"pixel_rect":world_cell_rect(point).grow(-maxf(1.0,cell_size_px()*0.08)) if visible else Rect2(),"kind":kind,"completed":completed,
+			"fill_hex":"#607b87" if completed else color_hex,
+			"fill_alpha":0.10 if completed else (0.30 if kind in ["NEXT","GOAL"] else 0.18),
+			"border_hex":"#607b87" if completed else color_hex,"border_width":1.5 if completed else 2.0})
 	for index in range(maxi(0,_route_path.size()-1)):
 		var from: Vector2i = _route_path[index]
 		var to: Vector2i = _route_path[index+1]
 		var visible := is_world_cell_visible(from) and is_world_cell_visible(to)
+		var from_pixel:=world_to_pixel_center(from);var to_pixel:=world_to_pixel_center(to)
+		var direction:Vector2=(to_pixel-from_pixel).normalized() if visible else Vector2.ZERO
+		var perpendicular:=Vector2(-direction.y,direction.x);var cue_center:=from_pixel.lerp(to_pixel,0.68)
+		var cue_length:=cell_size_px()*0.18;var cue_width:=cell_size_px()*0.12
 		segments.append({"index":index,"from_position":[from.x,from.y],"to_position":[to.x,to.y],
-			"from_pixel":world_to_pixel_center(from),"to_pixel":world_to_pixel_center(to),
+			"from_pixel":from_pixel,"to_pixel":to_pixel,
 			"visible":visible,"completed":index<_route_completed_steps,
 			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,
 			"line_width":2.5 if index<_route_completed_steps else 4.0})
+		direction_cues.append({"index":index,"visible":visible,"completed":index<_route_completed_steps,
+			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,"line_width":2.0,
+			"points":[cue_center-direction*cue_length+perpendicular*cue_width,cue_center,
+				cue_center-direction*cue_length-perpendicular*cue_width]})
 	for index in range(_route_path.size()):
 		var position: Vector2i = _route_path[index]
 		var kind := "STEP"
@@ -205,7 +247,7 @@ func route_draw_spec() -> Dictionary:
 			"color_hex":"#607b87" if index<=_route_completed_steps else color_hex,
 			"radius":maxf(3.0,cell_size_px()*(0.20 if kind in ["START","GOAL"] else 0.12))})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
-		"segments":segments,"markers":markers,"color_hex":color_hex}.duplicate(true)
+		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,"color_hex":color_hex}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
 	_intent_overlays.clear(); _secondary_intent_overlays.clear()
@@ -269,23 +311,95 @@ func actor_in_world_cell(position: Vector2i) -> int:
 	return -1 if matches.is_empty() else int(matches[0].entity_id)
 
 func _gui_input(event: InputEvent) -> void:
-	if modal_open or event is InputEventKey and event.echo: return
-	var pressed := false; var pointer := Vector2.ZERO
-	if event is InputEventMouseButton: pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT; pointer = event.position
-	elif event is InputEventScreenTouch: pressed = event.pressed; pointer = event.position
-	if not pressed: return
-	var p:=pixel_to_world_cell(pointer)
-	if p==Vector2i(-1,-1):return
+	if event is InputEventKey and event.echo:return
+	if modal_open:
+		cancel_pointer_gesture();return
+	if event is InputEventScreenTouch:
+		_suppress_mouse_until_msec=Time.get_ticks_msec()+EMULATED_MOUSE_SUPPRESS_MSEC
+		if event.pressed:_begin_pointer_gesture("TOUCH",event.index,event.position)
+		else:_finish_pointer_gesture("TOUCH",event.index,event.position,event.canceled)
+		accept_event();return
+	if event is InputEventScreenDrag:
+		if _pointer_gesture_active and _pointer_gesture_kind=="TOUCH" and event.index==_pointer_gesture_index:
+			_update_pointer_gesture(event.position);accept_event()
+		return
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
+		if Time.get_ticks_msec()<=_suppress_mouse_until_msec:accept_event();return
+		if event.pressed:_begin_pointer_gesture("MOUSE",-1,event.position)
+		else:_finish_pointer_gesture("MOUSE",-1,event.position,false)
+		accept_event();return
+	if event is InputEventMouseMotion and _pointer_gesture_active and _pointer_gesture_kind=="MOUSE":
+		if Time.get_ticks_msec()<=_suppress_mouse_until_msec:return
+		_update_pointer_gesture(event.position);accept_event()
+
+func _begin_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2)->void:
+	if _pointer_gesture_active:cancel_pointer_gesture()
+	var cell:=pixel_to_world_cell(pointer)
+	if cell==Vector2i(-1,-1):return
+	_pointer_gesture_generation+=1
+	_pointer_gesture_active=true;_pointer_gesture_kind=kind;_pointer_gesture_index=pointer_index
+	_pointer_gesture_cell=cell;_pointer_gesture_start=pointer;_pointer_gesture_last=pointer
+	var target:=_short_tap_target(cell,pointer)
+	_pointer_gesture_target_kind=str(target.kind);_pointer_gesture_target_actor_id=int(target.actor_id)
+	_pointer_gesture_long_fired=false;_pointer_gesture_cancelled=false
+	if is_inside_tree():
+		get_tree().create_timer(LONG_PRESS_SECONDS).timeout.connect(
+			_on_long_press_timeout.bind(_pointer_gesture_generation),CONNECT_ONE_SHOT)
+	pointer_gesture_started.emit()
+
+func _update_pointer_gesture(pointer:Vector2)->void:
+	if not _pointer_gesture_active:return
+	_pointer_gesture_last=pointer
+	if pointer.distance_to(_pointer_gesture_start)>POINTER_SLOP_PX:_pointer_gesture_cancelled=true
+
+func _finish_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2,cancelled:bool)->void:
+	if not _pointer_gesture_active or _pointer_gesture_kind!=kind or _pointer_gesture_index!=pointer_index:return
+	var cell:=_pointer_gesture_cell;var long_fired:=_pointer_gesture_long_fired;var gesture_cancelled:=_pointer_gesture_cancelled
+	var target_kind:=_pointer_gesture_target_kind;var target_actor_id:=_pointer_gesture_target_actor_id
+	var valid_release:=not cancelled and not gesture_cancelled and pointer.distance_to(_pointer_gesture_start)<=POINTER_SLOP_PX \
+		and pixel_to_world_cell(pointer)==cell and is_world_cell_visible(cell)
+	_reset_pointer_gesture()
+	if valid_release and not long_fired:_emit_short_target(target_kind,target_actor_id,cell)
+	pointer_gesture_finished.emit("LONG_PRESS" if long_fired else ("SHORT_TAP" if valid_release else "CANCELLED"))
+
+func _on_long_press_timeout(expected_generation:int)->void:
+	if expected_generation!=_pointer_gesture_generation or not _pointer_gesture_active \
+			or _pointer_gesture_long_fired or _pointer_gesture_cancelled:return
+	if modal_open or not is_world_cell_visible(_pointer_gesture_cell) \
+			or _pointer_gesture_last.distance_to(_pointer_gesture_start)>POINTER_SLOP_PX \
+			or pixel_to_world_cell(_pointer_gesture_last)!=_pointer_gesture_cell:
+		cancel_pointer_gesture();return
+	_pointer_gesture_long_fired=true
+	tile_long_pressed.emit(_pointer_gesture_cell)
+
+func cancel_pointer_gesture()->void:
+	var was_active:=_pointer_gesture_active
+	_reset_pointer_gesture()
+	if was_active:pointer_gesture_finished.emit("CANCELLED")
+
+func _reset_pointer_gesture()->void:
+	_pointer_gesture_generation+=1;_pointer_gesture_active=false;_pointer_gesture_kind="";_pointer_gesture_index=-1
+	_pointer_gesture_cell=Vector2i(-1,-1);_pointer_gesture_start=Vector2.ZERO;_pointer_gesture_last=Vector2.ZERO
+	_pointer_gesture_target_kind="";_pointer_gesture_target_actor_id=-1
+	_pointer_gesture_long_fired=false;_pointer_gesture_cancelled=false
+
+func pointer_gesture_state()->Dictionary:
+	return {"active":_pointer_gesture_active,"kind":_pointer_gesture_kind,"pointer_index":_pointer_gesture_index,
+		"cell":[_pointer_gesture_cell.x,_pointer_gesture_cell.y],"long_fired":_pointer_gesture_long_fired,
+		"cancelled":_pointer_gesture_cancelled,
+		"target_kind":_pointer_gesture_target_kind,"target_actor_id":_pointer_gesture_target_actor_id,
+		"generation":_pointer_gesture_generation}.duplicate(true)
+
+func _short_tap_target(p:Vector2i,pointer:Vector2)->Dictionary:
 	var actor_id := actor_in_world_cell(p)
-	if actor_id > 0:
-		actor_pressed.emit(actor_id)
-	elif _empty_cell_center_zone(p,pointer):
-		world_cell_pressed.emit(p)
-	else:
-		var nearby_actor_id:=actor_at_pointer(pointer)
-		if nearby_actor_id>0:actor_pressed.emit(nearby_actor_id)
-		else:world_cell_pressed.emit(p)
-	accept_event()
+	if actor_id>0:return {"kind":"ACTOR","actor_id":actor_id}
+	if _empty_cell_center_zone(p,pointer):return {"kind":"CELL","actor_id":-1}
+	var nearby_actor_id:=actor_at_pointer(pointer)
+	return {"kind":"ACTOR","actor_id":nearby_actor_id} if nearby_actor_id>0 else {"kind":"CELL","actor_id":-1}
+
+func _emit_short_target(kind:String,actor_id:int,p:Vector2i)->void:
+	if kind=="ACTOR" and actor_id>0:actor_pressed.emit(actor_id)
+	elif kind=="CELL":world_cell_pressed.emit(p)
 
 func _empty_cell_center_zone(position:Vector2i,pointer:Vector2)->bool:
 	var inset:=cell_size_px()*0.25
@@ -297,6 +411,7 @@ func _draw() -> void:
 		for x in range(visible_cell_count):
 			var p := view_origin+Vector2i(x,y); var row: Dictionary = _cells.get(_key(p),{}); var rect := world_cell_rect(p)
 			draw_rect(rect,COLORS.get(str(row.get("terrain_id","floor")),COLORS.floor),true); draw_rect(rect,Color("#617183"),false,1)
+	_draw_route_tiles()
 	for actor in _actors:
 		_draw_actor(actor, cell, false)
 	for ghost in _ghosts:
@@ -358,6 +473,11 @@ func _draw_route_overlay() -> void:
 	for segment in spec.segments:
 		if not bool(segment.visible):continue
 		draw_line(segment.from_pixel,segment.to_pixel,Color(str(segment.color_hex)),float(segment.line_width),true)
+	for cue in spec.direction_cues:
+		if not bool(cue.visible):continue
+		var points:=PackedVector2Array()
+		for point in cue.points:points.append(point)
+		draw_polyline(points,Color(str(cue.color_hex)),float(cue.line_width),true)
 	for marker in spec.markers:
 		if not bool(marker.visible):continue
 		var center:Vector2=marker.pixel_center;var radius:=float(marker.radius);var color:=Color(str(marker.color_hex))
@@ -368,6 +488,14 @@ func _draw_route_overlay() -> void:
 			"START":draw_arc(center,radius,0,TAU,16,color,2.0)
 			"NEXT":draw_circle(center,radius,Color(color,0.90))
 			_:draw_circle(center,radius,Color(color,0.65))
+
+func _draw_route_tiles()->void:
+	if _route_path.size()<2:return
+	for tile in route_draw_spec().tiles:
+		if not bool(tile.visible):continue
+		var fill:=Color(str(tile.fill_hex));fill.a=float(tile.fill_alpha)
+		draw_rect(tile.pixel_rect,fill,true)
+		draw_rect(tile.pixel_rect,Color(str(tile.border_hex)),false,float(tile.border_width))
 
 func _draw_intent(intent: Dictionary) -> void:
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return

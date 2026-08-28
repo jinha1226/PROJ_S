@@ -37,20 +37,96 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
 	await process_frame;await process_frame
 	var before_world:Dictionary=session.sim.snapshot();var before_journal:Array=session.command_journal.duplicate(true)
-	if not _touch_cell_now(sandbox,far_goal):sandbox.queue_free();await process_frame;return
+	var before_route_draft:Dictionary=session.exploration_route_draft()
+	# Mouse hold on an occupied actor tile is inspection-only. The release must not
+	# become the protagonist's ordinary same-cell WAIT preview.
+	await _mouse_hold_cell(sandbox,origin,0.62)
+	if session.sim.snapshot()!=before_world or session.command_journal!=before_journal \
+			or session.exploration_route_draft()!=before_route_draft or sandbox.pending_exploration_wait:
+		failures.append("%s actor-tile mouse hold/release mutated route or world"%viewport_size)
+	if sandbox.selected_tile!=origin:failures.append("%s actor-tile mouse hold inspected %s"%[viewport_size,sandbox.selected_tile])
+	_validate_tile_popover(sandbox,viewport_size,"ACTOR_MOUSE_HOLD",false)
+	if not "짧게 누르면 경로를 미리 봅니다" in sandbox.tile_popover_label.text or "다시" in sandbox.tile_popover_label.text:
+		failures.append("%s pre-preview popover misstates the next short-tap action"%viewport_size)
+	sandbox._hide_tile_popover()
+	# A touch drag beyond the 14px slop cancels both the tap and the pending long
+	# press, even if it remains held beyond the timeout.
+	await _drag_hold_cell(sandbox,far_goal,Vector2(20,0),0.62)
+	if session.sim.snapshot()!=before_world or session.command_journal!=before_journal \
+			or session.exploration_route_draft()!=before_route_draft or sandbox.pending_exploration_wait:
+		failures.append("%s dragged grid gesture emitted a route action"%viewport_size)
+	if sandbox.tile_popover.visible:failures.append("%s dragged grid gesture opened tile popover"%viewport_size)
+	# A short release remains the pure first-tap route preview and never inspects.
+	var first_short:bool=await _short_touch_cell(sandbox,far_goal,0.06,5)
+	if not first_short:sandbox.queue_free();await process_frame;return
 	if session.sim.snapshot()!=before_world or session.command_journal!=before_journal:
 		failures.append("%s far-route first ScreenTouch mutated world/journal"%viewport_size)
+	if sandbox.tile_popover.visible:failures.append("%s short route preview opened tile risk popover"%viewport_size)
 	await process_frame;await process_frame
 	var preview:Dictionary=session.exploration_route_draft();var spec:Dictionary=sandbox.grid.route_draw_spec()
 	if not bool(preview.get("accepted",false)) or int(preview.get("total_steps",0))<3:
 		failures.append("%s far-route first ScreenTouch did not retain preview"%viewport_size)
 	if spec.segments.size()!=int(preview.get("total_steps",0)):
 		failures.append("%s route overlay omitted steps %d/%d"%[viewport_size,spec.segments.size(),preview.get("total_steps",0)])
+	if spec.tiles.size()!=preview.path.size() or spec.direction_cues.size()!=spec.segments.size():
+		failures.append("%s route overlay omitted tile highlights/direction cues"%viewport_size)
+	for tile in spec.tiles:
+		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
+			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
+	# Holding the already-previewed goal opens inspection only. Its release cannot
+	# count as the same-goal second tap that starts movement.
+	var preview_before_hold:Dictionary=session.exploration_route_draft();var hold_step:=int(session.sim.world.step_index)
+	await _touch_hold_cell(sandbox,far_goal,0.62)
+	if session.sim.world.step_index!=hold_step or session.sim.snapshot()!=before_world or session.command_journal!=before_journal:
+		failures.append("%s preview-goal long hold/release moved the party"%viewport_size)
+	if session.exploration_route_draft()!=preview_before_hold:
+		failures.append("%s preview-goal long hold changed detached route draft"%viewport_size)
 	_validate_tile_popover(sandbox,viewport_size,"FAR_PREVIEW",true)
 	var start_step:int=int(session.sim.world.step_index)
-	if not _touch_cell_now(sandbox,far_goal):sandbox.queue_free();await process_frame;return
+	# The popover and all children ignore mouse input, so the next actual short tap
+	# passes through and starts with exactly one hop.
+	var second_short:bool=await _short_touch_cell(sandbox,far_goal,0.06,6)
+	if not second_short:sandbox.queue_free();await process_frame;return
 	if session.sim.world.step_index!=start_step+1:
 		failures.append("%s same-goal second ScreenTouch must start with exactly one hop: %d→%d"%[viewport_size,start_step,session.sim.world.step_index])
+	if sandbox.tile_popover.visible:failures.append("%s pass-through route start did not hide inspection popover"%viewport_size)
+	# Drag cancellation retains pointer ownership: the queued route must remain
+	# paused for the full 620ms hold and through release, then resume one hop on the
+	# following frame.
+	if bool(session.exploration_route_state().get("active",false)):
+		var active_drag_step:=int(session.sim.world.step_index);var active_drag_state:Dictionary=session.exploration_route_state()
+		var drag_position:=_cell_global_position(sandbox,far_goal);var drag_offset:=Vector2(20,0)
+		_push_touch_now(drag_position,true,7)
+		var active_drag:=InputEventScreenDrag.new();active_drag.index=7;active_drag.position=drag_position+drag_offset
+		active_drag.relative=drag_offset;root.push_input(active_drag,true)
+		await create_timer(0.62).timeout;await process_frame
+		if session.sim.world.step_index!=active_drag_step or session.exploration_route_state()!=active_drag_state:
+			failures.append("%s active route advanced while cancelled drag remained held"%viewport_size)
+		var drag_gesture:Dictionary=sandbox.grid.pointer_gesture_state()
+		if not bool(drag_gesture.get("active",false)) or not bool(drag_gesture.get("cancelled",false)):
+			failures.append("%s active drag released pointer ownership before finger release"%viewport_size)
+		_push_touch_now(drag_position+drag_offset,false,7)
+		if session.sim.world.step_index!=active_drag_step:
+			failures.append("%s active drag release emitted an immediate move"%viewport_size)
+		await process_frame
+		if session.sim.world.step_index!=active_drag_step+1:
+			failures.append("%s active route did not resume one hop after drag release"%viewport_size)
+	# A long press also pauses continuation. Inspection and release preserve the
+	# route; release resumes exactly one hop on the next process frame.
+	if bool(session.exploration_route_state().get("active",false)):
+		var active_hold_step:=int(session.sim.world.step_index);var active_hold_state:Dictionary=session.exploration_route_state()
+		var hold_position:=_cell_global_position(sandbox,far_goal)
+		_push_touch_now(hold_position,true,8)
+		await create_timer(0.62).timeout;await process_frame
+		if session.sim.world.step_index!=active_hold_step or session.exploration_route_state()!=active_hold_state:
+			failures.append("%s pointer hold failed to pause active route"%viewport_size)
+		if not sandbox.tile_popover.visible:failures.append("%s active-route long hold did not inspect"%viewport_size)
+		_push_touch_now(hold_position,false,8)
+		if session.sim.world.step_index!=active_hold_step:
+			failures.append("%s active-route long release emitted an immediate move"%viewport_size)
+		await process_frame
+		if session.sim.world.step_index!=active_hold_step+1:
+			failures.append("%s active route did not resume one hop after long release"%viewport_size)
 	var frame_guard:=0
 	while bool(session.exploration_route_state().get("active",false)) and frame_guard<16:
 		var prior_step:int=int(session.sim.world.step_index);await process_frame
@@ -530,6 +606,57 @@ func _touch_cell_now(sandbox,position:Vector2i,touch_index:int=0)->bool:
 	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=global_position
 	root.push_input(release,true);return true
 
+func _cell_global_position(sandbox,position:Vector2i)->Vector2:
+	var local_position:Vector2=sandbox.grid.world_to_pixel_center(position)
+	if local_position==Vector2(-1,-1):
+		failures.append("gesture target outside camera %s"%position);return Vector2(-1,-1)
+	var global_position:Vector2=sandbox.grid.get_global_rect().position+local_position
+	if not sandbox.get_global_rect().has_point(global_position):
+		failures.append("gesture target outside viewport %s at %s"%[position,global_position]);return Vector2(-1,-1)
+	return global_position
+
+func _push_touch_now(position:Vector2,pressed:bool,touch_index:int)->void:
+	if position==Vector2(-1,-1):return
+	var event:=InputEventScreenTouch.new();event.index=touch_index;event.pressed=pressed;event.position=position
+	root.push_input(event,true)
+
+func _short_touch_cell(sandbox,position:Vector2i,seconds:float,touch_index:int)->bool:
+	var global_position:=_cell_global_position(sandbox,position)
+	if global_position==Vector2(-1,-1):return false
+	_push_touch_now(global_position,true,touch_index)
+	await create_timer(seconds).timeout
+	_push_touch_now(global_position,false,touch_index)
+	return true
+
+func _touch_hold_cell(sandbox,position:Vector2i,seconds:float,touch_index:int=4)->void:
+	var global_position:=_cell_global_position(sandbox,position)
+	if global_position==Vector2(-1,-1):return
+	_push_touch_now(global_position,true,touch_index)
+	await create_timer(seconds).timeout;await process_frame
+	_push_touch_now(global_position,false,touch_index)
+	await process_frame;await process_frame
+
+func _mouse_hold_cell(sandbox,position:Vector2i,seconds:float)->void:
+	var global_position:=_cell_global_position(sandbox,position)
+	if global_position==Vector2(-1,-1):return
+	var press:=InputEventMouseButton.new();press.button_index=MOUSE_BUTTON_LEFT;press.pressed=true
+	press.button_mask=MOUSE_BUTTON_MASK_LEFT;press.position=global_position;press.global_position=global_position
+	root.push_input(press,true)
+	await create_timer(seconds).timeout;await process_frame
+	var release:=InputEventMouseButton.new();release.button_index=MOUSE_BUTTON_LEFT;release.pressed=false
+	release.button_mask=0;release.position=global_position;release.global_position=global_position
+	root.push_input(release,true);await process_frame;await process_frame
+
+func _drag_hold_cell(sandbox,position:Vector2i,offset:Vector2,seconds:float,touch_index:int=3)->void:
+	var global_position:=_cell_global_position(sandbox,position)
+	if global_position==Vector2(-1,-1):return
+	_push_touch_now(global_position,true,touch_index)
+	var drag:=InputEventScreenDrag.new();drag.index=touch_index;drag.position=global_position+offset
+	drag.relative=offset;root.push_input(drag,true)
+	await create_timer(seconds).timeout;await process_frame
+	_push_touch_now(global_position+offset,false,touch_index)
+	await process_frame;await process_frame
+
 func _touch_control_now(control:Control,native_double:bool=false,touch_index:int=1)->bool:
 	if control==null or not control.is_visible_in_tree():failures.append("unreachable touch control");return false
 	var rect:=control.get_global_rect();var center:=rect.get_center()
@@ -708,6 +835,7 @@ func _validate_camera_mapping(sandbox,label:String)->void:
 	var capture:Callable=func(position):routed.append(position)
 	grid.world_cell_pressed.connect(capture)
 	var event:=InputEventScreenTouch.new();event.pressed=true;event.position=grid.world_to_pixel_center(offwindow);grid._gui_input(event)
+	event.pressed=false;grid._gui_input(event)
 	if not routed.is_empty():failures.append("%s off-window touch emitted world cell"%label)
 	grid.world_cell_pressed.disconnect(capture)
 
