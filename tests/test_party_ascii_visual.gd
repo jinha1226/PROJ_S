@@ -260,6 +260,86 @@ func test_follow_plan_is_detached_offset_dashed_cued_risked_and_clearable() -> b
 	grid.free();return finish()
 
 
+func test_companion_speech_specs_are_fov_safe_clamped_nonoverlapping_and_detached() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:
+			cell.actors.append({"entity_id":10,"faction_id":"party","is_protagonist":true,
+				"roster_slot":0,"display_role":"PROTAGONIST"})
+		elif cell.position==[6,7]:
+			cell.actors.append({"entity_id":11,"faction_id":"party","is_protagonist":false,
+				"roster_slot":1,"display_role":"COMPANION"})
+		elif cell.position==[8,7]:
+			cell.actors.append({"entity_id":12,"faction_id":"party","is_protagonist":false,
+				"roster_slot":2,"display_role":"COMPANION"})
+		elif cell.position==[9,7]:
+			cell.visibility_state="MEMORY"
+			cell.actors.append({"entity_id":13,"faction_id":"party","is_protagonist":false,
+				"roster_slot":3,"display_role":"COMPANION"})
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var mapping_before:=grid.mapping_signature()
+	var hit_before:=grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7)))
+	grid.set_intent_overlays([
+		{"actor_id":10,"actor_name":"주인공","role":"PROTAGONIST","roster_slot":0,
+			"from_position":[7,7],"source":"DIRECT","type":"MELEE",
+			"reason":"직접 공격합니다."},
+		{"actor_id":11,"actor_name":"동료 하나","role":"COMPANION","roster_slot":1,
+			"from_position":[6,7],"source":"SUGGESTED","type":"HOLD",
+			"reason":"위험과 거리를 보고 자리를 지킵니다.","source_color":"#75c8ff"},
+		{"actor_id":12,"actor_name":"동료 둘","role":"COMPANION","roster_slot":2,
+			"from_position":[8,7],"source":"SUGGESTED","type":"MOVE",
+			"reason":"목표에 접근할 길을 골랐습니다.","source_color":"#75c8ff"},
+		{"actor_id":13,"actor_name":"기억 속 동료","role":"COMPANION","roster_slot":3,
+			"from_position":[9,7],"source":"SUGGESTED","type":"MELEE",
+			"reason":"인접한 적을 공격할 수 있습니다."},
+	])
+	var specs:Array=grid.speech_bubble_draw_specs()
+	check_eq(specs.size(),3,"hero is excluded and each primary companion intent has one spec")
+	var visible:Array=[];var hidden:Dictionary={}
+	for spec in specs:
+		if bool(spec.visible):visible.append(spec)
+		else:hidden=spec
+	check_eq(visible.size(),2,"only FOV-visible companions draw speech")
+	check_eq([visible[0].source,visible[0].action_type,visible[0].headline],
+		["SUGGESTED","HOLD","엄호할게."],"suggested hold speech is explicit")
+	check_eq([visible[1].source,visible[1].action_type,visible[1].headline],
+		["SUGGESTED","MOVE","이동할게."],"move speech is explicit")
+	check_eq(visible[1].reason,"목표에 접근할 길을 골랐습니다.",
+		"draw spec preserves the action reason")
+	check_eq([hidden.actor_id,hidden.visible,hidden.bounds],[13,false,Rect2()],
+		"memory companion speech is non-drawable and has no bounds")
+	check(not visible[0].bounds.grow(3.0).intersects(visible[1].bounds.grow(3.0)),
+		"two deterministic bubbles do not overlap")
+	for spec in visible:
+		check(grid.grid_rect().encloses(spec.bounds),"bubble is clamped inside grid bounds")
+		check(int(spec.font_size)>=12,"360-wide grid keeps speech at least 12px")
+		check_eq(spec.tail_points.size(),3,"code-native bubble includes a tail")
+	check_eq(grid.mapping_signature(),mapping_before,"speech changes no grid coordinate mapping")
+	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),hit_before,
+		"speech changes no actor hit testing")
+	specs[0].bounds=Rect2(Vector2(999,999),Vector2.ONE)
+	check(grid.speech_bubble_draw_specs()[0].bounds.position.x<999,
+		"returned speech draw specs are detached")
+	grid.set_intent_overlays([
+		{"actor_id":11,"actor_name":"동료 하나","role":"COMPANION","roster_slot":1,
+			"from_position":[6,7],"source":"OVERRIDE","type":"HOLD",
+			"reason":"자동 제안 대신 개별 지시를 따릅니다.","source_color":"#ff9f68",
+			"automatic_suggestion":{"source":"SUGGESTED","type":"MOVE",
+				"from_position":[6,7],"destination":[6,6]}},
+		{"actor_id":12,"actor_name":"동료 둘","role":"COMPANION","roster_slot":2,
+			"from_position":[8,7],"source":"SUGGESTED","type":"HOLD",
+			"resolution_note":"destination_conflict_suggested_hold",
+			"reason":"이동 경로가 충돌해 이번 턴에는 자리를 지킵니다."},
+	])
+	var updated:Array=grid.speech_bubble_draw_specs()
+	check_eq(updated.size(),2,"secondary original suggestion creates no extra speech")
+	check_eq([updated[0].source,updated[0].headline,updated[1].headline],
+		["OVERRIDE","대기할게.","대기할게."],
+		"override and conflict HOLD update speech immediately")
+	grid.free();return finish()
+
+
 func _visible_cells()->Array:
 	var cells:Array=[]
 	for y in range(15):

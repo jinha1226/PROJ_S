@@ -468,7 +468,10 @@ func turn_intent_overlays() -> Array[Dictionary]:
 	for card in party_cards():
 		if not card.expected_action is Dictionary: continue
 		var action: Dictionary = card.expected_action
+		var role := str(card.role)
+		var resolution_note := str(action.get("resolution_note", ""))
 		rows.append({"actor_id": int(card.entity_id), "actor_name": str(card.display_name),
+			"role":role, "roster_slot":int(card.roster_slot),
 			"from_position": card.logical_position.duplicate(true), "source": str(action.source),
 			"source_label": str(action.source_label), "source_color": str(action.source_color),
 			"line_style": _overlay_line_style(str(action.source)),
@@ -476,9 +479,41 @@ func turn_intent_overlays() -> Array[Dictionary]:
 			"type": str(action.type), "type_label": str(action.type_label),
 			"destination": action.destination.duplicate(true), "target_id": int(action.target_id),
 			"target_position": action.target_position.duplicate(true), "reason": str(action.reason),
+			"resolution_note":resolution_note,
+			"speech_headline":_companion_speech_headline(str(action.type),
+				str(action.source), resolution_note) if role == "COMPANION" else "",
 			"automatic_suggestion": _overlay_suggestion(action.get("automatic_suggestion", null),
 				card.logical_position) if str(action.source) == "OVERRIDE" else null})
 	return rows.duplicate(true)
+
+
+func companion_speech_bubbles() -> Array[Dictionary]:
+	# This is a detached presentation projection of the current preview. It never
+	# participates in save/load, replay, RNG, or authoritative simulation state.
+	var bubbles: Array[Dictionary] = []
+	for intent in turn_intent_overlays():
+		if str(intent.get("role", "")) != "COMPANION": continue
+		bubbles.append({"schema_version":1,
+			"actor_id":int(intent.actor_id), "actor_name":str(intent.actor_name),
+			"roster_slot":int(intent.roster_slot), "role":"COMPANION",
+			"from_position":intent.from_position.duplicate(true),
+			"source":str(intent.source), "action_type":str(intent.type),
+			"headline":str(intent.speech_headline), "reason":str(intent.reason),
+			"resolution_note":str(intent.resolution_note)})
+	bubbles.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.roster_slot) < int(b.roster_slot) \
+			if int(a.roster_slot) != int(b.roster_slot) \
+			else int(a.actor_id) < int(b.actor_id))
+	return bubbles.duplicate(true)
+
+
+func _companion_speech_headline(action_type: String, source: String,
+		resolution_note: String) -> String:
+	if action_type == "MELEE": return "공격할게."
+	if action_type == "MOVE": return "이동할게."
+	if source == "OVERRIDE" or resolution_note == "destination_conflict_suggested_hold":
+		return "대기할게."
+	return "엄호할게."
 
 
 func turn_summary_lines() -> Array[String]:

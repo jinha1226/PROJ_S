@@ -523,8 +523,8 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 				or sandbox.grid.actor_in_world_cell(destination)!=-1: continue
 		await _press(sandbox,"MemberCard%d"%companion)
 		await _touch_cell(sandbox,destination)
-		if sandbox.find_child("MovePreviewSummary",true,false)==null: failures.append("%s %s move preview summary missing"%[viewport_size,preset])
-		await _touch_cell(sandbox,destination)
+		if sandbox.find_child("MovePreviewSummary",true,false)!=null or sandbox.pending_move_mode=="COMBAT":
+			failures.append("%s %s one-tap companion MOVE left retap preview"%[viewport_size,preset])
 		var found_override:=false
 		for row in sandbox.session.party_cards():
 			if int(row.entity_id)==companion and row.expected_action is Dictionary and str(row.expected_action.source)=="OVERRIDE": found_override=true
@@ -572,7 +572,6 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 				Vector2i(signi(enemy_position.x-hero_position.x),0),Vector2i(0,signi(enemy_position.y-hero_position.y))]
 			for direction in directions:
 				if direction==Vector2i.ZERO: continue
-				await _touch_cell(sandbox,hero_position+direction)
 				await _touch_cell(sandbox,hero_position+direction)
 				var draft:Dictionary=sandbox.session.current_turn_preview()
 				if bool(draft.get("accepted",false)) and str(draft.actor_rows[0].action.type)=="MOVE":

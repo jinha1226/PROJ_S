@@ -79,6 +79,60 @@ func test_preview_preserves_other_overrides_and_override_keeps_original_suggesti
 	check(not "원래 제안" in cleared_line,"clear leaves one automatic suggestion line for cleared actor")
 	return finish()
 
+func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter
+	var hero=int(state.protagonist_id);var companions:Array=state.party_member_ids.slice(1)
+	check(session.commit_exploration(Command.wait(hero)).accepted,"speech fixture contact")
+	check(session.preview_deployment("LINE",companions).accepted,"speech fixture deployment preview")
+	check(session.commit_deployment().accepted,"speech fixture engaged")
+	var wire_before:=session.save_session_json()
+	var planning:Dictionary=session.prepare_auto_combat_plan()
+	check(planning.active and planning.placeholder,"placeholder planning is active")
+	var bubbles:Array=session.companion_speech_bubbles()
+	check_eq(bubbles.size(),2,"placeholder immediately exposes two companion speeches")
+	for bubble in bubbles:
+		check_eq(bubble.role,"COMPANION","only companion roles speak")
+		check(int(bubble.actor_id)!=hero,"protagonist never gains a companion bubble")
+		check_eq(bubble.source,"SUGGESTED","initial speech follows automatic suggestion")
+		check(not str(bubble.reason).is_empty(),"speech retains a Korean action reason")
+		var expected_headline:String={"MELEE":"공격할게.","MOVE":"이동할게.",
+			"HOLD":"엄호할게."}.get(str(bubble.action_type),"엄호할게.")
+		check_eq(bubble.headline,expected_headline,"suggested action headline is fixed")
+	check_eq(session.save_session_json(),wire_before,
+		"speech and placeholder projections never enter session save state")
+	var first_id:=int(bubbles[0].actor_id)
+	var original_reason:=str(bubbles[0].reason)
+	bubbles[0].from_position[0]=99;bubbles[0].reason="변조"
+	var fresh:Array=session.companion_speech_bubbles()
+	check(fresh[0].from_position[0]!=99 and str(fresh[0].reason)==original_reason,
+		"speech DTO and nested position are detached")
+	check(session.override_companion(first_id,Action.hold(first_id)).accepted,
+		"companion hold override accepted")
+	var overridden:Dictionary={}
+	for bubble in session.companion_speech_bubbles():
+		if int(bubble.actor_id)==first_id:overridden=bubble;break
+	check_eq([overridden.source,overridden.action_type,overridden.headline],
+		["OVERRIDE","HOLD","대기할게."],"override updates primary speech immediately")
+	check("개별 지시" in str(overridden.reason),"override keeps its action-reason meaning")
+	check(session.clear_companion_override(first_id).accepted,"speech override clears")
+	var restored:Dictionary={}
+	for bubble in session.companion_speech_bubbles():
+		if int(bubble.actor_id)==first_id:restored=bubble;break
+	check_eq(restored.source,"SUGGESTED","clear immediately restores suggested speech")
+	check_eq(restored.headline,{"MELEE":"공격할게.","MOVE":"이동할게.",
+		"HOLD":"엄호할게."}.get(str(restored.action_type),"엄호할게."),
+		"clear restores suggested headline")
+	check(session.replace_auto_combat_protagonist_action(Action.hold(hero)).accepted,
+		"hero finalizes current plan")
+	check(session.commit_turn().accepted,"speech fixture commits one turn")
+	check(session.companion_speech_bubbles().is_empty(),
+		"committed draft leaves no stale speech")
+	check_eq(session.party_status().safe_phase,"ENGAGED","fixture has a following combat turn")
+	check(session.prepare_auto_combat_plan().active,"next placeholder plan is prepared")
+	check_eq(session.companion_speech_bubbles().size(),2,
+		"next turn immediately publishes refreshed companion speeches")
+	return finish()
+
 func test_full_exploration_deployment_turn_regroup_journal_replays_exactly() -> bool:
 	var session = Session.new(333,444); var journey_ok := _play_full_journey(session, "COLUMN")
 	check(journey_ok, "full canonical journey reached grouped complete")

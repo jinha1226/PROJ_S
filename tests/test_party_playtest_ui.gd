@@ -423,19 +423,21 @@ func test_screen_touch_routes_exact_world_cells_at_both_portrait_sizes() -> bool
 		var status: Dictionary = sandbox.session.party_status(); var hero := int(status.protagonist_id)
 		_press(sandbox, "MemberCard%d" % hero)
 		var hero_position := _card_position(sandbox, hero); var legal_count := 0
+		var invalid_before:Dictionary=_session_surface_snapshot(sandbox.session)
 		sandbox._on_cell(hero_position+Vector2i(3,0)); sandbox._refresh()
-		check(not sandbox.pending_move_valid,"%s invalid far cell stays preview-only"%viewport_size)
+		check(sandbox.pending_move_mode!="COMBAT","%s invalid far cell creates no combat retap state"%viewport_size)
 		check("한 칸" in sandbox.notice_text or "이동할 수" in sandbox.notice_text,"%s invalid move reason is immediate Korean"%viewport_size)
+		check_eq(_session_surface_snapshot(sandbox.session),invalid_before,
+			"%s invalid one-tap move preserves world/draft/journal"%viewport_size)
 		sandbox._on_actor(hero); sandbox._refresh()
 		for direction in [Vector2i.UP,Vector2i(1,-1),Vector2i.RIGHT,Vector2i(1,1),Vector2i.DOWN,Vector2i(-1,1),Vector2i.LEFT,Vector2i(-1,-1)]:
 			var destination: Vector2i = hero_position + direction
 			if not sandbox.session.sim.assess_move(hero, destination).accepted: continue
 			legal_count += 1; _screen_touch(sandbox, destination); sandbox._refresh()
-			check_eq(sandbox.pending_move_destination,destination,"%s first tap previews exact destination"%viewport_size)
-			check(sandbox.find_child("MovePreviewSummary",true,false)!=null,"%s large move preview visible"%viewport_size)
-			_screen_touch(sandbox, destination); sandbox._refresh()
 			var preview: Dictionary = sandbox.session.current_turn_preview()
-			check(bool(preview.get("accepted", false)), "%s empty-cell touch creates accepted MOVE (%s)" % [viewport_size, preview.get("reason", "missing")])
+			check(bool(preview.get("accepted", false)), "%s one empty-cell touch creates accepted MOVE (%s)" % [viewport_size, preview.get("reason", "missing")])
+			check(sandbox.pending_move_mode!="COMBAT" and sandbox.find_child("MovePreviewSummary",true,false)==null,
+				"%s combat MOVE creates no second-tap preview"%viewport_size)
 			var rows: Array = preview.get("actor_rows", [])
 			if not rows.is_empty():
 				check_eq(rows[0].action.type, "MOVE", "%s exact empty cell is not stolen by 44px hero slop" % viewport_size)
@@ -515,12 +517,12 @@ func test_enemy_tap_targets_without_selecting_enemy_and_rejections_are_visible()
 	for row in sandbox.session.party_cards(): if int(row.entity_id)==companion: companion_row=row
 	var destination:=[int(companion_row.logical_position[0])+1,int(companion_row.logical_position[1])]
 	sandbox._on_cell(Vector2i(destination[0],destination[1])); sandbox._refresh()
-	check(sandbox.pending_move_actor_id==companion,"first companion tap is preview only")
-	sandbox._on_cell(Vector2i(destination[0],destination[1]))
-	sandbox._refresh()
 	var overridden:Dictionary
 	for row in sandbox.session.party_cards(): if int(row.entity_id)==companion: overridden=row
-	check(overridden.expected_action is Dictionary and overridden.expected_action.source=="OVERRIDE","companion move override")
+	check(overridden.expected_action is Dictionary and overridden.expected_action.source=="OVERRIDE",
+		"one companion tile tap creates move override")
+	check(sandbox.pending_move_mode!="COMBAT" and sandbox.find_child("MovePreviewSummary",true,false)==null,
+		"companion override has no combat retap state")
 	check("덮어쓰기" in str(overridden.expected_action.text),"override Korean label")
 	check(overridden.expected_action.automatic_suggestion is Dictionary,"override preserves original automatic suggestion")
 	check(sandbox.grid._intent_overlays.size()==3,"hero and companion intents overlaid")

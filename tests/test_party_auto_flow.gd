@@ -93,6 +93,65 @@ func test_companion_override_waits_for_hero_then_survives_automatic_commit() -> 
 	return finish()
 
 
+func test_one_tap_move_auto_commits_once_and_companion_override_waits_for_hero() -> bool:
+	var hero_sandbox=_auto_engaged_sandbox();var hero_session=hero_sandbox.session
+	var hero_status:Dictionary=hero_session.party_status();var hero:=int(hero_status.protagonist_id)
+	hero_sandbox.selected_member_id=hero
+	var hero_destination:=_first_valid_move(hero_sandbox,hero)
+	check(hero_destination!=Vector2i(-1,-1),"auto hero has a legal empty MOVE cell")
+	var hero_before:Dictionary=hero_session.sim.snapshot();var hero_journal:int=hero_session.command_journal.size()
+	hero_sandbox._on_cell(hero_destination)
+	var hero_flow:Dictionary=hero_sandbox.auto_flow_state()
+	var hero_planning:Dictionary=hero_session.auto_combat_planning_state()
+	var hero_action:Dictionary={}
+	for row in hero_planning.preview.actor_rows:
+		if int(row.actor_id)==hero:hero_action=row.action
+	check(hero_flow.combat_pending and hero_sandbox.pending_move_mode!="COMBAT",
+		"one hero tile tap queues final auto plan without retap state")
+	check_eq([hero_action.get("type",""),hero_action.get("destination",[])],
+		["MOVE",[hero_destination.x,hero_destination.y]],"one-tap hero MOVE destination")
+	check_eq([hero_session.sim.snapshot(),hero_session.command_journal.size()],
+		[hero_before,hero_journal],"final MOVE render plan is mutation-free")
+	hero_sandbox.flush_auto_flow_for_headless_test()
+	check_eq(hero_session.sim.snapshot(),hero_before,"first MOVE render barrier is mutation-free")
+	hero_sandbox.flush_auto_flow_for_headless_test()
+	check_eq([hero_session.sim.world.step_index,hero_session.command_journal.size()],
+		[int(hero_before.step_index)+1,hero_journal+1],"one-tap MOVE commits exactly once")
+	var committed_step:=int(hero_session.sim.world.step_index)
+	hero_sandbox.flush_auto_flow_for_headless_test()
+	check_eq(hero_session.sim.world.step_index,committed_step,"one-tap MOVE cannot double commit")
+	hero_sandbox.free()
+
+	var companion_sandbox=_auto_engaged_sandbox();var companion_session=companion_sandbox.session
+	var status:Dictionary=companion_session.party_status();hero=int(status.protagonist_id)
+	var companion:=int(status.party_member_ids[1])
+	companion_sandbox._select_member(companion,"동료")
+	var companion_destination:=_first_valid_move(companion_sandbox,companion)
+	check(companion_destination!=Vector2i(-1,-1),"auto companion has a legal empty MOVE cell")
+	var companion_step:=int(companion_session.sim.world.step_index)
+	companion_sandbox._on_cell(companion_destination)
+	var planning:Dictionary=companion_session.auto_combat_planning_state()
+	var companion_action:Dictionary={}
+	for row in planning.preview.actor_rows:
+		if int(row.actor_id)==companion:companion_action=row.action
+	check(not companion_sandbox.auto_flow_state().combat_pending \
+		and companion in planning.overridden_companion_ids,
+		"one companion tile tap stores override but cannot commit turn")
+	check_eq([companion_action.get("type",""),companion_action.get("destination",[])],
+		["MOVE",[companion_destination.x,companion_destination.y]],"companion one-tap MOVE override")
+	check_eq(companion_session.sim.world.step_index,companion_step,"companion override waits for hero")
+	companion_sandbox._select_member(hero,"주인공");companion_sandbox._on_actor_hold()
+	planning=companion_session.auto_combat_planning_state()
+	check(companion in planning.overridden_companion_ids \
+		and companion_sandbox.auto_flow_state().combat_pending,
+		"hero action preserves one-tap companion MOVE and queues commit")
+	companion_sandbox.flush_auto_flow_for_headless_test()
+	companion_sandbox.flush_auto_flow_for_headless_test()
+	check_eq(companion_session.sim.world.step_index,companion_step+1,
+		"preserved companion MOVE plan commits with hero exactly once")
+	companion_sandbox.free();return finish()
+
+
 func test_pointer_invalidates_pending_combat_and_route_follow_preview_is_pure() -> bool:
 	var combat = _auto_engaged_sandbox()
 	var combat_step := int(combat.session.sim.world.step_index)
@@ -191,3 +250,18 @@ func _auto_engaged_sandbox():
 	sandbox.flush_auto_flow_for_headless_test()
 	sandbox.flush_auto_flow_for_headless_test()
 	return sandbox
+
+
+func _first_valid_move(sandbox,actor_id:int)->Vector2i:
+	var origin:=Vector2i(-1,-1)
+	for card in sandbox.session.party_cards():
+		if int(card.entity_id)==actor_id:
+			origin=Vector2i(int(card.logical_position[0]),int(card.logical_position[1]));break
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var destination:Vector2i=origin+direction
+		if sandbox.grid.actor_in_world_cell(destination)!=-1:continue
+		var preview:Dictionary=sandbox.session.preview_actor_action(actor_id,"MOVE",
+			[destination.x,destination.y])
+		if bool(preview.get("accepted",false)):return destination
+	return Vector2i(-1,-1)

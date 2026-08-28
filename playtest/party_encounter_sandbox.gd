@@ -520,10 +520,6 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	if not notice_text.is_empty():instruction=notice_text
 	elif not bool(preview.get("accepted",false)):instruction+=" · "+str(preview.get("message","주인공 행동을 먼저 지정하세요."))
 	_add_notice(instruction)
-	if pending_move_actor_id>0:
-		var summary:="이동 예정: %s (%d,%d) → (%d,%d)"%[actor_name,pending_move_origin.x,pending_move_origin.y,pending_move_destination.x,pending_move_destination.y]
-		summary+="\n같은 칸을 한 번 더 누르면 행동 선택이 확정됩니다." if pending_move_valid else "\n이 칸으로 이동할 수 없습니다. "+notice_text
-		_add_notice(summary,"MovePreviewSummary",FONT_KEY)
 	var lines:Array[String]=session.turn_summary_lines()
 	if not lines.is_empty():_add_notice("이번 턴 예정\n"+"\n".join(lines),"TurnSummary",FONT_BODY)
 	var has_original_suggestion:=false
@@ -834,22 +830,17 @@ func _on_cell(position:Vector2i)->void:
 			_update_tile_popover_route(preview);_request_refresh()
 		return
 	if status.view_mode!="COMBAT":return
-	selected_target_id=-1
+	selected_target_id=-1;_clear_move_preview()
 	var preview:Dictionary=session.preview_actor_action(selected_member_id,"MOVE",[position.x,position.y])
-	var same:=pending_move_mode=="COMBAT" and pending_move_actor_id==selected_member_id and pending_move_destination==position
-	if same and pending_move_valid:
-		if auto_orchestration_enabled:_stage_auto_combat_action("MOVE",[position.x,position.y])
-		else:_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),false,"%s 이동 불가"%_selected_name())
-		_clear_move_preview()
+	if not bool(preview.get("accepted",false)):
+		notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."))
+		_set_action_rejection(preview,"%s 이동 불가"%_selected_name());_request_refresh();return
+	notice_text=""
+	if auto_orchestration_enabled:
+		_stage_auto_combat_action("MOVE",[position.x,position.y])
 	else:
-		pending_move_mode="COMBAT"; pending_exploration_wait=false
-		pending_move_actor_id=selected_member_id; pending_move_origin=_selected_position(); pending_move_destination=position
-		pending_move_valid=bool(preview.get("accepted",false)); pending_move_cost=int(preview.get("total_time_cost",0))
-		if pending_move_valid:
-			notice_text="";action_feedback_text="%s 이동 미리보기 · 같은 칸을 한 번 더 누르세요."%_selected_name()
-		else:
-			notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."));_set_action_rejection(preview,"%s 이동 불가"%_selected_name())
-	_request_refresh()
+		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
+			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
