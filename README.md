@@ -148,8 +148,8 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 실제 `Node3D + SubViewport + Camera3D` 15×15 ASCII 방에서 칸을 눌러 이동하고 인접한
 `g`를 공격할 수 있습니다. `2D로`를 누르면 같은 본편 session으로 돌아오며, 실험실의
 위치·적 체력·효과는 save/journal/RNG에 포함되지 않습니다. 360×640과 450×800 portrait
-viewport에서 화면 축과 grid 축이 일치하는 고정 `정사영 탑뷰` camera와 44px 이상
-조작부를 사용합니다.
+viewport에서 screen horizontal을 world/grid +X에 고정하고 yaw 없이 Z축 방향을 바라보는
+고정 `45° 경사 탑뷰 · 축 정렬` orthographic camera와 44px 이상 조작부를 사용합니다.
 
 주인공 인물 창은 열 때마다 `상태` tab에서 시작하며, 별도 `스킬` tab이 Lv/XP progress
 bar, 현재 공격력·flat 방어력·HOLD 방어율, 세 기술의 rank와 훈련 progress/focus를

@@ -12,13 +12,15 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 		check(lab.camera.projection==Camera3D.PROJECTION_ORTHOGONAL,"camera is fixed orthographic")
 		var focus:=lab._cell_world(lab.hero_cell)
 		var view_direction:Vector3=(focus-lab.camera.position).normalized()
-		check(view_direction.is_equal_approx(Vector3.DOWN) and is_equal_approx(lab.camera.size,lab.TOP_VIEW_SIZE),
-			"camera is exact vertical orthographic top-view")
-		check(lab.camera.basis.x.dot(Vector3.RIGHT)>0.999 \
-			and lab.camera.basis.y.dot(Vector3.FORWARD)>0.999,
-			"screen horizontal/vertical align with grid X/Z axes")
-		check("정사영 탑뷰" in str((lab.find_child("LabTitle",true,false) as Label).text),
-			"lab labels the projection as orthographic top-view")
+		var elevation_degrees:=rad_to_deg(asin(absf(view_direction.y)))
+		check(absf(view_direction.x)<0.0001 and view_direction.z<-0.7 \
+			and is_equal_approx(elevation_degrees,45.0) \
+			and is_equal_approx(lab.camera.size,lab.CAMERA_ORTHO_SIZE),
+			"camera has cardinal-axis yaw and a 45-degree orthographic pitch")
+		check(lab.camera.basis.x.dot(Vector3.RIGHT)>0.999,
+			"screen horizontal remains grid/world +X without isometric yaw")
+		check("45° 경사 탑뷰 · 축 정렬" in str((lab.find_child("LabTitle",true,false) as Label).text),
+			"lab labels the cardinal-axis 45-degree projection")
 		check_eq(lab.tile_nodes.size(),225,"15x15 deterministic test room")
 		check(lab.find_child("BackTo2D",true,false).custom_minimum_size.y>=44 \
 			and lab.find_child("LabReset",true,false).custom_minimum_size.y>=44,
