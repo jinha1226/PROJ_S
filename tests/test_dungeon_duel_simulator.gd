@@ -213,6 +213,104 @@ func test_material_damage_interrupt_can_switch_a_committed_intent()->bool:
 	check(not bool(actor_row.continued),"interrupt switch starts a new decision episode")
 	return finish()
 
+func test_survival_appraisal_keeps_healthy_advantage_and_extreme_boldness_distinct()->bool:
+	var healthy=Simulator.new(904);_prepare_pair_base(healthy,1)
+	_prepare_hostile_relation(healthy);healthy.state.actors[1].power=100;healthy.state.actors[2].power=20
+	_set_all_facets(healthy.state.actors[1],500);_set_all_facets(healthy.state.actors[2],500)
+	_set_committed_intent(healthy,1,"ENGAGE");_set_committed_intent(healthy,2,"ENGAGE")
+	check(healthy.step().accepted,"healthy advantage receives real damage interrupt")
+	var healthy_row:Dictionary=healthy.decision_breakdowns()[0]
+	check_eq(healthy_row.switch_reason_code,"INTERRUPT","healthy actor notices damage")
+	check_eq(healthy_row.selected_action_id,"ENGAGE","healthy actor with a large power edge can keep fighting")
+
+	var bold=Simulator.new(905);_prepare_pair_base(bold,1)
+	_prepare_hostile_relation(bold);bold.state.actors[1].hp=60
+	bold.state.actors[1].power=100;bold.state.actors[2].power=20
+	bold.state.actors[1].supplies=0
+	_set_all_facets(bold.state.actors[1],500);_set_all_facets(bold.state.actors[2],500)
+	bold.state.actors[1].profile.values["E"]=0;bold.state.actors[1].profile.values["X"]=1000
+	bold.state.actors[1].profile.values["A"]=0
+	_set_committed_intent(bold,1,"ENGAGE");_set_committed_intent(bold,2,"ENGAGE")
+	check(bold.step().accepted,"bold fixture receives a canonical attack")
+	var bold_row:Dictionary=bold.decision_breakdowns()[0]
+	check_eq(bold_row.switch_reason_code,"INTERRUPT","boldness does not suppress appraisal")
+	check_eq(bold_row.selected_action_id,"ENGAGE","an extreme bold profile may still accept the risk")
+	return finish()
+
+func test_hp_and_dot_worsening_never_lower_flee_survival_pressure()->bool:
+	var sim=Simulator.new(906);_prepare_pair_base(sim,1);_prepare_hostile_relation(sim)
+	sim.state.actors[1].power=40;sim.state.actors[2].power=80
+	_set_all_facets(sim.state.actors[1],500);_set_committed_intent(sim,1,"ENGAGE")
+	sim.state.actors[1].decision_interrupt_version+=1
+	var healthy_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
+	var healthy_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
+	sim.state.actors[1].hp=40
+	var injured_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
+	var injured_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
+	sim.state.actors[1].status_effect={"status_id":"POISONED","remaining_quanta":4,"tick_damage":4}
+	var dot_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
+	var dot_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
+	check(int(injured_flee.total)>=int(healthy_flee.total) and int(dot_flee.total)>=int(injured_flee.total),
+		"HP and DOT worsening are monotonic for FLEE")
+	check(int(injured_engage.total)<=int(healthy_engage.total) and int(dot_engage.total)<=int(injured_engage.total),
+		"the same survival crisis never raises ENGAGE")
+	check(_input_value(dot_flee,"state_terms","survival_crisis")>=
+		_input_value(injured_flee,"state_terms","survival_crisis"),"nonlinear crisis is visible in the DTO")
+	return finish()
+
+func test_treatment_competes_when_supplied_and_retreat_can_still_die_before_escape()->bool:
+	var treatment=Simulator.new(907);_prepare_pair_base(treatment,6)
+	treatment.state.actors[1].species_id="human";treatment.state.actors[2].species_id="human"
+	treatment.state.actors[1].hp=40;treatment.state.actors[1].status_effect={
+		"status_id":"BLEEDING","remaining_quanta":4,"tick_damage":3}
+	treatment.state.actors[1].supplies=1;treatment.state.actors[2].power=50
+	check_eq(treatment.decision_breakdowns()[0].selected_action_id,"SELF_TREAT",
+		"supplies plus treatment need can beat retreat when immediate threat is lower")
+
+	var lethal=Simulator.new(908);_prepare_pair_base(lethal,1)
+	lethal.state.actors[1].power=100;lethal.state.actors[2].hp=5
+	_set_committed_intent(lethal,1,"ENGAGE");_set_committed_intent(lethal,2,"FLEE")
+	check(lethal.step().accepted,"attack and flee resolve in the same canonical turn")
+	check(not lethal.state.actors[2].alive and lethal.state.phase=="COMPLETE",
+		"attack resolution can kill a fleeing actor before escape")
+	for event in lethal.state.events:check(event.type!="ESCAPED","dead runner emits no escape event")
+	return finish()
+
+func test_post_damage_retreat_distribution_and_mid_interrupt_replay()->bool:
+	var post_damage:={"APPROACH":0,"ENGAGE":0,"FLEE":0,"HOLD":0,"SELF_TREAT":0};var damaged_actors:=0
+	for seed in range(1,65):
+		var sim=Simulator.new(seed);var captured:=false
+		for _turn in range(6):
+			if sim.state.phase!="ACTIVE":break
+			var start:int=sim.state.events.size();sim.step();var targets:Dictionary={}
+			for index in range(start,sim.state.events.size()):
+				if sim.state.events[index].type=="DAMAGE":targets[int(str(sim.state.events[index].target_id))]=true
+			if captured or targets.is_empty():continue
+			captured=true
+			if sim.state.phase!="ACTIVE":continue
+			var next_by_id:Dictionary={}
+			for row in sim.decision_breakdowns():next_by_id[int(str(row.actor_id))]=str(row.selected_action_id)
+			for actor_id in targets:
+				if not sim.state.actors[actor_id].alive:continue
+				damaged_actors+=1;var action_id:=str(next_by_id[actor_id])
+				post_damage[action_id]=int(post_damage.get(action_id,0))+1
+	check(damaged_actors>=32 and post_damage.FLEE>=16,"damage commonly triggers a retreat appraisal")
+	check(post_damage.ENGAGE>=8 and post_damage.SELF_TREAT>=2,
+		"healthy courage and supplied treatment still compete with retreat")
+
+	var replay=Simulator.new(10);var saw_damage:=false
+	for _turn in range(6):
+		var start:int=replay.state.events.size();check(replay.step().accepted,"seeded interrupt turn resolves")
+		for index in range(start,replay.state.events.size()):
+			if replay.state.events[index].type=="DAMAGE":saw_damage=true
+		if saw_damage:break
+	check(saw_damage and replay.state.phase=="ACTIVE","seeded fixture stops immediately after damage")
+	var encoded:=replay.save_json();var loaded=Simulator.new(999)
+	check(loaded.load_json(encoded).accepted,"post-damage intent session loads")
+	check_eq(loaded.snapshot(),replay.snapshot(),"interrupt appraisal authority restores exactly")
+	check_eq(loaded.decision_breakdowns(),replay.decision_breakdowns(),"post-damage next decision replays exactly")
+	return finish()
+
 func test_completed_and_illegal_intents_replan_without_action_id_branches()->bool:
 	var completed=Simulator.new(902)
 	completed.state.distance=1;completed.state.actors[1].position=Vector2i(6,7)
@@ -303,9 +401,7 @@ func _prepare_committed_melee_fixture(sim)->void:
 		actor.status_effect={};actor.memory_kind="HARMED";actor.memory_modifier=-35
 		actor.species_id="human" if actor_id==1 else "goblin"
 		actor.power=20 if actor_id==1 else 100
-		for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=0
-		if actor_id==1:
-			actor.profile.values["E"]=1000;actor.profile.values["A"]=1000
+		for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=500
 		_set_committed_intent(sim,actor_id,"ENGAGE")
 
 func _prepare_pair_base(sim,distance:int)->void:
@@ -328,3 +424,17 @@ func _prepare_counter_move_fixture(sim)->void:
 		approacher.profile.values[facet]=500;runner.profile.values[facet]=500
 	runner.profile.values["E"]=1000;runner.profile.values["X"]=0
 	_set_committed_intent(sim,1,"APPROACH");_set_committed_intent(sim,2,"FLEE")
+
+func _prepare_hostile_relation(sim)->void:
+	sim.state.actors[1].species_id="human";sim.state.actors[2].species_id="goblin"
+	for actor_id in [1,2]:
+		sim.state.actors[actor_id].memory_kind="HARMED"
+		sim.state.actors[actor_id].memory_modifier=-35
+
+func _set_all_facets(actor,value:int)->void:
+	for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=value
+
+func _input_value(candidate:Dictionary,bucket:String,input_id:String)->int:
+	for term in candidate.get(bucket,[]):
+		if str(term.get("input_id",""))==input_id:return int(term.get("input_value",0))
+	return -1

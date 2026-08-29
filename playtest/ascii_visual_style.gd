@@ -136,7 +136,10 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 				statuses.append(status_id)
 	statuses.sort()
 	var facing := normalized_facing(actor.get("facing", [0, 1]))
-	var geometry := _pose_geometry(life_state, facing)
+	var stance := str(actor.get("visual_stance", actor.get("stance", "IDLE"))).to_upper()
+	if stance not in ["IDLE", "MOVING", "ENGAGE", "FLEE", "APPROACH", "GUARD"]:
+		stance = "IDLE"
+	var geometry := _pose_geometry(life_state, facing, stance)
 	var guarded := bool(actor.get("guarded", false))
 	var equipment := DioramaScript.equipment_spec(actor)
 	return {
@@ -145,12 +148,16 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"opacity":0.46 if ghost else (0.58 if life_state == "DOWNED" else 1.0),
 		"ghost":ghost, "life_state":life_state, "statuses":statuses,
 		"bleeding":"BLEEDING" in statuses, "guarded":guarded,
-		"facing":[facing.x, facing.y], "pose":geometry.pose,
-		"body_center":geometry.body_center, "head_center":geometry.head_center,
-		"facing_point":geometry.facing_point, "limb_segments":geometry.limb_segments,
+		"facing":[facing.x, facing.y], "pose":geometry.pose, "stance":stance,
+		"body_center":geometry.glyph_center, "glyph_center":geometry.glyph_center,
+		"glyph_half_width":geometry.glyph_half_width,
+		"glyph_half_height":geometry.glyph_half_height,
+		"glyph_is_body":true, "detached_head":false,
+		"glyph_weight":"OUTLINE_REDRAW", "glyph_outline_passes":8,
+		"limb_segments":geometry.limb_segments,
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
 		"equipment":equipment,
-		"draw_head":life_state != "DEAD", "draw_limbs":life_state != "DEAD",
+		"draw_head":false, "draw_limbs":life_state != "DEAD",
 	}.duplicate(true)
 
 
@@ -198,32 +205,41 @@ static func bracket_segments(rect: Rect2, inset_ratio: float = 0.08,
 	].duplicate(true)
 
 
-static func _pose_geometry(life_state: String, facing: Vector2i) -> Dictionary:
+static func _pose_geometry(life_state: String, facing: Vector2i,
+		stance: String = "IDLE") -> Dictionary:
+	var half_width := 0.40
+	var half_height := 0.18
 	if life_state == "DOWNED":
-		return {"pose":"DOWNED", "body_center":Vector2(0.0, 0.24),
-			"head_center":Vector2(-0.31, 0.25), "facing_point":Vector2(-0.36, 0.22),
+		var center := Vector2(0.0, 0.25)
+		return {"pose":"DOWNED", "glyph_center":center,
+			"glyph_half_width":half_width, "glyph_half_height":half_height,
 			"limb_segments":[
-				[Vector2(-0.16,0.23),Vector2(-0.40,0.12)],
-				[Vector2(0.16,0.23),Vector2(0.40,0.32)],
-				[Vector2(-0.08,0.36),Vector2(-0.30,0.44)],
-				[Vector2(0.08,0.36),Vector2(0.32,0.42)],
+				[center+Vector2(-half_width,0.0),Vector2(-0.49,0.12)],
+				[center+Vector2(half_width,0.0),Vector2(0.49,0.34)],
+				[center+Vector2(-half_width*0.30,half_height),Vector2(-0.30,0.47)],
+				[center+Vector2(half_width*0.30,half_height),Vector2(0.32,0.45)],
 			]}
 	if life_state == "DEAD":
-		return {"pose":"DEAD", "body_center":Vector2(0.0,0.32),
-			"head_center":Vector2.ZERO, "facing_point":Vector2.ZERO, "limb_segments":[]}
+		return {"pose":"DEAD", "glyph_center":Vector2(0.0,0.28),
+			"glyph_half_width":half_width, "glyph_half_height":half_height,
+			"limb_segments":[]}
 	var direction := Vector2(facing).normalized()
-	var side := Vector2(-direction.y, direction.x)
-	var shoulder := Vector2(0.0,-0.09)
-	var hip := Vector2(0.0,0.18)
-	var left_shoulder := shoulder - side * 0.10
-	var right_shoulder := shoulder + side * 0.10
-	return {"pose":"STANDING", "body_center":Vector2(0.0,0.02),
-		"head_center":Vector2(0.0,-0.31), "facing_point":Vector2(0.0,-0.31)+direction*0.075,
+	var center := Vector2(0.0,0.18)
+	var left_edge := center+Vector2(-half_width,-0.01)
+	var right_edge := center+Vector2(half_width,-0.01)
+	var left_hip := center+Vector2(-half_width*0.28,half_height)
+	var right_hip := center+Vector2(half_width*0.28,half_height)
+	var stride := 0.10 if stance in ["MOVING", "APPROACH", "FLEE"] else 0.035
+	var attack_lift := -0.13 if stance == "ENGAGE" else 0.0
+	var facing_x := direction.x*0.065
+	var facing_y := direction.y*0.040
+	return {"pose":"STANDING", "glyph_center":center,
+		"glyph_half_width":half_width, "glyph_half_height":half_height,
 		"limb_segments":[
-			[left_shoulder,left_shoulder-side*0.18+direction*0.10],
-			[right_shoulder,right_shoulder+side*0.18+direction*0.14],
-			[hip-Vector2(0.04,0.0),Vector2(-0.15,0.43)],
-			[hip+Vector2(0.04,0.0),Vector2(0.15,0.43)],
+			[left_edge,Vector2(-0.49+facing_x,center.y+0.08-facing_y)],
+			[right_edge,Vector2(0.49+facing_x,center.y+0.07+facing_y+attack_lift)],
+			[left_hip,Vector2(-0.19-direction.x*stride,0.47-direction.y*0.025)],
+			[right_hip,Vector2(0.19+direction.x*stride,0.47+direction.y*0.025)],
 		]}
 
 

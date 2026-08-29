@@ -50,7 +50,8 @@ func test_candidate_breakdown_uses_korean_sentences_and_all_score_buckets() -> b
 	lab._on_primary_action()
 	check_eq(simulator.step_calls, 0, "revealing both intents is presentation-only")
 	check(lab.actor_buttons[0].text.contains("공격하려 한다") \
-		and lab.actor_buttons[1].text.contains("도망치려 한다"), "A and B intents compare at once")
+		and lab.actor_buttons[1].text.contains("불리해져 전투에서 이탈하려 함"),
+		"A and B intents compare at once with retreat pressure in plain language")
 	check(lab.actor_buttons[0].text.contains("상대가 가까워 위협적이라서"),
 		"overview keeps at most the strongest natural-language reasons")
 	check(not lab.actor_buttons[0].text.contains("합계") and not lab.actor_buttons[0].text.contains("작은 변동"),
@@ -89,6 +90,29 @@ func test_approach_copy_distinguishes_hostile_from_neutral_intent() -> bool:
 		"breakdown terms provide a hostile fallback when relation DTO is absent")
 	check_eq(str(Grid.intent_visual_spec("APPROACH").shape_id), "INWARD_CHEVRON",
 		"wording does not change the approach icon mapping")
+	lab.free()
+	return finish()
+
+
+func test_flee_copy_surfaces_survival_pressure_without_exposing_score_ids() -> bool:
+	var lab = LabScene.instantiate()
+	lab.initialize_for_headless_test(FakeSimulator.new(3022))
+	var survival := {
+		"selected_action_id": "FLEE",
+		"candidates": [{"action_id": "FLEE", "selected": true,
+			"state_terms": [{"input_id": "survival_crisis", "contribution": 700}]}],
+	}
+	var losing_ground := {
+		"selected_action_id": "FLEE",
+		"candidates": [{"action_id": "FLEE", "selected": true,
+			"state_terms": [{"input_id": "injury", "contribution": 220}]}],
+	}
+	check_eq(lab._intent_phrase("FLEE", {}, survival), "생존이 위험해 도주",
+		"survival crisis is presented as an immediate reason to flee")
+	check_eq(lab._intent_phrase("FLEE", {}, losing_ground), "불리해져 전투에서 이탈하려 함",
+		"injury presents retreat as a changing battlefield decision")
+	check_eq(lab._intent_phrase("FLEE", {}, {"selected_action_id": "FLEE"}), "도망치려 한다",
+		"ordinary flee keeps the concise neutral wording")
 	lab.free()
 	return finish()
 
@@ -210,7 +234,7 @@ func test_same_situation_restart_and_seeded_new_situation_are_distinct_commands(
 
 func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> bool:
 	var grid = Grid.new()
-	grid.size = Vector2(300, 300)
+	grid.size = Vector2(225, 225)
 	grid.set_observation({"actors": [
 		{"id": "a", "position": [2, 3], "hp": 10, "max_hp": 10, "alive": true, "weapon": "창"},
 		{"id": "b", "position": [12, 11], "hp": 10, "max_hp": 10, "alive": true, "weapon": "활"},
@@ -220,6 +244,32 @@ func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> b
 	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(12, 11))), Vector2i(12, 11),
 		"actor B presentation keeps exact logical cell")
 	check_eq(grid.display_spec().grid_size, 15, "grid dimension is immutable")
+	var hit_before:Rect2=grid.actor_render_specs()[0].hit_rect
+	var glyph_specs:=grid.actor_glyph_specs()
+	check_eq(glyph_specs.size(),2,"duel renders both identities as central glyph bodies")
+	for spec in glyph_specs:
+		check(not spec.detached_head and spec.head_primitive_count==0 and spec.outline_passes==8,
+			"duel glyph has weight but no detached head")
+		check(spec.cell_rect.encloses(spec.glyph_rect.grow(1.0)),
+			"duel glyph outline stays inside its 15px logical cell")
+		check(not spec.selected_outline,"duel selection never reintroduces a yellow outline")
+		check(absf(spec.limb_segments[0][0].x-spec.glyph_rect.position.x)<=1.5 \
+			and absf(spec.limb_segments[1][0].x-spec.glyph_rect.end.x)<=1.5,
+			"duel arms start at glyph side edges")
+		check(absf(spec.limb_segments[2][0].y-spec.glyph_rect.end.y)<=1.5,
+			"duel legs start at glyph lower edge")
+	grid.set_intent_presentation([{"actor_id":"a","selected_action_id":"APPROACH"},
+		{"actor_id":"b","selected_action_id":"FLEE"}],true)
+	var moving_specs:=grid.actor_glyph_specs()
+	check(moving_specs[0].limb_segments!=glyph_specs[0].limb_segments,
+		"intent direction changes stance without changing simulation")
+	check_eq(moving_specs[0].glyph_rect,glyph_specs[0].glyph_rect,
+		"stance keeps the central glyph anchor fixed")
+	check_eq(grid.actor_render_specs()[0].hit_rect,hit_before,
+		"stance and glyph redraw preserve hit authority")
+	var badge_rows:=grid.intent_badge_specs()
+	check(not moving_specs[0].glyph_rect.grow(1.0).has_point(badge_rows[0].center),
+		"intent badge remains outside the central glyph")
 	grid.free()
 	return finish()
 

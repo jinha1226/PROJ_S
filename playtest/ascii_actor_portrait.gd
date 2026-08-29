@@ -41,7 +41,6 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 		return
 	var opacity := clampf(float(spec.get("opacity", 1.0)), 0.0, 1.0)
 	var main_color := _color(str(spec.get("color_hex", "#c2ccd5")), opacity)
-	var highlight := _color(str(spec.get("highlight_hex", "#eef4f8")), opacity)
 	var outline := _color(str(spec.get("outline_hex", "#0a1016")), opacity)
 	var shadow := _color(str(spec.get("shadow_hex", "#03070b")), opacity*0.72)
 	var life_state := str(spec.get("life_state", "ACTIVE"))
@@ -52,27 +51,11 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	_draw_lantern_glow(canvas,bounds,equipment,opacity,world_context)
 	_draw_equipment_segments(canvas,bounds,equipment.get("back_segments",[]),
 		outline,opacity)
+	var glyph_layout := glyph_layout_spec(font,bounds,spec,world_context)
 	var limb_width := maxf(1.4,bounds.size.y*0.045)
-	if bool(spec.get("draw_limbs", true)):
-		for raw_segment in spec.get("limb_segments", []):
-			if raw_segment is Array and raw_segment.size()==2:
-				canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
-					outline,limb_width+1.2,true)
-				canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
-					main_color,limb_width,true)
-	var body_center := _point(bounds,spec.get("body_center",Vector2.ZERO))
-	var glyph := str(spec.get("glyph","?"))
-	var font_size := maxi(12,int(floor(bounds.size.y*(0.47 if life_state=="DOWNED" else 0.53))))
-	_draw_centered_glyph(canvas,font,glyph,body_center+Vector2(1.5,2.0),font_size,shadow)
-	_draw_centered_glyph(canvas,font,glyph,body_center,font_size,main_color)
-	if bool(spec.get("draw_head", true)):
-		var head := _point(bounds,spec.get("head_center",Vector2(0,-0.31)))
-		var head_radius := maxf(2.0,bounds.size.y*0.060)
-		canvas.draw_circle(head,head_radius+1.0,outline)
-		canvas.draw_circle(head,head_radius,main_color)
-		if life_state=="ACTIVE":
-			var facing_point := _point(bounds,spec.get("facing_point",Vector2(0,-0.24)))
-			canvas.draw_circle(facing_point,maxf(1.0,head_radius*0.34),highlight)
+	for segment in limb_draw_segments(bounds,spec,glyph_layout):
+		canvas.draw_line(segment[0],segment[1],outline,limb_width+1.2,true)
+		canvas.draw_line(segment[0],segment[1],main_color,limb_width,true)
 	_draw_equipment_segments(canvas,bounds,equipment.get("front_segments",[]),
 		outline,opacity)
 	_draw_equipment_polyline(canvas,bounds,equipment.get("front_polyline",[]),
@@ -80,13 +63,68 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	_draw_equipment_shield(canvas,bounds,equipment.get("shield_points",[]),
 		outline,opacity)
 	_draw_lantern_body(canvas,bounds,equipment,outline,opacity)
+	_draw_weighted_glyph(canvas,font,str(spec.get("glyph","?")),glyph_layout.center,
+		int(glyph_layout.font_size),outline,main_color,world_context)
 	for raw_segment in spec.get("guard_segments", []):
 		if raw_segment is Array and raw_segment.size()==2:
 			canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
 				_color("#74d5ff",opacity),maxf(2.0,limb_width+0.8),true)
 	if bool(spec.get("bleeding",false)):
-		_draw_centered_glyph(canvas,font,"!",_point(bounds,Vector2(0.36,-0.31)),
+		_draw_centered_glyph(canvas,font,"!",_point(bounds,Vector2(0.44,-0.02)),
 			maxi(11,int(bounds.size.y*0.24)),_color("#ff5364",opacity))
+
+
+static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
+		world_context: bool = false) -> Dictionary:
+	var glyph := str(spec.get("glyph", "?"))
+	var center := _point(bounds,spec.get("glyph_center",
+		spec.get("body_center",Vector2.ZERO)))
+	if world_context:
+		var logical_cell_size:=bounds.size.x/0.72
+		center=Vector2(bounds.get_center().x,bounds.end.y-1.0-logical_cell_size*0.5)
+	var max_width := bounds.size.x*0.96
+	var max_height := minf(bounds.size.y*(0.50 if world_context else 0.62),
+		bounds.size.x*(1.14 if world_context else 1.35))
+	var font_size := maxi(9,int(floor(max_height)))
+	var extent := font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	while font_size>9 and (extent.x>max_width or extent.y>max_height):
+		font_size-=1
+		extent=font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	return {"glyph":glyph,"center":center,"font_size":font_size,
+		"glyph_rect":Rect2(center-extent*0.5,extent),"glyph_is_body":true,
+		"detached_head":false,"outline_passes":8}.duplicate(true)
+
+
+static func limb_draw_segments(bounds:Rect2,spec:Dictionary,glyph_layout:Dictionary)->Array:
+	if not bool(spec.get("draw_limbs",true)):return []
+	var result:Array=[]
+	var glyph_rect:Rect2=glyph_layout.get("glyph_rect",Rect2())
+	var glyph_center:Vector2=glyph_layout.get("center",bounds.get_center())
+	var raw_segments:Variant=spec.get("limb_segments",[])
+	if not raw_segments is Array:return []
+	for index in range(raw_segments.size()):
+		var raw:Variant=raw_segments[index]
+		if not raw is Array or raw.size()!=2:continue
+		var anchor:=_point(bounds,raw[0])
+		match index:
+			0:anchor=Vector2(glyph_rect.position.x,glyph_center.y)
+			1:anchor=Vector2(glyph_rect.end.x,glyph_center.y)
+			2:anchor=Vector2(glyph_center.x-glyph_rect.size.x*0.18,glyph_rect.end.y)
+			3:anchor=Vector2(glyph_center.x+glyph_rect.size.x*0.18,glyph_rect.end.y)
+		result.append([anchor,_point(bounds,raw[1])])
+	return result
+
+
+static func _draw_weighted_glyph(canvas: CanvasItem, font: Font, glyph: String,
+		center: Vector2, font_size: int, outline: Color, color: Color,
+		world_context: bool) -> void:
+	var radius := 1.0 if world_context else 1.45
+	for direction in [Vector2(-1,-1),Vector2(0,-1),Vector2(1,-1),Vector2(-1,0),
+			Vector2(1,0),Vector2(-1,1),Vector2(0,1),Vector2(1,1)]:
+		_draw_centered_glyph(canvas,font,glyph,center+direction*radius,font_size,outline)
+	_draw_centered_glyph(canvas,font,glyph,center+Vector2(-0.32,0),font_size,color)
+	_draw_centered_glyph(canvas,font,glyph,center+Vector2(0.32,0),font_size,color)
+	_draw_centered_glyph(canvas,font,glyph,center,font_size,color)
 
 
 static func _draw_ground_shadow(canvas: CanvasItem, bounds: Rect2,

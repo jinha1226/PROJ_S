@@ -513,7 +513,33 @@ func actor_render_order() -> Array:
 	return ids.duplicate()
 
 func actor_draw_spec(actor:Dictionary,ghost:bool=false)->Dictionary:
-	return AsciiStyleScript.actor_spec(actor,ghost)
+	var projected := actor.duplicate(true)
+	var entity_id := int(actor.get("entity_id",-1))
+	if not ghost and _actor_motions.has(entity_id):
+		var motion: Dictionary = _actor_motions[entity_id]
+		var delta: Vector2 = motion.get("to_world",Vector2.ZERO) \
+			- motion.get("from_world",Vector2.ZERO)
+		if not delta.is_zero_approx():
+			projected["facing"]=[signi(int(roundf(delta.x))),signi(int(roundf(delta.y)))]
+			projected["visual_stance"]="MOVING"
+	elif bool(actor.get("guarded",false)):
+		projected["visual_stance"]="GUARD"
+	return AsciiStyleScript.actor_spec(projected,ghost)
+
+func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty():return {"visible":false,"entity_id":entity_id}.duplicate(true)
+	var position:=_position_from_actor(actor)
+	if not is_world_cell_visible(position):
+		return {"visible":false,"entity_id":entity_id}.duplicate(true)
+	var bounds:=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
+	if bounds.size.x<=0.0:return {"visible":false,"entity_id":entity_id}.duplicate(true)
+	var style:=actor_draw_spec(actor,false)
+	var glyph:=AsciiPortraitScript.glyph_layout_spec(get_theme_default_font(),bounds,style,true)
+	var projected_segments:=AsciiPortraitScript.limb_draw_segments(bounds,style,glyph)
+	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
+		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
+		"selected_outline":false}).duplicate(true)
 
 func selection_overlay_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
@@ -1021,17 +1047,24 @@ func _draw_visual_effect(effect:Dictionary)->void:
 
 func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
-	var p := Vector2i(int(actor.position[0]),int(actor.position[1])); var rect := world_cell_rect(p)
+	var p := Vector2i(int(actor.position[0]),int(actor.position[1]))
 	if not is_world_cell_visible(p):return
-	var visual_center:=world_to_pixel_center(p) if ghost else actor_visual_center(
-		int(actor.get("entity_id",-1)))
-	if visual_center==Vector2(-1,-1):return
+	var bounds:=_actor_figure_bounds(actor,cell,ghost)
+	if bounds.size.x<=0.0:return
+	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true,true)
+
+func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
+		sample_time_ms:int=-1)->Rect2:
+	var position:=_position_from_actor(actor)
+	var visual_center:=world_to_pixel_center(position) if ghost else actor_visual_center(
+		int(actor.get("entity_id",-1)),sample_time_ms)
+	if visual_center==Vector2(-1,-1):return Rect2()
 	var figure_height:=clampf(cell*1.46,28.0,50.0);var figure_width:=cell*0.72
 	var foot_y:=visual_center.y+cell*0.5
 	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,foot_y-figure_height+1.0),
 		Vector2(figure_width,figure_height))
 	bounds.position+=_actor_recoil_offset(actor)
-	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true,true)
+	return bounds
 
 func _actor_recoil_offset(actor:Dictionary)->Vector2:
 	var position:=_position_from_actor(actor);var entity_id:=int(actor.get("entity_id",-1))

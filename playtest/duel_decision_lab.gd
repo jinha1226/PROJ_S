@@ -481,11 +481,13 @@ func _key_reasons(actor: Dictionary, breakdown: Dictionary) -> Array[String]:
 func _reason_group(input_id: String, bucket_name: String) -> String:
 	if input_id in ["memory_modifier", "personal_memory", "fear_pressure"]:
 		return "memory"
-	if input_id in ["injury", "health"]:
+	if input_id in ["injury", "health", "hp_crisis", "hp_ratio"]:
 		return "body"
+	if input_id in ["survival_crisis", "recent_interrupt"]:
+		return "survival"
 	if input_id in ["dot", "treatment_need"]:
 		return "treatment"
-	if input_id in ["power", "power_gap", "armed"]:
+	if input_id in ["power", "power_gap", "power_disadvantage", "armed"]:
 		return "power"
 	if input_id == "species_prior":
 		return "species"
@@ -507,9 +509,17 @@ func _reason_phrase(actor: Dictionary, input_id: String, term: Dictionary) -> St
 			return "몸 상태가 괜찮아서"
 		"injury":
 			return "부상이 심해서"
+		"hp_crisis":
+			return "체력이 위험할 만큼 낮아서"
+		"hp_ratio":
+			return "몸 상태가 버틸 만해서"
+		"survival_crisis":
+			return "생존이 위험해서"
+		"recent_interrupt":
+			return "방금 피해를 받아서"
 		"dot", "treatment_need":
 			return "%s을 치료해야 해서" % _dot_name(actor)
-		"power_gap":
+		"power_gap", "power_disadvantage":
 			return "상대보다 전력이 약해서"
 		"power", "armed":
 			return "싸울 힘과 무장이 있어서"
@@ -575,9 +585,32 @@ func _intent_object(action_id: String) -> String:
 func _intent_phrase(action_id: String, actor: Dictionary = {}, breakdown: Dictionary = {}) -> String:
 	if action_id == "APPROACH":
 		return "공격 기회를 노리며 접근" if _approach_is_hostile(actor, breakdown) else "조심스럽게 접근"
+	if action_id == "FLEE":
+		if _selected_has_positive_term(breakdown, ["survival_crisis"]):
+			return "생존이 위험해 도주"
+		if _selected_has_positive_term(breakdown,
+				["injury", "hp_crisis", "power_disadvantage", "recent_interrupt"]):
+			return "불리해져 전투에서 이탈하려 함"
 	return str({"ENGAGE": "공격하려 한다",
 		"FLEE": "도망치려 한다", "HOLD": "지켜보려 한다",
 		"SELF_TREAT": "치료하려 한다"}.get(action_id, "상황을 지켜보려 한다"))
+
+
+func _selected_has_positive_term(breakdown: Dictionary, input_ids: Array) -> bool:
+	var selected := _selected_candidate(breakdown)
+	for bucket_name in ["state_terms", "relation_terms", "context_terms"]:
+		var terms: Variant = selected.get(bucket_name, [])
+		if not terms is Array:
+			continue
+		for term_value in terms:
+			if not term_value is Dictionary:
+				continue
+			var input_id := str(term_value.get("input_id", ""))
+			var contribution := float(term_value.get("contribution",
+				term_value.get("amount", term_value.get("value", 0))))
+			if input_id in input_ids and contribution > 0.0:
+				return true
+	return false
 
 
 func _approach_is_hostile(actor: Dictionary, breakdown: Dictionary) -> bool:

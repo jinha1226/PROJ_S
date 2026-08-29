@@ -54,7 +54,24 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	var unknown: Dictionary = Style.actor_spec({"faction_id":"enemy","species_id":"slime"})
 	check_eq([hero.glyph,human.glyph,goblin.glyph,enemy.glyph,unknown.glyph],
 		["@","&","g","G","?"],"actor role glyph grammar")
+	for spec in [hero,human,goblin,enemy,unknown]:
+		check(spec.glyph_is_body and not spec.detached_head and not spec.draw_head,
+			"ASCII glyph is the body with no detached head primitive")
+		check_eq([spec.glyph_weight,spec.glyph_outline_passes],["OUTLINE_REDRAW",8],
+			"regular project font gains deterministic outline weight")
+		check(absf(spec.limb_segments[0][0].x-(spec.glyph_center.x-spec.glyph_half_width))<0.0001,
+			"left arm starts at glyph edge")
+		check(absf(spec.limb_segments[1][0].x-(spec.glyph_center.x+spec.glyph_half_width))<0.0001,
+			"right arm starts at glyph edge")
+		check(absf(spec.limb_segments[2][0].y-(spec.glyph_center.y+spec.glyph_half_height))<0.0001,
+			"leg starts at glyph lower edge")
 	check_eq(hero.facing,[1,-1],"diagonal facing remains explicit")
+	var moving:Dictionary=Style.actor_spec({"faction_id":"party","visual_stance":"MOVING",
+		"facing":[1,0]})
+	var idle:Dictionary=Style.actor_spec({"faction_id":"party","visual_stance":"IDLE",
+		"facing":[1,0]})
+	check(moving.limb_segments!=idle.limb_segments and moving.glyph_center==idle.glyph_center,
+		"movement changes limb pose without moving the glyph identity anchor")
 	var guarded: Dictionary = Style.actor_spec({"faction_id":"party","guarded":true,
 		"status_ids":["BLEEDING"]})
 	check(guarded.bleeding and guarded.guard_segments.size()==3,
@@ -67,6 +84,35 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	check(not dead.draw_head and not dead.draw_limbs,"dead state does not look standing")
 	var ghost: Dictionary = Style.actor_spec({"faction_id":"party"},true)
 	check(ghost.ghost and ghost.opacity<1.0,"proposal ghost is translucent")
+	return finish()
+
+
+func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:
+			cell.actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
+				"roster_slot":0,"is_protagonist":true,"facing":[1,0],
+				"logical_position":[7,7]})
+	var grid=Grid.new();grid.size=Vector2(225,225)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(77)
+	var spec:Dictionary=grid.actor_glyph_draw_spec(77)
+	check(spec.visible and spec.font_size>=9,"15px cell keeps a readable central glyph")
+	check(spec.cell_rect.encloses(spec.glyph_rect.grow(1.0)),
+		"glyph outline remains in cell: %s vs %s"%[spec.glyph_rect.grow(1.0),spec.cell_rect])
+	check(not spec.detached_head and spec.outline_passes==8 and not spec.selected_outline,
+		"world actor has no head or yellow selection outline")
+	check(absf(spec.limb_segments[0][0].x-spec.glyph_rect.position.x)<=1.5 \
+		and absf(spec.limb_segments[1][0].x-spec.glyph_rect.end.x)<=1.5,
+		"world arms visibly join the rendered glyph edges")
+	check(absf(spec.limb_segments[2][0].y-spec.glyph_rect.end.y)<=1.5,
+		"world legs visibly join the rendered glyph lower edge")
+	check_eq(grid.mapping_signature(),mapping,"glyph presentation cannot alter mapping")
+	check_eq(grid.actor_hit_rect(77),hit,"glyph presentation cannot alter actor hit authority")
+	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),77,
+		"logical target center remains immediately hittable")
+	grid.free()
 	return finish()
 
 

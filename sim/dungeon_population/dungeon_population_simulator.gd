@@ -332,6 +332,28 @@ func _hp_band(hp:int)->int:
 	if hp<=75:return 2
 	return 3
 
+func _hp_crisis(hp:int)->int:
+	if hp<=15:return 1000
+	if hp<=25:return 850
+	if hp<=40:return 650
+	if hp<=60:return 300
+	return 0
+
+func _power_disadvantage(gap:int)->int:
+	if gap<=0:return 0
+	if gap<=15:return 250
+	if gap<=35:return 600
+	return 1000
+
+func _survival_crisis(hp_crisis:int,recent_interrupt:int,dot_danger:int,
+		power_disadvantage:int)->int:
+	var result:=maxi(hp_crisis,dot_danger)
+	if recent_interrupt>0:result+=180
+	if power_disadvantage>=600:result+=160
+	if hp_crisis>=650 and (recent_interrupt>0 or power_disadvantage>=600):result+=180
+	if dot_danger>=666 and recent_interrupt>0:result+=150
+	return clampi(result,0,1000)
+
 func _dot_danger(actor)->int:
 	if actor.status_effect.is_empty():return 0
 	var projected:=int(actor.status_effect.tick_damage)*int(actor.status_effect.remaining_quanta)
@@ -415,12 +437,19 @@ func _decision_inputs(actor,other)->Dictionary:
 	var injury:int=1000-health;var dot:int=1000 if not actor.status_effect.is_empty() else 0
 	var threat:=clampi((other.power-actor.power)*8+(7-state.distance)*80,0,1000)
 	var opportunity:=clampi(500+(actor.power-other.power)*10+(200 if actor.armed else -300),0,1000)
+	var hp_crisis:=_hp_crisis(actor.hp);var dot_danger:=_dot_danger(actor)*int(1000/3.0)
+	var recent_interrupt:=1000 if actor.decision_interrupt_version!=actor.intent_interrupt_version else 0
+	var power_disadvantage:=_power_disadvantage(other.power-actor.power)
+	var survival_crisis:=_survival_crisis(hp_crisis,recent_interrupt,dot_danger,power_disadvantage)
 	var effective:=int(relation.effective)
 	return {"HEXACO":{"H":actor.profile.value("H"),"E":actor.profile.value("E"),
 		"X":actor.profile.value("X"),"A":actor.profile.value("A"),
 		"C":actor.profile.value("C"),"O":actor.profile.value("O")},
-		"STATE":{"health":health,"injury":injury,"dot":dot,"armed":1000 if actor.armed else 0,
+		"STATE":{"health":health,"hp_ratio":health,"hp_crisis":hp_crisis,"injury":injury,
+			"dot":dot,"dot_danger":dot_danger,"recent_interrupt":recent_interrupt,
+			"survival_crisis":survival_crisis,"armed":1000 if actor.armed else 0,
 			"power":actor.power*10,"power_gap":maxi(0,other.power-actor.power)*10,
+			"power_disadvantage":power_disadvantage,
 			"supplies":1000 if actor.supplies>0 else 0,"treatment_need":maxi(injury,dot)},
 		"RELATION":{"species_prior":int(relation.species_prior),"memory_modifier":actor.memory_modifier,
 			"affinity":clampi((effective+100)*5,0,1000),"hostility":clampi(-effective*10,0,1000),

@@ -100,6 +100,16 @@ func actor_render_specs() -> Array:
 		var actor_id := _actor_id(actor)
 		var color := _actor_color(index, actor)
 		var hit_half := maxf(9.0, cell_size_px() * 0.48)
+		var facing := Vector2.RIGHT if index == 0 else Vector2.LEFT
+		if _actors.size() == 2:
+			var other_position: Variant = _position_from(_actors[1-index].get("position",null))
+			if other_position != null:
+				var delta := Vector2(other_position-position_value)
+				if not delta.is_zero_approx():
+					facing=delta.normalized()
+		var stance := str(_intent_by_actor_id.get(actor_id,"IDLE"))
+		if stance == "FLEE":
+			facing=-facing
 		result.append({
 			"actor_id": actor_id,
 			"center": center,
@@ -110,6 +120,7 @@ func actor_render_specs() -> Array:
 			"hp_ratio": clampf(float(actor.get("hp", 0)) / maxf(1.0, float(actor.get("max_hp", 1))), 0.0, 1.0),
 			"alive": bool(actor.get("alive", true)),
 			"selected": actor_id == _selected_actor_id,
+			"facing": facing, "stance": stance,
 			"hit_rect": Rect2(center - Vector2.ONE * hit_half, Vector2.ONE * hit_half * 2.0),
 		})
 	return result
@@ -134,6 +145,14 @@ func actor_id_at_point(local_position: Vector2) -> String:
 			best_distance = distance
 			best_id = str(row.actor_id)
 	return best_id
+
+
+func actor_glyph_specs() -> Array:
+	var result: Array = []
+	for value in actor_render_specs():
+		if value is Dictionary:
+			result.append(_duel_glyph_layout(value))
+	return result.duplicate(true)
 
 
 func display_spec() -> Dictionary:
@@ -304,49 +323,120 @@ func _draw_actor(row: Dictionary) -> void:
 	var center: Vector2 = row.center
 	var cell_size := cell_size_px()
 	var color: Color = row.color if bool(row.alive) else Color("#68727a")
-	var body_top := center - Vector2(0.0, cell_size * 0.60)
-	var body_bottom := center + Vector2(0.0, cell_size * 0.16)
+	var layout := _duel_glyph_layout(row)
+	var outline := Color("#04080c")
 	draw_set_transform(Vector2.ZERO)
 	_draw_ground_ellipse(center + Vector2(2.0, cell_size * 0.29), Vector2(cell_size * 0.38, cell_size * 0.13), Color("#010407a8"))
-	draw_line(body_top + Vector2(0.0, cell_size * 0.24), body_bottom, color, maxf(2.0, cell_size * 0.12))
-	draw_circle(body_top, maxf(3.2, cell_size * 0.20), Color("#091016"))
-	draw_circle(body_top, maxf(3.2, cell_size * 0.20), color, false, maxf(1.5, cell_size * 0.08))
-	draw_line(body_bottom, center + Vector2(-cell_size * 0.22, cell_size * 0.36), color, 2.0)
-	draw_line(body_bottom, center + Vector2(cell_size * 0.22, cell_size * 0.36), color, 2.0)
-	draw_line(body_top + Vector2(0.0, cell_size * 0.28), center + Vector2(-cell_size * 0.32, 0.0), color, 2.0)
-	_draw_weapon(center, str(row.weapon), color)
+	if bool(row.alive):
+		for segment_value in layout.limb_segments:
+			var segment: Array = segment_value
+			draw_line(segment[0],segment[1],outline,maxf(2.2,cell_size*0.16),true)
+			draw_line(segment[0],segment[1],color,maxf(1.25,cell_size*0.085),true)
+		_draw_weapon(layout.weapon_hand,str(row.weapon),color,float(layout.weapon_direction))
 	var font := get_theme_default_font()
-	var glyph := str(row.glyph)
-	var font_size := int(clampf(cell_size * 0.55, 10.0, 15.0))
-	var glyph_size := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	draw_string(font, body_top + Vector2(-glyph_size.x * 0.5, glyph_size.y * 0.35), glyph,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color.lightened(0.28))
-	if bool(row.selected):
-		draw_arc(center - Vector2(0.0, cell_size * 0.12), cell_size * 0.50, 0.0, TAU, 24,
-			Color("#f5d66f"), 2.0)
+	_draw_weighted_duel_glyph(font,str(row.glyph),layout.glyph_center,
+		int(layout.font_size),outline,color.lightened(0.18))
 	var bar := Rect2(center + Vector2(-cell_size * 0.36, cell_size * 0.43), Vector2(cell_size * 0.72, 3.0))
 	draw_rect(bar, Color("#32171d"), true)
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(row.hp_ratio), bar.size.y)), Color("#e86568"), true)
 
 
-func _draw_weapon(center: Vector2, weapon: String, color: Color) -> void:
+func _duel_glyph_layout(row: Dictionary) -> Dictionary:
+	var cell := cell_size_px()
+	var cell_rect := _world_cell_rect(row.position)
+	var glyph_center: Vector2 = row.center
+	var font := get_theme_default_font()
+	var glyph := str(row.glyph)
+	var font_size := int(clampf(cell*0.82,10.0,19.0))
+	var extent := font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	var inset_rect:=cell_rect.grow(-1.2)
+	var max_size:=Vector2(2.0*minf(glyph_center.x-inset_rect.position.x,
+		inset_rect.end.x-glyph_center.x),2.0*minf(glyph_center.y-inset_rect.position.y,
+		inset_rect.end.y-glyph_center.y))
+	while font_size>9 and (extent.x>max_size.x or extent.y>max_size.y):
+		font_size-=1
+		extent=font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	var glyph_rect := Rect2(glyph_center-extent*0.5,extent)
+	var facing: Vector2 = row.get("facing",Vector2.RIGHT)
+	var stance := str(row.get("stance","IDLE"))
+	var stride := cell*0.10 if stance in ["APPROACH","FLEE"] else cell*0.035
+	var engage_lift := -cell*0.13 if stance=="ENGAGE" else 0.0
+	var left_arm := Vector2(glyph_rect.position.x,glyph_center.y)
+	var right_arm := Vector2(glyph_rect.end.x,glyph_center.y)
+	var left_hand := Vector2(glyph_center.x-cell*0.43+facing.x*cell*0.04,
+		glyph_center.y+cell*0.13-facing.y*cell*0.035)
+	var right_hand := Vector2(glyph_center.x+cell*0.43+facing.x*cell*0.04,
+		glyph_center.y+cell*0.11+facing.y*cell*0.035+engage_lift)
+	var leg_y := glyph_rect.end.y
+	var left_hip := Vector2(glyph_center.x-extent.x*0.18,leg_y)
+	var right_hip := Vector2(glyph_center.x+extent.x*0.18,leg_y)
+	var left_foot := Vector2(glyph_center.x-cell*0.19-facing.x*stride,
+		clampf(glyph_center.y+cell*0.36,cell_rect.position.y+1.0,cell_rect.end.y-1.0))
+	var right_foot := Vector2(glyph_center.x+cell*0.19+facing.x*stride,
+		clampf(glyph_center.y+cell*0.36,cell_rect.position.y+1.0,cell_rect.end.y-1.0))
+	var limb_rect:=cell_rect.grow(-1.0)
+	left_hand=_clamp_point_to_rect(left_hand,limb_rect)
+	right_hand=_clamp_point_to_rect(right_hand,limb_rect)
+	left_foot=_clamp_point_to_rect(left_foot,limb_rect)
+	right_foot=_clamp_point_to_rect(right_foot,limb_rect)
+	var weapon_direction := -1.0 if facing.x<0.0 else 1.0
+	return {"actor_id":str(row.actor_id),"glyph":glyph,"glyph_center":glyph_center,
+		"glyph_rect":glyph_rect,"cell_rect":cell_rect,"font_size":font_size,
+		"glyph_is_body":true,"detached_head":false,"head_primitive_count":0,
+		"outline_passes":8,"selected_outline":false,"stance":stance,
+		"limb_segments":[[left_arm,left_hand],[right_arm,right_hand],
+			[left_hip,left_foot],[right_hip,right_foot]],
+		"weapon_hand":left_hand if weapon_direction<0.0 else right_hand,
+		"weapon_direction":weapon_direction}.duplicate(true)
+
+
+func _world_cell_rect(position:Vector2i)->Rect2:
+	var cell:=cell_size_px()
+	return Rect2(grid_rect().position+Vector2(position)*cell,Vector2.ONE*cell)
+
+
+func _clamp_point_to_rect(point:Vector2,rect:Rect2)->Vector2:
+	return Vector2(clampf(point.x,rect.position.x,rect.end.x),
+		clampf(point.y,rect.position.y,rect.end.y))
+
+
+func _draw_weighted_duel_glyph(font:Font,glyph:String,center:Vector2,font_size:int,
+		outline:Color,color:Color)->void:
+	for direction in [Vector2(-1,-1),Vector2(0,-1),Vector2(1,-1),Vector2(-1,0),
+			Vector2(1,0),Vector2(-1,1),Vector2(0,1),Vector2(1,1)]:
+		_draw_centered_duel_glyph(font,glyph,center+direction,font_size,outline)
+	_draw_centered_duel_glyph(font,glyph,center+Vector2(-0.28,0),font_size,color)
+	_draw_centered_duel_glyph(font,glyph,center+Vector2(0.28,0),font_size,color)
+	_draw_centered_duel_glyph(font,glyph,center,font_size,color)
+
+
+func _draw_centered_duel_glyph(font:Font,glyph:String,center:Vector2,font_size:int,
+		color:Color)->void:
+	var extent:=font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	draw_string(font,center+Vector2(-extent.x*0.5,extent.y*0.38),glyph,
+		HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
+
+
+func _draw_weapon(hand: Vector2, weapon: String, color: Color, direction: float) -> void:
 	var cell_size := cell_size_px()
-	var hand := center + Vector2(cell_size * 0.23, -cell_size * 0.20)
 	var weapon_lower := weapon.to_lower()
 	if "활" in weapon or "bow" in weapon_lower:
-		draw_arc(hand + Vector2(cell_size * 0.18, 0.0), cell_size * 0.28, -PI * 0.5, PI * 0.5, 8, color, 1.5)
-		draw_line(hand + Vector2(cell_size * 0.18, -cell_size * 0.28),
-			hand + Vector2(cell_size * 0.18, cell_size * 0.28), color, 1.0)
+		var bow_center:=hand+Vector2(cell_size*0.14*direction,0.0)
+		draw_arc(bow_center,cell_size*0.22,-PI*0.5,PI*0.5,8,color,1.5)
+		draw_line(bow_center+Vector2(0,-cell_size*0.22),
+			bow_center+Vector2(0,cell_size*0.22),color,1.0)
 	elif "창" in weapon or "spear" in weapon_lower:
-		draw_line(hand + Vector2(0.0, cell_size * 0.28), hand + Vector2(cell_size * 0.42, -cell_size * 0.48), color, 2.0)
-		draw_colored_polygon(PackedVector2Array([hand + Vector2(cell_size * 0.42, -cell_size * 0.48),
-			hand + Vector2(cell_size * 0.31, -cell_size * 0.38), hand + Vector2(cell_size * 0.48, -cell_size * 0.34)]), color)
+		var tip:=hand+Vector2(cell_size*0.34*direction,-cell_size*0.32)
+		draw_line(hand+Vector2(-cell_size*0.06*direction,cell_size*0.16),tip,color,2.0)
+		draw_colored_polygon(PackedVector2Array([tip,tip+Vector2(-cell_size*0.10*direction,cell_size*0.07),
+			tip+Vector2(cell_size*0.04*direction,cell_size*0.10)]),color)
 	elif "검" in weapon or "칼" in weapon or "dagger" in weapon_lower or "sword" in weapon_lower:
-		draw_line(hand, hand + Vector2(cell_size * 0.34, -cell_size * 0.36), color.lightened(0.25), 2.0)
-		draw_line(hand + Vector2(-cell_size * 0.07, -cell_size * 0.08),
-			hand + Vector2(cell_size * 0.09, cell_size * 0.07), color, 2.0)
+		var tip:=hand+Vector2(cell_size*0.27*direction,-cell_size*0.24)
+		draw_line(hand,tip,color.lightened(0.25),2.0)
+		draw_line(hand+Vector2(-cell_size*0.06*direction,-cell_size*0.06),
+			hand+Vector2(cell_size*0.07*direction,cell_size*0.05),color,2.0)
 	else:
-		draw_circle(hand + Vector2(cell_size * 0.08, 0.0), maxf(2.0, cell_size * 0.10), color)
+		draw_circle(hand+Vector2(cell_size*0.05*direction,0.0),maxf(1.5,cell_size*0.08),color)
 
 
 func _draw_ground_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
@@ -361,7 +451,7 @@ func _actor_color(index: int, actor: Dictionary) -> Color:
 	var explicit := str(actor.get("color_hex", ""))
 	if not explicit.is_empty() and Color.html_is_valid(explicit):
 		return Color(explicit)
-	return Color("#69d7e8") if index == 0 else Color("#ef9a62")
+	return Color("#5ee8ff") if index == 0 else Color("#ff9b62")
 
 
 func _actor_id(actor: Dictionary) -> String:

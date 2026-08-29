@@ -6,7 +6,9 @@ const OPERATORS:=["EQ","GT","GTE","LT","LTE"]
 const ATOMIC_VERBS:=["MELEE","MOVE","USE_ITEM","WAIT"]
 const INPUT_IDS:={
 	"HEXACO":["A","C","E","H","O","X"],
-	"STATE":["armed","dot","health","injury","power","power_gap","supplies","treatment_need"],
+	"STATE":["armed","dot","dot_danger","health","hp_crisis","hp_ratio","injury","power",
+		"power_disadvantage","power_gap","recent_interrupt","supplies","survival_crisis",
+		"treatment_need"],
 	"RELATION":["affinity","fear_pressure","hostility","memory_modifier","neutrality","species_prior"],
 	"CONTEXT":["approach_pressure","distance","escape_reached","escape_space","other_alive",
 		"opportunity","threat","uncertainty"]}

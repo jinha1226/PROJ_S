@@ -358,4 +358,11 @@ func _prepare_mutual_lethal_fixture(sim) -> void:
 		actor.memory_kind = "HARMED"
 		actor.memory_modifier = -35
 		for facet in ["H", "E", "X", "A", "C", "O"]: actor.profile.values[facet] = 0
+		actor.current_intent_id = "ENGAGE"
+		actor.intent_started_turn = sim.state.turn_index
+		actor.commitment_until_turn = sim.state.turn_index + int(sim.registry.intent_policy("ENGAGE").commitment_turns)
+		actor.intent_target_id = 3 - entity_id
+		actor.decision_episode_id = 1
+		actor.intent_interrupt_version = actor.decision_interrupt_version
+		actor.intent_reason_code = "NEW"
 		actor.profile.values["X"] = 1000

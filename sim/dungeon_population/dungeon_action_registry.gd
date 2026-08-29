@@ -21,6 +21,7 @@ func _init()->void:
 		_legal("CONTEXT","other_alive","EQ",1000,"상대가 이미 쓰러졌다.")],[
 		_score("HEXACO","X",180),_score("HEXACO","A",-240),_score("HEXACO","E",-80),
 		_score("STATE","health",140),_score("STATE","power",120),
+		_score("STATE","survival_crisis",-450),
 		_score("RELATION","species_prior",-1800),_score("RELATION","memory_modifier",-1800),
 		_score("RELATION","hostility",250),_score("CONTEXT","threat",100)],
 		2,100,100,-1,[]))
@@ -29,6 +30,7 @@ func _init()->void:
 		_legal("CONTEXT","other_alive","EQ",1000,"도망칠 상대가 없다.")],[
 		_score("HEXACO","E",260),_score("HEXACO","X",-130),
 		_score("STATE","injury",240),_score("STATE","power_gap",220),
+		_score("STATE","survival_crisis",700),
 		_score("RELATION","species_prior",-1000),_score("RELATION","memory_modifier",-1000),
 		_score("RELATION","fear_pressure",120),_score("CONTEXT","threat",180)],
 		2,140,100,-1,[_goal("CONTEXT","escape_reached","GTE",1000)]))
@@ -40,7 +42,8 @@ func _init()->void:
 		_legal("STATE","supplies","GTE",1000,"치료 도구가 없다."),
 		_legal("STATE","treatment_need","GTE",250,"치료할 필요가 없다.")],[
 		_score("HEXACO","C",220),_score("HEXACO","E",70),
-		_score("STATE","treatment_need",480),_score("STATE","dot",300),
+		_score("STATE","supplies",160),_score("STATE","treatment_need",480),_score("STATE","dot",300),
+		_score("STATE","survival_crisis",300),
 		_score("CONTEXT","threat",-100)],1,90,60,1,[]))
 
 func register_definition(definition)->Dictionary:
