@@ -9,6 +9,8 @@ const MIN_CELL_SIZE := 15.0
 
 var _actors: Array = []
 var _selected_actor_id := ""
+var _intent_by_actor_id: Dictionary = {}
+var _escaped_actor_ids: Dictionary = {}
 
 
 func _ready() -> void:
@@ -19,12 +21,29 @@ func _ready() -> void:
 
 func set_observation(observation: Dictionary, selected_actor_id: String = "") -> void:
 	_actors.clear()
+	_escaped_actor_ids.clear()
 	for value in observation.get("actors", []):
 		if value is Dictionary:
 			_actors.append(value.duplicate(true))
 	_actors.sort_custom(func(a: Dictionary, b: Dictionary):
 		return _actor_id(a) < _actor_id(b))
 	_selected_actor_id = selected_actor_id
+	for value in observation.get("recent_events", []):
+		if value is Dictionary and str(value.get("type", "")) == "ESCAPED":
+			_escaped_actor_ids[str(value.get("actor_id", ""))] = true
+	queue_redraw()
+
+
+func set_intent_presentation(breakdowns: Array, visible: bool) -> void:
+	_intent_by_actor_id.clear()
+	if visible:
+		for value in breakdowns:
+			if not value is Dictionary:
+				continue
+			var actor_id := str(value.get("actor_id", ""))
+			var action_id := str(value.get("selected_action_id", ""))
+			if not actor_id.is_empty() and not intent_visual_spec(action_id).is_empty():
+				_intent_by_actor_id[actor_id] = action_id
 	queue_redraw()
 
 
@@ -127,6 +146,115 @@ func display_spec() -> Dictionary:
 	}
 
 
+static func intent_visual_spec(action_id: String, status: String = "") -> Dictionary:
+	if status == "DEAD":
+		return {"shape_id": "DEAD_X", "color": Color("#89939b"), "label_ko": "쓰러짐"}
+	if status == "ESCAPED":
+		return {"shape_id": "EXIT_MARK", "color": Color("#8da9bd"), "label_ko": "이탈"}
+	return {
+		"APPROACH": {"shape_id": "INWARD_CHEVRON", "color": Color("#55d9de"), "label_ko": "접근"},
+		"ENGAGE": {"shape_id": "CROSSED_BLADES", "color": Color("#ff6572"), "label_ko": "공격"},
+		"FLEE": {"shape_id": "OUTWARD_ARROW", "color": Color("#6daeff"), "label_ko": "도주"},
+		"SELF_TREAT": {"shape_id": "MEDICAL_CROSS", "color": Color("#63dc87"), "label_ko": "치료"},
+		"HOLD": {"shape_id": "GUARD_SHIELD", "color": Color("#e2b85e"), "label_ko": "경계"},
+	}.get(action_id, {}).duplicate(true)
+
+
+func intent_badge_specs() -> Array:
+	var result: Array = []
+	var actor_rows := actor_render_specs()
+	var rect := grid_rect()
+	var radius := maxf(3.8, cell_size_px() * 0.27)
+	for index in range(actor_rows.size()):
+		var actor_row: Dictionary = actor_rows[index]
+		var actor_id := str(actor_row.actor_id)
+		var actor := _actor_by_id(actor_id)
+		var status := ""
+		if not bool(actor.get("alive", true)):
+			status = "DEAD"
+		elif _escaped_actor_ids.has(actor_id):
+			status = "ESCAPED"
+		var action_id := "" if not status.is_empty() else str(_intent_by_actor_id.get(actor_id, ""))
+		var visual := intent_visual_spec(action_id, status)
+		if visual.is_empty():
+			continue
+		var direction := 1.0
+		if actor_rows.size() > 1:
+			var other_index := 1 - index if actor_rows.size() == 2 else (index + 1) % actor_rows.size()
+			direction = -1.0 if float(actor_rows[other_index].center.x) < float(actor_row.center.x) else 1.0
+		if action_id == "FLEE":
+			direction *= -1.0
+		var center: Vector2 = actor_row.center + Vector2(-cell_size_px() * 0.38, -cell_size_px() * 0.82)
+		center.x = clampf(center.x, rect.position.x + radius, rect.end.x - radius)
+		center.y = clampf(center.y, rect.position.y + radius, rect.end.y - radius)
+		result.append(visual.merged({
+			"actor_id": actor_id, "action_id": action_id, "status": status,
+			"center": center, "radius": radius, "direction": direction,
+		}))
+	return result
+
+
+static func draw_intent_badge(canvas: CanvasItem, center: Vector2, radius: float,
+		spec: Dictionary) -> void:
+	if spec.is_empty() or radius <= 0.0:
+		return
+	var color: Color = spec.get("color", Color.WHITE)
+	var shape_id := str(spec.get("shape_id", ""))
+	var direction := float(spec.get("direction", 1.0))
+	var width := maxf(1.15, radius * 0.28)
+	canvas.draw_circle(center, radius, Color("#061018dd"))
+	canvas.draw_arc(center, radius, 0.0, TAU, 16, color.darkened(0.18), width)
+	match shape_id:
+		"INWARD_CHEVRON":
+			var tip := center + Vector2(radius * 0.50 * direction, 0.0)
+			canvas.draw_line(center + Vector2(-radius * 0.48 * direction, -radius * 0.42), tip,
+				color, width)
+			canvas.draw_line(center + Vector2(-radius * 0.48 * direction, radius * 0.42), tip,
+				color, width)
+		"CROSSED_BLADES":
+			canvas.draw_line(center + Vector2(-radius * 0.48, -radius * 0.48),
+				center + Vector2(radius * 0.48, radius * 0.48), color, width)
+			canvas.draw_line(center + Vector2(radius * 0.48, -radius * 0.48),
+				center + Vector2(-radius * 0.48, radius * 0.48), color, width)
+			canvas.draw_circle(center + Vector2(-radius * 0.39, radius * 0.39), width * 0.52, color)
+			canvas.draw_circle(center + Vector2(radius * 0.39, radius * 0.39), width * 0.52, color)
+		"OUTWARD_ARROW":
+			var tail := center + Vector2(-radius * 0.48 * direction, 0.0)
+			var tip := center + Vector2(radius * 0.52 * direction, 0.0)
+			canvas.draw_line(tail, tip, color, width)
+			canvas.draw_line(tip, tip + Vector2(-radius * 0.34 * direction, -radius * 0.34), color, width)
+			canvas.draw_line(tip, tip + Vector2(-radius * 0.34 * direction, radius * 0.34), color, width)
+		"MEDICAL_CROSS":
+			canvas.draw_line(center + Vector2(-radius * 0.50, 0.0), center + Vector2(radius * 0.50, 0.0),
+				color, width * 1.35)
+			canvas.draw_line(center + Vector2(0.0, -radius * 0.50), center + Vector2(0.0, radius * 0.50),
+				color, width * 1.35)
+		"GUARD_SHIELD":
+			canvas.draw_polyline(PackedVector2Array([
+				center + Vector2(-radius * 0.48, -radius * 0.43),
+				center + Vector2(radius * 0.48, -radius * 0.43),
+				center + Vector2(radius * 0.34, radius * 0.22),
+				center + Vector2(0.0, radius * 0.55),
+				center + Vector2(-radius * 0.34, radius * 0.22),
+				center + Vector2(-radius * 0.48, -radius * 0.43),
+			]), color, width)
+			canvas.draw_circle(center + Vector2(0.0, -radius * 0.05), width * 0.55, color)
+		"DEAD_X":
+			canvas.draw_line(center + Vector2(-radius * 0.46, -radius * 0.46),
+				center + Vector2(radius * 0.46, radius * 0.46), color, width)
+			canvas.draw_line(center + Vector2(radius * 0.46, -radius * 0.46),
+				center + Vector2(-radius * 0.46, radius * 0.46), color, width)
+		"EXIT_MARK":
+			canvas.draw_line(center + Vector2(-radius * 0.45, -radius * 0.50),
+				center + Vector2(-radius * 0.45, radius * 0.50), color, width)
+			canvas.draw_line(center + Vector2(-radius * 0.30, 0.0),
+				center + Vector2(radius * 0.50, 0.0), color, width)
+			canvas.draw_line(center + Vector2(radius * 0.50, 0.0),
+				center + Vector2(radius * 0.18, -radius * 0.30), color, width)
+			canvas.draw_line(center + Vector2(radius * 0.50, 0.0),
+				center + Vector2(radius * 0.18, radius * 0.30), color, width)
+
+
 func _gui_input(event: InputEvent) -> void:
 	var pressed := false
 	var local_position := Vector2.ZERO
@@ -166,6 +294,9 @@ func _draw() -> void:
 		draw_dashed_line(rows[0].center, rows[1].center, Color("#7b89905c"), 1.0, 5.0)
 	for row_value in rows:
 		_draw_actor(row_value)
+	for badge_value in intent_badge_specs():
+		if badge_value is Dictionary:
+			draw_intent_badge(self, badge_value.center, float(badge_value.radius), badge_value)
 	draw_rect(rect, Color("#355063"), false, 1.0)
 
 
@@ -235,6 +366,13 @@ func _actor_color(index: int, actor: Dictionary) -> Color:
 
 func _actor_id(actor: Dictionary) -> String:
 	return str(actor.get("id", actor.get("entity_id", "")))
+
+
+func _actor_by_id(actor_id: String) -> Dictionary:
+	for value in _actors:
+		if value is Dictionary and _actor_id(value) == actor_id:
+			return value
+	return {}
 
 
 func _position_from(value: Variant) -> Variant:

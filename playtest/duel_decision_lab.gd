@@ -8,6 +8,33 @@ const PARTY_SCENE_PATH := "res://playtest/party_encounter_sandbox.tscn"
 const DEFAULT_SEED := 22002
 const TOUCH_TARGET := 44
 
+
+class IntentCardBadge:
+	extends Control
+
+	var action_id := ""
+	var status := ""
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_presentation(next_action_id: String, next_status: String = "") -> void:
+		action_id = next_action_id
+		status = next_status
+		visible = not action_id.is_empty() or not status.is_empty()
+		queue_redraw()
+
+	func display_spec() -> Dictionary:
+		var spec := GridScript.intent_visual_spec(action_id, status)
+		return spec.merged({"action_id": action_id, "status": status})
+
+	func _draw() -> void:
+		var spec := GridScript.intent_visual_spec(action_id, status)
+		if spec.is_empty():
+			return
+		GridScript.draw_intent_badge(self, size * 0.5, minf(size.x, size.y) * 0.42, spec)
+
+
 var simulator
 var grid: DuelDecisionGrid
 var root_layout: VBoxContainer
@@ -22,6 +49,7 @@ var random_button: Button
 var step_button: Button
 var restart_button: Button
 var actor_buttons: Array[Button] = []
+var actor_badges: Array[Control] = []
 var event_button: Button
 var detail_text: RichTextLabel
 
@@ -146,6 +174,12 @@ func _build_ui() -> void:
 		actor_button.size_flags_stretch_ratio = 1.0
 		actor_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		actor_button.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		var badge := IntentCardBadge.new()
+		badge.name = "ActorIntentBadge%d" % index
+		badge.position = Vector2(5, 27)
+		badge.size = Vector2(18, 18)
+		actor_button.add_child(badge)
+		actor_badges.append(badge)
 		actor_buttons.append(actor_button)
 
 	result_panel = PanelContainer.new()
@@ -259,22 +293,31 @@ func _refresh_phase() -> void:
 
 func _refresh_tabs() -> void:
 	var actors: Array = _observation.get("actors", [])
+	grid.set_intent_presentation(_shown_breakdowns, presentation_stage != "HIDDEN")
 	for index in range(actor_buttons.size()):
 		var button: Button = actor_buttons[index]
 		if index >= actors.size() or not actors[index] is Dictionary:
 			button.text = "인물 %s 없음" % ("A" if index == 0 else "B")
 			button.disabled = true
 			button.button_pressed = false
+			actor_badges[index].set_presentation("")
 			continue
 		var actor: Dictionary = actors[index]
 		button.disabled = false
 		var actor_id := _actor_id(actor)
 		var breakdown := _shown_breakdown_for(actor_id)
 		var action_id := str(breakdown.get("selected_action_id", ""))
-		var intent_line := "?  아직 판단을 보지 않았다"
+		var status := _actor_terminal_status(actor_id, actor)
+		var shown_action := action_id if presentation_stage != "HIDDEN" and status.is_empty() else ""
+		actor_badges[index].set_presentation(shown_action, status)
+		var intent_line := "아직 판단을 보지 않았다"
 		var reason_line := "판단을 공개하면 핵심 이유가 보인다"
-		if presentation_stage != "HIDDEN" and not breakdown.is_empty():
-			intent_line = "%s  %s" % [_action_icon(action_id), _intent_phrase(action_id)]
+		if not status.is_empty():
+			intent_line = "쓰러짐" if status == "DEAD" else "조우에서 벗어남"
+			reason_line = "현재 행동 의도는 종료되었다"
+		elif not shown_action.is_empty() and not breakdown.is_empty():
+			var visual := GridScript.intent_visual_spec(action_id)
+			intent_line = "%s · %s" % [str(visual.get("label_ko", "행동")), _intent_phrase(action_id)]
 			var reasons := _key_reasons(actor, breakdown)
 			reason_line = reasons[0] if not reasons.is_empty() else "지금 상황을 종합해서"
 			var continuity := _commitment_line(breakdown)
@@ -284,7 +327,7 @@ func _refresh_tabs() -> void:
 			str(actor.get("name", "인물")), _species_label(str(actor.get("species_id", "?"))),
 			int(actor.get("hp", 0)), intent_line, reason_line, _personality_summary(actor, true)]
 		button.button_pressed = actor_id == selected_actor_id
-		_apply_action_card_style(button, action_id if presentation_stage != "HIDDEN" else "")
+		_apply_action_card_style(button, shown_action)
 	event_button.button_pressed = detail_mode == "EVENTS"
 	detail_toggle_button.button_pressed = detail_mode == "DETAIL"
 
@@ -532,11 +575,6 @@ func _intent_phrase(action_id: String) -> String:
 		"SELF_TREAT": "치료하려 한다"}.get(action_id, "상황을 지켜보려 한다"))
 
 
-func _action_icon(action_id: String) -> String:
-	return str({"ENGAGE": "⚔", "FLEE": "↙", "APPROACH": "→",
-		"SELF_TREAT": "+", "HOLD": "●"}.get(action_id, "?"))
-
-
 func _apply_action_card_style(button: Button, action_id: String) -> void:
 	var colors := {
 		"ENGAGE": [Color("#35151c"), Color("#ff6671")],
@@ -625,6 +663,18 @@ func _memory_kind(actor: Dictionary) -> String:
 	if memory is Dictionary:
 		return str(memory.get("kind", memory.get("memory_kind", "NONE"))).to_upper()
 	return "NONE"
+
+
+func _actor_terminal_status(actor_id: String, actor: Dictionary) -> String:
+	if not bool(actor.get("alive", true)):
+		return "DEAD"
+	if str(_observation.get("phase", "ACTIVE")) != "ESCAPED":
+		return ""
+	for value in _recent_logs:
+		if value is Dictionary and str(value.get("type", "")) == "ESCAPED" \
+				and str(value.get("actor_id", "")) == actor_id:
+			return "ESCAPED"
+	return ""
 
 
 func _dot_name(actor: Dictionary) -> String:

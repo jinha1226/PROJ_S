@@ -67,3 +67,7 @@ func _check_layout(lab: Control, viewport_size: Vector2i, mode: String) -> void:
 		if button.size.y < 43.5:
 			failures.append("%s %s touch target too short %s %.1f" % [
 				viewport_size, mode, button.name, button.size.y])
+	for badge in lab.actor_badges:
+		if badge.visible and not badge.get_parent().get_global_rect().encloses(badge.get_global_rect()):
+			failures.append("%s %s intent badge leaves actor card %s" % [
+				viewport_size, mode, badge.name])

@@ -86,6 +86,60 @@ func test_grid_hit_selects_each_actor_without_advancing_core() -> bool:
 	return finish()
 
 
+func test_vector_intent_badges_share_mapping_without_changing_hits() -> bool:
+	var lab = LabScene.instantiate()
+	lab.initialize_for_headless_test(FakeSimulator.new(3031))
+	lab.grid.size = Vector2(300, 300)
+	check(lab.grid.intent_badge_specs().is_empty(), "intent badges stay hidden before decision reveal")
+	check(not lab.actor_badges[0].visible and not lab.actor_badges[1].visible,
+		"overview card badges also stay hidden")
+	var centers := {
+		"actor_a": lab.grid.actor_screen_center("actor_a"),
+		"actor_b": lab.grid.actor_screen_center("actor_b"),
+	}
+	lab._on_primary_action()
+	var rows: Array = lab.grid.intent_badge_specs()
+	check_eq(rows.size(), 2, "both revealed intents have one map badge")
+	var by_actor: Dictionary = {}
+	for row in rows:
+		by_actor[str(row.actor_id)] = row
+	check_eq(str(by_actor.actor_a.shape_id), "CROSSED_BLADES", "attack uses crossed vector blades")
+	check_eq(str(by_actor.actor_b.shape_id), "OUTWARD_ARROW", "flee uses a directional vector arrow")
+	check(by_actor.actor_a.color != by_actor.actor_b.color, "attack and flee retain distinct colors")
+	check_eq(str(lab.actor_badges[0].display_spec().shape_id), "CROSSED_BLADES",
+		"actor A card consumes the same attack badge mapping")
+	check_eq(str(lab.actor_badges[1].display_spec().shape_id), "OUTWARD_ARROW",
+		"actor B card consumes the same flee badge mapping")
+	check(lab.actor_buttons[0].text.contains("공격 ·") and lab.actor_buttons[1].text.contains("도주 ·") \
+		and not lab.actor_buttons[0].text.contains("⚔"), "cards use stable Korean labels instead of emoji")
+	for actor_id in centers:
+		check_eq(lab.grid.actor_id_at_point(centers[actor_id]), actor_id,
+			"badge drawing leaves authoritative actor hit center unchanged")
+	var shape_ids: Dictionary = {}
+	for action_id in ["APPROACH", "ENGAGE", "FLEE", "SELF_TREAT", "HOLD"]:
+		shape_ids[str(Grid.intent_visual_spec(action_id).shape_id)] = true
+	check_eq(shape_ids.size(), 5, "every intent remains distinguishable without color")
+	lab.free()
+
+	var terminal_grid = Grid.new()
+	terminal_grid.size = Vector2(300, 300)
+	terminal_grid.set_observation({"actors": [
+		{"id": "dead", "position": [4, 7], "hp": 0, "max_hp": 10, "alive": false},
+		{"id": "gone", "position": [10, 7], "hp": 10, "max_hp": 10, "alive": true},
+	], "recent_events": [{"type": "ESCAPED", "actor_id": "gone"}]})
+	terminal_grid.set_intent_presentation([
+		{"actor_id": "dead", "selected_action_id": "ENGAGE"},
+		{"actor_id": "gone", "selected_action_id": "FLEE"},
+	], true)
+	var terminal_rows := terminal_grid.intent_badge_specs()
+	check_eq([terminal_rows[0].status, terminal_rows[1].status], ["DEAD", "ESCAPED"],
+		"terminal actors replace intents with state marks")
+	check_eq([terminal_rows[0].action_id, terminal_rows[1].action_id], ["", ""],
+		"dead and escaped actors never retain action icons")
+	terminal_grid.free()
+	return finish()
+
+
 func test_step_resolves_both_decisions_once_and_surfaces_relation_event() -> bool:
 	var simulator = FakeSimulator.new(304)
 	var lab = LabScene.instantiate()
