@@ -143,9 +143,19 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	check(level!=null and "Lv.1" in level.text and "공" in level.text and compact_xp!=null \
 		and compact_xp.max_value==100,"solo mobile hero card shows level, stats, and real XP bar")
 	sandbox._open_hero_detail()
-	check(sandbox.member_progression_window.visible and sandbox.member_progression_xp.max_value==100 \
-		and "공격력" in sandbox.member_progression_stats.text,
-		"hero detail uses visual XP and honest derived combat stats")
+	check(sandbox.member_detail_tab_row.visible and sandbox.member_detail_status_tab.button_pressed \
+		and sandbox.member_detail_body.visible and not sandbox.member_progression_window.visible,
+		"hero detail predictably opens on the dedicated status tab")
+	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
+		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
+		and "●" in sandbox.member_detail_status_tab.text,
+		"status/skill tabs are touch-sized with an obvious selected state")
+	check("집중 버튼" not in sandbox.member_detail_body.text and "레벨은 피해" not in sandbox.member_detail_body.text,
+		"status tab has no duplicate progression copy")
+	sandbox._select_member_detail_tab("SKILL")
+	check(sandbox.member_progression_window.visible and not sandbox.member_detail_body.visible \
+		and sandbox.member_progression_xp.max_value==100 and "공격력" in sandbox.member_progression_stats.text,
+		"skill tab alone shows visual XP and honest derived combat stats")
 	check(sandbox.member_progression_skill_rows.size()==3 \
 		and "미래" in str((sandbox.member_progression_skill_rows.EXPLORATION.future as Label).text),
 		"three visual skill cards distinguish current and future effects")
@@ -157,6 +167,19 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,
 			"focus control remains mobile readable")
+	sandbox._on_training_focus("GUARD")
+	check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible \
+		and sandbox.member_detail_skill_tab.button_pressed,
+		"focus changes refresh while preserving the skill tab")
+	sandbox._close_member_detail();sandbox._open_hero_detail()
+	check(sandbox.member_detail_current_tab=="STATUS" and sandbox.member_detail_body.visible,
+		"closing and reopening predictably returns to status")
+	var companion_session=Session.new();var companion_ui=Sandbox.new();companion_ui.size=Vector2(360,640)
+	companion_ui.initialize_for_headless_test(companion_session,false)
+	var companion_id:=int(companion_session.party_status().party_member_ids[1]);companion_ui._open_member_detail(companion_id)
+	check(not companion_ui.member_detail_tab_row.visible and companion_ui.member_detail_body.visible \
+		and not companion_ui.member_progression_window.visible,
+		"companions without progression never expose fake tabs")
 	var engaged=_engaged_adjacent_fixture();var combat_ui=Sandbox.new();combat_ui.size=Vector2(360,640)
 	combat_ui.initialize_for_headless_test(engaged,true)
 	combat_ui.selected_target_id=int(engaged.party_status().visible_enemy_ids[0])
@@ -166,7 +189,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and ("하찮음" in inspector.text or "대등" in inspector.text \
 			or "위험" in inspector.text or "치명적" in inspector.text),
 		"enemy contextual inspector shows derived level and threat")
-	sandbox.free();combat_ui.free()
+	sandbox.free();companion_ui.free();combat_ui.free()
 	return finish()
 
 func _engaged_adjacent_fixture():

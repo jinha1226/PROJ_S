@@ -9,6 +9,8 @@ const FONT:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
 const HERO_START:=Vector2i(7,8)
 const ENEMY_START:=Vector2i(10,8)
 const VISIBLE_RADIUS:=5
+const TOP_VIEW_HEIGHT:=16.0
+const TOP_VIEW_SIZE:=19.6
 
 var viewport_container:SubViewportContainer
 var lab_viewport:SubViewport
@@ -61,7 +63,7 @@ func _build_viewport()->void:
 	light.light_energy=1.25;light.rotation_degrees=Vector3(-58,-32,0);light.shadow_enabled=true
 	world_root.add_child(light)
 	camera=Camera3D.new();camera.name="FixedOrthographicCamera";camera.projection=Camera3D.PROJECTION_ORTHOGONAL
-	camera.size=18.0;camera.position=Vector3(7.8,12.5,10.5);world_root.add_child(camera)
+	camera.size=TOP_VIEW_SIZE;camera.position=Vector3(0,TOP_VIEW_HEIGHT,0);world_root.add_child(camera)
 	effect_root=Node3D.new();effect_root.name="TransientGlyphEffects";world_root.add_child(effect_root)
 
 func _build_overlay()->void:
@@ -71,7 +73,7 @@ func _build_overlay()->void:
 	var header:=HBoxContainer.new();header.name="LabHeader";header.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	header.offset_left=10;header.offset_right=-10;header.offset_top=8;header.offset_bottom=80;header.add_theme_constant_override("separation",8)
 	add_child(header)
-	var title:=Label.new();title.name="LabTitle";title.text="3D 시각 실험\n저장·본편과 분리된 데모";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var title:=Label.new();title.name="LabTitle";title.text="3D 시각 실험\n정사영 탑뷰 · 본편과 분리";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_override("font",FONT);title.add_theme_font_size_override("font_size",18);header.add_child(title)
 	var reset:=Button.new();reset.name="LabReset";reset.text="초기화";reset.custom_minimum_size=Vector2(68,48)
 	reset.add_theme_font_override("font",FONT);reset.pressed.connect(_reset_demo);header.add_child(reset)
@@ -181,7 +183,9 @@ func _update_visuals()->void:
 
 func _follow_hero()->void:
 	var focus:=_cell_world(hero_cell)
-	camera.look_at_from_position(focus+Vector3(7.8,12.5,10.5),focus+Vector3(0,0.15,0),Vector3.UP)
+	# Exact vertical camera. World -Z is screen up, so grid X/Y remain screen
+	# horizontal/vertical without an isometric diagonal projection.
+	camera.look_at_from_position(focus+Vector3(0,TOP_VIEW_HEIGHT,0),focus,Vector3.FORWARD)
 
 func _on_viewport_input(event:InputEvent)->void:
 	var point:=Vector2(-1,-1)

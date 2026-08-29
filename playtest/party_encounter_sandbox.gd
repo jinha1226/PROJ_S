@@ -67,11 +67,19 @@ var member_detail_panel:PanelContainer
 var member_detail_title:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
+var member_detail_tab_row:HBoxContainer
+var member_detail_status_tab:Button
+var member_detail_skill_tab:Button
+var member_detail_current_tab:="STATUS"
+var member_detail_has_skills:=false
+var member_detail_dismiss_available:=false
+var member_detail_candidate_available:=false
 var member_progression_window:VBoxContainer
 var member_progression_xp:ProgressBar
 var member_progression_xp_text:Label
 var member_progression_stats:Label
 var member_progression_skill_rows:Dictionary={}
+var member_skill_help:Label
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
@@ -261,6 +269,19 @@ func _build_member_detail_modal()->void:
 	member_detail_close.custom_minimum_size=Vector2(64,TOUCH_TARGET);member_detail_close.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_close.gui_input.connect(_on_member_detail_close_input.bind(member_detail_close))
 	member_detail_close.pressed.connect(_close_member_detail);header.add_child(member_detail_close)
+	member_detail_tab_row=HBoxContainer.new();member_detail_tab_row.name="MemberDetailTabs"
+	member_detail_tab_row.custom_minimum_size.y=TOUCH_TARGET;member_detail_tab_row.add_theme_constant_override("separation",6)
+	stack.add_child(member_detail_tab_row)
+	member_detail_status_tab=Button.new();member_detail_status_tab.name="MemberStatusTab";member_detail_status_tab.text="상태"
+	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_detail_status_tab.tooltip_text="현재 상태와 관계 정보";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
+	member_detail_tab_row.add_child(member_detail_status_tab)
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="스킬"
+	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_detail_skill_tab.tooltip_text="레벨, 기술 효과와 훈련 집중";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
+	member_detail_tab_row.add_child(member_detail_skill_tab)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(member_detail_scroll)
 	var detail_content:=VBoxContainer.new();detail_content.name="MemberDetailContent"
@@ -302,6 +323,10 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_stats=Label.new();member_progression_stats.name="DerivedCombatStats"
 	member_progression_stats.add_theme_font_size_override("font_size",FONT_BODY);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_progression_window.add_child(member_progression_stats)
+	member_skill_help=Label.new();member_skill_help.name="SkillFocusHelp"
+	member_skill_help.text="훈련 집중 · 선택 기술 60%, 나머지 기술 20%씩\n레벨은 피해나 방어에 직접 곱해지지 않습니다."
+	member_skill_help.add_theme_font_size_override("font_size",FONT_AUX);member_skill_help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	member_skill_help.modulate=Color("#c6d8e5");member_progression_window.add_child(member_skill_help)
 	for skill_id in ["MELEE","GUARD","EXPLORATION"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
 		var style:=StyleBoxFlat.new();style.bg_color=Color("#1a3042");style.border_color=Color("#45647a")
@@ -1057,20 +1082,21 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_body.text=_member_detail_text(detail)
 	member_detail_entity_id=member_id
 	var progression:Variant=detail.get("progression",{})
+	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
+	member_detail_current_tab="STATUS"
 	_update_progression_window(progression)
-	member_detail_focus_buttons.visible=progression is Dictionary \
-		and bool(progression.get("available",false))
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
 		and bool(detail.get("active_party_member",false))
-	member_detail_dismiss.visible=can_show_dismiss
+	member_detail_dismiss_available=can_show_dismiss
 	if can_show_dismiss:
 		var assessment:Dictionary=session.roster_change_assessment("DISMISS",member_id)
 		member_detail_dismiss.disabled=not bool(assessment.get("accepted",false))
 		member_detail_dismiss.tooltip_text=str(assessment.get("message",""))
 	var can_show_candidate:=bool(detail.get("recruitable_member",false))
-	member_detail_candidate_action.visible=can_show_candidate
+	member_detail_candidate_available=can_show_candidate
 	if can_show_candidate:
 		_configure_candidate_detail_action(detail)
+	_apply_member_detail_tab()
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
 	var route_state:Dictionary=session.exploration_route_state()
@@ -1085,6 +1111,24 @@ func _close_member_detail()->void:
 	if resume:_schedule_route_continue()
 	elif auto_orchestration_enabled:_request_refresh()
 
+func _select_member_detail_tab(tab_id:String)->void:
+	if tab_id not in ["STATUS","SKILL"] or tab_id=="SKILL" and not member_detail_has_skills:return
+	member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
+	_apply_member_detail_tab()
+
+func _apply_member_detail_tab()->void:
+	var skill_selected:=member_detail_has_skills and member_detail_current_tab=="SKILL"
+	member_detail_tab_row.visible=member_detail_has_skills
+	member_detail_status_tab.set_pressed_no_signal(not skill_selected)
+	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
+	member_detail_status_tab.text=("● " if not skill_selected else "")+"상태"
+	member_detail_skill_tab.text=("● " if skill_selected else "")+"스킬"
+	member_detail_body.visible=not skill_selected
+	member_progression_window.visible=skill_selected
+	member_detail_focus_buttons.visible=skill_selected
+	member_detail_dismiss.visible=not skill_selected and member_detail_dismiss_available
+	member_detail_candidate_action.visible=not skill_selected and member_detail_candidate_available
+
 func _on_training_focus(skill_id:String)->void:
 	if member_detail_entity_id<=0:return
 	var result:Dictionary=session.set_training_focus(skill_id)
@@ -1093,11 +1137,11 @@ func _on_training_focus(skill_id:String)->void:
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	member_detail_body.text=_member_detail_text(detail)
 	_update_progression_window(detail.get("progression",{}))
+	member_detail_current_tab="SKILL";_apply_member_detail_tab()
 	notice_text="훈련 집중을 변경했습니다.";_request_refresh()
 
 func _update_progression_window(progression:Variant)->void:
 	var available:=progression is Dictionary and bool(progression.get("available",false))
-	member_progression_window.visible=available
 	if not available:return
 	member_progression_xp_text.text="Lv.%d  ·  XP %d / %d\n누적 %d  →  다음 %d"%[int(progression.get("level",1)),
 		int(progression.get("xp_current",0)),int(progression.get("xp_required",1)),
@@ -1748,10 +1792,6 @@ func _route_goal(value:Dictionary)->Vector2i:
 
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
-	var progression:Variant=detail.get("progression",{})
-	if progression is Dictionary and bool(progression.get("available",false)):
-		lines.append("집중 버튼: 선택 기술 60%, 나머지 기술 20%씩 배분합니다.")
-		lines.append("레벨은 피해나 방어에 직접 곱해지지 않습니다.")
 	lines.append("HP %d/%d · 스트레스 %d"%[int(detail.get("health",0)),int(detail.get("max_health",0)),int(detail.get("stress",0))])
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
 		lines.append("생명 상태: 쓰러짐(DOWNED) · 사망이 아닙니다.")
