@@ -3314,8 +3314,42 @@ func _party_event_correlation_error() -> String:
 		return "party_cleared_contact_without_regroup_history"
 	var roster_error := _party_roster_history_error()
 	if not roster_error.is_empty(): return roster_error
+	var patrol_error := _party_patrol_history_error()
+	if not patrol_error.is_empty(): return patrol_error
 	var override_error := _party_override_history_error()
 	if not override_error.is_empty(): return override_error
+	return ""
+
+
+func _party_patrol_history_error()->String:
+	# Exploration patrol leaves only the existing canonical MOVE/HOLD leaves.
+	# Correlate every pre-contact enemy leaf here so a forged snapshot cannot use
+	# that intentionally small surface to smuggle an impossible position.
+	var contact_id:=9223372036854775807
+	for event in events:
+		if event.type in ["encounter.detected","encounter.party_ambush",
+				"encounter.enemy_ambush"]:
+			contact_id=mini(contact_id,event.id)
+	var occupied_cadences:Dictionary={}
+	for event in events:
+		if event.id>=contact_id:break
+		if event.actor_id not in party_encounter.enemy_ids:continue
+		if event.type not in ["action.move","action.hold"]:
+			continue
+		var cadence_key:="%d:%d:%d"%[event.step_index,event.world_time,event.actor_id]
+		if occupied_cadences.has(cadence_key):return "party_patrol_duplicate_action"
+		occupied_cadences[cadence_key]=true
+		if event.type=="action.move":
+			if not _party_move_event_is_canonical(event):
+				return "party_patrol_move_invalid"
+			var destination:=Vector2i(int(event.data.to_position[0]),
+				int(event.data.to_position[1]))
+			if destination in party_encounter.patrol_reserved_positions:
+				return "party_patrol_reserved_destination"
+			var before:=_party_entity_position_at_event(event.actor_id,event.id-1)
+			if not bool(before.ok) or before.position!=Vector2i(
+					int(event.data.from_position[0]),int(event.data.from_position[1])):
+				return "party_patrol_move_history_invalid"
 	return ""
 
 

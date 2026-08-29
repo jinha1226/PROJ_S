@@ -165,6 +165,13 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	state.enemy_ids.append(enemy.id)
+	if showcase_layout:
+		# Product-map objectives stay traversable even while monsters patrol. This
+		# reservation is authoritative state so save/load and journal replay do not
+		# need presentation-only map knowledge to reproduce patrol choices.
+		state.patrol_reserved_positions.append(VisualTestMapScript.EXIT_POSITION)
+		state.patrol_reserved_positions.append(VisualTestMapScript.OPEN_DOOR_POSITION)
+		state.patrol_reserved_positions.append(VisualTestMapScript.ENTRY_POSITION)
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append(protagonist.id)
 	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
@@ -2045,6 +2052,13 @@ func load_session_json(encoded: String) -> Dictionary:
 		return _rejection_dto("invalid_party_session_wire")
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
+	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+			and decoded.snapshot.party_encounter.has("patrol_reserved_positions") \
+			and decoded.snapshot.party_encounter.patrol_reserved_positions==[]:
+		# Some callers build a legacy fixture by downgrading the version/current
+		# snapshot and removing the fields known at that historical boundary.
+		decoded.snapshot.party_encounter.erase("patrol_reserved_positions")
 	var restored = SimulatorScript.from_snapshot(decoded.snapshot)
 	if restored == null or restored.world.party_encounter == null:
 		var restore_reason := WorldStateScript.snapshot_restore_error(decoded.snapshot)
@@ -2052,6 +2066,16 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
+	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+			and VisualTestMapScript.uses_showcase_layout(parsed_scenario_id):
+		# v1/v2 saves predate patrol reservations. Reconstruct presentation-map
+		# objectives once at the checked migration boundary before replay compare.
+		restored.world.party_encounter.patrol_reserved_positions.append(
+			VisualTestMapScript.EXIT_POSITION)
+		restored.world.party_encounter.patrol_reserved_positions.append(
+			VisualTestMapScript.OPEN_DOOR_POSITION)
+		restored.world.party_encounter.patrol_reserved_positions.append(
+			VisualTestMapScript.ENTRY_POSITION)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
 	for row in decoded.journal:
@@ -2699,7 +2723,10 @@ func _event_message(event) -> String:
 		"encounter.enemy_ambush": return "고블린이 숨어 있던 곳에서 주인공을 덮쳤다." if is_solo_combat() else "고블린이 숨어 있던 곳에서 파티를 덮쳤다."
 		"party.member_deployed": return "%s 대형에 자리를 잡았다." % _subject(actor)
 		"party.deployment_completed": return "주인공이 전투 태세를 갖췄다." if is_solo_combat() else "파티가 전투 대형을 갖췄다."
-		"action.move": return "%s (%d,%d)로 움직였다." % [_subject(actor),event.position.x,event.position.y]
+		"action.move":
+			if _is_enemy_patrol_event(event):
+				return "%s 주변을 정찰했다."%_subject(actor)
+			return "%s (%d,%d)로 움직였다." % [_subject(actor),event.position.x,event.position.y]
 		"action.melee_attack": return "%s %s 공격했다." % [_subject(actor),_object(target)]
 		"combat.attack_missed":
 			var attacker_id:=int(event.instigator_id)
@@ -2728,7 +2755,9 @@ func _event_message(event) -> String:
 			if str(event.data.get("behavior",""))=="RECOVER":return "%s 안전한 곳에서 몸을 추슬렀다."%_subject(target)
 			return "%s 살아남기 위해 안전한 곳을 찾았다."%_subject(target)
 		"party.exile_died": return "%s 홀로 버티지 못하고 숨졌다."%_subject(target)
-		"action.hold": return "%s 방어 자세를 취했다." % _subject(actor)
+		"action.hold":
+			if _is_enemy_patrol_event(event):return "%s 자리를 지키며 경계했다."%_subject(actor)
+			return "%s 방어 자세를 취했다." % _subject(actor)
 		"entity.died":
 			if int(event.instigator_id) > 0:
 				return "%s 공격으로 %s 쓰러졌다." % [
@@ -2742,6 +2771,16 @@ func _event_message(event) -> String:
 			"poison":"독","physical":"환경 충격"}.get(str(event.data.get("damage_type","")),"환경 영향")
 		return "%s 때문에 %s %d 피해를 입었다." % [hazard_label,_subject(target),int(event.magnitude)]
 	return "세계에 변화가 일어났다."
+
+func _is_enemy_patrol_event(event)->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or int(event.actor_id) not in sim.world.party_encounter.enemy_ids:
+		return false
+	for candidate in sim.world.events:
+		if str(candidate.type) in ["encounter.detected","encounter.party_ambush",
+				"encounter.enemy_ambush"]:
+			return int(event.id)<int(candidate.id)
+	return true
 
 func _name(entity_id: int) -> String: return str(sim.world.entities[entity_id].display_name) if entity_id > 0 and sim.world.entities.has(entity_id) else "대상"
 func _position_key(position:Vector2i)->String:return "%d:%d"%[position.x,position.y]

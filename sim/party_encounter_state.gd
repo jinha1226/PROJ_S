@@ -1,8 +1,9 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const LEGACY_SCHEMA_VERSION := 1
+const ROSTER_SCHEMA_VERSION := 2
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -28,6 +29,7 @@ var formation_id := "NONE"
 var member_rows: Dictionary = {}
 var enemy_busy_rows: Dictionary = {}
 var exile_records: Array[Dictionary] = []
+var patrol_reserved_positions: Array[Vector2i] = []
 
 func member(entity_id: int): return member_rows.get(entity_id)
 
@@ -38,6 +40,11 @@ func to_dict() -> Dictionary:
 	var busy_rows: Array = []
 	var ids: Array = enemy_busy_rows.keys(); ids.sort()
 	for entity_id in ids: busy_rows.append({"entity_id": str(entity_id), "busy_until": str(enemy_busy_rows[entity_id])})
+	var reserved_rows: Array = []
+	var sorted_reserved: Array[Vector2i] = patrol_reserved_positions.duplicate()
+	sorted_reserved.sort_custom(func(a: Vector2i, b: Vector2i):
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	for position in sorted_reserved: reserved_rows.append([position.x, position.y])
 	return {"schema_version": schema_version, "encounter_id": str(encounter_id), "safe_phase": safe_phase,
 		"revision": str(revision), "protagonist_id": str(protagonist_id),
 		"party_member_ids": party_member_ids.map(func(id): return str(id)),
@@ -47,6 +54,7 @@ func to_dict() -> Dictionary:
 		"contact_enemy_id": str(contact_enemy_id), "party_detection_radius": party_detection_radius,
 		"enemy_detection_radius": enemy_detection_radius, "formation_id": formation_id,
 		"member_rows": members, "enemy_busy_rows": busy_rows,
+		"patrol_reserved_positions":reserved_rows,
 		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
@@ -68,6 +76,9 @@ static func from_dict(row: Dictionary):
 	state.enemy_busy_rows.clear(); for busy_row in row.enemy_busy_rows: state.enemy_busy_rows[Int64CodecScript.parse(busy_row.entity_id, "enemy ID")] = Int64CodecScript.parse(busy_row.busy_until, "enemy busy")
 	state.exile_records.clear()
 	for record in row.get("exile_records",[]):state.exile_records.append(_canonical_exile_record(record))
+	state.patrol_reserved_positions.clear()
+	for position in row.get("patrol_reserved_positions",[]):
+		state.patrol_reserved_positions.append(Vector2i(int(position[0]),int(position[1])))
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -117,12 +128,15 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var keys: Array = row.keys(); keys.sort()
 	var v1_keys := ["contact_enemy_id", "contact_kind", "encounter_id", "enemy_busy_rows", "enemy_detection_radius", "enemy_ids", "facing", "formation_id", "group_anchor", "member_rows", "party_detection_radius", "party_member_ids", "protagonist_id", "revision", "safe_phase", "schema_version"]
 	var v2_keys: Array = v1_keys.duplicate(); v2_keys.append_array(["active_party_member_ids","exile_records"]); v2_keys.sort()
+	var v3_keys: Array = v2_keys.duplicate(); v3_keys.append("patrol_reserved_positions"); v3_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
-			or (parsed_schema_version == SCHEMA_VERSION and keys != v2_keys):
+			or (parsed_schema_version == ROSTER_SCHEMA_VERSION and keys != v2_keys) \
+			or (parsed_schema_version == SCHEMA_VERSION and keys != v3_keys):
 		return "invalid_party_encounter_keys"
-	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, SCHEMA_VERSION]: return "unsupported_party_schema"
+	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
+			SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -178,7 +192,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		if not seen_slots.has(slot): return "party_roster_slots_not_continuous"
 	if active_rows[0] != row.protagonist_id or row.party_member_ids[0] != row.protagonist_id:
 		return "party_protagonist_roster_invalid"
-	if parsed_schema_version == SCHEMA_VERSION:
+	if parsed_schema_version >= ROSTER_SCHEMA_VERSION:
 		if not row.get("exile_records") is Array: return "invalid_exile_records_shape"
 		var seen_exiles: Dictionary = {}
 		for record in row.exile_records:
@@ -186,6 +200,20 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			if not record_error.is_empty(): return record_error
 			if seen_exiles.has(record.former_member_id): return "duplicate_exile_record"
 			seen_exiles[record.former_member_id] = true
+	if parsed_schema_version == SCHEMA_VERSION:
+		if not row.get("patrol_reserved_positions") is Array \
+				or row.patrol_reserved_positions.size()>64:
+			return "invalid_patrol_reserved_positions"
+		var previous_reserved:=Vector2i(-1,-1)
+		for position in row.patrol_reserved_positions:
+			if not _position(position,width,height):return "invalid_patrol_reserved_positions"
+			var parsed_position:=Vector2i(int(position[0]),int(position[1]))
+			if previous_reserved!=Vector2i(-1,-1) \
+					and (parsed_position.y<previous_reserved.y \
+					or (parsed_position.y==previous_reserved.y \
+					and parsed_position.x<=previous_reserved.x)):
+				return "invalid_patrol_reserved_positions"
+			previous_reserved=parsed_position
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

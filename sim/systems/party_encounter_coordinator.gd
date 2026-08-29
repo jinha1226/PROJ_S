@@ -37,8 +37,8 @@ func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: i
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
-		if encounter.safe_phase == "GROUPED": return _detect_contact(processed_step_index,
-			actor_schedule_id, due_time, tick_start_can_act_ids)
+		if encounter.safe_phase == "GROUPED": return _exploration_enemy_cadence(
+			processed_step_index,actor_schedule_id,due_time,tick_start_can_act_ids)
 		return true
 	if encounter.safe_phase == "ENGAGED": return _enemy_batch(processed_step_index,
 		actor_schedule_id, due_time, tick_start_can_act_ids, allow_victory)
@@ -130,8 +130,58 @@ func finalize_automatic_regroup() -> bool:
 	state.revision += 1
 	return true
 
+func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
+		due_time:int,tick_start_can_act_ids:Dictionary)->bool:
+	# Preserve the established contact boundary: actors already in detection range
+	# make contact before any patrol movement. Only a still-GROUPED world patrols.
+	if not _detect_contact(processed_step_index,actor_schedule_id,due_time,
+			tick_start_can_act_ids):
+		return false
+	var state=world.party_encounter
+	if state.safe_phase!="GROUPED":return true
+	# The current product slice is explicitly solo. Legacy party SHOWCASE and
+	# REGRESSION fixtures retain their established social/contact timing until
+	# companion-aware exploration cadence is designed as its own slice.
+	if state.party_member_ids.size()!=1:return true
+	var enemies:Array=state.enemy_ids.duplicate();enemies.sort()
+	var acted_ids:Dictionary={}
+	for enemy_id in enemies:
+		if not tick_start_can_act_ids.has(enemy_id) \
+				or not world.can_act(enemy_id,world.world_time) \
+				or int(state.enemy_busy_rows.get(enemy_id,MAX_WORLD_TIME))>world.world_time \
+				or not world.is_autonomous_target(enemy_id):
+			continue
+		var forecast:Dictionary=forecast_exploration_patrol(enemy_id,
+			processed_step_index,actor_schedule_id,due_time)
+		if not bool(forecast.get("accepted",false)):return false
+		var action_event=null
+		var action_cost:=PARTY_ACTION_COST
+		if str(forecast.action_type)=="MOVE":
+			var destination:=Vector2i(int(forecast.destination[0]),
+				int(forecast.destination[1]))
+			action_cost=int(forecast.time_cost)
+			action_event=movement.commit_preflighted_move(enemy_id,destination,
+				str(forecast.terrain_id),action_cost)
+		else:
+			action_event=_commit_hold(enemy_id,PARTY_ACTION_COST)
+		if action_event==null or _fault("exploration_enemy_leaf") \
+				or world.world_time>MAX_WORLD_TIME-action_cost:
+			return false
+		state.enemy_busy_rows[enemy_id]=world.world_time+action_cost
+		acted_ids[enemy_id]=true
+		# HOLD cannot change contact. A MOVE may cross a detection boundary, so
+		# contact is derived immediately, while every enemy that already acted in
+		# this cadence is excluded from the same-tick ambush opening.
+		if str(forecast.action_type)=="MOVE":
+			if not _detect_contact(processed_step_index,actor_schedule_id,due_time,
+					tick_start_can_act_ids,acted_ids):
+				return false
+			if state.safe_phase!="GROUPED":return true
+	return true
+
+
 func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time: int,
-		tick_start_can_act_ids: Dictionary) -> bool:
+		tick_start_can_act_ids: Dictionary,ambush_excluded_ids:Dictionary={}) -> bool:
 	var state = world.party_encounter
 	var protagonist = world.entities[state.protagonist_id]
 	if not world.can_act(protagonist.id, world.world_time):
@@ -160,6 +210,8 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 		var ambushers: Array = []
 		for enemy_id in state.enemy_ids:
 			if tick_start_can_act_ids.has(enemy_id) \
+					and not ambush_excluded_ids.has(enemy_id) \
+					and int(state.enemy_busy_rows.get(enemy_id,MAX_WORLD_TIME))<=world.world_time \
 					and world.is_autonomous_target(enemy_id):
 				ambushers.append(enemy_id)
 		ambushers.sort()
@@ -262,6 +314,86 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	if not reconcile_liveness():
 		return false
 	return true
+
+
+func forecast_exploration_patrol(enemy_id:int,processed_step_index:int,
+		actor_schedule_id:int,due_time:int)->Dictionary:
+	# Pure, keyed patrol selection. It never advances world.rng and therefore the
+	# same seed/snapshot/cadence always yields the same destination.
+	var rejected:={"accepted":false,"reason":"enemy_unavailable",
+		"enemy_id":enemy_id,"action_type":"HOLD","from_position":[-1,-1],
+		"destination":[-1,-1],"terrain_id":"","time_cost":PARTY_ACTION_COST,
+		"risk":0}
+	if world==null or world.party_encounter==null \
+			or world.party_encounter.safe_phase!="GROUPED" \
+			or enemy_id not in world.party_encounter.enemy_ids \
+			or not world.entities.has(enemy_id) or not world.is_autonomous_target(enemy_id) \
+			or processed_step_index<=0 or actor_schedule_id<=0 or due_time!=world.world_time:
+		return rejected.duplicate(true)
+	var enemy=world.entities[enemy_id]
+	rejected.from_position=[enemy.position.x,enemy.position.y]
+	var current_risk:=_patrol_exposure_risk(enemy_id,enemy.position)
+	if current_risk<0:
+		rejected.reason="exposure_unavailable"
+		return rejected.duplicate(true)
+	var candidates:Array[Dictionary]=[]
+	for direction_index in range(movement.MOVE_DIRECTIONS_8.size()):
+		var destination:Vector2i=enemy.position+movement.MOVE_DIRECTIONS_8[direction_index]
+		if world.party_encounter.patrol_reserved_positions.has(destination):continue
+		var traversal=movement.assess_move(enemy_id,destination)
+		if not traversal.accepted:continue
+		var risk:=_patrol_exposure_risk(enemy_id,destination)
+		if risk<0:continue
+		var terrain_id:=str(traversal.terrain_id)
+		var definition:Dictionary=TerrainRegistryScript.definition(terrain_id)
+		if definition.is_empty():continue
+		candidates.append({"destination":destination,"terrain_id":terrain_id,
+			"time_cost":int(definition.move_time_cost),"risk":risk,
+			"tie_rank":_patrol_tie_rank(enemy_id,processed_step_index,
+				actor_schedule_id,due_time,destination,direction_index)})
+	if candidates.is_empty():
+		rejected.accepted=true;rejected.reason="patrol_blocked_guard"
+		return rejected.duplicate(true)
+	candidates.sort_custom(func(a:Dictionary,b:Dictionary):
+		if int(a.risk)!=int(b.risk):return int(a.risk)<int(b.risk)
+		if int(a.tie_rank)!=int(b.tie_rank):return int(a.tie_rank)<int(b.tie_rank)
+		var ap:Vector2i=a.destination;var bp:Vector2i=b.destination
+		return ap.y<bp.y if ap.y!=bp.y else ap.x<bp.x)
+	var selected:Dictionary=candidates[0]
+	# A healthy tile does not send a monster into unavoidable exposure. An actor
+	# already in danger may still step to a strictly safer (but non-zero) tile.
+	if int(selected.risk)>0 and int(selected.risk)>=current_risk:
+		rejected.accepted=true;rejected.reason="patrol_risk_guard"
+		rejected.risk=int(selected.risk)
+		return rejected.duplicate(true)
+	var destination:Vector2i=selected.destination
+	rejected.accepted=true;rejected.reason="patrol_scout"
+	rejected.action_type="MOVE"
+	rejected.destination=[destination.x,destination.y]
+	rejected.terrain_id=str(selected.terrain_id)
+	rejected.time_cost=int(selected.time_cost)
+	rejected.risk=int(selected.risk)
+	return rejected.duplicate(true)
+
+
+func _patrol_exposure_risk(enemy_id:int,position:Vector2i)->int:
+	if exposure==null:return -1
+	var evaluated=exposure.evaluate_for_entity(enemy_id,position,false)
+	if evaluated==null or not evaluated is Dictionary \
+			or evaluated.get("evaluation")==null:
+		return -1
+	return maxi(0,int(evaluated.evaluation.total_risk))
+
+
+func _patrol_tie_rank(enemy_id:int,processed_step_index:int,
+		actor_schedule_id:int,due_time:int,destination:Vector2i,
+		direction_index:int)->int:
+	var key:="party-patrol-v1|seed=%d|step=%d|schedule=%d|time=%d|enemy=%d|x=%d|y=%d|direction=%d"%[
+		world.seed,processed_step_index,actor_schedule_id,due_time,enemy_id,
+		destination.x,destination.y,direction_index]
+	var digest:PackedByteArray=key.sha256_buffer()
+	return ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
+		|(int(digest[2])<<8)|int(digest[3])
 
 func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	var rejected := {"accepted": false, "reason": "", "preset_id": preset_id, "companion_ids": [], "placements": [], "base_fingerprint": ""}

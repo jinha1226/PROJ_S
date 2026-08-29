@@ -2,6 +2,7 @@ extends SceneTree
 
 const TEST_FILES := [
 	"test_phase4_party_encounter.gd",
+	"test_party_exploration_patrol.gd",
 	"test_party_playtest_session.gd",
 	"test_party_playtest_ui.gd",
 	"test_party_auto_flow.gd",

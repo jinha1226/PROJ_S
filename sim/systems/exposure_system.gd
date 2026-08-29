@@ -18,8 +18,8 @@ func _init(p_world, p_movement_system) -> void:
 	movement_system = p_movement_system
 
 
-func sample(position: Vector2i):
-	if not world.in_bounds(position) or not world.is_settled():
+func sample(position: Vector2i, require_settled: bool = true):
+	if not world.in_bounds(position) or (require_settled and not world.is_settled()):
 		return null
 	var tile = world.tile_at(position)
 	var terrain: Dictionary = TerrainRegistryScript.definition(tile.terrain)
@@ -60,10 +60,11 @@ func sample(position: Vector2i):
 	})
 
 
-func evaluate_for_entity(entity_id: int, position: Vector2i):
+func evaluate_for_entity(entity_id: int, position: Vector2i,
+		require_settled: bool = true):
 	if not world.entities.has(entity_id) or not world.is_environment_exposed(entity_id):
 		return null
-	var sampled = sample(position)
+	var sampled = sample(position, require_settled)
 	if sampled == null:
 		return null
 	var affinity = AffinityRegistryScript.affinity_for(world.entities[entity_id].species_id)
