@@ -8,7 +8,7 @@ const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 
 func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var expected := {
-		"floor":".", "stone_floor":"#", "wood_floor":",", "metal":"=",
+		"floor":".", "stone_floor":".", "wood_floor":",", "metal":"=",
 		"rubble":":", "shallow_water":"~", "wall":"#",
 	}
 	var glyph_colors:Array[Color]=[]
@@ -36,6 +36,16 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
 		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
 		"unregistered tree terrain is not invented for presentation")
+	for walkable_id in ["floor","stone_floor","wood_floor","metal","rubble","shallow_water"]:
+		check(str(Style.terrain_spec({"terrain_id":walkable_id}).glyph)!="#",
+			"walkable %s never borrows the wall glyph"%walkable_id)
+	check_eq([Style.feature_spec("run_entry").glyph,
+		Style.feature_spec("run_exit_locked").glyph,
+		Style.feature_spec("run_exit_open").glyph],["<",">",">"],
+		"stairs use standard roguelike grammar independent of lock state")
+	check(Style.feature_spec("run_entry").glyph!=Style.terrain_spec({"terrain_id":"floor"}).glyph \
+		and Style.feature_spec("run_exit_locked").glyph!=Style.terrain_spec({"terrain_id":"floor"}).glyph,
+		"entry and exit glyphs cannot merge with ordinary floor")
 	check_eq(Style.feature_spec("open_door").glyph,"/","canonical open door uses slash")
 	var memory: Dictionary = Style.visibility_spec("MEMORY")
 	check(memory.draw_terrain and not memory.draw_hazards and not memory.draw_actors,
@@ -72,6 +82,53 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 	check(not unseen.visible and unseen.glyph.is_empty() and unseen.terrain_id.is_empty(),
 		"unseen terrain emits no glyph or terrain identity")
 	check_eq(grid.mapping_signature(),mapping,"glyph projection leaves mapping and hits unchanged")
+	grid.free();return finish()
+
+
+func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[1,0]:cell.visibility_state="MEMORY"
+		elif cell.position==[2,0]:cell.visibility_state="UNSEEN"
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	grid.set_hero_centered_view(Vector2i.ZERO,15,77)
+	var visible_ground:Dictionary=grid.visibility_ground_draw_spec(Vector2i(0,0))
+	var memory_ground:Dictionary=grid.visibility_ground_draw_spec(Vector2i(1,0))
+	var unseen_ground:Dictionary=grid.visibility_ground_draw_spec(Vector2i(2,0))
+	var void_ground:Dictionary=grid.visibility_ground_draw_spec(Vector2i(-1,0))
+	check_eq([visible_ground.visibility_state,memory_ground.visibility_state,
+		unseen_ground.visibility_state,void_ground.visibility_state],
+		["VISIBLE","MEMORY","UNSEEN","VOID"],"four spatial knowledge states remain explicit")
+	var visible_luma:=Color(str(visible_ground.color_hex)).get_luminance()
+	var memory_luma:=Color(str(memory_ground.color_hex)).get_luminance()
+	var unseen_luma:=Color(str(unseen_ground.color_hex)).get_luminance()
+	var void_luma:=Color(str(void_ground.color_hex)).get_luminance()
+	check(visible_luma>memory_luma and memory_luma>unseen_luma and unseen_luma>void_luma,
+		"flat light pool steps clearly from visible to memory, unseen, and void")
+	check(visible_ground.draw_terrain and memory_ground.draw_terrain \
+		and not unseen_ground.draw_terrain and not void_ground.draw_terrain,
+		"only visible and remembered cells expose static terrain")
+	check(not memory_ground.draw_actors and not memory_ground.draw_hazards \
+		and not unseen_ground.draw_actors and not unseen_ground.draw_hazards,
+		"memory and unseen states leak no actors or live hazards")
+	var visible_glyph:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(0,0))
+	var memory_glyph:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(1,0))
+	var unseen_glyph:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(2,0))
+	var visible_color:Color=visible_glyph.rendered_glyph_color
+	var memory_color:Color=memory_glyph.rendered_glyph_color
+	var visible_chroma:=maxf(visible_color.r,maxf(visible_color.g,visible_color.b)) \
+		-minf(visible_color.r,minf(visible_color.g,visible_color.b))
+	var memory_chroma:=maxf(memory_color.r,maxf(memory_color.g,memory_color.b)) \
+		-minf(memory_color.r,minf(memory_color.g,memory_color.b))
+	check(visible_color.a>memory_color.a+0.5 and visible_chroma>memory_chroma,
+		"remembered glyph is visibly darker and less saturated than current FOV")
+	check(not unseen_glyph.visible and str(unseen_glyph.glyph).is_empty(),
+		"unseen terrain emits no glyph")
+	var layers:Array=grid.diorama_layer_order()
+	check(layers.find("GROUND_FEATURES")>layers.find("WALL_TOPS_AND_FACES") \
+		and layers.find("GROUND_FEATURES")>layers.find("MATERIAL_MARKS"),
+		"stairs and doors remain above every terrain glyph layer")
 	grid.free();return finish()
 
 
@@ -314,7 +371,7 @@ func test_hero_centered_world_padding_is_explicit_void_and_never_interactive() -
 	var padding_position:=Vector2i(-7,-7)
 	var padding:Dictionary=grid.void_padding_draw_spec(padding_position)
 	var pointer:Vector2=padding.rect.get_center()
-	check(bool(padding.visible) and str(padding.color_hex)=="#020406" \
+	check(bool(padding.visible) and str(padding.color_hex)=="#010203" \
 		and not bool(padding.accepts_input),"outside-world camera cell is an explicit void surface")
 	check_eq(grid.pixel_to_world_cell(pointer),Vector2i(-1,-1),
 		"void padding rejects pixel-to-world mapping")

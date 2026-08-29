@@ -941,7 +941,7 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 		var padding_position:Vector2i=sandbox.grid.view_origin
 		var padding:Dictionary=sandbox.grid.void_padding_draw_spec(padding_position)
 		var padding_rect:Rect2=padding.rect
-		check(bool(padding.visible) and str(padding.color_hex)=="#020406" \
+		check(bool(padding.visible) and str(padding.color_hex)=="#010203" \
 			and not bool(padding.accepts_input),"%s edge padding is explicit void"%viewport_size)
 		check_eq(sandbox.grid.pixel_to_world_cell(padding_rect.get_center()),
 			Vector2i(-1,-1),"%s padding pixel rejects world mapping"%viewport_size)

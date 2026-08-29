@@ -22,8 +22,8 @@ func test_run_manifest_and_progress_are_exact_pure_and_detached() -> bool:
 		"regression has no run manifest")
 	check_eq(AsciiStyle.feature_spec("run_entry").glyph, "<",
 		"entry has a visible feature glyph")
-	check_eq(AsciiStyle.feature_spec("run_exit_locked").glyph, "X",
-		"locked exit has a visible feature glyph")
+	check_eq(AsciiStyle.feature_spec("run_exit_locked").glyph, ">",
+		"locked exit keeps the standard downstairs glyph; color/state carries the lock")
 	check_eq(AsciiStyle.feature_spec("run_exit_open").glyph, ">",
 		"open exit has a visible feature glyph")
 	check(not bool(AsciiStyle.feature_spec("unknown_feature").visible),

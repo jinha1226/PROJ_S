@@ -503,7 +503,7 @@ func void_padding_draw_spec(position:Vector2i)->Dictionary:
 	var visible:=view_bounds().has_point(position) and not _world_in_bounds(position)
 	return {"visible":visible,"world_position":[position.x,position.y],
 		"rect":_camera_cell_rect(position) if visible else Rect2(),
-		"color_hex":str(AsciiStyleScript.diorama_palette_spec().get("void_hex","#020406")),
+		"color_hex":str(AsciiStyleScript.diorama_palette_spec().get("void_hex","#010203")),
 		"accepts_input":false}.duplicate(true)
 func actor_hit_rect(entity_id: int) -> Rect2:
 	for actor in _actors:
@@ -610,17 +610,39 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 	var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
 	var state:=_diorama_visibility_state(row)
 	var visible:=bool(terrain.get("glyph_primary",false)) and state!="UNSEEN"
+	var rendered_glyph:=_diorama_color(str(terrain.glyph_hex),float(terrain.opacity),
+		state=="MEMORY") if visible else Color(0,0,0,0)
 	return {"visible":visible,"position":[position.x,position.y],
 		"terrain_id":str(terrain.terrain_id) if visible else "",
 		"visibility_state":state,"glyph":str(terrain.glyph) if visible else "",
 		"base_hex":str(terrain.base_hex) if visible else "",
 		"glyph_hex":str(terrain.glyph_hex) if visible else "",
+		"rendered_glyph_color":rendered_glyph,
 		"opacity":float(terrain.opacity) if visible else 0.0,
 		"registered":bool(terrain.get("registered",false)),
 		"glyph_primary":visible,"draw_image":false,"draw_tile_border":false,
 		"draw_cell_surface":bool(terrain.get("draw_cell_surface",false)) if visible else false,
 		"background_source":str(terrain.get("background_source","GRID_FLAT")),
 		"pixel_rect":world_cell_rect(position) if visible else Rect2()}.duplicate(true)
+
+func visibility_ground_draw_spec(position:Vector2i)->Dictionary:
+	if view_bounds().has_point(position) and not _world_in_bounds(position):
+		return {"visible":true,"visibility_state":"VOID",
+			"color_hex":str(AsciiStyleScript.diorama_palette_spec().get("void_hex","#010203")),
+			"draw_terrain":false,"draw_actors":false,"draw_hazards":false,
+			"pixel_rect":_camera_cell_rect(position)}.duplicate(true)
+	if not is_world_cell_visible(position):
+		return {"visible":false,"visibility_state":"OFF_CAMERA","color_hex":"",
+			"draw_terrain":false,"draw_actors":false,"draw_hazards":false,
+			"pixel_rect":Rect2()}.duplicate(true)
+	var row:Dictionary=_cells.get(_key(position),{})
+	var visibility:Dictionary=AsciiStyleScript.visibility_spec(_diorama_visibility_state(row))
+	return {"visible":true,"visibility_state":str(visibility.state),
+		"color_hex":str(visibility.background_hex),
+		"draw_terrain":bool(visibility.draw_terrain),
+		"draw_actors":bool(visibility.draw_actors),
+		"draw_hazards":bool(visibility.draw_hazards),
+		"pixel_rect":world_cell_rect(position)}.duplicate(true)
 
 func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
 	return DioramaScript.hazard_floor_spec(position,_cells.get(_key(position),{}))
@@ -799,7 +821,7 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
-	_draw_void_padding(Color(str(palette.get("void_hex","#020406"))))
+	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
 	_draw_terrain_glyph_pass("MEMORY")
@@ -843,6 +865,13 @@ func _draw_ground_pass(visibility_state:String)->void:
 			var position:=view_origin+Vector2i(x,y)
 			var row:Dictionary=_cells.get(_key(position),{})
 			if _diorama_visibility_state(row)!=visibility_state:continue
+			var visibility:Dictionary=AsciiStyleScript.visibility_spec(row)
+			# Borderless overlapping fills make adjacent visible cells read as one
+			# continuous pool of light instead of a tile checkerboard.
+			var wash_rect:=world_cell_rect(position)
+			var wash_overlap:=clampf(cell_size_px()*0.035,0.75,1.5)
+			draw_rect(wash_rect.grow(wash_overlap).intersection(grid_rect()),
+				Color(str(visibility.background_hex)),true)
 			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
 			if not bool(terrain.visible) or str(terrain.terrain_id)=="wall":continue
 			_draw_ground_surface(position,row,terrain,visibility_state=="MEMORY")
@@ -977,7 +1006,7 @@ func _diorama_color(value:String,opacity:float,memory:bool)->Color:
 	var color:=Color(value)
 	if memory:
 		var luminance:=color.r*0.299+color.g*0.587+color.b*0.114
-		color=color.lerp(Color(luminance,luminance,luminance,1.0),0.68)
+		color=color.lerp(Color(luminance,luminance,luminance,1.0),0.78)
 	color.a*=clampf(opacity,0.0,1.0)
 	return color
 

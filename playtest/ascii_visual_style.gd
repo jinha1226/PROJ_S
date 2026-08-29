@@ -5,15 +5,18 @@ const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 
 const DIORAMA_PALETTE := {
-	"void_hex":"#020406",
-	"substrate_hex":"#091017",
+	"void_hex":"#010203",
+	"substrate_hex":"#030507",
+	"unseen_ground_hex":"#030507",
+	"memory_ground_hex":"#070c16",
+	"visible_ground_hex":"#111a30",
 	"wall_side_hex":"#070b0f",
 	"shadow_hex":"#010304",
 }
 
 const TERRAIN_DEFINITIONS := {
 	"floor": {"glyph":".", "base_hex":"#0b101b", "glyph_hex":"#8294ff", "edge_hex":"#060a12", "font_ratio":0.52, "raised":false},
-	"stone_floor": {"glyph":"#", "base_hex":"#0c111a", "glyph_hex":"#c7b8ff", "edge_hex":"#080b13", "font_ratio":0.55, "raised":false},
+	"stone_floor": {"glyph":".", "base_hex":"#0c111a", "glyph_hex":"#c7b8ff", "edge_hex":"#080b13", "font_ratio":0.55, "raised":false},
 	"wood_floor": {"glyph":",", "base_hex":"#11100f", "glyph_hex":"#ff9d52", "edge_hex":"#0b0908", "font_ratio":0.55, "raised":false},
 	"metal": {"glyph":"=", "base_hex":"#09141a", "glyph_hex":"#58e5ff", "edge_hex":"#051015", "font_ratio":0.56, "raised":false},
 	"rubble": {"glyph":":", "base_hex":"#11110f", "glyph_hex":"#dbb45d", "edge_hex":"#0b0a07", "font_ratio":0.54, "raised":false},
@@ -42,7 +45,11 @@ static func visibility_spec(cell_or_state: Variant) -> Dictionary:
 		"draw_hazards": state == "VISIBLE",
 		"draw_actors": state == "VISIBLE",
 		"accepts_actor_input": state == "VISIBLE",
-		"opacity": 1.0 if state == "VISIBLE" else (0.34 if state == "MEMORY" else 0.0),
+		"opacity": 1.0 if state == "VISIBLE" else (0.30 if state == "MEMORY" else 0.0),
+		"background_hex":str(DIORAMA_PALETTE.get({
+			"VISIBLE":"visible_ground_hex", "MEMORY":"memory_ground_hex",
+			"UNSEEN":"unseen_ground_hex"}[state], "#030507")),
+		"glyph_desaturation":0.0 if state == "VISIBLE" else (0.78 if state == "MEMORY" else 1.0),
 	}.duplicate(true)
 
 
@@ -91,7 +98,7 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 static func feature_spec(feature_id: String) -> Dictionary:
 	var definitions := {
 		"run_entry":{"glyph":"<", "color_hex":"#55C8FF"},
-		"run_exit_locked":{"glyph":"X", "color_hex":"#A36A73"},
+		"run_exit_locked":{"glyph":">", "color_hex":"#C77986"},
 		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8"},
 		"open_door":{"glyph":"/", "color_hex":"#FFD166"},
 	}
