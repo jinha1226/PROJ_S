@@ -67,6 +67,7 @@ var member_detail_panel:PanelContainer
 var member_detail_title:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
+var member_status_window:VBoxContainer
 var member_detail_tab_row:HBoxContainer
 var member_detail_status_tab:Button
 var member_detail_skill_tab:Button
@@ -288,6 +289,9 @@ func _build_member_detail_modal()->void:
 	detail_content.size_flags_horizontal=Control.SIZE_EXPAND_FILL;detail_content.add_theme_constant_override("separation",8)
 	member_detail_scroll.add_child(detail_content)
 	_build_progression_window(detail_content)
+	member_status_window=VBoxContainer.new();member_status_window.name="MemberStatusWindow"
+	member_status_window.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_status_window.add_theme_constant_override("separation",8);detail_content.add_child(member_status_window)
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;detail_content.add_child(member_detail_body)
@@ -732,16 +736,54 @@ func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dic
 	details.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(details)
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():
 		_add_companion_speech_strip(details,speech)
-	var name_label:=_card_label(str(row.display_name),"MemberName",FONT_BODY)
-	name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;details.add_child(name_label)
-	var state_line:=HBoxContainer.new();state_line.name="SpotlightState"
-	state_line.mouse_filter=Control.MOUSE_FILTER_IGNORE;details.add_child(state_line)
-	var ready_label:=_card_label("준비" if str(row.readiness)=="행동 준비" else "행동중","Readiness",FONT_AUX)
-	ready_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;state_line.add_child(ready_label)
-	var emotion_label:=_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX)
-	emotion_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	state_line.add_child(emotion_label)
-	_add_vitals(details,row,true)
+	if _is_solo_product_session():
+		_add_solo_spotlight_summary(details,row)
+	else:
+		var name_label:=_card_label(str(row.display_name),"MemberName",FONT_BODY)
+		name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;details.add_child(name_label)
+		var state_line:=HBoxContainer.new();state_line.name="SpotlightState"
+		state_line.mouse_filter=Control.MOUSE_FILTER_IGNORE;details.add_child(state_line)
+		var ready_label:=_card_label("준비" if str(row.readiness)=="행동 준비" else "행동중","Readiness",FONT_AUX)
+		ready_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;state_line.add_child(ready_label)
+		var emotion_label:=_card_label("%s%s"%[str(row.emotion.icon),str(row.emotion.label)],"EmotionState",FONT_AUX)
+		emotion_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		state_line.add_child(emotion_label)
+		_add_vitals(details,row,true)
+
+func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
+	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
+	var identity:=HBoxContainer.new();identity.name="SoloIdentity";identity.add_theme_constant_override("separation",6)
+	identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(identity)
+	var name_label:=_card_label(str(row.get("display_name","주인공")),"MemberName",FONT_BODY)
+	name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	identity.add_child(name_label)
+	var level_label:=_card_label("Lv.%d"%int(progression.get("level",1)),"LevelProgress",FONT_AUX)
+	level_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;identity.add_child(level_label)
+	var hp_label:=_card_label("HP %d/%d"%[int(row.get("health",0)),int(row.get("max_health",0))],"MemberState",FONT_AUX)
+	hp_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT;parent.add_child(hp_label)
+	var health_bar:=_bar("HealthBar",int(row.get("health",0)),int(row.get("max_health",1)),Color("#62d98b"))
+	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;parent.add_child(health_bar)
+	var tokens:Array[String]=[]
+	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
+	var emotion_text:="%s%s"%[str(emotion.get("icon","")),str(emotion.get("label",""))]
+	if not emotion_text.strip_edges().is_empty():tokens.append(emotion_text)
+	if str(row.get("readiness","행동 준비"))!="행동 준비":tokens.append("행동 중")
+	var status_ids:Variant=row.get("status_ids",[])
+	if status_ids is Array:
+		for status_id in status_ids:
+			if tokens.size()>=3:break
+			var status_text:=str(status_id).strip_edges()
+			if not status_text.is_empty():tokens.append(_status_label(status_text))
+	var state_label:=_card_label(" · ".join(tokens),"EmotionState",FONT_AUX)
+	state_label.max_lines_visible=1;state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;parent.add_child(state_label)
+	if bool(progression.get("available",false)):
+		var xp_row:=HBoxContainer.new();xp_row.name="CompactXPRow";xp_row.add_theme_constant_override("separation",5)
+		xp_row.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(xp_row)
+		var xp_label:=_card_label("XP %d/%d"%[int(progression.get("xp_current",0)),int(progression.get("xp_required",1))],"XPProgress",14)
+		xp_label.custom_minimum_size.x=74;xp_row.add_child(xp_label)
+		var xp_bar:=_bar("CompactXPBar",int(progression.get("xp_current",0)),
+			maxi(1,int(progression.get("xp_required",1))),Color("#ffd467"));xp_bar.custom_minimum_size.y=7
+		xp_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;xp_bar.tooltip_text=xp_label.text;xp_row.add_child(xp_bar)
 
 func _add_stacked_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,
 		spec:Dictionary)->void:
@@ -1073,6 +1115,70 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 	_last_card_tap_id=member_id;_last_card_tap_msec=now;_last_card_tap_position=position
 	_select_member(member_id,display_name)
 
+func _update_member_status_window(detail:Dictionary)->void:
+	_clear_container(member_status_window)
+	var identity_panel:=PanelContainer.new();identity_panel.name="StatusIdentityPanel"
+	var identity_style:=StyleBoxFlat.new();identity_style.bg_color=Color("#10202e")
+	identity_style.border_color=Color("#45647a");identity_style.set_border_width_all(1)
+	identity_style.set_corner_radius_all(7);identity_style.set_content_margin_all(8)
+	identity_panel.add_theme_stylebox_override("panel",identity_style);member_status_window.add_child(identity_panel)
+	var identity:=HBoxContainer.new();identity.name="StatusIdentity";identity.add_theme_constant_override("separation",10)
+	identity_panel.add_child(identity)
+	var portrait=PortraitScript.new();portrait.name="StatusPortrait"
+	portrait.custom_minimum_size=Vector2(108,112);portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var portrait_actor:Dictionary=detail.duplicate(true)
+	portrait_actor["is_protagonist"]=str(detail.get("role",""))=="PROTAGONIST"
+	portrait_actor["faction_id"]="party";portrait.set_actor(portrait_actor);identity.add_child(portrait)
+	var facts:=VBoxContainer.new();facts.name="StatusIdentityFacts";facts.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	facts.add_theme_constant_override("separation",4);identity.add_child(facts)
+	var name_label:=_card_label(str(detail.get("display_name","파티원")),"StatusName",FONT_KEY)
+	name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;facts.add_child(name_label)
+	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
+	var identity_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
+	if bool(progression.get("available",false)):identity_parts.append("Lv.%d"%int(progression.get("level",1)))
+	var species_level:=_card_label(" · ".join(identity_parts),"StatusSpeciesLevel",FONT_BODY);facts.add_child(species_level)
+	var life_parts:Array[String]=[_life_state_label(str(detail.get("life_state","ACTIVE")))]
+	var presence:=str(detail.get("presence","GROUPED"))
+	if presence not in ["", "GROUPED"]:life_parts.append(_presence(presence))
+	var life_label:=_card_label(" · ".join(life_parts),"StatusLife",FONT_AUX);facts.add_child(life_label)
+	var hp_label:=_card_label("HP %d/%d"%[int(detail.get("health",0)),int(detail.get("max_health",0))],"StatusHP",FONT_BODY)
+	facts.add_child(hp_label)
+	var health_bar:=_bar("StatusHealthBar",int(detail.get("health",0)),maxi(1,int(detail.get("max_health",1))),Color("#62d98b"))
+	health_bar.custom_minimum_size.y=10;health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;facts.add_child(health_bar)
+	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
+	var emotion_label:=_card_label("%s%s"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
+	member_status_window.add_child(emotion_label)
+	var reason:=str(emotion.get("reason","")).strip_edges()
+	if not reason.is_empty() and reason!="이유 정보 없음":
+		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		reason_label.modulate=Color("#c6d8e5");member_status_window.add_child(reason_label)
+	var stress:=int(detail.get("stress",0))
+	var stress_label:=_card_label("스트레스 %d / 1000"%stress,"StatusStress",FONT_AUX);member_status_window.add_child(stress_label)
+	if stress>0:
+		var stress_bar:=_bar("StatusStressBar",stress,1000,Color("#ffae5f"));stress_bar.custom_minimum_size.y=8
+		member_status_window.add_child(stress_bar)
+	var status_ids:Variant=detail.get("status_ids",[])
+	if status_ids is Array and not status_ids.is_empty():
+		var status_labels:Array[String]=[]
+		for status_id in status_ids:status_labels.append(_status_label(str(status_id)))
+		var statuses:=_card_label("상태 · "+", ".join(status_labels),"StatusEffects",FONT_AUX)
+		statuses.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;member_status_window.add_child(statuses)
+	var stats:Dictionary=progression.get("combat_stats",{}) if progression.get("combat_stats",{}) is Dictionary else {}
+	if not stats.is_empty():
+		var combat:=_card_label("전투 요약 · 공격 %d · 방어 %d · 방어 태세 %d%%"%[
+			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
+			int(int(stats.get("guard_reduction_milli",250))/10)],"StatusCombatSummary",FONT_AUX)
+		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;member_status_window.add_child(combat)
+
+func _life_state_label(life_state:String)->String:
+	match life_state:
+		"DOWNED":return "쓰러짐"
+		"DEAD":return "사망"
+		_:return "생존"
+
+func _status_label(status_id:String)->String:
+	return {"BLEEDING":"출혈","POISONED":"중독","WET":"젖음","GUARDED":"방어 태세"}.get(status_id,status_id)
+
 func _open_member_detail(member_id:int)->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	var detail:Dictionary=session.inspect_party_member(member_id)
@@ -1080,6 +1186,7 @@ func _open_member_detail(member_id:int)->void:
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
 	member_detail_title.text="%s 상세"%str(detail.get("display_name","파티원"))
 	member_detail_body.text=_member_detail_text(detail)
+	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
@@ -1123,6 +1230,7 @@ func _apply_member_detail_tab()->void:
 	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
 	member_detail_status_tab.text=("● " if not skill_selected else "")+"상태"
 	member_detail_skill_tab.text=("● " if skill_selected else "")+"스킬"
+	member_status_window.visible=not skill_selected
 	member_detail_body.visible=not skill_selected
 	member_progression_window.visible=skill_selected
 	member_detail_focus_buttons.visible=skill_selected
@@ -1136,6 +1244,7 @@ func _on_training_focus(skill_id:String)->void:
 		notice_text=str(result.get("message","훈련 집중을 변경할 수 없습니다."));return
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	member_detail_body.text=_member_detail_text(detail)
+	_update_member_status_window(detail)
 	_update_progression_window(detail.get("progression",{}))
 	member_detail_current_tab="SKILL";_apply_member_detail_tab()
 	notice_text="훈련 집중을 변경했습니다.";_request_refresh()
@@ -1792,54 +1901,51 @@ func _route_goal(value:Dictionary)->Vector2i:
 
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
-	lines.append("HP %d/%d · 스트레스 %d"%[int(detail.get("health",0)),int(detail.get("max_health",0)),int(detail.get("stress",0))])
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
-		lines.append("생명 상태: 쓰러짐(DOWNED) · 사망이 아닙니다.")
 		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
-		lines.append("도움: 곁에서 %d 시간을 들이면 상처를 안정화합니다."%int(rescue.get("time_cost",0)))
+		var time_cost:=int(rescue.get("time_cost",0))
+		lines.append("구조 · 곁에서 상처를 안정화합니다%s."%((" · %d 시간"%time_cost) if time_cost>0 else ""))
 	var recruitment:Dictionary=detail.get("recruitment_assessment",{}) if detail.get("recruitment_assessment",{}) is Dictionary else {}
 	if not recruitment.is_empty():
 		var roll:=int(recruitment.get("roll_milli",-1))
-		lines.append("영입 수락 가능성: %d%% · %s"%[
+		lines.append("영입 가능성 · %d%% · %s"%[
 			int(recruitment.get("probability_percent",0)),
 			("판정값 %d"%roll) if roll>=0 else "파티 여석이 생기면 판정"])
 		for reason_index in range(mini(3,recruitment.get("reasons",[]).size())):
 			var reason:Variant=recruitment.reasons[reason_index]
 			if reason is Dictionary:lines.append("· "+str(reason.get("label","")))
 	var ready_text:=str(detail.get("readiness","행동 준비"));var remaining:=int(detail.get("remaining_time",0))
-	if remaining>0:ready_text+=" · %d 시간 남음"%remaining
-	lines.append("준비: %s · 상태: %s"%[ready_text,_presence(str(detail.get("presence","GROUPED")))])
-	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
-	lines.append("감정: %s%s · %s"%[str(emotion.get("icon","")),str(emotion.get("label","-")),str(emotion.get("reason","이유 정보 없음"))])
-	lines.append("종족/역할: %s · %s"%[_species(str(detail.get("species_id","default"))),_role(str(detail.get("role","COMPANION")))])
-	var status_ids:Variant=detail.get("status_ids",[])
-	lines.append("상태 효과: %s"%("없음" if not status_ids is Array or status_ids.is_empty() else ", ".join(status_ids)))
+	if ready_text!="행동 준비" or remaining>0:
+		lines.append("행동 · %s%s"%[ready_text,(" · %d 시간 남음"%remaining) if remaining>0 else ""])
 	var profile:Variant=detail.get("personality_profile",null)
 	if profile is Dictionary:
 		var facets:Array[String]=[]
 		for row in profile.get("facet_rows",[]):
 			if row is Dictionary:facets.append("%s %d"%[_facet_label(str(row.get("facet_id",""))),int(row.get("base_value",0))])
 		var archetype:Dictionary=detail.get("personality_archetype",{}) if detail.get("personality_archetype",{}) is Dictionary else {}
-		lines.append("성격: %s · %s"%[str(archetype.get("label","분류되지 않은 성향"))," · ".join(facets)])
-	else:lines.append("성격: 주인공 직접 지휘")
+		lines.append("성격 · %s%s"%[str(archetype.get("label","분류되지 않은 성향")),
+			(" · "+" · ".join(facets)) if not facets.is_empty() else ""])
 	var affinity:Dictionary=detail.get("species_affinity",{}) if detail.get("species_affinity",{}) is Dictionary else {}
-	lines.append("원소 친화/내성: 불 %d · 물 %d · 전기 %d · 독 %d"%[int(affinity.get("fire_tolerance",0)),
-		int(affinity.get("water_tolerance",0)),int(affinity.get("electric_tolerance",0)),int(affinity.get("poison_tolerance",0))])
+	var affinity_values:=[int(affinity.get("fire_tolerance",0)),int(affinity.get("water_tolerance",0)),
+		int(affinity.get("electric_tolerance",0)),int(affinity.get("poison_tolerance",0))]
+	if affinity_values.any(func(value):return int(value)!=0):
+		lines.append("원소 내성 · 불 %d · 물 %d · 전기 %d · 독 %d"%affinity_values)
 	var exposure:Dictionary=detail.get("current_exposure",detail.get("element_exposure",{})) if detail.get("current_exposure",detail.get("element_exposure",{})) is Dictionary else {}
 	var exposure_risk:Dictionary=exposure.get("risk",exposure) if exposure.get("risk",exposure) is Dictionary else {}
-	lines.append("현재 노출: 불 %d · 물 %d · 전기 %d · 독 %d · 합계 %d"%[_risk_value(exposure_risk,"fire"),_risk_value(exposure_risk,"water"),
-		_risk_value(exposure_risk,"electric"),_risk_value(exposure_risk,"poison"),int(exposure_risk.get("total_risk",exposure_risk.get("total",0)))])
+	var exposure_total:=int(exposure_risk.get("total_risk",exposure_risk.get("total",0)))
+	if bool(exposure.get("applicable",false)) and exposure_total>0:
+		lines.append("현재 노출 · 불 %d · 물 %d · 전기 %d · 독 %d · 합계 %d"%[_risk_value(exposure_risk,"fire"),_risk_value(exposure_risk,"water"),
+			_risk_value(exposure_risk,"electric"),_risk_value(exposure_risk,"poison"),exposure_total])
 	var action:Variant=detail.get("expected_action",null)
 	if action is Dictionary:
-		lines.append("행동 제안: %s"%_compact_action(action))
-		lines.append("이유: %s"%str(action.get("reason","-")))
+		lines.append("행동 제안 · %s"%_compact_action(action))
+		var action_reason:=str(action.get("reason","")).strip_edges()
+		if not action_reason.is_empty() and action_reason!="-":lines.append("· "+action_reason)
 		var original:Variant=action.get("automatic_suggestion",null)
 		if original is Dictionary:lines.append("원래 자동 제안: %s"%_action_only(original))
-	else:lines.append("행동 제안: 주인공 행동을 정하면 표시됩니다.")
-	lines.append("관계")
 	var relations:Variant=detail.get("relation_rows",[])
-	if not relations is Array or relations.is_empty():lines.append("· 표시할 관계가 없습니다.")
-	else:
+	if str(detail.get("role",""))=="COMPANION" and relations is Array and not relations.is_empty():
+		lines.append("관계")
 		for relation in relations:
 			if not relation is Dictionary:continue
 			var other_name:=str(relation.get("display_name",relation.get("subject_name",relation.get("name","파티원"))))

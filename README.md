@@ -150,11 +150,20 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 위치·적 체력·효과는 save/journal/RNG에 포함되지 않습니다. 360×640과 450×800 portrait
 viewport에서 screen horizontal을 world/grid +X에 고정하고 yaw 없이 Z축 방향을 바라보는
 고정 `45° 경사 탑뷰 · 축 정렬` orthographic camera와 44px 이상 조작부를 사용합니다.
+지형은 큰 블록 위 장식 글자 대신 거의 연속된 어두운 기층 위의 높이별 ASCII layer로
+깊이를 만듭니다. 물·잔해는 2층, 벽은 밝은 상단과 어두운 정면을 합쳐 최대 3층만 쓰며,
+기억 영역은 같은 글리프를 저채도·저명도로 남기고 미탐색 영역은 숨깁니다. Web 입력은
+SubViewport 바깥의 전용 play-area catcher가 mouse/touch를 받아 ground ray로 전달합니다.
+한 번 누르면 대각선을 포함해 최대 한 칸만 이동하며, 160ms 동안 배우가 먼저 움직이고
+고정 카메라가 뒤따라 한 칸 이동을 눈으로 확인할 수 있습니다.
 
-주인공 인물 창은 열 때마다 `상태` tab에서 시작하며, 별도 `스킬` tab이 Lv/XP progress
-bar, 현재 공격력·flat 방어력·HOLD 방어율, 세 기술의 rank와 훈련 progress/focus를
-표시합니다. 집중을 바꾼 뒤에는 스킬 tab을 유지합니다. progression이 없는 동료는 tab을
-노출하지 않습니다. MELEE는 rank당 피해 +2, GUARD는 HOLD의 기본
+맵 아래의 솔로 HUD는 큰 ASCII 초상, 이름·Lv, 정확한 HP와 bar, XP, 핵심 감정/상태만
+유지하고 공격·방어 수치는 상시 노출하지 않습니다. 주인공 인물 창은 열 때마다 `상태`
+tab에서 시작하며 큰 초상과 신원, 생명·HP·감정·스트레스·실제 상태 효과, 파생 전투 요약을
+우선합니다. 값이 없는 노출·상태·행동 제안은 숨기고 관계는 동료 상세에서만 표시합니다.
+별도 `스킬` tab은 Lv/XP progress bar, 현재 공격력·flat 방어력·HOLD 방어율, 세 기술의
+rank와 훈련 progress/focus를 표시합니다. 집중을 바꾼 뒤에는 스킬 tab을 유지합니다.
+progression이 없는 동료는 tab을 노출하지 않습니다. MELEE는 rank당 피해 +2, GUARD는 HOLD의 기본
 25% 물리 감소에 rank당 5%p를 더해 50%에서 제한합니다. EXPLORATION은 현재 권위 효과가
 없음을 명시합니다. character level 자체는 공격·방어 공식에 곱하지 않습니다.
 

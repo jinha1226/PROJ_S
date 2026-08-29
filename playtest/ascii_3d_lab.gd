@@ -14,11 +14,13 @@ const CAMERA_BACK_OFFSET:=12.0
 const CAMERA_ORTHO_SIZE:=19.6
 
 var viewport_container:SubViewportContainer
+var input_catcher:Control
 var lab_viewport:SubViewport
 var world_root:Node3D
 var camera:Camera3D
 var tile_nodes:Dictionary={}
 var tile_glyphs:Dictionary={}
+var tile_glyph_layers:Dictionary={}
 var materials:Dictionary={}
 var hero_root:Node3D
 var enemy_root:Node3D
@@ -30,6 +32,15 @@ var enemy_health:=21
 var seen_cells:Dictionary={}
 var active_effects:Array=[]
 var enemy_recoil_remaining:=0.0
+var movement_settling:=false
+var move_elapsed:=0.0
+var move_duration:=0.16
+var move_visual_from:=Vector3.ZERO
+var move_visual_to:=Vector3.ZERO
+var move_camera_from:=Vector3.ZERO
+var move_camera_to:=Vector3.ZERO
+var pointer_lock_remaining:=0.0
+var pointer_cell_resolver_for_test:Callable
 var interaction_count:=0
 var authoritative_state_accessed:=false
 var status_label:Label
@@ -48,8 +59,8 @@ func _ready()->void:
 func _build_viewport()->void:
 	viewport_container=SubViewportContainer.new();viewport_container.name="Ascii3DViewportContainer"
 	viewport_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	viewport_container.stretch=false;viewport_container.mouse_filter=Control.MOUSE_FILTER_STOP
-	viewport_container.gui_input.connect(_on_viewport_input);add_child(viewport_container)
+	viewport_container.stretch=false;viewport_container.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	add_child(viewport_container)
 	lab_viewport=SubViewport.new();lab_viewport.name="Ascii3DSubViewport"
 	lab_viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
 	lab_viewport.msaa_3d=Viewport.MSAA_2X
@@ -68,6 +79,13 @@ func _build_viewport()->void:
 	effect_root=Node3D.new();effect_root.name="TransientGlyphEffects";world_root.add_child(effect_root)
 
 func _build_overlay()->void:
+	# A plain sibling Control owns pointer input. SubViewportContainer forwards
+	# embedded input internally on Web and is not a reliable gui_input source.
+	input_catcher=Control.new();input_catcher.name="WorldInputCatcher"
+	input_catcher.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	input_catcher.offset_top=88;input_catcher.offset_bottom=-76
+	input_catcher.mouse_filter=Control.MOUSE_FILTER_STOP
+	input_catcher.gui_input.connect(_on_world_input);add_child(input_catcher)
 	var scrim:=ColorRect.new();scrim.name="TopScrim";scrim.color=Color("#07101bd9")
 	scrim.set_anchors_preset(Control.PRESET_TOP_WIDE);scrim.custom_minimum_size.y=88;scrim.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	add_child(scrim)
@@ -89,8 +107,13 @@ func _build_overlay()->void:
 	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;footer.add_child(status_label)
 
 func _build_room()->void:
-	var floor_mesh:=BoxMesh.new();floor_mesh.size=Vector3(0.92,0.08,0.92)
-	var wall_mesh:=BoxMesh.new();wall_mesh.size=Vector3(0.96,0.72,0.96)
+	var terrain_meshes:Dictionary={}
+	for row in [{"id":"floor","size":Vector3(0.98,0.025,0.98)},
+			{"id":"metal","size":Vector3(0.96,0.10,0.96)},
+			{"id":"water","size":Vector3(0.98,0.025,0.98)},
+			{"id":"rubble","size":Vector3(0.86,0.07,0.86)},
+			{"id":"wall","size":Vector3(0.94,0.68,0.94)}]:
+		var mesh:=BoxMesh.new();mesh.size=row.size;terrain_meshes[str(row.id)]=mesh
 	var substrate_mesh:=BoxMesh.new();substrate_mesh.size=Vector3(15.7,0.12,15.7)
 	var substrate:=MeshInstance3D.new();substrate.name="DarkSubstrate";substrate.mesh=substrate_mesh
 	substrate.position=Vector3(0,-0.15,0);substrate.material_override=_material("substrate","VISIBLE")
@@ -99,14 +122,49 @@ func _build_room()->void:
 		for x in range(GRID_SIZE):
 			var cell:=Vector2i(x,y);var terrain:=_terrain_at(cell)
 			var tile:=MeshInstance3D.new();tile.name="Tile_%02d_%02d"%[x,y]
-			tile.mesh=wall_mesh if terrain=="wall" else floor_mesh
-			tile.position=_cell_world(cell)+Vector3(0,0.36 if terrain=="wall" else 0,0)
+			tile.mesh=terrain_meshes[terrain]
+			var height_offset:float={"floor":-0.0125,"metal":0.05,"water":-0.0625,
+				"rubble":0.035+float((x*17+y*31)%3)*0.012,"wall":0.34}[terrain]
+			var rubble_offset:=Vector3(float((x*7+y*3)%3-1)*0.045,0,
+				float((x*5+y*11)%3-1)*0.04) if terrain=="rubble" else Vector3.ZERO
+			tile.position=_cell_world(cell)+Vector3(0,float(height_offset),0)+rubble_offset
 			world_root.add_child(tile);tile_nodes[cell]=tile
-			var glyph:=Label3D.new();glyph.name="Glyph_%02d_%02d"%[x,y];glyph.text=_terrain_glyph(terrain)
-			glyph.font=FONT;glyph.font_size=42;glyph.outline_size=5;glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED
-			glyph.no_depth_test=terrain=="wall";glyph.position=_cell_world(cell)+Vector3(0,0.86 if terrain=="wall" else 0.12,0)
-			world_root.add_child(glyph);tile_glyphs[cell]=glyph
+			var layers:=_build_terrain_glyph_layers(cell,terrain,rubble_offset)
+			tile_glyph_layers[cell]=layers;tile_glyphs[cell]=layers[0]
 	_build_actors()
+
+func _build_terrain_glyph_layers(cell:Vector2i,terrain:String,offset:Vector3)->Array:
+	var base:=_cell_world(cell)+offset;var layers:Array=[]
+	var top_height:float={"floor":0.018,"metal":0.118,"water":-0.038,
+		"rubble":0.085+float((cell.x*17+cell.y*31)%3)*0.012,"wall":0.70}[terrain]
+	var top_colors:={"floor":Color("#a8b3bc"),"metal":Color("#77d6e5"),
+		"water":Color("#56c9f2"),"rubble":Color("#d0a67a"),"wall":Color("#d5e5ef")}
+	var top_color:Color=top_colors[terrain]
+	layers.append(_terrain_label("TopGlyph_%02d_%02d"%[cell.x,cell.y],_terrain_glyph(terrain),
+		base+Vector3(0,top_height,0),44,top_color,true,terrain=="wall",0.0))
+	if terrain=="water":
+		layers.append(_terrain_label("RippleGlyph_%02d_%02d"%[cell.x,cell.y],"~",
+			base+Vector3(0.12,-0.052,0.10),34,Color("#287da2"),true,false,0.12))
+	elif terrain=="rubble":
+		layers.append(_terrain_label("RubbleShadow_%02d_%02d"%[cell.x,cell.y],".",
+			base+Vector3(-0.12,float(top_height)-0.012,0.10),30,Color("#765e4b"),true,false,0.18))
+	elif terrain=="wall":
+		# Camera is always on +Z. Two restrained vertical layers make the
+		# extrusion itself ASCII while the box only supplies occlusion/shadow.
+		layers.append(_terrain_label("WallFace_%02d_%02d"%[cell.x,cell.y],"#",
+			base+Vector3(0,0.43,0.475),38,Color("#718493"),false,true,0.20))
+		layers.append(_terrain_label("WallFoot_%02d_%02d"%[cell.x,cell.y],":",
+			base+Vector3(0,0.14,0.478),28,Color("#42515e"),false,true,0.34))
+	return layers
+
+func _terrain_label(node_name:String,text:String,position:Vector3,font_size:int,
+		color:Color,flat:bool,no_depth:bool,memory_bias:float)->Label3D:
+	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
+	glyph.font_size=font_size;glyph.outline_size=4;glyph.position=position
+	glyph.rotation_degrees.x=-90.0 if flat else 0.0
+	glyph.no_depth_test=no_depth;glyph.modulate=color
+	glyph.set_meta("base_color",color);glyph.set_meta("memory_bias",memory_bias)
+	world_root.add_child(glyph);return glyph
 
 func _build_actors()->void:
 	hero_root=Node3D.new();hero_root.name="GoldProtagonist";world_root.add_child(hero_root)
@@ -135,7 +193,7 @@ func _material(terrain:String,visibility:String)->StandardMaterial3D:
 	var key:=terrain+"/"+visibility
 	if materials.has(key):return materials[key]
 	var colors:={"substrate":Color("#071017"),"floor":Color("#26303a"),"metal":Color("#476270"),
-		"water":Color("#174d69"),"rubble":Color("#504235"),"wall":Color("#33404d"),
+		"water":Color("#102f43"),"rubble":Color("#3f352d"),"wall":Color("#1e2a34"),
 		"hero":Color("#d7a91f"),"enemy":Color("#9c252e")}
 	var color:Color=colors.get(terrain,Color("#252d35"))
 	if visibility=="MEMORY":color=color.darkened(0.56)
@@ -161,6 +219,7 @@ func _cell_world(cell:Vector2i)->Vector3:
 
 func _reset_demo()->void:
 	hero_cell=HERO_START;enemy_cell=ENEMY_START;enemy_health=21;interaction_count=0;enemy_recoil_remaining=0.0
+	movement_settling=false;move_elapsed=0.0;pointer_lock_remaining=0.0
 	seen_cells.clear();_reveal_visible();_update_visuals();_clear_effects()
 	status_label.text="바닥을 터치해 한 칸 이동 · 인접한 빨간 g를 터치해 공격"
 
@@ -170,32 +229,42 @@ func _reveal_visible()->void:
 			var cell:=Vector2i(x,y)
 			if _distance(hero_cell,cell)<=VISIBLE_RADIUS:seen_cells[cell]=true
 
-func _update_visuals()->void:
+func _update_visuals(snap_hero:bool=true,snap_camera:bool=true)->void:
 	for cell in tile_nodes:
 		var visibility:="VISIBLE" if _distance(hero_cell,cell)<=VISIBLE_RADIUS else ("MEMORY" if seen_cells.has(cell) else "UNSEEN")
 		var terrain:=_terrain_at(cell);tile_nodes[cell].material_override=_material(terrain,visibility)
-		var glyph:=tile_glyphs[cell] as Label3D;glyph.visible=visibility!="UNSEEN"
-		var base_color:Color={"floor":Color("#91a0ab"),"metal":Color("#72c6da"),"water":Color("#50b7e8"),
-			"rubble":Color("#bd9b72"),"wall":Color("#a4b6c6")}.get(terrain,Color.WHITE)
-		glyph.modulate=base_color if visibility=="VISIBLE" else base_color.darkened(0.64)
-	hero_root.position=_cell_world(hero_cell)
+		for glyph_value in tile_glyph_layers[cell]:
+			var glyph:=glyph_value as Label3D;glyph.visible=visibility!="UNSEEN"
+			var base_color:Color=glyph.get_meta("base_color",Color.WHITE)
+			var bias:=float(glyph.get_meta("memory_bias",0.0))
+			glyph.modulate=base_color if visibility=="VISIBLE" else Color.from_hsv(
+				base_color.h,base_color.s*0.22,base_color.v*maxf(0.18,0.34-bias),base_color.a*0.72)
+	if snap_hero:hero_root.position=_cell_world(hero_cell)
 	enemy_root.position=_cell_world(enemy_cell);enemy_root.visible=enemy_health>0 and _distance(hero_cell,enemy_cell)<=VISIBLE_RADIUS
-	_follow_hero()
+	if snap_camera:_follow_hero()
 
 func _follow_hero()->void:
-	var focus:=_cell_world(hero_cell)
+	_set_camera_focus(_cell_world(hero_cell))
+
+func _set_camera_focus(focus:Vector3)->void:
 	# Cardinal-axis 45-degree pitch: no yaw or diagonal/isometric map rotation.
 	# Screen-right remains world +X while screen-down advances world +Z.
 	camera.look_at_from_position(focus+Vector3(0,CAMERA_HEIGHT,CAMERA_BACK_OFFSET),focus,Vector3.UP)
 
-func _on_viewport_input(event:InputEvent)->void:
+func _on_world_input(event:InputEvent)->void:
 	var point:=Vector2(-1,-1)
 	if event is InputEventScreenTouch and event.pressed:point=event.position
 	elif event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:point=event.position
 	if point.x<0:return
-	var cell:=_screen_to_cell(point)
+	if movement_settling or pointer_lock_remaining>0.0:
+		if input_catcher.is_inside_tree():input_catcher.accept_event()
+		return
+	var viewport_point:=point+input_catcher.position
+	var cell:Vector2i=pointer_cell_resolver_for_test.call(viewport_point) \
+		if pointer_cell_resolver_for_test.is_valid() else _screen_to_cell(viewport_point)
 	if cell.x<0:return
-	_interact(cell);viewport_container.accept_event()
+	if _interact(cell):pointer_lock_remaining=0.18
+	if input_catcher.is_inside_tree():input_catcher.accept_event()
 
 func _screen_to_cell(point:Vector2)->Vector2i:
 	if viewport_container.size.x<=0 or viewport_container.size.y<=0:return Vector2i(-1,-1)
@@ -207,11 +276,11 @@ func _screen_to_cell(point:Vector2)->Vector2i:
 	var cell:=Vector2i(roundi(world_point.x)+CENTER,roundi(world_point.z)+CENTER)
 	return cell if cell.x>=0 and cell.y>=0 and cell.x<GRID_SIZE and cell.y<GRID_SIZE else Vector2i(-1,-1)
 
-func _interact(target:Vector2i)->void:
+func _interact(target:Vector2i)->bool:
 	if enemy_health>0 and target==enemy_cell and _distance(hero_cell,enemy_cell)<=1:
-		_attack_enemy();return
+		_attack_enemy();return true
 	var delta:=target-hero_cell
-	if delta==Vector2i.ZERO:return
+	if delta==Vector2i.ZERO:return false
 	var candidates:Array[Vector2i]=[hero_cell+Vector2i(signi(delta.x),signi(delta.y))]
 	if absi(delta.x)>=absi(delta.y):
 		candidates.append(hero_cell+Vector2i(signi(delta.x),0));candidates.append(hero_cell+Vector2i(0,signi(delta.y)))
@@ -219,9 +288,14 @@ func _interact(target:Vector2i)->void:
 		candidates.append(hero_cell+Vector2i(0,signi(delta.y)));candidates.append(hero_cell+Vector2i(signi(delta.x),0))
 	for candidate in candidates:
 		if _walkable(candidate) and (enemy_health<=0 or candidate!=enemy_cell):
-			hero_cell=candidate;interaction_count+=1;_reveal_visible();_spawn_target_flash(candidate,Color("#75c8ff"));_update_visuals()
-			status_label.text="이동 (%d,%d) · g 체력 %d/21"%[hero_cell.x,hero_cell.y,enemy_health];return
+			var previous:=hero_cell;hero_cell=candidate;interaction_count+=1
+			move_visual_from=hero_root.position;move_visual_to=_cell_world(hero_cell)
+			move_camera_from=_cell_world(previous);move_camera_to=_cell_world(hero_cell)
+			move_elapsed=0.0;movement_settling=true
+			_reveal_visible();_spawn_target_flash(candidate,Color("#75c8ff"));_update_visuals(false,false)
+			status_label.text="한 칸 이동 → (%d,%d) · g 체력 %d/21"%[hero_cell.x,hero_cell.y,enemy_health];return true
 	status_label.text="# 벽은 지나갈 수 없습니다."
+	return false
 
 func _attack_enemy()->void:
 	interaction_count+=1;enemy_health=maxi(0,enemy_health-7)
@@ -251,6 +325,21 @@ func _spawn_shards()->void:
 		active_effects.append({"node":shard,"age":0.0,"duration":0.55,"velocity":directions[index]})
 
 func _process(delta:float)->void:
+	pointer_lock_remaining=maxf(0.0,pointer_lock_remaining-delta)
+	if movement_settling:
+		move_elapsed=minf(move_duration,move_elapsed+delta)
+		var move_t:=clampf(move_elapsed/move_duration,0.0,1.0)
+		var move_eased:=move_t*move_t*(3.0-2.0*move_t)
+		hero_root.position=move_visual_from.lerp(move_visual_to,move_eased)
+		# Give the actor a brief visual lead before the fixed camera catches up.
+		# This preserves centering without making a one-cell move disappear.
+		var camera_t:=clampf((move_t-0.45)/0.55,0.0,1.0)
+		var camera_eased:=camera_t*camera_t*(3.0-2.0*camera_t)
+		_set_camera_focus(move_camera_from.lerp(move_camera_to,camera_eased))
+		if move_elapsed>=move_duration:
+			hero_root.position=move_visual_to
+			_set_camera_focus(move_camera_to)
+			movement_settling=false
 	if enemy_recoil_remaining>0.0:
 		enemy_recoil_remaining=maxf(0.0,enemy_recoil_remaining-delta)
 		enemy_root.position=enemy_root.position.lerp(_cell_world(enemy_cell),minf(1.0,delta*14.0))

@@ -576,11 +576,18 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 	if body.custom_minimum_size.y+0.5<float(body.get_line_count())*line_height:
 		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
 	if not _rect_contains(panel_rect,scroll.get_global_rect()):failures.append("%s detail scroll outside panel"%viewport_size)
-	for token in ["HP ","스트레스","준비:","감정:","종족/역할:","상태 효과:","성격:","원소 친화/내성:","현재 노출:","행동 제안:","관계"]:
-		if not token in body.text:failures.append("%s detail modal missing %s"%[viewport_size,token])
+	var status_portrait:=sandbox.find_child("StatusPortrait",true,false) as Control
+	if status_portrait==null or status_portrait.custom_minimum_size.x<108.0:
+		failures.append("%s detail modal lacks large status portrait"%viewport_size)
+	for node_name in ["StatusName","StatusSpeciesLevel","StatusLife","StatusHP","StatusHealthBar",
+			"StatusEmotion","StatusStress"]:
+		if sandbox.find_child(node_name,true,false)==null:
+			failures.append("%s detail modal missing %s"%[viewport_size,node_name])
+	for token in ["성격 ·","원소 내성 ·","현재 노출 ·","관계"]:
+		if not token in body.text:failures.append("%s detail supplemental text missing %s"%[viewport_size,token])
 	var detail:Dictionary=sandbox.session.inspect_party_member(sandbox.selected_member_id)
 	var expected_fire:=int(detail.get("current_exposure",{}).get("risk",{}).get("fire",0))
-	if expected_fire<=0 or not "현재 노출: 불 %d"%expected_fire in body.text:
+	if expected_fire<=0 or not "현재 노출 · 불 %d"%expected_fire in body.text:
 		failures.append("%s detail modal lost nested current exposure %d"%[viewport_size,expected_fire])
 
 func _combat_log_history(viewport_size:Vector2)->void:

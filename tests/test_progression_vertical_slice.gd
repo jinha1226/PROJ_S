@@ -140,12 +140,47 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	sandbox.initialize_for_headless_test(session,true)
 	var level=sandbox.find_child("LevelProgress",true,false) as Label
 	var compact_xp=sandbox.find_child("CompactXPBar",true,false) as ProgressBar
-	check(level!=null and "Lv.1" in level.text and "공" in level.text and compact_xp!=null \
-		and compact_xp.max_value==100,"solo mobile hero card shows level, stats, and real XP bar")
+	var card_name=sandbox.find_child("MemberName",true,false) as Label
+	var card_hp=sandbox.find_child("MemberState",true,false) as Label
+	var card_state=sandbox.find_child("EmotionState",true,false) as Label
+	check(level!=null and level.text=="Lv.1" and card_name!=null and card_hp!=null \
+		and "/" in card_hp.text and card_state!=null and compact_xp!=null \
+		and compact_xp.max_value==100 and sandbox.find_child("XPProgress",true,false)!=null,
+		"solo mobile hero card shows identity, exact HP, key state, and real XP")
+	check("공" not in level.text and "방" not in level.text,
+		"solo mobile hero card does not persist derived attack or defense")
+	check(sandbox.phase_panel.custom_minimum_size.y<=92 and sandbox.grid.get_index()<sandbox.cards.get_index(),
+		"360x640 keeps a compact header and map before the solo card")
+	var wide_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var wide=Sandbox.new();wide.initialize_for_headless_test(wide_session,true)
+	wide.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);wide.size=Vector2(450,800);wide._refresh()
+	var wide_card=wide.cards.get_child(0) as Button
+	check(wide.grid.get_index()<wide.cards.get_index(),"450x800 keeps the map before the solo card")
+	check(wide_card.custom_minimum_size.x>=438,"450x800 solo card uses the available width")
+	check((wide_card.find_child("Portrait",true,false) as Control).custom_minimum_size.x>=88,
+		"450x800 solo card retains its large portrait")
+	check(wide_card.find_child("CompactXPBar",true,false)!=null \
+		and "공" not in str((wide_card.find_child("LevelProgress",true,false) as Label).text),
+		"450x800 solo card keeps XP but no persistent combat stats")
+	wide.free()
 	sandbox._open_hero_detail()
 	check(sandbox.member_detail_tab_row.visible and sandbox.member_detail_status_tab.button_pressed \
-		and sandbox.member_detail_body.visible and not sandbox.member_progression_window.visible,
+		and sandbox.member_status_window.visible and sandbox.member_detail_body.visible \
+		and not sandbox.member_progression_window.visible,
 		"hero detail predictably opens on the dedicated status tab")
+	var status_portrait=sandbox.find_child("StatusPortrait",true,false) as Control
+	check(status_portrait!=null and status_portrait.custom_minimum_size.x>=108 \
+		and sandbox.find_child("StatusName",true,false)!=null \
+		and sandbox.find_child("StatusSpeciesLevel",true,false)!=null \
+		and sandbox.find_child("StatusHP",true,false)!=null \
+		and sandbox.find_child("StatusHealthBar",true,false)!=null \
+		and sandbox.find_child("StatusLife",true,false)!=null \
+		and sandbox.find_child("StatusEmotion",true,false)!=null \
+		and sandbox.find_child("StatusStress",true,false)!=null \
+		and sandbox.find_child("StatusCombatSummary",true,false)!=null,
+		"status tab prioritizes a large portrait and meaningful identity/vital/combat summary")
+	check("관계" not in sandbox.member_detail_body.text and "없음" not in sandbox.member_detail_body.text,
+		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
 		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
 		and "●" in sandbox.member_detail_status_tab.text,
@@ -154,7 +189,8 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"status tab has no duplicate progression copy")
 	sandbox._select_member_detail_tab("SKILL")
 	check(sandbox.member_progression_window.visible and not sandbox.member_detail_body.visible \
-		and sandbox.member_progression_xp.max_value==100 and "공격력" in sandbox.member_progression_stats.text,
+		and not sandbox.member_status_window.visible and sandbox.member_progression_xp.max_value==100 \
+		and "공격력" in sandbox.member_progression_stats.text,
 		"skill tab alone shows visual XP and honest derived combat stats")
 	check(sandbox.member_progression_skill_rows.size()==3 \
 		and "미래" in str((sandbox.member_progression_skill_rows.EXPLORATION.future as Label).text),

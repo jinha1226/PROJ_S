@@ -635,9 +635,10 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 	var exposure_fire:=int(member_detail.current_exposure.risk.fire)
 	check(exposure_fire>0,"member detail fixture has real fire exposure")
 	var detail_text:=sandbox._member_detail_text(member_detail)
-	check("현재 노출: 불 %d"%exposure_fire in detail_text,"detail reads nested current_exposure.risk")
-	for required in ["HP ","스트레스","준비:","감정:","종족/역할:","원소 친화/내성:","행동 제안:","관계"]:
-		check(required in detail_text,"member modal detail includes %s"%required)
+	check("현재 노출 · 불 %d"%exposure_fire in detail_text,"detail reads nested current_exposure.risk")
+	check("원소 내성" in detail_text,"member modal keeps meaningful species affinity")
+	check("관계" not in detail_text and "없음" not in detail_text,
+		"hero supplemental detail hides relations and empty placeholders")
 	sandbox.session.sim.world.entities[hero].health=20; sandbox._refresh()
 	var threatened:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
 	check(calm!=threatened and "겁먹음" in threatened,"low HP deterministically exposes survival emotion")
