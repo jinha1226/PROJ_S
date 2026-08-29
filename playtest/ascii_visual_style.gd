@@ -63,6 +63,9 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	result["glyph_primary"] = registered and bool(visibility.draw_terrain)
 	result["draw_image"] = false
 	result["draw_tile_border"] = false
+	result["draw_cell_surface"] = registered and terrain_id != "floor" \
+		and bool(visibility.draw_terrain)
+	result["background_source"] = "GRID_FLAT" if terrain_id == "floor" else "TERRAIN_FLAT"
 	result["outline_hex"] = "#020508"
 	return result.duplicate(true)
 

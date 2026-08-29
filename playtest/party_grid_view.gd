@@ -8,10 +8,6 @@ signal pointer_gesture_started()
 signal pointer_gesture_finished(outcome: String)
 
 const GRID_SIZE := 15
-const COLORS := {"floor":Color("#344351"),"wall":Color("#111923"),"shallow_water":Color("#215e71"),"rubble":Color("#6a5b3d")}
-const CHARACTER_ATLAS: Texture2D = preload("res://assets/sprites/character_atlas.png")
-const CHARACTER_FRAME_SIZE := Vector2i(36,44)
-const CHARACTER_ATLAS_COLUMNS := 3
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
@@ -60,7 +56,7 @@ var _suppress_mouse_until_msec := -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; clip_contents=true; resized.connect(queue_redraw)
+	clip_contents=true; resized.connect(queue_redraw)
 	set_process(false)
 
 func _exit_tree()->void:
@@ -591,6 +587,8 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 		"opacity":float(terrain.opacity) if visible else 0.0,
 		"registered":bool(terrain.get("registered",false)),
 		"glyph_primary":visible,"draw_image":false,"draw_tile_border":false,
+		"draw_cell_surface":bool(terrain.get("draw_cell_surface",false)) if visible else false,
+		"background_source":str(terrain.get("background_source","GRID_FLAT")),
 		"pixel_rect":world_cell_rect(position) if visible else Rect2()}.duplicate(true)
 
 func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
@@ -768,7 +766,7 @@ func _diorama_visibility_state(row:Dictionary)->String:
 
 func _draw() -> void:
 	var palette:=AsciiStyleScript.diorama_palette_spec()
-	draw_rect(grid_rect(),Color(str(palette.get("void_hex","#020406"))),true)
+	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
 	_draw_terrain_glyph_pass("MEMORY")
@@ -810,6 +808,10 @@ func _draw_ground_pass(visibility_state:String)->void:
 
 func _draw_ground_surface(position:Vector2i,row:Dictionary,terrain:Dictionary,
 		memory:bool)->void:
+	# Ordinary floor owns no per-cell surface at all: the single grid-wide
+	# substrate is its background and `.` is its only cell-local identity.
+	if str(terrain.get("terrain_id",""))=="floor":return
+	if not bool(terrain.get("draw_cell_surface",true)):return
 	var rect:=world_cell_rect(position)
 	var overlap:=clampf(cell_size_px()*0.045,1.0,2.0)
 	var base:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),memory)

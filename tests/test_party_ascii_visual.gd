@@ -19,6 +19,8 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
 		check(spec.glyph_primary and spec.registered and not spec.draw_image \
 			and not spec.draw_tile_border,"%s glyph is primary over a borderless code-native floor"%terrain_id)
+		check_eq(bool(spec.draw_cell_surface),terrain_id!="floor",
+			"ordinary floor uses grid-wide flat background; special terrain may use flat surface")
 		var luminance:=Color(str(spec.base_hex)).get_luminance()
 		darkest_base=minf(darkest_base,luminance);brightest_base=maxf(brightest_base,luminance)
 	check(brightest_base-darkest_base<0.025,"terrain backgrounds stay nearly uniform neutral navy")
@@ -52,6 +54,8 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 			"registered %s projects its primary glyph"%terrain_ids[index])
 		check(not spec.draw_image and not spec.draw_tile_border,
 			"terrain glyph adds no image, tile card, or input surface")
+		check_eq(bool(spec.draw_cell_surface),terrain_ids[index]!="floor",
+			"only ordinary floor suppresses its per-cell surface rect")
 	var memory:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,0))
 	check(memory.visible and memory.visibility_state=="MEMORY" and memory.opacity<1.0,
 		"memory keeps only a dim static terrain glyph")
@@ -60,6 +64,22 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 		"unseen terrain emits no glyph or terrain identity")
 	check_eq(grid.mapping_signature(),mapping,"glyph projection leaves mapping and hits unchanged")
 	grid.free();return finish()
+
+
+func test_product_floor_draw_paths_have_no_image_texture_or_tile_atlas() -> bool:
+	for path in ["res://playtest/party_grid_view.gd", "res://playtest/duel_decision_grid.gd"]:
+		var source:=FileAccess.get_file_as_string(path)
+		check(not source.is_empty(),"product grid source is readable: %s"%path)
+		for forbidden in ["character_atlas.png","Texture2D","ImageTexture","AtlasTexture",
+				"Sprite2D","draw_texture","_draw_connected_material_blob"]:
+			check(not source.contains(forbidden),
+				"%s contains no floor image/atlas path: %s"%[path,forbidden])
+	var empty_grid=Grid.new()
+	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
+	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
+		"empty product grid defaults to no image and no tile card")
+	empty_grid.free()
+	return finish()
 
 
 func test_hazard_cues_are_layered_and_visibility_safe() -> bool:
