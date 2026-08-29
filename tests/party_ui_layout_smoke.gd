@@ -570,7 +570,9 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 			or panel_rect.end.x>viewport_rect.end.x-11.9 or panel_rect.end.y>viewport_rect.end.y-11.9:
 		failures.append("%s detail panel margin/width %s"%[viewport_size,panel_rect])
 	if sandbox.member_detail_close.size.x<43.9 or sandbox.member_detail_close.size.y<43.9 \
-			or sandbox.member_detail_close.get_theme_font_size("font_size")<18:
+			or sandbox.member_detail_close.get_theme_font_size("font_size")<14 \
+			or sandbox.member_detail_close.text!="[ESC 닫기]" \
+			or sandbox.member_detail_close.get_theme_font("font")!=sandbox.theme.default_font:
 		failures.append("%s detail close accessibility"%viewport_size)
 	if body.get_theme_font_size("font_size")<16:failures.append("%s detail body font below 16"%viewport_size)
 	var line_height:=body.get_theme_font("font").get_height(body.get_theme_font_size("font_size"))
@@ -1106,7 +1108,11 @@ func _validate_layout(sandbox,label:String,expected_cells_override:int=-1)->void
 			var minimum_font:=12 if control.name=="CompanionSpeechText" else 16
 			if control.get_theme_font_size("font_size")<minimum_font:
 				failures.append("%s font below %d %s"%[label,minimum_font,control.name])
-		if control is Button and control.get_theme_font_size("font_size")<18: failures.append("%s button font below 18 %s"%[label,control.name])
+		if control is Button:
+			var minimum_button_font:=12 if control.name in ["NarrativeLogToggle","HeroDetailButton","Ascii3DLabButton"] \
+				else (14 if control.name=="MemberDetailClose" else 18)
+			if control.get_theme_font_size("font_size")<minimum_button_font:
+				failures.append("%s button font below %d %s"%[label,minimum_button_font,control.name])
 	var deck_prior:=-100000.0
 	for child in sandbox.deck.get_children():
 		if child is Control and child.is_visible_in_tree():

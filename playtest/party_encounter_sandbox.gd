@@ -716,7 +716,10 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
 		"effective_count":effective_count,"party_height":160,"gap":gap,
 		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
-		"portrait_min_size":[52,54],"font_size":FONT_AUX}
+		# Three 360px cards leave 91px inside their fixed-cell dossier frame.
+		# Reserve enough text width for Korean state labels instead of clipping
+		# them beside an oversized legacy portrait.
+		"portrait_min_size":[34,54],"font_size":FONT_AUX}
 	if effective_count==1:
 		spec.layout_id="SPOTLIGHT";spec.party_height=112
 		spec.portrait_min_size=[88,88]
@@ -1054,7 +1057,7 @@ func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
 	var guard_percent:=_guard_percent_for_actor(selected_member_id)
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text
 	elif bool(preview.get("accepted",false)):action_feedback_label.text="행동 준비 완료 · 필요하면 수정한 뒤 실행하세요."
-	else:action_feedback_label.text="행동 지정 → 실행\n빈 칸 이동 · 적 공격 · 방어(200시간·피해 %d%% 감소)"%guard_percent
+	else:action_feedback_label.text="행동 지정 → 실행\n이동 · 공격 · 방어(200시간/%d%%)"%guard_percent
 	var hold:=_add_button(combat_action_dock,"방어","ActorHold",_on_actor_hold)
 	hold.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다."%guard_percent
 	hold.size_flags_stretch_ratio=1.0
@@ -1906,8 +1909,13 @@ func _render_tile_popover()->void:
 	if selected_tile_inspection.is_empty() or tile_popover==null:return
 	tile_popover_label.text=_tile_popover_text(selected_tile_inspection,route_preview)
 	var width:=minf(280.0,maxf(1.0,size.x-24.0))
-	tile_popover_label.custom_minimum_size=Vector2(maxf(1.0,width-16.0),0)
-	tile_popover_label.size.x=maxf(1.0,width-16.0)
+	var frame:=tile_popover.find_child("TileRiskAsciiFrame",true,false) as MarginContainer
+	var horizontal_inset:=16.0
+	if frame!=null:
+		horizontal_inset=float(frame.get_theme_constant("margin_left")+frame.get_theme_constant("margin_right"))
+	var content_width:=maxf(1.0,width-horizontal_inset)
+	tile_popover_label.custom_minimum_size=Vector2(content_width,0)
+	tile_popover_label.size.x=content_width
 	tile_popover.size=Vector2(width,1.0);tile_popover.visible=true
 	call_deferred("_measure_tile_popover")
 
@@ -1917,7 +1925,11 @@ func _measure_tile_popover()->void:
 	var line_height:=font.get_height(tile_popover_label.get_theme_font_size("font_size"))
 	var required_label_height:=maxf(line_height,float(tile_popover_label.get_line_count())*line_height)
 	tile_popover_label.custom_minimum_size.y=required_label_height
-	tile_popover.size.y=required_label_height+12.0
+	var frame:=tile_popover.find_child("TileRiskAsciiFrame",true,false) as MarginContainer
+	var vertical_inset:=12.0
+	if frame!=null:
+		vertical_inset=float(frame.get_theme_constant("margin_top")+frame.get_theme_constant("margin_bottom"))
+	tile_popover.size.y=required_label_height+vertical_inset
 	_position_tile_popover()
 
 func _position_tile_popover()->void:
