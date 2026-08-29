@@ -155,23 +155,18 @@ static func hazard_floor_spec(position: Vector2i, row: Dictionary) -> Dictionary
 	var observed := sanitize_observed_cell(row)
 	if str(observed.get("visibility_state", "UNSEEN")) != "VISIBLE":
 		return {
-			"visible":false, "fire":0, "wetness":0, "conductivity":0,
+			"visible":false, "fire":0, "wetness":0,
 			"phase":0, "fire_glow_alpha":0.0, "wet_reflection_alpha":0.0,
-			"arc_alpha":0.0,
 		}.duplicate(true)
 	var fire := clampi(int(row.get("fire_intensity", row.get("fire", 0))), 0, 100)
 	var wetness := clampi(int(row.get("wetness", 0)), 0, 100)
-	var conductivity := clampi(int(row.get("effective_conductivity",
-		row.get("conductivity", row.get("base_conductivity", 0)))), 0, 100)
 	return {
-		"visible":fire > 0 or wetness > 0 or conductivity >= 25,
+		"visible":fire > 0 or wetness > 0,
 		"fire":fire,
 		"wetness":wetness,
-		"conductivity":conductivity,
 		"phase":visual_hash(position, 131) % 4,
 		"fire_glow_alpha":0.08 + 0.24 * float(fire) / 100.0 if fire > 0 else 0.0,
 		"wet_reflection_alpha":0.06 + 0.18 * float(wetness) / 100.0 if wetness > 0 else 0.0,
-		"arc_alpha":0.28 + 0.36 * float(conductivity) / 100.0 if conductivity >= 25 else 0.0,
 	}.duplicate(true)
 
 

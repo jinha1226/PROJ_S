@@ -89,12 +89,12 @@ func test_hazard_cues_are_layered_and_visibility_safe() -> bool:
 	})
 	var kinds: Array = []
 	for cue in visible.cues:kinds.append(cue.kind)
-	check_eq(kinds,["FIRE","WET","CONDUCTIVE"],"hazard cue order")
+	check_eq(kinds,["FIRE","WET"],"only live fire and wetness have floor cues")
 	check_eq(visible.fire,60,"fire value")
 	check_eq(visible.wetness,40,"wet value")
-	check_eq(visible.conductivity,70,"conductivity value")
-	check(Style.hazard_spec({"conductivity":24}).cues.is_empty(),
-		"sub-threshold conductivity has no visual cue")
+	check(not visible.has("conductivity"),"conductivity is inspection data, not a visual spec")
+	check(Style.hazard_spec({"conductivity":100}).cues.is_empty(),
+		"conductivity never creates a persistent lightning floor cue")
 	check(Style.hazard_spec({"visibility_state":"MEMORY","fire":100,"wetness":100,
 		"conductivity":100}).cues.is_empty(),"memory cannot leak live hazard state")
 	return finish()
@@ -428,15 +428,19 @@ func test_diorama_sanitizer_and_hazards_are_memory_unseen_safe() -> bool:
 	check_eq(memory,{"visibility_state":"MEMORY","terrain_id":"wall"},
 		"memory sanitizer whitelists static terrain only")
 	var memory_hazard:Dictionary=Diorama.hazard_floor_spec(Vector2i(4,5),raw)
-	check_eq([memory_hazard.visible,memory_hazard.fire,memory_hazard.wetness,
-		memory_hazard.conductivity],[false,0,0,0],"memory aliases cannot leak live hazards")
+	check_eq([memory_hazard.visible,memory_hazard.fire,memory_hazard.wetness],
+		[false,0,0],"memory aliases cannot leak live hazards")
+	check(not memory_hazard.has("conductivity") and not memory_hazard.has("arc_alpha"),
+		"diorama has no conductive floor primitive")
 	var unseen_raw:=raw.duplicate(true);unseen_raw.visibility_state="UNSEEN"
 	check_eq(Diorama.sanitize_observed_cell(unseen_raw),{"visibility_state":"UNSEEN"},
 		"unseen sanitizer exposes no authoritative fields")
 	var visible_raw:=raw.duplicate(true);visible_raw.visibility_state="VISIBLE"
 	var visible_hazard:Dictionary=Diorama.hazard_floor_spec(Vector2i(4,5),visible_raw)
-	check(visible_hazard.visible and visible_hazard.fire==90 and visible_hazard.wetness==92 \
-		and visible_hazard.conductivity==93,"visible hazards produce a floor-layer spec")
+	check(visible_hazard.visible and visible_hazard.fire==90 and visible_hazard.wetness==92,
+		"visible fire and wetness produce a floor-layer spec")
+	check(not visible_hazard.has("conductivity") and not visible_hazard.has("arc_alpha"),
+		"visible conductive terrain still has no arc visual")
 	memory.terrain_id="CORRUPTED"
 	check_eq(str(raw.terrain_id),"wall","sanitizer output is detached from observation")
 	return finish()

@@ -253,17 +253,23 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 	sandbox.queue_free();await process_frame
 
 func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
-	var session=Session.new(44,20260828,Session.SHOWCASE_SCENARIO_ID)
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session,true)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
 	await process_frame;await process_frame
 	var label:="%s MVP_RUN"%viewport_size
-	var objective:Label=sandbox.run_objective_label;var objective_bar:PanelContainer=sandbox.run_objective_bar
-	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<43.9 \
-			or objective.get_theme_font_size("font_size")<18:
-		failures.append("%s objective bar accessibility"%label)
-	if objective.text!="목표 · 고블린을 쓰러뜨리세요" or sandbox.reward_badge.visible:
-		failures.append("%s initial objective/reward %s"%[label,objective.text])
+	var objective:Label=sandbox.recent_event_label;var objective_bar:PanelContainer=sandbox.phase_panel
+	if sandbox.root_layout.get_global_rect()!=sandbox.get_global_rect():
+		failures.append("%s product root does not use the full viewport root=%s viewport=%s"%[
+			label,sandbox.root_layout.get_global_rect(),sandbox.get_global_rect()])
+	if absf(sandbox.grid.size.x-viewport_size.x)>0.1:
+		failures.append("%s product exploration playfield does not use viewport width grid=%s"%[
+			label,sandbox.grid.get_global_rect()])
+	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<87.9 \
+			or objective_bar.size.y>96.1 or sandbox.minimap.size.x<77.9:
+		failures.append("%s top HUD accessibility"%label)
+	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
+		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
 	_validate_run_objective_geometry(sandbox,label+" INITIAL")
 	var grid_id:int=sandbox.grid.get_instance_id()
 	var state=session.sim.world.party_encounter;var near_exit:=Vector2i(12,1);var exit:=Vector2i(13,1)
@@ -285,9 +291,9 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	# This direct smoke fixture models a restored EXIT_OPEN save. A refresh must
 	# synchronize the badge without replaying the live reward emphasis.
 	state.safe_phase="GROUPED_COMPLETE";sandbox._refresh();await process_frame;await process_frame
-	if objective.text!="보상 +1 · 출구가 열렸습니다" or not sandbox.reward_badge.visible \
-			or sandbox.reward_badge.text!="$ 1":
-		failures.append("%s persistent reward/open objective"%label)
+	if not sandbox.reward_badge.visible or sandbox.reward_badge.text!="$ 1" \
+			or sandbox.phase_label.text!="승리":
+		failures.append("%s persistent reward/victory HUD"%label)
 	if sandbox._reward_emphasis_count!=0:
 		failures.append("%s loaded progress replayed reward emphasis"%label)
 	sandbox._on_tile_long_pressed(exit);await process_frame;await process_frame
@@ -297,14 +303,14 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	state.group_anchor=exit
 	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=exit
 	sandbox._hide_tile_popover();sandbox._refresh();await process_frame;await process_frame
-	if not bool(session.run_progress().complete) or objective.text!="원정 완료 · 보상 1":
-		failures.append("%s complete objective"%label)
+	if not bool(session.run_progress().complete) or sandbox.phase_label.text!="승리":
+		failures.append("%s complete situation"%label)
 	var restart:=_button(sandbox,"RestartSameRun")
 	if restart==null or not restart.is_visible_in_tree() or sandbox.combat_action_dock.get_child_count()!=1 \
 			or sandbox.action_feedback_label.visible:
 		failures.append("%s complete fixed area is not one restart button"%label)
-	if restart!=null and restart.text!="새 성격으로 다시 시작":
-		failures.append("%s restart button does not explain personality reroll"%label)
+	if restart!=null and restart.text!="같은 원정 다시 시작":
+		failures.append("%s solo restart button copy"%label)
 	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
 			or not sandbox.grid.route_draw_spec().segments.is_empty():
 		failures.append("%s complete left stale camera/action overlays"%label)
@@ -328,31 +334,39 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 		failures.append("%s restart replaced grid or lost 15x15 mapping"%label)
 	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
 		failures.append("%s restart did not restore fresh run progress"%label)
-	if int(session.personality_seed)==personality_seed_before:
-		failures.append("%s UI new-personality restart did not reroll seed"%label)
+	if int(session.personality_seed)!=personality_seed_before:
+		failures.append("%s solo restart unexpectedly rerolled identity"%label)
 	if sandbox.auto_deployment_pending or sandbox.auto_combat_pending or not sandbox.route_preview.is_empty() \
 			or sandbox.member_detail_modal.visible or sandbox.grid.modal_open \
 			or not sandbox.grid._active_visual_effects.is_empty() or not sandbox.grid._played_effect_ids.is_empty():
 		failures.append("%s restart retained UI/grid transient state"%label)
 	if _button(sandbox,"RestartSameRun")!=null or sandbox.combat_action_area.visible:
 		failures.append("%s restart left terminal controls"%label)
-	if objective.text!="목표 · 고블린을 쓰러뜨리세요" or sandbox.reward_badge.visible:
-		failures.append("%s restart objective did not return to initial"%label)
+	if sandbox.reward_badge.visible or sandbox.phase_label.text!="조용함":
+		failures.append("%s restart HUD did not return to calm"%label)
 	_validate_run_objective_geometry(sandbox,label+" RESTARTED")
 	sandbox.queue_free();await process_frame
 
 func _validate_run_objective_geometry(sandbox,label:String)->void:
 	var viewport:Rect2=sandbox.get_global_rect();var bar:=sandbox.run_objective_bar as Control
 	if not bar.is_visible_in_tree() or not _rect_contains(viewport,bar.get_global_rect()):
-		failures.append("%s objective outside viewport %s"%[label,bar.get_global_rect()]);return
-	var phase_rect:Rect2=sandbox.phase_panel.get_global_rect();var bar_rect:Rect2=bar.get_global_rect()
+		failures.append("%s top HUD outside viewport %s"%[label,bar.get_global_rect()]);return
+	var bar_rect:Rect2=bar.get_global_rect()
 	var grid_rect:Rect2=sandbox.grid.get_global_rect()
-	if phase_rect.end.y>bar_rect.position.y+0.1 or bar_rect.end.y>grid_rect.position.y+0.1:
-		failures.append("%s objective overlaps phase/grid"%label)
-	var text:=sandbox.run_objective_label as Label;var font:Font=text.get_theme_font("font")
-	var rendered:=font.get_string_size(text.text,HORIZONTAL_ALIGNMENT_LEFT,-1,text.get_theme_font_size("font_size"))
-	if rendered.x>text.size.x+0.5 or rendered.y>text.size.y+0.5:
-		failures.append("%s objective text clips rendered=%s box=%s"%[label,rendered,text.size])
+	if sandbox._is_solo_product_session():
+		if sandbox.root_layout.get_global_rect()!=viewport:
+			failures.append("%s product root has an outer frame"%label)
+		if not sandbox.combat_action_area.visible \
+				and absf(grid_rect.size.x-viewport.size.x)>0.1:
+			failures.append("%s product grid leaves horizontal outer gutters"%label)
+	if bar_rect.end.y>grid_rect.position.y+0.1:
+		failures.append("%s top HUD overlaps grid"%label)
+	if sandbox.minimap.size.x<77.9 or sandbox.record_button.size.x<43.9 \
+			or sandbox.hero_detail_button.size.x<43.9:
+		failures.append("%s top HUD controls below geometry contract"%label)
+	for forbidden in ["탐험","시간","목표"]:
+		if forbidden in sandbox.phase_label.text:
+			failures.append("%s top HUD contains %s"%[label,forbidden])
 	for child in sandbox.root_layout.get_children():
 		if child is Control and child.is_visible_in_tree() and not _rect_contains(viewport,child.get_global_rect()):
 			failures.append("%s root child outside viewport %s %s"%[label,child.name,child.get_global_rect()])
@@ -750,7 +764,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	if sandbox.grid.mapping_signature()!=exploration_mapping:failures.append("%s %s victory changed persistent full mapping"%[viewport_size,preset])
 	if sandbox.combat_action_area.visible or sandbox.combat_action_area.is_visible_in_tree():failures.append("%s %s combat action area remains after victory"%[viewport_size,preset])
 	if sandbox.combat_action_dock.visible or sandbox.combat_action_dock.is_visible_in_tree():failures.append("%s %s combat dock remains after victory"%[viewport_size,preset])
-	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s victory banner missing"%[viewport_size,preset])
+	if sandbox.phase_label.text!="승리":failures.append("%s %s victory situation missing"%[viewport_size,preset])
 	var old_anchor:Array=sandbox.session.party_status().anchor
 	var regroup_goal:=Vector2i(-1,-1);var regroup_origin:=Vector2i(int(old_anchor[0]),int(old_anchor[1]))
 	for direction in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
@@ -764,7 +778,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 		sandbox._refresh();await _touch_cell(sandbox,regroup_goal)
 	if sandbox.session.party_status().anchor==old_anchor: failures.append("%s %s grouped-complete anchor stale"%[viewport_size,preset])
 	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.mapping_signature()!=exploration_mapping: failures.append("%s %s grid identity/restored mapping changed"%[viewport_size,preset])
-	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s post-regroup move lost persistent victory banner"%[viewport_size,preset])
+	if sandbox.phase_label.text!="승리":failures.append("%s %s post-regroup move lost victory situation"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s POST_REGROUP_MOVE"%[viewport_size,preset])
 	print("PARTY UI %dx%d %s full journey ok grid=%.0f cell=%.1f"%[viewport_size.x,viewport_size.y,preset,sandbox.grid.size.x,sandbox.grid.cell_size_px()])
 	sandbox.queue_free(); await process_frame
@@ -780,7 +794,7 @@ func _terminal(viewport_size:Vector2)->void:
 	if sandbox.find_child("TurnConfirm",true,false)!=null: failures.append("%s terminal confirm visible"%viewport_size)
 	if not sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty():
 		failures.append("%s terminal companion speech visible"%viewport_size)
-	if not "패배" in sandbox.phase_label.text:failures.append("%s terminal phase banner missing"%viewport_size)
+	if sandbox.phase_label.text!="위험":failures.append("%s terminal danger situation missing"%viewport_size)
 	if str(sandbox.grid._presentation_style.get("style_id",""))!="DEFEAT" or str(sandbox.grid._presentation_style.get("border_hex",""))!="#8f5367":
 		failures.append("%s terminal presentation style missing"%viewport_size)
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
@@ -1115,7 +1129,7 @@ func _validate_fixed_combat_area(sandbox,label:String)->void:
 		var rendered:=font.get_string_size(button.text,HORIZONTAL_ALIGNMENT_LEFT,-1,button.get_theme_font_size("font_size"))
 		if rendered.x>button.size.x-10.0:failures.append("%s dock text clips %s rendered=%s box=%s"%[label,button_name,rendered,button.size])
 		if sandbox.deck.find_child(button_name,true,false)!=null:failures.append("%s duplicate %s in ContextDeck"%[label,button_name])
-	if not "⚔ 전투 중" in sandbox.phase_label.text:failures.append("%s persistent combat banner missing"%label)
+	if sandbox.phase_label.text!="전투":failures.append("%s persistent combat situation missing"%label)
 	var phase_font:Font=sandbox.phase_label.get_theme_font("font")
 	for line in sandbox.phase_label.text.split("\n"):
 		var rendered:=phase_font.get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,sandbox.phase_label.get_theme_font_size("font_size"))

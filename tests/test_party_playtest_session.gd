@@ -1039,6 +1039,48 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 	return finish()
 
 
+func test_fov_memory_is_reconstructed_purely_from_hero_move_history_and_replays() -> bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var initial:Dictionary=session.observe_party_world()
+	check(bool(initial.visibility.memory_supported),"product observation advertises terrain memory")
+	check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
+		"memory fixture reaches solo contact")
+	check(session.enter_solo_combat().accepted,"memory fixture enters solo combat")
+	check(_resolve_solo_encounter(session,32),"memory fixture clears roaming monster")
+	for index in range(5):
+		var moved:Dictionary=session.commit_exploration_direction(Vector2i.UP)
+		check(bool(moved.get("accepted",false)),"memory fixture move %d accepted"%index)
+		if not bool(moved.get("accepted",false)):break
+	var snapshot_before:Dictionary=session.sim.snapshot()
+	var journal_before:Array=session.command_journal.duplicate(true)
+	var observed:Dictionary=session.observe_party_world()
+	check_eq(session.sim.snapshot(),snapshot_before,"observe does not mutate world authority")
+	check_eq(session.command_journal,journal_before,"observe does not mutate canonical journal")
+	var memory_rows:Array=[];var unseen_rows:Array=[]
+	for cell in observed.cells:
+		if str(cell.visibility_state)=="MEMORY":memory_rows.append(cell)
+		elif str(cell.visibility_state)=="UNSEEN":unseen_rows.append(cell)
+	check(not memory_rows.is_empty(),"terrain leaves dim memory after moving out of FOV")
+	check(not unseen_rows.is_empty(),"never-seen terrain remains unknown")
+	for cell in memory_rows:
+		check(str(cell.terrain_id)!="unknown" and cell.actors.is_empty(),
+			"memory keeps terrain but no actors")
+		check_eq([cell.feature_id,cell.fire_intensity,cell.wetness,
+			cell.effective_conductivity],["",0,0,0],
+			"memory leaks no feature, live hazard, or conductivity cue")
+	for cell in unseen_rows:
+		check_eq([cell.terrain_id,cell.feature_id,cell.actors],["unknown","",[]],
+			"unseen remains identity-free")
+	var second:Dictionary=session.observe_party_world()
+	check_eq(second,observed,"repeated observation is exactly stable")
+	var restored=Session.new(1,2)
+	check(restored.load_session_json(session.save_session_json()).accepted,
+		"memory fixture save loads through journal replay")
+	check_eq(restored.observe_party_world(),observed,
+		"save/load and journal replay reconstruct identical memory")
+	return finish()
+
+
 func _check_rejection_noop(session, producer: Callable, expected_reason: String,
 		korean_fragment: String, label: String) -> Dictionary:
 	var snapshot_before = session.sim.snapshot()
@@ -1065,6 +1107,38 @@ func _engaged_with_companions(roster_slots: Array, world_seed: int = 44):
 	check(session.preview_deployment("LINE",selected).accepted,"engaged helper deployment preview")
 	check(session.commit_deployment().accepted,"engaged helper deployment commit")
 	return session
+
+
+func _resolve_solo_encounter(session,turn_limit:int)->bool:
+	for _turn in range(turn_limit):
+		var status:Dictionary=session.party_status()
+		if str(status.safe_phase)=="GROUPED_COMPLETE":return true
+		if str(status.safe_phase)!="ENGAGED":return false
+		var hero:=int(status.protagonist_id);var hero_position:=Vector2i(-1,-1)
+		for card in session.party_cards():
+			if int(card.entity_id)==hero:
+				hero_position=Vector2i(int(card.logical_position[0]),int(card.logical_position[1]));break
+		var targets:Array=session.enemy_targets()
+		if targets.is_empty():return false
+		var enemy:Dictionary=targets[0]
+		var enemy_position:=Vector2i(int(enemy.position[0]),int(enemy.position[1]))
+		var preview:Dictionary={"accepted":false}
+		if maxi(absi(hero_position.x-enemy_position.x),absi(hero_position.y-enemy_position.y))==1:
+			preview=session.set_actor_action(hero,"MELEE",[],int(enemy.entity_id))
+		else:
+			for direction in [Vector2i(signi(enemy_position.x-hero_position.x),
+					signi(enemy_position.y-hero_position.y)),
+					Vector2i(signi(enemy_position.x-hero_position.x),0),
+					Vector2i(0,signi(enemy_position.y-hero_position.y))]:
+				if direction==Vector2i.ZERO:continue
+				preview=session.set_actor_action(hero,"MOVE",
+					[hero_position.x+direction.x,hero_position.y+direction.y])
+				if bool(preview.get("accepted",false)):break
+			if not bool(preview.get("accepted",false)):
+				preview=session.set_actor_action(hero,"HOLD")
+		if not bool(preview.get("accepted",false)) or not session.commit_turn().accepted:
+			return false
+	return str(session.party_status().safe_phase)=="GROUPED_COMPLETE"
 
 
 func _relocate_with_move_events(sim, entity_id: int, target: Vector2i) -> bool:

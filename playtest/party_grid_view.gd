@@ -919,16 +919,6 @@ func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 		draw_circle(center+Vector2(0,cell*0.08),cell*0.29,Color(1.0,0.45,0.13,glow_alpha*0.48))
 		_draw_centered_text(get_theme_default_font(),"*",center-Vector2(0,cell*0.02),
 			maxi(10,int(cell*0.55)),Color(1.0,0.70,0.25,0.88))
-	if int(spec.get("conductivity",0))>=25:
-		var arc:=Color(0.70,0.94,1.0,float(spec.arc_alpha))
-		var direction:=-1.0 if phase%2==0 else 1.0
-		var points:=PackedVector2Array([
-			center+Vector2(-cell*0.32,cell*0.12*direction),
-			center+Vector2(-cell*0.08,-cell*0.13*direction),
-			center+Vector2(cell*0.04,cell*0.08*direction),
-			center+Vector2(cell*0.31,-cell*0.15*direction),
-		])
-		draw_polyline(points,arc,maxf(1.0,cell*0.045),true)
 
 func _draw_fov_edge_haze()->void:
 	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)

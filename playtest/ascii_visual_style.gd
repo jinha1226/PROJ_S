@@ -74,8 +74,6 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	var visibility := visibility_spec(cell)
 	var fire := clampi(int(cell.get("fire_intensity", cell.get("fire", 0))), 0, 100)
 	var wetness := clampi(int(cell.get("wetness", 0)), 0, 100)
-	var conductivity := clampi(int(cell.get("effective_conductivity",
-		cell.get("conductivity", cell.get("base_conductivity", 0)))), 0, 100)
 	var cues: Array[Dictionary] = []
 	if bool(visibility.draw_hazards) and fire > 0:
 		cues.append({"kind":"FIRE", "glyph":"*", "color_hex":"#ff7a3d", "value":fire,
@@ -83,11 +81,11 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	if bool(visibility.draw_hazards) and wetness > 0:
 		cues.append({"kind":"WET", "glyph":"~", "color_hex":"#62c8ff", "value":wetness,
 			"corner":"BOTTOM_RIGHT", "fill_alpha":0.08 + 0.20 * float(wetness) / 100.0})
-	if bool(visibility.draw_hazards) and conductivity >= 25:
-		cues.append({"kind":"CONDUCTIVE", "glyph":"+", "color_hex":"#8ddce8", "value":conductivity,
-			"corner":"TOP_RIGHT", "fill_alpha":0.0})
+	# Conductivity remains inspectable simulation data, but it has no persistent
+	# floor glyph. Electricity should be communicated only when an actual event
+	# happens, not as a misleading lightning mark on every conductive tile.
 	return {"visibility_state":visibility.state, "fire":fire, "wetness":wetness,
-		"conductivity":conductivity, "cues":cues}.duplicate(true)
+		"cues":cues}.duplicate(true)
 
 
 static func feature_spec(feature_id: String) -> Dictionary:

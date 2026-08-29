@@ -429,6 +429,8 @@ func observe_party_world() -> Dictionary:
 	# explicit so grouped followers can safely fall back to the hero cell even if
 	# a future LOS implementation accidentally omits its origin.
 	visible[_position_key(hero_position)] = true
+	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
+		hero_position)
 	var follower_positions := _grouped_follower_display_positions(visible)
 	var followers_by_cell: Dictionary = {}
 	for member_id_value in follower_positions:
@@ -441,11 +443,21 @@ func observe_party_world() -> Dictionary:
 	for y in range(sim.world.height):
 		for x in range(sim.world.width):
 			var position := Vector2i(x,y)
-			var visibility_state := "VISIBLE" if visible.has(_position_key(position)) else "UNSEEN"
+			var position_key:=_position_key(position)
+			var visibility_state := "VISIBLE" if visible.has(position_key) else (
+				"MEMORY" if explored.has(position_key) else "UNSEEN")
 			if visibility_state == "UNSEEN":
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
 					"effective_conductivity":0, "actors":[]})
+				continue
+			var tile = sim.world.tile_at(position)
+			if visibility_state=="MEMORY":
+				# Remember only stable terrain. Features, hazards, actors and all live
+				# decision data remain unavailable outside the current field of view.
+				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
+					"feature_id":"","visibility_state":"MEMORY","fire_intensity":0,
+					"wetness":0,"effective_conductivity":0,"actors":[]})
 				continue
 			var actors: Array = []
 			for entity in sim.world.occupying_entities_at(position):
@@ -461,7 +473,6 @@ func observe_party_world() -> Dictionary:
 				return int(a.roster_slot) < int(b.roster_slot) \
 					if int(a.roster_slot) != int(b.roster_slot) \
 					else int(a.entity_id) < int(b.entity_id))
-			var tile = sim.world.tile_at(position)
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
 				"feature_id":_run_feature_id_at(position, progress),
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
@@ -472,7 +483,32 @@ func observe_party_world() -> Dictionary:
 		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
 			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
-			"memory_supported":false}}.duplicate(true)
+			"memory_supported":true}}.duplicate(true)
+
+
+func _explored_cells_from_hero_history(hero_id:int,current_position:Vector2i)->Dictionary:
+	# This is deliberately reconstructed from canonical history on every observe.
+	# The observer owns no mutable fog state, so refresh, save/load and replay all
+	# produce the same memory map without changing simulation authority.
+	var visited:Array[Vector2i]=[]
+	for event in sim.world.events:
+		if str(event.type)!="action.move" or int(event.actor_id)!=hero_id:continue
+		var from_value:Variant=event.data.get("from_position",[])
+		if from_value is Array and from_value.size()==2:
+			var from_position:=Vector2i(int(from_value[0]),int(from_value[1]))
+			if from_position not in visited:visited.append(from_position)
+		var to_value:Variant=event.data.get("to_position",[])
+		if to_value is Array and to_value.size()==2:
+			var to_position:=Vector2i(int(to_value[0]),int(to_value[1]))
+			if to_position not in visited:visited.append(to_position)
+	if visited.is_empty():visited.append(current_position)
+	elif current_position not in visited:visited.append(current_position)
+	var explored:Dictionary={}
+	for origin in visited:
+		var historical_visible:Dictionary=VisualTestMapScript.visible_cells(
+			sim.world,origin,scenario_id)
+		for key in historical_visible:explored[str(key)]=true
+	return explored
 
 
 func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) -> Dictionary:

@@ -3,6 +3,7 @@ extends Control
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
+const MinimapScript=preload("res://playtest/party_minimap.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
 const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
@@ -23,6 +24,11 @@ var phase_label:Label
 var run_objective_bar:PanelContainer
 var run_objective_label:Label
 var reward_badge:Label
+var minimap
+var recent_event_label:Label
+var record_button:Button
+var hero_detail_button:Button
+var top_hud_actions:HBoxContainer
 var duel_lab_button:Button
 var cards:HBoxContainer
 var deck:VBoxContainer
@@ -92,6 +98,7 @@ var _reward_emphasis_count:=0
 var _reward_emphasis_tween:Tween
 var _run_locked_exit_feedback:=false
 var _personality_entropy_source:Callable
+var _narrative_log_visible:=true
 
 func _ready()->void:
 	_build_ui()
@@ -128,34 +135,51 @@ func _build_ui()->void:
 	var bg:=ColorRect.new(); bg.color=Color("#09111b"); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
-	phase_panel=PanelContainer.new(); phase_panel.name="PhaseBanner"; phase_panel.custom_minimum_size.y=48; root_layout.add_child(phase_panel)
-	phase_row=HBoxContainer.new();phase_row.name="PhaseBannerRow";phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
-	phase_label=Label.new(); phase_label.name="PhaseStatus"; phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-	phase_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	phase_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;phase_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;phase_row.add_child(phase_label)
-	run_objective_bar=PanelContainer.new();run_objective_bar.name="RunObjectiveBar"
-	run_objective_bar.custom_minimum_size.y=TOUCH_TARGET;run_objective_bar.visible=false;root_layout.add_child(run_objective_bar)
-	var objective_style:=StyleBoxFlat.new();objective_style.bg_color=Color("#122233")
-	objective_style.border_color=Color("#36536b");objective_style.set_border_width_all(1)
-	objective_style.set_corner_radius_all(6);objective_style.content_margin_left=8
-	objective_style.content_margin_right=8;objective_style.content_margin_top=3;objective_style.content_margin_bottom=3
-	run_objective_bar.add_theme_stylebox_override("panel",objective_style)
-	var objective_row:=HBoxContainer.new();objective_row.name="RunObjectiveRow"
-	objective_row.add_theme_constant_override("separation",6);run_objective_bar.add_child(objective_row)
-	run_objective_label=Label.new();run_objective_label.name="RunObjectiveText"
-	run_objective_label.add_theme_font_size_override("font_size",FONT_BODY)
-	run_objective_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	run_objective_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	run_objective_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;objective_row.add_child(run_objective_label)
+	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
+	phase_panel.custom_minimum_size.y=92;root_layout.add_child(phase_panel)
+	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
+	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
+	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
+	minimap.custom_minimum_size=Vector2(82,82);phase_row.add_child(minimap)
+	var situation_stack:=VBoxContainer.new();situation_stack.name="SituationStack"
+	situation_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	situation_stack.add_theme_constant_override("separation",1);phase_row.add_child(situation_stack)
+	var situation_row:=HBoxContainer.new();situation_row.name="SituationRow"
+	situation_row.add_theme_constant_override("separation",4);situation_stack.add_child(situation_row)
+	phase_label=Label.new();phase_label.name="SituationStatus"
+	phase_label.add_theme_font_size_override("font_size",FONT_KEY)
+	phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	phase_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	phase_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;situation_row.add_child(phase_label)
 	reward_badge=Label.new();reward_badge.name="RewardBadge";reward_badge.text="$ 1"
-	reward_badge.custom_minimum_size=Vector2(52,TOUCH_TARGET-8);reward_badge.visible=false
-	reward_badge.add_theme_font_size_override("font_size",FONT_BODY)
+	reward_badge.custom_minimum_size=Vector2(42,34);reward_badge.visible=false
+	reward_badge.add_theme_font_size_override("font_size",FONT_AUX)
 	reward_badge.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	reward_badge.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	var reward_style:=StyleBoxFlat.new();reward_style.bg_color=Color("#2b402d")
 	reward_style.border_color=Color("#75d7a0");reward_style.set_border_width_all(2)
 	reward_style.set_corner_radius_all(6);reward_badge.add_theme_stylebox_override("normal",reward_style)
-	objective_row.add_child(reward_badge)
+	situation_row.add_child(reward_badge)
+	recent_event_label=Label.new();recent_event_label.name="RecentWorldEvent"
+	recent_event_label.add_theme_font_size_override("font_size",FONT_AUX)
+	recent_event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	recent_event_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	recent_event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	recent_event_label.clip_text=true;situation_stack.add_child(recent_event_label)
+	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
+	top_hud_actions.custom_minimum_size.x=92;top_hud_actions.alignment=BoxContainer.ALIGNMENT_CENTER
+	top_hud_actions.add_theme_constant_override("separation",4)
+	phase_row.add_child(top_hud_actions)
+	record_button=Button.new();record_button.name="NarrativeLogToggle";record_button.text="기록"
+	record_button.custom_minimum_size=Vector2(44,44);record_button.toggle_mode=true
+	record_button.tooltip_text="하단 사건 기록 표시/숨기기"
+	record_button.pressed.connect(_toggle_narrative_log);top_hud_actions.add_child(record_button)
+	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="인물"
+	hero_detail_button.custom_minimum_size=Vector2(44,44);hero_detail_button.tooltip_text="주인공 상세 정보"
+	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
+	# Compatibility aliases point at the unified HUD rather than preserving a
+	# second objective/time strip in the product layout.
+	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
@@ -187,7 +211,8 @@ func _build_duel_decision_lab_entry()->void:
 	duel_lab_button.text="5인 관찰 실험";duel_lab_button.tooltip_text="다섯 캐릭터 판단 관찰 LAB 열기"
 	duel_lab_button.add_theme_font_size_override("font_size",FONT_BODY)
 	duel_lab_button.custom_minimum_size=Vector2(116,44)
-	duel_lab_button.pressed.connect(_open_duel_decision_lab);phase_row.add_child(duel_lab_button)
+	duel_lab_button.pressed.connect(_open_duel_decision_lab);duel_lab_button.visible=false
+	phase_row.add_child(duel_lab_button)
 
 func _open_duel_decision_lab()->void:
 	if is_inside_tree():get_tree().change_scene_to_file(DUEL_DECISION_LAB_SCENE_PATH)
@@ -277,6 +302,15 @@ func _refresh()->void:
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
 	var party_rows:Array=session.party_cards()
+	var product_hud:=_is_solo_product_session()
+	if product_hud:
+		root_layout.offset_left=0;root_layout.offset_right=0
+		root_layout.offset_top=0;root_layout.offset_bottom=0
+	else:
+		root_layout.offset_left=6;root_layout.offset_right=-6
+		root_layout.offset_top=4;root_layout.offset_bottom=-4
+	minimap.visible=product_hud;recent_event_label.visible=product_hud
+	top_hud_actions.visible=product_hud
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	_apply_portrait_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
@@ -289,10 +323,8 @@ func _refresh()->void:
 		and not _is_solo_product_session() else []
 	var observation:Dictionary=session.observe_party_world()
 	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
-	if combat_active and not run_complete and session.has_method("enemy_intent_forecasts"):
-		var enemy_forecasts:Variant=session.call("enemy_intent_forecasts")
-		if enemy_forecasts is Array:intent_overlays.append_array(enemy_forecasts)
 	grid.set_observation(observation,ghosts)
+	minimap.set_observation(observation)
 	grid.set_view_window(15)
 	grid.set_presentation_style(presentation.get("grid_style",{}))
 	grid.set_selection(selected_member_id,selected_target_id)
@@ -340,6 +372,9 @@ func _refresh()->void:
 	if run_terminal:_build_run_restart_area()
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
+	log_label.visible=_narrative_log_visible
+	record_button.button_pressed=_narrative_log_visible
+	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
 
@@ -354,21 +389,45 @@ func _current_run_progress()->Dictionary:
 
 func _update_run_objective_bar(progress:Dictionary)->void:
 	var available:=bool(progress.get("available",false))
-	run_objective_bar.visible=available
 	if not available:
 		_run_progress_initialized=false;_observed_reward_granted=false
-		_reward_emphasis_pending=false;return
-	var state:=str(progress.get("run_state","EXPLORE"))
-	run_objective_label.text={
-		"EXIT_OPEN":"보상 +1 · 출구가 열렸습니다",
-		"COMPLETE":"원정 완료 · 보상 1",
-		"DEFEATED":"원정 실패",
-	}.get(state,"목표 · 고블린을 쓰러뜨리세요")
+		_reward_emphasis_pending=false
+		reward_badge.visible=false;return
 	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
 	var granted:=bool(reward.get("granted",false))
 	reward_badge.visible=granted;reward_badge.text="$ %d"%int(reward.get("amount",0))
 	if _reward_emphasis_pending and granted:_play_reward_emphasis()
 	_reward_emphasis_pending=false;_observed_reward_granted=granted;_run_progress_initialized=true
+
+func _toggle_narrative_log()->void:
+	_narrative_log_visible=not _narrative_log_visible
+	if log_label!=null:log_label.visible=_narrative_log_visible
+	if record_button!=null:
+		record_button.button_pressed=_narrative_log_visible
+		record_button.tooltip_text="하단 사건 기록 숨기기" if _narrative_log_visible \
+			else "하단 사건 기록 표시하기"
+
+func _open_hero_detail()->void:
+	if session==null:return
+	var status:Dictionary=session.party_status()
+	var hero_id:=int(status.get("protagonist_id",-1))
+	if hero_id>0:_open_member_detail(hero_id)
+
+func _update_recent_event(history:Dictionary,status:Dictionary)->void:
+	var latest:=""
+	var groups:Variant=history.get("groups",[])
+	if groups is Array and not groups.is_empty():
+		var last_group:Variant=groups.back()
+		if last_group is Dictionary:
+			var rows:Variant=last_group.get("rows",[])
+			if rows is Array and not rows.is_empty() and rows.back() is Dictionary:
+				latest=str(rows.back().get("message",""))
+	if latest.is_empty():
+		latest="위험한 기척이 느껴진다" if str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"] \
+			else "주변을 살피는 중"
+	latest=latest.replace("다시 탐험할 수 있다","출구를 찾을 수 있다")
+	latest=latest.replace("다시 탐험을 시작한다","다시 움직이기 시작한다")
+	recent_event_label.text=latest.replace("\n"," ")
 
 func _play_reward_emphasis()->void:
 	_reward_emphasis_count+=1
@@ -766,7 +825,6 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	_add_notice(instruction)
 	var lines:Array[String]=session.turn_summary_lines()
 	if not lines.is_empty():_add_notice("이번 턴 예정\n"+"\n".join(lines),"TurnSummary",FONT_BODY)
-	_add_enemy_intent_forecasts()
 	var has_original_suggestion:=false
 	for overlay in session.turn_intent_overlays():
 		if overlay.get("automatic_suggestion",null) is Dictionary:has_original_suggestion=true;break
@@ -775,17 +833,6 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	_build_combat_action_area(status,preview)
 	_selected_detail()
 
-func _add_enemy_intent_forecasts()->void:
-	if session==null or not session.has_method("enemy_intent_forecasts"):return
-	var forecasts:Variant=session.call("enemy_intent_forecasts")
-	if not forecasts is Array or forecasts.is_empty():return
-	var lines:Array[String]=[]
-	for value in forecasts:
-		if not value is Dictionary:continue
-		var row:Dictionary=value;var action_type:=str(row.get("type","HOLD"))
-		var icon:String={"MELEE":"[공격]","MOVE":"[이동]","HOLD":"[방어]"}.get(action_type,"[예상]")
-		lines.append("%s %s — %s"%[icon,str(row.get("headline","적의 행동")),str(row.get("reason",""))])
-	if not lines.is_empty():_add_notice("적 현재 예상\n"+"\n".join(lines),"EnemyIntentSummary",FONT_AUX)
 func _legacy_regroup_notice()->void:_add_notice("승리했습니다. 호환 상태를 자동 재집결 처리하는 중입니다.","ActionStatus",FONT_KEY)
 
 func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
@@ -1650,10 +1697,13 @@ func _facet_label(value:String)->String:return {"aggression":"공격성","altrui
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
-	var wide:=size.x>=450.0; phase_panel.custom_minimum_size.y=52 if wide else 48
+	var wide:=size.x>=450.0
+	phase_panel.custom_minimum_size.y=92 if _is_solo_product_session() else (52 if wide else 48)
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
-	if wide:
+	if _is_solo_product_session() and not combat_active and not combat_actions_visible:
+		grid.custom_minimum_size=Vector2(size.x,size.x)
+	elif wide:
 		grid.custom_minimum_size=Vector2(405,405)
 	elif combat_active:
 		grid.custom_minimum_size=Vector2(248,248) if run_available else Vector2(300,300)
@@ -1665,36 +1715,38 @@ func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
 	info_scroll.custom_minimum_size.y=30
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
-	var contact_text:String={"NONE":"탐색 중","DETECTED":"상호 발견","PARTY_AMBUSH":"파티 선제","ENEMY_AMBUSH":"적 매복"}.get(str(status.contact_kind),"탐색 중")
 	var banner:Dictionary=presentation.get("banner",{})
 	var grid_style:Dictionary=presentation.get("grid_style",{})
-	var tone:=str(banner.get("tone","CALM"));var title:=str(banner.get("title","탐험"));var subtitle:=str(banner.get("subtitle",""))
+	var tone:=str(banner.get("tone","CALM"))
+	var situation:="조용함"
+	if tone=="DEFEAT":situation="위험"
+	elif tone=="VICTORY" or str(status.get("safe_phase",""))=="GROUPED_COMPLETE":situation="승리"
+	elif str(status.get("safe_phase",""))=="ENGAGED":situation="전투"
+	elif str(status.get("safe_phase",""))=="CONTACT" \
+			or not status.get("visible_enemy_ids",[]).is_empty():situation="기척"
 	var style:=StyleBoxFlat.new(); style.corner_radius_top_left=6; style.corner_radius_top_right=6; style.corner_radius_bottom_left=6; style.corner_radius_bottom_right=6
-	if tone=="COMBAT":
+	if situation=="전투":
 		style.bg_color=Color("#4a2028"); style.border_color=Color(str(grid_style.get("border_hex","#ff7a80")))
 		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
-		phase_label.add_theme_font_size_override("font_size",FONT_BODY)
-		phase_label.text="⚔ %s · %s\n시간 %d · %s"%[title,"행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행",int(status.world_time),contact_text]
+		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",Color("#fff0e8")); grid.set_combat_emphasis(true)
-	elif tone=="VICTORY":
+	elif situation=="승리":
 		style.bg_color=Color("#173c32"); style.border_color=Color(str(grid_style.get("border_hex","#62d98b")))
 		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
-		phase_label.add_theme_font_size_override("font_size",FONT_BODY)
-		phase_label.text="%s\n%s · 시간 %d"%[title,subtitle,int(status.world_time)]
+		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",Color("#dfffee")); grid.set_combat_emphasis(false)
-	elif tone=="DEFEAT":
+	elif situation=="위험":
 		style.bg_color=Color("#32232b");style.border_color=Color(str(grid_style.get("border_hex","#8f5367")))
 		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
-		phase_label.add_theme_font_size_override("font_size",FONT_BODY)
-		phase_label.text="%s · 시간 %d\n%s"%[title,int(status.world_time),subtitle]
+		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",Color("#f5dce8"));grid.set_combat_emphasis(true)
 	else:
-		style.bg_color=Color("#3b3018") if tone=="WARNING" else Color("#142434")
+		style.bg_color=Color("#3b3018") if situation=="기척" else Color("#142434")
 		style.border_color=Color(str(grid_style.get("border_hex","#334c63")))
 		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,1)
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-		phase_label.text="%s · 시간 %d · %s"%[title,int(status.world_time),contact_text]
 		phase_label.add_theme_color_override("font_color",Color.WHITE); grid.set_combat_emphasis(false)
+	phase_label.text=situation
 	phase_panel.add_theme_stylebox_override("panel",style)
 
 func _camera_focus_points(observation:Dictionary,intents:Array)->Array[Vector2i]:

@@ -410,7 +410,7 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 			if cell.actors.is_empty():continue
 			var actor_position:=Vector2i(int(cell.position[0]),int(cell.position[1]))
 			check(sandbox.grid.is_world_cell_visible(actor_position),"%s combat cluster remains visible"%preset)
-		check("⚔ 전투 중" in sandbox.phase_label.text,"%s persistent combat banner"%preset)
+		check_eq(sandbox.phase_label.text,"전투","%s coarse combat situation"%preset)
 		check(sandbox.combat_action_area.visible,"%s fixed action area shown"%preset)
 		check_eq(sandbox.combat_action_area.get_parent(),sandbox.root_layout,"%s action area is PartyLayout sibling"%preset)
 		check_eq(sandbox.root_layout.get_child(sandbox.root_layout.get_child_count()-1),sandbox.combat_action_area,"%s action area is final PartyLayout sibling"%preset)
@@ -765,7 +765,7 @@ func test_enemy_tap_targets_without_selecting_enemy_and_rejections_are_visible()
 	sandbox.free(); return finish()
 
 
-func test_combat_defense_attack_preview_and_enemy_intent_are_mobile_readable() -> bool:
+func test_combat_defense_attack_preview_is_readable_without_enemy_forecast_leak() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var sandbox=_engaged_sandbox("LINE",viewport_size)
 		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
@@ -780,18 +780,12 @@ func test_combat_defense_attack_preview_and_enemy_intent_are_mobile_readable() -
 		check(hold!=null and "25%" in hold.tooltip_text and "200 시간" in hold.tooltip_text,
 			"%s defense tooltip exposes effect and duration"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
-		check(enemy_summary!=null and "[공격]" in enemy_summary.text \
-			and "공격 범위" in enemy_summary.text,
-			"%s visible enemy intent has action target context and Korean reason"%viewport_size)
+		check(enemy_summary==null,"%s product UI has no enemy forecast summary"%viewport_size)
 		var enemy_overlay:Dictionary={}
 		for overlay in sandbox.grid._intent_overlays:
 			if str(overlay.get("source",""))=="ENEMY_FORECAST":enemy_overlay=overlay;break
-		check(not enemy_overlay.is_empty() and enemy_overlay.type=="MELEE" \
-			and int(enemy_overlay.target_id)==hero,
-			"%s enemy intent target link reaches the protagonist"%viewport_size)
-		if not enemy_overlay.is_empty():
-			check(sandbox.grid.intent_draw_spec(enemy_overlay).visible,
-				"%s enemy intent is FOV-visible"%viewport_size)
+		check(enemy_overlay.is_empty(),
+			"%s product grid omits enemy destination and target overlays"%viewport_size)
 		var hero_hit:Rect2=sandbox.grid.actor_hit_rect(hero)
 		check_eq(sandbox.grid.actor_at_pointer(hero_hit.get_center()),hero,
 			"%s presentation overlays do not intercept actor hit testing"%viewport_size)
@@ -867,8 +861,8 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			and "방어" in hold.text and "25%" in sandbox.action_feedback_label.text,
 			"%s solo defense is visible and explained"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
-		check(enemy_summary!=null and "주인공" in enemy_summary.text,
-			"%s enemy intent names the only target without party copy"%viewport_size)
+		check(enemy_summary==null,
+			"%s solo product does not reveal enemy target or direction"%viewport_size)
 		var enemy:=int(session.party_status().visible_enemy_ids[0])
 		check(_relocate_with_move_events(session.sim,enemy,
 			session.sim.world.entities[hero].position+Vector2i.RIGHT),
@@ -881,6 +875,51 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		check(current.accepted and current.actor_rows.size()==1 \
 			and int(current.actor_rows[0].actor_id)==hero,
 			"%s solo final plan contains protagonist only"%viewport_size)
+		sandbox.free()
+	return finish()
+
+
+func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(session,false)
+		check_eq(sandbox.phase_panel.name,"TopExplorationHUD","%s unified top HUD"%viewport_size)
+		check(sandbox.phase_panel.custom_minimum_size.y>=88.0 \
+			and sandbox.phase_panel.custom_minimum_size.y<=96.0,
+			"%s unified HUD keeps the former two-row height budget"%viewport_size)
+		check(sandbox.minimap.custom_minimum_size.x>=78.0 \
+			and sandbox.minimap.custom_minimum_size.x<=92.0,
+			"%s reusable 15x15 minimap is readable"%viewport_size)
+		check(sandbox.record_button.custom_minimum_size==Vector2(44,44) \
+			and sandbox.hero_detail_button.custom_minimum_size==Vector2(44,44),
+			"%s record and hero actions are honest touch targets"%viewport_size)
+		for forbidden in ["탐험","시간","목표"]:
+			check(not forbidden in sandbox.phase_label.text \
+				and not forbidden in sandbox.recent_event_label.text,
+				"%s top HUD omits %s copy"%[viewport_size,forbidden])
+		var observation:Dictionary=session.observe_party_world()
+		var hero_marker:=false;var enemy_marker:=false;var unseen_safe:=false
+		for cell in observation.cells:
+			var position:=Vector2i(int(cell.position[0]),int(cell.position[1]))
+			var spec:Dictionary=sandbox.minimap.cell_draw_spec(position)
+			if str(spec.marker)=="HERO":hero_marker=true
+			elif str(spec.marker)=="ENEMY":enemy_marker=true
+			if str(spec.visibility_state)=="UNSEEN":
+				unseen_safe=str(spec.marker).is_empty() and spec.color==sandbox.minimap.UNSEEN_COLOR
+			check(not bool(spec.leaks_direction) and not bool(spec.leaks_target),
+				"%s minimap never publishes enemy plan data"%viewport_size)
+		check(hero_marker and enemy_marker and unseen_safe,
+			"%s minimap distinguishes visible actors while unseen stays black"%viewport_size)
+		check(sandbox.log_label.visible,"%s narrative log starts visible"%viewport_size)
+		sandbox.record_button.pressed.emit();check(not sandbox.log_label.visible,
+			"%s record action hides the narrative log"%viewport_size)
+		sandbox.record_button.pressed.emit();check(sandbox.log_label.visible,
+			"%s record action restores the narrative log"%viewport_size)
+		sandbox.hero_detail_button.pressed.emit()
+		check(sandbox.member_detail_modal.visible \
+			and "주인공" in sandbox.member_detail_title.text,
+			"%s hero action opens the existing authoritative detail modal"%viewport_size)
 		sandbox.free()
 	return finish()
 
@@ -909,7 +948,7 @@ func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> 
 	check_eq(sandbox.grid.mapping_signature(),exploration_mapping,"zoom-out restores exact exploration mapping")
 	check(_button(sandbox,"RegroupConfirm")==null,"manual regroup control removed")
 	check("자동으로 재집결" in sandbox.notice_text,"completion notice is explicit")
-	check("승리 · 자동 재집결" in sandbox.phase_label.text,"victory banner is explicit")
+	check_eq(sandbox.phase_label.text,"승리","victory situation is explicit")
 	check(not sandbox.combat_action_dock.is_visible_in_tree(),"combat dock hides after victory")
 	check(sandbox.grid._intent_overlays.is_empty(),"phase transition clears stale action overlays")
 	check_eq(sandbox.session.party_status().contact_kind,"NONE","stale contact cleared")
@@ -926,14 +965,14 @@ func test_restored_grouped_complete_keeps_victory_banner_style_without_effect_re
 	check_eq(source_session.party_status().safe_phase,"GROUPED_COMPLETE","restored victory source phase")
 	var direct=Sandbox.new();direct.size=Vector2(360,640);direct.initialize_for_headless_test(source_session);direct.grid.size=direct.grid.custom_minimum_size
 	check(direct.notice_text.is_empty(),"direct fresh completed sandbox has no transient victory notice")
-	check("승리 · 자동 재집결" in direct.phase_label.text,"direct fresh completed sandbox renders persistent victory")
+	check_eq(direct.phase_label.text,"승리","direct fresh completed sandbox renders persistent victory")
 	check_eq(direct.grid._presentation_style.style_id,"VICTORY","direct fresh completed sandbox consumes victory style")
 	check(direct.grid._active_visual_effects.is_empty(),"direct fresh completed sandbox does not replay effects")
 	var encoded:=source_session.save_session_json();var restored=Session.new(1,2)
 	check(bool(restored.load_session_json(encoded).accepted),"restored victory session load")
 	var fresh=Sandbox.new();fresh.size=Vector2(360,640);fresh.initialize_for_headless_test(restored);fresh.grid.size=fresh.grid.custom_minimum_size
 	check(fresh.notice_text.is_empty(),"fresh restored sandbox has no transient victory notice")
-	check("승리 · 자동 재집결" in fresh.phase_label.text,"fresh restored sandbox renders persistent victory title")
+	check_eq(fresh.phase_label.text,"승리","fresh restored sandbox renders persistent victory title")
 	check_eq(fresh.session.presentation_state().banner.tone,"VICTORY","fresh restored victory tone")
 	check_eq(fresh.grid._presentation_style.style_id,"VICTORY","fresh restored victory grid style")
 	check_eq(fresh.grid._presentation_style.border_hex,"#62d98b","fresh restored victory green grid border")
@@ -952,7 +991,7 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	check_eq(sandbox.session.party_status().safe_phase,"PARTY_DEFEATED","terminal phase")
 	check(sandbox.find_child("TerminalOverlay",true,false)!=null,"terminal overlay visible")
 	check(sandbox.find_child("TurnConfirm",true,false)==null,"terminal turn confirm hidden")
-	check("패배" in sandbox.phase_label.text,"terminal phase banner")
+	check_eq(sandbox.phase_label.text,"위험","terminal danger situation")
 	check_eq(sandbox.grid._presentation_style.style_id,"DEFEAT","terminal grid presentation style")
 	check_eq(sandbox.grid._presentation_style.border_hex,"#8f5367","terminal grid presentation border")
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
