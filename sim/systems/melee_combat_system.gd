@@ -5,6 +5,7 @@ const COMBAT_RULESET_ID := "deterministic-melee-resolution-v1"
 const ProfileRegistryScript = preload("res://sim/combat_profile_registry.gd")
 const FrozenIntentScript = preload("res://sim/frozen_attack_intent.gd")
 const ResolutionScript = preload("res://sim/attack_resolution.gd")
+const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 
 var world
 var damage
@@ -43,7 +44,12 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	if attacker_profile.is_empty() or target_profile.is_empty(): return {}
 	var hit_chance := clampi(500 + int(attacker_profile.accuracy_milli) - int(target_profile.evasion_milli), 50, 950)
 	var bleed_chance := clampi(int(attacker_profile.bleed_proc_milli) - int(target_profile.bleed_resist_milli), 0, 1000)
-	var base_damage := int(attacker_profile.power)
+	var skill_rank:=0
+	if world.party_encounter!=null and attacker_id==world.party_encounter.protagonist_id \
+			and world.party_encounter.protagonist_progression!=null:
+		skill_rank=world.party_encounter.protagonist_progression.rank("MELEE")
+	var base_damage := int(attacker_profile.power) \
+		+ProgressionRegistryScript.melee_power_bonus(skill_rank)
 	var armor_reduction := mini(int(target_profile.armor_flat), maxi(0, base_damage - 1))
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until

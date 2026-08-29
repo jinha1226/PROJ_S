@@ -14,6 +14,7 @@ const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_registry.gd")
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
+const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -199,6 +200,69 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 
 func is_solo_combat()->bool:
 	return scenario_id==SOLO_COMBAT_SCENARIO_ID
+
+
+func protagonist_progression()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or sim.world.party_encounter.protagonist_progression==null:
+		return {"schema_version":1,"available":false}.duplicate(true)
+	var progression=sim.world.party_encounter.protagonist_progression
+	var level:=ProgressionRegistryScript.level_for_xp(progression.xp_total)
+	var floor_xp:=ProgressionRegistryScript.xp_floor_for_level(level)
+	var next_total:=ProgressionRegistryScript.xp_floor_for_level(level+1)
+	var skills:Array=[]
+	for skill_id in ProgressionRegistryScript.SKILL_IDS:
+		var definition:=ProgressionRegistryScript.definition(skill_id)
+		var training_total:=int(progression.skill_training[skill_id])
+		var rank:=ProgressionRegistryScript.skill_rank(training_total)
+		var training_floor:=ProgressionRegistryScript.training_floor_for_rank(rank)
+		var next_training:=ProgressionRegistryScript.training_floor_for_rank(rank+1)
+		var power_bonus:=ProgressionRegistryScript.melee_power_bonus(rank) \
+			if skill_id=="MELEE" else 0
+		skills.append({"skill_id":skill_id,"label":str(definition.label),"rank":rank,
+			"training_total":training_total,"training_current":training_total-training_floor,
+			"training_required":next_training-training_floor,
+			"focus":int(progression.training_focus[skill_id]),
+			"effect_label":"근접 피해 +%d"%power_bonus if skill_id=="MELEE" \
+				else "효과는 후속 개발에서 연결",
+			"next_milestone":{"rank":int(definition.milestone_rank),
+				"label":str(definition.milestone_label),"implemented":false}})
+	return {"schema_version":ProgressionRegistryScript.SCHEMA_VERSION,"available":true,
+		"ruleset_id":ProgressionRegistryScript.RULESET_ID,"level":level,
+		"xp_total":int(progression.xp_total),"xp_current":int(progression.xp_total)-floor_xp,
+		"xp_required":next_total-floor_xp,"current_level_floor":floor_xp,
+		"next_level_threshold":next_total,"focus_total":ProgressionRegistryScript.FOCUS_TOTAL,
+		"skills":skills}.duplicate(true)
+
+
+func set_training_focus(skill_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	if skill_id not in ProgressionRegistryScript.SKILL_IDS:
+		return _rejection_dto("unknown_progression_skill")
+	var state=sim.world.party_encounter
+	var preset:=ProgressionRegistryScript.focus_preset(skill_id)
+	if preset==state.protagonist_progression.training_focus:
+		return _rejection_dto("training_focus_unchanged")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
+	var before:Dictionary=sim.snapshot()
+	var focus_rows:Array=[]
+	for id in ProgressionRegistryScript.SKILL_IDS:
+		focus_rows.append({"skill_id":id,"weight":int(preset[id])})
+	var hero=sim.world.entities[state.protagonist_id]
+	var event=sim.world.emit_event("progression.focus_changed",state.protagonist_id,-1,
+		hero.position,0,-1,{"schema_version":1,"skill_id":skill_id,"focus":focus_rows})
+	if event==null or not state.protagonist_progression.set_focus_preset(skill_id):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("training_focus_failed")
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(state_error)
+	_clear_draft();_deployment_plan.clear()
+	command_journal.append({"kind":"progression","operation":{
+		"action":"SET_TRAINING_FOCUS","skill_id":skill_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"progression":protagonist_progression()})
 
 
 func _configure_party_species_relations(candidate) -> void:
@@ -628,11 +692,12 @@ func party_cards() -> Array[Dictionary]:
 		if expected_action != null: override_state = str(expected_action.source)
 		elif member.role == "PROTAGONIST":
 			override_state = "PENDING" if _protagonist_placeholder else "DIRECT"
+		var progression:=protagonist_progression() if member.role=="PROTAGONIST" else {}
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
-			"emotion": emotion, "override_state": override_state,
+			"emotion": emotion, "override_state": override_state,"progression":progression,
 			"expected_action": expected_action})
 	return rows.duplicate(true)
 
@@ -1266,9 +1331,58 @@ func enemy_targets() -> Array[Dictionary]:
 	var status := party_status()
 	for enemy_id in status.get("visible_enemy_ids", []):
 		var entity = sim.world.entities[int(enemy_id)]
+		var threat:=_enemy_threat(entity.id)
 		rows.append({"entity_id": entity.id, "display_name": entity.display_name, "health": entity.health,
-			"max_health": entity.max_health, "alive": sim.world.is_unresolved_enemy(enemy_id), "position": [entity.position.x, entity.position.y]})
+			"max_health": entity.max_health, "alive": sim.world.is_unresolved_enemy(enemy_id),
+			"level":int(threat.level),"threat_id":str(threat.threat_id),
+			"threat_label":str(threat.threat_label),"position": [entity.position.x, entity.position.y]})
 	return rows.duplicate(true)
+
+
+func inspect_enemy(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or entity_id not in sim.world.party_encounter.enemy_ids \
+			or not sim.world.entities.has(entity_id):return _rejection_dto("enemy_not_found")
+	var entity=sim.world.entities[entity_id]
+	var profile=sim.world.combatant_states[entity_id]
+	var combat_profile=load("res://sim/combat_profile_registry.gd").profile(profile.combat_profile_id)
+	var threat:=_enemy_threat(entity_id)
+	return _feedback_dto({"accepted":true,"reason":"ok","schema_version":1,
+		"entity_id":entity_id,"display_name":str(entity.display_name),
+		"health":int(entity.health),"max_health":int(entity.max_health),
+		"life_state":str(profile.life_state),"level":int(threat.level),
+		"threat_id":str(threat.threat_id),"threat_label":str(threat.threat_label),
+		"capability_score":int(threat.enemy_score),
+		"base_power":int(combat_profile.get("power",0)),
+		"armor_flat":int(combat_profile.get("armor_flat",0)),
+		"level_derivation":"canonical combat profile and maximum health"})
+
+
+func _enemy_threat(entity_id:int)->Dictionary:
+	var state=sim.world.party_encounter
+	var enemy=sim.world.entities[entity_id];var hero=sim.world.entities[state.protagonist_id]
+	var enemy_score:=_combat_capability_score(entity_id,true)
+	var hero_score:=maxi(1,_combat_capability_score(state.protagonist_id,false))
+	var ratio:=int(enemy_score*100/hero_score)
+	var threat_id:="TRIVIAL" if ratio<50 else ("EVEN" if ratio<=85 else (
+		"DANGEROUS" if ratio<=120 else "LETHAL"))
+	return {"level":1+maxi(0,enemy_score-200)/100,"threat_id":threat_id,
+		"threat_label":{"TRIVIAL":"하찮음","EVEN":"대등","DANGEROUS":"위험",
+			"LETHAL":"치명적"}[threat_id],"enemy_score":enemy_score,
+		"hero_score":hero_score,"enemy_hp":int(enemy.health),"hero_hp":int(hero.health)}
+
+
+func _combat_capability_score(entity_id:int,use_max_health:bool)->int:
+	var entity=sim.world.entities[entity_id]
+	var combatant=sim.world.combatant_states[entity_id]
+	var profile=load("res://sim/combat_profile_registry.gd").profile(combatant.combat_profile_id)
+	var power:=int(profile.get("power",0))
+	if entity_id==sim.world.party_encounter.protagonist_id:
+		power+=ProgressionRegistryScript.melee_power_bonus(
+			sim.world.party_encounter.protagonist_progression.rank("MELEE"))
+	return power*4+int(profile.get("accuracy_milli",0))/20 \
+		+int(profile.get("evasion_milli",0))/20+int(profile.get("armor_flat",0))*10 \
+		+(int(entity.max_health) if use_max_health else int(entity.health))
 
 func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 	if direction not in [Vector2i.ZERO, Vector2i.UP, Vector2i(1,-1), Vector2i.RIGHT, Vector2i(1,1),
@@ -1952,6 +2066,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id),
 		"rescue_assessment":rescue_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
+		"progression":protagonist_progression() if member.role=="PROTAGONIST" else {},
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
 	return _feedback_dto(dto, null, null,
@@ -2109,6 +2224,12 @@ func load_session_json(encoded: String) -> Dictionary:
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
 	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+			and decoded.snapshot.party_encounter.has("protagonist_progression"):
+		# Compatibility fixtures downgrade a current wire by removing fields at the
+		# historical boundary. Legacy state is rebuilt from canonical events below;
+		# final journal-to-snapshot equality remains the tamper gate.
+		decoded.snapshot.party_encounter.erase("protagonist_progression")
+	if source_party_schema<PartyStateScript.PATROL_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("patrol_reserved_positions") \
 			and decoded.snapshot.party_encounter.patrol_reserved_positions==[]:
 		# Some callers build a legacy fixture by downgrading the version/current
@@ -2121,7 +2242,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
-	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+	if source_party_schema<PartyStateScript.PATROL_SCHEMA_VERSION \
 			and VisualTestMapScript.uses_showcase_layout(parsed_scenario_id):
 		# v1/v2 saves predate patrol reservations. Reconstruct presentation-map
 		# objectives once at the checked migration boundary before replay compare.
@@ -2136,6 +2257,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"progression":
+				replay_result=replay.set_training_focus(str(row.operation.skill_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -2172,6 +2295,14 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"progression":
+				if keys != ["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_progression_journal"
+				var operation_keys:Array=row.operation.keys();operation_keys.sort()
+				if operation_keys!=["action","skill_id"] \
+						or row.operation.action!="SET_TRAINING_FOCUS" \
+						or row.operation.skill_id not in ProgressionRegistryScript.SKILL_IDS:
+					return "invalid_progression_journal"
 			"exploration":
 				if keys != ["command", "kind"] or not row.get("command") is Dictionary: return "invalid_exploration_journal"
 				var command_keys: Array = row.command.keys(); command_keys.sort()

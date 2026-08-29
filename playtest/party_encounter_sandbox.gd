@@ -67,6 +67,7 @@ var member_detail_body:Label
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
+var member_detail_focus_buttons:HBoxContainer
 var member_detail_entity_id:int=-1
 var _pending_card_pointer:Dictionary={}
 var _last_card_tap_id:=-1
@@ -254,6 +255,15 @@ func _build_member_detail_modal()->void:
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll.add_child(member_detail_body)
+	member_detail_focus_buttons=HBoxContainer.new();member_detail_focus_buttons.name="TrainingFocusButtons"
+	member_detail_focus_buttons.add_theme_constant_override("separation",4);member_detail_focus_buttons.visible=false
+	for skill in [{"id":"MELEE","label":"근접"},{"id":"GUARD","label":"방어"},{"id":"EXPLORATION","label":"탐험"}]:
+		var focus_button:=Button.new();focus_button.name="Focus%s"%str(skill.id)
+		focus_button.text=str(skill.label);focus_button.custom_minimum_size=Vector2(72,TOUCH_TARGET)
+		focus_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		focus_button.pressed.connect(_on_training_focus.bind(str(skill.id)))
+		member_detail_focus_buttons.add_child(focus_button)
+	stack.add_child(member_detail_focus_buttons)
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="추방";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
@@ -693,6 +703,13 @@ func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	health_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;health_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(health_text)
 	var stress_text:=_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX)
 	stress_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stress_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(stress_text)
+	var progression:Variant=row.get("progression",{})
+	if _is_solo_product_session() and progression is Dictionary \
+			and bool(progression.get("available",false)):
+		var level_text:=_card_label("Lv.%d · XP %d/%d"%[int(progression.get("level",1)),
+			int(progression.get("xp_current",0)),int(progression.get("xp_required",1))],
+			"LevelProgress",FONT_AUX)
+		level_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;parent.add_child(level_text)
 	var bars:=HBoxContainer.new(); bars.name="VitalsBars"; bars.add_theme_constant_override("separation",3);parent.add_child(bars)
 	var health_bar:=_bar("HealthBar",int(row.health),int(row.max_health),Color("#62d98b")); health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(health_bar)
 	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
@@ -895,6 +912,13 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 		execute.size_flags_stretch_ratio=0.9
 
 func _selected_detail()->void:
+	if selected_target_id>0:
+		var enemy:Dictionary=session.inspect_enemy(selected_target_id)
+		if bool(enemy.get("accepted",false)):
+			_add_notice("적 정보 · %s · 레벨 %d · %s · HP %d/%d\n기준: 전투 프로필과 최대 HP에서 도출"%[
+				str(enemy.get("display_name","적")),int(enemy.get("level",1)),
+				str(enemy.get("threat_label","대등")),int(enemy.get("health",0)),
+				int(enemy.get("max_health",0))],"EnemyInspector",FONT_AUX)
 	for row in session.party_cards():
 		if int(row.entity_id)!=selected_member_id:continue
 		_add_notice("선택 상세 · %s · %s · %s"%[str(row.display_name),str(row.readiness),str(row.emotion.reason)],"SelectedMemberDetail",FONT_AUX)
@@ -959,6 +983,9 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_title.text="%s 상세"%str(detail.get("display_name","파티원"))
 	member_detail_body.text=_member_detail_text(detail)
 	member_detail_entity_id=member_id
+	var progression:Variant=detail.get("progression",{})
+	member_detail_focus_buttons.visible=progression is Dictionary \
+		and bool(progression.get("available",false))
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
 		and bool(detail.get("active_party_member",false))
 	member_detail_dismiss.visible=can_show_dismiss
@@ -983,6 +1010,15 @@ func _close_member_detail()->void:
 	var resume:=route_paused_by_modal;route_paused_by_modal=false
 	if resume:_schedule_route_continue()
 	elif auto_orchestration_enabled:_request_refresh()
+
+func _on_training_focus(skill_id:String)->void:
+	if member_detail_entity_id<=0:return
+	var result:Dictionary=session.set_training_focus(skill_id)
+	if not bool(result.get("accepted",false)) and str(result.get("reason",""))!="training_focus_unchanged":
+		notice_text=str(result.get("message","훈련 집중을 변경할 수 없습니다."));return
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	member_detail_body.text=_member_detail_text(detail)
+	notice_text="훈련 집중을 변경했습니다.";_request_refresh()
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_member_detail()
@@ -1601,6 +1637,25 @@ func _route_goal(value:Dictionary)->Vector2i:
 
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
+	var progression:Variant=detail.get("progression",{})
+	if progression is Dictionary and bool(progression.get("available",false)):
+		lines.append("레벨 %d · XP %d/%d (누적 %d · 다음 %d)"%[
+			int(progression.get("level",1)),int(progression.get("xp_current",0)),
+			int(progression.get("xp_required",1)),int(progression.get("xp_total",0)),
+			int(progression.get("next_level_threshold",0))])
+		lines.append("기술 · 훈련 집중 합계 %d"%int(progression.get("focus_total",100)))
+		for skill_value in progression.get("skills",[]):
+			if not skill_value is Dictionary:continue
+			var skill:Dictionary=skill_value
+			lines.append("· %s R%d · 훈련 %d/%d · 집중 %d · %s"%[
+				str(skill.get("label","기술")),int(skill.get("rank",0)),
+				int(skill.get("training_current",0)),int(skill.get("training_required",1)),
+				int(skill.get("focus",0)),str(skill.get("effect_label",""))])
+			var milestone:Variant=skill.get("next_milestone",{})
+			if milestone is Dictionary:
+				lines.append("  다음 이정표 R%d · %s · 아직 미구현"%[
+					int(milestone.get("rank",0)),str(milestone.get("label","후속 기술"))])
+		lines.append("집중 변경: 아래 버튼은 선택 기술 60, 나머지 20으로 설정합니다.")
 	lines.append("HP %d/%d · 스트레스 %d"%[int(detail.get("health",0)),int(detail.get("max_health",0)),int(detail.get("stress",0))])
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
 		lines.append("생명 상태: 쓰러짐(DOWNED) · 사망이 아닙니다.")

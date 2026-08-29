@@ -44,6 +44,7 @@ const CombatProfileRegistryScript = preload("res://sim/combat_profile_registry.g
 const StatusRegistryScript = preload("res://sim/status_registry.gd")
 const MeleeCombatSystemScript = preload("res://sim/systems/melee_combat_system.gd")
 const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
+const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 
 var width: int
 var height: int
@@ -596,6 +597,8 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 		restored.combatant_states[combatant.entity_id] = combatant
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
+	if restored.party_encounter!=null and not data.party_encounter.has("protagonist_progression"):
+		restored._rebuild_progression_from_events()
 	restored.scheduled_entries.clear()
 	for row in data.get("scheduled_entries", []):
 		restored.scheduled_entries.append(_schedule_from_dict(row))
@@ -1679,6 +1682,9 @@ func _melee_action_event_error(event) -> String:
 	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile: Dictionary = CombatProfileRegistryScript.profile(target_state.combat_profile_id)
 	var base_damage: int = int(attacker_profile.get("power", 0))
+	if party_encounter!=null and event.actor_id==party_encounter.protagonist_id:
+		base_damage+=ProgressionRegistryScript.melee_power_bonus(
+			_progression_melee_rank_before(event.id))
 	var armor_reduction: int = mini(int(target_profile.get("armor_flat", 0)), maxi(0, base_damage - 1))
 	var after_armor: int = base_damage - armor_reduction
 	var action_keys := ["armor_flat", "armor_reduction", "attack_start_world_time", "attacker_profile_id",
@@ -3074,7 +3080,74 @@ func _party_runtime_error() -> String:
 			if event.type == "entity.died" and event.target_id == hero.id:
 				protagonist_death_found = true; break
 		if not protagonist_death_found: return "party_defeat_event_missing"
+	var progression_error:=_party_progression_error()
+	if not progression_error.is_empty():return progression_error
 	return _party_event_correlation_error()
+
+
+func _rebuild_progression_from_events()->void:
+	if party_encounter==null:return
+	var progression=load("res://sim/protagonist_progression.gd").new()
+	for event in events:
+		if event.type=="progression.focus_changed" and event.actor_id==party_encounter.protagonist_id:
+			var focus:=_focus_from_event(event)
+			if not focus.is_empty():progression.training_focus=focus
+		elif event.type=="party.victory":progression.award_victory(event.id)
+	party_encounter.protagonist_progression=progression
+
+
+func _party_progression_error()->String:
+	if party_encounter.protagonist_progression==null:return "party_progression_missing"
+	var expected=load("res://sim/protagonist_progression.gd").new()
+	for event in events:
+		if event.type=="progression.focus_changed":
+			if event.actor_id!=party_encounter.protagonist_id or event.target_id!=-1 \
+					or event.cause_id!=-1 or event.instigator_id!=party_encounter.protagonist_id \
+					or event.magnitude!=0 \
+					or not in_bounds(event.position):
+				return "progression_focus_event_envelope_invalid"
+			var focus:=_focus_from_event(event)
+			if focus.is_empty():return "progression_focus_event_data_invalid"
+			if focus!=ProgressionRegistryScript.focus_preset(str(event.data.skill_id)) \
+					or focus==expected.training_focus:
+				return "progression_focus_event_transition_invalid"
+			expected.training_focus=focus
+		elif event.type=="party.victory":
+			if not expected.award_victory(event.id):return "progression_victory_award_invalid"
+	if expected.to_dict()!=party_encounter.protagonist_progression.to_dict():
+		return "party_progression_projection_mismatch"
+	return ""
+
+
+func _progression_melee_rank_before(event_id:int)->int:
+	var focus:Dictionary=ProgressionRegistryScript.DEFAULT_FOCUS.duplicate(true)
+	var training:=0
+	for historical in events:
+		if historical.id>=event_id:break
+		if historical.type=="progression.focus_changed":
+			var parsed:=_focus_from_event(historical)
+			if not parsed.is_empty():focus=parsed
+		elif historical.type=="party.victory":
+			training+=int(ProgressionRegistryScript.VICTORY_XP*int(focus.MELEE) \
+				/ProgressionRegistryScript.FOCUS_TOTAL)
+	return ProgressionRegistryScript.skill_rank(training)
+
+
+func _focus_from_event(event)->Dictionary:
+	if not event.data is Dictionary:return {}
+	var data_keys:Array=event.data.keys();data_keys.sort()
+	if data_keys!=["focus","schema_version","skill_id"] or event.data.schema_version!=1 \
+			or event.data.skill_id not in ProgressionRegistryScript.SKILL_IDS \
+			or not event.data.focus is Array \
+			or event.data.focus.size()!=ProgressionRegistryScript.SKILL_IDS.size():return {}
+	var focus:={}
+	for index in range(ProgressionRegistryScript.SKILL_IDS.size()):
+		var row:Variant=event.data.focus[index]
+		var skill_id:String=ProgressionRegistryScript.SKILL_IDS[index]
+		if not row is Dictionary or row.keys().size()!=2 or not row.has_all(["skill_id","weight"]) \
+				or str(row.skill_id)!=skill_id or not row.weight is int:return {}
+		focus[skill_id]=int(row.weight)
+	return focus if ProgressionRegistryScript.focus_error(focus).is_empty() else {}
 
 
 func _party_event_correlation_error() -> String:

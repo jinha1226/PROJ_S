@@ -74,7 +74,8 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 			return false
 		var victory = world.emit_event("party.victory", state.protagonist_id, -1,
 			world.entities[state.protagonist_id].position, 0, victory_cause_id)
-		if victory == null:
+		if victory == null or state.protagonist_progression==null \
+				or not state.protagonist_progression.award_victory(victory.id):
 			return false
 		# This intermediate phase exists only inside the active party-turn
 		# transaction. Remaining cadence must still see deployed combat positions.
