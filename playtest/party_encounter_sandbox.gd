@@ -159,7 +159,7 @@ func _build_ui()->void:
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
-	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#08131ad9"),4))
+	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#08131ad9"),0))
 	phase_panel.custom_minimum_size.y=92;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
@@ -424,7 +424,7 @@ func _refresh()->void:
 	else:
 		root_layout.offset_left=6;root_layout.offset_right=-6
 		root_layout.offset_top=4;root_layout.offset_bottom=-4
-	minimap.visible=product_hud;recent_event_label.visible=product_hud
+	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=product_hud
 	top_hud_actions.visible=product_hud
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	if compact_fixed_surface and int(card_layout.get("effective_count",0))==1:
@@ -755,10 +755,11 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 	dossier_frame.set_meta("major_glyph_frame",true);button.add_child(dossier_frame)
 	dossier_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,10)
-	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,7)
+	var spotlight:=str(spec.get("layout_id","COMPACT"))=="SPOTLIGHT"
+	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,10 if spotlight else 3)
+	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,7 if spotlight else 2)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; button.add_child(inset)
-	if str(spec.get("layout_id","COMPACT"))=="SPOTLIGHT":
+	if spotlight:
 		_add_spotlight_card_content(inset,row,speech,spec)
 	else:
 		_add_stacked_card_content(inset,row,speech,spec)
@@ -2084,7 +2085,7 @@ func _add_button(parent:Control,value:String,node_name:String,callback:Callable)
 	glyph.mouse_filter=Control.MOUSE_FILTER_IGNORE;glyph.anchor_top=0.5;glyph.anchor_bottom=0.5
 	glyph.offset_left=5;glyph.offset_right=21;glyph.offset_top=-10;glyph.offset_bottom=10
 	glyph.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	AsciiFrameScript.label_tone(glyph,accent,14);button.add_child(glyph);return button
+	AsciiFrameScript.label_tone(glyph,accent,FONT_AUX);button.add_child(glyph);return button
 func _action_glyph(node_name:String)->String:
 	if node_name in ["TurnConfirm","AutoExecute","DeployConfirm","SoloCombatStart"]:return ">"
 	if node_name.begins_with("Stabilize") or node_name.begins_with("Recruit"):return "+"
@@ -2151,7 +2152,7 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
-	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(surface_color,4))
+	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(surface_color,0))
 	phase_panel.set_meta("visible_stylebox_border",false)
 	if minimap_frame!=null:
 		var glyph_tone:=AsciiFrameScript.CYAN

@@ -266,7 +266,8 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 		failures.append("%s product exploration playfield does not use viewport width grid=%s"%[
 			label,sandbox.grid.get_global_rect()])
 	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<87.9 \
-			or objective_bar.size.y>96.1 or sandbox.minimap.size.x<77.9:
+			or objective_bar.size.y>96.1 or sandbox.minimap_frame.size.x<77.9 \
+			or str(sandbox.minimap_frame.frame_spec().primitive)!="GLYPH_TEXT":
 		failures.append("%s top HUD accessibility"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
 		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
@@ -365,7 +366,7 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 			failures.append("%s product grid leaves horizontal outer gutters"%label)
 	if bar_rect.end.y>grid_rect.position.y+0.1:
 		failures.append("%s top HUD overlaps grid"%label)
-	if sandbox.minimap.size.x<77.9 or sandbox.record_button.size.x<43.9 \
+	if sandbox.minimap_frame.size.x<77.9 or sandbox.record_button.size.x<43.9 \
 			or sandbox.hero_detail_button.size.x<43.9:
 		failures.append("%s top HUD controls below geometry contract"%label)
 	for forbidden in ["탐험","시간","목표"]:
@@ -647,6 +648,8 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	var grid_id=sandbox.grid.get_instance_id(); var exploration_mapping=sandbox.grid.mapping_signature()
 	var exploration_cell_size:float=sandbox.grid.cell_size_px()
 	_validate_layout(sandbox,"%s %s EXPLORATION"%[viewport_size,preset])
+	if sandbox.minimap_frame.visible:
+		failures.append("%s %s legacy journey retained hidden product glyph-frame geometry"%[viewport_size,preset])
 	var initial_actors:=0; for cell in sandbox.session.observe_party_world().cells: initial_actors+=cell.actors.size()
 	if initial_actors!=3: failures.append("%s %s pre-contact actor visibility"%[viewport_size,preset])
 	for button_name in ["ExploreN","ExploreNE","ExploreE","ExploreSE","ExploreS","ExploreSW","ExploreW","ExploreNW","ExploreHold"]:
