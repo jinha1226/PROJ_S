@@ -41,7 +41,8 @@ func test_showcase_fixture_is_exact_deterministic_and_provenance_safe() -> bool:
 	check(wet_metal.wetness_source_event_id > 0 and wet_wood.wetness_source_event_id > 0
 		and fire.fire_source_event_id > 0, "showcase hazards retain source events")
 	check_eq(first.sim.world.events.map(func(event): return event.type),
-		["environment.water_applied", "environment.water_applied", "environment.ignited"],
+		["environment.water_applied", "environment.water_applied", "environment.ignited",
+			"party.rescue_discovered"],
 		"showcase bootstrap event order")
 	check(first.reset_party(44,303030,"SHOWCASE_V1"),"new-personality reset rebuilds showcase")
 	var reset_state=first.sim.world.party_encounter
