@@ -38,6 +38,8 @@ class IntentCardBadge:
 var simulator
 var grid: DuelDecisionGrid
 var root_layout: VBoxContainer
+var body_scroll: ScrollContainer
+var body_layout: VBoxContainer
 var situation_label: Label
 var intent_turn_label: Label
 var phase_label: Label
@@ -117,7 +119,7 @@ func _build_ui() -> void:
 	back.custom_minimum_size.x = 60
 	var title := Label.new()
 	title.name = "DecisionLabTitle"
-	title.text = "2인 판단 LAB"
+	title.text = "5인 관찰 LAB"
 	title.add_theme_font_size_override("font_size", 18)
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -131,14 +133,26 @@ func _build_ui() -> void:
 	seed_edit.text_submitted.connect(_apply_typed_seed)
 	header.add_child(seed_edit)
 
+	body_scroll = ScrollContainer.new()
+	body_scroll.name = "FiveActorLabScroll"
+	body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root_layout.add_child(body_scroll)
+	body_layout = VBoxContainer.new()
+	body_layout.name = "FiveActorLabBody"
+	body_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_layout.add_theme_constant_override("separation", 3)
+	body_scroll.add_child(body_layout)
+
 	var situation_panel := PanelContainer.new()
 	situation_panel.name = "SituationSummaryPanel"
-	situation_panel.custom_minimum_size.y = 44
+	situation_panel.custom_minimum_size.y = 36
 	situation_panel.add_theme_stylebox_override("panel", _panel_style("#0d1b25", "#29404d"))
-	root_layout.add_child(situation_panel)
+	body_layout.add_child(situation_panel)
 	situation_label = Label.new()
 	situation_label.name = "SituationSummary"
-	situation_label.add_theme_font_size_override("font_size", 14)
+	situation_label.add_theme_font_size_override("font_size", 13)
 	situation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	situation_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	situation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -146,11 +160,11 @@ func _build_ui() -> void:
 
 	grid = GridScript.new()
 	grid.name = "DuelDecisionGrid"
-	grid.custom_minimum_size = Vector2(225, 225)
+	grid.custom_minimum_size = Vector2(315, 315)
 	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	grid.actor_pressed.connect(_on_actor_pressed)
-	root_layout.add_child(grid)
+	body_layout.add_child(grid)
 
 	intent_turn_label = Label.new()
 	intent_turn_label.name = "IntentTurnLabel"
@@ -158,26 +172,26 @@ func _build_ui() -> void:
 	intent_turn_label.add_theme_font_size_override("font_size", 15)
 	intent_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intent_turn_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	root_layout.add_child(intent_turn_label)
+	body_layout.add_child(intent_turn_label)
 
 	var tabs := HBoxContainer.new()
 	tabs.name = "DecisionIntentCards"
-	tabs.custom_minimum_size.y = 94
-	tabs.add_theme_constant_override("separation", 5)
-	root_layout.add_child(tabs)
-	for index in range(2):
-		var actor_button := _add_button(tabs, "인물 %s" % ("A" if index == 0 else "B"),
-			"ActorIntentCard%d" % index, _select_actor_index.bind(index), 15)
+	tabs.custom_minimum_size.y = 62
+	tabs.add_theme_constant_override("separation", 3)
+	body_layout.add_child(tabs)
+	for index in range(5):
+		var actor_button := _add_button(tabs, "인물 %s" % char(65 + index),
+			"ActorIntentCard%d" % index, _select_actor_index.bind(index), 12)
 		actor_button.toggle_mode = true
-		actor_button.custom_minimum_size.y = 94
+		actor_button.custom_minimum_size.y = 62
 		actor_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actor_button.size_flags_stretch_ratio = 1.0
 		actor_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		actor_button.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		var badge := IntentCardBadge.new()
 		badge.name = "ActorIntentBadge%d" % index
-		badge.position = Vector2(5, 27)
-		badge.size = Vector2(18, 18)
+		badge.position = Vector2(4, 41)
+		badge.size = Vector2(15, 15)
 		actor_button.add_child(badge)
 		actor_badges.append(badge)
 		actor_buttons.append(actor_button)
@@ -186,7 +200,7 @@ func _build_ui() -> void:
 	result_panel.name = "DecisionResultPanel"
 	result_panel.custom_minimum_size.y = 44
 	result_panel.add_theme_stylebox_override("panel", _panel_style("#10212d", "#426173"))
-	root_layout.add_child(result_panel)
+	body_layout.add_child(result_panel)
 	phase_label = Label.new()
 	phase_label.name = "DecisionResult"
 	phase_label.add_theme_font_size_override("font_size", 15)
@@ -199,7 +213,7 @@ func _build_ui() -> void:
 	disclosure_row.name = "DecisionDisclosureRow"
 	disclosure_row.custom_minimum_size.y = TOUCH_TARGET
 	disclosure_row.add_theme_constant_override("separation", 4)
-	root_layout.add_child(disclosure_row)
+	body_layout.add_child(disclosure_row)
 	detail_toggle_button = _add_button(disclosure_row, "왜 이렇게 판단했지?", "DetailToggle",
 		_toggle_detail, 15)
 	detail_toggle_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -212,7 +226,7 @@ func _build_ui() -> void:
 	detail_panel.custom_minimum_size.y = 180
 	detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	detail_panel.add_theme_stylebox_override("panel", _panel_style("#0c1822", "#2c4859"))
-	root_layout.add_child(detail_panel)
+	body_layout.add_child(detail_panel)
 	detail_text = RichTextLabel.new()
 	detail_text.name = "DecisionDetailText"
 	detail_text.bbcode_enabled = false
@@ -264,8 +278,8 @@ func _refresh() -> void:
 	if not seed_edit.has_focus():
 		seed_edit.text = str(_observation.get("seed", DEFAULT_SEED))
 	var actors: Array = _observation.get("actors", [])
-	if selected_actor_id.is_empty() or not _contains_actor(selected_actor_id):
-		selected_actor_id = _actor_id(actors[0]) if not actors.is_empty() and actors[0] is Dictionary else ""
+	if selected_actor_id.is_empty() or not _actor_is_selectable(selected_actor_id):
+		selected_actor_id = _first_selectable_actor_id(actors)
 	grid.set_observation(_observation, selected_actor_id)
 	_refresh_phase()
 	_refresh_tabs()
@@ -283,10 +297,10 @@ func _refresh_phase() -> void:
 		phase_label.text = _actual_result_summary(resolution)
 	elif presentation_stage == "INTENT":
 		intent_turn_label.text = "다음 판단 · T%d · 실행 전" % (tick + 1)
-		phase_label.text = "두 행동을 함께 실행하기 전입니다."
+		phase_label.text = "다섯 행동을 동시에 실행하기 전입니다."
 	else:
 		intent_turn_label.text = "다음 판단 · T%d · 아직 공개 전" % (tick + 1)
-		phase_label.text = "‘판단 보기’를 누르면 두 인물의 생각을 함께 비교합니다."
+		phase_label.text = "‘판단 보기’를 누르면 다섯 인물의 의도를 지도에 표시합니다."
 	if not ui_notice.is_empty():
 		phase_label.text = ui_notice + "\n" + phase_label.text
 
@@ -297,7 +311,7 @@ func _refresh_tabs() -> void:
 	for index in range(actor_buttons.size()):
 		var button: Button = actor_buttons[index]
 		if index >= actors.size() or not actors[index] is Dictionary:
-			button.text = "인물 %s 없음" % ("A" if index == 0 else "B")
+			button.text = "%s\n없음" % char(65 + index)
 			button.disabled = true
 			button.button_pressed = false
 			actor_badges[index].set_presentation("")
@@ -310,23 +324,15 @@ func _refresh_tabs() -> void:
 		var status := _actor_terminal_status(actor_id, actor)
 		var shown_action := action_id if presentation_stage != "HIDDEN" and status.is_empty() else ""
 		actor_badges[index].set_presentation(shown_action, status)
-		var intent_line := "아직 판단을 보지 않았다"
-		var reason_line := "판단을 공개하면 핵심 이유가 보인다"
+		var intent_line := "판단 전"
 		if not status.is_empty():
-			intent_line = "쓰러짐" if status == "DEAD" else "조우에서 벗어남"
-			reason_line = "현재 행동 의도는 종료되었다"
+			intent_line = "쓰러짐" if status == "DEAD" else "이탈"
 		elif not shown_action.is_empty() and not breakdown.is_empty():
 			var visual := GridScript.intent_visual_spec(action_id)
-			intent_line = "%s · %s" % [str(visual.get("label_ko", "행동")),
-				_intent_phrase(action_id, actor, breakdown)]
-			var reasons := _key_reasons(actor, breakdown)
-			reason_line = reasons[0] if not reasons.is_empty() else "지금 상황을 종합해서"
-			var continuity := _commitment_line(breakdown)
-			if not continuity.is_empty():
-				intent_line += " · " + continuity
-		button.text = "%s %s · %s · HP %d\n%s\n%s\n성향 · %s" % ["A" if index == 0 else "B",
-			str(actor.get("name", "인물")), _species_label(str(actor.get("species_id", "?"))),
-			int(actor.get("hp", 0)), intent_line, reason_line, _personality_summary(actor, true)]
+			intent_line = str(visual.get("label_ko", "행동"))
+		button.text = "%s %s\nHP %d\n   %s" % [char(65 + index),
+			_compact_actor_name(str(actor.get("name", "인물"))), int(actor.get("hp", 0)), intent_line]
+		button.disabled = not status.is_empty()
 		button.button_pressed = actor_id == selected_actor_id
 		_apply_action_card_style(button, shown_action)
 	event_button.button_pressed = detail_mode == "EVENTS"
@@ -363,28 +369,24 @@ func _refresh_detail() -> void:
 
 func _situation_summary() -> String:
 	var actors: Array = _observation.get("actors", [])
-	if actors.size() < 2 or not actors[0] is Dictionary or not actors[1] is Dictionary:
-		return "두 인물의 상황을 불러오는 중입니다."
-	var first: Dictionary = actors[0]
-	var second: Dictionary = actors[1]
-	var summary := "%s %s(%s)과 %s %s(%s)가 %d칸 거리에서 마주쳤다." % [
-		_species_label(str(first.get("species_id", "?"))), str(first.get("name", "인물 A")),
-		_actor_condition_short(first), _species_label(str(second.get("species_id", "?"))),
-		str(second.get("name", "인물 B")), _actor_condition_short(second),
-		int(_observation.get("distance", 0))]
-	var memories: Array[String] = []
+	if actors.is_empty():
+		return "다섯 인물의 상황을 불러오는 중입니다."
+	var active := 0
+	var injured := 0
 	for actor_value in actors:
 		if not actor_value is Dictionary:
 			continue
-		var actor: Dictionary = actor_value
-		var memory_kind := _memory_kind(actor)
-		var memory_text := str({"EXILED": "버려진 원한", "HARMED": "공격받은 기억",
-			"HELPED": "도움을 받은 기억"}.get(memory_kind, ""))
-		if not memory_text.is_empty():
-			memories.append("%s에게는 %s이 있다" % [str(actor.get("name", "인물")), memory_text])
-	if not memories.is_empty():
-		summary += " " + " · ".join(memories) + "."
-	return summary
+		if _actor_terminal_status(_actor_id(actor_value), actor_value).is_empty():
+			active += 1
+		if int(actor_value.get("hp", 0)) < int(actor_value.get("max_hp", 1)):
+			injured += 1
+	var map_size: Array = _observation.get("map_size", [21, 21])
+	var map_label := "%d×%d" % [int(map_size[0]), int(map_size[1])] if map_size.size() == 2 else "21×21"
+	return "%s 던전 · 인물 %d명 · 활동 %d · 부상 %d" % [map_label, actors.size(), active, injured]
+
+
+func _compact_actor_name(value: String) -> String:
+	return value if value.length() <= 4 else value.substr(0, 4)
 
 
 func _actor_condition_short(actor: Dictionary) -> String:
@@ -687,7 +689,7 @@ func _actual_result_summary(resolution: Dictionary) -> String:
 	if not clauses.is_empty():
 		return " · ".join(clauses)
 	var fallback := _resolution_summary(resolution)
-	return fallback if not fallback.is_empty() else "두 행동을 동시에 해결했지만 눈에 띄는 변화는 없었다."
+	return fallback if not fallback.is_empty() else "다섯 행동을 동시에 해결했지만 눈에 띄는 변화는 없었다."
 
 
 func _result_clause(event: Dictionary) -> String:
@@ -725,14 +727,18 @@ func _memory_kind(actor: Dictionary) -> String:
 	var memory: Variant = actor.get("memory", {})
 	if memory is Dictionary:
 		return str(memory.get("kind", memory.get("memory_kind", "NONE"))).to_upper()
+	var memories: Variant = actor.get("memories", [])
+	if memories is Array and not memories.is_empty() and memories[0] is Dictionary:
+		return str(memories[0].get("kind", memories[0].get("memory_kind", "NONE"))).to_upper()
 	return "NONE"
 
 
 func _actor_terminal_status(actor_id: String, actor: Dictionary) -> String:
+	var presence := str(actor.get("presence", "ACTIVE")).to_upper()
+	if presence in ["DEAD", "ESCAPED"]:
+		return presence
 	if not bool(actor.get("alive", true)):
 		return "DEAD"
-	if str(_observation.get("phase", "ACTIVE")) != "ESCAPED":
-		return ""
 	for value in _recent_logs:
 		if value is Dictionary and str(value.get("type", "")) == "ESCAPED" \
 				and str(value.get("actor_id", "")) == actor_id:
@@ -868,7 +874,7 @@ func _event_message_ko(event: Dictionary) -> String:
 	var fallback := str(event.get("message", ""))
 	for action_id in ["APPROACH", "ENGAGE", "FLEE", "HOLD", "SELF_TREAT"]:
 		fallback = fallback.replace(action_id, _action_label(action_id))
-	return fallback if not fallback.is_empty() else "두 인물 사이에 사건이 일어났습니다."
+	return fallback if not fallback.is_empty() else "던전 안에서 사건이 일어났습니다."
 
 
 func _actor_name(actor_id: String) -> String:
@@ -960,6 +966,8 @@ func _start_seeded_situation(seed_value: int) -> void:
 
 
 func _on_actor_pressed(actor_id: String) -> void:
+	if not _actor_is_selectable(actor_id):
+		return
 	selected_actor_id = actor_id
 	_refresh_tabs()
 	_refresh_detail()
@@ -994,7 +1002,7 @@ func _show_unavailable() -> void:
 	if phase_label == null:
 		return
 	phase_label.text = ui_notice if not ui_notice.is_empty() else "판단 시뮬레이터 연결 대기 중"
-	detail_text.text = "코어 판단 DTO가 준비되면 두 인물의 선택 근거가 여기에 표시됩니다."
+	detail_text.text = "코어 판단 DTO가 준비되면 선택한 인물의 근거가 여기에 표시됩니다."
 	step_button.disabled = true
 	restart_button.disabled = true
 
@@ -1022,6 +1030,21 @@ func _actor_by_id(actor_id: String) -> Dictionary:
 
 func _contains_actor(actor_id: String) -> bool:
 	return not _actor_by_id(actor_id).is_empty()
+
+
+func _actor_is_selectable(actor_id: String) -> bool:
+	var actor := _actor_by_id(actor_id)
+	return not actor.is_empty() and _actor_terminal_status(actor_id, actor).is_empty()
+
+
+func _first_selectable_actor_id(actors: Array) -> String:
+	for actor_value in actors:
+		if not actor_value is Dictionary:
+			continue
+		var actor_id := _actor_id(actor_value)
+		if _actor_terminal_status(actor_id, actor_value).is_empty():
+			return actor_id
+	return ""
 
 
 func _actor_id(actor: Dictionary) -> String:

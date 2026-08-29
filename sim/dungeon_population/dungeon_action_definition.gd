@@ -9,7 +9,8 @@ const INPUT_IDS:={
 	"STATE":["armed","dot","dot_danger","health","hp_crisis","hp_ratio","injury","power",
 		"power_disadvantage","power_gap","recent_interrupt","supplies","survival_crisis",
 		"treatment_need"],
-	"RELATION":["affinity","fear_pressure","hostility","memory_modifier","neutrality","species_prior"],
+	"RELATION":["affinity","fear_pressure","hostility","memory_modifier","neutrality","shared_threat",
+		"species_prior"],
 	"CONTEXT":["approach_pressure","distance","escape_reached","escape_space","other_alive",
 		"opportunity","threat","uncertainty"]}
 

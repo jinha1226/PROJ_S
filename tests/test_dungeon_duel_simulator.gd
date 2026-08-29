@@ -1,440 +1,217 @@
 extends "res://tests/test_case.gd"
 
 const Simulator=preload("res://sim/dungeon_population/dungeon_population_simulator.gd")
-const State=preload("res://sim/dungeon_population/dungeon_population_state.gd")
-const Registry=preload("res://sim/dungeon_population/dungeon_action_registry.gd")
-const Definition=preload("res://sim/dungeon_population/dungeon_action_definition.gd")
 const Hexaco=preload("res://sim/dungeon_population/hexaco_profile.gd")
 
-func test_seeded_two_actor_scenario_and_full_decision_breakdown_are_pure()->bool:
-	var first=Simulator.new(77);var second=Simulator.new(77)
-	check_eq(first.snapshot(),second.snapshot(),"same seed creates exact scenario")
+func test_seeded_five_actor_scenario_is_exact_unique_and_directional()->bool:
+	var first=Simulator.new(83);var second=Simulator.new(83)
+	check_eq(first.snapshot(),second.snapshot(),"same seed creates the exact five-actor scenario")
 	var observation:Dictionary=first.observation()
-	check_eq([observation.actors.size(),observation.map_size,observation.phase],[2,[15,15],"ACTIVE"],
-		"product observation is exactly a two actor scenario")
-	var has_facets:=true
-	for facet in ["H","E","X","A","C","O"]:
-		if not observation.actors[0].hexaco.has(facet):has_facets=false
-	check(has_facets,"actor exposes continuous HEXACO axes")
-	check(not observation.actors[0].hexaco.has("archetype_id"),"fixed archetype is absent")
-	var before:Dictionary=first.snapshot();var decisions:Array=first.decision_breakdowns()
-	check_eq(first.snapshot(),before,"decision preview is authoritative-state pure")
-	check_eq(decisions.size(),2,"both actors evaluate independently")
-	for actor_row in decisions:
-		check_eq(actor_row.candidates.size(),5,"five executable MVP candidates")
-		var selected_count:=0
-		for candidate in actor_row.candidates:
-			var computed:int=int(candidate.base)+int(candidate.jitter)
+	check_eq([observation.actors.size(),observation.map_size,observation.phase],
+		[5,[21,21],"ACTIVE"],"five actors inhabit the 21 by 21 encounter map")
+	var positions:Dictionary={};var relation_count:=0
+	for actor in observation.actors:
+		positions[JSON.stringify(actor.position)]=true;relation_count+=actor.relations.size()
+		check_eq(actor.hexaco,Hexaco.generated(83,int(actor.id)).to_dict(),
+			"each actor keeps exact seed-generated HEXACO")
+		check(not actor.hexaco.has("archetype_id"),"fixed personality archetypes are absent")
+	check_eq(positions.size(),5,"active actor positions are unique")
+	check_eq(relation_count,20,"all twenty directed actor-to-actor relations are observable")
+	return finish()
+
+func test_each_actor_scores_target_specific_candidates_without_self_targeting()->bool:
+	var sim=Simulator.new(3)
+	var before:Dictionary=sim.snapshot();var rows:Array=sim.decision_breakdowns()
+	check_eq(sim.snapshot(),before,"decision preview is authoritative-state pure")
+	check_eq(rows.size(),5,"all active actors decide independently")
+	for row in rows:
+		var actor_id:=int(row.actor_id);var selected_count:=0
+		for candidate in row.candidates:
+			var target_id:=int(candidate.target_id)
+			if candidate.target_role=="OTHER":
+				check(target_id>=1 and target_id<=5 and target_id!=actor_id,
+					"target action names a perceived non-self actor")
+			elif candidate.target_role=="SELF":check_eq(target_id,actor_id,"self action targets self")
+			else:check_eq(target_id,-1,"targetless action uses the canonical sentinel")
+			var computed:=int(candidate.base)+int(candidate.jitter)
 			for bucket in [candidate.hexaco_terms,candidate.state_terms,
 					candidate.relation_terms,candidate.context_terms]:
 				for term in bucket:computed+=int(term.contribution)
 			check_eq(candidate.total,computed,"candidate total is an auditable term sum")
-			check(int(candidate.jitter)>=-15 and int(candidate.jitter)<=15,"jitter appears once and is bounded")
-			if candidate.selected:
-				selected_count+=1;check(candidate.legal,"illegal action is never selected")
-			elif not candidate.legal:check(not str(candidate.rejection_reason).is_empty(),"illegal action explains rejection")
-		check_eq(selected_count,1,"one selected candidate per living actor")
-		check("판단" in str(actor_row.selected_reason_ko),"selected reason is concise Korean")
-	var detached:Array=first.decision_breakdowns();detached[0].candidates[0].total=999999
-	check(first.decision_breakdowns()[0].candidates[0].total!=999999,"nested decision DTO is detached")
+			check(int(candidate.jitter)>=-15 and int(candidate.jitter)<=15,
+				"episode jitter appears once and is bounded")
+			if candidate.selected:selected_count+=1
+		check_eq(selected_count,1,"exactly one legal actor-target candidate is selected")
+		check(_selected_target_is_valid(row),"selected action preserves its target role")
+	var detached:Array=sim.decision_breakdowns();detached[0].candidates[0].total=999999
+	check(sim.decision_breakdowns()[0].candidates[0].total!=999999,"decision DTO is detached")
 	return finish()
 
-func test_simultaneous_attack_flee_approach_hold_and_status_resolution_update_world()->bool:
-	var mutual=Simulator.new(168);_prepare_pair_base(mutual,1)
-	_set_committed_intent(mutual,1,"ENGAGE");_set_committed_intent(mutual,2,"ENGAGE")
-	var mutual_choices:=mutual.decision_breakdowns()
-	check_eq([mutual_choices[0].selected_action_id,mutual_choices[1].selected_action_id],
-		["ENGAGE","ENGAGE"],"mutual attack fixture")
-	var hp_before:=[mutual.state.actors[1].hp,mutual.state.actors[2].hp]
-	check(mutual.step().accepted,"mutual attack resolves")
-	check(mutual.state.actors[1].hp<hp_before[0] and mutual.state.actors[2].hp<hp_before[1],
-		"both attacks use the same pre-resolution state")
-	check_eq([mutual.state.actors[1].memory_kind,mutual.state.actors[2].memory_kind],
-		["HARMED","HARMED"],"both recipients remember the attack")
-
-	var attack_flee=Simulator.new(24);_prepare_pair_base(attack_flee,1)
-	_set_committed_intent(attack_flee,1,"ENGAGE");_set_committed_intent(attack_flee,2,"FLEE")
-	var distance_before:int=attack_flee.state.distance
-	check_eq([attack_flee.decision_breakdowns()[0].selected_action_id,
-		attack_flee.decision_breakdowns()[1].selected_action_id],["ENGAGE","FLEE"],"attack/flee fixture")
-	var fleeing_hp:int=attack_flee.state.actors[2].hp
-	check(attack_flee.step().accepted,"attack/flee resolves")
-	check(attack_flee.state.actors[2].hp<fleeing_hp,"fleeing actor can still take simultaneous adjacent attack")
-	check(attack_flee.state.distance>distance_before or not attack_flee.state.actors[2].alive,
-		"surviving flee increases distance")
-
-	var approach_hold=Simulator.new(48);_prepare_pair_base(approach_hold,4)
-	_set_committed_intent(approach_hold,1,"APPROACH");_set_committed_intent(approach_hold,2,"HOLD")
-	var approach_distance:int=approach_hold.state.distance
-	check_eq([approach_hold.decision_breakdowns()[0].selected_action_id,
-		approach_hold.decision_breakdowns()[1].selected_action_id],["APPROACH","HOLD"],"approach/hold fixture")
-	check(approach_hold.step().accepted and approach_hold.state.distance==approach_distance-1,
-		"approach moves one unit while hold preserves position")
-
-	var treatment=Simulator.new(77);_prepare_pair_base(treatment,4)
-	var treatment_actor=treatment.state.actors[1]
-	treatment_actor.hp=55;treatment_actor.status_effect={"status_id":"BLEEDING","remaining_quanta":3,"tick_damage":3}
-	_set_committed_intent(treatment,1,"SELF_TREAT");_set_committed_intent(treatment,2,"HOLD")
-	var supplies_before:int=treatment_actor.supplies;var status_before:Dictionary=treatment_actor.status_effect.duplicate(true)
-	check_eq(treatment.decision_breakdowns()[0].selected_action_id,"SELF_TREAT","treatment fixture")
-	check(treatment.step().accepted,"self treatment resolves")
-	check_eq(treatment_actor.supplies,supplies_before-1,"self treatment consumes one item")
-	check(status_before.is_empty() or treatment_actor.status_effect.is_empty() \
-		or int(treatment_actor.status_effect.remaining_quanta)<int(status_before.remaining_quanta),
-		"self treatment reduces DOT duration before canonical DOT tick")
+func test_many_to_one_attacks_resolve_from_turn_start_without_order_bias()->bool:
+	var first=Simulator.new(100);_prepare_many_to_one(first)
+	var second=Simulator.new(100);_prepare_many_to_one(second)
+	var hp_before:Dictionary={1:int(first.state.actors[1].hp),3:int(first.state.actors[3].hp)}
+	check(first.step().accepted and second.step().accepted,"simultaneous melee turn resolves")
+	check_eq(first.snapshot(),second.snapshot(),"same simultaneous fixture has exact resolution")
+	var damage_to_three:=0;var attackers:Dictionary={}
+	for event in first.state.events:
+		if event.type=="DAMAGE" and int(event.target_id)==3:
+			damage_to_three+=int(event.magnitude);attackers[int(event.actor_id)]=true
+	check_eq(attackers.size(),2,"two different actors can damage one target in one turn")
+	check_eq(first.state.actors[3].hp,hp_before[3]-damage_to_three,
+		"many-to-one damage is aggregated exactly once")
+	check(first.state.actors[1].hp<hp_before[1],
+		"the target's counterattack also uses the turn-start adjacency state")
+	check_eq(first.state.actors[3].memory_for(1).kind,"HARMED","first attack updates one direction")
+	check_eq(first.state.actors[3].memory_for(2).kind,"HARMED","second attack updates one direction")
 	return finish()
 
-func test_species_prior_dominates_single_help_memory_and_harm_updates_directionally()->bool:
-	var fixture=null
-	for seed in range(1,4000):
-		var candidate=Simulator.new(seed);var first=candidate.state.actors[1];var second=candidate.state.actors[2]
-		var species_pair:=[first.species_id,second.species_id];species_pair.sort()
-		if species_pair==["goblin","human"] and first.memory_kind=="HELPED":fixture=candidate;break
-	check(fixture!=null,"found deterministic human/goblin helped fixture")
-	if fixture!=null:
-		var relation:Dictionary=fixture.relation_assessment(1)
-		check_eq(relation.species_prior,-75,"human/goblin species prior")
-		check_eq(relation.memory_modifier,15,"one helped event is bounded")
-		check(int(relation.effective)<0,"single help cannot erase dominant hostile species prior")
-	var harmed=Simulator.new(24);var other_memory_before:=str(harmed.state.actors[1].memory_kind)
-	harmed.step()
-	check_eq(harmed.state.actors[2].memory_kind,"HARMED","attacked actor changes directed memory")
-	check_eq(harmed.state.actors[1].memory_kind,other_memory_before,
-		"attacker's opposite-direction memory does not change spuriously")
+func test_conflicting_move_destinations_choose_one_deterministic_winner()->bool:
+	var first=Simulator.new(104);_prepare_move_conflict(first)
+	var second=Simulator.new(104);_prepare_move_conflict(second)
+	check(first.step().accepted and second.step().accepted,"movement conflict resolves")
+	check_eq(first.snapshot(),second.snapshot(),"movement conflict winner is seed deterministic")
+	var at_destination:=0
+	for actor_id in [1,2]:
+		if first.state.actors[actor_id].position==Vector2i(9,9):at_destination+=1
+	check_eq(at_destination,1,"only one actor wins the contested destination")
+	check_eq(_unique_active_positions(first),first._active_ids().size(),
+		"movement never creates active occupancy overlap")
 	return finish()
 
-func test_64_seed_situation_strata_mix_combat_escape_treatment_and_neutral_outcomes()->bool:
-	var damage_scenarios:=0;var escaped_scenarios:=0;var no_outcome_scenarios:=0
-	var action_counts:={"APPROACH":0,"ENGAGE":0,"FLEE":0,"HOLD":0,"SELF_TREAT":0}
-	for seed in range(1,65):
-		var sim=Simulator.new(seed)
-		for actor_id in [1,2]:
-			check_eq(sim.state.actors[actor_id].profile.to_dict(),Hexaco.generated(seed,actor_id).to_dict(),
-				"situation stratum never replaces random HEXACO seed %d actor %d"%[seed,actor_id])
-		match seed%4:
-			0:
-				check(sim.state.distance<=2,"hostile-close stratum begins close")
-				check(sim.species_relation_prior(sim.state.actors[1].species_id,
-					sim.state.actors[2].species_id)<=-75,"hostile-close uses an adverse species prior")
-				check(sim.state.actors[1].armed or sim.state.actors[2].armed,
-					"hostile-close has a weapon opportunity")
-			1:
-				check(sim.state.distance>=3 and sim.state.distance<=5,"tense-mid distance band")
-				check(sim.species_relation_prior(sim.state.actors[1].species_id,
-					sim.state.actors[2].species_id)<=-75,"tense-mid keeps species tension")
-			2:
-				var vulnerable_count:=0
-				for actor_id in [1,2]:
-					var actor=sim.state.actors[actor_id]
-					if actor.hp<=50 and not actor.status_effect.is_empty():vulnerable_count+=1
-				check_eq(vulnerable_count,1,"vulnerable stratum has one injured DOT actor")
-			3:
-				check(sim.state.distance>=4,"ambiguous stratum begins with room to observe")
-				check(sim.species_relation_prior(sim.state.actors[1].species_id,
-					sim.state.actors[2].species_id)>=25,"ambiguous stratum avoids forced species hostility")
-		var event_start:int=sim.state.events.size();var had_damage:bool=false
-		var had_death:bool=false;var had_escape:bool=false
-		for _turn in range(6):
-			if sim.state.phase!="ACTIVE":break
-			for row in sim.decision_breakdowns():
-				var action_id:=str(row.selected_action_id)
-				action_counts[action_id]=int(action_counts.get(action_id,0))+1
-			sim.step()
-		for index in range(event_start,sim.state.events.size()):
-			had_damage=had_damage or sim.state.events[index].type=="DAMAGE"
-			had_death=had_death or sim.state.events[index].type=="DEATH"
-			had_escape=had_escape or sim.state.events[index].type=="ESCAPED"
-		if had_damage:damage_scenarios+=1
-		if had_escape:escaped_scenarios+=1
-		if not had_damage and not had_death and not had_escape:no_outcome_scenarios+=1
-	check(damage_scenarios>=16 and damage_scenarios<=48,
-		"at least 25% fight within six turns without forcing combat everywhere")
-	check(escaped_scenarios>=8 and no_outcome_scenarios>=8,
-		"escape and unresolved neutral observation both remain common")
-	check(action_counts.FLEE>=32 and action_counts.SELF_TREAT>=8 and action_counts.HOLD>=8,
-		"flee, treatment, and hold remain visible beside combat")
+func test_shared_threat_is_directional_support_pressure_not_a_hard_team()->bool:
+	var sim=Simulator.new(3)
+	for actor_id in range(1,6):sim.state.actors[actor_id].position=Vector2i(7+actor_id,10)
+	sim.state.actors[1].species_id="human";sim.state.actors[2].species_id="human"
+	sim.state.actors[4].species_id="goblin";sim.state.actors[1].set_memory(2,"HELPED")
+	sim.state.turn_index=1;sim.state.world_time=100
+	sim._emit("DAMAGE",3,2,"ENGAGE",7,sim.state.actors[2].position)
+	var actor_one:Dictionary=sim._decision_breakdown(sim.state.actors[1])
+	var shared:Dictionary=_candidate(actor_one,"ENGAGE",3)
+	check(_term_input(shared.relation_terms,"shared_threat")==1000,
+		"attacking a trusted actor creates shared-threat support pressure")
+	check(int(sim.relation_assessment(1,2).effective)>int(sim.relation_assessment(2,1).effective),
+		"help memory remains directional even between the same species")
+	check(not sim.observation().actors[0].has("team_id"),"same species does not create a hard team")
 	return finish()
 
-func test_registry_extension_is_frozen_generic_and_rejects_noop_or_unknown_inputs()->bool:
-	var registry=Registry.new()
-	var typo=Definition.new("TYPO_WAIT","WAIT","NONE","NONE",100,[],[
-		{"category":"CONTEXT","input_id":"typo","weight_milli":1000}])
-	check(not registry.register_definition(typo).accepted,"unknown input placeholder rejected")
-	var no_target=Definition.new("BAD_MELEE","MELEE","NONE","NONE",100,[],[
-		{"category":"HEXACO","input_id":"X","weight_milli":100}])
-	check(not registry.register_definition(no_target).accepted,"targetless melee placeholder rejected")
-	var listen=Definition.new("LISTEN","WAIT","NONE","NONE",1000,[],[
-		{"category":"CONTEXT","input_id":"uncertainty","weight_milli":2000}])
-	check(registry.register_definition(listen).accepted,"valid generic WAIT definition registered")
-	listen.action_id="MUTATED";listen.score_terms.clear()
-	check(registry.action_ids().has("LISTEN") and not registry.action_ids().has("MUTATED") \
-		and not registry.definition("LISTEN").score_terms.is_empty(),"registry freezes caller-owned definition")
-	var sim=Simulator.new(9,registry);var decisions:=sim.decision_breakdowns()
-	check_eq([decisions[0].selected_action_id,decisions[1].selected_action_id],["LISTEN","LISTEN"],
-		"new definition flows through unchanged generic selector")
-	check(sim.step().accepted,"new WAIT definition flows through generic simultaneous executor")
-	check("LISTEN" in JSON.stringify(sim.recent_logs()),"new action reaches canonical events")
-	var restored=Simulator.new(1,registry)
-	check(restored.load_json(sim.save_json()).accepted and restored.snapshot()==sim.snapshot(),
-		"custom definition survives generic snapshot journal replay")
+func test_self_treatment_and_boundary_flee_produce_real_world_events()->bool:
+	var treatment=Simulator.new(110);_spread_bystanders(treatment)
+	var actor=treatment.state.actors[1];actor.hp=35;actor.supplies=2
+	actor.status_effect={"status_id":"BLEEDING","remaining_quanta":3,"tick_damage":3}
+	_set_intent(treatment,1,"SELF_TREAT",1);_hold_others(treatment,[1])
+	var hp_before:int=actor.hp;var supplies_before:int=actor.supplies
+	check(treatment.step().accepted,"self treatment turn resolves")
+	check(actor.hp>hp_before and actor.supplies==supplies_before-1,
+		"treatment consumes a supply and improves health despite the following DOT tick")
+	check(_has_event(treatment,"HEAL",1,1),"treatment emits an exact self-target event")
+
+	var escape=Simulator.new(111);_spread_bystanders(escape)
+	escape.state.actors[1].position=Vector2i(1,10);escape.state.actors[2].position=Vector2i(2,10)
+	escape.state.actors[1].set_memory(2,"HARMED")
+	_set_intent(escape,1,"FLEE",2);_hold_others(escape,[1])
+	check(escape.step().accepted,"boundary flee turn resolves")
+	check_eq(escape.state.actors[1].presence,"ESCAPED","only a boundary-reaching flee exits the encounter")
+	check(_has_event(escape,"ESCAPED",1,2),"escape event keeps the exact pursued threat target")
 	return finish()
 
-func test_committed_counter_moves_run_five_turns_without_ping_pong_or_jitter_reroll()->bool:
-	var sim=Simulator.new(6);_prepare_counter_move_fixture(sim)
-	var action_sets:={1:{},2:{}};var first_jitter:={};var episodes:={}
-	for turn in range(5):
-		var rows:Array=sim.decision_breakdowns()
-		for actor_id in [1,2]:
-			var row:Dictionary=rows[actor_id-1];var action_id:=str(row.selected_action_id)
-			action_sets[actor_id][action_id]=true
-			var candidate:Dictionary=_candidate(row,action_id)
-			if turn==0:
-				first_jitter[actor_id]=int(candidate.jitter)
-				episodes[actor_id]=str(row.decision_episode_id)
-			else:
-				check_eq(int(candidate.jitter),first_jitter[actor_id],"retained episode never rerolls jitter")
-				check_eq(str(row.decision_episode_id),episodes[actor_id],"retained episode id is stable")
-			check(bool(row.continued),"counter-move intent is retained on turn %d actor %d"%[turn,actor_id])
-		check(sim.step().accepted,"counter-move turn %d commits"%turn)
-	check_eq(action_sets[1].keys(),["APPROACH"],"approacher does not oscillate to flee")
-	check_eq(action_sets[2].keys(),["FLEE"],"fleeing actor does not oscillate to approach")
+func test_target_commitment_retains_episode_then_replans_when_target_dies()->bool:
+	var sim=Simulator.new(116);_spread_bystanders(sim)
+	sim.state.actors[1].position=Vector2i(5,10);sim.state.actors[2].position=Vector2i(10,10)
+	_set_intent(sim,1,"APPROACH",2);_hold_others(sim,[1])
+	var first:Dictionary=sim.decision_breakdowns()[0]
+	check_eq([first.selected_action_id,first.selected_target_id],["APPROACH","2"],
+		"target-bound approach begins")
+	var first_jitter:=int(_candidate(first,"APPROACH",2).jitter)
+	check(sim.step().accepted,"committed approach advances")
+	var retained:Dictionary=sim.decision_breakdowns()[0]
+	check(bool(retained.continued) and retained.selected_target_id=="2",
+		"legal target remains attached to the retained intent")
+	check_eq(int(_candidate(retained,"APPROACH",2).jitter),first_jitter,
+		"retained episode does not reroll jitter")
+	sim.state.actors[2].hp=0;sim.state.actors[2].alive=false;sim.state.actors[2].presence="DEAD"
+	var replanned:Dictionary=sim.decision_breakdowns()[0]
+	check(not bool(replanned.continued) and replanned.selected_target_id!="2",
+		"dead target invalidates commitment and causes target-aware replanning")
 	return finish()
 
-func test_material_damage_interrupt_can_switch_a_committed_intent()->bool:
-	var sim=Simulator.new(901)
-	_prepare_committed_melee_fixture(sim)
-	check_eq([sim.decision_breakdowns()[0].selected_action_id,
-		sim.decision_breakdowns()[1].selected_action_id],["ENGAGE","ENGAGE"],
-		"both actors begin with committed melee")
-	check(sim.step().accepted,"material damage fixture resolves")
-	var actor_row:Dictionary=sim.decision_breakdowns()[0]
-	check_eq(actor_row.switch_reason_code,"INTERRUPT","damage opens an immediate re-evaluation")
-	check_eq(actor_row.selected_action_id,"FLEE","injured weaker actor can switch to survival")
-	check(not bool(actor_row.continued),"interrupt switch starts a new decision episode")
+func test_save_load_and_command_replay_are_exact_mid_commitment()->bool:
+	var sim=Simulator.new(123)
+	for _turn in range(3):
+		if sim.state.phase=="ACTIVE":check(sim.step().accepted,"source step commits")
+	var encoded:String=sim.save_json();var restored=Simulator.new(999)
+	check(restored.load_json(encoded).accepted,"strict v3 session loads")
+	check_eq(restored.snapshot(),sim.snapshot(),"loaded snapshot is exact")
+	check_eq(restored.decision_breakdowns(),sim.decision_breakdowns(),
+		"mid-intent episode and target survive save/load")
+	if sim.state.phase=="ACTIVE":
+		check(sim.step().accepted and restored.step().accepted,"both copies advance")
+		check_eq(restored.snapshot(),sim.snapshot(),"command replay remains exact after load")
+	var tampered=JSON.parse_string(encoded);tampered.snapshot.schema_version=2
+	var target=Simulator.new(321);var before:Dictionary=target.snapshot()
+	check(not target.load_json(JSON.stringify(tampered)).accepted,"obsolete/corrupt v2 lab state is rejected")
+	check_eq(target.snapshot(),before,"failed load is mutation-pure")
 	return finish()
 
-func test_survival_appraisal_keeps_healthy_advantage_and_extreme_boldness_distinct()->bool:
-	var healthy=Simulator.new(904);_prepare_pair_base(healthy,1)
-	_prepare_hostile_relation(healthy);healthy.state.actors[1].power=100;healthy.state.actors[2].power=20
-	_set_all_facets(healthy.state.actors[1],500);_set_all_facets(healthy.state.actors[2],500)
-	_set_committed_intent(healthy,1,"ENGAGE");_set_committed_intent(healthy,2,"ENGAGE")
-	check(healthy.step().accepted,"healthy advantage receives real damage interrupt")
-	var healthy_row:Dictionary=healthy.decision_breakdowns()[0]
-	check_eq(healthy_row.switch_reason_code,"INTERRUPT","healthy actor notices damage")
-	check_eq(healthy_row.selected_action_id,"ENGAGE","healthy actor with a large power edge can keep fighting")
+func _prepare_many_to_one(sim)->void:
+	var positions:Dictionary={1:Vector2i(9,10),2:Vector2i(10,9),3:Vector2i(10,10),
+		4:Vector2i(3,3),5:Vector2i(17,17)}
+	for actor_id in range(1,6):
+		sim.state.actors[actor_id].position=positions[actor_id]
+		sim.state.actors[actor_id].hp=100;sim.state.actors[actor_id].alive=true
+		sim.state.actors[actor_id].presence="ACTIVE";sim.state.actors[actor_id].armed=true
+		sim.state.actors[actor_id].weapon_id="SWORD"
+	_set_intent(sim,1,"ENGAGE",3);_set_intent(sim,2,"ENGAGE",3);_set_intent(sim,3,"ENGAGE",1)
+	_hold_others(sim,[1,2,3])
 
-	var bold=Simulator.new(905);_prepare_pair_base(bold,1)
-	_prepare_hostile_relation(bold);bold.state.actors[1].hp=60
-	bold.state.actors[1].power=100;bold.state.actors[2].power=20
-	bold.state.actors[1].supplies=0
-	_set_all_facets(bold.state.actors[1],500);_set_all_facets(bold.state.actors[2],500)
-	bold.state.actors[1].profile.values["E"]=0;bold.state.actors[1].profile.values["X"]=1000
-	bold.state.actors[1].profile.values["A"]=0
-	_set_committed_intent(bold,1,"ENGAGE");_set_committed_intent(bold,2,"ENGAGE")
-	check(bold.step().accepted,"bold fixture receives a canonical attack")
-	var bold_row:Dictionary=bold.decision_breakdowns()[0]
-	check_eq(bold_row.switch_reason_code,"INTERRUPT","boldness does not suppress appraisal")
-	check_eq(bold_row.selected_action_id,"ENGAGE","an extreme bold profile may still accept the risk")
-	return finish()
+func _prepare_move_conflict(sim)->void:
+	var positions:Dictionary={1:Vector2i(8,8),2:Vector2i(10,8),3:Vector2i(10,10),
+		4:Vector2i(8,10),5:Vector2i(17,17)}
+	for actor_id in range(1,6):sim.state.actors[actor_id].position=positions[actor_id]
+	_set_intent(sim,1,"APPROACH",3);_set_intent(sim,2,"APPROACH",4)
+	_hold_others(sim,[1,2])
 
-func test_hp_and_dot_worsening_never_lower_flee_survival_pressure()->bool:
-	var sim=Simulator.new(906);_prepare_pair_base(sim,1);_prepare_hostile_relation(sim)
-	sim.state.actors[1].power=40;sim.state.actors[2].power=80
-	_set_all_facets(sim.state.actors[1],500);_set_committed_intent(sim,1,"ENGAGE")
-	sim.state.actors[1].decision_interrupt_version+=1
-	var healthy_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
-	var healthy_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
-	sim.state.actors[1].hp=40
-	var injured_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
-	var injured_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
-	sim.state.actors[1].status_effect={"status_id":"POISONED","remaining_quanta":4,"tick_damage":4}
-	var dot_flee:Dictionary=_candidate(sim.decision_breakdowns()[0],"FLEE")
-	var dot_engage:Dictionary=_candidate(sim.decision_breakdowns()[0],"ENGAGE")
-	check(int(injured_flee.total)>=int(healthy_flee.total) and int(dot_flee.total)>=int(injured_flee.total),
-		"HP and DOT worsening are monotonic for FLEE")
-	check(int(injured_engage.total)<=int(healthy_engage.total) and int(dot_engage.total)<=int(injured_engage.total),
-		"the same survival crisis never raises ENGAGE")
-	check(_input_value(dot_flee,"state_terms","survival_crisis")>=
-		_input_value(injured_flee,"state_terms","survival_crisis"),"nonlinear crisis is visible in the DTO")
-	return finish()
+func _spread_bystanders(sim)->void:
+	var positions:Dictionary={1:Vector2i(5,10),2:Vector2i(10,10),3:Vector2i(18,2),
+		4:Vector2i(18,18),5:Vector2i(2,18)}
+	for actor_id in range(1,6):sim.state.actors[actor_id].position=positions[actor_id]
 
-func test_treatment_competes_when_supplied_and_retreat_can_still_die_before_escape()->bool:
-	var treatment=Simulator.new(907);_prepare_pair_base(treatment,6)
-	treatment.state.actors[1].species_id="human";treatment.state.actors[2].species_id="human"
-	treatment.state.actors[1].hp=40;treatment.state.actors[1].status_effect={
-		"status_id":"BLEEDING","remaining_quanta":4,"tick_damage":3}
-	treatment.state.actors[1].supplies=1;treatment.state.actors[2].power=50
-	check_eq(treatment.decision_breakdowns()[0].selected_action_id,"SELF_TREAT",
-		"supplies plus treatment need can beat retreat when immediate threat is lower")
+func _hold_others(sim,excluded:Array)->void:
+	for actor_id in range(1,6):
+		if actor_id not in excluded:_set_intent(sim,actor_id,"HOLD",-1)
 
-	var lethal=Simulator.new(908);_prepare_pair_base(lethal,1)
-	lethal.state.actors[1].power=100;lethal.state.actors[2].hp=5
-	_set_committed_intent(lethal,1,"ENGAGE");_set_committed_intent(lethal,2,"FLEE")
-	check(lethal.step().accepted,"attack and flee resolve in the same canonical turn")
-	check(not lethal.state.actors[2].alive and lethal.state.phase=="COMPLETE",
-		"attack resolution can kill a fleeing actor before escape")
-	for event in lethal.state.events:check(event.type!="ESCAPED","dead runner emits no escape event")
-	return finish()
+func _set_intent(sim,actor_id:int,action_id:String,target_id:int)->void:
+	var actor=sim.state.actors[actor_id]
+	actor.current_intent_id=action_id;actor.intent_started_turn=sim.state.turn_index
+	actor.commitment_until_turn=sim.state.turn_index+10;actor.intent_target_id=target_id
+	actor.decision_episode_id=1;actor.intent_interrupt_version=actor.decision_interrupt_version
+	actor.intent_reason_code="NEW"
 
-func test_post_damage_retreat_distribution_and_mid_interrupt_replay()->bool:
-	var post_damage:={"APPROACH":0,"ENGAGE":0,"FLEE":0,"HOLD":0,"SELF_TREAT":0};var damaged_actors:=0
-	for seed in range(1,65):
-		var sim=Simulator.new(seed);var captured:=false
-		for _turn in range(6):
-			if sim.state.phase!="ACTIVE":break
-			var start:int=sim.state.events.size();sim.step();var targets:Dictionary={}
-			for index in range(start,sim.state.events.size()):
-				if sim.state.events[index].type=="DAMAGE":targets[int(str(sim.state.events[index].target_id))]=true
-			if captured or targets.is_empty():continue
-			captured=true
-			if sim.state.phase!="ACTIVE":continue
-			var next_by_id:Dictionary={}
-			for row in sim.decision_breakdowns():next_by_id[int(str(row.actor_id))]=str(row.selected_action_id)
-			for actor_id in targets:
-				if not sim.state.actors[actor_id].alive:continue
-				damaged_actors+=1;var action_id:=str(next_by_id[actor_id])
-				post_damage[action_id]=int(post_damage.get(action_id,0))+1
-	check(damaged_actors>=32 and post_damage.FLEE>=16,"damage commonly triggers a retreat appraisal")
-	check(post_damage.ENGAGE>=8 and post_damage.SELF_TREAT>=2,
-		"healthy courage and supplied treatment still compete with retreat")
-
-	var replay=Simulator.new(10);var saw_damage:=false
-	for _turn in range(6):
-		var start:int=replay.state.events.size();check(replay.step().accepted,"seeded interrupt turn resolves")
-		for index in range(start,replay.state.events.size()):
-			if replay.state.events[index].type=="DAMAGE":saw_damage=true
-		if saw_damage:break
-	check(saw_damage and replay.state.phase=="ACTIVE","seeded fixture stops immediately after damage")
-	var encoded:=replay.save_json();var loaded=Simulator.new(999)
-	check(loaded.load_json(encoded).accepted,"post-damage intent session loads")
-	check_eq(loaded.snapshot(),replay.snapshot(),"interrupt appraisal authority restores exactly")
-	check_eq(loaded.decision_breakdowns(),replay.decision_breakdowns(),"post-damage next decision replays exactly")
-	return finish()
-
-func test_completed_and_illegal_intents_replan_without_action_id_branches()->bool:
-	var completed=Simulator.new(902)
-	completed.state.distance=1;completed.state.actors[1].position=Vector2i(6,7)
-	completed.state.actors[2].position=Vector2i(7,7)
-	_set_committed_intent(completed,1,"APPROACH")
-	var completed_row:Dictionary=completed.decision_breakdowns()[0]
-	check_eq(completed_row.switch_reason_code,"GOAL_COMPLETE","adjacency completes declarative approach goal")
-	check(completed_row.selected_action_id!="APPROACH","completed approach is not retained")
-
-	var illegal=Simulator.new(903)
-	illegal.state.distance=1;illegal.state.actors[1].position=Vector2i(6,7)
-	illegal.state.actors[2].position=Vector2i(7,7)
-	illegal.state.actors[1].armed=false;illegal.state.actors[1].weapon_id="NONE"
-	_set_committed_intent(illegal,1,"ENGAGE")
-	var illegal_row:Dictionary=illegal.decision_breakdowns()[0]
-	check_eq(illegal_row.switch_reason_code,"ILLEGAL","unarmed melee replans immediately")
-	check(illegal_row.selected_action_id!="ENGAGE","illegal current intent is never retained")
-	return finish()
-
-func test_flee_reaches_a_canonical_escaped_terminal_once()->bool:
-	var sim=Simulator.new(6);var steps:=0
-	while sim.state.phase=="ACTIVE" and steps<12:
-		check(sim.step().accepted,"flee turn %d resolves"%steps);steps+=1
-	check_eq(sim.state.phase,"ESCAPED","sustained flee closes the encounter")
-	check(sim.state.actors[1].alive and sim.state.actors[2].alive,"escape is distinct from death")
-	var escape_events:Array=[]
-	for event in sim.state.events:
-		if event.type=="ESCAPED":escape_events.append(event)
-	check_eq(escape_events.size(),1,"one fleeing actor emits one canonical escape event")
-	check_eq(escape_events[0].actor_id,"2","the actor moving away owns the escape event")
-	var terminal:Dictionary=sim.snapshot()
-	check(not sim.step().accepted and sim.snapshot()==terminal,"escaped encounter rejects later turns purely")
-	return finish()
-
-func test_save_mid_commit_preserves_episode_breakdown_and_continuation_exactly()->bool:
-	var original=Simulator.new(6)
-	check(original.step().accepted and original.state.phase=="ACTIVE","fixture reaches mid-commit state")
-	var before_rows:Array=original.decision_breakdowns();var encoded:=original.save_json()
-	var loaded=Simulator.new(999)
-	check(loaded.load_json(encoded).accepted,"mid-commit session loads")
-	check_eq(loaded.snapshot(),original.snapshot(),"intent authority survives save/load")
-	check_eq(loaded.decision_breakdowns(),before_rows,"retained reason and episode replay exactly")
-	check(original.step().accepted and loaded.step().accepted,"both continuations resolve")
-	check_eq(loaded.snapshot(),original.snapshot(),"mid-commit continuation remains exact")
-	var tampered:Dictionary=JSON.parse_string(encoded);tampered.snapshot.actors[0].decision_episode_id="01"
-	var target=Simulator.new(1000);var target_before:Dictionary=target.snapshot()
-	check(not target.load_json(JSON.stringify(tampered)).accepted,"noncanonical intent episode is rejected")
-	check_eq(target.snapshot(),target_before,"intent tamper rejection is mutation-pure")
-	return finish()
-
-func test_save_load_replay_tamper_and_refresh_are_exact()->bool:
-	var sim=Simulator.new(77);var initial:Dictionary=sim.snapshot()
-	for index in range(5):sim.observation();sim.decision_breakdowns();sim.recent_logs()
-	check_eq(sim.snapshot(),initial,"all refresh DTO paths are pure")
-	for index in range(3):check(sim.step().accepted,"canonical step %d accepted"%index)
-	check(State.wire_error(sim.snapshot(),sim.registry.action_ids()).is_empty(),"live snapshot validates")
-	var restored=Simulator.new(2)
-	check(restored.load_json(sim.save_json()).accepted,"session load replays journal")
-	check_eq(restored.snapshot(),sim.snapshot(),"save/load/replay exact")
-	var tampered:Dictionary=JSON.parse_string(sim.save_json())
-	tampered.snapshot.actors[0].entity_id="01"
-	var target=Simulator.new(2);var before:Dictionary=target.snapshot()
-	check(not target.load_json(JSON.stringify(tampered)).accepted,"noncanonical actor id tamper rejected")
-	check_eq(target.snapshot(),before,"failed load is transactional")
-	return finish()
-
-func _candidate(row:Dictionary,action_id:String)->Dictionary:
-	for value in row.get("candidates",[]):
-		if value is Dictionary and str(value.get("action_id",""))==action_id:return value
+func _candidate(row:Dictionary,action_id:String,target_id:int)->Dictionary:
+	for candidate in row.candidates:
+		if candidate.action_id==action_id and int(candidate.target_id)==target_id:return candidate
 	return {}
 
-func _set_committed_intent(sim,actor_id:int,action_id:String)->void:
-	var actor=sim.state.actors[actor_id];var policy:Dictionary=sim.registry.intent_policy(action_id)
-	var execution:Dictionary=sim.registry.execution(action_id);var target_id:=-1
-	if execution.target_role=="OTHER":target_id=3-actor_id
-	elif execution.target_role=="SELF":target_id=actor_id
-	actor.current_intent_id=action_id;actor.intent_started_turn=sim.state.turn_index
-	actor.commitment_until_turn=sim.state.turn_index+int(policy.commitment_turns)
-	actor.intent_target_id=target_id;actor.decision_episode_id=1
-	actor.intent_interrupt_version=actor.decision_interrupt_version;actor.intent_reason_code="NEW"
+func _selected_target_is_valid(row:Dictionary)->bool:
+	for candidate in row.candidates:
+		if candidate.selected:
+			var actor_id:=int(row.actor_id);var target_id:=int(candidate.target_id)
+			if candidate.target_role=="OTHER":return target_id>=1 and target_id<=5 and target_id!=actor_id
+			if candidate.target_role=="SELF":return target_id==actor_id
+			return target_id==-1
+	return false
 
-func _prepare_committed_melee_fixture(sim)->void:
-	sim.state.distance=1
-	for actor_id in [1,2]:
-		var actor=sim.state.actors[actor_id]
-		actor.position=Vector2i(6 if actor_id==1 else 7,7);actor.hp=40 if actor_id==1 else 100
-		actor.alive=true;actor.armed=true;actor.weapon_id="SWORD";actor.supplies=0
-		actor.status_effect={};actor.memory_kind="HARMED";actor.memory_modifier=-35
-		actor.species_id="human" if actor_id==1 else "goblin"
-		actor.power=20 if actor_id==1 else 100
-		for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=500
-		_set_committed_intent(sim,actor_id,"ENGAGE")
-
-func _prepare_pair_base(sim,distance:int)->void:
-	sim.state.distance=distance
-	for actor_id in [1,2]:
-		var actor=sim.state.actors[actor_id]
-		actor.position=Vector2i(4 if actor_id==1 else 4+distance,7)
-		actor.hp=100;actor.alive=true;actor.armed=true;actor.weapon_id="SWORD"
-		actor.power=60;actor.supplies=1;actor.status_effect={}
-		actor.memory_kind="NONE";actor.memory_modifier=0
-
-func _prepare_counter_move_fixture(sim)->void:
-	_prepare_pair_base(sim,5)
-	sim.state.actors[1].position=Vector2i(2,7);sim.state.actors[2].position=Vector2i(7,7)
-	var approacher=sim.state.actors[1];var runner=sim.state.actors[2]
-	approacher.species_id="human";runner.species_id="goblin"
-	approacher.memory_kind="HARMED";approacher.memory_modifier=-35;approacher.power=100
-	runner.memory_kind="HARMED";runner.memory_modifier=-35;runner.power=20;runner.supplies=0
-	for facet in ["H","E","X","A","C","O"]:
-		approacher.profile.values[facet]=500;runner.profile.values[facet]=500
-	runner.profile.values["E"]=1000;runner.profile.values["X"]=0
-	_set_committed_intent(sim,1,"APPROACH");_set_committed_intent(sim,2,"FLEE")
-
-func _prepare_hostile_relation(sim)->void:
-	sim.state.actors[1].species_id="human";sim.state.actors[2].species_id="goblin"
-	for actor_id in [1,2]:
-		sim.state.actors[actor_id].memory_kind="HARMED"
-		sim.state.actors[actor_id].memory_modifier=-35
-
-func _set_all_facets(actor,value:int)->void:
-	for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=value
-
-func _input_value(candidate:Dictionary,bucket:String,input_id:String)->int:
-	for term in candidate.get(bucket,[]):
-		if str(term.get("input_id",""))==input_id:return int(term.get("input_value",0))
+func _term_input(terms:Array,input_id:String)->int:
+	for term in terms:
+		if term.input_id==input_id:return int(term.input_value)
 	return -1
+
+func _unique_active_positions(sim)->int:
+	var positions:Dictionary={}
+	for actor_id in sim._active_ids():positions[JSON.stringify(sim.state.actors[actor_id].position)]=true
+	return positions.size()
+
+func _has_event(sim,type:String,actor_id:int,target_id:int)->bool:
+	for event in sim.state.events:
+		if event.type==type and int(event.actor_id)==actor_id and int(event.target_id)==target_id:return true
+	return false

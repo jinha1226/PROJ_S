@@ -539,7 +539,8 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var projected_segments:=AsciiPortraitScript.limb_draw_segments(bounds,style,glyph)
 	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
 		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
-		"selected_outline":false}).duplicate(true)
+		"selected_outline":false,"draw_equipment":false,
+		"equipment_primitive_count":0}).duplicate(true)
 
 func selection_overlay_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
@@ -573,6 +574,24 @@ func diorama_cell_draw_spec(position:Vector2i)->Dictionary:
 		"W":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.LEFT),{})),
 	}
 	return DioramaScript.cell_spec(position,_cells.get(_key(position),{}),neighbors)
+
+func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
+	if not _world_in_bounds(position):
+		return {"visible":false,"position":[position.x,position.y],"glyph":"",
+			"registered":false,"draw_image":false,"draw_tile_border":false}.duplicate(true)
+	var row:Dictionary=_cells.get(_key(position),{})
+	var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
+	var state:=_diorama_visibility_state(row)
+	var visible:=bool(terrain.get("glyph_primary",false)) and state!="UNSEEN"
+	return {"visible":visible,"position":[position.x,position.y],
+		"terrain_id":str(terrain.terrain_id) if visible else "",
+		"visibility_state":state,"glyph":str(terrain.glyph) if visible else "",
+		"base_hex":str(terrain.base_hex) if visible else "",
+		"glyph_hex":str(terrain.glyph_hex) if visible else "",
+		"opacity":float(terrain.opacity) if visible else 0.0,
+		"registered":bool(terrain.get("registered",false)),
+		"glyph_primary":visible,"draw_image":false,"draw_tile_border":false,
+		"pixel_rect":world_cell_rect(position) if visible else Rect2()}.duplicate(true)
 
 func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
 	return DioramaScript.hazard_floor_spec(position,_cells.get(_key(position),{}))
@@ -752,8 +771,8 @@ func _draw() -> void:
 	draw_rect(grid_rect(),Color(str(palette.get("void_hex","#020406"))),true)
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
-	_draw_material_mark_pass("MEMORY")
-	_draw_material_mark_pass("VISIBLE")
+	_draw_terrain_glyph_pass("MEMORY")
+	_draw_terrain_glyph_pass("VISIBLE")
 	_draw_wall_shadow_pass("MEMORY")
 	_draw_wall_shadow_pass("VISIBLE")
 	_draw_wall_pass("MEMORY")
@@ -794,41 +813,9 @@ func _draw_ground_surface(position:Vector2i,row:Dictionary,terrain:Dictionary,
 	var rect:=world_cell_rect(position)
 	var overlap:=clampf(cell_size_px()*0.045,1.0,2.0)
 	var base:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),memory)
-	var terrain_id:=str(terrain.terrain_id)
-	if terrain_id in ["wood_floor","metal","rubble","shallow_water"]:
-		var palette:=AsciiStyleScript.diorama_palette_spec()
-		var substrate:=_diorama_color(str(palette.get("substrate_hex","#0b1015")),
-			0.82*float(terrain.opacity),memory)
-		draw_rect(rect.grow(overlap).intersection(grid_rect()),substrate,true)
-		_draw_connected_material_blob(rect,diorama_cell_draw_spec(position),base,terrain_id)
-	else:
-		draw_rect(rect.grow(overlap).intersection(grid_rect()),base,true)
+	draw_rect(rect.grow(overlap).intersection(grid_rect()),base,true)
 
-func _draw_connected_material_blob(rect:Rect2,spec:Dictionary,color:Color,
-		terrain_id:String)->void:
-	var cell:=rect.size.x
-	var mask:=int(spec.get("connected_mask",0))
-	if terrain_id in ["wood_floor","metal"]:
-		var inset:=cell*0.08
-		draw_rect(rect.grow(-inset),color,true)
-	else:
-		draw_colored_polygon(_ellipse_points(rect.get_center(),cell*0.48,cell*0.43),color)
-	var bridge_width:=cell*(0.72 if terrain_id in ["wood_floor","metal"] else 0.56)
-	var center:=rect.get_center()
-	if mask&DioramaScript.NORTH:
-		draw_rect(Rect2(Vector2(center.x-bridge_width*0.5,rect.position.y-1.0),
-			Vector2(bridge_width,cell*0.56)),color,true)
-	if mask&DioramaScript.EAST:
-		draw_rect(Rect2(Vector2(center.x,center.y-bridge_width*0.5),
-			Vector2(cell*0.56+1.0,bridge_width)),color,true)
-	if mask&DioramaScript.SOUTH:
-		draw_rect(Rect2(Vector2(center.x-bridge_width*0.5,center.y),
-			Vector2(bridge_width,cell*0.56+1.0)),color,true)
-	if mask&DioramaScript.WEST:
-		draw_rect(Rect2(Vector2(rect.position.x-1.0,center.y-bridge_width*0.5),
-			Vector2(cell*0.56+1.0,bridge_width)),color,true)
-
-func _draw_material_mark_pass(visibility_state:String)->void:
+func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
@@ -836,44 +823,8 @@ func _draw_material_mark_pass(visibility_state:String)->void:
 			if _diorama_visibility_state(row)!=visibility_state:continue
 			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
 			if str(terrain.terrain_id)=="wall":continue
-			_draw_material_mark(world_cell_rect(position),terrain,
-				diorama_cell_draw_spec(position).get("material_mark",{}),
+			_draw_terrain_glyph(world_cell_rect(position),terrain,
 				visibility_state=="MEMORY")
-
-func _draw_material_mark(rect:Rect2,terrain:Dictionary,mark_value:Variant,
-		memory:bool)->void:
-	if not mark_value is Dictionary:return
-	var mark:Dictionary=mark_value
-	if not bool(mark.get("visible",false)):return
-	var offset:Vector2=mark.get("offset",Vector2.ZERO)
-	var center:=rect.get_center()+Vector2(offset.x*rect.size.x,offset.y*rect.size.y)
-	var color:=_diorama_color(str(terrain.glyph_hex),float(mark.get("opacity",0.2)),memory)
-	var cell:=rect.size.x;var variant:=int(mark.get("variant",0))
-	match str(mark.get("kind","NONE")):
-		"DUST":
-			draw_circle(center,maxf(1.0,cell*0.035),color)
-		"CRACK":
-			var sign_x:=-1.0 if variant%2==0 else 1.0
-			draw_line(center+Vector2(-cell*0.16*sign_x,-cell*0.07),center,
-				color,maxf(1.0,cell*0.035),true)
-			draw_line(center,center+Vector2(cell*0.12*sign_x,cell*0.10),
-				color,maxf(1.0,cell*0.035),true)
-		"PLANK":
-			var horizontal:=variant%2==0
-			var axis:=Vector2(cell*0.38,0) if horizontal else Vector2(0,cell*0.38)
-			draw_line(center-axis,center+axis,color,maxf(1.0,cell*0.045),true)
-		"SHEEN":
-			var diagonal:=Vector2(cell*0.28,-cell*0.17)
-			draw_line(center-diagonal,center+diagonal,color,maxf(1.0,cell*0.050),true)
-		"DEBRIS":
-			_draw_centered_text(get_theme_default_font(),str(mark.get("glyph",",")),center,
-				maxi(8,int(cell*0.34)),color)
-			draw_circle(center+Vector2(cell*0.18,-cell*0.12),maxf(1.0,cell*0.035),color)
-		"RIPPLE":
-			draw_arc(center,cell*0.19,0.12*PI,0.88*PI,10,color,maxf(1.0,cell*0.040),true)
-			draw_arc(center+Vector2(cell*0.09,cell*0.10),cell*0.13,1.08*PI,1.92*PI,8,
-				color,maxf(1.0,cell*0.032),true)
-
 func _draw_wall_shadow_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
@@ -884,7 +835,7 @@ func _draw_wall_shadow_pass(visibility_state:String)->void:
 			var spec:=diorama_cell_draw_spec(position)
 			var exposed:=int(spec.get("exposed_mask",0))
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
-			var alpha:=0.20 if visibility_state=="VISIBLE" else 0.07
+			var alpha:=0.10 if visibility_state=="VISIBLE" else 0.035
 			var shadow:=Color(str(AsciiStyleScript.diorama_palette_spec().get("shadow_hex","#010304")))
 			shadow.a=alpha
 			if exposed&DioramaScript.SOUTH:
@@ -912,29 +863,31 @@ func _draw_wall_pass(visibility_state:String)->void:
 			if str(terrain.terrain_id)!="wall":continue
 			var spec:=diorama_cell_draw_spec(position);var connected:=int(spec.connected_mask)
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
-			var depth:=maxf(3.0,cell*0.18);var overlap:=clampf(cell*0.045,1.0,2.0)
-			var top_width:=rect.size.x+overlap if connected&DioramaScript.EAST else rect.size.x-depth
-			var top_height:=rect.size.y+overlap if connected&DioramaScript.SOUTH else rect.size.y-depth
-			var top_rect:=Rect2(rect.position-Vector2(overlap,overlap),
-				Vector2(top_width+overlap,top_height+overlap))
+			var overlap:=clampf(cell*0.045,1.0,2.0)
 			var top:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),visibility_state=="MEMORY")
-			var face:=_diorama_color(str(terrain.edge_hex),float(terrain.opacity),visibility_state=="MEMORY")
-			draw_rect(top_rect,top,true)
+			draw_rect(rect.grow(overlap).intersection(grid_rect()),top,true)
+			var edge:=_diorama_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
+				visibility_state=="MEMORY")
 			if not connected&DioramaScript.SOUTH:
-				draw_colored_polygon(PackedVector2Array([
-					Vector2(top_rect.position.x,top_rect.end.y),top_rect.end,
-					Vector2(rect.end.x,rect.end.y),Vector2(rect.position.x,rect.end.y),
-				]),face)
+				draw_line(Vector2(rect.position.x,rect.end.y-1),rect.end-Vector2(0,1),edge,1.0,true)
 			if not connected&DioramaScript.EAST:
-				draw_colored_polygon(PackedVector2Array([
-					Vector2(top_rect.end.x,top_rect.position.y),top_rect.end,
-					rect.end,Vector2(rect.end.x,rect.position.y),
-				]),_diorama_color(str(AsciiStyleScript.diorama_palette_spec().get(
-					"wall_side_hex","#070b0f")),float(terrain.opacity),visibility_state=="MEMORY"))
-			if not connected&DioramaScript.NORTH:
-				draw_line(top_rect.position,Vector2(top_rect.end.x,top_rect.position.y),
-					_diorama_color(str(terrain.glyph_hex),0.22,visibility_state=="MEMORY"),maxf(1.0,cell*0.035),true)
-			_draw_material_mark(top_rect,terrain,spec.material_mark,visibility_state=="MEMORY")
+				draw_line(Vector2(rect.end.x-1,rect.position.y),rect.end-Vector2(1,0),edge,1.0,true)
+			_draw_terrain_glyph(rect,terrain,visibility_state=="MEMORY")
+
+func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,memory:bool)->void:
+	if not bool(terrain.get("glyph_primary",false)):return
+	var glyph:=str(terrain.get("glyph",""))
+	if glyph.is_empty():return
+	var center:=rect.get_center();var font:=get_theme_default_font()
+	var font_size:=maxi(8,int(floor(rect.size.x*float(terrain.get("font_ratio",0.54)))))
+	var outline:=_diorama_color(str(terrain.get("outline_hex","#020508")),
+		float(terrain.opacity),memory)
+	var color:=_diorama_color(str(terrain.glyph_hex),float(terrain.opacity),memory)
+	for direction in [Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]:
+		_draw_centered_text(font,glyph,center+direction*0.75,font_size,outline)
+	_draw_centered_text(font,glyph,center+Vector2(-0.22,0),font_size,color)
+	_draw_centered_text(font,glyph,center+Vector2(0.22,0),font_size,color)
+	_draw_centered_text(font,glyph,center,font_size,color)
 
 func _draw_ground_features()->void:
 	for y in range(visible_cell_count):

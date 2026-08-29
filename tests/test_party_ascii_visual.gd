@@ -8,16 +8,24 @@ const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 
 func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var expected := {
-		"floor":".", "stone_floor":":", "wood_floor":"=", "metal":"+",
-		"rubble":",", "shallow_water":"~", "wall":"#",
+		"floor":".", "stone_floor":"#", "wood_floor":",", "metal":"=",
+		"rubble":":", "shallow_water":"~", "wall":"#",
 	}
-	var base_colors: Dictionary = {}
+	var darkest_base:=1.0
+	var brightest_base:=0.0
 	for terrain_id in expected:
 		var spec: Dictionary = Style.terrain_spec({"terrain_id":terrain_id})
 		check_eq(spec.glyph,expected[terrain_id],"%s ASCII glyph"%terrain_id)
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
-		base_colors[str(spec.base_hex)]=true
-	check_eq(base_colors.size(),7,"seven terrains remain color-distinct")
+		check(spec.glyph_primary and spec.registered and not spec.draw_image \
+			and not spec.draw_tile_border,"%s glyph is primary over a borderless code-native floor"%terrain_id)
+		var luminance:=Color(str(spec.base_hex)).get_luminance()
+		darkest_base=minf(darkest_base,luminance);brightest_base=maxf(brightest_base,luminance)
+	check(brightest_base-darkest_base<0.025,"terrain backgrounds stay nearly uniform neutral navy")
+	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
+		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
+		"unregistered tree terrain is not invented for presentation")
+	check_eq(Style.feature_spec("open_door").glyph,"/","canonical open door uses slash")
 	var memory: Dictionary = Style.visibility_spec("MEMORY")
 	check(memory.draw_terrain and not memory.draw_hazards and not memory.draw_actors,
 		"memory draws terrain only")
@@ -26,6 +34,32 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	check(not unseen.draw_terrain and not unseen.draw_actors and unseen.opacity==0.0,
 		"unseen draws and accepts nothing")
 	return finish()
+
+
+func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> bool:
+	var cells:=_visible_cells()
+	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","shallow_water","wall"]
+	for index in range(terrain_ids.size()):
+		cells[index].terrain_id=terrain_ids[index]
+	cells[7].terrain_id="wall";cells[7].visibility_state="MEMORY"
+	cells[8].terrain_id="shallow_water";cells[8].visibility_state="UNSEEN"
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var mapping:=grid.mapping_signature()
+	for index in range(terrain_ids.size()):
+		var spec:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(index,0))
+		check(spec.visible and spec.glyph==Style.terrain_spec({"terrain_id":terrain_ids[index]}).glyph,
+			"registered %s projects its primary glyph"%terrain_ids[index])
+		check(not spec.draw_image and not spec.draw_tile_border,
+			"terrain glyph adds no image, tile card, or input surface")
+	var memory:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,0))
+	check(memory.visible and memory.visibility_state=="MEMORY" and memory.opacity<1.0,
+		"memory keeps only a dim static terrain glyph")
+	var unseen:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(8,0))
+	check(not unseen.visible and unseen.glyph.is_empty() and unseen.terrain_id.is_empty(),
+		"unseen terrain emits no glyph or terrain identity")
+	check_eq(grid.mapping_signature(),mapping,"glyph projection leaves mapping and hits unchanged")
+	grid.free();return finish()
 
 
 func test_hazard_cues_are_layered_and_visibility_safe() -> bool:
@@ -59,6 +93,8 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 			"ASCII glyph is the body with no detached head primitive")
 		check_eq([spec.glyph_weight,spec.glyph_outline_passes],["OUTLINE_REDRAW",8],
 			"regular project font gains deterministic outline weight")
+		check_eq([spec.draw_equipment,spec.equipment_primitive_count,spec.equipment],
+			[false,0,{}],"actor draw grammar contains no weapon or equipment primitive")
 		check(absf(spec.limb_segments[0][0].x-(spec.glyph_center.x-spec.glyph_half_width))<0.0001,
 			"left arm starts at glyph edge")
 		check(absf(spec.limb_segments[1][0].x-(spec.glyph_center.x+spec.glyph_half_width))<0.0001,
@@ -103,6 +139,8 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 		"glyph outline remains in cell: %s vs %s"%[spec.glyph_rect.grow(1.0),spec.cell_rect])
 	check(not spec.detached_head and spec.outline_passes==8 and not spec.selected_outline,
 		"world actor has no head or yellow selection outline")
+	check_eq([spec.draw_equipment,spec.equipment_primitive_count],[false,0],
+		"party map draw path is glyph and attached limbs only")
 	check(absf(spec.limb_segments[0][0].x-spec.glyph_rect.position.x)<=1.5 \
 		and absf(spec.limb_segments[1][0].x-spec.glyph_rect.end.x)<=1.5,
 		"world arms visibly join the rendered glyph edges")
@@ -384,28 +422,23 @@ func test_diorama_sanitizer_and_hazards_are_memory_unseen_safe() -> bool:
 	return finish()
 
 
-func test_diorama_equipment_roles_are_distinct_visual_only_specs() -> bool:
+func test_diorama_equipment_projection_is_removed_from_every_actor_role() -> bool:
 	var cases := [
-		[{"is_protagonist":true,"faction_id":"enemy","species_id":"goblin","roster_slot":1},
-			"HERO_SWORD_LANTERN"],
-		[{"faction_id":"party","species_id":"human","roster_slot":1},
-			"COMPANION_SPEAR_SHIELD"],
-		[{"faction_id":"party","species_id":"goblin","roster_slot":2},
-			"COMPANION_TOOL_DAGGER"],
-		[{"faction_id":"enemy","species_id":"goblin","roster_slot":99},"GOBLIN_SAW"],
-		[{"faction_id":"neutral","species_id":"human","inventory":["legendary_sword"]},"NONE"],
+		{"is_protagonist":true,"faction_id":"enemy","species_id":"goblin","roster_slot":1},
+		{"faction_id":"party","species_id":"human","roster_slot":1},
+		{"faction_id":"party","species_id":"goblin","roster_slot":2},
+		{"faction_id":"enemy","species_id":"goblin","roster_slot":99},
+		{"faction_id":"neutral","species_id":"human","inventory":["legendary_sword"]},
 	]
-	for row in cases:
-		var actor:Dictionary=row[0];var before:=actor.duplicate(true)
+	for actor_value in cases:
+		var actor:Dictionary=actor_value;var before:=actor.duplicate(true)
 		var spec:Dictionary=Diorama.equipment_spec(actor)
-		check_eq(spec.equipment_id,row[1],"role equipment %s"%row[1])
-		check_eq(actor,before,"equipment projection never mutates or consumes inventory")
-	check(Diorama.equipment_spec(cases[0][0]).lantern.visible,
-		"hero lantern has a code-native light primitive")
-	check(not Diorama.equipment_spec(cases[1][0]).shield_points.is_empty(),
-		"slot one shield has a code-native silhouette")
-	check(not Diorama.equipment_spec(cases[3][0]).front_polyline.is_empty(),
-		"goblin saw has a code-native silhouette")
+		check_eq(actor,before,"visual projection never mutates canonical weapon data")
+		check_eq([spec.equipment_id,spec.back_segments,spec.front_segments,
+			spec.front_polyline,spec.shield_points,spec.lantern.visible,
+			spec.draw_equipment,spec.equipment_primitive_count],
+			["NONE",[],[],[],[],false,false,0],
+			"every role projects glyph and attached limbs with zero equipment primitives")
 	return finish()
 
 

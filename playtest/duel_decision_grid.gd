@@ -3,9 +3,9 @@ extends Control
 
 signal actor_pressed(actor_id: String)
 
-const GRID_SIZE := 15
-const MAX_CELL_SIZE := 23.0
-const MIN_CELL_SIZE := 15.0
+const GRID_SIZE := 21
+const MAX_CELL_SIZE := 15.0
+const MIN_CELL_SIZE := 11.0
 
 var _actors: Array = []
 var _selected_actor_id := ""
@@ -31,6 +31,9 @@ func set_observation(observation: Dictionary, selected_actor_id: String = "") ->
 	for value in observation.get("recent_events", []):
 		if value is Dictionary and str(value.get("type", "")) == "ESCAPED":
 			_escaped_actor_ids[str(value.get("actor_id", ""))] = true
+	for actor_value in _actors:
+		if actor_value is Dictionary and str(actor_value.get("presence", "ACTIVE")) == "ESCAPED":
+			_escaped_actor_ids[_actor_id(actor_value)] = true
 	queue_redraw()
 
 
@@ -42,8 +45,9 @@ func set_intent_presentation(breakdowns: Array, visible: bool) -> void:
 				continue
 			var actor_id := str(value.get("actor_id", ""))
 			var action_id := str(value.get("selected_action_id", ""))
+			var target_id := str(value.get("selected_target_id", value.get("target_id", "-1")))
 			if not actor_id.is_empty() and not intent_visual_spec(action_id).is_empty():
-				_intent_by_actor_id[actor_id] = action_id
+				_intent_by_actor_id[actor_id] = {"action_id": action_id, "target_id": target_id}
 	queue_redraw()
 
 
@@ -100,25 +104,21 @@ func actor_render_specs() -> Array:
 		var actor_id := _actor_id(actor)
 		var color := _actor_color(index, actor)
 		var hit_half := maxf(9.0, cell_size_px() * 0.48)
-		var facing := Vector2.RIGHT if index == 0 else Vector2.LEFT
-		if _actors.size() == 2:
-			var other_position: Variant = _position_from(_actors[1-index].get("position",null))
-			if other_position != null:
-				var delta := Vector2(other_position-position_value)
-				if not delta.is_zero_approx():
-					facing=delta.normalized()
-		var stance := str(_intent_by_actor_id.get(actor_id,"IDLE"))
+		var intent: Dictionary = _intent_by_actor_id.get(actor_id, {})
+		var stance := str(intent.get("action_id", "IDLE"))
+		var facing := _actor_facing(actor_id, position_value, str(intent.get("target_id", "")))
 		if stance == "FLEE":
 			facing=-facing
+		var presence := _presence(actor_id, actor)
 		result.append({
 			"actor_id": actor_id,
 			"center": center,
 			"position": position_value,
 			"color": color,
-			"glyph": "A" if index == 0 else "B",
-			"weapon": str(actor.get("weapon", "맨손")),
+			"glyph": _actor_glyph(index, actor),
 			"hp_ratio": clampf(float(actor.get("hp", 0)) / maxf(1.0, float(actor.get("max_hp", 1))), 0.0, 1.0),
-			"alive": bool(actor.get("alive", true)),
+			"alive": bool(actor.get("alive", true)) and presence != "DEAD",
+			"presence": presence, "interactive": presence == "ACTIVE",
 			"selected": actor_id == _selected_actor_id,
 			"facing": facing, "stance": stance,
 			"hit_rect": Rect2(center - Vector2.ONE * hit_half, Vector2.ONE * hit_half * 2.0),
@@ -138,6 +138,8 @@ func actor_id_at_point(local_position: Vector2) -> String:
 	var best_distance := INF
 	for value in actor_render_specs():
 		var row: Dictionary = value
+		if not bool(row.get("interactive", true)):
+			continue
 		if not row.hit_rect.has_point(local_position):
 			continue
 		var distance: float = local_position.distance_squared_to(row.center)
@@ -162,7 +164,57 @@ func display_spec() -> Dictionary:
 		"actor_count": actor_count(),
 		"selected_actor_id": _selected_actor_id,
 		"grid_rect": grid_rect(),
+		"terrain": floor_presentation_spec(),
 	}
+
+
+static func floor_presentation_spec() -> Dictionary:
+	return {"terrain_id":"floor","glyph":".","glyph_color":Color("#46545d"),
+		"background_color":Color("#09131c"),"source":"CORE_OPEN_FLOOR",
+		"draw_image":false,"draw_tile_border":false,"fake_terrain_count":0}.duplicate(true)
+
+
+func target_link_specs() -> Array:
+	var result: Array = []
+	var actor_rows: Dictionary = {}
+	for row_value in actor_render_specs():
+		if row_value is Dictionary:
+			actor_rows[str(row_value.actor_id)] = row_value
+	for actor_id_value in _intent_by_actor_id:
+		var actor_id := str(actor_id_value)
+		if not actor_rows.has(actor_id):
+			continue
+		var source: Dictionary = actor_rows[actor_id]
+		if not bool(source.get("interactive", false)):
+			continue
+		var intent: Dictionary = _intent_by_actor_id.get(actor_id, {})
+		var action_id := str(intent.get("action_id", ""))
+		if action_id not in ["APPROACH", "ENGAGE", "FLEE"]:
+			continue
+		var target_id := str(intent.get("target_id", ""))
+		if target_id.is_empty() or target_id == "-1" or not actor_rows.has(target_id):
+			continue
+		var target: Dictionary = actor_rows[target_id]
+		var delta: Vector2 = Vector2(target.center) - Vector2(source.center)
+		if delta.is_zero_approx():
+			continue
+		var direction := delta.normalized()
+		var cell := cell_size_px()
+		var from: Vector2 = Vector2(source.center) + direction * cell * 0.48
+		var to: Vector2
+		var kind := "TARGET"
+		if action_id == "FLEE":
+			kind = "FLEE_AWAY"
+			from = Vector2(source.center) - direction * cell * 0.42
+			to = Vector2(source.center) - direction * cell * 1.20
+		else:
+			to = Vector2(target.center) - direction * cell * 0.55
+		var visual := intent_visual_spec(action_id)
+		result.append({"actor_id": actor_id, "target_id": target_id,
+			"action_id": action_id, "kind": kind, "from": from, "to": to,
+			"color": Color(visual.get("color", Color.WHITE), 0.62),
+			"line_width": 1.1, "hit_surface": false, "visible_after_intent": true})
+	return result.duplicate(true)
 
 
 static func intent_visual_spec(action_id: String, status: String = "") -> Dictionary:
@@ -193,14 +245,17 @@ func intent_badge_specs() -> Array:
 			status = "DEAD"
 		elif _escaped_actor_ids.has(actor_id):
 			status = "ESCAPED"
-		var action_id := "" if not status.is_empty() else str(_intent_by_actor_id.get(actor_id, ""))
+		var intent: Dictionary = _intent_by_actor_id.get(actor_id, {})
+		var action_id := "" if not status.is_empty() else str(intent.get("action_id", ""))
 		var visual := intent_visual_spec(action_id, status)
 		if visual.is_empty():
 			continue
 		var direction := 1.0
-		if actor_rows.size() > 1:
-			var other_index := 1 - index if actor_rows.size() == 2 else (index + 1) % actor_rows.size()
-			direction = -1.0 if float(actor_rows[other_index].center.x) < float(actor_row.center.x) else 1.0
+		var target_id := str(intent.get("target_id", ""))
+		for target_row_value in actor_rows:
+			if target_row_value is Dictionary and str(target_row_value.actor_id) == target_id:
+				direction = -1.0 if float(target_row_value.center.x) < float(actor_row.center.x) else 1.0
+				break
 		if action_id == "FLEE":
 			direction *= -1.0
 		var center: Vector2 = actor_row.center + Vector2(-cell_size_px() * 0.38, -cell_size_px() * 0.82)
@@ -298,19 +353,22 @@ func _draw() -> void:
 		return
 	draw_rect(rect, Color("#09131c"), true)
 	var cell_size := cell_size_px()
+	var floor_spec:=floor_presentation_spec()
+	var floor_font:=get_theme_default_font()
 	for y in range(GRID_SIZE):
 		for x in range(GRID_SIZE):
 			var center := rect.position + (Vector2(x, y) + Vector2(0.5, 0.5)) * cell_size
-			if ((x * 19 + y * 31) & 3) == 0:
-				draw_circle(center, maxf(0.7, cell_size * 0.04), Color("#35505c55"))
+			_draw_centered_duel_glyph(floor_font,str(floor_spec.glyph),center,
+				maxi(8,int(cell_size*0.53)),Color("#46545d88"))
 	for guide in range(0, GRID_SIZE + 1, 5):
 		var px := rect.position.x + float(guide) * cell_size
 		var py := rect.position.y + float(guide) * cell_size
 		draw_line(Vector2(px, rect.position.y), Vector2(px, rect.end.y), Color("#1b303b80"), 1.0)
 		draw_line(Vector2(rect.position.x, py), Vector2(rect.end.x, py), Color("#1b303b80"), 1.0)
 	var rows := actor_render_specs()
-	if rows.size() == 2:
-		draw_dashed_line(rows[0].center, rows[1].center, Color("#7b89905c"), 1.0, 5.0)
+	for link_value in target_link_specs():
+		if link_value is Dictionary:
+			_draw_target_link(link_value)
 	for row_value in rows:
 		_draw_actor(row_value)
 	for badge_value in intent_badge_specs():
@@ -332,7 +390,6 @@ func _draw_actor(row: Dictionary) -> void:
 			var segment: Array = segment_value
 			draw_line(segment[0],segment[1],outline,maxf(2.2,cell_size*0.16),true)
 			draw_line(segment[0],segment[1],color,maxf(1.25,cell_size*0.085),true)
-		_draw_weapon(layout.weapon_hand,str(row.weapon),color,float(layout.weapon_direction))
 	var font := get_theme_default_font()
 	_draw_weighted_duel_glyph(font,str(row.glyph),layout.glyph_center,
 		int(layout.font_size),outline,color.lightened(0.18))
@@ -379,15 +436,13 @@ func _duel_glyph_layout(row: Dictionary) -> Dictionary:
 	right_hand=_clamp_point_to_rect(right_hand,limb_rect)
 	left_foot=_clamp_point_to_rect(left_foot,limb_rect)
 	right_foot=_clamp_point_to_rect(right_foot,limb_rect)
-	var weapon_direction := -1.0 if facing.x<0.0 else 1.0
 	return {"actor_id":str(row.actor_id),"glyph":glyph,"glyph_center":glyph_center,
 		"glyph_rect":glyph_rect,"cell_rect":cell_rect,"font_size":font_size,
 		"glyph_is_body":true,"detached_head":false,"head_primitive_count":0,
 		"outline_passes":8,"selected_outline":false,"stance":stance,
 		"limb_segments":[[left_arm,left_hand],[right_arm,right_hand],
 			[left_hip,left_foot],[right_hip,right_foot]],
-		"weapon_hand":left_hand if weapon_direction<0.0 else right_hand,
-		"weapon_direction":weapon_direction}.duplicate(true)
+		"draw_equipment":false,"equipment_primitive_count":0}.duplicate(true)
 
 
 func _world_cell_rect(position:Vector2i)->Rect2:
@@ -417,28 +472,6 @@ func _draw_centered_duel_glyph(font:Font,glyph:String,center:Vector2,font_size:i
 		HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
 
 
-func _draw_weapon(hand: Vector2, weapon: String, color: Color, direction: float) -> void:
-	var cell_size := cell_size_px()
-	var weapon_lower := weapon.to_lower()
-	if "활" in weapon or "bow" in weapon_lower:
-		var bow_center:=hand+Vector2(cell_size*0.14*direction,0.0)
-		draw_arc(bow_center,cell_size*0.22,-PI*0.5,PI*0.5,8,color,1.5)
-		draw_line(bow_center+Vector2(0,-cell_size*0.22),
-			bow_center+Vector2(0,cell_size*0.22),color,1.0)
-	elif "창" in weapon or "spear" in weapon_lower:
-		var tip:=hand+Vector2(cell_size*0.34*direction,-cell_size*0.32)
-		draw_line(hand+Vector2(-cell_size*0.06*direction,cell_size*0.16),tip,color,2.0)
-		draw_colored_polygon(PackedVector2Array([tip,tip+Vector2(-cell_size*0.10*direction,cell_size*0.07),
-			tip+Vector2(cell_size*0.04*direction,cell_size*0.10)]),color)
-	elif "검" in weapon or "칼" in weapon or "dagger" in weapon_lower or "sword" in weapon_lower:
-		var tip:=hand+Vector2(cell_size*0.27*direction,-cell_size*0.24)
-		draw_line(hand,tip,color.lightened(0.25),2.0)
-		draw_line(hand+Vector2(-cell_size*0.06*direction,-cell_size*0.06),
-			hand+Vector2(cell_size*0.07*direction,cell_size*0.05),color,2.0)
-	else:
-		draw_circle(hand+Vector2(cell_size*0.05*direction,0.0),maxf(1.5,cell_size*0.08),color)
-
-
 func _draw_ground_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
 	var points := PackedVector2Array()
 	for index in range(16):
@@ -451,7 +484,63 @@ func _actor_color(index: int, actor: Dictionary) -> Color:
 	var explicit := str(actor.get("color_hex", ""))
 	if not explicit.is_empty() and Color.html_is_valid(explicit):
 		return Color(explicit)
-	return Color("#5ee8ff") if index == 0 else Color("#ff9b62")
+	var palette := [Color("#5ee8ff"), Color("#ff9b62"), Color("#8ee765"),
+		Color("#d88cff"), Color("#ffe068")]
+	return palette[index % palette.size()]
+
+
+func _actor_glyph(index: int, actor: Dictionary) -> String:
+	var explicit := str(actor.get("glyph", ""))
+	if not explicit.is_empty():
+		return explicit.substr(0, 1)
+	return str(["A", "B", "C", "D", "E"][index % 5])
+
+
+func _presence(actor_id: String, actor: Dictionary) -> String:
+	var result := str(actor.get("presence", "ACTIVE")).to_upper()
+	if not bool(actor.get("alive", true)):
+		result = "DEAD"
+	elif _escaped_actor_ids.has(actor_id):
+		result = "ESCAPED"
+	return result if result in ["ACTIVE", "DEAD", "ESCAPED"] else "ACTIVE"
+
+
+func _actor_facing(actor_id: String, position: Vector2i, target_id: String) -> Vector2:
+	var target := _actor_by_id(target_id)
+	var target_position: Variant = _position_from(target.get("position", null))
+	if target_position != null:
+		var target_delta := Vector2(target_position - position)
+		if not target_delta.is_zero_approx():
+			return target_delta.normalized()
+	var closest := Vector2.RIGHT
+	var closest_distance := INF
+	for other_value in _actors:
+		if not other_value is Dictionary or _actor_id(other_value) == actor_id:
+			continue
+		var other_position: Variant = _position_from(other_value.get("position", null))
+		if other_position == null:
+			continue
+		var delta := Vector2(other_position - position)
+		var distance := delta.length_squared()
+		if distance > 0.0 and distance < closest_distance:
+			closest_distance = distance
+			closest = delta.normalized()
+	return closest
+
+
+func _draw_target_link(spec: Dictionary) -> void:
+	var from: Vector2 = spec.from
+	var to: Vector2 = spec.to
+	var color: Color = spec.color
+	var width := float(spec.line_width)
+	draw_line(from, to, color, width, true)
+	var direction := (to - from).normalized()
+	if direction.is_zero_approx():
+		return
+	var side := Vector2(-direction.y, direction.x)
+	var arrow_length := maxf(3.0, cell_size_px() * 0.28)
+	draw_line(to, to - direction * arrow_length + side * arrow_length * 0.55, color, width, true)
+	draw_line(to, to - direction * arrow_length - side * arrow_length * 0.55, color, width, true)
 
 
 func _actor_id(actor: Dictionary) -> String:

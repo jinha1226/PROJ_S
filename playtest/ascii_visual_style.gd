@@ -1,26 +1,24 @@
 class_name AsciiVisualStyle
 extends RefCounted
 
-const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
-
 const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 
 const DIORAMA_PALETTE := {
 	"void_hex":"#020406",
-	"substrate_hex":"#0b1015",
+	"substrate_hex":"#091017",
 	"wall_side_hex":"#070b0f",
 	"shadow_hex":"#010304",
 }
 
 const TERRAIN_DEFINITIONS := {
-	"floor": {"glyph":".", "base_hex":"#10151a", "glyph_hex":"#3f4a52", "edge_hex":"#070a0d", "depth_ratio":0.035, "raised":false},
-	"stone_floor": {"glyph":":", "base_hex":"#151a1f", "glyph_hex":"#505b63", "edge_hex":"#080c10", "depth_ratio":0.045, "raised":false},
-	"wood_floor": {"glyph":"=", "base_hex":"#191714", "glyph_hex":"#75634e", "edge_hex":"#0b0907", "depth_ratio":0.055, "raised":false},
-	"metal": {"glyph":"+", "base_hex":"#121b20", "glyph_hex":"#56727d", "edge_hex":"#070c0f", "depth_ratio":0.050, "raised":false},
-	"rubble": {"glyph":",", "base_hex":"#1b1915", "glyph_hex":"#706755", "edge_hex":"#0b0907", "depth_ratio":0.070, "raised":false},
-	"shallow_water": {"glyph":"~", "base_hex":"#102c38", "glyph_hex":"#57bdd8", "edge_hex":"#07151b", "depth_ratio":0.030, "raised":false},
-	"wall": {"glyph":"#", "base_hex":"#171b20", "glyph_hex":"#68747c", "edge_hex":"#06090c", "depth_ratio":0.145, "raised":true},
+	"floor": {"glyph":".", "base_hex":"#0a1016", "glyph_hex":"#56616a", "edge_hex":"#060a0e", "font_ratio":0.52, "raised":false},
+	"stone_floor": {"glyph":"#", "base_hex":"#0b1117", "glyph_hex":"#9da9b2", "edge_hex":"#070b10", "font_ratio":0.55, "raised":false},
+	"wood_floor": {"glyph":",", "base_hex":"#0d1115", "glyph_hex":"#b98755", "edge_hex":"#090a0b", "font_ratio":0.55, "raised":false},
+	"metal": {"glyph":"=", "base_hex":"#0a1218", "glyph_hex":"#8fb5c2", "edge_hex":"#060b0f", "font_ratio":0.56, "raised":false},
+	"rubble": {"glyph":":", "base_hex":"#0d1114", "glyph_hex":"#a49272", "edge_hex":"#080a0b", "font_ratio":0.54, "raised":false},
+	"shallow_water": {"glyph":"~", "base_hex":"#09141a", "glyph_hex":"#51c7ec", "edge_hex":"#061016", "font_ratio":0.58, "raised":false},
+	"wall": {"glyph":"#", "base_hex":"#0d1319", "glyph_hex":"#bac5cd", "edge_hex":"#070b0f", "font_ratio":0.61, "raised":true},
 }
 
 
@@ -50,9 +48,10 @@ static func visibility_spec(cell_or_state: Variant) -> Dictionary:
 
 static func terrain_spec(cell: Dictionary) -> Dictionary:
 	var terrain_id := str(cell.get("terrain_id", cell.get("terrain", "floor")))
+	var registered := TERRAIN_DEFINITIONS.has(terrain_id)
 	var definition: Dictionary = TERRAIN_DEFINITIONS.get(terrain_id, {
-		"glyph":"?", "base_hex":"#242a31", "glyph_hex":"#aab3bc", "edge_hex":"#090d12",
-		"depth_ratio":0.04, "raised":false,
+		"glyph":"", "base_hex":"#091017", "glyph_hex":"#091017", "edge_hex":"#060a0e",
+		"font_ratio":0.52, "raised":false,
 	})
 	var result := definition.duplicate(true)
 	var visibility := visibility_spec(cell)
@@ -60,6 +59,11 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	result["visibility_state"] = visibility.state
 	result["visible"] = bool(visibility.draw_terrain)
 	result["opacity"] = float(visibility.opacity)
+	result["registered"] = registered
+	result["glyph_primary"] = registered and bool(visibility.draw_terrain)
+	result["draw_image"] = false
+	result["draw_tile_border"] = false
+	result["outline_hex"] = "#020508"
 	return result.duplicate(true)
 
 
@@ -88,7 +92,7 @@ static func feature_spec(feature_id: String) -> Dictionary:
 		"run_entry":{"glyph":"<", "color_hex":"#65BFFF"},
 		"run_exit_locked":{"glyph":"X", "color_hex":"#A36A73"},
 		"run_exit_open":{"glyph":">", "color_hex":"#75D7A0"},
-		"open_door":{"glyph":"+", "color_hex":"#E8B95C"},
+		"open_door":{"glyph":"/", "color_hex":"#E8B95C"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",
@@ -141,7 +145,6 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		stance = "IDLE"
 	var geometry := _pose_geometry(life_state, facing, stance)
 	var guarded := bool(actor.get("guarded", false))
-	var equipment := DioramaScript.equipment_spec(actor)
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
@@ -156,7 +159,9 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"glyph_weight":"OUTLINE_REDRAW", "glyph_outline_passes":8,
 		"limb_segments":geometry.limb_segments,
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
-		"equipment":equipment,
+		# Inventory and weapon legality remain canonical simulation data, but the
+		# map/portrait grammar is deliberately glyph + attached limbs only.
+		"equipment":{}, "draw_equipment":false, "equipment_primitive_count":0,
 		"draw_head":false, "draw_limbs":life_state != "DEAD",
 	}.duplicate(true)
 

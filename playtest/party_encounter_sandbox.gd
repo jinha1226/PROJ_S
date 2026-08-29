@@ -183,7 +183,7 @@ func _build_ui()->void:
 
 func _build_duel_decision_lab_entry()->void:
 	duel_lab_button=Button.new();duel_lab_button.name="DuelDecisionLabButton"
-	duel_lab_button.text="2인 판단 실험";duel_lab_button.tooltip_text="두 캐릭터 판단 비교 LAB 열기"
+	duel_lab_button.text="5인 관찰 실험";duel_lab_button.tooltip_text="다섯 캐릭터 판단 관찰 LAB 열기"
 	duel_lab_button.add_theme_font_size_override("font_size",FONT_BODY)
 	duel_lab_button.custom_minimum_size=Vector2(116,44)
 	duel_lab_button.pressed.connect(_open_duel_decision_lab);phase_row.add_child(duel_lab_button)

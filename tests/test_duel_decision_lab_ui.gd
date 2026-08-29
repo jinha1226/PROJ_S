@@ -3,40 +3,41 @@ extends "res://tests/test_case.gd"
 const LabScene = preload("res://playtest/duel_decision_lab.tscn")
 const Grid = preload("res://playtest/duel_decision_grid.gd")
 const FakeSimulator = preload("res://tests/duel_decision_ui_fake.gd")
-const RealSimulator = preload("res://sim/dungeon_population/dungeon_population_simulator.gd")
+const REAL_SIMULATOR_PATH := "res://sim/dungeon_population/dungeon_population_simulator.gd"
 const PartyScene = preload("res://playtest/party_encounter_sandbox.tscn")
 const PartySession = preload("res://playtest/party_playtest_session.gd")
 
 
-func test_lab_presents_two_actor_map_and_large_readable_cards() -> bool:
+func test_lab_presents_five_actor_map_and_compact_selectable_cards() -> bool:
 	var simulator = FakeSimulator.new(301)
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
-	lab.grid.size = Vector2(300, 300)
-	check_eq(lab.grid.visible_cell_count(), 225, "15x15 decision map")
-	check_eq(lab.grid.actor_count(), 2, "exactly two actors are presented")
-	check(lab.situation_label.text.contains("인간 라온(HP 82, 출혈 3턴") \
-		and lab.situation_label.text.contains("고블린 모그(HP 46") \
-		and lab.situation_label.text.contains("4칸 거리"), "first sentence explains the encounter")
-	check(lab.situation_label.text.contains("장검 무장") \
-		and lab.situation_label.text.contains("굽은 단검 무장") \
-		and lab.situation_label.text.contains("공격받은 기억"),
-		"situation sentence exposes arms and personal grievance")
+	lab.grid.size = Vector2(315, 315)
+	check_eq(lab.grid.visible_cell_count(), 441, "21x21 observation map")
+	check_eq(lab.grid.actor_count(), 5, "exactly five actors are presented")
+	var floor_spec:=Grid.floor_presentation_spec()
+	check_eq([floor_spec.terrain_id,floor_spec.glyph,floor_spec.fake_terrain_count],
+		["floor",".",0],"LAB renders only core-declared open floor and invents no terrain")
+	check(not floor_spec.draw_image and not floor_spec.draw_tile_border,
+		"LAB floor is code glyph over a neutral continuous backdrop")
+	check(lab.situation_label.text.contains("21×21 던전") \
+		and lab.situation_label.text.contains("인물 5명"), "short summary preserves map priority")
 	check(lab.actor_buttons[0].text.contains("라온") and lab.actor_buttons[0].text.contains("HP 82"),
 		"actor A overview shows identity and body state")
-	check(lab.actor_buttons[1].text.contains("모그") and lab.actor_buttons[1].text.contains("HP 46"),
-		"actor B overview shows identity and body state")
-	check(lab.actor_buttons[0].text.contains("성향 ·") and lab.actor_buttons[1].text.contains("성향 ·"),
-		"both personality summaries are visible together")
+	check(lab.actor_buttons[4].text.contains("키리") and lab.actor_buttons[4].text.contains("HP 73"),
+		"all five compact cards expose identity and body state")
+	check_eq(lab.actor_buttons.size(), 5, "five selectable overview chips replace two large cards")
 	for button in lab.actor_buttons:
 		check_eq(button.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART,
 			"360px overview cards wrap whole words")
 		check_eq(button.text_overrun_behavior, TextServer.OVERRUN_NO_TRIMMING,
 			"overview cards never replace reasons or traits with ellipsis")
 		for line in button.text.split("\n"):
-			check(line.length() <= 25, "overview card line stays within the mobile copy budget")
+			check(line.length() <= 10, "compact chip line stays within the mobile copy budget")
 	check(not lab.detail_panel.visible and not lab.actor_buttons[0].text.contains("HEXACO") \
 		and not lab.actor_buttons[0].text.contains("ENGAGE"), "raw calculation is hidden by default")
+	check(lab.body_scroll != null and lab.step_button.get_parent().get_parent() == lab.root_layout,
+		"content scrolls while sticky controls stay outside the scroll body")
 	check_eq(lab.step_button.text, "판단 보기", "pre-decision stage is explicit")
 	check_eq(simulator.step_calls, 0, "rendering DTO does not resolve a turn")
 	lab.free()
@@ -48,12 +49,10 @@ func test_candidate_breakdown_uses_korean_sentences_and_all_score_buckets() -> b
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
 	lab._on_primary_action()
-	check_eq(simulator.step_calls, 0, "revealing both intents is presentation-only")
-	check(lab.actor_buttons[0].text.contains("공격하려 한다") \
-		and lab.actor_buttons[1].text.contains("불리해져 전투에서 이탈하려 함"),
-		"A and B intents compare at once with retreat pressure in plain language")
-	check(lab.actor_buttons[0].text.contains("상대가 가까워 위협적이라서"),
-		"overview keeps at most the strongest natural-language reasons")
+	check_eq(simulator.step_calls, 0, "revealing five intents is presentation-only")
+	check(lab.actor_buttons[0].text.contains("공격") and lab.actor_buttons[1].text.contains("도주") \
+		and lab.actor_buttons[2].text.contains("접근") and lab.actor_buttons[3].text.contains("치료") \
+		and lab.actor_buttons[4].text.contains("경계"), "five intents compare in compact Korean labels")
 	check(not lab.actor_buttons[0].text.contains("합계") and not lab.actor_buttons[0].text.contains("작은 변동"),
 		"overview does not expose score mechanics")
 	lab._toggle_detail()
@@ -121,15 +120,15 @@ func test_grid_hit_selects_each_actor_without_advancing_core() -> bool:
 	var simulator = FakeSimulator.new(303)
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
-	lab.grid.size = Vector2(300, 300)
-	var center: Variant = lab.grid.actor_screen_center("actor_b")
-	check(center != null, "actor B has a visible map center")
-	check_eq(lab.grid.actor_id_at_point(center), "actor_b", "map hit maps to actor B")
-	lab._on_actor_pressed("actor_b")
-	check_eq(lab.selected_actor_id, "actor_b", "map tap selects actor B")
+	lab.grid.size = Vector2(315, 315)
+	var center: Variant = lab.grid.actor_screen_center("actor_c")
+	check(center != null, "actor C has a visible map center")
+	check_eq(lab.grid.actor_id_at_point(center), "actor_c", "map hit maps to actor C")
+	lab._on_actor_pressed("actor_c")
+	check_eq(lab.selected_actor_id, "actor_c", "map tap selects actor C")
 	lab._toggle_detail()
-	check(lab.detail_text.text.contains("모그 · 고블린") and lab.detail_text.text.contains("굽은 단검"),
-		"actor B card replaces actor A card")
+	check(lab.detail_text.text.contains("세라 · 인간") and lab.detail_text.text.contains("창"),
+		"only selected actor detail replaces the map")
 	check_eq(simulator.step_calls, 0, "actor selection is read-only")
 	lab.free()
 	return finish()
@@ -138,29 +137,42 @@ func test_grid_hit_selects_each_actor_without_advancing_core() -> bool:
 func test_vector_intent_badges_share_mapping_without_changing_hits() -> bool:
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(FakeSimulator.new(3031))
-	lab.grid.size = Vector2(300, 300)
+	lab.grid.size = Vector2(315, 315)
 	check(lab.grid.intent_badge_specs().is_empty(), "intent badges stay hidden before decision reveal")
-	check(not lab.actor_badges[0].visible and not lab.actor_badges[1].visible,
-		"overview card badges also stay hidden")
-	var centers := {
-		"actor_a": lab.grid.actor_screen_center("actor_a"),
-		"actor_b": lab.grid.actor_screen_center("actor_b"),
-	}
+	check(lab.actor_badges.all(func(badge): return not badge.visible),
+		"all compact card badges stay hidden before reveal")
+	check(lab.grid.target_link_specs().is_empty(), "target arrows stay hidden before decision reveal")
+	var centers := {}
+	for actor_id in ["actor_a", "actor_b", "actor_c", "actor_d", "actor_e"]:
+		centers[actor_id] = lab.grid.actor_screen_center(actor_id)
 	lab._on_primary_action()
 	var rows: Array = lab.grid.intent_badge_specs()
-	check_eq(rows.size(), 2, "both revealed intents have one map badge")
+	check_eq(rows.size(), 5, "five revealed intents have one map badge each")
 	var by_actor: Dictionary = {}
 	for row in rows:
 		by_actor[str(row.actor_id)] = row
 	check_eq(str(by_actor.actor_a.shape_id), "CROSSED_BLADES", "attack uses crossed vector blades")
 	check_eq(str(by_actor.actor_b.shape_id), "OUTWARD_ARROW", "flee uses a directional vector arrow")
+	check_eq(str(by_actor.actor_c.shape_id), "INWARD_CHEVRON", "approach uses inward chevron")
+	check_eq(str(by_actor.actor_d.shape_id), "MEDICAL_CROSS", "self treatment uses medical cross")
+	check_eq(str(by_actor.actor_e.shape_id), "GUARD_SHIELD", "hold is presented as Korean guard")
 	check(by_actor.actor_a.color != by_actor.actor_b.color, "attack and flee retain distinct colors")
 	check_eq(str(lab.actor_badges[0].display_spec().shape_id), "CROSSED_BLADES",
 		"actor A card consumes the same attack badge mapping")
 	check_eq(str(lab.actor_badges[1].display_spec().shape_id), "OUTWARD_ARROW",
 		"actor B card consumes the same flee badge mapping")
-	check(lab.actor_buttons[0].text.contains("공격 ·") and lab.actor_buttons[1].text.contains("도주 ·") \
+	check(lab.actor_buttons[0].text.contains("공격") and lab.actor_buttons[1].text.contains("도주") \
 		and not lab.actor_buttons[0].text.contains("⚔"), "cards use stable Korean labels instead of emoji")
+	var links: Array = lab.grid.target_link_specs()
+	check_eq(links.size(), 3, "only approach, attack, and flee expose target direction")
+	var links_by_actor := {}
+	for link in links:
+		links_by_actor[str(link.actor_id)] = link
+	check_eq([links_by_actor.actor_a.target_id, links_by_actor.actor_a.kind], ["actor_b", "TARGET"],
+		"attack line names its exact target")
+	check_eq([links_by_actor.actor_b.target_id, links_by_actor.actor_b.kind], ["actor_a", "FLEE_AWAY"],
+		"flee cue points away from its threat")
+	check(not bool(links_by_actor.actor_a.hit_surface), "target lines never add an input surface")
 	for actor_id in centers:
 		check_eq(lab.grid.actor_id_at_point(centers[actor_id]), actor_id,
 			"badge drawing leaves authoritative actor hit center unchanged")
@@ -173,8 +185,8 @@ func test_vector_intent_badges_share_mapping_without_changing_hits() -> bool:
 	var terminal_grid = Grid.new()
 	terminal_grid.size = Vector2(300, 300)
 	terminal_grid.set_observation({"actors": [
-		{"id": "dead", "position": [4, 7], "hp": 0, "max_hp": 10, "alive": false},
-		{"id": "gone", "position": [10, 7], "hp": 10, "max_hp": 10, "alive": true},
+		{"id": "dead", "position": [4, 7], "hp": 0, "max_hp": 10, "alive": false, "presence": "DEAD"},
+		{"id": "gone", "position": [10, 7], "hp": 10, "max_hp": 10, "alive": true, "presence": "ESCAPED"},
 	], "recent_events": [{"type": "ESCAPED", "actor_id": "gone"}]})
 	terminal_grid.set_intent_presentation([
 		{"actor_id": "dead", "selected_action_id": "ENGAGE"},
@@ -185,16 +197,29 @@ func test_vector_intent_badges_share_mapping_without_changing_hits() -> bool:
 		"terminal actors replace intents with state marks")
 	check_eq([terminal_rows[0].action_id, terminal_rows[1].action_id], ["", ""],
 		"dead and escaped actors never retain action icons")
+	check_eq(terminal_grid.actor_id_at_point(terminal_grid.actor_screen_center("dead")), "",
+		"terminal actor remains visible but cannot become a decision input")
 	terminal_grid.free()
+	var scrubbed_grid = Grid.new()
+	scrubbed_grid.size = Vector2(315, 315)
+	scrubbed_grid.set_observation({"actors": [
+		{"id": "visible", "position": [5, 5], "hp": 10, "max_hp": 10,
+			"alive": true, "presence": "ACTIVE"},
+	]})
+	scrubbed_grid.set_intent_presentation([{"actor_id": "visible",
+		"selected_action_id": "ENGAGE", "selected_target_id": "outside_fov"}], true)
+	check(scrubbed_grid.target_link_specs().is_empty(),
+		"missing observation target produces no line or hidden-position leak")
+	scrubbed_grid.free()
 	return finish()
 
 
-func test_step_resolves_both_decisions_once_and_surfaces_relation_event() -> bool:
+func test_step_resolves_five_decisions_once_and_surfaces_relation_event() -> bool:
 	var simulator = FakeSimulator.new(304)
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
 	lab._on_primary_action()
-	check_eq(simulator.step_calls, 0, "first primary tap only reveals simultaneous intentions")
+	check_eq(simulator.step_calls, 0, "first primary tap only reveals five simultaneous intentions")
 	check_eq(lab.step_button.text, "결과 보기", "intent stage names the next operation")
 	lab._on_primary_action()
 	check_eq(simulator.step_calls, 1, "decision button calls one simultaneous core step")
@@ -203,8 +228,8 @@ func test_step_resolves_both_decisions_once_and_surfaces_relation_event() -> boo
 	check_eq(lab.step_button.text, "다음 턴", "subsequent action is explicit")
 	lab._on_primary_action()
 	check_eq(simulator.step_calls, 1, "next-turn preview does not resolve another turn")
-	check(lab.actor_buttons[0].text.contains("공격하려 한다 · 2턴째 유지"),
-		"commitment continuation is player-readable")
+	check_eq(lab._commitment_line(lab._shown_breakdown_for("actor_a")), "2턴째 유지",
+		"selected actor detail can explain commitment continuation")
 	lab._show_events()
 	check(lab.detail_text.text.contains("동시 해결") and lab.detail_text.text.contains("관계 ·") \
 		and lab.detail_text.text.contains("경계 +12"), "event log includes simultaneous result and relation change")
@@ -234,7 +259,7 @@ func test_same_situation_restart_and_seeded_new_situation_are_distinct_commands(
 
 func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> bool:
 	var grid = Grid.new()
-	grid.size = Vector2(225, 225)
+	grid.size = Vector2(315, 315)
 	grid.set_observation({"actors": [
 		{"id": "a", "position": [2, 3], "hp": 10, "max_hp": 10, "alive": true, "weapon": "창"},
 		{"id": "b", "position": [12, 11], "hp": 10, "max_hp": 10, "alive": true, "weapon": "활"},
@@ -243,7 +268,7 @@ func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> b
 		"actor A presentation keeps exact logical cell")
 	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(12, 11))), Vector2i(12, 11),
 		"actor B presentation keeps exact logical cell")
-	check_eq(grid.display_spec().grid_size, 15, "grid dimension is immutable")
+	check_eq(grid.display_spec().grid_size, 21, "grid dimension is immutable")
 	var hit_before:Rect2=grid.actor_render_specs()[0].hit_rect
 	var glyph_specs:=grid.actor_glyph_specs()
 	check_eq(glyph_specs.size(),2,"duel renders both identities as central glyph bodies")
@@ -253,13 +278,15 @@ func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> b
 		check(spec.cell_rect.encloses(spec.glyph_rect.grow(1.0)),
 			"duel glyph outline stays inside its 15px logical cell")
 		check(not spec.selected_outline,"duel selection never reintroduces a yellow outline")
+		check_eq([spec.draw_equipment, spec.equipment_primitive_count], [false, 0],
+			"duel map actor contains glyph and attached limbs but no weapon primitive")
 		check(absf(spec.limb_segments[0][0].x-spec.glyph_rect.position.x)<=1.5 \
 			and absf(spec.limb_segments[1][0].x-spec.glyph_rect.end.x)<=1.5,
 			"duel arms start at glyph side edges")
 		check(absf(spec.limb_segments[2][0].y-spec.glyph_rect.end.y)<=1.5,
 			"duel legs start at glyph lower edge")
-	grid.set_intent_presentation([{"actor_id":"a","selected_action_id":"APPROACH"},
-		{"actor_id":"b","selected_action_id":"FLEE"}],true)
+	grid.set_intent_presentation([{"actor_id":"a","selected_action_id":"APPROACH","selected_target_id":"b"},
+		{"actor_id":"b","selected_action_id":"FLEE","selected_target_id":"a"}],true)
 	var moving_specs:=grid.actor_glyph_specs()
 	check(moving_specs[0].limb_segments!=glyph_specs[0].limb_segments,
 		"intent direction changes stance without changing simulation")
@@ -275,14 +302,18 @@ func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> b
 
 
 func test_real_duel_facade_integrates_without_leaking_action_ids_to_ui() -> bool:
-	var simulator = RealSimulator.new(7711)
+	var real_script = load(REAL_SIMULATOR_PATH)
+	check(real_script != null and real_script.can_instantiate(), "real five-actor facade is loadable")
+	if real_script == null or not real_script.can_instantiate():
+		return finish()
+	var simulator = real_script.new(7711)
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
 	lab.grid.size = Vector2(300, 300)
 	var observation: Dictionary = simulator.observation()
-	check_eq(observation.map_size, [15, 15], "real facade map contract")
-	check_eq(observation.actors.size(), 2, "real facade exposes two actors")
-	check_eq(lab.grid.actor_count(), 2, "real actors reach map presentation")
+	check_eq(observation.map_size, [21, 21], "real facade map contract")
+	check_eq(observation.actors.size(), 5, "real facade exposes five actors")
+	check_eq(lab.grid.actor_count(), 5, "real actors reach map presentation")
 	check(not simulator.decision_breakdowns().is_empty(), "real facade exposes decision candidates")
 	var first_id := str(observation.actors[0].id)
 	var card: String = lab.actor_card_text(first_id)
@@ -300,10 +331,10 @@ func test_real_duel_facade_integrates_without_leaking_action_ids_to_ui() -> bool
 	return finish()
 
 
-func test_main_party_scene_has_clear_two_actor_lab_entry() -> bool:
+func test_main_party_scene_has_clear_five_actor_lab_entry() -> bool:
 	var sandbox = PartyScene.instantiate()
 	sandbox.initialize_for_headless_test(PartySession.new(), false)
-	check(sandbox.duel_lab_button != null and sandbox.duel_lab_button.text == "2인 판단 실험",
+	check(sandbox.duel_lab_button != null and sandbox.duel_lab_button.text == "5인 관찰 실험",
 		"main playtest exposes decision LAB")
 	check_eq(sandbox.duel_lab_button.get_parent(), sandbox.phase_row,
 		"entry shares existing banner row instead of growing portrait layout")

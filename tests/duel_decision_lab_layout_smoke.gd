@@ -21,9 +21,9 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		_check_layout(lab, viewport_size, "actor-a")
-		lab._select_actor_index(1)
+		lab._select_actor_index(4)
 		await process_frame
-		_check_layout(lab, viewport_size, "actor-b")
+		_check_layout(lab, viewport_size, "actor-e")
 		lab._step()
 		lab._show_events()
 		await process_frame
@@ -59,14 +59,23 @@ func _check_layout(lab: Control, viewport_size: Vector2i, mode: String) -> void:
 		local_grid_rect.size)
 	if not bounds.encloses(global_grid_rect):
 		failures.append("%s %s grid overflow %s" % [viewport_size, mode, global_grid_rect])
+	if lab.grid.visible and global_grid_rect.size.x < 314.5:
+		failures.append("%s %s 21x21 map lost priority %s" % [viewport_size, mode, global_grid_rect])
 	if lab.grid.cell_size_px() < 15.0:
 		failures.append("%s %s cell too small %.2f" % [viewport_size, mode, lab.grid.cell_size_px()])
-	if lab.grid.actor_count() != 2:
-		failures.append("%s %s actor count is not two" % [viewport_size, mode])
-	for button in [lab.step_button, lab.restart_button, lab.actor_buttons[0], lab.actor_buttons[1], lab.event_button]:
+	if lab.grid.actor_count() != 5:
+		failures.append("%s %s actor count is not five" % [viewport_size, mode])
+	var buttons: Array = [lab.step_button, lab.restart_button, lab.event_button]
+	buttons.append_array(lab.actor_buttons)
+	for button in buttons:
 		if button.size.y < 43.5:
 			failures.append("%s %s touch target too short %s %.1f" % [
 				viewport_size, mode, button.name, button.size.y])
+	if lab.step_button.get_parent().get_parent() != lab.root_layout \
+			or lab.body_scroll.get_parent() != lab.root_layout:
+		failures.append("%s %s controls are not sticky outside scroll body" % [viewport_size, mode])
+	if lab.step_button.get_global_rect().end.y > bounds.end.y + 0.5:
+		failures.append("%s %s sticky controls overflow" % [viewport_size, mode])
 	for badge in lab.actor_badges:
 		if badge.visible and not badge.get_parent().get_global_rect().encloses(badge.get_global_rect()):
 			failures.append("%s %s intent badge leaves actor card %s" % [

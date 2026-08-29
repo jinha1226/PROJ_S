@@ -175,19 +175,8 @@ static func hazard_floor_spec(position: Vector2i, row: Dictionary) -> Dictionary
 	}.duplicate(true)
 
 
-static func equipment_spec(actor: Dictionary) -> Dictionary:
-	var protagonist := bool(actor.get("is_protagonist", false))
-	var faction_id := str(actor.get("faction_id", "")).to_lower()
-	var species_id := str(actor.get("species_id", "")).to_lower()
-	var roster_slot := int(actor.get("roster_slot", -1))
-	var facing_value: Variant = actor.get("facing", [0, 1])
-	var facing_x := 0
-	if facing_value is Array and facing_value.size() == 2:
-		facing_x = int(facing_value[0])
-	elif facing_value is Vector2i:
-		facing_x = facing_value.x
-	var mirror := -1.0 if facing_x < 0 else 1.0
-	var result := {
+static func equipment_spec(_actor: Dictionary) -> Dictionary:
+	return {
 		"equipment_id":"NONE",
 		"back_segments":[],
 		"front_segments":[],
@@ -197,60 +186,8 @@ static func equipment_spec(actor: Dictionary) -> Dictionary:
 			"radius_ratio":0.0, "color_hex":"#ffc45c"},
 		"shadow":{"width_ratio":0.58, "height_ratio":0.075,
 			"length_ratio":0.26, "color_hex":"#020609"},
-	}
-	if protagonist:
-		result.equipment_id = "HERO_SWORD_LANTERN"
-		result.back_segments = [
-			_segment(_mirror(Vector2(-0.26, -0.03), mirror),
-				_mirror(Vector2(-0.34, 0.20), mirror), "#d19a42", 0.034),
-		]
-		result.front_segments = [
-			_segment(_mirror(Vector2(0.10, 0.07), mirror),
-				_mirror(Vector2(0.39, -0.35), mirror), "#dbe9ef", 0.035),
-			_segment(_mirror(Vector2(0.20, -0.06), mirror),
-				_mirror(Vector2(0.37, 0.02), mirror), "#d6a64e", 0.030),
-		]
-		result.lantern = {"visible":true,
-			"center":_mirror(Vector2(-0.34, 0.24), mirror),
-			"radius_ratio":0.075, "color_hex":"#ffc45c"}
-		result.shadow.length_ratio = 0.38
-	elif faction_id == "party" and roster_slot == 1:
-		result.equipment_id = "COMPANION_SPEAR_SHIELD"
-		result.back_segments = [
-			_segment(_mirror(Vector2(-0.31, 0.42), mirror),
-				_mirror(Vector2(0.28, -0.47), mirror), "#c9d7d8", 0.030),
-			_segment(_mirror(Vector2(0.28, -0.47), mirror),
-				_mirror(Vector2(0.20, -0.38), mirror), "#e8b95c", 0.026),
-		]
-		result.shield_points = _mirrored_points([
-			Vector2(0.12, -0.08), Vector2(0.40, -0.01),
-			Vector2(0.34, 0.31), Vector2(0.15, 0.38),
-		], mirror)
-		result.shadow.length_ratio = 0.32
-	elif faction_id == "party" and roster_slot == 2:
-		result.equipment_id = "COMPANION_TOOL_DAGGER"
-		result.back_segments = [
-			_segment(_mirror(Vector2(-0.18, 0.16), mirror),
-				_mirror(Vector2(-0.36, -0.31), mirror), "#b6c3c7", 0.036),
-			_segment(_mirror(Vector2(-0.45, -0.31), mirror),
-				_mirror(Vector2(-0.25, -0.31), mirror), "#c88a48", 0.050),
-		]
-		result.front_segments = [
-			_segment(_mirror(Vector2(0.10, 0.12), mirror),
-				_mirror(Vector2(0.38, -0.11), mirror), "#e2e9e9", 0.032),
-		]
-	elif species_id == "goblin":
-		result.equipment_id = "GOBLIN_SAW"
-		result.front_polyline = _mirrored_points([
-			Vector2(0.08, 0.10), Vector2(0.20, -0.02), Vector2(0.29, 0.03),
-			Vector2(0.35, -0.09), Vector2(0.43, -0.04),
-		], mirror)
-		result.front_segments = [
-			_segment(_mirror(Vector2(0.03, 0.15), mirror),
-				_mirror(Vector2(0.16, 0.03), mirror), "#8d553d", 0.052),
-		]
-		result.shadow.length_ratio = 0.30
-	return result.duplicate(true)
+		"draw_equipment":false,"equipment_primitive_count":0,
+	}.duplicate(true)
 
 
 static func visual_hash(position: Vector2i, salt: int) -> int:
@@ -261,23 +198,6 @@ static func visual_hash(position: Vector2i, salt: int) -> int:
 
 static func _side_bit(side: String) -> int:
 	return {"N":NORTH, "E":EAST, "S":SOUTH, "W":WEST}.get(side, 0)
-
-
-static func _segment(from: Vector2, to: Vector2, color_hex: String,
-		width_ratio: float) -> Dictionary:
-	return {"from":from, "to":to, "color_hex":color_hex,
-		"width_ratio":width_ratio}
-
-
-static func _mirror(point: Vector2, mirror: float) -> Vector2:
-	return Vector2(point.x * mirror, point.y)
-
-
-static func _mirrored_points(points: Array, mirror: float) -> Array:
-	var result: Array = []
-	for point in points:
-		result.append(_mirror(point, mirror))
-	return result
 
 
 static func _empty_mark() -> Dictionary:

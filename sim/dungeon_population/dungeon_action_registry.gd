@@ -12,6 +12,7 @@ func _init()->void:
 		_score("HEXACO","X",180),_score("HEXACO","O",120),
 		_score("RELATION","species_prior",1500),_score("RELATION","memory_modifier",1500),
 		_score("RELATION","affinity",60),_score("RELATION","hostility",220),
+		_score("RELATION","shared_threat",200),
 		_score("CONTEXT","approach_pressure",180),_score("CONTEXT","threat",60),
 		_score("CONTEXT","opportunity",160)],
 		2,120,80,-1,[_goal("CONTEXT","distance","LTE",1)]))
@@ -23,7 +24,8 @@ func _init()->void:
 		_score("STATE","health",140),_score("STATE","power",120),
 		_score("STATE","survival_crisis",-450),
 		_score("RELATION","species_prior",-1800),_score("RELATION","memory_modifier",-1800),
-		_score("RELATION","hostility",250),_score("CONTEXT","threat",100)],
+		_score("RELATION","hostility",250),_score("RELATION","shared_threat",450),
+		_score("CONTEXT","threat",100)],
 		2,100,100,-1,[]))
 	register_definition(DefinitionScript.new("FLEE","MOVE","OTHER","AWAY",85,[
 		_legal("CONTEXT","escape_space","GTE",1000,"도망칠 공간이 없다."),
@@ -96,39 +98,68 @@ func canonical_manifest()->Array:
 func ruleset_fingerprint()->String:
 	return JSON.stringify(canonical_manifest()).sha256_text()
 
-func evaluate_actor(actor,other,inputs:Dictionary,seed:int,decision_episode_id:int)->Dictionary:
-	var candidate_rows:Array=[];var selected_id:="";var selected_total:=-2147483648
+func evaluate_actor(actor,target_contexts:Array,self_inputs:Dictionary,seed:int,
+		decision_episode_id:int)->Dictionary:
+	var contexts:Array=[]
+	for value in target_contexts:
+		if value is Dictionary:contexts.append(value)
+	contexts.sort_custom(func(a:Dictionary,b:Dictionary):return int(a.target_id)<int(b.target_id))
+	var candidate_rows:Array=[]
 	for action_id in action_ids():
-		var definition=_definitions[action_id];var legal:=true;var rejection:=""
-		for term in definition.legal_terms:
-			var actual:int=int(inputs.get(term.category,{}).get(term.input_id,0))
-			if not _compare(actual,str(term.operator),int(term.value)):
-				legal=false;rejection=str(term.rejection_reason);break
-		var buckets:={"HEXACO":[],"STATE":[],"RELATION":[],"CONTEXT":[]}
-		var total:int=int(definition.base_score)
-		for term in definition.score_terms:
-			var actual:int=int(inputs.get(term.category,{}).get(term.input_id,0))
-			var contribution:int=int(actual*int(term.weight_milli)/1000)
-			buckets[term.category].append({"input_id":str(term.input_id),"input_value":actual,
-				"weight_milli":int(term.weight_milli),"contribution":contribution})
-			total+=contribution
-		var jitter:=HexacoScript.sample(seed,actor.entity_id,
-			"duel/episode/"+str(decision_episode_id)+"/"+action_id,31)-15
-		total+=jitter
-		var row:={"action_id":action_id,"atomic_verb":definition.atomic_verb,
-			"target_role":definition.target_role,"movement_direction":definition.movement_direction,
-			"legal":legal,"rejection_reason":rejection,"base":definition.base_score,
-			"hexaco_terms":buckets.HEXACO,"state_terms":buckets.STATE,
-			"relation_terms":buckets.RELATION,"context_terms":buckets.CONTEXT,
-			"jitter":jitter,"total":total,"selected":false}
-		candidate_rows.append(row)
-		if legal and (total>selected_total or (total==selected_total and (selected_id.is_empty() or action_id<selected_id))):
-			selected_total=total;selected_id=action_id
-	if selected_id.is_empty():selected_id="HOLD"
-	for row in candidate_rows:row.selected=str(row.action_id)==selected_id
-	return {"actor_id":str(actor.entity_id),"selected_action_id":selected_id,
+		var definition=_definitions[action_id]
+		if definition.target_role=="OTHER":
+			for context in contexts:
+				candidate_rows.append(_evaluate_definition(actor,definition,context.inputs,seed,
+					decision_episode_id,int(context.target_id)))
+		else:
+			var target_id:int=actor.entity_id if definition.target_role=="SELF" else -1
+			candidate_rows.append(_evaluate_definition(actor,definition,self_inputs,seed,
+				decision_episode_id,target_id))
+	var selected_index:=-1;var selected_total:=-2147483648
+	for index in range(candidate_rows.size()):
+		var row:Dictionary=candidate_rows[index]
+		if not bool(row.legal):continue
+		if selected_index<0 or int(row.total)>selected_total \
+				or (int(row.total)==selected_total and _candidate_before(row,candidate_rows[selected_index])):
+			selected_index=index;selected_total=int(row.total)
+	if selected_index<0:
+		for index in range(candidate_rows.size()):
+			if candidate_rows[index].action_id=="HOLD":selected_index=index;break
+	for index in range(candidate_rows.size()):candidate_rows[index].selected=index==selected_index
+	var selected:Dictionary=candidate_rows[selected_index]
+	return {"actor_id":str(actor.entity_id),"selected_action_id":str(selected.action_id),
+		"selected_target_id":str(selected.target_id),
 		"selected_reason_ko":"합법 행동 중 효용 점수 %d점으로 가장 높았다."%selected_total,
 		"candidates":candidate_rows}.duplicate(true)
+
+func _evaluate_definition(actor,definition,inputs:Dictionary,seed:int,episode:int,target_id:int)->Dictionary:
+	var legal:=true;var rejection:=""
+	for term in definition.legal_terms:
+		var actual:int=int(inputs.get(term.category,{}).get(term.input_id,0))
+		if not _compare(actual,str(term.operator),int(term.value)):
+			legal=false;rejection=str(term.rejection_reason);break
+	var buckets:={"HEXACO":[],"STATE":[],"RELATION":[],"CONTEXT":[]}
+	var total:int=int(definition.base_score)
+	for term in definition.score_terms:
+		var actual:int=int(inputs.get(term.category,{}).get(term.input_id,0))
+		var contribution:int=int(actual*int(term.weight_milli)/1000)
+		buckets[term.category].append({"input_id":str(term.input_id),"input_value":actual,
+			"weight_milli":int(term.weight_milli),"contribution":contribution})
+		total+=contribution
+	var jitter:=HexacoScript.sample(seed,actor.entity_id,
+		"duel/episode/"+str(episode)+"/"+definition.action_id+"/"+str(target_id),31)-15
+	total+=jitter
+	return {"action_id":definition.action_id,"target_id":str(target_id),
+		"atomic_verb":definition.atomic_verb,"target_role":definition.target_role,
+		"movement_direction":definition.movement_direction,"legal":legal,
+		"rejection_reason":rejection,"base":definition.base_score,
+		"hexaco_terms":buckets.HEXACO,"state_terms":buckets.STATE,
+		"relation_terms":buckets.RELATION,"context_terms":buckets.CONTEXT,
+		"jitter":jitter,"total":total,"selected":false}
+
+func _candidate_before(first:Dictionary,second:Dictionary)->bool:
+	if str(first.action_id)!=str(second.action_id):return str(first.action_id)<str(second.action_id)
+	return int(str(first.target_id))<int(str(second.target_id))
 
 func intent_policy(action_id:String)->Dictionary:
 	var definition=_definitions.get(action_id)
