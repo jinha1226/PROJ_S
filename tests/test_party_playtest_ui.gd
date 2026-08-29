@@ -418,9 +418,9 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check_eq(sandbox.action_feedback_label.get_parent(),sandbox.combat_action_area,"%s feedback is inside fixed action area"%preset)
 		check(not _inside_ancestor(sandbox.combat_action_area,ScrollContainer),"%s action area is independent from information scroll"%preset)
 		check(sandbox.action_feedback_label.get_theme_font_size("font_size")>=16,"%s fixed feedback font"%preset)
-		check_eq(_button(sandbox,"ActorHold").text,"방어","%s dock hold label"%preset)
-		check_eq(_button(sandbox,"OverrideClear").text,"자동 제안 복원","%s dock restore label"%preset)
-		check_eq(_button(sandbox,"TurnConfirm").text,"지금 실행","%s legacy dock execute label"%preset)
+		check_eq(_button(sandbox,"ActorHold").text,"[R 방어]","%s DOS dock hold command"%preset)
+		check_eq(_button(sandbox,"OverrideClear").text,"[A 자동]","%s DOS dock restore command"%preset)
+		check_eq(_button(sandbox,"TurnConfirm").text,"[E 실행]","%s DOS dock execute command"%preset)
 		sandbox.free()
 	return finish()
 
@@ -897,11 +897,12 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 		var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
 		check(minimap_frame!=null and minimap_frame.custom_minimum_size.x>=78.0 \
 			and minimap_frame.custom_minimum_size.x<=92.0 \
-			and str(minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+			and str(minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
 			"%s reusable 15x15 minimap has a readable glyph frame"%viewport_size)
-		check(sandbox.record_button.custom_minimum_size==Vector2(44,44) \
-			and sandbox.hero_detail_button.custom_minimum_size==Vector2(44,44),
-			"%s record and hero actions are honest touch targets"%viewport_size)
+		check(sandbox.record_button.custom_minimum_size.y>=44 \
+			and sandbox.hero_detail_button.custom_minimum_size.y>=44 \
+			and sandbox.record_button.text=="[F1 기록]" and sandbox.hero_detail_button.text=="[F2 인물]",
+			"%s record and hero actions are honest DOS touch commands"%viewport_size)
 		for forbidden in ["탐험","시간","목표"]:
 			check(not forbidden in sandbox.phase_label.text \
 				and not forbidden in sandbox.recent_event_label.text,
@@ -1063,9 +1064,9 @@ func test_restored_grouped_complete_keeps_victory_banner_style_without_effect_re
 		and panel_style.get_border_width(SIDE_RIGHT)==0 \
 		and panel_style.get_border_width(SIDE_BOTTOM)==0,
 		"fresh restored banner keeps its StyleBox visually borderless")
-	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#68d3a0") \
+	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#55ff55") \
 		and str(fresh.minimap_frame.get_meta("state_tone",""))=="VICTORY" \
-		and str(fresh.minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+		and str(fresh.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
 		"fresh restored victory consumes jade through the glyph-backed HUD frame")
 	check(fresh.grid._active_visual_effects.is_empty(),"restoring victory does not replay commit effects")
 	check_eq(fresh.grid.visible_cell_count,15,"restored victory uses full 15x15 camera")
@@ -1089,10 +1090,10 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 		and terminal_panel.get_border_width(SIDE_RIGHT)==0 \
 		and terminal_panel.get_border_width(SIDE_BOTTOM)==0,
 		"terminal panel keeps its StyleBox visually borderless")
-	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#e55d46") \
+	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#ff5555") \
 		and sandbox.minimap_frame.danger_edge \
 		and str(sandbox.minimap_frame.get_meta("state_tone",""))=="DEFEAT" \
-		and str(sandbox.minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+		and str(sandbox.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
 		"terminal defeat consumes vermilion through the glyph-backed HUD frame")
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
 	check("CHARACTER_ATLAS" not in grid_source,

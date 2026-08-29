@@ -5,13 +5,19 @@ signal close_requested
 
 const GRID_SIZE:=15
 const CENTER:=7
-const FONT:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
+const FONT:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 const HERO_START:=Vector2i(7,8)
 const ENEMY_START:=Vector2i(10,8)
 const VISIBLE_RADIUS:=5
 const CAMERA_HEIGHT:=12.0
 const CAMERA_BACK_OFFSET:=12.0
 const CAMERA_ORTHO_SIZE:=19.6
+const TERRAIN_TOP_FONT_SIZE:=112
+const WALL_FONT_SIZE:=128
+const FLOOR_WORLD_WIDTH:=0.72
+const TERRAIN_WORLD_WIDTH:=0.76
+const WALL_WORLD_WIDTH:=0.90
+const ACTOR_WORLD_WIDTH:=0.92
 
 var viewport_container:SubViewportContainer
 var input_catcher:Control
@@ -116,29 +122,36 @@ func _build_room()->void:
 
 func _build_terrain_glyph_layers(cell:Vector2i,terrain:String,offset:Vector3)->Array:
 	var base:=_cell_world(cell)+offset;var layers:Array=[]
-	var top_height:float={"floor":0.01,"metal":0.12,"water":-0.065,
-		"rubble":0.045+float((cell.x*17+cell.y*31)%3)*0.018,"wall":0.72}[terrain]
+	var top_height:float={"floor":0.01,"metal":0.16,"water":-0.09,
+		"rubble":0.06+float((cell.x*17+cell.y*31)%3)*0.025,"wall":1.62}[terrain]
 	var top_colors:={"floor":Color("#a8b3bc"),"metal":Color("#77d6e5"),
 		"water":Color("#56c9f2"),"rubble":Color("#d0a67a"),"wall":Color("#d5e5ef")}
 	var top_color:Color=top_colors[terrain]
+	var top_width:=FLOOR_WORLD_WIDTH if terrain=="floor" else (WALL_WORLD_WIDTH if terrain=="wall" else TERRAIN_WORLD_WIDTH)
+	var top_font_size:=WALL_FONT_SIZE if terrain=="wall" else TERRAIN_TOP_FONT_SIZE
+	var top_outline:int={"floor":24,"metal":10,"water":12,"rubble":16,"wall":10}[terrain]
 	layers.append(_terrain_label("TopGlyph_%02d_%02d"%[cell.x,cell.y],_terrain_glyph(terrain),
-		base+Vector3(0,top_height,0),44,top_color,true,false,0.0))
+		base+Vector3(0,top_height,0),top_font_size,top_width,top_outline,top_color,true,false,0.0))
 	if terrain=="water":
 		layers.append(_terrain_label("RippleGlyph_%02d_%02d"%[cell.x,cell.y],"~",
-			base+Vector3(0.12,-0.085,0.10),34,Color("#287da2"),true,false,0.12))
+			base+Vector3(0.10,-0.13,0.10),96,0.68,7,Color("#287da2"),true,false,0.12))
 	elif terrain=="metal":
 		layers.append(_terrain_label("MetalEdge_%02d_%02d"%[cell.x,cell.y],"=",
-			base+Vector3(0,0.035,0.27),30,Color("#345f6e"),false,false,0.18))
+			base+Vector3(0,0.055,0.30),104,0.74,8,Color("#345f6e"),false,false,0.18))
 	elif terrain=="rubble":
 		layers.append(_terrain_label("RubbleShadow_%02d_%02d"%[cell.x,cell.y],".",
-			base+Vector3(-0.12,top_height-0.016,0.10),30,Color("#765e4b"),true,false,0.18))
+			base+Vector3(-0.11,top_height-0.025,0.10),96,0.62,8,Color("#765e4b"),true,false,0.18))
 	elif terrain=="wall" and _wall_front_exposed(cell):
 		# Camera is fixed on +Z. Only a wall whose +Z face is exposed receives
-		# vertical text, so rows join cleanly without three layers on every cell.
-		layers.append(_terrain_label("WallFace_%02d_%02d"%[cell.x,cell.y],"#",
-			base+Vector3(0,0.43,0.31),38,Color("#718493"),false,false,0.20))
-		layers.append(_terrain_label("WallFoot_%02d_%02d"%[cell.x,cell.y],"|",
-			base+Vector3(0,0.15,0.315),28,Color("#42515e"),false,false,0.34))
+		# vertical text, so the three large rows join into one readable wall.
+		for row in [{"name":"Upper","y":1.30,"color":Color("#91a8b8"),"bias":0.12},
+				{"name":"Middle","y":0.75,"color":Color("#667b8b"),"bias":0.22},
+				{"name":"Lower","y":0.20,"color":Color("#40515f"),"bias":0.34}]:
+			var wall_glyph:=_terrain_label("Wall%s_%02d_%02d"%[str(row.name),cell.x,cell.y],"#",
+				base+Vector3(0,float(row.y),0.31),WALL_FONT_SIZE,WALL_WORLD_WIDTH,10,
+				row.color,false,false,float(row.bias))
+			# Keep the front close to a 1.6-unit wall while preserving its 0.9-cell width.
+			wall_glyph.scale.y=0.30;layers.append(wall_glyph)
 	return layers
 
 func _wall_front_exposed(cell:Vector2i)->bool:
@@ -146,41 +159,58 @@ func _wall_front_exposed(cell:Vector2i)->bool:
 	return front.y>=GRID_SIZE or _terrain_at(front)!="wall"
 
 func _terrain_label(node_name:String,text:String,position:Vector3,font_size:int,
-		color:Color,flat:bool,no_depth:bool,memory_bias:float)->Label3D:
+		world_width:float,outline_size:int,color:Color,flat:bool,no_depth:bool,
+		memory_bias:float)->Label3D:
 	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
-	glyph.font_size=font_size;glyph.outline_size=4;glyph.position=position
+	glyph.font_size=font_size;glyph.outline_size=outline_size;glyph.position=position
+	glyph.pixel_size=_pixel_size_for_width(text,font_size,outline_size,world_width)
 	glyph.rotation_degrees.x=-90.0 if flat else 0.0
-	glyph.no_depth_test=no_depth;glyph.modulate=color
+	glyph.no_depth_test=no_depth;glyph.modulate=color;glyph.outline_modulate=color.darkened(0.58)
 	glyph.set_meta("base_color",color);glyph.set_meta("memory_bias",memory_bias)
+	glyph.set_meta("target_world_width",world_width)
 	terrain_root.add_child(glyph);return glyph
 
 func _build_actors()->void:
 	hero_root=Node3D.new();hero_root.name="GoldProtagonist";world_root.add_child(hero_root)
-	var hero_shadow:=_actor_label("HeroGlyphShadow","_",52,Color("#705c22"),Vector3(0,0.018,0.10),false)
+	var hero_shadow:=_actor_label("HeroGlyphShadow","_",96,0.68,6,Color("#705c22"),Vector3(0,0.018,0.10),false)
 	hero_shadow.rotation_degrees.x=-90.0;hero_root.add_child(hero_shadow)
 	for limb in [{"name":"HeroLeftLimb","text":"/","p":Vector3(-0.15,0.38,0),"r":-10.0},
 			{"name":"HeroRightLimb","text":"\\","p":Vector3(0.15,0.38,0),"r":10.0}]:
-		var limb_glyph:=_actor_label(str(limb.name),str(limb.text),30,Color("#c99b24"),limb.p,true)
+		var limb_glyph:=_actor_label(str(limb.name),str(limb.text),96,0.34,5,
+			Color("#c99b24"),limb.p,true)
 		limb_glyph.rotation_degrees.z=float(limb.r);hero_root.add_child(limb_glyph)
-	var hero_glyph:=Label3D.new();hero_glyph.name="HeroGlyph";hero_glyph.text="@";hero_glyph.font=FONT
-	hero_glyph.font_size=96;hero_glyph.outline_size=10;hero_glyph.modulate=Color("#ffd34e")
-	hero_glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED;hero_glyph.no_depth_test=true;hero_glyph.position.y=0.92
+	var hero_glyph:=_actor_label("HeroGlyph","@",144,ACTOR_WORLD_WIDTH,14,
+		Color("#ffd34e"),Vector3(0,1.02,0),true)
 	hero_root.add_child(hero_glyph)
 	enemy_root=Node3D.new();enemy_root.name="RedGoblin";world_root.add_child(enemy_root)
-	var enemy_shadow:=_actor_label("EnemyGlyphShadow","_",46,Color("#64242b"),Vector3(0,0.016,0.08),false)
+	var enemy_shadow:=_actor_label("EnemyGlyphShadow","_",88,0.62,6,Color("#64242b"),Vector3(0,0.016,0.08),false)
 	enemy_shadow.rotation_degrees.x=-90.0;enemy_root.add_child(enemy_shadow)
-	enemy_glyph=Label3D.new();enemy_glyph.name="EnemyGlyph";enemy_glyph.text="g";enemy_glyph.font=FONT
-	enemy_glyph.font_size=86;enemy_glyph.outline_size=10;enemy_glyph.modulate=Color("#ff5b5b")
-	enemy_glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED;enemy_glyph.no_depth_test=true;enemy_glyph.position.y=0.78
+	enemy_glyph=_actor_label("EnemyGlyph","g",136,0.90,14,
+		Color("#ff5b5b"),Vector3(0,0.88,0),true)
 	enemy_root.add_child(enemy_glyph)
 
-func _actor_label(node_name:String,text:String,font_size:int,color:Color,
-		position:Vector3,billboard:bool)->Label3D:
+func _actor_label(node_name:String,text:String,font_size:int,world_width:float,
+		outline_size:int,color:Color,position:Vector3,billboard:bool)->Label3D:
 	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
-	glyph.font_size=font_size;glyph.outline_size=3;glyph.modulate=color;glyph.position=position
+	glyph.font_size=font_size;glyph.outline_size=outline_size;glyph.modulate=color;glyph.position=position
+	glyph.outline_modulate=Color("#07090c")
+	glyph.pixel_size=_pixel_size_for_width(text,font_size,outline_size,world_width)
+	glyph.set_meta("target_world_width",world_width)
 	glyph.no_depth_test=true
 	if billboard:glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED
 	return glyph
+
+func _pixel_size_for_width(text:String,font_size:int,outline_size:int,world_width:float)->float:
+	var metric_width:=FONT.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x+float(outline_size*2)
+	return world_width/maxf(1.0,metric_width)
+
+func glyph_world_width(glyph:Label3D)->float:
+	var metric_width:=glyph.font.get_string_size(glyph.text,HORIZONTAL_ALIGNMENT_LEFT,-1,glyph.font_size).x
+	return (metric_width+float(glyph.outline_size*2))*glyph.pixel_size*absf(glyph.scale.x)
+
+func glyph_world_height(glyph:Label3D)->float:
+	var metric_height:=glyph.font.get_height(glyph.font_size)+float(glyph.outline_size*2)
+	return metric_height*glyph.pixel_size*absf(glyph.scale.y)
 
 func _terrain_at(cell:Vector2i)->String:
 	if cell.x==0 or cell.y==0 or cell.x==GRID_SIZE-1 or cell.y==GRID_SIZE-1:return "wall"

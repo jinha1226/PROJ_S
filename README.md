@@ -151,9 +151,12 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 viewport에서 screen horizontal을 world/grid +X에 고정하고 yaw 없이 Z축 방향을 바라보는
 고정 `45° 경사 탑뷰 · 축 정렬` orthographic camera와 44px 이상 조작부를 사용합니다.
 `문자 전용 3D`의 map terrain에는 `MeshInstance3D`, `BoxMesh`, 사각 tile, substrate가
-하나도 없습니다. 눕힌 바닥 `.` 한 층을 기준으로 금속은 `=`의 높이와 어두운 정면 복제,
+하나도 없습니다. monospaced bold 글꼴의 metric과 `pixel_size`를 함께 계산해 눕힌 바닥 `.`은
+셀 폭의 72%, 금속·물·잔해는 76%를 차지합니다. 금속은 `=`의 높이와 어두운 정면 복제,
 물은 낮춘 `~`와 ripple 복제, 잔해는 deterministic `:` 오프셋으로 깊이를 만듭니다.
-벽은 눕힌 상단 `#`와 카메라 쪽 면이 노출된 칸에만 세운 `#`·`|`를 더해 최대 3층만 쓰며,
+벽은 90% 폭의 눕힌 상단 `#`를 y=1.62에 두고, 카메라 쪽 면이 노출된 칸에만 90% 폭의
+세운 `#` 세 행을 y=1.30/0.75/0.20에 이어 붙여 약 1.58 world-unit 벽체를 만듭니다.
+숨은 면은 상단 한 층만 남으며,
 기억 영역은 같은 글리프를 저채도·저명도로 남기고 미탐색 영역은 숨깁니다. Web 입력은
 SubViewport 바깥의 전용 play-area catcher가 mouse/touch를 받아 ground ray로 전달합니다.
 한 번 누르면 대각선을 포함해 최대 한 칸만 이동하며, 160ms 동안 배우가 먼저 움직이고

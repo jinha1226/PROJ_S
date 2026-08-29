@@ -139,14 +139,16 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	var level=sandbox.find_child("LevelProgress",true,false) as Label
-	var compact_xp=sandbox.find_child("CompactXPBar",true,false) as ProgressBar
+	var compact_xp=sandbox.find_child("CompactXPBar",true,false)
+	var compact_xp_spec:Dictionary=compact_xp.call("gauge_spec") if compact_xp!=null else {}
 	var card_name=sandbox.find_child("MemberName",true,false) as Label
 	var card_hp=sandbox.find_child("MemberState",true,false) as Label
 	var card_state=sandbox.find_child("EmotionState",true,false) as Label
-	check(level!=null and level.text=="Lv.1" and card_name!=null and card_hp!=null \
+	check(level!=null and level.text=="LV 01" and card_name!=null and card_hp!=null \
 		and "/" in card_hp.text and card_state!=null and compact_xp!=null \
-		and compact_xp.max_value==100 and sandbox.find_child("XPProgress",true,false)!=null,
-		"solo mobile hero card shows identity, exact HP, key state, and real XP")
+		and int(compact_xp_spec.get("max_value",0))==100 \
+		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE",
+		"solo DOS dossier shows identity, exact HP, key state, and text XP gauge")
 	check("공" not in level.text and "방" not in level.text,
 		"solo mobile hero card does not persist derived attack or defense")
 	check(sandbox.phase_panel.custom_minimum_size.y<=92 and sandbox.grid.get_index()<sandbox.cards.get_index(),
@@ -169,7 +171,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and not sandbox.member_progression_window.visible,
 		"hero detail predictably opens on the dedicated status tab")
 	var status_portrait=sandbox.find_child("StatusPortrait",true,false) as Control
-	check(status_portrait!=null and status_portrait.custom_minimum_size.x>=108 \
+	check(status_portrait!=null and status_portrait.custom_minimum_size.x>=88 \
 		and sandbox.find_child("StatusName",true,false)!=null \
 		and sandbox.find_child("StatusSpeciesLevel",true,false)!=null \
 		and sandbox.find_child("StatusHP",true,false)!=null \
@@ -183,7 +185,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
 		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
-		and "━" in sandbox.member_detail_status_tab.text \
+		and "[상태]" in sandbox.member_detail_status_tab.text \
 		and bool(sandbox.member_detail_status_tab.get_meta("ascii_rail",false)),
 		"status/skill tabs are touch-sized glyph-backed segments")
 	check("집중 버튼" not in sandbox.member_detail_body.text and "레벨은 피해" not in sandbox.member_detail_body.text,
@@ -199,7 +201,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	check(sandbox.member_detail_focus_buttons.visible,
 		"hero detail exposes focus controls")
 	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
-		and "◆" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
+		and "[근접]" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
 		"dominant training focus uses a selected training sigil")
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,

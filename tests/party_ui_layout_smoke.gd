@@ -267,7 +267,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 			label,sandbox.grid.get_global_rect()])
 	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<87.9 \
 			or objective_bar.size.y>96.1 or sandbox.minimap_frame.size.x<77.9 \
-			or str(sandbox.minimap_frame.frame_spec().primitive)!="GLYPH_TEXT":
+			or str(sandbox.minimap_frame.frame_spec().primitive)!="FIXED_CELL_GLYPHS":
 		failures.append("%s top HUD accessibility"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
 		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
@@ -311,7 +311,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	if restart==null or not restart.is_visible_in_tree() or sandbox.combat_action_dock.get_child_count()!=1 \
 			or sandbox.action_feedback_label.visible:
 		failures.append("%s complete fixed area is not one restart button"%label)
-	if restart!=null and restart.text!="같은 원정 다시 시작":
+	if restart!=null and restart.text!="[E 재시작]":
 		failures.append("%s solo restart button copy"%label)
 	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
 			or not sandbox.grid.route_draw_spec().segments.is_empty():
@@ -578,7 +578,7 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
 	if not _rect_contains(panel_rect,scroll.get_global_rect()):failures.append("%s detail scroll outside panel"%viewport_size)
 	var status_portrait:=sandbox.find_child("StatusPortrait",true,false) as Control
-	if status_portrait==null or status_portrait.custom_minimum_size.x<108.0:
+	if status_portrait==null or status_portrait.custom_minimum_size.x<88.0:
 		failures.append("%s detail modal lacks large status portrait"%viewport_size)
 	for node_name in ["StatusName","StatusSpeciesLevel","StatusLife","StatusHP","StatusHealthBar",
 			"StatusEmotion","StatusStress"]:
@@ -820,7 +820,7 @@ func _terminal(viewport_size:Vector2)->void:
 			or terminal_panel.get_border_width(SIDE_RIGHT)!=0 \
 			or terminal_panel.get_border_width(SIDE_BOTTOM)!=0:
 		failures.append("%s terminal panel revived a graphic border"%viewport_size)
-	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=Color("#e55d46") \
+	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=Color("#ff5555") \
 			or not sandbox.minimap_frame.danger_edge \
 			or str(sandbox.minimap_frame.get_meta("state_tone",""))!="DEFEAT":
 		failures.append("%s terminal glyph accent missing"%viewport_size)
