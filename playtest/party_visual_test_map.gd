@@ -3,6 +3,7 @@ extends RefCounted
 
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
+const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
 const SHOWCASE_ROWS := [
@@ -46,22 +47,28 @@ const _TERRAIN_BY_GLYPH := {
 
 
 static func has_scenario(scenario_id: String) -> bool:
-	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID]
+	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID,
+		SOLO_COMBAT_SCENARIO_ID]
+
+
+static func uses_showcase_layout(scenario_id:String)->bool:
+	return scenario_id in [SHOWCASE_SCENARIO_ID,SOLO_COMBAT_SCENARIO_ID]
 
 
 static func run_manifest(scenario_id: String) -> Dictionary:
-	if scenario_id != SHOWCASE_SCENARIO_ID:
+	if not uses_showcase_layout(scenario_id):
 		return {}
 	return {
 		"schema_version":RUN_MANIFEST_SCHEMA_VERSION,
-		"scenario_id":SHOWCASE_SCENARIO_ID,
+		"scenario_id":scenario_id,
 		"objective_id":"CLEAR_SINGLE_ENCOUNTER_AND_EXIT",
 		"entry":{"position":[ENTRY_POSITION.x,ENTRY_POSITION.y],
 			"feature_id":"run_entry"},
 		"exit":{"position":[EXIT_POSITION.x,EXIT_POSITION.y],
 			"locked_feature_id":"run_exit_locked",
 			"open_feature_id":"run_exit_open"},
-		"reward":{"reward_id":"SHOWCASE_VICTORY_TOKEN","amount":1},
+		"reward":{"reward_id":"SOLO_COMBAT_VICTORY_TOKEN" \
+			if scenario_id==SOLO_COMBAT_SCENARIO_ID else "SHOWCASE_VICTORY_TOKEN","amount":1},
 	}.duplicate(true)
 
 
@@ -91,7 +98,7 @@ static func apply_showcase_hazards(world) -> bool:
 
 
 static func feature_id_at(scenario_id: String, position: Vector2i) -> String:
-	if scenario_id == SHOWCASE_SCENARIO_ID and position == OPEN_DOOR_POSITION:
+	if uses_showcase_layout(scenario_id) and position == OPEN_DOOR_POSITION:
 		return "open_door"
 	return ""
 
@@ -100,7 +107,7 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 	var visible: Dictionary = {}
 	if world == null:
 		return visible
-	if scenario_id != SHOWCASE_SCENARIO_ID:
+	if not uses_showcase_layout(scenario_id):
 		for y in range(world.height):
 			for x in range(world.width):
 				visible[_key(Vector2i(x, y))] = true

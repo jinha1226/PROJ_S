@@ -114,8 +114,12 @@ func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
 	main.set_personality_entropy_source_for_headless_test(func():return 123456)
 	main.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);main.size=viewport_size;root.add_child(main)
 	await process_frame
-	if str(main.session.party_status().get("scenario_id",""))!="SHOWCASE_V1" or not main.auto_orchestration_enabled:
-		failures.append("%s main sandbox did not start SHOWCASE auto mode"%viewport_size)
+	if str(main.session.party_status().get("scenario_id",""))!="SOLO_COMBAT_V1" \
+			or not main.auto_orchestration_enabled:
+		failures.append("%s main sandbox did not start SOLO auto mode"%viewport_size)
+	if main.session.party_status().party_member_ids.size()!=1 or main.duel_lab_button.visible \
+			or main.find_child("RosterManagement",true,false)!=null:
+		failures.append("%s main SOLO product leaked party/LAB management"%viewport_size)
 	if int(main.session.personality_seed)!=Session.new_expedition_personality_seed(123456):
 		failures.append("%s main sandbox did not issue boundary personality seed"%viewport_size)
 	main.queue_free();await process_frame
@@ -237,7 +241,7 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 		sandbox._refresh();await process_frame;await process_frame
 		var override_text:=(_button(sandbox,"MemberCard%d"%override_actor).find_child(
 			"CompanionSpeechText",true,false) as Label).text
-		if override_text!="대기할게.\n지시를 따라서":failures.append("%s override speech stale: %s"%[label,override_text])
+		if override_text!="방어할게.\n지시를 따라서":failures.append("%s override speech stale: %s"%[label,override_text])
 		if sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size()!=2:
 			failures.append("%s secondary suggestion created extra card speech"%label)
 		if not session.clear_companion_override(override_actor).accepted:

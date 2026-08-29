@@ -553,15 +553,16 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	var state = world.party_encounter; var enemies: Array = state.enemy_ids.duplicate(); enemies.sort()
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
-		var enemy = world.entities[enemy_id]
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id, world.world_time) \
 				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
-		var target = _nearest_deployed_party(enemy.position)
-		if target == null: continue
-		rows.append({"enemy_id": enemy_id, "target_id": target.id,
-			"original_action_order": rows.size(),
-			"melee": melee.can_attack(enemy_id, target.id)})
+		var forecast := forecast_enemy_action(enemy_id)
+		if not bool(forecast.get("accepted", false)): continue
+		rows.append({"enemy_id": enemy_id, "target_id": int(forecast.target_id),
+			"original_action_order": rows.size(), "action_type": str(forecast.action_type),
+			"destination": forecast.destination.duplicate(true),
+			"terrain_id": str(forecast.terrain_id), "time_cost": int(forecast.time_cost),
+			"melee": str(forecast.action_type) == "MELEE"})
 	var melee_rows: Array[Dictionary] = []
 	for row in rows:
 		if bool(row.melee): melee_rows.append(row)
@@ -595,8 +596,6 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	var pending_results: Array[Dictionary] = []
 	for row in rows:
 		var enemy_id := int(row.enemy_id)
-		var enemy = world.entities[enemy_id]
-		var target = world.entities.get(int(row.target_id))
 		var action_cost := 100
 		var action_event = null
 		if bool(row.melee):
@@ -614,14 +613,13 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 			if action_event != null:
 				pending_results.append({"action": action_event, "intent": frozen,
 					"resolution": resolution})
+		elif str(row.action_type) == "MOVE":
+			var destination := Vector2i(int(row.destination[0]), int(row.destination[1]))
+			action_cost = int(row.time_cost)
+			action_event = movement.commit_preflighted_move(enemy_id, destination,
+				str(row.terrain_id), action_cost)
 		else:
-			var direction := Vector2i(signi(target.position.x-enemy.position.x), signi(target.position.y-enemy.position.y))
-			var assessment = movement.assess_move(enemy_id, enemy.position + direction)
-			if assessment.accepted:
-				action_cost = int(TerrainRegistryScript.definition(assessment.terrain_id).move_time_cost)
-				action_event = movement.commit_preflighted_move(enemy_id, enemy.position + direction, str(assessment.terrain_id), action_cost)
-			else:
-				action_event = _commit_hold(enemy_id, 100)
+			action_event = _commit_hold(enemy_id, 100)
 		if action_event == null or _fault("enemy_leaf"):
 			return false
 		if world.world_time > MAX_WORLD_TIME - action_cost:
@@ -662,6 +660,47 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 				or target_state.life_state != resolution.target_life_after:
 			return false
 	return reconcile_liveness(allow_victory)
+
+
+func forecast_enemy_action(enemy_id: int) -> Dictionary:
+	# This is the single pure selector used by both the mobile forecast and the
+	# canonical enemy batch. The UI describes it as a current-state forecast:
+	# player movement can legitimately change the next scheduled evaluation.
+	var rejected := {"accepted":false, "reason":"enemy_unavailable",
+		"enemy_id":enemy_id, "target_id":-1, "action_type":"HOLD",
+		"from_position":[-1,-1], "destination":[-1,-1],
+		"terrain_id":"", "time_cost":PARTY_ACTION_COST}
+	if world == null or world.party_encounter == null \
+			or enemy_id not in world.party_encounter.enemy_ids \
+			or not world.entities.has(enemy_id) \
+			or not world.is_autonomous_target(enemy_id):
+		return rejected.duplicate(true)
+	var enemy = world.entities[enemy_id]
+	rejected.from_position = [enemy.position.x, enemy.position.y]
+	var target = _nearest_deployed_party(enemy.position)
+	if target == null:
+		rejected.reason = "enemy_target_unavailable"
+		return rejected.duplicate(true)
+	rejected.accepted = true
+	rejected.target_id = target.id
+	if melee.can_attack(enemy_id, target.id):
+		rejected.reason = "target_adjacent"
+		rejected.action_type = "MELEE"
+		return rejected.duplicate(true)
+	var direction := Vector2i(signi(target.position.x-enemy.position.x),
+		signi(target.position.y-enemy.position.y))
+	var destination: Vector2i = enemy.position + direction
+	var assessment = movement.assess_move(enemy_id, destination)
+	if assessment.accepted:
+		var terrain_id := str(assessment.terrain_id)
+		rejected.reason = "approach_nearest_target"
+		rejected.action_type = "MOVE"
+		rejected.destination = [destination.x, destination.y]
+		rejected.terrain_id = terrain_id
+		rejected.time_cost = int(TerrainRegistryScript.definition(terrain_id).move_time_cost)
+	else:
+		rejected.reason = "approach_blocked_guard"
+	return rejected.duplicate(true)
 
 func _nearest_alive_enemy(position: Vector2i):
 	var candidates: Array = []

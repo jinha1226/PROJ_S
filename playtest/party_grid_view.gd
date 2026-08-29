@@ -265,20 +265,21 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var kind:=str(effect.get("kind",""));var damage_type:=str(effect.get("damage_type","physical"))
 	var color_hex:String={"fire":"#ff7a55","water":"#67c9ff","electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(damage_type,"#fff0df")
 	if kind=="DEATH":color_hex="#ff6b78"
-	var duration_ms:=900 if kind in ["FLOATING_AMOUNT","DEATH"] else 520
+	elif kind=="MISS":color_hex="#b8e9ff"
+	var duration_ms:=900 if kind in ["FLOATING_AMOUNT","DEATH"] else (700 if kind=="MISS" else 520)
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var started_at:=int(effect.get("started_at_ms",now))
 	var age_ratio:=clampf(float(maxi(0,now-started_at))/float(duration_ms),0.0,1.0)
 	var pixel_center:=world_to_pixel_center(world_position)
-	if kind=="FLOATING_AMOUNT":pixel_center.y-=cell_size_px()*0.52*age_ratio
+	if kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
-		"kind":kind,"primitive":{"SLASH":"SLASH_LINES","HIT_FLASH":"FLASH_RING","FLOATING_AMOUNT":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"),
+		"kind":kind,"primitive":{"SLASH":"SLASH_LINES","HIT_FLASH":"FLASH_RING","FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"),
 		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
 		"pixel_center":pixel_center,"color_hex":color_hex,"age_ratio":age_ratio,
 		"opacity":clampf(1.0-age_ratio*0.88,0.12,1.0),
 		"line_width":4.0 if kind in ["SLASH","DEATH"] else 3.0,
 		"radius":cell_size_px()*(0.34+0.10*age_ratio if kind=="HIT_FLASH" else 0.28),
-		"text":str(effect.get("text","")),"font_size":18,
+		"text":str(effect.get("text","")),"font_size":16 if kind=="MISS" else 18,
 		"duration_ms":duration_ms}.duplicate(true)
 
 func _process(_delta:float)->void:
@@ -995,7 +996,10 @@ func _draw_visual_effect(effect:Dictionary)->void:
 			draw_line(center+Vector2(-radius,radius)+drift,center+Vector2(radius,-radius)+drift,color,width)
 			draw_line(center+Vector2(-radius*0.55,radius)-drift*0.45,center+Vector2(radius,radius*-0.55)-drift*0.45,color,maxf(1.4,width-1.0))
 		"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
-		"TEXT":draw_string(get_theme_default_font(),center+Vector2(-16,-radius),str(spec.text),HORIZONTAL_ALIGNMENT_CENTER,32,int(spec.font_size),color)
+		"TEXT":
+			var text_width:=64.0 if str(spec.kind)=="MISS" else 32.0
+			draw_string(get_theme_default_font(),center+Vector2(-text_width*0.5,-radius),
+				str(spec.text),HORIZONTAL_ALIGNMENT_CENTER,text_width,int(spec.font_size),color)
 		"DEATH_CROSS":
 			draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
 			draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)

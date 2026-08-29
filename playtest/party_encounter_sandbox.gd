@@ -97,7 +97,7 @@ func _ready()->void:
 	_build_ui()
 	if not _initialized_for_headless_test and session==null:
 		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
-			_issue_new_personality_seed(),SessionScript.SHOWCASE_SCENARIO_ID)
+			_issue_new_personality_seed(),SessionScript.SOLO_COMBAT_SCENARIO_ID)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
 	if _initialized_for_headless_test and auto_orchestration_enabled:
@@ -253,9 +253,13 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
+	if duel_lab_button!=null:duel_lab_button.visible=not _is_solo_product_session()
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
 		status=session.party_status()
+		if str(status.get("safe_phase",""))!=auto_phase:
+			_orchestrate_auto_phase(status)
+			status=session.party_status()
 	var run_progress:=_current_run_progress()
 	var run_available:=bool(run_progress.get("available",false))
 	var run_complete:=bool(run_progress.get("complete",false))
@@ -280,9 +284,14 @@ func _refresh()->void:
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
 	_apply_phase_banner(status,presentation)
-	var deployment:Dictionary=session.deployment_draft(); var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" else []
+	var deployment:Dictionary=session.deployment_draft()
+	var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" \
+		and not _is_solo_product_session() else []
 	var observation:Dictionary=session.observe_party_world()
 	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
+	if combat_active and not run_complete and session.has_method("enemy_intent_forecasts"):
+		var enemy_forecasts:Variant=session.call("enemy_intent_forecasts")
+		if enemy_forecasts is Array:intent_overlays.append_array(enemy_forecasts)
 	grid.set_observation(observation,ghosts)
 	grid.set_view_window(15)
 	grid.set_presentation_style(presentation.get("grid_style",{}))
@@ -321,7 +330,11 @@ func _refresh()->void:
 	else:
 		match str(status.view_mode):
 			"EXPLORATION":_exploration_deck()
-			"ENCOUNTER_PREVIEW":_deployment_deck(deployment)
+			"ENCOUNTER_PREVIEW":
+				if _is_solo_product_session():
+					_add_notice("단독 전투를 시작합니다.","SoloCombatStarting",FONT_KEY)
+					_add_button(deck,"전투 시작","SoloCombatStart",_on_solo_combat_start)
+				else:_deployment_deck(deployment)
 			"COMBAT":_combat_deck(status,session.current_turn_preview())
 			"REGROUP":_legacy_regroup_notice()
 	if run_terminal:_build_run_restart_area()
@@ -391,7 +404,11 @@ func _orchestrate_auto_phase(status:Dictionary)->void:
 		auto_phase=phase
 	match phase:
 		"CONTACT":
-			if not auto_deployment_pending and not auto_deployment_fallback:_prepare_auto_deployment(status)
+			if _is_solo_product_session():
+				var result:Dictionary=session.enter_solo_combat()
+				_record_result(result,true,"단독 전투 시작 불가")
+			elif not auto_deployment_pending and not auto_deployment_fallback:
+				_prepare_auto_deployment(status)
 		"ENGAGED":
 			var planning:Dictionary=session.auto_combat_planning_state()
 			if not bool(planning.get("active",false)):planning=session.prepare_auto_combat_plan()
@@ -615,8 +632,8 @@ func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 	style.content_margin_top=1;style.content_margin_bottom=1
 	strip.add_theme_stylebox_override("panel",style);parent.add_child(strip)
 	var text:=Label.new();text.name="CompanionSpeechText"
-	text.text="%s\n%s"%[str(speech.get("headline","엄호할게.")),
-		str(speech.get("reason_summary","자리를 지키려고"))]
+	text.text="%s\n%s"%[str(speech.get("headline","방어할게.")),
+		str(speech.get("reason_summary","피해를 줄이려고"))]
 	text.max_lines_visible=2;text.clip_text=true
 	text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	text.add_theme_font_size_override("font_size",12)
@@ -637,10 +654,10 @@ func _compact_action(action:Dictionary)->String:
 	var source:=str(action.get("source_label","자동 제안")); var action_type:=str(action.get("type","HOLD"))
 	if action_type=="MOVE":var destination:Array=action.get("destination",[-1,-1]); return "%s · 이동 (%d,%d)"%[source,int(destination[0]),int(destination[1])]
 	if action_type=="MELEE":return "%s · 공격 %s"%[source,str(action.get("target_name","적"))]
-	return "%s · 대기"%source
+	return "%s · 방어"%source
 
 func _exploration_deck()->void:
-	_add_recruitment_candidates()
+	if not _is_solo_product_session():_add_recruitment_candidates()
 	_add_notice(notice_text if not notice_text.is_empty() else "탐험: 목적지를 한 번 누르면 경로를 확인하고 바로 이동합니다.")
 	if pending_move_mode=="EXPLORATION":
 		var actor_name:=_protagonist_name(); var summary:=""
@@ -714,7 +731,10 @@ func _run_complete_deck(progress:Dictionary)->void:
 func _build_run_restart_area()->void:
 	combat_action_area.visible=true;combat_action_area.custom_minimum_size.y=TOUCH_TARGET
 	action_feedback_label.visible=false;combat_action_dock.visible=true
-	var restart:=_add_button(combat_action_dock,"새 성격으로 다시 시작","RestartSameRun",_on_restart_with_new_personality)
+	var restart:=_add_button(combat_action_dock,
+		"같은 원정 다시 시작" if _is_solo_product_session() else "새 성격으로 다시 시작",
+		"RestartSameRun",_on_restart_same_run if _is_solo_product_session() \
+		else _on_restart_with_new_personality)
 	restart.size_flags_stretch_ratio=1.0
 
 func _deployment_deck(deployment:Dictionary)->void:
@@ -729,12 +749,16 @@ func _deployment_deck(deployment:Dictionary)->void:
 	var confirm:=_add_button(deck,"배치 확정","DeployConfirm",_on_deploy_confirm); confirm.disabled=not bool(deployment.accepted)
 	_selected_detail()
 func _combat_deck(status:Dictionary,preview:Dictionary)->void:
-	if bool(status.terminal):_add_notice("파티가 패배했습니다. 주인공이 쓰러져 더 행동할 수 없습니다.","TerminalOverlay",FONT_KEY); return
-	var actor_name:=_selected_name(); var instruction:="%s 선택 · 빈 칸은 이동, 적은 공격"%actor_name
+	if bool(status.terminal):
+		_add_notice("주인공이 쓰러져 더 행동할 수 없습니다." if _is_solo_product_session() \
+			else "파티가 패배했습니다. 주인공이 쓰러져 더 행동할 수 없습니다.","TerminalOverlay",FONT_KEY)
+		return
+	var actor_name:=_selected_name(); var instruction:="%s 선택 · 빈 칸 이동 · 적 공격 · 하단 방어"%actor_name
 	if auto_orchestration_enabled:
 		var planning:Dictionary=session.auto_combat_planning_state()
 		if bool(planning.get("placeholder",false)):
-			instruction="동료 제안이 준비되었습니다 · 주인공의 실제 행동을 선택하세요."
+			instruction="주인공의 행동을 선택하세요 · 공격할 적이나 이동할 칸을 누를 수 있습니다." \
+				if _is_solo_product_session() else "동료 제안이 준비되었습니다 · 주인공의 실제 행동을 선택하세요."
 		elif auto_combat_pending:instruction="최종 계획을 표시했습니다 · 잠시 뒤 자동 실행합니다."
 		elif auto_override_edit:instruction="동료 지시 편집 중 · 준비되면 지금 실행을 누르세요."
 	if not notice_text.is_empty():instruction=notice_text
@@ -742,6 +766,7 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	_add_notice(instruction)
 	var lines:Array[String]=session.turn_summary_lines()
 	if not lines.is_empty():_add_notice("이번 턴 예정\n"+"\n".join(lines),"TurnSummary",FONT_BODY)
+	_add_enemy_intent_forecasts()
 	var has_original_suggestion:=false
 	for overlay in session.turn_intent_overlays():
 		if overlay.get("automatic_suggestion",null) is Dictionary:has_original_suggestion=true;break
@@ -749,6 +774,18 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 		_add_notice("표시: 주황 실선/□ 개별 지시 · 파랑 점선/○ 원래 자동 제안","IntentLegend",FONT_AUX)
 	_build_combat_action_area(status,preview)
 	_selected_detail()
+
+func _add_enemy_intent_forecasts()->void:
+	if session==null or not session.has_method("enemy_intent_forecasts"):return
+	var forecasts:Variant=session.call("enemy_intent_forecasts")
+	if not forecasts is Array or forecasts.is_empty():return
+	var lines:Array[String]=[]
+	for value in forecasts:
+		if not value is Dictionary:continue
+		var row:Dictionary=value;var action_type:=str(row.get("type","HOLD"))
+		var icon:String={"MELEE":"[공격]","MOVE":"[이동]","HOLD":"[방어]"}.get(action_type,"[예상]")
+		lines.append("%s %s — %s"%[icon,str(row.get("headline","적의 행동")),str(row.get("reason",""))])
+	if not lines.is_empty():_add_notice("적 현재 예상\n"+"\n".join(lines),"EnemyIntentSummary",FONT_AUX)
 func _legacy_regroup_notice()->void:_add_notice("승리했습니다. 호환 상태를 자동 재집결 처리하는 중입니다.","ActionStatus",FONT_KEY)
 
 func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
@@ -758,8 +795,9 @@ func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
 		_build_auto_combat_action_area(status);return
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text
 	elif bool(preview.get("accepted",false)):action_feedback_label.text="행동 준비 완료 · 필요하면 수정한 뒤 실행하세요."
-	else:action_feedback_label.text="행동 지정 → 실행\n빈 칸 이동 · 적 공격 · 선택 대기"
-	var hold:=_add_button(combat_action_dock,"선택 대기","ActorHold",_on_actor_hold)
+	else:action_feedback_label.text="행동 지정 → 실행\n빈 칸 이동 · 적 공격 · 방어(200시간·피해 25% 감소)"
+	var hold:=_add_button(combat_action_dock,"방어","ActorHold",_on_actor_hold)
+	hold.tooltip_text="200 시간 동안 물리 피해를 25% 줄입니다."
 	hold.size_flags_stretch_ratio=1.0
 	var clear:=_add_button(combat_action_dock,"자동 제안 복원","OverrideClear",_on_override_clear)
 	clear.size_flags_stretch_ratio=1.35;clear.disabled=selected_member_id==int(status.protagonist_id)
@@ -769,15 +807,19 @@ func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
 func _build_auto_combat_action_area(status:Dictionary)->void:
 	var planning:Dictionary=session.auto_combat_planning_state()
 	if auto_combat_pending:
-		action_feedback_label.text="최종 행동과 동료 제안을 표시 중입니다."
+		action_feedback_label.text="최종 행동을 표시 중입니다." if _is_solo_product_session() \
+			else "최종 행동과 동료 제안을 표시 중입니다."
 		combat_action_dock.visible=false;return
 	if not action_feedback_text.is_empty():action_feedback_label.text=action_feedback_text
-	elif bool(planning.get("placeholder",false)):action_feedback_label.text="동료 제안 준비 완료 · 주인공 행동을 선택하세요."
+	elif bool(planning.get("placeholder",false)):
+		action_feedback_label.text="행동 선택 · 방어: 200시간 동안 물리 피해 25% 감소" \
+			if _is_solo_product_session() else "동료 제안 준비 완료 · 주인공 행동을 선택하세요."
 	elif auto_override_edit:action_feedback_label.text="개별 지시 편집 중 · 준비되면 지금 실행"
 	else:action_feedback_label.text="행동 선택 시 최종 계획을 보여 준 뒤 자동 실행합니다."
 	var protagonist_id:=int(status.get("protagonist_id",-1))
-	var hold_text:="주인공 대기" if selected_member_id==protagonist_id else "개별 대기"
+	var hold_text:="주인공 방어" if selected_member_id==protagonist_id else "개별 방어"
 	var hold:=_add_button(combat_action_dock,hold_text,"ActorHold",_on_actor_hold);hold.size_flags_stretch_ratio=1.0
+	hold.tooltip_text="200 시간 동안 물리 피해를 25% 줄입니다."
 	if selected_member_id!=protagonist_id:
 		var clear:=_add_button(combat_action_dock,"자동 제안 복원","OverrideClear",_on_override_clear)
 		clear.size_flags_stretch_ratio=1.35
@@ -1041,10 +1083,13 @@ func _on_deploy_confirm()->void:
 	if not bool(draft.accepted):notice_text=str(draft.message);_set_action_rejection(draft,"배치 확정 불가")
 	else:_record_result(session.commit_deployment(),true)
 	_request_refresh()
+func _on_solo_combat_start()->void:
+	var result:Dictionary=session.enter_solo_combat()
+	_record_result(result,true,"단독 전투 시작 불가");_request_refresh()
 func _on_actor_hold()->void:
 	_clear_move_preview()
 	if auto_orchestration_enabled:_stage_auto_combat_action("HOLD")
-	else:_record_result(session.set_actor_action(selected_member_id,"HOLD"),false,"%s 대기 불가"%_selected_name());_request_refresh()
+	else:_record_result(session.set_actor_action(selected_member_id,"HOLD"),false,"%s 방어 불가"%_selected_name());_request_refresh()
 func _on_override_clear()->void:
 	_clear_move_preview()
 	if auto_orchestration_enabled:
@@ -1056,7 +1101,9 @@ func _on_turn_confirm()->void:
 	if not bool(current.get("accepted",false)):_record_result(current,false,"턴 확정 불가")
 	else:
 		_record_result(session.commit_turn(),true,"",true); _clear_move_preview()
-		if session.party_status().safe_phase=="GROUPED_COMPLETE":notice_text="승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
+		if session.party_status().safe_phase=="GROUPED_COMPLETE":
+			notice_text="승리! 출구를 향해 탐험을 계속하세요." if _is_solo_product_session() \
+				else "승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
 		_request_refresh()
 
 func _on_auto_execute()->void:
@@ -1128,7 +1175,9 @@ func _commit_auto_combat_plan(expected_generation:int)->void:
 	var result:Dictionary=session.commit_turn()
 	if not bool(result.get("accepted",false)):auto_combat_fallback=true
 	_record_result(result,true,"자동 실행 불가",true);_clear_move_preview()
-	if session.party_status().safe_phase=="GROUPED_COMPLETE":notice_text="승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
+	if session.party_status().safe_phase=="GROUPED_COMPLETE":
+		notice_text="승리! 출구를 향해 탐험을 계속하세요." if _is_solo_product_session() \
+			else "승리! 파티가 자동으로 재집결해 탐험을 다시 시작합니다."
 	_refresh()
 
 func flush_auto_flow_for_headless_test()->Dictionary:
@@ -1261,7 +1310,7 @@ func _action_only(action:Dictionary)->String:
 		var destination:Array=action.get("destination",[-1,-1])
 		return "이동 (%d,%d)"%[int(destination[0]),int(destination[1])]
 	if action_type=="MELEE":return "공격 %s"%str(action.get("target_name","적"))
-	return "대기"
+	return "방어"
 func _selected_position()->Vector2i:
 	for row in session.party_cards():if int(row.entity_id)==selected_member_id:return Vector2i(int(row.logical_position[0]),int(row.logical_position[1]))
 	return Vector2i(-1,-1)
@@ -1573,8 +1622,9 @@ func _update_action_feedback(status:Dictionary)->void:
 	if bool(progress.get("complete",false)):
 		action_feedback_label.text="원정 완료";return
 	match str(status.safe_phase):
-		"CONTACT":action_feedback_label.text="자동 대형 미리보기" if auto_orchestration_enabled and not auto_deployment_fallback else "대형 선택 → 배치 실행"
-		"GROUPED_COMPLETE":action_feedback_label.text="승리 · 자동 재집결 완료 · 탐험 이동을 선택하세요."
+		"CONTACT":action_feedback_label.text="단독 전투 시작" if _is_solo_product_session() else ("자동 대형 미리보기" if auto_orchestration_enabled and not auto_deployment_fallback else "대형 선택 → 배치 실행")
+		"GROUPED_COMPLETE":action_feedback_label.text="승리 · 출구를 향해 탐험하세요." \
+			if _is_solo_product_session() else "승리 · 자동 재집결 완료 · 탐험 이동을 선택하세요."
 		_:
 			if str(status.view_mode)=="EXPLORATION":action_feedback_label.text="이동 목적지 한 번 선택 → 경로를 따라 이동"
 			elif str(status.view_mode)=="COMBAT":action_feedback_label.text="행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행"
@@ -1585,9 +1635,14 @@ func _add_notice(value:String,node_name:String="ActionStatus",font_size:int=FONT
 func _add_button(parent:Control,value:String,node_name:String,callback:Callable)->Button:
 	var button:=Button.new(); button.name=node_name; button.text=value; button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET); button.add_theme_font_size_override("font_size",FONT_BODY)
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.pressed.connect(callback); parent.add_child(button); return button
+func _is_solo_product_session()->bool:
+	return session!=null and session.has_method("is_solo_combat") \
+		and bool(session.call("is_solo_combat"))
 func _clear_container(container:Control)->void:
 	for child in container.get_children():container.remove_child(child); child.free()
-func _phase(value:String)->String:return {"GROUPED":"탐험","CONTACT":"조우 배치","ENGAGED":"파티 전투","REGROUP_READY":"자동 재집결","GROUPED_COMPLETE":"탐험 재개","PARTY_DEFEATED":"패배"}.get(value,value)
+func _phase(value:String)->String:
+	if value=="ENGAGED" and _is_solo_product_session():return "단독 전투"
+	return {"GROUPED":"탐험","CONTACT":"조우 배치","ENGAGED":"파티 전투","REGROUP_READY":"자동 재집결","GROUPED_COMPLETE":"탐험 재개","PARTY_DEFEATED":"패배"}.get(value,value)
 func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"전투 대기","RECRUITABLE":"영입 후보","EXILED":"추방됨","DEFEATED":"쓰러짐"}.get(value,value)
 func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"동료"}.get(value,value)
 func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)

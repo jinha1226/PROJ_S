@@ -314,10 +314,10 @@ func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> 
 		check_eq(bubble.source,"SUGGESTED","initial speech follows automatic suggestion")
 		check(not str(bubble.reason).is_empty(),"speech retains a Korean action reason")
 		var expected_headline:String={"MELEE":"공격할게.","MOVE":"이동할게.",
-			"HOLD":"엄호할게."}.get(str(bubble.action_type),"엄호할게.")
+			"HOLD":"방어할게."}.get(str(bubble.action_type),"방어할게.")
 		check_eq(bubble.headline,expected_headline,"suggested action headline is fixed")
 		check_eq(bubble.reason_summary,{"MELEE":"적이 가까워서","MOVE":"길이 열려서",
-			"HOLD":"자리를 지키려고"}.get(str(bubble.action_type),"자리를 지키려고"),
+			"HOLD":"피해를 줄이려고"}.get(str(bubble.action_type),"피해를 줄이려고"),
 			"card speech receives a meaning-preserving short reason")
 		check(str(bubble.reason_summary).length()<=14,"card reason summary stays one-line compact")
 	check_eq(session.save_session_json(),wire_before,
@@ -334,7 +334,7 @@ func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> 
 	for bubble in session.companion_speech_bubbles():
 		if int(bubble.actor_id)==first_id:overridden=bubble;break
 	check_eq([overridden.source,overridden.action_type,overridden.headline],
-		["OVERRIDE","HOLD","대기할게."],"override updates primary speech immediately")
+		["OVERRIDE","HOLD","방어할게."],"override updates primary speech immediately")
 	check("개별 지시" in str(overridden.reason),"override keeps its action-reason meaning")
 	check_eq(overridden.reason_summary,"지시를 따라서","override reason is compact on the card")
 	check(session.clear_companion_override(first_id).accepted,"speech override clears")
@@ -343,7 +343,7 @@ func test_companion_speech_bubbles_are_pure_detached_and_refresh_each_plan() -> 
 		if int(bubble.actor_id)==first_id:restored=bubble;break
 	check_eq(restored.source,"SUGGESTED","clear immediately restores suggested speech")
 	check_eq(restored.headline,{"MELEE":"공격할게.","MOVE":"이동할게.",
-		"HOLD":"엄호할게."}.get(str(restored.action_type),"엄호할게."),
+		"HOLD":"방어할게."}.get(str(restored.action_type),"방어할게."),
 		"clear restores suggested headline")
 	check(session.replace_auto_combat_protagonist_action(Action.hold(hero)).accepted,
 		"hero finalizes current plan")
@@ -573,6 +573,87 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 	check_eq(lethal_result.visual_effects.map(func(row):return row.kind),
 		["SLASH","HIT_FLASH","FLOATING_AMOUNT","HIT_FLASH","FLOATING_AMOUNT","DEATH"],
 		"BLEEDOUT death projects once after physical and downed-pressure effects")
+	return finish()
+
+
+func test_combat_preview_guard_enemy_forecast_and_miss_feedback_are_pure_and_authoritative() -> bool:
+	var session=_engaged_with_companions([],44);var state=session.sim.world.party_encounter
+	var hero:=int(state.protagonist_id);var enemy:=int(state.enemy_ids[0])
+	check(_relocate_with_move_events(session.sim,enemy,
+		session.sim.world.entities[hero].position+Vector2i.RIGHT),"preview enemy adjacent")
+	var wire_before:String=session.save_session_json();var journal_before:Array=session.command_journal.duplicate(true)
+	var preview:Dictionary=session.preview_actor_action(hero,"MELEE",[],enemy)
+	check(preview.accepted,"adjacent melee preview accepted")
+	var selected:Variant=preview.get("selected_action_preview",null)
+	check(selected is Dictionary and selected.get("attack_preview",null) is Dictionary,
+		"selected attack preview DTO is exposed")
+	if selected is Dictionary and selected.get("attack_preview",null) is Dictionary:
+		var attack_preview:Dictionary=selected.attack_preview
+		check_eq([attack_preview.hit_chance_percent,attack_preview.damage_on_hit,
+			attack_preview.bleed_chance_percent],[95,22,60],
+			"preview reuses canonical hit and damage assessment")
+		check(not attack_preview.has("hit_roll_milli") and not attack_preview.has("bleed_roll_milli"),
+			"preview never resolves or exposes deterministic RNG rolls")
+	check_eq([session.save_session_json(),session.command_journal],[wire_before,journal_before],
+		"attack preview is snapshot journal and RNG pure")
+	check(session.begin_turn(Action.melee(hero,enemy)).accepted,"melee draft accepted")
+	check("명중 95%" in "\n".join(session.turn_summary_lines()) \
+		and "적중 시 22 피해" in "\n".join(session.turn_summary_lines()),
+		"mobile turn summary exposes hit chance and on-hit damage")
+	var forecast_wire:String=session.save_session_json();var forecasts:Array=session.enemy_intent_forecasts()
+	check_eq(forecasts.size(),1,"one visible enemy exposes one current forecast")
+	if not forecasts.is_empty():
+		var forecast:Dictionary=forecasts[0]
+		var authority:Dictionary=session.sim.party_coordinator.forecast_enemy_action(enemy)
+		check_eq([forecast.type,forecast.target_id,forecast.destination],
+			[authority.action_type,authority.target_id,authority.destination],
+			"enemy presentation consumes the canonical shared selector")
+		check_eq([forecast.type,forecast.target_id],["MELEE",hero],
+			"adjacent enemy forecast names its melee target")
+		check("공격 범위" in str(forecast.reason),"enemy forecast gives a short Korean reason")
+		forecast.destination[0]=999;forecast.reason="변조"
+		check(session.enemy_intent_forecasts()[0].destination[0]!=999 \
+			and session.enemy_intent_forecasts()[0].reason!="변조",
+			"enemy forecast DTO is detached")
+	check_eq(session.save_session_json(),forecast_wire,"enemy forecast is world journal and RNG pure")
+	check(session.begin_turn(Action.hold(hero)).accepted,"HOLD wire remains a legal canonical draft")
+	var hold:Variant=session.party_cards()[0].expected_action
+	check(hold is Dictionary and hold.type=="HOLD" and hold.type_label=="방어",
+		"internal HOLD is presented as defense")
+	check("25%" in str(hold.reason) and "200 시간" in str(hold.reason),
+		"defense preview exposes effect and duration")
+	check_eq(session.current_turn_preview().canonical_request.protagonist_action.type,"HOLD",
+		"presentation rename does not alter action wire")
+	var guarded_result:Dictionary=session.commit_turn()
+	check(guarded_result.accepted,"defense turn commits")
+	var hero_hold_event=null;var resolved_enemy_action=null
+	for event_id in guarded_result.event_ids:
+		var event=session.sim.world.event_by_id(int(event_id))
+		if event==null:continue
+		if str(event.type)=="action.hold" and int(event.actor_id)==hero:hero_hold_event=event
+		if str(event.type)=="action.melee_attack" and int(event.actor_id)==enemy:
+			resolved_enemy_action=event
+	check(hero_hold_event!=null,"HOLD still commits the canonical guard event")
+	check(resolved_enemy_action!=null and int(resolved_enemy_action.target_id)==hero,
+		"unchanged state resolves the forecast enemy action and target")
+	if resolved_enemy_action!=null:
+		check(bool(resolved_enemy_action.data.get("guarded",false)) \
+			and int(resolved_enemy_action.data.get("guard_reduction",0))==3,
+			"enemy resolution consumes the existing 25 percent guard authority")
+
+	var missed=_engaged_with_companions([],20);var missed_state=missed.sim.world.party_encounter
+	var missed_hero:=int(missed_state.protagonist_id);var missed_enemy:=int(missed_state.enemy_ids[0])
+	check(_relocate_with_move_events(missed.sim,missed_enemy,
+		missed.sim.world.entities[missed_hero].position+Vector2i.RIGHT),"miss enemy adjacent")
+	check(missed.begin_turn(Action.melee(missed_hero,missed_enemy)).accepted,"fixed miss draft")
+	var committed:Dictionary=missed.commit_turn();check(committed.accepted,"fixed miss commit")
+	var miss_effects:Array=committed.visual_effects.filter(func(row):
+		return str(row.get("kind",""))=="MISS")
+	check_eq(miss_effects.size(),1,"committed MISS projects exactly one visual cue")
+	if not miss_effects.is_empty():check_eq(miss_effects[0].text,"빗나감","MISS cue is Korean")
+	var log_text:=JSON.stringify(missed.combat_log(2,40))
+	check("빗나갔다" in log_text and missed.sim.world.entities[missed_hero].display_name in log_text,
+		"MISS combat log is Korean and attributes the attack through its cause")
 	return finish()
 
 

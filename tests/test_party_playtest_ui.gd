@@ -263,18 +263,22 @@ func test_visual_effect_rows_render_once_per_effect_and_share_event_without_loss
 	var rows:Array=[
 		{"effect_id":"42:hit_flash","event_id":42,"order":0,"kind":"HIT_FLASH","world_position":[7,7],"damage_type":"fire","text":""},
 		{"effect_id":"42:floating_amount","event_id":42,"order":1,"kind":"FLOATING_AMOUNT","world_position":[7,7],"damage_type":"fire","text":"-22"},
-		{"effect_id":"43:death","event_id":43,"order":2,"kind":"DEATH","world_position":[7,7],"damage_type":"physical","text":""}]
-	check_eq(sandbox.grid.play_effects(rows),3,"all distinct effects render even when two share one event")
+		{"effect_id":"43:death","event_id":43,"order":2,"kind":"DEATH","world_position":[7,7],"damage_type":"physical","text":""},
+		{"effect_id":"44:miss","event_id":44,"order":3,"kind":"MISS","world_position":[7,7],"damage_type":"physical","text":"빗나감"}]
+	check_eq(sandbox.grid.play_effects(rows),4,"all distinct effects render even when two share one event")
 	check(sandbox.grid.has_played_effect_event(42),"source event is remembered for replay diagnostics")
 	check(sandbox.grid.has_played_effect("42:hit_flash") and sandbox.grid.has_played_effect("42:floating_amount"),"effect ids are deduplicated independently")
 	check_eq(sandbox.grid.play_effects(rows),0,"replayed result cannot duplicate visual effects")
-	check_eq(sandbox.grid._active_visual_effects.size(),3,"replay leaves one copy of each visual effect")
+	check_eq(sandbox.grid._active_visual_effects.size(),4,"replay leaves one copy of each visual effect")
 	var flash:Dictionary=sandbox.grid.visual_effect_draw_spec(sandbox.grid._active_visual_effects[0])
 	var amount:Dictionary=sandbox.grid.visual_effect_draw_spec(sandbox.grid._active_visual_effects[1])
+	var miss:Dictionary=sandbox.grid.visual_effect_draw_spec(sandbox.grid._active_visual_effects[3])
 	check_eq(flash.primitive,"FLASH_RING","hit flash draw spec is testable")
 	check_eq(flash.color_hex,"#ff7a55","damage type drives deterministic effect color")
 	check_eq(amount.primitive,"TEXT","floating amount draw spec is text")
 	check_eq(amount.text,"-22","floating amount preserves session-projected text")
+	check_eq([miss.primitive,miss.text,miss.color_hex,miss.font_size],
+		["TEXT","빗나감","#b8e9ff",16],"MISS has a distinct readable text draw spec")
 	flash.primitive="CORRUPTED"
 	check_eq(sandbox.grid.visual_effect_draw_spec(sandbox.grid._active_visual_effects[0]).primitive,"FLASH_RING","effect draw spec is detached")
 	sandbox.free();return finish()
@@ -397,7 +401,7 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		_press(sandbox,"DeployConfirm")
 		sandbox.grid.size=sandbox.grid.custom_minimum_size
 		check_eq(sandbox.session.party_status().safe_phase,"ENGAGED","%s button journey engaged"%preset)
-		check("빈 칸은 이동, 적은 공격" in str(sandbox.find_child("ActionStatus",true,false).text), "%s combat instruction visible immediately"%preset)
+		check("빈 칸 이동 · 적 공격" in str(sandbox.find_child("ActionStatus",true,false).text), "%s combat instruction visible immediately"%preset)
 		check_eq(sandbox.session.party_status().formation_id,preset,"formation committed")
 		check_eq(sandbox.grid.get_instance_id(),grid_id,"same grid for %s"%preset)
 		check_eq(sandbox.grid.visible_cell_count,15,"%s combat remains full 15x15"%preset)
@@ -414,7 +418,7 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check_eq(sandbox.action_feedback_label.get_parent(),sandbox.combat_action_area,"%s feedback is inside fixed action area"%preset)
 		check(not _inside_ancestor(sandbox.combat_action_area,ScrollContainer),"%s action area is independent from information scroll"%preset)
 		check(sandbox.action_feedback_label.get_theme_font_size("font_size")>=16,"%s fixed feedback font"%preset)
-		check_eq(_button(sandbox,"ActorHold").text,"선택 대기","%s dock hold label"%preset)
+		check_eq(_button(sandbox,"ActorHold").text,"방어","%s dock hold label"%preset)
 		check_eq(_button(sandbox,"OverrideClear").text,"자동 제안 복원","%s dock restore label"%preset)
 		check_eq(_button(sandbox,"TurnConfirm").text,"지금 실행","%s legacy dock execute label"%preset)
 		sandbox.free()
@@ -658,7 +662,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			check_eq([str(lines[0]),str(lines[1])],
 				[str(bubble.headline),str(bubble.reason_summary)],
 				"%s card binds only its own headline and reason"%viewport_size)
-			check(str(lines[0]) in ["공격할게.","이동할게.","엄호할게.","대기할게."],
+			check(str(lines[0]) in ["공격할게.","이동할게.","방어할게."],
 				"%s fixed headline vocabulary"%viewport_size)
 			check(str(lines[1]).length()<=14,"%s compact reason stays on one line"%viewport_size)
 			check_eq(str(strip.get_meta("full_reason","")),str(bubble.reason),
@@ -673,7 +677,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			"%s companion override accepted"%viewport_size);sandbox._refresh()
 		var overridden:=_button(sandbox,"MemberCard%d"%companion).find_child(
 			"CompanionSpeechText",true,false) as Label
-		check_eq(overridden.text,"대기할게.\n지시를 따라서",
+		check_eq(overridden.text,"방어할게.\n지시를 따라서",
 			"%s override refreshes the same card strip"%viewport_size)
 		check_eq(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size(),2,
 			"%s secondary suggestion creates no extra strip"%viewport_size)
@@ -681,7 +685,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			"%s companion override clears"%viewport_size);sandbox._refresh()
 		var cleared:=_button(sandbox,"MemberCard%d"%companion).find_child(
 			"CompanionSpeechText",true,false) as Label
-		check(cleared.text!="대기할게.\n지시를 따라서",
+		check(cleared.text!="방어할게.\n지시를 따라서",
 			"%s clear restores automatic card speech"%viewport_size)
 		check(sandbox.session.replace_auto_combat_protagonist_action(Action.hold(hero)).accepted,
 			"%s hero finalizes plan"%viewport_size)
@@ -729,7 +733,9 @@ func test_enemy_tap_targets_without_selecting_enemy_and_rejections_are_visible()
 		"companion override has no combat retap state")
 	check("덮어쓰기" in str(overridden.expected_action.text),"override Korean label")
 	check(overridden.expected_action.automatic_suggestion is Dictionary,"override preserves original automatic suggestion")
-	check(sandbox.grid._intent_overlays.size()==3,"hero and companion intents overlaid")
+	var party_intents:Array=sandbox.grid._intent_overlays.filter(func(row):
+		return str(row.get("source",""))!="ENEMY_FORECAST")
+	check_eq(party_intents.size(),3,"hero and companion intents overlaid alongside enemy forecast")
 	check_eq(sandbox.grid._secondary_intent_overlays.size(),1,"grid renders original suggestion as secondary overlay")
 	var actual_overlay:Dictionary;var secondary:Dictionary=sandbox.grid._secondary_intent_overlays[0]
 	for row in sandbox.grid._intent_overlays:if int(row.actor_id)==companion:actual_overlay=row
@@ -757,6 +763,126 @@ func test_enemy_tap_targets_without_selecting_enemy_and_rejections_are_visible()
 	check(turn_summary!=null and not "원래 제안" in turn_summary.text,"clear removes dual turn summary")
 	check(selected_detail!=null and not "원래 제안" in selected_detail.text,"clear restores one automatic action detail")
 	sandbox.free(); return finish()
+
+
+func test_combat_defense_attack_preview_and_enemy_intent_are_mobile_readable() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var sandbox=_engaged_sandbox("LINE",viewport_size)
+		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
+		var enemy:=int(status.visible_enemy_ids[0])
+		check(_relocate_with_move_events(sandbox.session.sim,enemy,
+			sandbox.session.sim.world.entities[hero].position+Vector2i.RIGHT),
+			"%s enemy intent fixture adjacent"%viewport_size)
+		sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
+		var hold:=_button(sandbox,"ActorHold")
+		check(hold!=null and "방어" in hold.text and hold.custom_minimum_size.y>=44.0,
+			"%s defense is a named 44px action"%viewport_size)
+		check(hold!=null and "25%" in hold.tooltip_text and "200 시간" in hold.tooltip_text,
+			"%s defense tooltip exposes effect and duration"%viewport_size)
+		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
+		check(enemy_summary!=null and "[공격]" in enemy_summary.text \
+			and "공격 범위" in enemy_summary.text,
+			"%s visible enemy intent has action target context and Korean reason"%viewport_size)
+		var enemy_overlay:Dictionary={}
+		for overlay in sandbox.grid._intent_overlays:
+			if str(overlay.get("source",""))=="ENEMY_FORECAST":enemy_overlay=overlay;break
+		check(not enemy_overlay.is_empty() and enemy_overlay.type=="MELEE" \
+			and int(enemy_overlay.target_id)==hero,
+			"%s enemy intent target link reaches the protagonist"%viewport_size)
+		if not enemy_overlay.is_empty():
+			check(sandbox.grid.intent_draw_spec(enemy_overlay).visible,
+				"%s enemy intent is FOV-visible"%viewport_size)
+		var hero_hit:Rect2=sandbox.grid.actor_hit_rect(hero)
+		check_eq(sandbox.grid.actor_at_pointer(hero_hit.get_center()),hero,
+			"%s presentation overlays do not intercept actor hit testing"%viewport_size)
+		sandbox._on_actor(enemy);sandbox._refresh()
+		var summary:=sandbox.find_child("TurnSummary",true,false) as Label
+		check(summary!=null and "명중 95%" in summary.text and "적중 시 22 피해" in summary.text,
+			"%s target selection exposes hit chance and on-hit damage"%viewport_size)
+		var refreshed_hold:=_button(sandbox,"ActorHold")
+		check(sandbox.combat_action_dock.visible and refreshed_hold!=null,
+			"%s combat controls remain present after target selection"%viewport_size)
+		sandbox.free()
+	return finish()
+
+
+func test_solo_combat_mobile_hides_party_management_and_enters_without_formation() -> bool:
+	var manual_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(manual_session.commit_exploration_direction(Vector2i.RIGHT).accepted,
+		"solo manual fixture reaches contact")
+	check_eq(manual_session.party_status().safe_phase,"CONTACT","solo manual contact")
+	var manual=Sandbox.new();manual.size=Vector2(360,640)
+	manual.initialize_for_headless_test(manual_session,false)
+	var start:Button=_button(manual,"SoloCombatStart")
+	check(start!=null and start.custom_minimum_size.y>=44.0,
+		"manual solo contact has a 44px retry/start path")
+	check(manual.find_child("FormationControls",true,false)==null \
+		and manual.find_child("PresetWEDGE",true,false)==null \
+		and manual.grid._ghosts.is_empty(),"manual solo contact never exposes formations or ghosts")
+	_press(manual,"SoloCombatStart")
+	check_eq(manual.session.party_status().safe_phase,"ENGAGED","manual solo start enters combat")
+	manual.free()
+
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
+			"%s solo auto fixture reaches contact"%viewport_size)
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(session,true)
+		# An unattached Control resets to its minimum size while the headless UI is built.
+		# Restore the simulated viewport before checking the responsive spotlight layout.
+		sandbox.size=viewport_size;sandbox._refresh()
+		check_eq(session.party_status().safe_phase,"ENGAGED",
+			"%s CONTACT converges to ENGAGED in initial refresh"%viewport_size)
+		var deployed_step:int=int(session.sim.world.step_index)
+		var deployed_journal:int=session.command_journal.size()
+		sandbox._refresh();sandbox._refresh()
+		check_eq([session.sim.world.step_index,session.command_journal.size()],
+			[deployed_step,deployed_journal],"%s repeated refresh deploys exactly once"%viewport_size)
+		check(session.is_solo_combat() and session.party_cards().size()==1,
+			"%s product has one authoritative portrait"%viewport_size)
+		check(not sandbox.duel_lab_button.visible \
+			and sandbox.find_child("RosterManagement",true,false)==null \
+			and sandbox.find_child("RosterManagementTitle",true,false)==null,
+			"%s solo hides LAB rescue recruit exile management"%viewport_size)
+		check(sandbox.find_child("FormationControls",true,false)==null \
+			and sandbox.find_child("DeployConfirm",true,false)==null \
+			and sandbox.grid._ghosts.is_empty(),
+			"%s solo combat has no formation controls or ghost"%viewport_size)
+		check(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty(),
+			"%s solo has no companion speech"%viewport_size)
+		var hero:=int(session.party_status().protagonist_id)
+		var card:Button=_button(sandbox,"MemberCard%d"%hero)
+		var portrait:=card.find_child("Portrait",true,false) as Control
+		var hp:=card.find_child("MemberState",true,false) as Label
+		var emotion:=card.find_child("EmotionState",true,false) as Label
+		check(card.custom_minimum_size.x>=viewport_size.x-12.0 \
+			and portrait.custom_minimum_size.x>=88.0,
+			"%s solo spotlight naturally uses horizontal width"%viewport_size)
+		check(hp.get_theme_font_size("font_size")>=16 \
+			and emotion.get_theme_font_size("font_size")>=16,
+			"%s solo HP and state remain large"%viewport_size)
+		var hold:Button=_button(sandbox,"ActorHold")
+		check(hold!=null and hold.custom_minimum_size.y>=44.0 \
+			and "방어" in hold.text and "25%" in sandbox.action_feedback_label.text,
+			"%s solo defense is visible and explained"%viewport_size)
+		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
+		check(enemy_summary!=null and "주인공" in enemy_summary.text,
+			"%s enemy intent names the only target without party copy"%viewport_size)
+		var enemy:=int(session.party_status().visible_enemy_ids[0])
+		check(_relocate_with_move_events(session.sim,enemy,
+			session.sim.world.entities[hero].position+Vector2i.RIGHT),
+			"%s solo enemy adjacent"%viewport_size)
+		sandbox._refresh();sandbox._on_actor(enemy);sandbox._refresh()
+		var summary:=sandbox.find_child("TurnSummary",true,false) as Label
+		check(summary!=null and "명중 95%" in summary.text and "적중 시 22 피해" in summary.text,
+			"%s solo target tap exposes attack preview"%viewport_size)
+		var current:Dictionary=session.current_turn_preview()
+		check(current.accepted and current.actor_rows.size()==1 \
+			and int(current.actor_rows[0].actor_id)==hero,
+			"%s solo final plan contains protagonist only"%viewport_size)
+		sandbox.free()
+	return finish()
 
 func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800);sandbox.initialize_for_headless_test(Session.new())

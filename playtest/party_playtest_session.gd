@@ -22,6 +22,7 @@ const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
+const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
 const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
@@ -131,21 +132,25 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var candidate = SimulatorScript.create(15, 15, p_world_seed)
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
-	if showcase and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
-	if showcase and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
-	var hero_position := VisualTestMapScript.HERO_POSITION if showcase else Vector2i(7,7)
-	var narae_position := Vector2i(1,12) if showcase else Vector2i(6,7)
-	var miru_position := Vector2i(2,11) if showcase else Vector2i(7,6)
-	var enemy_position := VisualTestMapScript.ENEMY_POSITION if showcase else Vector2i(11,7)
+	var solo := p_scenario_id == SOLO_COMBAT_SCENARIO_ID
+	var showcase_layout:=VisualTestMapScript.uses_showcase_layout(p_scenario_id)
+	if showcase_layout and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
+	if showcase_layout and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
+	var hero_position := VisualTestMapScript.HERO_POSITION if showcase_layout else Vector2i(7,7)
+	var narae_position := Vector2i(1,12) if showcase_layout else Vector2i(6,7)
+	var miru_position := Vector2i(2,11) if showcase_layout else Vector2i(7,6)
+	var enemy_position := VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7)
 	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, ["party_member"], "human", "party")
-	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95, ["party_member"], "human", "party")
-	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105, ["party_member"], "goblin", "party")
+	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95,
+		["party_member"], "human", "party") if not solo else null
+	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105,
+		["party_member"], "goblin", "party") if not solo else null
 	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
 		["party_member", "recruitable"], "dwarf", "party") if showcase else null
 	var candidate_amphibian = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
 		["recruitable", "rescue_npc"], "amphibian", "neutral") if showcase else null
 	var enemy = candidate.world.add_entity("melee_enemy", "고블린", enemy_position, 60, ["party_enemy"], "goblin", "enemy")
-	if protagonist == null or narae == null or miru == null or enemy == null \
+	if protagonist == null or enemy == null or (not solo and (narae == null or miru == null)) \
 			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
 		return false
 	_configure_party_species_relations(candidate)
@@ -156,21 +161,25 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			candidate_amphibian.id):
 		return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
-	state.party_member_ids.append_array([protagonist.id, narae.id, miru.id])
+	state.party_member_ids.append(protagonist.id)
+	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	state.enemy_ids.append(enemy.id)
 	state.active_party_member_ids.clear()
-	state.active_party_member_ids.append_array([protagonist.id, narae.id, miru.id])
+	state.active_party_member_ids.append(protagonist.id)
+	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
 	state.group_anchor = protagonist.position
-	state.party_detection_radius = 3 if showcase else 4; state.enemy_detection_radius = 3
+	state.party_detection_radius = 3 if showcase_layout else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
-	state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
-	state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 1))
+	if not solo:
+		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
+		state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 1))
 	if showcase:
 		state.member_rows[candidate_dwarf.id] = MemberScript.new(candidate_dwarf.id, 3,
 			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 2))
 	state.enemy_busy_rows[enemy.id] = 0
-	narae.position = state.group_anchor; miru.position = state.group_anchor
+	if not solo:
+		narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
@@ -179,6 +188,10 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
 	return true
+
+
+func is_solo_combat()->bool:
+	return scenario_id==SOLO_COMBAT_SCENARIO_ID
 
 
 func _configure_party_species_relations(candidate) -> void:
@@ -239,32 +252,37 @@ func presentation_state() -> Dictionary:
 	var phase_id := str(status.safe_phase)
 	var mode := "EXPLORATION"
 	var banner := {"visible": true, "key": "exploration", "title": "탐험",
-		"subtitle": "파티가 한 무리로 이동합니다.", "tone": "CALM"}
+		"subtitle": "주인공이 홀로 던전을 탐색합니다." if is_solo_combat() \
+		else "파티가 한 무리로 이동합니다.", "tone": "CALM"}
 	var grid_style := {"style_id": "EXPLORATION", "tint_hex": "#ffffff",
 		"border_hex": "#617183", "vignette": false}
 	match phase_id:
 		"CONTACT":
 			mode = "ENCOUNTER"
 			banner = {"visible": true, "key": "encounter_contact", "title": "조우",
-				"subtitle": "전투 대형을 선택하세요.", "tone": "WARNING"}
+				"subtitle": "단독 전투를 시작합니다." if is_solo_combat() \
+				else "전투 대형을 선택하세요.", "tone": "WARNING"}
 			grid_style = {"style_id": "ENCOUNTER", "tint_hex": "#fff2d6",
 				"border_hex": "#e8b95c", "vignette": true}
 		"ENGAGED":
 			mode = "COMBAT"
 			banner = {"visible": true, "key": "combat_active", "title": "전투 중",
-				"subtitle": "파티 행동을 계획하고 한꺼번에 확정하세요.", "tone": "COMBAT"}
+				"subtitle": "주인공의 행동을 선택하세요." if is_solo_combat() \
+				else "파티 행동을 계획하고 한꺼번에 확정하세요.", "tone": "COMBAT"}
 			grid_style = {"style_id": "COMBAT", "tint_hex": "#ffe4dc",
 				"border_hex": "#ff776d", "vignette": true}
 		"REGROUP_READY":
 			mode = "REGROUP"
 			banner = {"visible": true, "key": "combat_victory", "title": "승리",
-				"subtitle": "파티가 자동으로 재집결합니다.", "tone": "VICTORY"}
+				"subtitle": "전투가 끝나 탐험으로 돌아갑니다." if is_solo_combat() \
+				else "파티가 자동으로 재집결합니다.", "tone": "VICTORY"}
 			grid_style = {"style_id": "REGROUP", "tint_hex": "#e5fff0",
 				"border_hex": "#62d98b", "vignette": false}
 		"GROUPED_COMPLETE":
 			mode = "EXPLORATION"
-			banner = {"visible": true, "key": "combat_victory_complete", "title": "승리 · 자동 재집결",
-				"subtitle": "탐험 재개", "tone": "VICTORY"}
+			banner = {"visible": true, "key": "combat_victory_complete",
+				"title":"승리 · 탐험 재개" if is_solo_combat() else "승리 · 자동 재집결",
+				"subtitle":"출구를 찾으세요." if is_solo_combat() else "탐험 재개", "tone": "VICTORY"}
 			grid_style = {"style_id": "VICTORY", "tint_hex": "#e5fff0",
 				"border_hex": "#62d98b", "vignette": true}
 		"PARTY_DEFEATED":
@@ -442,10 +460,11 @@ func observe_party_world() -> Dictionary:
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
+	var los_radius:=VisualTestMapScript.uses_showcase_layout(scenario_id)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
 		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225},
-		"visibility":{"mode":"LOS_RADIUS" if scenario_id == SHOWCASE_SCENARIO_ID else "FULL",
-			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if scenario_id == SHOWCASE_SCENARIO_ID else 15,
+		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
+			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
 			"memory_supported":false}}.duplicate(true)
 
 
@@ -1256,7 +1275,58 @@ func preview_actor_action(actor_id: int, action_type: String, destination: Array
 			"action": action if int(id) == actor_id else _overrides[id]})
 	var request = RequestScript.new(direct, overrides)
 	var preview: Dictionary = sim.preview_party_turn(request).to_dict().duplicate(true)
+	preview["selected_action_preview"] = _actor_row_presentation(
+		preview.get("actor_rows", []), actor_id)
 	return _feedback_dto(preview, action, request)
+
+
+func enemy_intent_forecasts() -> Array[Dictionary]:
+	# Forecasts are a presentation-only view of the exact selector used by the
+	# next enemy batch. They deliberately say "현재 예상": a committed player
+	# move may change the authoritative positions before that batch is evaluated.
+	var rows: Array[Dictionary] = []
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return rows
+	var state = sim.world.party_encounter
+	if state.safe_phase != "ENGAGED": return rows
+	var hero = sim.world.entities.get(state.protagonist_id)
+	if hero == null: return rows
+	var visible: Dictionary = VisualTestMapScript.visible_cells(
+		sim.world, hero.position, scenario_id)
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id := int(enemy_id_value)
+		var enemy = sim.world.entities.get(enemy_id)
+		if enemy == null or not visible.has(_position_key(enemy.position)): continue
+		var forecast: Dictionary = sim.party_coordinator.forecast_enemy_action(enemy_id)
+		if not bool(forecast.get("accepted", false)): continue
+		var target_id := int(forecast.target_id)
+		var target = sim.world.entities.get(target_id)
+		if target == null or not visible.has(_position_key(target.position)): continue
+		var action_type := str(forecast.action_type)
+		var headline := "%s → %s 공격" % [_name(enemy_id), _name(target_id)]
+		var target_role:="주인공" if is_solo_combat() else "가장 가까운 파티원"
+		var reason := "%s이 공격 범위 안에 있습니다."%target_role
+		if action_type == "MOVE":
+			headline = "%s → %s 접근" % [_name(enemy_id), _name(target_id)]
+			reason = "%s을 향해 한 칸 움직입니다."%target_role
+		elif action_type == "HOLD":
+			headline = "%s · 방어" % _name(enemy_id)
+			reason = "접근할 길이 막혀 자리를 지키며 방어합니다."
+		rows.append({"schema_version":1, "source":"ENEMY_FORECAST",
+			"source_label":"적 현재 예상", "source_color":"#ff756b",
+			"line_style":"DASHED_THIN", "marker_style":"CIRCLE",
+			"actor_id":enemy_id, "actor_name":_name(enemy_id),
+			"target_id":target_id, "target_name":_name(target_id),
+			"type":action_type, "type_label":{"HOLD":"방어", "MOVE":"이동",
+				"MELEE":"공격"}.get(action_type, "방어"),
+			"from_position":forecast.from_position.duplicate(true),
+			"destination":forecast.destination.duplicate(true),
+			"target_position":[target.position.x, target.position.y],
+			"headline":headline, "reason":reason,
+			"forecast_basis":"CURRENT_AUTHORITATIVE_STATE"})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.actor_id) < int(b.actor_id))
+	return rows.duplicate(true)
 
 
 func turn_intent_overlays() -> Array[Dictionary]:
@@ -1276,6 +1346,8 @@ func turn_intent_overlays() -> Array[Dictionary]:
 			"type": str(action.type), "type_label": str(action.type_label),
 			"destination": action.destination.duplicate(true), "target_id": int(action.target_id),
 			"target_position": action.target_position.duplicate(true), "reason": str(action.reason),
+			"attack_preview":action.get("attack_preview", null).duplicate(true) \
+				if action.get("attack_preview", null) is Dictionary else null,
 			"resolution_note":resolution_note,
 			"speech_headline":_companion_speech_headline(str(action.type),
 				str(action.source), resolution_note) if role == "COMPANION" else "",
@@ -1312,8 +1384,8 @@ func _companion_speech_headline(action_type: String, source: String,
 	if action_type == "MELEE": return "공격할게."
 	if action_type == "MOVE": return "이동할게."
 	if source == "OVERRIDE" or resolution_note == "destination_conflict_suggested_hold":
-		return "대기할게."
-	return "엄호할게."
+		return "방어할게."
+	return "방어할게."
 
 
 func _companion_speech_reason_summary(action_type: String, source: String,
@@ -1322,7 +1394,7 @@ func _companion_speech_reason_summary(action_type: String, source: String,
 	if resolution_note == "destination_conflict_suggested_hold": return "길이 겹쳐서"
 	if action_type == "MELEE": return "적이 가까워서"
 	if action_type == "MOVE": return "길이 열려서"
-	return "자리를 지키려고"
+	return "피해를 줄이려고"
 
 
 func turn_summary_lines() -> Array[String]:
@@ -1330,7 +1402,13 @@ func turn_summary_lines() -> Array[String]:
 	for row in turn_intent_overlays():
 		var detail := str(row.type_label)
 		if row.type == "MOVE": detail += " (%d,%d)" % [int(row.destination[0]), int(row.destination[1])]
-		elif row.type == "MELEE": detail += " %s" % _name(int(row.target_id))
+		elif row.type == "MELEE":
+			detail += " %s" % _name(int(row.target_id))
+			var attack_preview:Variant=row.get("attack_preview",null)
+			if attack_preview is Dictionary:
+				detail += " · 명중 %d%% · 적중 시 %d 피해" % [
+					int(attack_preview.get("hit_chance_percent",0)),
+					int(attack_preview.get("damage_on_hit",0))]
 		var line := "%s · %s: %s" % [str(row.actor_name), str(row.source_label), detail]
 		if row.automatic_suggestion is Dictionary:
 			line += " / 원래 제안: %s" % _overlay_action_text(row.automatic_suggestion)
@@ -1354,7 +1432,7 @@ func _overlay_suggestion(value: Variant, from_position: Array) -> Variant:
 func _overlay_action_text(action: Dictionary) -> String:
 	if str(action.type)=="MOVE":return "이동 (%d,%d)"%[int(action.destination[0]),int(action.destination[1])]
 	if str(action.type)=="MELEE":return "공격 %s"%str(action.get("target_name","적"))
-	return "대기"
+	return "방어"
 
 func _overlay_line_style(source: String) -> String:
 	return {"OVERRIDE":"SOLID_THICK","DIRECT":"SOLID","SUGGESTED":"DASHED_THIN"}.get(source,"SOLID")
@@ -1489,6 +1567,19 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	var dto: Dictionary = deployment_draft()
 	dto.erase("has_preview")
 	return dto.duplicate(true)
+
+
+func enter_solo_combat() -> Dictionary:
+	# SOLO_COMBAT_V1 still uses the canonical deployment step and journal entry;
+	# it only fixes the legal companion selection to the authoritative empty set.
+	if not is_solo_combat():return _rejection_dto("invalid_companion_ids")
+	var state=sim.world.party_encounter if sim!=null and sim.world!=null else null
+	if state==null or state.party_member_ids!=[state.protagonist_id] \
+			or state.active_party_member_ids!=[state.protagonist_id]:
+		return _rejection_dto("invalid_companion_ids")
+	var preview:Dictionary=preview_deployment("LINE",[])
+	if not bool(preview.get("accepted",false)):return preview
+	return commit_deployment()
 
 func commit_deployment() -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -2350,6 +2441,10 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			rows.append(_visual_effect_row(event, "SLASH", "slash", order,
 				"physical", int(event.magnitude), ""))
 			order += 1
+		elif event_type == "combat.attack_missed":
+			rows.append(_visual_effect_row(event, "MISS", "miss", order,
+				"physical", 0, "빗나감"))
+			order += 1
 		elif event_type.begins_with("combat.") and event_type.ends_with("_damage"):
 			var damage_type := str(event.data.get("damage_type", "physical"))
 			rows.append(_visual_effect_row(event, "HIT_FLASH", "hit_flash", order,
@@ -2376,6 +2471,14 @@ func _visual_effect_row(event, kind: String, suffix: String, order: int,
 		"world_position":[event.position.x,event.position.y], "damage_type":damage_type,
 		"magnitude":magnitude, "text":text}.duplicate(true)
 
+
+func _actor_row_presentation(rows: Variant, actor_id: int) -> Variant:
+	if not rows is Array: return null
+	for row in rows:
+		if row is Dictionary and int(row.get("actor_id", -1)) == actor_id:
+			return _action_presentation(row)
+	return null
+
 func _action_presentation(row: Variant) -> Variant:
 	if not row is Dictionary or not row.get("action") is Dictionary:
 		return null
@@ -2386,23 +2489,32 @@ func _action_presentation(row: Variant) -> Variant:
 	var action_type := str(action.get("type", "HOLD"))
 	var target_id := Int64CodecScript.parse(action.get("target_id", "-1"), "presentation target")
 	var destination: Array = action.get("destination", [-1,-1]).duplicate(true)
-	var action_text := "대기"
+	var action_text := "방어"
 	var target_name := ""
 	var actor_id := int(row.get("actor_id", -1))
 	var target_position := [-1, -1]
-	var reason := "상황을 지켜봅니다."
+	var reason := "200 시간 동안 물리 피해를 25% 줄이는 방어 자세를 취합니다."
+	var attack_preview = null
 	if action_type == "MOVE": action_text = "이동 (%d,%d)" % [int(destination[0]), int(destination[1])]
 	elif action_type == "MELEE":
 		target_name = _name(target_id)
 		action_text = "%s 공격" % target_name
 		target_position = [sim.world.entities[target_id].position.x, sim.world.entities[target_id].position.y] \
 			if sim.world.entities.has(target_id) else [-1, -1]
+		var assessment:Variant=row.get("combat_assessment",null)
+		if assessment is Dictionary:
+			attack_preview = {"schema_version":1,
+				"hit_chance_percent":int((int(assessment.get("hit_chance_milli",0))+5)/10),
+				"damage_on_hit":int(assessment.get("normal_final_damage",0)),
+				"bleed_chance_percent":int((int(assessment.get("bleed_chance_milli",0))+5)/10),
+				"target_guarded":bool(assessment.get("guarded",false)),
+				"guard_reduction":int(assessment.get("guard_reduction",0))}
 	if action_type == "MOVE":
 		reason = "목표에 접근할 길을 골랐습니다." if source == "SUGGESTED" else "선택한 칸으로 이동합니다."
 	elif action_type == "MELEE":
-		reason = "인접한 적을 공격할 수 있습니다."
+		reason = "인접한 적을 공격합니다. 명중 판정 뒤 피해량은 고정됩니다."
 	elif source == "SUGGESTED":
-		reason = "위험과 거리를 보고 자리를 지킵니다."
+		reason = "위험과 거리를 보고 방어 자세를 취합니다."
 	if source == "OVERRIDE": reason = "자동 제안 대신 개별 지시를 따릅니다."
 	var resolution_note := str(row.get("resolution_note", ""))
 	if resolution_note == "destination_conflict_suggested_hold":
@@ -2414,16 +2526,17 @@ func _action_presentation(row: Variant) -> Variant:
 		var suggested_destination: Array = suggested.get("destination", [-1, -1]).duplicate(true)
 		var suggested_target := Int64CodecScript.parse(suggested.get("target_id", "-1"), "suggestion target")
 		automatic_suggestion = {"type": suggested_type,
-			"type_label": {"HOLD":"대기", "MOVE":"이동", "MELEE":"공격"}.get(suggested_type, "대기"),
+			"type_label": {"HOLD":"방어", "MOVE":"이동", "MELEE":"공격"}.get(suggested_type, "방어"),
 			"destination": suggested_destination, "target_id": suggested_target,
 			"target_name": _name(suggested_target) if suggested_target > 0 else ""}
 	if source != "OVERRIDE": automatic_suggestion = null
 	return {"source": source, "source_label": source_label, "source_color": source_color,
-		"type": action_type, "type_label": {"HOLD":"대기", "MOVE":"이동", "MELEE":"공격"}.get(action_type, "대기"),
+		"type": action_type, "type_label": {"HOLD":"방어", "MOVE":"이동", "MELEE":"공격"}.get(action_type, "방어"),
 		"actor_id": actor_id, "destination": destination, "target_id": target_id,
 		"target_name": target_name, "target_position": target_position, "reason": reason,
 		"text": "%s · %s" % [source_label, action_text], "overridden": bool(row.get("overridden", false)),
 		"automatic_suggestion": automatic_suggestion,
+		"attack_preview":attack_preview,
 		"resolution_note": resolution_note}.duplicate(true)
 
 func _emotion_presentation(member, entity) -> Dictionary:
@@ -2581,18 +2694,28 @@ func _event_message(event) -> String:
 				_subject(actor),int((event.data.get("probability_milli",0)+5)/10),
 				int(event.data.get("roll_milli",-1))]
 		"relationship.aid_recorded": return "%s 구조받은 일을 고마운 기억으로 남겼다." % _subject(actor)
-		"encounter.detected": return "고블린과 파티가 서로를 발견했다."
-		"encounter.party_ambush": return "파티가 고블린보다 먼저 기척을 알아챘다."
-		"encounter.enemy_ambush": return "고블린이 숨어 있던 곳에서 파티를 덮쳤다."
+		"encounter.detected": return "고블린과 주인공이 서로를 발견했다." if is_solo_combat() else "고블린과 파티가 서로를 발견했다."
+		"encounter.party_ambush": return "주인공이 고블린보다 먼저 기척을 알아챘다." if is_solo_combat() else "파티가 고블린보다 먼저 기척을 알아챘다."
+		"encounter.enemy_ambush": return "고블린이 숨어 있던 곳에서 주인공을 덮쳤다." if is_solo_combat() else "고블린이 숨어 있던 곳에서 파티를 덮쳤다."
 		"party.member_deployed": return "%s 대형에 자리를 잡았다." % _subject(actor)
-		"party.deployment_completed": return "파티가 전투 대형을 갖췄다."
+		"party.deployment_completed": return "주인공이 전투 태세를 갖췄다." if is_solo_combat() else "파티가 전투 대형을 갖췄다."
 		"action.move": return "%s (%d,%d)로 움직였다." % [_subject(actor),event.position.x,event.position.y]
 		"action.melee_attack": return "%s %s 공격했다." % [_subject(actor),_object(target)]
+		"combat.attack_missed":
+			var attacker_id:=int(event.instigator_id)
+			if attacker_id<=0 and int(event.cause_id)>0:
+				var attack=sim.world.event_by_id(int(event.cause_id))
+				if attack!=null and str(attack.type)=="action.melee_attack":
+					attacker_id=int(attack.actor_id)
+			if attacker_id > 0:
+				return "%s 공격이 %s에게 빗나갔다." % [
+					_possessive(_name(attacker_id)), target]
+			return "%s 향한 공격이 빗나갔다." % _object(target)
 		"party.override_committed": return "%s 지시한 행동으로 계획을 바꿨다." % _topic(actor)
-		"party.victory": return "마지막 적이 쓰러졌다. 파티가 즉시 한곳으로 모이기 시작했다."
-		"party.regroup_started": return "주인공이 동료들을 불러 모았다."
+		"party.victory": return "마지막 적이 쓰러졌다. 다시 탐험할 수 있다." if is_solo_combat() else "마지막 적이 쓰러졌다. 파티가 즉시 한곳으로 모이기 시작했다."
+		"party.regroup_started": return "주인공이 전투 태세를 풀었다." if is_solo_combat() else "주인공이 동료들을 불러 모았다."
 		"party.member_regrouped": return "%s 주인공 곁으로 돌아왔다." % _subject(actor)
-		"party.regroup_completed": return "전투가 끝났다. 파티가 자동으로 재집결해 다시 한 무리로 탐험을 시작한다."
+		"party.regroup_completed": return "전투가 끝났다. 주인공이 탐험을 다시 시작한다." if is_solo_combat() else "전투가 끝났다. 파티가 자동으로 재집결해 다시 한 무리로 탐험을 시작한다."
 		"party.companion_dismissed":
 			if str(event.data.get("condition_band",""))=="ENDANGERED":
 				return "%s 부상당한 채 버려져 깊은 원한을 품었다."%_subject(target)
@@ -2605,7 +2728,7 @@ func _event_message(event) -> String:
 			if str(event.data.get("behavior",""))=="RECOVER":return "%s 안전한 곳에서 몸을 추슬렀다."%_subject(target)
 			return "%s 살아남기 위해 안전한 곳을 찾았다."%_subject(target)
 		"party.exile_died": return "%s 홀로 버티지 못하고 숨졌다."%_subject(target)
-		"action.hold": return "%s 자리를 지켰다." % _subject(actor)
+		"action.hold": return "%s 방어 자세를 취했다." % _subject(actor)
 		"entity.died":
 			if int(event.instigator_id) > 0:
 				return "%s 공격으로 %s 쓰러졌다." % [

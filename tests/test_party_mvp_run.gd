@@ -148,6 +148,92 @@ func test_showcase_entry_combat_reward_exit_complete_e2e() -> bool:
 	return finish()
 
 
+func test_solo_combat_product_contract_replays_completes_and_restarts_exactly() -> bool:
+	var manifest:Dictionary=VisualMap.run_manifest(Session.SOLO_COMBAT_SCENARIO_ID)
+	check_eq([manifest.scenario_id,manifest.reward.reward_id],
+		["SOLO_COMBAT_V1","SOLO_COMBAT_VICTORY_TOKEN"],"solo run manifest identity")
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
+	check(session.is_solo_combat(),"solo session capability explicit")
+	check_eq([state.party_member_ids,state.active_party_member_ids,state.member_rows.keys()],
+		[[hero],[hero],[hero]],"solo authoritative roster contains only protagonist")
+	check_eq(session.sim.world.entities.size(),2,"solo bootstrap creates only hero and enemy")
+	check_eq([session.party_cards().size(),session.available_companion_ids(),
+		session.rescue_candidate_ids(),session.recruitable_companions()],
+		[1,[],[],[]],"companion rescue and roster surfaces are empty")
+	var observed_actor_ids:Array=[]
+	for cell in session.observe_party_world().cells:
+		for actor in cell.actors:observed_actor_ids.append(int(actor.entity_id))
+	observed_actor_ids.sort()
+	check_eq(observed_actor_ids,[hero,int(state.enemy_ids[0])],
+		"visible solo world contains hero and enemy only")
+	var route:Dictionary=session.preview_exploration_route(Vector2i(9,6))
+	var follow:Dictionary=session.exploration_companion_follow_plan(route)
+	check(route.accepted and follow.accepted and follow.companion_rows.is_empty(),
+		"solo route has no hidden follower projection")
+	check(_advance_route(session,Vector2i(9,6),32),"solo reaches contact canonically")
+	check_eq(session.party_status().safe_phase,"CONTACT","solo contact is explicit before facade entry")
+	var deployment:Dictionary=session.enter_solo_combat()
+	check(deployment.accepted,"solo canonical zero-companion deployment commits")
+	check_eq([session.party_status().safe_phase,session.party_status().formation_id],
+		["ENGAGED","LINE"],"solo deployment enters combat without relaxing formation invariant")
+	var deployed_members:=0;var completed_event=null
+	for event_id in deployment.event_ids:
+		var event=session.sim.world.event_by_id(int(event_id))
+		if event==null:continue
+		if str(event.type)=="party.member_deployed":deployed_members+=1
+		if str(event.type)=="party.deployment_completed":completed_event=event
+	check_eq(deployed_members,0,"solo deployment emits no companion member event")
+	check(completed_event!=null and completed_event.data.companion_ids==[],
+		"deployment completion records canonical empty companion set")
+	var journal_after_deploy:Array=session.command_journal.duplicate(true)
+	var repeat:Dictionary=session.enter_solo_combat()
+	check(not repeat.accepted,"repeated solo deployment rejects")
+	check_eq(session.command_journal,journal_after_deploy,"repeated refresh/deploy cannot duplicate journal")
+	var planning:Dictionary=session.prepare_auto_combat_plan()
+	check(planning.active and planning.placeholder \
+		and planning.preview.actor_rows.size()==1 \
+		and int(planning.preview.actor_rows[0].actor_id)==hero,
+		"solo placeholder evaluates exactly one protagonist row")
+	check(session.companion_speech_bubbles().is_empty() \
+		and session.turn_intent_overlays().is_empty(),
+		"solo placeholder exposes no autonomous companion action or speech")
+	var forecasts:Array=session.enemy_intent_forecasts()
+	check_eq(forecasts.size(),1,"solo visible enemy exposes one forecast")
+	if not forecasts.is_empty():check_eq(int(forecasts[0].target_id),hero,
+		"enemy forecast can target only protagonist")
+	check(_round_trip_matches(session),"solo ENGAGED save load replay exact")
+	var tampered:Dictionary=JSON.parse_string(session.save_session_json())
+	tampered.scenario_id=Session.SHOWCASE_SCENARIO_ID
+	var tamper_target=Session.new(9,10,Session.SOLO_COMBAT_SCENARIO_ID)
+	var tamper_before:String=tamper_target.save_session_json()
+	var tamper_result:Dictionary=tamper_target.load_session_json(JSON.stringify(tampered))
+	check(not tamper_result.accepted,"known scenario swap rejects solo snapshot")
+	check_eq(tamper_target.save_session_json(),tamper_before,"solo scenario tamper is transactional")
+	check(_resolve_engaged_encounter(session,32),"solo encounter clears within turn limit")
+	check_eq([session.run_progress().run_state,session.run_progress().reward.granted,
+		session.run_progress().exit.open],["EXIT_OPEN",true,true],
+		"solo victory grants reward and opens exit")
+	var party_actor_ids:Dictionary={hero:true}
+	for event in session.sim.world.events:
+		if int(event.actor_id)>0 and session.sim.world.entities.has(int(event.actor_id)) \
+				and str(session.sim.world.entities[int(event.actor_id)].faction_id)=="party":
+			party_actor_ids[int(event.actor_id)]=true
+	check_eq(party_actor_ids.keys(),[hero],"solo history contains no hidden companion actor")
+	check(bool(_advance_to_complete(session,VisualMap.EXIT_POSITION,32).get("ok",false)),
+		"solo reaches open exit")
+	check_eq(session.run_progress().run_state,"COMPLETE","solo run complete")
+	check(_round_trip_matches(session),"solo COMPLETE save load replay exact")
+	var expected=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var restarted:Dictionary=session.restart_same_run()
+	check(restarted.accepted,"solo complete run restarts")
+	check_eq([session.world_seed,session.personality_seed,session.scenario_id],
+		[44,20260828,"SOLO_COMBAT_V1"],"solo restart preserves exact identity")
+	check_eq(session.sim.snapshot(),expected.sim.snapshot(),"solo restart rebuilds exact initial snapshot")
+	check(session.command_journal.is_empty(),"solo restart clears journal")
+	return finish()
+
+
 func test_exit_open_and_complete_save_load_replay_exactly() -> bool:
 	var source = Session.new(44,20260828,"SHOWCASE_V1")
 	check(_clear_showcase_encounter(source), "save fixture reaches EXIT_OPEN")
@@ -215,7 +301,11 @@ func _clear_showcase_encounter(session) -> bool:
 		deployed = bool(session.commit_deployment().get("accepted",false))
 		break
 	if not deployed: return false
-	for _turn in range(32):
+	return _resolve_engaged_encounter(session,32)
+
+
+func _resolve_engaged_encounter(session,turn_limit:int) -> bool:
+	for _turn in range(turn_limit):
 		var status: Dictionary = session.party_status()
 		if status.safe_phase == "GROUPED_COMPLETE": return true
 		if status.safe_phase != "ENGAGED": return false
