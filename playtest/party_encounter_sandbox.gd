@@ -60,6 +60,7 @@ var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
 var member_detail_close:Button
 var member_detail_dismiss:Button
+var member_detail_candidate_action:Button
 var member_detail_entity_id:int=-1
 var _pending_card_pointer:Dictionary={}
 var _last_card_tap_id:=-1
@@ -232,6 +233,11 @@ func _build_member_detail_modal()->void:
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_dismiss.pressed.connect(_on_member_detail_dismiss);member_detail_dismiss.visible=false
 	stack.add_child(member_detail_dismiss)
+	member_detail_candidate_action=Button.new();member_detail_candidate_action.name="MemberDetailCandidateAction"
+	member_detail_candidate_action.custom_minimum_size=Vector2(160,TOUCH_TARGET)
+	member_detail_candidate_action.add_theme_font_size_override("font_size",FONT_BODY)
+	member_detail_candidate_action.pressed.connect(_on_member_detail_candidate_action)
+	member_detail_candidate_action.visible=false;stack.add_child(member_detail_candidate_action)
 
 func _layout_floating_surfaces()->void:
 	if member_detail_panel!=null:
@@ -650,21 +656,54 @@ func _exploration_deck()->void:
 
 func _add_recruitment_candidates()->void:
 	if session==null or not session.has_method("recruitable_companions"):return
+	var status:Dictionary=session.party_status()
+	var active_ids:Variant=status.get("party_member_ids",[])
+	var exiled_ids:Variant=status.get("exiled_member_ids",[])
+	var management_title:=_add_notice("동료 관리 모드 · %d/%d · 완전 이탈 %d"%[
+		active_ids.size() if active_ids is Array else 0,SessionScript.ACTIVE_PARTY_LIMIT,
+		exiled_ids.size() if exiled_ids is Array else 0],"RosterManagementTitle",FONT_KEY)
+	var management:=VBoxContainer.new();management.name="RosterManagement"
+	management.add_theme_constant_override("separation",4);deck.add_child(management)
+	# The actionable rescue row gets the first scroll viewport; active companions
+	# are already visible as portrait cards and remain dismissible from detail.
+	deck.move_child(management,management_title.get_index())
 	var candidate_rows:Variant=session.call("recruitable_companions")
 	if not candidate_rows is Array or candidate_rows.is_empty():return
 	for value in candidate_rows:
 		if not value is Dictionary:continue
 		var row:Dictionary=value
+		var rescue_state:=str(row.get("rescue_state","AVAILABLE"))
+		# Legacy direct-recruit fixtures remain available to core regression tests,
+		# but product controls only expose the relationship-gated rescue story.
+		if rescue_state=="AVAILABLE":continue
 		var line:=HBoxContainer.new();line.name="RecruitCandidate%d"%int(row.get("entity_id",-1))
-		line.custom_minimum_size.y=TOUCH_TARGET;line.add_theme_constant_override("separation",6);deck.add_child(line)
+		line.custom_minimum_size.y=60;line.add_theme_constant_override("separation",6);management.add_child(line)
 		var label:=Label.new();label.name="RecruitCandidateLabel";label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		label.add_theme_font_size_override("font_size",FONT_AUX);label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","동료"))]
+		label.add_theme_font_size_override("font_size",FONT_AUX);label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		if rescue_state=="COLLAPSED_STORY":
+			label.text="%s · 쓰러짐(사망 아님)\n한 턴 안정화"%str(row.get("display_name","동료"))
+		elif bool(row.get("decision_available",false)):
+			var recruitment:Dictionary=row.get("recruitment",{}) if row.get("recruitment",{}) is Dictionary else {}
+			label.text="%s · 영입 수락 %d%%\n%s"%[str(row.get("display_name","동료")),
+				int(recruitment.get("probability_percent",0)),_recruitment_reason_summary(recruitment)]
+		else:
+			label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","동료"))]
 		label.tooltip_text=str(row.get("message",""));label.mouse_filter=Control.MOUSE_FILTER_IGNORE;line.add_child(label)
-		var recruit:=_add_button(line,"영입","RecruitMember%d"%int(row.get("entity_id",-1)),
-			_on_recruit_companion.bind(int(row.get("entity_id",-1))))
-		recruit.custom_minimum_size=Vector2(72,TOUCH_TARGET);recruit.disabled=not bool(row.get("can_recruit",false))
-		recruit.tooltip_text=str(row.get("message",""))
+		if rescue_state=="COLLAPSED_STORY":
+			var stabilize:=_add_button(line,"안정화","StabilizeMember%d"%int(row.get("entity_id",-1)),
+				_on_stabilize_candidate.bind(int(row.get("entity_id",-1))))
+			stabilize.custom_minimum_size=Vector2(84,TOUCH_TARGET)
+			stabilize.size_flags_horizontal=Control.SIZE_SHRINK_END
+			stabilize.disabled=not bool(row.get("can_stabilize",false))
+			stabilize.tooltip_text=str(row.get("stabilization",{}).get("message",row.get("message","")))
+		else:
+			var recruit_text:="제안" if bool(row.get("decision_available",false)) else "영입"
+			var recruit:=_add_button(line,recruit_text,"RecruitMember%d"%int(row.get("entity_id",-1)),
+				_on_recruit_companion.bind(int(row.get("entity_id",-1))))
+			recruit.custom_minimum_size=Vector2(72,TOUCH_TARGET);recruit.disabled=not bool(row.get("can_recruit",false))
+			recruit.size_flags_horizontal=Control.SIZE_SHRINK_END
+			recruit.tooltip_text=str(row.get("message",""))
 
 func _run_complete_deck(progress:Dictionary)->void:
 	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
@@ -818,6 +857,10 @@ func _open_member_detail(member_id:int)->void:
 		var assessment:Dictionary=session.roster_change_assessment("DISMISS",member_id)
 		member_detail_dismiss.disabled=not bool(assessment.get("accepted",false))
 		member_detail_dismiss.tooltip_text=str(assessment.get("message",""))
+	var can_show_candidate:=bool(detail.get("recruitable_member",false))
+	member_detail_candidate_action.visible=can_show_candidate
+	if can_show_candidate:
+		_configure_candidate_detail_action(detail)
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
 	var route_state:Dictionary=session.exploration_route_state()
@@ -852,14 +895,82 @@ func _on_member_detail_dismiss()->void:
 	notice_text="동료를 파티에서 추방했습니다.";action_feedback_text=notice_text
 	_cancel_auto_pending(true);_request_refresh()
 
+func _configure_candidate_detail_action(detail:Dictionary)->void:
+	var story_state:=str(detail.get("rescue_story_state",""))
+	if story_state=="COLLAPSED_STORY":
+		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
+		member_detail_candidate_action.text="상처 안정화 · %d 시간"%int(rescue.get("time_cost",0))
+		member_detail_candidate_action.disabled=not bool(rescue.get("accepted",false))
+		member_detail_candidate_action.tooltip_text=str(rescue.get("message","쓰러진 인물 곁에서 도울 수 있습니다."));return
+	var recruitment:Dictionary=detail.get("recruitment_assessment",{}) if detail.get("recruitment_assessment",{}) is Dictionary else {}
+	if not recruitment.is_empty():
+		member_detail_candidate_action.text="영입 제안 · 수락 %d%%"%int(recruitment.get("probability_percent",0))
+		member_detail_candidate_action.disabled=not bool(recruitment.get("accepted",false))
+		member_detail_candidate_action.tooltip_text=_recruitment_reason_summary(recruitment);return
+	member_detail_candidate_action.text="영입 제안 불가"
+	member_detail_candidate_action.disabled=true
+	member_detail_candidate_action.tooltip_text="먼저 구조와 안정화를 완료해야 합니다."
+
+func _on_member_detail_candidate_action()->void:
+	if member_detail_entity_id<=0:return
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	var result:Dictionary
+	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
+		result=session.stabilize_recruit_candidate(member_detail_entity_id)
+	else:
+		result=session.offer_recruitment(member_detail_entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","처리할 수 없습니다."));action_feedback_text=notice_text
+		_open_member_detail(member_detail_entity_id);_request_refresh();return
+	_clear_roster_change_transients();_close_member_detail()
+	if bool(result.get("joined",false)):
+		notice_text="영입 제안을 받아들여 새 동료가 합류했습니다."
+	elif bool(result.get("resolved",false)):
+		notice_text="영입 제안을 거절했습니다. 사건 기록에 이유와 판정을 남겼습니다."
+	else:
+		notice_text="상처를 안정화했습니다. 이제 영입 가능성을 확인할 수 있습니다."
+	action_feedback_text=notice_text;_cancel_auto_pending(true);_request_refresh()
+
 func _on_recruit_companion(entity_id:int)->void:
-	var result:Dictionary=session.recruit_companion(entity_id)
+	var result:Dictionary=session.offer_recruitment(entity_id)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","영입할 수 없습니다."));action_feedback_text=notice_text
 	else:
-		notice_text="새 동료가 파티에 합류했습니다.";action_feedback_text=notice_text
+		notice_text="새 동료가 파티에 합류했습니다." if bool(result.get("joined",true)) \
+			else "영입 제안을 거절했습니다. 판정과 이유를 사건 기록에 남겼습니다."
+		action_feedback_text=notice_text
 		_clear_roster_change_transients()
 	_cancel_auto_pending(true);_request_refresh()
+
+func _on_stabilize_candidate(entity_id:int)->void:
+	var result:Dictionary=session.stabilize_recruit_candidate(entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","안정화할 수 없습니다."))
+	else:
+		notice_text="상처를 안정화했습니다. 수락 가능성과 판단 근거가 공개되었습니다."
+		_clear_roster_change_transients()
+	action_feedback_text=notice_text;_cancel_auto_pending(true);_request_refresh()
+
+func _on_quick_dismiss_companion(entity_id:int)->void:
+	var result:Dictionary=session.dismiss_companion(entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","추방할 수 없습니다."))
+	else:
+		notice_text="동료가 파티에서 완전히 이탈했습니다."
+		selected_member_id=int(session.party_status().protagonist_id)
+		_clear_roster_change_transients()
+	action_feedback_text=notice_text;_cancel_auto_pending(true);_request_refresh()
+
+func _recruitment_reason_summary(assessment:Dictionary)->String:
+	var parts:Array[String]=[]
+	for row in assessment.get("reasons",[]):
+		if row is Dictionary:
+			parts.append(str({"SPECIES_AFFINITY":"종족 호감","SPECIES_DISTRUST":"종족 경계",
+				"SPECIES_WARY":"종족 차이","RESCUED":"구조를 기억함",
+				"PERSONAL_AFFECTION":"개인적 감사","SURVIVAL_THREAT":"생존이 절실함"}
+				.get(str(row.get("code","")),row.get("label",""))))
+		if parts.size()>=2:break
+	return " · ".join(parts) if not parts.is_empty() else str(assessment.get("message",""))
 
 func _clear_roster_change_transients()->void:
 	route_generation+=1;route_continue_pending=false
@@ -1073,6 +1184,13 @@ func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
+	if status.view_mode=="EXPLORATION" and entity_id in status.get("rescue_candidate_ids",[]):
+		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
+		_open_member_detail(entity_id);return
+	if status.view_mode=="EXPLORATION" and entity_id in status.get("roster_member_ids",[]) \
+			and entity_id not in status.get("party_member_ids",[]):
+		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
+		_open_member_detail(entity_id);return
 	if status.view_mode=="EXPLORATION" and entity_id!=int(status.protagonist_id) \
 			and entity_id in status.party_member_ids:
 		# Grouped companions are presentation-only followers during exploration.
@@ -1368,6 +1486,19 @@ func _route_goal(value:Dictionary)->Vector2i:
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
 	lines.append("HP %d/%d · 스트레스 %d"%[int(detail.get("health",0)),int(detail.get("max_health",0)),int(detail.get("stress",0))])
+	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
+		lines.append("생명 상태: 쓰러짐(DOWNED) · 사망이 아닙니다.")
+		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
+		lines.append("도움: 곁에서 %d 시간을 들이면 상처를 안정화합니다."%int(rescue.get("time_cost",0)))
+	var recruitment:Dictionary=detail.get("recruitment_assessment",{}) if detail.get("recruitment_assessment",{}) is Dictionary else {}
+	if not recruitment.is_empty():
+		var roll:=int(recruitment.get("roll_milli",-1))
+		lines.append("영입 수락 가능성: %d%% · %s"%[
+			int(recruitment.get("probability_percent",0)),
+			("판정값 %d"%roll) if roll>=0 else "파티 여석이 생기면 판정"])
+		for reason_index in range(mini(3,recruitment.get("reasons",[]).size())):
+			var reason:Variant=recruitment.reasons[reason_index]
+			if reason is Dictionary:lines.append("· "+str(reason.get("label","")))
 	var ready_text:=str(detail.get("readiness","행동 준비"));var remaining:=int(detail.get("remaining_time",0))
 	if remaining>0:ready_text+=" · %d 시간 남음"%remaining
 	lines.append("준비: %s · 상태: %s"%[ready_text,_presence(str(detail.get("presence","GROUPED")))])

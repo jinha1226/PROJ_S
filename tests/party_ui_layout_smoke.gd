@@ -80,9 +80,11 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 func _roster_lifecycle_layout(viewport_size:Vector2)->void:
 	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
 	var dismissed:=int(state.party_member_ids[1])
-	var candidate:=int(session.party_status().recruitable_member_ids[0])
+	var candidate:=int(session.party_status().rescue_candidate_ids[0])
 	if not session.dismiss_companion(dismissed).accepted:
 		failures.append("%s roster layout dismiss rejected"%viewport_size);return
+	if not session.stabilize_recruit_candidate(candidate).accepted:
+		failures.append("%s rescue stabilization rejected"%viewport_size);return
 	var sandbox=Sandbox.new();sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(session);sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	sandbox.size=viewport_size;root.add_child(sandbox);await process_frame;await process_frame

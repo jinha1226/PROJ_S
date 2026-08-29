@@ -9,8 +9,10 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
 	var hero:=int(state.protagonist_id);var narae:=int(state.party_member_ids[1]);var miru:=int(state.party_member_ids[2])
 	var candidates:Array=session.party_status().recruitable_member_ids
-	check_eq(candidates.size(),2,"showcase starts with two distinct recruitment candidates")
-	var borin:=int(candidates[0]);var sera:=int(candidates[1])
+	var rescue_candidates:Array=session.party_status().rescue_candidate_ids
+	check_eq([candidates.size(),rescue_candidates.size()],[1,1],
+		"showcase separates legacy fixture candidate from one world rescue NPC")
+	var borin:=int(candidates[0]);var sera:=int(rescue_candidates[0])
 	check(str(session.sim.world.entities[borin].display_name)!=str(session.sim.world.entities[sera].display_name) \
 		and str(session.sim.world.entities[borin].species_id)!=str(session.sim.world.entities[sera].species_id),
 		"candidate identities and species differ")
@@ -40,9 +42,30 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 	check(session.recruit_companion(borin).accepted,"distinct candidate recruited")
 	check_eq([session.party_cards().size(),state.active_party_member_ids,state.member(borin).presence],
 		[3,[hero,miru,borin],"GROUPED"],"candidate joins active party")
-	check_eq(session.recruit_companion(sera).reason,"party_full","full party rejects remaining candidate")
+	check_eq(session.recruit_companion(sera).reason,"recruitment_offer_required",
+		"direct recruit cannot bypass rescue judgment even while party is full")
+	check_eq(session.sim.world.combatant_states[sera].life_state,"ACTIVE",
+		"rescue story never weakens the canonical combat life invariant")
+	var rescue_before:=session.rescue_assessment(sera)
+	check(rescue_before.accepted and rescue_before.time_cost==100,
+		"adjacent collapsed non-hostile NPC exposes one-turn stabilization")
+	check(session.stabilize_recruit_candidate(sera).accepted,
+		"help action advances canonical time and stabilizes candidate")
+	check_eq(session.sim.world.combatant_states[sera].life_state,"ACTIVE",
+		"stabilization changes story state without combat lifecycle mutation")
+	var full_decision:=session.recruitment_assessment(sera)
+	check(not full_decision.accepted and full_decision.reason=="party_full" \
+		and int(full_decision.probability_milli)>0 and int(full_decision.roll_milli)==-1 \
+		and str(full_decision.key_hash).is_empty(),
+		"full party blocks offer and does not consume or expose the stable roll")
 	check(session.dismiss_companion(miru).accepted,"active companion can be permanently exiled")
-	check(session.recruit_companion(sera).accepted,"second distinct candidate fills freed slot")
+	var open_decision:=session.recruitment_assessment(sera)
+	check(open_decision.accepted and open_decision.would_accept \
+		and absi(int(open_decision.terms.species_prior)) \
+			> absi(int(open_decision.terms.personality)),
+		"vacancy opens offer and species prior dominates personality input")
+	var offered:=session.offer_recruitment(sera)
+	check(offered.accepted and offered.joined,"rescued candidate accepts stable offer and fills freed slot")
 	check(session.dismiss_companion(borin).accepted,"recruited candidate can later be exiled")
 	check(session.recruitable_companions().is_empty(),"candidate pool exhausts without recycling exiles")
 	check_eq(session.recruit_companion(borin).reason,"companion_not_recruitable","candidate exile is permanent")
@@ -64,6 +87,66 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 		"party_roster_unsafe_phase","contact rejects roster change")
 	check("영구히 추방" in JSON.stringify(session.recent_event_log(12)) \
 		and "새로 합류" in JSON.stringify(session.recent_event_log(12)),"roster event log states permanent/new semantics")
+	return finish()
+
+
+func test_downed_rescue_recruitment_refusal_is_visible_pure_stable_and_replay_exact() -> bool:
+	var session=Session.new(7,20260828,"SHOWCASE_V1")
+	var state=session.sim.world.party_encounter
+	var target:=int(session.party_status().rescue_candidate_ids[0])
+	check_eq([session.sim.world.entities[target].health,
+		session.sim.world.combatant_states[target].life_state,
+		session.rescue_story_state(target)],[18,"ACTIVE","COLLAPSED_STORY"],
+		"wounded non-hostile is an ACTIVE world NPC with event-derived collapsed pose")
+	var observed:=false
+	for cell in session.observe_party_world().cells:
+		for actor in cell.actors:
+			if int(actor.entity_id)==target:
+				observed=str(actor.life_state)=="DOWNED" \
+					and str(actor.authoritative_life_state)=="ACTIVE" and not bool(actor.is_enemy)
+	check(observed,"visible FOV DTO exposes collapsed pose without lying about combat life")
+	var pure_snapshot=session.sim.snapshot();var pure_journal=session.command_journal.duplicate(true)
+	var first_rescue:=session.rescue_assessment(target)
+	var second_rescue:=session.rescue_assessment(target)
+	check_eq(first_rescue,second_rescue,"stabilization assessment is stable")
+	check_eq([session.sim.snapshot(),session.command_journal],[pure_snapshot,pure_journal],
+		"stabilization assessment is world/journal pure")
+	var stabilized:=session.stabilize_recruit_candidate(target)
+	check(stabilized.accepted and stabilized.consumes_time \
+		and stabilized.start_time==0 and stabilized.end_time==100,
+		"stabilization consumes one explicit deterministic turn")
+	var relation:Dictionary=session.sim.relationships.effective_relation(target,state.protagonist_id)
+	check_eq([relation.species_base.base_trust,relation.gratitude],[-30,70],
+		"rescue records personal aid without erasing species prior")
+	check(session.dismiss_companion(int(state.active_party_member_ids[1])).accepted,
+		"vacancy opened through existing permanent exile path")
+	var decision_a:=session.recruitment_assessment(target)
+	var decision_b:=session.recruitment_assessment(target)
+	check_eq(decision_a,decision_b,"recruit probability and keyed roll are stable")
+	check(decision_a.accepted and not decision_a.would_accept \
+		and int(decision_a.roll_milli)>=int(decision_a.probability_milli),
+		"seed-seven fixture deterministically refuses")
+	check(absi(int(decision_a.terms.species_prior))>absi(int(decision_a.terms.rescued)) \
+		and absi(int(decision_a.terms.species_prior))>absi(int(decision_a.terms.personality)),
+		"species prior is the dominant single score term")
+	var offered:=session.offer_recruitment(target)
+	check(offered.accepted and offered.resolved and not offered.joined,
+		"refusal is a committed social outcome rather than a technical rejection")
+	check_eq([state.active_party_member_ids.size(),state.member(target),
+		session.rescue_story_state(target)],[2,null,"REJECTED"],
+		"refused world NPC never enters the roster")
+	check("영입 제안을 거절" in JSON.stringify(session.recent_event_log(16)),
+		"Korean event log exposes actual refusal")
+	var refused_snapshot=session.sim.snapshot();var refused_journal=session.command_journal.duplicate(true)
+	check_eq(session.offer_recruitment(target).reason,"recruitment_already_resolved",
+		"repeat tapping cannot reroll a refusal")
+	check_eq([session.sim.snapshot(),session.command_journal],[refused_snapshot,refused_journal],
+		"repeat offer after refusal is pure")
+	var restored=Session.new(44,55,"SHOWCASE_V1")
+	check(restored.load_session_json(session.save_session_json()).accepted,
+		"rescue/refusal journal loads")
+	check_eq(restored.sim.snapshot(),session.sim.snapshot(),
+		"rescue/refusal save-load replay exact")
 	return finish()
 
 func test_new_expedition_personality_seed_profiles_replay_refresh_and_restart_are_deterministic() -> bool:

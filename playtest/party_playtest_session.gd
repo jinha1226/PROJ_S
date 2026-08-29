@@ -28,6 +28,11 @@ const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
 const NEW_EXPEDITION_SEED_LIMIT := 2147483646
 const EXILE_WORLD_INTERVAL := 100
 const EXILE_ENCOUNTER_STEP_DELAY := 5
+const ACTIVE_PARTY_LIMIT := 3
+const RESCUE_TIME_COST := 100
+const RESCUE_AID_MAGNITUDE := 70
+const RECRUITMENT_OFFER_TIME_COST := 100
+const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
 		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
@@ -127,6 +132,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
 	if showcase and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
+	if showcase and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
 	var hero_position := VisualTestMapScript.HERO_POSITION if showcase else Vector2i(7,7)
 	var narae_position := Vector2i(1,12) if showcase else Vector2i(6,7)
 	var miru_position := Vector2i(2,11) if showcase else Vector2i(7,6)
@@ -137,14 +143,21 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
 		["party_member", "recruitable"], "dwarf", "party") if showcase else null
 	var candidate_amphibian = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
-		["party_member", "recruitable"], "amphibian", "party") if showcase else null
+		["recruitable", "rescue_npc"], "amphibian", "neutral") if showcase else null
 	var enemy = candidate.world.add_entity("melee_enemy", "고블린", enemy_position, 60, ["party_enemy"], "goblin", "enemy")
 	if protagonist == null or narae == null or miru == null or enemy == null \
 			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
 		return false
+	_configure_party_species_relations(candidate)
+	# The rescue story is authoritative event history, but it deliberately does
+	# not impersonate combat DOWNED. The world NPC stays ACTIVE and occupies its
+	# canonical cell until an accepted offer converts the same entity to GROUPED.
+	if showcase and not _bootstrap_rescue_candidate(candidate,
+			candidate_amphibian.id):
+		return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
 	state.party_member_ids.append_array([protagonist.id, narae.id, miru.id])
-	if showcase: state.party_member_ids.append_array([candidate_dwarf.id, candidate_amphibian.id])
+	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	state.enemy_ids.append(enemy.id)
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append_array([protagonist.id, narae.id, miru.id])
@@ -156,12 +169,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if showcase:
 		state.member_rows[candidate_dwarf.id] = MemberScript.new(candidate_dwarf.id, 3,
 			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 2))
-		state.member_rows[candidate_amphibian.id] = MemberScript.new(candidate_amphibian.id, 4,
-			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 3))
 	state.enemy_busy_rows[enemy.id] = 0
 	narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
-	if showcase and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	scenario_id = p_scenario_id
@@ -169,6 +179,31 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
 	return true
+
+
+func _configure_party_species_relations(candidate) -> void:
+	# The candidate is the observer in a recruitment decision.  Personal aid is
+	# deliberately bounded by RelationshipSystem, so these priors remain the
+	# dominant baseline even after a dramatic rescue.
+	candidate.world.species_relations.set_relation("human", "human", 35, 0, 0)
+	candidate.world.species_relations.set_relation("dwarf", "human", 25, 5, 0)
+	candidate.world.species_relations.set_relation("amphibian", "human", -30, 25, 45)
+	candidate.world.species_relations.set_relation("goblin", "human", -60, 35, 75)
+
+
+func _bootstrap_rescue_candidate(candidate, target_id: int) -> bool:
+	if candidate == null or candidate.world == null \
+			or not candidate.world.entities.has(target_id):
+		return false
+	var target = candidate.world.entities[target_id]
+	target.health = maxi(1, int((target.max_health + 4) / 5))
+	var rng_before: int = candidate.world.rng.state
+	var discovered = candidate.world.emit_event("party.rescue_discovered", -1,
+		target_id, target.position, 0, -1,
+		{"schema_version":1, "state":"COLLAPSED_STORY", "non_hostile":true,
+			"position":[target.position.x,target.position.y], "personality_slot":3})
+	return discovered != null and candidate.world.rng.state == rng_before \
+		and str(candidate.world.combatant_states[target_id].life_state) == "ACTIVE"
 
 func party_status() -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return {"ok": false, "reason": "session_not_initialized"}
@@ -184,6 +219,7 @@ func party_status() -> Dictionary:
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
 		"protagonist_id": state.protagonist_id, "party_member_ids": state.active_party_member_ids.duplicate(),
 		"roster_member_ids": state.party_member_ids.duplicate(),
+		"rescue_candidate_ids":rescue_candidate_ids(),
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
 		"exiled_member_ids":_member_ids_with_presence("EXILED"),
 		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
@@ -338,6 +374,16 @@ func party_personality_summary() -> Dictionary:
 			"archetype_id":str(archetype.get("archetype_id","")),
 			"archetype_label":str(archetype.get("label","")),
 			"facet_rows":member.personality_profile.facet_rows.duplicate(true)})
+	for candidate_id_value in rescue_candidate_ids():
+		var candidate_id := int(candidate_id_value)
+		var profile = _rescue_personality_profile(candidate_id)
+		if profile == null or not sim.world.entities.has(candidate_id): continue
+		var archetype := personality_archetype(profile)
+		rows.append({"actor_id":candidate_id,"roster_slot":63,
+			"display_name":str(sim.world.entities[candidate_id].display_name),
+			"archetype_id":str(archetype.get("archetype_id","")),
+			"archetype_label":str(archetype.get("label","")),
+			"facet_rows":profile.facet_rows.duplicate(true)})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.roster_slot)<int(b.roster_slot) if int(a.roster_slot)!=int(b.roster_slot) \
 			else int(a.actor_id)<int(b.actor_id))
@@ -466,7 +512,7 @@ func _actor_observation(entity, logical_position: Vector2i,
 		display_role = "ENEMY" if is_enemy else ("PROTAGONIST" \
 			if member != null and member.role == "PROTAGONIST" else ("COMPANION" \
 			if member != null else "ACTOR"))
-	return {"entity_id":entity.id, "display_name":entity.display_name,
+	var dto := {"entity_id":entity.id, "display_name":entity.display_name,
 		"kind":str(entity.kind), "species_id":str(entity.species_id),
 		"health":entity.health, "max_health":entity.max_health,
 		"life_state":str(combatant.life_state) if combatant != null else "DEAD",
@@ -484,6 +530,17 @@ func _actor_observation(entity, logical_position: Vector2i,
 		"is_enemy":is_enemy,
 		"sprite_frame":0 if member != null and member.role == "PROTAGONIST" \
 			else (4 if member != null else 5)}
+	if member == null and _rescue_discovery_event_for(entity.id) != null:
+		var story_state := rescue_story_state(entity.id)
+		dto["display_role"] = "RESCUE_NPC"
+		dto["presence"] = "WORLD_NPC"
+		dto["story_state"] = story_state
+		dto["authoritative_life_state"] = str(combatant.life_state) \
+			if combatant != null else "DEAD"
+		# DOWNED is a presentation pose only. Combat life remains ACTIVE and all
+		# occupancy/hit authority continues to use the canonical world entity.
+		dto["life_state"] = "DOWNED" if story_state == "COLLAPSED_STORY" else "ACTIVE"
+	return dto
 
 func party_cards() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var state = sim.world.party_encounter
@@ -526,6 +583,330 @@ func available_companion_ids() -> Array:
 	return ids.duplicate()
 
 
+func rescue_candidate_ids() -> Array:
+	var ids: Array = []
+	if sim == null or sim.world == null: return ids
+	for event in sim.world.events:
+		if event.type != "party.rescue_discovered" or event.target_id <= 0 \
+				or event.target_id in ids or not sim.world.entities.has(event.target_id):
+			continue
+		if rescue_story_state(event.target_id) != "JOINED": ids.append(event.target_id)
+	ids.sort()
+	return ids.duplicate()
+
+
+func is_rescue_candidate(entity_id: int) -> bool:
+	return entity_id in rescue_candidate_ids()
+
+
+func rescue_story_state(entity_id: int) -> String:
+	var discovery = _rescue_discovery_event_for(entity_id)
+	if discovery == null: return ""
+	var outcome = _recruitment_outcome_event_for(entity_id)
+	if outcome != null:
+		return "JOINED" if outcome.type == "party.recruitment_accepted" else "REJECTED"
+	if _rescue_event_for(entity_id) != null: return "OFFER_READY"
+	return str(discovery.data.get("state", "COLLAPSED_STORY"))
+
+
+func rescue_assessment(entity_id: int) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var state = sim.world.party_encounter
+	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] or _run_is_complete():
+		return _rejection_dto("party_roster_unsafe_phase")
+	var discovery = _rescue_discovery_event_for(entity_id)
+	var entity = sim.world.entities.get(entity_id)
+	var combatant = sim.world.combatant_states.get(entity_id)
+	if discovery == null or entity == null or combatant == null \
+			or not entity.tags.has("rescue_npc") \
+			or not bool(discovery.data.get("non_hostile", false)):
+		return _rejection_dto("rescue_candidate_not_recruitable")
+	if rescue_story_state(entity_id) != "COLLAPSED_STORY":
+		return _rejection_dto("rescue_already_completed")
+	if str(combatant.life_state) != "ACTIVE":
+		return _rejection_dto("rescue_candidate_unavailable")
+	var hero = sim.world.entities.get(state.protagonist_id)
+	if hero == null or maxi(absi(hero.position.x-entity.position.x),
+			absi(hero.position.y-entity.position.y)) > 1:
+		return _rejection_dto("rescue_candidate_too_far")
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"story_state":"COLLAPSED_STORY","result_state":"OFFER_READY",
+		"life_state":"DOWNED","authoritative_life_state":"ACTIVE",
+		"time_cost":RESCUE_TIME_COST,"consumes_time":true,
+		"message_ko":"한 턴을 들여 상처를 안정화합니다."})
+
+
+func stabilize_recruit_candidate(entity_id: int) -> Dictionary:
+	var assessment := rescue_assessment(entity_id)
+	if not bool(assessment.get("accepted", false)): return assessment
+	var rollback_value: Variant = sim.snapshot()
+	if not rollback_value is Dictionary:
+		return _rejection_dto("party_snapshot_unavailable")
+	var rollback: Dictionary = rollback_value
+	var state = sim.world.party_encounter
+	var hero_id: int = int(state.protagonist_id)
+	var result = sim.step(CommandScript.wait_for(RESCUE_TIME_COST, hero_id))
+	if not result.accepted or not sim.world.entities.has(entity_id) \
+			or str(sim.world.combatant_states[entity_id].life_state) != "ACTIVE" \
+			or rescue_story_state(entity_id) != "COLLAPSED_STORY":
+		_restore_roster_rollback(rollback)
+		return _rejection_dto("rescue_stabilization_failed")
+	_advance_exile_world()
+	var entity = sim.world.entities[entity_id]
+	var rescued = sim.world.emit_event("party.npc_stabilized", hero_id, entity_id,
+		entity.position, 0, -1, {"schema_version":1,
+			"previous_state":"COLLAPSED_STORY", "state":"OFFER_READY",
+			"time_cost":RESCUE_TIME_COST})
+	if rescued == null or not sim.relationships.record_aid(entity_id, hero_id,
+			rescued.id, RESCUE_AID_MAGNITUDE):
+		_restore_roster_rollback(rollback)
+		return _rejection_dto("rescue_stabilization_failed")
+	state = sim.world.party_encounter
+	state.revision += 1
+	if not sim.world.world_state_error().is_empty():
+		_restore_roster_rollback(rollback)
+		return _rejection_dto("rescue_stabilization_failed")
+	_clear_draft(); _deployment_plan.clear()
+	if _exploration_route != null: _exploration_route.clear()
+	command_journal.append({"kind":"roster","operation":{
+		"action":"STABILIZE","entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"life_state":"ACTIVE","story_state":"OFFER_READY",
+		"consumes_time":true,"step_index":int(result.processed_step_index),
+		"start_time":int(result.start_time),"end_time":int(result.end_time),
+		"time_cost":RESCUE_TIME_COST,"event_ids":[rescued.id],
+		"recruitment":recruitment_assessment(entity_id)})
+
+
+func recruitment_assessment(entity_id: int) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var state = sim.world.party_encounter
+	var discovery = _rescue_discovery_event_for(entity_id)
+	var entity = sim.world.entities.get(entity_id)
+	var combatant = sim.world.combatant_states.get(entity_id)
+	if discovery == null or entity == null or combatant == null:
+		return _rejection_dto("companion_not_recruitable")
+	var prior_outcome = _recruitment_outcome_event_for(entity_id)
+	if prior_outcome != null:
+		return _feedback_dto({"accepted":false,"reason":"recruitment_already_resolved",
+			"entity_id":entity_id,"resolved":true,
+			"joined":str(prior_outcome.type)=="party.recruitment_accepted",
+			"probability_milli":int(prior_outcome.data.get("probability_milli",0)),
+			"probability_percent":int((int(prior_outcome.data.get("probability_milli",0))+5)/10),
+			"roll_milli":int(prior_outcome.data.get("roll_milli",-1)),
+			"reasons":prior_outcome.data.get("reasons",[]).duplicate(true)})
+	var rescue_event = _rescue_event_for(entity_id)
+	if rescue_event == null or rescue_story_state(entity_id) != "OFFER_READY":
+		return _rejection_dto("recruitment_requires_rescue")
+	var relation: Dictionary = sim.relationships.effective_relation(entity_id,
+		state.protagonist_id)
+	var species_base: Dictionary = relation.get("species_base",{})
+	var personal: Dictionary = relation.get("personal",{})
+	# Species prior is intentionally the dominant single term. Personal history
+	# can soften it, but one rescue never makes inherited hostility disappear.
+	var species_term := int(species_base.get("base_trust",0))*5 \
+		- int(species_base.get("base_hostility",0))*5 \
+		- int(species_base.get("base_fear",0))*3
+	var affection_term := int(personal.get("trust_delta",0))*3 \
+		- maxi(0,int(personal.get("fear_delta",0)))*2 \
+		- int(personal.get("grievance",0))*2
+	var memory_term := int(personal.get("gratitude",0))
+	var profile = _rescue_personality_profile(entity_id)
+	var personality_term := 0
+	if profile != null:
+		personality_term = clampi(int((profile.value("altruism")-500)/5) \
+			+ int((profile.value("composure")-500)/10), -140, 140)
+	var hp_percent := int(entity.health*100/maxi(1,entity.max_health))
+	var survival_term := clampi((100-hp_percent)*2,0,180)
+	var rescue_term := 180
+	var has_vacancy: bool = state.active_party_member_ids.size() < ACTIVE_PARTY_LIMIT
+	var vacancy_term := 40 if has_vacancy else 0
+	var probability := clampi(500+species_term+affection_term+memory_term \
+		+personality_term+survival_term+rescue_term+vacancy_term,50,950)
+	var reasons: Array[Dictionary] = _recruitment_reason_rows(species_base,
+		relation, personality_term, survival_term, rescue_term, vacancy_term)
+	var hero = sim.world.entities.get(state.protagonist_id)
+	var adjacent: bool = hero != null and maxi(absi(hero.position.x-entity.position.x),
+		absi(hero.position.y-entity.position.y)) <= 1
+	var legal: bool = has_vacancy and adjacent \
+		and str(combatant.life_state)=="ACTIVE" \
+		and state.safe_phase in ["GROUPED","GROUPED_COMPLETE"] \
+		and not _run_is_complete()
+	var reason := "ok"
+	if not has_vacancy: reason = "party_full"
+	elif not adjacent: reason = "recruitment_candidate_too_far"
+	elif str(combatant.life_state)!="ACTIVE": reason = "companion_unavailable"
+	elif state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or _run_is_complete():
+		reason = "party_roster_unsafe_phase"
+	var key := "%s|world=%d|personality=%d|candidate=%d|rescue=%d" % [
+		RECRUITMENT_RULESET_ID,world_seed,personality_seed,entity_id,int(rescue_event.id)]
+	# A blocked offer exposes its probability and reasons, but consumes neither
+	# the keyed roll nor a judgment event. Opening a vacancy reveals the stable roll.
+	var roll := _stable_roll_milli(key) if legal else -1
+	return _feedback_dto({"accepted":legal,"reason":reason,"entity_id":entity_id,
+		"resolved":false,"joined":false,"probability_milli":probability,
+		"probability_percent":int((probability+5)/10),"roll_milli":roll,
+		"would_accept":legal and roll<probability,"ruleset_id":RECRUITMENT_RULESET_ID,
+		"key_hash":key.sha256_text() if legal else "","reasons":reasons,
+		"terms":{"species_prior":species_term,"affection":affection_term,
+			"personal_memory":memory_term,"personality":personality_term,
+			"survival_threat":survival_term,"rescued":rescue_term,
+			"vacancy":vacancy_term}})
+
+
+func offer_recruitment(entity_id: int) -> Dictionary:
+	var assessment := recruitment_assessment(entity_id)
+	if not bool(assessment.get("accepted",false)): return assessment
+	var rollback_value: Variant = sim.snapshot()
+	if not rollback_value is Dictionary:
+		return _rejection_dto("party_snapshot_unavailable")
+	var rollback: Dictionary = rollback_value
+	var hero_id: int = int(sim.world.party_encounter.protagonist_id)
+	var result = sim.step(CommandScript.wait_for(RECRUITMENT_OFFER_TIME_COST,hero_id))
+	if not result.accepted: return _rejection_dto(str(result.reason))
+	_advance_exile_world()
+	var joined := bool(assessment.would_accept)
+	var event_type := "party.recruitment_accepted" if joined \
+		else "party.recruitment_refused"
+	var reason_codes: Array[String] = []
+	for row in assessment.reasons: reason_codes.append(str(row.get("code","")))
+	var decision = sim.world.emit_event(event_type, entity_id, hero_id,
+		sim.world.entities[entity_id].position,
+		int(assessment.probability_milli), -1, {"schema_version":1,
+			"ruleset_id":RECRUITMENT_RULESET_ID,
+			"probability_milli":int(assessment.probability_milli),
+			"roll_milli":int(assessment.roll_milli),"accepted":joined,
+			"reason_codes":reason_codes,
+			"reasons":assessment.reasons.duplicate(true)})
+	if decision == null:
+		_restore_roster_rollback(rollback)
+		return _rejection_dto("recruitment_resolution_failed")
+	if joined:
+		if not _prepare_rescue_candidate_for_roster(entity_id):
+			_restore_roster_rollback(rollback)
+			return _rejection_dto("recruitment_resolution_failed")
+		var roster_result := _apply_roster_change("RECRUIT",entity_id,false)
+		if not bool(roster_result.get("accepted",false)):
+			_restore_roster_rollback(rollback)
+			return _rejection_dto("recruitment_resolution_failed")
+	else:
+		sim.world.party_encounter.revision += 1
+	if not sim.world.world_state_error().is_empty():
+		_restore_roster_rollback(rollback)
+		return _rejection_dto("recruitment_resolution_failed")
+	_clear_draft(); _deployment_plan.clear()
+	if _exploration_route != null: _exploration_route.clear()
+	command_journal.append({"kind":"roster","operation":{
+		"action":"OFFER_RECRUIT","entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","resolved":true,
+		"entity_id":entity_id,"joined":joined,
+		"probability_milli":int(assessment.probability_milli),
+		"probability_percent":int(assessment.probability_percent),
+		"roll_milli":int(assessment.roll_milli),
+		"reasons":assessment.reasons.duplicate(true),"consumes_time":true,
+		"step_index":int(result.processed_step_index),
+		"start_time":int(result.start_time),"end_time":int(result.end_time),
+		"time_cost":RECRUITMENT_OFFER_TIME_COST,"event_ids":[decision.id]})
+
+
+func _recruitment_reason_rows(species_base: Dictionary, relation: Dictionary,
+		personality_term: int, survival_term: int, rescue_term: int,
+		vacancy_term: int) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	var base_trust := int(species_base.get("base_trust",0))
+	var base_hostility := int(species_base.get("base_hostility",0))
+	if base_trust>=15 and base_hostility<30:
+		rows.append({"code":"SPECIES_AFFINITY","label":"종족 사이 기본 호감이 있습니다.","tone":"POSITIVE"})
+	elif base_trust<=-20 or base_hostility>=45:
+		rows.append({"code":"SPECIES_DISTRUST","label":"종족 사이 뿌리 깊은 경계가 있습니다.","tone":"NEGATIVE"})
+	else:
+		rows.append({"code":"SPECIES_WARY","label":"종족 차이 때문에 아직 조심스럽습니다.","tone":"CAUTION"})
+	if rescue_term>0:
+		rows.append({"code":"RESCUED","label":"당신이 목숨을 구해 준 일을 기억합니다.","tone":"POSITIVE"})
+	if int(relation.get("gratitude",0))>=50 or int(relation.get("trust",0))>=25:
+		rows.append({"code":"PERSONAL_AFFECTION","label":"개인적인 감사와 호감이 큽니다.","tone":"POSITIVE"})
+	elif int(relation.get("hostility",0))>=45 or int(relation.get("trust",0))<0:
+		rows.append({"code":"PERSONAL_WARY","label":"개인적으로도 아직 완전히 믿지 못합니다.","tone":"NEGATIVE"})
+	if survival_term>=120:
+		rows.append({"code":"SURVIVAL_THREAT","label":"부상이 심해 안전한 동행이 절실합니다.","tone":"POSITIVE"})
+	if personality_term>=40:
+		rows.append({"code":"OPEN_PERSONALITY","label":"도움을 받아들이는 성향입니다.","tone":"POSITIVE"})
+	elif personality_term<=-40:
+		rows.append({"code":"GUARDED_PERSONALITY","label":"쉽게 마음을 열지 않는 성향입니다.","tone":"CAUTION"})
+	if vacancy_term>0:
+		rows.append({"code":"PARTY_VACANCY","label":"파티에 함께할 빈자리가 있습니다.","tone":"POSITIVE"})
+	return rows
+
+
+static func _stable_roll_milli(key: String) -> int:
+	var digest: PackedByteArray = key.sha256_buffer()
+	var value := ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
+		|(int(digest[2])<<8)|int(digest[3])
+	return value%1000
+
+
+func _rescue_discovery_event_for(entity_id: int):
+	if sim == null or sim.world == null: return null
+	for event in sim.world.events:
+		if event.type == "party.rescue_discovered" and event.target_id == entity_id:
+			return event
+	return null
+
+
+func _rescue_event_for(entity_id: int):
+	if sim == null or sim.world == null: return null
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event = sim.world.events[index]
+		if event.type=="party.npc_stabilized" and event.target_id==entity_id:
+			return event
+	return null
+
+
+func _rescue_personality_profile(entity_id: int):
+	var discovery = _rescue_discovery_event_for(entity_id)
+	if discovery == null: return null
+	var slot := int(discovery.data.get("personality_slot", 3))
+	return PersonalityRegistryScript.generate(personality_seed, slot)
+
+
+func _prepare_rescue_candidate_for_roster(entity_id: int) -> bool:
+	if sim == null or sim.world == null or sim.world.party_encounter == null \
+			or _rescue_discovery_event_for(entity_id) == null \
+			or not sim.world.entities.has(entity_id):
+		return false
+	var state = sim.world.party_encounter
+	if state.member(entity_id) != null \
+			or state.active_party_member_ids.size() >= ACTIVE_PARTY_LIMIT:
+		return false
+	var profile = _rescue_personality_profile(entity_id)
+	if profile == null: return false
+	state.party_member_ids.append(entity_id)
+	state.party_member_ids.sort()
+	state.member_rows[entity_id] = MemberScript.new(entity_id, 0,
+		"COMPANION", "RECRUITABLE", profile)
+	state.member_rows[entity_id].busy_until = sim.world.world_time
+	for roster_index in range(state.party_member_ids.size()):
+		state.member_rows[state.party_member_ids[roster_index]].roster_slot = roster_index
+	return true
+
+
+func _recruitment_outcome_event_for(entity_id: int):
+	if sim == null or sim.world == null: return null
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event = sim.world.events[index]
+		if event.type in ["party.recruitment_accepted","party.recruitment_refused"] \
+				and event.actor_id==entity_id:
+			return event
+	return null
+
+
+func _restore_roster_rollback(snapshot: Dictionary) -> void:
+	var restored = SimulatorScript.from_snapshot(snapshot)
+	if restored != null: sim = restored
+
+
 func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
@@ -544,7 +925,7 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 		if entity_id in state.active_party_member_ids or entity_id not in state.party_member_ids \
 				or member.role != "COMPANION" or member.presence != "RECRUITABLE":
 			return _rejection_dto("companion_not_recruitable")
-		if state.active_party_member_ids.size() >= 3: return _rejection_dto("party_full")
+		if state.active_party_member_ids.size() >= ACTIVE_PARTY_LIMIT: return _rejection_dto("party_full")
 		if sim.world.combatant_states[entity_id].life_state != "ACTIVE": return _rejection_dto("companion_unavailable")
 	else:
 		return _rejection_dto("invalid_roster_operation")
@@ -565,12 +946,40 @@ func recruitable_companions() -> Array[Dictionary]:
 		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(entity.display_name),"presence":str(member.presence),
 			"health":int(entity.health),"max_health":int(entity.max_health),
+			"life_state":"ACTIVE","authoritative_life_state":"ACTIVE",
 			"status_ids":_combatant_status_ids(entity_id),
 			"archetype_label":str(archetype.get("label","동료")),
+			"rescue_state":"AVAILABLE","can_stabilize":false,"stabilization":{},
+			"decision_available":false,"recruitment":{},
 			"can_recruit":bool(assessment.get("accepted",false)),
 			"reason":str(assessment.get("reason","ok")),
 			"message":str(assessment.get("message",""))})
-	rows.sort_custom(func(a:Dictionary,b:Dictionary): return int(a.roster_slot)<int(b.roster_slot))
+	for entity_id_value in rescue_candidate_ids():
+		var entity_id := int(entity_id_value)
+		var entity = sim.world.entities[entity_id]
+		var story_state := rescue_story_state(entity_id)
+		var rescue := rescue_assessment(entity_id) if story_state=="COLLAPSED_STORY" else {}
+		var recruitment := recruitment_assessment(entity_id) \
+			if story_state in ["OFFER_READY","REJECTED"] else {}
+		var profile = _rescue_personality_profile(entity_id)
+		var archetype := personality_archetype(profile)
+		rows.append({"entity_id":entity_id,"roster_slot":63,
+			"display_name":str(entity.display_name),"presence":"WORLD_NPC",
+			"health":int(entity.health),"max_health":int(entity.max_health),
+			"life_state":"DOWNED" if story_state=="COLLAPSED_STORY" else "ACTIVE",
+			"authoritative_life_state":str(sim.world.combatant_states[entity_id].life_state),
+			"status_ids":_combatant_status_ids(entity_id),
+			"archetype_label":str(archetype.get("label","동료")),
+			"rescue_state":story_state,"can_stabilize":bool(rescue.get("accepted",false)),
+			"stabilization":rescue.duplicate(true),
+			"decision_available":story_state in ["OFFER_READY","REJECTED"],
+			"recruitment":recruitment.duplicate(true),
+			"can_recruit":bool(recruitment.get("accepted",false)),
+			"reason":str(recruitment.get("reason",rescue.get("reason","ok"))),
+			"message":str(recruitment.get("message",rescue.get("message","")))})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.roster_slot)<int(b.roster_slot) if int(a.roster_slot)!=int(b.roster_slot) \
+			else int(a.entity_id)<int(b.entity_id))
 	return rows.duplicate(true)
 
 
@@ -590,10 +999,15 @@ func dismiss_companion(entity_id: int) -> Dictionary:
 
 
 func recruit_companion(entity_id: int) -> Dictionary:
+	if _rescue_discovery_event_for(entity_id)!=null:
+		return _rejection_dto("recruitment_already_resolved") \
+			if _recruitment_outcome_event_for(entity_id)!=null \
+			else _rejection_dto("recruitment_offer_required")
 	return _apply_roster_change("RECRUIT", entity_id)
 
 
-func _apply_roster_change(operation: String, entity_id: int) -> Dictionary:
+func _apply_roster_change(operation: String, entity_id: int,
+		append_journal: bool = true) -> Dictionary:
 	var assessment := roster_change_assessment(operation, entity_id)
 	if not bool(assessment.get("accepted",false)): return assessment
 	var rollback: Dictionary = sim.snapshot()
@@ -634,8 +1048,9 @@ func _apply_roster_change(operation: String, entity_id: int) -> Dictionary:
 		return _rejection_dto("party_roster_change_failed")
 	_clear_draft(); _deployment_plan.clear()
 	if _exploration_route != null: _exploration_route.clear()
-	command_journal.append({"kind":"roster","operation":{
-		"action":operation,"entity_id":str(entity_id)}})
+	if append_journal:
+		command_journal.append({"kind":"roster","operation":{
+			"action":operation,"entity_id":str(entity_id)}})
 	return _feedback_dto({"accepted":true,"reason":"ok","operation":operation,
 		"entity_id":entity_id,"active_party_member_ids":state.active_party_member_ids.duplicate(true),
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
@@ -1310,10 +1725,14 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 	var state = sim.world.party_encounter
 	var member = state.member(entity_id)
+	if member == null and _rescue_discovery_event_for(entity_id) != null:
+		return _inspect_rescue_candidate(entity_id)
 	if member == null or not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found", null, null,
 			{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 	var entity = sim.world.entities[entity_id]
+	var combatant = sim.world.combatant_states.get(entity_id)
+	var life_state := str(combatant.life_state) if combatant != null else "DEAD"
 	var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (
 		state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 	var full_exposure := {"applicable":false,"position":[logical.x,logical.y],
@@ -1380,6 +1799,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"max_health":int(entity.max_health),"alive":sim.world.occupies_tile(entity_id),
 		"kind":str(entity.kind),"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
 		"faction_id":str(entity.faction_id),"status_ids":_combatant_status_ids(entity_id),
+		"life_state":life_state,
 		"presence":str(member.presence),"active_party_member":entity_id in state.active_party_member_ids,
 		"recruitable_member":member.presence == "RECRUITABLE",
 		"exiled_member":member.presence == "EXILED",
@@ -1395,7 +1815,74 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			if personality_profile == null else "%s · 결정론적 성격 프로필" \
 				% str(personality_archetype_dto.get("label","분류되지 않은 성향")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
-		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id)}
+		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id),
+		"rescue_assessment":rescue_assessment(entity_id) \
+			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
+		"recruitment_assessment":recruitment_assessment(entity_id) \
+			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
+	return _feedback_dto(dto, null, null,
+		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
+
+
+func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
+	if not sim.world.entities.has(entity_id):
+		return _rejection_dto("party_member_not_found")
+	var entity = sim.world.entities[entity_id]
+	var story_state := rescue_story_state(entity_id)
+	var profile = _rescue_personality_profile(entity_id)
+	var facets: Array = []
+	if profile != null:
+		for row in profile.facet_rows:
+			var labels: Array = PersonalityRegistryScript.LABELS.get(str(row.facet_id),
+				["낮음","높음"])
+			facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
+				"low_label":str(labels[0]),"high_label":str(labels[1])})
+	var relation_rows: Array = []
+	var hero_id := int(sim.world.party_encounter.protagonist_id)
+	var relation: Dictionary = sim.relationships.effective_relation(entity_id,hero_id)
+	if sim.world.entities.has(hero_id):
+		relation_rows.append({"subject_id":hero_id,
+			"subject_name":str(sim.world.entities[hero_id].display_name),
+			"subject_species_id":str(sim.world.entities[hero_id].species_id),
+			"trust":int(relation.get("trust",0)),"fear":int(relation.get("fear",0)),
+			"hostility":int(relation.get("hostility",0)),
+			"gratitude":int(relation.get("gratitude",0)),
+			"grievance":int(relation.get("grievance",0)),
+			"disposition":str(relation.get("disposition","NEUTRAL")),
+			"species_base":relation.get("species_base",{}).duplicate(true),
+			"personal":relation.get("personal",{}).duplicate(true)})
+	var position: Vector2i = entity.position
+	var archetype := personality_archetype(profile)
+	var collapsed := story_state == "COLLAPSED_STORY"
+	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
+		"entity_id":entity_id,"roster_slot":63,"role":"COMPANION",
+		"display_name":str(entity.display_name),"health":int(entity.health),
+		"max_health":int(entity.max_health),"alive":true,"kind":str(entity.kind),
+		"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
+		"faction_id":str(entity.faction_id),"status_ids":_combatant_status_ids(entity_id),
+		"life_state":"DOWNED" if collapsed else "ACTIVE",
+		"authoritative_life_state":str(sim.world.combatant_states[entity_id].life_state),
+		"rescue_story_state":story_state,"presence":"WORLD_NPC",
+		"active_party_member":false,"recruitable_member":true,"exiled_member":false,
+		"logical_position":[position.x,position.y],"busy_until":int(sim.world.world_time),
+		"remaining_time":0,"stress":0,
+		"readiness":"도움 필요" if collapsed else "대화 가능",
+		"emotion":{"icon":"!" if collapsed else "●",
+			"label":"쓰러짐" if collapsed else "안정됨",
+			"reason":"심한 상처로 움직이지 못합니다." if collapsed \
+				else "상처를 안정화해 대화할 수 있습니다.","health_percent":
+				int(entity.health*100/maxi(1,entity.max_health))},
+		"override_state":"PENDING","expected_action":null,
+		"element_exposure":{"applicable":false},"current_exposure":{"applicable":false},
+		"personality_profile":profile.to_dict() if profile != null else null,
+		"personality_available":profile != null,"personality_facets":facets,
+		"personality_archetype":archetype,
+		"personality_note":"%s · 결정론적 성격 프로필"%str(archetype.get("label","동료")),
+		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
+		"relation_rows":relation_rows,"exile_record":null,
+		"rescue_assessment":rescue_assessment(entity_id) if collapsed else {},
+		"recruitment_assessment":recruitment_assessment(entity_id) \
+			if story_state in ["OFFER_READY","REJECTED"] else {}}
 	return _feedback_dto(dto, null, null,
 		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 
@@ -1436,7 +1923,8 @@ func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 
 
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
-	var rows: Array[Dictionary] = []; var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
+	var rows: Array[Dictionary] = []
+	var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
 	for index in range(start, sim.world.events.size()):
 		var event = sim.world.events[index]
 		rows.append({"event_id":event.id,"step_index":event.step_index,
@@ -1488,8 +1976,11 @@ func load_session_json(encoded: String) -> Dictionary:
 			"roster":
 				var operation: Dictionary = row.operation
 				var entity_id := Int64CodecScript.parse(operation.entity_id,"roster member")
-				replay_result = replay.dismiss_companion(entity_id) if operation.action == "DISMISS" \
-					else replay.recruit_companion(entity_id)
+				match str(operation.action):
+					"DISMISS": replay_result = replay.dismiss_companion(entity_id)
+					"RECRUIT": replay_result = replay.recruit_companion(entity_id)
+					"STABILIZE": replay_result = replay.stabilize_recruit_candidate(entity_id)
+					"OFFER_RECRUIT": replay_result = replay.offer_recruitment(entity_id)
 			"party_turn":
 				var request:Dictionary=row.request; var direct=ActionScript.from_dict(request.protagonist_action)
 				replay.begin_turn(direct)
@@ -1535,7 +2026,8 @@ func _journal_wire_error(journal: Array) -> String:
 					return "invalid_roster_journal"
 				var operation_keys: Array = row.operation.keys(); operation_keys.sort()
 				if operation_keys != ["action", "entity_id"] \
-						or row.operation.get("action") not in ["DISMISS", "RECRUIT"] \
+						or row.operation.get("action") not in ["DISMISS", "RECRUIT",
+							"STABILIZE", "OFFER_RECRUIT"] \
 						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
 						or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
 					return "invalid_roster_journal"
@@ -2033,6 +2525,16 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"companion_not_recruitable":"영입 후보가 아니거나 이미 떠난 인물입니다.",
 		"companion_unavailable":"현재 영입하거나 추방할 수 없는 동료입니다.",
 		"party_full":"파티가 가득 찼습니다.",
+		"rescue_candidate_not_recruitable":"도울 수 있는 비적대 영입 후보가 아닙니다.",
+		"rescue_candidate_unavailable":"이 인물은 현재 구조할 수 없는 상태입니다.",
+		"rescue_candidate_too_far":"쓰러진 인물 옆으로 이동해야 안정화할 수 있습니다.",
+		"rescue_already_completed":"이미 상처를 안정화했습니다.",
+		"rescue_stabilization_failed":"안정화가 취소되어 이전 상태로 돌아갔습니다.",
+		"recruitment_requires_rescue":"먼저 쓰러진 인물을 도와 안정화해야 합니다.",
+		"recruitment_candidate_too_far":"영입을 제안하려면 그 인물 곁에 있어야 합니다.",
+		"recruitment_offer_required":"구조한 인물에게는 수락 가능성을 확인한 뒤 영입을 제안하세요.",
+		"recruitment_already_resolved":"이 영입 제안의 답은 이미 정해졌습니다.",
+		"recruitment_resolution_failed":"영입 제안이 취소되어 이전 상태로 돌아갔습니다.",
 		"invalid_roster_operation":"지원하지 않는 편성 변경입니다.",
 		"party_roster_change_failed":"편성 변경이 취소되어 이전 상태로 돌아갔습니다.",
 		"invalid_party_action":"지원하지 않는 행동입니다.",
@@ -2068,6 +2570,17 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
+		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
+		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
+		"party.recruitment_accepted":
+			return "%s 영입 제안을 받아들였다. (수락 %d%% · 판정 %d)" % [
+				_subject(actor),int((event.data.get("probability_milli",0)+5)/10),
+				int(event.data.get("roll_milli",-1))]
+		"party.recruitment_refused":
+			return "%s 영입 제안을 거절했다. (수락 %d%% · 판정 %d)" % [
+				_subject(actor),int((event.data.get("probability_milli",0)+5)/10),
+				int(event.data.get("roll_milli",-1))]
+		"relationship.aid_recorded": return "%s 구조받은 일을 고마운 기억으로 남겼다." % _subject(actor)
 		"encounter.detected": return "고블린과 파티가 서로를 발견했다."
 		"encounter.party_ambush": return "파티가 고블린보다 먼저 기척을 알아챘다."
 		"encounter.enemy_ambush": return "고블린이 숨어 있던 곳에서 파티를 덮쳤다."

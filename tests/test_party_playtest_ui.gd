@@ -13,7 +13,8 @@ func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract(
 		sandbox.initialize_for_headless_test(Session.new(44,20260828,"SHOWCASE_V1"))
 		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
 		var companion:=int(status.party_member_ids[1]);sandbox.selected_member_id=companion
-		var candidate:=int(status.recruitable_member_ids[0])
+		var legacy_candidate:=int(status.recruitable_member_ids[0])
+		var candidate:=int(status.rescue_candidate_ids[0])
 		sandbox._open_member_detail(companion)
 		check(sandbox.member_detail_dismiss.visible,"%s companion detail exposes dismiss"%viewport_size)
 		check(sandbox.member_detail_dismiss.custom_minimum_size.y>=44.0,"dismiss touch target >=44")
@@ -22,13 +23,13 @@ func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract(
 			"%s dismiss immediately relayouts and clears selection"%viewport_size)
 		check(sandbox.deck.find_child("RecruitCandidate%d"%companion,true,false)==null,
 			"exiled companion never returns as a candidate")
+		check(sandbox.deck.find_child("RecruitCandidate%d"%legacy_candidate,true,false)==null,
+			"legacy direct recruit fixture is hidden from product controls")
 		var candidate_row:Node=sandbox.deck.find_child("RecruitCandidate%d"%candidate,true,false)
-		var recruit:=sandbox.deck.find_child("RecruitMember%d"%candidate,true,false) as Button
-		check(candidate_row!=null and recruit!=null,"distinct recruitment candidate rendered")
-		check(recruit.custom_minimum_size.y>=44.0 and recruit.get_parent()==candidate_row,
-			"recruit touch target remains inside its candidate row")
-		sandbox._on_recruit_companion(candidate);sandbox._refresh()
-		check_eq(sandbox.cards.get_child_count(),3,"%s candidate recruit immediately restores three cards"%viewport_size)
+		var stabilize:=sandbox.deck.find_child("StabilizeMember%d"%candidate,true,false) as Button
+		check(candidate_row!=null and stabilize!=null,"relationship-gated rescue candidate rendered")
+		check(stabilize.custom_minimum_size.y>=44.0 and stabilize.get_parent()==candidate_row,
+			"rescue touch target remains inside its candidate row")
 		sandbox._open_member_detail(hero)
 		check(not sandbox.member_detail_dismiss.visible,"hero detail never exposes dismiss")
 		sandbox._close_member_detail();sandbox.free()
@@ -40,6 +41,52 @@ func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract(
 		"contact detail explains roster lock without allowing input")
 	check("편성" in unsafe.member_detail_dismiss.tooltip_text,"unsafe roster reason is Korean")
 	unsafe.free();return finish()
+
+
+func test_mobile_downed_rescue_and_stable_recruitment_refusal_use_actual_touch_facade() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(Session.new(7,20260828,"SHOWCASE_V1"))
+		sandbox.grid.size=sandbox.grid.custom_minimum_size
+		var status:Dictionary=sandbox.session.party_status()
+		var target:=int(status.rescue_candidate_ids[0])
+		var title:=sandbox.deck.find_child("RosterManagementTitle",true,false) as Label
+		var stabilize:=sandbox.deck.find_child("StabilizeMember%d"%target,true,false) as Button
+		var candidate_row:Node=sandbox.deck.find_child("RecruitCandidate%d"%target,true,false)
+		var candidate_label:=candidate_row.find_child("RecruitCandidateLabel",true,false) as Label if candidate_row!=null else null
+		check(title!=null and "3/3" in title.text,"%s one-glance roster capacity visible"%viewport_size)
+		check(stabilize!=null and stabilize.custom_minimum_size.y>=44.0 and not stabilize.disabled,
+			"%s DOWNED candidate has enabled 44px stabilize touch action"%viewport_size)
+		check(candidate_label!=null and "쓰러짐" in candidate_label.text and "사망 아님" in candidate_label.text,
+			"%s card clearly separates DOWNED from death"%viewport_size)
+		var hit:Rect2=sandbox.grid.actor_hit_rect(target)
+		check(hit.size.x>=44.0 and hit.size.y>=44.0,"%s rescue NPC map hit target >=44"%viewport_size)
+		var press:=InputEventScreenTouch.new();press.pressed=true;press.position=hit.get_center()
+		var release:=InputEventScreenTouch.new();release.pressed=false;release.position=hit.get_center()
+		sandbox.grid._gui_input(press);sandbox.grid._gui_input(release)
+		check(sandbox.member_detail_modal.visible and sandbox.member_detail_candidate_action.visible \
+			and "안정화" in sandbox.member_detail_candidate_action.text,
+			"%s actual grid touch opens rescue detail action"%viewport_size)
+		sandbox._close_member_detail();sandbox._on_stabilize_candidate(target);sandbox._refresh()
+		var recruit:=sandbox.deck.find_child("RecruitMember%d"%target,true,false) as Button
+		candidate_row=sandbox.deck.find_child("RecruitCandidate%d"%target,true,false)
+		candidate_label=candidate_row.find_child("RecruitCandidateLabel",true,false) as Label if candidate_row!=null else null
+		check(recruit!=null and recruit.disabled,"%s full party keeps offer visible but gated"%viewport_size)
+		check(candidate_label!=null and "수락" in candidate_label.text \
+			and "종족" in candidate_label.text,
+			"%s probability and Korean reason visible after stabilization"%viewport_size)
+		var companion:=int(sandbox.session.party_status().party_member_ids[1])
+		sandbox._on_quick_dismiss_companion(companion);sandbox._refresh()
+		recruit=sandbox.deck.find_child("RecruitMember%d"%target,true,false) as Button
+		check(recruit!=null and not recruit.disabled and recruit.custom_minimum_size.y>=44.0,
+			"%s vacancy enables 44px recruitment offer"%viewport_size)
+		sandbox._on_recruit_companion(target);sandbox._refresh()
+		check("거절" in sandbox.notice_text and sandbox.cards.get_child_count()==2,
+			"%s deterministic refusal remains visible and does not add card"%viewport_size)
+		check("영입 제안을 거절" in sandbox.log_label.text,
+			"%s actual refusal remains in Korean event log"%viewport_size)
+		sandbox.free()
+	return finish()
 
 func test_party_card_layout_specs_and_detached_render_support_one_two_three_members() -> bool:
 	for viewport_width in [360.0,450.0]:
@@ -784,7 +831,9 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	check_eq(sandbox.grid._presentation_style.border_hex,"#8f5367","terminal grid presentation border")
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	check(terminal_panel!=null and terminal_panel.border_color==Color("#8f5367"),"terminal panel consumes defeat border")
-	check(sandbox.grid.CHARACTER_ATLAS!=null,"existing character atlas loaded")
+	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
+	check("CHARACTER_ATLAS" not in grid_source,
+		"product party grid has no stale character texture/atlas path")
 	var observation={"cells":[{"position":[7,7],"terrain_id":"floor","actors":[
 		{"entity_id":10,"is_protagonist":false,"roster_slot":1,"faction_id":"party","sprite_frame":4},
 		{"entity_id":11,"is_protagonist":true,"roster_slot":0,"faction_id":"party","sprite_frame":0}]}]}
