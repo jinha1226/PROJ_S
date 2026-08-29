@@ -138,7 +138,7 @@ func _build_ui() -> void:
 	root_layout.add_child(situation_panel)
 	situation_label = Label.new()
 	situation_label.name = "SituationSummary"
-	situation_label.add_theme_font_size_override("font_size", 15)
+	situation_label.add_theme_font_size_override("font_size", 14)
 	situation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	situation_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	situation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -317,7 +317,8 @@ func _refresh_tabs() -> void:
 			reason_line = "현재 행동 의도는 종료되었다"
 		elif not shown_action.is_empty() and not breakdown.is_empty():
 			var visual := GridScript.intent_visual_spec(action_id)
-			intent_line = "%s · %s" % [str(visual.get("label_ko", "행동")), _intent_phrase(action_id)]
+			intent_line = "%s · %s" % [str(visual.get("label_ko", "행동")),
+				_intent_phrase(action_id, actor, breakdown)]
 			var reasons := _key_reasons(actor, breakdown)
 			reason_line = reasons[0] if not reasons.is_empty() else "지금 상황을 종합해서"
 			var continuity := _commitment_line(breakdown)
@@ -391,6 +392,8 @@ func _actor_condition_short(actor: Dictionary) -> String:
 	var status := _dot_summary(actor.get("dot", []))
 	if status != "없음":
 		parts.append(status)
+	parts.append("%s 무장" % _weapon_label(str(actor.get("weapon", "무기"))) \
+		if bool(actor.get("armed", false)) else "비무장")
 	return ", ".join(parts)
 
 
@@ -569,10 +572,37 @@ func _intent_object(action_id: String) -> String:
 		"SELF_TREAT": "치료를", "HOLD": "경계를"}.get(action_id, "행동을"))
 
 
-func _intent_phrase(action_id: String) -> String:
-	return str({"APPROACH": "다가가려 한다", "ENGAGE": "공격하려 한다",
+func _intent_phrase(action_id: String, actor: Dictionary = {}, breakdown: Dictionary = {}) -> String:
+	if action_id == "APPROACH":
+		return "공격 기회를 노리며 접근" if _approach_is_hostile(actor, breakdown) else "조심스럽게 접근"
+	return str({"ENGAGE": "공격하려 한다",
 		"FLEE": "도망치려 한다", "HOLD": "지켜보려 한다",
 		"SELF_TREAT": "치료하려 한다"}.get(action_id, "상황을 지켜보려 한다"))
+
+
+func _approach_is_hostile(actor: Dictionary, breakdown: Dictionary) -> bool:
+	var relation: Variant = actor.get("relation", {})
+	if relation is Dictionary:
+		if relation.has("effective"):
+			return int(relation.get("effective", 0)) < 0
+		if relation.has("species_prior") or relation.has("memory_modifier"):
+			return int(relation.get("species_prior", 0)) + int(relation.get("memory_modifier", 0)) < 0
+	var selected := _selected_candidate(breakdown)
+	for bucket_name in ["relation_terms", "context_terms"]:
+		for term_value in selected.get(bucket_name, []):
+			if not term_value is Dictionary:
+				continue
+			var input_id := str(term_value.get("input_id", "")).to_lower()
+			var input_value := int(term_value.get("input_value", 0))
+			var contribution := int(term_value.get("contribution", 0))
+			if input_id in ["species_prior", "memory_modifier"] and input_value < 0:
+				return true
+			if input_id == "hostility" and input_value > 0:
+				return true
+			if ("hostile" in input_id or "attack" in input_id or "aggression" in input_id) \
+					and maxi(input_value, contribution) > 0:
+				return true
+	return false
 
 
 func _apply_action_card_style(button: Button, action_id: String) -> void:

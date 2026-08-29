@@ -11,7 +11,9 @@ func _init()->void:
 		_legal("CONTEXT","distance","GT",1,"이미 공격 가능한 거리다.")],[
 		_score("HEXACO","X",180),_score("HEXACO","O",120),
 		_score("RELATION","species_prior",1500),_score("RELATION","memory_modifier",1500),
-		_score("RELATION","affinity",60),_score("CONTEXT","approach_pressure",180)],
+		_score("RELATION","affinity",60),_score("RELATION","hostility",220),
+		_score("CONTEXT","approach_pressure",180),_score("CONTEXT","threat",60),
+		_score("CONTEXT","opportunity",160)],
 		2,120,80,-1,[_goal("CONTEXT","distance","LTE",1)]))
 	register_definition(DefinitionScript.new("ENGAGE","MELEE","OTHER","NONE",90,[
 		_legal("CONTEXT","distance","LTE",1,"공격 거리가 아니다."),

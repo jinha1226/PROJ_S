@@ -15,9 +15,13 @@ func test_lab_presents_two_actor_map_and_large_readable_cards() -> bool:
 	lab.grid.size = Vector2(300, 300)
 	check_eq(lab.grid.visible_cell_count(), 225, "15x15 decision map")
 	check_eq(lab.grid.actor_count(), 2, "exactly two actors are presented")
-	check(lab.situation_label.text.contains("인간 라온(HP 82, 출혈 3턴)") \
-		and lab.situation_label.text.contains("고블린 모그(HP 46)") \
+	check(lab.situation_label.text.contains("인간 라온(HP 82, 출혈 3턴") \
+		and lab.situation_label.text.contains("고블린 모그(HP 46") \
 		and lab.situation_label.text.contains("4칸 거리"), "first sentence explains the encounter")
+	check(lab.situation_label.text.contains("장검 무장") \
+		and lab.situation_label.text.contains("굽은 단검 무장") \
+		and lab.situation_label.text.contains("공격받은 기억"),
+		"situation sentence exposes arms and personal grievance")
 	check(lab.actor_buttons[0].text.contains("라온") and lab.actor_buttons[0].text.contains("HP 82"),
 		"actor A overview shows identity and body state")
 	check(lab.actor_buttons[1].text.contains("모그") and lab.actor_buttons[1].text.contains("HP 46"),
@@ -64,6 +68,27 @@ func test_candidate_breakdown_uses_korean_sentences_and_all_score_buckets() -> b
 		"illegal candidate explains rejection in Korean")
 	check(not card.contains("ENGAGE") and not card.contains("FLEE") and not card.contains("REST"),
 		"internal action ids stay out of the player-facing card")
+	lab.free()
+	return finish()
+
+
+func test_approach_copy_distinguishes_hostile_from_neutral_intent() -> bool:
+	var lab = LabScene.instantiate()
+	lab.initialize_for_headless_test(FakeSimulator.new(3021))
+	var approach := {
+		"selected_action_id": "APPROACH",
+		"candidates": [{"action_id": "APPROACH", "selected": true,
+			"relation_terms": [{"input_id": "species_prior", "input_value": -75, "contribution": -112}],
+			"context_terms": []}],
+	}
+	check_eq(lab._intent_phrase("APPROACH", {"relation": {"effective": -35}}, approach),
+		"공격 기회를 노리며 접근", "negative effective relation reads as hostile approach")
+	check_eq(lab._intent_phrase("APPROACH", {"relation": {"effective": 20}}, approach),
+		"조심스럽게 접근", "positive relation reads as cautious approach")
+	check_eq(lab._intent_phrase("APPROACH", {}, approach), "공격 기회를 노리며 접근",
+		"breakdown terms provide a hostile fallback when relation DTO is absent")
+	check_eq(str(Grid.intent_visual_spec("APPROACH").shape_id), "INWARD_CHEVRON",
+		"wording does not change the approach icon mapping")
 	lab.free()
 	return finish()
 

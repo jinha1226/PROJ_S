@@ -42,6 +42,8 @@ func reset(p_seed:int=1)->Dictionary:
 		elif status_roll==2:actor.status_effect={"status_id":"POISONED","remaining_quanta":4,"tick_damage":3}
 		actor.position=Vector2i(4 if entity_id==1 else 4+distance,7)
 		state.actors[entity_id]=actor
+	_apply_seed_stratum(p_seed,absi(p_seed)%4)
+	state.actors[1].position=Vector2i(4,7);state.actors[2].position=Vector2i(4+state.distance,7)
 	command_journal.clear()
 	return {"accepted":true,"reason":"ok","seed":str(p_seed)}
 
@@ -341,10 +343,78 @@ func _escape_reached(actor)->bool:
 	return state.distance>=ESCAPE_DISTANCE or (actor.entity_id==1 and actor.position.x<=1) \
 		or (actor.entity_id==2 and actor.position.x>=13)
 
+func _apply_seed_stratum(seed:int,stratum:int)->void:
+	var first=state.actors[1];var second=state.actors[2]
+	if stratum in [0,1]:_apply_hostile_species_pair(seed,first,second)
+	match stratum:
+		0:
+			state.distance=1+HexacoScript.sample(seed,0,"stratum/hostile/distance",2)
+			_set_memory(first,"EXILED" if HexacoScript.sample(seed,1,"stratum/hostile/memory",2)==0 else "HARMED")
+			_set_memory(second,"HARMED" if HexacoScript.sample(seed,2,"stratum/hostile/memory",4)<3 else "NONE")
+			for actor in [first,second]:
+				actor.hp=70+HexacoScript.sample(seed,actor.entity_id,"stratum/hostile/hp",31)
+				actor.alive=true;actor.status_effect={};actor.power=55+HexacoScript.sample(
+					seed,actor.entity_id,"stratum/hostile/power",31)
+				_set_armed(actor,true,seed,"stratum/hostile")
+		1:
+			state.distance=3+HexacoScript.sample(seed,0,"stratum/tense/distance",3)
+			_set_memory(first,"HARMED")
+			_set_memory(second,["NONE","HELPED","HARMED"][HexacoScript.sample(
+				seed,2,"stratum/tense/memory",3)])
+			for actor in [first,second]:
+				actor.hp=60+HexacoScript.sample(seed,actor.entity_id,"stratum/tense/hp",41)
+				actor.alive=true;actor.status_effect={};actor.power=40+HexacoScript.sample(
+					seed,actor.entity_id,"stratum/tense/power",46)
+				_set_armed(actor,actor.entity_id==1 or HexacoScript.sample(
+					seed,actor.entity_id,"stratum/tense/armed",4)>0,seed,"stratum/tense")
+		2:
+			state.distance=2+HexacoScript.sample(seed,0,"stratum/vulnerable/distance",4)
+			var vulnerable=first if HexacoScript.sample(seed,0,"stratum/vulnerable/actor",2)==0 else second
+			var stronger=second if vulnerable==first else first
+			vulnerable.hp=20+HexacoScript.sample(seed,vulnerable.entity_id,"stratum/vulnerable/hp",31)
+			vulnerable.alive=true;vulnerable.power=25+HexacoScript.sample(
+				seed,vulnerable.entity_id,"stratum/vulnerable/power",31)
+			vulnerable.status_effect={"status_id":"BLEEDING" if HexacoScript.sample(
+				seed,vulnerable.entity_id,"stratum/vulnerable/status",2)==0 else "POISONED",
+				"remaining_quanta":3,"tick_damage":3}
+			vulnerable.supplies=HexacoScript.sample(seed,vulnerable.entity_id,"stratum/vulnerable/supply",2)
+			_set_memory(vulnerable,"HARMED")
+			stronger.hp=75+HexacoScript.sample(seed,stronger.entity_id,"stratum/vulnerable/hp",26)
+			stronger.alive=true;stronger.status_effect={};stronger.power=65+HexacoScript.sample(
+				seed,stronger.entity_id,"stratum/vulnerable/power",31)
+			_set_armed(stronger,true,seed,"stratum/vulnerable")
+		3:
+			state.distance=4+HexacoScript.sample(seed,0,"stratum/ambiguous/distance",3)
+			first.species_id="human";second.species_id="human" if HexacoScript.sample(
+				seed,0,"stratum/ambiguous/species",2)==0 else "dwarf"
+			_set_memory(first,"NONE");_set_memory(second,
+				"HELPED" if HexacoScript.sample(seed,2,"stratum/ambiguous/memory",3)==0 else "NONE")
+			for actor in [first,second]:
+				actor.hp=80+HexacoScript.sample(seed,actor.entity_id,"stratum/ambiguous/hp",21)
+				actor.alive=true;actor.status_effect={};actor.power=40+HexacoScript.sample(
+					seed,actor.entity_id,"stratum/ambiguous/power",31)
+				_set_armed(actor,HexacoScript.sample(seed,actor.entity_id,"stratum/ambiguous/armed",2)==0,
+					seed,"stratum/ambiguous")
+
+func _apply_hostile_species_pair(seed:int,first,second)->void:
+	var pair:Array=["human","goblin"] if HexacoScript.sample(seed,0,"stratum/hostile/pair",2)==0 \
+		else ["dwarf","goblin"]
+	if HexacoScript.sample(seed,0,"stratum/hostile/order",2)==1:pair.reverse()
+	first.species_id=pair[0];second.species_id=pair[1]
+
+func _set_memory(actor,memory_kind:String)->void:
+	actor.memory_kind=memory_kind
+	actor.memory_modifier=int({"NONE":0,"HELPED":15,"HARMED":-35,"EXILED":-55}[memory_kind])
+
+func _set_armed(actor,armed:bool,seed:int,key:String)->void:
+	actor.armed=armed
+	actor.weapon_id=(["SPEAR","SWORD"][HexacoScript.sample(seed,actor.entity_id,key+"/weapon",2)] if armed else "NONE")
+
 func _decision_inputs(actor,other)->Dictionary:
 	var relation:Dictionary=relation_assessment(actor.entity_id);var health:int=actor.hp*10
 	var injury:int=1000-health;var dot:int=1000 if not actor.status_effect.is_empty() else 0
 	var threat:=clampi((other.power-actor.power)*8+(7-state.distance)*80,0,1000)
+	var opportunity:=clampi(500+(actor.power-other.power)*10+(200 if actor.armed else -300),0,1000)
 	var effective:=int(relation.effective)
 	return {"HEXACO":{"H":actor.profile.value("H"),"E":actor.profile.value("E"),
 		"X":actor.profile.value("X"),"A":actor.profile.value("A"),
@@ -359,7 +429,7 @@ func _decision_inputs(actor,other)->Dictionary:
 		"CONTEXT":{"distance":state.distance,"other_alive":1000 if other.alive else 0,
 			"escape_reached":1000 if _escape_reached(actor) else 0,
 			"escape_space":1000 if state.distance<12 else 0,"approach_pressure":state.distance*140,
-			"threat":threat,"uncertainty":500}}
+			"opportunity":opportunity,"threat":threat,"uncertainty":500}}
 
 func _actor_dto(actor)->Dictionary:
 	return {"id":str(actor.entity_id),"name":actor.display_name,"species_id":actor.species_id,

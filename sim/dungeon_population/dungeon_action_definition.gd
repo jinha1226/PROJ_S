@@ -9,7 +9,7 @@ const INPUT_IDS:={
 	"STATE":["armed","dot","health","injury","power","power_gap","supplies","treatment_need"],
 	"RELATION":["affinity","fear_pressure","hostility","memory_modifier","neutrality","species_prior"],
 	"CONTEXT":["approach_pressure","distance","escape_reached","escape_space","other_alive",
-		"threat","uncertainty"]}
+		"opportunity","threat","uncertainty"]}
 
 var action_id:="HOLD"
 var atomic_verb:="WAIT"
