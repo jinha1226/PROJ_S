@@ -23,16 +23,19 @@ history에서 집중/승리 투영을 다시 계산하여 XP, 기술 훈련, 처
 - 승리 훈련: `100 × focus / 100`. 현재 값들이 100의 약수이므로 손실이나 부동소수점이 없다.
 - 기술 rank `R` 시작 누적 훈련: `25 × R × (R+1)`; R1=50, R2=150이다.
 - 캐릭터 레벨은 pacing/요약 표시일 뿐 공격·피해에 곱하지 않는다.
-- 현재 연결된 유일한 기술 효과는 근접 전투 rank당 근접 `base_damage +2`다. 기존 armor와
-  guard 계산 전에 적용되고, 결정론적 명중/출혈 commitment와 RNG lane은 바뀌지 않는다.
+- 근접 전투는 rank당 근접 `base_damage +2`다. 기존 armor와 guard 계산 전에 적용되고,
+  결정론적 명중/출혈 commitment와 RNG lane은 바뀌지 않는다.
+- 방어술은 주인공 HOLD의 물리 피해 감소율을 `min(500, 250 + 50 × GUARD rank)` milli로
+  정한다. 즉 기본 25%에서 rank당 5%p, 상한 50%다. flat armor 적용 뒤 정수 절삭하며
+  기존 HOLD 지속시간 200은 바뀌지 않는다.
 
 ## 기술과 이정표
 
 현재 행동에 대응하는 작은 기반만 둔다.
 
 - 근접 전투: 현재 MELEE 피해에 연결됨.
-- 방어술: 현재 HOLD 행동에 대응하지만 수치 효과 연결은 후속 개발이다.
-- 탐험술: 현재 MOVE/위험 탐색에 대응하지만 수치 효과 연결은 후속 개발이다.
+- 방어술: 현재 HOLD 물리 피해 감소율에 연결됨.
+- 탐험술: 현재 권위 효과가 없는 후속 개발 seam이다.
 
 각 registry 항목은 label, 설명, effect ID, 다음 milestone rank/label을 갖는다. modal은
 milestone을 “아직 미구현”으로 명시하며 능동 기술을 가장하지 않는다. body simulation,

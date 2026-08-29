@@ -1759,7 +1759,10 @@ func _melee_action_event_error(event) -> String:
 			return "canonical_melee_finisher_formula_invalid"
 		return ""
 	var expected_guarded: bool = attack_start < frozen_guarded_until
-	var expected_guard_reduction: int = int(after_armor * 250 / 1000) if expected_guarded else 0
+	var guard_rank:=_progression_rank_before("GUARD",event.id) \
+		if party_encounter!=null and event.target_id==party_encounter.protagonist_id else 0
+	var guard_rate_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
+	var expected_guard_reduction: int = int(after_armor * guard_rate_milli / 1000) if expected_guarded else 0
 	var normal_damage: int = maxi(1, after_armor - expected_guard_reduction)
 	if intent_mode != "STRIKE" or event.data.hit_chance_milli != hit_chance \
 			or event.data.bleed_chance_milli != bleed_chance \
@@ -3120,6 +3123,11 @@ func _party_progression_error()->String:
 
 
 func _progression_melee_rank_before(event_id:int)->int:
+	return _progression_rank_before("MELEE",event_id)
+
+
+func _progression_rank_before(skill_id:String,event_id:int)->int:
+	if skill_id not in ProgressionRegistryScript.SKILL_IDS:return 0
 	var focus:Dictionary=ProgressionRegistryScript.DEFAULT_FOCUS.duplicate(true)
 	var training:=0
 	for historical in events:
@@ -3128,7 +3136,7 @@ func _progression_melee_rank_before(event_id:int)->int:
 			var parsed:=_focus_from_event(historical)
 			if not parsed.is_empty():focus=parsed
 		elif historical.type=="party.victory":
-			training+=int(ProgressionRegistryScript.VICTORY_XP*int(focus.MELEE) \
+			training+=int(ProgressionRegistryScript.VICTORY_XP*int(focus[skill_id]) \
 				/ProgressionRegistryScript.FOCUS_TOTAL)
 	return ProgressionRegistryScript.skill_rank(training)
 

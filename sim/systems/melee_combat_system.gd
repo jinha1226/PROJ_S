@@ -53,7 +53,12 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var armor_reduction := mini(int(target_profile.armor_flat), maxi(0, base_damage - 1))
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
-	var guard_reduction := int(after_armor * 250 / 1000) if guarded else 0
+	var guard_rank:=0
+	if world.party_encounter!=null and target_id==world.party_encounter.protagonist_id \
+			and world.party_encounter.protagonist_progression!=null:
+		guard_rank=world.party_encounter.protagonist_progression.rank("GUARD")
+	var guard_rate_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
+	var guard_reduction := int(after_armor * guard_rate_milli / 1000) if guarded else 0
 	var normal_final_damage := maxi(1, after_armor - guard_reduction)
 	var key := commitment_key(world.seed, processed_step_index, attack_start_world_time,
 		batch_context, intent_ordinal, attacker_id, target_id)

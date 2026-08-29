@@ -15,6 +15,7 @@ const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_regist
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
+const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -210,6 +211,16 @@ func protagonist_progression()->Dictionary:
 	var level:=ProgressionRegistryScript.level_for_xp(progression.xp_total)
 	var floor_xp:=ProgressionRegistryScript.xp_floor_for_level(level)
 	var next_total:=ProgressionRegistryScript.xp_floor_for_level(level+1)
+	var state=sim.world.party_encounter
+	var hero_combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var profile:=CombatProfileRegistryScript.profile(hero_combatant.combat_profile_id) \
+		if hero_combatant!=null else {}
+	var melee_rank:int=progression.rank("MELEE")
+	var guard_rank:int=progression.rank("GUARD")
+	var attack_power:=int(profile.get("power",0)) \
+		+ProgressionRegistryScript.melee_power_bonus(melee_rank)
+	var armor_flat:=int(profile.get("armor_flat",0))
+	var guard_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
 	var skills:Array=[]
 	for skill_id in ProgressionRegistryScript.SKILL_IDS:
 		var definition:=ProgressionRegistryScript.definition(skill_id)
@@ -219,12 +230,14 @@ func protagonist_progression()->Dictionary:
 		var next_training:=ProgressionRegistryScript.training_floor_for_rank(rank+1)
 		var power_bonus:=ProgressionRegistryScript.melee_power_bonus(rank) \
 			if skill_id=="MELEE" else 0
+		var effect_label:="근접 피해 +%d"%power_bonus if skill_id=="MELEE" \
+			else ("HOLD 물리 피해 %d%% 감소"%int(ProgressionRegistryScript.guard_reduction_milli(rank)/10) \
+				if skill_id=="GUARD" else "현재 효과 없음 · 후속 연결 예정")
 		skills.append({"skill_id":skill_id,"label":str(definition.label),"rank":rank,
 			"training_total":training_total,"training_current":training_total-training_floor,
 			"training_required":next_training-training_floor,
 			"focus":int(progression.training_focus[skill_id]),
-			"effect_label":"근접 피해 +%d"%power_bonus if skill_id=="MELEE" \
-				else "효과는 후속 개발에서 연결",
+			"effect_label":effect_label,
 			"next_milestone":{"rank":int(definition.milestone_rank),
 				"label":str(definition.milestone_label),"implemented":false}})
 	return {"schema_version":ProgressionRegistryScript.SCHEMA_VERSION,"available":true,
@@ -232,6 +245,8 @@ func protagonist_progression()->Dictionary:
 		"xp_total":int(progression.xp_total),"xp_current":int(progression.xp_total)-floor_xp,
 		"xp_required":next_total-floor_xp,"current_level_floor":floor_xp,
 		"next_level_threshold":next_total,"focus_total":ProgressionRegistryScript.FOCUS_TOTAL,
+		"combat_stats":{"attack_power":attack_power,"armor_flat":armor_flat,
+			"guard_reduction_milli":guard_milli,"guard_duration":200},
 		"skills":skills}.duplicate(true)
 
 
@@ -2703,7 +2718,12 @@ func _action_presentation(row: Variant) -> Variant:
 	var target_name := ""
 	var actor_id := int(row.get("actor_id", -1))
 	var target_position := [-1, -1]
-	var reason := "200 시간 동안 물리 피해를 25% 줄이는 방어 자세를 취합니다."
+	var guard_percent:=25
+	if sim!=null and sim.world!=null and sim.world.party_encounter!=null \
+			and actor_id==sim.world.party_encounter.protagonist_id:
+		guard_percent=int(ProgressionRegistryScript.guard_reduction_milli(
+			sim.world.party_encounter.protagonist_progression.rank("GUARD"))/10)
+	var reason := "200 시간 동안 물리 피해를 %d%% 줄이는 방어 자세를 취합니다."%guard_percent
 	var attack_preview = null
 	if action_type == "MOVE": action_text = "이동 (%d,%d)" % [int(destination[0]), int(destination[1])]
 	elif action_type == "MELEE":

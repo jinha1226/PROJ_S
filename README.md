@@ -144,6 +144,17 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 
 `godot --path .`은 450×800 Playtest Sandbox를 바로 실행합니다. 타일을 한 번 클릭하면 해당 칸을 검사하고, 선택된 인접 칸을 다시 클릭하면 MOVE를 제출합니다. 방향키/WASD는 즉시 네 방향 MOVE, `Space` 또는 `.`은 WAIT, `1`/`2`/`3`은 선택 칸에 불/물/방전, `L`은 log drawer 열기·닫기입니다. 메뉴에서는 species·seed reset, SAVE/LOAD와 snapshot 복사를 사용할 수 있습니다.
 
+솔로 모바일 HUD의 `3D 실험`은 기존 2D renderer 위에 여는 presentation-local 실험실입니다.
+실제 `Node3D + SubViewport + Camera3D` 15×15 ASCII 방에서 칸을 눌러 이동하고 인접한
+`g`를 공격할 수 있습니다. `2D로`를 누르면 같은 본편 session으로 돌아오며, 실험실의
+위치·적 체력·효과는 save/journal/RNG에 포함되지 않습니다. 360×640과 450×800 portrait
+viewport에서 고정 orthographic oblique camera와 44px 이상 조작부를 사용합니다.
+
+인물 창은 Lv/XP progress bar, 현재 공격력·flat 방어력·HOLD 방어율, 세 기술의 rank와
+훈련 progress/focus를 카드로 표시합니다. MELEE는 rank당 피해 +2, GUARD는 HOLD의 기본
+25% 물리 감소에 rank당 5%p를 더해 50%에서 제한합니다. EXPLORATION은 현재 권위 효과가
+없음을 명시합니다. character level 자체는 공격·방어 공식에 곱하지 않습니다.
+
 브라우저에서는 [GitHub Pages 플레이테스트](https://jinha1226.github.io/PROJ_S/)를 사용합니다. `main`에 push하면 GitHub Actions가 92개 헤드리스 테스트를 먼저 실행하고, 단일 스레드 Godot Web build를 만들어 Pages에 자동 배포합니다. 로컬 Web export는 아래 명령으로 만들 수 있습니다.
 
 ```bash

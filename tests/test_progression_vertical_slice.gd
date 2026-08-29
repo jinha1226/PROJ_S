@@ -96,19 +96,64 @@ func test_melee_rank_changes_authoritative_preview_without_level_multiplier()->b
 		"combat effect does not use character level as multiplier")
 	return finish()
 
+func test_guard_rank_changes_frozen_preview_resolution_and_rank_zero_validates()->bool:
+	var baseline=_engaged_adjacent_fixture();var base_state=baseline.sim.world.party_encounter
+	var hero:=int(base_state.protagonist_id);var enemy:=int(base_state.enemy_ids[0])
+	baseline.sim.world.combatant_states[hero].guarded_until=baseline.sim.world.world_time+200
+	var base_assessment:Dictionary=baseline.sim.melee.assess_attack(enemy,hero,"SUGGESTED",
+		baseline.sim.world.step_index+1,baseline.sim.world.world_time,"GUARD_TEST",0)
+	var skilled=_engaged_adjacent_fixture();var skilled_state=skilled.sim.world.party_encounter
+	var skilled_hero:=int(skilled_state.protagonist_id);var skilled_enemy:=int(skilled_state.enemy_ids[0])
+	skilled_state.protagonist_progression.skill_training.GUARD=50
+	skilled.sim.world.combatant_states[skilled_hero].guarded_until=skilled.sim.world.world_time+200
+	var skilled_assessment:Dictionary=skilled.sim.melee.assess_attack(skilled_enemy,skilled_hero,"SUGGESTED",
+		skilled.sim.world.step_index+1,skilled.sim.world.world_time,"GUARD_TEST",0)
+	check(not base_assessment.is_empty() and not skilled_assessment.is_empty(),"guard fixtures create canonical-shaped assessments")
+	if not base_assessment.is_empty() and not skilled_assessment.is_empty():
+		check(int(skilled_assessment.guard_reduction)>int(base_assessment.guard_reduction),
+			"GUARD rank one raises HOLD reduction from 25% to 30%")
+		var frozen=skilled.sim.melee.freeze_assessment(skilled_assessment,120,0,true)
+		var resolution=skilled.sim.melee.resolve_frozen_intent(frozen)
+		check(resolution!=null and int(resolution.final_damage)==int(skilled_assessment.normal_final_damage),
+			"frozen resolution consumes the ranked guard preview exactly")
+	var hold_preview:Dictionary=skilled.preview_actor_action(skilled_hero,"HOLD")
+	check(bool(hold_preview.get("accepted",false)) and hold_preview.get("selected_action_preview",{}) is Dictionary \
+		and "30%" in str(hold_preview.selected_action_preview.get("reason","")),
+		"detached HOLD presentation reports the authoritative ranked percentage")
+	check_eq(skilled.protagonist_progression().level,1,"GUARD effect never reads character level")
+
+	var canonical=_engaged_adjacent_fixture();var canonical_hero:=int(canonical.party_status().protagonist_id)
+	check(canonical.set_actor_action(canonical_hero,"HOLD").accepted,"rank-zero HOLD draft accepted")
+	check(canonical.commit_turn().accepted,"rank-zero HOLD resolution commits")
+	check_eq(canonical.sim.world.world_state_error(),"","rank-zero guard events pass canonical validator")
+	var tampered:Dictionary=canonical.sim.snapshot();var changed:=false
+	for event in tampered.events:
+		if event.type=="action.melee_attack" and event.target_id==str(canonical_hero) and bool(event.data.guarded):
+			event.data.guard_reduction=int(event.data.guard_reduction)+1;changed=true;break
+	check(changed,"fixture records a guarded canonical melee action")
+	if changed:check(WorldState.from_snapshot(tampered)==null,"validator rejects a forged guard reduction")
+	return finish()
+
 func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	var level=sandbox.find_child("LevelProgress",true,false) as Label
-	check(level!=null and "Lv.1" in level.text and "XP 0/100" in level.text,
-		"solo mobile hero card shows compact level and XP")
+	var compact_xp=sandbox.find_child("CompactXPBar",true,false) as ProgressBar
+	check(level!=null and "Lv.1" in level.text and "공" in level.text and compact_xp!=null \
+		and compact_xp.max_value==100,"solo mobile hero card shows level, stats, and real XP bar")
 	sandbox._open_hero_detail()
-	check("기술 · 훈련 집중 합계 100" in sandbox.member_detail_body.text \
-		and "아직 미구현" in sandbox.member_detail_body.text,
-		"hero detail explains skills, focus, and future milestones")
+	check(sandbox.member_progression_window.visible and sandbox.member_progression_xp.max_value==100 \
+		and "공격력" in sandbox.member_progression_stats.text,
+		"hero detail uses visual XP and honest derived combat stats")
+	check(sandbox.member_progression_skill_rows.size()==3 \
+		and "미래" in str((sandbox.member_progression_skill_rows.EXPLORATION.future as Label).text),
+		"three visual skill cards distinguish current and future effects")
 	check(sandbox.member_detail_focus_buttons.visible,
 		"hero detail exposes focus controls")
+	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
+		and "✓" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
+		"dominant training focus has an obvious selected state")
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,
 			"focus control remains mobile readable")

@@ -15,7 +15,7 @@ const DEFINITIONS := {
 		"effect_id":"MELEE_POWER", "milestone_rank":3,
 		"milestone_label":"능동 전투 기술 (후속 개발)"},
 	"GUARD":{"label":"방어술", "description":"방어 행동을 다루는 기반 숙련입니다.",
-		"effect_id":"FUTURE_GUARD", "milestone_rank":3,
+		"effect_id":"HOLD_GUARD_RATE", "milestone_rank":3,
 		"milestone_label":"반격 태세 (후속 개발)"},
 	"EXPLORATION":{"label":"탐험술", "description":"이동과 위험 대응을 위한 기반 숙련입니다.",
 		"effect_id":"FUTURE_EXPLORATION", "milestone_rank":3,
@@ -64,3 +64,7 @@ static func training_floor_for_rank(rank:int)->int:
 static func melee_power_bonus(rank:int)->int:
 	return clampi(rank,0,MAX_RANK)*2
 
+static func guard_reduction_milli(rank:int)->int:
+	# HOLD starts at 25% physical reduction. Each authoritative GUARD rank adds
+	# five percentage points, with a hard 50% cap. Character level is not used.
+	return mini(500,250+50*clampi(rank,0,MAX_RANK))
