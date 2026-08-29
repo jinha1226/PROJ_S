@@ -99,6 +99,7 @@ var _reward_emphasis_tween:Tween
 var _run_locked_exit_feedback:=false
 var _personality_entropy_source:Callable
 var _narrative_log_visible:=true
+var _compact_fixed_surface_active:=false
 
 func _ready()->void:
 	_build_ui()
@@ -303,6 +304,10 @@ func _refresh()->void:
 		or run_terminal or _run_locked_exit_feedback
 	var party_rows:Array=session.party_cards()
 	var product_hud:=_is_solo_product_session()
+	var compact_fixed_surface:=product_hud and size.x<450.0 and combat_actions_visible
+	if compact_fixed_surface and not _compact_fixed_surface_active:
+		_narrative_log_visible=false
+	_compact_fixed_surface_active=compact_fixed_surface
 	if product_hud:
 		root_layout.offset_left=0;root_layout.offset_right=0
 		root_layout.offset_top=0;root_layout.offset_bottom=0
@@ -312,8 +317,15 @@ func _refresh()->void:
 	minimap.visible=product_hud;recent_event_label.visible=product_hud
 	top_hud_actions.visible=product_hud
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
+	if compact_fixed_surface and int(card_layout.get("effective_count",0))==1:
+		card_layout["party_height"]=98;card_layout["portrait_min_size"]=[88,88]
 	_apply_portrait_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
+	if compact_fixed_surface:
+		cards.visible=not _narrative_log_visible
+		info_scroll.visible=_narrative_log_visible
+	else:
+		cards.visible=true;info_scroll.visible=true
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
@@ -325,8 +337,15 @@ func _refresh()->void:
 	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
 	grid.set_observation(observation,ghosts)
 	minimap.set_observation(observation)
-	grid.set_view_window(15)
-	grid.set_presentation_style(presentation.get("grid_style",{}))
+	if product_hud:
+		var hero_position:=Vector2i(int(status.protagonist_position[0]),
+			int(status.protagonist_position[1]))
+		grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+	else:grid.set_view_window(15)
+	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
+	if product_hud:grid_style["vignette"]=false
+	grid.set_neutral_phase_map(product_hud)
+	grid.set_presentation_style(grid_style)
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
 	if run_complete:
@@ -406,6 +425,7 @@ func _toggle_narrative_log()->void:
 		record_button.button_pressed=_narrative_log_visible
 		record_button.tooltip_text="하단 사건 기록 숨기기" if _narrative_log_visible \
 			else "하단 사건 기록 표시하기"
+	if _compact_fixed_surface_active:_request_refresh()
 
 func _open_hero_detail()->void:
 	if session==null:return
@@ -1646,15 +1666,17 @@ func _combat_log_text(history:Dictionary)->String:
 			for row in summary.get("companion_rows",[]):
 				if row is Dictionary:companion_parts.append("%s: %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","성향 미상"))])
 			if not companion_parts.is_empty():lines.append("이번 원정 성향 · "+" · ".join(companion_parts))
-	lines.append("전투 기록 · 최근 8턴")
+	lines.append("주요 기록 · 최근 8개 사건 턴")
 	var groups:Variant=history.get("groups",[])
 	if not groups is Array or groups.is_empty():
-		lines.append("아직 전투 사건이 없습니다.");return "\n".join(lines)
+		lines.append("아직 주요 사건이 없습니다.");return "\n".join(lines)
 	for group in groups:
 		if not group is Dictionary:continue
 		lines.append("── 턴 %d · 시간 %d→%d ──"%[int(group.get("step_index",0)),int(group.get("start_time",0)),int(group.get("end_time",0))])
 		for row in group.get("rows",[]):
-			if row is Dictionary:lines.append(str(row.get("message","세계에 변화가 일어났습니다.")))
+			if not row is Dictionary:continue
+			var message:=str(row.get("message","")).strip_edges()
+			if not message.is_empty():lines.append(message)
 	return "\n".join(lines)
 
 func _scroll_information_to_latest_log()->void:
@@ -1698,10 +1720,11 @@ func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경�
 func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0
-	phase_panel.custom_minimum_size.y=92 if _is_solo_product_session() else (52 if wide else 48)
+	phase_panel.custom_minimum_size.y=(88 if size.x<450.0 else 92) \
+		if _is_solo_product_session() else (52 if wide else 48)
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
-	if _is_solo_product_session() and not combat_active and not combat_actions_visible:
+	if _is_solo_product_session():
 		grid.custom_minimum_size=Vector2(size.x,size.x)
 	elif wide:
 		grid.custom_minimum_size=Vector2(405,405)

@@ -12,13 +12,13 @@ const DIORAMA_PALETTE := {
 }
 
 const TERRAIN_DEFINITIONS := {
-	"floor": {"glyph":".", "base_hex":"#0a1016", "glyph_hex":"#56616a", "edge_hex":"#060a0e", "font_ratio":0.52, "raised":false},
-	"stone_floor": {"glyph":"#", "base_hex":"#0b1117", "glyph_hex":"#9da9b2", "edge_hex":"#070b10", "font_ratio":0.55, "raised":false},
-	"wood_floor": {"glyph":",", "base_hex":"#0d1115", "glyph_hex":"#b98755", "edge_hex":"#090a0b", "font_ratio":0.55, "raised":false},
-	"metal": {"glyph":"=", "base_hex":"#0a1218", "glyph_hex":"#8fb5c2", "edge_hex":"#060b0f", "font_ratio":0.56, "raised":false},
-	"rubble": {"glyph":":", "base_hex":"#0d1114", "glyph_hex":"#a49272", "edge_hex":"#080a0b", "font_ratio":0.54, "raised":false},
-	"shallow_water": {"glyph":"~", "base_hex":"#09141a", "glyph_hex":"#51c7ec", "edge_hex":"#061016", "font_ratio":0.58, "raised":false},
-	"wall": {"glyph":"#", "base_hex":"#0d1319", "glyph_hex":"#bac5cd", "edge_hex":"#070b0f", "font_ratio":0.61, "raised":true},
+	"floor": {"glyph":".", "base_hex":"#0b101b", "glyph_hex":"#8294ff", "edge_hex":"#060a12", "font_ratio":0.52, "raised":false},
+	"stone_floor": {"glyph":"#", "base_hex":"#0c111a", "glyph_hex":"#c7b8ff", "edge_hex":"#080b13", "font_ratio":0.55, "raised":false},
+	"wood_floor": {"glyph":",", "base_hex":"#11100f", "glyph_hex":"#ff9d52", "edge_hex":"#0b0908", "font_ratio":0.55, "raised":false},
+	"metal": {"glyph":"=", "base_hex":"#09141a", "glyph_hex":"#58e5ff", "edge_hex":"#051015", "font_ratio":0.56, "raised":false},
+	"rubble": {"glyph":":", "base_hex":"#11110f", "glyph_hex":"#dbb45d", "edge_hex":"#0b0a07", "font_ratio":0.54, "raised":false},
+	"shallow_water": {"glyph":"~", "base_hex":"#081421", "glyph_hex":"#37a8ff", "edge_hex":"#050e18", "font_ratio":0.58, "raised":false},
+	"wall": {"glyph":"#", "base_hex":"#10121b", "glyph_hex":"#ead5ff", "edge_hex":"#080a12", "font_ratio":0.61, "raised":true},
 }
 
 
@@ -90,10 +90,10 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 
 static func feature_spec(feature_id: String) -> Dictionary:
 	var definitions := {
-		"run_entry":{"glyph":"<", "color_hex":"#65BFFF"},
+		"run_entry":{"glyph":"<", "color_hex":"#55C8FF"},
 		"run_exit_locked":{"glyph":"X", "color_hex":"#A36A73"},
-		"run_exit_open":{"glyph":">", "color_hex":"#75D7A0"},
-		"open_door":{"glyph":"/", "color_hex":"#E8B95C"},
+		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8"},
+		"open_door":{"glyph":"/", "color_hex":"#FFD166"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",

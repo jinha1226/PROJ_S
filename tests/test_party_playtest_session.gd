@@ -246,7 +246,7 @@ func test_override_clear_is_per_companion_and_logs_are_korean_narrative() -> boo
 	check_eq(sources[a],"SUGGESTED","first cleared"); check_eq(sources[b],"OVERRIDE","second retained")
 	session.commit_turn(); var text:=JSON.stringify(session.recent_event_log(24))
 	check(not "ENGAGED" in text and not "party.override_committed" in text and not "MELEE" in text,"raw enums absent")
-	check("계획을 바꿨다" in text,"override narrative")
+	check(not "계획을 바꿨다" in text,"routine override bookkeeping stays out of important log")
 	return finish()
 
 func test_preview_preserves_other_overrides_and_override_keeps_original_suggestion() -> bool:
@@ -945,6 +945,13 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 	check(log.groups is Array and log.row_count>0,"grouped combat log populated")
 	var rows:Array=[]
 	for group in log.groups:rows.append_array(group.rows)
+	check_eq(int(log.row_count),rows.size(),"important log row_count matches retained rows")
+	check_eq(int(log.group_count),log.groups.size(),"important log group_count matches nonempty steps")
+	for row in rows:
+		check(str(row.type) not in ["action.move","action.wait","action.hold"],
+			"routine movement/wait/hold is absent from log DTO")
+		check(str(row.message)!="세계에 변화가 일어났다.",
+			"unknown fallback copy is absent from log DTO")
 	var companion_melee:Dictionary={};var attributed_damage:Dictionary={}
 	var finisher_melee:Dictionary={};var finisher_pressure:Dictionary={};var attributed_death:Dictionary={}
 	for row in rows:

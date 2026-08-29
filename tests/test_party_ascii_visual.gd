@@ -11,8 +11,8 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		"floor":".", "stone_floor":"#", "wood_floor":",", "metal":"=",
 		"rubble":":", "shallow_water":"~", "wall":"#",
 	}
-	var darkest_base:=1.0
-	var brightest_base:=0.0
+	var glyph_colors:Array[Color]=[]
+	var glyph_hexes:Array[String]=[]
 	for terrain_id in expected:
 		var spec: Dictionary = Style.terrain_spec({"terrain_id":terrain_id})
 		check_eq(spec.glyph,expected[terrain_id],"%s ASCII glyph"%terrain_id)
@@ -21,9 +21,18 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 			and not spec.draw_tile_border,"%s glyph is primary over a borderless code-native floor"%terrain_id)
 		check_eq(bool(spec.draw_cell_surface),terrain_id!="floor",
 			"ordinary floor uses grid-wide flat background; special terrain may use flat surface")
-		var luminance:=Color(str(spec.base_hex)).get_luminance()
-		darkest_base=minf(darkest_base,luminance);brightest_base=maxf(brightest_base,luminance)
-	check(brightest_base-darkest_base<0.025,"terrain backgrounds stay nearly uniform neutral navy")
+		var base:=Color(str(spec.base_hex));var glyph:=Color(str(spec.glyph_hex))
+		glyph_colors.append(glyph);glyph_hexes.append(str(spec.glyph_hex))
+		check(glyph.get_luminance()>base.get_luminance()+0.30,
+			"%s glyph is bright against its dark substrate"%terrain_id)
+	check_eq(glyph_hexes.duplicate().reduce(func(accum,value):
+		if value not in accum:accum.append(value)
+		return accum,[]).size(),expected.size(),"seven terrain roles have distinct glyph colors")
+	for first in range(glyph_colors.size()):
+		for second in range(first+1,glyph_colors.size()):
+			var a:=glyph_colors[first];var b:=glyph_colors[second]
+			check(Vector3(a.r-b.r,a.g-b.g,a.b-b.b).length()>0.10,
+				"terrain glyph colors %d/%d remain visually separated"%[first,second])
 	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
 		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
 		"unregistered tree terrain is not invented for presentation")
@@ -293,6 +302,43 @@ func test_unseen_cell_emits_no_short_long_or_nearby_actor_signal() -> bool:
 	grid.free();return finish()
 
 
+func test_hero_centered_world_padding_is_explicit_void_and_never_interactive() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[0,0]:cell.actors.append({"entity_id":77,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	grid.set_hero_centered_view(Vector2i.ZERO,15,77)
+	check_eq(grid.view_origin,Vector2i(-7,-7),"edge hero keeps camera center without clamping")
+	var padding_position:=Vector2i(-7,-7)
+	var padding:Dictionary=grid.void_padding_draw_spec(padding_position)
+	var pointer:Vector2=padding.rect.get_center()
+	check(bool(padding.visible) and str(padding.color_hex)=="#020406" \
+		and not bool(padding.accepts_input),"outside-world camera cell is an explicit void surface")
+	check_eq(grid.pixel_to_world_cell(pointer),Vector2i(-1,-1),
+		"void padding rejects pixel-to-world mapping")
+	check_eq(grid.actor_at_pointer(pointer),-1,"void padding cannot hit the nearby centered hero")
+	check(not grid.intent_draw_spec({"type":"MOVE","from_position":[0,0],
+		"destination":[-1,0]}).visible,"intent endpoint cannot leak into world padding")
+	check(not grid.visual_effect_draw_spec({"effect_id":"padding","event_id":1,
+		"kind":"SLASH","world_position":[-1,0]}).visible,
+		"effect cannot render in world padding")
+	grid.set_route_overlay([[-1,0],[0,0]],0,true)
+	var route:Dictionary=grid.route_draw_spec()
+	check_eq(route.path,[[0,0]],"out-of-world route point is rejected before projection")
+	check(not bool(route.valid),"route cannot become valid through void padding")
+	var emitted:Array=[]
+	grid.world_cell_pressed.connect(func(_position):emitted.append("CELL"))
+	grid.actor_pressed.connect(func(_entity_id):emitted.append("ACTOR"))
+	grid.tile_long_pressed.connect(func(_position):emitted.append("LONG"))
+	grid._begin_pointer_gesture("TOUCH",5,pointer)
+	grid._on_long_press_timeout(int(grid.pointer_gesture_state().generation))
+	check(emitted.is_empty() and not bool(grid.pointer_gesture_state().active),
+		"void padding owns neither short nor long-press gesture authority")
+	grid.free();return finish()
+
+
 func test_unseen_route_sections_are_present_but_not_drawable() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
@@ -540,14 +586,22 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	grid.free();return finish()
 
 
-func test_neutral_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct() -> bool:
-	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","wall"]
+func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct() -> bool:
+	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","shallow_water","wall"]
 	var brightest_ground:=0.0
+	var terrain_glyph_hexes:Array[String]=[]
 	for terrain_id in terrain_ids:
-		var color:=Color(str(Style.terrain_spec({"terrain_id":terrain_id}).base_hex))
-		brightest_ground=maxf(brightest_ground,color.get_luminance())
-		check(maxf(color.r,maxf(color.g,color.b))-minf(color.r,minf(color.g,color.b))<0.09,
-			"%s remains low-chroma neutral"%terrain_id)
+		var terrain:Dictionary=Style.terrain_spec({"terrain_id":terrain_id})
+		var base:=Color(str(terrain.base_hex));var glyph:=Color(str(terrain.glyph_hex))
+		brightest_ground=maxf(brightest_ground,base.get_luminance())
+		terrain_glyph_hexes.append(str(terrain.glyph_hex))
+		check(glyph.get_luminance()>base.get_luminance()+0.30,
+			"%s colorful glyph clears its dark ground"%terrain_id)
+		check(maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))>0.12,
+			"%s glyph carries visible chroma"%terrain_id)
+	check_eq(terrain_glyph_hexes.duplicate().reduce(func(accum,value):
+		if value not in accum:accum.append(value)
+		return accum,[]).size(),terrain_ids.size(),"terrain glyph palette is role-distinct")
 	var role_specs:=[
 		Style.actor_spec({"is_protagonist":true,"roster_slot":0}),
 		Style.actor_spec({"faction_id":"party","species_id":"human","roster_slot":1}),

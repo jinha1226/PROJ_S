@@ -35,6 +35,7 @@ var preview_origin := Vector2i(-1, -1)
 var preview_destination := Vector2i(-1, -1)
 var preview_valid := false
 var combat_emphasis := false
+var _neutral_phase_map:=false
 var _presentation_style: Dictionary = {}
 var _active_visual_effects: Array[Dictionary] = []
 var _played_effect_ids: Dictionary = {}
@@ -222,11 +223,29 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 	next_origin=_clamp_view_origin(next_origin)
 	view_origin=next_origin; queue_redraw()
 
-func set_combat_emphasis(enabled:bool)->void:combat_emphasis=enabled;queue_redraw()
+func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
+		hero_actor_id:int=-1)->void:
+	# Product camera authority is the protagonist only. Negative origins are
+	# intentional at map edges: those screen cells render as void rather than
+	# pushing the hero away from the center cell.
+	cancel_pointer_gesture()
+	visible_cell_count=clampi(cell_count,1,64)
+	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
+	if hero_actor_id>0:_actor_motions.erase(hero_actor_id)
+	_update_process_enabled();queue_redraw()
+
+func set_neutral_phase_map(enabled:bool)->void:
+	_neutral_phase_map=enabled
+	if enabled:combat_emphasis=false
+	queue_redraw()
+
+func set_combat_emphasis(enabled:bool)->void:
+	combat_emphasis=enabled and not _neutral_phase_map;queue_redraw()
 
 func set_presentation_style(value:Dictionary)->void:
 	_presentation_style=value.duplicate(true)
-	combat_emphasis=str(_presentation_style.get("style_id",""))=="COMBAT"
+	combat_emphasis=not _neutral_phase_map \
+		and str(_presentation_style.get("style_id",""))=="COMBAT"
 	queue_redraw()
 
 func play_effects(rows:Array)->int:
@@ -299,7 +318,8 @@ func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
-func is_world_cell_visible(position:Vector2i)->bool:return view_bounds().has_point(position)
+func is_world_cell_visible(position:Vector2i)->bool:
+	return _world_in_bounds(position) and view_bounds().has_point(position)
 func _world_in_bounds(position:Vector2i)->bool:
 	return position.x>=0 and position.y>=0 and position.x<world_grid_size.x and position.y<world_grid_size.y
 func _clamp_view_origin(origin:Vector2i)->Vector2i:
@@ -454,7 +474,10 @@ func grid_rect() -> Rect2:
 func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
-	var rect := grid_rect(); var cell := cell_size_px(); var local:=position-view_origin
+	return _camera_cell_rect(position)
+func _camera_cell_rect(position:Vector2i)->Rect2:
+	if not view_bounds().has_point(position):return Rect2()
+	var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 	return Rect2(rect.position+Vector2(local.x,local.y)*cell,Vector2(cell,cell))
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
@@ -468,13 +491,20 @@ func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var local:=pointer-rect.position;var cell:=cell_size_px()
 	var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
 	if local_cell.x<0 or local_cell.y<0 or local_cell.x>=visible_cell_count or local_cell.y>=visible_cell_count:return Vector2i(-1,-1)
-	return view_origin+local_cell
+	var world_position:=view_origin+local_cell
+	return world_position if _world_in_bounds(world_position) else Vector2i(-1,-1)
 func mapping_signature() -> Array:
 	var rows: Array = [[view_origin.x,view_origin.y],visible_cell_count,[world_grid_size.x,world_grid_size.y]]
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var world:=view_origin+Vector2i(x,y); rows.append([[world.x,world.y],world_to_pixel_center(world)])
 	return rows
+func void_padding_draw_spec(position:Vector2i)->Dictionary:
+	var visible:=view_bounds().has_point(position) and not _world_in_bounds(position)
+	return {"visible":visible,"world_position":[position.x,position.y],
+		"rect":_camera_cell_rect(position) if visible else Rect2(),
+		"color_hex":str(AsciiStyleScript.diorama_palette_spec().get("void_hex","#020406")),
+		"accepts_input":false}.duplicate(true)
 func actor_hit_rect(entity_id: int) -> Rect2:
 	for actor in _actors:
 		if int(actor.get("entity_id",-1)) == entity_id:
@@ -637,10 +667,11 @@ func _cell_accepts_actor_input(position:Vector2i)->bool:
 	return not row.is_empty() and bool(AsciiStyleScript.visibility_spec(row).accepts_actor_input)
 
 func _cell_accepts_world_interaction(position:Vector2i)->bool:
-	return bool(AsciiStyleScript.visibility_spec(_cells.get(_key(position),{})).accepts_actor_input)
+	return is_world_cell_visible(position) and _cells.has(_key(position)) \
+		and bool(AsciiStyleScript.visibility_spec(_cells[_key(position)]).accepts_actor_input)
 
 func _cell_allows_overlay(position:Vector2i)->bool:
-	return is_world_cell_visible(position) \
+	return is_world_cell_visible(position) and _cells.has(_key(position)) \
 		and AsciiStyleScript.visibility_state(_cells.get(_key(position),{}))!="UNSEEN"
 
 func _array_to_world_position(value:Variant)->Vector2i:
@@ -768,6 +799,7 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	_draw_void_padding(Color(str(palette.get("void_hex","#020406"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
 	_draw_terrain_glyph_pass("MEMORY")
@@ -793,9 +825,17 @@ func _draw() -> void:
 	for effect in _active_visual_effects:_draw_visual_effect(effect)
 	_draw_fov_edge_haze()
 	var style_id:=str(_presentation_style.get("style_id","DEFAULT"))
-	if combat_emphasis or bool(_presentation_style.get("vignette",false)):
+	if not _neutral_phase_map \
+			and (combat_emphasis or bool(_presentation_style.get("vignette",false))):
 		var border:=Color(str(_presentation_style.get("border_hex","#ff7a80")))
 		draw_rect(grid_rect().grow(-2),border,false,4.0 if style_id=="COMBAT" else 2.5)
+
+func _draw_void_padding(void_color:Color)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			if not _world_in_bounds(position):
+				draw_rect(_camera_cell_rect(position),void_color,true)
 
 func _draw_ground_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):

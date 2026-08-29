@@ -39,8 +39,9 @@ func test_product_patrol_is_tick_driven_visible_deterministic_and_replay_exact()
 				observed_position=Vector2i(int(actor.logical_position[0]),
 					int(actor.logical_position[1]))
 	check_eq(observed_position,moved_position,"visible monster DTO follows authority")
-	check("정찰했다" in JSON.stringify(left.recent_event_log(12)),
-		"exploration log explains monster scouting")
+	var important_text:=JSON.stringify(left.recent_event_log(12))
+	check(not "정찰했다" in important_text and not "action.move" in important_text,
+		"routine monster scouting stays out of the important-event log")
 	check_eq(left.sim.world.world_state_error(),"","patrol world remains canonical")
 	var encoded:=left.save_session_json();var restored=Session.new(9,10)
 	check(restored.load_session_json(encoded).accepted,"patrol save journal replays")
@@ -69,8 +70,9 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 	check(goblin_result.accepted,"risk-averse patrol cadence accepted")
 	check_eq(goblin.sim.world.entities[goblin_enemy].position,goblin_origin,
 		"goblin holds rather than entering harmful water")
-	check("경계했다" in JSON.stringify(goblin.recent_event_log(8)),
-		"blocked or risky patrol logs guard")
+	var guard_text:=JSON.stringify(goblin.recent_event_log(8))
+	check(not "경계했다" in guard_text and not "action.hold" in guard_text,
+		"blocked patrol guard stays out of the important-event log")
 
 	var amphibian=_corridor_session("amphibian",true)
 	var amphibian_state=amphibian.sim.world.party_encounter

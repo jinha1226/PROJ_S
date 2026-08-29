@@ -272,6 +272,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
 	_validate_run_objective_geometry(sandbox,label+" INITIAL")
 	var grid_id:int=sandbox.grid.get_instance_id()
+	var initial_cell_size:float=sandbox.grid.cell_size_px()
 	var state=session.sim.world.party_encounter;var near_exit:=Vector2i(12,1);var exit:=Vector2i(13,1)
 	state.group_anchor=near_exit;state.facing=Vector2i.RIGHT
 	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=near_exit
@@ -329,8 +330,12 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	if restart!=null:restart.pressed.emit()
 	await process_frame;await process_frame
 	var fresh:Dictionary=session.run_progress()
+	var fresh_status:Dictionary=session.party_status()
+	var fresh_hero:=int(fresh_status.protagonist_id)
+	var fresh_hero_position:Vector2i=session.sim.world.entities[fresh_hero].position
 	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.visible_cell_count!=15 \
-			or sandbox.grid.view_origin!=Vector2i.ZERO:
+			or sandbox.grid.view_origin!=fresh_hero_position-Vector2i(7,7) \
+			or absf(sandbox.grid.cell_size_px()-initial_cell_size)>0.001:
 		failures.append("%s restart replaced grid or lost 15x15 mapping"%label)
 	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
 		failures.append("%s restart did not restore fresh run progress"%label)
@@ -356,8 +361,7 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 	if sandbox._is_solo_product_session():
 		if sandbox.root_layout.get_global_rect()!=viewport:
 			failures.append("%s product root has an outer frame"%label)
-		if not sandbox.combat_action_area.visible \
-				and absf(grid_rect.size.x-viewport.size.x)>0.1:
+		if absf(grid_rect.size.x-viewport.size.x)>0.1:
 			failures.append("%s product grid leaves horizontal outer gutters"%label)
 	if bar_rect.end.y>grid_rect.position.y+0.1:
 		failures.append("%s top HUD overlaps grid"%label)
@@ -598,7 +602,7 @@ func _combat_log_history(viewport_size:Vector2)->void:
 	var history:Dictionary=session.combat_log(8,80)
 	if int(history.get("group_count",0))!=8:failures.append("%s combat log did not retain exact recent 8 turns: %s"%[viewport_size,history.get("group_count",0)])
 	if sandbox.log_label.text!=sandbox._combat_log_text(history):failures.append("%s rendered combat log diverges from facade DTO"%viewport_size)
-	if not "전투 기록 · 최근 8턴" in sandbox.log_label.text:failures.append("%s combat log section title missing"%viewport_size)
+	if not "주요 기록 · 최근 8개 사건 턴" in sandbox.log_label.text:failures.append("%s important log section title missing"%viewport_size)
 	var companion_ids:Array=state.party_member_ids.duplicate();companion_ids.erase(hero)
 	var companion_attack:=false;var companion_damage:=false;var numeric_damage:=false
 	for group in history.get("groups",[]):
@@ -607,6 +611,9 @@ func _combat_log_history(viewport_size:Vector2)->void:
 		for row in group.get("rows",[]):
 			if not row is Dictionary:continue
 			var message:=str(row.get("message",""))
+			if str(row.get("type","")) in ["action.move","action.wait","action.hold"] \
+					or message=="세계에 변화가 일어났다.":
+				failures.append("%s important log retained noise %s"%[viewport_size,row.get("type","")])
 			if not message in sandbox.log_label.text:failures.append("%s combat log omitted row %s"%[viewport_size,message])
 			if str(row.get("type",""))=="action.melee_attack" and int(row.get("actor_id",-1)) in companion_ids:
 				companion_attack=true

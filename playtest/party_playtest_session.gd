@@ -2024,16 +2024,19 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 	var checked_turn_limit := clampi(turn_limit,0,64)
 	var checked_row_limit := clampi(row_limit,0,500)
+	var important_events:Array=[]
+	for event in sim.world.events:
+		if _is_important_log_event(event):important_events.append(event)
 	var selected_steps: Array = []
 	if checked_turn_limit > 0 and checked_row_limit > 0:
-		for index in range(sim.world.events.size()-1,-1,-1):
-			var step_index := int(sim.world.events[index].step_index)
+		for index in range(important_events.size()-1,-1,-1):
+			var step_index := int(important_events[index].step_index)
 			if not selected_steps.has(step_index):
 				selected_steps.append(step_index)
 				if selected_steps.size() >= checked_turn_limit: break
 	selected_steps.sort()
 	var selected_events: Array = []
-	for event in sim.world.events:
+	for event in important_events:
 		if selected_steps.has(int(event.step_index)): selected_events.append(event)
 	if selected_events.size() > checked_row_limit:
 		selected_events = selected_events.slice(selected_events.size()-checked_row_limit)
@@ -2058,12 +2061,28 @@ func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	var start := maxi(0, sim.world.events.size()-clampi(limit,0,100))
-	for index in range(start, sim.world.events.size()):
-		var event = sim.world.events[index]
+	var important_events:Array=[]
+	for event in sim.world.events:
+		if _is_important_log_event(event):important_events.append(event)
+	var start := maxi(0,important_events.size()-clampi(limit,0,100))
+	for index in range(start,important_events.size()):
+		var event=important_events[index]
 		rows.append({"event_id":event.id,"step_index":event.step_index,
 			"world_time":event.world_time,"message":_event_message(event)})
 	return rows.duplicate(true)
+
+
+func _is_important_log_event(event)->bool:
+	var event_type:=str(event.type)
+	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
+			"action.melee_attack","combat.attack_missed","entity.downed",
+			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
+			"party.npc_stabilized","party.recruitment_accepted",
+			"party.recruitment_refused","party.companion_recruited",
+			"party.companion_dismissed","party.exile_died","status.applied",
+			"status.expired"]:
+		return true
+	return event_type.begins_with("combat.") and event_type.ends_with("_damage")
 
 func save_session_json() -> String:
 	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,
@@ -2791,6 +2810,12 @@ func _event_message(event) -> String:
 			if str(event.data.get("behavior",""))=="RECOVER":return "%s 안전한 곳에서 몸을 추슬렀다."%_subject(target)
 			return "%s 살아남기 위해 안전한 곳을 찾았다."%_subject(target)
 		"party.exile_died": return "%s 홀로 버티지 못하고 숨졌다."%_subject(target)
+		"entity.downed": return "%s 치명상을 입고 쓰러졌다."%_subject(target)
+		"entity.recovered": return "%s 다시 일어섰다."%_subject(target)
+		"status.applied": return "%s %s 상태에 걸렸다."%[
+			_subject(target),_status_label(str(event.data.get("status_id","상태 이상")))]
+		"status.expired": return "%s %s 상태에서 회복했다."%[
+			_subject(target),_status_label(str(event.data.get("status_id","상태 이상")))]
 		"action.hold":
 			if _is_enemy_patrol_event(event):return "%s 자리를 지키며 경계했다."%_subject(actor)
 			return "%s 방어 자세를 취했다." % _subject(actor)
@@ -2806,7 +2831,14 @@ func _event_message(event) -> String:
 		var hazard_label: String = {"fire":"불길","electric":"감전","water":"물",
 			"poison":"독","physical":"환경 충격"}.get(str(event.data.get("damage_type","")),"환경 영향")
 		return "%s 때문에 %s %d 피해를 입었다." % [hazard_label,_subject(target),int(event.magnitude)]
-	return "세계에 변화가 일어났다."
+	# Unknown events have no narrative projection. Important-event facades use
+	# an explicit allowlist, so returning an empty string cannot manufacture log
+	# noise or expose an unsupported event type.
+	return ""
+
+func _status_label(status_id:String)->String:
+	return {"BLEEDING":"출혈","POISONED":"중독","BURNING":"화상",
+		"SHOCKED":"감전"}.get(status_id,status_id.to_lower())
 
 func _is_enemy_patrol_event(event)->bool:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \

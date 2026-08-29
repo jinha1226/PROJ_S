@@ -435,7 +435,12 @@ func test_combat_product_view_is_full_while_low_level_crop_mapping_remains_autho
 			check_eq(grid.pixel_to_world_cell(pixel),world_position,"%s crop edge roundtrip %s"%[viewport_size,world_position])
 		check(grid.is_world_cell_visible(Vector2i.ZERO) and grid.is_world_cell_visible(Vector2i(14,14)),
 			"%s combat exposes both world edges"%viewport_size)
-		grid.set_observation({"width":15,"height":15,"cells":[]})
+		var visible_cells:Array=[]
+		for y in range(15):
+			for x in range(15):
+				visible_cells.append({"position":[x,y],"terrain_id":"floor",
+					"visibility_state":"VISIBLE","actors":[]})
+		grid.set_observation({"width":15,"height":15,"cells":visible_cells})
 		grid.set_view_window(9,[Vector2i(7,7)])
 		var routed:Array=[]; grid.world_cell_pressed.connect(func(position):routed.append(position))
 		bounds=grid.view_bounds()
@@ -923,6 +928,75 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 		sandbox.free()
 	return finish()
 
+
+func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(session,false)
+		sandbox.size=viewport_size;sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
+		var grid_id:int=sandbox.grid.get_instance_id()
+		var initial_cell:float=sandbox.grid.cell_size_px()
+		_assert_hero_centered(sandbox,"%s initial edge"%viewport_size)
+		var padding_position:Vector2i=sandbox.grid.view_origin
+		var padding:Dictionary=sandbox.grid.void_padding_draw_spec(padding_position)
+		var padding_rect:Rect2=padding.rect
+		check(bool(padding.visible) and str(padding.color_hex)=="#020406" \
+			and not bool(padding.accepts_input),"%s edge padding is explicit void"%viewport_size)
+		check_eq(sandbox.grid.pixel_to_world_cell(padding_rect.get_center()),
+			Vector2i(-1,-1),"%s padding pixel rejects world mapping"%viewport_size)
+		var routed:Array=[];sandbox.grid.world_cell_pressed.connect(func(position):routed.append(position))
+		_grid_screen_touch(sandbox.grid,padding_rect.get_center())
+		check(routed.is_empty(),"%s padding touch emits no action"%viewport_size)
+		var snapshot_before:Dictionary=session.sim.snapshot()
+		var journal_before:Array=session.command_journal.duplicate(true)
+		sandbox._refresh();_assert_hero_centered(sandbox,"%s pure refresh"%viewport_size)
+		check_eq([session.sim.snapshot(),session.command_journal],
+			[snapshot_before,journal_before],"%s camera refresh is presentation-only"%viewport_size)
+
+		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
+			"%s hero move reaches contact"%viewport_size)
+		sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
+		_assert_hero_centered(sandbox,"%s after move"%viewport_size)
+		check_eq(sandbox.grid.get_instance_id(),grid_id,"%s move keeps grid instance"%viewport_size)
+		check(absf(sandbox.grid.cell_size_px()-initial_cell)<0.001,
+			"%s move keeps cell scale"%viewport_size)
+		var contact_mapping:Array=sandbox.grid.mapping_signature()
+		check(session.enter_solo_combat().accepted,"%s enters solo combat"%viewport_size)
+		sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
+		_assert_hero_centered(sandbox,"%s combat"%viewport_size)
+		check_eq(sandbox.grid.mapping_signature(),contact_mapping,
+			"%s combat entry does not recenter or zoom the map"%viewport_size)
+		check(not sandbox.grid.combat_emphasis and sandbox.grid._neutral_phase_map \
+			and not bool(sandbox.grid._presentation_style.get("vignette",true)),
+			"%s combat map stays visually neutral"%viewport_size)
+		check(absf(sandbox.grid.cell_size_px()-initial_cell)<0.001,
+			"%s combat keeps exploration cell scale"%viewport_size)
+
+		var status:Dictionary=session.party_status();var hero:=int(status.protagonist_id)
+		var enemy:=int(status.visible_enemy_ids[0])
+		check(_relocate_with_move_events(session.sim,enemy,
+			session.sim.world.entities[hero].position+Vector2i.RIGHT),
+			"%s adjacent enemy fixture"%viewport_size)
+		session.sim.world.entities[enemy].health=22
+		sandbox._refresh();var before_hit_origin:Vector2i=sandbox.grid.view_origin
+		for _attempt in range(4):
+			if session.party_status().safe_phase!="ENGAGED":break
+			check(session.set_actor_action(hero,"MELEE",[],enemy).accepted,
+				"%s melee preview"%viewport_size)
+			check(session.commit_turn().accepted,"%s melee commit"%viewport_size)
+		sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
+		check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE",
+			"%s fixture reaches victory"%viewport_size)
+		_assert_hero_centered(sandbox,"%s victory"%viewport_size)
+		check_eq(sandbox.grid.view_origin,before_hit_origin,
+			"%s enemy hit and victory never steal camera focus"%viewport_size)
+		check_eq(sandbox.grid.get_instance_id(),grid_id,"%s victory keeps same grid"%viewport_size)
+		check(absf(sandbox.grid.cell_size_px()-initial_cell)<0.001,
+			"%s victory keeps continuous cell scale"%viewport_size)
+		sandbox.free()
+	return finish()
+
 func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800);sandbox.initialize_for_headless_test(Session.new())
 	sandbox.grid.size=sandbox.grid.custom_minimum_size
@@ -1133,3 +1207,13 @@ func _relocate_with_move_events(sim, entity_id: int, target: Vector2i) -> bool:
 		if not moved:
 			return false
 	return false
+
+func _assert_hero_centered(sandbox,label:String)->void:
+	var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
+	var hero_position:Vector2i=sandbox.session.sim.world.entities[hero].position
+	check_eq(sandbox.grid.view_origin,hero_position-Vector2i(7,7),
+		"%s origin follows hero-(7,7)"%label)
+	check(sandbox.grid.world_to_pixel_center(hero_position).distance_to(
+		sandbox.grid.grid_rect().get_center())<0.01,"%s hero is pixel-centered"%label)
+	check_eq(sandbox.grid.pixel_to_world_cell(sandbox.grid.grid_rect().get_center()),
+		hero_position,"%s center pixel round-trips to hero"%label)
