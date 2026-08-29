@@ -956,8 +956,12 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 
 		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 			"%s hero move reaches contact"%viewport_size)
+		var moved_snapshot:Dictionary=session.sim.snapshot()
+		var moved_journal:Array=session.command_journal.duplicate(true)
 		sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
 		_assert_hero_centered(sandbox,"%s after move"%viewport_size)
+		check_eq([session.sim.snapshot(),session.command_journal],[moved_snapshot,moved_journal],
+			"%s camera settle is presentation-only"%viewport_size)
 		check_eq(sandbox.grid.get_instance_id(),grid_id,"%s move keeps grid instance"%viewport_size)
 		check(absf(sandbox.grid.cell_size_px()-initial_cell)<0.001,
 			"%s move keeps cell scale"%viewport_size)

@@ -494,6 +494,148 @@ func test_diorama_connected_masks_cover_all_cardinals_without_unseen_leak() -> b
 	return finish()
 
 
+func test_fake_depth_specs_raise_walls_and_shadow_actors_without_fov_leaks() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:
+			cell.terrain_id="wall"
+		elif cell.position==[8,7]:
+			cell.terrain_id="wall";cell.visibility_state="MEMORY"
+		elif cell.position==[9,7]:
+			cell.terrain_id="wall";cell.visibility_state="UNSEEN"
+		elif cell.position==[6,7]:
+			cell.actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
+				"roster_slot":0,"is_protagonist":true})
+		elif cell.position==[6,8]:
+			cell.visibility_state="MEMORY"
+			cell.actors.append({"entity_id":88,"faction_id":"enemy","species_id":"goblin"})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var floor_depth:Dictionary=grid.terrain_depth_draw_spec(Vector2i(6,7))
+	var wall_depth:Dictionary=grid.terrain_depth_draw_spec(Vector2i(7,7))
+	var memory_depth:Dictionary=grid.terrain_depth_draw_spec(Vector2i(8,7))
+	var unseen_depth:Dictionary=grid.terrain_depth_draw_spec(Vector2i(9,7))
+	check(not floor_depth.raised and floor_depth.extrusion_px==0.0,
+		"walkable floor stays low and flat")
+	check(wall_depth.raised and wall_depth.extrusion_px>=2.0 \
+		and wall_depth.extrusion_px<=4.0 and wall_depth.shadow_offset.length()>0.0,
+		"wall has a small dark side and directional shadow")
+	check(memory_depth.raised and memory_depth.opacity<wall_depth.opacity,
+		"remembered wall keeps subdued depth")
+	check(not unseen_depth.visible and not unseen_depth.raised,
+		"unseen terrain emits no extrusion or shadow")
+	check(not wall_depth.draw_cell_border and not wall_depth.draw_image,
+		"fake depth adds neither cell borders nor images")
+	var actor:Dictionary=grid.actor_glyph_draw_spec(77)
+	check(actor.visible and actor.shadow.visible and actor.shadow.directional \
+		and actor.shadow.radius.x>actor.shadow.radius.y,
+		"world actor carries a compact offset ground shadow")
+	check(not grid.actor_glyph_draw_spec(88).visible,
+		"remembered actor and its shadow are both FOV-safe")
+	grid.free();return finish()
+
+
+func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool:
+	var first:=_actor_observation(Vector2i.ZERO,"VISIBLE")
+	var second:=_actor_observation(Vector2i(1,0),"VISIBLE")
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation(first);grid.set_hero_centered_view(Vector2i.ZERO,15,77)
+	check(not grid.camera_settle_draw_spec().active,"initial camera observation snaps")
+	grid.set_observation(second);grid.set_hero_centered_view(Vector2i(1,0),15,77)
+	var started:=int(grid._camera_settle.started_at_ms)
+	var sample0:Dictionary=grid.camera_settle_draw_spec(started)
+	var sample90:Dictionary=grid.camera_settle_draw_spec(started+90)
+	var sample180:Dictionary=grid.camera_settle_draw_spec(started+180)
+	check_eq(grid.view_origin,Vector2i(-6,-7),"logical camera immediately follows hero-(7,7)")
+	check(grid.world_to_pixel_center(Vector2i(1,0)).distance_to(grid.grid_rect().get_center())<0.01,
+		"hero logical/pixel center is immediate and fixed")
+	check(sample0.active and sample0.offset_px.x>0.0 \
+		and sample90.offset_px.x<sample0.offset_px.x and sample90.offset_px.x>0.0 \
+		and not sample180.active and sample180.offset_px==Vector2.ZERO,
+		"world settle decays from the prior camera to zero in 180ms")
+	check_eq(sample0.hero_counter_offset_px,-sample0.offset_px,
+		"hero draw pass cancels world settle and stays at center")
+	grid.set_hero_centered_view(Vector2i(1,0),15,77)
+	check_eq(int(grid._camera_settle.started_at_ms),started,
+		"refresh and phase-only camera calls never rearm settle")
+	check_eq(grid.pixel_to_world_cell(grid.grid_rect().get_center()),Vector2i(1,0),
+		"canonical pixel mapping remains exact during presentation settle")
+	check_eq(grid.actor_at_pointer(grid.grid_rect().get_center()),-1,
+		"actor/world gestures are safely blocked during the brief settle")
+	var emitted:Array=[];grid.world_cell_pressed.connect(func(position):emitted.append(position))
+	grid._begin_pointer_gesture("TOUCH",2,grid.grid_rect().get_center())
+	check(emitted.is_empty() and not bool(grid.pointer_gesture_state().active),
+		"settling camera owns no stale world gesture")
+	check(grid.void_padding_draw_spec(Vector2i(-1,0)).visible,
+		"edge void contract survives visual camera offset")
+	grid._camera_settle.started_at_ms=Time.get_ticks_msec()-181
+	check_eq(grid.actor_at_pointer(grid.grid_rect().get_center()),77,
+		"canonical hero hit returns after settle")
+	grid.set_hero_centered_view(Vector2i(10,10),15,77)
+	check(not grid.camera_settle_draw_spec().active,"teleport/load-style camera changes snap")
+	grid.free();return finish()
+
+
+func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedback() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[6,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+		elif cell.position==[7,7]:cell.actors.append({"entity_id":2,"faction_id":"enemy",
+			"species_id":"goblin"})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	grid.set_hero_centered_view(Vector2i(6,7),15,1);grid.set_neutral_phase_map(true)
+	var hit:={"effect_id":"42:hit","event_id":42,"order":0,"kind":"HIT_FLASH",
+		"world_position":[7,7],"target_id":2,"instigator_id":1,"damage_type":"physical"}
+	var amount:={"effect_id":"42:amount","event_id":42,"order":1,"kind":"FLOATING_AMOUNT",
+		"world_position":[7,7],"target_id":2,"instigator_id":1,"damage_type":"physical","text":"-22"}
+	check_eq(grid.play_effects([hit,amount]),2,"product effects consume each id once")
+	check_eq(grid.play_effects([hit,amount]),0,"product effects remain exactly once")
+	var started:=int(grid._active_visual_effects[0].started_at_ms)
+	var hit0:Dictionary=grid.visual_effect_draw_spec(grid._active_visual_effects[0],started)
+	var hit130:Dictionary=grid.visual_effect_draw_spec(grid._active_visual_effects[0],started+130)
+	check_eq(hit0.primitive,"GLYPH_FLASH","product hit removes the circular ring")
+	check(hit0.flash_active and hit0.particle_count>=2 and hit0.particle_count<=4,
+		"early hit flashes target glyph and emits two to four local shards")
+	check_eq(hit0.particles,grid.visual_effect_draw_spec(grid._active_visual_effects[0],started).particles,
+		"hit shards are event-id deterministic")
+	check(not hit130.flash_active,"glyph flash ends by 130ms")
+	var recoil0:Dictionary=grid.actor_hit_feedback_draw_spec(2,started)
+	var recoil170:Dictionary=grid.actor_hit_feedback_draw_spec(2,started+170)
+	check(recoil0.flash_active and recoil0.recoil_offset.x>=3.0 \
+		and recoil0.recoil_offset.x<=5.0,"target recoils away from attacker by three to five pixels")
+	check(recoil170.recoil_offset.length()<0.01,"target recoil returns by 170ms")
+	var amount_row:Dictionary=grid._active_visual_effects[1]
+	var amount0:Dictionary=grid.visual_effect_draw_spec(amount_row,started)
+	var amount325:Dictionary=grid.visual_effect_draw_spec(amount_row,started+325)
+	var amount650:Dictionary=grid.visual_effect_draw_spec(amount_row,started+650)
+	check(amount0.font_size>=24 and amount0.text=="-22" and amount0.color_hex=="#ffd98a",
+		"physical damage is a large concise warm number")
+	check(amount325.pixel_center.y<amount0.pixel_center.y \
+		and amount650.pixel_center.y<amount325.pixel_center.y,
+		"damage number eases almost one cell upward")
+	check(amount0.opacity==1.0 and amount650.opacity==0.0,
+		"floating damage fades fully over 650ms")
+	var miss:=grid.visual_effect_draw_spec({"effect_id":"43:miss","event_id":43,
+		"kind":"MISS","world_position":[7,7],"text":"빗나감","started_at_ms":started},started)
+	var slash:=grid.visual_effect_draw_spec({"effect_id":"44:slash","event_id":44,
+		"kind":"SLASH","world_position":[7,7],"started_at_ms":started},started)
+	var death_early:=grid.visual_effect_draw_spec({"effect_id":"45:death","event_id":45,
+		"kind":"DEATH","world_position":[7,7],"started_at_ms":started},started+80)
+	var death_late:=grid.visual_effect_draw_spec({"effect_id":"45:death","event_id":45,
+		"kind":"DEATH","world_position":[7,7],"started_at_ms":started},started+300)
+	check(miss.font_size<amount0.font_size and miss.text=="빗나감",
+		"miss cue is smaller and quieter than damage")
+	check_eq(slash.primitive,"LOCAL_STREAKS","slash is a short local streak, not a UI arrow")
+	check(death_early.opacity==0.0 and death_late.opacity>0.0 and death_late.opacity<=0.48,
+		"death cross arrives late and weak so it cannot cover the damage number")
+	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
+	check(not grid.visual_effect_draw_spec(offscreen,started).visible,
+		"off-FOV hit feedback emits no field primitive")
+	grid.free();return finish()
+
+
 func test_diorama_hash_marks_and_layer_order_are_fixed_and_detached() -> bool:
 	var vectors := [
 		[Vector2i(0,0),0,0],

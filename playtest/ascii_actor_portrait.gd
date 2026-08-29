@@ -62,6 +62,24 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 			maxi(11,int(bounds.size.y*0.24)),_color("#ff5364",opacity))
 
 
+static func shadow_draw_spec(bounds:Rect2,spec:Dictionary,
+		world_context:bool=false)->Dictionary:
+	if bounds.size.x<=1.0 or bounds.size.y<=1.0:
+		return {"visible":false}.duplicate(true)
+	var opacity:=clampf(float(spec.get("opacity",1.0)),0.0,1.0)
+	var life_state:=str(spec.get("life_state","ACTIVE"))
+	var center:=Vector2(bounds.get_center().x,
+		bounds.end.y-maxf(1.0,bounds.size.y*0.025))
+	var width_ratio:=0.82 if life_state=="DOWNED" else 0.58
+	var radius:=Vector2(maxf(2.0,bounds.size.x*width_ratio*0.5),
+		maxf(1.2,bounds.size.y*0.075))
+	return {"visible":opacity>0.0,"center":center,"radius":radius,
+		"color_hex":str(spec.get("shadow_hex","#03070b")),"opacity":opacity*0.72,
+		"directional":world_context and life_state!="DEAD",
+		"directional_offset":Vector2(bounds.size.x*0.18,bounds.size.y*0.1196),
+		"draw_image":false,"draw_border":false}.duplicate(true)
+
+
 static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
 		world_context: bool = false) -> Dictionary:
 	var glyph := str(spec.get("glyph", "?"))
@@ -119,16 +137,13 @@ static func _draw_weighted_glyph(canvas: CanvasItem, font: Font, glyph: String,
 static func _draw_ground_shadow(canvas: CanvasItem, bounds: Rect2,
 		shadow: Color, life_state: String,
 		world_context: bool) -> void:
-	var center := Vector2(bounds.get_center().x,
-		bounds.end.y-maxf(1.0,bounds.size.y*0.025))
-	var width_ratio := 0.58
-	if life_state=="DOWNED":width_ratio=0.82
-	var radius_x:=maxf(2.0,bounds.size.x*width_ratio*0.5)
-	var radius_y:=maxf(1.2,bounds.size.y*0.075)
+	var depth:=shadow_draw_spec(bounds,{"opacity":shadow.a/0.72 if shadow.a>0.0 else 0.0,
+		"shadow_hex":"#03070b","life_state":life_state},world_context)
+	var center:Vector2=depth.center;var radius:Vector2=depth.radius
+	var radius_x:=radius.x;var radius_y:=radius.y
 	canvas.draw_colored_polygon(_ellipse_points(center,radius_x,radius_y),shadow)
 	if not world_context or life_state=="DEAD":return
-	var length_ratio:=0.26
-	var reach:=Vector2(bounds.size.x*0.18,bounds.size.y*length_ratio*0.46)
+	var reach:Vector2=depth.directional_offset
 	var long_shadow:=PackedVector2Array([
 		center+Vector2(-radius_x*0.72,0.0), center+Vector2(radius_x*0.72,0.0),
 		center+reach+Vector2(radius_x*0.38,radius_y*0.35),

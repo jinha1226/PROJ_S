@@ -14,6 +14,7 @@ const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
+const CAMERA_SETTLE_DURATION_MS := 180
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -42,6 +43,9 @@ var _played_effect_ids: Dictionary = {}
 var _played_effect_event_ids: Dictionary = {}
 var _actor_motion_requests: Dictionary = {}
 var _actor_motions: Dictionary = {}
+var _hero_camera_position:=Vector2i(-1,-1)
+var _hero_camera_actor_id:=-1
+var _camera_settle:Dictionary={}
 var _pointer_gesture_active := false
 var _pointer_gesture_kind := ""
 var _pointer_gesture_index := -1
@@ -230,9 +234,37 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	# pushing the hero away from the center cell.
 	cancel_pointer_gesture()
 	visible_cell_count=clampi(cell_count,1,64)
+	if _hero_camera_position!=Vector2i(-1,-1) and hero_position!=_hero_camera_position:
+		var delta:=hero_position-_hero_camera_position
+		if maxi(absi(delta.x),absi(delta.y))==1:
+			_camera_settle={"from_offset_cells":Vector2(delta),
+				"started_at_ms":Time.get_ticks_msec(),"duration_ms":CAMERA_SETTLE_DURATION_MS}
+		else:_camera_settle.clear()
+	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
+	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
 	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
 	if hero_actor_id>0:_actor_motions.erase(hero_actor_id)
 	_update_process_enabled();queue_redraw()
+
+func camera_settle_draw_spec(sample_time_ms:int=-1)->Dictionary:
+	if _camera_settle.is_empty():
+		return {"active":false,"progress":1.0,"offset_px":Vector2.ZERO,
+			"hero_counter_offset_px":Vector2.ZERO,"duration_ms":0,
+			"input_blocked":false,"curve":"SNAP"}.duplicate(true)
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var started_at:=int(_camera_settle.get("started_at_ms",now))
+	var duration:=int(_camera_settle.get("duration_ms",CAMERA_SETTLE_DURATION_MS))
+	var progress:=clampf(float(maxi(0,now-started_at))/float(maxi(1,duration)),0.0,1.0)
+	var remaining:=pow(1.0-progress,3.0)
+	var offset_cells:Vector2=_camera_settle.get("from_offset_cells",Vector2.ZERO)
+	var offset_px:=offset_cells*cell_size_px()*remaining
+	return {"active":progress<1.0,"progress":progress,"offset_px":offset_px,
+		"hero_counter_offset_px":-offset_px,
+		"duration_ms":duration,"started_at_ms":started_at,
+		"input_blocked":progress<1.0,"curve":"CUBIC_EASE_OUT"}.duplicate(true)
+
+func _camera_input_blocked()->bool:
+	return bool(camera_settle_draw_spec().active)
 
 func set_neutral_phase_map(enabled:bool)->void:
 	_neutral_phase_map=enabled
@@ -270,6 +302,7 @@ func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(eff
 func clear_transient_visuals()->void:
 	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
+	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
 	_route_path.clear();_route_completed_steps=0;_route_valid=false
 	_exploration_follow_plan.clear()
@@ -282,24 +315,98 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var world_value=effect.get("world_position",[-1,-1]);var world_position:=Vector2i(-1,-1)
 	if world_value is Array and world_value.size()==2:world_position=Vector2i(int(world_value[0]),int(world_value[1]))
 	var kind:=str(effect.get("kind",""));var damage_type:=str(effect.get("damage_type","physical"))
-	var color_hex:String={"fire":"#ff7a55","water":"#67c9ff","electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(damage_type,"#fff0df")
+	var product_style:=_neutral_phase_map
+	var color_hex:String=({"fire":"#ff824a","water":"#67d7ff","electric":"#ffe45c",
+		"poison":"#8bea63","bleed":"#ff526e","bleeding":"#ff526e",
+		"heal":"#61efc0","healing":"#61efc0","physical":"#ffd98a"}.get(
+			damage_type,"#fff0df") if product_style else {"fire":"#ff7a55","water":"#67c9ff",
+			"electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(
+				damage_type,"#fff0df")) as String
 	if kind=="DEATH":color_hex="#ff6b78"
-	elif kind=="MISS":color_hex="#b8e9ff"
-	var duration_ms:=900 if kind in ["FLOATING_AMOUNT","DEATH"] else (700 if kind=="MISS" else 520)
+	elif kind=="MISS":color_hex="#b8d5df" if product_style else "#b8e9ff"
+	var duration_ms:=int({"SLASH":260,"HIT_FLASH":210,"FLOATING_AMOUNT":650,
+		"MISS":500,"DEATH":780}.get(kind,360)) if product_style \
+		else (900 if kind in ["FLOATING_AMOUNT","DEATH"] else (700 if kind=="MISS" else 520))
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var started_at:=int(effect.get("started_at_ms",now))
-	var age_ratio:=clampf(float(maxi(0,now-started_at))/float(duration_ms),0.0,1.0)
+	var elapsed_ms:=maxi(0,now-started_at)
+	var age_ratio:=clampf(float(elapsed_ms)/float(duration_ms),0.0,1.0)
+	var eased_progress:=1.0-pow(1.0-age_ratio,3.0)
 	var pixel_center:=world_to_pixel_center(world_position)
-	if kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
+	if product_style and kind=="FLOATING_AMOUNT":
+		pixel_center.y-=cell_size_px()*(0.42+0.90*eased_progress)
+	elif product_style and kind=="MISS":
+		pixel_center.y-=cell_size_px()*(0.32+0.45*eased_progress)
+	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
+	var primitive:=str({"SLASH":"LOCAL_STREAKS" if product_style else "SLASH_LINES",
+		"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
+		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"))
+	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
+	if product_style:
+		if kind in ["FLOATING_AMOUNT","MISS"]:opacity=pow(1.0-age_ratio,1.15)
+		elif kind=="DEATH":
+			opacity=0.0 if age_ratio<0.22 else 0.48*(1.0-(age_ratio-0.22)/0.78)
+		else:opacity=1.0-age_ratio
+	var particles:Array=[]
+	if product_style and kind=="HIT_FLASH" and is_world_cell_visible(world_position):
+		particles=_deterministic_hit_particles(int(effect.get("event_id",0)),pixel_center,
+			cell_size_px(),age_ratio)
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
-		"kind":kind,"primitive":{"SLASH":"SLASH_LINES","HIT_FLASH":"FLASH_RING","FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"),
+		"kind":kind,"primitive":primitive,"product_style":product_style,
 		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
-		"pixel_center":pixel_center,"color_hex":color_hex,"age_ratio":age_ratio,
-		"opacity":clampf(1.0-age_ratio*0.88,0.12,1.0),
-		"line_width":4.0 if kind in ["SLASH","DEATH"] else 3.0,
-		"radius":cell_size_px()*(0.34+0.10*age_ratio if kind=="HIT_FLASH" else 0.28),
-		"text":str(effect.get("text","")),"font_size":16 if kind=="MISS" else 18,
+		"pixel_center":pixel_center,"camera_offset_px":camera_settle_draw_spec(now).offset_px,
+		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
+		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
+		"flash_active":product_style and kind=="HIT_FLASH" and elapsed_ms<=125,
+		"particles":particles,"particle_count":particles.size(),
+		"line_width":2.4 if product_style and kind=="SLASH" else (4.0 if kind in ["SLASH","DEATH"] else 3.0),
+		"radius":cell_size_px()*(0.22 if product_style and kind=="SLASH" else 0.28),
+		"text":str(effect.get("text","")),
+		"font_size":15 if kind=="MISS" and product_style else (maxi(24,int(cell_size_px()*0.82)) \
+			if kind=="FLOATING_AMOUNT" and product_style else (16 if kind=="MISS" else 18)),
 		"duration_ms":duration_ms}.duplicate(true)
+
+func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
+		age_ratio:float)->Array:
+	var rows:Array=[];var count:=2+absi(event_id)%3
+	for index in range(count):
+		var seed:=DioramaScript.visual_hash(Vector2i(event_id%997,index),211+index*17)
+		var angle:=TAU*float(seed%6283)/6283.0
+		var direction:=Vector2(cos(angle),sin(angle))
+		var spread:=cell*(0.08+0.18*age_ratio)
+		var start:=center+direction*spread
+		var length:=cell*(0.10+0.035*float(seed%4))*(1.0-age_ratio*0.45)
+		rows.append({"from":start,"to":start+direction*length,
+			"line_width":maxf(1.0,cell*0.055),"opacity":1.0-age_ratio})
+	return rows.duplicate(true)
+
+func actor_hit_feedback_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty() or not _neutral_phase_map:
+		return {"active":false,"entity_id":entity_id,"flash_active":false,
+			"recoil_offset":Vector2.ZERO}.duplicate(true)
+	var position:=_position_from_actor(actor)
+	for index in range(_active_visual_effects.size()-1,-1,-1):
+		var effect:Dictionary=_active_visual_effects[index]
+		if str(effect.get("kind",""))!="HIT_FLASH":continue
+		if int(effect.get("target_id",-1))!=entity_id \
+				and _array_to_world_position(effect.get("world_position",[]))!=position:continue
+		var effect_spec:=visual_effect_draw_spec(effect,sample_time_ms)
+		if not bool(effect_spec.visible) or float(effect_spec.age_ratio)>=1.0:continue
+		var direction:=Vector2.ZERO;var instigator:=_actor_by_id(int(effect.get("instigator_id",-1)))
+		if not instigator.is_empty():direction=Vector2(position-_position_from_actor(instigator)).normalized()
+		if direction.is_zero_approx():
+			var seed:=DioramaScript.visual_hash(position,int(effect.get("event_id",0)))
+			var fallback_directions:=[Vector2.LEFT,Vector2.RIGHT,Vector2.UP,Vector2.DOWN]
+			direction=fallback_directions[seed%fallback_directions.size()]
+		var recoil_progress:=clampf(float(int(effect_spec.elapsed_ms))/170.0,0.0,1.0)
+		var amplitude:=3.0+float(absi(int(effect.get("event_id",0)))%3)
+		var recoil:=direction*amplitude*pow(1.0-recoil_progress,2.0)
+		return {"active":true,"entity_id":entity_id,"event_id":int(effect.get("event_id",0)),
+			"flash_active":bool(effect_spec.flash_active),"flash_hex":"#fff0ea",
+			"recoil_offset":recoil,"recoil_progress":recoil_progress,"duration_ms":210}.duplicate(true)
+	return {"active":false,"entity_id":entity_id,"flash_active":false,
+		"recoil_offset":Vector2.ZERO}.duplicate(true)
 
 func _process(_delta:float)->void:
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
@@ -311,11 +418,14 @@ func _process(_delta:float)->void:
 		var motion:Dictionary=_actor_motions[raw_id]
 		if now-int(motion.get("started_at_ms",now))>=int(motion.get("duration_ms",150)):
 			_actor_motions.erase(raw_id)
+	if not _camera_settle.is_empty() and not bool(camera_settle_draw_spec(now).active):
+		_camera_settle.clear()
 	_update_process_enabled()
 	queue_redraw()
 
 func _update_process_enabled()->void:
-	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty())
+	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
+		or not _camera_settle.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
 func is_world_cell_visible(position:Vector2i)->bool:
@@ -512,6 +622,7 @@ func actor_hit_rect(entity_id: int) -> Rect2:
 			if is_world_cell_visible(p):return Rect2(world_to_pixel_center(p)-Vector2(22,22),Vector2(44,44))
 	return Rect2()
 func actor_at_pointer(pointer: Vector2) -> int:
+	if _camera_input_blocked():return -1
 	var matches: Array = []
 	for actor in _actors:
 		if actor_hit_rect(int(actor.get("entity_id",-1))).has_point(pointer):
@@ -564,8 +675,10 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var style:=actor_draw_spec(actor,false)
 	var glyph:=AsciiPortraitScript.glyph_layout_spec(get_theme_default_font(),bounds,style,true)
 	var projected_segments:=AsciiPortraitScript.limb_draw_segments(bounds,style,glyph)
+	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
 	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
 		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
+		"shadow":shadow,
 		"selected_outline":false,"draw_equipment":false,
 		"equipment_primitive_count":0}).duplicate(true)
 
@@ -601,6 +714,18 @@ func diorama_cell_draw_spec(position:Vector2i)->Dictionary:
 		"W":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.LEFT),{})),
 	}
 	return DioramaScript.cell_spec(position,_cells.get(_key(position),{}),neighbors)
+
+func terrain_depth_draw_spec(position:Vector2i)->Dictionary:
+	if not is_world_cell_visible(position):
+		return {"visible":false,"position":[position.x,position.y],"raised":false,
+			"extrusion_px":0.0,"draw_image":false,"draw_cell_border":false}.duplicate(true)
+	var depth:Dictionary=DioramaScript.terrain_depth_spec(
+		_cells.get(_key(position),{}),cell_size_px())
+	depth["position"]=[position.x,position.y]
+	var top_rect:=world_cell_rect(position);depth["top_rect"]=top_rect
+	depth["side_rect"]=Rect2(top_rect.position+Vector2(depth.side_offset),top_rect.size) \
+		if bool(depth.raised) else Rect2()
+	return depth.duplicate(true)
 
 func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 	if not _world_in_bounds(position):
@@ -689,7 +814,8 @@ func _cell_accepts_actor_input(position:Vector2i)->bool:
 	return not row.is_empty() and bool(AsciiStyleScript.visibility_spec(row).accepts_actor_input)
 
 func _cell_accepts_world_interaction(position:Vector2i)->bool:
-	return is_world_cell_visible(position) and _cells.has(_key(position)) \
+	return not _camera_input_blocked() and is_world_cell_visible(position) \
+		and _cells.has(_key(position)) \
 		and bool(AsciiStyleScript.visibility_spec(_cells[_key(position)]).accepts_actor_input)
 
 func _cell_allows_overlay(position:Vector2i)->bool:
@@ -821,6 +947,8 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
+	draw_set_transform(camera_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
@@ -837,7 +965,7 @@ func _draw() -> void:
 	_draw_route_overlay()
 	_draw_exploration_companion_follow_plan()
 	for visual_row in _sorted_visual_actor_rows():
-		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost))
+		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
 	for intent in _secondary_intent_overlays:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
@@ -846,6 +974,7 @@ func _draw() -> void:
 	_draw_cursor_preview()
 	for effect in _active_visual_effects:_draw_visual_effect(effect)
 	_draw_fov_edge_haze()
+	draw_set_transform(Vector2.ZERO)
 	var style_id:=str(_presentation_style.get("style_id","DEFAULT"))
 	if not _neutral_phase_map \
 			and (combat_emphasis or bool(_presentation_style.get("vignette",false))):
@@ -936,6 +1065,14 @@ func _draw_wall_pass(visibility_state:String)->void:
 			var spec:=diorama_cell_draw_spec(position);var connected:=int(spec.connected_mask)
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
 			var overlap:=clampf(cell*0.045,1.0,2.0)
+			var depth:=terrain_depth_draw_spec(position)
+			if bool(depth.get("raised",false)):
+				var side:=Color(str(depth.side_hex));side.a*=float(depth.opacity)
+				draw_rect((depth.side_rect as Rect2).grow(overlap).intersection(grid_rect()),side,true)
+				var side_center:=rect.get_center()+Vector2(depth.side_offset)
+				var side_font_size:=maxi(8,int(floor(cell*float(terrain.get("font_ratio",0.61)))))
+				_draw_centered_text(get_theme_default_font(),str(terrain.glyph),side_center,
+					side_font_size,side)
 			var top:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),visibility_state=="MEMORY")
 			draw_rect(rect.grow(overlap).intersection(grid_rect()),top,true)
 			var edge:=_diorama_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
@@ -1050,26 +1187,43 @@ func _draw_visual_effect(effect:Dictionary)->void:
 	var center:Vector2=spec.pixel_center;var color:=Color(str(spec.color_hex));color.a*=float(spec.opacity)
 	var radius:=float(spec.radius);var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 	match str(spec.primitive):
+		"LOCAL_STREAKS":
+			var tangent:=Vector2(radius*0.82,-radius*0.54)
+			draw_line(center-tangent,center+tangent,color,width,true)
+			draw_line(center-Vector2(radius*0.42,-radius*0.18),
+				center+Vector2(radius*0.30,-radius*0.42),color,maxf(1.0,width*0.62),true)
 		"SLASH_LINES":
 			var drift:=Vector2(radius*0.30,-radius*0.20)*float(spec.age_ratio)
 			draw_line(center+Vector2(-radius,radius)+drift,center+Vector2(radius,-radius)+drift,color,width)
 			draw_line(center+Vector2(-radius*0.55,radius)-drift*0.45,center+Vector2(radius,radius*-0.55)-drift*0.45,color,maxf(1.4,width-1.0))
 		"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
+		"GLYPH_FLASH":
+			for particle in spec.particles:
+				var particle_color:=color;particle_color.a*=float(particle.opacity)
+				draw_line(particle.from,particle.to,particle_color,
+					float(particle.line_width),true)
 		"TEXT":
-			var text_width:=64.0 if str(spec.kind)=="MISS" else 32.0
-			draw_string(get_theme_default_font(),center+Vector2(-text_width*0.5,-radius),
-				str(spec.text),HORIZONTAL_ALIGNMENT_CENTER,text_width,int(spec.font_size),color)
+			_draw_centered_text(get_theme_default_font(),str(spec.text),center,
+				int(spec.font_size),color)
 		"DEATH_CROSS":
 			draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
 			draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
 
-func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
+func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
+		camera_offset:Vector2=Vector2.ZERO) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
 	var p := Vector2i(int(actor.position[0]),int(actor.position[1]))
 	if not is_world_cell_visible(p):return
 	var bounds:=_actor_figure_bounds(actor,cell,ghost)
 	if bounds.size.x<=0.0:return
-	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true,true)
+	if not ghost and int(actor.get("entity_id",-1))==_hero_camera_actor_id:
+		bounds.position-=camera_offset
+	var style:=actor_draw_spec(actor,ghost)
+	if not ghost:
+		var feedback:=actor_hit_feedback_draw_spec(int(actor.get("entity_id",-1)))
+		if bool(feedback.get("flash_active",false)):
+			style["color_hex"]=str(feedback.flash_hex);style["highlight_hex"]="#ffffff"
+	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,style,true,true)
 
 func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 		sample_time_ms:int=-1)->Rect2:
@@ -1085,6 +1239,9 @@ func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 	return bounds
 
 func _actor_recoil_offset(actor:Dictionary)->Vector2:
+	if _neutral_phase_map:
+		return Vector2(actor_hit_feedback_draw_spec(int(actor.get("entity_id",-1))).get(
+			"recoil_offset",Vector2.ZERO))
 	var position:=_position_from_actor(actor);var entity_id:=int(actor.get("entity_id",-1))
 	for effect in _active_visual_effects:
 		if str(effect.get("kind",""))!="HIT_FLASH":continue

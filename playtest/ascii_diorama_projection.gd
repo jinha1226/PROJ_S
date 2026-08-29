@@ -52,6 +52,22 @@ const ACTOR_MOTION_MIN_MS := 120
 const ACTOR_MOTION_MAX_MS := 180
 
 
+static func terrain_depth_spec(cell:Dictionary,cell_size:float)->Dictionary:
+	var observed:=sanitize_observed_cell(cell)
+	var visibility_state:=str(observed.get("visibility_state","UNSEEN"))
+	var terrain_id:=str(observed.get("terrain_id",""))
+	var raised:=visibility_state!="UNSEEN" and terrain_id=="wall"
+	var extrusion_px:=clampf(cell_size*0.12,2.0,4.0) if raised else 0.0
+	var opacity:=1.0 if visibility_state=="VISIBLE" else (0.28 \
+		if visibility_state=="MEMORY" else 0.0)
+	return {"visible":visibility_state!="UNSEEN","visibility_state":visibility_state,
+		"terrain_id":terrain_id,"raised":raised,"extrusion_px":extrusion_px,
+		"side_offset":Vector2(0,extrusion_px),"shadow_offset":Vector2(extrusion_px*0.72,
+			extrusion_px*1.18) if raised else Vector2.ZERO,
+		"side_hex":"#070b12","shadow_hex":"#010304","opacity":opacity,
+		"draw_cell_border":false,"draw_image":false}.duplicate(true)
+
+
 static func layer_order() -> Array:
 	return DRAW_LAYERS.duplicate()
 
