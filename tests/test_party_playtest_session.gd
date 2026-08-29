@@ -5,12 +5,73 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Request=preload("res://sim/party_turn_request.gd")
 
+func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact() -> bool:
+	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
+	var hero:=int(state.protagonist_id);var narae:=int(state.party_member_ids[1]);var miru:=int(state.party_member_ids[2])
+	var candidates:Array=session.party_status().recruitable_member_ids
+	check_eq(candidates.size(),2,"showcase starts with two distinct recruitment candidates")
+	var borin:=int(candidates[0]);var sera:=int(candidates[1])
+	check(str(session.sim.world.entities[borin].display_name)!=str(session.sim.world.entities[sera].display_name) \
+		and str(session.sim.world.entities[borin].species_id)!=str(session.sim.world.entities[sera].species_id),
+		"candidate identities and species differ")
+	check_eq(session.dismiss_companion(hero).reason,"protagonist_dismiss_forbidden","hero cannot be dismissed")
+	var route:Dictionary=session.preview_exploration_route(Vector2i(9,7))
+	check(route.has("accepted"),"route fixture produces a detached facade result")
+	check(session.dismiss_companion(narae).accepted,"first companion dismissed")
+	check_eq([session.party_cards().size(),state.active_party_member_ids,state.member(narae).presence],
+		[2,[hero,miru],"EXILED"],"dismiss permanently exiles and removes active card")
+	var observed_ids:Array=[]
+	for cell in session.observe_party_world().cells:
+		for actor in cell.actors:observed_ids.append(int(actor.entity_id))
+	check(narae not in observed_ids and narae not in session.available_companion_ids(),
+		"exiled member is absent from map followers and automatic companion pool")
+	check(not bool(session.exploration_route_state().get("has_preview",false)),"dismiss clears stale route")
+	var exile_before_refresh:Array=session.exile_story_records()
+	session.inspect_party_member(narae);session.recruitable_companions();session.recent_event_log()
+	check_eq(session.exile_story_records(),exile_before_refresh,"read-only refresh does not advance exile world")
+	check(session.commit_exploration_direction(Vector2i.ZERO).accepted,"canonical wait advances offscreen exile")
+	var advanced_record:Dictionary=session.exile_story_records()[0]
+	check_eq([advanced_record.last_world_time,advanced_record.current_behavior,advanced_record.alive],
+		["100","RECOVER",true],"healthy exile processes one canonical recovery/safety quantum")
+	check(session.exile_encounter_evaluation(narae).reason=="exile_encounter_too_early",
+		"encounter evaluator is gated until enough canonical steps pass")
+	check_eq(session.recruit_companion(narae).reason,"companion_not_recruitable",
+		"exiled companion can never return through recruitment")
+	check(session.recruit_companion(borin).accepted,"distinct candidate recruited")
+	check_eq([session.party_cards().size(),state.active_party_member_ids,state.member(borin).presence],
+		[3,[hero,miru,borin],"GROUPED"],"candidate joins active party")
+	check_eq(session.recruit_companion(sera).reason,"party_full","full party rejects remaining candidate")
+	check(session.dismiss_companion(miru).accepted,"active companion can be permanently exiled")
+	check(session.recruit_companion(sera).accepted,"second distinct candidate fills freed slot")
+	check(session.dismiss_companion(borin).accepted,"recruited candidate can later be exiled")
+	check(session.recruitable_companions().is_empty(),"candidate pool exhausts without recycling exiles")
+	check_eq(session.recruit_companion(borin).reason,"companion_not_recruitable","candidate exile is permanent")
+	var encoded:=session.save_session_json();var restored=Session.new(9,10)
+	check(restored.load_session_json(encoded).accepted,"exile/recruit save-load journal replay accepted")
+	check_eq(restored.sim.snapshot(),session.sim.snapshot(),"exile/recruit snapshot and replay exact")
+	var legacy_wire:Dictionary=JSON.parse_string(Session.new().save_session_json())
+	legacy_wire.snapshot.party_encounter.schema_version=1
+	legacy_wire.snapshot.party_encounter.erase("active_party_member_ids")
+	legacy_wire.snapshot.party_encounter.erase("exile_records")
+	var migrated=Session.new(5,6)
+	check(migrated.load_session_json(JSON.stringify(legacy_wire)).accepted,
+		"legacy party schema defaults the full roster active")
+	check_eq(migrated.sim.world.party_encounter.active_party_member_ids,
+		migrated.sim.world.party_encounter.party_member_ids,"legacy active roster migration exact")
+	var unsafe=Session.new();var unsafe_state=unsafe.sim.world.party_encounter
+	check(unsafe.commit_exploration(Command.wait(unsafe_state.protagonist_id)).accepted,"unsafe fixture reaches contact")
+	check_eq(unsafe.dismiss_companion(int(unsafe_state.party_member_ids[1])).reason,
+		"party_roster_unsafe_phase","contact rejects roster change")
+	check("영구히 추방" in JSON.stringify(session.recent_event_log(12)) \
+		and "새로 합류" in JSON.stringify(session.recent_event_log(12)),"roster event log states permanent/new semantics")
+	return finish()
+
 func test_new_expedition_personality_seed_profiles_replay_refresh_and_restart_are_deterministic() -> bool:
 	var seed:=Session.new_expedition_personality_seed(123456)
 	check_eq(seed,Session.new_expedition_personality_seed(123456),"entropy normalization deterministic")
 	var session=Session.new(44,seed,"SHOWCASE_V1")
 	var summary:Dictionary=session.party_personality_summary()
-	check_eq(summary.companion_rows.size(),2,"two companion personality rows")
+	check_eq(summary.companion_rows.size(),4,"active companions and two candidates have personality rows")
 	check(str(summary.companion_rows[0].archetype_id)!=str(summary.companion_rows[1].archetype_id),
 		"new-expedition companions use distinct archetypes")
 	var distance:=0

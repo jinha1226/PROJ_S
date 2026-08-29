@@ -43,6 +43,8 @@ var _presentation_style: Dictionary = {}
 var _active_visual_effects: Array[Dictionary] = []
 var _played_effect_ids: Dictionary = {}
 var _played_effect_event_ids: Dictionary = {}
+var _actor_motion_requests: Dictionary = {}
+var _actor_motions: Dictionary = {}
 var _pointer_gesture_active := false
 var _pointer_gesture_kind := ""
 var _pointer_gesture_index := -1
@@ -66,6 +68,15 @@ func _exit_tree()->void:
 
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	cancel_pointer_gesture()
+	var observed_at_ms:=Time.get_ticks_msec()
+	var previous_cells:Dictionary=_cells.duplicate(true)
+	var previous_actors:Dictionary={}
+	var previous_visual_world:Dictionary={}
+	for actor in _actors:
+		var previous_id:=int(actor.get("entity_id",-1))
+		if previous_id<=0:continue
+		previous_actors[previous_id]=actor.duplicate(true)
+		previous_visual_world[previous_id]=_actor_visual_world_position(previous_id,observed_at_ms)
 	_cells.clear(); _actors.clear(); _ghosts.clear()
 	world_grid_size=Vector2i(maxi(1,int(observation.get("width",GRID_SIZE))),maxi(1,int(observation.get("height",GRID_SIZE))))
 	for raw in observation.get("cells",[]):
@@ -103,7 +114,91 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	_ghosts.sort_custom(func(a,b):
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
+	_reconcile_actor_motions(previous_actors,previous_visual_world,previous_cells,observed_at_ms)
 	queue_redraw()
+
+func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->void:
+	var safe_duration:=clampi(duration_ms,DioramaScript.ACTOR_MOTION_MIN_MS,
+		DioramaScript.ACTOR_MOTION_MAX_MS)
+	for value in actor_ids:
+		var entity_id:=int(value)
+		if entity_id>0:_actor_motion_requests[entity_id]=safe_duration
+
+func actor_motion_sample(from_world:Vector2,to_world:Vector2,elapsed_ms:int,
+		duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->Dictionary:
+	return DioramaScript.actor_motion_sample(from_world,to_world,elapsed_ms,duration_ms)
+
+func actor_motion_state()->Dictionary:
+	return _actor_motions.duplicate(true)
+
+func actor_motion_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty():return {"active":false,"entity_id":entity_id}.duplicate(true)
+	var target:=_position_from_actor(actor)
+	var target_world:=Vector2(target)
+	if not _actor_motions.has(entity_id):
+		return {"active":false,"entity_id":entity_id,"from_world":target_world,
+			"to_world":target_world,"world_position":target_world,"progress":1.0,
+			"eased_progress":1.0,"duration_ms":0}.duplicate(true)
+	var motion:Dictionary=_actor_motions[entity_id]
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var sample:=DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
+		now-int(motion.started_at_ms),int(motion.duration_ms))
+	return {"active":bool(sample.active),"entity_id":entity_id,
+		"from_world":motion.from_world,"to_world":motion.to_world,
+		"world_position":sample.world_position,"progress":float(sample.progress),
+		"eased_progress":float(sample.eased_progress),
+		"duration_ms":int(sample.duration_ms),"started_at_ms":int(motion.started_at_ms)}.duplicate(true)
+
+func actor_visual_center(entity_id:int,sample_time_ms:int=-1)->Vector2:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty():return Vector2(-1,-1)
+	var target:=_position_from_actor(actor)
+	if not is_world_cell_visible(target):return Vector2(-1,-1)
+	return _world_position_to_pixel_center(_actor_visual_world_position(entity_id,sample_time_ms))
+
+func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:Dictionary,
+		previous_cells:Dictionary,observed_at_ms:int)->void:
+	var next_actors:Dictionary={}
+	for actor in _actors:
+		var entity_id:=int(actor.get("entity_id",-1))
+		if entity_id>0:next_actors[entity_id]=actor
+	for raw_id in _actor_motions.keys():
+		var entity_id:=int(raw_id)
+		if not next_actors.has(entity_id):
+			_actor_motions.erase(entity_id);continue
+		if _actor_motion_requests.has(entity_id):continue
+		var target:=Vector2(_position_from_actor(next_actors[entity_id]))
+		var motion:Dictionary=_actor_motions[entity_id]
+		if not (motion.get("to_world",Vector2(-1,-1)) as Vector2).is_equal_approx(target):
+			_actor_motions.erase(entity_id)
+	for raw_id in _actor_motion_requests.keys():
+		var entity_id:=int(raw_id)
+		if not previous_actors.has(entity_id) or not next_actors.has(entity_id):
+			_actor_motions.erase(entity_id);continue
+		var previous:Dictionary=previous_actors[entity_id]
+		var next:Dictionary=next_actors[entity_id]
+		var previous_logical:=_logical_position_from_actor(previous)
+		var next_logical:=_logical_position_from_actor(next)
+		var logical_delta:=next_logical-previous_logical
+		var one_step:=logical_delta!=Vector2i.ZERO \
+			and maxi(absi(logical_delta.x),absi(logical_delta.y))==1
+		var previous_display:=_position_from_actor(previous)
+		var next_display:=_position_from_actor(next)
+		var previous_row:Dictionary=previous_cells.get(_key(previous_display),{})
+		var next_row:Dictionary=_cells.get(_key(next_display),{})
+		var fov_safe:=not previous_row.is_empty() and not next_row.is_empty() \
+			and AsciiStyleScript.visibility_state(previous_row)=="VISIBLE" \
+			and AsciiStyleScript.visibility_state(next_row)=="VISIBLE" \
+			and is_world_cell_visible(previous_display) and is_world_cell_visible(next_display)
+		var from_world:Vector2=previous_visual_world.get(entity_id,Vector2(previous_display))
+		var to_world:=Vector2(next_display)
+		if not one_step or not fov_safe or from_world.is_equal_approx(to_world):
+			_actor_motions.erase(entity_id);continue
+		_actor_motions[entity_id]={"from_world":from_world,"to_world":to_world,
+			"started_at_ms":observed_at_ms,"duration_ms":int(_actor_motion_requests[entity_id])}
+	_actor_motion_requests.clear()
+	_update_process_enabled()
 
 func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=[])->void:
 	cancel_pointer_gesture()
@@ -152,20 +247,21 @@ func play_effects(rows:Array)->int:
 		if int(a.get("order",0))!=int(b.get("order",0)):return int(a.get("order",0))<int(b.get("order",0))
 		return str(a.get("effect_id",""))<str(b.get("effect_id","")))
 	if _active_visual_effects.size()>48:_active_visual_effects=_active_visual_effects.slice(_active_visual_effects.size()-48)
-	set_process(true);queue_redraw();return appended
+	_update_process_enabled();queue_redraw();return appended
 
 func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids.has(event_id)
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
 
 func clear_transient_visuals()->void:
 	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
+	_actor_motion_requests.clear();_actor_motions.clear()
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
 	_route_path.clear();_route_completed_steps=0;_route_valid=false
 	_exploration_follow_plan.clear()
 	preview_actor_id=-1;preview_origin=Vector2i(-1,-1)
 	preview_destination=Vector2i(-1,-1);preview_valid=false
 	cursor_cell=Vector2i(-1,-1);selected_actor_id=-1;selected_target_id=-1
-	_reset_pointer_gesture();set_process(false);queue_redraw()
+	_reset_pointer_gesture();_update_process_enabled();queue_redraw()
 
 func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionary:
 	var world_value=effect.get("world_position",[-1,-1]);var world_position:=Vector2i(-1,-1)
@@ -190,14 +286,20 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"duration_ms":duration_ms}.duplicate(true)
 
 func _process(_delta:float)->void:
-	if _active_visual_effects.is_empty():set_process(false);return
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
 	for effect in _active_visual_effects:
 		var spec:=visual_effect_draw_spec(effect)
 		if now-int(effect.get("started_at_ms",now))<int(spec.duration_ms):retained.append(effect)
 	_active_visual_effects=retained
-	if _active_visual_effects.is_empty():set_process(false)
+	for raw_id in _actor_motions.keys():
+		var motion:Dictionary=_actor_motions[raw_id]
+		if now-int(motion.get("started_at_ms",now))>=int(motion.get("duration_ms",150)):
+			_actor_motions.erase(raw_id)
+	_update_process_enabled()
 	queue_redraw()
+
+func _update_process_enabled()->void:
+	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
 func is_world_cell_visible(position:Vector2i)->bool:return view_bounds().has_point(position)
@@ -360,6 +462,9 @@ func world_cell_rect(position: Vector2i) -> Rect2:
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
 	return world_cell_rect(position).get_center()
+func _world_position_to_pixel_center(position:Vector2)->Vector2:
+	var local:=position-Vector2(view_origin)
+	return grid_rect().position+(local+Vector2(0.5,0.5))*cell_size_px()
 func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
@@ -410,6 +515,25 @@ func actor_render_order() -> Array:
 func actor_draw_spec(actor:Dictionary,ghost:bool=false)->Dictionary:
 	return AsciiStyleScript.actor_spec(actor,ghost)
 
+func selection_overlay_draw_specs()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	for actor in _actors:
+		var entity_id:=int(actor.get("entity_id",-1))
+		if entity_id!=selected_target_id:continue
+		var position:=_position_from_actor(actor)
+		if not is_world_cell_visible(position):continue
+		rows.append({"kind":"TARGET","entity_id":entity_id,
+			"position":[position.x,position.y],"color_hex":"#ff6b70","line_width":2.5,
+			"segments":AsciiStyleScript.bracket_segments(world_cell_rect(position))})
+	for ghost in _ghosts:
+		var position:=_position_from_actor(ghost)
+		if not is_world_cell_visible(position):continue
+		rows.append({"kind":"DEPLOYMENT_GHOST","entity_id":int(ghost.get("entity_id",-1)),
+			"position":[position.x,position.y],"color_hex":"#73ccff","opacity":0.72,
+			"line_width":1.4,"segments":AsciiStyleScript.bracket_segments(
+				world_cell_rect(position),0.12,0.18)})
+	return rows.duplicate(true)
+
 func diorama_layer_order()->Array:
 	return DioramaScript.layer_order()
 
@@ -430,6 +554,21 @@ func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
 func _position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("display_position",actor.get("position",[]))
 	return Vector2i(int(value[0]),int(value[1])) if value is Array and value.size()==2 else Vector2i(-1,-1)
+
+func _actor_by_id(entity_id:int)->Dictionary:
+	for actor in _actors:
+		if int(actor.get("entity_id",-1))==entity_id:return actor
+	return {}
+
+func _actor_visual_world_position(entity_id:int,sample_time_ms:int=-1)->Vector2:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty():return Vector2(-1,-1)
+	var target:=Vector2(_position_from_actor(actor))
+	if not _actor_motions.has(entity_id):return target
+	var motion:Dictionary=_actor_motions[entity_id]
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	return DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
+		now-int(motion.started_at_ms),int(motion.duration_ms)).world_position
 
 func _logical_position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("logical_position",actor.get("position",[]))
@@ -583,7 +722,8 @@ func _diorama_visibility_state(row:Dictionary)->String:
 	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
 
 func _draw() -> void:
-	draw_rect(grid_rect(),Color("#030609"),true)
+	var palette:=AsciiStyleScript.diorama_palette_spec()
+	draw_rect(grid_rect(),Color(str(palette.get("void_hex","#020406"))),true)
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
@@ -630,7 +770,9 @@ func _draw_ground_surface(position:Vector2i,row:Dictionary,terrain:Dictionary,
 	var base:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),memory)
 	var terrain_id:=str(terrain.terrain_id)
 	if terrain_id in ["wood_floor","metal","rubble","shallow_water"]:
-		var substrate:=_diorama_color("#1d2d38",0.82*float(terrain.opacity),memory)
+		var palette:=AsciiStyleScript.diorama_palette_spec()
+		var substrate:=_diorama_color(str(palette.get("substrate_hex","#0b1015")),
+			0.82*float(terrain.opacity),memory)
 		draw_rect(rect.grow(overlap).intersection(grid_rect()),substrate,true)
 		_draw_connected_material_blob(rect,diorama_cell_draw_spec(position),base,terrain_id)
 	else:
@@ -717,7 +859,8 @@ func _draw_wall_shadow_pass(visibility_state:String)->void:
 			var exposed:=int(spec.get("exposed_mask",0))
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
 			var alpha:=0.20 if visibility_state=="VISIBLE" else 0.07
-			var shadow:=Color(0.01,0.025,0.035,alpha)
+			var shadow:=Color(str(AsciiStyleScript.diorama_palette_spec().get("shadow_hex","#010304")))
+			shadow.a=alpha
 			if exposed&DioramaScript.SOUTH:
 				draw_colored_polygon(PackedVector2Array([
 					Vector2(rect.position.x+cell*0.12,rect.end.y-cell*0.18),
@@ -760,7 +903,8 @@ func _draw_wall_pass(visibility_state:String)->void:
 				draw_colored_polygon(PackedVector2Array([
 					Vector2(top_rect.end.x,top_rect.position.y),top_rect.end,
 					rect.end,Vector2(rect.end.x,rect.position.y),
-				]),_diorama_color("#0b151d",float(terrain.opacity),visibility_state=="MEMORY"))
+				]),_diorama_color(str(AsciiStyleScript.diorama_palette_spec().get(
+					"wall_side_hex","#070b0f")),float(terrain.opacity),visibility_state=="MEMORY"))
 			if not connected&DioramaScript.NORTH:
 				draw_line(top_rect.position,Vector2(top_rect.end.x,top_rect.position.y),
 					_diorama_color(str(terrain.glyph_hex),0.22,visibility_state=="MEMORY"),maxf(1.0,cell*0.035),true)
@@ -879,8 +1023,13 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
 	var p := Vector2i(int(actor.position[0]),int(actor.position[1])); var rect := world_cell_rect(p)
 	if not is_world_cell_visible(p):return
+	var visual_center:=world_to_pixel_center(p) if ghost else actor_visual_center(
+		int(actor.get("entity_id",-1)))
+	if visual_center==Vector2(-1,-1):return
 	var figure_height:=clampf(cell*1.46,28.0,50.0);var figure_width:=cell*0.72
-	var bounds:=Rect2(Vector2(rect.get_center().x-figure_width*0.5,rect.end.y-figure_height+1.0),Vector2(figure_width,figure_height))
+	var foot_y:=visual_center.y+cell*0.5
+	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,foot_y-figure_height+1.0),
+		Vector2(figure_width,figure_height))
 	bounds.position+=_actor_recoil_offset(actor)
 	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,actor_draw_spec(actor,ghost),true,true)
 
@@ -943,20 +1092,11 @@ func _draw_exploration_companion_follow_plan()->void:
 
 
 func _draw_actor_selection_overlays()->void:
-	for actor in _actors:
-		var p:=_position_from_actor(actor)
-		if not is_world_cell_visible(p):continue
-		var entity_id:=int(actor.get("entity_id",-1));var color:=Color.TRANSPARENT;var width:=2.5
-		if entity_id==selected_actor_id:color=Color("#ffd467")
-		elif entity_id==selected_target_id:color=Color("#ff6b70")
-		else:continue
-		for segment in AsciiStyleScript.bracket_segments(world_cell_rect(p)):
-			draw_line(segment[0],segment[1],color,width,true)
-	for ghost in _ghosts:
-		var p:=_position_from_actor(ghost)
-		if not is_world_cell_visible(p):continue
-		for segment in AsciiStyleScript.bracket_segments(world_cell_rect(p),0.12,0.18):
-			draw_line(segment[0],segment[1],Color(0.45,0.8,1.0,0.72),1.4,true)
+	for row in selection_overlay_draw_specs():
+		var color:=Color(str(row.color_hex))
+		color.a*=float(row.get("opacity",1.0))
+		for segment in row.segments:
+			draw_line(segment[0],segment[1],color,float(row.line_width),true)
 
 func _draw_cursor_preview() -> void:
 	if cursor_cell.x < 0 or not is_world_cell_visible(cursor_cell): return

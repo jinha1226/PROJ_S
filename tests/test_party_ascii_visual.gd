@@ -388,6 +388,93 @@ func test_diorama_route_style_preserves_mapping_and_actor_hit_authority() -> boo
 	grid.free();return finish()
 
 
+func test_selected_actor_has_no_yellow_overlay_but_target_and_ghost_remain() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+		if cell.position==[8,7]:cell.actors.append({"entity_id":2,"faction_id":"enemy",
+			"roster_slot":99})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells},[
+		{"entity_id":3,"faction_id":"party","roster_slot":1,"position":[6,7]}])
+	grid.set_selection(1,2)
+	var overlays:Array=grid.selection_overlay_draw_specs()
+	check_eq(overlays.map(func(row):return row.kind),["TARGET","DEPLOYMENT_GHOST"],
+		"selected party actor emits no map bracket")
+	check_eq([overlays[0].entity_id,overlays[0].color_hex],[2,"#ff6b70"],
+		"enemy target retains red selection semantics")
+	check_eq(overlays[1].entity_id,3,"deployment proposal retains cyan ghost bracket")
+	overlays[0].kind="CORRUPTED"
+	check_eq(grid.selection_overlay_draw_specs()[0].kind,"TARGET","overlay specs are detached")
+	grid.free();return finish()
+
+
+func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool:
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	var initial:=_actor_observation(Vector2i(7,7),"VISIBLE")
+	grid.set_observation(initial)
+	var mapping:=grid.mapping_signature()
+	check(grid.actor_motion_state().is_empty(),"initial observation snaps")
+	grid.arm_actor_motion([77],150);grid.set_observation(_actor_observation(Vector2i(8,7),"VISIBLE"))
+	var motion:Dictionary=grid.actor_motion_state()[77]
+	var started:=int(motion.started_at_ms)
+	var sample0:Dictionary=grid.actor_motion_draw_spec(77,started)
+	var sample75:Dictionary=grid.actor_motion_draw_spec(77,started+75)
+	var sample150:Dictionary=grid.actor_motion_draw_spec(77,started+150)
+	check_eq(sample0.world_position,Vector2(7,7),"motion starts at prior presentation cell")
+	check(absf(float(sample75.eased_progress)-0.875)<0.0001,
+		"75ms cubic ease-out reaches deterministic 87.5 percent")
+	check_eq(sample150.world_position,Vector2(8,7),"150ms motion ends at target")
+	check_eq(grid.actor_in_world_cell(Vector2i(8,7)),77,"authoritative hit cell changes immediately")
+	check(grid.actor_hit_rect(77).has_point(grid.world_to_pixel_center(Vector2i(8,7))),
+		"authoritative target center owns hit immediately")
+	check_eq(grid.mapping_signature(),mapping,"animation never changes grid mapping")
+	grid.set_observation(_actor_observation(Vector2i(10,7),"VISIBLE"))
+	check(grid.actor_motion_state().is_empty(),"unarmed observation change snaps")
+	grid.arm_actor_motion([77],150);grid.set_observation(_actor_observation(Vector2i(12,7),"VISIBLE"))
+	check(grid.actor_motion_state().is_empty(),"two-cell teleport snaps even when armed")
+	grid.free();return finish()
+
+
+func test_neutral_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct() -> bool:
+	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","wall"]
+	var brightest_ground:=0.0
+	for terrain_id in terrain_ids:
+		var color:=Color(str(Style.terrain_spec({"terrain_id":terrain_id}).base_hex))
+		brightest_ground=maxf(brightest_ground,color.get_luminance())
+		check(maxf(color.r,maxf(color.g,color.b))-minf(color.r,minf(color.g,color.b))<0.09,
+			"%s remains low-chroma neutral"%terrain_id)
+	var role_specs:=[
+		Style.actor_spec({"is_protagonist":true,"roster_slot":0}),
+		Style.actor_spec({"faction_id":"party","species_id":"human","roster_slot":1}),
+		Style.actor_spec({"faction_id":"party","species_id":"human","roster_slot":2}),
+		Style.actor_spec({"faction_id":"party","species_id":"goblin","roster_slot":2}),
+		Style.actor_spec({"faction_id":"enemy","species_id":"goblin"}),
+	]
+	var colors:Array=[]
+	for spec in role_specs:
+		var color:=Color(str(spec.color_hex));colors.append(str(spec.color_hex))
+		check(color.get_luminance()>brightest_ground+0.16,"actor glyph clears dark terrain")
+	check_eq(colors.duplicate().reduce(func(accum,value):
+		if value not in accum:accum.append(value)
+		return accum,[]).size(),5,"gold/cyan/blue/green/red roles are color-distinct")
+	var palette:Dictionary=Style.diorama_palette_spec()
+	check(Color(str(palette.void_hex)).get_luminance()<Color(str(palette.substrate_hex)).get_luminance(),
+		"void remains darker than neutral substrate")
+	return finish()
+
+
+func _actor_observation(position:Vector2i,visibility_state:String)->Dictionary:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[position.x,position.y]:
+			cell.visibility_state=visibility_state
+			cell.actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
+				"roster_slot":0,"is_protagonist":true,"logical_position":[position.x,position.y]})
+	return {"width":15,"height":15,"cells":cells}
+
+
 func _visible_cells()->Array:
 	var cells:Array=[]
 	for y in range(15):

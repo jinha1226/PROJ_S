@@ -7,6 +7,7 @@ const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
 const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
+const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const FONT_AUX:=16
 const FONT_BODY:=18
 const FONT_KEY:=22
@@ -17,10 +18,12 @@ var session
 var grid
 var root_layout:VBoxContainer
 var phase_panel:PanelContainer
+var phase_row:HBoxContainer
 var phase_label:Label
 var run_objective_bar:PanelContainer
 var run_objective_label:Label
 var reward_badge:Label
+var duel_lab_button:Button
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -56,6 +59,8 @@ var member_detail_title:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
 var member_detail_close:Button
+var member_detail_dismiss:Button
+var member_detail_entity_id:int=-1
 var _pending_card_pointer:Dictionary={}
 var _last_card_tap_id:=-1
 var _last_card_tap_msec:=-1000
@@ -123,8 +128,10 @@ func _build_ui()->void:
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new(); phase_panel.name="PhaseBanner"; phase_panel.custom_minimum_size.y=48; root_layout.add_child(phase_panel)
+	phase_row=HBoxContainer.new();phase_row.name="PhaseBannerRow";phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
 	phase_label=Label.new(); phase_label.name="PhaseStatus"; phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-	phase_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; phase_panel.add_child(phase_label)
+	phase_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	phase_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;phase_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;phase_row.add_child(phase_label)
 	run_objective_bar=PanelContainer.new();run_objective_bar.name="RunObjectiveBar"
 	run_objective_bar.custom_minimum_size.y=TOUCH_TARGET;run_objective_bar.visible=false;root_layout.add_child(run_objective_bar)
 	var objective_style:=StyleBoxFlat.new();objective_style.bg_color=Color("#122233")
@@ -171,7 +178,18 @@ func _build_ui()->void:
 	combat_action_dock.add_theme_constant_override("separation",4);combat_action_dock.visible=false;combat_action_area.add_child(combat_action_dock)
 	_build_tile_popover()
 	_build_member_detail_modal()
+	_build_duel_decision_lab_entry()
 	resized.connect(_layout_floating_surfaces)
+
+func _build_duel_decision_lab_entry()->void:
+	duel_lab_button=Button.new();duel_lab_button.name="DuelDecisionLabButton"
+	duel_lab_button.text="2인 판단 실험";duel_lab_button.tooltip_text="두 캐릭터 판단 비교 LAB 열기"
+	duel_lab_button.add_theme_font_size_override("font_size",FONT_BODY)
+	duel_lab_button.custom_minimum_size=Vector2(116,44)
+	duel_lab_button.pressed.connect(_open_duel_decision_lab);phase_row.add_child(duel_lab_button)
+
+func _open_duel_decision_lab()->void:
+	if is_inside_tree():get_tree().change_scene_to_file(DUEL_DECISION_LAB_SCENE_PATH)
 
 func _build_tile_popover()->void:
 	tile_popover=PanelContainer.new();tile_popover.name="TileRiskPopover";tile_popover.visible=false
@@ -209,6 +227,11 @@ func _build_member_detail_modal()->void:
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll.add_child(member_detail_body)
+	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
+	member_detail_dismiss.text="추방";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
+	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
+	member_detail_dismiss.pressed.connect(_on_member_detail_dismiss);member_detail_dismiss.visible=false
+	stack.add_child(member_detail_dismiss)
 
 func _layout_floating_surfaces()->void:
 	if member_detail_panel!=null:
@@ -240,12 +263,12 @@ func _refresh()->void:
 		if str(status.view_mode)!="EXPLORATION":
 			route_generation+=1;route_continue_pending=false;route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
-	var combat_zoomed:=str(status.view_mode)=="COMBAT"
+	var combat_active:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
 	var party_rows:Array=session.party_cards()
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
-	_apply_portrait_budget(combat_zoomed,combat_actions_visible,run_available,run_terminal,
+	_apply_portrait_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
@@ -253,10 +276,9 @@ func _refresh()->void:
 	_apply_phase_banner(status,presentation)
 	var deployment:Dictionary=session.deployment_draft(); var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" else []
 	var observation:Dictionary=session.observe_party_world()
-	var intent_overlays:Array=session.turn_intent_overlays() if combat_zoomed and not run_complete else []
+	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
 	grid.set_observation(observation,ghosts)
-	grid.set_view_window(9 if combat_zoomed else 15,_camera_focus_points(observation,intent_overlays),
-		_camera_priority_points(observation))
+	grid.set_view_window(15)
 	grid.set_presentation_style(presentation.get("grid_style",{}))
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
@@ -612,7 +634,8 @@ func _compact_action(action:Dictionary)->String:
 	return "%s · 대기"%source
 
 func _exploration_deck()->void:
-	_add_notice(notice_text if not notice_text.is_empty() else "탐험: 이동할 목적지를 눌러 경로와 위험을 미리보세요.")
+	_add_recruitment_candidates()
+	_add_notice(notice_text if not notice_text.is_empty() else "탐험: 목적지를 한 번 누르면 경로를 확인하고 바로 이동합니다.")
 	if pending_move_mode=="EXPLORATION":
 		var actor_name:=_protagonist_name(); var summary:=""
 		if pending_exploration_wait:
@@ -620,9 +643,28 @@ func _exploration_deck()->void:
 		else:
 			summary="대표 경로: %s (%d,%d) → (%d,%d) · %d칸 · 시간 %d"%[actor_name,pending_move_origin.x,pending_move_origin.y,
 				pending_move_destination.x,pending_move_destination.y,int(route_preview.get("total_steps",1)),pending_move_cost]
-			summary+="\n같은 목적지를 다시 누르면 한 칸씩 이동합니다." if pending_move_valid else "\n"+notice_text
+			summary+="\n한 칸씩 이동 중입니다." if bool(route_preview.get("active",false)) \
+				else ("\n목적지를 누르면 즉시 이동합니다." if pending_move_valid else "\n"+notice_text)
 		_add_notice(summary,"MovePreviewSummary",FONT_KEY)
 	_selected_detail()
+
+func _add_recruitment_candidates()->void:
+	if session==null or not session.has_method("recruitable_companions"):return
+	var candidate_rows:Variant=session.call("recruitable_companions")
+	if not candidate_rows is Array or candidate_rows.is_empty():return
+	for value in candidate_rows:
+		if not value is Dictionary:continue
+		var row:Dictionary=value
+		var line:=HBoxContainer.new();line.name="RecruitCandidate%d"%int(row.get("entity_id",-1))
+		line.custom_minimum_size.y=TOUCH_TARGET;line.add_theme_constant_override("separation",6);deck.add_child(line)
+		var label:=Label.new();label.name="RecruitCandidateLabel";label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size",FONT_AUX);label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","동료"))]
+		label.tooltip_text=str(row.get("message",""));label.mouse_filter=Control.MOUSE_FILTER_IGNORE;line.add_child(label)
+		var recruit:=_add_button(line,"영입","RecruitMember%d"%int(row.get("entity_id",-1)),
+			_on_recruit_companion.bind(int(row.get("entity_id",-1))))
+		recruit.custom_minimum_size=Vector2(72,TOUCH_TARGET);recruit.disabled=not bool(row.get("can_recruit",false))
+		recruit.tooltip_text=str(row.get("message",""))
 
 func _run_complete_deck(progress:Dictionary)->void:
 	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
@@ -768,16 +810,24 @@ func _open_member_detail(member_id:int)->void:
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
 	member_detail_title.text="%s 상세"%str(detail.get("display_name","파티원"))
 	member_detail_body.text=_member_detail_text(detail)
+	member_detail_entity_id=member_id
+	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
+		and bool(detail.get("active_party_member",false))
+	member_detail_dismiss.visible=can_show_dismiss
+	if can_show_dismiss:
+		var assessment:Dictionary=session.roster_change_assessment("DISMISS",member_id)
+		member_detail_dismiss.disabled=not bool(assessment.get("accepted",false))
+		member_detail_dismiss.tooltip_text=str(assessment.get("message",""))
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
 	var route_state:Dictionary=session.exploration_route_state()
 	route_paused_by_modal=bool(route_state.get("active",false))
 	_layout_floating_surfaces();call_deferred("_measure_member_detail_body")
-	member_detail_close.grab_focus()
+	if member_detail_close.is_inside_tree():member_detail_close.grab_focus()
 
 func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
-	member_detail_modal.visible=false;grid.modal_open=false
+	member_detail_modal.visible=false;member_detail_entity_id=-1;grid.modal_open=false
 	var resume:=route_paused_by_modal;route_paused_by_modal=false
 	if resume:_schedule_route_continue()
 	elif auto_orchestration_enabled:_request_refresh()
@@ -789,6 +839,34 @@ func _on_member_detail_backdrop_input(event:InputEvent)->void:
 func _on_member_detail_close_input(event:InputEvent,button:Button)->void:
 	if event is InputEventScreenTouch and event.pressed:
 		_close_member_detail();button.accept_event()
+
+func _on_member_detail_dismiss()->void:
+	if member_detail_entity_id<=0:return
+	var result:Dictionary=session.dismiss_companion(member_detail_entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","추방할 수 없습니다."));action_feedback_text=notice_text
+		var assessment:Dictionary=session.roster_change_assessment("DISMISS",member_detail_entity_id)
+		member_detail_dismiss.disabled=true;member_detail_dismiss.tooltip_text=str(assessment.get("message",notice_text));return
+	_clear_roster_change_transients();_close_member_detail()
+	selected_member_id=int(session.party_status().protagonist_id)
+	notice_text="동료를 파티에서 추방했습니다.";action_feedback_text=notice_text
+	_cancel_auto_pending(true);_request_refresh()
+
+func _on_recruit_companion(entity_id:int)->void:
+	var result:Dictionary=session.recruit_companion(entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","영입할 수 없습니다."));action_feedback_text=notice_text
+	else:
+		notice_text="새 동료가 파티에 합류했습니다.";action_feedback_text=notice_text
+		_clear_roster_change_transients()
+	_cancel_auto_pending(true);_request_refresh()
+
+func _clear_roster_change_transients()->void:
+	route_generation+=1;route_continue_pending=false
+	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
+	_clear_move_preview();_clear_companion_follow_plan()
+	if grid!=null:
+		grid.clear_route_overlay();grid.clear_cursor_preview();grid.cancel_pointer_gesture()
 
 func _unhandled_key_input(event:InputEvent)->void:
 	if member_detail_modal!=null and member_detail_modal.visible and event is InputEventKey \
@@ -962,22 +1040,22 @@ func _on_cell(position:Vector2i)->void:
 			action_feedback_text=notice_text;_request_refresh();return
 		_run_locked_exit_feedback=false
 		var active_state:Dictionary=session.exploration_route_state()
-		var same_goal:=pending_move_mode=="EXPLORATION" and not pending_exploration_wait \
-			and pending_move_destination==position and pending_move_valid and not bool(active_state.get("active",false))
-		if same_goal:
-			route_generation+=1;route_continue_pending=false
-			var started:Dictionary=session.start_exploration_route(position,str(route_preview.get("plan_hash","")))
-			_consume_route_result(started);_refresh();_schedule_route_continue()
-		else:
-			if bool(active_state.get("active",false)):_cancel_active_route()
-			var preview:Dictionary=session.preview_exploration_route(position)
-			route_preview=preview.duplicate(true);_apply_route_state(preview)
-			if bool(preview.get("accepted",false)):
-				notice_text="경로를 한 번 더 누르면 한 칸씩 이동합니다."
-				action_feedback_text="경로 미리보기 · 같은 목적지를 한 번 더 누르세요."
-			else:
-				notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."));_set_action_rejection(preview,"%s 이동 불가"%_protagonist_name())
-			_update_tile_popover_route(preview);_request_refresh()
+		if bool(active_state.get("active",false)) and _route_goal(active_state)==position:
+			route_preview=active_state.duplicate(true);_apply_route_state(active_state)
+			notice_text="선택한 목적지로 이미 이동 중입니다."
+			action_feedback_text="한 칸씩 이동 중 · %d/%d"%[int(active_state.get("completed_steps",0)),
+				int(active_state.get("total_steps",0))]
+			_request_refresh();return
+		if bool(active_state.get("active",false)):_cancel_active_route()
+		var preview:Dictionary=session.preview_exploration_route(position)
+		route_preview=preview.duplicate(true);_apply_route_state(preview)
+		if not bool(preview.get("accepted",false)):
+			notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."))
+			_set_action_rejection(preview,"%s 이동 불가"%_protagonist_name())
+			_update_tile_popover_route(preview);_request_refresh();return
+		route_generation+=1;route_continue_pending=false
+		var started:Dictionary=session.start_exploration_route(position,str(preview.get("plan_hash","")))
+		_consume_route_result(started);_refresh();_schedule_route_continue()
 		return
 	if status.view_mode!="COMBAT":return
 	selected_target_id=-1;_clear_move_preview()
@@ -1091,6 +1169,8 @@ func _apply_route_overlay(value:Dictionary)->void:
 	else:grid.clear_route_overlay()
 
 func _consume_route_result(result:Dictionary)->void:
+	var last_step:Variant=result.get("last_step_result",{})
+	if last_step is Dictionary:_arm_actor_motion_from_result(last_step)
 	_apply_route_state(result)
 	var effects:Variant=result.get("last_step_effects",[])
 	if effects is Array and not effects.is_empty():grid.play_effects(effects)
@@ -1151,6 +1231,7 @@ func _clear_move_preview()->void:
 	if grid!=null:grid.clear_cursor_preview();grid.clear_route_overlay()
 func _request_refresh()->void:call_deferred("_refresh")
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",scroll_combat_log:bool=false)->void:
+	_arm_actor_motion_from_result(result)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		grid.play_effects(result.get("visual_effects",[]))
 	if bool(result.get("accepted",false)):
@@ -1165,6 +1246,21 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
+
+func _arm_actor_motion_from_result(result:Dictionary)->void:
+	if grid==null or session==null or not bool(result.get("accepted",false)) \
+			or not result.get("event_ids",[]) is Array:return
+	var moved:Dictionary={}
+	for value in result.get("event_ids",[]):
+		var event=session.sim.world.event_by_id(int(value))
+		if event!=null and str(event.type)=="action.move" and int(event.actor_id)>0:
+			moved[int(event.actor_id)]=true
+	if moved.is_empty():return
+	var status:Dictionary=session.party_status()
+	var protagonist_id:=int(status.get("protagonist_id",-1))
+	if moved.has(protagonist_id) and str(status.get("view_mode",""))=="EXPLORATION":
+		for member_id in status.get("party_member_ids",[]):moved[int(member_id)]=true
+	grid.arm_actor_motion(moved.keys())
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
 	if auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending):_cancel_auto_pending(true)
@@ -1254,10 +1350,10 @@ func _tile_popover_text(inspection:Dictionary,route:Dictionary)->String:
 			if ceiling is int:route_risk=maxi(route_risk,int(ceiling))
 		var route_line:="경로 %d칸 · 시간 %d · 최고 위험 %d · %d/%d"%[int(route.get("total_steps",0)),
 			int(route.get("total_cost",0)),route_risk,int(route.get("completed_steps",0)),int(route.get("total_steps",0))]
-		if selected_tile_view_mode=="EXPLORATION" and not bool(route.get("active",false)) and not bool(route.get("completed",false)):
-			route_line+=" · 짧게 다시 눌러 이동 시작"
+		if selected_tile_view_mode=="EXPLORATION" and bool(route.get("active",false)):
+			route_line+=" · 이동 중"
 		lines.append(route_line)
-	elif selected_tile_view_mode=="EXPLORATION":lines.append("총 위험 %d · 짧게 누르면 경로를 미리 봅니다."%total)
+	elif selected_tile_view_mode=="EXPLORATION":lines.append("총 위험 %d · 짧게 누르면 경로 확인 후 이동합니다."%total)
 	elif selected_tile_view_mode=="COMBAT":lines.append("총 위험 %d · 전투 이동은 인접한 한 칸만 선택합니다."%total)
 	else:lines.append("총 위험 %d · 현재 타일 정보"%total)
 	return "\n".join(lines)
@@ -1349,7 +1445,7 @@ func _update_action_feedback(status:Dictionary)->void:
 		"CONTACT":action_feedback_label.text="자동 대형 미리보기" if auto_orchestration_enabled and not auto_deployment_fallback else "대형 선택 → 배치 실행"
 		"GROUPED_COMPLETE":action_feedback_label.text="승리 · 자동 재집결 완료 · 탐험 이동을 선택하세요."
 		_:
-			if str(status.view_mode)=="EXPLORATION":action_feedback_label.text="이동 목적지 미리보기 → 같은 칸을 한 번 더 눌러 이동"
+			if str(status.view_mode)=="EXPLORATION":action_feedback_label.text="이동 목적지 한 번 선택 → 경로를 따라 이동"
 			elif str(status.view_mode)=="COMBAT":action_feedback_label.text="행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행"
 			else:action_feedback_label.text="다음 행동을 선택하세요."
 func _add_notice(value:String,node_name:String="ActionStatus",font_size:int=FONT_BODY)->Label:
@@ -1361,24 +1457,26 @@ func _add_button(parent:Control,value:String,node_name:String,callback:Callable)
 func _clear_container(container:Control)->void:
 	for child in container.get_children():container.remove_child(child); child.free()
 func _phase(value:String)->String:return {"GROUPED":"탐험","CONTACT":"조우 배치","ENGAGED":"파티 전투","REGROUP_READY":"자동 재집결","GROUPED_COMPLETE":"탐험 재개","PARTY_DEFEATED":"패배"}.get(value,value)
-func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"대기","DEFEATED":"쓰러짐"}.get(value,value)
+func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"전투 대기","RECRUITABLE":"영입 후보","EXILED":"추방됨","DEFEATED":"쓰러짐"}.get(value,value)
 func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"동료"}.get(value,value)
 func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)
 func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
-func _apply_portrait_budget(combat_zoomed:bool,combat_actions_visible:bool,
+func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0; phase_panel.custom_minimum_size.y=52 if wide else 48
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
-	if combat_zoomed:
-		grid.custom_minimum_size=Vector2(360,360) if wide else Vector2(248,248) \
-			if run_available else Vector2(300,300)
+	if wide:
+		grid.custom_minimum_size=Vector2(405,405)
+	elif combat_active:
+		grid.custom_minimum_size=Vector2(248,248) if run_available else Vector2(300,300)
 	else:
-		grid.custom_minimum_size=Vector2(405,405) if wide else Vector2(276,276) \
+		grid.custom_minimum_size=Vector2(276,276) \
 			if run_available and (run_terminal or _run_locked_exit_feedback) \
 			else (Vector2(316,316) if run_available else Vector2(348,348))
-	cards.custom_minimum_size.y=maxi(0,party_height); info_scroll.custom_minimum_size.y=30
+	cards.custom_minimum_size.y=maxi(0,party_height)
+	info_scroll.custom_minimum_size.y=30
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var contact_text:String={"NONE":"탐색 중","DETECTED":"상호 발견","PARTY_AMBUSH":"파티 선제","ENEMY_AMBUSH":"적 매복"}.get(str(status.contact_kind),"탐색 중")

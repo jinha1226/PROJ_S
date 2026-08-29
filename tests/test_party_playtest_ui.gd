@@ -7,6 +7,40 @@ const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
+func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract() -> bool:
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(Session.new(44,20260828,"SHOWCASE_V1"))
+		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
+		var companion:=int(status.party_member_ids[1]);sandbox.selected_member_id=companion
+		var candidate:=int(status.recruitable_member_ids[0])
+		sandbox._open_member_detail(companion)
+		check(sandbox.member_detail_dismiss.visible,"%s companion detail exposes dismiss"%viewport_size)
+		check(sandbox.member_detail_dismiss.custom_minimum_size.y>=44.0,"dismiss touch target >=44")
+		sandbox._on_member_detail_dismiss();sandbox._refresh()
+		check_eq([sandbox.cards.get_child_count(),sandbox.selected_member_id],[2,hero],
+			"%s dismiss immediately relayouts and clears selection"%viewport_size)
+		check(sandbox.deck.find_child("RecruitCandidate%d"%companion,true,false)==null,
+			"exiled companion never returns as a candidate")
+		var candidate_row:Node=sandbox.deck.find_child("RecruitCandidate%d"%candidate,true,false)
+		var recruit:=sandbox.deck.find_child("RecruitMember%d"%candidate,true,false) as Button
+		check(candidate_row!=null and recruit!=null,"distinct recruitment candidate rendered")
+		check(recruit.custom_minimum_size.y>=44.0 and recruit.get_parent()==candidate_row,
+			"recruit touch target remains inside its candidate row")
+		sandbox._on_recruit_companion(candidate);sandbox._refresh()
+		check_eq(sandbox.cards.get_child_count(),3,"%s candidate recruit immediately restores three cards"%viewport_size)
+		sandbox._open_member_detail(hero)
+		check(not sandbox.member_detail_dismiss.visible,"hero detail never exposes dismiss")
+		sandbox._close_member_detail();sandbox.free()
+	var unsafe=Sandbox.new();unsafe.size=Vector2(360,640);unsafe.initialize_for_headless_test(Session.new())
+	var unsafe_state=unsafe.session.sim.world.party_encounter
+	unsafe.session.commit_exploration(Command.wait(unsafe_state.protagonist_id));unsafe._refresh()
+	unsafe._open_member_detail(int(unsafe_state.party_member_ids[1]))
+	check(unsafe.member_detail_dismiss.visible and unsafe.member_detail_dismiss.disabled,
+		"contact detail explains roster lock without allowing input")
+	check("편성" in unsafe.member_detail_dismiss.tooltip_text,"unsafe roster reason is Korean")
+	unsafe.free();return finish()
+
 func test_party_card_layout_specs_and_detached_render_support_one_two_three_members() -> bool:
 	for viewport_width in [360.0,450.0]:
 		var sandbox=Sandbox.new();sandbox.size=Vector2(viewport_width,640 if viewport_width==360.0 else 800)
@@ -224,26 +258,19 @@ func test_route_overlay_draw_spec_preserves_each_step_and_is_detached() -> bool:
 	sandbox.grid.clear_route_overlay();check(sandbox.grid.route_draw_spec().path.is_empty(),"route overlay clears explicitly")
 	sandbox.free();return finish()
 
-func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_contact() -> bool:
+func test_exploration_grid_one_tap_starts_route_invalid_is_pure_and_contact_clears() -> bool:
 	var sandbox=Sandbox.new(); sandbox.size=Vector2(360,640); sandbox.initialize_for_headless_test(Session.new()); sandbox.grid.size=sandbox.grid.custom_minimum_size
 	for button_name in ["ExploreN","ExploreNE","ExploreE","ExploreSE","ExploreS","ExploreSW","ExploreW","ExploreNW","ExploreHold"]:
 		check(_button(sandbox,button_name)==null,"legacy D-pad absent: %s"%button_name)
 	var exploration_notice:=str((sandbox.find_child("ActionStatus",true,false) as Label).text)
-	check("이동할 목적지" in exploration_notice and not "인접한 빈 칸" in exploration_notice,"exploration guidance advertises long-route destination")
+	check("한 번" in exploration_notice and not "다시" in exploration_notice,
+		"exploration guidance advertises one-tap long route")
 	var status:Dictionary=sandbox.session.party_status(); var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1])); var destination:=origin+Vector2i.RIGHT
 	var hero:=int(status.protagonist_id);var companion:=int(status.party_member_ids[1])
 	_press(sandbox,"MemberCard%d"%companion)
 	check_eq(sandbox.selected_member_id,companion,"companion portrait remains available for details in exploration")
 	var before:Dictionary=sandbox.session.sim.snapshot(); sandbox._on_cell(destination); sandbox._refresh()
-	check_eq(sandbox.session.sim.snapshot(),before,"first exploration tap is pure")
-	check(sandbox.pending_move_valid and sandbox.pending_move_mode=="EXPLORATION","first tap stores strong preview")
-	check_eq(sandbox.grid.cursor_cell,destination,"preview highlights exact destination")
-	var move_summary:=str((sandbox.find_child("MovePreviewSummary",true,false) as Label).text)
-	check("다시" in move_summary,"second-tap guidance visible")
-	check_eq(sandbox.pending_move_actor_id,hero,"exploration grid preview always belongs to representative hero")
-	check("대표 경로: 주인공" in move_summary and not "나래 이동 예정" in move_summary,"summary actor matches hero execution despite companion detail selection")
-	sandbox._on_cell(destination); sandbox._refresh()
-	check_eq(sandbox.session.party_status().safe_phase,"CONTACT","exact second tap commits one move and contact")
+	check_eq(sandbox.session.party_status().safe_phase,"CONTACT","one tap commits one move and contact")
 	check_eq(sandbox.session.sim.world.step_index,int(before.step_index)+1,"exactly one exploration step")
 	check_eq(sandbox.session.sim.world.world_time,int(before.world_time)+100,"exactly one movement cost")
 	check_eq(sandbox.session.command_journal[-1].command.actor_id,str(hero),"committed exploration command belongs exactly to hero")
@@ -253,8 +280,15 @@ func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_cont
 	check(sandbox.pending_move_mode.is_empty() and sandbox.grid.cursor_cell==Vector2i(-1,-1),"contact clears stale exploration preview")
 	var invalid=Sandbox.new(); invalid.size=Vector2(360,640); invalid.initialize_for_headless_test(Session.new())
 	check(invalid.session.sim.world.bootstrap_set_terrain(origin+Vector2i.LEFT,"wall"),"wall preview fixture")
-	var wall_before=invalid.session.sim.snapshot(); invalid._on_cell(origin+Vector2i.LEFT); invalid._refresh()
+	var wall_before:Dictionary=invalid.session.sim.snapshot()
+	var wall_journal:Array=invalid.session.command_journal.duplicate(true)
+	var wall_draft:Dictionary=invalid.session.exploration_route_draft()
+	var wall_state:Dictionary=invalid.session.exploration_route_state()
+	invalid._on_cell(origin+Vector2i.LEFT); invalid._refresh()
 	check_eq(invalid.session.sim.snapshot(),wall_before,"wall preview is no-op")
+	check_eq([invalid.session.command_journal,invalid.session.exploration_route_draft(),
+		invalid.session.exploration_route_state()],[wall_journal,wall_draft,wall_state],
+		"invalid one-tap destination preserves journal, draft, and active state")
 	check(str(invalid.route_preview.reason_code)!="ok","wall rejection keeps facade reason")
 	check_eq(invalid.notice_text,invalid.route_preview.message,"wall rejection shows facade Korean message")
 	check(not invalid.tile_popover.visible,"ordinary invalid tap shows feedback but never opens risk popover")
@@ -269,17 +303,22 @@ func test_exploration_grid_first_tap_is_pure_second_tap_moves_and_clears_on_cont
 		if far_goal!=Vector2i(-1,-1):break
 	check(far_goal!=Vector2i(-1,-1),"far route fixture exists")
 	var far_before:Dictionary=far.session.sim.snapshot();far._on_cell(far_goal);far._refresh()
-	check_eq(far.session.sim.snapshot(),far_before,"far first tap is pure preview")
-	check(bool(far.route_preview.get("accepted",false)) and int(far.route_preview.total_steps)>=3,"far route preview exposes full plan")
+	check_eq(far.session.sim.world.step_index,int(far_before.step_index)+1,"far one tap starts exactly one hop")
+	check(bool(far.route_preview.get("accepted",false)) and int(far.route_preview.total_steps)>=3,"far route retains full plan")
 	check_eq(far.grid.route_draw_spec().segments.size(),int(far.route_preview.total_steps),"full far path is drawn")
-	var first_hop:Array=far.route_preview.path[1];far._on_cell(far_goal);far._refresh()
-	check_eq(far.session.sim.world.step_index,int(far_before.step_index)+1,"route start commits exactly one step")
+	var first_hop:Array=far.route_preview.path[1]
 	check_eq(far.session.party_status().anchor,first_hop,"route start stops at first hop instead of teleporting")
 	check(bool(far.session.exploration_route_state().active),"unfinished far route remains active for frame continuation")
-	var replan_step:int=int(far.session.sim.world.step_index);far._on_cell(origin);far._refresh()
-	var replanned:Dictionary=far.session.exploration_route_draft()
-	check_eq(far.session.sim.world.step_index,replan_step,"new tile cancels active route without an extra hop")
-	check(bool(replanned.get("accepted",false)) and replanned.goal==[origin.x,origin.y],"new tile safely replans from current position")
+	var same_goal_step:=int(far.session.sim.world.step_index)
+	var same_goal_journal:Array=far.session.command_journal.duplicate(true)
+	far._on_cell(far_goal);far._refresh()
+	check_eq([far.session.sim.world.step_index,far.session.command_journal],
+		[same_goal_step,same_goal_journal],"active same-goal tap adds no hop or commit")
+	check("이동 중" in far.action_feedback_text,"active same-goal no-op is explicit")
+	far._on_cell(origin);far._refresh()
+	check_eq(far.session.sim.world.step_index,same_goal_step+1,
+		"different valid goal cancels and starts its first hop exactly once")
+	check_eq(far.session.party_status().anchor,[origin.x,origin.y],"replacement route reaches valid origin")
 	var wait=Sandbox.new(); wait.size=Vector2(360,640); wait.initialize_for_headless_test(Session.new()); var wait_before=wait.session.sim.snapshot()
 	wait._on_actor(int(wait.session.party_status().protagonist_id)); wait._refresh()
 	check_eq(wait.session.sim.snapshot(),wait_before,"hero-cell first tap previews wait without mutation")
@@ -314,8 +353,8 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check("빈 칸은 이동, 적은 공격" in str(sandbox.find_child("ActionStatus",true,false).text), "%s combat instruction visible immediately"%preset)
 		check_eq(sandbox.session.party_status().formation_id,preset,"formation committed")
 		check_eq(sandbox.grid.get_instance_id(),grid_id,"same grid for %s"%preset)
-		check_eq(sandbox.grid.visible_cell_count,9,"%s combat zoom is 9x9"%preset)
-		check(sandbox.grid.mapping_signature()!=full_mapping,"%s combat mapping intentionally uses crop"%preset)
+		check_eq(sandbox.grid.visible_cell_count,15,"%s combat remains full 15x15"%preset)
+		check_eq(sandbox.grid.mapping_signature(),full_mapping,"%s combat keeps exploration mapping and scale"%preset)
 		for cell in sandbox.session.observe_party_world().cells:
 			if cell.actors.is_empty():continue
 			var actor_position:=Vector2i(int(cell.position[0]),int(cell.position[1]))
@@ -334,19 +373,17 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		sandbox.free()
 	return finish()
 
-func test_combat_crop_roundtrip_recenter_and_offwindow_touch_are_authoritative() -> bool:
+func test_combat_product_view_is_full_while_low_level_crop_mapping_remains_authoritative() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var sandbox=_engaged_sandbox("WEDGE",viewport_size)
 		var grid=sandbox.grid; grid.size=grid.custom_minimum_size
-		check_eq(grid.visible_cell_count,9,"%s engaged view is 9x9"%viewport_size)
+		check_eq(grid.visible_cell_count,15,"%s engaged product view is 15x15"%viewport_size)
 		var bounds:Rect2i=grid.view_bounds()
 		for world_position in [bounds.position,bounds.position+bounds.size-Vector2i.ONE]:
 			var pixel:Vector2=grid.world_to_pixel_center(world_position)
 			check_eq(grid.pixel_to_world_cell(pixel),world_position,"%s crop edge roundtrip %s"%[viewport_size,world_position])
-		var offwindow:=Vector2i.ZERO if not grid.is_world_cell_visible(Vector2i.ZERO) else Vector2i(14,14)
-		check(not grid.is_world_cell_visible(offwindow),"%s fixture has an off-window cell"%viewport_size)
-		check_eq(grid.world_to_pixel_center(offwindow),Vector2(-1,-1),"%s off-window cell has no pixel projection"%viewport_size)
-		check_eq(grid.world_cell_rect(offwindow),Rect2(),"%s off-window cell has no hit rectangle"%viewport_size)
+		check(grid.is_world_cell_visible(Vector2i.ZERO) and grid.is_world_cell_visible(Vector2i(14,14)),
+			"%s combat exposes both world edges"%viewport_size)
 		grid.set_observation({"width":15,"height":15,"cells":[]})
 		grid.set_view_window(9,[Vector2i(7,7)])
 		var routed:Array=[]; grid.world_cell_pressed.connect(func(position):routed.append(position))
@@ -354,6 +391,7 @@ func test_combat_crop_roundtrip_recenter_and_offwindow_touch_are_authoritative()
 		for world_position in [bounds.position,bounds.position+bounds.size-Vector2i.ONE]:
 			_grid_screen_touch(grid,grid.world_to_pixel_center(world_position))
 		check_eq(routed,[bounds.position,bounds.position+bounds.size-Vector2i.ONE],"%s real edge touches emit cropped world cells"%viewport_size)
+		var offwindow:=Vector2i.ZERO if not grid.is_world_cell_visible(Vector2i.ZERO) else Vector2i(14,14)
 		_grid_screen_touch(grid,grid.world_to_pixel_center(offwindow))
 		check_eq(routed.size(),2,"%s off-window projection cannot emit input"%viewport_size)
 		grid.set_view_window(9,[Vector2i(7,7)],[Vector2i(14,14)])
@@ -534,7 +572,7 @@ func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion()
 	check(not sandbox.tile_popover.visible,"ordinary actor tap never opens terrain risk popover")
 	sandbox._on_tile_long_pressed(initial_position)
 	check(sandbox.tile_popover.visible,"actor-tile long inspection opens floating terrain risk popover")
-	check("짧게 누르면 경로를 미리 봅니다" in sandbox.tile_popover_label.text and not "다시" in sandbox.tile_popover_label.text,
+	check("짧게 누르면 경로 확인 후 이동합니다" in sandbox.tile_popover_label.text and not "다시" in sandbox.tile_popover_label.text,
 		"inspection without matching route preview describes the actual next short tap")
 	for component in ["불","물","전기","독"]:check(component in sandbox.tile_popover_label.text,"tile popover shows %s risk"%component)
 	var member_detail:Dictionary=sandbox.session.inspect_party_member(hero)
@@ -678,7 +716,7 @@ func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> 
 	sandbox.grid.size=sandbox.grid.custom_minimum_size
 	var grid_id=sandbox.grid.get_instance_id();var exploration_mapping=sandbox.grid.mapping_signature()
 	_explore_wait(sandbox);_press(sandbox,"PresetLINE");_press(sandbox,"DeployConfirm");sandbox.grid.size=sandbox.grid.custom_minimum_size
-	check_eq(sandbox.grid.visible_cell_count,9,"combat uses 9x9 crop")
+	check_eq(sandbox.grid.visible_cell_count,15,"combat keeps full 15x15 view")
 	var status:Dictionary=sandbox.session.party_status(); var hero:=int(status.protagonist_id); var enemy:=int(status.visible_enemy_ids[0])
 	check(_relocate_with_move_events(sandbox.session.sim, enemy,
 		sandbox.session.sim.world.entities[hero].position + Vector2i.RIGHT), "UI enemy canonical relocation")
@@ -704,7 +742,7 @@ func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> 
 	check_eq(sandbox.session.party_status().contact_kind,"NONE","stale contact cleared")
 	check_eq(sandbox.session.party_status().formation_id,"NONE","stale formation cleared")
 	var old_anchor:Array=sandbox.session.party_status().anchor
-	var left:=Vector2i(int(old_anchor[0])-1,int(old_anchor[1])); sandbox._on_cell(left); sandbox._refresh(); sandbox._on_cell(left); sandbox._refresh()
+	var left:=Vector2i(int(old_anchor[0])-1,int(old_anchor[1])); sandbox._on_cell(left); sandbox._refresh()
 	check(sandbox.session.party_status().anchor!=old_anchor,"post-regroup UI move")
 	check_eq(sandbox.grid.get_instance_id(),grid_id,"grid survives regroup move")
 	check_eq(sandbox.grid.mapping_signature(),exploration_mapping,"post-regroup full mapping remains restored")

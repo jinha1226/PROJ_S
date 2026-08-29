@@ -2,7 +2,7 @@ class_name PartyMemberState
 extends RefCounted
 
 const ROLES := ["PROTAGONIST", "COMPANION"]
-const PRESENCES := ["DEPLOYED", "GROUPED", "DORMANT", "DEFEATED"]
+const PRESENCES := ["DEPLOYED", "GROUPED", "DORMANT", "RECRUITABLE", "EXILED", "DEFEATED"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
 const PersonalityProfileScript = preload("res://sim/personality_profile.gd")

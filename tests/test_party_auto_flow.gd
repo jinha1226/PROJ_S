@@ -152,7 +152,7 @@ func test_one_tap_move_auto_commits_once_and_companion_override_waits_for_hero()
 	companion_sandbox.free();return finish()
 
 
-func test_pointer_invalidates_pending_combat_and_route_follow_preview_is_pure() -> bool:
+func test_pointer_invalidates_pending_combat_and_one_tap_route_follow_starts_once() -> bool:
 	var combat = _auto_engaged_sandbox()
 	var combat_step := int(combat.session.sim.world.step_index)
 	combat.selected_member_id = int(combat.session.party_status().protagonist_id)
@@ -174,17 +174,21 @@ func test_pointer_invalidates_pending_combat_and_route_follow_preview_is_pure() 
 	exploration._on_cell(goal);exploration._refresh()
 	var follow: Dictionary = exploration.auto_flow_state().follow_plan
 	check(follow.get("accepted",false) and follow.get("companion_rows",[]).size()==2,
-		"first route preview supplies detached grouped follow rows")
-	check_eq(exploration_session.sim.snapshot(),before,"follow preview is world-pure")
-	check_eq(exploration_session.command_journal,journal_before,"follow preview is journal-pure")
-	exploration._on_cell(goal)
+		"one-tap route supplies detached grouped follow rows")
 	check_eq(exploration_session.sim.world.step_index,int(before.step_index)+1,
-		"same-goal second tap still commits exactly one route hop")
+		"one tap starts with exactly one route hop")
+	check_eq(exploration_session.command_journal.size(),journal_before.size()+1,
+		"one tap appends exactly one exploration command")
+	var same_goal_step:=int(exploration_session.sim.world.step_index)
+	exploration._on_cell(goal)
+	check_eq(exploration_session.sim.world.step_index,same_goal_step,
+		"active same-goal tap is a no-op instead of an extra hop")
+	check("이동 중" in exploration.action_feedback_text,"active same-goal tap reports movement")
 	exploration.free()
 	return finish()
 
 
-func test_exploration_follower_tap_routes_to_its_display_cell_twice() -> bool:
+func test_exploration_follower_tap_routes_to_its_display_cell_once() -> bool:
 	var session=Session.new(44,20260828,Session.SHOWCASE_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800)
 	sandbox.initialize_for_headless_test(session,true)
@@ -197,15 +201,10 @@ func test_exploration_follower_tap_routes_to_its_display_cell_twice() -> bool:
 	check(follower_cell!=Vector2i(-1,-1),"fixture follower has a visible display cell")
 	var before:Dictionary=session.sim.snapshot();var journal_before:Array=session.command_journal.duplicate(true)
 	sandbox._on_actor(follower_id)
-	check_eq([sandbox.pending_move_mode,sandbox.pending_move_actor_id,
-		sandbox.pending_move_destination,sandbox.selected_member_id],
-		["EXPLORATION",hero,follower_cell,hero],
-		"first follower glyph tap becomes protagonist route preview")
-	check_eq([session.sim.snapshot(),session.command_journal],[before,journal_before],
-		"first follower tap remains preview-only")
-	sandbox._on_actor(follower_id)
 	check_eq(session.sim.world.step_index,int(before.step_index)+1,
-		"second follower glyph tap advances exactly one movement turn")
+		"one follower glyph tap advances exactly one movement turn")
+	check_eq(session.command_journal.size(),journal_before.size()+1,
+		"follower display tap appends one protagonist route command")
 	check_eq(session.sim.world.entities[hero].position,follower_cell,
 		"hero moves to the tapped presentation cell")
 	sandbox.free();return finish()

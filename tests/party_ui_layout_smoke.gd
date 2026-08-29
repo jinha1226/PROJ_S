@@ -15,6 +15,7 @@ func _run()->void:
 	for viewport_size in [Vector2(450,800),Vector2(360,640)]:
 		root.size=Vector2i(int(viewport_size.x),int(viewport_size.y));await process_frame
 		await _party_card_count_layouts(viewport_size)
+		await _roster_lifecycle_layout(viewport_size)
 		await _auto_showcase_and_combat_flow(viewport_size)
 		await _companion_card_speech_layout(viewport_size)
 		await _mvp_run_objective_and_restart(viewport_size)
@@ -74,6 +75,36 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 			elif index>0 and strip!=null and (strip.mouse_filter!=Control.MOUSE_FILTER_IGNORE \
 					or not _rect_contains(card_rect,strip.get_global_rect())):
 				failures.append("%s count %d speech input/bounds"%[viewport_size,count])
+	sandbox.queue_free();await process_frame
+
+func _roster_lifecycle_layout(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
+	var dismissed:=int(state.party_member_ids[1])
+	var candidate:=int(session.party_status().recruitable_member_ids[0])
+	if not session.dismiss_companion(dismissed).accepted:
+		failures.append("%s roster layout dismiss rejected"%viewport_size);return
+	var sandbox=Sandbox.new();sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session);sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	sandbox.size=viewport_size;root.add_child(sandbox);await process_frame;await process_frame
+	if sandbox.cards.get_child_count()!=2:
+		failures.append("%s dismissed roster did not render two cards"%viewport_size)
+	var row:=sandbox.deck.find_child("RecruitCandidate%d"%candidate,true,false) as Control
+	var recruit:=sandbox.deck.find_child("RecruitMember%d"%candidate,true,false) as Button
+	var row_rect:Rect2=row.get_global_rect() if row!=null else Rect2()
+	var scroll_rect:Rect2=sandbox.info_scroll.get_global_rect()
+	var row_inside_scroll_width:bool=row!=null and _rect_contains(scroll_rect,row_rect)
+	if row==null or recruit==null or recruit.custom_minimum_size.y<44.0 \
+			or not row_inside_scroll_width or not _rect_contains(row_rect,recruit.get_global_rect()) \
+			or recruit.get_global_rect().intersects(sandbox.grid.get_global_rect()):
+		failures.append("%s candidate row/button bounds or touch target"%viewport_size)
+	if sandbox.deck.find_child("RecruitCandidate%d"%dismissed,true,false)!=null:
+		failures.append("%s exiled member leaked into candidate list"%viewport_size)
+	var active_companion:=int(session.party_status().party_member_ids[1])
+	sandbox._open_member_detail(active_companion);await process_frame
+	if not sandbox.member_detail_dismiss.visible or sandbox.member_detail_dismiss.custom_minimum_size.y<44.0 \
+			or not _rect_contains(sandbox.member_detail_panel.get_global_rect(),
+				sandbox.member_detail_dismiss.get_global_rect()):
+		failures.append("%s detail dismiss bounds or touch target"%viewport_size)
 	sandbox.queue_free();await process_frame
 
 func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
@@ -344,7 +375,7 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 		failures.append("%s actor-tile mouse hold/release mutated route or world"%viewport_size)
 	if sandbox.selected_tile!=origin:failures.append("%s actor-tile mouse hold inspected %s"%[viewport_size,sandbox.selected_tile])
 	_validate_tile_popover(sandbox,viewport_size,"ACTOR_MOUSE_HOLD",false)
-	if not "짧게 누르면 경로를 미리 봅니다" in sandbox.tile_popover_label.text or "다시" in sandbox.tile_popover_label.text:
+	if not "짧게 누르면 경로 확인 후 이동합니다" in sandbox.tile_popover_label.text or "다시" in sandbox.tile_popover_label.text:
 		failures.append("%s pre-preview popover misstates the next short-tap action"%viewport_size)
 	sandbox._hide_tile_popover()
 	# A touch drag beyond the 14px slop cancels both the tap and the pending long
@@ -354,16 +385,16 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 			or session.exploration_route_draft()!=before_route_draft or sandbox.pending_exploration_wait:
 		failures.append("%s dragged grid gesture emitted a route action"%viewport_size)
 	if sandbox.tile_popover.visible:failures.append("%s dragged grid gesture opened tile popover"%viewport_size)
-	# A short release remains the pure first-tap route preview and never inspects.
+	# A short release previews and starts exactly one route hop in the same input.
 	var first_short:bool=await _short_touch_cell(sandbox,far_goal,0.06,5)
 	if not first_short:sandbox.queue_free();await process_frame;return
-	if session.sim.snapshot()!=before_world or session.command_journal!=before_journal:
-		failures.append("%s far-route first ScreenTouch mutated world/journal"%viewport_size)
-	if sandbox.tile_popover.visible:failures.append("%s short route preview opened tile risk popover"%viewport_size)
-	await process_frame;await process_frame
-	var preview:Dictionary=session.exploration_route_draft();var spec:Dictionary=sandbox.grid.route_draw_spec()
+	if session.sim.world.step_index!=int(before_world.step_index)+1 \
+			or session.command_journal.size()!=before_journal.size()+1:
+		failures.append("%s far-route one ScreenTouch did not commit exactly one first hop"%viewport_size)
+	if sandbox.tile_popover.visible:failures.append("%s short route start opened tile risk popover"%viewport_size)
+	var preview:Dictionary=session.exploration_route_state();var spec:Dictionary=sandbox.grid.route_draw_spec()
 	if not bool(preview.get("accepted",false)) or int(preview.get("total_steps",0))<3:
-		failures.append("%s far-route first ScreenTouch did not retain preview"%viewport_size)
+		failures.append("%s far-route one ScreenTouch did not retain active route"%viewport_size)
 	if spec.segments.size()!=int(preview.get("total_steps",0)):
 		failures.append("%s route overlay omitted steps %d/%d"%[viewport_size,spec.segments.size(),preview.get("total_steps",0)])
 	if spec.tiles.size()!=preview.path.size() or spec.direction_cues.size()!=spec.segments.size():
@@ -371,23 +402,6 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	for tile in spec.tiles:
 		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
 			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
-	# Holding the already-previewed goal opens inspection only. Its release cannot
-	# count as the same-goal second tap that starts movement.
-	var preview_before_hold:Dictionary=session.exploration_route_draft();var hold_step:=int(session.sim.world.step_index)
-	await _touch_hold_cell(sandbox,far_goal,0.62)
-	if session.sim.world.step_index!=hold_step or session.sim.snapshot()!=before_world or session.command_journal!=before_journal:
-		failures.append("%s preview-goal long hold/release moved the party"%viewport_size)
-	if session.exploration_route_draft()!=preview_before_hold:
-		failures.append("%s preview-goal long hold changed detached route draft"%viewport_size)
-	_validate_tile_popover(sandbox,viewport_size,"FAR_PREVIEW",true)
-	var start_step:int=int(session.sim.world.step_index)
-	# The popover and all children ignore mouse input, so the next actual short tap
-	# passes through and starts with exactly one hop.
-	var second_short:bool=await _short_touch_cell(sandbox,far_goal,0.06,6)
-	if not second_short:sandbox.queue_free();await process_frame;return
-	if session.sim.world.step_index!=start_step+1:
-		failures.append("%s same-goal second ScreenTouch must start with exactly one hop: %d→%d"%[viewport_size,start_step,session.sim.world.step_index])
-	if sandbox.tile_popover.visible:failures.append("%s pass-through route start did not hide inspection popover"%viewport_size)
 	# Drag cancellation retains pointer ownership: the queued route must remain
 	# paused for the full 620ms hold and through release, then resume one hop on the
 	# following frame.
@@ -442,7 +456,6 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	contact.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);contact.size=viewport_size;root.add_child(contact)
 	await process_frame;await process_frame
 	var contact_before:int=int(contact_session.sim.world.step_index)
-	_touch_cell_now(contact,contact_goal);await process_frame;await process_frame
 	_touch_cell_now(contact,contact_goal)
 	var stopped:Dictionary=contact_session.exploration_route_state();var stopped_step:int=int(contact_session.sim.world.step_index)
 	if contact_session.party_status().safe_phase!="CONTACT" or str(stopped.get("stop_reason",""))!="route_contact":
@@ -598,6 +611,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT); sandbox.size=viewport_size; root.add_child(sandbox)
 	await process_frame; await process_frame
 	var grid_id=sandbox.grid.get_instance_id(); var exploration_mapping=sandbox.grid.mapping_signature()
+	var exploration_cell_size:float=sandbox.grid.cell_size_px()
 	_validate_layout(sandbox,"%s %s EXPLORATION"%[viewport_size,preset])
 	var initial_actors:=0; for cell in sandbox.session.observe_party_world().cells: initial_actors+=cell.actors.size()
 	if initial_actors!=3: failures.append("%s %s pre-contact actor visibility"%[viewport_size,preset])
@@ -621,8 +635,11 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	await _press(sandbox,"Preset%s"%preset)
 	await _press(sandbox,"DeployConfirm")
 	if sandbox.session.party_status().safe_phase!="ENGAGED": failures.append("%s %s did not engage"%[viewport_size,preset])
-	if sandbox.grid.get_instance_id()!=grid_id:failures.append("%s %s grid replaced on combat zoom"%[viewport_size,preset])
-	if sandbox.grid.mapping_signature()==exploration_mapping:failures.append("%s %s combat crop did not change mapping"%[viewport_size,preset])
+	if sandbox.grid.get_instance_id()!=grid_id:failures.append("%s %s grid replaced on combat"%[viewport_size,preset])
+	if sandbox.grid.visible_cell_count!=15:failures.append("%s %s combat is not 15x15"%[viewport_size,preset])
+	if sandbox.grid.cell_size_px()>exploration_cell_size+0.1:failures.append("%s %s combat increased tile scale"%[viewport_size,preset])
+	if viewport_size.x>=450 and sandbox.grid.mapping_signature()!=exploration_mapping:
+		failures.append("%s %s wide combat changed map size"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s COMBAT_HERO_PENDING"%[viewport_size,preset])
 	await _validate_fixed_combat_area(sandbox,"%s %s"%[viewport_size,preset])
 	_validate_camera_mapping(sandbox,"%s %s"%[viewport_size,preset])
@@ -724,7 +741,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 	if not sandbox.grid._intent_overlays.is_empty(): failures.append("%s %s stale combat overlays"%[viewport_size,preset])
 	_validate_layout(sandbox,"%s %s GROUPED_COMPLETE"%[viewport_size,preset])
 	if sandbox.grid.visible_cell_count!=15 or sandbox.grid.view_origin!=Vector2i.ZERO:failures.append("%s %s victory did not restore full camera"%[viewport_size,preset])
-	if sandbox.grid.mapping_signature()!=exploration_mapping:failures.append("%s %s zoom-out did not restore exact exploration mapping"%[viewport_size,preset])
+	if sandbox.grid.mapping_signature()!=exploration_mapping:failures.append("%s %s victory changed persistent full mapping"%[viewport_size,preset])
 	if sandbox.combat_action_area.visible or sandbox.combat_action_area.is_visible_in_tree():failures.append("%s %s combat action area remains after victory"%[viewport_size,preset])
 	if sandbox.combat_action_dock.visible or sandbox.combat_action_dock.is_visible_in_tree():failures.append("%s %s combat dock remains after victory"%[viewport_size,preset])
 	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s victory banner missing"%[viewport_size,preset])
@@ -738,7 +755,7 @@ func _journey(viewport_size:Vector2,preset:String)->void:
 		if bool(probe.get("accepted",false)):regroup_goal=candidate;break
 	if regroup_goal==Vector2i(-1,-1):failures.append("%s %s no follower-free regroup move"%[viewport_size,preset])
 	else:
-		sandbox._refresh();await _touch_cell(sandbox,regroup_goal);await _touch_cell(sandbox,regroup_goal)
+		sandbox._refresh();await _touch_cell(sandbox,regroup_goal)
 	if sandbox.session.party_status().anchor==old_anchor: failures.append("%s %s grouped-complete anchor stale"%[viewport_size,preset])
 	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.mapping_signature()!=exploration_mapping: failures.append("%s %s grid identity/restored mapping changed"%[viewport_size,preset])
 	if not "승리 · 자동 재집결" in sandbox.phase_label.text:failures.append("%s %s post-regroup move lost persistent victory banner"%[viewport_size,preset])
@@ -1015,11 +1032,9 @@ func _explore_wait(sandbox)->void:
 
 func _validate_layout(sandbox,label:String,expected_cells_override:int=-1)->void:
 	var viewport_size:Vector2=sandbox.size;var combat_view:=str(sandbox.session.party_status().view_mode)=="COMBAT"
-	var expected:float
-	if combat_view:expected=360.0 if viewport_size.x>=450 else 300.0
-	else:expected=405.0 if viewport_size.x>=450 else 348.0
+	var expected:=405.0 if viewport_size.x>=450 else (300.0 if combat_view else 348.0)
 	if sandbox.grid.size.x+0.1<expected or sandbox.grid.size.y+0.1<expected: failures.append("%s grid below budget"%label)
-	var expected_cells:=expected_cells_override if expected_cells_override>0 else (9 if combat_view else 15)
+	var expected_cells:=expected_cells_override if expected_cells_override>0 else 15
 	if sandbox.grid.visible_cell_count!=expected_cells:failures.append("%s wrong camera cell count %d"%[label,sandbox.grid.visible_cell_count])
 	var minimum_cell:=expected/float(expected_cells)-0.1
 	if sandbox.grid.cell_size_px()<minimum_cell: failures.append("%s cell below phase budget"%label)
@@ -1138,16 +1153,12 @@ func _validate_camera_mapping(sandbox,label:String)->void:
 	for world_position in [bounds.position,bounds.position+bounds.size-Vector2i.ONE]:
 		var pixel:Vector2=grid.world_to_pixel_center(world_position)
 		if grid.pixel_to_world_cell(pixel)!=world_position:failures.append("%s crop roundtrip failed %s"%[label,world_position])
-	var offwindow:=Vector2i.ZERO if not grid.is_world_cell_visible(Vector2i.ZERO) else Vector2i(14,14)
-	if grid.is_world_cell_visible(offwindow):failures.append("%s no off-window fixture"%label);return
-	if grid.world_to_pixel_center(offwindow)!=Vector2(-1,-1) or grid.world_cell_rect(offwindow)!=Rect2():failures.append("%s off-window cell projects into grid"%label)
-	var routed:Array=[]
-	var capture:Callable=func(position):routed.append(position)
-	grid.world_cell_pressed.connect(capture)
-	var event:=InputEventScreenTouch.new();event.pressed=true;event.position=grid.world_to_pixel_center(offwindow);grid._gui_input(event)
-	event.pressed=false;grid._gui_input(event)
-	if not routed.is_empty():failures.append("%s off-window touch emitted world cell"%label)
-	grid.world_cell_pressed.disconnect(capture)
+	if grid.visible_cell_count!=15 or grid.view_origin!=Vector2i.ZERO:
+		failures.append("%s combat camera is not fixed full-world"%label)
+	for edge in [Vector2i.ZERO,Vector2i(14,14)]:
+		if not grid.is_world_cell_visible(edge) \
+				or grid.pixel_to_world_cell(grid.world_to_pixel_center(edge))!=edge:
+			failures.append("%s full-view edge mapping failed %s"%[label,edge])
 
 func _validate_card_content(sandbox,label:String)->void:
 	for child in sandbox.cards.get_children():

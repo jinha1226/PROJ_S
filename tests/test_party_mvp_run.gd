@@ -66,8 +66,14 @@ func test_locked_exit_and_fov_feature_are_gated_without_mutation() -> bool:
 	var initial_exit := _cell(session.observe_party_world(), VisualMap.EXIT_POSITION)
 	check_eq([initial_exit.visibility_state, initial_exit.feature_id], ["UNSEEN", ""],
 		"initial hidden exit leaks no feature")
-	check(_advance_route(session, Vector2i(8,1), 32),
-		"public route reaches a visible non-contact exit vantage")
+	# The revised SHOWCASE intentionally reveals its monster near the entry. Move
+	# this locked-exit-only fixture to a valid quiet vantage without consuming a
+	# gameplay turn, so contact behavior is covered independently.
+	var fixture_state=session.sim.world.party_encounter
+	fixture_state.group_anchor=Vector2i(8,1)
+	for member_id in fixture_state.active_party_member_ids:
+		session.sim.world.entities[member_id].position=fixture_state.group_anchor
+	check_eq(session.sim.world.world_state_error(),"","locked-exit vantage fixture remains valid")
 	check_eq(session.party_status().safe_phase, "GROUPED", "vantage remains exploration")
 	var visible_exit := _cell(session.observe_party_world(), VisualMap.EXIT_POSITION)
 	check_eq([visible_exit.visibility_state, visible_exit.feature_id],

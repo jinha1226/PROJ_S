@@ -110,7 +110,7 @@ func finalize_automatic_regroup() -> bool:
 	if root == null or _fault("automatic_regroup_started_event"):
 		return false
 	state.group_anchor = protagonist.position
-	for member_id in state.party_member_ids:
+	for member_id in state.active_party_member_ids:
 		if member_id == protagonist.id or not world.occupies_tile(member_id):
 			continue
 		state.member(member_id).presence = "GROUPED"
@@ -339,7 +339,7 @@ func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int)
 			deployment_index += 1
 		if id != state.protagonist_id and _fault("deployment_member_event"):
 			return {"reason": "injected_deployment_failure"}
-	for id in state.party_member_ids:
+	for id in state.active_party_member_ids:
 		if id != state.protagonist_id and not selected.has(id) and world.occupies_tile(id): state.member(id).presence = "DORMANT"
 	if state.contact_kind == "PARTY_AMBUSH":
 		for enemy_id in state.enemy_ids: state.enemy_busy_rows[enemy_id] = world.world_time + 100

@@ -17,13 +17,13 @@ func test_showcase_fixture_is_exact_deterministic_and_provenance_safe() -> bool:
 		"showcase detection radii")
 	check_eq(first.sim.world.entities[state.protagonist_id].position, Vector2i(2, 12),
 		"showcase hero position")
-	check_eq(first.sim.world.entities[state.enemy_ids[0]].position, Vector2i(12, 3),
+	check_eq(first.sim.world.entities[state.enemy_ids[0]].position, Vector2i(6, 11),
 		"showcase enemy position")
 	var expected_rows := [
 		"###############", "#......#......#", "#......#......#",
-		"#......#....E.#", "#......#......#", "#......#......#",
+		"#......#......#", "#......#......#", "#......#......#",
 		"#..rr..+......#", "#......#......#", "#.www..#..rr..#",
-		"#.www..#..rr..#", "#.mmm..#......#", "#......#......#",
+		"#.www..#..rr..#", "#.mmm..#......#", "#.....E#......#",
 		"#.@.ff.#......#", "#......#......#", "###############",
 	]
 	var terrain_by_glyph := {"#":"wall", ".":"stone_floor", "+":"stone_floor",
@@ -43,29 +43,39 @@ func test_showcase_fixture_is_exact_deterministic_and_provenance_safe() -> bool:
 	check_eq(first.sim.world.events.map(func(event): return event.type),
 		["environment.water_applied", "environment.water_applied", "environment.ignited"],
 		"showcase bootstrap event order")
+	check(first.reset_party(44,303030,"SHOWCASE_V1"),"new-personality reset rebuilds showcase")
+	var reset_state=first.sim.world.party_encounter
+	check_eq(first.sim.world.entities[reset_state.enemy_ids[0]].position,Vector2i(6,11),
+		"new-personality reset preserves world-seed monster spawn")
 	return finish()
 
 
 func test_showcase_observation_has_los_fog_renderer_fields_and_no_hidden_leaks() -> bool:
 	var session = Session.new(44, 20260828, "SHOWCASE_V1")
+	var state = session.sim.world.party_encounter
 	var snapshot_before: Dictionary = session.sim.snapshot()
 	var observation: Dictionary = session.observe_party_world()
 	var hero_cell := _cell(observation, Vector2i(2, 12))
 	var fire_cell := _cell(observation, Vector2i(5, 12))
 	var door_cell := _cell(observation, Vector2i(7, 6))
 	var blocked_cell := _cell(observation, Vector2i(8, 12))
-	var enemy_cell := _cell(observation, Vector2i(12, 3))
+	var enemy_cell := _cell(observation, Vector2i(6, 11))
 	check_eq(hero_cell.visibility_state, "VISIBLE", "hero cell visible")
 	check_eq(fire_cell.visibility_state, "VISIBLE", "near fire visible")
 	check_eq([fire_cell.terrain_id, fire_cell.fire_intensity], ["wood_floor", 80],
 		"visible fire is rendered from authoritative tile")
 	check_eq([door_cell.visibility_state, door_cell.feature_id], ["VISIBLE", "open_door"],
 		"radius-six doorway visible")
-	for hidden in [blocked_cell, enemy_cell]:
+	for hidden in [blocked_cell]:
 		check_eq(hidden.visibility_state, "UNSEEN", "hidden cell visibility")
 		check_eq([hidden.terrain_id, hidden.fire_intensity, hidden.wetness,
 			hidden.effective_conductivity, hidden.feature_id, hidden.actors],
 			["unknown", 0, 0, 0, "", []], "hidden cell leaks no renderer state")
+	check_eq(enemy_cell.visibility_state,"VISIBLE","distant showcase monster starts inside FOV")
+	check_eq(enemy_cell.actors.size(),1,"visible monster is an authoritative actor glyph")
+	check_eq([enemy_cell.actors[0].entity_id,enemy_cell.actors[0].display_role],
+		[state.enemy_ids[0],"ENEMY"],"initial monster observation identity")
+	check_eq(session.party_status().safe_phase,"GROUPED","visible range four monster does not auto-contact")
 	check_eq(hero_cell.actors.size(), 1, "only deployed hero occupies initial visible cell")
 	var hero: Dictionary = hero_cell.actors[0]
 	for key in ["kind", "species_id", "max_health", "life_state", "status_ids",

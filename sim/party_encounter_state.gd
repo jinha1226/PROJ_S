@@ -1,7 +1,8 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
+const LEGACY_SCHEMA_VERSION := 1
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -15,6 +16,7 @@ var safe_phase := "GROUPED"
 var revision: int = 0
 var protagonist_id: int = -1
 var party_member_ids: Array[int] = []
+var active_party_member_ids: Array[int] = []
 var enemy_ids: Array[int] = []
 var group_anchor := Vector2i.ZERO
 var facing := Vector2i.RIGHT
@@ -25,30 +27,37 @@ var enemy_detection_radius := 3
 var formation_id := "NONE"
 var member_rows: Dictionary = {}
 var enemy_busy_rows: Dictionary = {}
+var exile_records: Array[Dictionary] = []
 
 func member(entity_id: int): return member_rows.get(entity_id)
 
 func to_dict() -> Dictionary:
 	var members: Array = []
-	for entity_id in party_member_ids: members.append(member_rows[entity_id].to_dict())
+	var all_member_ids: Array = member_rows.keys(); all_member_ids.sort()
+	for entity_id in all_member_ids: members.append(member_rows[entity_id].to_dict())
 	var busy_rows: Array = []
 	var ids: Array = enemy_busy_rows.keys(); ids.sort()
 	for entity_id in ids: busy_rows.append({"entity_id": str(entity_id), "busy_until": str(enemy_busy_rows[entity_id])})
 	return {"schema_version": schema_version, "encounter_id": str(encounter_id), "safe_phase": safe_phase,
 		"revision": str(revision), "protagonist_id": str(protagonist_id),
 		"party_member_ids": party_member_ids.map(func(id): return str(id)),
+		"active_party_member_ids": active_party_member_ids.map(func(id): return str(id)),
 		"enemy_ids": enemy_ids.map(func(id): return str(id)), "group_anchor": [group_anchor.x, group_anchor.y],
 		"facing": [facing.x, facing.y], "contact_kind": contact_kind,
 		"contact_enemy_id": str(contact_enemy_id), "party_detection_radius": party_detection_radius,
 		"enemy_detection_radius": enemy_detection_radius, "formation_id": formation_id,
-		"member_rows": members, "enemy_busy_rows": busy_rows}
+		"member_rows": members, "enemy_busy_rows": busy_rows,
+		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
 	var state = load("res://sim/party_encounter_state.gd").new()
+	state.schema_version = SCHEMA_VERSION
 	state.encounter_id = Int64CodecScript.parse(row.encounter_id, "encounter ID")
 	state.safe_phase = str(row.safe_phase); state.revision = Int64CodecScript.parse(row.revision, "revision")
 	state.protagonist_id = Int64CodecScript.parse(row.protagonist_id, "protagonist ID")
 	state.party_member_ids.clear(); for value in row.party_member_ids: state.party_member_ids.append(Int64CodecScript.parse(value, "party ID"))
+	state.active_party_member_ids.clear()
+	for value in row.get("active_party_member_ids", row.party_member_ids): state.active_party_member_ids.append(Int64CodecScript.parse(value, "active party ID"))
 	state.enemy_ids.clear(); for value in row.enemy_ids: state.enemy_ids.append(Int64CodecScript.parse(value, "enemy ID"))
 	state.group_anchor = Vector2i(int(row.group_anchor[0]), int(row.group_anchor[1])); state.facing = Vector2i(int(row.facing[0]), int(row.facing[1]))
 	state.contact_kind = str(row.contact_kind); state.contact_enemy_id = Int64CodecScript.parse(row.contact_enemy_id, "contact enemy")
@@ -57,14 +66,63 @@ static func from_dict(row: Dictionary):
 	for member_row in row.member_rows:
 		var member = MemberScript.from_dict(member_row); state.member_rows[member.entity_id] = member
 	state.enemy_busy_rows.clear(); for busy_row in row.enemy_busy_rows: state.enemy_busy_rows[Int64CodecScript.parse(busy_row.entity_id, "enemy ID")] = Int64CodecScript.parse(busy_row.busy_until, "enemy busy")
+	state.exile_records.clear()
+	for record in row.get("exile_records",[]):state.exile_records.append(_canonical_exile_record(record))
 	return state
+
+static func _canonical_exile_record(record: Dictionary) -> Dictionary:
+	var initial_statuses:Array=[]
+	for status in record.initial_status_effects:
+		initial_statuses.append({"status_id":str(status.status_id),
+			"remaining_ticks":int(status.remaining_ticks),"tick_damage":int(status.tick_damage)})
+	var statuses:Array=[]
+	for status in record.status_effects:
+		statuses.append({"status_id":str(status.status_id),
+			"remaining_ticks":int(status.remaining_ticks),"tick_damage":int(status.tick_damage)})
+	return {"schema_version":int(record.schema_version),
+		"former_member_id":str(record.former_member_id),"display_name":str(record.display_name),
+		"species_id":str(record.species_id),"personality_summary":{
+			"archetype_id":str(record.personality_summary.archetype_id),
+			"archetype_label":str(record.personality_summary.archetype_label),
+			"profile_hash":str(record.personality_summary.profile_hash),
+			"aggression":int(record.personality_summary.aggression),
+			"altruism":int(record.personality_summary.altruism),
+			"boldness":int(record.personality_summary.boldness),
+			"composure":int(record.personality_summary.composure)},
+		"dismissed_world_time":str(record.dismissed_world_time),
+		"dismissed_step_index":str(record.dismissed_step_index),
+		"dismissal_event_id":str(record.dismissal_event_id),"condition_snapshot":{
+			"condition_band":str(record.condition_snapshot.condition_band),
+			"hp":int(record.condition_snapshot.hp),
+			"hp_percent":int(record.condition_snapshot.hp_percent),
+			"stress":int(record.condition_snapshot.stress),
+			"harmful_status":bool(record.condition_snapshot.harmful_status)},
+		"emotion_modifiers":{"resentment_delta":int(record.emotion_modifiers.resentment_delta),
+			"fear_delta":int(record.emotion_modifiers.fear_delta)},
+		"relationship_snapshot":{"trust":int(record.relationship_snapshot.trust),
+			"fear":int(record.relationship_snapshot.fear),
+			"hostility":int(record.relationship_snapshot.hostility),
+			"gratitude":int(record.relationship_snapshot.gratitude),
+			"grievance":int(record.relationship_snapshot.grievance)},
+		"current_hp":int(record.current_hp),"max_hp":int(record.max_hp),
+		"alive":bool(record.alive),"initial_status_effects":initial_statuses,
+		"status_effects":statuses,"location_id":str(record.location_id),
+		"initial_safety":int(record.initial_safety),"safety":int(record.safety),
+		"current_behavior":str(record.current_behavior),
+		"last_world_time":str(record.last_world_time),"last_world_step":str(record.last_world_step),
+		"encounter_eligible_after_step":str(record.encounter_eligible_after_step)}
 
 static func wire_error(row: Variant, width: int, height: int) -> String:
 	if not row is Dictionary: return "invalid_party_encounter_shape"
 	var keys: Array = row.keys(); keys.sort()
-	if keys != ["contact_enemy_id", "contact_kind", "encounter_id", "enemy_busy_rows", "enemy_detection_radius", "enemy_ids", "facing", "formation_id", "group_anchor", "member_rows", "party_detection_radius", "party_member_ids", "protagonist_id", "revision", "safe_phase", "schema_version"]:
+	var v1_keys := ["contact_enemy_id", "contact_kind", "encounter_id", "enemy_busy_rows", "enemy_detection_radius", "enemy_ids", "facing", "formation_id", "group_anchor", "member_rows", "party_detection_radius", "party_member_ids", "protagonist_id", "revision", "safe_phase", "schema_version"]
+	var v2_keys: Array = v1_keys.duplicate(); v2_keys.append_array(["active_party_member_ids","exile_records"]); v2_keys.sort()
+	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
+	var parsed_schema_version := int(row.schema_version)
+	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
+			or (parsed_schema_version == SCHEMA_VERSION and keys != v2_keys):
 		return "invalid_party_encounter_keys"
-	if row.schema_version != SCHEMA_VERSION: return "unsupported_party_schema"
+	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -83,15 +141,51 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			var parsed := Int64CodecScript.parse(value, list_key)
 			if parsed <= previous: return "duplicate_or_unsorted_%s" % list_key
 			previous = parsed
+	var active_rows: Variant = row.get("active_party_member_ids", row.party_member_ids)
+	if not active_rows is Array or active_rows.is_empty() or active_rows.size() > 3: return "invalid_active_party_member_ids"
+	var previous_active := -1
+	for value in active_rows:
+		if not Int64CodecScript.is_canonical(value): return "noncanonical_active_party_member_ids"
+		var parsed := Int64CodecScript.parse(value, "active party member ID")
+		if parsed <= previous_active: return "duplicate_or_unsorted_active_party_member_ids"
+		previous_active = parsed
 	var party_set: Dictionary = {}
 	for value in row.party_member_ids: party_set[value] = true
+	for value in active_rows:
+		if not party_set.has(value): return "active_party_member_not_in_roster"
 	for value in row.enemy_ids:
 		if party_set.has(value): return "party_enemy_id_overlap"
-	if not row.member_rows is Array or row.member_rows.size() != row.party_member_ids.size(): return "invalid_party_member_rows"
+	if not row.member_rows is Array or row.member_rows.size() != party_set.size(): return "invalid_party_member_rows"
+	var active_set: Dictionary = {}; for value in active_rows: active_set[value] = true
+	var seen_slots: Dictionary = {}
 	for index in range(row.member_rows.size()):
 		var error := MemberScript.wire_error(row.member_rows[index]); if not error.is_empty(): return error
-		if row.member_rows[index].entity_id != row.party_member_ids[index]: return "party_member_order_mismatch"
-		if int(row.member_rows[index].roster_slot) != index: return "party_roster_slot_order_mismatch"
+		if index > 0 and Int64CodecScript.parse(row.member_rows[index-1].entity_id,"member") \
+				>= Int64CodecScript.parse(row.member_rows[index].entity_id,"member"):
+			return "party_member_order_mismatch"
+		var member_id: String = str(row.member_rows[index].entity_id)
+		if not party_set.has(member_id): return "party_member_set_mismatch"
+		var slot := int(row.member_rows[index].roster_slot)
+		if seen_slots.has(slot): return "duplicate_party_roster_slot"
+		seen_slots[slot] = true
+		if not active_set.has(member_id) and (row.member_rows[index].role != "COMPANION" \
+				or row.member_rows[index].presence not in ["RECRUITABLE", "EXILED"]):
+			return "invalid_inactive_party_member_state"
+		if active_set.has(member_id) and member_id == row.protagonist_id \
+				and (row.member_rows[index].role != "PROTAGONIST" or slot != 0):
+			return "party_protagonist_roster_invalid"
+	for slot in range(seen_slots.size()):
+		if not seen_slots.has(slot): return "party_roster_slots_not_continuous"
+	if active_rows[0] != row.protagonist_id or row.party_member_ids[0] != row.protagonist_id:
+		return "party_protagonist_roster_invalid"
+	if parsed_schema_version == SCHEMA_VERSION:
+		if not row.get("exile_records") is Array: return "invalid_exile_records_shape"
+		var seen_exiles: Dictionary = {}
+		for record in row.exile_records:
+			var record_error := _exile_record_wire_error(record, party_set)
+			if not record_error.is_empty(): return record_error
+			if seen_exiles.has(record.former_member_id): return "duplicate_exile_record"
+			seen_exiles[record.former_member_id] = true
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]
@@ -110,6 +204,97 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		return "contact_phase_formation_invalid"
 	if row.safe_phase in ["ENGAGED", "REGROUP_READY"] and (row.contact_kind == "NONE" or row.formation_id == "NONE"):
 		return "engaged_contact_or_formation_invalid"
+	return ""
+
+static func _exile_record_wire_error(record: Variant, party_set: Dictionary) -> String:
+	if not record is Dictionary: return "invalid_exile_record_shape"
+	var keys: Array = record.keys(); keys.sort()
+	if keys != ["alive","condition_snapshot","current_behavior","current_hp",
+			"dismissal_event_id","dismissed_step_index","dismissed_world_time","display_name",
+			"emotion_modifiers","encounter_eligible_after_step","former_member_id",
+			"initial_safety","initial_status_effects","last_world_step","last_world_time",
+			"location_id","max_hp","personality_summary","relationship_snapshot",
+			"safety","schema_version","species_id","status_effects"]:
+		return "invalid_exile_record_keys"
+	if record.schema_version != 1 or record.current_behavior not in ["SEEK_SAFETY","SELF_TREAT","RECOVER","DEAD"]:
+		return "invalid_exile_record_enum"
+	for key in ["former_member_id","dismissal_event_id","dismissed_step_index",
+			"dismissed_world_time","encounter_eligible_after_step","last_world_step","last_world_time"]:
+		if not Int64CodecScript.is_canonical(record.get(key)): return "noncanonical_exile_record_time_or_id"
+	if not party_set.has(str(record.former_member_id)) \
+			or Int64CodecScript.parse(record.dismissal_event_id,"dismissal event") <= 0 \
+			or Int64CodecScript.parse(record.dismissed_step_index,"dismissed step") < 0 \
+			or Int64CodecScript.parse(record.dismissed_world_time,"dismissed time") < 0 \
+			or Int64CodecScript.parse(record.last_world_time,"last world time") \
+				<Int64CodecScript.parse(record.dismissed_world_time,"dismissed time") \
+			or Int64CodecScript.parse(record.last_world_step,"last world step") \
+				<Int64CodecScript.parse(record.dismissed_step_index,"dismissed step") \
+			or Int64CodecScript.parse(record.encounter_eligible_after_step,"eligible step") \
+				< Int64CodecScript.parse(record.dismissed_step_index,"dismissed step"):
+		return "invalid_exile_record_time_or_id"
+	if not record.display_name is String or str(record.display_name).is_empty() \
+			or not record.species_id is String or str(record.species_id).is_empty():
+		return "invalid_exile_record_identity"
+	if not record.personality_summary is Dictionary:
+		return "invalid_exile_personality_summary"
+	var summary_keys:Array=record.personality_summary.keys();summary_keys.sort()
+	if summary_keys != ["aggression","altruism","archetype_id","archetype_label","boldness","composure","profile_hash"] \
+			or not record.personality_summary.archetype_id is String \
+			or not record.personality_summary.archetype_label is String \
+			or not record.personality_summary.profile_hash is String \
+			or str(record.personality_summary.profile_hash).length()!=64:
+		return "invalid_exile_personality_summary"
+	for facet_key in ["aggression","altruism","boldness","composure"]:
+		if not _integer(record.personality_summary.get(facet_key)) \
+				or int(record.personality_summary[facet_key])<0 \
+				or int(record.personality_summary[facet_key])>1000:
+			return "invalid_exile_personality_summary"
+	if not record.alive is bool or not _integer(record.current_hp) or not _integer(record.max_hp) \
+			or int(record.max_hp)<=0 or int(record.current_hp)<0 or int(record.current_hp)>int(record.max_hp) \
+			or bool(record.alive)!=(int(record.current_hp)>0) or not _integer(record.safety) \
+			or int(record.safety)<0 or int(record.safety)>1000:
+		return "invalid_exile_actor_vitals"
+	if not record.location_id is String or str(record.location_id).is_empty():return "invalid_exile_location"
+	if not record.condition_snapshot is Dictionary or not record.emotion_modifiers is Dictionary \
+			or not record.relationship_snapshot is Dictionary:return "invalid_exile_state_summary"
+	var condition_keys:Array=record.condition_snapshot.keys();condition_keys.sort()
+	if condition_keys!=["condition_band","harmful_status","hp","hp_percent","stress"] \
+			or record.condition_snapshot.condition_band not in ["HEALTHY","STRAINED","ENDANGERED"] \
+			or not record.condition_snapshot.harmful_status is bool:
+		return "invalid_exile_condition_snapshot"
+	for score in [record.condition_snapshot.hp,record.condition_snapshot.hp_percent,record.condition_snapshot.stress]:
+		if not _integer(score) or int(score)<0 or int(score)>1000:return "invalid_exile_condition_snapshot"
+	var emotion_keys:Array=record.emotion_modifiers.keys();emotion_keys.sort()
+	if emotion_keys!=["fear_delta","resentment_delta"]:return "invalid_exile_emotion_modifiers"
+	for score in record.emotion_modifiers.values():
+		if not _integer(score) or int(score)<0 or int(score)>100:return "invalid_exile_emotion_modifiers"
+	var relation_keys:Array=record.relationship_snapshot.keys();relation_keys.sort()
+	if relation_keys!=["fear","gratitude","grievance","hostility","trust"]:return "invalid_exile_relationship_snapshot"
+	for score in record.relationship_snapshot.values():
+		if not _integer(score) or int(score)<-100 or int(score)>100:return "invalid_exile_relationship_snapshot"
+	if not record.initial_status_effects is Array or not record.status_effects is Array \
+			or record.initial_status_effects.size()>4 or record.status_effects.size()>4:
+		return "invalid_exile_status_effects"
+	for rows in [record.initial_status_effects,record.status_effects]:
+		var status_error:=_exile_status_effects_error(rows)
+		if not status_error.is_empty():return status_error
+	if not _integer(record.initial_safety) or int(record.initial_safety)<0 or int(record.initial_safety)>1000:
+		return "invalid_exile_actor_vitals"
+	if not record.alive and (record.current_behavior!="DEAD" or not record.status_effects.is_empty()):
+		return "invalid_dead_exile_actor_state"
+	return ""
+
+static func _exile_status_effects_error(rows:Array)->String:
+	var previous_status:=""
+	for status in rows:
+		if not status is Dictionary:return "invalid_exile_status_effect"
+		var status_keys:Array=status.keys();status_keys.sort()
+		if status_keys!=["remaining_ticks","status_id","tick_damage"] \
+				or not status.status_id is String or str(status.status_id)<=previous_status \
+				or not _integer(status.remaining_ticks) or int(status.remaining_ticks)<1 or int(status.remaining_ticks)>16 \
+				or not _integer(status.tick_damage) or int(status.tick_damage)<0 or int(status.tick_damage)>100:
+			return "invalid_exile_status_effect"
+		previous_status=str(status.status_id)
 	return ""
 
 static func _position(value: Variant, width: int, height: int) -> bool:

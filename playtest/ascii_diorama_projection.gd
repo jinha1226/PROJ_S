@@ -47,9 +47,28 @@ const _MARK_DEFINITIONS := {
 	"wall": {"kind":"MASONRY", "glyph":"#", "density":34},
 }
 
+const ACTOR_MOTION_DEFAULT_MS := 150
+const ACTOR_MOTION_MIN_MS := 120
+const ACTOR_MOTION_MAX_MS := 180
+
 
 static func layer_order() -> Array:
 	return DRAW_LAYERS.duplicate()
+
+
+static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
+		elapsed_ms: int, duration_ms: int = ACTOR_MOTION_DEFAULT_MS) -> Dictionary:
+	var safe_duration := clampi(duration_ms, ACTOR_MOTION_MIN_MS, ACTOR_MOTION_MAX_MS)
+	var progress := clampf(float(maxi(0, elapsed_ms)) / float(safe_duration), 0.0, 1.0)
+	var remaining := 1.0 - progress
+	var eased := 1.0 - remaining * remaining * remaining
+	return {
+		"active":progress < 1.0 and not from_world.is_equal_approx(to_world),
+		"duration_ms":safe_duration,
+		"progress":progress,
+		"eased_progress":eased,
+		"world_position":from_world.lerp(to_world, eased),
+	}.duplicate(true)
 
 
 static func sanitize_observed_cell(row: Dictionary) -> Dictionary:

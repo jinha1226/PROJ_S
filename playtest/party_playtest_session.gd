@@ -26,6 +26,8 @@ const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
 const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
 const NEW_EXPEDITION_SEED_LIMIT := 2147483646
+const EXILE_WORLD_INTERVAL := 100
+const EXILE_ENCOUNTER_STEP_DELAY := 5
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
 		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
@@ -132,15 +134,30 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, ["party_member"], "human", "party")
 	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95, ["party_member"], "human", "party")
 	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105, ["party_member"], "goblin", "party")
+	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
+		["party_member", "recruitable"], "dwarf", "party") if showcase else null
+	var candidate_amphibian = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
+		["party_member", "recruitable"], "amphibian", "party") if showcase else null
 	var enemy = candidate.world.add_entity("melee_enemy", "고블린", enemy_position, 60, ["party_enemy"], "goblin", "enemy")
-	if protagonist == null or narae == null or miru == null or enemy == null: return false
+	if protagonist == null or narae == null or miru == null or enemy == null \
+			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
+		return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
-	state.party_member_ids.append_array([protagonist.id, narae.id, miru.id]); state.enemy_ids.append(enemy.id)
+	state.party_member_ids.append_array([protagonist.id, narae.id, miru.id])
+	if showcase: state.party_member_ids.append_array([candidate_dwarf.id, candidate_amphibian.id])
+	state.enemy_ids.append(enemy.id)
+	state.active_party_member_ids.clear()
+	state.active_party_member_ids.append_array([protagonist.id, narae.id, miru.id])
 	state.group_anchor = protagonist.position
 	state.party_detection_radius = 3 if showcase else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
 	state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
 	state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 1))
+	if showcase:
+		state.member_rows[candidate_dwarf.id] = MemberScript.new(candidate_dwarf.id, 3,
+			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 2))
+		state.member_rows[candidate_amphibian.id] = MemberScript.new(candidate_amphibian.id, 4,
+			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 3))
 	state.enemy_busy_rows[enemy.id] = 0
 	narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
@@ -165,7 +182,10 @@ func party_status() -> Dictionary:
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
 		"contact_kind": state.contact_kind, "formation_id": state.formation_id, "anchor": [state.group_anchor.x,state.group_anchor.y],
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
-		"protagonist_id": state.protagonist_id, "party_member_ids": state.party_member_ids.duplicate(),
+		"protagonist_id": state.protagonist_id, "party_member_ids": state.active_party_member_ids.duplicate(),
+		"roster_member_ids": state.party_member_ids.duplicate(),
+		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
+		"exiled_member_ids":_member_ids_with_presence("EXILED"),
 		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
@@ -327,7 +347,10 @@ func party_personality_summary() -> Dictionary:
 func observe_party_world() -> Dictionary:
 	var status := party_status()
 	var progress := run_progress()
-	var hide_enemies: bool = str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
+	# The SHOWCASE is a visual test: a distant monster is deliberately visible
+	# before its detection radius is crossed. REGRESSION keeps the legacy reveal.
+	var hide_enemies: bool = scenario_id == REGRESSION_SCENARIO_ID \
+		and str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
 	var hero_position := Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	var visible: Dictionary = VisualTestMapScript.visible_cells(sim.world, hero_position, scenario_id)
@@ -467,7 +490,7 @@ func party_cards() -> Array[Dictionary]:
 	var preview: Dictionary = current_turn_preview() if _protagonist_draft != null else {}
 	var preview_by_actor: Dictionary = {}
 	for actor_row in preview.get("actor_rows", []): preview_by_actor[int(actor_row.actor_id)] = actor_row
-	for member_id in state.party_member_ids:
+	for member_id in state.active_party_member_ids:
 		var member = state.member(member_id); var entity = sim.world.entities[member_id]
 		var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 		var exposure := {"applicable": false, "sampled_step_index": sim.world.step_index, "sampled_world_time": sim.world.world_time,
@@ -498,9 +521,256 @@ func available_companion_ids() -> Array:
 	var ids: Array = []
 	if sim == null or sim.world.party_encounter == null: return ids
 	var state = sim.world.party_encounter
-	for member_id in state.party_member_ids:
+	for member_id in state.active_party_member_ids:
 		if member_id != state.protagonist_id and sim.world.is_autonomous_target(member_id): ids.append(member_id)
 	return ids.duplicate()
+
+
+func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var state = sim.world.party_encounter
+	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] or _run_is_complete():
+		return _rejection_dto("party_roster_unsafe_phase")
+	var member = state.member(entity_id)
+	if member == null or not sim.world.entities.has(entity_id):
+		return _rejection_dto("party_member_not_found")
+	if operation == "DISMISS":
+		if entity_id == state.protagonist_id: return _rejection_dto("protagonist_dismiss_forbidden")
+		if entity_id not in state.active_party_member_ids: return _rejection_dto("companion_not_active")
+		if member.role != "COMPANION" or sim.world.combatant_states[entity_id].life_state != "ACTIVE":
+			return _rejection_dto("companion_unavailable")
+	elif operation == "RECRUIT":
+		if entity_id in state.active_party_member_ids or entity_id not in state.party_member_ids \
+				or member.role != "COMPANION" or member.presence != "RECRUITABLE":
+			return _rejection_dto("companion_not_recruitable")
+		if state.active_party_member_ids.size() >= 3: return _rejection_dto("party_full")
+		if sim.world.combatant_states[entity_id].life_state != "ACTIVE": return _rejection_dto("companion_unavailable")
+	else:
+		return _rejection_dto("invalid_roster_operation")
+	return _feedback_dto({"accepted":true,"reason":"ok","operation":operation,
+		"entity_id":entity_id,"active_party_member_ids":state.active_party_member_ids.duplicate(true)})
+
+
+func recruitable_companions() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if sim == null or sim.world == null or sim.world.party_encounter == null: return rows
+	var state = sim.world.party_encounter
+	for entity_id in state.party_member_ids:
+		if entity_id in state.active_party_member_ids: continue
+		var member = state.member(entity_id); var entity = sim.world.entities.get(entity_id)
+		if member == null or entity == null or member.presence != "RECRUITABLE": continue
+		var archetype := personality_archetype(member.personality_profile)
+		var assessment := roster_change_assessment("RECRUIT", entity_id)
+		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
+			"display_name":str(entity.display_name),"presence":str(member.presence),
+			"health":int(entity.health),"max_health":int(entity.max_health),
+			"status_ids":_combatant_status_ids(entity_id),
+			"archetype_label":str(archetype.get("label","동료")),
+			"can_recruit":bool(assessment.get("accepted",false)),
+			"reason":str(assessment.get("reason","ok")),
+			"message":str(assessment.get("message",""))})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary): return int(a.roster_slot)<int(b.roster_slot))
+	return rows.duplicate(true)
+
+
+func exile_story_records() -> Array:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return []
+	return sim.world.party_encounter.exile_records.duplicate(true)
+
+
+func _exile_record_for_member(entity_id:int):
+	for record in sim.world.party_encounter.exile_records:
+		if int(str(record.former_member_id))==entity_id:return record.duplicate(true)
+	return null
+
+
+func dismiss_companion(entity_id: int) -> Dictionary:
+	return _apply_roster_change("DISMISS", entity_id)
+
+
+func recruit_companion(entity_id: int) -> Dictionary:
+	return _apply_roster_change("RECRUIT", entity_id)
+
+
+func _apply_roster_change(operation: String, entity_id: int) -> Dictionary:
+	var assessment := roster_change_assessment(operation, entity_id)
+	if not bool(assessment.get("accepted",false)): return assessment
+	var rollback: Dictionary = sim.snapshot()
+	var state = sim.world.party_encounter
+	var exile_condition: Dictionary = _exile_condition(entity_id) if operation=="DISMISS" else {}
+	if operation=="DISMISS" and not bool(exile_condition.get("valid",false)):
+		return _rejection_dto("party_roster_change_failed")
+	if operation == "DISMISS":
+		state.active_party_member_ids.erase(entity_id)
+		state.member(entity_id).presence = "EXILED"
+		# Exile is permanent and removes the tombstone from every future lifecycle
+		# target. Status history remains in the immutable event stream, while the
+		# no-longer-observable entity keeps no live status row.
+		sim.world.combatant_states[entity_id].status_rows.clear()
+	else:
+		state.active_party_member_ids.append(entity_id); state.active_party_member_ids.sort()
+		state.member(entity_id).presence = "GROUPED"
+		sim.world.entities[entity_id].position = state.group_anchor
+	var event_type := "party.companion_dismissed" if operation == "DISMISS" \
+		else "party.companion_recruited"
+	var event_data:={"operation":operation}
+	if operation=="DISMISS":
+		event_data["condition_band"]=str(exile_condition.condition_band)
+		event_data["resentment_delta"]=int(exile_condition.resentment_delta)
+	var event = sim.world.emit_event(event_type, state.protagonist_id, entity_id,
+		state.group_anchor, 0, -1, event_data)
+	if event!=null and operation=="DISMISS":
+		if not sim.relationships.record_harm(entity_id,state.protagonist_id,event.id,
+				int(exile_condition.resentment_delta)):
+			event=null
+		else:
+			state.exile_records.append(_new_exile_record(entity_id,event.id,exile_condition))
+	state.revision += 1
+	var roster_world_error:String=sim.world.world_state_error()
+	if event == null or not roster_world_error.is_empty():
+		var restored = SimulatorScript.from_snapshot(rollback)
+		if restored != null: sim = restored
+		return _rejection_dto("party_roster_change_failed")
+	_clear_draft(); _deployment_plan.clear()
+	if _exploration_route != null: _exploration_route.clear()
+	command_journal.append({"kind":"roster","operation":{
+		"action":operation,"entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","operation":operation,
+		"entity_id":entity_id,"active_party_member_ids":state.active_party_member_ids.duplicate(true),
+		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
+		"exiled_member_ids":_member_ids_with_presence("EXILED")})
+
+
+func _exile_condition(entity_id:int)->Dictionary:
+	if sim.world.step_index>9223372036854775807-EXILE_ENCOUNTER_STEP_DELAY:return {"valid":false}
+	var entity=sim.world.entities[entity_id];var member=sim.world.party_encounter.member(entity_id)
+	var status_effects:Array=[]
+	for status in sim.world.combatant_states[entity_id].status_rows:
+		var remaining:=clampi(int((status.expires_at-status.next_tick_at)/EXILE_WORLD_INTERVAL)+1,1,16)
+		status_effects.append({"status_id":str(status.status_id),"remaining_ticks":remaining,
+			"tick_damage":3 if str(status.status_id)=="BLEEDING" else 2})
+	status_effects.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.status_id)<str(b.status_id))
+	var harmful_status:=not status_effects.is_empty()
+	var hp_percent:=int(entity.health*100/maxi(1,entity.max_health));var band:="STRAINED"
+	if hp_percent>=70 and member.stress<350 and not harmful_status:band="HEALTHY"
+	elif hp_percent<=30 or member.stress>=750 or harmful_status:band="ENDANGERED"
+	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
+		sim.world.party_encounter.protagonist_id)
+	var composure:=int(member.personality_profile.value("composure"))
+	var vulnerability:=(100-hp_percent)+int(member.stress/10)+(45 if harmful_status else 0)
+	var resentment_delta:=clampi(15+int(vulnerability/2)+int(relation.get("grievance",0)/4)-int(composure/50),10,100)
+	var fear_delta:=clampi(int((100-hp_percent)/2)+int(member.stress/20)+(20 if harmful_status else 0),5,100)
+	return {"valid":true,"condition_band":band,"resentment_delta":resentment_delta,
+		"fear_delta":fear_delta,"hp_percent":hp_percent,"stress":int(member.stress),
+		"harmful_status":harmful_status,"status_effects":status_effects}
+
+
+func _new_exile_record(entity_id:int,dismissal_event_id:int,condition:Dictionary)->Dictionary:
+	var entity=sim.world.entities[entity_id];var member=sim.world.party_encounter.member(entity_id)
+	var archetype:=personality_archetype(member.personality_profile)
+	var profile_wire:Dictionary=member.personality_profile.to_dict()
+	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
+		sim.world.party_encounter.protagonist_id)
+	return {"schema_version":1,"former_member_id":str(entity_id),
+		"display_name":str(entity.display_name),"species_id":str(entity.species_id),
+		"personality_summary":{"archetype_id":str(archetype.get("archetype_id","")),
+			"archetype_label":str(archetype.get("label","")),
+			"profile_hash":JSON.stringify(profile_wire).sha256_text(),
+			"aggression":int(member.personality_profile.value("aggression")),
+			"altruism":int(member.personality_profile.value("altruism")),
+			"boldness":int(member.personality_profile.value("boldness")),
+			"composure":int(member.personality_profile.value("composure"))},
+		"dismissed_world_time":str(sim.world.world_time),
+		"dismissed_step_index":str(sim.world.step_index),"dismissal_event_id":str(dismissal_event_id),
+		"condition_snapshot":{"condition_band":str(condition.condition_band),"hp":int(entity.health),
+			"hp_percent":int(condition.hp_percent),"stress":int(condition.stress),
+			"harmful_status":bool(condition.harmful_status)},
+		"emotion_modifiers":{"resentment_delta":int(condition.resentment_delta),
+			"fear_delta":int(condition.fear_delta)},
+		"relationship_snapshot":{"trust":int(relation.get("trust",0)),"fear":int(relation.get("fear",0)),
+			"hostility":int(relation.get("hostility",0)),"gratitude":int(relation.get("gratitude",0)),
+			"grievance":int(relation.get("grievance",0))},
+		"current_hp":int(entity.health),"max_hp":int(entity.max_health),
+		"alive":sim.world.combatant_states[entity_id].life_state == "ACTIVE",
+		"initial_status_effects":condition.status_effects.duplicate(true),
+		"status_effects":condition.status_effects.duplicate(true),"location_id":"OFFSCREEN_WILDERNESS",
+		"initial_safety":{"HEALTHY":400,"STRAINED":250,"ENDANGERED":100}[str(condition.condition_band)],
+		"safety":{"HEALTHY":400,"STRAINED":250,"ENDANGERED":100}[str(condition.condition_band)],
+		"current_behavior":"SEEK_SAFETY","last_world_time":str(sim.world.world_time),
+		"last_world_step":str(sim.world.step_index),
+		"encounter_eligible_after_step":str(sim.world.step_index+EXILE_ENCOUNTER_STEP_DELAY)}
+
+
+func _advance_exile_world()->void:
+	var state=sim.world.party_encounter
+	for index in range(state.exile_records.size()):
+		var record:Dictionary=state.exile_records[index]
+		if not bool(record.alive):continue
+		var next_tick:=int(str(record.last_world_time))+EXILE_WORLD_INTERVAL
+		var processed:=false
+		while next_tick<=sim.world.world_time and bool(record.alive):
+			processed=true
+			var hp_before:=int(record.current_hp);var behavior:="SEEK_SAFETY"
+			var status_rows:Array=record.status_effects.duplicate(true);var remaining:Array=[];var expired:Array=[]
+			if not status_rows.is_empty():
+				behavior="SELF_TREAT" if int(record.personality_summary.composure)>=450 \
+					or int(record.safety)>=400 else "SEEK_SAFETY"
+				for status in status_rows:
+					record.current_hp=maxi(0,int(record.current_hp)-int(status.tick_damage))
+					var duration_cost:=2 if behavior=="SELF_TREAT" else 1
+					status.remaining_ticks=int(status.remaining_ticks)-duration_cost
+					if int(status.remaining_ticks)>0 and int(record.current_hp)>0:remaining.append(status)
+					else:expired.append(str(status.status_id))
+				record.status_effects=remaining
+			else:
+				behavior="RECOVER"
+				var recovery:=3 if int(record.safety)>=500 else 1
+				record.current_hp=mini(int(record.max_hp),int(record.current_hp)+recovery)
+			record.safety=mini(1000,int(record.safety)+150)
+			record.alive=int(record.current_hp)>0
+			record.current_behavior=behavior if bool(record.alive) else "DEAD"
+			var tick=sim.world.emit_event("party.exile_world_tick",-1,
+				int(str(record.former_member_id)),Vector2i(-1,-1),maxi(0,hp_before-int(record.current_hp)),
+				int(str(record.dismissal_event_id)),{"behavior":str(record.current_behavior),
+					"alive":bool(record.alive),"expired_status_ids":expired,
+					"hp_after":int(record.current_hp),"hp_before":hp_before,
+					"safety_after":int(record.safety),
+					"scheduled_world_time":str(next_tick),
+					"status_effects_after":record.status_effects.duplicate(true)})
+			if tick==null:return
+			if not bool(record.alive):
+				record.status_effects=[]
+				if sim.world.emit_event("party.exile_died",-1,int(str(record.former_member_id)),
+						Vector2i(-1,-1),0,tick.id,{"reason":"OFFSCREEN_CONDITION"})==null:return
+			next_tick+=EXILE_WORLD_INTERVAL
+		if processed:
+			record.last_world_time=str(sim.world.world_time);record.last_world_step=str(sim.world.step_index)
+			state.exile_records[index]=record;state.revision+=1
+
+
+func exile_encounter_evaluation(entity_id:int)->Dictionary:
+	var record=_exile_record_for_member(entity_id)
+	if record==null:return {"eligible":false,"reason":"exile_record_not_found"}
+	if not bool(record.alive):return {"eligible":false,"reason":"exile_actor_dead","action":"NONE"}
+	if sim.world.step_index<int(str(record.encounter_eligible_after_step)):
+		return {"eligible":false,"reason":"exile_encounter_too_early","action":"NONE"}
+	var hostility:=clampi(int(record.relationship_snapshot.hostility) \
+		+int(record.emotion_modifiers.resentment_delta/5),0,100)
+	var fear:=clampi(int(record.relationship_snapshot.fear)+int(record.emotion_modifiers.fear_delta),0,100)
+	var action:="HOSTILE" if hostility>=60 and fear<85 else ("AVOID" if fear>=60 else "DIALOGUE")
+	return {"eligible":true,"reason":"ok","action":action,"hostility":hostility,"fear":fear,
+		"former_member_id":entity_id,"identity":{"display_name":record.display_name,
+			"species_id":record.species_id,"personality_summary":record.personality_summary.duplicate(true)}}.duplicate(true)
+
+
+func _member_ids_with_presence(presence: String) -> Array:
+	var ids: Array = []
+	if sim == null or sim.world == null or sim.world.party_encounter == null: return ids
+	var state = sim.world.party_encounter
+	for entity_id in state.party_member_ids:
+		if state.member(entity_id).presence == presence: ids.append(entity_id)
+	return ids
 
 func deployment_draft() -> Dictionary:
 	if _deployment_plan.is_empty():
@@ -791,7 +1061,9 @@ func _commit_exploration_one(command, preserve_route: bool) -> Dictionary:
 	var preview := preview_exploration(command)
 	if not preview.accepted: return preview
 	var result = sim.step(command)
-	if result.accepted: command_journal.append({"kind":"exploration", "command":command.to_dict()})
+	if result.accepted:
+		_advance_exile_world()
+		command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
 	if not preserve_route: _exploration_route.cancel_for_direct_command()
 	return _result_dto(result, null, null, _exploration_context(command))
@@ -810,6 +1082,7 @@ func commit_deployment() -> Dictionary:
 	var request = {"preset_id": _deployment_plan.get("preset_id", ""), "companion_ids": _deployment_plan.get("companion_ids", []).duplicate()}
 	var result = sim.deploy_party(_deployment_plan)
 	if result.accepted:
+		_advance_exile_world()
 		var wire_ids: Array = []; for companion_id in request.companion_ids: wire_ids.append(str(companion_id))
 		command_journal.append({"kind":"deployment", "request":{"preset_id":str(request.preset_id), "companion_ids":wire_ids}})
 		_deployment_plan.clear()
@@ -956,7 +1229,9 @@ func commit_turn() -> Dictionary:
 			"visual_effects"]:
 		plan_data.erase(facade_key)
 	var plan = load("res://sim/party_turn_plan.gd").new(plan_data); var result = sim.step_party_turn(plan)
-	if result.accepted: command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})
+	if result.accepted:
+		_advance_exile_world()
+		command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})
 	if result.accepted: _clear_draft()
 	return _result_dto(result, null, request)
 
@@ -1105,7 +1380,10 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"max_health":int(entity.max_health),"alive":sim.world.occupies_tile(entity_id),
 		"kind":str(entity.kind),"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
 		"faction_id":str(entity.faction_id),"status_ids":_combatant_status_ids(entity_id),
-		"presence":str(member.presence),"logical_position":[logical.x,logical.y],
+		"presence":str(member.presence),"active_party_member":entity_id in state.active_party_member_ids,
+		"recruitable_member":member.presence == "RECRUITABLE",
+		"exiled_member":member.presence == "EXILED",
+		"logical_position":[logical.x,logical.y],
 		"busy_until":int(member.busy_until),
 		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
 		"stress":int(member.stress),"readiness":readiness,"emotion":emotion,
@@ -1117,7 +1395,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			if personality_profile == null else "%s · 결정론적 성격 프로필" \
 				% str(personality_archetype_dto.get("label","분류되지 않은 성향")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
-		"relation_rows":relation_rows}
+		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id)}
 	return _feedback_dto(dto, null, null,
 		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 
@@ -1207,6 +1485,11 @@ func load_session_json(encoded: String) -> Dictionary:
 				var request:Dictionary=row.request; var companion_ids: Array = []
 				for value in request.companion_ids: companion_ids.append(Int64CodecScript.parse(value, "deployment companion"))
 				replay.preview_deployment(str(request.preset_id), companion_ids); replay_result=replay.commit_deployment()
+			"roster":
+				var operation: Dictionary = row.operation
+				var entity_id := Int64CodecScript.parse(operation.entity_id,"roster member")
+				replay_result = replay.dismiss_companion(entity_id) if operation.action == "DISMISS" \
+					else replay.recruit_companion(entity_id)
 			"party_turn":
 				var request:Dictionary=row.request; var direct=ActionScript.from_dict(request.protagonist_action)
 				replay.begin_turn(direct)
@@ -1247,6 +1530,15 @@ func _journal_wire_error(journal: Array) -> String:
 					var parsed := Int64CodecScript.parse(value, "deployment companion")
 					if parsed <= previous_id: return "invalid_deployment_journal"
 					previous_id = parsed
+			"roster":
+				if keys != ["kind", "operation"] or not row.get("operation") is Dictionary:
+					return "invalid_roster_journal"
+				var operation_keys: Array = row.operation.keys(); operation_keys.sort()
+				if operation_keys != ["action", "entity_id"] \
+						or row.operation.get("action") not in ["DISMISS", "RECRUIT"] \
+						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
+						or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
+					return "invalid_roster_journal"
 			"party_turn":
 				if keys != ["kind", "request"]: return "invalid_party_turn_journal"
 				var request_error := RequestScript.wire_error(row.get("request"))
@@ -1735,6 +2027,14 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"inspect_viewer_dead":"쓰러진 인물의 기준으로 타일 위험을 판단할 수 없습니다.",
 		"tile_inspection_unavailable":"현재 타일 정보를 확인할 수 없습니다.",
 		"party_member_not_found":"선택한 파티원의 상세 정보를 찾을 수 없습니다.",
+		"party_roster_unsafe_phase":"지금은 파티 편성을 바꿀 수 없습니다.",
+		"protagonist_dismiss_forbidden":"주인공은 추방할 수 없습니다.",
+		"companion_not_active":"현재 파티에 없는 동료입니다.",
+		"companion_not_recruitable":"영입 후보가 아니거나 이미 떠난 인물입니다.",
+		"companion_unavailable":"현재 영입하거나 추방할 수 없는 동료입니다.",
+		"party_full":"파티가 가득 찼습니다.",
+		"invalid_roster_operation":"지원하지 않는 편성 변경입니다.",
+		"party_roster_change_failed":"편성 변경이 취소되어 이전 상태로 돌아갔습니다.",
 		"invalid_party_action":"지원하지 않는 행동입니다.",
 		"invalid_party_destination":"이동 위치가 올바르지 않습니다.",
 		"melee_target_required":"공격할 적을 선택하세요.",
@@ -1780,6 +2080,18 @@ func _event_message(event) -> String:
 		"party.regroup_started": return "주인공이 동료들을 불러 모았다."
 		"party.member_regrouped": return "%s 주인공 곁으로 돌아왔다." % _subject(actor)
 		"party.regroup_completed": return "전투가 끝났다. 파티가 자동으로 재집결해 다시 한 무리로 탐험을 시작한다."
+		"party.companion_dismissed":
+			if str(event.data.get("condition_band",""))=="ENDANGERED":
+				return "%s 부상당한 채 버려져 깊은 원한을 품었다."%_subject(target)
+			if str(event.data.get("condition_band",""))=="STRAINED":
+				return "%s 힘겨운 상태에서 추방되어 원한을 품었다."%_subject(target)
+			return "%s 파티에서 영구히 추방되어 원망을 품었다."%_subject(target)
+		"party.companion_recruited": return "%s 파티에 새로 합류했다." % _subject(target)
+		"party.exile_world_tick":
+			if str(event.data.get("behavior",""))=="SELF_TREAT":return "%s 홀로 상처를 돌보며 버텼다."%_subject(target)
+			if str(event.data.get("behavior",""))=="RECOVER":return "%s 안전한 곳에서 몸을 추슬렀다."%_subject(target)
+			return "%s 살아남기 위해 안전한 곳을 찾았다."%_subject(target)
+		"party.exile_died": return "%s 홀로 버티지 못하고 숨졌다."%_subject(target)
 		"action.hold": return "%s 자리를 지켰다." % _subject(actor)
 		"entity.died":
 			if int(event.instigator_id) > 0:

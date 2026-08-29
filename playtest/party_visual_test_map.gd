@@ -9,7 +9,7 @@ const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
 	"#......#......#",
-	"#......#....E.#",
+	"#......#......#",
 	"#......#......#",
 	"#......#......#",
 	"#..rr..+......#",
@@ -17,14 +17,14 @@ const SHOWCASE_ROWS := [
 	"#.www..#..rr..#",
 	"#.www..#..rr..#",
 	"#.mmm..#......#",
-	"#......#......#",
+	"#.....E#......#",
 	"#.@.ff.#......#",
 	"#......#......#",
 	"###############",
 ]
 
 const HERO_POSITION := Vector2i(2, 12)
-const ENEMY_POSITION := Vector2i(12, 3)
+const ENEMY_POSITION := Vector2i(6, 11)
 const ENTRY_POSITION := Vector2i(2, 12)
 const EXIT_POSITION := Vector2i(13, 1)
 const OPEN_DOOR_POSITION := Vector2i(7, 6)
