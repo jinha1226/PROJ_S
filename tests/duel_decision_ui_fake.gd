@@ -42,16 +42,30 @@ func step() -> Dictionary:
 	if tick_index >= 3:
 		return {"accepted": false, "reason": "scenario_complete"}
 	tick_index += 1
-	actors[0].hp = maxi(0, int(actors[0].hp) - 5)
+	actors[1].hp = maxi(0, int(actors[1].hp) - 9)
 	actors[1].position = [10, 7]
+	var first_id := (tick_index - 1) * 5 + 1
 	last_resolution = {
-		"summary_ko": "인간은 맞섰고, 고블린은 거리를 벌리며 물러났습니다.",
+		"turn_index": str(tick_index),
+		"event_ids": [str(first_id), str(first_id + 1), str(first_id + 2), str(first_id + 3), str(first_id + 4)],
+		"action_rows": [
+			{"actor_id": "actor_a", "action_id": "ENGAGE"},
+			{"actor_id": "actor_b", "action_id": "FLEE"},
+		],
 		"relationship_changes": [
 			{"message_ko": "고블린이 인간을 더 위험한 상대로 기억합니다. · 경계 +12"},
 		],
 	}
-	logs.append({"tick_index": str(tick_index), "message_ko": "두 판단을 동시에 해결했습니다."})
-	logs.append({"tick_index": str(tick_index), "message_ko": "인간이 전진하고 고블린이 후퇴했습니다."})
+	logs.append({"event_id": str(first_id), "turn_index": str(tick_index), "type": "ACTION",
+		"actor_id": "actor_a", "target_id": "actor_b", "action_id": "ENGAGE", "magnitude": 0})
+	logs.append({"event_id": str(first_id + 1), "turn_index": str(tick_index), "type": "ACTION",
+		"actor_id": "actor_b", "target_id": "actor_a", "action_id": "FLEE", "magnitude": 0})
+	logs.append({"event_id": str(first_id + 2), "turn_index": str(tick_index), "type": "DAMAGE",
+		"actor_id": "actor_a", "target_id": "actor_b", "action_id": "ENGAGE", "magnitude": 9})
+	logs.append({"event_id": str(first_id + 3), "turn_index": str(tick_index), "type": "MOVE",
+		"actor_id": "actor_b", "target_id": "actor_a", "action_id": "FLEE", "magnitude": 5})
+	logs.append({"event_id": str(first_id + 4), "turn_index": str(tick_index), "type": "MEMORY",
+		"actor_id": "actor_b", "target_id": "actor_a", "action_id": "ENGAGE", "magnitude": 35})
 	return {"accepted": true, "tick_index": str(tick_index)}
 
 
@@ -102,13 +116,15 @@ func _reset_state(seed: int) -> void:
 			"id": "actor_a", "name": "라온", "species_id": "human", "position": [5, 7],
 			"hp": 82, "max_hp": 100, "alive": true,
 			"dot": [{"label_ko": "출혈", "remaining": 3}], "armed": true,
-			"weapon": "장검", "power": 67, "supplies": 1, "memory": {"actor_b": -15},
+			"weapon": "장검", "power": 67, "supplies": 1,
+			"memory": {"kind": "HARMED", "modifier": -35},
 			"hexaco": {"H": 620, "E": 410, "X": 720, "A": 280, "C": 690, "O": 540},
 		},
 		{
 			"id": "actor_b", "name": "모그", "species_id": "goblin", "position": [9, 7],
 			"hp": 46, "max_hp": 90, "alive": true, "dot": [], "armed": true,
-			"weapon": "굽은 단검", "power": 49, "supplies": 0, "memory": {"actor_a": 8},
+			"weapon": "굽은 단검", "power": 49, "supplies": 0,
+			"memory": {"kind": "HELPED", "modifier": 15},
 			"hexaco": {"H": 210, "E": 760, "X": 350, "A": 330, "C": 430, "O": 610},
 		},
 	]
@@ -122,6 +138,15 @@ func _actor_breakdown(actor_id: String, selected_action: String, reason: String,
 		"actor_id": actor_id,
 		"selected_action_id": selected_action,
 		"selected_reason_ko": reason,
+		"selection_mode": "NEW" if tick_index == 0 else "RETAINED",
+		"continued": tick_index > 0,
+		"intent_turn_count": tick_index + 1,
+		"decision_episode_id": "1",
+		"current_intent_id": "" if tick_index == 0 else selected_action,
+		"switch_reason_code": "NEW" if tick_index == 0 else "COMMITMENT",
+		"switch_reason_ko": "새 판단을 시작했다." if tick_index == 0 else "아직 행동을 유지할 때다.",
+		"retention_bonus": 30, "switch_margin": 20, "current_score": 0,
+		"challenger_action_id": selected_action, "challenger_score": 0,
 		"candidates": [
 			{
 				"action_id": "ENGAGE", "atomic_verb": "MELEE", "legal": true,

@@ -1,7 +1,7 @@
 class_name DungeonDuelState
 extends RefCounted
 
-const SCHEMA_VERSION:=1
+const SCHEMA_VERSION:=2
 const ActorScript=preload("res://sim/dungeon_population/dungeon_actor_state.gd")
 const Int64CodecScript=preload("res://sim/int64_codec.gd")
 
@@ -49,18 +49,32 @@ static func wire_error(row:Variant,action_ids:Array,action_definitions:Dictionar
 	if turn<0 or time!=turn*100 or Int64CodecScript.parse(row.next_event_id,"duel next event")<=0:
 		return "invalid_duel_time"
 	if not _integer(row.distance) or int(row.distance)<1 or int(row.distance)>12 \
-			or row.phase not in ["ACTIVE","COMPLETE"]:return "invalid_duel_phase_or_distance"
+			or row.phase not in ["ACTIVE","COMPLETE","ESCAPED"]:return "invalid_duel_phase_or_distance"
 	if not row.actors is Array or row.actors.size()!=2:return "invalid_duel_actor_count"
 	for index in range(2):
 		var error:=ActorScript.wire_error(row.actors[index])
 		if not error.is_empty():return error
 		if Int64CodecScript.parse(row.actors[index].entity_id,"duel actor")!=index+1:return "duel_actor_order_mismatch"
+		var current_intent:=str(row.actors[index].current_intent_id)
+		if not current_intent.is_empty():
+			if current_intent not in action_ids:return "unknown_duel_current_intent"
+			var definition:Dictionary=action_definitions.get(current_intent,{})
+			if not definition.is_empty():
+				var expected_target:=-1
+				if definition.target_role=="OTHER":expected_target=2-index
+				elif definition.target_role=="SELF":expected_target=index+1
+				if Int64CodecScript.parse(row.actors[index].intent_target_id,"duel intent target")!=expected_target:
+					return "duel_intent_target_mismatch"
+		if Int64CodecScript.parse(row.actors[index].intent_started_turn,"duel intent start")>turn \
+				or Int64CodecScript.parse(row.actors[index].commitment_until_turn,"duel commitment")>turn+20:
+			return "duel_intent_time_mismatch"
 	if int(row.actors[1].position[0])-int(row.actors[0].position[0])!=int(row.distance) \
 			or int(row.actors[0].position[1])!=int(row.actors[1].position[1]):return "duel_distance_projection_mismatch"
-	if (row.phase=="COMPLETE")!=(not bool(row.actors[0].alive) or not bool(row.actors[1].alive)):
+	var any_dead:=not bool(row.actors[0].alive) or not bool(row.actors[1].alive)
+	if (row.phase=="COMPLETE")!=any_dead:
 		return "duel_terminal_projection_mismatch"
 	if not row.events is Array or row.events.size()>512:return "invalid_duel_events"
-	var previous_event_id:=0;var seen_event_ids:Dictionary={}
+	var previous_event_id:=0;var seen_event_ids:Dictionary={};var escaped_event_count:=0
 	for event in row.events:
 		var error:=_event_wire_error(event,action_ids,action_definitions)
 		if not error.is_empty():return error
@@ -71,6 +85,8 @@ static func wire_error(row:Variant,action_ids:Array,action_definitions:Dictionar
 				or Int64CodecScript.parse(event.world_time,"duel event time")!=event_turn*100:
 			return "duel_event_time_mismatch"
 		previous_event_id=event_id;seen_event_ids[event_id]=true
+		if event.type=="ESCAPED":escaped_event_count+=1
+	if (row.phase=="ESCAPED")!=(escaped_event_count>0):return "duel_escape_projection_mismatch"
 	if Int64CodecScript.parse(row.next_event_id,"duel next event")<=previous_event_id:
 		return "duel_next_event_mismatch"
 	return _resolution_wire_error(row.last_resolution,action_ids,turn,previous_event_id,seen_event_ids)
@@ -85,13 +101,13 @@ static func _event_wire_error(event:Variant,action_ids:Array,action_definitions:
 	var actor_id:=Int64CodecScript.parse(event.actor_id,"duel event actor")
 	var target_id:=Int64CodecScript.parse(event.target_id,"duel event target")
 	if actor_id not in [1,2] or target_id not in [-1,1,2] \
-			or event.type not in ["ACTION","DAMAGE","DEATH","HEAL","MEMORY","MOVE","STATUS_TICK"] \
+			or event.type not in ["ACTION","DAMAGE","DEATH","ESCAPED","HEAL","MEMORY","MOVE","STATUS_TICK"] \
 			or event.action_id not in action_ids or not _integer(event.magnitude) or int(event.magnitude)<0 \
 			or not event.position is Array or event.position.size()!=2 \
 			or not _integer(event.position[0]) or not _integer(event.position[1]) \
 			or int(event.position[0])<0 or int(event.position[0])>=15 \
 			or int(event.position[1])<0 or int(event.position[1])>=15:return "invalid_duel_event_semantics"
-	if event.type in ["DAMAGE","MEMORY","MOVE"] and target_id!=3-actor_id:return "invalid_duel_event_target"
+	if event.type in ["DAMAGE","ESCAPED","MEMORY","MOVE"] and target_id!=3-actor_id:return "invalid_duel_event_target"
 	if event.type in ["DEATH","STATUS_TICK"] and target_id!=-1:return "invalid_duel_event_target"
 	if event.type=="HEAL" and target_id not in [-1,actor_id]:return "invalid_duel_event_target"
 	if not action_definitions.is_empty():
@@ -102,7 +118,8 @@ static func _event_wire_error(event:Variant,action_ids:Array,action_definitions:
 			if definition.target_role=="OTHER":expected_target=3-actor_id
 			elif definition.target_role=="SELF":expected_target=actor_id
 			if target_id!=expected_target:return "duel_action_event_target_mismatch"
-		elif event.type=="MOVE" and definition.atomic_verb!="MOVE":return "duel_move_event_action_mismatch"
+		elif event.type in ["ESCAPED","MOVE"] and definition.atomic_verb!="MOVE":return "duel_move_event_action_mismatch"
+		elif event.type=="ESCAPED" and definition.movement_direction!="AWAY":return "duel_escape_action_mismatch"
 		elif event.type in ["DAMAGE","MEMORY"] and definition.atomic_verb!="MELEE":return "duel_melee_event_action_mismatch"
 		elif event.type=="HEAL" and definition.atomic_verb!="USE_ITEM":return "duel_item_event_action_mismatch"
 	return ""

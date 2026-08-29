@@ -15,22 +15,44 @@ func test_lab_presents_two_actor_map_and_large_readable_cards() -> bool:
 	lab.grid.size = Vector2(300, 300)
 	check_eq(lab.grid.visible_cell_count(), 225, "15x15 decision map")
 	check_eq(lab.grid.actor_count(), 2, "exactly two actors are presented")
-	check(lab.actor_buttons[0].text.contains("라온") and lab.actor_buttons[0].text.contains("HP 82/100"),
-		"actor A card tab shows identity and body state")
-	check(lab.actor_buttons[1].text.contains("모그") and lab.actor_buttons[1].text.contains("HP 46/90"),
-		"actor B card tab shows identity and body state")
-	check(lab.detail_text.text.contains("장검 · 전투력 67") and lab.detail_text.text.contains("출혈 3턴"),
-		"active card shows weapon and DOT")
-	check(lab.detail_text.text.contains("HEXACO  H 620") and lab.detail_text.text.contains("O 540"),
-		"all six HEXACO axes are visible")
+	check(lab.situation_label.text.contains("인간 라온(HP 82, 출혈 3턴)") \
+		and lab.situation_label.text.contains("고블린 모그(HP 46)") \
+		and lab.situation_label.text.contains("4칸 거리"), "first sentence explains the encounter")
+	check(lab.actor_buttons[0].text.contains("라온") and lab.actor_buttons[0].text.contains("HP 82"),
+		"actor A overview shows identity and body state")
+	check(lab.actor_buttons[1].text.contains("모그") and lab.actor_buttons[1].text.contains("HP 46"),
+		"actor B overview shows identity and body state")
+	check(lab.actor_buttons[0].text.contains("성향 ·") and lab.actor_buttons[1].text.contains("성향 ·"),
+		"both personality summaries are visible together")
+	for button in lab.actor_buttons:
+		check_eq(button.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART,
+			"360px overview cards wrap whole words")
+		check_eq(button.text_overrun_behavior, TextServer.OVERRUN_NO_TRIMMING,
+			"overview cards never replace reasons or traits with ellipsis")
+		for line in button.text.split("\n"):
+			check(line.length() <= 25, "overview card line stays within the mobile copy budget")
+	check(not lab.detail_panel.visible and not lab.actor_buttons[0].text.contains("HEXACO") \
+		and not lab.actor_buttons[0].text.contains("ENGAGE"), "raw calculation is hidden by default")
+	check_eq(lab.step_button.text, "판단 보기", "pre-decision stage is explicit")
 	check_eq(simulator.step_calls, 0, "rendering DTO does not resolve a turn")
 	lab.free()
 	return finish()
 
 
 func test_candidate_breakdown_uses_korean_sentences_and_all_score_buckets() -> bool:
+	var simulator = FakeSimulator.new(302)
 	var lab = LabScene.instantiate()
-	lab.initialize_for_headless_test(FakeSimulator.new(302))
+	lab.initialize_for_headless_test(simulator)
+	lab._on_primary_action()
+	check_eq(simulator.step_calls, 0, "revealing both intents is presentation-only")
+	check(lab.actor_buttons[0].text.contains("공격하려 한다") \
+		and lab.actor_buttons[1].text.contains("도망치려 한다"), "A and B intents compare at once")
+	check(lab.actor_buttons[0].text.contains("상대가 가까워 위협적이라서"),
+		"overview keeps at most the strongest natural-language reasons")
+	check(not lab.actor_buttons[0].text.contains("합계") and not lab.actor_buttons[0].text.contains("작은 변동"),
+		"overview does not expose score mechanics")
+	lab._toggle_detail()
+	check(lab.detail_panel.visible and not lab.grid.visible, "calculation disclosure replaces the map")
 	var card: String = lab.actor_card_text("actor_a")
 	check(card.contains("최종 판단 · 맞서 싸운다") and card.contains("몸 상태가 버틸 만해"),
 		"selected action has a natural-language reason")
@@ -56,6 +78,7 @@ func test_grid_hit_selects_each_actor_without_advancing_core() -> bool:
 	check_eq(lab.grid.actor_id_at_point(center), "actor_b", "map hit maps to actor B")
 	lab._on_actor_pressed("actor_b")
 	check_eq(lab.selected_actor_id, "actor_b", "map tap selects actor B")
+	lab._toggle_detail()
 	check(lab.detail_text.text.contains("모그 · 고블린") and lab.detail_text.text.contains("굽은 단검"),
 		"actor B card replaces actor A card")
 	check_eq(simulator.step_calls, 0, "actor selection is read-only")
@@ -67,11 +90,18 @@ func test_step_resolves_both_decisions_once_and_surfaces_relation_event() -> boo
 	var simulator = FakeSimulator.new(304)
 	var lab = LabScene.instantiate()
 	lab.initialize_for_headless_test(simulator)
-	lab._step()
+	lab._on_primary_action()
+	check_eq(simulator.step_calls, 0, "first primary tap only reveals simultaneous intentions")
+	check_eq(lab.step_button.text, "결과 보기", "intent stage names the next operation")
+	lab._on_primary_action()
 	check_eq(simulator.step_calls, 1, "decision button calls one simultaneous core step")
-	check(lab.phase_label.text.contains("인간은 맞섰고") and lab.phase_label.text.contains("고블린은"),
-		"resolution stays visible in outcome banner")
+	check(lab.phase_label.text.contains("라온이 모그에게 9 피해") \
+		and lab.phase_label.text.contains("모그가 물러났다"), "actual structured result stays visible")
 	check_eq(lab.step_button.text, "다음 턴", "subsequent action is explicit")
+	lab._on_primary_action()
+	check_eq(simulator.step_calls, 1, "next-turn preview does not resolve another turn")
+	check(lab.actor_buttons[0].text.contains("공격하려 한다 · 2턴째 유지"),
+		"commitment continuation is player-readable")
 	lab._show_events()
 	check(lab.detail_text.text.contains("동시 해결") and lab.detail_text.text.contains("관계 ·") \
 		and lab.detail_text.text.contains("경계 +12"), "event log includes simultaneous result and relation change")

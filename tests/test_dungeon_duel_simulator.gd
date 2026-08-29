@@ -33,7 +33,7 @@ func test_seeded_two_actor_scenario_and_full_decision_breakdown_are_pure()->bool
 				selected_count+=1;check(candidate.legal,"illegal action is never selected")
 			elif not candidate.legal:check(not str(candidate.rejection_reason).is_empty(),"illegal action explains rejection")
 		check_eq(selected_count,1,"one selected candidate per living actor")
-		check("효용 점수" in str(actor_row.selected_reason_ko),"selected reason is concise Korean")
+		check("판단" in str(actor_row.selected_reason_ko),"selected reason is concise Korean")
 	var detached:Array=first.decision_breakdowns();detached[0].candidates[0].total=999999
 	check(first.decision_breakdowns()[0].candidates[0].total!=999999,"nested decision DTO is detached")
 	return finish()
@@ -117,6 +117,89 @@ func test_registry_extension_is_frozen_generic_and_rejects_noop_or_unknown_input
 		"custom definition survives generic snapshot journal replay")
 	return finish()
 
+func test_committed_counter_moves_run_five_turns_without_ping_pong_or_jitter_reroll()->bool:
+	var sim=Simulator.new(6);var action_sets:={1:{},2:{}};var first_jitter:={};var episodes:={}
+	for turn in range(5):
+		var rows:Array=sim.decision_breakdowns()
+		for actor_id in [1,2]:
+			var row:Dictionary=rows[actor_id-1];var action_id:=str(row.selected_action_id)
+			action_sets[actor_id][action_id]=true
+			var candidate:Dictionary=_candidate(row,action_id)
+			if turn==0:
+				first_jitter[actor_id]=int(candidate.jitter)
+				episodes[actor_id]=str(row.decision_episode_id)
+			else:
+				check(bool(row.continued),"counter-move intent is retained on turn %d actor %d"%[turn,actor_id])
+				check_eq(int(candidate.jitter),first_jitter[actor_id],"retained episode never rerolls jitter")
+				check_eq(str(row.decision_episode_id),episodes[actor_id],"retained episode id is stable")
+		check(sim.step().accepted,"counter-move turn %d commits"%turn)
+	check_eq(action_sets[1].keys(),["APPROACH"],"approacher does not oscillate to flee")
+	check_eq(action_sets[2].keys(),["FLEE"],"fleeing actor does not oscillate to approach")
+	return finish()
+
+func test_material_damage_interrupt_can_switch_a_committed_intent()->bool:
+	var sim=Simulator.new(901)
+	_prepare_committed_melee_fixture(sim)
+	check_eq([sim.decision_breakdowns()[0].selected_action_id,
+		sim.decision_breakdowns()[1].selected_action_id],["ENGAGE","ENGAGE"],
+		"both actors begin with committed melee")
+	check(sim.step().accepted,"material damage fixture resolves")
+	var actor_row:Dictionary=sim.decision_breakdowns()[0]
+	check_eq(actor_row.switch_reason_code,"INTERRUPT","damage opens an immediate re-evaluation")
+	check_eq(actor_row.selected_action_id,"FLEE","injured weaker actor can switch to survival")
+	check(not bool(actor_row.continued),"interrupt switch starts a new decision episode")
+	return finish()
+
+func test_completed_and_illegal_intents_replan_without_action_id_branches()->bool:
+	var completed=Simulator.new(902)
+	completed.state.distance=1;completed.state.actors[1].position=Vector2i(6,7)
+	completed.state.actors[2].position=Vector2i(7,7)
+	_set_committed_intent(completed,1,"APPROACH")
+	var completed_row:Dictionary=completed.decision_breakdowns()[0]
+	check_eq(completed_row.switch_reason_code,"GOAL_COMPLETE","adjacency completes declarative approach goal")
+	check(completed_row.selected_action_id!="APPROACH","completed approach is not retained")
+
+	var illegal=Simulator.new(903)
+	illegal.state.distance=1;illegal.state.actors[1].position=Vector2i(6,7)
+	illegal.state.actors[2].position=Vector2i(7,7)
+	illegal.state.actors[1].armed=false;illegal.state.actors[1].weapon_id="NONE"
+	_set_committed_intent(illegal,1,"ENGAGE")
+	var illegal_row:Dictionary=illegal.decision_breakdowns()[0]
+	check_eq(illegal_row.switch_reason_code,"ILLEGAL","unarmed melee replans immediately")
+	check(illegal_row.selected_action_id!="ENGAGE","illegal current intent is never retained")
+	return finish()
+
+func test_flee_reaches_a_canonical_escaped_terminal_once()->bool:
+	var sim=Simulator.new(6);var steps:=0
+	while sim.state.phase=="ACTIVE" and steps<12:
+		check(sim.step().accepted,"flee turn %d resolves"%steps);steps+=1
+	check_eq(sim.state.phase,"ESCAPED","sustained flee closes the encounter")
+	check(sim.state.actors[1].alive and sim.state.actors[2].alive,"escape is distinct from death")
+	var escape_events:Array=[]
+	for event in sim.state.events:
+		if event.type=="ESCAPED":escape_events.append(event)
+	check_eq(escape_events.size(),1,"one fleeing actor emits one canonical escape event")
+	check_eq(escape_events[0].actor_id,"2","the actor moving away owns the escape event")
+	var terminal:Dictionary=sim.snapshot()
+	check(not sim.step().accepted and sim.snapshot()==terminal,"escaped encounter rejects later turns purely")
+	return finish()
+
+func test_save_mid_commit_preserves_episode_breakdown_and_continuation_exactly()->bool:
+	var original=Simulator.new(6)
+	check(original.step().accepted and original.state.phase=="ACTIVE","fixture reaches mid-commit state")
+	var before_rows:Array=original.decision_breakdowns();var encoded:=original.save_json()
+	var loaded=Simulator.new(999)
+	check(loaded.load_json(encoded).accepted,"mid-commit session loads")
+	check_eq(loaded.snapshot(),original.snapshot(),"intent authority survives save/load")
+	check_eq(loaded.decision_breakdowns(),before_rows,"retained reason and episode replay exactly")
+	check(original.step().accepted and loaded.step().accepted,"both continuations resolve")
+	check_eq(loaded.snapshot(),original.snapshot(),"mid-commit continuation remains exact")
+	var tampered:Dictionary=JSON.parse_string(encoded);tampered.snapshot.actors[0].decision_episode_id="01"
+	var target=Simulator.new(1000);var target_before:Dictionary=target.snapshot()
+	check(not target.load_json(JSON.stringify(tampered)).accepted,"noncanonical intent episode is rejected")
+	check_eq(target.snapshot(),target_before,"intent tamper rejection is mutation-pure")
+	return finish()
+
 func test_save_load_replay_tamper_and_refresh_are_exact()->bool:
 	var sim=Simulator.new(77);var initial:Dictionary=sim.snapshot()
 	for index in range(5):sim.observation();sim.decision_breakdowns();sim.recent_logs()
@@ -132,3 +215,32 @@ func test_save_load_replay_tamper_and_refresh_are_exact()->bool:
 	check(not target.load_json(JSON.stringify(tampered)).accepted,"noncanonical actor id tamper rejected")
 	check_eq(target.snapshot(),before,"failed load is transactional")
 	return finish()
+
+func _candidate(row:Dictionary,action_id:String)->Dictionary:
+	for value in row.get("candidates",[]):
+		if value is Dictionary and str(value.get("action_id",""))==action_id:return value
+	return {}
+
+func _set_committed_intent(sim,actor_id:int,action_id:String)->void:
+	var actor=sim.state.actors[actor_id];var policy:Dictionary=sim.registry.intent_policy(action_id)
+	var execution:Dictionary=sim.registry.execution(action_id);var target_id:=-1
+	if execution.target_role=="OTHER":target_id=3-actor_id
+	elif execution.target_role=="SELF":target_id=actor_id
+	actor.current_intent_id=action_id;actor.intent_started_turn=sim.state.turn_index
+	actor.commitment_until_turn=sim.state.turn_index+int(policy.commitment_turns)
+	actor.intent_target_id=target_id;actor.decision_episode_id=1
+	actor.intent_interrupt_version=actor.decision_interrupt_version;actor.intent_reason_code="NEW"
+
+func _prepare_committed_melee_fixture(sim)->void:
+	sim.state.distance=1
+	for actor_id in [1,2]:
+		var actor=sim.state.actors[actor_id]
+		actor.position=Vector2i(6 if actor_id==1 else 7,7);actor.hp=40 if actor_id==1 else 100
+		actor.alive=true;actor.armed=true;actor.weapon_id="SWORD";actor.supplies=0
+		actor.status_effect={};actor.memory_kind="HARMED";actor.memory_modifier=-35
+		actor.species_id="human" if actor_id==1 else "goblin"
+		actor.power=20 if actor_id==1 else 100
+		for facet in ["H","E","X","A","C","O"]:actor.profile.values[facet]=0
+		if actor_id==1:
+			actor.profile.values["E"]=1000;actor.profile.values["A"]=1000
+		_set_committed_intent(sim,actor_id,"ENGAGE")

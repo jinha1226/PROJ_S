@@ -1,7 +1,8 @@
 class_name DungeonDuelSimulator
 extends RefCounted
 
-const SESSION_FORMAT_VERSION:=1
+const SESSION_FORMAT_VERSION:=2
+const ESCAPE_DISTANCE:=8
 const StateScript=preload("res://sim/dungeon_population/dungeon_population_state.gd")
 const ActorScript=preload("res://sim/dungeon_population/dungeon_actor_state.gd")
 const HexacoScript=preload("res://sim/dungeon_population/hexaco_profile.gd")
@@ -53,13 +54,18 @@ func decision_breakdowns()->Array:
 		var actor=state.actors[entity_id];var other=state.actors[3-entity_id]
 		if not actor.alive:
 			rows.append({"actor_id":str(entity_id),"selected_action_id":"HOLD",
-				"selected_reason_ko":"이미 쓰러져 행동할 수 없다.","candidates":[]})
-		else:rows.append(registry.evaluate_actor(actor,other,_decision_inputs(actor,other),state.seed,state.turn_index))
+				"selected_reason_ko":"이미 쓰러져 행동할 수 없다.","selection_mode":"NONE",
+				"continued":false,"intent_turn_count":0,"switch_reason_code":"NONE",
+				"switch_reason_ko":"이미 쓰러져 행동할 수 없다.","candidates":[]})
+		else:rows.append(_decision_breakdown(actor,other))
 	return rows.duplicate(true)
 
 func step()->Dictionary:
 	if state.phase!="ACTIVE":return {"accepted":false,"reason":"duel_complete"}
 	var rollback:Dictionary=snapshot();var decisions:Array=decision_breakdowns()
+	for row in decisions:_commit_decision(state.actors[int(str(row.actor_id))],row)
+	var before_signals:Dictionary={}
+	for entity_id in [1,2]:before_signals[entity_id]=_interrupt_signature(state.actors[entity_id])
 	state.turn_index+=1;state.world_time+=100
 	var first_event_id:int=state.next_event_id;var selected:Dictionary={}
 	for row in decisions:selected[int(str(row.actor_id))]=str(row.selected_action_id)
@@ -85,6 +91,7 @@ func step()->Dictionary:
 		if int(damage_by_target[target_id])<=0:continue
 		target.hp=maxi(0,target.hp-int(damage_by_target[target_id]));target.alive=target.hp>0
 		target.memory_kind="HARMED";target.memory_modifier=-35
+		_mark_interrupt(target)
 		_emit("MEMORY",target_id,3-target_id,selected[3-target_id],35,target.position)
 	# Surviving MOVE intents resolve together from their declared directions.
 	var first_x:int=state.actors[1].position.x;var second_x:int=state.actors[2].position.x
@@ -124,7 +131,21 @@ func step()->Dictionary:
 		var actor=state.actors[entity_id]
 		if not actor.alive and not _death_emitted_this_turn(entity_id):
 			_emit("DEATH",entity_id,-1,selected[entity_id],0,actor.position)
-	state.phase="COMPLETE" if not state.actors[1].alive or not state.actors[2].alive else "ACTIVE"
+	for entity_id in [1,2]:
+		if before_signals[entity_id]!=_interrupt_signature(state.actors[entity_id]):
+			_mark_interrupt(state.actors[entity_id])
+	var any_dead:bool=not state.actors[1].alive or not state.actors[2].alive
+	var escaped_ids:Array=[]
+	if not any_dead:
+		for entity_id in [1,2]:
+			var execution:Dictionary=executions[entity_id]
+			if str(execution.get("atomic_verb",""))=="MOVE" \
+					and str(execution.get("movement_direction",""))=="AWAY" \
+					and _escape_reached(state.actors[entity_id]):escaped_ids.append(entity_id)
+	for entity_id in escaped_ids:
+		_emit("ESCAPED",entity_id,3-entity_id,selected[entity_id],state.distance,
+			state.actors[entity_id].position)
+	state.phase="COMPLETE" if any_dead else ("ESCAPED" if not escaped_ids.is_empty() else "ACTIVE")
 	var event_ids:Array=[]
 	for event in state.events:
 		if int(str(event.event_id))>=first_event_id:event_ids.append(str(event.event_id))
@@ -205,6 +226,121 @@ func load_json(encoded:String)->Dictionary:
 	state=restored;command_journal.clear();for row in decoded.journal:command_journal.append(row.duplicate(true))
 	return {"accepted":true,"reason":"ok"}
 
+func _decision_breakdown(actor,other)->Dictionary:
+	var inputs:Dictionary=_decision_inputs(actor,other)
+	if actor.current_intent_id.is_empty():
+		var first_episode:int=actor.decision_episode_id+1
+		var fresh:Dictionary=registry.evaluate_actor(actor,other,inputs,state.seed,first_episode)
+		return _decorate_decision(fresh,actor,"NEW",false,first_episode,"NEW",{},
+			_candidate(fresh,str(fresh.selected_action_id)))
+	var episode:int=maxi(1,actor.decision_episode_id)
+	var current_evaluation:Dictionary=registry.evaluate_actor(actor,other,inputs,state.seed,episode)
+	var current_candidate:Dictionary=_candidate(current_evaluation,actor.current_intent_id)
+	var trigger:=""
+	var elapsed:int=maxi(0,state.turn_index-actor.intent_started_turn)
+	if current_candidate.is_empty():trigger="ILLEGAL"
+	elif registry.goal_complete(actor.current_intent_id,inputs,elapsed):trigger="GOAL_COMPLETE"
+	elif not bool(current_candidate.get("legal",false)):trigger="ILLEGAL"
+	elif actor.decision_interrupt_version!=actor.intent_interrupt_version:trigger="INTERRUPT"
+	if not trigger.is_empty():
+		var next_episode:int=episode+1
+		var replanned:Dictionary=registry.evaluate_actor(actor,other,inputs,state.seed,next_episode)
+		var replanned_candidate:Dictionary=_candidate(replanned,str(replanned.selected_action_id))
+		var mode:="RESTARTED" if str(replanned.selected_action_id)==actor.current_intent_id else "SWITCHED"
+		return _decorate_decision(replanned,actor,mode,false,next_episode,trigger,
+			current_candidate,replanned_candidate)
+	var policy:Dictionary=registry.intent_policy(actor.current_intent_id)
+	var challenger_id:=str(current_evaluation.selected_action_id)
+	var challenger:Dictionary=_candidate(current_evaluation,challenger_id)
+	var reason_code:="CHALLENGER"
+	if state.turn_index<actor.commitment_until_turn:reason_code="COMMITMENT"
+	var should_switch:=false
+	if reason_code!="COMMITMENT" and challenger_id!=actor.current_intent_id:
+		var threshold:=int(current_candidate.total)+int(policy.get("retention_bonus",0)) \
+			+int(policy.get("switch_margin",0))
+		should_switch=int(challenger.total)>=threshold
+	if should_switch:
+		return _decorate_decision(current_evaluation,actor,"SWITCHED",false,episode+1,
+			"CHALLENGER",current_candidate,challenger)
+	_force_selected(current_evaluation,actor.current_intent_id)
+	return _decorate_decision(current_evaluation,actor,"RETAINED",true,episode,reason_code,
+		current_candidate,challenger)
+
+func _decorate_decision(row:Dictionary,actor,mode:String,continued:bool,episode:int,
+		reason_code:String,current_candidate:Dictionary,challenger:Dictionary)->Dictionary:
+	var selected_id:=str(row.get("selected_action_id","HOLD"))
+	var policy:Dictionary=registry.intent_policy(actor.current_intent_id if continued else selected_id)
+	var turn_count:=1 if not continued else maxi(1,state.turn_index-actor.intent_started_turn+1)
+	var reason_ko:=_intent_reason_ko(reason_code,continued,turn_count,mode)
+	row["selection_mode"]=mode;row["continued"]=continued
+	row["intent_turn_count"]=turn_count;row["decision_episode_id"]=str(episode)
+	row["current_intent_id"]=actor.current_intent_id
+	row["switch_reason_code"]=reason_code;row["switch_reason_ko"]=reason_ko
+	row["retention_bonus"]=int(policy.get("retention_bonus",0))
+	row["switch_margin"]=int(policy.get("switch_margin",0))
+	row["current_score"]=int(current_candidate.get("total",0))
+	row["challenger_action_id"]=str(challenger.get("action_id",selected_id))
+	row["challenger_score"]=int(challenger.get("total",0))
+	row["selected_reason_ko"]=reason_ko
+	return row.duplicate(true)
+
+func _intent_reason_ko(reason_code:String,continued:bool,turn_count:int,mode:String)->String:
+	if continued:
+		if reason_code=="COMMITMENT":return "이어가는 중 %d턴 · 아직 행동을 유지할 때다."%turn_count
+		return "이어가는 중 %d턴 · 바꿀 만큼 큰 이유가 없다."%turn_count
+	match reason_code:
+		"ILLEGAL":return "이어가던 행동이 더는 가능하지 않아 다시 판단했다."
+		"INTERRUPT":return "피해나 몸 상태 변화가 생겨 다시 판단했다."
+		"GOAL_COMPLETE":return "이전 행동의 목표를 마쳐 다시 판단했다."
+		"CHALLENGER":return "새 행동의 점수가 전환 기준을 넘어 판단을 바꿨다."
+	return "새 판단을 시작했다." if mode=="NEW" else "상황을 다시 판단했다."
+
+func _commit_decision(actor,row:Dictionary)->void:
+	if bool(row.get("continued",false)):
+		actor.intent_reason_code=str(row.get("switch_reason_code","CHALLENGER"))
+		return
+	var action_id:=str(row.selected_action_id);var policy:Dictionary=registry.intent_policy(action_id)
+	var execution:Dictionary=registry.execution(action_id);var target_id:=-1
+	if str(execution.get("target_role",""))=="OTHER":target_id=3-actor.entity_id
+	elif str(execution.get("target_role",""))=="SELF":target_id=actor.entity_id
+	actor.current_intent_id=action_id;actor.intent_started_turn=state.turn_index
+	actor.commitment_until_turn=state.turn_index+int(policy.get("commitment_turns",1))
+	actor.intent_target_id=target_id;actor.decision_episode_id=int(str(row.decision_episode_id))
+	actor.intent_interrupt_version=actor.decision_interrupt_version
+	actor.intent_reason_code=str(row.get("switch_reason_code","NEW"))
+
+func _candidate(row:Dictionary,action_id:String)->Dictionary:
+	for value in row.get("candidates",[]):
+		if value is Dictionary and str(value.get("action_id",""))==action_id:return value
+	return {}
+
+func _force_selected(row:Dictionary,action_id:String)->void:
+	row["selected_action_id"]=action_id
+	for value in row.get("candidates",[]):
+		if value is Dictionary:value["selected"]=str(value.get("action_id",""))==action_id
+
+func _mark_interrupt(actor)->void:actor.decision_interrupt_version+=1
+
+func _interrupt_signature(actor)->Array:
+	return [_hp_band(actor.hp),_dot_danger(actor),bool(actor.alive),str(actor.memory_kind)]
+
+func _hp_band(hp:int)->int:
+	if hp<=25:return 0
+	if hp<=50:return 1
+	if hp<=75:return 2
+	return 3
+
+func _dot_danger(actor)->int:
+	if actor.status_effect.is_empty():return 0
+	var projected:=int(actor.status_effect.tick_damage)*int(actor.status_effect.remaining_quanta)
+	if projected>=actor.hp:return 3
+	if projected*2>=actor.hp:return 2
+	return 1
+
+func _escape_reached(actor)->bool:
+	return state.distance>=ESCAPE_DISTANCE or (actor.entity_id==1 and actor.position.x<=1) \
+		or (actor.entity_id==2 and actor.position.x>=13)
+
 func _decision_inputs(actor,other)->Dictionary:
 	var relation:Dictionary=relation_assessment(actor.entity_id);var health:int=actor.hp*10
 	var injury:int=1000-health;var dot:int=1000 if not actor.status_effect.is_empty() else 0
@@ -221,6 +357,7 @@ func _decision_inputs(actor,other)->Dictionary:
 			"fear_pressure":clampi((-actor.memory_modifier)*12,0,1000),
 			"neutrality":clampi(1000-absi(effective)*10,0,1000)},
 		"CONTEXT":{"distance":state.distance,"other_alive":1000 if other.alive else 0,
+			"escape_reached":1000 if _escape_reached(actor) else 0,
 			"escape_space":1000 if state.distance<12 else 0,"approach_pressure":state.distance*140,
 			"threat":threat,"uncertainty":500}}
 
@@ -230,6 +367,11 @@ func _actor_dto(actor)->Dictionary:
 		"alive":actor.alive,"dot":actor.status_effect.duplicate(true),"armed":actor.armed,
 		"weapon":actor.weapon_id,"power":actor.power,"supplies":actor.supplies,
 		"memory":{"kind":actor.memory_kind,"modifier":actor.memory_modifier},
+		"intent":{"action_id":actor.current_intent_id,"started_turn":str(actor.intent_started_turn),
+			"commitment_until_turn":str(actor.commitment_until_turn),"target_id":str(actor.intent_target_id),
+			"decision_episode_id":str(actor.decision_episode_id),
+			"turn_count":0 if actor.current_intent_id.is_empty() else state.turn_index-actor.intent_started_turn+1,
+			"reason_code":actor.intent_reason_code},
 		"hexaco":actor.profile.to_dict(),"relation":relation_assessment(actor.entity_id)}
 
 func _action_definition_map()->Dictionary:
@@ -262,4 +404,5 @@ func _event_message(event:Dictionary)->String:
 		"STATUS_TICK":return "%s의 상태이상이 %d 피해를 냈다."%[name,int(event.magnitude)]
 		"MEMORY":return "%s가 공격받은 일을 기억했다."%name
 		"DEATH":return "%s가 쓰러졌다."%name
+		"ESCAPED":return "%s가 거리를 벌려 조우에서 벗어났다."%name
 	return "%s에게 사건이 일어났다."%name

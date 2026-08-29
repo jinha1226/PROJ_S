@@ -11,8 +11,14 @@ const TOUCH_TARGET := 44
 var simulator
 var grid: DuelDecisionGrid
 var root_layout: VBoxContainer
+var situation_label: Label
+var intent_turn_label: Label
 var phase_label: Label
+var result_panel: PanelContainer
+var detail_panel: PanelContainer
+var detail_toggle_button: Button
 var seed_edit: LineEdit
+var random_button: Button
 var step_button: Button
 var restart_button: Button
 var actor_buttons: Array[Button] = []
@@ -20,10 +26,12 @@ var event_button: Button
 var detail_text: RichTextLabel
 
 var selected_actor_id := ""
-var detail_mode := "ACTOR"
+var detail_mode := "OVERVIEW"
+var presentation_stage := "HIDDEN"
 var ui_notice := ""
 var _observation: Dictionary = {}
 var _breakdowns: Array = []
+var _shown_breakdowns: Array = []
 var _recent_logs: Array = []
 var _initialized_for_headless_test := false
 
@@ -42,7 +50,9 @@ func initialize_for_headless_test(custom_simulator) -> void:
 	simulator = custom_simulator
 	ui_notice = ""
 	selected_actor_id = ""
-	detail_mode = "ACTOR"
+	detail_mode = "OVERVIEW"
+	presentation_stage = "HIDDEN"
+	_shown_breakdowns.clear()
 	_refresh()
 
 
@@ -67,7 +77,7 @@ func _build_ui() -> void:
 	root_layout.offset_top = 4
 	root_layout.offset_right = -6
 	root_layout.offset_bottom = -4
-	root_layout.add_theme_constant_override("separation", 4)
+	root_layout.add_theme_constant_override("separation", 3)
 	add_child(root_layout)
 
 	var header := HBoxContainer.new()
@@ -92,21 +102,19 @@ func _build_ui() -> void:
 	seed_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
 	seed_edit.text_submitted.connect(_apply_typed_seed)
 	header.add_child(seed_edit)
-	var random_button := _add_button(header, "새 상황", "NewRandomSituation", _new_random_situation, 15)
-	random_button.custom_minimum_size.x = 68
 
-	var phase_panel := PanelContainer.new()
-	phase_panel.name = "DecisionOutcomePanel"
-	phase_panel.custom_minimum_size.y = 50
-	phase_panel.add_theme_stylebox_override("panel", _panel_style("#10212d", "#426173"))
-	root_layout.add_child(phase_panel)
-	phase_label = Label.new()
-	phase_label.name = "DecisionOutcome"
-	phase_label.add_theme_font_size_override("font_size", 16)
-	phase_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	phase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	phase_panel.add_child(phase_label)
+	var situation_panel := PanelContainer.new()
+	situation_panel.name = "SituationSummaryPanel"
+	situation_panel.custom_minimum_size.y = 44
+	situation_panel.add_theme_stylebox_override("panel", _panel_style("#0d1b25", "#29404d"))
+	root_layout.add_child(situation_panel)
+	situation_label = Label.new()
+	situation_label.name = "SituationSummary"
+	situation_label.add_theme_font_size_override("font_size", 15)
+	situation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	situation_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	situation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	situation_panel.add_child(situation_label)
 
 	grid = GridScript.new()
 	grid.name = "DuelDecisionGrid"
@@ -116,37 +124,58 @@ func _build_ui() -> void:
 	grid.actor_pressed.connect(_on_actor_pressed)
 	root_layout.add_child(grid)
 
-	var controls := HBoxContainer.new()
-	controls.name = "DecisionControls"
-	controls.custom_minimum_size.y = TOUCH_TARGET
-	controls.add_theme_constant_override("separation", 4)
-	root_layout.add_child(controls)
-	step_button = _add_button(controls, "판단하기", "ResolveTurn", _step, 18)
-	step_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	step_button.size_flags_stretch_ratio = 1.6
-	restart_button = _add_button(controls, "같은 상황 다시", "RestartSameSituation", _restart_same_situation, 16)
-	restart_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	intent_turn_label = Label.new()
+	intent_turn_label.name = "IntentTurnLabel"
+	intent_turn_label.custom_minimum_size.y = 24
+	intent_turn_label.add_theme_font_size_override("font_size", 15)
+	intent_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	intent_turn_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	root_layout.add_child(intent_turn_label)
 
 	var tabs := HBoxContainer.new()
-	tabs.name = "DecisionDetailTabs"
-	tabs.custom_minimum_size.y = 48
-	tabs.add_theme_constant_override("separation", 4)
+	tabs.name = "DecisionIntentCards"
+	tabs.custom_minimum_size.y = 94
+	tabs.add_theme_constant_override("separation", 5)
 	root_layout.add_child(tabs)
 	for index in range(2):
 		var actor_button := _add_button(tabs, "인물 %s" % ("A" if index == 0 else "B"),
-			"ActorCardTab%d" % index, _select_actor_index.bind(index), 15)
+			"ActorIntentCard%d" % index, _select_actor_index.bind(index), 15)
 		actor_button.toggle_mode = true
+		actor_button.custom_minimum_size.y = 94
 		actor_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actor_button.size_flags_stretch_ratio = 1.25
+		actor_button.size_flags_stretch_ratio = 1.0
+		actor_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		actor_button.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		actor_buttons.append(actor_button)
-	event_button = _add_button(tabs, "사건", "EventLogTab", _show_events, 15)
+
+	result_panel = PanelContainer.new()
+	result_panel.name = "DecisionResultPanel"
+	result_panel.custom_minimum_size.y = 44
+	result_panel.add_theme_stylebox_override("panel", _panel_style("#10212d", "#426173"))
+	root_layout.add_child(result_panel)
+	phase_label = Label.new()
+	phase_label.name = "DecisionResult"
+	phase_label.add_theme_font_size_override("font_size", 15)
+	phase_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	phase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_panel.add_child(phase_label)
+
+	var disclosure_row := HBoxContainer.new()
+	disclosure_row.name = "DecisionDisclosureRow"
+	disclosure_row.custom_minimum_size.y = TOUCH_TARGET
+	disclosure_row.add_theme_constant_override("separation", 4)
+	root_layout.add_child(disclosure_row)
+	detail_toggle_button = _add_button(disclosure_row, "왜 이렇게 판단했지?", "DetailToggle",
+		_toggle_detail, 15)
+	detail_toggle_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	event_button = _add_button(disclosure_row, "사건 보기", "EventLogTab", _show_events, 15)
 	event_button.toggle_mode = true
 	event_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	event_button.size_flags_stretch_ratio = 0.65
 
-	var detail_panel := PanelContainer.new()
+	detail_panel = PanelContainer.new()
 	detail_panel.name = "DecisionDetailPanel"
-	detail_panel.custom_minimum_size.y = 136
+	detail_panel.custom_minimum_size.y = 180
 	detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	detail_panel.add_theme_stylebox_override("panel", _panel_style("#0c1822", "#2c4859"))
 	root_layout.add_child(detail_panel)
@@ -157,6 +186,20 @@ func _build_ui() -> void:
 	detail_text.scroll_active = true
 	detail_text.add_theme_font_size_override("normal_font_size", 15)
 	detail_panel.add_child(detail_text)
+	detail_panel.visible = false
+
+	var controls := HBoxContainer.new()
+	controls.name = "DecisionControls"
+	controls.custom_minimum_size.y = TOUCH_TARGET
+	controls.add_theme_constant_override("separation", 4)
+	root_layout.add_child(controls)
+	random_button = _add_button(controls, "새 랜덤 상황", "NewRandomSituation", _new_random_situation, 14)
+	random_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	step_button = _add_button(controls, "판단 보기", "ResolveTurn", _on_primary_action, 16)
+	step_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	step_button.size_flags_stretch_ratio = 1.25
+	restart_button = _add_button(controls, "같은 상황 다시", "RestartSameSituation", _restart_same_situation, 14)
+	restart_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
 func _create_default_simulator(seed_value: int):
@@ -197,16 +240,21 @@ func _refresh() -> void:
 
 
 func _refresh_phase() -> void:
-	var resolution: Dictionary = _observation.get("last_resolution", {}) \
-		if _observation.get("last_resolution", {}) is Dictionary else {}
-	var message := _resolution_summary(resolution)
-	if message.is_empty() and not _recent_logs.is_empty() and _recent_logs[-1] is Dictionary:
-		message = _event_message_ko(_recent_logs[-1])
-	if message.is_empty():
-		message = "두 인물은 같은 상황을 서로 다르게 판단할 수 있습니다."
-	var phase_text := "실험 완료" if str(_observation.get("phase", "ACTIVE")) == "COMPLETE" else "판단 대기"
-	phase_label.text = (ui_notice + " · " if not ui_notice.is_empty() else "") \
-		+ "T%s · %s\n%s" % [str(_observation.get("tick_index", "0")), phase_text, message]
+	situation_label.text = _situation_summary()
+	var tick := int(str(_observation.get("tick_index", "0")))
+	if presentation_stage == "RESULT":
+		var resolution: Dictionary = _observation.get("last_resolution", {}) \
+			if _observation.get("last_resolution", {}) is Dictionary else {}
+		intent_turn_label.text = "방금 해결한 판단 · T%s" % str(resolution.get("turn_index", tick))
+		phase_label.text = _actual_result_summary(resolution)
+	elif presentation_stage == "INTENT":
+		intent_turn_label.text = "다음 판단 · T%d · 실행 전" % (tick + 1)
+		phase_label.text = "두 행동을 함께 실행하기 전입니다."
+	else:
+		intent_turn_label.text = "다음 판단 · T%d · 아직 공개 전" % (tick + 1)
+		phase_label.text = "‘판단 보기’를 누르면 두 인물의 생각을 함께 비교합니다."
+	if not ui_notice.is_empty():
+		phase_label.text = ui_notice + "\n" + phase_label.text
 
 
 func _refresh_tabs() -> void:
@@ -220,20 +268,374 @@ func _refresh_tabs() -> void:
 			continue
 		var actor: Dictionary = actors[index]
 		button.disabled = false
-		button.text = "%s · %s\nHP %d/%d" % [str(actor.get("name", "인물 %s" % ("A" if index == 0 else "B"))),
-			_species_label(str(actor.get("species_id", "?"))), int(actor.get("hp", 0)), int(actor.get("max_hp", 0))]
-		button.button_pressed = detail_mode == "ACTOR" and _actor_id(actor) == selected_actor_id
+		var actor_id := _actor_id(actor)
+		var breakdown := _shown_breakdown_for(actor_id)
+		var action_id := str(breakdown.get("selected_action_id", ""))
+		var intent_line := "?  아직 판단을 보지 않았다"
+		var reason_line := "판단을 공개하면 핵심 이유가 보인다"
+		if presentation_stage != "HIDDEN" and not breakdown.is_empty():
+			intent_line = "%s  %s" % [_action_icon(action_id), _intent_phrase(action_id)]
+			var reasons := _key_reasons(actor, breakdown)
+			reason_line = reasons[0] if not reasons.is_empty() else "지금 상황을 종합해서"
+			var continuity := _commitment_line(breakdown)
+			if not continuity.is_empty():
+				intent_line += " · " + continuity
+		button.text = "%s %s · %s · HP %d\n%s\n%s\n성향 · %s" % ["A" if index == 0 else "B",
+			str(actor.get("name", "인물")), _species_label(str(actor.get("species_id", "?"))),
+			int(actor.get("hp", 0)), intent_line, reason_line, _personality_summary(actor, true)]
+		button.button_pressed = actor_id == selected_actor_id
+		_apply_action_card_style(button, action_id if presentation_stage != "HIDDEN" else "")
 	event_button.button_pressed = detail_mode == "EVENTS"
+	detail_toggle_button.button_pressed = detail_mode == "DETAIL"
 
 
 func _refresh_controls() -> void:
-	var complete := str(_observation.get("phase", "ACTIVE")) == "COMPLETE"
-	step_button.disabled = complete
-	step_button.text = "실험 완료" if complete else ("판단하기" if int(str(_observation.get("tick_index", "0"))) == 0 else "다음 턴")
+	var phase := str(_observation.get("phase", "ACTIVE"))
+	var complete := phase == "COMPLETE" or phase == "ESCAPED"
+	step_button.disabled = complete and presentation_stage == "RESULT"
+	if complete and presentation_stage == "RESULT":
+		step_button.text = "상황 종료"
+	elif presentation_stage == "HIDDEN":
+		step_button.text = "판단 보기"
+	elif presentation_stage == "INTENT":
+		step_button.text = "결과 보기"
+	else:
+		step_button.text = "다음 턴"
 
 
 func _refresh_detail() -> void:
-	detail_text.text = event_log_text(_recent_logs) if detail_mode == "EVENTS" else actor_card_text(selected_actor_id)
+	var detail_open := detail_mode != "OVERVIEW"
+	detail_panel.visible = detail_open
+	grid.visible = not detail_open
+	result_panel.visible = not detail_open
+	detail_toggle_button.text = "핵심 화면으로" if detail_mode == "DETAIL" else "왜 이렇게 판단했지?"
+	if detail_mode == "EVENTS":
+		detail_text.text = event_log_text(_recent_logs)
+	elif detail_mode == "DETAIL":
+		detail_text.text = actor_card_text(selected_actor_id)
+	else:
+		detail_text.text = ""
+
+
+func _situation_summary() -> String:
+	var actors: Array = _observation.get("actors", [])
+	if actors.size() < 2 or not actors[0] is Dictionary or not actors[1] is Dictionary:
+		return "두 인물의 상황을 불러오는 중입니다."
+	var first: Dictionary = actors[0]
+	var second: Dictionary = actors[1]
+	var summary := "%s %s(%s)과 %s %s(%s)가 %d칸 거리에서 마주쳤다." % [
+		_species_label(str(first.get("species_id", "?"))), str(first.get("name", "인물 A")),
+		_actor_condition_short(first), _species_label(str(second.get("species_id", "?"))),
+		str(second.get("name", "인물 B")), _actor_condition_short(second),
+		int(_observation.get("distance", 0))]
+	var memories: Array[String] = []
+	for actor_value in actors:
+		if not actor_value is Dictionary:
+			continue
+		var actor: Dictionary = actor_value
+		var memory_kind := _memory_kind(actor)
+		var memory_text := str({"EXILED": "버려진 원한", "HARMED": "공격받은 기억",
+			"HELPED": "도움을 받은 기억"}.get(memory_kind, ""))
+		if not memory_text.is_empty():
+			memories.append("%s에게는 %s이 있다" % [str(actor.get("name", "인물")), memory_text])
+	if not memories.is_empty():
+		summary += " " + " · ".join(memories) + "."
+	return summary
+
+
+func _actor_condition_short(actor: Dictionary) -> String:
+	var parts: Array[String] = ["HP %d" % int(actor.get("hp", 0))]
+	var status := _dot_summary(actor.get("dot", []))
+	if status != "없음":
+		parts.append(status)
+	return ", ".join(parts)
+
+
+func _personality_summary(actor: Dictionary, compact: bool = false) -> String:
+	var hexaco: Dictionary = actor.get("hexaco", {})
+	var rows: Array[Dictionary] = []
+	var order := ["H", "E", "X", "A", "C", "O"]
+	for index in range(order.size()):
+		var axis: String = order[index]
+		rows.append({"axis": axis, "value": _hexaco(hexaco, axis),
+			"distance": absi(_hexaco(hexaco, axis) - 500), "order": index})
+	rows.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.distance) != int(b.distance):
+			return int(a.distance) > int(b.distance)
+		return int(a.order) < int(b.order))
+	if rows.is_empty() or int(rows[0].distance) < 80:
+		return "균형 잡힌 성향 · 상황의 영향을 많이 받음" if compact \
+			else "성향이 한쪽으로 치우치지 않았다. 상황의 영향을 더 크게 받는 편이다."
+	var phrases: Array[String] = []
+	for index in range(mini(2, rows.size())):
+		var row: Dictionary = rows[index]
+		phrases.append(_trait_phrase(str(row.axis), int(row.value) >= 500, compact))
+	return " · ".join(phrases) if compact else "\n".join(phrases)
+
+
+func _trait_phrase(axis: String, high: bool, compact: bool) -> String:
+	var full := {
+		"H": ["실리를 위해 편법도 감수한다.", "정직하고 욕심이 적다."],
+		"E": ["위험 앞에서도 쉽게 흔들리지 않는다.", "위험과 관계의 상실에 민감하다."],
+		"X": ["앞에 나서기보다 거리를 둔다.", "먼저 나서고 주도하려 한다."],
+		"A": ["모욕과 충돌에 강경하게 맞선다.", "충돌을 피하고 쉽게 용서한다."],
+		"C": ["계획보다 순간 판단을 따른다.", "계획대로 신중하게 행동한다."],
+		"O": ["검증된 방식과 익숙함을 선호한다.", "낯선 선택과 변화를 즐긴다."],
+	}
+	var short := {
+		"H": ["편법도 감수", "정직·절제"],
+		"E": ["쉽게 흔들리지 않음", "위험에 민감"],
+		"X": ["거리를 둠", "주도적"],
+		"A": ["충돌에 강경", "온화·관대"],
+		"C": ["즉흥적", "신중·계획적"],
+		"O": ["익숙함 선호", "변화 선호"],
+	}
+	var table: Dictionary = short if compact else full
+	var choices: Array = table.get(axis, ["상황을 살핌", "상황을 살핌"])
+	return str(choices[1 if high else 0])
+
+
+func _key_reasons(actor: Dictionary, breakdown: Dictionary) -> Array[String]:
+	var selected := _selected_candidate(breakdown)
+	if selected.is_empty():
+		return []
+	var strongest_by_group: Dictionary = {}
+	var stable_order := 0
+	for bucket_name in ["hexaco_terms", "state_terms", "relation_terms", "context_terms"]:
+		var terms: Variant = selected.get(bucket_name, [])
+		if not terms is Array:
+			continue
+		for term_value in terms:
+			if not term_value is Dictionary:
+				continue
+			var term: Dictionary = term_value
+			var contribution := float(term.get("contribution", term.get("amount", term.get("value", 0))))
+			if contribution <= 0.0:
+				stable_order += 1
+				continue
+			var input_id := str(term.get("input_id", term.get("facet", "")))
+			var group := _reason_group(input_id, bucket_name)
+			var candidate := {"group": group, "input_id": input_id, "contribution": contribution,
+				"order": stable_order, "term": term}
+			if not strongest_by_group.has(group) \
+					or contribution > float(strongest_by_group[group].contribution):
+				strongest_by_group[group] = candidate
+			stable_order += 1
+	var rows: Array = strongest_by_group.values()
+	rows.sort_custom(func(a: Dictionary, b: Dictionary):
+		if not is_equal_approx(float(a.contribution), float(b.contribution)):
+			return float(a.contribution) > float(b.contribution)
+		return int(a.order) < int(b.order))
+	var result: Array[String] = []
+	for index in range(mini(2, rows.size())):
+		result.append(_reason_phrase(actor, str(rows[index].input_id), rows[index].term))
+	return result
+
+
+func _reason_group(input_id: String, bucket_name: String) -> String:
+	if input_id in ["memory_modifier", "personal_memory", "fear_pressure"]:
+		return "memory"
+	if input_id in ["injury", "health"]:
+		return "body"
+	if input_id in ["dot", "treatment_need"]:
+		return "treatment"
+	if input_id in ["power", "power_gap", "armed"]:
+		return "power"
+	if input_id == "species_prior":
+		return "species"
+	return bucket_name + "/" + input_id
+
+
+func _reason_phrase(actor: Dictionary, input_id: String, term: Dictionary) -> String:
+	match input_id:
+		"species_prior":
+			var prior := int(actor.get("relation", {}).get("species_prior", term.get("input_value", 0))) \
+				if actor.get("relation", {}) is Dictionary else int(term.get("input_value", 0))
+			return "종족 사이 %s가 깊어서" % ("적대" if prior < 0 else "호의")
+		"memory_modifier", "personal_memory":
+			return str({"EXILED": "버려진 원한 때문에", "HARMED": "공격받은 기억 때문에",
+				"HELPED": "도움을 받은 기억 때문에"}.get(_memory_kind(actor), "개인적인 기억 때문에"))
+		"fear_pressure":
+			return "그 기억 때문에 두려워서"
+		"health":
+			return "몸 상태가 괜찮아서"
+		"injury":
+			return "부상이 심해서"
+		"dot", "treatment_need":
+			return "%s을 치료해야 해서" % _dot_name(actor)
+		"power_gap":
+			return "상대보다 전력이 약해서"
+		"power", "armed":
+			return "싸울 힘과 무장이 있어서"
+		"threat", "danger":
+			return "상대가 가까워 위협적이라서"
+		"distance", "approach_pressure":
+			return "서로 거리가 멀어서"
+		"supplies":
+			return "치료 도구가 있어서"
+		"escape_space":
+			return "물러날 공간이 있어서"
+		"other_alive":
+			return "상대가 아직 위협이어서"
+		"uncertainty":
+			return "상황이 불확실해서"
+	if input_id in ["H", "E", "X", "A", "C", "O"]:
+		return _trait_reason(input_id, _hexaco(actor.get("hexaco", {}), input_id) >= 500)
+	var explicit := str(term.get("label_ko", ""))
+	return explicit + " 때문에" if not explicit.is_empty() else "상황을 종합해서"
+
+
+func _trait_reason(axis: String, high: bool) -> String:
+	return str({
+		"H": ["실리를 우선하는 성향이라서", "정직하고 절제하는 성향이라서"],
+		"E": ["위험에도 잘 흔들리지 않는 성향이라서", "위협에 민감한 성향이라서"],
+		"X": ["거리를 두는 성향이라서", "먼저 나서는 성향이라서"],
+		"A": ["충돌에 강경한 성향이라서", "충돌을 피하는 성향이라서"],
+		"C": ["순간 판단을 따르는 성향이라서", "계획을 지키는 성향이라서"],
+		"O": ["익숙한 방식을 선호해서", "낯선 선택을 즐겨서"],
+	}.get(axis, ["성향의 영향으로", "성향의 영향으로"])[1 if high else 0])
+
+
+func _selected_candidate(breakdown: Dictionary) -> Dictionary:
+	var selected_id := str(breakdown.get("selected_action_id", ""))
+	for value in breakdown.get("candidates", []):
+		if value is Dictionary and (bool(value.get("selected", false)) \
+				or str(value.get("action_id", "")) == selected_id):
+			return value
+	return {}
+
+
+func _commitment_line(breakdown: Dictionary) -> String:
+	var action_id := str(breakdown.get("selected_action_id", ""))
+	if bool(breakdown.get("continued", false)):
+		return "%d턴째 유지" % maxi(1, int(breakdown.get("intent_turn_count", 1)))
+	var mode := str(breakdown.get("selection_mode", "NEW"))
+	var reason_code := str(breakdown.get("switch_reason_code", "NEW"))
+	if mode in ["SWITCHED", "RESTARTED"]:
+		return str({
+			"INTERRUPT": "피해로 계획 변경",
+			"ILLEGAL": "행동 불가로 변경",
+			"GOAL_COMPLETE": "목표를 마쳐 재판단",
+			"CHALLENGER": "더 나은 선택으로 변경",
+		}.get(reason_code, str(breakdown.get("switch_reason_ko", "상황 변화로 다시 판단함"))))
+	return "새 판단"
+
+
+func _intent_object(action_id: String) -> String:
+	return str({"ENGAGE": "공격을", "FLEE": "도주를", "APPROACH": "접근을",
+		"SELF_TREAT": "치료를", "HOLD": "경계를"}.get(action_id, "행동을"))
+
+
+func _intent_phrase(action_id: String) -> String:
+	return str({"APPROACH": "다가가려 한다", "ENGAGE": "공격하려 한다",
+		"FLEE": "도망치려 한다", "HOLD": "지켜보려 한다",
+		"SELF_TREAT": "치료하려 한다"}.get(action_id, "상황을 지켜보려 한다"))
+
+
+func _action_icon(action_id: String) -> String:
+	return str({"ENGAGE": "⚔", "FLEE": "↙", "APPROACH": "→",
+		"SELF_TREAT": "+", "HOLD": "●"}.get(action_id, "?"))
+
+
+func _apply_action_card_style(button: Button, action_id: String) -> void:
+	var colors := {
+		"ENGAGE": [Color("#35151c"), Color("#ff6671")],
+		"FLEE": [Color("#102744"), Color("#6eafff")],
+		"APPROACH": [Color("#0d3030"), Color("#58dbc4")],
+		"SELF_TREAT": [Color("#12341f"), Color("#65df8b")],
+		"HOLD": [Color("#20272d"), Color("#aab5bd")],
+		"": [Color("#111d27"), Color("#8295a2")],
+	}
+	var pair: Array = colors.get(action_id, colors[""])
+	var normal := _panel_style(pair[0].to_html(), pair[1].darkened(0.25).to_html())
+	var pressed := _panel_style(pair[0].lightened(0.08).to_html(), pair[1].to_html())
+	pressed.set_border_width_all(2)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", pressed)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_color_override("font_color", pair[1])
+	button.add_theme_color_override("font_pressed_color", pair[1].lightened(0.12))
+
+
+func _actual_result_summary(resolution: Dictionary) -> String:
+	var ids: Array = resolution.get("event_ids", []) if resolution.get("event_ids", []) is Array else []
+	var id_set: Dictionary = {}
+	for value in ids:
+		id_set[str(value)] = true
+	var matching: Array[Dictionary] = []
+	for value in _recent_logs:
+		if value is Dictionary and (ids.is_empty() or id_set.has(str(value.get("event_id", "")))):
+			matching.append(value)
+	matching.sort_custom(func(a: Dictionary, b: Dictionary):
+		var priority := {"DEATH": 0, "ESCAPED": 1, "DAMAGE": 2, "HEAL": 2,
+			"STATUS_TICK": 2, "MOVE": 3, "ACTION": 4, "MEMORY": 5}
+		var pa := int(priority.get(str(a.get("type", "")), 9))
+		var pb := int(priority.get(str(b.get("type", "")), 9))
+		if pa != pb:
+			return pa < pb
+		return int(str(a.get("event_id", "0"))) < int(str(b.get("event_id", "0"))))
+	var clauses: Array[String] = []
+	for event in matching:
+		if str(event.get("type", "")) == "MEMORY":
+			continue
+		var clause := _result_clause(event)
+		if not clause.is_empty() and clause not in clauses:
+			clauses.append(clause)
+		if clauses.size() >= 2:
+			break
+	if not clauses.is_empty():
+		return " · ".join(clauses)
+	var fallback := _resolution_summary(resolution)
+	return fallback if not fallback.is_empty() else "두 행동을 동시에 해결했지만 눈에 띄는 변화는 없었다."
+
+
+func _result_clause(event: Dictionary) -> String:
+	var actor := _actor_name(str(event.get("actor_id", "")))
+	var target := _actor_name(str(event.get("target_id", "")))
+	match str(event.get("type", "")):
+		"DEATH":
+			return "%s 쓰러졌다" % _subject(actor)
+		"ESCAPED":
+			return "%s 거리를 벌려 조우에서 벗어났다" % _subject(actor)
+		"DAMAGE":
+			return "%s %s에게 %d 피해를 줬다" % [_subject(actor), target, int(event.get("magnitude", 0))]
+		"HEAL":
+			return "%s HP를 %d 회복했다" % [_subject(actor), int(event.get("magnitude", 0))]
+		"STATUS_TICK":
+			return "%s 상태이상으로 %d 피해를 입었다" % [_subject(actor), int(event.get("magnitude", 0))]
+		"MOVE":
+			return "%s %s" % [_subject(actor), "물러났다" if str(event.get("action_id", "")) == "FLEE" else "다가갔다"]
+		"ACTION":
+			if str(event.get("action_id", "")) == "HOLD":
+				return "%s 자리를 지켜봤다" % _subject(actor)
+	return ""
+
+
+func _subject(value: String) -> String:
+	if value.is_empty():
+		return "인물이"
+	var code := value.unicode_at(value.length() - 1)
+	if code >= 0xAC00 and code <= 0xD7A3:
+		return value + ("이" if (code - 0xAC00) % 28 != 0 else "가")
+	return value + "가"
+
+
+func _memory_kind(actor: Dictionary) -> String:
+	var memory: Variant = actor.get("memory", {})
+	if memory is Dictionary:
+		return str(memory.get("kind", memory.get("memory_kind", "NONE"))).to_upper()
+	return "NONE"
+
+
+func _dot_name(actor: Dictionary) -> String:
+	var value: Variant = actor.get("dot", [])
+	if value is Dictionary and not value.is_empty():
+		var status := str(value.get("status_id", value.get("label_ko", "상태이상"))).to_upper()
+		return str({"BLEEDING": "출혈", "POISONED": "독"}.get(status, status))
+	if value is Array and not value.is_empty() and value[0] is Dictionary:
+		var row: Dictionary = value[0]
+		return str(row.get("label_ko", row.get("status_id", "상태이상")))
+	return "상태이상"
 
 
 func actor_card_text(actor_id: String) -> String:
@@ -246,11 +648,14 @@ func actor_card_text(actor_id: String) -> String:
 			"생존" if bool(actor.get("alive", true)) else "쓰러짐"],
 		"HP %d/%d · 상태이상 %s · %s" % [int(actor.get("hp", 0)), int(actor.get("max_hp", 0)),
 			_dot_summary(actor.get("dot", [])), _weapon_summary(actor)],
+		"성향 요약\n%s" % _personality_summary(actor),
 		"HEXACO  H %d  E %d  X %d  A %d  C %d  O %d" % [
 			_hexaco(hexaco, "H"), _hexaco(hexaco, "E"), _hexaco(hexaco, "X"),
 			_hexaco(hexaco, "A"), _hexaco(hexaco, "C"), _hexaco(hexaco, "O")],
 	]
-	var breakdown := _breakdown_for(actor_id)
+	var breakdown := _shown_breakdown_for(actor_id)
+	if breakdown.is_empty():
+		breakdown = _breakdown_for(actor_id)
 	if breakdown.is_empty():
 		lines.append("\n아직 판단 근거가 없습니다. ‘판단하기’를 눌러 비교하세요.")
 		return "\n".join(lines)
@@ -358,13 +763,39 @@ func _actor_name(actor_id: String) -> String:
 	return str(actor.get("name", "인물")) if not actor.is_empty() else "인물"
 
 
+func _on_primary_action() -> void:
+	match presentation_stage:
+		"HIDDEN":
+			_shown_breakdowns = _breakdowns.duplicate(true)
+			presentation_stage = "INTENT"
+			ui_notice = ""
+			_refresh_phase()
+			_refresh_tabs()
+			_refresh_detail()
+			_refresh_controls()
+		"INTENT":
+			_step()
+		"RESULT":
+			_shown_breakdowns = _breakdowns.duplicate(true)
+			presentation_stage = "INTENT"
+			ui_notice = ""
+			_refresh_phase()
+			_refresh_tabs()
+			_refresh_detail()
+			_refresh_controls()
+
+
 func _step() -> void:
 	if simulator == null:
 		return
 	ui_notice = ""
+	if _shown_breakdowns.is_empty():
+		_shown_breakdowns = _breakdowns.duplicate(true)
 	var result_value: Variant = simulator.step()
 	if result_value is Dictionary and not bool(result_value.get("accepted", result_value.get("ok", true))):
 		ui_notice = "판단 실패 · %s" % _rejection_text(str(result_value.get("reason", "")))
+	else:
+		presentation_stage = "RESULT"
 	_refresh()
 
 
@@ -373,7 +804,9 @@ func _restart_same_situation() -> void:
 		return
 	simulator.restart_same_scenario()
 	ui_notice = "같은 상황을 처음부터 다시 봅니다"
-	detail_mode = "ACTOR"
+	detail_mode = "OVERVIEW"
+	presentation_stage = "HIDDEN"
+	_shown_breakdowns.clear()
 	selected_actor_id = ""
 	_refresh()
 
@@ -406,14 +839,15 @@ func _apply_typed_seed(value: String) -> void:
 func _start_seeded_situation(seed_value: int) -> void:
 	simulator.new_random_scenario(seed_value)
 	ui_notice = "seed %d의 새 상황" % seed_value
-	detail_mode = "ACTOR"
+	detail_mode = "OVERVIEW"
+	presentation_stage = "HIDDEN"
+	_shown_breakdowns.clear()
 	selected_actor_id = ""
 	_refresh()
 
 
 func _on_actor_pressed(actor_id: String) -> void:
 	selected_actor_id = actor_id
-	detail_mode = "ACTOR"
 	_refresh_tabs()
 	_refresh_detail()
 	grid.set_observation(_observation, selected_actor_id)
@@ -427,7 +861,13 @@ func _select_actor_index(index: int) -> void:
 
 
 func _show_events() -> void:
-	detail_mode = "EVENTS"
+	detail_mode = "OVERVIEW" if detail_mode == "EVENTS" else "EVENTS"
+	_refresh_tabs()
+	_refresh_detail()
+
+
+func _toggle_detail() -> void:
+	detail_mode = "OVERVIEW" if detail_mode == "DETAIL" else "DETAIL"
 	_refresh_tabs()
 	_refresh_detail()
 
@@ -448,6 +888,13 @@ func _show_unavailable() -> void:
 
 func _breakdown_for(actor_id: String) -> Dictionary:
 	for value in _breakdowns:
+		if value is Dictionary and str(value.get("actor_id", "")) == actor_id:
+			return value
+	return {}
+
+
+func _shown_breakdown_for(actor_id: String) -> Dictionary:
+	for value in _shown_breakdowns:
 		if value is Dictionary and str(value.get("actor_id", "")) == actor_id:
 			return value
 	return {}
@@ -582,7 +1029,8 @@ func _dot_summary(value: Variant) -> String:
 	var parts: Array[String] = []
 	for row_value in value:
 		if row_value is Dictionary:
-			var status := str(row_value.get("label_ko", row_value.get("status_id", "상태이상")))
+			var raw_status := str(row_value.get("label_ko", row_value.get("status_id", "상태이상")))
+			var status := str({"BLEEDING": "출혈", "POISONED": "독"}.get(raw_status.to_upper(), raw_status))
 			var remaining := str(row_value.get("remaining", row_value.get("remaining_quanta", "")))
 			parts.append(status + (" %s턴" % remaining if not remaining.is_empty() else ""))
 		else:
