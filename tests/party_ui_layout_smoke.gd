@@ -812,7 +812,15 @@ func _terminal(viewport_size:Vector2)->void:
 	if str(sandbox.grid._presentation_style.get("style_id",""))!="DEFEAT" or str(sandbox.grid._presentation_style.get("border_hex",""))!="#8f5367":
 		failures.append("%s terminal presentation style missing"%viewport_size)
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	if terminal_panel==null or terminal_panel.border_color!=Color("#8f5367"):failures.append("%s terminal panel border missing"%viewport_size)
+	if terminal_panel==null or terminal_panel.get_border_width(SIDE_LEFT)!=0 \
+			or terminal_panel.get_border_width(SIDE_TOP)!=0 \
+			or terminal_panel.get_border_width(SIDE_RIGHT)!=0 \
+			or terminal_panel.get_border_width(SIDE_BOTTOM)!=0:
+		failures.append("%s terminal panel revived a graphic border"%viewport_size)
+	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=Color("#e55d46") \
+			or not sandbox.minimap_frame.danger_edge \
+			or str(sandbox.minimap_frame.get_meta("state_tone",""))!="DEFEAT":
+		failures.append("%s terminal glyph accent missing"%viewport_size)
 	if sandbox.log_label.text.is_empty(): failures.append("%s terminal log empty"%viewport_size)
 	sandbox.queue_free(); await process_frame
 

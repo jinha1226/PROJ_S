@@ -27,6 +27,7 @@ var run_objective_bar:PanelContainer
 var run_objective_label:Label
 var reward_badge:Label
 var minimap
+var minimap_frame
 var recent_event_label:Label
 var record_button:Button
 var hero_detail_button:Button
@@ -162,7 +163,7 @@ func _build_ui()->void:
 	phase_panel.custom_minimum_size.y=92;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
-	var minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
+	minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
 	minimap_frame.configure("MAP",AsciiFrameScript.CYAN,Color("#050c12e6"),true)
 	minimap_frame.custom_minimum_size=Vector2(86,82);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
@@ -2152,6 +2153,15 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	phase_label.text=situation
 	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(surface_color,4))
 	phase_panel.set_meta("visible_stylebox_border",false)
+	if minimap_frame!=null:
+		var glyph_tone:=AsciiFrameScript.CYAN
+		if situation=="승리":glyph_tone=AsciiFrameScript.JADE
+		elif situation in ["전투","위험"]:glyph_tone=AsciiFrameScript.DANGER
+		elif situation=="기척":glyph_tone=AsciiFrameScript.BRASS
+		minimap_frame.frame_color=glyph_tone;minimap_frame.title_color=glyph_tone
+		minimap_frame.danger_edge=situation=="위험"
+		minimap_frame.set_meta("state_tone",tone)
+		minimap_frame.queue_redraw()
 
 func _camera_focus_points(observation:Dictionary,intents:Array)->Array[Vector2i]:
 	var points:Array[Vector2i]=[]

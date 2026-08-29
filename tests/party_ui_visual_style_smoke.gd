@@ -37,6 +37,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
 	var dossier_frame=sandbox.find_child("DossierAsciiFrame",true,false)
 	_check(_glyph_frame_ok(minimap_frame),"%s minimap lacks a real glyph boundary"%viewport_size)
+	_check(str(minimap_frame.get_meta("state_tone","")) in ["CALM","CONTACT"],
+		"%s calm HUD did not publish its glyph state tone"%viewport_size)
 	_check(_glyph_frame_ok(dossier_frame),"%s dossier lacks a real glyph boundary"%viewport_size)
 	_check(_borderless(sandbox.phase_panel,"panel"),"%s top HUD revived a visible StyleBox border"%viewport_size)
 	var card=sandbox.cards.get_child(0) as Control

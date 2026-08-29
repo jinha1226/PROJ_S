@@ -894,9 +894,11 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 		check(sandbox.phase_panel.custom_minimum_size.y>=88.0 \
 			and sandbox.phase_panel.custom_minimum_size.y<=96.0,
 			"%s unified HUD keeps the former two-row height budget"%viewport_size)
-		check(sandbox.minimap.custom_minimum_size.x>=78.0 \
-			and sandbox.minimap.custom_minimum_size.x<=92.0,
-			"%s reusable 15x15 minimap is readable"%viewport_size)
+		var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
+		check(minimap_frame!=null and minimap_frame.custom_minimum_size.x>=78.0 \
+			and minimap_frame.custom_minimum_size.x<=92.0 \
+			and str(minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+			"%s reusable 15x15 minimap has a readable glyph frame"%viewport_size)
 		check(sandbox.record_button.custom_minimum_size==Vector2(44,44) \
 			and sandbox.hero_detail_button.custom_minimum_size==Vector2(44,44),
 			"%s record and hero actions are honest touch targets"%viewport_size)
@@ -1056,7 +1058,15 @@ func test_restored_grouped_complete_keeps_victory_banner_style_without_effect_re
 	check_eq(fresh.grid._presentation_style.style_id,"VICTORY","fresh restored victory grid style")
 	check_eq(fresh.grid._presentation_style.border_hex,"#62d98b","fresh restored victory green grid border")
 	var panel_style:=fresh.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	check(panel_style!=null and panel_style.border_color==Color("#62d98b"),"fresh restored banner consumes green presentation border")
+	check(panel_style!=null and panel_style.get_border_width(SIDE_LEFT)==0 \
+		and panel_style.get_border_width(SIDE_TOP)==0 \
+		and panel_style.get_border_width(SIDE_RIGHT)==0 \
+		and panel_style.get_border_width(SIDE_BOTTOM)==0,
+		"fresh restored banner keeps its StyleBox visually borderless")
+	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#68d3a0") \
+		and str(fresh.minimap_frame.get_meta("state_tone",""))=="VICTORY" \
+		and str(fresh.minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+		"fresh restored victory consumes jade through the glyph-backed HUD frame")
 	check(fresh.grid._active_visual_effects.is_empty(),"restoring victory does not replay commit effects")
 	check_eq(fresh.grid.visible_cell_count,15,"restored victory uses full 15x15 camera")
 	check(not fresh.combat_action_area.visible,"restored victory hides combat action area")
@@ -1074,7 +1084,16 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	check_eq(sandbox.grid._presentation_style.style_id,"DEFEAT","terminal grid presentation style")
 	check_eq(sandbox.grid._presentation_style.border_hex,"#8f5367","terminal grid presentation border")
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	check(terminal_panel!=null and terminal_panel.border_color==Color("#8f5367"),"terminal panel consumes defeat border")
+	check(terminal_panel!=null and terminal_panel.get_border_width(SIDE_LEFT)==0 \
+		and terminal_panel.get_border_width(SIDE_TOP)==0 \
+		and terminal_panel.get_border_width(SIDE_RIGHT)==0 \
+		and terminal_panel.get_border_width(SIDE_BOTTOM)==0,
+		"terminal panel keeps its StyleBox visually borderless")
+	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#e55d46") \
+		and sandbox.minimap_frame.danger_edge \
+		and str(sandbox.minimap_frame.get_meta("state_tone",""))=="DEFEAT" \
+		and str(sandbox.minimap_frame.frame_spec().primitive)=="GLYPH_TEXT",
+		"terminal defeat consumes vermilion through the glyph-backed HUD frame")
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
 	check("CHARACTER_ATLAS" not in grid_source,
 		"product party grid has no stale character texture/atlas path")
