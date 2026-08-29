@@ -7,6 +7,7 @@ const MinimapScript=preload("res://playtest/party_minimap.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
 const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
+const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const ASCII_3D_LAB_SCENE=preload("res://playtest/ascii_3d_lab.tscn")
@@ -65,6 +66,8 @@ var tile_popover_label:Label
 var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
+var member_detail_portrait
+var member_detail_subtitle:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
 var member_status_window:VBoxContainer
@@ -151,15 +154,19 @@ func _build_ui()->void:
 	if grid!=null:return
 	var ui_theme:=Theme.new(); ui_theme.default_font=KoreanFont; ui_theme.default_font_size=FONT_BODY; theme=ui_theme
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg:=ColorRect.new(); bg.color=Color("#09111b"); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
+	var bg:=ColorRect.new(); bg.color=Color("#071018"); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
+	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#08131ad9"),4))
 	phase_panel.custom_minimum_size.y=92;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
+	var minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
+	minimap_frame.configure("MAP",AsciiFrameScript.CYAN,Color("#050c12e6"),true)
+	minimap_frame.custom_minimum_size=Vector2(86,82);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
-	minimap.custom_minimum_size=Vector2(82,82);phase_row.add_child(minimap)
+	minimap.custom_minimum_size=Vector2(76,72);minimap_frame.add_child(minimap)
 	var situation_stack:=VBoxContainer.new();situation_stack.name="SituationStack"
 	situation_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	situation_stack.add_theme_constant_override("separation",1);phase_row.add_child(situation_stack)
@@ -175,9 +182,9 @@ func _build_ui()->void:
 	reward_badge.add_theme_font_size_override("font_size",FONT_AUX)
 	reward_badge.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	reward_badge.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	var reward_style:=StyleBoxFlat.new();reward_style.bg_color=Color("#2b402d")
-	reward_style.border_color=Color("#75d7a0");reward_style.set_border_width_all(2)
-	reward_style.set_corner_radius_all(6);reward_badge.add_theme_stylebox_override("normal",reward_style)
+	var reward_style:=AsciiFrameScript.borderless_surface(Color("#0a241aa8"),4)
+	reward_badge.add_theme_stylebox_override("normal",reward_style)
+	reward_badge.add_theme_color_override("font_color",AsciiFrameScript.JADE)
 	situation_row.add_child(reward_badge)
 	recent_event_label=Label.new();recent_event_label.name="RecentWorldEvent"
 	recent_event_label.add_theme_font_size_override("font_size",FONT_AUX)
@@ -189,16 +196,19 @@ func _build_ui()->void:
 	top_hud_actions.custom_minimum_size.x=168;top_hud_actions.alignment=BoxContainer.ALIGNMENT_CENTER
 	top_hud_actions.add_theme_constant_override("separation",4)
 	phase_row.add_child(top_hud_actions)
-	record_button=Button.new();record_button.name="NarrativeLogToggle";record_button.text="기록"
+	record_button=Button.new();record_button.name="NarrativeLogToggle";record_button.text="≡\n기록"
 	record_button.custom_minimum_size=Vector2(44,44);record_button.toggle_mode=true
 	record_button.tooltip_text="하단 사건 기록 표시/숨기기"
 	record_button.pressed.connect(_toggle_narrative_log);top_hud_actions.add_child(record_button)
-	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="인물"
+	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN)
+	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="@\n인물"
 	hero_detail_button.custom_minimum_size=Vector2(44,44);hero_detail_button.tooltip_text="주인공 상세 정보"
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
-	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="3D 실험"
+	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
+	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="◇\n3D"
 	ascii_3d_lab_button.custom_minimum_size=Vector2(72,44);ascii_3d_lab_button.tooltip_text="저장과 무관한 3D 시각 실험"
 	ascii_3d_lab_button.pressed.connect(_open_ascii_3d_lab);top_hud_actions.add_child(ascii_3d_lab_button)
+	AsciiFrameScript.apply_rail_button(ascii_3d_lab_button,AsciiFrameScript.BRASS)
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
@@ -258,18 +268,31 @@ func _build_member_detail_modal()->void:
 	scrim.mouse_filter=Control.MOUSE_FILTER_STOP;scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	scrim.gui_input.connect(_on_member_detail_backdrop_input);member_detail_modal.add_child(scrim)
 	member_detail_panel=PanelContainer.new();member_detail_panel.name="MemberDetailPanel";member_detail_panel.mouse_filter=Control.MOUSE_FILTER_STOP
-	var panel_style:=StyleBoxFlat.new();panel_style.bg_color=Color("#142434");panel_style.border_color=Color("#75c8ff")
-	panel_style.set_border_width_all(2);panel_style.set_corner_radius_all(9)
-	panel_style.content_margin_left=12;panel_style.content_margin_right=12;panel_style.content_margin_top=12;panel_style.content_margin_bottom=12
+	var panel_style:=AsciiFrameScript.borderless_surface(Color("#07131bf7"),12)
 	member_detail_panel.add_theme_stylebox_override("panel",panel_style);member_detail_modal.add_child(member_detail_panel)
+	var folio_frame=AsciiFrameScript.new();folio_frame.name="MemberDetailAsciiFrame"
+	folio_frame.configure("CHARACTER FOLIO",AsciiFrameScript.BRASS,Color("#00000000"),true)
+	folio_frame.set_meta("major_glyph_frame",true);member_detail_panel.add_child(folio_frame)
 	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",8);member_detail_panel.add_child(stack)
-	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
+	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=76
+	header.add_theme_constant_override("separation",9);stack.add_child(header)
+	member_detail_portrait=PortraitScript.new();member_detail_portrait.name="MemberDetailPortrait"
+	member_detail_portrait.custom_minimum_size=Vector2(66,66);member_detail_portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	header.add_child(member_detail_portrait)
+	var title_stack:=VBoxContainer.new();title_stack.name="MemberDetailIdentity"
+	title_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title_stack.add_theme_constant_override("separation",0);header.add_child(title_stack)
+	var folio_kicker:=Label.new();folio_kicker.name="MemberDetailKicker";folio_kicker.text="◆ 인물 기록"
+	AsciiFrameScript.label_tone(folio_kicker,AsciiFrameScript.BRASS,14);title_stack.add_child(folio_kicker)
 	member_detail_title=Label.new();member_detail_title.name="MemberDetailTitle";member_detail_title.add_theme_font_size_override("font_size",FONT_KEY)
-	member_detail_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;member_detail_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(member_detail_title)
+	member_detail_title.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	member_detail_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;member_detail_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;title_stack.add_child(member_detail_title)
+	member_detail_subtitle=Label.new();member_detail_subtitle.name="MemberDetailSubtitle"
+	AsciiFrameScript.label_tone(member_detail_subtitle,Color("#8ca4ae"),FONT_AUX);title_stack.add_child(member_detail_subtitle)
 	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="닫기"
 	member_detail_close.custom_minimum_size=Vector2(64,TOUCH_TARGET);member_detail_close.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_close.gui_input.connect(_on_member_detail_close_input.bind(member_detail_close))
 	member_detail_close.pressed.connect(_close_member_detail);header.add_child(member_detail_close)
+	AsciiFrameScript.apply_rail_button(member_detail_close,AsciiFrameScript.CYAN)
 	member_detail_tab_row=HBoxContainer.new();member_detail_tab_row.name="MemberDetailTabs"
 	member_detail_tab_row.custom_minimum_size.y=TOUCH_TARGET;member_detail_tab_row.add_theme_constant_override("separation",6)
 	stack.add_child(member_detail_tab_row)
@@ -277,12 +300,12 @@ func _build_member_detail_modal()->void:
 	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_status_tab.tooltip_text="현재 상태와 관계 정보";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
-	member_detail_tab_row.add_child(member_detail_status_tab)
+	member_detail_tab_row.add_child(member_detail_status_tab);AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,true)
 	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="스킬"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="레벨, 기술 효과와 훈련 집중";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
-	member_detail_tab_row.add_child(member_detail_skill_tab)
+	member_detail_tab_row.add_child(member_detail_skill_tab);AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(member_detail_scroll)
 	var detail_content:=VBoxContainer.new();detail_content.name="MemberDetailContent"
@@ -304,17 +327,19 @@ func _build_member_detail_modal()->void:
 		focus_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		focus_button.pressed.connect(_on_training_focus.bind(str(skill.id)))
 		member_detail_focus_buttons.add_child(focus_button)
+		AsciiFrameScript.apply_rail_button(focus_button,AsciiFrameScript.BRASS)
 	stack.add_child(member_detail_focus_buttons)
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="추방";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_dismiss.pressed.connect(_on_member_detail_dismiss);member_detail_dismiss.visible=false
-	stack.add_child(member_detail_dismiss)
+	stack.add_child(member_detail_dismiss);AsciiFrameScript.apply_rail_button(member_detail_dismiss,AsciiFrameScript.DANGER,false,true)
 	member_detail_candidate_action=Button.new();member_detail_candidate_action.name="MemberDetailCandidateAction"
 	member_detail_candidate_action.custom_minimum_size=Vector2(160,TOUCH_TARGET)
 	member_detail_candidate_action.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_candidate_action.pressed.connect(_on_member_detail_candidate_action)
 	member_detail_candidate_action.visible=false;stack.add_child(member_detail_candidate_action)
+	AsciiFrameScript.apply_rail_button(member_detail_candidate_action,AsciiFrameScript.JADE)
 
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
@@ -322,7 +347,7 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	parent.add_child(member_progression_window)
 	member_progression_xp_text=Label.new();member_progression_xp_text.name="ProgressionXPText"
 	member_progression_xp_text.add_theme_font_size_override("font_size",FONT_KEY);member_progression_window.add_child(member_progression_xp_text)
-	member_progression_xp=_bar("ProgressionXPBar",0,100,Color("#ffd467"));member_progression_xp.custom_minimum_size.y=14
+	member_progression_xp=_bar("ProgressionXPBar",0,100,AsciiFrameScript.BRASS);member_progression_xp.custom_minimum_size.y=8
 	member_progression_window.add_child(member_progression_xp)
 	member_progression_stats=Label.new();member_progression_stats.name="DerivedCombatStats"
 	member_progression_stats.add_theme_font_size_override("font_size",FONT_BODY);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
@@ -333,15 +358,21 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_skill_help.modulate=Color("#c6d8e5");member_progression_window.add_child(member_skill_help)
 	for skill_id in ["MELEE","GUARD","EXPLORATION"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
-		var style:=StyleBoxFlat.new();style.bg_color=Color("#1a3042");style.border_color=Color("#45647a")
-		style.set_border_width_all(1);style.set_corner_radius_all(7);style.set_content_margin_all(7)
-		panel.add_theme_stylebox_override("panel",style);member_progression_window.add_child(panel)
+		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#08151c99"),8))
+		member_progression_window.add_child(panel)
+		var row_frame=AsciiFrameScript.new();row_frame.name="SkillAsciiFrame"
+		row_frame.configure("TRAINING",AsciiFrameScript.MUTED,Color("#00000000"),true)
+		row_frame.set_meta("major_glyph_frame",true);panel.add_child(row_frame)
 		var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",3);panel.add_child(stack)
-		var title:=Label.new();title.name="SkillTitle";title.add_theme_font_size_override("font_size",FONT_BODY);stack.add_child(title)
+		var skill_header:=HBoxContainer.new();skill_header.name="SkillHeader";skill_header.add_theme_constant_override("separation",8);stack.add_child(skill_header)
+		var rank:=Label.new();rank.name="SkillRank";rank.custom_minimum_size.x=36
+		AsciiFrameScript.label_tone(rank,AsciiFrameScript.BRASS,FONT_KEY);skill_header.add_child(rank)
+		var title:=Label.new();title.name="SkillTitle";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		AsciiFrameScript.label_tone(title,AsciiFrameScript.INK,FONT_BODY);skill_header.add_child(title)
 		var progress:=_bar("TrainingProgress",0,50,Color("#75c8ff"));progress.custom_minimum_size.y=11;stack.add_child(progress)
 		var effect:=Label.new();effect.name="CurrentEffect";effect.add_theme_font_size_override("font_size",FONT_AUX);effect.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(effect)
 		var future:=Label.new();future.name="FutureMilestone";future.add_theme_font_size_override("font_size",14);future.modulate=Color("#9cb0bf");future.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(future)
-		member_progression_skill_rows[skill_id]={"panel":panel,"title":title,"progress":progress,"effect":effect,"future":future}
+		member_progression_skill_rows[skill_id]={"panel":panel,"rank":rank,"title":title,"progress":progress,"effect":effect,"future":future}
 
 func _layout_floating_surfaces()->void:
 	if member_detail_panel!=null:
@@ -471,6 +502,7 @@ func _refresh()->void:
 	log_label.text=_combat_log_text(combat_history)
 	log_label.visible=_narrative_log_visible
 	record_button.button_pressed=_narrative_log_visible
+	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN,_narrative_log_visible)
 	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
@@ -714,10 +746,16 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 	button.custom_minimum_size=Vector2(float(spec.get("card_min_width",44)),float(spec.get("party_height",160)))
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
-	button.modulate=Color("#d8f3ff") if member_id==selected_member_id else Color.WHITE
+	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS,false)
+	var dossier_frame=AsciiFrameScript.new();dossier_frame.name="DossierAsciiFrame"
+	dossier_frame.configure("PROTAGONIST" if str(row.get("role",""))=="PROTAGONIST" else "COMPANION",
+		AsciiFrameScript.BRASS if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.CYAN,
+		Color("#07131be8"),true)
+	dossier_frame.set_meta("major_glyph_frame",true);button.add_child(dossier_frame)
+	dossier_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,3)
-	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,2)
+	for margin in ["margin_left","margin_right"]:inset.add_theme_constant_override(margin,10)
+	for margin in ["margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,7)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; button.add_child(inset)
 	if str(spec.get("layout_id","COMPACT"))=="SPOTLIGHT":
 		_add_spotlight_card_content(inset,row,speech,spec)
@@ -730,7 +768,10 @@ func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dic
 		spec:Dictionary)->void:
 	var stack:=HBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",8)
 	stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(stack)
-	var portrait_view=_member_portrait(row,spec);stack.add_child(portrait_view)
+	var portrait_frame=AsciiFrameScript.new();portrait_frame.name="PortraitGlyphFrame"
+	portrait_frame.configure("@",AsciiFrameScript.BRASS,Color("#0b1a22a8"),true)
+	portrait_frame.custom_minimum_size=Vector2(98,96);stack.add_child(portrait_frame)
+	var portrait_view=_member_portrait(row,spec);portrait_frame.add_child(portrait_view)
 	var details:=VBoxContainer.new();details.name="SpotlightDetails"
 	details.size_flags_horizontal=Control.SIZE_EXPAND_FILL;details.add_theme_constant_override("separation",1)
 	details.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(details)
@@ -754,14 +795,20 @@ func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
 	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
 	var identity:=HBoxContainer.new();identity.name="SoloIdentity";identity.add_theme_constant_override("separation",6)
 	identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(identity)
-	var name_label:=_card_label(str(row.get("display_name","주인공")),"MemberName",FONT_BODY)
+	var name_label:=_card_label(str(row.get("display_name","주인공")),"MemberName",FONT_KEY)
+	name_label.add_theme_color_override("font_color",AsciiFrameScript.INK)
 	name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	identity.add_child(name_label)
 	var level_label:=_card_label("Lv.%d"%int(progression.get("level",1)),"LevelProgress",FONT_AUX)
+	level_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS)
 	level_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;identity.add_child(level_label)
-	var hp_label:=_card_label("HP %d/%d"%[int(row.get("health",0)),int(row.get("max_health",0))],"MemberState",FONT_AUX)
+	var hp_current:=int(row.get("health",0));var hp_max:=maxi(1,int(row.get("max_health",1)))
+	var low_hp:=hp_current*4<=hp_max
+	var hp_label:=_card_label("HP  %3d / %3d"%[hp_current,hp_max],"MemberState",FONT_AUX)
+	hp_label.add_theme_color_override("font_color",AsciiFrameScript.DANGER if low_hp else AsciiFrameScript.JADE)
 	hp_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT;parent.add_child(hp_label)
-	var health_bar:=_bar("HealthBar",int(row.get("health",0)),int(row.get("max_health",1)),Color("#62d98b"))
+	var health_bar:=_bar("HealthBar",hp_current,hp_max,AsciiFrameScript.JADE)
+	AsciiFrameScript.apply_progress(health_bar,AsciiFrameScript.JADE,low_hp)
 	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;parent.add_child(health_bar)
 	var tokens:Array[String]=[]
 	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
@@ -774,12 +821,15 @@ func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
 			if tokens.size()>=3:break
 			var status_text:=str(status_id).strip_edges()
 			if not status_text.is_empty():tokens.append(_status_label(status_text))
-	var state_label:=_card_label(" · ".join(tokens),"EmotionState",FONT_AUX)
+	if low_hp:tokens.push_front("! 위태")
+	var state_label:=_card_label("  ".join(tokens.map(func(value):return "[%s]"%str(value))),"EmotionState",FONT_AUX)
+	state_label.add_theme_color_override("font_color",AsciiFrameScript.DANGER if low_hp else Color("#9bb1bb"))
 	state_label.max_lines_visible=1;state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;parent.add_child(state_label)
 	if bool(progression.get("available",false)):
 		var xp_row:=HBoxContainer.new();xp_row.name="CompactXPRow";xp_row.add_theme_constant_override("separation",5)
 		xp_row.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(xp_row)
-		var xp_label:=_card_label("XP %d/%d"%[int(progression.get("xp_current",0)),int(progression.get("xp_required",1))],"XPProgress",14)
+		var xp_label:=_card_label("XP  %3d / %3d"%[int(progression.get("xp_current",0)),int(progression.get("xp_required",1))],"XPProgress",14)
+		xp_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS)
 		xp_label.custom_minimum_size.x=74;xp_row.add_child(xp_label)
 		var xp_bar:=_bar("CompactXPBar",int(progression.get("xp_current",0)),
 			maxi(1,int(progression.get("xp_required",1))),Color("#ffd467"));xp_bar.custom_minimum_size.y=7
@@ -870,9 +920,7 @@ func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 func _bar(node_name:String,value:int,maximum:int,color:Color)->ProgressBar:
 	var bar:=ProgressBar.new(); bar.name=node_name; bar.min_value=0; bar.max_value=maximum; bar.value=value
 	bar.show_percentage=false; bar.custom_minimum_size.y=7; bar.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	var fill:=StyleBoxFlat.new(); fill.bg_color=color; fill.corner_radius_top_left=3; fill.corner_radius_top_right=3; fill.corner_radius_bottom_left=3; fill.corner_radius_bottom_right=3
-	var background:=StyleBoxFlat.new(); background.bg_color=Color("#25313d")
-	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background); return bar
+	AsciiFrameScript.apply_progress(bar,color);return bar
 
 func _card_label(value:String,node_name:String,font_size:int)->Label:
 	var label:=Label.new(); label.name=node_name; label.text=value; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size)); label.mouse_filter=Control.MOUSE_FILTER_IGNORE; return label
@@ -1118,10 +1166,11 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 func _update_member_status_window(detail:Dictionary)->void:
 	_clear_container(member_status_window)
 	var identity_panel:=PanelContainer.new();identity_panel.name="StatusIdentityPanel"
-	var identity_style:=StyleBoxFlat.new();identity_style.bg_color=Color("#10202e")
-	identity_style.border_color=Color("#45647a");identity_style.set_border_width_all(1)
-	identity_style.set_corner_radius_all(7);identity_style.set_content_margin_all(8)
-	identity_panel.add_theme_stylebox_override("panel",identity_style);member_status_window.add_child(identity_panel)
+	identity_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#08151ca8"),8))
+	member_status_window.add_child(identity_panel)
+	var identity_frame=AsciiFrameScript.new();identity_frame.name="StatusIdentityAsciiFrame"
+	identity_frame.configure("VITAL DOSSIER",AsciiFrameScript.BRASS,Color("#00000000"),true)
+	identity_frame.set_meta("major_glyph_frame",true);identity_panel.add_child(identity_frame)
 	var identity:=HBoxContainer.new();identity.name="StatusIdentity";identity.add_theme_constant_override("separation",10)
 	identity_panel.add_child(identity)
 	var portrait=PortraitScript.new();portrait.name="StatusPortrait"
@@ -1145,30 +1194,46 @@ func _update_member_status_window(detail:Dictionary)->void:
 	facts.add_child(hp_label)
 	var health_bar:=_bar("StatusHealthBar",int(detail.get("health",0)),maxi(1,int(detail.get("max_health",1))),Color("#62d98b"))
 	health_bar.custom_minimum_size.y=10;health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;facts.add_child(health_bar)
+	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
+	status_grid.columns=2 if size.x>=540.0 else 1;status_grid.add_theme_constant_override("h_separation",14)
+	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
+	var emotion_cluster:=VBoxContainer.new();emotion_cluster.name="EmotionSealCluster"
+	emotion_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_cluster.add_theme_constant_override("separation",3)
+	status_grid.add_child(emotion_cluster)
+	var emotion_heading:=_card_label("◆ 감정 · 스트레스  ─────","EmotionSection",14)
+	emotion_heading.add_theme_color_override("font_color",AsciiFrameScript.BRASS);emotion_cluster.add_child(emotion_heading)
 	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
-	var emotion_label:=_card_label("%s%s"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
-	member_status_window.add_child(emotion_label)
+	var emotion_label:=_card_label("[%s%s]"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
+	emotion_label.add_theme_color_override("font_color",AsciiFrameScript.INK);emotion_cluster.add_child(emotion_label)
 	var reason:=str(emotion.get("reason","")).strip_edges()
 	if not reason.is_empty() and reason!="이유 정보 없음":
 		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		reason_label.modulate=Color("#c6d8e5");member_status_window.add_child(reason_label)
+		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
 	var stress:=int(detail.get("stress",0))
-	var stress_label:=_card_label("스트레스 %d / 1000"%stress,"StatusStress",FONT_AUX);member_status_window.add_child(stress_label)
+	var stress_label:=_card_label("STRESS  %4d / 1000"%stress,"StatusStress",FONT_AUX);emotion_cluster.add_child(stress_label)
 	if stress>0:
-		var stress_bar:=_bar("StatusStressBar",stress,1000,Color("#ffae5f"));stress_bar.custom_minimum_size.y=8
-		member_status_window.add_child(stress_bar)
+		var stress_bar:=_bar("StatusStressBar",stress,1000,Color("#d58a55"));stress_bar.custom_minimum_size.y=7
+		emotion_cluster.add_child(stress_bar)
+	var combat_cluster:=VBoxContainer.new();combat_cluster.name="CombatSealCluster"
+	combat_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;combat_cluster.add_theme_constant_override("separation",3)
+	status_grid.add_child(combat_cluster)
+	var combat_heading:=_card_label("◆ 전투 · 상태  ─────────","CombatSection",14)
+	combat_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);combat_cluster.add_child(combat_heading)
 	var status_ids:Variant=detail.get("status_ids",[])
 	if status_ids is Array and not status_ids.is_empty():
 		var status_labels:Array[String]=[]
 		for status_id in status_ids:status_labels.append(_status_label(str(status_id)))
-		var statuses:=_card_label("상태 · "+", ".join(status_labels),"StatusEffects",FONT_AUX)
-		statuses.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;member_status_window.add_child(statuses)
+		var statuses:=_card_label(" ".join(status_labels.map(func(value):return "[%s]"%str(value))),"StatusEffects",FONT_AUX)
+		statuses.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(statuses)
+	else:
+		var clear_status:=_card_label("[이상 없음]","StatusEffects",FONT_AUX)
+		clear_status.add_theme_color_override("font_color",AsciiFrameScript.JADE);combat_cluster.add_child(clear_status)
 	var stats:Dictionary=progression.get("combat_stats",{}) if progression.get("combat_stats",{}) is Dictionary else {}
 	if not stats.is_empty():
-		var combat:=_card_label("전투 요약 · 공격 %d · 방어 %d · 방어 태세 %d%%"%[
+		var combat:=_card_label("공격 %d  ·  방어 %d\n방어 태세 %d%%"%[
 			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
 			int(int(stats.get("guard_reduction_milli",250))/10)],"StatusCombatSummary",FONT_AUX)
-		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;member_status_window.add_child(combat)
+		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(combat)
 
 func _life_state_label(life_state:String)->String:
 	match life_state:
@@ -1184,7 +1249,14 @@ func _open_member_detail(member_id:int)->void:
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
-	member_detail_title.text="%s 상세"%str(detail.get("display_name","파티원"))
+	member_detail_title.text=str(detail.get("display_name","파티원"))
+	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
+	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default"))),_role(str(detail.get("role","")))]
+	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV %02d"%int(detail_progression.get("level",1)))
+	member_detail_subtitle.text=" · ".join(subtitle_parts)
+	var header_actor:Dictionary=detail.duplicate(true)
+	header_actor["is_protagonist"]=str(detail.get("role",""))=="PROTAGONIST";header_actor["faction_id"]="party"
+	member_detail_portrait.set_actor(header_actor)
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
@@ -1228,8 +1300,10 @@ func _apply_member_detail_tab()->void:
 	member_detail_tab_row.visible=member_detail_has_skills
 	member_detail_status_tab.set_pressed_no_signal(not skill_selected)
 	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
-	member_detail_status_tab.text=("● " if not skill_selected else "")+"상태"
-	member_detail_skill_tab.text=("● " if skill_selected else "")+"스킬"
+	member_detail_status_tab.text="━ 상태 ━" if not skill_selected else "  상태  "
+	member_detail_skill_tab.text="━ 스킬 ━" if skill_selected else "  스킬  "
+	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,not skill_selected)
+	AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS,skill_selected)
 	member_status_window.visible=not skill_selected
 	member_detail_body.visible=not skill_selected
 	member_progression_window.visible=skill_selected
@@ -1266,8 +1340,8 @@ func _update_progression_window(progression:Variant)->void:
 		var skill:Dictionary=skill_value;var skill_id:=str(skill.get("skill_id",""))
 		if not member_progression_skill_rows.has(skill_id):continue
 		var row:Dictionary=member_progression_skill_rows[skill_id]
-		(row.title as Label).text="%s  R%d   ·   집중 %d%%"%[str(skill.get("label","기술")),
-			int(skill.get("rank",0)),int(skill.get("focus",0))]
+		(row.rank as Label).text="R%02d"%int(skill.get("rank",0))
+		(row.title as Label).text="%s   ·   집중 %d%%"%[str(skill.get("label","기술")),int(skill.get("focus",0))]
 		var progress:=row.progress as ProgressBar
 		progress.max_value=maxi(1,int(skill.get("training_required",1)));progress.value=int(skill.get("training_current",0))
 		progress.tooltip_text="훈련 %d/%d"%[int(skill.get("training_current",0)),int(skill.get("training_required",1))]
@@ -1282,7 +1356,8 @@ func _update_progression_window(progression:Variant)->void:
 		if child is Button:
 			var focus_id:=str(child.get_meta("skill_id",""));var selected:=focus_id==dominant_focus_id
 			child.set_pressed_no_signal(selected)
-			child.text=("✓ " if selected else "")+{"MELEE":"근접","GUARD":"방어","EXPLORATION":"탐험"}.get(focus_id,focus_id)
+			child.text=("[◆ %s]" if selected else "  ◇ %s  ")%{"MELEE":"근접","GUARD":"방어","EXPLORATION":"탐험"}.get(focus_id,focus_id)
+			AsciiFrameScript.apply_rail_button(child,AsciiFrameScript.BRASS,selected)
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_member_detail()
@@ -2000,7 +2075,21 @@ func _add_notice(value:String,node_name:String="ActionStatus",font_size:int=FONT
 	label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART; deck.add_child(label); return label
 func _add_button(parent:Control,value:String,node_name:String,callback:Callable)->Button:
 	var button:=Button.new(); button.name=node_name; button.text=value; button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET); button.add_theme_font_size_override("font_size",FONT_BODY)
-	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.pressed.connect(callback); parent.add_child(button); return button
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.pressed.connect(callback); parent.add_child(button)
+	var danger:=node_name in ["MemberDetailDismiss","RestartExpedition"]
+	var accent:=AsciiFrameScript.DANGER if danger else (AsciiFrameScript.BRASS if node_name in ["TurnConfirm","AutoExecute","DeployConfirm"] else AsciiFrameScript.CYAN)
+	AsciiFrameScript.apply_rail_button(button,accent,false,danger)
+	var glyph:=Label.new();glyph.name="ActionGlyph";glyph.text=_action_glyph(node_name)
+	glyph.mouse_filter=Control.MOUSE_FILTER_IGNORE;glyph.anchor_top=0.5;glyph.anchor_bottom=0.5
+	glyph.offset_left=5;glyph.offset_right=21;glyph.offset_top=-10;glyph.offset_bottom=10
+	glyph.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	AsciiFrameScript.label_tone(glyph,accent,14);button.add_child(glyph);return button
+func _action_glyph(node_name:String)->String:
+	if node_name in ["TurnConfirm","AutoExecute","DeployConfirm","SoloCombatStart"]:return ">"
+	if node_name.begins_with("Stabilize") or node_name.begins_with("Recruit"):return "+"
+	if node_name in ["MemberDetailDismiss","RestartExpedition"]:return "!"
+	if node_name in ["OverrideClear"]:return "~"
+	return "◆"
 func _is_solo_product_session()->bool:
 	return session!=null and session.has_method("is_solo_combat") \
 		and bool(session.call("is_solo_combat"))
@@ -2036,7 +2125,6 @@ func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var banner:Dictionary=presentation.get("banner",{})
-	var grid_style:Dictionary=presentation.get("grid_style",{})
 	var tone:=str(banner.get("tone","CALM"))
 	var situation:="조용함"
 	if tone=="DEFEAT":situation="위험"
@@ -2044,30 +2132,26 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	elif str(status.get("safe_phase",""))=="ENGAGED":situation="전투"
 	elif str(status.get("safe_phase",""))=="CONTACT" \
 			or not status.get("visible_enemy_ids",[]).is_empty():situation="기척"
-	var style:=StyleBoxFlat.new(); style.corner_radius_top_left=6; style.corner_radius_top_right=6; style.corner_radius_bottom_left=6; style.corner_radius_bottom_right=6
+	var surface_color:=Color("#08131ad9")
 	if situation=="전투":
-		style.bg_color=Color("#4a2028"); style.border_color=Color(str(grid_style.get("border_hex","#ff7a80")))
-		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
+		surface_color=Color("#1b1114df")
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-		phase_label.add_theme_color_override("font_color",Color("#fff0e8")); grid.set_combat_emphasis(true)
+		phase_label.add_theme_color_override("font_color",AsciiFrameScript.DANGER); grid.set_combat_emphasis(true)
 	elif situation=="승리":
-		style.bg_color=Color("#173c32"); style.border_color=Color(str(grid_style.get("border_hex","#62d98b")))
-		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
+		surface_color=Color("#091b17df")
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-		phase_label.add_theme_color_override("font_color",Color("#dfffee")); grid.set_combat_emphasis(false)
+		phase_label.add_theme_color_override("font_color",AsciiFrameScript.JADE); grid.set_combat_emphasis(false)
 	elif situation=="위험":
-		style.bg_color=Color("#32232b");style.border_color=Color(str(grid_style.get("border_hex","#8f5367")))
-		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,2)
+		surface_color=Color("#171116df")
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-		phase_label.add_theme_color_override("font_color",Color("#f5dce8"));grid.set_combat_emphasis(true)
+		phase_label.add_theme_color_override("font_color",AsciiFrameScript.DANGER);grid.set_combat_emphasis(true)
 	else:
-		style.bg_color=Color("#3b3018") if situation=="기척" else Color("#142434")
-		style.border_color=Color(str(grid_style.get("border_hex","#334c63")))
-		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:style.set_border_width(side,1)
+		surface_color=Color("#17150dd9") if situation=="기척" else Color("#08131ad9")
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
-		phase_label.add_theme_color_override("font_color",Color.WHITE); grid.set_combat_emphasis(false)
+		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
-	phase_panel.add_theme_stylebox_override("panel",style)
+	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(surface_color,4))
+	phase_panel.set_meta("visible_stylebox_border",false)
 
 func _camera_focus_points(observation:Dictionary,intents:Array)->Array[Vector2i]:
 	var points:Array[Vector2i]=[]

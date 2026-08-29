@@ -183,8 +183,9 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
 		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
-		and "●" in sandbox.member_detail_status_tab.text,
-		"status/skill tabs are touch-sized with an obvious selected state")
+		and "━" in sandbox.member_detail_status_tab.text \
+		and bool(sandbox.member_detail_status_tab.get_meta("ascii_rail",false)),
+		"status/skill tabs are touch-sized glyph-backed segments")
 	check("집중 버튼" not in sandbox.member_detail_body.text and "레벨은 피해" not in sandbox.member_detail_body.text,
 		"status tab has no duplicate progression copy")
 	sandbox._select_member_detail_tab("SKILL")
@@ -198,8 +199,8 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	check(sandbox.member_detail_focus_buttons.visible,
 		"hero detail exposes focus controls")
 	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
-		and "✓" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
-		"dominant training focus has an obvious selected state")
+		and "◆" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
+		"dominant training focus uses a selected training sigil")
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,
 			"focus control remains mobile readable")

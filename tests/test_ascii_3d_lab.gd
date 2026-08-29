@@ -9,6 +9,11 @@ var pointer_target:=Vector2i.ZERO
 func _resolve_pointer_for_test(_point:Vector2)->Vector2i:
 	return pointer_target
 
+func _count_mesh_instances(node:Node)->int:
+	var count:=1 if node is MeshInstance3D else 0
+	for child in node.get_children():count+=_count_mesh_instances(child)
+	return count
+
 func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var lab=Lab.new();lab.size=viewport_size;lab._ready()
@@ -24,24 +29,38 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			"camera has cardinal-axis yaw and a 45-degree orthographic pitch")
 		check(lab.camera.basis.x.dot(Vector3.RIGHT)>0.999,
 			"screen horizontal remains grid/world +X without isometric yaw")
-		check("45° 경사 탑뷰 · 축 정렬" in str((lab.find_child("LabTitle",true,false) as Label).text),
-			"lab labels the cardinal-axis 45-degree projection")
+		var title_text:=str((lab.find_child("LabTitle",true,false) as Label).text)
+		check("문자 전용 3D" in title_text and "45° 경사 탑뷰 · 축 정렬" in title_text,
+			"lab labels its text-only cardinal-axis 45-degree projection")
 		check_eq(lab.tile_nodes.size(),225,"15x15 deterministic test room")
 		check(lab.find_child("BackTo2D",true,false).custom_minimum_size.y>=44 \
 			and lab.find_child("LabReset",true,false).custom_minimum_size.y>=44,
 			"%s close/reset remain 44px touch targets"%viewport_size)
-		check(lab.materials.size()<24,"terrain visibility uses a small shared material cache")
-		check_eq(lab.tile_glyph_layers[Vector2i(0,0)].size(),3,
-			"wall extrusion uses one bright top and two restrained front glyph layers")
+		check_eq(_count_mesh_instances(lab.terrain_root),0,
+			"terrain subtree contains no MeshInstance3D, BoxMesh tile, or substrate")
+		check_eq(_count_mesh_instances(lab.world_root),0,
+			"actor grounding and limbs are also glyph-only rather than tile-like meshes")
+		check_eq(lab.tile_glyph_layers[Vector2i(7,7)].size(),1,
+			"floor is exactly one horizontal dot glyph layer")
+		check_eq(lab.tile_glyph_layers[Vector2i(5,4)].size(),3,
+			"an exposed wall uses a bright top and two restrained front text layers")
+		check_eq(lab.tile_glyph_layers[Vector2i(4,4)].size(),1,
+			"a wall front hidden by another wall avoids redundant text layers")
 		check_eq(lab.tile_glyph_layers[Vector2i(2,10)].size(),2,
-			"water uses a shallow overlapping ripple glyph")
+			"water uses a recessed top and darker overlapping ripple glyph")
+		check_eq(lab.tile_glyph_layers[Vector2i(10,4)].size(),2,
+			"metal uses a raised top plus darker vertical edge glyph")
 		check_eq(lab.tile_glyph_layers[Vector2i(3,7)].size(),2,
 			"rubble uses a small offset ASCII depth mark")
-		var floor_tile:MeshInstance3D=lab.tile_nodes[Vector2i(7,7)]
-		var metal_tile:MeshInstance3D=lab.tile_nodes[Vector2i(10,4)]
-		var water_tile:MeshInstance3D=lab.tile_nodes[Vector2i(2,10)]
-		check(metal_tile.position.y>floor_tile.position.y and water_tile.position.y<floor_tile.position.y,
-			"metal rises and water recesses relative to the nearly continuous floor substrate")
+		var floor_glyph:Label3D=lab.tile_glyphs[Vector2i(7,7)]
+		var metal_glyph:Label3D=lab.tile_glyphs[Vector2i(10,4)]
+		var water_glyph:Label3D=lab.tile_glyphs[Vector2i(2,10)]
+		check(metal_glyph.position.y>floor_glyph.position.y and water_glyph.position.y<floor_glyph.position.y,
+			"text positions alone raise metal and recess water relative to floor")
+		var terrain_glyph_count:=0
+		for layers in lab.tile_glyph_layers.values():terrain_glyph_count+=layers.size()
+		check_eq(terrain_glyph_count,317,
+			"exposed-face culling keeps text-only terrain at exactly 317 glyph nodes")
 		var visible:=0;var memory:=0;var unseen:=0
 		for cell in lab.tile_nodes:
 			var glyph:Label3D=lab.tile_glyphs[cell]
@@ -49,10 +68,16 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			elif lab.seen_cells.has(cell) and lab._distance(lab.hero_cell,cell)>lab.VISIBLE_RADIUS:memory+=1
 			else:visible+=1
 		check(visible>0 and unseen>0,"%s exposes distinct visible and unseen regions"%viewport_size)
+		var memory_cell:=Vector2i(12,8)
+		var memory_base:Color=lab.tile_glyphs[memory_cell].get_meta("base_color")
 		lab.hero_cell+=Vector2i.LEFT*5;lab._reveal_visible();lab._update_visuals()
 		for cell in lab.seen_cells:
 			if lab._distance(lab.hero_cell,cell)>lab.VISIBLE_RADIUS:memory+=1
-		check(memory>0,"movement leaves a dim memory region")
+		var memory_color:Color=lab.tile_glyphs[memory_cell].modulate
+		check(memory>0 and lab.tile_glyphs[memory_cell].visible \
+			and memory_color.v<memory_base.v and memory_color.s<memory_base.s,
+			"movement leaves the same glyph visible with dim, desaturated memory color")
+		check(not lab.tile_glyphs[Vector2i(14,0)].visible,"unseen text terrain is fully hidden")
 		lab.free()
 	return finish()
 

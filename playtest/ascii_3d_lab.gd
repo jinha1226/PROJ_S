@@ -17,11 +17,11 @@ var viewport_container:SubViewportContainer
 var input_catcher:Control
 var lab_viewport:SubViewport
 var world_root:Node3D
+var terrain_root:Node3D
 var camera:Camera3D
 var tile_nodes:Dictionary={}
 var tile_glyphs:Dictionary={}
 var tile_glyph_layers:Dictionary={}
-var materials:Dictionary={}
 var hero_root:Node3D
 var enemy_root:Node3D
 var enemy_glyph:Label3D
@@ -71,11 +71,9 @@ func _build_viewport()->void:
 	env.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;env.ambient_light_color=Color("#7890a2")
 	env.ambient_light_energy=0.46;env.tonemap_mode=Environment.TONE_MAPPER_FILMIC
 	environment.environment=env;world_root.add_child(environment)
-	var light:=DirectionalLight3D.new();light.name="SoftKeyLight";light.light_color=Color("#d5e8ff")
-	light.light_energy=1.25;light.rotation_degrees=Vector3(-58,-32,0);light.shadow_enabled=true
-	world_root.add_child(light)
 	camera=Camera3D.new();camera.name="FixedOrthographicCamera";camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	camera.size=CAMERA_ORTHO_SIZE;camera.position=Vector3(0,CAMERA_HEIGHT,CAMERA_BACK_OFFSET);world_root.add_child(camera)
+	terrain_root=Node3D.new();terrain_root.name="TextOnlyTerrain";world_root.add_child(terrain_root)
 	effect_root=Node3D.new();effect_root.name="TransientGlyphEffects";world_root.add_child(effect_root)
 
 func _build_overlay()->void:
@@ -92,7 +90,7 @@ func _build_overlay()->void:
 	var header:=HBoxContainer.new();header.name="LabHeader";header.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	header.offset_left=10;header.offset_right=-10;header.offset_top=8;header.offset_bottom=80;header.add_theme_constant_override("separation",8)
 	add_child(header)
-	var title:=Label.new();title.name="LabTitle";title.text="3D 시각 실험\n45° 경사 탑뷰 · 축 정렬";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var title:=Label.new();title.name="LabTitle";title.text="문자 전용 3D\n45° 경사 탑뷰 · 축 정렬";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_override("font",FONT);title.add_theme_font_size_override("font_size",18);header.add_child(title)
 	var reset:=Button.new();reset.name="LabReset";reset.text="초기화";reset.custom_minimum_size=Vector2(68,48)
 	reset.add_theme_font_override("font",FONT);reset.pressed.connect(_reset_demo);header.add_child(reset)
@@ -107,55 +105,45 @@ func _build_overlay()->void:
 	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;footer.add_child(status_label)
 
 func _build_room()->void:
-	var terrain_meshes:Dictionary={}
-	for row in [{"id":"floor","size":Vector3(0.98,0.025,0.98)},
-			{"id":"metal","size":Vector3(0.96,0.10,0.96)},
-			{"id":"water","size":Vector3(0.98,0.025,0.98)},
-			{"id":"rubble","size":Vector3(0.86,0.07,0.86)},
-			{"id":"wall","size":Vector3(0.94,0.68,0.94)}]:
-		var mesh:=BoxMesh.new();mesh.size=row.size;terrain_meshes[str(row.id)]=mesh
-	var substrate_mesh:=BoxMesh.new();substrate_mesh.size=Vector3(15.7,0.12,15.7)
-	var substrate:=MeshInstance3D.new();substrate.name="DarkSubstrate";substrate.mesh=substrate_mesh
-	substrate.position=Vector3(0,-0.15,0);substrate.material_override=_material("substrate","VISIBLE")
-	world_root.add_child(substrate)
 	for y in range(GRID_SIZE):
 		for x in range(GRID_SIZE):
 			var cell:=Vector2i(x,y);var terrain:=_terrain_at(cell)
-			var tile:=MeshInstance3D.new();tile.name="Tile_%02d_%02d"%[x,y]
-			tile.mesh=terrain_meshes[terrain]
-			var height_offset:float={"floor":-0.0125,"metal":0.05,"water":-0.0625,
-				"rubble":0.035+float((x*17+y*31)%3)*0.012,"wall":0.34}[terrain]
 			var rubble_offset:=Vector3(float((x*7+y*3)%3-1)*0.045,0,
 				float((x*5+y*11)%3-1)*0.04) if terrain=="rubble" else Vector3.ZERO
-			tile.position=_cell_world(cell)+Vector3(0,float(height_offset),0)+rubble_offset
-			world_root.add_child(tile);tile_nodes[cell]=tile
 			var layers:=_build_terrain_glyph_layers(cell,terrain,rubble_offset)
-			tile_glyph_layers[cell]=layers;tile_glyphs[cell]=layers[0]
+			tile_glyph_layers[cell]=layers;tile_glyphs[cell]=layers[0];tile_nodes[cell]=layers[0]
 	_build_actors()
 
 func _build_terrain_glyph_layers(cell:Vector2i,terrain:String,offset:Vector3)->Array:
 	var base:=_cell_world(cell)+offset;var layers:Array=[]
-	var top_height:float={"floor":0.018,"metal":0.118,"water":-0.038,
-		"rubble":0.085+float((cell.x*17+cell.y*31)%3)*0.012,"wall":0.70}[terrain]
+	var top_height:float={"floor":0.01,"metal":0.12,"water":-0.065,
+		"rubble":0.045+float((cell.x*17+cell.y*31)%3)*0.018,"wall":0.72}[terrain]
 	var top_colors:={"floor":Color("#a8b3bc"),"metal":Color("#77d6e5"),
 		"water":Color("#56c9f2"),"rubble":Color("#d0a67a"),"wall":Color("#d5e5ef")}
 	var top_color:Color=top_colors[terrain]
 	layers.append(_terrain_label("TopGlyph_%02d_%02d"%[cell.x,cell.y],_terrain_glyph(terrain),
-		base+Vector3(0,top_height,0),44,top_color,true,terrain=="wall",0.0))
+		base+Vector3(0,top_height,0),44,top_color,true,false,0.0))
 	if terrain=="water":
 		layers.append(_terrain_label("RippleGlyph_%02d_%02d"%[cell.x,cell.y],"~",
-			base+Vector3(0.12,-0.052,0.10),34,Color("#287da2"),true,false,0.12))
+			base+Vector3(0.12,-0.085,0.10),34,Color("#287da2"),true,false,0.12))
+	elif terrain=="metal":
+		layers.append(_terrain_label("MetalEdge_%02d_%02d"%[cell.x,cell.y],"=",
+			base+Vector3(0,0.035,0.27),30,Color("#345f6e"),false,false,0.18))
 	elif terrain=="rubble":
 		layers.append(_terrain_label("RubbleShadow_%02d_%02d"%[cell.x,cell.y],".",
-			base+Vector3(-0.12,float(top_height)-0.012,0.10),30,Color("#765e4b"),true,false,0.18))
-	elif terrain=="wall":
-		# Camera is always on +Z. Two restrained vertical layers make the
-		# extrusion itself ASCII while the box only supplies occlusion/shadow.
+			base+Vector3(-0.12,top_height-0.016,0.10),30,Color("#765e4b"),true,false,0.18))
+	elif terrain=="wall" and _wall_front_exposed(cell):
+		# Camera is fixed on +Z. Only a wall whose +Z face is exposed receives
+		# vertical text, so rows join cleanly without three layers on every cell.
 		layers.append(_terrain_label("WallFace_%02d_%02d"%[cell.x,cell.y],"#",
-			base+Vector3(0,0.43,0.475),38,Color("#718493"),false,true,0.20))
-		layers.append(_terrain_label("WallFoot_%02d_%02d"%[cell.x,cell.y],":",
-			base+Vector3(0,0.14,0.478),28,Color("#42515e"),false,true,0.34))
+			base+Vector3(0,0.43,0.31),38,Color("#718493"),false,false,0.20))
+		layers.append(_terrain_label("WallFoot_%02d_%02d"%[cell.x,cell.y],"|",
+			base+Vector3(0,0.15,0.315),28,Color("#42515e"),false,false,0.34))
 	return layers
+
+func _wall_front_exposed(cell:Vector2i)->bool:
+	var front:=cell+Vector2i(0,1)
+	return front.y>=GRID_SIZE or _terrain_at(front)!="wall"
 
 func _terrain_label(node_name:String,text:String,position:Vector3,font_size:int,
 		color:Color,flat:bool,no_depth:bool,memory_bias:float)->Label3D:
@@ -164,44 +152,35 @@ func _terrain_label(node_name:String,text:String,position:Vector3,font_size:int,
 	glyph.rotation_degrees.x=-90.0 if flat else 0.0
 	glyph.no_depth_test=no_depth;glyph.modulate=color
 	glyph.set_meta("base_color",color);glyph.set_meta("memory_bias",memory_bias)
-	world_root.add_child(glyph);return glyph
+	terrain_root.add_child(glyph);return glyph
 
 func _build_actors()->void:
 	hero_root=Node3D.new();hero_root.name="GoldProtagonist";world_root.add_child(hero_root)
-	var hero_base:=CylinderMesh.new();hero_base.top_radius=0.24;hero_base.bottom_radius=0.3;hero_base.height=0.12
-	var base:=MeshInstance3D.new();base.name="HeroGrounding";base.mesh=hero_base;base.position.y=0.08
-	base.material_override=_material("hero","VISIBLE");hero_root.add_child(base)
-	for limb in [{"p":Vector3(-0.16,0.42,0),"s":Vector3(0.08,0.55,0.08),"r":-13.0},
-			{"p":Vector3(0.16,0.42,0),"s":Vector3(0.08,0.55,0.08),"r":13.0}]:
-		var mesh:=BoxMesh.new();mesh.size=limb.s
-		var node:=MeshInstance3D.new();node.mesh=mesh;node.position=limb.p;node.rotation_degrees.z=limb.r
-		node.material_override=_material("hero","VISIBLE");hero_root.add_child(node)
+	var hero_shadow:=_actor_label("HeroGlyphShadow","_",52,Color("#705c22"),Vector3(0,0.018,0.10),false)
+	hero_shadow.rotation_degrees.x=-90.0;hero_root.add_child(hero_shadow)
+	for limb in [{"name":"HeroLeftLimb","text":"/","p":Vector3(-0.15,0.38,0),"r":-10.0},
+			{"name":"HeroRightLimb","text":"\\","p":Vector3(0.15,0.38,0),"r":10.0}]:
+		var limb_glyph:=_actor_label(str(limb.name),str(limb.text),30,Color("#c99b24"),limb.p,true)
+		limb_glyph.rotation_degrees.z=float(limb.r);hero_root.add_child(limb_glyph)
 	var hero_glyph:=Label3D.new();hero_glyph.name="HeroGlyph";hero_glyph.text="@";hero_glyph.font=FONT
-	hero_glyph.font_size=96;hero_glyph.outline_size=8;hero_glyph.modulate=Color("#ffd34e")
-	hero_glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED;hero_glyph.no_depth_test=true;hero_glyph.position.y=1.05
+	hero_glyph.font_size=96;hero_glyph.outline_size=10;hero_glyph.modulate=Color("#ffd34e")
+	hero_glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED;hero_glyph.no_depth_test=true;hero_glyph.position.y=0.92
 	hero_root.add_child(hero_glyph)
 	enemy_root=Node3D.new();enemy_root.name="RedGoblin";world_root.add_child(enemy_root)
-	var enemy_base:=CylinderMesh.new();enemy_base.top_radius=0.2;enemy_base.bottom_radius=0.28;enemy_base.height=0.1
-	var enemy_ground:=MeshInstance3D.new();enemy_ground.name="EnemyGrounding";enemy_ground.mesh=enemy_base;enemy_ground.position.y=0.06
-	enemy_ground.material_override=_material("enemy","VISIBLE");enemy_root.add_child(enemy_ground)
+	var enemy_shadow:=_actor_label("EnemyGlyphShadow","_",46,Color("#64242b"),Vector3(0,0.016,0.08),false)
+	enemy_shadow.rotation_degrees.x=-90.0;enemy_root.add_child(enemy_shadow)
 	enemy_glyph=Label3D.new();enemy_glyph.name="EnemyGlyph";enemy_glyph.text="g";enemy_glyph.font=FONT
-	enemy_glyph.font_size=86;enemy_glyph.outline_size=8;enemy_glyph.modulate=Color("#ff5b5b")
+	enemy_glyph.font_size=86;enemy_glyph.outline_size=10;enemy_glyph.modulate=Color("#ff5b5b")
 	enemy_glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED;enemy_glyph.no_depth_test=true;enemy_glyph.position.y=0.78
 	enemy_root.add_child(enemy_glyph)
 
-func _material(terrain:String,visibility:String)->StandardMaterial3D:
-	var key:=terrain+"/"+visibility
-	if materials.has(key):return materials[key]
-	var colors:={"substrate":Color("#071017"),"floor":Color("#26303a"),"metal":Color("#476270"),
-		"water":Color("#102f43"),"rubble":Color("#3f352d"),"wall":Color("#1e2a34"),
-		"hero":Color("#d7a91f"),"enemy":Color("#9c252e")}
-	var color:Color=colors.get(terrain,Color("#252d35"))
-	if visibility=="MEMORY":color=color.darkened(0.56)
-	elif visibility=="UNSEEN":color=Color("#071017")
-	var mat:=StandardMaterial3D.new();mat.albedo_color=color;mat.roughness=0.82
-	if visibility=="VISIBLE" and terrain in ["metal","water","hero","enemy"]:
-		mat.emission_enabled=true;mat.emission=color.lightened(0.08);mat.emission_energy_multiplier=0.32
-	materials[key]=mat;return mat
+func _actor_label(node_name:String,text:String,font_size:int,color:Color,
+		position:Vector3,billboard:bool)->Label3D:
+	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
+	glyph.font_size=font_size;glyph.outline_size=3;glyph.modulate=color;glyph.position=position
+	glyph.no_depth_test=true
+	if billboard:glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	return glyph
 
 func _terrain_at(cell:Vector2i)->String:
 	if cell.x==0 or cell.y==0 or cell.x==GRID_SIZE-1 or cell.y==GRID_SIZE-1:return "wall"
@@ -232,7 +211,6 @@ func _reveal_visible()->void:
 func _update_visuals(snap_hero:bool=true,snap_camera:bool=true)->void:
 	for cell in tile_nodes:
 		var visibility:="VISIBLE" if _distance(hero_cell,cell)<=VISIBLE_RADIUS else ("MEMORY" if seen_cells.has(cell) else "UNSEEN")
-		var terrain:=_terrain_at(cell);tile_nodes[cell].material_override=_material(terrain,visibility)
 		for glyph_value in tile_glyph_layers[cell]:
 			var glyph:=glyph_value as Label3D;glyph.visible=visibility!="UNSEEN"
 			var base_color:Color=glyph.get_meta("base_color",Color.WHITE)

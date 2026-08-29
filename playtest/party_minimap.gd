@@ -64,7 +64,8 @@ func _draw()->void:
 				draw_circle(rect.get_center(),maxf(1.5,cell*0.42),HERO_COLOR)
 			elif str(spec.marker)=="ENEMY":
 				draw_circle(rect.get_center(),maxf(1.3,cell*0.36),ENEMY_COLOR)
-	draw_rect(Rect2(origin,map_size),Color("#60788b"),false,1.0)
+	# The parent HUD supplies a responsive glyph-drawn ASCII frame. Keep this
+	# surface borderless so the map never falls back to a generic rectangle.
 
 func _key(position:Vector2i)->String:
 	return "%d:%d"%[position.x,position.y]
