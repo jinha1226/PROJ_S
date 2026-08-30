@@ -5,7 +5,6 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
-const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
 func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
@@ -104,16 +103,15 @@ func test_party_card_layout_specs_and_detached_render_support_one_two_three_memb
 			check_eq([str(spec.layout_id),int(spec.effective_count)],
 				[["SPOTLIGHT","DUAL","COMPACT"][count-1],count],
 				"%s width count %d layout"%[viewport_width,count])
-			check(int(spec.font_size)>=12,"card layout font floor")
+			check(int(spec.font_size)>=16 and bool(spec.get("portrait_removed",false)) \
+				and spec.get("portrait_min_size",[])==[0,0],
+				"card layout reserves no portrait area and keeps the Korean font floor")
 			check_eq(sandbox.cards.get_child_count(),count,"renderer uses DTO row count")
 			for index in range(count):
 				var card:=sandbox.cards.get_child(index) as Button
-				var portrait:=card.find_child("Portrait",true,false) as Control
 				check(card.custom_minimum_size.x>=float(spec.card_min_width),"card deterministic minimum width")
-				check(portrait.custom_minimum_size.x>=float(spec.portrait_min_size[0]) \
-					and portrait.custom_minimum_size.y>=float(spec.portrait_min_size[1]),
-					"count %d portrait budget"%count)
-				check(portrait.mouse_filter==Control.MOUSE_FILTER_IGNORE,"portrait cannot steal card taps")
+				check(card.find_child("Portrait",true,false)==null,
+					"count %d card leaves the full dossier width to text"%count)
 				var speech:=card.find_child("CompanionSpeechStrip",true,false)
 				if index==0:check(speech==null,"hero never receives speech strip")
 				elif index==1:check(speech!=null,"companion owns compact speech strip")
@@ -122,8 +120,8 @@ func test_party_card_layout_specs_and_detached_render_support_one_two_three_memb
 				check(hero_card.find_child("SpotlightDetails",true,false)!=null,"single member uses horizontal spotlight")
 				check("/" in str((hero_card.find_child("MemberState",true,false) as Label).text),
 					"spotlight shows exact HP maximum")
-		var detached:=sandbox.party_card_layout_spec(2,viewport_width);detached.portrait_min_size[0]=1
-		check_eq(int(sandbox.party_card_layout_spec(2,viewport_width).portrait_min_size[0]),68,
+		var detached:=sandbox.party_card_layout_spec(2,viewport_width);detached.portrait_removed=false
+		check(bool(sandbox.party_card_layout_spec(2,viewport_width).portrait_removed),
 			"layout spec is deeply detached")
 		check_eq(int(sandbox.party_card_layout_spec(0,viewport_width).effective_count),0,"zero rows safely empty")
 		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),3,"over-cap rows safely clamp")
@@ -319,7 +317,7 @@ func test_exploration_grid_one_tap_starts_route_invalid_is_pure_and_contact_clea
 	var status:Dictionary=sandbox.session.party_status(); var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1])); var destination:=origin+Vector2i.RIGHT
 	var hero:=int(status.protagonist_id);var companion:=int(status.party_member_ids[1])
 	_press(sandbox,"MemberCard%d"%companion)
-	check_eq(sandbox.selected_member_id,companion,"companion portrait remains available for details in exploration")
+	check_eq(sandbox.selected_member_id,companion,"companion dossier remains available for details in exploration")
 	var before:Dictionary=sandbox.session.sim.snapshot(); sandbox._on_cell(destination); sandbox._refresh()
 	check_eq(sandbox.session.party_status().safe_phase,"CONTACT","one tap commits one move and contact")
 	check_eq(sandbox.session.sim.world.step_index,int(before.step_index)+1,"exactly one exploration step")
@@ -555,11 +553,11 @@ func test_fixed_action_feedback_uses_facade_messages_for_seven_production_reject
 	check_eq(_session_surface_snapshot(dormant.session),dormant_snapshot,"dormant UI rejection is world/draft/journal no-op");dormant.free()
 	return finish()
 
-func test_screen_touch_routes_exact_world_cells_at_both_portrait_sizes() -> bool:
+func test_screen_touch_routes_exact_world_cells_at_both_viewport_sizes() -> bool:
 	for viewport_size in [Vector2(360,640), Vector2(450,800)]:
 		var sandbox = _engaged_sandbox("COLUMN", viewport_size)
 		# This synchronous unit runner does not enter the scene tree, so containers do
-		# not perform a layout pass. Give the real grid its portrait-budgeted extent;
+		# not perform a layout pass. Give the real grid its viewport-budgeted extent;
 		# the viewport smoke exercises the same routing after a live layout pass.
 		sandbox.grid.size = sandbox.grid.custom_minimum_size
 		var status: Dictionary = sandbox.session.party_status(); var hero := int(status.protagonist_id)
@@ -603,25 +601,32 @@ func test_screen_touch_routes_exact_world_cells_at_both_portrait_sizes() -> bool
 		sandbox.free()
 	return finish()
 
-func test_party_hud_shows_three_cropped_portraits_vitals_readiness_and_emotion() -> bool:
+func test_party_hud_shows_three_full_width_dossiers_vitals_readiness_and_emotion() -> bool:
 	var custom_session=Session.new();var initial_status:Dictionary=custom_session.party_status()
 	var initial_position:=Vector2i(int(initial_status.anchor[0]),int(initial_status.anchor[1]))
 	check(custom_session.sim.world.bootstrap_set_fire(initial_position,100)!=null,"member exposure fixture")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(custom_session)
-	check_eq(sandbox.cards.get_child_count(),3,"all three HUD portraits present together")
+	check_eq(sandbox.cards.get_child_count(),3,"all three HUD dossiers present together")
 	for member_id in sandbox.session.party_status().party_member_ids:
 		var card := _button(sandbox,"MemberCard%d"%int(member_id))
-		var portrait := card.find_child("Portrait", true, false)
-		check(portrait is AsciiPortrait, "member card has code-native ASCII portrait")
-		check(portrait.custom_minimum_size.x>=52 and portrait.custom_minimum_size.y>=54,"portrait is enlarged")
-		check(not portrait.actor_dto().is_empty() and not str(portrait.actor_draw_spec().glyph).is_empty(),
-			"portrait owns detached actor data and glyph")
+		check(card.find_child("Portrait",true,false)==null,
+			"member card does not duplicate the map actor as a portrait")
 		check(card.find_child("MemberName", true, false) != null, "card has controlled name row")
 		check(card.find_child("MemberState", true, false) != null, "card has HP/status/presence row")
 		check(card.find_child("HealthBar", true, false) != null, "card has HP bar")
 		check(card.find_child("StressBar", true, false) != null, "card has stress bar")
 		check(card.find_child("Readiness", true, false) != null, "card has real readiness state")
 		check(card.find_child("EmotionState", true, false) != null, "card has derived emotion icon and text")
+	var interaction_member:=int(sandbox.session.party_status().party_member_ids[1])
+	var interaction_name:=str((_button(sandbox,"MemberCard%d"%interaction_member).find_child(
+		"MemberName",true,false) as Label).text)
+	sandbox._activate_member_card(interaction_member,interaction_name,
+		{"time_msec":1000,"global_position":Vector2(20,20),"native_double":false})
+	check_eq(sandbox.selected_member_id,interaction_member,"full card tap still selects its member")
+	sandbox._activate_member_card(interaction_member,interaction_name,
+		{"time_msec":1100,"global_position":Vector2(20,20),"native_double":true})
+	check(sandbox.member_detail_modal.visible,"full card double tap still opens member detail")
+	sandbox._close_member_detail()
 	var hero:=int(sandbox.session.party_status().protagonist_id); var calm:=str((_button(sandbox,"MemberCard%d"%hero).find_child("EmotionState",true,false) as Label).text)
 	sandbox._on_actor(hero);sandbox._refresh()
 	check(sandbox.find_child("MemberElements",true,false)==null,"static member element row is removed")
@@ -677,7 +682,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 				"%s compact speech font is at least 12px"%viewport_size)
 			check(strip.mouse_filter==Control.MOUSE_FILTER_IGNORE \
 				and text.mouse_filter==Control.MOUSE_FILTER_IGNORE,
-				"%s speech cannot intercept portrait input"%viewport_size)
+				"%s speech cannot intercept dossier-card input"%viewport_size)
 		var companion:=int(bubbles[0].actor_id)
 		check(sandbox.session.override_companion(companion,Action.hold(companion)).accepted,
 			"%s companion override accepted"%viewport_size);sandbox._refresh()
@@ -840,7 +845,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		check_eq([session.sim.world.step_index,session.command_journal.size()],
 			[deployed_step,deployed_journal],"%s repeated refresh deploys exactly once"%viewport_size)
 		check(session.is_solo_combat() and session.party_cards().size()==1,
-			"%s product has one authoritative portrait"%viewport_size)
+			"%s product has one authoritative member dossier"%viewport_size)
 		check(not sandbox.duel_lab_button.visible \
 			and sandbox.find_child("RosterManagement",true,false)==null \
 			and sandbox.find_child("RosterManagementTitle",true,false)==null,
@@ -853,12 +858,12 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			"%s solo has no companion speech"%viewport_size)
 		var hero:=int(session.party_status().protagonist_id)
 		var card:Button=_button(sandbox,"MemberCard%d"%hero)
-		var portrait:=card.find_child("Portrait",true,false) as Control
 		var hp:=card.find_child("MemberState",true,false) as Label
 		var emotion:=card.find_child("EmotionState",true,false) as Label
 		check(card.custom_minimum_size.x>=viewport_size.x-12.0 \
-			and portrait.custom_minimum_size.x>=88.0,
-			"%s solo spotlight naturally uses horizontal width"%viewport_size)
+			and card.find_child("Portrait",true,false)==null \
+			and card.find_child("SoloIdentity",true,false)!=null,
+			"%s solo dossier gives its horizontal width to identity and gauges"%viewport_size)
 		check(hp.get_theme_font_size("font_size")>=16 \
 			and emotion.get_theme_font_size("font_size")>=16,
 			"%s solo HP and state remain large"%viewport_size)

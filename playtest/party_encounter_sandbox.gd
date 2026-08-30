@@ -6,7 +6,6 @@ const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
-const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
 const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
@@ -68,7 +67,6 @@ var tile_popover_label:Label
 var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
-var member_detail_portrait
 var member_detail_subtitle:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
@@ -276,11 +274,8 @@ func _build_member_detail_modal()->void:
 	folio_frame.configure("인물",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,false)
 	folio_frame.set_meta("major_glyph_frame",true);member_detail_panel.add_child(folio_frame)
 	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",6);folio_frame.add_child(stack)
-	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=76
+	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=60
 	header.add_theme_constant_override("separation",9);stack.add_child(header)
-	member_detail_portrait=PortraitScript.new();member_detail_portrait.name="MemberDetailPortrait"
-	member_detail_portrait.custom_minimum_size=Vector2(66,66);member_detail_portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	header.add_child(member_detail_portrait)
 	var title_stack:=VBoxContainer.new();title_stack.name="MemberDetailIdentity"
 	title_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title_stack.add_theme_constant_override("separation",0);header.add_child(title_stack)
 	var folio_kicker:=Label.new();folio_kicker.name="MemberDetailKicker";folio_kicker.text="인물 정보"
@@ -431,8 +426,8 @@ func _refresh()->void:
 	top_hud_actions.visible=product_hud
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	if compact_fixed_surface and int(card_layout.get("effective_count",0))==1:
-		card_layout["party_height"]=98;card_layout["portrait_min_size"]=[88,88]
-	_apply_portrait_budget(combat_active,combat_actions_visible,run_available,run_terminal,
+		card_layout["party_height"]=98
+	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
 	if compact_fixed_surface:
 		cards.visible=not _narrative_log_visible
@@ -710,22 +705,17 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 	if effective_count==0:
 		return {"layout_id":"EMPTY","requested_count":count,"effective_count":0,
 			"party_height":0,"gap":0,"card_min_width":0,
-			"portrait_min_size":[0,0],"font_size":FONT_AUX}.duplicate(true)
+			"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}.duplicate(true)
 	var gap:=4
 	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
 	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
 		"effective_count":effective_count,"party_height":160,"gap":gap,
 		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
-		# Three 360px cards leave 91px inside their fixed-cell dossier frame.
-		# Reserve enough text width for Korean state labels instead of clipping
-		# them beside an oversized legacy portrait.
-		"portrait_min_size":[34,54],"font_size":FONT_AUX}
+		"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}
 	if effective_count==1:
 		spec.layout_id="SPOTLIGHT";spec.party_height=112
-		spec.portrait_min_size=[88,88]
 	elif effective_count==2:
 		spec.layout_id="DUAL";spec.party_height=150
-		spec.portrait_min_size=[68,68]
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -765,17 +755,15 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 	for margin in ["margin_left","margin_right","margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,0)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; dossier_frame.add_child(inset)
 	if spotlight:
-		_add_spotlight_card_content(inset,row,speech,spec)
+		_add_spotlight_card_content(inset,row,speech)
 	else:
-		_add_stacked_card_content(inset,row,speech,spec)
+		_add_stacked_card_content(inset,row,speech)
 	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
 	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
 
-func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,
-		spec:Dictionary)->void:
-	var stack:=HBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",8)
+func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary)->void:
+	var stack:=VBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",1)
 	stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(stack)
-	var portrait_view=_member_portrait(row,spec);stack.add_child(portrait_view)
 	var details:=VBoxContainer.new();details.name="SpotlightDetails"
 	details.size_flags_horizontal=Control.SIZE_EXPAND_FILL;details.add_theme_constant_override("separation",1)
 	details.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(details)
@@ -832,17 +820,11 @@ func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
 			maxi(1,int(progression.get("xp_required",1))),10,AsciiFrameScript.YELLOW)
 		xp_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;parent.add_child(xp_gauge)
 
-func _add_stacked_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,
-		spec:Dictionary)->void:
+func _add_stacked_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary)->void:
 	var stack:=VBoxContainer.new(); stack.name="CardStack"; stack.add_theme_constant_override("separation",0); stack.mouse_filter=Control.MOUSE_FILTER_IGNORE; inset.add_child(stack)
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
-	var heading:=HBoxContainer.new(); heading.name="CardHeading"; heading.alignment=BoxContainer.ALIGNMENT_CENTER
-	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
-	heading.custom_minimum_size.y=float(portrait_size[1]);heading.add_theme_constant_override("separation",0)
-	heading.mouse_filter=Control.MOUSE_FILTER_IGNORE; stack.add_child(heading)
-	var portrait_view=_member_portrait(row,spec);heading.add_child(portrait_view)
 	var identity:=VBoxContainer.new();identity.name="CardIdentity";identity.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	identity.add_theme_constant_override("separation",0);identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;heading.add_child(identity)
+	identity.add_theme_constant_override("separation",0);identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;stack.add_child(identity)
 	var name_label:=_card_label(str(row.display_name),"MemberName",FONT_AUX)
 	name_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	identity.add_child(name_label)
@@ -852,19 +834,6 @@ func _add_stacked_card_content(inset:MarginContainer,row:Dictionary,speech:Dicti
 	emotion_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;emotion_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	identity.add_child(emotion_label)
 	_add_vitals(stack,row,false)
-
-func _member_portrait(row:Dictionary,spec:Dictionary):
-	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
-	var portrait_view=PortraitScript.new();portrait_view.name="Portrait"
-	portrait_view.custom_minimum_size=Vector2(float(portrait_size[0]),float(portrait_size[1]))
-	portrait_view.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	var member_id:=int(row.entity_id);var portrait_actor:Dictionary=row.duplicate(true)
-	var detail:Dictionary=session.inspect_party_member(member_id)
-	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
-	portrait_actor["species_id"]=str(detail.get("species_id",portrait_actor.get("species_id","human")))
-	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
-	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
-	portrait_view.set_actor(portrait_actor);return portrait_view
 
 func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	var vitals_text:=HBoxContainer.new();vitals_text.name="VitalsText";vitals_text.add_theme_constant_override("separation",2)
@@ -955,7 +924,7 @@ func _add_recruitment_candidates()->void:
 	var management:=VBoxContainer.new();management.name="RosterManagement"
 	management.add_theme_constant_override("separation",4);deck.add_child(management)
 	# The actionable rescue row gets the first scroll viewport; active companions
-	# are already visible as portrait cards and remain dismissible from detail.
+	# are already visible as dossier cards and remain dismissible from detail.
 	deck.move_child(management,management_title.get_index())
 	var candidate_rows:Variant=session.call("recruitable_companions")
 	if not candidate_rows is Array or candidate_rows.is_empty():return
@@ -1170,20 +1139,14 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var identity_frame=AsciiFrameScript.new();identity_frame.name="StatusIdentityAsciiFrame"
 	identity_frame.configure("상태",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
 	identity_frame.set_meta("major_glyph_frame",true);identity_panel.add_child(identity_frame)
-	var identity:=HBoxContainer.new();identity.name="StatusIdentity";identity.add_theme_constant_override("separation",10)
-	identity_frame.add_child(identity)
-	var portrait=PortraitScript.new();portrait.name="StatusPortrait"
-	portrait.custom_minimum_size=Vector2(88,92);portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	var portrait_actor:Dictionary=detail.duplicate(true)
-	portrait_actor["is_protagonist"]=str(detail.get("role",""))=="PROTAGONIST"
-	portrait_actor["faction_id"]="party";portrait.set_actor(portrait_actor);identity.add_child(portrait)
-	var facts:=VBoxContainer.new();facts.name="StatusIdentityFacts";facts.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	facts.add_theme_constant_override("separation",4);identity.add_child(facts)
+	var facts:=VBoxContainer.new();facts.name="StatusIdentity";facts.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	facts.add_theme_constant_override("separation",4);identity_frame.add_child(facts)
 	var name_label:=_card_label(str(detail.get("display_name","파티원")),"StatusName",FONT_KEY)
 	name_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
 	name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;facts.add_child(name_label)
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
-	var identity_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
+	var identity_parts:Array[String]=[_species(str(detail.get("species_id","default"))),
+		_role(str(detail.get("role","")))]
 	if bool(progression.get("available",false)):identity_parts.append("Lv.%d"%int(progression.get("level",1)))
 	var species_level:=_card_label(" · ".join(identity_parts),"StatusSpeciesLevel",FONT_BODY);facts.add_child(species_level)
 	var life_parts:Array[String]=[_life_state_label(str(detail.get("life_state","ACTIVE")))]
@@ -1253,11 +1216,9 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_title.text=str(detail.get("display_name","파티원"))
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
+	subtitle_parts.append(_role(str(detail.get("role",""))))
 	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV%02d"%int(detail_progression.get("level",1)))
 	member_detail_subtitle.text=" / ".join(subtitle_parts)
-	var header_actor:Dictionary=detail.duplicate(true)
-	header_actor["is_protagonist"]=str(detail.get("role",""))=="PROTAGONIST";header_actor["faction_id"]="party"
-	member_detail_portrait.set_actor(header_actor)
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
@@ -2112,7 +2073,7 @@ func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"
 func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)
 func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
-func _apply_portrait_budget(combat_active:bool,combat_actions_visible:bool,
+func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0
 	phase_panel.custom_minimum_size.y=(88 if size.x<450.0 else 92) \

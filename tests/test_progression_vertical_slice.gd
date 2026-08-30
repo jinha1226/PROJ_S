@@ -159,8 +159,9 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var wide_card=wide.cards.get_child(0) as Button
 	check(wide.grid.get_index()<wide.cards.get_index(),"450x800 keeps the map before the solo card")
 	check(wide_card.custom_minimum_size.x>=438,"450x800 solo card uses the available width")
-	check((wide_card.find_child("Portrait",true,false) as Control).custom_minimum_size.x>=88,
-		"450x800 solo card retains its large portrait")
+	check(wide_card.find_child("Portrait",true,false)==null \
+		and wide_card.find_child("SoloIdentity",true,false)!=null,
+		"450x800 solo card spends its width on identity instead of a duplicate portrait")
 	check(wide_card.find_child("CompactXPBar",true,false)!=null \
 		and "공" not in str((wide_card.find_child("LevelProgress",true,false) as Label).text),
 		"450x800 solo card keeps XP but no persistent combat stats")
@@ -170,8 +171,8 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.member_status_window.visible and sandbox.member_detail_body.visible \
 		and not sandbox.member_progression_window.visible,
 		"hero detail predictably opens on the dedicated status tab")
-	var status_portrait=sandbox.find_child("StatusPortrait",true,false) as Control
-	check(status_portrait!=null and status_portrait.custom_minimum_size.x>=88 \
+	check(sandbox.find_child("StatusPortrait",true,false)==null \
+		and sandbox.find_child("MemberDetailPortrait",true,false)==null \
 		and sandbox.find_child("StatusName",true,false)!=null \
 		and sandbox.find_child("StatusSpeciesLevel",true,false)!=null \
 		and sandbox.find_child("StatusHP",true,false)!=null \
@@ -180,7 +181,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.find_child("StatusEmotion",true,false)!=null \
 		and sandbox.find_child("StatusStress",true,false)!=null \
 		and sandbox.find_child("StatusCombatSummary",true,false)!=null,
-		"status tab prioritizes a large portrait and meaningful identity/vital/combat summary")
+		"status tab uses its full width for meaningful identity/vital/combat facts")
 	check("관계" not in sandbox.member_detail_body.text and "없음" not in sandbox.member_detail_body.text,
 		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
@@ -202,7 +203,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"hero detail exposes focus controls")
 	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
 		and "[근접]" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
-		"dominant training focus uses a selected training sigil")
+		"dominant training focus uses a selected DOS segment")
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,
 			"focus control remains mobile readable")

@@ -34,6 +34,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(dossier_frame.get_parent()==card and _single_nested(dossier_frame,card_content),
 		"%s dossier hierarchy is not Button -> Frame -> Content"%viewport_size)
 	_check(_strictly_inside(dossier_frame,card_content),"%s dossier content touches frame glyph cells"%viewport_size)
+	var solo_identity=card.find_child("SoloIdentity",true,false) as Control
+	_check(card.find_child("Portrait",true,false)==null and solo_identity!=null \
+		and solo_identity.size.x>=card_content.size.x-0.5,
+		"%s solo dossier did not reclaim the portrait width for identity"%viewport_size)
 	for contract in [["NarrativeLogToggle","[F1 기록]"],["HeroDetailButton","[F2 인물]"],["Ascii3DLabButton","[F3 3D]"]]:
 		var action=sandbox.find_child(str(contract[0]),true,false) as Button
 		_check(action!=null and action.text==str(contract[1]) and "\n" not in action.text \
@@ -64,6 +68,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(identity_panel.get_child_count()==1 and identity_panel.get_child(0)==identity_frame \
 		and _single_nested(identity_frame,identity) and _strictly_inside(identity_frame,identity),
 		"%s status hierarchy overlaps its frame"%viewport_size)
+	_check(sandbox.find_child("MemberDetailPortrait",true,false)==null \
+		and sandbox.find_child("StatusPortrait",true,false)==null,
+		"%s member folio still duplicates the map actor as a portrait"%viewport_size)
 	_check(_gauge_ok(sandbox.find_child("StatusHealthBar",true,false),"HP"),
 		"%s status tab health is not a DOS gauge"%viewport_size)
 	_check(sandbox.member_detail_status_tab.text=="[상태]" and "◆" not in sandbox.member_detail_status_tab.text,

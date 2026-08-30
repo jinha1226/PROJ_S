@@ -3,7 +3,6 @@ extends "res://tests/test_case.gd"
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
-const Portrait = preload("res://playtest/ascii_actor_portrait.gd")
 
 
 func test_auto_contact_previews_first_formation_then_enters_placeholder_combat() -> bool:
@@ -34,7 +33,10 @@ func test_auto_contact_previews_first_formation_then_enters_placeholder_combat()
 	check_eq(session.turn_intent_overlays().size(),2,"placeholder exposes both companion suggestions before hero action")
 	check(sandbox.find_child("TurnConfirm",true,false)==null,"auto combat never creates TurnConfirm")
 	for card in sandbox.cards.get_children():
-		check(card.find_child("Portrait",true,false) is Portrait,"cards use ASCII actor portraits")
+		check(card.find_child("Portrait",true,false)==null \
+			and card.find_child("MemberName",true,false)!=null \
+			and card.find_child("MemberState",true,false)!=null,
+			"cards use their full width for identity and vitals without portraits")
 	sandbox.free()
 	return finish()
 

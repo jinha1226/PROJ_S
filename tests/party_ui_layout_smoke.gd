@@ -5,7 +5,6 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
-const AsciiPortrait=preload("res://playtest/ascii_actor_portrait.gd")
 
 var failures:Array[String]=[]
 
@@ -20,7 +19,7 @@ func _run()->void:
 		await _companion_card_speech_layout(viewport_size)
 		await _mvp_run_objective_and_restart(viewport_size)
 		await _exploration_route_and_popover(viewport_size)
-		await _portrait_detail_modal(viewport_size)
+		await _card_detail_modal(viewport_size)
 		await _combat_log_history(viewport_size)
 		for preset in ["WEDGE","LINE","COLUMN"]:
 			await _journey(viewport_size,preset)
@@ -61,10 +60,13 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 			if index>0 and previous_rect.intersects(card_rect):
 				failures.append("%s count %d cards overlap"%[viewport_size,count])
 			previous_rect=card_rect
-			var portrait:=card.find_child("Portrait",true,false) as Control
-			if portrait==null or not _rect_contains(card_rect,portrait.get_global_rect()) \
-					or portrait.custom_minimum_size.x<float(spec.portrait_min_size[0]):
-				failures.append("%s count %d portrait bounds/budget"%[viewport_size,count])
+			var text_region:=card.find_child("SpotlightDetails",true,false) as Control \
+				if count==1 else card.find_child("CardIdentity",true,false) as Control
+			if card.find_child("Portrait",true,false)!=null \
+					or not bool(spec.get("portrait_removed",false)) \
+					or spec.get("portrait_min_size",[])!=[0,0] \
+					or text_region==null or not _rect_contains(card_rect,text_region.get_global_rect()):
+				failures.append("%s count %d portrait-free text region/budget"%[viewport_size,count])
 			for label_name in ["MemberName","Readiness","EmotionState","MemberState","StressState"]:
 				var label:=card.find_child(label_name,true,false) as Label
 				if label==null or label.get_theme_font_size("font_size")<12 \
@@ -226,12 +228,12 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 	if first_strip!=null:
 		_touch_control_now(first_strip,false,7);await process_frame;await process_frame
 		if sandbox.selected_member_id!=first_actor or sandbox.member_detail_modal.visible:
-			failures.append("%s speech-area first tap did not select its portrait"%label)
+			failures.append("%s speech-area first tap did not select its dossier card"%label)
 		first_strip=_button(sandbox,"MemberCard%d"%first_actor).find_child(
 			"CompanionSpeechStrip",true,false) as PanelContainer
 		_touch_control_now(first_strip,true,7);await process_frame;await process_frame
 		if not sandbox.member_detail_modal.visible:
-			failures.append("%s speech-area double tap did not open portrait detail"%label)
+			failures.append("%s speech-area double tap did not open member detail"%label)
 		else:_touch_control_now(sandbox.member_detail_close,false,7)
 		await process_frame;await process_frame
 	var override_actor:=int(bubbles[0].actor_id) if not bubbles.is_empty() else -1
@@ -491,7 +493,7 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	if contact_session.sim.world.step_index!=stopped_step:failures.append("%s contact stop left queued movement"%viewport_size)
 	contact.queue_free();await process_frame
 
-func _portrait_detail_modal(viewport_size:Vector2)->void:
+func _card_detail_modal(viewport_size:Vector2)->void:
 	var session=Session.new();var initial:Dictionary=session.party_status()
 	var anchor:=Vector2i(int(initial.anchor[0]),int(initial.anchor[1]))
 	if session.sim.world.bootstrap_set_fire(anchor,100)==null:failures.append("%s modal exposure fixture"%viewport_size)
@@ -502,16 +504,16 @@ func _portrait_detail_modal(viewport_size:Vector2)->void:
 	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),false)
 	await process_frame;await process_frame
 	if sandbox.selected_member_id!=companion or sandbox.member_detail_modal.visible:
-		failures.append("%s portrait first touch must only select"%viewport_size)
+		failures.append("%s dossier first touch must only select"%viewport_size)
 	_touch_control_now(_button(sandbox,"MemberCard%d"%hero),false)
 	await process_frame;await process_frame
 	if sandbox.selected_member_id!=hero or sandbox.member_detail_modal.visible:
-		failures.append("%s different portrait second touch opened modal"%viewport_size)
+		failures.append("%s different dossier second touch opened modal"%viewport_size)
 	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),false)
 	await process_frame;await process_frame
 	_touch_control_now(_button(sandbox,"MemberCard%d"%companion),true)
 	if not sandbox.member_detail_modal.visible or not sandbox.grid.modal_open:
-		failures.append("%s native portrait double_tap did not open modal"%viewport_size)
+		failures.append("%s native dossier double_tap did not open modal"%viewport_size)
 	await process_frame;await process_frame
 	_validate_member_modal(sandbox,viewport_size)
 	var blocked_world:Dictionary=session.sim.snapshot();var blocked_journal:Array=session.command_journal.duplicate(true)
@@ -544,10 +546,10 @@ func _portrait_detail_modal(viewport_size:Vector2)->void:
 	var route_before_card:Dictionary=session.exploration_route_state();var route_card:Button=_button(sandbox,"MemberCard%d"%companion)
 	_touch_control_now(route_card,false)
 	if sandbox.selected_member_id!=companion:
-		failures.append("%s active-route first portrait tap selected %d not %d"%[viewport_size,sandbox.selected_member_id,companion])
+		failures.append("%s active-route first dossier tap selected %d not %d"%[viewport_size,sandbox.selected_member_id,companion])
 	var route_after_card:Dictionary=session.exploration_route_state()
 	if route_after_card!=route_before_card:
-		failures.append("%s active-route first portrait tap changed route %s -> %s"%[viewport_size,route_before_card,route_after_card])
+		failures.append("%s active-route first dossier tap changed route %s -> %s"%[viewport_size,route_before_card,route_after_card])
 	_touch_control_now(route_card,true)
 	await process_frame;await process_frame
 	if session.sim.world.step_index!=paused_at:failures.append("%s active route advanced behind modal"%viewport_size)
@@ -579,9 +581,9 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 	if body.custom_minimum_size.y+0.5<float(body.get_line_count())*line_height:
 		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
 	if not _rect_contains(panel_rect,scroll.get_global_rect()):failures.append("%s detail scroll outside panel"%viewport_size)
-	var status_portrait:=sandbox.find_child("StatusPortrait",true,false) as Control
-	if status_portrait==null or status_portrait.custom_minimum_size.x<88.0:
-		failures.append("%s detail modal lacks large status portrait"%viewport_size)
+	if sandbox.find_child("StatusPortrait",true,false)!=null \
+			or sandbox.find_child("MemberDetailPortrait",true,false)!=null:
+		failures.append("%s detail modal still duplicates map actors as portraits"%viewport_size)
 	for node_name in ["StatusName","StatusSpeciesLevel","StatusLife","StatusHP","StatusHealthBar",
 			"StatusEmotion","StatusStress"]:
 		if sandbox.find_child(node_name,true,false)==null:
@@ -1224,9 +1226,8 @@ func _validate_card_content(sandbox,label:String)->void:
 		if content_rect.position.x<card_rect.position.x-0.1 or content_rect.end.x>card_rect.end.x+0.1 \
 				or content_rect.position.y<card_rect.position.y-0.1 or content_rect.end.y>card_rect.end.y+0.1:
 			failures.append("%s card content bounds clip %s content=%s card=%s"%[label,card.name,content_rect,card_rect])
-		var portrait:=card.find_child("Portrait",true,false)
-		if not portrait is AsciiPortrait or portrait.actor_dto().is_empty():
-			failures.append("%s card portrait missing %s"%[label,card.name])
+		if card.find_child("Portrait",true,false)!=null:
+			failures.append("%s card retained duplicate portrait %s"%[label,card.name])
 		for node_name in ["MemberName","MemberState","StressState","Readiness","EmotionState"]:
 			var text_label:=card.find_child(node_name,true,false) as Label
 			if text_label==null:
