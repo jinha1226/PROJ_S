@@ -832,6 +832,13 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var exploration=Sandbox.new();exploration.size=viewport_size
+		exploration.initialize_for_headless_test(session,true)
+		var wait_button:Button=_button(exploration,"ProductWaitGuard")
+		check(wait_button!=null and wait_button.text=="[WAIT]" \
+			and "한 턴 대기" in wait_button.tooltip_text,
+			"%s exploration WAIT explains its authoritative one-turn action"%viewport_size)
+		exploration.free()
 		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 			"%s solo auto fixture reaches contact"%viewport_size)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
@@ -869,10 +876,12 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		check(hp.get_theme_font_size("font_size")==14 \
 			and emotion.get_theme_font_size("font_size")==14,
 			"%s solo HP and state use compact auxiliary type"%viewport_size)
-		var hold:Button=_button(sandbox,"ActorHold")
-		check(hold!=null and hold.custom_minimum_size.y>=44.0 \
-			and "방어" in hold.text and "25%" in sandbox.action_feedback_label.text,
-			"%s solo defense is visible and explained"%viewport_size)
+		var guard:Button=_button(sandbox,"ProductWaitGuard")
+		var expected_guard_target:=40.0 if viewport_size.x<450.0 else 44.0
+		check(guard!=null and guard.custom_minimum_size.y>=expected_guard_target \
+			and guard.text=="[GUARD]" and "25%" in guard.tooltip_text \
+			and "200 시간" in guard.tooltip_text and "물리 피해" in guard.tooltip_text,
+			"%s product GUARD meets responsive touch/effect contract"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
 		check(enemy_summary==null,
 			"%s solo fixture does not reveal enemy target or direction"%viewport_size)

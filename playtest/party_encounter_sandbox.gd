@@ -51,6 +51,12 @@ var event_label:Label
 var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
+var product_direction_buttons:Dictionary={}
+var product_attack_button:Button
+var product_auto_button:Button
+var product_interact_button:Button
+var product_wait_guard_button:Button
+var product_execute_button:Button
 var hud_bottom_flex:Control
 var build_label:Label
 var bottom_navigation:HBoxContainer
@@ -151,8 +157,32 @@ var _initialized_for_headless_test:=false
 var _run_progress_initialized:=false
 var _observed_reward_granted:=false
 var _reward_emphasis_pending:=false
+var _product_touch_index:=-1
+var _product_touch_control:=""
+var _product_touch_origin:=Vector2.ZERO
+var _product_touch_dragged:=false
+var _product_mouse_control:=""
+var _product_ignore_mouse_until_msec:=-1
+var _product_auto_explore_generation:=0
+var _product_auto_explore_pending:=false
+var _product_auto_explore_due_frame:=-1
+var _product_auto_explore_scheduled_generation:=-1
+
+func _process(_delta:float)->void:
+	if not _product_auto_explore_pending:return
+	var frame:=Engine.get_process_frames()
+	if frame<_product_auto_explore_due_frame:return
+	# A held product button is an unresolved user gesture. AUTO may keep its
+	# running state, but no authoritative hop can occur until release/cancel.
+	if _product_touch_index>=0:
+		_product_auto_explore_due_frame=frame+1;return
+	var expected_generation:=_product_auto_explore_scheduled_generation
+	_product_auto_explore_pending=false;_product_auto_explore_due_frame=-1
+	_product_auto_explore_scheduled_generation=-1
+	_continue_product_auto_explore(expected_generation)
 
 func _input(event:InputEvent)->void:
+	if _handle_product_control_touch(event):return
 	if member_detail_modal==null or not member_detail_modal.visible \
 			or member_detail_current_tab!="SKILL":return
 	if event is InputEventScreenTouch:
@@ -172,6 +202,82 @@ func _input(event:InputEvent)->void:
 			_skill_touch_dragged=true
 		member_detail_scroll.scroll_vertical-=int(event.relative.y)
 		get_viewport().set_input_as_handled()
+
+func _handle_product_control_touch(event:InputEvent)->bool:
+	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
+	if not _is_solo_product_session() or not combat_action_area.visible:return false
+	if member_detail_modal!=null and member_detail_modal.visible \
+			or record_modal!=null and record_modal.visible \
+			or map_overlay!=null and map_overlay.visible:return false
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if _product_touch_index>=0:return false
+			var control_name:=_product_control_at_position(event.position)
+			if control_name.is_empty():return false
+			_product_touch_index=event.index;_product_touch_control=control_name
+			_product_touch_origin=event.position;_product_touch_dragged=false
+			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			get_viewport().set_input_as_handled();return true
+		if event.index!=_product_touch_index:return false
+		# ScreenTouch coordinates may be reprojected by stretch mode between the
+		# press and release frames. A gesture that began on one exact button and did
+		# not cross the drag threshold is still that button's short tap.
+		var activate_name:=_product_touch_control if not _product_touch_dragged else ""
+		_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+		_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+		get_viewport().set_input_as_handled()
+		if not activate_name.is_empty():
+			_activate_product_control(activate_name)
+		return true
+	if event.index==_product_touch_index:
+		if event.position.distance_to(_product_touch_origin)>=8.0:_product_touch_dragged=true
+		get_viewport().set_input_as_handled();return true
+	return false
+
+func _product_control_at_position(global_position:Vector2)->String:
+	var controls:Array=[]
+	for button in product_direction_buttons.values():controls.append(button)
+	controls.append_array([product_attack_button,product_auto_button,product_interact_button,
+		product_wait_guard_button,product_execute_button])
+	for control_value in controls:
+		var button:=control_value as Button
+		if button!=null and button.is_visible_in_tree() and not button.disabled \
+				and button.get_global_rect().has_point(global_position):return button.name
+	return ""
+
+func _activate_product_control(control_name:String)->void:
+	match control_name:
+		"ProductMoveNW":_on_product_direction(Vector2i(-1,-1))
+		"ProductMoveN":_on_product_direction(Vector2i(0,-1))
+		"ProductMoveNE":_on_product_direction(Vector2i(1,-1))
+		"ProductMoveW":_on_product_direction(Vector2i(-1,0))
+		"ProductWaitCenter":_on_product_direction(Vector2i.ZERO)
+		"ProductMoveE":_on_product_direction(Vector2i(1,0))
+		"ProductMoveSW":_on_product_direction(Vector2i(-1,1))
+		"ProductMoveS":_on_product_direction(Vector2i(0,1))
+		"ProductMoveSE":_on_product_direction(Vector2i(1,1))
+		"ProductAttack":_on_product_attack()
+		"ProductAuto":_on_product_auto()
+		"ProductInteract":_on_product_interact()
+		"ProductWaitGuard":_on_product_wait_guard()
+		"ProductExecute":_on_product_execute()
+
+func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
+	# Product controls use one explicit pointer path. Connecting Button.pressed as
+	# well as handling ScreenTouch in _input caused a mobile release to execute the
+	# same authoritative command twice. Mouse activation is handled here; touch is
+	# handled exclusively by _handle_product_control_touch above.
+	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
+	# Web/mobile may synthesize mouse press/release after a handled ScreenTouch.
+	# Ignore that compatibility event so one physical release has one command.
+	if Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
+		_product_mouse_control="";accept_event();return
+	if event.pressed:
+		_product_mouse_control=control_name
+		accept_event();return
+	var activate:=_product_mouse_control==control_name
+	_product_mouse_control="";accept_event()
+	if activate:_activate_product_control(control_name)
 
 func _skill_row_at_position(global_position:Vector2)->String:
 	for skill_id in member_progression_skill_rows:
@@ -761,7 +867,8 @@ func _refresh()->void:
 				else:_deployment_deck(deployment)
 			"COMBAT":_combat_deck(status,session.current_turn_preview())
 			"REGROUP":_legacy_regroup_notice()
-	if run_terminal:_build_run_restart_area()
+	if run_terminal and not product_hud:_build_run_restart_area()
+	if product_hud:_build_product_controls_dock(status)
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	log_label.visible=not product_hud and _narrative_log_visible
@@ -769,6 +876,8 @@ func _refresh()->void:
 	deck.visible=not product_hud and not _narrative_log_visible
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if _run_locked_exit_feedback and not action_feedback_text.is_empty():
+			event_label.text=action_feedback_text
 		if record_modal.visible:
 			record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	record_button.button_pressed=_narrative_log_visible
@@ -829,6 +938,7 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	if record_modal.visible:
 		record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	var hud_finished:=Time.get_ticks_usec()
+	_sync_product_control_state(status)
 	var effect_count:=_flush_pending_visual_effects()
 	var finished:=Time.get_ticks_usec()
 	_last_direct_solo_refresh_profile={
@@ -905,6 +1015,7 @@ func _open_hero_detail_tab(tab_id:String)->void:
 func _toggle_map_overlay()->void:
 	if map_overlay.visible:
 		map_overlay.close("TOGGLE");return
+	_cancel_product_auto_explore("auto_explore_modal",false)
 	if record_modal.visible:_close_record_modal("MAP")
 	var observation:Dictionary=session.observe_party_ui(15).get("minimap",{})
 	map_overlay.set_observation(observation)
@@ -923,6 +1034,7 @@ func _on_map_overlay_closed(_reason:String)->void:
 func _toggle_record_modal()->void:
 	if record_modal.visible:
 		_close_record_modal("TOGGLE");return
+	_cancel_product_auto_explore("auto_explore_modal",false)
 	if map_overlay.visible:map_overlay.close("HISTORY")
 	var history:Dictionary=session.combat_log(64,500)
 	record_body.text=_full_meaningful_record_text(history)
@@ -1469,7 +1581,9 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 			if overlay.get("automatic_suggestion",null) is Dictionary:has_original_suggestion=true;break
 	if has_original_suggestion:
 		_add_notice("표시: 주황 실선/□ 개별 지시 · 파랑 점선/○ 원래 자동 제안","IntentLegend",FONT_AUX)
-	_build_combat_action_area(status,preview)
+	# The product HUD owns one persistent movement/context dock below the event
+	# surface. Keep legacy planning controls for non-product harnesses only.
+	if not event_surface.visible:_build_combat_action_area(status,preview)
 	_selected_detail()
 
 func _legacy_regroup_notice()->void:_add_notice("승리했습니다. 호환 상태를 자동 재집결 처리하는 중입니다.","ActionStatus",FONT_KEY)
@@ -1514,6 +1628,263 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 	if bool(planning.get("commit_ready",false)) and (auto_override_edit or auto_combat_fallback):
 		var execute:=_add_button(combat_action_dock,"지금 실행","AutoExecute",_on_auto_execute)
 		execute.size_flags_stretch_ratio=0.9
+
+func _product_controls_metrics(party_count:int)->Dictionary:
+	var wide:=size.x>=450.0
+	var gap:=3 if wide else 2
+	var target:=44
+	if not wide:
+		# 360x640 has no spare vertical row: cards + map + event + controls +
+		# navigation must all remain inside the viewport.
+		var party_height:=int(party_card_layout_spec(party_count,size.x).get("party_height",68))
+		var available:=int(size.y)-party_height-int(size.x)-36-TOUCH_TARGET-8
+		target=clampi(int(floor(float(available-gap*2)/3.0)),32,40)
+	var dock_height:=target*3+gap*2
+	return {"target":target,"gap":gap,"dock_height":dock_height}.duplicate(true)
+
+func _build_product_controls_dock(status:Dictionary)->void:
+	product_direction_buttons.clear()
+	product_attack_button=null;product_auto_button=null;product_interact_button=null
+	product_wait_guard_button=null;product_execute_button=null
+	combat_action_area.visible=true;action_feedback_label.visible=false
+	combat_action_dock.visible=true;combat_action_area.add_theme_constant_override("separation",0)
+	var members:Variant=status.get("party_member_ids",[])
+	var party_count:int=members.size() if members is Array else 1
+	var metrics:=_product_controls_metrics(party_count)
+	var target:=int(metrics.target);var gap:=int(metrics.gap);var dock_height:=int(metrics.dock_height)
+	combat_action_area.custom_minimum_size.y=dock_height
+	combat_action_dock.custom_minimum_size.y=dock_height
+	combat_action_dock.add_theme_constant_override("separation",gap)
+	if bool(_current_run_progress().get("terminal",false)):
+		product_execute_button=_add_product_context_button(combat_action_dock,
+			"[RESTART]","ProductExecute",_on_product_execute,target)
+		product_execute_button.disabled=false
+		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
+		return
+	var dpad:=GridContainer.new();dpad.name="ProductDirectionPad";dpad.columns=3
+	dpad.custom_minimum_size=Vector2(dock_height,dock_height)
+	dpad.add_theme_constant_override("h_separation",gap);dpad.add_theme_constant_override("v_separation",gap)
+	combat_action_dock.add_child(dpad)
+	var direction_rows:Array=[
+		["ProductMoveNW","↖",Vector2i(-1,-1)],
+		["ProductMoveN","↑",Vector2i(0,-1)],
+		["ProductMoveNE","↗",Vector2i(1,-1)],
+		["ProductMoveW","←",Vector2i(-1,0)],
+		["ProductWaitCenter","·",Vector2i.ZERO],
+		["ProductMoveE","→",Vector2i(1,0)],
+		["ProductMoveSW","↙",Vector2i(-1,1)],
+		["ProductMoveS","↓",Vector2i(0,1)],
+		["ProductMoveSE","↘",Vector2i(1,1)],
+	]
+	var can_step:=_product_can_step(status)
+	for row in direction_rows:
+		var button:=Button.new();button.name=str(row[0]);button.text=str(row[1])
+		button.custom_minimum_size=Vector2(target,target)
+		button.add_theme_font_size_override("font_size",FONT_SECTION)
+		button.focus_mode=Control.FOCUS_NONE;button.disabled=not can_step
+		button.set_meta("direction",row[2]);button.set_meta("product_control",true)
+		button.gui_input.connect(_on_product_button_gui_input.bind(button.name));dpad.add_child(button)
+		AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN)
+		product_direction_buttons[row[2]]=button
+	var contextual:=VBoxContainer.new();contextual.name="ProductContextControls"
+	contextual.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
+	product_attack_button=_add_product_context_button(contextual,"[ATTACK]","ProductAttack",
+		_on_product_attack,target)
+	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
+	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
+	contextual.add_child(secondary)
+	product_auto_button=_add_product_context_button(secondary,"[AUTO]","ProductAuto",
+		_on_product_auto,target)
+	product_interact_button=_add_product_context_button(secondary,"[INTERACT]","ProductInteract",
+		_on_product_interact,target)
+	product_wait_guard_button=_add_product_context_button(secondary,
+		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
+		"ProductWaitGuard",_on_product_wait_guard,target)
+	product_execute_button=_add_product_context_button(secondary,"[EXECUTE]","ProductExecute",
+		_on_product_execute,target)
+	product_interact_button.tooltip_text="상호작용 권위 API가 아직 없어 사용할 수 없습니다."
+	_sync_product_control_state(status)
+
+func _sync_product_control_state(status_override:Dictionary={}) -> void:
+	if session==null:return
+	var run_terminal:=bool(_current_run_progress().get("terminal",false))
+	if product_attack_button==null or not is_instance_valid(product_attack_button):
+		if run_terminal and product_execute_button!=null and is_instance_valid(product_execute_button):
+			product_execute_button.text="[RESTART]";product_execute_button.disabled=false
+		return
+	var status:Dictionary=status_override if not status_override.is_empty() else session.party_status()
+	var mode:=str(status.get("view_mode",""))
+	var terminal:=bool(status.get("terminal",false)) or run_terminal
+	var can_step:=_product_can_step(status)
+	for button_value in product_direction_buttons.values():
+		var direction_button:=button_value as Button
+		if direction_button!=null and is_instance_valid(direction_button):direction_button.disabled=not can_step
+	product_attack_button.disabled=terminal or mode!="COMBAT" or _product_adjacent_enemy_id(status)<=0
+	product_interact_button.disabled=true
+	var protagonist_id:=int(status.get("protagonist_id",-1))
+	if mode=="EXPLORATION":
+		var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
+		product_auto_button.disabled=terminal or not session.has_method("start_auto_explore")
+		product_auto_button.toggle_mode=true
+		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
+		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
+		product_auto_button.tooltip_text="안전한 발견 지점까지 자동 탐험"
+	else:
+		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
+		product_auto_button.text="[AUTO]"
+		product_auto_button.disabled=terminal or mode!="COMBAT" or selected_member_id==protagonist_id
+		product_auto_button.tooltip_text="선택한 동료를 자동 제안으로 되돌립니다."
+	product_wait_guard_button.text="[GUARD]" if mode=="COMBAT" else "[WAIT]"
+	product_wait_guard_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
+	if mode=="COMBAT":
+		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
+		product_wait_guard_button.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다." \
+			%_guard_percent_for_actor(guard_actor)
+	else:
+		product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
+	var planning:Dictionary=session.auto_combat_planning_state() if mode=="COMBAT" else {}
+	product_execute_button.text="[RESTART]" if run_terminal else "[EXECUTE]"
+	product_execute_button.disabled=false if run_terminal else (terminal or mode!="COMBAT" \
+		or _is_direct_solo_combat(status) or not bool(planning.get("commit_ready",false)))
+
+func _add_product_context_button(parent:Control,label:String,node_name:String,
+		_callback:Callable,target:int)->Button:
+	var button:=Button.new();button.name=node_name;button.text=label
+	button.custom_minimum_size=Vector2(target,target)
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	button.add_theme_font_size_override("font_size",FONT_COMMAND)
+	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
+	button.gui_input.connect(_on_product_button_gui_input.bind(node_name));parent.add_child(button)
+	var accent:=AsciiFrameScript.BRASS if node_name in ["ProductAttack","ProductExecute"] else AsciiFrameScript.CYAN
+	AsciiFrameScript.apply_rail_button(button,accent)
+	return button
+
+func _product_can_step(status:Dictionary)->bool:
+	if bool(status.get("terminal",false)) or bool(_current_run_progress().get("terminal",false)):return false
+	var mode:=str(status.get("view_mode",""))
+	return mode=="EXPLORATION" or mode=="COMBAT" and str(status.get("safe_phase",""))=="ENGAGED"
+
+func _product_adjacent_enemy_id(status:Dictionary,destination:Vector2i=Vector2i(-999,-999))->int:
+	if str(status.get("view_mode",""))!="COMBAT":return -1
+	var origin:=_selected_position()
+	var rows:Array=session.enemy_targets();rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.get("entity_id",-1))<int(b.get("entity_id",-1)))
+	for row in rows:
+		var raw:Variant=row.get("position",[])
+		if not raw is Array or raw.size()!=2:continue
+		var position:=Vector2i(int(raw[0]),int(raw[1]))
+		if destination!=Vector2i(-999,-999) and position!=destination:continue
+		if maxi(absi(position.x-origin.x),absi(position.y-origin.y))==1:return int(row.get("entity_id",-1))
+	return -1
+
+func _on_product_direction(direction:Vector2i)->void:
+	var status:Dictionary=session.party_status()
+	if not _product_can_step(status):return
+	if str(status.get("view_mode",""))=="EXPLORATION":
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		var active_route:Dictionary=session.exploration_route_state()
+		if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
+			_cancel_active_route()
+	if direction==Vector2i.ZERO:
+		_on_product_wait_guard();return
+	if str(status.get("view_mode",""))=="EXPLORATION":
+		_on_explore(direction);return
+	var destination:=_selected_position()+direction
+	var enemy_id:=_product_adjacent_enemy_id(status,destination)
+	if enemy_id>0:_on_actor(enemy_id)
+	else:_on_cell(destination)
+
+func _on_product_attack()->void:
+	var status:Dictionary=session.party_status();var enemy_id:=_product_adjacent_enemy_id(status)
+	if enemy_id>0:_on_actor(enemy_id)
+
+func _on_product_auto()->void:
+	var status:Dictionary=session.party_status()
+	if str(status.get("view_mode",""))=="EXPLORATION":
+		if not session.has_method("start_auto_explore"):return
+		var state:Dictionary=session.auto_explore_state()
+		if bool(state.get("running",false)):
+			_cancel_product_auto_explore("auto_explore_user_cancel",true);return
+		var route_state:Dictionary=session.exploration_route_state()
+		if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
+			_cancel_active_route()
+		_product_auto_explore_generation+=1
+		var result:Dictionary=session.start_auto_explore()
+		_consume_product_auto_explore_result(result);_refresh()
+		if bool(result.get("running",false)):_schedule_product_auto_explore()
+		return
+	if selected_member_id!=int(status.get("protagonist_id",-1)):_on_override_clear()
+
+func _consume_product_auto_explore_result(result:Dictionary)->void:
+	# AUTO state retains the previous route wrapper even on cancel/pre-hop DTOs.
+	# Consume effects/log feedback only for the newly advanced hop, then unwrap
+	# route-wrapper.last_step_result to the canonical committed result.
+	if bool(result.get("advanced",false)):
+		var route_wrapper:Variant=result.get("last_step_result",{})
+		var canonical_result:Variant=route_wrapper.get("last_step_result",{}) \
+			if route_wrapper is Dictionary else {}
+		if canonical_result is Dictionary and bool(canonical_result.get("accepted",false)):
+			_record_result(canonical_result,true)
+	if not bool(result.get("running",false)):
+		var reason:=str(result.get("stop_reason",result.get("reason","auto_explore_stopped")))
+		action_feedback_text={
+			"auto_explore_user_cancel":"자동 탐험을 멈췄습니다.",
+			"auto_explore_combat_contact":"적을 발견해 자동 탐험을 멈췄습니다.",
+			"auto_explore_enemy_visible":"적이 보여 자동 탐험을 멈췄습니다.",
+			"auto_explore_hazard_discovered":"위험 지형을 발견해 자동 탐험을 멈췄습니다.",
+			"auto_explore_interaction_discovered":"새 상호작용을 발견해 자동 탐험을 멈췄습니다.",
+			"auto_explore_no_frontier":"더 탐험할 안전한 지점이 없습니다.",
+		}.get(reason,"자동 탐험을 멈췄습니다.")
+
+func _schedule_product_auto_explore()->void:
+	if _product_auto_explore_pending or not is_inside_tree():return
+	if not bool(session.auto_explore_state().get("running",false)):return
+	_product_auto_explore_pending=true
+	_product_auto_explore_due_frame=Engine.get_process_frames()+1
+	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
+
+func _continue_product_auto_explore(expected_generation:int)->void:
+	if expected_generation!=_product_auto_explore_generation:return
+	if member_detail_modal.visible or record_modal.visible or map_overlay.visible \
+			or bool(grid.pointer_gesture_state().get("active",false)):
+		_cancel_product_auto_explore("auto_explore_modal",true);return
+	if not bool(session.auto_explore_state().get("running",false)):return
+	var result:Dictionary=session.continue_auto_explore()
+	_consume_product_auto_explore_result(result);_refresh()
+	if bool(result.get("running",false)):_schedule_product_auto_explore()
+
+func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
+	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
+	_product_auto_explore_due_frame=-1;_product_auto_explore_scheduled_generation=-1
+	if session==null or not session.has_method("auto_explore_state"):
+		_sync_product_control_state();return
+	if bool(session.auto_explore_state().get("running",false)):
+		var result:Dictionary=session.cancel_auto_explore(reason)
+		_consume_product_auto_explore_result(result)
+	_sync_product_control_state()
+	if refresh_after:_request_refresh()
+
+func _on_product_interact()->void:
+	# Deliberately inert until a canonical session interaction method exists.
+	return
+
+func _on_product_wait_guard()->void:
+	var status:Dictionary=session.party_status()
+	if str(status.get("view_mode",""))=="EXPLORATION":
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		var active_route:Dictionary=session.exploration_route_state()
+		if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
+			_cancel_active_route()
+		_on_explore(Vector2i.ZERO)
+	elif str(status.get("view_mode",""))=="COMBAT":_on_actor_hold()
+
+func _on_product_execute()->void:
+	if bool(_current_run_progress().get("terminal",false)):
+		_on_restart_same_run();return
+	if auto_orchestration_enabled:_on_auto_execute()
+	else:_on_turn_confirm()
 
 func _guard_percent_for_actor(actor_id:int)->int:
 	if session==null:return 25
@@ -1649,6 +2020,7 @@ func _status_label(status_id:String)->String:
 
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
+	_cancel_product_auto_explore("auto_explore_modal",false)
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
@@ -1951,7 +2323,9 @@ func _measure_member_detail_body()->void:
 	var font:Font=member_detail_body.get_theme_font("font")
 	var line_height:=font.get_height(member_detail_body.get_theme_font_size("font_size"))
 	member_detail_body.custom_minimum_size.y=maxf(line_height,float(member_detail_body.get_line_count())*line_height+8.0)
-func _on_explore(direction:Vector2i)->void:_record_result(session.commit_exploration_direction(direction),true); _request_refresh()
+func _on_explore(direction:Vector2i)->void:
+	var result:Dictionary=session.commit_exploration_direction(direction)
+	_record_result(result,true);_request_refresh()
 func _on_restart_same_run()->void:
 	if session==null or not session.has_method("restart_same_run"):
 		notice_text="이 원정을 다시 시작할 수 없습니다.";_request_refresh();return
@@ -1975,6 +2349,10 @@ func _on_restart_with_new_personality()->void:
 
 func _reset_run_ui_transients()->void:
 	_reset_auto_flow();route_generation+=1;route_continue_pending=false
+	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
+	_product_auto_explore_due_frame=-1;_product_auto_explore_scheduled_generation=-1
+	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
@@ -2157,6 +2535,7 @@ func _on_cell(position:Vector2i)->void:
 	var progress:=_current_run_progress()
 	if bool(progress.get("terminal",false)) or bool(status.terminal):return
 	if status.view_mode=="EXPLORATION":
+		_cancel_product_auto_explore("auto_explore_user_command",false)
 		if _is_locked_visible_run_exit(position,progress):
 			_run_locked_exit_feedback=true
 			notice_text="적을 쓰러뜨리면 출구가 열립니다."
@@ -2350,6 +2729,7 @@ func _continue_route_on_frame(expected_generation:int)->void:
 		_schedule_route_continue()
 
 func _on_grid_pointer_started()->void:
+	_cancel_product_auto_explore("auto_explore_user_command",false)
 	var cancelled_auto:=auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending)
 	if cancelled_auto:
 		_cancel_auto_pending(true)
@@ -2736,10 +3116,18 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	var wide:=size.x>=450.0
 	var product_hud:=_is_solo_product_session()
 	phase_panel.custom_minimum_size.y=0 if product_hud else (52 if wide else 48)
-	root_layout.add_theme_constant_override("separation",4 if wide else 2)
+	# The 360px product stack has exactly eight spare pixels after its fixed
+	# surfaces. A zero-gap transparent flex owns them deterministically; relying
+	# on five implicit VBox separations intermittently inflated the root to 642.
+	root_layout.add_theme_constant_override("separation",4 if wide else (0 if product_hud else 2))
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
 	if product_hud:
 		grid.custom_minimum_size=Vector2(size.x,size.x)
+		hud_bottom_flex.visible=true
+		var status:Dictionary=session.party_status()
+		var members:Variant=status.get("party_member_ids",[])
+		var product_metrics:=_product_controls_metrics(members.size() if members is Array else 1)
+		combat_action_area.custom_minimum_size.y=int(product_metrics.get("dock_height",124))
 	elif wide:
 		grid.custom_minimum_size=Vector2(405,405)
 	elif combat_active:

@@ -36,13 +36,15 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and not sandbox.build_label.get_global_rect().intersects(sandbox.event_label.get_global_rect()),
 		"%s build label is not isolated in the event surface"%viewport_size)
 	var grid_size_before_build_probe:Vector2=sandbox.grid.size
+	var action_visibility_before_probe:bool=sandbox.combat_action_area.visible
 	sandbox.combat_action_area.visible=true;sandbox._position_build_label();await process_frame
 	sandbox._position_build_label();await process_frame
 	_check(not sandbox.build_label.get_global_rect().intersects(
 		sandbox.combat_action_area.get_global_rect()),
 		"%s build label %s overlaps bottom action rect %s"%[viewport_size,
 			sandbox.build_label.get_global_rect(),sandbox.combat_action_area.get_global_rect()])
-	sandbox.combat_action_area.visible=false;sandbox._position_build_label();await process_frame
+	sandbox.combat_action_area.visible=action_visibility_before_probe
+	sandbox._position_build_label();await process_frame
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
@@ -77,6 +79,38 @@ func _check_viewport(viewport_size:Vector2)->void:
 			"%s %s is not a single-line DOS command"%[viewport_size,contract[0]])
 		_check(_inside_rect(sandbox.bottom_navigation,action),
 			"%s %s overflows the fixed bottom navigation"%[viewport_size,contract[0]])
+	_check(sandbox.combat_action_area.visible and sandbox.action_feedback_label.visible==false \
+		and sandbox.combat_action_dock.visible,
+		"%s product movement/context dock is not persistently visible"%viewport_size)
+	var control_metrics:Dictionary=sandbox._product_controls_metrics(1)
+	var expected_target:=44 if viewport_size.x>=450.0 else 40
+	_check(int(control_metrics.get("target",0))==expected_target,
+		"%s product direction target is not the intended compact size"%viewport_size)
+	var direction_rects:Array[Rect2]=[]
+	for direction in [Vector2i(-1,-1),Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),
+			Vector2i.ZERO,Vector2i(1,0),Vector2i(-1,1),Vector2i(0,1),Vector2i(1,1)]:
+		var direction_button=sandbox.product_direction_buttons.get(direction) as Button
+		_check(direction_button!=null and direction_button.custom_minimum_size==Vector2(expected_target,expected_target) \
+			and bool(direction_button.get_meta("ascii_rail",false)) \
+			and direction_button.get_theme_stylebox("pressed")!=direction_button.get_theme_stylebox("normal"),
+			"%s direction %s lacks an independent pressed real-Button target"%[viewport_size,direction])
+		if direction_button!=null:direction_rects.append(direction_button.get_global_rect())
+	for first in range(direction_rects.size()):
+		for second in range(first+1,direction_rects.size()):
+			_check(not direction_rects[first].intersects(direction_rects[second]),
+				"%s direction hit rects overlap: %s / %s"%[viewport_size,first,second])
+	for button in [sandbox.product_attack_button,sandbox.product_auto_button,
+			sandbox.product_interact_button,sandbox.product_wait_guard_button,
+			sandbox.product_execute_button]:
+		_check(button is Button and bool(button.get_meta("product_control",false)) \
+			and _inside_rect(sandbox.combat_action_dock,button),
+			"%s contextual control is not a real contained Button"%viewport_size)
+	_check(sandbox.product_interact_button.disabled,
+		"%s unavailable INTERACT backend was exposed as a dummy action"%viewport_size)
+	_check(not sandbox.product_auto_button.disabled and sandbox.product_auto_button.toggle_mode \
+		and sandbox.product_attack_button.disabled and not sandbox.product_wait_guard_button.disabled \
+		and sandbox.product_execute_button.disabled,
+		"%s exploration contextual controls do not match AUTO/ATTACK/WAIT/EXECUTE authority"%viewport_size)
 	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==2 \
 		and not sandbox.info_scroll.visible and not sandbox.deck.visible and not sandbox.log_label.visible,
 		"%s compact event surface did not replace generic context/log copies"%viewport_size)
@@ -230,7 +264,272 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
 		"%s DOS modal still contains a modern ProgressBar"%viewport_size)
 	sandbox.queue_free();await process_frame
+	await _check_product_direction_touch(viewport_size)
+	await _check_active_route_direction_override(viewport_size)
+	await _check_product_auto_scheduler(viewport_size)
 	await _check_direct_solo_combat_log(viewport_size)
+
+func _check_product_auto_scheduler(viewport_size:Vector2)->void:
+	var session=_safe_auto_product_session()
+	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session,false)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
+	root.add_child(sandbox);await process_frame;await process_frame
+	var canonical:Dictionary={"accepted":true,"event_ids":[],"visual_effects":[{
+		"effect_id":"nested-auto-vfx","event_id":90001,"order":0,
+		"kind":"HIT_FLASH","damage_type":"physical","world_position":[0,0],"text":""}]}
+	var route_wrapper:Dictionary={"last_step_result":canonical}
+	var advanced:Dictionary={"advanced":true,"running":true,"last_step_result":route_wrapper}
+	sandbox._consume_product_auto_explore_result(advanced)
+	var effect_count:int=sandbox._pending_visual_effect_rows.size()
+	sandbox._consume_product_auto_explore_result({"advanced":false,"running":false,
+		"stop_reason":"auto_explore_user_cancel","last_step_result":route_wrapper})
+	_check(effect_count==1 and sandbox._pending_visual_effect_rows.size()==1,
+		"%s AUTO nested canonical VFX was omitted or replayed by cancel"%viewport_size)
+	sandbox._pending_visual_effect_rows.clear()
+	# Start commits its first hop; a held AUTO touch must pause every continuation.
+	sandbox._on_product_auto();sandbox._sync_product_control_state()
+	var running:=bool(session.auto_explore_state().get("running",false))
+	_check(running and sandbox.product_auto_button.text=="[AUTO ■]",
+		"%s AUTO did not enter a visible running state"%viewport_size)
+	if running:
+		# _on_product_auto synchronously rebuilds the dock. Quiesce only the test
+		# scheduler until Container layout has produced the next drawn hit rects.
+		sandbox._product_auto_explore_pending=false
+		sandbox._product_auto_explore_due_frame=-1
+		sandbox._product_auto_explore_scheduled_generation=-1
+		await process_frame;await process_frame
+		var held_step:=int(session.party_status().step_index)
+		var center:Vector2=sandbox.product_auto_button.get_global_rect().get_center()
+		var press:=InputEventScreenTouch.new();press.index=51;press.pressed=true;press.position=center
+		root.push_input(press,true);sandbox._schedule_product_auto_explore()
+		await process_frame;await process_frame;await process_frame
+		_check(sandbox._product_touch_control=="ProductAuto",
+			"%s laid-out AUTO hit rect overlapped %s"%[viewport_size,sandbox._product_touch_control])
+		_check(int(session.party_status().step_index)==held_step,
+			"%s AUTO committed a hop while its ScreenTouch was held"%viewport_size)
+		_check(bool(session.auto_explore_state().get("running",false)),
+			"%s AUTO stopped while its ScreenTouch was held: %s"%[viewport_size,
+				session.auto_explore_state()])
+		var release:=InputEventScreenTouch.new();release.index=51;release.pressed=false;release.position=center
+		root.push_input(release,true);await process_frame;await process_frame
+		_check(not bool(session.auto_explore_state().get("running",false)) \
+			and int(session.party_status().step_index)==held_step \
+			and sandbox.product_auto_button.text=="[AUTO]" \
+			and not sandbox.product_auto_button.button_pressed,
+			"%s AUTO held-touch cancel restarted, advanced, or left stale chrome state=%s step=%d/%d text=%s pressed=%s"%[
+				viewport_size,session.auto_explore_state(),int(session.party_status().step_index),held_step,
+				sandbox.product_auto_button.text,sandbox.product_auto_button.button_pressed])
+	# Drag-cancelling a button gesture is not a command. AUTO stays running,
+	# remains paused for the held gesture, then resumes with one scheduled hop.
+	session=_safe_auto_product_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	sandbox._on_product_auto();sandbox._sync_product_control_state()
+	if bool(session.auto_explore_state().get("running",false)):
+		sandbox._product_auto_explore_pending=false
+		sandbox._product_auto_explore_due_frame=-1
+		sandbox._product_auto_explore_scheduled_generation=-1
+		await process_frame;await process_frame
+		var drag_step:=int(session.party_status().step_index)
+		var drag_origin:Vector2=sandbox.product_auto_button.get_global_rect().get_center()
+		var drag_press:=InputEventScreenTouch.new();drag_press.index=52
+		drag_press.pressed=true;drag_press.position=drag_origin;root.push_input(drag_press,true)
+		sandbox._schedule_product_auto_explore()
+		await process_frame
+		var drag:=InputEventScreenDrag.new();drag.index=52;drag.position=drag_origin+Vector2(20,0)
+		drag.relative=Vector2(20,0);root.push_input(drag,true)
+		await process_frame;await process_frame
+		_check(int(session.party_status().step_index)==drag_step,
+			"%s AUTO committed while a drag-cancel gesture was held"%viewport_size)
+		var drag_release:=InputEventScreenTouch.new();drag_release.index=52
+		drag_release.pressed=false;drag_release.position=drag.position;root.push_input(drag_release,true)
+		await process_frame
+		_check(int(session.party_status().step_index)==drag_step+1,
+			"%s drag-cancelled AUTO did not resume exactly one next-frame hop state=%s"%[
+				viewport_size,session.auto_explore_state()])
+	# A modal cancel synchronizes the button immediately without rebuilding grid.
+	session=_safe_auto_product_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	var grid_id:int=sandbox.grid.get_instance_id();sandbox._on_product_auto()
+	if bool(session.auto_explore_state().get("running",false)):
+		sandbox._toggle_map_overlay()
+		_check(not bool(session.auto_explore_state().get("running",false)) \
+			and sandbox.product_auto_button.text=="[AUTO]" \
+			and not sandbox.product_auto_button.button_pressed \
+			and sandbox.grid.get_instance_id()==grid_id,
+			"%s modal AUTO cancel left stale state or rebuilt the grid"%viewport_size)
+		sandbox.map_overlay.close("TEST");await process_frame
+	# Rapid cancel followed by a fresh start cannot retain the old scheduled hop.
+	session=_safe_auto_product_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	sandbox._on_product_auto()
+	if bool(session.auto_explore_state().get("running",false)):
+		sandbox._cancel_product_auto_explore("auto_explore_user_cancel",false)
+		var cancelled_step:=int(session.party_status().step_index)
+		sandbox._on_product_auto()
+		var restarted_running:=bool(session.auto_explore_state().get("running",false))
+		var restart_step:=int(session.party_status().step_index)
+		await process_frame;await process_frame
+		var delta:=int(session.party_status().step_index)-restart_step
+		_check(cancelled_step<=restart_step and (delta==1 if restarted_running else delta==0),
+			"%s rapid AUTO cancel/restart duplicated or stuck its scheduled hop cancel=%d restart=%d running=%s delta=%d state=%s"%[
+				viewport_size,cancelled_step,restart_step,restarted_running,delta,session.auto_explore_state()])
+	sandbox.queue_free();await process_frame
+
+func _safe_auto_product_session():
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter;var enemy_id:=int(state.enemy_ids[0])
+	var snapshot:Dictionary=session._auto_explore_fog_snapshot();var hidden:=Vector2i(-1,-1)
+	for y in range(session.sim.world.height-1,-1,-1):
+		for x in range(session.sim.world.width-1,-1,-1):
+			var position:=Vector2i(x,y);var key:="%d:%d"%[x,y]
+			if snapshot.visible.has(key):continue
+			var definition:Dictionary=TerrainRegistry.definition(str(session.sim.world.tile_at(position).terrain))
+			if bool(definition.get("passable",false)) \
+					and session.sim.world.blocking_entity_at(position,enemy_id)==null:
+				hidden=position;break
+		if hidden!=Vector2i(-1,-1):break
+	if hidden!=Vector2i(-1,-1):session.sim.world.entities[enemy_id].position=hidden
+	state.enemy_busy_rows[enemy_id]=1000000000
+	return session
+
+func _check_active_route_direction_override(viewport_size:Vector2)->void:
+	var session=null;var started:Dictionary={}
+	for goal_offset in [Vector2i(-3,0),Vector2i(0,-3),Vector2i(3,0),Vector2i(0,3)]:
+		var candidate=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var status:Dictionary=candidate.party_status()
+		var origin:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+		var preview:Dictionary=candidate.preview_exploration_route(origin+goal_offset)
+		if not bool(preview.get("accepted",false)) or int(preview.get("total_steps",0))<3:continue
+		var result:Dictionary=candidate.start_exploration_route(origin+goal_offset,str(preview.get("plan_hash","")))
+		if bool(result.get("active",false)):
+			session=candidate;started=result;break
+	_check(session!=null,"%s could not create an active route override fixture"%viewport_size)
+	if session==null:return
+	var sandbox=Sandbox.new();sandbox.name="ProductRouteOverrideProbe";sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session,false)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
+	root.add_child(sandbox);await process_frame;await process_frame
+	var status:Dictionary=session.party_status();var origin:=Vector2i(int(status.protagonist_position[0]),
+		int(status.protagonist_position[1]));var chosen:=Vector2i.ZERO
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(-1,-1),Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1)]:
+		if bool(session.preview_exploration(Command.move_to(int(status.protagonist_id),origin+direction)).get("accepted",false)):
+			chosen=direction;break
+	_check(chosen!=Vector2i.ZERO,"%s active route fixture has no manual direction"%viewport_size)
+	if chosen!=Vector2i.ZERO:
+		var step_before:=int(status.step_index);var journal_before:int=session.command_journal.size()
+		await _screen_touch_button(sandbox,sandbox.product_direction_buttons.get(chosen) as Button,52)
+		_check(int(session.party_status().step_index)==step_before+1 \
+			and session.command_journal.size()==journal_before+1 \
+			and not bool(session.exploration_route_state().get("active",false)),
+			"%s active route → direction did not cancel then commit exactly once"%viewport_size)
+		await process_frame;await process_frame
+		_check(int(session.party_status().step_index)==step_before+1,
+			"%s cancelled route retained a deferred continuation"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _check_product_direction_touch(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var status:Dictionary=session.party_status();var hero:=int(status.protagonist_id)
+	var origin:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	var fixture_preview:Dictionary=session.preview_exploration(
+		Command.move_to(hero,origin+Vector2i(-1,-1)))
+	_check(bool(fixture_preview.get("accepted",false)),
+		"%s direction fixture rejects its first diagonal: %s"%[viewport_size,fixture_preview])
+	var sandbox=Sandbox.new();sandbox.name="ProductDirectionTouchProbe";sandbox.size=viewport_size
+	# Manual orchestration isolates one user gesture from the legitimate CONTACT
+	# auto-deploy commits that can follow an exploration step.
+	sandbox.initialize_for_headless_test(session,false)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
+	root.add_child(sandbox);await process_frame;await process_frame
+	var steps:Array=[
+		["ProductMoveNW",Vector2i(-1,-1)],["ProductMoveN",Vector2i(0,-1)],
+		["ProductMoveNE",Vector2i(1,-1)],["ProductMoveW",Vector2i(-1,0)],
+		["ProductMoveE",Vector2i(1,0)],["ProductMoveSW",Vector2i(-1,1)],
+		["ProductMoveS",Vector2i(0,1)],["ProductMoveSE",Vector2i(1,1)],
+	]
+	for row_index in range(steps.size()):
+		var row:Variant=steps[row_index]
+		if row_index>0:
+			session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+			sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+			await process_frame;await process_frame
+		var before_status:Dictionary=session.party_status()
+		var before:=Vector2i(int(before_status.protagonist_position[0]),
+			int(before_status.protagonist_position[1]))
+		var step_before:=int(before_status.step_index);var journal_before:int=session.command_journal.size()
+		var button=sandbox.find_child(str(row[0]),true,false) as Button
+		if button==null or button.disabled or sandbox._product_control_at_position(
+				button.get_global_rect().get_center())!=str(row[0]):
+			failures.append("%s %s not hittable before ScreenTouch disabled=%s rect=%s map=%s"%[
+				viewport_size,row[0],button.disabled if button!=null else true,
+				button.get_global_rect() if button!=null else Rect2(),sandbox.map_overlay.visible])
+		await _screen_touch_button(sandbox,button,31)
+		var after_status:Dictionary=session.party_status()
+		var after:=Vector2i(int(after_status.protagonist_position[0]),
+			int(after_status.protagonist_position[1]))
+		_check(after==before+Vector2i(row[1]) and int(after_status.step_index)==step_before+1 \
+			and session.command_journal.size()==journal_before+1,
+			"%s %s ScreenTouch was not exactly one authoritative step: %s/%s step %d/%d journal %d/%d phase %s/%s"%[
+				viewport_size,row[0],before,after,step_before,int(after_status.step_index),journal_before,
+				session.command_journal.size(),before_status.safe_phase,after_status.safe_phase])
+		await process_frame;await process_frame
+		_check(int(session.party_status().step_index)==step_before+1 \
+			and session.command_journal.size()==journal_before+1,
+			"%s %s ScreenTouch double-committed on deferred refresh"%[viewport_size,row[0]])
+	session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	var wait_before:Dictionary=session.party_status();var wait_journal:int=session.command_journal.size()
+	var wait_position:Array=wait_before.protagonist_position.duplicate()
+	await _screen_touch_button(sandbox,sandbox.find_child("ProductWaitCenter",true,false) as Button,32)
+	var wait_after:Dictionary=session.party_status()
+	_check(wait_after.protagonist_position==wait_position \
+		and int(wait_after.step_index)==int(wait_before.step_index)+1 \
+		and session.command_journal.size()==wait_journal+1,
+		"%s center WAIT was not exactly one stationary authoritative turn"%viewport_size)
+	await process_frame;await process_frame
+	_check(int(session.party_status().step_index)==int(wait_before.step_index)+1,
+		"%s center WAIT double-committed"%viewport_size)
+	# Map touch retains its original one-cell contract beside the button dock.
+	session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	var map_before:Dictionary=session.party_status()
+	var map_origin:=Vector2i(int(map_before.protagonist_position[0]),
+		int(map_before.protagonist_position[1]));var map_destination:=map_origin+Vector2i.RIGHT
+	var map_journal:int=session.command_journal.size()
+	await _screen_touch_grid_cell(sandbox,map_destination,33)
+	var map_after:Dictionary=session.party_status()
+	_check(map_after.protagonist_position==[map_destination.x,map_destination.y] \
+		and session.command_journal.size()==map_journal+1,
+		"%s map ScreenTouch stopped being an independent one-cell move"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _screen_touch_button(sandbox,button:Button,touch_index:int)->void:
+	if button==null:
+		failures.append("missing product control button");return
+	var center:=button.get_global_rect().get_center()
+	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=center
+	root.push_input(press,true);await process_frame
+	if sandbox._product_touch_index!=touch_index:
+		failures.append("product ScreenTouch press did not reach sandbox _input at %s"%center)
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=center
+	root.push_input(release,true);await process_frame;await process_frame
+	if sandbox._product_touch_index!=-1:
+		failures.append("product ScreenTouch release did not reach sandbox _input at %s"%center)
+
+func _screen_touch_grid_cell(sandbox,position:Vector2i,touch_index:int)->void:
+	var local_position:Vector2=sandbox.grid.world_to_pixel_center(position)
+	var global_position:Vector2=sandbox.grid.get_global_rect().position+local_position
+	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=global_position
+	root.push_input(press,true);await process_frame
+	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=global_position
+	root.push_input(release,true);await process_frame;await process_frame
 
 func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
@@ -257,7 +556,36 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 	sandbox.initialize_for_headless_test(session,true)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
-	sandbox._stage_auto_combat_action("MELEE",[],enemy)
+	var hero_position:Vector2i=session.sim.world.entities[hero].position
+	var enemy_position:Vector2i=session.sim.world.entities[enemy].position
+	var attack_direction:=Vector2i(signi(enemy_position.x-hero_position.x),
+		signi(enemy_position.y-hero_position.y))
+	var combat_step_before:=int(session.party_status().step_index)
+	_check(not sandbox.product_attack_button.disabled and sandbox.product_auto_button.disabled \
+		and not sandbox.product_wait_guard_button.disabled and sandbox.product_execute_button.disabled,
+		"%s adjacent direct-solo controls were stale before the fast turn"%viewport_size)
+	await _screen_touch_button(sandbox,
+		sandbox.product_direction_buttons.get(attack_direction) as Button,41)
+	_check(int(session.party_status().step_index)==combat_step_before+1,
+		"%s adjacent direction bump did not commit exactly one combat turn"%viewport_size)
+	var after_fast:Dictionary=session.party_status()
+	var expects_attack:=str(after_fast.get("view_mode",""))=="COMBAT" \
+		and sandbox._product_adjacent_enemy_id(after_fast)>0 and not bool(after_fast.get("terminal",false))
+	_check(sandbox.product_attack_button.disabled==not expects_attack \
+		and sandbox.product_auto_button.disabled \
+		and sandbox.product_wait_guard_button.disabled==bool(after_fast.get("terminal",false)) \
+		and sandbox.product_execute_button.disabled,
+		"%s direct-solo fast refresh left contextual control state stale"%viewport_size)
+	var melee_spec:Dictionary=sandbox.grid.intent_draw_spec({
+		"type":"MELEE","from_position":[hero_position.x,hero_position.y],
+		"target_position":[enemy_position.x,enemy_position.y],"source":"DIRECT"})
+	_check(melee_spec.get("primitive","")=="TARGET_MARKER" \
+		and not bool(melee_spec.get("draw_connector",true)) \
+		and not str(melee_spec.get("marker_style","")).is_empty(),
+		"%s melee selection restored an attacker-target connector or lost its target marker"%viewport_size)
+	_check(sandbox.grid._intent_overlays.is_empty() and sandbox.grid._route_path.is_empty() \
+		and sandbox.grid.cursor_cell==Vector2i(-1,-1),
+		"%s direct solo bump left movement/intent marks over the map"%viewport_size)
 	var history:Dictionary=session.combat_log(8,80)
 	var latest_messages:=_newest_meaningful_messages(sandbox,history,2)
 	var fast_text:String=sandbox.event_label.text

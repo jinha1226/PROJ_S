@@ -1563,8 +1563,8 @@ func _draw_intent(intent: Dictionary) -> void:
 	elif action_type == "MELEE" and intent.get("target_position") is Array and intent.target_position.size() == 2:
 		var target := Vector2i(int(intent.target_position[0]), int(intent.target_position[1]))
 		if not _cell_allows_overlay(target):return
-		_draw_arrow(world_to_pixel_center(origin), world_to_pixel_center(target), color,
-			float(spec.line_width), bool(spec.dashed))
+		# Keep the target-cell marker but never draw an attacker-target connector:
+		# across adjacent glyphs it reads as a route and obscures the terrain.
 		var center := world_to_pixel_center(target); var radius := cell_size_px() * 0.28
 		draw_line(center-Vector2(radius,radius), center+Vector2(radius,radius), color, float(spec.line_width))
 		draw_line(center+Vector2(radius,-radius), center+Vector2(-radius,radius), color, float(spec.line_width))
@@ -1593,7 +1593,8 @@ func intent_draw_spec(intent: Dictionary) -> Dictionary:
 		var target:=_array_to_world_position(intent.get("target_position",[]))
 		visible=visible and target!=Vector2i(-1,-1) and _cell_allows_overlay(target)
 	return {"action_type":str(intent.get("type","HOLD")),
-		"primitive":"RING" if str(intent.get("type","HOLD"))=="HOLD" else "ARROW",
+		"primitive":"RING" if action_type=="HOLD" else ("TARGET_MARKER" if action_type=="MELEE" else "ARROW"),
+		"draw_connector":action_type=="MOVE",
 		"visible":visible,
 		"line_style":line_style, "line_width":width,
 		"dashed":line_style=="DASHED_THIN", "dash_segments":8 if line_style=="DASHED_THIN" else 0,

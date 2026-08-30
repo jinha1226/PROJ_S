@@ -304,8 +304,9 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox._refresh();await process_frame;await process_frame
 	var locked_before:Dictionary=session.sim.snapshot();var journal_before:Array=session.command_journal.duplicate(true)
 	await _touch_cell(sandbox,exit)
-	if sandbox.action_feedback_label.text!="적을 쓰러뜨리면 출구가 열립니다." \
-			or not sandbox.combat_action_area.is_visible_in_tree() or sandbox.combat_action_dock.visible:
+	if sandbox.event_label.text!="적을 쓰러뜨리면 출구가 열립니다." \
+			or not sandbox.combat_action_area.is_visible_in_tree() \
+			or not sandbox.combat_action_dock.is_visible_in_tree():
 		failures.append("%s locked exit fixed feedback unavailable"%label)
 	if session.sim.snapshot()!=locked_before or session.command_journal!=journal_before:
 		failures.append("%s locked exit touch mutated authority"%label)
@@ -331,11 +332,14 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox._hide_tile_popover();sandbox._refresh();await process_frame;await process_frame
 	if not bool(session.run_progress().complete) or sandbox.phase_label.text!="승리":
 		failures.append("%s complete situation"%label)
-	var restart:=_button(sandbox,"RestartSameRun")
-	if restart==null or not restart.is_visible_in_tree() or sandbox.combat_action_dock.get_child_count()!=1 \
-			or sandbox.action_feedback_label.visible:
+	var restart:=_button(sandbox,"ProductExecute")
+	var restart_count:=0
+	for button in sandbox.find_children("*","Button",true,false):
+		if button is Button and button.is_visible_in_tree() and button.text=="[RESTART]":restart_count+=1
+	if restart==null or not restart.is_visible_in_tree() or restart.disabled or restart_count!=1 \
+			or _button(sandbox,"RestartSameRun")!=null or sandbox.action_feedback_label.visible:
 		failures.append("%s complete fixed area is not one restart button"%label)
-	if restart!=null and restart.text!="[E 재시작]":
+	if restart!=null and restart.text!="[RESTART]":
 		failures.append("%s solo restart button copy"%label)
 	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
 			or not sandbox.grid.route_draw_spec().segments.is_empty():
@@ -354,7 +358,11 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox.member_detail_modal.visible=true;sandbox.grid.modal_open=true
 	sandbox._scroll_log_after_refresh=true
 	var personality_seed_before:=int(session.personality_seed)
-	if restart!=null:restart.pressed.emit()
+	if restart!=null:
+		# The transient-reset fixture deliberately leaves a modal open above the
+		# dock. Dispatch the already-validated real control action directly here;
+		# pointer input is correctly blocked by that modal.
+		sandbox._activate_product_control("ProductExecute")
 	await process_frame;await process_frame
 	var fresh:Dictionary=session.run_progress()
 	var fresh_status:Dictionary=session.party_status()
@@ -372,7 +380,9 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 			or sandbox.member_detail_modal.visible or sandbox.grid.modal_open \
 			or not sandbox.grid._active_visual_effects.is_empty() or not sandbox.grid._played_effect_ids.is_empty():
 		failures.append("%s restart retained UI/grid transient state"%label)
-	if _button(sandbox,"RestartSameRun")!=null or sandbox.combat_action_area.visible:
+	if _button(sandbox,"RestartSameRun")!=null or not sandbox.combat_action_area.visible \
+			or sandbox.product_execute_button.text!="[EXECUTE]" \
+			or not sandbox.product_execute_button.disabled:
 		failures.append("%s restart left terminal controls"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text!="조용함":
 		failures.append("%s restart HUD did not return to calm"%label)
@@ -384,7 +394,8 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 	if sandbox._is_solo_product_session():
 		var root_box:Control=sandbox.root_layout
 		if root_box.get_global_rect()!=viewport:
-			failures.append("%s product root has an outer frame"%label)
+			failures.append("%s product root has an outer frame root=%s viewport=%s"%[
+				label,root_box.get_global_rect(),viewport])
 		if absf(sandbox.grid.get_global_rect().size.x-viewport.size.x)>0.1:
 			failures.append("%s product grid leaves horizontal outer gutters"%label)
 		if bar.visible or sandbox.top_hud_actions.visible or sandbox.info_scroll.visible \

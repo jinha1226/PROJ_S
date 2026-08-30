@@ -14,6 +14,7 @@ const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const MovementSystemScript = preload("res://sim/systems/movement_system.gd")
 const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_registry.gd")
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
+const AutoExploreScript = preload("res://playtest/party_auto_explore.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
@@ -66,6 +67,7 @@ var _protagonist_draft = null
 var _overrides: Dictionary = {}
 var _draft_fingerprint := ""
 var _exploration_route = null
+var _auto_explore = null
 var _protagonist_placeholder := false
 var _map_layout: Dictionary = {}
 # Presentation-only fog memory acceleration. Canonical events remain the sole
@@ -235,6 +237,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
+	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
+	else: _auto_explore.clear()
 	return true
 
 
@@ -1710,6 +1714,8 @@ func select_movement_destination(actor_id: int, destination_value: Variant) -> D
 	# One mutating facade for a map-cell tap. Exploration starts the canonical
 	# route and commits exactly its first hop; combat directly replaces the
 	# actor's pending action without creating a second placement preview.
+	if _auto_explore != null and bool(_auto_explore.state().get("running", false)):
+		_auto_explore.cancel("auto_explore_user_command")
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	var parsed := _inspection_position(destination_value)
@@ -2192,6 +2198,106 @@ func exploration_route_state() -> Dictionary:
 	return _exploration_route.state()
 
 
+func start_auto_explore() -> Dictionary:
+	if _auto_explore == null:
+		_auto_explore = AutoExploreScript.new(self)
+	if bool(_auto_explore.state().get("running", false)):
+		return _auto_explore.start()
+	var route_state: Dictionary = exploration_route_state()
+	if bool(route_state.get("active", false)) \
+			or bool(route_state.get("has_preview", false)):
+		cancel_exploration_route()
+	return _auto_explore.start()
+
+
+func continue_auto_explore() -> Dictionary:
+	if _auto_explore == null:
+		_auto_explore = AutoExploreScript.new(self)
+	return _auto_explore.continue_auto()
+
+
+func cancel_auto_explore(reason: String = "auto_explore_cancelled") -> Dictionary:
+	if _auto_explore == null:
+		_auto_explore = AutoExploreScript.new(self)
+	return _auto_explore.cancel(reason)
+
+
+func auto_explore_state() -> Dictionary:
+	if _auto_explore == null:
+		_auto_explore = AutoExploreScript.new(self)
+	return _auto_explore.state()
+
+
+func _auto_explore_fog_snapshot() -> Dictionary:
+	var context := _party_observation_context()
+	if context.is_empty():
+		return {}
+	var status: Dictionary = context.status
+	var visible: Dictionary = context.visible
+	var explored: Dictionary = context.explored
+	var progress: Dictionary = context.progress
+	var state = sim.world.party_encounter
+	var hero_id := int(status.protagonist_id)
+	var cells: Dictionary = {}
+	var hazards: Dictionary = {}
+	var discoveries: Dictionary = {}
+	var visible_enemy_keys: Dictionary = {}
+	for y in range(sim.world.height):
+		for x in range(sim.world.width):
+			var position := Vector2i(x, y)
+			var key := _position_key(position)
+			if not visible.has(key) and not explored.has(key):
+				continue
+			var is_visible := visible.has(key)
+			var terrain_id := str(sim.world.tile_at(position).terrain)
+			var definition: Dictionary = TerrainRegistryScript.definition(terrain_id)
+			var risk := _exploration_step_risk(position, visible) if is_visible else 0
+			var occupied := false
+			if is_visible:
+				occupied = sim.world.blocking_entity_at(position, hero_id) != null
+				var feature_id := _run_feature_id_at(position, progress)
+				if not feature_id.is_empty():
+					discoveries["FEATURE:%s:%s" % [key, feature_id]] = true
+				for entity in sim.world.occupying_entities_at(position):
+					var is_enemy: bool = entity.id in state.enemy_ids \
+						and sim.world.is_unresolved_enemy(entity.id)
+					if is_enemy and not bool(context.hide_enemies):
+						visible_enemy_keys["ENEMY:%d" % int(entity.id)] = true
+					elif entity.id not in state.party_member_ids and not is_enemy:
+						discoveries["ACTOR:%d" % int(entity.id)] = true
+			if risk > AutoExploreScript.AFFINITY_SAFE_RISK_THRESHOLD:
+				hazards[key] = risk
+			cells[key] = {"position":[x, y],
+				"visibility_state":"VISIBLE" if is_visible else "MEMORY",
+				"terrain_id":terrain_id,
+				"passable":not definition.is_empty() \
+					and bool(definition.get("passable", false)) \
+					and int(definition.get("occupancy_capacity", 0)) >= 1,
+				"move_time_cost":int(definition.get("move_time_cost", 0)),
+				"occupied":occupied, "risk":risk}
+	var health: Dictionary = {}
+	for member_id_value in state.active_party_member_ids:
+		var member_id := int(member_id_value)
+		if sim.world.entities.has(member_id):
+			health[str(member_id)] = int(sim.world.entities[member_id].health)
+	var objective_signature := JSON.stringify({
+		"available":bool(progress.get("available", false)),
+		"run_state":str(progress.get("run_state", "")),
+		"encounter_cleared":bool(progress.get("encounter_cleared", false)),
+		"reward_granted":bool(progress.get("reward", {}).get("granted", false)),
+		"exit_open":bool(progress.get("exit", {}).get("open", false)),
+		"complete":bool(progress.get("complete", false)),
+		"terminal":bool(progress.get("terminal", false))})
+	return {"schema_version":1, "width":sim.world.width,
+		"height":sim.world.height, "step_index":int(status.step_index),
+		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
+		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
+		"hero_position":status.protagonist_position.duplicate(true),
+		"cells":cells, "visible":visible.duplicate(), "hazards":hazards,
+		"discoveries":discoveries, "visible_enemy_keys":visible_enemy_keys,
+		"health":health, "objective_signature":objective_signature}.duplicate(true)
+
+
 func start_exploration_route(goal: Variant, plan_hash: String) -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
 	if _position_is_locked_exit(goal):
@@ -2215,6 +2321,8 @@ func cancel_exploration_route() -> Dictionary:
 
 func commit_exploration(command) -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
+	if _auto_explore != null and bool(_auto_explore.state().get("running", false)):
+		_auto_explore.cancel("auto_explore_user_command")
 	if _command_targets_locked_exit(command):
 		return _rejection_dto("exit_locked", null, null,
 			_exploration_context(command))
@@ -2833,6 +2941,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
+	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
+	else: _auto_explore.clear()
 	_invalidate_explored_presentation_cache()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
 
@@ -3013,6 +3123,7 @@ func _clear_run_completion_transients() -> void:
 	_deployment_plan.clear()
 	_clear_draft()
 	if _exploration_route != null: _exploration_route.clear()
+	if _auto_explore != null: _auto_explore.clear()
 
 
 func _inspection_position(value: Variant) -> Dictionary:
