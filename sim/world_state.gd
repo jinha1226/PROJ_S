@@ -45,6 +45,8 @@ const StatusRegistryScript = preload("res://sim/status_registry.gd")
 const MeleeCombatSystemScript = preload("res://sim/systems/melee_combat_system.gd")
 const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
+const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
+const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 
 var width: int
 var height: int
@@ -1682,10 +1684,26 @@ func _melee_action_event_error(event) -> String:
 	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile: Dictionary = CombatProfileRegistryScript.profile(target_state.combat_profile_id)
 	var base_damage: int = int(attacker_profile.get("power", 0))
-	if party_encounter!=null and event.actor_id==party_encounter.protagonist_id:
+	var weapon_enabled:bool = party_encounter != null \
+		and event.actor_id == party_encounter.protagonist_id \
+		and party_encounter.protagonist_loadout != null \
+		and "weapon_loadout" in entities[event.actor_id].tags
+	var weapon_spec: Dictionary = {}
+	if weapon_enabled:
+		var weapon_id := str(party_encounter.protagonist_loadout.equipped_weapon_id)
+		var weapon = WeaponRegistryScript.definition(weapon_id)
+		if weapon == null: return "canonical_weapon_missing"
+		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id)
+		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
+			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
+			int(target_profile.evasion_milli), int(target_profile.armor_flat))
+		if weapon_spec.is_empty(): return "canonical_weapon_formula_invalid"
+		base_damage = int(weapon_spec.raw_damage)
+	elif party_encounter!=null and event.actor_id==party_encounter.protagonist_id:
 		base_damage+=ProgressionRegistryScript.melee_power_bonus(
 			_progression_melee_rank_before(event.id))
-	var armor_reduction: int = mini(int(target_profile.get("armor_flat", 0)), maxi(0, base_damage - 1))
+	var armor_reduction: int = int(weapon_spec.armor_reduction) if weapon_enabled \
+		else mini(int(target_profile.get("armor_flat", 0)), maxi(0, base_damage - 1))
 	var after_armor: int = base_damage - armor_reduction
 	var action_keys := ["armor_flat", "armor_reduction", "attack_start_world_time", "attacker_profile_id",
 		"base_damage", "batch_context", "bleed_chance_milli", "bleed_proc_succeeded",
@@ -1733,7 +1751,8 @@ func _melee_action_event_error(event) -> String:
 			or event.data.base_damage != base_damage or event.data.armor_reduction != armor_reduction \
 			or event.magnitude != base_damage:
 		return "canonical_melee_profile_formula_invalid"
-	var hit_chance: int = clampi(500 + int(attacker_profile.accuracy_milli) \
+	var hit_chance: int = int(weapon_spec.hit_chance_milli) if weapon_enabled \
+		else clampi(500 + int(attacker_profile.accuracy_milli) \
 		- int(target_profile.evasion_milli), 50, 950)
 	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
 		- int(target_profile.bleed_resist_milli), 0, 1000)
@@ -1744,10 +1763,15 @@ func _melee_action_event_error(event) -> String:
 			or outcome not in ["HIT", "MISS", "OVERKILL_SKIP", "FINISHER"] \
 			or int(event.data.intent_ordinal) < 0:
 		return "canonical_melee_intent_invalid"
-	var key: String = MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
+	var key: String = WeaponAttackRulesScript.commitment_key(seed, processed_step, attack_start,
+		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id,
+		str(weapon_spec.weapon_id), int(weapon_spec.proficiency_rank)) if weapon_enabled \
+		else MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
 		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id)
-	var hit_roll: int = MeleeCombatSystemScript.lane_roll_milli(key, "HIT")
-	var bleed_roll: int = MeleeCombatSystemScript.lane_roll_milli(key, "BLEED")
+	var hit_roll: int = WeaponAttackRulesScript.lane_roll_milli(key, "HIT") if weapon_enabled \
+		else MeleeCombatSystemScript.lane_roll_milli(key, "HIT")
+	var bleed_roll: int = WeaponAttackRulesScript.lane_roll_milli(key, "BLEED") if weapon_enabled \
+		else MeleeCombatSystemScript.lane_roll_milli(key, "BLEED")
 	if event.data.commitment_hash != MeleeCombatSystemScript.commitment_hash(key) \
 			or event.data.hit_roll_milli != hit_roll or event.data.bleed_roll_milli != bleed_roll:
 		return "canonical_melee_commitment_invalid"
@@ -2968,7 +2992,9 @@ static func _exact_keys(value: Variant, expected: Array) -> bool:
 
 
 func _party_runtime_error() -> String:
-	if width != 15 or height != 15: return "party_fixture_dimensions_invalid"
+	# The camera remains a 15x15 window, but product party worlds may be larger.
+	# Retain the legacy minimum so old fixture assumptions are never squeezed.
+	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
 	if party_encounter.safe_phase not in PartyEncounterStateScript.PHASES: return "unknown_party_phase"

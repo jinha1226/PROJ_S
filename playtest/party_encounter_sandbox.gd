@@ -87,7 +87,7 @@ var member_skill_help:Label
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
-var member_detail_focus_buttons:HBoxContainer
+var member_detail_focus_buttons:GridContainer
 var member_detail_entity_id:int=-1
 var _pending_card_pointer:Dictionary={}
 var _last_card_tap_id:=-1
@@ -300,10 +300,10 @@ func _build_member_detail_modal()->void:
 	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_status_tab.tooltip_text="현재 상태와 관계 정보";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
 	member_detail_tab_row.add_child(member_detail_status_tab);AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,true)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="스킬"
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·장비"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_detail_skill_tab.tooltip_text="레벨, 기술 효과와 훈련 집중";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
+	member_detail_skill_tab.tooltip_text="장비, 무기 숙련 효과와 훈련 집중";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
 	member_detail_tab_row.add_child(member_detail_skill_tab);AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(member_detail_scroll)
@@ -317,9 +317,11 @@ func _build_member_detail_modal()->void:
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;detail_content.add_child(member_detail_body)
-	member_detail_focus_buttons=HBoxContainer.new();member_detail_focus_buttons.name="TrainingFocusButtons"
+	member_detail_focus_buttons=GridContainer.new();member_detail_focus_buttons.name="TrainingFocusButtons";member_detail_focus_buttons.columns=3
 	member_detail_focus_buttons.add_theme_constant_override("separation",4);member_detail_focus_buttons.visible=false
-	for skill in [{"id":"MELEE","label":"근접"},{"id":"GUARD","label":"방어"},{"id":"EXPLORATION","label":"탐험"}]:
+	for skill in [{"id":"SWORD","label":"도검"},{"id":"AXE","label":"도끼"},
+			{"id":"BLUNT","label":"둔기"},{"id":"SPEAR","label":"창"},
+			{"id":"RANGED","label":"원거리"},{"id":"UNARMED","label":"격투"}]:
 		var focus_button:=Button.new();focus_button.name="Focus%s"%str(skill.id)
 		focus_button.text=str(skill.label);focus_button.custom_minimum_size=Vector2(72,TOUCH_TARGET)
 		focus_button.toggle_mode=true;focus_button.set_meta("skill_id",str(skill.id))
@@ -352,10 +354,10 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_stats.add_theme_font_size_override("font_size",FONT_BODY);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_progression_window.add_child(member_progression_stats)
 	member_skill_help=Label.new();member_skill_help.name="SkillFocusHelp"
-	member_skill_help.text="훈련 집중 · 선택 기술 60%, 나머지 기술 20%씩\n레벨은 피해나 방어에 직접 곱해지지 않습니다."
+	member_skill_help.text="훈련 집중 · 선택 숙련 50%, 나머지 숙련 10%씩\n숙련은 명중과 피해만 높입니다. 공격시간은 무기 고유값입니다."
 	member_skill_help.add_theme_font_size_override("font_size",FONT_AUX);member_skill_help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_skill_help.modulate=Color("#c6d8e5");member_progression_window.add_child(member_skill_help)
-	for skill_id in ["MELEE","GUARD","EXPLORATION"]:
+	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
 		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
 		member_progression_window.add_child(panel)
@@ -1294,7 +1296,16 @@ func _update_progression_window(progression:Variant)->void:
 	member_progression_xp.max_value=maxi(1,int(progression.get("xp_required",1)))
 	member_progression_xp.value=int(progression.get("xp_current",0))
 	var stats:Dictionary=progression.get("combat_stats",{}) if progression.get("combat_stats",{}) is Dictionary else {}
-	member_progression_stats.text="현재 전투 능력\n공격력 %d   방어력 %d   방어 태세 %d%% · %d시간"%[
+	var equipment:Dictionary=progression.get("equipment",{}) if progression.get("equipment",{}) is Dictionary else {}
+	var ammo_text:="탄약 없음"
+	if str(equipment.get("ammo_kind","NONE"))=="ARROW":ammo_text="화살 %d"%int(equipment.get("arrows",0))
+	elif str(equipment.get("ammo_kind","NONE"))=="BOLT":
+		ammo_text="볼트 %d · %s"%[int(equipment.get("bolts",0)),
+			"장전됨" if bool(equipment.get("loaded",false)) else "재장전 필요"]
+	member_progression_stats.text="현재 장비 · %s [%s]\n사거리 %d-%d칸 · 공격시간 %d · %s\n공격력 %d   방어력 %d   방어 태세 %d%% · %d시간"%[
+		str(equipment.get("weapon_label","없음")),str(equipment.get("attack_form","-")),
+		int(equipment.get("range_min",1)),int(equipment.get("range_max",1)),
+		int(equipment.get("attack_time",100)),ammo_text,
 		int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
 		int(int(stats.get("guard_reduction_milli",250))/10),int(stats.get("guard_duration",200))]
 	for skill_value in progression.get("skills",[]):
@@ -1308,8 +1319,7 @@ func _update_progression_window(progression:Variant)->void:
 		progress.max_value=maxi(1,int(skill.get("training_required",1)));progress.value=int(skill.get("training_current",0))
 		progress.tooltip_text="훈련 %d/%d"%[int(skill.get("training_current",0)),int(skill.get("training_required",1))]
 		(row.effect as Label).text="현재 · %s"%str(skill.get("effect_label",""))
-		var milestone:Dictionary=skill.get("next_milestone",{}) if skill.get("next_milestone",{}) is Dictionary else {}
-		(row.future as Label).text="미래 · R%d %s (미구현)"%[int(milestone.get("rank",0)),str(milestone.get("label","후속 기술"))]
+		(row.future as Label).text="무기 고유 공격시간에는 영향을 주지 않습니다."
 	var dominant_focus_id:="";var dominant_focus_value:=-1
 	for skill_value in progression.get("skills",[]):
 		if skill_value is Dictionary and int(skill_value.get("focus",0))>dominant_focus_value:
@@ -1318,7 +1328,8 @@ func _update_progression_window(progression:Variant)->void:
 		if child is Button:
 			var focus_id:=str(child.get_meta("skill_id",""));var selected:=focus_id==dominant_focus_id
 			child.set_pressed_no_signal(selected)
-			child.text=("[%s]" if selected else " %s ")%{"MELEE":"근접","GUARD":"방어","EXPLORATION":"탐험"}.get(focus_id,focus_id)
+			child.text=("[%s]" if selected else " %s ")%{"SWORD":"도검","AXE":"도끼",
+				"BLUNT":"둔기","SPEAR":"창","RANGED":"원거리","UNARMED":"격투"}.get(focus_id,focus_id)
 			AsciiFrameScript.apply_rail_button(child,AsciiFrameScript.BRASS,selected)
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:

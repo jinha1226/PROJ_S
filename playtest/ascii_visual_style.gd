@@ -8,20 +8,26 @@ const DIORAMA_PALETTE := {
 	"void_hex":"#010203",
 	"substrate_hex":"#030507",
 	"unseen_ground_hex":"#030507",
-	"memory_ground_hex":"#070c16",
-	"visible_ground_hex":"#111a30",
-	"wall_side_hex":"#070b0f",
+	"memory_ground_hex":"#070b13",
+	"visible_ground_hex":"#101827",
+	"wall_side_hex":"#080a12",
 	"shadow_hex":"#010304",
+	"ink_black_hex":"#02040a",
+	"hero_ink_hex":"#ffd85a",
+	"hostile_ink_hex":"#ff5d68",
+	"ally_ink_hex":"#55d7ed",
 }
 
 const TERRAIN_DEFINITIONS := {
-	"floor": {"glyph":".", "base_hex":"#0b101b", "glyph_hex":"#8294ff", "edge_hex":"#060a12", "font_ratio":0.52, "raised":false},
-	"stone_floor": {"glyph":".", "base_hex":"#0c111a", "glyph_hex":"#c7b8ff", "edge_hex":"#080b13", "font_ratio":0.55, "raised":false},
-	"wood_floor": {"glyph":",", "base_hex":"#11100f", "glyph_hex":"#ff9d52", "edge_hex":"#0b0908", "font_ratio":0.55, "raised":false},
-	"metal": {"glyph":"=", "base_hex":"#09141a", "glyph_hex":"#58e5ff", "edge_hex":"#051015", "font_ratio":0.56, "raised":false},
-	"rubble": {"glyph":":", "base_hex":"#11110f", "glyph_hex":"#dbb45d", "edge_hex":"#0b0a07", "font_ratio":0.54, "raised":false},
-	"shallow_water": {"glyph":"~", "base_hex":"#081421", "glyph_hex":"#37a8ff", "edge_hex":"#050e18", "font_ratio":0.58, "raised":false},
-	"wall": {"glyph":"#", "base_hex":"#10121b", "glyph_hex":"#ead5ff", "edge_hex":"#080a12", "font_ratio":0.61, "raised":true},
+	# Ordinary floor stays low and quiet while special materials retain a single
+	# punctuation mark. Secondary marks add texture without becoming image tiles.
+	"floor": {"glyph":".", "base_hex":"#0a101a", "glyph_hex":"#71839e", "edge_hex":"#050911", "font_ratio":0.50, "raised":false, "ink_family":"SLATE"},
+	"stone_floor": {"glyph":".", "base_hex":"#0d1119", "glyph_hex":"#9eaac4", "edge_hex":"#070a11", "font_ratio":0.52, "raised":false, "ink_family":"CHALK"},
+	"wood_floor": {"glyph":",", "base_hex":"#15100d", "glyph_hex":"#c98955", "edge_hex":"#0b0807", "font_ratio":0.52, "raised":false, "ink_family":"OCHRE"},
+	"metal": {"glyph":"=", "base_hex":"#08151a", "glyph_hex":"#5cb9c8", "edge_hex":"#041015", "font_ratio":0.52, "raised":false, "ink_family":"CYAN"},
+	"rubble": {"glyph":":", "base_hex":"#15130e", "glyph_hex":"#c5a25a", "edge_hex":"#0b0906", "font_ratio":0.52, "raised":false, "ink_family":"OCHRE"},
+	"shallow_water": {"glyph":"~", "base_hex":"#071522", "glyph_hex":"#419bd1", "edge_hex":"#040e18", "font_ratio":0.54, "raised":false, "ink_family":"AZURE"},
+	"wall": {"glyph":"#", "base_hex":"#12131d", "glyph_hex":"#d7c8ec", "edge_hex":"#080a12", "font_ratio":0.70, "raised":true, "ink_family":"VIOLET"},
 }
 
 
@@ -97,18 +103,37 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 
 static func feature_spec(feature_id: String) -> Dictionary:
 	var definitions := {
-		"run_entry":{"glyph":"<", "color_hex":"#55C8FF"},
-		"run_exit_locked":{"glyph":">", "color_hex":"#C77986"},
-		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8"},
-		"open_door":{"glyph":"/", "color_hex":"#FFD166"},
+		"run_entry":{"glyph":"<", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
+		"run_exit_locked":{"glyph":">", "color_hex":"#E47A88", "halo_hex":"#51232e"},
+		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
+		"open_door":{"glyph":"/", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",
-			"color_hex":"#FFFFFF"}.duplicate(true)
+			"color_hex":"#FFFFFF", "halo_hex":"#000000"}.duplicate(true)
 	var definition: Dictionary = definitions[feature_id]
 	return {"visible":true, "feature_id":feature_id,
 		"glyph":str(definition.glyph),
-		"color_hex":str(definition.color_hex)}.duplicate(true)
+		"color_hex":str(definition.color_hex),
+		"halo_hex":str(definition.halo_hex)}.duplicate(true)
+
+
+static func attack_form_spec(value: Variant) -> Dictionary:
+	var attack_form := str(value).to_upper()
+	if attack_form in ["PIERCE", "PIERCING", "THRUST", "찌르기"]:
+		attack_form = "PIERCE"
+	elif attack_form in ["IMPACT", "BLUNT", "CRUSH", "타격"]:
+		attack_form = "IMPACT"
+	else:
+		attack_form = "SLASH"
+	var definitions := {
+		"SLASH":{"trail_primitive":"INK_ARC", "lead_glyph":"/", "echo_glyph":"'"},
+		"PIERCE":{"trail_primitive":"INK_THRUST", "lead_glyph":">", "echo_glyph":"-"},
+		"IMPACT":{"trail_primitive":"INK_CRUSH", "lead_glyph":"*", "echo_glyph":":"},
+	}
+	var result: Dictionary = definitions[attack_form].duplicate(true)
+	result["attack_form"] = attack_form
+	return result.duplicate(true)
 
 
 static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:

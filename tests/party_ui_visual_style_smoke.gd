@@ -78,7 +78,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 
 	sandbox._select_member_detail_tab("SKILL");await process_frame;await process_frame
 	_check(sandbox.member_detail_skill_tab.text=="[스킬]","%s selected skill tab is not bracketed"%viewport_size)
-	for skill_id in ["MELEE","GUARD","EXPLORATION"]:
+	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var skill_panel=sandbox.find_child("SkillCard%s"%skill_id,true,false)
 		var skill_frame=skill_panel.find_child("SkillAsciiFrame",false,false)
 		var skill_content=skill_frame.get_child(0) if skill_frame!=null and skill_frame.get_child_count()==1 else null

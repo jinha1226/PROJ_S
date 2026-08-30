@@ -1,0 +1,199 @@
+extends "res://tests/test_case.gd"
+
+const Session = preload("res://playtest/party_playtest_session.gd")
+const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
+const Command = preload("res://sim/sim_command.gd")
+
+
+func test_solo_starts_with_detached_sword_loadout_and_six_proficiencies() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check(session.sim != null, "solo session initializes")
+	if session.sim == null: return finish()
+	var equipment: Dictionary = session.protagonist_equipment()
+	check_eq([equipment.weapon_id, equipment.attack_form, equipment.range_max,
+		equipment.arrows, equipment.bolts], ["SHORT_SWORD", "SLASH", 1, 12, 6],
+		"new expedition loadout")
+	var progression: Dictionary = session.protagonist_progression()
+	check_eq(progression.skills.map(func(row): return row.skill_id),
+		["SWORD", "AXE", "BLUNT", "SPEAR", "RANGED", "UNARMED"],
+		"six proficiency cards")
+	equipment.weapon_label = "FORGED"
+	check(session.protagonist_equipment().weapon_label != "FORGED", "equipment DTO detached")
+	check_eq(session.sim.world.world_state_error(), "", "fresh weapon world validates")
+	return finish()
+
+
+func test_equipment_and_reload_journal_replay_exactly() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check(session.equip_protagonist_weapon("BOW").accepted, "bow equips")
+	check(session.equip_protagonist_weapon("CROSSBOW").accepted, "crossbow equips")
+	check_eq(session.protagonist_equipment().attack_block_reason, "reload_required",
+		"crossbow blocks until reload")
+	check(session.reload_protagonist_weapon().accepted, "crossbow reload API")
+	check(session.protagonist_equipment().loaded, "crossbow is loaded")
+	var restored = Session.new(1, 2, Session.SOLO_COMBAT_SCENARIO_ID)
+	var loaded: Dictionary = restored.load_session_json(session.save_session_json())
+	check(loaded.accepted, "equipment journal loads: %s" % loaded)
+	if loaded.accepted:
+		check_eq(restored.save_session_json(), session.save_session_json(),
+			"equipment journal and snapshot replay exact")
+	return finish()
+
+
+func test_short_sword_preview_and_commit_use_weapon_formula_and_ink_form() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check(_enter_solo_combat(session), "solo reaches combat")
+	if session.party_status().safe_phase != "ENGAGED": return finish()
+	var captured: Dictionary = {}
+	for _turn in range(48):
+		var status: Dictionary = session.party_status()
+		if status.safe_phase != "ENGAGED": break
+		var hero := int(status.protagonist_id)
+		var enemy := int(session.sim.world.party_encounter.enemy_ids[0])
+		var preview: Dictionary = session.set_actor_action(hero, "MELEE", [], enemy)
+		if preview.accepted:
+			for row in preview.actor_rows:
+				if int(row.actor_id) == hero: captured = row.combat_assessment
+			check_eq([captured.get("schema_version"), captured.get("weapon_id"),
+				captured.get("attack_form"), captured.get("attack_time")],
+				[2, "SHORT_SWORD", "SLASH", 100], "weapon assessment reaches draft")
+			var result: Dictionary = session.commit_turn()
+			check(result.accepted, "weapon attack commits: %s" % result)
+			if result.accepted:
+				var trails: Array = result.visual_effects.filter(
+					func(row): return str(row.kind) == "SLASH")
+				check(not trails.is_empty() and str(trails[0].attack_form) == "SLASH",
+					"committed attack carries ink form")
+				var attack_events: Array = session.sim.world.events.filter(
+					func(event): return str(event.type) == "action.melee_attack" \
+						and int(event.actor_id) == hero)
+				check(not attack_events.is_empty() \
+					and int(attack_events[-1].data.bleed_roll_milli) >= 0,
+					"weapon attack records a valid deterministic BLEED roll")
+				check_eq(session.sim.world.world_state_error(), "", "weapon event history validates")
+			return finish()
+		var path: Dictionary = session.sim.party_coordinator.pathfinder.find_path_to_any(
+			hero, _adjacent_open_cells(session, enemy))
+		if bool(path.get("found", false)) and path.path.size() >= 2:
+			var step: Vector2i = path.path[1]
+			preview = session.set_actor_action(hero, "MOVE", [step.x, step.y])
+		else:
+			preview = session.set_actor_action(hero, "HOLD")
+		if not preview.accepted or not session.commit_turn().accepted: break
+	check(false, "short sword attack was never available")
+	return finish()
+
+
+func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
+	var spear_session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check(spear_session.equip_protagonist_weapon("SPEAR").accepted,
+		"spear equips before combat")
+	check(_enter_solo_combat(spear_session), "spear fixture reaches combat")
+	if spear_session.party_status().safe_phase != "ENGAGED": return finish()
+	var spear_hero := int(spear_session.party_status().protagonist_id)
+	var spear_enemy := int(spear_session.sim.world.party_encounter.enemy_ids[0])
+	check(_place_enemy_on_open_line(spear_session, spear_enemy, 2),
+		"open two-cell spear line exists")
+	var spear_preview: Dictionary = spear_session.preview_actor_action(
+		spear_hero, "MELEE", [], spear_enemy)
+	check(bool(spear_preview.get("accepted", false)),
+		"SPEAR preview accepts an enemy two cells away: %s" % spear_preview)
+	if bool(spear_preview.get("accepted", false)):
+		var spear_assessment: Dictionary = spear_preview.actor_rows[0].combat_assessment
+		check_eq([spear_assessment.weapon_id, spear_assessment.range_max,
+			spear_assessment.attack_time], ["SPEAR", 2, 110],
+			"spear preview uses weapon range and intrinsic time")
+	var bow_session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check(bow_session.equip_protagonist_weapon("BOW").accepted, "bow equips before combat")
+	check(_enter_solo_combat(bow_session), "bow fixture reaches combat")
+	if bow_session.party_status().safe_phase != "ENGAGED": return finish()
+	var bow_hero := int(bow_session.party_status().protagonist_id)
+	var bow_enemy := int(bow_session.sim.world.party_encounter.enemy_ids[0])
+	check(_place_enemy_on_open_line(bow_session, bow_enemy, 3),
+		"open three-cell bow line exists")
+	var bow_preview: Dictionary = bow_session.preview_actor_action(
+		bow_hero, "MELEE", [], bow_enemy)
+	check(bool(bow_preview.get("accepted", false)),
+		"BOW preview accepts a clear ranged target: %s" % bow_preview)
+	if bool(bow_preview.get("accepted", false)):
+		var bow_assessment: Dictionary = bow_preview.actor_rows[0].combat_assessment
+		check_eq([bow_assessment.weapon_id, bow_assessment.range_min,
+			bow_assessment.range_max, bow_assessment.attack_time], ["BOW", 2, 8, 90],
+			"bow preview uses ranged limits and intrinsic time")
+	return finish()
+
+
+func test_skill_panel_builds_six_cards_and_equipment_summary() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var sandbox = Sandbox.new()
+	sandbox.size = Vector2(450, 800)
+	sandbox.initialize_for_headless_test(session, true)
+	sandbox._open_hero_detail()
+	sandbox._select_member_detail_tab("SKILL")
+	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6, "six UI proficiency cards")
+	check("단검" in sandbox.member_progression_stats.text \
+		and "공격시간 100" in sandbox.member_progression_stats.text,
+		"equipment and intrinsic speed visible")
+	check("명중과 피해만" in sandbox.member_skill_help.text,
+		"UI explains narrow proficiency effect")
+	sandbox.free()
+	return finish()
+
+
+func _enter_solo_combat(session) -> bool:
+	if session.sim == null: return false
+	var hero_id:=int(session.sim.world.party_encounter.protagonist_id)
+	for _step in range(256):
+		if session.party_status().safe_phase=="CONTACT":break
+		var enemy_id:=int(session.sim.world.party_encounter.enemy_ids[0])
+		var path:Dictionary=session.sim.party_coordinator.pathfinder.find_path_to_any(
+			hero_id,_adjacent_open_cells(session,enemy_id))
+		if not bool(path.get("found",false)) or path.path.size()<2:return false
+		var next_position:Vector2i=path.path[1]
+		if not session.commit_exploration(Command.move_to(hero_id,next_position)).accepted:return false
+	if session.party_status().safe_phase != "CONTACT":return false
+	var entered:Dictionary=session.enter_solo_combat()
+	return bool(entered.get("accepted", false))
+
+
+func _adjacent_open_cells(session, entity_id: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var origin: Vector2i = session.sim.world.entities[entity_id].position
+	for direction_value in session.sim.movement.MOVE_DIRECTIONS_8:
+		var direction:Vector2i=direction_value
+		var position:Vector2i = origin + direction
+		if not session.sim.world.in_bounds(position): continue
+		var tile = session.sim.world.tile_at(position)
+		if bool(load("res://sim/terrain_registry.gd").definition(tile.terrain).get("passable", false)):
+			result.append(position)
+	result.sort_custom(func(a:Vector2i,b:Vector2i):
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	return result
+
+
+func _place_enemy_on_open_line(session, enemy_id: int, distance: int) -> bool:
+	var hero_id := int(session.sim.world.party_encounter.protagonist_id)
+	var hero_position: Vector2i = session.sim.world.entities[hero_id].position
+	for direction_value in session.sim.movement.MOVE_DIRECTIONS_8:
+		var direction: Vector2i = direction_value
+		var candidate := hero_position + direction * distance
+		if not session.sim.world.in_bounds(candidate): continue
+		var clear := true
+		for step in range(1, distance + 1):
+			var position := hero_position + direction * step
+			var terrain: Dictionary = load("res://sim/terrain_registry.gd").definition(
+				session.sim.world.tile_at(position).terrain)
+			if not bool(terrain.get("passable", false)):
+				clear = false
+				break
+			for entity_id in session.sim.world.entities:
+				if int(entity_id) not in [hero_id, enemy_id] \
+						and session.sim.world.entities[entity_id].position == position \
+						and session.sim.world.occupies_tile(int(entity_id)):
+					clear = false
+					break
+			if not clear: break
+		if clear:
+			session.sim.world.entities[enemy_id].position = candidate
+			return true
+	return false

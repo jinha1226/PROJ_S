@@ -6,6 +6,7 @@ const RequestScript = preload("res://sim/party_turn_request.gd")
 const PlanScript = preload("res://sim/party_turn_plan.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
 const MAX_DEPLOYED_PARTY := 3
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -522,8 +523,13 @@ func preview_party_turn(request, processed_step_index: int,
 	for melee_ordinal in range(melee_rows.size()):
 		var row_index := int(melee_rows[melee_ordinal].row_index)
 		var row: Dictionary = rows[row_index]
-		var assessment: Dictionary = melee.assess_attack(int(row.action.actor_id), int(row.action.target_id),
-			str(row.source), processed_step_index, attack_start_world_time, batch_context, melee_ordinal)
+		var attack_actor_id := int(row.action.actor_id)
+		var weapon_id := str(state.protagonist_loadout.equipped_weapon_id) \
+			if _uses_weapon_combat(attack_actor_id) else ""
+		var assessment: Dictionary = melee.assess_attack(attack_actor_id, int(row.action.target_id),
+			str(row.source), processed_step_index, attack_start_world_time, batch_context,
+			melee_ordinal, weapon_id, _weapon_occupants(attack_actor_id,
+				int(row.action.target_id)) if not weapon_id.is_empty() else {})
 		if assessment.is_empty(): return PlanScript.new({"accepted":false,"reason":"combat_assessment_failed","actor_rows":[],"base_fingerprint":_fingerprint()})
 		row.combat_assessment = assessment; rows[row_index] = row
 	var max_cost := 0
@@ -573,8 +579,15 @@ func _action_error(action) -> String:
 	if action.type == "MOVE":
 		var assessment = movement.assess_move(action.actor_id, action.destination); return "" if assessment.accepted else assessment.reason
 	if action.type == "MELEE":
+		var legal_attack:bool = melee.can_attack(action.actor_id, action.target_id)
+		if _uses_weapon_combat(action.actor_id):
+			if not state.protagonist_loadout.attack_error().is_empty():
+				return state.protagonist_loadout.attack_error()
+			legal_attack = melee.can_attack_with_weapon(action.actor_id, action.target_id,
+				str(state.protagonist_loadout.equipped_weapon_id), _weapon_occupants(action.actor_id,
+					action.target_id))
 		if action.target_id not in state.enemy_ids or not world.entities.has(action.target_id) \
-				or not world.is_explicit_melee_target(action.target_id) or not melee.can_attack(action.actor_id, action.target_id):
+				or not world.is_explicit_melee_target(action.target_id) or not legal_attack:
 			return "melee_not_legal"
 	return ""
 
@@ -655,8 +668,34 @@ func _hazard_penalty(actor_id: int, position: Vector2i, composure: int) -> int:
 func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 	var cost := PARTY_ACTION_COST
 	if action.type == "MOVE": cost = int(TerrainRegistryScript.definition(world.tile_at(action.destination).terrain).move_time_cost)
+	elif action.type == "MELEE" and _uses_weapon_combat(action.actor_id):
+		var weapon = WeaponRegistryScript.definition(
+			str(world.party_encounter.protagonist_loadout.equipped_weapon_id))
+		if weapon != null: cost = int(weapon.attack_time)
 	return {"actor_id": action.actor_id, "roster_slot": roster_slot, "source": source, "action": action.to_dict(), "time_cost": cost,
 		"resolution_note": "", "suggestion": null, "overridden": false, "combat_assessment": null}
+
+
+func _uses_weapon_combat(actor_id: int) -> bool:
+	return world != null and world.party_encounter != null \
+		and actor_id == world.party_encounter.protagonist_id \
+		and world.party_encounter.protagonist_loadout != null \
+		and world.entities.has(actor_id) and "weapon_loadout" in world.entities[actor_id].tags
+
+
+func _weapon_occupants(attacker_id: int, target_id: int) -> Dictionary:
+	var result := {}
+	for entity_id in world.entities:
+		if int(entity_id) in [attacker_id, target_id] or not world.occupies_tile(int(entity_id)): continue
+		var relation := "ALLY" if int(entity_id) in world.party_encounter.party_member_ids else "ENEMY"
+		result[world.entities[entity_id].position] = relation
+	for y in range(world.height):
+		for x in range(world.width):
+			var position := Vector2i(x, y)
+			var terrain = TerrainRegistryScript.definition(world.tile_at(position).terrain)
+			if terrain.is_empty() or not bool(terrain.get("passable", false)):
+				result[position] = "WALL"
+	return result
 
 func _resolve_move_conflicts(rows: Array) -> String:
 	var by_destination: Dictionary = {}

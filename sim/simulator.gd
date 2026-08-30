@@ -321,6 +321,10 @@ func step_party_turn(plan):
 				var target_id := int(str(action.target_id))
 				var target = world.entities.get(target_id)
 				var assessment: Dictionary = row.combat_assessment
+				if int(assessment.get("schema_version", 1)) == 2:
+					var ammo_result: Dictionary = world.party_encounter.protagonist_loadout.consume_attack()
+					if not bool(ammo_result.get("accepted", false)):
+						return _rollback_party_step(rollback, str(ammo_result.get("reason", "ammo_commit_failed")))
 				var ordinal := int(assessment.intent_ordinal)
 				var frozen = frozen_by_ordinal.get(ordinal)
 				var resolution = resolution_by_ordinal.get(ordinal)

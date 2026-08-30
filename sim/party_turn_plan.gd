@@ -10,6 +10,17 @@ const ASSESSMENT_KEYS := ["schema_version", "attacker_id", "target_id", "attacke
 	"batch_context", "intent_ordinal", "intent_mode", "hit_chance_milli", "bleed_chance_milli",
 	"base_damage", "armor_reduction", "guarded", "guard_reduction", "normal_final_damage",
 	"commitment_hash"]
+const WEAPON_ASSESSMENT_KEYS := ["schema_version", "attacker_id", "target_id",
+	"attacker_position", "target_position", "attacker_life_state", "target_life_state",
+	"attacker_profile_id", "target_profile_id", "target_evasion_milli", "target_armor_flat",
+	"frozen_guarded_until", "guard_source_event_id", "source", "processed_step_index",
+	"attack_start_world_time", "batch_context", "intent_ordinal", "intent_mode",
+	"hit_chance_milli", "bleed_chance_milli", "base_damage", "armor_reduction", "guarded",
+	"guard_reduction", "normal_final_damage", "commitment_hash", "weapon_id",
+	"proficiency_id", "proficiency_rank", "attack_form", "trait_id", "range_min",
+	"range_max", "attack_time", "weapon_damage", "proficiency_damage",
+	"proficiency_accuracy_milli", "armor_penetration_flat", "secondary_damage_milli",
+	"stun_chance_milli"]
 
 var _data: Dictionary
 func _init(p_data: Dictionary = {}) -> void: _data = p_data.duplicate(true)
@@ -21,9 +32,11 @@ func get_value(key: String, fallback: Variant = null) -> Variant:
 static func combat_assessment_wire_error(value: Variant) -> String:
 	if not value is Dictionary: return "invalid_combat_assessment_shape"
 	var keys: Array = value.keys(); keys.sort()
-	var expected_keys: Array = ASSESSMENT_KEYS.duplicate(); expected_keys.sort()
+	var schema_version := int(value.get("schema_version", 0))
+	var expected_keys: Array = (WEAPON_ASSESSMENT_KEYS if schema_version == 2 \
+		else ASSESSMENT_KEYS).duplicate(); expected_keys.sort()
 	if keys != expected_keys: return "invalid_combat_assessment_keys"
-	if value.schema_version != 1: return "unsupported_combat_assessment_schema"
+	if schema_version not in [1, 2]: return "unsupported_combat_assessment_schema"
 	for key in ["attacker_id", "target_id", "frozen_guarded_until", "guard_source_event_id",
 			"processed_step_index", "attack_start_world_time"]:
 		if not Int64CodecScript.is_canonical(value.get(key)): return "noncanonical_combat_assessment_%s" % key
@@ -56,6 +69,15 @@ static func combat_assessment_wire_error(value: Variant) -> String:
 		return "invalid_combat_assessment_number"
 	if not value.guarded is bool or not _lower_hex_64(value.commitment_hash):
 		return "invalid_combat_assessment_commitment"
+	if schema_version == 2:
+		for key in ["weapon_id", "proficiency_id", "attack_form", "trait_id"]:
+			if not value.get(key) is String or str(value[key]).is_empty():
+				return "invalid_weapon_assessment_string"
+		for key in ["proficiency_rank", "range_min", "range_max", "attack_time", "weapon_damage", "proficiency_damage",
+				"proficiency_accuracy_milli", "armor_penetration_flat", "secondary_damage_milli",
+				"stun_chance_milli"]:
+			if not value.get(key) is int or int(value[key]) < 0:
+				return "invalid_weapon_assessment_number"
 	return ""
 
 static func canonical_hash(data: Dictionary, omitted_key: String = "plan_hash") -> String:
@@ -67,7 +89,9 @@ static func _stable_encode(value: Variant) -> String:
 		var keys: Array = value.keys()
 		var sorted_keys: Array = keys.duplicate(); sorted_keys.sort()
 		var assessment_sorted: Array = ASSESSMENT_KEYS.duplicate(); assessment_sorted.sort()
-		keys = ASSESSMENT_KEYS.duplicate() if sorted_keys == assessment_sorted else sorted_keys
+		var weapon_assessment_sorted: Array = WEAPON_ASSESSMENT_KEYS.duplicate(); weapon_assessment_sorted.sort()
+		keys = ASSESSMENT_KEYS.duplicate() if sorted_keys == assessment_sorted \
+			else (WEAPON_ASSESSMENT_KEYS.duplicate() if sorted_keys == weapon_assessment_sorted else sorted_keys)
 		var parts: Array[String] = []
 		for key in keys: parts.append(JSON.stringify(str(key)) + ":" + _stable_encode(value[key]))
 		return "{" + ",".join(parts) + "}"

@@ -6,6 +6,8 @@ const ProfileRegistryScript = preload("res://sim/combat_profile_registry.gd")
 const FrozenIntentScript = preload("res://sim/frozen_attack_intent.gd")
 const ResolutionScript = preload("res://sim/attack_resolution.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
+const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
+const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 
 var world
 var damage
@@ -32,25 +34,36 @@ static func lane_roll_milli(key: String, lane: String) -> int:
 
 func assess_attack(attacker_id: int, target_id: int, source: String,
 		processed_step_index: int, attack_start_world_time: int, batch_context: String,
-		intent_ordinal: int) -> Dictionary:
+		intent_ordinal: int, weapon_id: String = "", occupants: Dictionary = {}) -> Dictionary:
 	if source not in ["DIRECT", "SUGGESTED", "OVERRIDE"] or intent_ordinal < 0 \
 			or processed_step_index <= 0 or attack_start_world_time < 0 \
-			or not can_attack(attacker_id, target_id): return {}
+			or (weapon_id.is_empty() and not can_attack(attacker_id, target_id)) \
+			or (not weapon_id.is_empty() and not can_attack_with_weapon(attacker_id,
+				target_id, weapon_id, occupants)):
+		return {}
 	var attacker = world.entities[attacker_id]; var target = world.entities[target_id]
 	var attacker_state = world.combatant_states[attacker_id]
 	var target_state = world.combatant_states[target_id]
 	var attacker_profile := ProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile := ProfileRegistryScript.profile(target_state.combat_profile_id)
 	if attacker_profile.is_empty() or target_profile.is_empty(): return {}
-	var hit_chance := clampi(500 + int(attacker_profile.accuracy_milli) - int(target_profile.evasion_milli), 50, 950)
+	var weapon_spec: Dictionary = {}
+	var proficiency_rank := 0
+	if not weapon_id.is_empty():
+		var weapon = WeaponRegistryScript.definition(weapon_id)
+		if weapon == null: return {}
+		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
+		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
+			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
+			int(target_profile.evasion_milli), int(target_profile.armor_flat))
+		if weapon_spec.is_empty(): return {}
+	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() \
+		else clampi(500 + int(attacker_profile.accuracy_milli) - int(target_profile.evasion_milli), 50, 950)
 	var bleed_chance := clampi(int(attacker_profile.bleed_proc_milli) - int(target_profile.bleed_resist_milli), 0, 1000)
-	var skill_rank:=0
-	if world.party_encounter!=null and attacker_id==world.party_encounter.protagonist_id \
-			and world.party_encounter.protagonist_progression!=null:
-		skill_rank=world.party_encounter.protagonist_progression.rank("MELEE")
-	var base_damage := int(attacker_profile.power) \
-		+ProgressionRegistryScript.melee_power_bonus(skill_rank)
-	var armor_reduction := mini(int(target_profile.armor_flat), maxi(0, base_damage - 1))
+	var base_damage := int(weapon_spec.raw_damage) if not weapon_spec.is_empty() \
+		else int(attacker_profile.power)
+	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \
+		else mini(int(target_profile.armor_flat), maxi(0, base_damage - 1))
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
 	var guard_rank:=0
@@ -60,9 +73,13 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var guard_rate_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
 	var guard_reduction := int(after_armor * guard_rate_milli / 1000) if guarded else 0
 	var normal_final_damage := maxi(1, after_armor - guard_reduction)
-	var key := commitment_key(world.seed, processed_step_index, attack_start_world_time,
-		batch_context, intent_ordinal, attacker_id, target_id)
-	return {"schema_version":1, "attacker_id":str(attacker_id), "target_id":str(target_id),
+	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
+		weapon_id, proficiency_rank) if not weapon_spec.is_empty() else commitment_key(world.seed,
+		processed_step_index, attack_start_world_time, batch_context, intent_ordinal,
+		attacker_id, target_id)
+	var result := {"schema_version":2 if not weapon_spec.is_empty() else 1,
+		"attacker_id":str(attacker_id), "target_id":str(target_id),
 		"attacker_position":[attacker.position.x, attacker.position.y],
 		"target_position":[target.position.x, target.position.y],
 		"attacker_life_state":"ACTIVE", "target_life_state":target_state.life_state,
@@ -76,6 +93,13 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		"base_damage":base_damage, "armor_reduction":armor_reduction, "guarded":guarded,
 		"guard_reduction":guard_reduction, "normal_final_damage":normal_final_damage,
 		"commitment_hash":commitment_hash(key)}
+	if not weapon_spec.is_empty():
+		for key_name in ["weapon_id", "proficiency_id", "proficiency_rank", "attack_form",
+				"trait_id", "range_min", "range_max", "attack_time", "weapon_damage", "proficiency_damage",
+				"proficiency_accuracy_milli", "armor_penetration_flat",
+				"secondary_damage_milli", "stun_chance_milli"]:
+			result[key_name] = weapon_spec[key_name]
+	return result
 
 func freeze_assessment(assessment: Dictionary, target_health_at_batch_start: int,
 		original_action_order: int, protagonist_terminal_if_lethal: bool = false):
@@ -98,12 +122,18 @@ func resolve_frozen_intent(intent):
 	if attacker_id <= 0 or target_id <= 0 or processed_step_index <= 0 \
 			or attack_start_world_time < 0 or batch_context.is_empty() or intent_ordinal < 0:
 		return null
-	var key := commitment_key(intent.world_seed, processed_step_index, attack_start_world_time,
-		batch_context, intent_ordinal, attacker_id, target_id)
+	var weapon_schema := int(assessment.get("schema_version", 1)) == 2
+	var key := WeaponAttackRulesScript.commitment_key(intent.world_seed, processed_step_index,
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
+		str(assessment.get("weapon_id", "")), int(assessment.get("proficiency_rank", 0))) \
+		if weapon_schema else commitment_key(intent.world_seed, processed_step_index,
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id)
 	if str(assessment.get("commitment_hash", "")) != commitment_hash(key):
 		return null
-	var hit_roll := lane_roll_milli(key, "HIT")
-	var bleed_roll := lane_roll_milli(key, "BLEED")
+	var hit_roll := WeaponAttackRulesScript.lane_roll_milli(key, "HIT") if weapon_schema \
+		else lane_roll_milli(key, "HIT")
+	var bleed_roll := WeaponAttackRulesScript.lane_roll_milli(key, "BLEED") if weapon_schema \
+		else lane_roll_milli(key, "BLEED")
 	var finisher: bool = str(assessment.get("target_life_state", "")) == "DOWNED" \
 		and str(assessment.get("intent_mode", "")) == "FINISHER"
 	var outcome := "FINISHER" if finisher \
@@ -220,3 +250,73 @@ func can_attack(attacker_id: int, target_id: int) -> bool:
 	var attacker = world.entities[attacker_id]; var target = world.entities[target_id]
 	return world.can_act(attacker_id, world.world_time) and world.is_explicit_melee_target(target_id) \
 		and maxi(absi(attacker.position.x - target.position.x), absi(attacker.position.y - target.position.y)) == 1
+
+
+# Weapon-aware seam for the new play session. This intentionally returns a
+# detached assessment instead of changing the shipped melee event schema in
+# place. The coordinator can freeze this DTO in its next version without
+# inventing any combat formula in UI code.
+func build_weapon_assessment(attacker_id: int, target_id: int, weapon_id: String,
+		source: String, processed_step_index: int, attack_start_world_time: int,
+		batch_context: String, intent_ordinal: int, occupants: Dictionary = {}) -> Dictionary:
+	if source not in ["DIRECT", "SUGGESTED", "OVERRIDE"] or intent_ordinal < 0 \
+			or processed_step_index <= 0 or attack_start_world_time < 0 \
+			or not can_attack_with_weapon(attacker_id, target_id, weapon_id, occupants):
+		return {}
+	var attacker_state = world.combatant_states.get(attacker_id)
+	var target_state = world.combatant_states.get(target_id)
+	if attacker_state == null or target_state == null: return {}
+	var attacker_profile := ProfileRegistryScript.profile(attacker_state.combat_profile_id)
+	var target_profile := ProfileRegistryScript.profile(target_state.combat_profile_id)
+	var weapon = WeaponRegistryScript.definition(weapon_id)
+	if attacker_profile.is_empty() or target_profile.is_empty() or weapon == null: return {}
+	var proficiency_rank := _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
+	var spec := WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
+		int(attacker_profile.power), int(attacker_profile.accuracy_milli),
+		int(target_profile.evasion_milli), int(target_profile.armor_flat))
+	if spec.is_empty(): return {}
+	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
+		weapon_id, proficiency_rank)
+	return {"schema_version":1, "attacker_id":str(attacker_id), "target_id":str(target_id),
+		"attacker_position":[world.entities[attacker_id].position.x, world.entities[attacker_id].position.y],
+		"target_position":[world.entities[target_id].position.x, world.entities[target_id].position.y],
+		"source":source, "processed_step_index":str(processed_step_index),
+		"attack_start_world_time":str(attack_start_world_time), "batch_context":batch_context,
+		"intent_ordinal":intent_ordinal, "attack_spec":spec,
+		"commitment_hash":key.sha256_text()}.duplicate(true)
+
+
+func resolve_weapon_assessment(assessment: Dictionary) -> Dictionary:
+	if assessment.is_empty() or not assessment.get("attack_spec") is Dictionary: return {}
+	var spec: Dictionary = assessment.attack_spec
+	var attacker_id := int(str(assessment.get("attacker_id", "-1")))
+	var target_id := int(str(assessment.get("target_id", "-1")))
+	var processed_step_index := int(str(assessment.get("processed_step_index", "-1")))
+	var attack_start_world_time := int(str(assessment.get("attack_start_world_time", "-1")))
+	var batch_context := str(assessment.get("batch_context", ""))
+	var intent_ordinal := int(assessment.get("intent_ordinal", -1))
+	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
+		str(spec.get("weapon_id", "")), int(spec.get("proficiency_rank", -1)))
+	if str(assessment.get("commitment_hash", "")) != key.sha256_text(): return {}
+	return WeaponAttackRulesScript.resolve_attack_spec(spec, key)
+
+
+func can_attack_with_weapon(attacker_id: int, target_id: int, weapon_id: String,
+		occupants: Dictionary = {}) -> bool:
+	if not world.entities.has(attacker_id) or not world.entities.has(target_id) \
+			or not WeaponRegistryScript.has(weapon_id):
+		return false
+	if not world.can_act(attacker_id, world.world_time) \
+			or not world.is_explicit_melee_target(target_id):
+		return false
+	return WeaponAttackRulesScript.targeting_error(world.entities[attacker_id].position,
+		world.entities[target_id].position, weapon_id, occupants).is_empty()
+
+
+func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
+	if world.party_encounter != null and attacker_id == world.party_encounter.protagonist_id \
+			and world.party_encounter.protagonist_progression != null:
+		return world.party_encounter.protagonist_progression.rank(proficiency_id)
+	return 0

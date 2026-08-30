@@ -1,10 +1,11 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
+const PROGRESSION_SCHEMA_VERSION := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -12,6 +13,7 @@ const MAX_WORLD_TIME := 9223372036854775707
 const MemberScript = preload("res://sim/party_member_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const ProgressionScript = preload("res://sim/protagonist_progression.gd")
+const WeaponLoadoutScript = preload("res://sim/weapon_loadout_state.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -33,6 +35,7 @@ var enemy_busy_rows: Dictionary = {}
 var exile_records: Array[Dictionary] = []
 var patrol_reserved_positions: Array[Vector2i] = []
 var protagonist_progression = ProgressionScript.new()
+var protagonist_loadout = WeaponLoadoutScript.new("SHORT_SWORD", 12, 6)
 
 func member(entity_id: int): return member_rows.get(entity_id)
 
@@ -59,6 +62,7 @@ func to_dict() -> Dictionary:
 		"member_rows": members, "enemy_busy_rows": busy_rows,
 		"patrol_reserved_positions":reserved_rows,
 		"protagonist_progression":protagonist_progression.to_dict(),
+		"protagonist_loadout":protagonist_loadout.to_dict(),
 		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
@@ -85,6 +89,8 @@ static func from_dict(row: Dictionary):
 		state.patrol_reserved_positions.append(Vector2i(int(position[0]),int(position[1])))
 	state.protagonist_progression=ProgressionScript.from_dict(row.protagonist_progression) \
 		if row.has("protagonist_progression") else ProgressionScript.new()
+	state.protagonist_loadout=WeaponLoadoutScript.from_dict(row.protagonist_loadout) \
+		if row.has("protagonist_loadout") else WeaponLoadoutScript.new("SHORT_SWORD",12,6)
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -136,15 +142,17 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v2_keys: Array = v1_keys.duplicate(); v2_keys.append_array(["active_party_member_ids","exile_records"]); v2_keys.sort()
 	var v3_keys: Array = v2_keys.duplicate(); v3_keys.append("patrol_reserved_positions"); v3_keys.sort()
 	var v4_keys:Array=v3_keys.duplicate();v4_keys.append("protagonist_progression");v4_keys.sort()
+	var v5_keys:Array=v4_keys.duplicate();v5_keys.append("protagonist_loadout");v5_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
 			or (parsed_schema_version == ROSTER_SCHEMA_VERSION and keys != v2_keys) \
 			or (parsed_schema_version == PATROL_SCHEMA_VERSION and keys != v3_keys) \
-			or (parsed_schema_version == SCHEMA_VERSION and keys != v4_keys):
+			or (parsed_schema_version == PROGRESSION_SCHEMA_VERSION and keys != v4_keys) \
+			or (parsed_schema_version == SCHEMA_VERSION and keys != v5_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
-			PATROL_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
+			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -222,9 +230,12 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 					and parsed_position.x<=previous_reserved.x)):
 				return "invalid_patrol_reserved_positions"
 			previous_reserved=parsed_position
-	if parsed_schema_version==SCHEMA_VERSION:
+	if parsed_schema_version>=PROGRESSION_SCHEMA_VERSION:
 		var progression_error:=ProgressionScript.wire_error(row.get("protagonist_progression"))
 		if not progression_error.is_empty():return progression_error
+	if parsed_schema_version==SCHEMA_VERSION:
+		var loadout_error:=WeaponLoadoutScript.wire_error(row.get("protagonist_loadout"))
+		if not loadout_error.is_empty():return loadout_error
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

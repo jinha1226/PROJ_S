@@ -14,21 +14,22 @@ func test_initial_focus_save_replay_detachment_and_tamper_are_exact()->bool:
 		progression.xp_required,progression.next_level_threshold],
 		[1,0,0,100,100],"fresh run starts at level one with exact threshold")
 	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.focus]),
-		[["MELEE",0,50],["GUARD",0,30],["EXPLORATION",0,20]],
-		"three honest skills have deterministic default focus")
+		[["SWORD",0,30],["AXE",0,15],["BLUNT",0,15],["SPEAR",0,15],
+			["RANGED",0,15],["UNARMED",0,10]],
+		"six weapon proficiencies have deterministic default focus")
 	progression.skills[0].focus=999
-	check_eq(session.protagonist_progression().skills[0].focus,50,
+	check_eq(session.protagonist_progression().skills[0].focus,30,
 		"progression presentation is deeply detached")
 	check_eq(session.save_session_json(),before,"progression reads are pure")
-	var focused:Dictionary=session.set_training_focus("MELEE")
+	var focused:Dictionary=session.set_training_focus("SWORD")
 	check(focused.accepted,"focus preset commits: %s"%focused)
 	check_eq(session.protagonist_progression().skills.map(func(row):return row.focus),
-		[60,20,20],"focus preset keeps exact total one hundred")
+		[50,10,10,10,10,10],"SWORD focus preset keeps exact total one hundred")
 	check_eq(session.command_journal.size(),1,"focus change is journaled once")
 	if not session.command_journal.is_empty():check_eq(session.command_journal[0].kind,
 		"progression","focus journal kind")
 	var duplicate_before:=session.save_session_json()
-	check_eq(session.set_training_focus("MELEE").reason,"training_focus_unchanged",
+	check_eq(session.set_training_focus("SWORD").reason,"training_focus_unchanged",
 		"same focus rejects without a duplicate event")
 	check_eq(session.save_session_json(),duplicate_before,"duplicate focus is exact no-op")
 	var restored=Session.new(1,2)
@@ -57,7 +58,8 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 		progression.xp_required,progression.next_level_threshold],
 		[2,100,0,150,250],"victory grants exact level pacing XP")
 	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.training_total]),
-		[["MELEE",1,50],["GUARD",0,30],["EXPLORATION",0,20]],
+		[["SWORD",0,30],["AXE",0,15],["BLUNT",0,15],["SPEAR",0,15],
+			["RANGED",0,15],["UNARMED",0,10]],
 		"victory training allocation is integer-only by focus")
 	var victory_count:=0
 	for event in session.sim.world.events:
@@ -77,26 +79,32 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 		session.command_journal.size()],[1,0,0],"fresh expedition has no carryover")
 	return finish()
 
-func test_melee_rank_changes_authoritative_preview_without_level_multiplier()->bool:
+func test_sword_rank_changes_only_accuracy_and_damage_without_level_or_speed_multiplier()->bool:
 	var baseline=_engaged_adjacent_fixture()
 	var hero:=int(baseline.party_status().protagonist_id)
 	var enemy:=int(baseline.party_status().visible_enemy_ids[0])
 	var base_preview:Dictionary=baseline.preview_actor_action(hero,"MELEE",[],enemy)
-	var base_damage:=int(base_preview.actor_rows[0].combat_assessment.normal_final_damage)
+	var base_assessment:Dictionary=base_preview.actor_rows[0].combat_assessment
 	var skilled=_engaged_adjacent_fixture()
 	var skilled_state=skilled.sim.world.party_encounter
 	# Unit fixture: isolate the rank seam. Canonical award/event projection is
 	# covered above; this checks the combat kernel consumes rank, not level.
-	skilled_state.protagonist_progression.skill_training.MELEE=50
+	skilled_state.protagonist_progression.skill_training.SWORD=50
 	var skilled_preview:Dictionary=skilled.preview_actor_action(
 		int(skilled_state.protagonist_id),"MELEE",[],int(skilled_state.enemy_ids[0]))
-	var skilled_damage:=int(skilled_preview.actor_rows[0].combat_assessment.normal_final_damage)
-	check_eq(skilled_damage,base_damage+2,"melee rank one adds transparent two damage")
+	var skilled_assessment:Dictionary=skilled_preview.actor_rows[0].combat_assessment
+	check(int(skilled_assessment.proficiency_accuracy_milli) \
+			> int(base_assessment.proficiency_accuracy_milli),
+		"SWORD rank one raises authoritative accuracy even when final chance hits its cap")
+	check_eq(int(skilled_assessment.normal_final_damage),
+		int(base_assessment.normal_final_damage)+1,"SWORD rank one adds transparent damage")
+	check_eq(skilled_assessment.attack_time,base_assessment.attack_time,
+		"SWORD rank cannot change the weapon's intrinsic attack time")
 	check_eq(skilled.protagonist_progression().level,1,
 		"combat effect does not use character level as multiplier")
 	return finish()
 
-func test_guard_rank_changes_frozen_preview_resolution_and_rank_zero_validates()->bool:
+func test_hold_is_fixed_twenty_five_percent_without_a_guard_proficiency()->bool:
 	var baseline=_engaged_adjacent_fixture();var base_state=baseline.sim.world.party_encounter
 	var hero:=int(base_state.protagonist_id);var enemy:=int(base_state.enemy_ids[0])
 	baseline.sim.world.combatant_states[hero].guarded_until=baseline.sim.world.world_time+200
@@ -104,33 +112,48 @@ func test_guard_rank_changes_frozen_preview_resolution_and_rank_zero_validates()
 		baseline.sim.world.step_index+1,baseline.sim.world.world_time,"GUARD_TEST",0)
 	var skilled=_engaged_adjacent_fixture();var skilled_state=skilled.sim.world.party_encounter
 	var skilled_hero:=int(skilled_state.protagonist_id);var skilled_enemy:=int(skilled_state.enemy_ids[0])
-	skilled_state.protagonist_progression.skill_training.GUARD=50
+	skilled_state.protagonist_progression.skill_training.SWORD=50
 	skilled.sim.world.combatant_states[skilled_hero].guarded_until=skilled.sim.world.world_time+200
 	var skilled_assessment:Dictionary=skilled.sim.melee.assess_attack(skilled_enemy,skilled_hero,"SUGGESTED",
 		skilled.sim.world.step_index+1,skilled.sim.world.world_time,"GUARD_TEST",0)
 	check(not base_assessment.is_empty() and not skilled_assessment.is_empty(),"guard fixtures create canonical-shaped assessments")
 	if not base_assessment.is_empty() and not skilled_assessment.is_empty():
-		check(int(skilled_assessment.guard_reduction)>int(base_assessment.guard_reduction),
-			"GUARD rank one raises HOLD reduction from 25% to 30%")
+		check_eq(skilled_assessment.guard_reduction,base_assessment.guard_reduction,
+			"weapon proficiency cannot alter HOLD reduction")
+		check_eq(int(base_assessment.guard_reduction),
+			int(int(base_assessment.base_damage-base_assessment.armor_reduction)*25/100),
+			"HOLD reduces post-armor damage by a fixed 25 percent")
 		var frozen=skilled.sim.melee.freeze_assessment(skilled_assessment,120,0,true)
 		var resolution=skilled.sim.melee.resolve_frozen_intent(frozen)
-		check(resolution!=null and int(resolution.final_damage)==int(skilled_assessment.normal_final_damage),
-			"frozen resolution consumes the ranked guard preview exactly")
+		check(resolution!=null,"frozen HOLD assessment resolves deterministically")
+		if resolution!=null:
+			var expected_damage:=int(skilled_assessment.normal_final_damage) \
+				if str(resolution.outcome)=="HIT" else 0
+			check_eq(int(resolution.final_damage),expected_damage,
+				"frozen resolution consumes the fixed HOLD preview exactly")
 	var hold_preview:Dictionary=skilled.preview_actor_action(skilled_hero,"HOLD")
 	check(bool(hold_preview.get("accepted",false)) and hold_preview.get("selected_action_preview",{}) is Dictionary \
-		and "30%" in str(hold_preview.selected_action_preview.get("reason","")),
-		"detached HOLD presentation reports the authoritative ranked percentage")
-	check_eq(skilled.protagonist_progression().level,1,"GUARD effect never reads character level")
+		and "25%" in str(hold_preview.selected_action_preview.get("reason","")),
+		"detached HOLD presentation reports the fixed percentage")
+	check_eq(skilled.protagonist_progression().level,1,"HOLD never reads character level")
 
 	var canonical=_engaged_adjacent_fixture();var canonical_hero:=int(canonical.party_status().protagonist_id)
-	check(canonical.set_actor_action(canonical_hero,"HOLD").accepted,"rank-zero HOLD draft accepted")
-	check(canonical.commit_turn().accepted,"rank-zero HOLD resolution commits")
+	var guarded_event_recorded:=false
+	for _turn in range(8):
+		if canonical.party_status().safe_phase!="ENGAGED":break
+		check(canonical.set_actor_action(canonical_hero,"HOLD").accepted,"rank-zero HOLD draft accepted")
+		check(canonical.commit_turn().accepted,"rank-zero HOLD resolution commits")
+		for event in canonical.sim.world.events:
+			if event.type=="action.melee_attack" and int(event.target_id)==canonical_hero \
+					and bool(event.data.guarded):
+				guarded_event_recorded=true;break
+		if guarded_event_recorded:break
 	check_eq(canonical.sim.world.world_state_error(),"","rank-zero guard events pass canonical validator")
 	var tampered:Dictionary=canonical.sim.snapshot();var changed:=false
 	for event in tampered.events:
-		if event.type=="action.melee_attack" and event.target_id==str(canonical_hero) and bool(event.data.guarded):
+		if event.type=="action.melee_attack" and int(event.target_id)==canonical_hero and bool(event.data.guarded):
 			event.data.guard_reduction=int(event.data.guard_reduction)+1;changed=true;break
-	check(changed,"fixture records a guarded canonical melee action")
+	check(changed and guarded_event_recorded,"fixture records a guarded canonical melee action")
 	if changed:check(WorldState.from_snapshot(tampered)==null,"validator rejects a forged guard reduction")
 	return finish()
 
@@ -196,18 +219,25 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and not sandbox.member_status_window.visible and sandbox.member_progression_xp.max_value==100 \
 		and "공격력" in sandbox.member_progression_stats.text,
 		"skill tab alone shows visual XP and honest derived combat stats")
-	check(sandbox.member_progression_skill_rows.size()==3 \
-		and "미래" in str((sandbox.member_progression_skill_rows.EXPLORATION.future as Label).text),
-		"three visual skill cards distinguish current and future effects")
+	check_eq(sandbox.member_progression_skill_rows.keys().size(),6,
+		"six visual proficiency cards are present")
+	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
+		check(sandbox.member_progression_skill_rows.has(skill_id) \
+			and "공격시간" in str((sandbox.member_progression_skill_rows[skill_id].future as Label).text),
+			"%s card states that proficiency cannot alter weapon speed"%skill_id)
+	check("단검" in sandbox.member_progression_stats.text \
+		and "SLASH" in sandbox.member_progression_stats.text \
+		and "공격시간 100" in sandbox.member_progression_stats.text,
+		"skill tab summarizes the equipped SHORT_SWORD")
 	check(sandbox.member_detail_focus_buttons.visible,
 		"hero detail exposes focus controls")
 	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
-		and "[근접]" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
+		and "[도검]" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
 		"dominant training focus uses a selected DOS segment")
 	for child in sandbox.member_detail_focus_buttons.get_children():
 		check(child is Button and child.custom_minimum_size.y>=44,
 			"focus control remains mobile readable")
-	sandbox._on_training_focus("GUARD")
+	sandbox._on_training_focus("AXE")
 	check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible \
 		and sandbox.member_detail_skill_tab.button_pressed,
 		"focus changes refresh while preserving the skill tab")
@@ -233,9 +263,18 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	return finish()
 
 func _engaged_adjacent_fixture():
-	var session=Session.new();var state=session.sim.world.party_encounter
-	session.commit_exploration(Command.wait(state.protagonist_id))
-	session.preview_deployment("WEDGE",state.party_member_ids.slice(1));session.commit_deployment()
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	for _step in range(256):
+		if session.party_status().safe_phase=="CONTACT":break
+		var enemy_id:=int(state.enemy_ids[0])
+		var path:Dictionary=session.sim.party_coordinator.pathfinder.find_path_to_any(
+			hero_id,_adjacent_open_cells(session,enemy_id))
+		if not bool(path.get("found",false)) or path.path.size()<2:break
+		var next_position:Vector2i=path.path[1]
+		if not session.commit_exploration(Command.move_to(hero_id,next_position)).accepted:break
+	if session.party_status().safe_phase=="CONTACT":session.enter_solo_combat()
 	for _turn in range(4):
 		var hero:=int(session.party_status().protagonist_id)
 		var enemy:=int(session.party_status().visible_enemy_ids[0])
@@ -246,6 +285,17 @@ func _engaged_adjacent_fixture():
 		session.set_actor_action(hero,"MOVE",[hero_position.x+direction.x,hero_position.y+direction.y])
 		session.commit_turn()
 	return session
+
+func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
+	var result:Array[Vector2i]=[]
+	var origin:Vector2i=session.sim.world.entities[entity_id].position
+	for direction_value in session.sim.movement.MOVE_DIRECTIONS_8:
+		var direction:Vector2i=direction_value;var position:=origin+direction
+		if not session.sim.world.in_bounds(position):continue
+		var terrain:Dictionary=load("res://sim/terrain_registry.gd").definition(
+			session.sim.world.tile_at(position).terrain)
+		if bool(terrain.get("passable",false)):result.append(position)
+	return result
 
 func _resolve_encounter(session,limit:int)->bool:
 	for _turn in range(limit):

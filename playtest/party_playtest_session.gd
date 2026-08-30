@@ -16,6 +16,8 @@ const ExplorationRouteScript = preload("res://playtest/party_exploration_route.g
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
+const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
+const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -62,6 +64,7 @@ var _overrides: Dictionary = {}
 var _draft_fingerprint := ""
 var _exploration_route = null
 var _protagonist_placeholder := false
+var _map_layout: Dictionary = {}
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -131,18 +134,32 @@ static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
 func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> bool:
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
-	var candidate = SimulatorScript.create(15, 15, p_world_seed)
+	var product_dungeon := VisualTestMapScript.uses_product_dungeon(p_scenario_id)
+	var map_layout: Dictionary = VisualTestMapScript.product_dungeon(p_world_seed) \
+		if product_dungeon else {}
+	if product_dungeon and map_layout.is_empty(): return false
+	var world_width := int(map_layout.get("width", 15))
+	var world_height := int(map_layout.get("height", 15))
+	var candidate = SimulatorScript.create(world_width, world_height, p_world_seed)
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
 	var solo := p_scenario_id == SOLO_COMBAT_SCENARIO_ID
 	var showcase_layout:=VisualTestMapScript.uses_showcase_layout(p_scenario_id)
 	if showcase_layout and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
 	if showcase_layout and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
-	var hero_position := VisualTestMapScript.HERO_POSITION if showcase_layout else Vector2i(7,7)
+	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_terrain(
+			candidate.world, map_layout): return false
+	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
+			candidate.world, map_layout): return false
+	var hero_position: Vector2i = map_layout.get("hero_position",
+		VisualTestMapScript.HERO_POSITION if showcase_layout else Vector2i(7,7))
 	var narae_position := Vector2i(1,12) if showcase_layout else Vector2i(6,7)
 	var miru_position := Vector2i(2,11) if showcase_layout else Vector2i(7,6)
-	var enemy_position := VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7)
-	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, ["party_member"], "human", "party")
+	var generated_enemies: Array = map_layout.get("enemy_positions", [])
+	var enemy_position: Vector2i = generated_enemies[0] if not generated_enemies.is_empty() \
+		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
+	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
+	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, hero_tags, "human", "party")
 	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95,
 		["party_member"], "human", "party") if not solo else null
 	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105,
@@ -167,18 +184,30 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	state.enemy_ids.append(enemy.id)
-	if showcase_layout:
+	if VisualTestMapScript.uses_los_fov(p_scenario_id):
 		# Product-map objectives stay traversable even while monsters patrol. This
 		# reservation is authoritative state so save/load and journal replay do not
 		# need presentation-only map knowledge to reproduce patrol choices.
-		state.patrol_reserved_positions.append(VisualTestMapScript.EXIT_POSITION)
-		state.patrol_reserved_positions.append(VisualTestMapScript.OPEN_DOOR_POSITION)
-		state.patrol_reserved_positions.append(VisualTestMapScript.ENTRY_POSITION)
+		var manifest := VisualTestMapScript.run_manifest(p_scenario_id, map_layout)
+		var reserved_values: Array = [
+			Vector2i(int(manifest.exit.position[0]), int(manifest.exit.position[1])),
+			Vector2i(int(manifest.entry.position[0]), int(manifest.entry.position[1])),
+		]
+		reserved_values.append_array(map_layout.get("door_positions", []))
+		# Preserve the three historical reservation cells for v1/v2 SOLO saves.
+		# They are inert on generated walls but keep schema migration exact.
+		reserved_values.append_array([VisualTestMapScript.EXIT_POSITION,
+			VisualTestMapScript.OPEN_DOOR_POSITION, VisualTestMapScript.ENTRY_POSITION])
+		for reserved_position in reserved_values:
+			if candidate.world.in_bounds(reserved_position) \
+					and reserved_position not in state.patrol_reserved_positions:
+				state.patrol_reserved_positions.append(reserved_position)
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append(protagonist.id)
 	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
 	state.group_anchor = protagonist.position
-	state.party_detection_radius = 3 if showcase_layout else 4; state.enemy_detection_radius = 3
+	state.party_detection_radius = 3 if VisualTestMapScript.uses_los_fov(p_scenario_id) \
+		else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
 	if not solo:
 		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
@@ -193,6 +222,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	scenario_id = p_scenario_id
+	_map_layout = map_layout.duplicate(true)
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
@@ -215,12 +245,9 @@ func protagonist_progression()->Dictionary:
 	var hero_combatant=sim.world.combatant_states.get(state.protagonist_id)
 	var profile:=CombatProfileRegistryScript.profile(hero_combatant.combat_profile_id) \
 		if hero_combatant!=null else {}
-	var melee_rank:int=progression.rank("MELEE")
-	var guard_rank:int=progression.rank("GUARD")
-	var attack_power:=int(profile.get("power",0)) \
-		+ProgressionRegistryScript.melee_power_bonus(melee_rank)
+	var equipment := protagonist_equipment()
+	var attack_power:=int(equipment.get("raw_damage",profile.get("power",0)))
 	var armor_flat:=int(profile.get("armor_flat",0))
-	var guard_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
 	var skills:Array=[]
 	for skill_id in ProgressionRegistryScript.SKILL_IDS:
 		var definition:=ProgressionRegistryScript.definition(skill_id)
@@ -228,11 +255,10 @@ func protagonist_progression()->Dictionary:
 		var rank:=ProgressionRegistryScript.skill_rank(training_total)
 		var training_floor:=ProgressionRegistryScript.training_floor_for_rank(rank)
 		var next_training:=ProgressionRegistryScript.training_floor_for_rank(rank+1)
-		var power_bonus:=ProgressionRegistryScript.melee_power_bonus(rank) \
-			if skill_id=="MELEE" else 0
-		var effect_label:="근접 피해 +%d"%power_bonus if skill_id=="MELEE" \
-			else ("HOLD 물리 피해 %d%% 감소"%int(ProgressionRegistryScript.guard_reduction_milli(rank)/10) \
-				if skill_id=="GUARD" else "현재 효과 없음 · 후속 연결 예정")
+		var accuracy_bonus:=ProgressionRegistryScript.proficiency_accuracy_bonus_milli(rank)
+		var damage_bonus:=ProgressionRegistryScript.proficiency_damage_bonus(rank)
+		var effect_label:="명중 +%d · 피해 +%d · 공격속도 변화 없음"%[
+			accuracy_bonus,damage_bonus]
 		skills.append({"skill_id":skill_id,"label":str(definition.label),"rank":rank,
 			"training_total":training_total,"training_current":training_total-training_floor,
 			"training_required":next_training-training_floor,
@@ -246,8 +272,78 @@ func protagonist_progression()->Dictionary:
 		"xp_required":next_total-floor_xp,"current_level_floor":floor_xp,
 		"next_level_threshold":next_total,"focus_total":ProgressionRegistryScript.FOCUS_TOTAL,
 		"combat_stats":{"attack_power":attack_power,"armor_flat":armor_flat,
-			"guard_reduction_milli":guard_milli,"guard_duration":200},
+			"guard_reduction_milli":250,"guard_duration":200},
+		"equipment":equipment,
 		"skills":skills}.duplicate(true)
+
+
+func protagonist_equipment()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or sim.world.party_encounter.protagonist_loadout==null:
+		return {"schema_version":1,"available":false}.duplicate(true)
+	var state=sim.world.party_encounter
+	var loadout=state.protagonist_loadout
+	var weapon=WeaponRegistryScript.definition(str(loadout.equipped_weapon_id))
+	if weapon==null:return {"schema_version":1,"available":false}.duplicate(true)
+	var rank:int=state.protagonist_progression.rank(weapon.proficiency_id)
+	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) if combatant!=null else {}
+	var spec:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
+		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0)
+	return {"schema_version":1,"available":true,"weapon_id":weapon.weapon_id,
+		"weapon_label":weapon.label,"proficiency_id":weapon.proficiency_id,
+		"proficiency_rank":rank,"attack_form":weapon.attack_form,"trait_id":weapon.trait_id,
+		"range_min":weapon.range_min,"range_max":weapon.range_max,
+		"attack_time":weapon.attack_time,"raw_damage":int(spec.get("raw_damage",0)),
+		"accuracy_bonus_milli":ProgressionRegistryScript.proficiency_accuracy_bonus_milli(rank),
+		"damage_bonus":ProgressionRegistryScript.proficiency_damage_bonus(rank),
+		"ammo_kind":weapon.ammo_kind,"ammo_cost":weapon.ammo_cost,
+		"arrows":int(loadout.ammo_pools.ARROW),"bolts":int(loadout.ammo_pools.BOLT),
+		"reload_required":weapon.reload_required,"loaded":bool(loadout.crossbow_loaded),
+		"can_attack":loadout.attack_error().is_empty(),
+		"attack_block_reason":loadout.attack_error()}.duplicate(true)
+
+
+func equip_protagonist_weapon(weapon_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	if not WeaponRegistryScript.has(weapon_id):return _rejection_dto("unknown_weapon")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
+	if _protagonist_draft!=null:return _rejection_dto("turn_draft_active")
+	var hero_id:int=sim.world.party_encounter.protagonist_id
+	for event in sim.world.events:
+		if event.type=="action.melee_attack" and event.actor_id==hero_id:
+			return _rejection_dto("weapon_locked_after_first_attack")
+	var before:Dictionary=sim.snapshot()
+	if not sim.world.party_encounter.protagonist_loadout.equip(weapon_id):
+		return _rejection_dto("weapon_unchanged")
+	sim.world.party_encounter.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(state_error)
+	command_journal.append({"kind":"equipment","operation":{
+		"action":"EQUIP","weapon_id":weapon_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","equipment":protagonist_equipment()})
+
+
+func reload_protagonist_weapon()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
+	if _protagonist_draft!=null:return _rejection_dto("turn_draft_active")
+	var before:Dictionary=sim.snapshot()
+	var loadout=sim.world.party_encounter.protagonist_loadout
+	var reload_result:Dictionary=loadout.reload()
+	if not bool(reload_result.get("accepted",false)):
+		return _rejection_dto(str(reload_result.get("reason","reload_failed")))
+	sim.world.party_encounter.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(state_error)
+	command_journal.append({"kind":"equipment","operation":{
+		"action":"RELOAD","weapon_id":str(loadout.equipped_weapon_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","reload_time":int(reload_result.reload_time),
+		"equipment":protagonist_equipment()})
 
 
 func set_training_focus(skill_id:String)->Dictionary:
@@ -391,7 +487,7 @@ func run_progress() -> Dictionary:
 		"reward":{"reward_id":"", "amount":0, "granted":false},
 		"exit":{"feature_id":"", "open":false},
 		"complete":false, "terminal":false}
-	var manifest: Dictionary = VisualTestMapScript.run_manifest(scenario_id)
+	var manifest: Dictionary = VisualTestMapScript.run_manifest(scenario_id, _map_layout)
 	if manifest.is_empty() or sim == null or sim.world == null \
 			or sim.world.party_encounter == null:
 		return unavailable.duplicate(true)
@@ -557,7 +653,7 @@ func observe_party_world() -> Dictionary:
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
-	var los_radius:=VisualTestMapScript.uses_showcase_layout(scenario_id)
+	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
 		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
@@ -2238,7 +2334,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
-	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+	if source_party_schema<PartyStateScript.PROGRESSION_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("protagonist_progression"):
 		# Compatibility fixtures downgrade a current wire by removing fields at the
 		# historical boundary. Legacy state is rebuilt from canonical events below;
@@ -2258,20 +2354,36 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
 	if source_party_schema<PartyStateScript.PATROL_SCHEMA_VERSION \
-			and VisualTestMapScript.uses_showcase_layout(parsed_scenario_id):
+			and VisualTestMapScript.uses_los_fov(parsed_scenario_id):
 		# v1/v2 saves predate patrol reservations. Reconstruct presentation-map
 		# objectives once at the checked migration boundary before replay compare.
-		restored.world.party_encounter.patrol_reserved_positions.append(
-			VisualTestMapScript.EXIT_POSITION)
-		restored.world.party_encounter.patrol_reserved_positions.append(
-			VisualTestMapScript.OPEN_DOOR_POSITION)
-		restored.world.party_encounter.patrol_reserved_positions.append(
-			VisualTestMapScript.ENTRY_POSITION)
+		var migrated_layout := VisualTestMapScript.product_dungeon(parsed_world_seed) \
+			if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id) else {}
+		var migrated_manifest := VisualTestMapScript.run_manifest(
+			parsed_scenario_id, migrated_layout)
+		var migrated_positions: Array = [
+			Vector2i(int(migrated_manifest.exit.position[0]),
+				int(migrated_manifest.exit.position[1])),
+			Vector2i(int(migrated_manifest.entry.position[0]),
+				int(migrated_manifest.entry.position[1])),
+		]
+		migrated_positions.append_array(migrated_layout.get("door_positions", []))
+		migrated_positions.append_array([VisualTestMapScript.EXIT_POSITION,
+			VisualTestMapScript.OPEN_DOOR_POSITION, VisualTestMapScript.ENTRY_POSITION])
+		for migrated_position in migrated_positions:
+			if restored.world.in_bounds(migrated_position) and migrated_position \
+					not in restored.world.party_encounter.patrol_reserved_positions:
+				restored.world.party_encounter.patrol_reserved_positions.append(
+					migrated_position)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"equipment":
+				var operation:Dictionary=row.operation
+				replay_result=replay.equip_protagonist_weapon(str(operation.weapon_id)) \
+					if str(operation.action)=="EQUIP" else replay.reload_protagonist_weapon()
 			"progression":
 				replay_result=replay.set_training_focus(str(row.operation.skill_id))
 			"exploration":
@@ -2300,6 +2412,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
 	scenario_id = parsed_scenario_id
+	_map_layout = replay._map_layout.duplicate(true)
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
@@ -2310,6 +2423,14 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"equipment":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_equipment_journal"
+				var equipment_keys:Array=row.operation.keys();equipment_keys.sort()
+				if equipment_keys!=["action","weapon_id"] \
+						or row.operation.action not in ["EQUIP","RELOAD"] \
+						or not WeaponRegistryScript.has(str(row.operation.weapon_id)):
+					return "invalid_equipment_journal"
 			"progression":
 				if keys != ["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_progression_journal"
@@ -2435,7 +2556,7 @@ func _run_feature_id_at(position: Vector2i, progress: Dictionary) -> String:
 		if entry_position is Array and entry_position.size() == 2 \
 				and position == Vector2i(int(entry_position[0]), int(entry_position[1])):
 			return "run_entry"
-	return VisualTestMapScript.feature_id_at(scenario_id, position)
+	return VisualTestMapScript.feature_id_at(scenario_id, position, _map_layout)
 
 
 func _run_is_complete() -> bool:
@@ -2688,12 +2809,20 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 
 func _visual_effect_row(event, kind: String, suffix: String, order: int,
 		damage_type: String, magnitude: int, text: String) -> Dictionary:
+	var attack_form:="SLASH"
+	if event.type=="action.melee_attack" and sim!=null and sim.world!=null \
+			and sim.world.party_encounter!=null \
+			and event.actor_id==sim.world.party_encounter.protagonist_id:
+		var weapon=WeaponRegistryScript.definition(str(
+			sim.world.party_encounter.protagonist_loadout.equipped_weapon_id))
+		if weapon!=null:attack_form=str(weapon.attack_form)
 	return {"effect_id":"%d:%s" % [int(event.id),suffix], "event_id":int(event.id),
 		"order":order, "kind":kind, "source_event_type":str(event.type),
 		"step_index":int(event.step_index), "world_time":int(event.world_time),
 		"actor_id":int(event.actor_id), "target_id":int(event.target_id),
 		"instigator_id":int(event.instigator_id), "cause_id":int(event.cause_id),
 		"world_position":[event.position.x,event.position.y], "damage_type":damage_type,
+		"attack_form":attack_form,
 		"magnitude":magnitude, "text":text}.duplicate(true)
 
 
@@ -2738,11 +2867,22 @@ func _action_presentation(row: Variant) -> Variant:
 				"damage_on_hit":int(assessment.get("normal_final_damage",0)),
 				"bleed_chance_percent":int((int(assessment.get("bleed_chance_milli",0))+5)/10),
 				"target_guarded":bool(assessment.get("guarded",false)),
-				"guard_reduction":int(assessment.get("guard_reduction",0))}
+				"guard_reduction":int(assessment.get("guard_reduction",0)),
+				"weapon_id":str(assessment.get("weapon_id","")),
+				"attack_form":str(assessment.get("attack_form","SLASH")),
+				"attack_time":int(assessment.get("attack_time",100)),
+				"range_max":int(assessment.get("range_max",1)),
+				"trait_id":str(assessment.get("trait_id","NONE")),
+				"secondary_damage_milli":int(assessment.get("secondary_damage_milli",0)),
+				"stun_chance_percent":int((int(assessment.get("stun_chance_milli",0))+5)/10)}
 	if action_type == "MOVE":
 		reason = "목표에 접근할 길을 골랐습니다." if source == "SUGGESTED" else "선택한 칸으로 이동합니다."
 	elif action_type == "MELEE":
-		reason = "인접한 적을 공격합니다. 명중 판정 뒤 피해량은 고정됩니다."
+		var equipment:=protagonist_equipment() if actor_id==sim.world.party_encounter.protagonist_id else {}
+		reason = "%s · 사거리 %d · 공격시간 %d. 명중 판정 뒤 피해량은 고정됩니다."%[
+			str(equipment.get("weapon_label","무기")),int(equipment.get("range_max",1)),
+			int(equipment.get("attack_time",100))] if not equipment.is_empty() \
+			else "인접한 적을 공격합니다. 명중 판정 뒤 피해량은 고정됩니다."
 	elif source == "SUGGESTED":
 		reason = "위험과 거리를 보고 방어 자세를 취합니다."
 	if source == "OVERRIDE": reason = "자동 제안 대신 개별 지시를 따릅니다."

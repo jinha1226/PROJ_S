@@ -333,6 +333,9 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var age_ratio:=clampf(float(elapsed_ms)/float(duration_ms),0.0,1.0)
 	var eased_progress:=1.0-pow(1.0-age_ratio,3.0)
 	var pixel_center:=world_to_pixel_center(world_position)
+	var form_spec:=AsciiStyleScript.attack_form_spec(effect.get("attack_form",
+		effect.get("physical_form",effect.get("damage_form","SLASH"))))
+	var effect_direction:=_visual_effect_direction(effect,world_position)
 	if product_style and kind=="FLOATING_AMOUNT":
 		pixel_center.y-=cell_size_px()*(0.42+0.90*eased_progress)
 	elif product_style and kind=="MISS":
@@ -353,6 +356,10 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 			cell_size_px(),age_ratio)
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
+		"attack_form":str(form_spec.attack_form),
+		"trail_primitive":str(form_spec.trail_primitive),
+		"lead_glyph":str(form_spec.lead_glyph),"echo_glyph":str(form_spec.echo_glyph),
+		"direction":effect_direction,
 		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
 		"pixel_center":pixel_center,"camera_offset_px":camera_settle_draw_spec(now).offset_px,
 		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
@@ -365,6 +372,16 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"font_size":15 if kind=="MISS" and product_style else (maxi(24,int(cell_size_px()*0.82)) \
 			if kind=="FLOATING_AMOUNT" and product_style else (16 if kind=="MISS" else 18)),
 		"duration_ms":duration_ms}.duplicate(true)
+
+
+func _visual_effect_direction(effect:Dictionary,world_position:Vector2i)->Vector2:
+	var instigator:=_actor_by_id(int(effect.get("instigator_id",
+		effect.get("actor_id",-1))))
+	if not instigator.is_empty():
+		var delta:=Vector2(world_position-_position_from_actor(instigator))
+		if not delta.is_zero_approx():return delta.normalized()
+	var seed:=DioramaScript.visual_hash(world_position,int(effect.get("event_id",0))+307)
+	return [Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT,Vector2.UP][seed%4]
 
 func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 		age_ratio:float)->Array:
@@ -404,9 +421,14 @@ func actor_hit_feedback_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictiona
 		var recoil:=direction*amplitude*pow(1.0-recoil_progress,2.0)
 		return {"active":true,"entity_id":entity_id,"event_id":int(effect.get("event_id",0)),
 			"flash_active":bool(effect_spec.flash_active),"flash_hex":"#fff0ea",
-			"recoil_offset":recoil,"recoil_progress":recoil_progress,"duration_ms":210}.duplicate(true)
+			"recoil_offset":recoil,"recoil_progress":recoil_progress,"duration_ms":210,
+			"impact_hold_active":int(effect_spec.elapsed_ms)<=42,
+			"afterimage_active":recoil_progress<0.72,
+			"afterimage_offset":-direction*(2.0+amplitude*0.55),
+			"afterimage_hex":"#ff4f72",
+			"afterimage_opacity":0.30*pow(1.0-minf(1.0,recoil_progress/0.72),1.35)}.duplicate(true)
 	return {"active":false,"entity_id":entity_id,"flash_active":false,
-		"recoil_offset":Vector2.ZERO}.duplicate(true)
+		"recoil_offset":Vector2.ZERO,"afterimage_active":false}.duplicate(true)
 
 func _process(_delta:float)->void:
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
@@ -954,6 +976,8 @@ func _draw() -> void:
 	_draw_ground_pass("VISIBLE")
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
+	_draw_material_mark_pass("MEMORY")
+	_draw_material_mark_pass("VISIBLE")
 	_draw_wall_shadow_pass("MEMORY")
 	_draw_wall_shadow_pass("VISIBLE")
 	_draw_wall_pass("MEMORY")
@@ -975,11 +999,8 @@ func _draw() -> void:
 	for effect in _active_visual_effects:_draw_visual_effect(effect)
 	_draw_fov_edge_haze()
 	draw_set_transform(Vector2.ZERO)
-	var style_id:=str(_presentation_style.get("style_id","DEFAULT"))
-	if not _neutral_phase_map \
-			and (combat_emphasis or bool(_presentation_style.get("vignette",false))):
-		var border:=Color(str(_presentation_style.get("border_hex","#ff7a80")))
-		draw_rect(grid_rect().grow(-2),border,false,4.0 if style_id=="COMBAT" else 2.5)
+	# Phase is communicated inside the field (glyph motion, ink impact and HUD),
+	# never by shrinking the playable view behind a decorative screen border.
 
 func _draw_void_padding(void_color:Color)->void:
 	for y in range(visible_cell_count):
@@ -1026,6 +1047,26 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			if str(terrain.terrain_id)=="wall":continue
 			_draw_terrain_glyph(world_cell_rect(position),terrain,
 				visibility_state=="MEMORY")
+
+func _draw_material_mark_pass(visibility_state:String)->void:
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var row:Dictionary=_cells.get(_key(position),{})
+			if _diorama_visibility_state(row)!=visibility_state:continue
+			var cell_spec:=diorama_cell_draw_spec(position)
+			var mark:Dictionary=cell_spec.get("material_mark",{})
+			if not bool(mark.get("visible",false)):continue
+			var terrain:=AsciiStyleScript.terrain_spec(row)
+			var rect:=world_cell_rect(position)
+			var offset:Vector2=mark.get("offset",Vector2.ZERO)
+			var center:=rect.get_center()+Vector2(offset.x*rect.size.x,offset.y*rect.size.y)
+			var opacity:=float(mark.get("opacity",0.0))*float(terrain.get("opacity",1.0))
+			var color:=_diorama_color(str(terrain.get("glyph_hex","#8090a0")),
+				opacity,visibility_state=="MEMORY")
+			_draw_centered_text(get_theme_default_font(),str(mark.get("glyph","")),center,
+				maxi(7,int(rect.size.x*0.28)),color)
+
 func _draw_wall_shadow_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
@@ -1072,7 +1113,8 @@ func _draw_wall_pass(visibility_state:String)->void:
 				var side_center:=rect.get_center()+Vector2(depth.side_offset)
 				var side_font_size:=maxi(8,int(floor(cell*float(terrain.get("font_ratio",0.61)))))
 				_draw_centered_text(get_theme_default_font(),str(terrain.glyph),side_center,
-					side_font_size,side)
+					side_font_size,_diorama_color(str(terrain.glyph_hex),
+					0.16*float(depth.opacity),visibility_state=="MEMORY"))
 			var top:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),visibility_state=="MEMORY")
 			draw_rect(rect.grow(overlap).intersection(grid_rect()),top,true)
 			var edge:=_diorama_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
@@ -1159,7 +1201,9 @@ func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
 	if not bool(spec.visible):return
 	var center:=rect.get_center();var font:=get_theme_default_font()
 	var font_size:=maxi(11,int(floor(rect.size.x*0.62)))
-	_draw_centered_text(font,str(spec.glyph),center+Vector2(1,1),font_size,Color("#05090d"))
+	var halo:=Color(str(spec.get("halo_hex","#05090d")));halo.a=0.72
+	for direction in [Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]:
+		_draw_centered_text(font,str(spec.glyph),center+direction*1.35,font_size,halo)
 	_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
@@ -1188,10 +1232,7 @@ func _draw_visual_effect(effect:Dictionary)->void:
 	var radius:=float(spec.radius);var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 	match str(spec.primitive):
 		"LOCAL_STREAKS":
-			var tangent:=Vector2(radius*0.82,-radius*0.54)
-			draw_line(center-tangent,center+tangent,color,width,true)
-			draw_line(center-Vector2(radius*0.42,-radius*0.18),
-				center+Vector2(radius*0.30,-radius*0.42),color,maxf(1.0,width*0.62),true)
+			_draw_ink_attack_trail(spec,center,color,radius,width)
 		"SLASH_LINES":
 			var drift:=Vector2(radius*0.30,-radius*0.20)*float(spec.age_ratio)
 			draw_line(center+Vector2(-radius,radius)+drift,center+Vector2(radius,-radius)+drift,color,width)
@@ -1221,9 +1262,57 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 	var style:=actor_draw_spec(actor,ghost)
 	if not ghost:
 		var feedback:=actor_hit_feedback_draw_spec(int(actor.get("entity_id",-1)))
+		if bool(feedback.get("afterimage_active",false)):
+			var echo_style:Dictionary=style.duplicate(true)
+			echo_style["color_hex"]=str(feedback.get("afterimage_hex","#ff4f72"))
+			echo_style["highlight_hex"]=echo_style.color_hex
+			echo_style["opacity"]=float(style.get("opacity",1.0))*float(
+				feedback.get("afterimage_opacity",0.0))
+			var echo_offset:Vector2=feedback.get("afterimage_offset",Vector2.ZERO)
+			AsciiPortraitScript.draw_figure(self,get_theme_default_font(),
+				Rect2(bounds.position+echo_offset,bounds.size),
+				echo_style,false,true)
 		if bool(feedback.get("flash_active",false)):
 			style["color_hex"]=str(feedback.flash_hex);style["highlight_hex"]="#ffffff"
 	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,style,true,true)
+
+
+func _draw_ink_attack_trail(spec:Dictionary,center:Vector2,color:Color,
+		radius:float,width:float)->void:
+	var direction:Vector2=spec.get("direction",Vector2.RIGHT)
+	if direction.is_zero_approx():direction=Vector2.RIGHT
+	direction=direction.normalized()
+	var side:=Vector2(-direction.y,direction.x)
+	var fade:=1.0-float(spec.get("age_ratio",0.0))
+	var lead:=str(spec.get("lead_glyph","/"));var echo:=str(spec.get("echo_glyph","'"))
+	match str(spec.get("trail_primitive","INK_ARC")):
+		"INK_THRUST":
+			var start:=center-direction*radius*0.95
+			var finish:=center+direction*radius*1.10
+			draw_line(start,finish,color,width,true)
+			draw_line(finish-direction*radius*0.28+side*radius*0.20,finish,color,
+				maxf(1.0,width*0.70),true)
+			draw_line(finish-direction*radius*0.28-side*radius*0.20,finish,color,
+				maxf(1.0,width*0.70),true)
+			_draw_centered_text(get_theme_default_font(),echo,start,11,
+				Color(color,color.a*0.48))
+			_draw_centered_text(get_theme_default_font(),lead,finish,12,color)
+		"INK_CRUSH":
+			for ray in [direction,side,-direction,-side]:
+				draw_line(center+ray*radius*0.18,center+ray*radius*0.92,color,
+					maxf(1.0,width*(0.72 if ray!=direction else 1.0)),true)
+			_draw_centered_text(get_theme_default_font(),lead,center,16,color)
+			var echo_color:=color;echo_color.a*=0.42*fade
+			_draw_centered_text(get_theme_default_font(),echo,
+				center-direction*radius*0.58+side*radius*0.42,11,echo_color)
+		_:
+			var tangent:=(side-direction*0.32).normalized()*radius
+			draw_line(center-tangent,center+tangent,color,width,true)
+			draw_line(center-tangent*0.58-direction*radius*0.20,
+				center+tangent*0.38-direction*radius*0.34,color,maxf(1.0,width*0.60),true)
+			_draw_centered_text(get_theme_default_font(),lead,center+tangent*0.82,12,color)
+			var echo_color:=color;echo_color.a*=0.44*fade
+			_draw_centered_text(get_theme_default_font(),echo,center-tangent*0.74,10,echo_color)
 
 func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 		sample_time_ms:int=-1)->Rect2:

@@ -6,6 +6,7 @@ const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
+const DungeonMapScript = preload("res://playtest/deterministic_dungeon_map.gd")
 const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
@@ -52,19 +53,38 @@ static func has_scenario(scenario_id: String) -> bool:
 
 
 static func uses_showcase_layout(scenario_id:String)->bool:
-	return scenario_id in [SHOWCASE_SCENARIO_ID,SOLO_COMBAT_SCENARIO_ID]
+	return scenario_id == SHOWCASE_SCENARIO_ID
 
 
-static func run_manifest(scenario_id: String) -> Dictionary:
-	if not uses_showcase_layout(scenario_id):
+static func uses_product_dungeon(scenario_id: String) -> bool:
+	return scenario_id == SOLO_COMBAT_SCENARIO_ID
+
+
+static func uses_los_fov(scenario_id: String) -> bool:
+	return uses_showcase_layout(scenario_id) or uses_product_dungeon(scenario_id)
+
+
+static func product_dungeon(seed: int) -> Dictionary:
+	return DungeonMapScript.generate(DungeonMapScript.DEFAULT_WIDTH,
+		DungeonMapScript.DEFAULT_HEIGHT, seed)
+
+
+static func run_manifest(scenario_id: String, layout: Dictionary = {}) -> Dictionary:
+	if not uses_los_fov(scenario_id):
 		return {}
+	var entry_position := ENTRY_POSITION
+	var exit_position := EXIT_POSITION
+	if uses_product_dungeon(scenario_id):
+		var generated := layout if not layout.is_empty() else product_dungeon(44)
+		entry_position = generated.get("entry_position", ENTRY_POSITION)
+		exit_position = generated.get("exit_position", EXIT_POSITION)
 	return {
 		"schema_version":RUN_MANIFEST_SCHEMA_VERSION,
 		"scenario_id":scenario_id,
 		"objective_id":"CLEAR_SINGLE_ENCOUNTER_AND_EXIT",
-		"entry":{"position":[ENTRY_POSITION.x,ENTRY_POSITION.y],
+		"entry":{"position":[entry_position.x,entry_position.y],
 			"feature_id":"run_entry"},
-		"exit":{"position":[EXIT_POSITION.x,EXIT_POSITION.y],
+		"exit":{"position":[exit_position.x,exit_position.y],
 			"locked_feature_id":"run_exit_locked",
 			"open_feature_id":"run_exit_open"},
 		"reward":{"reward_id":"SOLO_COMBAT_VICTORY_TOKEN" \
@@ -97,9 +117,22 @@ static func apply_showcase_hazards(world) -> bool:
 		and world.bootstrap_set_fire(FIRE_POSITION, 80) != null
 
 
-static func feature_id_at(scenario_id: String, position: Vector2i) -> String:
+static func apply_product_dungeon_terrain(world, layout: Dictionary) -> bool:
+	return DungeonMapScript.apply_terrain(world, layout)
+
+
+static func apply_product_dungeon_hazards(world, layout: Dictionary) -> bool:
+	return DungeonMapScript.apply_hazards(world, layout)
+
+
+static func feature_id_at(scenario_id: String, position: Vector2i,
+		layout: Dictionary = {}) -> String:
 	if uses_showcase_layout(scenario_id) and position == OPEN_DOOR_POSITION:
 		return "open_door"
+	if uses_product_dungeon(scenario_id):
+		for door_position in layout.get("door_positions", []):
+			if position == door_position:
+				return "open_door"
 	return ""
 
 
@@ -107,16 +140,19 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 	var visible: Dictionary = {}
 	if world == null:
 		return visible
-	if not uses_showcase_layout(scenario_id):
+	if not uses_los_fov(scenario_id):
 		for y in range(world.height):
 			for x in range(world.width):
 				visible[_key(Vector2i(x, y))] = true
 		return visible
-	for y in range(world.height):
-		for x in range(world.width):
+	var min_y := maxi(0, origin.y - SHOWCASE_FOV_RADIUS)
+	var max_y := mini(world.height - 1, origin.y + SHOWCASE_FOV_RADIUS)
+	var min_x := maxi(0, origin.x - SHOWCASE_FOV_RADIUS)
+	var max_x := mini(world.width - 1, origin.x + SHOWCASE_FOV_RADIUS)
+	for y in range(min_y, max_y + 1):
+		for x in range(min_x, max_x + 1):
 			var target := Vector2i(x, y)
-			if maxi(absi(target.x - origin.x), absi(target.y - origin.y)) \
-					<= SHOWCASE_FOV_RADIUS and _has_line_of_sight(world, origin, target):
+			if _has_line_of_sight(world, origin, target):
 				visible[_key(target)] = true
 	return visible
 

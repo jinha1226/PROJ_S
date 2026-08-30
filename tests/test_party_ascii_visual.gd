@@ -605,6 +605,9 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	var recoil170:Dictionary=grid.actor_hit_feedback_draw_spec(2,started+170)
 	check(recoil0.flash_active and recoil0.recoil_offset.x>=3.0 \
 		and recoil0.recoil_offset.x<=5.0,"target recoils away from attacker by three to five pixels")
+	check(recoil0.impact_hold_active and recoil0.afterimage_active \
+		and recoil0.afterimage_opacity>0.0,
+		"initial impact adds a presentation-only registration hold and ink afterimage")
 	check(recoil170.recoil_offset.length()<0.01,"target recoil returns by 170ms")
 	var amount_row:Dictionary=grid._active_visual_effects[1]
 	var amount0:Dictionary=grid.visual_effect_draw_spec(amount_row,started)
@@ -633,6 +636,38 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
 	check(not grid.visual_effect_draw_spec(offscreen,started).visible,
 		"off-FOV hit feedback emits no field primitive")
+	grid.free();return finish()
+
+
+func test_physical_attack_forms_project_three_distinct_ink_trails() -> bool:
+	var slash:Dictionary=Style.attack_form_spec("SLASH")
+	var pierce:Dictionary=Style.attack_form_spec("찌르기")
+	var impact:Dictionary=Style.attack_form_spec("BLUNT")
+	check_eq([slash.attack_form,pierce.attack_form,impact.attack_form],
+		["SLASH","PIERCE","IMPACT"],"physical forms normalize to the three combat silhouettes")
+	check_eq([slash.trail_primitive,pierce.trail_primitive,impact.trail_primitive],
+		["INK_ARC","INK_THRUST","INK_CRUSH"],"each physical form owns a distinct ink trail")
+	check(slash.lead_glyph!=pierce.lead_glyph and pierce.lead_glyph!=impact.lead_glyph,
+		"attack silhouettes remain readable as ASCII glyphs")
+	slash.attack_form="CORRUPTED"
+	check_eq(Style.attack_form_spec("SLASH").attack_form,"SLASH","attack form specs are detached")
+
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[6,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	grid.set_neutral_phase_map(true)
+	var started:=Time.get_ticks_msec()
+	for row in [["SLASH","INK_ARC"],["PIERCE","INK_THRUST"],["IMPACT","INK_CRUSH"]]:
+		var effect:={"effect_id":"form:%s"%row[0],"event_id":41,"kind":"SLASH",
+			"world_position":[7,7],"instigator_id":1,"attack_form":row[0],
+			"started_at_ms":started}
+		var spec:Dictionary=grid.visual_effect_draw_spec(effect,started)
+		check_eq(spec.primitive,"LOCAL_STREAKS","attack remains a local presentation effect")
+		check_eq(spec.trail_primitive,row[1],"%s selects its ink trail"%row[0])
+		check_eq(spec.direction,Vector2.RIGHT,"trail points from instigator toward impact")
 	grid.free();return finish()
 
 
