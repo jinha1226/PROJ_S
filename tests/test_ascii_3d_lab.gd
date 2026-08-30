@@ -42,8 +42,8 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			"actor grounding and limbs are also glyph-only rather than tile-like meshes")
 		check_eq(lab.tile_glyph_layers[Vector2i(7,7)].size(),1,
 			"floor is exactly one horizontal dot glyph layer")
-		check_eq(lab.tile_glyph_layers[Vector2i(5,4)].size(),4,
-			"an exposed wall uses a raised top and three large front text rows")
+		check_eq(lab.tile_glyph_layers[Vector2i(5,4)].size(),2,
+			"an exposed wall uses exactly one slanted top and one upright front face")
 		check_eq(lab.tile_glyph_layers[Vector2i(4,4)].size(),1,
 			"a wall front hidden by another wall avoids redundant text layers")
 		check_eq(lab.tile_glyph_layers[Vector2i(2,10)].size(),2,
@@ -75,19 +75,15 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			and is_equal_approx(wall_top_variation.variation_transform.x.y,lab.WALL_TOP_SLANT) \
 			and is_equal_approx(lab.glyph_world_width(wall_top_glyph),lab.WALL_WORLD_WIDTH),
 			"wall top alone uses the 0.30 faux-italic FontVariation without changing its world width")
-		var wall_bottom:float=INF;var wall_top:float=-INF
-		for layer_index in range(1,wall_layers.size()):
-			var wall_layer:=wall_layers[layer_index] as Label3D
-			var half_height:=lab.glyph_world_height(wall_layer)*0.5
-			wall_bottom=minf(wall_bottom,wall_layer.position.y-half_height)
-			wall_top=maxf(wall_top,wall_layer.position.y+half_height)
-			check(wall_layer.font_size==lab.WALL_FONT_SIZE and wall_layer.font==lab.FONT \
-				and not wall_layer.font is FontVariation \
-				and lab.glyph_world_width(wall_layer)>=0.85,
-				"each exposed wall front row stays upright on the base font and nearly one cell wide")
-		check(wall_top-wall_bottom>=1.3 and wall_top-wall_bottom<=1.7 \
-			and (wall_layers[0] as Label3D).position.y>=1.5,
-			"large front rows form a 1.3-1.7 world-unit wall below a raised top")
+		var wall_face:=wall_layers[1] as Label3D
+		var wall_face_height:=lab.glyph_world_height(wall_face)
+		check(wall_face.font_size==lab.WALL_FONT_SIZE and wall_face.font==lab.FONT \
+			and not wall_face.font is FontVariation and wall_face.scale.y>=0.90 \
+			and lab.glyph_world_width(wall_face)>=0.85,
+			"the single exposed wall face stays upright, nearly one cell wide, and minimally squeezed")
+		check(wall_face_height>=1.3 and wall_face_height<=1.6 \
+			and wall_top_glyph.position.y>=1.5,
+			"one upright glyph forms a 1.3-1.6 world-unit face below the raised top")
 		var hero_glyph:=lab.find_child("HeroGlyph",true,false) as Label3D
 		var enemy_glyph:=lab.find_child("EnemyGlyph",true,false) as Label3D
 		check(lab.glyph_world_width(hero_glyph)/lab.TERRAIN_WORLD_WIDTH>=1.15 \
@@ -96,8 +92,8 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			"high-contrast actors are 15-25% wider than ordinary terrain glyphs")
 		var terrain_glyph_count:=0
 		for layers in lab.tile_glyph_layers.values():terrain_glyph_count+=layers.size()
-		check_eq(terrain_glyph_count,349,
-			"three-row exposed walls keep text-only terrain at exactly 349 glyph nodes")
+		check_eq(terrain_glyph_count,285,
+			"single-face exposed walls reduce text-only terrain to exactly 285 glyph nodes")
 		var visible:=0;var memory:=0;var unseen:=0
 		for cell in lab.tile_nodes:
 			var glyph:Label3D=lab.tile_glyphs[cell]

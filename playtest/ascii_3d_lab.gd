@@ -146,16 +146,14 @@ func _build_terrain_glyph_layers(cell:Vector2i,terrain:String,offset:Vector3)->A
 		layers.append(_terrain_label("RubbleShadow_%02d_%02d"%[cell.x,cell.y],".",
 			base+Vector3(-0.11,top_height-0.025,0.10),96,0.62,8,Color("#765e4b"),true,false,0.18))
 	elif terrain=="wall" and _wall_front_exposed(cell):
-		# Camera is fixed on +Z. Only a wall whose +Z face is exposed receives
-		# vertical text, so the three large rows join into one readable wall.
-		for row in [{"name":"Upper","y":1.30,"color":Color("#91a8b8"),"bias":0.12},
-				{"name":"Middle","y":0.75,"color":Color("#667b8b"),"bias":0.22},
-				{"name":"Lower","y":0.20,"color":Color("#40515f"),"bias":0.34}]:
-			var wall_glyph:=_terrain_label("Wall%s_%02d_%02d"%[str(row.name),cell.x,cell.y],"#",
-				base+Vector3(0,float(row.y),0.31),WALL_FONT_SIZE,WALL_WORLD_WIDTH,10,
-				row.color,false,false,float(row.bias))
-			# Keep the front close to a 1.6-unit wall while preserving its 0.9-cell width.
-			wall_glyph.scale.y=0.30;layers.append(wall_glyph)
+		# Camera is fixed on +Z. One upright glyph fills the exposed face while
+		# the separate slanted top glyph reads as the second plane.
+		var wall_face:=_terrain_label("WallFace_%02d_%02d"%[cell.x,cell.y],"#",
+			base+Vector3(0,0.78,0.31),WALL_FONT_SIZE,WALL_WORLD_WIDTH,10,
+			Color("#718493"),false,false,0.22)
+		# Native metric height is 1.596; a restrained 6% squeeze gives a
+		# 1.50-unit face without making the character look distorted.
+		wall_face.scale.y=0.94;layers.append(wall_face)
 	return layers
 
 func _wall_front_exposed(cell:Vector2i)->bool:
