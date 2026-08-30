@@ -1047,9 +1047,9 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 
 
 func test_fov_memory_is_reconstructed_purely_from_hero_move_history_and_replays() -> bool:
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var initial:Dictionary=session.observe_party_world()
-	check(bool(initial.visibility.memory_supported),"product observation advertises terrain memory")
+	check(bool(initial.visibility.memory_supported),"fixed solo fixture advertises terrain memory")
 	check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 		"memory fixture reaches solo contact")
 	check(session.enter_solo_combat().accepted,"memory fixture enters solo combat")

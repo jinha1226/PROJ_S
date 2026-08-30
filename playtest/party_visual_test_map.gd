@@ -4,6 +4,7 @@ extends RefCounted
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
+const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
 const DungeonMapScript = preload("res://playtest/deterministic_dungeon_map.gd")
@@ -49,11 +50,11 @@ const _TERRAIN_BY_GLYPH := {
 
 static func has_scenario(scenario_id: String) -> bool:
 	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID,
-		SOLO_COMBAT_SCENARIO_ID]
+		SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
 
 
 static func uses_showcase_layout(scenario_id:String)->bool:
-	return scenario_id == SHOWCASE_SCENARIO_ID
+	return scenario_id in [SHOWCASE_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
 
 
 static func uses_product_dungeon(scenario_id: String) -> bool:
@@ -88,7 +89,8 @@ static func run_manifest(scenario_id: String, layout: Dictionary = {}) -> Dictio
 			"locked_feature_id":"run_exit_locked",
 			"open_feature_id":"run_exit_open"},
 		"reward":{"reward_id":"SOLO_COMBAT_VICTORY_TOKEN" \
-			if scenario_id==SOLO_COMBAT_SCENARIO_ID else "SHOWCASE_VICTORY_TOKEN","amount":1},
+			if scenario_id in [SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID] \
+			else "SHOWCASE_VICTORY_TOKEN","amount":1},
 	}.duplicate(true)
 
 

@@ -27,6 +27,7 @@ const DEFAULT_PERSONALITY_SEED := 20260828
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
+const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
 const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
 const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
@@ -143,7 +144,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var candidate = SimulatorScript.create(world_width, world_height, p_world_seed)
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
-	var solo := p_scenario_id == SOLO_COMBAT_SCENARIO_ID
+	var solo := p_scenario_id in [SOLO_COMBAT_SCENARIO_ID,
+		SOLO_FIXTURE_SCENARIO_ID]
 	var showcase_layout:=VisualTestMapScript.uses_showcase_layout(p_scenario_id)
 	if showcase_layout and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
 	if showcase_layout and not VisualTestMapScript.apply_showcase_hazards(candidate.world): return false
@@ -230,7 +232,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 
 
 func is_solo_combat()->bool:
-	return scenario_id==SOLO_COMBAT_SCENARIO_ID
+	return scenario_id in [SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
 
 
 func protagonist_progression()->Dictionary:
@@ -2334,6 +2336,13 @@ func load_session_json(encoded: String) -> Dictionary:
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+			and decoded.snapshot.party_encounter.has("protagonist_loadout"):
+		# A legacy row has no authoritative loadout field. This also supports
+		# compatibility fixtures made by downgrading a current snapshot version:
+		# discard the future field and let PartyEncounterState restore the exact
+		# historical default (SHORT_SWORD, 12 arrows, 6 bolts).
+		decoded.snapshot.party_encounter.erase("protagonist_loadout")
 	if source_party_schema<PartyStateScript.PROGRESSION_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("protagonist_progression"):
 		# Compatibility fixtures downgrade a current wire by removing fields at the

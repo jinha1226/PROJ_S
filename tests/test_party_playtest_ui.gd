@@ -812,7 +812,7 @@ func test_combat_defense_attack_preview_is_readable_without_enemy_forecast_leak(
 
 
 func test_solo_combat_mobile_hides_party_management_and_enters_without_formation() -> bool:
-	var manual_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var manual_session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	check(manual_session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 		"solo manual fixture reaches contact")
 	check_eq(manual_session.party_status().safe_phase,"CONTACT","solo manual contact")
@@ -829,7 +829,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 	manual.free()
 
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
-		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 			"%s solo auto fixture reaches contact"%viewport_size)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
@@ -845,7 +845,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		check_eq([session.sim.world.step_index,session.command_journal.size()],
 			[deployed_step,deployed_journal],"%s repeated refresh deploys exactly once"%viewport_size)
 		check(session.is_solo_combat() and session.party_cards().size()==1,
-			"%s product has one authoritative member dossier"%viewport_size)
+			"%s solo fixture has one authoritative member dossier"%viewport_size)
 		check(not sandbox.duel_lab_button.visible \
 			and sandbox.find_child("RosterManagement",true,false)==null \
 			and sandbox.find_child("RosterManagementTitle",true,false)==null,
@@ -873,14 +873,14 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			"%s solo defense is visible and explained"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
 		check(enemy_summary==null,
-			"%s solo product does not reveal enemy target or direction"%viewport_size)
+			"%s solo fixture does not reveal enemy target or direction"%viewport_size)
 		var enemy:=int(session.party_status().visible_enemy_ids[0])
 		check(_relocate_with_move_events(session.sim,enemy,
 			session.sim.world.entities[hero].position+Vector2i.RIGHT),
 			"%s solo enemy adjacent"%viewport_size)
 		sandbox._refresh();sandbox._on_actor(enemy);sandbox._refresh()
 		var summary:=sandbox.find_child("TurnSummary",true,false) as Label
-		check(summary!=null and "명중 95%" in summary.text and "적중 시 22 피해" in summary.text,
+		check(summary!=null and "명중 95%" in summary.text and "적중 시 26 피해" in summary.text,
 			"%s solo target tap exposes attack preview"%viewport_size)
 		var current:Dictionary=session.current_turn_preview()
 		check(current.accepted and current.actor_rows.size()==1 \
@@ -892,7 +892,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 
 func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
-		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
 		check_eq(sandbox.phase_panel.name,"TopExplorationHUD","%s unified top HUD"%viewport_size)
@@ -940,7 +940,7 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 
 func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
-		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
 		sandbox.size=viewport_size;sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size

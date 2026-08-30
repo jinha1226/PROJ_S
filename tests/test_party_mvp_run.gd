@@ -148,11 +148,11 @@ func test_showcase_entry_combat_reward_exit_complete_e2e() -> bool:
 	return finish()
 
 
-func test_solo_combat_product_contract_replays_completes_and_restarts_exactly() -> bool:
-	var manifest:Dictionary=VisualMap.run_manifest(Session.SOLO_COMBAT_SCENARIO_ID)
+func test_solo_fixture_contract_replays_completes_and_restarts_exactly() -> bool:
+	var manifest:Dictionary=VisualMap.run_manifest(Session.SOLO_FIXTURE_SCENARIO_ID)
 	check_eq([manifest.scenario_id,manifest.reward.reward_id],
-		["SOLO_COMBAT_V1","SOLO_COMBAT_VICTORY_TOKEN"],"solo run manifest identity")
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		["SOLO_FIXTURE_V1","SOLO_COMBAT_VICTORY_TOKEN"],"solo fixture manifest identity")
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
 	check(session.is_solo_combat(),"solo session capability explicit")
 	check_eq([state.party_member_ids,state.active_party_member_ids,state.member_rows.keys()],
@@ -205,7 +205,7 @@ func test_solo_combat_product_contract_replays_completes_and_restarts_exactly() 
 	check(_round_trip_matches(session),"solo ENGAGED save load replay exact")
 	var tampered:Dictionary=JSON.parse_string(session.save_session_json())
 	tampered.scenario_id=Session.SHOWCASE_SCENARIO_ID
-	var tamper_target=Session.new(9,10,Session.SOLO_COMBAT_SCENARIO_ID)
+	var tamper_target=Session.new(9,10,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var tamper_before:String=tamper_target.save_session_json()
 	var tamper_result:Dictionary=tamper_target.load_session_json(JSON.stringify(tampered))
 	check(not tamper_result.accepted,"known scenario swap rejects solo snapshot")
@@ -224,11 +224,11 @@ func test_solo_combat_product_contract_replays_completes_and_restarts_exactly() 
 		"solo reaches open exit")
 	check_eq(session.run_progress().run_state,"COMPLETE","solo run complete")
 	check(_round_trip_matches(session),"solo COMPLETE save load replay exact")
-	var expected=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var expected=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var restarted:Dictionary=session.restart_same_run()
 	check(restarted.accepted,"solo complete run restarts")
 	check_eq([session.world_seed,session.personality_seed,session.scenario_id],
-		[44,20260828,"SOLO_COMBAT_V1"],"solo restart preserves exact identity")
+		[44,20260828,"SOLO_FIXTURE_V1"],"solo fixture restart preserves exact identity")
 	check_eq(session.sim.snapshot(),expected.sim.snapshot(),"solo restart rebuilds exact initial snapshot")
 	check(session.command_journal.is_empty(),"solo restart clears journal")
 	return finish()

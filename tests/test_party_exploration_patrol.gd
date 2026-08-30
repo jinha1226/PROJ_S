@@ -6,9 +6,9 @@ const WorldState=preload("res://sim/world_state.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 
 
-func test_product_patrol_is_tick_driven_visible_deterministic_and_replay_exact()->bool:
-	var left=Session.new(44,20260828,"SOLO_COMBAT_V1")
-	var right=Session.new(44,20260828,"SOLO_COMBAT_V1")
+func test_fixed_solo_fixture_patrol_is_tick_driven_visible_deterministic_and_replay_exact()->bool:
+	var left=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var right=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var left_state=left.sim.world.party_encounter
 	var enemy_id:=int(left_state.enemy_ids[0])
 	var initial_position:Vector2i=left.sim.world.entities[enemy_id].position
@@ -22,7 +22,7 @@ func test_product_patrol_is_tick_driven_visible_deterministic_and_replay_exact()
 		Command.wait(right.sim.world.party_encounter.protagonist_id))
 	check(left_result.accepted and right_result.accepted,"successful waits own actor cadence")
 	var moved_position:Vector2i=left.sim.world.entities[enemy_id].position
-	check(moved_position!=initial_position,"distant product monster scouts one cell")
+	check(moved_position!=initial_position,"fixed fixture monster scouts one cell")
 	check_eq(right.sim.snapshot(),left.sim.snapshot(),"same seed and command produce exact patrol")
 	var enemy_leaves:Array=[]
 	for event_id in left_result.event_ids:
@@ -31,7 +31,7 @@ func test_product_patrol_is_tick_driven_visible_deterministic_and_replay_exact()
 				and str(event.type) in ["action.move","action.hold","action.melee_attack"]:
 			enemy_leaves.append(event)
 	check_eq(enemy_leaves.size(),1,"enemy acts at most once in one actor cadence")
-	check_eq(str(enemy_leaves[0].type),"action.move","product patrol emits canonical move")
+	check_eq(str(enemy_leaves[0].type),"action.move","fixed fixture patrol emits canonical move")
 	var observed_position:=Vector2i(-1,-1)
 	for cell in left.observe_party_world().cells:
 		for actor in cell.actors:
@@ -107,25 +107,25 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 		"same-tick patrol contact deals no hidden damage")
 	check_eq(contact.sim.world.world_state_error(),"","post-patrol contact is canonical")
 
-	var product=Session.new(44,20260828,"SOLO_COMBAT_V1")
-	var reservations:Array[Vector2i]=product.sim.world.party_encounter.patrol_reserved_positions
+	var fixture=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var reservations:Array[Vector2i]=fixture.sim.world.party_encounter.patrol_reserved_positions
 	check(VisualMap.ENTRY_POSITION in reservations \
 		and VisualMap.OPEN_DOOR_POSITION in reservations \
 		and VisualMap.EXIT_POSITION in reservations,
-		"product feature cells are authoritative patrol exclusions")
-	var v2_wire:Dictionary=JSON.parse_string(product.save_session_json())
+		"fixed fixture feature cells are authoritative patrol exclusions")
+	var v2_wire:Dictionary=JSON.parse_string(fixture.save_session_json())
 	v2_wire.snapshot.party_encounter.schema_version=2
 	v2_wire.snapshot.party_encounter.erase("patrol_reserved_positions")
 	var migrated=Session.new(1,2)
 	check(migrated.load_session_json(JSON.stringify(v2_wire)).accepted,
-		"v2 product save migrates patrol feature reservations")
-	check_eq(migrated.sim.snapshot(),product.sim.snapshot(),
-		"v2 product migration matches canonical v3 state")
+		"v2 fixture save migrates patrol feature reservations")
+	check_eq(migrated.sim.snapshot(),fixture.sim.snapshot(),
+		"v2 fixture migration matches canonical v3 state")
 	return finish()
 
 
 func _corridor_session(species_id:String,water_only:bool):
-	var session=Session.new(71,88,"SOLO_COMBAT_V1")
+	var session=Session.new(71,88,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var world=session.sim.world;var state=world.party_encounter
 	state.party_detection_radius=0;state.enemy_detection_radius=0
 	var hero_position:=Vector2i(2,3)

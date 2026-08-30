@@ -1,0 +1,47 @@
+extends SceneTree
+
+const TEST_FILE := "test_party_playtest_session.gd"
+const TEST_METHOD := "test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact"
+const Session = preload("res://playtest/party_playtest_session.gd")
+const PartyState = preload("res://sim/party_encounter_state.gd")
+
+
+func _init() -> void:
+	var script = load("res://tests/" + TEST_FILE)
+	var test_case = script.new()
+	var completed = test_case.call(TEST_METHOD)
+	if typeof(completed) != TYPE_BOOL or not completed:
+		if test_case.errors.is_empty(): test_case.errors.append("test did not complete")
+	_check_legacy_loadout_defaults(test_case.errors)
+	for error in test_case.errors:
+		print("FAIL %s :: %s -- %s" % [TEST_FILE, TEST_METHOD, error])
+	if test_case.errors.is_empty():
+		print("PASS %s :: %s" % [TEST_FILE, TEST_METHOD])
+	quit(1 if not test_case.errors.is_empty() else 0)
+
+
+func _check_legacy_loadout_defaults(errors: Array) -> void:
+	var session = Session.new()
+	var current: Dictionary = session.sim.world.party_encounter.to_dict()
+	for schema_version in [1, 2, 3, 4]:
+		var row: Dictionary = current.duplicate(true)
+		row.schema_version = schema_version
+		row.erase("protagonist_loadout")
+		if schema_version < 4: row.erase("protagonist_progression")
+		if schema_version < 3: row.erase("patrol_reserved_positions")
+		if schema_version < 2:
+			row.erase("active_party_member_ids")
+			row.erase("exile_records")
+		var wire_error := PartyState.wire_error(row, session.sim.world.width,
+			session.sim.world.height)
+		if not wire_error.is_empty():
+			errors.append("schema %d fixture rejected: %s" % [schema_version, wire_error])
+			continue
+		var restored = PartyState.from_dict(row)
+		if restored.protagonist_loadout.equipped_weapon_id != "SHORT_SWORD" \
+				or int(restored.protagonist_loadout.ammo_pools.ARROW) != 12 \
+				or int(restored.protagonist_loadout.ammo_pools.BOLT) != 6:
+			errors.append("schema %d did not restore default protagonist loadout" % schema_version)
+		if schema_version == 1 \
+				and restored.active_party_member_ids != restored.party_member_ids:
+			errors.append("schema 1 did not default the full roster active")
