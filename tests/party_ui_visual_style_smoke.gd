@@ -2,6 +2,8 @@ extends SceneTree
 
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
+const Command=preload("res://sim/sim_command.gd")
+const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 
 var failures:Array[String]=[]
 
@@ -44,6 +46,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==15,
+		"%s product camera changed from the full-width 15x15 contract"%viewport_size)
 	_check(not sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==0.0 \
 		and not sandbox.top_hud_actions.visible and not sandbox.ascii_3d_lab_button.visible,
 		"%s obsolete product top rail remains visible"%viewport_size)
@@ -226,6 +230,115 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
 		"%s DOS modal still contains a modern ProgressBar"%viewport_size)
 	sandbox.queue_free();await process_frame
+	await _check_direct_solo_combat_log(viewport_size)
+
+func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
+	for _step in range(256):
+		if session.party_status().safe_phase=="CONTACT":break
+		var enemy_id:=int(state.enemy_ids[0])
+		var path:Dictionary=session.sim.party_coordinator.pathfinder.find_path_to_any(
+			hero,_adjacent_open_cells(session,enemy_id))
+		if not bool(path.get("found",false)) or path.path.size()<2:break
+		if not session.commit_exploration(Command.move_to(hero,path.path[1])).accepted:break
+	if session.party_status().safe_phase=="CONTACT":session.enter_solo_combat()
+	for _turn in range(4):
+		var status:Dictionary=session.party_status();var enemy:=int(status.visible_enemy_ids[0])
+		var hero_position:Vector2i=session.sim.world.entities[hero].position
+		var enemy_position:Vector2i=session.sim.world.entities[enemy].position
+		if maxi(absi(hero_position.x-enemy_position.x),absi(hero_position.y-enemy_position.y))==1:break
+		var direction:=Vector2i(signi(enemy_position.x-hero_position.x),signi(enemy_position.y-hero_position.y))
+		if not session.set_actor_action(hero,"MOVE",[hero_position.x+direction.x,
+				hero_position.y+direction.y]).accepted:break
+		if not session.commit_turn().accepted:break
+	var status:Dictionary=session.party_status();var enemy:=int(status.visible_enemy_ids[0])
+	var sandbox=Sandbox.new();sandbox.name="DirectSoloLogProbe";sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session,true)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
+	root.add_child(sandbox);await process_frame;await process_frame
+	sandbox._stage_auto_combat_action("MELEE",[],enemy)
+	var history:Dictionary=session.combat_log(8,80)
+	var latest_messages:=_newest_meaningful_messages(sandbox,history,2)
+	var fast_text:String=sandbox.event_label.text
+	_check(latest_messages.size()==2 and fast_text=="\n".join(latest_messages),
+		"%s direct-solo fast refresh omitted or reordered latest combat rows: %s"%[
+			viewport_size,fast_text])
+	await process_frame
+	var event_rect:Rect2=sandbox.event_label.get_global_rect()
+	_check(event_rect.size.y>=27.9 and _inside_rect(sandbox.event_surface,sandbox.event_label) \
+		and sandbox.event_label.get_visible_line_count()>=mini(2,
+			sandbox.event_label.get_line_count()),
+		"%s combat event text collapsed or clipped inside EventSurface: %s / %s"%[
+			viewport_size,event_rect,sandbox.event_surface.get_global_rect()])
+	_check(fast_text.split("\n",false).size()<=2 \
+		and "교전 시작" not in fast_text and "원정 시작" not in fast_text,
+		"%s compact combat feed exceeds two lines or contains filler"%viewport_size)
+	var latest_group:Dictionary=history.groups[-1] if not history.groups.is_empty() else {}
+	var saw_hero_attack:=false;var saw_enemy_attack:=false
+	var saw_hero_damage:=false;var saw_enemy_damage:=false
+	for row in latest_group.get("rows",[]):
+		if not row is Dictionary:continue
+		if str(row.get("type",""))=="action.melee_attack":
+			saw_hero_attack=saw_hero_attack or int(row.get("actor_id",-1))==hero
+			saw_enemy_attack=saw_enemy_attack or int(row.get("actor_id",-1))==enemy
+		elif str(row.get("type","")).begins_with("combat."):
+			saw_hero_damage=saw_hero_damage or int(row.get("instigator_id",-1))==hero
+			saw_enemy_damage=saw_enemy_damage or int(row.get("instigator_id",-1))==enemy
+	_check(saw_hero_attack and saw_enemy_attack and saw_hero_damage and saw_enemy_damage,
+		"%s direct-solo turn lacks hero hit or enemy counter-hit rows"%viewport_size)
+	sandbox._refresh();await process_frame;await process_frame
+	_check(sandbox.event_label.text==fast_text,
+		"%s normal refresh diverges from direct-solo fast combat feed"%viewport_size)
+	sandbox._toggle_record_modal();await process_frame
+	var full_history:Dictionary=session.combat_log(64,500);var attributed_rows:=0
+	for group in full_history.get("groups",[]):
+		if not group is Dictionary:continue
+		for row in group.get("rows",[]):
+			if not row is Dictionary:continue
+			var message:=str(row.get("message","")).strip_edges()
+			if message.is_empty() or sandbox._is_persistent_log_filler(message):continue
+			_check(message in sandbox.record_body.text,
+				"%s full record omitted meaningful combat row: %s"%[viewport_size,message])
+			var event_type:=str(row.get("type",""));var attribution:=""
+			if event_type.begins_with("status."):
+				attribution=str(row.get("target_name",""))
+			elif event_type.begins_with("combat."):
+				attribution=str(row.get("instigator_name",""))
+			else:
+				attribution=str(row.get("actor_name",""))
+				if attribution.is_empty():attribution=str(row.get("target_name",""))
+			if not attribution.is_empty():
+				attributed_rows+=1
+				_check(attribution in message,
+					"%s combat record row lost actor attribution: %s"%[viewport_size,message])
+	_check(attributed_rows>0,"%s full combat record has no attributed rows"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _newest_meaningful_messages(sandbox,history:Dictionary,limit:int)->Array[String]:
+	var messages:Array[String]=[];var groups:Variant=history.get("groups",[])
+	if not groups is Array:return messages
+	for group_index in range(groups.size()-1,-1,-1):
+		var rows:Variant=groups[group_index].get("rows",[]) if groups[group_index] is Dictionary else []
+		if not rows is Array:continue
+		for row_index in range(rows.size()-1,-1,-1):
+			var message:=str(rows[row_index].get("message","")) \
+				if rows[row_index] is Dictionary else ""
+			message=message.strip_edges().replace("\n"," ")
+			if message.is_empty() or sandbox._is_persistent_log_filler(message):continue
+			messages.append(message)
+			if messages.size()>=limit:return messages
+	return messages
+
+func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
+	var result:Array[Vector2i]=[];var origin:Vector2i=session.sim.world.entities[entity_id].position
+	for direction_value in session.sim.movement.MOVE_DIRECTIONS_8:
+		var position:=origin+Vector2i(direction_value)
+		if session.sim.world.in_bounds(position) \
+				and bool(TerrainRegistry.definition(
+					str(session.sim.world.tile_at(position).terrain)).get("passable",false)):
+			result.append(position)
+	return result
 
 func _fixed_frame_ok(node:Node)->bool:
 	if node==null or not node.has_method("frame_spec"):return false

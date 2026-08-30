@@ -8,7 +8,11 @@ const PARAMS := {
 	# the only visible frame on an imperceptible wind-up.
 	"contact_at_ms":0,
 	"hit_stop_ms":55,
-	"slash_duration_ms":70,
+	# Durations below exclude the shared bright impact hold. Public totals are
+	# exposed by parameter_spec() so product/readability tests use actual wall.
+	"slash_duration_ms":165,
+	"slash_afterimage_opacity":0.16,
+	"slash_fade_curve":0.72,
 	# Attack-axis span is measured against the distance between cell centers.
 	# A value above 1.0 puts one endpoint inside each participating cell.
 	"slash_span_ratio":1.36,
@@ -17,17 +21,19 @@ const PARAMS := {
 	"slash_tilt_ratio":0.32,
 	"slash_width_px":3.2,
 	"slash_color_hex":"#ffe4a3",
-	"flash_duration_ms":90,
+	"flash_duration_ms":105,
 	"flash_intensity":0.62,
+	"flash_fade_curve":0.78,
 	"flash_color_hex":"#ff334d",
 	"particle_count_min":3,
 	"particle_count_max":6,
-	"particle_duration_ms":190,
-	"particle_travel_ratio":0.58,
+	"particle_duration_ms":315,
+	"particle_travel_ratio":0.68,
 	"particle_color_hex":"#ffb36a",
 	"particle_font_ratio":0.52,
+	"particle_fade_curve":0.72,
 	"shake_strength_px":1.75,
-	"shake_duration_ms":80,
+	"shake_duration_ms":95,
 	# Presentation time advances by at most two 60 Hz frames per rendered frame.
 	# This prevents a slow first web draw from expiring the whole local effect.
 	"max_live_frame_advance_ms":34,
@@ -53,6 +59,9 @@ func bind_grid(grid:Control)->void:
 func parameter_spec()->Dictionary:
 	var result:=PARAMS.duplicate(true)
 	result["effect_duration_ms"]=_effect_duration_ms()
+	result["slash_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.slash_duration_ms)
+	result["flash_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.flash_duration_ms)
+	result["particle_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.particle_duration_ms)
 	result["particle_glyphs"]=PARTICLE_GLYPHS.duplicate()
 	return result
 
@@ -237,7 +246,9 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 	var line_from:=midpoint-direction*half_span+perpendicular*half_tilt
 	var line_to:=midpoint+direction*half_span-perpendicular*half_tilt
 	var slash_progress:=clampf(float(visual_elapsed)/float(PARAMS.slash_duration_ms),0.0,1.0)
-	var line_opacity:=1.0 if hit_stop_active else 1.0-slash_progress
+	var line_opacity:=1.0 if hit_stop_active else (0.0 if slash_progress>=1.0 \
+		else maxf(float(PARAMS.slash_afterimage_opacity),pow(1.0-slash_progress,
+			float(PARAMS.slash_fade_curve))))
 	var flash_progress:=clampf(float(impact_elapsed)/float(PARAMS.flash_duration_ms),0.0,1.0)
 	var particles:Array[Dictionary]=[]
 	var particle_progress:=clampf(float(impact_elapsed)/float(PARAMS.particle_duration_ms),0.0,1.0)
@@ -248,7 +259,7 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 				"center":target_center+particle_direction*cell*float(
 					PARAMS.particle_travel_ratio)*particle_progress,
 				"font_size":maxi(9,int(cell*float(PARAMS.particle_font_ratio))),
-				"opacity":1.0-particle_progress})
+				"opacity":pow(1.0-particle_progress,float(PARAMS.particle_fade_curve))})
 	return {"active":true,"visible":true,"sequence":int(effect.sequence),
 		"attacker_grid_pos":attacker,"target_grid_pos":target,
 		"raw_elapsed_ms":raw_elapsed,"visual_elapsed_ms":visual_elapsed,
@@ -258,7 +269,8 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 		"attacker_rect":attacker_rect,
 		"target_rect":target_rect,"flash_visible":visual_elapsed>=contact_at \
 			and impact_elapsed<int(PARAMS.flash_duration_ms),
-		"flash_opacity":float(PARAMS.flash_intensity)*(1.0-flash_progress),
+		"flash_opacity":float(PARAMS.flash_intensity)*pow(1.0-flash_progress,
+			float(PARAMS.flash_fade_curve)),
 		"particles":particles,"particle_count":particles.size(),
 	}.duplicate(true)
 

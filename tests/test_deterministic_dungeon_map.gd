@@ -155,15 +155,21 @@ func test_product_touch_melee_vfx_starts_after_refresh_and_survives_a_frame()->b
 		"result effects flush only after the committed refresh completes")
 	var overlay=sandbox.grid.melee_vfx
 	check(overlay!=null,"product grid creates its separate melee overlay")
-	var matched:Dictionary={}
+	var matched:Dictionary={};var counter_matched:Dictionary={}
 	if overlay!=null:
 		for effect in overlay.active_effects():
 			if effect.attacker_grid_pos==hero_position \
 					and effect.target_grid_pos==enemy_position \
 					and int(effect.started_at_ms)>=committed_after_ms:
-				matched=effect;break
+				matched=effect
+			elif effect.attacker_grid_pos==enemy_position \
+					and effect.target_grid_pos==hero_position \
+					and int(effect.started_at_ms)>=committed_after_ms:
+				counter_matched=effect
 	check(not matched.is_empty(),
 		"touch commit carries the canonical hero/target pair through result, record, grid, and overlay")
+	check(not counter_matched.is_empty(),
+		"same product turn carries the enemy counter-hit back toward the exact hero cell")
 	if not matched.is_empty():
 		var params:Dictionary=overlay.parameter_spec()
 		var frame_a:=int(matched.started_at_ms)+int(params.contact_at_ms)

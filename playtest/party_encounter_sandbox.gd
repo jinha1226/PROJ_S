@@ -304,10 +304,14 @@ func _build_ui()->void:
 	event_surface.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,2))
 	root_layout.add_child(event_surface)
 	var event_margin:=MarginContainer.new();event_margin.name="EventSurfaceInset"
+	event_margin.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	event_margin.add_theme_constant_override("margin_left",6);event_margin.add_theme_constant_override("margin_right",100)
 	event_surface.add_child(event_margin)
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	event_label.add_theme_font_size_override("font_size",FONT_AUX);event_label.max_lines_visible=2
+	# Two real combat rows must fit the fixed 36/38px event surface. The bundled
+	# Korean font needs the micro size for two complete baselines in that budget.
+	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=2
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=28
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
@@ -765,7 +769,8 @@ func _refresh()->void:
 	deck.visible=not product_hud and not _narrative_log_visible
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
-		if record_modal.visible:record_body.text=_full_meaningful_record_text(combat_history)
+		if record_modal.visible:
+			record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	record_button.button_pressed=_narrative_log_visible
 	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN,_narrative_log_visible)
 	_update_recent_event(combat_history,status)
@@ -821,7 +826,8 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	log_label.text=_combat_log_text(combat_history)
 	_update_recent_event(combat_history,status)
 	event_label.text=_compact_meaningful_event_text(combat_history,status)
-	if record_modal.visible:record_body.text=_full_meaningful_record_text(combat_history)
+	if record_modal.visible:
+		record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	var hud_finished:=Time.get_ticks_usec()
 	var effect_count:=_flush_pending_visual_effects()
 	var finished:=Time.get_ticks_usec()
@@ -918,7 +924,7 @@ func _toggle_record_modal()->void:
 	if record_modal.visible:
 		_close_record_modal("TOGGLE");return
 	if map_overlay.visible:map_overlay.close("HISTORY")
-	var history:Dictionary=session.combat_log(8,80)
+	var history:Dictionary=session.combat_log(64,500)
 	record_body.text=_full_meaningful_record_text(history)
 	var route_state:Dictionary=session.exploration_route_state()
 	route_paused_by_modal=bool(route_state.get("active",false))
@@ -2635,7 +2641,9 @@ func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->Stri
 				if not row is Dictionary:continue
 				var message:=str(row.get("message","")).strip_edges().replace("\n"," ")
 				if message.is_empty() or _is_persistent_log_filler(message):continue
-				lines.push_front(message)
+				# The compact surface is a live feed: the most recently committed
+				# event is line one, followed by the immediately preceding event.
+				lines.append(message)
 				if lines.size()>=2:return "\n".join(lines)
 	if not lines.is_empty():return "\n".join(lines)
 	return ""

@@ -54,8 +54,9 @@ func test_melee_vfx_left_uses_only_bounded_dot_colon_star_particles()->bool:
 		"impact emits three to six particles")
 	check(spec.particles.all(func(row):return str(row.glyph) in [".",":","*"]),
 		"particles use only the requested visual glyph alphabet")
-	check(int(params.particle_duration_ms)>=150 and int(params.particle_duration_ms)<=250,
-		"particle lifetime stays in the requested window")
+	check(int(params.particle_visible_total_ms)>=300 \
+			and int(params.particle_visible_total_ms)<=420,
+		"debris readable lifetime stays in the requested window")
 	grid.free();return finish()
 
 
@@ -156,6 +157,48 @@ func test_melee_vfx_live_clock_waits_for_first_draw_and_caps_slow_frames()->bool
 	grid.free();return finish()
 
 
+func test_melee_vfx_readable_hold_fade_and_bidirectional_last_visible_bounds()->bool:
+	var fixture:=_fixture(Vector2i.RIGHT);var grid:PartyGridView=fixture.grid
+	var overlay:MeleeVfxOverlay=grid.melee_vfx
+	check(overlay.play(Vector2i(7,7),Vector2i(8,7)) \
+		and overlay.play(Vector2i(8,7),Vector2i(7,7)),
+		"hero hit and enemy counter-hit both start as independent product pairs")
+	var effects:=overlay.active_effects();var params:=overlay.parameter_spec()
+	check_eq([effects[0].attacker_grid_pos,effects[0].target_grid_pos,
+		effects[1].attacker_grid_pos,effects[1].target_grid_pos],
+		[Vector2i(7,7),Vector2i(8,7),Vector2i(8,7),Vector2i(7,7)],
+		"opposing attacks preserve canonical attacker and target direction")
+	check(int(params.slash_visible_total_ms)>=180 and int(params.slash_visible_total_ms)<=240 \
+		and int(params.flash_visible_total_ms)>=120 and int(params.flash_visible_total_ms)<=180 \
+		and int(params.particle_visible_total_ms)>=300 and int(params.particle_visible_total_ms)<=420,
+		"central parameters expose the requested slash, flash, and debris totals")
+	var started:=int(effects[0].started_at_ms)
+	var hold_last:=_effect_sequence_spec(overlay,
+		started+int(params.hit_stop_ms)-1,int(effects[0].sequence))
+	var slash_last:=_effect_sequence_spec(overlay,
+		started+int(params.slash_visible_total_ms)-1,int(effects[0].sequence))
+	var slash_after:=_effect_sequence_spec(overlay,
+		started+int(params.slash_visible_total_ms),int(effects[0].sequence))
+	var flash_last:=_effect_sequence_spec(overlay,
+		started+int(params.flash_visible_total_ms)-1,int(effects[0].sequence))
+	var flash_after:=_effect_sequence_spec(overlay,
+		started+int(params.flash_visible_total_ms),int(effects[0].sequence))
+	var debris_last:=_effect_sequence_spec(overlay,
+		started+int(params.particle_visible_total_ms)-1,int(effects[0].sequence))
+	check(bool(hold_last.hit_stop_active) and float(hold_last.line_opacity)==1.0,
+		"slash owns a brief fully bright hold before fading")
+	check(bool(slash_last.line_visible) \
+			and float(slash_last.line_opacity)>=float(params.slash_afterimage_opacity) \
+			and not bool(slash_after.line_visible),
+		"slash afterimage remains readable through its last bounded millisecond")
+	check(bool(flash_last.flash_visible) and not bool(flash_after.flash_visible),
+		"cell flash ends exactly at its configured readable bound")
+	check(int(debris_last.particle_count)>=3 \
+			and overlay.effect_draw_specs(started+int(params.effect_duration_ms)).is_empty(),
+		"debris persists to the final effect frame and then clears")
+	grid.free();return finish()
+
+
 func test_melee_vfx_empty_direction_produces_no_effect()->bool:
 	var fixture:=_fixture(Vector2i.RIGHT);var grid:PartyGridView=fixture.grid
 	var overlay:MeleeVfxOverlay=grid.melee_vfx
@@ -222,6 +265,12 @@ func _check_diagonal_line_crosses_pair(grid:PartyGridView,spec:Dictionary,
 	var attack_direction:=Vector2(target-attacker).normalized()
 	check(absf(line_direction.cross(attack_direction))>0.05,
 		"%s slash is diagonal rather than parallel to the attack axis"%label)
+
+func _effect_sequence_spec(overlay:MeleeVfxOverlay,sample_time_ms:int,
+		sequence:int)->Dictionary:
+	for spec in overlay.effect_draw_specs(sample_time_ms):
+		if int(spec.sequence)==sequence:return spec
+	return {}
 
 
 func _visible_cells()->Array:
