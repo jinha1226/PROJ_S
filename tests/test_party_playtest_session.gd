@@ -546,19 +546,20 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 		check(event_index >= previous_event_index,"effect events follow result event order")
 		previous_event_index = event_index
 	check_eq(hero_effects.map(func(row):return row.kind),
-		["SLASH","HIT_FLASH","FLOATING_AMOUNT"],"nonlethal event effects exact order")
-	check(hero_effects[0].order < hero_effects[1].order and hero_effects[1].order < hero_effects[2].order,
+		["MELEE_VFX","FLOATING_AMOUNT"],"nonlethal event effects exact order")
+	check(hero_effects[0].order < hero_effects[1].order,
 		"effect order stable")
-	check_eq(hero_effects[1].event_id,hero_effects[2].event_id,"damage effects share event")
-	check_eq(hero_effects[1].cause_id,hero_effects[0].event_id,"damage cites slash action")
-	check_eq(hero_effects[2].text,"-22","floating applied amount")
+	check_eq(hero_effects[1].cause_id,hero_effects[0].event_id,"damage cites melee action")
+	check_eq(hero_effects[1].text,"-22","floating applied amount")
 	check_eq(hero_effects[1].world_position,
 		[session.sim.world.entities[enemy].position.x,session.sim.world.entities[enemy].position.y],"hit world position")
+	check_eq(hero_effects[0].target_grid_pos,hero_effects[1].world_position,
+		"melee overlay and damage amount share the exact canonical target")
 	var effect_ids: Array = committed.visual_effects.map(func(row):return row.effect_id)
 	var unique_ids: Dictionary = {}; for effect_id in effect_ids: unique_ids[effect_id]=true
 	check_eq(unique_ids.size(),effect_ids.size(),"effect IDs dedupe-safe")
 	var snapshot_after: Dictionary = session.sim.snapshot(); var first_event_id := int(hero_effects[0].event_id)
-	hero_effects[0].world_position[0] = 999
+	hero_effects[0].attacker_grid_pos[0] = 999
 	check_eq(session.sim.snapshot(),snapshot_after,"effect DTO mutation cannot touch core")
 	check(session.sim.world.event_by_id(first_event_id).position.x != 999,"effect DTO has no event reference")
 	check(session.commit_turn().visual_effects.is_empty(),"rejected commit has no effects")
@@ -571,7 +572,7 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 	check(lethal.begin_turn(Action.melee(lethal_hero,lethal_enemy)).accepted,"lethal preview")
 	var lethal_result = lethal.commit_turn(); check(lethal_result.accepted,"lethal commit")
 	check_eq(lethal_result.visual_effects.map(func(row):return row.kind),
-		["SLASH","HIT_FLASH","FLOATING_AMOUNT","HIT_FLASH","FLOATING_AMOUNT","DEATH"],
+		["MELEE_VFX","FLOATING_AMOUNT","HIT_FLASH","FLOATING_AMOUNT","DEATH"],
 		"BLEEDOUT death projects once after physical and downed-pressure effects")
 	return finish()
 

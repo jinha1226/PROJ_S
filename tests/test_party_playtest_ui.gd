@@ -1028,7 +1028,11 @@ func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> 
 	check(not sandbox.grid._active_visual_effects.is_empty(),"accepted combat commit consumes projected visual effects")
 	var effect_kinds:Array=[]
 	for effect in sandbox.grid._active_visual_effects:effect_kinds.append(str(effect.kind))
-	for kind in ["SLASH","HIT_FLASH","FLOATING_AMOUNT","DEATH"]:check(kind in effect_kinds,"combat commit renders %s effect"%kind)
+	for kind in ["FLOATING_AMOUNT","DEATH"]:check(kind in effect_kinds,"combat commit renders %s effect"%kind)
+	check(sandbox.grid.melee_vfx!=null and sandbox.grid.melee_vfx.active_effect_count()==1,
+		"committed melee hit routes once to the separate line overlay")
+	check("SLASH" not in effect_kinds,
+		"melee commit leaves no inline slash row; secondary damage may keep particles")
 	check_eq(sandbox.grid.get_instance_id(),grid_id,"grid survives combat")
 	check_eq(sandbox.grid.visible_cell_count,15,"victory immediately restores full 15x15 view")
 	check_eq(sandbox.grid.view_origin,Vector2i.ZERO,"victory clears combat camera origin")

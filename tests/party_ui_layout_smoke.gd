@@ -276,7 +276,19 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	_validate_run_objective_geometry(sandbox,label+" INITIAL")
 	var grid_id:int=sandbox.grid.get_instance_id()
 	var initial_cell_size:float=sandbox.grid.cell_size_px()
-	var state=session.sim.world.party_encounter;var near_exit:=Vector2i(12,1);var exit:=Vector2i(13,1)
+	var state=session.sim.world.party_encounter
+	var run_progress:Dictionary=session.run_progress()
+	var exit_value:Array=run_progress.get("exit_position",[])
+	var exit:=Vector2i(int(exit_value[0]),int(exit_value[1]))
+	var near_exit:=exit
+	for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+		var candidate:Vector2i=exit+offset
+		if not session.sim.world.in_bounds(candidate):continue
+		var terrain:=TerrainRegistry.definition(str(session.sim.world.tile_at(candidate).terrain))
+		if bool(terrain.get("passable",false)):
+			near_exit=candidate;break
+	if near_exit==exit:
+		failures.append("%s generated exit has no passable approach"%label)
 	state.group_anchor=near_exit;state.facing=Vector2i.RIGHT
 	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=near_exit
 	sandbox._refresh();await process_frame;await process_frame
@@ -322,10 +334,12 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 
 	# Dirty every presentation seam that must not cross a run boundary.
 	sandbox.grid.play_effects([{"effect_id":"restart-smoke","event_id":99991,"order":0,
-		"kind":"HIT_FLASH","damage_type":"physical","world_position":[13,1],"text":""}])
-	sandbox.grid.set_route_overlay([[13,1],[12,1]],0,true)
+		"kind":"HIT_FLASH","damage_type":"physical",
+		"world_position":[exit.x,exit.y],"text":""}])
+	sandbox.grid.set_route_overlay([[exit.x,exit.y],[near_exit.x,near_exit.y]],0,true)
 	sandbox.auto_deployment_pending=true;sandbox.auto_combat_pending=true
-	sandbox.route_preview={"accepted":true,"path":[[13,1],[12,1]]}
+	sandbox.route_preview={"accepted":true,
+		"path":[[exit.x,exit.y],[near_exit.x,near_exit.y]]}
 	sandbox.selected_tile=exit;sandbox.selected_tile_inspection={"accepted":true}
 	sandbox.member_detail_modal.visible=true;sandbox.grid.modal_open=true
 	sandbox._scroll_log_after_refresh=true

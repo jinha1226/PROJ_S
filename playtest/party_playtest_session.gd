@@ -656,8 +656,15 @@ func observe_party_ui(cell_count:int=15)->Dictionary:
 	if context.is_empty():return {"grid":{},"minimap":{}}
 	var count:=clampi(cell_count,1,15)
 	var hero_position:Vector2i=context.hero_position
-	var viewport_origin:=hero_position-Vector2i(count/2,count/2)
-	var viewport_bounds:=Rect2i(viewport_origin,Vector2i(count,count))
+	# A legacy world that already fits inside the requested surface may widen its
+	# camera to keep actors at opposite edges visible. Materialize that complete
+	# world; larger product maps retain the hero-centered 15x15 DTO.
+	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=count
+	var viewport_origin:=Vector2i.ZERO if full_world_fits \
+		else hero_position-Vector2i(count/2,count/2)
+	var viewport_bounds:=Rect2i(viewport_origin,
+		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
+		else Vector2i(count,count))
 	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin),
 		"minimap":_party_minimap_observation(context)}
 
@@ -2978,18 +2985,21 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 	for event in result.events:
 		var event_type := str(event.type)
 		if event_type == "action.melee_attack":
-			rows.append(_visual_effect_row(event, "SLASH", "slash", order,
-				"physical", int(event.magnitude), ""))
-			order += 1
+			if str(event.data.get("outcome","")) in ["HIT","FINISHER"]:
+				var melee_row:=_melee_vfx_row(event,order)
+				if not melee_row.is_empty():rows.append(melee_row);order+=1
 		elif event_type == "combat.attack_missed":
 			rows.append(_visual_effect_row(event, "MISS", "miss", order,
 				"physical", 0, "빗나감"))
 			order += 1
 		elif event_type.begins_with("combat.") and event_type.ends_with("_damage"):
 			var damage_type := str(event.data.get("damage_type", "physical"))
-			rows.append(_visual_effect_row(event, "HIT_FLASH", "hit_flash", order,
-				damage_type, int(event.magnitude), ""))
-			order += 1
+			var cause=sim.world.event_by_id(int(event.cause_id)) if sim!=null \
+				and sim.world!=null else null
+			if cause==null or str(cause.type)!="action.melee_attack":
+				rows.append(_visual_effect_row(event, "HIT_FLASH", "hit_flash", order,
+					damage_type, int(event.magnitude), ""))
+				order += 1
 			rows.append(_visual_effect_row(event, "FLOATING_AMOUNT", "floating_amount", order,
 				damage_type, int(event.magnitude), "-%d" % int(event.magnitude)))
 			order += 1
@@ -2999,6 +3009,24 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 				death_type, 0, ""))
 			order += 1
 	return rows.duplicate(true)
+
+
+func _melee_vfx_row(event,order:int)->Dictionary:
+	if sim==null or sim.world==null or event==null:return {}
+	var history:Dictionary=sim.world._entity_position_at_event(int(event.actor_id),int(event.id))
+	if not bool(history.get("ok",false)):return {}
+	var attacker:Vector2i=history.position
+	var target:Vector2i=event.position
+	var delta:=target-attacker
+	if attacker==target or maxi(absi(delta.x),absi(delta.y))!=1:return {}
+	return {"effect_id":"%d:melee_vfx"%int(event.id),"event_id":int(event.id),
+		"order":order,"kind":"MELEE_VFX","source_event_type":str(event.type),
+		"step_index":int(event.step_index),"world_time":int(event.world_time),
+		"actor_id":int(event.actor_id),"target_id":int(event.target_id),
+		"instigator_id":int(event.instigator_id),"cause_id":int(event.cause_id),
+		"world_position":[target.x,target.y],"magnitude":int(event.magnitude),"text":"",
+		"attacker_grid_pos":[attacker.x,attacker.y],
+		"target_grid_pos":[target.x,target.y]}.duplicate(true)
 
 
 func _visual_effect_row(event, kind: String, suffix: String, order: int,

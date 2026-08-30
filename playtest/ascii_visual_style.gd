@@ -120,24 +120,6 @@ static func feature_spec(feature_id: String) -> Dictionary:
 		"halo_hex":str(definition.halo_hex)}.duplicate(true)
 
 
-static func attack_form_spec(value: Variant) -> Dictionary:
-	var attack_form := str(value).to_upper()
-	if attack_form in ["PIERCE", "PIERCING", "THRUST", "찌르기"]:
-		attack_form = "PIERCE"
-	elif attack_form in ["IMPACT", "BLUNT", "CRUSH", "타격"]:
-		attack_form = "IMPACT"
-	else:
-		attack_form = "SLASH"
-	var definitions := {
-		"SLASH":{"trail_primitive":"INK_ARC", "lead_glyph":"/", "echo_glyph":"'"},
-		"PIERCE":{"trail_primitive":"INK_THRUST", "lead_glyph":">", "echo_glyph":"-"},
-		"IMPACT":{"trail_primitive":"INK_CRUSH", "lead_glyph":"*", "echo_glyph":":"},
-	}
-	var result: Dictionary = definitions[attack_form].duplicate(true)
-	result["attack_form"] = attack_form
-	return result.duplicate(true)
-
-
 static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var species_id := str(actor.get("species_id", "")).to_lower()
 	var faction_id := str(actor.get("faction_id", "")).to_lower()

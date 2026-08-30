@@ -621,7 +621,7 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 	grid.free();return finish()
 
 
-func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedback() -> bool:
+func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedback() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[6,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
@@ -631,6 +631,9 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	var grid=Grid.new();grid.size=Vector2(345,345)
 	grid.set_observation({"width":15,"height":15,"cells":cells})
 	grid.set_hero_centered_view(Vector2i(6,7),15,1);grid.set_neutral_phase_map(true)
+	var target_before:Dictionary=grid._actors[1].duplicate(true)
+	var target_style_before:Dictionary=grid.actor_draw_spec(grid._actors[1])
+	var target_bounds_before:Rect2=grid._actor_figure_bounds(grid._actors[1],grid.cell_size_px(),false)
 	var hit:={"effect_id":"42:hit","event_id":42,"order":0,"kind":"HIT_FLASH",
 		"world_position":[7,7],"target_id":2,"instigator_id":1,"damage_type":"physical"}
 	var amount:={"effect_id":"42:amount","event_id":42,"order":1,"kind":"FLOATING_AMOUNT",
@@ -641,24 +644,18 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	var hit0:Dictionary=grid.visual_effect_draw_spec(grid._active_visual_effects[0],started)
 	var hit130:Dictionary=grid.visual_effect_draw_spec(grid._active_visual_effects[0],started+130)
 	check_eq(hit0.primitive,"GLYPH_FLASH","product hit removes the circular ring")
-	check(hit0.flash_active and hit0.particle_count>=2 and hit0.particle_count<=4,
-		"early hit flashes target glyph and emits two to four local shards")
-	check(hit0.particles.all(func(row):return str(row.get("glyph","")) in ["*","!","/","\\"]),
+	check(hit0.flash_active and hit0.particle_count>=3 and hit0.particle_count<=6,
+		"early generic hit emits three to six local particles")
+	check(hit0.particles.all(func(row):return str(row.get("glyph","")) in [".",":","*"]),
 		"hit shards stay legible as the compact ASCII impact alphabet")
 	check_eq(hit0.particles,grid.visual_effect_draw_spec(grid._active_visual_effects[0],started).particles,
 		"hit shards are event-id deterministic")
-	check(not hit130.flash_active,"glyph flash ends by 130ms")
-	var recoil0:Dictionary=grid.actor_hit_feedback_draw_spec(2,started)
-	var recoil170:Dictionary=grid.actor_hit_feedback_draw_spec(2,started+170)
-	check(recoil0.flash_active and recoil0.recoil_offset.x>=3.0 \
-		and recoil0.recoil_offset.x<=5.0,"target recoils away from attacker by three to five pixels")
-	var flash:=Color(str(recoil0.flash_hex))
-	check(flash.r>0.9 and flash.r>flash.g*2.0 and flash.r>flash.b*1.6,
-		"impact gives the target glyph the highest-priority red registration flash")
-	check(recoil0.impact_hold_active and recoil0.afterimage_active \
-		and recoil0.afterimage_opacity>0.0,
-		"initial impact adds a presentation-only registration hold and ink afterimage")
-	check(recoil170.recoil_offset.length()<0.01,"target recoil returns by 170ms")
+	check(not hit130.flash_active,"generic particle registration ends by 130ms")
+	check_eq([grid._actors[1],grid.actor_draw_spec(grid._actors[1]).glyph,
+		grid.actor_draw_spec(grid._actors[1]).color_hex,
+		grid._actor_figure_bounds(grid._actors[1],grid.cell_size_px(),false)],
+		[target_before,target_style_before.glyph,target_style_before.color_hex,
+		target_bounds_before],"hit feedback never mutates target glyph, color, or position")
 	var amount_row:Dictionary=grid._active_visual_effects[1]
 	var amount0:Dictionary=grid.visual_effect_draw_spec(amount_row,started)
 	var amount325:Dictionary=grid.visual_effect_draw_spec(amount_row,started+325)
@@ -680,7 +677,8 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 		"kind":"DEATH","world_position":[7,7],"started_at_ms":started},started+300)
 	check(miss.font_size<amount0.font_size and miss.text=="빗나감",
 		"miss cue is smaller and quieter than damage")
-	check_eq(slash.primitive,"LOCAL_STREAKS","slash is a short local streak, not a UI arrow")
+	check_eq(slash.primitive,"NONE","legacy inline slash path is inert")
+	check(not slash.has("attack_glyphs"),"legacy slash exposes no ASCII burst")
 	check(death_early.opacity==0.0 and death_late.opacity>0.0 and death_late.opacity<=0.48,
 		"death cross arrives late and weak so it cannot cover the damage number")
 	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
@@ -689,46 +687,28 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	grid.free();return finish()
 
 
-func test_physical_attack_forms_project_three_distinct_ink_trails() -> bool:
-	var slash:Dictionary=Style.attack_form_spec("SLASH")
-	var pierce:Dictionary=Style.attack_form_spec("찌르기")
-	var impact:Dictionary=Style.attack_form_spec("BLUNT")
-	check_eq([slash.attack_form,pierce.attack_form,impact.attack_form],
-		["SLASH","PIERCE","IMPACT"],"physical forms normalize to the three combat silhouettes")
-	check_eq([slash.trail_primitive,pierce.trail_primitive,impact.trail_primitive],
-		["INK_ARC","INK_THRUST","INK_CRUSH"],"each physical form owns a distinct ink trail")
-	check(slash.lead_glyph!=pierce.lead_glyph and pierce.lead_glyph!=impact.lead_glyph,
-		"attack silhouettes remain readable as ASCII glyphs")
-	slash.attack_form="CORRUPTED"
-	check_eq(Style.attack_form_spec("SLASH").attack_form,"SLASH","attack form specs are detached")
-
+func test_melee_vfx_is_separate_line_overlay_without_inline_attack_glyphs() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[6,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
 			"roster_slot":0,"is_protagonist":true})
+		elif cell.position==[7,7]:cell.actors.append({"entity_id":2,"faction_id":"enemy",
+			"species_id":"goblin"})
 	var grid=Grid.new();grid.size=Vector2(345,345)
 	grid.set_observation({"width":15,"height":15,"cells":cells})
-	grid.set_neutral_phase_map(true)
-	var started:=Time.get_ticks_msec()
-	for row in [["SLASH","INK_ARC"],["PIERCE","INK_THRUST"],["IMPACT","INK_CRUSH"]]:
-		var effect:={"effect_id":"form:%s"%row[0],"event_id":41,"kind":"SLASH",
-			"world_position":[7,7],"instigator_id":1,"attack_form":row[0],
-			"started_at_ms":started}
-		var spec:Dictionary=grid.visual_effect_draw_spec(effect,started)
-		check_eq(spec.primitive,"LOCAL_STREAKS","attack remains a local presentation effect")
-		check_eq(spec.trail_primitive,row[1],"%s selects its ink trail"%row[0])
-		check_eq(spec.direction,Vector2.RIGHT,"trail points from instigator toward impact")
-		check(spec.attack_glyph_count==4 and spec.attack_glyphs.all(func(glyph_row):
-			return str(glyph_row.get("glyph","")) in ["-","/","\\","*","!",">"]),
-			"%s adds a four-glyph, cell-crossing ASCII burst"%row[0])
-	var ranged:=grid.visual_effect_draw_spec({"effect_id":"form:ranged","event_id":52,
-		"kind":"SLASH","world_position":[10,7],"instigator_id":1,
-		"attack_form":"PIERCE","started_at_ms":started},started)
-	check(ranged.ranged_trajectory and ranged.attack_glyph_count>=3 \
-		and ranged.attack_glyph_count<=6,
-		"multi-cell attack exposes only a short bounded ASCII trajectory")
-	check(ranged.attack_glyphs.all(func(glyph_row):return str(glyph_row.get("glyph","")) in ["-",">"]),
-		"horizontal ranged travel reads as dashes ending in a thrust glyph")
+	grid._ensure_melee_vfx()
+	var legacy:=grid.visual_effect_draw_spec({"effect_id":"legacy","event_id":41,
+		"kind":"SLASH","world_position":[7,7],"started_at_ms":Time.get_ticks_msec()})
+	check_eq(legacy.primitive,"NONE","inline grid slash has no draw primitive")
+	check(not legacy.has("lead_glyph") and not legacy.has("attack_glyphs"),
+		"inline grid exposes no attack glyph vocabulary")
+	check_eq(grid.play_effects([{"effect_id":"41:melee_vfx","event_id":41,
+		"kind":"MELEE_VFX","attacker_grid_pos":[6,7],"target_grid_pos":[7,7]}]),1,
+		"grid routes canonical position pair to melee overlay")
+	var started:=int(grid.melee_vfx.active_effects()[0].started_at_ms)
+	var spec:Dictionary=grid.melee_vfx.effect_draw_specs(started)[0]
+	check(grid.melee_vfx is Node2D and spec.primitive=="LINE" and spec.slash_glyph.is_empty(),
+		"slash exists only as a separate Node2D line overlay")
 	grid.free();return finish()
 
 

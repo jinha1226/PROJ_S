@@ -40,7 +40,7 @@ func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	return finish()
 
 
-func test_short_sword_preview_and_commit_use_weapon_formula_and_ink_form() -> bool:
+func test_short_sword_preview_and_commit_use_weapon_formula_and_position_pair_vfx() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	check(_enter_solo_combat(session), "solo reaches combat")
 	if session.party_status().safe_phase != "ENGAGED": return finish()
@@ -60,16 +60,23 @@ func test_short_sword_preview_and_commit_use_weapon_formula_and_ink_form() -> bo
 			var result: Dictionary = session.commit_turn()
 			check(result.accepted, "weapon attack commits: %s" % result)
 			if result.accepted:
-				var trails: Array = result.visual_effects.filter(
-					func(row): return str(row.kind) == "SLASH")
-				check(not trails.is_empty() and str(trails[0].attack_form) == "SLASH",
-					"committed attack carries ink form")
 				var attack_events: Array = session.sim.world.events.filter(
 					func(event): return str(event.type) == "action.melee_attack" \
 						and int(event.actor_id) == hero)
 				check(not attack_events.is_empty() \
 					and int(attack_events[-1].data.bleed_roll_milli) >= 0,
 					"weapon attack records a valid deterministic BLEED roll")
+				var vfx_rows:Array=result.visual_effects.filter(
+					func(row):return str(row.kind)=="MELEE_VFX")
+				if str(attack_events[-1].data.outcome) in ["HIT","FINISHER"]:
+					check(vfx_rows.size()==1 and vfx_rows[0].attacker_grid_pos is Array \
+						and vfx_rows[0].target_grid_pos==[
+							attack_events[-1].position.x,attack_events[-1].position.y],
+						"committed hit carries one exact historical position pair")
+					check(not vfx_rows[0].has("glyph") and not vfx_rows[0].has("attack_form"),
+						"session VFX row carries no inline slash glyph grammar")
+				else:
+					check(vfx_rows.is_empty(),"miss produces no melee VFX")
 				check_eq(session.sim.world.world_state_error(), "", "weapon event history validates")
 			return finish()
 		var path: Dictionary = session.sim.party_coordinator.pathfinder.find_path_to_any(

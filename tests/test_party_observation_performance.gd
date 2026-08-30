@@ -46,6 +46,11 @@ func test_full_observer_stays_detached_while_ui_uses_world_coordinate_viewport_a
 			check(str(cell.marker).is_empty(),"memory row never carries a live marker")
 	check(memory_count>0,"compact fixture includes distant terrain memory")
 	check(minimap.cells.size()<2304,"never-seen minimap rows are omitted")
+	var legacy=Session.new()
+	var legacy_grid:Dictionary=legacy.observe_party_ui(15).grid
+	check_eq([legacy_grid.width,legacy_grid.height,legacy_grid.cells.size(),
+		legacy_grid.grid_mapping.origin],[15,15,225,[0,0]],
+		"worlds that fit the viewport materialize every wide-fallback input cell")
 	return finish()
 
 
