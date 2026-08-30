@@ -23,8 +23,17 @@ func _run()->void:
 	_check(mode_button!=null and mode_button.action_mode==BaseButton.ACTION_MODE_BUTTON_RELEASE \
 		and mode_button.focus_mode==Control.FOCUS_NONE and mode_button.custom_minimum_size.y>=44,
 		"skill mode button is not release-only/focus-free/touch-sized")
+	_check(sandbox.find_child("SkillDetail",true,false)==null \
+		and sandbox.find_child("TrainingProgress",true,false)==null,
+		"fixed ledger still creates a tap-expanded detail panel")
+	# The six 44px rows can fit this portrait viewport. Make one hidden-with-category
+	# test row taller only for input testing so a real ScrollContainer drag is
+	# exercised without adding product spacer/detail UI.
+	var overflow_panel:=sandbox.find_child("SkillCardUNARMED",true,false) as Control
+	if overflow_panel!=null:overflow_panel.custom_minimum_size.y=220
+	sandbox._reflow_member_detail_scroll();await process_frame;await process_frame
 	var maximum_before:=int(scroll.get_v_scroll_bar().max_value-scroll.get_v_scroll_bar().page)
-	_check(maximum_before>0,"expanded skill body is not continuously scrollable at 360x640")
+	_check(maximum_before>0,"forced ledger overflow is not continuously scrollable")
 	var mode_before:=_skill_mode(session,"SWORD")
 	var center:=mode_button.get_global_rect().get_center()
 	_push_touch(center,true,17)

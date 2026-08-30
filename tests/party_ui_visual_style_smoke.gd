@@ -28,13 +28,11 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.build_label!=null and sandbox.build_label.text=="BUILD LOCAL" \
 		and sandbox.build_label.mouse_filter==Control.MOUSE_FILTER_IGNORE,
 		"%s local build label is missing or intercepts input"%viewport_size)
-	_check(is_equal_approx(sandbox.build_label.anchor_left,1.0) \
-		and is_equal_approx(sandbox.build_label.anchor_top,1.0) \
-		and is_equal_approx(sandbox.build_label.anchor_right,1.0) \
-		and is_equal_approx(sandbox.build_label.anchor_bottom,1.0),
-		"%s build label is not bottom-right anchored"%viewport_size)
 	_check(_inside_rect(sandbox,sandbox.build_label),
 		"%s build label clips the viewport"%viewport_size)
+	_check(_inside_rect(sandbox.event_surface,sandbox.build_label) \
+		and not sandbox.build_label.get_global_rect().intersects(sandbox.event_label.get_global_rect()),
+		"%s build label is not isolated in the event surface"%viewport_size)
 	var grid_size_before_build_probe:Vector2=sandbox.grid.size
 	sandbox.combat_action_area.visible=true;sandbox._position_build_label();await process_frame
 	sandbox._position_build_label();await process_frame
@@ -46,42 +44,50 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
-	_check(is_equal_approx(sandbox.phase_panel.custom_minimum_size.y,64.0),
-		"%s top HUD did not shrink to 64px"%viewport_size)
+	_check(not sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==0.0 \
+		and not sandbox.top_hud_actions.visible and not sandbox.ascii_3d_lab_button.visible,
+		"%s obsolete product top rail remains visible"%viewport_size)
 	if viewport_size.x>=450.0:
 		_check(sandbox.grid.size.is_equal_approx(Vector2(450,450)),
 			"%s logical map footprint changed from 450x450: %s"%[viewport_size,sandbox.grid.size])
-	var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
-	var dossier_frame=sandbox.find_child("DossierAsciiFrame",true,false)
-	_check(_fixed_frame_ok(minimap_frame),"%s minimap frame is not fixed-cell safe"%viewport_size)
-	_check(_fixed_frame_ok(dossier_frame),"%s dossier frame is not fixed-cell safe"%viewport_size)
-	_check(int(minimap_frame.frame_spec().font_size)==9 \
-		and int(dossier_frame.frame_spec().font_size)==9,
-		"%s compact UI frames did not retain a shared reduced cell size"%viewport_size)
-	_check(_single_nested(minimap_frame,sandbox.minimap),"%s minimap frame/content are siblings"%viewport_size)
 	var card=sandbox.cards.get_child(0) as Button
 	var card_content=card.find_child("CardContent",true,false) as Control
-	_check(dossier_frame.get_parent()==card and _single_nested(dossier_frame,card_content),
-		"%s dossier hierarchy is not Button -> Frame -> Content"%viewport_size)
-	_check(_strictly_inside(dossier_frame,card_content),"%s dossier content touches frame glyph cells"%viewport_size)
+	_check(card.find_child("DossierAsciiFrame",true,false)==null \
+		and card_content!=null and _inside_rect(card,card_content),
+		"%s compact status strip retained a nested dossier frame"%viewport_size)
 	var solo_identity=card.find_child("SoloIdentity",true,false) as Control
 	var actor_seal=card.find_child("ActorGlyphSeal",true,false) as Label
 	_check(card.find_child("Portrait",true,false)==null and solo_identity!=null \
 		and actor_seal!=null and actor_seal.text=="@" and actor_seal.custom_minimum_size.x==44,
 		"%s solo dossier did not use the 44px ASCII actor seal"%viewport_size)
-	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==90 \
-		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==100 \
-		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==108,
-		"%s responsive dossier heights differ from 90/100/108"%viewport_size)
-	for contract in [["NarrativeLogToggle","[기록]"],["HeroDetailButton","[인물]"],["Ascii3DLabButton","[3D]"]]:
+	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==68 \
+		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==80 \
+		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==84,
+		"%s responsive status heights differ from 68/80/84"%viewport_size)
+	for contract in [["MapNavigation","[지도]"],["PersonNavigation","[인물]"],
+			["SkillNavigation","[숙련]"],["EquipmentNavigation","[장비]"],
+			["HistoryNavigation","[기록]"]]:
 		var action=sandbox.find_child(str(contract[0]),true,false) as Button
 		_check(action!=null and action.text==str(contract[1]) and "\n" not in action.text \
-			and bool(action.get_meta("dos_command",false)) and action.custom_minimum_size==Vector2(44,44),
+			and bool(action.get_meta("ascii_rail",false)) and action.custom_minimum_size==Vector2(44,44),
 			"%s %s is not a single-line DOS command"%[viewport_size,contract[0]])
-		_check(_inside_rect(sandbox.phase_panel,action),
-			"%s %s overflows the compact top HUD"%[viewport_size,contract[0]])
-	_check(not sandbox.recent_event_label.visible and sandbox.deck.visible!=sandbox.log_label.visible,
-		"%s duplicate recent/context/log surfaces remain visible"%viewport_size)
+		_check(_inside_rect(sandbox.bottom_navigation,action),
+			"%s %s overflows the fixed bottom navigation"%[viewport_size,contract[0]])
+	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==2 \
+		and not sandbox.info_scroll.visible and not sandbox.deck.visible and not sandbox.log_label.visible,
+		"%s compact event surface did not replace generic context/log copies"%viewport_size)
+	_check(sandbox._compact_meaningful_event_text({"groups":[]},{"safe_phase":"ENGAGED"}).is_empty() \
+		and sandbox._compact_meaningful_event_text({"groups":[]},{"safe_phase":"GROUPED"}).is_empty(),
+		"%s empty event history synthesized product-log filler"%viewport_size)
+	var visible_product_nodes:Array=[sandbox.cards,sandbox.grid,sandbox.event_surface]
+	if sandbox.combat_action_area.visible:visible_product_nodes.append(sandbox.combat_action_area)
+	visible_product_nodes.append(sandbox.bottom_navigation)
+	for index in range(1,visible_product_nodes.size()):
+		_check(visible_product_nodes[index-1].get_global_rect().end.y<=visible_product_nodes[index].get_global_rect().position.y+0.5,
+			"%s Pixel HUD vertical order overlaps at %s"%[viewport_size,visible_product_nodes[index].name])
+	_check(absf(sandbox.bottom_navigation.get_global_rect().end.y-viewport_size.y)<=0.5,
+		"%s bottom navigation is not fixed to the viewport foot: %s"%[
+			viewport_size,sandbox.bottom_navigation.get_global_rect()])
 	var hp=sandbox.find_child("MemberState",true,false)
 	var xp=sandbox.find_child("CompactXPBar",true,false)
 	_check(_gauge_ok(hp,"HP") and _gauge_ok(xp,"XP"),"%s dossier lacks visible #/. DOS gauges"%viewport_size)
@@ -104,14 +110,36 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var speeches:Array=[{"actor_id":2,"headline":"방어할게.","reason_summary":"피해를 줄이려고"}]
 	sandbox.render_party_cards_for_headless_test(compact_rows,speeches);await process_frame
 	for compact_card in sandbox.cards.get_children():
-		var compact_frame=compact_card.find_child("DossierAsciiFrame",true,false) as Control
-		_check(_inside_rect(compact_card,compact_frame),
-			"%s 3-member dossier escaped its responsive card bounds"%viewport_size)
+		var compact_content=compact_card.find_child("CardContent",true,false) as Control
+		_check(compact_content!=null and _inside_rect(compact_card,compact_content),
+			"%s 3-member status content escaped strip card=%s content=%s"%[
+				viewport_size,compact_card.get_global_rect(),compact_content.get_global_rect()])
 	var speech_text=sandbox.find_child("CompanionSpeechText",true,false) as Label
 	_check(speech_text!=null and "\n" not in speech_text.text and speech_text.max_lines_visible==1,
 		"%s companion speech is not one compact line"%viewport_size)
+	var compact_event_before:String=sandbox.event_label.text
+	sandbox.map_nav_button.pressed.emit();await process_frame
+	_check(sandbox.map_overlay.visible and sandbox.map_nav_button.button_pressed \
+		and sandbox.grid.modal_open and bool(sandbox.map_overlay.overlay_spec().stores_compact_scalars_only),
+		"%s map navigation did not open the leak-safe discovered-map modal"%viewport_size)
+	sandbox.map_nav_button.pressed.emit();await process_frame
+	_check(not sandbox.map_overlay.visible and not sandbox.map_nav_button.button_pressed,
+		"%s map navigation toggle did not close and synchronize"%viewport_size)
+	sandbox.history_nav_button.pressed.emit();await process_frame
+	_check(sandbox.record_modal.visible and sandbox.history_nav_button.button_pressed \
+		and not sandbox.record_body.text.is_empty() and sandbox.event_label.text==compact_event_before,
+		"%s history modal replaced or emptied the compact event surface"%viewport_size)
+	sandbox.history_nav_button.pressed.emit();await process_frame
+	_check(not sandbox.record_modal.visible and not sandbox.history_nav_button.button_pressed,
+		"%s history navigation toggle did not close and synchronize"%viewport_size)
 
-	sandbox._open_hero_detail();await process_frame;await process_frame
+	sandbox.skill_nav_button.pressed.emit();await process_frame;await process_frame
+	_check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible,
+		"%s skill navigation did not open hero directly on SKILL"%viewport_size)
+	sandbox._close_member_detail();sandbox.equipment_nav_button.pressed.emit();await process_frame
+	_check(sandbox.member_detail_current_tab=="ITEM" and sandbox.member_item_window.visible,
+		"%s equipment navigation did not open hero directly on ITEM"%viewport_size)
+	sandbox._close_member_detail();sandbox.person_nav_button.pressed.emit();await process_frame;await process_frame
 	var panel=sandbox.member_detail_panel;var folio=sandbox.find_child("MemberDetailAsciiFrame",true,false)
 	var stack=sandbox.find_child("MemberDetailStack",true,false) as Control
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5 and panel.get_global_rect().end.y<=viewport_size.y+0.5,
@@ -148,33 +176,43 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox._select_member_detail_tab("SKILL");await process_frame;await process_frame
 	_check(sandbox.member_detail_skill_tab.text=="[숙련]","%s selected skill tab is not bracketed"%viewport_size)
 	sandbox._toggle_weapon_mastery_category();await process_frame
-	var visible_details:=0
-	var selected_ledger_rows:=0
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var skill_panel=sandbox.find_child("SkillCard%s"%skill_id,true,false)
-		var detail=skill_panel.find_child("SkillDetail",true,false) as Control
-		if detail.visible:visible_details+=1
 		_check(skill_panel.find_child("SkillAsciiFrame",true,false)==null,
 			"%s %s still has a nested ASCII frame"%[viewport_size,skill_id])
-		_check(_gauge_ok(skill_panel.find_child("TrainingProgress",true,false),"훈련"),
-			"%s %s skill mastery is not a DOS gauge"%[viewport_size,skill_id])
 		var mode_button=skill_panel.find_child("SkillModeButton",true,false)
-		_check(mode_button is Button and mode_button.custom_minimum_size.y>=44,
+		var rank_label=skill_panel.find_child("SkillRank",true,false) as Label
+		var name_label=skill_panel.find_child("SkillName",true,false) as Label
+		var effect_label=skill_panel.find_child("CurrentEffect",true,false) as Label
+		var mode_label=skill_panel.find_child("TrainingMode",true,false) as Label
+		var xp_label=skill_panel.find_child("TrainingXP",true,false) as Label
+		_check(mode_button is Button and mode_button.custom_minimum_size.y>=44 \
+			and skill_panel.custom_minimum_size.y==44,
 			"%s %s training mode is not touch sized"%[viewport_size,skill_id])
-		if mode_button.text.begins_with("> "):selected_ledger_rows+=1
 		var raw_weight:=int(mode_button.get_meta("raw_training_weight",-1))
 		var transparent_style:StyleBoxFlat=mode_button.get_theme_stylebox("normal") as StyleBoxFlat
 		_check(bool(mode_button.get_meta("no_button_chrome",false)) and transparent_style!=null \
 			and transparent_style.bg_color.a==0.0 and transparent_style.border_width_left==0 \
-			and "XP×%d"%raw_weight in mode_button.text and raw_weight in [0,1,3],
+			and mode_button.text.is_empty() and raw_weight in [0,1,3],
 			"%s %s ledger row shows chrome or a non-authoritative XP multiplier"%[viewport_size,skill_id])
+		_check(rank_label!=null and rank_label.text.begins_with("R") \
+			and name_label!=null and not name_label.text.is_empty() \
+			and effect_label!=null and "명중" in effect_label.text and "피해" in effect_label.text \
+			and mode_label!=null and "×%d"%raw_weight in mode_label.text \
+			and xp_label!=null and "/" in xp_label.text,
+			"%s %s fixed ledger omits rank/name/effect/mode/current XP"%[viewport_size,skill_id])
 		var expected_tone:=AsciiUIFrame.BRASS if raw_weight==3 else (AsciiUIFrame.MUTED if raw_weight==0 else AsciiUIFrame.CYAN)
-		_check(mode_button.get_theme_color("font_color").is_equal_approx(expected_tone),
+		_check(mode_label.get_theme_color("font_color").is_equal_approx(expected_tone),
 			"%s %s ledger mode tone does not match its 3/1/0 state"%[viewport_size,skill_id])
-	_check(visible_details==1,"%s skill list did not expand exactly one selected row"%viewport_size)
-	_check(selected_ledger_rows==1,"%s skill ledger did not mark exactly one row with >"%viewport_size)
+		_check(mode_label.get_global_rect().end.x<=xp_label.get_global_rect().position.x+0.5 \
+			and xp_label.get_global_rect().end.x<=skill_panel.get_global_rect().end.x+0.5,
+			"%s %s current XP is not the far-right ledger column"%[viewport_size,skill_id])
+	_check(sandbox.find_child("SkillDetail",true,false)==null \
+		and sandbox.find_child("TrainingProgress",true,false)==null \
+		and sandbox.find_child("FutureMilestone",true,false)==null,
+		"%s proficiency selection still creates extra detail content"%viewport_size)
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5,
-		"%s expanded skill ledger widened/clipped the 420px folio"%viewport_size)
+		"%s fixed skill ledger widened/clipped the 420px folio"%viewport_size)
 	sandbox._select_member_detail_tab("ITEM");await process_frame
 	_check(sandbox.member_item_window.visible and sandbox.member_detail_item_tab.text=="[아이템]",
 		"%s item tab is not independently selectable"%viewport_size)

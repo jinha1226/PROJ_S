@@ -11,6 +11,7 @@ const PersonalityRegistryScript = preload("res://sim/personality_definition_regi
 const WorldStateScript = preload("res://sim/world_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+const MovementSystemScript = preload("res://sim/systems/movement_system.gd")
 const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_registry.gd")
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
@@ -39,6 +40,7 @@ const RESCUE_TIME_COST := 100
 const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
+const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
 		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
@@ -1702,6 +1704,214 @@ func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 	var command = CommandScript.wait(hero_id) if direction == Vector2i.ZERO else CommandScript.move_to(
 		hero_id, Vector2i(int(status.protagonist_position[0]), int(status.protagonist_position[1])) + direction)
 	return commit_exploration(command)
+
+
+func select_movement_destination(actor_id: int, destination_value: Variant) -> Dictionary:
+	# One mutating facade for a map-cell tap. Exploration starts the canonical
+	# route and commits exactly its first hop; combat directly replaces the
+	# actor's pending action without creating a second placement preview.
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var parsed := _inspection_position(destination_value)
+	if not bool(parsed.get("ok", false)):
+		return _rejection_dto("invalid_party_destination", null, null,
+			{"actor_id":actor_id,"action_type":"MOVE","destination":[]})
+	var destination: Vector2i = parsed.position
+	var status := party_status()
+	if str(status.get("view_mode", "")) == "EXPLORATION":
+		if actor_id != int(status.get("protagonist_id", -1)):
+			return _rejection_dto("move_requires_actor", null, null,
+				{"actor_id":actor_id,"action_type":"MOVE",
+					"destination":[destination.x,destination.y]})
+		if bool(exploration_route_state().get("active", false)):
+			cancel_exploration_route()
+		var route := preview_exploration_route(destination)
+		if not bool(route.get("accepted", false)): return route
+		return start_exploration_route(destination, str(route.get("plan_hash", "")))
+	if str(status.get("view_mode", "")) == "COMBAT":
+		return set_actor_action(actor_id, "MOVE", [destination.x, destination.y])
+	return _rejection_dto("invalid_party_action", null, null,
+		{"actor_id":actor_id,"action_type":"MOVE",
+			"destination":[destination.x,destination.y]})
+
+
+func find_exploration_path(actor_id: int, goal: Vector2i) -> Dictionary:
+	# First preserve the exact deterministic shortest/fastest route. Risk only
+	# participates when that route crosses a currently visible hazard. The risk
+	# pass is bounded so avoiding one tile can never invent a map-wide detour.
+	var visible := _exploration_visible_cells()
+	var shortest := _search_exploration_path(actor_id, goal, visible, false, -1)
+	if not bool(shortest.get("found", false)):
+		return shortest.duplicate(true)
+	if int(shortest.get("max_total_risk", 0)) <= 0:
+		shortest["routing_policy"] = "SHORTEST_HAZARD_FREE"
+		shortest["hazard_free"] = true
+		shortest["risk_weighted"] = false
+		return shortest.duplicate(true)
+	var shortest_steps := int(shortest.get("steps", 0))
+	var detour_allowance := mini(MAX_VISIBLE_HAZARD_DETOUR_STEPS,
+		maxi(2, shortest_steps / 2 + 1))
+	var weighted := _search_exploration_path(actor_id, goal, visible, true,
+		shortest_steps + detour_allowance)
+	if not bool(weighted.get("found", false)):
+		weighted = shortest
+	weighted["routing_policy"] = "VISIBLE_AFFINITY_RISK_WEIGHTED"
+	weighted["hazard_free"] = int(weighted.get("max_total_risk", 0)) <= 0
+	weighted["risk_weighted"] = true
+	weighted["shortest_steps"] = shortest_steps
+	weighted["detour_limit_steps"] = shortest_steps + detour_allowance
+	return weighted.duplicate(true)
+
+
+func _search_exploration_path(actor_id: int, goal: Vector2i,
+		visible: Dictionary, risk_weighted: bool, maximum_steps: int) -> Dictionary:
+	if not sim.world.entities.has(actor_id) or not sim.world.can_act(actor_id, sim.world.world_time):
+		return _exploration_path_failure("actor_not_found")
+	if not sim.world.in_bounds(goal): return _exploration_path_failure("out_of_bounds")
+	var start: Vector2i = sim.world.entities[actor_id].position
+	if start == goal:
+		return {"found":true,"reason":"already_there","path":[start],
+			"total_cost":0,"steps":0,"total_risk":0,"max_total_risk":0}
+	if sim.world.blocking_entity_at(goal, actor_id) != null:
+		return _exploration_path_failure("occupied")
+	var goal_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(goal).terrain)
+	if goal_definition.is_empty() or not bool(goal_definition.get("passable", false)):
+		return _exploration_path_failure("path_unreachable")
+	var start_key := _position_key(start) + ("@0" if risk_weighted else "")
+	var open: Array[Dictionary] = [{"position":start,"risk":0,"max_risk":0,
+		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start]}]
+	var sequence := 1
+	var best: Dictionary = {start_key:[0,0,0,0]}
+	while not open.is_empty():
+		open.sort_custom(func(a:Dictionary,b:Dictionary):
+			return _exploration_open_less(a,b,risk_weighted))
+		var node: Dictionary = open.pop_front()
+		var position: Vector2i = node.position
+		var known: Array = best.get(str(node.state_key), [])
+		var signature: Array = [int(node.max_risk),int(node.risk),
+			int(node.steps),int(node.cost)]
+		if known != signature: continue
+		if position == goal:
+			return {"found":true,"reason":"ok","path":node.path.duplicate(),
+				"total_cost":int(node.cost),"steps":int(node.steps),
+				"total_risk":int(node.risk),"max_total_risk":int(node.max_risk)}
+		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
+			var next: Vector2i = position + direction
+			if not _exploration_step_is_legal(actor_id, position, next): continue
+			var candidate_steps := int(node.steps) + 1
+			if maximum_steps >= 0 and candidate_steps > maximum_steps: continue
+			var step_risk := _exploration_step_risk(next, visible)
+			var definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(next).terrain)
+			var candidate_key := _position_key(next) + ("@%d" % candidate_steps \
+				if risk_weighted else "")
+			var candidate_path:Array = node.path.duplicate();candidate_path.append(next)
+			var candidate := {"position":next,"risk":int(node.risk)+step_risk,
+				"max_risk":maxi(int(node.max_risk), step_risk),"steps":candidate_steps,
+				"cost":int(node.cost)+int(definition.move_time_cost),"sequence":sequence,
+				"state_key":candidate_key,"path":candidate_path}
+			sequence += 1
+			var old: Array = best.get(candidate_key, [])
+			if not old.is_empty() and not _exploration_score_less(candidate, old,
+					risk_weighted):continue
+			best[candidate_key] = [int(candidate.max_risk),int(candidate.risk),
+				int(candidate.steps),int(candidate.cost)]
+			open.append(candidate)
+	return _exploration_path_failure("path_unreachable")
+
+
+func _exploration_score_less(candidate: Dictionary, old: Array,
+		risk_weighted: bool) -> bool:
+	var candidate_keys := [int(candidate.max_risk),int(candidate.risk),
+		int(candidate.steps),int(candidate.cost)]
+	var order := [0,1,2,3] if risk_weighted else [2,3]
+	for index in order:
+		if candidate_keys[index] != int(old[index]):
+			return candidate_keys[index] < int(old[index])
+	return false
+
+
+func _exploration_open_less(a: Dictionary, b: Dictionary,
+		risk_weighted: bool) -> bool:
+	var order := ["max_risk","risk","steps","cost"] if risk_weighted \
+		else ["steps","cost"]
+	for key in order:
+		if int(a[key]) != int(b[key]):return int(a[key]) < int(b[key])
+	var a_position: Vector2i = a.position;var b_position: Vector2i = b.position
+	if a_position.y != b_position.y:return a_position.y < b_position.y
+	if a_position.x != b_position.x:return a_position.x < b_position.x
+	return int(a.sequence) < int(b.sequence)
+
+
+func _exploration_step_is_legal(actor_id: int, from: Vector2i,
+		to: Vector2i) -> bool:
+	if not sim.world.in_bounds(to):return false
+	var definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(to).terrain)
+	if definition.is_empty() or not bool(definition.get("passable", false)) \
+			or int(definition.get("occupancy_capacity", 0)) < 1 \
+			or sim.world.blocking_entity_at(to, actor_id) != null:return false
+	var delta := to-from
+	if delta.x != 0 and delta.y != 0:
+		for flank in [from+Vector2i(delta.x,0),from+Vector2i(0,delta.y)]:
+			if not sim.world.in_bounds(flank):return false
+			var flank_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(flank).terrain)
+			if flank_definition.is_empty() or not bool(flank_definition.get("passable", false)) \
+					or sim.world.blocking_entity_at(flank, actor_id) != null:return false
+	return true
+
+
+func exploration_route_risk_rows(position: Vector2i) -> Array[Dictionary]:
+	return _exploration_risk_rows(position, _exploration_visible_cells()).duplicate(true)
+
+
+func _exploration_visible_cells() -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {}
+	var state = sim.world.party_encounter
+	var hero = sim.world.entities.get(int(state.protagonist_id))
+	if hero == null: return {}
+	return VisualTestMapScript.visible_cells(sim.world, hero.position, scenario_id)
+
+
+func _exploration_step_risk(position: Vector2i, visible: Dictionary) -> int:
+	var party_max := 0
+	for row in _exploration_risk_rows(position, visible):
+		party_max = maxi(party_max, int(row.total))
+	return party_max
+
+
+func _exploration_risk_rows(position: Vector2i,
+		visible: Dictionary) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	var state = sim.world.party_encounter
+	var member_ids: Array = state.party_member_ids.duplicate()
+	member_ids.sort_custom(func(a, b):
+		var member_a = state.member(int(a)); var member_b = state.member(int(b))
+		return int(member_a.roster_slot) < int(member_b.roster_slot) \
+			if int(member_a.roster_slot) != int(member_b.roster_slot) else int(a) < int(b))
+	var is_visible := visible.has(_position_key(position))
+	for member_id_value in member_ids:
+		var member_id := int(member_id_value);var member = state.member(member_id)
+		var entity = sim.world.entities.get(member_id)
+		if member == null or (member.presence != "GROUPED" and member_id != state.protagonist_id) \
+				or entity == null or not sim.world.is_environment_exposed(member_id):continue
+		var wire := {"fire_score":0,"water_score":0,"electric_score":0,
+			"poison_score":0,"total_risk":0}
+		if is_visible:
+			var evaluated = sim.evaluate_exposure_for_entity(member_id, position)
+			if evaluated != null and evaluated.evaluation != null:
+				wire = evaluated.evaluation.to_dict()
+		rows.append({"entity_id":member_id,"display_name":str(entity.display_name),
+			"role":str(member.role),"species_id":str(entity.species_id),
+			"fire":int(wire.fire_score),"water":int(wire.water_score),
+			"electric":int(wire.electric_score),"poison":int(wire.poison_score),
+			"total":int(wire.total_risk)})
+	return rows
+
+
+func _exploration_path_failure(reason: String) -> Dictionary:
+	return {"found":false,"reason":reason,"path":[],"total_cost":-1,
+		"steps":0,"total_risk":0,"max_total_risk":0,"routing_policy":"UNAVAILABLE",
+		"hazard_free":false,"risk_weighted":false}
 
 func set_actor_action(actor_id: int, action_type: String, destination: Array = [], target_id: int = -1) -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")

@@ -62,6 +62,10 @@ var _suppress_mouse_until_msec := -1
 var _static_projection_cache:Dictionary={}
 var _static_projection_dirty:=true
 var _static_projection_rebuild_count:=0
+var _static_observation_hash:=0
+var _static_occupancy_hash:=0
+var _actor_projection_hash:=0
+var _static_hash_initialized:=false
 var _occupied_visible_cells:Dictionary={}
 var melee_vfx:MeleeVfxOverlay
 
@@ -152,8 +156,28 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
 	_reconcile_actor_motions(previous_actors,previous_visual_world,
 		previous_visible_cells,observed_at_ms)
-	_invalidate_static_projection_cache()
-	queue_redraw()
+	# Damage-only combat observations change actor vitals but not the terrain,
+	# FOV, feature or occupancy projection. Retain that expensive 15x15 static
+	# projection until an actual presentation input changes.
+	var next_observation_hash:=hash([world_grid_size,_cells])
+	var occupied_keys:Array[String]=[]
+	for actor in _actors:
+		occupied_keys.append(_key(_position_from_actor(actor)))
+	occupied_keys.sort()
+	var next_occupancy_hash:=hash(occupied_keys)
+	var next_actor_projection_hash:=_visual_actor_projection_hash()
+	var projection_changed:=not _static_hash_initialized \
+		or next_observation_hash!=_static_observation_hash \
+		or next_occupancy_hash!=_static_occupancy_hash
+	if projection_changed:
+		_invalidate_static_projection_cache()
+	if projection_changed or next_actor_projection_hash!=_actor_projection_hash:
+		queue_redraw()
+	_static_observation_hash=next_observation_hash
+	_static_occupancy_hash=next_occupancy_hash
+	_actor_projection_hash=next_actor_projection_hash
+	_static_hash_initialized=true
+	if melee_vfx!=null:melee_vfx.queue_redraw()
 
 func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->void:
 	var safe_duration:=clampi(duration_ms,DioramaScript.ACTOR_MOTION_MIN_MS,
@@ -273,6 +297,7 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	var previous_origin:=view_origin
 	var previous_count:=visible_cell_count
 	var previous_hero:=_hero_camera_position
+	var previous_settle:=_camera_settle.duplicate(true)
 	visible_cell_count=clampi(cell_count,1,64)
 	if _hero_camera_position!=Vector2i(-1,-1) and hero_position!=_hero_camera_position:
 		var delta:=hero_position-_hero_camera_position
@@ -284,10 +309,13 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
 	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
 	if hero_actor_id>0:_actor_motions.erase(hero_actor_id)
+	var presentation_changed:=previous_origin!=view_origin or previous_count!=visible_cell_count \
+		or previous_hero!=_hero_camera_position or previous_settle!=_camera_settle
 	if previous_origin!=view_origin or previous_count!=visible_cell_count \
 			or previous_hero!=_hero_camera_position:
 		_invalidate_static_projection_cache()
-	_update_process_enabled();queue_redraw()
+	_update_process_enabled()
+	if presentation_changed:queue_redraw()
 
 func camera_settle_draw_spec(sample_time_ms:int=-1)->Dictionary:
 	if _camera_settle.is_empty():
@@ -310,18 +338,21 @@ func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
 
 func set_neutral_phase_map(enabled:bool)->void:
+	var before:=[_neutral_phase_map,combat_emphasis]
 	_neutral_phase_map=enabled
 	if enabled:combat_emphasis=false
-	queue_redraw()
+	if before!=[_neutral_phase_map,combat_emphasis]:queue_redraw()
 
 func set_combat_emphasis(enabled:bool)->void:
 	combat_emphasis=enabled and not _neutral_phase_map;queue_redraw()
 
 func set_presentation_style(value:Dictionary)->void:
+	var before_style:=_presentation_style
+	var before_emphasis:=combat_emphasis
 	_presentation_style=value.duplicate(true)
 	combat_emphasis=not _neutral_phase_map \
 		and str(_presentation_style.get("style_id",""))=="COMBAT"
-	queue_redraw()
+	if before_style!=_presentation_style or before_emphasis!=combat_emphasis:queue_redraw()
 
 func play_effects(rows:Array)->int:
 	var started_at:=Time.get_ticks_msec();var appended:=0
@@ -344,7 +375,7 @@ func play_effects(rows:Array)->int:
 		if int(a.get("order",0))!=int(b.get("order",0)):return int(a.get("order",0))<int(b.get("order",0))
 		return str(a.get("effect_id",""))<str(b.get("effect_id","")))
 	if _active_visual_effects.size()>48:_active_visual_effects=_active_visual_effects.slice(_active_visual_effects.size()-48)
-	_update_process_enabled();queue_redraw();return appended
+	_update_process_enabled();_ensure_melee_vfx();melee_vfx.queue_redraw();return appended
 
 func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids.has(event_id)
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
@@ -435,6 +466,7 @@ func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 	return rows.duplicate(true)
 
 func _process(_delta:float)->void:
+	var had_visual_effects:=not _active_visual_effects.is_empty()
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
 	for effect in _active_visual_effects:
 		var spec:=visual_effect_draw_spec(effect)
@@ -447,7 +479,9 @@ func _process(_delta:float)->void:
 	if not _camera_settle.is_empty() and not bool(camera_settle_draw_spec(now).active):
 		_camera_settle.clear()
 	_update_process_enabled()
-	queue_redraw()
+	if not _actor_motions.is_empty() or not _camera_settle.is_empty():queue_redraw()
+	if melee_vfx!=null and (had_visual_effects or not _active_visual_effects.is_empty()):
+		melee_vfx.queue_redraw()
 
 func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
@@ -463,6 +497,7 @@ func _clamp_view_origin(origin:Vector2i)->Vector2i:
 		clampi(origin.y,0,maxi(0,world_grid_size.y-visible_cell_count)))
 
 func set_selection(actor_id: int, target_id: int = -1) -> void:
+	if selected_actor_id==actor_id and selected_target_id==target_id:return
 	selected_actor_id = actor_id; selected_target_id = target_id; queue_redraw()
 
 func set_cursor_preview(actor_id: int, origin: Vector2i, destination: Vector2i, valid: bool) -> void:
@@ -470,6 +505,9 @@ func set_cursor_preview(actor_id: int, origin: Vector2i, destination: Vector2i, 
 	cursor_cell = destination; preview_valid = valid; queue_redraw()
 
 func clear_cursor_preview() -> void:
+	if preview_actor_id==-1 and preview_origin==Vector2i(-1,-1) \
+			and preview_destination==Vector2i(-1,-1) \
+			and cursor_cell==Vector2i(-1,-1) and not preview_valid:return
 	preview_actor_id = -1; preview_origin = Vector2i(-1, -1)
 	preview_destination = Vector2i(-1, -1); cursor_cell = Vector2i(-1, -1)
 	preview_valid = false; queue_redraw()
@@ -493,9 +531,11 @@ func set_route_overlay(path: Array, completed_steps: int = 0, valid: bool = true
 	queue_redraw()
 
 func clear_route_overlay() -> void:
+	if _route_path.is_empty() and _route_completed_steps==0 and not _route_valid:return
 	_route_path.clear();_route_completed_steps=0;_route_valid=false;queue_redraw()
 
 func set_exploration_companion_follow_plan(dto:Dictionary)->void:
+	if _exploration_follow_plan==dto:return
 	_exploration_follow_plan=dto.duplicate(true)
 	queue_redraw()
 
@@ -596,12 +636,14 @@ func route_draw_spec() -> Dictionary:
 		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
-	_intent_overlays.clear(); _secondary_intent_overlays.clear()
+	var next_intents:Array[Dictionary]=[];var next_secondary:Array[Dictionary]=[]
 	for row in rows:
 		if not row is Dictionary: continue
 		var copy:Dictionary=row.duplicate(true); var secondary=copy.get("automatic_suggestion",null)
-		if secondary is Dictionary:_secondary_intent_overlays.append(secondary.duplicate(true))
-		_intent_overlays.append(copy)
+		if secondary is Dictionary:next_secondary.append(secondary.duplicate(true))
+		next_intents.append(copy)
+	if _intent_overlays==next_intents and _secondary_intent_overlays==next_secondary:return
+	_intent_overlays=next_intents;_secondary_intent_overlays=next_secondary
 	queue_redraw()
 
 
@@ -916,6 +958,19 @@ func _array_to_world_position(value:Variant)->Vector2i:
 func _actor_visual_key(entity_id:int,position:Vector2i)->String:
 	return "%d:%d:%d"%[entity_id,position.x,position.y]
 
+func _visual_actor_projection_hash()->int:
+	var rows:Array=[]
+	for source in [_actors,_ghosts]:
+		for actor in source:
+			if not actor is Dictionary:continue
+			var visual:Dictionary=actor.duplicate(true)
+			# These values are card/log concerns and never affect the grid glyph.
+			for key in ["health","max_health","stress","emotion","readiness",
+					"progression","expected_action","remaining_time"]:
+				visual.erase(key)
+			rows.append(visual)
+	return hash(rows)
+
 func _sorted_visual_actor_rows()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	for actor in _actors:rows.append({"actor":actor,"ghost":false})
@@ -1036,12 +1091,10 @@ func _draw() -> void:
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
-	var melee_shake:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
-	draw_set_transform(camera_offset+melee_shake)
+	draw_set_transform(camera_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
-	_draw_melee_target_background_flashes()
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
@@ -1064,7 +1117,6 @@ func _draw() -> void:
 		_draw_intent(intent)
 	_draw_actor_selection_overlays()
 	_draw_cursor_preview()
-	for effect in _active_visual_effects:_draw_visual_effect(effect)
 	_draw_fov_edge_haze()
 	draw_set_transform(Vector2.ZERO)
 	# Phase is communicated inside the field (glyph motion, ink impact and HUD),

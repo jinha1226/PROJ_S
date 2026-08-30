@@ -4,6 +4,7 @@ extends Control
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
+const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
@@ -45,10 +46,24 @@ var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
 var info_scroll:ScrollContainer
+var event_surface:PanelContainer
+var event_label:Label
 var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
+var hud_bottom_flex:Control
 var build_label:Label
+var bottom_navigation:HBoxContainer
+var map_nav_button:Button
+var person_nav_button:Button
+var skill_nav_button:Button
+var equipment_nav_button:Button
+var history_nav_button:Button
+var map_overlay:Control
+var record_modal:Control
+var record_panel:PanelContainer
+var record_body:Label
+var record_close_button:Button
 var selected_member_id:=-1
 var selected_target_id:=-1
 var notice_text:=""
@@ -95,7 +110,6 @@ var member_progression_skill_rows:Dictionary={}
 var member_skill_help:Label
 var member_skill_category_button:Button
 var member_skill_category_expanded:=false
-var member_skill_selected_id:="SWORD"
 var _skill_touch_index:=-1
 var _skill_touch_id:=""
 var _skill_touch_origin:=Vector2.ZERO
@@ -173,6 +187,8 @@ var _narrative_log_visible:=false
 var _compact_fixed_surface_active:=false
 var _pending_visual_effect_rows:Array[Dictionary]=[]
 var _refresh_pending:=false
+var _last_direct_solo_refresh_profile:Dictionary={}
+var _last_direct_solo_turn_profile:Dictionary={}
 
 func _ready()->void:
 	_build_ui()
@@ -284,6 +300,16 @@ func _build_ui()->void:
 	log_label=Label.new(); log_label.name="NarrativeLog"; log_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=44
 	log_label.max_lines_visible=3;log_label.clip_text=true;info.add_child(log_label)
+	event_surface=PanelContainer.new();event_surface.name="EventSurface";event_surface.visible=false
+	event_surface.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,2))
+	root_layout.add_child(event_surface)
+	var event_margin:=MarginContainer.new();event_margin.name="EventSurfaceInset"
+	event_margin.add_theme_constant_override("margin_left",6);event_margin.add_theme_constant_override("margin_right",100)
+	event_surface.add_child(event_margin)
+	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	event_label.add_theme_font_size_override("font_size",FONT_AUX);event_label.max_lines_visible=2
+	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
 	combat_action_area.add_theme_constant_override("separation",2);combat_action_area.visible=false;root_layout.add_child(combat_action_area)
 	action_feedback_label=Label.new();action_feedback_label.name="ActionFeedback";action_feedback_label.custom_minimum_size.y=38
@@ -292,11 +318,65 @@ func _build_ui()->void:
 	combat_action_area.add_child(action_feedback_label)
 	combat_action_dock=HBoxContainer.new(); combat_action_dock.name="CombatActionDock"; combat_action_dock.custom_minimum_size.y=TOUCH_TARGET
 	combat_action_dock.add_theme_constant_override("separation",4);combat_action_dock.visible=false;combat_action_area.add_child(combat_action_dock)
+	hud_bottom_flex=Control.new();hud_bottom_flex.name="HudBottomFlex"
+	hud_bottom_flex.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	hud_bottom_flex.mouse_filter=Control.MOUSE_FILTER_IGNORE;hud_bottom_flex.visible=false
+	root_layout.add_child(hud_bottom_flex)
+	_build_bottom_navigation()
 	_build_build_label()
 	_build_tile_popover()
 	_build_member_detail_modal()
+	_build_map_overlay()
+	_build_record_modal()
 	_build_duel_decision_lab_entry()
 	resized.connect(_layout_floating_surfaces)
+
+func _build_bottom_navigation()->void:
+	bottom_navigation=HBoxContainer.new();bottom_navigation.name="BottomNavigation"
+	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET;bottom_navigation.visible=false
+	bottom_navigation.add_theme_constant_override("separation",0);root_layout.add_child(bottom_navigation)
+	map_nav_button=_add_nav_button("[지도]","MapNavigation",_toggle_map_overlay);map_nav_button.toggle_mode=true
+	person_nav_button=_add_nav_button("[인물]","PersonNavigation",_open_hero_detail_tab.bind("STATUS"))
+	skill_nav_button=_add_nav_button("[숙련]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
+	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
+	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
+
+func _add_nav_button(label:String,node_name:String,callback:Callable)->Button:
+	var button:=Button.new();button.name=node_name;button.text=label
+	button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.add_theme_font_size_override("font_size",FONT_COMMAND)
+	button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.pressed.connect(callback);bottom_navigation.add_child(button)
+	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN)
+	return button
+
+func _build_map_overlay()->void:
+	map_overlay=MapOverlayScript.new();map_overlay.name="PartyMapOverlay";map_overlay.z_index=60
+	map_overlay.closed.connect(_on_map_overlay_closed);add_child(map_overlay)
+
+func _build_record_modal()->void:
+	record_modal=Control.new();record_modal.name="NarrativeRecordModal";record_modal.visible=false
+	record_modal.mouse_filter=Control.MOUSE_FILTER_STOP;record_modal.z_index=60
+	record_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);add_child(record_modal)
+	var scrim:=ColorRect.new();scrim.name="NarrativeRecordScrim";scrim.color=Color("#000306d9")
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);scrim.gui_input.connect(_on_record_backdrop_input)
+	record_modal.add_child(scrim)
+	record_panel=PanelContainer.new();record_panel.name="NarrativeRecordPanel"
+	record_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,6))
+	record_modal.add_child(record_panel)
+	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",4);record_panel.add_child(stack)
+	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
+	var title:=Label.new();title.text="주요 기록";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size",FONT_SECTION);title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
+	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="[X]"
+	record_close_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	record_close_button.pressed.connect(_close_record_modal.bind("BUTTON"));header.add_child(record_close_button)
+	AsciiFrameScript.apply_rail_button(record_close_button,AsciiFrameScript.CYAN)
+	var scroll:=ScrollContainer.new();scroll.name="NarrativeRecordScroll";scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(scroll)
+	record_body=Label.new();record_body.name="NarrativeRecordBody";record_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	record_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;record_body.add_theme_font_size_override("font_size",FONT_AUX)
+	record_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;scroll.add_child(record_body)
 
 func _build_build_label()->void:
 	build_label=Label.new();build_label.name="BuildLabel";build_label.text=BuildInfoScript.display_text()
@@ -311,6 +391,14 @@ func _build_build_label()->void:
 
 func _position_build_label()->void:
 	if build_label==null:return
+	if event_surface!=null and event_surface.visible and event_surface.size.x>0.0:
+		build_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		var local_event_position:=event_surface.global_position-global_position
+		build_label.position=Vector2(local_event_position.x+maxf(0.0,event_surface.size.x-98.0),
+			local_event_position.y+maxf(0.0,event_surface.size.y-16.0))
+		build_label.size=Vector2(92,16)
+		return
+	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	var bottom_clearance:=4.0
 	if combat_action_area!=null and combat_action_area.visible:
 		bottom_clearance=maxf(bottom_clearance,float(combat_action_area.custom_minimum_size.y)+4.0)
@@ -442,7 +530,7 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_stats.add_theme_font_size_override("font_size",FONT_AUX);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_progression_stats.max_lines_visible=1;member_progression_stats.clip_text=true;summary.add_child(member_progression_stats)
 	member_skill_help=Label.new();member_skill_help.name="SkillFocusHelp"
-	member_skill_help.text="행 터치: 집중 → 보통 → 끄기 · 승리 XP 3:1:0"
+	member_skill_help.text="행 터치: 집중×3 → 보통×1 → 끄기×0"
 	member_skill_help.add_theme_font_size_override("font_size",FONT_AUX);member_skill_help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_skill_help.max_lines_visible=1;member_skill_help.clip_text=true
 	member_skill_help.modulate=AsciiFrameScript.MUTED;member_progression_window.add_child(member_skill_help)
@@ -457,23 +545,43 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	AsciiFrameScript.apply_rail_button(member_skill_category_button,AsciiFrameScript.CYAN)
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
+		panel.custom_minimum_size.y=TOUCH_TARGET;panel.clip_contents=true
+		panel.set_meta("fixed_single_line_ledger",true)
 		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,0))
 		member_progression_window.add_child(panel)
-		var stack:=VBoxContainer.new();stack.name="SkillRowStack";stack.add_theme_constant_override("separation",2);panel.add_child(stack)
+		var ledger:=HBoxContainer.new();ledger.name="SkillLedgerRow"
+		ledger.mouse_filter=Control.MOUSE_FILTER_IGNORE;ledger.add_theme_constant_override("separation",4)
+		panel.add_child(ledger)
+		var rank:=Label.new();rank.name="SkillRank";rank.custom_minimum_size.x=34
+		rank.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;rank.add_theme_font_size_override("font_size",FONT_AUX)
+		rank.add_theme_color_override("font_color",AsciiFrameScript.INK);rank.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		ledger.add_child(rank)
+		var skill_name:=Label.new();skill_name.name="SkillName";skill_name.custom_minimum_size.x=44
+		skill_name.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;skill_name.add_theme_font_size_override("font_size",FONT_AUX)
+		skill_name.add_theme_color_override("font_color",AsciiFrameScript.INK);skill_name.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		ledger.add_child(skill_name)
+		var effect:=Label.new();effect.name="CurrentEffect";effect.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		effect.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;effect.add_theme_font_size_override("font_size",FONT_AUX)
+		effect.add_theme_color_override("font_color",AsciiFrameScript.INK);effect.clip_text=true
+		effect.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;effect.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		ledger.add_child(effect)
+		var mode:=Label.new();mode.name="TrainingMode";mode.custom_minimum_size.x=62
+		mode.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;mode.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		mode.add_theme_font_size_override("font_size",FONT_AUX);mode.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		ledger.add_child(mode)
+		var xp:=Label.new();xp.name="TrainingXP";xp.custom_minimum_size.x=54
+		xp.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;xp.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		xp.add_theme_font_size_override("font_size",FONT_AUX);xp.add_theme_color_override("font_color",AsciiFrameScript.MUTED)
+		xp.mouse_filter=Control.MOUSE_FILTER_IGNORE;ledger.add_child(xp)
 		var title:=Button.new();title.name="SkillModeButton";title.custom_minimum_size.y=TOUCH_TARGET
 		title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.set_meta("skill_id",skill_id)
 		title.action_mode=BaseButton.ACTION_MODE_BUTTON_RELEASE;title.focus_mode=Control.FOCUS_NONE
-		title.clip_text=true;title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));stack.add_child(title)
-		AsciiFrameScript.apply_rail_button(title,AsciiFrameScript.BRASS)
-		var detail:=VBoxContainer.new();detail.name="SkillDetail";detail.custom_minimum_size.y=76
-		detail.add_theme_constant_override("separation",2);stack.add_child(detail)
-		var effect:=Label.new();effect.name="CurrentEffect";effect.add_theme_font_size_override("font_size",FONT_AUX);effect.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.add_child(effect)
-		var progress:Control=_gauge("TrainingProgress","훈련",0,50,10,AsciiFrameScript.CYAN);detail.add_child(progress)
-		var future:=Label.new();future.name="FutureMilestone";future.add_theme_font_size_override("font_size",FONT_CAPTION);future.modulate=AsciiFrameScript.MUTED;future.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.add_child(future)
-		member_progression_skill_rows[skill_id]={"panel":panel,"title":title,"detail":detail,"progress":progress,"effect":effect,"future":future}
+		title.flat=true;title.text="";title.tooltip_text="훈련 모드 변경"
+		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));panel.add_child(title)
+		_apply_skill_ledger_style(title,mode,"NORMAL")
+		member_progression_skill_rows[skill_id]={"panel":panel,"title":title,
+			"rank":rank,"name":skill_name,"effect":effect,"mode":mode,"xp":xp}
 		panel.visible=member_skill_category_expanded
-		detail.visible=skill_id==member_skill_selected_id
 	_update_weapon_mastery_category_label()
 
 func _build_item_window(parent:VBoxContainer)->void:
@@ -517,6 +625,11 @@ func _layout_floating_surfaces()->void:
 		member_detail_panel.position=(size-Vector2(panel_width,panel_height))*0.5
 		member_detail_panel.size=Vector2(panel_width,panel_height)
 		member_detail_body.custom_minimum_size.x=maxf(1.0,panel_width-48.0)
+	if record_panel!=null:
+		var record_width:=minf(size.x-24.0,420.0)
+		var record_height:=minf(size.y-24.0,620.0)
+		record_panel.position=(size-Vector2(record_width,record_height))*0.5
+		record_panel.size=Vector2(record_width,record_height)
 	if tile_popover!=null and tile_popover.visible:_position_tile_popover()
 
 func _refresh()->void:
@@ -560,12 +673,18 @@ func _refresh()->void:
 	else:
 		root_layout.offset_left=6;root_layout.offset_right=-6
 		root_layout.offset_top=4;root_layout.offset_bottom=-4
-	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
-	top_hud_actions.visible=product_hud
+	phase_panel.visible=not product_hud
+	minimap_frame.visible=false;minimap.visible=false;recent_event_label.visible=false
+	top_hud_actions.visible=false
+	ascii_3d_lab_button.visible=not product_hud
+	event_surface.visible=product_hud;bottom_navigation.visible=product_hud
+	hud_bottom_flex.visible=product_hud
+	info_scroll.visible=not product_hud
+	_apply_product_root_order(product_hud)
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
-	cards.visible=true;info_scroll.visible=true
+	cards.visible=true
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
@@ -575,7 +694,12 @@ func _refresh()->void:
 		and not _is_solo_product_session() else []
 	var ui_observation:Dictionary=session.observe_party_ui(15)
 	var observation:Dictionary=ui_observation.get("grid",{})
-	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
+	var direct_solo_combat:=_is_direct_solo_combat(status)
+	# A one-member product turn commits on the touched actor/cell. There is no
+	# pending plan to annotate; keeping old intent/cursor marks here made the
+	# already-authoritative result look as though it still awaited confirmation.
+	var intent_overlays:Array=session.turn_intent_overlays() \
+		if combat_active and not run_complete and not direct_solo_combat else []
 	grid.set_observation(observation,ghosts)
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	if product_hud:
@@ -587,6 +711,7 @@ func _refresh()->void:
 	if product_hud:grid_style["vignette"]=false
 	grid.set_neutral_phase_map(product_hud)
 	grid.set_presentation_style(grid_style)
+	if direct_solo_combat:selected_target_id=-1
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
 	if run_complete:
@@ -601,7 +726,9 @@ func _refresh()->void:
 			grid.clear_route_overlay();_clear_companion_follow_plan()
 	else:
 		grid.clear_route_overlay();_clear_companion_follow_plan()
-	if pending_move_actor_id>0:grid.set_cursor_preview(pending_move_actor_id,pending_move_origin,pending_move_destination,pending_move_valid)
+	if direct_solo_combat:
+		grid.clear_route_overlay();grid.clear_cursor_preview()
+	elif pending_move_actor_id>0:grid.set_cursor_preview(pending_move_actor_id,pending_move_origin,pending_move_destination,pending_move_valid)
 	else:grid.clear_cursor_preview()
 	_refresh_tile_popover(status)
 	var companion_speech_by_actor:Dictionary={}
@@ -633,15 +760,101 @@ func _refresh()->void:
 	if run_terminal:_build_run_restart_area()
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
-	log_label.visible=_narrative_log_visible
+	log_label.visible=not product_hud and _narrative_log_visible
 	log_label.max_lines_visible=1 if combat_active else 3
-	deck.visible=not _narrative_log_visible
+	deck.visible=not product_hud and not _narrative_log_visible
+	if product_hud:
+		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if record_modal.visible:record_body.text=_full_meaningful_record_text(combat_history)
 	record_button.button_pressed=_narrative_log_visible
 	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN,_narrative_log_visible)
 	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
 	_flush_pending_visual_effects()
+
+func _apply_product_root_order(product_hud:bool)->void:
+	if product_hud:
+		root_layout.move_child(cards,0);root_layout.move_child(grid,1)
+		root_layout.move_child(event_surface,2);root_layout.move_child(hud_bottom_flex,3)
+		# Keep the two interactive bottom surfaces as the final direct siblings.
+		# The transparent flex consumes only otherwise-unused height before them.
+		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
+		root_layout.move_child(bottom_navigation,root_layout.get_child_count()-1)
+	else:
+		hud_bottom_flex.visible=false
+		root_layout.move_child(phase_panel,0);root_layout.move_child(grid,1)
+		root_layout.move_child(cards,2);root_layout.move_child(info_scroll,3)
+		root_layout.move_child(combat_action_area,4)
+
+func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
+	# The stable one-member combat shell does not need to destroy and recreate
+	# every card, button and dossier after each turn. Refresh the authoritative
+	# world projection and mutate the few live HUD values whose data can change.
+	var profile_started:=Time.get_ticks_usec()
+	grid.cancel_pointer_gesture()
+	var presentation:Dictionary=session.presentation_state()
+	var party_rows:Array=session.party_cards()
+	var observe_started:=Time.get_ticks_usec()
+	var ui_observation:Dictionary=session.observe_party_ui(15)
+	var observe_finished:=Time.get_ticks_usec()
+	grid.set_observation(ui_observation.get("grid",{}),[])
+	minimap.set_observation(ui_observation.get("minimap",{}))
+	var hero_position:=Vector2i(int(status.protagonist_position[0]),
+		int(status.protagonist_position[1]))
+	grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
+	grid_style["vignette"]=false
+	grid.set_neutral_phase_map(true);grid.set_presentation_style(grid_style)
+	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
+	grid.clear_route_overlay();grid.clear_cursor_preview();_clear_companion_follow_plan()
+	var grid_finished:=Time.get_ticks_usec()
+	_update_direct_solo_card(party_rows)
+	notice_text="";action_feedback_text=""
+	action_feedback_label.text="행동 선택 → 즉시 실행"
+	for node_name in ["TurnSummary","IntentLegend","SelectedMemberDetail","ExpectedAction"]:
+		var stale:=deck.find_child(node_name,true,false)
+		if stale!=null:stale.visible=false
+	var action_status:=deck.find_child("ActionStatus",true,false) as Label
+	if action_status!=null:action_status.text="적 공격 · 빈 칸 이동 · 하단 방어"
+	var combat_history:Dictionary=session.combat_log(8,80)
+	log_label.text=_combat_log_text(combat_history)
+	_update_recent_event(combat_history,status)
+	event_label.text=_compact_meaningful_event_text(combat_history,status)
+	if record_modal.visible:record_body.text=_full_meaningful_record_text(combat_history)
+	var hud_finished:=Time.get_ticks_usec()
+	var effect_count:=_flush_pending_visual_effects()
+	var finished:=Time.get_ticks_usec()
+	_last_direct_solo_refresh_profile={
+		"observe_ui_usec":observe_finished-observe_started,
+		"grid_minimap_usec":grid_finished-observe_finished,
+		"stable_hud_usec":hud_finished-grid_finished,
+		"effects_usec":finished-hud_finished,"effect_count":effect_count,
+		"total_usec":finished-profile_started,
+	}.duplicate(true)
+
+func _update_direct_solo_card(rows:Array)->void:
+	if rows.is_empty() or not rows[0] is Dictionary:return
+	var row:Dictionary=rows[0]
+	var card:=cards.find_child("MemberCard%d"%int(row.get("entity_id",-1)),true,false)
+	if card==null:return
+	var health:=card.find_child("MemberState",true,false)
+	if health!=null and health.has_method("configure"):
+		var current:=int(row.get("health",0));var maximum:=maxi(1,int(row.get("max_health",1)))
+		health.call("configure","HP",current,maximum,10,
+			AsciiFrameScript.RED if current*4<=maximum else AsciiFrameScript.GREEN)
+	var stress:=card.find_child("StressState",true,false) as Label
+	if stress!=null:stress.text="ST %d"%int(row.get("stress",0))
+	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
+	var state:=card.find_child("EmotionState",true,false) as Label
+	if state!=null:
+		state.text="%s%s · %s"%[str(emotion.get("icon","")),
+			str(emotion.get("label","평온")),"준비" if str(row.get("readiness","행동 준비"))=="행동 준비" else "행동중"]
+	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
+	var xp:=card.find_child("CompactXPBar",true,false)
+	if xp!=null and xp.has_method("configure") and bool(progression.get("available",false)):
+		xp.call("configure","XP",int(progression.get("xp_current",0)),
+			maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
 
 func _current_run_progress()->Dictionary:
 	if session!=null and session.has_method("run_progress"):
@@ -675,10 +888,57 @@ func _toggle_narrative_log()->void:
 	_request_refresh()
 
 func _open_hero_detail()->void:
+	_open_hero_detail_tab("STATUS")
+
+func _open_hero_detail_tab(tab_id:String)->void:
 	if session==null:return
 	var status:Dictionary=session.party_status()
 	var hero_id:=int(status.get("protagonist_id",-1))
-	if hero_id>0:_open_member_detail(hero_id)
+	if hero_id>0:_open_member_detail(hero_id,tab_id)
+
+func _toggle_map_overlay()->void:
+	if map_overlay.visible:
+		map_overlay.close("TOGGLE");return
+	if record_modal.visible:_close_record_modal("MAP")
+	var observation:Dictionary=session.observe_party_ui(15).get("minimap",{})
+	map_overlay.set_observation(observation)
+	var route_state:Dictionary=session.exploration_route_state()
+	route_paused_by_modal=bool(route_state.get("active",false))
+	grid.cancel_pointer_gesture();grid.modal_open=true
+	map_nav_button.set_pressed_no_signal(true);map_overlay.open()
+
+func _on_map_overlay_closed(_reason:String)->void:
+	map_nav_button.set_pressed_no_signal(false)
+	grid.modal_open=member_detail_modal.visible or record_modal.visible
+	var resume:=route_paused_by_modal;route_paused_by_modal=false
+	if resume:_schedule_route_continue()
+	elif auto_orchestration_enabled:_request_refresh()
+
+func _toggle_record_modal()->void:
+	if record_modal.visible:
+		_close_record_modal("TOGGLE");return
+	if map_overlay.visible:map_overlay.close("HISTORY")
+	var history:Dictionary=session.combat_log(8,80)
+	record_body.text=_full_meaningful_record_text(history)
+	var route_state:Dictionary=session.exploration_route_state()
+	route_paused_by_modal=bool(route_state.get("active",false))
+	grid.cancel_pointer_gesture();grid.modal_open=true
+	record_modal.visible=true;history_nav_button.set_pressed_no_signal(true)
+	_layout_floating_surfaces()
+	if record_close_button.is_inside_tree():record_close_button.grab_focus()
+
+func _close_record_modal(_reason:String="API")->void:
+	if not record_modal.visible:return
+	record_modal.visible=false;history_nav_button.set_pressed_no_signal(false)
+	grid.modal_open=member_detail_modal.visible or map_overlay.visible
+	var resume:=route_paused_by_modal;route_paused_by_modal=false
+	if resume:_schedule_route_continue()
+	elif auto_orchestration_enabled:_request_refresh()
+
+func _on_record_backdrop_input(event:InputEvent)->void:
+	if event is InputEventScreenTouch and event.pressed:_close_record_modal("OUTSIDE")
+	elif event is InputEventMouseButton and event.pressed \
+			and event.button_index==MOUSE_BUTTON_LEFT:_close_record_modal("OUTSIDE")
 
 func _open_ascii_3d_lab()->void:
 	if ascii_3d_lab_view!=null and is_instance_valid(ascii_3d_lab_view):return
@@ -847,13 +1107,13 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 	var gap:=4
 	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
 	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
-		"effective_count":effective_count,"party_height":108,"gap":gap,
+		"effective_count":effective_count,"party_height":84,"gap":gap,
 		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
 		"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}
 	if effective_count==1:
-		spec.layout_id="SPOTLIGHT";spec.party_height=90
+		spec.layout_id="SPOTLIGHT";spec.party_height=68
 	elif effective_count==2:
-		spec.layout_id="DUAL";spec.party_height=100
+		spec.layout_id="DUAL";spec.party_height=80
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -882,15 +1142,19 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
 	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,false)
-	var dossier_frame=AsciiFrameScript.new();dossier_frame.name="DossierAsciiFrame"
-	dossier_frame.configure("인물" if str(row.get("role",""))=="PROTAGONIST" else "동료",
-		AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED,
-		AsciiFrameScript.BLACK,true)
-	dossier_frame.set_meta("major_glyph_frame",true);button.add_child(dossier_frame)
-	dossier_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for margin in ["margin_left","margin_right","margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,0)
-	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; dossier_frame.add_child(inset)
+	for margin in ["margin_left","margin_right","margin_top","margin_bottom"]:
+		var inset_amount:=0
+		if _is_solo_product_session():
+			# Three compact dossier rows naturally consume the whole 84px strip.
+			# Keep horizontal breathing room without making the content 2px taller
+			# than its touch/card surface.
+			inset_amount=2 if margin in ["margin_left","margin_right"] else 1
+		inset.add_theme_constant_override(margin,inset_amount)
+	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	# PartyCards is the single outer rail; per-member nested glyph frames consumed
+	# most of an 80/84px strip and forced its measured content outside the button.
+	button.add_child(inset)
 	_add_compact_dossier_content(inset,row,speech,spec)
 	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
 	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
@@ -925,9 +1189,13 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	health_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;stack.add_child(health_gauge)
 	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
 	var readiness:="준비" if str(row.get("readiness","행동 준비"))=="행동 준비" else "행동중"
-	var state_label:=_card_label("%s%s · %s"%[str(emotion.get("icon","")),str(emotion.get("label","평온")),readiness],"EmotionState",FONT_AUX)
-	state_label.max_lines_visible=1;state_label.clip_text=true;state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;stack.add_child(state_label)
 	var footer:=HBoxContainer.new();footer.name="DossierVitals";footer.add_theme_constant_override("separation",3);stack.add_child(footer)
+	# Status, stress and XP share one compact ledger line. Keeping emotion on its
+	# own line made a companion speech strip exceed the fixed 80/84px cards.
+	var state_label:=_card_label("%s%s · %s"%[str(emotion.get("icon","")),str(emotion.get("label","평온")),readiness],"EmotionState",FONT_AUX)
+	state_label.max_lines_visible=1;state_label.clip_text=true
+	state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	state_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(state_label)
 	var ready_label:=_card_label(readiness,"Readiness",FONT_AUX);ready_label.visible=false;footer.add_child(ready_label)
 	var stress_label:=_card_label("ST %d"%int(row.get("stress",0)),"StressState",FONT_AUX);footer.add_child(stress_label)
 	if bool(progression.get("available",false)):
@@ -1035,13 +1303,15 @@ func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
 
 func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
-	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip";strip.custom_minimum_size.y=22
+	var product_strip:=_is_solo_product_session()
+	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip"
+	strip.custom_minimum_size.y=16 if product_strip else 22
 	strip.mouse_filter=Control.MOUSE_FILTER_IGNORE;strip.clip_contents=true
 	strip.set_meta("actor_id",int(speech.get("actor_id",-1)))
 	strip.set_meta("source",str(speech.get("source","SUGGESTED")))
 	strip.set_meta("full_reason",str(speech.get("reason","")))
 	var source:=str(speech.get("source","SUGGESTED"))
-	var style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.NAVY,2)
+	var style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.NAVY,0 if product_strip else 2)
 	strip.add_theme_stylebox_override("panel",style);parent.add_child(strip)
 	var text:=Label.new();text.name="CompanionSpeechText"
 	text.text="%s · %s"%[str(speech.get("headline","방어할게.")),
@@ -1182,11 +1452,15 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	if not notice_text.is_empty():instruction=notice_text
 	elif not bool(preview.get("accepted",false)):instruction+=" · "+str(preview.get("message","주인공 행동을 먼저 지정하세요."))
 	_add_notice(instruction)
-	var lines:Array[String]=session.turn_summary_lines()
+	var direct_solo:=_is_direct_solo_combat(status)
+	var lines:Array[String]=[]
+	if not direct_solo:
+		for line in session.turn_summary_lines():lines.append(str(line))
 	if not lines.is_empty():_add_notice("이번 턴 예정\n"+"\n".join(lines),"TurnSummary",FONT_BODY)
 	var has_original_suggestion:=false
-	for overlay in session.turn_intent_overlays():
-		if overlay.get("automatic_suggestion",null) is Dictionary:has_original_suggestion=true;break
+	if not direct_solo:
+		for overlay in session.turn_intent_overlays():
+			if overlay.get("automatic_suggestion",null) is Dictionary:has_original_suggestion=true;break
 	if has_original_suggestion:
 		_add_notice("표시: 주황 실선/□ 개별 지시 · 파랑 점선/○ 원래 자동 제안","IntentLegend",FONT_AUX)
 	_build_combat_action_area(status,preview)
@@ -1251,6 +1525,7 @@ func _selected_detail()->void:
 				str(enemy.get("display_name","적")),int(enemy.get("level",1)),
 				str(enemy.get("threat_label","대등")),int(enemy.get("health",0)),
 				int(enemy.get("max_health",0))],"EnemyInspector",FONT_AUX)
+	if _is_direct_solo_combat(session.party_status()):return
 	for row in session.party_cards():
 		if int(row.entity_id)!=selected_member_id:continue
 		_add_notice("선택 상세 · %s · %s · %s"%[str(row.display_name),str(row.readiness),str(row.emotion.reason)],"SelectedMemberDetail",FONT_AUX)
@@ -1366,7 +1641,7 @@ func _life_state_label(life_state:String)->String:
 func _status_label(status_id:String)->String:
 	return {"BLEEDING":"출혈","POISONED":"중독","WET":"젖음","GUARDED":"방어 태세"}.get(status_id,status_id)
 
-func _open_member_detail(member_id:int)->void:
+func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
@@ -1384,7 +1659,8 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_entity_id=member_id
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
-	member_detail_current_tab="STATUS"
+	member_detail_current_tab=initial_tab if initial_tab in ["STATUS","SKILL","ITEM"] \
+		and (initial_tab=="STATUS" or member_detail_has_skills) else "STATUS"
 	_update_progression_window(progression)
 	_update_item_window(progression.get("equipment",{}) if progression is Dictionary else {})
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
@@ -1441,7 +1717,6 @@ func _apply_member_detail_tab()->void:
 
 func _on_training_mode_cycle(skill_id:String)->void:
 	if member_detail_entity_id<=0:return
-	member_skill_selected_id=skill_id
 	var progression:Dictionary=session.protagonist_progression()
 	var current_mode:="NORMAL"
 	for skill in progression.get("skills",[]):
@@ -1487,29 +1762,23 @@ func _update_progression_window(progression:Variant)->void:
 		var mode:=str(skill.get("training_mode","NORMAL"))
 		var weight:=int(skill.get("raw_weight",ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
 		var effect_text:=str(skill.get("effect_label","")).replace("명중 ","명중").replace("피해 ","피해").replace(" · ","·")
-		var selected_prefix:="> " if skill_id==member_skill_selected_id else "  "
-		(row.title as Button).text="%sR%02d  %s  %s  %s XP×%d"%[selected_prefix,
-			int(skill.get("rank",0)),str(skill.get("label","기술")),effect_text,
-			str(skill.get("training_mode_label","보통")),weight]
+		(row.rank as Label).text="R%02d"%int(skill.get("rank",0))
+		(row.name as Label).text=str(skill.get("label","기술"))
+		(row.effect as Label).text=effect_text
+		(row.mode as Label).text="%s×%d"%[str(skill.get("training_mode_label","보통")),weight]
+		(row.xp as Label).text="%d/%d"%[int(skill.get("training_current",0)),
+			maxi(1,int(skill.get("training_required",1)))]
 		(row.title as Button).tooltip_text="터치하여 %s로 변경"%ProgressionRegistryScript.mode_label(
 			ProgressionRegistryScript.next_training_mode(mode))
-		_apply_skill_ledger_style(row.title,mode)
-		(row.detail as Control).visible=member_skill_category_expanded and skill_id==member_skill_selected_id
-		var progress:Variant=row.progress
-		progress.max_value=maxi(1,int(skill.get("training_required",1)));progress.value=int(skill.get("training_current",0))
-		progress.tooltip_text="훈련 %d/%d"%[int(skill.get("training_current",0)),int(skill.get("training_required",1))]
-		(row.effect as Label).text="현재 R%d 효과 · %s"%[int(skill.get("rank",0)),str(skill.get("effect_label",""))]
-		(row.future as Label).text="훈련 %d / %d · 누적 %d"%[int(skill.get("training_current",0)),
-			int(skill.get("training_required",1)),int(skill.get("training_total",0))]
+		_apply_skill_ledger_style(row.title,row.mode,mode)
 	_reflow_member_detail_scroll()
 
-func _apply_skill_ledger_style(button:Button,mode:String)->void:
+func _apply_skill_ledger_style(button:Button,mode_label:Label,mode:String)->void:
 	var clear:=AsciiFrameScript.borderless_surface(Color("#00000000"),0)
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		button.add_theme_stylebox_override(state,clear)
 	var tone:=AsciiFrameScript.BRASS if mode=="FOCUS" else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.CYAN)
-	for color_name in ["font_color","font_hover_color","font_pressed_color","font_focus_color"]:
-		button.add_theme_color_override(color_name,tone)
+	mode_label.add_theme_color_override("font_color",tone)
 	button.set_meta("no_button_chrome",true);button.set_meta("raw_training_weight",
 		int(ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
 
@@ -1518,7 +1787,6 @@ func _toggle_weapon_mastery_category()->void:
 	for skill_id in member_progression_skill_rows:
 		var row:Dictionary=member_progression_skill_rows[skill_id]
 		(row.panel as Control).visible=member_skill_category_expanded
-		(row.detail as Control).visible=member_skill_category_expanded and str(skill_id)==member_skill_selected_id
 	_update_weapon_mastery_category_label()
 	_reflow_member_detail_scroll()
 
@@ -1761,13 +2029,55 @@ func _on_auto_execute()->void:
 	_schedule_auto_combat_commit(planning)
 
 func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id:int=-1)->void:
+	var action_started:=Time.get_ticks_usec()
 	var status:Dictionary=session.party_status();var protagonist_id:=int(status.get("protagonist_id",-1))
 	_cancel_auto_pending(false)
 	if selected_member_id==protagonist_id:
 		var action=_make_party_action(selected_member_id,action_type,destination,target_id)
-		var planning:Dictionary=session.replace_auto_combat_protagonist_action(action)
-		if not bool(planning.get("accepted",false)) or not bool(planning.get("commit_ready",false)):
+		var direct_solo:=_is_direct_solo_combat(status)
+		# The direct facade creates the exact same canonical protagonist draft but
+		# avoids building the companion-oriented planning DTO twice when none exist.
+		var planning:Dictionary
+		if direct_solo and action_type=="MOVE":
+			planning=session.select_movement_destination(selected_member_id,destination)
+		elif direct_solo:
+			planning=session.set_actor_action(selected_member_id,action_type,destination,target_id)
+		else:
+			planning=session.replace_auto_combat_protagonist_action(action)
+		var planning_finished:=Time.get_ticks_usec()
+		if not bool(planning.get("accepted",false)) \
+				or (not direct_solo and not bool(planning.get("commit_ready",false))):
 			auto_combat_fallback=true;_set_action_rejection(planning,"%s 행동 불가"%_selected_name());_request_refresh();return
+		if direct_solo:
+			# In solo/no-companion play the protagonist choice is the complete plan.
+			# Commit through the same authoritative session API before returning from
+			# the tap, and invalidate every older deferred generation so it cannot
+			# commit the same turn again.
+			_last_direct_solo_refresh_profile.clear()
+			auto_generation+=1;auto_combat_pending=false;auto_combat_render_stage=0
+			auto_combat_plan_hash="";auto_combat_step_index=-1
+			auto_override_edit=false;auto_combat_fallback=false
+			var commit_started:=Time.get_ticks_usec()
+			var result:Dictionary=session.commit_turn()
+			var commit_finished:=Time.get_ticks_usec()
+			_record_result(result,true,"자동 실행 불가",true);_clear_move_preview()
+			selected_target_id=-1
+			var after_status:Dictionary=session.party_status()
+			if bool(result.get("accepted",false)) and _is_direct_solo_combat(after_status):
+				_refresh_direct_solo_combat_surface(after_status)
+			else:
+				if str(after_status.get("safe_phase",""))=="GROUPED_COMPLETE":
+						notice_text="승리! 출구를 향해 탐험을 계속하세요."
+				_request_refresh()
+			var action_finished:=Time.get_ticks_usec()
+			_last_direct_solo_turn_profile={
+				"draft_usec":planning_finished-action_started,
+				"commit_usec":commit_finished-commit_started,
+				"result_and_refresh_usec":action_finished-commit_finished,
+				"refresh":_last_direct_solo_refresh_profile.duplicate(true),
+				"total_usec":action_finished-action_started,
+			}.duplicate(true)
+			return
 		auto_override_edit=false;auto_combat_fallback=false
 		notice_text="";action_feedback_text="최종 계획을 확인했습니다."
 		_schedule_auto_combat_commit(planning)
@@ -1885,6 +2195,8 @@ func _on_cell(position:Vector2i)->void:
 		return
 	if status.view_mode!="COMBAT":return
 	selected_target_id=-1;_clear_move_preview()
+	if auto_orchestration_enabled and _is_direct_solo_combat(status):
+		_stage_auto_combat_action("MOVE",[position.x,position.y]);return
 	var preview:Dictionary=session.preview_actor_action(selected_member_id,"MOVE",[position.x,position.y])
 	if not bool(preview.get("accepted",false)):
 		notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."))
@@ -2293,14 +2605,63 @@ func _combat_log_text(history:Dictionary)->String:
 	var groups:Variant=history.get("groups",[])
 	if not groups is Array or groups.is_empty():
 		lines.append("아직 주요 사건이 없습니다.");return "\n".join(lines)
+	var meaningful_group_count:=0
 	for group in groups:
 		if not group is Dictionary:continue
-		lines.append("── 턴 %d · 시간 %d→%d ──"%[int(group.get("step_index",0)),int(group.get("start_time",0)),int(group.get("end_time",0))])
+		var meaningful_messages:Array[String]=[]
 		for row in group.get("rows",[]):
 			if not row is Dictionary:continue
 			var message:=str(row.get("message","")).strip_edges()
-			if not message.is_empty():lines.append(message)
+			if not message.is_empty() and not _is_persistent_log_filler(message):
+				meaningful_messages.append(message)
+		if meaningful_messages.is_empty():continue
+		meaningful_group_count+=1
+		lines.append("── 턴 %d · 시간 %d→%d ──"%[int(group.get("step_index",0)),int(group.get("start_time",0)),int(group.get("end_time",0))])
+		lines.append_array(meaningful_messages)
+	if meaningful_group_count==0:lines.append("아직 주요 사건이 없습니다.")
 	return "\n".join(lines)
+
+func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
+	var lines:Array[String]=[]
+	var groups:Variant=history.get("groups",[])
+	if groups is Array:
+		for group_index in range(groups.size()-1,-1,-1):
+			var group:Variant=groups[group_index]
+			if not group is Dictionary:continue
+			var rows:Variant=group.get("rows",[])
+			if not rows is Array:continue
+			for row_index in range(rows.size()-1,-1,-1):
+				var row:Variant=rows[row_index]
+				if not row is Dictionary:continue
+				var message:=str(row.get("message","")).strip_edges().replace("\n"," ")
+				if message.is_empty() or _is_persistent_log_filler(message):continue
+				lines.push_front(message)
+				if lines.size()>=2:return "\n".join(lines)
+	if not lines.is_empty():return "\n".join(lines)
+	return ""
+
+func _full_meaningful_record_text(history:Dictionary)->String:
+	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
+	if groups is Array:
+		for group in groups:
+			if not group is Dictionary:continue
+			var messages:Array[String]=[]
+			for row in group.get("rows",[]):
+				if not row is Dictionary:continue
+				var message:=str(row.get("message","")).strip_edges()
+				if not message.is_empty() and not _is_persistent_log_filler(message):messages.append(message)
+			if messages.is_empty():continue
+			lines.append("턴 %d · 시간 %d→%d"%[int(group.get("step_index",0)),
+				int(group.get("start_time",0)),int(group.get("end_time",0))])
+			lines.append_array(messages)
+	if lines.is_empty():return "아직 기록된 주요 사건이 없습니다."
+	return "\n".join(lines)
+
+func _is_persistent_log_filler(message:String)->bool:
+	var compact:=message.strip_edges()
+	return compact.begins_with("선택 상세") \
+		or "건강과 긴장이 안정적입니다" in compact \
+		or "주인공 행동 준비" in compact
 
 func _scroll_information_to_latest_log()->void:
 	if not is_inside_tree():return
@@ -2344,6 +2705,14 @@ func _dos_command_label(node_name:String,value:String)->String:
 func _is_solo_product_session()->bool:
 	return session!=null and session.has_method("is_solo_combat") \
 		and bool(session.call("is_solo_combat"))
+
+func _is_direct_solo_combat(status:Dictionary)->bool:
+	var members:Variant=status.get("party_member_ids",[])
+	return _is_solo_product_session() and auto_orchestration_enabled \
+		and str(status.get("safe_phase",""))=="ENGAGED" \
+		and str(status.get("view_mode",""))=="COMBAT" \
+		and members is Array and members.size()==1 \
+		and selected_member_id==int(status.get("protagonist_id",-1))
 func _clear_container(container:Control)->void:
 	for child in container.get_children():container.remove_child(child); child.free()
 func _phase(value:String)->String:
@@ -2357,10 +2726,11 @@ func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경�
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0
-	phase_panel.custom_minimum_size.y=64 if _is_solo_product_session() else (52 if wide else 48)
+	var product_hud:=_is_solo_product_session()
+	phase_panel.custom_minimum_size.y=0 if product_hud else (52 if wide else 48)
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
-	if _is_solo_product_session():
+	if product_hud:
 		grid.custom_minimum_size=Vector2(size.x,size.x)
 	elif wide:
 		grid.custom_minimum_size=Vector2(405,405)
@@ -2372,6 +2742,8 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 			else (Vector2(316,316) if run_available else Vector2(348,348))
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
+	event_surface.custom_minimum_size.y=38 if wide else 36
+	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var banner:Dictionary=presentation.get("banner",{})

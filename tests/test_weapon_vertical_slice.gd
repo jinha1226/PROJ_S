@@ -144,11 +144,31 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 	sandbox.initialize_for_headless_test(session, true)
 	sandbox._open_hero_detail()
 	sandbox._select_member_detail_tab("SKILL")
-	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6, "six UI proficiency cards")
+	sandbox._toggle_weapon_mastery_category()
+	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6,
+		"six fixed proficiency ledger rows")
 	check("단검" not in sandbox.member_progression_stats.text \
 		and "장비는 아이템 탭" in sandbox.member_progression_stats.text \
-		and "승리 XP 3:1:0" in sandbox.member_skill_help.text,
+		and sandbox.member_skill_help.text=="행 터치: 집중×3 → 보통×1 → 끄기×0",
 		"skill tab contains independent training contract without equipment")
+	check(sandbox.find_child("SkillDetail",true,false)==null \
+		and sandbox.find_child("TrainingProgress",true,false)==null \
+		and sandbox.find_child("FutureMilestone",true,false)==null,
+		"fixed ledger removes expandable detail, progress gauge, and future copy")
+	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
+		var row:Dictionary=sandbox.member_progression_skill_rows[skill_id]
+		var panel:PanelContainer=row.panel;var ledger:=panel.find_child("SkillLedgerRow",false,false)
+		var rank:Label=row.rank;var skill_name:Label=row.name;var effect:Label=row.effect
+		var mode:Label=row.mode;var xp:Label=row.xp
+		check(panel.visible and bool(panel.get_meta("fixed_single_line_ledger",false)) \
+			and ledger!=null,"%s is one visible fixed ledger row"%skill_id)
+		check(rank.text.begins_with("R") and not skill_name.text.is_empty() \
+			and "명중" in effect.text and "피해" in effect.text,
+			"%s row shows rank, name, and current combat effect"%skill_id)
+		check("×" in mode.text and mode.horizontal_alignment==HORIZONTAL_ALIGNMENT_RIGHT \
+			and "/" in xp.text and xp.horizontal_alignment==HORIZONTAL_ALIGNMENT_RIGHT \
+			and ledger.get_child(ledger.get_child_count()-1)==xp,
+			"%s row ends with mode multiplier and current XP"%skill_id)
 	sandbox._select_member_detail_tab("ITEM")
 	check("장착 · 단검" in sandbox.member_item_weapon_text.text \
 		and "공격시간  100" in (sandbox.member_item_stats.TIME as Label).text,

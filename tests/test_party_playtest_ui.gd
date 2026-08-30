@@ -411,7 +411,8 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check_eq(sandbox.phase_label.text,"전투","%s coarse combat situation"%preset)
 		check(sandbox.combat_action_area.visible,"%s fixed action area shown"%preset)
 		check_eq(sandbox.combat_action_area.get_parent(),sandbox.root_layout,"%s action area is PartyLayout sibling"%preset)
-		check_eq(sandbox.root_layout.get_child(sandbox.root_layout.get_child_count()-1),sandbox.combat_action_area,"%s action area is final PartyLayout sibling"%preset)
+		check_eq(sandbox.root_layout.get_child(sandbox.root_layout.get_child_count()-1),sandbox.bottom_navigation,
+			"%s fixed bottom navigation is final PartyLayout sibling"%preset)
 		check_eq(sandbox.combat_action_dock.get_parent(),sandbox.combat_action_area,"%s dock is inside fixed action area"%preset)
 		check_eq(sandbox.action_feedback_label.get_parent(),sandbox.combat_action_area,"%s feedback is inside fixed action area"%preset)
 		check(not _inside_ancestor(sandbox.combat_action_area,ScrollContainer),"%s action area is independent from information scroll"%preset)
@@ -830,7 +831,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 	manual.free()
 
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
-		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
 			"%s solo auto fixture reaches contact"%viewport_size)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
@@ -876,66 +877,81 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		check(enemy_summary==null,
 			"%s solo fixture does not reveal enemy target or direction"%viewport_size)
 		var enemy:=int(session.party_status().visible_enemy_ids[0])
-		check(_relocate_with_move_events(session.sim,enemy,
-			session.sim.world.entities[hero].position+Vector2i.RIGHT),
-			"%s solo enemy adjacent"%viewport_size)
-		sandbox._refresh();sandbox._on_actor(enemy);sandbox._refresh()
-		var summary:=sandbox.find_child("TurnSummary",true,false) as Label
-		check(summary!=null and "명중 95%" in summary.text and "적중 시 26 피해" in summary.text,
-			"%s solo target tap exposes attack preview"%viewport_size)
-		var current:Dictionary=session.current_turn_preview()
-		check(current.accepted and current.actor_rows.size()==1 \
-			and int(current.actor_rows[0].actor_id)==hero,
-			"%s solo final plan contains protagonist only"%viewport_size)
+		var hero_position:Vector2i=session.sim.world.entities[hero].position
+		var enemy_position:Vector2i=session.sim.world.entities[enemy].position
+		var opening_distance:=maxi(absi(hero_position.x-enemy_position.x),
+			absi(hero_position.y-enemy_position.y))
+		check(opening_distance>=2 and opening_distance<=4,
+			"%s deterministic nearby enemy still requires an approach"%viewport_size)
+		var before_tap_step:=int(session.party_status().step_index)
+		sandbox._on_actor(enemy)
+		check(int(session.party_status().step_index)==before_tap_step \
+			and not bool(sandbox.auto_flow_state().get("combat_pending",false)),
+			"%s distant enemy tap cannot fabricate a melee turn or plan"%viewport_size)
+		check(sandbox.grid._intent_overlays.is_empty() and sandbox.grid._route_path.is_empty() \
+			and sandbox.grid.cursor_cell==Vector2i(-1,-1),
+			"%s rejected distant tap leaves no intent, route, or cursor marks"%viewport_size)
 		sandbox.free()
 	return finish()
 
 
-func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> bool:
+func test_pixel_product_hud_bottom_navigation_modals_and_map_are_fog_safe() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
-		check_eq(sandbox.phase_panel.name,"TopExplorationHUD","%s unified top HUD"%viewport_size)
-		check_eq(sandbox.phase_panel.custom_minimum_size.y,64.0,
-			"%s unified HUD uses the compact 64px top rail"%viewport_size)
-		var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
-		var cartography:Dictionary=sandbox.minimap.cartography_spec()
-		check(minimap_frame!=null and minimap_frame.custom_minimum_size==Vector2(62,60) \
-			and int(cartography.columns)==8 and int(cartography.rows)==8 \
-			and str(minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
-			"%s reusable 8x8 minimap has a compact readable glyph frame"%viewport_size)
-		check(sandbox.record_button.custom_minimum_size.y>=44 \
-			and sandbox.hero_detail_button.custom_minimum_size.y>=44 \
-			and sandbox.record_button.text=="[기록]" and sandbox.hero_detail_button.text=="[인물]",
-			"%s record and hero actions are honest DOS touch commands"%viewport_size)
-		for forbidden in ["탐험","시간","목표"]:
-			check(not forbidden in sandbox.phase_label.text \
-				and not forbidden in sandbox.recent_event_label.text,
-				"%s top HUD omits %s copy"%[viewport_size,forbidden])
-		var observation:Dictionary=session.observe_party_world()
-		var hero_marker:=false;var enemy_marker:=false;var unseen_safe:=false
-		for cell in observation.cells:
-			var position:=Vector2i(int(cell.position[0]),int(cell.position[1]))
-			var spec:Dictionary=sandbox.minimap.cell_draw_spec(position)
-			if str(spec.marker)=="HERO":hero_marker=true
-			elif str(spec.marker)=="ENEMY":enemy_marker=true
-			if str(spec.visibility_state)=="UNSEEN":
-				unseen_safe=str(spec.marker).is_empty() and spec.color==sandbox.minimap.UNSEEN_COLOR
-			check(not bool(spec.leaks_direction) and not bool(spec.leaks_target),
-				"%s minimap never publishes enemy plan data"%viewport_size)
-		check(hero_marker and enemy_marker and unseen_safe,
-			"%s minimap distinguishes visible actors while unseen stays black"%viewport_size)
-		check(not sandbox.log_label.visible and sandbox.deck.visible,
-			"%s exploration context starts in the shared information slot"%viewport_size)
-		sandbox.record_button.pressed.emit();check(sandbox.log_label.visible and not sandbox.deck.visible,
-			"%s record action swaps the shared slot to narrative log"%viewport_size)
-		sandbox.record_button.pressed.emit();check(not sandbox.log_label.visible and sandbox.deck.visible,
-			"%s record action restores the shared context slot"%viewport_size)
-		sandbox.hero_detail_button.pressed.emit()
-		check(sandbox.member_detail_modal.visible \
-			and "주인공" in sandbox.member_detail_title.text,
-			"%s hero action opens the existing authoritative detail modal"%viewport_size)
+		check(not sandbox.phase_panel.visible and not sandbox.top_hud_actions.visible \
+			and not sandbox.ascii_3d_lab_button.visible,
+			"%s obsolete product top rail and 3D entry are unreachable"%viewport_size)
+		check(sandbox.cards.visible and sandbox.grid.visible and sandbox.event_surface.visible \
+			and sandbox.bottom_navigation.visible and not sandbox.info_scroll.visible,
+			"%s product surfaces replace the duplicate context stack"%viewport_size)
+		check_eq(int(sandbox.cards.custom_minimum_size.y),68,
+			"%s solo status strip uses the 68px budget"%viewport_size)
+		for contract in [[sandbox.map_nav_button,"[지도]"],[sandbox.person_nav_button,"[인물]"],
+				[sandbox.skill_nav_button,"[숙련]"],[sandbox.equipment_nav_button,"[장비]"],
+				[sandbox.history_nav_button,"[기록]"]]:
+			var button:Button=contract[0]
+			check(button.text==str(contract[1]) and button.custom_minimum_size.y>=44.0,
+				"%s bottom navigation keeps honest 44px actions"%viewport_size)
+		var event_before:String=sandbox.event_label.text
+		sandbox.map_nav_button.pressed.emit()
+		var hero_position:Array=session.party_status().protagonist_position
+		var hero_spec:Dictionary=sandbox.map_overlay.cell_draw_spec(
+			Vector2i(int(hero_position[0]),int(hero_position[1])))
+		var source_minimap:Dictionary=session.observe_party_ui(15).get("minimap",{})
+		var overlay_layout:Dictionary=sandbox.map_overlay.layout_spec(viewport_size)
+		var overlay_contract:Dictionary=sandbox.map_overlay.overlay_spec()
+		check(sandbox.map_overlay.visible and sandbox.map_nav_button.button_pressed \
+			and sandbox.grid.modal_open and str(hero_spec.role)=="HERO",
+			"%s first map open seeds the current observation before opening"%viewport_size)
+		check_eq([int(overlay_layout.world_width),int(overlay_layout.world_height)],
+			[int(source_minimap.get("width",0)),int(source_minimap.get("height",0))],
+			"%s map folio dimensions exactly match the source minimap DTO"%viewport_size)
+		check(bool(overlay_contract.uses_world_coordinates) \
+			and not bool(overlay_contract.uses_sector_folding),
+			"%s map folio preserves full absolute coordinates without sector folding"%viewport_size)
+		check(bool(overlay_contract.stores_compact_scalars_only) \
+			and not bool(overlay_contract.leaks_hazard) and not bool(overlay_contract.leaks_target) \
+			and not bool(overlay_contract.leaks_direction),
+			"%s full map keeps fog-safe compact scalar authority"%viewport_size)
+		sandbox.map_nav_button.pressed.emit()
+		check(not sandbox.map_overlay.visible and not sandbox.map_nav_button.button_pressed,
+			"%s map toggle closes and synchronizes its navigation state"%viewport_size)
+		sandbox.history_nav_button.pressed.emit()
+		check(sandbox.record_modal.visible and sandbox.history_nav_button.button_pressed \
+			and not sandbox.record_body.text.is_empty() and sandbox.event_label.text==event_before,
+			"%s record opens full history without replacing compact events"%viewport_size)
+		sandbox.history_nav_button.pressed.emit()
+		sandbox.person_nav_button.pressed.emit()
+		check(sandbox.member_detail_modal.visible and sandbox.member_detail_current_tab=="STATUS",
+			"%s person navigation opens hero STATUS directly"%viewport_size)
+		sandbox._close_member_detail();sandbox.skill_nav_button.pressed.emit()
+		check(sandbox.member_detail_current_tab=="SKILL",
+			"%s skill navigation opens hero SKILL directly"%viewport_size)
+		sandbox._close_member_detail();sandbox.equipment_nav_button.pressed.emit()
+		check(sandbox.member_detail_current_tab=="ITEM",
+			"%s equipment navigation opens hero ITEM directly"%viewport_size)
 		sandbox.free()
 	return finish()
 

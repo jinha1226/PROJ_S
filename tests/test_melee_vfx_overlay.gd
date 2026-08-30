@@ -126,10 +126,33 @@ func test_melee_vfx_rapid_consecutive_effects_are_independent_and_bounded()->boo
 	check(overlay.shake_offset_px(sample).length()<=2.0,
 		"combined rapid shake is capped instead of summed")
 	for effect in overlay._effects:
-		effect.started_at_ms=Time.get_ticks_msec()-int(params.effect_duration_ms)-1
+		effect.first_drawn=true;effect.live_elapsed_ms=int(params.effect_duration_ms)
 	overlay._process(0.0)
 	check(overlay.active_effect_count()==0 and not overlay.is_processing(),
 		"overlay disables processing after the last bounded effect")
+	grid.free();return finish()
+
+
+func test_melee_vfx_live_clock_waits_for_first_draw_and_caps_slow_frames()->bool:
+	var fixture:=_fixture(Vector2i.RIGHT);var grid:PartyGridView=fixture.grid
+	var overlay:MeleeVfxOverlay=grid.melee_vfx
+	check(overlay.play(Vector2i(7,7),Vector2i(8,7)),"live-clock melee starts")
+	var params:=overlay.parameter_spec()
+	overlay._process(1.0)
+	var before_draw:=overlay.active_effects()[0]
+	check(overlay.active_effect_count()==1 and not bool(before_draw.first_drawn) \
+		and float(before_draw.live_elapsed_ms)==0.0,
+		"one-second pre-draw stall cannot consume the first visible VFX frame")
+	overlay._effects[0].first_drawn=true
+	overlay._process(1.0)
+	var after_slow_frame:=overlay.active_effects()[0]
+	check(float(after_slow_frame.live_elapsed_ms)<=float(params.max_live_frame_advance_ms) \
+		and overlay.active_effect_count()==1,
+		"slow rendered frame advances only the configured bounded local clock")
+	var first_spec:=overlay.effect_draw_specs()[0]
+	check(bool(first_spec.line_visible) and bool(first_spec.flash_visible) \
+		and int(first_spec.particle_count)>=3 and overlay.shake_offset_px().length()>0.0,
+		"slash, flash, debris, and subtle shake coexist on a guaranteed live frame")
 	grid.free();return finish()
 
 

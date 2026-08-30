@@ -187,16 +187,11 @@ func _validate_next_step() -> Dictionary:
 		return {"accepted": false, "reason": str(next_preview.reason),
 			"details": {"destination": _position_wire(next_position)}}
 
-	var fresh_path: Dictionary = _owner().sim.find_path(actor_id, _wire_position(_active.goal))
-	if not bool(fresh_path.get("found", false)):
-		return {"accepted": false, "reason": "route_path_changed"}
-	var frozen_suffix: Array = _active.path.slice(next_index - 1)
-	if not _same_path(fresh_path.get("path", []), frozen_suffix):
-		return {"accepted": false, "reason": "route_path_changed"}
-
 	# A route freezes every remaining terrain cost and every travelling member's
 	# four-component exposure ceiling. No silent re-path or newly riskier suffix is
-	# accepted, even when the immediate next cell itself remains legal.
+	# accepted, even when the immediate next cell itself remains legal. Check this
+	# before re-pathing so a newly visible/increased hazard keeps its exact stop
+	# reason instead of being reduced to a generic route change.
 	for frozen_step_index in range(next_index - 1, _active.steps.size()):
 		var frozen_step: Dictionary = _active.steps[frozen_step_index]
 		var fresh_step := _build_step(int(frozen_step.index),
@@ -224,6 +219,13 @@ func _validate_next_step() -> Dictionary:
 							"current_risk": int(risk[component])}}
 		if fresh_step.member_risk_ceilings.size() != frozen_step.member_risk_ceilings.size():
 			return {"accepted": false, "reason": "route_party_changed"}
+	var fresh_path: Dictionary = _owner().find_exploration_path(actor_id,
+		_wire_position(_active.goal))
+	if not bool(fresh_path.get("found", false)):
+		return {"accepted": false, "reason": "route_path_changed"}
+	var frozen_suffix: Array = _active.path.slice(next_index - 1)
+	if not _same_path(fresh_path.get("path", []), frozen_suffix):
+		return {"accepted": false, "reason": "route_path_changed"}
 	if _snapshot_fingerprint() != str(_active.get("resume_fingerprint", "")):
 		return {"accepted": false, "reason": "route_stale"}
 	return {"accepted": true, "reason": "ok"}
@@ -256,7 +258,7 @@ func _build_plan(goal: Vector2i) -> Dictionary:
 	if actor.position == goal:
 		base["reason"] = "route_already_at_goal"
 		return base
-	var found: Dictionary = _owner().sim.find_path(actor_id, goal)
+	var found: Dictionary = _owner().find_exploration_path(actor_id, goal)
 	if not bool(found.get("found", false)):
 		base["reason"] = _path_reason(str(found.get("reason", "route_unavailable")))
 		return base
@@ -282,6 +284,13 @@ func _build_plan(goal: Vector2i) -> Dictionary:
 	base["steps"] = step_rows
 	base["total_steps"] = step_rows.size()
 	base["total_cost"] = int(found.get("total_cost", 0))
+	base["total_risk"] = int(found.get("total_risk", 0))
+	base["max_total_risk"] = int(found.get("max_total_risk", 0))
+	base["routing_policy"] = str(found.get("routing_policy", "UNAVAILABLE"))
+	base["hazard_free"] = bool(found.get("hazard_free", false))
+	base["risk_weighted"] = bool(found.get("risk_weighted", false))
+	base["shortest_steps"] = int(found.get("shortest_steps", step_rows.size()))
+	base["detour_limit_steps"] = int(found.get("detour_limit_steps", step_rows.size()))
 	base["remaining_steps"] = step_rows.size()
 	base["fingerprint"] = _snapshot_fingerprint()
 	var hash_source := base.duplicate(true)
@@ -299,29 +308,7 @@ func _build_step(index: int, from_position: Vector2i, to_position: Vector2i,
 	var definition: Dictionary = TerrainRegistryScript.definition(str(sample.terrain_id))
 	if definition.is_empty() or not bool(sample.passable) or int(sample.move_time_cost) <= 0:
 		return {"accepted": false, "reason": "move_terrain_blocked"}
-	var risks: Array = []
-	var state = _owner().sim.world.party_encounter
-	var member_ids: Array = state.party_member_ids.duplicate()
-	member_ids.sort_custom(func(a, b):
-		var member_a = state.member(int(a)); var member_b = state.member(int(b))
-		return int(member_a.roster_slot) < int(member_b.roster_slot) \
-			if int(member_a.roster_slot) != int(member_b.roster_slot) else int(a) < int(b))
-	for member_id_value in member_ids:
-		var member_id := int(member_id_value)
-		var member = state.member(member_id)
-		var entity = _owner().sim.world.entities.get(member_id)
-		if entity == null or not _owner().sim.world.is_environment_exposed(member_id) \
-				or (member.presence != "GROUPED" and member_id != state.protagonist_id):
-			continue
-		var evaluated = _owner().sim.evaluate_exposure_for_entity(member_id, to_position)
-		if evaluated == null:
-			return {"accepted": false, "reason": "route_destination_unavailable"}
-		var wire: Dictionary = evaluated.evaluation.to_dict()
-		risks.append({"entity_id": member_id, "display_name": str(entity.display_name),
-			"role": str(member.role), "species_id": str(entity.species_id),
-			"fire": int(wire.fire_score), "water": int(wire.water_score),
-			"electric": int(wire.electric_score), "poison": int(wire.poison_score),
-			"total": int(wire.total_risk)})
+	var risks: Array = _owner().exploration_route_risk_rows(to_position)
 	var max_total := 0
 	for risk in risks:
 		max_total = maxi(max_total, int(risk.total))
@@ -338,7 +325,11 @@ func _base_plan(goal: Vector2i) -> Dictionary:
 		"accepted": false, "reason": "route_unavailable", "actor_id": -1,
 		"from": [-1, -1], "goal": _position_wire(goal), "path": [],
 		"plan_hash": "", "fingerprint": "", "total_steps": 0,
-		"total_cost": 0, "completed_steps": 0, "remaining_steps": 0,
+		"total_cost": 0, "total_risk":0, "max_total_risk":0,
+		"routing_policy":"UNAVAILABLE",
+		"hazard_free":false, "risk_weighted":false,
+		"shortest_steps":0, "detour_limit_steps":0,
+		"completed_steps": 0, "remaining_steps": 0,
 		"current_index": 0, "steps": [], "active": false, "completed": false,
 		"terminal": false, "stop_reason": "", "last_step_result": null,
 		"last_step_effects": []}

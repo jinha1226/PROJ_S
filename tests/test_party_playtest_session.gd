@@ -692,6 +692,92 @@ func test_phase_presentation_state_is_detached_persistent_and_defeat_derived() -
 	return finish()
 
 
+func test_exploration_route_is_exact_shortest_until_visible_hazard_requires_bounded_risk() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter
+	var hero:=int(state.protagonist_id);session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,14)
+	var goal:=Vector2i(9,7)
+	var shortest:Dictionary=session.find_exploration_path(hero,goal)
+	check(shortest.found,"shortest route exists")
+	check_eq(shortest.routing_policy,"SHORTEST_HAZARD_FREE","zero-visible-risk keeps shortest policy")
+	check_eq([shortest.steps,shortest.total_cost,shortest.total_risk],[2,200,0],
+		"open route keeps exact shortest/fastest totals")
+	check_eq(session.find_exploration_path(hero,goal).path,shortest.path,
+		"zero-risk shortest tie break is deterministic")
+	var shortest_hop:Vector2i=shortest.path[1]
+	check(session.sim.world.bootstrap_set_fire(shortest_hop,100)!=null,
+		"visible route hazard fixture")
+	var visible_risk_rows:Array=session.exploration_route_risk_rows(shortest_hop)
+	var visible_party_max:=0
+	for row in visible_risk_rows:visible_party_max=maxi(visible_party_max,int(row.total))
+	check(visible_party_max>0,"visible fire produces positive party-max route risk: %s"%str(visible_risk_rows))
+	var avoided:Dictionary=session.find_exploration_path(hero,goal)
+	check(avoided.found and avoided.risk_weighted,"visible hazard enables affinity risk pass")
+	check_eq(avoided.routing_policy,"VISIBLE_AFFINITY_RISK_WEIGHTED",
+		"visible hazard policy is explicit")
+	check(shortest_hop not in avoided.path,"visible high-risk cell is avoided")
+	check(avoided.hazard_free and int(avoided.max_total_risk)==0,
+		"available safe alternative has zero party-max exposure")
+	check(int(avoided.steps)<=int(avoided.detour_limit_steps) \
+			and int(avoided.detour_limit_steps)<=int(shortest.steps)+Session.MAX_VISIBLE_HAZARD_DETOUR_STEPS,
+		"risk route detour has a hard bound")
+	return finish()
+
+
+func test_exploration_route_never_reads_unseen_live_hazards() -> bool:
+	var session=Session.new(44,20260828,"SHOWCASE_V1")
+	var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
+	session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(1,1)
+	var hidden_goal:=Vector2i(13,13)
+	var before:Dictionary=session.find_exploration_path(hero,hidden_goal)
+	check(before.found,"hidden-cell route fixture exists")
+	check(session.sim.world.bootstrap_set_fire(hidden_goal,100)!=null,"hidden fire fixture")
+	var after:Dictionary=session.find_exploration_path(hero,hidden_goal)
+	check_eq(after.path,before.path,"unseen live fire cannot influence selected path")
+	check_eq([after.total_risk,after.max_total_risk,after.routing_policy],
+		[before.total_risk,before.max_total_risk,before.routing_policy],
+		"unseen live fire cannot influence risk metadata")
+	for row in session.exploration_route_risk_rows(hidden_goal):
+		check_eq(row.total,0,"unseen route ceiling exposes no hidden affinity risk")
+	return finish()
+
+
+func test_select_movement_destination_is_one_mutating_facade_in_both_modes() -> bool:
+	var exploration=Session.new();var exploration_state=exploration.sim.world.party_encounter
+	var hero:=int(exploration_state.protagonist_id)
+	exploration.sim.world.entities[exploration_state.enemy_ids[0]].position=Vector2i(14,14)
+	var route_before:Dictionary=exploration.find_exploration_path(hero,Vector2i(9,7))
+	var selected:Dictionary=exploration.select_movement_destination(hero,[9,7])
+	check(selected.accepted,"exploration cell selection starts canonical route")
+	check_eq([exploration.sim.world.step_index,exploration.command_journal.size()],[1,1],
+		"exploration selection commits exactly one existing move primitive")
+	check_eq(exploration.sim.world.entities[hero].position,route_before.path[1],
+		"exploration selection advances exactly the first deterministic hop")
+
+	var combat=_engaged_with_companions([1]);var combat_state=combat.sim.world.party_encounter
+	var combat_hero:=int(combat_state.protagonist_id)
+	var origin:Vector2i=combat.sim.world.entities[combat_hero].position
+	var destination:=Vector2i(-1,-1)
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var candidate:Vector2i=origin+direction
+		if bool(combat.preview_actor_action(combat_hero,"MOVE",[candidate.x,candidate.y]).get("accepted",false)):
+			destination=candidate;break
+	check(destination!=Vector2i(-1,-1),"combat direct-move fixture has a legal adjacent cell")
+	var before_snapshot=combat.sim.snapshot();var before_steps:int=combat.sim.world.step_index
+	var combat_selected:Dictionary=combat.select_movement_destination(combat_hero,destination)
+	check(combat_selected.accepted,"combat cell selection directly replaces pending action")
+	check_eq(combat.sim.snapshot(),before_snapshot,"combat selection stages action without a placement mutation")
+	check_eq(combat.current_turn_preview().canonical_request.protagonist_action.type,"MOVE",
+		"combat selection stores the one direct MOVE draft")
+	var move_projection:=false
+	for row in combat.turn_intent_overlays():
+		if int(row.actor_id)==combat_hero and str(row.type)=="MOVE":move_projection=true
+	check(move_projection,"joined-party planning projection remains available")
+	check(combat.commit_turn().accepted,"direct combat MOVE draft resolves through existing turn commit")
+	check_eq(combat.sim.world.step_index,before_steps+1,"combat move resolves in one canonical batch")
+	return finish()
+
+
 func test_long_route_preview_is_pure_detached_and_each_call_commits_one_existing_move() -> bool:
 	var session=Session.new();var state=session.sim.world.party_encounter;var hero=state.protagonist_id
 	session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,14)
@@ -780,11 +866,10 @@ func test_long_route_stops_on_contact_blocker_risk_stale_death_and_combat() -> b
 
 	var defeated=Session.new();var defeated_state=defeated.sim.world.party_encounter
 	defeated.sim.world.entities[defeated_state.protagonist_id].health=5
-	var lethal_path:Dictionary=defeated.sim.find_path(defeated_state.protagonist_id,Vector2i(9,7))
-	var lethal_cell:Vector2i=lethal_path.path[1]
+	var lethal_cell:=Vector2i(8,7)
 	check(defeated.sim.world.bootstrap_set_fire(lethal_cell,100)!=null,"route defeat fire")
-	var defeat_preview=defeated.preview_exploration_route(Vector2i(9,7))
-	var defeat_result=defeated.start_exploration_route(Vector2i(9,7),str(defeat_preview.plan_hash))
+	var defeat_preview=defeated.preview_exploration_route(lethal_cell)
+	var defeat_result=defeated.start_exploration_route(lethal_cell,str(defeat_preview.plan_hash))
 	check(defeat_result.accepted and defeat_result.terminal,"lethal accepted hop terminal")
 	check_eq(defeat_result.stop_reason,"route_party_defeated","death exact stop")
 	check_eq(defeated.party_status().safe_phase,"PARTY_DEFEATED","death authoritative phase")

@@ -32,19 +32,20 @@ func _run()->void:
 	quit(1 if not failures.is_empty() else 0)
 
 func _party_card_count_layouts(viewport_size:Vector2)->void:
-	var session=_engaged_session([1,2],"WEDGE")
-	session.prepare_auto_combat_plan()
+	var row_session=_engaged_session([1,2],"WEDGE")
+	row_session.prepare_auto_combat_plan()
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=viewport_size;sandbox.initialize_for_headless_test(session)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
 	await process_frame;await process_frame
-	var all_rows:Array=session.party_cards();var speeches:Array=session.companion_speech_bubbles()
+	var all_rows:Array=row_session.party_cards();var speeches:Array=row_session.companion_speech_bubbles()
 	for count in [1,2,3]:
 		var rows:Array=[]
 		for index in range(count):rows.append(all_rows[index].duplicate(true))
 		var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
 		await process_frame;await process_frame
 		var expected_layout:String=["SPOTLIGHT","DUAL","COMPACT"][count-1]
-		var expected_height:int=[90,100,108][count-1]
+		var expected_height:int=[68,80,84][count-1]
 		if str(spec.layout_id)!=expected_layout or int(spec.party_height)!=expected_height \
 				or sandbox.cards.get_child_count()!=count \
 				or int(sandbox.cards.custom_minimum_size.y)!=expected_height:
@@ -270,19 +271,16 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
 	await process_frame;await process_frame
 	var label:="%s MVP_RUN"%viewport_size
-	var objective:Label=sandbox.recent_event_label;var objective_bar:PanelContainer=sandbox.phase_panel
 	if sandbox.root_layout.get_global_rect()!=sandbox.get_global_rect():
 		failures.append("%s product root does not use the full viewport root=%s viewport=%s"%[
 			label,sandbox.root_layout.get_global_rect(),sandbox.get_global_rect()])
 	if absf(sandbox.grid.size.x-viewport_size.x)>0.1:
 		failures.append("%s product exploration playfield does not use viewport width grid=%s"%[
 			label,sandbox.grid.get_global_rect()])
-	if not objective_bar.is_visible_in_tree() \
-			or absf(objective_bar.custom_minimum_size.y-64.0)>0.1 \
-			or objective_bar.size.y<63.9 or objective_bar.size.y>70.1 \
-			or sandbox.minimap_frame.custom_minimum_size!=Vector2(62,60) \
-			or str(sandbox.minimap_frame.frame_spec().primitive)!="FIXED_CELL_GLYPHS":
-		failures.append("%s top HUD accessibility"%label)
+	if sandbox.phase_panel.visible or sandbox.top_hud_actions.visible \
+			or not sandbox.cards.is_visible_in_tree() or not sandbox.event_surface.is_visible_in_tree() \
+			or not sandbox.bottom_navigation.is_visible_in_tree():
+		failures.append("%s product status/event/navigation accessibility"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
 		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
 	_validate_run_objective_geometry(sandbox,label+" INITIAL")
@@ -383,15 +381,32 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 
 func _validate_run_objective_geometry(sandbox,label:String)->void:
 	var viewport:Rect2=sandbox.get_global_rect();var bar:=sandbox.run_objective_bar as Control
+	if sandbox._is_solo_product_session():
+		var root_box:Control=sandbox.root_layout
+		if root_box.get_global_rect()!=viewport:
+			failures.append("%s product root has an outer frame"%label)
+		if absf(sandbox.grid.get_global_rect().size.x-viewport.size.x)>0.1:
+			failures.append("%s product grid leaves horizontal outer gutters"%label)
+		if bar.visible or sandbox.top_hud_actions.visible or sandbox.info_scroll.visible \
+				or not sandbox.cards.is_visible_in_tree() or not sandbox.event_surface.is_visible_in_tree() \
+				or not sandbox.bottom_navigation.is_visible_in_tree():
+			failures.append("%s product accessible surface visibility"%label)
+		if root_box.get_child(root_box.get_child_count()-1)!=sandbox.bottom_navigation \
+				or root_box.get_child(root_box.get_child_count()-2)!=sandbox.combat_action_area:
+			failures.append("%s product bottom sibling order"%label)
+		if sandbox.bottom_navigation.custom_minimum_size.y<43.9 \
+				or sandbox.event_label.max_lines_visible!=2:
+			failures.append("%s product nav/event geometry contract"%label)
+		for child in root_box.get_children():
+			if child is Control and child.is_visible_in_tree() \
+					and not _rect_contains(viewport,child.get_global_rect()):
+				failures.append("%s root child outside viewport %s %s"%[
+					label,child.name,child.get_global_rect()])
+		return
 	if not bar.is_visible_in_tree() or not _rect_contains(viewport,bar.get_global_rect()):
 		failures.append("%s top HUD outside viewport %s"%[label,bar.get_global_rect()]);return
 	var bar_rect:Rect2=bar.get_global_rect()
 	var grid_rect:Rect2=sandbox.grid.get_global_rect()
-	if sandbox._is_solo_product_session():
-		if sandbox.root_layout.get_global_rect()!=viewport:
-			failures.append("%s product root has an outer frame"%label)
-		if absf(grid_rect.size.x-viewport.size.x)>0.1:
-			failures.append("%s product grid leaves horizontal outer gutters"%label)
 	if bar_rect.end.y>grid_rect.position.y+0.1:
 		failures.append("%s top HUD overlaps grid"%label)
 	if sandbox.minimap_frame.size.x<61.9 or sandbox.record_button.size.x<43.9 \
@@ -1162,7 +1177,11 @@ func _validate_fixed_combat_area(sandbox,label:String)->void:
 	if not area.visible or not area.is_visible_in_tree():failures.append("%s combat action area not visible"%label);return
 	if not dock.visible or not dock.is_visible_in_tree():failures.append("%s combat dock not visible"%label);return
 	if area.get_parent()!=root_box:failures.append("%s action area is not direct PartyLayout sibling"%label)
-	if root_box.get_child(root_box.get_child_count()-1)!=area:failures.append("%s action area is not final PartyLayout sibling"%label)
+	if sandbox._is_solo_product_session():
+		if root_box.get_child(root_box.get_child_count()-1)!=sandbox.bottom_navigation:
+			failures.append("%s BottomNavigation is not final PartyLayout sibling"%label)
+		if root_box.get_child(root_box.get_child_count()-2)!=area:
+			failures.append("%s action area is not penultimate PartyLayout sibling"%label)
 	if dock.get_parent()!=area or feedback.get_parent()!=area:failures.append("%s feedback/dock hierarchy"%label)
 	if _scroll_ancestor(area)!=null or _scroll_ancestor(dock)!=null or _scroll_ancestor(feedback)!=null:
 		failures.append("%s fixed action area remains inside InformationScroll"%label)
@@ -1256,9 +1275,8 @@ func _validate_card_content(sandbox,label:String)->void:
 			failures.append("%s card content bounds clip %s content=%s card=%s"%[label,card.name,content_rect,card_rect])
 		var seal:=card.find_child("ActorGlyphSeal",true,false) as Label
 		var gauge:=card.find_child("MemberState",true,false)
-		if frame==null or frame.get_parent()!=card or content.get_parent()!=frame \
-				or not frame.has_method("frame_spec"):
-			failures.append("%s dossier hierarchy is not card -> ASCII frame -> content %s"%[label,card.name])
+		if frame!=null or content.get_parent()!=card:
+			failures.append("%s compact card retained nested frame hierarchy %s"%[label,card.name])
 		if seal==null or seal.text not in ["@","&"] or seal.custom_minimum_size.x<33.9:
 			failures.append("%s compact ASCII actor seal missing %s"%[label,card.name])
 		if card.find_child("SoloIdentity",true,false)==null \

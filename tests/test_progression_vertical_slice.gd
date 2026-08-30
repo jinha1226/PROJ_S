@@ -179,6 +179,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
+	sandbox.size=Vector2(360,640);sandbox._refresh()
 	var level=sandbox.find_child("LevelProgress",true,false) as Label
 	var compact_xp=sandbox.find_child("CompactXPBar",true,false)
 	var compact_xp_spec:Dictionary=compact_xp.call("gauge_spec") if compact_xp!=null else {}
@@ -187,7 +188,6 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var card_hp_spec:Dictionary=card_hp.call("gauge_spec") if card_hp!=null \
 			and card_hp.has_method("gauge_spec") else {}
 	var card_state=sandbox.find_child("EmotionState",true,false) as Label
-	var dossier_frame=sandbox.find_child("DossierAsciiFrame",true,false)
 	var actor_seal=sandbox.find_child("ActorGlyphSeal",true,false) as Label
 	check(level!=null and level.text=="LV01" and card_name!=null and card_hp!=null \
 		and int(card_hp_spec.get("value",-1))==120 \
@@ -196,18 +196,24 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and card_state!=null and compact_xp!=null \
 		and int(compact_xp_spec.get("max_value",0))==100 \
 		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE" \
-		and dossier_frame!=null and dossier_frame.has_method("frame_spec") \
+		and sandbox.find_child("StressState",true,false)!=null \
+		and sandbox.find_child("DossierAsciiFrame",true,false)==null \
 		and actor_seal!=null and actor_seal.text=="@",
-		"solo DOS dossier shows identity, exact HP, key state, and text XP gauge")
+		"top status strip shows exact identity, HP, LV, state, stress, and XP")
 	check("공" not in level.text and "방" not in level.text,
 		"solo mobile hero card does not persist derived attack or defense")
-	check(sandbox.phase_panel.custom_minimum_size.y<=92 and sandbox.grid.get_index()<sandbox.cards.get_index(),
-		"360x640 keeps a compact header and map before the solo card")
+	check(not sandbox.phase_panel.visible and sandbox.cards.get_index()<sandbox.grid.get_index() \
+		and sandbox.cards.custom_minimum_size.y==68.0 \
+		and sandbox.grid.custom_minimum_size==Vector2(360,360) \
+		and sandbox.bottom_navigation.visible and sandbox.bottom_navigation.custom_minimum_size.y>=44.0,
+		"360x640 places the adaptive status strip before a full-width map and fixed navigation")
 	var wide_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var wide=Sandbox.new();wide.initialize_for_headless_test(wide_session,true)
 	wide.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);wide.size=Vector2(450,800);wide._refresh()
 	var wide_card=wide.cards.get_child(0) as Button
-	check(wide.grid.get_index()<wide.cards.get_index(),"450x800 keeps the map before the solo card")
+	check(wide.cards.get_index()<wide.grid.get_index() \
+		and wide.grid.custom_minimum_size==Vector2(450,450),
+		"450x800 keeps the status strip before the full-width map")
 	check(wide_card.custom_minimum_size.x>=438,"450x800 solo card uses the available width")
 	check(wide_card.find_child("Portrait",true,false)==null \
 		and wide_card.find_child("SoloIdentity",true,false)!=null,
@@ -216,7 +222,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and "공" not in str((wide_card.find_child("LevelProgress",true,false) as Label).text),
 		"450x800 solo card keeps XP but no persistent combat stats")
 	wide.free()
-	sandbox._open_hero_detail()
+	sandbox.person_nav_button.pressed.emit()
 	check(sandbox.member_detail_tab_row.visible and sandbox.member_detail_status_tab.button_pressed \
 		and sandbox.member_status_window.visible and sandbox.member_detail_body.visible \
 		and not sandbox.member_progression_window.visible,
@@ -253,7 +259,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"status/skill tabs are touch-sized glyph-backed segments")
 	check("집중 버튼" not in sandbox.member_detail_body.text and "레벨은 피해" not in sandbox.member_detail_body.text,
 		"status tab has no duplicate progression copy")
-	sandbox._select_member_detail_tab("SKILL")
+	sandbox._close_member_detail();sandbox.skill_nav_button.pressed.emit()
 	check(sandbox.member_progression_window.visible and not sandbox.member_detail_body.visible \
 		and not sandbox.member_status_window.visible and sandbox.member_progression_xp.max_value==100 \
 		and "아이템 탭" in sandbox.member_progression_stats.text,
@@ -263,11 +269,18 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	check(not sandbox.member_skill_category_expanded,"weapon mastery starts collapsed")
 	sandbox._toggle_weapon_mastery_category()
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
-		check(sandbox.member_progression_skill_rows.has(skill_id) \
-			and (sandbox.member_progression_skill_rows[skill_id].title as Button).custom_minimum_size.y>=44 \
-			and "현재 R" in str((sandbox.member_progression_skill_rows[skill_id].effect as Label).text),
-			"%s row exposes touch mode and current effect"%skill_id)
-	sandbox._select_member_detail_tab("ITEM")
+		var skill_row:Dictionary=sandbox.member_progression_skill_rows.get(skill_id,{})
+		check(not skill_row.is_empty() \
+			and (skill_row.title as Button).custom_minimum_size.y>=44 \
+			and str((skill_row.rank as Label).text).begins_with("R") \
+			and "명중" in str((skill_row.effect as Label).text) \
+			and "×" in str((skill_row.mode as Label).text) \
+			and "/" in str((skill_row.xp as Label).text),
+			"%s row exposes fixed rank/name/effect/mode/current XP ledger"%skill_id)
+	check(sandbox.find_child("SkillDetail",true,false)==null \
+		and sandbox.find_child("TrainingProgress",true,false)==null,
+		"skill ledger has no selected-row expansion")
+	sandbox._close_member_detail();sandbox.equipment_nav_button.pressed.emit()
 	var item_stats=sandbox.find_child("EquippedWeaponStats",true,false) as GridContainer
 	var time_stat=sandbox.find_child("WeaponTimeStat",true,false) as Label
 	check(sandbox.member_item_window.visible and "단검" in sandbox.member_item_weapon_text.text \
@@ -276,10 +289,14 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and "화살 12" in sandbox.member_item_ammo_text.text,
 		"item tab owns real weapon, compact stats, and ammo information")
 	sandbox._select_member_detail_tab("SKILL")
+	var modes_before:Array=session.protagonist_progression().skills.map(
+		func(row):return [str(row.skill_id),str(row.training_mode)])
 	sandbox._on_training_focus("AXE")
 	check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible \
-		and sandbox.member_detail_skill_tab.button_pressed,
-		"focus changes refresh while preserving the skill tab")
+		and sandbox.member_detail_skill_tab.button_pressed \
+		and str(session.protagonist_progression().skills[1].training_mode)=="FOCUS" \
+		and str(session.protagonist_progression().skills[0].training_mode)==str(modes_before[0][1]),
+		"focus changes only AXE authority and preserves the skill tab")
 	sandbox._close_member_detail();sandbox._open_hero_detail()
 	check(sandbox.member_detail_current_tab=="STATUS" and sandbox.member_detail_body.visible,
 		"closing and reopening predictably returns to status")
@@ -294,10 +311,16 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	combat_ui.selected_target_id=int(engaged.party_status().visible_enemy_ids[0])
 	combat_ui._refresh()
 	var inspector=combat_ui.find_child("EnemyInspector",true,false) as Label
-	check(inspector!=null and "레벨" in inspector.text \
-		and ("하찮음" in inspector.text or "대등" in inspector.text \
-			or "위험" in inspector.text or "치명적" in inspector.text),
-		"enemy contextual inspector shows derived level and threat")
+	var enemy_id:=int(engaged.party_status().visible_enemy_ids[0])
+	var threat:Dictionary=engaged.inspect_enemy(enemy_id)
+	check(bool(threat.get("accepted",false)) and int(threat.get("level",0))>=1 \
+		and str(threat.get("threat_id","")) in ["TRIVIAL","EVEN","DANGEROUS","LETHAL"] \
+		and str(threat.get("threat_label","")) in ["하찮음","대등","위험","치명적"],
+		"session DTO preserves authoritative enemy level and threat")
+	check(inspector==null and combat_ui.grid._intent_overlays.is_empty() \
+		and combat_ui.grid.route_draw_spec().segments.is_empty() \
+		and combat_ui.grid.cursor_cell==Vector2i(-1,-1),
+		"solo direct combat has no persistent enemy inspector, plan, route, or cursor clutter")
 	sandbox.free();companion_ui.free();combat_ui.free()
 	return finish()
 

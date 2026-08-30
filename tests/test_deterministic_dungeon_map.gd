@@ -128,10 +128,12 @@ func test_product_touch_melee_vfx_starts_after_refresh_and_survives_a_frame()->b
 		var combat_step:=_first_combat_step_toward(session,hero_id,enemy_position)
 		check(combat_step!=Vector2i(-1,-1),"combat approach has a legal touched cell")
 		if combat_step==Vector2i(-1,-1):break
+		var before_move_step:=int(session.party_status().step_index)
 		_screen_touch_world(sandbox,combat_step)
-		check(bool(sandbox.auto_flow_state().get("combat_pending",false)),
-			"real cell touch stages the product auto-combat plan")
-		_flush_product_auto_turn(sandbox);movement_inputs+=1
+		check(int(session.party_status().step_index)==before_move_step+1 \
+				and not bool(sandbox.auto_flow_state().get("combat_pending",false)),
+			"one-member product cell touch commits its authoritative turn immediately")
+		movement_inputs+=1
 	check(movement_inputs>=2 and movement_inputs<=4 \
 		and _entity_distance(session,hero_id,enemy_id)==1,
 		"nearby spawn becomes melee-adjacent after two to four movement touches")
@@ -139,12 +141,16 @@ func test_product_touch_melee_vfx_starts_after_refresh_and_survives_a_frame()->b
 	hero_position=session.sim.world.entities[hero_id].position
 	enemy_position=session.sim.world.entities[enemy_id].position
 	var committed_after_ms:=Time.get_ticks_msec()
+	var before_melee_step:=int(session.party_status().step_index)
 	_screen_touch_world(sandbox,enemy_position)
-	check_eq(sandbox.selected_target_id,enemy_id,
-		"real enemy glyph touch selects the exact authoritative target")
-	check(bool(sandbox.auto_flow_state().get("combat_pending",false)),
-		"enemy touch stages MELEE through the product input path")
-	_flush_product_auto_turn(sandbox)
+	check_eq(sandbox.selected_target_id,-1,
+		"committed enemy tap clears transient target selection")
+	check(int(session.party_status().step_index)==before_melee_step+1 \
+			and not bool(sandbox.auto_flow_state().get("combat_pending",false)),
+		"real enemy glyph touch commits MELEE in the same input callback")
+	check(sandbox.grid._intent_overlays.is_empty() and sandbox.grid._route_path.is_empty() \
+			and sandbox.grid.cursor_cell==Vector2i(-1,-1),
+		"direct solo combat renders no stale plan, route, or cursor marks")
 	check(sandbox._pending_visual_effect_rows.is_empty(),
 		"result effects flush only after the committed refresh completes")
 	var overlay=sandbox.grid.melee_vfx

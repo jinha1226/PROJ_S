@@ -4,7 +4,9 @@ extends Node2D
 # Every adjustable melee-presentation value lives here. These values affect no
 # simulation clock, action result, entity position, glyph, or input mapping.
 const PARAMS := {
-	"contact_at_ms":28,
+	# Impact begins on the first drawable frame. A slow web canvas must not spend
+	# the only visible frame on an imperceptible wind-up.
+	"contact_at_ms":0,
 	"hit_stop_ms":55,
 	"slash_duration_ms":70,
 	# Attack-axis span is measured against the distance between cell centers.
@@ -13,19 +15,22 @@ const PARAMS := {
 	# Total perpendicular displacement, measured against the smaller cell edge.
 	# This keeps every cardinal strike diagonal instead of drawing a grid-parallel bar.
 	"slash_tilt_ratio":0.32,
-	"slash_width_px":2.2,
+	"slash_width_px":3.2,
 	"slash_color_hex":"#ffe4a3",
 	"flash_duration_ms":90,
-	"flash_intensity":0.38,
+	"flash_intensity":0.62,
 	"flash_color_hex":"#ff334d",
 	"particle_count_min":3,
 	"particle_count_max":6,
 	"particle_duration_ms":190,
 	"particle_travel_ratio":0.58,
 	"particle_color_hex":"#ffb36a",
-	"particle_font_ratio":0.42,
-	"shake_strength_px":1.5,
+	"particle_font_ratio":0.52,
+	"shake_strength_px":1.75,
 	"shake_duration_ms":80,
+	# Presentation time advances by at most two 60 Hz frames per rendered frame.
+	# This prevents a slow first web draw from expiring the whole local effect.
+	"max_live_frame_advance_ms":34,
 }
 
 const PARTICLE_GLYPHS := [".", ":", "*"]
@@ -68,6 +73,7 @@ func play(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
 		"attacker_grid_pos":attacker_grid_pos,
 		"target_grid_pos":target_grid_pos,
 		"started_at_ms":Time.get_ticks_msec(),
+		"live_elapsed_ms":0.0,"first_drawn":false,"rendered_frames":0,
 		"particles":_particle_seeds(_sequence,particle_count),
 	})
 	if _effects.size()>MAX_ACTIVE_EFFECTS:
@@ -95,7 +101,7 @@ func effect_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var result:Array[Dictionary]=[]
 	for effect in _effects:
-		var spec:=_effect_draw_spec(effect,now)
+		var spec:=_effect_draw_spec(effect,now,sample_time_ms<0)
 		if bool(spec.get("active",false)):result.append(spec)
 	return result.duplicate(true)
 
@@ -115,7 +121,7 @@ func shake_offset_px(sample_time_ms:int=-1)->Vector2:
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var combined:=Vector2.ZERO
 	for effect in _effects:
-		var raw_elapsed:=maxi(0,now-int(effect.started_at_ms))
+		var raw_elapsed:=_effect_elapsed_ms(effect,now,sample_time_ms<0)
 		var shake_elapsed:=raw_elapsed-int(PARAMS.contact_at_ms)
 		if shake_elapsed<0 or shake_elapsed>=int(PARAMS.shake_duration_ms):continue
 		var envelope:=1.0-float(shake_elapsed)/float(PARAMS.shake_duration_ms)
@@ -126,11 +132,13 @@ func shake_offset_px(sample_time_ms:int=-1)->Vector2:
 	return combined.limit_length(float(PARAMS.shake_strength_px))
 
 
-func _process(_delta:float)->void:
-	var now:=Time.get_ticks_msec()
+func _process(delta:float)->void:
 	var retained:Array[Dictionary]=[]
 	for effect in _effects:
-		if now-int(effect.started_at_ms)<_effect_duration_ms():retained.append(effect)
+		if bool(effect.get("first_drawn",false)):
+			effect["live_elapsed_ms"]=float(effect.get("live_elapsed_ms",0.0))+minf(
+				maxf(0.0,delta*1000.0),float(PARAMS.max_live_frame_advance_ms))
+		if int(effect.get("live_elapsed_ms",0.0))<_effect_duration_ms():retained.append(effect)
 	_effects=retained
 	set_process(not _effects.is_empty())
 	_request_redraw()
@@ -138,10 +146,19 @@ func _process(_delta:float)->void:
 
 func _draw()->void:
 	if _grid==null:return
-	var now:=Time.get_ticks_msec()
-	var presentation_offset:=_presentation_offset(now)
+	for effect in _effects:
+		effect["first_drawn"]=true
+		effect["rendered_frames"]=int(effect.get("rendered_frames",0))+1
+	var presentation_offset:=_presentation_offset()
 	var font:Font=_grid.get_theme_default_font()
-	for spec in effect_draw_specs(now):
+	for flash in background_flash_specs():
+		var flash_color:=Color(str(flash.get("color_hex","#ff334d")))
+		flash_color.a=clampf(float(flash.get("opacity",0.0)),0.0,1.0)
+		var flash_rect:=Rect2(flash.get("rect",Rect2()))
+		flash_rect.position+=presentation_offset
+		draw_rect(flash_rect,flash_color,true)
+	_draw_generic_grid_effects(font,presentation_offset)
+	for spec in effect_draw_specs():
 		if bool(spec.line_visible):
 			var line_color:=Color(str(PARAMS.slash_color_hex))
 			line_color.a=float(spec.line_opacity)
@@ -155,9 +172,41 @@ func _draw()->void:
 				Vector2(particle.center)+presentation_offset,
 				int(particle.font_size),particle_color)
 
+func _draw_generic_grid_effects(font:Font,presentation_offset:Vector2)->void:
+	if _grid==null:return
+	var effects:Variant=_grid.get("_active_visual_effects")
+	if not effects is Array:return
+	for effect in effects:
+		if not effect is Dictionary:continue
+		var spec:Dictionary=_grid.call("visual_effect_draw_spec",effect)
+		if not bool(spec.get("visible",false)):continue
+		var center:=Vector2(spec.pixel_center)+presentation_offset
+		var color:=Color(str(spec.color_hex));color.a*=float(spec.opacity)
+		var radius:=float(spec.radius)
+		var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
+		match str(spec.primitive):
+			"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
+			"GLYPH_FLASH":
+				for particle in spec.particles:
+					var particle_color:=color;particle_color.a*=float(particle.opacity)
+					draw_line(Vector2(particle.from)+presentation_offset,
+						Vector2(particle.to)+presentation_offset,particle_color,
+						float(particle.line_width),true)
+					_draw_centered_glyph(font,str(particle.get("glyph","*")),
+						Vector2(particle.to)+presentation_offset,
+						int(particle.get("font_size",11)),particle_color)
+			"TEXT":
+				if str(spec.kind)=="FLOATING_AMOUNT":
+					_draw_centered_glyph(font,str(spec.text),center+Vector2(1.2,1.4),
+						int(spec.font_size),Color(0.01,0.02,0.03,color.a*0.88))
+				_draw_centered_glyph(font,str(spec.text),center,int(spec.font_size),color)
+			"DEATH_CROSS":
+				draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
+				draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
 
-func _effect_draw_spec(effect:Dictionary,now:int)->Dictionary:
-	var raw_elapsed:=maxi(0,now-int(effect.started_at_ms))
+
+func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionary:
+	var raw_elapsed:=_effect_elapsed_ms(effect,now,use_live_clock)
 	if raw_elapsed>=_effect_duration_ms():return {"active":false}.duplicate(true)
 	var contact_at:=int(PARAMS.contact_at_ms)
 	var hold_end:=contact_at+int(PARAMS.hit_stop_ms)
@@ -213,6 +262,10 @@ func _effect_draw_spec(effect:Dictionary,now:int)->Dictionary:
 		"particles":particles,"particle_count":particles.size(),
 	}.duplicate(true)
 
+func _effect_elapsed_ms(effect:Dictionary,now:int,use_live_clock:bool)->int:
+	return maxi(0,int(effect.get("live_elapsed_ms",0.0))) if use_live_clock \
+		else maxi(0,now-int(effect.started_at_ms))
+
 
 func _particle_seeds(sequence:int,count:int)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
@@ -232,7 +285,7 @@ func _screen_rect(position:Vector2i)->Rect2:
 	return Rect2() if _grid==null else Rect2(_grid.call("world_cell_rect",position))
 
 
-func _presentation_offset(sample_time_ms:int)->Vector2:
+func _presentation_offset(sample_time_ms:int=-1)->Vector2:
 	var camera_offset:=Vector2.ZERO
 	if _grid!=null and _grid.has_method("camera_settle_draw_spec"):
 		camera_offset=Vector2(_grid.call("camera_settle_draw_spec",sample_time_ms).get(
@@ -248,7 +301,6 @@ func _effect_duration_ms()->int:
 
 func _request_redraw()->void:
 	queue_redraw()
-	if _grid!=null:_grid.queue_redraw()
 
 
 func _draw_centered_glyph(font:Font,glyph:String,center:Vector2,
