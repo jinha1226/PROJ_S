@@ -59,24 +59,32 @@ func test_real_3d_scene_has_portrait_safe_controls_shared_resources_and_fov()->b
 			"text positions alone raise metal and recess water relative to floor")
 		var floor_width:=lab.glyph_world_width(floor_glyph)
 		var legacy_width:float=(lab.FONT.get_string_size(".",HORIZONTAL_ALIGNMENT_LEFT,-1,44).x+8.0)*0.005
-		check(floor_glyph.font_size==lab.TERRAIN_TOP_FONT_SIZE and floor_glyph.pixel_size>0.005 \
+		check(floor_glyph.font==lab.FONT and not floor_glyph.font is FontVariation \
+			and floor_glyph.font_size==lab.TERRAIN_TOP_FONT_SIZE and floor_glyph.pixel_size>0.005 \
 			and floor_width>=0.65 and floor_width<=0.80 and floor_width>=legacy_width*2.0,
-			"floor font metrics produce a 65-80% cell footprint at least twice the legacy size")
+			"upright floor metrics produce a 65-80% cell footprint at least twice the legacy size")
 		for sample_cell in [Vector2i(10,4),Vector2i(2,10),Vector2i(3,7)]:
 			var sample:Label3D=lab.tile_glyphs[sample_cell]
 			check(sample.font_size==lab.TERRAIN_TOP_FONT_SIZE \
 				and is_equal_approx(lab.glyph_world_width(sample),lab.TERRAIN_WORLD_WIDTH),
 				"%s top glyph fills its explicit terrain world width"%sample_cell)
 		var wall_layers:Array=lab.tile_glyph_layers[Vector2i(5,4)]
+		var wall_top_glyph:=wall_layers[0] as Label3D
+		var wall_top_variation:=wall_top_glyph.font as FontVariation
+		check(wall_top_variation!=null and wall_top_variation.base_font==lab.FONT \
+			and is_equal_approx(wall_top_variation.variation_transform.x.y,lab.WALL_TOP_SLANT) \
+			and is_equal_approx(lab.glyph_world_width(wall_top_glyph),lab.WALL_WORLD_WIDTH),
+			"wall top alone uses the 0.30 faux-italic FontVariation without changing its world width")
 		var wall_bottom:float=INF;var wall_top:float=-INF
 		for layer_index in range(1,wall_layers.size()):
 			var wall_layer:=wall_layers[layer_index] as Label3D
 			var half_height:=lab.glyph_world_height(wall_layer)*0.5
 			wall_bottom=minf(wall_bottom,wall_layer.position.y-half_height)
 			wall_top=maxf(wall_top,wall_layer.position.y+half_height)
-			check(wall_layer.font_size==lab.WALL_FONT_SIZE \
+			check(wall_layer.font_size==lab.WALL_FONT_SIZE and wall_layer.font==lab.FONT \
+				and not wall_layer.font is FontVariation \
 				and lab.glyph_world_width(wall_layer)>=0.85,
-				"each exposed wall front row is nearly one cell wide")
+				"each exposed wall front row stays upright on the base font and nearly one cell wide")
 		check(wall_top-wall_bottom>=1.3 and wall_top-wall_bottom<=1.7 \
 			and (wall_layers[0] as Label3D).position.y>=1.5,
 			"large front rows form a 1.3-1.7 world-unit wall below a raised top")

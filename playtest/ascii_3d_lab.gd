@@ -18,6 +18,7 @@ const FLOOR_WORLD_WIDTH:=0.72
 const TERRAIN_WORLD_WIDTH:=0.76
 const WALL_WORLD_WIDTH:=0.90
 const ACTOR_WORLD_WIDTH:=0.92
+const WALL_TOP_SLANT:=0.30
 
 var viewport_container:SubViewportContainer
 var input_catcher:Control
@@ -28,6 +29,7 @@ var camera:Camera3D
 var tile_nodes:Dictionary={}
 var tile_glyphs:Dictionary={}
 var tile_glyph_layers:Dictionary={}
+var wall_top_font:FontVariation
 var hero_root:Node3D
 var enemy_root:Node3D
 var enemy_glyph:Label3D
@@ -130,8 +132,10 @@ func _build_terrain_glyph_layers(cell:Vector2i,terrain:String,offset:Vector3)->A
 	var top_width:=FLOOR_WORLD_WIDTH if terrain=="floor" else (WALL_WORLD_WIDTH if terrain=="wall" else TERRAIN_WORLD_WIDTH)
 	var top_font_size:=WALL_FONT_SIZE if terrain=="wall" else TERRAIN_TOP_FONT_SIZE
 	var top_outline:int={"floor":24,"metal":10,"water":12,"rubble":16,"wall":10}[terrain]
+	var top_font:Font=_get_wall_top_font() if terrain=="wall" else FONT
 	layers.append(_terrain_label("TopGlyph_%02d_%02d"%[cell.x,cell.y],_terrain_glyph(terrain),
-		base+Vector3(0,top_height,0),top_font_size,top_width,top_outline,top_color,true,false,0.0))
+		base+Vector3(0,top_height,0),top_font_size,top_width,top_outline,top_color,
+		true,false,0.0,top_font))
 	if terrain=="water":
 		layers.append(_terrain_label("RippleGlyph_%02d_%02d"%[cell.x,cell.y],"~",
 			base+Vector3(0.10,-0.13,0.10),96,0.68,7,Color("#287da2"),true,false,0.12))
@@ -160,15 +164,24 @@ func _wall_front_exposed(cell:Vector2i)->bool:
 
 func _terrain_label(node_name:String,text:String,position:Vector3,font_size:int,
 		world_width:float,outline_size:int,color:Color,flat:bool,no_depth:bool,
-		memory_bias:float)->Label3D:
-	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
+		memory_bias:float,font_override:Font=null)->Label3D:
+	var render_font:Font=font_override if font_override!=null else FONT
+	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=render_font
 	glyph.font_size=font_size;glyph.outline_size=outline_size;glyph.position=position
-	glyph.pixel_size=_pixel_size_for_width(text,font_size,outline_size,world_width)
+	glyph.pixel_size=_pixel_size_for_width(render_font,text,font_size,outline_size,world_width)
 	glyph.rotation_degrees.x=-90.0 if flat else 0.0
 	glyph.no_depth_test=no_depth;glyph.modulate=color;glyph.outline_modulate=color.darkened(0.58)
 	glyph.set_meta("base_color",color);glyph.set_meta("memory_bias",memory_bias)
 	glyph.set_meta("target_world_width",world_width)
 	terrain_root.add_child(glyph);return glyph
+
+func _get_wall_top_font()->FontVariation:
+	if wall_top_font==null:
+		wall_top_font=FontVariation.new();wall_top_font.base_font=FONT
+		# Transform2D axes encode the requested (1, slant, 0, 1, 0, 0) shear.
+		wall_top_font.variation_transform=Transform2D(
+			Vector2(1.0,WALL_TOP_SLANT),Vector2(0.0,1.0),Vector2.ZERO)
+	return wall_top_font
 
 func _build_actors()->void:
 	hero_root=Node3D.new();hero_root.name="GoldProtagonist";world_root.add_child(hero_root)
@@ -194,14 +207,14 @@ func _actor_label(node_name:String,text:String,font_size:int,world_width:float,
 	var glyph:=Label3D.new();glyph.name=node_name;glyph.text=text;glyph.font=FONT
 	glyph.font_size=font_size;glyph.outline_size=outline_size;glyph.modulate=color;glyph.position=position
 	glyph.outline_modulate=Color("#07090c")
-	glyph.pixel_size=_pixel_size_for_width(text,font_size,outline_size,world_width)
+	glyph.pixel_size=_pixel_size_for_width(FONT,text,font_size,outline_size,world_width)
 	glyph.set_meta("target_world_width",world_width)
 	glyph.no_depth_test=true
 	if billboard:glyph.billboard=BaseMaterial3D.BILLBOARD_ENABLED
 	return glyph
 
-func _pixel_size_for_width(text:String,font_size:int,outline_size:int,world_width:float)->float:
-	var metric_width:=FONT.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x+float(outline_size*2)
+func _pixel_size_for_width(font:Font,text:String,font_size:int,outline_size:int,world_width:float)->float:
+	var metric_width:=font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x+float(outline_size*2)
 	return world_width/maxf(1.0,metric_width)
 
 func glyph_world_width(glyph:Label3D)->float:
