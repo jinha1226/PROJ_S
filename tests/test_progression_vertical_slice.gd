@@ -6,31 +6,36 @@ const Action=preload("res://sim/party_action_command.gd")
 const WorldState=preload("res://sim/world_state.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 
-func test_initial_focus_save_replay_detachment_and_tamper_are_exact()->bool:
+func test_initial_modes_save_replay_detachment_and_tamper_are_exact()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var before=session.save_session_json()
 	var progression:Dictionary=session.protagonist_progression()
 	check_eq([progression.level,progression.xp_total,progression.xp_current,
 		progression.xp_required,progression.next_level_threshold],
 		[1,0,0,100,100],"fresh run starts at level one with exact threshold")
-	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.focus]),
-		[["SWORD",0,30],["AXE",0,15],["BLUNT",0,15],["SPEAR",0,15],
-			["RANGED",0,15],["UNARMED",0,10]],
-		"six weapon proficiencies have deterministic default focus")
-	progression.skills[0].focus=999
-	check_eq(session.protagonist_progression().skills[0].focus,30,
+	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.training_mode]),
+		[["SWORD",0,"NORMAL"],["AXE",0,"NORMAL"],["BLUNT",0,"NORMAL"],
+			["SPEAR",0,"NORMAL"],["RANGED",0,"NORMAL"],["UNARMED",0,"NORMAL"]],
+		"six weapon proficiencies have independent deterministic default modes")
+	progression.skills[0].training_mode="OFF"
+	check_eq(session.protagonist_progression().skills[0].training_mode,"NORMAL",
 		"progression presentation is deeply detached")
 	check_eq(session.save_session_json(),before,"progression reads are pure")
-	var focused:Dictionary=session.set_training_focus("SWORD")
-	check(focused.accepted,"focus preset commits: %s"%focused)
-	check_eq(session.protagonist_progression().skills.map(func(row):return row.focus),
-		[50,10,10,10,10,10],"SWORD focus preset keeps exact total one hundred")
-	check_eq(session.command_journal.size(),1,"focus change is journaled once")
+	var focused:Dictionary=session.set_training_mode("SWORD","FOCUS")
+	check(focused.accepted,"independent mode commits: %s"%focused)
+	check_eq(session.protagonist_progression().skills.map(func(row):return row.training_mode),
+		["FOCUS","NORMAL","NORMAL","NORMAL","NORMAL","NORMAL"],
+		"SWORD changes without overwriting other rows")
+	check(session.set_training_mode("AXE","OFF").accepted,"second row changes independently")
+	check_eq(session.protagonist_progression().skills.map(func(row):return row.training_mode),
+		["FOCUS","OFF","NORMAL","NORMAL","NORMAL","NORMAL"],
+		"multiple independent mode choices coexist")
+	check_eq(session.command_journal.size(),2,"each mode change is journaled once")
 	if not session.command_journal.is_empty():check_eq(session.command_journal[0].kind,
 		"progression","focus journal kind")
 	var duplicate_before:=session.save_session_json()
-	check_eq(session.set_training_focus("SWORD").reason,"training_focus_unchanged",
-		"same focus rejects without a duplicate event")
+	check_eq(session.set_training_mode("SWORD","FOCUS").reason,"training_mode_unchanged",
+		"same mode rejects without a duplicate event")
 	check_eq(session.save_session_json(),duplicate_before,"duplicate focus is exact no-op")
 	var restored=Session.new(1,2)
 	check(restored.load_session_json(session.save_session_json()).accepted,
@@ -58,9 +63,9 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 		progression.xp_required,progression.next_level_threshold],
 		[2,100,0,150,250],"victory grants exact level pacing XP")
 	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.training_total]),
-		[["SWORD",0,30],["AXE",0,15],["BLUNT",0,15],["SPEAR",0,15],
-			["RANGED",0,15],["UNARMED",0,10]],
-		"victory training allocation is integer-only by focus")
+		[["SWORD",0,17],["AXE",0,17],["BLUNT",0,17],["SPEAR",0,17],
+			["RANGED",0,16],["UNARMED",0,16]],
+		"victory training remainder follows fixed proficiency order")
 	var victory_count:=0
 	for event in session.sim.world.events:
 		if event.type=="party.victory":victory_count+=1
@@ -73,6 +78,19 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 	var restored=WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
 	check(restored!=null,"progressed snapshot restores")
 	if restored!=null:check_eq(restored.snapshot(),snapshot,"progressed snapshot round trip exact")
+	var legacy_session:Dictionary=JSON.parse_string(session.save_session_json())
+	var legacy_progression:Dictionary=legacy_session.snapshot.party_encounter.protagonist_progression
+	legacy_progression.schema_version=2;legacy_progression.erase("training_modes")
+	legacy_progression.training_focus=[]
+	for row in [{"skill_id":"SWORD","weight":30},{"skill_id":"AXE","weight":15},
+			{"skill_id":"BLUNT","weight":15},{"skill_id":"SPEAR","weight":15},
+			{"skill_id":"RANGED","weight":15},{"skill_id":"UNARMED","weight":10}]:
+		legacy_progression.training_focus.append(row)
+	var migrated_session=Session.new(1,2)
+	check(migrated_session.load_session_json(JSON.stringify(legacy_session)).accepted,
+		"schema two session progression migrates through canonical event replay")
+	check_eq(migrated_session.sim.snapshot(),session.sim.snapshot(),
+		"schema two session migration preserves the canonical projection")
 	check(session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),
 		"new expedition resets authority")
 	check_eq([session.protagonist_progression().level,session.protagonist_progression().xp_total,
@@ -209,6 +227,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
 		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
+		and sandbox.member_detail_item_tab.custom_minimum_size.y>=44 \
 		and "[상태]" in sandbox.member_detail_status_tab.text \
 		and bool(sandbox.member_detail_status_tab.get_meta("ascii_rail",false)),
 		"status/skill tabs are touch-sized glyph-backed segments")
@@ -217,26 +236,23 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	sandbox._select_member_detail_tab("SKILL")
 	check(sandbox.member_progression_window.visible and not sandbox.member_detail_body.visible \
 		and not sandbox.member_status_window.visible and sandbox.member_progression_xp.max_value==100 \
-		and "공격력" in sandbox.member_progression_stats.text,
-		"skill tab alone shows visual XP and honest derived combat stats")
+		and "아이템 탭" in sandbox.member_progression_stats.text,
+		"skill tab alone shows visual XP without equipment")
 	check_eq(sandbox.member_progression_skill_rows.keys().size(),6,
 		"six visual proficiency cards are present")
+	check(not sandbox.member_skill_category_expanded,"weapon mastery starts collapsed")
+	sandbox._toggle_weapon_mastery_category()
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		check(sandbox.member_progression_skill_rows.has(skill_id) \
-			and "공격시간" in str((sandbox.member_progression_skill_rows[skill_id].future as Label).text),
-			"%s card states that proficiency cannot alter weapon speed"%skill_id)
-	check("단검" in sandbox.member_progression_stats.text \
-		and "SLASH" in sandbox.member_progression_stats.text \
-		and "공격시간 100" in sandbox.member_progression_stats.text,
-		"skill tab summarizes the equipped SHORT_SWORD")
-	check(sandbox.member_detail_focus_buttons.visible,
-		"hero detail exposes focus controls")
-	check((sandbox.member_detail_focus_buttons.get_child(0) as Button).button_pressed \
-		and "[도검]" in (sandbox.member_detail_focus_buttons.get_child(0) as Button).text,
-		"dominant training focus uses a selected DOS segment")
-	for child in sandbox.member_detail_focus_buttons.get_children():
-		check(child is Button and child.custom_minimum_size.y>=44,
-			"focus control remains mobile readable")
+			and (sandbox.member_progression_skill_rows[skill_id].title as Button).custom_minimum_size.y>=44 \
+			and "현재 R" in str((sandbox.member_progression_skill_rows[skill_id].effect as Label).text),
+			"%s row exposes touch mode and current effect"%skill_id)
+	sandbox._select_member_detail_tab("ITEM")
+	check(sandbox.member_item_window.visible and "단검" in sandbox.member_item_weapon_text.text \
+		and "고유 공격시간 100" in sandbox.member_item_weapon_text.text \
+		and "화살 12" in sandbox.member_item_ammo_text.text,
+		"item tab owns real weapon and ammo information")
+	sandbox._select_member_detail_tab("SKILL")
 	sandbox._on_training_focus("AXE")
 	check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible \
 		and sandbox.member_detail_skill_tab.button_pressed,

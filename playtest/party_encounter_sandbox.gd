@@ -6,6 +6,7 @@ const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
+const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
@@ -74,6 +75,7 @@ var member_status_window:VBoxContainer
 var member_detail_tab_row:HBoxContainer
 var member_detail_status_tab:Button
 var member_detail_skill_tab:Button
+var member_detail_item_tab:Button
 var member_detail_current_tab:="STATUS"
 var member_detail_has_skills:=false
 var member_detail_dismiss_available:=false
@@ -84,6 +86,13 @@ var member_progression_xp_text:Label
 var member_progression_stats:Label
 var member_progression_skill_rows:Dictionary={}
 var member_skill_help:Label
+var member_skill_category_button:Button
+var member_skill_category_expanded:=false
+var member_item_window:VBoxContainer
+var member_item_weapon_text:Label
+var member_item_ammo_text:Label
+var member_item_reload_button:Button
+var member_item_empty_text:Label
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
@@ -296,40 +305,33 @@ func _build_member_detail_modal()->void:
 	member_detail_tab_row.custom_minimum_size.y=TOUCH_TARGET;member_detail_tab_row.add_theme_constant_override("separation",6)
 	stack.add_child(member_detail_tab_row)
 	member_detail_status_tab=Button.new();member_detail_status_tab.name="MemberStatusTab";member_detail_status_tab.text="상태"
-	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_status_tab.tooltip_text="현재 상태와 관계 정보";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
 	member_detail_tab_row.add_child(member_detail_status_tab);AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,true)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·장비"
-	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련"
+	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_detail_skill_tab.tooltip_text="장비, 무기 숙련 효과와 훈련 집중";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
+	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
 	member_detail_tab_row.add_child(member_detail_skill_tab);AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS)
+	member_detail_item_tab=Button.new();member_detail_item_tab.name="MemberItemTab";member_detail_item_tab.text="아이템"
+	member_detail_item_tab.toggle_mode=true;member_detail_item_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
+	member_detail_item_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_detail_item_tab.tooltip_text="장착 무기와 탄약";member_detail_item_tab.pressed.connect(_select_member_detail_tab.bind("ITEM"))
+	member_detail_tab_row.add_child(member_detail_item_tab);AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(member_detail_scroll)
 	var detail_content:=VBoxContainer.new();detail_content.name="MemberDetailContent"
 	detail_content.size_flags_horizontal=Control.SIZE_EXPAND_FILL;detail_content.add_theme_constant_override("separation",8)
 	member_detail_scroll.add_child(detail_content)
 	_build_progression_window(detail_content)
+	_build_item_window(detail_content)
 	member_status_window=VBoxContainer.new();member_status_window.name="MemberStatusWindow"
 	member_status_window.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_status_window.add_theme_constant_override("separation",8);detail_content.add_child(member_status_window)
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;detail_content.add_child(member_detail_body)
-	member_detail_focus_buttons=GridContainer.new();member_detail_focus_buttons.name="TrainingFocusButtons";member_detail_focus_buttons.columns=3
-	member_detail_focus_buttons.add_theme_constant_override("separation",4);member_detail_focus_buttons.visible=false
-	for skill in [{"id":"SWORD","label":"도검"},{"id":"AXE","label":"도끼"},
-			{"id":"BLUNT","label":"둔기"},{"id":"SPEAR","label":"창"},
-			{"id":"RANGED","label":"원거리"},{"id":"UNARMED","label":"격투"}]:
-		var focus_button:=Button.new();focus_button.name="Focus%s"%str(skill.id)
-		focus_button.text=str(skill.label);focus_button.custom_minimum_size=Vector2(72,TOUCH_TARGET)
-		focus_button.toggle_mode=true;focus_button.set_meta("skill_id",str(skill.id))
-		focus_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		focus_button.pressed.connect(_on_training_focus.bind(str(skill.id)))
-		member_detail_focus_buttons.add_child(focus_button)
-		AsciiFrameScript.apply_rail_button(focus_button,AsciiFrameScript.BRASS)
-	stack.add_child(member_detail_focus_buttons)
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="[D 추방]";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
@@ -354,9 +356,15 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_stats.add_theme_font_size_override("font_size",FONT_BODY);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_progression_window.add_child(member_progression_stats)
 	member_skill_help=Label.new();member_skill_help.name="SkillFocusHelp"
-	member_skill_help.text="훈련 집중 · 선택 숙련 50%, 나머지 숙련 10%씩\n숙련은 명중과 피해만 높입니다. 공격시간은 무기 고유값입니다."
+	member_skill_help.text="각 행을 눌러 집중 → 보통 → 끄기를 바꿉니다.\n승리 훈련 XP는 3 : 1 : 0 비율로 배분됩니다."
 	member_skill_help.add_theme_font_size_override("font_size",FONT_AUX);member_skill_help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_skill_help.modulate=Color("#c6d8e5");member_progression_window.add_child(member_skill_help)
+	member_skill_category_button=Button.new();member_skill_category_button.name="WeaponMasteryCategory"
+	member_skill_category_button.custom_minimum_size.y=TOUCH_TARGET
+	member_skill_category_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_skill_category_button.pressed.connect(_toggle_weapon_mastery_category)
+	member_progression_window.add_child(member_skill_category_button)
+	AsciiFrameScript.apply_rail_button(member_skill_category_button,AsciiFrameScript.CYAN)
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
 		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
@@ -365,15 +373,48 @@ func _build_progression_window(parent:VBoxContainer)->void:
 		row_frame.configure("숙련",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
 		row_frame.set_meta("major_glyph_frame",true);panel.add_child(row_frame)
 		var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",2);row_frame.add_child(stack)
-		var skill_header:=HBoxContainer.new();skill_header.name="SkillHeader";skill_header.add_theme_constant_override("separation",8);stack.add_child(skill_header)
+		var skill_header:=HBoxContainer.new();skill_header.name="SkillHeader";skill_header.custom_minimum_size.y=TOUCH_TARGET
+		skill_header.add_theme_constant_override("separation",8);stack.add_child(skill_header)
 		var rank:=Label.new();rank.name="SkillRank";rank.custom_minimum_size.x=36
 		AsciiFrameScript.label_tone(rank,AsciiFrameScript.BRASS,FONT_KEY);skill_header.add_child(rank)
-		var title:=Label.new();title.name="SkillTitle";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		AsciiFrameScript.label_tone(title,AsciiFrameScript.INK,FONT_BODY);skill_header.add_child(title)
-		var progress:Control=_gauge("TrainingProgress","숙련",0,50,10,AsciiFrameScript.CYAN);stack.add_child(progress)
+		var title:=Button.new();title.name="SkillModeButton";title.custom_minimum_size.y=TOUCH_TARGET
+		title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.set_meta("skill_id",skill_id)
+		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));skill_header.add_child(title)
+		AsciiFrameScript.apply_rail_button(title,AsciiFrameScript.BRASS)
 		var effect:=Label.new();effect.name="CurrentEffect";effect.add_theme_font_size_override("font_size",FONT_AUX);effect.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(effect)
+		var progress:Control=_gauge("TrainingProgress","훈련",0,50,10,AsciiFrameScript.CYAN);stack.add_child(progress)
 		var future:=Label.new();future.name="FutureMilestone";future.add_theme_font_size_override("font_size",14);future.modulate=Color("#9cb0bf");future.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(future)
 		member_progression_skill_rows[skill_id]={"panel":panel,"rank":rank,"title":title,"progress":progress,"effect":effect,"future":future}
+		panel.visible=member_skill_category_expanded
+	_update_weapon_mastery_category_label()
+
+func _build_item_window(parent:VBoxContainer)->void:
+	member_item_window=VBoxContainer.new();member_item_window.name="ItemWindow"
+	member_item_window.visible=false;member_item_window.add_theme_constant_override("separation",8)
+	parent.add_child(member_item_window)
+	var weapon_panel:=PanelContainer.new();weapon_panel.name="EquippedWeaponCard"
+	weapon_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
+	member_item_window.add_child(weapon_panel)
+	var weapon_frame=AsciiFrameScript.new();weapon_frame.name="EquippedWeaponAsciiFrame"
+	weapon_frame.configure("장착 무기",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
+	weapon_frame.set_meta("major_glyph_frame",true);weapon_panel.add_child(weapon_frame)
+	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_frame.add_child(weapon_stack)
+	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedWeaponText"
+	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_BODY)
+	member_item_weapon_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;weapon_stack.add_child(member_item_weapon_text)
+	member_item_ammo_text=Label.new();member_item_ammo_text.name="AmmoPoolsText"
+	member_item_ammo_text.add_theme_font_size_override("font_size",FONT_AUX);weapon_stack.add_child(member_item_ammo_text)
+	member_item_reload_button=Button.new();member_item_reload_button.name="ReloadWeaponButton"
+	member_item_reload_button.text="재장전";member_item_reload_button.custom_minimum_size.y=TOUCH_TARGET
+	member_item_reload_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_item_reload_button.pressed.connect(_on_item_reload);weapon_stack.add_child(member_item_reload_button)
+	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
+	member_item_empty_text=Label.new();member_item_empty_text.name="InventoryExpansionEmpty"
+	member_item_empty_text.text="소지품\n현재 등록된 소지품 없음\n(추후 확장 영역)"
+	member_item_empty_text.custom_minimum_size.y=96;member_item_empty_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	member_item_empty_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	member_item_empty_text.add_theme_font_size_override("font_size",FONT_AUX)
+	member_item_empty_text.modulate=Color("#8ca4ae");member_item_window.add_child(member_item_empty_text)
 
 func _layout_floating_surfaces()->void:
 	if member_detail_panel!=null:
@@ -443,10 +484,11 @@ func _refresh()->void:
 	var deployment:Dictionary=session.deployment_draft()
 	var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" \
 		and not _is_solo_product_session() else []
-	var observation:Dictionary=session.observe_party_world()
+	var ui_observation:Dictionary=session.observe_party_ui(15)
+	var observation:Dictionary=ui_observation.get("grid",{})
 	var intent_overlays:Array=session.turn_intent_overlays() if combat_active and not run_complete else []
 	grid.set_observation(observation,ghosts)
-	minimap.set_observation(observation)
+	minimap.set_observation(ui_observation.get("minimap",{}))
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
 			int(status.protagonist_position[1]))
@@ -1228,6 +1270,7 @@ func _open_member_detail(member_id:int)->void:
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
 	member_detail_current_tab="STATUS"
 	_update_progression_window(progression)
+	_update_item_window(progression.get("equipment",{}) if progression is Dictionary else {})
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
 		and bool(detail.get("active_party_member",false))
 	member_detail_dismiss_available=can_show_dismiss
@@ -1255,37 +1298,60 @@ func _close_member_detail()->void:
 	elif auto_orchestration_enabled:_request_refresh()
 
 func _select_member_detail_tab(tab_id:String)->void:
-	if tab_id not in ["STATUS","SKILL"] or tab_id=="SKILL" and not member_detail_has_skills:return
+	if tab_id not in ["STATUS","SKILL","ITEM"] \
+			or tab_id in ["SKILL","ITEM"] and not member_detail_has_skills:return
 	member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
 	_apply_member_detail_tab()
 
 func _apply_member_detail_tab()->void:
 	var skill_selected:=member_detail_has_skills and member_detail_current_tab=="SKILL"
+	var item_selected:=member_detail_has_skills and member_detail_current_tab=="ITEM"
 	member_detail_tab_row.visible=member_detail_has_skills
-	member_detail_status_tab.set_pressed_no_signal(not skill_selected)
+	member_detail_status_tab.set_pressed_no_signal(not skill_selected and not item_selected)
 	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
-	member_detail_status_tab.text="[상태]" if not skill_selected else " 상태 "
-	member_detail_skill_tab.text="[스킬]" if skill_selected else " 스킬 "
-	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,not skill_selected)
+	member_detail_item_tab.set_pressed_no_signal(item_selected)
+	member_detail_status_tab.text="[상태]" if not skill_selected and not item_selected else " 상태 "
+	member_detail_skill_tab.text="[숙련]" if skill_selected else " 숙련 "
+	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
+	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,not skill_selected and not item_selected)
 	AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS,skill_selected)
-	member_status_window.visible=not skill_selected
-	member_detail_body.visible=not skill_selected
+	AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS,item_selected)
+	member_status_window.visible=not skill_selected and not item_selected
+	member_detail_body.visible=not skill_selected and not item_selected
 	member_progression_window.visible=skill_selected
-	member_detail_focus_buttons.visible=skill_selected
-	member_detail_dismiss.visible=not skill_selected and member_detail_dismiss_available
-	member_detail_candidate_action.visible=not skill_selected and member_detail_candidate_available
+	member_item_window.visible=item_selected
+	member_detail_dismiss.visible=not skill_selected and not item_selected and member_detail_dismiss_available
+	member_detail_candidate_action.visible=not skill_selected and not item_selected and member_detail_candidate_available
 
-func _on_training_focus(skill_id:String)->void:
+func _on_training_mode_cycle(skill_id:String)->void:
 	if member_detail_entity_id<=0:return
-	var result:Dictionary=session.set_training_focus(skill_id)
-	if not bool(result.get("accepted",false)) and str(result.get("reason",""))!="training_focus_unchanged":
-		notice_text=str(result.get("message","훈련 집중을 변경할 수 없습니다."));return
+	var progression:Dictionary=session.protagonist_progression()
+	var current_mode:="NORMAL"
+	for skill in progression.get("skills",[]):
+		if skill is Dictionary and str(skill.get("skill_id",""))==skill_id:
+			current_mode=str(skill.get("training_mode","NORMAL"));break
+	var next_mode:=ProgressionRegistryScript.next_training_mode(current_mode)
+	var result:Dictionary=session.set_training_mode(skill_id,next_mode)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","훈련 설정을 변경할 수 없습니다."));return
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	_update_progression_window(detail.get("progression",{}))
 	member_detail_current_tab="SKILL";_apply_member_detail_tab()
-	notice_text="훈련 집중을 변경했습니다.";_request_refresh()
+	notice_text="%s 훈련을 %s(으)로 변경했습니다."%[skill_id,
+		ProgressionRegistryScript.mode_label(next_mode)];_request_refresh()
+
+func _on_training_focus(skill_id:String)->void:
+	# Headless/client compatibility: a direct focus request now changes only the
+	# requested row instead of applying a dominant preset.
+	if member_detail_entity_id<=0:return
+	var result:Dictionary=session.set_training_mode(skill_id,"FOCUS")
+	if not bool(result.get("accepted",false)) \
+			and str(result.get("reason",""))!="training_mode_unchanged":return
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	_update_progression_window(detail.get("progression",{}))
+	member_detail_current_tab="SKILL";_apply_member_detail_tab()
 
 func _update_progression_window(progression:Variant)->void:
 	var available:=progression is Dictionary and bool(progression.get("available",false))
@@ -1295,42 +1361,59 @@ func _update_progression_window(progression:Variant)->void:
 		int(progression.get("xp_total",0)),int(progression.get("next_level_threshold",0))]
 	member_progression_xp.max_value=maxi(1,int(progression.get("xp_required",1)))
 	member_progression_xp.value=int(progression.get("xp_current",0))
-	var stats:Dictionary=progression.get("combat_stats",{}) if progression.get("combat_stats",{}) is Dictionary else {}
-	var equipment:Dictionary=progression.get("equipment",{}) if progression.get("equipment",{}) is Dictionary else {}
-	var ammo_text:="탄약 없음"
-	if str(equipment.get("ammo_kind","NONE"))=="ARROW":ammo_text="화살 %d"%int(equipment.get("arrows",0))
-	elif str(equipment.get("ammo_kind","NONE"))=="BOLT":
-		ammo_text="볼트 %d · %s"%[int(equipment.get("bolts",0)),
-			"장전됨" if bool(equipment.get("loaded",false)) else "재장전 필요"]
-	member_progression_stats.text="현재 장비 · %s [%s]\n사거리 %d-%d칸 · 공격시간 %d · %s\n공격력 %d   방어력 %d   방어 태세 %d%% · %d시간"%[
-		str(equipment.get("weapon_label","없음")),str(equipment.get("attack_form","-")),
-		int(equipment.get("range_min",1)),int(equipment.get("range_max",1)),
-		int(equipment.get("attack_time",100)),ammo_text,
-		int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
-		int(int(stats.get("guard_reduction_milli",250))/10),int(stats.get("guard_duration",200))]
+	member_progression_stats.text="숙련은 무기 명중과 피해만 높이며, 장비 정보는 아이템 탭에서 확인합니다."
 	for skill_value in progression.get("skills",[]):
 		if not skill_value is Dictionary:continue
 		var skill:Dictionary=skill_value;var skill_id:=str(skill.get("skill_id",""))
 		if not member_progression_skill_rows.has(skill_id):continue
 		var row:Dictionary=member_progression_skill_rows[skill_id]
 		(row.rank as Label).text="R%02d"%int(skill.get("rank",0))
-		(row.title as Label).text="%s   ·   집중 %d%%"%[str(skill.get("label","기술")),int(skill.get("focus",0))]
+		var mode:=str(skill.get("training_mode","NORMAL"))
+		(row.title as Button).text="%s  ·  %s"%[str(skill.get("label","기술")),
+			str(skill.get("training_mode_label","보통"))]
+		(row.title as Button).tooltip_text="터치하여 %s로 변경"%ProgressionRegistryScript.mode_label(
+			ProgressionRegistryScript.next_training_mode(mode))
+		AsciiFrameScript.apply_rail_button(row.title,AsciiFrameScript.BRASS,mode=="FOCUS",mode=="OFF")
 		var progress:Variant=row.progress
 		progress.max_value=maxi(1,int(skill.get("training_required",1)));progress.value=int(skill.get("training_current",0))
 		progress.tooltip_text="훈련 %d/%d"%[int(skill.get("training_current",0)),int(skill.get("training_required",1))]
-		(row.effect as Label).text="현재 · %s"%str(skill.get("effect_label",""))
-		(row.future as Label).text="무기 고유 공격시간에는 영향을 주지 않습니다."
-	var dominant_focus_id:="";var dominant_focus_value:=-1
-	for skill_value in progression.get("skills",[]):
-		if skill_value is Dictionary and int(skill_value.get("focus",0))>dominant_focus_value:
-			dominant_focus_value=int(skill_value.get("focus",0));dominant_focus_id=str(skill_value.get("skill_id",""))
-	for child in member_detail_focus_buttons.get_children():
-		if child is Button:
-			var focus_id:=str(child.get_meta("skill_id",""));var selected:=focus_id==dominant_focus_id
-			child.set_pressed_no_signal(selected)
-			child.text=("[%s]" if selected else " %s ")%{"SWORD":"도검","AXE":"도끼",
-				"BLUNT":"둔기","SPEAR":"창","RANGED":"원거리","UNARMED":"격투"}.get(focus_id,focus_id)
-			AsciiFrameScript.apply_rail_button(child,AsciiFrameScript.BRASS,selected)
+		(row.effect as Label).text="현재 R%d 효과 · %s"%[int(skill.get("rank",0)),str(skill.get("effect_label",""))]
+		(row.future as Label).text="훈련 %d / %d · 누적 %d"%[int(skill.get("training_current",0)),
+			int(skill.get("training_required",1)),int(skill.get("training_total",0))]
+
+func _toggle_weapon_mastery_category()->void:
+	member_skill_category_expanded=not member_skill_category_expanded
+	for row in member_progression_skill_rows.values():(row.panel as Control).visible=member_skill_category_expanded
+	_update_weapon_mastery_category_label()
+
+func _update_weapon_mastery_category_label()->void:
+	if member_skill_category_button==null:return
+	member_skill_category_button.text=("▼" if member_skill_category_expanded else "▶")+"  무기 숙련  ·  6개"
+
+func _update_item_window(equipment:Variant)->void:
+	if not equipment is Dictionary or not bool(equipment.get("available",false)):return
+	member_item_weapon_text.text="%s\n공격 형태 %s · 피해 %d\n사거리 %d-%d칸 · 고유 공격시간 %d"%[
+		str(equipment.get("weapon_label","없음")),str(equipment.get("attack_form","-")),
+		int(equipment.get("raw_damage",0)),int(equipment.get("range_min",1)),
+		int(equipment.get("range_max",1)),int(equipment.get("attack_time",100))]
+	var load_state:="해당 없음"
+	if bool(equipment.get("reload_required",false)):
+		load_state="장전됨" if bool(equipment.get("loaded",false)) else "미장전"
+	member_item_ammo_text.text="화살 %d  ·  볼트 %d\n쇠뇌 장전 상태 · %s"%[
+		int(equipment.get("arrows",0)),int(equipment.get("bolts",0)),load_state]
+	member_item_reload_button.visible=bool(equipment.get("reload_required",false))
+	member_item_reload_button.disabled=not bool(equipment.get("can_reload",false))
+	member_item_reload_button.text="재장전 · %d시간"%int(equipment.get("reload_time",0))
+
+func _on_item_reload()->void:
+	var result:Dictionary=session.reload_protagonist_weapon()
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","재장전할 수 없습니다."));return
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
+	_update_item_window(progression.get("equipment",{}))
+	member_detail_current_tab="ITEM";_apply_member_detail_tab()
+	notice_text="쇠뇌를 재장전했습니다.";_request_refresh()
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_member_detail()

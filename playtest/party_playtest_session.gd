@@ -66,6 +66,10 @@ var _draft_fingerprint := ""
 var _exploration_route = null
 var _protagonist_placeholder := false
 var _map_layout: Dictionary = {}
+# Presentation-only fog memory acceleration. Canonical events remain the sole
+# authority: this cache is never serialized and is discarded whenever its
+# world/history/topology identity no longer matches.
+var _explored_presentation_cache: Dictionary = {}
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -225,6 +229,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	scenario_id = p_scenario_id
 	_map_layout = map_layout.duplicate(true)
+	_invalidate_explored_presentation_cache()
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
@@ -259,12 +264,14 @@ func protagonist_progression()->Dictionary:
 		var next_training:=ProgressionRegistryScript.training_floor_for_rank(rank+1)
 		var accuracy_bonus:=ProgressionRegistryScript.proficiency_accuracy_bonus_milli(rank)
 		var damage_bonus:=ProgressionRegistryScript.proficiency_damage_bonus(rank)
-		var effect_label:="명중 +%d · 피해 +%d · 공격속도 변화 없음"%[
+		var mode:=str(progression.training_modes[skill_id])
+		var effect_label:="명중 +%d · 피해 +%d"%[
 			accuracy_bonus,damage_bonus]
 		skills.append({"skill_id":skill_id,"label":str(definition.label),"rank":rank,
 			"training_total":training_total,"training_current":training_total-training_floor,
 			"training_required":next_training-training_floor,
-			"focus":int(progression.training_focus[skill_id]),
+			"training_mode":mode,"training_mode_label":ProgressionRegistryScript.mode_label(mode),
+			"raw_weight":int(ProgressionRegistryScript.MODE_WEIGHTS[mode]),
 			"effect_label":effect_label,
 			"next_milestone":{"rank":int(definition.milestone_rank),
 				"label":str(definition.milestone_label),"implemented":false}})
@@ -272,7 +279,7 @@ func protagonist_progression()->Dictionary:
 		"ruleset_id":ProgressionRegistryScript.RULESET_ID,"level":level,
 		"xp_total":int(progression.xp_total),"xp_current":int(progression.xp_total)-floor_xp,
 		"xp_required":next_total-floor_xp,"current_level_floor":floor_xp,
-		"next_level_threshold":next_total,"focus_total":ProgressionRegistryScript.FOCUS_TOTAL,
+		"next_level_threshold":next_total,
 		"combat_stats":{"attack_power":attack_power,"armor_flat":armor_flat,
 			"guard_reduction_milli":250,"guard_duration":200},
 		"equipment":equipment,
@@ -302,6 +309,9 @@ func protagonist_equipment()->Dictionary:
 		"ammo_kind":weapon.ammo_kind,"ammo_cost":weapon.ammo_cost,
 		"arrows":int(loadout.ammo_pools.ARROW),"bolts":int(loadout.ammo_pools.BOLT),
 		"reload_required":weapon.reload_required,"loaded":bool(loadout.crossbow_loaded),
+		"can_reload":weapon.reload_required and not bool(loadout.crossbow_loaded) \
+			and int(loadout.ammo_pools.get(weapon.ammo_kind,0))>=int(weapon.ammo_cost),
+		"reload_time":int(weapon.reload_time),
 		"can_attack":loadout.attack_error().is_empty(),
 		"attack_block_reason":loadout.attack_error()}.duplicate(true)
 
@@ -348,25 +358,31 @@ func reload_protagonist_weapon()->Dictionary:
 		"equipment":protagonist_equipment()})
 
 
-func set_training_focus(skill_id:String)->Dictionary:
+func _replay_legacy_training_focus(skill_id:String)->Dictionary:
+	# Schema-2 journal compatibility. Product UI uses set_training_mode so each
+	# proficiency remains independently configurable.
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	if skill_id not in ProgressionRegistryScript.SKILL_IDS:
 		return _rejection_dto("unknown_progression_skill")
 	var state=sim.world.party_encounter
-	var preset:=ProgressionRegistryScript.focus_preset(skill_id)
-	if preset==state.protagonist_progression.training_focus:
+	var modes:=ProgressionRegistryScript.DEFAULT_MODES.duplicate(true)
+	for id in ProgressionRegistryScript.SKILL_IDS:
+		modes[id]="FOCUS" if id==skill_id else "NORMAL"
+	if modes==state.protagonist_progression.training_modes:
 		return _rejection_dto("training_focus_unchanged")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	var before:Dictionary=sim.snapshot()
 	var focus_rows:Array=[]
+	var legacy_preset:=ProgressionRegistryScript.focus_preset(skill_id)
 	for id in ProgressionRegistryScript.SKILL_IDS:
-		focus_rows.append({"skill_id":id,"weight":int(preset[id])})
+		focus_rows.append({"skill_id":id,"weight":int(legacy_preset[id])})
 	var hero=sim.world.entities[state.protagonist_id]
 	var event=sim.world.emit_event("progression.focus_changed",state.protagonist_id,-1,
 		hero.position,0,-1,{"schema_version":1,"skill_id":skill_id,"focus":focus_rows})
-	if event==null or not state.protagonist_progression.set_focus_preset(skill_id):
+	if event==null:
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("training_focus_failed")
+	state.protagonist_progression.training_modes=modes
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
@@ -374,6 +390,40 @@ func set_training_focus(skill_id:String)->Dictionary:
 	_clear_draft();_deployment_plan.clear()
 	command_journal.append({"kind":"progression","operation":{
 		"action":"SET_TRAINING_FOCUS","skill_id":skill_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"progression":protagonist_progression()})
+
+
+func set_training_mode(skill_id:String,mode:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	if skill_id not in ProgressionRegistryScript.SKILL_IDS:
+		return _rejection_dto("unknown_progression_skill")
+	if mode not in ProgressionRegistryScript.TRAINING_MODES:
+		return _rejection_dto("unknown_training_mode")
+	var state=sim.world.party_encounter
+	if str(state.protagonist_progression.training_modes.get(skill_id,""))==mode:
+		return _rejection_dto("training_mode_unchanged")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
+	var before:Dictionary=sim.snapshot()
+	var modes:Dictionary=state.protagonist_progression.training_modes.duplicate(true)
+	modes[skill_id]=mode
+	var mode_rows:Array=[]
+	for id in ProgressionRegistryScript.SKILL_IDS:
+		mode_rows.append({"skill_id":id,"mode":str(modes[id])})
+	var hero=sim.world.entities[state.protagonist_id]
+	var event=sim.world.emit_event("progression.focus_changed",state.protagonist_id,-1,
+		hero.position,0,-1,{"schema_version":2,"skill_id":skill_id,"mode":mode,
+			"training_modes":mode_rows})
+	if event==null or not state.protagonist_progression.set_training_mode(skill_id,mode):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("training_mode_failed")
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(state_error)
+	_clear_draft();_deployment_plan.clear()
+	command_journal.append({"kind":"progression","operation":{
+		"action":"SET_TRAINING_MODE","skill_id":skill_id,"mode":mode}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
 		"progression":protagonist_progression()})
 
@@ -593,7 +643,28 @@ func party_personality_summary() -> Dictionary:
 		"companion_rows":rows}.duplicate(true)
 
 func observe_party_world() -> Dictionary:
+	var context:=_party_observation_context()
+	if context.is_empty():return {}
+	var bounds:=Rect2i(Vector2i.ZERO,Vector2i(sim.world.width,sim.world.height))
+	# Keep the established public contract fully detached. Callers and tests may
+	# freely mutate this 48x48 DTO without touching either authority or cache.
+	return _party_rich_observation(context,bounds,Vector2i.ZERO).duplicate(true)
+
+
+func observe_party_ui(cell_count:int=15)->Dictionary:
+	var context:=_party_observation_context()
+	if context.is_empty():return {"grid":{},"minimap":{}}
+	var count:=clampi(cell_count,1,15)
+	var hero_position:Vector2i=context.hero_position
+	var viewport_origin:=hero_position-Vector2i(count/2,count/2)
+	var viewport_bounds:=Rect2i(viewport_origin,Vector2i(count,count))
+	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin),
+		"minimap":_party_minimap_observation(context)}
+
+
+func _party_observation_context()->Dictionary:
 	var status := party_status()
+	if not bool(status.get("ok",false)):return {}
 	var progress := run_progress()
 	# The SHOWCASE is a visual test: a distant monster is deliberately visible
 	# before its detection radius is crossed. REGRESSION keeps the legacy reveal.
@@ -616,9 +687,25 @@ func observe_party_world() -> Dictionary:
 		var follower_key := _position_key(follower_position)
 		if not followers_by_cell.has(follower_key): followers_by_cell[follower_key] = []
 		followers_by_cell[follower_key].append(member_id)
+	return {"status":status,"progress":progress,"hide_enemies":hide_enemies,
+		"hero_id":int(status.protagonist_id),"hero_position":hero_position,
+		"visible":visible,"explored":explored,"followers_by_cell":followers_by_cell}
+
+
+func _party_rich_observation(context:Dictionary,bounds:Rect2i,
+		grid_origin:Vector2i)->Dictionary:
+	var status:Dictionary=context.status
+	var progress:Dictionary=context.progress
+	var visible:Dictionary=context.visible
+	var explored:Dictionary=context.explored
+	var followers_by_cell:Dictionary=context.followers_by_cell
+	var hide_enemies:=bool(context.hide_enemies)
 	var cells: Array = []
-	for y in range(sim.world.height):
-		for x in range(sim.world.width):
+	var minimum:=Vector2i(maxi(0,bounds.position.x),maxi(0,bounds.position.y))
+	var maximum:=Vector2i(mini(sim.world.width,bounds.end.x),
+		mini(sim.world.height,bounds.end.y))
+	for y in range(minimum.y,maximum.y):
+		for x in range(minimum.x,maximum.x):
 			var position := Vector2i(x,y)
 			var position_key:=_position_key(position)
 			var visibility_state := "VISIBLE" if visible.has(position_key) else (
@@ -657,35 +744,124 @@ func observe_party_world() -> Dictionary:
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
-		"phase": party_status(), "grid_mapping": {"origin": [0,0], "cell_count": 225},
+		"phase":status, "grid_mapping": {"origin": [grid_origin.x,grid_origin.y],
+			"cell_count":mini(225,bounds.size.x*bounds.size.y)},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
 			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
-			"memory_supported":true}}.duplicate(true)
+			"memory_supported":true}}
+
+
+func _party_minimap_observation(context:Dictionary)->Dictionary:
+	var visible:Dictionary=context.visible
+	var explored:Dictionary=context.explored
+	var markers:Dictionary={}
+	var hero_id:=int(context.hero_id)
+	if sim.world.entities.has(hero_id):
+		var hero_position:Vector2i=sim.world.entities[hero_id].position
+		if visible.has(_position_key(hero_position)):
+			markers[_position_key(hero_position)]="HERO"
+	if not bool(context.hide_enemies):
+		for enemy_id_value in sim.world.party_encounter.enemy_ids:
+			var enemy_id:=int(enemy_id_value)
+			if not sim.world.entities.has(enemy_id) or not sim.world.occupies_tile(enemy_id):continue
+			var enemy_position:Vector2i=sim.world.entities[enemy_id].position
+			var enemy_key:=_position_key(enemy_position)
+			if visible.has(enemy_key) and not markers.has(enemy_key):markers[enemy_key]="ENEMY"
+	var cells:Array=[]
+	for y in range(sim.world.height):
+		for x in range(sim.world.width):
+			var position:=Vector2i(x,y)
+			var key:=_position_key(position)
+			var state:="VISIBLE" if visible.has(key) else (
+				"MEMORY" if explored.has(key) else "UNSEEN")
+			# Omitted compact rows are explicitly UNSEEN in PartyMinimap. This keeps
+			# never-observed terrain identity out of the DTO entirely.
+			if state=="UNSEEN":continue
+			cells.append({"position":[x,y],"visibility_state":state,
+				"terrain_id":str(sim.world.tile_at(position).terrain),
+				"marker":str(markers.get(key,"")) if state=="VISIBLE" else ""})
+	return {"schema_version":1,"width":sim.world.width,"height":sim.world.height,
+		"cells":cells}
 
 
 func _explored_cells_from_hero_history(hero_id:int,current_position:Vector2i)->Dictionary:
-	# This is deliberately reconstructed from canonical history on every observe.
-	# The observer owns no mutable fog state, so refresh, save/load and replay all
-	# produce the same memory map without changing simulation authority.
-	var visited:Array[Vector2i]=[]
-	for event in sim.world.events:
+	if sim==null or sim.world==null:return {}
+	var event_count:int=sim.world.events.size()
+	var topology_fingerprint:=_presentation_topology_fingerprint()
+	var cache_valid:=int(_explored_presentation_cache.get("world_instance_id",-1)) \
+			==int(sim.world.get_instance_id()) \
+		and str(_explored_presentation_cache.get("scenario_id",""))==scenario_id \
+		and int(_explored_presentation_cache.get("hero_id",-1))==hero_id \
+		and int(_explored_presentation_cache.get("topology_fingerprint",-1)) \
+			==topology_fingerprint
+	var scanned_count:=int(_explored_presentation_cache.get("scanned_event_count",0))
+	if cache_valid:
+		cache_valid=scanned_count>=0 and scanned_count<=event_count
+	if cache_valid and scanned_count>0:
+		var prefix_event=sim.world.events[scanned_count-1]
+		cache_valid=int(prefix_event.id)==int(
+			_explored_presentation_cache.get("boundary_event_id",-1)) \
+			and _presentation_event_boundary_signature(prefix_event)==str(
+				_explored_presentation_cache.get("boundary_event_signature",""))
+	if not cache_valid:
+		_explored_presentation_cache={"world_instance_id":int(sim.world.get_instance_id()),
+			"scenario_id":scenario_id,"hero_id":hero_id,
+			"topology_fingerprint":topology_fingerprint,"scanned_event_count":0,
+			"boundary_event_id":-1,"boundary_event_signature":"",
+			"visited":{},"explored":{}}
+		scanned_count=0
+	for index in range(scanned_count,event_count):
+		var event=sim.world.events[index]
 		if str(event.type)!="action.move" or int(event.actor_id)!=hero_id:continue
-		var from_value:Variant=event.data.get("from_position",[])
-		if from_value is Array and from_value.size()==2:
-			var from_position:=Vector2i(int(from_value[0]),int(from_value[1]))
-			if from_position not in visited:visited.append(from_position)
-		var to_value:Variant=event.data.get("to_position",[])
-		if to_value is Array and to_value.size()==2:
-			var to_position:=Vector2i(int(to_value[0]),int(to_value[1]))
-			if to_position not in visited:visited.append(to_position)
-	if visited.is_empty():visited.append(current_position)
-	elif current_position not in visited:visited.append(current_position)
-	var explored:Dictionary={}
-	for origin in visited:
-		var historical_visible:Dictionary=VisualTestMapScript.visible_cells(
-			sim.world,origin,scenario_id)
-		for key in historical_visible:explored[str(key)]=true
-	return explored
+		_cache_explored_position(event.data.get("from_position",[]))
+		_cache_explored_position(event.data.get("to_position",[]))
+	_cache_explored_origin(current_position)
+	_explored_presentation_cache["scanned_event_count"]=event_count
+	if event_count>0:
+		var tail_event=sim.world.events[event_count-1]
+		_explored_presentation_cache["boundary_event_id"]=int(tail_event.id)
+		_explored_presentation_cache["boundary_event_signature"]= \
+			_presentation_event_boundary_signature(tail_event)
+	else:
+		_explored_presentation_cache["boundary_event_id"]=-1
+		_explored_presentation_cache["boundary_event_signature"]=""
+	return (_explored_presentation_cache.get("explored",{}) as Dictionary).duplicate()
+
+
+func _cache_explored_position(value:Variant)->void:
+	if value is Array and value.size()==2:
+		_cache_explored_origin(Vector2i(int(value[0]),int(value[1])))
+
+
+func _cache_explored_origin(origin:Vector2i)->void:
+	if not sim.world.in_bounds(origin):return
+	var visited:Dictionary=_explored_presentation_cache.get("visited",{})
+	var origin_key:=_position_key(origin)
+	if visited.has(origin_key):return
+	visited[origin_key]=true
+	var explored:Dictionary=_explored_presentation_cache.get("explored",{})
+	var historical_visible:Dictionary=VisualTestMapScript.visible_cells(
+		sim.world,origin,scenario_id)
+	for key in historical_visible:explored[str(key)]=true
+	_explored_presentation_cache["visited"]=visited
+	_explored_presentation_cache["explored"]=explored
+
+
+func _presentation_event_boundary_signature(event)->String:
+	return "%d:%s:%d"%[int(event.id),str(event.type),int(event.actor_id)]
+
+
+func _presentation_topology_fingerprint()->int:
+	var fingerprint:=posmod(sim.world.width*131+sim.world.height,2147483647)
+	for y in range(sim.world.height):
+		for x in range(sim.world.width):
+			fingerprint=posmod(fingerprint*33+str(
+				sim.world.tile_at(Vector2i(x,y)).terrain).hash(),2147483647)
+	return fingerprint
+
+
+func _invalidate_explored_presentation_cache()->void:
+	_explored_presentation_cache.clear()
 
 
 func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) -> Dictionary:
@@ -2394,7 +2570,11 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.equip_protagonist_weapon(str(operation.weapon_id)) \
 					if str(operation.action)=="EQUIP" else replay.reload_protagonist_weapon()
 			"progression":
-				replay_result=replay.set_training_focus(str(row.operation.skill_id))
+				var progression_operation:Dictionary=row.operation
+				replay_result=replay.set_training_mode(str(progression_operation.skill_id),
+					str(progression_operation.mode)) \
+					if str(progression_operation.action)=="SET_TRAINING_MODE" \
+					else replay._replay_legacy_training_focus(str(progression_operation.skill_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -2425,6 +2605,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
+	_invalidate_explored_presentation_cache()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
 
 func _journal_wire_error(journal: Array) -> String:
@@ -2444,8 +2625,12 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys != ["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_progression_journal"
 				var operation_keys:Array=row.operation.keys();operation_keys.sort()
-				if operation_keys!=["action","skill_id"] \
-						or row.operation.action!="SET_TRAINING_FOCUS" \
+				var legacy_operation:bool=operation_keys==["action","skill_id"] \
+					and row.operation.action=="SET_TRAINING_FOCUS"
+				var mode_operation:bool=operation_keys==["action","mode","skill_id"] \
+					and row.operation.action=="SET_TRAINING_MODE" \
+					and row.operation.mode in ProgressionRegistryScript.TRAINING_MODES
+				if (not legacy_operation and not mode_operation) \
 						or row.operation.skill_id not in ProgressionRegistryScript.SKILL_IDS:
 					return "invalid_progression_journal"
 			"exploration":

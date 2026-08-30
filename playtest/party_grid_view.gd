@@ -58,11 +58,22 @@ var _pointer_gesture_long_fired := false
 var _pointer_gesture_cancelled := false
 var _pointer_gesture_generation := 0
 var _suppress_mouse_until_msec := -1
+var _static_projection_cache:Dictionary={}
+var _static_projection_dirty:=true
+var _static_projection_rebuild_count:=0
+var _occupied_visible_cells:Dictionary={}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
-	clip_contents=true; resized.connect(queue_redraw)
+	clip_contents=true; resized.connect(_on_visual_geometry_changed)
 	set_process(false)
+
+func _on_visual_geometry_changed()->void:
+	_invalidate_static_projection_cache()
+	queue_redraw()
+
+func _invalidate_static_projection_cache()->void:
+	_static_projection_dirty=true
 
 func _exit_tree()->void:
 	_reset_pointer_gesture()
@@ -70,22 +81,35 @@ func _exit_tree()->void:
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
-	var previous_cells:Dictionary=_cells.duplicate(true)
+	var previous_visible_cells:Dictionary={}
 	var previous_actors:Dictionary={}
 	var previous_visual_world:Dictionary={}
 	for actor in _actors:
 		var previous_id:=int(actor.get("entity_id",-1))
 		if previous_id<=0:continue
-		previous_actors[previous_id]=actor.duplicate(true)
+		previous_actors[previous_id]=actor
 		previous_visual_world[previous_id]=_actor_visual_world_position(previous_id,observed_at_ms)
+		var previous_position:=_position_from_actor(actor)
+		var previous_row:Dictionary=_cells.get(_key(previous_position),{})
+		if not previous_row.is_empty() \
+				and AsciiStyleScript.visibility_state(previous_row)=="VISIBLE":
+			previous_visible_cells[_key(previous_position)]=true
 	_cells.clear(); _actors.clear(); _ghosts.clear()
 	world_grid_size=Vector2i(maxi(1,int(observation.get("width",GRID_SIZE))),maxi(1,int(observation.get("height",GRID_SIZE))))
 	for raw in observation.get("cells",[]):
-		var row: Dictionary = raw.duplicate(true); var p := Vector2i(int(row.position[0]),int(row.position[1])); _cells[_key(p)] = row
-	for raw in observation.get("cells",[]):
-		var row: Dictionary = raw.duplicate(true); var p := Vector2i(int(row.position[0]),int(row.position[1]))
+		if not raw is Dictionary or not raw.get("position") is Array \
+				or raw.position.size()!=2:continue
+		# Cell presentation fields are scalar; actors are normalized into the
+		# dedicated detached _actors array below. One shallow row copy avoids both
+		# aliasing and the former two full deep-copy passes.
+		var row:Dictionary=raw.duplicate(false)
+		var p:=Vector2i(int(raw.position[0]),int(raw.position[1]))
+		row["position"]=[p.x,p.y]
+		row["actors"]=[]
+		_cells[_key(p)]=row
 		if AsciiStyleScript.visibility_state(row)=="VISIBLE":
-			for actor in row.get("actors",[]):
+			for actor in raw.get("actors",[]):
+				if not actor is Dictionary:continue
 				var copy: Dictionary = actor.duplicate(true)
 				var display_position:=_validated_display_position(copy,p)
 				var logical_position:=_validated_logical_position(copy,p)
@@ -115,7 +139,9 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	_ghosts.sort_custom(func(a,b):
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
-	_reconcile_actor_motions(previous_actors,previous_visual_world,previous_cells,observed_at_ms)
+	_reconcile_actor_motions(previous_actors,previous_visual_world,
+		previous_visible_cells,observed_at_ms)
+	_invalidate_static_projection_cache()
 	queue_redraw()
 
 func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->void:
@@ -148,7 +174,8 @@ func actor_motion_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	return {"active":bool(sample.active),"entity_id":entity_id,
 		"from_world":motion.from_world,"to_world":motion.to_world,
 		"world_position":sample.world_position,"progress":float(sample.progress),
-		"eased_progress":float(sample.eased_progress),
+		"eased_progress":float(sample.eased_progress),"step_phase":str(sample.step_phase),
+		"stride_sign":int(sample.stride_sign),"glyph_bob_ratio":float(sample.glyph_bob_ratio),
 		"duration_ms":int(sample.duration_ms),"started_at_ms":int(motion.started_at_ms)}.duplicate(true)
 
 func actor_visual_center(entity_id:int,sample_time_ms:int=-1)->Vector2:
@@ -159,7 +186,7 @@ func actor_visual_center(entity_id:int,sample_time_ms:int=-1)->Vector2:
 	return _world_position_to_pixel_center(_actor_visual_world_position(entity_id,sample_time_ms))
 
 func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:Dictionary,
-		previous_cells:Dictionary,observed_at_ms:int)->void:
+		previous_visible_cells:Dictionary,observed_at_ms:int)->void:
 	var next_actors:Dictionary={}
 	for actor in _actors:
 		var entity_id:=int(actor.get("entity_id",-1))
@@ -186,10 +213,9 @@ func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:D
 			and maxi(absi(logical_delta.x),absi(logical_delta.y))==1
 		var previous_display:=_position_from_actor(previous)
 		var next_display:=_position_from_actor(next)
-		var previous_row:Dictionary=previous_cells.get(_key(previous_display),{})
 		var next_row:Dictionary=_cells.get(_key(next_display),{})
-		var fov_safe:=not previous_row.is_empty() and not next_row.is_empty() \
-			and AsciiStyleScript.visibility_state(previous_row)=="VISIBLE" \
+		var fov_safe:=bool(previous_visible_cells.get(_key(previous_display),false)) \
+			and not next_row.is_empty() \
 			and AsciiStyleScript.visibility_state(next_row)=="VISIBLE" \
 			and is_world_cell_visible(previous_display) and is_world_cell_visible(next_display)
 		var from_world:Vector2=previous_visual_world.get(entity_id,Vector2(previous_display))
@@ -205,7 +231,7 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 	cancel_pointer_gesture()
 	visible_cell_count=clampi(cell_count,1,mini(world_grid_size.x,world_grid_size.y))
 	if visible_cell_count>=world_grid_size.x and visible_cell_count>=world_grid_size.y:
-		view_origin=Vector2i.ZERO; queue_redraw(); return
+		view_origin=Vector2i.ZERO;_invalidate_static_projection_cache();queue_redraw(); return
 	var minimum:=Vector2i(world_grid_size.x-1,world_grid_size.y-1); var maximum:=Vector2i.ZERO; var found:=false
 	for source in [focus_points,priority_points]:
 		for raw in source:
@@ -216,7 +242,7 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 			maximum=Vector2i(maxi(maximum.x,point.x),maxi(maximum.y,point.y)); found=true
 	if found and (maximum.x-minimum.x>visible_cell_count-1 or maximum.y-minimum.y>visible_cell_count-1):
 		visible_cell_count=mini(world_grid_size.x,world_grid_size.y)
-		view_origin=Vector2i.ZERO;queue_redraw();return
+		view_origin=Vector2i.ZERO;_invalidate_static_projection_cache();queue_redraw();return
 	var center:=Vector2i(world_grid_size.x/2,world_grid_size.y/2)
 	if found:center=Vector2i((minimum.x+maximum.x)/2,(minimum.y+maximum.y)/2)
 	var next_origin:=center-Vector2i(visible_cell_count/2,visible_cell_count/2)
@@ -225,7 +251,7 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 		var maximum_origin:=Vector2i(mini(minimum.x,world_grid_size.x-visible_cell_count),mini(minimum.y,world_grid_size.y-visible_cell_count))
 		next_origin=Vector2i(clampi(next_origin.x,minimum_origin.x,maximum_origin.x),clampi(next_origin.y,minimum_origin.y,maximum_origin.y))
 	next_origin=_clamp_view_origin(next_origin)
-	view_origin=next_origin; queue_redraw()
+	view_origin=next_origin;_invalidate_static_projection_cache();queue_redraw()
 
 func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		hero_actor_id:int=-1)->void:
@@ -233,6 +259,9 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	# intentional at map edges: those screen cells render as void rather than
 	# pushing the hero away from the center cell.
 	cancel_pointer_gesture()
+	var previous_origin:=view_origin
+	var previous_count:=visible_cell_count
+	var previous_hero:=_hero_camera_position
 	visible_cell_count=clampi(cell_count,1,64)
 	if _hero_camera_position!=Vector2i(-1,-1) and hero_position!=_hero_camera_position:
 		var delta:=hero_position-_hero_camera_position
@@ -244,6 +273,9 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
 	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
 	if hero_actor_id>0:_actor_motions.erase(hero_actor_id)
+	if previous_origin!=view_origin or previous_count!=visible_cell_count \
+			or previous_hero!=_hero_camera_position:
+		_invalidate_static_projection_cache()
 	_update_process_enabled();queue_redraw()
 
 func camera_settle_draw_spec(sample_time_ms:int=-1)->Dictionary:
@@ -354,6 +386,10 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	if product_style and kind=="HIT_FLASH" and is_world_cell_visible(world_position):
 		particles=_deterministic_hit_particles(int(effect.get("event_id",0)),pixel_center,
 			cell_size_px(),age_ratio)
+	var attack_glyphs:Array=[]
+	if product_style and kind=="SLASH" and is_world_cell_visible(world_position):
+		attack_glyphs=_deterministic_attack_glyphs(effect,world_position,pixel_center,
+			form_spec,age_ratio)
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
 		"attack_form":str(form_spec.attack_form),
@@ -366,6 +402,8 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
 		"flash_active":product_style and kind=="HIT_FLASH" and elapsed_ms<=125,
 		"particles":particles,"particle_count":particles.size(),
+		"attack_glyphs":attack_glyphs,"attack_glyph_count":attack_glyphs.size(),
+		"ranged_trajectory":attack_glyphs.any(func(row):return str(row.get("kind",""))=="TRAJECTORY"),
 		"line_width":2.4 if product_style and kind=="SLASH" else (4.0 if kind in ["SLASH","DEATH"] else 3.0),
 		"radius":cell_size_px()*(0.22 if product_style and kind=="SLASH" else 0.28),
 		"text":str(effect.get("text","")),
@@ -386,6 +424,7 @@ func _visual_effect_direction(effect:Dictionary,world_position:Vector2i)->Vector
 func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 		age_ratio:float)->Array:
 	var rows:Array=[];var count:=2+absi(event_id)%3
+	var glyphs:=["*","!","/","\\"]
 	for index in range(count):
 		var seed:=DioramaScript.visual_hash(Vector2i(event_id%997,index),211+index*17)
 		var angle:=TAU*float(seed%6283)/6283.0
@@ -394,8 +433,61 @@ func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 		var start:=center+direction*spread
 		var length:=cell*(0.10+0.035*float(seed%4))*(1.0-age_ratio*0.45)
 		rows.append({"from":start,"to":start+direction*length,
+			"glyph":glyphs[(seed+index)%glyphs.size()],
+			"font_size":maxi(10,int(cell*0.42)),
 			"line_width":maxf(1.0,cell*0.055),"opacity":1.0-age_ratio})
 	return rows.duplicate(true)
+
+
+func _deterministic_attack_glyphs(effect:Dictionary,world_position:Vector2i,
+		center:Vector2,form_spec:Dictionary,age_ratio:float)->Array:
+	var rows:Array=[];var cell:=cell_size_px()
+	var event_id:=int(effect.get("event_id",0))
+	var instigator:=_actor_by_id(int(effect.get("instigator_id",
+		effect.get("actor_id",-1))))
+	var source_position:=_position_from_actor(instigator) if not instigator.is_empty() \
+		else Vector2i(-1,-1)
+	var delta:=world_position-source_position
+	var range_cells:=maxi(absi(delta.x),absi(delta.y)) if source_position!=Vector2i(-1,-1) else 0
+	var fade:=pow(1.0-age_ratio,0.72)
+	if range_cells>1 and is_world_cell_visible(source_position):
+		var source_center:=world_to_pixel_center(source_position)
+		var count:=mini(5,maxi(2,range_cells-1))
+		var trajectory_glyph:=_trajectory_glyph_for_delta(delta)
+		for index in range(count):
+			var progress:=float(index+1)/float(count+1)
+			var sample_world:=Vector2i(Vector2(source_position).lerp(
+				Vector2(world_position),progress).round())
+			if not is_world_cell_visible(sample_world):continue
+			rows.append({"kind":"TRAJECTORY","glyph":trajectory_glyph,
+				"center":source_center.lerp(center,progress),
+				"font_size":maxi(10,int(cell*0.40)),
+				"opacity":fade*(0.44+0.56*progress)})
+		rows.append({"kind":"BURST","glyph":str(form_spec.get("lead_glyph",">")),
+			"center":center,"font_size":maxi(12,int(cell*0.52)),"opacity":fade})
+		return rows.duplicate(true)
+
+	var attack_form:=str(form_spec.get("attack_form","SLASH"))
+	var glyphs:Array=({"SLASH":["/","\\","-","*"],
+		"PIERCE":["-","-",">","!"],
+		"IMPACT":["*","!","/","\\"]}.get(attack_form,["/","\\","*","!"]))
+	var seed:=DioramaScript.visual_hash(world_position,event_id+503)
+	var rotation:=TAU*float(seed%16)/16.0
+	for index in range(4):
+		var angle:=rotation+TAU*float(index)/4.0
+		var direction:=Vector2(cos(angle),sin(angle))
+		var distance:=cell*(0.42+0.12*float((seed+index)%3))*(0.78+0.22*age_ratio)
+		rows.append({"kind":"BURST","glyph":glyphs[index%glyphs.size()],
+			"center":center+direction*distance,
+			"font_size":maxi(11,int(cell*(0.42+0.04*float(index%2)))),
+			"opacity":fade*(0.72+0.08*float(index%3))})
+	return rows.duplicate(true)
+
+
+func _trajectory_glyph_for_delta(delta:Vector2i)->String:
+	if absi(delta.x)>absi(delta.y)*2:return "-"
+	if absi(delta.y)>absi(delta.x)*2:return "|"
+	return "\\" if signi(delta.x)==signi(delta.y) else "/"
 
 func actor_hit_feedback_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var actor:=_actor_by_id(entity_id)
@@ -420,7 +512,7 @@ func actor_hit_feedback_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictiona
 		var amplitude:=3.0+float(absi(int(effect.get("event_id",0)))%3)
 		var recoil:=direction*amplitude*pow(1.0-recoil_progress,2.0)
 		return {"active":true,"entity_id":entity_id,"event_id":int(effect.get("event_id",0)),
-			"flash_active":bool(effect_spec.flash_active),"flash_hex":"#fff0ea",
+			"flash_active":bool(effect_spec.flash_active),"flash_hex":"#ff4054",
 			"recoil_offset":recoil,"recoil_progress":recoil_progress,"duration_ms":210,
 			"impact_hold_active":int(effect_spec.elapsed_ms)<=42,
 			"afterimage_active":recoil_progress<0.72,
@@ -672,7 +764,7 @@ func actor_render_order() -> Array:
 	for row in _sorted_visual_actor_rows():ids.append(int(row.actor.get("entity_id",-1)))
 	return ids.duplicate()
 
-func actor_draw_spec(actor:Dictionary,ghost:bool=false)->Dictionary:
+func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->Dictionary:
 	var projected := actor.duplicate(true)
 	var entity_id := int(actor.get("entity_id",-1))
 	if not ghost and _actor_motions.has(entity_id):
@@ -682,6 +774,10 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false)->Dictionary:
 		if not delta.is_zero_approx():
 			projected["facing"]=[signi(int(roundf(delta.x))),signi(int(roundf(delta.y)))]
 			projected["visual_stance"]="MOVING"
+			var sample:=actor_motion_draw_spec(entity_id,sample_time_ms)
+			projected["step_phase"]=str(sample.get("step_phase","SETTLE"))
+			projected["stride_sign"]=int(sample.get("stride_sign",0))
+			projected["glyph_bob_ratio"]=float(sample.get("glyph_bob_ratio",0.0))
 	elif bool(actor.get("guarded",false)):
 		projected["visual_stance"]="GUARD"
 	return AsciiStyleScript.actor_spec(projected,ghost)
@@ -694,7 +790,7 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 		return {"visible":false,"entity_id":entity_id}.duplicate(true)
 	var bounds:=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
 	if bounds.size.x<=0.0:return {"visible":false,"entity_id":entity_id}.duplicate(true)
-	var style:=actor_draw_spec(actor,false)
+	var style:=actor_draw_spec(actor,false,sample_time_ms)
 	var glyph:=AsciiPortraitScript.glyph_layout_spec(get_theme_default_font(),bounds,style,true)
 	var projected_segments:=AsciiPortraitScript.limb_draw_segments(bounds,style,glyph)
 	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
@@ -727,6 +823,12 @@ func diorama_layer_order()->Array:
 	return DioramaScript.layer_order()
 
 func diorama_cell_draw_spec(position:Vector2i)->Dictionary:
+	_ensure_static_projection_cache()
+	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
+	if not cached.is_empty():return (cached.get("cell_spec",{}) as Dictionary).duplicate(true)
+	return _compute_diorama_cell_spec(position)
+
+func _compute_diorama_cell_spec(position:Vector2i)->Dictionary:
 	if not _world_in_bounds(position):
 		return DioramaScript.cell_spec(position,{}, {})
 	var neighbors:={
@@ -737,17 +839,56 @@ func diorama_cell_draw_spec(position:Vector2i)->Dictionary:
 	}
 	return DioramaScript.cell_spec(position,_cells.get(_key(position),{}),neighbors)
 
+func _ensure_static_projection_cache()->void:
+	if not _static_projection_dirty:return
+	_static_projection_cache.clear();_occupied_visible_cells.clear()
+	for actor in _actors:
+		var actor_position:=_position_from_actor(actor)
+		if is_world_cell_visible(actor_position):_occupied_visible_cells[_key(actor_position)]=true
+	var cell_size:=cell_size_px()
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y);var key:=_key(position)
+			var in_world:=_world_in_bounds(position)
+			var rect:=_camera_cell_rect(position)
+			if not in_world:
+				_static_projection_cache[key]={"position":position,"in_world":false,
+					"rect":rect,"visibility_state":"VOID","occupied":false,
+					"light":DioramaScript.quantized_light_spec(position,
+						_hero_camera_position,"UNSEEN"),"cell_spec":DioramaScript.cell_spec(position,{}, {})}
+				continue
+			var row:Dictionary=_cells.get(key,{})
+			var state:=_diorama_visibility_state(row)
+			var terrain:=AsciiStyleScript.terrain_spec(row)
+			var cell_spec:=_compute_diorama_cell_spec(position)
+			var depth:=DioramaScript.terrain_depth_spec(row,cell_size)
+			depth["position"]=[position.x,position.y];depth["top_rect"]=rect
+			depth["side_rect"]=Rect2(rect.position+Vector2(depth.side_offset),rect.size) \
+				if bool(depth.raised) else Rect2()
+			var wall_role:=DioramaScript.wall_role_spec(int(cell_spec.get("connected_mask",0)),
+				int(cell_spec.get("exposed_mask",0))) if str(terrain.get("terrain_id",""))=="wall" else {}
+			_static_projection_cache[key]={"position":position,"in_world":true,"rect":rect,
+				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
+				"depth":depth,"wall_role":wall_role,"occupied":_occupied_visible_cells.has(key),
+				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
+	_static_projection_dirty=false;_static_projection_rebuild_count+=1
+
+func _cached_static_cell(position:Vector2i)->Dictionary:
+	_ensure_static_projection_cache()
+	return _static_projection_cache.get(_key(position),{})
+
+func static_projection_cache_stats()->Dictionary:
+	_ensure_static_projection_cache()
+	return {"cell_count":_static_projection_cache.size(),"viewport_capacity":
+		visible_cell_count*visible_cell_count,"rebuild_count":_static_projection_rebuild_count,
+		"dirty":_static_projection_dirty,"world_cell_count":_cells.size()}.duplicate(true)
+
 func terrain_depth_draw_spec(position:Vector2i)->Dictionary:
 	if not is_world_cell_visible(position):
 		return {"visible":false,"position":[position.x,position.y],"raised":false,
 			"extrusion_px":0.0,"draw_image":false,"draw_cell_border":false}.duplicate(true)
-	var depth:Dictionary=DioramaScript.terrain_depth_spec(
-		_cells.get(_key(position),{}),cell_size_px())
-	depth["position"]=[position.x,position.y]
-	var top_rect:=world_cell_rect(position);depth["top_rect"]=top_rect
-	depth["side_rect"]=Rect2(top_rect.position+Vector2(depth.side_offset),top_rect.size) \
-		if bool(depth.raised) else Rect2()
-	return depth.duplicate(true)
+	var cached:=_cached_static_cell(position)
+	return (cached.get("depth",{}) as Dictionary).duplicate(true)
 
 func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 	if not _world_in_bounds(position):
@@ -756,15 +897,26 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 	var row:Dictionary=_cells.get(_key(position),{})
 	var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
 	var state:=_diorama_visibility_state(row)
+	var cached:=_cached_static_cell(position)
+	var light:Dictionary=cached.get("light",DioramaScript.quantized_light_spec(
+		position,_hero_camera_position,state))
+	var occupied:=bool(cached.get("occupied",false))
 	var visible:=bool(terrain.get("glyph_primary",false)) and state!="UNSEEN"
-	var rendered_glyph:=_diorama_color(str(terrain.glyph_hex),float(terrain.opacity),
-		state=="MEMORY") if visible else Color(0,0,0,0)
+	var rendered_glyph:=_diorama_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
+		*(0.46 if occupied else 1.0),state,light,true) if visible else Color(0,0,0,0)
 	return {"visible":visible,"position":[position.x,position.y],
 		"terrain_id":str(terrain.terrain_id) if visible else "",
 		"visibility_state":state,"glyph":str(terrain.glyph) if visible else "",
 		"base_hex":str(terrain.base_hex) if visible else "",
 		"glyph_hex":str(terrain.glyph_hex) if visible else "",
 		"rendered_glyph_color":rendered_glyph,
+		"light_band":str(light.get("band","UNANCHORED")),"occupied":occupied,
+		"ink_family":str(terrain.get("ink_family","")),
+		"font_ratio":float(terrain.get("font_ratio",0.54)),
+		"glyph_offset":terrain.get("glyph_offset",Vector2.ZERO),
+		"slab_ratio":terrain.get("slab_ratio",Vector2.ZERO),
+		"outline_passes":int(terrain.get("outline_passes",0)),
+		"weight_passes":int(terrain.get("weight_passes",1)),
 		"opacity":float(terrain.opacity) if visible else 0.0,
 		"registered":bool(terrain.get("registered",false)),
 		"glyph_primary":visible,"draw_image":false,"draw_tile_border":false,
@@ -967,6 +1119,7 @@ func _diorama_visibility_state(row:Dictionary)->String:
 	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
 
 func _draw() -> void:
+	_ensure_static_projection_cache()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
@@ -1013,57 +1166,69 @@ func _draw_ground_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if _diorama_visibility_state(row)!=visibility_state:continue
+			var cached:=_cached_static_cell(position)
+			if str(cached.get("visibility_state",""))!=visibility_state:continue
+			var row:Dictionary=cached.get("row",{})
 			var visibility:Dictionary=AsciiStyleScript.visibility_spec(row)
+			var light:Dictionary=cached.get("light",{})
 			# Borderless overlapping fills make adjacent visible cells read as one
 			# continuous pool of light instead of a tile checkerboard.
 			var wash_rect:=world_cell_rect(position)
 			var wash_overlap:=clampf(cell_size_px()*0.035,0.75,1.5)
 			draw_rect(wash_rect.grow(wash_overlap).intersection(grid_rect()),
-				Color(str(visibility.background_hex)),true)
-			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
+				_diorama_ink_color(str(visibility.background_hex),1.0,
+				visibility_state,light,false),true)
+			var terrain:Dictionary=cached.get("terrain",{})
 			if not bool(terrain.visible) or str(terrain.terrain_id)=="wall":continue
-			_draw_ground_surface(position,row,terrain,visibility_state=="MEMORY")
+			_draw_ground_surface(position,terrain,visibility_state,light,
+				bool(cached.get("occupied",false)))
 
-func _draw_ground_surface(position:Vector2i,row:Dictionary,terrain:Dictionary,
-		memory:bool)->void:
+func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
+		visibility_state:String,light:Dictionary,occupied:bool)->void:
 	# Ordinary floor owns no per-cell surface at all: the single grid-wide
 	# substrate is its background and `.` is its only cell-local identity.
 	if str(terrain.get("terrain_id",""))=="floor":return
 	if not bool(terrain.get("draw_cell_surface",true)):return
 	var rect:=world_cell_rect(position)
-	var overlap:=clampf(cell_size_px()*0.045,1.0,2.0)
-	var base:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),memory)
-	draw_rect(rect.grow(overlap).intersection(grid_rect()),base,true)
+	var slab_ratio:Vector2=terrain.get("slab_ratio",Vector2(0.72,0.52))
+	if slab_ratio.x<=0.0 or slab_ratio.y<=0.0:return
+	var slab_size:=Vector2(rect.size.x*slab_ratio.x,rect.size.y*slab_ratio.y)
+	var glyph_offset:Vector2=terrain.get("glyph_offset",Vector2.ZERO)
+	var slab_center:=rect.get_center()+Vector2(glyph_offset.x*rect.size.x,
+		glyph_offset.y*rect.size.y)
+	var slab_rect:=Rect2(slab_center-slab_size*0.5,slab_size)
+	var base:=_diorama_ink_color(str(terrain.get("slab_hex",terrain.base_hex)),
+		float(terrain.opacity)*(0.68 if occupied else 0.84),visibility_state,light,false)
+	draw_rect(slab_rect,base,true)
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if _diorama_visibility_state(row)!=visibility_state:continue
-			var terrain:Dictionary=AsciiStyleScript.terrain_spec(row)
+			var cached:=_cached_static_cell(position)
+			if str(cached.get("visibility_state",""))!=visibility_state:continue
+			var terrain:Dictionary=cached.get("terrain",{})
 			if str(terrain.terrain_id)=="wall":continue
 			_draw_terrain_glyph(world_cell_rect(position),terrain,
-				visibility_state=="MEMORY")
+				visibility_state,cached.get("light",{}),bool(cached.get("occupied",false)))
 
 func _draw_material_mark_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if _diorama_visibility_state(row)!=visibility_state:continue
-			var cell_spec:=diorama_cell_draw_spec(position)
+			var cached:=_cached_static_cell(position)
+			if str(cached.get("visibility_state",""))!=visibility_state \
+					or bool(cached.get("occupied",false)):continue
+			var cell_spec:Dictionary=cached.get("cell_spec",{})
 			var mark:Dictionary=cell_spec.get("material_mark",{})
 			if not bool(mark.get("visible",false)):continue
-			var terrain:=AsciiStyleScript.terrain_spec(row)
+			var terrain:Dictionary=cached.get("terrain",{})
 			var rect:=world_cell_rect(position)
 			var offset:Vector2=mark.get("offset",Vector2.ZERO)
 			var center:=rect.get_center()+Vector2(offset.x*rect.size.x,offset.y*rect.size.y)
 			var opacity:=float(mark.get("opacity",0.0))*float(terrain.get("opacity",1.0))
-			var color:=_diorama_color(str(terrain.get("glyph_hex","#8090a0")),
-				opacity,visibility_state=="MEMORY")
+			var color:=_diorama_ink_color(str(terrain.get("glyph_hex","#8090a0")),
+				opacity,visibility_state,cached.get("light",{}),true)
 			_draw_centered_text(get_theme_default_font(),str(mark.get("glyph","")),center,
 				maxi(7,int(rect.size.x*0.28)),color)
 
@@ -1071,10 +1236,10 @@ func _draw_wall_shadow_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if _diorama_visibility_state(row)!=visibility_state \
-					or str(row.get("terrain_id",row.get("terrain","floor")))!="wall":continue
-			var spec:=diorama_cell_draw_spec(position)
+			var cached:=_cached_static_cell(position)
+			if str(cached.get("visibility_state",""))!=visibility_state \
+					or str((cached.get("terrain",{}) as Dictionary).get("terrain_id",""))!="wall":continue
+			var spec:Dictionary=cached.get("cell_spec",{})
 			var exposed:=int(spec.get("exposed_mask",0))
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
 			var alpha:=0.10 if visibility_state=="VISIBLE" else 0.035
@@ -1099,45 +1264,64 @@ func _draw_wall_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if _diorama_visibility_state(row)!=visibility_state:continue
-			var terrain:=AsciiStyleScript.terrain_spec(row)
+			var cached:=_cached_static_cell(position)
+			if str(cached.get("visibility_state",""))!=visibility_state:continue
+			var terrain:Dictionary=cached.get("terrain",{})
 			if str(terrain.terrain_id)!="wall":continue
-			var spec:=diorama_cell_draw_spec(position);var connected:=int(spec.connected_mask)
+			var spec:Dictionary=cached.get("cell_spec",{});var connected:=int(spec.connected_mask)
+			var wall_role:Dictionary=cached.get("wall_role",{})
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
 			var overlap:=clampf(cell*0.045,1.0,2.0)
-			var depth:=terrain_depth_draw_spec(position)
+			var depth:Dictionary=cached.get("depth",{})
+			var light:Dictionary=cached.get("light",{})
 			if bool(depth.get("raised",false)):
-				var side:=Color(str(depth.side_hex));side.a*=float(depth.opacity)
+				var side:=_diorama_ink_color(str(depth.side_hex),float(depth.opacity),
+					visibility_state,light,false)
 				draw_rect((depth.side_rect as Rect2).grow(overlap).intersection(grid_rect()),side,true)
-				var side_center:=rect.get_center()+Vector2(depth.side_offset)
-				var side_font_size:=maxi(8,int(floor(cell*float(terrain.get("font_ratio",0.61)))))
-				_draw_centered_text(get_theme_default_font(),str(terrain.glyph),side_center,
-					side_font_size,_diorama_color(str(terrain.glyph_hex),
-					0.16*float(depth.opacity),visibility_state=="MEMORY"))
-			var top:=_diorama_color(str(terrain.base_hex),float(terrain.opacity),visibility_state=="MEMORY")
-			draw_rect(rect.grow(overlap).intersection(grid_rect()),top,true)
-			var edge:=_diorama_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
-				visibility_state=="MEMORY")
+				if bool(wall_role.get("face_visible",false)):
+					var side_center:=rect.get_center()+Vector2(depth.side_offset)
+					var side_font_size:=maxi(8,int(floor(cell*0.58)))
+					_draw_centered_text(get_theme_default_font(),str(wall_role.face_glyph),
+						side_center,side_font_size,_diorama_ink_color(str(terrain.glyph_hex),
+						0.30*float(depth.opacity),visibility_state,light,true))
+			var slab_ratio:Vector2=wall_role.get("slab_ratio",Vector2(0.94,0.92))
+			var slab_size:=Vector2(rect.size.x*slab_ratio.x,rect.size.y*slab_ratio.y)
+			var top_rect:=Rect2(rect.get_center()-slab_size*0.5,slab_size)
+			var top:=_diorama_ink_color(str(terrain.base_hex),float(terrain.opacity),
+				visibility_state,light,false)
+			draw_rect(top_rect.grow(overlap).intersection(grid_rect()),top,true)
+			var edge:=_diorama_ink_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
+				visibility_state,light,true)
 			if not connected&DioramaScript.SOUTH:
 				draw_line(Vector2(rect.position.x,rect.end.y-1),rect.end-Vector2(0,1),edge,1.0,true)
 			if not connected&DioramaScript.EAST:
 				draw_line(Vector2(rect.end.x-1,rect.position.y),rect.end-Vector2(1,0),edge,1.0,true)
-			_draw_terrain_glyph(rect,terrain,visibility_state=="MEMORY")
+			var role_terrain:=terrain.duplicate(false)
+			role_terrain["glyph"]=str(wall_role.get("core_glyph","#"))
+			role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
+			role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
+			_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false)
 
-func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,memory:bool)->void:
+func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
+		light:Dictionary,occupied:bool)->void:
 	if not bool(terrain.get("glyph_primary",false)):return
 	var glyph:=str(terrain.get("glyph",""))
 	if glyph.is_empty():return
-	var center:=rect.get_center();var font:=get_theme_default_font()
+	var glyph_offset:Vector2=terrain.get("glyph_offset",Vector2.ZERO)
+	var center:=rect.get_center()+Vector2(glyph_offset.x*rect.size.x,glyph_offset.y*rect.size.y)
+	var font:=get_theme_default_font()
 	var font_size:=maxi(8,int(floor(rect.size.x*float(terrain.get("font_ratio",0.54)))))
-	var outline:=_diorama_color(str(terrain.get("outline_hex","#020508")),
-		float(terrain.opacity),memory)
-	var color:=_diorama_color(str(terrain.glyph_hex),float(terrain.opacity),memory)
-	for direction in [Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]:
-		_draw_centered_text(font,glyph,center+direction*0.75,font_size,outline)
-	_draw_centered_text(font,glyph,center+Vector2(-0.22,0),font_size,color)
-	_draw_centered_text(font,glyph,center+Vector2(0.22,0),font_size,color)
+	var role_emphasis:=float(terrain.get("role_emphasis",1.0))
+	var occupancy_multiplier:=0.46 if occupied else 1.0
+	var outline:=_diorama_ink_color(str(terrain.get("outline_hex","#020508")),
+		float(terrain.opacity)*role_emphasis,visibility_state,light,true)
+	var color:=_diorama_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
+		*role_emphasis*occupancy_multiplier,visibility_state,light,true)
+	var directions:=[Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]
+	for index in range(clampi(int(terrain.get("outline_passes",0)),0,directions.size())):
+		_draw_centered_text(font,glyph,center+directions[index]*0.72,font_size,outline)
+	if int(terrain.get("weight_passes",1))>=2:
+		_draw_centered_text(font,glyph,center+Vector2(-0.24,0),font_size,color)
 	_draw_centered_text(font,glyph,center,font_size,color)
 
 func _draw_ground_features()->void:
@@ -1172,7 +1356,8 @@ func _draw_fov_edge_haze()->void:
 	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y);var spec:=diorama_cell_draw_spec(position)
+			var position:=view_origin+Vector2i(x,y)
+			var cached:=_cached_static_cell(position);var spec:Dictionary=cached.get("cell_spec",{})
 			if not bool(spec.get("visible",false)):continue
 			var mask:=int(spec.get("fov_edge_mask",0));var rect:=world_cell_rect(position)
 			var color:=Color(0.015,0.03,0.045,0.46 if str(spec.visibility_state)=="VISIBLE" else 0.27)
@@ -1182,10 +1367,21 @@ func _draw_fov_edge_haze()->void:
 			if mask&DioramaScript.WEST:draw_rect(Rect2(rect.position,Vector2(thickness,rect.size.y)),color,true)
 
 func _diorama_color(value:String,opacity:float,memory:bool)->Color:
+	return _diorama_ink_color(value,opacity,"MEMORY" if memory else "VISIBLE",
+		{"background_multiplier":1.0,"foreground_multiplier":1.0,"saturation":0.22 \
+		if memory else 1.0},true)
+
+func _diorama_ink_color(value:String,opacity:float,visibility_state:String,
+		light:Dictionary,foreground:bool)->Color:
 	var color:=Color(value)
-	if memory:
+	var saturation:=clampf(float(light.get("saturation",1.0)),0.0,1.0)
+	if visibility_state=="MEMORY":saturation=minf(saturation,0.14)
+	if saturation<1.0:
 		var luminance:=color.r*0.299+color.g*0.587+color.b*0.114
-		color=color.lerp(Color(luminance,luminance,luminance,1.0),0.78)
+		color=color.lerp(Color(luminance,luminance,luminance,1.0),1.0-saturation)
+	var multiplier:=float(light.get("foreground_multiplier",1.0)) if foreground \
+		else float(light.get("background_multiplier",1.0))
+	color.r*=multiplier;color.g*=multiplier;color.b*=multiplier
 	color.a*=clampf(opacity,0.0,1.0)
 	return color
 
@@ -1202,8 +1398,8 @@ func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
 	var center:=rect.get_center();var font:=get_theme_default_font()
 	var font_size:=maxi(11,int(floor(rect.size.x*0.62)))
 	var halo:=Color(str(spec.get("halo_hex","#05090d")));halo.a=0.72
-	for direction in [Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]:
-		_draw_centered_text(font,str(spec.glyph),center+direction*1.35,font_size,halo)
+	var slab_size:=Vector2(rect.size.x*0.58,rect.size.y*0.66)
+	draw_rect(Rect2(center-slab_size*0.5,slab_size),halo,true)
 	_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
@@ -1233,6 +1429,7 @@ func _draw_visual_effect(effect:Dictionary)->void:
 	match str(spec.primitive):
 		"LOCAL_STREAKS":
 			_draw_ink_attack_trail(spec,center,color,radius,width)
+			_draw_ascii_attack_glyphs(spec,color)
 		"SLASH_LINES":
 			var drift:=Vector2(radius*0.30,-radius*0.20)*float(spec.age_ratio)
 			draw_line(center+Vector2(-radius,radius)+drift,center+Vector2(radius,-radius)+drift,color,width)
@@ -1243,12 +1440,24 @@ func _draw_visual_effect(effect:Dictionary)->void:
 				var particle_color:=color;particle_color.a*=float(particle.opacity)
 				draw_line(particle.from,particle.to,particle_color,
 					float(particle.line_width),true)
+				_draw_centered_text(get_theme_default_font(),str(particle.get("glyph","*")),
+					Vector2(particle.to),int(particle.get("font_size",11)),particle_color)
 		"TEXT":
+			if str(spec.kind)=="FLOATING_AMOUNT":
+				_draw_centered_text(get_theme_default_font(),str(spec.text),center+Vector2(1.2,1.4),
+					int(spec.font_size),Color(0.01,0.02,0.03,color.a*0.88))
 			_draw_centered_text(get_theme_default_font(),str(spec.text),center,
 				int(spec.font_size),color)
 		"DEATH_CROSS":
 			draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
 			draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
+
+
+func _draw_ascii_attack_glyphs(spec:Dictionary,color:Color)->void:
+	for row in spec.get("attack_glyphs",[]):
+		var glyph_color:=color;glyph_color.a*=float(row.get("opacity",1.0))
+		_draw_centered_text(get_theme_default_font(),str(row.get("glyph","*")),
+			Vector2(row.get("center",Vector2.ZERO)),int(row.get("font_size",11)),glyph_color)
 
 func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 		camera_offset:Vector2=Vector2.ZERO) -> void:

@@ -599,8 +599,13 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 		restored.combatant_states[combatant.entity_id] = combatant
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
-	if restored.party_encounter!=null and not data.party_encounter.has("protagonist_progression"):
-		restored._rebuild_progression_from_events()
+	if restored.party_encounter!=null:
+		var progression_row:Variant=data.party_encounter.get("protagonist_progression")
+		if not progression_row is Dictionary \
+				or int(progression_row.get("schema_version",0))<ProgressionRegistryScript.SCHEMA_VERSION:
+			# Schema 1/2 used percentage presets. Replaying canonical events is the
+			# deterministic migration and keeps the event projection as the tamper gate.
+			restored._rebuild_progression_from_events()
 	restored.scheduled_entries.clear()
 	for row in data.get("scheduled_entries", []):
 		restored.scheduled_entries.append(_schedule_from_dict(row))
@@ -3119,8 +3124,8 @@ func _rebuild_progression_from_events()->void:
 	var progression=load("res://sim/protagonist_progression.gd").new()
 	for event in events:
 		if event.type=="progression.focus_changed" and event.actor_id==party_encounter.protagonist_id:
-			var focus:=_focus_from_event(event)
-			if not focus.is_empty():progression.training_focus=focus
+			var modes:=_training_modes_from_event(event)
+			if not modes.is_empty():progression.training_modes=modes
 		elif event.type=="party.victory":progression.award_victory(event.id)
 	party_encounter.protagonist_progression=progression
 
@@ -3135,12 +3140,18 @@ func _party_progression_error()->String:
 					or event.magnitude!=0 \
 					or not in_bounds(event.position):
 				return "progression_focus_event_envelope_invalid"
-			var focus:=_focus_from_event(event)
-			if focus.is_empty():return "progression_focus_event_data_invalid"
-			if focus!=ProgressionRegistryScript.focus_preset(str(event.data.skill_id)) \
-					or focus==expected.training_focus:
+			var modes:=_training_modes_from_event(event)
+			if modes.is_empty():return "progression_focus_event_data_invalid"
+			var skill_id:=str(event.data.get("skill_id",""))
+			var expected_mode:=str(event.data.get("mode","FOCUS"))
+			if modes==expected.training_modes or modes.get(skill_id)!=expected_mode:
 				return "progression_focus_event_transition_invalid"
-			expected.training_focus=focus
+			for proficiency_id in ProgressionRegistryScript.SKILL_IDS:
+				if proficiency_id!=skill_id \
+						and modes[proficiency_id]!=expected.training_modes[proficiency_id] \
+						and int(event.data.get("schema_version",0))==2:
+					return "progression_focus_event_transition_invalid"
+			expected.training_modes=modes
 		elif event.type=="party.victory":
 			if not expected.award_victory(event.id):return "progression_victory_award_invalid"
 	if expected.to_dict()!=party_encounter.protagonist_progression.to_dict():
@@ -3154,16 +3165,15 @@ func _progression_melee_rank_before(event_id:int)->int:
 
 func _progression_rank_before(skill_id:String,event_id:int)->int:
 	if skill_id not in ProgressionRegistryScript.SKILL_IDS:return 0
-	var focus:Dictionary=ProgressionRegistryScript.DEFAULT_FOCUS.duplicate(true)
+	var modes:Dictionary=ProgressionRegistryScript.DEFAULT_MODES.duplicate(true)
 	var training:=0
 	for historical in events:
 		if historical.id>=event_id:break
 		if historical.type=="progression.focus_changed":
-			var parsed:=_focus_from_event(historical)
-			if not parsed.is_empty():focus=parsed
+			var parsed:=_training_modes_from_event(historical)
+			if not parsed.is_empty():modes=parsed
 		elif historical.type=="party.victory":
-			training+=int(ProgressionRegistryScript.VICTORY_XP*int(focus[skill_id]) \
-				/ProgressionRegistryScript.FOCUS_TOTAL)
+			training+=int(ProgressionRegistryScript.victory_training_allocation(modes)[skill_id])
 	return ProgressionRegistryScript.skill_rank(training)
 
 
@@ -3182,6 +3192,31 @@ func _focus_from_event(event)->Dictionary:
 				or str(row.skill_id)!=skill_id or not row.weight is int:return {}
 		focus[skill_id]=int(row.weight)
 	return focus if ProgressionRegistryScript.focus_error(focus).is_empty() else {}
+
+
+func _training_modes_from_event(event)->Dictionary:
+	if not event.data is Dictionary:return {}
+	if int(event.data.get("schema_version",0))==1:
+		var legacy_focus:=_focus_from_event(event)
+		return ProgressionRegistryScript.modes_from_legacy_focus(legacy_focus) \
+			if not legacy_focus.is_empty() else {}
+	var data_keys:Array=event.data.keys();data_keys.sort()
+	if data_keys!=["mode","schema_version","skill_id","training_modes"] \
+			or event.data.schema_version!=2 \
+			or event.data.skill_id not in ProgressionRegistryScript.SKILL_IDS \
+			or event.data.mode not in ProgressionRegistryScript.TRAINING_MODES \
+			or not event.data.training_modes is Array \
+			or event.data.training_modes.size()!=ProgressionRegistryScript.SKILL_IDS.size():return {}
+	var modes:={}
+	for index in range(ProgressionRegistryScript.SKILL_IDS.size()):
+		var row:Variant=event.data.training_modes[index]
+		var skill_id:String=ProgressionRegistryScript.SKILL_IDS[index]
+		if not row is Dictionary or row.keys().size()!=2 \
+				or not row.has_all(["skill_id","mode"]) \
+				or str(row.skill_id)!=skill_id \
+				or row.mode not in ProgressionRegistryScript.TRAINING_MODES:return {}
+		modes[skill_id]=str(row.mode)
+	return modes if ProgressionRegistryScript.training_modes_error(modes).is_empty() else {}
 
 
 func _party_event_correlation_error() -> String:

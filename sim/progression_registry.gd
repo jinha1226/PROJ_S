@@ -1,12 +1,17 @@
 class_name ProgressionRegistry
 extends RefCounted
 
-const RULESET_ID := "weapon-proficiency-v1"
-const SCHEMA_VERSION := 2
+const RULESET_ID := "weapon-proficiency-v2"
+const SCHEMA_VERSION := 3
 const VICTORY_XP := 100
 const FOCUS_TOTAL := 100
 const SKILL_IDS := ["SWORD", "AXE", "BLUNT", "SPEAR", "RANGED", "UNARMED"]
 const PROFICIENCY_IDS := SKILL_IDS
+const TRAINING_MODES := ["FOCUS", "NORMAL", "OFF"]
+const MODE_WEIGHTS := {"FOCUS":3, "NORMAL":1, "OFF":0}
+const DEFAULT_MODES := {"SWORD":"NORMAL", "AXE":"NORMAL", "BLUNT":"NORMAL",
+	"SPEAR":"NORMAL", "RANGED":"NORMAL", "UNARMED":"NORMAL"}
+# Schema 1/2 compatibility only. New progression authority uses DEFAULT_MODES.
 const DEFAULT_FOCUS := {"SWORD":30, "AXE":15, "BLUNT":15, "SPEAR":15,
 	"RANGED":15, "UNARMED":10}
 const MAX_XP := 1000000
@@ -38,6 +43,67 @@ static func focus_preset(proficiency_id: String) -> Dictionary:
 	if proficiency_id not in PROFICIENCY_IDS: return {}
 	var result := {}
 	for id in PROFICIENCY_IDS: result[id] = 50 if id == proficiency_id else 10
+	return result
+
+
+static func training_modes_error(modes: Variant) -> String:
+	if not modes is Dictionary: return "invalid_progression_modes_shape"
+	var keys: Array = modes.keys(); keys.sort()
+	var expected: Array = PROFICIENCY_IDS.duplicate(); expected.sort()
+	if keys != expected: return "invalid_progression_modes_keys"
+	for proficiency_id in PROFICIENCY_IDS:
+		if modes[proficiency_id] not in TRAINING_MODES:
+			return "invalid_progression_mode_value"
+	return ""
+
+
+static func next_training_mode(mode: String) -> String:
+	match mode:
+		"FOCUS": return "NORMAL"
+		"NORMAL": return "OFF"
+		_: return "FOCUS"
+
+
+static func mode_label(mode: String) -> String:
+	return {"FOCUS":"집중", "NORMAL":"보통", "OFF":"끄기"}.get(mode, "보통")
+
+
+static func modes_from_legacy_focus(focus: Dictionary) -> Dictionary:
+	var result := {}
+	var dominant_id := PROFICIENCY_IDS[0]
+	var dominant_weight := -1
+	for proficiency_id in PROFICIENCY_IDS:
+		var weight := int(focus.get(proficiency_id, 0))
+		if weight > dominant_weight:
+			dominant_id = proficiency_id
+			dominant_weight = weight
+	for proficiency_id in PROFICIENCY_IDS:
+		var weight := int(focus.get(proficiency_id, 0))
+		result[proficiency_id] = "FOCUS" if proficiency_id == dominant_id and weight > 0 \
+			else ("NORMAL" if weight > 0 else "OFF")
+	return result
+
+
+static func victory_training_allocation(modes: Dictionary) -> Dictionary:
+	var result := {}
+	var total_weight := 0
+	for proficiency_id in PROFICIENCY_IDS:
+		result[proficiency_id] = 0
+		total_weight += int(MODE_WEIGHTS.get(str(modes.get(proficiency_id, "OFF")), 0))
+	if total_weight <= 0: return result
+	var allocated := 0
+	for proficiency_id in PROFICIENCY_IDS:
+		var amount := int(VICTORY_XP * int(MODE_WEIGHTS[str(modes[proficiency_id])]) / total_weight)
+		result[proficiency_id] = amount
+		allocated += amount
+	var remainder := VICTORY_XP - allocated
+	var index := 0
+	while remainder > 0:
+		var proficiency_id: String = PROFICIENCY_IDS[index % PROFICIENCY_IDS.size()]
+		if int(MODE_WEIGHTS[str(modes[proficiency_id])]) > 0:
+			result[proficiency_id] = int(result[proficiency_id]) + 1
+			remainder -= 1
+		index += 1
 	return result
 
 

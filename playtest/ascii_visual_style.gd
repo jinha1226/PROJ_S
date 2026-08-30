@@ -7,9 +7,9 @@ const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 const DIORAMA_PALETTE := {
 	"void_hex":"#010203",
 	"substrate_hex":"#030507",
-	"unseen_ground_hex":"#030507",
-	"memory_ground_hex":"#070b13",
-	"visible_ground_hex":"#101827",
+	"unseen_ground_hex":"#020304",
+	"memory_ground_hex":"#040609",
+	"visible_ground_hex":"#070b10",
 	"wall_side_hex":"#080a12",
 	"shadow_hex":"#010304",
 	"ink_black_hex":"#02040a",
@@ -21,13 +21,13 @@ const DIORAMA_PALETTE := {
 const TERRAIN_DEFINITIONS := {
 	# Ordinary floor stays low and quiet while special materials retain a single
 	# punctuation mark. Secondary marks add texture without becoming image tiles.
-	"floor": {"glyph":".", "base_hex":"#0a101a", "glyph_hex":"#71839e", "edge_hex":"#050911", "font_ratio":0.50, "raised":false, "ink_family":"SLATE"},
-	"stone_floor": {"glyph":".", "base_hex":"#0d1119", "glyph_hex":"#9eaac4", "edge_hex":"#070a11", "font_ratio":0.52, "raised":false, "ink_family":"CHALK"},
-	"wood_floor": {"glyph":",", "base_hex":"#15100d", "glyph_hex":"#c98955", "edge_hex":"#0b0807", "font_ratio":0.52, "raised":false, "ink_family":"OCHRE"},
-	"metal": {"glyph":"=", "base_hex":"#08151a", "glyph_hex":"#5cb9c8", "edge_hex":"#041015", "font_ratio":0.52, "raised":false, "ink_family":"CYAN"},
-	"rubble": {"glyph":":", "base_hex":"#15130e", "glyph_hex":"#c5a25a", "edge_hex":"#0b0906", "font_ratio":0.52, "raised":false, "ink_family":"OCHRE"},
-	"shallow_water": {"glyph":"~", "base_hex":"#071522", "glyph_hex":"#419bd1", "edge_hex":"#040e18", "font_ratio":0.54, "raised":false, "ink_family":"AZURE"},
-	"wall": {"glyph":"#", "base_hex":"#12131d", "glyph_hex":"#d7c8ec", "edge_hex":"#080a12", "font_ratio":0.70, "raised":true, "ink_family":"VIOLET"},
+	"floor": {"glyph":".", "base_hex":"#05080c", "glyph_hex":"#394047", "edge_hex":"#020406", "font_ratio":0.40, "raised":false, "ink_family":"DOT", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.0,0.15), "outline_passes":0, "weight_passes":1},
+	"stone_floor": {"glyph":".", "base_hex":"#06090c", "glyph_hex":"#4a5056", "edge_hex":"#030507", "font_ratio":0.42, "raised":false, "ink_family":"CHALK", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(-0.08,0.13), "outline_passes":0, "weight_passes":1},
+	"wood_floor": {"glyph":",", "base_hex":"#080706", "glyph_hex":"#665c50", "edge_hex":"#030302", "font_ratio":0.48, "raised":false, "ink_family":"GRAIN", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.08,0.10), "outline_passes":0, "weight_passes":1},
+	"metal": {"glyph":"=", "base_hex":"#05090a", "glyph_hex":"#506168", "edge_hex":"#020405", "font_ratio":0.54, "raised":false, "ink_family":"PLATE", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.0,0.04), "outline_passes":0, "weight_passes":1},
+	"rubble": {"glyph":":", "base_hex":"#080806", "glyph_hex":"#665f50", "edge_hex":"#030302", "font_ratio":0.50, "raised":false, "ink_family":"DEBRIS", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(-0.09,0.07), "outline_passes":0, "weight_passes":1},
+	"shallow_water": {"glyph":"~", "base_hex":"#04090c", "glyph_hex":"#45616d", "edge_hex":"#020406", "font_ratio":0.54, "raised":false, "ink_family":"WAVE", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.05,0.06), "outline_passes":0, "weight_passes":1},
+	"wall": {"glyph":"#", "base_hex":"#0d1014", "glyph_hex":"#7c838b", "edge_hex":"#05070a", "font_ratio":0.82, "raised":true, "ink_family":"MASONRY", "slab_ratio":Vector2(0.94,0.92), "glyph_offset":Vector2(0.0,-0.02), "outline_passes":1, "weight_passes":2},
 }
 
 
@@ -76,10 +76,12 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	result["glyph_primary"] = registered and bool(visibility.draw_terrain)
 	result["draw_image"] = false
 	result["draw_tile_border"] = false
-	result["draw_cell_surface"] = registered and terrain_id != "floor" \
+	var slab_ratio:Vector2=result.get("slab_ratio",Vector2.ZERO)
+	result["draw_cell_surface"] = registered and slab_ratio.x>0.0 and slab_ratio.y>0.0 \
 		and bool(visibility.draw_terrain)
 	result["background_source"] = "GRID_FLAT" if terrain_id == "floor" else "TERRAIN_FLAT"
 	result["outline_hex"] = "#020508"
+	result["slab_hex"] = str(result.get("base_hex","#091017"))
 	return result.duplicate(true)
 
 
@@ -178,6 +180,16 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		stance = "IDLE"
 	var geometry := _pose_geometry(life_state, facing, stance)
 	var guarded := bool(actor.get("guarded", false))
+	var step_phase:=str(actor.get("step_phase","SETTLE")).to_upper()
+	var stride_sign:=clampi(int(actor.get("stride_sign",0)),-1,1)
+	var glyph_bob_ratio:=clampf(float(actor.get("glyph_bob_ratio",0.0)),-1.0,0.0)
+	if stance=="MOVING":
+		geometry=_pose_geometry(life_state,facing,stance,step_phase,stride_sign,
+			glyph_bob_ratio)
+	# The field stays black at rest. Underlays are semantic registration marks,
+	# not faction-coloured tile cards; the actor glyph carries the saturated ink.
+	var underlay_hex:="#262318" if is_protagonist else ("#281317" if is_enemy \
+		else ("#102329" if is_party else "#141b20"))
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
@@ -189,7 +201,12 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"glyph_half_width":geometry.glyph_half_width,
 		"glyph_half_height":geometry.glyph_half_height,
 		"glyph_is_body":true, "detached_head":false,
-		"glyph_weight":"OUTLINE_REDRAW", "glyph_outline_passes":8,
+		"glyph_weight":"INK_STAMP", "glyph_outline_passes":4,
+		"glyph_weight_passes":2,"glyph_scale":1.08 if is_protagonist else 1.0,
+		"glyph_offset":Vector2.ZERO,
+		"underlay_hex":underlay_hex,"underlay_opacity":0.52 if not ghost else 0.22,
+		"underlay_ratio":Vector2(0.84,0.46),
+		"step_phase":step_phase,"stride_sign":stride_sign,
 		"limb_segments":geometry.limb_segments,
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
 		# Inventory and weapon legality remain canonical simulation data, but the
@@ -244,7 +261,8 @@ static func bracket_segments(rect: Rect2, inset_ratio: float = 0.08,
 
 
 static func _pose_geometry(life_state: String, facing: Vector2i,
-		stance: String = "IDLE") -> Dictionary:
+		stance: String = "IDLE", step_phase:String="SETTLE", stride_sign:int=0,
+		glyph_bob_ratio:float=0.0) -> Dictionary:
 	var half_width := 0.40
 	var half_height := 0.18
 	if life_state == "DOWNED":
@@ -262,12 +280,14 @@ static func _pose_geometry(life_state: String, facing: Vector2i,
 			"glyph_half_width":half_width, "glyph_half_height":half_height,
 			"limb_segments":[]}
 	var direction := Vector2(facing).normalized()
-	var center := Vector2(0.0,0.18)
+	var center := Vector2(0.0,0.18+glyph_bob_ratio*0.026)
 	var left_edge := center+Vector2(-half_width,-0.01)
 	var right_edge := center+Vector2(half_width,-0.01)
 	var left_hip := center+Vector2(-half_width*0.28,half_height)
 	var right_hip := center+Vector2(half_width*0.28,half_height)
 	var stride := 0.10 if stance in ["MOVING", "APPROACH", "FLEE"] else 0.035
+	if stance=="MOVING":
+		stride=0.13*float(stride_sign) if step_phase!="SETTLE" else 0.025
 	var attack_lift := -0.13 if stance == "ENGAGE" else 0.0
 	var facing_x := direction.x*0.065
 	var facing_y := direction.y*0.040
@@ -276,8 +296,8 @@ static func _pose_geometry(life_state: String, facing: Vector2i,
 		"limb_segments":[
 			[left_edge,Vector2(-0.49+facing_x,center.y+0.08-facing_y)],
 			[right_edge,Vector2(0.49+facing_x,center.y+0.07+facing_y+attack_lift)],
-			[left_hip,Vector2(-0.19-direction.x*stride,0.47-direction.y*0.025)],
-			[right_hip,Vector2(0.19+direction.x*stride,0.47+direction.y*0.025)],
+			[left_hip,Vector2(-0.19-direction.x*stride,0.47-direction.y*0.025+glyph_bob_ratio*0.012)],
+			[right_hip,Vector2(0.19+direction.x*stride,0.47+direction.y*0.025+glyph_bob_ratio*0.012)],
 		]}
 
 

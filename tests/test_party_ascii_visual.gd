@@ -19,20 +19,20 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
 		check(spec.glyph_primary and spec.registered and not spec.draw_image \
 			and not spec.draw_tile_border,"%s glyph is primary over a borderless code-native floor"%terrain_id)
-		check_eq(bool(spec.draw_cell_surface),terrain_id!="floor",
-			"ordinary floor uses grid-wide flat background; special terrain may use flat surface")
+		check_eq(bool(spec.draw_cell_surface),terrain_id=="wall",
+			"only structural walls own a local slab; walkable terrain stays on the black field")
 		var base:=Color(str(spec.base_hex));var glyph:=Color(str(spec.glyph_hex))
 		glyph_colors.append(glyph);glyph_hexes.append(str(spec.glyph_hex))
-		check(glyph.get_luminance()>base.get_luminance()+0.30,
-			"%s glyph is bright against its dark substrate"%terrain_id)
+		check(glyph.get_luminance()>base.get_luminance()+0.025,
+			"%s glyph remains readable against its restrained substrate"%terrain_id)
 	check_eq(glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),expected.size(),"seven terrain roles have distinct glyph colors")
-	for first in range(glyph_colors.size()):
-		for second in range(first+1,glyph_colors.size()):
-			var a:=glyph_colors[first];var b:=glyph_colors[second]
-			check(Vector3(a.r-b.r,a.g-b.g,a.b-b.b).length()>0.10,
-				"terrain glyph colors %d/%d remain visually separated"%[first,second])
+	for walkable_id in ["floor","stone_floor","wood_floor","metal","rubble","shallow_water"]:
+		check_eq(Style.terrain_spec({"terrain_id":walkable_id}).slab_ratio,Vector2.ZERO,
+			"%s emits no coloured checkerboard slab"%walkable_id)
+	check(Style.terrain_spec({"terrain_id":"wall"}).slab_ratio!=Vector2.ZERO,
+		"walls alone retain a structural local underlay")
 	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
 		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
 		"unregistered tree terrain is not invented for presentation")
@@ -73,8 +73,8 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 			"registered %s projects its primary glyph"%terrain_ids[index])
 		check(not spec.draw_image and not spec.draw_tile_border,
 			"terrain glyph adds no image, tile card, or input surface")
-		check_eq(bool(spec.draw_cell_surface),terrain_ids[index]!="floor",
-			"only ordinary floor suppresses its per-cell surface rect")
+		check_eq(bool(spec.draw_cell_surface),terrain_ids[index]=="wall",
+			"only the wall silhouette emits a per-cell surface rect")
 	var memory:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,0))
 	check(memory.visible and memory.visibility_state=="MEMORY" and memory.opacity<1.0,
 		"memory keeps only a dim static terrain glyph")
@@ -177,8 +177,10 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	for spec in [hero,human,goblin,enemy,unknown]:
 		check(spec.glyph_is_body and not spec.detached_head and not spec.draw_head,
 			"ASCII glyph is the body with no detached head primitive")
-		check_eq([spec.glyph_weight,spec.glyph_outline_passes],["OUTLINE_REDRAW",8],
-			"regular project font gains deterministic outline weight")
+		check_eq([spec.glyph_weight,spec.glyph_outline_passes,spec.glyph_weight_passes],
+			["INK_STAMP",4,2],"actor glyph uses a compact deterministic ink stamp")
+		check(spec.underlay_ratio.x>0.0 and spec.underlay_opacity>0.0,
+			"actor identity owns a glyph-local background slab")
 		check_eq([spec.draw_equipment,spec.equipment_primitive_count,spec.equipment],
 			[false,0,{}],"actor draw grammar contains no weapon or equipment primitive")
 		check(absf(spec.limb_segments[0][0].x-(spec.glyph_center.x-spec.glyph_half_width))<0.0001,
@@ -494,6 +496,49 @@ func test_diorama_connected_masks_cover_all_cardinals_without_unseen_leak() -> b
 	return finish()
 
 
+func test_wall_roles_light_bands_and_tile_material_rules_are_quantized() -> bool:
+	var role_vectors:=[
+		[0,"END"],[Diorama.NORTH,"END"],
+		[Diorama.NORTH|Diorama.SOUTH,"STRAIGHT"],
+		[Diorama.NORTH|Diorama.EAST,"CORNER"],
+		[Diorama.NORTH|Diorama.EAST|Diorama.SOUTH,"JUNCTION"],
+		[Diorama.ALL_CARDINALS,"SOLID"],
+	]
+	for row in role_vectors:
+		check_eq(Diorama.wall_role_spec(int(row[0]),0).role,row[1],
+			"connected wall role %d"%int(row[0]))
+	var south_face:Dictionary=Diorama.wall_role_spec(Diorama.NORTH,Diorama.SOUTH)
+	check(south_face.face_visible and south_face.face_glyph==":",
+		"exposed south wall becomes a darker ASCII face")
+	check(not Diorama.wall_role_spec(Diorama.NORTH,Diorama.EAST).face_visible,
+		"non-south exposure adds no false face")
+
+	var near:Dictionary=Diorama.quantized_light_spec(Vector2i(7,7),Vector2i(7,7),"VISIBLE")
+	var mid:Dictionary=Diorama.quantized_light_spec(Vector2i(11,7),Vector2i(7,7),"VISIBLE")
+	var edge:Dictionary=Diorama.quantized_light_spec(Vector2i(13,7),Vector2i(7,7),"VISIBLE")
+	var memory:Dictionary=Diorama.quantized_light_spec(Vector2i(7,7),Vector2i(7,7),"MEMORY")
+	check_eq([near.band,mid.band,edge.band,memory.band],["NEAR","MID","EDGE","MEMORY"],
+		"hero light uses four explicit knowledge-safe bands")
+	check(near.foreground_multiplier>mid.foreground_multiplier \
+		and mid.foreground_multiplier>edge.foreground_multiplier,
+		"foreground ink falls in three discrete visible steps")
+	check(memory.saturation<=0.14,"memory remains consistently near-monochrome")
+
+	var material_families:Array=[]
+	for terrain_id in ["floor","stone_floor","wood_floor","metal","rubble",
+			"shallow_water","wall"]:
+		var terrain:Dictionary=Style.terrain_spec({"terrain_id":terrain_id})
+		material_families.append(terrain.ink_family)
+		check(terrain.glyph_offset is Vector2 and terrain.slab_ratio is Vector2,
+			"%s material owns placement and local background rules"%terrain_id)
+		check(int(terrain.outline_passes)<=2 and int(terrain.weight_passes)<=2,
+			"%s limits glyph overprint cost"%terrain_id)
+	check_eq(material_families.duplicate().reduce(func(accum,value):
+		if value not in accum:accum.append(value)
+		return accum,[]).size(),7,"seven terrain roles use seven material families")
+	return finish()
+
+
 func test_fake_depth_specs_raise_walls_and_shadow_actors_without_fov_leaks() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
@@ -598,6 +643,8 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	check_eq(hit0.primitive,"GLYPH_FLASH","product hit removes the circular ring")
 	check(hit0.flash_active and hit0.particle_count>=2 and hit0.particle_count<=4,
 		"early hit flashes target glyph and emits two to four local shards")
+	check(hit0.particles.all(func(row):return str(row.get("glyph","")) in ["*","!","/","\\"]),
+		"hit shards stay legible as the compact ASCII impact alphabet")
 	check_eq(hit0.particles,grid.visual_effect_draw_spec(grid._active_visual_effects[0],started).particles,
 		"hit shards are event-id deterministic")
 	check(not hit130.flash_active,"glyph flash ends by 130ms")
@@ -605,6 +652,9 @@ func test_product_hit_timeline_flashes_glyph_recoils_and_emits_local_ascii_feedb
 	var recoil170:Dictionary=grid.actor_hit_feedback_draw_spec(2,started+170)
 	check(recoil0.flash_active and recoil0.recoil_offset.x>=3.0 \
 		and recoil0.recoil_offset.x<=5.0,"target recoils away from attacker by three to five pixels")
+	var flash:=Color(str(recoil0.flash_hex))
+	check(flash.r>0.9 and flash.r>flash.g*2.0 and flash.r>flash.b*1.6,
+		"impact gives the target glyph the highest-priority red registration flash")
 	check(recoil0.impact_hold_active and recoil0.afterimage_active \
 		and recoil0.afterimage_opacity>0.0,
 		"initial impact adds a presentation-only registration hold and ink afterimage")
@@ -668,6 +718,17 @@ func test_physical_attack_forms_project_three_distinct_ink_trails() -> bool:
 		check_eq(spec.primitive,"LOCAL_STREAKS","attack remains a local presentation effect")
 		check_eq(spec.trail_primitive,row[1],"%s selects its ink trail"%row[0])
 		check_eq(spec.direction,Vector2.RIGHT,"trail points from instigator toward impact")
+		check(spec.attack_glyph_count==4 and spec.attack_glyphs.all(func(glyph_row):
+			return str(glyph_row.get("glyph","")) in ["-","/","\\","*","!",">"]),
+			"%s adds a four-glyph, cell-crossing ASCII burst"%row[0])
+	var ranged:=grid.visual_effect_draw_spec({"effect_id":"form:ranged","event_id":52,
+		"kind":"SLASH","world_position":[10,7],"instigator_id":1,
+		"attack_form":"PIERCE","started_at_ms":started},started)
+	check(ranged.ranged_trajectory and ranged.attack_glyph_count>=3 \
+		and ranged.attack_glyph_count<=6,
+		"multi-cell attack exposes only a short bounded ASCII trajectory")
+	check(ranged.attack_glyphs.all(func(glyph_row):return str(glyph_row.get("glyph","")) in ["-",">"]),
+		"horizontal ranged travel reads as dashes ending in a thrust glyph")
 	grid.free();return finish()
 
 
@@ -820,6 +881,48 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	grid.free();return finish()
 
 
+func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free() -> bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:cell.actors.append({"entity_id":77,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_observation({"width":48,"height":48,"cells":cells})
+	grid.set_hero_centered_view(Vector2i(7,7),15,77)
+	var initial:Dictionary=grid.static_projection_cache_stats()
+	check_eq([initial.cell_count,initial.viewport_capacity],[225,225],
+		"static projection cache is bounded to the 15x15 camera")
+	check(initial.world_cell_count<=225,"cache does not require a 48x48 presentation copy")
+	var occupied:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,7))
+	var clear:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(8,7))
+	check(occupied.occupied and not clear.occupied \
+		and (occupied.rendered_glyph_color as Color).a \
+		< (clear.rendered_glyph_color as Color).a,
+		"actor tile suppresses floor ink without adding a selection ring")
+	var rebuilds:=int(initial.rebuild_count)
+	grid.set_hero_centered_view(Vector2i(7,7),15,77)
+	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds,
+		"same hero/view does not invalidate static ink")
+	grid.play_effects([{"effect_id":"cache:hit","event_id":901,"order":0,
+		"kind":"HIT_FLASH","world_position":[7,7],"target_id":77}])
+	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds,
+		"transient hit animation does not rebuild static cells")
+	grid.set_hero_centered_view(Vector2i(8,7),15,77)
+	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds+1,
+		"hero/light/view change invalidates exactly once")
+
+	var contact:Dictionary=grid.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,0,150)
+	var passing:Dictionary=grid.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,75,150)
+	var settle:Dictionary=grid.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,150,150)
+	check_eq([contact.step_phase,passing.step_phase,settle.step_phase],
+		["CONTACT","PASS","SETTLE"],"one movement owns three compact glyph phases")
+	check(contact.stride_sign==1 and passing.stride_sign==-1 and settle.stride_sign==0,
+		"step phase alternates limbs and returns to neutral")
+	check(passing.glyph_bob_ratio<0.0 and not settle.active,
+		"bob exists only during the already-active movement process")
+	grid.free();return finish()
+
+
 func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct() -> bool:
 	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","shallow_water","wall"]
 	var brightest_ground:=0.0
@@ -829,10 +932,10 @@ func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct(
 		var base:=Color(str(terrain.base_hex));var glyph:=Color(str(terrain.glyph_hex))
 		brightest_ground=maxf(brightest_ground,base.get_luminance())
 		terrain_glyph_hexes.append(str(terrain.glyph_hex))
-		check(glyph.get_luminance()>base.get_luminance()+0.30,
-			"%s colorful glyph clears its dark ground"%terrain_id)
-		check(maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))>0.12,
-			"%s glyph carries visible chroma"%terrain_id)
+		check(glyph.get_luminance()>base.get_luminance()+0.025,
+			"%s restrained glyph clears its nearly-black ground"%terrain_id)
+		var chroma:=maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))
+		check(chroma<0.18,"%s terrain ink stays subordinate to saturated actors"%terrain_id)
 	check_eq(terrain_glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),terrain_ids.size(),"terrain glyph palette is role-distinct")

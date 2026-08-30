@@ -78,12 +78,70 @@ static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
 	var progress := clampf(float(maxi(0, elapsed_ms)) / float(safe_duration), 0.0, 1.0)
 	var remaining := 1.0 - progress
 	var eased := 1.0 - remaining * remaining * remaining
+	var step_phase := "SETTLE"
+	var stride_sign := 0
+	if progress < 0.30:
+		step_phase = "CONTACT"
+		stride_sign = 1
+	elif progress < 0.74:
+		step_phase = "PASS"
+		stride_sign = -1
+	var bob_ratio := -sin(PI * progress) if progress < 1.0 else 0.0
 	return {
 		"active":progress < 1.0 and not from_world.is_equal_approx(to_world),
 		"duration_ms":safe_duration,
 		"progress":progress,
 		"eased_progress":eased,
 		"world_position":from_world.lerp(to_world, eased),
+		"step_phase":step_phase,
+		"stride_sign":stride_sign,
+		"glyph_bob_ratio":bob_ratio,
+	}.duplicate(true)
+
+
+static func quantized_light_spec(position:Vector2i,hero_position:Vector2i,
+		visibility_state:String)->Dictionary:
+	var state:=visibility_state.to_upper()
+	if state=="UNSEEN":
+		return {"band":"UNSEEN","distance":-1,"background_multiplier":0.0,
+			"foreground_multiplier":0.0,"saturation":0.0}.duplicate(true)
+	if state=="MEMORY":
+		return {"band":"MEMORY","distance":-1,"background_multiplier":0.62,
+			"foreground_multiplier":0.68,"saturation":0.14}.duplicate(true)
+	if hero_position==Vector2i(-1,-1):
+		return {"band":"UNANCHORED","distance":-1,"background_multiplier":1.0,
+			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)
+	var distance:=maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y))
+	if distance<=2:
+		return {"band":"NEAR","distance":distance,"background_multiplier":1.0,
+			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)
+	if distance<=4:
+		return {"band":"MID","distance":distance,"background_multiplier":0.82,
+			"foreground_multiplier":0.90,"saturation":0.92}.duplicate(true)
+	return {"band":"EDGE","distance":distance,"background_multiplier":0.64,
+		"foreground_multiplier":0.76,"saturation":0.78}.duplicate(true)
+
+
+static func wall_role_spec(connected_mask:int,exposed_mask:int)->Dictionary:
+	var mask:=connected_mask&ALL_CARDINALS
+	var connection_count:=0
+	for bit in [NORTH,EAST,SOUTH,WEST]:
+		if mask&bit:connection_count+=1
+	var role:="END"
+	if connection_count==4:
+		role="SOLID"
+	elif connection_count>=3:
+		role="JUNCTION"
+	elif connection_count==2:
+		role="STRAIGHT" if mask in [NORTH|SOUTH,EAST|WEST] else "CORNER"
+	var emphasis:=float({"END":1.0,"CORNER":0.98,"JUNCTION":1.0,
+		"STRAIGHT":0.90,"SOLID":0.78}.get(role,0.90))
+	return {"role":role,"connected_mask":mask,"exposed_mask":exposed_mask,
+		"connection_count":connection_count,"core_glyph":"#",
+		"face_glyph":":" if exposed_mask&SOUTH else "",
+		"face_visible":bool(exposed_mask&SOUTH),"foreground_emphasis":emphasis,
+		"slab_ratio":Vector2(0.94,0.92),
+		"glyph_offset":Vector2(0.0,-0.025 if role in ["END","CORNER"] else 0.0),
 	}.duplicate(true)
 
 

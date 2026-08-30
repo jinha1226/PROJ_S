@@ -77,7 +77,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s DOS tab selection grammar missing"%viewport_size)
 
 	sandbox._select_member_detail_tab("SKILL");await process_frame;await process_frame
-	_check(sandbox.member_detail_skill_tab.text=="[스킬]","%s selected skill tab is not bracketed"%viewport_size)
+	_check(sandbox.member_detail_skill_tab.text=="[숙련]","%s selected skill tab is not bracketed"%viewport_size)
+	sandbox._toggle_weapon_mastery_category();await process_frame
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var skill_panel=sandbox.find_child("SkillCard%s"%skill_id,true,false)
 		var skill_frame=skill_panel.find_child("SkillAsciiFrame",false,false)
@@ -85,11 +86,14 @@ func _check_viewport(viewport_size:Vector2)->void:
 		_check(skill_panel.get_child_count()==1 and skill_panel.get_child(0)==skill_frame \
 			and skill_content is Control and _strictly_inside(skill_frame,skill_content),
 			"%s %s skill hierarchy overlaps its frame"%[viewport_size,skill_id])
-		_check(_gauge_ok(skill_frame.find_child("TrainingProgress",true,false),"숙련"),
+		_check(_gauge_ok(skill_frame.find_child("TrainingProgress",true,false),"훈련"),
 			"%s %s skill mastery is not a DOS gauge"%[viewport_size,skill_id])
-	for child in sandbox.member_detail_focus_buttons.get_children():
-		_check(child is Button and child.custom_minimum_size.y>=44 and "◆" not in child.text and "◇" not in child.text,
-			"%s training focus retained decorative sigils"%viewport_size)
+		var mode_button=skill_frame.find_child("SkillModeButton",true,false)
+		_check(mode_button is Button and mode_button.custom_minimum_size.y>=44,
+			"%s %s training mode is not touch sized"%[viewport_size,skill_id])
+	sandbox._select_member_detail_tab("ITEM");await process_frame
+	_check(sandbox.member_item_window.visible and sandbox.member_detail_item_tab.text=="[아이템]",
+		"%s item tab is not independently selectable"%viewport_size)
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
 		"%s DOS modal still contains a modern ProgressBar"%viewport_size)
 	sandbox.queue_free();await process_frame

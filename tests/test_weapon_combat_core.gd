@@ -90,15 +90,15 @@ func test_numeric_ammo_and_crossbow_reload_are_minimal_and_exact() -> bool:
 
 func test_six_proficiencies_save_focus_award_and_read_legacy() -> bool:
 	var progression = Progression.new()
-	check_eq(ProgressionRegistry.focus_error(progression.training_focus), "", "default focus totals one hundred")
+	check_eq(ProgressionRegistry.training_modes_error(progression.training_modes), "", "default modes validate")
 	var training_ids: Array = progression.skill_training.keys(); training_ids.sort()
 	check_eq(training_ids,
 		["AXE", "BLUNT", "RANGED", "SPEAR", "SWORD", "UNARMED"], "six training pools")
-	check(progression.set_focus_preset("RANGED"), "focus changes to ranged")
-	check_eq(progression.training_focus.RANGED, 50, "selected focus is half")
+	check(progression.set_training_mode("RANGED", "FOCUS"), "RANGED changes independently")
+	check_eq(progression.training_modes.RANGED, "FOCUS", "selected mode is authoritative")
 	check(progression.award_victory(4), "victory awards once")
-	check_eq([progression.xp_total, progression.skill_training.RANGED], [100, 50],
-		"focused victory distribution")
+	check_eq([progression.xp_total, progression.skill_training.RANGED], [100, 37],
+		"3:1 focused victory distribution with fixed-order remainder")
 	var saved := progression.to_dict()
 	check_eq(Progression.wire_error(saved), "", "new progression wire validates")
 	check_eq(Progression.from_dict(saved).to_dict(), saved, "new progression round trips")
@@ -110,6 +110,36 @@ func test_six_proficiencies_save_focus_award_and_read_legacy() -> bool:
 		"processed_victory_event_ids":["4"]}
 	check_eq(Progression.wire_error(legacy), "", "legacy wire remains readable")
 	var migrated = Progression.from_dict(legacy)
-	check_eq([migrated.schema_version, migrated.xp_total, migrated.skill_training.SWORD], [2, 100, 50],
+	check_eq([migrated.schema_version, migrated.xp_total, migrated.skill_training.SWORD], [3, 100, 50],
 		"legacy melee becomes sword familiarity")
+	return finish()
+
+
+func test_independent_modes_allocate_raw_weights_and_migrate_schema_two() -> bool:
+	var progression = Progression.new()
+	check(progression.set_training_mode("SWORD", "FOCUS"), "SWORD focuses independently")
+	check(progression.set_training_mode("AXE", "OFF"), "AXE switches off independently")
+	check_eq(ProgressionRegistry.PROFICIENCY_IDS.map(
+		func(skill_id): return progression.training_modes[skill_id]),
+		["FOCUS", "OFF", "NORMAL", "NORMAL", "NORMAL", "NORMAL"],
+		"mode authority preserves every independent row")
+	check(progression.award_victory(7), "mode-weighted victory awards")
+	check_eq(ProgressionRegistry.PROFICIENCY_IDS.map(
+		func(skill_id): return progression.skill_training[skill_id]),
+		[43, 0, 15, 14, 14, 14],
+		"3/1/0 quotient and remainder use fixed proficiency order")
+	var schema_two := {"schema_version":2, "xp_total":100,
+		"training_focus":[{"skill_id":"SWORD","weight":10},{"skill_id":"AXE","weight":10},
+			{"skill_id":"BLUNT","weight":10},{"skill_id":"SPEAR","weight":10},
+			{"skill_id":"RANGED","weight":50},{"skill_id":"UNARMED","weight":10}],
+		"skill_training":[{"skill_id":"SWORD","training_total":10},
+			{"skill_id":"AXE","training_total":10},{"skill_id":"BLUNT","training_total":10},
+			{"skill_id":"SPEAR","training_total":10},{"skill_id":"RANGED","training_total":50},
+			{"skill_id":"UNARMED","training_total":10}],
+		"processed_victory_event_ids":["7"]}
+	check_eq(Progression.wire_error(schema_two), "", "schema two wire remains readable")
+	var migrated = Progression.from_dict(schema_two)
+	check_eq([migrated.schema_version, migrated.training_modes.RANGED,
+		migrated.training_modes.SWORD, migrated.skill_training.RANGED],
+		[3, "FOCUS", "NORMAL", 50], "schema two preset migrates without inventing XP")
 	return finish()

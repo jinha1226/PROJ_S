@@ -47,12 +47,14 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	if draw_shadow:
 		_draw_ground_shadow(canvas,bounds,shadow,life_state,world_context)
 	var glyph_layout := glyph_layout_spec(font,bounds,spec,world_context)
+	_draw_glyph_underlay(canvas,glyph_layout,spec,opacity)
 	var limb_width := maxf(1.4,bounds.size.y*0.045)
 	for segment in limb_draw_segments(bounds,spec,glyph_layout):
 		canvas.draw_line(segment[0],segment[1],outline,limb_width+1.2,true)
 		canvas.draw_line(segment[0],segment[1],main_color,limb_width,true)
 	_draw_weighted_glyph(canvas,font,str(spec.get("glyph","?")),glyph_layout.center,
-		int(glyph_layout.font_size),outline,main_color,world_context)
+		int(glyph_layout.font_size),outline,main_color,world_context,
+		int(spec.get("glyph_outline_passes",4)),int(spec.get("glyph_weight_passes",2)))
 	for raw_segment in spec.get("guard_segments", []):
 		if raw_segment is Array and raw_segment.size()==2:
 			canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
@@ -88,9 +90,12 @@ static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
 	if world_context:
 		var logical_cell_size:=bounds.size.x/0.72
 		center=Vector2(bounds.get_center().x,bounds.end.y-1.0-logical_cell_size*0.5)
-	var max_width := bounds.size.x*0.96
+	var glyph_offset:Vector2=spec.get("glyph_offset",Vector2.ZERO)
+	center+=Vector2(glyph_offset.x*bounds.size.x,glyph_offset.y*bounds.size.y)
+	var glyph_scale:=clampf(float(spec.get("glyph_scale",1.0)),0.82,1.16)
+	var max_width := bounds.size.x*0.96*glyph_scale
 	var max_height := minf(bounds.size.y*(0.50 if world_context else 0.62),
-		bounds.size.x*(1.14 if world_context else 1.35))
+		bounds.size.x*(1.14 if world_context else 1.35))*glyph_scale
 	var font_size := maxi(9,int(floor(max_height)))
 	var extent := font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
 	while font_size>9 and (extent.x>max_width or extent.y>max_height):
@@ -124,14 +129,29 @@ static func limb_draw_segments(bounds:Rect2,spec:Dictionary,glyph_layout:Diction
 
 static func _draw_weighted_glyph(canvas: CanvasItem, font: Font, glyph: String,
 		center: Vector2, font_size: int, outline: Color, color: Color,
-		world_context: bool) -> void:
+		world_context: bool, outline_passes:int=4, weight_passes:int=2) -> void:
 	var radius := 1.0 if world_context else 1.45
-	for direction in [Vector2(-1,-1),Vector2(0,-1),Vector2(1,-1),Vector2(-1,0),
-			Vector2(1,0),Vector2(-1,1),Vector2(0,1),Vector2(1,1)]:
+	var outline_directions:=[Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1),
+		Vector2(-1,-1),Vector2(1,-1),Vector2(-1,1),Vector2(1,1)]
+	for index in range(clampi(outline_passes,0,outline_directions.size())):
+		var direction:Vector2=outline_directions[index]
 		_draw_centered_glyph(canvas,font,glyph,center+direction*radius,font_size,outline)
-	_draw_centered_glyph(canvas,font,glyph,center+Vector2(-0.32,0),font_size,color)
-	_draw_centered_glyph(canvas,font,glyph,center+Vector2(0.32,0),font_size,color)
+	if weight_passes>=2:
+		_draw_centered_glyph(canvas,font,glyph,center+Vector2(-0.28,0),font_size,color)
 	_draw_centered_glyph(canvas,font,glyph,center,font_size,color)
+
+
+static func _draw_glyph_underlay(canvas:CanvasItem,glyph_layout:Dictionary,
+		spec:Dictionary,opacity:float)->void:
+	var ratio:Vector2=spec.get("underlay_ratio",Vector2.ZERO)
+	var underlay_opacity:=clampf(float(spec.get("underlay_opacity",0.0))*opacity,0.0,1.0)
+	if ratio.x<=0.0 or ratio.y<=0.0 or underlay_opacity<=0.0:return
+	var glyph_rect:Rect2=glyph_layout.get("glyph_rect",Rect2())
+	if glyph_rect.size.x<=0.0:return
+	var size:=Vector2(maxf(glyph_rect.size.x*ratio.x,glyph_rect.size.x*0.68),
+		maxf(glyph_rect.size.y*ratio.y,glyph_rect.size.y*0.40))
+	var rect:=Rect2(Vector2(glyph_layout.center)-size*0.5,size)
+	canvas.draw_rect(rect,_color(str(spec.get("underlay_hex","#101820")),underlay_opacity),true)
 
 
 static func _draw_ground_shadow(canvas: CanvasItem, bounds: Rect2,

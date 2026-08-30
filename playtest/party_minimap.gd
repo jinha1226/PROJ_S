@@ -28,8 +28,23 @@ func set_observation(observation:Dictionary)->void:
 		if not value is Dictionary or not value.get("position") is Array \
 				or value.position.size()!=2:continue
 		var position:=Vector2i(int(value.position[0]),int(value.position[1]))
-		_cells[_key(position)]=value.duplicate(true)
+		var state:=AsciiStyleScript.visibility_state(value)
+		if state=="UNSEEN":continue
+		var marker:=str(value.get("marker",""))
+		if marker.is_empty() and state=="VISIBLE":marker=_legacy_actor_marker(value)
+		# Own only the four compact scalar fields the minimap renders. Rich actor,
+		# feature and hazard rows never enter minimap state.
+		_cells[_key(position)]={"visibility_state":state,
+			"terrain_id":str(value.get("terrain_id","unknown")),"marker":marker}
 	queue_redraw()
+
+func _legacy_actor_marker(row:Dictionary)->String:
+	for actor in row.get("actors",[]):
+		if not actor is Dictionary:continue
+		if bool(actor.get("is_protagonist",false)):return "HERO"
+		if bool(actor.get("is_enemy",false)) or str(actor.get("faction_id",""))=="enemy":
+			return "ENEMY"
+	return ""
 
 func cell_draw_spec(position:Vector2i)->Dictionary:
 	var row:Dictionary=_cells.get(_key(position),{})
@@ -38,14 +53,7 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 	var color:=UNSEEN_COLOR
 	if state=="MEMORY":color=WALL_MEMORY_COLOR if terrain_id=="wall" else MEMORY_COLOR
 	elif state=="VISIBLE":color=WALL_VISIBLE_COLOR if terrain_id=="wall" else VISIBLE_COLOR
-	var marker:=""
-	if state=="VISIBLE":
-		for actor in row.get("actors",[]):
-			if not actor is Dictionary:continue
-			if bool(actor.get("is_protagonist",false)):
-				marker="HERO";break
-			if bool(actor.get("is_enemy",false)) or str(actor.get("faction_id",""))=="enemy":
-				marker="ENEMY"
+	var marker:=str(row.get("marker","")) if state=="VISIBLE" else ""
 	return {"visibility_state":state,"terrain_id":terrain_id,"color":color,
 		"marker":marker,"leaks_direction":false,"leaks_target":false}.duplicate(true)
 

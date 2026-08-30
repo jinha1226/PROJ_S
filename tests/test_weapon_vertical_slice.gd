@@ -123,7 +123,7 @@ func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
 	return finish()
 
 
-func test_skill_panel_builds_six_cards_and_equipment_summary() -> bool:
+func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox = Sandbox.new()
 	sandbox.size = Vector2(450, 800)
@@ -131,12 +131,28 @@ func test_skill_panel_builds_six_cards_and_equipment_summary() -> bool:
 	sandbox._open_hero_detail()
 	sandbox._select_member_detail_tab("SKILL")
 	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6, "six UI proficiency cards")
-	check("단검" in sandbox.member_progression_stats.text \
-		and "공격시간 100" in sandbox.member_progression_stats.text,
-		"equipment and intrinsic speed visible")
-	check("명중과 피해만" in sandbox.member_skill_help.text,
-		"UI explains narrow proficiency effect")
+	check("단검" not in sandbox.member_progression_stats.text \
+		and "3 : 1 : 0" in sandbox.member_skill_help.text,
+		"skill tab contains independent training contract without equipment")
+	sandbox._select_member_detail_tab("ITEM")
+	check("단검" in sandbox.member_item_weapon_text.text \
+		and "고유 공격시간 100" in sandbox.member_item_weapon_text.text,
+		"item tab owns equipment and intrinsic speed")
 	sandbox.free()
+	var crossbow_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(crossbow_session.equip_protagonist_weapon("CROSSBOW").accepted,
+		"crossbow UI fixture equips")
+	var crossbow_ui=Sandbox.new();crossbow_ui.size=Vector2(360,640)
+	crossbow_ui.initialize_for_headless_test(crossbow_session,true)
+	crossbow_ui._open_hero_detail();crossbow_ui._select_member_detail_tab("ITEM")
+	check(crossbow_ui.member_item_reload_button.visible \
+		and not crossbow_ui.member_item_reload_button.disabled \
+		and crossbow_ui.member_item_reload_button.custom_minimum_size.y>=44,
+		"reloadable item exposes an enabled touch-sized reload button")
+	crossbow_ui._on_item_reload()
+	check("장전됨" in crossbow_ui.member_item_ammo_text.text,
+		"item reload action refreshes authoritative load state")
+	crossbow_ui.free()
 	return finish()
 
 
