@@ -184,11 +184,20 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var compact_xp_spec:Dictionary=compact_xp.call("gauge_spec") if compact_xp!=null else {}
 	var card_name=sandbox.find_child("MemberName",true,false) as Label
 	var card_hp=sandbox.find_child("MemberState",true,false) as Label
+	var card_hp_spec:Dictionary=card_hp.call("gauge_spec") if card_hp!=null \
+			and card_hp.has_method("gauge_spec") else {}
 	var card_state=sandbox.find_child("EmotionState",true,false) as Label
-	check(level!=null and level.text=="LV 01" and card_name!=null and card_hp!=null \
-		and "/" in card_hp.text and card_state!=null and compact_xp!=null \
+	var dossier_frame=sandbox.find_child("DossierAsciiFrame",true,false)
+	var actor_seal=sandbox.find_child("ActorGlyphSeal",true,false) as Label
+	check(level!=null and level.text=="LV01" and card_name!=null and card_hp!=null \
+		and int(card_hp_spec.get("value",-1))==120 \
+		and int(card_hp_spec.get("max_value",0))==120 \
+		and str(card_hp_spec.get("primitive",""))=="DOS_TEXT_GAUGE" \
+		and card_state!=null and compact_xp!=null \
 		and int(compact_xp_spec.get("max_value",0))==100 \
-		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE",
+		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE" \
+		and dossier_frame!=null and dossier_frame.has_method("frame_spec") \
+		and actor_seal!=null and actor_seal.text=="@",
 		"solo DOS dossier shows identity, exact HP, key state, and text XP gauge")
 	check("공" not in level.text and "방" not in level.text,
 		"solo mobile hero card does not persist derived attack or defense")
@@ -214,15 +223,26 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"hero detail predictably opens on the dedicated status tab")
 	check(sandbox.find_child("StatusPortrait",true,false)==null \
 		and sandbox.find_child("MemberDetailPortrait",true,false)==null \
-		and sandbox.find_child("StatusName",true,false)!=null \
-		and sandbox.find_child("StatusSpeciesLevel",true,false)!=null \
-		and sandbox.find_child("StatusHP",true,false)!=null \
+		and sandbox.find_child("MemberDetailGlyphSeal",true,false)!=null \
+		and sandbox.member_detail_title.text=="주인공" \
+		and "인간 / 주인공 / LV01 / 생존" in sandbox.member_detail_subtitle.text \
+		and sandbox.find_child("StatusFolioGrid",true,false) is GridContainer \
+		and (sandbox.find_child("StatusFolioGrid",true,false) as GridContainer).columns==2 \
 		and sandbox.find_child("StatusHealthBar",true,false)!=null \
-		and sandbox.find_child("StatusLife",true,false)!=null \
+		and sandbox.find_child("StatusStressBar",true,false)!=null \
 		and sandbox.find_child("StatusEmotion",true,false)!=null \
 		and sandbox.find_child("StatusStress",true,false)!=null \
 		and sandbox.find_child("StatusCombatSummary",true,false)!=null,
-		"status tab uses its full width for meaningful identity/vital/combat facts")
+		"status folio keeps identity in its header and meaningful vital/combat facts in two columns")
+	var status_hp=sandbox.find_child("StatusHealthBar",true,false)
+	var status_stress=sandbox.find_child("StatusStressBar",true,false)
+	check(status_hp!=null and status_stress!=null \
+		and status_hp.has_method("gauge_spec") and status_stress.has_method("gauge_spec") \
+		and int(status_hp.call("gauge_spec").get("value",-1))==120 \
+		and int(status_hp.call("gauge_spec").get("max_value",0))==120 \
+		and int(status_stress.call("gauge_spec").get("value",-1))==0 \
+		and int(status_stress.call("gauge_spec").get("max_value",0))==1000,
+		"status folio DOS gauges retain authoritative HP and stress values")
 	check("관계" not in sandbox.member_detail_body.text and "없음" not in sandbox.member_detail_body.text,
 		"hero status hides relations and empty placeholder values")
 	check(sandbox.member_detail_status_tab.custom_minimum_size.y>=44 \
@@ -248,10 +268,13 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 			and "현재 R" in str((sandbox.member_progression_skill_rows[skill_id].effect as Label).text),
 			"%s row exposes touch mode and current effect"%skill_id)
 	sandbox._select_member_detail_tab("ITEM")
+	var item_stats=sandbox.find_child("EquippedWeaponStats",true,false) as GridContainer
+	var time_stat=sandbox.find_child("WeaponTimeStat",true,false) as Label
 	check(sandbox.member_item_window.visible and "단검" in sandbox.member_item_weapon_text.text \
-		and "고유 공격시간 100" in sandbox.member_item_weapon_text.text \
+		and item_stats!=null and item_stats.columns==2 and item_stats.get_child_count()==4 \
+		and time_stat!=null and time_stat.text=="공격시간  100" \
 		and "화살 12" in sandbox.member_item_ammo_text.text,
-		"item tab owns real weapon and ammo information")
+		"item tab owns real weapon, compact stats, and ammo information")
 	sandbox._select_member_detail_tab("SKILL")
 	sandbox._on_training_focus("AXE")
 	check(sandbox.member_detail_current_tab=="SKILL" and sandbox.member_progression_window.visible \

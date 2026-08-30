@@ -103,9 +103,9 @@ func test_party_card_layout_specs_and_detached_render_support_one_two_three_memb
 			check_eq([str(spec.layout_id),int(spec.effective_count)],
 				[["SPOTLIGHT","DUAL","COMPACT"][count-1],count],
 				"%s width count %d layout"%[viewport_width,count])
-			check(int(spec.font_size)>=16 and bool(spec.get("portrait_removed",false)) \
+			check(int(spec.font_size)==14 and bool(spec.get("portrait_removed",false)) \
 				and spec.get("portrait_min_size",[])==[0,0],
-				"card layout reserves no portrait area and keeps the Korean font floor")
+				"card layout reserves no portrait area and uses compact Korean auxiliary type")
 			check_eq(sandbox.cards.get_child_count(),count,"renderer uses DTO row count")
 			for index in range(count):
 				var card:=sandbox.cards.get_child(index) as Button
@@ -415,7 +415,7 @@ func test_each_formation_uses_visible_button_preview_ghosts_and_confirm_to_engag
 		check_eq(sandbox.combat_action_dock.get_parent(),sandbox.combat_action_area,"%s dock is inside fixed action area"%preset)
 		check_eq(sandbox.action_feedback_label.get_parent(),sandbox.combat_action_area,"%s feedback is inside fixed action area"%preset)
 		check(not _inside_ancestor(sandbox.combat_action_area,ScrollContainer),"%s action area is independent from information scroll"%preset)
-		check(sandbox.action_feedback_label.get_theme_font_size("font_size")>=16,"%s fixed feedback font"%preset)
+		check(sandbox.action_feedback_label.get_theme_font_size("font_size")==14,"%s fixed feedback font"%preset)
 		check_eq(_button(sandbox,"ActorHold").text,"[R 방어]","%s DOS dock hold command"%preset)
 		check_eq(_button(sandbox,"OverrideClear").text,"[A 자동]","%s DOS dock restore command"%preset)
 		check_eq(_button(sandbox,"TurnConfirm").text,"[E 실행]","%s DOS dock execute command"%preset)
@@ -613,8 +613,10 @@ func test_party_hud_shows_three_full_width_dossiers_vitals_readiness_and_emotion
 			"member card does not duplicate the map actor as a portrait")
 		check(card.find_child("MemberName", true, false) != null, "card has controlled name row")
 		check(card.find_child("MemberState", true, false) != null, "card has HP/status/presence row")
-		check(card.find_child("HealthBar", true, false) != null, "card has HP bar")
-		check(card.find_child("StressBar", true, false) != null, "card has stress bar")
+		var hp_gauge:=card.find_child("MemberState",true,false)
+		check(hp_gauge!=null and hp_gauge.has_method("gauge_spec") \
+			and str(hp_gauge.call("gauge_spec").primitive)=="DOS_TEXT_GAUGE", "card has compact DOS HP gauge")
+		check(card.find_child("StressState", true, false) != null, "card has compact ST state")
 		check(card.find_child("Readiness", true, false) != null, "card has real readiness state")
 		check(card.find_child("EmotionState", true, false) != null, "card has derived emotion icon and text")
 	var interaction_member:=int(sandbox.session.party_status().party_member_ids[1])
@@ -649,7 +651,7 @@ func test_party_hud_shows_three_full_width_dossiers_vitals_readiness_and_emotion
 	check(calm!=threatened and "겁먹음" in threatened,"low HP deterministically exposes survival emotion")
 	sandbox.free(); return finish()
 
-func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() -> bool:
+func test_companion_speech_is_card_local_one_line_phase_gated_and_refreshes() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var sandbox=_engaged_sandbox("LINE",viewport_size)
 		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
@@ -668,18 +670,17 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			var text:=card.find_child("CompanionSpeechText",true,false) as Label
 			check(strip!=null and text!=null,"%s companion owns its card speech"%viewport_size)
 			if strip==null or text==null:continue
-			var lines:=text.text.split("\n")
-			check_eq(lines.size(),2,"%s card speech is exactly two lines"%viewport_size)
-			check_eq([str(lines[0]),str(lines[1])],
-				[str(bubble.headline),str(bubble.reason_summary)],
+			check("\n" not in text.text and text.max_lines_visible==1,
+				"%s card speech is exactly one compact line"%viewport_size)
+			check_eq(text.text,"%s · %s"%[str(bubble.headline),str(bubble.reason_summary)],
 				"%s card binds only its own headline and reason"%viewport_size)
-			check(str(lines[0]) in ["공격할게.","이동할게.","방어할게."],
+			check(str(bubble.headline) in ["공격할게.","이동할게.","방어할게."],
 				"%s fixed headline vocabulary"%viewport_size)
-			check(str(lines[1]).length()<=14,"%s compact reason stays on one line"%viewport_size)
+			check(str(bubble.reason_summary).length()<=14,"%s compact reason stays on one line"%viewport_size)
 			check_eq(str(strip.get_meta("full_reason","")),str(bubble.reason),
 				"%s full Korean reason remains available off-strip"%viewport_size)
-			check(text.get_theme_font_size("font_size")>=12,
-				"%s compact speech font is at least 12px"%viewport_size)
+			check(text.get_theme_font_size("font_size")==11,
+				"%s compact speech uses micro type"%viewport_size)
 			check(strip.mouse_filter==Control.MOUSE_FILTER_IGNORE \
 				and text.mouse_filter==Control.MOUSE_FILTER_IGNORE,
 				"%s speech cannot intercept dossier-card input"%viewport_size)
@@ -688,7 +689,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			"%s companion override accepted"%viewport_size);sandbox._refresh()
 		var overridden:=_button(sandbox,"MemberCard%d"%companion).find_child(
 			"CompanionSpeechText",true,false) as Label
-		check_eq(overridden.text,"방어할게.\n지시를 따라서",
+		check_eq(overridden.text,"방어할게. · 지시를 따라서",
 			"%s override refreshes the same card strip"%viewport_size)
 		check_eq(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size(),2,
 			"%s secondary suggestion creates no extra strip"%viewport_size)
@@ -696,7 +697,7 @@ func test_companion_speech_is_card_local_two_line_phase_gated_and_refreshes() ->
 			"%s companion override clears"%viewport_size);sandbox._refresh()
 		var cleared:=_button(sandbox,"MemberCard%d"%companion).find_child(
 			"CompanionSpeechText",true,false) as Label
-		check(cleared.text!="방어할게.\n지시를 따라서",
+		check(cleared.text!="방어할게. · 지시를 따라서",
 			"%s clear restores automatic card speech"%viewport_size)
 		check(sandbox.session.replace_auto_combat_protagonist_action(Action.hold(hero)).accepted,
 			"%s hero finalizes plan"%viewport_size)
@@ -864,9 +865,9 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			and card.find_child("Portrait",true,false)==null \
 			and card.find_child("SoloIdentity",true,false)!=null,
 			"%s solo dossier gives its horizontal width to identity and gauges"%viewport_size)
-		check(hp.get_theme_font_size("font_size")>=16 \
-			and emotion.get_theme_font_size("font_size")>=16,
-			"%s solo HP and state remain large"%viewport_size)
+		check(hp.get_theme_font_size("font_size")==14 \
+			and emotion.get_theme_font_size("font_size")==14,
+			"%s solo HP and state use compact auxiliary type"%viewport_size)
 		var hold:Button=_button(sandbox,"ActorHold")
 		check(hold!=null and hold.custom_minimum_size.y>=44.0 \
 			and "방어" in hold.text and "25%" in sandbox.action_feedback_label.text,
@@ -896,17 +897,17 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
 		check_eq(sandbox.phase_panel.name,"TopExplorationHUD","%s unified top HUD"%viewport_size)
-		check(sandbox.phase_panel.custom_minimum_size.y>=88.0 \
-			and sandbox.phase_panel.custom_minimum_size.y<=96.0,
-			"%s unified HUD keeps the former two-row height budget"%viewport_size)
+		check_eq(sandbox.phase_panel.custom_minimum_size.y,64.0,
+			"%s unified HUD uses the compact 64px top rail"%viewport_size)
 		var minimap_frame=sandbox.find_child("MinimapAsciiFrame",true,false)
-		check(minimap_frame!=null and minimap_frame.custom_minimum_size.x>=78.0 \
-			and minimap_frame.custom_minimum_size.x<=92.0 \
+		var cartography:Dictionary=sandbox.minimap.cartography_spec()
+		check(minimap_frame!=null and minimap_frame.custom_minimum_size==Vector2(62,60) \
+			and int(cartography.columns)==8 and int(cartography.rows)==8 \
 			and str(minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
-			"%s reusable 15x15 minimap has a readable glyph frame"%viewport_size)
+			"%s reusable 8x8 minimap has a compact readable glyph frame"%viewport_size)
 		check(sandbox.record_button.custom_minimum_size.y>=44 \
 			and sandbox.hero_detail_button.custom_minimum_size.y>=44 \
-			and sandbox.record_button.text=="[F1 기록]" and sandbox.hero_detail_button.text=="[F2 인물]",
+			and sandbox.record_button.text=="[기록]" and sandbox.hero_detail_button.text=="[인물]",
 			"%s record and hero actions are honest DOS touch commands"%viewport_size)
 		for forbidden in ["탐험","시간","목표"]:
 			check(not forbidden in sandbox.phase_label.text \
@@ -925,11 +926,12 @@ func test_top_hud_minimap_log_toggle_and_hero_detail_are_real_and_fog_safe() -> 
 				"%s minimap never publishes enemy plan data"%viewport_size)
 		check(hero_marker and enemy_marker and unseen_safe,
 			"%s minimap distinguishes visible actors while unseen stays black"%viewport_size)
-		check(sandbox.log_label.visible,"%s narrative log starts visible"%viewport_size)
-		sandbox.record_button.pressed.emit();check(not sandbox.log_label.visible,
-			"%s record action hides the narrative log"%viewport_size)
-		sandbox.record_button.pressed.emit();check(sandbox.log_label.visible,
-			"%s record action restores the narrative log"%viewport_size)
+		check(not sandbox.log_label.visible and sandbox.deck.visible,
+			"%s exploration context starts in the shared information slot"%viewport_size)
+		sandbox.record_button.pressed.emit();check(sandbox.log_label.visible and not sandbox.deck.visible,
+			"%s record action swaps the shared slot to narrative log"%viewport_size)
+		sandbox.record_button.pressed.emit();check(not sandbox.log_label.visible and sandbox.deck.visible,
+			"%s record action restores the shared context slot"%viewport_size)
 		sandbox.hero_detail_button.pressed.emit()
 		check(sandbox.member_detail_modal.visible \
 			and "주인공" in sandbox.member_detail_title.text,
@@ -1071,9 +1073,10 @@ func test_restored_grouped_complete_keeps_victory_banner_style_without_effect_re
 	check(panel_style!=null and panel_style.get_border_width(SIDE_LEFT)==0 \
 		and panel_style.get_border_width(SIDE_TOP)==0 \
 		and panel_style.get_border_width(SIDE_RIGHT)==0 \
-		and panel_style.get_border_width(SIDE_BOTTOM)==0,
-		"fresh restored banner keeps its StyleBox visually borderless")
-	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#55ff55") \
+		and panel_style.get_border_width(SIDE_BOTTOM)==1 \
+		and panel_style.border_color==Color("#4f9aa3"),
+		"fresh restored banner keeps only the oxidized-cyan bottom rail")
+	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#5f8a66") \
 		and str(fresh.minimap_frame.get_meta("state_tone",""))=="VICTORY" \
 		and str(fresh.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
 		"fresh restored victory consumes jade through the glyph-backed HUD frame")
@@ -1097,9 +1100,10 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	check(terminal_panel!=null and terminal_panel.get_border_width(SIDE_LEFT)==0 \
 		and terminal_panel.get_border_width(SIDE_TOP)==0 \
 		and terminal_panel.get_border_width(SIDE_RIGHT)==0 \
-		and terminal_panel.get_border_width(SIDE_BOTTOM)==0,
-		"terminal panel keeps its StyleBox visually borderless")
-	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#ff5555") \
+		and terminal_panel.get_border_width(SIDE_BOTTOM)==1 \
+		and terminal_panel.border_color==Color("#4f9aa3"),
+		"terminal panel keeps only the oxidized-cyan bottom rail")
+	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#a74343") \
 		and sandbox.minimap_frame.danger_edge \
 		and str(sandbox.minimap_frame.get_meta("state_tone",""))=="DEFEAT" \
 		and str(sandbox.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",

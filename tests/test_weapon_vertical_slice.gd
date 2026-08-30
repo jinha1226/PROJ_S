@@ -69,12 +69,19 @@ func test_short_sword_preview_and_commit_use_weapon_formula_and_position_pair_vf
 				var vfx_rows:Array=result.visual_effects.filter(
 					func(row):return str(row.kind)=="MELEE_VFX")
 				if str(attack_events[-1].data.outcome) in ["HIT","FINISHER"]:
-					check(vfx_rows.size()==1 and vfx_rows[0].attacker_grid_pos is Array \
-						and vfx_rows[0].target_grid_pos==[
+					# A committed turn may also contain an enemy counterattack. Match the
+					# historical attack event rather than assuming one VFX row per turn.
+					var historical_vfx:Array=vfx_rows.filter(func(row):
+						return int(row.get("event_id",-1))==int(attack_events[-1].id))
+					check(historical_vfx.size()==1 \
+						and historical_vfx[0].attacker_grid_pos is Array \
+						and historical_vfx[0].target_grid_pos==[
 							attack_events[-1].position.x,attack_events[-1].position.y],
 						"committed hit carries one exact historical position pair")
-					check(not vfx_rows[0].has("glyph") and not vfx_rows[0].has("attack_form"),
-						"session VFX row carries no inline slash glyph grammar")
+					if historical_vfx.size()==1:
+						check(not historical_vfx[0].has("glyph") \
+							and not historical_vfx[0].has("attack_form"),
+							"session VFX row carries no inline slash glyph grammar")
 				else:
 					check(vfx_rows.is_empty(),"miss produces no melee VFX")
 				check_eq(session.sim.world.world_state_error(), "", "weapon event history validates")
@@ -139,11 +146,12 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 	sandbox._select_member_detail_tab("SKILL")
 	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6, "six UI proficiency cards")
 	check("단검" not in sandbox.member_progression_stats.text \
-		and "3 : 1 : 0" in sandbox.member_skill_help.text,
+		and "장비는 아이템 탭" in sandbox.member_progression_stats.text \
+		and "승리 XP 3:1:0" in sandbox.member_skill_help.text,
 		"skill tab contains independent training contract without equipment")
 	sandbox._select_member_detail_tab("ITEM")
-	check("단검" in sandbox.member_item_weapon_text.text \
-		and "고유 공격시간 100" in sandbox.member_item_weapon_text.text,
+	check("장착 · 단검" in sandbox.member_item_weapon_text.text \
+		and "공격시간  100" in (sandbox.member_item_stats.TIME as Label).text,
 		"item tab owns equipment and intrinsic speed")
 	sandbox.free()
 	var crossbow_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
