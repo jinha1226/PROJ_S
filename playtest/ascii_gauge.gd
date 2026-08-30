@@ -15,8 +15,9 @@ var accent:=GREEN:
 
 func _init()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
+	clip_text=true;text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	add_theme_font_override("font",CodingFont)
-	add_theme_font_size_override("font_size",16)
+	add_theme_font_size_override("font_size",14)
 	add_theme_color_override("font_color",accent)
 	set_meta("dos_ascii_gauge",true)
 	_refresh_text()
@@ -34,4 +35,5 @@ func _refresh_text()->void:
 func gauge_spec()->Dictionary:
 	return {"primitive":"DOS_TEXT_GAUGE","font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
 		"prefix":prefix,"columns":columns,"value":value,"max_value":max_value,
-		"filled_glyph":"#","empty_glyph":".","text":text}.duplicate(true)
+		"filled_glyph":"#","empty_glyph":".","text":text,
+		"font_size":get_theme_font_size("font_size")}.duplicate(true)

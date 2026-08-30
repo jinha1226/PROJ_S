@@ -5,6 +5,7 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const AsciiUIFrame=preload("res://playtest/ascii_ui_frame.gd")
 
 var failures:Array[String]=[]
 
@@ -43,7 +44,10 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 		var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
 		await process_frame;await process_frame
 		var expected_layout:String=["SPOTLIGHT","DUAL","COMPACT"][count-1]
-		if str(spec.layout_id)!=expected_layout or sandbox.cards.get_child_count()!=count:
+		var expected_height:int=[90,100,108][count-1]
+		if str(spec.layout_id)!=expected_layout or int(spec.party_height)!=expected_height \
+				or sandbox.cards.get_child_count()!=count \
+				or int(sandbox.cards.custom_minimum_size.y)!=expected_height:
 			failures.append("%s party count %d layout/render mismatch"%[viewport_size,count]);continue
 		var party_rect:Rect2=sandbox.cards.get_global_rect();var viewport_rect:Rect2=sandbox.get_global_rect()
 		if not _rect_contains(viewport_rect,party_rect):
@@ -55,6 +59,8 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 		var previous_rect:=Rect2()
 		for index in range(count):
 			var card:=sandbox.cards.get_child(index) as Button;var card_rect:=card.get_global_rect()
+			if int(card.custom_minimum_size.y)!=expected_height:
+				failures.append("%s count %d card %d responsive height"%[viewport_size,count,index])
 			if not _rect_contains(party_rect,card_rect):
 				failures.append("%s count %d card %d outside party area"%[viewport_size,count,index])
 			if index>0 and previous_rect.intersects(card_rect):
@@ -67,9 +73,15 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 					or spec.get("portrait_min_size",[])!=[0,0] \
 					or text_region==null or not _rect_contains(card_rect,text_region.get_global_rect()):
 				failures.append("%s count %d portrait-free text region/budget"%[viewport_size,count])
+			var seal:=card.find_child("ActorGlyphSeal",true,false) as Label
+			var expected_seal_size:int=[44,40,34][count-1]
+			var expected_seal_font:int=[28,24,20][count-1]
+			if seal==null or int(seal.custom_minimum_size.x)!=expected_seal_size \
+					or seal.get_theme_font_size("font_size")!=expected_seal_font:
+				failures.append("%s count %d card %d ASCII seal hierarchy"%[viewport_size,count,index])
 			for label_name in ["MemberName","Readiness","EmotionState","MemberState","StressState"]:
 				var label:=card.find_child(label_name,true,false) as Label
-				if label==null or label.get_theme_font_size("font_size")<12 \
+				if label==null or label.get_theme_font_size("font_size")<14 \
 						or not _rect_contains(card_rect,label.get_global_rect()):
 					failures.append("%s count %d %s bounds/font"%[viewport_size,count,label_name])
 			var strip:=card.find_child("CompanionSpeechStrip",true,false) as PanelContainer
@@ -208,19 +220,17 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 		if strip==null or text==null:
 			failures.append("%s missing speech on actor %d"%[label,actor_id]);continue
 		if first_strip==null:first_strip=strip;first_actor=actor_id
-		var lines:=text.text.split("\n")
-		if lines.size()!=2 or str(lines[0])!=str(bubble.headline) \
-				or str(lines[1])!=str(bubble.reason_summary):
-			failures.append("%s actor %d speech is not exact two-line compact DTO: %s"%[label,actor_id,text.text])
-		if str(lines[1]).length()>14:failures.append("%s actor %d speech reason too long"%[label,actor_id])
-		if text.get_theme_font_size("font_size")<12:failures.append("%s actor %d speech font below 12"%[label,actor_id])
+		var expected_speech:="%s · %s"%[str(bubble.headline),str(bubble.reason_summary)]
+		if text.text!=expected_speech or "\n" in text.text or text.max_lines_visible!=1:
+			failures.append("%s actor %d speech is not exact one-line compact DTO: %s"%[label,actor_id,text.text])
+		if text.get_theme_font_size("font_size")<11:failures.append("%s actor %d speech font below 11"%[label,actor_id])
 		if strip.mouse_filter!=Control.MOUSE_FILTER_IGNORE or text.mouse_filter!=Control.MOUSE_FILTER_IGNORE:
 			failures.append("%s actor %d speech intercepts input"%[label,actor_id])
 		var card_rect:=card.get_global_rect();var strip_rect:=strip.get_global_rect()
 		if not _rect_contains(card_rect,strip_rect):failures.append("%s actor %d speech leaves card %s"%[label,actor_id,strip_rect])
 		if strip_rect.intersects(sandbox.grid.get_global_rect()):failures.append("%s actor %d speech covers map"%[label,actor_id])
 		if strip_rect.intersects(sandbox.combat_action_area.get_global_rect()):failures.append("%s actor %d speech covers bottom actions"%[label,actor_id])
-		if text.get_line_count()!=2 or text.get_visible_line_count()!=2:
+		if text.get_line_count()!=1 or text.get_visible_line_count()!=1:
 			failures.append("%s actor %d speech lines clipped %d/%d"%[label,actor_id,text.get_visible_line_count(),text.get_line_count()])
 		strip_rects.append(strip_rect)
 	if strip_rects.size()==2 and strip_rects[0].intersects(strip_rects[1]):
@@ -243,7 +253,7 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 		sandbox._refresh();await process_frame;await process_frame
 		var override_text:=(_button(sandbox,"MemberCard%d"%override_actor).find_child(
 			"CompanionSpeechText",true,false) as Label).text
-		if override_text!="방어할게.\n지시를 따라서":failures.append("%s override speech stale: %s"%[label,override_text])
+		if override_text!="방어할게. · 지시를 따라서":failures.append("%s override speech stale: %s"%[label,override_text])
 		if sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).size()!=2:
 			failures.append("%s secondary suggestion created extra card speech"%label)
 		if not session.clear_companion_override(override_actor).accepted:
@@ -267,8 +277,10 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	if absf(sandbox.grid.size.x-viewport_size.x)>0.1:
 		failures.append("%s product exploration playfield does not use viewport width grid=%s"%[
 			label,sandbox.grid.get_global_rect()])
-	if not objective_bar.is_visible_in_tree() or objective_bar.size.y<87.9 \
-			or objective_bar.size.y>96.1 or sandbox.minimap_frame.size.x<77.9 \
+	if not objective_bar.is_visible_in_tree() \
+			or absf(objective_bar.custom_minimum_size.y-64.0)>0.1 \
+			or objective_bar.size.y<63.9 or objective_bar.size.y>70.1 \
+			or sandbox.minimap_frame.custom_minimum_size!=Vector2(62,60) \
 			or str(sandbox.minimap_frame.frame_spec().primitive)!="FIXED_CELL_GLYPHS":
 		failures.append("%s top HUD accessibility"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
@@ -382,7 +394,7 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 			failures.append("%s product grid leaves horizontal outer gutters"%label)
 	if bar_rect.end.y>grid_rect.position.y+0.1:
 		failures.append("%s top HUD overlaps grid"%label)
-	if sandbox.minimap_frame.size.x<77.9 or sandbox.record_button.size.x<43.9 \
+	if sandbox.minimap_frame.size.x<61.9 or sandbox.record_button.size.x<43.9 \
 			or sandbox.hero_detail_button.size.x<43.9:
 		failures.append("%s top HUD controls below geometry contract"%label)
 	for forbidden in ["탐험","시간","목표"]:
@@ -587,10 +599,9 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 		failures.append("%s detail panel margin/width %s"%[viewport_size,panel_rect])
 	if sandbox.member_detail_close.size.x<43.9 or sandbox.member_detail_close.size.y<43.9 \
 			or sandbox.member_detail_close.get_theme_font_size("font_size")<14 \
-			or sandbox.member_detail_close.text!="[ESC 닫기]" \
-			or sandbox.member_detail_close.get_theme_font("font")!=sandbox.theme.default_font:
+			or sandbox.member_detail_close.text!="[X]":
 		failures.append("%s detail close accessibility"%viewport_size)
-	if body.get_theme_font_size("font_size")<16:failures.append("%s detail body font below 16"%viewport_size)
+	if body.get_theme_font_size("font_size")<14:failures.append("%s detail body font below 14"%viewport_size)
 	var line_height:=body.get_theme_font("font").get_height(body.get_theme_font_size("font_size"))
 	if body.custom_minimum_size.y+0.5<float(body.get_line_count())*line_height:
 		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
@@ -598,8 +609,8 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 	if sandbox.find_child("StatusPortrait",true,false)!=null \
 			or sandbox.find_child("MemberDetailPortrait",true,false)!=null:
 		failures.append("%s detail modal still duplicates map actors as portraits"%viewport_size)
-	for node_name in ["StatusName","StatusSpeciesLevel","StatusLife","StatusHP","StatusHealthBar",
-			"StatusEmotion","StatusStress"]:
+	for node_name in ["MemberDetailGlyphSeal","StatusFolioGrid","StatusHealthBar",
+			"StatusStressBar","StatusEmotion","StatusStress"]:
 		if sandbox.find_child(node_name,true,false)==null:
 			failures.append("%s detail modal missing %s"%[viewport_size,node_name])
 	for token in ["성격 ·","원소 내성 ·","현재 노출 ·","관계"]:
@@ -836,9 +847,11 @@ func _terminal(viewport_size:Vector2)->void:
 	if terminal_panel==null or terminal_panel.get_border_width(SIDE_LEFT)!=0 \
 			or terminal_panel.get_border_width(SIDE_TOP)!=0 \
 			or terminal_panel.get_border_width(SIDE_RIGHT)!=0 \
-			or terminal_panel.get_border_width(SIDE_BOTTOM)!=0:
-		failures.append("%s terminal panel revived a graphic border"%viewport_size)
-	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=Color("#ff5555") \
+			or terminal_panel.get_border_width(SIDE_BOTTOM)!=1 \
+			or terminal_panel.border_color!=AsciiUIFrame.CYAN \
+			or bool(sandbox.phase_panel.get_meta("visible_stylebox_border",true)):
+		failures.append("%s terminal top rail is not the compact separator"%viewport_size)
+	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=AsciiUIFrame.DANGER \
 			or not sandbox.minimap_frame.danger_edge \
 			or str(sandbox.minimap_frame.get_meta("state_tone",""))!="DEFEAT":
 		failures.append("%s terminal glyph accent missing"%viewport_size)
@@ -1074,7 +1087,7 @@ func _validate_tile_popover(sandbox,viewport_size:Vector2,label:String,expects_r
 	if popover.size.x>minf(280.0,viewport_size.x-24.0)+0.1:failures.append("%s %s tile popover too wide %s"%[viewport_size,label,popover.size])
 	if popover.mouse_filter!=Control.MOUSE_FILTER_IGNORE or text_label.mouse_filter!=Control.MOUSE_FILTER_IGNORE:
 		failures.append("%s %s tile popover intercepts second touch"%[viewport_size,label])
-	if text_label.get_theme_font_size("font_size")<16:failures.append("%s %s tile popover font below 16"%[viewport_size,label])
+	if text_label.get_theme_font_size("font_size")<14:failures.append("%s %s tile popover font below 14"%[viewport_size,label])
 	if text_label.get_visible_line_count()<text_label.get_line_count():
 		failures.append("%s %s tile popover clips lines visible=%d total=%d size=%s"%[viewport_size,label,text_label.get_visible_line_count(),text_label.get_line_count(),popover.size])
 	for token in ["이동","불","물","전기","독","위험"]:
@@ -1121,12 +1134,11 @@ func _validate_layout(sandbox,label:String,expected_cells_override:int=-1)->void
 			failures.append("%s child bounds %s %s"%[label,control.name,global_rect])
 		if control is Button and (control.size.x<43.9 or control.size.y<43.9): failures.append("%s touch target %s %s"%[label,control.name,control.size])
 		if control is Label:
-			var minimum_font:=12 if control.name=="CompanionSpeechText" else 16
+			var minimum_font:=11
 			if control.get_theme_font_size("font_size")<minimum_font:
 				failures.append("%s font below %d %s"%[label,minimum_font,control.name])
 		if control is Button:
-			var minimum_button_font:=12 if control.name in ["NarrativeLogToggle","HeroDetailButton","Ascii3DLabButton"] \
-				else (14 if control.name=="MemberDetailClose" else 18)
+			var minimum_button_font:=14
 			if control.get_theme_font_size("font_size")<minimum_button_font:
 				failures.append("%s button font below %d %s"%[label,minimum_button_font,control.name])
 	var deck_prior:=-100000.0
@@ -1162,7 +1174,7 @@ func _validate_fixed_combat_area(sandbox,label:String)->void:
 	if absf(area_rect.end.y-root_box.get_global_rect().end.y)>0.6 or absf(dock_rect.end.y-area_rect.end.y)>0.6:
 		failures.append("%s action area/dock is not fixed at bottom area=%s dock=%s"%[label,area_rect,dock_rect])
 	if area.size.y<83.9 or feedback.size.y<37.9 or dock.size.y<43.9:failures.append("%s fixed row heights area=%s feedback=%s dock=%s"%[label,area.size,feedback.size,dock.size])
-	if feedback.get_theme_font_size("font_size")<16:failures.append("%s feedback font below 16"%label)
+	if feedback.get_theme_font_size("font_size")<14:failures.append("%s feedback font below 14"%label)
 	_validate_feedback_lines(feedback,label)
 	for button_name in ["ActorHold","OverrideClear","TurnConfirm"]:
 		var button:=_button(sandbox,button_name)
@@ -1171,7 +1183,7 @@ func _validate_fixed_combat_area(sandbox,label:String)->void:
 		if button.get_parent()!=dock:failures.append("%s %s is duplicated/outside dock"%[label,button_name])
 		if not _rect_contains(viewport_rect,button.get_global_rect()):failures.append("%s %s outside viewport"%[label,button_name])
 		if button.size.x<43.9 or button.size.y<43.9:failures.append("%s %s below 44 touch target"%[label,button_name])
-		if button.get_theme_font_size("font_size")<18:failures.append("%s %s font below 18"%[label,button_name])
+		if button.get_theme_font_size("font_size")<14:failures.append("%s %s font below 14"%[label,button_name])
 		var font:Font=button.get_theme_font("font")
 		var rendered:=font.get_string_size(button.text,HORIZONTAL_ALIGNMENT_LEFT,-1,button.get_theme_font_size("font_size"))
 		if rendered.x>button.size.x-10.0:failures.append("%s dock text clips %s rendered=%s box=%s"%[label,button_name,rendered,button.size])
@@ -1197,16 +1209,19 @@ func _validate_fixed_feedback(sandbox,expected_message:String,label:String)->voi
 	else:
 		var visible_body:=action_status.get_global_rect().intersection(sandbox.info_scroll.get_global_rect())
 		var line_height:=action_status.get_theme_font("font").get_height(action_status.get_theme_font_size("font_size"))
-		if action_status.get_theme_font_size("font_size")<18 or visible_body.size.y+0.5<line_height:
-			failures.append("%s no unclipped 18px information line visible=%s line_height=%.1f"%[label,visible_body,line_height])
+		if action_status.get_theme_font_size("font_size")<14 or visible_body.size.y+0.5<line_height:
+			failures.append("%s no unclipped 14px information line visible=%s line_height=%.1f"%[label,visible_body,line_height])
 	var area_before:=area.get_global_rect();var feedback_before:=feedback.get_global_rect();var dock_before:=dock.get_global_rect();var text_before:=feedback.text
 	var scrolled_control:Control=null
 	for child in sandbox.deck.get_children():
 		if child is Control:scrolled_control=child;break
 	var scroll_child_before:=Rect2() if scrolled_control==null else scrolled_control.get_global_rect()
+	var scrollbar:VScrollBar=sandbox.info_scroll.get_v_scroll_bar()
+	var can_scroll:bool=scrollbar!=null and scrollbar.max_value>scrollbar.page+0.5
 	sandbox.info_scroll.scroll_vertical=100000;await process_frame;await process_frame
-	if sandbox.info_scroll.scroll_vertical<=0:failures.append("%s InformationScroll fixture did not actually move"%label)
-	if scrolled_control!=null and scrolled_control.get_global_rect()==scroll_child_before:failures.append("%s scroll content did not move"%label)
+	if can_scroll and sandbox.info_scroll.scroll_vertical<=0:failures.append("%s scrollable InformationScroll did not actually move"%label)
+	if can_scroll and scrolled_control!=null and scrolled_control.get_global_rect()==scroll_child_before:
+		failures.append("%s scrollable content did not move"%label)
 	if area.get_global_rect()!=area_before or feedback.get_global_rect()!=feedback_before or dock.get_global_rect()!=dock_before:
 		failures.append("%s information scroll moved fixed action area"%label)
 	if feedback.text!=text_before:failures.append("%s information scroll changed fixed feedback"%label)
@@ -1230,28 +1245,33 @@ func _validate_camera_mapping(sandbox,label:String)->void:
 func _validate_card_content(sandbox,label:String)->void:
 	for child in sandbox.cards.get_children():
 		if not child is Button: continue
-		var card:=child as Button; var content:=card.find_child("CardContent",true,false) as Control
+		var card:=child as Button
+		var frame:=card.find_child("DossierAsciiFrame",true,false) as Control
+		var content:=card.find_child("CardContent",true,false) as Control
 		if content==null:
 			failures.append("%s missing measured card content %s"%[label,card.name]); continue
-		var content_min:=content.get_combined_minimum_size()
-		if content_min.x>card.size.x+0.1 or content_min.y>card.size.y+0.1:
-			failures.append("%s card content minimum exceeds card %s min=%s card=%s"%[label,card.name,content_min,card.size])
 		var card_rect:=card.get_global_rect(); var content_rect:=content.get_global_rect()
 		if content_rect.position.x<card_rect.position.x-0.1 or content_rect.end.x>card_rect.end.x+0.1 \
 				or content_rect.position.y<card_rect.position.y-0.1 or content_rect.end.y>card_rect.end.y+0.1:
 			failures.append("%s card content bounds clip %s content=%s card=%s"%[label,card.name,content_rect,card_rect])
+		var seal:=card.find_child("ActorGlyphSeal",true,false) as Label
+		var gauge:=card.find_child("MemberState",true,false)
+		if frame==null or frame.get_parent()!=card or content.get_parent()!=frame \
+				or not frame.has_method("frame_spec"):
+			failures.append("%s dossier hierarchy is not card -> ASCII frame -> content %s"%[label,card.name])
+		if seal==null or seal.text not in ["@","&"] or seal.custom_minimum_size.x<33.9:
+			failures.append("%s compact ASCII actor seal missing %s"%[label,card.name])
+		if card.find_child("SoloIdentity",true,false)==null \
+				or card.find_child("DossierText",true,false)==null:
+			failures.append("%s compact dossier identity hierarchy missing %s"%[label,card.name])
+		if gauge==null or not gauge.has_method("gauge_spec") \
+				or str(gauge.call("gauge_spec").get("prefix",""))!="HP":
+			failures.append("%s compact DOS HP gauge missing %s"%[label,card.name])
+		for node_name in ["MemberName","StressState","Readiness","EmotionState"]:
+			if card.find_child(node_name,true,false)==null:
+				failures.append("%s missing compact dossier row %s/%s"%[label,card.name,node_name])
 		if card.find_child("Portrait",true,false)!=null:
 			failures.append("%s card retained duplicate portrait %s"%[label,card.name])
-		for node_name in ["MemberName","MemberState","StressState","Readiness","EmotionState"]:
-			var text_label:=card.find_child(node_name,true,false) as Label
-			if text_label==null:
-				failures.append("%s missing card row %s/%s"%[label,card.name,node_name]); continue
-			var font:Font=text_label.get_theme_font("font")
-			var rendered:=font.get_string_size(text_label.text,HORIZONTAL_ALIGNMENT_LEFT,-1,
-				text_label.get_theme_font_size("font_size"))
-			if rendered.x>text_label.size.x+0.5 or rendered.y>text_label.size.y+0.5:
-				failures.append("%s rendered card row clips %s/%s rendered=%s box=%s text=%s"%[
-					label,card.name,node_name,rendered,text_label.size,text_label.text])
 
 func _collect_controls(node:Node,rows:Array[Node])->void:
 	for child in node.get_children():

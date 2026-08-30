@@ -589,15 +589,15 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 	grid.set_observation(second);grid.set_hero_centered_view(Vector2i(1,0),15,77)
 	var started:=int(grid._camera_settle.started_at_ms)
 	var sample0:Dictionary=grid.camera_settle_draw_spec(started)
-	var sample90:Dictionary=grid.camera_settle_draw_spec(started+90)
-	var sample180:Dictionary=grid.camera_settle_draw_spec(started+180)
+	var sample35:Dictionary=grid.camera_settle_draw_spec(started+35)
+	var sample70:Dictionary=grid.camera_settle_draw_spec(started+70)
 	check_eq(grid.view_origin,Vector2i(-6,-7),"logical camera immediately follows hero-(7,7)")
 	check(grid.world_to_pixel_center(Vector2i(1,0)).distance_to(grid.grid_rect().get_center())<0.01,
 		"hero logical/pixel center is immediate and fixed")
 	check(sample0.active and sample0.offset_px.x>0.0 \
-		and sample90.offset_px.x<sample0.offset_px.x and sample90.offset_px.x>0.0 \
-		and not sample180.active and sample180.offset_px==Vector2.ZERO,
-		"world settle decays from the prior camera to zero in 180ms")
+		and sample35.offset_px.x<sample0.offset_px.x and sample35.offset_px.x>0.0 \
+		and not sample70.active and sample70.offset_px==Vector2.ZERO,
+		"world settle decays from the prior camera to zero in 70ms")
 	check_eq(sample0.hero_counter_offset_px,-sample0.offset_px,
 		"hero draw pass cancels world settle and stays at center")
 	grid.set_hero_centered_view(Vector2i(1,0),15,77)
@@ -613,7 +613,7 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 		"settling camera owns no stale world gesture")
 	check(grid.void_padding_draw_spec(Vector2i(-1,0)).visible,
 		"edge void contract survives visual camera offset")
-	grid._camera_settle.started_at_ms=Time.get_ticks_msec()-181
+	grid._camera_settle.started_at_ms=Time.get_ticks_msec()-71
 	check_eq(grid.actor_at_pointer(grid.grid_rect().get_center()),77,
 		"canonical hero hit returns after settle")
 	grid.set_hero_centered_view(Vector2i(10,10),15,77)

@@ -9,12 +9,17 @@ const ActionScript=preload("res://sim/party_action_command.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
+const BuildInfoScript=preload("res://playtest/build_info.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const ASCII_3D_LAB_SCENE=preload("res://playtest/ascii_3d_lab.tscn")
-const FONT_AUX:=16
-const FONT_BODY:=18
-const FONT_KEY:=22
+const FONT_AUX:=14
+const FONT_BODY:=16
+const FONT_KEY:=20
+const FONT_SECTION:=18
+const FONT_COMMAND:=14
+const FONT_CAPTION:=12
+const FONT_MICRO:=11
 const TOUCH_TARGET:=44
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 
@@ -43,6 +48,7 @@ var info_scroll:ScrollContainer
 var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
+var build_label:Label
 var selected_member_id:=-1
 var selected_target_id:=-1
 var notice_text:=""
@@ -69,6 +75,7 @@ var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
 var member_detail_subtitle:Label
+var member_detail_glyph_seal:Label
 var member_detail_scroll:ScrollContainer
 var member_detail_body:Label
 var member_status_window:VBoxContainer
@@ -88,11 +95,17 @@ var member_progression_skill_rows:Dictionary={}
 var member_skill_help:Label
 var member_skill_category_button:Button
 var member_skill_category_expanded:=false
+var member_skill_selected_id:="SWORD"
+var _skill_touch_index:=-1
+var _skill_touch_id:=""
+var _skill_touch_origin:=Vector2.ZERO
+var _skill_touch_dragged:=false
 var member_item_window:VBoxContainer
 var member_item_weapon_text:Label
 var member_item_ammo_text:Label
 var member_item_reload_button:Button
 var member_item_empty_text:Label
+var member_item_stats:Dictionary={}
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
@@ -124,12 +137,42 @@ var _initialized_for_headless_test:=false
 var _run_progress_initialized:=false
 var _observed_reward_granted:=false
 var _reward_emphasis_pending:=false
+
+func _input(event:InputEvent)->void:
+	if member_detail_modal==null or not member_detail_modal.visible \
+			or member_detail_current_tab!="SKILL":return
+	if event is InputEventScreenTouch:
+		if event.pressed and _skill_touch_index<0:
+			var skill_id:=_skill_row_at_position(event.position)
+			if skill_id.is_empty():return
+			_skill_touch_index=event.index;_skill_touch_id=skill_id
+			_skill_touch_origin=event.position;_skill_touch_dragged=false
+			get_viewport().set_input_as_handled()
+		elif not event.pressed and event.index==_skill_touch_index:
+			var activate_id:=_skill_touch_id if not _skill_touch_dragged else ""
+			_skill_touch_index=-1;_skill_touch_id="";_skill_touch_dragged=false
+			get_viewport().set_input_as_handled()
+			if not activate_id.is_empty():_on_training_mode_cycle(activate_id)
+	elif event is InputEventScreenDrag and event.index==_skill_touch_index:
+		if event.position.distance_to(_skill_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
+			_skill_touch_dragged=true
+		member_detail_scroll.scroll_vertical-=int(event.relative.y)
+		get_viewport().set_input_as_handled()
+
+func _skill_row_at_position(global_position:Vector2)->String:
+	for skill_id in member_progression_skill_rows:
+		var row:Dictionary=member_progression_skill_rows[skill_id]
+		var button:=row.title as Button
+		if button.is_visible_in_tree() and button.get_global_rect().has_point(global_position):return str(skill_id)
+	return ""
 var _reward_emphasis_count:=0
 var _reward_emphasis_tween:Tween
 var _run_locked_exit_feedback:=false
 var _personality_entropy_source:Callable
-var _narrative_log_visible:=true
+var _narrative_log_visible:=false
 var _compact_fixed_surface_active:=false
+var _pending_visual_effect_rows:Array[Dictionary]=[]
+var _refresh_pending:=false
 
 func _ready()->void:
 	_build_ui()
@@ -167,15 +210,17 @@ func _build_ui()->void:
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
-	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.NAVY,0))
-	phase_panel.custom_minimum_size.y=92;root_layout.add_child(phase_panel)
+	var top_rail:=AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0)
+	top_rail.border_width_bottom=1;top_rail.border_color=AsciiFrameScript.CYAN
+	phase_panel.add_theme_stylebox_override("panel",top_rail)
+	phase_panel.custom_minimum_size.y=64;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
 	minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
 	minimap_frame.configure("지도",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-	minimap_frame.custom_minimum_size=Vector2(86,82);phase_row.add_child(minimap_frame)
+	minimap_frame.custom_minimum_size=Vector2(62,60);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
-	minimap.custom_minimum_size=Vector2(76,72);minimap_frame.add_child(minimap)
+	minimap.custom_minimum_size=Vector2(52,50);minimap_frame.add_child(minimap)
 	var situation_stack:=VBoxContainer.new();situation_stack.name="SituationStack"
 	situation_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	situation_stack.add_theme_constant_override("separation",1);phase_row.add_child(situation_stack)
@@ -200,23 +245,26 @@ func _build_ui()->void:
 	recent_event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	recent_event_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	recent_event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL
-	recent_event_label.clip_text=true;situation_stack.add_child(recent_event_label)
+	recent_event_label.clip_text=true;recent_event_label.visible=false;situation_stack.add_child(recent_event_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
-	top_hud_actions.custom_minimum_size.x=200;top_hud_actions.alignment=BoxContainer.ALIGNMENT_CENTER
-	top_hud_actions.add_theme_constant_override("separation",4)
+	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
+	top_hud_actions.add_theme_constant_override("separation",0)
 	phase_row.add_child(top_hud_actions)
-	record_button=Button.new();record_button.name="NarrativeLogToggle";record_button.text="[F1 기록]"
-	record_button.custom_minimum_size=Vector2(64,44);record_button.toggle_mode=true
-	record_button.add_theme_font_size_override("font_size",12)
+	record_button=Button.new();record_button.name="NarrativeLogToggle";record_button.text="[기록]"
+	record_button.custom_minimum_size=Vector2(44,44);record_button.toggle_mode=true
+	record_button.clip_text=true;record_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	record_button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	record_button.tooltip_text="하단 사건 기록 표시/숨기기"
 	record_button.pressed.connect(_toggle_narrative_log);top_hud_actions.add_child(record_button)
 	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN)
-	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="[F2 인물]"
-	hero_detail_button.custom_minimum_size=Vector2(64,44);hero_detail_button.add_theme_font_size_override("font_size",12);hero_detail_button.tooltip_text="주인공 상세 정보"
+	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="[인물]"
+	hero_detail_button.custom_minimum_size=Vector2(44,44);hero_detail_button.add_theme_font_size_override("font_size",FONT_COMMAND);hero_detail_button.tooltip_text="주인공 상세 정보"
+	hero_detail_button.clip_text=true;hero_detail_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
-	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="[F3 3D]"
-	ascii_3d_lab_button.custom_minimum_size=Vector2(64,44);ascii_3d_lab_button.add_theme_font_size_override("font_size",12);ascii_3d_lab_button.tooltip_text="저장과 무관한 3D 시각 실험"
+	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="[3D]"
+	ascii_3d_lab_button.custom_minimum_size=Vector2(44,44);ascii_3d_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND);ascii_3d_lab_button.tooltip_text="저장과 무관한 3D 시각 실험"
+	ascii_3d_lab_button.clip_text=true;ascii_3d_lab_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	ascii_3d_lab_button.pressed.connect(_open_ascii_3d_lab);top_hud_actions.add_child(ascii_3d_lab_button)
 	AsciiFrameScript.apply_rail_button(ascii_3d_lab_button,AsciiFrameScript.BRASS)
 	# Compatibility aliases point at the unified HUD rather than preserving a
@@ -232,9 +280,10 @@ func _build_ui()->void:
 	info_scroll=ScrollContainer.new(); info_scroll.name="InformationScroll"; info_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	info_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED; root_layout.add_child(info_scroll)
 	var info:=VBoxContainer.new(); info.name="InformationStack"; info.size_flags_horizontal=Control.SIZE_EXPAND_FILL; info.add_theme_constant_override("separation",6); info_scroll.add_child(info)
-	deck=VBoxContainer.new(); deck.name="ContextDeck"; deck.add_theme_constant_override("separation",6); info.add_child(deck)
+	deck=VBoxContainer.new(); deck.name="ContextDeck"; deck.add_theme_constant_override("separation",2); info.add_child(deck)
 	log_label=Label.new(); log_label.name="NarrativeLog"; log_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=48; info.add_child(log_label)
+	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=44
+	log_label.max_lines_visible=3;log_label.clip_text=true;info.add_child(log_label)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
 	combat_action_area.add_theme_constant_override("separation",2);combat_action_area.visible=false;root_layout.add_child(combat_action_area)
 	action_feedback_label=Label.new();action_feedback_label.name="ActionFeedback";action_feedback_label.custom_minimum_size.y=38
@@ -243,10 +292,33 @@ func _build_ui()->void:
 	combat_action_area.add_child(action_feedback_label)
 	combat_action_dock=HBoxContainer.new(); combat_action_dock.name="CombatActionDock"; combat_action_dock.custom_minimum_size.y=TOUCH_TARGET
 	combat_action_dock.add_theme_constant_override("separation",4);combat_action_dock.visible=false;combat_action_area.add_child(combat_action_dock)
+	_build_build_label()
 	_build_tile_popover()
 	_build_member_detail_modal()
 	_build_duel_decision_lab_entry()
 	resized.connect(_layout_floating_surfaces)
+
+func _build_build_label()->void:
+	build_label=Label.new();build_label.name="BuildLabel";build_label.text=BuildInfoScript.display_text()
+	build_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;build_label.clip_text=true
+	build_label.z_index=1
+	build_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+	build_label.vertical_alignment=VERTICAL_ALIGNMENT_BOTTOM
+	build_label.add_theme_font_size_override("font_size",FONT_MICRO)
+	build_label.add_theme_color_override("font_color",AsciiFrameScript.MUTED)
+	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	add_child(build_label);_position_build_label()
+
+func _position_build_label()->void:
+	if build_label==null:return
+	var bottom_clearance:=4.0
+	if combat_action_area!=null and combat_action_area.visible:
+		bottom_clearance=maxf(bottom_clearance,float(combat_action_area.custom_minimum_size.y)+4.0)
+		var action_top:=combat_action_area.global_position.y-global_position.y
+		if action_top>0.0 and action_top<size.y:
+			bottom_clearance=maxf(bottom_clearance,size.y-action_top+4.0)
+	build_label.offset_left=-110.0;build_label.offset_right=-6.0
+	build_label.offset_bottom=-bottom_clearance;build_label.offset_top=-bottom_clearance-16.0
 
 func _build_duel_decision_lab_entry()->void:
 	duel_lab_button=Button.new();duel_lab_button.name="DuelDecisionLabButton"
@@ -277,27 +349,34 @@ func _build_member_detail_modal()->void:
 	scrim.mouse_filter=Control.MOUSE_FILTER_STOP;scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	scrim.gui_input.connect(_on_member_detail_backdrop_input);member_detail_modal.add_child(scrim)
 	member_detail_panel=PanelContainer.new();member_detail_panel.name="MemberDetailPanel";member_detail_panel.mouse_filter=Control.MOUSE_FILTER_STOP
+	member_detail_panel.clip_contents=true
 	var panel_style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0)
 	member_detail_panel.add_theme_stylebox_override("panel",panel_style);member_detail_modal.add_child(member_detail_panel)
 	var folio_frame=AsciiFrameScript.new();folio_frame.name="MemberDetailAsciiFrame"
 	folio_frame.configure("인물",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,false)
 	folio_frame.set_meta("major_glyph_frame",true);member_detail_panel.add_child(folio_frame)
-	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",6);folio_frame.add_child(stack)
-	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=60
-	header.add_theme_constant_override("separation",9);stack.add_child(header)
+	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",4);folio_frame.add_child(stack)
+	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=52
+	header.add_theme_constant_override("separation",6);stack.add_child(header)
+	member_detail_glyph_seal=Label.new();member_detail_glyph_seal.name="MemberDetailGlyphSeal"
+	member_detail_glyph_seal.custom_minimum_size=Vector2(44,44)
+	member_detail_glyph_seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	member_detail_glyph_seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	member_detail_glyph_seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	member_detail_glyph_seal.add_theme_font_size_override("font_size",32)
+	member_detail_glyph_seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	header.add_child(member_detail_glyph_seal)
 	var title_stack:=VBoxContainer.new();title_stack.name="MemberDetailIdentity"
 	title_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title_stack.add_theme_constant_override("separation",0);header.add_child(title_stack)
-	var folio_kicker:=Label.new();folio_kicker.name="MemberDetailKicker";folio_kicker.text="인물 정보"
-	AsciiFrameScript.label_tone(folio_kicker,AsciiFrameScript.CYAN,14);title_stack.add_child(folio_kicker)
 	member_detail_title=Label.new();member_detail_title.name="MemberDetailTitle";member_detail_title.add_theme_font_size_override("font_size",FONT_KEY)
 	member_detail_title.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
 	member_detail_title.add_theme_color_override("font_color",AsciiFrameScript.INK)
 	member_detail_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;member_detail_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;title_stack.add_child(member_detail_title)
 	member_detail_subtitle=Label.new();member_detail_subtitle.name="MemberDetailSubtitle"
 	AsciiFrameScript.label_tone(member_detail_subtitle,Color("#8ca4ae"),FONT_AUX);title_stack.add_child(member_detail_subtitle)
-	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="[ESC 닫기]"
-	member_detail_close.custom_minimum_size=Vector2(64,TOUCH_TARGET);member_detail_close.add_theme_font_size_override("font_size",FONT_BODY)
-	member_detail_close.add_theme_font_size_override("font_size",14)
+	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="[X]"
+	member_detail_close.custom_minimum_size=Vector2(44,TOUCH_TARGET)
+	member_detail_close.add_theme_font_size_override("font_size",FONT_COMMAND)
 	member_detail_close.gui_input.connect(_on_member_detail_close_input.bind(member_detail_close))
 	member_detail_close.pressed.connect(_close_member_detail);header.add_child(member_detail_close)
 	AsciiFrameScript.apply_rail_button(member_detail_close,AsciiFrameScript.CYAN)
@@ -320,7 +399,10 @@ func _build_member_detail_modal()->void:
 	member_detail_item_tab.tooltip_text="장착 무기와 탄약";member_detail_item_tab.pressed.connect(_select_member_detail_tab.bind("ITEM"))
 	member_detail_tab_row.add_child(member_detail_item_tab);AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
-	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(member_detail_scroll)
+	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+	member_detail_scroll.scroll_deadzone=12;member_detail_scroll.follow_focus=false
+	member_detail_scroll.clip_contents=true;stack.add_child(member_detail_scroll)
 	var detail_content:=VBoxContainer.new();detail_content.name="MemberDetailContent"
 	detail_content.size_flags_horizontal=Control.SIZE_EXPAND_FILL;detail_content.add_theme_constant_override("separation",8)
 	member_detail_scroll.add_child(detail_content)
@@ -346,46 +428,52 @@ func _build_member_detail_modal()->void:
 
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
-	member_progression_window.add_theme_constant_override("separation",7);member_progression_window.visible=false
+	member_progression_window.add_theme_constant_override("separation",4);member_progression_window.visible=false
 	parent.add_child(member_progression_window)
+	var summary:=VBoxContainer.new();summary.name="ProgressionSummary";summary.custom_minimum_size.y=72
+	summary.add_theme_constant_override("separation",2);member_progression_window.add_child(summary)
 	member_progression_xp_text=Label.new();member_progression_xp_text.name="ProgressionXPText"
-	member_progression_xp_text.add_theme_font_size_override("font_size",FONT_KEY);member_progression_window.add_child(member_progression_xp_text)
+	member_progression_xp_text.add_theme_font_size_override("font_size",FONT_SECTION)
+	member_progression_xp_text.clip_text=true;member_progression_xp_text.max_lines_visible=1
+	member_progression_xp_text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;summary.add_child(member_progression_xp_text)
 	member_progression_xp=_gauge("ProgressionXPBar","XP",0,100,12,AsciiFrameScript.YELLOW)
-	member_progression_window.add_child(member_progression_xp)
+	summary.add_child(member_progression_xp)
 	member_progression_stats=Label.new();member_progression_stats.name="DerivedCombatStats"
-	member_progression_stats.add_theme_font_size_override("font_size",FONT_BODY);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	member_progression_window.add_child(member_progression_stats)
+	member_progression_stats.add_theme_font_size_override("font_size",FONT_AUX);member_progression_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	member_progression_stats.max_lines_visible=1;member_progression_stats.clip_text=true;summary.add_child(member_progression_stats)
 	member_skill_help=Label.new();member_skill_help.name="SkillFocusHelp"
-	member_skill_help.text="각 행을 눌러 집중 → 보통 → 끄기를 바꿉니다.\n승리 훈련 XP는 3 : 1 : 0 비율로 배분됩니다."
+	member_skill_help.text="행 터치: 집중 → 보통 → 끄기 · 승리 XP 3:1:0"
 	member_skill_help.add_theme_font_size_override("font_size",FONT_AUX);member_skill_help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	member_skill_help.modulate=Color("#c6d8e5");member_progression_window.add_child(member_skill_help)
+	member_skill_help.max_lines_visible=1;member_skill_help.clip_text=true
+	member_skill_help.modulate=AsciiFrameScript.MUTED;member_progression_window.add_child(member_skill_help)
 	member_skill_category_button=Button.new();member_skill_category_button.name="WeaponMasteryCategory"
 	member_skill_category_button.custom_minimum_size.y=TOUCH_TARGET
 	member_skill_category_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_skill_category_button.action_mode=BaseButton.ACTION_MODE_BUTTON_RELEASE
+	member_skill_category_button.focus_mode=Control.FOCUS_NONE
+	member_skill_category_button.clip_text=true
 	member_skill_category_button.pressed.connect(_toggle_weapon_mastery_category)
 	member_progression_window.add_child(member_skill_category_button)
 	AsciiFrameScript.apply_rail_button(member_skill_category_button,AsciiFrameScript.CYAN)
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
-		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
+		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,0))
 		member_progression_window.add_child(panel)
-		var row_frame=AsciiFrameScript.new();row_frame.name="SkillAsciiFrame"
-		row_frame.configure("숙련",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-		row_frame.set_meta("major_glyph_frame",true);panel.add_child(row_frame)
-		var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",2);row_frame.add_child(stack)
-		var skill_header:=HBoxContainer.new();skill_header.name="SkillHeader";skill_header.custom_minimum_size.y=TOUCH_TARGET
-		skill_header.add_theme_constant_override("separation",8);stack.add_child(skill_header)
-		var rank:=Label.new();rank.name="SkillRank";rank.custom_minimum_size.x=36
-		AsciiFrameScript.label_tone(rank,AsciiFrameScript.BRASS,FONT_KEY);skill_header.add_child(rank)
+		var stack:=VBoxContainer.new();stack.name="SkillRowStack";stack.add_theme_constant_override("separation",2);panel.add_child(stack)
 		var title:=Button.new();title.name="SkillModeButton";title.custom_minimum_size.y=TOUCH_TARGET
 		title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title.set_meta("skill_id",skill_id)
-		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));skill_header.add_child(title)
+		title.action_mode=BaseButton.ACTION_MODE_BUTTON_RELEASE;title.focus_mode=Control.FOCUS_NONE
+		title.clip_text=true;title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));stack.add_child(title)
 		AsciiFrameScript.apply_rail_button(title,AsciiFrameScript.BRASS)
-		var effect:=Label.new();effect.name="CurrentEffect";effect.add_theme_font_size_override("font_size",FONT_AUX);effect.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(effect)
-		var progress:Control=_gauge("TrainingProgress","훈련",0,50,10,AsciiFrameScript.CYAN);stack.add_child(progress)
-		var future:=Label.new();future.name="FutureMilestone";future.add_theme_font_size_override("font_size",14);future.modulate=Color("#9cb0bf");future.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(future)
-		member_progression_skill_rows[skill_id]={"panel":panel,"rank":rank,"title":title,"progress":progress,"effect":effect,"future":future}
+		var detail:=VBoxContainer.new();detail.name="SkillDetail";detail.custom_minimum_size.y=76
+		detail.add_theme_constant_override("separation",2);stack.add_child(detail)
+		var effect:=Label.new();effect.name="CurrentEffect";effect.add_theme_font_size_override("font_size",FONT_AUX);effect.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.add_child(effect)
+		var progress:Control=_gauge("TrainingProgress","훈련",0,50,10,AsciiFrameScript.CYAN);detail.add_child(progress)
+		var future:=Label.new();future.name="FutureMilestone";future.add_theme_font_size_override("font_size",FONT_CAPTION);future.modulate=AsciiFrameScript.MUTED;future.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;detail.add_child(future)
+		member_progression_skill_rows[skill_id]={"panel":panel,"title":title,"detail":detail,"progress":progress,"effect":effect,"future":future}
 		panel.visible=member_skill_category_expanded
+		detail.visible=skill_id==member_skill_selected_id
 	_update_weapon_mastery_category_label()
 
 func _build_item_window(parent:VBoxContainer)->void:
@@ -393,16 +481,21 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_window.visible=false;member_item_window.add_theme_constant_override("separation",8)
 	parent.add_child(member_item_window)
 	var weapon_panel:=PanelContainer.new();weapon_panel.name="EquippedWeaponCard"
-	weapon_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
+	weapon_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,4))
 	member_item_window.add_child(weapon_panel)
-	var weapon_frame=AsciiFrameScript.new();weapon_frame.name="EquippedWeaponAsciiFrame"
-	weapon_frame.configure("장착 무기",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-	weapon_frame.set_meta("major_glyph_frame",true);weapon_panel.add_child(weapon_frame)
-	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_frame.add_child(weapon_stack)
+	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_panel.add_child(weapon_stack)
 	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedWeaponText"
-	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_BODY)
+	member_item_weapon_text.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_SECTION)
 	member_item_weapon_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;weapon_stack.add_child(member_item_weapon_text)
+	var stats_grid:=GridContainer.new();stats_grid.name="EquippedWeaponStats";stats_grid.columns=2
+	stats_grid.add_theme_constant_override("h_separation",8);stats_grid.add_theme_constant_override("v_separation",4);weapon_stack.add_child(stats_grid)
+	for stat_id in ["FORM","DAMAGE","RANGE","TIME"]:
+		var stat:=Label.new();stat.name="Weapon%sStat"%stat_id.capitalize();stat.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		stat.add_theme_font_size_override("font_size",FONT_BODY);stats_grid.add_child(stat);member_item_stats[stat_id]=stat
 	member_item_ammo_text=Label.new();member_item_ammo_text.name="AmmoPoolsText"
+	member_item_ammo_text.custom_minimum_size.y=TOUCH_TARGET
+	member_item_ammo_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	member_item_ammo_text.add_theme_font_size_override("font_size",FONT_AUX);weapon_stack.add_child(member_item_ammo_text)
 	member_item_reload_button=Button.new();member_item_reload_button.name="ReloadWeaponButton"
 	member_item_reload_button.text="재장전";member_item_reload_button.custom_minimum_size.y=TOUCH_TARGET
@@ -410,13 +503,14 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_reload_button.pressed.connect(_on_item_reload);weapon_stack.add_child(member_item_reload_button)
 	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
 	member_item_empty_text=Label.new();member_item_empty_text.name="InventoryExpansionEmpty"
-	member_item_empty_text.text="소지품\n현재 등록된 소지품 없음\n(추후 확장 영역)"
-	member_item_empty_text.custom_minimum_size.y=96;member_item_empty_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	member_item_empty_text.text="소지품 · 현재 등록된 소지품 없음 (확장 예정)"
+	member_item_empty_text.custom_minimum_size.y=TOUCH_TARGET;member_item_empty_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	member_item_empty_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	member_item_empty_text.add_theme_font_size_override("font_size",FONT_AUX)
-	member_item_empty_text.modulate=Color("#8ca4ae");member_item_window.add_child(member_item_empty_text)
+	member_item_empty_text.modulate=AsciiFrameScript.MUTED;member_item_window.add_child(member_item_empty_text)
 
 func _layout_floating_surfaces()->void:
+	_position_build_label()
 	if member_detail_panel!=null:
 		var panel_width:=minf(size.x-24.0,420.0 if size.x>=450.0 else 336.0)
 		var panel_height:=minf(size.y-24.0,720.0)
@@ -426,6 +520,7 @@ func _layout_floating_surfaces()->void:
 	if tile_popover!=null and tile_popover.visible:_position_tile_popover()
 
 func _refresh()->void:
+	_refresh_pending=false
 	if session==null:return
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
@@ -465,18 +560,12 @@ func _refresh()->void:
 	else:
 		root_layout.offset_left=6;root_layout.offset_right=-6
 		root_layout.offset_top=4;root_layout.offset_bottom=-4
-	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=product_hud
+	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
 	top_hud_actions.visible=product_hud
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
-	if compact_fixed_surface and int(card_layout.get("effective_count",0))==1:
-		card_layout["party_height"]=98
 	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)))
-	if compact_fixed_surface:
-		cards.visible=not _narrative_log_visible
-		info_scroll.visible=_narrative_log_visible
-	else:
-		cards.visible=true;info_scroll.visible=true
+	cards.visible=true;info_scroll.visible=true
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
@@ -527,6 +616,7 @@ func _refresh()->void:
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
 	action_feedback_label.visible=true
 	combat_action_area.visible=combat_actions_visible;_update_action_feedback(status)
+	_position_build_label();call_deferred("_position_build_label")
 	if _run_locked_exit_feedback and not run_terminal and safe_phase!="ENGAGED":
 		combat_action_area.custom_minimum_size.y=TOUCH_TARGET
 	if run_complete:_run_complete_deck(run_progress)
@@ -544,11 +634,14 @@ func _refresh()->void:
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	log_label.visible=_narrative_log_visible
+	log_label.max_lines_visible=1 if combat_active else 3
+	deck.visible=not _narrative_log_visible
 	record_button.button_pressed=_narrative_log_visible
 	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN,_narrative_log_visible)
 	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
+	_flush_pending_visual_effects()
 
 func _current_run_progress()->Dictionary:
 	if session!=null and session.has_method("run_progress"):
@@ -574,11 +667,12 @@ func _update_run_objective_bar(progress:Dictionary)->void:
 func _toggle_narrative_log()->void:
 	_narrative_log_visible=not _narrative_log_visible
 	if log_label!=null:log_label.visible=_narrative_log_visible
+	if deck!=null:deck.visible=not _narrative_log_visible
 	if record_button!=null:
 		record_button.button_pressed=_narrative_log_visible
 		record_button.tooltip_text="하단 사건 기록 숨기기" if _narrative_log_visible \
 			else "하단 사건 기록 표시하기"
-	if _compact_fixed_surface_active:_request_refresh()
+	_request_refresh()
 
 func _open_hero_detail()->void:
 	if session==null:return
@@ -753,13 +847,13 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 	var gap:=4
 	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
 	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
-		"effective_count":effective_count,"party_height":160,"gap":gap,
+		"effective_count":effective_count,"party_height":108,"gap":gap,
 		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
 		"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}
 	if effective_count==1:
-		spec.layout_id="SPOTLIGHT";spec.party_height=112
+		spec.layout_id="SPOTLIGHT";spec.party_height=90
 	elif effective_count==2:
-		spec.layout_id="DUAL";spec.party_height=150
+		spec.layout_id="DUAL";spec.party_height=100
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -787,23 +881,59 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 	button.custom_minimum_size=Vector2(float(spec.get("card_min_width",44)),float(spec.get("party_height",160)))
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
-	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS,false)
+	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,false)
 	var dossier_frame=AsciiFrameScript.new();dossier_frame.name="DossierAsciiFrame"
 	dossier_frame.configure("인물" if str(row.get("role",""))=="PROTAGONIST" else "동료",
-		AsciiFrameScript.YELLOW if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.CYAN,
+		AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED,
 		AsciiFrameScript.BLACK,true)
 	dossier_frame.set_meta("major_glyph_frame",true);button.add_child(dossier_frame)
 	dossier_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var spotlight:=str(spec.get("layout_id","COMPACT"))=="SPOTLIGHT"
 	for margin in ["margin_left","margin_right","margin_top","margin_bottom"]:inset.add_theme_constant_override(margin,0)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE; dossier_frame.add_child(inset)
-	if spotlight:
-		_add_spotlight_card_content(inset,row,speech)
-	else:
-		_add_stacked_card_content(inset,row,speech)
+	_add_compact_dossier_content(inset,row,speech,spec)
 	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
 	button.pressed.connect(_on_member_card_pressed.bind(member_id,str(row.display_name))); cards.add_child(button)
+
+func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Dictionary,spec:Dictionary)->void:
+	var root:=HBoxContainer.new();root.name="SpotlightDetails" if int(spec.get("effective_count",1))==1 else "CardIdentity"
+	root.clip_contents=true
+	root.add_theme_constant_override("separation",4);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(root)
+	var count:=int(spec.get("effective_count",1));var seal_size:=44 if count==1 else (40 if count==2 else 34)
+	var seal:=Label.new();seal.name="ActorGlyphSeal";seal.text="@" if str(row.get("role",""))=="PROTAGONIST" else "&"
+	seal.custom_minimum_size=Vector2(seal_size,seal_size);seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	seal.add_theme_font_size_override("font_size",28 if count==1 else (24 if count==2 else 20))
+	seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED)
+	seal.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(seal)
+	var stack:=VBoxContainer.new();stack.name="DossierText";stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	stack.clip_contents=true
+	stack.add_theme_constant_override("separation",0);stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(stack)
+	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
+	var identity:=HBoxContainer.new();identity.name="SoloIdentity";identity.add_theme_constant_override("separation",4);stack.add_child(identity)
+	var selected:=int(row.get("entity_id",-1))==selected_member_id
+	var display_name:=("> " if selected else "")+str(row.get("display_name","파티원"))
+	var name_label:=_card_label(display_name,"MemberName",FONT_BODY if count<=2 else FONT_AUX)
+	name_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	name_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if selected else AsciiFrameScript.INK)
+	name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;identity.add_child(name_label)
+	var level_label:=_card_label("LV%02d"%int(progression.get("level",1)),"LevelProgress",FONT_AUX)
+	level_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS);identity.add_child(level_label)
+	var hp_current:=int(row.get("health",0));var hp_max:=maxi(1,int(row.get("max_health",1)));var low_hp:=hp_current*4<=hp_max
+	var health_gauge:Control=_gauge("MemberState","HP",hp_current,hp_max,8 if count>=3 else 10,
+		AsciiFrameScript.RED if low_hp else AsciiFrameScript.GREEN)
+	health_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;stack.add_child(health_gauge)
+	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
+	var readiness:="준비" if str(row.get("readiness","행동 준비"))=="행동 준비" else "행동중"
+	var state_label:=_card_label("%s%s · %s"%[str(emotion.get("icon","")),str(emotion.get("label","평온")),readiness],"EmotionState",FONT_AUX)
+	state_label.max_lines_visible=1;state_label.clip_text=true;state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;stack.add_child(state_label)
+	var footer:=HBoxContainer.new();footer.name="DossierVitals";footer.add_theme_constant_override("separation",3);stack.add_child(footer)
+	var ready_label:=_card_label(readiness,"Readiness",FONT_AUX);ready_label.visible=false;footer.add_child(ready_label)
+	var stress_label:=_card_label("ST %d"%int(row.get("stress",0)),"StressState",FONT_AUX);footer.add_child(stress_label)
+	if bool(progression.get("available",false)):
+		var xp_gauge:Control=_gauge("CompactXPBar","XP",int(progression.get("xp_current",0)),maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
+		xp_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(xp_gauge)
+	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
 
 func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary)->void:
 	var stack:=VBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",1)
@@ -905,7 +1035,7 @@ func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
 
 func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
-	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip";strip.custom_minimum_size.y=36
+	var strip:=PanelContainer.new();strip.name="CompanionSpeechStrip";strip.custom_minimum_size.y=22
 	strip.mouse_filter=Control.MOUSE_FILTER_IGNORE;strip.clip_contents=true
 	strip.set_meta("actor_id",int(speech.get("actor_id",-1)))
 	strip.set_meta("source",str(speech.get("source","SUGGESTED")))
@@ -914,11 +1044,11 @@ func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 	var style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.NAVY,2)
 	strip.add_theme_stylebox_override("panel",style);parent.add_child(strip)
 	var text:=Label.new();text.name="CompanionSpeechText"
-	text.text="%s\n%s"%[str(speech.get("headline","방어할게.")),
+	text.text="%s · %s"%[str(speech.get("headline","방어할게.")),
 		str(speech.get("reason_summary","피해를 줄이려고"))]
-	text.max_lines_visible=2;text.clip_text=true
+	text.max_lines_visible=1;text.clip_text=true
 	text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	text.add_theme_font_size_override("font_size",12)
+	text.add_theme_font_size_override("font_size",FONT_MICRO)
 	text.add_theme_color_override("font_color",AsciiFrameScript.RED if source=="OVERRIDE" else AsciiFrameScript.CYAN)
 	text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
@@ -935,7 +1065,9 @@ func _gauge(node_name:String,prefix:String,value:int,maximum:int,columns:int,
 	gauge.configure(prefix,value,maximum,columns,color);return gauge
 
 func _card_label(value:String,node_name:String,font_size:int)->Label:
-	var label:=Label.new(); label.name=node_name; label.text=value; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size)); label.mouse_filter=Control.MOUSE_FILTER_IGNORE; return label
+	var label:=Label.new(); label.name=node_name; label.text=value; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size))
+	label.clip_text=true;label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.mouse_filter=Control.MOUSE_FILTER_IGNORE; return label
 func _compact_action(action:Dictionary)->String:
 	var source:=str(action.get("source_label","자동 제안")); var action_type:=str(action.get("type","HOLD"))
 	if action_type=="MOVE":var destination:Array=action.get("destination",[-1,-1]); return "%s · 이동 (%d,%d)"%[source,int(destination[0]),int(destination[1])]
@@ -1177,38 +1309,22 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 
 func _update_member_status_window(detail:Dictionary)->void:
 	_clear_container(member_status_window)
-	var identity_panel:=PanelContainer.new();identity_panel.name="StatusIdentityPanel"
-	identity_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
-	member_status_window.add_child(identity_panel)
-	var identity_frame=AsciiFrameScript.new();identity_frame.name="StatusIdentityAsciiFrame"
-	identity_frame.configure("상태",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-	identity_frame.set_meta("major_glyph_frame",true);identity_panel.add_child(identity_frame)
-	var facts:=VBoxContainer.new();facts.name="StatusIdentity";facts.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	facts.add_theme_constant_override("separation",4);identity_frame.add_child(facts)
-	var name_label:=_card_label(str(detail.get("display_name","파티원")),"StatusName",FONT_KEY)
-	name_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;facts.add_child(name_label)
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
-	var identity_parts:Array[String]=[_species(str(detail.get("species_id","default"))),
-		_role(str(detail.get("role","")))]
-	if bool(progression.get("available",false)):identity_parts.append("Lv.%d"%int(progression.get("level",1)))
-	var species_level:=_card_label(" · ".join(identity_parts),"StatusSpeciesLevel",FONT_BODY);facts.add_child(species_level)
-	var life_parts:Array[String]=[_life_state_label(str(detail.get("life_state","ACTIVE")))]
-	var presence:=str(detail.get("presence","GROUPED"))
-	if presence not in ["", "GROUPED"]:life_parts.append(_presence(presence))
-	var life_label:=_card_label(" · ".join(life_parts),"StatusLife",FONT_AUX);facts.add_child(life_label)
-	var hp_label:=_card_label("생명력","StatusHP",FONT_AUX)
-	facts.add_child(hp_label)
+	var vitals:=HBoxContainer.new();vitals.name="StatusVitals";vitals.custom_minimum_size.y=44
+	vitals.add_theme_constant_override("separation",8);member_status_window.add_child(vitals)
 	var health_bar:Control=_gauge("StatusHealthBar","HP",int(detail.get("health",0)),
-		maxi(1,int(detail.get("max_health",1))),10,AsciiFrameScript.GREEN)
-	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;facts.add_child(health_bar)
+		maxi(1,int(detail.get("max_health",1))),4,AsciiFrameScript.GREEN)
+	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(health_bar)
+	var stress:=int(detail.get("stress",0))
+	var stress_bar:Control=_gauge("StatusStressBar","ST",stress,1000,4,AsciiFrameScript.YELLOW)
+	stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(stress_bar)
 	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
-	status_grid.columns=2 if size.x>=540.0 else 1;status_grid.add_theme_constant_override("h_separation",14)
+	status_grid.columns=2;status_grid.add_theme_constant_override("h_separation",10)
 	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
 	var emotion_cluster:=VBoxContainer.new();emotion_cluster.name="EmotionSealCluster"
 	emotion_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_cluster.add_theme_constant_override("separation",3)
 	status_grid.add_child(emotion_cluster)
-	var emotion_heading:=_card_label("감정 / 스트레스  ─────","EmotionSection",14)
+	var emotion_heading:=_card_label("감정 / 스트레스","EmotionSection",FONT_AUX)
 	emotion_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);emotion_cluster.add_child(emotion_heading)
 	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
 	var emotion_label:=_card_label("[%s%s]"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
@@ -1217,15 +1333,11 @@ func _update_member_status_window(detail:Dictionary)->void:
 	if not reason.is_empty() and reason!="이유 정보 없음":
 		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
-	var stress:=int(detail.get("stress",0))
-	var stress_label:=_card_label("STRESS  %4d / 1000"%stress,"StatusStress",FONT_AUX);emotion_cluster.add_child(stress_label)
-	if stress>0:
-		var stress_bar:Control=_gauge("StatusStressBar","ST",stress,1000,10,AsciiFrameScript.YELLOW)
-		emotion_cluster.add_child(stress_bar)
+	var stress_label:=_card_label("ST %d/1000"%stress,"StatusStress",FONT_AUX);emotion_cluster.add_child(stress_label)
 	var combat_cluster:=VBoxContainer.new();combat_cluster.name="CombatSealCluster"
 	combat_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;combat_cluster.add_theme_constant_override("separation",3)
 	status_grid.add_child(combat_cluster)
-	var combat_heading:=_card_label("전투 / 상태  ─────────","CombatSection",14)
+	var combat_heading:=_card_label("전투 / 상태","CombatSection",FONT_AUX)
 	combat_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);combat_cluster.add_child(combat_heading)
 	var status_ids:Variant=detail.get("status_ids",[])
 	if status_ids is Array and not status_ids.is_empty():
@@ -1242,6 +1354,8 @@ func _update_member_status_window(detail:Dictionary)->void:
 			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
 			int(int(stats.get("guard_reduction_milli",250))/10)],"StatusCombatSummary",FONT_AUX)
 		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(combat)
+	var dossier_heading:=_card_label("특성/내성/노출","StatusDossierSection",FONT_SECTION)
+	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
 
 func _life_state_label(life_state:String)->String:
 	match life_state:
@@ -1258,10 +1372,12 @@ func _open_member_detail(member_id:int)->void:
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
 	member_detail_title.text=str(detail.get("display_name","파티원"))
+	member_detail_glyph_seal.text="@" if str(detail.get("role",""))=="PROTAGONIST" else "&"
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
 	subtitle_parts.append(_role(str(detail.get("role",""))))
 	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV%02d"%int(detail_progression.get("level",1)))
+	subtitle_parts.append(_life_state_label(str(detail.get("life_state","ACTIVE"))))
 	member_detail_subtitle.text=" / ".join(subtitle_parts)
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
@@ -1301,7 +1417,7 @@ func _select_member_detail_tab(tab_id:String)->void:
 	if tab_id not in ["STATUS","SKILL","ITEM"] \
 			or tab_id in ["SKILL","ITEM"] and not member_detail_has_skills:return
 	member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
-	_apply_member_detail_tab()
+	_apply_member_detail_tab();_reflow_member_detail_scroll()
 
 func _apply_member_detail_tab()->void:
 	var skill_selected:=member_detail_has_skills and member_detail_current_tab=="SKILL"
@@ -1325,6 +1441,7 @@ func _apply_member_detail_tab()->void:
 
 func _on_training_mode_cycle(skill_id:String)->void:
 	if member_detail_entity_id<=0:return
+	member_skill_selected_id=skill_id
 	var progression:Dictionary=session.protagonist_progression()
 	var current_mode:="NORMAL"
 	for skill in progression.get("skills",[]):
@@ -1356,50 +1473,81 @@ func _on_training_focus(skill_id:String)->void:
 func _update_progression_window(progression:Variant)->void:
 	var available:=progression is Dictionary and bool(progression.get("available",false))
 	if not available:return
-	member_progression_xp_text.text="Lv.%d  ·  XP %d / %d\n누적 %d  →  다음 %d"%[int(progression.get("level",1)),
+	member_progression_xp_text.text="Lv.%d · XP %d/%d · 누적 %d → 다음 %d"%[int(progression.get("level",1)),
 		int(progression.get("xp_current",0)),int(progression.get("xp_required",1)),
 		int(progression.get("xp_total",0)),int(progression.get("next_level_threshold",0))]
 	member_progression_xp.max_value=maxi(1,int(progression.get("xp_required",1)))
 	member_progression_xp.value=int(progression.get("xp_current",0))
-	member_progression_stats.text="숙련은 무기 명중과 피해만 높이며, 장비 정보는 아이템 탭에서 확인합니다."
+	member_progression_stats.text="숙련 효과는 명중·피해에 적용 · 장비는 아이템 탭"
 	for skill_value in progression.get("skills",[]):
 		if not skill_value is Dictionary:continue
 		var skill:Dictionary=skill_value;var skill_id:=str(skill.get("skill_id",""))
 		if not member_progression_skill_rows.has(skill_id):continue
 		var row:Dictionary=member_progression_skill_rows[skill_id]
-		(row.rank as Label).text="R%02d"%int(skill.get("rank",0))
 		var mode:=str(skill.get("training_mode","NORMAL"))
-		(row.title as Button).text="%s  ·  %s"%[str(skill.get("label","기술")),
-			str(skill.get("training_mode_label","보통"))]
+		var weight:=int(skill.get("raw_weight",ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
+		var effect_text:=str(skill.get("effect_label","")).replace("명중 ","명중").replace("피해 ","피해").replace(" · ","·")
+		var selected_prefix:="> " if skill_id==member_skill_selected_id else "  "
+		(row.title as Button).text="%sR%02d  %s  %s  %s XP×%d"%[selected_prefix,
+			int(skill.get("rank",0)),str(skill.get("label","기술")),effect_text,
+			str(skill.get("training_mode_label","보통")),weight]
 		(row.title as Button).tooltip_text="터치하여 %s로 변경"%ProgressionRegistryScript.mode_label(
 			ProgressionRegistryScript.next_training_mode(mode))
-		AsciiFrameScript.apply_rail_button(row.title,AsciiFrameScript.BRASS,mode=="FOCUS",mode=="OFF")
+		_apply_skill_ledger_style(row.title,mode)
+		(row.detail as Control).visible=member_skill_category_expanded and skill_id==member_skill_selected_id
 		var progress:Variant=row.progress
 		progress.max_value=maxi(1,int(skill.get("training_required",1)));progress.value=int(skill.get("training_current",0))
 		progress.tooltip_text="훈련 %d/%d"%[int(skill.get("training_current",0)),int(skill.get("training_required",1))]
 		(row.effect as Label).text="현재 R%d 효과 · %s"%[int(skill.get("rank",0)),str(skill.get("effect_label",""))]
 		(row.future as Label).text="훈련 %d / %d · 누적 %d"%[int(skill.get("training_current",0)),
 			int(skill.get("training_required",1)),int(skill.get("training_total",0))]
+	_reflow_member_detail_scroll()
+
+func _apply_skill_ledger_style(button:Button,mode:String)->void:
+	var clear:=AsciiFrameScript.borderless_surface(Color("#00000000"),0)
+	for state in ["normal","hover","pressed","focus","disabled"]:
+		button.add_theme_stylebox_override(state,clear)
+	var tone:=AsciiFrameScript.BRASS if mode=="FOCUS" else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.CYAN)
+	for color_name in ["font_color","font_hover_color","font_pressed_color","font_focus_color"]:
+		button.add_theme_color_override(color_name,tone)
+	button.set_meta("no_button_chrome",true);button.set_meta("raw_training_weight",
+		int(ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
 
 func _toggle_weapon_mastery_category()->void:
 	member_skill_category_expanded=not member_skill_category_expanded
-	for row in member_progression_skill_rows.values():(row.panel as Control).visible=member_skill_category_expanded
+	for skill_id in member_progression_skill_rows:
+		var row:Dictionary=member_progression_skill_rows[skill_id]
+		(row.panel as Control).visible=member_skill_category_expanded
+		(row.detail as Control).visible=member_skill_category_expanded and str(skill_id)==member_skill_selected_id
 	_update_weapon_mastery_category_label()
+	_reflow_member_detail_scroll()
 
 func _update_weapon_mastery_category_label()->void:
 	if member_skill_category_button==null:return
 	member_skill_category_button.text=("▼" if member_skill_category_expanded else "▶")+"  무기 숙련  ·  6개"
 
+func _reflow_member_detail_scroll()->void:
+	if member_progression_window!=null:member_progression_window.update_minimum_size()
+	if member_detail_scroll==null:return
+	member_detail_scroll.queue_sort()
+	call_deferred("_clamp_member_detail_scroll")
+
+func _clamp_member_detail_scroll()->void:
+	if member_detail_scroll==null:return
+	member_detail_scroll.scroll_vertical=mini(member_detail_scroll.scroll_vertical,
+		int(member_detail_scroll.get_v_scroll_bar().max_value))
+
 func _update_item_window(equipment:Variant)->void:
 	if not equipment is Dictionary or not bool(equipment.get("available",false)):return
-	member_item_weapon_text.text="%s\n공격 형태 %s · 피해 %d\n사거리 %d-%d칸 · 고유 공격시간 %d"%[
-		str(equipment.get("weapon_label","없음")),str(equipment.get("attack_form","-")),
-		int(equipment.get("raw_damage",0)),int(equipment.get("range_min",1)),
-		int(equipment.get("range_max",1)),int(equipment.get("attack_time",100))]
+	member_item_weapon_text.text="장착 · %s"%str(equipment.get("weapon_label","없음"))
+	(member_item_stats.FORM as Label).text="형태  %s"%str(equipment.get("attack_form","-"))
+	(member_item_stats.DAMAGE as Label).text="피해  %d"%int(equipment.get("raw_damage",0))
+	(member_item_stats.RANGE as Label).text="사거리  %d-%d칸"%[int(equipment.get("range_min",1)),int(equipment.get("range_max",1))]
+	(member_item_stats.TIME as Label).text="공격시간  %d"%int(equipment.get("attack_time",100))
 	var load_state:="해당 없음"
 	if bool(equipment.get("reload_required",false)):
 		load_state="장전됨" if bool(equipment.get("loaded",false)) else "미장전"
-	member_item_ammo_text.text="화살 %d  ·  볼트 %d\n쇠뇌 장전 상태 · %s"%[
+	member_item_ammo_text.text="화살 %d · 볼트 %d · 쇠뇌 %s"%[
 		int(equipment.get("arrows",0)),int(equipment.get("bolts",0)),load_state]
 	member_item_reload_button.visible=bool(equipment.get("reload_required",false))
 	member_item_reload_button.disabled=not bool(equipment.get("can_reload",false))
@@ -1560,6 +1708,7 @@ func _reset_run_ui_transients()->void:
 	_last_card_tap_position=Vector2(-10000,-10000);_direct_card_touch_id=-1;_direct_card_touch_msec=-1000
 	_scroll_log_after_refresh=false;_run_locked_exit_feedback=false
 	_reward_emphasis_pending=false;_run_progress_initialized=false;_observed_reward_granted=false
+	_pending_visual_effect_rows.clear()
 	if _reward_emphasis_tween!=null and _reward_emphasis_tween.is_valid():_reward_emphasis_tween.kill()
 	if reward_badge!=null:reward_badge.modulate=Color.WHITE
 	if member_detail_modal!=null:member_detail_modal.visible=false
@@ -1705,6 +1854,25 @@ func _on_cell(position:Vector2i)->void:
 				int(active_state.get("total_steps",0))]
 			_request_refresh();return
 		if bool(active_state.get("active",false)):_cancel_active_route()
+		var hero_position:=Vector2i(int(status.protagonist_position[0]),
+			int(status.protagonist_position[1]))
+		var direct_delta:=position-hero_position
+		if direct_delta!=Vector2i.ZERO \
+				and maxi(absi(direct_delta.x),absi(direct_delta.y))==1:
+			# Adjacent taps need no macro-route snapshot/hash/path DTO. The canonical
+			# one-cell facade performs the same authoritative preview, commit, journal,
+			# turn, exposure and contact resolution without route-only bookkeeping.
+			var command=CommandScript.move_to(int(status.protagonist_id),position)
+			var direct_preview:Dictionary=session.preview_exploration(command)
+			if bool(direct_preview.get("accepted",false)):
+				route_generation+=1;route_continue_pending=false;route_preview.clear()
+				_clear_move_preview();_clear_companion_follow_plan()
+				var result:Dictionary=session.commit_exploration(command)
+				_record_result(result,true,"%s 이동 불가"%_protagonist_name())
+				if bool(result.get("accepted",false)):
+					action_feedback_text="한 칸 이동했습니다."
+				_refresh()
+				return
 		var preview:Dictionary=session.preview_exploration_route(position)
 		route_preview=preview.duplicate(true);_apply_route_state(preview)
 		if not bool(preview.get("accepted",false)):
@@ -1894,11 +2062,20 @@ func _clear_move_preview()->void:
 	pending_move_actor_id=-1; pending_move_origin=Vector2i(-1,-1); pending_move_destination=Vector2i(-1,-1); pending_move_valid=false
 	pending_move_mode=""; pending_move_cost=0; pending_exploration_wait=false
 	if grid!=null:grid.clear_cursor_preview();grid.clear_route_overlay()
-func _request_refresh()->void:call_deferred("_refresh")
+func _request_refresh()->void:
+	if _refresh_pending:return
+	_refresh_pending=true
+	call_deferred("_flush_requested_refresh")
+
+func _flush_requested_refresh()->void:
+	if not _refresh_pending:return
+	_refresh_pending=false
+	_refresh()
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",scroll_combat_log:bool=false)->void:
 	_arm_actor_motion_from_result(result)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
-		grid.play_effects(result.get("visual_effects",[]))
+		for raw in result.get("visual_effects",[]):
+			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
 	if bool(result.get("accepted",false)):
 		# Only a committed live UI action may arm the reward highlight. A loaded
 		# save or an arbitrary refresh synchronizes the badge without replaying it.
@@ -1911,6 +2088,15 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
+
+func _flush_pending_visual_effects()->int:
+	if grid==null or _pending_visual_effect_rows.is_empty():return 0
+	var rows:Array=_pending_visual_effect_rows.duplicate(true)
+	_pending_visual_effect_rows.clear()
+	# Begin the short presentation clock only after observation, camera mapping,
+	# cards, and log have refreshed. Slow web layout can no longer consume the
+	# complete effect lifetime before the first drawable frame.
+	return grid.play_effects(rows)
 
 func _arm_actor_motion_from_result(result:Dictionary)->void:
 	if grid==null or session==null or not bool(result.get("accepted",false)) \
@@ -2136,8 +2322,9 @@ func _update_action_feedback(status:Dictionary)->void:
 			elif str(status.view_mode)=="COMBAT":action_feedback_label.text="행동 선택 → 자동 실행" if auto_orchestration_enabled else "행동 지정 → 실행"
 			else:action_feedback_label.text="다음 행동을 선택하세요."
 func _add_notice(value:String,node_name:String="ActionStatus",font_size:int=FONT_BODY)->Label:
-	var label:=Label.new(); label.name=node_name; label.text=value; label.custom_minimum_size.y=44; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size))
-	label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART; deck.add_child(label); return label
+	var label:=Label.new(); label.name=node_name; label.text=value; label.custom_minimum_size.y=38; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size))
+	label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER; label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	label.max_lines_visible=3;label.clip_text=true;deck.add_child(label); return label
 func _add_button(parent:Control,value:String,node_name:String,callback:Callable)->Button:
 	var button:=Button.new(); button.name=node_name; button.text=_dos_command_label(node_name,value);button.set_meta("plain_label",value)
 	button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET); button.add_theme_font_size_override("font_size",FONT_BODY)
@@ -2170,8 +2357,7 @@ func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경�
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
 	var wide:=size.x>=450.0
-	phase_panel.custom_minimum_size.y=(88 if size.x<450.0 else 92) \
-		if _is_solo_product_session() else (52 if wide else 48)
+	phase_panel.custom_minimum_size.y=64 if _is_solo_product_session() else (52 if wide else 48)
 	root_layout.add_theme_constant_override("separation",4 if wide else 2)
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
 	if _is_solo_product_session():
@@ -2214,7 +2400,9 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
-	phase_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(surface_color,0))
+	var phase_style:=AsciiFrameScript.borderless_surface(surface_color,0)
+	phase_style.border_width_bottom=1;phase_style.border_color=AsciiFrameScript.CYAN
+	phase_panel.add_theme_stylebox_override("panel",phase_style)
 	phase_panel.set_meta("visible_stylebox_border",false)
 	if minimap_frame!=null:
 		var glyph_tone:=AsciiFrameScript.CYAN

@@ -4,7 +4,7 @@ extends RefCounted
 # Product dungeons deliberately outgrow the 15x15 camera.  The generator uses
 # its own RNG, so building presentation geometry never consumes simulation RNG.
 const SCHEMA_VERSION := 1
-const RULESET_ID := "sector-rooms-snake-v1"
+const RULESET_ID := "sector-rooms-snake-v2-opening-encounter"
 const MIN_SIZE := 32
 const DEFAULT_WIDTH := 48
 const DEFAULT_HEIGHT := 48
@@ -71,7 +71,14 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 				door_positions.append(door)
 	var entry := centers[0]
 	var exit := centers[centers.size() - 1]
-	var enemy := centers[mini(centers.size() - 2, maxi(2, centers.size() / 2))]
+	# The first product encounter is part of the opening readability contract:
+	# its source stays authoritative map population, but it begins inside the
+	# six-cell LOS window instead of a distant middle-sector room. Prefer five
+	# cells of Chebyshev separation (falling back to four or six for tighter room
+	# geometry), which avoids immediate detection at radius three.
+	var distant_enemy:=centers[mini(centers.size()-2,maxi(2,centers.size()/2))]
+	var enemy := _opening_enemy_position(terrain,width,height,entry,exit,
+		door_positions,distant_enemy)
 	var protected := {entry:true, exit:true, enemy:true}
 	for door in door_positions:
 		protected[door] = true
@@ -181,6 +188,55 @@ static func reachable(layout: Dictionary, from: Vector2i, to: Vector2i) -> bool:
 			seen[candidate] = true
 			frontier.append(candidate)
 	return false
+
+
+static func _opening_enemy_position(terrain:Array[String],width:int,height:int,
+		entry:Vector2i,exit:Vector2i,door_positions:Array[Vector2i],
+		distant_fallback:Vector2i)->Vector2i:
+	var candidates:Array[Vector2i]=[]
+	for y in range(maxi(1,entry.y-6),mini(height-1,entry.y+7)):
+		for x in range(maxi(1,entry.x-6),mini(width-1,entry.x+7)):
+			var candidate:=Vector2i(x,y)
+			if candidate==entry or candidate==exit or candidate in door_positions \
+					or terrain[_index(candidate,width)]=="wall":continue
+			var distance:=maxi(absi(candidate.x-entry.x),absi(candidate.y-entry.y))
+			if distance!=5 or not _terrain_line_of_sight(
+					terrain,width,entry,candidate):continue
+			candidates.append(candidate)
+	if candidates.is_empty():
+		# Generated sector rooms always provide an opening candidate, but retain a
+		# deterministic passable fallback if future topology rules become tighter.
+		for fallback_distance in [4,6]:
+			for y in range(maxi(1,entry.y-6),mini(height-1,entry.y+7)):
+				for x in range(maxi(1,entry.x-6),mini(width-1,entry.x+7)):
+					var candidate:=Vector2i(x,y)
+					if candidate==entry or candidate==exit or candidate in door_positions \
+							or terrain[_index(candidate,width)]=="wall":continue
+					if maxi(absi(candidate.x-entry.x),absi(candidate.y-entry.y)) \
+							==fallback_distance and _terrain_line_of_sight(
+								terrain,width,entry,candidate):candidates.append(candidate)
+			if not candidates.is_empty():break
+	if candidates.is_empty():return distant_fallback
+	candidates.sort_custom(func(a:Vector2i,b:Vector2i):
+		var a_axis:=mini(absi(a.x-entry.x),absi(a.y-entry.y))
+		var b_axis:=mini(absi(b.x-entry.x),absi(b.y-entry.y))
+		# Prefer a cardinal sight line, then stable reading order.
+		return a_axis<b_axis if a_axis!=b_axis else (a.y<b.y if a.y!=b.y else a.x<b.x))
+	return candidates[0]
+
+static func _terrain_line_of_sight(terrain:Array[String],width:int,
+		origin:Vector2i,target:Vector2i)->bool:
+	var x0:=origin.x;var y0:=origin.y;var x1:=target.x;var y1:=target.y
+	var dx:=absi(x1-x0);var sx:=1 if x0<x1 else -1
+	var dy:=-absi(y1-y0);var sy:=1 if y0<y1 else -1
+	var error:=dx+dy
+	while x0!=x1 or y0!=y1:
+		var doubled:=2*error
+		if doubled>=dy:error+=dy;x0+=sx
+		if doubled<=dx:error+=dx;y0+=sy
+		if Vector2i(x0,y0)==target:return true
+		if terrain[y0*width+x0]=="wall":return false
+	return true
 
 
 static func _carve_room(terrain: Array[String], width: int, room: Rect2i) -> void:

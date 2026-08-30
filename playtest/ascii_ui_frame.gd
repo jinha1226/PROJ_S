@@ -7,17 +7,17 @@ extends MarginContainer
 const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 
-const BLACK:=Color("#000000")
-const NAVY:=Color("#00002a")
-const SURFACE:=Color("#000814")
-const SURFACE_DEEP:=Color("#000008")
-const INK:=Color("#c0c0c0")
-const BRIGHT:=Color("#ffffff")
-const MUTED:=Color("#6c7a89")
-const CYAN:=Color("#55ffff")
-const YELLOW:=Color("#ffff55")
-const RED:=Color("#ff5555")
-const GREEN:=Color("#55ff55")
+const BLACK:=Color("#000306")
+const NAVY:=Color("#05090b")
+const SURFACE:=Color("#071012")
+const SURFACE_DEEP:=Color("#000306")
+const INK:=Color("#c7c2b3")
+const BRIGHT:=Color("#ddd7c8")
+const MUTED:=Color("#66737b")
+const CYAN:=Color("#4f9aa3")
+const YELLOW:=Color("#b8954d")
+const RED:=Color("#a74343")
+const GREEN:=Color("#5f8a66")
 
 const BRASS:=YELLOW
 const JADE:=GREEN
@@ -28,7 +28,7 @@ var frame_title:=""
 var frame_color:=CYAN
 var title_color:=INK
 var backdrop_color:=SURFACE
-var glyph_font_size:=16
+var glyph_font_size:=14
 var compact_inset:=false
 var danger_edge:=false
 
@@ -45,7 +45,7 @@ func configure(title:String="",tone:Color=CYAN,backdrop:Color=SURFACE,
 		compact:bool=false,_rounded:bool=false)->void:
 	frame_title=title;frame_color=tone;title_color=tone
 	backdrop_color=backdrop;compact_inset=compact
-	glyph_font_size=10 if compact else 16
+	glyph_font_size=9 if compact else 14
 	_refresh_insets();queue_redraw()
 
 func cell_metrics()->Dictionary:

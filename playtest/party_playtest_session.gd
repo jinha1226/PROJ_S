@@ -761,7 +761,13 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 func _party_minimap_observation(context:Dictionary)->Dictionary:
 	var visible:Dictionary=context.visible
 	var explored:Dictionary=context.explored
+	var progress:Dictionary=context.progress
 	var markers:Dictionary={}
+	var exit_key:=""
+	var exit_position_value:Variant=progress.get("exit_position",[])
+	if bool(progress.get("available",false)) and exit_position_value is Array \
+			and exit_position_value.size()==2:
+		exit_key=_position_key(Vector2i(int(exit_position_value[0]),int(exit_position_value[1])))
 	var hero_id:=int(context.hero_id)
 	if sim.world.entities.has(hero_id):
 		var hero_position:Vector2i=sim.world.entities[hero_id].position
@@ -784,9 +790,14 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 			# Omitted compact rows are explicitly UNSEEN in PartyMinimap. This keeps
 			# never-observed terrain identity out of the DTO entirely.
 			if state=="UNSEEN":continue
+			# EXIT is static discovered cartography, not live feature authority. Actor
+			# markers still win on a currently visible shared cell; MEMORY can retain
+			# only this static marker and never enemy/target/hazard information.
+			var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
+			if marker.is_empty() and key==exit_key:marker="EXIT"
 			cells.append({"position":[x,y],"visibility_state":state,
 				"terrain_id":str(sim.world.tile_at(position).terrain),
-				"marker":str(markers.get(key,"")) if state=="VISIBLE" else ""})
+				"marker":marker})
 	return {"schema_version":1,"width":sim.world.width,"height":sim.world.height,
 		"cells":cells}
 
