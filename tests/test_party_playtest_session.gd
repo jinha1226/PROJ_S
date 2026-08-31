@@ -486,6 +486,67 @@ func test_movement_rejection_feedback_is_structured_korean_and_pure() -> bool:
 	return finish()
 
 
+func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_flank() -> bool:
+	var session=Session.new();var state=session.sim.world.party_encounter
+	var hero:=int(state.protagonist_id);var origin:=Vector2i(7,7)
+	var gateway:=Vector2i(7,6);var destination:=Vector2i(6,6)
+	session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,14)
+	check(session.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall"),
+		"door corner has one solid flank")
+	state.diagonal_gateway_positions.append(gateway)
+	var preview:Dictionary=session.preview_exploration(Command.move_to(hero,destination))
+	check(preview.accepted,"open passable doorway permits diagonal across its threshold")
+	var path:Dictionary=session.find_exploration_path(hero,destination)
+	check(path.found and path.path==[origin,destination],
+		"exploration pathfinder uses the same direct doorway diagonal")
+	var route:Dictionary=session.preview_exploration_route(destination)
+	check(route.accepted and route.path==[[7,7],[6,6]],
+		"long-route preview uses the same direct doorway diagonal")
+	var snapshot:Dictionary=session._auto_explore_fog_snapshot()
+	check(bool(snapshot.cells["7:6"].diagonal_gateway),
+		"fog-safe AUTO snapshot identifies only the already known gateway cell")
+	check(session._auto_explore._known_step_is_safe(origin,destination,snapshot.cells),
+		"AUTO accepts the same doorway diagonal")
+	var committed:Dictionary=session.commit_exploration(Command.move_to(hero,destination))
+	check(committed.accepted and session.sim.world.entities[hero].position==destination,
+		"canonical commit advances exactly one doorway diagonal")
+
+	var occupied=Session.new();var occupied_state=occupied.sim.world.party_encounter
+	occupied.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
+	occupied_state.diagonal_gateway_positions.append(gateway)
+	occupied.sim.world.entities[occupied_state.enemy_ids[0]].position=gateway
+	check_eq(occupied.preview_exploration(Command.move_to(
+		occupied_state.protagonist_id,destination)).reason,
+		"move_diagonal_flank_occupied","an actor still blocks the open doorway flank")
+
+	var ordinary=Session.new();var ordinary_state=ordinary.sim.world.party_encounter
+	ordinary.sim.world.entities[ordinary_state.enemy_ids[0]].position=Vector2i(14,14)
+	ordinary.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
+	check_eq(ordinary.preview_exploration(Command.move_to(
+		ordinary_state.protagonist_id,destination)).reason,
+		"move_diagonal_flank_blocked","ordinary floor beside a wall remains a solid corner")
+	check(not ordinary.find_exploration_path(ordinary_state.protagonist_id,destination).path \
+		==[origin,destination],"pathfinder cannot cut an ordinary wall corner")
+
+	var product=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var gateways:Array[Vector2i]=product.sim.world.party_encounter.diagonal_gateway_positions
+	check(not gateways.is_empty(),"generated product doors publish canonical gateway cells")
+	var restored=Session.new(1,2)
+	check(restored.load_session_json(product.save_session_json()).accepted,
+		"gateway state survives strict save and journal replay")
+	check_eq(restored.sim.snapshot(),product.sim.snapshot(),
+		"gateway save/replay snapshot is exact")
+	var legacy_v5:Dictionary=JSON.parse_string(product.save_session_json())
+	legacy_v5.snapshot.party_encounter.schema_version=5
+	legacy_v5.snapshot.party_encounter.erase("diagonal_gateway_positions")
+	var migrated=Session.new(3,4)
+	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
+		"v5 product save reconstructs deterministic door gateways")
+	check_eq(migrated.sim.snapshot(),product.sim.snapshot(),
+		"v5 gateway migration matches current replay exactly")
+	return finish()
+
+
 func test_party_rejection_feedback_preserves_draft_busy_dormant_and_conflict_details() -> bool:
 	var draft = _engaged_with_companions([]); var draft_state = draft.sim.world.party_encounter
 	var dormant = draft_state.party_member_ids[1]

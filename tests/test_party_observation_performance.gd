@@ -54,6 +54,38 @@ func test_full_observer_stays_detached_while_ui_uses_world_coordinate_viewport_a
 	return finish()
 
 
+func test_zoomed_ui_observation_is_bounded_detached_and_fog_safe()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var status:Dictionary=session.party_status()
+	var hero:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	var zoomed:Dictionary=session.observe_party_ui(19).grid
+	check_eq(zoomed.grid_mapping.origin,[hero.x-9,hero.y-9],
+		"19x19 DTO remains hero-centered in absolute world coordinates")
+	check_eq(int(zoomed.grid_mapping.cell_count),361,"19x19 DTO advertises exact capacity")
+	check(zoomed.cells.size()<=361,"19x19 DTO never materializes more than its viewport")
+	for cell in zoomed.cells:
+		var state:=str(cell.visibility_state)
+		if state=="MEMORY":
+			check(cell.actors.is_empty() and str(cell.feature_id).is_empty() \
+				and int(cell.fire_intensity)==0 and int(cell.wetness)==0,
+				"zoomed MEMORY row retains terrain only")
+		elif state=="UNSEEN":
+			check(str(cell.terrain_id)=="unknown" and cell.actors.is_empty() \
+				and str(cell.feature_id).is_empty() and int(cell.fire_intensity)==0,
+				"zoomed UNSEEN row reveals no live information")
+	var oversized:Dictionary=session.observe_party_ui(99).grid
+	check_eq([oversized.grid_mapping.origin,oversized.grid_mapping.cell_count],
+		[[hero.x-9,hero.y-9],361],"oversized request clamps to the 19x19 product bound")
+	var close:Dictionary=session.observe_party_ui(11).grid
+	check_eq([close.grid_mapping.origin,close.grid_mapping.cell_count],
+		[[hero.x-5,hero.y-5],121],"11x11 zoom-in DTO keeps exact origin and capacity")
+	var original_size:int=session.observe_party_ui(19).grid.cells.size()
+	zoomed.cells.clear()
+	check_eq(session.observe_party_ui(19).grid.cells.size(),original_size,
+		"zoomed UI DTO remains detached")
+	return finish()
+
+
 func test_explored_cache_processes_suffix_and_rebuilds_on_history_topology_reset_and_load()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	session.observe_party_world()

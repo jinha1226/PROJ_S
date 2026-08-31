@@ -479,7 +479,21 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 	_check(chosen!=Vector2i.ZERO,"%s active route fixture has no manual direction"%viewport_size)
 	if chosen!=Vector2i.ZERO:
 		var step_before:=int(status.step_index);var journal_before:int=session.command_journal.size()
-		await _screen_touch_button(sandbox,sandbox.product_direction_buttons.get(chosen) as Button,52)
+		var direction_button:=sandbox.product_direction_buttons.get(chosen) as Button
+		var center:=direction_button.get_global_rect().get_center()
+		sandbox._schedule_route_continue(Time.get_ticks_msec())
+		var press:=InputEventScreenTouch.new();press.index=52;press.pressed=true;press.position=center
+		root.push_input(press,true);await process_frame
+		_check(sandbox._product_touch_index==52,
+			"%s held route override press did not reach product input"%viewport_size)
+		await create_timer(float(sandbox.continuous_travel_cadence_msec+40)/1000.0).timeout
+		await process_frame
+		_check(int(session.party_status().step_index)==step_before \
+			and session.command_journal.size()==journal_before \
+			and bool(session.exploration_route_state().get("active",false)),
+			"%s held direction allowed an active route hop before release"%viewport_size)
+		var release:=InputEventScreenTouch.new();release.index=52;release.pressed=false;release.position=center
+		root.push_input(release,true);await process_frame;await process_frame
 		_check(int(session.party_status().step_index)==step_before+1 \
 			and session.command_journal.size()==journal_before+1 \
 			and not bool(session.exploration_route_state().get("active",false)),

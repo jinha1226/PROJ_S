@@ -223,8 +223,12 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 	var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(77)
 	var spec:Dictionary=grid.actor_glyph_draw_spec(77)
 	check(spec.visible and spec.font_size>=9,"15px cell keeps a readable central glyph")
-	check(spec.cell_rect.encloses(spec.glyph_rect.grow(1.0)),
-		"glyph outline remains in cell: %s vs %s"%[spec.glyph_rect.grow(1.0),spec.cell_rect])
+	check(float(spec.top_overlap_px)>0.0 and float(spec.top_overlap_px)<=3.0 \
+			and spec.glyph_rect.position.x>=spec.cell_rect.position.x \
+			and spec.glyph_rect.end.x<=spec.cell_rect.end.x \
+			and spec.glyph_rect.end.y<=spec.cell_rect.end.y,
+		"body glyph overlaps only slightly upward while staying laterally bounded: %s vs %s" \
+		%[spec.glyph_rect,spec.cell_rect])
 	check(not spec.detached_head and spec.outline_passes==8 and not spec.selected_outline,
 		"world actor has no head or yellow selection outline")
 	check_eq([spec.draw_equipment,spec.equipment_primitive_count],[false,0],
@@ -234,11 +238,54 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 		"world arms visibly join the rendered glyph edges")
 	check(absf(spec.limb_segments[2][0].y-spec.glyph_rect.end.y)<=1.5,
 		"world legs visibly join the rendered glyph lower edge")
+	check(float(spec.feet_bottom_margin_px)>0.0 \
+			and float(spec.feet_bottom_margin_px)<=spec.cell_rect.size.y*0.20,
+		"longer legs end just above the logical cell bottom")
 	check_eq(grid.mapping_signature(),mapping,"glyph presentation cannot alter mapping")
 	check_eq(grid.actor_hit_rect(77),hit,"glyph presentation cannot alter actor hit authority")
 	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),77,
 		"logical target center remains immediately hittable")
 	grid.free()
+	return finish()
+
+
+func test_actor_pseudo_depth_proportions_are_bounded_at_360_and_450()->bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:cell.actors.append({"entity_id":77,"faction_id":"party",
+			"species_id":"human","roster_slot":0,"is_protagonist":true})
+		elif cell.position==[7,6]:cell.actors.append({"entity_id":88,"faction_id":"enemy",
+			"species_id":"goblin"})
+	var observation:={"width":15,"height":15,"cells":cells}
+	for viewport in [360,450]:
+		var grid=Grid.new();grid.size=Vector2(viewport,viewport)
+		grid.set_observation(observation);grid.set_hero_centered_view(Vector2i(7,7),15,77)
+		var mapping:=grid.mapping_signature();var hero_hit:=grid.actor_hit_rect(77)
+		var hero:Dictionary=grid.actor_glyph_draw_spec(77)
+		var neighbor:Dictionary=grid.actor_glyph_draw_spec(88)
+		var hero_legs:=Vector2(hero.limb_segments[2][1]).distance_to(
+			Vector2(hero.limb_segments[2][0]))+Vector2(hero.limb_segments[3][1]).distance_to(
+			Vector2(hero.limb_segments[3][0]))
+		var hero_arms:=Vector2(hero.limb_segments[0][1]).distance_to(
+			Vector2(hero.limb_segments[0][0]))+Vector2(hero.limb_segments[1][1]).distance_to(
+			Vector2(hero.limb_segments[1][0]))
+		check(bool(hero.one_cell_one_glyph) and str(hero.glyph)=="@" \
+				and float(hero.top_overlap_px)>0.0 \
+				and float(hero.top_overlap_px)<=grid.cell_size_px()*0.12,
+			"%dpx body owns one glyph with a restrained upward silhouette overlap=%s cell=%s" \
+			%[viewport,hero.top_overlap_px,grid.cell_size_px()])
+		check(hero_legs>=grid.cell_size_px()*0.40 and float(hero.feet_bottom_margin_px)>0.0 \
+				and float(hero.feet_bottom_margin_px)<=grid.cell_size_px()*0.16,
+			"%dpx legs are visibly long and feet remain above the tile edge legs=%s arms=%s margin=%s" \
+			%[viewport,hero_legs,hero_arms,hero.feet_bottom_margin_px])
+		check(not Rect2(hero.glyph_rect).intersects(Rect2(neighbor.glyph_rect)) \
+				and hero.glyph_rect.position.x>=hero.cell_rect.position.x \
+				and hero.glyph_rect.end.x<=hero.cell_rect.end.x,
+			"%dpx adjacent actors keep distinct single-glyph silhouettes"%viewport)
+		check_eq([grid.mapping_signature(),grid.actor_hit_rect(77),
+			grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7)))],
+			[mapping,hero_hit,77],"%dpx pseudo-depth remains draw-only"%viewport)
+		grid.free()
 	return finish()
 
 
@@ -970,6 +1017,28 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 					and int(at_next_tick[index].flicker_tick)==0
 		check(visible_changed and memory_fixed,
 			"%dpx visible flames quantize while MEMORY stays fixed and dark"%viewport)
+		var visible_source:Vector2i=Vector2i(-1,-1)
+		for row in at_zero:
+			if bool(row.animated):
+				visible_source=Vector2i(int(row.position[0]),int(row.position[1]));break
+		check(visible_source!=Vector2i(-1,-1) \
+				and float(grid.torch_draw_specs(125).filter(func(row):return row.position \
+				==[visible_source.x,visible_source.y])[0].brightness)>=0.90,
+			"%dpx source ! is a high-contrast warm glyph"%viewport)
+		var lit_floor_found:=false;var lit_wall_found:=false
+		for y in range(15):
+			for x in range(15):
+				var position:=Vector2i(x,y);var light:Dictionary=grid.torch_light_draw_spec(position,125)
+				if not bool(light.active) or int(light.distance)<=0:continue
+				if position in visible_walls:lit_wall_found=true
+				else:lit_floor_found=true
+				check(str(light.visibility_state)=="VISIBLE" \
+					and float(light.composite_alpha)>=0.07,
+					"%dpx warm pool only composites on visible cells"%viewport)
+		check(lit_floor_found and lit_wall_found,
+			"%dpx torch pool visibly reaches neighboring floor and wall cells"%viewport)
+		check(not bool(grid.torch_light_draw_spec(memory_walls[0],125).active),
+			"%dpx live torch pool cannot illuminate MEMORY"%viewport)
 		check(not bool(grid.torch_light_draw_spec(unseen_walls[0],125).active),
 			"%dpx torch pool cannot illuminate an UNSEEN cell"%viewport)
 		check_eq([grid.mapping_signature(),str(grid.actor_draw_spec(

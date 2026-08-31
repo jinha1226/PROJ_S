@@ -55,6 +55,9 @@ jobs:
       - name: Run Party UI visual style smoke
         run: ./godot --headless --path . --script res://tests/party_ui_visual_style_smoke.gd
 
+      - name: Run Party product zoom smoke
+        run: ./godot --headless --path . --script res://tests/party_product_zoom_smoke.gd
+
       - name: Inject Pages build ID
         shell: bash
         run: |

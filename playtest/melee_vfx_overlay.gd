@@ -4,9 +4,9 @@ extends Node2D
 # Every adjustable melee-presentation value lives here. These values affect no
 # simulation clock, action result, entity position, glyph, or input mapping.
 const PARAMS := {
-	# Impact begins on the first drawable frame. A slow web canvas must not spend
-	# the only visible frame on an imperceptible wind-up.
-	"contact_at_ms":0,
+	# The actor owns a short readable wind-up before the target-local impact.
+	# The live clock is bounded below, so a slow web frame cannot skip the pose.
+	"contact_at_ms":42,
 	"hit_stop_ms":55,
 	# Durations below exclude the shared bright impact hold. Public totals are
 	# exposed by parameter_spec() so product/readability tests use actual wall.
@@ -17,8 +17,19 @@ const PARAMS := {
 	# accent, never an attacker-to-target connector.
 	"slash_local_length_ratio":0.54,
 	"slash_bend_ratio":0.20,
-	"slash_width_px":3.2,
+	"slash_width_px":2.0,
 	"slash_color_hex":"#ffe4a3",
+	# Draw-only attacker arm timing. The same values apply to both factions and
+	# affect no actor position, hit rectangle, turn clock, or glyph identity.
+	"swing_duration_ms":156,
+	"swing_follow_through_ms":48,
+	"swing_arm_reach_x":0.48,
+	"swing_arm_reach_y":0.20,
+	"swing_center_y":0.18,
+	"swing_side_offset":0.05,
+	"swing_windup_reach":0.30,
+	"swing_windup_reach_y":0.12,
+	"swing_windup_side_offset":0.12,
 	"flash_duration_ms":105,
 	"flash_intensity":0.62,
 	"flash_fade_curve":0.78,
@@ -57,9 +68,12 @@ func bind_grid(grid:Control)->void:
 func parameter_spec()->Dictionary:
 	var result:=PARAMS.duplicate(true)
 	result["effect_duration_ms"]=_effect_duration_ms()
-	result["slash_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.slash_duration_ms)
-	result["flash_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.flash_duration_ms)
-	result["particle_visible_total_ms"]=int(PARAMS.hit_stop_ms)+int(PARAMS.particle_duration_ms)
+	result["slash_visible_total_ms"]=int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms) \
+		+int(PARAMS.slash_duration_ms)
+	result["flash_visible_total_ms"]=int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms) \
+		+int(PARAMS.flash_duration_ms)
+	result["particle_visible_total_ms"]=int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms) \
+		+int(PARAMS.particle_duration_ms)
 	result["particle_glyphs"]=PARTICLE_GLYPHS.duplicate()
 	return result
 
@@ -67,9 +81,19 @@ func parameter_spec()->Dictionary:
 # Public product API. The passed pair is the canonical event-time pair; the
 # overlay never searches occupants or mutates either position.
 func play(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
+	return _play_pair(attacker_grid_pos,target_grid_pos,true)
+
+
+func play_attacker_swing(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
+	return _play_pair(attacker_grid_pos,target_grid_pos,false)
+
+
+func _play_pair(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i,
+		draw_impact:bool)->bool:
 	if _grid==null or attacker_grid_pos==target_grid_pos:return false
 	var delta:=target_grid_pos-attacker_grid_pos
 	if maxi(absi(delta.x),absi(delta.y))!=1:return false
+	if not _position_drawable(attacker_grid_pos) or not _position_drawable(target_grid_pos):return false
 	if _screen_center(attacker_grid_pos)==Vector2(-1,-1) \
 			or _screen_center(target_grid_pos)==Vector2(-1,-1):return false
 	_sequence+=1
@@ -79,6 +103,7 @@ func play(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
 		"sequence":_sequence,
 		"attacker_grid_pos":attacker_grid_pos,
 		"target_grid_pos":target_grid_pos,
+		"draw_impact":draw_impact,
 		"started_at_ms":Time.get_ticks_msec(),
 		"live_elapsed_ms":0.0,"first_drawn":false,"rendered_frames":0,
 		"particles":_particle_seeds(_sequence,particle_count),
@@ -122,6 +147,39 @@ func background_flash_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 				"rect":spec.target_rect,"color_hex":str(PARAMS.flash_color_hex),
 				"opacity":float(spec.flash_opacity)})
 	return result.duplicate(true)
+
+
+func attacker_swing_draw_spec(attacker_grid_pos:Vector2i,
+		sample_time_ms:int=-1)->Dictionary:
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	# A rapid follow-up safely supersedes an older pose for this attacker. Both
+	# impact effects remain independent; only one physical arm can be drawn.
+	for index in range(_effects.size()-1,-1,-1):
+		var effect:Dictionary=_effects[index]
+		if Vector2i(effect.attacker_grid_pos)!=attacker_grid_pos:continue
+		var elapsed:=_effect_elapsed_ms(effect,now,sample_time_ms<0)
+		if elapsed>=int(PARAMS.swing_duration_ms):continue
+		var direction:=Vector2(Vector2i(effect.target_grid_pos)-attacker_grid_pos).normalized()
+		var arm_index:=0 if direction.x<0.0 else 1
+		var contact:=int(PARAMS.contact_at_ms)
+		var follow_end:=contact+int(PARAMS.swing_follow_through_ms)
+		var phase:="WIND_UP";var phase_progress:=0.0
+		if elapsed<contact:
+			phase_progress=clampf(float(elapsed)/float(maxi(1,contact)),0.0,1.0)
+		elif elapsed<follow_end:
+			phase="SWING"
+			phase_progress=clampf(float(elapsed-contact)/float(maxi(1,
+				int(PARAMS.swing_follow_through_ms))),0.0,1.0)
+		else:
+			phase="SETTLE"
+			phase_progress=clampf(float(elapsed-follow_end)/float(maxi(1,
+				int(PARAMS.swing_duration_ms)-follow_end)),0.0,1.0)
+		return {"active":true,"sequence":int(effect.sequence),"phase":phase,
+			"phase_progress":phase_progress,"arm_index":arm_index,
+			"direction":direction,"raw_elapsed_ms":elapsed,
+			"contact_at_ms":contact,"duration_ms":int(PARAMS.swing_duration_ms),
+			"draw_impact":bool(effect.get("draw_impact",true))}.duplicate(true)
+	return {"active":false}.duplicate(true)
 
 
 func shake_offset_px(sample_time_ms:int=-1)->Vector2:
@@ -241,14 +299,16 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 	var elbow:=target_center+perpendicular*bend*0.08
 	var line_to:=target_center+direction*half_length-perpendicular*bend
 	var slash_segments:Array=[{"from":line_from,"to":elbow},{"from":elbow,"to":line_to}]
-	var slash_progress:=clampf(float(visual_elapsed)/float(PARAMS.slash_duration_ms),0.0,1.0)
-	var line_opacity:=1.0 if hit_stop_active else (0.0 if slash_progress>=1.0 \
+	var draw_impact:=bool(effect.get("draw_impact",true))
+	var slash_progress:=clampf(float(maxi(0,visual_elapsed-contact_at))/float(
+		maxi(1,int(PARAMS.slash_duration_ms))),0.0,1.0)
+	var line_opacity:=0.0 if not draw_impact or visual_elapsed<contact_at else (1.0 if hit_stop_active else (0.0 if slash_progress>=1.0 \
 		else maxf(float(PARAMS.slash_afterimage_opacity),pow(1.0-slash_progress,
-			float(PARAMS.slash_fade_curve))))
+			float(PARAMS.slash_fade_curve)))))
 	var flash_progress:=clampf(float(impact_elapsed)/float(PARAMS.flash_duration_ms),0.0,1.0)
 	var particles:Array[Dictionary]=[]
 	var particle_progress:=clampf(float(impact_elapsed)/float(PARAMS.particle_duration_ms),0.0,1.0)
-	if visual_elapsed>=contact_at and impact_elapsed<int(PARAMS.particle_duration_ms):
+	if draw_impact and visual_elapsed>=contact_at and impact_elapsed<int(PARAMS.particle_duration_ms):
 		for particle in effect.particles:
 			var particle_direction:Vector2=particle.direction
 			particles.append({"glyph":str(particle.glyph),
@@ -265,7 +325,7 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 		"slash_segments":slash_segments,"draw_connector":false,
 		"spans_actor_centers":false,
 		"attacker_rect":attacker_rect,
-		"target_rect":target_rect,"flash_visible":visual_elapsed>=contact_at \
+		"target_rect":target_rect,"flash_visible":draw_impact and visual_elapsed>=contact_at \
 			and impact_elapsed<int(PARAMS.flash_duration_ms),
 		"flash_opacity":float(PARAMS.flash_intensity)*pow(1.0-flash_progress,
 			float(PARAMS.flash_fade_curve)),
@@ -295,6 +355,13 @@ func _screen_rect(position:Vector2i)->Rect2:
 	return Rect2() if _grid==null else Rect2(_grid.call("world_cell_rect",position))
 
 
+func _position_drawable(position:Vector2i)->bool:
+	if _grid==null or not bool(_grid.call("is_world_cell_visible",position)):return false
+	var visibility:Dictionary=_grid.call("visibility_ground_draw_spec",position)
+	return str(visibility.get("visibility_state","UNSEEN"))=="VISIBLE" \
+		and bool(visibility.get("draw_actors",false))
+
+
 func _presentation_offset(sample_time_ms:int=-1)->Vector2:
 	var camera_offset:=Vector2.ZERO
 	if _grid!=null and _grid.has_method("camera_settle_draw_spec"):
@@ -304,13 +371,16 @@ func _presentation_offset(sample_time_ms:int=-1)->Vector2:
 
 
 func _effect_duration_ms()->int:
-	return int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms)+maxi(
+	return maxi(int(PARAMS.swing_duration_ms),int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms)+maxi(
 		int(PARAMS.particle_duration_ms),maxi(int(PARAMS.flash_duration_ms),
-		int(PARAMS.slash_duration_ms)-int(PARAMS.contact_at_ms)))
+		int(PARAMS.slash_duration_ms))))
 
 
 func _request_redraw()->void:
 	queue_redraw()
+	# The target-local impact belongs to this overlay, while the attacker's arm
+	# is part of the parent actor figure. Redraw both from the same bounded clock.
+	if _grid!=null:_grid.queue_redraw()
 
 
 func _draw_centered_glyph(font:Font,glyph:String,center:Vector2,

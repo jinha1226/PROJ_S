@@ -20,7 +20,10 @@ const TORCH_FLICKER_QUANTUM_MS := 125 # 8 Hz: intentionally below 10 Hz.
 const MAX_VISIBLE_TORCHES := 6
 const MAX_MEMORY_TORCHES := 6
 const TORCH_SPACING_CELLS := 3
-const TORCH_AMBER_HEX := "#d89a48"
+const TORCH_AMBER_HEX := "#f0a64d"
+const TORCH_GLYPH_HEX := "#ffd078"
+const ACTOR_WORLD_GLYPH_OFFSET_Y := -0.105
+const ACTOR_WORLD_LEG_END_Y := 0.445
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -397,6 +400,8 @@ func play_effects(rows:Array)->int:
 			if not melee_vfx.play(attacker,target):continue
 			_played_effect_ids[effect_id]=true;_played_effect_event_ids[event_id]=true
 			appended+=1;continue
+		if str(raw.get("kind",""))=="MISS":
+			_play_miss_attacker_swing(raw)
 		var row:Dictionary=raw.duplicate(true);row["started_at_ms"]=started_at
 		_active_visual_effects.append(row);_played_effect_ids[effect_id]=true
 		_played_effect_event_ids[event_id]=true;appended+=1
@@ -406,6 +411,20 @@ func play_effects(rows:Array)->int:
 		return str(a.get("effect_id",""))<str(b.get("effect_id","")))
 	if _active_visual_effects.size()>48:_active_visual_effects=_active_visual_effects.slice(_active_visual_effects.size()-48)
 	_update_process_enabled();_ensure_melee_vfx();melee_vfx.queue_redraw();return appended
+
+func _play_miss_attacker_swing(raw:Dictionary)->void:
+	_ensure_melee_vfx()
+	var attacker_id:=int(raw.get("actor_id",-1));var target_id:=int(raw.get("target_id",-1))
+	var attacker:=_actor_by_id(attacker_id)
+	if attacker.is_empty():return
+	var attacker_position:=_position_from_actor(attacker);var target_position:=Vector2i(-1,-1)
+	var target:=_actor_by_id(target_id)
+	if not target.is_empty():target_position=_position_from_actor(target)
+	if target_position==Vector2i(-1,-1):
+		target_position=_array_to_world_position(raw.get("target_grid_pos",
+			raw.get("world_position",[])))
+	if target_position==Vector2i(-1,-1):return
+	melee_vfx.play_attacker_swing(attacker_position,target_position)
 
 func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids.has(event_id)
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
@@ -754,7 +773,47 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->D
 			projected["glyph_bob_ratio"]=float(sample.get("glyph_bob_ratio",0.0))
 	elif bool(actor.get("guarded",false)):
 		projected["visual_stance"]="GUARD"
-	return AsciiStyleScript.actor_spec(projected,ghost)
+	var style:Dictionary=AsciiStyleScript.actor_spec(projected,ghost)
+	if ghost or str(style.get("life_state","ACTIVE"))!="ACTIVE":return style
+	# A longer grounded lower body and slightly raised single body glyph create a
+	# compact pseudo-depth silhouette without changing the logical actor cell.
+	style["glyph_offset"]=Vector2(0.0,ACTOR_WORLD_GLYPH_OFFSET_Y)
+	var limbs:Array=style.get("limb_segments",[]).duplicate(true)
+	for leg_index in [2,3]:
+		if leg_index<limbs.size() and limbs[leg_index] is Array \
+				and limbs[leg_index].size()==2:
+			var endpoint:=Vector2(limbs[leg_index][1]);endpoint.y=ACTOR_WORLD_LEG_END_Y
+			limbs[leg_index][1]=endpoint
+	if melee_vfx!=null:
+		var swing:Dictionary=melee_vfx.attacker_swing_draw_spec(
+			_position_from_actor(actor),sample_time_ms)
+		if bool(swing.get("active",false)):_apply_melee_arm_swing(limbs,swing)
+		style["melee_swing"]=swing
+	style["limb_segments"]=limbs
+	return style
+
+func _apply_melee_arm_swing(limbs:Array,swing:Dictionary)->void:
+	var arm_index:=int(swing.get("arm_index",1))
+	if arm_index<0 or arm_index>=min(2,limbs.size()) \
+			or not limbs[arm_index] is Array or limbs[arm_index].size()!=2:return
+	var direction:=Vector2(swing.get("direction",Vector2.RIGHT)).normalized()
+	var side_sign:=-1.0 if arm_index==0 else 1.0
+	var resting:=Vector2(limbs[arm_index][1])
+	var windup:=Vector2(-direction.x*float(MeleeVfxScript.PARAMS.swing_windup_reach) \
+		+side_sign*float(MeleeVfxScript.PARAMS.swing_windup_side_offset),
+		float(MeleeVfxScript.PARAMS.swing_center_y)-direction.y*float(
+		MeleeVfxScript.PARAMS.swing_windup_reach_y))
+	var strike:=Vector2(direction.x*float(MeleeVfxScript.PARAMS.swing_arm_reach_x) \
+		+side_sign*float(MeleeVfxScript.PARAMS.swing_side_offset),
+		float(MeleeVfxScript.PARAMS.swing_center_y)+direction.y*float(
+		MeleeVfxScript.PARAMS.swing_arm_reach_y))
+	var progress:=clampf(float(swing.get("phase_progress",0.0)),0.0,1.0)
+	var endpoint:=resting
+	match str(swing.get("phase","SETTLE")):
+		"WIND_UP":endpoint=resting.lerp(windup,pow(progress,0.72))
+		"SWING":endpoint=windup.lerp(strike,1.0-pow(1.0-progress,3.0))
+		_:endpoint=strike.lerp(resting,1.0-pow(1.0-progress,2.0))
+	limbs[arm_index][1]=endpoint
 
 func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var actor:=_actor_by_id(entity_id)
@@ -770,6 +829,12 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
 	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
 		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
+		"figure_bounds":bounds,"logical_position":[position.x,position.y],
+		"top_overlap_px":maxf(0.0,world_cell_rect(position).position.y-float(glyph.glyph_rect.position.y)),
+		"feet_bottom_margin_px":maxf(0.0,world_cell_rect(position).end.y-maxf(
+			Vector2(projected_segments[2][1]).y,Vector2(projected_segments[3][1]).y)) \
+			if projected_segments.size()>=4 else 0.0,
+		"one_cell_one_glyph":true,"melee_swing":style.get("melee_swing",{"active":false}),
 		"shadow":shadow,
 		"selected_outline":false,"draw_equipment":false,
 		"equipment_primitive_count":0}).duplicate(true)
@@ -902,13 +967,13 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		if state=="UNSEEN" or not is_world_cell_visible(position):continue
 		var animated:=state=="VISIBLE"
 		var phase:=(tick+DioramaScript.visual_hash(position,313))%4 if animated else 0
-		var brightness:float=float([0.82,1.0,0.90,0.96][phase]) if animated else 0.24
+		var brightness:float=float([0.92,1.0,0.95,0.98][phase]) if animated else 0.20
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
 			"visible":true,"animated":animated,"glyph":"!","glyph_count":1,
-			"glyph_hex":TORCH_AMBER_HEX if animated else "#4d463c",
+			"glyph_hex":TORCH_GLYPH_HEX if animated else "#4d463c",
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
-			"pool_radius_cells":2.5 if animated else 0.0,
+			"pool_radius_cells":4.0 if animated else 0.0,
 			"draw_light_pool":animated,"draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
@@ -930,15 +995,16 @@ func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
 		if str(torch_cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
 		var distance:=maxi(absi(position.x-torch_position.x),absi(position.y-torch_position.y))
-		if distance>3:continue
+		if distance>4:continue
 		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4
-		var torch_brightness:float=float([0.82,1.0,0.90,0.96][phase])
-		var strength:=torch_brightness*maxf(0.0,1.0-float(distance)/3.5)
+		var torch_brightness:float=float([0.92,1.0,0.95,0.98][phase])
+		var strength:=torch_brightness*maxf(0.0,1.0-float(distance)/4.75)
 		if strength>best_brightness:
 			best_brightness=strength;best_distance=distance
 	return {"active":best_brightness>0.0,"visibility_state":state,
 		"distance":best_distance if best_brightness>0.0 else -1,
-		"brightness":best_brightness,"color_hex":TORCH_AMBER_HEX}
+		"brightness":best_brightness,"color_hex":TORCH_AMBER_HEX,
+		"radius_cells":4.0,"composite_alpha":0.07+0.17*best_brightness}
 
 func torch_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
@@ -1214,7 +1280,6 @@ func _draw() -> void:
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
-	_draw_torch_light_pools()
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
@@ -1223,6 +1288,9 @@ func _draw() -> void:
 	_draw_wall_shadow_pass("VISIBLE")
 	_draw_wall_pass("MEMORY")
 	_draw_wall_pass("VISIBLE")
+	# Warm light is composited after both ground and wall ink so it remains
+	# visible on neighboring surfaces rather than being painted over.
+	_draw_torch_light_pools()
 	_draw_wall_torches()
 	_draw_ground_features()
 	_draw_ground_hazards()
@@ -1307,7 +1375,7 @@ func _draw_torch_light_pools()->void:
 			var light:=_torch_light_draw_spec_cached(position,now)
 			if not bool(light.active):continue
 			var amber:=Color(str(light.color_hex))
-			amber.a=0.035+0.075*float(light.brightness)
+			amber.a=float(light.get("composite_alpha",0.07+0.17*float(light.brightness)))
 			var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
 			draw_rect(world_cell_rect(position).grow(overlap).intersection(grid_rect()),amber,true)
 
@@ -1425,8 +1493,13 @@ func _draw_wall_torches()->void:
 		var center:Vector2=spec.pixel_center
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
 		# One ASCII glyph, confined to its wall cell. No image/texture primitive.
+		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.19*float(spec.brightness)
+		draw_circle(center+Vector2(0,cell_size_px()*0.10),cell_size_px()*0.18,glow)
+		var shadow:=Color("#1a0b04",0.92)
 		_draw_centered_text(get_theme_default_font(),str(spec.glyph),
-			center+Vector2(0,cell_size_px()*0.12),maxi(8,int(cell_size_px()*0.42)),color)
+			center+Vector2(0.8,cell_size_px()*0.10+0.8),maxi(9,int(cell_size_px()*0.50)),shadow)
+		_draw_centered_text(get_theme_default_font(),str(spec.glyph),
+			center+Vector2(0,cell_size_px()*0.10),maxi(9,int(cell_size_px()*0.50)),color)
 
 func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 		light:Dictionary,occupied:bool)->void:

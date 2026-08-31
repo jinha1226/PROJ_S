@@ -185,14 +185,22 @@ func _known_step_is_safe(from: Vector2i, to: Vector2i,
 		return false
 	var delta := to - from
 	if delta.x != 0 and delta.y != 0:
+		var passable_flanks: Array[Dictionary] = []
 		for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
 			var flank_key := _key(flank)
-			if not cells.has(flank_key):
-				return false
+			if not cells.has(flank_key):continue
 			var flank_cell: Dictionary = cells[flank_key]
-			if not bool(flank_cell.get("passable", false)) \
-					or bool(flank_cell.get("occupied", false)):
+			if bool(flank_cell.get("passable", false)):
+				passable_flanks.append(flank_cell)
+		if passable_flanks.size() == 2:
+			for flank_cell in passable_flanks:
+				if bool(flank_cell.get("occupied", false)):return false
+		elif passable_flanks.size() == 1:
+			if not bool(cell.get("diagonal_gateway", false)) \
+					and not bool(passable_flanks[0].get("diagonal_gateway", false)):
 				return false
+			if bool(passable_flanks[0].get("occupied", false)):return false
+		else:return false
 	return true
 
 

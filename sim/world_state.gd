@@ -126,6 +126,36 @@ func movement_neighbors(position: Vector2i) -> Array[Vector2i]:
 	return result
 
 
+func is_diagonal_gateway(position: Vector2i) -> bool:
+	if party_encounter == null or position not in party_encounter.diagonal_gateway_positions \
+			or not in_bounds(position):
+		return false
+	var definition: Dictionary = TerrainRegistryScript.definition(tile_at(position).terrain)
+	return not definition.is_empty() and bool(definition.get("passable", false)) \
+		and int(definition.get("occupancy_capacity", 0)) > 0
+
+
+func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
+	var delta := to - from
+	if delta.x == 0 or delta.y == 0:
+		return true
+	var passable_flanks: Array[Vector2i] = []
+	for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
+		if not in_bounds(flank):
+			continue
+		var definition: Dictionary = TerrainRegistryScript.definition(tile_at(flank).terrain)
+		if not definition.is_empty() and bool(definition.get("passable", false)) \
+				and int(definition.get("occupancy_capacity", 0)) > 0:
+			passable_flanks.append(flank)
+	if passable_flanks.size() == 2:
+		return true
+	if passable_flanks.size() != 1:
+		return false
+	# A single solid flank remains a blocked corner unless the diagonal enters
+	# an open doorway or crosses the doorway's passable threshold cell.
+	return is_diagonal_gateway(to) or is_diagonal_gateway(passable_flanks[0])
+
+
 func add_entity(kind: String, display_name: String, position: Vector2i,
 		max_health: int = 100, tags: Array = [], species_id: String = "",
 		faction_id: String = ""):
@@ -3002,6 +3032,8 @@ func _party_runtime_error() -> String:
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
+	for gateway_position in party_encounter.diagonal_gateway_positions:
+		if not is_diagonal_gateway(gateway_position):return "party_diagonal_gateway_not_passable"
 	if party_encounter.safe_phase not in PartyEncounterStateScript.PHASES: return "unknown_party_phase"
 	if party_encounter.protagonist_id <= 0 or not entities.has(party_encounter.protagonist_id): return "party_protagonist_missing"
 	if party_encounter.party_member_ids.size() < 1 or party_encounter.party_member_ids.size() > 64 \

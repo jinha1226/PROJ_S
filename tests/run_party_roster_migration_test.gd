@@ -23,10 +23,11 @@ func _init() -> void:
 func _check_legacy_loadout_defaults(errors: Array) -> void:
 	var session = Session.new()
 	var current: Dictionary = session.sim.world.party_encounter.to_dict()
-	for schema_version in [1, 2, 3, 4]:
+	for schema_version in [1, 2, 3, 4, 5]:
 		var row: Dictionary = current.duplicate(true)
 		row.schema_version = schema_version
-		row.erase("protagonist_loadout")
+		row.erase("diagonal_gateway_positions")
+		if schema_version < 5: row.erase("protagonist_loadout")
 		if schema_version < 4: row.erase("protagonist_progression")
 		if schema_version < 3: row.erase("patrol_reserved_positions")
 		if schema_version < 2:

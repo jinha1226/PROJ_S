@@ -1,11 +1,13 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
 const PROGRESSION_SCHEMA_VERSION := 4
+const LOADOUT_SCHEMA_VERSION := 5
+const DIAGONAL_GATEWAY_SCHEMA_VERSION := 6
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -34,6 +36,7 @@ var member_rows: Dictionary = {}
 var enemy_busy_rows: Dictionary = {}
 var exile_records: Array[Dictionary] = []
 var patrol_reserved_positions: Array[Vector2i] = []
+var diagonal_gateway_positions: Array[Vector2i] = []
 var protagonist_progression = ProgressionScript.new()
 var protagonist_loadout = WeaponLoadoutScript.new("SHORT_SWORD", 12, 6)
 
@@ -51,6 +54,11 @@ func to_dict() -> Dictionary:
 	sorted_reserved.sort_custom(func(a: Vector2i, b: Vector2i):
 		return a.y < b.y if a.y != b.y else a.x < b.x)
 	for position in sorted_reserved: reserved_rows.append([position.x, position.y])
+	var gateway_rows: Array = []
+	var sorted_gateways: Array[Vector2i] = diagonal_gateway_positions.duplicate()
+	sorted_gateways.sort_custom(func(a: Vector2i, b: Vector2i):
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	for position in sorted_gateways: gateway_rows.append([position.x, position.y])
 	return {"schema_version": schema_version, "encounter_id": str(encounter_id), "safe_phase": safe_phase,
 		"revision": str(revision), "protagonist_id": str(protagonist_id),
 		"party_member_ids": party_member_ids.map(func(id): return str(id)),
@@ -61,6 +69,7 @@ func to_dict() -> Dictionary:
 		"enemy_detection_radius": enemy_detection_radius, "formation_id": formation_id,
 		"member_rows": members, "enemy_busy_rows": busy_rows,
 		"patrol_reserved_positions":reserved_rows,
+		"diagonal_gateway_positions":gateway_rows,
 		"protagonist_progression":protagonist_progression.to_dict(),
 		"protagonist_loadout":protagonist_loadout.to_dict(),
 		"exile_records":exile_records.duplicate(true)}
@@ -87,6 +96,9 @@ static func from_dict(row: Dictionary):
 	state.patrol_reserved_positions.clear()
 	for position in row.get("patrol_reserved_positions",[]):
 		state.patrol_reserved_positions.append(Vector2i(int(position[0]),int(position[1])))
+	state.diagonal_gateway_positions.clear()
+	for position in row.get("diagonal_gateway_positions",[]):
+		state.diagonal_gateway_positions.append(Vector2i(int(position[0]),int(position[1])))
 	state.protagonist_progression=ProgressionScript.from_dict(row.protagonist_progression) \
 		if row.has("protagonist_progression") else ProgressionScript.new()
 	state.protagonist_loadout=WeaponLoadoutScript.from_dict(row.protagonist_loadout) \
@@ -143,16 +155,19 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v3_keys: Array = v2_keys.duplicate(); v3_keys.append("patrol_reserved_positions"); v3_keys.sort()
 	var v4_keys:Array=v3_keys.duplicate();v4_keys.append("protagonist_progression");v4_keys.sort()
 	var v5_keys:Array=v4_keys.duplicate();v5_keys.append("protagonist_loadout");v5_keys.sort()
+	var v6_keys:Array=v5_keys.duplicate();v6_keys.append("diagonal_gateway_positions");v6_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
 			or (parsed_schema_version == ROSTER_SCHEMA_VERSION and keys != v2_keys) \
 			or (parsed_schema_version == PATROL_SCHEMA_VERSION and keys != v3_keys) \
 			or (parsed_schema_version == PROGRESSION_SCHEMA_VERSION and keys != v4_keys) \
-			or (parsed_schema_version == SCHEMA_VERSION and keys != v5_keys):
+			or (parsed_schema_version == LOADOUT_SCHEMA_VERSION and keys != v5_keys) \
+			or (parsed_schema_version == SCHEMA_VERSION and keys != v6_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
-			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
+			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
+			SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -230,10 +245,24 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 					and parsed_position.x<=previous_reserved.x)):
 				return "invalid_patrol_reserved_positions"
 			previous_reserved=parsed_position
+	if parsed_schema_version >= DIAGONAL_GATEWAY_SCHEMA_VERSION:
+		if not row.get("diagonal_gateway_positions") is Array \
+				or row.diagonal_gateway_positions.size()>64:
+			return "invalid_diagonal_gateway_positions"
+		var previous_gateway:=Vector2i(-1,-1)
+		for position in row.diagonal_gateway_positions:
+			if not _position(position,width,height):return "invalid_diagonal_gateway_positions"
+			var parsed_position:=Vector2i(int(position[0]),int(position[1]))
+			if previous_gateway!=Vector2i(-1,-1) \
+					and (parsed_position.y<previous_gateway.y \
+					or (parsed_position.y==previous_gateway.y \
+					and parsed_position.x<=previous_gateway.x)):
+				return "invalid_diagonal_gateway_positions"
+			previous_gateway=parsed_position
 	if parsed_schema_version>=PROGRESSION_SCHEMA_VERSION:
 		var progression_error:=ProgressionScript.wire_error(row.get("protagonist_progression"))
 		if not progression_error.is_empty():return progression_error
-	if parsed_schema_version==SCHEMA_VERSION:
+	if parsed_schema_version>=LOADOUT_SCHEMA_VERSION:
 		var loadout_error:=WeaponLoadoutScript.wire_error(row.get("protagonist_loadout"))
 		if not loadout_error.is_empty():return loadout_error
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"

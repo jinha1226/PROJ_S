@@ -1,6 +1,8 @@
 class_name PartyEncounterSandbox
 extends Control
 
+const EXPLORATION_ACTOR_MOTION_MSEC := 80
+
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
@@ -24,9 +26,14 @@ const FONT_MICRO:=11
 const TOUCH_TARGET:=44
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
+const PRODUCT_ZOOM_CELL_COUNTS:=[11,13,15,17,19]
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=15
 
 var session
 var grid
+var grid_zoom_controls:HBoxContainer
+var grid_zoom_out_button:Button
+var grid_zoom_in_button:Button
 var root_layout:VBoxContainer
 var phase_panel:PanelContainer
 var phase_row:HBoxContainer
@@ -175,6 +182,9 @@ var _product_auto_explore_due_msec:=-1
 var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
 var _product_auto_stop_feedback:=""
+var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+var _product_zoom_touch_index:=-1
+var _product_zoom_touch_step:=0
 # Presentation cadence only. Tests may set this to zero; it never participates
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
@@ -195,18 +205,27 @@ func _process(_delta:float)->void:
 			_continue_product_auto_explore(expected_auto_generation)
 	if route_continue_pending and frame>=route_continue_due_frame \
 			and now_msec>=route_continue_due_msec:
-		var expected_route_generation:=route_scheduled_generation
-		route_continue_pending=false;route_continue_due_frame=-1
-		route_continue_due_msec=-1;route_scheduled_generation=-1
-		_continue_route_on_cadence(expected_route_generation)
+		# Match AUTO's unresolved product-button gesture contract. A direction press
+		# may be held past the cadence deadline, but the old route cannot advance
+		# before release cancels it and commits the one manual step. Zoom has its own
+		# touch index and deliberately leaves continuous travel running.
+		if _product_touch_index>=0:
+			route_continue_due_frame=frame+1
+		else:
+			var expected_route_generation:=route_scheduled_generation
+			route_continue_pending=false;route_continue_due_frame=-1
+			route_continue_due_msec=-1;route_scheduled_generation=-1
+			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
+	if _handle_product_zoom_touch(event):return
 	# Manual screen input wins the scheduling tie even when a pass-through UI
 	# container receives the GUI event before PartyGrid. Do not consume the event:
 	# the grid still owns tap/drag semantics, while the active route is cancelled
 	# synchronously and generation-safe before another cadence hop can commit.
 	if event is InputEventScreenTouch and event.pressed \
 			and grid!=null and grid.visible and grid.get_global_rect().has_point(event.position) \
+			and not _product_zoom_control_has_point(event.position) \
 			and not grid.modal_open and session!=null:
 		if session.has_method("auto_explore_state") \
 				and bool(session.auto_explore_state().get("running",false)):
@@ -432,6 +451,7 @@ func _build_ui()->void:
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
 	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
+	_build_product_zoom_controls()
 	cards=HBoxContainer.new(); cards.name="PartyCards"; cards.custom_minimum_size.y=160
 	cards.add_theme_constant_override("separation",4); root_layout.add_child(cards)
 	info_scroll=ScrollContainer.new(); info_scroll.name="InformationScroll"; info_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
@@ -762,6 +782,33 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_empty_text.add_theme_font_size_override("font_size",FONT_AUX)
 	member_item_empty_text.modulate=AsciiFrameScript.MUTED;member_item_window.add_child(member_item_empty_text)
 
+func _build_product_zoom_controls()->void:
+	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
+	grid_zoom_controls.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	grid_zoom_controls.offset_left=-92;grid_zoom_controls.offset_right=-4
+	grid_zoom_controls.offset_top=4;grid_zoom_controls.offset_bottom=48
+	grid_zoom_controls.custom_minimum_size=Vector2(88,TOUCH_TARGET)
+	grid_zoom_controls.add_theme_constant_override("separation",0)
+	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
+	grid.add_child(grid_zoom_controls)
+	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
+	grid_zoom_out_button.text="[-]";grid_zoom_out_button.tooltip_text="시야 축소"
+	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	grid_zoom_out_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_zoom_out_button.add_theme_font_size_override("font_size",FONT_CAPTION)
+	grid_zoom_out_button.pressed.connect(_on_product_zoom_step.bind(1))
+	grid_zoom_controls.add_child(grid_zoom_out_button)
+	AsciiFrameScript.apply_rail_button(grid_zoom_out_button,AsciiFrameScript.CYAN)
+	grid_zoom_in_button=Button.new();grid_zoom_in_button.name="ProductZoomIn"
+	grid_zoom_in_button.text="[+]";grid_zoom_in_button.tooltip_text="시야 확대"
+	grid_zoom_in_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	grid_zoom_in_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_zoom_in_button.add_theme_font_size_override("font_size",FONT_CAPTION)
+	grid_zoom_in_button.pressed.connect(_on_product_zoom_step.bind(-1))
+	grid_zoom_controls.add_child(grid_zoom_in_button)
+	AsciiFrameScript.apply_rail_button(grid_zoom_in_button,AsciiFrameScript.CYAN)
+
 func _layout_floating_surfaces()->void:
 	_position_build_label()
 	if member_detail_panel!=null:
@@ -838,7 +885,9 @@ func _refresh()->void:
 	var deployment:Dictionary=session.deployment_draft()
 	var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" \
 		and not _is_solo_product_session() else []
-	var ui_observation:Dictionary=session.observe_party_ui(15)
+	_sync_product_zoom_controls(product_hud)
+	var view_cell_count:=_current_grid_view_cell_count()
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -851,7 +900,7 @@ func _refresh()->void:
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
 			int(status.protagonist_position[1]))
-		grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
 	else:grid.set_view_window(15)
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	if product_hud:grid_style["vignette"]=false
@@ -951,13 +1000,14 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	var presentation:Dictionary=session.presentation_state()
 	var party_rows:Array=session.party_cards()
 	var observe_started:=Time.get_ticks_usec()
-	var ui_observation:Dictionary=session.observe_party_ui(15)
+	var view_cell_count:=_current_grid_view_cell_count()
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
 	var observe_finished:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+	grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	grid_style["vignette"]=false
 	grid.set_neutral_phase_map(true);grid.set_presentation_style(grid_style)
@@ -1007,13 +1057,16 @@ func _refresh_continuous_exploration_surface(status:Dictionary)->void:
 		_refresh();return
 	var started_usec:=Time.get_ticks_usec()
 	var observe_started_usec:=Time.get_ticks_usec()
-	var ui_observation:Dictionary=session.observe_party_ui(15)
+	var view_cell_count:=_current_grid_view_cell_count()
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+	if _is_solo_product_session():
+		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
+	else:grid.set_view_window(15)
 	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
 	var route_state:Dictionary=session.exploration_route_state()
 	if bool(route_state.get("has_preview",false)) \
@@ -2473,6 +2526,7 @@ func _reset_run_ui_transients()->void:
 	_product_auto_stop_feedback=""
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
+	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
@@ -2686,7 +2740,7 @@ func _on_cell(position:Vector2i)->void:
 				_record_result(result,true,"%s 이동 불가"%_protagonist_name())
 				if bool(result.get("accepted",false)):
 					action_feedback_text="한 칸 이동했습니다."
-				_refresh()
+				_refresh_continuous_exploration_surface(session.party_status())
 				return
 		var preview:Dictionary=session.preview_exploration_route(position)
 		route_preview=preview.duplicate(true);_apply_route_state(preview)
@@ -2951,7 +3005,10 @@ func _arm_actor_motion_from_result(result:Dictionary)->void:
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	if moved.has(protagonist_id) and str(status.get("view_mode",""))=="EXPLORATION":
 		for member_id in status.get("party_member_ids",[]):moved[int(member_id)]=true
-	grid.arm_actor_motion(moved.keys())
+	var duration_msec:=EXPLORATION_ACTOR_MOTION_MSEC \
+		if str(status.get("view_mode",""))=="EXPLORATION" else -1
+	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec)
+	else:grid.arm_actor_motion(moved.keys())
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
 	if auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending):_cancel_auto_pending(true)
@@ -3232,6 +3289,79 @@ func _dos_command_label(node_name:String,value:String)->String:
 		"SoloCombatStart":return "[E 전투]"
 		"RestartSameRun","RestartExpedition":return "[E 재시작]"
 		_:return "[ %s ]"%value
+
+func _current_grid_view_cell_count()->int:
+	return _product_zoom_cell_count if _is_solo_product_session() else 15
+
+func _sync_product_zoom_controls(product_hud:bool)->void:
+	if grid_zoom_controls==null:return
+	grid_zoom_controls.visible=product_hud
+	if not product_hud:return
+	var zoom_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
+	if zoom_index<0:
+		_product_zoom_cell_count=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+		zoom_index=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
+	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
+	grid_zoom_in_button.disabled=zoom_index<=0
+	grid_zoom_out_button.tooltip_text="시야 축소 · 최대 19칸" if grid_zoom_out_button.disabled \
+		else "시야 축소 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
+	grid_zoom_in_button.tooltip_text="시야 확대 · 최소 11칸" if grid_zoom_in_button.disabled \
+		else "시야 확대 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index-1])
+
+func _product_zoom_control_has_point(global_position:Vector2)->bool:
+	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false
+	for button in [grid_zoom_out_button,grid_zoom_in_button]:
+		if button!=null and button.visible and button.get_global_rect().has_point(global_position):
+			return true
+	return false
+
+func _handle_product_zoom_touch(event:InputEvent)->bool:
+	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
+	if event is InputEventScreenDrag:
+		if event.index!=_product_zoom_touch_index:return false
+		get_viewport().set_input_as_handled();return true
+	if event.pressed:
+		if not _product_zoom_control_has_point(event.position):return false
+		_product_zoom_touch_index=event.index
+		_product_zoom_touch_step=1 if grid_zoom_out_button.get_global_rect().has_point(
+			event.position) else -1
+		get_viewport().set_input_as_handled();return true
+	if event.index!=_product_zoom_touch_index:return false
+	var step:=_product_zoom_touch_step
+	var matching_button:=grid_zoom_out_button if step>0 else grid_zoom_in_button
+	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
+		and not matching_button.disabled
+	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
+	get_viewport().set_input_as_handled()
+	if activate:_on_product_zoom_step(step)
+	return true
+
+func _on_product_zoom_step(index_delta:int)->void:
+	if not _is_solo_product_session():return
+	var current_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
+	if current_index<0:current_index=PRODUCT_ZOOM_CELL_COUNTS.find(PRODUCT_ZOOM_DEFAULT_CELL_COUNT)
+	var next_index:=clampi(current_index+index_delta,0,PRODUCT_ZOOM_CELL_COUNTS.size()-1)
+	if next_index==current_index:
+		_sync_product_zoom_controls(true);return
+	_product_zoom_cell_count=int(PRODUCT_ZOOM_CELL_COUNTS[next_index])
+	_apply_product_zoom_surface()
+
+func _apply_product_zoom_surface()->void:
+	_sync_product_zoom_controls(true)
+	if session==null or grid==null:return
+	var status:Dictionary=session.party_status()
+	if not bool(status.get("ok",false)):return
+	# Zoom is a pure camera projection change. It deliberately bypasses `_refresh`,
+	# whose phase orchestration may own canonical work, and leaves AUTO/routes intact.
+	grid.cancel_pointer_gesture()
+	var ui_observation:Dictionary=session.observe_party_ui(_product_zoom_cell_count)
+	grid.set_observation(ui_observation.get("grid",{}),[])
+	minimap.set_observation(ui_observation.get("minimap",{}))
+	var hero_position:=Vector2i(int(status.protagonist_position[0]),
+		int(status.protagonist_position[1]))
+	grid.set_hero_centered_view(hero_position,_product_zoom_cell_count,
+		int(status.protagonist_id))
+
 func _is_solo_product_session()->bool:
 	return session!=null and session.has_method("is_solo_combat") \
 		and bool(session.call("is_solo_combat"))

@@ -42,6 +42,7 @@ const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
 const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
+const MAX_UI_VIEW_CELL_COUNT := 19
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
 		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
@@ -212,6 +213,13 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			if candidate.world.in_bounds(reserved_position) \
 					and reserved_position not in state.patrol_reserved_positions:
 				state.patrol_reserved_positions.append(reserved_position)
+		var gateway_values: Array = map_layout.get("door_positions", []).duplicate()
+		if showcase_layout:
+			gateway_values.append(VisualTestMapScript.OPEN_DOOR_POSITION)
+		for gateway_position in gateway_values:
+			if candidate.world.in_bounds(gateway_position) \
+					and gateway_position not in state.diagonal_gateway_positions:
+				state.diagonal_gateway_positions.append(gateway_position)
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append(protagonist.id)
 	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
@@ -660,18 +668,19 @@ func observe_party_world() -> Dictionary:
 func observe_party_ui(cell_count:int=15)->Dictionary:
 	var context:=_party_observation_context()
 	if context.is_empty():return {"grid":{},"minimap":{}}
-	var count:=clampi(cell_count,1,15)
+	var count:=clampi(cell_count,1,MAX_UI_VIEW_CELL_COUNT)
 	var hero_position:Vector2i=context.hero_position
 	# A legacy world that already fits inside the requested surface may widen its
 	# camera to keep actors at opposite edges visible. Materialize that complete
-	# world; larger product maps retain the hero-centered 15x15 DTO.
+	# world; larger product maps retain a bounded hero-centered UI DTO.
 	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=count
 	var viewport_origin:=Vector2i.ZERO if full_world_fits \
 		else hero_position-Vector2i(count/2,count/2)
 	var viewport_bounds:=Rect2i(viewport_origin,
 		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
 		else Vector2i(count,count))
-	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin),
+	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin,
+		count*count),
 		"minimap":_party_minimap_observation(context)}
 
 
@@ -706,7 +715,7 @@ func _party_observation_context()->Dictionary:
 
 
 func _party_rich_observation(context:Dictionary,bounds:Rect2i,
-		grid_origin:Vector2i)->Dictionary:
+		grid_origin:Vector2i,mapping_capacity:int=225)->Dictionary:
 	var status:Dictionary=context.status
 	var progress:Dictionary=context.progress
 	var visible:Dictionary=context.visible
@@ -758,7 +767,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
 		"phase":status, "grid_mapping": {"origin": [grid_origin.x,grid_origin.y],
-			"cell_count":mini(225,bounds.size.x*bounds.size.y)},
+			"cell_count":mini(maxi(1,mapping_capacity),bounds.size.x*bounds.size.y)},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
 			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
 			"memory_supported":true}}
@@ -1857,11 +1866,13 @@ func _exploration_step_is_legal(actor_id: int, from: Vector2i,
 			or sim.world.blocking_entity_at(to, actor_id) != null:return false
 	var delta := to-from
 	if delta.x != 0 and delta.y != 0:
+		if not sim.world.diagonal_step_terrain_allowed(from,to):return false
 		for flank in [from+Vector2i(delta.x,0),from+Vector2i(0,delta.y)]:
-			if not sim.world.in_bounds(flank):return false
+			if not sim.world.in_bounds(flank):continue
 			var flank_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(flank).terrain)
-			if flank_definition.is_empty() or not bool(flank_definition.get("passable", false)) \
-					or sim.world.blocking_entity_at(flank, actor_id) != null:return false
+			if flank_definition.is_empty() or not bool(flank_definition.get("passable", false)):
+				continue
+			if sim.world.blocking_entity_at(flank, actor_id) != null:return false
 	return true
 
 
@@ -2309,6 +2320,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 					and bool(definition.get("passable", false)) \
 					and int(definition.get("occupancy_capacity", 0)) >= 1,
 				"move_time_cost":int(definition.get("move_time_cost", 0)),
+				"diagonal_gateway":sim.world.is_diagonal_gateway(position),
 				"occupied":occupied, "risk":risk,
 				"objective_blocked":objective_blocked}
 	return {"schema_version":1, "width":sim.world.width,
@@ -2901,13 +2913,16 @@ func load_session_json(encoded: String) -> Dictionary:
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
-	if source_party_schema<PartyStateScript.SCHEMA_VERSION \
+	if source_party_schema<PartyStateScript.LOADOUT_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("protagonist_loadout"):
 		# A legacy row has no authoritative loadout field. This also supports
 		# compatibility fixtures made by downgrading a current snapshot version:
 		# discard the future field and let PartyEncounterState restore the exact
 		# historical default (SHORT_SWORD, 12 arrows, 6 bolts).
 		decoded.snapshot.party_encounter.erase("protagonist_loadout")
+	if source_party_schema<PartyStateScript.DIAGONAL_GATEWAY_SCHEMA_VERSION \
+			and decoded.snapshot.party_encounter.has("diagonal_gateway_positions"):
+		decoded.snapshot.party_encounter.erase("diagonal_gateway_positions")
 	if source_party_schema<PartyStateScript.PROGRESSION_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("protagonist_progression"):
 		# Compatibility fixtures downgrade a current wire by removing fields at the
@@ -2949,6 +2964,17 @@ func load_session_json(encoded: String) -> Dictionary:
 					not in restored.world.party_encounter.patrol_reserved_positions:
 				restored.world.party_encounter.patrol_reserved_positions.append(
 					migrated_position)
+	if source_party_schema<PartyStateScript.DIAGONAL_GATEWAY_SCHEMA_VERSION \
+			and VisualTestMapScript.uses_los_fov(parsed_scenario_id):
+		var gateway_layout := VisualTestMapScript.product_dungeon(parsed_world_seed) \
+			if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id) else {}
+		var migrated_gateways: Array = gateway_layout.get("door_positions", []).duplicate()
+		if VisualTestMapScript.uses_showcase_layout(parsed_scenario_id):
+			migrated_gateways.append(VisualTestMapScript.OPEN_DOOR_POSITION)
+		for migrated_gateway in migrated_gateways:
+			if restored.world.in_bounds(migrated_gateway) \
+					and migrated_gateway not in restored.world.party_encounter.diagonal_gateway_positions:
+				restored.world.party_encounter.diagonal_gateway_positions.append(migrated_gateway)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
 	for row in decoded.journal:

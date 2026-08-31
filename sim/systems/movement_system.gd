@@ -62,10 +62,12 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 		base["reason"] = "move_destination_occupied"
 		return TraversalAssessmentScript.new(base)
 	if delta.x != 0 and delta.y != 0:
+		if not world.diagonal_step_terrain_allowed(actor.position, destination):
+			base["reason"] = "move_diagonal_flank_blocked"
+			return TraversalAssessmentScript.new(base)
 		for flank in [actor.position + Vector2i(delta.x, 0), actor.position + Vector2i(0, delta.y)]:
 			if not _terrain_passable(flank):
-				base["reason"] = "move_diagonal_flank_blocked"
-				return TraversalAssessmentScript.new(base)
+				continue
 			var flank_blockers := _blockers_at(flank, actor_id, occupancy_projection)
 			if not flank_blockers.is_empty():
 				base["blocking_entity_ids"] = flank_blockers
