@@ -278,18 +278,17 @@ func test_grid_mapping_remains_exact_and_actor_visuals_keep_logical_cells() -> b
 		check(spec.cell_rect.encloses(spec.glyph_rect.grow(1.0)),
 			"duel glyph outline stays inside its 15px logical cell")
 		check(not spec.selected_outline,"duel selection never reintroduces a yellow outline")
-		check_eq([spec.draw_equipment, spec.equipment_primitive_count], [false, 0],
-			"duel map actor contains glyph and attached limbs but no weapon primitive")
-		check(absf(spec.limb_segments[0][0].x-spec.glyph_rect.position.x)<=1.5 \
-			and absf(spec.limb_segments[1][0].x-spec.glyph_rect.end.x)<=1.5,
-			"duel arms start at glyph side edges")
-		check(absf(spec.limb_segments[2][0].y-spec.glyph_rect.end.y)<=1.5,
-			"duel legs start at glyph lower edge")
+		check(spec.draw_equipment and spec.equipment_primitive_count==1 \
+				and str(spec.weapon_glyph) in ["|",")"],
+			"duel actor uses its weapon mark instead of artificial limbs")
+		check(not spec.draw_limbs and spec.limb_segments.is_empty() \
+				and spec.cell_rect.has_point(spec.weapon_center),
+			"duel equipment remains tile-local with zero limb primitives")
 	grid.set_intent_presentation([{"actor_id":"a","selected_action_id":"APPROACH","selected_target_id":"b"},
 		{"actor_id":"b","selected_action_id":"FLEE","selected_target_id":"a"}],true)
 	var moving_specs:=grid.actor_glyph_specs()
-	check(moving_specs[0].limb_segments!=glyph_specs[0].limb_segments,
-		"intent direction changes stance without changing simulation")
+	check(moving_specs[0].limb_segments.is_empty() and glyph_specs[0].limb_segments.is_empty(),
+		"intent direction never recreates limbs")
 	check_eq(moving_specs[0].glyph_rect,glyph_specs[0].glyph_rect,
 		"stance keeps the central glyph anchor fixed")
 	check_eq(grid.actor_render_specs()[0].hit_rect,hit_before,

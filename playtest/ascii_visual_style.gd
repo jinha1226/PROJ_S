@@ -6,6 +6,23 @@ const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 const AWARENESS_STATES := ["UNAWARE","SUSPICIOUS","ALERT","HUNTING","SEARCHING","RETURNING"]
 const ITEM_PRESENTATION_KINDS := ["WEAPON","ARMOR","POTION","SCROLL","ACCESSORY","MATERIAL"]
 
+const ACTOR_WEAPON_VISUALS := {
+	"SHORT_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#e6e0c8"},
+	"THRUSTING_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#eef0df"},
+	"HAND_AXE":{"family":"AXE","glyph":"7","color_hex":"#d6c7a8"},
+	"MACE":{"family":"MACE","glyph":"o","color_hex":"#c3cad0"},
+	"SPEAR":{"family":"SPEAR","glyph":"|","color_hex":"#d9cfaa"},
+	"BOW":{"family":"BOW","glyph":")","color_hex":"#c99652"},
+	"CROSSBOW":{"family":"CROSSBOW","glyph":"+","color_hex":"#c8aa70"},
+}
+
+const ACTOR_ARMOR_VISUALS := {
+	"ARMOR_LEATHER":{"kind":"LEATHER","left_glyph":"{","right_glyph":"}",
+		"color_hex":"#a7774e"},
+	"ARMOR_PADDED":{"kind":"PADDED","left_glyph":"[","right_glyph":"]",
+		"color_hex":"#8da0a5"},
+}
+
 const ITEM_PRESENTATION_DEFINITIONS := {
 	# A deliberately small roguelike grammar. Items use old metal, bone and
 	# alchemical inks so actors and combat feedback remain the brightest layer.
@@ -269,6 +286,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	# not faction-coloured tile cards; the actor glyph carries the saturated ink.
 	var underlay_hex:="#262318" if is_protagonist else ("#281317" if is_enemy \
 		else ("#102329" if is_party else "#141b20"))
+	var equipment:=actor_equipment_spec(actor)
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
@@ -286,12 +304,41 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"underlay_hex":underlay_hex,"underlay_opacity":0.52 if not ghost else 0.22,
 		"underlay_ratio":Vector2(0.84,0.46),
 		"step_phase":step_phase,"stride_sign":stride_sign,
-		"limb_segments":geometry.limb_segments,
+		"limb_segments":[],
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
-		# Inventory and weapon legality remain canonical simulation data, but the
-		# map/portrait grammar is deliberately glyph + attached limbs only.
-		"equipment":{}, "draw_equipment":false, "equipment_primitive_count":0,
-		"draw_head":false, "draw_limbs":life_state != "DEAD",
+		# Equipment is a presentation-only projection of the canonical inventory.
+		# The core actor glyph, logical cell, FOV and hit rectangle never change.
+		"equipment":equipment,
+		"draw_equipment":life_state=="ACTIVE" and bool(equipment.get("visible",false)),
+		"equipment_primitive_count":int(equipment.get("primitive_count",0)) \
+			if life_state=="ACTIVE" else 0,
+		"draw_head":false, "draw_limbs":false,
+	}.duplicate(true)
+
+
+static func actor_equipment_spec(actor:Dictionary)->Dictionary:
+	var raw:Variant=actor.get("equipment_visual",actor.get("equipment",{}))
+	var equipment:Dictionary=raw if raw is Dictionary else {}
+	var weapon_id:=str(equipment.get("weapon_id",actor.get("weapon_id","UNARMED"))).to_upper()
+	var weapon:Dictionary=ACTOR_WEAPON_VISUALS.get(weapon_id,{})
+	var armor_id:=str(equipment.get("armor_definition_id",
+		actor.get("armor_definition_id",""))).to_upper()
+	var armor:Dictionary=ACTOR_ARMOR_VISUALS.get(armor_id,{})
+	var weapon_visible:=not weapon.is_empty()
+	var armor_visible:=not armor.is_empty()
+	return {
+		"visible":weapon_visible or armor_visible,
+		"weapon_visible":weapon_visible,"weapon_id":weapon_id,
+		"weapon_family":str(weapon.get("family","UNARMED")),
+		"weapon_glyph":str(weapon.get("glyph","")),
+		"weapon_color_hex":str(weapon.get("color_hex","#00000000")),
+		"armor_visible":armor_visible,"armor_definition_id":armor_id,
+		"armor_kind":str(armor.get("kind","NONE")),
+		"armor_left_glyph":str(armor.get("left_glyph","")),
+		"armor_right_glyph":str(armor.get("right_glyph","")),
+		"armor_color_hex":str(armor.get("color_hex","#00000000")),
+		"primitive_count":(1 if weapon_visible else 0)+(2 if armor_visible else 0),
+		"tile_local":true,"changes_core_glyph":false,"draw_image":false,
 	}.duplicate(true)
 
 

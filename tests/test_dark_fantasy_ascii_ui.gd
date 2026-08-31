@@ -60,6 +60,24 @@ func test_gauge_separates_bone_labels_ink_fill_and_iron_empty_cells()->bool:
 	check_eq(spec.font_size,14,"compact gauge font does not shrink")
 	gauge.free();return finish()
 
+func test_semantic_vital_gauges_color_only_the_filled_hash_cells()->bool:
+	var expected:={"HP":Gauge.HP_FILL,"MP":Gauge.MP_FILL,"XP":Gauge.XP_FILL}
+	for role in expected:
+		var gauge=Gauge.new();gauge.size=Vector2(220,28)
+		gauge.configure_semantic(role,50,100,10,Frame.YELLOW)
+		var spec:Dictionary=gauge.gauge_spec()
+		check_eq(spec.semantic_role,role,"%s semantic role is explicit"%role)
+		check_eq(spec.segment_colors.fill,expected[role].to_html(),
+			"%s filled # uses its semantic ink"%role)
+		check_eq(spec.segment_colors.label,Gauge.AGED_BONE.to_html(),
+			"%s label keeps aged-bone ink"%role)
+		check_eq(spec.segment_colors.empty,Gauge.EMPTY_IRON.to_html(),
+			"%s empty cells keep iron ink"%role)
+		check_eq(spec.segment_colors.value,Gauge.AGED_BONE.to_html(),
+			"%s value keeps aged-bone ink"%role)
+		gauge.free()
+	return finish()
+
 func test_rail_buttons_keep_touch_geometry_and_gain_iron_material_contract()->bool:
 	var button=Button.new();button.custom_minimum_size=Vector2(44,44)
 	Frame.apply_rail_button(button,Frame.BRASS,true,false)

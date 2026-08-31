@@ -246,7 +246,7 @@ func test_melee_vfx_multiple_adjacent_actors_selects_passed_target_only()->bool:
 	grid.free();return finish()
 
 
-func test_attacker_arm_swing_is_one_limb_draw_only_and_8_direction_safe()->bool:
+func test_attacker_weapon_swing_is_tile_local_and_8_direction_safe()->bool:
 	for direction in [Vector2i(-1,-1),Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),
 			Vector2i(1,0),Vector2i(-1,1),Vector2i(0,1),Vector2i(1,1)]:
 		var fixture:=_fixture(direction);var grid:PartyGridView=fixture.grid
@@ -259,25 +259,23 @@ func test_attacker_arm_swing_is_one_limb_draw_only_and_8_direction_safe()->bool:
 		var windup:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.contact_at_ms)-1)
 		var contact:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.contact_at_ms)+24)
 		var settled:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.swing_duration_ms))
-		var swing:Dictionary=contact.melee_swing;var moving_arm:=int(swing.arm_index)
-		var still_arm:=1-moving_arm
-		check(str(windup.melee_swing.phase)=="WIND_UP" and str(swing.phase)=="SWING" \
-				and not bool(settled.melee_swing.active),
+		var swing:Dictionary=contact.weapon_swing
+		check(str(windup.weapon_swing.phase)=="WIND_UP" and str(swing.phase)=="SWING" \
+				and not bool(settled.weapon_swing.active),
 			"%s owns wind-up, swing, and bounded settle"%direction)
-		check(Vector2(contact.limb_segments[moving_arm][1]) \
-				!=Vector2(settled.limb_segments[moving_arm][1]) \
-				and Vector2(contact.limb_segments[still_arm][1]) \
-				==Vector2(settled.limb_segments[still_arm][1]),
-			"%s changes exactly one target-facing arm"%direction)
+		check(contact.limb_segments.is_empty() and windup.limb_segments.is_empty() \
+				and settled.limb_segments.is_empty(),
+			"%s swing never recreates artificial arms or legs"%direction)
 		check_eq([str(windup.glyph),str(contact.glyph),str(settled.glyph)],
 			["@","@","@"],"%s swing never replaces the actor glyph"%direction)
-		var hand_travel:=Vector2(contact.limb_segments[moving_arm][1]).distance_to(
-			Vector2(windup.limb_segments[moving_arm][1]))
-		check(hand_travel>=grid.cell_size_px()*0.28,
-			"%s moving hand has a clearly drawable attack arc (%s px)"%[direction,hand_travel])
+		var weapon_travel:=Vector2(contact.equipment.weapon_center).distance_to(
+			Vector2(windup.equipment.weapon_center))
+		check(contact.equipment.weapon_swing_active and weapon_travel>=1.0 \
+				and Rect2(contact.cell_rect).has_point(Vector2(contact.equipment.weapon_center)),
+			"%s equipped weapon owns a visible tile-local attack arc (%s px)"%[direction,weapon_travel])
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(1),
 			grid.actor_in_world_cell(Vector2i(7,7))],[mapping,hit,1],
-			"%s arm animation is mapping and authority neutral"%direction)
+			"%s weapon animation is mapping and authority neutral"%direction)
 		grid.free()
 	return finish()
 
@@ -299,7 +297,7 @@ func test_attacker_swing_overlap_miss_fov_and_life_state_are_safe()->bool:
 	var miss_effect:=overlay.active_effects()[0]
 	check(not bool(miss_effect.draw_impact) and bool(overlay.attacker_swing_draw_spec(
 		Vector2i(7,7),int(miss_effect.started_at_ms)+20).active),
-		"miss animates the arm without inventing target impact")
+		"miss animates the equipped weapon without inventing target impact")
 	grid.melee_vfx.clear()
 	check_eq(grid.play_effects([{"effect_id":"historical-miss-arm","event_id":91,
 		"kind":"MISS","actor_id":-1,"target_id":2,"attacker_grid_pos":[7,7],
@@ -311,7 +309,7 @@ func test_attacker_swing_overlap_miss_fov_and_life_state_are_safe()->bool:
 		"historical MISS animates even though the result leaf owns no actor id")
 	grid._actors[0]["life_state"]="DOWNED"
 	check(not bool(grid.actor_draw_spec(grid._actors[0],false,
-		int(miss_effect.started_at_ms)+20).get("melee_swing",{}).get("active",false)),
+		int(miss_effect.started_at_ms)+20).get("weapon_swing",{}).get("active",false)),
 		"downed attacker cannot display a standing swing")
 	grid.free()
 
@@ -336,7 +334,8 @@ func _fixture(direction:Vector2i)->Dictionary:
 	for cell in cells:
 		if cell.position==[7,7]:
 			cell.actors.append({"entity_id":1,"faction_id":"party","species_id":"human",
-				"roster_slot":0,"is_protagonist":true})
+				"roster_slot":0,"is_protagonist":true,"equipment_visual":{
+					"weapon_id":"SHORT_SWORD","armor_definition_id":""}})
 		elif cell.position==[target.x,target.y]:
 			cell.actors.append({"entity_id":2,"faction_id":"enemy","species_id":"goblin"})
 	grid.set_observation({"width":15,"height":15,"cells":cells})

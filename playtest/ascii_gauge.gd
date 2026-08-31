@@ -3,6 +3,9 @@ extends Label
 
 const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const GREEN:=Color("#5f8a66")
+const HP_FILL:=Color("#b84b4b")
+const MP_FILL:=Color("#4f82b8")
+const XP_FILL:=Color("#5f9b66")
 const BLACK_IRON:=Color("#000306")
 const AGED_BONE:=Color("#c7c2b3")
 const BONE_DIM:=Color("#918b7d")
@@ -16,6 +19,7 @@ var max_value:int=100:
 	set(new_value):max_value=maxi(1,new_value);_refresh_text()
 var accent:=GREEN:
 	set(new_value):accent=new_value;queue_redraw()
+var semantic_role:=""
 
 func _init()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -36,8 +40,23 @@ func _ready()->void:
 
 func configure(label_prefix:String,current:int,maximum:int,width_columns:int=10,
 		tone:Color=GREEN)->void:
+	semantic_role=""
 	prefix=label_prefix;columns=maxi(4,width_columns);max_value=maxi(1,maximum)
 	value=clampi(current,0,max_value);accent=tone;_refresh_text()
+
+func configure_semantic(label_prefix:String,current:int,maximum:int,width_columns:int=10,
+		fallback_tone:Color=GREEN)->void:
+	var role:=label_prefix.strip_edges().to_upper()
+	configure(label_prefix,current,maximum,width_columns,
+		semantic_accent(role,fallback_tone))
+	semantic_role=role if role in ["HP","MP","XP"] else ""
+
+static func semantic_accent(role:String,fallback_tone:Color=GREEN)->Color:
+	match role.strip_edges().to_upper():
+		"HP":return HP_FILL
+		"MP":return MP_FILL
+		"XP":return XP_FILL
+		_:return fallback_tone
 
 func _refresh_text()->void:
 	var filled:=clampi(int(floor(float(value)*float(columns)/float(maxi(1,max_value)))),0,columns)
@@ -75,6 +94,7 @@ func gauge_spec()->Dictionary:
 		"filled_glyph":"#","empty_glyph":".","text":text,
 		"font_size":get_theme_font_size("font_size"),
 		"visual_family":"DARK_FANTASY_BONE_GAUGE","material":"ETCHED_IRON",
+		"semantic_role":semantic_role,
 		"filled_columns":filled,"empty_columns":columns-filled,
 		"segment_colors":{"label":AGED_BONE.to_html(),"fill":accent.to_html(),
 			"empty":EMPTY_IRON.to_html(),"value":AGED_BONE.to_html()},

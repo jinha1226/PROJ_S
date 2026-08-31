@@ -4,6 +4,7 @@ const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const AUTO_INTENDED_CADENCE_MSEC:=60
 const AUTO_HEADLESS_GROSS_CEILING_MSEC:=160
 
@@ -139,6 +140,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var hp=sandbox.find_child("MemberState",true,false)
 	var xp=sandbox.find_child("CompactXPBar",true,false)
 	_check(_gauge_ok(hp,"HP") and _gauge_ok(xp,"XP"),"%s dossier lacks visible #/. DOS gauges"%viewport_size)
+	_check(_semantic_gauge_ok(hp,"HP",AsciiGaugeScript.HP_FILL) \
+		and _semantic_gauge_ok(xp,"XP",AsciiGaugeScript.XP_FILL),
+		"%s dossier HP/XP filled # cells lack semantic red/green ink"%viewport_size)
 	_check(int(hp.gauge_spec().font_size)==14 and int(xp.gauge_spec().font_size)==14,
 		"%s DOS gauges did not use the reduced readable UI size"%viewport_size)
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
@@ -214,6 +218,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s member folio still duplicates the map actor as a portrait"%viewport_size)
 	_check(_gauge_ok(sandbox.find_child("StatusHealthBar",true,false),"HP"),
 		"%s status tab health is not a DOS gauge"%viewport_size)
+	_check(_semantic_gauge_ok(sandbox.find_child("StatusHealthBar",true,false),
+		"HP",AsciiGaugeScript.HP_FILL),
+		"%s status tab HP filled # cells are not red"%viewport_size)
 	_check(sandbox.member_detail_status_tab.text=="[상태]" and "◆" not in sandbox.member_detail_status_tab.text,
 		"%s DOS tab selection grammar missing"%viewport_size)
 	for tab in [sandbox.member_detail_status_tab,sandbox.member_detail_skill_tab,
@@ -879,6 +886,17 @@ func _gauge_ok(node:Node,prefix:String)->bool:
 	return str(spec.get("primitive",""))=="DOS_TEXT_GAUGE" and str(spec.get("prefix",""))==prefix \
 		and "[" in str(spec.get("text","")) and str(spec.get("filled_glyph",""))=="#" \
 		and str(spec.get("empty_glyph",""))=="."
+
+func _semantic_gauge_ok(node:Node,role:String,color:Color)->bool:
+	if node==null or not node.has_method("gauge_spec"):return false
+	var spec:Dictionary=node.call("gauge_spec")
+	var colors:Dictionary=spec.get("segment_colors",{}) \
+		if spec.get("segment_colors",{}) is Dictionary else {}
+	return str(spec.get("semantic_role",""))==role \
+		and str(colors.get("fill",""))==color.to_html() \
+		and str(colors.get("label",""))==AsciiGaugeScript.AGED_BONE.to_html() \
+		and str(colors.get("empty",""))==AsciiGaugeScript.EMPTY_IRON.to_html() \
+		and str(colors.get("value",""))==AsciiGaugeScript.AGED_BONE.to_html()
 
 func _single_nested(frame:Node,content:Node)->bool:
 	return frame!=null and content!=null and frame.get_child_count()==1 and frame.get_child(0)==content

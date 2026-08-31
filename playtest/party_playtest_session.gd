@@ -1446,6 +1446,8 @@ func _actor_observation(entity, logical_position: Vector2i,
 		"is_enemy":is_enemy,
 		"sprite_frame":0 if member != null and member.role == "PROTAGONIST" \
 			else (4 if member != null else 5)}
+	if member != null and member.role == "PROTAGONIST":
+		dto["equipment_visual"]=_protagonist_equipment_visual()
 	if is_enemy:
 		# This helper is called only while materializing a currently VISIBLE cell.
 		# MEMORY and UNSEEN rows never contain actors, so awareness authority cannot
@@ -1471,6 +1473,23 @@ func _actor_observation(entity, logical_position: Vector2i,
 		# occupancy/hit authority continues to use the canonical world entity.
 		dto["life_state"] = "DOWNED" if story_state == "COLLAPSED_STORY" else "ACTIVE"
 	return dto
+
+
+func _protagonist_equipment_visual()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
+	var state=sim.world.party_encounter
+	var inventory=state.protagonist_inventory
+	var main=inventory.equipped_item("MAIN_HAND")
+	var armor=inventory.equipped_item("ARMOR")
+	var off_hand=inventory.equipped_item("OFF_HAND")
+	return {
+		"weapon_id":str(state.protagonist_loadout.equipped_weapon_id),
+		"weapon_definition_id":str(main.definition_id) if main!=null else "",
+		"armor_definition_id":str(armor.definition_id) if armor!=null else "",
+		"off_hand_definition_id":str(off_hand.definition_id) if off_hand!=null else "",
+	}.duplicate(true)
 
 func party_cards() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []; var state = sim.world.party_encounter
@@ -4065,7 +4084,7 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 				"physical",0,"빗나감")
 			# Result leaves use actor_id=-1. Recover the canonical action cause and
 			# freeze its historical pair so refresh timing/occupancy cannot erase the
-			# attacker's presentation-only arm swing.
+			# attacker's presentation-only equipped-weapon swing.
 			var attack=sim.world.event_by_id(int(event.cause_id)) if sim!=null \
 				and sim.world!=null else null
 			if attack!=null and str(attack.type)=="action.melee_attack":

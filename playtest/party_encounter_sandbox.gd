@@ -1199,7 +1199,7 @@ func _update_stable_party_card(row:Dictionary)->void:
 	var health:=card.find_child("MemberState",true,false)
 	if health!=null and health.has_method("configure"):
 		var current:=int(row.get("health",0));var maximum:=maxi(1,int(row.get("max_health",1)))
-		health.call("configure","HP",current,maximum,10,
+		health.call("configure_semantic","HP",current,maximum,10,
 			AsciiFrameScript.RED if current*4<=maximum else AsciiFrameScript.GREEN)
 	var stress:=card.find_child("StressState",true,false) as Label
 	if stress!=null:stress.text="ST %d"%int(row.get("stress",0))
@@ -1211,7 +1211,7 @@ func _update_stable_party_card(row:Dictionary)->void:
 	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
 	var xp:=card.find_child("CompactXPBar",true,false)
 	if xp!=null and xp.has_method("configure") and bool(progression.get("available",false)):
-		xp.call("configure","XP",int(progression.get("xp_current",0)),
+		xp.call("configure_semantic","XP",int(progression.get("xp_current",0)),
 			maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
 
 func _current_run_progress()->Dictionary:
@@ -1699,7 +1699,7 @@ func _bar(node_name:String,value:int,maximum:int,color:Color)->ProgressBar:
 func _gauge(node_name:String,prefix:String,value:int,maximum:int,columns:int,
 		color:Color):
 	var gauge=AsciiGaugeScript.new();gauge.name=node_name
-	gauge.configure(prefix,value,maximum,columns,color);return gauge
+	gauge.configure_semantic(prefix,value,maximum,columns,color);return gauge
 
 func _card_label(value:String,node_name:String,font_size:int)->Label:
 	var label:=Label.new(); label.name=node_name; label.text=value; label.add_theme_font_size_override("font_size",maxi(FONT_AUX,font_size))

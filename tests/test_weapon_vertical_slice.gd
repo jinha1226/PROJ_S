@@ -35,8 +35,14 @@ func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	var bow_equip:Dictionary=_equip_starter_weapon(session, "BOW")
 	check(bool(bow_equip.get("accepted",false)), "bow equips: %s" % bow_equip)
+	var bow_actor:=_observed_protagonist(session)
+	check_eq(str((bow_actor.get("equipment_visual",{}) as Dictionary).get("weapon_id","")),
+		"BOW","weapon swap immediately refreshes the actor observation")
 	var crossbow_equip:Dictionary=_equip_starter_weapon(session, "CROSSBOW")
 	check(bool(crossbow_equip.get("accepted",false)), "crossbow equips: %s" % crossbow_equip)
+	var crossbow_actor:=_observed_protagonist(session)
+	check_eq(str((crossbow_actor.get("equipment_visual",{}) as Dictionary).get("weapon_id","")),
+		"CROSSBOW","second weapon swap immediately refreshes the actor observation")
 	check_eq(session.protagonist_equipment().attack_block_reason, "reload_required",
 		"crossbow blocks until reload")
 	check(session.reload_protagonist_weapon().accepted, "crossbow reload API")
@@ -207,6 +213,14 @@ func _equip_starter_weapon(session,weapon_id:String)->Dictionary:
 	var unequipped:Dictionary=session.unequip_inventory_slot("MAIN_HAND")
 	if not bool(unequipped.get("accepted",false)):return unequipped
 	return session.equip_inventory_item(instance_id,"MAIN_HAND")
+
+
+func _observed_protagonist(session)->Dictionary:
+	var grid:Dictionary=session.observe_party_ui(15).get("grid",{})
+	for cell in grid.get("cells",[]):
+		for actor in cell.get("actors",[]):
+			if bool(actor.get("is_protagonist",false)):return actor
+	return {}
 
 
 func _enter_solo_combat(session) -> bool:

@@ -16,7 +16,7 @@ const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
 const CAMERA_SETTLE_DURATION_MS := 70
-const TORCH_FLICKER_QUANTUM_MS := 125 # 8 Hz: intentionally below 10 Hz.
+const TORCH_FLICKER_QUANTUM_MS := 75 # 13.3 Hz: lively at close zoom, frozen when wide.
 const TORCH_ANIMATED_MAX_CELL_COUNT := 17
 const MAX_VISIBLE_TORCHES := 6
 const MAX_MEMORY_TORCHES := 6
@@ -31,10 +31,6 @@ const FLOATING_AMOUNT_START_CELLS := 0.90
 const FLOATING_AMOUNT_TRAVEL_CELLS := 0.55
 const FLOATING_STACK_WINDOW_MS := 420
 const ACTOR_WORLD_GLYPH_OFFSET_Y := -0.105
-# The shared standing pose ends at 0.47. The world projection deliberately
-# extends below it, while its shifted figure bounds keep the feet inside the
-# logical cell. This is presentation only; hit rectangles remain cell based.
-const ACTOR_WORLD_LEG_END_Y := 0.485
 const ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX := 1.0
 const AWARENESS_PULSE_DURATION_MS := 220
 const MONSTER_LIST_MAX_ROWS := 5
@@ -892,45 +888,14 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->D
 		projected["visual_stance"]="GUARD"
 	var style:Dictionary=AsciiStyleScript.actor_spec(projected,ghost)
 	if ghost or str(style.get("life_state","ACTIVE"))!="ACTIVE":return style
-	# A longer grounded lower body and slightly raised single body glyph create a
-	# compact pseudo-depth silhouette without changing the logical actor cell.
+	# The raised glyph creates restrained depth without changing the logical cell.
 	style["glyph_offset"]=Vector2(0.0,ACTOR_WORLD_GLYPH_OFFSET_Y)
-	var limbs:Array=style.get("limb_segments",[]).duplicate(true)
-	for leg_index in [2,3]:
-		if leg_index<limbs.size() and limbs[leg_index] is Array \
-				and limbs[leg_index].size()==2:
-			var endpoint:=Vector2(limbs[leg_index][1]);endpoint.y=ACTOR_WORLD_LEG_END_Y
-			limbs[leg_index][1]=endpoint
 	if melee_vfx!=null:
 		var swing:Dictionary=melee_vfx.attacker_swing_draw_spec(
 			_position_from_actor(actor),sample_time_ms)
-		if bool(swing.get("active",false)):_apply_melee_arm_swing(limbs,swing)
-		style["melee_swing"]=swing
-	style["limb_segments"]=limbs
+		style["weapon_swing"]=swing
+	style["limb_segments"]=[]
 	return style
-
-func _apply_melee_arm_swing(limbs:Array,swing:Dictionary)->void:
-	var arm_index:=int(swing.get("arm_index",1))
-	if arm_index<0 or arm_index>=min(2,limbs.size()) \
-			or not limbs[arm_index] is Array or limbs[arm_index].size()!=2:return
-	var direction:=Vector2(swing.get("direction",Vector2.RIGHT)).normalized()
-	var side_sign:=-1.0 if arm_index==0 else 1.0
-	var resting:=Vector2(limbs[arm_index][1])
-	var windup:=Vector2(-direction.x*float(MeleeVfxScript.PARAMS.swing_windup_reach) \
-		+side_sign*float(MeleeVfxScript.PARAMS.swing_windup_side_offset),
-		float(MeleeVfxScript.PARAMS.swing_center_y)-direction.y*float(
-		MeleeVfxScript.PARAMS.swing_windup_reach_y))
-	var strike:=Vector2(direction.x*float(MeleeVfxScript.PARAMS.swing_arm_reach_x) \
-		+side_sign*float(MeleeVfxScript.PARAMS.swing_side_offset),
-		float(MeleeVfxScript.PARAMS.swing_center_y)+direction.y*float(
-		MeleeVfxScript.PARAMS.swing_arm_reach_y))
-	var progress:=clampf(float(swing.get("phase_progress",0.0)),0.0,1.0)
-	var endpoint:=resting
-	match str(swing.get("phase","SETTLE")):
-		"WIND_UP":endpoint=resting.lerp(windup,pow(progress,0.72))
-		"SWING":endpoint=windup.lerp(strike,1.0-pow(1.0-progress,3.0))
-		_:endpoint=strike.lerp(resting,1.0-pow(1.0-progress,2.0))
-	limbs[arm_index][1]=endpoint
 
 func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var actor:=_actor_by_id(entity_id)
@@ -942,19 +907,19 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	if bounds.size.x<=0.0:return {"visible":false,"entity_id":entity_id}.duplicate(true)
 	var style:=actor_draw_spec(actor,false,sample_time_ms)
 	var glyph:=AsciiPortraitScript.glyph_layout_spec(get_theme_default_font(),bounds,style,true)
-	var projected_segments:=AsciiPortraitScript.limb_draw_segments(bounds,style,glyph)
+	var projected_segments:Array=[]
+	var equipment:=AsciiPortraitScript.equipment_draw_spec(bounds,style,glyph,true)
 	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
 	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
 		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
 		"figure_bounds":bounds,"logical_position":[position.x,position.y],
 		"top_overlap_px":maxf(0.0,world_cell_rect(position).position.y-float(glyph.glyph_rect.position.y)),
-		"feet_bottom_margin_px":maxf(0.0,world_cell_rect(position).end.y-maxf(
-			Vector2(projected_segments[2][1]).y,Vector2(projected_segments[3][1]).y)) \
-			if projected_segments.size()>=4 else 0.0,
-		"one_cell_one_glyph":true,"melee_swing":style.get("melee_swing",{"active":false}),
+		"feet_bottom_margin_px":0.0,
+		"one_cell_one_glyph":true,"weapon_swing":style.get("weapon_swing",{"active":false}),
 		"shadow":shadow,
-		"selected_outline":false,"draw_equipment":false,
-		"equipment_primitive_count":0}).duplicate(true)
+		"selected_outline":false,"draw_equipment":bool(style.draw_equipment),
+		"equipment":equipment,
+		"equipment_primitive_count":int(equipment.get("primitive_count",0))},true).duplicate(true)
 
 func monster_awareness_marker_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var actor:=_actor_by_id(entity_id)

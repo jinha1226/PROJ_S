@@ -22,17 +22,10 @@ const PARAMS := {
 	# the map is scaled to a different mobile width.
 	"slash_antialiased":false,
 	"slash_color_hex":"#ffe4a3",
-	# Draw-only attacker arm timing. The same values apply to both factions and
+	# Draw-only equipped-weapon timing. The same values apply to both factions and
 	# affect no actor position, hit rectangle, turn clock, or glyph identity.
 	"swing_duration_ms":156,
 	"swing_follow_through_ms":48,
-		"swing_arm_reach_x":0.62,
-		"swing_arm_reach_y":0.34,
-		"swing_center_y":0.10,
-		"swing_side_offset":0.10,
-		"swing_windup_reach":0.38,
-		"swing_windup_reach_y":0.20,
-		"swing_windup_side_offset":0.16,
 	"flash_duration_ms":105,
 	"flash_intensity":0.62,
 	"flash_fade_curve":0.78,
@@ -156,14 +149,13 @@ func attacker_swing_draw_spec(attacker_grid_pos:Vector2i,
 		sample_time_ms:int=-1)->Dictionary:
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	# A rapid follow-up safely supersedes an older pose for this attacker. Both
-	# impact effects remain independent; only one physical arm can be drawn.
+	# impact effects remain independent; only one weapon overlay can be drawn.
 	for index in range(_effects.size()-1,-1,-1):
 		var effect:Dictionary=_effects[index]
 		if Vector2i(effect.attacker_grid_pos)!=attacker_grid_pos:continue
 		var elapsed:=_effect_elapsed_ms(effect,now,sample_time_ms<0)
 		if elapsed>=int(PARAMS.swing_duration_ms):continue
 		var direction:=Vector2(Vector2i(effect.target_grid_pos)-attacker_grid_pos).normalized()
-		var arm_index:=0 if direction.x<0.0 else 1
 		var contact:=int(PARAMS.contact_at_ms)
 		var follow_end:=contact+int(PARAMS.swing_follow_through_ms)
 		var phase:="WIND_UP";var phase_progress:=0.0
@@ -178,7 +170,7 @@ func attacker_swing_draw_spec(attacker_grid_pos:Vector2i,
 			phase_progress=clampf(float(elapsed-follow_end)/float(maxi(1,
 				int(PARAMS.swing_duration_ms)-follow_end)),0.0,1.0)
 		return {"active":true,"sequence":int(effect.sequence),"phase":phase,
-			"phase_progress":phase_progress,"arm_index":arm_index,
+			"phase_progress":phase_progress,
 			"direction":direction,"raw_elapsed_ms":elapsed,
 			"contact_at_ms":contact,"duration_ms":int(PARAMS.swing_duration_ms),
 			"draw_impact":bool(effect.get("draw_impact",true))}.duplicate(true)

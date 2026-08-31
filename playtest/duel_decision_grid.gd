@@ -121,6 +121,7 @@ func actor_render_specs() -> Array:
 			"presence": presence, "interactive": presence == "ACTIVE",
 			"selected": actor_id == _selected_actor_id,
 			"facing": facing, "stance": stance,
+			"weapon":str(actor.get("weapon","")),
 			"hit_rect": Rect2(center - Vector2.ONE * hit_half, Vector2.ONE * hit_half * 2.0),
 		})
 	return result
@@ -385,14 +386,12 @@ func _draw_actor(row: Dictionary) -> void:
 	var outline := Color("#04080c")
 	draw_set_transform(Vector2.ZERO)
 	_draw_ground_ellipse(center + Vector2(2.0, cell_size * 0.29), Vector2(cell_size * 0.38, cell_size * 0.13), Color("#010407a8"))
-	if bool(row.alive):
-		for segment_value in layout.limb_segments:
-			var segment: Array = segment_value
-			draw_line(segment[0],segment[1],outline,maxf(2.2,cell_size*0.16),true)
-			draw_line(segment[0],segment[1],color,maxf(1.25,cell_size*0.085),true)
 	var font := get_theme_default_font()
 	_draw_weighted_duel_glyph(font,str(row.glyph),layout.glyph_center,
 		int(layout.font_size),outline,color.lightened(0.18))
+	if bool(row.alive) and bool(layout.draw_equipment):
+		_draw_centered_duel_glyph(font,str(layout.weapon_glyph),layout.weapon_center,
+			int(layout.weapon_font_size),Color("#d9cfaa"))
 	var bar := Rect2(center + Vector2(-cell_size * 0.36, cell_size * 0.43), Vector2(cell_size * 0.72, 3.0))
 	draw_rect(bar, Color("#32171d"), true)
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(row.hp_ratio), bar.size.y)), Color("#e86568"), true)
@@ -414,35 +413,31 @@ func _duel_glyph_layout(row: Dictionary) -> Dictionary:
 		font_size-=1
 		extent=font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
 	var glyph_rect := Rect2(glyph_center-extent*0.5,extent)
-	var facing: Vector2 = row.get("facing",Vector2.RIGHT)
 	var stance := str(row.get("stance","IDLE"))
-	var stride := cell*0.10 if stance in ["APPROACH","FLEE"] else cell*0.035
-	var engage_lift := -cell*0.13 if stance=="ENGAGE" else 0.0
-	var left_arm := Vector2(glyph_rect.position.x,glyph_center.y)
-	var right_arm := Vector2(glyph_rect.end.x,glyph_center.y)
-	var left_hand := Vector2(glyph_center.x-cell*0.43+facing.x*cell*0.04,
-		glyph_center.y+cell*0.13-facing.y*cell*0.035)
-	var right_hand := Vector2(glyph_center.x+cell*0.43+facing.x*cell*0.04,
-		glyph_center.y+cell*0.11+facing.y*cell*0.035+engage_lift)
-	var leg_y := glyph_rect.end.y
-	var left_hip := Vector2(glyph_center.x-extent.x*0.18,leg_y)
-	var right_hip := Vector2(glyph_center.x+extent.x*0.18,leg_y)
-	var left_foot := Vector2(glyph_center.x-cell*0.19-facing.x*stride,
-		clampf(glyph_center.y+cell*0.36,cell_rect.position.y+1.0,cell_rect.end.y-1.0))
-	var right_foot := Vector2(glyph_center.x+cell*0.19+facing.x*stride,
-		clampf(glyph_center.y+cell*0.36,cell_rect.position.y+1.0,cell_rect.end.y-1.0))
-	var limb_rect:=cell_rect.grow(-1.0)
-	left_hand=_clamp_point_to_rect(left_hand,limb_rect)
-	right_hand=_clamp_point_to_rect(right_hand,limb_rect)
-	left_foot=_clamp_point_to_rect(left_foot,limb_rect)
-	right_foot=_clamp_point_to_rect(right_foot,limb_rect)
+	var weapon_glyph:=_weapon_glyph(str(row.get("weapon","")))
+	var weapon_font_size:=maxi(8,int(font_size*0.66))
+	var weapon_center:=_clamp_point_to_rect(glyph_center+Vector2(cell*0.34,-cell*0.05),
+		cell_rect.grow(-maxf(1.0,weapon_font_size*0.20)))
 	return {"actor_id":str(row.actor_id),"glyph":glyph,"glyph_center":glyph_center,
 		"glyph_rect":glyph_rect,"cell_rect":cell_rect,"font_size":font_size,
 		"glyph_is_body":true,"detached_head":false,"head_primitive_count":0,
 		"outline_passes":8,"selected_outline":false,"stance":stance,
-		"limb_segments":[[left_arm,left_hand],[right_arm,right_hand],
-			[left_hip,left_foot],[right_hip,right_foot]],
-		"draw_equipment":false,"equipment_primitive_count":0}.duplicate(true)
+		"limb_segments":[],"draw_limbs":false,
+		"weapon_glyph":weapon_glyph,"weapon_center":weapon_center,
+		"weapon_font_size":weapon_font_size,
+		"draw_equipment":not weapon_glyph.is_empty(),
+		"equipment_primitive_count":1 if not weapon_glyph.is_empty() else 0}.duplicate(true)
+
+
+func _weapon_glyph(value:String)->String:
+	var normalized:=value.strip_edges().to_upper()
+	if "활" in value or "BOW" in normalized:return ")"
+	if "쇠뇌" in value or "CROSSBOW" in normalized:return "+"
+	if "도끼" in value or "AXE" in normalized:return "7"
+	if "철퇴" in value or "둔기" in value or "MACE" in normalized:return "o"
+	if "창" in value or "SPEAR" in normalized:return "|"
+	if "검" in value or "SWORD" in normalized:return "/"
+	return ""
 
 
 func _world_cell_rect(position:Vector2i)->Rect2:

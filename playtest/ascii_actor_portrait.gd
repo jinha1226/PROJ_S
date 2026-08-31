@@ -48,17 +48,14 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 		_draw_ground_shadow(canvas,bounds,shadow,life_state,world_context)
 	var glyph_layout := glyph_layout_spec(font,bounds,spec,world_context)
 	_draw_glyph_underlay(canvas,glyph_layout,spec,opacity)
-	var limb_width := maxf(1.4,bounds.size.y*0.045)
-	for segment in limb_draw_segments(bounds,spec,glyph_layout):
-		canvas.draw_line(segment[0],segment[1],outline,limb_width+1.2,true)
-		canvas.draw_line(segment[0],segment[1],main_color,limb_width,true)
 	_draw_weighted_glyph(canvas,font,str(spec.get("glyph","?")),glyph_layout.center,
 		int(glyph_layout.font_size),outline,main_color,world_context,
 		int(spec.get("glyph_outline_passes",4)),int(spec.get("glyph_weight_passes",2)))
+	_draw_equipment(canvas,font,equipment_draw_spec(bounds,spec,glyph_layout,world_context),opacity)
 	for raw_segment in spec.get("guard_segments", []):
 		if raw_segment is Array and raw_segment.size()==2:
 			canvas.draw_line(_point(bounds,raw_segment[0]),_point(bounds,raw_segment[1]),
-				_color("#74d5ff",opacity),maxf(2.0,limb_width+0.8),true)
+				_color("#74d5ff",opacity),maxf(1.5,bounds.size.y*0.045),true)
 	if bool(spec.get("bleeding",false)):
 		_draw_centered_glyph(canvas,font,"!",_point(bounds,Vector2(0.44,-0.02)),
 			maxi(11,int(bounds.size.y*0.24)),_color("#ff5364",opacity))
@@ -125,6 +122,94 @@ static func limb_draw_segments(bounds:Rect2,spec:Dictionary,glyph_layout:Diction
 			3:anchor=Vector2(glyph_center.x+glyph_rect.size.x*0.18,glyph_rect.end.y)
 		result.append([anchor,_point(bounds,raw[1])])
 	return result
+
+
+static func equipment_draw_spec(bounds:Rect2,spec:Dictionary,glyph_layout:Dictionary,
+		world_context:bool=false)->Dictionary:
+	var equipment:Variant=spec.get("equipment",{})
+	if not bool(spec.get("draw_equipment",false)) or not equipment is Dictionary:
+		return {"visible":false,"weapon_visible":false,"armor_visible":false,
+			"primitive_count":0,"tile_local":true}.duplicate(true)
+	var glyph_rect:Rect2=glyph_layout.get("glyph_rect",Rect2())
+	var center:Vector2=glyph_layout.get("center",bounds.get_center())
+	var base_size:=int(glyph_layout.get("font_size",12))
+	var armor_visible:=bool(equipment.get("armor_visible",false))
+	var weapon_visible:=bool(equipment.get("weapon_visible",false))
+	var armor_font_size:=maxi(8,int(roundf(float(base_size)*(0.74 if world_context else 0.82))))
+	var weapon_font_size:=maxi(8,int(roundf(float(base_size)*(0.68 if world_context else 0.76))))
+	var armor_spread:=maxf(glyph_rect.size.x*0.64,5.0)
+	var facing:=StyleScript.normalized_facing(spec.get("facing",[0,1]))
+	var side_sign:=-1.0 if facing.x<0 else 1.0
+	if facing.x==0:side_sign=1.0
+	var weapon_direction:=Vector2(facing)
+	if weapon_direction==Vector2.ZERO:weapon_direction=Vector2.DOWN
+	weapon_direction=weapon_direction.normalized()
+	var weapon_offset:=Vector2(side_sign*maxf(glyph_rect.size.x*0.68,5.0),
+		-glyph_rect.size.y*0.06)+weapon_direction*glyph_rect.size.y*0.08
+	var swing:Variant=spec.get("weapon_swing",{})
+	if swing is Dictionary and bool(swing.get("active",false)):
+		var direction:=Vector2(swing.get("direction",weapon_direction)).normalized()
+		var progress:=clampf(float(swing.get("phase_progress",0.0)),0.0,1.0)
+		var sweep:float
+		match str(swing.get("phase","SETTLE")):
+			"WIND_UP":sweep=-0.32*progress
+			"SWING":sweep=-0.32+0.94*(1.0-pow(1.0-progress,2.0))
+			_:sweep=0.62*(1.0-progress)
+		weapon_offset=(direction.rotated(sweep))*maxf(glyph_rect.size.y*0.53,5.0)
+	var tile_rect:=bounds
+	if world_context:
+		var logical_cell_size:=bounds.size.x/0.72
+		# PartyGridView grounds figure bounds one pixel above the cell bottom.
+		# Recover that exact logical cell for presentation clamping; the raised core
+		# glyph offset is intentionally irrelevant to equipment containment.
+		var logical_center:=Vector2(bounds.get_center().x,
+			bounds.end.y+1.0-logical_cell_size*0.5)
+		tile_rect=Rect2(logical_center-Vector2.ONE*logical_cell_size*0.5,
+			Vector2.ONE*logical_cell_size)
+	var equipment_inset:=maxf(1.0,float(weapon_font_size)*0.20)
+	var safe_rect:=tile_rect.grow(-equipment_inset)
+	var weapon_center:=_clamp_point(center+weapon_offset,safe_rect)
+	var armor_left_center:=_clamp_point(center+Vector2(-armor_spread,0),safe_rect)
+	var armor_right_center:=_clamp_point(center+Vector2(armor_spread,0),safe_rect)
+	return {
+		"visible":weapon_visible or armor_visible,
+		"armor_visible":armor_visible,
+		"armor_left_glyph":str(equipment.get("armor_left_glyph","")),
+		"armor_right_glyph":str(equipment.get("armor_right_glyph","")),
+		"armor_color_hex":str(equipment.get("armor_color_hex","#00000000")),
+		"armor_left_center":armor_left_center,
+		"armor_right_center":armor_right_center,
+		"armor_font_size":armor_font_size,
+		"weapon_visible":weapon_visible,
+		"weapon_id":str(equipment.get("weapon_id","UNARMED")),
+		"weapon_family":str(equipment.get("weapon_family","UNARMED")),
+		"weapon_glyph":str(equipment.get("weapon_glyph","")),
+		"weapon_color_hex":str(equipment.get("weapon_color_hex","#00000000")),
+		"weapon_center":weapon_center,"weapon_font_size":weapon_font_size,
+		"weapon_swing_active":swing is Dictionary and bool(swing.get("active",false)),
+		"primitive_count":(1 if weapon_visible else 0)+(2 if armor_visible else 0),
+		"tile_local":true,"changes_core_glyph":false,"draw_image":false,
+	}.duplicate(true)
+
+
+static func _clamp_point(value:Vector2,rect:Rect2)->Vector2:
+	return Vector2(clampf(value.x,rect.position.x,rect.end.x),
+		clampf(value.y,rect.position.y,rect.end.y))
+
+
+static func _draw_equipment(canvas:CanvasItem,font:Font,draw_spec:Dictionary,
+		opacity:float)->void:
+	if not bool(draw_spec.get("visible",false)):return
+	if bool(draw_spec.get("armor_visible",false)):
+		var armor_color:=_color(str(draw_spec.armor_color_hex),opacity*0.92)
+		_draw_centered_glyph(canvas,font,str(draw_spec.armor_left_glyph),
+			Vector2(draw_spec.armor_left_center),int(draw_spec.armor_font_size),armor_color)
+		_draw_centered_glyph(canvas,font,str(draw_spec.armor_right_glyph),
+			Vector2(draw_spec.armor_right_center),int(draw_spec.armor_font_size),armor_color)
+	if bool(draw_spec.get("weapon_visible",false)):
+		var weapon_color:=_color(str(draw_spec.weapon_color_hex),opacity)
+		_draw_centered_glyph(canvas,font,str(draw_spec.weapon_glyph),
+			Vector2(draw_spec.weapon_center),int(draw_spec.weapon_font_size),weapon_color)
 
 
 static func _draw_weighted_glyph(canvas: CanvasItem, font: Font, glyph: String,

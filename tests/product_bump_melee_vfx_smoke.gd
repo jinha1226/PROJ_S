@@ -18,7 +18,7 @@ func _run()->void:
 	_check(bool(miss_case.get("miss",false)),"seed 4/wait 1 product bump owns the MISS swing")
 	for row in [hit_case,miss_case]:
 		_check(bool(row.get("drawn",false)),
-			"%s bump survives refresh and owns at least one drawn arm frame"%row.get("label","case"))
+			"%s bump survives refresh and owns at least one drawn weapon frame"%row.get("label","case"))
 		_check(bool(row.get("enemy_swing",false)),
 			"%s same-turn enemy counterattack owns an independent swing"%row.get("label","case"))
 		_check(bool(row.get("mapping_neutral",false)),
@@ -59,14 +59,13 @@ func _exercise_product_bump(world_seed:int,exploration_waits:int)->Dictionary:
 	var drawn:=false
 	if not hero_effect.is_empty():
 		var actor_spec:Dictionary=sandbox.grid.actor_glyph_draw_spec(hero)
-		var swing:Dictionary=actor_spec.get("melee_swing",{})
+		var swing:Dictionary=actor_spec.get("weapon_swing",{})
 		if bool(swing.get("active",false)):
-			var arm_index:=int(swing.get("arm_index",1))
 			var params:Dictionary=sandbox.grid.melee_vfx.parameter_spec()
 			var settled:Dictionary=sandbox.grid.actor_glyph_draw_spec(hero,
 				int(hero_effect.started_at_ms)+int(params.swing_duration_ms))
-			var travel:=Vector2(actor_spec.limb_segments[arm_index][1]).distance_to(
-				Vector2(settled.limb_segments[arm_index][1]))
+			var travel:=Vector2(actor_spec.equipment.weapon_center).distance_to(
+				Vector2(settled.equipment.weapon_center))
 			drawn=travel>=2.0 and int(hero_effect.get("rendered_frames",0))>=1
 	var result:={"label":"HIT" if world_seed==44 else "MISS",
 		"hit":not hero_effect.is_empty() and bool(hero_effect.get("draw_impact",true)),
