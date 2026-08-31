@@ -10,42 +10,43 @@ const DEFINITIONS := {
 		"attack_form":"IMPACT", "range_min":1, "range_max":1, "base_damage":0,
 		"accuracy_milli":20, "armor_penetration_flat":0, "attack_time":70,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"FAST_UNARMED", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"FAST_UNARMED", "secondary_damage_milli":0, "stun_chance_milli":0,
+		"two_handed":false},
 	"SHORT_SWORD": {"weapon_id":"SHORT_SWORD", "label":"단검", "proficiency_id":"SWORD",
 		"attack_form":"SLASH", "range_min":1, "range_max":1, "base_damage":4,
 		"accuracy_milli":40, "armor_penetration_flat":0, "attack_time":100,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0,"two_handed":false},
 	"THRUSTING_SWORD": {"weapon_id":"THRUSTING_SWORD", "label":"찌르기검", "proficiency_id":"SWORD",
 		"attack_form":"PIERCE", "range_min":1, "range_max":1, "base_damage":4,
 		"accuracy_milli":30, "armor_penetration_flat":1, "attack_time":100,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0,"two_handed":false},
 	"HAND_AXE": {"weapon_id":"HAND_AXE", "label":"손도끼", "proficiency_id":"AXE",
 		"attack_form":"SLASH", "range_min":1, "range_max":1, "base_damage":6,
 		"accuracy_milli":-20, "armor_penetration_flat":0, "attack_time":120,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"AXE_CLEAVE", "secondary_damage_milli":400, "stun_chance_milli":0},
+		"trait_id":"AXE_CLEAVE", "secondary_damage_milli":400, "stun_chance_milli":0,"two_handed":false},
 	"MACE": {"weapon_id":"MACE", "label":"철퇴", "proficiency_id":"BLUNT",
 		"attack_form":"IMPACT", "range_min":1, "range_max":1, "base_damage":5,
 		"accuracy_milli":-10, "armor_penetration_flat":1, "attack_time":125,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"BLUNT_STUN", "secondary_damage_milli":0, "stun_chance_milli":250},
+		"trait_id":"BLUNT_STUN", "secondary_damage_milli":0, "stun_chance_milli":250,"two_handed":false},
 	"SPEAR": {"weapon_id":"SPEAR", "label":"창", "proficiency_id":"SPEAR",
 		"attack_form":"PIERCE", "range_min":1, "range_max":2, "base_damage":5,
 		"accuracy_milli":10, "armor_penetration_flat":1, "attack_time":110,
 		"ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
-		"trait_id":"SPEAR_REACH", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"SPEAR_REACH", "secondary_damage_milli":0, "stun_chance_milli":0,"two_handed":false},
 	"BOW": {"weapon_id":"BOW", "label":"활", "proficiency_id":"RANGED",
 		"attack_form":"PIERCE", "range_min":2, "range_max":8, "base_damage":4,
 		"accuracy_milli":0, "armor_penetration_flat":0, "attack_time":90,
 		"ammo_kind":"ARROW", "ammo_cost":1, "reload_required":false, "reload_time":0,
-		"trait_id":"BOW_REPEAT", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"BOW_REPEAT", "secondary_damage_milli":0, "stun_chance_milli":0,"two_handed":true},
 	"CROSSBOW": {"weapon_id":"CROSSBOW", "label":"쇠뇌", "proficiency_id":"RANGED",
 		"attack_form":"PIERCE", "range_min":2, "range_max":10, "base_damage":9,
 		"accuracy_milli":30, "armor_penetration_flat":3, "attack_time":115,
 		"ammo_kind":"BOLT", "ammo_cost":1, "reload_required":true, "reload_time":140,
-		"trait_id":"CROSSBOW_RELOAD", "secondary_damage_milli":0, "stun_chance_milli":0},
+		"trait_id":"CROSSBOW_RELOAD", "secondary_damage_milli":0, "stun_chance_milli":0,"two_handed":true},
 }
 
 
@@ -71,6 +72,7 @@ static func ids() -> Array[String]:
 
 static func definition_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_weapon_definition_shape"
+	if not row.get("two_handed") is bool: return "invalid_weapon_hands"
 	var value = DefinitionScript.new(row)
 	return value.validation_error()
 

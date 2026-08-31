@@ -503,6 +503,11 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 				or actual_start_interval<55 or actual_start_interval>120:
 			failures.append("%s route cadence did not commit exactly one hop within 55-120ms: step=%d/%d interval=%d"%[
 				viewport_size,int(session.sim.world.step_index),cadence_step,actual_start_interval])
+		var route_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
+		if int(route_camera.get("duration_ms",0))!=sandbox.CONTINUOUS_CAMERA_SETTLE_MSEC \
+				or not bool(route_camera.get("active",false)):
+			failures.append("%s route camera stopped between cadence hops: %s"%[
+				viewport_size,route_camera])
 		# Freeze only the test scheduler after measuring a real continuation. This
 		# leaves the authoritative route active so the next gesture independently
 		# verifies immediate generation-safe cancellation instead of racing another

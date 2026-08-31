@@ -1,7 +1,10 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 80
+const EXPLORATION_ACTOR_MOTION_MSEC := 50
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 100
+const MANUAL_CAMERA_SETTLE_MSEC := 50
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 100
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -26,8 +29,8 @@ const FONT_MICRO:=11
 const TOUCH_TARGET:=44
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
-const PRODUCT_ZOOM_CELL_COUNTS:=[11,13,15,17,19]
-const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=15
+const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 
 var session
 var grid
@@ -132,12 +135,27 @@ var _skill_touch_index:=-1
 var _skill_touch_id:=""
 var _skill_touch_origin:=Vector2.ZERO
 var _skill_touch_dragged:=false
+var _item_touch_index:=-1
+var _item_touch_id:=""
+var _item_touch_slot:=""
+var _item_touch_origin:=Vector2.ZERO
+var _item_touch_dragged:=false
 var member_item_window:VBoxContainer
 var member_item_weapon_text:Label
 var member_item_ammo_text:Label
 var member_item_reload_button:Button
 var member_item_empty_text:Label
 var member_item_stats:Dictionary={}
+var member_item_equipment_rows:VBoxContainer
+var member_item_backpack_rows:VBoxContainer
+var member_item_action_row:HBoxContainer
+var member_item_equip_button:Button
+var member_item_unequip_button:Button
+var member_item_drop_button:Button
+var member_item_selected_id:=""
+var member_item_selected_slot:=""
+var pending_ground_pickup_id:=""
+var pending_ground_pickup_label:=""
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
@@ -234,8 +252,10 @@ func _input(event:InputEvent)->void:
 		if bool(route_state.get("active",false)):
 			_cancel_active_route()
 	if _handle_product_control_touch(event):return
-	if member_detail_modal==null or not member_detail_modal.visible \
-			or member_detail_current_tab!="SKILL":return
+	if member_detail_modal==null or not member_detail_modal.visible:return
+	if member_detail_current_tab=="ITEM":
+		_handle_item_ledger_touch(event);return
+	if member_detail_current_tab!="SKILL":return
 	if event is InputEventScreenTouch:
 		if event.pressed and _skill_touch_index<0:
 			var skill_id:=_skill_row_at_position(event.position)
@@ -253,6 +273,37 @@ func _input(event:InputEvent)->void:
 			_skill_touch_dragged=true
 		member_detail_scroll.scroll_vertical-=int(event.relative.y)
 		get_viewport().set_input_as_handled()
+
+func _handle_item_ledger_touch(event:InputEvent)->void:
+	if event is InputEventScreenTouch:
+		if event.pressed and _item_touch_index<0:
+			var row:=_item_row_at_position(event.position)
+			if row.is_empty():return
+			_item_touch_index=event.index;_item_touch_id=str(row.instance_id)
+			_item_touch_slot=str(row.slot);_item_touch_origin=event.position
+			_item_touch_dragged=false;get_viewport().set_input_as_handled()
+		elif not event.pressed and event.index==_item_touch_index:
+			var activate_id:=_item_touch_id if not _item_touch_dragged else ""
+			var activate_slot:=_item_touch_slot
+			_item_touch_index=-1;_item_touch_id="";_item_touch_slot=""
+			_item_touch_dragged=false;get_viewport().set_input_as_handled()
+			if not activate_id.is_empty():_on_item_row_selected(activate_id,activate_slot)
+	elif event is InputEventScreenDrag and event.index==_item_touch_index:
+		if event.position.distance_to(_item_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
+			_item_touch_dragged=true
+		member_detail_scroll.scroll_vertical-=int(event.relative.y)
+		get_viewport().set_input_as_handled()
+
+func _item_row_at_position(global_position:Vector2)->Dictionary:
+	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
+		if ledger==null:continue
+		for child in ledger.get_children():
+			var button:=child as Button
+			if button!=null and button.is_visible_in_tree() and not button.disabled \
+					and button.get_global_rect().has_point(global_position):
+				return {"instance_id":str(button.get_meta("item_instance_id","")),
+					"slot":str(button.get_meta("item_slot",""))}
+	return {}
 
 func _handle_product_control_touch(event:InputEvent)->bool:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
@@ -775,12 +826,28 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_reload_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_item_reload_button.pressed.connect(_on_item_reload);weapon_stack.add_child(member_item_reload_button)
 	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
-	member_item_empty_text=Label.new();member_item_empty_text.name="InventoryExpansionEmpty"
-	member_item_empty_text.text="소지품 · 현재 등록된 소지품 없음 (확장 예정)"
-	member_item_empty_text.custom_minimum_size.y=TOUCH_TARGET;member_item_empty_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	member_item_empty_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	member_item_empty_text.add_theme_font_size_override("font_size",FONT_AUX)
-	member_item_empty_text.modulate=AsciiFrameScript.MUTED;member_item_window.add_child(member_item_empty_text)
+	var equipment_title:=_card_label("장비 슬롯","ItemEquipmentHeading",FONT_SECTION)
+	equipment_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	member_item_window.add_child(equipment_title)
+	member_item_equipment_rows=VBoxContainer.new();member_item_equipment_rows.name="ItemEquipmentLedger"
+	member_item_equipment_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_equipment_rows)
+	var backpack_title:=_card_label("가방 0 / 12","ItemBackpackHeading",FONT_SECTION)
+	backpack_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	member_item_window.add_child(backpack_title)
+	member_item_backpack_rows=VBoxContainer.new();member_item_backpack_rows.name="ItemBackpackLedger"
+	member_item_backpack_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_backpack_rows)
+	member_item_action_row=HBoxContainer.new();member_item_action_row.name="ItemActionRow"
+	member_item_action_row.add_theme_constant_override("separation",4);member_item_window.add_child(member_item_action_row)
+	member_item_equip_button=_item_action_button("[장착]","ItemEquip",_on_item_equip_selected)
+	member_item_unequip_button=_item_action_button("[해제]","ItemUnequip",_on_item_unequip_selected)
+	member_item_drop_button=_item_action_button("[버리기]","ItemDrop",_on_item_drop_selected)
+	member_item_empty_text=backpack_title
+
+func _item_action_button(label:String,node_name:String,callable:Callable)->Button:
+	var button:=Button.new();button.name=node_name;button.text=label
+	button.custom_minimum_size.y=TOUCH_TARGET;button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	button.pressed.connect(callable);member_item_action_row.add_child(button)
+	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS);return button
 
 func _build_product_zoom_controls()->void:
 	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
@@ -856,6 +923,10 @@ func _refresh()->void:
 		or run_terminal or _run_locked_exit_feedback
 	var party_rows:Array=session.party_cards()
 	var product_hud:=_is_solo_product_session()
+	# SOLO keeps one continuous dungeon surface. CONTACT/ENGAGED remain internal
+	# turn authority, not a taller combat panel or a visible mode switch.
+	if product_hud and safe_phase=="ENGAGED":
+		combat_actions_visible=run_terminal or _run_locked_exit_feedback
 	var compact_fixed_surface:=product_hud and size.x<450.0 and combat_actions_visible
 	if compact_fixed_surface and not _compact_fixed_surface_active:
 		_narrative_log_visible=false
@@ -948,10 +1019,9 @@ func _refresh()->void:
 		match str(status.view_mode):
 			"EXPLORATION":_exploration_deck()
 			"ENCOUNTER_PREVIEW":
-				if _is_solo_product_session():
-					_add_notice("단독 전투를 시작합니다.","SoloCombatStarting",FONT_KEY)
-					_add_button(deck,"전투 시작","SoloCombatStart",_on_solo_combat_start)
-				else:_deployment_deck(deployment)
+				# Product solo resolves CONTACT at the refresh boundary and keeps the
+				# same map/HUD shell. Never construct a hidden entry screen as a fallback.
+				if not _is_solo_product_session():_deployment_deck(deployment)
 			"COMBAT":_combat_deck(status,session.current_turn_preview())
 			"REGROUP":_legacy_regroup_notice()
 	if run_terminal and not product_hud:_build_run_restart_area()
@@ -1007,7 +1077,8 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
+	grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
+		MANUAL_CAMERA_SETTLE_MSEC)
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	grid_style["vignette"]=false
 	grid.set_neutral_phase_map(true);grid.set_presentation_style(grid_style)
@@ -1040,7 +1111,8 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 		"total_usec":finished-profile_started,
 	}.duplicate(true)
 
-func _refresh_continuous_exploration_surface(status:Dictionary)->void:
+func _refresh_continuous_exploration_surface(status:Dictionary,
+		continuous_motion:bool=false)->void:
 	# AUTO and long routes already have a stable exploration shell. Rebuilding
 	# cards and every dock button after each canonical hop delays the next hop and
 	# adds no new interaction state. Update only live world/HUD data; a phase
@@ -1065,7 +1137,9 @@ func _refresh_continuous_exploration_surface(status:Dictionary)->void:
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	if _is_solo_product_session():
-		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
+		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
+			CONTINUOUS_CAMERA_SETTLE_MSEC if continuous_motion \
+			else MANUAL_CAMERA_SETTLE_MSEC)
 	else:grid.set_view_window(15)
 	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
 	var route_state:Dictionary=session.exploration_route_state()
@@ -1179,10 +1253,12 @@ func _toggle_map_overlay()->void:
 	map_overlay.set_observation(observation)
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	map_nav_button.set_pressed_no_signal(true);map_overlay.open()
+	_sync_product_zoom_controls(_is_solo_product_session())
 
 func _on_map_overlay_closed(_reason:String)->void:
 	map_nav_button.set_pressed_no_signal(false)
 	grid.modal_open=member_detail_modal.visible or record_modal.visible
+	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
 
@@ -1196,6 +1272,7 @@ func _toggle_record_modal()->void:
 	record_body.text=_full_meaningful_record_text(history)
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	record_modal.visible=true;history_nav_button.set_pressed_no_signal(true)
+	_sync_product_zoom_controls(_is_solo_product_session())
 	_layout_floating_surfaces()
 	if record_close_button.is_inside_tree():record_close_button.grab_focus()
 
@@ -1203,6 +1280,7 @@ func _close_record_modal(_reason:String="API")->void:
 	if not record_modal.visible:return
 	record_modal.visible=false;history_nav_button.set_pressed_no_signal(false)
 	grid.modal_open=member_detail_modal.visible or map_overlay.visible
+	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
 
@@ -1220,11 +1298,13 @@ func _open_ascii_3d_lab()->void:
 	ascii_3d_lab_view=ASCII_3D_LAB_SCENE.instantiate();ascii_3d_lab_view.name="Ascii3DLabOverlay"
 	ascii_3d_lab_view.z_index=100;add_child(ascii_3d_lab_view)
 	ascii_3d_lab_view.close_requested.connect(_close_ascii_3d_lab)
+	_sync_product_zoom_controls(_is_solo_product_session())
 
 func _close_ascii_3d_lab()->void:
 	if ascii_3d_lab_view==null or not is_instance_valid(ascii_3d_lab_view):return
 	ascii_3d_lab_view.queue_free();ascii_3d_lab_view=null
 	grid.modal_open=false
+	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
 
@@ -1284,6 +1364,10 @@ func _orchestrate_auto_phase(status:Dictionary)->void:
 			elif not auto_deployment_pending and not auto_deployment_fallback:
 				_prepare_auto_deployment(status)
 		"ENGAGED":
+			# A one-member product turn has no companion suggestion surface and commits
+			# directly from the next tap. Preparing a placeholder plan here duplicated a
+			# large canonical preview without producing any visible or authoritative work.
+			if _is_direct_solo_combat(status):return
 			var planning:Dictionary=session.auto_combat_planning_state()
 			if not bool(planning.get("active",false)):planning=session.prepare_auto_combat_plan()
 			if not bool(planning.get("accepted",false)):
@@ -1843,6 +1927,7 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
 	product_attack_button=_add_product_context_button(contextual,"[ATTACK]","ProductAttack",
 		_on_product_attack,target)
+	if _is_solo_product_session():product_attack_button.visible=false
 	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
 	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
@@ -1888,7 +1973,8 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.text="[AUTO]"
 		product_auto_button.disabled=terminal or mode!="COMBAT" or selected_member_id==protagonist_id
 		product_auto_button.tooltip_text="선택한 동료를 자동 제안으로 되돌립니다."
-	product_wait_guard_button.text="[GUARD]" if mode=="COMBAT" else "[WAIT]"
+	product_wait_guard_button.text="[WAIT]" if _is_solo_product_session() \
+		else ("[GUARD]" if mode=="COMBAT" else "[WAIT]")
 	product_wait_guard_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
 	if mode=="COMBAT":
 		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
@@ -1967,7 +2053,7 @@ func _on_product_auto()->void:
 		_product_auto_last_hop_started_msec=hop_started_msec
 		var result:Dictionary=session.start_auto_explore()
 		_consume_product_auto_explore_result(result)
-		_refresh_continuous_exploration_surface(session.party_status())
+		_refresh_continuous_exploration_surface(session.party_status(),true)
 		if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
 		return
 	if selected_member_id!=int(status.get("protagonist_id",-1)):_on_override_clear()
@@ -1981,7 +2067,8 @@ func _consume_product_auto_explore_result(result:Dictionary)->void:
 		var canonical_result:Variant=route_wrapper.get("last_step_result",{}) \
 			if route_wrapper is Dictionary else {}
 		if canonical_result is Dictionary and bool(canonical_result.get("accepted",false)):
-			_record_result(canonical_result,true)
+			_record_result(canonical_result,true,"",false,
+				CONTINUOUS_EXPLORATION_MOTION_MSEC)
 	if bool(result.get("running",false)):
 		_product_auto_stop_feedback=""
 	else:
@@ -2020,7 +2107,7 @@ func _continue_product_auto_explore(expected_generation:int)->void:
 	_product_auto_last_hop_started_msec=hop_started_msec
 	var result:Dictionary=session.continue_auto_explore()
 	_consume_product_auto_explore_result(result)
-	_refresh_continuous_exploration_surface(session.party_status())
+	_refresh_continuous_exploration_surface(session.party_status(),true)
 	if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
 
 func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
@@ -2227,13 +2314,16 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	_apply_member_detail_tab()
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
+	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	_layout_floating_surfaces();call_deferred("_measure_member_detail_body")
 	if member_detail_close.is_inside_tree():member_detail_close.grab_focus()
 
 func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
-	member_detail_modal.visible=false;member_detail_entity_id=-1;grid.modal_open=false
+	member_detail_modal.visible=false;member_detail_entity_id=-1
+	grid.modal_open=record_modal.visible or map_overlay.visible
+	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
 
@@ -2345,10 +2435,41 @@ func _update_weapon_mastery_category_label()->void:
 func _reflow_member_detail_scroll()->void:
 	if member_progression_window!=null:member_progression_window.update_minimum_size()
 	if member_detail_scroll==null:return
+	# ITEM rebuilds seventeen touch rows dynamically. Propagate that new combined
+	# minimum through the sole scroll content before sorting; otherwise the panel
+	# clips a 1000px ledger while its scrollbar keeps the previous STATUS height.
+	if member_item_window!=null:member_item_window.update_minimum_size()
+	if member_detail_scroll.get_child_count()>0:
+		var content:=member_detail_scroll.get_child(0) as Control
+		if content!=null:
+			# ScrollContainer was retaining the former STATUS combined minimum even
+			# while the visible ITEM VBox had grown. The sole visible tab owns this
+			# vertical minimum; reset it when leaving ITEM.
+			content.custom_minimum_size.y=member_item_window.get_combined_minimum_size().y \
+				if member_item_window.visible else 0.0
+			content.update_minimum_size()
+			if member_item_window.visible:
+				# Re-enter AUTO after the sole child's explicit ITEM minimum is set.
+				# Godot otherwise retains the prior STATUS page as both max and page
+				# when this tab was opened/closed before the SKILL tab expanded.
+				member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_SHOW_NEVER
+				member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 	member_detail_scroll.queue_sort()
 	call_deferred("_clamp_member_detail_scroll")
 
 func _clamp_member_detail_scroll()->void:
+	if member_detail_scroll==null:return
+	if member_item_window!=null and member_item_window.visible \
+			and member_detail_scroll.get_child_count()>0:
+		var content:=member_detail_scroll.get_child(0) as Control
+		if content!=null and member_item_window.size.y>content.custom_minimum_size.y:
+			# This deferred pass runs after VBox has measured the newly rebuilt rows.
+			content.custom_minimum_size.y=member_item_window.size.y
+			content.update_minimum_size();member_detail_scroll.queue_sort()
+			call_deferred("_finish_member_detail_scroll_clamp");return
+	_finish_member_detail_scroll_clamp()
+
+func _finish_member_detail_scroll_clamp()->void:
 	if member_detail_scroll==null:return
 	member_detail_scroll.scroll_vertical=mini(member_detail_scroll.scroll_vertical,
 		int(member_detail_scroll.get_v_scroll_bar().max_value))
@@ -2368,6 +2489,86 @@ func _update_item_window(equipment:Variant)->void:
 	member_item_reload_button.visible=bool(equipment.get("reload_required",false))
 	member_item_reload_button.disabled=not bool(equipment.get("can_reload",false))
 	member_item_reload_button.text="재장전 · %d시간"%int(equipment.get("reload_time",0))
+	_update_item_inventory_ledger()
+
+func _update_item_inventory_ledger()->void:
+	if member_item_equipment_rows==null:return
+	for node in member_item_equipment_rows.get_children():node.queue_free()
+	for node in member_item_backpack_rows.get_children():node.queue_free()
+	var dto:Dictionary=session.protagonist_inventory()
+	var slot_labels:={"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
+		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}
+	for row in dto.get("equipment_slots",[]):
+		var slot:=str(row.get("slot",""))
+		_add_item_ledger_button(member_item_equipment_rows,row,
+			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
+	var backpack:Array=dto.get("backpack_rows",[])
+	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),int(dto.get("capacity",12))]
+	for index in range(12):
+		var row:Dictionary=backpack[index] if index<backpack.size() else {"empty":true}
+		_add_item_ledger_button(member_item_backpack_rows,row,
+			"%02d  %s"%[index+1,_item_row_text(row)],false)
+	var selected_equipped:=not member_item_selected_slot.is_empty()
+	var has_selection:=not member_item_selected_id.is_empty()
+	member_item_equip_button.disabled=not has_selection or selected_equipped
+	member_item_unequip_button.disabled=not selected_equipped
+	member_item_drop_button.disabled=not has_selection or selected_equipped
+
+func _item_row_text(row:Dictionary)->String:
+	if bool(row.get("empty",false)):return "- 비어 있음 -"
+	var quantity:=int(row.get("quantity",1))
+	return "%s %s%s"%[str(row.get("glyph","*")),str(row.get("label","아이템")),
+		(" ×%d"%quantity) if quantity>1 else ""]
+
+func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,equipped:bool)->void:
+	var button:=Button.new();button.custom_minimum_size.y=TOUCH_TARGET
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
+	button.alignment=HORIZONTAL_ALIGNMENT_LEFT;button.text=label
+	button.add_theme_font_size_override("font_size",FONT_AUX)
+	button.disabled=bool(row.get("empty",false))
+	var instance_id:=str(row.get("instance_id",""));var slot:=str(row.get("slot","")) if equipped else ""
+	button.set_meta("item_instance_id",instance_id);button.set_meta("item_slot",slot)
+	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot))
+	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
+		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
+
+func _on_item_row_selected(instance_id:String,slot:String)->void:
+	member_item_selected_id=instance_id;member_item_selected_slot=slot
+	_update_item_inventory_ledger();_reflow_member_detail_scroll()
+
+func _on_item_equip_selected()->void:
+	var dto:Dictionary=session.protagonist_inventory();var slot:="";var allowed_slots:Array=[]
+	for row in dto.get("backpack_rows",[]):
+		if str(row.get("instance_id",""))==member_item_selected_id:
+			allowed_slots=row.get("equip_slots",[]);break
+	slot=item_first_empty_equip_slot(dto,allowed_slots)
+	if slot.is_empty():notice_text="이 아이템은 장착할 수 없습니다.";return
+	_on_item_operation_result(session.equip_inventory_item(member_item_selected_id,slot))
+
+func item_first_empty_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
+	for allowed in allowed_slots:
+		for equipped_row in dto.get("equipment_slots",[]):
+			if str(equipped_row.get("slot",""))==str(allowed) \
+					and bool(equipped_row.get("empty",false)):
+				return str(allowed)
+	return ""
+
+func _on_item_unequip_selected()->void:
+	_on_item_operation_result(session.unequip_inventory_slot(member_item_selected_slot))
+
+func _on_item_drop_selected()->void:
+	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
+
+func _on_item_operation_result(result:Dictionary)->void:
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","아이템을 옮길 수 없습니다."))
+	else:
+		notice_text="아이템 상태를 변경했습니다. (100시간)"
+		member_item_selected_id="";member_item_selected_slot=""
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
+	_update_item_window(progression.get("equipment",{}));member_detail_current_tab="ITEM"
+	_apply_member_detail_tab();action_feedback_text=notice_text;_reflow_member_detail_scroll()
 
 func _on_item_reload()->void:
 	var result:Dictionary=session.reload_protagonist_weapon()
@@ -2593,49 +2794,38 @@ func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id
 	if selected_member_id==protagonist_id:
 		var action=_make_party_action(selected_member_id,action_type,destination,target_id)
 		var direct_solo:=_is_direct_solo_combat(status)
-		# The direct facade creates the exact same canonical protagonist draft but
-		# avoids building the companion-oriented planning DTO twice when none exist.
-		var planning:Dictionary
-		if direct_solo and action_type=="MOVE":
-			planning=session.select_movement_destination(selected_member_id,destination)
-		elif direct_solo:
-			planning=session.set_actor_action(selected_member_id,action_type,destination,target_id)
-		else:
-			planning=session.replace_auto_combat_protagonist_action(action)
-		var planning_finished:=Time.get_ticks_usec()
-		if not bool(planning.get("accepted",false)) \
-				or (not direct_solo and not bool(planning.get("commit_ready",false))):
-			auto_combat_fallback=true;_set_action_rejection(planning,"%s 행동 불가"%_selected_name());_request_refresh();return
 		if direct_solo:
-			# In solo/no-companion play the protagonist choice is the complete plan.
-			# Commit through the same authoritative session API before returning from
-			# the tap, and invalidate every older deferred generation so it cannot
-			# commit the same turn again.
 			_last_direct_solo_refresh_profile.clear()
 			auto_generation+=1;auto_combat_pending=false;auto_combat_render_stage=0
 			auto_combat_plan_hash="";auto_combat_step_index=-1
 			auto_override_edit=false;auto_combat_fallback=false
 			var commit_started:=Time.get_ticks_usec()
-			var result:Dictionary=session.commit_turn()
+			var result:Dictionary=session.commit_direct_solo_action(selected_member_id,
+				action_type,destination,target_id)
 			var commit_finished:=Time.get_ticks_usec()
+			if not bool(result.get("accepted",false)):
+				auto_combat_fallback=true;_set_action_rejection(result,
+					"%s 행동 불가"%_selected_name());_request_refresh();return
 			_record_result(result,true,"자동 실행 불가",true);_clear_move_preview()
 			selected_target_id=-1
 			var after_status:Dictionary=session.party_status()
-			if bool(result.get("accepted",false)) and _is_direct_solo_combat(after_status):
+			if _is_direct_solo_combat(after_status):
 				_refresh_direct_solo_combat_surface(after_status)
 			else:
 				if str(after_status.get("safe_phase",""))=="GROUPED_COMPLETE":
-						notice_text="승리! 출구를 향해 탐험을 계속하세요."
+					notice_text="승리! 출구를 향해 탐험을 계속하세요."
 				_request_refresh()
 			var action_finished:=Time.get_ticks_usec()
-			_last_direct_solo_turn_profile={
-				"draft_usec":planning_finished-action_started,
+			_last_direct_solo_turn_profile={"draft_usec":0,
 				"commit_usec":commit_finished-commit_started,
 				"result_and_refresh_usec":action_finished-commit_finished,
 				"refresh":_last_direct_solo_refresh_profile.duplicate(true),
-				"total_usec":action_finished-action_started,
-			}.duplicate(true)
+				"total_usec":action_finished-action_started}.duplicate(true)
 			return
+		var planning:Dictionary=session.replace_auto_combat_protagonist_action(action)
+		if not bool(planning.get("accepted",false)) \
+				or not bool(planning.get("commit_ready",false)):
+			auto_combat_fallback=true;_set_action_rejection(planning,"%s 행동 불가"%_selected_name());_request_refresh();return
 		auto_override_edit=false;auto_combat_fallback=false
 		notice_text="";action_feedback_text="최종 계획을 확인했습니다."
 		_schedule_auto_combat_commit(planning)
@@ -2710,6 +2900,11 @@ func _on_cell(position:Vector2i)->void:
 	if bool(progress.get("terminal",false)) or bool(status.terminal):return
 	if status.view_mode=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
+		var tapped_items:Array=session.visible_ground_items_at(position)
+		pending_ground_pickup_id=str(tapped_items[0].get("instance_id","")) \
+			if not tapped_items.is_empty() else ""
+		pending_ground_pickup_label=str(tapped_items[0].get("label","아이템")) \
+			if not tapped_items.is_empty() else ""
 		if _is_locked_visible_run_exit(position,progress):
 			_run_locked_exit_feedback=true
 			notice_text="적을 쓰러뜨리면 출구가 열립니다."
@@ -2740,6 +2935,7 @@ func _on_cell(position:Vector2i)->void:
 				_record_result(result,true,"%s 이동 불가"%_protagonist_name())
 				if bool(result.get("accepted",false)):
 					action_feedback_text="한 칸 이동했습니다."
+					_pickup_pending_ground_item_if_reached()
 				_refresh_continuous_exploration_surface(session.party_status())
 				return
 		var preview:Dictionary=session.preview_exploration_route(position)
@@ -2753,7 +2949,7 @@ func _on_cell(position:Vector2i)->void:
 		route_last_hop_started_msec=hop_started_msec
 		var started:Dictionary=session.start_exploration_route(position,str(preview.get("plan_hash","")))
 		_consume_route_result(started)
-		_refresh_continuous_exploration_surface(session.party_status())
+		_refresh_continuous_exploration_surface(session.party_status(),true)
 		_schedule_route_continue(hop_started_msec)
 		return
 	if status.view_mode!="COMBAT":return
@@ -2791,6 +2987,14 @@ func _on_actor(entity_id:int)->void:
 			_on_cell(follower_cell);return
 	if status.view_mode=="EXPLORATION" and entity_id==int(status.protagonist_id):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
+		var ground_items:Array=session.ground_items_at_protagonist()
+		if not ground_items.is_empty():
+			var pickup:Dictionary=session.pickup_ground_item(str(ground_items[0].instance_id))
+			_record_result(pickup,true,"아이템을 주울 수 없습니다.")
+			if bool(pickup.get("accepted",false)):
+				notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%str(ground_items[0].label)
+				action_feedback_text=notice_text
+		_request_refresh();return
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		if pending_move_mode=="EXPLORATION" and pending_exploration_wait:
 			var result:Dictionary=session.commit_exploration(CommandScript.wait(entity_id)); _clear_move_preview(); _record_result(result,true)
@@ -2880,18 +3084,36 @@ func _apply_route_overlay(value:Dictionary)->void:
 
 func _consume_route_result(result:Dictionary)->void:
 	var last_step:Variant=result.get("last_step_result",{})
-	if last_step is Dictionary:_arm_actor_motion_from_result(last_step)
+	if last_step is Dictionary:_arm_actor_motion_from_result(last_step,
+		CONTINUOUS_EXPLORATION_MOTION_MSEC)
 	_apply_route_state(result)
 	var effects:Variant=result.get("last_step_effects",[])
 	if effects is Array and not effects.is_empty():grid.play_effects(effects)
 	var message:=str(result.get("message","이동을 처리할 수 없습니다."))
 	if bool(result.get("completed",false)):
 		notice_text=message;action_feedback_text="목적지에 도착했습니다."
+		_pickup_pending_ground_item_if_reached()
 	elif bool(result.get("terminal",false)) or not bool(result.get("active",false)):
 		notice_text=message;action_feedback_text=message
 	else:
 		notice_text=message;action_feedback_text="한 칸씩 이동 중 · %d/%d"%[int(result.get("completed_steps",0)),int(result.get("total_steps",0))]
 	_update_tile_popover_route(result)
+
+func _pickup_pending_ground_item_if_reached()->void:
+	if pending_ground_pickup_id.is_empty():return
+	var status:Dictionary=session.party_status()
+	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	var rows:Array=session.visible_ground_items_at(hero_position)
+	if rows.all(func(row):return str(row.get("instance_id",""))!=pending_ground_pickup_id):return
+	var item_label:=pending_ground_pickup_label
+	var result:Dictionary=session.pickup_ground_item(pending_ground_pickup_id)
+	if bool(result.get("accepted",false)):
+		notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%item_label
+		action_feedback_text=notice_text
+	else:
+		notice_text=str(result.get("message","아이템을 주울 수 없습니다."))
+		action_feedback_text=notice_text
+	pending_ground_pickup_id="";pending_ground_pickup_label=""
 
 func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
 	if route_continue_pending or route_paused_by_modal or route_paused_by_pointer or not is_inside_tree():return
@@ -2910,7 +3132,7 @@ func _continue_route_on_cadence(expected_generation:int)->void:
 	route_last_hop_started_msec=hop_started_msec
 	var result:Dictionary=session.continue_exploration_route()
 	_consume_route_result(result)
-	_refresh_continuous_exploration_surface(session.party_status())
+	_refresh_continuous_exploration_surface(session.party_status(),true)
 	if bool(result.get("active",false)) and not bool(result.get("completed",false)) and not bool(result.get("terminal",false)):
 		_schedule_route_continue(hop_started_msec)
 
@@ -2965,8 +3187,9 @@ func _flush_requested_refresh()->void:
 	if not _refresh_pending:return
 	_refresh_pending=false
 	_refresh()
-func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",scroll_combat_log:bool=false)->void:
-	_arm_actor_motion_from_result(result)
+func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",
+		scroll_combat_log:bool=false,motion_duration_msec:int=-1)->void:
+	_arm_actor_motion_from_result(result,motion_duration_msec)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		for raw in result.get("visual_effects",[]):
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
@@ -2980,8 +3203,25 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 		if scroll_combat_log:_scroll_log_after_refresh=true
 		notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
 			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
+		_settle_solo_product_contact()
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
+
+func _settle_solo_product_contact()->void:
+	# CONTACT is an internal authority boundary in the one-member product, not a
+	# user-facing deployment mode. Complete it in the same input callback that
+	# committed the triggering move, so the next tap can immediately move or bump.
+	if not auto_orchestration_enabled or not _is_solo_product_session():return
+	var status:Dictionary=session.party_status()
+	if str(status.get("safe_phase",""))!="CONTACT":return
+	auto_generation+=1;auto_deployment_pending=false;auto_combat_pending=false
+	auto_deployment_signature="";auto_combat_plan_hash=""
+	auto_deployment_render_stage=0;auto_combat_render_stage=0
+	auto_deployment_fallback=false;auto_combat_fallback=false;auto_override_edit=false
+	var result:Dictionary=session.enter_solo_combat()
+	if not bool(result.get("accepted",false)):
+		_set_action_rejection(result,"조우 처리 불가")
+	auto_phase=str(session.party_status().get("safe_phase",""))
 
 func _flush_pending_visual_effects()->int:
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0
@@ -2992,7 +3232,7 @@ func _flush_pending_visual_effects()->int:
 	# complete effect lifetime before the first drawable frame.
 	return grid.play_effects(rows)
 
-func _arm_actor_motion_from_result(result:Dictionary)->void:
+func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=-1)->void:
 	if grid==null or session==null or not bool(result.get("accepted",false)) \
 			or not result.get("event_ids",[]) is Array:return
 	var moved:Dictionary={}
@@ -3005,8 +3245,9 @@ func _arm_actor_motion_from_result(result:Dictionary)->void:
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	if moved.has(protagonist_id) and str(status.get("view_mode",""))=="EXPLORATION":
 		for member_id in status.get("party_member_ids",[]):moved[int(member_id)]=true
-	var duration_msec:=EXPLORATION_ACTOR_MOTION_MSEC \
-		if str(status.get("view_mode",""))=="EXPLORATION" else -1
+	var duration_msec:=duration_override_msec if duration_override_msec>0 else (
+		EXPLORATION_ACTOR_MOTION_MSEC \
+		if str(status.get("view_mode",""))=="EXPLORATION" else -1)
 	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec)
 	else:grid.arm_actor_motion(moved.keys())
 
@@ -3295,15 +3536,23 @@ func _current_grid_view_cell_count()->int:
 
 func _sync_product_zoom_controls(product_hud:bool)->void:
 	if grid_zoom_controls==null:return
-	grid_zoom_controls.visible=product_hud
-	if not product_hud:return
+	var front_surface_open:bool=grid!=null and grid.modal_open \
+		or member_detail_modal!=null and member_detail_modal.visible \
+		or record_modal!=null and record_modal.visible \
+		or map_overlay!=null and map_overlay.visible \
+		or ascii_3d_lab_view!=null and is_instance_valid(ascii_3d_lab_view)
+	var show:bool=product_hud and grid!=null and grid.visible and not front_surface_open
+	grid_zoom_controls.visible=show
+	if not show:
+		_product_zoom_touch_index=-1;_product_zoom_touch_step=0
+		return
 	var zoom_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	if zoom_index<0:
 		_product_zoom_cell_count=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 		zoom_index=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
 	grid_zoom_in_button.disabled=zoom_index<=0
-	grid_zoom_out_button.tooltip_text="시야 축소 · 최대 19칸" if grid_zoom_out_button.disabled \
+	grid_zoom_out_button.tooltip_text="시야 축소 · 최대 %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
 		else "시야 축소 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
 	grid_zoom_in_button.tooltip_text="시야 확대 · 최소 11칸" if grid_zoom_in_button.disabled \
 		else "시야 확대 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index-1])

@@ -173,7 +173,7 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	var enemy: Dictionary = Style.actor_spec({"faction_id":"enemy","species_id":"goblin"})
 	var unknown: Dictionary = Style.actor_spec({"faction_id":"enemy","species_id":"slime"})
 	check_eq([hero.glyph,human.glyph,goblin.glyph,enemy.glyph,unknown.glyph],
-		["@","&","g","G","?"],"actor role glyph grammar")
+		["@","&","g","g","?"],"actor role glyph grammar")
 	for spec in [hero,human,goblin,enemy,unknown]:
 		check(spec.glyph_is_body and not spec.detached_head and not spec.draw_head,
 			"ASCII glyph is the body with no detached head primitive")
@@ -223,7 +223,7 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 	var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(77)
 	var spec:Dictionary=grid.actor_glyph_draw_spec(77)
 	check(spec.visible and spec.font_size>=9,"15px cell keeps a readable central glyph")
-	check(float(spec.top_overlap_px)>0.0 and float(spec.top_overlap_px)<=3.0 \
+	check(float(spec.top_overlap_px)>0.0 and float(spec.top_overlap_px)<=4.2 \
 			and spec.glyph_rect.position.x>=spec.cell_rect.position.x \
 			and spec.glyph_rect.end.x<=spec.cell_rect.end.x \
 			and spec.glyph_rect.end.y<=spec.cell_rect.end.y,
@@ -271,10 +271,10 @@ func test_actor_pseudo_depth_proportions_are_bounded_at_360_and_450()->bool:
 			Vector2(hero.limb_segments[1][0]))
 		check(bool(hero.one_cell_one_glyph) and str(hero.glyph)=="@" \
 				and float(hero.top_overlap_px)>0.0 \
-				and float(hero.top_overlap_px)<=grid.cell_size_px()*0.12,
+				and float(hero.top_overlap_px)<=grid.cell_size_px()*0.17,
 			"%dpx body owns one glyph with a restrained upward silhouette overlap=%s cell=%s" \
 			%[viewport,hero.top_overlap_px,grid.cell_size_px()])
-		check(hero_legs>=grid.cell_size_px()*0.40 and float(hero.feet_bottom_margin_px)>0.0 \
+		check(hero_legs>=grid.cell_size_px()*0.52 and float(hero.feet_bottom_margin_px)>0.0 \
 				and float(hero.feet_bottom_margin_px)<=grid.cell_size_px()*0.16,
 			"%dpx legs are visibly long and feet remain above the tile edge legs=%s arms=%s margin=%s" \
 			%[viewport,hero_legs,hero_arms,hero.feet_bottom_margin_px])
@@ -282,6 +282,10 @@ func test_actor_pseudo_depth_proportions_are_bounded_at_360_and_450()->bool:
 				and hero.glyph_rect.position.x>=hero.cell_rect.position.x \
 				and hero.glyph_rect.end.x<=hero.cell_rect.end.x,
 			"%dpx adjacent actors keep distinct single-glyph silhouettes"%viewport)
+		var goblin_color:=Color(str(grid.actor_draw_spec(grid._actor_by_id(88)).color_hex))
+		check(str(neighbor.glyph)=="g" and goblin_color.g>goblin_color.r*1.25 \
+				and goblin_color.g>goblin_color.b*1.25,
+			"%dpx visible enemy goblin owns unmistakable green glyph and limb ink"%viewport)
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(77),
 			grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7)))],
 			[mapping,hero_hit,77],"%dpx pseudo-depth remains draw-only"%viewport)
@@ -996,9 +1000,15 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 		if expected_positions.is_empty():expected_positions=positions
 		check_eq(positions,expected_positions,
 			"%dpx torch placement is deterministic and viewport-independent"%viewport)
-		check(int(stats.visible_count)<=6 and int(stats.cached_count)<=12 \
+		check(int(stats.visible_count)<=4 and int(stats.cached_count)<=8 \
 			and float(stats.flicker_hz)<=10.0,
-			"%dpx torch cache and redraw frequency are strictly bounded"%viewport)
+			"%dpx wider torch spacing reduces visible sources and redraw work"%viewport)
+		for left_index in range(positions.size()):
+			for right_index in range(left_index+1,positions.size()):
+				var left:=Vector2i(int(positions[left_index][0]),int(positions[left_index][1]))
+				var right:=Vector2i(int(positions[right_index][0]),int(positions[right_index][1]))
+				check(maxi(absi(left.x-right.x),absi(left.y-right.y))>=5,
+					"%dpx selected torches keep five-cell spacing"%viewport)
 		check(at_zero.all(func(row):return str(row.glyph)=="!" \
 			and int(row.glyph_count)==1 and not bool(row.draw_image) \
 			and row.texture==null and str(row.visibility_state)!="UNSEEN"),

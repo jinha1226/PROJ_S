@@ -3,6 +3,102 @@ extends RefCounted
 
 const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
+const AWARENESS_STATES := ["UNAWARE","SUSPICIOUS","ALERT","HUNTING","SEARCHING","RETURNING"]
+const ITEM_PRESENTATION_KINDS := ["WEAPON","ARMOR","POTION","SCROLL","ACCESSORY","MATERIAL"]
+
+const ITEM_PRESENTATION_DEFINITIONS := {
+	# A deliberately small roguelike grammar. Items use old metal, bone and
+	# alchemical inks so actors and combat feedback remain the brightest layer.
+	"WEAPON":{"glyph":")","label":"무기","color_hex":"#aeb9b3",
+		"highlight_hex":"#dce3d5","underlay_hex":"#171c1b"},
+	"ARMOR":{"glyph":"[","label":"방어구","color_hex":"#83959b",
+		"highlight_hex":"#c1cdd0","underlay_hex":"#12191c"},
+	"POTION":{"glyph":"!","label":"물약","color_hex":"#b9504b",
+		"highlight_hex":"#ef8a6f","underlay_hex":"#24100f"},
+	"SCROLL":{"glyph":"?","label":"두루마리","color_hex":"#c8ad72",
+		"highlight_hex":"#ead6a0","underlay_hex":"#211b10"},
+	"ACCESSORY":{"glyph":"=","label":"장신구","color_hex":"#b48d47",
+		"highlight_hex":"#dfbd70","underlay_hex":"#21190c"},
+	"MATERIAL":{"glyph":"*","label":"재료","color_hex":"#7f9567",
+		"highlight_hex":"#b3c78b","underlay_hex":"#11180e"},
+}
+
+
+static func item_presentation_spec(value:Variant)->Dictionary:
+	var kind:=_item_presentation_kind(value)
+	if not ITEM_PRESENTATION_DEFINITIONS.has(kind):
+		return {"visible":false,"kind":"","glyph":"","label":"",
+			"color_hex":"#00000000","highlight_hex":"#00000000",
+			"underlay_hex":"#00000000","font_ratio":0.0,
+			"corner_font_ratio":0.0,"draw_image":false,"draw_texture":false}.duplicate(true)
+	var definition:Dictionary=ITEM_PRESENTATION_DEFINITIONS[kind]
+	return {"visible":true,"kind":kind,"glyph":str(definition.glyph),
+		"label":str(definition.label),"color_hex":str(definition.color_hex),
+		"highlight_hex":str(definition.highlight_hex),
+		"underlay_hex":str(definition.underlay_hex),"font_ratio":0.68,
+		"corner_font_ratio":0.38,"underlay_opacity":0.58,
+		"ink_family":"RELIC","weight":"BOLD","draw_image":false,
+		"draw_texture":false}.duplicate(true)
+
+
+static func ground_item_spec(cell:Dictionary)->Dictionary:
+	var direct:Variant=cell.get("ground_item_glyph","")
+	var spec:=item_presentation_spec(direct)
+	if bool(spec.visible):return spec
+	var values:Variant=cell.get("ground_items",[])
+	if values is Array:
+		for value in values:
+			spec=item_presentation_spec(value)
+			if bool(spec.visible):return spec
+	return item_presentation_spec("")
+
+
+static func _item_presentation_kind(value:Variant)->String:
+	if value is Dictionary:
+		for key in ["presentation_kind","item_kind","kind","use_kind","category","glyph"]:
+			if value.has(key):
+				var nested:=_item_presentation_kind(value[key])
+				if not nested.is_empty():return nested
+		return ""
+	var text:=str(value).strip_edges().to_upper()
+	if text in ITEM_PRESENTATION_KINDS:return text
+	var aliases:={"CONSUMABLE_POTION":"POTION","CONSUMABLE_SCROLL":"SCROLL"}
+	if aliases.has(text):return str(aliases[text])
+	for kind in ITEM_PRESENTATION_DEFINITIONS:
+		if str(ITEM_PRESENTATION_DEFINITIONS[kind].glyph)==str(value):return str(kind)
+	return ""
+
+
+static func awareness_spec(value:Variant)->Dictionary:
+	var state:=str(value if value!=null else "UNAWARE").to_upper()
+	if state not in AWARENESS_STATES:state="UNAWARE"
+	var definitions:={
+		"UNAWARE":{"glyph":"","color_hex":"#00000000","label":"무인지"},
+		"SUSPICIOUS":{"glyph":"?","color_hex":"#e6c45c","label":"의심"},
+		"ALERT":{"glyph":"!","color_hex":"#e88b3d","label":"경계"},
+		"HUNTING":{"glyph":"»","color_hex":"#e24f49","label":"추적"},
+		"SEARCHING":{"glyph":"~","color_hex":"#58bfc0","label":"수색"},
+		"RETURNING":{"glyph":"<","color_hex":"#849097","label":"복귀"},
+	}
+	var definition:Dictionary=definitions[state]
+	return {"state":state,"glyph":str(definition.glyph),
+		"color_hex":str(definition.color_hex),"label":str(definition.label),
+		"visible":state!="UNAWARE"}.duplicate(true)
+
+
+static func monster_identity_spec(actor:Dictionary)->Dictionary:
+	var species_id:=str(actor.get("species_id","")).to_lower()
+	match species_id:
+		"goblin", "":
+			return {"species_id":"goblin","glyph":"g","name":"고블린",
+				"color_hex":"#83d34f","highlight_hex":"#d8ff9a"}.duplicate(true)
+		"kobold":
+			return {"species_id":"kobold","glyph":"K","name":"코볼트",
+				"color_hex":"#b79a45","highlight_hex":"#ead47b"}.duplicate(true)
+		_:
+			return {"species_id":species_id,"glyph":"?",
+				"name":str(actor.get("species_name","괴물")),"color_hex":"#ff615c",
+				"highlight_hex":"#ffc2a8"}.duplicate(true)
 
 const DIORAMA_PALETTE := {
 	"void_hex":"#010203",
@@ -132,8 +228,9 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	if is_protagonist:
 		glyph = "@"; color_hex = "#ffdc55"; highlight_hex = "#fff3a8"
 	elif is_enemy:
-		glyph = "G" if species_id in ["", "goblin"] else "?"
-		color_hex = "#ff615c"; highlight_hex = "#ffc2a8"
+		var identity:=monster_identity_spec(actor)
+		glyph=str(identity.glyph);color_hex=str(identity.color_hex)
+		highlight_hex=str(identity.highlight_hex)
 	elif is_party and species_id == "goblin":
 		glyph = "g"; color_hex = "#91e45f"; highlight_hex = "#dcffa4"
 	elif is_party:

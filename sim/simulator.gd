@@ -225,12 +225,61 @@ func deploy_party(plan: Variant):
 	return result
 
 
+func deploy_solo_party():
+	# Trusted one-member product facade: build the authoritative empty-companion
+	# deployment and commit it in one call. External deployment plans still use
+	# `deploy_party` and its fingerprint/recompute/tamper checks above.
+	var state=world.party_encounter if world!=null else null
+	if state==null or state.party_member_ids!=[state.protagonist_id] \
+			or state.active_party_member_ids!=[state.protagonist_id]:
+		return StepResultScript.new(false,false,"invalid_companion_ids")
+	var processed_step_index:int=_next_processed_step_index()
+	if processed_step_index<0:return StepResultScript.new(false,false,"step_index_overflow")
+	var authoritative:Dictionary=party_coordinator.preview_deployment("LINE",[],false)
+	if not bool(authoritative.get("accepted",false)):
+		return StepResultScript.new(false,false,str(authoritative.get("reason","deployment_failed")))
+	var rollback_value:Variant=world.snapshot()
+	if not rollback_value is Dictionary or rollback_value.is_empty():
+		return StepResultScript.new(false,false,"party_snapshot_unavailable")
+	var rollback:Dictionary=rollback_value
+	world.begin_step(processed_step_index)
+	var result=party_coordinator.commit_prevalidated_deployment(authoritative,
+		processed_step_index)
+	if result is Dictionary or not result.accepted:
+		world=WorldStateScript.from_snapshot(rollback);_rebuild_systems()
+		return StepResultScript.new(false,false,str(result.get("reason","deployment_failed")))
+	world.finish_step()
+	if not world.world_state_error().is_empty():
+		world=WorldStateScript.from_snapshot(rollback);_rebuild_systems()
+		return StepResultScript.new(false,false,"deployment_semantic_failure")
+	return result
+
+
 func preview_party_turn(request):
 	var processed_step_index: int = _next_processed_step_index()
 	if processed_step_index < 0:
 		return PartyPlanScript.new({"accepted": false, "reason": "step_index_overflow",
 			"actor_rows": [], "base_fingerprint": JSON.stringify(world.snapshot()).sha256_text()})
 	return party_coordinator.preview_party_turn(request, processed_step_index, world.world_time)
+
+
+func step_direct_solo_party_turn(request):
+	# The request was constructed by the session from one local tap, not supplied
+	# as an external frozen plan. Validate and freeze it once authoritatively, then
+	# share the exact canonical commit/rollback/semantic-validation tail.
+	if request==null or not request is PartyTurnRequest:
+		return StepResultScript.new(false,false,"invalid_party_request")
+	var request_error:=PartyRequestScript.wire_error(request.to_dict())
+	if not request_error.is_empty():return StepResultScript.new(false,false,request_error)
+	var processed_step_index:int=_next_processed_step_index()
+	if processed_step_index<0:return StepResultScript.new(false,false,"step_index_overflow")
+	var authoritative_plan=party_coordinator.preview_party_turn(request,
+		processed_step_index,world.world_time,false)
+	var authoritative:Dictionary=authoritative_plan.to_dict()
+	if not bool(authoritative.get("accepted",false)):
+		return StepResultScript.new(false,false,
+			str(authoritative.get("reason","invalid_party_action")))
+	return _commit_prevalidated_party_turn(authoritative,processed_step_index)
 
 
 func step_party_turn(plan):
@@ -263,6 +312,11 @@ func step_party_turn(plan):
 		return StepResultScript.new(false, false, str(authoritative.get("reason", "stale_party_plan")))
 	if supplied != authoritative:
 		return StepResultScript.new(false, false, "stale_or_tampered_combat_plan")
+	return _commit_prevalidated_party_turn(authoritative,processed_step_index)
+
+
+func _commit_prevalidated_party_turn(authoritative:Dictionary,
+		processed_step_index:int):
 	var rollback_value: Variant = world.snapshot()
 	if not rollback_value is Dictionary:
 		return StepResultScript.new(false, false, "party_snapshot_unavailable")

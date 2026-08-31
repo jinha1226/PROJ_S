@@ -63,10 +63,13 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	await _touch(sandbox.grid_zoom_in_button.get_global_rect().get_center(),62)
 	_check(sandbox.grid.visible_cell_count==15,"%s [+] did not restore 15 cells"%viewport_size)
 
-	for count in [11,15,19]:
+	for count in [11,15,19,21,23,25]:
 		sandbox._product_zoom_cell_count=count;sandbox._apply_product_zoom_surface()
 		_check(sandbox.grid.visible_cell_count==count,
 			"%s camera did not apply %d cells"%[viewport_size,count])
+		var cell_size:Vector2=sandbox.grid.grid_rect().size/float(count)
+		_check(cell_size.x>=14.0 and cell_size.y>=14.0,
+			"%s %d-cell glyph surface fell below the mobile readability floor"%[viewport_size,count])
 		var status:Dictionary=session.party_status()
 		var hero:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		_check(sandbox.grid.world_to_pixel_center(hero).distance_to(
@@ -95,48 +98,121 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 					and row.get("actors",[]).is_empty(),
 					"%s %d-cell UNSEEN leak"%[viewport_size,count])
 
-	sandbox._product_zoom_cell_count=19;sandbox._apply_product_zoom_surface()
+	sandbox._product_zoom_cell_count=25
+	var zoom_started_usec:=Time.get_ticks_usec();sandbox._apply_product_zoom_surface()
+	var zoom_apply_msec:float=float(Time.get_ticks_usec()-zoom_started_usec)/1000.0
+	print("ZOOM PERF %s 25-cell apply %.2f ms"%[viewport_size,zoom_apply_msec])
+	_check(zoom_apply_msec<250.0,
+		"%s 25-cell projection exceeded 250ms (%.2fms)"%[viewport_size,zoom_apply_msec])
 	var stable_snapshot:Dictionary=session.sim.snapshot()
 	var stable_journal:Array=session.command_journal.duplicate(true)
+	var exploration_refresh_started_usec:=Time.get_ticks_usec()
 	sandbox._refresh_continuous_exploration_surface(session.party_status())
-	_check(sandbox.grid.visible_cell_count==19 and session.sim.snapshot()==stable_snapshot \
+	var exploration_refresh_msec:float=float(
+		Time.get_ticks_usec()-exploration_refresh_started_usec)/1000.0
+	_check(sandbox.grid.visible_cell_count==25 and session.sim.snapshot()==stable_snapshot \
 		and session.command_journal==stable_journal,
 		"%s stable exploration refresh reset zoom or mutated authority"%viewport_size)
+	var combat_refresh_started_usec:=Time.get_ticks_usec()
 	sandbox._refresh_direct_solo_combat_surface(session.party_status())
-	_check(sandbox.grid.visible_cell_count==19 and session.sim.snapshot()==stable_snapshot \
+	var combat_refresh_msec:float=float(
+		Time.get_ticks_usec()-combat_refresh_started_usec)/1000.0
+	print("ZOOM PERF %s refresh exploration %.2f ms combat %.2f ms"%[
+		viewport_size,exploration_refresh_msec,combat_refresh_msec])
+	_check(exploration_refresh_msec<250.0 and combat_refresh_msec<250.0,
+		"%s 25-cell refresh exceeded 250ms (%.2f/%.2fms)"%[
+			viewport_size,exploration_refresh_msec,combat_refresh_msec])
+	_check(sandbox.grid.visible_cell_count==25 and session.sim.snapshot()==stable_snapshot \
 		and session.command_journal==stable_journal,
 		"%s direct solo refresh reset zoom or mutated authority"%viewport_size)
 	_check(sandbox.grid_zoom_out_button.disabled and not sandbox.grid_zoom_in_button.disabled,
-		"%s 19-cell boundary state"%viewport_size)
+		"%s 25-cell boundary state"%viewport_size)
 	sandbox._on_product_zoom_step(1)
-	_check(sandbox.grid.visible_cell_count==19,"%s zoom-out exceeded 19"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==25,"%s zoom-out exceeded 25"%viewport_size)
 	sandbox._product_zoom_cell_count=11;sandbox._apply_product_zoom_surface()
 	_check(sandbox.grid_zoom_in_button.disabled and not sandbox.grid_zoom_out_button.disabled,
 		"%s 11-cell boundary state"%viewport_size)
 	sandbox._on_product_zoom_step(-1)
 	_check(sandbox.grid.visible_cell_count==11,"%s zoom-in exceeded 11"%viewport_size)
-	sandbox._product_zoom_cell_count=19;sandbox._apply_product_zoom_surface()
+	sandbox._product_zoom_cell_count=25;sandbox._apply_product_zoom_surface()
 	sandbox._refresh();await process_frame
-	_check(sandbox.grid.visible_cell_count==19,"%s full refresh reset zoom"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==25,"%s full refresh reset zoom"%viewport_size)
+	# Zoom belongs exclusively to the uncovered game grid. Every product front
+	# surface hides the overlay immediately and restores the same camera step.
+	sandbox._open_hero_detail_tab("STATUS");await process_frame
+	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"status")
+	sandbox._select_member_detail_tab("SKILL");await process_frame
+	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"skill")
+	sandbox._select_member_detail_tab("ITEM");await process_frame
+	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"equipment/item")
+	sandbox._close_member_detail();await process_frame
+	_check_zoom_restored(sandbox,viewport_size,"detail close")
+	sandbox._toggle_record_modal();await process_frame
+	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"record")
+	sandbox._close_record_modal("TEST");await process_frame
+	_check_zoom_restored(sandbox,viewport_size,"record close")
+	sandbox._toggle_map_overlay();await process_frame
+	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"map")
+	var overlay_layout:Dictionary=sandbox.map_overlay.layout_spec(viewport_size)
+	_check(int(overlay_layout.get("world_width",0))==96 \
+			and int(overlay_layout.get("world_height",0))==96,
+		"%s map overlay did not ingest the full 96x96 discovered-map DTO"%viewport_size)
+	sandbox.map_overlay.close("TEST");await process_frame
+	_check_zoom_restored(sandbox,viewport_size,"map close")
 	# The successful product restart handlers call this presentation reset after
 	# replacing canonical state. The user's zoom preference must survive it.
 	sandbox._reset_run_ui_transients();sandbox._refresh();await process_frame
-	_check(sandbox.grid.visible_cell_count==19,"%s restart reset presentation zoom"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==25,"%s restart reset presentation zoom"%viewport_size)
 	sandbox.queue_free();await process_frame
+
+func _check_zoom_hidden(sandbox,old_button_center:Vector2,viewport_size:Vector2,
+		label:String)->void:
+	var before_count:int=int(sandbox._product_zoom_cell_count)
+	var press:=InputEventScreenTouch.new();press.index=91;press.pressed=true
+	press.position=old_button_center
+	var intercepted:bool=sandbox._handle_product_zoom_touch(press)
+	_check(not sandbox.grid_zoom_controls.visible \
+			and not sandbox.grid_zoom_controls.is_visible_in_tree() \
+			and not sandbox._product_zoom_control_has_point(old_button_center) \
+			and not intercepted and sandbox._product_zoom_touch_index==-1 \
+			and sandbox._product_zoom_cell_count==before_count \
+			and sandbox.grid.modal_open,
+		"%s %s surface exposes/intercepts grid zoom"%[viewport_size,label])
+
+func _check_zoom_restored(sandbox,viewport_size:Vector2,label:String)->void:
+	_check(sandbox.grid_zoom_controls.is_visible_in_tree() \
+			and sandbox._product_zoom_cell_count==25 \
+			and sandbox.grid.visible_cell_count==25 and not sandbox.grid.modal_open,
+		"%s %s did not restore preserved 25-cell zoom"%[viewport_size,label])
 
 func _start_long_route(session)->bool:
 	var status:Dictionary=session.party_status()
 	var origin:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
-	for y in range(maxi(0,origin.y-6),mini(session.sim.world.height,origin.y+7)):
-		for x in range(maxi(0,origin.x-6),mini(session.sim.world.width,origin.x+7)):
+	var enemy_positions:Array[Vector2i]=[]
+	for enemy_id_value in session.sim.world.party_encounter.enemy_ids:
+		var enemy=session.sim.world.entities.get(int(enemy_id_value))
+		if enemy!=null:enemy_positions.append(enemy.position)
+	var best_goal:=Vector2i(-1,-1);var best_clearance:=-1
+	for y in range(maxi(0,origin.y-10),mini(session.sim.world.height,origin.y+11)):
+		for x in range(maxi(0,origin.x-10),mini(session.sim.world.width,origin.x+11)):
 			var goal:=Vector2i(x,y)
 			if maxi(absi(goal.x-origin.x),absi(goal.y-origin.y))<3:continue
 			var preview:Dictionary=session.preview_exploration_route(goal)
 			if not bool(preview.get("accepted",false)) or int(preview.get("total_steps",0))<3:continue
-			var started:Dictionary=session.start_exploration_route(goal,
-			str(preview.get("plan_hash","")))
-			if bool(started.get("active",false)):return true
-	return false
+			var path:Array=preview.get("path",[])
+			if path.size()<2:continue
+			var first_step:=Vector2i(int(path[1][0]),int(path[1][1]))
+			var clearance:=100000
+			for enemy_position in enemy_positions:
+				clearance=mini(clearance,maxi(absi(first_step.x-enemy_position.x),
+					absi(first_step.y-enemy_position.y)))
+			if clearance>best_clearance:
+				best_clearance=clearance;best_goal=goal
+	if best_goal==Vector2i(-1,-1):return false
+	var chosen:Dictionary=session.preview_exploration_route(best_goal)
+	var started:Dictionary=session.start_exploration_route(best_goal,
+		str(chosen.get("plan_hash","")))
+	return bool(started.get("active",false))
 
 func _check_legacy_and_fresh_defaults()->void:
 	var legacy=Sandbox.new();legacy.initialize_for_headless_test(Session.new(),false)

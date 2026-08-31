@@ -5,6 +5,7 @@ const METHODS := [
 	"test_exploration_route_never_reads_unseen_live_hazards",
 	"test_select_movement_destination_is_one_mutating_facade_in_both_modes",
 	"test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_flank",
+	"test_direct_solo_atomic_action_matches_ordinary_preview_commit_and_replay",
 	"test_long_route_preview_is_pure_detached_and_each_call_commits_one_existing_move",
 	"test_long_route_stops_on_contact_blocker_risk_stale_death_and_combat",
 ]

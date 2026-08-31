@@ -4,14 +4,28 @@ extends RefCounted
 # Product dungeons deliberately outgrow the 15x15 camera.  The generator uses
 # its own RNG, so building presentation geometry never consumes simulation RNG.
 const SCHEMA_VERSION := 1
-const RULESET_ID := "sector-rooms-snake-v2-opening-encounter"
+const RULESET_ID := "sector-rooms-snake-v3-96x96-large-chambers"
+const LEGACY_RULESET_ID := "sector-rooms-snake-v2-opening-encounter"
 const MIN_SIZE := 32
-const DEFAULT_WIDTH := 48
-const DEFAULT_HEIGHT := 48
+const DEFAULT_WIDTH := 96
+const DEFAULT_HEIGHT := 96
+const LEGACY_WIDTH := 48
+const LEGACY_HEIGHT := 48
 const _MATERIAL_IDS := ["shallow_water", "metal", "wood_floor", "rubble"]
 
 
 static func generate(width: int, height: int, seed: int) -> Dictionary:
+	return _generate_versioned(width,height,seed,false)
+
+
+# Save migration only. The exact deployed v2 topology remains reproducible so
+# an existing snapshot can replay against its original room and door geometry.
+static func generate_legacy(width:int,height:int,seed:int)->Dictionary:
+	return _generate_versioned(width,height,seed,true)
+
+
+static func _generate_versioned(width:int,height:int,seed:int,
+		legacy_small_rooms:bool)->Dictionary:
 	if width < MIN_SIZE or height < MIN_SIZE:
 		return {}
 	var rng := RandomNumberGenerator.new()
@@ -19,8 +33,12 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 	var terrain: Array[String] = []
 	terrain.resize(width * height)
 	terrain.fill("wall")
-	var columns := clampi(width / 12, 3, 5)
-	var rows := clampi(height / 12, 3, 5)
+	# Product worlds use sixteen broad sectors instead of scaling room count with
+	# area. The legacy branch retains the deployed 48x48 4x4 partition exactly.
+	var columns := clampi(width / 12, 3, 5) if legacy_small_rooms \
+		else (4 if width>=64 else 3)
+	var rows := clampi(height / 12, 3, 5) if legacy_small_rooms \
+		else (4 if height>=64 else 3)
 	var sector_width := width / columns
 	var sector_height := height / rows
 	var rooms: Array[Rect2i] = []
@@ -36,8 +54,14 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 			var sector_top := row_index * sector_height
 			var available_width := mini(sector_width, width - sector_left)
 			var available_height := mini(sector_height, height - sector_top)
-			var room_width := rng.randi_range(5, maxi(5, mini(8, available_width - 3)))
-			var room_height := rng.randi_range(5, maxi(5, mini(8, available_height - 3)))
+			var max_room_width:=maxi(5,mini(8 if legacy_small_rooms else 15,
+				available_width-(3 if legacy_small_rooms else 4)))
+			var max_room_height:=maxi(5,mini(8 if legacy_small_rooms else 15,
+				available_height-(3 if legacy_small_rooms else 4)))
+			var min_room_width:=5 if legacy_small_rooms else mini(9,max_room_width)
+			var min_room_height:=5 if legacy_small_rooms else mini(9,max_room_height)
+			var room_width := rng.randi_range(min_room_width,max_room_width)
+			var room_height := rng.randi_range(min_room_height,max_room_height)
 			var min_x := sector_left + 1
 			var max_x := mini(width - room_width - 2,
 				sector_left + available_width - room_width - 1)
@@ -79,7 +103,15 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 	var distant_enemy:=centers[mini(centers.size()-2,maxi(2,centers.size()/2))]
 	var enemy := _opening_enemy_position(terrain,width,height,entry,exit,
 		door_positions,distant_enemy)
-	var protected := {entry:true, exit:true, enemy:true}
+	var enemy_roster:Array[Dictionary]=[{"position":enemy,"species_id":"goblin"}]
+	if not legacy_small_rooms:
+		enemy_roster.append_array(_distributed_enemy_roster(terrain,width,height,
+			seed,rooms,entry,exit,door_positions,enemy,10+posmod(seed,3)))
+	var enemy_positions:Array[Vector2i]=[]
+	var protected := {entry:true, exit:true}
+	for enemy_row in enemy_roster:
+		var roster_position:Vector2i=enemy_row.position
+		enemy_positions.append(roster_position);protected[roster_position]=true
 	for door in door_positions:
 		protected[door] = true
 	var material_positions := {}
@@ -94,7 +126,9 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 				if not protected.has(position):
 					material_candidates.append(position)
 	_shuffle(material_candidates, rng)
-	var material_count := mini(material_candidates.size(), maxi(20, width * height / 42))
+	var material_count := mini(material_candidates.size(),maxi(20,width*height/42)) \
+		if legacy_small_rooms else mini(material_candidates.size(),
+			clampi(width*height/96,32,96))
 	for index in range(material_count):
 		var position := material_candidates[index]
 		var material_id: String = _MATERIAL_IDS[index % _MATERIAL_IDS.size()]
@@ -107,9 +141,9 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 		hazards.append({"kind":"WETNESS", "position":metal_cells[0], "magnitude":75})
 	if not wood_cells.is_empty():
 		hazards.append({"kind":"FIRE", "position":wood_cells[0], "magnitude":55})
-	return {
+	var result:Dictionary={
 		"schema_version":SCHEMA_VERSION,
-		"ruleset_id":RULESET_ID,
+		"ruleset_id":LEGACY_RULESET_ID if legacy_small_rooms else RULESET_ID,
 		"seed":seed,
 		"width":width,
 		"height":height,
@@ -119,11 +153,50 @@ static func generate(width: int, height: int, seed: int) -> Dictionary:
 		"entry_position":entry,
 		"hero_position":entry,
 		"exit_position":exit,
-		"enemy_positions":[enemy],
+		"enemy_positions":enemy_positions,
 		"door_positions":door_positions,
 		"hazards":hazards,
 		"material_positions":material_positions,
-	}.duplicate(true)
+	}
+	if not legacy_small_rooms:result["enemy_roster"]=enemy_roster
+	return result.duplicate(true)
+
+
+static func _distributed_enemy_roster(terrain:Array[String],width:int,height:int,
+		seed:int,rooms:Array[Rect2i],entry:Vector2i,exit:Vector2i,
+		door_positions:Array[Vector2i],opening_enemy:Vector2i,
+		total_count:int)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	var occupied:Dictionary={entry:true,exit:true,opening_enemy:true}
+	for door in door_positions:occupied[door]=true
+	var needed:=maxi(0,total_count-1)
+	for slot in range(needed):
+		# Walk distinct non-entry sectors before wrapping. A stable seed offset
+		# changes which rooms receive the two optional monsters without consuming
+		# simulation RNG.
+		var room_index:=1+posmod(slot+posmod(seed,rooms.size()-2),rooms.size()-2)
+		var room:Rect2i=rooms[room_index]
+		var candidates:Array[Vector2i]=[]
+		for y in range(room.position.y+1,room.end.y-1):
+			for x in range(room.position.x+1,room.end.x-1):
+				var candidate:=Vector2i(x,y)
+				if occupied.has(candidate) or terrain[_index(candidate,width)]=="wall":continue
+				candidates.append(candidate)
+		candidates.sort_custom(func(a:Vector2i,b:Vector2i):
+			var ar:=_spawn_tie_rank(seed,slot,a);var br:=_spawn_tie_rank(seed,slot,b)
+			return ar<br if ar!=br else (a.y<b.y if a.y!=b.y else a.x<b.x))
+		if candidates.is_empty():continue
+		var selected:Vector2i=candidates[0];occupied[selected]=true
+		rows.append({"position":selected,
+			"species_id":"kobold" if (slot+1)%3==0 else "goblin"})
+	return rows
+
+
+static func _spawn_tie_rank(seed:int,slot:int,position:Vector2i)->int:
+	var digest:PackedByteArray=("dungeon-enemy-v1|%d|%d|%d|%d"%[
+		seed,slot,position.x,position.y]).sha256_buffer()
+	return ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
+		|(int(digest[2])<<8)|int(digest[3])
 
 
 static func apply_terrain(world, layout: Dictionary) -> bool:

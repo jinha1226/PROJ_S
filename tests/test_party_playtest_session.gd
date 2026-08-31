@@ -511,6 +511,37 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 	check(committed.accepted and session.sim.world.entities[hero].position==destination,
 		"canonical commit advances exactly one doorway diagonal")
 
+	var leaving=Session.new();var leaving_state=leaving.sim.world.party_encounter
+	var leaving_origin:=Vector2i(7,7);var leaving_destination:=Vector2i(6,6)
+	leaving.sim.world.entities[leaving_state.enemy_ids[0]].position=Vector2i(14,14)
+	leaving.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
+	leaving_state.diagonal_gateway_positions.append(leaving_origin)
+	var leaving_preview:Dictionary=leaving.preview_exploration(Command.move_to(
+		leaving_state.protagonist_id,leaving_destination))
+	check(leaving_preview.accepted,
+		"actor standing in an open doorway may leave diagonally past one wall flank")
+	check(leaving.find_exploration_path(leaving_state.protagonist_id,
+		leaving_destination).path==[leaving_origin,leaving_destination],
+		"pathfinder matches the from-door diagonal")
+	var leaving_route:Dictionary=leaving.preview_exploration_route(leaving_destination)
+	check(leaving_route.accepted and leaving_route.path==[[7,7],[6,6]],
+		"route preview matches the from-door diagonal")
+	var leaving_snapshot:Dictionary=leaving._auto_explore_fog_snapshot()
+	check(leaving._auto_explore._known_step_is_safe(leaving_origin,
+		leaving_destination,leaving_snapshot.cells),
+		"AUTO matches the from-door diagonal without unseen topology")
+	check(leaving.commit_exploration(Command.move_to(leaving_state.protagonist_id,
+		leaving_destination)).accepted,"from-door canonical commit advances exactly once")
+
+	var closed=Session.new();var closed_state=closed.sim.world.party_encounter
+	closed.sim.world.entities[closed_state.enemy_ids[0]].position=Vector2i(14,14)
+	closed.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
+	closed.sim.world.bootstrap_set_terrain(Vector2i(7,6),"wall")
+	closed_state.diagonal_gateway_positions.append(Vector2i(7,6))
+	check_eq(closed.preview_exploration(Command.move_to(closed_state.protagonist_id,
+		destination)).reason,"move_diagonal_flank_blocked",
+		"closed/non-passable gateway never permits corner cutting")
+
 	var occupied=Session.new();var occupied_state=occupied.sim.world.party_encounter
 	occupied.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
 	occupied_state.diagonal_gateway_positions.append(gateway)
@@ -544,6 +575,40 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 		"v5 product save reconstructs deterministic door gateways")
 	check_eq(migrated.sim.snapshot(),product.sim.snapshot(),
 		"v5 gateway migration matches current replay exactly")
+	return finish()
+
+
+func test_direct_solo_atomic_action_matches_ordinary_preview_commit_and_replay()->bool:
+	var ordinary=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var atomic=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	for candidate in [ordinary,atomic]:
+		check(candidate.commit_exploration_direction(Vector2i.RIGHT).accepted,
+			"atomic comparison reaches contact")
+		check(candidate.enter_solo_combat().accepted,"atomic comparison enters combat")
+	var status:Dictionary=ordinary.party_status();var hero:=int(status.protagonist_id)
+	var origin:Vector2i=ordinary.sim.world.entities[hero].position
+	var destination_value:=Vector2i(-1,-1)
+	for direction in ordinary.sim.movement.MOVE_DIRECTIONS_8:
+		var destination_candidate:Vector2i=origin+Vector2i(direction)
+		if bool(ordinary.preview_actor_action(hero,"MOVE",[destination_candidate.x,
+				destination_candidate.y]).get("accepted",false)):
+			destination_value=destination_candidate;break
+	check(destination_value!=Vector2i(-1,-1),"atomic comparison has a legal move")
+	if destination_value==Vector2i(-1,-1):return finish()
+	check(ordinary.set_actor_action(hero,"MOVE",[destination_value.x,
+		destination_value.y]).accepted,"ordinary solo draft accepted")
+	var ordinary_result:Dictionary=ordinary.commit_turn()
+	var atomic_result:Dictionary=atomic.commit_direct_solo_action(hero,"MOVE",
+		[destination_value.x,destination_value.y])
+	check(ordinary_result.accepted and atomic_result.accepted,"both solo commits accepted")
+	check_eq(atomic.sim.snapshot(),ordinary.sim.snapshot(),
+		"atomic direct action preserves exact authoritative state")
+	check_eq(atomic.command_journal,ordinary.command_journal,
+		"atomic direct action preserves exact replay journal")
+	var restored=Session.new(1,2)
+	check(restored.load_session_json(atomic.save_session_json()).accepted,
+		"atomic direct action save replays")
+	check_eq(restored.sim.snapshot(),atomic.sim.snapshot(),"atomic replay remains exact")
 	return finish()
 
 

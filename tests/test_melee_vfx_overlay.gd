@@ -32,8 +32,9 @@ func test_melee_vfx_right_is_target_local_broken_slash_and_holds_local_clock()->
 	check(params.has("slash_local_length_ratio") and params.has("slash_bend_ratio") \
 		and not params.has("slash_span_ratio"),
 		"target-local slash length and bend are independently adjustable")
-	check(float(params.slash_width_px)<=2.1 and float(params.slash_width_px)>=1.6,
-		"target-cell slash is a thin impact accent, not a connector-like stroke")
+	check(is_equal_approx(float(params.slash_width_px),1.0) \
+			and not bool(params.slash_antialiased),
+		"target-cell slash is an exact one-pixel terminal stroke at every map scale")
 	check_eq([grid._actors,grid.actor_draw_spec(grid._actors[0]).glyph,
 		grid.actor_draw_spec(grid._actors[1]).glyph,Engine.time_scale],
 		[actors_before,hero_before.glyph,target_before.glyph,time_scale_before],
@@ -270,9 +271,10 @@ func test_attacker_arm_swing_is_one_limb_draw_only_and_8_direction_safe()->bool:
 			"%s changes exactly one target-facing arm"%direction)
 		check_eq([str(windup.glyph),str(contact.glyph),str(settled.glyph)],
 			["@","@","@"],"%s swing never replaces the actor glyph"%direction)
-		check(Rect2(contact.cell_rect).has_point(Vector2(
-			contact.limb_segments[moving_arm][1])),
-			"%s moving hand remains inside the attacker tile"%direction)
+		var hand_travel:=Vector2(contact.limb_segments[moving_arm][1]).distance_to(
+			Vector2(windup.limb_segments[moving_arm][1]))
+		check(hand_travel>=grid.cell_size_px()*0.28,
+			"%s moving hand has a clearly drawable attack arc (%s px)"%[direction,hand_travel])
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(1),
 			grid.actor_in_world_cell(Vector2i(7,7))],[mapping,hit,1],
 			"%s arm animation is mapping and authority neutral"%direction)
@@ -298,6 +300,15 @@ func test_attacker_swing_overlap_miss_fov_and_life_state_are_safe()->bool:
 	check(not bool(miss_effect.draw_impact) and bool(overlay.attacker_swing_draw_spec(
 		Vector2i(7,7),int(miss_effect.started_at_ms)+20).active),
 		"miss animates the arm without inventing target impact")
+	grid.melee_vfx.clear()
+	check_eq(grid.play_effects([{"effect_id":"historical-miss-arm","event_id":91,
+		"kind":"MISS","actor_id":-1,"target_id":2,"attacker_grid_pos":[7,7],
+		"target_grid_pos":[8,7],"world_position":[8,7]}]),1,
+		"product miss result leaf uses its canonical historical position pair")
+	check(not bool(overlay.active_effects()[0].draw_impact) and bool(
+		overlay.attacker_swing_draw_spec(Vector2i(7,7),
+		int(overlay.active_effects()[0].started_at_ms)+20).active),
+		"historical MISS animates even though the result leaf owns no actor id")
 	grid._actors[0]["life_state"]="DOWNED"
 	check(not bool(grid.actor_draw_spec(grid._actors[0],false,
 		int(miss_effect.started_at_ms)+20).get("melee_swing",{}).get("active",false)),

@@ -7,6 +7,7 @@ const PlanScript = preload("res://sim/party_turn_plan.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
+const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const MAX_DEPLOYED_PARTY := 3
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -136,6 +137,7 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 		due_time:int,tick_start_can_act_ids:Dictionary)->bool:
 	# Preserve the established contact boundary: actors already in detection range
 	# make contact before any patrol movement. Only a still-GROUPED world patrols.
+	if not _update_enemy_awareness_batch(processed_step_index):return false
 	if not _detect_contact(processed_step_index,actor_schedule_id,due_time,
 			tick_start_can_act_ids):
 		return false
@@ -146,12 +148,27 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 	# companion-aware exploration cadence is designed as its own slice.
 	if state.party_member_ids.size()!=1:return true
 	var enemies:Array=state.enemy_ids.duplicate();enemies.sort()
+	var dormant_patrol_id:int=int(enemies[posmod(processed_step_index,enemies.size())]) \
+		if not enemies.is_empty() else -1
 	var acted_ids:Dictionary={}
 	for enemy_id in enemies:
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id,world.world_time) \
 				or int(state.enemy_busy_rows.get(enemy_id,MAX_WORLD_TIME))>world.world_time \
 				or not world.is_autonomous_target(enemy_id):
+			continue
+		var awareness=state.enemy_awareness(enemy_id)
+		var enemy_profile:Dictionary=EnemyPerceptionRegistryScript.profile(
+			str(world.entities[enemy_id].species_id))
+		if awareness!=null and awareness.awareness_state=="UNAWARE" \
+				and not enemy_profile.is_empty() \
+				and _distance(world.entities[enemy_id].position,state.group_anchor) \
+				>int(enemy_profile.sight_range)+2 and enemy_id!=dormant_patrol_id:
+			# Far dormant monsters do not manufacture HOLD leaves or run path/exposure
+			# scoring every hero step. One stable entity-id/step slot still patrols,
+			# so every unaware monster remains autonomous without an O(roster*path)
+			# frame spike. Their canonical cadence timestamp still advances.
+			state.enemy_busy_rows[enemy_id]=world.world_time+PARTY_ACTION_COST
 			continue
 		var forecast:Dictionary=forecast_exploration_patrol(enemy_id,
 			processed_step_index,actor_schedule_id,due_time)
@@ -192,12 +209,16 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	for member_id in state.party_member_ids:
 		var member = state.member(member_id)
 		if member.presence == "GROUPED": world.entities[member_id].position = state.group_anchor
-	var nearest: Variant = _nearest_alive_enemy(state.group_anchor)
+	var nearest: Variant = _nearest_contact_enemy(state.group_anchor)
 	if nearest == null: return true
 	var distance := _distance(state.group_anchor, nearest.position)
-	var party_detects: bool = distance <= state.party_detection_radius
-	var enemy_detects: bool = distance <= state.enemy_detection_radius
+	var has_los:=_line_of_sight(state.group_anchor,nearest.position)
+	var awareness=state.enemy_awareness(nearest.id)
+	var party_detects: bool = has_los and distance <= state.party_detection_radius
+	var enemy_detects: bool = has_los and distance<=state.enemy_detection_radius
 	if not party_detects and not enemy_detects: return true
+	if awareness!=null and awareness.awareness_state!="HUNTING":
+		if not _set_awareness_state(awareness,"HUNTING",state.group_anchor):return false
 	state.contact_kind = "DETECTED" if party_detects and enemy_detects else ("PARTY_AMBUSH" if party_detects else "ENEMY_AMBUSH")
 	state.contact_enemy_id = nearest.id
 	state.facing = _cardinal_facing(nearest.position - state.group_anchor)
@@ -334,6 +355,11 @@ func forecast_exploration_patrol(enemy_id:int,processed_step_index:int,
 		return rejected.duplicate(true)
 	var enemy=world.entities[enemy_id]
 	rejected.from_position=[enemy.position.x,enemy.position.y]
+	var awareness=world.party_encounter.enemy_awareness(enemy_id)
+	if awareness!=null and awareness.awareness_state in ["ALERT","HUNTING",
+			"SEARCHING","RETURNING"]:
+		var directed:=_awareness_move_forecast(enemy_id,awareness,rejected)
+		if not directed.is_empty():return directed
 	var current_risk:=_patrol_exposure_risk(enemy_id,enemy.position)
 	if current_risk<0:
 		rejected.reason="exposure_unavailable"
@@ -378,6 +404,147 @@ func forecast_exploration_patrol(enemy_id:int,processed_step_index:int,
 	return rejected.duplicate(true)
 
 
+func _update_enemy_awareness_batch(processed_step_index:int)->bool:
+	var state=world.party_encounter
+	var enemy_ids:Array=state.enemy_ids.duplicate();enemy_ids.sort()
+	for enemy_id_value in enemy_ids:
+		var enemy_id:=int(enemy_id_value)
+		if not world.is_unresolved_enemy(enemy_id):continue
+		if not _update_enemy_awareness(enemy_id,processed_step_index):return false
+	return true
+
+
+func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
+	var state=world.party_encounter
+	var awareness=state.enemy_awareness(enemy_id)
+	var enemy=world.entities.get(enemy_id)
+	var hero=world.entities.get(state.protagonist_id)
+	if awareness==null or enemy==null or hero==null:return false
+	var profile:Dictionary=EnemyPerceptionRegistryScript.profile(str(enemy.species_id))
+	# Legacy fixtures intentionally substitute affinity-only species on the
+	# historical patrol enemy. Those actors predate perception profiles: keep
+	# their awareness stable and let the established patrol/affinity rules act.
+	if profile.is_empty():return true
+	var distance:=_distance(enemy.position,hero.position)
+	var sees:bool=distance<=int(profile.sight_range) \
+		and _line_of_sight(enemy.position,hero.position)
+	var previous_state:=str(awareness.awareness_state)
+	if distance<=1:
+		awareness.suspicion=1000
+		awareness.last_known_target_position=hero.position
+		awareness.last_seen_step=processed_step_index
+		awareness.last_seen_time=world.world_time
+		awareness.search_turns_remaining=0
+		return _set_awareness_state(awareness,"HUNTING",hero.position,previous_state)
+	if sees:
+		awareness.suspicion=clampi(awareness.suspicion+
+			EnemyPerceptionRegistryScript.suspicion_gain(str(enemy.species_id),distance),0,1000)
+		awareness.last_known_target_position=hero.position
+		awareness.last_seen_step=processed_step_index
+		awareness.last_seen_time=world.world_time
+		awareness.search_turns_remaining=0
+		var next_state:=previous_state
+		if previous_state in ["HUNTING","SEARCHING"]:next_state="HUNTING"
+		elif awareness.suspicion>=EnemyPerceptionRegistryScript.ALERT_THRESHOLD:next_state="ALERT"
+		elif previous_state in ["UNAWARE","RETURNING"]:next_state="SUSPICIOUS"
+		return _set_awareness_state(awareness,next_state,hero.position,previous_state)
+	awareness.suspicion=maxi(0,awareness.suspicion-EnemyPerceptionRegistryScript.SUSPICION_DECAY)
+	var next_state:=previous_state
+	match previous_state:
+		"HUNTING","ALERT":
+			next_state="SEARCHING"
+			awareness.search_turns_remaining=EnemyPerceptionRegistryScript.SEARCH_TURNS
+		"SEARCHING":
+			awareness.search_turns_remaining=maxi(0,awareness.search_turns_remaining-1)
+			if awareness.search_turns_remaining==0:next_state="RETURNING"
+		"SUSPICIOUS":
+			if awareness.suspicion==0:next_state="RETURNING"
+		"RETURNING":
+			if enemy.position==awareness.home_position:
+				next_state="UNAWARE"
+				awareness.last_known_target_position=Vector2i(-1,-1)
+	return _set_awareness_state(awareness,next_state,hero.position,previous_state)
+
+
+func _set_awareness_state(awareness,next_state:String,target_position:Vector2i,
+		previous_state:String="")->bool:
+	var before:=str(awareness.awareness_state) if previous_state.is_empty() else previous_state
+	if before==next_state:return true
+	awareness.awareness_state=next_state
+	var event=world.emit_event("enemy.awareness_changed",awareness.enemy_id,
+		world.party_encounter.protagonist_id,world.entities[awareness.enemy_id].position,
+		awareness.suspicion,-1,{"schema_version":1,"from_state":before,
+			"to_state":next_state,"last_known_position":[target_position.x,target_position.y]})
+	if event==null:return false
+	world.party_encounter.revision+=1
+	return true
+
+
+func _awareness_move_forecast(enemy_id:int,awareness,rejected:Dictionary)->Dictionary:
+	var enemy=world.entities[enemy_id]
+	var target:Vector2i=awareness.home_position if awareness.awareness_state=="RETURNING" \
+		else awareness.last_known_target_position
+	if target==Vector2i(-1,-1) or enemy.position==target:
+		if awareness.awareness_state=="RETURNING":
+			awareness.awareness_state="UNAWARE";awareness.suspicion=0
+		return {}
+	var goals:Array=[]
+	var blocker=world.blocking_entity_at(target,enemy_id)
+	if blocker==null:goals=[target]
+	else:
+		for direction in movement.MOVE_DIRECTIONS_8:goals.append(target+direction)
+	var route:Dictionary=pathfinder.find_path_to_any(enemy_id,goals)
+	if not bool(route.get("found",false)) or int(route.get("steps",0))<1:return {}
+	var destination:Vector2i=route.path[1]
+	var assessment=movement.assess_move(enemy_id,destination)
+	if not assessment.accepted:return {}
+	var result:=rejected.duplicate(true)
+	result.accepted=true;result.reason="awareness_%s"%str(awareness.awareness_state).to_lower()
+	result.action_type="MOVE";result.destination=[destination.x,destination.y]
+	result.terrain_id=str(assessment.terrain_id)
+	result.time_cost=int(TerrainRegistryScript.definition(result.terrain_id).move_time_cost)
+	return result
+
+
+func _nearest_contact_enemy(position:Vector2i):
+	var candidates:Array=[]
+	for enemy_id in world.party_encounter.enemy_ids:
+		if not world.is_unresolved_enemy(enemy_id):continue
+		var enemy=world.entities[enemy_id]
+		var distance:=_distance(position,enemy.position)
+		if not _line_of_sight(position,enemy.position):continue
+		var awareness=world.party_encounter.enemy_awareness(enemy_id)
+		var legacy_small_fixture:bool=world.width<=15 and world.height<=15 \
+				and world.party_encounter.enemy_ids.size()==1
+		if distance<=world.party_encounter.party_detection_radius \
+				or awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
+				and distance<=world.party_encounter.enemy_detection_radius \
+				or legacy_small_fixture \
+				and distance<=world.party_encounter.enemy_detection_radius:
+			candidates.append(enemy)
+	candidates.sort_custom(func(a,b):
+		var ad:=_distance(position,a.position);var bd:=_distance(position,b.position)
+		return ad<bd if ad!=bd else a.id<b.id)
+	return null if candidates.is_empty() else candidates[0]
+
+
+func _line_of_sight(origin:Vector2i,target:Vector2i)->bool:
+	if not world.in_bounds(origin) or not world.in_bounds(target):return false
+	var x0:=origin.x;var y0:=origin.y;var x1:=target.x;var y1:=target.y
+	var dx:=absi(x1-x0);var sx:=1 if x0<x1 else -1
+	var dy:=-absi(y1-y0);var sy:=1 if y0<y1 else -1
+	var error:=dx+dy
+	while x0!=x1 or y0!=y1:
+		var doubled:=2*error
+		if doubled>=dy:error+=dy;x0+=sx
+		if doubled<=dx:error+=dx;y0+=sy
+		if Vector2i(x0,y0)==target:return true
+		var definition:Dictionary=TerrainRegistryScript.definition(
+			str(world.tile_at(Vector2i(x0,y0)).terrain))
+		if definition.is_empty() or not bool(definition.get("passable",false)):return false
+	return true
+
+
 func _patrol_exposure_risk(enemy_id:int,position:Vector2i)->int:
 	if exposure==null:return -1
 	var evaluated=exposure.evaluate_for_entity(enemy_id,position,false)
@@ -397,7 +564,8 @@ func _patrol_tie_rank(enemy_id:int,processed_step_index:int,
 	return ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
 		|(int(digest[2])<<8)|int(digest[3])
 
-func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
+func preview_deployment(preset_id: String, companion_ids: Array,
+		include_integrity:bool=true) -> Dictionary:
 	var rejected := {"accepted": false, "reason": "", "preset_id": preset_id, "companion_ids": [], "placements": [], "base_fingerprint": ""}
 	if world.party_encounter == null or world.party_encounter.safe_phase != "CONTACT" or not world.is_settled(): rejected.reason = "deployment_phase_required"; return rejected
 	if preset_id not in ["WEDGE", "LINE", "COLUMN"]: rejected.reason = "unknown_formation"; return rejected
@@ -429,7 +597,9 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	if world.world_time > MAX_WORLD_TIME - 100: rejected.reason = "time_overflow"; return rejected
 	if not world.has_event_id_headroom(selected.size() + 2): rejected.reason = "event_id_overflow"; return rejected
 	rejected.accepted = true; rejected.reason = "ok"; rejected.placements = placements
-	rejected.base_fingerprint = _fingerprint(); rejected["plan_hash"] = _hash_without(rejected, "plan_hash")
+	if include_integrity:
+		rejected.base_fingerprint = _fingerprint()
+		rejected["plan_hash"] = _hash_without(rejected, "plan_hash")
 	return rejected.duplicate(true)
 
 func deployment_commit_error(plan: Variant) -> String:
@@ -488,7 +658,7 @@ func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int)
 	return _result(true, "ok", world.events_since(event_start), 0, processed_step_index)
 
 func preview_party_turn(request, processed_step_index: int,
-		attack_start_world_time: int) -> PartyTurnPlan:
+		attack_start_world_time: int,include_integrity:bool=true) -> PartyTurnPlan:
 	if processed_step_index <= 0 or attack_start_world_time != world.world_time:
 		return PlanScript.new({"accepted": false, "reason": "invalid_processed_step_context",
 			"actor_rows": [], "base_fingerprint": _fingerprint()})
@@ -546,7 +716,8 @@ func preview_party_turn(request, processed_step_index: int,
 	for occurrence in schedule_plan.occurrences:
 		timeline.append({"kind": str(occurrence.kind), "at_time": str(occurrence.due_time), "schedule_id": str(occurrence.schedule_id)})
 	var data := {"accepted": true, "reason": "ok", "canonical_request": request.to_dict(), "base_step": str(world.step_index),
-		"base_time": str(world.world_time), "base_revision": str(state.revision), "base_fingerprint": _fingerprint(),
+		"base_time": str(world.world_time), "base_revision": str(state.revision),
+		"base_fingerprint":_fingerprint() if include_integrity else "",
 		"actor_rows": rows, "total_time_cost": max_cost, "timeline": timeline}
 	data["plan_hash"] = PlanScript.canonical_hash(data)
 	return PlanScript.new(data)
@@ -722,9 +893,16 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
+	if not _update_enemy_awareness_batch(processed_step_index):return false
 	var state = world.party_encounter; var enemies: Array = state.enemy_ids.duplicate(); enemies.sort()
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
+		var awareness=state.enemy_awareness(enemy_id)
+		if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"] \
+				or _distance(world.entities[enemy_id].position,
+					world.entities[state.protagonist_id].position) \
+				>EnemyPerceptionRegistryScript.ACTIVE_COMBAT_RANGE:
+			continue
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id, world.world_time) \
 				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
@@ -831,7 +1009,11 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		if target.health != resolution.target_health_after \
 				or target_state.life_state != resolution.target_life_after:
 			return false
-	return reconcile_liveness(allow_victory)
+	if not reconcile_liveness(allow_victory):return false
+	if state.safe_phase=="ENGAGED" and _has_alive_enemy() \
+			and not _has_active_combat_enemy():
+		return _disengage_to_exploration()
+	return true
 
 
 func forecast_enemy_action(enemy_id: int) -> Dictionary:
@@ -849,6 +1031,10 @@ func forecast_enemy_action(enemy_id: int) -> Dictionary:
 		return rejected.duplicate(true)
 	var enemy = world.entities[enemy_id]
 	rejected.from_position = [enemy.position.x, enemy.position.y]
+	var awareness=world.party_encounter.enemy_awareness(enemy_id)
+	if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]:
+		rejected.reason="enemy_not_combat_aware"
+		return rejected.duplicate(true)
 	var target = _nearest_deployed_party(enemy.position)
 	if target == null:
 		rejected.reason = "enemy_target_unavailable"
@@ -1016,6 +1202,33 @@ func _has_alive_enemy() -> bool:
 		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id):
 			return true
 	return false
+
+func _has_active_combat_enemy()->bool:
+	if world.party_encounter==null:return false
+	var hero=world.entities.get(world.party_encounter.protagonist_id)
+	if hero==null:return false
+	for enemy_id in world.party_encounter.enemy_ids:
+		if not world.is_unresolved_enemy(enemy_id):continue
+		var awareness=world.party_encounter.enemy_awareness(enemy_id)
+		if awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
+				and _distance(world.entities[enemy_id].position,hero.position) \
+				<=EnemyPerceptionRegistryScript.ACTIVE_COMBAT_RANGE:
+			return true
+	return false
+
+func _disengage_to_exploration()->bool:
+	var state=world.party_encounter
+	var hero=world.entities.get(state.protagonist_id)
+	if hero==null:return false
+	state.group_anchor=hero.position
+	for member_id in state.active_party_member_ids:
+		var member=state.member(member_id)
+		if member_id==state.protagonist_id:member.presence="DEPLOYED"
+		elif world.combatant_states[member_id].life_state=="ACTIVE":
+			member.presence="GROUPED";world.entities[member_id].position=hero.position
+	state.safe_phase="GROUPED";state.formation_id="NONE"
+	state.contact_kind="NONE";state.contact_enemy_id=-1;state.revision+=1
+	return true
 
 func _last_enemy_death_event_id() -> int:
 	if world.party_encounter == null: return -1

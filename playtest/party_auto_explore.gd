@@ -196,7 +196,9 @@ func _known_step_is_safe(from: Vector2i, to: Vector2i,
 			for flank_cell in passable_flanks:
 				if bool(flank_cell.get("occupied", false)):return false
 		elif passable_flanks.size() == 1:
-			if not bool(cell.get("diagonal_gateway", false)) \
+			var from_cell:Dictionary=cells.get(_key(from),{})
+			if not bool(from_cell.get("diagonal_gateway", false)) \
+					and not bool(cell.get("diagonal_gateway", false)) \
 					and not bool(passable_flanks[0].get("diagonal_gateway", false)):
 				return false
 			if bool(passable_flanks[0].get("occupied", false)):return false

@@ -153,7 +153,8 @@ func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
 		return false
 	# A single solid flank remains a blocked corner unless the diagonal enters
 	# an open doorway or crosses the doorway's passable threshold cell.
-	return is_diagonal_gateway(to) or is_diagonal_gateway(passable_flanks[0])
+	return is_diagonal_gateway(from) or is_diagonal_gateway(to) \
+		or is_diagonal_gateway(passable_flanks[0])
 
 
 func add_entity(kind: String, display_name: String, position: Vector2i,
@@ -3032,6 +3033,11 @@ func _party_runtime_error() -> String:
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
+	for ground_row in party_encounter.ground_items.rows:
+		var ground_terrain:Dictionary=TerrainRegistryScript.definition(
+			str(tile_at(ground_row.position).terrain))
+		if ground_terrain.is_empty() or not bool(ground_terrain.get("passable",false)):
+			return "ground_item_on_impassable_tile"
 	for gateway_position in party_encounter.diagonal_gateway_positions:
 		if not is_diagonal_gateway(gateway_position):return "party_diagonal_gateway_not_passable"
 	if party_encounter.safe_phase not in PartyEncounterStateScript.PHASES: return "unknown_party_phase"
@@ -3088,12 +3094,19 @@ func _party_runtime_error() -> String:
 	var alive_enemies := 0; previous_id = 0
 	for enemy_id in party_encounter.enemy_ids:
 		if enemy_id <= previous_id or party_ids.has(enemy_id) or not entities.has(enemy_id) \
-				or not party_encounter.enemy_busy_rows.has(enemy_id): return "party_enemy_reference_invalid"
+				or not party_encounter.enemy_busy_rows.has(enemy_id) \
+				or not party_encounter.enemy_awareness_rows.has(enemy_id):
+			return "party_enemy_reference_invalid"
 		previous_id = enemy_id
 		var enemy_busy: int = party_encounter.enemy_busy_rows[enemy_id]
 		if enemy_busy < 0 or enemy_busy > MAX_WORLD_TIME: return "party_enemy_busy_invalid"
+		var awareness=party_encounter.enemy_awareness_rows[enemy_id]
+		if awareness.enemy_id!=enemy_id or not _terrain_is_passable(awareness.home_position):
+			return "party_enemy_awareness_invalid"
 		if combatant_states[enemy_id].life_state != "DEAD": alive_enemies += 1
 	if party_encounter.enemy_busy_rows.size() != party_encounter.enemy_ids.size(): return "party_enemy_busy_set_mismatch"
+	if party_encounter.enemy_awareness_rows.size()!=party_encounter.enemy_ids.size():
+		return "party_enemy_awareness_set_mismatch"
 	if not in_bounds(party_encounter.group_anchor) or party_encounter.facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		return "party_anchor_or_facing_invalid"
 	var hero = entities[party_encounter.protagonist_id]
@@ -3258,13 +3271,15 @@ func _party_event_correlation_error() -> String:
 	for event in events:
 		if event.type in contact_types: contact_events.append(event)
 	var contact = null
-	if contact_events.size() > 1: return "party_contact_event_count_invalid"
 	var contact_required: bool = party_encounter.contact_kind != "NONE" \
 		or party_encounter.safe_phase == "GROUPED_COMPLETE"
 	if contact_events.is_empty():
 		if contact_required: return "party_contact_event_missing"
 	else:
-		contact = contact_events[0]
+		# A floor may contain several independent encounter groups. Validate the
+		# latest contact segment against live state; older segments remain guarded
+		# by their immutable action/damage leaves and cause-id deployment chains.
+		contact = contact_events.back()
 		var contact_keys: Array = contact.data.keys(); contact_keys.sort()
 		if contact_keys != ["contact_kind", "enemy_id", "enemy_position", "facing"] \
 				or contact.data.get("contact_kind") not in ["DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"] \
@@ -3339,6 +3354,7 @@ func _party_event_correlation_error() -> String:
 
 	var completed_rows: Array = []; var member_events: Array = []
 	for event in events:
+		if contact==null or event.cause_id!=contact.id:continue
 		if event.type == "party.deployment_completed": completed_rows.append(event)
 		elif event.type == "party.member_deployed": member_events.append(event)
 	if completed_rows.size() > 1: return "party_deployment_completed_count_invalid"

@@ -17,19 +17,22 @@ const PARAMS := {
 	# accent, never an attacker-to-target connector.
 	"slash_local_length_ratio":0.54,
 	"slash_bend_ratio":0.20,
-	"slash_width_px":2.0,
+	"slash_width_px":1.0,
+	# A one-pixel terminal stroke must not acquire a soft two-pixel fringe when
+	# the map is scaled to a different mobile width.
+	"slash_antialiased":false,
 	"slash_color_hex":"#ffe4a3",
 	# Draw-only attacker arm timing. The same values apply to both factions and
 	# affect no actor position, hit rectangle, turn clock, or glyph identity.
 	"swing_duration_ms":156,
 	"swing_follow_through_ms":48,
-	"swing_arm_reach_x":0.48,
-	"swing_arm_reach_y":0.20,
-	"swing_center_y":0.18,
-	"swing_side_offset":0.05,
-	"swing_windup_reach":0.30,
-	"swing_windup_reach_y":0.12,
-	"swing_windup_side_offset":0.12,
+		"swing_arm_reach_x":0.62,
+		"swing_arm_reach_y":0.34,
+		"swing_center_y":0.10,
+		"swing_side_offset":0.10,
+		"swing_windup_reach":0.38,
+		"swing_windup_reach_y":0.20,
+		"swing_windup_side_offset":0.16,
 	"flash_duration_ms":105,
 	"flash_intensity":0.62,
 	"flash_fade_curve":0.78,
@@ -230,7 +233,7 @@ func _draw()->void:
 			for segment in spec.slash_segments:
 				draw_line(Vector2(segment.from)+presentation_offset,
 					Vector2(segment.to)+presentation_offset,line_color,
-					float(PARAMS.slash_width_px),true)
+					float(PARAMS.slash_width_px),bool(PARAMS.slash_antialiased))
 		for particle in spec.particles:
 			var particle_color:=Color(str(PARAMS.particle_color_hex))
 			particle_color.a=float(particle.opacity)

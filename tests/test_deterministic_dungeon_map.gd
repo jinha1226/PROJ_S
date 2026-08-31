@@ -4,39 +4,110 @@ const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
+const Inventory = preload("res://sim/protagonist_inventory_state.gd")
+const GroundItems = preload("res://sim/ground_item_state.gd")
 
 
 func test_same_seed_is_exact_and_different_seed_changes_layout() -> bool:
-	var first := DungeonMap.generate(48, 48, 44)
-	var second := DungeonMap.generate(48, 48, 44)
-	var other := DungeonMap.generate(48, 48, 45)
+	var first := DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,44)
+	var second := DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,44)
+	var other := DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,45)
 	check(not first.is_empty(), "generated layout exists")
 	check_eq(first, second, "same seed reproduces the exact layout")
 	check(first.terrain != other.terrain, "different seed changes terrain topology")
-	check_eq([first.width, first.height], [48, 48], "product dungeon size")
+	check_eq([first.width, first.height], [96, 96], "expanded product dungeon size")
 	return finish()
 
 
 func test_rooms_features_materials_and_objectives_are_connected() -> bool:
-	var layout := DungeonMap.generate(48, 48, 8080)
+	var layout := DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,8080)
 	var entry: Vector2i = layout.entry_position
 	var exit: Vector2i = layout.exit_position
 	check(DungeonMap.reachable(layout, entry, exit), "entry reaches exit")
+	check(_shortest_floor_distance(layout,entry,exit)>=layout.width/2,
+		"entry and exit retain a substantial traversable expedition distance")
 	for enemy_position in layout.enemy_positions:
 		check(DungeonMap.reachable(layout, entry, enemy_position),
 			"entry reaches every enemy spawn")
-	check(layout.rooms.size() >= 9, "dungeon contains several rooms")
+	check(layout.rooms.size()>=12 and layout.rooms.size()<=16,
+		"expanded dungeon keeps a deliberate twelve-to-sixteen chamber count")
+	var total_width:=0;var total_height:=0;var total_room_area:=0
+	for room:Rect2i in layout.rooms:
+		total_width+=room.size.x;total_height+=room.size.y
+		total_room_area+=room.size.x*room.size.y
+		check(room.size.x>=9 and room.size.y>=9 \
+				and room.size.x<=15 and room.size.y<=15,
+			"product chamber is visibly larger than a corridor pocket")
+	for center:Vector2i in layout.room_centers:
+		check(DungeonMap.reachable(layout,entry,center),
+			"entry reaches every generated chamber center")
+	check(float(total_width)/layout.rooms.size()>=11.0 \
+			and float(total_height)/layout.rooms.size()>=11.0 \
+			and total_room_area>=1900,
+		"96x96 seed sample has mobile-readable chamber dimensions")
 	check(not layout.door_positions.is_empty(), "dungeon exposes open-door features")
 	check(not layout.hazards.is_empty(), "dungeon exposes hazard positions")
 	for material_id in ["shallow_water", "metal", "wood_floor", "rubble"]:
 		check(not layout.material_positions[material_id].is_empty(),
 			"material terrain present: %s" % material_id)
-	for x in range(48):
+	for x in range(layout.width):
 		check_eq(DungeonMap.terrain_at(layout, Vector2i(x, 0)), "wall", "north border")
-		check_eq(DungeonMap.terrain_at(layout, Vector2i(x, 47)), "wall", "south border")
-	for y in range(48):
+		check_eq(DungeonMap.terrain_at(layout, Vector2i(x,layout.height-1)), "wall", "south border")
+	for y in range(layout.height):
 		check_eq(DungeonMap.terrain_at(layout, Vector2i(0, y)), "wall", "west border")
-		check_eq(DungeonMap.terrain_at(layout, Vector2i(47, y)), "wall", "east border")
+		check_eq(DungeonMap.terrain_at(layout, Vector2i(layout.width-1,y)), "wall", "east border")
+	return finish()
+
+
+func _shortest_floor_distance(layout:Dictionary,start:Vector2i,goal:Vector2i)->int:
+	var frontier:Array[Vector2i]=[start];var distance:Dictionary={start:0}
+	var cursor:=0
+	while cursor<frontier.size():
+		var current:Vector2i=frontier[cursor];cursor+=1
+		if current==goal:return int(distance[current])
+		for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:
+			var next:Vector2i=current+direction
+			if distance.has(next) or DungeonMap.terrain_at(layout,next)=="wall":continue
+			distance[next]=int(distance[current])+1;frontier.append(next)
+	return -1
+
+
+func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bool:
+	var current:=DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,44)
+	var legacy:=DungeonMap.generate_legacy(48,48,44)
+	check_eq([current.ruleset_id,legacy.ruleset_id],
+		[DungeonMap.RULESET_ID,DungeonMap.LEGACY_RULESET_ID],
+		"current and deployed map rulesets are explicit")
+	check(current.terrain!=legacy.terrain and DungeonMap.reachable(current,
+		current.entry_position,current.exit_position) and DungeonMap.reachable(legacy,
+		legacy.entry_position,legacy.exit_position),
+		"both enlarged and deployed seed layouts remain deterministic and connected")
+	var old_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(old_session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,legacy),
+		"legacy product topology fixture initializes")
+	var restored=Session.new(1,2)
+	var restore_result:Dictionary=restored.load_session_json(old_session.save_session_json())
+	check(bool(restore_result.get("accepted",false)),
+		"deployed v6 product save auto-detects its immutable legacy terrain: %s" \
+		%str(restore_result))
+	if bool(restore_result.get("accepted",false)):
+		check_eq(restored.sim.snapshot(),old_session.sim.snapshot(),
+			"legacy seed save replays against the original room and door geometry")
+	var legacy_v5:Dictionary=JSON.parse_string(old_session.save_session_json())
+	legacy_v5.snapshot.party_encounter.schema_version=5
+	legacy_v5.snapshot.party_encounter.erase("diagonal_gateway_positions")
+	var migrated=Session.new(3,4)
+	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
+	check(bool(migration_result.get("accepted",false)),
+		"legacy v5 save reconstructs gateways from the matching deployed generator: %s" \
+		%str(migration_result))
+	if bool(migration_result.get("accepted",false)):
+		var expected_legacy:Dictionary=old_session.sim.snapshot()
+		expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
+			str(old_session.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
+		expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
+		check_eq(migrated.sim.snapshot(),expected_legacy,
+			"legacy v5 migration preserves doors/replay with legacy-only item baseline")
 	return finish()
 
 
@@ -46,7 +117,7 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(first.sim != null and second.sim != null, "solo sessions initialize")
 	if first.sim == null or second.sim == null:
 		return finish()
-	check_eq([first.sim.world.width, first.sim.world.height], [48, 48],
+	check_eq([first.sim.world.width, first.sim.world.height], [96, 96],
 		"solo world is larger than the viewport")
 	check_eq(first.sim.snapshot(), second.sim.snapshot(),
 		"same seed reproduces authoritative world and spawns")

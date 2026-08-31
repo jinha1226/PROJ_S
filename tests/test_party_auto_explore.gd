@@ -273,11 +273,15 @@ func test_auto_explore_canonical_move_round_trips_through_existing_replay() -> b
 func _safe_product_session(seed: int):
 	var session = Session.new(seed, 20260828, "SOLO_COMBAT_V1")
 	var state = session.sim.world.party_encounter
-	var enemy_id := int(state.enemy_ids[0])
-	var hidden := _hidden_passable_cell(session, enemy_id)
-	if hidden != Vector2i(-1, -1):
-		session.sim.world.entities[enemy_id].position = hidden
-	state.enemy_busy_rows[enemy_id] = 1000000000
+	# Product dungeons now own a full monster roster. This helper isolates AUTO's
+	# fog/frontier behavior, so hide every enemy instead of only the historical
+	# single fixture enemy. A newly visible roster member must still stop AUTO.
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id := int(enemy_id_value)
+		var hidden := _hidden_passable_cell(session, enemy_id)
+		if hidden != Vector2i(-1, -1):
+			session.sim.world.entities[enemy_id].position = hidden
+		state.enemy_busy_rows[enemy_id] = 1000000000
 	return session
 
 

@@ -15,6 +15,23 @@ func test_full_map_preserves_coordinates_and_returns_detached_specs()->bool:
 		"large overlay does not fold the dungeon into sectors")
 	overlay.free();return finish()
 
+func test_expanded_product_map_preserves_ninety_six_coordinate_edges()->bool:
+	var overlay=Overlay.new();overlay.set_observation(_observation(96,96,[
+		_cell(0,0,"VISIBLE","wall"),_cell(95,95,"MEMORY","stone_floor")]))
+	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"#","96-map northwest wall")
+	check_eq(overlay.cell_draw_spec(Vector2i(95,95)).glyph,"·","96-map southeast floor")
+	check_eq(overlay.cell_draw_spec(Vector2i(96,95)).glyph,"","96-map bounds stay exact")
+	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
+		var layout:Dictionary=overlay.layout_spec(viewport_size)
+		var slot:Vector2=layout.cell_size;var font_size:=int(layout.font_size)
+		check_eq([layout.world_width,layout.world_height],[96,96],
+			"%s expanded overlay dimensions"%viewport_size)
+		check(Overlay.CodingFontBold.get_height(font_size)<=slot.y+0.01 \
+				and Overlay.CodingFontBold.get_string_size("@",HORIZONTAL_ALIGNMENT_LEFT,
+					-1,font_size).x<=slot.x+0.01,
+			"%s 96-map glyphs fit their square cells"%viewport_size)
+	overlay.free();return finish()
+
 func test_priority_and_semantic_glyph_palette_contract()->bool:
 	var overlay=Overlay.new();overlay.set_observation(_observation(48,48,[
 		_cell(1,1,"VISIBLE","stone_floor","HERO"),

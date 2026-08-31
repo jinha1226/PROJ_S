@@ -24,6 +24,7 @@ var reload_time: int
 var trait_id: String
 var secondary_damage_milli: int
 var stun_chance_milli: int
+var two_handed: bool
 
 
 func _init(row: Dictionary = {}) -> void:
@@ -44,6 +45,7 @@ func _init(row: Dictionary = {}) -> void:
 	trait_id = str(row.get("trait_id", "NONE"))
 	secondary_damage_milli = int(row.get("secondary_damage_milli", 0))
 	stun_chance_milli = int(row.get("stun_chance_milli", 0))
+	two_handed = bool(row.get("two_handed", false))
 
 
 func validation_error() -> String:
@@ -64,6 +66,7 @@ func validation_error() -> String:
 	if trait_id not in TRAIT_IDS: return "invalid_weapon_trait"
 	if secondary_damage_milli < 0 or secondary_damage_milli > 1000: return "invalid_weapon_secondary_damage"
 	if stun_chance_milli < 0 or stun_chance_milli > 1000: return "invalid_weapon_stun_chance"
+	if not two_handed is bool: return "invalid_weapon_hands"
 	if (trait_id == "AXE_CLEAVE") != (secondary_damage_milli > 0): return "invalid_weapon_cleave_contract"
 	if (trait_id == "BLUNT_STUN") != (stun_chance_milli > 0): return "invalid_weapon_stun_contract"
 	return ""
@@ -79,4 +82,5 @@ func to_dict() -> Dictionary:
 		"reload_required": reload_required, "reload_time": reload_time,
 		"trait_id": trait_id, "secondary_damage_milli": secondary_damage_milli,
 		"stun_chance_milli": stun_chance_milli,
+		"two_handed": two_handed,
 	}.duplicate(true)

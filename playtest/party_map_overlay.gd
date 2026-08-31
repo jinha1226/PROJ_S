@@ -40,7 +40,7 @@ const PANEL_INSET:=12.0
 const HEADER_HEIGHT:=30.0
 const FOOTER_HEIGHT:=30.0
 const FRAME_FONT_SIZE:=12
-const MIN_MAP_FONT_SIZE:=5
+const MIN_MAP_FONT_SIZE:=2
 const MAX_MAP_FONT_SIZE:=9
 
 var _world_width:=48

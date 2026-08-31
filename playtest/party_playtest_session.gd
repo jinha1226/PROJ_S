@@ -20,6 +20,13 @@ const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
+const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
+const InventoryScript=preload("res://sim/protagonist_inventory_state.gd")
+const GroundItemScript=preload("res://sim/ground_item_state.gd")
+const ItemScript=preload("res://sim/item_instance.gd")
+const ItemRegistryScript=preload("res://sim/item_registry.gd")
+const ItemOperationsScript=preload("res://sim/item_inventory_operations.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -41,8 +48,14 @@ const RESCUE_TIME_COST := 100
 const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
+const ITEM_ACTION_TIME_COST := 100
 const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
-const MAX_UI_VIEW_CELL_COUNT := 19
+# Product camera steps are a presentation contract shared with the sandbox.
+# Keep the complete sequence here so adding a zoom level cannot leave the UI
+# observer at a smaller, silently truncated capacity.
+const PRODUCT_ZOOM_CELL_COUNTS := [11,13,15,17,19,21,23,25]
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 15
+const MAX_UI_VIEW_CELL_COUNT := PRODUCT_ZOOM_CELL_COUNTS[-1]
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
 		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
@@ -75,6 +88,7 @@ var _map_layout: Dictionary = {}
 # authority: this cache is never serialized and is discarded whenever its
 # world/history/topology identity no longer matches.
 var _explored_presentation_cache: Dictionary = {}
+var _presentation_topology_cache:Dictionary={}
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -142,11 +156,13 @@ static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
 	return distance >= NEW_EXPEDITION_MIN_PROFILE_DISTANCE
 
 func reset_party(p_world_seed: int, p_personality_seed: int,
-		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> bool:
+		p_scenario_id: String = REGRESSION_SCENARIO_ID,
+		product_layout_override:Dictionary={}) -> bool:
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
 	var product_dungeon := VisualTestMapScript.uses_product_dungeon(p_scenario_id)
-	var map_layout: Dictionary = VisualTestMapScript.product_dungeon(p_world_seed) \
-		if product_dungeon else {}
+	var map_layout: Dictionary = (product_layout_override.duplicate(true) \
+		if product_dungeon and not product_layout_override.is_empty() \
+		else (VisualTestMapScript.product_dungeon(p_world_seed) if product_dungeon else {}))
 	if product_dungeon and map_layout.is_empty(): return false
 	var world_width := int(map_layout.get("width", 15))
 	var world_height := int(map_layout.get("height", 15))
@@ -179,8 +195,24 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		["party_member", "recruitable"], "dwarf", "party") if showcase else null
 	var candidate_amphibian = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
 		["recruitable", "rescue_npc"], "amphibian", "neutral") if showcase else null
-	var enemy = candidate.world.add_entity("melee_enemy", "고블린", enemy_position, 60, ["party_enemy"], "goblin", "enemy")
-	if protagonist == null or enemy == null or (not solo and (narae == null or miru == null)) \
+	var enemy_roster:Array=map_layout.get("enemy_roster",[]).duplicate(true)
+	if enemy_roster.is_empty():
+		for generated_position in generated_enemies:
+			enemy_roster.append({"position":generated_position,"species_id":"goblin"})
+	if enemy_roster.is_empty():enemy_roster=[{"position":enemy_position,"species_id":"goblin"}]
+	var enemies:Array=[]
+	for enemy_row_value in enemy_roster:
+		var enemy_row:Dictionary=enemy_row_value
+		var enemy_profile:Dictionary=EnemyPerceptionRegistryScript.profile(
+			str(enemy_row.get("species_id","goblin")))
+		if enemy_profile.is_empty():return false
+		var spawn_position:Vector2i=enemy_row.get("position",Vector2i(-1,-1))
+		var spawned=candidate.world.add_entity(str(enemy_profile.entity_kind),
+			str(enemy_profile.display_name),spawn_position,int(enemy_profile.max_health),
+			["party_enemy"],str(enemy_profile.species_id),"enemy")
+		if spawned==null:return false
+		enemies.append(spawned)
+	if protagonist == null or enemies.is_empty() or (not solo and (narae == null or miru == null)) \
 			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
 		return false
 	_configure_party_species_relations(candidate)
@@ -194,7 +226,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.party_member_ids.append(protagonist.id)
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
-	state.enemy_ids.append(enemy.id)
+	for enemy_entity in enemies:state.enemy_ids.append(enemy_entity.id)
 	if VisualTestMapScript.uses_los_fov(p_scenario_id):
 		# Product-map objectives stay traversable even while monsters patrol. This
 		# reservation is authoritative state so save/load and journal replay do not
@@ -233,7 +265,16 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if showcase:
 		state.member_rows[candidate_dwarf.id] = MemberScript.new(candidate_dwarf.id, 3,
 			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 2))
-	state.enemy_busy_rows[enemy.id] = 0
+	for enemy_entity in enemies:
+		state.enemy_busy_rows[enemy_entity.id]=0
+		state.enemy_awareness_rows[enemy_entity.id]=EnemyAwarenessScript.new(
+			enemy_entity.id,enemy_entity.position)
+	state.protagonist_inventory=InventoryScript.new([
+		ItemScript.new("LEGACY_MAIN_HAND",ItemRegistryScript.weapon_definition_id("SHORT_SWORD")),
+		ItemScript.new("START_POTION_001","POTION_UNSPECIFIED")],
+		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
+	state.ground_items=GroundItemScript.new(_initial_ground_item_rows(candidate,
+		hero_position,map_layout) if product_dungeon else [])
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
@@ -242,6 +283,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	scenario_id = p_scenario_id
 	_map_layout = map_layout.duplicate(true)
 	_invalidate_explored_presentation_cache()
+	_presentation_topology_cache.clear()
+	_warm_product_topology_presentation_cache()
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
@@ -252,6 +295,33 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 
 func is_solo_combat()->bool:
 	return scenario_id in [SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
+
+
+func _initial_ground_item_rows(candidate,hero_position:Vector2i,
+		map_layout:Dictionary)->Array:
+	var blocked:Array=map_layout.get("door_positions",[]).duplicate()
+	blocked.append(map_layout.get("entry_position",Vector2i(-1,-1)))
+	blocked.append(map_layout.get("exit_position",Vector2i(-1,-1)))
+	var candidates:Array[Vector2i]=[]
+	for y in range(maxi(0,hero_position.y-5),mini(candidate.world.height,hero_position.y+6)):
+		for x in range(maxi(0,hero_position.x-5),mini(candidate.world.width,hero_position.x+6)):
+			var position:=Vector2i(x,y)
+			var distance:=maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y))
+			if distance<2 or position in blocked or not candidate.world.occupying_entities_at(position).is_empty():continue
+			var tile=candidate.world.tile_at(position)
+			var terrain:=TerrainRegistryScript.definition(str(tile.terrain))
+			if terrain.is_empty() or not bool(terrain.get("passable",false)) \
+					or int(tile.fire)>0 or int(tile.wetness)>0:continue
+			candidates.append(position)
+	candidates.sort_custom(func(a:Vector2i,b:Vector2i):
+		var da:=maxi(absi(a.x-hero_position.x),absi(a.y-hero_position.y))
+		var db:=maxi(absi(b.x-hero_position.x),absi(b.y-hero_position.y))
+		return da<db if da!=db else (a.y<b.y if a.y!=b.y else a.x<b.x))
+	if candidates.size()<2:return []
+	return [{"position":[candidates[0].x,candidates[0].y],
+		"item":ItemScript.new("GROUND_START_SHIELD","SHIELD_WOOD").to_dict()},
+		{"position":[candidates[1].x,candidates[1].y],
+		"item":ItemScript.new("GROUND_START_PADDED","ARMOR_PADDED").to_dict()}]
 
 
 func protagonist_progression()->Dictionary:
@@ -330,6 +400,175 @@ func protagonist_equipment()->Dictionary:
 		"attack_block_reason":loadout.attack_error()}.duplicate(true)
 
 
+func protagonist_inventory()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return {"schema_version":1,"available":false}.duplicate(true)
+	var state=sim.world.party_encounter
+	var inventory=state.protagonist_inventory
+	var slot_rows:Array=[]
+	for slot in preload("res://sim/item_definition.gd").EQUIPMENT_SLOTS:
+		var instance_id:=str(inventory.equipped.get(slot,""))
+		slot_rows.append(_item_presentation_row(inventory.item(instance_id),slot,true))
+	var backpack_rows:Array=[]
+	for item in inventory.unequipped_items():
+		backpack_rows.append(_item_presentation_row(item,"",false))
+	return {"schema_version":1,"available":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
+		"used_backpack_slots":inventory.used_backpack_slots(),
+		"equipment_slots":slot_rows,"backpack_rows":backpack_rows,
+		"equipment_bonuses":inventory.equipment_bonuses()}.duplicate(true)
+
+
+func ground_items_at_protagonist()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
+	var state=sim.world.party_encounter
+	var hero=sim.world.entities.get(state.protagonist_id)
+	if hero==null:return rows
+	for ground_row in state.ground_items.rows:
+		if ground_row.position==hero.position:
+			rows.append(_item_presentation_row(ground_row.item,"",false))
+	return rows.duplicate(true)
+
+
+func visible_ground_items_at(position:Vector2i)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	var context:=_party_observation_context()
+	if context.is_empty() or not context.visible.has(_position_key(position)):return rows
+	for ground_row in sim.world.party_encounter.ground_items.rows:
+		if ground_row.position==position:
+			rows.append(_item_presentation_row(ground_row.item,"",false))
+	return rows.duplicate(true)
+
+
+func pickup_ground_item(instance_id:String)->Dictionary:
+	return _commit_item_operation("PICKUP",instance_id,"")
+
+
+func equip_inventory_item(instance_id:String,slot:String)->Dictionary:
+	return _commit_item_operation("EQUIP",instance_id,slot)
+
+
+func unequip_inventory_slot(slot:String)->Dictionary:
+	return _commit_item_operation("UNEQUIP","",slot)
+
+
+func drop_inventory_item(instance_id:String)->Dictionary:
+	return _commit_item_operation("DROP",instance_id,"")
+
+
+func discard_inventory_item(instance_id:String)->Dictionary:
+	return _commit_item_operation("DISCARD",instance_id,"")
+
+
+func _commit_item_operation(action:String,instance_id:String,slot:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():
+		return _rejection_dto("run_complete")
+	if not sim.world.is_settled() or _protagonist_draft!=null:
+		return _rejection_dto("world_not_settled")
+	var hero=sim.world.entities.get(state.protagonist_id)
+	if hero==null:return _rejection_dto("item_actor_missing")
+	var bounds:=Rect2i(Vector2i.ZERO,Vector2i(sim.world.width,sim.world.height))
+	var preview:Dictionary
+	match action:
+		"PICKUP":preview=ItemOperationsScript.preview_pickup(state.protagonist_inventory,
+			state.ground_items,instance_id,hero.position,bounds)
+		"EQUIP":preview=ItemOperationsScript.preview_equip(state.protagonist_inventory,
+			instance_id,slot)
+		"UNEQUIP":preview=ItemOperationsScript.preview_unequip(state.protagonist_inventory,slot)
+		"DROP":preview=ItemOperationsScript.preview_drop(state.protagonist_inventory,
+			state.ground_items,instance_id,hero.position,bounds)
+		"DISCARD":preview=ItemOperationsScript.preview_discard(state.protagonist_inventory,instance_id)
+		_:return _rejection_dto("unknown_item_operation")
+	if not bool(preview.get("accepted",false)):
+		return _rejection_dto(str(preview.get("reason","item_operation_failed")))
+	var before:Dictionary=sim.snapshot()
+	var journal_size_before:=command_journal.size()
+	var step_result:Dictionary=_advance_item_action_time()
+	if not bool(step_result.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_time_step_failed")
+	while command_journal.size()>journal_size_before:command_journal.pop_back()
+	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
+	var result:Dictionary
+	match action:
+		"PICKUP":result=ItemOperationsScript.commit_pickup(state.protagonist_inventory,
+			state.ground_items,instance_id,hero.position,bounds)
+		"EQUIP":result=ItemOperationsScript.commit_equip(state.protagonist_inventory,instance_id,slot)
+		"UNEQUIP":result=ItemOperationsScript.commit_unequip(state.protagonist_inventory,slot)
+		"DROP":result=ItemOperationsScript.commit_drop(state.protagonist_inventory,
+			state.ground_items,instance_id,hero.position,bounds)
+		"DISCARD":result=ItemOperationsScript.commit_discard(state.protagonist_inventory,instance_id)
+	if not bool(result.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(result.get("reason","item_operation_failed")))
+	state.protagonist_inventory=result.inventory
+	if result.has("ground"):state.ground_items=result.ground
+	var main=state.protagonist_inventory.equipped_item("MAIN_HAND")
+	var weapon_id:="UNARMED"
+	if main!=null:
+		var definition=ItemRegistryScript.definition(main.definition_id)
+		weapon_id=str(definition.weapon_id)
+	if str(state.protagonist_loadout.equipped_weapon_id)!=weapon_id:
+		state.protagonist_loadout.equip(weapon_id)
+	var event_type:="item.%s"%({"PICKUP":"picked_up","EQUIP":"equipped",
+		"UNEQUIP":"unequipped","DROP":"dropped","DISCARD":"discarded"}[action])
+	var event=sim.world.emit_event(event_type,state.protagonist_id,-1,hero.position,0,-1,
+		{"schema_version":1,"action":action,"instance_id":str(result.get("instance_id",instance_id)),
+			"slot":slot,"time_cost":ITEM_ACTION_TIME_COST})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto(state_error if not state_error.is_empty() else "item_event_failed")
+	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
+	command_journal.append({"kind":"item","operation":{"action":action,
+		"instance_id":instance_id,"slot":slot}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"time_cost":ITEM_ACTION_TIME_COST,"inventory":protagonist_inventory()})
+
+
+func _advance_item_action_time()->Dictionary:
+	var state=sim.world.party_encounter
+	if state.safe_phase=="CONTACT" and is_solo_combat():
+		var prepared:Dictionary=enter_solo_combat()
+		if not bool(prepared.get("accepted",false)):return prepared
+		state=sim.world.party_encounter
+	if state.safe_phase=="ENGAGED":
+		# Item use replaces the protagonist's action while the ordinary party-turn
+		# resolver advances enemies/companions. HOLD is the existing no-movement
+		# canonical time action and retains its ordinary short guard projection.
+		var hero_id:=int(state.protagonist_id)
+		var advanced:Dictionary=commit_direct_solo_action(hero_id,"HOLD") \
+			if is_solo_combat() else _commit_item_time_party_turn(hero_id)
+		return advanced
+	var result=sim.step(CommandScript.wait_for(ITEM_ACTION_TIME_COST,state.protagonist_id))
+	if result.accepted:_advance_exile_world()
+	return {"accepted":bool(result.accepted),"reason":str(result.reason)}
+
+
+func _commit_item_time_party_turn(hero_id:int)->Dictionary:
+	var started:Dictionary=begin_turn(ActionScript.hold(hero_id))
+	if not bool(started.get("accepted",false)):return started
+	return commit_turn()
+
+
+func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
+	if item==null:return {"slot":slot,"equipped":equipped,"empty":true}.duplicate(true)
+	var definition=ItemRegistryScript.definition(item.definition_id)
+	var glyph:="*"
+	match str(definition.category):
+		"WEAPON":glyph=")"
+		"ARMOR":glyph="["
+		"ACCESSORY":glyph="="
+		"CONSUMABLE":glyph="?" if item.definition_id.begins_with("SCROLL") else "!"
+	return {"slot":slot,"equipped":equipped,"empty":false,
+		"instance_id":item.instance_id,"definition_id":item.definition_id,
+		"label":definition.label,"category":definition.category,"glyph":glyph,
+		"quantity":item.quantity,"rarity":item.rarity,
+		"equip_slots":definition.equip_slots.duplicate(),"placeholder":definition.placeholder}.duplicate(true)
+
+
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
@@ -343,6 +582,17 @@ func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 	var before:Dictionary=sim.snapshot()
 	if not sim.world.party_encounter.protagonist_loadout.equip(weapon_id):
 		return _rejection_dto("weapon_unchanged")
+	var inventory=sim.world.party_encounter.protagonist_inventory
+	var main_id:=str(inventory.equipped.get("MAIN_HAND",""))
+	if main_id.is_empty():main_id="LEGACY_MAIN_HAND"
+	for index in range(inventory.backpack.size()-1,-1,-1):
+		if inventory.backpack[index].instance_id==main_id:inventory.backpack.remove_at(index)
+	inventory.backpack.append(ItemScript.new(main_id,
+		ItemRegistryScript.weapon_definition_id(weapon_id)))
+	inventory.equipped.MAIN_HAND=main_id
+	if ItemRegistryScript.is_two_handed(ItemRegistryScript.weapon_definition_id(weapon_id)):
+		inventory.equipped.OFF_HAND=""
+	inventory._sort_backpack()
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
@@ -702,6 +952,11 @@ func _party_observation_context()->Dictionary:
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
 		hero_position)
 	var follower_positions := _grouped_follower_display_positions(visible)
+	var ground_items_by_cell:Dictionary={}
+	for ground_row in sim.world.party_encounter.ground_items.rows:
+		var ground_key:=_position_key(ground_row.position)
+		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
+		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
 	var followers_by_cell: Dictionary = {}
 	for member_id_value in follower_positions:
 		var member_id := int(member_id_value)
@@ -711,7 +966,8 @@ func _party_observation_context()->Dictionary:
 		followers_by_cell[follower_key].append(member_id)
 	return {"status":status,"progress":progress,"hide_enemies":hide_enemies,
 		"hero_id":int(status.protagonist_id),"hero_position":hero_position,
-		"visible":visible,"explored":explored,"followers_by_cell":followers_by_cell}
+		"visible":visible,"explored":explored,"followers_by_cell":followers_by_cell,
+		"ground_items_by_cell":ground_items_by_cell}
 
 
 func _party_rich_observation(context:Dictionary,bounds:Rect2i,
@@ -721,6 +977,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var visible:Dictionary=context.visible
 	var explored:Dictionary=context.explored
 	var followers_by_cell:Dictionary=context.followers_by_cell
+	var ground_items_by_cell:Dictionary=context.ground_items_by_cell
 	var hide_enemies:=bool(context.hide_enemies)
 	var cells: Array = []
 	var minimum:=Vector2i(maxi(0,bounds.position.x),maxi(0,bounds.position.y))
@@ -735,7 +992,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			if visibility_state == "UNSEEN":
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
-					"effective_conductivity":0, "actors":[]})
+					"effective_conductivity":0, "actors":[],"ground_items":[]})
 				continue
 			var tile = sim.world.tile_at(position)
 			if visibility_state=="MEMORY":
@@ -743,7 +1000,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				# decision data remain unavailable outside the current field of view.
 				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
 					"feature_id":"","visibility_state":"MEMORY","fire_intensity":0,
-					"wetness":0,"effective_conductivity":0,"actors":[]})
+					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
 				continue
 			var actors: Array = []
 			for entity in sim.world.occupying_entities_at(position):
@@ -763,7 +1020,8 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				"feature_id":_run_feature_id_at(position, progress),
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
-				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors})
+				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
+				"ground_items":ground_items_by_cell.get(position_key,[]).duplicate(true)})
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
 		"phase":status, "grid_mapping": {"origin": [grid_origin.x,grid_origin.y],
@@ -795,24 +1053,28 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 			var enemy_position:Vector2i=sim.world.entities[enemy_id].position
 			var enemy_key:=_position_key(enemy_position)
 			if visible.has(enemy_key) and not markers.has(enemy_key):markers[enemy_key]="ENEMY"
+	var known_keys:Dictionary={}
+	for key_value in explored:known_keys[str(key_value)]=true
+	for key_value in visible:known_keys[str(key_value)]=true
+	var known_positions:Array[Vector2i]=[]
+	for key_value in known_keys:
+		var parts:=str(key_value).split(":")
+		if parts.size()!=2:continue
+		var position:=Vector2i(int(parts[0]),int(parts[1]))
+		if sim.world.in_bounds(position):known_positions.append(position)
+	known_positions.sort_custom(func(a:Vector2i,b:Vector2i):
+		return a.y<b.y if a.y!=b.y else a.x<b.x)
 	var cells:Array=[]
-	for y in range(sim.world.height):
-		for x in range(sim.world.width):
-			var position:=Vector2i(x,y)
-			var key:=_position_key(position)
-			var state:="VISIBLE" if visible.has(key) else (
-				"MEMORY" if explored.has(key) else "UNSEEN")
-			# Omitted compact rows are explicitly UNSEEN in PartyMinimap. This keeps
-			# never-observed terrain identity out of the DTO entirely.
-			if state=="UNSEEN":continue
-			# EXIT is static discovered cartography, not live feature authority. Actor
-			# markers still win on a currently visible shared cell; MEMORY can retain
-			# only this static marker and never enemy/target/hazard information.
-			var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
-			if marker.is_empty() and key==exit_key:marker="EXIT"
-			cells.append({"position":[x,y],"visibility_state":state,
-				"terrain_id":str(sim.world.tile_at(position).terrain),
-				"marker":marker})
+	for position in known_positions:
+		var key:=_position_key(position)
+		var state:="VISIBLE" if visible.has(key) else "MEMORY"
+		# EXIT is static discovered cartography, not live feature authority. Actor
+		# markers still win on a currently visible shared cell; MEMORY can retain
+		# only this static marker and never enemy/target/hazard information.
+		var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
+		if marker.is_empty() and key==exit_key:marker="EXIT"
+		cells.append({"position":[position.x,position.y],"visibility_state":state,
+			"terrain_id":str(sim.world.tile_at(position).terrain),"marker":marker})
 	return {"schema_version":1,"width":sim.world.width,"height":sim.world.height,
 		"cells":cells}
 
@@ -885,12 +1147,38 @@ func _presentation_event_boundary_signature(event)->String:
 
 
 func _presentation_topology_fingerprint()->int:
+	# Product dungeon terrain is bootstrap-only: once its initial environment
+	# events exist, `bootstrap_set_terrain` cannot mutate it. Reuse the verified
+	# topology value for the same live world instead of rescanning all 96x96 tiles
+	# on every AUTO/route hop. Small fixture worlds keep the per-call regression
+	# check used by topology-mutation tests; reset/load already clears this cache.
+	if sim.world.width*sim.world.height>MAX_UI_VIEW_CELL_COUNT*MAX_UI_VIEW_CELL_COUNT \
+			and int(_presentation_topology_cache.get("world_instance_id",-1)) \
+			==int(sim.world.get_instance_id()) \
+			and str(_presentation_topology_cache.get("scenario_id",""))==scenario_id \
+			and _presentation_topology_cache.has("topology_fingerprint"):
+		return int(_presentation_topology_cache.topology_fingerprint)
+	return _scan_presentation_topology_fingerprint()
+
+
+func _scan_presentation_topology_fingerprint()->int:
 	var fingerprint:=posmod(sim.world.width*131+sim.world.height,2147483647)
 	for y in range(sim.world.height):
 		for x in range(sim.world.width):
 			fingerprint=posmod(fingerprint*33+str(
 				sim.world.tile_at(Vector2i(x,y)).terrain).hash(),2147483647)
 	return fingerprint
+
+
+func _warm_product_topology_presentation_cache()->void:
+	if sim==null or sim.world==null \
+			or sim.world.width*sim.world.height<=MAX_UI_VIEW_CELL_COUNT*MAX_UI_VIEW_CELL_COUNT:
+		return
+	_presentation_topology_cache={
+		"world_instance_id":int(sim.world.get_instance_id()),
+		"scenario_id":scenario_id,
+		"topology_fingerprint":_scan_presentation_topology_fingerprint(),
+	}
 
 
 func _invalidate_explored_presentation_cache()->void:
@@ -978,6 +1266,20 @@ func _actor_observation(entity, logical_position: Vector2i,
 		"is_enemy":is_enemy,
 		"sprite_frame":0 if member != null and member.role == "PROTAGONIST" \
 			else (4 if member != null else 5)}
+	if is_enemy:
+		# This helper is called only while materializing a currently VISIBLE cell.
+		# MEMORY and UNSEEN rows never contain actors, so awareness authority cannot
+		# leak through fog-of-war.
+		var awareness=sim.world.party_encounter.enemy_awareness(entity.id)
+		var perception_profile:Dictionary=EnemyPerceptionRegistryScript.profile(
+			str(entity.species_id))
+		if awareness!=null and not perception_profile.is_empty():
+			dto["awareness_state"]=str(awareness.awareness_state)
+			dto["suspicion"]=int(awareness.suspicion)
+			dto["sight_range"]=int(perception_profile.sight_range)
+			dto["perception"]=int(perception_profile.perception)
+			dto["last_known_position"]=[awareness.last_known_target_position.x,
+				awareness.last_known_target_position.y]
 	if member == null and _rescue_discovery_event_for(entity.id) != null:
 		var story_state := rescue_story_state(entity.id)
 		dto["display_role"] = "RESCUE_NPC"
@@ -1942,6 +2244,35 @@ func set_actor_action(actor_id: int, action_type: String, destination: Array = [
 	return begin_turn(action) if actor_id == state.protagonist_id else override_companion(actor_id, action)
 
 
+func commit_direct_solo_action(actor_id:int,action_type:String,
+		destination:Array=[],target_id:int=-1)->Dictionary:
+	# Product solo input is already the complete trusted request. The simulator
+	# validates/freezes it once and then uses the same rollback, event, schedule and
+	# semantic-validation commit tail as the externally supplied plan path.
+	if not is_solo_combat() or sim==null or sim.world==null \
+			or sim.world.party_encounter==null:
+		return _rejection_dto("direct_solo_action_required")
+	var state=sim.world.party_encounter
+	if state.safe_phase!="ENGAGED" or state.active_party_member_ids!=[state.protagonist_id] \
+			or actor_id!=state.protagonist_id:
+		return _rejection_dto("direct_solo_action_required")
+	var action=_make_action(actor_id,action_type,destination,target_id)
+	if action==null:
+		return _rejection_dto("invalid_party_destination" if action_type=="MOVE" \
+			else "invalid_party_action")
+	_exploration_route.cancel_for_direct_command()
+	var copied_action=_canonical_action_copy(action)
+	if copied_action==null:return _rejection_dto("invalid_party_action")
+	var request=RequestScript.new(copied_action,[])
+	var result=sim.step_direct_solo_party_turn(request)
+	if result.accepted:
+		_advance_exile_world()
+		command_journal.append({"kind":"party_turn",
+			"request":request.to_dict().duplicate(true)})
+		_clear_draft()
+	return _result_dto(result,null,request)
+
+
 func preview_actor_action(actor_id: int, action_type: String, destination: Array = [],
 		target_id: int = -1) -> Dictionary:
 	# UI hover/tap preview must not mutate the pending direct action or overrides.
@@ -2424,9 +2755,14 @@ func enter_solo_combat() -> Dictionary:
 	if state==null or state.party_member_ids!=[state.protagonist_id] \
 			or state.active_party_member_ids!=[state.protagonist_id]:
 		return _rejection_dto("invalid_companion_ids")
-	var preview:Dictionary=preview_deployment("LINE",[])
-	if not bool(preview.get("accepted",false)):return preview
-	return commit_deployment()
+	_exploration_route.cancel_for_direct_command()
+	var result=sim.deploy_solo_party()
+	if result.accepted:
+		_advance_exile_world()
+		command_journal.append({"kind":"deployment",
+			"request":{"preset_id":"LINE","companion_ids":[]}})
+		_deployment_plan.clear()
+	return _result_dto(result)
 
 func commit_deployment() -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -2575,6 +2911,10 @@ func commit_turn() -> Dictionary:
 	if _protagonist_placeholder:
 		return _rejection_dto("protagonist_action_required")
 	var preview := current_turn_preview()
+	return _commit_turn_from_preview(preview)
+
+
+func _commit_turn_from_preview(preview:Dictionary)->Dictionary:
 	if not bool(preview.get("accepted",false)): return preview
 	var request = RequestScript.from_dict(preview.canonical_request)
 	var plan_data := preview.duplicate(true)
@@ -2885,7 +3225,8 @@ func _is_important_log_event(event)->bool:
 			"party.npc_stabilized","party.recruitment_accepted",
 			"party.recruitment_refused","party.companion_recruited",
 			"party.companion_dismissed","party.exile_died","status.applied",
-			"status.expired"]:
+			"status.expired","item.picked_up","item.equipped","item.unequipped",
+			"item.dropped","item.discarded"]:
 		return true
 	return event_type.begins_with("combat.") and event_type.ends_with("_damage")
 
@@ -2912,7 +3253,14 @@ func load_session_json(encoded: String) -> Dictionary:
 		return _rejection_dto("invalid_party_session_wire")
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
+	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
+		decoded.snapshot.party_encounter.erase("protagonist_inventory")
+		decoded.snapshot.party_encounter.erase("ground_items")
+	if source_party_schema<PartyStateScript.AWARENESS_SCHEMA_VERSION \
+			and decoded.snapshot.party_encounter.has("enemy_awareness_rows"):
+		decoded.snapshot.party_encounter.erase("enemy_awareness_rows")
 	if source_party_schema<PartyStateScript.LOADOUT_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("protagonist_loadout"):
 		# A legacy row has no authoritative loadout field. This also supports
@@ -2935,19 +3283,33 @@ func load_session_json(encoded: String) -> Dictionary:
 		# Some callers build a legacy fixture by downgrading the version/current
 		# snapshot and removing the fields known at that historical boundary.
 		decoded.snapshot.party_encounter.erase("patrol_reserved_positions")
+	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
+	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
+	var parsed_scenario_id := str(decoded.scenario_id)
+	var replay_layout:Dictionary={}
+	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
+		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
+		var legacy_layout:=VisualTestMapScript.legacy_product_dungeon(parsed_world_seed)
+		# Detect before strict restoration, which may normalize input rows in place.
+		# Product terrain itself is immutable during play.
+		replay_layout=legacy_layout if _snapshot_terrain_matches_layout(
+			decoded.snapshot,legacy_layout) else current_layout
 	var restored = SimulatorScript.from_snapshot(decoded.snapshot)
 	if restored == null or restored.world.party_encounter == null:
 		var restore_reason := WorldStateScript.snapshot_restore_error(decoded.snapshot)
 		return _rejection_dto(restore_reason if not restore_reason.is_empty() else "invalid_party_snapshot")
-	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
-	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
-	var parsed_scenario_id := str(decoded.scenario_id)
+	if source_party_schema<PartyStateScript.AWARENESS_SCHEMA_VERSION:
+		for enemy_id_value in restored.world.party_encounter.enemy_ids:
+			var enemy_id:=int(enemy_id_value)
+			var awareness=restored.world.party_encounter.enemy_awareness(enemy_id)
+			if awareness!=null and restored.world.entities.has(enemy_id):
+				awareness.home_position=restored.world.entities[enemy_id].position
 	if source_party_schema<PartyStateScript.PATROL_SCHEMA_VERSION \
 			and VisualTestMapScript.uses_los_fov(parsed_scenario_id):
 		# v1/v2 saves predate patrol reservations. Reconstruct presentation-map
 		# objectives once at the checked migration boundary before replay compare.
-		var migrated_layout := VisualTestMapScript.product_dungeon(parsed_world_seed) \
-			if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id) else {}
+		var migrated_layout := replay_layout if VisualTestMapScript.uses_product_dungeon(
+			parsed_scenario_id) else {}
 		var migrated_manifest := VisualTestMapScript.run_manifest(
 			parsed_scenario_id, migrated_layout)
 		var migrated_positions: Array = [
@@ -2966,8 +3328,8 @@ func load_session_json(encoded: String) -> Dictionary:
 					migrated_position)
 	if source_party_schema<PartyStateScript.DIAGONAL_GATEWAY_SCHEMA_VERSION \
 			and VisualTestMapScript.uses_los_fov(parsed_scenario_id):
-		var gateway_layout := VisualTestMapScript.product_dungeon(parsed_world_seed) \
-			if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id) else {}
+		var gateway_layout := replay_layout if VisualTestMapScript.uses_product_dungeon(
+			parsed_scenario_id) else {}
 		var migrated_gateways: Array = gateway_layout.get("door_positions", []).duplicate()
 		if VisualTestMapScript.uses_showcase_layout(parsed_scenario_id):
 			migrated_gateways.append(VisualTestMapScript.OPEN_DOOR_POSITION)
@@ -2977,6 +3339,14 @@ func load_session_json(encoded: String) -> Dictionary:
 				restored.world.party_encounter.diagonal_gateway_positions.append(migrated_gateway)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
+	if not replay_layout.is_empty() and not replay.reset_party(parsed_world_seed,
+			parsed_personality_seed,parsed_scenario_id,replay_layout):
+		return _rejection_dto("party_layout_replay_failed")
+	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
+		var legacy_state=replay.sim.world.party_encounter
+		legacy_state.protagonist_inventory=InventoryScript.with_legacy_weapon(
+			str(legacy_state.protagonist_loadout.equipped_weapon_id))
+		legacy_state.ground_items=GroundItemScript.new()
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
@@ -2990,6 +3360,14 @@ func load_session_json(encoded: String) -> Dictionary:
 					str(progression_operation.mode)) \
 					if str(progression_operation.action)=="SET_TRAINING_MODE" \
 					else replay._replay_legacy_training_focus(str(progression_operation.skill_id))
+			"item":
+				var item_operation:Dictionary=row.operation
+				match str(item_operation.action):
+					"PICKUP":replay_result=replay.pickup_ground_item(str(item_operation.instance_id))
+					"EQUIP":replay_result=replay.equip_inventory_item(str(item_operation.instance_id),str(item_operation.slot))
+					"UNEQUIP":replay_result=replay.unequip_inventory_slot(str(item_operation.slot))
+					"DROP":replay_result=replay.drop_inventory_item(str(item_operation.instance_id))
+					"DISCARD":replay_result=replay.discard_inventory_item(str(item_operation.instance_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -3023,13 +3401,65 @@ func load_session_json(encoded: String) -> Dictionary:
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
 	_invalidate_explored_presentation_cache()
+	_presentation_topology_cache.clear()
+	_warm_product_topology_presentation_cache()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
+
+func _snapshot_terrain_matches_layout(snapshot:Dictionary,layout:Dictionary)->bool:
+	var tiles:Variant=snapshot.get("tiles",[]);var terrain:Variant=layout.get("terrain",[])
+	if not tiles is Array or not terrain is Array or tiles.size()!=terrain.size():return false
+	for index in range(tiles.size()):
+		if not tiles[index] is Dictionary \
+				or str(tiles[index].get("terrain",""))!=str(terrain[index]):return false
+	return true
+
+
+func _normalize_item_json_numbers(party_row:Variant)->void:
+	# JSON has no integer token type in Godot's generic decoder. Restore only the
+	# checked item integer fields at this transport boundary; direct wire APIs stay
+	# strict and non-integral/tampered values remain untouched and fail validation.
+	if not party_row is Dictionary:return
+	for key in ["protagonist_inventory","ground_items"]:
+		var root:Variant=party_row.get(key)
+		if not root is Dictionary:continue
+		if root.get("schema_version") is float and root.schema_version==floor(root.schema_version):
+			root.schema_version=int(root.schema_version)
+		if key=="protagonist_inventory":
+			if root.get("backpack_capacity") is float \
+					and root.backpack_capacity==floor(root.backpack_capacity):
+				root.backpack_capacity=int(root.backpack_capacity)
+			for item_row in root.get("backpack",[]):_normalize_item_instance_json_numbers(item_row)
+		else:
+			for ground_row in root.get("rows",[]):
+				if ground_row is Dictionary:
+					for index in range(2):
+						if ground_row.get("position") is Array and ground_row.position.size()==2 \
+								and ground_row.position[index] is float \
+								and ground_row.position[index]==floor(ground_row.position[index]):
+							ground_row.position[index]=int(ground_row.position[index])
+					_normalize_item_instance_json_numbers(ground_row.get("item"))
+
+
+func _normalize_item_instance_json_numbers(item_row:Variant)->void:
+	if not item_row is Dictionary:return
+	for key in ["schema_version","quantity"]:
+		if item_row.get(key) is float and item_row[key]==floor(item_row[key]):
+			item_row[key]=int(item_row[key])
 
 func _journal_wire_error(journal: Array) -> String:
 	for row in journal:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"item":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_item_journal"
+				var item_keys:Array=row.operation.keys();item_keys.sort()
+				if item_keys!=["action","instance_id","slot"] \
+						or not row.operation.action is String \
+						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD"] \
+						or not row.operation.instance_id is String or not row.operation.slot is String:
+					return "invalid_item_journal"
 			"equipment":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_equipment_journal"
@@ -3400,8 +3830,24 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 				var melee_row:=_melee_vfx_row(event,order)
 				if not melee_row.is_empty():rows.append(melee_row);order+=1
 		elif event_type == "combat.attack_missed":
-			rows.append(_visual_effect_row(event, "MISS", "miss", order,
-				"physical", 0, "빗나감"))
+			var miss_row:=_visual_effect_row(event,"MISS","miss",order,
+				"physical",0,"빗나감")
+			# Result leaves use actor_id=-1. Recover the canonical action cause and
+			# freeze its historical pair so refresh timing/occupancy cannot erase the
+			# attacker's presentation-only arm swing.
+			var attack=sim.world.event_by_id(int(event.cause_id)) if sim!=null \
+				and sim.world!=null else null
+			if attack!=null and str(attack.type)=="action.melee_attack":
+				var history:Dictionary=sim.world._entity_position_at_event(
+					int(attack.actor_id),int(attack.id))
+				if bool(history.get("ok",false)):
+					var attacker_position:Vector2i=history.position
+					var target_position:Vector2i=attack.position
+					miss_row["actor_id"]=int(attack.actor_id)
+					miss_row["target_id"]=int(attack.target_id)
+					miss_row["attacker_grid_pos"]=[attacker_position.x,attacker_position.y]
+					miss_row["target_grid_pos"]=[target_position.x,target_position.y]
+			rows.append(miss_row)
 			order += 1
 		elif event_type.begins_with("combat.") and event_type.ends_with("_damage"):
 			var damage_type := str(event.data.get("damage_type", "physical"))
@@ -3577,6 +4023,14 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"run_restart_not_ready":"원정을 완료하거나 실패한 뒤 다시 시작할 수 있습니다.",
 			"run_restart_failed":"같은 원정을 다시 준비하지 못했습니다.",
 			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
+			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
+			"equipment_slot_occupied":"그 장비 칸은 이미 사용 중입니다. 먼저 장비를 해제하세요.",
+			"two_handed_offhand_conflict":"활과 쇠뇌는 양손을 사용해 방패와 함께 장착할 수 없습니다.",
+			"equipped_item_locked":"장착 중인 아이템은 먼저 해제해야 합니다.",
+			"ground_item_missing":"바닥에 더 이상 그 아이템이 없습니다.",
+			"ground_item_not_at_actor":"아이템이 있는 칸으로 이동해야 주울 수 있습니다.",
+			"item_use_unimplemented":"이 아이템의 사용 효과는 아직 준비되지 않았습니다.",
+			"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
 		"deployment_space_unavailable":"동료가 설 수 있는 빈 칸이 부족합니다.",
@@ -3686,6 +4140,11 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
+		"item.picked_up":return "%s 바닥의 물건을 주웠다."%_subject(actor)
+		"item.equipped":return "%s 장비를 갖추었다."%_subject(actor)
+		"item.unequipped":return "%s 장비를 해제했다."%_subject(actor)
+		"item.dropped":return "%s 물건을 바닥에 내려놓았다."%_subject(actor)
+		"item.discarded":return "%s 물건을 영구히 폐기했다."%_subject(actor)
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":

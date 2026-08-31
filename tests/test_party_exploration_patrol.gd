@@ -4,6 +4,8 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const WorldState=preload("res://sim/world_state.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
+const Inventory=preload("res://sim/protagonist_inventory_state.gd")
+const GroundItems=preload("res://sim/ground_item_state.gd")
 
 
 func test_fixed_solo_fixture_patrol_is_tick_driven_visible_deterministic_and_replay_exact()->bool:
@@ -119,8 +121,12 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 	var migrated=Session.new(1,2)
 	check(migrated.load_session_json(JSON.stringify(v2_wire)).accepted,
 		"v2 fixture save migrates patrol feature reservations")
-	check_eq(migrated.sim.snapshot(),fixture.sim.snapshot(),
-		"v2 fixture migration matches canonical v3 state")
+	var expected_legacy:Dictionary=fixture.sim.snapshot()
+	expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
+		str(fixture.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
+	expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
+	check_eq(migrated.sim.snapshot(),expected_legacy,
+		"v2 fixture migration matches canonical state with legacy-only items")
 	return finish()
 
 

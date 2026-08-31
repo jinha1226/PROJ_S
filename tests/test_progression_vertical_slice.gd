@@ -75,8 +75,11 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 	var snapshot:Dictionary=session.sim.snapshot()
 	for index in range(20):session.protagonist_progression();session.party_status()
 	check_eq(session.sim.snapshot(),snapshot,"refresh cannot duplicate progression")
-	var restored=WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
-	check(restored!=null,"progressed snapshot restores")
+	# `WorldState.from_snapshot` is the strict typed-wire boundary. JSON transport
+	# canonicalization (including integral item fields decoded as floats) belongs
+	# to `Session.load_session_json`, which is exercised immediately below.
+	var restored=WorldState.from_snapshot(snapshot.duplicate(true))
+	check(restored!=null,"progressed typed snapshot restores")
 	if restored!=null:check_eq(restored.snapshot(),snapshot,"progressed snapshot round trip exact")
 	var legacy_session:Dictionary=JSON.parse_string(session.save_session_json())
 	var legacy_progression:Dictionary=legacy_session.snapshot.party_encounter.protagonist_progression

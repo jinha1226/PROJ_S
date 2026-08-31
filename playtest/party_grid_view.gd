@@ -19,11 +19,17 @@ const CAMERA_SETTLE_DURATION_MS := 70
 const TORCH_FLICKER_QUANTUM_MS := 125 # 8 Hz: intentionally below 10 Hz.
 const MAX_VISIBLE_TORCHES := 6
 const MAX_MEMORY_TORCHES := 6
-const TORCH_SPACING_CELLS := 3
+const TORCH_SPACING_CELLS := 5
 const TORCH_AMBER_HEX := "#f0a64d"
 const TORCH_GLYPH_HEX := "#ffd078"
 const ACTOR_WORLD_GLYPH_OFFSET_Y := -0.105
-const ACTOR_WORLD_LEG_END_Y := 0.445
+# The shared standing pose ends at 0.47. The world projection deliberately
+# extends below it, while its shifted figure bounds keep the feet inside the
+# logical cell. This is presentation only; hit rectangles remain cell based.
+const ACTOR_WORLD_LEG_END_Y := 0.485
+const ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX := 1.0
+const AWARENESS_PULSE_DURATION_MS := 220
+const MONSTER_LIST_MAX_ROWS := 5
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -79,6 +85,7 @@ var _torch_positions:Array[Vector2i]=[]
 var _visible_torch_count:=0
 var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
+var _awareness_pulses:Dictionary={}
 var melee_vfx:MeleeVfxOverlay
 
 func _ready() -> void:
@@ -146,8 +153,17 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		var p:=Vector2i(int(raw.position[0]),int(raw.position[1]))
 		row["position"]=[p.x,p.y]
 		row["actors"]=[]
+		# Ground item authority never enters this presentation cache. Keep only one
+		# approved scalar glyph, and only for a currently visible cell. This also
+		# prevents a malformed MEMORY observation from retaining live item details.
+		var visibility_state:=AsciiStyleScript.visibility_state(row)
+		var ground_item_spec:=AsciiStyleScript.ground_item_spec(raw) \
+			if visibility_state=="VISIBLE" else AsciiStyleScript.item_presentation_spec("")
+		row.erase("ground_items")
+		row["ground_item_glyph"]=str(ground_item_spec.glyph) \
+			if bool(ground_item_spec.visible) else ""
 		_cells[_key(p)]=row
-		if AsciiStyleScript.visibility_state(row)=="VISIBLE":
+		if visibility_state=="VISIBLE":
 			for actor in raw.get("actors",[]):
 				if not actor is Dictionary:continue
 				var copy: Dictionary = actor.duplicate(true)
@@ -181,6 +197,7 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
 	_reconcile_actor_motions(previous_actors,previous_visual_world,
 		previous_visible_cells,observed_at_ms)
+	_reconcile_awareness_pulses(previous_actors,observed_at_ms)
 	# Damage-only combat observations change actor vitals but not the terrain,
 	# FOV, feature or occupancy projection. Retain that expensive 15x15 static
 	# projection until an actual presentation input changes.
@@ -202,6 +219,7 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	_static_occupancy_hash=next_occupancy_hash
 	_actor_projection_hash=next_actor_projection_hash
 	_static_hash_initialized=true
+	_update_process_enabled()
 	if melee_vfx!=null:melee_vfx.queue_redraw()
 
 func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->void:
@@ -314,7 +332,7 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 	view_origin=next_origin;_invalidate_static_projection_cache();queue_redraw()
 
 func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
-		hero_actor_id:int=-1)->void:
+		hero_actor_id:int=-1,settle_duration_msec:int=CAMERA_SETTLE_DURATION_MS)->void:
 	# Product camera authority is the protagonist only. Negative origins are
 	# intentional at map edges: those screen cells render as void rather than
 	# pushing the hero away from the center cell.
@@ -336,7 +354,7 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 			# hops therefore preserve visual continuity instead of restarting from a
 			# full-cell offset every turn.
 			_camera_settle={"from_offset_cells":carried_offset_cells+Vector2(delta),
-				"started_at_ms":now,"duration_ms":CAMERA_SETTLE_DURATION_MS}
+				"started_at_ms":now,"duration_ms":maxi(1,settle_duration_msec)}
 		else:_camera_settle.clear()
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
@@ -414,6 +432,13 @@ func play_effects(rows:Array)->int:
 
 func _play_miss_attacker_swing(raw:Dictionary)->void:
 	_ensure_melee_vfx()
+	# Prefer the event-time pair. A combat.attack_missed event is a result leaf and
+	# does not itself own the attacker's actor_id, so post-refresh occupant lookup
+	# used to silently drop every real MISS swing.
+	var historical_attacker:=_array_to_world_position(raw.get("attacker_grid_pos",[]))
+	var historical_target:=_array_to_world_position(raw.get("target_grid_pos",[]))
+	if historical_attacker!=Vector2i(-1,-1) and historical_target!=Vector2i(-1,-1):
+		melee_vfx.play_attacker_swing(historical_attacker,historical_target);return
 	var attacker_id:=int(raw.get("actor_id",-1));var target_id:=int(raw.get("target_id",-1))
 	var attacker:=_actor_by_id(attacker_id)
 	if attacker.is_empty():return
@@ -432,6 +457,7 @@ func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(eff
 func clear_transient_visuals()->void:
 	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
 	if melee_vfx!=null:melee_vfx.clear()
+	_awareness_pulses.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
@@ -514,6 +540,30 @@ func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 			"line_width":maxf(1.0,cell*0.055),"opacity":1.0-age_ratio})
 	return rows.duplicate(true)
 
+func _is_enemy_actor(actor:Dictionary)->bool:
+	return bool(actor.get("is_enemy",false)) \
+		or str(actor.get("faction_id","")).to_lower()=="enemy"
+
+func _awareness_state(actor:Dictionary)->String:
+	return str(AsciiStyleScript.awareness_spec(actor.get(
+		"awareness_state","UNAWARE")).state)
+
+func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)->void:
+	var next_enemy_ids:Dictionary={}
+	for actor in _actors:
+		if not _is_enemy_actor(actor):continue
+		var entity_id:=int(actor.get("entity_id",-1))
+		if entity_id<=0:continue
+		next_enemy_ids[entity_id]=true
+		if not previous_actors.has(entity_id):continue
+		var previous:Dictionary=previous_actors[entity_id]
+		var next_state:=_awareness_state(actor)
+		if _awareness_state(previous)!=next_state and next_state!="UNAWARE":
+			_awareness_pulses[entity_id]={"started_at_ms":observed_at_ms,
+				"duration_ms":AWARENESS_PULSE_DURATION_MS,"state":next_state}
+	for raw_id in _awareness_pulses.keys():
+		if not next_enemy_ids.has(int(raw_id)):_awareness_pulses.erase(raw_id)
+
 func _process(_delta:float)->void:
 	var had_visual_effects:=not _active_visual_effects.is_empty()
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
@@ -527,14 +577,21 @@ func _process(_delta:float)->void:
 			_actor_motions.erase(raw_id)
 	if not _camera_settle.is_empty() and not bool(camera_settle_draw_spec(now).active):
 		_camera_settle.clear()
+	var awareness_changed:=false
+	for raw_id in _awareness_pulses.keys():
+		var pulse:Dictionary=_awareness_pulses[raw_id]
+		if now-int(pulse.get("started_at_ms",now))>=int(pulse.get(
+				"duration_ms",AWARENESS_PULSE_DURATION_MS)):
+			_awareness_pulses.erase(raw_id);awareness_changed=true
 	_update_process_enabled()
-	if not _actor_motions.is_empty() or not _camera_settle.is_empty():queue_redraw()
+	if not _actor_motions.is_empty() or not _camera_settle.is_empty() \
+			or not _awareness_pulses.is_empty() or awareness_changed:queue_redraw()
 	if melee_vfx!=null and (had_visual_effects or not _active_visual_effects.is_empty()):
 		melee_vfx.queue_redraw()
 
 func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
-		or not _camera_settle.is_empty())
+		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
 func is_world_cell_visible(position:Vector2i)->bool:
@@ -838,6 +895,124 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 		"shadow":shadow,
 		"selected_outline":false,"draw_equipment":false,
 		"equipment_primitive_count":0}).duplicate(true)
+
+func monster_awareness_marker_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
+	var actor:=_actor_by_id(entity_id)
+	if actor.is_empty() or not _is_enemy_actor(actor):return {"visible":false}.duplicate(true)
+	var position:=_position_from_actor(actor);var row:Dictionary=_cells.get(_key(position),{})
+	if not is_world_cell_visible(position) or row.is_empty() \
+			or AsciiStyleScript.visibility_state(row)!="VISIBLE":return {"visible":false}.duplicate(true)
+	var awareness:Dictionary=AsciiStyleScript.awareness_spec(actor.get("awareness_state","UNAWARE"))
+	if not bool(awareness.visible):return {"visible":false,"state":str(awareness.state)}.duplicate(true)
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var pulse_progress:=1.0;var pulse_active:=false
+	if _awareness_pulses.has(entity_id):
+		var pulse:Dictionary=_awareness_pulses[entity_id]
+		pulse_progress=clampf(float(maxi(0,now-int(pulse.started_at_ms))) \
+			/float(maxi(1,int(pulse.duration_ms))),0.0,1.0);pulse_active=pulse_progress<1.0
+	var rect:=world_cell_rect(position);var cell:=rect.size.x
+	var font_size:=clampi(int(floor(cell*0.40)),8,13)
+	if pulse_active:font_size=maxi(font_size,int(roundf(font_size*(1.14-0.14*pulse_progress))))
+	var extent:=get_theme_default_font().get_string_size(str(awareness.glyph),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	var inset:=Vector2(maxf(extent.x*0.5+1.0,cell*0.20),maxf(extent.y*0.5+1.0,cell*0.20))
+	var center:=rect.end-inset
+	return {"visible":true,"entity_id":entity_id,"state":str(awareness.state),
+		"glyph":str(awareness.glyph),"color_hex":str(awareness.color_hex),
+		"world_position":[position.x,position.y],"cell_rect":rect,"center":center,
+		"text_rect":Rect2(center-extent*0.5,extent),"font_size":font_size,
+		"pulse_active":pulse_active,"pulse_progress":pulse_progress,
+		"pulse_duration_ms":AWARENESS_PULSE_DURATION_MS,"changes_hit_rect":false}.duplicate(true)
+
+func monster_awareness_marker_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	for actor in _actors:
+		var spec:=monster_awareness_marker_draw_spec(int(actor.get("entity_id",-1)),sample_time_ms)
+		if bool(spec.get("visible",false)):rows.append(spec)
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		var ap:=_array_to_world_position(a.world_position);var bp:=_array_to_world_position(b.world_position)
+		return ap.y<bp.y if ap.y!=bp.y else (ap.x<bp.x if ap.x!=bp.x else int(a.entity_id)<int(b.entity_id)))
+	return rows.duplicate(true)
+
+func monster_list_draw_spec()->Dictionary:
+	var groups:Dictionary={};var priority:={"HUNTING":0,"ALERT":1,"SUSPICIOUS":2,
+		"SEARCHING":3,"RETURNING":4,"UNAWARE":5}
+	for actor in _actors:
+		if not _is_enemy_actor(actor):continue
+		var position:=_position_from_actor(actor);var cell_row:Dictionary=_cells.get(_key(position),{})
+		if not is_world_cell_visible(position) or cell_row.is_empty() \
+				or AsciiStyleScript.visibility_state(cell_row)!="VISIBLE":continue
+		var identity:Dictionary=AsciiStyleScript.monster_identity_spec(actor)
+		var awareness:Dictionary=AsciiStyleScript.awareness_spec(actor.get("awareness_state","UNAWARE"))
+		var key:="%s|%s"%[str(identity.species_id),str(awareness.state)]
+		if not groups.has(key):groups[key]={"species_id":str(identity.species_id),
+			"glyph":str(identity.glyph),"name":str(identity.name),
+			"species_color_hex":str(identity.color_hex),"state":str(awareness.state),
+			"mark":str(awareness.glyph),"mark_color_hex":str(awareness.color_hex),
+			"count":0,"priority":int(priority.get(str(awareness.state),99))}
+		groups[key].count=int(groups[key].count)+1
+	var grouped:Array[Dictionary]=[]
+	for value in groups.values():grouped.append((value as Dictionary).duplicate(true))
+	grouped.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.priority)<int(b.priority) if int(a.priority)!=int(b.priority) \
+			else (str(a.name)<str(b.name) if str(a.name)!=str(b.name) else str(a.state)<str(b.state)))
+	if grouped.size()>MONSTER_LIST_MAX_ROWS:grouped=grouped.slice(0,MONSTER_LIST_MAX_ROWS)
+	if grouped.is_empty():return {"visible":false,"rows":[],"mouse_filter":"IGNORE"}.duplicate(true)
+	var font:=get_theme_default_font();var font_size:=clampi(int(cell_size_px()*0.43),10,13)
+	var row_height:=float(font_size+4);var padding:=6.0;var max_width:=0.0
+	for group in grouped:
+		group["count_text"]=" ×%d"%int(group.count) if int(group.count)>1 else ""
+		group["text"]="%s %s%s%s"%[str(group.glyph),str(group.name),
+			(" "+str(group.mark)) if not str(group.mark).is_empty() else "",str(group.count_text)]
+		max_width=maxf(max_width,font.get_string_size(str(group.text),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x)
+	var rect:=grid_rect();var panel_size:=Vector2(max_width+padding*2.0,row_height*grouped.size()+padding*2.0)
+	var bounds:=Rect2(rect.end-panel_size-Vector2(4,4),panel_size)
+	for index in range(grouped.size()):grouped[index]["baseline"]=bounds.position+Vector2(padding,padding+row_height*index+font_size)
+	return {"visible":true,"rows":grouped,"row_count":grouped.size(),"max_rows":MONSTER_LIST_MAX_ROWS,
+		"font_size":font_size,"row_height":row_height,"bounds":bounds,"background_hex":"#030608e8",
+		"border_hex":"#42666a","name_color_hex":"#d2c8ad","mouse_filter":"IGNORE",
+		"process":false,"fov_safe":true}.duplicate(true)
+
+func ground_item_draw_spec(position:Vector2i)->Dictionary:
+	var hidden:={"visible":false,"glyph":"","kind":"","world_position":[position.x,position.y],
+		"occupied_corner":false,"changes_hit_rect":false,"mouse_filter":"IGNORE",
+		"draw_image":false,"texture_free":true,"fov_safe":true}
+	if not is_world_cell_visible(position):return hidden.duplicate(true)
+	_ensure_static_projection_cache()
+	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
+	if cached.is_empty() or str(cached.get("visibility_state","UNSEEN"))!="VISIBLE":
+		return hidden.duplicate(true)
+	var row:Dictionary=cached.get("row",{})
+	var item:Dictionary=AsciiStyleScript.item_presentation_spec(
+		str(row.get("ground_item_glyph","")))
+	if not bool(item.visible):return hidden.duplicate(true)
+	var rect:=world_cell_rect(position);var occupied:=bool(cached.get("occupied",false))
+	var font_ratio:=float(item.corner_font_ratio) if occupied else float(item.font_ratio)
+	var font_size:=maxi(8,int(floor(rect.size.x*font_ratio)))
+	var font:=get_theme_default_font()
+	var extent:=font.get_string_size(str(item.glyph),
+		HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	while font_size>8 and (extent.x>rect.size.x-2.0 or extent.y>rect.size.y-2.0):
+		font_size-=1
+		extent=font.get_string_size(str(item.glyph),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+	var center:=rect.position+extent*0.5+Vector2(1.0,0.0) \
+		if occupied else rect.get_center()+Vector2(0.0,rect.size.y*0.03)
+	return {"visible":true,"glyph":str(item.glyph),"kind":str(item.kind),
+		"world_position":[position.x,position.y],"cell_rect":rect,"center":center,
+		"text_rect":Rect2(center-extent*0.5,extent),"font_size":font_size,
+		"color_hex":str(item.color_hex),"highlight_hex":str(item.highlight_hex),
+		"underlay_hex":str(item.underlay_hex),
+		"underlay_opacity":float(item.underlay_opacity),"occupied_corner":occupied,
+		"layer":"GROUND_ITEMS","draw_after":["GROUND_FEATURES","GROUND_HAZARDS"],
+		"draw_before":["ACTORS"],"changes_hit_rect":false,"mouse_filter":"IGNORE",
+		"draw_image":false,"texture_free":true,"fov_safe":true}.duplicate(true)
+
+func ground_item_draw_specs()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var spec:=ground_item_draw_spec(view_origin+Vector2i(x,y))
+			if bool(spec.visible):rows.append(spec)
+	return rows.duplicate(true)
 
 func selection_overlay_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
@@ -1297,8 +1472,10 @@ func _draw() -> void:
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_exploration_companion_follow_plan()
+	_draw_ground_items()
 	for visual_row in _sorted_visual_actor_rows():
 		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
+	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
@@ -1307,8 +1484,48 @@ func _draw() -> void:
 	_draw_cursor_preview()
 	_draw_fov_edge_haze()
 	draw_set_transform(Vector2.ZERO)
+	_draw_monster_list()
 	# Phase is communicated inside the field (glyph motion, ink impact and HUD),
 	# never by shrinking the playable view behind a decorative screen border.
+
+func _draw_monster_awareness_marks()->void:
+	for spec in monster_awareness_marker_draw_specs():
+		var color:=Color(str(spec.color_hex))
+		if bool(spec.pulse_active):
+			var pulse_alpha:=0.24*(1.0-float(spec.pulse_progress))
+			draw_circle(Vector2(spec.center),maxf(4.0,float(spec.font_size)*0.62),
+				Color(color,pulse_alpha))
+		_draw_centered_text(get_theme_default_font(),str(spec.glyph),Vector2(spec.center),
+			int(spec.font_size),color)
+
+func _draw_monster_list()->void:
+	var spec:=monster_list_draw_spec()
+	if not bool(spec.visible):return
+	var bounds:Rect2=spec.bounds;draw_rect(bounds,Color(str(spec.background_hex)),true)
+	draw_rect(bounds,Color(str(spec.border_hex)),false,1.0)
+	var font:=get_theme_default_font();var font_size:=int(spec.font_size)
+	for row in spec.rows:
+		var baseline:=Vector2(row.baseline);var x:=baseline.x
+		for segment in [[str(row.glyph),str(row.species_color_hex)],
+				[" "+str(row.name),str(spec.name_color_hex)],
+				[(" "+str(row.mark)) if not str(row.mark).is_empty() else "",str(row.mark_color_hex)],
+				[str(row.count_text),"#849097"]]:
+			var value:=str(segment[0])
+			if value.is_empty():continue
+			draw_string(font,Vector2(x,baseline.y),value,HORIZONTAL_ALIGNMENT_LEFT,-1,
+				font_size,Color(str(segment[1])))
+			x+=font.get_string_size(value,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
+
+func _draw_ground_items()->void:
+	var font:=get_theme_default_font()
+	for spec in ground_item_draw_specs():
+		var center:=Vector2(spec.center);var font_size:=int(spec.font_size)
+		var underlay_color:=_visual_color(str(spec.underlay_hex),float(spec.underlay_opacity))
+		var underlay_radius:=maxf(2.0,float(font_size)*0.48)
+		draw_circle(center+Vector2(0.7,1.0),underlay_radius,underlay_color)
+		_draw_centered_text(font,str(spec.glyph),center+Vector2(0.8,1.0),font_size,
+			Color("#020304c8"))
+		_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_void_padding(void_color:Color)->void:
 	for y in range(visible_cell_count):
@@ -1662,9 +1879,10 @@ func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 	var visual_center:=world_to_pixel_center(position) if ghost else actor_visual_center(
 		int(actor.get("entity_id",-1)),sample_time_ms)
 	if visual_center==Vector2(-1,-1):return Rect2()
-	var figure_height:=clampf(cell*1.46,28.0,50.0);var figure_width:=cell*0.72
+	var figure_height:=clampf(cell*1.56,28.0,52.0);var figure_width:=cell*0.72
 	var foot_y:=visual_center.y+cell*0.5
-	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,foot_y-figure_height+1.0),
+	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,
+		foot_y-figure_height-ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX),
 		Vector2(figure_width,figure_height))
 	return bounds
 

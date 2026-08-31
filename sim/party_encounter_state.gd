@@ -1,13 +1,15 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 8
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
 const PROGRESSION_SCHEMA_VERSION := 4
 const LOADOUT_SCHEMA_VERSION := 5
 const DIAGONAL_GATEWAY_SCHEMA_VERSION := 6
+const AWARENESS_SCHEMA_VERSION := 7
+const ITEM_SCHEMA_VERSION := 8
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -16,6 +18,10 @@ const MemberScript = preload("res://sim/party_member_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const ProgressionScript = preload("res://sim/protagonist_progression.gd")
 const WeaponLoadoutScript = preload("res://sim/weapon_loadout_state.gd")
+const EnemyAwarenessScript = preload("res://sim/enemy_awareness_state.gd")
+const InventoryScript = preload("res://sim/protagonist_inventory_state.gd")
+const GroundItemScript = preload("res://sim/ground_item_state.gd")
+const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -34,13 +40,17 @@ var enemy_detection_radius := 3
 var formation_id := "NONE"
 var member_rows: Dictionary = {}
 var enemy_busy_rows: Dictionary = {}
+var enemy_awareness_rows: Dictionary = {}
 var exile_records: Array[Dictionary] = []
 var patrol_reserved_positions: Array[Vector2i] = []
 var diagonal_gateway_positions: Array[Vector2i] = []
 var protagonist_progression = ProgressionScript.new()
 var protagonist_loadout = WeaponLoadoutScript.new("SHORT_SWORD", 12, 6)
+var protagonist_inventory = InventoryScript.with_legacy_weapon("SHORT_SWORD")
+var ground_items = GroundItemScript.new()
 
 func member(entity_id: int): return member_rows.get(entity_id)
+func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
 
 func to_dict() -> Dictionary:
 	var members: Array = []
@@ -49,6 +59,9 @@ func to_dict() -> Dictionary:
 	var busy_rows: Array = []
 	var ids: Array = enemy_busy_rows.keys(); ids.sort()
 	for entity_id in ids: busy_rows.append({"entity_id": str(entity_id), "busy_until": str(enemy_busy_rows[entity_id])})
+	var awareness_rows:Array=[]
+	var awareness_ids:Array=enemy_awareness_rows.keys();awareness_ids.sort()
+	for entity_id in awareness_ids:awareness_rows.append(enemy_awareness_rows[entity_id].to_dict())
 	var reserved_rows: Array = []
 	var sorted_reserved: Array[Vector2i] = patrol_reserved_positions.duplicate()
 	sorted_reserved.sort_custom(func(a: Vector2i, b: Vector2i):
@@ -68,10 +81,13 @@ func to_dict() -> Dictionary:
 		"contact_enemy_id": str(contact_enemy_id), "party_detection_radius": party_detection_radius,
 		"enemy_detection_radius": enemy_detection_radius, "formation_id": formation_id,
 		"member_rows": members, "enemy_busy_rows": busy_rows,
+		"enemy_awareness_rows":awareness_rows,
 		"patrol_reserved_positions":reserved_rows,
 		"diagonal_gateway_positions":gateway_rows,
 		"protagonist_progression":protagonist_progression.to_dict(),
 		"protagonist_loadout":protagonist_loadout.to_dict(),
+		"protagonist_inventory":protagonist_inventory.to_dict(),
+		"ground_items":ground_items.to_dict(),
 		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
@@ -91,6 +107,22 @@ static func from_dict(row: Dictionary):
 	for member_row in row.member_rows:
 		var member = MemberScript.from_dict(member_row); state.member_rows[member.entity_id] = member
 	state.enemy_busy_rows.clear(); for busy_row in row.enemy_busy_rows: state.enemy_busy_rows[Int64CodecScript.parse(busy_row.entity_id, "enemy ID")] = Int64CodecScript.parse(busy_row.busy_until, "enemy busy")
+	state.enemy_awareness_rows.clear()
+	if row.has("enemy_awareness_rows"):
+		for awareness_row in row.enemy_awareness_rows:
+			var awareness=EnemyAwarenessScript.from_dict(awareness_row)
+			state.enemy_awareness_rows[awareness.enemy_id]=awareness
+	else:
+		# Old v1-v6 snapshots had a single globally-driven enemy. Preserve its
+		# combat semantics while giving exploration saves a deterministic neutral
+		# baseline. Session migration can refine home to the live entity position.
+		for enemy_id in state.enemy_ids:
+			var awareness=EnemyAwarenessScript.new(enemy_id,state.group_anchor)
+			if state.safe_phase in ["CONTACT","ENGAGED"]:
+				awareness.awareness_state="HUNTING";awareness.suspicion=1000
+				awareness.last_known_target_position=state.group_anchor
+				awareness.last_seen_step=0;awareness.last_seen_time=0
+			state.enemy_awareness_rows[enemy_id]=awareness
 	state.exile_records.clear()
 	for record in row.get("exile_records",[]):state.exile_records.append(_canonical_exile_record(record))
 	state.patrol_reserved_positions.clear()
@@ -103,6 +135,13 @@ static func from_dict(row: Dictionary):
 		if row.has("protagonist_progression") else ProgressionScript.new()
 	state.protagonist_loadout=WeaponLoadoutScript.from_dict(row.protagonist_loadout) \
 		if row.has("protagonist_loadout") else WeaponLoadoutScript.new("SHORT_SWORD",12,6)
+	if row.has("protagonist_inventory") and row.has("ground_items"):
+		state.protagonist_inventory=InventoryScript.from_dict(row.protagonist_inventory)
+		state.ground_items=GroundItemScript.from_dict(row.ground_items)
+	else:
+		state.protagonist_inventory=InventoryScript.with_legacy_weapon(
+			str(state.protagonist_loadout.equipped_weapon_id))
+		state.ground_items=GroundItemScript.new()
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -156,6 +195,9 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v4_keys:Array=v3_keys.duplicate();v4_keys.append("protagonist_progression");v4_keys.sort()
 	var v5_keys:Array=v4_keys.duplicate();v5_keys.append("protagonist_loadout");v5_keys.sort()
 	var v6_keys:Array=v5_keys.duplicate();v6_keys.append("diagonal_gateway_positions");v6_keys.sort()
+	var v7_keys:Array=v6_keys.duplicate();v7_keys.append("enemy_awareness_rows");v7_keys.sort()
+	var v8_keys:Array=v7_keys.duplicate();v8_keys.append_array([
+		"protagonist_inventory","ground_items"]);v8_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -163,10 +205,13 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			or (parsed_schema_version == PATROL_SCHEMA_VERSION and keys != v3_keys) \
 			or (parsed_schema_version == PROGRESSION_SCHEMA_VERSION and keys != v4_keys) \
 			or (parsed_schema_version == LOADOUT_SCHEMA_VERSION and keys != v5_keys) \
-			or (parsed_schema_version == SCHEMA_VERSION and keys != v6_keys):
+			or (parsed_schema_version == DIAGONAL_GATEWAY_SCHEMA_VERSION and keys != v6_keys) \
+			or (parsed_schema_version == AWARENESS_SCHEMA_VERSION and keys != v7_keys) \
+			or (parsed_schema_version == SCHEMA_VERSION and keys != v8_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
+			DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,
 			SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
@@ -259,12 +304,40 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 					and parsed_position.x<=previous_gateway.x)):
 				return "invalid_diagonal_gateway_positions"
 			previous_gateway=parsed_position
+	if parsed_schema_version>=AWARENESS_SCHEMA_VERSION:
+		if not row.get("enemy_awareness_rows") is Array \
+				or row.enemy_awareness_rows.size()!=row.enemy_ids.size():
+			return "invalid_enemy_awareness_rows"
+		for index in range(row.enemy_awareness_rows.size()):
+			var awareness_error:=EnemyAwarenessScript.wire_error(
+				row.enemy_awareness_rows[index],width,height)
+			if not awareness_error.is_empty():return awareness_error
+			if str(row.enemy_awareness_rows[index].enemy_id)!=str(row.enemy_ids[index]):
+				return "enemy_awareness_order_mismatch"
 	if parsed_schema_version>=PROGRESSION_SCHEMA_VERSION:
 		var progression_error:=ProgressionScript.wire_error(row.get("protagonist_progression"))
 		if not progression_error.is_empty():return progression_error
 	if parsed_schema_version>=LOADOUT_SCHEMA_VERSION:
 		var loadout_error:=WeaponLoadoutScript.wire_error(row.get("protagonist_loadout"))
 		if not loadout_error.is_empty():return loadout_error
+	if parsed_schema_version>=ITEM_SCHEMA_VERSION:
+		var inventory_error:=InventoryScript.wire_error(row.get("protagonist_inventory"))
+		if not inventory_error.is_empty():return inventory_error
+		var ground_error:=GroundItemScript.wire_error(row.get("ground_items"),width,height)
+		if not ground_error.is_empty():return ground_error
+		var inventory=InventoryScript.from_dict(row.protagonist_inventory)
+		var ground=GroundItemScript.from_dict(row.ground_items)
+		var combined_error:=ItemOperationsScript.combined_state_error(inventory,ground,
+			Rect2i(Vector2i.ZERO,Vector2i(width,height)))
+		if not combined_error.is_empty():return combined_error
+		var main=inventory.equipped_item("MAIN_HAND")
+		var bridged_weapon_id:="UNARMED"
+		if main!=null:
+			var main_definition=load("res://sim/item_registry.gd").definition(main.definition_id)
+			if main_definition==null:return "inventory_loadout_bridge_mismatch"
+			bridged_weapon_id=str(main_definition.weapon_id)
+		if bridged_weapon_id!=str(row.protagonist_loadout.equipped_weapon_id):
+			return "inventory_loadout_bridge_mismatch"
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

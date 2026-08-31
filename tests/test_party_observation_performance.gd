@@ -4,12 +4,15 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Grid=preload("res://playtest/party_grid_view.gd")
 const Minimap=preload("res://playtest/party_minimap.gd")
+const DungeonMap=preload("res://playtest/deterministic_dungeon_map.gd")
 
 
 func test_full_observer_stays_detached_while_ui_uses_world_coordinate_viewport_and_compact_minimap()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var full:Dictionary=session.observe_party_world()
-	check_eq([full.width,full.height,full.cells.size()],[48,48,2304],
+	var world_cell_count:int=session.sim.world.width*session.sim.world.height
+	check_eq([full.width,full.height,full.cells.size()],[session.sim.world.width,
+		session.sim.world.height,world_cell_count],
 		"public observer keeps the established full rich map")
 	var original_terrain:=str(full.cells[0].terrain_id)
 	full.cells[0].terrain_id="CORRUPTED"
@@ -24,7 +27,8 @@ func test_full_observer_stays_detached_while_ui_uses_world_coordinate_viewport_a
 		int(status.protagonist_position[1]))
 	var expected_origin:=hero-Vector2i(7,7)
 	check_eq([grid.width,grid.height,grid.grid_mapping.origin,
-		grid.grid_mapping.cell_count],[48,48,[expected_origin.x,expected_origin.y],225],
+		grid.grid_mapping.cell_count],[session.sim.world.width,session.sim.world.height,
+		[expected_origin.x,expected_origin.y],225],
 		"grid DTO retains world dimensions and hero-centered world origin")
 	check(grid.cells.size()<=225,"grid DTO contains at most one 15x15 rich viewport")
 	for cell in grid.cells:
@@ -45,7 +49,7 @@ func test_full_observer_stays_detached_while_ui_uses_world_coordinate_viewport_a
 			memory_count+=1
 			check(str(cell.marker).is_empty(),"memory row never carries a live marker")
 	check(memory_count>0,"compact fixture includes distant terrain memory")
-	check(minimap.cells.size()<2304,"never-seen minimap rows are omitted")
+	check(minimap.cells.size()<world_cell_count,"never-seen minimap rows are omitted")
 	var legacy=Session.new()
 	var legacy_grid:Dictionary=legacy.observe_party_ui(15).grid
 	check_eq([legacy_grid.width,legacy_grid.height,legacy_grid.cells.size(),
@@ -58,11 +62,11 @@ func test_zoomed_ui_observation_is_bounded_detached_and_fog_safe()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var status:Dictionary=session.party_status()
 	var hero:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
-	var zoomed:Dictionary=session.observe_party_ui(19).grid
-	check_eq(zoomed.grid_mapping.origin,[hero.x-9,hero.y-9],
-		"19x19 DTO remains hero-centered in absolute world coordinates")
-	check_eq(int(zoomed.grid_mapping.cell_count),361,"19x19 DTO advertises exact capacity")
-	check(zoomed.cells.size()<=361,"19x19 DTO never materializes more than its viewport")
+	var zoomed:Dictionary=session.observe_party_ui(25).grid
+	check_eq(zoomed.grid_mapping.origin,[hero.x-12,hero.y-12],
+		"25x25 DTO remains hero-centered in absolute world coordinates")
+	check_eq(int(zoomed.grid_mapping.cell_count),625,"25x25 DTO advertises exact capacity")
+	check(zoomed.cells.size()<=625,"25x25 DTO never materializes more than its viewport")
 	for cell in zoomed.cells:
 		var state:=str(cell.visibility_state)
 		if state=="MEMORY":
@@ -75,13 +79,13 @@ func test_zoomed_ui_observation_is_bounded_detached_and_fog_safe()->bool:
 				"zoomed UNSEEN row reveals no live information")
 	var oversized:Dictionary=session.observe_party_ui(99).grid
 	check_eq([oversized.grid_mapping.origin,oversized.grid_mapping.cell_count],
-		[[hero.x-9,hero.y-9],361],"oversized request clamps to the 19x19 product bound")
+		[[hero.x-12,hero.y-12],625],"oversized request clamps to the 25x25 product bound")
 	var close:Dictionary=session.observe_party_ui(11).grid
 	check_eq([close.grid_mapping.origin,close.grid_mapping.cell_count],
 		[[hero.x-5,hero.y-5],121],"11x11 zoom-in DTO keeps exact origin and capacity")
-	var original_size:int=session.observe_party_ui(19).grid.cells.size()
+	var original_size:int=session.observe_party_ui(25).grid.cells.size()
 	zoomed.cells.clear()
-	check_eq(session.observe_party_ui(19).grid.cells.size(),original_size,
+	check_eq(session.observe_party_ui(25).grid.cells.size(),original_size,
 		"zoomed UI DTO remains detached")
 	return finish()
 
@@ -163,7 +167,7 @@ func test_sandbox_refresh_consumes_viewport_and_compact_minimap_without_ui_regre
 	sandbox.initialize_for_headless_test(session,false)
 	check(sandbox.grid._cells.size()<=225,
 		"sandbox main grid receives only the hero viewport")
-	check(sandbox.minimap._cells.size()<2304,
+	check(sandbox.minimap._cells.size()<session.sim.world.width*session.sim.world.height,
 		"sandbox minimap omits never-seen cells")
 	for row in sandbox.minimap._cells.values():
 		var keys:Array=row.keys();keys.sort()
@@ -173,6 +177,66 @@ func test_sandbox_refresh_consumes_viewport_and_compact_minimap_without_ui_regre
 		and sandbox.member_item_window!=null,
 		"performance refresh remains compatible with skill and item windows")
 	sandbox.free();return finish()
+
+
+func test_sparse_minimap_matches_full_scan_semantics_at_48_and_96_without_unseen_rows()->bool:
+	var current=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var legacy=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(legacy.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		DungeonMap.generate_legacy(48,48,44)),"48x48 legacy minimap fixture initializes")
+	for session in [legacy,current]:
+		var context:Dictionary=session._party_observation_context()
+		# Include detached MEMORY well outside the live FOV in both dimensions.
+		session._cache_explored_origin(Vector2i(session.sim.world.width/2,
+			session.sim.world.height/2))
+		context=session._party_observation_context()
+		var sparse:Dictionary=session._party_minimap_observation(context)
+		var reference:Array=_full_scan_minimap_rows(session,context)
+		check_eq(sparse.cells,reference,
+			"sparse minimap is byte-for-byte equivalent at %dx%d"%[
+				session.sim.world.width,session.sim.world.height])
+		check(sparse.cells.size()<session.sim.world.width*session.sim.world.height,
+			"sparse minimap omits every UNSEEN row")
+		var previous:=Vector2i(-1,-1)
+		for row in sparse.cells:
+			var position:=Vector2i(int(row.position[0]),int(row.position[1]))
+			check(previous==Vector2i(-1,-1) or position.y>previous.y \
+				or position.y==previous.y and position.x>previous.x,
+				"sparse minimap order remains deterministic y/x")
+			previous=position
+	return finish()
+
+
+func _full_scan_minimap_rows(session,context:Dictionary)->Array:
+	var visible:Dictionary=context.visible;var explored:Dictionary=context.explored
+	var progress:Dictionary=context.progress;var markers:Dictionary={};var exit_key:=""
+	var exit_value:Variant=progress.get("exit_position",[])
+	if bool(progress.get("available",false)) and exit_value is Array and exit_value.size()==2:
+		exit_key=session._position_key(Vector2i(int(exit_value[0]),int(exit_value[1])))
+	var hero_id:=int(context.hero_id)
+	if session.sim.world.entities.has(hero_id):
+		var hero_position:Vector2i=session.sim.world.entities[hero_id].position
+		var hero_key:String=session._position_key(hero_position)
+		if visible.has(hero_key):markers[hero_key]="HERO"
+	if not bool(context.hide_enemies):
+		for enemy_value in session.sim.world.party_encounter.enemy_ids:
+			var enemy_id:=int(enemy_value)
+			if not session.sim.world.entities.has(enemy_id) \
+					or not session.sim.world.occupies_tile(enemy_id):continue
+			var enemy_position:Vector2i=session.sim.world.entities[enemy_id].position
+			var enemy_key:String=session._position_key(enemy_position)
+			if visible.has(enemy_key) and not markers.has(enemy_key):markers[enemy_key]="ENEMY"
+	var rows:Array=[]
+	for y in range(session.sim.world.height):
+		for x in range(session.sim.world.width):
+			var position:=Vector2i(x,y);var key:String=session._position_key(position)
+			if not visible.has(key) and not explored.has(key):continue
+			var state:="VISIBLE" if visible.has(key) else "MEMORY"
+			var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
+			if marker.is_empty() and key==exit_key:marker="EXIT"
+			rows.append({"position":[x,y],"visibility_state":state,
+				"terrain_id":str(session.sim.world.tile_at(position).terrain),"marker":marker})
+	return rows
 
 
 func _actor_observation(position:Vector2i)->Dictionary:
