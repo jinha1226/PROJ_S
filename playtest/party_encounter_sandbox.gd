@@ -1954,7 +1954,7 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		"ProductWaitGuard",_on_product_wait_guard,target)
 	product_execute_button=_add_product_context_button(secondary,"[EXECUTE]","ProductExecute",
 		_on_product_execute,target)
-	product_interact_button.tooltip_text="상호작용 권위 API가 아직 없어 사용할 수 없습니다."
+	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
 	_sync_product_control_state(status)
 
 func _sync_product_control_state(status_override:Dictionary={}) -> void:
@@ -1980,7 +1980,24 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		if _product_attack_targeting else "인접한 적을 즉시 공격합니다."
 	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
-	if mode=="EXPLORATION":
+	var opening:Dictionary=session.opening_event_status() \
+		if session.has_method("opening_event_status") else {}
+	var opening_choice:=bool(opening.get("can_interact",false))
+	if opening_choice:
+		product_auto_button.toggle_mode=false
+		product_auto_button.set_pressed_no_signal(false)
+		product_auto_button.text="[물약 주기]"
+		product_auto_button.disabled=not bool(opening.get("give_enabled",false))
+		product_auto_button.tooltip_text="회복 물약 1개를 건네 실제 체력을 회복시킵니다."
+		product_interact_button.text="[지나가기]"
+		product_interact_button.disabled=not bool(opening.get("pass_enabled",false))
+		product_interact_button.tooltip_text="돕지 않고 지나갑니다."
+		product_auto_button.custom_minimum_size.y=maxf(44.0,
+			product_auto_button.custom_minimum_size.y)
+		product_interact_button.custom_minimum_size.y=maxf(44.0,
+			product_interact_button.custom_minimum_size.y)
+	elif mode=="EXPLORATION":
+		product_interact_button.text="[INTERACT]"
 		var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
 		product_auto_button.disabled=terminal or not session.has_method("start_auto_explore")
 		product_auto_button.toggle_mode=true
@@ -1988,6 +2005,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
 		product_auto_button.tooltip_text="안전한 발견 지점까지 자동 탐험"
 	else:
+		product_interact_button.text="[INTERACT]"
 		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
 		product_auto_button.text="[AUTO]"
 		product_auto_button.disabled=terminal or mode!="COMBAT" or selected_member_id==protagonist_id
@@ -2084,6 +2102,15 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
+	var opening:Dictionary=session.opening_event_status() \
+		if session.has_method("opening_event_status") else {}
+	if bool(opening.get("can_interact",false)):
+		_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+		var choice_result:Dictionary=session.commit_opening_event_choice("GIVE_POTION")
+		_record_result(choice_result,true)
+		_show_product_command_feedback("회복 물약을 건넸습니다." \
+			if bool(choice_result.get("accepted",false)) else str(choice_result.get("message","물약을 건넬 수 없습니다.")))
+		_request_refresh();return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))=="EXPLORATION":
 		if not session.has_method("start_auto_explore"):return
@@ -2170,8 +2197,15 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	if refresh_after:_request_refresh()
 
 func _on_product_interact()->void:
-	# Deliberately inert until a canonical session interaction method exists.
-	return
+	if not session.has_method("opening_event_status") \
+			or not bool(session.opening_event_status().get("can_interact",false)):
+		return
+	_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+	var result:Dictionary=session.commit_opening_event_choice("PASS")
+	_record_result(result,true)
+	_show_product_command_feedback("부상당한 여행자를 지나쳤습니다." \
+		if bool(result.get("accepted",false)) else str(result.get("message","지나갈 수 없습니다.")))
+	_request_refresh()
 
 func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()

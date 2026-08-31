@@ -251,6 +251,8 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 	var current:Dictionary=session.sim.world.party_encounter.to_dict()
 	for version in range(7,0,-1):
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
+		if version<PartyState.GROWTH_BUILD_SCHEMA_VERSION:row.erase("protagonist_growth")
+		if version<PartyState.OPENING_EVENT_SCHEMA_VERSION:row.erase("opening_event")
 		if version<PartyState.RECOVERY_SCHEMA_VERSION:
 			row.erase("safe_recovery_turns");row.erase("last_protagonist_damage_step")
 		row.erase("protagonist_inventory");row.erase("ground_items")

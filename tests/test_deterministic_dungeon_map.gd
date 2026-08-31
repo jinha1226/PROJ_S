@@ -93,11 +93,16 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 	if bool(restore_result.get("accepted",false)):
 		check_eq(restored.sim.snapshot(),old_session.sim.snapshot(),
 			"legacy seed save replays against the original room and door geometry")
-	var legacy_v5:Dictionary=JSON.parse_string(old_session.save_session_json())
+	# A deployed v5 run predates the opening NPC and growth state entirely. Build
+	# that historical baseline without leaving future entities/events in the wire.
+	var legacy_schema_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(legacy_schema_session.reset_party(44,20260828,
+		Session.SOLO_COMBAT_SCENARIO_ID,legacy,false),"legacy v5 baseline initializes")
+	var legacy_v5:Dictionary=JSON.parse_string(legacy_schema_session.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
 	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
 			"protagonist_inventory","ground_items","safe_recovery_turns",
-			"last_protagonist_damage_step"]:
+			"last_protagonist_damage_step","opening_event","protagonist_growth"]:
 		legacy_v5.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(3,4)
 	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
@@ -105,9 +110,9 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 		"legacy v5 save reconstructs gateways from the matching deployed generator: %s" \
 		%str(migration_result))
 	if bool(migration_result.get("accepted",false)):
-		var expected_legacy:Dictionary=old_session.sim.snapshot()
+		var expected_legacy:Dictionary=legacy_schema_session.sim.snapshot()
 		expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
-			str(old_session.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
+			str(legacy_schema_session.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
 		expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
 		check_eq(migrated.sim.snapshot(),expected_legacy,
 			"legacy v5 migration preserves doors/replay with legacy-only item baseline")

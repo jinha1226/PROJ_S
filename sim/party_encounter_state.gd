@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 9
+const SCHEMA_VERSION := 11
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -11,6 +11,8 @@ const DIAGONAL_GATEWAY_SCHEMA_VERSION := 6
 const AWARENESS_SCHEMA_VERSION := 7
 const ITEM_SCHEMA_VERSION := 8
 const RECOVERY_SCHEMA_VERSION := 9
+const OPENING_EVENT_SCHEMA_VERSION := 10
+const GROWTH_BUILD_SCHEMA_VERSION := 11
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -23,6 +25,8 @@ const EnemyAwarenessScript = preload("res://sim/enemy_awareness_state.gd")
 const InventoryScript = preload("res://sim/protagonist_inventory_state.gd")
 const GroundItemScript = preload("res://sim/ground_item_state.gd")
 const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
+const OpeningEventScript = preload("res://sim/opening_event_state.gd")
+const GrowthBuildStateScript = preload("res://sim/growth_build_state.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -52,6 +56,8 @@ var ground_items = GroundItemScript.new()
 # Deterministic exploration-only recovery cadence. It is state, not UI timing.
 var safe_recovery_turns: int = 0
 var last_protagonist_damage_step: int = -1
+var opening_event = null
+var protagonist_growth = GrowthBuildStateScript.new("human")
 
 func member(entity_id: int): return member_rows.get(entity_id)
 func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
@@ -94,6 +100,8 @@ func to_dict() -> Dictionary:
 		"ground_items":ground_items.to_dict(),
 		"safe_recovery_turns":safe_recovery_turns,
 		"last_protagonist_damage_step":str(last_protagonist_damage_step),
+		"opening_event":null if opening_event == null else opening_event.to_dict(),
+		"protagonist_growth":protagonist_growth.to_dict(),
 		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
@@ -153,6 +161,10 @@ static func from_dict(row: Dictionary):
 	state.safe_recovery_turns=int(row.get("safe_recovery_turns",0))
 	state.last_protagonist_damage_step=Int64CodecScript.parse(
 		row.get("last_protagonist_damage_step","-1"),"last protagonist damage step")
+	state.opening_event = OpeningEventScript.from_dict(row.opening_event) \
+		if row.get("opening_event") is Dictionary else null
+	state.protagonist_growth = GrowthBuildStateScript.from_dict(row.protagonist_growth) \
+		if row.get("protagonist_growth") is Dictionary else GrowthBuildStateScript.new("human")
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -211,6 +223,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		"protagonist_inventory","ground_items"]);v8_keys.sort()
 	var v9_keys:Array=v8_keys.duplicate();v9_keys.append_array([
 		"safe_recovery_turns","last_protagonist_damage_step"]);v9_keys.sort()
+	var v10_keys:Array=v9_keys.duplicate();v10_keys.append("opening_event");v10_keys.sort()
+	var v11_keys:Array=v10_keys.duplicate();v11_keys.append("protagonist_growth");v11_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -221,11 +235,14 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			or (parsed_schema_version == DIAGONAL_GATEWAY_SCHEMA_VERSION and keys != v6_keys) \
 			or (parsed_schema_version == AWARENESS_SCHEMA_VERSION and keys != v7_keys) \
 		or (parsed_schema_version == ITEM_SCHEMA_VERSION and keys != v8_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v9_keys):
+		or (parsed_schema_version == RECOVERY_SCHEMA_VERSION and keys != v9_keys) \
+		or (parsed_schema_version == OPENING_EVENT_SCHEMA_VERSION and keys != v10_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v11_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
+		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,
 		SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
@@ -358,6 +375,14 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			or not Int64CodecScript.is_canonical(row.get("last_protagonist_damage_step")) \
 			or Int64CodecScript.parse(row.last_protagonist_damage_step,"recovery damage step") < -1:
 			return "invalid_party_recovery_state"
+	if parsed_schema_version>=OPENING_EVENT_SCHEMA_VERSION:
+		var opening_value: Variant = row.get("opening_event")
+		if opening_value != null:
+			var opening_error := OpeningEventScript.wire_error(opening_value, width, height)
+			if not opening_error.is_empty(): return opening_error
+	if parsed_schema_version>=GROWTH_BUILD_SCHEMA_VERSION:
+		var growth_error := GrowthBuildStateScript.wire_error(row.get("protagonist_growth"))
+		if not growth_error.is_empty(): return growth_error
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

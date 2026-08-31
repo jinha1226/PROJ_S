@@ -1,0 +1,337 @@
+{
+  "content_schema_version": 1,
+  "content_version": "growth-builds-2026-09-01",
+  "content_type": "GROWTH_BUILDS",
+  "ruleset_id": "race-item-mutation-growth-v1",
+  "save_migration_policy": "HARD_CUT",
+  "stats": [
+    {"stat_id": "MIGHT", "label": "완력"},
+    {"stat_id": "AGILITY", "label": "기민"},
+    {"stat_id": "VITALITY", "label": "활력"}
+  ],
+  "species": [
+    {
+      "species_id": "human",
+      "label": "인간",
+      "fixed_trait": {
+        "effect_id": "HUMAN_RESOURCEFUL",
+        "label": "임기응변",
+        "trigger": "INTERACT",
+        "bonuses": {},
+        "hook_id": "HUMAN_RESOURCEFUL",
+        "required_item_tags": [],
+        "side_effect_ids": []
+      },
+      "branches": [
+        {
+          "branch_id": "ADAPTIVE_BODY",
+          "label": "적응 체질",
+          "ranks": [
+            {
+              "effect_id": "HUMAN_ADAPTIVE_BODY_1",
+              "label": "균형 잡힌 체격",
+              "trigger": "PASSIVE",
+              "bonuses": {"vitality": 1},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "HUMAN_ADAPTIVE_BODY_2",
+              "label": "다재다능",
+              "trigger": "PASSIVE",
+              "bonuses": {"might": 1, "agility": 1},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            }
+          ]
+        },
+        {
+          "branch_id": "FIELDCRAFT",
+          "label": "현장 기술",
+          "ranks": [
+            {
+              "effect_id": "HUMAN_FIELDCRAFT_1",
+              "label": "길눈",
+              "trigger": "PASSIVE",
+              "bonuses": {"stealth": 10},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "HUMAN_FIELDCRAFT_2",
+              "label": "야전 수선",
+              "trigger": "INTERACT",
+              "bonuses": {},
+              "hook_id": "FIELD_REPAIR",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "species_id": "dwarf",
+      "label": "드워프",
+      "fixed_trait": {
+        "effect_id": "DWARF_STONEBORN",
+        "label": "돌의 뼈",
+        "trigger": "PASSIVE",
+        "bonuses": {"armor_flat": 1, "fire_tolerance": 10},
+        "hook_id": "",
+        "required_item_tags": [],
+        "side_effect_ids": []
+      },
+      "branches": [
+        {
+          "branch_id": "IRON_FRAME",
+          "label": "강철 골격",
+          "ranks": [
+            {
+              "effect_id": "DWARF_IRON_FRAME_1",
+              "label": "두꺼운 골격",
+              "trigger": "PASSIVE",
+              "bonuses": {"max_health": 4},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "DWARF_IRON_FRAME_2",
+              "label": "요새 체질",
+              "trigger": "PASSIVE",
+              "bonuses": {"armor_flat": 1, "dodge_milli": -25},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": ["HEAVY_STEP"]
+            }
+          ]
+        },
+        {
+          "branch_id": "DELVER",
+          "label": "갱도 탐사자",
+          "ranks": [
+            {
+              "effect_id": "DWARF_DELVER_1",
+              "label": "광맥 감각",
+              "trigger": "INTERACT",
+              "bonuses": {},
+              "hook_id": "SENSE_ORE",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "DWARF_DELVER_2",
+              "label": "분쇄 자세",
+              "trigger": "ON_HIT",
+              "bonuses": {"damage_flat": 1},
+              "hook_id": "IMPACT_CRUSH",
+              "required_item_tags": ["FORM_IMPACT"],
+              "side_effect_ids": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "species_id": "goblin",
+      "label": "고블린",
+      "fixed_trait": {
+        "effect_id": "GOBLIN_SKULKER",
+        "label": "굴그늘 체질",
+        "trigger": "PASSIVE",
+        "bonuses": {"agility": 1, "stealth": 15},
+        "hook_id": "",
+        "required_item_tags": [],
+        "side_effect_ids": []
+      },
+      "branches": [
+        {
+          "branch_id": "SCRAPPER",
+          "label": "고철잡이",
+          "ranks": [
+            {
+              "effect_id": "GOBLIN_SCRAPPER_1",
+              "label": "쓸모 찾기",
+              "trigger": "INTERACT",
+              "bonuses": {},
+              "hook_id": "SALVAGE_EXTRA",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "GOBLIN_SCRAPPER_2",
+              "label": "급조 보강",
+              "trigger": "PASSIVE",
+              "bonuses": {"armor_flat": 1},
+              "hook_id": "",
+              "required_item_tags": ["HAS_AFFIX"],
+              "side_effect_ids": []
+            }
+          ]
+        },
+        {
+          "branch_id": "BLOOD_RUSH",
+          "label": "피냄새",
+          "ranks": [
+            {
+              "effect_id": "GOBLIN_BLOOD_RUSH_1",
+              "label": "상처 추적",
+              "trigger": "ON_HIT",
+              "bonuses": {"accuracy_milli": 40},
+              "hook_id": "WOUNDED_TARGET_ACCURACY",
+              "required_item_tags": ["MELEE"],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "GOBLIN_BLOOD_RUSH_2",
+              "label": "마무리꾼",
+              "trigger": "ON_HIT",
+              "bonuses": {"damage_flat": 1},
+              "hook_id": "WOUNDED_TARGET_DAMAGE",
+              "required_item_tags": ["MELEE"],
+              "side_effect_ids": ["SELF_STRESS_5"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "species_id": "amphibian",
+      "label": "양서인",
+      "fixed_trait": {
+        "effect_id": "AMPHIBIAN_MOIST_SKIN",
+        "label": "습윤 피부",
+        "trigger": "PASSIVE",
+        "bonuses": {"water_tolerance": 100, "poison_tolerance": 10},
+        "hook_id": "IGNORE_SHALLOW_WATER_PENALTY",
+        "required_item_tags": [],
+        "side_effect_ids": ["FIRE_TOLERANCE_-10"]
+      },
+      "branches": [
+        {
+          "branch_id": "TIDE_BODY",
+          "label": "물결 몸놀림",
+          "ranks": [
+            {
+              "effect_id": "AMPHIBIAN_TIDE_BODY_1",
+              "label": "유선형 사지",
+              "trigger": "PASSIVE",
+              "bonuses": {"agility": 1},
+              "hook_id": "",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "AMPHIBIAN_TIDE_BODY_2",
+              "label": "수중 도약",
+              "trigger": "INTERACT",
+              "bonuses": {},
+              "hook_id": "WATER_GAP_TRAVERSE",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            }
+          ]
+        },
+        {
+          "branch_id": "VENOM_GLAND",
+          "label": "독샘",
+          "ranks": [
+            {
+              "effect_id": "AMPHIBIAN_VENOM_GLAND_1",
+              "label": "독성 점액",
+              "trigger": "ON_HURT",
+              "bonuses": {},
+              "hook_id": "CONTACT_POISON",
+              "required_item_tags": [],
+              "side_effect_ids": []
+            },
+            {
+              "effect_id": "AMPHIBIAN_VENOM_GLAND_2",
+              "label": "독액 채취",
+              "trigger": "INTERACT",
+              "bonuses": {},
+              "hook_id": "HARVEST_VENOM",
+              "required_item_tags": [],
+              "side_effect_ids": ["WATER_NEED"]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "mutations": [
+    {
+      "mutation_id": "PREDATOR_NERVE",
+      "monster_family_id": "GOBLINOID",
+      "label": "포식 신경",
+      "effect": {
+        "effect_id": "MUTATION_PREDATOR_NERVE",
+        "label": "빈틈 물기",
+        "trigger": "ON_HIT",
+        "bonuses": {"damage_flat": 2},
+        "hook_id": "WOUNDED_TARGET_BITE",
+        "required_item_tags": ["MELEE"],
+        "side_effect_ids": ["SELF_STRESS_5"]
+      }
+    },
+    {
+      "mutation_id": "HIDE_PLATING",
+      "monster_family_id": "BEAST",
+      "label": "가죽 각질",
+      "effect": {
+        "effect_id": "MUTATION_HIDE_PLATING",
+        "label": "겹가죽",
+        "trigger": "PASSIVE",
+        "bonuses": {"armor_flat": 2, "dodge_milli": -25, "fire_tolerance": -10},
+        "hook_id": "",
+        "required_item_tags": [],
+        "side_effect_ids": ["BRITTLE_HIDE"]
+      }
+    },
+    {
+      "mutation_id": "CAUSTIC_BLOOD",
+      "monster_family_id": "OOZE",
+      "label": "부식성 혈액",
+      "effect": {
+        "effect_id": "MUTATION_CAUSTIC_BLOOD",
+        "label": "산성 반격",
+        "trigger": "ON_HURT",
+        "bonuses": {"damage_flat": 2},
+        "hook_id": "MELEE_ATTACKER_ACID",
+        "required_item_tags": [],
+        "side_effect_ids": ["HEALING_RECEIVED_-10_PERCENT"]
+      }
+    },
+    {
+      "mutation_id": "DEEP_EYE",
+      "monster_family_id": "ABERRATION",
+      "label": "심층안",
+      "effect": {
+        "effect_id": "MUTATION_DEEP_EYE",
+        "label": "숨은 것 보기",
+        "trigger": "INTERACT",
+        "bonuses": {},
+        "hook_id": "REVEAL_CONCEALED",
+        "required_item_tags": [],
+        "side_effect_ids": ["BRIGHT_LIGHT_ACCURACY_-50"]
+      }
+    }
+  ],
+  "affix_build_profiles": [
+    {"affix_id": "GUARDED", "kind": "NUMERIC", "hook_id": ""},
+    {"affix_id": "NIMBLE", "kind": "REACTIVE", "hook_id": "ON_HURT_NIMBLE_STEP"}
+  ],
+  "monster_species_families": [
+    {"species_id": "goblin", "monster_family_id": "GOBLINOID"},
+    {"species_id": "kobold", "monster_family_id": "GOBLINOID"},
+    {"species_id": "wolf", "monster_family_id": "BEAST"},
+    {"species_id": "boar", "monster_family_id": "BEAST"},
+    {"species_id": "ooze", "monster_family_id": "OOZE"},
+    {"species_id": "slime", "monster_family_id": "OOZE"},
+    {"species_id": "aberration", "monster_family_id": "ABERRATION"}
+  ]
+}

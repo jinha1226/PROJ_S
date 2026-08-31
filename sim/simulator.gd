@@ -14,6 +14,7 @@ const PartyRequestScript = preload("res://sim/party_turn_request.gd")
 const PartyPlanScript = preload("res://sim/party_turn_plan.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const WeightedPathfinderScript = preload("res://sim/weighted_pathfinder.gd")
+const OpeningEventSystemScript = preload("res://sim/systems/opening_event_system.gd")
 const WorldStateScript = preload("res://sim/world_state.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
 const StepResultScript = preload("res://sim/sim_step_result.gd")
@@ -37,6 +38,7 @@ var actor_coordinator
 var party_coordinator
 var pathfinder
 var melee
+var opening_event
 
 
 func _init(width: int, height: int, seed: int = 1) -> void:
@@ -198,8 +200,10 @@ func _rebuild_systems() -> void:
 	exposure = ExposureSystemScript.new(world, movement)
 	status_lifecycle = StatusLifecycleSystemScript.new(world, damage)
 	pathfinder = WeightedPathfinderScript.new(world, movement)
+	opening_event = OpeningEventSystemScript.new(world, movement, pathfinder, relationships)
 	actor_coordinator = ActorCoordinatorScript.new(world, movement, relationships, damage)
-	party_coordinator = PartyCoordinatorScript.new(world, movement, damage, pathfinder, environment, exposure)
+	party_coordinator = PartyCoordinatorScript.new(world, movement, damage, pathfinder,
+		environment, exposure, opening_event)
 	melee = MeleeScript.new(world, damage)
 
 

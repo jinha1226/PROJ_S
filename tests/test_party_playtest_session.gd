@@ -573,17 +573,20 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 		"gateway state survives strict save and journal replay")
 	check_eq(restored.sim.snapshot(),product.sim.snapshot(),
 		"gateway save/replay snapshot is exact")
-	var legacy_v5:Dictionary=JSON.parse_string(product.save_session_json())
+	var legacy_product=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(legacy_product.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		product._map_layout,false),"v5 product baseline excludes future opening state")
+	var legacy_v5:Dictionary=JSON.parse_string(legacy_product.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
 	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
 			"protagonist_inventory","ground_items","safe_recovery_turns",
-			"last_protagonist_damage_step"]:
+			"last_protagonist_damage_step","opening_event","protagonist_growth"]:
 		legacy_v5.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(3,4)
 	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
 		"v5 product save reconstructs deterministic door gateways")
 	var migrated_snapshot:Dictionary=migrated.sim.snapshot()
-	var expected_legacy_snapshot:Dictionary=product.sim.snapshot()
+	var expected_legacy_snapshot:Dictionary=legacy_product.sim.snapshot()
 	var legacy_inventory:Dictionary=migrated_snapshot.party_encounter.protagonist_inventory
 	var legacy_ground:Dictionary=migrated_snapshot.party_encounter.ground_items
 	var legacy_main_hand:Dictionary={}

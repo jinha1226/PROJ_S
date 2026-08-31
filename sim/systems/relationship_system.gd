@@ -38,6 +38,27 @@ func record_aid(observer_id: int, helper_id: int, source_event_id: int, magnitud
 	return true
 
 
+# Opening-event gratitude is a memory, not an instant species-trust rewrite.
+# Keep personal trust/fear untouched while retaining the same exactly-once
+# source-event ledger used by the other relationship mutations.
+func record_gratitude_only(observer_id: int, helper_id: int,
+		source_event_id: int, magnitude: int) -> bool:
+	if not _valid_interaction(observer_id, helper_id, source_event_id) or magnitude <= 0:
+		return false
+	var relation = _get_or_create(observer_id, helper_id)
+	if relation.has_processed(source_event_id): return false
+	relation.processed_source_event_ids.append(source_event_id)
+	var amount := clampi(magnitude, 1, 100)
+	relation.gratitude = clampi(relation.gratitude + amount, 0, 100)
+	var event = world.emit_event(
+		"relationship.gratitude_recorded", observer_id, helper_id,
+		world.entities[observer_id].position, amount, source_event_id,
+		{"gratitude":relation.gratitude,
+			"personal_trust_delta":relation.personal_trust_delta,
+			"personal_fear_delta":relation.personal_fear_delta})
+	return event != null
+
+
 func record_harm(observer_id: int, attacker_id: int, source_event_id: int, magnitude: int) -> bool:
 	if not _valid_interaction(observer_id, attacker_id, source_event_id) or magnitude <= 0:
 		return false

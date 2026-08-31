@@ -3589,6 +3589,8 @@ func _party_runtime_error() -> String:
 		return "party_anchor_or_facing_invalid"
 	var hero = entities[party_encounter.protagonist_id]
 	var hero_member = party_encounter.member_rows[party_encounter.protagonist_id]
+	var growth_error:=_party_growth_build_error(hero)
+	if not growth_error.is_empty():return growth_error
 	if party_encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE", "CONTACT"] \
 			and hero.position != party_encounter.group_anchor:
 		return "party_protagonist_anchor_mismatch"
@@ -3637,11 +3639,181 @@ func _party_runtime_error() -> String:
 			if event.type == "entity.died" and event.target_id == hero.id:
 				protagonist_death_found = true; break
 		if not protagonist_death_found: return "party_defeat_event_missing"
+	var opening_error := _party_opening_event_error(party_ids)
+	if not opening_error.is_empty(): return opening_error
 	var progression_error:=_party_progression_error()
 	if not progression_error.is_empty():return progression_error
 	var restoration_error:=_party_health_restoration_error()
 	if not restoration_error.is_empty():return restoration_error
 	return _party_event_correlation_error()
+
+
+func _party_growth_build_error(hero) -> String:
+	var growth=party_encounter.protagonist_growth
+	if growth==null or not growth.validation_error().is_empty():
+		return "party_growth_state_invalid"
+	if str(growth.species_id)!=str(hero.species_id):
+		return "party_growth_species_mismatch"
+	var Registry=preload("res://sim/growth_build_registry.gd")
+	var processed_families:Dictionary={}
+	for death_event_id in growth.processed_mutation_death_event_ids:
+		var source=event_by_id(int(death_event_id))
+		if source==null or source.type!="entity.died" \
+				or source.target_id not in party_encounter.enemy_ids \
+				or not entities.has(source.target_id):
+			return "party_growth_mutation_source_invalid"
+		var family_id:=Registry.monster_family_for_species(
+			str(entities[source.target_id].species_id))
+		if family_id.is_empty():return "party_growth_mutation_source_invalid"
+		processed_families[family_id]=true
+	for mutation_id in growth.unlocked_mutation_ids:
+		var definition:Dictionary=Registry.mutation_definition(mutation_id)
+		if not processed_families.has(str(definition.get("monster_family_id",""))):
+			return "party_growth_unlock_source_missing"
+	return ""
+
+
+func _party_opening_event_error(party_ids: Dictionary) -> String:
+	var opening = party_encounter.opening_event
+	if opening == null: return ""
+	var npc_id := int(opening.npc_entity_id)
+	if npc_id <= 0 or party_ids.has(npc_id) or npc_id in party_encounter.enemy_ids \
+			or not entities.has(npc_id) or not combatant_states.has(npc_id):
+		return "opening_npc_reference_invalid"
+	for party_id in party_encounter.party_member_ids:
+		if npc_id <= int(party_id): return "opening_npc_not_spawned_last"
+	for enemy_id in party_encounter.enemy_ids:
+		if npc_id <= int(enemy_id): return "opening_npc_not_spawned_last"
+	var npc = entities[npc_id]
+	var life = combatant_states[npc_id]
+	if npc.kind != "companion" or npc.species_id != "amphibian" \
+			or npc.faction_id != "neutral" or npc.tags != ["opening_event_npc"] \
+			or not _terrain_is_passable(opening.spawn_position) \
+			or not _terrain_is_passable(opening.convergence_goal):
+		return "opening_npc_identity_invalid"
+	for band_position in opening.convergence_band:
+		if not _terrain_is_passable(band_position):
+			return "opening_convergence_cell_blocked"
+	var discovery_rows: Array = []
+	var choice_rows: Array = []
+	var potion_rows: Array = []
+	var restoration_rows: Array = []
+	var gratitude_rows: Array = []
+	var reencounter_rows: Array = []
+	var cursor: Vector2i = opening.spawn_position
+	var projected_health := maxi(1, int((npc.max_health + 4) / 5))
+	for event in events:
+		if event.type == "opening.npc_discovered" and event.target_id == npc_id:
+			discovery_rows.append(event)
+		elif event.type == "opening.choice_committed" and event.target_id == npc_id:
+			choice_rows.append(event)
+		elif event.type == "opening.potion_given" and event.target_id == npc_id:
+			potion_rows.append(event)
+		elif event.type == "opening.health_restored" and event.target_id == npc_id:
+			restoration_rows.append(event)
+		elif event.type == "relationship.gratitude_recorded" \
+				and event.actor_id == npc_id:
+			gratitude_rows.append(event)
+		elif event.type == "opening.reencountered" and event.target_id == npc_id:
+			reencounter_rows.append(event)
+		if event.type == "action.move" and event.actor_id == npc_id:
+			if not _party_move_event_is_canonical(event) \
+					or Vector2i(int(event.data.from_position[0]),
+						int(event.data.from_position[1])) != cursor \
+					or event.id <= opening.choice_event_id:
+				return "opening_npc_move_history_invalid"
+			cursor = event.position
+		if event.target_id != npc_id: continue
+		var event_type := str(event.type)
+		if event_type.begins_with("combat.") and event_type.ends_with("_damage"):
+			projected_health = maxi(0, projected_health - int(event.magnitude))
+		elif event_type in ["entity.downed", "entity.died"]:
+			projected_health = 0
+		elif event_type == "entity.recovered":
+			projected_health = int(event.data.get("recovered_health", 0))
+		elif event_type == "opening.health_restored":
+			var restore_keys: Array = event.data.keys(); restore_keys.sort()
+			if restore_keys != ["health_after", "ruleset_id", "schema_version"] \
+					or event.data.get("schema_version") != 1 \
+					or event.data.get("ruleset_id") != "opening-healing-potion-v1" \
+					or event.actor_id != party_encounter.protagonist_id \
+					or event.magnitude <= 0:
+				return "opening_health_restoration_invalid"
+			projected_health = mini(npc.max_health,
+				projected_health + int(event.magnitude))
+			if int(event.data.health_after) != projected_health:
+				return "opening_health_restoration_projection_invalid"
+	if discovery_rows.size() != 1:
+		return "opening_discovery_event_count_invalid"
+	var discovery = discovery_rows[0]
+	if discovery.actor_id != -1 or discovery.position != opening.spawn_position \
+			or discovery.data.get("schema_version") != 1 \
+			or discovery.data.get("state") != "WOUNDED" \
+			or discovery.data.get("non_hostile") != true \
+			or discovery.data.get("position") != [opening.spawn_position.x,
+				opening.spawn_position.y] \
+			or discovery.data.get("hexaco_profile") != opening.hexaco_profile.to_dict() \
+			or discovery.data.get("convergence_goal") != [opening.convergence_goal.x,
+				opening.convergence_goal.y]:
+		return "opening_discovery_event_invalid"
+	if cursor != npc.position: return "opening_npc_position_projection_mismatch"
+	if projected_health != npc.health: return "opening_npc_health_projection_mismatch"
+	if (life.life_state == "ACTIVE") != (npc.health > 0):
+		return "opening_npc_life_projection_mismatch"
+	if opening.choice == "PENDING":
+		if not choice_rows.is_empty() or not potion_rows.is_empty() \
+				or not restoration_rows.is_empty() or not gratitude_rows.is_empty() \
+				or not reencounter_rows.is_empty() or cursor != opening.spawn_position:
+			return "opening_pending_history_invalid"
+		return ""
+	if choice_rows.size() != 1: return "opening_choice_event_count_invalid"
+	var choice_event = choice_rows[0]
+	if choice_event.id != opening.choice_event_id \
+			or choice_event.actor_id != party_encounter.protagonist_id \
+			or choice_event.cause_id != -1 or choice_event.data != {
+				"schema_version":1, "choice":opening.choice}:
+		return "opening_choice_event_invalid"
+	var relation_key := "%d:%d" % [npc_id, party_encounter.protagonist_id]
+	var relation = personal_relations.get(relation_key)
+	if opening.choice == "PASSED":
+		if not potion_rows.is_empty() or not restoration_rows.is_empty() \
+				or not gratitude_rows.is_empty() or relation != null:
+			return "opening_pass_mutated_authority"
+	else:
+		if potion_rows.size() != 1 or restoration_rows.size() != 1 \
+				or gratitude_rows.size() != 1 or relation == null:
+			return "opening_give_event_chain_missing"
+		var given = potion_rows[0]
+		var restored = restoration_rows[0]
+		var gratitude = gratitude_rows[0]
+		if given.actor_id != party_encounter.protagonist_id \
+				or given.cause_id != choice_event.id or given.magnitude != 1 \
+				or given.data.get("schema_version") != 1 \
+				or given.data.get("definition_id") != "POTION_HEALING" \
+				or restored.cause_id != given.id \
+				or gratitude.cause_id != restored.id \
+				or gratitude.target_id != party_encounter.protagonist_id \
+				or gratitude.magnitude != 60 \
+				or relation.gratitude != 60 \
+				or relation.personal_trust_delta != 0 \
+				or relation.personal_fear_delta != 0 \
+				or relation.processed_source_event_ids != [restored.id]:
+			return "opening_give_event_chain_invalid"
+	if reencounter_rows.size() > 1: return "opening_reencounter_event_count_invalid"
+	if opening.reencounter_event_id == -1:
+		if not reencounter_rows.is_empty(): return "opening_reencounter_projection_mismatch"
+	elif reencounter_rows.size() != 1:
+		return "opening_reencounter_projection_mismatch"
+	else:
+		var reencounter = reencounter_rows[0]
+		if reencounter.id != opening.reencounter_event_id \
+				or reencounter.actor_id != party_encounter.protagonist_id \
+				or reencounter.cause_id != opening.choice_event_id \
+				or reencounter.position not in opening.convergence_band \
+				or reencounter.data.get("schema_version") != 1 \
+				or reencounter.data.get("choice") != opening.choice:
+			return "opening_reencounter_event_invalid"
+	return ""
 
 
 func _rebuild_progression_from_events(use_all_normal_baseline:bool=false)->void:

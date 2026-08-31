@@ -1,0 +1,38 @@
+{
+  "content_schema_version": 1,
+  "content_version": "proficiencies-2026-09-01",
+  "content_type": "PROFICIENCIES",
+  "ruleset_id": "weapon-proficiency-v3",
+  "definitions": [
+    {
+      "proficiency_id": "SWORD",
+      "label": "도검",
+      "description": "베기검과 찌르기검의 명중과 피해를 높입니다."
+    },
+    {
+      "proficiency_id": "AXE",
+      "label": "도끼",
+      "description": "주변 적까지 스치는 도끼의 명중과 피해를 높입니다."
+    },
+    {
+      "proficiency_id": "BLUNT",
+      "label": "둔기",
+      "description": "충격과 기절을 노리는 둔기의 명중과 피해를 높입니다."
+    },
+    {
+      "proficiency_id": "SPEAR",
+      "label": "창",
+      "description": "두 칸 거리까지 닿는 창의 명중과 피해를 높입니다."
+    },
+    {
+      "proficiency_id": "RANGED",
+      "label": "원거리",
+      "description": "활과 쇠뇌의 명중과 피해를 함께 높입니다."
+    },
+    {
+      "proficiency_id": "UNARMED",
+      "label": "격투",
+      "description": "빠른 맨손 공격의 명중과 피해를 높입니다."
+    }
+  ]
+}

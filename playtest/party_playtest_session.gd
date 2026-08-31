@@ -29,6 +29,13 @@ const ItemScript=preload("res://sim/item_instance.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const ItemOperationsScript=preload("res://sim/item_inventory_operations.gd")
 const RecoveryRulesScript=preload("res://sim/exploration_recovery_rules.gd")
+const DeterministicDungeonMapScript=preload("res://playtest/deterministic_dungeon_map.gd")
+const OpeningEventStateScript=preload("res://sim/opening_event_state.gd")
+const OpeningHexacoScript=preload("res://sim/dungeon_population/hexaco_profile.gd")
+const GrowthBuildStateScript=preload("res://sim/growth_build_state.gd")
+const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
+const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
+const ContentDatabaseScript=preload("res://sim/content_database.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -51,6 +58,8 @@ const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
 const ITEM_ACTION_TIME_COST := 100
+const OPENING_HEXACO_SLOT := 9242026
+const OPENING_NPC_MAX_HEALTH := 90
 const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
 # Product camera steps are a presentation contract shared with the sandbox.
 # Keep the complete sequence here so adding a zoom level cannot leave the UI
@@ -164,7 +173,9 @@ static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
 
 func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
-		product_layout_override:Dictionary={}) -> bool:
+		product_layout_override:Dictionary={},
+		bootstrap_opening_event:bool=true) -> bool:
+	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
 	var product_dungeon := VisualTestMapScript.uses_product_dungeon(p_scenario_id)
 	var map_layout: Dictionary = (product_layout_override.duplicate(true) \
@@ -219,6 +230,30 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			["party_enemy"],str(enemy_profile.species_id),"enemy")
 		if spawned==null:return false
 		enemies.append(spawned)
+	var opening_state = null
+	var opening_enabled := p_scenario_id == SOLO_COMBAT_SCENARIO_ID \
+		and bootstrap_opening_event
+	if opening_enabled:
+		var anchors: Dictionary = DeterministicDungeonMapScript.opening_event_anchors(
+			map_layout, p_world_seed)
+		if anchors.is_empty(): return false
+		var opening_entity = candidate.world.add_entity("companion",
+			"부상당한 여행자", anchors.spawn_position, OPENING_NPC_MAX_HEALTH,
+			["opening_event_npc"], "amphibian", "neutral")
+		if opening_entity == null: return false
+		opening_entity.health = maxi(1, int((opening_entity.max_health + 4) / 5))
+		var profile = OpeningHexacoScript.generated(p_world_seed, OPENING_HEXACO_SLOT)
+		opening_state = OpeningEventStateScript.new(opening_entity.id, profile,
+			anchors.spawn_position, anchors.convergence_band, anchors.convergence_goal)
+		var discovery = candidate.world.emit_event("opening.npc_discovered", -1,
+			opening_entity.id, opening_entity.position, 0, -1,
+			{"schema_version":1, "state":"WOUNDED", "non_hostile":true,
+				"position":[opening_entity.position.x, opening_entity.position.y],
+				"hexaco_slot":OPENING_HEXACO_SLOT,
+				"hexaco_profile":profile.to_dict(),
+				"convergence_goal":[anchors.convergence_goal.x,
+					anchors.convergence_goal.y]})
+		if discovery == null: return false
 	if protagonist == null or enemies.is_empty() or (not solo and (narae == null or miru == null)) \
 			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
 		return false
@@ -230,6 +265,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			candidate_amphibian.id):
 		return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
+	state.opening_event = opening_state
 	state.party_member_ids.append(protagonist.id)
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
@@ -286,6 +322,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		ItemScript.new("START_POTION_001","POTION_HEALING",3)],
 		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
 	state.protagonist_progression.training_modes=ProgressionRegistryScript.initial_training_modes("SWORD")
+	state.protagonist_growth=GrowthBuildStateScript.new(str(protagonist.species_id))
 	state.ground_items=GroundItemScript.new(_initial_ground_item_rows(candidate,
 		hero_position,map_layout) if product_dungeon else [])
 	if not solo:
@@ -385,6 +422,131 @@ func protagonist_progression()->Dictionary:
 		"skills":skills}.duplicate(true)
 
 
+func protagonist_growth_build()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return {"schema_version":1,"available":false,"reason":"session_not_initialized"}.duplicate(true)
+	var state=sim.world.party_encounter
+	if state.protagonist_growth==null or state.protagonist_inventory==null:
+		return {"schema_version":1,"available":false,"reason":"growth_state_missing"}.duplicate(true)
+	var equipped_items:Dictionary={}
+	for slot in GrowthBuildCalculatorScript.EQUIPMENT_SLOTS:
+		var item=state.protagonist_inventory.equipped_item(slot)
+		if item!=null:equipped_items[slot]=item
+	var projection:Dictionary=GrowthBuildCalculatorScript.calculate(
+		state.protagonist_growth,equipped_items)
+	if not bool(projection.get("accepted",false)):
+		return {"schema_version":1,"available":false,
+			"reason":str(projection.get("reason","growth_projection_failed"))}.duplicate(true)
+	var build:Dictionary=projection.build.duplicate(true)
+	var species_definition:Dictionary=GrowthBuildRegistryScript.species_definition(
+		str(state.protagonist_growth.species_id))
+	var branch_rows:Array=[]
+	for branch in species_definition.get("branches",[]):
+		var branch_id:=str(branch.get("branch_id",""))
+		branch_rows.append({"branch_id":branch_id,"label":str(branch.get("label","")),
+			"rank":int(state.protagonist_growth.species_branch_ranks.get(branch_id,0)),
+			"max_rank":int(branch.get("ranks",[]).size()),
+			"rank_effects":branch.get("ranks",[]).duplicate(true)})
+	var mutation_rows:Array=[]
+	for mutation_id in GrowthBuildRegistryScript.mutation_ids():
+		var definition:Dictionary=GrowthBuildRegistryScript.mutation_definition(mutation_id)
+		mutation_rows.append({"mutation_id":mutation_id,"label":str(definition.get("label","")),
+			"monster_family_id":str(definition.get("monster_family_id","")),
+			"unlocked":mutation_id in state.protagonist_growth.unlocked_mutation_ids,
+			"equipped_slot":state.protagonist_growth.equipped_mutation_ids.find(mutation_id),
+			"effect":definition.get("effect",{}).duplicate(true)})
+	build["schema_version"]=1;build["available"]=true;build["reason"]="ok"
+	build["stat_allocations"]=state.protagonist_growth.stat_allocations.duplicate(true)
+	build["species_fixed_trait"]=species_definition.get("fixed_trait",{}).duplicate(true)
+	build["species_branch_rows"]=branch_rows
+	build["unlocked_mutation_ids"]=state.protagonist_growth.unlocked_mutation_ids.duplicate()
+	build["mutation_rows"]=mutation_rows
+	return build.duplicate(true)
+
+
+func spend_growth_stat_point(stat_id:String)->Dictionary:
+	return _commit_growth_point("SPEND_STAT_POINT",stat_id)
+
+
+func spend_species_trait_point(branch_id:String)->Dictionary:
+	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
+
+
+func _commit_growth_point(action:String,target_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if _run_is_complete() or state.safe_phase=="PARTY_DEFEATED":
+		return _rejection_dto("run_complete")
+	if not sim.world.is_settled() or _protagonist_draft!=null:
+		return _rejection_dto("world_not_settled")
+	var preview:Dictionary=state.protagonist_growth.commit_spend_stat_point(target_id) \
+		if action=="SPEND_STAT_POINT" \
+		else state.protagonist_growth.commit_spend_species_point(target_id)
+	if not bool(preview.get("accepted",false)):
+		return _rejection_dto(str(preview.get("reason","growth_point_failed")))
+	var before:Dictionary=sim.snapshot()
+	if before.is_empty():return _rejection_dto("snapshot_unavailable")
+	state.protagonist_growth=preview.state
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var event_type:="growth.stat_spent" if action=="SPEND_STAT_POINT" \
+		else "growth.species_point_spent"
+	var event=sim.world.emit_event(event_type,state.protagonist_id,state.protagonist_id,
+		hero.position,1,-1,{"schema_version":1,"ruleset_id":GrowthBuildRegistryScript.RULESET_ID,
+			"target_id":target_id})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto(state_error if not state_error.is_empty() else "growth_event_failed")
+	command_journal.append({"kind":"growth","operation":{"action":action,
+		"target_id":target_id,"slot_index":-1,"mutation_id":""}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"time_cost":0,"growth_build":protagonist_growth_build()})
+
+
+func swap_mutation_trace(slot_index:int,mutation_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if _run_is_complete() or state.safe_phase=="PARTY_DEFEATED":
+		return _rejection_dto("run_complete")
+	if not sim.world.is_settled() or _protagonist_draft!=null:
+		return _rejection_dto("world_not_settled")
+	var preview:Dictionary=state.protagonist_growth.commit_mutation_swap(
+		slot_index,mutation_id,state.safe_phase)
+	if not bool(preview.get("accepted",false)):
+		return _rejection_dto(str(preview.get("reason","mutation_swap_failed")))
+	var before:Dictionary=sim.snapshot()
+	if before.is_empty():return _rejection_dto("snapshot_unavailable")
+	var journal_size_before:=command_journal.size()
+	var advanced:Dictionary=_advance_item_action_time()
+	if not bool(advanced.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("mutation_swap_time_failed")
+	while command_journal.size()>journal_size_before:command_journal.pop_back()
+	state=sim.world.party_encounter
+	var committed:Dictionary=state.protagonist_growth.commit_mutation_swap(
+		slot_index,mutation_id,state.safe_phase)
+	if not bool(committed.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto(str(committed.get("reason","mutation_swap_failed")))
+	state.protagonist_growth=committed.state
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var event=sim.world.emit_event("growth.mutation_swapped",state.protagonist_id,
+		state.protagonist_id,hero.position,0,-1,{"schema_version":1,
+			"ruleset_id":GrowthBuildRegistryScript.RULESET_ID,"slot_index":slot_index,
+			"mutation_id":mutation_id,"time_cost":int(committed.time_cost)})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto(state_error if not state_error.is_empty() else "growth_event_failed")
+	command_journal.append({"kind":"growth","operation":{"action":"SWAP_MUTATION",
+		"target_id":"","slot_index":slot_index,"mutation_id":mutation_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"time_cost":int(committed.time_cost),"growth_build":protagonist_growth_build()})
+
+
 func protagonist_equipment()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or sim.world.party_encounter.protagonist_loadout==null:
@@ -433,6 +595,87 @@ func protagonist_inventory()->Dictionary:
 		"equipment_slots":slot_rows,"backpack_rows":backpack_rows,
 		"equipment_bonuses":inventory.equipment_bonuses(),
 		"combat_modifiers":inventory.combat_modifier_dto()}.duplicate(true)
+
+
+func opening_event_status() -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null \
+			or sim.world.party_encounter.opening_event == null:
+		return {"schema_version":1, "available":false}.duplicate(true)
+	var state = sim.world.party_encounter
+	var opening = state.opening_event
+	var hero = sim.world.entities.get(state.protagonist_id)
+	var npc = sim.world.entities.get(opening.npc_entity_id)
+	var hero_life = sim.world.combatant_states.get(state.protagonist_id)
+	var npc_life = sim.world.combatant_states.get(opening.npc_entity_id)
+	if hero == null or npc == null or hero_life == null or npc_life == null:
+		return {"schema_version":1, "available":false}.duplicate(true)
+	var adjacent := maxi(absi(hero.position.x - npc.position.x),
+		absi(hero.position.y - npc.position.y)) == 1
+	var can_interact: bool = opening.choice == "PENDING" and adjacent \
+		and hero_life.life_state == "ACTIVE" and npc_life.life_state == "ACTIVE" \
+		and not _run_is_complete()
+	var give_preview: Dictionary = sim.opening_event.preview_choice("GIVE_POTION") \
+		if can_interact else {"accepted":false}
+	var relation: Dictionary = sim.relationships.effective_relation(
+		opening.npc_entity_id, state.protagonist_id)
+	return {"schema_version":1, "available":true,
+		"npc_entity_id":opening.npc_entity_id,
+		"display_name":str(npc.display_name), "choice":str(opening.choice),
+		"current_behavior":str(opening.current_behavior),
+		"life_state":str(npc_life.life_state), "health":int(npc.health),
+		"max_health":int(npc.max_health),
+		"position":[npc.position.x, npc.position.y],
+		"spawn_position":[opening.spawn_position.x, opening.spawn_position.y],
+		"convergence_goal":[opening.convergence_goal.x, opening.convergence_goal.y],
+		"hexaco_profile":opening.hexaco_profile.to_dict(),
+		"can_interact":can_interact,
+		"give_enabled":can_interact and bool(give_preview.get("accepted", false)),
+		"pass_enabled":can_interact,
+		"gratitude":int(relation.get("gratitude", 0)),
+		"trust":int(relation.get("trust", 0)),
+		"species_base_trust":int(relation.get("species_base", {}).get("base_trust", 0)),
+		"choice_event_id":opening.choice_event_id,
+		"reencountered":opening.reencounter_event_id > 0,
+		"reencounter_event_id":opening.reencounter_event_id}.duplicate(true)
+
+
+func commit_opening_event_choice(choice_action: String) -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var preview: Dictionary = sim.opening_event.preview_choice(choice_action)
+	if not bool(preview.get("accepted", false)):
+		return _rejection_dto(str(preview.get("reason", "opening_choice_failed")))
+	if not sim.world.is_settled() or _protagonist_draft != null:
+		return _rejection_dto("world_not_settled")
+	var before: Dictionary = sim.snapshot()
+	if before.is_empty(): return _rejection_dto("snapshot_unavailable")
+	var event_start: int = sim.world.events.size()
+	var journal_size_before := command_journal.size()
+	var advance: Dictionary = _advance_item_action_time()
+	if not bool(advance.get("accepted", false)):
+		sim = SimulatorScript.from_snapshot(before)
+		return _rejection_dto("opening_choice_time_failed")
+	while command_journal.size() > journal_size_before: command_journal.pop_back()
+	var committed: Dictionary = sim.opening_event.commit_preflighted_choice(preview)
+	if not bool(committed.get("accepted", false)):
+		sim = SimulatorScript.from_snapshot(before)
+		return _rejection_dto(str(committed.get("reason", "opening_choice_failed")))
+	var state_error: String = sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim = SimulatorScript.from_snapshot(before)
+		return _rejection_dto(state_error)
+	_clear_draft(); _deployment_plan.clear(); _invalidate_explored_presentation_cache()
+	command_journal.append({"kind":"opening", "operation":{
+		"action":choice_action}})
+	var event_ids: Array = []
+	for index in range(event_start, sim.world.events.size()):
+		event_ids.append(sim.world.events[index].id)
+	return _feedback_dto({"accepted":true, "reason":"ok",
+		"choice":str(committed.choice), "event_ids":event_ids,
+		"time_cost":int(committed.time_cost),
+		"healed_amount":int(committed.healed_amount),
+		"opening_event":opening_event_status(),
+		"inventory":protagonist_inventory()})
 
 
 func ground_items_at_protagonist()->Array[Dictionary]:
@@ -1177,6 +1420,16 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				var is_enemy: bool = entity.id in sim.world.party_encounter.enemy_ids
 				if is_enemy and hide_enemies: continue
 				actors.append(_actor_observation(entity, position, position, ""))
+			# DEAD actors intentionally do not occupy a tile. The opening NPC corpse
+			# remains observable from its same authoritative entity and position.
+			var opening = sim.world.party_encounter.opening_event
+			if opening != null and sim.world.entities.has(opening.npc_entity_id):
+				var opening_entity = sim.world.entities[opening.npc_entity_id]
+				var opening_life = sim.world.combatant_states.get(opening.npc_entity_id)
+				if opening_entity.position == position and opening_life != null \
+						and opening_life.life_state == "DEAD":
+					actors.append(_actor_observation(opening_entity, position,
+						position, "OPENING_NPC"))
 			for member_id_value in followers_by_cell.get(_position_key(position), []):
 				var member_id := int(member_id_value)
 				if sim.world.entities.has(member_id):
@@ -1472,6 +1725,13 @@ func _actor_observation(entity, logical_position: Vector2i,
 		# DOWNED is a presentation pose only. Combat life remains ACTIVE and all
 		# occupancy/hit authority continues to use the canonical world entity.
 		dto["life_state"] = "DOWNED" if story_state == "COLLAPSED_STORY" else "ACTIVE"
+	var opening = sim.world.party_encounter.opening_event
+	if opening != null and int(opening.npc_entity_id) == int(entity.id):
+		dto["display_role"] = "OPENING_NPC"
+		dto["presence"] = "WORLD_NPC"
+		dto["opening_choice"] = str(opening.choice)
+		dto["opening_behavior"] = str(opening.current_behavior)
+		dto["is_corpse"] = combatant != null and combatant.life_state == "DEAD"
 	return dto
 
 
@@ -3326,6 +3586,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"rescue_assessment":rescue_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
 		"progression":protagonist_progression() if member.role=="PROTAGONIST" else {},
+		"growth_build":protagonist_growth_build() if member.role=="PROTAGONIST" else {},
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
 	return _feedback_dto(dto, null, null,
@@ -3456,7 +3717,12 @@ func _is_important_log_event(event)->bool:
 			"party.companion_dismissed","party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.used","health.restored",
-			"progression.enemy_reward"]:
+			"progression.enemy_reward","opening.npc_discovered",
+			"opening.choice_committed","opening.potion_given",
+			"opening.health_restored","opening.reencountered",
+			"relationship.gratitude_recorded","growth.enemy_reward",
+			"growth.stat_spent","growth.species_point_spent",
+			"growth.mutation_swapped"]:
 		return true
 	return event_type.begins_with("combat.") and event_type.ends_with("_damage")
 
@@ -3485,6 +3751,9 @@ func load_session_json(encoded: String) -> Dictionary:
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	var legacy_opening_replay := source_party_schema \
+		< PartyStateScript.OPENING_EVENT_SCHEMA_VERSION \
+		or decoded.snapshot.party_encounter.get("opening_event") == null
 	var source_progression_row:Dictionary=decoded.snapshot.party_encounter.get(
 		"protagonist_progression",{})
 	var source_progression_schema:int=int(source_progression_row.get("schema_version",0))
@@ -3502,6 +3771,12 @@ func load_session_json(encoded: String) -> Dictionary:
 	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
 		decoded.snapshot.party_encounter.erase("protagonist_inventory")
 		decoded.snapshot.party_encounter.erase("ground_items")
+	if source_party_schema<PartyStateScript.OPENING_EVENT_SCHEMA_VERSION:
+		decoded.snapshot.party_encounter.erase("opening_event")
+	if source_party_schema<PartyStateScript.GROWTH_BUILD_SCHEMA_VERSION:
+		# Growth v1 intentionally uses a hard cut: old expeditions start from the
+		# species baseline and do not infer allocations or traces from old history.
+		decoded.snapshot.party_encounter.erase("protagonist_growth")
 	if source_party_schema<PartyStateScript.AWARENESS_SCHEMA_VERSION \
 			and decoded.snapshot.party_encounter.has("enemy_awareness_rows"):
 		decoded.snapshot.party_encounter.erase("enemy_awareness_rows")
@@ -3584,7 +3859,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
 	if not replay_layout.is_empty() and not replay.reset_party(parsed_world_seed,
-			parsed_personality_seed,parsed_scenario_id,replay_layout):
+			parsed_personality_seed,parsed_scenario_id,replay_layout,
+			not legacy_opening_replay):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
 		var legacy_state=replay.sim.world.party_encounter
@@ -3598,6 +3874,21 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"opening":
+				replay_result = replay.commit_opening_event_choice(
+					str(row.operation.action))
+			"growth":
+				var growth_operation:Dictionary=row.operation
+				match str(growth_operation.action):
+					"SPEND_STAT_POINT":
+						replay_result=replay.spend_growth_stat_point(
+							str(growth_operation.target_id))
+					"SPEND_SPECIES_POINT":
+						replay_result=replay.spend_species_trait_point(
+							str(growth_operation.target_id))
+					"SWAP_MUTATION":
+						replay_result=replay.swap_mutation_trace(
+							int(growth_operation.slot_index),str(growth_operation.mutation_id))
 			"equipment":
 				var operation:Dictionary=row.operation
 				replay_result=replay.equip_protagonist_weapon(str(operation.weapon_id)) \
@@ -3701,6 +3992,44 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"opening":
+				if keys != ["kind", "operation"] \
+						or not row.get("operation") is Dictionary:
+					return "invalid_opening_journal"
+				var opening_keys: Array = row.operation.keys(); opening_keys.sort()
+				if opening_keys != ["action"] \
+						or row.operation.get("action") not in ["GIVE_POTION", "PASS"]:
+					return "invalid_opening_journal"
+			"growth":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_growth_journal"
+				var growth_keys:Array=row.operation.keys();growth_keys.sort()
+				if growth_keys!=["action","mutation_id","slot_index","target_id"] \
+						or not row.operation.action is String \
+						or str(row.operation.action) not in ["SPEND_STAT_POINT",
+							"SPEND_SPECIES_POINT","SWAP_MUTATION"] \
+						or not row.operation.target_id is String \
+						or not row.operation.mutation_id is String \
+						or not _integer(row.operation.slot_index):
+					return "invalid_growth_journal"
+				var growth_action:=str(row.operation.action)
+				if growth_action=="SPEND_STAT_POINT" \
+						and (str(row.operation.target_id) not in GrowthBuildRegistryScript.STAT_IDS \
+						or int(row.operation.slot_index)!=-1 \
+						or not str(row.operation.mutation_id).is_empty()):
+					return "invalid_growth_journal"
+				if growth_action=="SPEND_SPECIES_POINT" \
+						and (str(row.operation.target_id).is_empty() \
+						or int(row.operation.slot_index)!=-1 \
+						or not str(row.operation.mutation_id).is_empty()):
+					return "invalid_growth_journal"
+				if growth_action=="SWAP_MUTATION" \
+						and (not str(row.operation.target_id).is_empty() \
+						or int(row.operation.slot_index)<0 \
+						or int(row.operation.slot_index)>=GrowthBuildRegistryScript.MUTATION_SLOT_COUNT \
+						or (not str(row.operation.mutation_id).is_empty() \
+						and str(row.operation.mutation_id) not in GrowthBuildRegistryScript.mutation_ids())):
+					return "invalid_growth_journal"
 			"item":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_item_journal"
@@ -4380,6 +4709,13 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"event_id_overflow":"더 이상 사건 기록을 추가할 수 없습니다.",
 		"party_journal_replay_failed":"저장 기록을 재생할 수 없습니다.",
 		"party_journal_snapshot_mismatch":"저장 기록과 스냅샷이 일치하지 않습니다.",
+		"opening_event_unavailable":"이 원정에는 첫 고정 이벤트가 없습니다.",
+		"opening_choice_already_committed":"이미 선택을 마쳤습니다.",
+		"unknown_opening_choice":"알 수 없는 선택입니다.",
+		"opening_actor_missing":"부상당한 여행자를 찾을 수 없습니다.",
+		"opening_actor_unavailable":"지금은 여행자와 상호작용할 수 없습니다.",
+		"opening_npc_not_adjacent":"여행자에게 인접해야 합니다.",
+		"opening_healing_potion_missing":"건넬 회복 물약이 없습니다.",
 		"invalid_party_session":"저장 데이터 형식이 올바르지 않습니다.",
 		"invalid_party_session_wire":"저장 데이터가 정규 형식이 아닙니다.",
 		"session_not_initialized":"세션이 준비되지 않았습니다."
@@ -4396,6 +4732,15 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
+		"opening.npc_discovered":return "%s 입구 근처에서 심하게 다친 채 버티고 있다."%_subject(target)
+		"opening.choice_committed":
+			return "주인공이 회복 물약을 건네기로 했다." \
+				if str(event.data.get("choice",""))=="GAVE_POTION" \
+				else "주인공이 부상당한 여행자를 지나쳤다."
+		"opening.potion_given":return "%s %s 회복 물약을 건넸다."%[_subject(actor),_object(target)]
+		"opening.health_restored":return "%s 체력을 %d 회복했다."%[_subject(target),int(event.magnitude)]
+		"opening.reencountered":return "중앙 구역에서 %s 다시 마주쳤다."%_object(target)
+		"relationship.gratitude_recorded":return "%s 도움을 고마운 기억으로 남겼다."%_subject(actor)
 		"item.picked_up":return "%s 바닥의 물건을 주웠다."%_subject(actor)
 		"item.equipped":return "%s 장비를 갖추었다."%_subject(actor)
 		"item.unequipped":return "%s 장비를 해제했다."%_subject(actor)
@@ -4408,6 +4753,14 @@ func _event_message(event) -> String:
 				else "%s 안전을 되찾아 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)]
 		"progression.enemy_reward":return "%s 처치 · 경험치 +%d · 숙련 풀 +%d" % [
 			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
+		"growth.enemy_reward":
+			return "%s 이능 흔적을 얻었다 · %s"%[
+				_subject(actor),str(event.data.get("mutation_id",""))] \
+				if bool(event.data.get("mutation_acquired",false)) \
+				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)]
+		"growth.stat_spent":return "%s 기본 능력을 단련했다."%_subject(actor)
+		"growth.species_point_spent":return "%s 종족 특성을 발전시켰다."%_subject(actor)
+		"growth.mutation_swapped":return "%s 이능 조합을 바꾸었다."%_subject(actor)
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":

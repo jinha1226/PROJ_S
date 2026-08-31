@@ -1,7 +1,10 @@
 class_name ProgressionRegistry
 extends RefCounted
 
-const RULESET_ID := "weapon-proficiency-v3"
+const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
+const CONTENT_PATH:="res://data/content/proficiencies.json"
+static var _CONTENT:Dictionary=ContentLoaderScript.load_document(CONTENT_PATH)
+static var RULESET_ID:String=str(_CONTENT.get("ruleset_id",""))
 const SCHEMA_VERSION := 5
 # A defeated enemy pays two *parallel* ledgers. Character XP is never spent or
 # converted into training; the same kill independently creates this mastery pool.
@@ -11,8 +14,9 @@ const ENEMY_KILL_MASTERY_POOL := 100
 # the source explicitly as an enemy-kill reward.
 const VICTORY_XP := ENEMY_KILL_CHARACTER_XP
 const FOCUS_TOTAL := 100
-const SKILL_IDS := ["SWORD", "AXE", "BLUNT", "SPEAR", "RANGED", "UNARMED"]
-const PROFICIENCY_IDS := SKILL_IDS
+static var SKILL_IDS:Array[String]=ContentLoaderScript.ordered_ids(
+	_CONTENT.get("definitions",[]),"proficiency_id")
+static var PROFICIENCY_IDS:Array[String]=SKILL_IDS.duplicate()
 const TRAINING_MODES := ["FOCUS", "NORMAL", "OFF"]
 const MODE_WEIGHTS := {"FOCUS":3, "NORMAL":1, "OFF":0}
 const DEFAULT_MODES := {"SWORD":"OFF", "AXE":"OFF", "BLUNT":"OFF",
@@ -23,14 +27,8 @@ const DEFAULT_FOCUS := {"SWORD":30, "AXE":15, "BLUNT":15, "SPEAR":15,
 const MAX_XP := 1000000
 const MAX_RANK := 20
 
-const DEFINITIONS := {
-	"SWORD":{"label":"도검", "description":"베기검과 찌르기검의 명중과 피해를 높입니다."},
-	"AXE":{"label":"도끼", "description":"주변 적까지 스치는 도끼의 명중과 피해를 높입니다."},
-	"BLUNT":{"label":"둔기", "description":"충격과 기절을 노리는 둔기의 명중과 피해를 높입니다."},
-	"SPEAR":{"label":"창", "description":"두 칸 거리까지 닿는 창의 명중과 피해를 높입니다."},
-	"RANGED":{"label":"원거리", "description":"활과 쇠뇌의 명중과 피해를 함께 높입니다."},
-	"UNARMED":{"label":"격투", "description":"빠른 맨손 공격의 명중과 피해를 높입니다."},
-}
+static var DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
+	_CONTENT.get("definitions",[]),"proficiency_id")
 
 
 static func definition(proficiency_id: String) -> Dictionary:
@@ -43,6 +41,30 @@ static func definition(proficiency_id: String) -> Dictionary:
 	value["milestone_rank"] = MAX_RANK
 	value["milestone_label"] = "명중·피해 숙련"
 	return value
+
+
+static func content_version()->String:
+	return str(_CONTENT.get("content_version",""))
+
+
+static func registry_error()->String:
+	var document_error:=ContentLoaderScript.document_error(_CONTENT,"PROFICIENCIES",[
+		"content_schema_version","content_version","content_type","ruleset_id","definitions"])
+	if not document_error.is_empty():return document_error
+	if RULESET_ID!="weapon-proficiency-v3":return "progression_ruleset_mismatch"
+	var rows_error:=ContentLoaderScript.rows_error(_CONTENT.definitions,"proficiency_id")
+	if not rows_error.is_empty():return rows_error
+	if SKILL_IDS!=["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
+		return "progression_definition_order_invalid"
+	for proficiency_id in SKILL_IDS:
+		var row:Variant=DEFINITIONS.get(proficiency_id)
+		if not row is Dictionary:return "invalid_progression_definition"
+		var keys:Array=row.keys();keys.sort()
+		if keys!=["description","label","proficiency_id"] \
+				or str(row.proficiency_id)!=proficiency_id \
+				or str(row.label).is_empty() or str(row.description).is_empty():
+			return "invalid_progression_definition"
+	return ""
 
 
 static func focus_preset(proficiency_id: String) -> Dictionary:

@@ -31,6 +31,7 @@ class FakeRewardWorld:
 	var _active_step_index:=7
 	var step_index:=7
 	var events:Array=[]
+	var entities:Dictionary={101:FakeRewardEnemy.new(),102:FakeRewardEnemy.new()}
 	var _next_id:=30
 	func emit_event(event_type:String,actor_id:int,target_id:int,position:Vector2i,
 			magnitude:int,cause_id:int,data:Dictionary={}):
@@ -38,6 +39,9 @@ class FakeRewardWorld:
 			"target_id":target_id,"position":position,"magnitude":magnitude,
 			"cause_id":cause_id,"step_index":_active_step_index,"data":data}
 		_next_id+=1;events.append(event);return event
+
+class FakeRewardEnemy:
+	var species_id:="goblin"
 
 
 func test_new_run_focus_and_enemy_rewards_are_parallel_sorted_and_once()->bool:
@@ -56,8 +60,8 @@ func test_new_run_focus_and_enemy_rewards_are_parallel_sorted_and_once()->bool:
 		"one focused weapon receives the whole independent mastery pool")
 	var fake_world=FakeRewardWorld.new()
 	fake_world.events=[{"id":11,"type":"entity.died","target_id":101,"position":Vector2i(3,4),
-		"step_index":7},{"id":12,"type":"entity.died","target_id":102,"position":Vector2i(4,4),
-		"step_index":7}]
+		"step_index":7,"instigator_id":1},{"id":12,"type":"entity.died","target_id":102,
+		"position":Vector2i(4,4),"step_index":7,"instigator_id":1}]
 	var state=PartyState.new();state.protagonist_id=1
 	state.enemy_ids.append(101);state.enemy_ids.append(102)
 	state.protagonist_progression.training_modes=modes.duplicate(true)

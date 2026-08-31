@@ -263,6 +263,95 @@ static func reachable(layout: Dictionary, from: Vector2i, to: Vector2i) -> bool:
 	return false
 
 
+# Pure opening-event anchors. They depend only on the immutable generated layout
+# and the world seed, never on simulation RNG consumption or presentation time.
+static func opening_event_anchors(layout: Dictionary, world_seed: int) -> Dictionary:
+	var entry: Variant = layout.get("entry_position")
+	var exit: Variant = layout.get("exit_position")
+	if not entry is Vector2i or not exit is Vector2i: return {}
+	var route: Array[Vector2i] = _shortest_cardinal_path(layout, entry, exit)
+	if route.size() < 4: return {}
+	var denominator := route.size() - 1
+	var band_start := maxi(1, int(ceil(float(denominator) * 0.35)))
+	var band_end := mini(denominator - 1, int(floor(float(denominator) * 0.50)))
+	if band_start > band_end: return {}
+	var protected: Dictionary = {entry:true, exit:true}
+	for position in layout.get("enemy_positions", []): protected[position] = true
+	for position in layout.get("door_positions", []): protected[position] = true
+	for hazard in layout.get("hazards", []):
+		if hazard is Dictionary and hazard.get("position") is Vector2i:
+			protected[hazard.position] = true
+	var target_index := clampi(int(round(float(denominator) * 0.42)),
+		band_start, band_end)
+	var goal_index := -1
+	for radius in range(0, band_end - band_start + 1):
+		for candidate_index in [target_index - radius, target_index + radius]:
+			if candidate_index < band_start or candidate_index > band_end: continue
+			var candidate: Vector2i = route[candidate_index]
+			if not protected.has(candidate):
+				goal_index = candidate_index
+				break
+		if goal_index >= 0: break
+	if goal_index < 0: return {}
+	var band: Array[Vector2i] = []
+	for index in range(band_start, band_end + 1): band.append(route[index])
+	var spawn_candidates: Array[Vector2i] = []
+	for direction in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var candidate: Vector2i = entry + direction
+		if terrain_at(layout, candidate) in ["", "wall"] or protected.has(candidate): continue
+		spawn_candidates.append(candidate)
+	if spawn_candidates.is_empty(): return {}
+	var route_first: Vector2i = route[1]
+	spawn_candidates.sort_custom(func(a: Vector2i, b: Vector2i):
+		var a_on_route := 1 if a == route_first else 0
+		var b_on_route := 1 if b == route_first else 0
+		if a_on_route != b_on_route: return a_on_route < b_on_route
+		var ar := _opening_anchor_rank(world_seed, a)
+		var br := _opening_anchor_rank(world_seed, b)
+		return ar < br if ar != br else (a.y < b.y if a.y != b.y else a.x < b.x))
+	return {"spawn_position":spawn_candidates[0],
+		"convergence_band":band,
+		"convergence_goal":route[goal_index],
+		"entry_exit_path":route,
+		"band_start_index":band_start,
+		"band_end_index":band_end,
+		"goal_index":goal_index}.duplicate(true)
+
+
+static func _shortest_cardinal_path(layout: Dictionary, start: Vector2i,
+		goal: Vector2i) -> Array[Vector2i]:
+	var empty: Array[Vector2i] = []
+	if terrain_at(layout, start) in ["", "wall"] \
+			or terrain_at(layout, goal) in ["", "wall"]:
+		return empty
+	var frontier: Array[Vector2i] = [start]
+	var seen := {start:true}
+	var previous: Dictionary = {}
+	while not frontier.is_empty():
+		var current: Vector2i = frontier.pop_front()
+		if current == goal:
+			var path: Array[Vector2i] = [goal]
+			var cursor := goal
+			while cursor != start:
+				cursor = previous[cursor]
+				path.push_front(cursor)
+			return path
+		for direction in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var candidate: Vector2i = current + direction
+			if seen.has(candidate) or terrain_at(layout, candidate) in ["", "wall"]: continue
+			seen[candidate] = true
+			previous[candidate] = current
+			frontier.append(candidate)
+	return empty
+
+
+static func _opening_anchor_rank(world_seed: int, position: Vector2i) -> int:
+	var digest: PackedByteArray = ("opening-anchor-v1|%d|%d|%d" % [
+		world_seed, position.x, position.y]).sha256_buffer()
+	return ((int(digest[0]) & 0x7f) << 24) | (int(digest[1]) << 16) \
+		| (int(digest[2]) << 8) | int(digest[3])
+
+
 static func _opening_enemy_position(terrain:Array[String],width:int,height:int,
 		entry:Vector2i,exit:Vector2i,door_positions:Array[Vector2i],
 		distant_fallback:Vector2i)->Vector2i:

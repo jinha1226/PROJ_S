@@ -1,90 +1,18 @@
 class_name ItemRegistry
 extends RefCounted
 
-const RULESET_ID:="item-registry-v2"
-const HEALING_POTION_RESTORE := 35
 const DefinitionScript=preload("res://sim/item_definition.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
-
-const DEFINITIONS:={
-	"WEAPON_SHORT_SWORD":{"definition_id":"WEAPON_SHORT_SWORD","label":"단검",
-		"category":"WEAPON","stack_limit":1,"equip_slots":["MAIN_HAND"],
-		"weapon_id":"SHORT_SWORD","bonuses":{"armor_flat":0,
-		"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
-	"WEAPON_THRUSTING_SWORD":{"definition_id":"WEAPON_THRUSTING_SWORD","label":"찌르기검",
-		"category":"WEAPON","stack_limit":1,"equip_slots":["MAIN_HAND"],
-		"weapon_id":"THRUSTING_SWORD","bonuses":{"armor_flat":0,
-		"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
-	"WEAPON_HAND_AXE":{"definition_id":"WEAPON_HAND_AXE","label":"손도끼",
-		"category":"WEAPON","stack_limit":1,"equip_slots":["MAIN_HAND"],
-		"weapon_id":"HAND_AXE","bonuses":{"armor_flat":0,
-		"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
-	"WEAPON_MACE":{"definition_id":"WEAPON_MACE","label":"철퇴","category":"WEAPON",
-		"stack_limit":1,"equip_slots":["MAIN_HAND"],"weapon_id":"MACE",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"WEAPON_SPEAR":{"definition_id":"WEAPON_SPEAR","label":"창","category":"WEAPON",
-		"stack_limit":1,"equip_slots":["MAIN_HAND"],"weapon_id":"SPEAR",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"WEAPON_BOW":{"definition_id":"WEAPON_BOW","label":"활","category":"WEAPON",
-		"stack_limit":1,"equip_slots":["MAIN_HAND"],"weapon_id":"BOW",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"WEAPON_CROSSBOW":{"definition_id":"WEAPON_CROSSBOW","label":"쇠뇌","category":"WEAPON",
-		"stack_limit":1,"equip_slots":["MAIN_HAND"],"weapon_id":"CROSSBOW",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"ARMOR_LEATHER":{"definition_id":"ARMOR_LEATHER","label":"가죽 갑옷","category":"ARMOR",
-		"stack_limit":1,"equip_slots":["ARMOR"],"weapon_id":"",
-		"bonuses":{"armor_flat":1,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"ARMOR_PADDED":{"definition_id":"ARMOR_PADDED","label":"누비 갑옷","category":"ARMOR",
-		"stack_limit":1,"equip_slots":["ARMOR"],"weapon_id":"",
-		"bonuses":{"armor_flat":1,"parry_milli":0,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"SHIELD_WOOD":{"definition_id":"SHIELD_WOOD","label":"나무 방패","category":"ARMOR",
-		"stack_limit":1,"equip_slots":["OFF_HAND"],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":100,"dodge_milli":0,"stealth":0},
-		"use_kind":"NONE","placeholder":false},
-	"POTION_HEALING":{"definition_id":"POTION_HEALING","label":"회복 물약",
-		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
-		"stealth":0},"use_kind":"HEALING","placeholder":false},
-	# Read-only migration alias. PartyEncounterState upgrades this legacy id to
-	# POTION_HEALING before the next snapshot is emitted.
-	"POTION_UNSPECIFIED":{"definition_id":"POTION_UNSPECIFIED","label":"회복 물약",
-		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
-		"stealth":0},"use_kind":"HEALING","placeholder":false},
-	"ACCESSORY_BRASS_CHARM":{"definition_id":"ACCESSORY_BRASS_CHARM","label":"황동 부적",
-		"category":"ACCESSORY","stack_limit":1,
-		"equip_slots":["ACCESSORY_1","ACCESSORY_2"],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":25,
-		"stealth":0},"use_kind":"NONE","placeholder":false},
-	# Scrolls and the remaining families deliberately stay unimplemented.
-	"SCROLL_UNSPECIFIED":{"definition_id":"SCROLL_UNSPECIFIED","label":"미정 두루마리",
-		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
-		"stealth":0},"use_kind":"NONE","placeholder":true},
-	"ACCESSORY_UNSPECIFIED":{"definition_id":"ACCESSORY_UNSPECIFIED","label":"미정 장신구",
-		"category":"ACCESSORY","stack_limit":1,"equip_slots":["ACCESSORY_1","ACCESSORY_2"],
-		"weapon_id":"","bonuses":{"armor_flat":0,"parry_milli":0,
-		"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":true},
-	"MATERIAL_UNSPECIFIED":{"definition_id":"MATERIAL_UNSPECIFIED","label":"미정 재료",
-		"category":"MATERIAL","stack_limit":99,"equip_slots":[],"weapon_id":"",
-		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
-		"stealth":0},"use_kind":"NONE","placeholder":true},
-}
-
-# Affixes are deliberately small extension records. They cannot alter weapon
-# attack or accuracy authority; consumers may extend the hook list later.
-const AFFIX_DEFINITIONS:={
-	"GUARDED":{"affix_id":"GUARDED","bonuses":{"armor_flat":1,"parry_milli":0,
-		"dodge_milli":0,"stealth":0},"hook_ids":[]},
-	"NIMBLE":{"affix_id":"NIMBLE","bonuses":{"armor_flat":0,"parry_milli":0,
-		"dodge_milli":50,"stealth":0},"hook_ids":[]},
-}
+const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
+const CONTENT_PATH:="res://data/content/items.json"
+static var _CONTENT:Dictionary=ContentLoaderScript.load_document(CONTENT_PATH)
+static var RULESET_ID:String=str(_CONTENT.get("ruleset_id",""))
+static var HEALING_POTION_RESTORE:int=int(_CONTENT.get("healing_potion_restore",0))
+static var DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
+	_CONTENT.get("definitions",[]),"definition_id")
+# Affixes remain small extension records and cannot replace weapon authority.
+static var AFFIX_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
+	_CONTENT.get("affixes",[]),"affix_id")
 
 
 static func has(definition_id:String)->bool:
@@ -182,6 +110,17 @@ static func affix_error(row:Variant)->String:
 
 
 static func registry_error()->String:
+	var document_error:=ContentLoaderScript.document_error(_CONTENT,"ITEMS",[
+		"content_schema_version","content_version","content_type","ruleset_id",
+		"healing_potion_restore","definitions","affixes"])
+	if not document_error.is_empty():return document_error
+	if RULESET_ID!="item-registry-v2":return "item_ruleset_mismatch"
+	if HEALING_POTION_RESTORE<1 or HEALING_POTION_RESTORE>10000:
+		return "invalid_item_healing_amount"
+	var rows_error:=ContentLoaderScript.rows_error(_CONTENT.definitions,"definition_id")
+	if not rows_error.is_empty():return rows_error
+	rows_error=ContentLoaderScript.rows_error(_CONTENT.affixes,"affix_id")
+	if not rows_error.is_empty():return rows_error
 	var weapon_bridges:Dictionary={}
 	for definition_id in DEFINITIONS:
 		if str(DEFINITIONS[definition_id].get("definition_id",""))!=definition_id:
@@ -201,6 +140,10 @@ static func registry_error()->String:
 		var error:=affix_error(AFFIX_DEFINITIONS[affix_id])
 		if not error.is_empty():return error
 	return ""
+
+
+static func content_version()->String:
+	return str(_CONTENT.get("content_version",""))
 
 
 static func _integer(value:Variant)->bool:

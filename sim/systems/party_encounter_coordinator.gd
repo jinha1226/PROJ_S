@@ -9,6 +9,7 @@ const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
+const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const MAX_DEPLOYED_PARTY := 3
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -22,12 +23,14 @@ var pathfinder
 var melee
 var environment
 var exposure
+var opening_event
 var fail_after_leaf_index: int = -1
 var fail_point := ""
 
-func _init(p_world, p_movement, p_damage, p_pathfinder, p_environment = null, p_exposure = null) -> void:
+func _init(p_world, p_movement, p_damage, p_pathfinder, p_environment = null,
+		p_exposure = null, p_opening_event = null) -> void:
 	world = p_world; movement = p_movement; damage = p_damage; pathfinder = p_pathfinder
-	environment = p_environment; exposure = p_exposure
+	environment = p_environment; exposure = p_exposure; opening_event = p_opening_event
 	melee = MeleeScript.new(world, damage)
 
 func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: int,
@@ -40,6 +43,8 @@ func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: i
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
+		if opening_event != null and not opening_event.process_tick(
+				processed_step_index, tick_start_can_act_ids): return false
 		if encounter.safe_phase == "GROUPED": return _exploration_enemy_cadence(
 			processed_step_index,actor_schedule_id,due_time,tick_start_can_act_ids)
 		return true
@@ -97,7 +102,7 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 
 
 func _award_canonical_enemy_deaths(state) -> bool:
-	if state.protagonist_progression==null:return false
+	if state.protagonist_progression==null or state.protagonist_growth==null:return false
 	if state.protagonist_progression.legacy_reward_origin:
 		return true
 	# Reconcile runs inside an active simulation step. Scan only that step's tail,
@@ -113,12 +118,40 @@ func _award_canonical_enemy_deaths(state) -> bool:
 		if event.type!="entity.died" or event.target_id not in state.enemy_ids:continue
 		if event.id in state.protagonist_progression.processed_source_death_event_ids:continue
 		if not state.protagonist_progression.award_enemy_death(event.id):return false
+		var xp_result:Dictionary=state.protagonist_growth.commit_award_xp(
+			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
+		if not bool(xp_result.get("accepted",false)):return false
+		state.protagonist_growth=xp_result.state
+		var enemy=world.entities.get(event.target_id)
+		if enemy==null:return false
+		var family_id:=GrowthBuildRegistryScript.monster_family_for_species(
+			str(enemy.species_id))
+		var participated:bool=event.instigator_id==state.protagonist_id
+		var hero=world.entities.get(state.protagonist_id)
+		var witnessed:bool=hero!=null and _line_of_sight(hero.position,event.position)
+		var mutation_id:=""
+		var acquired:=false
+		if not family_id.is_empty():
+			var trace_result:Dictionary=state.protagonist_growth.commit_mutation_kill(
+				event.id,family_id,participated,witnessed)
+			if not bool(trace_result.get("accepted",false)):return false
+			state.protagonist_growth=trace_result.state
+			mutation_id=str(trace_result.get("mutation_id",""))
+			acquired=bool(trace_result.get("acquired",false))
 		var reward=world.emit_event("progression.enemy_reward",state.protagonist_id,event.target_id,
 			event.position,ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,event.id,
 			{"schema_version":1,"character_xp":ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,
 				"mastery_pool":ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL,
 				"ruleset_id":ProgressionRegistryScript.RULESET_ID})
 		if reward==null:return false
+		var growth_reward=world.emit_event("growth.enemy_reward",state.protagonist_id,
+			event.target_id,event.position,ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,
+			event.id,{"schema_version":1,"ruleset_id":GrowthBuildRegistryScript.RULESET_ID,
+				"character_xp":ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,
+				"level":int(state.protagonist_growth.level()),"monster_family_id":family_id,
+				"mutation_id":mutation_id,"mutation_acquired":acquired,
+				"participated":participated,"witnessed_in_los":witnessed})
+		if growth_reward==null:return false
 		state.revision+=1
 	return true
 

@@ -1,0 +1,197 @@
+{
+  "content_schema_version": 1,
+  "content_version": "items-2026-09-01",
+  "content_type": "ITEMS",
+  "ruleset_id": "item-registry-v2",
+  "healing_potion_restore": 35,
+  "definitions": [
+    {
+      "definition_id": "WEAPON_SHORT_SWORD",
+      "label": "단검",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "SHORT_SWORD",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_THRUSTING_SWORD",
+      "label": "찌르기검",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "THRUSTING_SWORD",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_HAND_AXE",
+      "label": "손도끼",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "HAND_AXE",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_MACE",
+      "label": "철퇴",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "MACE",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_SPEAR",
+      "label": "창",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "SPEAR",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_BOW",
+      "label": "활",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "BOW",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_CROSSBOW",
+      "label": "쇠뇌",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "CROSSBOW",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "ARMOR_LEATHER",
+      "label": "가죽 갑옷",
+      "category": "ARMOR",
+      "stack_limit": 1,
+      "equip_slots": ["ARMOR"],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "ARMOR_PADDED",
+      "label": "누비 갑옷",
+      "category": "ARMOR",
+      "stack_limit": 1,
+      "equip_slots": ["ARMOR"],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "SHIELD_WOOD",
+      "label": "나무 방패",
+      "category": "ARMOR",
+      "stack_limit": 1,
+      "equip_slots": ["OFF_HAND"],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 100, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "POTION_HEALING",
+      "label": "회복 물약",
+      "category": "CONSUMABLE",
+      "stack_limit": 10,
+      "equip_slots": [],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "HEALING",
+      "placeholder": false
+    },
+    {
+      "definition_id": "POTION_UNSPECIFIED",
+      "label": "회복 물약",
+      "category": "CONSUMABLE",
+      "stack_limit": 10,
+      "equip_slots": [],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "HEALING",
+      "placeholder": false
+    },
+    {
+      "definition_id": "ACCESSORY_BRASS_CHARM",
+      "label": "황동 부적",
+      "category": "ACCESSORY",
+      "stack_limit": 1,
+      "equip_slots": ["ACCESSORY_1", "ACCESSORY_2"],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 25, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "SCROLL_UNSPECIFIED",
+      "label": "미정 두루마리",
+      "category": "CONSUMABLE",
+      "stack_limit": 10,
+      "equip_slots": [],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": true
+    },
+    {
+      "definition_id": "ACCESSORY_UNSPECIFIED",
+      "label": "미정 장신구",
+      "category": "ACCESSORY",
+      "stack_limit": 1,
+      "equip_slots": ["ACCESSORY_1", "ACCESSORY_2"],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": true
+    },
+    {
+      "definition_id": "MATERIAL_UNSPECIFIED",
+      "label": "미정 재료",
+      "category": "MATERIAL",
+      "stack_limit": 99,
+      "equip_slots": [],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": true
+    }
+  ],
+  "affixes": [
+    {
+      "affix_id": "GUARDED",
+      "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "hook_ids": []
+    },
+    {
+      "affix_id": "NIMBLE",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 50, "stealth": 0},
+      "hook_ids": []
+    }
+  ]
+}
