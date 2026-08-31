@@ -413,7 +413,8 @@ func test_unseen_route_sections_are_present_but_not_drawable() -> bool:
 		"segments touching unseen cells are hidden")
 	check_eq([spec.direction_cues[0].visible,spec.direction_cues[1].visible],[false,false],
 		"direction cues touching unseen cells are hidden")
-	check(not spec.markers[1].visible,"unseen route marker is hidden")
+	check(spec.markers.is_empty() and not bool(spec.draw_endpoint_markers),
+		"route keeps its FOV-safe path but emits no start/goal circle markers")
 	grid.free();return finish()
 
 
@@ -431,6 +432,21 @@ func test_unseen_intent_endpoints_are_not_drawable() -> bool:
 		"unseen hold origin cannot leak")
 	check(grid.intent_draw_spec({"type":"MOVE","from_position":[6,7],
 		"destination":[6,8]}).visible,"fully visible intent remains drawable")
+	grid.free();return finish()
+
+
+func test_melee_intent_sources_keep_target_marker_without_plan_connector() -> bool:
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_observation({"width":15,"height":15,"cells":_visible_cells()})
+	for source in ["DIRECT","OVERRIDE","SUGGESTED","ENEMY_FORECAST"]:
+		var spec:Dictionary=grid.intent_draw_spec({"type":"MELEE","source":source,
+			"from_position":[7,7],"target_position":[8,7]})
+		check(bool(spec.visible) and spec.primitive=="TARGET_MARKER" \
+			and not bool(spec.draw_connector) and not str(spec.marker_style).is_empty(),
+			"%s melee intent keeps target feedback without an attacker-target line"%source)
+	var move:Dictionary=grid.intent_draw_spec({"type":"MOVE","source":"SUGGESTED",
+		"from_position":[7,7],"destination":[8,7]})
+	check(bool(move.draw_connector),"movement planning retains its distinct route arrow")
 	grid.free();return finish()
 
 
@@ -687,7 +703,7 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 	grid.free();return finish()
 
 
-func test_melee_vfx_is_separate_line_overlay_without_inline_attack_glyphs() -> bool:
+func test_melee_vfx_is_separate_target_local_overlay_without_inline_attack_glyphs() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[6,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
@@ -707,8 +723,9 @@ func test_melee_vfx_is_separate_line_overlay_without_inline_attack_glyphs() -> b
 		"grid routes canonical position pair to melee overlay")
 	var started:=int(grid.melee_vfx.active_effects()[0].started_at_ms)
 	var spec:Dictionary=grid.melee_vfx.effect_draw_specs(started)[0]
-	check(grid.melee_vfx is Node2D and spec.primitive=="LINE" and spec.slash_glyph.is_empty(),
-		"slash exists only as a separate Node2D line overlay")
+	check(grid.melee_vfx is Node2D and spec.primitive=="BROKEN_SLASH" \
+		and spec.slash_glyph.is_empty() and not bool(spec.draw_connector),
+		"slash exists only as a target-local Node2D impact without a connector")
 	grid.free();return finish()
 
 
@@ -800,9 +817,16 @@ func test_diorama_route_style_preserves_mapping_and_actor_hit_authority() -> boo
 	check_eq(grid.diorama_cell_draw_spec(Vector2i(7,7)).connected_mask,15,
 		"visible same-terrain cross connects")
 	grid.set_route_overlay([[6,7],[7,7],[8,7]],0,true)
+	grid.set_cursor_preview(77,Vector2i(6,7),Vector2i(8,7),true)
 	var route:Dictionary=grid.route_draw_spec()
 	check_eq([route.render_style,route.draw_tile_cards],["CHALK_CENTERLINE",false],
 		"route renders as chalk centerline without tile cards")
+	check(route.markers.is_empty() and not bool(route.draw_endpoint_markers) \
+		and not bool(route.draw_ground_markers),
+		"route path has no circular start, next, or goal markers")
+	check(not bool(grid.cursor_preview_draw_spec().visible) \
+		and bool(grid.cursor_preview_draw_spec().suppressed_by_route),
+		"route destination also suppresses the generic circular cursor preview")
 	check_eq(grid.mapping_signature(),mapping,"diorama and route never alter grid mapping")
 	check_eq(grid.actor_hit_rect(77),hit,"equipment never enlarges actor hit authority")
 	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(7,7))),Vector2i(7,7),
@@ -859,6 +883,104 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	grid.arm_actor_motion([77],150);grid.set_observation(_actor_observation(Vector2i(12,7),"VISIBLE"))
 	check(grid.actor_motion_state().is_empty(),"two-cell teleport snaps even when armed")
 	grid.free();return finish()
+
+
+func test_consecutive_actor_and_hero_camera_hops_retarget_current_draw_position() -> bool:
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
+	grid.set_hero_centered_view(Vector2i(7,7),15,77)
+	grid.arm_actor_motion([77],150)
+	grid.set_observation(_actor_observation(Vector2i(8,7),"VISIBLE"))
+	grid._actor_motions[77].started_at_ms=Time.get_ticks_msec()-75
+	var actor_before:Vector2=grid._actor_visual_world_position(77)
+	grid.arm_actor_motion([77],150)
+	grid.set_observation(_actor_observation(Vector2i(9,7),"VISIBLE"))
+	var actor_motion:Dictionary=grid.actor_motion_state()[77]
+	check(Vector2(actor_motion.from_world).distance_to(actor_before)<0.08 \
+		and Vector2(actor_motion.to_world)==Vector2(9,7),
+		"consecutive actor hop retargets from the current interpolated draw position")
+	check_eq(grid.actor_in_world_cell(Vector2i(9,7)),77,
+		"actor interpolation never delays logical occupancy")
+
+	grid.set_hero_centered_view(Vector2i(8,7),15,77)
+	grid._camera_settle.started_at_ms=Time.get_ticks_msec()-35
+	var camera_before:Dictionary=grid.camera_settle_draw_spec()
+	var reference_world:=Vector2i(10,7)
+	var screen_before:=grid.world_to_pixel_center(reference_world)+Vector2(camera_before.offset_px)
+	grid.set_hero_centered_view(Vector2i(9,7),15,77)
+	var retarget_started:=int(grid._camera_settle.started_at_ms)
+	var camera_after:Dictionary=grid.camera_settle_draw_spec(retarget_started)
+	var screen_after:=grid.world_to_pixel_center(reference_world)+Vector2(camera_after.offset_px)
+	check(screen_after.distance_to(screen_before)<0.25,
+		"consecutive hero-camera hop preserves the current drawn world position")
+	check_eq(grid.pixel_to_world_cell(grid.grid_rect().get_center()),Vector2i(9,7),
+		"camera retarget remains draw-only and preserves canonical center mapping")
+	grid.free();return finish()
+
+
+func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() -> bool:
+	var cells:=_visible_cells()
+	var visible_walls:=[Vector2i(1,1),Vector2i(4,1),Vector2i(7,1),Vector2i(10,1),
+		Vector2i(13,1),Vector2i(1,4),Vector2i(4,4),Vector2i(7,4)]
+	var memory_walls:=[Vector2i(1,8),Vector2i(4,8),Vector2i(7,8)]
+	var unseen_walls:=[Vector2i(1,13),Vector2i(4,13),Vector2i(7,13)]
+	for cell in cells:
+		var position:=Vector2i(int(cell.position[0]),int(cell.position[1]))
+		if position in visible_walls:cell.terrain_id="wall"
+		elif position in memory_walls:
+			cell.terrain_id="wall";cell.visibility_state="MEMORY"
+		elif position in unseen_walls:
+			cell.terrain_id="wall";cell.visibility_state="UNSEEN"
+		elif position==Vector2i(7,7):
+			cell.actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
+				"roster_slot":0,"is_protagonist":true})
+	var observation:={"width":15,"height":15,"cells":cells}
+	var expected_positions:Array=[]
+	for viewport in [360,450]:
+		var grid=Grid.new();grid.size=Vector2(viewport,viewport)
+		grid.set_observation(observation);grid.set_hero_centered_view(Vector2i(7,7),15,77)
+		var mapping:=grid.mapping_signature();var actor_color:=str(grid.actor_draw_spec(
+			grid._actor_by_id(77)).color_hex)
+		var at_zero:Array=grid.torch_draw_specs(0)
+		var at_same_tick:Array=grid.torch_draw_specs(124)
+		var at_next_tick:Array=grid.torch_draw_specs(125)
+		var stats:Dictionary=grid.torch_cache_stats()
+		var positions:=at_zero.map(func(row):return row.position)
+		if expected_positions.is_empty():expected_positions=positions
+		check_eq(positions,expected_positions,
+			"%dpx torch placement is deterministic and viewport-independent"%viewport)
+		check(int(stats.visible_count)<=6 and int(stats.cached_count)<=12 \
+			and float(stats.flicker_hz)<=10.0,
+			"%dpx torch cache and redraw frequency are strictly bounded"%viewport)
+		check(at_zero.all(func(row):return str(row.glyph)=="!" \
+			and int(row.glyph_count)==1 and not bool(row.draw_image) \
+			and row.texture==null and str(row.visibility_state)!="UNSEEN"),
+			"%dpx torches are one-cell ASCII with no image or unseen row"%viewport)
+		check_eq(at_zero.map(func(row):return row.brightness),
+			at_same_tick.map(func(row):return row.brightness),
+			"%dpx torch flicker is fixed within its 125ms quantum"%viewport)
+		var visible_changed:=false;var memory_fixed:=true
+		for index in range(at_zero.size()):
+			if bool(at_zero[index].animated):
+				visible_changed=visible_changed or float(at_zero[index].brightness) \
+					!=float(at_next_tick[index].brightness)
+			else:
+				memory_fixed=memory_fixed and float(at_zero[index].brightness) \
+					==float(at_next_tick[index].brightness) \
+					and int(at_next_tick[index].flicker_tick)==0
+		check(visible_changed and memory_fixed,
+			"%dpx visible flames quantize while MEMORY stays fixed and dark"%viewport)
+		check(not bool(grid.torch_light_draw_spec(unseen_walls[0],125).active),
+			"%dpx torch pool cannot illuminate an UNSEEN cell"%viewport)
+		check_eq([grid.mapping_signature(),str(grid.actor_draw_spec(
+			grid._actor_by_id(77)).color_hex)],[mapping,actor_color],
+			"%dpx torches alter neither mapping nor actor semantic color"%viewport)
+		var rebuilds:=int(stats.rebuild_count)
+		grid.torch_draw_specs(5000)
+		check_eq(grid.torch_cache_stats().rebuild_count,rebuilds,
+			"%dpx flicker reuses the static torch cache"%viewport)
+		grid.free()
+	return finish()
 
 
 func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free() -> bool:

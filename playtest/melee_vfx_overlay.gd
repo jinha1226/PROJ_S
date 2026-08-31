@@ -13,12 +13,10 @@ const PARAMS := {
 	"slash_duration_ms":165,
 	"slash_afterimage_opacity":0.16,
 	"slash_fade_curve":0.72,
-	# Attack-axis span is measured against the distance between cell centers.
-	# A value above 1.0 puts one endpoint inside each participating cell.
-	"slash_span_ratio":1.36,
-	# Total perpendicular displacement, measured against the smaller cell edge.
-	# This keeps every cardinal strike diagonal instead of drawing a grid-parallel bar.
-	"slash_tilt_ratio":0.32,
+	# The slash stays wholly inside the target cell. It is a two-stroke impact
+	# accent, never an attacker-to-target connector.
+	"slash_local_length_ratio":0.54,
+	"slash_bend_ratio":0.20,
 	"slash_width_px":3.2,
 	"slash_color_hex":"#ffe4a3",
 	"flash_duration_ms":105,
@@ -171,9 +169,10 @@ func _draw()->void:
 		if bool(spec.line_visible):
 			var line_color:=Color(str(PARAMS.slash_color_hex))
 			line_color.a=float(spec.line_opacity)
-			draw_line(Vector2(spec.line_from)+presentation_offset,
-				Vector2(spec.line_to)+presentation_offset,line_color,
-				float(PARAMS.slash_width_px),true)
+			for segment in spec.slash_segments:
+				draw_line(Vector2(segment.from)+presentation_offset,
+					Vector2(segment.to)+presentation_offset,line_color,
+					float(PARAMS.slash_width_px),true)
 		for particle in spec.particles:
 			var particle_color:=Color(str(PARAMS.particle_color_hex))
 			particle_color.a=float(particle.opacity)
@@ -236,15 +235,12 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 	var direction:=(target_center-attacker_center).normalized()
 	var perpendicular:=Vector2(-direction.y,direction.x)
 	var cell:=minf(target_rect.size.x,target_rect.size.y)
-	var midpoint:=(attacker_center+target_center)*0.5
-	var half_span:=attacker_center.distance_to(target_center) \
-		*float(PARAMS.slash_span_ratio)*0.5
-	var half_tilt:=cell*float(PARAMS.slash_tilt_ratio)*0.5
-	# `line_from` is always the attacker-cell endpoint and `line_to` the
-	# target-cell endpoint. The opposing perpendicular offsets make the mark
-	# diagonal without changing either cell or actor presentation.
-	var line_from:=midpoint-direction*half_span+perpendicular*half_tilt
-	var line_to:=midpoint+direction*half_span-perpendicular*half_tilt
+	var half_length:=cell*float(PARAMS.slash_local_length_ratio)*0.5
+	var bend:=cell*float(PARAMS.slash_bend_ratio)
+	var line_from:=target_center-direction*half_length+perpendicular*bend
+	var elbow:=target_center+perpendicular*bend*0.08
+	var line_to:=target_center+direction*half_length-perpendicular*bend
+	var slash_segments:Array=[{"from":line_from,"to":elbow},{"from":elbow,"to":line_to}]
 	var slash_progress:=clampf(float(visual_elapsed)/float(PARAMS.slash_duration_ms),0.0,1.0)
 	var line_opacity:=1.0 if hit_stop_active else (0.0 if slash_progress>=1.0 \
 		else maxf(float(PARAMS.slash_afterimage_opacity),pow(1.0-slash_progress,
@@ -264,8 +260,10 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 		"attacker_grid_pos":attacker,"target_grid_pos":target,
 		"raw_elapsed_ms":raw_elapsed,"visual_elapsed_ms":visual_elapsed,
 		"hit_stop_active":hit_stop_active,
-		"primitive":"LINE","slash_glyph":"","line_visible":line_opacity>0.0,
+		"primitive":"BROKEN_SLASH","slash_glyph":"","line_visible":line_opacity>0.0,
 		"line_from":line_from,"line_to":line_to,"line_opacity":line_opacity,
+		"slash_segments":slash_segments,"draw_connector":false,
+		"spans_actor_centers":false,
 		"attacker_rect":attacker_rect,
 		"target_rect":target_rect,"flash_visible":visual_elapsed>=contact_at \
 			and impact_elapsed<int(PARAMS.flash_duration_ms),

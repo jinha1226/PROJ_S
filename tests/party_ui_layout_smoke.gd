@@ -435,9 +435,13 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	var session=Session.new();var status:Dictionary=session.party_status()
 	var origin:=Vector2i(int(status.anchor[0]),int(status.anchor[1]));var far_goal:=Vector2i(-1,-1)
-	for candidate in [origin+Vector2i(-3,0),origin+Vector2i(0,3),origin+Vector2i(0,-3)]:
+	# Keep enough suffix after the cadence probe to exercise user cancellation.
+	# A three-step fixture can now legitimately finish before the headless timer
+	# coroutine resumes because normal route validation is no longer blocking.
+	for candidate in [origin+Vector2i(-5,0),origin+Vector2i(0,5),
+			origin+Vector2i(5,0),origin+Vector2i(0,-5)]:
 		var probe:Dictionary=session.preview_exploration_route(candidate)
-		if bool(probe.get("accepted",false)) and int(probe.get("total_steps",0))>=3:far_goal=candidate
+		if bool(probe.get("accepted",false)) and int(probe.get("total_steps",0))>=5:far_goal=candidate
 		session.cancel_exploration_route()
 		if far_goal!=Vector2i(-1,-1):break
 	if far_goal==Vector2i(-1,-1):failures.append("%s no far route fixture"%viewport_size);return
@@ -481,52 +485,62 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	for tile in spec.tiles:
 		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
 			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
-	# Drag cancellation retains pointer ownership: the queued route must remain
-	# paused for the full 620ms hold and through release, then resume one hop on the
-	# following frame.
+	# Product cadence leaves the first authoritative hop immediate, then starts
+	# exactly one further hop 55-70ms later (with a 120ms headless upper bound).
 	if bool(session.exploration_route_state().get("active",false)):
-		var active_drag_step:=int(session.sim.world.step_index);var active_drag_state:Dictionary=session.exploration_route_state()
-		var drag_position:=_cell_global_position(sandbox,far_goal);var drag_offset:=Vector2(20,0)
+		var cadence_step:=int(session.sim.world.step_index)
+		var first_hop_started:int=sandbox.route_last_hop_started_msec
+		var due_from_hop_start:int=int(sandbox.route_continue_due_msec)-first_hop_started
+		if due_from_hop_start<55 or due_from_hop_start>70:
+			failures.append("%s route cadence outside 55-70ms from hop start: %d"%[
+				viewport_size,due_from_hop_start])
+		var wait_started:int=Time.get_ticks_msec()
+		while sandbox.route_last_hop_started_msec==first_hop_started \
+				and Time.get_ticks_msec()-wait_started<130:
+			await create_timer(0.005).timeout
+		var actual_start_interval:int=sandbox.route_last_hop_started_msec-first_hop_started
+		if session.sim.world.step_index!=cadence_step+1 \
+				or actual_start_interval<55 or actual_start_interval>120:
+			failures.append("%s route cadence did not commit exactly one hop within 55-120ms: step=%d/%d interval=%d"%[
+				viewport_size,int(session.sim.world.step_index),cadence_step,actual_start_interval])
+		# Freeze only the test scheduler after measuring a real continuation. This
+		# leaves the authoritative route active so the next gesture independently
+		# verifies immediate generation-safe cancellation instead of racing another
+		# now-fast headless continuation before the coroutine resumes.
+		sandbox.route_continue_pending=false;sandbox.route_continue_due_frame=-1
+		sandbox.route_continue_due_msec=-1;sandbox.route_scheduled_generation=-1
+		await process_frame
+	# Any new grid gesture is explicit user intervention: cancel the pending route
+	# immediately, retain pointer ownership through the drag, and never resume it.
+	if bool(session.exploration_route_state().get("active",false)):
+		var active_drag_step:=int(session.sim.world.step_index)
+		var drag_status:Dictionary=session.party_status()
+		var drag_cell:=Vector2i(int(drag_status.protagonist_position[0]),
+			int(drag_status.protagonist_position[1]))
+		var drag_position:=_cell_global_position(sandbox,drag_cell);var drag_offset:=Vector2(20,0)
 		_push_touch_now(drag_position,true,7)
+		var pressed_gesture:Dictionary=sandbox.grid.pointer_gesture_state()
 		var active_drag:=InputEventScreenDrag.new();active_drag.index=7;active_drag.position=drag_position+drag_offset
 		active_drag.relative=drag_offset;root.push_input(active_drag,true)
 		await create_timer(0.62).timeout;await process_frame
-		if session.sim.world.step_index!=active_drag_step or session.exploration_route_state()!=active_drag_state:
-			failures.append("%s active route advanced while cancelled drag remained held"%viewport_size)
+		var cancelled_drag_route:Dictionary=session.exploration_route_state()
+		if session.sim.world.step_index!=active_drag_step \
+				or str(cancelled_drag_route.get("stop_reason",""))!="route_cancelled":
+			failures.append("%s active route was not cancelled turn-free by drag input"%viewport_size)
 		var drag_gesture:Dictionary=sandbox.grid.pointer_gesture_state()
-		if not bool(drag_gesture.get("active",false)) or not bool(drag_gesture.get("cancelled",false)):
+		if bool(pressed_gesture.get("active",false)) \
+				and (not bool(drag_gesture.get("active",false)) \
+					or not bool(drag_gesture.get("cancelled",false))):
 			failures.append("%s active drag released pointer ownership before finger release"%viewport_size)
 		_push_touch_now(drag_position+drag_offset,false,7)
 		if session.sim.world.step_index!=active_drag_step:
 			failures.append("%s active drag release emitted an immediate move"%viewport_size)
-		await process_frame
-		if session.sim.world.step_index!=active_drag_step+1:
-			failures.append("%s active route did not resume one hop after drag release"%viewport_size)
-	# A long press also pauses continuation. Inspection and release preserve the
-	# route; release resumes exactly one hop on the next process frame.
-	if bool(session.exploration_route_state().get("active",false)):
-		var active_hold_step:=int(session.sim.world.step_index);var active_hold_state:Dictionary=session.exploration_route_state()
-		var hold_position:=_cell_global_position(sandbox,far_goal)
-		_push_touch_now(hold_position,true,8)
-		await create_timer(0.62).timeout;await process_frame
-		if session.sim.world.step_index!=active_hold_step or session.exploration_route_state()!=active_hold_state:
-			failures.append("%s pointer hold failed to pause active route"%viewport_size)
-		if not sandbox.tile_popover.visible:failures.append("%s active-route long hold did not inspect"%viewport_size)
-		_push_touch_now(hold_position,false,8)
-		if session.sim.world.step_index!=active_hold_step:
-			failures.append("%s active-route long release emitted an immediate move"%viewport_size)
-		await process_frame
-		if session.sim.world.step_index!=active_hold_step+1:
-			failures.append("%s active route did not resume one hop after long release"%viewport_size)
-	var frame_guard:=0
-	while bool(session.exploration_route_state().get("active",false)) and frame_guard<16:
-		var prior_step:int=int(session.sim.world.step_index);await process_frame
-		var delta:int=int(session.sim.world.step_index)-prior_step
-		if delta!=1:failures.append("%s route frame committed %d hops instead of one"%[viewport_size,delta])
-		frame_guard+=1
+		await create_timer(0.12).timeout
+		if session.sim.world.step_index!=active_drag_step:
+			failures.append("%s cancelled route retained a scheduled continuation"%viewport_size)
 	var finished:Dictionary=session.exploration_route_state()
-	if not bool(finished.get("completed",false)) or session.party_status().anchor!=[far_goal.x,far_goal.y]:
-		failures.append("%s route did not finish at exact goal: %s"%[viewport_size,finished])
+	if str(finished.get("stop_reason",""))!="route_cancelled":
+		failures.append("%s interrupted route did not retain cancellation state: %s"%[viewport_size,finished])
 	sandbox.queue_free();await process_frame
 
 	var contact_session=Session.new();var contact_status:Dictionary=contact_session.party_status()
@@ -589,12 +603,13 @@ func _card_detail_modal(viewport_size:Vector2)->void:
 
 	var route_goal:=anchor+Vector2i(-5,0)
 	_touch_cell_now(sandbox,route_goal);await process_frame;await process_frame
-	_touch_cell_now(sandbox,route_goal)
-	# Wait through one route frame and then through the same frame's deferred layout
-	# queue, without crossing another process_frame (which would advance another hop).
+	# Opening a dossier is explicit modal input and cancels the active route without
+	# another authoritative hop. One cell tap already starts the route; a redundant
+	# second tap is now correctly treated as manual cancellation. Closing the modal
+	# must not resurrect its timer.
 	await process_frame;await create_timer(0.0).timeout
 	var paused_at:int=int(session.sim.world.step_index)
-	if not bool(session.exploration_route_state().get("active",false)):failures.append("%s modal pause route fixture not active"%viewport_size)
+	if not bool(session.exploration_route_state().get("active",false)):failures.append("%s modal cancel route fixture not active"%viewport_size)
 	var route_before_card:Dictionary=session.exploration_route_state();var route_card:Button=_button(sandbox,"MemberCard%d"%companion)
 	_touch_control_now(route_card,false)
 	if sandbox.selected_member_id!=companion:
@@ -604,11 +619,13 @@ func _card_detail_modal(viewport_size:Vector2)->void:
 		failures.append("%s active-route first dossier tap changed route %s -> %s"%[viewport_size,route_before_card,route_after_card])
 	_touch_control_now(route_card,true)
 	await process_frame;await process_frame
-	if session.sim.world.step_index!=paused_at:failures.append("%s active route advanced behind modal"%viewport_size)
-	if not sandbox.route_paused_by_modal:failures.append("%s active route was not marked paused"%viewport_size)
+	if session.sim.world.step_index!=paused_at:failures.append("%s modal route cancellation consumed a turn"%viewport_size)
+	if str(session.exploration_route_state().get("stop_reason",""))!="route_cancelled" \
+			or sandbox.route_continue_pending:
+		failures.append("%s modal did not cancel route and its scheduler"%viewport_size)
 	_touch_control_now(sandbox.member_detail_close,false)
-	var resume_before:int=int(session.sim.world.step_index);await process_frame
-	if session.sim.world.step_index!=resume_before+1:failures.append("%s closing modal did not resume exactly one route hop"%viewport_size)
+	var resume_before:int=int(session.sim.world.step_index);await create_timer(0.12).timeout
+	if session.sim.world.step_index!=resume_before:failures.append("%s closing modal resumed a cancelled route"%viewport_size)
 	sandbox._cancel_active_route();sandbox.queue_free();await process_frame
 
 func _validate_member_modal(sandbox,viewport_size:Vector2)->void:

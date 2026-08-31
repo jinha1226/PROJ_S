@@ -272,6 +272,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()
 	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
+	_check(sandbox.continuous_travel_cadence_msec>=60 \
+		and sandbox.continuous_travel_cadence_msec<=100,
+		"%s continuous travel cadence is outside the mobile 60-100ms window"%viewport_size)
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
@@ -293,11 +296,30 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	_check(running and sandbox.product_auto_button.text=="[AUTO ■]",
 		"%s AUTO did not enter a visible running state"%viewport_size)
 	if running:
+		var first_hop_started:int=sandbox._product_auto_last_hop_started_msec
+		var due_from_hop_start:int=int(sandbox._product_auto_explore_due_msec)-first_hop_started
+		_check(due_from_hop_start>=55 and due_from_hop_start<=70,
+			"%s AUTO continuation was not scheduled 55-70ms from hop start: %d"%[
+				viewport_size,due_from_hop_start])
+		var cadence_step:int=int(session.party_status().step_index)
+		var wait_started:int=Time.get_ticks_msec()
+		while sandbox._product_auto_last_hop_started_msec==first_hop_started \
+				and Time.get_ticks_msec()-wait_started<130:
+			await create_timer(0.005).timeout
+		var actual_start_interval:int=sandbox._product_auto_last_hop_started_msec-first_hop_started
+		_check(int(session.party_status().step_index)==cadence_step+1 \
+			and actual_start_interval>=55 and actual_start_interval<=120,
+			"%s AUTO commit-start interval was not one hop within 55-120ms: step=%d/%d interval=%d"%[
+				viewport_size,int(session.party_status().step_index),cadence_step,actual_start_interval])
 		# _on_product_auto synchronously rebuilds the dock. Quiesce only the test
 		# scheduler until Container layout has produced the next drawn hit rects.
 		sandbox._product_auto_explore_pending=false
 		sandbox._product_auto_explore_due_frame=-1
+		sandbox._product_auto_explore_due_msec=-1
 		sandbox._product_auto_explore_scheduled_generation=-1
+		# The remaining gesture probes advance synthetic frames rather than wall
+		# time. Zero only their presentation delay; production remains 60ms.
+		sandbox.continuous_travel_cadence_msec=0
 		await process_frame;await process_frame
 		var held_step:=int(session.party_status().step_index)
 		var center:Vector2=sandbox.product_auto_button.get_global_rect().get_center()
@@ -329,6 +351,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	if bool(session.auto_explore_state().get("running",false)):
 		sandbox._product_auto_explore_pending=false
 		sandbox._product_auto_explore_due_frame=-1
+		sandbox._product_auto_explore_due_msec=-1
 		sandbox._product_auto_explore_scheduled_generation=-1
 		await process_frame;await process_frame
 		var drag_step:=int(session.party_status().step_index)
@@ -361,6 +384,28 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			and sandbox.grid.get_instance_id()==grid_id,
 			"%s modal AUTO cancel left stale state or rebuilt the grid"%viewport_size)
 		sandbox.map_overlay.close("TEST");await process_frame
+	# Grid press wins before GUI routing: it cancels AUTO turn-free even when a
+	# pass-through container, rather than PartyGrid, becomes the headless GUI hit.
+	session=_safe_auto_product_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	sandbox._on_product_auto()
+	if bool(session.auto_explore_state().get("running",false)):
+		sandbox._product_auto_explore_pending=false
+		var manual_before:=int(session.party_status().step_index)
+		var hero_value:Array=session.party_status().protagonist_position
+		var hero_cell:=Vector2i(int(hero_value[0]),int(hero_value[1]))
+		var manual_point:Vector2=sandbox.grid.get_global_rect().position \
+			+sandbox.grid.world_to_pixel_center(hero_cell)
+		var manual_press:=InputEventScreenTouch.new();manual_press.index=54
+		manual_press.pressed=true;manual_press.position=manual_point;root.push_input(manual_press,true)
+		_check(not bool(session.auto_explore_state().get("running",false)) \
+			and str(session.auto_explore_state().get("stop_reason",""))=="auto_explore_user_command" \
+			and int(session.party_status().step_index)==manual_before,
+			"%s grid press did not cancel AUTO generation-safe before a turn"%viewport_size)
+		var manual_release:=InputEventScreenTouch.new();manual_release.index=54
+		manual_release.pressed=false;manual_release.canceled=true;manual_release.position=manual_point
+		root.push_input(manual_release,true)
 	# Rapid cancel followed by a fresh start cannot retain the old scheduled hop.
 	session=_safe_auto_product_session()
 	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
@@ -377,6 +422,18 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		_check(cancelled_step<=restart_step and (delta==1 if restarted_running else delta==0),
 			"%s rapid AUTO cancel/restart duplicated or stuck its scheduled hop cancel=%d restart=%d running=%s delta=%d state=%s"%[
 				viewport_size,cancelled_step,restart_step,restarted_running,delta,session.auto_explore_state()])
+	# Any enemy confirmed in FOV stops before a hop and presents that exact reason.
+	var contact_session=Session.new(45,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(contact_session,false)
+	await process_frame;await process_frame
+	var contact_result:Dictionary=contact_session.start_auto_explore()
+	sandbox._consume_product_auto_explore_result(contact_result);sandbox._refresh()
+	_check(str(contact_result.get("stop_reason",""))=="auto_explore_enemy_visible" \
+		and contact_session.command_journal.is_empty() \
+		and "적을 발견해" in sandbox.event_label.text \
+		and not "가까운" in sandbox.event_label.text,
+		"%s visible-enemy AUTO stop was not explicit and turn-free: %s / %s"%[
+			viewport_size,contact_result,sandbox.event_label.text])
 	sandbox.queue_free();await process_frame
 
 func _safe_auto_product_session():

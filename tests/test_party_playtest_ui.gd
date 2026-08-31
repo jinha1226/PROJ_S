@@ -289,14 +289,14 @@ func test_route_overlay_draw_spec_preserves_each_step_and_is_detached() -> bool:
 	var spec:Dictionary=sandbox.grid.route_draw_spec()
 	check_eq(spec.path,path,"route draw spec preserves authoritative path")
 	check_eq(spec.segments.size(),3,"route draws every edge instead of destination shortcut")
-	check_eq(spec.tiles.size(),path.size(),"every route cell gets a translucent highlight")
+	check_eq(spec.tiles.size(),path.size(),"route keeps detached per-step projection metadata")
 	check_eq(spec.direction_cues.size(),spec.segments.size(),"every route edge gets a directional cue without step numbers")
-	check(float(spec.tiles[2].fill_alpha)>=0.18 and bool(spec.tiles[2].visible),"future route tiles remain visibly highlighted")
+	check(float(spec.tiles[2].fill_alpha)>=0.18 and bool(spec.tiles[2].visible),"future route step remains FOV projected")
 	check_eq(spec.direction_cues[1].points.size(),3,"direction cue is a compact chevron")
 	check(bool(spec.segments[0].completed) and not bool(spec.segments[1].completed),"completed and next segments are distinct")
-	check_eq(spec.markers[0].kind,"START","route start marker")
-	check_eq(spec.markers[2].kind,"NEXT","route next-step marker")
-	check_eq(spec.markers[3].kind,"GOAL","route goal marker")
+	check(spec.markers.is_empty() and not bool(spec.draw_endpoint_markers) \
+		and not bool(spec.draw_ground_markers),
+		"route keeps its path and cues without circular start/next/goal markers")
 	spec.path[0][0]=-99;spec.segments[0].from_position[0]=-99;spec.tiles[0].position[0]=-99
 	spec.direction_cues[0].points[0]=Vector2(-99,-99)
 	var fresh:Dictionary=sandbox.grid.route_draw_spec()

@@ -186,39 +186,34 @@ func _validate_next_step() -> Dictionary:
 	if not bool(next_preview.accepted):
 		return {"accepted": false, "reason": str(next_preview.reason),
 			"details": {"destination": _position_wire(next_position)}}
+	# Always compare the immediate frozen step. A canonical hop can spread fire or
+	# otherwise alter the following cell before the post-hop fingerprint becomes
+	# the new resume baseline; fingerprint equality alone must not bless that risk.
+	var immediate_frozen: Dictionary = _active.steps[next_index - 1]
+	var immediate_validation := _validate_frozen_step(immediate_frozen, actor_id)
+	if not bool(immediate_validation.get("accepted", false)):
+		return immediate_validation
+	# The post-hop fingerprint stored by the previous canonical commit covers the
+	# complete world snapshot. On the normal unchanged path, the frozen suffix,
+	# risk ceilings and shortest path therefore cannot have changed, so avoid
+	# rebuilding all of them on every visual-cadence hop. If anything did change,
+	# retain the ordered detailed checks below so blocker/diagonal/hazard changes
+	# still surface their exact authority reason before the generic stale result.
+	var snapshot_matches := _snapshot_fingerprint() \
+		== str(_active.get("resume_fingerprint", ""))
+	if snapshot_matches:
+		return {"accepted": true, "reason": "ok"}
 
 	# A route freezes every remaining terrain cost and every travelling member's
 	# four-component exposure ceiling. No silent re-path or newly riskier suffix is
 	# accepted, even when the immediate next cell itself remains legal. Check this
 	# before re-pathing so a newly visible/increased hazard keeps its exact stop
 	# reason instead of being reduced to a generic route change.
-	for frozen_step_index in range(next_index - 1, _active.steps.size()):
+	for frozen_step_index in range(next_index, _active.steps.size()):
 		var frozen_step: Dictionary = _active.steps[frozen_step_index]
-		var fresh_step := _build_step(int(frozen_step.index),
-			_wire_position(frozen_step.from), _wire_position(frozen_step.to), actor_id)
-		if not bool(fresh_step.get("accepted", false)):
-			return {"accepted": false, "reason": str(fresh_step.get("reason", "route_path_changed"))}
-		if str(fresh_step.terrain_id) != str(frozen_step.terrain_id) \
-				or int(fresh_step.cost) != int(frozen_step.cost) \
-				or str(fresh_step.tier) != str(frozen_step.tier):
-			return {"accepted": false, "reason": "route_path_changed"}
-		var ceilings: Dictionary = {}
-		for row in frozen_step.member_risk_ceilings:
-			ceilings[int(row.entity_id)] = row
-		for risk in fresh_step.member_risk_ceilings:
-			var member_id := int(risk.entity_id)
-			if not ceilings.has(member_id):
-				return {"accepted": false, "reason": "route_party_changed"}
-			var ceiling: Dictionary = ceilings[member_id]
-			for component in ["fire", "water", "electric", "poison", "total"]:
-				if int(risk[component]) > int(ceiling[component]):
-					return {"accepted": false, "reason": "route_hazard_increased",
-						"details": {"destination": fresh_step.to.duplicate(true),
-							"member_id": member_id, "member_name": str(risk.display_name),
-							"component": component, "preview_ceiling": int(ceiling[component]),
-							"current_risk": int(risk[component])}}
-		if fresh_step.member_risk_ceilings.size() != frozen_step.member_risk_ceilings.size():
-			return {"accepted": false, "reason": "route_party_changed"}
+		var frozen_validation := _validate_frozen_step(frozen_step, actor_id)
+		if not bool(frozen_validation.get("accepted", false)):
+			return frozen_validation
 	var fresh_path: Dictionary = _owner().find_exploration_path(actor_id,
 		_wire_position(_active.goal))
 	if not bool(fresh_path.get("found", false)):
@@ -226,8 +221,36 @@ func _validate_next_step() -> Dictionary:
 	var frozen_suffix: Array = _active.path.slice(next_index - 1)
 	if not _same_path(fresh_path.get("path", []), frozen_suffix):
 		return {"accepted": false, "reason": "route_path_changed"}
-	if _snapshot_fingerprint() != str(_active.get("resume_fingerprint", "")):
-		return {"accepted": false, "reason": "route_stale"}
+	return {"accepted": false, "reason": "route_stale"}
+
+
+func _validate_frozen_step(frozen_step: Dictionary, actor_id: int) -> Dictionary:
+	var fresh_step := _build_step(int(frozen_step.index),
+		_wire_position(frozen_step.from), _wire_position(frozen_step.to), actor_id)
+	if not bool(fresh_step.get("accepted", false)):
+		return {"accepted": false,
+			"reason": str(fresh_step.get("reason", "route_path_changed"))}
+	if str(fresh_step.terrain_id) != str(frozen_step.terrain_id) \
+			or int(fresh_step.cost) != int(frozen_step.cost) \
+			or str(fresh_step.tier) != str(frozen_step.tier):
+		return {"accepted": false, "reason": "route_path_changed"}
+	var ceilings: Dictionary = {}
+	for row in frozen_step.member_risk_ceilings:
+		ceilings[int(row.entity_id)] = row
+	for risk in fresh_step.member_risk_ceilings:
+		var member_id := int(risk.entity_id)
+		if not ceilings.has(member_id):
+			return {"accepted": false, "reason": "route_party_changed"}
+		var ceiling: Dictionary = ceilings[member_id]
+		for component in ["fire", "water", "electric", "poison", "total"]:
+			if int(risk[component]) > int(ceiling[component]):
+				return {"accepted": false, "reason": "route_hazard_increased",
+					"details": {"destination": fresh_step.to.duplicate(true),
+						"member_id": member_id, "member_name": str(risk.display_name),
+						"component": component, "preview_ceiling": int(ceiling[component]),
+						"current_risk": int(risk[component])}}
+	if fresh_step.member_risk_ceilings.size() != frozen_step.member_risk_ceilings.size():
+		return {"accepted": false, "reason": "route_party_changed"}
 	return {"accepted": true, "reason": "ok"}
 
 

@@ -4,7 +4,7 @@ const Grid=preload("res://playtest/party_grid_view.gd")
 const Overlay=preload("res://playtest/melee_vfx_overlay.gd")
 
 
-func test_melee_vfx_right_is_line_only_and_holds_local_clock()->bool:
+func test_melee_vfx_right_is_target_local_broken_slash_and_holds_local_clock()->bool:
 	var fixture:=_fixture(Vector2i.RIGHT);var grid:PartyGridView=fixture.grid
 	var overlay:MeleeVfxOverlay=grid.melee_vfx
 	var time_scale_before:=Engine.time_scale
@@ -17,8 +17,9 @@ func test_melee_vfx_right_is_line_only_and_holds_local_clock()->bool:
 	var contact:=started+int(params.contact_at_ms)
 	var hold_a:Dictionary=overlay.effect_draw_specs(contact)[0]
 	var hold_b:Dictionary=overlay.effect_draw_specs(contact+int(params.hit_stop_ms)-1)[0]
-	check_eq([hold_a.primitive,hold_a.slash_glyph],["LINE",""],
-		"slash is a Node2D line and owns no ASCII glyph")
+	check_eq([hold_a.primitive,hold_a.slash_glyph,hold_a.draw_connector],
+		["BROKEN_SLASH","",false],
+		"slash is target-local Node2D feedback and owns no connector or ASCII glyph")
 	check(hold_a.hit_stop_active and hold_b.hit_stop_active \
 		and hold_a.visual_elapsed_ms==hold_b.visual_elapsed_ms,
 		"only the overlay visual clock is clamped at contact")
@@ -26,11 +27,11 @@ func test_melee_vfx_right_is_line_only_and_holds_local_clock()->bool:
 		"local hit stop stays in the requested window")
 	check(Vector2(hold_a.line_to).x>Vector2(hold_a.line_from).x,
 		"right strike line follows the mapped target direction")
-	_check_diagonal_line_crosses_pair(grid,hold_a,Vector2i(7,7),Vector2i(8,7),
+	_check_target_local_broken_slash(grid,hold_a,Vector2i(7,7),Vector2i(8,7),
 		"right")
-	check(params.has("slash_span_ratio") and params.has("slash_tilt_ratio") \
-		and not params.has("slash_length_ratio"),
-		"slash span and perpendicular tilt are independently adjustable")
+	check(params.has("slash_local_length_ratio") and params.has("slash_bend_ratio") \
+		and not params.has("slash_span_ratio"),
+		"target-local slash length and bend are independently adjustable")
 	check_eq([grid._actors,grid.actor_draw_spec(grid._actors[0]).glyph,
 		grid.actor_draw_spec(grid._actors[1]).glyph,Engine.time_scale],
 		[actors_before,hero_before.glyph,target_before.glyph,time_scale_before],
@@ -48,7 +49,7 @@ func test_melee_vfx_left_uses_only_bounded_dot_colon_star_particles()->bool:
 	var spec:Dictionary=overlay.effect_draw_specs(sample_time)[0]
 	check(Vector2(spec.line_to).x<Vector2(spec.line_from).x,
 		"left strike reverses the mapped line")
-	_check_diagonal_line_crosses_pair(grid,spec,Vector2i(7,7),Vector2i(6,7),
+	_check_target_local_broken_slash(grid,spec,Vector2i(7,7),Vector2i(6,7),
 		"left")
 	check(spec.particle_count>=3 and spec.particle_count<=6,
 		"impact emits three to six particles")
@@ -76,7 +77,7 @@ func test_melee_vfx_up_flashes_only_exact_target_background()->bool:
 	var slash_spec:Dictionary=overlay.effect_draw_specs(sample_time)[0]
 	check(Vector2(slash_spec.line_to).y<Vector2(slash_spec.line_from).y,
 		"up strike line follows the mapped target direction")
-	_check_diagonal_line_crosses_pair(grid,slash_spec,Vector2i(7,7),Vector2i(7,6),
+	_check_target_local_broken_slash(grid,slash_spec,Vector2i(7,7),Vector2i(7,6),
 		"up")
 	check_eq([grid._actors[1],grid.actor_draw_spec(grid._actors[1]).glyph,
 		grid.actor_draw_spec(grid._actors[1]).color_hex],
@@ -96,7 +97,7 @@ func test_melee_vfx_down_shake_is_visual_capped_and_mapping_neutral()->bool:
 	var slash_spec:Dictionary=overlay.effect_draw_specs(started)[0]
 	check(Vector2(slash_spec.line_to).y>Vector2(slash_spec.line_from).y,
 		"down strike line follows the mapped target direction")
-	_check_diagonal_line_crosses_pair(grid,slash_spec,Vector2i(7,7),Vector2i(7,8),
+	_check_target_local_broken_slash(grid,slash_spec,Vector2i(7,7),Vector2i(7,8),
 		"down")
 	check(shake.length()>0.0 and shake.length()<=2.0 \
 		and float(params.shake_strength_px)>=1.0 and float(params.shake_strength_px)<=2.0,
@@ -251,20 +252,21 @@ func _fixture(direction:Vector2i)->Dictionary:
 	return {"grid":grid}
 
 
-func _check_diagonal_line_crosses_pair(grid:PartyGridView,spec:Dictionary,
+func _check_target_local_broken_slash(grid:PartyGridView,spec:Dictionary,
 		attacker:Vector2i,target:Vector2i,label:String)->void:
 	var line_from:=Vector2(spec.line_from)
 	var line_to:=Vector2(spec.line_to)
 	var attacker_rect:=grid.world_cell_rect(attacker)
 	var target_rect:=grid.world_cell_rect(target)
-	check(attacker_rect.has_point(line_from),
-		"%s slash begins inside the attacker cell"%label)
-	check(target_rect.has_point(line_to),
-		"%s slash ends inside the target cell"%label)
-	var line_direction:=(line_to-line_from).normalized()
-	var attack_direction:=Vector2(target-attacker).normalized()
-	check(absf(line_direction.cross(attack_direction))>0.05,
-		"%s slash is diagonal rather than parallel to the attack axis"%label)
+	check(not bool(spec.get("draw_connector",true)) and not bool(spec.get(
+		"spans_actor_centers",true)) and spec.slash_segments.size()==2,
+		"%s slash declares two local strokes and no connector"%label)
+	check(target_rect.has_point(line_from) and target_rect.has_point(line_to) \
+		and spec.slash_segments.all(func(segment):return target_rect.has_point(
+			Vector2(segment.from)) and target_rect.has_point(Vector2(segment.to))),
+		"%s every slash endpoint stays inside the target cell"%label)
+	check(not attacker_rect.has_point(line_from) and not attacker_rect.has_point(line_to),
+		"%s slash never reaches into the attacker cell"%label)
 
 func _effect_sequence_spec(overlay:MeleeVfxOverlay,sample_time_ms:int,
 		sequence:int)->Dictionary:

@@ -16,6 +16,11 @@ const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
 const CAMERA_SETTLE_DURATION_MS := 70
+const TORCH_FLICKER_QUANTUM_MS := 125 # 8 Hz: intentionally below 10 Hz.
+const MAX_VISIBLE_TORCHES := 6
+const MAX_MEMORY_TORCHES := 6
+const TORCH_SPACING_CELLS := 3
+const TORCH_AMBER_HEX := "#d89a48"
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -67,13 +72,30 @@ var _static_occupancy_hash:=0
 var _actor_projection_hash:=0
 var _static_hash_initialized:=false
 var _occupied_visible_cells:Dictionary={}
+var _torch_positions:Array[Vector2i]=[]
+var _visible_torch_count:=0
+var _torch_cache_rebuild_count:=0
+var _torch_timer:Timer
 var melee_vfx:MeleeVfxOverlay
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
 	clip_contents=true; resized.connect(_on_visual_geometry_changed)
 	_ensure_melee_vfx()
+	_torch_timer=Timer.new();_torch_timer.name="TorchFlickerTimer"
+	_torch_timer.wait_time=float(TORCH_FLICKER_QUANTUM_MS)/1000.0
+	_torch_timer.one_shot=false;_torch_timer.timeout.connect(_on_torch_flicker_tick)
+	add_child(_torch_timer)
 	set_process(false)
+
+func _on_torch_flicker_tick()->void:
+	if _visible_torch_count>0:queue_redraw()
+
+func _sync_torch_timer()->void:
+	if _torch_timer==null:return
+	if _visible_torch_count>0:
+		if _torch_timer.is_stopped():_torch_timer.start()
+	elif not _torch_timer.is_stopped():_torch_timer.stop()
 
 func _ensure_melee_vfx()->void:
 	if melee_vfx!=null:return
@@ -298,12 +320,20 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	var previous_count:=visible_cell_count
 	var previous_hero:=_hero_camera_position
 	var previous_settle:=_camera_settle.duplicate(true)
+	var now:=Time.get_ticks_msec()
+	var carried_offset_cells:=Vector2.ZERO
+	if not _camera_settle.is_empty():
+		carried_offset_cells=Vector2(camera_settle_draw_spec(now).get(
+			"offset_px",Vector2.ZERO))/maxf(1.0,cell_size_px())
 	visible_cell_count=clampi(cell_count,1,64)
 	if _hero_camera_position!=Vector2i(-1,-1) and hero_position!=_hero_camera_position:
 		var delta:=hero_position-_hero_camera_position
 		if maxi(absi(delta.x),absi(delta.y))==1:
-			_camera_settle={"from_offset_cells":Vector2(delta),
-				"started_at_ms":Time.get_ticks_msec(),"duration_ms":CAMERA_SETTLE_DURATION_MS}
+			# Retarget from the currently drawn camera position. Repeated one-cell
+			# hops therefore preserve visual continuity instead of restarting from a
+			# full-cell offset every turn.
+			_camera_settle={"from_offset_cells":carried_offset_cells+Vector2(delta),
+				"started_at_ms":now,"duration_ms":CAMERA_SETTLE_DURATION_MS}
 		else:_camera_settle.clear()
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
@@ -620,20 +650,10 @@ func route_draw_spec() -> Dictionary:
 			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,"line_width":2.0,
 			"points":[cue_center-direction*cue_length+perpendicular*cue_width,cue_center,
 				cue_center-direction*cue_length-perpendicular*cue_width]})
-	for index in range(_route_path.size()):
-		var position: Vector2i = _route_path[index]
-		var kind := "STEP"
-		if index == 0:kind="START"
-		elif index == _route_path.size()-1:kind="GOAL"
-		elif index == _route_completed_steps+1:kind="NEXT"
-		markers.append({"index":index,"position":[position.x,position.y],
-			"pixel_center":world_to_pixel_center(position),"visible":_cell_allows_overlay(position),
-			"kind":kind,"completed":index<=_route_completed_steps,
-			"color_hex":"#607b87" if index<=_route_completed_steps else color_hex,
-			"radius":maxf(3.0,cell_size_px()*(0.20 if kind in ["START","GOAL"] else 0.12))})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
 		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,
-		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false}.duplicate(true)
+		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false,
+		"draw_endpoint_markers":false,"draw_ground_markers":false}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
 	var next_intents:Array[Dictionary]=[];var next_secondary:Array[Dictionary]=[]
@@ -825,7 +845,106 @@ func _ensure_static_projection_cache()->void:
 				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
 				"depth":depth,"wall_role":wall_role,"occupied":_occupied_visible_cells.has(key),
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
+	_rebuild_torch_cache()
 	_static_projection_dirty=false;_static_projection_rebuild_count+=1
+
+func _rebuild_torch_cache()->void:
+	var visible_candidates:Array[Dictionary]=[]
+	var memory_candidates:Array[Dictionary]=[]
+	for cached_value in _static_projection_cache.values():
+		var cached:=cached_value as Dictionary
+		if str((cached.get("terrain",{}) as Dictionary).get("terrain_id",""))!="wall":continue
+		var state:=str(cached.get("visibility_state","UNSEEN"))
+		if state=="UNSEEN":continue
+		var cell_spec:Dictionary=cached.get("cell_spec",{})
+		if int(cell_spec.get("exposed_mask",0))==0:continue
+		var position:Vector2i=cached.get("position",Vector2i(-1,-1))
+		var candidate:={"position":position,
+			"score":DioramaScript.visual_hash(position,907)}
+		if state=="VISIBLE":visible_candidates.append(candidate)
+		else:memory_candidates.append(candidate)
+	visible_candidates.sort_custom(func(a:Dictionary,b:Dictionary):
+		if int(a.score)!=int(b.score):return int(a.score)<int(b.score)
+		var ap:Vector2i=a.position;var bp:Vector2i=b.position
+		return ap.y<bp.y or ap.y==bp.y and ap.x<bp.x)
+	memory_candidates.sort_custom(func(a:Dictionary,b:Dictionary):
+		if int(a.score)!=int(b.score):return int(a.score)<int(b.score)
+		var ap:Vector2i=a.position;var bp:Vector2i=b.position
+		return ap.y<bp.y or ap.y==bp.y and ap.x<bp.x)
+	_torch_positions.clear();_visible_torch_count=0
+	for candidate in visible_candidates:
+		if _visible_torch_count>=MAX_VISIBLE_TORCHES:break
+		var position:Vector2i=candidate.position
+		if _torch_spacing_clear(position):
+			_torch_positions.append(position);_visible_torch_count+=1
+	var memory_count:=0
+	for candidate in memory_candidates:
+		if memory_count>=MAX_MEMORY_TORCHES:break
+		var position:Vector2i=candidate.position
+		if _torch_spacing_clear(position):
+			_torch_positions.append(position);memory_count+=1
+	_torch_cache_rebuild_count+=1;_sync_torch_timer()
+
+func _torch_spacing_clear(position:Vector2i)->bool:
+	for selected in _torch_positions:
+		if maxi(absi(position.x-selected.x),absi(position.y-selected.y))<TORCH_SPACING_CELLS:
+			return false
+	return true
+
+func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
+	_ensure_static_projection_cache()
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
+	var rows:Array[Dictionary]=[]
+	for position in _torch_positions:
+		var cached:Dictionary=_static_projection_cache.get(_key(position),{})
+		var state:=str(cached.get("visibility_state","UNSEEN"))
+		if state=="UNSEEN" or not is_world_cell_visible(position):continue
+		var animated:=state=="VISIBLE"
+		var phase:=(tick+DioramaScript.visual_hash(position,313))%4 if animated else 0
+		var brightness:float=float([0.82,1.0,0.90,0.96][phase]) if animated else 0.24
+		rows.append({"position":[position.x,position.y],"visibility_state":state,
+			"visible":true,"animated":animated,"glyph":"!","glyph_count":1,
+			"glyph_hex":TORCH_AMBER_HEX if animated else "#4d463c",
+			"brightness":brightness,"flicker_tick":tick if animated else 0,
+			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
+			"pool_radius_cells":2.5 if animated else 0.0,
+			"draw_light_pool":animated,"draw_image":false,"texture":null,
+			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
+	return rows.duplicate(true)
+
+func torch_light_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
+	_ensure_static_projection_cache()
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	return _torch_light_draw_spec_cached(position,now).duplicate(true)
+
+func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
+	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
+	var state:=str(cached.get("visibility_state","UNSEEN"))
+	if state!="VISIBLE":
+		return {"active":false,"visibility_state":state,"distance":-1,
+			"brightness":0.0,"color_hex":TORCH_AMBER_HEX}
+	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
+	var best_distance:=99;var best_brightness:=0.0
+	for torch_position in _torch_positions:
+		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
+		if str(torch_cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
+		var distance:=maxi(absi(position.x-torch_position.x),absi(position.y-torch_position.y))
+		if distance>3:continue
+		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4
+		var torch_brightness:float=float([0.82,1.0,0.90,0.96][phase])
+		var strength:=torch_brightness*maxf(0.0,1.0-float(distance)/3.5)
+		if strength>best_brightness:
+			best_brightness=strength;best_distance=distance
+	return {"active":best_brightness>0.0,"visibility_state":state,
+		"distance":best_distance if best_brightness>0.0 else -1,
+		"brightness":best_brightness,"color_hex":TORCH_AMBER_HEX}
+
+func torch_cache_stats()->Dictionary:
+	_ensure_static_projection_cache()
+	return {"cached_count":_torch_positions.size(),"visible_count":_visible_torch_count,
+		"max_visible":MAX_VISIBLE_TORCHES,"rebuild_count":_torch_cache_rebuild_count,
+		"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS)}.duplicate(true)
 
 func _cached_static_cell(position:Vector2i)->Dictionary:
 	_ensure_static_projection_cache()
@@ -1095,6 +1214,7 @@ func _draw() -> void:
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	_draw_ground_pass("MEMORY")
 	_draw_ground_pass("VISIBLE")
+	_draw_torch_light_pools()
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
@@ -1103,9 +1223,9 @@ func _draw() -> void:
 	_draw_wall_shadow_pass("VISIBLE")
 	_draw_wall_pass("MEMORY")
 	_draw_wall_pass("VISIBLE")
+	_draw_wall_torches()
 	_draw_ground_features()
 	_draw_ground_hazards()
-	_draw_route_ground_marks()
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_exploration_companion_follow_plan()
@@ -1176,6 +1296,20 @@ func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 	var base:=_diorama_ink_color(str(terrain.get("slab_hex",terrain.base_hex)),
 		float(terrain.opacity)*(0.68 if occupied else 0.84),visibility_state,light,false)
 	draw_rect(slab_rect,base,true)
+
+func _draw_torch_light_pools()->void:
+	# Cell-clipped washes cannot illuminate MEMORY/UNSEEN neighbors. This keeps
+	# the warm pool FOV-safe without a texture, shader, or offscreen viewport.
+	var now:=Time.get_ticks_msec()
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var light:=_torch_light_draw_spec_cached(position,now)
+			if not bool(light.active):continue
+			var amber:=Color(str(light.color_hex))
+			amber.a=0.035+0.075*float(light.brightness)
+			var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
+			draw_rect(world_cell_rect(position).grow(overlap).intersection(grid_rect()),amber,true)
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
@@ -1266,6 +1400,13 @@ func _draw_wall_pass(visibility_state:String)->void:
 			var top:=_diorama_ink_color(str(terrain.base_hex),float(terrain.opacity),
 				visibility_state,light,false)
 			draw_rect(top_rect.grow(overlap).intersection(grid_rect()),top,true)
+			# Two restrained masonry seams deepen the wall mass without introducing
+			# per-tile borders or changing the canonical '#'.
+			var inner_shadow:=Color("#030507",0.42 if visibility_state=="VISIBLE" else 0.18)
+			draw_line(top_rect.position+Vector2(1,1),
+				Vector2(top_rect.end.x-1,top_rect.position.y+1),inner_shadow,1.0,true)
+			draw_line(top_rect.position+Vector2(1,1),
+				Vector2(top_rect.position.x+1,top_rect.end.y-1),inner_shadow,1.0,true)
 			var edge:=_diorama_ink_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
 				visibility_state,light,true)
 			if not connected&DioramaScript.SOUTH:
@@ -1277,6 +1418,15 @@ func _draw_wall_pass(visibility_state:String)->void:
 			role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 			role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
 			_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false)
+
+func _draw_wall_torches()->void:
+	for spec in torch_draw_specs():
+		if not bool(spec.visible):continue
+		var center:Vector2=spec.pixel_center
+		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
+		# One ASCII glyph, confined to its wall cell. No image/texture primitive.
+		_draw_centered_text(get_theme_default_font(),str(spec.glyph),
+			center+Vector2(0,cell_size_px()*0.12),maxi(8,int(cell_size_px()*0.42)),color)
 
 func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 		light:Dictionary,occupied:bool)->void:
@@ -1496,13 +1646,23 @@ func _draw_actor_selection_overlays()->void:
 			draw_line(segment[0],segment[1],color,float(row.line_width),true)
 
 func _draw_cursor_preview() -> void:
-	if cursor_cell.x < 0 or not is_world_cell_visible(cursor_cell): return
-	var color := Color("#65f29a") if preview_valid else Color("#ff5f68")
-	var center:=world_to_pixel_center(cursor_cell);var radius:=cell_size_px()*0.36
+	var spec:=cursor_preview_draw_spec()
+	if not bool(spec.visible):return
+	var color:=Color(str(spec.color_hex))
+	var center:Vector2=spec.pixel_center;var radius:=float(spec.radius)
 	draw_circle(center,radius,Color(color,0.10))
 	draw_arc(center,radius,0,TAU,20,color,3.0)
-	if _route_path.size() < 2 and preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
+	if preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
+
+func cursor_preview_draw_spec()->Dictionary:
+	var suppressed_by_route:=_route_path.size()>=2
+	var visible:=not suppressed_by_route and cursor_cell.x>=0 and is_world_cell_visible(cursor_cell)
+	return {"visible":visible,"suppressed_by_route":suppressed_by_route,
+		"position":[cursor_cell.x,cursor_cell.y],
+		"pixel_center":world_to_pixel_center(cursor_cell) if visible else Vector2(-1,-1),
+		"radius":cell_size_px()*0.36,"color_hex":"#65f29a" if preview_valid else "#ff5f68",
+		"draw_circle":visible}.duplicate(true)
 
 func _draw_route_overlay() -> void:
 	if _route_path.size()<2:return
@@ -1516,25 +1676,6 @@ func _draw_route_overlay() -> void:
 		var points:=PackedVector2Array()
 		for point in cue.points:points.append(point)
 		draw_polyline(points,Color(str(cue.color_hex)),float(cue.line_width),true)
-	for marker in spec.markers:
-		if not bool(marker.visible):continue
-		var center:Vector2=marker.pixel_center;var radius:=float(marker.radius);var color:=Color(str(marker.color_hex))
-		match str(marker.kind):
-			"GOAL":
-				draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
-					center+Vector2(0,radius),center+Vector2(-radius,0)]),Color(color,0.55))
-			"START":draw_arc(center,radius,0,TAU,16,color,2.0)
-			"NEXT":draw_circle(center,radius,Color(color,0.90))
-			_:draw_circle(center,radius,Color(color,0.42))
-
-func _draw_route_ground_marks()->void:
-	if _route_path.size()<2:return
-	for tile in route_draw_spec().tiles:
-		if not bool(tile.visible):continue
-		var center:Vector2=tile.pixel_rect.get_center();var color:=Color(str(tile.fill_hex))
-		var radius:=maxf(1.5,cell_size_px()*(0.10 if str(tile.kind) in ["START","GOAL","NEXT"] else 0.065))
-		draw_circle(center,radius,Color(color,0.28 if not bool(tile.completed) else 0.16))
-		if str(tile.kind)=="GOAL":draw_arc(center,cell_size_px()*0.31,0,TAU,20,Color(color,0.76),2.0)
 
 func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
 	var delta:=to-from

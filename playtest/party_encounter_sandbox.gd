@@ -23,6 +23,7 @@ const FONT_CAPTION:=12
 const FONT_MICRO:=11
 const TOUCH_TARGET:=44
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
+const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
 
 var session
 var grid
@@ -85,6 +86,10 @@ var _action_feedback_phase:=""
 var route_preview:Dictionary={}
 var route_generation:=0
 var route_continue_pending:=false
+var route_continue_due_frame:=-1
+var route_continue_due_msec:=-1
+var route_scheduled_generation:=-1
+var route_last_hop_started_msec:=-1
 var route_paused_by_modal:=false
 var route_paused_by_pointer:=false
 var selected_tile:=Vector2i(-1,-1)
@@ -166,22 +171,49 @@ var _product_ignore_mouse_until_msec:=-1
 var _product_auto_explore_generation:=0
 var _product_auto_explore_pending:=false
 var _product_auto_explore_due_frame:=-1
+var _product_auto_explore_due_msec:=-1
 var _product_auto_explore_scheduled_generation:=-1
+var _product_auto_last_hop_started_msec:=-1
+var _product_auto_stop_feedback:=""
+# Presentation cadence only. Tests may set this to zero; it never participates
+# in canonical route choice, journal contents, simulation time, or replay.
+var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
 
 func _process(_delta:float)->void:
-	if not _product_auto_explore_pending:return
 	var frame:=Engine.get_process_frames()
-	if frame<_product_auto_explore_due_frame:return
-	# A held product button is an unresolved user gesture. AUTO may keep its
-	# running state, but no authoritative hop can occur until release/cancel.
-	if _product_touch_index>=0:
-		_product_auto_explore_due_frame=frame+1;return
-	var expected_generation:=_product_auto_explore_scheduled_generation
-	_product_auto_explore_pending=false;_product_auto_explore_due_frame=-1
-	_product_auto_explore_scheduled_generation=-1
-	_continue_product_auto_explore(expected_generation)
+	var now_msec:=Time.get_ticks_msec()
+	if _product_auto_explore_pending and frame>=_product_auto_explore_due_frame \
+			and now_msec>=_product_auto_explore_due_msec:
+		# A held product button is an unresolved user gesture. AUTO may keep its
+		# running state, but no authoritative hop can occur until release/cancel.
+		if _product_touch_index>=0:
+			_product_auto_explore_due_frame=frame+1
+		else:
+			var expected_auto_generation:=_product_auto_explore_scheduled_generation
+			_product_auto_explore_pending=false;_product_auto_explore_due_frame=-1
+			_product_auto_explore_due_msec=-1;_product_auto_explore_scheduled_generation=-1
+			_continue_product_auto_explore(expected_auto_generation)
+	if route_continue_pending and frame>=route_continue_due_frame \
+			and now_msec>=route_continue_due_msec:
+		var expected_route_generation:=route_scheduled_generation
+		route_continue_pending=false;route_continue_due_frame=-1
+		route_continue_due_msec=-1;route_scheduled_generation=-1
+		_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
+	# Manual screen input wins the scheduling tie even when a pass-through UI
+	# container receives the GUI event before PartyGrid. Do not consume the event:
+	# the grid still owns tap/drag semantics, while the active route is cancelled
+	# synchronously and generation-safe before another cadence hop can commit.
+	if event is InputEventScreenTouch and event.pressed \
+			and grid!=null and grid.visible and grid.get_global_rect().has_point(event.position) \
+			and not grid.modal_open and session!=null:
+		if session.has_method("auto_explore_state") \
+				and bool(session.auto_explore_state().get("running",false)):
+			_cancel_product_auto_explore("auto_explore_user_command",false)
+		var route_state:Dictionary=session.exploration_route_state()
+		if bool(route_state.get("active",false)):
+			_cancel_active_route()
 	if _handle_product_control_touch(event):return
 	if member_detail_modal==null or not member_detail_modal.visible \
 			or member_detail_current_tab!="SKILL":return
@@ -295,6 +327,7 @@ var _pending_visual_effect_rows:Array[Dictionary]=[]
 var _refresh_pending:=false
 var _last_direct_solo_refresh_profile:Dictionary={}
 var _last_direct_solo_turn_profile:Dictionary={}
+var _last_continuous_exploration_refresh_profile:Dictionary={}
 
 func _ready()->void:
 	_build_ui()
@@ -328,7 +361,9 @@ func _build_ui()->void:
 	if grid!=null:return
 	var ui_theme:=Theme.new(); ui_theme.default_font=KoreanFont; ui_theme.default_font_size=FONT_BODY; theme=ui_theme
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg:=ColorRect.new(); bg.color=AsciiFrameScript.SURFACE_DEEP; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
+	var bg:=ColorRect.new();bg.name="SandboxBackground"
+	bg.color=AsciiFrameScript.SURFACE_DEEP;bg.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);add_child(bg)
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
@@ -766,7 +801,8 @@ func _refresh()->void:
 	if _action_feedback_phase!=safe_phase:
 		action_feedback_text="";_action_feedback_phase=safe_phase
 		if str(status.view_mode)!="EXPLORATION":
-			route_generation+=1;route_continue_pending=false;route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
+			route_generation+=1;_clear_route_continue_schedule()
+			route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
 	var combat_active:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
@@ -825,12 +861,14 @@ func _refresh()->void:
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
 	if run_complete:
-		route_generation+=1;route_continue_pending=false;route_preview.clear()
+		route_generation+=1;_clear_route_continue_schedule();route_preview.clear()
 		grid.clear_route_overlay();_clear_companion_follow_plan();_clear_move_preview()
 	elif str(status.view_mode)=="EXPLORATION":
 		var route_state:Dictionary=session.exploration_route_state()
 		var state_matches_local:=route_preview.is_empty() or _route_goal(route_state)==_route_goal(route_preview)
-		if bool(route_state.get("has_preview",false)) and state_matches_local:
+		if bool(route_state.get("has_preview",false)) \
+				and not bool(route_state.get("completed",false)) \
+				and not bool(route_state.get("terminal",false)) and state_matches_local:
 			route_preview=route_state.duplicate(true);_apply_route_overlay(route_state);_apply_companion_follow_plan(route_state)
 		elif route_preview.is_empty() or not bool(route_preview.get("accepted",false)):
 			grid.clear_route_overlay();_clear_companion_follow_plan()
@@ -876,6 +914,9 @@ func _refresh()->void:
 	deck.visible=not product_hud and not _narrative_log_visible
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if not _product_auto_stop_feedback.is_empty():
+			event_label.text=_product_auto_stop_feedback
+			_product_auto_stop_feedback=""
 		if _run_locked_exit_feedback and not action_feedback_text.is_empty():
 			event_label.text=action_feedback_text
 		if record_modal.visible:
@@ -949,9 +990,72 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 		"total_usec":finished-profile_started,
 	}.duplicate(true)
 
+func _refresh_continuous_exploration_surface(status:Dictionary)->void:
+	# AUTO and long routes already have a stable exploration shell. Rebuilding
+	# cards and every dock button after each canonical hop delays the next hop and
+	# adds no new interaction state. Update only live world/HUD data; a phase
+	# transition still falls back to the full refresh below.
+	var safe_phase:=str(status.get("safe_phase",""))
+	var run_progress:=_current_run_progress()
+	var run_terminal:=bool(run_progress.get("available",false)) \
+		and (bool(run_progress.get("complete",false)) \
+			or bool(run_progress.get("terminal",false)))
+	if str(status.get("view_mode",""))!="EXPLORATION" \
+			or bool(status.get("terminal",false)) or run_terminal \
+			or safe_phase not in ["GROUPED","GROUPED_COMPLETE"] \
+			or not _action_feedback_phase.is_empty() and _action_feedback_phase!=safe_phase:
+		_refresh();return
+	var started_usec:=Time.get_ticks_usec()
+	var observe_started_usec:=Time.get_ticks_usec()
+	var ui_observation:Dictionary=session.observe_party_ui(15)
+	var observe_finished_usec:=Time.get_ticks_usec()
+	grid.set_observation(ui_observation.get("grid",{}),[])
+	minimap.set_observation(ui_observation.get("minimap",{}))
+	var hero_position:=Vector2i(int(status.protagonist_position[0]),
+		int(status.protagonist_position[1]))
+	grid.set_hero_centered_view(hero_position,15,int(status.protagonist_id))
+	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
+	var route_state:Dictionary=session.exploration_route_state()
+	if bool(route_state.get("has_preview",false)) \
+			and not bool(route_state.get("completed",false)) \
+			and not bool(route_state.get("terminal",false)):
+		route_preview=route_state.duplicate(true);_apply_route_state(route_state)
+		_apply_companion_follow_plan(route_state)
+	else:
+		route_preview.clear();grid.clear_route_overlay();grid.clear_cursor_preview()
+		_clear_companion_follow_plan()
+	var grid_finished_usec:=Time.get_ticks_usec()
+	_update_stable_party_cards(session.party_cards())
+	var combat_history:Dictionary=session.combat_log(8,80)
+	log_label.text=_combat_log_text(combat_history)
+	_update_recent_event(combat_history,status)
+	if _is_solo_product_session():
+		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if not _product_auto_stop_feedback.is_empty():
+			event_label.text=_product_auto_stop_feedback
+			_product_auto_stop_feedback=""
+	else:
+		_update_action_feedback(status)
+	_sync_product_control_state(status)
+	var hud_finished_usec:=Time.get_ticks_usec()
+	var effect_count:=_flush_pending_visual_effects()
+	var finished_usec:=Time.get_ticks_usec()
+	_last_continuous_exploration_refresh_profile={
+		"observe_ui_usec":observe_finished_usec-observe_started_usec,
+		"grid_minimap_usec":grid_finished_usec-observe_finished_usec,
+		"stable_hud_usec":hud_finished_usec-grid_finished_usec,
+		"effects_usec":finished_usec-hud_finished_usec,
+		"effect_count":effect_count,"total_usec":finished_usec-started_usec,
+	}.duplicate(true)
+
 func _update_direct_solo_card(rows:Array)->void:
-	if rows.is_empty() or not rows[0] is Dictionary:return
-	var row:Dictionary=rows[0]
+	if not rows.is_empty() and rows[0] is Dictionary:_update_stable_party_card(rows[0])
+
+func _update_stable_party_cards(rows:Array)->void:
+	for row in rows:
+		if row is Dictionary:_update_stable_party_card(row)
+
+func _update_stable_party_card(row:Dictionary)->void:
 	var card:=cards.find_child("MemberCard%d"%int(row.get("entity_id",-1)),true,false)
 	if card==null:return
 	var health:=card.find_child("MemberState",true,false)
@@ -1016,30 +1120,27 @@ func _toggle_map_overlay()->void:
 	if map_overlay.visible:
 		map_overlay.close("TOGGLE");return
 	_cancel_product_auto_explore("auto_explore_modal",false)
+	_cancel_route_for_user_interruption()
 	if record_modal.visible:_close_record_modal("MAP")
 	var observation:Dictionary=session.observe_party_ui(15).get("minimap",{})
 	map_overlay.set_observation(observation)
-	var route_state:Dictionary=session.exploration_route_state()
-	route_paused_by_modal=bool(route_state.get("active",false))
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	map_nav_button.set_pressed_no_signal(true);map_overlay.open()
 
 func _on_map_overlay_closed(_reason:String)->void:
 	map_nav_button.set_pressed_no_signal(false)
 	grid.modal_open=member_detail_modal.visible or record_modal.visible
-	var resume:=route_paused_by_modal;route_paused_by_modal=false
-	if resume:_schedule_route_continue()
-	elif auto_orchestration_enabled:_request_refresh()
+	route_paused_by_modal=false
+	if auto_orchestration_enabled:_request_refresh()
 
 func _toggle_record_modal()->void:
 	if record_modal.visible:
 		_close_record_modal("TOGGLE");return
 	_cancel_product_auto_explore("auto_explore_modal",false)
+	_cancel_route_for_user_interruption()
 	if map_overlay.visible:map_overlay.close("HISTORY")
 	var history:Dictionary=session.combat_log(64,500)
 	record_body.text=_full_meaningful_record_text(history)
-	var route_state:Dictionary=session.exploration_route_state()
-	route_paused_by_modal=bool(route_state.get("active",false))
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	record_modal.visible=true;history_nav_button.set_pressed_no_signal(true)
 	_layout_floating_surfaces()
@@ -1049,9 +1150,8 @@ func _close_record_modal(_reason:String="API")->void:
 	if not record_modal.visible:return
 	record_modal.visible=false;history_nav_button.set_pressed_no_signal(false)
 	grid.modal_open=member_detail_modal.visible or map_overlay.visible
-	var resume:=route_paused_by_modal;route_paused_by_modal=false
-	if resume:_schedule_route_continue()
-	elif auto_orchestration_enabled:_request_refresh()
+	route_paused_by_modal=false
+	if auto_orchestration_enabled:_request_refresh()
 
 func _on_record_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_record_modal("OUTSIDE")
@@ -1061,8 +1161,8 @@ func _on_record_backdrop_input(event:InputEvent)->void:
 func _open_ascii_3d_lab()->void:
 	if ascii_3d_lab_view!=null and is_instance_valid(ascii_3d_lab_view):return
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
-	var route_state:Dictionary=session.exploration_route_state() if session!=null else {}
-	route_paused_by_modal=bool(route_state.get("active",false))
+	_cancel_product_auto_explore("auto_explore_modal",false)
+	_cancel_route_for_user_interruption()
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	ascii_3d_lab_view=ASCII_3D_LAB_SCENE.instantiate();ascii_3d_lab_view.name="Ascii3DLabOverlay"
 	ascii_3d_lab_view.z_index=100;add_child(ascii_3d_lab_view)
@@ -1072,9 +1172,8 @@ func _close_ascii_3d_lab()->void:
 	if ascii_3d_lab_view==null or not is_instance_valid(ascii_3d_lab_view):return
 	ascii_3d_lab_view.queue_free();ascii_3d_lab_view=null
 	grid.modal_open=false
-	var resume:=route_paused_by_modal;route_paused_by_modal=false
-	if resume:_schedule_route_continue()
-	elif auto_orchestration_enabled:_request_refresh()
+	route_paused_by_modal=false
+	if auto_orchestration_enabled:_request_refresh()
 
 func _update_recent_event(history:Dictionary,status:Dictionary)->void:
 	var latest:=""
@@ -1811,9 +1910,12 @@ func _on_product_auto()->void:
 		if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
 			_cancel_active_route()
 		_product_auto_explore_generation+=1
+		var hop_started_msec:=Time.get_ticks_msec()
+		_product_auto_last_hop_started_msec=hop_started_msec
 		var result:Dictionary=session.start_auto_explore()
-		_consume_product_auto_explore_result(result);_refresh()
-		if bool(result.get("running",false)):_schedule_product_auto_explore()
+		_consume_product_auto_explore_result(result)
+		_refresh_continuous_exploration_surface(session.party_status())
+		if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
 		return
 	if selected_member_id!=int(status.get("protagonist_id",-1)):_on_override_clear()
 
@@ -1827,22 +1929,32 @@ func _consume_product_auto_explore_result(result:Dictionary)->void:
 			if route_wrapper is Dictionary else {}
 		if canonical_result is Dictionary and bool(canonical_result.get("accepted",false)):
 			_record_result(canonical_result,true)
-	if not bool(result.get("running",false)):
+	if bool(result.get("running",false)):
+		_product_auto_stop_feedback=""
+	else:
 		var reason:=str(result.get("stop_reason",result.get("reason","auto_explore_stopped")))
 		action_feedback_text={
 			"auto_explore_user_cancel":"자동 탐험을 멈췄습니다.",
-			"auto_explore_combat_contact":"적을 발견해 자동 탐험을 멈췄습니다.",
-			"auto_explore_enemy_visible":"적이 보여 자동 탐험을 멈췄습니다.",
+			"auto_explore_combat_contact":"적과 접촉해 자동 탐험을 멈췄습니다.",
+			"auto_explore_enemy_visible":"적을 발견해 자동 탐험을 멈췄습니다.",
 			"auto_explore_hazard_discovered":"위험 지형을 발견해 자동 탐험을 멈췄습니다.",
 			"auto_explore_interaction_discovered":"새 상호작용을 발견해 자동 탐험을 멈췄습니다.",
 			"auto_explore_no_frontier":"더 탐험할 안전한 지점이 없습니다.",
 		}.get(reason,"자동 탐험을 멈췄습니다.")
+		notice_text=action_feedback_text
+		_product_auto_stop_feedback=action_feedback_text
+		# A hop can atomically enter CONTACT. Preserve this meaningful stop copy
+		# across the refresh phase-change guard instead of replacing it with filler.
+		if session!=null:_action_feedback_phase=str(session.party_status().get("safe_phase",""))
 
-func _schedule_product_auto_explore()->void:
+func _schedule_product_auto_explore(previous_hop_started_msec:int=-1)->void:
 	if _product_auto_explore_pending or not is_inside_tree():return
 	if not bool(session.auto_explore_state().get("running",false)):return
 	_product_auto_explore_pending=true
 	_product_auto_explore_due_frame=Engine.get_process_frames()+1
+	var cadence_origin:=previous_hop_started_msec if previous_hop_started_msec>=0 \
+		else Time.get_ticks_msec()
+	_product_auto_explore_due_msec=cadence_origin+maxi(0,continuous_travel_cadence_msec)
 	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
 
 func _continue_product_auto_explore(expected_generation:int)->void:
@@ -1851,13 +1963,19 @@ func _continue_product_auto_explore(expected_generation:int)->void:
 			or bool(grid.pointer_gesture_state().get("active",false)):
 		_cancel_product_auto_explore("auto_explore_modal",true);return
 	if not bool(session.auto_explore_state().get("running",false)):return
+	var hop_started_msec:=Time.get_ticks_msec()
+	_product_auto_last_hop_started_msec=hop_started_msec
 	var result:Dictionary=session.continue_auto_explore()
-	_consume_product_auto_explore_result(result);_refresh()
-	if bool(result.get("running",false)):_schedule_product_auto_explore()
+	_consume_product_auto_explore_result(result)
+	_refresh_continuous_exploration_surface(session.party_status())
+	if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
 
 func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
-	_product_auto_explore_due_frame=-1;_product_auto_explore_scheduled_generation=-1
+	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
+	_product_auto_explore_scheduled_generation=-1
+	_product_auto_last_hop_started_msec=-1
+	_product_auto_stop_feedback=""
 	if session==null or not session.has_method("auto_explore_state"):
 		_sync_product_control_state();return
 	if bool(session.auto_explore_state().get("running",false)):
@@ -2021,6 +2139,7 @@ func _status_label(status_id:String)->String:
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	_cancel_product_auto_explore("auto_explore_modal",false)
+	_cancel_route_for_user_interruption()
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
@@ -2055,17 +2174,15 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	_apply_member_detail_tab()
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
-	var route_state:Dictionary=session.exploration_route_state()
-	route_paused_by_modal=bool(route_state.get("active",false))
+	route_paused_by_modal=false
 	_layout_floating_surfaces();call_deferred("_measure_member_detail_body")
 	if member_detail_close.is_inside_tree():member_detail_close.grab_focus()
 
 func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
 	member_detail_modal.visible=false;member_detail_entity_id=-1;grid.modal_open=false
-	var resume:=route_paused_by_modal;route_paused_by_modal=false
-	if resume:_schedule_route_continue()
-	elif auto_orchestration_enabled:_request_refresh()
+	route_paused_by_modal=false
+	if auto_orchestration_enabled:_request_refresh()
 
 func _select_member_detail_tab(tab_id:String)->void:
 	if tab_id not in ["STATUS","SKILL","ITEM"] \
@@ -2307,7 +2424,7 @@ func _recruitment_reason_summary(assessment:Dictionary)->String:
 	return " · ".join(parts) if not parts.is_empty() else str(assessment.get("message",""))
 
 func _clear_roster_change_transients()->void:
-	route_generation+=1;route_continue_pending=false
+	route_generation+=1;_clear_route_continue_schedule()
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan()
 	if grid!=null:
@@ -2348,9 +2465,12 @@ func _on_restart_with_new_personality()->void:
 	_reset_run_ui_transients();_request_refresh()
 
 func _reset_run_ui_transients()->void:
-	_reset_auto_flow();route_generation+=1;route_continue_pending=false
+	_reset_auto_flow();route_generation+=1;_clear_route_continue_schedule()
 	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
-	_product_auto_explore_due_frame=-1;_product_auto_explore_scheduled_generation=-1
+	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
+	_product_auto_explore_scheduled_generation=-1
+	_product_auto_last_hop_started_msec=-1;route_last_hop_started_msec=-1
+	_product_auto_stop_feedback=""
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
@@ -2560,7 +2680,7 @@ func _on_cell(position:Vector2i)->void:
 			var command=CommandScript.move_to(int(status.protagonist_id),position)
 			var direct_preview:Dictionary=session.preview_exploration(command)
 			if bool(direct_preview.get("accepted",false)):
-				route_generation+=1;route_continue_pending=false;route_preview.clear()
+				route_generation+=1;_clear_route_continue_schedule();route_preview.clear()
 				_clear_move_preview();_clear_companion_follow_plan()
 				var result:Dictionary=session.commit_exploration(command)
 				_record_result(result,true,"%s 이동 불가"%_protagonist_name())
@@ -2574,9 +2694,13 @@ func _on_cell(position:Vector2i)->void:
 			notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."))
 			_set_action_rejection(preview,"%s 이동 불가"%_protagonist_name())
 			_update_tile_popover_route(preview);_request_refresh();return
-		route_generation+=1;route_continue_pending=false
+		route_generation+=1;_clear_route_continue_schedule()
+		var hop_started_msec:=Time.get_ticks_msec()
+		route_last_hop_started_msec=hop_started_msec
 		var started:Dictionary=session.start_exploration_route(position,str(preview.get("plan_hash","")))
-		_consume_route_result(started);_refresh();_schedule_route_continue()
+		_consume_route_result(started)
+		_refresh_continuous_exploration_surface(session.party_status())
+		_schedule_route_continue(hop_started_msec)
 		return
 	if status.view_mode!="COMBAT":return
 	selected_target_id=-1;_clear_move_preview()
@@ -2694,7 +2818,9 @@ func _apply_route_state(value:Dictionary)->void:
 
 func _apply_route_overlay(value:Dictionary)->void:
 	var path:Variant=value.get("path",[])
-	if path is Array and path.size()>=2:
+	if path is Array and path.size()>=2 \
+			and not bool(value.get("completed",false)) \
+			and not bool(value.get("terminal",false)):
 		grid.set_route_overlay(path,int(value.get("completed_steps",value.get("current_index",0))),bool(value.get("accepted",false)))
 	else:grid.clear_route_overlay()
 
@@ -2713,23 +2839,41 @@ func _consume_route_result(result:Dictionary)->void:
 		notice_text=message;action_feedback_text="한 칸씩 이동 중 · %d/%d"%[int(result.get("completed_steps",0)),int(result.get("total_steps",0))]
 	_update_tile_popover_route(result)
 
-func _schedule_route_continue()->void:
+func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
 	if route_continue_pending or route_paused_by_modal or route_paused_by_pointer or not is_inside_tree():return
 	var state:Dictionary=session.exploration_route_state()
 	if not bool(state.get("active",false)) or bool(state.get("completed",false)) or bool(state.get("terminal",false)):return
 	route_continue_pending=true
-	get_tree().process_frame.connect(_continue_route_on_frame.bind(route_generation),CONNECT_ONE_SHOT)
+	route_continue_due_frame=Engine.get_process_frames()+1
+	var cadence_origin:=previous_hop_started_msec if previous_hop_started_msec>=0 \
+		else Time.get_ticks_msec()
+	route_continue_due_msec=cadence_origin+maxi(0,continuous_travel_cadence_msec)
+	route_scheduled_generation=route_generation
 
-func _continue_route_on_frame(expected_generation:int)->void:
-	route_continue_pending=false
+func _continue_route_on_cadence(expected_generation:int)->void:
 	if expected_generation!=route_generation or route_paused_by_modal or route_paused_by_pointer or member_detail_modal.visible:return
+	var hop_started_msec:=Time.get_ticks_msec()
+	route_last_hop_started_msec=hop_started_msec
 	var result:Dictionary=session.continue_exploration_route()
-	_consume_route_result(result);_refresh()
+	_consume_route_result(result)
+	_refresh_continuous_exploration_surface(session.party_status())
 	if bool(result.get("active",false)) and not bool(result.get("completed",false)) and not bool(result.get("terminal",false)):
-		_schedule_route_continue()
+		_schedule_route_continue(hop_started_msec)
+
+func _clear_route_continue_schedule()->void:
+	route_continue_pending=false;route_continue_due_frame=-1
+	route_continue_due_msec=-1;route_scheduled_generation=-1
+
+func _cancel_route_for_user_interruption()->void:
+	if session==null:return
+	var state:Dictionary=session.exploration_route_state()
+	if bool(state.get("active",false)) or bool(state.get("has_preview",false)):
+		_cancel_active_route()
+	route_paused_by_modal=false;route_paused_by_pointer=false
 
 func _on_grid_pointer_started()->void:
 	_cancel_product_auto_explore("auto_explore_user_command",false)
+	_cancel_route_for_user_interruption()
 	var cancelled_auto:=auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending)
 	if cancelled_auto:
 		_cancel_auto_pending(true)
@@ -2741,15 +2885,13 @@ func _on_grid_pointer_started()->void:
 			notice_text="자동 실행을 멈췄습니다. 현재 계획을 확인하세요."
 			action_feedback_text="행동 계획 확인 → 지금 실행"
 		_request_refresh()
-	route_paused_by_pointer=true
+	route_paused_by_pointer=false
 
 func _on_grid_pointer_finished(_outcome:String)->void:
-	if not route_paused_by_pointer:return
 	route_paused_by_pointer=false
-	if not route_paused_by_modal:_schedule_route_continue()
 
 func _cancel_active_route()->void:
-	route_generation+=1;route_continue_pending=false
+	route_generation+=1;_clear_route_continue_schedule()
 	var state:Dictionary=session.exploration_route_state()
 	if bool(state.get("has_preview",false)):session.cancel_exploration_route()
 	route_preview.clear();grid.clear_route_overlay();grid.clear_cursor_preview()

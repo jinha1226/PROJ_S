@@ -14,10 +14,6 @@ var _target_visibility := ""
 var _steps_committed := 0
 var _started_step_index := -1
 var _last_step_index := -1
-var _health_baseline: Dictionary = {}
-var _known_hazard_keys: Dictionary = {}
-var _known_discovery_keys: Dictionary = {}
-var _objective_signature := ""
 var _last_step_result: Dictionary = {}
 
 
@@ -33,10 +29,6 @@ func clear() -> void:
 	_steps_committed = 0
 	_started_step_index = -1
 	_last_step_index = -1
-	_health_baseline.clear()
-	_known_hazard_keys.clear()
-	_known_discovery_keys.clear()
-	_objective_signature = ""
 	_last_step_result.clear()
 
 
@@ -48,10 +40,6 @@ func start() -> Dictionary:
 	var blocker := _precondition_reason(snapshot)
 	if not blocker.is_empty():
 		return _stop(blocker)
-	_health_baseline = snapshot.get("health", {}).duplicate(true)
-	_known_hazard_keys = snapshot.get("hazards", {}).duplicate(true)
-	_known_discovery_keys = snapshot.get("discoveries", {}).duplicate(true)
-	_objective_signature = str(snapshot.get("objective_signature", ""))
 	_started_step_index = int(snapshot.get("step_index", -1))
 	_last_step_index = _started_step_index
 	_running = true
@@ -103,74 +91,48 @@ func _advance(snapshot: Dictionary) -> Dictionary:
 		return _stop("session_not_initialized")
 	var journal_before: int = owner.command_journal.size()
 	var step_before := int(owner.sim.world.step_index)
-	var route_preview: Dictionary = owner.preview_exploration_route(next_position)
-	if not bool(route_preview.get("accepted", false)):
-		_last_step_result = route_preview.duplicate(true)
-		return _stop("auto_explore_route_rejected")
-	var result: Dictionary = owner.start_exploration_route(next_position,
-		str(route_preview.get("plan_hash", "")))
+	var canonical_result: Dictionary = owner._commit_auto_explore_one(next_position)
+	# Preserve the established nested result DTO consumed by sandbox motion/VFX;
+	# only the redundant one-step route plan allocation is gone.
+	var result := {"accepted":bool(canonical_result.get("accepted", false)),
+		"reason":str(canonical_result.get("reason", "auto_explore_route_rejected")),
+		"active":false, "completed":bool(canonical_result.get("accepted", false)),
+		"terminal":true, "stop_reason":"route_completed" \
+			if bool(canonical_result.get("accepted", false)) else "route_rejected",
+		"last_step_result":canonical_result.duplicate(true),
+		"last_step_effects":canonical_result.get("visual_effects", []).duplicate(true)}
 	_last_step_result = result.duplicate(true)
-	if not bool(result.get("accepted", false)) \
+	if not bool(canonical_result.get("accepted", false)) \
 			or owner.command_journal.size() != journal_before + 1 \
 			or int(owner.sim.world.step_index) != step_before + 1:
 		return _stop("auto_explore_route_rejected")
 	_steps_committed += 1
 	_last_step_index = int(owner.sim.world.step_index)
-	var after := _snapshot()
+	# After committing, only structural phase/terminal state and newly confirmed
+	# enemies can stop AUTO. Do not rebuild every discovered cell a second time in
+	# the same hop merely to answer those questions; the next hop still takes a
+	# fresh full fog-safe planning snapshot before choosing any destination.
+	var after := _stop_snapshot()
 	var stop_after := _change_reason(after)
 	if not stop_after.is_empty():
 		return _stop(stop_after, true, next_position)
-	# Safe newly visible cells become the next comparison baseline. Health stays
-	# pinned to start because any change is a stop condition, not a new baseline.
-	_known_hazard_keys = after.get("hazards", {}).duplicate(true)
-	_known_discovery_keys = after.get("discoveries", {}).duplicate(true)
-	_objective_signature = str(after.get("objective_signature", ""))
 	return _state("ok", true, next_position)
 
 
 func _choose_frontier(snapshot: Dictionary) -> Dictionary:
 	var cells: Dictionary = snapshot.get("cells", {})
 	var current := _wire_position(snapshot.get("hero_position", [-1, -1]))
-	var reachable := _known_safe_paths(current, cells)
-	var candidates: Array[Dictionary] = []
-	for key_value in cells:
-		var cell: Dictionary = cells[key_value]
-		if not bool(cell.get("passable", false)):
-			continue
-		var position := _wire_position(cell.get("position", [-1, -1]))
-		if position == current or not _is_frontier(position, cells,
-				int(snapshot.get("width", 0)), int(snapshot.get("height", 0))):
-			continue
-		var path_result: Dictionary = reachable.get(_key(position), {})
-		if path_result.is_empty():
-			continue
-		candidates.append({"target":position,
-			"visibility_state":str(cell.get("visibility_state", "MEMORY")),
-			"path":path_result.path,
-			"steps":int(path_result.steps), "cost":int(path_result.cost)})
-	if candidates.is_empty():
-		return {"found":false, "reason":"auto_explore_no_frontier"}
-	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
-		if int(a.steps) != int(b.steps): return int(a.steps) < int(b.steps)
-		if int(a.cost) != int(b.cost): return int(a.cost) < int(b.cost)
-		var a_position: Vector2i = a.target
-		var b_position: Vector2i = b.target
-		if a_position.y != b_position.y: return a_position.y < b_position.y
-		return a_position.x < b_position.x)
-	var chosen: Dictionary = candidates[0]
-	chosen["found"] = true
-	return chosen
+	return _nearest_safe_frontier(snapshot, cells, current)
 
 
-func _known_safe_paths(start: Vector2i, cells: Dictionary) -> Dictionary:
+func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
+		start: Vector2i) -> Dictionary:
 	var start_key := _key(start)
 	if not cells.has(start_key):
-		return {}
+		return {"found":false, "reason":"auto_explore_no_frontier"}
 	var open: Array[Dictionary] = [{"position":start, "steps":0, "cost":0,
 		"sequence":0, "path":[start]}]
 	var best: Dictionary = {start_key:[0, 0]}
-	var reachable: Dictionary = {start_key:{"found":true, "path":[start],
-		"steps":0, "cost":0}}
 	var sequence := 1
 	while not open.is_empty():
 		open.sort_custom(func(a: Dictionary, b: Dictionary):
@@ -185,8 +147,12 @@ func _known_safe_paths(start: Vector2i, cells: Dictionary) -> Dictionary:
 		var position: Vector2i = node.position
 		if best.get(_key(position), []) != [int(node.steps), int(node.cost)]:
 			continue
-		reachable[_key(position)] = {"found":true, "path":node.path.duplicate(),
-			"steps":int(node.steps), "cost":int(node.cost)}
+		if position != start and _is_frontier(position, cells,
+				int(snapshot.get("width", 0)), int(snapshot.get("height", 0))):
+			var cell: Dictionary = cells[_key(position)]
+			return {"found":true, "target":position,
+				"visibility_state":str(cell.get("visibility_state", "MEMORY")),
+				"path":node.path, "steps":int(node.steps), "cost":int(node.cost)}
 		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
 			var next := position + direction
 			if not _known_step_is_safe(position, next, cells):
@@ -203,7 +169,7 @@ func _known_safe_paths(start: Vector2i, cells: Dictionary) -> Dictionary:
 			open.append({"position":next, "steps":candidate_steps,
 				"cost":candidate_cost, "sequence":sequence, "path":path})
 			sequence += 1
-	return reachable
+	return {"found":false, "reason":"auto_explore_no_frontier"}
 
 
 func _known_step_is_safe(from: Vector2i, to: Vector2i,
@@ -214,6 +180,7 @@ func _known_step_is_safe(from: Vector2i, to: Vector2i,
 	var cell: Dictionary = cells[key]
 	if not bool(cell.get("passable", false)) \
 			or bool(cell.get("occupied", false)) \
+			or bool(cell.get("objective_blocked", false)) \
 			or int(cell.get("risk", 0)) > AFFINITY_SAFE_RISK_THRESHOLD:
 		return false
 	var delta := to - from
@@ -256,19 +223,6 @@ func _change_reason(snapshot: Dictionary) -> String:
 	var blocker := _precondition_reason(snapshot)
 	if not blocker.is_empty():
 		return blocker
-	if snapshot.get("health", {}) != _health_baseline:
-		return "auto_explore_health_changed"
-	if str(snapshot.get("objective_signature", "")) != _objective_signature:
-		return "auto_explore_objective_discovered"
-	var hazards: Dictionary = snapshot.get("hazards", {})
-	for key_value in hazards:
-		if not _known_hazard_keys.has(key_value) \
-				and int(hazards[key_value]) > AFFINITY_SAFE_RISK_THRESHOLD:
-			return "auto_explore_hazard_discovered"
-	var discoveries: Dictionary = snapshot.get("discoveries", {})
-	for key_value in discoveries:
-		if not _known_discovery_keys.has(key_value):
-			return "auto_explore_interaction_discovered"
 	return ""
 
 
@@ -303,6 +257,11 @@ func _state(reason: String, advanced: bool = false,
 func _snapshot() -> Dictionary:
 	var owner = _owner()
 	return owner._auto_explore_fog_snapshot() if owner != null else {}
+
+
+func _stop_snapshot() -> Dictionary:
+	var owner = _owner()
+	return owner._auto_explore_stop_snapshot() if owner != null else {}
 
 
 func _owner():

@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const TerrainRegistry = preload("res://sim/terrain_registry.gd")
+const VisualMap = preload("res://playtest/party_visual_test_map.gd")
 
 
 func test_auto_explore_is_deterministic_and_commits_at_most_one_canonical_hop_per_call() -> bool:
@@ -23,6 +24,7 @@ func test_auto_explore_is_deterministic_and_commits_at_most_one_canonical_hop_pe
 	while bool(stopped.get("running", false)) and guard < 32:
 		var journal_before: int = first.command_journal.size()
 		var step_before: int = first.sim.world.step_index
+		var before_snapshot: Dictionary = first._auto_explore_fog_snapshot()
 		stopped = first.continue_auto_explore()
 		var journal_delta: int = first.command_journal.size() - journal_before
 		var step_delta: int = first.sim.world.step_index - step_before
@@ -31,12 +33,16 @@ func test_auto_explore_is_deterministic_and_commits_at_most_one_canonical_hop_pe
 		if bool(stopped.get("advanced", false)):
 			check_eq(journal_delta, 1,
 				"advanced DTO corresponds to exactly one journal row")
+			var next_position := Vector2i(int(stopped.next_position[0]),
+				int(stopped.next_position[1]))
+			var before_cell: Dictionary = before_snapshot.cells.get(_key(next_position), {})
+			check(not before_cell.is_empty() and int(before_cell.get("risk", 0)) == 0,
+				"AUTO never enters a known affinity-unsafe cell")
 		guard += 1
-	check(guard < 32, "product auto explore reaches an explicit safety stop")
-	check_eq(stopped.stop_reason, "auto_explore_hazard_discovered",
-		"new affinity-unsafe visible hazard stops immediately after reveal")
-	check(stopped.advanced and int(stopped.steps_committed) == first.command_journal.size(),
-		"post-hop safety stop preserves the final committed-hop signal")
+	check(guard == 32 and bool(stopped.get("running", false)),
+		"hazard/feature discovery replans and continues instead of stopping AUTO")
+	check(int(stopped.steps_committed) == first.command_journal.size(),
+		"continued AUTO preserves one journal row per committed hop")
 	return finish()
 
 
@@ -61,8 +67,42 @@ func test_auto_explore_never_projects_hidden_hazard_or_actor_into_frontier_choic
 	return finish()
 
 
+func test_auto_explore_ignores_passive_cartography_and_noninteractive_actors() -> bool:
+	# Seed 77 exposes a generated open-door glyph after 32 canonical hops. Doors,
+	# hazards and objective presentation update the safe planner but do not stop it.
+	var corridor = _safe_product_session(77)
+	var result: Dictionary = corridor.start_auto_explore()
+	var guard := 0
+	while bool(result.get("running", false)) and guard < 96:
+		result = corridor.continue_auto_explore()
+		guard += 1
+	check(result.stop_reason not in ["auto_explore_hazard_discovered",
+		"auto_explore_interaction_discovered", "auto_explore_objective_discovered"],
+		"passive door/hazard/objective discovery does not stop AUTO")
+	check(int(result.steps_committed) > 32,
+		"AUTO continues beyond the formerly premature door stop")
+
+	var decoration = _safe_product_session(44)
+	check(decoration.start_auto_explore().running, "decoration fixture starts")
+	var snapshot: Dictionary = decoration._auto_explore_fog_snapshot()
+	var decoration_position := _visible_empty_cell(decoration, snapshot)
+	var prop = decoration.sim.world.add_entity("prop", "장식", decoration_position,
+		1, ["decoration"], "default", "neutral")
+	check(prop != null, "visible passive prop fixture exists")
+	var decoration_result: Dictionary = decoration.continue_auto_explore()
+	check(decoration_result.stop_reason != "auto_explore_interaction_discovered",
+		"noninteractive actor does not interrupt AUTO")
+	return finish()
+
+
 func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_extra_turn() -> bool:
 	var enemy_visible = Session.new(44, 20260828, "SOLO_COMBAT_V1")
+	var enemy_state = enemy_visible.sim.world.party_encounter
+	var enemy_id := int(enemy_state.enemy_ids[0])
+	var threat_position := _visible_empty_cell_within(enemy_visible,
+		enemy_visible._auto_explore_fog_snapshot(), 3, enemy_id)
+	check(threat_position != Vector2i(-1, -1), "nearby threat fixture exists")
+	enemy_visible.sim.world.entities[enemy_id].position = threat_position
 	var enemy_before: int = enemy_visible.sim.world.step_index
 	var enemy_stop: Dictionary = enemy_visible.start_auto_explore()
 	check_eq([enemy_stop.running, enemy_stop.stop_reason,
@@ -77,10 +117,9 @@ func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_ext
 	injured.sim.world.entities[hero_id].health -= 1
 	var injury_before: int = injured.sim.world.step_index
 	var injury_stop: Dictionary = injured.continue_auto_explore()
-	check_eq([injury_stop.running, injury_stop.stop_reason,
-		injured.sim.world.step_index - injury_before],
-		[false, "auto_explore_health_changed", 0],
-		"health change stops before another turn")
+	check(bool(injury_stop.get("running", false)) and injury_stop.stop_reason == "" \
+		and injured.sim.world.step_index - injury_before == 1,
+		"non-terminal health change does not interrupt the next safe hop")
 
 	var cancelled = _safe_product_session(44)
 	check(cancelled.start_auto_explore().running, "cancel fixture starts")
@@ -97,6 +136,25 @@ func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_ext
 		full_visibility.command_journal.size()],
 		[false, "auto_explore_no_frontier", 0],
 		"fully known map stops without inventing a destination")
+	return finish()
+
+
+func test_product_opening_enemy_and_new_fov_enemy_stop_exactly() -> bool:
+	for seed in [44, 45, 46]:
+		var session = Session.new(seed, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+		var result: Dictionary = session.start_auto_explore()
+		check_eq([result.running, result.stop_reason, session.command_journal.size()],
+			[false, "auto_explore_enemy_visible", 0],
+			"seed %d visible opening enemy stops before a hop" % seed)
+
+	var reveal = _enemy_reveal_after_first_hop_session(44)
+	check(reveal != null, "new-FOV enemy fixture exists")
+	if reveal != null:
+		var revealed: Dictionary = reveal.start_auto_explore()
+		check_eq([revealed.running, revealed.stop_reason, revealed.advanced,
+			reveal.command_journal.size()],
+			[false, "auto_explore_enemy_visible", true, 1],
+			"an unseen enemy entering FOV stops on exactly the revealing hop")
 	return finish()
 
 
@@ -169,20 +227,19 @@ func test_auto_explore_route_contact_terminal_interaction_and_objective_gates_ar
 	check(npc != null, "new visible interaction actor fixture exists")
 	var interaction_before: int = interaction.sim.world.step_index
 	var interaction_stop: Dictionary = interaction.continue_auto_explore()
-	check_eq([interaction_stop.stop_reason,
-		interaction.sim.world.step_index - interaction_before],
-		["auto_explore_interaction_discovered", 0],
-		"new interaction discovery stops before another hop")
+	check(interaction_stop.stop_reason != "auto_explore_interaction_discovered" \
+		and interaction.sim.world.step_index - interaction_before == 1,
+		"new interaction discovery does not interrupt a safe hop")
 
 	var objective = _safe_product_session(44)
 	check(objective.start_auto_explore().running, "objective fixture starts")
-	objective.sim.world.party_encounter.safe_phase = "GROUPED_COMPLETE"
+	check(not objective._auto_explore_fog_snapshot().has("objective_signature"),
+		"presentation-only objective signatures are absent from AUTO stop state")
 	var objective_before: int = objective.sim.world.step_index
 	var objective_stop: Dictionary = objective.continue_auto_explore()
-	check_eq([objective_stop.stop_reason,
-		objective.sim.world.step_index - objective_before],
-		["auto_explore_objective_discovered", 0],
-		"objective/exit state discovery stops before another hop")
+	check(objective_stop.stop_reason != "auto_explore_objective_discovered" \
+		and objective.sim.world.step_index - objective_before == 1,
+		"objective/feature signature discovery does not interrupt a safe hop")
 	return finish()
 
 
@@ -224,6 +281,36 @@ func _safe_product_session(seed: int):
 	return session
 
 
+func _enemy_reveal_after_first_hop_session(seed: int):
+	var session = _safe_product_session(seed)
+	var snapshot: Dictionary = session._auto_explore_fog_snapshot()
+	var choice: Dictionary = session._auto_explore._choose_frontier(snapshot)
+	if not bool(choice.get("found", false)) or choice.get("path", []).size() < 2:
+		return null
+	var next_position: Vector2i = choice.path[1]
+	var next_visible: Dictionary = VisualMap.visible_cells(session.sim.world,
+		next_position, session.scenario_id)
+	var state = session.sim.world.party_encounter
+	var enemy_id := int(state.enemy_ids[0])
+	for y in range(session.sim.world.height):
+		for x in range(session.sim.world.width):
+			var position := Vector2i(x, y)
+			var key := _key(position)
+			var distance := maxi(absi(position.x - next_position.x),
+				absi(position.y - next_position.y))
+			if snapshot.visible.has(key) or not next_visible.has(key) \
+					or distance <= int(state.party_detection_radius):
+				continue
+			var definition: Dictionary = TerrainRegistry.definition(
+				str(session.sim.world.tile_at(position).terrain))
+			if bool(definition.get("passable", false)) \
+					and session.sim.world.blocking_entity_at(position, enemy_id) == null:
+				session.sim.world.entities[enemy_id].position = position
+				state.enemy_busy_rows[enemy_id] = 1000000000
+				return session
+	return null
+
+
 func _hidden_passable_cell(session, ignored_actor_id: int = -1) -> Vector2i:
 	var snapshot: Dictionary = session._auto_explore_fog_snapshot()
 	for y in range(session.sim.world.height - 1, -1, -1):
@@ -249,6 +336,22 @@ func _visible_empty_cell(session, snapshot: Dictionary) -> Vector2i:
 		if position != hero_position and str(cell.visibility_state) == "VISIBLE" \
 				and bool(cell.passable) and not bool(cell.occupied) \
 				and session.sim.world.blocking_entity_at(position) == null:
+			return position
+	return Vector2i(-1, -1)
+
+
+func _visible_empty_cell_within(session, snapshot: Dictionary, max_distance: int,
+		ignored_actor_id: int = -1) -> Vector2i:
+	var hero_position := Vector2i(int(snapshot.hero_position[0]),
+		int(snapshot.hero_position[1]))
+	for key_value in snapshot.cells:
+		var cell: Dictionary = snapshot.cells[key_value]
+		var position := Vector2i(int(cell.position[0]), int(cell.position[1]))
+		var distance := maxi(absi(position.x - hero_position.x),
+			absi(position.y - hero_position.y))
+		if distance in range(1, max_distance + 1) \
+				and str(cell.visibility_state) == "VISIBLE" and bool(cell.passable) \
+				and session.sim.world.blocking_entity_at(position, ignored_actor_id) == null:
 			return position
 	return Vector2i(-1, -1)
 
