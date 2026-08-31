@@ -103,15 +103,44 @@ func equipment_bonuses()->Dictionary:
 	for slot in DefinitionScript.EQUIPMENT_SLOTS:
 		var value=equipped_item(slot)
 		if value==null:continue
-		var definition=RegistryScript.definition(value.definition_id)
-		for key in DefinitionScript.BONUS_KEYS:result[key]=int(result[key])+int(definition.bonuses[key])
-		for affix_id in value.affix_ids:
-			var affix:=RegistryScript.affix(affix_id)
-			for key in DefinitionScript.BONUS_KEYS:
-				result[key]=int(result[key])+int(affix.bonuses[key])
-			for hook_id in affix.hook_ids:
-				if str(hook_id) not in result.affix_hook_ids:result.affix_hook_ids.append(str(hook_id))
+		var source:=_resolved_equipment_source(slot,value)
+		for key in DefinitionScript.BONUS_KEYS:
+			result[key]=int(result[key])+int(source.bonuses[key])
+		for hook_id in source.hook_ids:
+			if str(hook_id) not in result.affix_hook_ids:result.affix_hook_ids.append(str(hook_id))
 	result.affix_hook_ids.sort();return result.duplicate(true)
+
+
+func combat_modifier_dto()->Dictionary:
+	# This is the canonical item-to-combat handoff. It deliberately contains no
+	# hit/damage formula: combat rules consume the frozen totals and may use the
+	# ordered sources for explanation without reaching back into mutable inventory.
+	var sources:Array=[]
+	for slot in DefinitionScript.EQUIPMENT_SLOTS:
+		var value=equipped_item(slot)
+		if value==null:continue
+		sources.append(_resolved_equipment_source(slot,value))
+	return {"schema_version":1,"ruleset_id":RegistryScript.RULESET_ID,
+		"sources":sources,"totals":equipment_bonuses()}.duplicate(true)
+
+
+func _resolved_equipment_source(slot:String,value)->Dictionary:
+	var definition=RegistryScript.definition(value.definition_id)
+	if definition==null:return {}
+	var bonuses:Dictionary=definition.bonuses.duplicate(true)
+	var hook_ids:Array[String]=[]
+	for affix_id_value in value.affix_ids:
+		var affix_id:=str(affix_id_value)
+		var affix:Dictionary=RegistryScript.affix(affix_id)
+		for key in DefinitionScript.BONUS_KEYS:
+			bonuses[key]=int(bonuses[key])+int(affix.get("bonuses",{}).get(key,0))
+		for hook_id_value in affix.get("hook_ids",[]):
+			var hook_id:=str(hook_id_value)
+			if hook_id not in hook_ids:hook_ids.append(hook_id)
+	hook_ids.sort()
+	return {"slot":slot,"instance_id":str(value.instance_id),
+		"definition_id":str(value.definition_id),"bonuses":bonuses.duplicate(true),
+		"affix_ids":value.affix_ids.duplicate(),"hook_ids":hook_ids.duplicate()}.duplicate(true)
 
 
 func to_dict()->Dictionary:

@@ -6,6 +6,7 @@ const WorldState=preload("res://sim/world_state.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const Inventory=preload("res://sim/protagonist_inventory_state.gd")
 const GroundItems=preload("res://sim/ground_item_state.gd")
+const Progression=preload("res://sim/protagonist_progression.gd")
 
 
 func test_fixed_solo_fixture_patrol_is_tick_driven_visible_deterministic_and_replay_exact()->bool:
@@ -117,7 +118,11 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 		"fixed fixture feature cells are authoritative patrol exclusions")
 	var v2_wire:Dictionary=JSON.parse_string(fixture.save_session_json())
 	v2_wire.snapshot.party_encounter.schema_version=2
-	v2_wire.snapshot.party_encounter.erase("patrol_reserved_positions")
+	for future_key in ["patrol_reserved_positions","protagonist_progression",
+			"protagonist_loadout","diagonal_gateway_positions","enemy_awareness_rows",
+			"protagonist_inventory","ground_items","safe_recovery_turns",
+			"last_protagonist_damage_step"]:
+		v2_wire.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(1,2)
 	check(migrated.load_session_json(JSON.stringify(v2_wire)).accepted,
 		"v2 fixture save migrates patrol feature reservations")
@@ -125,6 +130,11 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 	expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
 		str(fixture.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
 	expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
+	var legacy_progression=Progression.new()
+	legacy_progression.legacy_reward_origin=true
+	for skill_id in legacy_progression.training_modes:
+		legacy_progression.training_modes[skill_id]="NORMAL"
+	expected_legacy.party_encounter.protagonist_progression=legacy_progression.to_dict()
 	check_eq(migrated.sim.snapshot(),expected_legacy,
 		"v2 fixture migration matches canonical state with legacy-only items")
 	return finish()

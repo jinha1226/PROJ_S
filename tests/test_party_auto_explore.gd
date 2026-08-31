@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
+const Command = preload("res://sim/sim_command.gd")
 const TerrainRegistry = preload("res://sim/terrain_registry.gd")
 const VisualMap = preload("res://playtest/party_visual_test_map.gd")
 
@@ -117,9 +118,48 @@ func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_ext
 	injured.sim.world.entities[hero_id].health -= 1
 	var injury_before: int = injured.sim.world.step_index
 	var injury_stop: Dictionary = injured.continue_auto_explore()
-	check(bool(injury_stop.get("running", false)) and injury_stop.stop_reason == "" \
-		and injured.sim.world.step_index - injury_before == 1,
-		"non-terminal health change does not interrupt the next safe hop")
+	check_eq([injury_stop.running, injury_stop.stop_reason,
+		injured.sim.world.step_index - injury_before],
+		[false, "auto_explore_route_rejected", 0],
+		"raw non-event health mutation fails canonical validation without a turn")
+
+	# A health change produced by the canonical recovery rule is different: it is
+	# part of the committed hop and must not be mistaken for an AUTO interruption.
+	var recovering = Session.new(44, 20260828, Session.SOLO_FIXTURE_SCENARIO_ID)
+	var recovery_state = recovering.sim.world.party_encounter
+	var recovery_hero_id := int(recovery_state.protagonist_id)
+	recovery_state.party_detection_radius = 0
+	recovery_state.enemy_detection_radius = 0
+	var recovery_enemy_id := int(recovery_state.enemy_ids[0])
+	var recovery_enemy = recovering.sim.world.entities[recovery_enemy_id]
+	recovery_enemy.position = Vector2i(12, 1)
+	var recovery_awareness = recovery_state.enemy_awareness(recovery_enemy_id)
+	recovery_awareness.home_position = recovery_enemy.position
+	recovery_awareness.awareness_state = "UNAWARE"
+	recovery_awareness.suspicion = 0
+	for position in [Vector2i(3, 12), Vector2i(4, 12), Vector2i(5, 12),
+			Vector2i(4, 12), Vector2i(3, 12), Vector2i(2, 12)]:
+		check(recovering.commit_exploration(
+			Command.move_to(recovery_hero_id, position)).accepted,
+			"canonical damage/recovery fixture movement commits")
+	for _turn in range(3):
+		check(recovering.commit_exploration(Command.wait(recovery_hero_id)).accepted,
+			"canonical safe turn primes the recovery pulse")
+	var recovery_hp_before := int(recovering.sim.world.entities[recovery_hero_id].health)
+	var recovery_step_before := int(recovering.sim.world.step_index)
+	var recovered: Dictionary = recovering.start_auto_explore()
+	var recovered_event_ids: Array = recovered.get("last_step_result", {}) \
+		.get("last_step_result", {}).get("event_ids", [])
+	var has_recovery_event := false
+	for event_id_value in recovered_event_ids:
+		var recovery_event = recovering.sim.world.event_by_id(int(event_id_value))
+		if recovery_event != null and str(recovery_event.type) == "health.restored":
+			has_recovery_event = true
+	check(bool(recovered.get("running", false)) and recovered.stop_reason == "" \
+		and recovering.sim.world.step_index - recovery_step_before == 1 \
+		and int(recovering.sim.world.entities[recovery_hero_id].health) \
+			== recovery_hp_before + 1 and has_recovery_event,
+		"canonical health.restored belongs to the hop and AUTO remains active")
 
 	var cancelled = _safe_product_session(44)
 	check(cancelled.start_auto_explore().running, "cancel fixture starts")

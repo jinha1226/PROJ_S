@@ -12,7 +12,42 @@ const Profiles = preload("res://sim/combat_profile_registry.gd")
 const Statuses = preload("res://sim/status_registry.gd")
 const StatusRow = preload("res://sim/combat_status_row.gd")
 const Melee = preload("res://sim/systems/melee_combat_system.gd")
+const Defense = preload("res://sim/combat_defense_rules.gd")
 const Terrain = preload("res://sim/terrain_registry.gd")
+
+func _party_hero_defense_snapshot() -> Dictionary:
+	return Defense.build_snapshot(150, 2, {})
+
+func _party_enemy_commitment_key(seed: int, processed_step: int, attack_time: int,
+		context: String, ordinal: int, enemy_id: int, hero_id: int) -> String:
+	return Melee.commitment_key(seed, processed_step, attack_time, context, ordinal,
+		enemy_id, hero_id,
+		Defense.commitment_fragment(_party_hero_defense_snapshot()))
+
+func _party_enemy_v3_action_data(context: String, processed_step: int,
+		attack_time: int, key: String, hit_roll: int, bleed_roll: int,
+		bleed_succeeded: bool) -> Dictionary:
+	return {"schema_version":3,
+		"combat_ruleset_id":"deterministic-melee-resolution-v1",
+		"attacker_profile_id":"party-goblin-v1",
+		"target_profile_id":"party-hero-v1", "batch_context":context,
+		"intent_ordinal":0, "intent_mode":"STRIKE",
+		"target_life_at_batch_start":"ACTIVE", "outcome":"HIT",
+		"processed_step_index":str(processed_step),
+		"attack_start_world_time":str(attack_time),
+		"commitment_hash":Melee.commitment_hash(key),
+		"hit_chance_milli":900, "hit_roll_milli":hit_roll,
+		"bleed_chance_milli":300, "bleed_roll_milli":bleed_roll,
+		"bleed_proc_succeeded":bleed_succeeded, "base_damage":16,
+		"target_evasion_milli":150, "armor_flat":2, "armor_reduction":2,
+		"frozen_guarded_until":"0", "guard_source_event_id":"-1",
+		"guarded":false, "guard_reduction":0, "final_damage":14,
+		"defense_ruleset_id":Defense.RULESET_ID,
+		"target_base_evasion_milli":150, "target_base_armor_flat":2,
+		"equipment_dodge_milli":0, "equipment_armor_flat":0,
+		"equipment_parry_milli":0,
+		"parry_roll_milli":Defense.parry_roll_milli(key),
+		"parry_succeeded":false}
 
 func test_exact_registries_formulas_and_sha_reference_vector() -> bool:
 	check_eq(Profiles.registry_error(), "", "profile registry")
@@ -3253,6 +3288,9 @@ func test_party_same_outer_enemy_and_protagonist_deaths_prioritize_defeat() -> b
 	fire_tile.fire = 100
 	fire_tile.fire_source_event_id = ignition.id
 	fire_tile.fire_damage_eligible_time = world.world_time
+	# Use a canonical opening-health baseline rather than an out-of-ledger HP
+	# mutation; the following environment damage can then be replayed exactly.
+	world.entities[hero_id].max_health = 5
 	world.entities[hero_id].health = 5
 	var environment_due := -1
 	for schedule in world.scheduled_entries:
@@ -3354,8 +3392,8 @@ func test_party_enemy_actor_batch_canonical_hit_causes_immediate_party_defeat() 
 	var context := "PARTY_ENEMY/%d/%d" % [actor_schedule_id, attack_time]
 	var selected_seed := -1
 	for candidate_seed in range(1, 10000):
-		var key := Melee.commitment_key(candidate_seed, processed_step, attack_time,
-			context, 0, enemy_id, hero_id)
+		var key := _party_enemy_commitment_key(candidate_seed, processed_step,
+			attack_time, context, 0, enemy_id, hero_id)
 		if Melee.lane_roll_milli(key, "HIT") < 900 \
 				and Melee.lane_roll_milli(key, "BLEED") >= 300:
 			selected_seed = candidate_seed; break
@@ -3382,6 +3420,9 @@ func test_party_enemy_actor_batch_canonical_hit_causes_immediate_party_defeat() 
 	check(move_destination != Vector2i(-1, -1),
 		"protagonist has legal MOVE that remains enemy-adjacent")
 	if move_destination == Vector2i(-1, -1): return finish()
+	# Keep the lethal fixture replayable under the party HP ledger: the snapshot
+	# treats max health as the expedition's canonical opening health.
+	world.entities[hero_id].max_health = 10
 	world.entities[hero_id].health = 10
 	var overrides: Array = []
 	for member_id in state.party_member_ids:
@@ -3393,7 +3434,7 @@ func test_party_enemy_actor_batch_canonical_hit_causes_immediate_party_defeat() 
 	var rng_before: int = world.rng.state
 	var result = session.sim.step_party_turn(plan)
 	check(result.accepted, "Party MOVE turn with lethal enemy cadence commits")
-	var key := Melee.commitment_key(world.seed, processed_step, attack_time,
+	var key := _party_enemy_commitment_key(world.seed, processed_step, attack_time,
 		context, 0, enemy_id, hero_id)
 	var hit_roll := Melee.lane_roll_milli(key, "HIT")
 	var bleed_roll := Melee.lane_roll_milli(key, "BLEED")
@@ -3408,22 +3449,9 @@ func test_party_enemy_actor_batch_canonical_hit_causes_immediate_party_defeat() 
 			action.instigator_id], [processed_step, attack_time, enemy_id, hero_id,
 			move_destination, 16, -1, enemy_id],
 			"Party enemy cadence action exact canonical envelope")
-		check_eq(action.data, {"schema_version":1,
-			"combat_ruleset_id":"deterministic-melee-resolution-v1",
-			"attacker_profile_id":"party-goblin-v1",
-			"target_profile_id":"party-hero-v1", "batch_context":context,
-			"intent_ordinal":0, "intent_mode":"STRIKE",
-			"target_life_at_batch_start":"ACTIVE", "outcome":"HIT",
-			"processed_step_index":str(processed_step),
-			"attack_start_world_time":str(attack_time),
-			"commitment_hash":Melee.commitment_hash(key),
-			"hit_chance_milli":900, "hit_roll_milli":hit_roll,
-			"bleed_chance_milli":300, "bleed_roll_milli":bleed_roll,
-			"bleed_proc_succeeded":false, "base_damage":16,
-			"target_evasion_milli":150, "armor_flat":2, "armor_reduction":2,
-			"frozen_guarded_until":"0", "guard_source_event_id":"-1",
-			"guarded":false, "guard_reduction":0, "final_damage":14},
-			"Party enemy cadence action exact canonical HIT data")
+		check_eq(action.data, _party_enemy_v3_action_data(context, processed_step,
+			attack_time, key, hit_roll, bleed_roll, false),
+			"Party enemy cadence action exact canonical defense-v3 HIT data")
 	var damages: Array = result.events.filter(func(event):
 		return action != null and event.type == "combat.physical_damage" \
 			and event.cause_id == action.id and event.target_id == hero_id)
@@ -3517,8 +3545,8 @@ func test_party_enemy_actor_batch_commits_keyed_bleed_hit_and_status() -> bool:
 	var context := "PARTY_ENEMY/%d/%d" % [actor_schedule_id, attack_time]
 	var selected_seed := -1
 	for candidate_seed in range(1, 10000):
-		var candidate_key := Melee.commitment_key(candidate_seed, processed_step,
-			attack_time, context, 0, enemy_id, hero_id)
+		var candidate_key := _party_enemy_commitment_key(candidate_seed,
+			processed_step, attack_time, context, 0, enemy_id, hero_id)
 		if Melee.lane_roll_milli(candidate_key, "HIT") < 900 \
 				and Melee.lane_roll_milli(candidate_key, "BLEED") < 300:
 			selected_seed = candidate_seed
@@ -3556,7 +3584,7 @@ func test_party_enemy_actor_batch_commits_keyed_bleed_hit_and_status() -> bool:
 	var plan = session.sim.preview_party_turn(Request.new(
 		Action.move_to(hero_id, move_destination), overrides))
 	check(plan.to_dict().accepted, "Party MOVE with due BLEED enemy cadence previews")
-	var key := Melee.commitment_key(world.seed, processed_step, attack_time,
+	var key := _party_enemy_commitment_key(world.seed, processed_step, attack_time,
 		context, 0, enemy_id, hero_id)
 	var hit_roll := Melee.lane_roll_milli(key, "HIT")
 	var bleed_roll := Melee.lane_roll_milli(key, "BLEED")
@@ -3577,22 +3605,9 @@ func test_party_enemy_actor_batch_commits_keyed_bleed_hit_and_status() -> bool:
 			action.instigator_id], [processed_step, attack_time, enemy_id, hero_id,
 			move_destination, 16, -1, enemy_id],
 			"PARTY_ENEMY BLEED action exact canonical envelope")
-		check_eq(action.data, {"schema_version":1,
-			"combat_ruleset_id":"deterministic-melee-resolution-v1",
-			"attacker_profile_id":"party-goblin-v1",
-			"target_profile_id":"party-hero-v1", "batch_context":context,
-			"intent_ordinal":0, "intent_mode":"STRIKE",
-			"target_life_at_batch_start":"ACTIVE", "outcome":"HIT",
-			"processed_step_index":str(processed_step),
-			"attack_start_world_time":str(attack_time),
-			"commitment_hash":Melee.commitment_hash(key),
-			"hit_chance_milli":900, "hit_roll_milli":hit_roll,
-			"bleed_chance_milli":300, "bleed_roll_milli":bleed_roll,
-			"bleed_proc_succeeded":true, "base_damage":16,
-			"target_evasion_milli":150, "armor_flat":2, "armor_reduction":2,
-			"frozen_guarded_until":"0", "guard_source_event_id":"-1",
-			"guarded":false, "guard_reduction":0, "final_damage":14},
-			"PARTY_ENEMY BLEED action exact canonical v1 data")
+		check_eq(action.data, _party_enemy_v3_action_data(context, processed_step,
+			attack_time, key, hit_roll, bleed_roll, true),
+			"PARTY_ENEMY BLEED action exact canonical defense-v3 data")
 	var physicals: Array = result.events.filter(func(event):
 		return action != null and event.type == "combat.physical_damage" \
 			and event.cause_id == action.id and event.target_id == hero_id)
@@ -4445,8 +4460,8 @@ func test_enemy_ambush_contact_commits_exact_keyed_no_bleed_melee() -> bool:
 	var context := "PARTY_AMBUSH/%d/%d" % [actor_schedule_id, attack_time]
 	var selected_seed := -1
 	for candidate_seed in range(1, 10000):
-		var candidate_key := Melee.commitment_key(candidate_seed, processed_step,
-			attack_time, context, 0, enemy_id, hero_id)
+		var candidate_key := _party_enemy_commitment_key(candidate_seed,
+			processed_step, attack_time, context, 0, enemy_id, hero_id)
 		if Melee.lane_roll_milli(candidate_key, "HIT") < 900 \
 				and Melee.lane_roll_milli(candidate_key, "BLEED") >= 300:
 			selected_seed = candidate_seed; break
@@ -4467,7 +4482,7 @@ func test_enemy_ambush_contact_commits_exact_keyed_no_bleed_melee() -> bool:
 			actor_schedule_id = int(schedule.schedule_id)
 			attack_time = int(schedule.due_time); break
 	context = "PARTY_AMBUSH/%d/%d" % [actor_schedule_id, attack_time]
-	var key := Melee.commitment_key(world.seed, processed_step, attack_time,
+	var key := _party_enemy_commitment_key(world.seed, processed_step, attack_time,
 		context, 0, enemy_id, hero_id)
 	var hit_roll := Melee.lane_roll_milli(key, "HIT")
 	var bleed_roll := Melee.lane_roll_milli(key, "BLEED")
@@ -4500,22 +4515,9 @@ func test_enemy_ambush_contact_commits_exact_keyed_no_bleed_melee() -> bool:
 			action.instigator_id], [processed_step, attack_time, enemy_id, hero_id,
 			hero_position, 16, contact.id, enemy_id],
 			"ENEMY_AMBUSH melee exact canonical envelope/cause")
-		check_eq(action.data, {"schema_version":1,
-			"combat_ruleset_id":"deterministic-melee-resolution-v1",
-			"attacker_profile_id":"party-goblin-v1",
-			"target_profile_id":"party-hero-v1", "batch_context":context,
-			"intent_ordinal":0, "intent_mode":"STRIKE",
-			"target_life_at_batch_start":"ACTIVE", "outcome":"HIT",
-			"processed_step_index":str(processed_step),
-			"attack_start_world_time":str(attack_time),
-			"commitment_hash":Melee.commitment_hash(key),
-			"hit_chance_milli":900, "hit_roll_milli":hit_roll,
-			"bleed_chance_milli":300, "bleed_roll_milli":bleed_roll,
-			"bleed_proc_succeeded":false, "base_damage":16,
-			"target_evasion_milli":150, "armor_flat":2, "armor_reduction":2,
-			"frozen_guarded_until":"0", "guard_source_event_id":"-1",
-			"guarded":false, "guard_reduction":0, "final_damage":14},
-			"ENEMY_AMBUSH exact keyed HIT/no-BLEED action data")
+		check_eq(action.data, _party_enemy_v3_action_data(context, processed_step,
+			attack_time, key, hit_roll, bleed_roll, false),
+			"ENEMY_AMBUSH exact keyed defense-v3 HIT/no-BLEED action data")
 	var children: Array = result.events.filter(func(event):
 		return action != null and event.cause_id == action.id \
 			and event.type in ["combat.attack_missed", "combat.physical_damage"])
@@ -4588,8 +4590,8 @@ func test_enemy_ambush_contact_commits_keyed_bleed_hit_and_status() -> bool:
 	var context := "PARTY_AMBUSH/%d/%d" % [actor_schedule_id, attack_time]
 	var selected_seed := -1
 	for candidate_seed in range(1, 10000):
-		var candidate_key := Melee.commitment_key(candidate_seed, processed_step,
-			attack_time, context, 0, enemy_id, hero_id)
+		var candidate_key := _party_enemy_commitment_key(candidate_seed,
+			processed_step, attack_time, context, 0, enemy_id, hero_id)
 		if Melee.lane_roll_milli(candidate_key, "HIT") < 900 \
 				and Melee.lane_roll_milli(candidate_key, "BLEED") < 300:
 			selected_seed = candidate_seed
@@ -4611,7 +4613,7 @@ func test_enemy_ambush_contact_commits_keyed_bleed_hit_and_status() -> bool:
 			attack_time = int(schedule.due_time)
 			break
 	context = "PARTY_AMBUSH/%d/%d" % [actor_schedule_id, attack_time]
-	var key := Melee.commitment_key(world.seed, processed_step, attack_time,
+	var key := _party_enemy_commitment_key(world.seed, processed_step, attack_time,
 		context, 0, enemy_id, hero_id)
 	var hit_roll := Melee.lane_roll_milli(key, "HIT")
 	var bleed_roll := Melee.lane_roll_milli(key, "BLEED")
@@ -4635,22 +4637,9 @@ func test_enemy_ambush_contact_commits_keyed_bleed_hit_and_status() -> bool:
 			action.magnitude, action.cause_id, action.instigator_id],
 			[processed_step, attack_time, hero_position, 16, contact.id, enemy_id],
 			"BLEED ENEMY_AMBUSH action exact envelope")
-		check_eq(action.data, {"schema_version":1,
-			"combat_ruleset_id":"deterministic-melee-resolution-v1",
-			"attacker_profile_id":"party-goblin-v1",
-			"target_profile_id":"party-hero-v1", "batch_context":context,
-			"intent_ordinal":0, "intent_mode":"STRIKE",
-			"target_life_at_batch_start":"ACTIVE", "outcome":"HIT",
-			"processed_step_index":str(processed_step),
-			"attack_start_world_time":str(attack_time),
-			"commitment_hash":Melee.commitment_hash(key),
-			"hit_chance_milli":900, "hit_roll_milli":hit_roll,
-			"bleed_chance_milli":300, "bleed_roll_milli":bleed_roll,
-			"bleed_proc_succeeded":true, "base_damage":16,
-			"target_evasion_milli":150, "armor_flat":2, "armor_reduction":2,
-			"frozen_guarded_until":"0", "guard_source_event_id":"-1",
-			"guarded":false, "guard_reduction":0, "final_damage":14},
-			"BLEED ENEMY_AMBUSH action exact canonical v1 data")
+		check_eq(action.data, _party_enemy_v3_action_data(context, processed_step,
+			attack_time, key, hit_roll, bleed_roll, true),
+			"BLEED ENEMY_AMBUSH action exact canonical defense-v3 data")
 	var physicals: Array = result.events.filter(func(event):
 		return action != null and event.type == "combat.physical_damage" \
 			and event.cause_id == action.id and event.target_id == hero_id)
@@ -6038,7 +6027,8 @@ func test_production_raw_health_numeric_comparisons_are_explicitly_allowlisted()
 	for path in production_paths:
 		if comparison_pattern.search(FileAccess.get_file_as_string(path)) != null:
 			raw_health_hits.append(path)
-	var allowed_paths: Array[String] = ["res://sim/sim_entity.gd",
+	var allowed_paths: Array[String] = ["res://playtest/party_playtest_session.gd",
+		"res://sim/sim_entity.gd",
 		"res://sim/systems/damage_system.gd", "res://sim/world_state.gd"]
 	check_eq(raw_health_hits, allowed_paths,
 		"raw health comparisons stay inside the exact compatibility/arithmetic/invariant allowlist")

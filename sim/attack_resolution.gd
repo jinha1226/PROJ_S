@@ -5,6 +5,8 @@ extends RefCounted
 var outcome: String
 var hit_roll_milli: int
 var bleed_roll_milli: int
+var parry_roll_milli: int
+var parry_succeeded: bool
 var bleed_proc_succeeded: bool
 var final_damage: int
 var action_data: Dictionary
@@ -19,6 +21,8 @@ func _init(data: Dictionary = {}) -> void:
 	outcome = str(data.get("outcome", ""))
 	hit_roll_milli = int(data.get("hit_roll_milli", -1))
 	bleed_roll_milli = int(data.get("bleed_roll_milli", -1))
+	parry_roll_milli = int(data.get("parry_roll_milli", -1))
+	parry_succeeded = bool(data.get("parry_succeeded", false))
 	bleed_proc_succeeded = bool(data.get("bleed_proc_succeeded", false))
 	final_damage = int(data.get("final_damage", 0))
 	action_data = data.get("action_data", {}).duplicate(true)
@@ -34,6 +38,8 @@ func detached_copy():
 		"outcome": outcome,
 		"hit_roll_milli": hit_roll_milli,
 		"bleed_roll_milli": bleed_roll_milli,
+		"parry_roll_milli": parry_roll_milli,
+		"parry_succeeded": parry_succeeded,
 		"bleed_proc_succeeded": bleed_proc_succeeded,
 		"final_damage": final_damage,
 		"action_data": action_data,

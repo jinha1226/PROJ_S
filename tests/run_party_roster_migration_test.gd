@@ -26,6 +26,11 @@ func _check_legacy_loadout_defaults(errors: Array) -> void:
 	for schema_version in [1, 2, 3, 4, 5]:
 		var row: Dictionary = current.duplicate(true)
 		row.schema_version = schema_version
+		row.erase("safe_recovery_turns")
+		row.erase("last_protagonist_damage_step")
+		row.erase("protagonist_inventory")
+		row.erase("ground_items")
+		row.erase("enemy_awareness_rows")
 		row.erase("diagonal_gateway_positions")
 		if schema_version < 5: row.erase("protagonist_loadout")
 		if schema_version < 4: row.erase("protagonist_progression")

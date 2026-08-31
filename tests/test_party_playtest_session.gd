@@ -74,8 +74,11 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 	check_eq(restored.sim.snapshot(),session.sim.snapshot(),"exile/recruit snapshot and replay exact")
 	var legacy_wire:Dictionary=JSON.parse_string(Session.new().save_session_json())
 	legacy_wire.snapshot.party_encounter.schema_version=1
-	legacy_wire.snapshot.party_encounter.erase("active_party_member_ids")
-	legacy_wire.snapshot.party_encounter.erase("exile_records")
+	for future_key in ["active_party_member_ids","exile_records",
+			"patrol_reserved_positions","protagonist_progression","protagonist_loadout",
+			"diagonal_gateway_positions","enemy_awareness_rows","protagonist_inventory",
+			"ground_items","safe_recovery_turns","last_protagonist_damage_step"]:
+		legacy_wire.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(5,6)
 	check(migrated.load_session_json(JSON.stringify(legacy_wire)).accepted,
 		"legacy party schema defaults the full roster active")
@@ -572,7 +575,10 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 		"gateway save/replay snapshot is exact")
 	var legacy_v5:Dictionary=JSON.parse_string(product.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
-	legacy_v5.snapshot.party_encounter.erase("diagonal_gateway_positions")
+	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
+			"protagonist_inventory","ground_items","safe_recovery_turns",
+			"last_protagonist_damage_step"]:
+		legacy_v5.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(3,4)
 	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
 		"v5 product save reconstructs deterministic door gateways")

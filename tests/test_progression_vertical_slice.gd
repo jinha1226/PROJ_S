@@ -14,27 +14,27 @@ func test_initial_modes_save_replay_detachment_and_tamper_are_exact()->bool:
 		progression.xp_required,progression.next_level_threshold],
 		[1,0,0,100,100],"fresh run starts at level one with exact threshold")
 	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.training_mode]),
-		[["SWORD",0,"NORMAL"],["AXE",0,"NORMAL"],["BLUNT",0,"NORMAL"],
-			["SPEAR",0,"NORMAL"],["RANGED",0,"NORMAL"],["UNARMED",0,"NORMAL"]],
-		"six weapon proficiencies have independent deterministic default modes")
+		[["SWORD",0,"FOCUS"],["AXE",0,"OFF"],["BLUNT",0,"OFF"],
+			["SPEAR",0,"OFF"],["RANGED",0,"OFF"],["UNARMED",0,"OFF"]],
+		"new expeditions focus only their equipped weapon")
 	progression.skills[0].training_mode="OFF"
-	check_eq(session.protagonist_progression().skills[0].training_mode,"NORMAL",
+	check_eq(session.protagonist_progression().skills[0].training_mode,"FOCUS",
 		"progression presentation is deeply detached")
 	check_eq(session.save_session_json(),before,"progression reads are pure")
-	var focused:Dictionary=session.set_training_mode("SWORD","FOCUS")
+	var focused:Dictionary=session.set_training_mode("AXE","FOCUS")
 	check(focused.accepted,"independent mode commits: %s"%focused)
 	check_eq(session.protagonist_progression().skills.map(func(row):return row.training_mode),
-		["FOCUS","NORMAL","NORMAL","NORMAL","NORMAL","NORMAL"],
-		"SWORD changes without overwriting other rows")
+		["FOCUS","FOCUS","OFF","OFF","OFF","OFF"],
+		"a user mode change does not overwrite other rows")
 	check(session.set_training_mode("AXE","OFF").accepted,"second row changes independently")
 	check_eq(session.protagonist_progression().skills.map(func(row):return row.training_mode),
-		["FOCUS","OFF","NORMAL","NORMAL","NORMAL","NORMAL"],
+		["FOCUS","OFF","OFF","OFF","OFF","OFF"],
 		"multiple independent mode choices coexist")
 	check_eq(session.command_journal.size(),2,"each mode change is journaled once")
 	if not session.command_journal.is_empty():check_eq(session.command_journal[0].kind,
 		"progression","focus journal kind")
 	var duplicate_before:=session.save_session_json()
-	check_eq(session.set_training_mode("SWORD","FOCUS").reason,"training_mode_unchanged",
+	check_eq(session.set_training_mode("AXE","OFF").reason,"training_mode_unchanged",
 		"same mode rejects without a duplicate event")
 	check_eq(session.save_session_json(),duplicate_before,"duplicate focus is exact no-op")
 	var restored=Session.new(1,2)
@@ -63,15 +63,15 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 		progression.xp_required,progression.next_level_threshold],
 		[2,100,0,150,250],"victory grants exact level pacing XP")
 	check_eq(progression.skills.map(func(row):return [row.skill_id,row.rank,row.training_total]),
-		[["SWORD",0,17],["AXE",0,17],["BLUNT",0,17],["SPEAR",0,17],
-			["RANGED",0,16],["UNARMED",0,16]],
-		"victory training remainder follows fixed proficiency order")
+		[["SWORD",1,100],["AXE",0,0],["BLUNT",0,0],["SPEAR",0,0],
+			["RANGED",0,0],["UNARMED",0,0]],
+		"one enemy death pays an independent 100-point focused mastery pool")
 	var victory_count:=0
 	for event in session.sim.world.events:
 		if event.type=="party.victory":victory_count+=1
 	check_eq([victory_count,
-		session.sim.world.party_encounter.protagonist_progression.processed_victory_event_ids.size()],
-		[1,1],"one canonical victory produces one award")
+		session.sim.world.party_encounter.protagonist_progression.processed_source_death_event_ids.size()],
+		[1,1],"one canonical enemy death produces one reward while victory closes combat")
 	var snapshot:Dictionary=session.sim.snapshot()
 	for index in range(20):session.protagonist_progression();session.party_status()
 	check_eq(session.sim.snapshot(),snapshot,"refresh cannot duplicate progression")
@@ -81,19 +81,8 @@ func test_canonical_victory_awards_once_levels_and_resets_fresh()->bool:
 	var restored=WorldState.from_snapshot(snapshot.duplicate(true))
 	check(restored!=null,"progressed typed snapshot restores")
 	if restored!=null:check_eq(restored.snapshot(),snapshot,"progressed snapshot round trip exact")
-	var legacy_session:Dictionary=JSON.parse_string(session.save_session_json())
-	var legacy_progression:Dictionary=legacy_session.snapshot.party_encounter.protagonist_progression
-	legacy_progression.schema_version=2;legacy_progression.erase("training_modes")
-	legacy_progression.training_focus=[]
-	for row in [{"skill_id":"SWORD","weight":30},{"skill_id":"AXE","weight":15},
-			{"skill_id":"BLUNT","weight":15},{"skill_id":"SPEAR","weight":15},
-			{"skill_id":"RANGED","weight":15},{"skill_id":"UNARMED","weight":10}]:
-		legacy_progression.training_focus.append(row)
-	var migrated_session=Session.new(1,2)
-	check(migrated_session.load_session_json(JSON.stringify(legacy_session)).accepted,
-		"schema two session progression migrates through canonical event replay")
-	check_eq(migrated_session.sim.snapshot(),session.sim.snapshot(),
-		"schema two session migration preserves the canonical projection")
+	# Legacy zero-victory origin/replay is isolated in test_growth_recovery_core;
+	# this vertical slice remains focused on the new per-death progression loop.
 	check(session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),
 		"new expedition resets authority")
 	check_eq([session.protagonist_progression().level,session.protagonist_progression().xp_total,

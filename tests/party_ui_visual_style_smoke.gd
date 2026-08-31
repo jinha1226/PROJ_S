@@ -110,9 +110,17 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.product_interact_button.disabled,
 		"%s unavailable INTERACT backend was exposed as a dummy action"%viewport_size)
 	_check(not sandbox.product_auto_button.disabled and sandbox.product_auto_button.toggle_mode \
-		and sandbox.product_attack_button.disabled and not sandbox.product_wait_guard_button.disabled \
+		and sandbox.product_attack_button.visible and not sandbox.product_attack_button.disabled \
+		and sandbox.product_attack_button.text=="[공격]" \
+		and not sandbox.product_wait_guard_button.disabled \
 		and sandbox.product_execute_button.disabled,
 		"%s exploration contextual controls do not match AUTO/ATTACK/WAIT/EXECUTE authority"%viewport_size)
+	var no_target_step:=int(sandbox.session.party_status().step_index)
+	sandbox._on_product_attack()
+	_check(int(sandbox.session.party_status().step_index)==no_target_step \
+		and sandbox.event_label.text=="인접한 적이 없습니다.",
+		"%s no-target ATTACK consumed a turn or omitted concise feedback"%viewport_size)
+	sandbox._refresh();await process_frame;await process_frame
 	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==2 \
 		and not sandbox.info_scroll.visible and not sandbox.deck.visible and not sandbox.log_label.visible,
 		"%s compact event surface did not replace generic context/log copies"%viewport_size)
@@ -216,6 +224,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox._select_member_detail_tab("SKILL");await process_frame;await process_frame
 	_check(sandbox.member_detail_skill_tab.text=="[숙련]","%s selected skill tab is not bracketed"%viewport_size)
 	sandbox._toggle_weapon_mastery_category();await process_frame
+	var equipped_skill_rows:=0;var focused_skill_rows:=0
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var skill_panel=sandbox.find_child("SkillCard%s"%skill_id,true,false)
 		_check(skill_panel.find_child("SkillAsciiFrame",true,false)==null,
@@ -241,12 +250,24 @@ func _check_viewport(viewport_size:Vector2)->void:
 			and mode_label!=null and "×%d"%raw_weight in mode_label.text \
 			and xp_label!=null and "/" in xp_label.text,
 			"%s %s fixed ledger omits rank/name/effect/mode/current XP"%[viewport_size,skill_id])
-		var expected_tone:=AsciiUIFrame.BRASS if raw_weight==3 else (AsciiUIFrame.MUTED if raw_weight==0 else AsciiUIFrame.CYAN)
+		var equipped:=bool(mode_button.get_meta("equipped_proficiency",false))
+		if equipped:equipped_skill_rows+=1
+		if raw_weight==3:focused_skill_rows+=1
+		var expected_tone:=AsciiUIFrame.BRASS if equipped or raw_weight==3 \
+			else (AsciiUIFrame.MUTED if raw_weight==0 else AsciiUIFrame.CYAN)
 		_check(mode_label.get_theme_color("font_color").is_equal_approx(expected_tone),
 			"%s %s ledger mode tone does not match its 3/1/0 state"%[viewport_size,skill_id])
+		_check(("장착·" in mode_label.text)==equipped \
+			and bool(mode_button.get_meta("training_paused",false))==(raw_weight==0),
+			"%s %s ledger loses equipped/temporary-OFF semantics"%[viewport_size,skill_id])
+		if raw_weight==0:
+			_check("중지×0" in mode_label.text,
+				"%s %s paused mastery is not labelled as resumable stop"%[viewport_size,skill_id])
 		_check(mode_label.get_global_rect().end.x<=xp_label.get_global_rect().position.x+0.5 \
 			and xp_label.get_global_rect().end.x<=skill_panel.get_global_rect().end.x+0.5,
 			"%s %s current XP is not the far-right ledger column"%[viewport_size,skill_id])
+	_check(equipped_skill_rows==1 and focused_skill_rows==1,
+		"%s new expedition does not start with exactly its equipped weapon focused"%viewport_size)
 	_check(sandbox.find_child("SkillDetail",true,false)==null \
 		and sandbox.find_child("TrainingProgress",true,false)==null \
 		and sandbox.find_child("FutureMilestone",true,false)==null,
@@ -266,9 +287,14 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s item tab lacks weapon stats, 5 slots, 12 backpack rows, or 44px actions"%viewport_size)
 	_check(sandbox.member_item_equip_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_unequip_button.custom_minimum_size.y>=44 \
+		and sandbox.member_item_use_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_drop_button.text=="[버리기]",
-		"%s product item actions do not match the current equip/unequip/drop contract"%viewport_size)
+		"%s product item actions do not meet the touch-safe equipment/consumable contract"%viewport_size)
+	sandbox._on_item_row_selected("START_POTION_001","");await process_frame
+	_check(sandbox.member_item_use_button.visible and not sandbox.member_item_use_button.disabled \
+		and sandbox.member_item_use_button.text=="[사용]",
+		"%s selected healing potion does not expose a usable consumable action"%viewport_size)
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5,
 		"%s item tab widened/clipped the detail folio"%viewport_size)
 	var item_scroll:ScrollContainer=sandbox.member_detail_scroll as ScrollContainer
@@ -289,9 +315,19 @@ func _check_viewport(viewport_size:Vector2)->void:
 	item_scroll.scroll_vertical=int(item_scroll_bar.max_value);await process_frame;await process_frame
 	var scroll_rect:Rect2=item_scroll.get_global_rect()
 	var action_rect:Rect2=(sandbox.member_item_action_row as Control).get_global_rect()
+	var scroll_content:=item_scroll.get_child(0) as Control
+	var item_scroll_diagnostic:="%s item action row is not reachable at scroll end scroll=%s action=%s value=%s " \
+		+ "bar(max=%s page=%s) content(size=%s min=%s) item(size=%s min=%s pos=%s) action(local=%s min=%s)"
 	_check(scroll_rect.intersection(action_rect).size.y>=43.9,
-		"%s item action row is not reachable at scroll end scroll=%s action=%s value=%s"%[
-			viewport_size,scroll_rect,action_rect,item_scroll.scroll_vertical])
+		item_scroll_diagnostic%[
+			viewport_size,scroll_rect,action_rect,item_scroll.scroll_vertical,
+			item_scroll_bar.max_value,item_scroll_bar.page,
+			scroll_content.size if scroll_content!=null else Vector2(),
+			scroll_content.get_combined_minimum_size() if scroll_content!=null else Vector2(),
+			sandbox.member_item_window.size,sandbox.member_item_window.get_combined_minimum_size(),
+			sandbox.member_item_window.position,
+			(sandbox.member_item_action_row as Control).position,
+			(sandbox.member_item_action_row as Control).get_combined_minimum_size()])
 	_check(not sandbox.grid_zoom_controls.visible,
 		"%s map zoom controls remain above the item modal"%viewport_size)
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
@@ -696,20 +732,16 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 			"%s product solo leaked a separate-mode label: %s"%[viewport_size,visible_copy])
 	var hero_position:Vector2i=session.sim.world.entities[hero].position
 	var enemy_position:Vector2i=session.sim.world.entities[enemy].position
-	var attack_direction:=Vector2i(signi(enemy_position.x-hero_position.x),
-		signi(enemy_position.y-hero_position.y))
 	var combat_step_before:=int(session.party_status().step_index)
 	_check(not sandbox.product_attack_button.disabled and sandbox.product_auto_button.disabled \
 		and not sandbox.product_wait_guard_button.disabled and sandbox.product_execute_button.disabled,
 		"%s adjacent direct-solo controls were stale before the fast turn"%viewport_size)
-	await _screen_touch_button(sandbox,
-		sandbox.product_direction_buttons.get(attack_direction) as Button,41)
+	await _screen_touch_button(sandbox,sandbox.product_attack_button,41)
 	_check(int(session.party_status().step_index)==combat_step_before+1,
-		"%s adjacent direction bump did not commit exactly one combat turn"%viewport_size)
+		"%s explicit adjacent ATTACK did not commit exactly one combat turn"%viewport_size)
 	var after_fast:Dictionary=session.party_status()
-	var expects_attack:=str(after_fast.get("view_mode",""))=="COMBAT" \
-		and sandbox._product_adjacent_enemy_id(after_fast)>0 and not bool(after_fast.get("terminal",false))
-	_check(sandbox.product_attack_button.disabled==not expects_attack \
+	_check(sandbox.product_attack_button.visible and sandbox.product_attack_button.text=="[공격]" \
+		and sandbox.product_attack_button.disabled==bool(after_fast.get("terminal",false)) \
 		and sandbox.product_auto_button.disabled \
 		and sandbox.product_wait_guard_button.disabled==bool(after_fast.get("terminal",false)) \
 		and sandbox.product_execute_button.disabled,
@@ -800,18 +832,26 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 	sandbox.queue_free();await process_frame
 
 func _newest_meaningful_messages(sandbox,history:Dictionary,limit:int)->Array[String]:
-	var messages:Array[String]=[];var groups:Variant=history.get("groups",[])
-	if not groups is Array:return messages
+	var damage:Array[String]=[];var other:Array[String]=[]
+	var groups:Variant=history.get("groups",[])
+	if not groups is Array:return damage
 	for group_index in range(groups.size()-1,-1,-1):
 		var rows:Variant=groups[group_index].get("rows",[]) if groups[group_index] is Dictionary else []
 		if not rows is Array:continue
 		for row_index in range(rows.size()-1,-1,-1):
-			var message:=str(rows[row_index].get("message","")) \
-				if rows[row_index] is Dictionary else ""
-			message=message.strip_edges().replace("\n"," ")
+			var row:Variant=rows[row_index]
+			if not row is Dictionary:continue
+			var message:String=str(sandbox._combat_log_row_message(row)).replace("\n"," ")
 			if message.is_empty() or sandbox._is_persistent_log_filler(message):continue
-			messages.append(message)
-			if messages.size()>=limit:return messages
+			if str(row.get("type","")).begins_with("combat.") \
+					and str(row.get("type","")).ends_with("_damage"):
+				damage.append(message)
+			else:other.append(message)
+	var messages:Array[String]=[]
+	for message_value in damage+other:
+		var message:String=str(message_value)
+		messages.append(message)
+		if messages.size()>=limit:break
 	return messages
 
 func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:

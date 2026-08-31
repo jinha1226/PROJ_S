@@ -39,8 +39,9 @@ func test_generic_sim_commands_are_phase_gated_and_transactional() -> bool:
 	contact.commit_exploration(Command.wait(contact_state.protagonist_id))
 	var engaged = _engaged()
 	var defeated = Session.new(); var defeated_state = defeated.sim.world.party_encounter
-	defeated.sim.world.entities[defeated_state.protagonist_id].health = 5
 	check(defeated.sim.world.bootstrap_set_fire(defeated_state.group_anchor, 100) != null, "phase gate defeat fixture")
+	check(_prime_grouped_hazard_health(defeated, defeated_state.protagonist_id, 20),
+		"phase gate defeat fixture uses canonical fire damage")
 	check(defeated.sim.step(Command.wait(defeated_state.protagonist_id)).accepted, "exploration element death allowed")
 	check_eq(defeated.party_status().safe_phase, "PARTY_DEFEATED", "defeat fixture terminal")
 
@@ -218,8 +219,11 @@ func test_rehashed_party_and_deployment_forgery_never_executes() -> bool:
 
 func test_grouped_fire_and_electric_deaths_reconcile_before_contact_and_restore() -> bool:
 	var fire_session = Session.new(909,808); var fire_state = fire_session.sim.world.party_encounter
-	var companion = fire_state.party_member_ids[1]; fire_session.sim.world.entities[companion].health = 5
+	var companion = fire_state.party_member_ids[1]
 	check(fire_session.sim.world.bootstrap_set_fire(fire_state.group_anchor, 100) != null, "fire fixture")
+	check(_prime_grouped_hazard_health(fire_session, companion, 20),
+		"companion fire fixture uses canonical damage history")
+	fire_state.party_detection_radius = 4; fire_state.enemy_detection_radius = 3
 	var fire_result = fire_session.commit_exploration(Command.wait(fire_state.protagonist_id))
 	check(fire_result.accepted, "fire tick step accepted")
 	check_eq(fire_session.sim.world.party_encounter.member(companion).presence, "DEFEATED", "grouped fire death reconciled")
@@ -230,8 +234,9 @@ func test_grouped_fire_and_electric_deaths_reconcile_before_contact_and_restore(
 	check_eq(WorldState.from_snapshot(fire_session.sim.snapshot()).snapshot(), fire_session.sim.snapshot(), "grouped fire restore")
 
 	var hero_fire = Session.new(910,808); var hero_state = hero_fire.sim.world.party_encounter
-	hero_fire.sim.world.entities[hero_state.protagonist_id].health = 5
 	check(hero_fire.sim.world.bootstrap_set_fire(hero_state.group_anchor, 100) != null, "hero fire fixture")
+	check(_prime_grouped_hazard_health(hero_fire, hero_state.protagonist_id, 20),
+		"hero fire fixture uses canonical damage history")
 	var hero_result = hero_fire.commit_exploration(Command.wait(hero_state.protagonist_id))
 	check(hero_result.accepted, "hero death action settles")
 	check_eq(hero_fire.party_status().safe_phase, "PARTY_DEFEATED", "hero death terminal")
@@ -239,16 +244,43 @@ func test_grouped_fire_and_electric_deaths_reconcile_before_contact_and_restore(
 	check_eq(WorldState.from_snapshot(hero_fire.sim.snapshot()).snapshot(), hero_fire.sim.snapshot(), "hero death restore")
 
 	var electric_a = Session.new(911,809); var electric_state = electric_a.sim.world.party_encounter
-	electric_a.sim.world.entities[electric_state.protagonist_id].health = 5
+	check(_prime_grouped_electric_health(electric_a, electric_state.protagonist_id, 40),
+		"electric fixture uses canonical damage history")
 	var electric_result = electric_a.sim.step(Command.discharge(electric_state.group_anchor, 40, electric_state.protagonist_id))
 	check(electric_result.accepted, "electric action accepted")
 	check_eq(electric_a.party_status().safe_phase, "PARTY_DEFEATED", "electric liveness terminal")
 	var electric_b = Session.new(911,809); var electric_b_state = electric_b.sim.world.party_encounter
-	electric_b.sim.world.entities[electric_b_state.protagonist_id].health = 5
+	check(_prime_grouped_electric_health(electric_b, electric_b_state.protagonist_id, 40),
+		"second electric fixture uses canonical damage history")
 	electric_b.sim.step(Command.discharge(electric_b_state.group_anchor, 40, electric_b_state.protagonist_id))
 	check_eq(electric_a.sim.snapshot(), electric_b.sim.snapshot(), "grouped electric deterministic")
 	check_eq(WorldState.from_snapshot(electric_a.sim.snapshot()).snapshot(), electric_a.sim.snapshot(), "electric restore")
 	return finish()
+
+func _prime_grouped_hazard_health(session, target_id: int, ceiling: int) -> bool:
+	var state = session.sim.world.party_encounter
+	state.party_detection_radius = 0; state.enemy_detection_radius = 0
+	for enemy_id in state.enemy_ids:
+		state.enemy_busy_rows[enemy_id] = 10000
+	for _turn in range(16):
+		var target = session.sim.world.entities[target_id]
+		if int(target.health) <= ceiling: return int(target.health) > 0
+		var result = session.sim.step(Command.wait(state.protagonist_id))
+		if not result.accepted or state.safe_phase != "GROUPED": return false
+	return false
+
+func _prime_grouped_electric_health(session, target_id: int, ceiling: int) -> bool:
+	var state = session.sim.world.party_encounter
+	state.party_detection_radius = 0; state.enemy_detection_radius = 0
+	for enemy_id in state.enemy_ids:
+		state.enemy_busy_rows[enemy_id] = 10000
+	for _turn in range(16):
+		var target = session.sim.world.entities[target_id]
+		if int(target.health) <= ceiling: return int(target.health) > 0
+		var result = session.sim.step(Command.discharge(
+			state.group_anchor, 20, state.protagonist_id))
+		if not result.accepted or state.safe_phase != "GROUPED": return false
+	return false
 
 func test_grouped_complete_exploration_move_synchronizes_anchor_positions_and_exposure() -> bool:
 	var session = _ready_for_regroup(); check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","auto regroup fixture")

@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 8
+const SCHEMA_VERSION := 9
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -10,6 +10,7 @@ const LOADOUT_SCHEMA_VERSION := 5
 const DIAGONAL_GATEWAY_SCHEMA_VERSION := 6
 const AWARENESS_SCHEMA_VERSION := 7
 const ITEM_SCHEMA_VERSION := 8
+const RECOVERY_SCHEMA_VERSION := 9
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -48,6 +49,9 @@ var protagonist_progression = ProgressionScript.new()
 var protagonist_loadout = WeaponLoadoutScript.new("SHORT_SWORD", 12, 6)
 var protagonist_inventory = InventoryScript.with_legacy_weapon("SHORT_SWORD")
 var ground_items = GroundItemScript.new()
+# Deterministic exploration-only recovery cadence. It is state, not UI timing.
+var safe_recovery_turns: int = 0
+var last_protagonist_damage_step: int = -1
 
 func member(entity_id: int): return member_rows.get(entity_id)
 func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
@@ -88,6 +92,8 @@ func to_dict() -> Dictionary:
 		"protagonist_loadout":protagonist_loadout.to_dict(),
 		"protagonist_inventory":protagonist_inventory.to_dict(),
 		"ground_items":ground_items.to_dict(),
+		"safe_recovery_turns":safe_recovery_turns,
+		"last_protagonist_damage_step":str(last_protagonist_damage_step),
 		"exile_records":exile_records.duplicate(true)}
 
 static func from_dict(row: Dictionary):
@@ -138,10 +144,15 @@ static func from_dict(row: Dictionary):
 	if row.has("protagonist_inventory") and row.has("ground_items"):
 		state.protagonist_inventory=InventoryScript.from_dict(row.protagonist_inventory)
 		state.ground_items=GroundItemScript.from_dict(row.ground_items)
+		for item in state.protagonist_inventory.backpack:
+			if str(item.definition_id)=="POTION_UNSPECIFIED":item.definition_id="POTION_HEALING"
 	else:
 		state.protagonist_inventory=InventoryScript.with_legacy_weapon(
 			str(state.protagonist_loadout.equipped_weapon_id))
 		state.ground_items=GroundItemScript.new()
+	state.safe_recovery_turns=int(row.get("safe_recovery_turns",0))
+	state.last_protagonist_damage_step=Int64CodecScript.parse(
+		row.get("last_protagonist_damage_step","-1"),"last protagonist damage step")
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -198,6 +209,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v7_keys:Array=v6_keys.duplicate();v7_keys.append("enemy_awareness_rows");v7_keys.sort()
 	var v8_keys:Array=v7_keys.duplicate();v8_keys.append_array([
 		"protagonist_inventory","ground_items"]);v8_keys.sort()
+	var v9_keys:Array=v8_keys.duplicate();v9_keys.append_array([
+		"safe_recovery_turns","last_protagonist_damage_step"]);v9_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -207,12 +220,13 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			or (parsed_schema_version == LOADOUT_SCHEMA_VERSION and keys != v5_keys) \
 			or (parsed_schema_version == DIAGONAL_GATEWAY_SCHEMA_VERSION and keys != v6_keys) \
 			or (parsed_schema_version == AWARENESS_SCHEMA_VERSION and keys != v7_keys) \
-			or (parsed_schema_version == SCHEMA_VERSION and keys != v8_keys):
+		or (parsed_schema_version == ITEM_SCHEMA_VERSION and keys != v8_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v9_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
-			DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,
-			SCHEMA_VERSION]: return "unsupported_party_schema"
+		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
+		SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -338,6 +352,12 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			bridged_weapon_id=str(main_definition.weapon_id)
 		if bridged_weapon_id!=str(row.protagonist_loadout.equipped_weapon_id):
 			return "inventory_loadout_bridge_mismatch"
+	if parsed_schema_version>=RECOVERY_SCHEMA_VERSION:
+		if not _integer(row.get("safe_recovery_turns")) or int(row.safe_recovery_turns)<0 \
+			or int(row.safe_recovery_turns)>1000000 \
+			or not Int64CodecScript.is_canonical(row.get("last_protagonist_damage_step")) \
+			or Int64CodecScript.parse(row.last_protagonist_damage_step,"recovery damage step") < -1:
+			return "invalid_party_recovery_state"
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

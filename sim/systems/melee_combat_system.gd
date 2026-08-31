@@ -8,6 +8,7 @@ const ResolutionScript = preload("res://sim/attack_resolution.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const DefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 
 var world
 var damage
@@ -15,10 +16,12 @@ var damage
 func _init(p_world, p_damage) -> void: world = p_world; damage = p_damage
 
 static func commitment_key(world_seed: int, processed_step_index: int, attack_start_world_time: int,
-		batch_context: String, intent_ordinal: int, attacker_id: int, target_id: int) -> String:
-	return "%s|seed=%d|step=%d|time=%d|batch=%s|ordinal=%d|attacker=%d|target=%d" % [
+		batch_context: String, intent_ordinal: int, attacker_id: int, target_id: int,
+		defense_fragment: String = "") -> String:
+	var base := "%s|seed=%d|step=%d|time=%d|batch=%s|ordinal=%d|attacker=%d|target=%d" % [
 		COMBAT_RULESET_ID, world_seed, processed_step_index, attack_start_world_time,
 		batch_context, intent_ordinal, attacker_id, target_id]
+	return base if defense_fragment.is_empty() else base + "|" + defense_fragment
 
 static func commitment_hash(key: String) -> String: return key.sha256_text()
 
@@ -47,6 +50,16 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var attacker_profile := ProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile := ProfileRegistryScript.profile(target_state.combat_profile_id)
 	if attacker_profile.is_empty() or target_profile.is_empty(): return {}
+	# Equipment defense applies only while the protagonist is still an active
+	# combatant. Downed targets retain the established v1 finisher lane, so its
+	# death/lifecycle history remains byte-for-byte compatible.
+	var defense_snapshot:=_protagonist_defense_snapshot(target_id,target_profile) \
+		if target_state.life_state == "ACTIVE" else {}
+	var equipment_defense:=not defense_snapshot.is_empty()
+	var target_evasion:=int(defense_snapshot.effective_evasion_milli) if equipment_defense \
+		else int(target_profile.evasion_milli)
+	var target_armor:=int(defense_snapshot.effective_armor_flat) if equipment_defense \
+		else int(target_profile.armor_flat)
 	var weapon_spec: Dictionary = {}
 	var proficiency_rank := 0
 	if not weapon_id.is_empty():
@@ -55,15 +68,15 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
-			int(target_profile.evasion_milli), int(target_profile.armor_flat))
+			target_evasion, target_armor)
 		if weapon_spec.is_empty(): return {}
 	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() \
-		else clampi(500 + int(attacker_profile.accuracy_milli) - int(target_profile.evasion_milli), 50, 950)
+		else clampi(500 + int(attacker_profile.accuracy_milli) - target_evasion, 50, 950)
 	var bleed_chance := clampi(int(attacker_profile.bleed_proc_milli) - int(target_profile.bleed_resist_milli), 0, 1000)
 	var base_damage := int(weapon_spec.raw_damage) if not weapon_spec.is_empty() \
 		else int(attacker_profile.power)
 	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \
-		else mini(int(target_profile.armor_flat), maxi(0, base_damage - 1))
+		else mini(target_armor, maxi(0, base_damage - 1))
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
 	var guard_rank:=0
@@ -73,18 +86,19 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var guard_rate_milli:=ProgressionRegistryScript.guard_reduction_milli(guard_rank)
 	var guard_reduction := int(after_armor * guard_rate_milli / 1000) if guarded else 0
 	var normal_final_damage := maxi(1, after_armor - guard_reduction)
+	var defense_fragment:=DefenseRulesScript.commitment_fragment(defense_snapshot) if equipment_defense else ""
 	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
 		weapon_id, proficiency_rank) if not weapon_spec.is_empty() else commitment_key(world.seed,
 		processed_step_index, attack_start_world_time, batch_context, intent_ordinal,
-		attacker_id, target_id)
-	var result := {"schema_version":2 if not weapon_spec.is_empty() else 1,
+		attacker_id, target_id, defense_fragment)
+	var result := {"schema_version":3 if equipment_defense else (2 if not weapon_spec.is_empty() else 1),
 		"attacker_id":str(attacker_id), "target_id":str(target_id),
 		"attacker_position":[attacker.position.x, attacker.position.y],
 		"target_position":[target.position.x, target.position.y],
 		"attacker_life_state":"ACTIVE", "target_life_state":target_state.life_state,
 		"attacker_profile_id":attacker_state.combat_profile_id, "target_profile_id":target_state.combat_profile_id,
-		"target_evasion_milli":int(target_profile.evasion_milli), "target_armor_flat":int(target_profile.armor_flat),
+		"target_evasion_milli":target_evasion, "target_armor_flat":target_armor,
 		"frozen_guarded_until":str(target_state.guarded_until), "guard_source_event_id":str(target_state.guard_source_event_id),
 		"source":source, "processed_step_index":str(processed_step_index),
 		"attack_start_world_time":str(attack_start_world_time), "batch_context":batch_context,
@@ -93,6 +107,13 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		"base_damage":base_damage, "armor_reduction":armor_reduction, "guarded":guarded,
 		"guard_reduction":guard_reduction, "normal_final_damage":normal_final_damage,
 		"commitment_hash":commitment_hash(key)}
+	if equipment_defense:
+		result["defense_ruleset_id"]=DefenseRulesScript.RULESET_ID
+		result["target_base_evasion_milli"]=int(defense_snapshot.base_evasion_milli)
+		result["target_base_armor_flat"]=int(defense_snapshot.base_armor_flat)
+		result["equipment_dodge_milli"]=int(defense_snapshot.dodge_milli)
+		result["equipment_armor_flat"]=int(defense_snapshot.equipment_armor_flat)
+		result["equipment_parry_milli"]=int(defense_snapshot.parry_milli)
 	if not weapon_spec.is_empty():
 		for key_name in ["weapon_id", "proficiency_id", "proficiency_rank", "attack_form",
 				"trait_id", "range_min", "range_max", "attack_time", "weapon_damage", "proficiency_damage",
@@ -122,28 +143,35 @@ func resolve_frozen_intent(intent):
 	if attacker_id <= 0 or target_id <= 0 or processed_step_index <= 0 \
 			or attack_start_world_time < 0 or batch_context.is_empty() or intent_ordinal < 0:
 		return null
-	var weapon_schema := int(assessment.get("schema_version", 1)) == 2
+	var schema_version:=int(assessment.get("schema_version",1))
+	var weapon_schema := schema_version == 2
+	var equipment_defense:=schema_version==3
+	var defense_snapshot:=_defense_snapshot_from_assessment(assessment) if equipment_defense else {}
+	if equipment_defense and defense_snapshot.is_empty():return null
 	var key := WeaponAttackRulesScript.commitment_key(intent.world_seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
 		str(assessment.get("weapon_id", "")), int(assessment.get("proficiency_rank", 0))) \
 		if weapon_schema else commitment_key(intent.world_seed, processed_step_index,
-		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id)
+		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
+		DefenseRulesScript.commitment_fragment(defense_snapshot) if equipment_defense else "")
 	if str(assessment.get("commitment_hash", "")) != commitment_hash(key):
 		return null
 	var hit_roll := WeaponAttackRulesScript.lane_roll_milli(key, "HIT") if weapon_schema \
 		else lane_roll_milli(key, "HIT")
 	var bleed_roll := WeaponAttackRulesScript.lane_roll_milli(key, "BLEED") if weapon_schema \
 		else lane_roll_milli(key, "BLEED")
+	var parry_roll:=DefenseRulesScript.parry_roll_milli(key) if equipment_defense else -1
 	var finisher: bool = str(assessment.get("target_life_state", "")) == "DOWNED" \
 		and str(assessment.get("intent_mode", "")) == "FINISHER"
-	var outcome := "FINISHER" if finisher \
-		else ("MISS" if hit_roll >= int(assessment.get("hit_chance_milli", -1)) else "HIT")
+	var outcome := "FINISHER" if finisher else ("MISS" \
+		if hit_roll >= int(assessment.get("hit_chance_milli", -1)) else ("PARRIED" \
+		if equipment_defense and DefenseRulesScript.parry_succeeds(parry_roll,defense_snapshot) else "HIT"))
 	var bleed_proc_succeeded := not finisher and outcome == "HIT" \
 		and bleed_roll < int(assessment.get("bleed_chance_milli", -1))
 	var final_damage := int(assessment.get("normal_final_damage", 0)) \
 		if outcome == "HIT" else 0
 	var action_data := {
-		"schema_version": 1,
+		"schema_version": 3 if equipment_defense else 1,
 		"combat_ruleset_id": COMBAT_RULESET_ID,
 		"attacker_profile_id": str(assessment.get("attacker_profile_id", "")),
 		"target_profile_id": str(assessment.get("target_profile_id", "")),
@@ -172,10 +200,21 @@ func resolve_frozen_intent(intent):
 		"guard_reduction": int(assessment.get("guard_reduction", -1)),
 		"final_damage": final_damage,
 	}
+	if equipment_defense:
+		action_data["defense_ruleset_id"]=DefenseRulesScript.RULESET_ID
+		action_data["target_base_evasion_milli"]=int(defense_snapshot.base_evasion_milli)
+		action_data["target_base_armor_flat"]=int(defense_snapshot.base_armor_flat)
+		action_data["equipment_dodge_milli"]=int(defense_snapshot.dodge_milli)
+		action_data["equipment_armor_flat"]=int(defense_snapshot.equipment_armor_flat)
+		action_data["equipment_parry_milli"]=int(defense_snapshot.parry_milli)
+		action_data["parry_roll_milli"]=parry_roll
+		action_data["parry_succeeded"]=outcome=="PARRIED"
 	return ResolutionScript.new({
 		"outcome": outcome,
 		"hit_roll_milli": hit_roll,
 		"bleed_roll_milli": bleed_roll,
+		"parry_roll_milli":parry_roll,
+		"parry_succeeded":outcome=="PARRIED",
 		"bleed_proc_succeeded": bleed_proc_succeeded,
 		"final_damage": final_damage,
 		"action_data": action_data,
@@ -233,7 +272,7 @@ func project_batch(frozen_intents: Array) -> Array:
 						resolution.terminal_immediate = true
 					else:
 						life_after = "DOWNED"
-			elif resolution.outcome != "MISS":
+		elif resolution.outcome not in ["MISS","PARRIED"]:
 				return []
 		else:
 			return []
@@ -320,3 +359,22 @@ func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
 			and world.party_encounter.protagonist_progression != null:
 		return world.party_encounter.protagonist_progression.rank(proficiency_id)
 	return 0
+
+
+func _protagonist_defense_snapshot(target_id:int,target_profile:Dictionary)->Dictionary:
+	if world.party_encounter==null or target_id!=world.party_encounter.protagonist_id:return {}
+	var inventory=world.party_encounter.protagonist_inventory
+	if inventory==null or not inventory.has_method("combat_modifier_dto"):return {}
+	var dto:Dictionary=inventory.combat_modifier_dto()
+	var totals:Variant=dto.get("totals",{})
+	return DefenseRulesScript.build_snapshot(int(target_profile.evasion_milli),
+		int(target_profile.armor_flat),totals if totals is Dictionary else {})
+
+
+func _defense_snapshot_from_assessment(assessment:Dictionary)->Dictionary:
+	if str(assessment.get("defense_ruleset_id",""))!=DefenseRulesScript.RULESET_ID:return {}
+	return DefenseRulesScript.build_snapshot(int(assessment.get("target_base_evasion_milli",-1)),
+		int(assessment.get("target_base_armor_flat",-1)),{"armor_flat":
+		int(assessment.get("equipment_armor_flat",-1)),"dodge_milli":
+		int(assessment.get("equipment_dodge_milli",-1)),"parry_milli":
+		int(assessment.get("equipment_parry_milli",-1))})

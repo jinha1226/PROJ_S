@@ -8,7 +8,6 @@ const Operations=preload("res://sim/item_inventory_operations.gd")
 const WeaponRegistry=preload("res://sim/weapon_registry.gd")
 const PartyState=preload("res://sim/party_encounter_state.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
-const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Command=preload("res://sim/sim_command.gd")
 
 
@@ -109,7 +108,7 @@ func test_equipment_slots_two_handed_conflicts_and_defensive_aggregate()->bool:
 	return finish()
 
 
-func test_pickup_drop_discard_and_unimplemented_use_are_atomic()->bool:
+func test_pickup_drop_discard_and_pure_consumable_use_are_atomic()->bool:
 	var potion=Item.new("POTION_01","POTION_UNSPECIFIED",2)
 	var ground=Ground.new([{"position":[4,7],"item":potion}])
 	var inventory=Inventory.new()
@@ -121,9 +120,10 @@ func test_pickup_drop_discard_and_unimplemented_use_are_atomic()->bool:
 		"pickup leaves both inputs untouched")
 	var before_use:Dictionary=picked.inventory.to_dict()
 	var used:=Operations.commit_use(picked.inventory,"POTION_01")
-	check(not bool(used.accepted) and used.reason=="item_use_unimplemented",
-		"unspecified potion does not invent an effect")
-	check_eq(picked.inventory.to_dict(),before_use,"failed use consumes no quantity")
+	check(bool(used.accepted) and used.use_kind=="HEALING" \
+			and used.inventory.item("POTION_01").quantity==1,
+		"pure use consumes one unit and delegates the healing effect")
+	check_eq(picked.inventory.to_dict(),before_use,"pure use leaves its input untouched")
 	var dropped:=Operations.commit_drop(picked.inventory,picked.ground,"POTION_01",
 		Vector2i(8,2),bounds)
 	check(bool(dropped.accepted) and dropped.inventory.item("POTION_01")==null \
@@ -185,11 +185,15 @@ func test_malformed_wire_duplicate_overflow_and_equipped_drop_are_rejected()->bo
 func test_party_schema8_new_game_items_and_session_operations_replay_exact()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var state=session.sim.world.party_encounter
-	check_eq(state.schema_version,PartyState.ITEM_SCHEMA_VERSION,"party state migrated to item schema")
+	check_eq(state.schema_version,PartyState.SCHEMA_VERSION,"party state uses current schema")
 	check_eq(state.protagonist_inventory.equipped.MAIN_HAND,"LEGACY_MAIN_HAND",
 		"new game equips legacy short sword item bridge")
-	check(state.protagonist_inventory.item("START_POTION_001")!=null,
-		"new game carries one placeholder potion")
+	check_eq(state.protagonist_inventory.unequipped_items().map(func(item):return item.instance_id),
+		["START_BOW_001","START_CROSSBOW_001","START_HAND_AXE_001","START_MACE_001",
+		"START_POTION_001","START_SPEAR_001"],
+		"new game carries the deterministic weapon sampler and healing potion stack")
+	check_eq(state.protagonist_inventory.item("START_POTION_001").quantity,3,
+		"new game starts with the three-use healing potion stack")
 	check_eq(state.ground_items.rows.size(),2,"product start room has shield and padded armor")
 	check_eq(PartyState.wire_error(state.to_dict(),session.sim.world.width,
 		session.sim.world.height),"","schema8 party wire validates")
@@ -235,17 +239,10 @@ func test_equipped_items_do_not_consume_or_duplicate_backpack_slots()->bool:
 		"pickup/add capacity counts only unequipped rows")
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var dto:Dictionary=session.protagonist_inventory()
-	check_eq([dto.used_backpack_slots,dto.backpack_rows.size()],[1,1],
-		"product DTO shows potion once and excludes equipped sword from bag")
+	check_eq([dto.used_backpack_slots,dto.backpack_rows.size()],[6,6],
+		"product DTO shows five spare weapons and the potion, excluding equipped sword")
 	check_eq(dto.equipment_slots[0].instance_id,"LEGACY_MAIN_HAND",
 		"the same sword instance remains visible in its equipment slot")
-	var sandbox=Sandbox.new()
-	var accessory_dto:={"equipment_slots":[{"slot":"ACCESSORY_1","empty":false},
-		{"slot":"ACCESSORY_2","empty":true}]}
-	check_eq(sandbox.item_first_empty_equip_slot(accessory_dto,
-		["ACCESSORY_1","ACCESSORY_2"]),"ACCESSORY_2",
-		"accessory equip picks the canonical first empty allowed slot")
-	sandbox.free()
 	return finish()
 
 
@@ -254,6 +251,8 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 	var current:Dictionary=session.sim.world.party_encounter.to_dict()
 	for version in range(7,0,-1):
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
+		if version<PartyState.RECOVERY_SCHEMA_VERSION:
+			row.erase("safe_recovery_turns");row.erase("last_protagonist_damage_step")
 		row.erase("protagonist_inventory");row.erase("ground_items")
 		if version<7:row.erase("enemy_awareness_rows")
 		if version<6:row.erase("diagonal_gateway_positions")
@@ -267,10 +266,76 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 		if error.is_empty():
 			var migrated=PartyState.from_dict(row)
 			var main=migrated.protagonist_inventory.equipped_item("MAIN_HAND")
-			check(migrated.schema_version==8 and migrated.ground_items.rows.is_empty() \
+			check(migrated.schema_version==PartyState.SCHEMA_VERSION \
+					and migrated.ground_items.rows.is_empty() \
 					and main!=null and Registry.definition(main.definition_id).weapon_id \
 					==migrated.protagonist_loadout.equipped_weapon_id,
 				"legacy schema %d gets exact loadout item bridge"%version)
+	return finish()
+
+
+func test_all_equipment_slots_publish_one_detached_combat_modifier_dto()->bool:
+	var inventory=Inventory.new([
+		Item.new("SWORD","WEAPON_SHORT_SWORD"),Item.new("SHIELD","SHIELD_WOOD"),
+		Item.new("ARMOR","ARMOR_LEATHER"),
+		Item.new("CHARM_A","ACCESSORY_BRASS_CHARM",1,"RARE",["GUARDED","NIMBLE"]),
+		Item.new("CHARM_B","ACCESSORY_BRASS_CHARM")])
+	var result:=Operations.commit_equip(inventory,"SWORD","MAIN_HAND")
+	result=Operations.commit_equip(result.inventory,"SHIELD","OFF_HAND")
+	result=Operations.commit_equip(result.inventory,"ARMOR","ARMOR")
+	result=Operations.commit_equip(result.inventory,"CHARM_A","ACCESSORY_1")
+	result=Operations.commit_equip(result.inventory,"CHARM_B","ACCESSORY_2")
+	check(bool(result.accepted),"main/offhand/armor/two accessories equip through one operation")
+	var dto:Dictionary=result.inventory.combat_modifier_dto()
+	check_eq(dto.sources.map(func(row):return row.slot),
+		["MAIN_HAND","OFF_HAND","ARMOR","ACCESSORY_1","ACCESSORY_2"],
+		"modifier sources retain canonical slot order")
+	check_eq(dto.totals,{"armor_flat":2,"parry_milli":100,"dodge_milli":100,
+		"stealth":0,"affix_hook_ids":[]},"modifier totals freeze every equipped family")
+	check_eq(dto.sources[3].bonuses,{"armor_flat":1,"parry_milli":0,
+		"dodge_milli":75,"stealth":0},
+		"source bonuses include the exact equipped item contribution")
+	var detached:Dictionary=dto.duplicate(true)
+	detached.totals.armor_flat=999;detached.sources[3].bonuses.dodge_milli=999
+	var fresh:Dictionary=result.inventory.combat_modifier_dto()
+	check_eq([fresh.totals.armor_flat,fresh.sources[3].bonuses.dodge_milli],[2,75],
+		"combat modifier DTO cannot alias inventory or registry authority")
+	return finish()
+
+
+func test_healing_potion_session_use_is_timed_consumed_logged_and_replay_exact()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var state=session.sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	check(session.commit_exploration(Command.wait(hero_id)).accepted \
+		and session.enter_solo_combat().accepted,"potion fixture enters canonical combat")
+	for _turn in range(12):
+		if int(session.sim.world.entities[hero_id].health) \
+				<int(session.sim.world.entities[hero_id].max_health):break
+		if not session.commit_direct_solo_action(hero_id,"HOLD").accepted:break
+	var hero=session.sim.world.entities[hero_id]
+	check(int(hero.health)<int(hero.max_health),"canonical enemy damage makes potion usable")
+	var start_health:=int(hero.health);var start_time:=int(session.sim.world.world_time)
+	var used:Dictionary=session.use_inventory_item("START_POTION_001")
+	check(bool(used.accepted) and int(used.healed_amount)>0 \
+			and int(used.healed_amount)<=Registry.HEALING_POTION_RESTORE \
+			and int(session.sim.world.entities[hero_id].health)>start_health,
+		"session applies one clamped registry healing effect after hostile time")
+	check_eq(session.sim.world.world_time,start_time+100,"potion use consumes one canonical turn")
+	check_eq(state.protagonist_inventory.item("START_POTION_001").quantity,2,
+		"one potion leaves the remaining stack in the same instance")
+	var event_types:Array=[]
+	for event in session.sim.world.events:event_types.append(str(event.type))
+	check("item.used" in event_types and "health.restored" in event_types,
+		"potion use emits item and healing provenance")
+	var equipment:Dictionary=session.protagonist_equipment()
+	check(equipment.get("combat_modifiers",{})==state.protagonist_inventory.combat_modifier_dto(),
+		"canonical equipment facade carries the detached combat modifier handoff")
+	var restored=Session.new(9,9,Session.SOLO_COMBAT_SCENARIO_ID)
+	var loaded:Dictionary=restored.load_session_json(session.save_session_json())
+	check(bool(loaded.accepted),"potion journal reloads")
+	if bool(loaded.accepted):check_eq(restored.sim.snapshot(),session.sim.snapshot(),
+		"potion use and healing replay exactly")
 	return finish()
 
 

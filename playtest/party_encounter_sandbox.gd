@@ -113,6 +113,8 @@ var member_detail_title:Label
 var member_detail_subtitle:Label
 var member_detail_glyph_seal:Label
 var member_detail_scroll:ScrollContainer
+var member_detail_scroll_content:VBoxContainer
+var member_detail_tab_stash:Node
 var member_detail_body:Label
 var member_status_window:VBoxContainer
 var member_detail_tab_row:HBoxContainer
@@ -152,6 +154,7 @@ var member_item_action_row:HBoxContainer
 var member_item_equip_button:Button
 var member_item_unequip_button:Button
 var member_item_drop_button:Button
+var member_item_use_button:Button
 var member_item_selected_id:=""
 var member_item_selected_slot:=""
 var pending_ground_pickup_id:=""
@@ -200,6 +203,7 @@ var _product_auto_explore_due_msec:=-1
 var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
 var _product_auto_stop_feedback:=""
+var _product_attack_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 var _product_zoom_touch_index:=-1
 var _product_zoom_touch_step:=0
@@ -707,17 +711,23 @@ func _build_member_detail_modal()->void:
 	member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 	member_detail_scroll.scroll_deadzone=12;member_detail_scroll.follow_focus=false
 	member_detail_scroll.clip_contents=true;stack.add_child(member_detail_scroll)
-	var detail_content:=VBoxContainer.new();detail_content.name="MemberDetailContent"
-	detail_content.size_flags_horizontal=Control.SIZE_EXPAND_FILL;detail_content.add_theme_constant_override("separation",8)
-	member_detail_scroll.add_child(detail_content)
-	_build_progression_window(detail_content)
-	_build_item_window(detail_content)
+	member_detail_scroll_content=VBoxContainer.new();member_detail_scroll_content.name="MemberDetailContent"
+	member_detail_scroll_content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	# ScrollContainer must follow the active folio's real minimum rather than
+	# retaining an old tall allocation after STATUS/SKILL → ITEM.
+	member_detail_scroll_content.size_flags_vertical=Control.SIZE_SHRINK_BEGIN
+	member_detail_scroll_content.add_theme_constant_override("separation",8)
+	member_detail_scroll.add_child(member_detail_scroll_content)
+	member_detail_tab_stash=Node.new();member_detail_tab_stash.name="MemberDetailTabStash"
+	member_detail_modal.add_child(member_detail_tab_stash)
+	_build_progression_window(member_detail_scroll_content)
+	_build_item_window(member_detail_scroll_content)
 	member_status_window=VBoxContainer.new();member_status_window.name="MemberStatusWindow"
 	member_status_window.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_status_window.add_theme_constant_override("separation",8);detail_content.add_child(member_status_window)
+	member_status_window.add_theme_constant_override("separation",8);member_detail_scroll_content.add_child(member_status_window)
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;detail_content.add_child(member_detail_body)
+	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll_content.add_child(member_detail_body)
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="[D 추방]";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
@@ -781,7 +791,7 @@ func _build_progression_window(parent:VBoxContainer)->void:
 		effect.add_theme_color_override("font_color",AsciiFrameScript.INK);effect.clip_text=true
 		effect.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;effect.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		ledger.add_child(effect)
-		var mode:=Label.new();mode.name="TrainingMode";mode.custom_minimum_size.x=62
+		var mode:=Label.new();mode.name="TrainingMode";mode.custom_minimum_size.x=82
 		mode.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;mode.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 		mode.add_theme_font_size_override("font_size",FONT_AUX);mode.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		ledger.add_child(mode)
@@ -794,7 +804,7 @@ func _build_progression_window(parent:VBoxContainer)->void:
 		title.action_mode=BaseButton.ACTION_MODE_BUTTON_RELEASE;title.focus_mode=Control.FOCUS_NONE
 		title.flat=true;title.text="";title.tooltip_text="훈련 모드 변경"
 		title.pressed.connect(_on_training_mode_cycle.bind(skill_id));panel.add_child(title)
-		_apply_skill_ledger_style(title,mode,"NORMAL")
+		_apply_skill_ledger_style(title,mode,"NORMAL",false)
 		member_progression_skill_rows[skill_id]={"panel":panel,"title":title,
 			"rank":rank,"name":skill_name,"effect":effect,"mode":mode,"xp":xp}
 		panel.visible=member_skill_category_expanded
@@ -840,6 +850,7 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_action_row.add_theme_constant_override("separation",4);member_item_window.add_child(member_item_action_row)
 	member_item_equip_button=_item_action_button("[장착]","ItemEquip",_on_item_equip_selected)
 	member_item_unequip_button=_item_action_button("[해제]","ItemUnequip",_on_item_unequip_selected)
+	member_item_use_button=_item_action_button("[사용]","ItemUse",_on_item_use_selected)
 	member_item_drop_button=_item_action_button("[버리기]","ItemDrop",_on_item_drop_selected)
 	member_item_empty_text=backpack_title
 
@@ -1246,6 +1257,7 @@ func _open_hero_detail_tab(tab_id:String)->void:
 func _toggle_map_overlay()->void:
 	if map_overlay.visible:
 		map_overlay.close("TOGGLE");return
+	_product_attack_targeting=false
 	_cancel_product_auto_explore("auto_explore_modal",false)
 	_cancel_route_for_user_interruption()
 	if record_modal.visible:_close_record_modal("MAP")
@@ -1265,6 +1277,7 @@ func _on_map_overlay_closed(_reason:String)->void:
 func _toggle_record_modal()->void:
 	if record_modal.visible:
 		_close_record_modal("TOGGLE");return
+	_product_attack_targeting=false
 	_cancel_product_auto_explore("auto_explore_modal",false)
 	_cancel_route_for_user_interruption()
 	if map_overlay.visible:map_overlay.close("HISTORY")
@@ -1925,9 +1938,9 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	var contextual:=VBoxContainer.new();contextual.name="ProductContextControls"
 	contextual.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
-	product_attack_button=_add_product_context_button(contextual,"[ATTACK]","ProductAttack",
+	product_attack_button=_add_product_context_button(contextual,"[공격]","ProductAttack",
 		_on_product_attack,target)
-	if _is_solo_product_session():product_attack_button.visible=false
+	product_attack_button.tooltip_text="인접한 적을 즉시 공격합니다."
 	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
 	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
@@ -1958,7 +1971,13 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	for button_value in product_direction_buttons.values():
 		var direction_button:=button_value as Button
 		if direction_button!=null and is_instance_valid(direction_button):direction_button.disabled=not can_step
-	product_attack_button.disabled=terminal or mode!="COMBAT" or _product_adjacent_enemy_id(status)<=0
+	# ATTACK remains a useful explicit command alongside bump attacks. With no
+	# adjacent target it explains why no attack can happen instead of becoming an
+	# inert/hidden control; no canonical action is submitted in that case.
+	product_attack_button.disabled=terminal
+	if terminal:_product_attack_targeting=false
+	product_attack_button.tooltip_text="공격할 인접 적을 터치하세요." \
+		if _product_attack_targeting else "인접한 적을 즉시 공격합니다."
 	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	if mode=="EXPLORATION":
@@ -2005,8 +2024,17 @@ func _product_can_step(status:Dictionary)->bool:
 	return mode=="EXPLORATION" or mode=="COMBAT" and str(status.get("safe_phase",""))=="ENGAGED"
 
 func _product_adjacent_enemy_id(status:Dictionary,destination:Vector2i=Vector2i(-999,-999))->int:
-	if str(status.get("view_mode",""))!="COMBAT":return -1
+	var rows:=_product_adjacent_enemies(status,destination)
+	return int(rows[0]) if not rows.is_empty() else -1
+
+func _product_adjacent_enemies(status:Dictionary,
+		destination:Vector2i=Vector2i(-999,-999))->Array[int]:
+	var result:Array[int]=[]
 	var origin:=_selected_position()
+	if origin.x<0 or origin.y<0:
+		var raw_origin:Variant=status.get("protagonist_position",[])
+		if raw_origin is Array and raw_origin.size()==2:
+			origin=Vector2i(int(raw_origin[0]),int(raw_origin[1]))
 	var rows:Array=session.enemy_targets();rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.get("entity_id",-1))<int(b.get("entity_id",-1)))
 	for row in rows:
@@ -2014,12 +2042,16 @@ func _product_adjacent_enemy_id(status:Dictionary,destination:Vector2i=Vector2i(
 		if not raw is Array or raw.size()!=2:continue
 		var position:=Vector2i(int(raw[0]),int(raw[1]))
 		if destination!=Vector2i(-999,-999) and position!=destination:continue
-		if maxi(absi(position.x-origin.x),absi(position.y-origin.y))==1:return int(row.get("entity_id",-1))
-	return -1
+		if maxi(absi(position.x-origin.x),absi(position.y-origin.y))==1:
+			result.append(int(row.get("entity_id",-1)))
+	return result
 
 func _on_product_direction(direction:Vector2i)->void:
 	var status:Dictionary=session.party_status()
 	if not _product_can_step(status):return
+	if _product_attack_targeting:
+		_product_attack_targeting=false
+		_show_product_command_feedback("공격 선택을 취소했습니다.")
 	if str(status.get("view_mode",""))=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
 		var active_route:Dictionary=session.exploration_route_state()
@@ -2035,8 +2067,21 @@ func _on_product_direction(direction:Vector2i)->void:
 	else:_on_cell(destination)
 
 func _on_product_attack()->void:
-	var status:Dictionary=session.party_status();var enemy_id:=_product_adjacent_enemy_id(status)
-	if enemy_id>0:_on_actor(enemy_id)
+	var status:Dictionary=session.party_status()
+	if bool(status.get("terminal",false)) or bool(_current_run_progress().get("terminal",false)):return
+	var adjacent:=_product_adjacent_enemies(status)
+	if adjacent.is_empty():
+		_product_attack_targeting=false
+		_show_product_command_feedback("인접한 적이 없습니다.")
+		return
+	if adjacent.size()==1:
+		_product_attack_targeting=false;_on_actor(int(adjacent[0]));return
+	_product_attack_targeting=true;selected_target_id=-1
+	_show_product_command_feedback("공격할 적을 터치하세요.")
+
+func _show_product_command_feedback(message:String)->void:
+	notice_text=message;action_feedback_text=message
+	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
 	var status:Dictionary=session.party_status()
@@ -2278,6 +2323,7 @@ func _status_label(status_id:String)->String:
 
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
+	_product_attack_targeting=false
 	_cancel_product_auto_explore("auto_explore_modal",false)
 	_cancel_route_for_user_interruption()
 	var detail:Dictionary=session.inspect_party_member(member_id)
@@ -2321,7 +2367,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 
 func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
-	member_detail_modal.visible=false;member_detail_entity_id=-1
+	member_detail_modal.visible=false;member_detail_entity_id=-1;_product_attack_targeting=false
 	grid.modal_open=record_modal.visible or map_overlay.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
@@ -2352,6 +2398,44 @@ func _apply_member_detail_tab()->void:
 	member_item_window.visible=item_selected
 	member_detail_dismiss.visible=not skill_selected and not item_selected and member_detail_dismiss_available
 	member_detail_candidate_action.visible=not skill_selected and not item_selected and member_detail_candidate_available
+	_sync_member_detail_scroll_children()
+	_reflow_member_detail_scroll()
+
+func _sync_member_detail_scroll_children()->void:
+	if member_detail_scroll_content==null or member_detail_tab_stash==null:return
+	var desired:Array[Control]=[]
+	if member_item_window.visible:
+		desired=[member_item_window]
+	elif member_progression_window.visible:
+		desired=[member_progression_window]
+	else:
+		desired=[member_status_window,member_detail_body]
+	var managed:Array[Control]=[member_progression_window,member_item_window,
+		member_status_window,member_detail_body]
+	for control in managed:
+		if control==null or control in desired:continue
+		if control.get_parent()!=member_detail_tab_stash:control.reparent(member_detail_tab_stash)
+	if desired.size()==1:
+		# A single tall ITEM/SKILL folio is the ScrollContainer's direct child.
+		# Keeping an empty VBoxContainer as an intermediary left its stale cached
+		# minimum in the scrollbar range even after the inactive folios moved away.
+		if member_detail_scroll_content.get_parent()==member_detail_scroll:
+			member_detail_scroll_content.reparent(member_detail_tab_stash)
+		var folio:=desired[0]
+		if folio.get_parent()!=member_detail_scroll:folio.reparent(member_detail_scroll)
+		member_detail_scroll.move_child(folio,0)
+		folio.update_minimum_size()
+		return
+	# STATUS has two independent controls, so retain the shared VBox only for it.
+	for index in range(desired.size()):
+		var control:=desired[index]
+		if control.get_parent()!=member_detail_scroll_content:
+			control.reparent(member_detail_scroll_content)
+		member_detail_scroll_content.move_child(control,index)
+	if member_detail_scroll_content.get_parent()!=member_detail_scroll:
+		member_detail_scroll_content.reparent(member_detail_scroll)
+	member_detail_scroll.move_child(member_detail_scroll_content,0)
+	member_detail_scroll_content.update_minimum_size()
 
 func _on_training_mode_cycle(skill_id:String)->void:
 	if member_detail_entity_id<=0:return
@@ -2391,34 +2475,52 @@ func _update_progression_window(progression:Variant)->void:
 		int(progression.get("xp_total",0)),int(progression.get("next_level_threshold",0))]
 	member_progression_xp.max_value=maxi(1,int(progression.get("xp_required",1)))
 	member_progression_xp.value=int(progression.get("xp_current",0))
-	member_progression_stats.text="숙련 효과는 명중·피해에 적용 · 장비는 아이템 탭"
+	var equipment:Dictionary=progression.get("equipment",{}) \
+		if progression.get("equipment",{}) is Dictionary else {}
+	var equipped_proficiency:=str(equipment.get("proficiency_id",""))
+	var equipped_label:=str(equipment.get("weapon_label","없음"))
+	member_progression_stats.text="장착 숙련 · %s · 명중·피해 적용 · 장비는 아이템 탭"%equipped_label
 	for skill_value in progression.get("skills",[]):
 		if not skill_value is Dictionary:continue
 		var skill:Dictionary=skill_value;var skill_id:=str(skill.get("skill_id",""))
 		if not member_progression_skill_rows.has(skill_id):continue
 		var row:Dictionary=member_progression_skill_rows[skill_id]
 		var mode:=str(skill.get("training_mode","NORMAL"))
+		var equipped:=not equipped_proficiency.is_empty() and skill_id==equipped_proficiency
 		var weight:=int(skill.get("raw_weight",ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
 		var effect_text:=str(skill.get("effect_label","")).replace("명중 ","명중").replace("피해 ","피해").replace(" · ","·")
 		(row.rank as Label).text="R%02d"%int(skill.get("rank",0))
 		(row.name as Label).text=str(skill.get("label","기술"))
 		(row.effect as Label).text=effect_text
-		(row.mode as Label).text="%s×%d"%[str(skill.get("training_mode_label","보통")),weight]
+		var mode_label:="중지" if mode=="OFF" else str(skill.get("training_mode_label","보통"))
+		(row.mode as Label).text="%s%s×%d"%[
+			"장착·" if equipped else "",mode_label,weight]
 		(row.xp as Label).text="%d/%d"%[int(skill.get("training_current",0)),
 			maxi(1,int(skill.get("training_required",1)))]
-		(row.title as Button).tooltip_text="터치하여 %s로 변경"%ProgressionRegistryScript.mode_label(
-			ProgressionRegistryScript.next_training_mode(mode))
-		_apply_skill_ledger_style(row.title,row.mode,mode)
+		(row.title as Button).tooltip_text=("장착 무기 숙련 · " if equipped else (
+			"훈련 중지 · " if mode=="OFF" else ""))+"터치하여 %s로 변경" \
+			%ProgressionRegistryScript.mode_label(ProgressionRegistryScript.next_training_mode(mode))
+		_apply_skill_ledger_style(row.title,row.mode,mode,equipped,row.name,row.panel)
 	_reflow_member_detail_scroll()
 
-func _apply_skill_ledger_style(button:Button,mode_label:Label,mode:String)->void:
+func _apply_skill_ledger_style(button:Button,mode_label:Label,mode:String,
+		equipped:bool=false,name_label:Label=null,panel:PanelContainer=null)->void:
 	var clear:=AsciiFrameScript.borderless_surface(Color("#00000000"),0)
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		button.add_theme_stylebox_override(state,clear)
-	var tone:=AsciiFrameScript.BRASS if mode=="FOCUS" else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.CYAN)
+	var tone:=AsciiFrameScript.BRASS if equipped or mode=="FOCUS" \
+		else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.CYAN)
 	mode_label.add_theme_color_override("font_color",tone)
 	button.set_meta("no_button_chrome",true);button.set_meta("raw_training_weight",
 		int(ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
+	button.set_meta("equipped_proficiency",equipped)
+	button.set_meta("training_paused",mode=="OFF")
+	if name_label!=null:
+		name_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if equipped \
+			else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.INK))
+	if panel!=null:
+		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(
+			AsciiFrameScript.SURFACE if equipped else AsciiFrameScript.SURFACE_DEEP,0))
 
 func _toggle_weapon_mastery_category()->void:
 	member_skill_category_expanded=not member_skill_category_expanded
@@ -2450,26 +2552,48 @@ func _reflow_member_detail_scroll()->void:
 			# Only one ledger window is visible at once. Publish its current combined
 			# minimum immediately so the ScrollContainer does not remain one layout pass
 			# behind after an ITEM tab switch or a SKILL category collapse/re-expand.
-			var active_window:Control=member_item_window if member_item_window.visible \
-				else (member_progression_window if member_progression_window.visible else null)
-			content.custom_minimum_size.y=active_window.get_combined_minimum_size().y \
-				if active_window!=null else 0.0
+			if content==member_item_window or content==member_progression_window:
+				content.custom_minimum_size.y=0.0
+			else:content.custom_minimum_size.y=_member_detail_active_children_minimum(content)
 			content.update_minimum_size()
 	member_detail_scroll.queue_sort()
 	call_deferred("_clamp_member_detail_scroll")
+
+func _resize_member_detail_scroll_content(content:Control)->void:
+	if content==null:return
+	var active_minimum:=content.get_combined_minimum_size().y if content==member_item_window \
+		or content==member_progression_window else _member_detail_active_children_minimum(content)
+	var viewport_minimum:=member_detail_scroll.size.y if member_detail_scroll!=null else 0.0
+	var target_height:=maxf(active_minimum,viewport_minimum)
+	if content!=member_item_window and content!=member_progression_window:
+		content.custom_minimum_size.y=target_height
+	# `custom_minimum_size` alone cannot shrink a ScrollContainer child whose old
+	# size was allocated for a different tab. Force the sole content rect down to
+	# the active folio height so its scrollbar maximum ends at the action row.
+	content.size=Vector2(content.size.x,target_height)
+	content.update_minimum_size()
+
+func _member_detail_active_children_minimum(content:Control)->float:
+	var total:=0.0;var count:=0
+	for child in content.get_children():
+		var child_control:=child as Control
+		if child_control==null:continue
+		if count>0:total+=float(content.get_theme_constant("separation"))
+		total+=child_control.get_combined_minimum_size().y
+		count+=1
+	return total
 
 func _clamp_member_detail_scroll()->void:
 	if member_detail_scroll==null:return
 	if member_detail_scroll.get_child_count()>0:
 		var content:=member_detail_scroll.get_child(0) as Control
-		var active_window:Control=member_item_window if member_item_window.visible \
-			else (member_progression_window if member_progression_window.visible else null)
-		if content!=null and active_window!=null:
-			# This deferred pass runs after the active VBox has measured rebuilt rows.
-			var measured_height:=maxf(active_window.size.y,
-				active_window.get_combined_minimum_size().y)
-			content.custom_minimum_size.y=measured_height
-			content.update_minimum_size()
+		if content!=null:
+			# `size.y` can be a stale allocation from a previously expanded item
+			# ledger. Publishing that old value creates a blank tail after the action
+			# row, so ScrollContainer reaches its maximum before [사용]/[버리기] are
+			# actually visible. The active window's fresh combined minimum is the
+			# sole-scroll-content contract for the current tab.
+			_resize_member_detail_scroll_content(content)
 			# Re-enter AUTO after the sole child's current minimum is known. Without
 			# this, Godot exposes the previous tab/category's max and page for a frame.
 			member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_SHOW_NEVER
@@ -2479,6 +2603,8 @@ func _clamp_member_detail_scroll()->void:
 
 func _finish_member_detail_scroll_clamp()->void:
 	if member_detail_scroll==null:return
+	if member_detail_scroll.get_child_count()>0:
+		_resize_member_detail_scroll_content(member_detail_scroll.get_child(0) as Control)
 	var bar:=member_detail_scroll.get_v_scroll_bar()
 	var maximum_scroll:=maxi(0,int(bar.max_value-bar.page))
 	member_detail_scroll.scroll_vertical=mini(member_detail_scroll.scroll_vertical,
@@ -2520,9 +2646,32 @@ func _update_item_inventory_ledger()->void:
 			"%02d  %s"%[index+1,_item_row_text(row)],false)
 	var selected_equipped:=not member_item_selected_slot.is_empty()
 	var has_selection:=not member_item_selected_id.is_empty()
+	var selected_row:=_selected_item_ledger_row(dto)
 	member_item_equip_button.disabled=not has_selection or selected_equipped
 	member_item_unequip_button.disabled=not selected_equipped
+	member_item_use_button.visible=_is_healing_item_row(selected_row)
+	member_item_use_button.disabled=not has_selection or selected_equipped \
+		or not session.has_method("use_inventory_item")
 	member_item_drop_button.disabled=not has_selection or selected_equipped
+
+func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
+	if member_item_selected_id.is_empty():return {}
+	var rows:Array=[]
+	var equipped_rows:Variant=dto.get("equipment_slots",[])
+	var backpack_rows:Variant=dto.get("backpack_rows",[])
+	if equipped_rows is Array:rows.append_array(equipped_rows)
+	if backpack_rows is Array:rows.append_array(backpack_rows)
+	for row_value in rows:
+		if row_value is Dictionary and str(row_value.get("instance_id",""))==member_item_selected_id:
+			return row_value
+	return {}
+
+func _is_healing_item_row(row:Dictionary)->bool:
+	if row.is_empty() or bool(row.get("empty",false)):return false
+	if str(row.get("use_kind",""))=="HEALING":return true
+	# Transitional DTO fallback: older item presentation rows do not expose
+	# `use_kind`, but both supported healing-potion ids are still authoritative.
+	return str(row.get("definition_id","")) in ["POTION_HEALING","POTION_UNSPECIFIED"]
 
 func _item_row_text(row:Dictionary)->String:
 	if bool(row.get("empty",false)):return "- 비어 있음 -"
@@ -2568,6 +2717,27 @@ func _on_item_unequip_selected()->void:
 
 func _on_item_drop_selected()->void:
 	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
+
+func _on_item_use_selected()->void:
+	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
+		notice_text="이 아이템은 지금 사용할 수 없습니다."
+		action_feedback_text=notice_text;return
+	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
+		action_feedback_text=notice_text;_request_refresh();return
+	var healed:=int(result.get("healed_amount",0))
+	notice_text="회복 물약 사용 · HP +%d"%healed
+	action_feedback_text=notice_text
+	member_item_selected_id="";member_item_selected_slot=""
+	_record_result(result,true)
+	# A potion advances canonical time, so refresh cards, compact log, inventory,
+	# and overlay effects together while leaving the detail modal and its scroll
+	# surface in place.
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
+	_update_item_window(progression.get("equipment",{}));_update_progression_window(progression)
+	_apply_member_detail_tab();_reflow_member_detail_scroll();_refresh()
 
 func _on_item_operation_result(result:Dictionary)->void:
 	if not bool(result.get("accepted",false)):
@@ -2734,7 +2904,7 @@ func _reset_run_ui_transients()->void:
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
 	_product_auto_last_hop_started_msec=-1;route_last_hop_started_msec=-1
-	_product_auto_stop_feedback=""
+	_product_auto_stop_feedback="";_product_attack_targeting=false
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
@@ -2908,6 +3078,10 @@ func _on_cell(position:Vector2i)->void:
 	_hide_tile_popover()
 	var progress:=_current_run_progress()
 	if bool(progress.get("terminal",false)) or bool(status.terminal):return
+	if _product_attack_targeting:
+		_product_attack_targeting=false
+		_show_product_command_feedback("공격 선택을 취소했습니다.")
+		_sync_product_control_state(status);return
 	if status.view_mode=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
 		var tapped_items:Array=session.visible_ground_items_at(position)
@@ -2980,6 +3154,12 @@ func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
+	if _product_attack_targeting:
+		var adjacent:=_product_adjacent_enemies(status)
+		if entity_id not in adjacent:
+			_show_product_command_feedback("인접한 적을 선택하세요.");return
+		_product_attack_targeting=false
+		if _submit_product_melee(entity_id,status):return
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("rescue_candidate_ids",[]):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
@@ -3016,15 +3196,34 @@ func _on_actor(entity_id:int)->void:
 		_request_refresh(); return
 	if entity_id in status.visible_enemy_ids:
 		selected_target_id=entity_id; _clear_move_preview()
-		if status.view_mode=="COMBAT" and not bool(status.terminal):
-			if auto_orchestration_enabled:_stage_auto_combat_action("MELEE",[],entity_id)
-			else:_record_result(session.set_actor_action(selected_member_id,"MELEE",[],entity_id),false,"%s 공격 불가"%_selected_name())
+		_submit_product_melee(entity_id,status)
 		_request_refresh(); return
 	if entity_id in status.party_member_ids:
 		if auto_orchestration_enabled and status.view_mode=="COMBAT" and entity_id!=int(status.protagonist_id):
 			_cancel_auto_pending(true);auto_override_edit=true
 		selected_member_id=entity_id;selected_target_id=-1;notice_text="파티원을 선택했습니다."
 		action_feedback_text="%s 선택 · 행동을 지정하세요."%_selected_name();_clear_move_preview();_request_refresh()
+
+func _submit_product_melee(entity_id:int,status:Dictionary)->bool:
+	if bool(status.get("terminal",false)):return false
+	var current_status:=status
+	# CONTACT is an internal transition for the solo product. It never constructs
+	# a deployment or a separate battle surface; the same tap continues into the
+	# ordinary same-grid melee action when the backend accepts it.
+	if str(current_status.get("view_mode",""))!="COMBAT" \
+			and str(current_status.get("safe_phase",""))=="CONTACT" \
+			and _is_solo_product_session() and session.has_method("enter_solo_combat"):
+		var entered:Dictionary=session.enter_solo_combat()
+		if not bool(entered.get("accepted",false)):
+			_show_product_command_feedback(str(entered.get("message","공격을 준비할 수 없습니다.")))
+			return false
+		current_status=session.party_status()
+	if str(current_status.get("view_mode",""))!="COMBAT":
+		_show_product_command_feedback("지금은 공격할 수 없습니다.")
+		return false
+	if auto_orchestration_enabled:_stage_auto_combat_action("MELEE",[],entity_id)
+	else:_record_result(session.set_actor_action(selected_member_id,"MELEE",[],entity_id),false,"%s 공격 불가"%_selected_name())
+	return true
 
 func _is_locked_visible_run_exit(position:Vector2i,progress:Dictionary)->bool:
 	if not bool(progress.get("available",false)):return false
@@ -3204,6 +3403,7 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 		for raw in result.get("visual_effects",[]):
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
 	if bool(result.get("accepted",false)):
+		_product_attack_targeting=false
 		# Only a committed live UI action may arm the reward highlight. A loaded
 		# save or an arbitrary refresh synchronizes the badge without replaying it.
 		if _run_progress_initialized and not _observed_reward_granted:
@@ -3447,7 +3647,7 @@ func _combat_log_text(history:Dictionary)->String:
 		var meaningful_messages:Array[String]=[]
 		for row in group.get("rows",[]):
 			if not row is Dictionary:continue
-			var message:=str(row.get("message","")).strip_edges()
+			var message:=_combat_log_row_message(row)
 			if not message.is_empty() and not _is_persistent_log_filler(message):
 				meaningful_messages.append(message)
 		if meaningful_messages.is_empty():continue
@@ -3458,7 +3658,7 @@ func _combat_log_text(history:Dictionary)->String:
 	return "\n".join(lines)
 
 func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
-	var lines:Array[String]=[]
+	var damage_lines:Array[String]=[];var other_lines:Array[String]=[]
 	var groups:Variant=history.get("groups",[])
 	if groups is Array:
 		for group_index in range(groups.size()-1,-1,-1):
@@ -3469,14 +3669,19 @@ func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->Stri
 			for row_index in range(rows.size()-1,-1,-1):
 				var row:Variant=rows[row_index]
 				if not row is Dictionary:continue
-				var message:=str(row.get("message","")).strip_edges().replace("\n"," ")
+				var message:=_combat_log_row_message(row).replace("\n"," ")
 				if message.is_empty() or _is_persistent_log_filler(message):continue
-				# The compact surface is a live feed: the most recently committed
-				# event is line one, followed by the immediately preceding event.
-				lines.append(message)
-				if lines.size()>=2:return "\n".join(lines)
-	if not lines.is_empty():return "\n".join(lines)
-	return ""
+				if str(row.get("type","")).begins_with("combat.") \
+						and str(row.get("type","")).ends_with("_damage"):
+					damage_lines.append(message)
+				else:other_lines.append(message)
+	# Two-line mobile feed prioritizes resolved damage over action declarations,
+	# so a hero hit and enemy counter-hit cannot be displaced by their MELEE rows.
+	var lines:Array[String]=damage_lines.slice(0,mini(2,damage_lines.size()))
+	for message in other_lines:
+		if lines.size()>=2:break
+		lines.append(message)
+	return "\n".join(lines)
 
 func _full_meaningful_record_text(history:Dictionary)->String:
 	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
@@ -3486,7 +3691,7 @@ func _full_meaningful_record_text(history:Dictionary)->String:
 			var messages:Array[String]=[]
 			for row in group.get("rows",[]):
 				if not row is Dictionary:continue
-				var message:=str(row.get("message","")).strip_edges()
+				var message:=_combat_log_row_message(row)
 				if not message.is_empty() and not _is_persistent_log_filler(message):messages.append(message)
 			if messages.is_empty():continue
 			lines.append("턴 %d · 시간 %d→%d"%[int(group.get("step_index",0)),
@@ -3494,6 +3699,23 @@ func _full_meaningful_record_text(history:Dictionary)->String:
 			lines.append_array(messages)
 	if lines.is_empty():return "아직 기록된 주요 사건이 없습니다."
 	return "\n".join(lines)
+
+func _combat_log_row_message(row:Dictionary)->String:
+	var message:=str(row.get("message","")).strip_edges()
+	var event_type:=str(row.get("type",""))
+	if not event_type.begins_with("combat.") or not event_type.ends_with("_damage"):
+		return message
+	# The session owns combat wording. A non-empty canonical message must flow
+	# unchanged into both compact and full history surfaces.
+	if not message.is_empty():return message
+	var attacker:=str(row.get("instigator_name","")).strip_edges()
+	var target:=str(row.get("target_name","")).strip_edges()
+	var magnitude:=maxi(0,int(row.get("magnitude",0)))
+	# Snapshot-era rows may lack the rendered sentence; only then use their own
+	# recorded attribution and magnitude as a presentation fallback.
+	if not attacker.is_empty() and not target.is_empty():
+		return "%s → %s · %d 피해"%[attacker,target,magnitude]
+	return ""
 
 func _is_persistent_log_filler(message:String)->bool:
 	var compact:=message.strip_edges()

@@ -17,11 +17,19 @@ const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
 const CAMERA_SETTLE_DURATION_MS := 70
 const TORCH_FLICKER_QUANTUM_MS := 125 # 8 Hz: intentionally below 10 Hz.
+const TORCH_ANIMATED_MAX_CELL_COUNT := 17
 const MAX_VISIBLE_TORCHES := 6
 const MAX_MEMORY_TORCHES := 6
 const TORCH_SPACING_CELLS := 5
+const TORCH_LIGHT_RADIUS_CELLS := 3
+const TORCH_POOL_BASE_ALPHA := 0.04
+const TORCH_POOL_GAIN_ALPHA := 0.11
+const TORCH_BRIGHTNESS_PHASES := [0.78,0.86,0.81,0.84]
 const TORCH_AMBER_HEX := "#f0a64d"
 const TORCH_GLYPH_HEX := "#ffd078"
+const FLOATING_AMOUNT_START_CELLS := 0.90
+const FLOATING_AMOUNT_TRAVEL_CELLS := 0.55
+const FLOATING_STACK_WINDOW_MS := 420
 const ACTOR_WORLD_GLYPH_OFFSET_Y := -0.105
 # The shared standing pose ends at 0.47. The world projection deliberately
 # extends below it, while its shifted figure bounds keep the feet inside the
@@ -74,10 +82,13 @@ var _pointer_gesture_cancelled := false
 var _pointer_gesture_generation := 0
 var _suppress_mouse_until_msec := -1
 var _static_projection_cache:Dictionary={}
+var _static_cell_content_cache:Dictionary={}
 var _static_projection_dirty:=true
 var _static_projection_rebuild_count:=0
+var _static_content_build_count:=0
+var _static_content_hit_count:=0
+var _static_content_cell_size:=-1.0
 var _static_observation_hash:=0
-var _static_occupancy_hash:=0
 var _actor_projection_hash:=0
 var _static_hash_initialized:=false
 var _occupied_visible_cells:Dictionary={}
@@ -99,11 +110,17 @@ func _ready() -> void:
 	set_process(false)
 
 func _on_torch_flicker_tick()->void:
-	if _visible_torch_count>0:queue_redraw()
+	if _visible_torch_count>0 and _torch_animation_enabled():queue_redraw()
+
+func _torch_animation_enabled()->bool:
+	# A 19-25 cell mobile camera otherwise repaints every static glyph eight times
+	# per second while idle. Keep the torch present, but freeze its tiny flicker at
+	# wide zooms where a full-canvas redraw is disproportionately expensive.
+	return visible_cell_count<=TORCH_ANIMATED_MAX_CELL_COUNT
 
 func _sync_torch_timer()->void:
 	if _torch_timer==null:return
-	if _visible_torch_count>0:
+	if _visible_torch_count>0 and _torch_animation_enabled():
 		if _torch_timer.is_stopped():_torch_timer.start()
 	elif not _torch_timer.is_stopped():_torch_timer.stop()
 
@@ -116,6 +133,8 @@ func _ensure_melee_vfx()->void:
 	add_child(melee_vfx)
 
 func _on_visual_geometry_changed()->void:
+	_static_cell_content_cache.clear()
+	_static_content_cell_size=-1.0
 	_invalidate_static_projection_cache()
 	queue_redraw()
 
@@ -128,6 +147,7 @@ func _exit_tree()->void:
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
+	var previous_cells:Dictionary=_cells
 	var previous_visible_cells:Dictionary={}
 	var previous_actors:Dictionary={}
 	var previous_visual_world:Dictionary={}
@@ -141,7 +161,7 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		if not previous_row.is_empty() \
 				and AsciiStyleScript.visibility_state(previous_row)=="VISIBLE":
 			previous_visible_cells[_key(previous_position)]=true
-	_cells.clear(); _actors.clear(); _ghosts.clear()
+	_cells={};_actors.clear();_ghosts.clear()
 	world_grid_size=Vector2i(maxi(1,int(observation.get("width",GRID_SIZE))),maxi(1,int(observation.get("height",GRID_SIZE))))
 	for raw in observation.get("cells",[]):
 		if not raw is Dictionary or not raw.get("position") is Array \
@@ -162,7 +182,10 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		row.erase("ground_items")
 		row["ground_item_glyph"]=str(ground_item_spec.glyph) \
 			if bool(ground_item_spec.visible) else ""
-		_cells[_key(p)]=row
+		var cell_key:=_key(p)
+		if not previous_cells.has(cell_key) or previous_cells[cell_key]!=row:
+			_invalidate_static_cell_content_at(p)
+		_cells[cell_key]=row
 		if visibility_state=="VISIBLE":
 			for actor in raw.get("actors",[]):
 				if not actor is Dictionary:continue
@@ -177,6 +200,14 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		if bool(a.get("is_protagonist",false)) != bool(b.get("is_protagonist",false)): return bool(a.get("is_protagonist",false))
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
 		return int(a.get("entity_id",-1)) < int(b.get("entity_id",-1)))
+	for previous_key_value in previous_cells:
+		var previous_key:=str(previous_key_value)
+		if _cells.has(previous_key):continue
+		var parts:=previous_key.split(":")
+		if parts.size()==2:_invalidate_static_cell_content_at(
+			Vector2i(int(parts[0]),int(parts[1])))
+	_refresh_dynamic_occupancy()
+	_prune_static_cell_content_cache()
 	var visible_actor_keys: Dictionary = {}
 	for actor in _actors:
 		if str(actor.get("display_role","")).to_upper()=="FOLLOWER":continue
@@ -202,21 +233,14 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	# FOV, feature or occupancy projection. Retain that expensive 15x15 static
 	# projection until an actual presentation input changes.
 	var next_observation_hash:=hash([world_grid_size,_cells])
-	var occupied_keys:Array[String]=[]
-	for actor in _actors:
-		occupied_keys.append(_key(_position_from_actor(actor)))
-	occupied_keys.sort()
-	var next_occupancy_hash:=hash(occupied_keys)
 	var next_actor_projection_hash:=_visual_actor_projection_hash()
 	var projection_changed:=not _static_hash_initialized \
-		or next_observation_hash!=_static_observation_hash \
-		or next_occupancy_hash!=_static_occupancy_hash
+		or next_observation_hash!=_static_observation_hash
 	if projection_changed:
 		_invalidate_static_projection_cache()
 	if projection_changed or next_actor_projection_hash!=_actor_projection_hash:
 		queue_redraw()
 	_static_observation_hash=next_observation_hash
-	_static_occupancy_hash=next_occupancy_hash
 	_actor_projection_hash=next_actor_projection_hash
 	_static_hash_initialized=true
 	_update_process_enabled()
@@ -308,6 +332,10 @@ func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:D
 func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=[])->void:
 	cancel_pointer_gesture()
 	visible_cell_count=clampi(cell_count,1,mini(world_grid_size.x,world_grid_size.y))
+	# The flicker timer is independent of projection rebuilds.  Reconcile it as
+	# soon as a zoom request lands so a just-wide view cannot retain the former
+	# 8 Hz redraw loop until the next draw frame builds its torch list.
+	_sync_torch_timer()
 	if visible_cell_count>=world_grid_size.x and visible_cell_count>=world_grid_size.y:
 		view_origin=Vector2i.ZERO;_invalidate_static_projection_cache();queue_redraw(); return
 	var minimum:=Vector2i(world_grid_size.x-1,world_grid_size.y-1); var maximum:=Vector2i.ZERO; var found:=false
@@ -347,6 +375,9 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		carried_offset_cells=Vector2(camera_settle_draw_spec(now).get(
 			"offset_px",Vector2.ZERO))/maxf(1.0,cell_size_px())
 	visible_cell_count=clampi(cell_count,1,64)
+	# See set_view_window: a zoom change must stop/start the idle flicker timer
+	# immediately, not only after the deferred static projection rebuild.
+	_sync_torch_timer()
 	if _hero_camera_position!=Vector2i(-1,-1) and hero_position!=_hero_camera_position:
 		var delta:=hero_position-_hero_camera_position
 		if maxi(absi(delta.x),absi(delta.y))==1:
@@ -421,6 +452,8 @@ func play_effects(rows:Array)->int:
 		if str(raw.get("kind",""))=="MISS":
 			_play_miss_attacker_swing(raw)
 		var row:Dictionary=raw.duplicate(true);row["started_at_ms"]=started_at
+		if str(row.get("kind",""))=="FLOATING_AMOUNT":
+			row["floating_stack_slot"]=_next_floating_stack_slot(row,started_at)
 		_active_visual_effects.append(row);_played_effect_ids[effect_id]=true
 		_played_effect_event_ids[event_id]=true;appended+=1
 	if appended==0:return 0
@@ -429,6 +462,18 @@ func play_effects(rows:Array)->int:
 		return str(a.get("effect_id",""))<str(b.get("effect_id","")))
 	if _active_visual_effects.size()>48:_active_visual_effects=_active_visual_effects.slice(_active_visual_effects.size()-48)
 	_update_process_enabled();_ensure_melee_vfx();melee_vfx.queue_redraw();return appended
+
+func _next_floating_stack_slot(effect:Dictionary,started_at_ms:int)->int:
+	var world_position:=_array_to_world_position(effect.get("world_position",[]))
+	var rapid_count:=0
+	for active in _active_visual_effects:
+		if str(active.get("kind",""))!="FLOATING_AMOUNT" \
+				or _array_to_world_position(active.get("world_position",[]))!=world_position:
+			continue
+		if absi(started_at_ms-int(active.get("started_at_ms",started_at_ms))) \
+				<=FLOATING_STACK_WINDOW_MS:
+			rapid_count+=1
+	return rapid_count%5
 
 func _play_miss_attacker_swing(raw:Dictionary)->void:
 	_ensure_melee_vfx()
@@ -490,8 +535,23 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var age_ratio:=clampf(float(elapsed_ms)/float(duration_ms),0.0,1.0)
 	var eased_progress:=1.0-pow(1.0-age_ratio,3.0)
 	var pixel_center:=world_to_pixel_center(world_position)
+	var font_size:=15 if kind=="MISS" and product_style else (maxi(24,int(cell_size_px()*0.82)) \
+		if kind=="FLOATING_AMOUNT" and product_style else (16 if kind=="MISS" else 18))
+	var camera_spec:=camera_settle_draw_spec(now)
+	var camera_offset:Vector2=camera_spec.offset_px
+	var floating_stack_slot:=clampi(int(effect.get("floating_stack_slot",0)),0,4)
+	var floating_start_cells:=FLOATING_AMOUNT_START_CELLS
 	if product_style and kind=="FLOATING_AMOUNT":
-		pixel_center.y-=cell_size_px()*(0.42+0.90*eased_progress)
+		var horizontal_cells:float=float([0.0,-0.26,0.26,-0.42,0.42][floating_stack_slot])
+		var vertical_cells:float=float([0.0,0.16,0.16,0.31,0.31][floating_stack_slot])
+		floating_start_cells+=vertical_cells
+		pixel_center.x+=cell_size_px()*horizontal_cells
+		pixel_center.y-=cell_size_px()*(floating_start_cells \
+			+FLOATING_AMOUNT_TRAVEL_CELLS*eased_progress)
+		# The overlay adds camera_offset after this spec. Clamp the final baseline
+		# so top-row damage remains fully readable instead of clipping off-screen.
+		var top_guard:=grid_rect().position.y+maxf(4.0,float(font_size)*0.58)
+		pixel_center.y=maxf(pixel_center.y,top_guard-camera_offset.y)
 	elif product_style and kind=="MISS":
 		pixel_center.y-=cell_size_px()*(0.32+0.45*eased_progress)
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
@@ -510,7 +570,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
 		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
-		"pixel_center":pixel_center,"camera_offset_px":camera_settle_draw_spec(now).offset_px,
+		"pixel_center":pixel_center,"camera_offset_px":camera_offset,
 		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
 		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
 		"flash_active":product_style and kind=="HIT_FLASH" and elapsed_ms<=125,
@@ -518,8 +578,8 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"line_width":4.0 if kind=="DEATH" else 3.0,
 		"radius":cell_size_px()*0.28,
 		"text":str(effect.get("text","")),
-		"font_size":15 if kind=="MISS" and product_style else (maxi(24,int(cell_size_px()*0.82)) \
-			if kind=="FLOATING_AMOUNT" and product_style else (16 if kind=="MISS" else 18)),
+		"font_size":font_size,"floating_stack_slot":floating_stack_slot,
+		"floating_start_cells":floating_start_cells,
 		"duration_ms":duration_ms}.duplicate(true)
 
 
@@ -985,7 +1045,7 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 	var item:Dictionary=AsciiStyleScript.item_presentation_spec(
 		str(row.get("ground_item_glyph","")))
 	if not bool(item.visible):return hidden.duplicate(true)
-	var rect:=world_cell_rect(position);var occupied:=bool(cached.get("occupied",false))
+	var rect:=world_cell_rect(position);var occupied:=_cell_is_visually_occupied(position)
 	var font_ratio:=float(item.corner_font_ratio) if occupied else float(item.font_ratio)
 	var font_size:=maxi(8,int(floor(rect.size.x*font_ratio)))
 	var font:=get_theme_default_font()
@@ -1053,13 +1113,61 @@ func _compute_diorama_cell_spec(position:Vector2i)->Dictionary:
 	}
 	return DioramaScript.cell_spec(position,_cells.get(_key(position),{}),neighbors)
 
+func _refresh_dynamic_occupancy()->void:
+	_occupied_visible_cells.clear()
+	for actor in _actors:
+		var position:=_position_from_actor(actor)
+		if position!=Vector2i(-1,-1):_occupied_visible_cells[_key(position)]=true
+
+func _cell_is_visually_occupied(position:Vector2i)->bool:
+	return _occupied_visible_cells.has(_key(position))
+
+func _prune_static_cell_content_cache()->void:
+	# The rich DTO is viewport bounded. Retain only its overlap with the previous
+	# frame so a long route cannot grow a second world-sized presentation cache.
+	for key_value in _static_cell_content_cache.keys():
+		if not _cells.has(str(key_value)):_static_cell_content_cache.erase(key_value)
+
+func _invalidate_static_cell_content_at(position:Vector2i)->void:
+	_static_cell_content_cache.erase(_key(position))
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:
+		_static_cell_content_cache.erase(_key(position+direction))
+
+func _static_cell_content(position:Vector2i,cell_size:float)->Dictionary:
+	var key:=_key(position)
+	var cached:Dictionary=_static_cell_content_cache.get(key,{})
+	var cacheable:=_cells.has(key)
+	if cacheable and cached.has("content"):
+		_static_content_hit_count+=1
+		return cached.content
+	var row:Dictionary=_cells.get(_key(position),{})
+	var neighbors:={
+		"N":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.UP),{})),
+		"E":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.RIGHT),{})),
+		"S":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.DOWN),{})),
+		"W":DioramaScript.sanitize_observed_cell(_cells.get(_key(position+Vector2i.LEFT),{})),
+	}
+	var terrain:=AsciiStyleScript.terrain_spec(row)
+	var cell_spec:=DioramaScript.cell_spec(position,row,neighbors)
+	var depth:=DioramaScript.terrain_depth_spec(row,cell_size)
+	var wall_role:=DioramaScript.wall_role_spec(int(cell_spec.get("connected_mask",0)),
+		int(cell_spec.get("exposed_mask",0))) if str(terrain.get("terrain_id",""))=="wall" else {}
+	var content:={"terrain":terrain,"cell_spec":cell_spec,"depth":depth,
+		"wall_role":wall_role}
+	if cacheable:_static_cell_content_cache[key]={"content":content}
+	_static_content_build_count+=1
+	return content
+
 func _ensure_static_projection_cache()->void:
 	if not _static_projection_dirty:return
-	_static_projection_cache.clear();_occupied_visible_cells.clear()
-	for actor in _actors:
-		var actor_position:=_position_from_actor(actor)
-		if is_world_cell_visible(actor_position):_occupied_visible_cells[_key(actor_position)]=true
+	_static_projection_cache.clear()
 	var cell_size:=cell_size_px()
+	# Diorama depth contains pixel-space extrusion. It is therefore content-cache
+	# data only while the cell size agrees; keeping it across a zoom would reuse
+	# the old wall thickness and side offset.
+	if not is_equal_approx(_static_content_cell_size,cell_size):
+		_static_cell_content_cache.clear()
+		_static_content_cell_size=cell_size
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var key:=_key(position)
@@ -1073,17 +1181,17 @@ func _ensure_static_projection_cache()->void:
 				continue
 			var row:Dictionary=_cells.get(key,{})
 			var state:=_diorama_visibility_state(row)
-			var terrain:=AsciiStyleScript.terrain_spec(row)
-			var cell_spec:=_compute_diorama_cell_spec(position)
-			var depth:=DioramaScript.terrain_depth_spec(row,cell_size)
+			var content:=_static_cell_content(position,cell_size)
+			var terrain:Dictionary=content.terrain
+			var cell_spec:Dictionary=content.cell_spec
+			var depth:Dictionary=(content.depth as Dictionary).duplicate(false)
 			depth["position"]=[position.x,position.y];depth["top_rect"]=rect
 			depth["side_rect"]=Rect2(rect.position+Vector2(depth.side_offset),rect.size) \
 				if bool(depth.raised) else Rect2()
-			var wall_role:=DioramaScript.wall_role_spec(int(cell_spec.get("connected_mask",0)),
-				int(cell_spec.get("exposed_mask",0))) if str(terrain.get("terrain_id",""))=="wall" else {}
+			var wall_role:Dictionary=content.wall_role
 			_static_projection_cache[key]={"position":position,"in_world":true,"rect":rect,
 				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
-				"depth":depth,"wall_role":wall_role,"occupied":_occupied_visible_cells.has(key),
+				"depth":depth,"wall_role":wall_role,
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
 	_rebuild_torch_cache()
 	_static_projection_dirty=false;_static_projection_rebuild_count+=1
@@ -1135,21 +1243,23 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	_ensure_static_projection_cache()
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
+	var animate_wide_safe:=_torch_animation_enabled()
 	var rows:Array[Dictionary]=[]
 	for position in _torch_positions:
 		var cached:Dictionary=_static_projection_cache.get(_key(position),{})
 		var state:=str(cached.get("visibility_state","UNSEEN"))
 		if state=="UNSEEN" or not is_world_cell_visible(position):continue
-		var animated:=state=="VISIBLE"
+		var animated:=state=="VISIBLE" and animate_wide_safe
 		var phase:=(tick+DioramaScript.visual_hash(position,313))%4 if animated else 0
-		var brightness:float=float([0.92,1.0,0.95,0.98][phase]) if animated else 0.20
+		var brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) if animated \
+			else (0.80 if state=="VISIBLE" else 0.20)
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
 			"visible":true,"animated":animated,"glyph":"!","glyph_count":1,
 			"glyph_hex":TORCH_GLYPH_HEX if animated else "#4d463c",
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
-			"pool_radius_cells":4.0 if animated else 0.0,
-			"draw_light_pool":animated,"draw_image":false,"texture":null,
+			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS) if state=="VISIBLE" else 0.0,
+			"draw_light_pool":state=="VISIBLE","draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
 
@@ -1170,22 +1280,28 @@ func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
 		if str(torch_cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
 		var distance:=maxi(absi(position.x-torch_position.x),absi(position.y-torch_position.y))
-		if distance>4:continue
-		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4
-		var torch_brightness:float=float([0.92,1.0,0.95,0.98][phase])
-		var strength:=torch_brightness*maxf(0.0,1.0-float(distance)/4.75)
+		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
+		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4 \
+			if _torch_animation_enabled() else 0
+		var torch_brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) \
+			if _torch_animation_enabled() else 0.80
+		var strength:=torch_brightness*clampf(1.0-float(distance) \
+			/float(TORCH_LIGHT_RADIUS_CELLS)+0.12,0.0,1.0)
 		if strength>best_brightness:
 			best_brightness=strength;best_distance=distance
 	return {"active":best_brightness>0.0,"visibility_state":state,
 		"distance":best_distance if best_brightness>0.0 else -1,
 		"brightness":best_brightness,"color_hex":TORCH_AMBER_HEX,
-		"radius_cells":4.0,"composite_alpha":0.07+0.17*best_brightness}
+		"radius_cells":float(TORCH_LIGHT_RADIUS_CELLS),
+		"composite_alpha":TORCH_POOL_BASE_ALPHA+TORCH_POOL_GAIN_ALPHA*best_brightness}
 
 func torch_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
 	return {"cached_count":_torch_positions.size(),"visible_count":_visible_torch_count,
 		"max_visible":MAX_VISIBLE_TORCHES,"rebuild_count":_torch_cache_rebuild_count,
-		"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS)}.duplicate(true)
+		"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) \
+			if _torch_animation_enabled() else 0.0,
+		"timer_redraw_enabled":_torch_animation_enabled()}.duplicate(true)
 
 func _cached_static_cell(position:Vector2i)->Dictionary:
 	_ensure_static_projection_cache()
@@ -1195,7 +1311,10 @@ func static_projection_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
 	return {"cell_count":_static_projection_cache.size(),"viewport_capacity":
 		visible_cell_count*visible_cell_count,"rebuild_count":_static_projection_rebuild_count,
-		"dirty":_static_projection_dirty,"world_cell_count":_cells.size()}.duplicate(true)
+		"dirty":_static_projection_dirty,"world_cell_count":_cells.size(),
+		"content_cache_count":_static_cell_content_cache.size(),
+		"content_build_count":_static_content_build_count,
+		"content_hit_count":_static_content_hit_count}.duplicate(true)
 
 func terrain_depth_draw_spec(position:Vector2i)->Dictionary:
 	if not is_world_cell_visible(position):
@@ -1214,7 +1333,7 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 	var cached:=_cached_static_cell(position)
 	var light:Dictionary=cached.get("light",DioramaScript.quantized_light_spec(
 		position,_hero_camera_position,state))
-	var occupied:=bool(cached.get("occupied",false))
+	var occupied:=_cell_is_visually_occupied(position)
 	var visible:=bool(terrain.get("glyph_primary",false)) and state!="UNSEEN"
 	var rendered_glyph:=_diorama_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
 		*(0.46 if occupied else 1.0),state,light,true) if visible else Color(0,0,0,0)
@@ -1562,7 +1681,7 @@ func _draw_ground_pass(visibility_state:String)->void:
 			var terrain:Dictionary=cached.get("terrain",{})
 			if not bool(terrain.visible) or str(terrain.terrain_id)=="wall":continue
 			_draw_ground_surface(position,terrain,visibility_state,light,
-				bool(cached.get("occupied",false)))
+				_cell_is_visually_occupied(position))
 
 func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 		visibility_state:String,light:Dictionary,occupied:bool)->void:
@@ -1592,7 +1711,8 @@ func _draw_torch_light_pools()->void:
 			var light:=_torch_light_draw_spec_cached(position,now)
 			if not bool(light.active):continue
 			var amber:=Color(str(light.color_hex))
-			amber.a=float(light.get("composite_alpha",0.07+0.17*float(light.brightness)))
+			amber.a=float(light.get("composite_alpha",TORCH_POOL_BASE_ALPHA \
+				+TORCH_POOL_GAIN_ALPHA*float(light.brightness)))
 			var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
 			draw_rect(world_cell_rect(position).grow(overlap).intersection(grid_rect()),amber,true)
 
@@ -1605,7 +1725,7 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			var terrain:Dictionary=cached.get("terrain",{})
 			if str(terrain.terrain_id)=="wall":continue
 			_draw_terrain_glyph(world_cell_rect(position),terrain,
-				visibility_state,cached.get("light",{}),bool(cached.get("occupied",false)))
+				visibility_state,cached.get("light",{}),_cell_is_visually_occupied(position))
 
 func _draw_material_mark_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
@@ -1613,7 +1733,7 @@ func _draw_material_mark_pass(visibility_state:String)->void:
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
 			if str(cached.get("visibility_state",""))!=visibility_state \
-					or bool(cached.get("occupied",false)):continue
+					or _cell_is_visually_occupied(position):continue
 			var cell_spec:Dictionary=cached.get("cell_spec",{})
 			var mark:Dictionary=cell_spec.get("material_mark",{})
 			if not bool(mark.get("visible",false)):continue
@@ -1710,7 +1830,7 @@ func _draw_wall_torches()->void:
 		var center:Vector2=spec.pixel_center
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
 		# One ASCII glyph, confined to its wall cell. No image/texture primitive.
-		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.19*float(spec.brightness)
+		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.12*float(spec.brightness)
 		draw_circle(center+Vector2(0,cell_size_px()*0.10),cell_size_px()*0.18,glow)
 		var shadow:=Color("#1a0b04",0.92)
 		_draw_centered_text(get_theme_default_font(),str(spec.glyph),

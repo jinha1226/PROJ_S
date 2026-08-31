@@ -153,9 +153,18 @@ static func commit_use(inventory,instance_id:String)->Dictionary:
 	if source==null:return _rejected("inventory_item_missing")
 	var definition=RegistryScript.definition(source.definition_id)
 	if definition.category!="CONSUMABLE":return _rejected("item_not_consumable")
-	# No potion/scroll effect has been approved. Keeping this refusal atomic lets a
-	# future effect resolver become the only authority that consumes the quantity.
-	return _rejected("item_use_unimplemented")
+	if definition.use_kind=="NONE":return _rejected("item_use_unimplemented")
+	# Pure inventory authority only consumes one stack unit. Gameplay owns the
+	# health effect, keeping this kernel reusable and rollback-safe.
+	var next=_clone_inventory(inventory)
+	var target=next._item_ref(instance_id)
+	if target==null:return _rejected("inventory_item_missing")
+	if target.quantity>1:target.quantity-=1
+	else:_remove_backpack_item(next,instance_id)
+	var next_error:String=next.validation_error()
+	if not next_error.is_empty():return _rejected(next_error)
+	return _accepted({"inventory":next,"instance_id":instance_id,
+		"definition_id":str(source.definition_id),"use_kind":str(definition.use_kind)})
 
 
 static func combined_state_error(inventory,ground,world_bounds:Rect2i)->String:

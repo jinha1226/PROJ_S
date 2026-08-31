@@ -62,7 +62,7 @@ func preview(command):
 	return PreviewScript.new(_plan_action(command))
 
 
-func step(command):
+func step(command, supplied_rollback_memento: Variant = null):
 	var plan: Dictionary = _plan_action(command)
 	if not plan["accepted"]:
 		return StepResultScript.new(false, false, plan["reason"], [], {
@@ -73,10 +73,14 @@ func step(command):
 	# A scheduled handler is allowed to reject its complete frozen batch. Keep a
 	# canonical pre-step image so such a rejection also rolls back the command,
 	# earlier same-time cadence work, time, schedules, IDs and RNG.
-	var rollback_value: Variant = world.snapshot()
+	var rollback_value: Variant = supplied_rollback_memento \
+		if supplied_rollback_memento != null else world.rollback_memento()
 	if not rollback_value is Dictionary or rollback_value.is_empty():
 		return StepResultScript.new(false, false, "snapshot_unavailable")
-	var rollback_snapshot: Dictionary = rollback_value
+	if supplied_rollback_memento != null \
+			and not world.rollback_memento_is_current(rollback_value):
+		return StepResultScript.new(false, false, "snapshot_unavailable")
+	var rollback_memento: Dictionary = rollback_value
 	var event_start: int = world.events.size()
 	var timeline: Array = plan["timeline"].duplicate(true)
 	var processed_step_index: int = int(plan["processed_step_index"])
@@ -85,7 +89,7 @@ func step(command):
 	world.begin_step(processed_step_index)
 	var root_event = _resolve_command(command, plan, processed_step_index)
 	if root_event == null or (world.party_encounter != null and not party_coordinator.reconcile_liveness()):
-		var failed_restore = WorldStateScript.from_snapshot(rollback_snapshot)
+		var failed_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		if failed_restore != null:
 			world = failed_restore
 			_rebuild_systems()
@@ -114,7 +118,7 @@ func step(command):
 		var tick_event_start: int = world.events.size()
 		var schedule_id_before: int = world.next_schedule_id
 		if not _dispatch_schedule(entry, processed_step_index):
-			var restored = WorldStateScript.from_snapshot(rollback_snapshot)
+			var restored = WorldStateScript.from_rollback_memento(rollback_memento)
 			assert(restored != null, "Validated pre-step snapshot must restore")
 			world = restored
 			_rebuild_systems()
@@ -134,18 +138,44 @@ func step(command):
 	assert(marker_index == timeline.size() - 1, "Not all previewed schedules were processed")
 	world.world_time = end_time
 	world.finish_step()
+	# Live turns use a bounded tail/surface postcondition. Full ledger validation
+	# remains mandatory at save/load/restore boundaries; re-running it here made
+	# append-only exploration slower as the journal grew.
+	if not world.runtime_step_postcondition_error(event_start).is_empty():
+		var semantic_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+		assert(semantic_restore != null, "Validated pre-step memento must restore")
+		world = semantic_restore
+		_rebuild_systems()
+		return StepResultScript.new(false, false, "step_semantic_failure", [], {
+			"processed_step_index": -1, "start_time": start_time,
+			"end_time": start_time, "time_cost": 0, "speed_tier": "",
+			"timeline": [], "root_event_id": -1})
 	var result_events: Array = world.events_since(event_start)
 	_assert_event_partition(result_events, timeline)
-	return StepResultScript.new(true, true, "ok", result_events, {
+	var step_result=StepResultScript.new(true, true, "ok", result_events, {
 		"processed_step_index": processed_step_index,
 		"start_time": start_time, "end_time": end_time,
 		"time_cost": plan["time_cost"], "speed_tier": plan["speed_tier"],
 		"timeline": timeline, "root_event_id": root_event.id,
 	})
+	return step_result
 
 
 func snapshot() -> Variant:
 	return world.snapshot() if world != null else null
+
+
+func capture_rollback_memento(validate_state: bool = true) -> Variant:
+	return world.rollback_memento(validate_state) if world != null else null
+
+
+func restore_rollback_memento(value: Variant) -> bool:
+	var restored = WorldStateScript.from_rollback_memento(value)
+	if restored == null:
+		return false
+	world = restored
+	_rebuild_systems()
+	return true
 
 
 static func from_snapshot(data: Dictionary) -> LivingWorldSimulator:
@@ -263,7 +293,7 @@ func preview_party_turn(request):
 	return party_coordinator.preview_party_turn(request, processed_step_index, world.world_time)
 
 
-func step_direct_solo_party_turn(request):
+func step_direct_solo_party_turn(request, supplied_rollback_memento: Variant = null):
 	# The request was constructed by the session from one local tap, not supplied
 	# as an external frozen plan. Validate and freeze it once authoritatively, then
 	# share the exact canonical commit/rollback/semantic-validation tail.
@@ -279,7 +309,8 @@ func step_direct_solo_party_turn(request):
 	if not bool(authoritative.get("accepted",false)):
 		return StepResultScript.new(false,false,
 			str(authoritative.get("reason","invalid_party_action")))
-	return _commit_prevalidated_party_turn(authoritative,processed_step_index)
+	return _commit_prevalidated_party_turn(authoritative,processed_step_index,
+		supplied_rollback_memento)
 
 
 func step_party_turn(plan):
@@ -316,12 +347,16 @@ func step_party_turn(plan):
 
 
 func _commit_prevalidated_party_turn(authoritative:Dictionary,
-		processed_step_index:int):
-	var rollback_value: Variant = world.snapshot()
+		processed_step_index:int, supplied_rollback_memento: Variant = null):
+	var rollback_value: Variant = supplied_rollback_memento \
+		if supplied_rollback_memento != null else world.snapshot()
 	if not rollback_value is Dictionary:
 		return StepResultScript.new(false, false, "party_snapshot_unavailable")
 	var rollback: Dictionary = rollback_value
 	if rollback.is_empty():
+		return StepResultScript.new(false, false, "party_snapshot_unavailable")
+	if supplied_rollback_memento != null \
+			and not world.rollback_memento_is_current(rollback):
 		return StepResultScript.new(false, false, "party_snapshot_unavailable")
 	var event_start: int = world.events.size()
 	var start_time: int = world.world_time
@@ -756,7 +791,8 @@ func _accepted_party_plan_shape_error(data: Variant) -> String:
 
 
 func _rollback_party_step(snapshot_before: Dictionary, reason: String):
-	var restored = WorldStateScript.from_snapshot(snapshot_before)
+	var restored = WorldStateScript.from_rollback_memento(snapshot_before) \
+		if snapshot_before.has("tile_scalars") else WorldStateScript.from_snapshot(snapshot_before)
 	if restored != null:
 		world = restored
 		_rebuild_systems()

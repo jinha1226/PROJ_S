@@ -8,6 +8,7 @@ const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
+const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const MAX_DEPLOYED_PARTY := 3
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -50,6 +51,9 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 	if world.party_encounter == null:
 		return true
 	var state = world.party_encounter
+	# Rewards are paid per canonical death, before the optional encounter-close
+	# event. party.victory remains strictly a phase/regroup signal.
+	if not _award_canonical_enemy_deaths(state): return false
 	var presence_changed := false
 	for member_id in state.party_member_ids:
 		if not world.entities.has(member_id):
@@ -76,8 +80,12 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 			return false
 		var victory = world.emit_event("party.victory", state.protagonist_id, -1,
 			world.entities[state.protagonist_id].position, 0, victory_cause_id)
-		if victory == null or state.protagonist_progression==null \
-				or not state.protagonist_progression.award_victory(victory.id):
+		if victory == null:
+			return false
+		# Snapshot replay of v1-v3 runs deliberately retains their historic
+		# victory-sourced ledger. New runs always use entity.died above.
+		if state.protagonist_progression.legacy_reward_origin \
+				and not state.protagonist_progression.award_legacy_victory(victory.id):
 			return false
 		# This intermediate phase exists only inside the active party-turn
 		# transaction. Remaining cadence must still see deployed combat positions.
@@ -86,6 +94,33 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 	elif presence_changed:
 		state.revision += 1
 	return not _fault("reconcile_liveness")
+
+
+func _award_canonical_enemy_deaths(state) -> bool:
+	if state.protagonist_progression==null:return false
+	if state.protagonist_progression.legacy_reward_origin:
+		return true
+	# Reconcile runs inside an active simulation step. Scan only that step's tail,
+	# not the ever-growing world history; processed source ids still make repeated
+	# reconciliation in the same step exactly-once.
+	var current_step:int=world._active_step_index if world._active_step_index!=-1 else world.step_index
+	var start_index:int=world.events.size()
+	for index in range(world.events.size()-1,-1,-1):
+		if int(world.events[index].step_index)<current_step:break
+		start_index=index
+	for index in range(start_index,world.events.size()):
+		var event=world.events[index]
+		if event.type!="entity.died" or event.target_id not in state.enemy_ids:continue
+		if event.id in state.protagonist_progression.processed_source_death_event_ids:continue
+		if not state.protagonist_progression.award_enemy_death(event.id):return false
+		var reward=world.emit_event("progression.enemy_reward",state.protagonist_id,event.target_id,
+			event.position,ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,event.id,
+			{"schema_version":1,"character_xp":ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,
+				"mastery_pool":ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL,
+				"ruleset_id":ProgressionRegistryScript.RULESET_ID})
+		if reward==null:return false
+		state.revision+=1
+	return true
 
 
 func finalize_automatic_regroup() -> bool:
@@ -315,7 +350,13 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 				if world.emit_event("combat.attack_missed", -1, action.target_id,
 						action.position, 0, action.id, {"schema_version": 1,
 							"combat_ruleset_id": MeleeScript.COMBAT_RULESET_ID,
-							"outcome": "MISS"}) == null:
+						"outcome": "MISS"}) == null:
+					return false
+			elif resolution.outcome == "PARRIED":
+				if world.emit_event("combat.attack_parried", -1, action.target_id,
+					action.position, 0, action.id, {"schema_version":1,
+						"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,
+						"outcome":"PARRIED"}) == null:
 					return false
 			elif resolution.outcome == "HIT":
 				var applied: Dictionary = damage.apply_canonical_active_damage(target,
@@ -993,7 +1034,13 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 			if world.emit_event("combat.attack_missed", -1, action.target_id,
 					action.position, 0, action.id, {"schema_version": 1,
 						"combat_ruleset_id": MeleeScript.COMBAT_RULESET_ID,
-						"outcome": "MISS"}) == null:
+					"outcome": "MISS"}) == null:
+				return false
+		elif resolution.outcome == "PARRIED":
+			if world.emit_event("combat.attack_parried", -1, action.target_id,
+				action.position, 0, action.id, {"schema_version":1,
+					"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,
+					"outcome":"PARRIED"}) == null:
 				return false
 		elif resolution.outcome == "HIT":
 			var applied: Dictionary = damage.apply_canonical_active_damage(target,

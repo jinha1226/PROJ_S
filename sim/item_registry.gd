@@ -1,7 +1,8 @@
 class_name ItemRegistry
 extends RefCounted
 
-const RULESET_ID:="item-registry-v1"
+const RULESET_ID:="item-registry-v2"
+const HEALING_POTION_RESTORE := 35
 const DefinitionScript=preload("res://sim/item_definition.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 
@@ -46,12 +47,22 @@ const DEFINITIONS:={
 		"stack_limit":1,"equip_slots":["OFF_HAND"],"weapon_id":"",
 		"bonuses":{"armor_flat":0,"parry_milli":100,"dodge_milli":0,"stealth":0},
 		"use_kind":"NONE","placeholder":false},
-	# Their gameplay effects are intentionally unspecified. These definitions let
-	# saves and UI carry the base families without inventing use authority.
-	"POTION_UNSPECIFIED":{"definition_id":"POTION_UNSPECIFIED","label":"미정 물약",
+	"POTION_HEALING":{"definition_id":"POTION_HEALING","label":"회복 물약",
 		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
 		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
-		"stealth":0},"use_kind":"NONE","placeholder":true},
+		"stealth":0},"use_kind":"HEALING","placeholder":false},
+	# Read-only migration alias. PartyEncounterState upgrades this legacy id to
+	# POTION_HEALING before the next snapshot is emitted.
+	"POTION_UNSPECIFIED":{"definition_id":"POTION_UNSPECIFIED","label":"회복 물약",
+		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
+		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,
+		"stealth":0},"use_kind":"HEALING","placeholder":false},
+	"ACCESSORY_BRASS_CHARM":{"definition_id":"ACCESSORY_BRASS_CHARM","label":"황동 부적",
+		"category":"ACCESSORY","stack_limit":1,
+		"equip_slots":["ACCESSORY_1","ACCESSORY_2"],"weapon_id":"",
+		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":25,
+		"stealth":0},"use_kind":"NONE","placeholder":false},
+	# Scrolls and the remaining families deliberately stay unimplemented.
 	"SCROLL_UNSPECIFIED":{"definition_id":"SCROLL_UNSPECIFIED","label":"미정 두루마리",
 		"category":"CONSUMABLE","stack_limit":10,"equip_slots":[],"weapon_id":"",
 		"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,

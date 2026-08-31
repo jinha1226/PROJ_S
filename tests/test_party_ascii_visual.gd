@@ -729,11 +729,38 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 	var amount650:Dictionary=grid.visual_effect_draw_spec(amount_row,started+650)
 	check(amount0.font_size>=24 and amount0.text=="-22" and amount0.color_hex=="#ffd98a",
 		"physical damage is a large concise warm number")
+	var target_center:=grid.world_to_pixel_center(Vector2i(7,7))
+	var start_height_cells:float=(target_center.y-float(amount0.pixel_center.y)) \
+		/grid.cell_size_px()
+	check(start_height_cells>=0.75 and start_height_cells<=1.1,
+		"damage number starts above the target glyph instead of covering it")
 	check(amount325.pixel_center.y<amount0.pixel_center.y \
 		and amount650.pixel_center.y<amount325.pixel_center.y,
-		"damage number eases almost one cell upward")
+		"damage number continues easing upward from its head-clear start")
 	check(amount0.opacity==1.0 and amount650.opacity==0.0,
 		"floating damage fades fully over 650ms")
+	check_eq(grid.play_effects([{"effect_id":"43:amount","event_id":43,"order":1,
+		"kind":"FLOATING_AMOUNT","world_position":[7,7],"target_id":2,
+		"damage_type":"physical","text":"-9"},
+		{"effect_id":"44:amount","event_id":44,"order":1,
+		"kind":"FLOATING_AMOUNT","world_position":[7,7],"target_id":2,
+		"damage_type":"physical","text":"-7"}]),2,
+		"rapid damage rows remain independently visible")
+	var stacked_centers:Array=[]
+	for effect in grid._active_visual_effects:
+		if str(effect.get("kind",""))=="FLOATING_AMOUNT":
+			stacked_centers.append(grid.visual_effect_draw_spec(effect,
+				int(effect.started_at_ms)).pixel_center)
+	check(stacked_centers.size()==3 \
+		and float(stacked_centers[0].x)!=float(stacked_centers[1].x) \
+		and float(stacked_centers[1].x)!=float(stacked_centers[2].x),
+		"rapid damage numbers fan slightly left and right")
+	var top_amount:=grid.visual_effect_draw_spec({"effect_id":"top:amount","event_id":90,
+		"kind":"FLOATING_AMOUNT","world_position":[7,0],"text":"-3",
+		"started_at_ms":started},started)
+	check(float(top_amount.pixel_center.y)+float(top_amount.camera_offset_px.y) \
+		>=grid.grid_rect().position.y+float(top_amount.font_size)*0.58,
+		"top-row damage number clamps inside the visible grid")
 	var miss:=grid.visual_effect_draw_spec({"effect_id":"43:miss","event_id":43,
 		"kind":"MISS","world_position":[7,7],"text":"빗나감","started_at_ms":started},started)
 	var slash:=grid.visual_effect_draw_spec({"effect_id":"44:slash","event_id":44,
@@ -1032,9 +1059,11 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 			if bool(row.animated):
 				visible_source=Vector2i(int(row.position[0]),int(row.position[1]));break
 		check(visible_source!=Vector2i(-1,-1) \
-				and float(grid.torch_draw_specs(125).filter(func(row):return row.position \
-				==[visible_source.x,visible_source.y])[0].brightness)>=0.90,
-			"%dpx source ! is a high-contrast warm glyph"%viewport)
+			and float(grid.torch_draw_specs(125).filter(func(row):return row.position \
+				==[visible_source.x,visible_source.y])[0].brightness)>=0.78 \
+			and float(grid.torch_draw_specs(125).filter(func(row):return row.position \
+				==[visible_source.x,visible_source.y])[0].brightness)<=0.86,
+			"%dpx source ! remains legible at restrained brightness"%viewport)
 		var lit_floor_found:=false;var lit_wall_found:=false
 		for y in range(15):
 			for x in range(15):
@@ -1043,7 +1072,8 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				if position in visible_walls:lit_wall_found=true
 				else:lit_floor_found=true
 				check(str(light.visibility_state)=="VISIBLE" \
-					and float(light.composite_alpha)>=0.07,
+					and float(light.composite_alpha)>=0.04 \
+					and float(light.composite_alpha)<=0.151,
 					"%dpx warm pool only composites on visible cells"%viewport)
 		check(lit_floor_found and lit_wall_found,
 			"%dpx torch pool visibly reaches neighboring floor and wall cells"%viewport)
@@ -1081,6 +1111,16 @@ func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free()
 		< (clear.rendered_glyph_color as Color).a,
 		"actor tile suppresses floor ink without adding a selection ring")
 	var rebuilds:=int(initial.rebuild_count)
+	var moved_cells:=_visible_cells()
+	for cell in moved_cells:
+		if cell.position==[8,7]:cell.actors.append({"entity_id":77,"faction_id":"party",
+			"roster_slot":0,"is_protagonist":true})
+	grid.set_observation({"width":48,"height":48,"cells":moved_cells})
+	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds,
+		"actor-only movement leaves the static terrain/light projection intact")
+	check(not grid.terrain_glyph_draw_spec(Vector2i(7,7)).occupied \
+		and grid.terrain_glyph_draw_spec(Vector2i(8,7)).occupied,
+		"dynamic occupancy updates independently from static terrain")
 	grid.set_hero_centered_view(Vector2i(7,7),15,77)
 	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds,
 		"same hero/view does not invalidate static ink")
@@ -1089,8 +1129,12 @@ func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free()
 	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds,
 		"transient hit animation does not rebuild static cells")
 	grid.set_hero_centered_view(Vector2i(8,7),15,77)
-	check_eq(grid.static_projection_cache_stats().rebuild_count,rebuilds+1,
+	var shifted:Dictionary=grid.static_projection_cache_stats()
+	check_eq(shifted.rebuild_count,rebuilds+1,
 		"hero/light/view change invalidates exactly once")
+	check(int(shifted.content_hit_count)>int(initial.content_hit_count) \
+		and int(shifted.content_cache_count)<=225,
+		"adjacent camera shift reuses bounded world-coordinate static content")
 
 	var contact:Dictionary=grid.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,0,150)
 	var passing:Dictionary=grid.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,75,150)
@@ -1101,6 +1145,38 @@ func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free()
 		"step phase alternates limbs and returns to neutral")
 	check(passing.glyph_bob_ratio<0.0 and not settle.active,
 		"bob exists only during the already-active movement process")
+	grid.free();return finish()
+
+
+func test_wide_zoom_freezes_idle_torch_flicker_but_keeps_restrained_light() -> bool:
+	var count:=25;var hero:=Vector2i(48,48);var cells:Array=[]
+	for y in range(hero.y-count/2,hero.y-count/2+count):
+		for x in range(hero.x-count/2,hero.x-count/2+count):
+			var wall:bool=(x+y)%9==0
+			var actors:Array=[]
+			if Vector2i(x,y)==hero:actors.append({"entity_id":77,"faction_id":"party",
+				"species_id":"human","roster_slot":0,"is_protagonist":true})
+			cells.append({"position":[x,y],"terrain_id":"wall" if wall else "stone_floor",
+				"visibility_state":"VISIBLE","feature_id":"","fire_intensity":0,
+				"wetness":0,"effective_conductivity":0,"actors":actors,"ground_items":[]})
+	var grid=Grid.new();grid.size=Vector2(450,450)
+	grid.set_observation({"width":96,"height":96,"cells":cells})
+	grid.set_hero_centered_view(hero,count,77)
+	var stats:Dictionary=grid.torch_cache_stats()
+	var torches:Array=grid.torch_draw_specs(125)
+	check(not bool(stats.timer_redraw_enabled) and float(stats.flicker_hz)==0.0,
+		"19+ cell camera does not repaint the full grid for idle flame flicker")
+	check(not torches.is_empty() and torches.all(func(row):return bool(row.visible) \
+		and not bool(row.animated) and bool(row.draw_light_pool)),
+		"wide zoom keeps stable visible torch glyphs and light pools")
+	var source:=Vector2i(int(torches[0].position[0]),int(torches[0].position[1]))
+	var light:Dictionary=grid.torch_light_draw_spec(source,125)
+	check(bool(light.active) and int(light.radius_cells)==3 \
+		and float(light.composite_alpha)>=0.04 \
+		and float(light.composite_alpha)<=0.151,
+		"wide torch light remains visible with reduced radius and alpha")
+	check(int(grid.static_projection_cache_stats().content_cache_count)<=count*count,
+		"wide static content cache remains viewport bounded")
 	grid.free();return finish()
 
 

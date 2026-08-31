@@ -95,7 +95,10 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 			"legacy seed save replays against the original room and door geometry")
 	var legacy_v5:Dictionary=JSON.parse_string(old_session.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
-	legacy_v5.snapshot.party_encounter.erase("diagonal_gateway_positions")
+	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
+			"protagonist_inventory","ground_items","safe_recovery_turns",
+			"last_protagonist_damage_step"]:
+		legacy_v5.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(3,4)
 	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
 	check(bool(migration_result.get("accepted",false)),

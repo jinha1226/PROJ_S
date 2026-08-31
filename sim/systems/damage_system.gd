@@ -47,7 +47,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			or bleed_rows.size() > 1 \
 			or (apply_bleed_status and (damage_type != "physical" \
 				or cause.type != "action.melee_attack" \
-				or cause.data.get("schema_version") != 1 \
+				or cause.data.get("schema_version") not in [1, 3] \
 				or cause.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
 				or cause.data.get("outcome") != "HIT" \
 				or cause.data.get("bleed_proc_succeeded") != true \

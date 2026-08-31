@@ -4,6 +4,14 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
 
+const STARTER_WEAPON_INSTANCE_IDS := {
+	"HAND_AXE":"START_HAND_AXE_001",
+	"MACE":"START_MACE_001",
+	"SPEAR":"START_SPEAR_001",
+	"BOW":"START_BOW_001",
+	"CROSSBOW":"START_CROSSBOW_001",
+}
+
 
 func test_solo_starts_with_detached_sword_loadout_and_six_proficiencies() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
@@ -25,8 +33,10 @@ func test_solo_starts_with_detached_sword_loadout_and_six_proficiencies() -> boo
 
 func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
-	check(session.equip_protagonist_weapon("BOW").accepted, "bow equips")
-	check(session.equip_protagonist_weapon("CROSSBOW").accepted, "crossbow equips")
+	var bow_equip:Dictionary=_equip_starter_weapon(session, "BOW")
+	check(bool(bow_equip.get("accepted",false)), "bow equips: %s" % bow_equip)
+	var crossbow_equip:Dictionary=_equip_starter_weapon(session, "CROSSBOW")
+	check(bool(crossbow_equip.get("accepted",false)), "crossbow equips: %s" % crossbow_equip)
 	check_eq(session.protagonist_equipment().attack_block_reason, "reload_required",
 		"crossbow blocks until reload")
 	check(session.reload_protagonist_weapon().accepted, "crossbow reload API")
@@ -100,7 +110,7 @@ func test_short_sword_preview_and_commit_use_weapon_formula_and_position_pair_vf
 
 func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
 	var spear_session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
-	check(spear_session.equip_protagonist_weapon("SPEAR").accepted,
+	check(_equip_starter_weapon(spear_session, "SPEAR").accepted,
 		"spear equips before combat")
 	check(_enter_solo_combat(spear_session), "spear fixture reaches combat")
 	if spear_session.party_status().safe_phase != "ENGAGED": return finish()
@@ -118,7 +128,7 @@ func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
 			spear_assessment.attack_time], ["SPEAR", 2, 110],
 			"spear preview uses weapon range and intrinsic time")
 	var bow_session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
-	check(bow_session.equip_protagonist_weapon("BOW").accepted, "bow equips before combat")
+	check(_equip_starter_weapon(bow_session, "BOW").accepted, "bow equips before combat")
 	check(_enter_solo_combat(bow_session), "bow fixture reaches combat")
 	if bow_session.party_status().safe_phase != "ENGAGED": return finish()
 	var bow_hero := int(bow_session.party_status().protagonist_id)
@@ -147,10 +157,10 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 	sandbox._toggle_weapon_mastery_category()
 	check_eq(sandbox.member_progression_skill_rows.keys().size(), 6,
 		"six fixed proficiency ledger rows")
-	check("단검" not in sandbox.member_progression_stats.text \
+	check("장착 숙련 · 단검" in sandbox.member_progression_stats.text \
 		and "장비는 아이템 탭" in sandbox.member_progression_stats.text \
 		and sandbox.member_skill_help.text=="행 터치: 집중×3 → 보통×1 → 끄기×0",
-		"skill tab contains independent training contract without equipment")
+		"skill tab identifies the equipped proficiency while training stays independent")
 	check(sandbox.find_child("SkillDetail",true,false)==null \
 		and sandbox.find_child("TrainingProgress",true,false)==null \
 		and sandbox.find_child("FutureMilestone",true,false)==null,
@@ -175,7 +185,7 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 		"item tab owns equipment and intrinsic speed")
 	sandbox.free()
 	var crossbow_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
-	check(crossbow_session.equip_protagonist_weapon("CROSSBOW").accepted,
+	check(_equip_starter_weapon(crossbow_session, "CROSSBOW").accepted,
 		"crossbow UI fixture equips")
 	var crossbow_ui=Sandbox.new();crossbow_ui.size=Vector2(360,640)
 	crossbow_ui.initialize_for_headless_test(crossbow_session,true)
@@ -189,6 +199,14 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 		"item reload action refreshes authoritative load state")
 	crossbow_ui.free()
 	return finish()
+
+
+func _equip_starter_weapon(session,weapon_id:String)->Dictionary:
+	var instance_id:=str(STARTER_WEAPON_INSTANCE_IDS.get(weapon_id,""))
+	if instance_id.is_empty():return {"accepted":false,"reason":"unknown_starter_weapon"}
+	var unequipped:Dictionary=session.unequip_inventory_slot("MAIN_HAND")
+	if not bool(unequipped.get("accepted",false)):return unequipped
+	return session.equip_inventory_item(instance_id,"MAIN_HAND")
 
 
 func _enter_solo_combat(session) -> bool:

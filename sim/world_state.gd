@@ -25,6 +25,12 @@ const MAX_SAFE_JSON_INTEGER := 9007199254740991
 const MAX_DIMENSION := 4096
 const MAX_TILE_COUNT := 1000000
 const MAX_SMALL_VALUE := 2147483647
+const ROLLBACK_MEMENTO_VERSION := 2
+# Packed rollback dynamic rows are [tile_index, wetness, fire,
+# fire_source_event_id, wetness_source_event_id, fire_damage_eligible_time].
+# Terrain/flam/conductivity are bootstrap-static and are reconstructed from the
+# terrain registry on the rare restore path.
+const ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE := 6
 const SimTileScript = preload("res://sim/sim_tile.gd")
 const SimEntityScript = preload("res://sim/sim_entity.gd")
 const SimEventScript = preload("res://sim/sim_event.gd")
@@ -47,6 +53,7 @@ const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 
 var width: int
 var height: int
@@ -69,6 +76,11 @@ var next_schedule_id: int = 1
 var _next_entity_id: int = 1
 var _next_event_id: int = 1
 var _active_step_index: int = -1
+# Terrain definitions and their two registry-derived static scalars are
+# bootstrap-only.  Rollback still records every dynamic tile scalar, but keeps
+# this immutable portion in a packed copy-on-write template so a 96x96 turn
+# does not rebuild the dungeon topology merely to establish an atomic boundary.
+var _rollback_tile_terrain_cache := PackedStringArray()
 
 
 func _init(p_width: int, p_height: int, p_seed: int = 1) -> void:
@@ -337,6 +349,7 @@ func bootstrap_set_terrain(position: Vector2i, terrain_id: String) -> bool:
 	tile.fire_source_event_id = -1
 	tile.wetness_source_event_id = -1
 	tile.fire_damage_eligible_time = -1
+	_rollback_tile_terrain_cache = PackedStringArray()
 	return true
 
 
@@ -573,6 +586,213 @@ func snapshot() -> Variant:
 	}
 
 
+# In-memory rollback is deliberately separate from the public save snapshot.
+# Save/replay keeps its exact JSON-safe wire format above. A turn memento uses
+# packed tile scalars and an append-only event prefix so a 96x96 map does not
+# allocate 9,216 tile dictionaries (or re-encode the whole event ledger) merely
+# to make an operation atomic.
+func rollback_memento(validate_state: bool = true) -> Variant:
+	# Most callers require snapshot()'s pre-operation validity gate. The session's
+	# one-hop exploration transaction defers it to its mandatory post-commit
+	# validator, preserving the same accepted-state boundary without a duplicate
+	# full-ledger scan.
+	if not is_settled():
+		return null
+	if validate_state and not world_state_error().is_empty():return null
+	_ensure_rollback_tile_static_cache()
+	# Terrain is immutable after bootstrap. Dynamic tile fields are sparse in a
+	# dungeon turn (normally no burning/wet tiles), so retain only non-default
+	# rows instead of allocating a 7×map-size scalar buffer on every hop.
+	var tile_terrain := _rollback_tile_terrain_cache
+	var tile_scalars := PackedInt64Array([tiles.size(), 0])
+	var dynamic_row_count := 0
+	for tile_index in range(tiles.size()):
+		var tile = tiles[tile_index]
+		if tile.wetness == 0 and tile.fire == 0 \
+				and tile.fire_source_event_id == -1 and tile.wetness_source_event_id == -1 \
+				and tile.fire_damage_eligible_time == -1:
+			continue
+		tile_scalars.append(tile_index)
+		tile_scalars.append(int(tile.wetness))
+		tile_scalars.append(int(tile.fire))
+		tile_scalars.append(int(tile.fire_source_event_id))
+		tile_scalars.append(int(tile.wetness_source_event_id))
+		tile_scalars.append(int(tile.fire_damage_eligible_time))
+		dynamic_row_count += 1
+	tile_scalars[1] = dynamic_row_count
+	var entity_rows: Array = []
+	var entity_ids: Array = entities.keys(); entity_ids.sort()
+	for entity_id in entity_ids: entity_rows.append(entities[entity_id].to_dict())
+	var relation_rows: Array = []
+	var relation_keys: Array = personal_relations.keys(); relation_keys.sort()
+	for key in relation_keys: relation_rows.append(personal_relations[key].to_dict())
+	var agent_rows: Array = []
+	var agent_ids: Array = agent_states.keys(); agent_ids.sort()
+	for entity_id in agent_ids: agent_rows.append(agent_states[entity_id].to_dict())
+	var combatant_rows: Array = []
+	var combatant_ids: Array = combatant_states.keys(); combatant_ids.sort()
+	for entity_id in combatant_ids: combatant_rows.append(combatant_states[entity_id].to_dict())
+	var schedule_rows: Array = []
+	for entry in scheduled_entries: schedule_rows.append(_schedule_to_dict(entry))
+	var memento:={
+		"schema_version": ROLLBACK_MEMENTO_VERSION,
+		"source_instance_id": get_instance_id(),
+		"width": width, "height": height, "seed": seed,
+		"step_index": step_index, "world_time": world_time,
+		"rng_state": rng.state,
+		"next_entity_id": _next_entity_id, "next_event_id": _next_event_id,
+		"next_schedule_id": next_schedule_id,
+		"active_step_index": _active_step_index,
+		"tile_terrain": tile_terrain,
+		"tile_scalars": tile_scalars,
+		"entity_rows": entity_rows,
+		# SimEvent is an immutable canonical ledger entry after append. Duplicating
+		# this Array therefore provides copy-on-write history without O(history)
+		# dictionary serialization. Restore detaches every retained event.
+		"event_prefix": events.duplicate(),
+		"species_relations": species_relations.to_dict(),
+		"personal_relation_rows": relation_rows,
+		"agent_rows": agent_rows,
+		"combatant_rows": combatant_rows,
+		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
+		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
+		"schedule_rows": schedule_rows,
+	}
+	return memento
+
+
+func warm_rollback_memento_static_tiles() -> void:
+	# Map/bootstrap construction can pay this one-time immutable topology cost
+	# before the first input-driven turn. It does not capture mutable state or
+	# relax any rollback validation boundary.
+	_ensure_rollback_tile_static_cache()
+
+
+func _ensure_rollback_tile_static_cache() -> void:
+	if _rollback_tile_terrain_cache.size() == tiles.size():
+		return
+	_rollback_tile_terrain_cache.resize(tiles.size())
+	for tile_index in range(tiles.size()):
+		var tile = tiles[tile_index]
+		_rollback_tile_terrain_cache[tile_index] = str(tile.terrain)
+
+
+func rollback_memento_is_current(value: Variant) -> bool:
+	if not value is Dictionary or int(value.get("schema_version", -1)) \
+			!= ROLLBACK_MEMENTO_VERSION:
+		return false
+	var prefix: Variant = value.get("event_prefix")
+	return value.get("source_instance_id") is int \
+		and int(value.source_instance_id) == get_instance_id() \
+		and int(value.get("width", -1)) == width \
+		and int(value.get("height", -1)) == height \
+		and int(value.get("seed", 0)) == seed \
+		and int(value.get("step_index", -1)) == step_index \
+		and int(value.get("world_time", -1)) == world_time \
+		and int(value.get("rng_state", 0)) == rng.state \
+		and int(value.get("next_entity_id", -1)) == _next_entity_id \
+		and int(value.get("next_event_id", -1)) == _next_event_id \
+		and int(value.get("next_schedule_id", -1)) == next_schedule_id \
+		and int(value.get("active_step_index", -2)) == _active_step_index \
+		and prefix is Array and prefix.size() == events.size() \
+		and (events.is_empty() or prefix[-1] == events[-1])
+
+
+static func from_rollback_memento(value: Variant) -> SimWorldState:
+	if not value is Dictionary or int(value.get("schema_version", -1)) \
+			!= ROLLBACK_MEMENTO_VERSION:
+		return null
+	var restored_width := int(value.get("width", 0))
+	var restored_height := int(value.get("height", 0))
+	if not dimensions_error(restored_width, restored_height).is_empty() \
+			or int(value.get("active_step_index", -2)) != -1:
+		return null
+	var terrain_values: Variant = value.get("tile_terrain")
+	var scalar_values: Variant = value.get("tile_scalars")
+	var tile_count := restored_width * restored_height
+	if not terrain_values is PackedStringArray or terrain_values.size() != tile_count \
+			or not scalar_values is PackedInt64Array or scalar_values.size() < 2 \
+			or int(scalar_values[0]) != tile_count \
+			or int(scalar_values[1]) < 0 \
+			or scalar_values.size() != 2 + int(scalar_values[1]) \
+				* ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE:
+		return null
+	for key in ["entity_rows", "event_prefix", "personal_relation_rows", "agent_rows",
+			"combatant_rows", "schedule_rows"]:
+		if not value.get(key) is Array: return null
+	if not value.get("species_relations") is Dictionary:
+		return null
+	var restored := SimWorldState.new(restored_width, restored_height,
+		int(value.get("seed", 1)))
+	restored.step_index = int(value.get("step_index", -1))
+	restored.world_time = int(value.get("world_time", -1))
+	restored.rng.state = int(value.get("rng_state", 0))
+	restored._next_entity_id = int(value.get("next_entity_id", -1))
+	restored._next_event_id = int(value.get("next_event_id", -1))
+	restored.next_schedule_id = int(value.get("next_schedule_id", -1))
+	restored._active_step_index = -1
+	for tile_index in range(tile_count):
+		var tile = restored.tiles[tile_index]
+		tile.terrain = str(terrain_values[tile_index])
+		var terrain_definition: Dictionary = TerrainRegistryScript.definition(tile.terrain)
+		if terrain_definition.is_empty(): return null
+		tile.flammability = int(terrain_definition.default_flammability)
+		tile.base_conductivity = int(terrain_definition.default_base_conductivity)
+		tile.wetness = 0; tile.fire = 0
+		tile.fire_source_event_id = -1; tile.wetness_source_event_id = -1
+		tile.fire_damage_eligible_time = -1
+	var previous_dynamic_tile := -1
+	for row_index in range(int(scalar_values[1])):
+		var offset := 2 + row_index * ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE
+		var tile_index := int(scalar_values[offset])
+		if tile_index <= previous_dynamic_tile or tile_index < 0 or tile_index >= tile_count:
+			return null
+		previous_dynamic_tile = tile_index
+		var tile = restored.tiles[tile_index]
+		tile.wetness = int(scalar_values[offset + 1])
+		tile.fire = int(scalar_values[offset + 2])
+		tile.fire_source_event_id = int(scalar_values[offset + 3])
+		tile.wetness_source_event_id = int(scalar_values[offset + 4])
+		tile.fire_damage_eligible_time = int(scalar_values[offset + 5])
+	restored.entities.clear()
+	for row in value.entity_rows:
+		if not row is Dictionary: return null
+		var entity = SimEntityScript.from_dict(row)
+		restored.entities[entity.id] = entity
+	restored.events.clear()
+	for event in value.event_prefix:
+		if event == null or not event is SimEvent: return null
+		restored.events.append(event.detached_copy())
+	restored.species_relations = SpeciesRelationTableScript.from_dict(value.species_relations)
+	restored.personal_relations.clear()
+	for row in value.personal_relation_rows:
+		if not row is Dictionary: return null
+		var relation = PersonalRelationScript.from_dict(row)
+		restored.personal_relations["%d:%d" % [relation.observer_id, relation.subject_id]] = relation
+	restored.agent_states.clear()
+	for row in value.agent_rows:
+		if not row is Dictionary: return null
+		var state = AgentStateScript.from_dict(row)
+		restored.agent_states[state.entity_id] = state
+	restored.combatant_states.clear()
+	for row in value.combatant_rows:
+		if not row is Dictionary: return null
+		var combatant = CombatantStateScript.from_dict(row)
+		restored.combatant_states[combatant.entity_id] = combatant
+	restored.encounter_lab = null if value.get("encounter_lab") == null \
+		else EncounterLabStateScript.from_dict(value.encounter_lab)
+	restored.party_encounter = null if value.get("party_encounter") == null \
+		else PartyEncounterStateScript.from_dict(value.party_encounter)
+	restored.scheduled_entries.clear()
+	for row in value.schedule_rows:
+		if not row is Dictionary: return null
+		restored.scheduled_entries.append(_schedule_from_dict(row))
+	restored._sort_schedules()
+	# Restore is a rare failure path, so pay the complete canonical validation
+	# cost here before exposing the replacement world.
+	return restored if restored._restored_state_error().is_empty() else null
+
+
 static func from_snapshot(data: Dictionary) -> SimWorldState:
 	var decoded := checked_decode_snapshot(data)
 	return decoded["world"] if decoded["error"].is_empty() else null
@@ -634,9 +854,9 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 		var progression_row:Variant=data.party_encounter.get("protagonist_progression")
 		if not progression_row is Dictionary \
 				or int(progression_row.get("schema_version",0))<ProgressionRegistryScript.SCHEMA_VERSION:
-			# Schema 1/2 used percentage presets. Replaying canonical events is the
-			# deterministic migration and keeps the event projection as the tamper gate.
-			restored._rebuild_progression_from_events()
+			# Older saves used party.victory as their reward source. Rebuild their
+			# historical ledger once, then new kills use source death ids.
+			restored._rebuild_progression_from_events(not progression_row is Dictionary)
 	restored.scheduled_entries.clear()
 	for row in data.get("scheduled_entries", []):
 		restored.scheduled_entries.append(_schedule_from_dict(row))
@@ -974,6 +1194,97 @@ func _validate_restored_state() -> void:
 
 func world_state_error() -> String:
 	return _restored_state_error()
+
+
+func runtime_step_postcondition_error(event_start: int) -> String:
+	# A live world begins at a fully-audited reset/load/restore boundary. During a
+	# normal step, all mutation goes through checked systems and emit_event();
+	# rescanning the entire append-only history after every hop made AUTO slower
+	# as the run grew. Validate the newly appended causal tail plus the mutable
+	# surfaces touched by a step here. Public save/replay and rollback restore
+	# deliberately keep the exhaustive world_state_error() audit.
+	if not is_settled(): return "runtime_step_not_settled"
+	if event_start < 0 or event_start > events.size(): return "runtime_event_start_invalid"
+	if _next_event_id <= 0 or events.size() != _next_event_id - 1:
+		return "event_id_sequence_mismatch"
+	if _next_entity_id <= 0 or combatant_states.size() != entities.size():
+		return "runtime_entity_surface_invalid"
+	if scheduled_entries.size() != 2: return "invalid_canonical_schedule_count"
+	var previous_schedule: Dictionary = {}
+	for entry_value in scheduled_entries:
+		if not entry_value is Dictionary: return "invalid_schedule_shape"
+		var entry: Dictionary = entry_value
+		if int(entry.get("due_time", -1)) <= world_time \
+				or int(entry.get("repeat_interval", 0)) != ENVIRONMENT_INTERVAL \
+				or str(entry.get("kind", "")) not in ["system.environment_tick", "system.actor_tick"]:
+			return "runtime_schedule_invalid"
+		if not previous_schedule.is_empty() and (
+				int(previous_schedule.due_time) > int(entry.due_time) \
+				or int(previous_schedule.due_time) == int(entry.due_time) \
+				and int(previous_schedule.priority) > int(entry.priority)):
+			return "runtime_schedule_order_invalid"
+		previous_schedule = entry
+	for tile_index in range(tiles.size()):
+		var tile = tiles[tile_index]
+		if not (tile.terrain is String) or not TerrainRegistryScript.has(tile.terrain) \
+				or tile.flammability < 0 or tile.flammability > 100 \
+				or tile.base_conductivity < 0 or tile.base_conductivity > 100 \
+				or tile.wetness < 0 or tile.wetness > 100 \
+				or tile.fire < 0 or tile.fire > 100:
+			return "tile_scalar_invalid"
+		if (tile.fire == 0) != (tile.fire_source_event_id == -1) \
+				or (tile.fire == 0) != (tile.fire_damage_eligible_time == -1) \
+				or (tile.wetness == 0) != (tile.wetness_source_event_id == -1):
+			return "runtime_tile_source_sentinel_invalid"
+	for entity_id_value in entities:
+		var entity_id := int(entity_id_value)
+		var entity = entities[entity_id]
+		var combatant = combatant_states.get(entity_id)
+		if entity_id <= 0 or entity.id != entity_id or combatant == null \
+				or combatant.entity_id != entity_id or not in_bounds(entity.position) \
+				or entity.max_health <= 0 or entity.health < 0 \
+				or entity.health > entity.max_health:
+			return "runtime_entity_projection_invalid"
+		if combatant.life_state == "ACTIVE" and entity.health < 1:
+			return "active_health_invariant"
+		if combatant.life_state in ["DOWNED", "DEAD"] and entity.health != 0:
+			return "runtime_life_health_mismatch"
+	for index in range(event_start, events.size()):
+		var event = events[index]
+		if event == null or event.id != index + 1 or event.step_index != step_index \
+				or event.world_time < 0 or event.world_time > world_time \
+				or not (event.type is String) or event.type.is_empty() \
+				or event.magnitude < 0 or event.magnitude > MAX_SMALL_VALUE \
+				or not _runtime_position_is_valid(event.position, true) \
+				or not _is_valid_event_data(event.data) \
+				or not _entity_reference_is_valid(event.actor_id) \
+				or not _entity_reference_is_valid(event.target_id) \
+				or not _entity_reference_is_valid(event.instigator_id):
+			return "runtime_event_tail_invalid"
+		if event.cause_id == -1:
+			if event.instigator_id != event.actor_id: return "root_instigator_mismatch"
+		else:
+			var cause = event_by_id(event.cause_id)
+			if cause == null or cause.id >= event.id or cause.world_time > event.world_time \
+					or event.instigator_id != cause.instigator_id:
+				return "runtime_event_cause_invalid"
+	if party_encounter != null:
+		var party_error := PartyEncounterStateScript.wire_error(party_encounter.to_dict(), width, height)
+		if not party_error.is_empty(): return party_error
+		# HP is the one mutable party projection whose authority spans historical
+		# damage/restoration leaves. Keep that ledger check in the incremental seam
+		# so an out-of-band health write cannot be laundered by the next AUTO hop.
+		var party_health_error := _party_health_restoration_error()
+		if not party_health_error.is_empty(): return party_health_error
+	return ""
+
+
+func runtime_party_health_error() -> String:
+	# AUTO skips a redundant whole-ledger memento audit, but must still reject an
+	# externally-corrupted protagonist projection before it captures a rollback
+	# image that could not safely restore. The authoritative health ledger is
+	# shared with the incremental postcondition above.
+	return _party_health_restoration_error() if party_encounter != null else ""
 
 
 func _restored_state_error() -> String:
@@ -1354,7 +1665,7 @@ func _restored_state_error() -> String:
 					return "move_event_semantic_invalid"
 			if event.type == "action.melee_attack":
 				var melee_target_state = agent_states.get(event.target_id)
-				var canonical_melee: bool = event.data.get("schema_version") == 1 \
+				var canonical_melee: bool = event.data.get("schema_version") in [1, 3] \
 					and event.data.get("combat_ruleset_id") == COMBAT_RULESET_ID
 				if event_actor_state == null or melee_target_state == null \
 						or event_actor_state.trial_slot != melee_target_state.trial_slot \
@@ -1374,7 +1685,7 @@ func _restored_state_error() -> String:
 			var valid_physical_source: bool = physical_cause != null \
 					and physical_cause.type in ["action.melee_attack", "status.tick"]
 			var cause_is_canonical: bool = physical_cause != null \
-					and physical_cause.data.get("schema_version") == 1
+					and physical_cause.data.get("schema_version") in [1, 3]
 			var expected_requested: int = physical_cause.magnitude if physical_cause != null else 0
 			if physical_cause != null and physical_cause.type == "action.melee_attack" \
 					and cause_is_canonical:
@@ -1409,6 +1720,8 @@ func _restored_state_error() -> String:
 	if not miss_history_error.is_empty(): return miss_history_error
 	var hit_history_error := _canonical_hit_history_error()
 	if not hit_history_error.is_empty(): return hit_history_error
+	var parry_history_error := _canonical_parry_history_error()
+	if not parry_history_error.is_empty(): return parry_history_error
 	var overkill_history_error := _canonical_overkill_history_error()
 	if not overkill_history_error.is_empty(): return overkill_history_error
 	var status_history_error := _status_history_error()
@@ -1715,6 +2028,8 @@ func _melee_action_event_error(event) -> String:
 			or not entities.has(event.actor_id) or not entities.has(event.target_id) \
 			or event.position == Vector2i(-1, -1):
 		return "melee_event_envelope_invalid"
+	if event.data.get("schema_version") == 3:
+		return _melee_defense_action_event_error(event)
 	var attacker_state = combatant_states[event.actor_id]
 	var target_state = combatant_states[event.target_id]
 	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
@@ -1845,17 +2160,143 @@ func _melee_action_event_error(event) -> String:
 	return ""
 
 
+# Schema 3 freezes only the active protagonist's equipment-defense snapshot.
+# Inventory can legitimately change later, so replay validates the frozen
+# snapshot and its commitment rather than reading the current loadout.
+# TODO(v4): item event rows currently preserve instance/slot but not a complete
+# historical item-definition+affix projection; add that provenance before
+# reconstructing and comparing past equipped totals at every action boundary.
+func _melee_defense_action_event_error(event) -> String:
+	if party_encounter == null or event.target_id != party_encounter.protagonist_id \
+			or event.actor_id == party_encounter.protagonist_id:
+		return "canonical_defense_target_invalid"
+	var attacker_state = combatant_states[event.actor_id]
+	var target_state = combatant_states[event.target_id]
+	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
+	var target_profile: Dictionary = CombatProfileRegistryScript.profile(target_state.combat_profile_id)
+	if attacker_profile.is_empty() or target_profile.is_empty():
+		return "canonical_defense_profile_missing"
+	var action_keys := ["armor_flat", "armor_reduction", "attack_start_world_time",
+		"attacker_profile_id", "base_damage", "batch_context", "bleed_chance_milli",
+		"bleed_proc_succeeded", "bleed_roll_milli", "combat_ruleset_id", "commitment_hash",
+		"defense_ruleset_id", "equipment_armor_flat", "equipment_dodge_milli",
+		"equipment_parry_milli", "final_damage", "frozen_guarded_until", "guard_reduction",
+		"guard_source_event_id", "guarded", "hit_chance_milli", "hit_roll_milli",
+		"intent_mode", "intent_ordinal", "outcome", "parry_roll_milli", "parry_succeeded",
+		"processed_step_index", "schema_version", "target_base_armor_flat",
+		"target_base_evasion_milli", "target_evasion_milli", "target_life_at_batch_start",
+		"target_profile_id"]
+	if not _exact_keys(event.data, action_keys) \
+			or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+			or event.data.get("defense_ruleset_id") != CombatDefenseRulesScript.RULESET_ID:
+		return "canonical_defense_event_data_invalid"
+	for key in ["processed_step_index", "attack_start_world_time", "frozen_guarded_until",
+			"guard_source_event_id"]:
+		if not Int64CodecScript.is_canonical(event.data.get(key)):
+			return "canonical_defense_event_int64_invalid"
+	for key in ["intent_ordinal", "hit_chance_milli", "hit_roll_milli", "bleed_chance_milli",
+			"bleed_roll_milli", "parry_roll_milli", "base_damage", "target_evasion_milli",
+			"armor_flat", "armor_reduction", "guard_reduction", "final_damage",
+			"target_base_evasion_milli", "target_base_armor_flat", "equipment_dodge_milli",
+			"equipment_armor_flat", "equipment_parry_milli"]:
+		if not event.data.get(key) is int:
+			return "canonical_defense_event_scalar_invalid"
+	if not event.data.get("guarded") is bool or not event.data.get("bleed_proc_succeeded") is bool \
+			or not event.data.get("parry_succeeded") is bool \
+			or not event.data.get("batch_context") is String \
+			or not event.data.get("commitment_hash") is String:
+		return "canonical_defense_event_scalar_invalid"
+	var processed_step: int = Int64CodecScript.parse(event.data.processed_step_index, "action processed step")
+	var attack_start: int = Int64CodecScript.parse(event.data.attack_start_world_time, "action start")
+	var frozen_guarded_until: int = Int64CodecScript.parse(event.data.frozen_guarded_until, "frozen guard")
+	var guard_source_id: int = Int64CodecScript.parse(event.data.guard_source_event_id, "frozen guard source")
+	if processed_step != event.step_index or attack_start != event.world_time \
+			or frozen_guarded_until < 0 or frozen_guarded_until > MAX_WORLD_TIME \
+			or (frozen_guarded_until == 0) != (guard_source_id == -1) \
+			or (frozen_guarded_until > 0 and guard_source_id <= 0) \
+			or not _combat_batch_context_valid(str(event.data.batch_context), processed_step, attack_start):
+		return "canonical_defense_event_context_invalid"
+	if guard_source_id > 0:
+		var frozen_guard_source = event_by_id(guard_source_id)
+		if frozen_guard_source == null or frozen_guard_source.type != "action.hold" \
+				or frozen_guard_source.actor_id != event.target_id or frozen_guard_source.id >= event.id \
+				or frozen_guard_source.world_time + 200 != frozen_guarded_until:
+			return "canonical_defense_guard_source_invalid"
+	var snapshot := CombatDefenseRulesScript.build_snapshot(
+		int(event.data.target_base_evasion_milli), int(event.data.target_base_armor_flat), {
+			"armor_flat": int(event.data.equipment_armor_flat),
+			"dodge_milli": int(event.data.equipment_dodge_milli),
+			"parry_milli": int(event.data.equipment_parry_milli),
+		})
+	if snapshot.is_empty() or event.data.attacker_profile_id != attacker_state.combat_profile_id \
+			or event.data.target_profile_id != target_state.combat_profile_id \
+			or event.data.target_base_evasion_milli != int(target_profile.evasion_milli) \
+			or event.data.target_base_armor_flat != int(target_profile.armor_flat) \
+			or event.data.target_evasion_milli != int(snapshot.effective_evasion_milli) \
+			or event.data.armor_flat != int(snapshot.effective_armor_flat):
+		return "canonical_defense_snapshot_invalid"
+	var base_damage: int = int(attacker_profile.power)
+	var armor_reduction: int = CombatDefenseRulesScript.armor_reduction(base_damage, 0, snapshot)
+	if armor_reduction < 0 or event.data.base_damage != base_damage \
+			or event.data.armor_reduction != armor_reduction or event.magnitude != base_damage:
+		return "canonical_defense_armor_formula_invalid"
+	var hit_chance: int = clampi(500 + int(attacker_profile.accuracy_milli) \
+		- int(snapshot.effective_evasion_milli), 50, 950)
+	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
+		- int(target_profile.bleed_resist_milli), 0, 1000)
+	var target_life: String = str(event.data.target_life_at_batch_start)
+	var intent_mode: String = str(event.data.intent_mode)
+	var outcome: String = str(event.data.outcome)
+	if target_life != "ACTIVE" or intent_mode != "STRIKE" \
+			or outcome not in ["HIT", "MISS", "PARRIED"] or int(event.data.intent_ordinal) < 0:
+		return "canonical_defense_intent_invalid"
+	var key := MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
+		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id,
+		CombatDefenseRulesScript.commitment_fragment(snapshot))
+	var hit_roll := MeleeCombatSystemScript.lane_roll_milli(key, "HIT")
+	var bleed_roll := MeleeCombatSystemScript.lane_roll_milli(key, "BLEED")
+	var parry_roll := CombatDefenseRulesScript.parry_roll_milli(key)
+	if event.data.commitment_hash != MeleeCombatSystemScript.commitment_hash(key) \
+			or event.data.hit_roll_milli != hit_roll or event.data.bleed_roll_milli != bleed_roll \
+			or event.data.parry_roll_milli != parry_roll:
+		return "canonical_defense_commitment_invalid"
+	var expected_guarded: bool = attack_start < frozen_guarded_until
+	var guard_rank := _progression_rank_before("GUARD", event.id)
+	var guard_reduction: int = int((base_damage - armor_reduction) \
+		* ProgressionRegistryScript.guard_reduction_milli(guard_rank) / 1000) if expected_guarded else 0
+	var normal_damage := maxi(1, base_damage - armor_reduction - guard_reduction)
+	if event.data.hit_chance_milli != hit_chance or event.data.bleed_chance_milli != bleed_chance \
+			or event.data.guarded != expected_guarded or event.data.guard_reduction != guard_reduction:
+		return "canonical_defense_strike_formula_invalid"
+	var roll_hits: bool = hit_roll < hit_chance
+	var parried: bool = roll_hits and CombatDefenseRulesScript.parry_succeeds(parry_roll, snapshot)
+	if outcome == "HIT":
+		if not roll_hits or parried or event.data.parry_succeeded \
+				or event.data.final_damage != normal_damage \
+				or event.data.bleed_proc_succeeded != (bleed_roll < bleed_chance):
+			return "canonical_defense_hit_outcome_invalid"
+	elif outcome == "MISS":
+		if roll_hits or event.data.parry_succeeded or event.data.final_damage != 0 \
+				or event.data.bleed_proc_succeeded:
+			return "canonical_defense_miss_outcome_invalid"
+	else:
+		if not parried or not event.data.parry_succeeded or event.data.final_damage != 0 \
+				or event.data.bleed_proc_succeeded:
+			return "canonical_defense_parry_outcome_invalid"
+	return ""
+
+
 func _canonical_miss_history_error() -> String:
 	var consumed_miss_ids: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") != 1 \
+				or action.data.get("schema_version") not in [1, 3] \
 				or action.data.get("outcome") != "MISS":
 			continue
 		var direct_children: Array = []
 		for candidate in events:
 			if candidate.cause_id == action.id and candidate.type in [
-					"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+					"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
 				direct_children.append(candidate)
 		if direct_children.size() != 1:
 			return "canonical_miss_result_cardinality_invalid"
@@ -1885,13 +2326,13 @@ func _canonical_hit_history_error() -> String:
 	var consumed_physical_ids: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") != 1 \
+				or action.data.get("schema_version") not in [1, 3] \
 				or action.data.get("outcome") != "HIT":
 			continue
 		var direct_children: Array = []
 		for candidate in events:
 			if candidate.cause_id == action.id and candidate.type in [
-					"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+					"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
 				direct_children.append(candidate)
 		if direct_children.size() != 1:
 			return "canonical_hit_result_cardinality_invalid"
@@ -1915,10 +2356,46 @@ func _canonical_hit_history_error() -> String:
 			continue
 		var source = event_by_id(event.cause_id)
 		if source != null and source.type == "action.melee_attack" \
-				and source.data.get("schema_version") == 1 \
+				and source.data.get("schema_version") in [1, 3] \
 				and source.data.get("outcome") == "HIT" \
 				and not consumed_physical_ids.has(event.id):
 			return "canonical_hit_physical_unconsumed"
+	return ""
+
+
+func _canonical_parry_history_error() -> String:
+	var consumed_parry_ids: Dictionary = {}
+	for action in events:
+		if action.type != "action.melee_attack" \
+				or action.data.get("schema_version") != 3 \
+				or action.data.get("outcome") != "PARRIED":
+			continue
+		var direct_children: Array = []
+		for candidate in events:
+			if candidate.cause_id == action.id and candidate.type in [
+					"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
+				direct_children.append(candidate)
+		if direct_children.size() != 1:
+			return "canonical_parry_result_cardinality_invalid"
+		var parry = direct_children[0]
+		if parry.type != "combat.attack_parried" \
+				or parry.actor_id != -1 or parry.target_id != action.target_id \
+				or parry.position != action.position or parry.magnitude != 0 \
+				or parry.cause_id != action.id or parry.instigator_id != action.instigator_id \
+				or parry.step_index != action.step_index or parry.world_time != action.world_time \
+				or not _exact_keys(parry.data, ["combat_ruleset_id", "outcome", "schema_version"]) \
+				or parry.data.get("schema_version") != 1 \
+				or parry.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+				or parry.data.get("outcome") != "PARRIED":
+			return "canonical_attack_parried_invalid"
+		if consumed_parry_ids.has(parry.id):
+			return "canonical_attack_parried_consumed_twice"
+		consumed_parry_ids[parry.id] = true
+	for event in events:
+		if event.type == "combat.attack_parried" \
+				and (event.data.get("schema_version") != 1 \
+				or not consumed_parry_ids.has(event.id)):
+			return "canonical_attack_parried_unconsumed"
 	return ""
 
 
@@ -1926,7 +2403,7 @@ func _canonical_overkill_history_error() -> String:
 	var batch_groups: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") != 1:
+				or action.data.get("schema_version") not in [1, 3]:
 			continue
 		var group_key := "%d|%d|%s" % [action.step_index, action.world_time,
 			str(action.data.get("batch_context", ""))]
@@ -2017,13 +2494,14 @@ func _canonical_overkill_history_error() -> String:
 			var outcome: String = str(action.data.get("outcome", ""))
 			var expected_driver_type: String = {
 				"MISS": "combat.attack_missed",
+				"PARRIED": "combat.attack_parried",
 				"HIT": "combat.physical_damage",
 				"FINISHER": "combat.downed_damage",
 			}.get(outcome, "")
 			var direct_drivers: Array = []
 			for candidate in events:
 				if candidate.cause_id == action.id and candidate.type in [
-						"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+						"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
 					direct_drivers.append(candidate)
 			if outcome == "OVERKILL_SKIP":
 				if not direct_drivers.is_empty():
@@ -2056,7 +2534,7 @@ func _canonical_overkill_history_error() -> String:
 				continue
 			for candidate in events:
 				if candidate.cause_id == action.id and candidate.type in [
-						"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+						"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
 					return "canonical_overkill_result_child_invalid"
 			var transition_proven := false
 			var overkill_ordinal: int = int(action.data.intent_ordinal)
@@ -2086,7 +2564,7 @@ func _canonical_overkill_history_error() -> String:
 					var result_children: Array = []
 					for candidate in events:
 						if candidate.cause_id == earlier_action.id and candidate.type in [
-								"combat.attack_missed", "combat.physical_damage", "combat.downed_damage"]:
+								"combat.attack_missed", "combat.attack_parried", "combat.physical_damage", "combat.downed_damage"]:
 							result_children.append(candidate)
 					if result_children.size() != 1:
 						continue
@@ -2116,7 +2594,7 @@ func _canonical_melee_result_tail_max_id(driver_id: int, processed_step: int,
 		attack_time: int) -> int:
 	var owned_ids := {driver_id:true}
 	var tail_max_id := driver_id
-	var resolution_types := ["combat.attack_missed", "combat.physical_damage",
+	var resolution_types := ["combat.attack_missed", "combat.attack_parried", "combat.physical_damage",
 		"combat.downed_damage", "entity.downed", "entity.recovered", "entity.died",
 		"status.applied", "status.refreshed", "status.expired"]
 	for event in events:
@@ -2444,7 +2922,7 @@ func _status_history_error() -> String:
 						or not _canonical_damage_data_error(damage_source, "physical",
 							int(damage_driver.data.get("final_damage", 0)) if damage_driver != null else 0).is_empty() \
 						or damage_driver == null or damage_driver.type != "action.melee_attack" \
-						or damage_driver.data.get("schema_version") != 1 \
+						or damage_driver.data.get("schema_version") not in [1, 3] \
 						or damage_driver.data.get("outcome") != "HIT" \
 						or damage_driver.data.get("bleed_proc_succeeded") != true \
 						or damage_source.target_id != owner_id or damage_source.position != event.position \
@@ -2631,7 +3109,7 @@ func _lifecycle_history_error() -> String:
 			var damage_driver = event_by_id(event.cause_id)
 			if damage_driver == null or damage_driver.type not in ["combat.physical_damage",
 					"combat.fire_damage", "combat.electric_damage"] \
-					or damage_driver.data.get("schema_version") != 1 \
+					or damage_driver.data.get("schema_version") not in [1, 3] \
 					or damage_driver.target_id != event.target_id \
 					or damage_driver.position != event.position \
 					or damage_driver.step_index != event.step_index \
@@ -3161,23 +3639,35 @@ func _party_runtime_error() -> String:
 		if not protagonist_death_found: return "party_defeat_event_missing"
 	var progression_error:=_party_progression_error()
 	if not progression_error.is_empty():return progression_error
+	var restoration_error:=_party_health_restoration_error()
+	if not restoration_error.is_empty():return restoration_error
 	return _party_event_correlation_error()
 
 
-func _rebuild_progression_from_events()->void:
+func _rebuild_progression_from_events(use_all_normal_baseline:bool=false)->void:
 	if party_encounter==null:return
+	var historical_modes:Dictionary=_legacy_party_training_modes() if use_all_normal_baseline \
+		else party_encounter.protagonist_progression.training_modes.duplicate(true)
 	var progression=load("res://sim/protagonist_progression.gd").new()
+	# Preserve whichever v1-v3 focus/mode baseline was actually serialized. Only
+	# snapshots predating progression entirely use the historical all-normal base.
+	progression.training_modes=historical_modes
+	progression.legacy_reward_origin=true
 	for event in events:
 		if event.type=="progression.focus_changed" and event.actor_id==party_encounter.protagonist_id:
 			var modes:=_training_modes_from_event(event)
 			if not modes.is_empty():progression.training_modes=modes
-		elif event.type=="party.victory":progression.award_victory(event.id)
+		elif event.type=="party.victory":progression.award_legacy_victory(event.id)
 	party_encounter.protagonist_progression=progression
 
 
 func _party_progression_error()->String:
 	if party_encounter.protagonist_progression==null:return "party_progression_missing"
 	var expected=load("res://sim/protagonist_progression.gd").new()
+	expected.legacy_reward_origin=party_encounter.protagonist_progression.legacy_reward_origin
+	expected.training_modes=party_encounter.protagonist_progression.training_modes.duplicate(true) \
+		if party_encounter.protagonist_progression.legacy_reward_origin \
+		else _initial_party_training_modes()
 	for event in events:
 		if event.type=="progression.focus_changed":
 			if event.actor_id!=party_encounter.protagonist_id or event.target_id!=-1 \
@@ -3197,8 +3687,38 @@ func _party_progression_error()->String:
 						and int(event.data.get("schema_version",0))==2:
 					return "progression_focus_event_transition_invalid"
 			expected.training_modes=modes
-		elif event.type=="party.victory":
-			if not expected.award_victory(event.id):return "progression_victory_award_invalid"
+		elif event.type=="entity.died" and event.target_id in party_encounter.enemy_ids:
+			if event.id in party_encounter.protagonist_progression.processed_source_death_event_ids:
+				if not expected.award_enemy_death(event.id):return "progression_enemy_death_award_invalid"
+				var reward_rows:Array=[]
+				for candidate in events:
+					if candidate.type=="progression.enemy_reward" and candidate.cause_id==event.id:
+						reward_rows.append(candidate)
+				if reward_rows.size()!=1:return "progression_enemy_reward_event_count_invalid"
+				var reward=reward_rows[0];var reward_keys:Array=reward.data.keys();reward_keys.sort()
+				if reward_keys!=["character_xp","mastery_pool","ruleset_id","schema_version"] \
+						or reward.actor_id!=party_encounter.protagonist_id \
+						or reward.target_id!=event.target_id or reward.position!=event.position \
+						or reward.magnitude!=ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP \
+						or reward.data.schema_version!=1 \
+						or reward.data.character_xp!=ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP \
+						or reward.data.mastery_pool!=ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL \
+						or reward.data.ruleset_id!=ProgressionRegistryScript.RULESET_ID:
+						return "progression_enemy_reward_event_invalid"
+		elif event.type=="party.victory" \
+				and event.id in party_encounter.protagonist_progression.legacy_processed_victory_event_ids:
+			if not expected.award_legacy_victory(event.id):return "progression_legacy_victory_award_invalid"
+	if not party_encounter.protagonist_progression.legacy_reward_origin:
+		for event in events:
+			if event.type=="entity.died" and event.target_id in party_encounter.enemy_ids \
+					and event.id not in party_encounter.protagonist_progression.processed_source_death_event_ids:
+				return "progression_enemy_death_award_missing"
+		for reward in events:
+			if reward.type!="progression.enemy_reward":continue
+			var source=event_by_id(reward.cause_id)
+			if source==null or source.type!="entity.died" \
+					or source.id not in party_encounter.protagonist_progression.processed_source_death_event_ids:
+				return "progression_enemy_reward_source_invalid"
 	if expected.to_dict()!=party_encounter.protagonist_progression.to_dict():
 		return "party_progression_projection_mismatch"
 	return ""
@@ -3210,16 +3730,82 @@ func _progression_melee_rank_before(event_id:int)->int:
 
 func _progression_rank_before(skill_id:String,event_id:int)->int:
 	if skill_id not in ProgressionRegistryScript.SKILL_IDS:return 0
-	var modes:Dictionary=ProgressionRegistryScript.DEFAULT_MODES.duplicate(true)
+	var modes:Dictionary=_legacy_party_training_modes() \
+		if party_encounter.protagonist_progression.legacy_reward_origin \
+		else _initial_party_training_modes()
 	var training:=0
 	for historical in events:
 		if historical.id>=event_id:break
 		if historical.type=="progression.focus_changed":
 			var parsed:=_training_modes_from_event(historical)
 			if not parsed.is_empty():modes=parsed
-		elif historical.type=="party.victory":
-			training+=int(ProgressionRegistryScript.victory_training_allocation(modes)[skill_id])
+		elif historical.type=="entity.died" and historical.target_id in party_encounter.enemy_ids \
+				and historical.id in party_encounter.protagonist_progression.processed_source_death_event_ids:
+			training+=int(ProgressionRegistryScript.enemy_kill_mastery_allocation(modes)[skill_id])
+		elif historical.type=="party.victory" \
+				and historical.id in party_encounter.protagonist_progression.legacy_processed_victory_event_ids:
+			training+=int(ProgressionRegistryScript.enemy_kill_mastery_allocation(modes)[skill_id])
 	return ProgressionRegistryScript.skill_rank(training)
+
+
+func _initial_party_training_modes()->Dictionary:
+	# This is the expedition baseline, not a live loadout projection. Equipment
+	# may change through canonical item events while the player's independently
+	# selected training modes remain intact; replay therefore must not derive the
+	# opening focus from whichever weapon is currently equipped.
+	return ProgressionRegistryScript.initial_training_modes("SWORD")
+
+
+func _legacy_party_training_modes()->Dictionary:
+	return {"SWORD":"NORMAL","AXE":"NORMAL","BLUNT":"NORMAL",
+		"SPEAR":"NORMAL","RANGED":"NORMAL","UNARMED":"NORMAL"}
+
+
+func _party_health_restoration_error()->String:
+	if party_encounter==null:return ""
+	var hero_id:int=party_encounter.protagonist_id
+	if not entities.has(hero_id) or not combatant_states.has(hero_id):return "party_recovery_hero_missing"
+	# The party protagonist is spawned at max health. From there, canonical
+	# damage/lifecycle leaves and our restoration event form a replayable HP ledger.
+	var projected:=int(entities[hero_id].max_health)
+	for event in events:
+		if event.target_id!=hero_id:continue
+		var event_type:=str(event.type)
+		if event_type.begins_with("combat.") and event_type.ends_with("_damage"):
+			projected=maxi(0,projected-int(event.magnitude))
+		elif event_type=="entity.downed":
+			projected=0
+		elif event_type=="entity.recovered":
+			projected=int(event.data.get("recovered_health",0))
+		elif event_type=="entity.died":
+			projected=0
+		elif event_type=="health.restored":
+			var data_keys:Array=event.data.keys();data_keys.sort()
+			var restoration_kind:=str(event.data.get("kind",""))
+			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
+				if restoration_kind=="POTION" else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
+					or event.instigator_id!=hero_id or event.magnitude<=0 \
+					or int(event.data.get("health_after",-1))<1 \
+					or int(event.data.get("health_after",-1))>int(entities[hero_id].max_health):
+				return "party_health_restoration_event_invalid"
+			var expected_after:=mini(int(entities[hero_id].max_health),projected+int(event.magnitude))
+			if int(event.data.health_after)!=expected_after:return "party_health_restoration_amount_invalid"
+			if restoration_kind=="POTION":
+				var source=event_by_id(event.cause_id)
+				if source==null or source.type!="item.used" or source.actor_id!=hero_id \
+						or source.target_id!=hero_id or source.id>=event.id \
+						or source.data.get("use_kind")!="HEALING" \
+						or event.data.ruleset_id!="healing-potion-v1":
+					return "party_potion_restoration_cause_invalid"
+			elif restoration_kind=="AUTO":
+				if event.cause_id!=-1 or event.data.ruleset_id!="safe-exploration-recovery-v1" \
+						or int(event.data.get("safe_turn_count",0))<1:
+					return "party_auto_restoration_cause_invalid"
+			else:return "party_health_restoration_kind_invalid"
+			projected=expected_after
+	if int(entities[hero_id].health)!=projected:return "party_health_restoration_projection_mismatch"
+	return ""
 
 
 func _focus_from_event(event)->Dictionary:

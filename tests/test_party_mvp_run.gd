@@ -243,8 +243,8 @@ func test_exit_open_and_complete_save_load_replay_exactly() -> bool:
 	check(bool(completed.get("ok",false)), "save fixture reaches COMPLETE")
 	check(_round_trip_matches(source), "COMPLETE save/load/replay exact")
 	var wire: Dictionary = JSON.parse_string(source.save_session_json())
-	check(not _event_type_contains(wire.snapshot,"reward"),
-		"derived reward creates no simulator reward event")
+	check(_event_type_contains(wire.snapshot,"progression.enemy_reward"),
+		"each defeated enemy records its canonical progression reward event")
 	return finish()
 
 

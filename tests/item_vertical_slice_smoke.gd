@@ -58,7 +58,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s item ledger is not 5 equipment + 12 bag rows"%viewport_size)
 	var bag_text:=""
 	for child in sandbox.member_item_backpack_rows.get_children():bag_text+=str(child.text)
-	_assert("단검" not in bag_text and "미정 물약" in bag_text,
+	_assert("단검" not in bag_text and "회복 물약" in bag_text,
 		"%s equipped sword is duplicated in bag or potion is absent"%viewport_size)
 	_assert(sandbox.find_child("ItemDiscard",true,false)==null \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,

@@ -17,6 +17,7 @@ const ExplorationRouteScript = preload("res://playtest/party_exploration_route.g
 const AutoExploreScript = preload("res://playtest/party_auto_explore.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
+const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
@@ -27,6 +28,7 @@ const GroundItemScript=preload("res://sim/ground_item_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const ItemOperationsScript=preload("res://sim/item_inventory_operations.gd")
+const RecoveryRulesScript=preload("res://sim/exploration_recovery_rules.gd")
 
 const SESSION_FORMAT_VERSION := 3
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -89,6 +91,11 @@ var _map_layout: Dictionary = {}
 # world/history/topology identity no longer matches.
 var _explored_presentation_cache: Dictionary = {}
 var _presentation_topology_cache:Dictionary={}
+# LOS is a pure function of the bootstrap-only topology, scenario and hero
+# cell. AUTO asks it for the same post-hop cell while checking its stop gate
+# and while refreshing the surface; keep that presentation work step-keyed and
+# detached from canonical world state.
+var _presentation_visibility_cache:Dictionary={}
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -271,19 +278,27 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			enemy_entity.id,enemy_entity.position)
 	state.protagonist_inventory=InventoryScript.new([
 		ItemScript.new("LEGACY_MAIN_HAND",ItemRegistryScript.weapon_definition_id("SHORT_SWORD")),
-		ItemScript.new("START_POTION_001","POTION_UNSPECIFIED")],
+		ItemScript.new("START_HAND_AXE_001",ItemRegistryScript.weapon_definition_id("HAND_AXE")),
+		ItemScript.new("START_MACE_001",ItemRegistryScript.weapon_definition_id("MACE")),
+		ItemScript.new("START_SPEAR_001",ItemRegistryScript.weapon_definition_id("SPEAR")),
+		ItemScript.new("START_BOW_001",ItemRegistryScript.weapon_definition_id("BOW")),
+		ItemScript.new("START_CROSSBOW_001",ItemRegistryScript.weapon_definition_id("CROSSBOW")),
+		ItemScript.new("START_POTION_001","POTION_HEALING",3)],
 		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
+	state.protagonist_progression.training_modes=ProgressionRegistryScript.initial_training_modes("SWORD")
 	state.ground_items=GroundItemScript.new(_initial_ground_item_rows(candidate,
 		hero_position,map_layout) if product_dungeon else [])
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
+	candidate.world.warm_rollback_memento_static_tiles()
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	scenario_id = p_scenario_id
 	_map_layout = map_layout.duplicate(true)
 	_invalidate_explored_presentation_cache()
 	_presentation_topology_cache.clear()
+	_presentation_visibility_cache.clear()
 	_warm_product_topology_presentation_cache()
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
@@ -397,7 +412,8 @@ func protagonist_equipment()->Dictionary:
 			and int(loadout.ammo_pools.get(weapon.ammo_kind,0))>=int(weapon.ammo_cost),
 		"reload_time":int(weapon.reload_time),
 		"can_attack":loadout.attack_error().is_empty(),
-		"attack_block_reason":loadout.attack_error()}.duplicate(true)
+		"attack_block_reason":loadout.attack_error(),
+		"combat_modifiers":state.protagonist_inventory.combat_modifier_dto()}.duplicate(true)
 
 
 func protagonist_inventory()->Dictionary:
@@ -415,7 +431,8 @@ func protagonist_inventory()->Dictionary:
 	return {"schema_version":1,"available":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
 		"used_backpack_slots":inventory.used_backpack_slots(),
 		"equipment_slots":slot_rows,"backpack_rows":backpack_rows,
-		"equipment_bonuses":inventory.equipment_bonuses()}.duplicate(true)
+		"equipment_bonuses":inventory.equipment_bonuses(),
+		"combat_modifiers":inventory.combat_modifier_dto()}.duplicate(true)
 
 
 func ground_items_at_protagonist()->Array[Dictionary]:
@@ -458,6 +475,62 @@ func drop_inventory_item(instance_id:String)->Dictionary:
 
 func discard_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DISCARD",instance_id,"")
+
+
+func use_inventory_item(instance_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
+	if not sim.world.is_settled() or _protagonist_draft!=null:return _rejection_dto("world_not_settled")
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
+	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
+	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
+	var preview:Dictionary=ItemOperationsScript.preview_use(state.protagonist_inventory,instance_id)
+	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
+	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
+	var before:Dictionary=sim.snapshot()
+	var event_start:int=sim.world.events.size()
+	var journal_size_before:=command_journal.size()
+	var advance:Dictionary=_advance_item_action_time()
+	if not bool(advance.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_time_step_failed")
+	while command_journal.size()>journal_size_before:command_journal.pop_back()
+	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
+	combatant=sim.world.combatant_states.get(state.protagonist_id)
+	if hero==null or combatant==null or str(combatant.life_state)!="ACTIVE":
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_user_unavailable")
+	if int(hero.health)>=int(hero.max_health):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_heal_not_needed")
+	var consumed:Dictionary=ItemOperationsScript.commit_use(state.protagonist_inventory,instance_id)
+	if not bool(consumed.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
+	var used=sim.world.emit_event("item.used",state.protagonist_id,state.protagonist_id,hero.position,0,-1,
+		{"schema_version":1,"instance_id":instance_id,"definition_id":str(consumed.definition_id),
+			"use_kind":"HEALING","time_cost":ITEM_ACTION_TIME_COST})
+	if used==null:
+		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_event_failed")
+	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
+	hero.health+=healed
+	var restored=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
+		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
+			"kind":"POTION","health_after":int(hero.health)})
+	state.protagonist_inventory=consumed.inventory;state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if restored==null or not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto(state_error if not state_error.is_empty() else "item_event_failed")
+	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
+	command_journal.append({"kind":"item","operation":{"action":"USE","instance_id":instance_id,"slot":""}})
+	var event_ids:Array=[]
+	for index in range(event_start,sim.world.events.size()):event_ids.append(sim.world.events[index].id)
+	var healing_vfx:=_visual_effect_row(restored,"FLOATING_AMOUNT","heal",0,
+		"healing",healed,"+%d" % healed)
+	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
+		"time_cost":ITEM_ACTION_TIME_COST,"healed_amount":healed,"current_hp":int(hero.health),
+		"inventory":protagonist_inventory(),"visual_effects":[healing_vfx]})
 
 
 func _commit_item_operation(action:String,instance_id:String,slot:String)->Dictionary:
@@ -542,9 +615,103 @@ func _advance_item_action_time()->Dictionary:
 		var advanced:Dictionary=commit_direct_solo_action(hero_id,"HOLD") \
 			if is_solo_combat() else _commit_item_time_party_turn(hero_id)
 		return advanced
-	var result=sim.step(CommandScript.wait_for(ITEM_ACTION_TIME_COST,state.protagonist_id))
-	if result.accepted:_advance_exile_world()
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return {"accepted":false,"reason":"snapshot_unavailable"}
+	var event_start:int=sim.world.events.size()
+	var result=sim.step(CommandScript.wait_for(ITEM_ACTION_TIME_COST,state.protagonist_id),
+		rollback_memento)
+	if result.accepted:
+		var recovery:=_apply_safe_exploration_recovery(event_start)
+		if not bool(recovery.accepted):
+			if not sim.restore_rollback_memento(rollback_memento):
+				return {"accepted":false,"reason":"rollback_restore_failed"}
+			return {"accepted":false,"reason":str(recovery.reason)}
+		_advance_exile_world()
 	return {"accepted":bool(result.accepted),"reason":str(result.reason)}
+
+
+func _apply_safe_exploration_recovery(event_start:int)->Dictionary:
+	# This is invoked after every canonical session time action. The mutable
+	# counter lives in PartyEncounterState, so save/load and journal replay follow
+	# exactly the same safe-turn cadence without trusting wall-clock presentation.
+	# Every caller owns the transaction snapshot/memento from before its complete
+	# time action. Recovery therefore reports failure to that outer owner instead
+	# of taking a second full-world snapshot after the step has already succeeded.
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return {"accepted":true}
+	var state=sim.world.party_encounter
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	if hero==null or combatant==null:return {"accepted":true}
+	for index in range(maxi(0,event_start),sim.world.events.size()):
+		var event=sim.world.events[index]
+		if int(event.target_id)==state.protagonist_id and str(event.type).begins_with("combat.") \
+				and str(event.type).ends_with("_damage") and int(event.magnitude)>0:
+			state.last_protagonist_damage_step=sim.world.step_index
+			state.safe_recovery_turns=0
+			state.revision+=1
+			return _finalize_safe_recovery({})
+	var exposure_risk:=0
+	if sim.world.is_environment_exposed(state.protagonist_id):
+		var evaluated=sim.evaluate_exposure_for_entity(state.protagonist_id,hero.position)
+		if evaluated!=null and evaluated.evaluation!=null:exposure_risk=int(evaluated.evaluation.total_risk)
+	if not RecoveryRulesScript.is_safe_to_recover(sim.world,state,hero,combatant,exposure_risk):
+		if state.safe_recovery_turns!=0:
+			state.safe_recovery_turns=0;state.revision+=1
+		return _finalize_safe_recovery({})
+	state.safe_recovery_turns+=1
+	state.revision+=1
+	if not RecoveryRulesScript.heal_due(state.safe_recovery_turns):return _finalize_safe_recovery({})
+	var healed:=mini(RecoveryRulesScript.HEAL_PER_PULSE,int(hero.max_health)-int(hero.health))
+	if healed<=0:return _finalize_safe_recovery({})
+	hero.health+=healed
+	var event=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
+		hero.position,healed,-1,{"schema_version":1,"ruleset_id":RecoveryRulesScript.RULESET_ID,
+			"kind":"AUTO","safe_turn_count":state.safe_recovery_turns,"health_after":int(hero.health)})
+	if event==null:
+		return {"accepted":false,"reason":"safe_recovery_event_failed"}
+	return _finalize_safe_recovery({"event_id":event.id,"healed_amount":healed,
+		"safe_turn_count":state.safe_recovery_turns,"event":event})
+
+
+func _finalize_safe_recovery(details:Dictionary)->Dictionary:
+	var recovery_error:=_safe_recovery_postcondition_error(details)
+	if not recovery_error.is_empty():
+		return {"accepted":false,"reason":recovery_error}
+	var result:Dictionary={"accepted":true};result.merge(details,true)
+	return result
+
+
+func _safe_recovery_postcondition_error(details:Dictionary)->String:
+	# Simulator.step has just completed the full world-state validator. Recovery
+	# owns only this party row, the protagonist HP, and optionally one final
+	# health.restored leaf, so validate that narrow mutation envelope instead of
+	# re-scanning the immutable world/event history a second time every hop.
+	if sim==null or sim.world==null or sim.world._active_step_index!=-1 \
+			or not sim.world.is_settled() or sim.world.party_encounter==null:
+		return "safe_recovery_world_not_settled"
+	var state=sim.world.party_encounter
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	if hero==null or combatant==null or int(hero.health)<0 \
+			or int(hero.health)>int(hero.max_health) \
+			or int(state.safe_recovery_turns)<0 \
+			or int(state.last_protagonist_damage_step)<-1 \
+			or int(state.last_protagonist_damage_step)>int(sim.world.step_index):
+		return "safe_recovery_projection_invalid"
+	var party_error:=PartyStateScript.wire_error(state.to_dict(),
+		sim.world.width,sim.world.height)
+	if not party_error.is_empty():return "safe_recovery_party_state_invalid"
+	if details.has("event_id"):
+		var event=sim.world.event_by_id(int(details.event_id))
+		if event==null or event!=sim.world.events.back() \
+				or event.type!="health.restored" or event.actor_id!=state.protagonist_id \
+				or event.target_id!=state.protagonist_id or event.cause_id!=-1 \
+				or event.position!=hero.position or event.magnitude!=int(details.healed_amount) \
+				or event.data!={"schema_version":1,"ruleset_id":RecoveryRulesScript.RULESET_ID,
+					"kind":"AUTO","safe_turn_count":int(details.safe_turn_count),
+					"health_after":int(hero.health)}:
+			return "safe_recovery_event_invalid"
+	return ""
 
 
 func _commit_item_time_party_turn(hero_id:int)->Dictionary:
@@ -566,7 +733,10 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"instance_id":item.instance_id,"definition_id":item.definition_id,
 		"label":definition.label,"category":definition.category,"glyph":glyph,
 		"quantity":item.quantity,"rarity":item.rarity,
-		"equip_slots":definition.equip_slots.duplicate(),"placeholder":definition.placeholder}.duplicate(true)
+		"equip_slots":definition.equip_slots.duplicate(),"placeholder":definition.placeholder,
+		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)!="NONE",
+		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
+			if str(definition.use_kind)=="HEALING" else 0}.duplicate(true)
 
 
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
@@ -944,7 +1114,7 @@ func _party_observation_context()->Dictionary:
 		and str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
 	var hero_position := Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	var visible: Dictionary = VisualTestMapScript.visible_cells(sim.world, hero_position, scenario_id)
+	var visible: Dictionary = _presentation_visible_cells(hero_position)
 	# The controlled actor is always a valid presentation anchor. Keep this
 	# explicit so grouped followers can safely fall back to the hero cell even if
 	# a future LOS implementation accidentally omits its origin.
@@ -1135,8 +1305,7 @@ func _cache_explored_origin(origin:Vector2i)->void:
 	if visited.has(origin_key):return
 	visited[origin_key]=true
 	var explored:Dictionary=_explored_presentation_cache.get("explored",{})
-	var historical_visible:Dictionary=VisualTestMapScript.visible_cells(
-		sim.world,origin,scenario_id)
+	var historical_visible:Dictionary=_presentation_visible_cells(origin)
 	for key in historical_visible:explored[str(key)]=true
 	_explored_presentation_cache["visited"]=visited
 	_explored_presentation_cache["explored"]=explored
@@ -1159,6 +1328,17 @@ func _presentation_topology_fingerprint()->int:
 			and _presentation_topology_cache.has("topology_fingerprint"):
 		return int(_presentation_topology_cache.topology_fingerprint)
 	return _scan_presentation_topology_fingerprint()
+
+
+func _presentation_visible_cells(origin:Vector2i)->Dictionary:
+	if sim==null or sim.world==null:return {}
+	var key:="%d:%s:%d:%d"%[int(sim.world.get_instance_id()),scenario_id,
+		origin.x,origin.y]
+	var cached:Variant=_presentation_visibility_cache.get(key)
+	if cached is Dictionary:return (cached as Dictionary).duplicate()
+	var visible:Dictionary=VisualTestMapScript.visible_cells(sim.world,origin,scenario_id)
+	_presentation_visibility_cache[key]=visible
+	return visible.duplicate()
 
 
 func _scan_presentation_topology_fingerprint()->int:
@@ -2188,7 +2368,7 @@ func _exploration_visible_cells() -> Dictionary:
 	var state = sim.world.party_encounter
 	var hero = sim.world.entities.get(int(state.protagonist_id))
 	if hero == null: return {}
-	return VisualTestMapScript.visible_cells(sim.world, hero.position, scenario_id)
+	return _presentation_visible_cells(hero.position)
 
 
 func _exploration_step_risk(position: Vector2i, visible: Dictionary) -> int:
@@ -2264,8 +2444,17 @@ func commit_direct_solo_action(actor_id:int,action_type:String,
 	var copied_action=_canonical_action_copy(action)
 	if copied_action==null:return _rejection_dto("invalid_party_action")
 	var request=RequestScript.new(copied_action,[])
-	var result=sim.step_direct_solo_party_turn(request)
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return _rejection_dto("party_snapshot_unavailable")
+	var event_start:int=sim.world.events.size()
+	var result=sim.step_direct_solo_party_turn(request,rollback_memento)
 	if result.accepted:
+		var recovery:=_apply_safe_exploration_recovery(event_start)
+		if not bool(recovery.accepted):
+			if not sim.restore_rollback_memento(rollback_memento):
+				return _rejection_dto("rollback_restore_failed")
+			return _rejection_dto(str(recovery.reason))
+		if recovery.get("event")!=null:result.events.append(recovery.event)
 		_advance_exile_world()
 		command_journal.append({"kind":"party_turn",
 			"request":request.to_dict().duplicate(true)})
@@ -2313,8 +2502,7 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	if state.safe_phase != "ENGAGED": return rows
 	var hero = sim.world.entities.get(state.protagonist_id)
 	if hero == null: return rows
-	var visible: Dictionary = VisualTestMapScript.visible_cells(
-		sim.world, hero.position, scenario_id)
+	var visible: Dictionary = _presentation_visible_cells(hero.position)
 	for enemy_id_value in state.enemy_ids:
 		var enemy_id := int(enemy_id_value)
 		var enemy = sim.world.entities.get(enemy_id)
@@ -2593,7 +2781,11 @@ func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
 			{"actor_id":hero_id, "action_type":"MOVE",
 				"destination":[destination.x, destination.y]})
 	var command = CommandScript.move_to(hero_id, destination)
-	return _commit_exploration_one(command, false)
+	# AUTO has already checked this single adjacent cell against its fresh
+	# fog-safe snapshot. Simulator.step still performs the sole authoritative
+	# command assessment/plan; skip only the otherwise identical presentation
+	# preview that ordinary taps need before their commit.
+	return _commit_exploration_one(command, false, true)
 
 
 func _auto_explore_fog_snapshot() -> Dictionary:
@@ -2674,8 +2866,7 @@ func _auto_explore_stop_snapshot() -> Dictionary:
 	var state = sim.world.party_encounter
 	var hero_position := Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	var visible: Dictionary = VisualTestMapScript.visible_cells(sim.world,
-		hero_position, scenario_id)
+	var visible: Dictionary = _presentation_visible_cells(hero_position)
 	visible[_position_key(hero_position)] = true
 	var hide_enemies: bool = scenario_id == REGRESSION_SCENARIO_ID \
 		and str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
@@ -2728,11 +2919,26 @@ func commit_exploration(command) -> Dictionary:
 	return result
 
 
-func _commit_exploration_one(command, preserve_route: bool) -> Dictionary:
-	var preview := preview_exploration(command)
-	if not preview.accepted: return preview
-	var result = sim.step(command)
+func _commit_exploration_one(command, preserve_route: bool,
+		prevalidated_auto_hop: bool = false) -> Dictionary:
+	if not prevalidated_auto_hop:
+		var preview := preview_exploration(command)
+		if not preview.accepted: return preview
+	elif not sim.world.runtime_party_health_error().is_empty():
+		return _rejection_dto("snapshot_unavailable")
+	# This transaction always validates the post-step world in its recovery tail.
+	# Capture a settled rollback image without paying that full history scan twice.
+	var rollback_memento:Variant=sim.capture_rollback_memento(false)
+	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var event_start:int=sim.world.events.size()
+	var result = sim.step(command,rollback_memento)
 	if result.accepted:
+		var recovery:=_apply_safe_exploration_recovery(event_start)
+		if not bool(recovery.accepted):
+			if not sim.restore_rollback_memento(rollback_memento):
+				return _rejection_dto("rollback_restore_failed")
+			return _rejection_dto(str(recovery.reason))
+		if recovery.get("event")!=null:result.events.append(recovery.event)
 		_advance_exile_world()
 		command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
@@ -2921,8 +3127,12 @@ func _commit_turn_from_preview(preview:Dictionary)->Dictionary:
 	for facade_key in ["message", "reason_code", "reason_details", "visual_effect_schema_version",
 			"visual_effects"]:
 		plan_data.erase(facade_key)
-	var plan = load("res://sim/party_turn_plan.gd").new(plan_data); var result = sim.step_party_turn(plan)
+	var plan = load("res://sim/party_turn_plan.gd").new(plan_data); var before:Dictionary=sim.snapshot(); var event_start:int=sim.world.events.size(); var result = sim.step_party_turn(plan)
 	if result.accepted:
+		var recovery:=_apply_safe_exploration_recovery(event_start)
+		if not bool(recovery.accepted):
+			sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(recovery.reason))
+		if recovery.get("event")!=null:result.events.append(recovery.event)
 		_advance_exile_world()
 		command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})
 	if result.accepted: _clear_draft()
@@ -3220,13 +3430,14 @@ func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
-			"action.melee_attack","combat.attack_missed","entity.downed",
+			"action.melee_attack","combat.attack_missed","combat.attack_parried","entity.downed",
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
 			"party.recruitment_refused","party.companion_recruited",
 			"party.companion_dismissed","party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
-			"item.dropped","item.discarded"]:
+			"item.dropped","item.discarded","item.used","health.restored",
+			"progression.enemy_reward"]:
 		return true
 	return event_type.begins_with("combat.") and event_type.ends_with("_damage")
 
@@ -3255,6 +3466,20 @@ func load_session_json(encoded: String) -> Dictionary:
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	var source_progression_row:Dictionary=decoded.snapshot.party_encounter.get(
+		"protagonist_progression",{})
+	var source_progression_schema:int=int(source_progression_row.get("schema_version",0))
+	# v1-v3 were victory-reward runs. A migrated v5 snapshot retains the same
+	# explicit origin bit, so replay must begin from that historical baseline.
+	var legacy_progression_replay:bool=source_party_schema<PartyStateScript.PROGRESSION_SCHEMA_VERSION \
+		or source_progression_schema<ProgressionRegistryScript.SCHEMA_VERSION \
+		or bool(source_progression_row.get("legacy_reward_origin",false))
+	var legacy_progression_modes:Dictionary={"SWORD":"NORMAL","AXE":"NORMAL",
+		"BLUNT":"NORMAL","SPEAR":"NORMAL","RANGED":"NORMAL","UNARMED":"NORMAL"}
+	if not source_progression_row.is_empty():
+		var parsed_legacy_progression=ProgressionScript.from_dict(source_progression_row)
+		if parsed_legacy_progression!=null:
+			legacy_progression_modes=parsed_legacy_progression.training_modes.duplicate(true)
 	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
 		decoded.snapshot.party_encounter.erase("protagonist_inventory")
 		decoded.snapshot.party_encounter.erase("ground_items")
@@ -3347,6 +3572,10 @@ func load_session_json(encoded: String) -> Dictionary:
 		legacy_state.protagonist_inventory=InventoryScript.with_legacy_weapon(
 			str(legacy_state.protagonist_loadout.equipped_weapon_id))
 		legacy_state.ground_items=GroundItemScript.new()
+	if legacy_progression_replay:
+		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
+		legacy_progression.legacy_reward_origin=true
+		legacy_progression.training_modes=legacy_progression_modes.duplicate(true)
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
@@ -3368,6 +3597,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					"UNEQUIP":replay_result=replay.unequip_inventory_slot(str(item_operation.slot))
 					"DROP":replay_result=replay.drop_inventory_item(str(item_operation.instance_id))
 					"DISCARD":replay_result=replay.discard_inventory_item(str(item_operation.instance_id))
+					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -3402,6 +3632,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	else: _auto_explore.clear()
 	_invalidate_explored_presentation_cache()
 	_presentation_topology_cache.clear()
+	_presentation_visibility_cache.clear()
 	_warm_product_topology_presentation_cache()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
 
@@ -3457,7 +3688,7 @@ func _journal_wire_error(journal: Array) -> String:
 				var item_keys:Array=row.operation.keys();item_keys.sort()
 				if item_keys!=["action","instance_id","slot"] \
 						or not row.operation.action is String \
-						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD"] \
+					or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE"] \
 						or not row.operation.instance_id is String or not row.operation.slot is String:
 					return "invalid_item_journal"
 			"equipment":
@@ -3865,6 +4096,10 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			rows.append(_visual_effect_row(event, "DEATH", "death", order,
 				death_type, 0, ""))
 			order += 1
+		elif event_type == "health.restored":
+			rows.append(_visual_effect_row(event,"FLOATING_AMOUNT","heal",order,
+				"healing",int(event.magnitude),"+%d" % int(event.magnitude)))
+			order += 1
 	return rows.duplicate(true)
 
 
@@ -4030,6 +4265,8 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"ground_item_missing":"바닥에 더 이상 그 아이템이 없습니다.",
 			"ground_item_not_at_actor":"아이템이 있는 칸으로 이동해야 주울 수 있습니다.",
 			"item_use_unimplemented":"이 아이템의 사용 효과는 아직 준비되지 않았습니다.",
+			"item_heal_not_needed":"체력이 가득 차 있어 회복 물약을 아꼈습니다.",
+			"item_user_unavailable":"쓰러진 상태에서는 물약을 사용할 수 없습니다.",
 			"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
@@ -4145,6 +4382,13 @@ func _event_message(event) -> String:
 		"item.unequipped":return "%s 장비를 해제했다."%_subject(actor)
 		"item.dropped":return "%s 물건을 바닥에 내려놓았다."%_subject(actor)
 		"item.discarded":return "%s 물건을 영구히 폐기했다."%_subject(actor)
+		"item.used":return "%s 회복 물약을 마셨다." % _subject(actor)
+		"health.restored":
+			return "%s 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)] \
+				if str(event.data.get("kind",""))=="POTION" \
+				else "%s 안전을 되찾아 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)]
+		"progression.enemy_reward":return "%s 처치 · 경험치 +%d · 숙련 풀 +%d" % [
+			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":
@@ -4176,6 +4420,9 @@ func _event_message(event) -> String:
 				return "%s 공격이 %s에게 빗나갔다." % [
 					_possessive(_name(attacker_id)), target]
 			return "%s 향한 공격이 빗나갔다." % _object(target)
+		"combat.attack_parried":
+			var defender_id := int(event.target_id)
+			return "%s 공격을 막아냈다." % _subject(_name(defender_id))
 		"party.override_committed": return "%s 지시한 행동으로 계획을 바꿨다." % _topic(actor)
 		"party.victory": return "마지막 적이 쓰러졌다. 다시 탐험할 수 있다." if is_solo_combat() else "마지막 적이 쓰러졌다. 파티가 즉시 한곳으로 모이기 시작했다."
 		"party.regroup_started": return "주인공이 전투 태세를 풀었다." if is_solo_combat() else "주인공이 동료들을 불러 모았다."

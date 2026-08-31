@@ -1,16 +1,22 @@
 class_name ProgressionRegistry
 extends RefCounted
 
-const RULESET_ID := "weapon-proficiency-v2"
-const SCHEMA_VERSION := 3
-const VICTORY_XP := 100
+const RULESET_ID := "weapon-proficiency-v3"
+const SCHEMA_VERSION := 5
+# A defeated enemy pays two *parallel* ledgers. Character XP is never spent or
+# converted into training; the same kill independently creates this mastery pool.
+const ENEMY_KILL_CHARACTER_XP := 100
+const ENEMY_KILL_MASTERY_POOL := 100
+# Read-only compatibility alias for old callers/tests. New gameplay must name
+# the source explicitly as an enemy-kill reward.
+const VICTORY_XP := ENEMY_KILL_CHARACTER_XP
 const FOCUS_TOTAL := 100
 const SKILL_IDS := ["SWORD", "AXE", "BLUNT", "SPEAR", "RANGED", "UNARMED"]
 const PROFICIENCY_IDS := SKILL_IDS
 const TRAINING_MODES := ["FOCUS", "NORMAL", "OFF"]
 const MODE_WEIGHTS := {"FOCUS":3, "NORMAL":1, "OFF":0}
-const DEFAULT_MODES := {"SWORD":"NORMAL", "AXE":"NORMAL", "BLUNT":"NORMAL",
-	"SPEAR":"NORMAL", "RANGED":"NORMAL", "UNARMED":"NORMAL"}
+const DEFAULT_MODES := {"SWORD":"OFF", "AXE":"OFF", "BLUNT":"OFF",
+	"SPEAR":"OFF", "RANGED":"OFF", "UNARMED":"OFF"}
 # Schema 1/2 compatibility only. New progression authority uses DEFAULT_MODES.
 const DEFAULT_FOCUS := {"SWORD":30, "AXE":15, "BLUNT":15, "SPEAR":15,
 	"RANGED":15, "UNARMED":10}
@@ -43,6 +49,16 @@ static func focus_preset(proficiency_id: String) -> Dictionary:
 	if proficiency_id not in PROFICIENCY_IDS: return {}
 	var result := {}
 	for id in PROFICIENCY_IDS: result[id] = 50 if id == proficiency_id else 10
+	return result
+
+
+static func initial_training_modes(equipped_proficiency_id: String) -> Dictionary:
+	# New expeditions begin legibly: only the weapon currently held is training.
+	# Later loadout changes deliberately do not call this function, preserving the
+	# player's explicitly selected focus modes.
+	var result := DEFAULT_MODES.duplicate(true)
+	if equipped_proficiency_id in PROFICIENCY_IDS:
+		result[equipped_proficiency_id] = "FOCUS"
 	return result
 
 
@@ -84,7 +100,7 @@ static func modes_from_legacy_focus(focus: Dictionary) -> Dictionary:
 	return result
 
 
-static func victory_training_allocation(modes: Dictionary) -> Dictionary:
+static func enemy_kill_mastery_allocation(modes: Dictionary) -> Dictionary:
 	var result := {}
 	var total_weight := 0
 	for proficiency_id in PROFICIENCY_IDS:
@@ -93,10 +109,10 @@ static func victory_training_allocation(modes: Dictionary) -> Dictionary:
 	if total_weight <= 0: return result
 	var allocated := 0
 	for proficiency_id in PROFICIENCY_IDS:
-		var amount := int(VICTORY_XP * int(MODE_WEIGHTS[str(modes[proficiency_id])]) / total_weight)
+		var amount := int(ENEMY_KILL_MASTERY_POOL * int(MODE_WEIGHTS[str(modes[proficiency_id])]) / total_weight)
 		result[proficiency_id] = amount
 		allocated += amount
-	var remainder := VICTORY_XP - allocated
+	var remainder := ENEMY_KILL_MASTERY_POOL - allocated
 	var index := 0
 	while remainder > 0:
 		var proficiency_id: String = PROFICIENCY_IDS[index % PROFICIENCY_IDS.size()]
@@ -105,6 +121,11 @@ static func victory_training_allocation(modes: Dictionary) -> Dictionary:
 			remainder -= 1
 		index += 1
 	return result
+
+
+static func victory_training_allocation(modes: Dictionary) -> Dictionary:
+	# Compatibility spelling. Rewards are allocated per canonical enemy death.
+	return enemy_kill_mastery_allocation(modes)
 
 
 static func focus_error(focus: Variant) -> String:

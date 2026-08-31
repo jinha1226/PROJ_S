@@ -2,33 +2,62 @@ class_name ProtagonistProgression
 extends RefCounted
 
 const RegistryScript = preload("res://sim/progression_registry.gd")
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 5
 const LEGACY_SCHEMA_VERSION := 1
 const PRESET_SCHEMA_VERSION := 2
+const VICTORY_SCHEMA_VERSION := 3
+const DEATH_SCHEMA_VERSION := 4
 
 var schema_version := SCHEMA_VERSION
 var xp_total := 0
 var training_modes: Dictionary = RegistryScript.DEFAULT_MODES.duplicate(true)
 var skill_training: Dictionary = _empty_training()
-var processed_victory_event_ids: Array[int] = []
+# New runs record the source `entity.died` ids exactly once.
+var processed_source_death_event_ids: Array[int] = []
+# Existing v1-v3 saves were rewarded from party.victory. This preserves that
+# historical ledger during migration without retroactively changing its value.
+var legacy_processed_victory_event_ids: Array[int] = []
+var legacy_reward_origin := false
 
 
-func award_victory(event_id: int) -> bool:
-	if event_id <= 0 or event_id in processed_victory_event_ids: return false
-	if xp_total > RegistryScript.MAX_XP - RegistryScript.VICTORY_XP: return false
+func award_enemy_death(source_death_event_id: int) -> bool:
+	if source_death_event_id <= 0 or source_death_event_id in processed_source_death_event_ids:
+		return false
+	if xp_total > RegistryScript.MAX_XP - RegistryScript.ENEMY_KILL_CHARACTER_XP:
+		return false
 	if not RegistryScript.training_modes_error(training_modes).is_empty(): return false
-	xp_total += RegistryScript.VICTORY_XP
-	var allocation := RegistryScript.victory_training_allocation(training_modes)
+	# Character XP and mastery are parallel rewards from the same kill. Neither
+	# pool is consumed, transferred, or reduced to fund the other.
+	xp_total += RegistryScript.ENEMY_KILL_CHARACTER_XP
+	var allocation := RegistryScript.enemy_kill_mastery_allocation(training_modes)
 	for proficiency_id in RegistryScript.PROFICIENCY_IDS:
-		skill_training[proficiency_id] = int(skill_training[proficiency_id]) \
-			+ int(allocation[proficiency_id])
-	processed_victory_event_ids.append(event_id)
+		skill_training[proficiency_id] = int(skill_training[proficiency_id]) + int(allocation[proficiency_id])
+	processed_source_death_event_ids.append(source_death_event_id)
 	return true
 
 
+func award_legacy_victory(victory_event_id: int) -> bool:
+	if victory_event_id <= 0 or victory_event_id in legacy_processed_victory_event_ids:
+		return false
+	if xp_total > RegistryScript.MAX_XP - RegistryScript.ENEMY_KILL_CHARACTER_XP:
+		return false
+	if not RegistryScript.training_modes_error(training_modes).is_empty(): return false
+	xp_total += RegistryScript.ENEMY_KILL_CHARACTER_XP
+	var allocation := RegistryScript.enemy_kill_mastery_allocation(training_modes)
+	for proficiency_id in RegistryScript.PROFICIENCY_IDS:
+		skill_training[proficiency_id] = int(skill_training[proficiency_id]) + int(allocation[proficiency_id])
+	legacy_processed_victory_event_ids.append(victory_event_id)
+	return true
+
+
+func award_victory(event_id: int) -> bool:
+	# Compatibility API for old isolated callers. Live party.victory is only an
+	# encounter-close signal; the coordinator pays canonical deaths instead.
+	return award_legacy_victory(event_id)
+
+
 func set_training_mode(proficiency_id: String, mode: String) -> bool:
-	if proficiency_id not in RegistryScript.PROFICIENCY_IDS \
-			or mode not in RegistryScript.TRAINING_MODES \
+	if proficiency_id not in RegistryScript.PROFICIENCY_IDS or mode not in RegistryScript.TRAINING_MODES \
 			or str(training_modes.get(proficiency_id, "")) == mode:
 		return false
 	training_modes[proficiency_id] = mode
@@ -52,85 +81,83 @@ func to_dict() -> Dictionary:
 	var training_rows: Array = []
 	for proficiency_id in RegistryScript.PROFICIENCY_IDS:
 		mode_rows.append({"skill_id":proficiency_id, "mode":str(training_modes[proficiency_id])})
-		training_rows.append({"skill_id":proficiency_id,
-			"training_total":int(skill_training[proficiency_id])})
+		training_rows.append({"skill_id":proficiency_id, "training_total":int(skill_training[proficiency_id])})
 	return {"schema_version":schema_version, "xp_total":xp_total,
 		"training_modes":mode_rows, "skill_training":training_rows,
-		"processed_victory_event_ids":processed_victory_event_ids.map(func(id): return str(id))}
+		"processed_source_death_event_ids":processed_source_death_event_ids.map(func(id): return str(id)),
+		"legacy_processed_victory_event_ids":legacy_processed_victory_event_ids.map(func(id): return str(id)),
+		"legacy_reward_origin":legacy_reward_origin}
 
 
 static func from_dict(row: Dictionary):
 	var value = load("res://sim/protagonist_progression.gd").new()
 	value.schema_version = SCHEMA_VERSION
 	value.xp_total = int(row.get("xp_total", 0))
-	value.processed_victory_event_ids.clear()
-	for event_id in row.get("processed_victory_event_ids", []):
-		value.processed_victory_event_ids.append(int(str(event_id)))
 	if int(row.get("schema_version", 0)) in [LEGACY_SCHEMA_VERSION, PRESET_SCHEMA_VERSION]:
+		value.legacy_reward_origin=true
 		_migrate_legacy_rows(value, row)
+		for event_id in row.get("processed_victory_event_ids", []):
+			value.legacy_processed_victory_event_ids.append(int(str(event_id)))
 		return value
+	if int(row.get("schema_version", 0)) == VICTORY_SCHEMA_VERSION:
+		value.legacy_reward_origin=true
+		for event_id in row.get("processed_victory_event_ids", []):
+			value.legacy_processed_victory_event_ids.append(int(str(event_id)))
+	else:
+		value.legacy_reward_origin=bool(row.get("legacy_reward_origin",
+			not row.get("legacy_processed_victory_event_ids",[]).is_empty()))
+		for event_id in row.get("processed_source_death_event_ids", []):
+			value.processed_source_death_event_ids.append(int(str(event_id)))
+		for event_id in row.get("legacy_processed_victory_event_ids", []):
+			value.legacy_processed_victory_event_ids.append(int(str(event_id)))
 	value.training_modes.clear()
-	for mode_row in row.training_modes:
-		value.training_modes[str(mode_row.skill_id)] = str(mode_row.mode)
+	for mode_row in row.training_modes: value.training_modes[str(mode_row.skill_id)] = str(mode_row.mode)
 	value.skill_training.clear()
-	for training_row in row.skill_training:
-		value.skill_training[str(training_row.skill_id)] = int(training_row.training_total)
+	for training_row in row.skill_training: value.skill_training[str(training_row.skill_id)] = int(training_row.training_total)
 	return value
 
 
 static func wire_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_progression_shape"
 	var keys: Array = row.keys(); keys.sort()
-	var current_keys := ["processed_victory_event_ids", "schema_version", "skill_training",
-		"training_modes", "xp_total"]
-	var legacy_keys := ["processed_victory_event_ids", "schema_version", "skill_training",
-		"training_focus", "xp_total"]
-	if keys != current_keys and keys != legacy_keys:
-		return "invalid_progression_keys"
+	var v5_keys := ["legacy_processed_victory_event_ids", "legacy_reward_origin", "processed_source_death_event_ids",
+		"schema_version", "skill_training", "training_modes", "xp_total"]
+	var v4_keys := ["legacy_processed_victory_event_ids", "processed_source_death_event_ids",
+		"schema_version", "skill_training", "training_modes", "xp_total"]
+	var v3_keys := ["processed_victory_event_ids", "schema_version", "skill_training", "training_modes", "xp_total"]
+	var legacy_keys := ["processed_victory_event_ids", "schema_version", "skill_training", "training_focus", "xp_total"]
+	if keys != v5_keys and keys != v4_keys and keys != v3_keys and keys != legacy_keys: return "invalid_progression_keys"
 	if not _integer(row.schema_version) or int(row.schema_version) not in [LEGACY_SCHEMA_VERSION,
-			PRESET_SCHEMA_VERSION, SCHEMA_VERSION]:
-		return "unsupported_progression_schema"
-	if int(row.schema_version) == SCHEMA_VERSION and keys != current_keys:
-		return "invalid_progression_keys"
-	if int(row.schema_version) != SCHEMA_VERSION and keys != legacy_keys:
-		return "invalid_progression_keys"
+			PRESET_SCHEMA_VERSION, VICTORY_SCHEMA_VERSION, DEATH_SCHEMA_VERSION, SCHEMA_VERSION]: return "unsupported_progression_schema"
+	if int(row.schema_version) == SCHEMA_VERSION and keys != v5_keys: return "invalid_progression_keys"
+	if int(row.schema_version) == DEATH_SCHEMA_VERSION and keys != v4_keys: return "invalid_progression_keys"
+	if int(row.schema_version) == VICTORY_SCHEMA_VERSION and keys != v3_keys: return "invalid_progression_keys"
+	if int(row.schema_version) < VICTORY_SCHEMA_VERSION and keys != legacy_keys: return "invalid_progression_keys"
 	if not _integer(row.xp_total) or int(row.xp_total) < 0 or int(row.xp_total) > RegistryScript.MAX_XP:
 		return "invalid_progression_xp"
-	var expected_ids: Array = ["MELEE", "GUARD", "EXPLORATION"] \
-		if int(row.schema_version) == LEGACY_SCHEMA_VERSION else RegistryScript.PROFICIENCY_IDS
-	var authority_rows: Variant = row.get("training_modes") if int(row.schema_version) == SCHEMA_VERSION \
-		else row.get("training_focus")
+	var expected_ids: Array = ["MELEE", "GUARD", "EXPLORATION"] if int(row.schema_version) == LEGACY_SCHEMA_VERSION else RegistryScript.PROFICIENCY_IDS
+	var authority_rows: Variant = row.get("training_modes") if int(row.schema_version) >= VICTORY_SCHEMA_VERSION else row.get("training_focus")
 	if not authority_rows is Array or authority_rows.size() != expected_ids.size():
-		return "invalid_progression_modes_shape" if int(row.schema_version) == SCHEMA_VERSION \
-			else "invalid_progression_focus_shape"
-	if not row.skill_training is Array or row.skill_training.size() != expected_ids.size():
-		return "invalid_progression_training_shape"
-	var focus := {}
-	var modes := {}
+		return "invalid_progression_modes_shape" if int(row.schema_version) >= VICTORY_SCHEMA_VERSION else "invalid_progression_focus_shape"
+	if not row.skill_training is Array or row.skill_training.size() != expected_ids.size(): return "invalid_progression_training_shape"
+	var focus := {}; var modes := {}
 	for index in range(expected_ids.size()):
 		var expected_id: String = expected_ids[index]
-		var focus_row: Variant = authority_rows[index]
+		var authority_row: Variant = authority_rows[index]
 		var training_row: Variant = row.skill_training[index]
-		if not focus_row is Dictionary or focus_row.keys().size() != 2 \
-				or str(focus_row.get("skill_id", "")) != expected_id:
-			return "invalid_progression_mode_row" if int(row.schema_version) == SCHEMA_VERSION \
-				else "invalid_progression_focus_row"
-		if not training_row is Dictionary or training_row.keys().size() != 2 \
-				or not training_row.has_all(["skill_id", "training_total"]) \
-				or str(training_row.skill_id) != expected_id:
+		if not authority_row is Dictionary or authority_row.keys().size() != 2 or str(authority_row.get("skill_id", "")) != expected_id:
+			return "invalid_progression_mode_row" if int(row.schema_version) >= VICTORY_SCHEMA_VERSION else "invalid_progression_focus_row"
+		if not training_row is Dictionary or training_row.keys().size() != 2 or not training_row.has_all(["skill_id", "training_total"]) or str(training_row.skill_id) != expected_id:
 			return "invalid_progression_training_row"
-		if int(row.schema_version) == SCHEMA_VERSION:
-			if not focus_row.has("mode") or focus_row.mode not in RegistryScript.TRAINING_MODES:
-				return "invalid_progression_mode_value"
-			modes[expected_id] = str(focus_row.mode)
+		if int(row.schema_version) >= VICTORY_SCHEMA_VERSION:
+			if not authority_row.has("mode") or authority_row.mode not in RegistryScript.TRAINING_MODES: return "invalid_progression_mode_value"
+			modes[expected_id] = str(authority_row.mode)
 		else:
-			if not focus_row.has("weight") or not _integer(focus_row.weight):
-				return "invalid_progression_focus_value"
-			focus[expected_id] = int(focus_row.weight)
-		if not _integer(training_row.training_total) or int(training_row.training_total) < 0 \
-				or int(training_row.training_total) > RegistryScript.MAX_XP:
+			if not authority_row.has("weight") or not _integer(authority_row.weight): return "invalid_progression_focus_value"
+			focus[expected_id] = int(authority_row.weight)
+		if not _integer(training_row.training_total) or int(training_row.training_total) < 0 or int(training_row.training_total) > RegistryScript.MAX_XP:
 			return "invalid_progression_training_value"
-	if int(row.schema_version) == SCHEMA_VERSION:
+	if int(row.schema_version) >= VICTORY_SCHEMA_VERSION:
 		var modes_error := RegistryScript.training_modes_error(modes)
 		if not modes_error.is_empty(): return modes_error
 	elif int(row.schema_version) == PRESET_SCHEMA_VERSION:
@@ -139,16 +166,27 @@ static func wire_error(row: Variant) -> String:
 	else:
 		var legacy_total := 0
 		for weight in focus.values():
-			if int(weight) < 0 or int(weight) > RegistryScript.FOCUS_TOTAL:
-				return "invalid_progression_focus_value"
+			if int(weight) < 0 or int(weight) > RegistryScript.FOCUS_TOTAL: return "invalid_progression_focus_value"
 			legacy_total += int(weight)
 		if legacy_total != RegistryScript.FOCUS_TOTAL: return "invalid_progression_focus_total"
-	if not row.processed_victory_event_ids is Array: return "invalid_progression_victory_ids"
+	var source_rows: Variant = row.get("processed_source_death_event_ids", row.get("processed_victory_event_ids", []))
+	var source_error := _event_ids_error(source_rows, "source")
+	if not source_error.is_empty(): return source_error
+	if int(row.schema_version)==SCHEMA_VERSION and not row.get("legacy_reward_origin") is bool:
+		return "invalid_progression_legacy_origin"
+	if int(row.schema_version) >= DEATH_SCHEMA_VERSION:
+		var legacy_error := _event_ids_error(row.get("legacy_processed_victory_event_ids", []), "legacy")
+		if not legacy_error.is_empty(): return legacy_error
+	return ""
+
+
+static func _event_ids_error(rows: Variant, label: String) -> String:
+	if not rows is Array: return "invalid_progression_%s_ids" % label
 	var previous := 0
-	for raw_id in row.processed_victory_event_ids:
-		if not raw_id is String or not raw_id.is_valid_int(): return "noncanonical_progression_victory_id"
+	for raw_id in rows:
+		if not raw_id is String or not raw_id.is_valid_int(): return "noncanonical_progression_%s_id" % label
 		var event_id := int(raw_id)
-		if str(event_id) != raw_id or event_id <= previous: return "invalid_progression_victory_ids"
+		if str(event_id) != raw_id or event_id <= previous: return "invalid_progression_%s_ids" % label
 		previous = event_id
 	return ""
 
@@ -163,16 +201,13 @@ static func _migrate_legacy_rows(value, row: Dictionary) -> void:
 	var legacy_focus := RegistryScript.DEFAULT_FOCUS.duplicate(true)
 	if int(row.get("schema_version", 0)) == PRESET_SCHEMA_VERSION:
 		legacy_focus.clear()
-		for focus_row in row.get("training_focus", []):
-			legacy_focus[str(focus_row.get("skill_id", ""))] = int(focus_row.get("weight", 0))
+		for focus_row in row.get("training_focus", []): legacy_focus[str(focus_row.get("skill_id", ""))] = int(focus_row.get("weight", 0))
 	value.training_modes = RegistryScript.modes_from_legacy_focus(legacy_focus)
 	value.skill_training = _empty_training()
 	for training_row in row.get("skill_training", []):
 		var skill_id := str(training_row.get("skill_id", ""))
-		if skill_id in RegistryScript.PROFICIENCY_IDS:
-			value.skill_training[skill_id] = int(training_row.get("training_total", 0))
-		elif skill_id == "MELEE":
-			value.skill_training.SWORD = int(training_row.get("training_total", 0))
+		if skill_id in RegistryScript.PROFICIENCY_IDS: value.skill_training[skill_id] = int(training_row.get("training_total", 0))
+		elif skill_id == "MELEE": value.skill_training.SWORD = int(training_row.get("training_total", 0))
 
 
 static func _integer(value: Variant) -> bool:
