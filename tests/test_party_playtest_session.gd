@@ -91,7 +91,10 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 
 
 func test_downed_rescue_recruitment_refusal_is_visible_pure_stable_and_replay_exact() -> bool:
-	var session=Session.new(7,20260828,"SHOWCASE_V1")
+	# Seed six is the stable refusal fixture under the current canonical event
+	# sequence. The test owns the outcome boundary; product recruitment remains a
+	# deterministic keyed decision rather than being forced to reject.
+	var session=Session.new(6,20260828,"SHOWCASE_V1")
 	var state=session.sim.world.party_encounter
 	var target:=int(session.party_status().rescue_candidate_ids[0])
 	check_eq([session.sim.world.entities[target].health,
@@ -125,7 +128,7 @@ func test_downed_rescue_recruitment_refusal_is_visible_pure_stable_and_replay_ex
 	check_eq(decision_a,decision_b,"recruit probability and keyed roll are stable")
 	check(decision_a.accepted and not decision_a.would_accept \
 		and int(decision_a.roll_milli)>=int(decision_a.probability_milli),
-		"seed-seven fixture deterministically refuses")
+		"refusal fixture deterministically refuses")
 	check(absi(int(decision_a.terms.species_prior))>absi(int(decision_a.terms.rescued)) \
 		and absi(int(decision_a.terms.species_prior))>absi(int(decision_a.terms.personality)),
 		"species prior is the dominant single score term")
@@ -573,8 +576,24 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 	var migrated=Session.new(3,4)
 	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
 		"v5 product save reconstructs deterministic door gateways")
-	check_eq(migrated.sim.snapshot(),product.sim.snapshot(),
-		"v5 gateway migration matches current replay exactly")
+	var migrated_snapshot:Dictionary=migrated.sim.snapshot()
+	var expected_legacy_snapshot:Dictionary=product.sim.snapshot()
+	var legacy_inventory:Dictionary=migrated_snapshot.party_encounter.protagonist_inventory
+	var legacy_ground:Dictionary=migrated_snapshot.party_encounter.ground_items
+	var legacy_main_hand:Dictionary={}
+	for equipped_row in legacy_inventory.equipped_slots:
+		if str(equipped_row.slot)=="MAIN_HAND":legacy_main_hand=equipped_row
+	check_eq([legacy_inventory.backpack.size(),
+		str(legacy_inventory.backpack[0].instance_id),
+		str(legacy_inventory.backpack[0].definition_id),legacy_main_hand,
+		legacy_ground.rows],
+		[1,"LEGACY_MAIN_HAND","WEAPON_SHORT_SWORD",
+		{"slot":"MAIN_HAND","instance_id":"LEGACY_MAIN_HAND"},[]],
+		"v1-v7 migration owns only the legacy main hand and no ground loot")
+	expected_legacy_snapshot.party_encounter.protagonist_inventory=legacy_inventory.duplicate(true)
+	expected_legacy_snapshot.party_encounter.ground_items=legacy_ground.duplicate(true)
+	check_eq(migrated_snapshot,expected_legacy_snapshot,
+		"v5 gateway migration is exact after the documented legacy item default")
 	return finish()
 
 

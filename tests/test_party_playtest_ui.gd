@@ -45,7 +45,9 @@ func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract(
 func test_mobile_downed_rescue_and_stable_recruitment_refusal_use_actual_touch_facade() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
-		sandbox.initialize_for_headless_test(Session.new(7,20260828,"SHOWCASE_V1"))
+		# Seed 6 is the current canonical refusal outcome after the item/awareness
+		# event sequence was added; the product decision is never test-forced.
+		sandbox.initialize_for_headless_test(Session.new(6,20260828,"SHOWCASE_V1"))
 		sandbox.grid.size=sandbox.grid.custom_minimum_size
 		var status:Dictionary=sandbox.session.party_status()
 		var target:=int(status.rescue_candidate_ids[0])
@@ -368,7 +370,12 @@ func test_exploration_grid_one_tap_starts_route_invalid_is_pure_and_contact_clea
 	check_eq(far.session.sim.world.step_index,same_goal_step+1,
 		"different valid goal cancels and starts its first hop exactly once")
 	check_eq(far.session.party_status().anchor,[origin.x,origin.y],"replacement route reaches valid origin")
-	var wait=Sandbox.new(); wait.size=Vector2(360,640); wait.initialize_for_headless_test(Session.new()); var wait_before=wait.session.sim.snapshot()
+	var wait_session=Session.new()
+	# Isolate the occupied-cell WAIT gesture from the newer ground-item priority.
+	# Item pickup has its own vertical-slice coverage; this fixture needs an empty
+	# hero cell so the first tap remains a pure wait preview.
+	wait_session.sim.world.party_encounter.ground_items.rows.clear()
+	var wait=Sandbox.new(); wait.size=Vector2(360,640); wait.initialize_for_headless_test(wait_session); var wait_before=wait.session.sim.snapshot()
 	wait._on_actor(int(wait.session.party_status().protagonist_id)); wait._refresh()
 	check_eq(wait.session.sim.snapshot(),wait_before,"hero-cell first tap previews wait without mutation")
 	check(wait.pending_exploration_wait and "대기" in wait.notice_text,"occupied hero cell is consumed as clear wait preview")
@@ -820,34 +827,62 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 	check_eq(manual_session.party_status().safe_phase,"CONTACT","solo manual contact")
 	var manual=Sandbox.new();manual.size=Vector2(360,640)
 	manual.initialize_for_headless_test(manual_session,false)
-	var start:Button=_button(manual,"SoloCombatStart")
-	check(start!=null and start.custom_minimum_size.y>=44.0,
-		"manual solo contact has a 44px retry/start path")
-	check(manual.find_child("FormationControls",true,false)==null \
+	check(_button(manual,"SoloCombatStart")==null \
+		and manual.find_child("FormationControls",true,false)==null \
 		and manual.find_child("PresetWEDGE",true,false)==null \
-		and manual.grid._ghosts.is_empty(),"manual solo contact never exposes formations or ghosts")
-	_press(manual,"SoloCombatStart")
-	check_eq(manual.session.party_status().safe_phase,"ENGAGED","manual solo start enters combat")
+		and manual.find_child("DeployConfirm",true,false)==null \
+		and manual.grid._ghosts.is_empty(),
+		"manual solo CONTACT exposes no combat-entry or deployment facade")
+	check(manual.cards.visible and manual.grid.visible and manual.bottom_navigation.visible,
+		"manual solo CONTACT keeps the ordinary dungeon HUD")
 	manual.free()
 
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
-		var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
-		var exploration=Sandbox.new();exploration.size=viewport_size
-		exploration.initialize_for_headless_test(session,true)
-		var wait_button:Button=_button(exploration,"ProductWaitGuard")
+		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+		# Keep this interaction fixture about the CONTACT facade; starter ground
+		# items have independent pickup/time tests and may occupy the approach cell.
+		session.sim.world.party_encounter.ground_items.rows.clear()
+		var sandbox=Sandbox.new();sandbox.size=viewport_size
+		sandbox.initialize_for_headless_test(session,true)
+		sandbox.size=viewport_size;sandbox._refresh()
+		var wait_button:Button=_button(sandbox,"ProductWaitGuard")
 		check(wait_button!=null and wait_button.text=="[WAIT]" \
 			and "한 턴 대기" in wait_button.tooltip_text,
 			"%s exploration WAIT explains its authoritative one-turn action"%viewport_size)
-		exploration.free()
-		check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
-			"%s solo auto fixture reaches contact"%viewport_size)
-		var sandbox=Sandbox.new();sandbox.size=viewport_size
-		sandbox.initialize_for_headless_test(session,true)
-		# An unattached Control resets to its minimum size while the headless UI is built.
-		# Restore the simulated viewport before checking the responsive spotlight layout.
-		sandbox.size=viewport_size;sandbox._refresh()
+		var grid_id:int=sandbox.grid.get_instance_id()
+		var map_cell_count:int=sandbox.grid.visible_cell_count
+		var map_cell_size:float=sandbox.grid.cell_size_px()
+		var root_children:Array=[]
+		for child in sandbox.root_layout.get_children():root_children.append(child.name)
+		var status_before:Dictionary=session.party_status()
+		var hero_before:=Vector2i(int(status_before.protagonist_position[0]),
+			int(status_before.protagonist_position[1]))
+		var step_before:=int(status_before.step_index)
+		var journal_before:int=session.command_journal.size()
+		# The ordinary adjacent map tap crosses CONTACT and settles the internal
+		# deployment boundary in the same callback. No separate combat button/screen.
+		sandbox._on_cell(hero_before+Vector2i.RIGHT);sandbox._refresh()
 		check_eq(session.party_status().safe_phase,"ENGAGED",
-			"%s CONTACT converges to ENGAGED in initial refresh"%viewport_size)
+			"%s one map tap settles internal CONTACT"%viewport_size)
+		check_eq(int(session.party_status().step_index),step_before+2,
+			"%s unified contact tap commits move plus canonical solo deployment"%viewport_size)
+		check_eq([session.command_journal.size(),str(session.command_journal[-2].kind),
+			str(session.command_journal[-1].kind)],[journal_before+2,"exploration","deployment"],
+			"%s unified facade records one move and one internal deployment"%viewport_size)
+		check_eq(sandbox.grid.get_instance_id(),grid_id,
+			"%s contact keeps the same map node"%viewport_size)
+		check_eq(sandbox.grid.visible_cell_count,map_cell_count,
+			"%s contact keeps the same map zoom"%viewport_size)
+		check(absf(sandbox.grid.cell_size_px()-map_cell_size)<0.001 \
+			and sandbox.grid.world_to_pixel_center(Vector2i(int(
+				session.party_status().protagonist_position[0]),int(
+				session.party_status().protagonist_position[1]))).distance_to(
+					sandbox.grid.grid_rect().get_center())<0.01,
+			"%s contact keeps hero-centered map projection"%viewport_size)
+		var after_children:Array=[]
+		for child in sandbox.root_layout.get_children():after_children.append(child.name)
+		check_eq(after_children,root_children,
+			"%s contact keeps the same HUD layout"%viewport_size)
 		var deployed_step:int=int(session.sim.world.step_index)
 		var deployed_journal:int=session.command_journal.size()
 		sandbox._refresh();sandbox._refresh()
@@ -861,8 +896,14 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			"%s solo hides LAB rescue recruit exile management"%viewport_size)
 		check(sandbox.find_child("FormationControls",true,false)==null \
 			and sandbox.find_child("DeployConfirm",true,false)==null \
+			and sandbox.find_child("SoloCombatStart",true,false)==null \
 			and sandbox.grid._ghosts.is_empty(),
-			"%s solo combat has no formation controls or ghost"%viewport_size)
+			"%s solo contact has no entry, formation controls, or ghost"%viewport_size)
+		check(not sandbox.phase_panel.is_visible_in_tree() \
+			and sandbox.grid._intent_overlays.is_empty() \
+			and sandbox.grid._route_path.is_empty() \
+			and sandbox.grid.cursor_cell==Vector2i(-1,-1),
+			"%s internal combat state exposes no mode rail or plan markers"%viewport_size)
 		check(sandbox.find_children("CompanionSpeechStrip","PanelContainer",true,false).is_empty(),
 			"%s solo has no companion speech"%viewport_size)
 		var hero:=int(session.party_status().protagonist_id)
@@ -879,9 +920,9 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		var guard:Button=_button(sandbox,"ProductWaitGuard")
 		var expected_guard_target:=40.0 if viewport_size.x<450.0 else 44.0
 		check(guard!=null and guard.custom_minimum_size.y>=expected_guard_target \
-			and guard.text=="[GUARD]" and "25%" in guard.tooltip_text \
+			and guard.text=="[WAIT]" and "25%" in guard.tooltip_text \
 			and "200 시간" in guard.tooltip_text and "물리 피해" in guard.tooltip_text,
-			"%s product GUARD meets responsive touch/effect contract"%viewport_size)
+			"%s unified WAIT keeps the combat hold effect contract"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
 		check(enemy_summary==null,
 			"%s solo fixture does not reveal enemy target or direction"%viewport_size)
@@ -1225,7 +1266,12 @@ func _grid_screen_touch(grid,position:Vector2,touch_index:int=0)->void:
 
 func _explore_wait(sandbox) -> void:
 	var hero:=int(sandbox.session.party_status().protagonist_id)
-	sandbox._on_actor(hero); sandbox._refresh(); sandbox._on_actor(hero); sandbox._refresh()
+	# This helper prepares the legacy multi-member CONTACT fixture. The current
+	# exploration product gives a hero-cell tap priority to a ground item, so UI
+	# tapping here would test pickup rather than the deployment surface below.
+	var result:Dictionary=sandbox.session.commit_exploration(Command.wait(hero))
+	check(bool(result.get("accepted",false)),"legacy contact setup wait is accepted")
+	sandbox._record_result(result,true);sandbox._refresh()
 
 func _card_position(sandbox, entity_id: int) -> Vector2i:
 	for row in sandbox.session.party_cards():

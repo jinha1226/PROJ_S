@@ -2994,7 +2994,7 @@ func _on_actor(entity_id:int)->void:
 			if bool(pickup.get("accepted",false)):
 				notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%str(ground_items[0].label)
 				action_feedback_text=notice_text
-		_request_refresh();return
+			_request_refresh();return
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		if pending_move_mode=="EXPLORATION" and pending_exploration_wait:
 			var result:Dictionary=session.commit_exploration(CommandScript.wait(entity_id)); _clear_move_preview(); _record_result(result,true)

@@ -9,6 +9,7 @@ const Simulator = preload("res://sim/simulator.gd")
 const WorldState = preload("res://sim/world_state.gd")
 const PersonalRelation = preload("res://sim/personal_relation.gd")
 const TerrainRegistry = preload("res://sim/terrain_registry.gd")
+const EnemyAwareness = preload("res://sim/enemy_awareness_state.gd")
 
 func test_grouped_members_are_exposed_but_do_not_occupy_or_block() -> bool:
 	var session = Session.new(77,88); var world=session.sim.world; var state=world.party_encounter
@@ -87,7 +88,10 @@ func test_deployment_reserved_diagonal_flanks_match_snapshot_projection() -> boo
 	check_eq(preview.placements[2].position, [8,7], "second fallback deterministic")
 	check(session.commit_deployment().accepted, "fallback deployment commits")
 	var snapshot: Dictionary = session.sim.snapshot()
-	var restored = WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
+	# WorldState's direct wire is intentionally strict about item integer types;
+	# JSON number normalization belongs to the session transport boundary. This
+	# test exercises canonical deployment projection, so restore the typed wire.
+	var restored = WorldState.from_snapshot(snapshot)
 	check(restored != null, "fallback snapshot restores")
 	if restored != null:
 		check_eq(restored.snapshot(), snapshot, "fallback snapshot round trip exact")
@@ -120,7 +124,12 @@ func test_victory_automatically_regroups_in_the_killing_turn_and_fault_rolls_bac
 	session.sim.world.entities[enemy].health=22
 	var action=Action.melee(hero,enemy); session.begin_turn(action); var committed=session.commit_turn()
 	check(committed.accepted,"killing turn accepted"); check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","victory automatically groups")
-	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(session.sim.snapshot()))).snapshot(),session.sim.snapshot(),"grouped-complete round trip")
+	var grouped_complete_snapshot:Dictionary=session.sim.snapshot()
+	var grouped_complete_restored=WorldState.from_snapshot(grouped_complete_snapshot)
+	check(grouped_complete_restored!=null,"grouped-complete typed snapshot restores")
+	if grouped_complete_restored!=null:
+		check_eq(grouped_complete_restored.snapshot(),grouped_complete_snapshot,
+			"grouped-complete round trip")
 	var event_types:Array=[]; for event in committed.event_ids: event_types.append(session.sim.world.event_by_id(event).type)
 	check("party.victory" in event_types and "party.regroup_started" in event_types and "party.regroup_completed" in event_types,"same turn owns complete victory chain")
 	var victory=session.sim.world.events.filter(func(event):return event.type=="party.victory")[0]
@@ -155,7 +164,9 @@ func test_automatic_regroup_runs_after_due_environment_tick_at_deployed_position
 func test_snapshot_v5_strict_xor_round_trip_and_v4_rejection() -> bool:
 	var session=Session.new(); var snapshot:Dictionary=session.sim.snapshot()
 	check_eq(snapshot.snapshot_version,6,"snapshot v6"); check_eq(snapshot.ruleset_version,"phase5-combat-status-lifecycle-v1","ruleset")
-	check_eq(WorldState.from_snapshot(JSON.parse_string(JSON.stringify(snapshot))).snapshot(),snapshot,"party round trip")
+	var restored=WorldState.from_snapshot(snapshot)
+	check(restored!=null,"typed party snapshot restores")
+	if restored!=null:check_eq(restored.snapshot(),snapshot,"party round trip")
 	var conflict=snapshot.duplicate(true); conflict.encounter_lab={}
 	check_eq(WorldState.snapshot_restore_error(conflict),"encounter_mode_conflict","xor wire")
 	var old=snapshot.duplicate(true); old.snapshot_version=5
@@ -297,14 +308,15 @@ func test_enemy_ambushers_resolve_by_id_and_rubble_move_sets_actual_busy_cost() 
 	var ambush = Session.new(); var state = ambush.sim.world.party_encounter; var first_enemy = state.enemy_ids[0]
 	ambush.sim.world.entities[first_enemy].position = Vector2i(8,7)
 	var second = ambush.sim.world.add_entity("melee_enemy", "고블린 정찰병", Vector2i(12,12), 40, ["party_enemy"], "goblin", "enemy")
-	state.enemy_ids.append(second.id); state.enemy_ids.sort(); state.enemy_busy_rows[second.id] = 0
+	_register_fixture_enemy(state,second,true)
 	state.party_detection_radius = 0; state.enemy_detection_radius = 3
 	check(ambush.commit_exploration(Command.wait(state.protagonist_id)).accepted, "enemy ambush contact")
 	check_eq(ambush.party_status().contact_kind, "ENEMY_AMBUSH", "ambush kind")
 	var opening_ids: Array = []
 	for event in ambush.sim.world.events:
 		if event.type in ["action.melee_attack", "action.hold"] and event.actor_id in state.enemy_ids: opening_ids.append(event.actor_id)
-	check_eq(opening_ids, state.enemy_ids, "all alive ambushers act in entity ID order regardless of radius")
+	check_eq(opening_ids, state.enemy_ids,
+		"all encounter-aware ambushers act in entity ID order regardless of radius")
 	var outside_action = ambush.sim.world.events.filter(func(event): return event.actor_id == second.id and event.type == "action.hold")
 	check_eq(outside_action.size(), 1, "outside-radius encounter enemy still resolves HOLD")
 
@@ -321,8 +333,7 @@ func test_enemy_ambushers_resolve_by_id_and_rubble_move_sets_actual_busy_cost() 
 	var multi = Session.new(); var multi_state = multi.sim.world.party_encounter
 	var reserve_enemy = multi.sim.world.add_entity("melee_enemy", "고블린 지원병", Vector2i(12,8), 40,
 		["party_enemy"], "goblin", "enemy")
-	multi_state.enemy_ids.append(reserve_enemy.id); multi_state.enemy_ids.sort()
-	multi_state.enemy_busy_rows[reserve_enemy.id] = 0
+	_register_fixture_enemy(multi_state,reserve_enemy,true)
 	multi.commit_exploration(Command.wait(multi_state.protagonist_id))
 	multi.preview_deployment("WEDGE", multi_state.party_member_ids.slice(1)); check(multi.commit_deployment().accepted, "multi enemy deployment")
 	multi_state = multi.sim.world.party_encounter; var contact_enemy = multi_state.contact_enemy_id
@@ -362,7 +373,8 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	hero = sstate.protagonist_id; companion = sstate.party_member_ids[1]; var focus_enemy: int = sstate.enemy_ids[0]
 	var reserve = support.sim.world.add_entity("melee_enemy", "고블린 지원병", Vector2i(12,8), 40,
 		["party_enemy"], "goblin", "enemy")
-	sstate.enemy_ids.append(reserve.id); sstate.enemy_ids.sort(); sstate.enemy_busy_rows[reserve.id] = support.sim.world.world_time
+	_register_fixture_enemy(sstate,reserve,true)
+	sstate.enemy_busy_rows[reserve.id]=support.sim.world.world_time
 	support.commit_exploration(Command.wait(hero)); support.preview_deployment("WEDGE", [companion])
 	check(support.commit_deployment().accepted, "support deployment")
 	check(_relocate_with_move_events(support.sim, focus_enemy, Vector2i(8,7)), "support enemy canonical relocation")
@@ -443,7 +455,9 @@ func test_snapshot_party_semantic_tamper_table_is_rejected() -> bool:
 	var duplicate_position = engaged.duplicate(true); duplicate_position.entities[1].position = duplicate_position.entities[0].position.duplicate(); cases.append(["duplicate deployed", duplicate_position])
 	var impassable = engaged.duplicate(true); var hero_pos: Array = impassable.entities[0].position; var tile_index := int(hero_pos[1]) * 15 + int(hero_pos[0])
 	impassable.tiles[tile_index].terrain = "wall"; cases.append(["impassable deployed", impassable])
-	var missing_contact_event = contact.duplicate(true); missing_contact_event.events[1].type = "tampered.contact"; cases.append(["contact evidence", missing_contact_event])
+	var missing_contact_event = contact.duplicate(true)
+	_snapshot_event(missing_contact_event,"encounter.party_ambush").type="tampered.contact"
+	cases.append(["contact evidence", missing_contact_event])
 	var contact_facing = contact.duplicate(true); _snapshot_event(contact_facing, "encounter.party_ambush").data.facing = [-1,0]
 	cases.append(["contact facing correlation", contact_facing])
 	var correlated_facing = contact.duplicate(true); correlated_facing.party_encounter.facing = [-1,0]
@@ -577,7 +591,7 @@ func _ready_for_regroup_two_enemies():
 	var session = Session.new(); var state = session.sim.world.party_encounter; var first_enemy: int = state.enemy_ids[0]
 	var reserve = session.sim.world.add_entity("melee_enemy", "고블린 후위", Vector2i(12,8), 40,
 		["party_enemy"], "goblin", "enemy")
-	state.enemy_ids.append(reserve.id); state.enemy_ids.sort()
+	_register_fixture_enemy(state,reserve,true)
 	state.enemy_busy_rows[first_enemy] = 10000; state.enemy_busy_rows[reserve.id] = 10000
 	session.commit_exploration(Command.wait(state.protagonist_id))
 	session.preview_deployment("WEDGE", state.party_member_ids.slice(1))
@@ -597,6 +611,17 @@ func _ready_for_regroup_two_enemies():
 func _rehash(data: Dictionary) -> Dictionary:
 	var copy := data.duplicate(true); copy.erase("plan_hash")
 	data["plan_hash"] = JSON.stringify(copy).sha256_text(); return data
+
+func _register_fixture_enemy(state,enemy,hunting:bool=false)->void:
+	state.enemy_ids.append(enemy.id)
+	state.enemy_ids.sort()
+	state.enemy_busy_rows[enemy.id]=0
+	var awareness=EnemyAwareness.new(enemy.id,enemy.position)
+	if hunting:
+		awareness.awareness_state="HUNTING"
+		awareness.suspicion=1000
+		awareness.last_known_target_position=state.group_anchor
+	state.enemy_awareness_rows[enemy.id]=awareness
 
 func _event_count(events: Array, types: Array) -> int:
 	var result := 0
