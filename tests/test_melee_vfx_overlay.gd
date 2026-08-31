@@ -194,6 +194,11 @@ func test_melee_vfx_readable_hold_fade_and_bidirectional_last_visible_bounds()->
 		started+int(params.flash_visible_total_ms),int(effects[0].sequence))
 	var debris_last:=_effect_sequence_spec(overlay,
 		started+int(params.particle_visible_total_ms)-1,int(effects[0].sequence))
+	var every_effect_clears_at_own_bound:=true
+	for effect in effects:
+		var own_end:=int(effect.started_at_ms)+int(params.effect_duration_ms)
+		every_effect_clears_at_own_bound=every_effect_clears_at_own_bound \
+			and _effect_sequence_spec(overlay,own_end,int(effect.sequence)).is_empty()
 	check(bool(hold_last.hit_stop_active) and float(hold_last.line_opacity)==1.0,
 		"slash owns a brief fully bright hold before fading")
 	check(bool(slash_last.line_visible) \
@@ -202,8 +207,7 @@ func test_melee_vfx_readable_hold_fade_and_bidirectional_last_visible_bounds()->
 		"slash afterimage remains readable through its last bounded millisecond")
 	check(bool(flash_last.flash_visible) and not bool(flash_after.flash_visible),
 		"cell flash ends exactly at its configured readable bound")
-	check(int(debris_last.particle_count)>=3 \
-			and overlay.effect_draw_specs(started+int(params.effect_duration_ms)).is_empty(),
+	check(int(debris_last.particle_count)>=3 and every_effect_clears_at_own_bound,
 		"debris persists to the final effect frame and then clears")
 	grid.free();return finish()
 
