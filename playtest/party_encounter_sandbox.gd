@@ -2425,6 +2425,11 @@ func _toggle_weapon_mastery_category()->void:
 	for skill_id in member_progression_skill_rows:
 		var row:Dictionary=member_progression_skill_rows[skill_id]
 		(row.panel as Control).visible=member_skill_category_expanded
+	# A collapsed ledger has no meaningful retained offset. Reset synchronously so
+	# the released touch cannot leave its previous overflow position visible while
+	# Godot recalculates the shorter ScrollContainer range on the deferred pass.
+	if not member_skill_category_expanded and member_detail_scroll!=null:
+		member_detail_scroll.scroll_vertical=0
 	_update_weapon_mastery_category_label()
 	_reflow_member_detail_scroll()
 
@@ -2442,37 +2447,42 @@ func _reflow_member_detail_scroll()->void:
 	if member_detail_scroll.get_child_count()>0:
 		var content:=member_detail_scroll.get_child(0) as Control
 		if content!=null:
-			# ScrollContainer was retaining the former STATUS combined minimum even
-			# while the visible ITEM VBox had grown. The sole visible tab owns this
-			# vertical minimum; reset it when leaving ITEM.
-			content.custom_minimum_size.y=member_item_window.get_combined_minimum_size().y \
-				if member_item_window.visible else 0.0
+			# Only one ledger window is visible at once. Publish its current combined
+			# minimum immediately so the ScrollContainer does not remain one layout pass
+			# behind after an ITEM tab switch or a SKILL category collapse/re-expand.
+			var active_window:Control=member_item_window if member_item_window.visible \
+				else (member_progression_window if member_progression_window.visible else null)
+			content.custom_minimum_size.y=active_window.get_combined_minimum_size().y \
+				if active_window!=null else 0.0
 			content.update_minimum_size()
-			if member_item_window.visible:
-				# Re-enter AUTO after the sole child's explicit ITEM minimum is set.
-				# Godot otherwise retains the prior STATUS page as both max and page
-				# when this tab was opened/closed before the SKILL tab expanded.
-				member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_SHOW_NEVER
-				member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 	member_detail_scroll.queue_sort()
 	call_deferred("_clamp_member_detail_scroll")
 
 func _clamp_member_detail_scroll()->void:
 	if member_detail_scroll==null:return
-	if member_item_window!=null and member_item_window.visible \
-			and member_detail_scroll.get_child_count()>0:
+	if member_detail_scroll.get_child_count()>0:
 		var content:=member_detail_scroll.get_child(0) as Control
-		if content!=null and member_item_window.size.y>content.custom_minimum_size.y:
-			# This deferred pass runs after VBox has measured the newly rebuilt rows.
-			content.custom_minimum_size.y=member_item_window.size.y
-			content.update_minimum_size();member_detail_scroll.queue_sort()
-			call_deferred("_finish_member_detail_scroll_clamp");return
-	_finish_member_detail_scroll_clamp()
+		var active_window:Control=member_item_window if member_item_window.visible \
+			else (member_progression_window if member_progression_window.visible else null)
+		if content!=null and active_window!=null:
+			# This deferred pass runs after the active VBox has measured rebuilt rows.
+			var measured_height:=maxf(active_window.size.y,
+				active_window.get_combined_minimum_size().y)
+			content.custom_minimum_size.y=measured_height
+			content.update_minimum_size()
+			# Re-enter AUTO after the sole child's current minimum is known. Without
+			# this, Godot exposes the previous tab/category's max and page for a frame.
+			member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_SHOW_NEVER
+			member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+			member_detail_scroll.queue_sort()
+	call_deferred("_finish_member_detail_scroll_clamp")
 
 func _finish_member_detail_scroll_clamp()->void:
 	if member_detail_scroll==null:return
+	var bar:=member_detail_scroll.get_v_scroll_bar()
+	var maximum_scroll:=maxi(0,int(bar.max_value-bar.page))
 	member_detail_scroll.scroll_vertical=mini(member_detail_scroll.scroll_vertical,
-		int(member_detail_scroll.get_v_scroll_bar().max_value))
+		maximum_scroll)
 
 func _update_item_window(equipment:Variant)->void:
 	if not equipment is Dictionary or not bool(equipment.get("available",false)):return
