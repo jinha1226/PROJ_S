@@ -24,6 +24,16 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),true)
 	await process_frame;await process_frame
+	var opening_journal_before:int=sandbox.session.command_journal.size()
+	_check(sandbox.product_auto_button.text=="[물약 주기]" \
+		and not sandbox.product_auto_button.disabled \
+		and sandbox.product_interact_button.text=="[지나가기]" \
+		and not sandbox.product_interact_button.disabled,
+		"%s opening event did not replace the contextual controls with two choices"%viewport_size)
+	sandbox._on_product_interact();await process_frame;await process_frame
+	_check(str(sandbox.session.opening_event_status().get("choice",""))=="PASSED" \
+		and sandbox.session.command_journal.size()==opening_journal_before+1,
+		"%s opening PASS did not commit exactly once before exploration smoke"%viewport_size)
 	_check(sandbox.theme.default_font.resource_path=="res://assets/fonts/LivingWorldMonoKR.ttf",
 		"%s UI default is not bundled Coding font"%viewport_size)
 	_check(sandbox.theme.default_font_size==16,
@@ -513,7 +523,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			"%s rapid AUTO cancel/restart duplicated or stuck its scheduled hop cancel=%d restart=%d running=%s delta=%d state=%s"%[
 				viewport_size,cancelled_step,restart_step,restarted_running,delta,session.auto_explore_state()])
 	# Any enemy confirmed in FOV stops before a hop and presents that exact reason.
-	var contact_session=Session.new(45,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var contact_session=_baseline_solo_session(45)
 	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(contact_session,false)
 	await process_frame;await process_frame
 	var contact_result:Dictionary=contact_session.start_auto_explore()
@@ -526,8 +536,16 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			viewport_size,contact_result,sandbox.event_label.text])
 	sandbox.queue_free();await process_frame
 
+func _baseline_solo_session(p_world_seed:int=44):
+	var session=Session.new(p_world_seed,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	if not session.reset_party(p_world_seed,20260828,
+			Session.SOLO_COMBAT_SCENARIO_ID,{},false):
+		failures.append("baseline solo fixture failed to disable the opening event")
+	return session
+
+
 func _safe_auto_product_session():
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var session=_baseline_solo_session()
 	var state=session.sim.world.party_encounter;var enemy_id:=int(state.enemy_ids[0])
 	var snapshot:Dictionary=session._auto_explore_fog_snapshot();var hidden:=Vector2i(-1,-1)
 	for y in range(session.sim.world.height-1,-1,-1):
@@ -546,7 +564,7 @@ func _safe_auto_product_session():
 func _check_active_route_direction_override(viewport_size:Vector2)->void:
 	var session=null;var started:Dictionary={}
 	for goal_offset in [Vector2i(-3,0),Vector2i(0,-3),Vector2i(3,0),Vector2i(0,3)]:
-		var candidate=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+		var candidate=_baseline_solo_session()
 		var status:Dictionary=candidate.party_status()
 		var origin:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		var preview:Dictionary=candidate.preview_exploration_route(origin+goal_offset)
@@ -594,7 +612,7 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 	sandbox.queue_free();await process_frame
 
 func _check_product_direction_touch(viewport_size:Vector2)->void:
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var session=_baseline_solo_session()
 	var status:Dictionary=session.party_status();var hero:=int(status.protagonist_id)
 	var origin:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 	var fixture_preview:Dictionary=session.preview_exploration(
@@ -616,7 +634,7 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	for row_index in range(steps.size()):
 		var row:Variant=steps[row_index]
 		if row_index>0:
-			session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+			session=_baseline_solo_session()
 			sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
 			await process_frame;await process_frame
 		var before_status:Dictionary=session.party_status()
@@ -642,7 +660,7 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 		_check(int(session.party_status().step_index)==step_before+1 \
 			and session.command_journal.size()==journal_before+1,
 			"%s %s ScreenTouch double-committed on deferred refresh"%[viewport_size,row[0]])
-	session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	session=_baseline_solo_session()
 	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
 	await process_frame;await process_frame
 	var wait_before:Dictionary=session.party_status();var wait_journal:int=session.command_journal.size()
@@ -657,7 +675,7 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	_check(int(session.party_status().step_index)==int(wait_before.step_index)+1,
 		"%s center WAIT double-committed"%viewport_size)
 	# Map touch retains its original one-cell contract beside the button dock.
-	session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	session=_baseline_solo_session()
 	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
 	await process_frame;await process_frame
 	var map_before:Dictionary=session.party_status()
@@ -693,7 +711,7 @@ func _screen_touch_grid_cell(sandbox,position:Vector2i,touch_index:int)->void:
 	root.push_input(release,true);await process_frame;await process_frame
 
 func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var session=_baseline_solo_session()
 	var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)
 	for _step in range(256):
 		if session.party_status().safe_phase=="CONTACT":break
