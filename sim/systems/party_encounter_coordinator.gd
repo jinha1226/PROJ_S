@@ -8,6 +8,7 @@ const FixedPointScript = preload("res://sim/fixed_point.gd")
 const BlackboardScript = preload("res://sim/party_squad_blackboard.gd")
 const AppraisalScript = preload("res://sim/party_companion_appraisal.gd")
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
+const EnemySquadBlackboardScript = preload("res://sim/enemy_squad_blackboard.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
@@ -499,28 +500,31 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	var state=world.party_encounter
 	var awareness=state.enemy_awareness(enemy_id)
 	var enemy=world.entities.get(enemy_id)
-	var hero=world.entities.get(state.protagonist_id)
-	if awareness==null or enemy==null or hero==null:return false
+	if awareness==null or enemy==null:return false
 	var profile:Dictionary=EnemyPerceptionRegistryScript.profile(str(enemy.species_id))
 	# Legacy fixtures intentionally substitute affinity-only species on the
 	# historical patrol enemy. Those actors predate perception profiles: keep
 	# their awareness stable and let the established patrol/affinity rules act.
 	if profile.is_empty():return true
-	var distance:=_distance(enemy.position,hero.position)
-	var sees:bool=distance<=int(profile.sight_range) \
-		and _line_of_sight(enemy.position,hero.position)
+	var visible_party_ids: Array[int] = EnemySquadBlackboardScript.visible_party_ids(
+		world, enemy_id)
+	var observed_id: int = -1 if visible_party_ids.is_empty() \
+		else int(visible_party_ids[0])
+	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
-	if distance<=1:
+	if observed != null and _distance(enemy.position,observed.position)<=1:
 		awareness.suspicion=1000
-		awareness.last_known_target_position=hero.position
+		awareness.last_known_target_position=observed.position
 		awareness.last_seen_step=processed_step_index
 		awareness.last_seen_time=world.world_time
 		awareness.search_turns_remaining=0
-		return _set_awareness_state(awareness,"HUNTING",hero.position,previous_state)
-	if sees:
+		return _set_awareness_state(awareness,"HUNTING",observed.position,
+			previous_state,observed_id)
+	if observed != null:
+		var distance:=_distance(enemy.position,observed.position)
 		awareness.suspicion=clampi(awareness.suspicion+
 			EnemyPerceptionRegistryScript.suspicion_gain(str(enemy.species_id),distance),0,1000)
-		awareness.last_known_target_position=hero.position
+		awareness.last_known_target_position=observed.position
 		awareness.last_seen_step=processed_step_index
 		awareness.last_seen_time=world.world_time
 		awareness.search_turns_remaining=0
@@ -528,7 +532,8 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		if previous_state in ["HUNTING","SEARCHING"]:next_state="HUNTING"
 		elif awareness.suspicion>=EnemyPerceptionRegistryScript.ALERT_THRESHOLD:next_state="ALERT"
 		elif previous_state in ["UNAWARE","RETURNING"]:next_state="SUSPICIOUS"
-		return _set_awareness_state(awareness,next_state,hero.position,previous_state)
+		return _set_awareness_state(awareness,next_state,observed.position,
+			previous_state,observed_id)
 	awareness.suspicion=maxi(0,awareness.suspicion-EnemyPerceptionRegistryScript.SUSPICION_DECAY)
 	var next_state:=previous_state
 	match previous_state:
@@ -544,16 +549,20 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 			if enemy.position==awareness.home_position:
 				next_state="UNAWARE"
 				awareness.last_known_target_position=Vector2i(-1,-1)
-	return _set_awareness_state(awareness,next_state,hero.position,previous_state)
+	var transition_position:Vector2i=awareness.last_known_target_position
+	if transition_position==Vector2i(-1,-1):transition_position=enemy.position
+	return _set_awareness_state(awareness,next_state,transition_position,previous_state)
 
 
 func _set_awareness_state(awareness,next_state:String,target_position:Vector2i,
-		previous_state:String="")->bool:
+		previous_state:String="",target_entity_id:int=-1)->bool:
 	var before:=str(awareness.awareness_state) if previous_state.is_empty() else previous_state
 	if before==next_state:return true
 	awareness.awareness_state=next_state
+	var observed_id:int=target_entity_id if target_entity_id>0 \
+		else world.party_encounter.protagonist_id
 	var event=world.emit_event("enemy.awareness_changed",awareness.enemy_id,
-		world.party_encounter.protagonist_id,world.entities[awareness.enemy_id].position,
+		observed_id,world.entities[awareness.enemy_id].position,
 		awareness.suspicion,-1,{"schema_version":1,"from_state":before,
 			"to_state":next_state,"last_known_position":[target_position.x,target_position.y]})
 	if event==null:return false
@@ -1194,9 +1203,11 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
 		var awareness=state.enemy_awareness(enemy_id)
+		var nearest_party=EnemySquadBlackboardScript.nearest_deployed_party(
+			world,world.entities[enemy_id].position)
 		if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"] \
-				or _distance(world.entities[enemy_id].position,
-					world.entities[state.protagonist_id].position) \
+				or nearest_party==null \
+				or _distance(world.entities[enemy_id].position,nearest_party.position) \
 				>EnemyPerceptionRegistryScript.ACTIVE_COMBAT_RANGE:
 			continue
 		if not tick_start_can_act_ids.has(enemy_id) \
@@ -1512,13 +1523,14 @@ func _has_alive_enemy() -> bool:
 
 func _has_active_combat_enemy()->bool:
 	if world.party_encounter==null:return false
-	var hero=world.entities.get(world.party_encounter.protagonist_id)
-	if hero==null:return false
 	for enemy_id in world.party_encounter.enemy_ids:
 		if not world.is_unresolved_enemy(enemy_id):continue
 		var awareness=world.party_encounter.enemy_awareness(enemy_id)
+		var nearest_party=EnemySquadBlackboardScript.nearest_deployed_party(
+			world,world.entities[enemy_id].position)
 		if awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
-				and _distance(world.entities[enemy_id].position,hero.position) \
+				and nearest_party!=null \
+				and _distance(world.entities[enemy_id].position,nearest_party.position) \
 				<=EnemyPerceptionRegistryScript.ACTIVE_COMBAT_RANGE:
 			return true
 	return false
