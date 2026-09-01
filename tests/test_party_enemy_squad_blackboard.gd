@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
+const Action = preload("res://sim/party_action_command.gd")
 const Blackboard = preload("res://sim/enemy_squad_blackboard.gd")
 const Awareness = preload("res://sim/enemy_awareness_state.gd")
 const VisualMap = preload("res://playtest/party_visual_test_map.gd")
@@ -113,6 +114,88 @@ func test_grouped_companion_status_ticks_remain_saveable_after_shared_targeting(
 		"grouped follower movement remains canonical for status history")
 	check(helper._round_trip_matches(session),
 		"completed shared-target run survives exact save/load/replay")
+	return finish()
+
+
+func test_enemy_batch_reserves_converging_moves_without_rolling_back() -> bool:
+	var session = Session.new()
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	var world = session.sim.world
+	var first = world.add_entity("melee_enemy", "예약 적 1", Vector2i(5, 6),
+		60, ["party_enemy"], "goblin", "enemy")
+	var second = world.add_entity("melee_enemy", "예약 적 2", Vector2i(5, 8),
+		60, ["party_enemy"], "goblin", "enemy")
+	check(first != null and second != null, "converging enemies spawn")
+	for enemy in [first, second]:
+		state.enemy_ids.append(enemy.id)
+		state.enemy_busy_rows[enemy.id] = 0
+		state.enemy_awareness_rows[enemy.id] = Awareness.new(enemy.id, enemy.position)
+	state.enemy_ids.sort()
+	check_eq(world.world_state_error(), "", "pre-contact reservation fixture is canonical")
+	check(session.commit_exploration(Command.wait(hero_id)).accepted,
+		"reservation fixture reaches contact")
+	check(session.preview_deployment("LINE", []).accepted,
+		"reservation fixture previews a solo deployment")
+	check(session.commit_deployment().accepted,
+		"reservation fixture enters combat")
+	for enemy in [first, second]:
+		state.enemy_awareness(enemy.id).awareness_state = "HUNTING"
+		state.enemy_awareness(enemy.id).suspicion = 1000
+	var board: Dictionary = Blackboard.build(world)
+	var first_forecast: Dictionary = session.sim.party_coordinator.forecast_enemy_action(
+		first.id, board)
+	var second_forecast: Dictionary = session.sim.party_coordinator.forecast_enemy_action(
+		second.id, board)
+	check_eq(first_forecast.destination, [6, 7], "lower id requests convergence cell")
+	check_eq(second_forecast.destination, [6, 7], "higher id requests convergence cell")
+	check_eq(world.world_state_error(), "", "reservation fixture is canonical")
+	check(session.begin_turn(Action.hold(hero_id)).accepted,
+		"reservation fixture accepts the hero turn")
+	var result = session.commit_turn()
+	check(result is Dictionary and bool(result.get("accepted", false)),
+		"enemy destination conflict does not reject the whole batch")
+	check_eq(world.entities[first.id].position, Vector2i(6, 7),
+		"lower enemy id owns the primary reservation")
+	check_eq(world.entities[second.id].position, Vector2i(6, 8),
+		"higher enemy id takes the closest deterministic alternate cell")
+	check_eq(world.world_state_error(), "",
+		"resolved enemy move batch leaves canonical history")
+	return finish()
+
+
+func test_enemy_move_reservation_holds_when_every_progress_cell_is_blocked() -> bool:
+	var session = Session.new()
+	var world = session.sim.world
+	var hero_id := int(world.party_encounter.protagonist_id)
+	var first = world.add_entity("melee_enemy", "예약 적 1", Vector2i(5, 6),
+		60, ["party_enemy"], "goblin", "enemy")
+	var second = world.add_entity("melee_enemy", "예약 적 2", Vector2i(5, 8),
+		60, ["party_enemy"], "goblin", "enemy")
+	var blocker = world.add_entity("obstacle", "경로 장애물", Vector2i(6, 8),
+		100, [], "human", "neutral")
+	check(first != null and second != null and blocker != null,
+		"hold fallback fixture spawns")
+	var rows: Array[Dictionary] = [
+		{"enemy_id": first.id, "target_id": hero_id, "original_action_order": 0,
+			"action_type": "MOVE", "destination": [6, 7],
+			"terrain_id": "stone_floor", "time_cost": 100, "melee": false},
+		{"enemy_id": second.id, "target_id": hero_id, "original_action_order": 1,
+			"action_type": "MOVE", "destination": [6, 7],
+			"terrain_id": "stone_floor", "time_cost": 100, "melee": false},
+	]
+	var positions_before := [first.position, second.position, blocker.position]
+	var event_count_before: int = world.events.size()
+	session.sim.party_coordinator._resolve_enemy_move_reservations(rows)
+	check_eq([rows[0].action_type, rows[0].destination], ["MOVE", [6, 7]],
+		"lower id retains the primary move")
+	check_eq([rows[1].action_type, rows[1].destination,
+		rows[1].terrain_id, rows[1].time_cost], ["HOLD", [-1, -1], "", 100],
+		"blocked loser deterministically falls back to HOLD")
+	check_eq([first.position, second.position, blocker.position], positions_before,
+		"reservation planning mutates no entity position")
+	check_eq(world.events.size(), event_count_before,
+		"reservation planning emits no event")
 	return finish()
 
 

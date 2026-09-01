@@ -1221,6 +1221,7 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 			"destination": forecast.destination.duplicate(true),
 			"terrain_id": str(forecast.terrain_id), "time_cost": int(forecast.time_cost),
 			"melee": str(forecast.action_type) == "MELEE"})
+	_resolve_enemy_move_reservations(rows)
 	var melee_rows: Array[Dictionary] = []
 	for row in rows:
 		if bool(row.melee): melee_rows.append(row)
@@ -1328,6 +1329,103 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 			and not _has_active_combat_enemy():
 		return _disengage_to_exploration()
 	return true
+
+
+func _resolve_enemy_move_reservations(rows: Array[Dictionary]) -> void:
+	# Forecasts share one frozen board, so several enemies can legitimately ask
+	# for the same approach cell. Resolve that derived conflict before any leaf is
+	# committed; lower entity id keeps the primary route, then losers choose the
+	# closest deterministic progress cell or guard in place.
+	var movers: Array[Dictionary] = []
+	for row in rows:
+		if str(row.action_type) == "MOVE":
+			movers.append(row)
+	movers.sort_custom(func(a: Dictionary, b: Dictionary):
+		return int(a.enemy_id) < int(b.enemy_id))
+	var reserved: Array[Dictionary] = []
+	for row in movers:
+		var enemy_id := int(row.enemy_id)
+		var destination := Vector2i(int(row.destination[0]), int(row.destination[1]))
+		if not _enemy_move_conflicts_with_reservations(enemy_id, destination, reserved):
+			reserved.append({"enemy_id": enemy_id, "destination": destination})
+			continue
+		var alternative := _enemy_alternative_move(row, reserved)
+		if alternative.is_empty():
+			row.action_type = "HOLD"
+			row.destination = [-1, -1]
+			row.terrain_id = ""
+			row.time_cost = PARTY_ACTION_COST
+			row.melee = false
+			continue
+		row.destination = alternative.destination
+		row.terrain_id = alternative.terrain_id
+		row.time_cost = alternative.time_cost
+		reserved.append({"enemy_id": enemy_id,
+			"destination": Vector2i(int(row.destination[0]), int(row.destination[1]))})
+
+
+func _enemy_alternative_move(row: Dictionary,
+		reserved: Array[Dictionary]) -> Dictionary:
+	var enemy_id := int(row.enemy_id)
+	var target = world.entities.get(int(row.target_id))
+	if target == null or not world.entities.has(enemy_id):
+		return {}
+	var origin: Vector2i = world.entities[enemy_id].position
+	var current_distance := _distance(origin, target.position)
+	var candidates: Array[Dictionary] = []
+	for direction_index in range(movement.MOVE_DIRECTIONS_8.size()):
+		var destination: Vector2i = origin + movement.MOVE_DIRECTIONS_8[direction_index]
+		var assessment = movement.assess_move(enemy_id, destination)
+		if not assessment.accepted \
+				or _enemy_move_conflicts_with_reservations(enemy_id, destination, reserved):
+			continue
+		var distance := _distance(destination, target.position)
+		if distance >= current_distance:
+			continue
+		var terrain_id := str(assessment.terrain_id)
+		var definition: Dictionary = TerrainRegistryScript.definition(terrain_id)
+		if definition.is_empty():
+			continue
+		candidates.append({"destination": [destination.x, destination.y],
+			"terrain_id": terrain_id, "time_cost": int(definition.move_time_cost),
+			"distance": distance, "direction_index": direction_index})
+	if candidates.is_empty():
+		return {}
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.distance) != int(b.distance):
+			return int(a.distance) < int(b.distance)
+		if int(a.direction_index) != int(b.direction_index):
+			return int(a.direction_index) < int(b.direction_index)
+		if int(a.destination[1]) != int(b.destination[1]):
+			return int(a.destination[1]) < int(b.destination[1])
+		return int(a.destination[0]) < int(b.destination[0]))
+	var selected: Dictionary = candidates[0]
+	return {"destination": selected.destination.duplicate(true),
+		"terrain_id": str(selected.terrain_id), "time_cost": int(selected.time_cost)}
+
+
+func _enemy_move_conflicts_with_reservations(enemy_id: int, destination: Vector2i,
+		reserved: Array[Dictionary]) -> bool:
+	var flanks := _enemy_move_flanks(enemy_id, destination)
+	for winner in reserved:
+		var winner_id := int(winner.enemy_id)
+		var winner_destination: Vector2i = winner.destination
+		if destination == winner_destination:
+			return true
+		var winner_flanks := _enemy_move_flanks(winner_id, winner_destination)
+		if flanks.has(winner_destination) or winner_flanks.has(destination):
+			return true
+	return false
+
+
+func _enemy_move_flanks(enemy_id: int, destination: Vector2i) -> Array[Vector2i]:
+	if not world.entities.has(enemy_id):
+		return []
+	var origin: Vector2i = world.entities[enemy_id].position
+	var delta := destination - origin
+	if delta.x == 0 or delta.y == 0:
+		return []
+	return [origin + Vector2i(delta.x, 0), origin + Vector2i(0, delta.y)]
 
 
 func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dictionary:
