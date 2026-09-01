@@ -1,6 +1,8 @@
 class_name EnemyPerceptionRegistry
 extends RefCounted
 
+const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+
 const RULESET_ID := "enemy-perception-v1"
 const HERO_BASE_STEALTH := 500
 const ACTIVE_COMBAT_RANGE := 10
@@ -24,6 +26,22 @@ static func suspicion_gain(species_id:String,distance:int,hero_stealth:int=HERO_
 	# Integer-only and keyed solely by canonical state: repeated preview/save/replay
 	# never rerolls perception. Near targets build suspicion faster.
 	return clampi(260+int(row.perception)-hero_stealth-maxi(0,distance-1)*35,80,600)
+
+static func has_line_of_sight(world,origin:Vector2i,target:Vector2i)->bool:
+	if world==null or not world.in_bounds(origin) or not world.in_bounds(target):return false
+	var x0:=origin.x;var y0:=origin.y;var x1:=target.x;var y1:=target.y
+	var dx:=absi(x1-x0);var sx:=1 if x0<x1 else -1
+	var dy:=-absi(y1-y0);var sy:=1 if y0<y1 else -1
+	var error:=dx+dy
+	while x0!=x1 or y0!=y1:
+		var doubled:=2*error
+		if doubled>=dy:error+=dy;x0+=sx
+		if doubled<=dx:error+=dx;y0+=sy
+		if Vector2i(x0,y0)==target:return true
+		var definition:Dictionary=TerrainRegistryScript.definition(
+			str(world.tile_at(Vector2i(x0,y0)).terrain))
+		if definition.is_empty() or not bool(definition.get("passable",false)):return false
+	return true
 
 static func registry_error()->String:
 	for species_id in PROFILES:

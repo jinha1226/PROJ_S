@@ -21,6 +21,7 @@ const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
+const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
 const ASCII_3D_LAB_SCENE=preload("res://playtest/ascii_3d_lab.tscn")
 const FONT_AUX:=14
 const FONT_BODY:=16
@@ -84,6 +85,7 @@ var record_modal:Control
 var record_panel:PanelContainer
 var record_body:Label
 var record_close_button:Button
+var npc_expedition_lab_button:Button
 var selected_member_id:=-1
 var selected_target_id:=-1
 var notice_text:=""
@@ -592,6 +594,12 @@ func _build_record_modal()->void:
 	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
 	var title:=Label.new();title.text="주요 기록";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size",FONT_SECTION);title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
+	npc_expedition_lab_button=Button.new();npc_expedition_lab_button.name="NpcExpeditionLabButton"
+	npc_expedition_lab_button.text="[NPC 관찰]";npc_expedition_lab_button.tooltip_text="NPC 한 명의 원정 주기 관찰"
+	npc_expedition_lab_button.custom_minimum_size=Vector2(92,TOUCH_TARGET)
+	npc_expedition_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND)
+	npc_expedition_lab_button.pressed.connect(_open_npc_expedition_lab);header.add_child(npc_expedition_lab_button)
+	AsciiFrameScript.apply_rail_button(npc_expedition_lab_button,AsciiFrameScript.JADE)
 	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="[X]"
 	record_close_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	record_close_button.pressed.connect(_close_record_modal.bind("BUTTON"));header.add_child(record_close_button)
@@ -642,6 +650,9 @@ func _build_duel_decision_lab_entry()->void:
 
 func _open_duel_decision_lab()->void:
 	if is_inside_tree():get_tree().change_scene_to_file(DUEL_DECISION_LAB_SCENE_PATH)
+
+func _open_npc_expedition_lab()->void:
+	if is_inside_tree():get_tree().change_scene_to_file(NPC_EXPEDITION_LAB_SCENE_PATH)
 
 func _build_tile_popover()->void:
 	tile_popover=PanelContainer.new();tile_popover.name="TileRiskPopover";tile_popover.visible=false

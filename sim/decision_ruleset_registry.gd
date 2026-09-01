@@ -4,10 +4,12 @@ extends RefCounted
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 const RULESET_ID := "dungeon-hierarchical-utility-v1"
+const EXPEDITION_RULESET_ID := "npc-expedition-utility-v1"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
 const SCORE_MIN := -1000000
 const SCORE_MAX := 1000000
 const ACTION_IDS := ["ENGAGE", "PROTECT", "FLEE", "TAKE_COVER", "HOLD", "FREEZE"]
+const EXPEDITION_ACTION_IDS := ["APPROACH", "ATTACK", "FINISH", "USE_ITEM", "LOOT", "RETURN"]
 const MODE_IDS := ["NORMAL", "PANIC"]
 
 class CurveDef extends RefCounted:
@@ -70,10 +72,11 @@ class MentalModeDef extends RefCounted:
 static var _curves: Dictionary = {}
 static var _actions: Dictionary = {}
 static var _modes: Dictionary = {}
+static var _expedition_actions: Dictionary = {}
 
 
 static func _ensure() -> void:
-	if not _actions.is_empty(): return
+	if not _actions.is_empty() and not _expedition_actions.is_empty(): return
 	_curves = {
 		"linear_up": CurveDef.new("linear_up", [[0, 0], [1000, 1000]]),
 		"linear_down": CurveDef.new("linear_down", [[0, 1000], [1000, 0]]),
@@ -108,6 +111,51 @@ static func _ensure() -> void:
 	_add_action("FREEZE", ["PANIC"], 5, 100, 0, 0, 0, "self-v1", "freeze-v1", [
 		_c("freeze.panic", "appraisal.panic_pressure", "linear_up", 500),
 		_c("freeze.composure", "facet.composure", "linear_down", 300)])
+	_build_expedition_actions()
+
+
+static func _build_expedition_actions() -> void:
+	_add_expedition_action("APPROACH", 0, 350, 2, 0, 60, [
+		_c("approach.threat", "context.threat", "linear_up", -360),
+		_c("approach.distance", "context.target_distance", "linear_up", 180),
+		_c("approach.openness", "facet.O", "linear_up", 280),
+		_c("approach.extraversion", "facet.X", "linear_up", 220),
+		_c("approach.emotionality", "facet.E", "linear_up", -250)])
+	_add_expedition_action("ATTACK", 1, 340, 1, 0, 70, [
+		_c("attack.threat", "context.threat", "linear_up", -280),
+		_c("attack.injury", "context.injury", "linear_up", -350),
+		_c("attack.downed", "context.target_downed", "threshold_up", 400),
+		_c("attack.boldness", "facet.E", "linear_down", 380),
+		_c("attack.hostility", "facet.A", "linear_down", 180)])
+	_add_expedition_action("FINISH", 2, 450, 0, 0, 0, [
+		_c("finish.downed", "context.target_downed", "threshold_up", 650),
+		_c("finish.threat", "context.threat", "linear_up", -240),
+		_c("finish.injury", "context.injury", "linear_up", -150),
+		_c("finish.discipline", "facet.C", "linear_up", 100)])
+	_add_expedition_action("USE_ITEM", 3, 50, 0, 2, 0, [
+		_c("item.urgency", "context.potion_urgency", "threshold_up", 1000),
+		_c("item.threat", "context.threat", "linear_up", 180),
+		_c("item.discipline", "facet.C", "linear_up", 200)])
+	_add_expedition_action("LOOT", 4, 300, 1, 0, 40, [
+		_c("loot.available", "context.loot_available", "threshold_up", 700),
+		_c("loot.threat", "context.threat", "linear_up", -500),
+		_c("loot.pragmatism", "facet.H", "linear_down", 150),
+		_c("loot.curiosity", "facet.O", "linear_up", 150)])
+	_add_expedition_action("RETURN", 5, 120, 2, 0, 80, [
+		_c("return.injury", "context.injury", "linear_up", 500),
+		_c("return.threat", "context.threat", "linear_up", 650),
+		_c("return.loot", "context.carried_loot", "linear_up", 450),
+		_c("return.emotionality", "facet.E", "linear_up", 250),
+		_c("return.agreeableness", "facet.A", "linear_up", 100),
+		_c("return.downed", "context.target_downed", "threshold_up", -600)])
+
+
+static func _add_expedition_action(id: String, rank: int, base: int, commitment: int,
+		cooldown: int, margin: int, considerations: Array) -> void:
+	var action = ActionDef.new(id, ["EXPEDITION"], rank, base, commitment,
+		cooldown, margin, "expedition-v1", "expedition-v1")
+	action.considerations = considerations
+	_expedition_actions[id] = action
 
 
 static func _c(id: String, input: String, curve: String, weight: int):
@@ -129,6 +177,11 @@ static func curve(curve_id: String): _ensure(); return _copy_curve(_curves.get(c
 static func actions() -> Array:
 	_ensure(); var ids: Array = _actions.keys(); ids.sort(); return ids.map(func(id): return _copy_action(_actions[id]))
 static func modes() -> Array: _ensure(); return [_copy_mode(_modes.NORMAL), _copy_mode(_modes.PANIC)]
+static func expedition_action(action_id: String):
+	_ensure(); return _copy_action(_expedition_actions.get(action_id))
+static func expedition_actions() -> Array:
+	_ensure(); var ids: Array = _expedition_actions.keys(); ids.sort()
+	return ids.map(func(id): return _copy_action(_expedition_actions[id]))
 
 static func _copy_curve(source):
 	if source == null: return null
@@ -263,6 +316,34 @@ static func validation_error() -> String:
 			candidates_seen[action_id] = true
 	if not _modes.NORMAL.candidate_action_ids.has("HOLD") or not _modes.PANIC.candidate_action_ids.has("FREEZE"):
 		return "missing_mode_fallback"
+	var expedition_keys: Array = _expedition_actions.keys(); expedition_keys.sort()
+	var expected_expedition_keys: Array = EXPEDITION_ACTION_IDS.duplicate(); expected_expedition_keys.sort()
+	if expedition_keys != expected_expedition_keys: return "unknown_or_missing_expedition_action"
+	var expedition_ranks: Dictionary = {}
+	var expedition_inputs := ["context.injury", "context.threat", "context.target_distance",
+		"context.target_downed", "context.potion_urgency", "context.loot_available",
+		"context.carried_loot", "facet.H", "facet.E", "facet.X", "facet.A", "facet.C", "facet.O"]
+	for action_id in EXPEDITION_ACTION_IDS:
+		var expedition = _expedition_actions.get(action_id)
+		if expedition == null or expedition.action_id != action_id \
+				or expedition.allowed_mode_ids != ["EXPEDITION"] \
+				or expedition_ranks.has(expedition.tie_break_rank) \
+				or expedition.base_score < -10000 or expedition.base_score > 10000 \
+				or expedition.commitment_duration < 0 or expedition.commitment_duration > 4 \
+				or expedition.cooldown_duration < 0 or expedition.cooldown_duration > 4 \
+				or expedition.switch_margin < 0 or expedition.switch_margin > 1000 \
+				or not expedition.gates.is_empty() or expedition.considerations.is_empty() \
+				or expedition.considerations.size() > 12:
+			return "invalid_expedition_action"
+		expedition_ranks[expedition.tie_break_rank] = true
+		var consideration_ids: Dictionary = {}
+		for consideration in expedition.considerations:
+			if consideration_ids.has(consideration.consideration_id) \
+					or consideration.input_id not in expedition_inputs \
+					or not _curves.has(consideration.curve_id) \
+					or absi(consideration.signed_weight_milli) > 2000:
+				return "invalid_expedition_consideration"
+			consideration_ids[consideration.consideration_id] = true
 	return ""
 
 
