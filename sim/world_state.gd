@@ -154,7 +154,7 @@ func is_diagonal_gateway(position: Vector2i) -> bool:
 	if party_encounter == null or position not in party_encounter.diagonal_gateway_positions \
 			or not in_bounds(position):
 		return false
-	var definition: Dictionary = TerrainRegistryScript.definition(tile_at(position).terrain)
+	var definition: Dictionary = TerrainRegistryScript.definition_view(tile_at(position).terrain)
 	return not definition.is_empty() and bool(definition.get("passable", false)) \
 		and int(definition.get("occupancy_capacity", 0)) > 0
 
@@ -167,7 +167,7 @@ func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
 	for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
 		if not in_bounds(flank):
 			continue
-		var definition: Dictionary = TerrainRegistryScript.definition(tile_at(flank).terrain)
+		var definition: Dictionary = TerrainRegistryScript.definition_view(tile_at(flank).terrain)
 		if not definition.is_empty() and bool(definition.get("passable", false)) \
 				and int(definition.get("occupancy_capacity", 0)) > 0:
 			passable_flanks.append(flank)

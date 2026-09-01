@@ -59,6 +59,33 @@ static func definition(terrain_id: String) -> Dictionary:
 	return _DEFINITIONS[terrain_id].duplicate(true)
 
 
+# Pathfinding reads a terrain row once per neighbour and never writes to it, so
+# a fresh deep copy per lookup is pure cost. `definition()` keeps its detached
+# contract for callers that do mutate; read-only callers take this shared row.
+static var _VIEWS: Dictionary = _build_views()
+static var _EMPTY_VIEW: Dictionary = _build_empty_view()
+
+
+static func definition_view(terrain_id: String) -> Dictionary:
+	return _VIEWS.get(terrain_id, _EMPTY_VIEW)
+
+
+static func _build_views() -> Dictionary:
+	var views: Dictionary = {}
+	for terrain_id in _DEFINITIONS:
+		var row: Dictionary = _DEFINITIONS[terrain_id].duplicate(true)
+		row.make_read_only()
+		views[terrain_id] = row
+	views.make_read_only()
+	return views
+
+
+static func _build_empty_view() -> Dictionary:
+	var empty: Dictionary = {}
+	empty.make_read_only()
+	return empty
+
+
 static func all_definitions() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var ids: Array = _DEFINITIONS.keys()

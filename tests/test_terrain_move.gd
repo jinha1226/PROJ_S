@@ -281,3 +281,25 @@ func test_move_preview_is_pure_revalidates_new_occupancy_and_actor_kinds_share_p
 		check_eq([result.time_cost, result.events[0].type, mover.position],
 			[100, "action.move", Vector2i(1, 0)], "%s shared path" % actor_case[0])
 	return finish()
+
+
+func test_definition_view_is_one_shared_read_only_row_per_terrain() -> bool:
+	# `definition()` keeps its detached-copy contract for callers that mutate the
+	# result. Pathfinding asks per neighbour and never writes, so it needs a view
+	# that costs nothing to hand out.
+	for row in TerrainRegistry.all_definitions():
+		var terrain_id := str(row.terrain_id)
+		var view: Dictionary = TerrainRegistry.definition_view(terrain_id)
+		check_eq(view, TerrainRegistry.definition(terrain_id),
+			"%s view matches the detached definition" % terrain_id)
+		check(view.is_read_only(), "%s view is read only" % terrain_id)
+		check(is_same(view, TerrainRegistry.definition_view(terrain_id)),
+			"%s view is the same instance on every call" % terrain_id)
+		check(not is_same(view, TerrainRegistry.definition(terrain_id)),
+			"%s detached definition stays a separate mutable copy" % terrain_id)
+	var unknown: Dictionary = TerrainRegistry.definition_view("missing")
+	check(unknown.is_empty() and unknown.is_read_only(),
+		"unknown terrain yields an empty read-only view")
+	check(is_same(unknown, TerrainRegistry.definition_view("also_missing")),
+		"unknown terrain does not allocate a fresh dictionary per call")
+	return finish()

@@ -24,7 +24,7 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 	var goal_blocker := _occupant(goal, actor_id, occupancy_projection)
 	if goal_blocker != -1:
 		return _failure("occupied")
-	var goal_def: Dictionary = TerrainRegistryScript.definition(world.tile_at(goal).terrain)
+	var goal_def: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(goal).terrain)
 	if goal_def.is_empty() or not bool(goal_def.get("passable", false)):
 		return _failure("path_unreachable")
 
@@ -51,7 +51,7 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 			var next: Vector2i = position + direction
 			if not _can_step(actor_id, position, next, occupancy_projection):
 				continue
-			var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(next).terrain)
+			var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(next).terrain)
 			var next_cost: int = int(node["cost"]) + int(definition["move_time_cost"])
 			var next_steps: int = int(node["steps"]) + 1
 			var next_key := _key(next)
@@ -74,7 +74,7 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 		if not value is Vector2i: continue
 		var goal: Vector2i = value
 		if not world.in_bounds(goal): continue
-		var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(goal).terrain)
+		var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(goal).terrain)
 		if definition.is_empty() or not bool(definition.get("passable", false)) \
 				or _occupant(goal, actor_id, occupancy_projection) != -1: continue
 		goal_set[_key(goal)] = goal
@@ -99,7 +99,7 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
 			var next: Vector2i = position + direction
 			if not _can_step(actor_id, position, next, occupancy_projection): continue
-			var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(next).terrain)
+			var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(next).terrain)
 			var next_cost: int = int(node.cost) + int(definition.move_time_cost)
 			var next_steps: int = int(node.steps) + 1; var next_key := _key(next)
 			var old: Array = best.get(next_key, [])
@@ -112,7 +112,7 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
 	if not world.in_bounds(to):
 		return false
-	var definition: Dictionary = TerrainRegistryScript.definition(world.tile_at(to).terrain)
+	var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(to).terrain)
 	if definition.is_empty() or not bool(definition.get("passable", false)) or _occupant(to, actor_id, projection) != -1:
 		return false
 	var delta := to - from
@@ -122,7 +122,7 @@ func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictiona
 		for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
 			if not world.in_bounds(flank):
 				continue
-			var flank_def: Dictionary = TerrainRegistryScript.definition(world.tile_at(flank).terrain)
+			var flank_def: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(flank).terrain)
 			if flank_def.is_empty() or not bool(flank_def.get("passable", false)):
 				continue
 			if _occupant(flank, actor_id, projection) != -1:return false
