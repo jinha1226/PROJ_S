@@ -6,6 +6,7 @@ const Item = preload("res://sim/item_instance.gd")
 const ActorLoadouts = preload("res://sim/actor_loadout_registry.gd")
 const SpeciesDrops = preload("res://sim/species_drop_registry.gd")
 const CorpseLoot = preload("res://sim/systems/corpse_loot_system.gd")
+const WorldItems = preload("res://sim/world_item_operations.gd")
 
 
 func test_content_registries_validate_and_goblin_spawns_with_real_equipment() -> bool:
@@ -36,15 +37,23 @@ func test_death_materializes_once_preserves_loadout_and_consumes_no_rng() -> boo
 	var before = sim.world.inventory_of(goblin.id)
 	var weapon_id := str(before.equipped.MAIN_HAND)
 	var armor_id := str(before.equipped.ARMOR)
+	var carried_before := {}
+	carried_before[weapon_id] = before.item(weapon_id).to_dict()
+	carried_before[armor_id] = before.item(armor_id).to_dict()
 	var rng_before := int(sim.world.rng.state)
 	var death = _kill_with_damage(sim, goblin, "fire")
 	check(death != null, "environment-compatible damage produces a death event")
 	check_eq(int(sim.world.rng.state), rng_before, "keyed drop rolls consume no global RNG")
 	var after = sim.world.inventory_of(goblin.id)
-	check(after.item(weapon_id) != null and after.item(armor_id) != null,
-		"death preserves both living loadout instance IDs")
+	check_eq(after.backpack.size(), 0, "a dead actor retains no item container contents")
 	check_eq([str(after.equipped.MAIN_HAND), str(after.equipped.ARMOR)],
-		[weapon_id, armor_id], "death does not clear corpse equipment slots")
+		["", ""], "death clears equipment slots with the inventory")
+	for instance_id in [weapon_id, armor_id]:
+		var dropped = sim.world.ground_item(instance_id)
+		check(dropped != null and dropped.to_dict() == carried_before[instance_id],
+			"carried instance identity and options survive the ground drop")
+		check_eq(sim.world.item_state.ground_items.position_of(instance_id), goblin.position,
+			"every carried item lands at the death position")
 	var materialized = _materialized_for(sim.world, int(death.id))
 	check(materialized != null and materialized.data.generated_items.size() == 1,
 		"the goblin species roll is recorded once")
@@ -52,8 +61,10 @@ func test_death_materializes_once_preserves_loadout_and_consumes_no_rng() -> boo
 		var generated: Dictionary = materialized.data.generated_items[0]
 		check_eq(str(generated.definition_id), "GOBLIN_EAR",
 			"the real species material, not a placeholder, is generated")
-		check(after.item(str(generated.instance_id)) != null,
-			"the generated instance is stored in the corpse inventory")
+		check_eq(str(generated.location), "GROUND",
+			"species loot is materialized directly on the ground")
+		check(sim.world.ground_item(str(generated.instance_id)) != null,
+			"the generated instance is stored on the ground")
 	var revision := int(sim.world.item_state.revision)
 	var event_count: int = sim.world.events.size()
 	var repeated: Dictionary = CorpseLoot.materialize_death_event(sim.world, death)
@@ -61,10 +72,10 @@ func test_death_materializes_once_preserves_loadout_and_consumes_no_rng() -> boo
 		"processing the same death again is an idempotent success")
 	check_eq([sim.world.item_state.revision, sim.world.events.size()],
 		[revision, event_count], "reprocessing changes neither items nor events")
-	check_eq(sim.world.world_state_error(), "", "the materialized corpse world validates")
+	check_eq(sim.world.world_state_error(), "", "the materialized death-drop world validates")
 	var restored = Simulator.from_snapshot(sim.snapshot())
 	check(restored != null and restored.snapshot() == sim.snapshot(),
-		"corpse inventory and drop ledger round-trip exactly")
+		"ground drops and the processed-death ledger round-trip exactly")
 	return finish()
 
 
@@ -85,6 +96,27 @@ func test_same_seed_and_death_id_produce_the_same_drop_without_global_rng() -> b
 	return finish()
 
 
+func test_dropped_equipment_uses_the_existing_ground_pickup_path() -> bool:
+	var sim = Simulator.create(7, 7, _seed_with_goblin_drop())
+	var hero = sim.world.add_entity("other", "회수자", Vector2i(2, 3), 20,
+		[], "human", "player")
+	var goblin = sim.world.add_entity("melee_enemy", "고블린", Vector2i(3, 3), 10,
+		[], "goblin", "enemy", "GOBLIN_MELEE_V1")
+	var weapon_id := str(sim.world.inventory_of(goblin.id).equipped.MAIN_HAND)
+	_kill_with_damage(sim, goblin, "fire")
+	var pickup := WorldItems.commit_pickup(sim.world, hero.id, weapon_id,
+		goblin.position)
+	check(bool(pickup.accepted), "ordinary ground pickup accepts dropped equipment")
+	check(sim.world.inventory_of(hero.id).item(weapon_id) != null,
+		"pickup transfers the exact weapon instance to the living actor")
+	check_eq(str(sim.world.inventory_of(hero.id).equipped.MAIN_HAND), "",
+		"picked-up equipment is not auto-equipped")
+	check(sim.world.ground_item(weapon_id) == null,
+		"the picked-up instance no longer remains on the ground")
+	check_eq(sim.world.world_state_error(), "", "pickup after a death drop validates")
+	return finish()
+
+
 func test_species_without_a_table_records_one_empty_materialization() -> bool:
 	var sim = Simulator.create(6, 6, 72)
 	var human = sim.world.add_entity("other", "사람", Vector2i(3, 3), 8,
@@ -100,7 +132,7 @@ func test_species_without_a_table_records_one_empty_materialization() -> bool:
 	return finish()
 
 
-func test_full_corpse_inventory_falls_back_to_the_same_ground_position() -> bool:
+func test_full_inventory_drops_every_item_and_species_roll_to_the_same_position() -> bool:
 	var seed := _seed_with_goblin_drop()
 	var sim = Simulator.create(7, 7, seed)
 	var goblin = sim.world.add_entity("melee_enemy", "짐꾼 고블린", Vector2i(3, 3), 10,
@@ -112,17 +144,23 @@ func test_full_corpse_inventory_falls_back_to_the_same_ground_position() -> bool
 	var death = _kill_with_damage(sim, goblin, "fire")
 	var event = _materialized_for(sim.world, int(death.id))
 	check(event != null and event.data.generated_items.size() == 1,
-		"the successful roll is still recorded for a full corpse")
+		"the successful roll is still recorded for a full inventory")
 	if event != null and not event.data.generated_items.is_empty():
 		var generated: Dictionary = event.data.generated_items[0]
-		check_eq(str(generated.location), "GROUND", "overflow discloses its fallback")
+		check_eq(str(generated.location), "GROUND", "species loot always targets the ground")
 		check(sim.world.ground_item(str(generated.instance_id)) != null,
-			"the overflow item is not deleted")
+			"the generated item is not deleted")
 		check_eq(sim.world.item_state.ground_items.position_of(str(generated.instance_id)),
-			goblin.position, "overflow lands at the corpse position")
-	check_eq(sim.world.inventory_of(goblin.id).backpack.size(), Inventory.BACKPACK_CAPACITY,
-		"existing corpse contents are never displaced")
-	check_eq(sim.world.world_state_error(), "", "ground fallback preserves all invariants")
+			goblin.position, "species loot lands at the death position")
+	check_eq(sim.world.inventory_of(goblin.id).backpack.size(), 0,
+		"the dead actor inventory is empty")
+	check_eq(_ground_item_ids_at(sim.world, goblin.position).size(),
+		Inventory.BACKPACK_CAPACITY + 1,
+		"all carried rows and the generated row coexist on one tile")
+	for index in range(Inventory.BACKPACK_CAPACITY):
+		check(sim.world.ground_item("FULL_%02d" % index) != null,
+			"every pre-existing inventory instance is preserved")
+	check_eq(sim.world.world_state_error(), "", "direct ground drops preserve all invariants")
 	return finish()
 
 
@@ -141,12 +179,18 @@ func test_multiple_deaths_allocate_unique_instances() -> bool:
 		"the chosen seed exercises both independent drop rolls")
 	if not first_rows.is_empty() and not second_rows.is_empty():
 		check(str(first_rows[0].instance_id) != str(second_rows[0].instance_id),
-			"two corpses never receive the same allocated instance")
+			"two deaths never receive the same allocated instance")
 	var all_ids: Dictionary = {}
 	for entity_id in sim.world.item_state.inventory_rows:
 		for item in sim.world.item_state.inventory_rows[entity_id].backpack:
 			check(not all_ids.has(item.instance_id), "every owned instance is globally unique")
 			all_ids[item.instance_id] = true
+	for row in sim.world.item_state.ground_items.rows:
+		check(not all_ids.has(row.item.instance_id), "every ground instance is globally unique")
+		all_ids[row.item.instance_id] = true
+	check_eq([sim.world.inventory_of(first.id).backpack.size(),
+		sim.world.inventory_of(second.id).backpack.size()], [0, 0],
+		"both dead actors leave empty inventories")
 	check_eq(sim.world.world_state_error(), "", "multiple materialized deaths validate")
 	return finish()
 
@@ -206,6 +250,14 @@ func _materialized_for(world, death_event_id: int):
 		if event.type == "corpse.loot_materialized" and event.cause_id == death_event_id:
 			return event
 	return null
+
+
+func _ground_item_ids_at(world, position: Vector2i) -> Array[String]:
+	var result: Array[String] = []
+	for row in world.item_state.ground_items.rows:
+		if row.position == position: result.append(str(row.item.instance_id))
+	result.sort()
+	return result
 
 
 func _seed_with_goblin_drop() -> int:

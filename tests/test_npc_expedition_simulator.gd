@@ -85,16 +85,22 @@ func test_dead_monster_is_rewarded_once_at_step_boundary_even_after_external_tra
 			"fixture attack commits")
 	check_eq(simulation._life_state(simulation.monster_id), "DEAD",
 		"fixture reaches a canonical monster death")
+	var direct_death_drop_count: int = \
+		simulation.simulator.world.item_state.ground_items.rows.size()
+	check(direct_death_drop_count >= 2,
+		"canonical death already drops the monster's equipped loadout on the ground")
 	check_eq(simulation.kills, 0, "attack helper no longer owns kill rewards")
 	var result: Dictionary = simulation.step()
 	check(str(result.action_id) not in ["ATTACK", "FINISH"],
 		"reward is reconciled on a non-attack wrapper step")
 	check_eq(simulation.kills, 1, "step-boundary death diff awards exactly one kill")
-	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(), 1,
-		"the reconciled death creates its loot in the world item authority")
+	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(),
+		direct_death_drop_count + 1,
+		"the expedition reward is added beside the canonical death drops")
 	simulation._reconcile_monster_deaths(0)
 	check_eq(simulation.kills, 1, "replaying the same death evidence cannot duplicate rewards")
-	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(), 1,
+	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(),
+		direct_death_drop_count + 1,
 		"reconciliation cannot duplicate loot")
 	var property_names: Array[String] = []
 	for row in simulation.get_property_list(): property_names.append(str(row.name))

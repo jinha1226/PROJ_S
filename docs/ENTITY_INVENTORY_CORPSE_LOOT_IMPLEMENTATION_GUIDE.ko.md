@@ -1,15 +1,15 @@
-# 엔티티 인벤토리·장비·시체 루팅 구현 지시서
+# 엔티티 인벤토리·장비·사망 드롭 구현 지시서
 
 ## 0. 문서의 지위
 
 이 문서는 현재 주인공 전용인 인벤토리·장비 상태를 모든 전투 캐릭터로 일반화하고,
-몬스터 사망 후 소지품·착용 장비·종족 드롭을 루팅할 수 있게 만드는 작업의 구현 계약이다.
+몬스터 사망 후 소지품·착용 장비·종족 드롭을 바닥에서 회수하게 만드는 작업의 구현 계약이다.
 
 구현 순서는 다음과 같이 고정한다.
 
 ```text
 A. 엔티티 단위 인벤토리·장비 기반 — 동작 변화 0
-→ C. 사망·시체 루팅·종족별 드롭
+→ C. 사망·바닥 드롭·종족별 드롭
 → B. 적 장비의 전투 반영
 → D. 동료 인벤토리 UI
 ```
@@ -23,11 +23,11 @@ snapshot v7 전환과 v6 저장 거부는 HARD_CUT 정책에 따른 명시적인
 ## 1. 최종 사용자 경험
 
 최종적으로 주인공, 동료, 적, 중립 NPC는 같은 인벤토리와 장착 슬롯을 가진다. 몬스터가
-죽으면 그 몬스터가 실제로 들고 있거나 착용했던 아이템은 시체에 그대로 남고, 종족별
-드롭 테이블로 생성된 전리품도 함께 루팅할 수 있다.
+죽으면 그 몬스터가 실제로 들고 있거나 착용했던 아이템과 종족별 추가 전리품이 사망
+위치 바닥에 함께 떨어진다.
 
 ```text
-고블린 시체
+고블린이 죽은 칸
 ├─ 장착했던 녹슨 단검       # 생전부터 존재한 동일 item instance
 ├─ 장착했던 누더기 갑옷     # 생전부터 존재한 동일 item instance
 ├─ 가방에 있던 회복약       # 생전 소지품
@@ -200,7 +200,8 @@ item_state.ammo_pool_rows[id]
 1. 인벤토리와 runtime row가 비어 있다.
 2. 명시적인 despawn transaction이 모든 아이템을 바닥 또는 다른 소유자에게 옮겼다.
 
-DEAD 전환은 hard-delete가 아니다. 시체 루팅을 위해 엔티티와 인벤토리를 유지한다.
+DEAD 전환은 hard-delete가 아니다. 퀘스트·관찰용 시체 표현을 위해 엔티티는 유지하되,
+인벤토리는 사망 드롭 transaction이 비운다.
 
 ### 5.2 bootstrap
 
@@ -297,23 +298,21 @@ use_inventory_item(instance_id)
 - rollback memento에도 `item_state`를 포함한다. accepted operation과 rejected operation의
   atomicity test가 save snapshot뿐 아니라 memento 경로도 검증해야 한다.
 
-## 6. C — 사망, 시체 루팅, 종족 드롭
+## 6. C — 사망, 바닥 드롭, 종족 드롭
 
-### 6.1 시체 인벤토리
+### 6.1 사망 시 소지품 이동
 
-`CombatantState.life_state == "DEAD"`인 엔티티의 기존 `inventory_rows[entity_id]`를 시체
-인벤토리로 취급한다. 별도 복제본을 만들지 않는다.
+`CombatantState.life_state == "DEAD"`가 되는 순간 기존 `inventory_rows[entity_id]`의 모든
+item instance를 사망 위치 `ground_items`로 이동한다.
 
 - 생전 장착품은 같은 instance ID와 affix, rarity, quantity를 유지한다.
-- 죽는 순간 장착 슬롯을 강제로 비우지 않는다.
-- 시체에서는 장착 효과를 계산하지 않는다.
-- 시체 아이템을 루팅할 때 source 장착 슬롯을 transaction 안에서 먼저 해제하고
-  destination 가방으로 옮긴다.
-- destination 가방이 가득 차면 source 슬롯과 양쪽 인벤토리가 모두 무변경이어야 한다.
+- 장착품과 가방 아이템을 구분하지 않고 같은 칸에 떨어뜨린다.
+- 죽은 entity의 ownership table과 장착 슬롯은 transaction 안에서 비운다.
+- 바닥 회수는 기존 pickup transaction의 거리·용량·atomicity 규칙을 그대로 사용한다.
 
 ### 6.2 생전 소지품·시작 장비 생성
 
-C에서 실제 플레이 중 장착 장비를 루팅할 수 있으려면 몬스터가 사망 전에 해당 item
+C에서 실제 플레이 중 장착 장비를 획득할 수 있으려면 몬스터가 사망 전에 해당 item
 instance를 소유해야 한다. 이를 종족 드롭과 섞지 않고 별도의 시작 loadout 콘텐츠로 둔다.
 
 ```text
@@ -352,7 +351,7 @@ spawn/scenario row가 `loadout_id`를 선택하고, registry가 엔티티 생성
 - B는 이미 존재하는 이 장비를 전투 판정에서 읽기 시작하는 단계다.
 
 초기 C 수직 슬라이스에는 최소 한 종류의 고블린 loadout을 넣어, 실제 게임 경로에서
-장착 무기와 방어구를 시체로부터 루팅할 수 있어야 한다. 장비 선택 확률·희귀도·AI 교체는
+장착 무기와 방어구가 사망 위치에 떨어져 회수할 수 있어야 한다. 장비 선택 확률·희귀도·AI 교체는
 후속 콘텐츠 작업으로 남긴다.
 
 ### 6.3 종족 드롭 테이블
@@ -436,8 +435,9 @@ allocator 증가와 아이템 삽입, processed death ID 기록은 한 transacti
 ```text
 entity.died
 → 아직 처리하지 않은 death event인지 확인
+→ 소지품·장착품 전체를 사망 위치 ground_items로 이동
 → 종족 drop roll 계산
-→ 시체 inventory에 item 추가
+→ 같은 위치 ground_items에 추가
 → corpse.loot_materialized event emit
 → processed_drop_death_event_ids에 source death event ID 기록
 ```
@@ -447,48 +447,24 @@ entity.died
 목록을 정렬해 기록한다. 드롭이 0개여도 processed ID와 0개 결과 event를 남겨 replay가
 “미처리”와 “빈 결과”를 구분하게 한다.
 
-시체 인벤토리의 12칸이 이미 가득 차 드롭 row를 추가할 수 없다면 해당 드롭을 같은
-transaction에서 시체 위치의 `ground_items`로 보낸다. 아이템을 삭제하거나 기존 소지품을
-밀어내지 않는다. 여러 바닥 아이템이 같은 좌표에 있는 것은 허용하며 instance ID로
-구분한다.
+`corpse.loot_materialized`와 `CorpseLootSystem` 명칭은 snapshot v7 wire 호환을 위해
+유지하는 내부 이름일 뿐, 시체 인벤토리나 시체 루팅 UI를 뜻하지 않는다.
 
-### 6.6 시체 루팅 명령
+죽은 entity는 아이템 컨테이너가 아니다. 생전 inventory ownership table에 있던 소지품과
+장착품을 동일 transaction에서 전부 비우고, instance ID·quantity·affix·weapon runtime을
+유지한 채 사망 위치의 `ground_items`로 이동한다. 종족 추가 드롭도 처음부터 같은 위치에
+생성한다. 여러 바닥 아이템이 같은 좌표에 있는 것은 허용하며 instance ID로 구분한다.
+플레이어는 별도 시체 패널 없이 기존 바닥 줍기 명령으로 가져간다.
 
-core/facade는 다음 명령을 제공한다.
+### 6.6 시체 표시와 정리
 
-```gdscript
-preview_loot_corpse(looter_id, corpse_id, instance_id)
-commit_loot_corpse(looter_id, corpse_id, instance_id)
-```
-
-허용 조건:
-
-- looter와 corpse가 모두 존재하고 서로 다른 entity다.
-- looter는 `ACTIVE`, corpse는 `DEAD`다.
-- 두 위치의 Chebyshev distance가 1 이하다.
-- instance는 corpse inventory에 존재한다.
-- looter 가방에 전체 수량을 받을 수 있다.
-- 해당 action을 실행할 권한과 시간 비용은 session/coordinator가 검증한다.
-
-루팅 성공 시 source의 장착 슬롯을 자동으로 비우고 동일 instance를 destination으로
-옮긴다. 자동 장착은 하지 않는다. C에서는 한 번에 한 item row만 옮기며 `loot all`은 UI
-편의 기능으로 미리 추가하지 않는다.
-
-### 6.7 시체 정리
-
-다음 조건이 모두 충족되기 전에는 corpse entity를 제거하지 않는다.
-
-- 시체 인벤토리가 비었다.
-- 해당 사망 event의 종족 드롭 처리가 완료됐다.
-- 같은 위치에 시체가 소유한 runtime row가 없다.
-- 시체를 참조하는 필수 opening/quest/event 상태가 없다.
-
-C에서는 자동 시체 소멸 시간을 만들지 않는다. 정리가 필요하면 명시적인 cleanup 정책을
-별도 작업으로 설계한다.
+시체 표시는 퀘스트·관찰용 `DEAD` entity 표현이며 아이템 소유권과 무관하다. 사망 드롭
+처리가 완료된 뒤 시체 entity를 보존하거나 정리하는 정책은 opening/quest 참조와 시각적
+연출만 고려한다. 시체 안에 아이템이 남았는지를 cleanup 조건으로 사용하지 않는다.
 
 ## 7. B — 적 장비의 전투 반영
 
-B 전에도 적은 인벤토리에 장비를 소유·장착할 수 있고, 죽으면 그 장비를 루팅할 수 있다.
+B 전에도 적은 인벤토리에 장비를 소유·장착할 수 있고, 죽으면 그 장비가 바닥에 떨어진다.
 다만 A와 C에서는 적 장비 수치를 전투 계산에 넣지 않는다.
 
 B에서 다음을 수행한다.
@@ -510,8 +486,8 @@ D는 canonical 상태를 새로 만들지 않는다. A/C의 조회·transaction 
 - 파티 상태창에서 캐릭터를 선택해 해당 `entity_id` 인벤토리를 표시한다.
 - 동료와 인접한 경우 주인공 ↔ 동료 transfer를 제공한다.
 - 장착/해제 버튼은 선택한 아이템 바로 옆에 표시한다.
-- 시체 선택 시 동일 패널 형태로 corpse inventory를 표시하되 장착 버튼 대신 루팅 버튼을
-  표시한다.
+- 바닥 아이템 줍기는 기존 ground-item UI를 그대로 사용하며 시체 인벤토리 UI를 만들지
+  않는다.
 - UI가 `WorldItemState` 내부 Dictionary를 직접 수정하지 않는다.
 
 ## 9. 전역 불변식
@@ -546,14 +522,14 @@ D는 canonical 상태를 새로 만들지 않는다. A/C의 조회·transaction 
 | `sim/ammo_pool_state.gd` | entity별 화살·볼트 수량 |
 | `sim/weapon_runtime_state.gd` | weapon instance별 장전 상태 |
 | `sim/item_inventory_operations.gd` | 단일 inventory 내부 pure operation 유지·일반화 |
-| `sim/world_item_operations.gd` | entity/ground/corpse 간 pure transaction |
+| `sim/world_item_operations.gd` | entity/ground 간 pure transaction |
 | `sim/actor_loadout_registry.gd` | 생전 시작 소지품·장비 콘텐츠 검증·지급 |
 | `sim/species_drop_registry.gd` | JSON drop table 검증·결정론적 roll |
-| `sim/systems/corpse_loot_system.gd` | death event 소비, drop 생성, loot commit |
+| `sim/systems/corpse_loot_system.gd` | death event 소비, 소지품 이동·종족 drop 생성 |
 | `sim/world_state.gd` | item_state 소유·wire·memento·entity lifecycle·전역 검증 |
 | `sim/party_encounter_state.gd` | 주인공 item/loadout/ground 권위 제거 |
 | `sim/systems/melee_combat_system.gd` | B에서 entity별 장비 modifier 소비 |
-| `playtest/party_playtest_session.gd` | 기존 주인공 facade 유지, corpse loot facade 추가 |
+| `playtest/party_playtest_session.gd` | 기존 주인공 facade와 ground pickup 유지 |
 | `sim/npc_expedition/npc_expedition_simulator.gd` | 로컬 inventory/ground authority 제거 |
 | `data/content/actor_loadouts.json` | 적·NPC의 생전 시작 소지품·장착품 |
 | `data/content/species_drop_tables.json` | 종족별 추가 드롭 콘텐츠 |
@@ -593,13 +569,8 @@ D는 canonical 상태를 새로 만들지 않는다. A/C의 조회·transaction 
 - 시작 loadout JSON/registry와 최소 고블린 장비 fixture 추가
 - 종족 드롭 JSON/registry와 keyed roll 추가
 - 모든 death 경로에서 한 번만 materialize
-- capacity overflow의 ground fallback 추가
-
-### C2 — 시체 루팅 facade
-
-- preview/commit loot 추가
-- equipped source 자동 해제와 원자적 transfer
-- corpse lifecycle/cleanup gate 추가
+- 소지품·장착품·종족 드롭을 사망 위치 ground로 원자적으로 이동
+- 기존 ground pickup으로 회수되는 수직 슬라이스 검증
 
 ### B와 D
 
@@ -631,20 +602,19 @@ D는 canonical 상태를 새로 만들지 않는다. A/C의 조회·transaction 
 5. 같은 seed/snapshot/event ID는 항상 같은 드롭과 수량을 만든다.
 6. drop 판정 전후 전역 RNG state가 동일하다.
 7. drop table이 없는 종족은 0개 materialized event를 한 번 남긴다.
-8. 죽은 적의 소지품·장착품 instance ID와 affix가 그대로 보존된다.
-9. 시체 가방이 가득 찼으면 추가 드롭이 같은 위치 ground로 빠지고 사라지지 않는다.
+8. 죽은 적의 소지품·장착품 instance ID와 affix가 그대로 ground에 보존된다.
+9. 소지품이 12칸 가득 차도 전부와 추가 드롭이 같은 위치 ground로 이동한다.
 10. 여러 몬스터가 같은 칸 근처에서 죽어도 instance ID 충돌이 없다.
 
-### C loot
+### C ground pickup
 
-1. 인접한 ACTIVE looter만 DEAD corpse를 루팅할 수 있다.
-2. 장착 중이던 source item을 루팅하면 source slot이 자동으로 비워진다.
-3. destination에는 동일 instance가 들어가며 자동 장착되지 않는다.
-4. 가방이 가득 찬 실패는 source/destination/revision/event를 바꾸지 않는다.
-5. 같은 item을 두 번 루팅할 수 없다.
-6. 살아 있는 대상, 멀리 있는 시체, 없는 item, 변조된 entity ID를 거부한다.
-7. 마지막 전리품 전에는 corpse cleanup이 거부된다.
-8. loot 포함 journal replay와 save/load final snapshot이 exact하다.
+1. 사망 직후 죽은 entity inventory와 장착 슬롯은 비어 있다.
+2. 소지품·장착품·종족 드롭은 모두 사망 위치에 표시된다.
+3. 기존 pickup은 동일 instance를 가방으로 옮기며 자동 장착하지 않는다.
+4. 가방이 가득 찬 pickup 실패는 ground/inventory/revision/event를 바꾸지 않는다.
+5. 같은 ground item을 두 번 주울 수 없다.
+6. 다른 위치, 없는 item, 변조된 entity ID를 거부한다.
+7. pickup 포함 journal replay와 save/load final snapshot이 exact하다.
 
 ### B 회귀
 
@@ -666,12 +636,12 @@ D는 canonical 상태를 새로 만들지 않는다. A/C의 조회·transaction 
 ### C 완료
 
 - 어떤 경로로 죽어도 종족 드롭이 정확히 한 번 생성된다.
-- 몬스터의 생전 소지품과 착용 장비를 동일 instance로 루팅할 수 있다.
+- 몬스터의 생전 소지품과 착용 장비가 동일 instance로 사망 위치에 떨어진다.
 - 가방 부족이나 반복 처리로 아이템이 사라지거나 복제되지 않는다.
-- 같은 seed와 journal이 같은 corpse inventory와 final snapshot을 만든다.
+- 같은 seed와 journal이 같은 ground drops와 final snapshot을 만든다.
 
 ### 최종 B/D 완료
 
 - 적 장비가 실제 전투 수치에 반영된다.
-- 주인공·동료·시체 UI가 동일한 범용 facade를 사용한다.
+- 주인공·동료 UI와 바닥 줍기가 동일한 범용 facade를 사용한다.
 - 캐릭터 종류에 따라 별도 인벤토리 구현이나 직접 상태 수정 경로가 남지 않는다.

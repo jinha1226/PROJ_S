@@ -1,8 +1,11 @@
 class_name CorpseLootSystem
 extends RefCounted
 
+# The class and event keep their snapshot-v7 names for wire compatibility. The
+# gameplay contract is direct death-to-ground drops; no corpse inventory exists.
+
 const ItemScript = preload("res://sim/item_instance.gd")
-const InventoryOperationsScript = preload("res://sim/item_inventory_operations.gd")
+const InventoryStateScript = preload("res://sim/inventory_state.gd")
 const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const SpeciesDropRegistryScript = preload("res://sim/species_drop_registry.gd")
 
@@ -23,6 +26,14 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 	if not SpeciesDropRegistryScript.registry_error().is_empty():
 		return _rejected("species_drop_registry_invalid")
 	var next = world.item_state.clone()
+	# A dead actor is not an item container. Move every owned instance, including
+	# equipped weapons and armor, to the death tile without changing its identity,
+	# quantity, affixes or weapon runtime state. The empty inventory row remains
+	# because WorldItemState has one row for every combatant, living or dead.
+	var carried_items: Array = next.inventory(corpse_id).backpack.duplicate()
+	next.inventory_rows[corpse_id] = InventoryStateScript.new()
+	for item in carried_items:
+		next.ground_items.rows.append({"position": corpse.position, "item": item})
 	var generated_rows: Array[Dictionary] = []
 	var rolls := SpeciesDropRegistryScript.rolls_for(world.seed, int(death_event.id),
 		str(corpse.species_id))
@@ -30,20 +41,11 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 		var instance_id: String = next.instance_id_for(next.next_item_instance_id)
 		next.next_item_instance_id += 1
 		var item = ItemScript.new(instance_id, str(roll.definition_id), int(roll.quantity))
-		var added := InventoryOperationsScript.commit_insert_instance(
-			next.inventory(corpse_id), item)
-		var location := "CORPSE"
-		if bool(added.get("accepted", false)):
-			next.inventory_rows[corpse_id] = added.inventory
-		elif str(added.get("reason", "")) == "inventory_backpack_full":
-			location = "GROUND"
-			next.ground_items.rows.append({"position": corpse.position, "item": item})
-			next.ground_items._sort_rows()
-		else:
-			return _rejected(str(added.get("reason", "drop_insert_failed")))
+		next.ground_items.rows.append({"position": corpse.position, "item": item})
 		generated_rows.append({"instance_id": instance_id,
 			"definition_id": str(roll.definition_id), "quantity": int(roll.quantity),
-			"location": location, "roll_id": str(roll.roll_id)})
+			"location": "GROUND", "roll_id": str(roll.roll_id)})
+	next.ground_items._sort_rows()
 	next.processed_drop_death_event_ids.append(int(death_event.id))
 	next.processed_drop_death_event_ids.sort()
 	WorldItemOperationsScript.reconcile_weapon_runtime_rows(next)
