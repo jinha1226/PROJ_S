@@ -371,10 +371,10 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	var previous_hero:=_hero_camera_position
 	var previous_settle:=_camera_settle.duplicate(true)
 	var now:=Time.get_ticks_msec()
-	var carried_offset_cells:=Vector2.ZERO
+	var carried_offset_px:=Vector2.ZERO
 	if not _camera_settle.is_empty():
-		carried_offset_cells=Vector2(camera_settle_draw_spec(now).get(
-			"offset_px",Vector2.ZERO))/maxf(1.0,cell_size_px())
+		carried_offset_px=Vector2(camera_settle_draw_spec(now).get(
+			"offset_px",Vector2.ZERO))
 	visible_cell_count=clampi(cell_count,1,64)
 	# See set_view_window: a zoom change must stop/start the idle flicker timer
 	# immediately, not only after the deferred static projection rebuild.
@@ -383,9 +383,11 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		var delta:=hero_position-_hero_camera_position
 		if maxi(absi(delta.x),absi(delta.y))==1:
 			# Retarget from the currently drawn camera position. Repeated one-cell
-			# hops therefore preserve visual continuity instead of restarting from a
-			# full-cell offset every turn.
-			_camera_settle={"from_offset_cells":carried_offset_cells+Vector2(delta),
+			# hops therefore preserve visual continuity. The offset is measured in
+			# projected pixels because a pitched perspective grid has no single
+			# uniform cell size.
+			_camera_settle={"from_offset_px":carried_offset_px \
+				+_projected_camera_step_offset(Vector2(delta)),
 				"started_at_ms":now,"duration_ms":maxi(1,settle_duration_msec),
 				"curve":"LINEAR_CONTINUOUS" if settle_duration_msec>=120 \
 					else "CUBIC_EASE_OUT"}
@@ -417,12 +419,19 @@ func camera_settle_draw_spec(sample_time_ms:int=-1)->Dictionary:
 	# the current drawn offset when the next canonical step arrives.
 	var remaining:=1.0-progress if curve=="LINEAR_CONTINUOUS" \
 		else pow(1.0-progress,3.0)
-	var offset_cells:Vector2=_camera_settle.get("from_offset_cells",Vector2.ZERO)
-	var offset_px:=offset_cells*cell_size_px()*remaining
+	var start_offset_px:Vector2=_camera_settle.get("from_offset_px",Vector2.ZERO)
+	var offset_px:=start_offset_px*remaining
 	return {"active":progress<1.0,"progress":progress,"offset_px":offset_px,
 		"hero_counter_offset_px":-offset_px,
 		"duration_ms":duration,"started_at_ms":started_at,
 		"input_blocked":progress<1.0,"curve":curve}.duplicate(true)
+
+func _projected_camera_step_offset(delta:Vector2)->Vector2:
+	var local_center:=Vector2(float(visible_cell_count)*0.5,
+		float(visible_cell_count)*0.5)
+	return DioramaScript.project_camera_point(local_center+delta,grid_rect(),
+		visible_cell_count)-DioramaScript.project_camera_point(local_center,
+		grid_rect(),visible_cell_count)
 
 func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
@@ -944,24 +953,34 @@ func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_cou
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
 	return _camera_cell_rect(position)
+func world_cell_polygon(position:Vector2i)->PackedVector2Array:
+	if not view_bounds().has_point(position):return PackedVector2Array()
+	return _camera_cell_polygon(position)
+func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
+	if not view_bounds().has_point(position):return PackedVector2Array()
+	return DioramaScript.perspective_cell_polygon(position-view_origin,
+		grid_rect(),visible_cell_count)
 func _camera_cell_rect(position:Vector2i)->Rect2:
 	if not view_bounds().has_point(position):return Rect2()
-	var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
-	return Rect2(rect.position+Vector2(local.x,local.y)*cell,Vector2(cell,cell))
+	return DioramaScript.polygon_bounds(_camera_cell_polygon(position))
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
-	return world_cell_rect(position).get_center()
+	return DioramaScript.perspective_cell_center(position-view_origin,
+		grid_rect(),visible_cell_count)
 func _world_position_to_pixel_center(position:Vector2)->Vector2:
-	var local:=position-Vector2(view_origin)
-	return grid_rect().position+(local+Vector2(0.5,0.5))*cell_size_px()
+	var local:=position-Vector2(view_origin)+Vector2(0.5,0.5)
+	return DioramaScript.project_camera_point(local,grid_rect(),visible_cell_count)
 func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
-	var local:=pointer-rect.position;var cell:=cell_size_px()
-	var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
-	if local_cell.x<0 or local_cell.y<0 or local_cell.x>=visible_cell_count or local_cell.y>=visible_cell_count:return Vector2i(-1,-1)
-	var world_position:=view_origin+local_cell
-	return world_position if _world_in_bounds(world_position) else Vector2i(-1,-1)
+	# Near rows are inspected first at shared projected edges. The result remains
+	# one canonical integer cell; perspective never reaches simulation authority.
+	for y in range(visible_cell_count-1,-1,-1):
+		for x in range(visible_cell_count):
+			var world_position:=view_origin+Vector2i(x,y)
+			if Geometry2D.is_point_in_polygon(pointer,_camera_cell_polygon(world_position)):
+				return world_position if _world_in_bounds(world_position) else Vector2i(-1,-1)
+	return Vector2i(-1,-1)
 func mapping_signature() -> Array:
 	var rows: Array = [[view_origin.x,view_origin.y],visible_cell_count,[world_grid_size.x,world_grid_size.y]]
 	for y in range(visible_cell_count):
@@ -972,6 +991,7 @@ func void_padding_draw_spec(position:Vector2i)->Dictionary:
 	var visible:=view_bounds().has_point(position) and not _world_in_bounds(position)
 	return {"visible":visible,"world_position":[position.x,position.y],
 		"rect":_camera_cell_rect(position) if visible else Rect2(),
+		"polygon":_camera_cell_polygon(position) if visible else PackedVector2Array(),
 		"color_hex":str(AsciiStyleScript.diorama_palette_spec().get("void_hex","#010203")),
 		"accepts_input":false}.duplicate(true)
 func actor_hit_rect(entity_id: int) -> Rect2:
@@ -982,6 +1002,11 @@ func actor_hit_rect(entity_id: int) -> Rect2:
 	return Rect2()
 func actor_at_pointer(pointer: Vector2) -> int:
 	if _camera_input_blocked():return -1
+	# A generous 44 px actor target must never reach through MEMORY, UNSEEN or
+	# outside-world projected cells. Perspective compresses distant rows, so this
+	# semantic gate is required before resolving overlapping accessibility targets.
+	var pointer_cell:=pixel_to_world_cell(pointer)
+	if pointer_cell==Vector2i(-1,-1) or not _cell_accepts_actor_input(pointer_cell):return -1
 	var matches: Array = []
 	for actor in _actors:
 		if actor_hit_rect(int(actor.get("entity_id",-1))).has_point(pointer):
@@ -1367,9 +1392,10 @@ func _ensure_static_projection_cache()->void:
 			var position:=view_origin+Vector2i(x,y);var key:=_key(position)
 			var in_world:=_world_in_bounds(position)
 			var rect:=_camera_cell_rect(position)
+			var polygon:=_camera_cell_polygon(position)
 			if not in_world:
 				_static_projection_cache[key]={"position":position,"in_world":false,
-					"rect":rect,"visibility_state":"VOID","occupied":false,
+					"rect":rect,"polygon":polygon,"visibility_state":"VOID","occupied":false,
 					"light":DioramaScript.quantized_light_spec(position,
 						_hero_camera_position,"UNSEEN"),"cell_spec":DioramaScript.cell_spec(position,{}, {})}
 				continue
@@ -1384,6 +1410,7 @@ func _ensure_static_projection_cache()->void:
 				if bool(depth.raised) else Rect2()
 			var wall_role:Dictionary=content.wall_role
 			_static_projection_cache[key]={"position":position,"in_world":true,"rect":rect,
+				"polygon":polygon,
 				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
 				"depth":depth,"wall_role":wall_role,
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
@@ -1752,8 +1779,9 @@ func _emit_short_target(kind:String,actor_id:int,p:Vector2i)->void:
 	elif kind=="CELL":world_cell_pressed.emit(p)
 
 func _empty_cell_center_zone(position:Vector2i,pointer:Vector2)->bool:
-	var inset:=cell_size_px()*0.25
-	return world_cell_rect(position).grow(-inset).has_point(pointer)
+	var rect:=world_cell_rect(position)
+	var radius:=maxf(4.0,minf(rect.size.x,rect.size.y)*0.28)
+	return pointer.distance_to(world_to_pixel_center(position))<=radius
 
 func _diorama_visibility_state(row:Dictionary)->String:
 	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
@@ -1763,6 +1791,10 @@ func _draw() -> void:
 	_ensure_static_projection_cache()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	# A restrained horizon glow separates the receding floor from the black void.
+	# It is presentation-only and clipped by this Control's existing bounds.
+	var horizon_center:=grid_rect().get_center()+Vector2(0,-grid_rect().size.y*0.12)
+	draw_circle(horizon_center,grid_rect().size.x*0.56,Color("#10192372"))
 	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
 	draw_set_transform(camera_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
@@ -1857,7 +1889,7 @@ func _draw_void_padding(void_color:Color)->void:
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			if not _world_in_bounds(position):
-				draw_rect(_camera_cell_rect(position),void_color,true)
+				draw_colored_polygon(_camera_cell_polygon(position),void_color)
 
 func _draw_melee_target_background_flashes()->void:
 	if melee_vfx==null:return
@@ -1879,11 +1911,9 @@ func _draw_ground_pass(visibility_state:String)->void:
 			var light:Dictionary=cached.get("light",{})
 			# Borderless overlapping fills make adjacent visible cells read as one
 			# continuous pool of light instead of a tile checkerboard.
-			var wash_rect:=world_cell_rect(position)
-			var wash_overlap:=clampf(cell_size_px()*0.035,0.75,1.5)
-			draw_rect(wash_rect.grow(wash_overlap).intersection(grid_rect()),
+			draw_colored_polygon(_camera_cell_polygon(position),
 				_diorama_ink_color(str(visibility.background_hex),1.0,
-				visibility_state,light,false),true)
+					visibility_state,light,false))
 			var terrain:Dictionary=cached.get("terrain",{})
 			if not bool(terrain.visible) or str(terrain.terrain_id)=="wall":continue
 			_draw_ground_surface(position,terrain,visibility_state,light,
@@ -1898,14 +1928,19 @@ func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 	var rect:=world_cell_rect(position)
 	var slab_ratio:Vector2=terrain.get("slab_ratio",Vector2(0.72,0.52))
 	if slab_ratio.x<=0.0 or slab_ratio.y<=0.0:return
-	var slab_size:=Vector2(rect.size.x*slab_ratio.x,rect.size.y*slab_ratio.y)
 	var glyph_offset:Vector2=terrain.get("glyph_offset",Vector2.ZERO)
-	var slab_center:=rect.get_center()+Vector2(glyph_offset.x*rect.size.x,
-		glyph_offset.y*rect.size.y)
-	var slab_rect:=Rect2(slab_center-slab_size*0.5,slab_size)
 	var base:=_diorama_ink_color(str(terrain.get("slab_hex",terrain.base_hex)),
 		float(terrain.opacity)*(0.68 if occupied else 0.84),visibility_state,light,false)
-	draw_rect(slab_rect,base,true)
+	var polygon:=_scaled_projected_polygon(_camera_cell_polygon(position),slab_ratio,
+		Vector2(glyph_offset.x*rect.size.x,glyph_offset.y*rect.size.y))
+	draw_colored_polygon(polygon,base)
+	# The reference uses a barely-there projected seam. It reveals the pitch and
+	# perspective without turning each floor into a UI card.
+	if polygon.size()>=3:
+		var seam:=_diorama_ink_color(str(terrain.get("edge_hex","#788796")),
+			0.13*float(terrain.opacity),visibility_state,light,true)
+		var outline:=PackedVector2Array(polygon);outline.append(polygon[0])
+		draw_polyline(outline,seam,1.0,true)
 
 func _draw_torch_light_pools()->void:
 	# Cell-clipped washes cannot illuminate MEMORY/UNSEEN neighbors. This keeps
@@ -1919,8 +1954,7 @@ func _draw_torch_light_pools()->void:
 			var amber:=Color(str(light.color_hex))
 			amber.a=float(light.get("composite_alpha",TORCH_POOL_BASE_ALPHA \
 				+TORCH_POOL_GAIN_ALPHA*float(light.brightness)))
-			var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
-			draw_rect(world_cell_rect(position).grow(overlap).intersection(grid_rect()),amber,true)
+			draw_colored_polygon(_camera_cell_polygon(position),amber)
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
@@ -1960,26 +1994,17 @@ func _draw_wall_shadow_pass(visibility_state:String)->void:
 			var cached:=_cached_static_cell(position)
 			if str(cached.get("visibility_state",""))!=visibility_state \
 					or str((cached.get("terrain",{}) as Dictionary).get("terrain_id",""))!="wall":continue
-			var spec:Dictionary=cached.get("cell_spec",{})
-			var exposed:=int(spec.get("exposed_mask",0))
-			var rect:=world_cell_rect(position);var cell:=rect.size.x
+			var block:=DioramaScript.perspective_wall_block(_camera_cell_polygon(position),
+				1.0 if visibility_state=="VISIBLE" else 0.28)
+			if not bool(block.visible):continue
+			var cell:=world_cell_rect(position).size.x
 			var alpha:=0.10 if visibility_state=="VISIBLE" else 0.035
 			var shadow:=Color(str(AsciiStyleScript.diorama_palette_spec().get("shadow_hex","#010304")))
 			shadow.a=alpha
-			if exposed&DioramaScript.SOUTH:
-				draw_colored_polygon(PackedVector2Array([
-					Vector2(rect.position.x+cell*0.12,rect.end.y-cell*0.18),
-					Vector2(rect.end.x-cell*0.12,rect.end.y-cell*0.18),
-					Vector2(rect.end.x+cell*0.16,rect.end.y+cell*0.28),
-					Vector2(rect.position.x+cell*0.18,rect.end.y+cell*0.28),
-				]),shadow)
-			if exposed&DioramaScript.EAST:
-				draw_colored_polygon(PackedVector2Array([
-					Vector2(rect.end.x-cell*0.18,rect.position.y+cell*0.10),
-					Vector2(rect.end.x,rect.position.y+cell*0.16),
-					Vector2(rect.end.x+cell*0.28,rect.end.y+cell*0.20),
-					Vector2(rect.end.x+cell*0.12,rect.end.y-cell*0.04),
-				]),shadow)
+			var shadow_points:=PackedVector2Array()
+			var shadow_offset:=Vector2(cell*0.22,cell*0.28)
+			for point in block.top:shadow_points.append(Vector2(point)+shadow_offset)
+			draw_colored_polygon(shadow_points,shadow)
 
 func _draw_wall_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
@@ -1990,59 +2015,60 @@ func _draw_wall_pass(visibility_state:String)->void:
 			var terrain:Dictionary=cached.get("terrain",{})
 			if str(terrain.terrain_id)!="wall":continue
 			var spec:Dictionary=cached.get("cell_spec",{});var connected:=int(spec.connected_mask)
+			var exposed:=int(spec.get("exposed_mask",0))
 			var wall_role:Dictionary=cached.get("wall_role",{})
 			var rect:=world_cell_rect(position);var cell:=rect.size.x
-			var overlap:=clampf(cell*0.045,1.0,2.0)
 			var depth:Dictionary=cached.get("depth",{})
 			var light:Dictionary=cached.get("light",{})
-			if bool(depth.get("raised",false)):
-				var side:=_diorama_ink_color(str(depth.side_hex),float(depth.opacity),
-					visibility_state,light,false)
-				draw_rect((depth.side_rect as Rect2).grow(overlap).intersection(grid_rect()),side,true)
-				if bool(wall_role.get("face_visible",false)):
-					var side_center:=rect.get_center()+Vector2(depth.side_offset)
-					var side_font_size:=maxi(8,int(floor(cell*0.58)))
-					_draw_centered_text(get_theme_default_font(),str(wall_role.face_glyph),
-						side_center,side_font_size,_diorama_ink_color(str(terrain.glyph_hex),
-						0.30*float(depth.opacity),visibility_state,light,true))
-			var slab_ratio:Vector2=wall_role.get("slab_ratio",Vector2(0.94,0.92))
-			var slab_size:=Vector2(rect.size.x*slab_ratio.x,rect.size.y*slab_ratio.y)
-			var top_rect:=Rect2(rect.get_center()-slab_size*0.5,slab_size)
+			var opacity:=float(depth.get("opacity",1.0))
+			var block:=DioramaScript.perspective_wall_block(_camera_cell_polygon(position),opacity)
+			if not bool(block.visible):continue
+			var side:=_diorama_ink_color(str(depth.get("side_hex","#070b12")),opacity,
+				visibility_state,light,false)
+			if exposed&DioramaScript.SOUTH:draw_colored_polygon(block.front,side.lightened(0.035))
+			if exposed&DioramaScript.EAST:draw_colored_polygon(block.right,side.darkened(0.12))
 			var top:=_diorama_ink_color(str(terrain.base_hex),float(terrain.opacity),
 				visibility_state,light,false)
-			draw_rect(top_rect.grow(overlap).intersection(grid_rect()),top,true)
-			# Two restrained masonry seams deepen the wall mass without introducing
-			# per-tile borders or changing the canonical '#'.
-			var inner_shadow:=Color("#030507",0.42 if visibility_state=="VISIBLE" else 0.18)
-			draw_line(top_rect.position+Vector2(1,1),
-				Vector2(top_rect.end.x-1,top_rect.position.y+1),inner_shadow,1.0,true)
-			draw_line(top_rect.position+Vector2(1,1),
-				Vector2(top_rect.position.x+1,top_rect.end.y-1),inner_shadow,1.0,true)
+			draw_colored_polygon(block.top,top)
 			var edge:=_diorama_ink_color(str(terrain.edge_hex),0.54*float(terrain.opacity),
 				visibility_state,light,true)
+			var top_outline:=PackedVector2Array()
+			for point in block.top:top_outline.append(point)
+			top_outline.append(block.top[0]);draw_polyline(top_outline,edge,1.0,true)
 			if not connected&DioramaScript.SOUTH:
-				draw_line(Vector2(rect.position.x,rect.end.y-1),rect.end-Vector2(0,1),edge,1.0,true)
+				draw_line(block.top[3],block.top[2],edge.lightened(0.16),1.3,true)
 			if not connected&DioramaScript.EAST:
-				draw_line(Vector2(rect.end.x-1,rect.position.y),rect.end-Vector2(1,0),edge,1.0,true)
+				draw_line(block.top[1],block.top[2],edge,1.0,true)
 			var role_terrain:=terrain.duplicate(false)
 			role_terrain["glyph"]=str(wall_role.get("core_glyph","#"))
 			role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 			role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
-			_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false)
+			_draw_terrain_glyph(DioramaScript.polygon_bounds(block.top),role_terrain,
+				visibility_state,light,false)
+			if bool(wall_role.get("face_visible",false)) and exposed&DioramaScript.SOUTH:
+				var front_rect:=DioramaScript.polygon_bounds(block.front)
+				_draw_centered_text(get_theme_default_font(),str(wall_role.face_glyph),
+					front_rect.get_center(),maxi(8,int(cell*0.42)),
+					_diorama_ink_color(str(terrain.glyph_hex),0.34*opacity,
+						visibility_state,light,true))
 
 func _draw_wall_torches()->void:
 	for spec in torch_draw_specs():
 		if not bool(spec.visible):continue
-		var center:Vector2=spec.pixel_center
+		var position:=_array_to_world_position(spec.get("position",[]))
+		var rect:=world_cell_rect(position)
+		var block:=DioramaScript.perspective_wall_block(_camera_cell_polygon(position))
+		var center:Vector2=Vector2(spec.pixel_center)+Vector2(block.get("lift",Vector2.ZERO))*0.55
+		var local_cell:=maxf(8.0,rect.size.x)
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
 		# One ASCII glyph, confined to its wall cell. No image/texture primitive.
 		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.12*float(spec.brightness)
-		draw_circle(center+Vector2(0,cell_size_px()*0.10),cell_size_px()*0.18,glow)
+		draw_circle(center+Vector2(0,local_cell*0.10),local_cell*0.32,glow)
 		var shadow:=Color("#1a0b04",0.92)
 		_draw_centered_text(get_theme_default_font(),str(spec.glyph),
-			center+Vector2(0.8,cell_size_px()*0.10+0.8),maxi(9,int(cell_size_px()*0.50)),shadow)
+			center+Vector2(0.8,local_cell*0.10+0.8),maxi(9,int(local_cell*0.54)),shadow)
 		_draw_centered_text(get_theme_default_font(),str(spec.glyph),
-			center+Vector2(0,cell_size_px()*0.10),maxi(9,int(cell_size_px()*0.50)),color)
+			center+Vector2(0,local_cell*0.10),maxi(9,int(local_cell*0.54)),color)
 
 func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 		light:Dictionary,occupied:bool)->void:
@@ -2147,6 +2173,16 @@ func _diorama_ink_color(value:String,opacity:float,visibility_state:String,
 	color.a*=clampf(opacity,0.0,1.0)
 	return color
 
+func _scaled_projected_polygon(points:PackedVector2Array,ratio:Vector2,
+		offset:Vector2=Vector2.ZERO)->PackedVector2Array:
+	if points.is_empty():return PackedVector2Array()
+	var center:=DioramaScript.polygon_bounds(points).get_center()+offset
+	var result:=PackedVector2Array()
+	for point in points:
+		result.append(center+Vector2((point.x-center.x)*ratio.x,
+			(point.y-center.y)*ratio.y))
+	return result
+
 func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector2Array:
 	var points:=PackedVector2Array()
 	for index in range(16):
@@ -2247,8 +2283,14 @@ func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 	var visual_center:=world_to_pixel_center(position) if ghost else actor_visual_center(
 		int(actor.get("entity_id",-1)),sample_time_ms)
 	if visual_center==Vector2(-1,-1):return Rect2()
-	var figure_height:=clampf(cell*1.56,28.0,52.0);var figure_width:=cell*0.72
-	var foot_y:=visual_center.y+cell*0.5
+	# Perspective owns actor scale as well as floor scale. Near figures grow and
+	# far figures recede, while the center hero remains within the mobile legibility
+	# bounds used by the ASCII portrait renderer.
+	var projected_rect:=world_cell_rect(position)
+	var projected_cell:=maxf(8.0,projected_rect.size.x*1.42)
+	var figure_height:=clampf(projected_cell*1.56,24.0,58.0)
+	var figure_width:=projected_cell*0.72
+	var foot_y:=visual_center.y+maxf(3.0,projected_rect.size.y*0.46)
 	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,
 		foot_y-figure_height-ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX),
 		Vector2(figure_width,figure_height))

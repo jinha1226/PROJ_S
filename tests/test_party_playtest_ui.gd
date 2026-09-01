@@ -165,19 +165,25 @@ func test_gui_input_routes_actor_slop_without_stealing_adjacent_cell_centers() -
 		var actor_events:Array=[];var world_events:Array=[]
 		sandbox.grid.actor_pressed.connect(func(id):actor_events.append(id))
 		sandbox.grid.world_cell_pressed.connect(func(position):world_events.append(position))
+		var adjacent:=hero_position+Vector2i.RIGHT
+		var adjacent_center:Vector2=sandbox.grid.world_to_pixel_center(adjacent)
+		var adjacent_rect:Rect2=sandbox.grid.world_cell_rect(adjacent)
 		var near_actor:=InputEventScreenTouch.new();near_actor.pressed=true
-		near_actor.position=sandbox.grid.world_to_pixel_center(hero_position)+Vector2(15,0)
+		# Perspective compresses the center row to less than the 44 px actor target.
+		# Probe the visible adjacent trapezoid away from its exact-cell center so the
+		# hero slop owns the press, then release at the same cell's center.
+		near_actor.position=adjacent_center+Vector2(0,
+			minf(6.0,maxf(4.5,adjacent_rect.size.y*0.38)))
 		sandbox.grid._gui_input(near_actor)
 		check(actor_events.is_empty() and world_events.is_empty(),"%s press alone cannot select or move"%viewport_size)
 		var near_release:=InputEventScreenTouch.new();near_release.pressed=false
-		near_release.position=sandbox.grid.world_to_pixel_center(hero_position+Vector2i.RIGHT)
+		near_release.position=adjacent_center
 		sandbox.grid._gui_input(near_release)
 		check_eq(actor_events,[hero],"%s press-time actor target stays immutable through <=14px release movement"%viewport_size)
 		check(world_events.is_empty(),"%s actor slop is not misrouted as movement"%viewport_size)
 		sandbox._clear_move_preview();actor_events.clear();world_events.clear()
-		var adjacent:=hero_position+Vector2i.RIGHT
 		var exact_empty:=InputEventScreenTouch.new();exact_empty.pressed=true
-		exact_empty.position=sandbox.grid.world_to_pixel_center(adjacent)
+		exact_empty.position=adjacent_center
 		sandbox.grid._gui_input(exact_empty)
 		check(actor_events.is_empty() and world_events.is_empty(),"%s empty-cell press alone is pure"%viewport_size)
 		var empty_release:=InputEventScreenTouch.new();empty_release.pressed=false;empty_release.position=exact_empty.position
@@ -1191,6 +1197,7 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	var observation={"cells":[{"position":[7,7],"terrain_id":"floor","actors":[
 		{"entity_id":10,"is_protagonist":false,"roster_slot":1,"faction_id":"party","sprite_frame":4},
 		{"entity_id":11,"is_protagonist":true,"roster_slot":0,"faction_id":"party","sprite_frame":0}]}]}
+	sandbox.grid.size=sandbox.grid.custom_minimum_size
 	sandbox.grid.set_observation(observation); var center=sandbox.grid.world_to_pixel_center(Vector2i(7,7))
 	check_eq(sandbox.grid.actor_at_pointer(center),11,"overlap tie favors protagonist")
 	check_eq(sandbox.grid.actor_hit_rect(11).size,Vector2(44,44),"44 square actor hit target")

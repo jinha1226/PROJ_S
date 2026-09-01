@@ -51,6 +51,92 @@ const ACTOR_MOTION_DEFAULT_MS := 150
 const ACTOR_MOTION_MIN_MS := 70
 const ACTOR_MOTION_MAX_MS := 180
 
+# The gameplay grid remains integer 2D authority. These values only project its
+# presentation into the camera-following ASCII diorama chosen by the visual
+# target: a low pitch, strong perspective and a little extra screen-depth so a
+# square mobile viewport does not collapse into a thin horizontal strip.
+const CAMERA_PITCH_DEGREES := 30.0
+const CAMERA_PERSPECTIVE := 0.78
+const CAMERA_DISTANCE_CELLS := 22.0
+const CAMERA_DEPTH_STRETCH := 1.65
+const CAMERA_NEAR_WIDTH_RATIO := 0.90
+const WALL_HEIGHT_CELL_RATIO := 0.72
+
+
+static func perspective_projection_spec(viewport:Rect2,cell_count:int)->Dictionary:
+	var count:=maxi(1,cell_count)
+	var pitch:=deg_to_rad(CAMERA_PITCH_DEGREES)
+	var half_count:=float(count)*0.5
+	var near_depth:=half_count*cos(pitch)
+	var near_pf:=CAMERA_DISTANCE_CELLS/maxf(5.0,CAMERA_DISTANCE_CELLS-near_depth)
+	var near_factor:=(1.0-CAMERA_PERSPECTIVE)+CAMERA_PERSPECTIVE*near_pf
+	var base_scale:=viewport.size.x*CAMERA_NEAR_WIDTH_RATIO \
+		/(float(count)*maxf(0.01,near_factor))
+	return {"pitch_degrees":CAMERA_PITCH_DEGREES,"pitch_radians":pitch,
+		"perspective":CAMERA_PERSPECTIVE,"camera_distance":CAMERA_DISTANCE_CELLS,
+		"depth_stretch":CAMERA_DEPTH_STRETCH,"base_scale":base_scale,
+		"cell_count":count,"center":viewport.get_center(),
+		"near_factor":near_factor,"near_width_ratio":CAMERA_NEAR_WIDTH_RATIO}.duplicate(true)
+
+
+static func project_camera_point(local_point:Vector2,viewport:Rect2,
+		cell_count:int)->Vector2:
+	var spec:=perspective_projection_spec(viewport,cell_count)
+	var center:Vector2=spec.center
+	var pitch:=float(spec.pitch_radians)
+	var half_count:=float(int(spec.cell_count))*0.5
+	var x:=local_point.x-half_count
+	var z:=local_point.y-half_count
+	var depth:=z*cos(pitch)
+	var denominator:=maxf(5.0,float(spec.camera_distance)-depth)
+	var perspective_factor:=float(spec.camera_distance)/denominator
+	var scale:=float(spec.base_scale)*((1.0-float(spec.perspective)) \
+		+float(spec.perspective)*perspective_factor)
+	return Vector2(center.x+x*scale,
+		center.y+z*sin(pitch)*scale*float(spec.depth_stretch))
+
+
+static func perspective_cell_polygon(local_cell:Vector2i,viewport:Rect2,
+		cell_count:int)->PackedVector2Array:
+	return PackedVector2Array([
+		project_camera_point(Vector2(local_cell),viewport,cell_count),
+		project_camera_point(Vector2(local_cell)+Vector2.RIGHT,viewport,cell_count),
+		project_camera_point(Vector2(local_cell)+Vector2.ONE,viewport,cell_count),
+		project_camera_point(Vector2(local_cell)+Vector2.DOWN,viewport,cell_count),
+	])
+
+
+static func polygon_bounds(points:PackedVector2Array)->Rect2:
+	if points.is_empty():return Rect2()
+	var minimum:=points[0];var maximum:=points[0]
+	for point in points:
+		minimum=Vector2(minf(minimum.x,point.x),minf(minimum.y,point.y))
+		maximum=Vector2(maxf(maximum.x,point.x),maxf(maximum.y,point.y))
+	return Rect2(minimum,maximum-minimum)
+
+
+static func perspective_cell_center(local_cell:Vector2i,viewport:Rect2,
+		cell_count:int)->Vector2:
+	return project_camera_point(Vector2(local_cell)+Vector2(0.5,0.5),viewport,cell_count)
+
+
+static func perspective_wall_block(cell_polygon:PackedVector2Array,
+		opacity:float=1.0)->Dictionary:
+	if cell_polygon.size()!=4:
+		return {"visible":false,"top":PackedVector2Array(),
+			"front":PackedVector2Array(),"right":PackedVector2Array(),
+			"height":0.0}.duplicate(true)
+	var bounds:=polygon_bounds(cell_polygon)
+	var height:=clampf(bounds.size.x*WALL_HEIGHT_CELL_RATIO,8.0,34.0)
+	var lift:=Vector2(0,-height)
+	var top:=PackedVector2Array()
+	for point in cell_polygon:top.append(point+lift)
+	return {"visible":true,"height":height,"lift":lift,"top":top,
+		"front":PackedVector2Array([top[3],top[2],cell_polygon[2],cell_polygon[3]]),
+		"right":PackedVector2Array([top[1],top[2],cell_polygon[2],cell_polygon[1]]),
+		"opacity":clampf(opacity,0.0,1.0),"draw_image":false,
+		"changes_mapping":false}.duplicate(true)
+
 
 static func terrain_depth_spec(cell:Dictionary,cell_size:float)->Dictionary:
 	var observed:=sanitize_observed_cell(cell)

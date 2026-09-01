@@ -18,9 +18,9 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		check_eq(spec.glyph,expected[terrain_id],"%s ASCII glyph"%terrain_id)
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
 		check(spec.glyph_primary and spec.registered and not spec.draw_image \
-			and not spec.draw_tile_border,"%s glyph is primary over a borderless code-native floor"%terrain_id)
-		check_eq(bool(spec.draw_cell_surface),terrain_id=="wall",
-			"only structural walls own a local slab; walkable terrain stays on the black field")
+			and not spec.draw_tile_border,"%s glyph is primary over a code-native projected floor"%terrain_id)
+		check(bool(spec.draw_cell_surface),
+			"%s owns the selected coloured perspective surface"%terrain_id)
 		var base:=Color(str(spec.base_hex));var glyph:=Color(str(spec.glyph_hex))
 		glyph_colors.append(glyph);glyph_hexes.append(str(spec.glyph_hex))
 		check(glyph.get_luminance()>base.get_luminance()+0.025,
@@ -29,10 +29,10 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),expected.size(),"seven terrain roles have distinct glyph colors")
 	for walkable_id in ["floor","stone_floor","wood_floor","metal","rubble","shallow_water"]:
-		check_eq(Style.terrain_spec({"terrain_id":walkable_id}).slab_ratio,Vector2.ZERO,
-			"%s emits no coloured checkerboard slab"%walkable_id)
+		check_eq(Style.terrain_spec({"terrain_id":walkable_id}).slab_ratio,Vector2(0.96,0.96),
+			"%s uses the target's .48-to-.48 projected tile footprint"%walkable_id)
 	check(Style.terrain_spec({"terrain_id":"wall"}).slab_ratio!=Vector2.ZERO,
-		"walls alone retain a structural local underlay")
+		"walls retain a structural projected top")
 	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
 		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
 		"unregistered tree terrain is not invented for presentation")
@@ -73,8 +73,8 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 			"registered %s projects its primary glyph"%terrain_ids[index])
 		check(not spec.draw_image and not spec.draw_tile_border,
 			"terrain glyph adds no image, tile card, or input surface")
-		check_eq(bool(spec.draw_cell_surface),terrain_ids[index]=="wall",
-			"only the wall silhouette emits a per-cell surface rect")
+		check(bool(spec.draw_cell_surface),
+			"%s emits a coloured projected surface polygon"%terrain_ids[index])
 	var memory:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,0))
 	check(memory.visible and memory.visibility_state=="MEMORY" and memory.opacity<1.0,
 		"memory keeps only a dim static terrain glyph")
@@ -82,6 +82,46 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 	check(not unseen.visible and unseen.glyph.is_empty() and unseen.terrain_id.is_empty(),
 		"unseen terrain emits no glyph or terrain identity")
 	check_eq(grid.mapping_signature(),mapping,"glyph projection leaves mapping and hits unchanged")
+	grid.free();return finish()
+
+
+func test_product_projection_has_pitched_perspective_wall_height_and_exact_hits()->bool:
+	var viewport:=Rect2(Vector2.ZERO,Vector2(390,390));var count:=13
+	var projection:Dictionary=Diorama.perspective_projection_spec(viewport,count)
+	check(is_equal_approx(float(projection.pitch_degrees),30.0) \
+			and is_equal_approx(float(projection.perspective),0.78),
+		"product camera keeps the chosen 30-degree / 78-percent visual target")
+	var far:=Diorama.perspective_cell_polygon(Vector2i(6,0),viewport,count)
+	var middle:=Diorama.perspective_cell_polygon(Vector2i(6,6),viewport,count)
+	var near:=Diorama.perspective_cell_polygon(Vector2i(6,12),viewport,count)
+	var far_bounds:=Diorama.polygon_bounds(far)
+	var middle_bounds:=Diorama.polygon_bounds(middle)
+	var near_bounds:=Diorama.polygon_bounds(near)
+	check(near_bounds.size.x>middle_bounds.size.x*1.08 \
+			and middle_bounds.size.x>far_bounds.size.x*1.08,
+		"near tiles visibly widen while distant tiles recede")
+	check(far_bounds.get_center().y<viewport.get_center().y \
+			and near_bounds.get_center().y>viewport.get_center().y,
+		"pitched floor recedes above and expands below the centered hero")
+	check((middle[2].x-middle[3].x)>(middle[1].x-middle[0].x),
+		"each floor cell is a perspective trapezoid instead of a square card")
+	var wall:Dictionary=Diorama.perspective_wall_block(middle)
+	check(bool(wall.visible) and float(wall.height)>=8.0 \
+			and (wall.top as PackedVector2Array).size()==4 \
+			and (wall.front as PackedVector2Array).size()==4,
+		"wall owns a raised top and a real four-point front face")
+	check(Diorama.polygon_bounds(wall.top).get_center().y \
+			<Diorama.polygon_bounds(middle).get_center().y-float(wall.height)*0.8,
+		"wall top is lifted clearly above the projected floor")
+
+	var grid=Grid.new();grid.size=viewport.size
+	grid.set_observation({"width":15,"height":15,"cells":_visible_cells()})
+	grid.set_hero_centered_view(Vector2i(7,7),count,77)
+	check(grid.world_to_pixel_center(Vector2i(7,7)).distance_to(viewport.get_center())<0.01,
+		"perspective camera keeps the protagonist at the exact screen center")
+	for position in [Vector2i(1,1),Vector2i(7,7),Vector2i(13,13)]:
+		check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(position)),position,
+			"projected cell center round-trips to canonical world authority")
 	grid.free();return finish()
 
 
@@ -260,11 +300,12 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 	var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(77)
 	var spec:Dictionary=grid.actor_glyph_draw_spec(77)
 	check(spec.visible and spec.font_size>=9,"15px cell keeps a readable central glyph")
-	check(float(spec.top_overlap_px)>0.0 and float(spec.top_overlap_px)<=4.2 \
+	var figure_bounds:=Rect2(spec.figure_bounds);var glyph_rect:=Rect2(spec.glyph_rect)
+	check(float(spec.top_overlap_px)>0.0 \
 			and spec.glyph_rect.position.x>=spec.cell_rect.position.x \
 			and spec.glyph_rect.end.x<=spec.cell_rect.end.x \
-			and spec.glyph_rect.end.y<=spec.cell_rect.end.y,
-		"body glyph overlaps only slightly upward while staying laterally bounded: %s vs %s" \
+			and figure_bounds.grow(2.0).encloses(glyph_rect),
+		"upright body rises from the tile while staying laterally bounded: %s vs %s" \
 		%[spec.glyph_rect,spec.cell_rect])
 	check(not spec.detached_head and spec.outline_passes==8 and not spec.selected_outline,
 		"world actor has no head or yellow selection outline")
@@ -274,10 +315,10 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 		"party map adds one weapon and two armor glyphs around the unchanged core: %s"%spec)
 	check(spec.limb_segments.is_empty() and not bool(spec.equipment.changes_core_glyph),
 		"world actor has no limbs and equipment never replaces @")
-	check(Rect2(spec.cell_rect).has_point(Vector2(spec.equipment.weapon_center)) \
-			and Rect2(spec.cell_rect).has_point(Vector2(spec.equipment.armor_left_center)) \
-			and Rect2(spec.cell_rect).has_point(Vector2(spec.equipment.armor_right_center)),
-		"all equipment marks stay inside the logical actor tile")
+	check(figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.weapon_center)) \
+			and figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.armor_left_center)) \
+			and figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.armor_right_center)),
+		"all equipment marks stay on the upright actor silhouette")
 	check_eq(grid.mapping_signature(),mapping,"glyph presentation cannot alter mapping")
 	check_eq(grid.actor_hit_rect(77),hit,"glyph presentation cannot alter actor hit authority")
 	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),77,
@@ -301,16 +342,18 @@ func test_actor_pseudo_depth_proportions_are_bounded_at_360_and_450()->bool:
 		var hero:Dictionary=grid.actor_glyph_draw_spec(77)
 		var neighbor:Dictionary=grid.actor_glyph_draw_spec(88)
 		check(bool(hero.one_cell_one_glyph) and str(hero.glyph)=="@" \
-				and float(hero.top_overlap_px)>0.0 \
-				and float(hero.top_overlap_px)<=grid.cell_size_px()*0.17,
-			"%dpx body owns one glyph with a restrained upward silhouette overlap=%s cell=%s" \
+				and float(hero.top_overlap_px)>grid.world_cell_rect(Vector2i(7,7)).size.y*0.5 \
+				and float(hero.top_overlap_px)<Rect2(hero.figure_bounds).size.y,
+			"%dpx body owns one upright glyph above its projected floor tile overlap=%s cell=%s" \
 			%[viewport,hero.top_overlap_px,grid.cell_size_px()])
 		check(hero.limb_segments.is_empty() and float(hero.feet_bottom_margin_px)==0.0,
 			"%dpx actor silhouette contains no artificial limbs"%viewport)
-		check(not Rect2(hero.glyph_rect).intersects(Rect2(neighbor.glyph_rect)) \
-				and hero.glyph_rect.position.x>=hero.cell_rect.position.x \
-				and hero.glyph_rect.end.x<=hero.cell_rect.end.x,
-			"%dpx adjacent actors keep distinct single-glyph silhouettes"%viewport)
+		check(Rect2(hero.figure_bounds).size.y>=Rect2(neighbor.figure_bounds).size.y \
+				and int(hero.font_size)>=int(neighbor.font_size) \
+				and grid.world_to_pixel_center(Vector2i(7,7)).y \
+					>grid.world_to_pixel_center(Vector2i(7,6)).y \
+				and grid.actor_render_order()==[88,77],
+			"%dpx near actor grows and depth-sorts after the farther actor"%viewport)
 		var goblin_color:=Color(str(grid.actor_draw_spec(grid._actor_by_id(88)).color_hex))
 		check(str(neighbor.glyph)=="g" and goblin_color.g>goblin_color.r*1.25 \
 				and goblin_color.g>goblin_color.b*1.25,
@@ -424,7 +467,8 @@ func test_unseen_cell_emits_no_short_long_or_nearby_actor_signal() -> bool:
 	grid.set_observation({"width":15,"height":15,"cells":cells})
 	var pointer:=grid.world_cell_rect(Vector2i(7,7)).position+Vector2(1,grid.cell_size_px()*0.5)
 	check_eq(grid.pixel_to_world_cell(pointer),Vector2i(7,7),"mapping still resolves unseen cell")
-	check_eq(grid.actor_at_pointer(pointer),42,"fixture overlaps nearby visible actor hit slop")
+	check_eq(grid.actor_at_pointer(pointer),-1,
+		"compressed perspective hit slop cannot reach through an unseen cell")
 	var emitted:Array=[]
 	grid.world_cell_pressed.connect(func(_position):emitted.append("CELL"))
 	grid.actor_pressed.connect(func(_entity_id):emitted.append("ACTOR"))
@@ -1226,18 +1270,24 @@ func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct(
 	var terrain_ids:=["floor","stone_floor","wood_floor","metal","rubble","shallow_water","wall"]
 	var brightest_ground:=0.0
 	var terrain_glyph_hexes:Array[String]=[]
+	var terrain_base_hexes:Array[String]=[]
 	for terrain_id in terrain_ids:
 		var terrain:Dictionary=Style.terrain_spec({"terrain_id":terrain_id})
 		var base:=Color(str(terrain.base_hex));var glyph:=Color(str(terrain.glyph_hex))
 		brightest_ground=maxf(brightest_ground,base.get_luminance())
+		terrain_base_hexes.append(str(terrain.base_hex))
 		terrain_glyph_hexes.append(str(terrain.glyph_hex))
 		check(glyph.get_luminance()>base.get_luminance()+0.025,
-			"%s restrained glyph clears its nearly-black ground"%terrain_id)
+			"%s restrained glyph clears its coloured ground"%terrain_id)
 		var chroma:=maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))
-		check(chroma<0.18,"%s terrain ink stays subordinate to saturated actors"%terrain_id)
+		check(chroma<0.34,"%s terrain ink stays subordinate to saturated actors"%terrain_id)
 	check_eq(terrain_glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),terrain_ids.size(),"terrain glyph palette is role-distinct")
+	check_eq(terrain_base_hexes.duplicate().reduce(func(accum,value):
+		if value not in accum:accum.append(value)
+		return accum,[]).size(),terrain_ids.size(),
+		"blue, brown, steel and water projected surfaces remain role-distinct")
 	var role_specs:=[
 		Style.actor_spec({"is_protagonist":true,"roster_slot":0}),
 		Style.actor_spec({"faction_id":"party","species_id":"human","roster_slot":1}),

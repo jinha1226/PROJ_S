@@ -139,15 +139,16 @@ const DIORAMA_PALETTE := {
 }
 
 const TERRAIN_DEFINITIONS := {
-	# Ordinary floor stays low and quiet while special materials retain a single
-	# punctuation mark. Secondary marks add texture without becoming image tiles.
-	"floor": {"glyph":".", "base_hex":"#05080c", "glyph_hex":"#394047", "edge_hex":"#020406", "font_ratio":0.40, "raised":false, "ink_family":"DOT", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.0,0.15), "outline_passes":0, "weight_passes":1},
-	"stone_floor": {"glyph":".", "base_hex":"#06090c", "glyph_hex":"#4a5056", "edge_hex":"#030507", "font_ratio":0.42, "raised":false, "ink_family":"CHALK", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(-0.08,0.13), "outline_passes":0, "weight_passes":1},
-	"wood_floor": {"glyph":",", "base_hex":"#080706", "glyph_hex":"#665c50", "edge_hex":"#030302", "font_ratio":0.48, "raised":false, "ink_family":"GRAIN", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.08,0.10), "outline_passes":0, "weight_passes":1},
-	"metal": {"glyph":"=", "base_hex":"#05090a", "glyph_hex":"#506168", "edge_hex":"#020405", "font_ratio":0.54, "raised":false, "ink_family":"PLATE", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.0,0.04), "outline_passes":0, "weight_passes":1},
-	"rubble": {"glyph":":", "base_hex":"#080806", "glyph_hex":"#665f50", "edge_hex":"#030302", "font_ratio":0.50, "raised":false, "ink_family":"DEBRIS", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(-0.09,0.07), "outline_passes":0, "weight_passes":1},
-	"shallow_water": {"glyph":"~", "base_hex":"#04090c", "glyph_hex":"#45616d", "edge_hex":"#020406", "font_ratio":0.54, "raised":false, "ink_family":"WAVE", "slab_ratio":Vector2(0.0,0.0), "glyph_offset":Vector2(0.05,0.06), "outline_passes":0, "weight_passes":1},
-	"wall": {"glyph":"#", "base_hex":"#0d1014", "glyph_hex":"#7c838b", "edge_hex":"#05070a", "font_ratio":0.82, "raised":true, "ink_family":"MASONRY", "slab_ratio":Vector2(0.94,0.92), "glyph_offset":Vector2(0.0,-0.02), "outline_passes":1, "weight_passes":2},
+	# The chosen HTML target uses 0.96-cell coloured floor polygons. Material
+	# families supply the room-like blue, brown, steel and water zones while the
+	# ASCII marks remain the brighter semantic layer above them.
+	"floor": {"glyph":".", "base_hex":"#2d323c", "glyph_hex":"#7f8994", "edge_hex":"#5a6470", "font_ratio":0.40, "raised":false, "ink_family":"DOT", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.0,0.15), "outline_passes":0, "weight_passes":1},
+	"stone_floor": {"glyph":".", "base_hex":"#293f50", "glyph_hex":"#8096a8", "edge_hex":"#587184", "font_ratio":0.42, "raised":false, "ink_family":"CHALK", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.08,0.13), "outline_passes":0, "weight_passes":1},
+	"wood_floor": {"glyph":",", "base_hex":"#42372b", "glyph_hex":"#a88f70", "edge_hex":"#756049", "font_ratio":0.48, "raised":false, "ink_family":"GRAIN", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.08,0.10), "outline_passes":0, "weight_passes":1},
+	"metal": {"glyph":"=", "base_hex":"#344955", "glyph_hex":"#89a6b3", "edge_hex":"#607d89", "font_ratio":0.54, "raised":false, "ink_family":"PLATE", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.0,0.04), "outline_passes":0, "weight_passes":1},
+	"rubble": {"glyph":":", "base_hex":"#4a3d2d", "glyph_hex":"#a89369", "edge_hex":"#756344", "font_ratio":0.50, "raised":false, "ink_family":"DEBRIS", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.09,0.07), "outline_passes":0, "weight_passes":1},
+	"shallow_water": {"glyph":"~", "base_hex":"#1f5262", "glyph_hex":"#79b8c7", "edge_hex":"#477f8e", "font_ratio":0.54, "raised":false, "ink_family":"WAVE", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.05,0.06), "outline_passes":0, "weight_passes":1},
+	"wall": {"glyph":"#", "base_hex":"#303740", "glyph_hex":"#aeb9c3", "edge_hex":"#707984", "font_ratio":0.82, "raised":true, "ink_family":"MASONRY", "slab_ratio":Vector2(0.94,0.92), "glyph_offset":Vector2(0.0,-0.02), "outline_passes":1, "weight_passes":2},
 }
 
 
@@ -199,7 +200,7 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	var slab_ratio:Vector2=result.get("slab_ratio",Vector2.ZERO)
 	result["draw_cell_surface"] = registered and slab_ratio.x>0.0 and slab_ratio.y>0.0 \
 		and bool(visibility.draw_terrain)
-	result["background_source"] = "GRID_FLAT" if terrain_id == "floor" else "TERRAIN_FLAT"
+	result["background_source"] = "TERRAIN_PROJECTED"
 	result["outline_hex"] = "#020508"
 	result["slab_hex"] = str(result.get("base_hex","#091017"))
 	return result.duplicate(true)
