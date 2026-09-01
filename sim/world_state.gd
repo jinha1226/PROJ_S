@@ -86,6 +86,13 @@ var _rollback_tile_terrain_cache := PackedStringArray()
 # turns and rollback capture do not rescan every one of the 96x96 tiles.
 var _dynamic_tile_indices: Dictionary = {}
 var _dynamic_tile_index_ready := false
+# Occupancy is a positional question, but the roster is keyed by entity id.
+# Pathfinding asks it once per neighbour, so keep a canonical position -> id
+# index instead of sorting and scanning the whole roster on every lookup.
+# The index holds every entity on a cell; the live occupancy filters still run
+# on that short candidate list, so results stay byte-identical.
+var _occupancy_indices: Dictionary = {}
+var _occupancy_index_ready := false
 
 
 func _init(p_width: int, p_height: int, p_seed: int = 1) -> void:
@@ -196,6 +203,7 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 		CombatProfileRegistryScript.profile_id_for_kind(kind))
 	entities[entity.id] = entity
 	combatant_states[entity.id] = combatant
+	_register_occupancy(entity.id, position)
 	_next_entity_id += 1
 	return entity
 
@@ -238,9 +246,7 @@ func entities_at(position: Vector2i) -> Array:
 
 func occupying_entities_at(position: Vector2i) -> Array:
 	var result: Array = []
-	var ids: Array = entities.keys()
-	ids.sort()
-	for entity_id in ids:
+	for entity_id in _entity_ids_at(position):
 		var entity = entities[entity_id]
 		var state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
@@ -249,6 +255,63 @@ func occupying_entities_at(position: Vector2i) -> Array:
 				and (state == null or state.encounter_status == "ACTIVE"):
 			result.append(entity)
 	return result
+
+
+func reindex_entity_occupancy(entity_id: int, previous: Vector2i,
+		current: Vector2i) -> void:
+	# SimEntity calls this from its own position setter, so the index follows
+	# every write - runtime seam, bootstrap fixture or test - without asking
+	# call sites to remember a second step.
+	if not _occupancy_index_ready: return
+	_unregister_occupancy(entity_id, previous)
+	_append_occupancy(entity_id, current)
+
+
+func _entity_ids_at(position: Vector2i) -> Array:
+	_ensure_occupancy_index()
+	return _occupancy_indices.get(position.y * width + position.x, [])
+
+
+func _ensure_occupancy_index() -> void:
+	if _occupancy_index_ready: return
+	_occupancy_indices.clear()
+	var ids: Array = entities.keys()
+	ids.sort()
+	for entity_id in ids:
+		var entity = entities[entity_id]
+		entity.occupancy_observer = weakref(self)
+		_append_occupancy(int(entity_id), entity.position)
+	_occupancy_index_ready = true
+
+
+func _register_occupancy(entity_id: int, position: Vector2i) -> void:
+	if not _occupancy_index_ready: return
+	entities[entity_id].occupancy_observer = weakref(self)
+	_append_occupancy(entity_id, position)
+
+
+func _append_occupancy(entity_id: int, position: Vector2i) -> void:
+	if not in_bounds(position): return
+	var key := position.y * width + position.x
+	var ids: Array = _occupancy_indices.get(key, [])
+	# Candidate lists stay in ascending entity id order, which is the order
+	# occupancy scans have always reported.
+	var insert_at := ids.size()
+	for index in range(ids.size()):
+		if int(ids[index]) > entity_id:
+			insert_at = index
+			break
+	ids.insert(insert_at, entity_id)
+	_occupancy_indices[key] = ids
+
+
+func _unregister_occupancy(entity_id: int, position: Vector2i) -> void:
+	if not _occupancy_index_ready or not in_bounds(position): return
+	var key := position.y * width + position.x
+	var ids: Array = _occupancy_indices.get(key, [])
+	ids.erase(entity_id)
+	if ids.is_empty(): _occupancy_indices.erase(key)
+	else: _occupancy_indices[key] = ids
 
 
 func exposed_entities_at(position: Vector2i) -> Array:

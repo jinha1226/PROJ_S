@@ -6,7 +6,19 @@ const Int64CodecScript = preload("res://sim/int64_codec.gd")
 var id: int
 var kind: String
 var display_name: String
-var position: Vector2i
+# SimWorldState mirrors this field in a position -> id occupancy index. The
+# setter is the single place the value can change, so notifying from here keeps
+# the index correct no matter which call site moves the entity. The back
+# reference is weak: the world already owns this entity, and a strong one would
+# make the pair an uncollectable RefCounted cycle.
+var occupancy_observer: WeakRef = null
+var position: Vector2i:
+	set(value):
+		var previous := position
+		position = value
+		if previous == value or occupancy_observer == null: return
+		var world = occupancy_observer.get_ref()
+		if world != null: world.reindex_entity_occupancy(id, previous, value)
 var health: int
 var max_health: int
 var tags: Array[String]
