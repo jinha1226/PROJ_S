@@ -148,7 +148,7 @@ static func _claims(world, enemies: Array[int], party: Array[int], visible: Dict
 	for target_id in shared_targets:
 		coverage[target_id] = 0
 	for enemy_id in enemies:
-		if visible[enemy_id].is_empty():
+		if not _can_share_claim(world, enemy_id, party):
 			continue
 		var ranked: Array[int] = shared_targets.duplicate()
 		ranked.sort_custom(func(a: int, b: int):
@@ -171,6 +171,17 @@ static func _claims(world, enemies: Array[int], party: Array[int], visible: Dict
 		coverage[chosen] = int(coverage[chosen]) + 1
 		claims[enemy_id] = chosen
 	return claims
+
+
+static func _can_share_claim(world, enemy_id: int, party: Array[int]) -> bool:
+	var awareness = world.party_encounter.enemy_awareness(enemy_id)
+	if awareness == null or awareness.awareness_state not in ["ALERT", "HUNTING"]:
+		return false
+	for target_id in party:
+		if _distance(world.entities[enemy_id].position,
+				world.entities[target_id].position) <= PerceptionRegistryScript.ACTIVE_COMBAT_RANGE:
+			return true
+	return false
 
 
 static func _hp_milli(world, entity_id: int) -> int:

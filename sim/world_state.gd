@@ -4908,13 +4908,37 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	if not entities.has(entity_id): return {"ok":false,"position":Vector2i(-1,-1)}
 	# Prefer a historical actor-position anchor and replay forward. Party
-	# deployment/regroup events are explicit teleport boundaries, so this path
-	# remains valid even when the final snapshot position is the regroup anchor.
+	# deployment/regroup/roster events are explicit teleport boundaries. A grouped
+	# companion then shares the protagonist's move history until the next deploy,
+	# so status events remain verifiable while the party explores as one token.
 	var anchored := false
 	var historical_cursor := Vector2i(-1, -1)
 	var actor_position_types := ["action.freeze", "action.wait", "encounter.actor_escaped"]
+	var protagonist_id := int(party_encounter.protagonist_id) \
+		if party_encounter != null else -1
+	var tracks_grouped_protagonist: bool = protagonist_id > 0 and entity_id != protagonist_id \
+		and party_encounter.member_rows.has(entity_id)
+	var grouped_with_protagonist := false
 	for event in events:
 		if event.id >= event_id: break
+		if tracks_grouped_protagonist and event.target_id == entity_id \
+				and event.type in ["party.companion_recruited", "party.companion_dismissed"]:
+			if event.type == "party.companion_recruited":
+				historical_cursor = event.position
+				anchored = true
+				grouped_with_protagonist = true
+			else:
+				grouped_with_protagonist = false
+			continue
+		if grouped_with_protagonist and event.type == "action.move" \
+				and event.actor_id == protagonist_id:
+			var grouped_move := _canonical_move_positions(event)
+			if not bool(grouped_move.get("ok", false)) \
+					or (anchored and historical_cursor != grouped_move.from):
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor = grouped_move.to
+			anchored = true
+			continue
 		if event.actor_id != entity_id: continue
 		if event.type == "action.move":
 			if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
@@ -4931,6 +4955,8 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 				"party.deployment_completed"]:
 			historical_cursor = event.position
 			anchored = true
+			if tracks_grouped_protagonist:
+				grouped_with_protagonist = event.type == "party.member_regrouped"
 		elif event.type in actor_position_types:
 			if anchored and historical_cursor != event.position:
 				return {"ok":false,"position":Vector2i(-1,-1)}

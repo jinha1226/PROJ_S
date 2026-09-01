@@ -1200,6 +1200,7 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		return false
 	if not _update_enemy_awareness_batch(processed_step_index):return false
 	var state = world.party_encounter; var enemies: Array = state.enemy_ids.duplicate(); enemies.sort()
+	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world)
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
 		var awareness=state.enemy_awareness(enemy_id)
@@ -1213,7 +1214,7 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id, world.world_time) \
 				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
-		var forecast := forecast_enemy_action(enemy_id)
+		var forecast := forecast_enemy_action(enemy_id,enemy_board)
 		if not bool(forecast.get("accepted", false)): continue
 		rows.append({"enemy_id": enemy_id, "target_id": int(forecast.target_id),
 			"original_action_order": rows.size(), "action_type": str(forecast.action_type),
@@ -1329,7 +1330,7 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	return true
 
 
-func forecast_enemy_action(enemy_id: int) -> Dictionary:
+func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dictionary:
 	# This is the single pure selector used by both the mobile forecast and the
 	# canonical enemy batch. The UI describes it as a current-state forecast:
 	# player movement can legitimately change the next scheduled evaluation.
@@ -1348,7 +1349,15 @@ func forecast_enemy_action(enemy_id: int) -> Dictionary:
 	if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]:
 		rejected.reason="enemy_not_combat_aware"
 		return rejected.duplicate(true)
-	var target = _nearest_deployed_party(enemy.position)
+	var board:Dictionary=squad_board if not squad_board.is_empty() \
+		else EnemySquadBlackboardScript.build(world)
+	var target=null
+	var claimed_id:=int(board.get("claims",{}).get(enemy_id,-1))
+	if _valid_deployed_party_target(claimed_id):target=world.entities[claimed_id]
+	if target==null:
+		var focus_id:=int(board.get("focus_target_id",-1))
+		if _valid_deployed_party_target(focus_id):target=world.entities[focus_id]
+	if target==null:target=_nearest_deployed_party(enemy.position)
 	if target == null:
 		rejected.reason = "enemy_target_unavailable"
 		return rejected.duplicate(true)
@@ -1372,6 +1381,14 @@ func forecast_enemy_action(enemy_id: int) -> Dictionary:
 	else:
 		rejected.reason = "approach_blocked_guard"
 	return rejected.duplicate(true)
+
+func _valid_deployed_party_target(entity_id:int)->bool:
+	if world==null or world.party_encounter==null or entity_id<=0 \
+			or entity_id not in world.party_encounter.active_party_member_ids \
+			or not world.entities.has(entity_id) or not world.is_autonomous_target(entity_id):
+		return false
+	var member=world.party_encounter.member(entity_id)
+	return member!=null and member.presence=="DEPLOYED"
 
 func _nearest_alive_enemy(position: Vector2i):
 	var candidates: Array = []

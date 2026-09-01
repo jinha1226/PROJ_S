@@ -4,6 +4,8 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Blackboard = preload("res://sim/enemy_squad_blackboard.gd")
 const Awareness = preload("res://sim/enemy_awareness_state.gd")
+const VisualMap = preload("res://playtest/party_visual_test_map.gd")
+const MvpTest = preload("res://tests/test_party_mvp_run.gd")
 
 
 func test_enemy_squad_blackboard_is_exact_pure_and_claims_visible_targets() -> bool:
@@ -59,6 +61,58 @@ func test_companion_sight_drives_hunting_and_combat_relevance_without_hero() -> 
 		"awareness transition identifies the observed party member")
 	check(session.sim.party_coordinator._has_active_combat_enemy(),
 		"enemy near a companion remains combat-active without a nearby hero")
+	return finish()
+
+
+func test_enemy_forecasts_follow_shared_claims_and_replan_stale_targets() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	_add_visible_enemies(world, state, 3)
+	var inactive_enemy_id := int(state.enemy_ids[0])
+	for enemy_id in state.enemy_ids:
+		state.enemy_awareness(enemy_id).awareness_state = "HUNTING"
+		state.enemy_awareness(enemy_id).suspicion = 1000
+	state.enemy_awareness(inactive_enemy_id).awareness_state = "RETURNING"
+	var board: Dictionary = Blackboard.build(world)
+	check(board.claims.size() >= 3, "multi-enemy board assigns shared target claims")
+	check(not board.claims.has(inactive_enemy_id),
+		"non-combat enemy cannot consume an active squad claim slot")
+	var claimed_targets := {}
+	for enemy_id in board.claims:
+		var forecast: Dictionary = session.sim.party_coordinator.forecast_enemy_action(
+			int(enemy_id), board)
+		check_eq(int(forecast.target_id), int(board.claims[enemy_id]),
+			"forecast consumes the same derived claim board")
+		claimed_targets[int(forecast.target_id)] = true
+	check(claimed_targets.size() >= 2,
+		"claim cap distributes a group across multiple visible party members")
+	var stale_enemy_id := int(board.claims.keys()[0])
+	var stale_target_id := int(board.claims[stale_enemy_id])
+	state.member(stale_target_id).presence = "GROUPED"
+	var replanned: Dictionary = session.sim.party_coordinator.forecast_enemy_action(
+		stale_enemy_id, board)
+	check(int(replanned.target_id) != stale_target_id \
+			and int(replanned.target_id) in Blackboard.deployed_party_ids(world),
+		"stale claim falls back to a currently deployed target")
+	return finish()
+
+
+func test_grouped_companion_status_ticks_remain_saveable_after_shared_targeting() -> bool:
+	# This seed makes shared enemy claims put BLEEDING on a companion. After the
+	# automatic regroup, that status ticks while the party token moves to the exit.
+	var helper = MvpTest.new()
+	var session = Session.new(44, 20260828, "SHOWCASE_V1")
+	check(helper._clear_showcase_encounter(session),
+		"shared-target fixture clears and automatically regroups")
+	var completed: Dictionary = helper._advance_to_complete(
+		session, VisualMap.EXIT_POSITION, 32)
+	check(bool(completed.get("ok", false)),
+		"grouped companion can tick while following the route to the exit")
+	check_eq(session.sim.world.world_state_error(), "",
+		"grouped follower movement remains canonical for status history")
+	check(helper._round_trip_matches(session),
+		"completed shared-target run survives exact save/load/replay")
 	return finish()
 
 
