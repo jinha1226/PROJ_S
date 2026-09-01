@@ -177,14 +177,29 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	for spec in [hero,human,goblin,enemy,unknown]:
 		check(spec.glyph_is_body and not spec.detached_head and not spec.draw_head,
 			"ASCII glyph is the body with no detached head primitive")
-		check_eq([spec.glyph_weight,spec.glyph_outline_passes,spec.glyph_weight_passes],
-			["INK_STAMP",4,2],"actor glyph uses a compact deterministic ink stamp")
+		check_eq([spec.glyph_weight,spec.glyph_outline_passes],
+			["INK_STAMP",4],"actor glyph uses a compact deterministic ink stamp")
 		check(spec.underlay_ratio.x>0.0 and spec.underlay_opacity>0.0,
 			"actor identity owns a glyph-local background slab")
 		check(not spec.draw_limbs and spec.limb_segments.is_empty(),
 			"actor grammar contains no artificial arm or leg strokes")
 		check(not spec.draw_equipment and spec.equipment_primitive_count==0,
 			"unequipped actor adds no equipment overlay")
+	check_eq([hero.body_class,hero.glyph_scale,hero.presence_class,
+		hero.glyph_font_weight,hero.glyph_weight_passes],
+		["NORMAL",1.0,"HERO","BOLD",2],
+		"hero presence uses the real bold face without changing physical size")
+	check_eq([goblin.body_class,goblin.glyph_scale,goblin.glyph_font_weight,
+		goblin.glyph_weight_passes],["SMALL",0.88,"REGULAR",1],
+		"goblin body size is independent from ordinary presence")
+	var elite_goblin:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin",
+		"threat_id":"DANGEROUS"})
+	var ordinary_orc:=Style.actor_spec({"faction_id":"enemy","species_id":"orc",
+		"threat_id":"EVEN"})
+	check_eq([elite_goblin.glyph_scale,elite_goblin.glyph_font_weight,
+		ordinary_orc.glyph_scale,ordinary_orc.glyph_font_weight],
+		[0.88,"BOLD",1.15,"REGULAR"],
+		"body scale and threat weight remain orthogonal 88/100/115 and regular/bold")
 	check_eq(hero.facing,[1,-1],"diagonal facing remains explicit")
 	var moving:Dictionary=Style.actor_spec({"faction_id":"party","visual_stance":"MOVING",
 		"facing":[1,0]})
@@ -699,7 +714,20 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 		"canonical hero hit returns after settle")
 	grid.set_hero_centered_view(Vector2i(10,10),15,77)
 	check(not grid.camera_settle_draw_spec().active,"teleport/load-style camera changes snap")
-	grid.free();return finish()
+	grid.free()
+	var continuous_grid=Grid.new();continuous_grid.size=Vector2(345,345)
+	continuous_grid.set_observation(first)
+	continuous_grid.set_hero_centered_view(Vector2i.ZERO,15,77)
+	continuous_grid.set_observation(_actor_observation(Vector2i(1,0),"VISIBLE"))
+	continuous_grid.set_hero_centered_view(Vector2i(1,0),15,77,160)
+	var continuous_started:=int(continuous_grid._camera_settle.started_at_ms)
+	var continuous0:Dictionary=continuous_grid.camera_settle_draw_spec(continuous_started)
+	var continuous80:Dictionary=continuous_grid.camera_settle_draw_spec(continuous_started+80)
+	check_eq(continuous0.curve,"LINEAR_CONTINUOUS",
+		"continuous travel uses a non-braking camera curve")
+	check(absf(continuous80.offset_px.length()/continuous0.offset_px.length()-0.5)<0.02,
+		"continuous travel keeps constant halfway velocity instead of cubic braking")
+	continuous_grid.free();return finish()
 
 
 func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedback() -> bool:
@@ -741,8 +769,9 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 	var amount0:Dictionary=grid.visual_effect_draw_spec(amount_row,started)
 	var amount325:Dictionary=grid.visual_effect_draw_spec(amount_row,started+325)
 	var amount650:Dictionary=grid.visual_effect_draw_spec(amount_row,started+650)
-	check(amount0.font_size>=24 and amount0.text=="-22" and amount0.color_hex=="#ffd98a",
-		"physical damage is a large concise warm number")
+	check(amount0.font_size>=17 and amount0.font_size<=20 \
+			and amount0.text=="-22" and amount0.color_hex=="#ffd98a",
+		"physical damage is a compact readable warm number")
 	var target_center:=grid.world_to_pixel_center(Vector2i(7,7))
 	var start_height_cells:float=(target_center.y-float(amount0.pixel_center.y)) \
 		/grid.cell_size_px()
@@ -766,9 +795,11 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 			stacked_centers.append(grid.visual_effect_draw_spec(effect,
 				int(effect.started_at_ms)).pixel_center)
 	check(stacked_centers.size()==3 \
-		and float(stacked_centers[0].x)!=float(stacked_centers[1].x) \
-		and float(stacked_centers[1].x)!=float(stacked_centers[2].x),
-		"rapid damage numbers fan slightly left and right")
+		and Vector2(stacked_centers[0]).distance_to(Vector2(stacked_centers[1])) \
+			>=grid.cell_size_px()*0.9 \
+		and Vector2(stacked_centers[1]).distance_to(Vector2(stacked_centers[2])) \
+			>=grid.cell_size_px()*0.55,
+		"rapid damage numbers fan far enough apart for a double attack")
 	var top_amount:=grid.visual_effect_draw_spec({"effect_id":"top:amount","event_id":90,
 		"kind":"FLOATING_AMOUNT","world_position":[7,0],"text":"-3",
 		"started_at_ms":started},started)

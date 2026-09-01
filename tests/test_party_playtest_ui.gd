@@ -665,13 +665,24 @@ func test_companion_speech_is_card_local_one_line_phase_gated_and_refreshes() ->
 		var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
 		check(sandbox.session.prepare_auto_combat_plan().active,
 			"%s placeholder plan prepared"%viewport_size);sandbox._refresh()
-		check(not sandbox.grid.has_method("speech_bubble_draw_specs"),
-			"%s grid owns no speech-bubble API"%viewport_size)
+		# Headless controls are not inside a SceneTree, so containers never assign
+		# the grid its production rect. Give the draw-spec test the same square the
+		# other grid interaction fixtures use.
+		sandbox.grid.size=sandbox.grid.custom_minimum_size
+		check(sandbox.grid.has_method("speech_bubble_draw_specs"),
+			"%s grid owns the dialogue-bubble presentation API"%viewport_size)
 		var hero_card:=_button(sandbox,"MemberCard%d"%hero)
 		check(hero_card.find_child("CompanionSpeechStrip",true,false)==null,
 			"%s protagonist card never speaks"%viewport_size)
 		var bubbles:Array=sandbox.session.companion_speech_bubbles()
 		check_eq(bubbles.size(),2,"%s two companion speeches"%viewport_size)
+		var map_bubbles:Array=sandbox.grid.speech_bubble_draw_specs()
+		check_eq(map_bubbles.size(),2,"%s two companion callouts appear over their actors"%viewport_size)
+		if map_bubbles.size()==2:
+			var first_bubble_rect:Rect2=map_bubbles[0].rect
+			var second_bubble_rect:Rect2=map_bubbles[1].rect
+			check(not first_bubble_rect.intersects(second_bubble_rect),
+				"%s map speech bubbles avoid each other"%viewport_size)
 		for bubble in bubbles:
 			var card:=_button(sandbox,"MemberCard%d"%int(bubble.actor_id))
 			var strip:=card.find_child("CompanionSpeechStrip",true,false) as PanelContainer

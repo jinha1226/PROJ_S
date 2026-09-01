@@ -994,6 +994,10 @@ func _refresh()->void:
 	if direct_solo_combat:selected_target_id=-1
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
+	var world_speeches:Array=[]
+	if not run_complete and session.has_method("world_speech_bubbles"):
+		world_speeches=session.world_speech_bubbles()
+	grid.set_speech_bubbles(world_speeches)
 	if run_complete:
 		route_generation+=1;_clear_route_continue_schedule();route_preview.clear()
 		grid.clear_route_overlay();_clear_companion_follow_plan();_clear_move_preview()
@@ -1156,6 +1160,8 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 			else MANUAL_CAMERA_SETTLE_MSEC)
 	else:grid.set_view_window(15)
 	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
+	grid.set_speech_bubbles(session.world_speech_bubbles() \
+		if session.has_method("world_speech_bubbles") else [])
 	var route_state:Dictionary=session.exploration_route_state()
 	if bool(route_state.get("has_preview",false)) \
 			and not bool(route_state.get("completed",false)) \

@@ -5,6 +5,7 @@ const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const Style = preload("res://playtest/ascii_visual_style.gd")
 
 
 func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
@@ -78,6 +79,25 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	check(_approach_opening(a), "player can follow the opening trail to the actor")
 	check(a.opening_event_status().can_interact,
 		"adjacent wounded actor exposes the choice")
+	var blood_cells:Array=[]
+	for cell in a.observe_party_world().get("cells",[]):
+		if cell is Dictionary and str(cell.get("ground_mark_id",""))=="blood" \
+				and str(cell.get("visibility_state","UNSEEN"))!="UNSEEN":
+			blood_cells.append(cell)
+	check(blood_cells.size()>=3,"opening route exposes a sparse readable blood trail")
+	if not blood_cells.is_empty():
+		var blood_spec:Dictionary=Style.ground_mark_spec(blood_cells[0])
+		check_eq([blood_spec.glyph,blood_spec.color_hex],[";","#a42f3f"],
+			"floor blood uses one fixed dried-red semicolon glyph")
+	var story_bubbles:Array=a.world_speech_bubbles()
+	check_eq(story_bubbles.size(),1,"opening choice publishes one major story bubble")
+	if not story_bubbles.is_empty():
+		check_eq([story_bubbles[0].actor_id,story_bubbles[0].dialogue_kind],
+			[int(dto.npc_entity_id),"STORY_DIALOGUE"],
+			"opening bubble stays attached to the wounded actor")
+		story_bubbles[0].text="변조"
+		check(a.world_speech_bubbles()[0].text!="변조",
+			"story bubble projection is detached")
 	var auto_step_before:=int(a.sim.world.step_index)
 	var auto_stop:Dictionary=a.start_auto_explore()
 	check_eq([auto_stop.running,auto_stop.stop_reason,
@@ -267,6 +287,7 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 		check(_approach_opening(mobile_session),
 			"%s mobile fixture reaches the wounded actor" % viewport_size)
 		sandbox.initialize_for_headless_test(mobile_session)
+		sandbox.grid.size=Vector2(viewport_size.x,viewport_size.x)
 		check_eq([sandbox.product_auto_button.text,
 			sandbox.product_interact_button.text],
 			["[물약 주기]", "[돕지 않기]"],
@@ -274,6 +295,13 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 		check(sandbox.product_auto_button.custom_minimum_size.y >= 44.0 \
 			and sandbox.product_interact_button.custom_minimum_size.y >= 44.0,
 			"%s opening choice touch targets are at least 44px" % viewport_size)
+		var opening_bubbles:Array=sandbox.grid.speech_bubble_draw_specs()
+		check_eq(opening_bubbles.size(),1,
+			"%s opening dialogue is visible over the map"%viewport_size)
+		if not opening_bubbles.is_empty():
+			var bubble_rect:Rect2=opening_bubbles[0].rect
+			check(sandbox.grid.grid_rect().grow(-3.0).encloses(bubble_rect),
+				"%s opening bubble stays inside the map"%viewport_size)
 		var journal_before: int = sandbox.session.command_journal.size()
 		sandbox._activate_product_control("ProductAuto")
 		check_eq(sandbox.session.command_journal.size(), journal_before + 1,

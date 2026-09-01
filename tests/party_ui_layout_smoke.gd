@@ -206,10 +206,17 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 	await process_frame
 	var label:="%s CARD_SPEECH"%viewport_size
 	_validate_layout(sandbox,label)
-	if sandbox.grid.has_method("speech_bubble_draw_specs"):
-		failures.append("%s grid still exposes speech bubbles"%label)
+	if not sandbox.grid.has_method("speech_bubble_draw_specs"):
+		failures.append("%s grid lacks the dialogue-bubble API"%label)
 	var bubbles:Array=session.companion_speech_bubbles()
 	if bubbles.size()!=2:failures.append("%s expected two companion speeches"%label)
+	var map_bubbles:Array=sandbox.grid.speech_bubble_draw_specs()
+	if map_bubbles.size()!=2:failures.append("%s expected two map callouts"%label)
+	else:
+		var first_map_bubble_rect:Rect2=map_bubbles[0].rect
+		var second_map_bubble_rect:Rect2=map_bubbles[1].rect
+		if first_map_bubble_rect.intersects(second_map_bubble_rect):
+			failures.append("%s map callouts overlap"%label)
 	var strip_rects:Array[Rect2]=[];var first_strip:PanelContainer=null;var first_actor:=-1
 	var hero_card:Button=_button(sandbox,"MemberCard%d"%hero)
 	if hero_card.find_child("CompanionSpeechStrip",true,false)!=null:

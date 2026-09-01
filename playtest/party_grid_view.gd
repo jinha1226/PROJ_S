@@ -12,6 +12,7 @@ const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
+const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
 const EMULATED_MOUSE_SUPPRESS_MSEC := 300
@@ -34,6 +35,9 @@ const ACTOR_WORLD_GLYPH_OFFSET_Y := -0.105
 const ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX := 1.0
 const AWARENESS_PULSE_DURATION_MS := 220
 const MONSTER_LIST_MAX_ROWS := 5
+const SPEECH_BUBBLE_MAX_VISIBLE := 2
+const SPEECH_BUBBLE_FONT_SIZE := 12
+const SPEECH_BUBBLE_PADDING := Vector2(7,5)
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
@@ -93,6 +97,7 @@ var _visible_torch_count:=0
 var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
 var _awareness_pulses:Dictionary={}
+var _speech_bubbles:Array[Dictionary]=[]
 var melee_vfx:MeleeVfxOverlay
 
 func _ready() -> void:
@@ -381,7 +386,9 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 			# hops therefore preserve visual continuity instead of restarting from a
 			# full-cell offset every turn.
 			_camera_settle={"from_offset_cells":carried_offset_cells+Vector2(delta),
-				"started_at_ms":now,"duration_ms":maxi(1,settle_duration_msec)}
+				"started_at_ms":now,"duration_ms":maxi(1,settle_duration_msec),
+				"curve":"LINEAR_CONTINUOUS" if settle_duration_msec>=120 \
+					else "CUBIC_EASE_OUT"}
 		else:_camera_settle.clear()
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
@@ -404,13 +411,18 @@ func camera_settle_draw_spec(sample_time_ms:int=-1)->Dictionary:
 	var started_at:=int(_camera_settle.get("started_at_ms",now))
 	var duration:=int(_camera_settle.get("duration_ms",CAMERA_SETTLE_DURATION_MS))
 	var progress:=clampf(float(maxi(0,now-started_at))/float(maxi(1,duration)),0.0,1.0)
-	var remaining:=pow(1.0-progress,3.0)
+	var curve:=str(_camera_settle.get("curve","CUBIC_EASE_OUT"))
+	# Ease-out is pleasant for a single manual step but visibly brakes before
+	# every AUTO hop. Continuous travel keeps constant velocity and retargets from
+	# the current drawn offset when the next canonical step arrives.
+	var remaining:=1.0-progress if curve=="LINEAR_CONTINUOUS" \
+		else pow(1.0-progress,3.0)
 	var offset_cells:Vector2=_camera_settle.get("from_offset_cells",Vector2.ZERO)
 	var offset_px:=offset_cells*cell_size_px()*remaining
 	return {"active":progress<1.0,"progress":progress,"offset_px":offset_px,
 		"hero_counter_offset_px":-offset_px,
 		"duration_ms":duration,"started_at_ms":started_at,
-		"input_blocked":progress<1.0,"curve":"CUBIC_EASE_OUT"}.duplicate(true)
+		"input_blocked":progress<1.0,"curve":curve}.duplicate(true)
 
 func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
@@ -531,22 +543,25 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var age_ratio:=clampf(float(elapsed_ms)/float(duration_ms),0.0,1.0)
 	var eased_progress:=1.0-pow(1.0-age_ratio,3.0)
 	var pixel_center:=world_to_pixel_center(world_position)
-	var font_size:=15 if kind=="MISS" and product_style else (maxi(24,int(cell_size_px()*0.82)) \
+	var font_size:=15 if kind=="MISS" and product_style else (clampi(int(cell_size_px()*0.64),17,20) \
 		if kind=="FLOATING_AMOUNT" and product_style else (16 if kind=="MISS" else 18))
 	var camera_spec:=camera_settle_draw_spec(now)
 	var camera_offset:Vector2=camera_spec.offset_px
 	var floating_stack_slot:=clampi(int(effect.get("floating_stack_slot",0)),0,4)
 	var floating_start_cells:=FLOATING_AMOUNT_START_CELLS
 	if product_style and kind=="FLOATING_AMOUNT":
-		var horizontal_cells:float=float([0.0,-0.26,0.26,-0.42,0.42][floating_stack_slot])
-		var vertical_cells:float=float([0.0,0.16,0.16,0.31,0.31][floating_stack_slot])
+		# Multi-hit weapons publish separate authoritative damage rows at the same
+		# instant. Fan those numbers by more than one cell diagonally so the first two
+		# hits never sit on the same glyph silhouette.
+		var horizontal_cells:float=float([-0.52,0.52,-0.36,0.36,0.0][floating_stack_slot])
+		var vertical_cells:float=float([0.0,0.52,0.86,1.12,1.42][floating_stack_slot])
 		floating_start_cells+=vertical_cells
 		pixel_center.x+=cell_size_px()*horizontal_cells
 		pixel_center.y-=cell_size_px()*(floating_start_cells \
 			+FLOATING_AMOUNT_TRAVEL_CELLS*eased_progress)
 		# The overlay adds camera_offset after this spec. Clamp the final baseline
 		# so top-row damage remains fully readable instead of clipping off-screen.
-		var top_guard:=grid_rect().position.y+maxf(4.0,float(font_size)*0.58)
+		var top_guard:=grid_rect().position.y+maxf(4.0,float(font_size)*0.58)+1.0
 		pixel_center.y=maxf(pixel_center.y,top_guard-camera_offset.y)
 	elif product_style and kind=="MISS":
 		pixel_center.y-=cell_size_px()*(0.32+0.45*eased_progress)
@@ -799,6 +814,130 @@ func set_intent_overlays(rows: Array) -> void:
 	queue_redraw()
 
 
+func set_speech_bubbles(rows:Array)->void:
+	var normalized:Array[Dictionary]=[]
+	for raw in rows:
+		if not raw is Dictionary:continue
+		var actor_id:=int(raw.get("actor_id",-1))
+		var value:=str(raw.get("text",raw.get("headline",""))).strip_edges()
+		if actor_id<=0 or value.is_empty():continue
+		var row:Dictionary=raw.duplicate(true)
+		row["actor_id"]=actor_id;row["text"]=value
+		row["priority"]=int(row.get("priority",0))
+		normalized.append(row)
+	normalized.sort_custom(func(a:Dictionary,b:Dictionary):
+		if int(a.priority)!=int(b.priority):return int(a.priority)>int(b.priority)
+		return int(a.actor_id)<int(b.actor_id))
+	if _speech_bubbles==normalized:return
+	_speech_bubbles=normalized;queue_redraw()
+
+
+func speech_bubble_draw_specs()->Array[Dictionary]:
+	var result:Array[Dictionary]=[]
+	var occupied:Array[Rect2]=[]
+	var safe:=grid_rect().grow(-4.0)
+	if safe.size.x<=32.0 or safe.size.y<=32.0:return result
+	var font:=get_theme_default_font()
+	var max_text_width:=minf(176.0,safe.size.x*0.54)-SPEECH_BUBBLE_PADDING.x*2.0
+	for bubble in _speech_bubbles:
+		if result.size()>=SPEECH_BUBBLE_MAX_VISIBLE:break
+		var actor_id:=int(bubble.get("actor_id",-1))
+		var anchor:=actor_visual_center(actor_id)
+		if anchor==Vector2(-1,-1):continue
+		var lines:=_wrap_speech_text(str(bubble.text),font,SPEECH_BUBBLE_FONT_SIZE,
+			max_text_width,2)
+		if lines.is_empty():continue
+		var text_width:=0.0
+		for line in lines:
+			text_width=maxf(text_width,font.get_string_size(str(line),
+				HORIZONTAL_ALIGNMENT_LEFT,-1,SPEECH_BUBBLE_FONT_SIZE).x)
+		var line_height:=font.get_height(SPEECH_BUBBLE_FONT_SIZE)
+		var bubble_size:=Vector2(text_width+SPEECH_BUBBLE_PADDING.x*2.0,
+			line_height*lines.size()+SPEECH_BUBBLE_PADDING.y*2.0)
+		var gap:=maxf(7.0,cell_size_px()*0.34)
+		var candidates:Array[Rect2]=[
+			Rect2(Vector2(anchor.x-bubble_size.x*0.5,anchor.y-gap-bubble_size.y),bubble_size),
+			Rect2(Vector2(anchor.x-bubble_size.x*0.5,anchor.y+gap),bubble_size),
+			Rect2(Vector2(anchor.x-bubble_size.x-10.0,anchor.y-gap-bubble_size.y),bubble_size),
+			Rect2(Vector2(anchor.x+10.0,anchor.y+gap),bubble_size),
+		]
+		var chosen:=_fit_bubble_rect(candidates[0],safe)
+		var placed:=false
+		for candidate in candidates:
+			var fitted:=_fit_bubble_rect(candidate,safe)
+			if not _bubble_overlaps_any(fitted,occupied):
+				chosen=fitted;placed=true;break
+		# Actors in a tight formation can invalidate every local above/below slot.
+		# Search a small deterministic map-edge ledger before dropping or overlapping
+		# a second line; the tail still points back to the exact speaker.
+		if not placed:
+			var y:=safe.position.y
+			while y+bubble_size.y<=safe.end.y+0.1 and not placed:
+				for x in [safe.position.x,safe.end.x-bubble_size.x,
+					clampf(anchor.x-bubble_size.x*0.5,safe.position.x,
+						safe.end.x-bubble_size.x)]:
+					var fallback:=Rect2(Vector2(float(x),y),bubble_size)
+					if not _bubble_overlaps_any(fallback,occupied):
+						chosen=fallback;placed=true;break
+				y+=bubble_size.y+6.0
+		if not placed:continue
+		occupied.append(chosen.grow(3.0))
+		var tone:=str(bubble.get("tone","COMPANION"))
+		var border_hex:String=str({"IMPORTANT":"#f0c674","OVERRIDE":"#8da8ff",
+			"COMPANION":"#72cfdf"}.get(tone,"#b8c4cc"))
+		var tail_on_bottom:=chosen.get_center().y<anchor.y
+		var tail_base:=Vector2(clampf(anchor.x,chosen.position.x+9.0,chosen.end.x-9.0),
+			chosen.end.y if tail_on_bottom else chosen.position.y)
+		result.append({"bubble_id":str(bubble.get("bubble_id","")),
+			"actor_id":actor_id,"speaker_name":str(bubble.get("speaker_name","")),
+			"text":str(bubble.text),"lines":lines.duplicate(),"rect":chosen,
+			"anchor":anchor,"tail_base":tail_base,"tail_on_bottom":tail_on_bottom,
+			"font_size":SPEECH_BUBBLE_FONT_SIZE,"line_height":line_height,
+			"background_hex":"#101820ee","border_hex":border_hex,
+			"text_hex":"#eef3ef","dialogue_kind":str(bubble.get("dialogue_kind","")),
+			"priority":int(bubble.get("priority",0)),"mouse_passthrough":true})
+	return result.duplicate(true)
+
+
+func _wrap_speech_text(value:String,font:Font,font_size:int,max_width:float,
+		max_lines:int)->Array[String]:
+	var lines:Array[String]=[];var current:="";var truncated:=false
+	for index in range(value.length()):
+		var character:=value.substr(index,1)
+		var candidate:=current+character
+		if not current.is_empty() and font.get_string_size(candidate,
+				HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x>max_width:
+			lines.append(current.strip_edges());current=character.trim_prefix(" ")
+			if lines.size()>=max_lines:
+				truncated=index<value.length();break
+		else:current=candidate
+	if lines.size()<max_lines and not current.strip_edges().is_empty():
+		lines.append(current.strip_edges())
+	elif not current.strip_edges().is_empty():truncated=true
+	if truncated and not lines.is_empty():
+		var last:=str(lines[-1]).trim_suffix("…")
+		while last.length()>1 and font.get_string_size(last+"…",
+				HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x>max_width:
+			last=last.left(last.length()-1)
+		lines[-1]=last+"…"
+	return lines
+
+
+func _fit_bubble_rect(value:Rect2,safe:Rect2)->Rect2:
+	var result:=value
+	result.position.x=clampf(result.position.x,safe.position.x,maxf(safe.position.x,
+		safe.end.x-result.size.x))
+	result.position.y=clampf(result.position.y,safe.position.y,maxf(safe.position.y,
+		safe.end.y-result.size.y))
+	return result
+
+
+func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
+	for rect in occupied:
+		if value.intersects(rect):return true
+	return false
+
+
 func grid_rect() -> Rect2:
 	var extent := minf(size.x,size.y); return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
 func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
@@ -906,7 +1045,7 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var bounds:=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
 	if bounds.size.x<=0.0:return {"visible":false,"entity_id":entity_id}.duplicate(true)
 	var style:=actor_draw_spec(actor,false,sample_time_ms)
-	var glyph:=AsciiPortraitScript.glyph_layout_spec(get_theme_default_font(),bounds,style,true)
+	var glyph:=AsciiPortraitScript.glyph_layout_spec(_actor_font(style),bounds,style,true)
 	var projected_segments:Array=[]
 	var equipment:=AsciiPortraitScript.equipment_draw_spec(bounds,style,glyph,true)
 	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
@@ -1552,6 +1691,7 @@ func _draw() -> void:
 	_draw_torch_light_pools()
 	_draw_wall_torches()
 	_draw_ground_features()
+	_draw_ground_marks()
 	_draw_ground_hazards()
 	_draw_follower_footprints()
 	_draw_route_overlay()
@@ -1567,6 +1707,7 @@ func _draw() -> void:
 	_draw_actor_selection_overlays()
 	_draw_cursor_preview()
 	_draw_fov_edge_haze()
+	_draw_speech_bubbles()
 	draw_set_transform(Vector2.ZERO)
 	_draw_monster_list()
 	# Phase is communicated inside the field (glyph motion, ink impact and HUD),
@@ -1832,6 +1973,26 @@ func _draw_ground_features()->void:
 			if _diorama_visibility_state(row)=="VISIBLE":
 				_draw_feature_cue(world_cell_rect(position),str(row.get("feature_id","")))
 
+func ground_mark_draw_specs()->Array[Dictionary]:
+	var result:Array[Dictionary]=[]
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
+			if row.is_empty():continue
+			var mark:=AsciiStyleScript.ground_mark_spec(row)
+			if not bool(mark.visible):continue
+			var rect:=world_cell_rect(position)
+			result.append(mark.merged({"world_position":[position.x,position.y],
+				"center":rect.get_center()+Vector2(0,rect.size.y*0.12),
+				"font_size":maxi(9,int(rect.size.x*float(mark.font_ratio)))},true))
+	return result.duplicate(true)
+
+func _draw_ground_marks()->void:
+	var font:=get_theme_default_font()
+	for spec in ground_mark_draw_specs():
+		var color:=Color(str(spec.color_hex));color.a=float(spec.opacity)
+		_draw_centered_text(font,str(spec.glyph),Vector2(spec.center),int(spec.font_size),color)
+
 func _draw_ground_hazards()->void:
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
@@ -1956,7 +2117,29 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 	if not ghost and int(actor.get("entity_id",-1))==_hero_camera_actor_id:
 		bounds.position-=camera_offset
 	var style:=actor_draw_spec(actor,ghost)
-	AsciiPortraitScript.draw_figure(self,get_theme_default_font(),bounds,style,true,true)
+	AsciiPortraitScript.draw_figure(self,_actor_font(style),bounds,style,true,true)
+
+func _actor_font(style:Dictionary)->Font:
+	return BoldFont if str(style.get("glyph_font_weight","REGULAR"))=="BOLD" \
+		else get_theme_default_font()
+
+func _draw_speech_bubbles()->void:
+	var font:=get_theme_default_font()
+	for spec in speech_bubble_draw_specs():
+		var rect:Rect2=spec.rect;var background:=Color(str(spec.background_hex))
+		var border:=Color(str(spec.border_hex));var tail_base:Vector2=spec.tail_base
+		var tail_sign:=1.0 if bool(spec.tail_on_bottom) else -1.0
+		var tail:=PackedVector2Array([tail_base+Vector2(-5.0,0),
+			tail_base+Vector2(5.0,0),Vector2(spec.anchor)+Vector2(0,-tail_sign*2.0)])
+		draw_colored_polygon(tail,background)
+		draw_polyline(PackedVector2Array([tail[0],tail[2],tail[1]]),border,1.0)
+		draw_rect(rect,background,true);draw_rect(rect,border,false,1.0)
+		var baseline_y:=rect.position.y+SPEECH_BUBBLE_PADDING.y \
+			+font.get_ascent(int(spec.font_size))
+		for line_index in range(spec.lines.size()):
+			draw_string(font,Vector2(rect.position.x+SPEECH_BUBBLE_PADDING.x,
+				baseline_y+float(line_index)*float(spec.line_height)),str(spec.lines[line_index]),
+				HORIZONTAL_ALIGNMENT_LEFT,-1,int(spec.font_size),Color(str(spec.text_hex)))
 
 func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 		sample_time_ms:int=-1)->Rect2:

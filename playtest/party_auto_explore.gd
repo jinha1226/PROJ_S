@@ -130,46 +130,70 @@ func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 	var start_key := _key(start)
 	if not cells.has(start_key):
 		return {"found":false, "reason":"auto_explore_no_frontier"}
+	# Step count is the primary key, so process one BFS layer at a time and sort
+	# that layer once. This preserves the exact steps/cost/y/x/sequence ordering
+	# without repeatedly sorting the entire open set. Storing only a parent also
+	# avoids copying a growing path array for every candidate.
 	var open: Array[Dictionary] = [{"position":start, "steps":0, "cost":0,
-		"sequence":0, "path":[start]}]
+		"sequence":0}]
 	var best: Dictionary = {start_key:[0, 0]}
+	var parents: Dictionary = {}
 	var sequence := 1
 	while not open.is_empty():
-		open.sort_custom(func(a: Dictionary, b: Dictionary):
-			if int(a.steps) != int(b.steps): return int(a.steps) < int(b.steps)
-			if int(a.cost) != int(b.cost): return int(a.cost) < int(b.cost)
-			var a_position: Vector2i = a.position
-			var b_position: Vector2i = b.position
-			if a_position.y != b_position.y: return a_position.y < b_position.y
-			if a_position.x != b_position.x: return a_position.x < b_position.x
-			return int(a.sequence) < int(b.sequence))
-		var node: Dictionary = open.pop_front()
-		var position: Vector2i = node.position
-		if best.get(_key(position), []) != [int(node.steps), int(node.cost)]:
-			continue
-		if position != start and _is_frontier(position, cells,
-				int(snapshot.get("width", 0)), int(snapshot.get("height", 0))):
-			var cell: Dictionary = cells[_key(position)]
-			return {"found":true, "target":position,
-				"visibility_state":str(cell.get("visibility_state", "MEMORY")),
-				"path":node.path, "steps":int(node.steps), "cost":int(node.cost)}
-		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
-			var next := position + direction
-			if not _known_step_is_safe(position, next, cells):
+		open.sort_custom(_frontier_open_less)
+		var next_open: Array[Dictionary] = []
+		for node in open:
+			var position: Vector2i = node.position
+			if best.get(_key(position), []) != [int(node.steps), int(node.cost)]:
 				continue
-			var cell: Dictionary = cells[_key(next)]
-			var candidate_steps := int(node.steps) + 1
-			var candidate_cost := int(node.cost) + int(cell.get("move_time_cost", 0))
-			var old: Array = best.get(_key(next), [])
-			if not old.is_empty() and [candidate_steps, candidate_cost] >= old:
-				continue
-			var path: Array = node.path.duplicate()
-			path.append(next)
-			best[_key(next)] = [candidate_steps, candidate_cost]
-			open.append({"position":next, "steps":candidate_steps,
-				"cost":candidate_cost, "sequence":sequence, "path":path})
-			sequence += 1
+			if position != start and _is_frontier(position, cells,
+					int(snapshot.get("width", 0)), int(snapshot.get("height", 0))):
+				var cell: Dictionary = cells[_key(position)]
+				return {"found":true, "target":position,
+					"visibility_state":str(cell.get("visibility_state", "MEMORY")),
+					"path":_frontier_path(start, position, parents),
+					"steps":int(node.steps), "cost":int(node.cost)}
+			for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
+				var next := position + direction
+				if not _known_step_is_safe(position, next, cells):
+					continue
+				var cell: Dictionary = cells[_key(next)]
+				var candidate_steps := int(node.steps) + 1
+				var candidate_cost := int(node.cost) + int(cell.get("move_time_cost", 0))
+				var old: Array = best.get(_key(next), [])
+				if not old.is_empty() and [candidate_steps, candidate_cost] >= old:
+					continue
+				var next_key := _key(next)
+				best[next_key] = [candidate_steps, candidate_cost]
+				parents[next_key] = position
+				next_open.append({"position":next, "steps":candidate_steps,
+					"cost":candidate_cost, "sequence":sequence})
+				sequence += 1
+		open = next_open
 	return {"found":false, "reason":"auto_explore_no_frontier"}
+
+
+func _frontier_open_less(a: Dictionary, b: Dictionary) -> bool:
+	if int(a.steps) != int(b.steps): return int(a.steps) < int(b.steps)
+	if int(a.cost) != int(b.cost): return int(a.cost) < int(b.cost)
+	var a_position: Vector2i = a.position
+	var b_position: Vector2i = b.position
+	if a_position.y != b_position.y: return a_position.y < b_position.y
+	if a_position.x != b_position.x: return a_position.x < b_position.x
+	return int(a.sequence) < int(b.sequence)
+
+
+func _frontier_path(start: Vector2i, goal: Vector2i,
+		parents: Dictionary) -> Array:
+	var reversed: Array = [goal]
+	var cursor := goal
+	while cursor != start:
+		var parent: Variant = parents.get(_key(cursor), null)
+		if not parent is Vector2i: return []
+		cursor = parent
+		reversed.append(cursor)
+	reversed.reverse()
+	return reversed
 
 
 func _known_step_is_safe(from: Vector2i, to: Vector2i,

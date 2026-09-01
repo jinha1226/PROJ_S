@@ -2,6 +2,7 @@ class_name AsciiActorPortrait
 extends Control
 
 const StyleScript = preload("res://playtest/ascii_visual_style.gd")
+const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 
 var _actor: Dictionary = {}
 
@@ -32,7 +33,9 @@ func _draw() -> void:
 	var border := _color(str(spec.get("color_hex", "#c2ccd5")), 0.62)
 	draw_rect(panel, border, false, 1.5)
 	var inset := maxf(3.0, minf(size.x,size.y)*0.06)
-	draw_figure(self, get_theme_default_font(), panel.grow(-inset), spec, true)
+	var actor_font:Font=BoldFont if str(spec.get("glyph_font_weight","REGULAR"))=="BOLD" \
+		else get_theme_default_font()
+	draw_figure(self, actor_font, panel.grow(-inset), spec, true)
 
 
 static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,

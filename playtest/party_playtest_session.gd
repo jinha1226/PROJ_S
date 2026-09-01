@@ -95,6 +95,7 @@ var _exploration_route = null
 var _auto_explore = null
 var _protagonist_placeholder := false
 var _map_layout: Dictionary = {}
+var _opening_blood_positions:Array[Vector2i]=[]
 # Presentation-only fog memory acceleration. Canonical events remain the sole
 # authority: this cache is never serialized and is discarded whenever its
 # world/history/topology identity no longer matches.
@@ -231,6 +232,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if spawned==null:return false
 		enemies.append(spawned)
 	var opening_state = null
+	var opening_blood_positions:Array[Vector2i]=[]
 	var opening_enabled := p_scenario_id == SOLO_COMBAT_SCENARIO_ID \
 		and bootstrap_opening_event
 	if opening_enabled:
@@ -245,6 +247,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		var profile = OpeningHexacoScript.generated(p_world_seed, OPENING_HEXACO_SLOT)
 		opening_state = OpeningEventStateScript.new(opening_entity.id, profile,
 			anchors.spawn_position, anchors.convergence_band, anchors.convergence_goal)
+		opening_blood_positions=_opening_blood_trail(anchors)
 		var discovery = candidate.world.emit_event("opening.npc_discovered", -1,
 			opening_entity.id, opening_entity.position, 0, -1,
 			{"schema_version":1, "state":"WOUNDED", "non_hostile":true,
@@ -333,6 +336,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	scenario_id = p_scenario_id
 	_map_layout = map_layout.duplicate(true)
+	_opening_blood_positions=opening_blood_positions.duplicate()
 	_invalidate_explored_presentation_cache()
 	_presentation_topology_cache.clear()
 	_presentation_visibility_cache.clear()
@@ -343,6 +347,23 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
 	return true
+
+
+static func _opening_blood_trail(anchors:Dictionary)->Array[Vector2i]:
+	# A sparse punctuation trail leads from the entrance route to the side alcove.
+	# It is regenerated from the seeded map and remains presentation-only, so old
+	# saves keep their exact canonical wire.
+	var result:Array[Vector2i]=[]
+	var path:Variant=anchors.get("entry_exit_path",[])
+	var last_index:=int(anchors.get("spawn_route_index",-1))
+	if path is Array and last_index>0:
+		for index in range(1,mini(last_index,path.size()-1)+1):
+			if index%2==1 or index==last_index:
+				var position:Variant=path[index]
+				if position is Vector2i and position not in result:result.append(position)
+	var spawn:Variant=anchors.get("spawn_position",Vector2i(-1,-1))
+	if spawn is Vector2i and spawn not in result:result.append(spawn)
+	return result
 
 
 func is_solo_combat()->bool:
@@ -633,6 +654,7 @@ func opening_event_status() -> Dictionary:
 		"scene_summary":"입구에서 이어진 피 묻은 흔적 끝에 여행자가 벽에 기대 숨을 몰아쉬고 있습니다.\n성격 인상 · %s" \
 			% str(personality_style.get("label", "알 수 없는 인물")),
 		"choice_prompt":"회복 물약을 건넬지, 돕지 않고 떠날지 결정하세요.",
+		"adjacent":adjacent,
 		"can_interact":can_interact,
 		"give_enabled":can_interact and bool(give_preview.get("accepted", false)),
 		"pass_enabled":can_interact,
@@ -1410,14 +1432,17 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			if visibility_state == "UNSEEN":
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
-					"effective_conductivity":0, "actors":[],"ground_items":[]})
+					"effective_conductivity":0, "ground_mark_id":"",
+					"actors":[],"ground_items":[]})
 				continue
 			var tile = sim.world.tile_at(position)
 			if visibility_state=="MEMORY":
 				# Remember only stable terrain. Features, hazards, actors and all live
 				# decision data remain unavailable outside the current field of view.
 				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
-					"feature_id":"","visibility_state":"MEMORY","fire_intensity":0,
+					"feature_id":"","ground_mark_id":"blood" \
+						if position in _opening_blood_positions else "",
+					"visibility_state":"MEMORY","fire_intensity":0,
 					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
 				continue
 			var actors: Array = []
@@ -1446,6 +1471,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					else int(a.entity_id) < int(b.entity_id))
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
 				"feature_id":_run_feature_id_at(position, progress),
+				"ground_mark_id":"blood" if position in _opening_blood_positions else "",
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
@@ -1710,6 +1736,9 @@ func _actor_observation(entity, logical_position: Vector2i,
 		# This helper is called only while materializing a currently VISIBLE cell.
 		# MEMORY and UNSEEN rows never contain actors, so awareness authority cannot
 		# leak through fog-of-war.
+		var threat:=_enemy_threat(entity.id)
+		dto["threat_id"]=str(threat.get("threat_id","EVEN"))
+		dto["threat_label"]=str(threat.get("threat_label","대등"))
 		var awareness=sim.world.party_encounter.enemy_awareness(entity.id)
 		var perception_profile:Dictionary=EnemyPerceptionRegistryScript.profile(
 			str(entity.species_id))
@@ -2992,6 +3021,44 @@ func companion_speech_bubbles() -> Array[Dictionary]:
 			if int(a.roster_slot) != int(b.roster_slot) \
 			else int(a.actor_id) < int(b.actor_id))
 	return bubbles.duplicate(true)
+
+
+func world_speech_bubbles() -> Array[Dictionary]:
+	# A single presentation channel feeds the map. Combat callouts and story
+	# dialogue remain projections only: no timer, dialogue text, or layout state is
+	# serialized into the deterministic simulation.
+	var rows:Array[Dictionary]=[]
+	for speech in companion_speech_bubbles():
+		var row:Dictionary=speech.duplicate(true)
+		row["bubble_id"]="intent:%d:%s:%s"%[int(row.get("actor_id",-1)),
+			str(row.get("source","SUGGESTED")),str(row.get("action_type","HOLD"))]
+		row["speaker_name"]=str(row.get("actor_name","동료"))
+		row["text"]=str(row.get("headline","방어할게."))
+		row["dialogue_kind"]="COMPANION_CALLOUT"
+		row["tone"]="OVERRIDE" if str(row.get("source",""))=="OVERRIDE" else "COMPANION"
+		row["priority"]=40
+		rows.append(row)
+	var opening:=opening_event_status()
+	if bool(opening.get("available",false)) and bool(opening.get("adjacent",false)) \
+			and str(opening.get("life_state","ACTIVE"))=="ACTIVE":
+		var choice:=str(opening.get("choice","PENDING"))
+		var dialogue:String=str({
+			"PENDING":"잠깐… 회복 물약이 있다면 부탁해요.",
+			"GAVE_POTION":"고마워요… 이 은혜는 잊지 않을게요.",
+			"PASSED":"…알겠어요. 조심해서 가요.",
+		}.get(choice,""))
+		if not dialogue.is_empty():
+			rows.append({"schema_version":1,
+				"bubble_id":"opening:%s:%s"%[choice,str(opening.get("choice_event_id",-1))],
+				"actor_id":int(opening.get("npc_entity_id",-1)),
+				"speaker_name":str(opening.get("display_name","부상당한 여행자")),
+				"text":dialogue,"dialogue_kind":"STORY_DIALOGUE",
+				"tone":"IMPORTANT","priority":100})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		if int(a.get("priority",0))!=int(b.get("priority",0)):
+			return int(a.get("priority",0))>int(b.get("priority",0))
+		return int(a.get("actor_id",-1))<int(b.get("actor_id",-1)))
+	return rows.duplicate(true)
 
 
 func _companion_speech_headline(action_type: String, source: String,

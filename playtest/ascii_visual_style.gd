@@ -6,6 +6,13 @@ const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 const AWARENESS_STATES := ["UNAWARE","SUSPICIOUS","ALERT","HUNTING","SEARCHING","RETURNING"]
 const ITEM_PRESENTATION_KINDS := ["WEAPON","ARMOR","POTION","SCROLL","ACCESSORY","MATERIAL"]
 
+# Actor typography has two independent jobs. Species/body class owns scale;
+# combat importance owns ink weight. Keeping those channels separate prevents a
+# dangerous goblin from suddenly reading as a physically larger creature.
+const ACTOR_BODY_SCALES := {"SMALL":0.88,"NORMAL":1.0,"LARGE":1.15}
+const SMALL_BODY_SPECIES := ["goblin","kobold","dwarf","halfling"]
+const LARGE_BODY_SPECIES := ["orc","ogre","troll","giant"]
+
 const ACTOR_WEAPON_VISUALS := {
 	"SHORT_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#e6e0c8"},
 	"THRUSTING_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#eef0df"},
@@ -233,6 +240,19 @@ static func feature_spec(feature_id: String) -> Dictionary:
 		"halo_hex":str(definition.halo_hex)}.duplicate(true)
 
 
+static func ground_mark_spec(cell:Dictionary)->Dictionary:
+	var mark_id:=str(cell.get("ground_mark_id","")).to_lower()
+	var visibility:=visibility_spec(cell)
+	if mark_id!="blood" or not bool(visibility.draw_terrain):
+		return {"visible":false,"mark_id":"","glyph":"","color_hex":"#00000000",
+			"opacity":0.0,"font_ratio":0.0}.duplicate(true)
+	# Semicolon reads as one droplet plus a short smear at small mobile cell sizes.
+	# Dried crimson stays below actor saturation while remaining clear on stone.
+	return {"visible":true,"mark_id":"blood","glyph":";","color_hex":"#a42f3f",
+		"opacity":0.88 if str(visibility.state)=="VISIBLE" else 0.34,
+		"font_ratio":0.48,"draw_image":false,"draw_texture":false}.duplicate(true)
+
+
 static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var species_id := str(actor.get("species_id", "")).to_lower()
 	var faction_id := str(actor.get("faction_id", "")).to_lower()
@@ -276,6 +296,9 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		stance = "IDLE"
 	var geometry := _pose_geometry(life_state, facing, stance)
 	var guarded := bool(actor.get("guarded", false))
+	var body_class:=actor_body_class(actor)
+	var presence_class:=actor_presence_class(actor)
+	var bold_presence:=presence_class in ["HERO","ELITE","BOSS"]
 	var step_phase:=str(actor.get("step_phase","SETTLE")).to_upper()
 	var stride_sign:=clampi(int(actor.get("stride_sign",0)),-1,1)
 	var glyph_bob_ratio:=clampf(float(actor.get("glyph_bob_ratio",0.0)),-1.0,0.0)
@@ -299,7 +322,10 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"glyph_half_height":geometry.glyph_half_height,
 		"glyph_is_body":true, "detached_head":false,
 		"glyph_weight":"INK_STAMP", "glyph_outline_passes":4,
-		"glyph_weight_passes":2,"glyph_scale":1.08 if is_protagonist else 1.0,
+		"glyph_weight_passes":2 if bold_presence else 1,
+		"glyph_font_weight":"BOLD" if bold_presence else "REGULAR",
+		"body_class":body_class,"presence_class":presence_class,
+		"glyph_scale":float(ACTOR_BODY_SCALES.get(body_class,1.0)),
 		"glyph_offset":Vector2.ZERO,
 		"underlay_hex":underlay_hex,"underlay_opacity":0.52 if not ghost else 0.22,
 		"underlay_ratio":Vector2(0.84,0.46),
@@ -314,6 +340,28 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 			if life_state=="ACTIVE" else 0,
 		"draw_head":false, "draw_limbs":false,
 	}.duplicate(true)
+
+
+static func actor_body_class(actor:Dictionary)->String:
+	var explicit:=str(actor.get("body_class",actor.get("presentation_body_class",""))).to_upper()
+	if explicit in ACTOR_BODY_SCALES:return explicit
+	var species_id:=str(actor.get("species_id","")).to_lower()
+	if species_id in SMALL_BODY_SPECIES:return "SMALL"
+	if species_id in LARGE_BODY_SPECIES:return "LARGE"
+	return "NORMAL"
+
+
+static func actor_presence_class(actor:Dictionary)->String:
+	var explicit:=str(actor.get("presence_class",actor.get(
+		"presentation_presence_class",""))).to_upper()
+	if explicit in ["NORMAL","HERO","ELITE","BOSS"]:return explicit
+	if bool(actor.get("is_boss",false)):return "BOSS"
+	if bool(actor.get("is_elite",false)):return "ELITE"
+	if bool(actor.get("is_protagonist",false)):return "HERO"
+	var threat_id:=str(actor.get("threat_id","")).to_upper()
+	if threat_id=="LETHAL":return "BOSS"
+	if threat_id=="DANGEROUS":return "ELITE"
+	return "NORMAL"
 
 
 static func actor_equipment_spec(actor:Dictionary)->Dictionary:
