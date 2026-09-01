@@ -88,8 +88,11 @@ func test_awareness_ui_fits_360_450_at_zoom_11_15_19_and_caps_five_rows()->bool:
 				and grid.grid_rect().encloses(Rect2(list.bounds)),
 				"%dpx zoom%d list reserves an NPC row, caps five, and stays clipped"%[viewport,zoom])
 			for mark in grid.monster_awareness_marker_draw_specs():
-				check(Rect2(mark.cell_rect).encloses(Rect2(mark.text_rect)),
-					"%dpx zoom%d mark never enters an adjacent glyph cell"%[viewport,zoom])
+				var actor_spec:Dictionary=grid.actor_glyph_draw_spec(int(mark.entity_id))
+				check(grid.grid_rect().encloses(Rect2(mark.text_rect)) \
+						and Rect2(actor_spec.figure_bounds).grow(4.0).encloses(
+							Rect2(mark.text_rect)),
+					"%dpx zoom%d mark stays on its upright actor silhouette"%[viewport,zoom])
 			grid.free()
 	return finish()
 

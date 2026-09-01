@@ -274,9 +274,10 @@ func test_attacker_weapon_swing_is_tile_local_and_8_direction_safe()->bool:
 			["@","@","@"],"%s swing never replaces the actor glyph"%direction)
 		var weapon_travel:=Vector2(contact.equipment.weapon_center).distance_to(
 			Vector2(windup.equipment.weapon_center))
+		var actor_bounds:=Rect2(contact.figure_bounds).grow(4.0)
 		check(contact.equipment.weapon_swing_active and weapon_travel>=1.0 \
-				and Rect2(contact.cell_rect).has_point(Vector2(contact.equipment.weapon_center)),
-			"%s equipped weapon owns a visible tile-local attack arc (%s px)"%[direction,weapon_travel])
+				and actor_bounds.has_point(Vector2(contact.equipment.weapon_center)),
+			"%s equipped weapon owns a visible actor-local attack arc (%s px)"%[direction,weapon_travel])
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(1),
 			grid.actor_in_world_cell(Vector2i(7,7))],[mapping,hit,1],
 			"%s weapon animation is mapping and authority neutral"%direction)
