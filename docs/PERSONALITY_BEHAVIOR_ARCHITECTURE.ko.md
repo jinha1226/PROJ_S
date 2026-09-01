@@ -549,3 +549,34 @@ PersonalityChange
 - [Henrik Fåhraeus: Emergent Stories in Crusader Kings II](https://media.gdcvault.com/GDC2014/Presentations/Fahraeus_Henrik_Emergent_Stories_in.pdf)
 - [Game AI Pro: Behavior Selection Algorithms](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter04_Behavior_Selection_Algorithms.pdf)
 - [Game AI Pro 3: Choosing Effective Utility-Based Considerations](https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf)
+
+## 12. 파티 동료 룰셋 `party-companion-utility-v1`
+
+4인 파티 단체전투 P1은 기존 4축 personality wire와 정수 Utility evaluator를 재사용한다.
+행동 후보는 `ENGAGE`, `PROTECT`, `RETREAT`, `HOLD` 네 개이며, 실행 리프는 기존
+`HOLD`, `MOVE`, `MELEE`만 사용한다. 새 성격·대화 6축 설계로의 마이그레이션은 이
+룰셋의 범위가 아니며 별도 버전으로 다룬다.
+
+입력 17개는 다음 범주로 고정한다.
+
+- 성격 4개: aggression, altruism, boldness, composure
+- 평가 3개: attack drive, perceived threat, panic pressure
+- 상황 7개: hp loss, ally targeted, ally hp loss, engaged enemies, outnumbered,
+  claim alignment, focus alignment
+- 관계 2개: ally trust, protagonist trust
+- 정동 1개: stress
+
+`PartySquadBlackboard.build()`의 focus, threat, ally pressure, claim은 현재 권위 상태와
+주인공 행동에서 매 프리뷰마다 다시 계산하는 파생 상태다. 후보 점수, 선택 결과, 경로와
+블랙보드는 snapshot에 저장하지 않는다. 같은 입력의 반복 프리뷰는 RNG를 소비하지 않고
+동일한 정수 점수·리프·설명을 반환한다.
+
+P1의 `PANIC`은 HP·stress·composure에서 계산하는 순간 모드이며 저장 상태가 아니다.
+그러므로 현재는 임계값 한 번으로 `NORMAL`/`PANIC` 후보 집합을 고른다. P3에서 사기·공포
+전염을 구현할 때 enter/exit 임계값, 최소 유지시간과 commitment를 권위 상태에 추가해
+히스테리시스를 도입한다. 그 전에는 P1 룰셋에 암묵적인 지속 상태를 넣지 않는다.
+
+헤드리스 검증은 `tests/run_party_ai_tests.gd`가 담당한다. 12시드 전투 매트릭스는
+4인 파티·4개 적, 최대 60턴을 오버라이드 없이 실행하며 accepted step, canonical world,
+행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. 적 무리 인지와 전투 이탈은
+P2 범위이므로 이 P1 매트릭스에서는 적 인지를 고정해 동료 선택기만 격리한다.

@@ -3912,7 +3912,8 @@ func _party_runtime_error() -> String:
 	if party_encounter.protagonist_id <= 0 or not entities.has(party_encounter.protagonist_id): return "party_protagonist_missing"
 	if party_encounter.party_member_ids.size() < 1 or party_encounter.party_member_ids.size() > 64 \
 			or party_encounter.active_party_member_ids.is_empty() \
-			or party_encounter.active_party_member_ids.size() > 3:
+			or party_encounter.active_party_member_ids.size() \
+				> PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
 		return "party_roster_size_invalid"
 	if party_encounter.enemy_ids.is_empty() or party_encounter.enemy_ids.size() > 64: return "party_enemy_size_invalid"
 	var previous_id := 0
@@ -3958,7 +3959,8 @@ func _party_runtime_error() -> String:
 	for member_id in party_encounter.party_member_ids:
 		var expected_role := "PROTAGONIST" if member_id == party_encounter.protagonist_id else "COMPANION"
 		if party_encounter.member_rows[member_id].role != expected_role: return "party_role_invalid"
-	if deployed > 3: return "too_many_deployed_party"
+	if deployed > PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
+		return "too_many_deployed_party"
 	var alive_enemies := 0; previous_id = 0
 	for enemy_id in party_encounter.enemy_ids:
 		if enemy_id <= previous_id or party_ids.has(enemy_id) or not entities.has(enemy_id) \
@@ -4520,7 +4522,8 @@ func _party_event_correlation_error() -> String:
 		if completed_keys != ["companion_ids", "formation_id"] \
 				or deployment_completed.data.get("formation_id") not in ["WEDGE", "LINE", "COLUMN"] \
 				or not deployment_completed.data.get("companion_ids") is Array \
-				or deployment_completed.data.companion_ids.size() > 2:
+				or deployment_completed.data.companion_ids.size() \
+					> PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE-1:
 			return "party_deployment_completed_data_invalid"
 		historical_formation = str(deployment_completed.data.formation_id)
 		var previous_id := 0
@@ -4794,7 +4797,9 @@ func _party_roster_history_error() -> String:
 			if event.target_id not in active or active.size() <= 1: return "party_roster_event_transition_invalid"
 			active.erase(event.target_id); exiled.append(event.target_id); exiled.sort()
 		else:
-			if event.target_id not in recruitable or active.size() >= 3: return "party_roster_event_transition_invalid"
+			if event.target_id not in recruitable \
+					or active.size() >= PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
+				return "party_roster_event_transition_invalid"
 			recruitable.erase(event.target_id); active.append(event.target_id); active.sort()
 	var expected_recruitable: Array = []
 	var expected_exiled: Array = []
@@ -5026,8 +5031,10 @@ func _party_historical_blocker_at(position: Vector2i, contact_event_id: int) -> 
 
 func _party_formation_offset(formation_id: String, index: int, facing: Vector2i) -> Vector2i:
 	var back := -facing; var right := Vector2i(-facing.y,facing.x); var left := -right
-	if formation_id == "WEDGE": return back+(left if index == 0 else right)
-	if formation_id == "LINE": return left if index == 0 else right
+	if formation_id == "WEDGE":
+		return back+left if index == 0 else (back+right if index == 1 else back*index)
+	if formation_id == "LINE":
+		return left if index == 0 else (right if index == 1 else back*(index-1))
 	return back*(index+1)
 
 

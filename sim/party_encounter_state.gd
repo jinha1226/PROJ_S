@@ -18,6 +18,7 @@ const WORLD_ITEM_SCHEMA_VERSION := 12
 # v13 removed protagonist_loadout: the equipped MAIN_HAND instance is the only
 # weapon authority, ammo lives on the entity row and reload on the weapon row.
 const WEAPON_AUTHORITY_SCHEMA_VERSION := 13
+const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -260,7 +261,9 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			if parsed <= previous: return "duplicate_or_unsorted_%s" % list_key
 			previous = parsed
 	var active_rows: Variant = row.get("active_party_member_ids", row.party_member_ids)
-	if not active_rows is Array or active_rows.is_empty() or active_rows.size() > 3: return "invalid_active_party_member_ids"
+	if not active_rows is Array or active_rows.is_empty() \
+			or active_rows.size() > MAX_ACTIVE_PARTY_SIZE:
+		return "invalid_active_party_member_ids"
 	var previous_active := -1
 	for value in active_rows:
 		if not Int64CodecScript.is_canonical(value): return "noncanonical_active_party_member_ids"

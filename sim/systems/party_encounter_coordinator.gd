@@ -4,6 +4,10 @@ extends RefCounted
 const ActionScript = preload("res://sim/party_action_command.gd")
 const RequestScript = preload("res://sim/party_turn_request.gd")
 const PlanScript = preload("res://sim/party_turn_plan.gd")
+const FixedPointScript = preload("res://sim/fixed_point.gd")
+const BlackboardScript = preload("res://sim/party_squad_blackboard.gd")
+const AppraisalScript = preload("res://sim/party_companion_appraisal.gd")
+const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
@@ -11,11 +15,13 @@ const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
-const MAX_DEPLOYED_PARTY := 3
+const PartyStateScript=preload("res://sim/party_encounter_state.gd")
+const MAX_DEPLOYED_PARTY := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
 const MAX_WORLD_TIME := 9223372036854775707
 const MAX_SCHEDULE_OCCURRENCES := 1024
+const PARTY_ACTION_RANK := {"ENGAGE": 0, "PROTECT": 1, "RETREAT": 2, "HOLD": 3}
 
 var world
 var movement
@@ -604,20 +610,7 @@ func _nearest_contact_enemy(position:Vector2i):
 
 
 func _line_of_sight(origin:Vector2i,target:Vector2i)->bool:
-	if not world.in_bounds(origin) or not world.in_bounds(target):return false
-	var x0:=origin.x;var y0:=origin.y;var x1:=target.x;var y1:=target.y
-	var dx:=absi(x1-x0);var sx:=1 if x0<x1 else -1
-	var dy:=-absi(y1-y0);var sy:=1 if y0<y1 else -1
-	var error:=dx+dy
-	while x0!=x1 or y0!=y1:
-		var doubled:=2*error
-		if doubled>=dy:error+=dy;x0+=sx
-		if doubled<=dx:error+=dx;y0+=sy
-		if Vector2i(x0,y0)==target:return true
-		var definition:Dictionary=TerrainRegistryScript.definition(
-			str(world.tile_at(Vector2i(x0,y0)).terrain))
-		if definition.is_empty() or not bool(definition.get("passable",false)):return false
-	return true
+	return EnemyPerceptionRegistryScript.has_line_of_sight(world,origin,target)
 
 
 func _patrol_exposure_risk(enemy_id:int,position:Vector2i)->int:
@@ -742,11 +735,12 @@ func preview_party_turn(request, processed_step_index: int,
 	var state = world.party_encounter; var rows: Array = []
 	var direct = request.protagonist_action; rows.append(_action_row(direct, "DIRECT", state.member(direct.actor_id).roster_slot))
 	var overrides: Dictionary = {}; for row in request.overrides: overrides[int(row.actor_id)] = row.action
+	var board: Dictionary = BlackboardScript.build(world, direct)
 	for member_id in state.party_member_ids:
 		if member_id == state.protagonist_id: continue
 		var member = state.member(member_id)
 		if member.presence != "DEPLOYED" or not world.can_act(member_id, world.world_time) or member.busy_until > world.world_time: continue
-		var suggested = _suggest(member_id, direct)
+		var suggested = _suggest(member_id, direct, board)
 		var action = overrides.get(member_id, suggested)
 		var source := "OVERRIDE" if overrides.has(member_id) else "SUGGESTED"
 		var row = _action_row(action, source, member.roster_slot); row["suggestion"] = suggested.to_dict(); row["overridden"] = overrides.has(member_id) and action.to_dict() != suggested.to_dict(); rows.append(row)
@@ -838,79 +832,306 @@ func _action_error(action) -> String:
 			return "melee_not_legal"
 	return ""
 
-func _suggest(actor_id: int, protagonist_action):
-	var actor = world.entities[actor_id]
-	var member = world.party_encounter.member(actor_id)
-	var aggression: int = member.personality_profile.value("aggression") if member.personality_profile != null else 500
-	var boldness: int = member.personality_profile.value("boldness") if member.personality_profile != null else 500
-	var composure: int = member.personality_profile.value("composure") if member.personality_profile != null else 500
-	var relation: Dictionary = _relation_values(actor_id)
-	var enemies: Array = []
-	for enemy_id in world.party_encounter.enemy_ids:
-		if world.is_autonomous_target(enemy_id): enemies.append(world.entities[enemy_id])
-	enemies.sort_custom(func(a,b): return a.id < b.id)
-	if enemies.is_empty(): return ActionScript.hold(actor_id)
-	var focus_id := _direct_focus_enemy_id(protagonist_action, enemies)
-	var drive: int = aggression * 2 + boldness
-	var hold_score: int = 1100 + int((999 - boldness) / 4) - int(aggression / 5)
-	var candidates: Array = []
-	for enemy in enemies:
-		var support_score := _target_support_score(enemy.id, focus_id, relation)
-		if melee.can_attack(actor_id, enemy.id):
-			candidates.append({"kind":"MELEE", "target_id":enemy.id, "destination":actor.position,
-				"approach":actor.position, "score":700 + drive + support_score - _hazard_penalty(actor_id, actor.position, composure),
-				"total_cost":0, "steps":0})
+func _suggest(actor_id: int, protagonist_action, board: Dictionary = {}):
+	var decision := _companion_decision(actor_id, protagonist_action, board)
+	return _leaf_to_action(actor_id, decision.selected_leaf)
+
+
+func explain_companion_turn(request) -> Dictionary:
+	var rejection := _turn_rejection(request)
+	if not rejection.is_empty():
+		return {"accepted": false, "reason": rejection, "ruleset_id":
+			DecisionRegistryScript.PARTY_RULESET_ID, "blackboard": {}, "companions": []}
+	var state = world.party_encounter
+	var direct = request.protagonist_action
+	var board: Dictionary = BlackboardScript.build(world, direct)
+	var companions: Array = []
+	for member_id in state.party_member_ids:
+		if member_id == state.protagonist_id:
 			continue
-		var approach_cells: Array[Vector2i] = []
-		for direction in movement.MOVE_DIRECTIONS_8:
-			var approach: Vector2i = enemy.position + direction
-			if world.in_bounds(approach): approach_cells.append(approach)
-		approach_cells.sort_custom(func(a:Vector2i,b:Vector2i): return a.y < b.y if a.y != b.y else a.x < b.x)
-		var path: Dictionary = pathfinder.find_path_to_any(actor_id, approach_cells)
-		if not bool(path.get("found", false)) or int(path.get("steps", 0)) < 1 or path.path.size() < 2: continue
-		var first_step: Vector2i = path.path[1]; var approach: Vector2i = path.goal
-		if not movement.assess_move(actor_id, first_step).accepted: continue
-		candidates.append({"kind":"MOVE", "target_id":enemy.id, "destination":first_step,
-			"approach":approach, "score":400 + drive + support_score - int(path.total_cost) \
-				- int(path.steps) * 20 - _hazard_penalty(actor_id, first_step, composure),
-			"total_cost":int(path.total_cost), "steps":int(path.steps)})
-	if candidates.is_empty(): return ActionScript.hold(actor_id)
-	candidates.sort_custom(func(a:Dictionary,b:Dictionary):
-		if int(a.score) != int(b.score): return int(a.score) > int(b.score)
-		if int(a.total_cost) != int(b.total_cost): return int(a.total_cost) < int(b.total_cost)
-		if int(a.steps) != int(b.steps): return int(a.steps) < int(b.steps)
-		if int(a.target_id) != int(b.target_id): return int(a.target_id) < int(b.target_id)
-		var aa:Vector2i=a.approach; var ba:Vector2i=b.approach
-		if aa.y != ba.y: return aa.y < ba.y
-		if aa.x != ba.x: return aa.x < ba.x
-		var ad:Vector2i=a.destination; var bd:Vector2i=b.destination
-		return ad.y < bd.y if ad.y != bd.y else ad.x < bd.x)
-	var selected: Dictionary = candidates[0]
-	if int(selected.score) < hold_score: return ActionScript.hold(actor_id)
-	return ActionScript.melee(actor_id, int(selected.target_id)) if selected.kind == "MELEE" \
-		else ActionScript.move_to(actor_id, selected.destination)
+		var member = state.member(member_id)
+		if member.presence != "DEPLOYED" or not world.can_act(member_id, world.world_time) \
+				or member.busy_until > world.world_time:
+			continue
+		companions.append(_companion_decision(member_id, direct, board))
+	return {"accepted": true, "reason": "ok",
+		"ruleset_id": DecisionRegistryScript.PARTY_RULESET_ID,
+		"blackboard": {
+			"focus_target_id": int(board.focus_target_id),
+			"most_threatened_ally_id": int(board.most_threatened_ally_id),
+			"claims": board.claims.duplicate(true),
+		},
+		"companions": companions,
+	}
 
-func _direct_focus_enemy_id(action, enemies: Array) -> int:
-	if action != null and action.type == "MELEE": return action.target_id
-	var focus_position: Vector2i = world.entities[world.party_encounter.protagonist_id].position
-	if action != null and action.type == "MOVE": focus_position = action.destination
-	var ranked: Array = enemies.duplicate()
-	ranked.sort_custom(func(a,b):
-		var ad:=_distance(focus_position,a.position); var bd:=_distance(focus_position,b.position)
-		return ad < bd if ad != bd else a.id < b.id)
-	return -1 if ranked.is_empty() else int(ranked[0].id)
 
-func _target_support_score(enemy_id: int, focus_id: int, relation: Dictionary) -> int:
-	if enemy_id != focus_id: return 0
-	var relation_drive: int = int(relation.trust) * 4 + int(relation.gratitude) * 3 - int(relation.grievance) * 4
-	return relation_drive * 2
+func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -> Dictionary:
+	if board.is_empty():
+		board = BlackboardScript.build(world, protagonist_action)
+	var state = world.party_encounter
+	var member = state.member(actor_id)
+	var appraisal: Dictionary = AppraisalScript.appraise(world, actor_id, board)
+	var candidates: Array = []
+	for action_id in DecisionRegistryScript.party_mode_actions(str(appraisal.mode)):
+		var leaf: Dictionary = _party_leaf(actor_id, action_id, appraisal, board)
+		var target_id: int = int(leaf.get("target_id", -1))
+		var inputs: Dictionary = AppraisalScript.inputs_for(appraisal,
+			member.personality_profile, target_id, board, actor_id)
+		var definition = DecisionRegistryScript.party_action(action_id)
+		var evaluated: Dictionary = DecisionRegistryScript.evaluate(definition, inputs)
+		var destination: Vector2i = leaf.get("destination", Vector2i(-1, -1))
+		candidates.append({
+			"action_id": action_id,
+			"legal": bool(leaf.legal),
+			"rejection_reason": str(leaf.reason),
+			"score": int(evaluated.score) if bool(leaf.legal) \
+				else DecisionRegistryScript.SCORE_MIN,
+			"base_score": int(evaluated.base_score),
+			"leaf": {"type": str(leaf.type), "target_id": target_id,
+				"destination": [destination.x, destination.y]},
+			"considerations": evaluated.considerations,
+			"tie_break_rank": int(PARTY_ACTION_RANK[action_id]),
+		})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		if bool(a.legal) != bool(b.legal):
+			return bool(a.legal)
+		if int(a.score) != int(b.score):
+			return int(a.score) > int(b.score)
+		if int(a.tie_break_rank) != int(b.tie_break_rank):
+			return int(a.tie_break_rank) < int(b.tie_break_rank)
+		if int(a.leaf.target_id) != int(b.leaf.target_id):
+			return int(a.leaf.target_id) < int(b.leaf.target_id)
+		if int(a.leaf.destination[1]) != int(b.leaf.destination[1]):
+			return int(a.leaf.destination[1]) < int(b.leaf.destination[1])
+		return int(a.leaf.destination[0]) < int(b.leaf.destination[0]))
+	var selected: Dictionary = candidates[0] if not candidates.is_empty() \
+		and bool(candidates[0].legal) else {
+			"action_id": "HOLD",
+			"leaf": {"type": "HOLD", "target_id": -1, "destination": [-1, -1]},
+			"rejection_reason": "no_legal_candidate",
+		}
+	return {
+		"actor_id": actor_id,
+		"mode": str(appraisal.mode),
+		"selected_action_id": str(selected.action_id),
+		"selected_leaf": _leaf_to_action(actor_id, selected.leaf).to_dict(),
+		"reason_code": str(selected.get("rejection_reason", "")),
+		"appraisal": appraisal,
+		"candidates": candidates,
+	}
+
+
+func _party_leaf(actor_id: int, action_id: String, appraisal: Dictionary,
+		board: Dictionary) -> Dictionary:
+	match action_id:
+		"ENGAGE":
+			return _engage_leaf(actor_id, board)
+		"PROTECT":
+			return _protect_leaf(actor_id, appraisal, board)
+		"RETREAT":
+			return _retreat_leaf(actor_id, appraisal, board)
+		"HOLD":
+			return _hold_leaf()
+	return _illegal_leaf("unknown_party_action")
+
+
+func _engage_leaf(actor_id: int, board: Dictionary) -> Dictionary:
+	var target_id: int = int(board.claims.get(actor_id, board.focus_target_id))
+	if target_id <= 0 or target_id not in board.active_enemy_ids:
+		return _illegal_leaf("target_unavailable")
+	if _party_melee_legal(actor_id, target_id):
+		return {"legal": true, "reason": "", "type": "MELEE",
+			"target_id": target_id, "destination": Vector2i(-1, -1)}
+	var goals := _adjacent_cells(world.entities[target_id].position)
+	var composure := _member_facet(actor_id, "composure")
+	var route := _best_route_to_any(actor_id, goals, composure)
+	if route.is_empty():
+		return _illegal_leaf("no_route_to_target", target_id)
+	return {"legal": true, "reason": "", "type": "MOVE", "target_id": target_id,
+		"destination": route.first_step}
+
+
+func _protect_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> Dictionary:
+	if int(appraisal.ally_targeted) == 0:
+		return _illegal_leaf("ally_not_threatened")
+	var ally_id: int = int(appraisal.ally_id)
+	if not board.ally_pressure.has(ally_id):
+		return _illegal_leaf("ally_unavailable")
+	var threatening: Array = board.ally_pressure[ally_id].adjacent_enemy_ids.duplicate()
+	if threatening.is_empty():
+		return _illegal_leaf("ally_not_threatened")
+	threatening.sort_custom(func(a, b):
+		var a_hp: int = board.threat_table[a].hp_milli
+		var b_hp: int = board.threat_table[b].hp_milli
+		return a_hp < b_hp if a_hp != b_hp else int(a) < int(b))
+	var target_id: int = int(threatening[0])
+	if _party_melee_legal(actor_id, target_id):
+		return {"legal": true, "reason": "", "type": "MELEE",
+			"target_id": target_id, "destination": Vector2i(-1, -1)}
+	var enemy_cells := _adjacent_cells(world.entities[target_id].position)
+	var ally_cells := _adjacent_cells(world.entities[ally_id].position)
+	var dual_cells: Array[Vector2i] = []
+	for cell in enemy_cells:
+		if cell in ally_cells:
+			dual_cells.append(cell)
+	var composure := _member_facet(actor_id, "composure")
+	var route := _best_route_to_any(actor_id, dual_cells, composure)
+	if route.is_empty():
+		var fallback_cells: Array[Vector2i] = enemy_cells.duplicate()
+		for cell in ally_cells:
+			if cell not in fallback_cells:
+				fallback_cells.append(cell)
+		route = _best_route_to_any(actor_id, fallback_cells, composure)
+	if route.is_empty():
+		return _illegal_leaf("no_route_to_ally", target_id)
+	return {"legal": true, "reason": "", "type": "MOVE", "target_id": target_id,
+		"destination": route.first_step}
+
+
+func _retreat_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> Dictionary:
+	var actor_position: Vector2i = world.entities[actor_id].position
+	var protagonist_position: Vector2i = world.entities[
+		world.party_encounter.protagonist_id].position
+	var current_enemy_distance := _minimum_enemy_distance(actor_position, board.active_enemy_ids)
+	var current_protagonist_distance := _distance(actor_position, protagonist_position)
+	var composure := _member_facet(actor_id, "composure")
+	var candidates: Array[Dictionary] = []
+	for direction in movement.MOVE_DIRECTIONS_8:
+		var destination: Vector2i = actor_position + direction
+		var assessment = movement.assess_move(actor_id, destination)
+		if not assessment.accepted:
+			continue
+		var enemy_distance := _minimum_enemy_distance(destination, board.active_enemy_ids)
+		var protagonist_distance := _distance(destination, protagonist_position)
+		if enemy_distance < current_enemy_distance \
+				or protagonist_distance > current_protagonist_distance:
+			continue
+		var score := enemy_distance * 100 - protagonist_distance * 10 \
+			- _hazard_penalty(actor_id, destination, composure)
+		candidates.append({"destination": destination, "score": score})
+	if candidates.is_empty():
+		return {"legal": true, "reason": "cornered", "type": "HOLD",
+			"target_id": -1, "destination": Vector2i(-1, -1)}
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.score) != int(b.score):
+			return int(a.score) > int(b.score)
+		var a_destination: Vector2i = a.destination
+		var b_destination: Vector2i = b.destination
+		return a_destination.y < b_destination.y if a_destination.y != b_destination.y \
+			else a_destination.x < b_destination.x)
+	return {"legal": true, "reason": "", "type": "MOVE", "target_id": -1,
+		"destination": candidates[0].destination}
+
+
+func _hold_leaf() -> Dictionary:
+	return {"legal": true, "reason": "", "type": "HOLD", "target_id": -1,
+		"destination": Vector2i(-1, -1)}
+
+
+func _illegal_leaf(reason: String, target_id: int = -1) -> Dictionary:
+	return {"legal": false, "reason": reason, "type": "HOLD", "target_id": target_id,
+		"destination": Vector2i(-1, -1)}
+
+
+func _leaf_to_action(actor_id: int, leaf: Dictionary):
+	match str(leaf.get("type", "HOLD")):
+		"MELEE":
+			return ActionScript.melee(actor_id, int(leaf.get("target_id", -1)))
+		"MOVE":
+			var value: Variant = leaf.get("destination", [-1, -1])
+			var destination: Vector2i = value if value is Vector2i \
+				else Vector2i(int(value[0]), int(value[1]))
+			return ActionScript.move_to(actor_id, destination)
+	return ActionScript.hold(actor_id)
+
+
+func _party_melee_legal(actor_id: int, target_id: int) -> bool:
+	return _action_error(ActionScript.melee(actor_id, target_id)).is_empty()
+
+
+func _best_route_to_any(actor_id: int, goals: Array, composure: int) -> Dictionary:
+	var sorted_goals: Array[Vector2i] = []
+	var actor_position: Vector2i = world.entities[actor_id].position
+	for value in goals:
+		if value is Vector2i and value != actor_position and value not in sorted_goals:
+			sorted_goals.append(value)
+	sorted_goals.sort_custom(func(a: Vector2i, b: Vector2i):
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	if sorted_goals.is_empty():
+		return {}
+	# The common case has no immediate exposure. Keep the existing single weighted
+	# multi-goal search fast, and only compare individual goal routes when the
+	# canonical first step is hazardous enough for composure to matter.
+	var direct: Dictionary = pathfinder.find_path_to_any(actor_id, sorted_goals)
+	if bool(direct.get("found", false)) and int(direct.get("steps", 0)) >= 1 \
+			and direct.path.size() >= 2:
+		var direct_step: Vector2i = direct.path[1]
+		if movement.assess_move(actor_id, direct_step).accepted:
+			var direct_hazard := _hazard_penalty(actor_id, direct_step, composure)
+			if direct_hazard == 0:
+				return {"first_step": direct_step, "goal": direct.goal,
+					"route_score": int(direct.total_cost) + int(direct.steps) * 20,
+					"total_cost": int(direct.total_cost), "steps": int(direct.steps),
+					"hazard": 0}
+	var routes: Array[Dictionary] = []
+	for goal in sorted_goals:
+		var path: Dictionary = pathfinder.find_path(actor_id, goal)
+		if not bool(path.get("found", false)) or int(path.get("steps", 0)) < 1 \
+				or path.path.size() < 2:
+			continue
+		var first_step: Vector2i = path.path[1]
+		if not movement.assess_move(actor_id, first_step).accepted:
+			continue
+		var hazard := _hazard_penalty(actor_id, first_step, composure)
+		routes.append({"first_step": first_step, "goal": goal,
+			"route_score": int(path.total_cost) + int(path.steps) * 20 + hazard,
+			"total_cost": int(path.total_cost), "steps": int(path.steps), "hazard": hazard})
+	if routes.is_empty():
+		return {}
+	routes.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.route_score) != int(b.route_score):
+			return int(a.route_score) < int(b.route_score)
+		if int(a.hazard) != int(b.hazard):
+			return int(a.hazard) < int(b.hazard)
+		if int(a.steps) != int(b.steps):
+			return int(a.steps) < int(b.steps)
+		var a_goal: Vector2i = a.goal
+		var b_goal: Vector2i = b.goal
+		return a_goal.y < b_goal.y if a_goal.y != b_goal.y else a_goal.x < b_goal.x)
+	return routes[0]
+
+
+func _adjacent_cells(center: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for direction in movement.MOVE_DIRECTIONS_8:
+		var cell: Vector2i = center + Vector2i(direction)
+		if world.in_bounds(cell):
+			result.append(cell)
+	result.sort_custom(func(a: Vector2i, b: Vector2i):
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	return result
+
+
+func _minimum_enemy_distance(position: Vector2i, enemy_ids: Array) -> int:
+	var result := 99
+	for enemy_id in enemy_ids:
+		result = mini(result, _distance(position, world.entities[enemy_id].position))
+	return result
+
+
+func _member_facet(actor_id: int, facet_id: String) -> int:
+	var member = world.party_encounter.member(actor_id)
+	if member == null or member.personality_profile == null:
+		return 500
+	var value: int = member.personality_profile.value(facet_id)
+	return clampi(value, 0, 1000) if value >= 0 else 500
 
 func _hazard_penalty(actor_id: int, position: Vector2i, composure: int) -> int:
 	if exposure == null: return 0
 	var evaluated = exposure.evaluate_for_entity(actor_id, position)
 	if evaluated == null or not evaluated is Dictionary or evaluated.get("evaluation") == null: return 0
 	var risk: int = maxi(0, int(evaluated.evaluation.total_risk))
-	return int(risk * (1500 - clampi(composure, 0, 999)) / 30)
+	return FixedPointScript.trunc_div(risk * (1500 - clampi(composure, 0, 999)), 30)
 
 func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 	var cost := PARTY_ACTION_COST
@@ -1196,8 +1417,13 @@ func _fallback_cell(anchor: Vector2i, reserved: Dictionary):
 
 func _formation_offset(preset: String, index: int, facing: Vector2i) -> Vector2i:
 	var back := -facing; var right := Vector2i(-facing.y, facing.x); var left := -right
-	if preset == "WEDGE": return back + (left if index == 0 else right)
-	if preset == "LINE": return left if index == 0 else right
+	# In a four-person party the third companion occupies the protected rear.
+	# This keeps a support build out of the two front flanks without assigning
+	# combat roles to specific roster slots.
+	if preset == "WEDGE":
+		return back + left if index == 0 else (back + right if index == 1 else back * index)
+	if preset == "LINE":
+		return left if index == 0 else (right if index == 1 else back * (index - 1))
 	return back * (index + 1)
 
 func _cardinal_facing(delta: Vector2i) -> Vector2i:
@@ -1322,13 +1548,6 @@ func _last_enemy_death_event_id() -> int:
 func _fault(point: String) -> bool:
 	return not fail_point.is_empty() and fail_point == point
 
-func _relation_values(observer_id:int)->Dictionary:
-	var protagonist_id:int=world.party_encounter.protagonist_id
-	var observer=world.entities[observer_id];var protagonist=world.entities[protagonist_id]
-	var base:Dictionary=world.species_relations.get_relation(observer.species_id,protagonist.species_id)
-	var personal=world.personal_relations.get("%d:%d"%[observer_id,protagonist_id])
-	return {"trust":clampi(int(base.base_trust)+(int(personal.personal_trust_delta) if personal!=null else 0),-100,100),
-		"gratitude":int(personal.gratitude) if personal!=null else 0,"grievance":int(personal.grievance) if personal!=null else 0}
 func _result(accepted: bool, reason: String, events: Array, cost: int,
 		processed_step_index: int):
 	return load("res://sim/sim_step_result.gd").new(accepted, accepted and cost > 0, reason, events,

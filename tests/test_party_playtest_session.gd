@@ -7,6 +7,25 @@ const Request=preload("res://sim/party_turn_request.gd")
 const WeaponLoadout=preload("res://sim/weapon_loadout_state.gd")
 
 func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact() -> bool:
+	# A full four-member party must still gate a fifth recruit without consuming
+	# the deterministic social roll.
+	var capped=Session.new(44,20260828,"SHOWCASE_V1")
+	var capped_status:Dictionary=capped.party_status()
+	var capped_borin:=int(capped_status.recruitable_member_ids[0])
+	var capped_sera:=int(capped_status.rescue_candidate_ids[0])
+	check(capped.recruit_companion(capped_borin).accepted,
+		"third companion fills the fourth active slot")
+	check_eq(capped.party_status().party_member_ids.size(),4,
+		"four-member party reaches its active cap")
+	check(capped.stabilize_recruit_candidate(capped_sera).accepted,
+		"full-party rescue can still stabilize a world NPC")
+	var capped_decision:=capped.recruitment_assessment(capped_sera)
+	check(not capped_decision.accepted and capped_decision.reason=="party_full" \
+		and int(capped_decision.probability_milli)>0 \
+		and int(capped_decision.roll_milli)==-1 \
+		and str(capped_decision.key_hash).is_empty(),
+		"four-member cap blocks a fifth member without revealing the stable roll")
+
 	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
 	var hero:=int(state.protagonist_id);var narae:=int(state.party_member_ids[1]);var miru:=int(state.party_member_ids[2])
 	var candidates:Array=session.party_status().recruitable_member_ids
@@ -54,19 +73,17 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 		"help action advances canonical time and stabilizes candidate")
 	check_eq(session.sim.world.combatant_states[sera].life_state,"ACTIVE",
 		"stabilization changes story state without combat lifecycle mutation")
-	var full_decision:=session.recruitment_assessment(sera)
-	check(not full_decision.accepted and full_decision.reason=="party_full" \
-		and int(full_decision.probability_milli)>0 and int(full_decision.roll_milli)==-1 \
-		and str(full_decision.key_hash).is_empty(),
-		"full party blocks offer and does not consume or expose the stable roll")
-	check(session.dismiss_companion(miru).accepted,"active companion can be permanently exiled")
 	var open_decision:=session.recruitment_assessment(sera)
 	check(open_decision.accepted and open_decision.would_accept \
 		and absi(int(open_decision.terms.species_prior)) \
 			> absi(int(open_decision.terms.personality)),
-		"vacancy opens offer and species prior dominates personality input")
+		"fourth slot opens offer and species prior dominates personality input")
 	var offered:=session.offer_recruitment(sera)
-	check(offered.accepted and offered.joined,"rescued candidate accepts stable offer and fills freed slot")
+	check(offered.accepted and offered.joined,
+		"rescued candidate accepts stable offer and fills the fourth slot")
+	check_eq(session.party_cards().size(),4,
+		"recruited third companion renders a four-member active party")
+	check(session.dismiss_companion(miru).accepted,"active companion can be permanently exiled")
 	check(session.dismiss_companion(borin).accepted,"recruited candidate can later be exiled")
 	check(session.recruitable_companions().is_empty(),"candidate pool exhausts without recycling exiles")
 	check_eq(session.recruit_companion(borin).reason,"companion_not_recruitable","candidate exile is permanent")
@@ -225,8 +242,10 @@ func test_32_new_expedition_seeds_cover_archetypes_and_only_legal_personality_ac
 			var action_type:=str(row.action.type);check(action_type in ["HOLD","MELEE"],
 				"adjacent suggestion cannot invent an illegal move")
 			action_counts[action_type]+=1
-	check(action_counts.HOLD>0 and action_counts.MOVE>0 and action_counts.MELEE>0,
-		"32 seeds cover hold/move/melee through legal distance fixtures: %s"%str(action_counts))
+	# The default calm fixtures intentionally exercise approach and adjacent attack.
+	# HOLD/PROTECT/RETREAT receive explicit state fixtures in the party-AI seed probe.
+	check(action_counts.MOVE>0 and action_counts.MELEE>0,
+		"32 seeds cover legal approach/melee distance fixtures: %s"%str(action_counts))
 	check(archetype_ids.size()>=4,"32 seeds cover multiple archetypes: %s"%str(archetype_ids.keys()))
 	return finish()
 

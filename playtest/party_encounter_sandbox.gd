@@ -1524,7 +1524,7 @@ func auto_flow_state()->Dictionary:
 		"follow_plan":exploration_follow_plan.duplicate(true)}.duplicate(true)
 
 func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
-	var effective_count:=clampi(count,0,3)
+	var effective_count:=clampi(count,0,SessionScript.ACTIVE_PARTY_LIMIT)
 	if effective_count==0:
 		return {"layout_id":"EMPTY","requested_count":count,"effective_count":0,
 			"party_height":0,"gap":0,"card_min_width":0,
@@ -1561,7 +1561,8 @@ func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)-
 			_add_member_card(row,speech_by_actor.get(int(row.get("entity_id",-1)),{}),spec)
 
 func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
-	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(3,size.x)
+	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
+		SessionScript.ACTIVE_PARTY_LIMIT,size.x)
 	var button:=Button.new(); var member_id:=int(row.entity_id); button.name="MemberCard%d"%member_id
 	button.custom_minimum_size=Vector2(float(spec.get("card_min_width",44)),float(spec.get("party_height",160)))
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
@@ -1881,7 +1882,10 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	var lines:Array[String]=[]
 	if not direct_solo:
 		for line in session.turn_summary_lines():lines.append(str(line))
-	if not lines.is_empty():_add_notice("이번 턴 예정\n"+"\n".join(lines),"TurnSummary",FONT_BODY)
+	if not lines.is_empty():
+		var summary_label:=_add_notice("이번 턴 예정\n"+"\n".join(lines),
+			"TurnSummary",FONT_BODY)
+		summary_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	var has_original_suggestion:=false
 	if not direct_solo:
 		for overlay in session.turn_intent_overlays():

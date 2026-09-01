@@ -137,6 +137,7 @@ docs/                구현 계약과 다음 단계 가이드
 ```bash
 godot --path .
 godot --headless --path . --script res://tests/run_tests.gd
+godot --headless --path . --script res://tests/run_party_ai_tests.gd
 godot --headless --path . --script res://examples/element_chain_demo.gd
 godot --headless --path . --script res://examples/time_timeline_demo.gd
 godot --headless --path . --script res://examples/move_exposure_demo.gd

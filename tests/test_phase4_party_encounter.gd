@@ -74,6 +74,37 @@ func test_detection_deployment_preview_purity_and_atomic_commit() -> bool:
 	check_eq(session.sim.world.step_index,2,"one step detection plus one deployment")
 	return finish()
 
+func test_four_member_party_recruits_deploys_and_keeps_support_rear_unique() -> bool:
+	var session=Session.new(44,20260828,"SHOWCASE_V1")
+	var state=session.sim.world.party_encounter
+	var recruitable:Array=session.party_status().recruitable_member_ids
+	check_eq(recruitable.size(),1,"four-member fixture has one direct recruit")
+	if recruitable.is_empty():return finish()
+	check(session.recruit_companion(int(recruitable[0])).accepted,
+		"third companion fills the fourth active slot")
+	check_eq(state.active_party_member_ids.size(),4,
+		"active party supports protagonist and three companions")
+	check(session.commit_exploration_direction(Vector2i.RIGHT).accepted,
+		"four-member fixture reaches contact")
+	var companions:Array=session.available_companion_ids()
+	var plan:Dictionary=session.preview_deployment("WEDGE",companions)
+	check(plan.accepted,"four-member wedge accepted: %s"%str(plan.get("reason","missing")))
+	check_eq(plan.placements.size(),4,"wedge places all four active members")
+	var positions:Dictionary={}
+	for row in plan.placements:positions[str(row.position)]=true
+	check_eq(positions.size(),4,"four-member wedge positions are unique")
+	if plan.placements.size()==4:
+		var expected_rear:Vector2i=state.group_anchor-state.facing*2
+		check_eq(plan.placements[3].position,[expected_rear.x,expected_rear.y],
+			"third companion receives deterministic protected rear position")
+	if plan.accepted:
+		check(session.commit_deployment().accepted,"four-member deployment commits")
+	check_eq(state.active_party_member_ids.size(),4,
+		"deployment retains all four active members")
+	check(session.sim.world.world_state_error().is_empty(),
+		"four-member deployed world satisfies strict validation")
+	return finish()
+
 func test_deployment_reserved_diagonal_flanks_match_snapshot_projection() -> bool:
 	var session = Session.new(7,9); var state = session.sim.world.party_encounter
 	check(session.sim.world.bootstrap_set_terrain(Vector2i(6,6), "wall"), "first wedge wall fixture")
@@ -381,8 +412,8 @@ func test_enemy_ambushers_resolve_by_id_and_rubble_move_sets_actual_busy_cost() 
 	return finish()
 
 func test_weighted_companion_suggestions_use_direct_action_personality_relation_and_hazard_purely() -> bool:
-	# Aggression and boldness control whether an otherwise legal adjacent attack is
-	# accepted, while an explicit override remains covered by the turn tests above.
+	# The utility ruleset keeps the adjacent attack legal at both personality
+	# extremes, while aggression and boldness still raise ENGAGE's disclosed score.
 	var personality = _engaged_one_companion(); var pstate = personality.sim.world.party_encounter
 	var hero: int = pstate.protagonist_id; var companion: int = pstate.party_member_ids[1]; var enemy: int = pstate.enemy_ids[0]
 	check(_relocate_with_move_events(personality.sim, enemy,
@@ -391,16 +422,23 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	_set_facet(pstate.member(companion).personality_profile, "boldness", 0)
 	_set_facet(pstate.member(companion).personality_profile, "composure", 999)
 	var cautious := _suggestion_for(personality.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
-	check_eq(cautious.type, "HOLD", "low aggression and boldness prefer HOLD")
+	var cautious_explanation:Dictionary=personality.sim.party_coordinator.explain_companion_turn(
+		Request.new(Action.hold(hero),[]))
+	check_eq(cautious.type, "MELEE", "adjacent ENGAGE remains a legal leaf")
 	_set_facet(pstate.member(companion).personality_profile, "aggression", 999)
 	_set_facet(pstate.member(companion).personality_profile, "boldness", 999)
 	var aggressive := _suggestion_for(personality.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
+	var aggressive_explanation:Dictionary=personality.sim.party_coordinator.explain_companion_turn(
+		Request.new(Action.hold(hero),[]))
 	check_eq(aggressive.type, "MELEE", "high aggression and boldness use legal melee")
 	check_eq(int(aggressive.target_id), enemy, "personality melee targets encounter enemy")
+	check(_candidate_score(aggressive_explanation,companion,"ENGAGE") \
+		> _candidate_score(cautious_explanation,companion,"ENGAGE"),
+		"aggression and boldness increase the data-driven ENGAGE score")
 
 	# With two symmetric enemies, the protagonist's direct target becomes the
-	# support focus. A positive companion-to-protagonist relation follows it; a
-	# strongly negative relation deterministically rejects that focus.
+	# support focus. P1 treats that focus as a squad hint; protagonist relation no
+	# longer hard-vetoes it (ally trust instead contributes to PROTECT).
 	var support = Session.new(); var sstate = support.sim.world.party_encounter
 	hero = sstate.protagonist_id; companion = sstate.party_member_ids[1]; var focus_enemy: int = sstate.enemy_ids[0]
 	var reserve = support.sim.world.add_entity("melee_enemy", "고블린 지원병", Vector2i(12,8), 40,
@@ -427,12 +465,12 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	relation.personal_trust_delta = -40; relation.gratitude = 0; relation.grievance = 100
 	var opposed := _suggestion_for(support.sim.preview_party_turn(Request.new(Action.melee(hero, focus_enemy), [])), companion)
 	check_eq(opposed.type, "MOVE", "negative support relation still chooses a legal approach")
-	check(_chebyshev(Vector2i(int(opposed.destination[0]), int(opposed.destination[1])), reserve.position) \
-		< _chebyshev(support.sim.world.entities[companion].position, reserve.position), "negative relation declines protagonist focus for other enemy")
+	check_eq(opposed.destination,follow_focus.destination,
+		"protagonist relation does not override the derived squad focus")
 
-	# WeightedPathfinder supplies the deterministic first step. Exposure is read
-	# purely: a composed companion accepts the hazardous step while low composure
-	# declines it, and repeated previews leave the world byte-identical.
+	# WeightedPathfinder supplies the deterministic first step. P1 exposure is a
+	# leaf-routing input, not a cross-action veto; a forced hazardous first step
+	# remains legal at either composure extreme and preview stays byte-pure.
 	var hazard = _engaged_one_companion(); var hstate = hazard.sim.world.party_encounter
 	hero = hstate.protagonist_id; companion = hstate.party_member_ids[1]; enemy = hstate.enemy_ids[0]
 	for facet in ["aggression", "boldness", "composure"]: _set_facet(hstate.member(companion).personality_profile, facet, 999)
@@ -453,7 +491,9 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	check_eq(composed.type, "MOVE", "high composure tolerates deterministic hazard")
 	_set_facet(hstate.member(companion).personality_profile, "composure", 0)
 	var shaken := _suggestion_for(hazard.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
-	check_eq(shaken.type, "HOLD", "low composure applies stronger hazard penalty")
+	check_eq(shaken.type, "MOVE", "hazard does not veto the selected utility action")
+	check_eq(shaken.destination,composed.destination,
+		"forced route keeps the only legal immediate step")
 	var pure_snapshot: Dictionary = hazard.sim.snapshot()
 	for index in range(10): hazard.sim.preview_party_turn(Request.new(Action.hold(hero), []))
 	check_eq(hazard.sim.snapshot(), pure_snapshot, "personality relation hazard preview remains pure")
@@ -681,6 +721,13 @@ func _suggestion_for(plan, actor_id: int) -> Dictionary:
 	for row in plan.to_dict().get("actor_rows", []):
 		if int(row.actor_id) == actor_id: return row.suggestion
 	return {}
+
+func _candidate_score(explanation:Dictionary,actor_id:int,action_id:String)->int:
+	for companion_row in explanation.get("companions",[]):
+		if int(companion_row.actor_id)!=actor_id:continue
+		for candidate in companion_row.candidates:
+			if str(candidate.action_id)==action_id:return int(candidate.score)
+	return -1000000
 
 func _chebyshev(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x), absi(a.y-b.y))

@@ -54,7 +54,7 @@ const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
 const NEW_EXPEDITION_SEED_LIMIT := 2147483646
 const EXILE_WORLD_INTERVAL := 100
 const EXILE_ENCOUNTER_STEP_DELAY := 5
-const ACTIVE_PARTY_LIMIT := 3
+const ACTIVE_PARTY_LIMIT := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
 const RESCUE_TIME_COST := 100
 const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
@@ -2995,9 +2995,54 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	return rows.duplicate(true)
 
 
+func companion_decision_explanations() -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null \
+			or _protagonist_draft == null:
+		return {"schema_version": 1, "accepted": false,
+			"reason": "no_drafted_turn", "companions": []}
+	var raw: Dictionary = sim.party_coordinator.explain_companion_turn(
+		_pending_turn_request())
+	var companions: Array = []
+	for row in raw.get("companions", []):
+		var candidates: Array = []
+		for candidate in row.candidates:
+			var terms: Array = candidate.considerations.duplicate(true)
+			terms.sort_custom(func(a: Dictionary, b: Dictionary):
+				var a_magnitude := absi(int(a.contribution))
+				var b_magnitude := absi(int(b.contribution))
+				return a_magnitude > b_magnitude if a_magnitude != b_magnitude \
+					else str(a.consideration_id) < str(b.consideration_id))
+			var top: Array = []
+			for term in terms.slice(0, 3):
+				top.append({"label": _consideration_label(str(term.consideration_id)),
+					"value": int(term.contribution)})
+			candidates.append({
+				"action_id": str(candidate.action_id),
+				"label": _party_action_label(str(candidate.action_id)),
+				"legal": bool(candidate.legal),
+				"score": int(candidate.score),
+				"top_terms": top,
+			})
+		var actor_id := int(row.actor_id)
+		companions.append({
+			"actor_id": actor_id,
+			"name": str(sim.world.entities[actor_id].display_name),
+			"selected_action_id": str(row.selected_action_id),
+			"mode": str(row.mode),
+			"reason_text": _companion_reason_text(row),
+			"candidates": candidates,
+		})
+	return {"schema_version": 1, "accepted": bool(raw.accepted),
+		"reason": str(raw.reason), "companions": companions}.duplicate(true)
+
+
 func turn_intent_overlays() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	if _protagonist_draft == null: return rows
+	var explanation_by_actor: Dictionary = {}
+	var explanations := companion_decision_explanations()
+	for explanation in explanations.get("companions", []):
+		explanation_by_actor[int(explanation.actor_id)] = str(explanation.reason_text)
 	for card in party_cards():
 		if not card.expected_action is Dictionary: continue
 		var action: Dictionary = card.expected_action
@@ -3012,6 +3057,8 @@ func turn_intent_overlays() -> Array[Dictionary]:
 			"type": str(action.type), "type_label": str(action.type_label),
 			"destination": action.destination.duplicate(true), "target_id": int(action.target_id),
 			"target_position": action.target_position.duplicate(true), "reason": str(action.reason),
+			"reason_text": str(explanation_by_actor.get(int(card.entity_id), "")) \
+				if role == "COMPANION" else "",
 			"attack_preview":action.get("attack_preview", null).duplicate(true) \
 				if action.get("attack_preview", null) is Dictionary else null,
 			"resolution_note":resolution_note,
@@ -3101,6 +3148,66 @@ func _companion_speech_reason_summary(action_type: String, source: String,
 	return "피해를 줄이려고"
 
 
+func _party_action_label(action_id: String) -> String:
+	return {"ENGAGE":"공격", "PROTECT":"엄호", "RETREAT":"후퇴",
+		"HOLD":"대기"}.get(action_id, action_id)
+
+
+func _consideration_label(consideration_id: String) -> String:
+	return {
+		"party_engage.attack_drive":"공격 충동",
+		"party_engage.claim":"담당 표적",
+		"party_engage.focus":"집중 표적",
+		"party_engage.threat":"체감 위협",
+		"party_engage.hp_loss":"자신의 부상",
+		"party_engage.aggression":"공격성",
+		"party_engage.boldness":"대담성",
+		"party_engage.stress":"스트레스",
+		"party_protect.ally_targeted":"아군 위협",
+		"party_protect.ally_hp_loss":"아군 부상",
+		"party_protect.trust":"아군 신뢰",
+		"party_protect.altruism":"이타성",
+		"party_protect.panic":"공황 압력",
+		"party_protect.hp_loss":"자신의 부상",
+		"party_retreat.threat":"체감 위협",
+		"party_retreat.hp_loss":"자신의 부상",
+		"party_retreat.stress":"스트레스",
+		"party_retreat.engaged":"근접한 적",
+		"party_retreat.outnumbered":"수적 열세",
+		"party_retreat.boldness":"대담성",
+		"party_retreat.composure":"침착성",
+		"party_hold.composure":"침착성",
+		"party_hold.threat":"체감 위협",
+		"party_hold.engaged":"근접한 적",
+	}.get(consideration_id, consideration_id)
+
+
+func _companion_reason_text(row: Dictionary) -> String:
+	var action_id := str(row.get("selected_action_id", "HOLD"))
+	var prefix := "공황 · " if str(row.get("mode", "NORMAL")) == "PANIC" else ""
+	var selected: Dictionary = {}
+	for candidate in row.get("candidates", []):
+		if str(candidate.action_id) == action_id:
+			selected = candidate
+			break
+	if selected.is_empty():
+		return "%s%s 선택" % [prefix, _party_action_label(action_id)]
+	var terms: Array = selected.get("considerations", []).duplicate(true)
+	terms.sort_custom(func(a: Dictionary, b: Dictionary):
+		var a_magnitude := absi(int(a.contribution))
+		var b_magnitude := absi(int(b.contribution))
+		return a_magnitude > b_magnitude if a_magnitude != b_magnitude \
+			else str(a.consideration_id) < str(b.consideration_id))
+	var reasons: Array[String] = []
+	for term in terms.slice(0, 2):
+		var contribution := int(term.contribution)
+		reasons.append("%s %s%d" % [_consideration_label(str(term.consideration_id)),
+			"+" if contribution >= 0 else "", contribution])
+	if reasons.is_empty():
+		return "%s%s 선택" % [prefix, _party_action_label(action_id)]
+	return "%s%s · %s" % [prefix, _party_action_label(action_id), ", ".join(reasons)]
+
+
 func turn_summary_lines() -> Array[String]:
 	var lines: Array[String] = []
 	for row in turn_intent_overlays():
@@ -3117,6 +3224,9 @@ func turn_summary_lines() -> Array[String]:
 		if row.automatic_suggestion is Dictionary:
 			line += " / 원래 제안: %s" % _overlay_action_text(row.automatic_suggestion)
 		line += " — %s" % str(row.reason)
+		if str(row.get("role", "")) == "COMPANION" \
+				and not str(row.get("reason_text", "")).is_empty():
+			line += "  이유 · %s" % str(row.reason_text)
 		lines.append(line)
 	return lines
 

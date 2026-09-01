@@ -56,7 +56,7 @@ func test_mobile_downed_rescue_and_stable_recruitment_refusal_use_actual_touch_f
 		var stabilize:=sandbox.deck.find_child("StabilizeMember%d"%target,true,false) as Button
 		var candidate_row:Node=sandbox.deck.find_child("RecruitCandidate%d"%target,true,false)
 		var candidate_label:=candidate_row.find_child("RecruitCandidateLabel",true,false) as Label if candidate_row!=null else null
-		check(title!=null and "3/3" in title.text,"%s one-glance roster capacity visible"%viewport_size)
+		check(title!=null and "3/4" in title.text,"%s four-person roster capacity visible"%viewport_size)
 		check(stabilize!=null and stabilize.custom_minimum_size.y>=44.0 and not stabilize.disabled,
 			"%s DOWNED candidate has enabled 44px stabilize touch action"%viewport_size)
 		check(candidate_label!=null and "쓰러짐" in candidate_label.text and "사망 아님" in candidate_label.text,
@@ -73,29 +73,29 @@ func test_mobile_downed_rescue_and_stable_recruitment_refusal_use_actual_touch_f
 		var recruit:=sandbox.deck.find_child("RecruitMember%d"%target,true,false) as Button
 		candidate_row=sandbox.deck.find_child("RecruitCandidate%d"%target,true,false)
 		candidate_label=candidate_row.find_child("RecruitCandidateLabel",true,false) as Label if candidate_row!=null else null
-		check(recruit!=null and recruit.disabled,"%s full party keeps offer visible but gated"%viewport_size)
+		check(recruit!=null and not recruit.disabled,
+			"%s fourth party slot enables recruitment offer"%viewport_size)
 		check(candidate_label!=null and "수락" in candidate_label.text \
 			and "종족" in candidate_label.text,
 			"%s probability and Korean reason visible after stabilization"%viewport_size)
-		var companion:=int(sandbox.session.party_status().party_member_ids[1])
-		sandbox._on_quick_dismiss_companion(companion);sandbox._refresh()
-		recruit=sandbox.deck.find_child("RecruitMember%d"%target,true,false) as Button
-		check(recruit!=null and not recruit.disabled and recruit.custom_minimum_size.y>=44.0,
-			"%s vacancy enables 44px recruitment offer"%viewport_size)
 		sandbox._on_recruit_companion(target);sandbox._refresh()
-		check("거절" in sandbox.notice_text and sandbox.cards.get_child_count()==2,
+		check("거절" in sandbox.notice_text and sandbox.cards.get_child_count()==3,
 			"%s deterministic refusal remains visible and does not add card"%viewport_size)
 		check("영입 제안을 거절" in sandbox.log_label.text,
 			"%s actual refusal remains in Korean event log"%viewport_size)
 		sandbox.free()
 	return finish()
 
-func test_party_card_layout_specs_and_detached_render_support_one_two_three_members() -> bool:
+func test_party_card_layout_specs_and_detached_render_support_up_to_four_members() -> bool:
 	for viewport_width in [360.0,450.0]:
 		var sandbox=Sandbox.new();sandbox.size=Vector2(viewport_width,640 if viewport_width==360.0 else 800)
-		sandbox.initialize_for_headless_test(Session.new())
+		var layout_session=Session.new(44,20260828,"SHOWCASE_V1")
+		var candidate:=int(layout_session.party_status().recruitable_member_ids[0])
+		check(layout_session.recruit_companion(candidate).accepted,
+			"four-card UI fixture recruits third companion")
+		sandbox.initialize_for_headless_test(layout_session)
 		var all_rows:Array=sandbox.session.party_cards()
-		for count in [1,2,3]:
+		for count in [1,2,3,4]:
 			var rows:Array=[]
 			for index in range(count):rows.append(all_rows[index].duplicate(true))
 			var speeches:Array=[]
@@ -104,7 +104,7 @@ func test_party_card_layout_specs_and_detached_render_support_one_two_three_memb
 					"headline":"이동할게.","reason_summary":"길이 열려서","reason":"목표에 접근할 길을 골랐습니다."})
 			var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
 			check_eq([str(spec.layout_id),int(spec.effective_count)],
-				[["SPOTLIGHT","DUAL","COMPACT"][count-1],count],
+				[["SPOTLIGHT","DUAL","COMPACT","COMPACT"][count-1],count],
 				"%s width count %d layout"%[viewport_width,count])
 			check(int(spec.font_size)==14 and bool(spec.get("portrait_removed",false)) \
 				and spec.get("portrait_min_size",[])==[0,0],
@@ -127,7 +127,8 @@ func test_party_card_layout_specs_and_detached_render_support_one_two_three_memb
 		check(bool(sandbox.party_card_layout_spec(2,viewport_width).portrait_removed),
 			"layout spec is deeply detached")
 		check_eq(int(sandbox.party_card_layout_spec(0,viewport_width).effective_count),0,"zero rows safely empty")
-		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),3,"over-cap rows safely clamp")
+		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),4,
+			"over-cap rows safely clamp to four")
 		var companion_detail:Dictionary=sandbox.session.inspect_party_member(int(all_rows[1].entity_id))
 		check(str(companion_detail.personality_archetype.label) in sandbox._member_detail_text(companion_detail),
 			"detail modal exposes short Korean archetype")

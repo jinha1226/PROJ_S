@@ -5,12 +5,20 @@ const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 const RULESET_ID := "dungeon-hierarchical-utility-v1"
 const EXPEDITION_RULESET_ID := "npc-expedition-utility-v1"
+const PARTY_RULESET_ID := "party-companion-utility-v1"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
 const SCORE_MIN := -1000000
 const SCORE_MAX := 1000000
 const ACTION_IDS := ["ENGAGE", "PROTECT", "FLEE", "TAKE_COVER", "HOLD", "FREEZE"]
 const EXPEDITION_ACTION_IDS := ["APPROACH", "ATTACK", "FINISH", "USE_ITEM", "LOOT", "RETURN"]
+const PARTY_ACTION_IDS := ["ENGAGE", "PROTECT", "RETREAT", "HOLD"]
 const MODE_IDS := ["NORMAL", "PANIC"]
+const PARTY_MODE_IDS := ["NORMAL", "PANIC"]
+const PARTY_INPUTS := ["facet.aggression", "facet.altruism", "facet.boldness", "facet.composure",
+	"appraisal.attack_drive", "appraisal.perceived_threat", "appraisal.panic_pressure",
+	"context.hp_loss", "context.ally_targeted", "context.ally_hp_loss", "context.engaged_enemies",
+	"context.outnumbered", "context.claim_alignment", "context.focus_alignment",
+	"relation.ally_trust", "relation.protagonist_trust", "affect.stress"]
 
 class CurveDef extends RefCounted:
 	var def_version := 1
@@ -73,10 +81,18 @@ static var _curves: Dictionary = {}
 static var _actions: Dictionary = {}
 static var _modes: Dictionary = {}
 static var _expedition_actions: Dictionary = {}
+static var _party_actions: Dictionary = {}
+static var _party_modes: Dictionary = {}
 
 
 static func _ensure() -> void:
-	if not _actions.is_empty() and not _expedition_actions.is_empty(): return
+	if not _actions.is_empty() and not _expedition_actions.is_empty() \
+			and not _party_actions.is_empty():
+		return
+	_actions.clear()
+	_expedition_actions.clear()
+	_party_actions.clear()
+	_party_modes.clear()
 	_curves = {
 		"linear_up": CurveDef.new("linear_up", [[0, 0], [1000, 1000]]),
 		"linear_down": CurveDef.new("linear_down", [[0, 1000], [1000, 0]]),
@@ -112,6 +128,7 @@ static func _ensure() -> void:
 		_c("freeze.panic", "appraisal.panic_pressure", "linear_up", 500),
 		_c("freeze.composure", "facet.composure", "linear_down", 300)])
 	_build_expedition_actions()
+	_build_party_actions()
 
 
 static func _build_expedition_actions() -> void:
@@ -160,6 +177,52 @@ static func _add_expedition_action(id: String, rank: int, base: int, commitment:
 	_expedition_actions[id] = action
 
 
+static func _build_party_actions() -> void:
+	_party_modes = {
+		"NORMAL": ["ENGAGE", "PROTECT", "RETREAT", "HOLD"],
+		"PANIC": ["RETREAT", "HOLD"],
+	}
+	_add_party_action("ENGAGE", 0, 300, [
+		_c("party_engage.attack_drive", "appraisal.attack_drive", "linear_up", 450),
+		_c("party_engage.claim", "context.claim_alignment", "linear_up", 300),
+		_c("party_engage.focus", "context.focus_alignment", "linear_up", 200),
+		_c("party_engage.threat", "appraisal.perceived_threat", "linear_up", -300),
+		_c("party_engage.hp_loss", "context.hp_loss", "linear_up", -250),
+		_c("party_engage.aggression", "facet.aggression", "linear_up", 250),
+		_c("party_engage.boldness", "facet.boldness", "linear_up", 200),
+		_c("party_engage.stress", "affect.stress", "linear_up", -200),
+	])
+	_add_party_action("PROTECT", 1, 200, [
+		_c("party_protect.ally_targeted", "context.ally_targeted", "threshold_up", 500),
+		_c("party_protect.ally_hp_loss", "context.ally_hp_loss", "linear_up", 300),
+		_c("party_protect.trust", "relation.ally_trust", "linear_up", 300),
+		_c("party_protect.altruism", "facet.altruism", "linear_up", 300),
+		_c("party_protect.panic", "appraisal.panic_pressure", "linear_up", -300),
+		_c("party_protect.hp_loss", "context.hp_loss", "linear_up", -150),
+	])
+	_add_party_action("RETREAT", 2, 100, [
+		_c("party_retreat.threat", "appraisal.perceived_threat", "linear_up", 450),
+		_c("party_retreat.hp_loss", "context.hp_loss", "linear_up", 400),
+		_c("party_retreat.stress", "affect.stress", "linear_up", 350),
+		_c("party_retreat.engaged", "context.engaged_enemies", "linear_up", 250),
+		_c("party_retreat.outnumbered", "context.outnumbered", "linear_up", 200),
+		_c("party_retreat.boldness", "facet.boldness", "linear_up", -300),
+		_c("party_retreat.composure", "facet.composure", "linear_up", -100),
+	])
+	_add_party_action("HOLD", 3, 250, [
+		_c("party_hold.composure", "facet.composure", "linear_up", 150),
+		_c("party_hold.threat", "appraisal.perceived_threat", "linear_up", -250),
+		_c("party_hold.engaged", "context.engaged_enemies", "linear_up", -300),
+	])
+
+
+static func _add_party_action(id: String, rank: int, base: int, considerations: Array) -> void:
+	var modes := ["NORMAL"] if id in ["ENGAGE", "PROTECT"] else ["NORMAL", "PANIC"]
+	var action = ActionDef.new(id, modes, rank, base, 0, 0, 0, "party-v1", "party-v1")
+	action.considerations = considerations
+	_party_actions[id] = action
+
+
 static func _c(id: String, input: String, curve: String, weight: int):
 	return ConsiderationDef.new(id, input, curve, weight)
 
@@ -184,6 +247,22 @@ static func expedition_action(action_id: String):
 static func expedition_actions() -> Array:
 	_ensure(); var ids: Array = _expedition_actions.keys(); ids.sort()
 	return ids.map(func(id): return _copy_action(_expedition_actions[id]))
+static func party_action(action_id: String):
+	_ensure(); return _copy_action(_party_actions.get(action_id))
+static func party_actions() -> Array:
+	_ensure(); var ids: Array = _party_actions.keys(); ids.sort()
+	return ids.map(func(id): return _copy_action(_party_actions[id]))
+static func party_mode_actions(mode_id: String) -> Array[String]:
+	_ensure()
+	var result: Array[String] = []
+	for action_id in _party_modes.get(mode_id, []):
+		result.append(str(action_id))
+	return result
+static func party_inputs() -> Array[String]:
+	var result: Array[String] = []
+	for input_id in PARTY_INPUTS:
+		result.append(input_id)
+	return result
 
 static func _copy_curve(source):
 	if source == null: return null
@@ -349,6 +428,68 @@ static func validation_error() -> String:
 					or absi(consideration.signed_weight_milli) > 2000:
 				return "invalid_expedition_consideration"
 			consideration_ids[consideration.consideration_id] = true
+	var party_keys: Array = _party_actions.keys(); party_keys.sort()
+	var expected_party_keys: Array = PARTY_ACTION_IDS.duplicate(); expected_party_keys.sort()
+	if party_keys != expected_party_keys:
+		return "invalid_party_action"
+	var party_mode_keys: Array = _party_modes.keys(); party_mode_keys.sort()
+	var expected_party_mode_keys: Array = PARTY_MODE_IDS.duplicate(); expected_party_mode_keys.sort()
+	if party_mode_keys != expected_party_mode_keys:
+		return "invalid_party_mode"
+	var party_ranks: Dictionary = {}
+	var party_consideration_ids: Dictionary = {}
+	for action_id in PARTY_ACTION_IDS:
+		var party_action_def = _party_actions.get(action_id)
+		if party_action_def == null or party_action_def.action_id != action_id \
+				or party_action_def.allowed_mode_ids.is_empty() \
+				or party_ranks.has(party_action_def.tie_break_rank) \
+				or party_action_def.base_score < -10000 or party_action_def.base_score > 10000 \
+				or party_action_def.commitment_duration != 0 \
+				or party_action_def.cooldown_duration != 0 \
+				or party_action_def.switch_margin != 0 \
+				or party_action_def.candidate_provider_id != "party-v1" \
+				or party_action_def.intent_builder_id != "party-v1" \
+				or not party_action_def.gates.is_empty() \
+				or party_action_def.considerations.is_empty() \
+				or party_action_def.considerations.size() > 12:
+			return "invalid_party_action"
+		party_ranks[party_action_def.tie_break_rank] = true
+		var action_modes: Dictionary = {}
+		for mode_id in party_action_def.allowed_mode_ids:
+			if mode_id not in PARTY_MODE_IDS or action_modes.has(mode_id) \
+					or action_id not in _party_modes.get(mode_id, []):
+				return "invalid_party_mode"
+			action_modes[mode_id] = true
+		var action_consideration_ids: Dictionary = {}
+		for consideration in party_action_def.considerations:
+			if consideration.def_version != 1 \
+					or not str(consideration.consideration_id).begins_with("party_") \
+					or not _stable_id(consideration.consideration_id) \
+					or action_consideration_ids.has(consideration.consideration_id) \
+					or party_consideration_ids.has(consideration.consideration_id) \
+					or consideration.input_id not in PARTY_INPUTS \
+					or not _curves.has(consideration.curve_id) \
+					or absi(consideration.signed_weight_milli) > 2000 \
+					or (consideration.input_id.begins_with("facet.") \
+						and absi(consideration.signed_weight_milli) > 300) \
+					or (consideration.input_id.begins_with("relation.") \
+						and absi(consideration.signed_weight_milli) > 500):
+				return "invalid_party_consideration"
+			action_consideration_ids[consideration.consideration_id] = true
+			party_consideration_ids[consideration.consideration_id] = true
+	for mode_id in PARTY_MODE_IDS:
+		var seen_party_actions: Dictionary = {}
+		var mode_action_ids: Array = _party_modes.get(mode_id, [])
+		if mode_action_ids.is_empty():
+			return "invalid_party_mode"
+		for action_id in mode_action_ids:
+			if seen_party_actions.has(action_id) or not _party_actions.has(action_id) \
+					or mode_id not in _party_actions[action_id].allowed_mode_ids:
+				return "invalid_party_mode"
+			seen_party_actions[action_id] = true
+	if "HOLD" not in _party_modes.get("NORMAL", []) \
+			or "HOLD" not in _party_modes.get("PANIC", []):
+		return "invalid_party_mode"
 	return ""
 
 
