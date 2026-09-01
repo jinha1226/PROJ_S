@@ -782,9 +782,10 @@ func preview_party_turn(request, processed_step_index: int,
 	if world.world_time > MAX_WORLD_TIME - max_cost: return PlanScript.new({"accepted":false,"reason":"time_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	var schedule_plan := _schedule_preflight(world.world_time + max_cost)
 	if not str(schedule_plan.reason).is_empty(): return PlanScript.new({"accepted":false,"reason":str(schedule_plan.reason),"actor_rows":[],"base_fingerprint":_fingerprint()})
-	# Include action/damage/death/override rows and the worst-case victory plus
-	# zero-time regroup chain (root, every living companion, completion).
-	var conservative_events: int = rows.size() * 4 + state.party_member_ids.size() + 4
+	# Include action/damage/death/corpse-materialization/override rows and the
+	# worst-case victory plus zero-time regroup chain (root, every living
+	# companion, completion).
+	var conservative_events: int = rows.size() * 5 + state.party_member_ids.size() + 4
 	conservative_events += schedule_plan.occurrences.size() * (world.tiles.size() * 4 + world.entities.size() * 6 + 4)
 	if not world.has_event_id_headroom(conservative_events): return PlanScript.new({"accepted":false,"reason":"event_id_overflow","actor_rows":[],"base_fingerprint":_fingerprint()})
 	var timeline: Array = []

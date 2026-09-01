@@ -1095,7 +1095,8 @@ func _bootstrap_dungeon() -> void:
 		var health := clampi(int(_scenario_override.get("monster_health",
 			rng.randi_range(40, 60))), 30, 80)
 		var monster = simulator.world.add_entity("melee_enemy", "감염된 고블린 %d" % (index + 1),
-			monster_position, health, ["monster", "infected"], "goblin", "infected")
+			monster_position, health, ["monster", "infected"], "goblin", "infected",
+			"GOBLIN_MELEE_V1")
 		if monster == null:
 			continue
 		monster_ids.append(monster.id)

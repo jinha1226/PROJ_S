@@ -14,6 +14,7 @@ const StatusRow = preload("res://sim/combat_status_row.gd")
 const Melee = preload("res://sim/systems/melee_combat_system.gd")
 const Defense = preload("res://sim/combat_defense_rules.gd")
 const Terrain = preload("res://sim/terrain_registry.gd")
+const SpeciesDrops = preload("res://sim/species_drop_registry.gd")
 
 func _party_hero_defense_snapshot() -> Dictionary:
 	return Defense.build_snapshot(150, 2, {})
@@ -508,13 +509,15 @@ func _bleedout_fixture() -> Dictionary:
 		"cause_id":"6", "instigator_id":tick.instigator_id,
 		"data":{"schema_version":1, "status_ruleset_id":"bounded-status-lifecycle-v1",
 			"status_id":"BLEEDING", "reason":"OWNER_DIED"}})
-	snapshot.events.append({"id":"8", "step_index":tick.step_index,
+	var death := {"id":"8", "step_index":tick.step_index,
 		"world_time":tick.world_time, "type":"entity.died", "actor_id":"-1",
 		"target_id":tick.target_id, "position":tick.position.duplicate(true), "magnitude":0,
 		"cause_id":"6", "instigator_id":tick.instigator_id,
 		"data":{"schema_version":1, "life_ruleset_id":"active-downed-dead-v1",
-			"previous_life_state":"DOWNED", "reason":"BLEEDOUT", "damage_type":"physical"}})
+			"previous_life_state":"DOWNED", "reason":"BLEEDOUT", "damage_type":"physical"}}
+	snapshot.events.append(death)
 	snapshot.next_event_id = "9"
+	if not _append_empty_corpse_drop_wire(snapshot, death): return {}
 	var target_id: int = int(tick.target_id); var row: Dictionary = _combatant_wire(snapshot, target_id)
 	row.life_state = "DEAD"; row.guarded_until = "0"; row.guard_source_event_id = "-1"
 	row.downed_at = "-1"; row.downed_resolve_at = "-1"; row.downed_source_event_id = "-1"
@@ -1291,8 +1294,7 @@ func _downed_finisher_overkill_batch_fixture() -> Dictionary:
 	target_state.recovery_lock_until = 0; target_state.recovery_source_event_id = -1
 	target_state.status_rows.clear()
 	sim.world.finish_step()
-	var downed_snapshot = sim.snapshot()
-	if not downed_snapshot is Dictionary or not _begin_fixture_step(sim.world, 100): return {}
+	if not _begin_fixture_step(sim.world, 100): return {}
 	var first_key := Melee.commitment_key(seed_value, 2, 100, "PARTY_TURN/2",
 		0, attacker.id, target.id)
 	var later_key := Melee.commitment_key(seed_value, 2, 100, "PARTY_TURN/2",
@@ -1315,17 +1317,14 @@ func _downed_finisher_overkill_batch_fixture() -> Dictionary:
 			"previous_life_state":"DOWNED", "reason":"FINISHER",
 			"damage_type":"physical"})
 	if death == null: return {}
-	var snapshot: Dictionary = downed_snapshot.duplicate(true)
-	snapshot.events.append(first.to_dict()); snapshot.events.append(overkill.to_dict())
-	snapshot.events.append(pressure.to_dict()); snapshot.events.append(death.to_dict())
-	snapshot.next_event_id = str(int(snapshot.next_event_id) + 4)
-	snapshot.step_index = "2"; snapshot.world_time = "100"
-	for schedule in snapshot.scheduled_entries: schedule.due_time = "200"
-	var row: Dictionary = _combatant_wire(snapshot, target.id)
-	row.life_state = "DEAD"; row.guarded_until = "0"; row.guard_source_event_id = "-1"
-	row.downed_at = "-1"; row.downed_resolve_at = "-1"; row.downed_source_event_id = "-1"
-	row.recovery_lock_until = "0"; row.recovery_source_event_id = "-1"; row.status_rows = []
-	return snapshot
+	target_state.life_state = "DEAD"
+	target_state.guarded_until = 0; target_state.guard_source_event_id = -1
+	target_state.downed_at = -1; target_state.downed_resolve_at = -1
+	target_state.downed_source_event_id = -1; target_state.recovery_lock_until = 0
+	target_state.recovery_source_event_id = -1; target_state.status_rows = []
+	sim.world.finish_step()
+	var snapshot = sim.snapshot()
+	return snapshot if snapshot is Dictionary else {}
 
 func _downed_batch_action_data(key: String, ordinal: int, attacker_profile: String,
 		outcome: String) -> Dictionary:
@@ -1693,13 +1692,15 @@ func _downed_hazard_fixture(damage_type: String) -> Dictionary:
 			"combat_ruleset_id":"deterministic-melee-resolution-v1",
 			"damage_type":damage_type, "requested_damage":20,
 			"applied_health_damage":0, "reason":"HAZARD"}})
-	snapshot.events.append({"id":str(death_id), "step_index":str(source.step_index),
+	var death := {"id":str(death_id), "step_index":str(source.step_index),
 		"world_time":str(source.world_time), "type":"entity.died", "actor_id":"-1",
 		"target_id":str(target_id), "position":position_wire.duplicate(), "magnitude":0,
 		"cause_id":str(pressure_id), "instigator_id":str(source.instigator_id),
 		"data":{"schema_version":1, "life_ruleset_id":"active-downed-dead-v1",
-			"previous_life_state":"DOWNED", "reason":"HAZARD", "damage_type":damage_type}})
+			"previous_life_state":"DOWNED", "reason":"HAZARD", "damage_type":damage_type}}
+	snapshot.events.append(death)
 	snapshot.next_event_id = str(death_id + 1)
+	if not _append_empty_corpse_drop_wire(snapshot, death): return {}
 	var row: Dictionary = _combatant_wire(snapshot, target_id)
 	row.life_state = "DEAD"; row.guarded_until = "0"; row.guard_source_event_id = "-1"
 	row.downed_at = "-1"; row.downed_resolve_at = "-1"; row.downed_source_event_id = "-1"
@@ -1715,6 +1716,7 @@ func _downed_only_fixture() -> Dictionary:
 	if downed_event.is_empty(): return {}
 	snapshot.events = snapshot.events.slice(0, int(downed_event.id))
 	snapshot.next_event_id = str(int(downed_event.id) + 1)
+	_discard_truncated_empty_corpse_drop_wire(snapshot)
 	snapshot.step_index = downed_event.step_index; snapshot.world_time = downed_event.world_time
 	for schedule in snapshot.scheduled_entries: schedule.due_time = "100"
 	var target_id: int = int(downed_event.target_id)
@@ -1805,11 +1807,24 @@ func _party_dead_posthumous_bleed_forge() -> Dictionary:
 	var downed: Dictionary = snapshot.events[3].duplicate(true)
 	downed.id = "5"; downed.cause_id = "4"; downed.instigator_id = "4"
 	var death: Dictionary = snapshot.events[4].duplicate(true)
+	var previous_death_id := str(death.id)
 	death.id = "6"; death.cause_id = "5"; death.instigator_id = "4"
 	death.data.damage_type = "physical"
 	var later_two: Dictionary = snapshot.events[5].duplicate(true)
+	var previous_materialized_id := str(later_two.id)
 	var later_three: Dictionary = snapshot.events[6].duplicate(true)
-	later_two.id = "7"; later_three.id = "8"
+	later_two.id = "7"
+	if later_two.type == "corpse.loot_materialized":
+		later_two.step_index = death.step_index; later_two.world_time = death.world_time
+		later_two.actor_id = death.target_id; later_two.target_id = death.target_id
+		later_two.position = death.position.duplicate(true); later_two.magnitude = 0
+		later_two.cause_id = death.id; later_two.instigator_id = death.instigator_id
+		later_two.data.source_death_event_id = death.id
+	later_three.id = "8"
+	if str(later_three.cause_id) == previous_death_id:
+		later_three.cause_id = death.id
+	elif str(later_three.cause_id) == previous_materialized_id:
+		later_three.cause_id = later_two.id
 	var applied := {"id":"9", "step_index":"1", "world_time":"100",
 		"type":"status.applied", "actor_id":"-1", "target_id":"1",
 		"position":[7, 7], "magnitude":0, "cause_id":"4", "instigator_id":"4",
@@ -1826,6 +1841,7 @@ func _party_dead_posthumous_bleed_forge() -> Dictionary:
 	snapshot.events = [snapshot.events[0], snapshot.events[1], action, physical,
 		downed, death, later_two, later_three, applied, expired]
 	snapshot.next_event_id = "11"
+	snapshot.item_state.processed_drop_death_event_ids = [death.id]
 	var hero_row: Dictionary = _combatant_wire(snapshot, 1)
 	hero_row.status_rows = []
 	return snapshot
@@ -1857,6 +1873,12 @@ func _party_defeat_fixture() -> Dictionary:
 		later.id = str(int(later.id) + 1)
 		if int(later.cause_id) == old_death_id: later.cause_id = str(old_death_id + 1)
 		elif int(later.cause_id) > old_death_id: later.cause_id = str(int(later.cause_id) + 1)
+		if later.type == "corpse.loot_materialized" \
+				and int(later.data.source_death_event_id) == old_death_id:
+			later.data.source_death_event_id = str(old_death_id + 1)
+	for index in range(snapshot.item_state.processed_drop_death_event_ids.size()):
+		if int(snapshot.item_state.processed_drop_death_event_ids[index]) == old_death_id:
+			snapshot.item_state.processed_drop_death_event_ids[index] = str(old_death_id + 1)
 	var downed := {"id":str(old_death_id), "step_index":damage.step_index,
 		"world_time":damage.world_time, "type":"entity.downed", "actor_id":"-1",
 		"target_id":damage.target_id, "position":damage.position.duplicate(true), "magnitude":0,
@@ -5673,6 +5695,47 @@ func _combatant_wire(snapshot: Dictionary, entity_id: int) -> Dictionary:
 		if int(row.entity_id) == entity_id: return row
 	return {}
 
+
+func _append_empty_corpse_drop_wire(snapshot: Dictionary,
+		death_event: Dictionary) -> bool:
+	# Phase 5 intentionally forges lifecycle ledgers at the wire level. C1 makes
+	# an empty drop result observable too, so a hand-built tableless-species death
+	# must carry the same adjacent derived event and processed-ID entry as runtime.
+	if snapshot.is_empty() or death_event.is_empty() \
+			or str(snapshot.next_event_id) != str(int(death_event.id) + 1):
+		return false
+	var species_id := ""
+	for entity in snapshot.entities:
+		if int(entity.id) == int(death_event.target_id):
+			species_id = str(entity.species_id)
+			break
+	if species_id.is_empty() or not SpeciesDrops.rolls_for(int(snapshot.seed),
+			int(death_event.id), species_id).is_empty():
+		return false
+	var materialized_id := str(snapshot.next_event_id)
+	snapshot.events.append({"id":materialized_id,
+		"step_index":death_event.step_index, "world_time":death_event.world_time,
+		"type":"corpse.loot_materialized", "actor_id":death_event.target_id,
+		"target_id":death_event.target_id, "position":death_event.position.duplicate(true),
+		"magnitude":0, "cause_id":death_event.id,
+		"instigator_id":death_event.instigator_id,
+		"data":{"schema_version":1, "ruleset_id":SpeciesDrops.RULESET_ID,
+			"source_death_event_id":death_event.id, "generated_items":[]}})
+	snapshot.next_event_id = str(int(materialized_id) + 1)
+	snapshot.item_state.processed_drop_death_event_ids.append(str(death_event.id))
+	snapshot.item_state.processed_drop_death_event_ids.sort_custom(func(a, b):
+		return int(a) < int(b))
+	snapshot.item_state.revision = str(int(snapshot.item_state.revision) + 1)
+	return true
+
+
+func _discard_truncated_empty_corpse_drop_wire(snapshot: Dictionary) -> void:
+	# These lifecycle fixtures truncate the tableless `melee_enemy` finisher back
+	# to its earlier DOWNED prefix. No item was generated, but the processed marker
+	# and its revision belong to the removed death and must be truncated with it.
+	snapshot.item_state.processed_drop_death_event_ids = []
+	snapshot.item_state.revision = str(maxi(0, int(snapshot.item_state.revision) - 1))
+
 func test_exact_recovery_snapshot_roundtrip_and_per_field_forge_matrix() -> bool:
 	var canonical: Dictionary = _recovered_fixture()
 	check(not canonical.is_empty(), "canonical recovery fixture built")
@@ -5728,6 +5791,7 @@ func _recovered_fixture() -> Dictionary:
 	downed.events = downed.events.slice(0, int(downed_event.id))
 	downed.next_event_id = str(int(downed_event.id) + 1); downed.step_index = downed_event.step_index
 	downed.world_time = downed_event.world_time
+	_discard_truncated_empty_corpse_drop_wire(downed)
 	for schedule in downed.scheduled_entries: schedule.due_time = "100"
 	var target_id: int = int(downed_event.target_id)
 	for entity in downed.entities:

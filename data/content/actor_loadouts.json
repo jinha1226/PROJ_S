@@ -1,0 +1,25 @@
+{
+  "content_schema_version": 1,
+  "content_version": "2026-09-01",
+  "content_type": "ACTOR_LOADOUTS",
+  "ruleset_id": "actor-loadouts-v1",
+  "loadouts": [
+    {
+      "loadout_id": "GOBLIN_MELEE_V1",
+      "items": [
+        {
+          "entry_id": "BODY_ARMOR",
+          "definition_id": "ARMOR_PADDED",
+          "quantity": 1,
+          "equip_slot": "ARMOR"
+        },
+        {
+          "entry_id": "MAIN_WEAPON",
+          "definition_id": "WEAPON_SHORT_SWORD",
+          "quantity": 1,
+          "equip_slot": "MAIN_HAND"
+        }
+      ]
+    }
+  ]
+}

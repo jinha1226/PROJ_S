@@ -29,7 +29,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var status_count: int = world.combatant_states[entity.id].status_rows.size() \
 		if entity != null and world.combatant_states.has(entity.id) else 0
 	var should_apply_bleed: bool = apply_bleed_status and not terminal_immediate
-	var required_events := (3 + status_count) if terminal_immediate \
+	# A terminal death synchronously emits one corpse materialization child.
+	var required_events := (4 + status_count) if terminal_immediate \
 		else ((2 if lethal else 1) + (1 if should_apply_bleed else 0))
 	var bleed_rows: Array = []
 	if entity != null and world.combatant_states.has(entity.id):
@@ -169,7 +170,7 @@ func apply_canonical_downed_finisher(entity, requested_pressure: int, cause_id: 
 			or cause.data.get("schema_version") != 1 \
 			or cause.data.get("intent_mode") != "FINISHER" \
 			or cause.data.get("outcome") != "FINISHER" \
-			or not world.has_event_id_headroom(2 + status_count):
+			or not world.has_event_id_headroom(3 + status_count):
 		return {"accepted": false, "event": null, "death_event": null}
 	var pressure = world.emit_event("combat.downed_damage", -1, entity.id,
 		resolved_position, requested_pressure, cause_id, {"schema_version": 1,
@@ -219,7 +220,7 @@ func apply_canonical_downed_bleedout(entity, requested_pressure: int, cause_id: 
 			or cause.data.get("status_id") != "BLEEDING" \
 			or cause.data.get("tick_damage") != requested_pressure \
 			or status_count != 1 or combatant.status_rows[0].status_id != "BLEEDING" \
-			or not world.has_event_id_headroom(2 + status_count):
+			or not world.has_event_id_headroom(3 + status_count):
 		return {"accepted": false, "event": null, "death_event": null}
 	var pressure = world.emit_event("combat.downed_damage", -1, entity.id,
 		resolved_position, requested_pressure, cause_id, {"schema_version": 1,
@@ -254,7 +255,8 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 		event_position: Vector2i, processed_step_index: int) -> int:
 	if entity == null or not world.combatant_states.has(entity.id) \
 			or world.combatant_states[entity.id].life_state != "ACTIVE" or amount <= 0 \
-			or processed_step_index <= 0 or processed_step_index != world._active_step_index:
+			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
+			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
 		return 0
 	var damage := mini(entity.health, maxi(1, amount))
 	entity.health -= damage

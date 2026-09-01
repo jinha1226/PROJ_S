@@ -180,6 +180,17 @@
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": true
+    },
+    {
+      "definition_id": "GOBLIN_EAR",
+      "label": "고블린 귀",
+      "category": "MATERIAL",
+      "stack_limit": 10,
+      "equip_slots": [],
+      "weapon_id": "",
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
     }
   ],
   "affixes": [

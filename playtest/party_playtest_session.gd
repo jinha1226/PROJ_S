@@ -230,7 +230,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		var spawn_position:Vector2i=enemy_row.get("position",Vector2i(-1,-1))
 		var spawned=candidate.world.add_entity(str(enemy_profile.entity_kind),
 			str(enemy_profile.display_name),spawn_position,int(enemy_profile.max_health),
-			["party_enemy"],str(enemy_profile.species_id),"enemy")
+			["party_enemy"],str(enemy_profile.species_id),"enemy",
+			"GOBLIN_MELEE_V1" if str(enemy_profile.species_id)=="goblin" else "")
 		if spawned==null:return false
 		enemies.append(spawned)
 	var opening_state = null

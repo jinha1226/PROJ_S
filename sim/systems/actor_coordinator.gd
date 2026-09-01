@@ -492,7 +492,9 @@ func _batch_preflight(intents: Array[Dictionary], mode_transitions: Array[Dictio
 			"MELEE_ATTACK":
 				var attack_target_id := int(intent.get("leaf_target_entity_id", -1))
 				if attack_target_id <= 0 or not combat.can_attack(actor_id, attack_target_id): return "attack_preflight_failed"
-				maximum_events += 2 # action + damage + possible death, in addition to the common leaf event.
+				# In addition to the common action leaf, reserve damage/downed or
+				# pressure/death/materialization. The latter is the larger path.
+				maximum_events += 3
 			"HOLD": pass
 			"FREEZE":
 				if state.controller_kind != "LEAD" or state.personality_profile == null: return "freeze_preflight_failed"

@@ -45,6 +45,9 @@ const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const PartyEncounterStateScript = preload("res://sim/party_encounter_state.gd")
 const WorldItemStateScript = preload("res://sim/world_item_state.gd")
 const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
+const ActorLoadoutRegistryScript = preload("res://sim/actor_loadout_registry.gd")
+const SpeciesDropRegistryScript = preload("res://sim/species_drop_registry.gd")
+const CorpseLootSystemScript = preload("res://sim/systems/corpse_loot_system.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const InventoryStateScript = preload("res://sim/inventory_state.gd")
 const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
@@ -193,7 +196,7 @@ func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
 
 func add_entity(kind: String, display_name: String, position: Vector2i,
 		max_health: int = 100, tags: Array = [], species_id: String = "",
-		faction_id: String = ""):
+		faction_id: String = "", loadout_id: String = ""):
 	if not in_bounds(position) or not _terrain_is_passable(position) \
 			or blocking_entity_at(position) != null \
 			or max_health < 1 or max_health > MAX_SMALL_VALUE \
@@ -219,10 +222,19 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 		return null
 	var inventory = InventoryStateScript.new()
 	var ammo_pool = AmmoPoolStateScript.new()
+	var next_items = item_state.clone()
+	next_items.inventory_rows[entity.id] = inventory
+	next_items.ammo_pool_rows[entity.id] = ammo_pool
+	if not loadout_id.is_empty():
+		var loadout_plan: Dictionary = ActorLoadoutRegistryScript.plan_apply(
+			next_items, entity.id, loadout_id)
+		if not bool(loadout_plan.get("accepted", false)): return null
+		next_items = loadout_plan.item_state
+	var item_error: String = next_items.validation_error(width, height)
+	if not item_error.is_empty(): return null
 	entities[entity.id] = entity
 	combatant_states[entity.id] = combatant
-	item_state.inventory_rows[entity.id] = inventory
-	item_state.ammo_pool_rows[entity.id] = ammo_pool
+	item_state = next_items
 	_register_occupancy(entity.id, position)
 	_next_entity_id += 1
 	return entity
@@ -566,6 +578,16 @@ func emit_event(type: String, actor_id: int = -1, target_id: int = -1,
 	)
 	events.append(event)
 	_next_event_id += 1
+	if type == "entity.died":
+		# Death is the sole C1 input, independent of whether it came from a direct
+		# hit, finisher, status tick or environment. Materialization itself emits a
+		# derived event; a failed transaction retracts this source event so callers
+		# can roll the enclosing step back without a half-processed corpse.
+		var materialized: Dictionary = CorpseLootSystemScript.materialize_death_event(self, event)
+		if not bool(materialized.get("accepted", false)):
+			events.pop_back()
+			_next_event_id -= 1
+			return null
 	# Canonical environment producers emit their source leaf immediately before
 	# mutating the referenced tile. Mark that position up front so the sparse
 	# runtime index also covers low-level fixtures using the same producer seam.
@@ -1490,6 +1512,65 @@ func _death_event_ids() -> Array:
 	return ids
 
 
+func _corpse_drop_history_error() -> String:
+	var processed: Dictionary = {}
+	for death_event_id in item_state.processed_drop_death_event_ids:
+		processed[int(death_event_id)] = true
+	var materialized_by_death: Dictionary = {}
+	for event in events:
+		if event.type != "corpse.loot_materialized": continue
+		var keys: Array = event.data.keys(); keys.sort()
+		if keys != ["generated_items", "ruleset_id", "schema_version",
+				"source_death_event_id"] or event.data.get("schema_version") != 1 \
+				or event.data.get("ruleset_id") != SpeciesDropRegistryScript.RULESET_ID \
+				or not Int64CodecScript.is_canonical(event.data.get("source_death_event_id")) \
+				or not event.data.get("generated_items") is Array:
+			return "corpse_drop_event_shape_invalid"
+		var death_id := Int64CodecScript.parse(event.data.source_death_event_id,
+			"corpse drop death event")
+		var death = event_by_id(death_id)
+		if death == null or death.type != "entity.died" or event.cause_id != death_id \
+				or event.id != death_id + 1 or event.actor_id != death.target_id \
+				or event.target_id != death.target_id or event.position != death.position \
+				or event.step_index != death.step_index or event.world_time != death.world_time \
+				or materialized_by_death.has(death_id):
+			return "corpse_drop_event_source_invalid"
+		var corpse = entities.get(death.target_id)
+		if corpse == null: return "corpse_drop_event_source_invalid"
+		var expected_rolls := SpeciesDropRegistryScript.rolls_for(seed, death_id,
+			str(corpse.species_id))
+		var actual_rolls: Array = []
+		var previous_instance_id := ""
+		var total_quantity := 0
+		for generated in event.data.generated_items:
+			if not generated is Dictionary: return "corpse_drop_item_shape_invalid"
+			var generated_keys: Array = generated.keys(); generated_keys.sort()
+			if generated_keys != ["definition_id", "instance_id", "location", "quantity", "roll_id"] \
+					or not generated.instance_id is String \
+					or not generated.definition_id is String or not generated.roll_id is String \
+					or not generated.location is String or generated.location not in ["CORPSE", "GROUND"] \
+					or not generated.quantity is int or int(generated.quantity) < 1:
+				return "corpse_drop_item_shape_invalid"
+			var instance_id := str(generated.instance_id)
+			if not previous_instance_id.is_empty() and instance_id <= previous_instance_id:
+				return "corpse_drop_item_order_invalid"
+			previous_instance_id = instance_id
+			actual_rolls.append({"roll_id": str(generated.roll_id),
+				"definition_id": str(generated.definition_id),
+				"quantity": int(generated.quantity)})
+			total_quantity += int(generated.quantity)
+		if actual_rolls != expected_rolls or event.magnitude != total_quantity:
+			return "corpse_drop_roll_mismatch"
+		materialized_by_death[death_id] = true
+	for event in events:
+		if event.type != "entity.died": continue
+		if not processed.has(int(event.id)) or not materialized_by_death.has(int(event.id)):
+			return "corpse_drop_death_unprocessed"
+	if processed.size() != materialized_by_death.size():
+		return "corpse_drop_processed_event_mismatch"
+	return ""
+
+
 func runtime_step_postcondition_error(event_start: int) -> String:
 	# A live world begins at a fully-audited reset/load/restore boundary. During a
 	# normal step, all mutation goes through checked systems and emit_event();
@@ -1585,6 +1666,10 @@ func _restored_state_error() -> String:
 	if not profile_registry_error.is_empty(): return profile_registry_error
 	var status_registry_error := StatusRegistryScript.registry_error()
 	if not status_registry_error.is_empty(): return status_registry_error
+	var actor_loadout_registry_error := ActorLoadoutRegistryScript.registry_error()
+	if not actor_loadout_registry_error.is_empty(): return actor_loadout_registry_error
+	var species_drop_registry_error := SpeciesDropRegistryScript.registry_error()
+	if not species_drop_registry_error.is_empty(): return species_drop_registry_error
 	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
 	var item_state_error := _item_state_error()
 	if not item_state_error.is_empty(): return item_state_error
@@ -2004,6 +2089,8 @@ func _restored_state_error() -> String:
 		for reference_id in [event.actor_id, event.target_id, event.instigator_id]:
 			if reference_id != -1 and (reference_id <= 0 or not entities.has(reference_id)):
 				return "event_entity_reference_invalid"
+	var corpse_drop_history_error := _corpse_drop_history_error()
+	if not corpse_drop_history_error.is_empty(): return corpse_drop_history_error
 	var miss_history_error := _canonical_miss_history_error()
 	if not miss_history_error.is_empty(): return miss_history_error
 	var hit_history_error := _canonical_hit_history_error()
