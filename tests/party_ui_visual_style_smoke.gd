@@ -106,7 +106,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		for second in range(first+1,direction_rects.size()):
 			_check(not direction_rects[first].intersects(direction_rects[second]),
 				"%s direction hit rects overlap: %s / %s"%[viewport_size,first,second])
-	for button in [sandbox.product_attack_button,sandbox.product_auto_button,
+	for button in [sandbox.product_attack_button,sandbox.product_pickup_button,sandbox.product_auto_button,
 			sandbox.product_interact_button,sandbox.product_wait_guard_button,
 			sandbox.product_execute_button]:
 		_check(button is Button and bool(button.get_meta("product_control",false)) \
@@ -117,6 +117,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(not sandbox.product_auto_button.disabled and sandbox.product_auto_button.toggle_mode \
 		and sandbox.product_attack_button.visible and not sandbox.product_attack_button.disabled \
 		and sandbox.product_attack_button.text=="[공격]" \
+		and sandbox.product_pickup_button.visible and not sandbox.product_pickup_button.disabled \
+		and sandbox.product_pickup_button.text.begins_with("[줍기") \
 		and not sandbox.product_wait_guard_button.disabled \
 		and sandbox.product_execute_button.disabled,
 		"%s exploration contextual controls do not match AUTO/ATTACK/WAIT/EXECUTE authority"%viewport_size)

@@ -70,6 +70,7 @@ var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
 var product_direction_buttons:Dictionary={}
 var product_attack_button:Button
+var product_pickup_button:Button
 var product_auto_button:Button
 var product_interact_button:Button
 var product_wait_guard_button:Button
@@ -351,7 +352,7 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
 	for button in product_direction_buttons.values():controls.append(button)
-	controls.append_array([product_attack_button,product_auto_button,product_interact_button,
+	controls.append_array([product_attack_button,product_pickup_button,product_auto_button,product_interact_button,
 		product_wait_guard_button,product_execute_button])
 	for control_value in controls:
 		var button:=control_value as Button
@@ -371,6 +372,7 @@ func _activate_product_control(control_name:String)->void:
 		"ProductMoveS":_on_product_direction(Vector2i(0,1))
 		"ProductMoveSE":_on_product_direction(Vector2i(1,1))
 		"ProductAttack":_on_product_attack()
+		"ProductPickup":_on_product_pickup()
 		"ProductAuto":_on_product_auto()
 		"ProductInteract":_on_product_interact()
 		"ProductWaitGuard":_on_product_wait_guard()
@@ -1949,7 +1951,7 @@ func _product_controls_metrics(party_count:int)->Dictionary:
 
 func _build_product_controls_dock(status:Dictionary)->void:
 	product_direction_buttons.clear()
-	product_attack_button=null;product_auto_button=null;product_interact_button=null
+	product_attack_button=null;product_pickup_button=null;product_auto_button=null;product_interact_button=null
 	product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
 	combat_action_dock.visible=true;combat_action_area.add_theme_constant_override("separation",0)
@@ -1994,9 +1996,15 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	var contextual:=VBoxContainer.new();contextual.name="ProductContextControls"
 	contextual.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
-	product_attack_button=_add_product_context_button(contextual,"[공격]","ProductAttack",
+	var primary:=GridContainer.new();primary.name="ProductPrimaryControls";primary.columns=2
+	primary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	primary.add_theme_constant_override("h_separation",gap);contextual.add_child(primary)
+	product_attack_button=_add_product_context_button(primary,"[공격]","ProductAttack",
 		_on_product_attack,target)
 	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 접근하거나 공격합니다."
+	product_pickup_button=_add_product_context_button(primary,"[줍기]","ProductPickup",
+		_on_product_pickup,target)
+	product_pickup_button.tooltip_text="현재 칸에 떨어진 아이템을 가방에 줍습니다."
 	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
 	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
@@ -2033,6 +2041,14 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_attack_button.disabled=terminal
 	if terminal:_product_attack_targeting=false
 	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 한 칸 접근하거나 공격합니다."
+	product_pickup_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
+	var ground_items:Array=session.ground_items_at_protagonist() \
+		if session.has_method("ground_items_at_protagonist") else []
+	product_pickup_button.text="[줍기 %d]"%ground_items.size() \
+		if ground_items.size()>1 else "[줍기]"
+	product_pickup_button.tooltip_text="현재 칸의 %s을(를) 가방에 줍습니다." \
+		%str(ground_items[0].get("label","아이템")) if not ground_items.is_empty() \
+		else "현재 칸에 아이템이 없으면 턴을 소비하지 않습니다."
 	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	var opening:Dictionary=session.opening_event_status() \
@@ -2181,6 +2197,27 @@ func _on_product_attack()->void:
 			else:_show_product_command_feedback("지금은 적에게 다가갈 수 없습니다.")
 		_:
 			_show_product_command_feedback("자동 공격 행동을 결정할 수 없습니다.")
+
+func _on_product_pickup()->void:
+	var status:Dictionary=session.party_status()
+	if bool(status.get("terminal",false)) or bool(_current_run_progress().get("terminal",false)):return
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	var route_state:Dictionary=session.exploration_route_state()
+	if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
+		_cancel_active_route()
+	var ground_items:Array=session.ground_items_at_protagonist()
+	if ground_items.is_empty():
+		_show_product_command_feedback("현재 칸에 주울 아이템이 없습니다.")
+		_request_refresh();return
+	var item:Dictionary=ground_items[0]
+	var result:Dictionary=session.pickup_ground_item(str(item.get("instance_id","")))
+	_record_result(result,true,"아이템을 주울 수 없습니다.")
+	if bool(result.get("accepted",false)):
+		notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%str(item.get("label","아이템"))
+		action_feedback_text=notice_text
+		if pending_ground_pickup_id==str(item.get("instance_id","")):
+			pending_ground_pickup_id="";pending_ground_pickup_label=""
+	_request_refresh()
 
 func _show_product_command_feedback(message:String)->void:
 	notice_text=message;action_feedback_text=message
