@@ -2,6 +2,7 @@ extends SceneTree
 
 const TEST_FILES := [
 	"test_party_enemy_squad_blackboard.gd",
+	"test_party_enemy_tactics_matrix.gd",
 	"test_party_enemy_awareness.gd",
 ]
 

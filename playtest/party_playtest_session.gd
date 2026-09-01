@@ -23,6 +23,7 @@ const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
+const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
 const InventoryScript=preload("res://sim/inventory_state.gd")
 const AmmoPoolScript=preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeScript=preload("res://sim/weapon_runtime_state.gd")
@@ -2959,18 +2960,24 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	var hero = sim.world.entities.get(state.protagonist_id)
 	if hero == null: return rows
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
+	var squad_board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
 	for enemy_id_value in state.enemy_ids:
 		var enemy_id := int(enemy_id_value)
 		var enemy = sim.world.entities.get(enemy_id)
 		if enemy == null or not visible.has(_position_key(enemy.position)): continue
-		var forecast: Dictionary = sim.party_coordinator.forecast_enemy_action(enemy_id)
+		var forecast: Dictionary = sim.party_coordinator.forecast_enemy_action(
+			enemy_id, squad_board)
 		if not bool(forecast.get("accepted", false)): continue
 		var target_id := int(forecast.target_id)
 		var target = sim.world.entities.get(target_id)
 		if target == null or not visible.has(_position_key(target.position)): continue
 		var action_type := str(forecast.action_type)
 		var headline := "%s → %s 공격" % [_name(enemy_id), _name(target_id)]
-		var target_role:="주인공" if is_solo_combat() else "가장 가까운 파티원"
+		var claimed_target_id := int(squad_board.get("claims", {}).get(enemy_id, -1))
+		var is_squad_focus := target_id == int(squad_board.get("focus_target_id", -1))
+		var target_role := "주인공" if is_solo_combat() else (
+			"분대 집중 표적" if is_squad_focus else (
+				"분대 담당 표적" if claimed_target_id == target_id else "가장 가까운 파티원"))
 		var reason := "%s이 공격 범위 안에 있습니다."%target_role
 		if action_type == "MOVE":
 			headline = "%s → %s 접근" % [_name(enemy_id), _name(target_id)]
@@ -2993,6 +3000,48 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.actor_id) < int(b.actor_id))
 	return rows.duplicate(true)
+
+
+func enemy_squad_tactics() -> Dictionary:
+	var empty := {"schema_version":1, "available":false,
+		"focus_target_id":-1, "focus_target_name":"", "claims":[]}
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return empty.duplicate(true)
+	var state = sim.world.party_encounter
+	if state.safe_phase != "ENGAGED" or not sim.world.entities.has(state.protagonist_id):
+		return empty.duplicate(true)
+	var hero = sim.world.entities[state.protagonist_id]
+	var visible: Dictionary = _presentation_visible_cells(hero.position)
+	var board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
+	var claims: Array[Dictionary] = []
+	var enemy_ids: Array = board.get("claims", {}).keys()
+	enemy_ids.sort()
+	for enemy_id_value in enemy_ids:
+		var enemy_id := int(enemy_id_value)
+		var target_id := int(board.claims[enemy_id])
+		var enemy = sim.world.entities.get(enemy_id)
+		var target = sim.world.entities.get(target_id)
+		if enemy == null or target == null \
+				or not visible.has(_position_key(enemy.position)) \
+				or not visible.has(_position_key(target.position)):
+			continue
+		var is_focus := target_id == int(board.focus_target_id)
+		claims.append({"enemy_id":enemy_id, "enemy_name":_name(enemy_id),
+			"target_id":target_id, "target_name":_name(target_id),
+			"is_focus":is_focus, "basis_code":"SQUAD_CLAIM",
+			"explanation":"분대 집중 표적을 담당합니다." if is_focus \
+				else "분대가 나눈 담당 표적을 추적합니다."})
+	if claims.is_empty():
+		return empty.duplicate(true)
+	var visible_focus_id := -1
+	for row in claims:
+		if bool(row.is_focus):
+			visible_focus_id = int(row.target_id)
+			break
+	return {"schema_version":1, "available":true,
+		"focus_target_id":visible_focus_id,
+		"focus_target_name":_name(visible_focus_id) if visible_focus_id > 0 else "",
+		"claims":claims}.duplicate(true)
 
 
 func companion_decision_explanations() -> Dictionary:

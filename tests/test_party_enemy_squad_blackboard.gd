@@ -199,6 +199,47 @@ func test_enemy_move_reservation_holds_when_every_progress_cell_is_blocked() -> 
 	return finish()
 
 
+func test_enemy_squad_tactics_observation_is_exact_pure_and_detached() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	_add_visible_enemies(world, state, 3)
+	for enemy_id in state.enemy_ids:
+		state.enemy_awareness(enemy_id).awareness_state = "HUNTING"
+		state.enemy_awareness(enemy_id).suspicion = 1000
+	var before: String = session.save_session_json()
+	var tactics: Dictionary = session.enemy_squad_tactics()
+	var keys: Array = tactics.keys(); keys.sort()
+	check_eq(keys, ["available", "claims", "focus_target_id",
+		"focus_target_name", "schema_version"], "tactics DTO has exact top-level keys")
+	check(bool(tactics.available) and not tactics.claims.is_empty(),
+		"visible active enemy claims are observable")
+	for row in tactics.claims:
+		var row_keys: Array = row.keys(); row_keys.sort()
+		check_eq(row_keys, ["basis_code", "enemy_id", "enemy_name", "explanation",
+			"is_focus", "target_id", "target_name"],
+			"claim explanation has exact keys")
+		check_eq(row.basis_code, "SQUAD_CLAIM", "claim exposes a stable basis code")
+		check(not str(row.enemy_name).is_empty() and not str(row.target_name).is_empty()
+			and not str(row.explanation).is_empty(), "claim explanation is readable")
+	check_eq(session.save_session_json(), before,
+		"tactics observation mutates no snapshot event or RNG")
+	if not tactics.claims.is_empty():
+		tactics.claims[0].target_name = "변조"
+	check(not session.enemy_squad_tactics().claims.any(func(row: Dictionary):
+		return str(row.target_name) == "변조"), "tactics DTO is deeply detached")
+	var hidden_enemy_id := int(state.enemy_ids.back())
+	world.entities[hidden_enemy_id].position = Vector2i(14, 14)
+	session.scenario_id = Session.SHOWCASE_SCENARIO_ID
+	var hidden_board: Dictionary = Blackboard.build(world)
+	check(hidden_board.claims.has(hidden_enemy_id),
+		"hidden active squad member still owns an internal shared claim")
+	check(not session.enemy_squad_tactics().claims.any(func(row: Dictionary):
+		return int(row.enemy_id) == hidden_enemy_id),
+		"tactics observation leaks no offscreen enemy identity")
+	return finish()
+
+
 func _engaged():
 	var session = Session.new()
 	var state = session.sim.world.party_encounter
