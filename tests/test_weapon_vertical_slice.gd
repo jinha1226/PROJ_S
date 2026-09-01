@@ -189,6 +189,18 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 	check("장착 · 단검" in sandbox.member_item_weapon_text.text \
 		and "공격시간  100" in (sandbox.member_item_stats.TIME as Label).text,
 		"item tab owns equipment and intrinsic speed")
+	sandbox._on_item_row_selected("LEGACY_MAIN_HAND","MAIN_HAND")
+	check(sandbox.member_item_quick_unequip_button.visible \
+		and not sandbox.member_item_quick_unequip_button.disabled \
+		and "단검" in sandbox.member_item_quick_unequip_button.text \
+		and sandbox.member_item_quick_unequip_button.get_index() \
+			< sandbox.member_item_empty_text.get_index(),
+		"selecting equipped gear exposes its touch-sized unequip action before the backpack")
+	sandbox.member_item_quick_unequip_button.pressed.emit()
+	check(bool(session.protagonist_inventory().equipment_slots[0].empty) \
+		and not sandbox.member_item_quick_unequip_button.visible \
+		and "단검" in JSON.stringify(session.protagonist_inventory().backpack_rows),
+		"inline unequip action commits and immediately refreshes the item ledger")
 	sandbox.free()
 	var crossbow_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	check(_equip_starter_weapon(crossbow_session, "CROSSBOW").accepted,

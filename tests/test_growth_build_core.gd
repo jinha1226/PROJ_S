@@ -6,6 +6,7 @@ const Calculator = preload("res://sim/growth_build_calculator.gd")
 const Item = preload("res://sim/item_instance.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
+const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 
 
 func test_registry_has_four_species_two_rank_branches_and_four_hook_kinds() -> bool:
@@ -196,6 +197,8 @@ func test_species_item_mutation_matrix_and_tag_gates_are_stable() -> bool:
 
 func test_session_kill_awards_growth_trace_and_replays_exactly() -> bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
 	var state=session.sim.world.party_encounter
 	var hero_id:int=state.protagonist_id
 	var enemy_id:int=state.enemy_ids[0]
@@ -224,6 +227,15 @@ func test_session_kill_awards_growth_trace_and_replays_exactly() -> bool:
 		state.protagonist_growth.unlocked_mutation_ids],
 		[100,["PREDATOR_NERVE"]],
 		"one goblinoid kill mirrors XP and guarantees its first eligible trace")
+	sandbox._update_direct_solo_card(session.party_cards())
+	var level_label:=sandbox.find_child("LevelProgress",true,false) as Label
+	var xp_gauge=sandbox.find_child("CompactXPBar",true,false)
+	var xp_spec:Dictionary=xp_gauge.call("gauge_spec") if xp_gauge!=null \
+		and xp_gauge.has_method("gauge_spec") else {}
+	check(level_label!=null and "02" in level_label.text \
+		and int(xp_spec.get("value",-1))==0 \
+		and int(xp_spec.get("max_value",0))==150,
+		"the killing turn refreshes LV2 and its next XP threshold instead of looking unchanged")
 	var growth_rewards:Array=[]
 	for event in session.sim.world.events:
 		if event.type=="growth.enemy_reward":growth_rewards.append(event)
@@ -243,6 +255,7 @@ func test_session_kill_awards_growth_trace_and_replays_exactly() -> bool:
 	if bool(loaded.get("accepted",false)):
 		check_eq(restored.protagonist_growth_build(),build,
 			"restored triple-axis build is byte-for-byte equivalent")
+	sandbox.free()
 	return finish()
 
 

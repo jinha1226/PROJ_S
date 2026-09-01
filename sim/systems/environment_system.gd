@@ -52,6 +52,7 @@ func try_ignite(position: Vector2i, power: int, cause_id: int,
 		)
 		if tile.wetness == 0:
 			tile.wetness_source_event_id = -1
+		world.track_dynamic_tile(position)
 	if preview["reason"] == "wet":
 		world.emit_event(
 			"environment.ignition_failed", -1, -1, position, power, evaporation.id,
@@ -73,6 +74,7 @@ func try_ignite(position: Vector2i, power: int, cause_id: int,
 		if success_event_type == "environment.fire_spread"
 		else world.world_time
 	)
+	world.track_dynamic_tile(position)
 	return true
 
 
@@ -103,6 +105,7 @@ func apply_water(position: Vector2i, amount: int, cause_id: int,
 	if actual_increase > 0:
 		tile.wetness += actual_increase
 		tile.wetness_source_event_id = water_event.id
+	world.track_dynamic_tile(position)
 	return true
 
 
@@ -147,26 +150,21 @@ func process_tick(processed_step_index: int) -> bool:
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index:
 		return false
 	var burning_positions: Array[Vector2i] = []
-	for y in range(world.height):
-		for x in range(world.width):
-			var position := Vector2i(x, y)
-			if world.tile_at(position).fire > 0:
-				burning_positions.append(position)
+	for position in world.dynamic_tile_positions():
+		if world.tile_at(position).fire > 0: burning_positions.append(position)
 	for position in burning_positions:
 		_tick_existing_fire(position)
 	_apply_spread_candidates(_collect_spread_candidates(burning_positions), processed_step_index)
 	var fire_damage_requests: Array[Dictionary] = []
-	for y in range(world.height):
-		for x in range(world.width):
-			var position := Vector2i(x, y)
-			var tile = world.tile_at(position)
-			if tile.fire <= 0 or tile.fire_damage_eligible_time < 0 \
-					or world.world_time < tile.fire_damage_eligible_time:
-				continue
-			for entity in world.exposed_entities_at(position):
-				fire_damage_requests.append({"entity": entity,
-					"amount": mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, tile.fire),
-					"damage_type": "fire", "cause_id": tile.fire_source_event_id})
+	for position in world.dynamic_tile_positions():
+		var tile = world.tile_at(position)
+		if tile.fire <= 0 or tile.fire_damage_eligible_time < 0 \
+				or world.world_time < tile.fire_damage_eligible_time:
+			continue
+		for entity in world.exposed_entities_at(position):
+			fire_damage_requests.append({"entity": entity,
+				"amount": mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, tile.fire),
+				"damage_type": "fire", "cause_id": tile.fire_source_event_id})
 	_apply_damage_requests(fire_damage_requests, processed_step_index)
 	_decay_wetness()
 	return true
@@ -188,11 +186,13 @@ func _tick_existing_fire(position: Vector2i) -> void:
 			tile.wetness_source_event_id = -1
 		if tile.fire == 0:
 			_clear_fire(tile)
+			world.track_dynamic_tile(position)
 			return
 	tile.fire = projection["fire_after_decay"]
 	if tile.fire == 0:
 		world.emit_event("environment.fire_burned_out", -1, -1, position, 0, tile.fire_source_event_id)
 		_clear_fire(tile)
+	world.track_dynamic_tile(position)
 
 
 func _clear_fire(tile) -> void:
@@ -252,9 +252,11 @@ func _processed_step_matches(processed_step_index: int) -> bool:
 
 
 func _decay_wetness() -> void:
-	for tile in world.tiles:
+	for position in world.dynamic_tile_positions():
+		var tile = world.tile_at(position)
 		if tile.wetness <= 0:
 			continue
 		tile.wetness = maxi(0, tile.wetness - WETNESS_DECAY_PER_ENVIRONMENT_TICK)
 		if tile.wetness == 0:
 			tile.wetness_source_event_id = -1
+		world.track_dynamic_tile(position)

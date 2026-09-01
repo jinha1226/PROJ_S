@@ -153,6 +153,7 @@ var member_item_empty_text:Label
 var member_item_stats:Dictionary={}
 var member_item_equipment_rows:VBoxContainer
 var member_item_backpack_rows:VBoxContainer
+var member_item_quick_unequip_button:Button
 var member_item_action_row:HBoxContainer
 var member_item_equip_button:Button
 var member_item_unequip_button:Button
@@ -844,6 +845,15 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_window.add_child(equipment_title)
 	member_item_equipment_rows=VBoxContainer.new();member_item_equipment_rows.name="ItemEquipmentLedger"
 	member_item_equipment_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_equipment_rows)
+	member_item_quick_unequip_button=Button.new()
+	member_item_quick_unequip_button.name="ItemQuickUnequip"
+	member_item_quick_unequip_button.text="[해제]"
+	member_item_quick_unequip_button.custom_minimum_size.y=TOUCH_TARGET
+	member_item_quick_unequip_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_item_quick_unequip_button.visible=false
+	member_item_quick_unequip_button.pressed.connect(_on_item_unequip_selected)
+	member_item_window.add_child(member_item_quick_unequip_button)
+	AsciiFrameScript.apply_rail_button(member_item_quick_unequip_button,AsciiFrameScript.BRASS)
 	var backpack_title:=_card_label("가방 0 / 12","ItemBackpackHeading",FONT_SECTION)
 	backpack_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	member_item_window.add_child(backpack_title)
@@ -1218,10 +1228,26 @@ func _update_stable_party_card(row:Dictionary)->void:
 		state.text="%s%s · %s"%[str(emotion.get("icon","")),
 			str(emotion.get("label","평온")),"준비" if str(row.get("readiness","행동 준비"))=="행동 준비" else "행동중"]
 	var progression:Dictionary=row.get("progression",{}) if row.get("progression",{}) is Dictionary else {}
+	var level_label:=card.find_child("LevelProgress",true,false) as Label
+	if level_label!=null and bool(progression.get("available",false)):
+		var level:=int(progression.get("level",1))
+		if level_label.text.begins_with("LV "):level_label.text="LV %02d"%level
+		elif level_label.text.begins_with("LV"):level_label.text="LV%02d"%level
+		else:
+			var stats:Dictionary=progression.get("combat_stats",{}) \
+				if progression.get("combat_stats",{}) is Dictionary else {}
+			level_label.text="Lv.%d · 공 %d / 방 %d · 태세 %d%%"%[level,
+				int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
+				int(int(stats.get("guard_reduction_milli",250))/10)]
 	var xp:=card.find_child("CompactXPBar",true,false)
 	if xp!=null and xp.has_method("configure") and bool(progression.get("available",false)):
 		xp.call("configure_semantic","XP",int(progression.get("xp_current",0)),
 			maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
+	elif xp is Range and bool(progression.get("available",false)):
+		xp.max_value=maxi(1,int(progression.get("xp_required",1)))
+		xp.value=int(progression.get("xp_current",0))
+		xp.tooltip_text="XP %d/%d"%[int(progression.get("xp_current",0)),
+			int(progression.get("xp_required",1))]
 
 func _current_run_progress()->Dictionary:
 	if session!=null and session.has_method("run_progress"):
@@ -2721,6 +2747,9 @@ func _update_item_inventory_ledger()->void:
 	var selected_row:=_selected_item_ledger_row(dto)
 	member_item_equip_button.disabled=not has_selection or selected_equipped
 	member_item_unequip_button.disabled=not selected_equipped
+	member_item_quick_unequip_button.visible=selected_equipped
+	member_item_quick_unequip_button.disabled=not selected_equipped
+	member_item_quick_unequip_button.text="[해제]  %s"%str(selected_row.get("label","장비"))
 	member_item_use_button.visible=_is_healing_item_row(selected_row)
 	member_item_use_button.disabled=not has_selection or selected_equipped \
 		or not session.has_method("use_inventory_item")

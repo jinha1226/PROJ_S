@@ -968,9 +968,10 @@ func _safe_recovery_postcondition_error(details:Dictionary)->String:
 			or int(state.last_protagonist_damage_step)<-1 \
 			or int(state.last_protagonist_damage_step)>int(sim.world.step_index):
 		return "safe_recovery_projection_invalid"
-	var party_error:=PartyStateScript.wire_error(state.to_dict(),
-		sim.world.width,sim.world.height)
-	if not party_error.is_empty():return "safe_recovery_party_state_invalid"
+	# Simulator.step has already validated the complete party state immediately
+	# before this recovery tail. Recovery mutates only the counters above and,
+	# optionally, protagonist HP plus one event; serializing and re-validating the
+	# entire inventory/progression/roster here made every AUTO hop pay twice.
 	if details.has("event_id"):
 		var event=sim.world.event_by_id(int(details.event_id))
 		if event==null or event!=sim.world.events.back() \
@@ -4953,8 +4954,8 @@ func _event_message(event) -> String:
 		"progression.enemy_reward":return "%s 처치 · 경험치 +%d · 숙련 풀 +%d" % [
 			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
 		"growth.enemy_reward":
-			return "%s 이능 흔적을 얻었다 · %s"%[
-				_subject(actor),str(event.data.get("mutation_id",""))] \
+			return "%s 이능 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
+				_subject(actor),str(event.data.get("mutation_id","")),int(event.magnitude)] \
 				if bool(event.data.get("mutation_acquired",false)) \
 				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)]
 		"growth.stat_spent":return "%s 기본 능력을 단련했다."%_subject(actor)

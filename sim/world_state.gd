@@ -81,6 +81,11 @@ var _active_step_index: int = -1
 # this immutable portion in a packed copy-on-write template so a 96x96 turn
 # does not rebuild the dungeon topology merely to establish an atomic boundary.
 var _rollback_tile_terrain_cache := PackedStringArray()
+# Fire/wetness occupy only a handful of cells in the product dungeon. Keep a
+# canonical sparse index after the audited bootstrap/restore boundary so live
+# turns and rollback capture do not rescan every one of the 96x96 tiles.
+var _dynamic_tile_indices: Dictionary = {}
+var _dynamic_tile_index_ready := false
 
 
 func _init(p_width: int, p_height: int, p_seed: int = 1) -> void:
@@ -350,6 +355,7 @@ func bootstrap_set_terrain(position: Vector2i, terrain_id: String) -> bool:
 	tile.wetness_source_event_id = -1
 	tile.fire_damage_eligible_time = -1
 	_rollback_tile_terrain_cache = PackedStringArray()
+	track_dynamic_tile(position)
 	return true
 
 
@@ -369,6 +375,7 @@ func bootstrap_set_fire(position: Vector2i, intensity: int,
 	tile.fire_damage_eligible_time = (
 		world_time + ENVIRONMENT_INTERVAL
 		if source_type == "environment.fire_spread" else world_time)
+	track_dynamic_tile(position)
 	return event
 
 
@@ -384,6 +391,7 @@ func bootstrap_set_wetness(position: Vector2i, amount: int):
 	var tile = tile_at(position)
 	tile.wetness = amount
 	tile.wetness_source_event_id = event.id
+	track_dynamic_tile(position)
 	return event
 
 
@@ -424,6 +432,13 @@ func emit_event(type: String, actor_id: int = -1, target_id: int = -1,
 	)
 	events.append(event)
 	_next_event_id += 1
+	# Canonical environment producers emit their source leaf immediately before
+	# mutating the referenced tile. Mark that position up front so the sparse
+	# runtime index also covers low-level fixtures using the same producer seam.
+	if _dynamic_tile_index_ready and type in ["environment.ignited",
+			"environment.fire_spread","environment.water_applied"] \
+			and in_bounds(position):
+		_dynamic_tile_indices[position.y * width + position.x] = true
 	return event
 
 
@@ -604,14 +619,14 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 	# dungeon turn (normally no burning/wet tiles), so retain only non-default
 	# rows instead of allocating a 7×map-size scalar buffer on every hop.
 	var tile_terrain := _rollback_tile_terrain_cache
+	_ensure_dynamic_tile_index()
 	var tile_scalars := PackedInt64Array([tiles.size(), 0])
 	var dynamic_row_count := 0
-	for tile_index in range(tiles.size()):
+	var dynamic_indices: Array = _dynamic_tile_indices.keys()
+	dynamic_indices.sort()
+	for tile_index_value in dynamic_indices:
+		var tile_index := int(tile_index_value)
 		var tile = tiles[tile_index]
-		if tile.wetness == 0 and tile.fire == 0 \
-				and tile.fire_source_event_id == -1 and tile.wetness_source_event_id == -1 \
-				and tile.fire_damage_eligible_time == -1:
-			continue
 		tile_scalars.append(tile_index)
 		tile_scalars.append(int(tile.wetness))
 		tile_scalars.append(int(tile.fire))
@@ -666,6 +681,53 @@ func warm_rollback_memento_static_tiles() -> void:
 	# before the first input-driven turn. It does not capture mutable state or
 	# relax any rollback validation boundary.
 	_ensure_rollback_tile_static_cache()
+	_ensure_dynamic_tile_index()
+
+
+func dynamic_tile_positions() -> Array[Vector2i]:
+	_ensure_dynamic_tile_index()
+	var indices: Array = _dynamic_tile_indices.keys()
+	indices.sort()
+	var positions: Array[Vector2i] = []
+	for index_value in indices:
+		var index := int(index_value)
+		positions.append(Vector2i(index % width, index / width))
+	return positions
+
+
+func track_dynamic_tile(position: Vector2i) -> void:
+	if not _dynamic_tile_index_ready or not in_bounds(position): return
+	var index := position.y * width + position.x
+	if _tile_has_dynamic_state(tiles[index]): _dynamic_tile_indices[index] = true
+	else: _dynamic_tile_indices.erase(index)
+
+
+func runtime_dynamic_tiles_error() -> String:
+	_ensure_dynamic_tile_index()
+	for index_value in _dynamic_tile_indices:
+		var tile = tiles[int(index_value)]
+		if tile.wetness < 0 or tile.wetness > 100 or tile.fire < 0 or tile.fire > 100:
+			return "tile_scalar_invalid"
+		if (tile.fire == 0) != (tile.fire_source_event_id == -1) \
+				or (tile.fire == 0) != (tile.fire_damage_eligible_time == -1) \
+				or (tile.wetness == 0) != (tile.wetness_source_event_id == -1):
+			return "runtime_tile_source_sentinel_invalid"
+	return ""
+
+
+func _ensure_dynamic_tile_index() -> void:
+	if _dynamic_tile_index_ready: return
+	_dynamic_tile_indices.clear()
+	for tile_index in range(tiles.size()):
+		if _tile_has_dynamic_state(tiles[tile_index]):
+			_dynamic_tile_indices[tile_index] = true
+	_dynamic_tile_index_ready = true
+
+
+func _tile_has_dynamic_state(tile) -> bool:
+	return tile.wetness != 0 or tile.fire != 0 \
+		or tile.fire_source_event_id != -1 or tile.wetness_source_event_id != -1 \
+		or tile.fire_damage_eligible_time != -1
 
 
 func _ensure_rollback_tile_static_cache() -> void:
@@ -754,6 +816,8 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		tile.fire_source_event_id = int(scalar_values[offset + 3])
 		tile.wetness_source_event_id = int(scalar_values[offset + 4])
 		tile.fire_damage_eligible_time = int(scalar_values[offset + 5])
+		restored._dynamic_tile_indices[tile_index] = true
+	restored._dynamic_tile_index_ready = true
 	restored.entities.clear()
 	for row in value.entity_rows:
 		if not row is Dictionary: return null
@@ -1224,18 +1288,8 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 				and int(previous_schedule.priority) > int(entry.priority)):
 			return "runtime_schedule_order_invalid"
 		previous_schedule = entry
-	for tile_index in range(tiles.size()):
-		var tile = tiles[tile_index]
-		if not (tile.terrain is String) or not TerrainRegistryScript.has(tile.terrain) \
-				or tile.flammability < 0 or tile.flammability > 100 \
-				or tile.base_conductivity < 0 or tile.base_conductivity > 100 \
-				or tile.wetness < 0 or tile.wetness > 100 \
-				or tile.fire < 0 or tile.fire > 100:
-			return "tile_scalar_invalid"
-		if (tile.fire == 0) != (tile.fire_source_event_id == -1) \
-				or (tile.fire == 0) != (tile.fire_damage_eligible_time == -1) \
-				or (tile.wetness == 0) != (tile.wetness_source_event_id == -1):
-			return "runtime_tile_source_sentinel_invalid"
+	var dynamic_tile_error := runtime_dynamic_tiles_error()
+	if not dynamic_tile_error.is_empty(): return dynamic_tile_error
 	for entity_id_value in entities:
 		var entity_id := int(entity_id_value)
 		var entity = entities[entity_id]
