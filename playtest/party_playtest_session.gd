@@ -66,8 +66,12 @@ const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
 # Product camera steps are a presentation contract shared with the sandbox.
 # Keep the complete sequence here so adding a zoom level cannot leave the UI
 # observer at a smaller, silently truncated capacity.
-const PRODUCT_ZOOM_CELL_COUNTS := [11,13,15,17,19,21,23,25]
-const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 15
+const PRODUCT_ZOOM_REFERENCE_CELL_COUNT := 15
+# The visual target's 1.15x framing maps to 15 / 13 = 1.154x while retaining
+# an odd cell count, so the protagonist remains centered on an exact grid cell.
+# Nine cells gives the existing [+] control two closer steps beyond that target.
+const PRODUCT_ZOOM_CELL_COUNTS := [9,11,13,15,17,19,21,23,25]
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 13
 const MAX_UI_VIEW_CELL_COUNT := PRODUCT_ZOOM_CELL_COUNTS[-1]
 const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",

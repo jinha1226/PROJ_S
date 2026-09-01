@@ -1331,8 +1331,10 @@ func _relocate_with_move_events(sim, entity_id: int, target: Vector2i) -> bool:
 func _assert_hero_centered(sandbox,label:String)->void:
 	var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
 	var hero_position:Vector2i=sandbox.session.sim.world.entities[hero].position
-	check_eq(sandbox.grid.view_origin,hero_position-Vector2i(7,7),
-		"%s origin follows hero-(7,7)"%label)
+	var camera_radius:=int(sandbox.grid.visible_cell_count/2)
+	check_eq(sandbox.grid.view_origin,
+		hero_position-Vector2i(camera_radius,camera_radius),
+		"%s origin follows the active zoom radius %d"%[label,camera_radius])
 	check(sandbox.grid.world_to_pixel_center(hero_position).distance_to(
 		sandbox.grid.grid_rect().get_center())<0.01,"%s hero is pixel-centered"%label)
 	check_eq(sandbox.grid.pixel_to_world_cell(sandbox.grid.grid_rect().get_center()),

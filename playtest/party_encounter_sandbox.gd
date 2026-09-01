@@ -35,6 +35,7 @@ const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
 
 var session
 var grid
@@ -3902,10 +3903,17 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 		zoom_index=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
 	grid_zoom_in_button.disabled=zoom_index<=0
-	grid_zoom_out_button.tooltip_text="시야 축소 · 최대 %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
-		else "시야 축소 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
-	grid_zoom_in_button.tooltip_text="시야 확대 · 최소 11칸" if grid_zoom_in_button.disabled \
-		else "시야 확대 · %d칸"%int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index-1])
+	var out_count:=int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
+		else int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
+	var in_count:=int(PRODUCT_ZOOM_CELL_COUNTS[0]) if grid_zoom_in_button.disabled \
+		else int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index-1])
+	grid_zoom_out_button.tooltip_text="시야 축소 · %d칸 · %.2f×"%[
+		out_count,_product_zoom_scale(out_count)]
+	grid_zoom_in_button.tooltip_text="시야 확대 · %d칸 · %.2f×"%[
+		in_count,_product_zoom_scale(in_count)]
+
+func _product_zoom_scale(cell_count:int)->float:
+	return float(PRODUCT_ZOOM_REFERENCE_CELL_COUNT)/float(maxi(1,cell_count))
 
 func _product_zoom_control_has_point(global_position:Vector2)->bool:
 	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false

@@ -27,7 +27,9 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
-	_check(sandbox.grid.visible_cell_count==15,"%s fresh product zoom is not 15"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==13,"%s fresh product zoom is not 13 (about 1.15x)"%viewport_size)
+	_check(is_equal_approx(sandbox._product_zoom_scale(13),15.0/13.0),
+		"%s default product zoom is not derived from the 15-cell reference"%viewport_size)
 	_check(sandbox.grid_zoom_controls.is_visible_in_tree(),
 		"%s product zoom controls are hidden"%viewport_size)
 	var map_rect:Rect2=sandbox.grid.get_global_rect()
@@ -53,7 +55,7 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	var emitted_cells:Array=[]
 	sandbox.grid.world_cell_pressed.connect(func(position):emitted_cells.append(position))
 	await _touch(out_rect.get_center(),61)
-	_check(sandbox.grid.visible_cell_count==17 and sandbox._product_zoom_cell_count==17,
+	_check(sandbox.grid.visible_cell_count==15 and sandbox._product_zoom_cell_count==15,
 		"%s [-] did not zoom out exactly one step"%viewport_size)
 	_check(session.sim.snapshot()==snapshot_before and session.command_journal==journal_before,
 		"%s zoom changed canonical world/journal"%viewport_size)
@@ -61,9 +63,9 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		"%s zoom touch cancelled or changed active route"%viewport_size)
 	_check(emitted_cells.is_empty(),"%s zoom touch leaked to an underlying map cell"%viewport_size)
 	await _touch(sandbox.grid_zoom_in_button.get_global_rect().get_center(),62)
-	_check(sandbox.grid.visible_cell_count==15,"%s [+] did not restore 15 cells"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==13,"%s [+] did not restore the 1.15x view"%viewport_size)
 
-	for count in [11,15,19,21,23,25]:
+	for count in [9,11,13,15,19,21,23,25]:
 		sandbox._product_zoom_cell_count=count;sandbox._apply_product_zoom_surface()
 		_check(sandbox.grid.visible_cell_count==count,
 			"%s camera did not apply %d cells"%[viewport_size,count])
@@ -129,11 +131,11 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		"%s 25-cell boundary state"%viewport_size)
 	sandbox._on_product_zoom_step(1)
 	_check(sandbox.grid.visible_cell_count==25,"%s zoom-out exceeded 25"%viewport_size)
-	sandbox._product_zoom_cell_count=11;sandbox._apply_product_zoom_surface()
+	sandbox._product_zoom_cell_count=9;sandbox._apply_product_zoom_surface()
 	_check(sandbox.grid_zoom_in_button.disabled and not sandbox.grid_zoom_out_button.disabled,
-		"%s 11-cell boundary state"%viewport_size)
+		"%s 9-cell boundary state"%viewport_size)
 	sandbox._on_product_zoom_step(-1)
-	_check(sandbox.grid.visible_cell_count==11,"%s zoom-in exceeded 11"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==9,"%s zoom-in exceeded 9"%viewport_size)
 	sandbox._product_zoom_cell_count=25;sandbox._apply_product_zoom_surface()
 	sandbox._refresh();await process_frame
 	_check(sandbox.grid.visible_cell_count==25,"%s full refresh reset zoom"%viewport_size)
@@ -223,8 +225,8 @@ func _check_legacy_and_fresh_defaults()->void:
 	legacy.free()
 	var fresh=Sandbox.new();fresh.initialize_for_headless_test(
 		Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),false)
-	_check(fresh._product_zoom_cell_count==15 and fresh.grid.visible_cell_count==15,
-		"new sandbox did not reset to default 15")
+	_check(fresh._product_zoom_cell_count==13 and fresh.grid.visible_cell_count==13,
+		"new sandbox did not reset to the default 1.15x view")
 	fresh.free()
 
 func _touch(position:Vector2,index:int)->void:

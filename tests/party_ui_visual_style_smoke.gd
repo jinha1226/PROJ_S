@@ -55,8 +55,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
-	_check(sandbox.grid.visible_cell_count==15,
-		"%s product camera changed from the full-width 15x15 contract"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==13,
+		"%s product camera did not use the 13-cell (about 1.15x) default"%viewport_size)
 	_check(not sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==0.0 \
 		and not sandbox.top_hud_actions.visible and not sandbox.ascii_3d_lab_button.visible,
 		"%s obsolete product top rail remains visible"%viewport_size)
