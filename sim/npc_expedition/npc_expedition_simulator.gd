@@ -19,6 +19,7 @@ const CommandScript = preload("res://sim/sim_command.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const HexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const InventoryStateScript = preload("res://sim/inventory_state.gd")
+const InventoryOperationsScript = preload("res://sim/item_inventory_operations.gd")
 const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
 const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
@@ -206,7 +207,7 @@ func observation() -> Dictionary:
 			"max_hp": npc.max_health if npc != null else 100, "life_state": npc_life,
 			"hexaco": profile.to_dict(), "style": profile.style_summary(),
 			"weapon": "기본 근접", "potions": _item_quantity("POTION_HEALING"),
-			"carried_loot": _item_quantity("MATERIAL_UNSPECIFIED"),
+			"carried_loot": _carried_loot_quantity(),
 		},
 		"monster": target_row if not target_row.is_empty() else {
 			"entity_id": str(monster_id), "name": "감염된 고블린", "glyph": "g",
@@ -248,7 +249,7 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	var monster = _monster()
 	var hp_milli := int(npc.health * 1000 / maxi(1, npc.max_health))
 	var injury := 1000 - hp_milli
-	var carried := _item_quantity("MATERIAL_UNSPECIFIED")
+	var carried := _carried_loot_quantity()
 	var target_life := _life_state(monster_id) if monster != null else "MISSING"
 	var target_downed := target_life == "DOWNED"
 	var target_distance := _distance(npc.position, monster.position) if monster != null else 99
@@ -269,7 +270,9 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	var fear_pressure := int(threat * int(profile.value("E")) / 1000)
 	var unresolved_count := _unresolved_monster_ids().size()
 	var ground = _ground_ref()
-	var mission_complete := 1000 if unresolved_count == 0 and ground.rows.is_empty() else 0
+	var loot_position:=_reachable_ground_item_position()
+	var pickupable_loot:=loot_position!=Vector2i(-1,-1)
+	var mission_complete := 1000 if unresolved_count == 0 and not pickupable_loot else 0
 	var mission_incomplete := 1000 if unresolved_count > 0 and carried == 0 else 0
 	var fast_pursuer_count := 0
 	for id in monster_ids:
@@ -285,7 +288,7 @@ func _dungeon_candidates() -> Array[Dictionary]:
 		"context.target_distance": clampi(target_distance * 100, 0, 1000),
 		"context.target_downed": 1000 if target_downed else 0,
 		"context.potion_urgency": potion_urgency,
-		"context.loot_available": 1000 if not ground.rows.is_empty() else 0,
+		"context.loot_available": 1000 if pickupable_loot else 0,
 		"context.carried_loot": carried_milli,
 		"context.combat_viability": int(outlook.combat_viability),
 		"context.retreat_viability": int(outlook.retreat_viability),
@@ -305,7 +308,7 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	rows.append(_utility_candidate("RETURN", location == "DUNGEON" and return_necessary,
 		"부상, 전리품, 적의 수와 속도를 합쳐 철수 위험을 판단한다.", inputs))
 	rows.append(_utility_candidate("LOOT", active_count == 0 and monster == null \
-		and not ground.rows.is_empty(),
+		and pickupable_loot,
 		"움직이는 위협이 사라져 바닥의 전리품을 회수할 수 있다.", inputs))
 	rows.append(_utility_candidate("FINISH", target_downed and target_distance <= 1,
 		"목표가 쓰러져 있어 마무리하면 처치와 전리품을 확정할 수 있다.", inputs))
@@ -627,9 +630,12 @@ func _loot() -> bool:
 		return false
 	simulator.world.finish_step()
 	ground = _ground_ref()
-	phase = "DUNGEON_LOOT" if not ground.rows.is_empty() else "DUNGEON_RETURN"
+	var more_pickupable:=_reachable_ground_item_position()!=Vector2i(-1,-1)
+	phase = "DUNGEON_LOOT" if more_pickupable else "DUNGEON_RETURN"
 	_log("LOOT", "아린이 감염체의 전리품을 회수했다.%s" % (
-		" 남은 전리품도 확인한다." if not ground.rows.is_empty() else " 이제 출구로 돌아간다."))
+		" 남은 전리품도 확인한다." if more_pickupable else (
+			" 가방에 담을 수 없는 물건은 남겨 두고 출구로 돌아간다." \
+			if not ground.rows.is_empty() else " 이제 출구로 돌아간다.")))
 	return _advance_time()
 
 
@@ -797,11 +803,11 @@ func _reconcile_monster_deaths(event_start: int) -> void:
 			continue
 		_rewarded_monster_ids[id] = true
 		kills += 1
-		_spawn_loot(id, monster.position)
 		_log("KILL", "%s 처치를 확인했다. 누적 처치 %d." % [_monster_name(id), kills])
 	_refresh_target()
 	if _unresolved_monster_ids().is_empty() and location == "DUNGEON":
-		phase = "DUNGEON_LOOT" if not _ground_ref().rows.is_empty() else "DUNGEON_RETURN"
+		phase = "DUNGEON_LOOT" \
+			if _reachable_ground_item_position()!=Vector2i(-1,-1) else "DUNGEON_RETURN"
 	elif phase == "DUNGEON_LOOT":
 		phase = "DUNGEON_COMBAT"
 
@@ -1126,27 +1132,18 @@ func _is_wall(position: Vector2i) -> bool:
 		Vector2i(2, 9), Vector2i(3, 9), Vector2i(4, 9)]
 
 
-func _spawn_loot(dead_monster_id: int, position: Vector2i) -> void:
-	var death_event_id := -1
-	for event in simulator.world.events:
-		if event.type == "entity.died" and int(event.target_id) == dead_monster_id:
-			death_event_id = int(event.id)
-			break
-	var spawned: Dictionary = WorldItemOperationsScript.commit_spawn_ground(simulator.world,
-		"MATERIAL_UNSPECIFIED", 1, position, dead_monster_id, death_event_id,
-		"NPC_EXPEDITION_REWARD")
-	if bool(spawned.get("accepted", false)):
-		_log("DROP", "%s이(가) 쓰러진 자리에 전리품이 남았다." % _monster_name(dead_monster_id))
-
-
 func _deposit_loot() -> int:
 	var deposited := 0
 	var instance_ids: Array[String] = []
 	var inventory = _inventory_ref()
 	if inventory == null:
 		return 0
+	var equipped_ids:Array=inventory.equipped.values()
 	for item in inventory.backpack:
-		if item.definition_id == "MATERIAL_UNSPECIFIED":
+		# Potions and anything deliberately equipped are expedition supplies.
+		# Every other acquired instance is real loot, including dropped weapons,
+		# armor and species materials.
+		if item.definition_id != "POTION_HEALING" and item.instance_id not in equipped_ids:
 			instance_ids.append(str(item.instance_id))
 			deposited += int(item.quantity)
 	for instance_id in instance_ids:
@@ -1250,6 +1247,17 @@ func _item_quantity(definition_id: String) -> int:
 	return total
 
 
+func _carried_loot_quantity()->int:
+	var inventory=_inventory_ref()
+	if inventory==null:return 0
+	var equipped_ids:Array=inventory.equipped.values()
+	var total:=0
+	for item in inventory.backpack:
+		if item.definition_id!="POTION_HEALING" and item.instance_id not in equipped_ids:
+			total+=int(item.quantity)
+	return total
+
+
 func _first_item_instance(definition_id: String) -> String:
 	var inventory = _inventory_ref()
 	if inventory == null:
@@ -1261,15 +1269,26 @@ func _first_item_instance(definition_id: String) -> String:
 
 
 func _reachable_ground_item_position() -> Vector2i:
-	# A drop under a downed (still tile-blocking) body cannot be walked onto;
-	# the NPC has to finish the body first, so such loot is not a candidate.
+	# Select only an item that both fits in the real inventory and has a real path.
+	# This prevents the observer from stalling forever on the first over-capacity
+	# or unreachable row while another valid drop exists.
 	var ground = _ground_ref()
-	if ground == null:
+	var npc=_npc()
+	if ground == null or npc==null:
 		return Vector2i(-1, -1)
 	for row in ground.rows:
 		var position: Vector2i = row.position
-		if simulator.world.blocking_entity_at(position, npc_id) == null:
-			return position
+		if simulator.world.blocking_entity_at(position, npc_id) != null:continue
+		var preview:Dictionary
+		if npc.position!=position:
+			preview=InventoryOperationsScript.commit_insert_instance(_inventory_ref(),row.item)
+		else:
+			preview=WorldItemOperationsScript.preview_pickup(simulator.world,
+				npc_id,str(row.item.instance_id),npc.position)
+		if not bool(preview.get("accepted",false)):continue
+		if npc.position==position:return position
+		var route:Dictionary=simulator.pathfinder.find_path(npc_id,position)
+		if bool(route.get("found",false)) and int(route.get("steps",0))>=1:return position
 	return Vector2i(-1, -1)
 
 

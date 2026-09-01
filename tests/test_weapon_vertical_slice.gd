@@ -56,6 +56,28 @@ func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	return finish()
 
 
+func test_item_tab_replaces_equipment_from_an_inline_touch_action()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
+	sandbox._open_hero_detail();sandbox._select_member_detail_tab("ITEM")
+	sandbox._on_item_row_selected("START_HAND_AXE_001","")
+	var inline:=sandbox.member_item_backpack_rows.find_child("ItemInlineEquip",true,false) as Button
+	check(inline!=null and not inline.disabled and "교체" in inline.text \
+			and inline.custom_minimum_size.y>=44.0,
+		"selecting carried gear exposes an immediate touch-sized replacement action")
+	if inline!=null:inline.pressed.emit()
+	var state=session.sim.world.party_encounter
+	var inventory=session.sim.world.inventory_of(state.protagonist_id)
+	check_eq([str(inventory.equipped.MAIN_HAND),
+		inventory.unequipped_items().map(func(item):return item.instance_id).has("LEGACY_MAIN_HAND"),
+		str(session.protagonist_equipment().weapon_id)],
+		["START_HAND_AXE_001",true,"HAND_AXE"],
+		"inline replacement equips the new item and returns the old one to the bag")
+	check("변경" in sandbox.notice_text,"replacement reports immediate visible feedback")
+	sandbox.free();return finish()
+
+
 func test_short_sword_preview_and_commit_use_weapon_formula_and_position_pair_vfx() -> bool:
 	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	check(_enter_solo_combat(session), "solo reaches combat")

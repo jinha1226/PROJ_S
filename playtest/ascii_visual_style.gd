@@ -128,7 +128,9 @@ const DIORAMA_PALETTE := {
 	"void_hex":"#010203",
 	"substrate_hex":"#030507",
 	"unseen_ground_hex":"#020304",
-	"memory_ground_hex":"#040609",
+	# MEMORY must remain clearly darker than live terrain while still being
+	# distinguishable from the virtually black UNSEEN field on a phone display.
+	"memory_ground_hex":"#060a0e",
 	"visible_ground_hex":"#070b10",
 	"wall_side_hex":"#080a12",
 	"shadow_hex":"#010304",
@@ -172,7 +174,7 @@ static func visibility_spec(cell_or_state: Variant) -> Dictionary:
 		"draw_hazards": state == "VISIBLE",
 		"draw_actors": state == "VISIBLE",
 		"accepts_actor_input": state == "VISIBLE",
-		"opacity": 1.0 if state == "VISIBLE" else (0.30 if state == "MEMORY" else 0.0),
+		"opacity": 1.0 if state == "VISIBLE" else (0.38 if state == "MEMORY" else 0.0),
 		"background_hex":str(DIORAMA_PALETTE.get({
 			"VISIBLE":"visible_ground_hex", "MEMORY":"memory_ground_hex",
 			"UNSEEN":"unseen_ground_hex"}[state], "#030507")),

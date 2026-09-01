@@ -95,12 +95,12 @@ func test_dead_monster_is_rewarded_once_at_step_boundary_even_after_external_tra
 		"reward is reconciled on a non-attack wrapper step")
 	check_eq(simulation.kills, 1, "step-boundary death diff awards exactly one kill")
 	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(),
-		direct_death_drop_count + 1,
-		"the expedition reward is added beside the canonical death drops")
+		direct_death_drop_count,
+		"reconciliation does not add a duplicate synthetic reward beside real drops")
 	simulation._reconcile_monster_deaths(0)
 	check_eq(simulation.kills, 1, "replaying the same death evidence cannot duplicate rewards")
 	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(),
-		direct_death_drop_count + 1,
+		direct_death_drop_count,
 		"reconciliation cannot duplicate loot")
 	var property_names: Array[String] = []
 	for row in simulation.get_property_list(): property_names.append(str(row.name))
@@ -108,6 +108,38 @@ func test_dead_monster_is_rewarded_once_at_step_boundary_even_after_external_tra
 		"the expedition wrapper keeps no second inventory or ground authority")
 	check_eq(simulation.simulator.world.world_state_error(), "",
 		"the shared item transaction leaves the observed world canonical")
+	return finish()
+
+
+func test_multi_monster_observer_collects_real_equipment_and_never_stalls_on_capacity()->bool:
+	var simulation=Simulator.new(22002,{"monster_count":3,
+		"monster_move_cost":130,"monster_attack_cost":140,"monster_health":30})
+	_prepare_group_combat(simulation)
+	simulation._npc().max_health=1000;simulation._npc().health=1000
+	for id_value in simulation.monster_ids:
+		var id:=int(id_value);simulation.simulator.world.entities[id].health=1
+		for _attempt in range(8):
+			if simulation._life_state(id)=="DEAD":break
+			check(simulation._attack(simulation.npc_id,id,"","NPC",false),
+				"multi-loot fixture attack commits")
+	simulation._reconcile_monster_deaths(0)
+	var saw_real_drop:=false;var saw_pickup:=false;var completed:=false
+	for event in simulation.simulator.world.events:
+		if str(event.type)=="corpse.loot_materialized":saw_real_drop=true
+	for _turn in range(240):
+		var result:Dictionary=simulation.step()
+		check(bool(result.get("accepted",false)),"multi-loot observer step commits")
+		for event in simulation.simulator.world.events:
+			if str(event.type)=="item.picked_up":saw_pickup=true
+		if simulation.completed_cycles>=1:
+			completed=true;break
+	check(saw_real_drop and saw_pickup,
+		"NPC observes canonical death drops and picks actual item instances up")
+	check(completed,"three-monster expedition cannot stall forever in DUNGEON_LOOT")
+	check(simulation.loot_banked>=6,
+		"banked loot counts dropped weapons and armor instead of one legacy material id")
+	check_eq(simulation.simulator.world.world_state_error(),"",
+		"multi-item pickup and town deposit preserve world item invariants")
 	return finish()
 
 

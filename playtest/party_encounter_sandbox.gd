@@ -40,6 +40,7 @@ const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CE
 var session
 var grid
 var grid_zoom_controls:HBoxContainer
+var grid_graphics_mode_button:Button
 var grid_zoom_out_button:Button
 var grid_zoom_in_button:Button
 var root_layout:VBoxContainer
@@ -888,13 +889,21 @@ func _item_action_button(label:String,node_name:String,callable:Callable)->Butto
 func _build_product_zoom_controls()->void:
 	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
 	grid_zoom_controls.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	grid_zoom_controls.offset_left=-92;grid_zoom_controls.offset_right=-4
+	grid_zoom_controls.offset_left=-160;grid_zoom_controls.offset_right=-4
 	grid_zoom_controls.offset_top=4;grid_zoom_controls.offset_bottom=48
-	grid_zoom_controls.custom_minimum_size=Vector2(88,TOUCH_TARGET)
+	grid_zoom_controls.custom_minimum_size=Vector2(156,TOUCH_TARGET)
 	grid_zoom_controls.add_theme_constant_override("separation",0)
 	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
+	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
+	grid_graphics_mode_button.text="[2.5D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · 2.5D"
+	grid_graphics_mode_button.custom_minimum_size=Vector2(68,TOUCH_TARGET)
+	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
+	grid_graphics_mode_button.pressed.connect(_on_product_graphics_mode_toggle)
+	grid_zoom_controls.add_child(grid_graphics_mode_button)
+	AsciiFrameScript.apply_rail_button(grid_graphics_mode_button,AsciiFrameScript.BRASS)
 	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
 	grid_zoom_out_button.text="[-]";grid_zoom_out_button.tooltip_text="시야 축소"
 	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
@@ -2754,6 +2763,9 @@ func _update_item_inventory_ledger()->void:
 		var row:Dictionary=backpack[index] if index<backpack.size() else {"empty":true}
 		_add_item_ledger_button(member_item_backpack_rows,row,
 			"%02d  %s"%[index+1,_item_row_text(row)],false)
+		if not bool(row.get("empty",false)) \
+				and str(row.get("instance_id",""))==member_item_selected_id:
+			_add_inline_item_equip_button(member_item_backpack_rows,row,dto)
 	var selected_equipped:=not member_item_selected_slot.is_empty()
 	var has_selection:=not member_item_selected_id.is_empty()
 	var selected_row:=_selected_item_ledger_row(dto)
@@ -2803,6 +2815,25 @@ func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,eq
 	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot))
 	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
 		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
+
+func _add_inline_item_equip_button(parent:VBoxContainer,row:Dictionary,dto:Dictionary)->void:
+	var allowed_slots:Variant=row.get("equip_slots",[])
+	if not allowed_slots is Array or allowed_slots.is_empty():return
+	var slot:=item_preferred_equip_slot(dto,allowed_slots)
+	if slot.is_empty():return
+	var occupied:=false
+	for equipped_row in dto.get("equipment_slots",[]):
+		if str(equipped_row.get("slot",""))==slot:
+			occupied=not bool(equipped_row.get("empty",false));break
+	var slot_label:=str({"MAIN_HAND":"주무기","OFF_HAND":"보조",
+		"ARMOR":"갑옷","ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}.get(slot,slot))
+	var button:=Button.new();button.name="ItemInlineEquip"
+	button.text="[%s]  %s → %s"%[
+		"교체" if occupied else "장착",str(row.get("label","아이템")),slot_label]
+	button.custom_minimum_size.y=TOUCH_TARGET
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
+	button.pressed.connect(_on_item_equip_selected)
+	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,true)
 
 func _on_item_row_selected(instance_id:String,slot:String)->void:
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
@@ -2868,6 +2899,7 @@ func _on_item_operation_result(result:Dictionary)->void:
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	_update_item_window(progression.get("equipment",{}));member_detail_current_tab="ITEM"
 	_apply_member_detail_tab();action_feedback_text=notice_text;_reflow_member_detail_scroll()
+	_request_refresh()
 
 func _on_item_reload()->void:
 	var result:Dictionary=session.reload_protagonist_weapon()
@@ -3903,6 +3935,10 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 		zoom_index=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
 	grid_zoom_in_button.disabled=zoom_index<=0
+	var flat_mode:bool=str(grid.graphics_mode_id())==GridScript.GRAPHICS_MODE_FLAT_2D
+	grid_graphics_mode_button.text="[2D]" if flat_mode else "[2.5D]"
+	grid_graphics_mode_button.tooltip_text="그래픽 모드 · %s · 눌러서 %s로 변경"%[
+		"2D" if flat_mode else "2.5D","2.5D" if flat_mode else "2D"]
 	var out_count:=int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
 		else int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
 	var in_count:=int(PRODUCT_ZOOM_CELL_COUNTS[0]) if grid_zoom_in_button.disabled \
@@ -3917,7 +3953,7 @@ func _product_zoom_scale(cell_count:int)->float:
 
 func _product_zoom_control_has_point(global_position:Vector2)->bool:
 	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false
-	for button in [grid_zoom_out_button,grid_zoom_in_button]:
+	for button in [grid_graphics_mode_button,grid_zoom_out_button,grid_zoom_in_button]:
 		if button!=null and button.visible and button.get_global_rect().has_point(global_position):
 			return true
 	return false
@@ -3930,18 +3966,30 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 	if event.pressed:
 		if not _product_zoom_control_has_point(event.position):return false
 		_product_zoom_touch_index=event.index
-		_product_zoom_touch_step=1 if grid_zoom_out_button.get_global_rect().has_point(
-			event.position) else -1
+		_product_zoom_touch_step=0 if grid_graphics_mode_button.get_global_rect().has_point(
+			event.position) else (1 if grid_zoom_out_button.get_global_rect().has_point(
+			event.position) else -1)
 		get_viewport().set_input_as_handled();return true
 	if event.index!=_product_zoom_touch_index:return false
 	var step:=_product_zoom_touch_step
-	var matching_button:=grid_zoom_out_button if step>0 else grid_zoom_in_button
+	var matching_button:=grid_graphics_mode_button if step==0 else (
+		grid_zoom_out_button if step>0 else grid_zoom_in_button)
 	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
 		and not matching_button.disabled
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
 	get_viewport().set_input_as_handled()
-	if activate:_on_product_zoom_step(step)
+	if activate:
+		if step==0:_on_product_graphics_mode_toggle()
+		else:_on_product_zoom_step(step)
 	return true
+
+func _on_product_graphics_mode_toggle()->void:
+	if not _is_solo_product_session() or grid==null:return
+	var next_mode:=GridScript.GRAPHICS_MODE_DIORAMA_2_5D \
+		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_FLAT_2D \
+		else GridScript.GRAPHICS_MODE_FLAT_2D
+	if grid.set_graphics_mode(next_mode):
+		_sync_product_zoom_controls(true)
 
 func _on_product_zoom_step(index_delta:int)->void:
 	if not _is_solo_product_session():return

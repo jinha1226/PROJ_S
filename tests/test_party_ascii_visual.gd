@@ -54,6 +54,9 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var unseen: Dictionary = Style.visibility_spec("UNSEEN")
 	check(not unseen.draw_terrain and not unseen.draw_actors and unseen.opacity==0.0,
 		"unseen draws and accepts nothing")
+	check(Color(str(memory.background_hex)).get_luminance() \
+			>Color(str(unseen.background_hex)).get_luminance()*3.0,
+		"visited terrain is visibly darker than live space but cannot merge with unseen black")
 	return finish()
 
 
@@ -122,6 +125,39 @@ func test_product_projection_has_pitched_perspective_wall_height_and_exact_hits(
 	for position in [Vector2i(1,1),Vector2i(7,7),Vector2i(13,13)]:
 		check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(position)),position,
 			"projected cell center round-trips to canonical world authority")
+	grid.free();return finish()
+
+
+func test_flat_2d_and_diorama_2_5d_are_pure_switchable_projection_modes()->bool:
+	var grid=Grid.new();grid.size=Vector2(390,390)
+	grid.set_observation({"width":15,"height":15,"cells":_visible_cells()})
+	grid.set_hero_centered_view(Vector2i(7,7),13,77)
+	var observation_before:Dictionary=grid._cells.duplicate(true)
+	var perspective_mapping:=grid.mapping_signature()
+	var far_25d:=grid.world_cell_rect(Vector2i(7,1))
+	var near_25d:=grid.world_cell_rect(Vector2i(7,13))
+	check_eq(grid.graphics_mode_id(),Grid.GRAPHICS_MODE_DIORAMA_2_5D,
+		"product default remains the new 2.5D camera")
+	check(near_25d.size.x>far_25d.size.x,
+		"2.5D mode retains visible perspective scaling")
+	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D),
+		"flat 2D is an accepted presentation option")
+	var far_2d:=grid.world_cell_rect(Vector2i(7,1))
+	var near_2d:=grid.world_cell_rect(Vector2i(7,13))
+	check(far_2d.size.is_equal_approx(near_2d.size) \
+			and is_equal_approx(far_2d.size.x,grid.cell_size_px()),
+		"2D mode restores uniform axis-aligned square cells")
+	for position in [Vector2i(1,1),Vector2i(7,7),Vector2i(13,13)]:
+		check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(position)),position,
+			"flat 2D keeps exact canonical hit mapping")
+	check(not grid.set_graphics_mode("INVALID") \
+			and grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
+		"unknown graphics option is a total no-op")
+	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D) \
+			and grid.mapping_signature()==perspective_mapping,
+		"switching back restores the exact 2.5D mapping")
+	check_eq(grid._cells,observation_before,
+		"graphics mode never changes observation or simulation-facing data")
 	grid.free();return finish()
 
 

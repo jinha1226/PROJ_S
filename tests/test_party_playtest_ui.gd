@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
+const Grid=preload("res://playtest/party_grid_view.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
@@ -1094,6 +1095,34 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 			"%s victory keeps continuous cell scale"%viewport_size)
 		sandbox.free()
 	return finish()
+
+
+func test_product_graphics_toggle_exposes_2d_and_2_5d_without_touching_the_run()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.size=Vector2(390,700)
+	sandbox.initialize_for_headless_test(session,false)
+	sandbox.grid.size=sandbox.grid.custom_minimum_size;sandbox._refresh()
+	var snapshot_before:Dictionary=session.sim.snapshot()
+	var journal_before:Array=session.command_journal.duplicate(true)
+	var perspective_mapping:Array=sandbox.grid.mapping_signature()
+	check(sandbox.grid_graphics_mode_button!=null \
+			and sandbox.grid_graphics_mode_button.visible \
+			and sandbox.grid_graphics_mode_button.text=="[2.5D]",
+		"product map exposes the current graphics option beside zoom")
+	sandbox.grid_graphics_mode_button.pressed.emit()
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
+			and sandbox.grid_graphics_mode_button.text=="[2D]",
+		"one touch selects the original flat 2D projection")
+	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))
+	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,13))
+	check(upper.size.is_equal_approx(lower.size),"product 2D option renders uniform cells")
+	sandbox.grid_graphics_mode_button.pressed.emit()
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
+			and sandbox.grid.mapping_signature()==perspective_mapping,
+		"second touch restores exact 2.5D camera mapping")
+	check_eq([session.sim.snapshot(),session.command_journal],[snapshot_before,journal_before],
+		"graphics preference is presentation-only")
+	sandbox.free();return finish()
 
 func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800);sandbox.initialize_for_headless_test(Session.new())
