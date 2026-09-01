@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const LegacyInventory = preload("res://sim/protagonist_inventory_state.gd")
+const WeaponLoadout = preload("res://sim/weapon_loadout_state.gd")
 const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
@@ -157,13 +158,13 @@ func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() 
 	var pass_state = passed.sim.world.party_encounter
 	var pass_npc := int(pass_state.opening_event.npc_entity_id)
 	var pass_hero := int(pass_state.protagonist_id)
-	var pass_inventory: Dictionary = passed.sim.world.inventory_row(pass_hero).to_dict()
+	var pass_inventory: Dictionary = passed.sim.world.inventory_of(pass_hero).to_dict()
 	var pass_hp := int(passed.sim.world.entities[pass_npc].health)
 	var pass_relation: Dictionary = passed.sim.relationships.effective_relation(pass_npc, pass_hero)
 	check(_approach_opening(passed), "PASS fixture reaches the wounded actor")
 	var pass_result: Dictionary = passed.commit_opening_event_choice("PASS")
 	check(pass_result.accepted, "PASS commits")
-	check_eq([passed.sim.world.inventory_row(pass_hero).to_dict(),
+	check_eq([passed.sim.world.inventory_of(pass_hero).to_dict(),
 		passed.sim.world.entities[pass_npc].health,
 		passed.sim.relationships.effective_relation(pass_npc, pass_hero)],
 		[pass_inventory, pass_hp, pass_relation],
@@ -253,6 +254,10 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 	legacy_wire.snapshot.party_encounter.protagonist_inventory = \
 		LegacyInventory.with_legacy_weapon("SHORT_SWORD").to_dict()
 	legacy_wire.snapshot.party_encounter.ground_items = {"schema_version": 1, "rows": []}
+	# A v9 row also owned protagonist_loadout; v13 removed that duplicate weapon
+	# authority, so the historical field is restated here too.
+	legacy_wire.snapshot.party_encounter.protagonist_loadout = \
+		WeaponLoadout.new("SHORT_SWORD", 12, 6).to_dict()
 	var legacy_target = Session.new(55, 66, Session.SOLO_COMBAT_SCENARIO_ID)
 	var legacy_load: Dictionary = legacy_target.load_session_json(
 		JSON.stringify(legacy_wire))
@@ -331,7 +336,7 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 
 
 func _potion_quantity(session) -> int:
-	var item = session.sim.world.inventory_row(
+	var item = session.sim.world.inventory_of(
 		session.sim.world.party_encounter.protagonist_id).item("START_POTION_001")
 	return int(item.quantity) if item != null else 0
 

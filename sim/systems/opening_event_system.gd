@@ -1,7 +1,7 @@
 class_name OpeningEventSystem
 extends RefCounted
 
-const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
+const ItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const CHOICE_TIME_COST := 100
@@ -42,11 +42,12 @@ func preview_choice(choice_action: String) -> Dictionary:
 		"npc_entity_id":opening.npc_entity_id, "time_cost":CHOICE_TIME_COST,
 		"potion_instance_id":""}
 	if choice_action == "GIVE_POTION":
-		var inventory = world.inventory_row(state.protagonist_id)
+		var inventory = world.inventory_of(state.protagonist_id)
 		if inventory == null: return _rejected("opening_actor_missing")
 		var potion_id := _healing_potion_instance_id(inventory)
 		if potion_id.is_empty(): return _rejected("opening_healing_potion_missing")
-		var item_preview: Dictionary = ItemOperationsScript.preview_use(inventory, potion_id)
+		var item_preview: Dictionary = ItemOperationsScript.preview_use(world,
+			state.protagonist_id, potion_id)
 		if not bool(item_preview.get("accepted", false)) \
 				or str(item_preview.get("definition_id", "")) != "POTION_HEALING" \
 				or str(item_preview.get("use_kind", "")) != "HEALING":
@@ -77,8 +78,8 @@ func commit_preflighted_choice(preview: Dictionary) -> Dictionary:
 	var healed_amount := 0
 	if choice_action == "GIVE_POTION":
 		var instance_id := str(preview.potion_instance_id)
-		var consumed: Dictionary = ItemOperationsScript.commit_use(
-			world.inventory_row(state.protagonist_id), instance_id)
+		var consumed: Dictionary = ItemOperationsScript.commit_use_without_event(
+			world, state.protagonist_id, instance_id)
 		if not bool(consumed.get("accepted", false)):
 			return _rejected(str(consumed.get("reason", "opening_potion_consume_failed")))
 		var given = world.emit_event("opening.potion_given", state.protagonist_id,
@@ -98,8 +99,6 @@ func commit_preflighted_choice(preview: Dictionary) -> Dictionary:
 				opening.npc_entity_id, state.protagonist_id, restored.id,
 				GRATITUDE_MAGNITUDE):
 			return _rejected("opening_gratitude_failed")
-		world.set_inventory_row(state.protagonist_id, consumed.inventory)
-		world.item_state.revision += 1
 		event_ids.append_array([given.id, restored.id, world.events[-1].id])
 	opening.choice = stored_choice
 	opening.current_behavior = "TRAVEL"

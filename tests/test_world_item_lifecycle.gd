@@ -6,6 +6,7 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Inventory=preload("res://sim/inventory_state.gd")
 const AmmoPool=preload("res://sim/ammo_pool_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
+const WorldItemOperations=preload("res://sim/world_item_operations.gd")
 
 
 func test_every_added_entity_owns_an_empty_twelve_slot_inventory_and_ammo_row()->bool:
@@ -220,23 +221,37 @@ func test_protagonist_start_loadout_moved_into_world_item_state_unchanged()->boo
 		"the product start room ground items move over with the same instance ids")
 	var dto:Dictionary=session.protagonist_inventory()
 	check_eq(int(dto.used_backpack_slots),6,"the protagonist UI still reports the same bag")
-	check_eq(str(world.party_encounter.protagonist_loadout.equipped_weapon_id),"SHORT_SWORD",
-		"the A3 combat loadout reader still sees the legacy short sword")
+	check_eq(WorldItemOperations.equipped_weapon_id(world,hero_id),"SHORT_SWORD",
+		"the equipped MAIN_HAND instance is the combat weapon authority")
 	return finish()
 
 
-func test_world_keeps_the_inventory_loadout_bridge_after_the_party_field_moves()->bool:
-	# Party wire validation owned this invariant while the inventory lived there.
-	# A3 deletes protagonist_loadout; until then the world must keep the bridge.
+func test_the_duplicate_weapon_authority_and_its_bridge_invariant_are_gone()->bool:
+	# A2 held protagonist_loadout and the equipped MAIN_HAND instance together with
+	# inventory_loadout_bridge_mismatch. A3 deletes the duplicate field, so the
+	# bridge has nothing left to hold and goes with it.
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var world=session.sim.world
-	check_eq(world.world_state_error(),"","the starting bridge is consistent")
-	world.party_encounter.protagonist_loadout.equipped_weapon_id="MACE"
-	check_eq(world.world_state_error(),"inventory_loadout_bridge_mismatch",
-		"a loadout that disagrees with the equipped MAIN_HAND instance is rejected")
-	check_eq(world.runtime_step_postcondition_error(world.events.size()),
-		"inventory_loadout_bridge_mismatch",
-		"the incremental step postcondition keeps the same bridge strictness")
-	world.party_encounter.protagonist_loadout.equipped_weapon_id="SHORT_SWORD"
-	check_eq(world.world_state_error(),"","restoring the loadout restores validity")
+	var hero_id:int=world.party_encounter.protagonist_id
+	check_eq(world.world_state_error(),"","the starting world validates")
+	var party_names:Array=[]
+	for property in world.party_encounter.get_property_list():
+		party_names.append(str(property.name))
+	check("protagonist_loadout" not in party_names,
+		"the party state no longer stores a second weapon authority")
+	var world_names:Array=[]
+	for method in world.get_method_list():world_names.append(str(method.name))
+	check("_inventory_loadout_bridge_error" not in world_names,
+		"the bridge invariant is deleted with the field it held together")
+	check_eq(int(world.party_encounter.schema_version),13,
+		"removing the field raises the nested party schema to v13")
+	check("protagonist_loadout" not in world.party_encounter.to_dict(),
+		"the party wire no longer carries a loadout row")
+	# Changing the equipped instance changes the weapon with nothing to disagree.
+	check(session.unequip_inventory_slot("MAIN_HAND").accepted,"the sword unequips")
+	check_eq(WorldItemOperations.equipped_weapon_id(world,hero_id),"UNARMED",
+		"an empty main hand reads as unarmed")
+	check_eq(world.world_state_error(),"","an unarmed protagonist is a valid world")
+	check_eq(world.runtime_step_postcondition_error(world.events.size()),"",
+		"the incremental step postcondition also has no bridge left to check")
 	return finish()

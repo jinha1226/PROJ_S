@@ -7,6 +7,8 @@ const Ground=preload("res://sim/ground_item_state.gd")
 const Operations=preload("res://sim/item_inventory_operations.gd")
 const WeaponRegistry=preload("res://sim/weapon_registry.gd")
 const PartyState=preload("res://sim/party_encounter_state.gd")
+const WeaponLoadout=preload("res://sim/weapon_loadout_state.gd")
+const WorldItemOperations=preload("res://sim/world_item_operations.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
@@ -132,13 +134,13 @@ func test_equip_replaces_an_occupied_compatible_slot_atomically_and_replays()->b
 	var result:Dictionary=session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND")
 	check(bool(result.accepted),"session equips a carried weapon over the starter sword")
 	var state=session.sim.world.party_encounter
-	var world_inventory=session.sim.world.inventory_row(state.protagonist_id)
+	var world_inventory=session.sim.world.inventory_of(state.protagonist_id)
 	check_eq([world_inventory.equipped.MAIN_HAND,
-		state.protagonist_loadout.equipped_weapon_id,
+		WorldItemOperations.equipped_weapon_id(session.sim.world,state.protagonist_id),
 		world_inventory.unequipped_items().map(func(item):return item.instance_id).has(
 			"LEGACY_MAIN_HAND"),int(session.sim.world.world_time)],
 		["START_HAND_AXE_001","HAND_AXE",true,start_time+100],
-		"session replacement updates item, combat loadout, backpack, and time together")
+		"session replacement updates item, derived weapon, backpack, and time together")
 	var restored=Session.new(9,9,Session.SOLO_COMBAT_SCENARIO_ID)
 	var loaded:Dictionary=restored.load_session_json(session.save_session_json())
 	check(bool(loaded.accepted),"replacement equipment journal reloads: %s"%str(loaded))
@@ -225,7 +227,7 @@ func test_party_schema8_new_game_items_and_session_operations_replay_exact()->bo
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var state=session.sim.world.party_encounter
 	check_eq(state.schema_version,PartyState.SCHEMA_VERSION,"party state uses current schema")
-	var world_inventory=session.sim.world.inventory_row(state.protagonist_id)
+	var world_inventory=session.sim.world.inventory_of(state.protagonist_id)
 	check_eq(world_inventory.equipped.MAIN_HAND,"LEGACY_MAIN_HAND",
 		"new game equips legacy short sword item bridge")
 	check_eq(world_inventory.unequipped_items().map(func(item):return item.instance_id),
@@ -292,6 +294,10 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 	var current:Dictionary=session.sim.world.party_encounter.to_dict()
 	for version in range(7,0,-1):
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
+		# v5-v12 rows carried a protagonist_loadout. v13 removed that duplicate
+		# authority, so a legacy fixture must state the field the old wire had.
+		if version>=PartyState.LOADOUT_SCHEMA_VERSION:
+			row["protagonist_loadout"]=WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 		if version<PartyState.GROWTH_BUILD_SCHEMA_VERSION:row.erase("protagonist_growth")
 		if version<PartyState.OPENING_EVENT_SCHEMA_VERSION:row.erase("opening_event")
 		if version<PartyState.RECOVERY_SCHEMA_VERSION:
@@ -299,7 +305,6 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 		row.erase("protagonist_inventory");row.erase("ground_items")
 		if version<7:row.erase("enemy_awareness_rows")
 		if version<6:row.erase("diagonal_gateway_positions")
-		if version<5:row.erase("protagonist_loadout")
 		if version<4:row.erase("protagonist_progression")
 		if version<3:row.erase("patrol_reserved_positions")
 		if version<2:
@@ -308,13 +313,13 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 		check_eq(error,"","legacy schema %d remains valid"%version)
 		if error.is_empty():
 			var migrated=PartyState.from_dict(row)
-			# The inventory bridge moved to WorldItemState in v12, so a migrated party
-			# row must carry the loadout forward and own no item authority at all.
+			# Inventory and ground moved to WorldItemState in v12 and the duplicate
+			# weapon authority went with v13, so a migrated party row must own no
+			# item, ground or loadout authority at all.
 			check(migrated.schema_version==PartyState.SCHEMA_VERSION \
 					and not migrated.to_dict().has("protagonist_inventory") \
 					and not migrated.to_dict().has("ground_items") \
-					and str(migrated.protagonist_loadout.equipped_weapon_id) \
-					==str(row.get("protagonist_loadout",{}).get("equipped_weapon_id","SHORT_SWORD")),
+					and not migrated.to_dict().has("protagonist_loadout"),
 				"legacy schema %d migrates without a second item authority"%version)
 	return finish()
 
@@ -367,7 +372,7 @@ func test_healing_potion_session_use_is_timed_consumed_logged_and_replay_exact()
 			and int(session.sim.world.entities[hero_id].health)>start_health,
 		"session applies one clamped registry healing effect after hostile time")
 	check_eq(session.sim.world.world_time,start_time+100,"potion use consumes one canonical turn")
-	check_eq(session.sim.world.inventory_row(state.protagonist_id).item(
+	check_eq(session.sim.world.inventory_of(state.protagonist_id).item(
 		"START_POTION_001").quantity,2,
 		"one potion leaves the remaining stack in the same instance")
 	var event_types:Array=[]
@@ -375,8 +380,8 @@ func test_healing_potion_session_use_is_timed_consumed_logged_and_replay_exact()
 	check("item.used" in event_types and "health.restored" in event_types,
 		"potion use emits item and healing provenance")
 	var equipment:Dictionary=session.protagonist_equipment()
-	check(equipment.get("combat_modifiers",{})==session.sim.world.inventory_row(
-		state.protagonist_id).combat_modifier_dto(),
+	check(equipment.get("combat_modifiers",{})==session.sim.world.equipment_modifiers(
+		state.protagonist_id),
 		"canonical equipment facade carries the detached combat modifier handoff")
 	var restored=Session.new(9,9,Session.SOLO_COMBAT_SCENARIO_ID)
 	var loaded:Dictionary=restored.load_session_json(session.save_session_json())

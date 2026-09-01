@@ -7,6 +7,7 @@ const PlanScript = preload("res://sim/party_turn_plan.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
+const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
@@ -768,7 +769,7 @@ func preview_party_turn(request, processed_step_index: int,
 		var row_index := int(melee_rows[melee_ordinal].row_index)
 		var row: Dictionary = rows[row_index]
 		var attack_actor_id := int(row.action.actor_id)
-		var weapon_id := str(state.protagonist_loadout.equipped_weapon_id) \
+		var weapon_id := WorldItemOperationsScript.equipped_weapon_id(world, attack_actor_id) \
 			if _uses_weapon_combat(attack_actor_id) else ""
 		var assessment: Dictionary = melee.assess_attack(attack_actor_id, int(row.action.target_id),
 			str(row.source), processed_step_index, attack_start_world_time, batch_context,
@@ -826,11 +827,11 @@ func _action_error(action) -> String:
 	if action.type == "MELEE":
 		var legal_attack:bool = melee.can_attack(action.actor_id, action.target_id)
 		if _uses_weapon_combat(action.actor_id):
-			if not state.protagonist_loadout.attack_error().is_empty():
-				return state.protagonist_loadout.attack_error()
+			var weapon_block := WorldItemOperationsScript.attack_error(world, action.actor_id)
+			if not weapon_block.is_empty(): return weapon_block
 			legal_attack = melee.can_attack_with_weapon(action.actor_id, action.target_id,
-				str(state.protagonist_loadout.equipped_weapon_id), _weapon_occupants(action.actor_id,
-					action.target_id))
+				WorldItemOperationsScript.equipped_weapon_id(world, action.actor_id),
+				_weapon_occupants(action.actor_id, action.target_id))
 		if action.target_id not in state.enemy_ids or not world.entities.has(action.target_id) \
 				or not world.is_explicit_melee_target(action.target_id) or not legal_attack:
 			return "melee_not_legal"
@@ -915,7 +916,7 @@ func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 	if action.type == "MOVE": cost = int(TerrainRegistryScript.definition(world.tile_at(action.destination).terrain).move_time_cost)
 	elif action.type == "MELEE" and _uses_weapon_combat(action.actor_id):
 		var weapon = WeaponRegistryScript.definition(
-			str(world.party_encounter.protagonist_loadout.equipped_weapon_id))
+			WorldItemOperationsScript.equipped_weapon_id(world, action.actor_id))
 		if weapon != null: cost = int(weapon.attack_time)
 	return {"actor_id": action.actor_id, "roster_slot": roster_slot, "source": source, "action": action.to_dict(), "time_cost": cost,
 		"resolution_note": "", "suggestion": null, "overridden": false, "combat_assessment": null}
@@ -924,7 +925,6 @@ func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 func _uses_weapon_combat(actor_id: int) -> bool:
 	return world != null and world.party_encounter != null \
 		and actor_id == world.party_encounter.protagonist_id \
-		and world.party_encounter.protagonist_loadout != null \
 		and world.entities.has(actor_id) and "weapon_loadout" in world.entities[actor_id].tags
 
 

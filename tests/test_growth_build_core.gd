@@ -6,6 +6,7 @@ const Calculator = preload("res://sim/growth_build_calculator.gd")
 const Item = preload("res://sim/item_instance.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const LegacyInventory=preload("res://sim/protagonist_inventory_state.gd")
+const WeaponLoadout=preload("res://sim/weapon_loadout_state.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 
@@ -287,6 +288,10 @@ func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
 	wire.snapshot.party_encounter.protagonist_inventory= \
 		LegacyInventory.with_legacy_weapon("SHORT_SWORD").to_dict()
 	wire.snapshot.party_encounter.ground_items={"schema_version":1,"rows":[]}
+	# A v10 row also owned protagonist_loadout; v13 removed that duplicate weapon
+	# authority, so the historical field is restated here too.
+	wire.snapshot.party_encounter.protagonist_loadout= \
+		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(1,2,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var migrated_result:Dictionary=migrated.load_session_json(JSON.stringify(wire))
 	check(bool(migrated_result.get("accepted",false)),"schema 10 save migrates at the hard-cut boundary")

@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 12
+const SCHEMA_VERSION := 13
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -15,6 +15,9 @@ const OPENING_EVENT_SCHEMA_VERSION := 10
 const GROWTH_BUILD_SCHEMA_VERSION := 11
 # v12 moved the protagonist inventory and ground items to WorldItemState.
 const WORLD_ITEM_SCHEMA_VERSION := 12
+# v13 removed protagonist_loadout: the equipped MAIN_HAND instance is the only
+# weapon authority, ammo lives on the entity row and reload on the weapon row.
+const WEAPON_AUTHORITY_SCHEMA_VERSION := 13
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -52,7 +55,6 @@ var exile_records: Array[Dictionary] = []
 var patrol_reserved_positions: Array[Vector2i] = []
 var diagonal_gateway_positions: Array[Vector2i] = []
 var protagonist_progression = ProgressionScript.new()
-var protagonist_loadout = WeaponLoadoutScript.new("SHORT_SWORD", 12, 6)
 # Deterministic exploration-only recovery cadence. It is state, not UI timing.
 var safe_recovery_turns: int = 0
 var last_protagonist_damage_step: int = -1
@@ -95,7 +97,6 @@ func to_dict() -> Dictionary:
 		"patrol_reserved_positions":reserved_rows,
 		"diagonal_gateway_positions":gateway_rows,
 		"protagonist_progression":protagonist_progression.to_dict(),
-		"protagonist_loadout":protagonist_loadout.to_dict(),
 		"safe_recovery_turns":safe_recovery_turns,
 		"last_protagonist_damage_step":str(last_protagonist_damage_step),
 		"opening_event":null if opening_event == null else opening_event.to_dict(),
@@ -145,10 +146,9 @@ static func from_dict(row: Dictionary):
 		state.diagonal_gateway_positions.append(Vector2i(int(position[0]),int(position[1])))
 	state.protagonist_progression=ProgressionScript.from_dict(row.protagonist_progression) \
 		if row.has("protagonist_progression") else ProgressionScript.new()
-	state.protagonist_loadout=WeaponLoadoutScript.from_dict(row.protagonist_loadout) \
-		if row.has("protagonist_loadout") else WeaponLoadoutScript.new("SHORT_SWORD",12,6)
-	# v8-v11 rows still carry inventory/ground keys. They are no longer party state,
-	# so this reader drops them instead of restoring a second authority.
+	# v5-v12 rows still carry loadout/inventory/ground keys. None of them is party
+	# state any more, so this reader drops them instead of restoring a second
+	# authority beside WorldItemState.
 	state.safe_recovery_turns=int(row.get("safe_recovery_turns",0))
 	state.last_protagonist_damage_step=Int64CodecScript.parse(
 		row.get("last_protagonist_damage_step","-1"),"last protagonist damage step")
@@ -218,6 +218,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v11_keys:Array=v10_keys.duplicate();v11_keys.append("protagonist_growth");v11_keys.sort()
 	var v12_keys:Array=v11_keys.duplicate()
 	v12_keys.erase("protagonist_inventory");v12_keys.erase("ground_items");v12_keys.sort()
+	var v13_keys:Array=v12_keys.duplicate()
+	v13_keys.erase("protagonist_loadout");v13_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -231,13 +233,14 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == RECOVERY_SCHEMA_VERSION and keys != v9_keys) \
 		or (parsed_schema_version == OPENING_EVENT_SCHEMA_VERSION and keys != v10_keys) \
 		or (parsed_schema_version == GROWTH_BUILD_SCHEMA_VERSION and keys != v11_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v12_keys):
+		or (parsed_schema_version == WORLD_ITEM_SCHEMA_VERSION and keys != v12_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v13_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
 		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
-		SCHEMA_VERSION]: return "unsupported_party_schema"
+		WORLD_ITEM_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -342,7 +345,9 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	if parsed_schema_version>=PROGRESSION_SCHEMA_VERSION:
 		var progression_error:=ProgressionScript.wire_error(row.get("protagonist_progression"))
 		if not progression_error.is_empty():return progression_error
-	if parsed_schema_version>=LOADOUT_SCHEMA_VERSION:
+	if parsed_schema_version>=LOADOUT_SCHEMA_VERSION \
+			and parsed_schema_version<WEAPON_AUTHORITY_SCHEMA_VERSION:
+		# v5-v12 only. The duplicate weapon authority is gone from the current wire.
 		var loadout_error:=WeaponLoadoutScript.wire_error(row.get("protagonist_loadout"))
 		if not loadout_error.is_empty():return loadout_error
 	if parsed_schema_version>=ITEM_SCHEMA_VERSION \

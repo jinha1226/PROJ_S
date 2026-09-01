@@ -363,9 +363,8 @@ func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
 
 func _protagonist_defense_snapshot(target_id:int,target_profile:Dictionary)->Dictionary:
 	if world.party_encounter==null or target_id!=world.party_encounter.protagonist_id:return {}
-	var inventory=world.inventory_row(world.party_encounter.protagonist_id)
-	if inventory==null or not inventory.has_method("combat_modifier_dto"):return {}
-	var dto:Dictionary=inventory.combat_modifier_dto()
+	var dto:Dictionary=world.equipment_modifiers(world.party_encounter.protagonist_id)
+	if dto.is_empty():return {}
 	var totals:Variant=dto.get("totals",{})
 	return DefenseRulesScript.build_snapshot(int(target_profile.evasion_milli),
 		int(target_profile.armor_flat),totals if totals is Dictionary else {})

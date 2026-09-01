@@ -44,6 +44,7 @@ const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const PartyEncounterStateScript = preload("res://sim/party_encounter_state.gd")
 const WorldItemStateScript = preload("res://sim/world_item_state.gd")
+const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const InventoryStateScript = preload("res://sim/inventory_state.gd")
 const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
@@ -227,20 +228,55 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	return entity
 
 
-func inventory_row(entity_id: int):
-	# A2 hands out the live row; A3 adds the detached read facade of the guide 5.3.
+# Guide 5.3 read facade. Everything here is detached: gameplay and UI can never
+# reach the canonical rows through a returned object. Mutation goes exclusively
+# through WorldItemOperations.
+func inventory_of(entity_id: int):
+	var row = _inventory_ref(entity_id)
+	return InventoryStateScript._from_valid_dict(row.to_dict()) if row != null else null
+
+
+func equipped_item(entity_id: int, slot: String):
+	var row = _inventory_ref(entity_id)
+	return row.equipped_item(slot) if row != null else null
+
+
+func equipment_modifiers(entity_id: int) -> Dictionary:
+	var row = _inventory_ref(entity_id)
+	return row.combat_modifier_dto() if row != null else {}
+
+
+func ground_item(instance_id: String):
+	return item_state.ground_items.item(instance_id) if item_state != null else null
+
+
+func item_owner(instance_id: String) -> Dictionary:
+	var result := {"kind": "NONE", "entity_id": -1, "slot": "", "position": [-1, -1]}
+	if item_state == null or instance_id.is_empty(): return result
+	var entity_ids: Array = item_state.inventory_rows.keys(); entity_ids.sort()
+	for entity_id in entity_ids:
+		var row = item_state.inventory_rows[entity_id]
+		if row._item_ref(instance_id) == null: continue
+		result.kind = "ENTITY"; result.entity_id = int(entity_id)
+		for slot in row.equipped:
+			if str(row.equipped[slot]) == instance_id: result.slot = str(slot)
+		var owner_entity = entities.get(entity_id)
+		if owner_entity != null:
+			result.position = [owner_entity.position.x, owner_entity.position.y]
+		return result
+	var ground_position: Vector2i = item_state.ground_items.position_of(instance_id)
+	if ground_position != Vector2i(-1, -1):
+		result.kind = "GROUND"; result.position = [ground_position.x, ground_position.y]
+	return result
+
+
+func _inventory_ref(entity_id: int):
+	# Read-only kernel fast path. Callers must never mutate the returned row.
 	return item_state.inventory_rows.get(entity_id) if item_state != null else null
 
 
-func ammo_pool_row(entity_id: int):
+func _ammo_pool_ref(entity_id: int):
 	return item_state.ammo_pool_rows.get(entity_id) if item_state != null else null
-
-
-func set_inventory_row(entity_id: int, value) -> bool:
-	if item_state == null or value == null or not item_state.inventory_rows.has(entity_id):
-		return false
-	item_state.inventory_rows[entity_id] = value
-	return true
 
 
 func add_lab_actor(controller_kind: String, trial_slot: int, position: Vector2i,
@@ -1526,8 +1562,6 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 		# so an out-of-band health write cannot be laundered by the next AUTO hop.
 		var party_health_error := _party_health_restoration_error()
 		if not party_health_error.is_empty(): return party_health_error
-		var bridge_error := _inventory_loadout_bridge_error()
-		if not bridge_error.is_empty(): return bridge_error
 	return ""
 
 
@@ -2291,11 +2325,10 @@ func _melee_action_event_error(event) -> String:
 	var base_damage: int = int(attacker_profile.get("power", 0))
 	var weapon_enabled:bool = party_encounter != null \
 		and event.actor_id == party_encounter.protagonist_id \
-		and party_encounter.protagonist_loadout != null \
 		and "weapon_loadout" in entities[event.actor_id].tags
 	var weapon_spec: Dictionary = {}
 	if weapon_enabled:
-		var weapon_id := str(party_encounter.protagonist_loadout.equipped_weapon_id)
+		var weapon_id := WorldItemOperationsScript.equipped_weapon_id(self, event.actor_id)
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return "canonical_weapon_missing"
 		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id)
@@ -3476,6 +3509,22 @@ func _lifecycle_history_error() -> String:
 				"health": expected_health, "lock_until": encoded_lock}
 			lifecycle_touched[event.target_id] = true
 			continue
+		if event.type == "health.restored" and event.data.get("schema_version") == 1 \
+				and projected_recovery.has(event.target_id) \
+				and projected_life.get(event.target_id) == "ACTIVE":
+			# Post-recovery healing (potion, town care, safe-exploration pulse) is a
+			# canonical ledger leaf: the projected HP rises by exactly the magnitude
+			# and the leaf must disclose the resulting HP so replay stays exact.
+			var restored_health: Dictionary = projected_recovery[event.target_id]
+			var restored_after: int = int(restored_health.health) + event.magnitude
+			if event.actor_id != event.target_id or event.magnitude <= 0 \
+					or restored_after > int(entities[event.target_id].max_health) \
+					or not event.data.get("health_after") is int \
+					or int(event.data.get("health_after")) != restored_after:
+				return "post_recovery_restoration_projection_invalid"
+			restored_health.health = restored_after
+			projected_recovery[event.target_id] = restored_health
+			continue
 		if event.type in ["combat.physical_damage", "combat.fire_damage",
 				"combat.electric_damage"] and projected_recovery.has(event.target_id) \
 				and projected_life.get(event.target_id) == "ACTIVE":
@@ -3759,32 +3808,12 @@ static func _exact_keys(value: Variant, expected: Array) -> bool:
 	return actual_keys == expected_keys
 
 
-func _inventory_loadout_bridge_error() -> String:
-	# The duplicated weapon authority now spans two states, so the world keeps the
-	# bridge invariant that party wire validation owned until A3 removes
-	# protagonist_loadout together with its combat readers.
-	var protagonist_inventory = inventory_row(party_encounter.protagonist_id)
-	if protagonist_inventory == null: return "inventory_row_entity_mismatch"
-	var main_hand = protagonist_inventory.equipped_item("MAIN_HAND")
-	var bridged_weapon_id := "UNARMED"
-	if main_hand != null:
-		var main_definition = ItemRegistryScript.definition(main_hand.definition_id)
-		if main_definition == null: return "inventory_loadout_bridge_mismatch"
-		bridged_weapon_id = str(main_definition.weapon_id)
-	if party_encounter.protagonist_loadout == null \
-			or bridged_weapon_id != str(party_encounter.protagonist_loadout.equipped_weapon_id):
-		return "inventory_loadout_bridge_mismatch"
-	return ""
-
-
 func _party_runtime_error() -> String:
 	# The camera remains a 15x15 window, but product party worlds may be larger.
 	# Retain the legacy minimum so old fixture assumptions are never squeezed.
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
-	var bridge_error := _inventory_loadout_bridge_error()
-	if not bridge_error.is_empty(): return bridge_error
 	for ground_row in item_state.ground_items.rows:
 		var ground_terrain:Dictionary=TerrainRegistryScript.definition(
 			str(tile_at(ground_row.position).terrain))

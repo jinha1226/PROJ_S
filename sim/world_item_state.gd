@@ -35,7 +35,9 @@ func weapon_runtime(instance_id:String):
 
 
 func clone():
-	return from_dict(to_dict())
+	# A live canonical state is already shape-valid, so a clone skips the wire
+	# audit. Every operation validates the mutated clone before it is swapped in.
+	return _from_valid_dict(to_dict())
 
 
 static func instance_id_for(sequence:int)->String:

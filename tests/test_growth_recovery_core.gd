@@ -193,11 +193,11 @@ func test_potion_heals_stack_consumes_time_and_save_replays()->bool:
 	var state=session.sim.world.party_encounter;var hero_id:int=state.protagonist_id
 	# A full-health attempt is rejected before any time/inventory mutation.
 	var full_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
-	var full_before:Dictionary=full_session.sim.world.inventory_row(
+	var full_before:Dictionary=full_session.sim.world.inventory_of(
 		full_session.sim.world.party_encounter.protagonist_id).to_dict()
 	check_eq(full_session.use_inventory_item("START_POTION_001").reason,"item_heal_not_needed",
 		"full-health potion use is rejected")
-	check_eq(full_session.sim.world.inventory_row(
+	check_eq(full_session.sim.world.inventory_of(
 		full_session.sim.world.party_encounter.protagonist_id).to_dict(),full_before,
 		"full-health rejection is atomic")
 	# Let the adjacent enemy resolve until its canonical damage has actually
@@ -215,7 +215,7 @@ func test_potion_heals_stack_consumes_time_and_save_replays()->bool:
 			check(int(result.healed_amount)>0 and int(result.healed_amount)<=35 \
 				and int(result.current_hp)<=120 and int(result.time_cost)==100,
 				"potion heals up to fixed 35 with max clamp and one action cost")
-			check_eq(int(session.sim.world.inventory_row(
+			check_eq(int(session.sim.world.inventory_of(
 				state.protagonist_id).item("START_POTION_001").quantity),2,
 				"one potion stack unit is consumed")
 			check_eq(int(session.sim.world.world_time),start_time+100,"potion advances exactly one action")

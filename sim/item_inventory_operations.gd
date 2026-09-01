@@ -1,7 +1,7 @@
 class_name ItemInventoryOperations
 extends RefCounted
 
-const InventoryScript=preload("res://sim/protagonist_inventory_state.gd")
+const InventoryScript=preload("res://sim/inventory_state.gd")
 const GroundScript=preload("res://sim/ground_item_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const RegistryScript=preload("res://sim/item_registry.gd")
@@ -40,6 +40,26 @@ static func commit_add(inventory,item)->Dictionary:
 		"new_row_quantity":remaining})
 
 
+static func commit_insert_instance(inventory,item)->Dictionary:
+	# Cross-container movement preserves permanent item identity. Matching stacks
+	# remain separate rows; merging is an explicit creation/reward concern owned
+	# by commit_add(), not an implicit side effect of pickup, transfer or loot.
+	var error:=_inventory_error(inventory)
+	if not error.is_empty():return _rejected(error)
+	if item==null:return _rejected("invalid_inventory_item")
+	error=item.validation_error()
+	if not error.is_empty():return _rejected(error)
+	if inventory.item(item.instance_id)!=null:return _rejected("duplicate_inventory_instance")
+	if inventory.used_backpack_slots()>=InventoryScript.BACKPACK_CAPACITY:
+		return _rejected("inventory_backpack_full")
+	var next=_clone_inventory(inventory)
+	next.backpack.append(ItemScript.from_dict(item.to_dict()))
+	next._sort_backpack()
+	error=next.validation_error()
+	if not error.is_empty():return _rejected(error)
+	return _accepted({"inventory":next,"instance_id":str(item.instance_id)})
+
+
 static func preview_pickup(inventory,ground,instance_id:String,actor_position:Vector2i,
 		world_bounds:Rect2i)->Dictionary:
 	return _preview_result(commit_pickup(inventory,ground,instance_id,actor_position,world_bounds))
@@ -53,7 +73,7 @@ static func commit_pickup(inventory,ground,instance_id:String,actor_position:Vec
 	var source=ground.item(instance_id)
 	if source==null:return _rejected("ground_item_missing")
 	if ground.position_of(instance_id)!=actor_position:return _rejected("ground_item_not_at_actor")
-	var added:=commit_add(inventory,source)
+	var added:=commit_insert_instance(inventory,source)
 	if not bool(added.get("accepted",false)):return added
 	var next_ground=_clone_ground(ground)
 	for index in range(next_ground.rows.size()-1,-1,-1):

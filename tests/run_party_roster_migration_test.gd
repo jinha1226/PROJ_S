@@ -4,6 +4,7 @@ const TEST_FILE := "test_party_playtest_session.gd"
 const TEST_METHOD := "test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact"
 const Session = preload("res://playtest/party_playtest_session.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
+const WeaponLoadout = preload("res://sim/weapon_loadout_state.gd")
 
 
 func _init() -> void:
@@ -34,7 +35,10 @@ func _check_legacy_loadout_defaults(errors: Array) -> void:
 		row.erase("ground_items")
 		row.erase("enemy_awareness_rows")
 		row.erase("diagonal_gateway_positions")
-		if schema_version < 5: row.erase("protagonist_loadout")
+		# v5-v12 carried a protagonist_loadout; v13 removed that duplicate weapon
+		# authority, so only the historical fixtures state the field.
+		if schema_version >= 5:
+			row["protagonist_loadout"] = WeaponLoadout.new("SHORT_SWORD", 12, 6).to_dict()
 		if schema_version < 4: row.erase("protagonist_progression")
 		if schema_version < 3: row.erase("patrol_reserved_positions")
 		if schema_version < 2:
@@ -46,10 +50,9 @@ func _check_legacy_loadout_defaults(errors: Array) -> void:
 			errors.append("schema %d fixture rejected: %s" % [schema_version, wire_error])
 			continue
 		var restored = PartyState.from_dict(row)
-		if restored.protagonist_loadout.equipped_weapon_id != "SHORT_SWORD" \
-				or int(restored.protagonist_loadout.ammo_pools.ARROW) != 12 \
-				or int(restored.protagonist_loadout.ammo_pools.BOLT) != 6:
-			errors.append("schema %d did not restore default protagonist loadout" % schema_version)
+		if restored.schema_version != PartyState.SCHEMA_VERSION \
+				or restored.to_dict().has("protagonist_loadout"):
+			errors.append("schema %d did not drop the legacy loadout field" % schema_version)
 		if schema_version == 1 \
 				and restored.active_party_member_ids != restored.party_member_ids:
 			errors.append("schema 1 did not default the full roster active")

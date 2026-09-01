@@ -4,6 +4,7 @@ const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
+const WeaponLoadout = preload("res://sim/weapon_loadout_state.gd")
 
 
 func test_same_seed_is_exact_and_different_seed_changes_layout() -> bool:
@@ -102,6 +103,10 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 			"protagonist_inventory","ground_items","safe_recovery_turns",
 			"last_protagonist_damage_step","opening_event","protagonist_growth"]:
 		legacy_v5.snapshot.party_encounter.erase(future_key)
+	# A v5 row owned protagonist_loadout; v13 removed that duplicate weapon
+	# authority, so the historical field is restated here.
+	legacy_v5.snapshot.party_encounter.protagonist_loadout= \
+		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(3,4)
 	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
 	check(bool(migration_result.get("accepted",false)),

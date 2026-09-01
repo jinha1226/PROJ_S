@@ -12,7 +12,11 @@ func test_active_protagonist_equipment_freezes_dodge_armor_and_parry_in_canonica
 	var world = session.sim.world
 	var state = world.party_encounter
 	var hero_id := int(state.protagonist_id)
-	var inventory = world.inventory_row(hero_id)
+	# The pure single-inventory kernel builds the fixture row, then one explicit
+	# world swap installs it through the same revision and validation gate the
+	# entity-addressed transactions use.
+	var next_item_state = world.item_state.clone()
+	var inventory = next_item_state.inventory(hero_id)
 	for row in [
 		Item.new("DEFENSE_SHIELD_001", "SHIELD_WOOD"),
 		Item.new("DEFENSE_ARMOR_001", "ARMOR_LEATHER"),
@@ -28,8 +32,11 @@ func test_active_protagonist_equipment_freezes_dodge_armor_and_parry_in_canonica
 		check(bool(equipped.accepted), "defense fixture equips %s" % equipment[1])
 		if not bool(equipped.accepted): return finish()
 		inventory = equipped.inventory
-	check(world.set_inventory_row(hero_id, inventory), "defense fixture installs the world row")
-	var totals: Dictionary = inventory.combat_modifier_dto().totals
+	next_item_state.inventory_rows[hero_id] = inventory
+	next_item_state.revision += 1
+	world.item_state = next_item_state
+	check_eq(world.world_state_error(), "", "defense fixture installs a valid world row")
+	var totals: Dictionary = world.equipment_modifiers(hero_id).totals
 	check_eq(totals, {"armor_flat":1, "parry_milli":100, "dodge_milli":25,
 		"stealth":0, "affix_hook_ids":[]}, "equipped totals are the v3 defense input")
 	check(session.commit_exploration(Command.wait(hero_id)).accepted \

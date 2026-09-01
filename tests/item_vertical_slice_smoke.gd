@@ -68,7 +68,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var time_before:=int(session.sim.world.world_time)
 	sandbox.grid.world_cell_pressed.emit(destination);await process_frame
 	_assert(item_state.ground_items.item("GROUND_START_SHIELD")==null \
-		and session.sim.world.inventory_row(state.protagonist_id).item(
+		and session.sim.world.inventory_of(state.protagonist_id).item(
 			"GROUND_START_SHIELD")!=null,
 		"%s one ground-cell touch did not move then pick up"%viewport_size)
 	_assert(int(session.sim.world.world_time)==time_before+200,

@@ -4,6 +4,7 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Request=preload("res://sim/party_turn_request.gd")
+const WeaponLoadout=preload("res://sim/weapon_loadout_state.gd")
 
 func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact() -> bool:
 	var session=Session.new(44,20260828,"SHOWCASE_V1");var state=session.sim.world.party_encounter
@@ -582,6 +583,10 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 			"protagonist_inventory","ground_items","safe_recovery_turns",
 			"last_protagonist_damage_step","opening_event","protagonist_growth"]:
 		legacy_v5.snapshot.party_encounter.erase(future_key)
+	# A v5 row owned protagonist_loadout; v13 removed that duplicate weapon
+	# authority, so the historical field is restated here.
+	legacy_v5.snapshot.party_encounter.protagonist_loadout= \
+		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(3,4)
 	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
 		"v5 product save reconstructs deterministic door gateways")
