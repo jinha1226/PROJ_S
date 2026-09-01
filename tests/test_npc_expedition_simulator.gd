@@ -42,7 +42,8 @@ func test_one_npc_completes_full_expedition_cycle_with_real_core_verbs() -> bool
 		core_types[event.type] = true
 	check(core_types.has("action.move"), "movement uses shared MovementSystem events")
 	check(core_types.has("action.melee_attack"), "combat uses shared MeleeCombatSystem events")
-	check(core_types.has("action.pickup_item"), "loot acquisition is committed as a world event")
+	check(core_types.has("item.picked_up"),
+		"loot acquisition uses the shared entity-addressed item transaction")
 	return finish()
 
 
@@ -89,10 +90,18 @@ func test_dead_monster_is_rewarded_once_at_step_boundary_even_after_external_tra
 	check(str(result.action_id) not in ["ATTACK", "FINISH"],
 		"reward is reconciled on a non-attack wrapper step")
 	check_eq(simulation.kills, 1, "step-boundary death diff awards exactly one kill")
-	check_eq(simulation.ground.rows.size(), 1, "the reconciled death creates its loot")
+	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(), 1,
+		"the reconciled death creates its loot in the world item authority")
 	simulation._reconcile_monster_deaths(0)
 	check_eq(simulation.kills, 1, "replaying the same death evidence cannot duplicate rewards")
-	check_eq(simulation.ground.rows.size(), 1, "reconciliation cannot duplicate loot")
+	check_eq(simulation.simulator.world.item_state.ground_items.rows.size(), 1,
+		"reconciliation cannot duplicate loot")
+	var property_names: Array[String] = []
+	for row in simulation.get_property_list(): property_names.append(str(row.name))
+	check("inventory" not in property_names and "ground" not in property_names,
+		"the expedition wrapper keeps no second inventory or ground authority")
+	check_eq(simulation.simulator.world.world_state_error(), "",
+		"the shared item transaction leaves the observed world canonical")
 	return finish()
 
 
@@ -279,6 +288,10 @@ func test_organic_seed_matrix_progresses_without_empty_return_bias() -> bool:
 		var terminal := false
 		for _turn in range(180):
 			var result: Dictionary = simulation.step()
+			check(bool(result.accepted) or simulation.phase == "DEAD",
+				"organic seed %d never leaves a rejected autonomous step" % sampled_seed)
+			check_eq(simulation.simulator.world.world_state_error(), "",
+				"organic seed %d keeps the shared world canonical after every step" % sampled_seed)
 			if str(result.action_id) in ["ATTACK", "FINISH"]:
 				attacks += 1
 			if simulation.phase == "DEAD":

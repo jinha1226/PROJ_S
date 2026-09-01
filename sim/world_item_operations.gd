@@ -12,6 +12,7 @@ extends RefCounted
 # A rejection never touches the live world, so nothing has to be rolled back.
 
 const InventoryOperationsScript=preload("res://sim/item_inventory_operations.gd")
+const ItemScript=preload("res://sim/item_instance.gd")
 const RegistryScript=preload("res://sim/item_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const RuntimeScript=preload("res://sim/weapon_runtime_state.gd")
@@ -104,6 +105,53 @@ static func commit_use_without_event(world,entity_id:int,instance_id:String)->Di
 	reconcile_weapon_runtime_rows(next)
 	var result:=plan.duplicate();result.erase("item_state")
 	return _swap(world,next,result)
+
+
+static func commit_grant(world,entity_id:int,definition_id:String,quantity:int,
+		position:Vector2i,reason:String)->Dictionary:
+	# Creation is distinct from cross-container movement: it consumes the world
+	# allocator and introduces one permanent instance directly into an owner bag.
+	var guard:=_guard(world,entity_id)
+	if not guard.is_empty():return _rejected(guard)
+	var definition=RegistryScript.definition(definition_id)
+	if definition==null or quantity<1 or quantity>int(definition.stack_limit) \
+			or reason.is_empty():
+		return _rejected("invalid_item_grant")
+	var next=world.item_state.clone()
+	var instance_id:String=next.instance_id_for(next.next_item_instance_id)
+	next.next_item_instance_id+=1
+	var added:=InventoryOperationsScript.commit_insert_instance(next.inventory(entity_id),
+		ItemScript.new(instance_id,definition_id,quantity))
+	if not bool(added.get("accepted",false)):return _rejected(str(added.reason))
+	next.inventory_rows[entity_id]=added.inventory
+	var plan:=_accepted({"item_state":next,"instance_id":instance_id,
+		"definition_id":definition_id,"quantity":quantity})
+	return _commit_planned(world,plan,"item.granted",entity_id,entity_id,position,
+		{"instance_id":instance_id,"definition_id":definition_id,"quantity":quantity,
+			"reason":reason})
+
+
+static func commit_spawn_ground(world,definition_id:String,quantity:int,
+		position:Vector2i,actor_id:int=-1,cause_id:int=-1,reason:String="WORLD_DROP")->Dictionary:
+	if world==null or world.item_state==null or not world.in_bounds(position):
+		return _rejected("invalid_item_world_context")
+	if actor_id!=-1 and not world.entities.has(actor_id):return _rejected("item_actor_missing")
+	if cause_id!=-1 and world.event_by_id(cause_id)==null:return _rejected("item_cause_missing")
+	var definition=RegistryScript.definition(definition_id)
+	if definition==null or quantity<1 or quantity>int(definition.stack_limit) \
+			or reason.is_empty():
+		return _rejected("invalid_ground_item_spawn")
+	var next=world.item_state.clone()
+	var instance_id:String=next.instance_id_for(next.next_item_instance_id)
+	next.next_item_instance_id+=1
+	next.ground_items.rows.append({"position":position,
+		"item":ItemScript.new(instance_id,definition_id,quantity)})
+	next.ground_items._sort_rows()
+	var plan:=_accepted({"item_state":next,"instance_id":instance_id,
+		"definition_id":definition_id,"quantity":quantity})
+	return _commit_planned(world,plan,"item.spawned_on_ground",actor_id,-1,position,
+		{"instance_id":instance_id,"definition_id":definition_id,"quantity":quantity,
+			"reason":reason},cause_id)
 
 
 # --- weapon authority (guide 4.3) -------------------------------------------
@@ -289,7 +337,7 @@ static func _commit(world,plan:Dictionary,action:String,actor_id:int,target_id:i
 
 
 static func _commit_planned(world,plan:Dictionary,event_type:String,actor_id:int,
-		target_id:int,position:Vector2i,data:Dictionary)->Dictionary:
+		target_id:int,position:Vector2i,data:Dictionary,cause_id:int=-1)->Dictionary:
 	var next=plan.item_state
 	reconcile_weapon_runtime_rows(next)
 	var invariant:=_global_invariant_error(world,next)
@@ -297,7 +345,7 @@ static func _commit_planned(world,plan:Dictionary,event_type:String,actor_id:int
 	next.revision=world.item_state.revision+1
 	var payload:={"schema_version":1}
 	payload.merge(data,true)
-	var event=world.emit_event(event_type,actor_id,target_id,position,0,-1,payload)
+	var event=world.emit_event(event_type,actor_id,target_id,position,0,cause_id,payload)
 	if event==null:return _rejected("item_event_failed")
 	world.item_state=next
 	var result:=plan.duplicate();result.erase("item_state")

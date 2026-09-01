@@ -18,10 +18,10 @@ const SimulatorScript = preload("res://sim/simulator.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const HexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
-const InventoryScript = preload("res://sim/protagonist_inventory_state.gd")
-const GroundScript = preload("res://sim/ground_item_state.gd")
-const ItemScript = preload("res://sim/item_instance.gd")
-const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
+const InventoryStateScript = preload("res://sim/inventory_state.gd")
+const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
+const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
+const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EnemyAwarenessScript = preload("res://sim/enemy_awareness_state.gd")
@@ -66,8 +66,6 @@ var monster_id := -1
 var monster_ids: Array[int] = []
 var monster_traits: Dictionary = {}
 var monster_awareness: Dictionary = {}
-var inventory
-var ground
 var profile
 var recent_action_id := ""
 var current_action_id := ""
@@ -103,10 +101,11 @@ func reset(p_seed: int = 1) -> Dictionary:
 	logs.clear()
 	_dungeon_generation = 0
 	profile = HexacoScript.generated(seed, 1)
-	inventory = InventoryScript.new([
-		ItemScript.new("NPC_POTION_000", "POTION_HEALING", 2),
-	])
 	_bootstrap_dungeon()
+	var supplied: Dictionary = WorldItemOperationsScript.commit_grant(simulator.world,
+		npc_id, "POTION_HEALING", 2, ENTRY, "NPC_INITIAL_SUPPLY")
+	if not bool(supplied.get("accepted", false)):
+		return {"accepted": false, "reason": str(supplied.get("reason", "item_supply_failed"))}
 	_last_npc_life_state = _life_state(npc_id)
 	_log("CYCLE", "아린이 마을에서 첫 원정을 준비하기 시작했다.")
 	return {"accepted": true, "reason": "ok", "seed": str(seed)}
@@ -125,6 +124,11 @@ func step() -> Dictionary:
 	# enemies receive their response window; otherwise DOWNED always recovers
 	# before a pursuer can deliver a finisher.
 	var accepted := true if downed_wait else _execute(selected)
+	if not accepted and phase != "DEAD":
+		# A rejected action must still spend the turn; otherwise a time-gated
+		# blocker (recovery lock, transient occupancy) can never clear.
+		_log("STALL", "%s 행동이 거부되어 잠시 상황을 지켜본다." % str(ACTION_LABELS.get(selected, selected)))
+		_advance_time()
 	last_decision = decision.duplicate(true)
 	last_decision["resolved_turn"] = str(turn_index)
 	last_decision["accepted"] = accepted
@@ -236,6 +240,10 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	if npc == null or _life_state(npc_id) != "ACTIVE":
 		rows.append(_candidate("WAIT", true, 1000, "쓰러져 있어 행동할 수 없다.", []))
 		return rows
+	if not simulator.world.can_act(npc_id, simulator.world.world_time):
+		rows.append(_candidate("WAIT", true, 1000,
+			"의식을 되찾은 직후라 아직 몸을 가누지 못한다.", []))
+		return rows
 	_refresh_target()
 	var monster = _monster()
 	var hp_milli := int(npc.health * 1000 / maxi(1, npc.max_health))
@@ -260,6 +268,7 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	var retreat_safe_need := int(retreat_need * int(outlook.retreat_viability) / 1000)
 	var fear_pressure := int(threat * int(profile.value("E")) / 1000)
 	var unresolved_count := _unresolved_monster_ids().size()
+	var ground = _ground_ref()
 	var mission_complete := 1000 if unresolved_count == 0 and ground.rows.is_empty() else 0
 	var mission_incomplete := 1000 if unresolved_count > 0 and carried == 0 else 0
 	var fast_pursuer_count := 0
@@ -556,32 +565,34 @@ func _use_healing_potion() -> bool:
 	var npc = _npc()
 	if instance_id.is_empty() or npc == null or npc.health >= npc.max_health:
 		return false
-	var used: Dictionary = ItemOperationsScript.commit_use(inventory, instance_id)
-	if not bool(used.get("accepted", false)):
+	var preview: Dictionary = WorldItemOperationsScript.preview_use(
+		simulator.world, npc_id, instance_id)
+	if not bool(preview.get("accepted", false)):
 		return false
-	var before: int = int(npc.health)
 	var restored := mini(ItemRegistryScript.HEALING_POTION_RESTORE, npc.max_health - npc.health)
 	var processed_step: int = int(simulator.world.step_index) + 1
 	var rollback: Variant = simulator.capture_rollback_memento()
 	if not rollback is Dictionary or rollback.is_empty():
 		return false
 	simulator.world.begin_step(processed_step)
-	var event = simulator.world.emit_event("action.use_item", npc_id, npc_id, npc.position,
-		restored, -1, {"schema_version": 1, "definition_id": "POTION_HEALING",
-			"instance_id": instance_id, "health_before": before})
-	if event == null:
+	var used: Dictionary = WorldItemOperationsScript.commit_use(simulator.world,
+		npc_id, instance_id, npc.position, 0)
+	if not bool(used.get("accepted", false)):
 		simulator.restore_rollback_memento(rollback)
 		return false
-	inventory = used.inventory
-	npc.health += restored
+	if not _commit_health_restored(npc, restored, int(used.event_id),
+			"healing-potion-v1", "POTION"):
+		simulator.restore_rollback_memento(rollback)
+		return false
 	simulator.world.finish_step()
 	_log("ITEM", "아린이 회복 물약을 사용해 HP %d를 회복했다." % restored)
 	return _advance_time()
 
 
 func _loot() -> bool:
-	var position := _first_ground_item_position()
+	var position := _reachable_ground_item_position()
 	var npc = _npc()
+	var ground = _ground_ref()
 	if position == Vector2i(-1, -1) or npc == null:
 		return false
 	if npc.position != position:
@@ -593,25 +604,29 @@ func _loot() -> bool:
 			return false
 		_log("MOVE", "아린이 전리품이 떨어진 %s로 이동했다." % _position_text(route.path[1]))
 		return true
-	var instance_id := str(ground.rows[0].item.instance_id)
-	var picked: Dictionary = ItemOperationsScript.commit_pickup(inventory, ground, instance_id,
-		npc.position, Rect2i(Vector2i.ZERO, Vector2i(MAP_WIDTH, MAP_HEIGHT)))
-	if not bool(picked.get("accepted", false)):
+	var instance_id := ""
+	for row in ground.rows:
+		if row.position == position:
+			instance_id = str(row.item.instance_id)
+			break
+	if instance_id.is_empty():
+		return false
+	var preview: Dictionary = WorldItemOperationsScript.preview_pickup(
+		simulator.world, npc_id, instance_id, npc.position)
+	if not bool(preview.get("accepted", false)):
 		return false
 	var processed_step: int = int(simulator.world.step_index) + 1
 	var rollback: Variant = simulator.capture_rollback_memento()
 	if not rollback is Dictionary or rollback.is_empty():
 		return false
 	simulator.world.begin_step(processed_step)
-	var event = simulator.world.emit_event("action.pickup_item", npc_id, -1, npc.position,
-		1, -1, {"schema_version": 1, "instance_id": instance_id,
-			"definition_id": "MATERIAL_UNSPECIFIED"})
-	if event == null:
+	var picked: Dictionary = WorldItemOperationsScript.commit_pickup(simulator.world,
+		npc_id, instance_id, npc.position, 0)
+	if not bool(picked.get("accepted", false)):
 		simulator.restore_rollback_memento(rollback)
 		return false
-	inventory = picked.inventory
-	ground = picked.ground
 	simulator.world.finish_step()
+	ground = _ground_ref()
 	phase = "DUNGEON_LOOT" if not ground.rows.is_empty() else "DUNGEON_RETURN"
 	_log("LOOT", "아린이 감염체의 전리품을 회수했다.%s" % (
 		" 남은 전리품도 확인한다." if not ground.rows.is_empty() else " 이제 출구로 돌아간다."))
@@ -651,9 +666,17 @@ func _recover_in_town() -> bool:
 	var npc = _npc()
 	if npc == null:
 		return false
-	var before: int = int(npc.health)
-	npc.health = mini(npc.max_health, npc.health + RECOVERY_PER_TURN)
-	var restored: int = int(npc.health) - before
+	var restored: int = mini(RECOVERY_PER_TURN, int(npc.max_health) - int(npc.health))
+	if restored > 0:
+		var processed_step: int = int(simulator.world.step_index) + 1
+		var rollback: Variant = simulator.capture_rollback_memento()
+		if not rollback is Dictionary or rollback.is_empty():
+			return false
+		simulator.world.begin_step(processed_step)
+		if not _commit_health_restored(npc, restored, -1, "npc-town-recovery-v1", "TOWN"):
+			simulator.restore_rollback_memento(rollback)
+			return false
+		simulator.world.finish_step()
 	_log("RECOVER", "마을에서 치료를 받았다. HP +%d." % restored)
 	var advanced := _advance_time()
 	if npc.health >= npc.max_health:
@@ -662,6 +685,23 @@ func _recover_in_town() -> bool:
 		prepare_turns_left = PREPARE_TURNS
 		_log("CYCLE", "%d번째 원정을 마쳤다. 다음 원정을 준비한다." % completed_cycles)
 	return advanced
+
+
+func _commit_health_restored(entity, amount: int, cause_id: int, ruleset_id: String,
+		kind: String) -> bool:
+	# Healing never writes entity.health silently: the world replays HP from the
+	# event ledger after a DOWNED->recovered transition, so every restoration is
+	# a canonical health.restored leaf that discloses the resulting HP.
+	if entity == null or amount <= 0 or int(entity.health) + amount > int(entity.max_health):
+		return false
+	var health_after: int = int(entity.health) + amount
+	var event = simulator.world.emit_event("health.restored", entity.id, entity.id,
+		entity.position, amount, cause_id, {"schema_version": 1, "ruleset_id": ruleset_id,
+			"kind": kind, "health_after": health_after})
+	if event == null:
+		return false
+	entity.health = health_after
+	return true
 
 
 func _monster_response() -> void:
@@ -761,7 +801,7 @@ func _reconcile_monster_deaths(event_start: int) -> void:
 		_log("KILL", "%s 처치를 확인했다. 누적 처치 %d." % [_monster_name(id), kills])
 	_refresh_target()
 	if _unresolved_monster_ids().is_empty() and location == "DUNGEON":
-		phase = "DUNGEON_LOOT" if not ground.rows.is_empty() else "DUNGEON_RETURN"
+		phase = "DUNGEON_LOOT" if not _ground_ref().rows.is_empty() else "DUNGEON_RETURN"
 	elif phase == "DUNGEON_LOOT":
 		phase = "DUNGEON_COMBAT"
 
@@ -1020,6 +1060,7 @@ func _speed_label(cost: int) -> String:
 
 
 func _bootstrap_dungeon() -> void:
+	var carried_bundle := _carried_item_bundle()
 	_dungeon_generation += 1
 	simulator = SimulatorScript.new(MAP_WIDTH, MAP_HEIGHT, seed + _dungeon_generation * 1009)
 	monster_ids.clear()
@@ -1037,6 +1078,7 @@ func _bootstrap_dungeon() -> void:
 	var npc = simulator.world.add_entity("hero", "아린", ENTRY, 100,
 		["autonomous_npc", "expedition_observer"], "human", "town")
 	npc_id = npc.id if npc != null else -1
+	_restore_carried_item_bundle(carried_bundle)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + _dungeon_generation * 7919
 	var spawn_groups := [
@@ -1068,7 +1110,6 @@ func _bootstrap_dungeon() -> void:
 		monster_awareness[monster.id] = EnemyAwarenessScript.new(monster.id, monster_position)
 	monster_ids.sort()
 	monster_id = monster_ids[0] if not monster_ids.is_empty() else -1
-	ground = GroundScript.new()
 	if npc != null and completed_cycles == 0:
 		npc.health = npc.max_health
 	_last_npc_life_state = _life_state(npc_id)
@@ -1085,27 +1126,33 @@ func _is_wall(position: Vector2i) -> bool:
 
 
 func _spawn_loot(dead_monster_id: int, position: Vector2i) -> void:
-	var instance_id := "LOOT_%03d_%03d" % [_dungeon_generation, dead_monster_id]
-	if ground.item(instance_id) != null:
-		return
-	var next_rows: Array = ground.to_dict().rows
-	next_rows.append({"position": [position.x, position.y],
-		"item": ItemScript.new(instance_id, "MATERIAL_UNSPECIFIED").to_dict()})
-	ground = GroundScript.new(next_rows)
-	_log("DROP", "%s이(가) 쓰러진 자리에 전리품이 남았다." % _monster_name(dead_monster_id))
+	var death_event_id := -1
+	for event in simulator.world.events:
+		if event.type == "entity.died" and int(event.target_id) == dead_monster_id:
+			death_event_id = int(event.id)
+			break
+	var spawned: Dictionary = WorldItemOperationsScript.commit_spawn_ground(simulator.world,
+		"MATERIAL_UNSPECIFIED", 1, position, dead_monster_id, death_event_id,
+		"NPC_EXPEDITION_REWARD")
+	if bool(spawned.get("accepted", false)):
+		_log("DROP", "%s이(가) 쓰러진 자리에 전리품이 남았다." % _monster_name(dead_monster_id))
 
 
 func _deposit_loot() -> int:
 	var deposited := 0
 	var instance_ids: Array[String] = []
+	var inventory = _inventory_ref()
+	if inventory == null:
+		return 0
 	for item in inventory.backpack:
 		if item.definition_id == "MATERIAL_UNSPECIFIED":
 			instance_ids.append(str(item.instance_id))
 			deposited += int(item.quantity)
 	for instance_id in instance_ids:
-		var discarded: Dictionary = ItemOperationsScript.commit_discard(inventory, instance_id)
-		if bool(discarded.get("accepted", false)):
-			inventory = discarded.inventory
+		var discarded: Dictionary = WorldItemOperationsScript.commit_discard(simulator.world,
+			npc_id, instance_id, _npc().position, 0)
+		if not bool(discarded.get("accepted", false)):
+			deposited -= int(inventory.item(instance_id).quantity)
 	loot_banked += deposited
 	return deposited
 
@@ -1113,12 +1160,69 @@ func _deposit_loot() -> int:
 func _restock_potion_if_needed() -> void:
 	if _item_quantity("POTION_HEALING") > 0:
 		return
-	var instance_id := "NPC_POTION_%03d" % (completed_cycles + 1)
-	var added: Dictionary = ItemOperationsScript.commit_add(inventory,
-		ItemScript.new(instance_id, "POTION_HEALING", 2))
+	var npc = _npc()
+	if npc == null:
+		return
+	var added: Dictionary = WorldItemOperationsScript.commit_grant(simulator.world,
+		npc_id, "POTION_HEALING", 2, npc.position, "NPC_TOWN_RESTOCK")
 	if bool(added.get("accepted", false)):
-		inventory = added.inventory
 		_log("SUPPLY", "마을에서 회복 물약 2개를 보충했다.")
+
+
+func _carried_item_bundle() -> Dictionary:
+	# A new expedition currently owns a fresh dungeon world. Carry only this NPC's
+	# canonical rows and allocator frontier across that boundary; ground items and
+	# monster inventories belong to the completed dungeon and stay behind.
+	if simulator == null or simulator.world == null or npc_id < 1:
+		return {}
+	var inventory = simulator.world._inventory_ref(npc_id)
+	var ammo_pool = simulator.world._ammo_pool_ref(npc_id)
+	if inventory == null or ammo_pool == null:
+		return {}
+	var owned_ids: Dictionary = {}
+	for item in inventory.backpack:
+		owned_ids[str(item.instance_id)] = true
+	var runtime_rows: Array = []
+	var runtime_ids: Array = simulator.world.item_state.weapon_runtime_rows.keys()
+	runtime_ids.sort()
+	for instance_id in runtime_ids:
+		if owned_ids.has(str(instance_id)):
+			runtime_rows.append(
+				simulator.world.item_state.weapon_runtime_rows[instance_id].to_dict())
+	return {"inventory": inventory.to_dict(), "ammo_pool": ammo_pool.to_dict(),
+		"runtime_rows": runtime_rows,
+		"next_item_instance_id": int(simulator.world.item_state.next_item_instance_id),
+		"revision": int(simulator.world.item_state.revision)}
+
+
+func _restore_carried_item_bundle(bundle: Dictionary) -> void:
+	if bundle.is_empty() or simulator == null or simulator.world == null or npc_id < 1:
+		return
+	var inventory = InventoryStateScript.from_dict(bundle.get("inventory", {}))
+	var ammo_pool = AmmoPoolStateScript.from_dict(bundle.get("ammo_pool", {}))
+	if inventory == null or ammo_pool == null:
+		return
+	var state = simulator.world.item_state
+	state.inventory_rows[npc_id] = inventory
+	state.ammo_pool_rows[npc_id] = ammo_pool
+	for row in bundle.get("runtime_rows", []):
+		var runtime = WeaponRuntimeStateScript.from_dict(row)
+		if runtime != null:
+			state.weapon_runtime_rows[str(runtime.instance_id)] = runtime
+	state.next_item_instance_id = maxi(state.next_item_instance_id,
+		int(bundle.get("next_item_instance_id", state.next_item_instance_id)))
+	state.revision = maxi(state.revision, int(bundle.get("revision", state.revision)))
+
+
+func _inventory_ref():
+	return simulator.world._inventory_ref(npc_id) \
+		if simulator != null and simulator.world != null else null
+
+
+func _ground_ref():
+	return simulator.world.item_state.ground_items \
+		if simulator != null and simulator.world != null \
+			and simulator.world.item_state != null else null
 
 
 func _npc():
@@ -1136,6 +1240,9 @@ func _life_state(entity_id: int) -> String:
 
 func _item_quantity(definition_id: String) -> int:
 	var total := 0
+	var inventory = _inventory_ref()
+	if inventory == null:
+		return total
 	for item in inventory.backpack:
 		if item.definition_id == definition_id:
 			total += int(item.quantity)
@@ -1143,15 +1250,26 @@ func _item_quantity(definition_id: String) -> int:
 
 
 func _first_item_instance(definition_id: String) -> String:
+	var inventory = _inventory_ref()
+	if inventory == null:
+		return ""
 	for item in inventory.backpack:
 		if item.definition_id == definition_id:
 			return str(item.instance_id)
 	return ""
 
 
-func _first_ground_item_position() -> Vector2i:
-	return ground.rows[0].position if ground != null and not ground.rows.is_empty() \
-		else Vector2i(-1, -1)
+func _reachable_ground_item_position() -> Vector2i:
+	# A drop under a downed (still tile-blocking) body cannot be walked onto;
+	# the NPC has to finish the body first, so such loot is not a candidate.
+	var ground = _ground_ref()
+	if ground == null:
+		return Vector2i(-1, -1)
+	for row in ground.rows:
+		var position: Vector2i = row.position
+		if simulator.world.blocking_entity_at(position, npc_id) == null:
+			return position
+	return Vector2i(-1, -1)
 
 
 func _open_neighbors(center: Vector2i, moving_id: int) -> Array:
@@ -1191,6 +1309,9 @@ func _corpse_rows() -> Array:
 
 func _ground_rows() -> Array:
 	var rows: Array = []
+	var ground = _ground_ref()
+	if ground == null:
+		return rows
 	for row in ground.rows:
 		rows.append({"position": _position_array(row.position), "glyph": "*",
 			"label": "전리품"})
@@ -1199,6 +1320,9 @@ func _ground_rows() -> Array:
 
 func _inventory_labels() -> Array[String]:
 	var labels: Array[String] = []
+	var inventory = _inventory_ref()
+	if inventory == null:
+		return labels
 	for item in inventory.backpack:
 		var definition = ItemRegistryScript.definition(item.definition_id)
 		if definition != null:
