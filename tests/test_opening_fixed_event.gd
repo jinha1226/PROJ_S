@@ -288,6 +288,18 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 			"%s mobile fixture reaches the wounded actor" % viewport_size)
 		sandbox.initialize_for_headless_test(mobile_session)
 		sandbox.grid.size=Vector2(viewport_size.x,viewport_size.x)
+		var opening_status:Dictionary=mobile_session.opening_event_status()
+		var nearby_list:Dictionary=sandbox.grid.monster_list_draw_spec()
+		var nearby_npc_rows:Array=nearby_list.rows.filter(func(row):
+			return str(row.get("row_kind",""))=="NPC" \
+				and int(row.get("entity_id",-1))==int(opening_status.npc_entity_id))
+		check_eq(nearby_npc_rows.size(),1,
+			"%s real opening NPC appears in the nearby list"%viewport_size)
+		var npc_health_bar:Dictionary=sandbox.grid.actor_health_bar_draw_spec(
+			int(opening_status.npc_entity_id))
+		check(bool(npc_health_bar.get("visible",false)) \
+			and float(npc_health_bar.get("ratio",1.0))<1.0,
+			"%s wounded opening NPC has a damaged overhead health bar"%viewport_size)
 		check_eq([sandbox.product_auto_button.text,
 			sandbox.product_interact_button.text],
 			["[물약 주기]", "[돕지 않기]"],
