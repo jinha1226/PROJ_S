@@ -2,9 +2,12 @@ class_name PartyEncounterSandbox
 extends Control
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 50
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 100
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 160
 const MANUAL_CAMERA_SETTLE_MSEC := 50
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 100
+# Web canonical hops commonly finish around 105-120ms. Keep continuous motion
+# alive beyond that interval so the next hop retargets the current draw position
+# instead of visibly stopping on every cell.
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 160
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -1940,7 +1943,7 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
 	product_attack_button=_add_product_context_button(contextual,"[공격]","ProductAttack",
 		_on_product_attack,target)
-	product_attack_button.tooltip_text="인접한 적을 즉시 공격합니다."
+	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 접근하거나 공격합니다."
 	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
 	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
@@ -1971,27 +1974,29 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	for button_value in product_direction_buttons.values():
 		var direction_button:=button_value as Button
 		if direction_button!=null and is_instance_valid(direction_button):direction_button.disabled=not can_step
-	# ATTACK remains a useful explicit command alongside bump attacks. With no
-	# adjacent target it explains why no attack can happen instead of becoming an
-	# inert/hidden control; no canonical action is submitted in that case.
+	# Product ATTACK is a one-turn DCSS-style Tab command. It remains enabled with
+	# no target so the player receives explicit fog-safe feedback rather than an
+	# unexplained inert control.
 	product_attack_button.disabled=terminal
 	if terminal:_product_attack_targeting=false
-	product_attack_button.tooltip_text="공격할 인접 적을 터치하세요." \
-		if _product_attack_targeting else "인접한 적을 즉시 공격합니다."
+	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 한 칸 접근하거나 공격합니다."
 	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	var opening_choice:=bool(opening.get("can_interact",false))
 	if opening_choice:
+		if event_label!=null:
+			event_label.text=str(opening.get("scene_summary",
+				"부상당한 여행자가 벽에 기대 숨을 몰아쉬고 있습니다."))
 		product_auto_button.toggle_mode=false
 		product_auto_button.set_pressed_no_signal(false)
 		product_auto_button.text="[물약 주기]"
 		product_auto_button.disabled=not bool(opening.get("give_enabled",false))
 		product_auto_button.tooltip_text="회복 물약 1개를 건네 실제 체력을 회복시킵니다."
-		product_interact_button.text="[지나가기]"
+		product_interact_button.text="[돕지 않기]"
 		product_interact_button.disabled=not bool(opening.get("pass_enabled",false))
-		product_interact_button.tooltip_text="돕지 않고 지나갑니다."
+		product_interact_button.tooltip_text="여행자를 돕지 않고 원정을 계속합니다."
 		product_auto_button.custom_minimum_size.y=maxf(44.0,
 			product_auto_button.custom_minimum_size.y)
 		product_interact_button.custom_minimum_size.y=maxf(44.0,
@@ -2087,15 +2092,42 @@ func _on_product_direction(direction:Vector2i)->void:
 func _on_product_attack()->void:
 	var status:Dictionary=session.party_status()
 	if bool(status.get("terminal",false)) or bool(_current_run_progress().get("terminal",false)):return
-	var adjacent:=_product_adjacent_enemies(status)
-	if adjacent.is_empty():
+	if not session.has_method("tab_attack_assessment"):
+		_show_product_command_feedback("자동 공격을 사용할 수 없습니다.");return
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	var route_state:Dictionary=session.exploration_route_state()
+	if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
+		_cancel_active_route()
+	var assessment:Dictionary=session.tab_attack_assessment()
+	if not bool(assessment.get("accepted",false)):
 		_product_attack_targeting=false
-		_show_product_command_feedback("인접한 적이 없습니다.")
+		_show_product_command_feedback(str(assessment.get("message",
+			"시야 안에 공격할 적이 없습니다.")))
 		return
-	if adjacent.size()==1:
-		_product_attack_targeting=false;_on_actor(int(adjacent[0]));return
-	_product_attack_targeting=true;selected_target_id=-1
-	_show_product_command_feedback("공격할 적을 터치하세요.")
+	var tab_action:=str(assessment.get("tab_action",""))
+	var target_id:=int(assessment.get("target_id",-1))
+	match tab_action:
+		"ENTER_COMBAT":
+			var entered:Dictionary=session.enter_solo_combat()
+			if not bool(entered.get("accepted",false)):
+				_show_product_command_feedback(str(entered.get("message",
+					"전투에 진입할 수 없습니다.")));return
+			_on_product_attack()
+		"ATTACK":
+			_product_attack_targeting=false
+			_submit_product_melee(target_id,session.party_status())
+		"APPROACH":
+			var destination_value:Variant=assessment.get("destination",[])
+			if not destination_value is Array or destination_value.size()!=2:
+				_show_product_command_feedback("적에게 다가갈 길이 없습니다.");return
+			var destination:=Vector2i(int(destination_value[0]),int(destination_value[1]))
+			if str(status.get("view_mode",""))=="EXPLORATION":
+				_on_cell(destination)
+			elif str(status.get("view_mode",""))=="COMBAT":
+				_stage_auto_combat_action("MOVE",[destination.x,destination.y])
+			else:_show_product_command_feedback("지금은 적에게 다가갈 수 없습니다.")
+		_:
+			_show_product_command_feedback("자동 공격 행동을 결정할 수 없습니다.")
 
 func _show_product_command_feedback(message:String)->void:
 	notice_text=message;action_feedback_text=message
@@ -2203,8 +2235,8 @@ func _on_product_interact()->void:
 	_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
 	var result:Dictionary=session.commit_opening_event_choice("PASS")
 	_record_result(result,true)
-	_show_product_command_feedback("부상당한 여행자를 지나쳤습니다." \
-		if bool(result.get("accepted",false)) else str(result.get("message","지나갈 수 없습니다.")))
+	_show_product_command_feedback("여행자를 돕지 않기로 했습니다." \
+		if bool(result.get("accepted",false)) else str(result.get("message","선택할 수 없습니다.")))
 	_request_refresh()
 
 func _on_product_wait_guard()->void:
@@ -2734,16 +2766,22 @@ func _on_item_equip_selected()->void:
 	for row in dto.get("backpack_rows",[]):
 		if str(row.get("instance_id",""))==member_item_selected_id:
 			allowed_slots=row.get("equip_slots",[]);break
-	slot=item_first_empty_equip_slot(dto,allowed_slots)
+	slot=item_preferred_equip_slot(dto,allowed_slots)
 	if slot.is_empty():notice_text="이 아이템은 장착할 수 없습니다.";return
 	_on_item_operation_result(session.equip_inventory_item(member_item_selected_id,slot))
 
-func item_first_empty_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
+func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
+	# Prefer a vacant compatible slot, then deterministically replace the first
+	# compatible occupied slot. This makes weapon/armor changes one touch while
+	# still filling ACCESSORY_2 before replacing ACCESSORY_1.
 	for allowed in allowed_slots:
 		for equipped_row in dto.get("equipment_slots",[]):
 			if str(equipped_row.get("slot",""))==str(allowed) \
 					and bool(equipped_row.get("empty",false)):
 				return str(allowed)
+	for allowed in allowed_slots:
+		for equipped_row in dto.get("equipment_slots",[]):
+			if str(equipped_row.get("slot",""))==str(allowed):return str(allowed)
 	return ""
 
 func _on_item_unequip_selected()->void:

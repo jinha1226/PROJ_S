@@ -295,21 +295,39 @@ static func opening_event_anchors(layout: Dictionary, world_seed: int) -> Dictio
 	if goal_index < 0: return {}
 	var band: Array[Vector2i] = []
 	for index in range(band_start, band_end + 1): band.append(route[index])
+	# The traveller is not inexplicably collapsed on the threshold. Place them a
+	# short, readable 6-10 route steps inside, preferring a side alcove. A fixed
+	# step band keeps this an opening beat even on a very long generated route.
+	var spawn_band_end := mini(band_start - 2, 10)
+	if spawn_band_end < 3: return {}
+	var spawn_band_start := mini(spawn_band_end, 6)
+	var spawn_target_index := clampi(8, spawn_band_start, spawn_band_end)
+	var spawn_route_index := -1
+	for radius in range(0, spawn_band_end - spawn_band_start + 1):
+		for candidate_index in [spawn_target_index - radius,
+				spawn_target_index + radius]:
+			if candidate_index < spawn_band_start \
+					or candidate_index > spawn_band_end: continue
+			if not protected.has(route[candidate_index]):
+				spawn_route_index = candidate_index; break
+		if spawn_route_index >= 0: break
+	if spawn_route_index < 0: return {}
+	var route_anchor: Vector2i = route[spawn_route_index]
+	var route_cells: Dictionary = {}
+	for position in route: route_cells[position] = true
 	var spawn_candidates: Array[Vector2i] = []
 	for direction in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
-		var candidate: Vector2i = entry + direction
-		if terrain_at(layout, candidate) in ["", "wall"] or protected.has(candidate): continue
+		var candidate: Vector2i = route_anchor + direction
+		if terrain_at(layout, candidate) in ["", "wall"] \
+				or protected.has(candidate) or route_cells.has(candidate): continue
 		spawn_candidates.append(candidate)
-	if spawn_candidates.is_empty(): return {}
-	var route_first: Vector2i = route[1]
+	if spawn_candidates.is_empty(): spawn_candidates.append(route_anchor)
 	spawn_candidates.sort_custom(func(a: Vector2i, b: Vector2i):
-		var a_on_route := 1 if a == route_first else 0
-		var b_on_route := 1 if b == route_first else 0
-		if a_on_route != b_on_route: return a_on_route < b_on_route
 		var ar := _opening_anchor_rank(world_seed, a)
 		var br := _opening_anchor_rank(world_seed, b)
 		return ar < br if ar != br else (a.y < b.y if a.y != b.y else a.x < b.x))
 	return {"spawn_position":spawn_candidates[0],
+		"spawn_route_index":spawn_route_index,
 		"convergence_band":band,
 		"convergence_goal":route[goal_index],
 		"entry_exit_path":route,

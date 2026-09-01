@@ -98,8 +98,11 @@ static func commit_equip(inventory,instance_id:String,slot:String)->Dictionary:
 	if source==null:return _rejected("inventory_item_missing")
 	var definition=RegistryScript.definition(source.definition_id)
 	if slot not in definition.equip_slots:return _rejected("item_equipped_in_wrong_slot")
-	if not str(inventory.equipped[slot]).is_empty():return _rejected("equipment_slot_occupied")
 	if instance_id in inventory.equipped.values():return _rejected("item_already_equipped")
+	# Replacing the item in the chosen slot is one atomic inventory operation.
+	# Equipped instances remain in the ownership table, so the displaced item
+	# naturally returns to the backpack without losing its permanent identity.
+	var replaced_instance_id:=str(inventory.equipped[slot])
 	if slot=="MAIN_HAND" and RegistryScript.is_two_handed(source.definition_id) \
 			and not str(inventory.equipped.OFF_HAND).is_empty():
 		return _rejected("two_handed_offhand_conflict")
@@ -110,7 +113,8 @@ static func commit_equip(inventory,instance_id:String,slot:String)->Dictionary:
 	var next=_clone_inventory(inventory);next.equipped[slot]=instance_id
 	error=next.validation_error()
 	if not error.is_empty():return _rejected(error)
-	return _accepted({"inventory":next,"instance_id":instance_id,"slot":slot})
+	return _accepted({"inventory":next,"instance_id":instance_id,"slot":slot,
+		"replaced_instance_id":replaced_instance_id})
 
 
 static func preview_unequip(inventory,slot:String)->Dictionary:

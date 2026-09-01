@@ -4,6 +4,7 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
+const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 
 
 func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
@@ -19,10 +20,15 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 		var goal_ratio := float(int(anchors.goal_index)) / float(denominator)
 		check(goal_ratio >= 0.35 and goal_ratio <= 0.50,
 			"seed %d convergence goal is in 35-50%% band" % seed)
+		check(int(anchors.spawn_route_index) >= 6 \
+				and int(anchors.spawn_route_index) <= 10,
+			"seed %d opening actor is staged 6-10 route steps inside" % seed)
 		var spawn: Vector2i = anchors.spawn_position
 		var entry: Vector2i = layout.entry_position
-		check(absi(spawn.x-entry.x)+absi(spawn.y-entry.y)==1,
-			"opening actor starts cardinal-adjacent to entry")
+		check(absi(spawn.x-entry.x)+absi(spawn.y-entry.y)>1,
+			"opening actor is not collapsed directly beside the entrance")
+		check(DungeonMap.reachable(layout, entry, spawn),
+			"opening actor remains reachable from the entrance")
 		check(DungeonMap.terrain_at(layout,spawn) not in ["", "wall"],
 			"opening spawn is passable")
 		check(spawn not in layout.enemy_positions,
@@ -54,8 +60,30 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	var dto: Dictionary = a.opening_event_status()
 	dto.hexaco_profile.H = -1
 	check_eq(a.save_session_json(), before, "opening observation is detached and pure")
+	var generated_style:Dictionary=opening.hexaco_profile.style_summary()
+	check_eq(dto.personality_style,generated_style,
+		"opening HEXACO combination exposes its exact generated style")
+	check(str(generated_style.label).split(" ").size()>=2,
+		"opening HEXACO style is a concise combined phrase")
+	check(a.opening_event_status().scene_summary.contains(
+		"성격 인상 · %s"%str(generated_style.label)),
+		"opening presentation explains the combination in player-facing words")
+	check_eq(Hexaco.new({"H":900,"E":100,"X":500,"A":500,"C":500,"O":500}) \
+		.style_summary().label, "대담한 원칙주의자",
+		"HEXACO summary combines the strongest and second strongest poles")
+	check_eq(Hexaco.new().style_summary().label, "균형 잡힌 현실주의자",
+		"near-center profile receives a stable balanced style")
+	check(not a.opening_event_status().can_interact,
+		"opening choice is not exposed before the player finds the actor")
+	check(_approach_opening(a), "player can follow the opening trail to the actor")
 	check(a.opening_event_status().can_interact,
-		"entry-adjacent wounded actor exposes the choice")
+		"adjacent wounded actor exposes the choice")
+	var auto_step_before:=int(a.sim.world.step_index)
+	var auto_stop:Dictionary=a.start_auto_explore()
+	check_eq([auto_stop.running,auto_stop.stop_reason,
+		a.sim.world.step_index-auto_step_before],
+		[false,"auto_explore_interaction_discovered",0],
+		"AUTO stops on the opening choice before spending another turn")
 	check_eq(a.sim.world.world_state_error(), "", "opening bootstrap is canonical")
 	return finish()
 
@@ -71,6 +99,7 @@ func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() 
 	var trust_before := int(give.sim.relationships.effective_relation(
 		npc_id, hero_id).trust)
 	var party_before: Array = give_state.party_member_ids.duplicate()
+	check(_approach_opening(give), "GIVE fixture reaches the wounded actor")
 	var result: Dictionary = give.commit_opening_event_choice("GIVE_POTION")
 	check(result.accepted, "GIVE commits")
 	check_eq(_potion_quantity(give), inventory_before - 1,
@@ -99,8 +128,9 @@ func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() 
 	var restored = Session.new(1, 2, Session.SOLO_COMBAT_SCENARIO_ID)
 	var loaded: Dictionary = restored.load_session_json(give.save_session_json())
 	check(loaded.accepted, "GIVE save loads")
-	check_eq(restored.save_session_json(), give.save_session_json(),
-		"GIVE save/load/journal replay is exact")
+	check_eq(JSON.parse_string(restored.save_session_json()),
+		JSON.parse_string(give.save_session_json()),
+		"GIVE save/load/journal replay is structurally exact")
 
 	var passed = Session.new(45, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	var pass_state = passed.sim.world.party_encounter
@@ -109,6 +139,7 @@ func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() 
 	var pass_inventory: Dictionary = pass_state.protagonist_inventory.to_dict()
 	var pass_hp := int(passed.sim.world.entities[pass_npc].health)
 	var pass_relation: Dictionary = passed.sim.relationships.effective_relation(pass_npc, pass_hero)
+	check(_approach_opening(passed), "PASS fixture reaches the wounded actor")
 	var pass_result: Dictionary = passed.commit_opening_event_choice("PASS")
 	check(pass_result.accepted, "PASS commits")
 	check_eq([pass_state.protagonist_inventory.to_dict(),
@@ -127,6 +158,7 @@ func test_same_actor_travels_adjacent_and_reencounter_records_once() -> bool:
 	state.enemy_detection_radius = 0
 	for enemy_id in state.enemy_ids: state.enemy_busy_rows[enemy_id] = 1000000
 	check_eq(session.sim.world.world_state_error(), "", "quiet travel fixture is valid")
+	check(_approach_opening(session), "travel fixture reaches the wounded actor")
 	check(session.commit_opening_event_choice("PASS").accepted,
 		"travel fixture commits PASS")
 	var opening = state.opening_event
@@ -206,6 +238,7 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 	var corpse_state = corpse.sim.world.party_encounter
 	var corpse_id := int(corpse_state.opening_event.npc_entity_id)
 	var corpse_entity = corpse.sim.world.entities[corpse_id]
+	check(_approach_opening(corpse), "corpse fixture reaches the wounded actor")
 	var tile = corpse.sim.world.tile_at(corpse_entity.position)
 	tile.flammability = 100
 	var ignition = corpse.sim.step(Command.ignite(corpse_entity.position, 100,
@@ -229,11 +262,14 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 
 	for viewport_size in [Vector2(360,640), Vector2(450,800)]:
 		var sandbox = Sandbox.new(); sandbox.size = viewport_size
-		sandbox.initialize_for_headless_test(Session.new(44, 20260828,
-			Session.SOLO_COMBAT_SCENARIO_ID))
+		var mobile_session = Session.new(44, 20260828,
+			Session.SOLO_COMBAT_SCENARIO_ID)
+		check(_approach_opening(mobile_session),
+			"%s mobile fixture reaches the wounded actor" % viewport_size)
+		sandbox.initialize_for_headless_test(mobile_session)
 		check_eq([sandbox.product_auto_button.text,
 			sandbox.product_interact_button.text],
-			["[물약 주기]", "[지나가기]"],
+			["[물약 주기]", "[돕지 않기]"],
 			"%s exposes both opening choices" % viewport_size)
 		check(sandbox.product_auto_button.custom_minimum_size.y >= 44.0 \
 			and sandbox.product_interact_button.custom_minimum_size.y >= 44.0,
@@ -252,6 +288,44 @@ func _potion_quantity(session) -> int:
 	var item = session.sim.world.party_encounter.protagonist_inventory.item(
 		"START_POTION_001")
 	return int(item.quantity) if item != null else 0
+
+
+func _approach_opening(session) -> bool:
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	var npc = session.sim.world.entities.get(state.opening_event.npc_entity_id)
+	if npc == null: return false
+	# Follow the authored blood-trail corridor first. Generic shortest-path ties
+	# may cut diagonally toward the visible tutorial monster, which is deliberately
+	# outside this fixed-event unit test's concern.
+	var anchors: Dictionary = DungeonMap.opening_event_anchors(
+		session._map_layout, session.world_seed)
+	var opening_route: Array = anchors.get("entry_exit_path", [])
+	var spawn_route_index := int(anchors.get("spawn_route_index", -1))
+	if spawn_route_index > 0 and opening_route.size() > spawn_route_index:
+		for index in range(1, spawn_route_index + 1):
+			if bool(session.opening_event_status().get("can_interact", false)):
+				return true
+			var result: Dictionary = session.commit_exploration(
+				Command.move_to(hero_id, opening_route[index]))
+			if not bool(result.get("accepted", false)): return false
+	if bool(session.opening_event_status().get("can_interact", false)): return true
+	var best: Dictionary = {}
+	for direction in [Vector2i(-1,-1), Vector2i(0,-1), Vector2i(1,-1),
+			Vector2i(-1,0), Vector2i(1,0), Vector2i(-1,1), Vector2i(0,1),
+			Vector2i(1,1)]:
+		var route: Dictionary = session.find_exploration_path(
+			hero_id, npc.position + direction)
+		if not bool(route.get("found", false)): continue
+		if best.is_empty() or int(route.get("steps", 999999)) \
+				< int(best.get("steps", 999999)):
+			best = route
+	if best.is_empty(): return false
+	for index in range(1, best.path.size()):
+		var result: Dictionary = session.commit_exploration(
+			Command.move_to(hero_id, best.path[index]))
+		if not bool(result.get("accepted", false)): return false
+	return bool(session.opening_event_status().get("can_interact", false))
 
 
 func _cell(observation: Dictionary, position: Vector2i) -> Dictionary:

@@ -312,6 +312,9 @@ func test_auto_explore_canonical_move_round_trips_through_existing_replay() -> b
 
 func _safe_product_session(seed: int):
 	var session = Session.new(seed, 20260828, "SOLO_COMBAT_V1")
+	# Generic frontier tests run without the authored opening interaction. Its
+	# dedicated regression verifies that AUTO stops on the wounded traveller.
+	session.reset_party(seed,20260828,"SOLO_COMBAT_V1",{},false)
 	var state = session.sim.world.party_encounter
 	# Product dungeons now own a full monster roster. This helper isolates AUTO's
 	# fog/frontier behavior, so hide every enemy instead of only the historical

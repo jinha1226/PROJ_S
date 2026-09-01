@@ -618,6 +618,7 @@ func opening_event_status() -> Dictionary:
 		if can_interact else {"accepted":false}
 	var relation: Dictionary = sim.relationships.effective_relation(
 		opening.npc_entity_id, state.protagonist_id)
+	var personality_style: Dictionary = opening.hexaco_profile.style_summary()
 	return {"schema_version":1, "available":true,
 		"npc_entity_id":opening.npc_entity_id,
 		"display_name":str(npc.display_name), "choice":str(opening.choice),
@@ -628,6 +629,10 @@ func opening_event_status() -> Dictionary:
 		"spawn_position":[opening.spawn_position.x, opening.spawn_position.y],
 		"convergence_goal":[opening.convergence_goal.x, opening.convergence_goal.y],
 		"hexaco_profile":opening.hexaco_profile.to_dict(),
+		"personality_style":personality_style,
+		"scene_summary":"입구에서 이어진 피 묻은 흔적 끝에 여행자가 벽에 기대 숨을 몰아쉬고 있습니다.\n성격 인상 · %s" \
+			% str(personality_style.get("label", "알 수 없는 인물")),
+		"choice_prompt":"회복 물약을 건넬지, 돕지 않고 떠날지 결정하세요.",
 		"can_interact":can_interact,
 		"give_enabled":can_interact and bool(give_preview.get("accepted", false)),
 		"pass_enabled":can_interact,
@@ -2422,6 +2427,127 @@ func enemy_targets() -> Array[Dictionary]:
 	return rows.duplicate(true)
 
 
+func tab_attack_assessment() -> Dictionary:
+	# DCSS-style Tab authority: inspect only currently visible enemies, then
+	# choose exactly one ordinary action. Holding/repeating the UI command is what
+	# advances multiple turns; this assessment never creates an uninterruptible
+	# combat macro or a new journal format.
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	if not is_solo_combat(): return _rejection_dto("tab_attack_solo_only")
+	var status := party_status()
+	if bool(status.get("terminal", false)) or _run_is_complete():
+		return _rejection_dto("run_complete")
+	var state = sim.world.party_encounter
+	var hero = sim.world.entities.get(state.protagonist_id)
+	if hero == null: return _rejection_dto("item_actor_missing")
+	var visible := _presentation_visible_cells(hero.position)
+	var enemy_ids: Array[int] = []
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id := int(enemy_id_value)
+		var enemy = sim.world.entities.get(enemy_id)
+		if enemy != null and sim.world.is_unresolved_enemy(enemy_id) \
+				and visible.has(_position_key(enemy.position)):
+			enemy_ids.append(enemy_id)
+	enemy_ids.sort()
+	if enemy_ids.is_empty(): return _rejection_dto("tab_attack_no_visible_enemy")
+	var phase := str(status.get("safe_phase", ""))
+	if phase == "CONTACT":
+		var contact_target := _nearest_tab_enemy(hero.position, enemy_ids)
+		return _feedback_dto({"accepted":true,"reason":"ok",
+			"tab_action":"ENTER_COMBAT","target_id":contact_target,
+			"target_name":_name(contact_target),"destination":[]})
+	if phase == "ENGAGED":
+		var attack_candidates: Array[int] = []
+		for enemy_id in enemy_ids:
+			var request = RequestScript.new(ActionScript.melee(state.protagonist_id,
+				enemy_id), [])
+			if bool(sim.preview_party_turn(request).get_value("accepted", false)):
+				attack_candidates.append(enemy_id)
+		if not attack_candidates.is_empty():
+			var attack_target := _nearest_tab_enemy(hero.position, attack_candidates)
+			return _feedback_dto({"accepted":true,"reason":"ok",
+				"tab_action":"ATTACK","target_id":attack_target,
+				"target_name":_name(attack_target),"destination":[]})
+	elif phase not in ["GROUPED", "GROUPED_COMPLETE"]:
+		return _rejection_dto("tab_attack_phase_unavailable")
+	var approach := _nearest_tab_approach(state.protagonist_id, enemy_ids,
+		phase == "ENGAGED")
+	if approach.is_empty(): return _rejection_dto("tab_attack_no_path")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"tab_action":"APPROACH","target_id":int(approach.target_id),
+		"target_name":_name(int(approach.target_id)),
+		"destination":[int(approach.destination.x),int(approach.destination.y)],
+		"path_steps":int(approach.steps),"path_cost":int(approach.cost)})
+
+
+func _nearest_tab_enemy(origin:Vector2i, enemy_ids:Array[int])->int:
+	var best_id := -1
+	var best_distance := 2147483647
+	for enemy_id in enemy_ids:
+		var enemy = sim.world.entities.get(enemy_id)
+		if enemy == null: continue
+		var distance := maxi(absi(enemy.position.x-origin.x),
+			absi(enemy.position.y-origin.y))
+		if distance < best_distance or distance == best_distance \
+				and (best_id < 0 or enemy_id < best_id):
+			best_distance = distance; best_id = enemy_id
+	return best_id
+
+
+func _nearest_tab_approach(actor_id:int, enemy_ids:Array[int], combat:bool)->Dictionary:
+	var best: Dictionary = {}
+	for enemy_id in enemy_ids:
+		var enemy = sim.world.entities.get(enemy_id)
+		if enemy == null: continue
+		var goals: Array[Vector2i] = []
+		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
+			var goal: Vector2i = enemy.position + direction
+			if not sim.world.in_bounds(goal) \
+					or sim.world.blocking_entity_at(goal, actor_id) != null:
+				continue
+			var terrain: Dictionary = TerrainRegistryScript.definition(
+				str(sim.world.tile_at(goal).terrain))
+			if not terrain.is_empty() and bool(terrain.get("passable", false)):
+				goals.append(goal)
+		var route: Dictionary = {}
+		if combat:
+			route = sim.party_coordinator.pathfinder.find_path_to_any(actor_id, goals)
+		else:
+			for goal in goals:
+				var candidate := find_exploration_path(actor_id, goal)
+				if not bool(candidate.get("found", false)) \
+						or int(candidate.get("steps", 0)) < 1:
+					continue
+				if route.is_empty() or _tab_route_less(candidate, route): route = candidate
+		if not bool(route.get("found", false)) or int(route.get("steps", 0)) < 1:
+			continue
+		var path: Array = route.get("path", [])
+		if path.size() < 2 or not path[1] is Vector2i: continue
+		var row := {"target_id":enemy_id,"destination":path[1],
+			"steps":int(route.get("steps", 0)),"cost":int(route.get("total_cost", 0))}
+		if best.is_empty() or _tab_approach_less(row, best): best = row
+	return best.duplicate(true)
+
+
+func _tab_route_less(a:Dictionary,b:Dictionary)->bool:
+	if int(a.get("steps",0)) != int(b.get("steps",0)):
+		return int(a.get("steps",0)) < int(b.get("steps",0))
+	if int(a.get("total_cost",0)) != int(b.get("total_cost",0)):
+		return int(a.get("total_cost",0)) < int(b.get("total_cost",0))
+	var a_path:Array=a.get("path",[]);var b_path:Array=b.get("path",[])
+	var a_goal:Vector2i=a_path[-1] if not a_path.is_empty() else Vector2i(-1,-1)
+	var b_goal:Vector2i=b_path[-1] if not b_path.is_empty() else Vector2i(-1,-1)
+	return a_goal.y < b_goal.y if a_goal.y != b_goal.y else a_goal.x < b_goal.x
+
+
+func _tab_approach_less(a:Dictionary,b:Dictionary)->bool:
+	for key in ["steps","cost","target_id"]:
+		if int(a[key]) != int(b[key]): return int(a[key]) < int(b[key])
+	var ap:Vector2i=a.destination;var bp:Vector2i=b.destination
+	return ap.y < bp.y if ap.y != bp.y else ap.x < bp.x
+
+
 func inspect_enemy(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or entity_id not in sim.world.party_encounter.enemy_ids \
@@ -3131,6 +3257,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
 		"hero_position":status.protagonist_position.duplicate(true),
 		"cells":cells, "visible":visible, "hazards":hazards,
+		"opening_interaction":bool(opening_event_status().get("can_interact",false)),
 		"visible_enemy_keys":visible_enemy_keys}
 
 
@@ -3161,6 +3288,7 @@ func _auto_explore_stop_snapshot() -> Dictionary:
 	return {"schema_version":1, "step_index":int(status.step_index),
 		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
+		"opening_interaction":bool(opening_event_status().get("can_interact",false)),
 		"visible_enemy_keys":visible_enemy_keys}.duplicate(true)
 
 
@@ -4716,6 +4844,10 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"opening_actor_unavailable":"지금은 여행자와 상호작용할 수 없습니다.",
 		"opening_npc_not_adjacent":"여행자에게 인접해야 합니다.",
 		"opening_healing_potion_missing":"건넬 회복 물약이 없습니다.",
+		"tab_attack_solo_only":"자동 공격은 단독 원정에서만 사용할 수 있습니다.",
+		"tab_attack_no_visible_enemy":"시야 안에 공격할 적이 없습니다.",
+		"tab_attack_no_path":"적에게 다가갈 수 있는 길이 없습니다.",
+		"tab_attack_phase_unavailable":"지금은 자동 공격을 사용할 수 없습니다.",
 		"invalid_party_session":"저장 데이터 형식이 올바르지 않습니다.",
 		"invalid_party_session_wire":"저장 데이터가 정규 형식이 아닙니다.",
 		"session_not_initialized":"세션이 준비되지 않았습니다."
@@ -4732,14 +4864,14 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
-		"opening.npc_discovered":return "%s 입구 근처에서 심하게 다친 채 버티고 있다."%_subject(target)
+		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
 		"opening.choice_committed":
 			return "주인공이 회복 물약을 건네기로 했다." \
 				if str(event.data.get("choice",""))=="GAVE_POTION" \
-				else "주인공이 부상당한 여행자를 지나쳤다."
+				else "주인공이 여행자를 돕지 않기로 했다."
 		"opening.potion_given":return "%s %s 회복 물약을 건넸다."%[_subject(actor),_object(target)]
 		"opening.health_restored":return "%s 체력을 %d 회복했다."%[_subject(target),int(event.magnitude)]
-		"opening.reencountered":return "중앙 구역에서 %s 다시 마주쳤다."%_object(target)
+		"opening.reencountered":return "던전 안쪽에서 %s 다시 마주쳤다."%_object(target)
 		"relationship.gratitude_recorded":return "%s 도움을 고마운 기억으로 남겼다."%_subject(actor)
 		"item.picked_up":return "%s 바닥의 물건을 주웠다."%_subject(actor)
 		"item.equipped":return "%s 장비를 갖추었다."%_subject(actor)

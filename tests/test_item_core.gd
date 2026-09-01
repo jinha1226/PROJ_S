@@ -9,6 +9,7 @@ const WeaponRegistry=preload("res://sim/weapon_registry.gd")
 const PartyState=preload("res://sim/party_encounter_state.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
+const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 
 
 func test_registry_bridges_existing_weapon_authority_without_copying_attack_values()->bool:
@@ -105,6 +106,43 @@ func test_equipment_slots_two_handed_conflicts_and_defensive_aggregate()->bool:
 		"stealth":0,"affix_hook_ids":[]},"defensive-only equipment aggregate")
 	check("attack" not in bonuses and "accuracy" not in bonuses \
 			and "damage" not in bonuses,"aggregate cannot override weapon/proficiency authority")
+	return finish()
+
+
+func test_equip_replaces_an_occupied_compatible_slot_atomically_and_replays()->bool:
+	var inventory=Inventory.new([Item.new("SWORD","WEAPON_SHORT_SWORD"),
+		Item.new("AXE","WEAPON_HAND_AXE")],{"MAIN_HAND":"SWORD"})
+	var before:Dictionary=inventory.to_dict()
+	var swapped:Dictionary=Operations.commit_equip(inventory,"AXE","MAIN_HAND")
+	check(bool(swapped.accepted),"weapon replaces the occupied compatible slot")
+	check_eq([swapped.inventory.equipped.MAIN_HAND,
+		str(swapped.get("replaced_instance_id",""))],
+		["AXE","SWORD"],"replacement reports both permanent item identities")
+	check_eq(swapped.inventory.unequipped_items().map(func(item):return item.instance_id),
+		["SWORD"],"displaced weapon returns to the backpack")
+	check_eq(inventory.to_dict(),before,"equipment replacement leaves its input untouched")
+
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var sandbox=Sandbox.new()
+	check_eq(sandbox.item_preferred_equip_slot(session.protagonist_inventory(),
+		["MAIN_HAND"]),"MAIN_HAND",
+		"equipment UI chooses a compatible occupied slot when no empty slot exists")
+	sandbox.free()
+	var start_time:=int(session.sim.world.world_time)
+	var result:Dictionary=session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND")
+	check(bool(result.accepted),"session equips a carried weapon over the starter sword")
+	var state=session.sim.world.party_encounter
+	check_eq([state.protagonist_inventory.equipped.MAIN_HAND,
+		state.protagonist_loadout.equipped_weapon_id,
+		state.protagonist_inventory.unequipped_items().map(func(item):return item.instance_id).has(
+			"LEGACY_MAIN_HAND"),int(session.sim.world.world_time)],
+		["START_HAND_AXE_001","HAND_AXE",true,start_time+100],
+		"session replacement updates item, combat loadout, backpack, and time together")
+	var restored=Session.new(9,9,Session.SOLO_COMBAT_SCENARIO_ID)
+	var loaded:Dictionary=restored.load_session_json(session.save_session_json())
+	check(bool(loaded.accepted),"replacement equipment journal reloads: %s"%str(loaded))
+	if bool(loaded.accepted):check_eq(restored.sim.snapshot(),session.sim.snapshot(),
+		"replacement equipment replay is snapshot exact")
 	return finish()
 
 

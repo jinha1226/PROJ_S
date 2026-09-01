@@ -224,6 +224,8 @@ func _precondition_reason(snapshot: Dictionary) -> String:
 	if str(snapshot.get("view_mode", "")) != "EXPLORATION" \
 			or str(snapshot.get("safe_phase", "")) not in ["GROUPED", "GROUPED_COMPLETE"]:
 		return "auto_explore_combat_contact"
+	if bool(snapshot.get("opening_interaction", false)):
+		return "auto_explore_interaction_discovered"
 	if not snapshot.get("visible_enemy_keys", {}).is_empty():
 		return "auto_explore_enemy_visible"
 	return ""

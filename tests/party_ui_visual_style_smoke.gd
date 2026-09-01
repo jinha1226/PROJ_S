@@ -24,16 +24,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),true)
 	await process_frame;await process_frame
-	var opening_journal_before:int=sandbox.session.command_journal.size()
-	_check(sandbox.product_auto_button.text=="[물약 주기]" \
-		and not sandbox.product_auto_button.disabled \
-		and sandbox.product_interact_button.text=="[지나가기]" \
-		and not sandbox.product_interact_button.disabled,
-		"%s opening event did not replace the contextual controls with two choices"%viewport_size)
-	sandbox._on_product_interact();await process_frame;await process_frame
-	_check(str(sandbox.session.opening_event_status().get("choice",""))=="PASSED" \
-		and sandbox.session.command_journal.size()==opening_journal_before+1,
-		"%s opening PASS did not commit exactly once before exploration smoke"%viewport_size)
+	_check(not bool(sandbox.session.opening_event_status().get("can_interact",false)) \
+		and sandbox.product_auto_button.text=="[AUTO]" \
+		and sandbox.product_interact_button.text=="[INTERACT]",
+		"%s opening event was exposed before the actor was discovered"%viewport_size)
 	_check(sandbox.theme.default_font.resource_path=="res://assets/fonts/LivingWorldMonoKR.ttf",
 		"%s UI default is not bundled Coding font"%viewport_size)
 	_check(sandbox.theme.default_font_size==16,
@@ -126,11 +120,19 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and not sandbox.product_wait_guard_button.disabled \
 		and sandbox.product_execute_button.disabled,
 		"%s exploration contextual controls do not match AUTO/ATTACK/WAIT/EXECUTE authority"%viewport_size)
-	var no_target_step:=int(sandbox.session.party_status().step_index)
-	sandbox._on_product_attack()
-	_check(int(sandbox.session.party_status().step_index)==no_target_step \
-		and sandbox.event_label.text=="인접한 적이 없습니다.",
-		"%s no-target ATTACK consumed a turn or omitted concise feedback"%viewport_size)
+	var attack_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var attack_probe=Sandbox.new();root.add_child(attack_probe)
+	attack_probe.initialize_for_headless_test(attack_session,true)
+	var attack_time:=int(attack_session.sim.world.world_time)
+	var attack_origin:Vector2i=attack_session.sim.world.entities[
+		attack_session.sim.world.party_encounter.protagonist_id].position
+	attack_probe._on_product_attack()
+	var attack_position:Vector2i=attack_session.sim.world.entities[
+		attack_session.sim.world.party_encounter.protagonist_id].position
+	_check(int(attack_session.sim.world.world_time)==attack_time+100 \
+		and attack_position!=attack_origin,
+		"%s ATTACK did not spend one turn approaching the nearest visible enemy"%viewport_size)
+	attack_probe.queue_free()
 	sandbox._refresh();await process_frame;await process_frame
 	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==2 \
 		and not sandbox.info_scroll.visible and not sandbox.deck.visible and not sandbox.log_label.visible,
