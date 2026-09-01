@@ -278,6 +278,8 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size;root.add_child(sandbox)
 	await process_frame;await process_frame
 	var label:="%s MVP_RUN"%viewport_size
+	var expected_cells:=int(Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT)
+	var expected_radius:=int(expected_cells/2)
 	if sandbox.root_layout.get_global_rect()!=sandbox.get_global_rect():
 		failures.append("%s product root does not use the full viewport root=%s viewport=%s"%[
 			label,sandbox.root_layout.get_global_rect(),sandbox.get_global_rect()])
@@ -348,7 +350,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 		failures.append("%s complete fixed area is not one restart button"%label)
 	if restart!=null and restart.text!="[RESTART]":
 		failures.append("%s solo restart button copy"%label)
-	if sandbox.grid.visible_cell_count!=15 or not sandbox.grid._intent_overlays.is_empty() \
+	if sandbox.grid.visible_cell_count!=expected_cells or not sandbox.grid._intent_overlays.is_empty() \
 			or not sandbox.grid.route_draw_spec().segments.is_empty():
 		failures.append("%s complete left stale camera/action overlays"%label)
 	_validate_run_objective_geometry(sandbox,label+" COMPLETE")
@@ -375,10 +377,12 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	var fresh_status:Dictionary=session.party_status()
 	var fresh_hero:=int(fresh_status.protagonist_id)
 	var fresh_hero_position:Vector2i=session.sim.world.entities[fresh_hero].position
-	if sandbox.grid.get_instance_id()!=grid_id or sandbox.grid.visible_cell_count!=15 \
-			or sandbox.grid.view_origin!=fresh_hero_position-Vector2i(7,7) \
+	if sandbox.grid.get_instance_id()!=grid_id \
+			or sandbox.grid.visible_cell_count!=expected_cells \
+			or sandbox.grid.view_origin!=fresh_hero_position-Vector2i(expected_radius,expected_radius) \
 			or absf(sandbox.grid.cell_size_px()-initial_cell_size)>0.001:
-		failures.append("%s restart replaced grid or lost 15x15 mapping"%label)
+		failures.append("%s restart replaced grid or lost %dx%d mapping"%[
+			label,expected_cells,expected_cells])
 	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
 		failures.append("%s restart did not restore fresh run progress"%label)
 	if int(session.personality_seed)!=personality_seed_before:
