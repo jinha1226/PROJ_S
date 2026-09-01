@@ -23,7 +23,9 @@ const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
-const InventoryScript=preload("res://sim/protagonist_inventory_state.gd")
+const InventoryScript=preload("res://sim/inventory_state.gd")
+const AmmoPoolScript=preload("res://sim/ammo_pool_state.gd")
+const WeaponRuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const GroundItemScript=preload("res://sim/ground_item_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
@@ -315,7 +317,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		state.enemy_busy_rows[enemy_entity.id]=0
 		state.enemy_awareness_rows[enemy_entity.id]=EnemyAwarenessScript.new(
 			enemy_entity.id,enemy_entity.position)
-	state.protagonist_inventory=InventoryScript.new([
+	# The same starting instances, quantities and slots as before, now owned by the
+	# canonical world item state instead of the party encounter.
+	candidate.world.item_state.inventory_rows[protagonist.id]=InventoryScript.new([
 		ItemScript.new("LEGACY_MAIN_HAND",ItemRegistryScript.weapon_definition_id("SHORT_SWORD")),
 		ItemScript.new("START_HAND_AXE_001",ItemRegistryScript.weapon_definition_id("HAND_AXE")),
 		ItemScript.new("START_MACE_001",ItemRegistryScript.weapon_definition_id("MACE")),
@@ -324,10 +328,15 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		ItemScript.new("START_CROSSBOW_001",ItemRegistryScript.weapon_definition_id("CROSSBOW")),
 		ItemScript.new("START_POTION_001","POTION_HEALING",3)],
 		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
+	candidate.world.item_state.ammo_pool_rows[protagonist.id]=AmmoPoolScript.new(
+		int(state.protagonist_loadout.ammo_pools.ARROW),
+		int(state.protagonist_loadout.ammo_pools.BOLT))
+	candidate.world.item_state.weapon_runtime_rows["START_CROSSBOW_001"]=WeaponRuntimeScript.new(
+		"START_CROSSBOW_001",bool(state.protagonist_loadout.crossbow_loaded))
 	state.protagonist_progression.training_modes=ProgressionRegistryScript.initial_training_modes("SWORD")
 	state.protagonist_growth=GrowthBuildStateScript.new(str(protagonist.species_id))
-	state.ground_items=GroundItemScript.new(_initial_ground_item_rows(candidate,
-		hero_position,map_layout) if product_dungeon else [])
+	candidate.world.item_state.ground_items=GroundItemScript.new(_initial_ground_item_rows(
+		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
 	candidate.world.party_encounter = state
@@ -447,11 +456,12 @@ func protagonist_growth_build()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false,"reason":"session_not_initialized"}.duplicate(true)
 	var state=sim.world.party_encounter
-	if state.protagonist_growth==null or state.protagonist_inventory==null:
+	var growth_inventory=sim.world.inventory_row(state.protagonist_id)
+	if state.protagonist_growth==null or growth_inventory==null:
 		return {"schema_version":1,"available":false,"reason":"growth_state_missing"}.duplicate(true)
 	var equipped_items:Dictionary={}
 	for slot in GrowthBuildCalculatorScript.EQUIPMENT_SLOTS:
-		var item=state.protagonist_inventory.equipped_item(slot)
+		var item=growth_inventory.equipped_item(slot)
 		if item!=null:equipped_items[slot]=item
 	var projection:Dictionary=GrowthBuildCalculatorScript.calculate(
 		state.protagonist_growth,equipped_items)
@@ -596,14 +606,16 @@ func protagonist_equipment()->Dictionary:
 		"reload_time":int(weapon.reload_time),
 		"can_attack":loadout.attack_error().is_empty(),
 		"attack_block_reason":loadout.attack_error(),
-		"combat_modifiers":state.protagonist_inventory.combat_modifier_dto()}.duplicate(true)
+		"combat_modifiers":sim.world.inventory_row(
+			state.protagonist_id).combat_modifier_dto()}.duplicate(true)
 
 
 func protagonist_inventory()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
 	var state=sim.world.party_encounter
-	var inventory=state.protagonist_inventory
+	var inventory=sim.world.inventory_row(state.protagonist_id)
+	if inventory==null:return {"schema_version":1,"available":false}.duplicate(true)
 	var slot_rows:Array=[]
 	for slot in preload("res://sim/item_definition.gd").EQUIPMENT_SLOTS:
 		var instance_id:=str(inventory.equipped.get(slot,""))
@@ -711,7 +723,7 @@ func ground_items_at_protagonist()->Array[Dictionary]:
 	var state=sim.world.party_encounter
 	var hero=sim.world.entities.get(state.protagonist_id)
 	if hero==null:return rows
-	for ground_row in state.ground_items.rows:
+	for ground_row in sim.world.item_state.ground_items.rows:
 		if ground_row.position==hero.position:
 			rows.append(_item_presentation_row(ground_row.item,"",false))
 	return rows.duplicate(true)
@@ -721,7 +733,7 @@ func visible_ground_items_at(position:Vector2i)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	var context:=_party_observation_context()
 	if context.is_empty() or not context.visible.has(_position_key(position)):return rows
-	for ground_row in sim.world.party_encounter.ground_items.rows:
+	for ground_row in sim.world.item_state.ground_items.rows:
 		if ground_row.position==position:
 			rows.append(_item_presentation_row(ground_row.item,"",false))
 	return rows.duplicate(true)
@@ -758,7 +770,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
-	var preview:Dictionary=ItemOperationsScript.preview_use(state.protagonist_inventory,instance_id)
+	var preview:Dictionary=ItemOperationsScript.preview_use(
+		sim.world.inventory_row(state.protagonist_id),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
 	var before:Dictionary=sim.snapshot()
@@ -774,7 +787,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_user_unavailable")
 	if int(hero.health)>=int(hero.max_health):
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_heal_not_needed")
-	var consumed:Dictionary=ItemOperationsScript.commit_use(state.protagonist_inventory,instance_id)
+	var consumed:Dictionary=ItemOperationsScript.commit_use(
+		sim.world.inventory_row(state.protagonist_id),instance_id)
 	if not bool(consumed.get("accepted",false)):
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
 	var used=sim.world.emit_event("item.used",state.protagonist_id,state.protagonist_id,hero.position,0,-1,
@@ -787,7 +801,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 	var restored=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
 		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
 			"kind":"POTION","health_after":int(hero.health)})
-	state.protagonist_inventory=consumed.inventory;state.revision+=1
+	sim.world.set_inventory_row(state.protagonist_id,consumed.inventory)
+	sim.world.item_state.revision+=1;state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if restored==null or not state_error.is_empty():
 		sim=SimulatorScript.from_snapshot(before)
@@ -814,16 +829,17 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	var hero=sim.world.entities.get(state.protagonist_id)
 	if hero==null:return _rejection_dto("item_actor_missing")
 	var bounds:=Rect2i(Vector2i.ZERO,Vector2i(sim.world.width,sim.world.height))
+	var inventory=sim.world.inventory_row(state.protagonist_id)
+	if inventory==null:return _rejection_dto("item_actor_missing")
 	var preview:Dictionary
 	match action:
-		"PICKUP":preview=ItemOperationsScript.preview_pickup(state.protagonist_inventory,
-			state.ground_items,instance_id,hero.position,bounds)
-		"EQUIP":preview=ItemOperationsScript.preview_equip(state.protagonist_inventory,
-			instance_id,slot)
-		"UNEQUIP":preview=ItemOperationsScript.preview_unequip(state.protagonist_inventory,slot)
-		"DROP":preview=ItemOperationsScript.preview_drop(state.protagonist_inventory,
-			state.ground_items,instance_id,hero.position,bounds)
-		"DISCARD":preview=ItemOperationsScript.preview_discard(state.protagonist_inventory,instance_id)
+		"PICKUP":preview=ItemOperationsScript.preview_pickup(inventory,
+			sim.world.item_state.ground_items,instance_id,hero.position,bounds)
+		"EQUIP":preview=ItemOperationsScript.preview_equip(inventory,instance_id,slot)
+		"UNEQUIP":preview=ItemOperationsScript.preview_unequip(inventory,slot)
+		"DROP":preview=ItemOperationsScript.preview_drop(inventory,
+			sim.world.item_state.ground_items,instance_id,hero.position,bounds)
+		"DISCARD":preview=ItemOperationsScript.preview_discard(inventory,instance_id)
 		_:return _rejection_dto("unknown_item_operation")
 	if not bool(preview.get("accepted",false)):
 		return _rejection_dto(str(preview.get("reason","item_operation_failed")))
@@ -834,20 +850,22 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
 	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
+	inventory=sim.world.inventory_row(state.protagonist_id)
 	var result:Dictionary
 	match action:
-		"PICKUP":result=ItemOperationsScript.commit_pickup(state.protagonist_inventory,
-			state.ground_items,instance_id,hero.position,bounds)
-		"EQUIP":result=ItemOperationsScript.commit_equip(state.protagonist_inventory,instance_id,slot)
-		"UNEQUIP":result=ItemOperationsScript.commit_unequip(state.protagonist_inventory,slot)
-		"DROP":result=ItemOperationsScript.commit_drop(state.protagonist_inventory,
-			state.ground_items,instance_id,hero.position,bounds)
-		"DISCARD":result=ItemOperationsScript.commit_discard(state.protagonist_inventory,instance_id)
+		"PICKUP":result=ItemOperationsScript.commit_pickup(inventory,
+			sim.world.item_state.ground_items,instance_id,hero.position,bounds)
+		"EQUIP":result=ItemOperationsScript.commit_equip(inventory,instance_id,slot)
+		"UNEQUIP":result=ItemOperationsScript.commit_unequip(inventory,slot)
+		"DROP":result=ItemOperationsScript.commit_drop(inventory,
+			sim.world.item_state.ground_items,instance_id,hero.position,bounds)
+		"DISCARD":result=ItemOperationsScript.commit_discard(inventory,instance_id)
 	if not bool(result.get("accepted",false)):
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(result.get("reason","item_operation_failed")))
-	state.protagonist_inventory=result.inventory
-	if result.has("ground"):state.ground_items=result.ground
-	var main=state.protagonist_inventory.equipped_item("MAIN_HAND")
+	sim.world.set_inventory_row(state.protagonist_id,result.inventory)
+	if result.has("ground"):sim.world.item_state.ground_items=result.ground
+	sim.world.item_state.revision+=1
+	var main=sim.world.inventory_row(state.protagonist_id).equipped_item("MAIN_HAND")
 	var weapon_id:="UNARMED"
 	if main!=null:
 		var definition=ItemRegistryScript.definition(main.definition_id)
@@ -1023,7 +1041,7 @@ func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 	var before:Dictionary=sim.snapshot()
 	if not sim.world.party_encounter.protagonist_loadout.equip(weapon_id):
 		return _rejection_dto("weapon_unchanged")
-	var inventory=sim.world.party_encounter.protagonist_inventory
+	var inventory=sim.world.inventory_row(sim.world.party_encounter.protagonist_id)
 	var main_id:=str(inventory.equipped.get("MAIN_HAND",""))
 	if main_id.is_empty():main_id="LEGACY_MAIN_HAND"
 	for index in range(inventory.backpack.size()-1,-1,-1):
@@ -1034,6 +1052,7 @@ func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 	if ItemRegistryScript.is_two_handed(ItemRegistryScript.weapon_definition_id(weapon_id)):
 		inventory.equipped.OFF_HAND=""
 	inventory._sort_backpack()
+	sim.world.item_state.revision+=1
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
@@ -1394,7 +1413,7 @@ func _party_observation_context()->Dictionary:
 		hero_position)
 	var follower_positions := _grouped_follower_display_positions(visible)
 	var ground_items_by_cell:Dictionary={}
-	for ground_row in sim.world.party_encounter.ground_items.rows:
+	for ground_row in sim.world.item_state.ground_items.rows:
 		var ground_key:=_position_key(ground_row.position)
 		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
 		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
@@ -1775,7 +1794,10 @@ func _protagonist_equipment_visual()->Dictionary:
 		return {"weapon_id":"UNARMED","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var state=sim.world.party_encounter
-	var inventory=state.protagonist_inventory
+	var inventory=sim.world.inventory_row(state.protagonist_id)
+	if inventory==null:
+		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var main=inventory.equipped_item("MAIN_HAND")
 	var armor=inventory.equipped_item("ARMOR")
 	var off_hand=inventory.equipped_item("OFF_HAND")
@@ -3946,6 +3968,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
+	_normalize_world_item_json_numbers(decoded.snapshot.get("item_state"))
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
 	var legacy_opening_replay := source_party_schema \
 		< PartyStateScript.OPENING_EVENT_SCHEMA_VERSION \
@@ -4058,11 +4081,8 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay):
 		return _rejection_dto("party_layout_replay_failed")
-	if source_party_schema<PartyStateScript.ITEM_SCHEMA_VERSION:
-		var legacy_state=replay.sim.world.party_encounter
-		legacy_state.protagonist_inventory=InventoryScript.with_legacy_weapon(
-			str(legacy_state.protagonist_loadout.equipped_weapon_id))
-		legacy_state.ground_items=GroundItemScript.new()
+	# Items are world authority from snapshot v7 on. A nested party version says
+	# nothing about them any more, so replay keeps the canonical world item state.
 	if legacy_progression_replay:
 		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
 		legacy_progression.legacy_reward_origin=true
@@ -4175,6 +4195,44 @@ func _normalize_item_json_numbers(party_row:Variant)->void:
 								and ground_row.position[index]==floor(ground_row.position[index]):
 							ground_row.position[index]=int(ground_row.position[index])
 					_normalize_item_instance_json_numbers(ground_row.get("item"))
+
+
+func _normalize_world_item_json_numbers(item_state_row:Variant)->void:
+	# Same JSON transport boundary as the party rows above, now for the canonical
+	# world item authority. Only the checked integer fields are restored.
+	if not item_state_row is Dictionary:return
+	_normalize_integer_field(item_state_row,"schema_version")
+	for row in item_state_row.get("inventory_rows",[]):
+		if not row is Dictionary:continue
+		var inventory:Variant=row.get("inventory")
+		if not inventory is Dictionary:continue
+		_normalize_integer_field(inventory,"schema_version")
+		_normalize_integer_field(inventory,"backpack_capacity")
+		for item_row in inventory.get("backpack",[]):_normalize_item_instance_json_numbers(item_row)
+	for row in item_state_row.get("ammo_pool_rows",[]):
+		if not row is Dictionary:continue
+		var ammo_pool:Variant=row.get("ammo_pool")
+		if not ammo_pool is Dictionary:continue
+		_normalize_integer_field(ammo_pool,"schema_version")
+		for ammo_row in ammo_pool.get("ammo_pools",[]):
+			if ammo_row is Dictionary:_normalize_integer_field(ammo_row,"amount")
+	for row in item_state_row.get("weapon_runtime_rows",[]):
+		if row is Dictionary:_normalize_integer_field(row,"schema_version")
+	var ground:Variant=item_state_row.get("ground_items")
+	if ground is Dictionary:
+		_normalize_integer_field(ground,"schema_version")
+		for ground_row in ground.get("rows",[]):
+			if not ground_row is Dictionary:continue
+			for index in range(2):
+				if ground_row.get("position") is Array and ground_row.position.size()==2 \
+						and ground_row.position[index] is float \
+						and ground_row.position[index]==floor(ground_row.position[index]):
+					ground_row.position[index]=int(ground_row.position[index])
+			_normalize_item_instance_json_numbers(ground_row.get("item"))
+
+
+func _normalize_integer_field(row:Dictionary,key:String)->void:
+	if row.get(key) is float and row[key]==floor(row[key]):row[key]=int(row[key])
 
 
 func _normalize_item_instance_json_numbers(item_row:Variant)->void:

@@ -12,7 +12,7 @@ func test_active_protagonist_equipment_freezes_dodge_armor_and_parry_in_canonica
 	var world = session.sim.world
 	var state = world.party_encounter
 	var hero_id := int(state.protagonist_id)
-	var inventory = state.protagonist_inventory
+	var inventory = world.inventory_row(hero_id)
 	for row in [
 		Item.new("DEFENSE_SHIELD_001", "SHIELD_WOOD"),
 		Item.new("DEFENSE_ARMOR_001", "ARMOR_LEATHER"),
@@ -28,7 +28,7 @@ func test_active_protagonist_equipment_freezes_dodge_armor_and_parry_in_canonica
 		check(bool(equipped.accepted), "defense fixture equips %s" % equipment[1])
 		if not bool(equipped.accepted): return finish()
 		inventory = equipped.inventory
-	state.protagonist_inventory = inventory
+	check(world.set_inventory_row(hero_id, inventory), "defense fixture installs the world row")
 	var totals: Dictionary = inventory.combat_modifier_dto().totals
 	check_eq(totals, {"armor_flat":1, "parry_milli":100, "dodge_milli":25,
 		"stealth":0, "affix_hook_ids":[]}, "equipped totals are the v3 defense input")

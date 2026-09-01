@@ -178,7 +178,7 @@ static func wire_error(row:Variant,width:int=-1,height:int=-1)->String:
 	if keys!=["ammo_pool_rows","ground_items","inventory_rows","next_item_instance_id",
 			"processed_drop_death_event_ids","revision","schema_version","weapon_runtime_rows"]:
 		return "invalid_world_item_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_world_item_schema"
 	for key in ["revision","next_item_instance_id"]:
 		if not Int64CodecScript.is_canonical(row[key]):return "noncanonical_world_item_%s"%key
@@ -246,3 +246,9 @@ static func _allocated_sequence(instance_id:String)->int:
 		var code:=digits.unicode_at(index)
 		if code<48 or code>57:return -1
 	return int(digits)
+
+
+static func _integer(value:Variant)->bool:
+	# The canonical JSON transport has no integer token, so an integral float is
+	# the same wire value here as it is for every other snapshot scalar.
+	return value is int or (value is float and value==floor(value))

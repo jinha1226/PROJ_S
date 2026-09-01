@@ -4,8 +4,6 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const WorldState=preload("res://sim/world_state.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
-const Inventory=preload("res://sim/protagonist_inventory_state.gd")
-const GroundItems=preload("res://sim/ground_item_state.gd")
 const Progression=preload("res://sim/protagonist_progression.gd")
 
 
@@ -127,16 +125,15 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 	check(migrated.load_session_json(JSON.stringify(v2_wire)).accepted,
 		"v2 fixture save migrates patrol feature reservations")
 	var expected_legacy:Dictionary=fixture.sim.snapshot()
-	expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
-		str(fixture.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
-	expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
+	# Items are snapshot v7 world authority, so a downgraded party section no
+	# longer implies a legacy-only inventory on either side of the comparison.
 	var legacy_progression=Progression.new()
 	legacy_progression.legacy_reward_origin=true
 	for skill_id in legacy_progression.training_modes:
 		legacy_progression.training_modes[skill_id]="NORMAL"
 	expected_legacy.party_encounter.protagonist_progression=legacy_progression.to_dict()
 	check_eq(migrated.sim.snapshot(),expected_legacy,
-		"v2 fixture migration matches canonical state with legacy-only items")
+		"v2 fixture migration matches canonical state")
 	return finish()
 
 

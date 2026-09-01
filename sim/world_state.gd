@@ -1,7 +1,7 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 6
+const SNAPSHOT_VERSION := 7
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
@@ -25,7 +25,7 @@ const MAX_SAFE_JSON_INTEGER := 9007199254740991
 const MAX_DIMENSION := 4096
 const MAX_TILE_COUNT := 1000000
 const MAX_SMALL_VALUE := 2147483647
-const ROLLBACK_MEMENTO_VERSION := 2
+const ROLLBACK_MEMENTO_VERSION := 3
 # Packed rollback dynamic rows are [tile_index, wetness, fire,
 # fire_source_event_id, wetness_source_event_id, fire_damage_eligible_time].
 # Terrain/flam/conductivity are bootstrap-static and are reconstructed from the
@@ -43,6 +43,12 @@ const PersonalityRegistryScript = preload("res://sim/personality_definition_regi
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EncounterLabStateScript = preload("res://sim/encounter_lab_state.gd")
 const PartyEncounterStateScript = preload("res://sim/party_encounter_state.gd")
+const WorldItemStateScript = preload("res://sim/world_item_state.gd")
+const ItemRegistryScript = preload("res://sim/item_registry.gd")
+const InventoryStateScript = preload("res://sim/inventory_state.gd")
+const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
+const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
+const GroundItemStateScript = preload("res://sim/ground_item_state.gd")
 const PartyMemberStateScript = preload("res://sim/party_member_state.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const CombatantStateScript = preload("res://sim/combatant_state.gd")
@@ -70,6 +76,9 @@ var agent_states: Dictionary = {}
 var combatant_states: Dictionary = {}
 var encounter_lab = null
 var party_encounter = null
+# Canonical owner of every entity inventory, ammo pool, weapon runtime row and
+# ground item. PartyEncounterState never duplicates this authority.
+var item_state = WorldItemStateScript.new()
 var scheduled_entries: Array[Dictionary] = []
 var next_schedule_id: int = 1
 
@@ -201,11 +210,37 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	)
 	var combatant = CombatantStateScript.new(entity.id,
 		CombatProfileRegistryScript.profile_id_for_kind(kind))
+	# entities, combatant_states, inventory_rows and ammo_pool_rows are created all
+	# or none. Everything that can refuse is checked before the first write.
+	if item_state == null or item_state.inventory_rows.has(entity.id) \
+			or item_state.ammo_pool_rows.has(entity.id) \
+			or entities.has(entity.id) or combatant_states.has(entity.id):
+		return null
+	var inventory = InventoryStateScript.new()
+	var ammo_pool = AmmoPoolStateScript.new()
 	entities[entity.id] = entity
 	combatant_states[entity.id] = combatant
+	item_state.inventory_rows[entity.id] = inventory
+	item_state.ammo_pool_rows[entity.id] = ammo_pool
 	_register_occupancy(entity.id, position)
 	_next_entity_id += 1
 	return entity
+
+
+func inventory_row(entity_id: int):
+	# A2 hands out the live row; A3 adds the detached read facade of the guide 5.3.
+	return item_state.inventory_rows.get(entity_id) if item_state != null else null
+
+
+func ammo_pool_row(entity_id: int):
+	return item_state.ammo_pool_rows.get(entity_id) if item_state != null else null
+
+
+func set_inventory_row(entity_id: int, value) -> bool:
+	if item_state == null or value == null or not item_state.inventory_rows.has(entity_id):
+		return false
+	item_state.inventory_rows[entity_id] = value
+	return true
 
 
 func add_lab_actor(controller_kind: String, trial_slot: int, position: Vector2i,
@@ -659,6 +694,7 @@ func snapshot() -> Variant:
 		"agent_states": agent_rows, "combatant_states": combatant_rows,
 		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
 		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
+		"item_state": item_state.to_dict(),
 		"tiles": tile_rows, "entities": entity_rows, "events": event_rows,
 		"species_relations": species_relations.to_dict(), "personal_relations": relation_rows,
 	}
@@ -736,7 +772,66 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
 		"schedule_rows": schedule_rows,
 	}
+	memento.merge(_rollback_item_rows())
 	return memento
+
+
+func _rollback_item_rows() -> Dictionary:
+	# Inventories are as sparse as dynamic tiles: a product dungeon roster of ~14
+	# entities normally has exactly one owner. Serialize only the rows that hold
+	# something so memento capture scales with owners, never with the roster.
+	var inventory_rows: Array = []
+	var entity_ids: Array = item_state.inventory_rows.keys(); entity_ids.sort()
+	for entity_id in entity_ids:
+		var row = item_state.inventory_rows[entity_id]
+		if row.backpack.is_empty(): continue
+		inventory_rows.append([int(entity_id), row.to_dict()])
+	var ammo_rows: Array = []
+	var ammo_ids: Array = item_state.ammo_pool_rows.keys(); ammo_ids.sort()
+	for entity_id in ammo_ids:
+		var row = item_state.ammo_pool_rows[entity_id]
+		if row.amount("ARROW") == 0 and row.amount("BOLT") == 0: continue
+		ammo_rows.append([int(entity_id), row.to_dict()])
+	var runtime_rows: Array = []
+	var runtime_ids: Array = item_state.weapon_runtime_rows.keys(); runtime_ids.sort()
+	for instance_id in runtime_ids:
+		runtime_rows.append(item_state.weapon_runtime_rows[instance_id].to_dict())
+	return {"item_revision": item_state.revision,
+		"item_next_instance_id": item_state.next_item_instance_id,
+		"item_inventory_rows": inventory_rows, "item_ammo_rows": ammo_rows,
+		"item_weapon_runtime_rows": runtime_rows,
+		"item_ground": item_state.ground_items.to_dict(),
+		"item_processed_death_ids": item_state.processed_drop_death_event_ids.duplicate()}
+
+
+func _restore_item_rows(value: Dictionary) -> bool:
+	for key in ["item_inventory_rows", "item_ammo_rows", "item_weapon_runtime_rows",
+			"item_processed_death_ids"]:
+		if not value.get(key) is Array: return false
+	if not value.get("item_ground") is Dictionary: return false
+	item_state = WorldItemStateScript.new()
+	item_state.revision = int(value.get("item_revision", -1))
+	item_state.next_item_instance_id = int(value.get("item_next_instance_id", 0))
+	# Every combatant owns a row by contract, so the sparse capture only has to
+	# restore the rows that differ from that empty default.
+	for entity_id in combatant_states:
+		item_state.inventory_rows[int(entity_id)] = InventoryStateScript.new()
+		item_state.ammo_pool_rows[int(entity_id)] = AmmoPoolStateScript.new()
+	for row in value.item_inventory_rows:
+		if not row is Array or row.size() != 2 \
+				or not item_state.inventory_rows.has(int(row[0])): return false
+		item_state.inventory_rows[int(row[0])] = InventoryStateScript._from_valid_dict(row[1])
+	for row in value.item_ammo_rows:
+		if not row is Array or row.size() != 2 \
+				or not item_state.ammo_pool_rows.has(int(row[0])): return false
+		item_state.ammo_pool_rows[int(row[0])] = AmmoPoolStateScript._from_valid_dict(row[1])
+	for row in value.item_weapon_runtime_rows:
+		var runtime = WeaponRuntimeStateScript._from_valid_dict(row)
+		item_state.weapon_runtime_rows[runtime.instance_id] = runtime
+	item_state.ground_items = GroundItemStateScript._from_valid_dict(value.item_ground)
+	for death_event_id in value.item_processed_death_ids:
+		item_state.processed_drop_death_event_ids.append(int(death_event_id))
+	return true
 
 
 func warm_rollback_memento_static_tiles() -> void:
@@ -819,6 +914,7 @@ func rollback_memento_is_current(value: Variant) -> bool:
 		and int(value.get("next_event_id", -1)) == _next_event_id \
 		and int(value.get("next_schedule_id", -1)) == next_schedule_id \
 		and int(value.get("active_step_index", -2)) == _active_step_index \
+		and int(value.get("item_revision", -1)) == item_state.revision \
 		and prefix is Array and prefix.size() == events.size() \
 		and (events.is_empty() or prefix[-1] == events[-1])
 
@@ -906,6 +1002,7 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		if not row is Dictionary: return null
 		var combatant = CombatantStateScript.from_dict(row)
 		restored.combatant_states[combatant.entity_id] = combatant
+	if not restored._restore_item_rows(value): return null
 	restored.encounter_lab = null if value.get("encounter_lab") == null \
 		else EncounterLabStateScript.from_dict(value.encounter_lab)
 	restored.party_encounter = null if value.get("party_encounter") == null \
@@ -975,6 +1072,9 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 	for row in data.get("combatant_states", []):
 		var combatant = CombatantStateScript.from_dict(row)
 		restored.combatant_states[combatant.entity_id] = combatant
+	# The wire was fully validated above, so skip the duplicate re-validation that
+	# the public WorldItemState.from_dict() front door performs.
+	restored.item_state = WorldItemStateScript._from_valid_dict(data.item_state)
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
 	if restored.party_encounter!=null:
@@ -1027,7 +1127,8 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if top_keys != ["agent_state_schema_id", "agent_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
 			"combat_ruleset_id", "combatant_schema_id", "combatant_states", "decision_ruleset_id",
 			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
-			"keyed_hash_ruleset_id", "life_ruleset_id", "next_entity_id", "next_event_id", "next_schedule_id",
+			"item_state", "keyed_hash_ruleset_id", "life_ruleset_id", "next_entity_id", "next_event_id",
+			"next_schedule_id",
 			"party_encounter", "party_member_schema_id", "personal_relations", "personality_generator_ruleset_id",
 			"personality_schema_id", "rng_state", "ruleset_version", "scheduled_entries",
 			"score_combiner_id", "seed", "snapshot_version", "species_relations", "status_ruleset_id", "step_index",
@@ -1114,6 +1215,16 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		if not entity_ids.has(combatant_id): return "orphan_combatant_state"
 		combatant_ids[combatant_id] = true; previous_combatant_id = combatant_id
 	if combatant_ids.size() != entity_ids.size(): return "combatant_entity_set_mismatch"
+	var item_error := WorldItemStateScript.wire_error(data.get("item_state"),
+		restored_width, restored_height)
+	if not item_error.is_empty(): return item_error
+	var expected_item_ids: Array = combatant_ids.keys(); expected_item_ids.sort()
+	for pair in [["inventory_rows", "inventory_row_entity_mismatch"],
+			["ammo_pool_rows", "ammo_pool_row_entity_mismatch"]]:
+		var wire_ids: Array = []
+		for row in data.item_state[pair[0]]:
+			wire_ids.append(Int64CodecScript.parse(row.entity_id, "item row entity ID"))
+		if wire_ids != expected_item_ids: return pair[1]
 	if not (data.get("events") is Array):
 		return "invalid_events_shape"
 	for row in data["events"]:
@@ -1323,6 +1434,26 @@ func world_state_error() -> String:
 	return _restored_state_error()
 
 
+func _item_state_error() -> String:
+	# Invariants 1, 2 and 11 need world sets, so the world supplies them once here
+	# instead of letting the item state guess them.
+	if item_state == null: return "missing_world_item_state"
+	var error: String = item_state.validation_error(width, height)
+	if not error.is_empty(): return error
+	return item_state.world_membership_error(combatant_states.keys(), _death_event_ids())
+
+
+func _death_event_ids() -> Array:
+	# Only a processed drop ledger can reference death events, and A2 never fills
+	# it, so the history scan stays off the ordinary validation path.
+	if item_state == null or item_state.processed_drop_death_event_ids.is_empty():
+		return []
+	var ids: Array = []
+	for event in events:
+		if event.type == "entity.died": ids.append(int(event.id))
+	return ids
+
+
 func runtime_step_postcondition_error(event_start: int) -> String:
 	# A live world begins at a fully-audited reset/load/restore boundary. During a
 	# normal step, all mutation goes through checked systems and emit_event();
@@ -1334,7 +1465,9 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 	if event_start < 0 or event_start > events.size(): return "runtime_event_start_invalid"
 	if _next_event_id <= 0 or events.size() != _next_event_id - 1:
 		return "event_id_sequence_mismatch"
-	if _next_entity_id <= 0 or combatant_states.size() != entities.size():
+	if _next_entity_id <= 0 or combatant_states.size() != entities.size() \
+			or item_state == null or item_state.inventory_rows.size() != entities.size() \
+			or item_state.ammo_pool_rows.size() != entities.size():
 		return "runtime_entity_surface_invalid"
 	if scheduled_entries.size() != 2: return "invalid_canonical_schedule_count"
 	var previous_schedule: Dictionary = {}
@@ -1393,6 +1526,8 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 		# so an out-of-band health write cannot be laundered by the next AUTO hop.
 		var party_health_error := _party_health_restoration_error()
 		if not party_health_error.is_empty(): return party_health_error
+		var bridge_error := _inventory_loadout_bridge_error()
+		if not bridge_error.is_empty(): return bridge_error
 	return ""
 
 
@@ -1417,6 +1552,8 @@ func _restored_state_error() -> String:
 	var status_registry_error := StatusRegistryScript.registry_error()
 	if not status_registry_error.is_empty(): return status_registry_error
 	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
+	var item_state_error := _item_state_error()
+	if not item_state_error.is_empty(): return item_state_error
 	if tiles.size() != width * height:
 		return "snapshot_tile_count_mismatch"
 	for tile in tiles:
@@ -3622,13 +3759,33 @@ static func _exact_keys(value: Variant, expected: Array) -> bool:
 	return actual_keys == expected_keys
 
 
+func _inventory_loadout_bridge_error() -> String:
+	# The duplicated weapon authority now spans two states, so the world keeps the
+	# bridge invariant that party wire validation owned until A3 removes
+	# protagonist_loadout together with its combat readers.
+	var protagonist_inventory = inventory_row(party_encounter.protagonist_id)
+	if protagonist_inventory == null: return "inventory_row_entity_mismatch"
+	var main_hand = protagonist_inventory.equipped_item("MAIN_HAND")
+	var bridged_weapon_id := "UNARMED"
+	if main_hand != null:
+		var main_definition = ItemRegistryScript.definition(main_hand.definition_id)
+		if main_definition == null: return "inventory_loadout_bridge_mismatch"
+		bridged_weapon_id = str(main_definition.weapon_id)
+	if party_encounter.protagonist_loadout == null \
+			or bridged_weapon_id != str(party_encounter.protagonist_loadout.equipped_weapon_id):
+		return "inventory_loadout_bridge_mismatch"
+	return ""
+
+
 func _party_runtime_error() -> String:
 	# The camera remains a 15x15 window, but product party worlds may be larger.
 	# Retain the legacy minimum so old fixture assumptions are never squeezed.
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
-	for ground_row in party_encounter.ground_items.rows:
+	var bridge_error := _inventory_loadout_bridge_error()
+	if not bridge_error.is_empty(): return bridge_error
+	for ground_row in item_state.ground_items.rows:
 		var ground_terrain:Dictionary=TerrainRegistryScript.definition(
 			str(tile_at(ground_row.position).terrain))
 		if ground_terrain.is_empty() or not bool(ground_terrain.get("passable",false)):

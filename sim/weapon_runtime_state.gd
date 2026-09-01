@@ -40,8 +40,14 @@ static func wire_error(row:Variant)->String:
 	if not row is Dictionary:return "invalid_weapon_runtime_shape"
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["instance_id","loaded","schema_version"]:return "invalid_weapon_runtime_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_weapon_runtime_schema"
 	if not row.instance_id is String or not row.loaded is bool:
 		return "invalid_weapon_runtime_shape"
 	return _from_valid_dict(row).validation_error()
+
+
+static func _integer(value:Variant)->bool:
+	# The canonical JSON transport has no integer token, so an integral float is
+	# the same wire value here as it is for every other snapshot scalar.
+	return value is int or (value is float and value==floor(value))

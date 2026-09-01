@@ -62,7 +62,7 @@ static func wire_error(row:Variant)->String:
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["affix_ids","definition_id","instance_id","quantity","rarity","schema_version"]:
 		return "invalid_item_instance_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_item_instance_schema"
 	if not row.instance_id is String or not row.definition_id is String \
 			or not row.rarity is String:return "invalid_item_instance_string"

@@ -159,7 +159,7 @@ static func wire_error(row:Variant)->String:
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["backpack","backpack_capacity","equipped_slots","schema_version"]:
 		return "invalid_inventory_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_inventory_schema"
 	if not _integer(row.backpack_capacity) or int(row.backpack_capacity)!=BACKPACK_CAPACITY:
 		return "invalid_inventory_capacity"

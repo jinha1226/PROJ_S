@@ -82,7 +82,7 @@ static func wire_error(row:Variant,width:int=-1,height:int=-1)->String:
 	if not row is Dictionary:return "invalid_ground_item_shape"
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["rows","schema_version"]:return "invalid_ground_item_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_ground_item_schema"
 	if not row.rows is Array:return "invalid_ground_item_shape"
 	var raw_ids:Dictionary={};var previous_key:=""

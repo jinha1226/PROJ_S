@@ -374,7 +374,7 @@ func test_exploration_grid_one_tap_starts_route_invalid_is_pure_and_contact_clea
 	# Isolate the occupied-cell WAIT gesture from the newer ground-item priority.
 	# Item pickup has its own vertical-slice coverage; this fixture needs an empty
 	# hero cell so the first tap remains a pure wait preview.
-	wait_session.sim.world.party_encounter.ground_items.rows.clear()
+	wait_session.sim.world.item_state.ground_items.rows.clear()
 	var wait=Sandbox.new(); wait.size=Vector2(360,640); wait.initialize_for_headless_test(wait_session); var wait_before=wait.session.sim.snapshot()
 	wait._on_actor(int(wait.session.party_status().protagonist_id)); wait._refresh()
 	check_eq(wait.session.sim.snapshot(),wait_before,"hero-cell first tap previews wait without mutation")
@@ -852,7 +852,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		# Keep this interaction fixture about the CONTACT facade; starter ground
 		# items have independent pickup/time tests and may occupy the approach cell.
-		session.sim.world.party_encounter.ground_items.rows.clear()
+		session.sim.world.item_state.ground_items.rows.clear()
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,true)
 		sandbox.size=viewport_size;sandbox._refresh()

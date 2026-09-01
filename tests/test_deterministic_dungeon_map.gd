@@ -4,8 +4,6 @@ const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
-const Inventory = preload("res://sim/protagonist_inventory_state.gd")
-const GroundItems = preload("res://sim/ground_item_state.gd")
 
 
 func test_same_seed_is_exact_and_different_seed_changes_layout() -> bool:
@@ -111,11 +109,10 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 		%str(migration_result))
 	if bool(migration_result.get("accepted",false)):
 		var expected_legacy:Dictionary=legacy_schema_session.sim.snapshot()
-		expected_legacy.party_encounter.protagonist_inventory=Inventory.with_legacy_weapon(
-			str(legacy_schema_session.sim.world.party_encounter.protagonist_loadout.equipped_weapon_id)).to_dict()
-		expected_legacy.party_encounter.ground_items=GroundItems.new().to_dict()
+		# Items are snapshot v7 world authority, so a downgraded party section no
+		# longer implies a legacy-only inventory on either side of the comparison.
 		check_eq(migrated.sim.snapshot(),expected_legacy,
-			"legacy v5 migration preserves doors/replay with legacy-only item baseline")
+			"legacy v5 migration preserves doors and replay")
 	return finish()
 
 

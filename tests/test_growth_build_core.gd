@@ -5,6 +5,7 @@ const State = preload("res://sim/growth_build_state.gd")
 const Calculator = preload("res://sim/growth_build_calculator.gd")
 const Item = preload("res://sim/item_instance.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
+const LegacyInventory=preload("res://sim/protagonist_inventory_state.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 
@@ -281,6 +282,11 @@ func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
 	var wire:Dictionary=JSON.parse_string(legacy_source.save_session_json())
 	wire.snapshot.party_encounter.schema_version=10
 	wire.snapshot.party_encounter.erase("protagonist_growth")
+	# v10 party rows genuinely owned the item keys, so state the historical shape
+	# rather than letting a v12 row claim v10. Items are world state from v7 on.
+	wire.snapshot.party_encounter.protagonist_inventory= \
+		LegacyInventory.with_legacy_weapon("SHORT_SWORD").to_dict()
+	wire.snapshot.party_encounter.ground_items={"schema_version":1,"rows":[]}
 	var migrated=Session.new(1,2,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var migrated_result:Dictionary=migrated.load_session_json(JSON.stringify(wire))
 	check(bool(migrated_result.get("accepted",false)),"schema 10 save migrates at the hard-cut boundary")

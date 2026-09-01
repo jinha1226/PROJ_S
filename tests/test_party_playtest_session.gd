@@ -587,22 +587,17 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 		"v5 product save reconstructs deterministic door gateways")
 	var migrated_snapshot:Dictionary=migrated.sim.snapshot()
 	var expected_legacy_snapshot:Dictionary=legacy_product.sim.snapshot()
-	var legacy_inventory:Dictionary=migrated_snapshot.party_encounter.protagonist_inventory
-	var legacy_ground:Dictionary=migrated_snapshot.party_encounter.ground_items
-	var legacy_main_hand:Dictionary={}
-	for equipped_row in legacy_inventory.equipped_slots:
-		if str(equipped_row.slot)=="MAIN_HAND":legacy_main_hand=equipped_row
-	check_eq([legacy_inventory.backpack.size(),
-		str(legacy_inventory.backpack[0].instance_id),
-		str(legacy_inventory.backpack[0].definition_id),legacy_main_hand,
-		legacy_ground.rows],
-		[1,"LEGACY_MAIN_HAND","WEAPON_SHORT_SWORD",
-		{"slot":"MAIN_HAND","instance_id":"LEGACY_MAIN_HAND"},[]],
-		"v1-v7 migration owns only the legacy main hand and no ground loot")
-	expected_legacy_snapshot.party_encounter.protagonist_inventory=legacy_inventory.duplicate(true)
-	expected_legacy_snapshot.party_encounter.ground_items=legacy_ground.duplicate(true)
+	# Items live in the v7 world item state, so a v5 party section neither carries
+	# nor downgrades them: the migrated world keeps the canonical starting bag.
+	var migrated_main_hand:Dictionary={}
+	for row in migrated_snapshot.item_state.inventory_rows:
+		if str(row.entity_id)!=str(migrated_snapshot.party_encounter.protagonist_id):continue
+		for equipped_row in row.inventory.equipped_slots:
+			if str(equipped_row.slot)=="MAIN_HAND":migrated_main_hand=equipped_row
+	check_eq(migrated_main_hand,{"slot":"MAIN_HAND","instance_id":"LEGACY_MAIN_HAND"},
+		"the migrated world keeps the same equipped starting weapon instance")
 	check_eq(migrated_snapshot,expected_legacy_snapshot,
-		"v5 gateway migration is exact after the documented legacy item default")
+		"v5 gateway migration is exact")
 	return finish()
 
 

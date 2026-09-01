@@ -49,7 +49,7 @@ static func wire_error(row:Variant)->String:
 	if not row is Dictionary:return "invalid_ammo_pool_shape"
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["ammo_pools","schema_version"]:return "invalid_ammo_pool_keys"
-	if not row.schema_version is int or int(row.schema_version)!=SCHEMA_VERSION:
+	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_ammo_pool_schema"
 	if not row.ammo_pools is Array or row.ammo_pools.size()!=AMMO_KINDS.size():
 		return "invalid_ammo_pool_shape"

@@ -22,7 +22,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var destination:=_safe_adjacent(session,hero.position)
 	_assert(destination!=Vector2i(-1,-1),"%s lacks adjacent item fixture"%viewport_size)
 	if destination==Vector2i(-1,-1):return
-	state.ground_items.rows[0].position=destination;state.ground_items._sort_rows()
+	var item_state=session.sim.world.item_state
+	item_state.ground_items.rows[0].position=destination;item_state.ground_items._sort_rows()
 	_assert(session.sim.world.world_state_error().is_empty(),"%s item fixture invalid"%viewport_size)
 	var sandbox=Sandbox.new();root.add_child(sandbox);sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(session,true);await process_frame;await process_frame
@@ -66,8 +67,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox._close_member_detail();await process_frame
 	var time_before:=int(session.sim.world.world_time)
 	sandbox.grid.world_cell_pressed.emit(destination);await process_frame
-	_assert(state.ground_items.item("GROUND_START_SHIELD")==null \
-		and state.protagonist_inventory.item("GROUND_START_SHIELD")!=null,
+	_assert(item_state.ground_items.item("GROUND_START_SHIELD")==null \
+		and session.sim.world.inventory_row(state.protagonist_id).item(
+			"GROUND_START_SHIELD")!=null,
 		"%s one ground-cell touch did not move then pick up"%viewport_size)
 	_assert(int(session.sim.world.world_time)==time_before+200,
 		"%s adjacent move+pickup did not consume exact 100+100 time"%viewport_size)
