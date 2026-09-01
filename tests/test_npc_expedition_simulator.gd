@@ -152,8 +152,8 @@ func test_personality_and_group_threat_change_the_choice_in_the_same_geometry() 
 	_prepare_adjacent_combat(cautious)
 	cautious.profile = Hexaco.new({"H": 700, "E": 1000, "X": 100, "A": 1000,
 		"C": 700, "O": 100})
-	check_eq(cautious.decision_breakdown().selected_action_id, "RETURN",
-		"a cautious profile retreats from the same single-monster geometry")
+	check_eq(cautious.decision_breakdown().selected_action_id, "ATTACK",
+		"personality does not override a clearly favorable single-enemy outlook")
 
 	var surrounded = Simulator.new(301, {"monster_count": 3,
 		"monster_move_cost": 70, "monster_attack_cost": 80})
@@ -175,6 +175,134 @@ func test_personality_and_group_threat_change_the_choice_in_the_same_geometry() 
 			break
 	check_eq(surrounded_terminal, "DEAD",
 		"three fast adjacent pursuers can kill the NPC during a retreat")
+	return finish()
+
+
+func test_combat_outlook_uses_real_enemy_health_and_escape_geometry() -> bool:
+	var bold_profile = Hexaco.new({"H": 300, "E": 0, "X": 900, "A": 0, "C": 500, "O": 900})
+	var wounded_pair = Simulator.new(611, {"monster_count": 2,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 60})
+	_prepare_group_combat(wounded_pair)
+	wounded_pair.profile = bold_profile
+	wounded_pair._npc().health = 85
+	for id in wounded_pair.monster_ids:
+		wounded_pair.simulator.world.entities[id].health = 5
+	check_eq(wounded_pair.decision_breakdown().selected_action_id, "ATTACK",
+		"a bold NPC keeps fighting two slow, heavily wounded adjacent enemies")
+
+	var finishing = Simulator.new(612, {"monster_count": 1,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 60})
+	_prepare_adjacent_combat(finishing, 85)
+	finishing.profile = bold_profile
+	finishing._monster().health = 1
+	var finish_decision: Dictionary = finishing.decision_breakdown()
+	check_eq(finish_decision.selected_action_id, "ATTACK",
+		"an injured NPC attacks an adjacent active target with one HP")
+	check(int(_candidate_row(finish_decision, "ATTACK").score)
+		> int(_candidate_row(finish_decision, "RETURN").score),
+		"the visible finish window outweighs retreat for the one-HP target")
+
+	var long_escape = Simulator.new(613, {"monster_count": 1,
+		"monster_move_cost": 70, "monster_attack_cost": 80, "monster_health": 40})
+	_prepare_adjacent_combat(long_escape)
+	long_escape.profile = bold_profile
+	long_escape._npc().position = Vector2i(12, 10)
+	long_escape._monster().position = Vector2i(11, 10)
+	long_escape._refresh_target()
+	var escape_decision: Dictionary = long_escape.decision_breakdown()
+	check_eq(escape_decision.selected_action_id, "ATTACK",
+		"a long exit route with a fast adjacent pursuer can make fighting safer than fleeing")
+	check(int(_candidate_row(escape_decision, "ATTACK").score)
+		> int(_candidate_row(escape_decision, "RETURN").score),
+		"actual route-based escape outlook is disclosed through the candidate totals")
+	return finish()
+
+
+func test_potion_is_selected_then_combat_is_reevaluated_without_rng_consumption() -> bool:
+	var simulation = Simulator.new(614, {"monster_count": 1,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 40})
+	_prepare_adjacent_combat(simulation, 50)
+	simulation.profile = Hexaco.new({"H": 300, "E": 0, "X": 900, "A": 0, "C": 700, "O": 900})
+	var before: Dictionary = simulation.observation()
+	var first: Dictionary = simulation.decision_breakdown()
+	var second: Dictionary = simulation.decision_breakdown()
+	check_eq(first, second, "repeated decision inspection is deterministic and side-effect free")
+	check_eq(before, simulation.observation(), "decision inspection does not consume world state or RNG")
+	check_eq(first.selected_action_id, "USE_ITEM", "a seriously injured NPC uses a potion before committing")
+	var result: Dictionary = simulation.step()
+	check_eq(result.action_id, "USE_ITEM", "the chosen potion action commits through the real simulator")
+	check_eq(simulation.decision_breakdown().selected_action_id, "ATTACK",
+		"after healing, the same geometry is reevaluated as a viable fight")
+	return finish()
+
+
+func test_hexaco_changes_a_boundary_choice_without_overriding_clear_wins() -> bool:
+	var bold = Simulator.new(615, {"monster_count": 1,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 40})
+	_prepare_adjacent_combat(bold, 64)
+	bold.profile = Hexaco.new({"H": 300, "E": 0, "X": 900, "A": 0, "C": 0, "O": 900})
+	var cautious = Simulator.new(615, {"monster_count": 1,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 40})
+	_prepare_adjacent_combat(cautious, 64)
+	cautious.profile = Hexaco.new({"H": 700, "E": 1000, "X": 100, "A": 1000, "C": 1000, "O": 100})
+	check_eq(bold.decision_breakdown().selected_action_id, "ATTACK",
+		"a bold profile takes the boundary fight")
+	check_eq(cautious.decision_breakdown().selected_action_id, "USE_ITEM",
+		"high conscientiousness raises medicine pressure only when injury exists")
+	return finish()
+
+
+func test_organic_seed_matrix_progresses_without_empty_return_bias() -> bool:
+	var initial = Simulator.new(701, {"monster_count": 1,
+		"monster_move_cost": 130, "monster_attack_cost": 140, "monster_health": 40})
+	# PREPARE, PREPARE, ENTER: no teleporting or awareness override.
+	initial.step()
+	initial.step()
+	initial.step()
+	var fresh: Dictionary = initial.observation()
+	check_eq(int(fresh.npc.hp), int(fresh.npc.max_hp), "organic entry starts at full HP")
+	check_eq(int(fresh.threat_milli), 0, "unalerted opening has no perceived threat")
+	check_eq(int(fresh.npc.carried_loot), 0, "organic entry carries no loot")
+	check(fresh.decision.selected_action_id != "RETURN",
+		"a full-health, threat-free, empty-handed expedition does not return")
+
+	var attacks := 0
+	var kills := 0
+	var loot_returns := 0
+	var empty_returns := 0
+	var deaths := 0
+	var empty_seed_rows: Array[String] = []
+	# Fast CI probe; the release/manual probe uses the same accounting over
+	# seeds 1..40 and 400 turns per seed.
+	for sampled_seed in range(1, 13):
+		var simulation = Simulator.new(sampled_seed)
+		var terminal := false
+		for _turn in range(180):
+			var result: Dictionary = simulation.step()
+			if str(result.action_id) in ["ATTACK", "FINISH"]:
+				attacks += 1
+			if simulation.phase == "DEAD":
+				deaths += 1
+				terminal = true
+				break
+			if simulation.completed_cycles >= 1:
+				if simulation.loot_banked > 0:
+					loot_returns += 1
+				else:
+					empty_returns += 1
+					empty_seed_rows.append("%d:m%d:k%d" % [sampled_seed,
+						simulation.monster_ids.size(), simulation.kills])
+				terminal = true
+				break
+		kills += simulation.kills
+		check(terminal, "organic seed %d reaches a first expedition outcome" % sampled_seed)
+	print("NPC_ORGANIC_CI seeds=12 attacks=%d kills=%d loot_returns=%d empty_returns=%d deaths=%d" % [
+		attacks, kills, loot_returns, empty_returns, deaths])
+	print("NPC_ORGANIC_CI empty_seeds=%s" % [",".join(empty_seed_rows)])
+	check(attacks > 0 and kills > 0, "organic matrix contains real fights and kills")
+	check(loot_returns > 0, "at least one organic expedition returns with loot")
+	check(deaths > 0, "at least one organic expedition dies to real danger")
+	check(empty_returns <= 2, "empty returns are bounded and cannot dominate the CI probe")
 	return finish()
 
 

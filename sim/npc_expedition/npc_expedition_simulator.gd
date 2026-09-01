@@ -26,6 +26,7 @@ const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EnemyAwarenessScript = preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionScript = preload("res://sim/enemy_perception_registry.gd")
+const CombatProfileRegistryScript = preload("res://sim/combat_profile_registry.gd")
 
 const PHASE_LABELS := {
 	"TOWN_PREPARE": "마을 · 원정 준비",
@@ -245,8 +246,30 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	var target_distance := _distance(npc.position, monster.position) if monster != null else 99
 	var active_count := _monster_count_in_state("ACTIVE")
 	var threat := _perceived_threat_milli()
-	var potion_urgency := clampi(injury + int(threat / 4) \
-		+ int((int(profile.value("C")) - 500) / 4), 0, 1000)
+	# This is intentionally an estimate, not a combat roll: decision inspection
+	# must be repeatable and must not advance the world's random stream.
+	var outlook := _combat_outlook_milli(npc, monster)
+	var caution_pressure := int(injury * int(profile.value("C")) / 1000)
+	var potion_urgency := clampi(injury + int(threat / 4) + int(caution_pressure / 4), 0, 1000)
+	var carried_milli := clampi(carried * 350, 0, 1000)
+	# Mere awareness is not a completed expedition's reason to turn around.
+	# Threat only creates a retreat need after it crosses a sustained-danger
+	# threshold; injury and secured loot can still justify a cautious exit.
+	var retreat_need := clampi(maxi(0, threat - 400) + int(injury * 7 / 10)
+		+ int(carried_milli * 4 / 10), 0, 1000)
+	var retreat_safe_need := int(retreat_need * int(outlook.retreat_viability) / 1000)
+	var fear_pressure := int(threat * int(profile.value("E")) / 1000)
+	var unresolved_count := _unresolved_monster_ids().size()
+	var mission_complete := 1000 if unresolved_count == 0 and ground.rows.is_empty() else 0
+	var mission_incomplete := 1000 if unresolved_count > 0 and carried == 0 else 0
+	var fast_pursuer_count := 0
+	for id in monster_ids:
+		var traits: Dictionary = monster_traits.get(id, {})
+		if _life_state(id) == "ACTIVE" and int(traits.get("move_cost", 100)) <= 80 \
+				and int(traits.get("attack_cost", 110)) <= 80:
+			fast_pursuer_count += 1
+	var return_necessary := unresolved_count == 0 or carried > 0 or injury >= 500 \
+		or (threat >= 1000 and fast_pursuer_count >= 3) or phase == "DUNGEON_RETURN"
 	var inputs := {
 		"context.injury": injury,
 		"context.threat": threat,
@@ -254,7 +277,15 @@ func _dungeon_candidates() -> Array[Dictionary]:
 		"context.target_downed": 1000 if target_downed else 0,
 		"context.potion_urgency": potion_urgency,
 		"context.loot_available": 1000 if not ground.rows.is_empty() else 0,
-		"context.carried_loot": clampi(carried * 350, 0, 1000),
+		"context.carried_loot": carried_milli,
+		"context.combat_viability": int(outlook.combat_viability),
+		"context.retreat_viability": int(outlook.retreat_viability),
+		"context.target_finish_window": int(outlook.target_finish_window),
+		"context.retreat_need": retreat_need,
+		"context.retreat_safe_need": retreat_safe_need,
+		"context.fear_pressure": fear_pressure,
+		"context.mission_complete": mission_complete,
+		"context.mission_incomplete": mission_incomplete,
 		"facet.H": int(profile.value("H")), "facet.E": int(profile.value("E")),
 		"facet.X": int(profile.value("X")), "facet.A": int(profile.value("A")),
 		"facet.C": int(profile.value("C")), "facet.O": int(profile.value("O")),
@@ -262,7 +293,7 @@ func _dungeon_candidates() -> Array[Dictionary]:
 	rows.append(_utility_candidate("USE_ITEM",
 		_item_quantity("POTION_HEALING") > 0 and npc.health < npc.max_health,
 		"부상·주변 위협·신중함이 물약 사용 임계를 넘는지 판단한다.", inputs))
-	rows.append(_utility_candidate("RETURN", location == "DUNGEON",
+	rows.append(_utility_candidate("RETURN", location == "DUNGEON" and return_necessary,
 		"부상, 전리품, 적의 수와 속도를 합쳐 철수 위험을 판단한다.", inputs))
 	rows.append(_utility_candidate("LOOT", active_count == 0 and monster == null \
 		and not ground.rows.is_empty(),
@@ -383,17 +414,18 @@ func _factor_label(consideration_id: String) -> String:
 	var labels := {
 		"approach.threat": "주변 위협", "approach.distance": "목표 거리",
 		"approach.openness": "탐구성(O)", "approach.extraversion": "적극성(X)",
-		"approach.emotionality": "불안 민감도(E)", "attack.threat": "주변 위협",
-		"attack.injury": "부상 부담", "attack.downed": "쓰러진 목표",
+		"approach.mission_incomplete": "미완료 원정 목표", "approach.emotionality": "불안 민감도(E)",
+		"attack.viability": "전투 생존 여유", "attack.finish_window": "목표 마무리 기회",
 		"attack.boldness": "대담함(낮은 E)", "attack.hostility": "직선성(낮은 A)",
 		"finish.downed": "마무리 기회", "finish.threat": "남은 위협",
 		"finish.injury": "부상 부담", "finish.discipline": "신중함(C)",
 		"item.urgency": "치료 임계", "item.threat": "주변 위협",
 		"item.discipline": "신중함(C)", "loot.available": "회수 가능",
 		"loot.threat": "남은 위협", "loot.pragmatism": "실리성(낮은 H)",
-		"loot.curiosity": "탐구성(O)", "return.injury": "부상",
-		"return.threat": "수적·속도 위협", "return.loot": "보유 전리품",
-		"return.emotionality": "위험 민감도(E)",
+		"loot.curiosity": "탐구성(O)", "return.need": "철수 필요도",
+		"return.need_and_escape": "실행 가능한 철수", "return.combat_deadly": "전투 불리",
+		"return.fear_pressure": "위협 기반 불안(E)", "return.loot": "보유 전리품",
+		"return.mission_complete": "원정 목표 완료",
 		"return.agreeableness": "충돌 회피(A)", "return.downed": "마무리 기회",
 	}
 	return str(labels.get(consideration_id, consideration_id))
@@ -750,8 +782,15 @@ func _refresh_target() -> void:
 		var distance := _distance(npc.position, monster.position)
 		var priority := 0 if life == "DOWNED" and distance <= 1 \
 			else (1 if life == "ACTIVE" else 2)
-		candidates.append({"id": id, "priority": priority, "distance": distance})
+		var reachable := true
+		if life == "ACTIVE" and distance > 1:
+			var route: Dictionary = simulator.pathfinder.find_path_to_any(npc_id,
+				_open_neighbors(monster.position, npc_id))
+			reachable = bool(route.get("found", false))
+		candidates.append({"id": id, "priority": priority, "distance": distance,
+			"reachable": reachable})
 	candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		if bool(a.reachable) != bool(b.reachable): return bool(a.reachable)
 		if int(a.priority) != int(b.priority): return int(a.priority) < int(b.priority)
 		if int(a.distance) != int(b.distance): return int(a.distance) < int(b.distance)
 		return int(a.id) < int(b.id))
@@ -772,6 +811,82 @@ func _monster_count_in_state(life_state: String) -> int:
 		if _life_state(id) == life_state:
 			count += 1
 	return count
+
+
+func _combat_outlook_milli(npc, target) -> Dictionary:
+	# Integer, bounded outlook used only for utility inputs.  It deliberately
+	# uses profile damage and action budgets rather than assess_attack(), whose
+	# frozen combat roll belongs to execution rather than deliberation.
+	var total_active_hp := 0
+	for id in monster_ids:
+		if _life_state(id) != "ACTIVE":
+			continue
+		var monster = simulator.world.entities.get(id)
+		if monster != null:
+			total_active_hp += maxi(0, int(monster.health))
+	var npc_attack_damage := _estimated_normal_damage(npc_id, monster_id)
+	var monster_attack_damage := _estimated_normal_damage(monster_id, npc_id)
+	var combat_actions := maxi(1, int((total_active_hp + npc_attack_damage - 1) / npc_attack_damage))
+	var combat_damage := _expected_enemy_damage(combat_actions, monster_attack_damage)
+	var route: Dictionary = simulator.pathfinder.find_path(npc_id, ENTRY)
+	var retreat_turns := int(route.get("steps", _distance(npc.position, ENTRY)))
+	var retreat_damage := _expected_enemy_damage(retreat_turns, monster_attack_damage)
+	var combat_viability := clampi(int((int(npc.health) - combat_damage) * 1000
+		/ maxi(1, int(npc.max_health))), 0, 1000)
+	var retreat_viability := clampi(int((int(npc.health) - retreat_damage) * 1000
+		/ maxi(1, int(npc.max_health))), 0, 1000)
+	var finish_window := 0
+	if target != null:
+		if _life_state(monster_id) == "DOWNED":
+			finish_window = 1000
+		else:
+			finish_window = clampi(1000 - int(int(target.health) * 1000
+				/ maxi(1, int(target.max_health))), 0, 1000)
+	return {"combat_viability": combat_viability, "retreat_viability": retreat_viability,
+		"target_finish_window": finish_window, "combat_actions": combat_actions,
+		"combat_damage": combat_damage, "retreat_damage": retreat_damage,
+		"retreat_turns": retreat_turns}
+
+
+func _estimated_normal_damage(attacker_id: int, target_id: int) -> int:
+	var attacker_state = simulator.world.combatant_states.get(attacker_id)
+	var target_state = simulator.world.combatant_states.get(target_id)
+	if attacker_state == null or target_state == null:
+		return 1
+	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(
+		str(attacker_state.combat_profile_id))
+	var target_profile: Dictionary = CombatProfileRegistryScript.profile(
+		str(target_state.combat_profile_id))
+	# Matches the shared unguarded, non-weapon base-damage rule. Hit/miss,
+	# parry, and bleed stay execution concerns so inspection cannot consume RNG.
+	var power := maxi(1, int(attacker_profile.get("power", 1)))
+	var armor := clampi(int(target_profile.get("armor_flat", 0)), 0, power - 1)
+	return maxi(1, power - armor)
+
+
+func _expected_enemy_damage(npc_turns: int, damage_per_hit: int) -> int:
+	var npc = _npc()
+	if npc == null or npc_turns <= 0:
+		return 0
+	var total := 0
+	for id in monster_ids:
+		if _life_state(id) != "ACTIVE":
+			continue
+		var monster = simulator.world.entities.get(id)
+		if monster == null:
+			continue
+		var traits: Dictionary = monster_traits.get(id, {})
+		var move_cost := maxi(1, int(traits.get("move_cost", 100)))
+		var attack_cost := maxi(1, int(traits.get("attack_cost", 110)))
+		var distance := _distance(npc.position, monster.position)
+		# A pursuer first spends budget closing distance; remaining response
+		# windows can turn into attacks. Existing budget matters for adjacency.
+		var close_turns := 0 if distance <= 1 else int(((distance - 1) * move_cost + 99) / 100)
+		var attack_turns := maxi(0, npc_turns - close_turns)
+		var budget := int(traits.get("action_budget", 0)) + attack_turns * MONSTER_ACTION_BUDGET_PER_TURN
+		var attacks := int(budget / attack_cost)
+		total += attacks * damage_per_hit
+	return total
 
 
 func _perceived_threat_milli() -> int:

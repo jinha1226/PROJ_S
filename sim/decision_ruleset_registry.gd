@@ -116,17 +116,17 @@ static func _ensure() -> void:
 
 static func _build_expedition_actions() -> void:
 	_add_expedition_action("APPROACH", 0, 350, 2, 0, 60, [
+		_c("approach.mission_incomplete", "context.mission_incomplete", "linear_up", 700),
 		_c("approach.threat", "context.threat", "linear_up", -360),
 		_c("approach.distance", "context.target_distance", "linear_up", 180),
 		_c("approach.openness", "facet.O", "linear_up", 280),
 		_c("approach.extraversion", "facet.X", "linear_up", 220),
 		_c("approach.emotionality", "facet.E", "linear_up", -250)])
 	_add_expedition_action("ATTACK", 1, 340, 1, 0, 70, [
-		_c("attack.threat", "context.threat", "linear_up", -280),
-		_c("attack.injury", "context.injury", "linear_up", -350),
-		_c("attack.downed", "context.target_downed", "threshold_up", 400),
-		_c("attack.boldness", "facet.E", "linear_down", 380),
-		_c("attack.hostility", "facet.A", "linear_down", 180)])
+		_c("attack.viability", "context.combat_viability", "linear_up", 650),
+		_c("attack.finish_window", "context.target_finish_window", "linear_up", 600),
+		_c("attack.boldness", "facet.E", "linear_down", 140),
+		_c("attack.hostility", "facet.A", "linear_down", 100)])
 	_add_expedition_action("FINISH", 2, 450, 0, 0, 0, [
 		_c("finish.downed", "context.target_downed", "threshold_up", 650),
 		_c("finish.threat", "context.threat", "linear_up", -240),
@@ -141,12 +141,14 @@ static func _build_expedition_actions() -> void:
 		_c("loot.threat", "context.threat", "linear_up", -500),
 		_c("loot.pragmatism", "facet.H", "linear_down", 150),
 		_c("loot.curiosity", "facet.O", "linear_up", 150)])
-	_add_expedition_action("RETURN", 5, 120, 2, 0, 80, [
-		_c("return.injury", "context.injury", "linear_up", 500),
-		_c("return.threat", "context.threat", "linear_up", 650),
+	_add_expedition_action("RETURN", 5, 100, 2, 0, 80, [
+		_c("return.need", "context.retreat_need", "linear_up", 400),
+		_c("return.need_and_escape", "context.retreat_safe_need", "linear_up", 200),
+		_c("return.combat_deadly", "context.combat_viability", "linear_down", 300),
+		_c("return.fear_pressure", "context.fear_pressure", "linear_up", 250),
 		_c("return.loot", "context.carried_loot", "linear_up", 450),
-		_c("return.emotionality", "facet.E", "linear_up", 250),
-		_c("return.agreeableness", "facet.A", "linear_up", 100),
+		_c("return.mission_complete", "context.mission_complete", "threshold_up", 650),
+		_c("return.agreeableness", "facet.A", "linear_up", 80),
 		_c("return.downed", "context.target_downed", "threshold_up", -600)])
 
 
@@ -322,7 +324,10 @@ static func validation_error() -> String:
 	var expedition_ranks: Dictionary = {}
 	var expedition_inputs := ["context.injury", "context.threat", "context.target_distance",
 		"context.target_downed", "context.potion_urgency", "context.loot_available",
-		"context.carried_loot", "facet.H", "facet.E", "facet.X", "facet.A", "facet.C", "facet.O"]
+		"context.carried_loot", "context.combat_viability", "context.retreat_viability",
+		"context.target_finish_window", "context.retreat_need", "context.retreat_safe_need",
+		"context.fear_pressure", "context.mission_complete", "context.mission_incomplete",
+		"facet.H", "facet.E", "facet.X", "facet.A", "facet.C", "facet.O"]
 	for action_id in EXPEDITION_ACTION_IDS:
 		var expedition = _expedition_actions.get(action_id)
 		if expedition == null or expedition.action_id != action_id \
