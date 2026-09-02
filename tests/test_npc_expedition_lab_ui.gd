@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const LabScene = preload("res://playtest/npc_expedition_lab.tscn")
 const Simulator = preload("res://sim/npc_expedition/npc_expedition_simulator.gd")
+const PartySimulator = preload("res://sim/party_combat_observer_simulator.gd")
 const PartyScene = preload("res://playtest/party_encounter_sandbox.tscn")
 
 
@@ -93,4 +94,50 @@ func test_main_record_panel_exposes_npc_expedition_observer_entry() -> bool:
 	check_eq(sandbox.npc_expedition_lab_button.custom_minimum_size.y, 44.0,
 		"observer entry keeps touch target")
 	sandbox.free()
+	return finish()
+
+
+func test_same_observer_surface_runs_four_by_four_party_combat_automatically() -> bool:
+	var simulation=PartySimulator.new(17)
+	var opening:Dictionary=simulation.observation()
+	check_eq(opening.mode,"PARTY_COMBAT","observer enters party mode")
+	check_eq([opening.party.count,opening.enemy_force.count],[4,4],
+		"party observer starts with four actors per force")
+	check(opening.next_queue.size()>=4,"top queue exposes automatic upcoming actions")
+	check(not opening.intent_lines.is_empty(),"thin target-line data is available")
+	var lab=LabScene.instantiate()
+	lab.initialize_for_headless_test(simulation)
+	check(lab.turn_queue_label.visible and lab.turn_queue_label.text.begins_with("NEXT"),
+		"shared top HUD renders NEXT tokens")
+	check(lab.npc_status_label.text.contains("파티 4명") \
+		and lab.monster_status_label.text.contains("적군 4체"),
+		"two compact force summaries replace one-to-one cards")
+	check(lab.detail_text.text.contains("개별 시야 → 파티 공유 → 자동 경고 → 암묵적 지시"),
+		"party inspector states the zero-input control flow")
+	lab._step_once()
+	check_eq(simulation.turn_index,1,"one-turn control advances one complete party round")
+	check(simulation.session.sim.world.world_state_error().is_empty(),
+		"observed party round remains canonical")
+	lab._toggle_observer_mode()
+	check_eq(lab.observer_mode,"NPC","same surface can return to one-to-one expedition")
+	check(not lab.turn_queue_label.visible,"one-to-one mode hides party queue")
+	lab.free()
+	return finish()
+
+
+func test_party_observer_autoplay_reaches_a_canonical_terminal_boundary() -> bool:
+	var simulation=PartySimulator.new(29)
+	var resolved_turns:=0
+	while not bool(simulation.observation().get("terminal",false)) \
+			and resolved_turns<simulation.MAX_TURNS:
+		var result:Dictionary=simulation.step()
+		check(bool(result.get("accepted",false)),
+			"every observed automatic party round is accepted")
+		if not bool(result.get("accepted",false)):break
+		check(simulation.session.sim.world.world_state_error().is_empty(),
+			"every observed automatic party round stays canonical")
+		resolved_turns+=1
+	check(resolved_turns>1,"autoplay observes more than an opening snapshot")
+	check(bool(simulation.observation().get("terminal",false)),
+		"autoplay stops at combat outcome or the explicit observer turn cap")
 	return finish()
