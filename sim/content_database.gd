@@ -7,6 +7,7 @@ const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const SpeciesCatalogRegistryScript=preload("res://sim/species_catalog_registry.gd")
 const BodyTemplateRegistryScript=preload("res://sim/body_template_registry.gd")
+const BodyCombatRulesScript=preload("res://sim/body_combat_rules.gd")
 
 
 static func validation_error()->String:
@@ -14,7 +15,7 @@ static func validation_error()->String:
 	# its owning database instead of surfacing later during world bootstrap.
 	for registry in [ProgressionRegistryScript,WeaponRegistryScript,
 			ItemRegistryScript,SpeciesCatalogRegistryScript,GrowthBuildRegistryScript,
-			BodyTemplateRegistryScript]:
+			BodyTemplateRegistryScript,BodyCombatRulesScript]:
 		var error:String=registry.registry_error()
 		if not error.is_empty():return error
 	return ""
@@ -27,4 +28,5 @@ static func content_versions()->Dictionary:
 		"items":ItemRegistryScript.content_version(),
 		"species_catalog":SpeciesCatalogRegistryScript.content_version(),
 		"growth_builds":GrowthBuildRegistryScript.content_version(),
+		"body_combat":BodyCombatRulesScript.content_version(),
 	}.duplicate(true)

@@ -1,0 +1,28 @@
+{
+  "content_schema_version": 1,
+  "content_version": "body-combat-2026-09-02-b1",
+  "content_type": "BODY_COMBAT_RULES",
+  "ruleset_id": "body-combat-b1-v1",
+  "hit_locations": [
+    {"part_id":"HEAD","weight":100},
+    {"part_id":"TORSO","weight":350},
+    {"part_id":"LEFT_ARM","weight":150},
+    {"part_id":"RIGHT_ARM","weight":150},
+    {"part_id":"LEFT_LEG","weight":125},
+    {"part_id":"RIGHT_LEG","weight":125}
+  ],
+  "armor_projection": {
+    "slash_protection_per_flat":10,
+    "pierce_protection_per_flat":10,
+    "impact_padding_per_flat":10,
+    "rigidity_per_flat":10
+  },
+  "layer_loss_milli": {
+    "SKIN":1000,
+    "SOFT_TISSUE":1000,
+    "BONE":1000
+  },
+  "disable_zero_layers":["SOFT_TISSUE","BONE"],
+  "sever_form":"SLASH",
+  "sever_zero_layers":["SKIN","SOFT_TISSUE","BONE"]
+}
