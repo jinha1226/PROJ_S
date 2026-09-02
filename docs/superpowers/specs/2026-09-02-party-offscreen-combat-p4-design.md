@@ -1,0 +1,86 @@
+# P4 — 화면 밖 축약 전투 설계
+
+작성일 2026-09-02. 4인 파티 단체전투 시리즈의 4/4.
+
+구현 상태: **P4-1 완료, P4-2~P4-4 미구현**. 현재 코드는 상세/축약 전환 가능 여부와
+한 축약 라운드의 예상 피해·이유 trace만 순수 계산한다. world time, HP, 사건, RNG, ID,
+journal은 변경하지 않는다.
+
+## 목표
+
+플레이어가 참여하거나 관찰하지 않는 먼 두 세력의 전투를 동일-grid 미시 턴으로 계속
+렌더링하지 않고도 결정론적으로 진행할 기반을 만든다. 축약 전투는 별도 게임 규칙이 아니라
+현재 HP·생명 상태·사기·HEXACO와 상세 전투에서 해결된 공격/방어 수치를 읽는 낮은 해상도
+시간 처리다.
+
+## 순차 범위
+
+1. **P4-1 순수 평가:** 상세/축약 경계, strict 입력 DTO, 한 축약 라운드 예상 결과와 trace.
+2. **P4-2 권위 연결:** 축약 cadence, 예상 milli 누적/반올림 정책, 피해·다운·사망 사건,
+   save/load/replay와 atomic rollback.
+3. **P4-3 상세 복귀:** 플레이어 접근·관찰·참여 시 축약을 중단하고 권위 결과에서 상세
+   동일-grid 전투를 재구성하는 경계와 관찰 DTO.
+4. **P4-4 매트릭스:** 상세 전투와 축약 전투의 결과 편향, 정지, 복원 drift를 다중 seed로
+   측정하고 제품 세계시간에 연결.
+
+## P4-1 전환 계약
+
+다음 조건을 모두 만족할 때만 `eligible_offscreen`이다.
+
+- 정확히 두 세력이고 양쪽에 `ACTIVE` 구성원이 한 명 이상 있다.
+- 조우가 이미 `ENGAGED`다. 접촉 생성과 전투 종료는 축약 라운드가 만들지 않는다.
+- 주인공이 참여하지 않는다.
+- 플레이어가 현재 전투를 관찰하지 않는다.
+- 상세 시뮬레이션 반경 밖이다.
+- 처리하지 않은 플레이어 선택이 없다.
+- BLEEDING 같은 지속 상태가 없다. 상태 cadence 축약은 P4-2 이전에는 지원하지 않는다.
+
+거부 우선순위는 `encounter_not_engaged → protagonist_participates → player_observes_encounter →
+inside_detailed_radius → pending_player_choice → unsupported_status → encounter_terminal`이다.
+입력 자체가 strict DTO 계약에 맞지 않는 경우는 유효하지만 상세 전투가 필요한 경우와
+구분해 `valid=false`로 반환한다.
+
+## P4-1 입력
+
+`PartyOffscreenCombatModel`은 world 객체를 직접 읽지 않고 아래 분리 DTO만 받는다.
+
+```text
+schema_version, encounter_id, encounter_phase, world_time, round_index
+protagonist_participates, observed_by_player
+within_detailed_radius, pending_player_choice
+side_rows[2]
+  side_id, command_id, target_id
+  member_rows[]
+    entity_id, health, max_health, life_state
+    power, armor_flat, accuracy_milli, evasion_milli, attack_time
+    stress_milli, mental_mode, status_ids
+    hexaco {H,E,X,A,C,O}
+```
+
+`power`는 P4-2의 world projection이 기존 무기·스탯 계산기를 통해 제공할 해결된 공격
+피해 기반값이다. P4 모델이 장비나 종족 스탯 공식을 복제하지 않는다. `attack_time`도 실제
+장비/공격 형태에서 해결된 값만 받는다.
+
+## P4-1 라운드 평가
+
+- 입력 세력과 구성원 순서에 무관하게 side ID, entity ID로 정렬한다.
+- `FOLLOW`는 평시 `PRESS`; PANIC 과반 또는 저체력·고 stress면 `WITHDRAW`다.
+- `RETREAT`는 `WITHDRAW`, `STOP_ATTACK`은 `CEASE`, `HOLD_POSITION`은 방어적인 `HOLD`,
+  `ATTACK_TARGET`은 공통 표적을 유지한다.
+- 공통 표적이 없으면 HP 비율, armor, entity ID 순으로 약한 활성 대상을 고른다.
+- 명중률은 `clamp(500 + accuracy - evasion, 50, 950)`이고, armor와 attack time을 반영한
+  예상 피해를 HP 1/1000 단위인 `projected_damage_milli`로 반환한다.
+- RNG roll, 실제 명중/빗나감, HP 감소, 다운·사망은 만들지 않는다.
+- HEXACO E/C 회복탄력성은 cohesion/readiness 설명값에만 반영하며 숨은 명중 확률로
+  사용하지 않는다. 고정 성격 유형은 없다.
+
+## 현재 구현과 검증
+
+- 모델: `sim/party_offscreen_combat_model.gd`
+- 테스트: `tests/test_party_offscreen_combat_model.gd`
+- runner: `tests/run_party_offscreen_combat_tests.gd`
+- P4-1 집중 테스트: 전환 경계, strict wire, 순수성, 입력 순서 불변, 정수 예상 피해,
+  예외 명령, PANIC, HEXACO 회복탄력성
+
+P4-2 전에 예상 피해 편향과 stance/guard 수치를 관찰해 승인해야 한다. P4-1 출력만으로
+권위 HP를 바꾸거나 상세 전투를 건너뛰는 호출 경로를 추가해서는 안 된다.
