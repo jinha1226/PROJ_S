@@ -1,6 +1,9 @@
 extends SceneTree
 
-const TEST_FILES := ["test_party_offscreen_combat_model.gd"]
+const TEST_FILES := [
+	"test_party_offscreen_combat_model.gd",
+	"test_party_offscreen_combat_runtime.gd",
+]
 
 
 func _init() -> void:
@@ -29,5 +32,5 @@ func _init() -> void:
 				failed += 1
 				for error in test_case.errors:
 					print("FAIL %s :: %s -- %s" % [file, method.name, error])
-	print("---- Party offscreen combat P4-1: %d tests, %d failed ----" % [total, failed])
+	print("---- Party offscreen combat P4: %d tests, %d failed ----" % [total, failed])
 	quit(1 if failed > 0 else 0)

@@ -23,7 +23,8 @@
 `party.command_issued`와 세션 journal을 통해 save/load/replay에서 동일하게 재현된다.
 
 현재 검증 기준은 파티 AI 20/20, 적 무리 전술 12/12, 파티 사기 9/9, Phase 4 89/89,
-NPC 관찰 21/21이다. 12개 4인 파티 전투·190턴에서 rejected step과 invalid world는 0이다.
+NPC 관찰 21/21, 화면 밖 축약 전투 10/10이다. 12개 4인 파티 전투·190턴에서 rejected
+step과 invalid world는 0이다.
 
 ## 현재 고정 개발 순서
 
@@ -31,24 +32,32 @@ NPC 관찰 21/21이다. 12개 4인 파티 전투·190턴에서 rejected step과 
 완료: P1 동료 AI → P2 적 무리 전술 → P3 사기·공포
 완료: 공유 인지·자동 경고 → 파티 관찰 UI → 예외 명령 5종 → 제품 개별 override 제거
 완료: P4-1 화면 밖 축약 전투의 상세/축약 경계 + 순수 축약 라운드 평가기
-다음: P4-1 예상 피해·stance·guard 결과 검토
-승인 후: P4-2 권위 cadence·사건·save/replay
+완료: P4-2a 독립 권위 상태 + milli carry + 사건 + JSON save/replay + 전역 처리 예산
+다음: P4-2b 제품 WorldState projection·actor cadence 연결
       → P4-3 상세 전투 복귀·관찰 DTO
       → P4-4 매트릭스·튜닝·제품 연결
 ```
 
 P4-1은 world, 사건, RNG, ID, journal을 쓰지 않고 권위 피해를 적용하지 않는 순수 모델로
-완료됐다. 같은 입력은 같은 정수 예상 피해와 이유 trace를 반환하며, 주인공 참여·플레이어
-관찰·상세 반경·미결정 입력·지원하지 않는 지속 상태는 축약을 거부한다. 다음 판단은
-P4-1의 예상 피해·stance·guard 결과를 관찰해 수치를 승인하는 것이다. 승인 뒤에만 P4-2에서
-실제 시간 진행, milli 누적/반올림, 피해·다운·사망 사건과 save/replay를 연결한다.
+완료됐다. P4-2a는 그 출력만 입력으로 받는 별도 권위 상태를 추가했다. 대상별 HP 1/1000
+잔여값을 다음 라운드로 넘기며 정수 HP를 올림하지 않고, 피해→다운→사망과 라운드·종료
+사건을 안정 순서로 기록한다. 상태 해시와 canonical int64 문자열 wire를 사용하며 JSON
+저장 뒤 재개 결과와 입력 encounter 순서가 byte-identical이다. 잘못된 상태나 상세 전환
+조건은 HP·시간·사건을 전혀 바꾸지 않는다.
+
+한 advance의 전역 한도는 `8`라운드다. 40개 encounter가 크게 밀린 fixture에서도 encounter당
+8회가 아니라 전체 합계 8회만 처리하고 `budget_exhausted`로 나머지를 이월한다. 이 리듀서는
+아직 제품 `LivingWorldSimulator`나 매 frame 경로에서 호출되지 않으므로 현재 플레이 비용은
+0이다. P4-2b도 모든 NPC를 frame마다 훑지 않고 활성 화면 밖 encounter registry 중 actor
+cadence에 도래한 항목만 이 전역 예산으로 제출해야 한다. 기존 `scheduled_entries`에는 세 번째
+반복 schedule을 추가하지 않는다.
 
 파티 자율 제어의 최신 계약은
 `docs/superpowers/specs/2026-09-02-party-autonomy-perception-design.md`, P2/P3 계약은 같은
 `docs/superpowers/specs` 폴더의 적 무리 전술·사기 설계를 따른다. 개인 성향·행동 AI의
 연구 근거와 장기 확장 규칙은 `docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다.
 아래 절은 기존 코어와 장기 backlog의 세부 계약으로 유지하되, 현재 구현 우선순위는 위
-P4-1~P4-4 순서가 우선한다.
+P4-2b~P4-4 순서가 우선한다.
 
 ### 1. TerrainRegistry·MOVE (완료)
 
