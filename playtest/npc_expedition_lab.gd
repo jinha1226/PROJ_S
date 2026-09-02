@@ -3,6 +3,7 @@ extends Control
 
 const SimulatorScript = preload("res://sim/npc_expedition/npc_expedition_simulator.gd")
 const PartySimulatorScript = preload("res://sim/party_combat_observer_simulator.gd")
+const PartyCommandScript = preload("res://sim/party_exception_command.gd")
 const GridScript = preload("res://playtest/npc_expedition_grid.gd")
 const KoreanFont: FontFile = preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const PARTY_SCENE_PATH := "res://playtest/party_encounter_sandbox.tscn"
@@ -311,6 +312,10 @@ func _party_inspector_text(observation:Dictionary)->String:
 	var lines:Array[String]=[]
 	lines.append("구조 · 개별 시야 → 파티 공유 → 자동 경고 → 암묵적 지시")
 	lines.append("규칙 · %s"%str(observation.get("ruleset_id","-")))
+	var party_command:Dictionary=observation.get("decision",{}).get("party_command",{})
+	if bool(party_command.get("explicit",false)):
+		lines.append("예외 명령 · %s"%PartyCommandScript.label_ko(
+			str(party_command.get("command_id","FOLLOW"))))
 	var warning:Dictionary=observation.get("warning",{})
 	if bool(warning.get("available",false)):
 		lines.append("경고 · %s"%str(warning.get("message","")))

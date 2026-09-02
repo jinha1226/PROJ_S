@@ -24,7 +24,8 @@ func test_blackboard_shape_focus_and_purity() -> bool:
 	var keys: Array = board.keys()
 	keys.sort()
 	check_eq(keys, ["active_enemy_ids", "ally_pressure", "claims", "deployed_ids",
-		"focus_target_id", "most_threatened_ally_id", "schema_version", "threat_table"],
+		"focus_target_id", "most_threatened_ally_id", "party_command",
+		"schema_version", "threat_table"],
 		"exact keys")
 	check_eq(board.deployed_ids, state.active_party_member_ids,
 		"deployed ids are the active roster in order")

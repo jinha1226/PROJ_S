@@ -69,6 +69,7 @@ var event_label:Label
 var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
+var party_command_menu:MenuButton
 var product_direction_buttons:Dictionary={}
 var product_attack_button:Button
 var product_pickup_button:Button
@@ -217,6 +218,7 @@ var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
 var _product_auto_stop_feedback:=""
 var _product_attack_targeting:=false
+var _party_command_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 var _product_zoom_touch_index:=-1
 var _product_zoom_touch_step:=0
@@ -1932,10 +1934,13 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 			instruction="주인공의 행동을 선택하세요 · 공격할 적이나 이동할 칸을 누를 수 있습니다." \
 				if _is_solo_product_session() else "동료 제안이 준비되었습니다 · 주인공의 실제 행동을 선택하세요."
 		elif auto_combat_pending:instruction="최종 계획을 표시했습니다 · 잠시 뒤 자동 실행합니다."
-		elif auto_override_edit:instruction="동료 지시 편집 중 · 준비되면 지금 실행을 누르세요."
+		if not _is_solo_product_session() \
+				and selected_member_id!=int(status.get("protagonist_id",-1)):
+			instruction="%s 판단 관찰 · 전투 입력은 주인공 행동으로 처리됩니다."%actor_name
 	if not notice_text.is_empty():instruction=notice_text
 	elif not bool(preview.get("accepted",false)):instruction+=" · "+str(preview.get("message","주인공 행동을 먼저 지정하세요."))
 	_add_notice(instruction)
+	if not _is_solo_product_session():_add_party_command_menu(status)
 	var direct_solo:=_is_direct_solo_combat(status)
 	var lines:Array[String]=[]
 	if not direct_solo:
@@ -1954,6 +1959,44 @@ func _combat_deck(status:Dictionary,preview:Dictionary)->void:
 	# surface. Keep legacy planning controls for non-product harnesses only.
 	if not event_surface.visible:_build_combat_action_area(status,preview)
 	_selected_detail()
+
+
+func _add_party_command_menu(status:Dictionary)->void:
+	party_command_menu=MenuButton.new();party_command_menu.name="PartyExceptionCommandMenu"
+	var current:Dictionary=status.get("party_command",{})
+	var labels:={"ATTACK_TARGET":"표적 지정","RETREAT":"후퇴",
+		"STOP_ATTACK":"공격 중지","HOLD_POSITION":"자리 지키기","FOLLOW":"따라오기"}
+	var current_id:=str(current.get("command_id","FOLLOW"))
+	party_command_menu.text="파티 명령 · %s"%str(labels.get(current_id,"따라오기"))
+	party_command_menu.custom_minimum_size.y=TOUCH_TARGET
+	party_command_menu.add_theme_font_size_override("font_size",FONT_COMMAND)
+	party_command_menu.tooltip_text="평소에는 주인공 행동을 따라 자동 전투합니다. 필요할 때만 예외 명령을 사용합니다."
+	AsciiFrameScript.apply_rail_button(party_command_menu,AsciiFrameScript.CYAN)
+	var popup:=party_command_menu.get_popup()
+	for row in [[0,"공격 대상 지정"],[1,"후퇴"],[2,"공격 중지"],
+			[3,"자리 지키기"],[4,"따라오기"]]:
+		popup.add_item(str(row[1]),int(row[0]))
+	popup.id_pressed.connect(_on_party_command_menu_id)
+	deck.add_child(party_command_menu)
+
+
+func _on_party_command_menu_id(item_id:int)->void:
+	if session==null:return
+	if item_id==0:
+		_party_command_targeting=true
+		notice_text="공격 대상으로 지정할 적을 선택하세요."
+		action_feedback_text=notice_text;_request_refresh();return
+	var command_id:String=str({1:"RETREAT",2:"STOP_ATTACK",3:"HOLD_POSITION",
+		4:"FOLLOW"}.get(item_id,""))
+	if str(command_id).is_empty():return
+	_party_command_targeting=false
+	if auto_orchestration_enabled:_cancel_auto_pending(false)
+	var result:Dictionary=session.issue_party_command(str(command_id))
+	_record_result(result,false,"파티 명령 적용 불가")
+	if bool(result.get("accepted",false)):
+		notice_text="파티 명령 · %s"%str(result.get("command_label",command_id))
+		action_feedback_text=notice_text
+	_request_refresh()
 
 func _legacy_regroup_notice()->void:_add_notice("승리했습니다. 호환 상태를 자동 재집결 처리하는 중입니다.","ActionStatus",FONT_KEY)
 
@@ -1976,7 +2019,8 @@ func _build_combat_action_area(status:Dictionary,preview:Dictionary)->void:
 
 func _build_auto_combat_action_area(status:Dictionary)->void:
 	var planning:Dictionary=session.auto_combat_planning_state()
-	var guard_percent:=_guard_percent_for_actor(selected_member_id)
+	var protagonist_id:=int(status.get("protagonist_id",-1))
+	var guard_percent:=_guard_percent_for_actor(protagonist_id)
 	if auto_combat_pending:
 		action_feedback_label.text="최종 행동을 표시 중입니다." if _is_solo_product_session() \
 			else "최종 행동과 동료 제안을 표시 중입니다."
@@ -1985,15 +2029,9 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 	elif bool(planning.get("placeholder",false)):
 		action_feedback_label.text="행동 선택 · 방어: 200시간 동안 물리 피해 %d%% 감소"%guard_percent \
 			if _is_solo_product_session() else "동료 제안 준비 완료 · 주인공 행동을 선택하세요."
-	elif auto_override_edit:action_feedback_label.text="개별 지시 편집 중 · 준비되면 지금 실행"
 	else:action_feedback_label.text="행동 선택 시 최종 계획을 보여 준 뒤 자동 실행합니다."
-	var protagonist_id:=int(status.get("protagonist_id",-1))
-	var hold_text:="주인공 방어" if selected_member_id==protagonist_id else "개별 방어"
-	var hold:=_add_button(combat_action_dock,hold_text,"ActorHold",_on_actor_hold);hold.size_flags_stretch_ratio=1.0
+	var hold:=_add_button(combat_action_dock,"주인공 방어","ActorHold",_on_actor_hold);hold.size_flags_stretch_ratio=1.0
 	hold.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다."%guard_percent
-	if selected_member_id!=protagonist_id:
-		var clear:=_add_button(combat_action_dock,"자동 제안 복원","OverrideClear",_on_override_clear)
-		clear.size_flags_stretch_ratio=1.35
 	if bool(planning.get("commit_ready",false)) and (auto_override_edit or auto_combat_fallback):
 		var execute:=_add_button(combat_action_dock,"지금 실행","AutoExecute",_on_auto_execute)
 		execute.size_flags_stretch_ratio=0.9
@@ -2439,11 +2477,11 @@ func _selected_detail()->void:
 
 func _select_member(member_id:int,display_name:String)->void:
 	var view_mode:=str(session.party_status().get("view_mode",""))
-	if auto_orchestration_enabled and view_mode=="COMBAT" \
-			and member_id!=int(session.party_status().get("protagonist_id",-1)):
-		_cancel_auto_pending(true);auto_override_edit=true
 	selected_member_id=member_id;selected_target_id=-1;notice_text="%s 선택"%display_name
-	action_feedback_text="%s 선택 · 행동을 지정하세요."%display_name
+	action_feedback_text="판단 관찰 · 전투 입력은 주인공 행동으로 처리됩니다." \
+		if auto_orchestration_enabled and view_mode=="COMBAT" \
+			and member_id!=int(session.party_status().get("protagonist_id",-1)) \
+		else "%s 선택 · 행동을 지정하세요."%display_name
 	if view_mode=="COMBAT":_clear_move_preview()
 	_request_refresh()
 
@@ -3220,6 +3258,11 @@ func _on_auto_execute()->void:
 func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id:int=-1)->void:
 	var action_started:=Time.get_ticks_usec()
 	var status:Dictionary=session.party_status();var protagonist_id:=int(status.get("protagonist_id",-1))
+	# Companion selection is observation-only in the product party loop. Every
+	# ordinary combat tap remains a protagonist action; individual override stays
+	# available only through the internal session API and regression harnesses.
+	if not _is_solo_product_session() and selected_member_id!=protagonist_id:
+		selected_member_id=protagonist_id
 	_cancel_auto_pending(false)
 	if selected_member_id==protagonist_id:
 		var action=_make_party_action(selected_member_id,action_type,destination,target_id)
@@ -3328,6 +3371,10 @@ func _on_cell(position:Vector2i)->void:
 	_hide_tile_popover()
 	var progress:=_current_run_progress()
 	if bool(progress.get("terminal",false)) or bool(status.terminal):return
+	if _party_command_targeting:
+		_party_command_targeting=false
+		notice_text="공격 대상 지정을 취소했습니다."
+		action_feedback_text=notice_text;_request_refresh();return
 	if _product_attack_targeting:
 		_product_attack_targeting=false
 		_show_product_command_feedback("공격 선택을 취소했습니다.")
@@ -3390,7 +3437,9 @@ func _on_cell(position:Vector2i)->void:
 	selected_target_id=-1;_clear_move_preview()
 	if auto_orchestration_enabled and _is_direct_solo_combat(status):
 		_stage_auto_combat_action("MOVE",[position.x,position.y]);return
-	var preview:Dictionary=session.preview_actor_action(selected_member_id,"MOVE",[position.x,position.y])
+	var action_actor_id:=int(status.get("protagonist_id",-1)) \
+		if auto_orchestration_enabled else selected_member_id
+	var preview:Dictionary=session.preview_actor_action(action_actor_id,"MOVE",[position.x,position.y])
 	if not bool(preview.get("accepted",false)):
 		notice_text=str(preview.get("message","이 칸으로 이동할 수 없습니다."))
 		_set_action_rejection(preview,"%s 이동 불가"%_selected_name());_request_refresh();return
@@ -3404,6 +3453,19 @@ func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
+	if _party_command_targeting:
+		if entity_id not in status.get("visible_enemy_ids",[]):
+			notice_text="활동 중인 적을 선택하세요."
+			action_feedback_text=notice_text;_request_refresh();return
+		_party_command_targeting=false
+		if auto_orchestration_enabled:_cancel_auto_pending(false)
+		var command_result:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
+		_record_result(command_result,false,"공격 대상 지정 불가")
+		if bool(command_result.get("accepted",false)):
+			notice_text="파티 집중 표적 · %s"%str(session.inspect_enemy(
+				entity_id).get("display_name","적"))
+			action_feedback_text=notice_text
+		_request_refresh();return
 	if _product_attack_targeting:
 		var adjacent:=_product_adjacent_enemies(status)
 		if entity_id not in adjacent:
@@ -3449,10 +3511,12 @@ func _on_actor(entity_id:int)->void:
 		_submit_product_melee(entity_id,status)
 		_request_refresh(); return
 	if entity_id in status.party_member_ids:
-		if auto_orchestration_enabled and status.view_mode=="COMBAT" and entity_id!=int(status.protagonist_id):
-			_cancel_auto_pending(true);auto_override_edit=true
-		selected_member_id=entity_id;selected_target_id=-1;notice_text="파티원을 선택했습니다."
-		action_feedback_text="%s 선택 · 행동을 지정하세요."%_selected_name();_clear_move_preview();_request_refresh()
+		selected_member_id=entity_id;selected_target_id=-1
+		notice_text="파티원 판단을 관찰합니다."
+		action_feedback_text="전투 입력은 주인공 행동으로 처리됩니다." \
+			if auto_orchestration_enabled and status.view_mode=="COMBAT" \
+			else "%s 선택 · 행동을 지정하세요."%_selected_name()
+		_clear_move_preview();_request_refresh()
 
 func _submit_product_melee(entity_id:int,status:Dictionary)->bool:
 	if bool(status.get("terminal",false)):return false

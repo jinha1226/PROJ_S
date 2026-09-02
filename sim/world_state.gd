@@ -67,6 +67,7 @@ const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
+const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
 var width: int
 var height: int
@@ -4721,8 +4722,37 @@ func _party_event_correlation_error() -> String:
 	if not patrol_error.is_empty(): return patrol_error
 	var override_error := _party_override_history_error()
 	if not override_error.is_empty(): return override_error
+	var command_error := _party_command_history_error()
+	if not command_error.is_empty(): return command_error
 	var morale_error := _party_morale_history_error()
 	if not morale_error.is_empty(): return morale_error
+	return ""
+
+
+func _party_command_history_error()->String:
+	var hero_id:=int(party_encounter.protagonist_id)
+	var engaged:=false
+	for event in events:
+		if event.type=="party.deployment_completed":
+			engaged=true
+		elif event.type in ["party.victory","party.regroup_started",
+				"party.regroup_completed"]:
+			engaged=false
+		if event.type!="party.command_issued":continue
+		var data_error:=PartyCommandScript.data_error(event.data)
+		if not data_error.is_empty():return data_error
+		var hero_history:Dictionary=_party_entity_position_at_event(hero_id,event.id)
+		var command_id:=str(event.data.command_id)
+		var target_id:=Int64CodecScript.parse(event.data.target_id,
+			"party command target")
+		if not engaged or event.actor_id!=hero_id or event.target_id!=target_id \
+				or event.position!=hero_history.get("position",Vector2i(-1,-1)) \
+				or not bool(hero_history.get("ok",false)) or event.magnitude!=0 \
+				or event.cause_id!=-1 or event.instigator_id!=hero_id:
+			return "party_command_event_semantic_mismatch"
+		if command_id=="ATTACK_TARGET" and (target_id not in party_encounter.enemy_ids \
+				or not _party_alive_at_event(target_id,event.id)):
+			return "party_command_target_history_mismatch"
 	return ""
 
 

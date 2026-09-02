@@ -41,6 +41,7 @@ const GrowthBuildStateScript=preload("res://sim/growth_build_state.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
+const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -1196,10 +1197,57 @@ func party_status() -> Dictionary:
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
 		"exiled_member_ids":_member_ids_with_presence("EXILED"),
 		"visible_enemy_ids": visible_enemy_ids,
+		"party_command":PartyCommandScript.effective(sim.world,state),
 		"contact_warning":_latest_party_contact_warning(),
 		"protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
+
+
+func party_command_assessment(command_id:String,target_id:int=-1)->Dictionary:
+	if _run_is_complete():return _rejection_dto("run_complete")
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if state.safe_phase!="ENGAGED" or not sim.world.is_settled():
+		return _rejection_dto("party_command_phase_required")
+	if command_id not in PartyCommandScript.COMMAND_IDS:
+		return _rejection_dto("unknown_party_command")
+	if command_id=="ATTACK_TARGET":
+		if target_id not in state.enemy_ids or not sim.world.entities.has(target_id) \
+				or not sim.world.is_autonomous_target(target_id):
+			return _rejection_dto("party_command_target_invalid")
+	elif target_id!=-1:
+		return _rejection_dto("party_command_target_invalid")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
+		"target_id":target_id})
+
+
+func issue_party_command(command_id:String,target_id:int=-1,
+		append_journal:bool=true)->Dictionary:
+	var assessment:=party_command_assessment(command_id,target_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	var state=sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	var hero_position:Vector2i=sim.world.entities[hero_id].position
+	var event=sim.world.emit_event("party.command_issued",hero_id,target_id,
+		hero_position,0,-1,PartyCommandScript.event_data(command_id,target_id))
+	state.revision+=1
+	var semantic_error:String=sim.world.world_state_error()
+	if event==null or not semantic_error.is_empty():
+		var restored=SimulatorScript.from_snapshot(rollback)
+		if restored!=null:sim=restored
+		return _rejection_dto("party_command_commit_failed")
+	_clear_draft()
+	if append_journal:
+		command_journal.append({"kind":"party_command","operation":{
+			"command_id":command_id,"target_id":str(target_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
+		"target_id":target_id,"event_id":int(event.id),
+		"party_command":PartyCommandScript.effective(sim.world,state)})
 
 
 func _latest_party_contact_warning() -> Dictionary:
@@ -3171,6 +3219,7 @@ func companion_decision_explanations() -> Dictionary:
 			"actor_id": actor_id,
 			"name": str(sim.world.entities[actor_id].display_name),
 			"selected_action_id": str(row.selected_action_id),
+			"command_id":str(row.get("command_id","FOLLOW")),
 			"mode": str(row.mode),
 			"reason_text": _companion_reason_text(row),
 			"candidates": candidates,
@@ -3332,6 +3381,9 @@ func _consideration_label(consideration_id: String) -> String:
 func _companion_reason_text(row: Dictionary) -> String:
 	var action_id := str(row.get("selected_action_id", "HOLD"))
 	var prefix := "공황 · " if str(row.get("mode", "NORMAL")) == "PANIC" else ""
+	var command_id:=str(row.get("command_id","FOLLOW"))
+	if command_id in ["RETREAT","STOP_ATTACK","HOLD_POSITION"]:
+		return "%s예외 명령 · %s"%[prefix,PartyCommandScript.label_ko(command_id)]
 	var selected: Dictionary = {}
 	for candidate in row.get("candidates", []):
 		if str(candidate.action_id) == action_id:
@@ -4185,6 +4237,7 @@ func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
 			"party.contact_reported",
+			"party.command_issued",
 			"action.melee_attack","combat.attack_missed","combat.attack_parried","entity.downed",
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
@@ -4451,6 +4504,10 @@ func load_session_json(encoded: String) -> Dictionary:
 					"RECRUIT": replay_result = replay.recruit_companion(entity_id)
 					"STABILIZE": replay_result = replay.stabilize_recruit_candidate(entity_id)
 					"OFFER_RECRUIT": replay_result = replay.offer_recruitment(entity_id)
+			"party_command":
+				var operation:Dictionary=row.operation
+				replay_result=replay.issue_party_command(str(operation.command_id),
+					Int64CodecScript.parse(operation.target_id,"party command target"))
 			"party_turn":
 				var request:Dictionary=row.request; var direct=ActionScript.from_dict(request.protagonist_action)
 				replay.begin_turn(direct)
@@ -4697,6 +4754,19 @@ func _journal_wire_error(journal: Array) -> String:
 						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
 						or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
 					return "invalid_roster_journal"
+			"party_command":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_party_command_journal"
+				var command_keys:Array=row.operation.keys();command_keys.sort()
+				if command_keys!=["command_id","target_id"] \
+						or row.operation.get("command_id") not in PartyCommandScript.COMMAND_IDS \
+						or not Int64CodecScript.is_canonical(row.operation.get("target_id")):
+					return "invalid_party_command_journal"
+				var command_target:=Int64CodecScript.parse(row.operation.target_id,
+					"party command target")
+				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
+						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
+					return "invalid_party_command_journal"
 			"party_turn":
 				if keys != ["kind", "request"]: return "invalid_party_turn_journal"
 				var request_error := RequestScript.wire_error(row.get("request"))
@@ -4882,6 +4952,7 @@ func _event_category(event_type: String) -> String:
 	if event_type == "entity.died": return "DEATH"
 	if event_type.begins_with("combat."): return "DAMAGE"
 	if event_type.begins_with("action.") or event_type == "party.override_committed": return "ACTION"
+	if event_type=="party.command_issued":return "COMMAND"
 	if event_type.begins_with("encounter.") or event_type == "party.contact_reported" \
 			or event_type == "party.deployment_completed" \
 			or event_type == "party.member_deployed": return "ENCOUNTER"
@@ -4899,6 +4970,7 @@ func _event_tone(event_type: String) -> String:
 	if event_type.begins_with("encounter.") or event_type == "party.contact_reported":
 		return "WARNING"
 	if event_type.begins_with("action."): return "ACTION"
+	if event_type=="party.command_issued":return "COMMAND"
 	return "INFO"
 
 
@@ -5235,6 +5307,10 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"turn_draft_required":"동료를 지시하려면 먼저 주인공 행동을 선택하세요.",
 		"stale_turn_draft":"세계가 바뀌어 행동을 다시 지정해야 합니다.",
 		"party_turn_phase_required":"지금은 파티 턴을 확정할 수 없습니다.",
+		"party_command_phase_required":"전투 중 행동 경계에서만 파티 명령을 바꿀 수 있습니다.",
+		"unknown_party_command":"지원하지 않는 파티 명령입니다.",
+		"party_command_target_invalid":"공격 대상으로 지정할 수 있는 활동 중인 적이 아닙니다.",
+		"party_command_commit_failed":"파티 명령을 적용하지 못해 이전 상태로 돌아갔습니다.",
 		"protagonist_action_required":"주인공 행동이 필요합니다.",
 		"override_actor_not_deployed":"이번 전투에 배치되지 않은 예비 동료입니다.",
 		"override_actor_mismatch":"선택한 동료와 지시 대상이 다릅니다.",
@@ -5380,6 +5456,10 @@ func _event_message(event) -> String:
 		"party.contact_reported":
 			return "%s %s에서 적을 발견해 파티에 경고했다." % [
 				_subject(actor),_direction_label(event.data.get("direction",[]))]
+		"party.command_issued":
+			var command_id:=str(event.data.get("command_id",""))
+			return "파티 명령 · %s%s"%[PartyCommandScript.label_ko(command_id),
+				" · %s"%_object(target) if command_id=="ATTACK_TARGET" else ""]
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":
 			return "%s 영입 제안을 받아들였다. (수락 %d%% · 판정 %d)" % [

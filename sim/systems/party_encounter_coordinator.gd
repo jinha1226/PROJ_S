@@ -893,6 +893,7 @@ func explain_companion_turn(request) -> Dictionary:
 			"focus_target_id": int(board.focus_target_id),
 			"most_threatened_ally_id": int(board.most_threatened_ally_id),
 			"claims": board.claims.duplicate(true),
+			"party_command":board.get("party_command",{}).duplicate(true),
 		},
 		"companions": companions,
 	}
@@ -904,6 +905,9 @@ func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -
 	var state = world.party_encounter
 	var member = state.member(actor_id)
 	var appraisal: Dictionary = AppraisalScript.appraise(world, actor_id, board)
+	var command_decision := _exception_command_decision(actor_id, appraisal, board)
+	if not command_decision.is_empty():
+		return command_decision
 	var candidates: Array = []
 	for action_id in DecisionRegistryScript.party_mode_actions(str(appraisal.mode)):
 		var leaf: Dictionary = _party_leaf(actor_id, action_id, appraisal, board)
@@ -946,12 +950,86 @@ func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -
 	return {
 		"actor_id": actor_id,
 		"mode": str(appraisal.mode),
+		"command_id": str(board.get("party_command", {}).get("command_id", "FOLLOW")),
 		"selected_action_id": str(selected.action_id),
 		"selected_leaf": _leaf_to_action(actor_id, selected.leaf).to_dict(),
 		"reason_code": str(selected.get("rejection_reason", "")),
 		"appraisal": appraisal,
 		"candidates": candidates,
 	}
+
+
+func _exception_command_decision(actor_id: int, appraisal: Dictionary,
+		board: Dictionary) -> Dictionary:
+	var party_command: Dictionary = board.get("party_command", {})
+	var command_id := str(party_command.get("command_id", "FOLLOW"))
+	if command_id not in ["RETREAT", "STOP_ATTACK", "HOLD_POSITION"]:
+		return {}
+	var leaf: Dictionary
+	var action_id := "HOLD"
+	match command_id:
+		"RETREAT":
+			leaf = _retreat_leaf(actor_id, appraisal, board)
+			action_id = "RETREAT"
+		"STOP_ATTACK":
+			leaf = _follow_without_attacking_leaf(actor_id)
+			action_id = "HOLD"
+		"HOLD_POSITION":
+			leaf = _hold_position_leaf(actor_id, board)
+			action_id = "ENGAGE" if str(leaf.type) == "MELEE" else "HOLD"
+	var destination: Vector2i = leaf.get("destination", Vector2i(-1, -1))
+	var candidate := {
+		"action_id": action_id,
+		"legal": bool(leaf.get("legal", false)),
+		"rejection_reason": str(leaf.get("reason", "")),
+		"score": DecisionRegistryScript.SCORE_MAX,
+		"base_score": DecisionRegistryScript.SCORE_MAX,
+		"leaf": {"type": str(leaf.get("type", "HOLD")),
+			"target_id": int(leaf.get("target_id", -1)),
+			"destination": [destination.x, destination.y]},
+		"considerations": [],
+		"tie_break_rank": int(PARTY_ACTION_RANK[action_id]),
+	}
+	return {
+		"actor_id": actor_id,
+		"mode": str(appraisal.mode),
+		"command_id": command_id,
+		"selected_action_id": action_id,
+		"selected_leaf": _leaf_to_action(actor_id, candidate.leaf).to_dict(),
+		"reason_code": "party_command:%s" % command_id,
+		"appraisal": appraisal,
+		"candidates": [candidate],
+	}
+
+
+func _follow_without_attacking_leaf(actor_id: int) -> Dictionary:
+	var hero_id := int(world.party_encounter.protagonist_id)
+	var hero_position: Vector2i = world.entities[hero_id].position
+	if _distance(world.entities[actor_id].position, hero_position) <= 1:
+		return _hold_leaf()
+	var route := _best_route_to_any(actor_id, _adjacent_cells(hero_position),
+		_member_resilience(actor_id))
+	if route.is_empty():
+		return {"legal": true, "reason": "no_route_to_protagonist",
+			"type": "HOLD", "target_id": -1,
+			"destination": Vector2i(-1, -1)}
+	return {"legal": true, "reason": "", "type": "MOVE", "target_id": -1,
+		"destination": route.first_step}
+
+
+func _hold_position_leaf(actor_id: int, board: Dictionary) -> Dictionary:
+	var pressure: Dictionary = board.get("ally_pressure", {}).get(actor_id, {})
+	var adjacent: Array = pressure.get("adjacent_enemy_ids", []).duplicate()
+	adjacent.sort_custom(func(a, b):
+		var a_hp := int(board.threat_table[a].hp_milli)
+		var b_hp := int(board.threat_table[b].hp_milli)
+		return a_hp < b_hp if a_hp != b_hp else int(a) < int(b))
+	for target_id_value in adjacent:
+		var target_id := int(target_id_value)
+		if _party_melee_legal(actor_id, target_id):
+			return {"legal": true, "reason": "", "type": "MELEE",
+				"target_id": target_id, "destination": Vector2i(-1, -1)}
+	return _hold_leaf()
 
 
 func _party_leaf(actor_id: int, action_id: String, appraisal: Dictionary,

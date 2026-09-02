@@ -70,7 +70,7 @@ func test_auto_hero_action_shows_final_plan_then_commits_exactly_once() -> bool:
 	return finish()
 
 
-func test_companion_override_waits_for_hero_then_survives_automatic_commit() -> bool:
+func test_companion_selection_is_observation_only_and_next_input_controls_hero() -> bool:
 	var sandbox = _auto_engaged_sandbox()
 	var session = sandbox.session
 	var status: Dictionary = session.party_status()
@@ -78,24 +78,23 @@ func test_companion_override_waits_for_hero_then_survives_automatic_commit() -> 
 	var companion := int(status.party_member_ids[1])
 	sandbox._select_member(companion,"동료")
 	sandbox._on_actor_hold()
-	check(sandbox.auto_flow_state().override_edit,"companion instruction enters explicit edit mode")
-	sandbox._select_member(hero,"주인공")
-	sandbox._on_actor_hold()
 	var planning: Dictionary = session.auto_combat_planning_state()
-	check(planning.commit_ready and companion in planning.overridden_companion_ids,
-		"hero replacement preserves the companion override")
-	check(sandbox.auto_flow_state().combat_pending,"hero action ends editing and queues auto commit")
-	check(sandbox.find_child("AutoExecute",true,false)==null,"normal override flow needs no execute button")
+	check_eq(sandbox.selected_member_id,hero,
+		"ordinary input after companion inspection returns control to the hero")
+	check(planning.commit_ready and planning.overridden_companion_ids.is_empty(),
+		"companion inspection never creates an individual override")
+	check(sandbox.auto_flow_state().combat_pending,
+		"the hero action queues the ordinary automatic party commit")
 	var step_before := int(session.sim.world.step_index)
 	sandbox.flush_auto_flow_for_headless_test()
-	check_eq(session.sim.world.step_index,step_before,"first final-plan frame cannot commit override")
+	check_eq(session.sim.world.step_index,step_before,"first final-plan frame cannot commit")
 	sandbox.flush_auto_flow_for_headless_test()
-	check_eq(session.sim.world.step_index,step_before+1,"override plan commits once after hero action")
+	check_eq(session.sim.world.step_index,step_before+1,"automatic party plan commits once")
 	sandbox.free()
 	return finish()
 
 
-func test_one_tap_move_auto_commits_once_and_companion_override_waits_for_hero() -> bool:
+func test_one_tap_move_auto_commits_once_even_after_companion_inspection() -> bool:
 	var hero_sandbox=_auto_engaged_sandbox();var hero_session=hero_sandbox.session
 	var hero_status:Dictionary=hero_session.party_status();var hero:=int(hero_status.protagonist_id)
 	hero_sandbox.selected_member_id=hero
@@ -128,29 +127,25 @@ func test_one_tap_move_auto_commits_once_and_companion_override_waits_for_hero()
 	var status:Dictionary=companion_session.party_status();hero=int(status.protagonist_id)
 	var companion:=int(status.party_member_ids[1])
 	companion_sandbox._select_member(companion,"동료")
-	var companion_destination:=_first_valid_move(companion_sandbox,companion)
-	check(companion_destination!=Vector2i(-1,-1),"auto companion has a legal empty MOVE cell")
+	var companion_destination:=_first_valid_move(companion_sandbox,hero)
+	check(companion_destination!=Vector2i(-1,-1),"hero has a legal empty MOVE cell")
 	var companion_step:=int(companion_session.sim.world.step_index)
 	companion_sandbox._on_cell(companion_destination)
 	var planning:Dictionary=companion_session.auto_combat_planning_state()
-	var companion_action:Dictionary={}
+	var inspected_hero_action:Dictionary={}
 	for row in planning.preview.actor_rows:
-		if int(row.actor_id)==companion:companion_action=row.action
-	check(not companion_sandbox.auto_flow_state().combat_pending \
-		and companion in planning.overridden_companion_ids,
-		"one companion tile tap stores override but cannot commit turn")
-	check_eq([companion_action.get("type",""),companion_action.get("destination",[])],
-		["MOVE",[companion_destination.x,companion_destination.y]],"companion one-tap MOVE override")
-	check_eq(companion_session.sim.world.step_index,companion_step,"companion override waits for hero")
-	companion_sandbox._select_member(hero,"주인공");companion_sandbox._on_actor_hold()
-	planning=companion_session.auto_combat_planning_state()
-	check(companion in planning.overridden_companion_ids \
-		and companion_sandbox.auto_flow_state().combat_pending,
-		"hero action preserves one-tap companion MOVE and queues commit")
+		if int(row.actor_id)==hero:inspected_hero_action=row.action
+	check(companion_sandbox.auto_flow_state().combat_pending \
+		and planning.overridden_companion_ids.is_empty(),
+		"tile tap after companion inspection becomes a hero move with no override")
+	check_eq([inspected_hero_action.get("type",""),inspected_hero_action.get("destination",[])],
+		["MOVE",[companion_destination.x,companion_destination.y]],"hero one-tap MOVE")
+	check_eq(companion_session.sim.world.step_index,companion_step,
+		"final plan remains mutation-free before its render barrier")
 	companion_sandbox.flush_auto_flow_for_headless_test()
 	companion_sandbox.flush_auto_flow_for_headless_test()
 	check_eq(companion_session.sim.world.step_index,companion_step+1,
-		"preserved companion MOVE plan commits with hero exactly once")
+		"hero MOVE plan commits with autonomous companions exactly once")
 	companion_sandbox.free();return finish()
 
 

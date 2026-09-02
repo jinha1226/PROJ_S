@@ -4,6 +4,7 @@ const TEST_FILES := [
 	"test_party_companion_ruleset.gd",
 	"test_party_squad_blackboard.gd",
 	"test_party_shared_perception.gd",
+	"test_party_exception_commands.gd",
 	"test_party_companion_appraisal.gd",
 	"test_party_companion_suggest.gd",
 	"test_party_companion_explanation_ui.gd",

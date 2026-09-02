@@ -100,6 +100,7 @@ func observation() -> Dictionary:
 		"decision":{"ruleset_id":RULESET_ID,
 			"selected_label":"자동 파티 계획",
 			"selected_reason":"주인공의 행동이 공통 집중 표적이 되고 동료가 스스로 행동한다.",
+			"party_command":session.party_status().get("party_command",{}),
 			"companions":plan.explanations},
 		"warning":session.party_status().get("contact_warning",{"available":false}),
 		"recent_events":_recent_events(),
@@ -206,6 +207,7 @@ func _next_plan_rows()->Dictionary:
 		explanations.append({"actor_id":actor_id,
 			"name":world.entities[actor_id].display_name,
 			"action_id":selected_id,"mode":str(explanation.mode),
+			"command_id":str(explanation.get("command_id","FOLLOW")),
 			"target_id":target_id})
 	var preview:Dictionary=_next_plan.to_dict()
 	for row in preview.get("actor_rows",[]):

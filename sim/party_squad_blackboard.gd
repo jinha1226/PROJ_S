@@ -2,6 +2,7 @@ class_name PartySquadBlackboard
 extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
+const PartyCommandScript = preload("res://sim/party_exception_command.gd")
 const CLAIM_CAP := 2
 
 
@@ -41,6 +42,7 @@ static func build(world, protagonist_action) -> Dictionary:
 	var focus := _focus_target(world, state, protagonist_action, enemies, threat_table)
 	var threatened := _most_threatened_ally(state, deployed, ally_pressure)
 	var claims := _claims(state, deployed, enemies, focus)
+	var party_command: Dictionary = PartyCommandScript.effective(world, state)
 	return {
 		"schema_version": 1,
 		"deployed_ids": deployed,
@@ -50,6 +52,7 @@ static func build(world, protagonist_action) -> Dictionary:
 		"focus_target_id": focus,
 		"most_threatened_ally_id": threatened,
 		"claims": claims,
+		"party_command": party_command,
 	}
 
 
@@ -93,6 +96,13 @@ static func _last_committed_protagonist_target(world, state,
 		var event = world.events[event_index]
 		if event.type == "party.regroup_completed":
 			break
+		if event.type == "party.command_issued":
+			if str(event.data.get("command_id", "")) == "ATTACK_TARGET":
+				var commanded_target := int(str(event.data.get("target_id", "-1")))
+				return commanded_target if commanded_target in enemies else -1
+			# Any later exceptional command intentionally clears an older implicit
+			# attack focus. FOLLOW returns control to fresh autonomous selection.
+			return -1
 		if event.type == "action.melee_attack" \
 				and int(event.actor_id) == int(state.protagonist_id):
 			# Only the latest protagonist attack is an order. If its target has
