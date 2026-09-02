@@ -1,0 +1,106 @@
+{
+  "content_schema_version": 1,
+  "content_version": "body-templates-b0-2026-09-02",
+  "content_type": "BODY_TEMPLATES",
+  "ruleset_id": "body-simulation-b0-v1",
+  "templates": [
+    {
+      "template_id": "human", "species_id": "human", "player_template": true,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1000,"shock_threshold":100,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":30,"bone_fracture_threshold":80},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "elf", "species_id": "elf", "player_template": true,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1000,"shock_threshold":100,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":30,"bone_fracture_threshold":80},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "dwarf", "species_id": "dwarf", "player_template": true,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1000,"shock_threshold":100,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":30,"bone_fracture_threshold":110},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "orc", "species_id": "orc", "player_template": true,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1150,"shock_threshold":125,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":45,"bone_fracture_threshold":80},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "beastkin", "species_id": "beastkin", "player_template": true,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1000,"shock_threshold":100,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":30,"bone_fracture_threshold":80},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "generic_humanoid", "species_id": "generic_humanoid", "player_template": false,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":1000,"shock_threshold":100,"consciousness_threshold":700},
+      "scalars":{"skin_toughness":30,"soft_tissue_cushioning":30,"bone_fracture_threshold":80},
+      "variation":{"blood_capacity":30,"shock_threshold":5,"consciousness_threshold":20,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":5}
+    },
+    {
+      "template_id": "goblin", "species_id": "goblin", "player_template": false,
+      "parts": [
+        {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
+        {"part_id":"TORSO","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["HEART_LUNG"]},
+        {"part_id":"LEFT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_ARM","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"LEFT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]},
+        {"part_id":"RIGHT_LEG","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":[]}
+      ],
+      "systemic":{"blood_capacity":850,"shock_threshold":85,"consciousness_threshold":600},
+      "scalars":{"skin_toughness":25,"soft_tissue_cushioning":24,"bone_fracture_threshold":65},
+      "variation":{"blood_capacity":25,"shock_threshold":4,"consciousness_threshold":15,"skin_toughness":3,"soft_tissue_cushioning":3,"bone_fracture_threshold":4}
+    }
+  ]
+}
