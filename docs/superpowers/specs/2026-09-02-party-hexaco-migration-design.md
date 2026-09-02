@@ -1,5 +1,12 @@
 # Party HEXACO migration design
 
+## Implementation status
+
+Completed. Party creation, combat utility, morale, exile summaries, observations, UI,
+save/load, and replay all use the six-axis profile. The HEXACO migration boundary remains
+party encounter schema v15; the current aggregate party encounter schema is v17.
+`tests/run_party_ai_tests.gd` is the current combined acceptance runner.
+
 ## Decision
 
 Party companions use one continuous HEXACO profile with six integer axes in

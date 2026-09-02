@@ -2,67 +2,54 @@
 
 ## 현재 완료 기준
 
-2026-08-28 기준 Phase 3 성격·행동 실험실과 Phase 4 동일-grid 파티 조우가 완료됐다.
-snapshot v5, 8방향 MOVE, environment/actor 이중 cadence, 최대 3인 파티 배치,
-동료 제안/override, 파티 턴 원자 commit, 승리 턴의 zero-time 자동 재집결을 현재
-안정 계약으로 삼는다. 360×640과 450×800 UI는 D-pad 없이 같은 15×15 world grid를
-터치한다. 탐험·조우·배치 preview에서는 15×15 전체를, 배치 확정 뒤 전투에서는 같은
-`PartyGridView` 인스턴스의 결정론적 9×9 camera crop을 보여 준다. actor와 intent의 필수
-좌표 범위가 어느 축이든 9칸 창을 넘으면 같은 grid에서 원점 15×15 전체 창으로
-fallback해 전원을 계속 보이고, compact cluster는 9×9를 유지한다. 승리·자동 재집결 뒤
-원점 15×15 mapping으로 정확히 돌아온다. 이는 FOV가 아니라 표시 camera다. 큰 글씨,
-두 번 탭 이동 미리보기/확정, 행동 overlay, HP·stress·준비·파생 감정을 갖춘 3인 동시
-노출 Party HUD를 제공한다. ENGAGED에서만 정보 scroll 밖의 고정 하단
-`CombatActionArea`가 보이며, 16px 자동 줄바꿈 `ActionFeedback` 아래 44px/18pt 행동
-dock을 둔다. facade의 한국어 거부 `message`는 이 고정 feedback에 즉시 남고,
-commit event에서 투영한 slash/hit/피해량/death 효과만 중복 없이 재생한다. 비인접
-타일은 개발 sandbox의 결정론적 route macro로 미리 보고, 같은 목적지를 다시 누른 뒤
-기존 1칸 `MOVE`를 호출마다 하나씩 실행한다. 이 route는 아직 FOV가 아닌 전체 world
-기준이며 affinity로 경로 비용을 바꾸지 않는다. P1에서는 관찰 가능한 셀과 위험 선호를
-이 실행 primitive 앞의 정책으로 추가한다. 전체 route 타일에는 반투명 highlight를,
-각 edge에는 숫자 없는 방향 chevron을 그려 line과 START/NEXT/GOAL marker를 보강한다.
-같은 타일을 약 500ms 길게 누를 때만 terrain·이동비용과 불/물/전기/독 위험을 detached
-inspector DTO에서 읽은 floating popover로 띄운다. 짧은 tap은 popover를 열지 않으며,
-popover의 모든 child는 touch를 통과시켜 그 다음 짧은 tap을 막지 않는다.
-파티 card 첫 tap은 즉시 선택, 같은 card의 native double tap만 전체 화면 상세 modal을
-열고 modal 동안 grid와 자동 경로를 막거나 일시정지한다. 전투 사건은
-`InformationScroll`의 `전투 기록 · 최근 8턴`에 turn 경계, 이름, 피해 수치, 자동 동료의
-공격·피해·사망 attribution을 보존해 표시한다.
+2026-09-02 최신 `main`의 안정 경계는 world snapshot v9, 파티 조우 schema v17,
+8방향 MOVE, environment/actor 이중 cadence, 최대 4인 동일-grid 파티와 4개 적,
+파티 턴 원자 commit, 승리 턴의 zero-time 자동 재집결이다. Phase 5 명중·방어·상태·
+다운/죽음, 장비·루팅, 플레이어블 5종족·종족 스탯과 격리된 신체 상태 B0 모델도 같은
+`main`에 있다.
 
-`GROUPED_COMPLETE`의 `presentation_state()`는 transient UI 문구와 무관하게
-`VICTORY` tone, `승리 · 자동 재집결` banner, green grid style을 계속 반환한다.
-따라서 save/load 뒤 새 sandbox도 같은 승리 상태를 보이며 commit 효과는 재생하지 않는다.
+4인 파티 단체전투 시리즈는 다음까지 완료됐다.
 
-- 유효한 플레이어 결정 수 `step_index`와 실제 경과 `world_time`이 분리됨
-- 행동은 시작 시 commit되고 `(start, end]` 예약을 완전히 처리한 뒤 정착됨
-- 환경 cadence가 절대시간 100 배수에서 drift 없이 실행됨
-- `preview()`는 공개 예약만 표시하고 상태·RNG·ID를 바꾸지 않음
-- snapshot v5가 registry ID·파티 조우·예약 큐·화재 eligibility와 모든 64비트 시간/ID 참조를 보존함
-- 거부 입력과 overflow가 commit 전 전체 무변경으로 끝남
-- terrain registry가 통과·점유·이동 비용의 유일한 authority임
-- MOVE가 시작 시 commit되고 행동 구간의 환경 틱이 새 위치를 봄
-- ExposureSample과 종족 affinity 평가가 세계를 바꾸지 않는 detached projection임
+- P1 동료 자율 전투: 연속형 HEXACO와 Utility AI로 `ENGAGE/PROTECT/RETREAT/HOLD` 선택
+- P2 적 무리 전술: 전체 배치 파티 인지, 분대 focus/claim, 이동 목적지 예약
+- P3 사기·공포: 권위 stress·`NORMAL/PANIC` 히스테리시스, 거리 전염과 안전 회복
+- 자율 제어층: 개별 시야 → 파티 공유 → 자동 경고 → 주인공 행동의 암묵적 집중 표적
+- 제품 예외 명령: 공격 대상 지정/후퇴/공격 중지/자리 지키기/따라오기만 권위 사건으로 제공
+- 관찰 표면: `[NPC 관찰]`을 4 대 4로 확장해 `NEXT`, 경고, 가는 표적선과 판단 이유 표시
+
+제품 자동 파티 전투에서 동료 선택은 관찰만 수행한다. 이후 빈 칸·적·방어 입력은 주인공
+행동이며 개별 동료 override를 생성하지 않는다. 내부 override API는 기존 코어 계약과
+회귀 비교를 위해서만 남긴다. 예외 명령 변경은 이미 본 파티 계획을 stale 처리하고,
+`party.command_issued`와 세션 journal을 통해 save/load/replay에서 동일하게 재현된다.
+
+현재 검증 기준은 파티 AI 20/20, 적 무리 전술 12/12, 파티 사기 9/9, Phase 4 89/89,
+NPC 관찰 21/21이다. 12개 4인 파티 전투·190턴에서 rejected step과 invalid world는 0이다.
 
 ## 현재 고정 개발 순서
 
 ```text
-완료: 시간/지형/노출 → Phase 3 성격 실험실 → Phase 4 최대 3인 파티 조우·UX
-P0: 전투 규칙 v1 — 명중·방어·상태·다운/죽음
-P1: FOV/LOS·미니맵 → 관찰 범위·affinity를 반영한 안전 경로 정책
-    → 동료 성격/관계/체력 임계 행동
-P2: multi encounter·몬스터 영역/무리/생태·세계시간
-    → 아이템/장비/루팅 → 목격/기억/소문
+완료: P1 동료 AI → P2 적 무리 전술 → P3 사기·공포
+완료: 공유 인지·자동 경고 → 파티 관찰 UI → 예외 명령 5종 → 제품 개별 override 제거
+다음: P4-1 화면 밖 축약 전투의 상세/축약 경계 + 순수 축약 라운드 평가기
+이후: P4-2 권위 cadence·사건·save/replay
+      → P4-3 상세 전투 복귀·관찰 DTO
+      → P4-4 매트릭스·튜닝·제품 연결
 ```
 
-- P0 완료 기준: 같은 파티 턴에서 명중·방어·상태·다운/죽음의 preview/commit/event/snapshot이 결정론적으로 일치하고 플레이 가능한 한 전투가 끝난다.
-- P1 완료 기준: FOV/LOS가 공개한 타일만으로 먼 타일 auto-walk와 affinity 안전 경로를 계획하며, 동료의 성격·관계·현재 HP가 예고된 행동과 실제 행동에 같은 근거로 반영된다.
-- P2 완료 기준: 여러 조우와 몬스터 영역·무리 상태가 세계시간에 따라 이어지고, 전리품과 목격·기억·소문이 save/load 뒤에도 같은 인과 사슬을 보존한다.
+다음 구현은 **P4-1만** 진행한다. 먼저 어떤 조우가 상세 동일-grid 전투에 남고 어떤 조우가
+축약 대상인지 입력 계약으로 고정한다. 그 다음 현재 파티/적 HP·생명 상태·사기·HEXACO·
+장비·전투 시간에서 한 축약 라운드의 제안 결과를 만드는 순수 평가기를 작성한다.
+P4-1은 world, 사건, RNG, ID, journal을 쓰지 않으며 권위 피해도 적용하지 않는다.
+같은 입력은 같은 정수 결과와 이유 trace를 반환하고, 입력/출력 DTO와 전환 거부 이유를
+집중 테스트로 먼저 고정한다. 이 결과를 관찰·검토한 뒤에만 P4-2에서 실제 시간 진행과
+권위 사건을 연결한다.
 
-Phase 3의 구현 계약은 `docs/PHASE3_DUNGEON_PERSONALITY_LAB_IMPLEMENTATION_PROMPT.ko.md`,
-Phase 4의 현재 계약은 `docs/PHASE4_PARTY_ENCOUNTER_DEPLOYMENT_IMPLEMENTATION_PROMPT.ko.md`의
-최상단 UX 개정을 따른다. 개인 성향·행동 AI의 연구 근거와 장기 확장 규칙은
-`docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다. 마을 구현 문서는 보류된
-backlog다. 기존 아래 절 번호는 장기 설계 원칙으로 유지하되 실제 우선순위는 위 P0–P2다.
+파티 자율 제어의 최신 계약은
+`docs/superpowers/specs/2026-09-02-party-autonomy-perception-design.md`, P2/P3 계약은 같은
+`docs/superpowers/specs` 폴더의 적 무리 전술·사기 설계를 따른다. 개인 성향·행동 AI의
+연구 근거와 장기 확장 규칙은 `docs/PERSONALITY_BEHAVIOR_ARCHITECTURE.ko.md`를 따른다.
+아래 절은 기존 코어와 장기 backlog의 세부 계약으로 유지하되, 현재 구현 우선순위는 위
+P4-1~P4-4 순서가 우선한다.
 
 ### 1. TerrainRegistry·MOVE (완료)
 

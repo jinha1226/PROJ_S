@@ -2,6 +2,12 @@
 
 작성일 2026-09-02. 4인 파티 단체전투 시리즈의 3/4.
 
+구현 상태: **P3-1~P3-3 완료**. 순수 사기 모델, `party.morale_changed` 권위 사건,
+저장되는 `NORMAL/PANIC` 히스테리시스, HEXACO 회복탄력성, 관찰 DTO와 시드 매트릭스가
+연결됐다. `tests/run_party_morale_tests.gd`는 9/9를 통과하며, 8개 조우·116턴에서
+공포 진입 21회, 행동 변화 83회, 안전 회복과 복원 검증이 발생했고 위법 PANIC 행동,
+rejected step, invalid world, restore failure는 모두 0이다.
+
 ## 목표
 
 기존 `PartyMemberState.stress`가 플레이어 오버라이드 외에도 실제 전투 결과에
@@ -32,8 +38,9 @@
 
 ## P3-2 권위 계약
 
-- `PartyMemberState` v14는 stress와 별도로 `mental_mode`를 저장한다. v1~v13은
-  stress 850 이상만 PANIC으로 이행하며, 현재 v14 wire에는 모드가 반드시 있어야 한다.
+- 파티 조우 스키마의 v14 사기 경계부터 stress와 별도로 `mental_mode`를 저장한다.
+  v1~v13은 stress 850 이상만 PANIC으로 이행한다. 현재 전체 파티 조우 스키마는 v17이며,
+  v14 이후 wire에는 모드가 반드시 있어야 한다.
 - 한 행동/스케줄 배치는 사기 모델을 한 번만 커밋한다. `party.morale_changed`는 원인
   이벤트 ID, 세 delta, 전후 stress·모드, 정렬된 trigger code를 남기고 최신 행은 저장된
   파티원 상태와 정확히 일치해야 한다.
@@ -51,6 +58,6 @@
 - 모든 조우가 제한 턴 안에 종료되어야 하고, 공포 전염·PANIC 진입·안전 회복이 각각
   한 번 이상 발생해야 한다. 각 샘플 snapshot은 즉시 복원했을 때 완전히 같아야 한다.
 
-## 비범위
+## 완료 이후 비범위
 
 - 적 진영 사기와 도주, 화면 밖 전투(P4), 새 행동 타입, RNG 기반 공포 판정.

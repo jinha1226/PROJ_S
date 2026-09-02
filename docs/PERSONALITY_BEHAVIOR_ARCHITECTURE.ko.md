@@ -550,16 +550,16 @@ PersonalityChange
 - [Game AI Pro: Behavior Selection Algorithms](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter04_Behavior_Selection_Algorithms.pdf)
 - [Game AI Pro 3: Choosing Effective Utility-Based Considerations](https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf)
 
-## 12. 파티 동료 룰셋 `party-companion-utility-v1`
+## 12. 파티 동료 룰셋 `party-companion-utility-v2-hexaco`
 
-4인 파티 단체전투 P1은 기존 4축 personality wire와 정수 Utility evaluator를 재사용한다.
+4인 파티 단체전투 P1의 임시 4축 wire는 폐기됐고, 현재 룰셋은 연속형 HEXACO 6축과
+정수 Utility evaluator를 사용한다. 고정 성격 유형은 저장하거나 판단에 사용하지 않는다.
 행동 후보는 `ENGAGE`, `PROTECT`, `RETREAT`, `HOLD` 네 개이며, 실행 리프는 기존
-`HOLD`, `MOVE`, `MELEE`만 사용한다. 새 성격·대화 6축 설계로의 마이그레이션은 이
-룰셋의 범위가 아니며 별도 버전으로 다룬다.
+`HOLD`, `MOVE`, `MELEE`만 사용한다.
 
-입력 17개는 다음 범주로 고정한다.
+입력 19개는 다음 범주로 고정한다.
 
-- 성격 4개: aggression, altruism, boldness, composure
+- 성격 6개: H, E, X, A, C, O
 - 평가 3개: attack drive, perceived threat, panic pressure
 - 상황 7개: hp loss, ally targeted, ally hp loss, engaged enemies, outnumbered,
   claim alignment, focus alignment
@@ -571,15 +571,16 @@ PersonalityChange
 블랙보드는 snapshot에 저장하지 않는다. 같은 입력의 반복 프리뷰는 RNG를 소비하지 않고
 동일한 정수 점수·리프·설명을 반환한다.
 
-P1의 `PANIC`은 HP·stress·composure에서 계산하는 순간 모드이며 저장 상태가 아니다.
-그러므로 현재는 임계값 한 번으로 `NORMAL`/`PANIC` 후보 집합을 고른다. P3에서 사기·공포
-전염을 구현할 때 enter/exit 임계값, 최소 유지시간과 commitment를 권위 상태에 추가해
-히스테리시스를 도입한다. 그 전에는 P1 룰셋에 암묵적인 지속 상태를 넣지 않는다.
+P3 완료 뒤 `PANIC`은 `PartyMemberState.mental_mode`의 권위 상태다. stress 850 이상에서
+진입하고 650 이하에서 해제되는 히스테리시스를 사용한다. 전투 사건의 직접 충격과 거리 4
+이내 전염, 안전 회복은 `party.morale_changed` 사건으로 기록되고, HEXACO의 E와 C에서
+도출한 회복탄력성이 전염량과 공황 압력에 영향을 준다.
 
 헤드리스 검증은 `tests/run_party_ai_tests.gd`가 담당한다. 12시드 전투 매트릭스는
 4인 파티·4개 적, 최대 60턴을 오버라이드 없이 실행하며 accepted step, canonical world,
-행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. 적 무리 인지와 전투 이탈은
-P2 범위이므로 이 P1 매트릭스에서는 적 인지를 고정해 동료 선택기만 격리한다.
+행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. P2 적 무리 전술과 P3 사기
+상태는 각각 별도 매트릭스에서 검증하며, 통합 파티 AI runner는 공유 인지와 예외 명령까지
+포함해 20개 테스트를 실행한다.
 
 ## 13. DCSS형 파티 자율 제어 원칙
 
@@ -595,7 +596,7 @@ P2 범위이므로 이 P1 매트릭스에서는 적 인지를 고정해 동료 �
 - 새 접촉을 발견한 동료는 즉시 파티 지식에 접촉 위치·방향·관측 시각을 공유한다. UI는
   자동진행을 멈추고 발견자와 방향을 경고하되, 관측 수준보다 자세한 적 정보는 만들지 않는다.
 - 주인공이 적을 공격하면 그 적이 공통 `focus_target`이 된다. 이후 MOVE/HOLD를 해도 표적이
-  살아 있고 유효한 동안 유지하며, 사망·이탈·인지 상실 때 자동으로 해제한다.
+  살아 있고 유효한 동안 유지하며, 사망·이탈 때 자동으로 해제한다.
 - 공통 표적이 없으면 동료는 자신이 인지한 유효한 적 중 가까운 위협을 자동 선택한다.
   표적을 찾지 못하면 주인공에게 복귀한다.
 - HEXACO는 탐지나 경고를 확률적으로 누락시키지 않는다. 성향은 동일한 정보 위에서 보호,
@@ -610,3 +611,7 @@ override는 테스트·디버그 관찰용 API로만 유지하고 제품의 기�
 표적만 바꾸며, 후퇴는 공격 없이 철수, 공격 중지는 공격 없이 주인공 추종, 자리 지키기는 이동
 금지와 인접 방어, 따라오기는 기본 자율 루프로의 복귀를 뜻한다. 명령 변경은 이미 미리 본 전투
 계획을 stale 처리하고 세션 journal에서 동일 사건으로 재생되어야 한다.
+
+이 제어층은 구현 완료됐다. `[NPC 관찰]`의 4 대 4 모드는 `NEXT` 큐, 자동 경고와 표적선을
+같은 권위 상태에서 투영한다. 제품 자동 파티 화면에서 동료 선택은 판단 관찰만 수행하고,
+이후 일반 전투 입력은 주인공 행동으로 처리되어 개별 override를 만들지 않는다.
