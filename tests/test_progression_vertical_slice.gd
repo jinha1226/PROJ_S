@@ -190,7 +190,7 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE" \
 		and sandbox.find_child("StressState",true,false)!=null \
 		and sandbox.find_child("DossierAsciiFrame",true,false)==null \
-		and actor_seal!=null and actor_seal.text=="@",
+		and actor_seal!=null and actor_seal.text=="ㅇ",
 		"top status strip shows exact identity, HP, LV, state, stress, and XP")
 	check("공" not in level.text and "방" not in level.text,
 		"solo mobile hero card does not persist derived attack or defense")

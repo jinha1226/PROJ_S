@@ -52,7 +52,7 @@ const ACTOR_MOTION_MIN_MS := 70
 const ACTOR_MOTION_MAX_MS := 180
 
 # The gameplay grid remains integer 2D authority. These values only project its
-# presentation into the camera-following ASCII diorama chosen by the visual
+# presentation into the optional camera-following typographic diorama.
 # target: a low pitch, strong perspective and a little extra screen-depth so a
 # square mobile viewport does not collapse into a thin horizontal strip.
 const CAMERA_PITCH_DEGREES := 30.0
@@ -223,8 +223,8 @@ static func wall_role_spec(connected_mask:int,exposed_mask:int)->Dictionary:
 	var emphasis:=float({"END":1.0,"CORNER":0.98,"JUNCTION":1.0,
 		"STRAIGHT":0.90,"SOLID":0.78}.get(role,0.90))
 	return {"role":role,"connected_mask":mask,"exposed_mask":exposed_mask,
-		"connection_count":connection_count,"core_glyph":"#",
-		"face_glyph":":" if exposed_mask&SOUTH else "",
+		"connection_count":connection_count,"core_glyph":"벽",
+		"face_glyph":"ㅂ" if exposed_mask&SOUTH else "",
 		"face_visible":bool(exposed_mask&SOUTH),"foreground_emphasis":emphasis,
 		"slab_ratio":Vector2(0.94,0.92),
 		"glyph_offset":Vector2(0.0,-0.025 if role in ["END","CORNER"] else 0.0),

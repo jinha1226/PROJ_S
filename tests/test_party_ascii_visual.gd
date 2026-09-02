@@ -8,14 +8,14 @@ const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 
 func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var expected := {
-		"floor":".", "stone_floor":".", "wood_floor":",", "metal":"=",
-		"rubble":":", "shallow_water":"~", "wall":"#",
+		"floor":"", "stone_floor":"돌", "wood_floor":"나", "metal":"쇠",
+		"rubble":"깨", "shallow_water":"물", "wall":"벽",
 	}
 	var glyph_colors:Array[Color]=[]
 	var glyph_hexes:Array[String]=[]
 	for terrain_id in expected:
 		var spec: Dictionary = Style.terrain_spec({"terrain_id":terrain_id})
-		check_eq(spec.glyph,expected[terrain_id],"%s ASCII glyph"%terrain_id)
+		check_eq(spec.glyph,expected[terrain_id],"%s Hangul material glyph"%terrain_id)
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
 		check(spec.glyph_primary and spec.registered and not spec.draw_image \
 			and not spec.draw_tile_border,"%s glyph is primary over a code-native projected floor"%terrain_id)
@@ -41,12 +41,12 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 			"walkable %s never borrows the wall glyph"%walkable_id)
 	check_eq([Style.feature_spec("run_entry").glyph,
 		Style.feature_spec("run_exit_locked").glyph,
-		Style.feature_spec("run_exit_open").glyph],["<",">",">"],
-		"stairs use standard roguelike grammar independent of lock state")
+		Style.feature_spec("run_exit_open").glyph],["입","닫","출"],
+		"stairs and exits use direct Hangul state words")
 	check(Style.feature_spec("run_entry").glyph!=Style.terrain_spec({"terrain_id":"floor"}).glyph \
 		and Style.feature_spec("run_exit_locked").glyph!=Style.terrain_spec({"terrain_id":"floor"}).glyph,
 		"entry and exit glyphs cannot merge with ordinary floor")
-	check_eq(Style.feature_spec("open_door").glyph,"/","canonical open door uses slash")
+	check_eq(Style.feature_spec("open_door").glyph,"문","open door uses its Hangul material word")
 	var memory: Dictionary = Style.visibility_spec("MEMORY")
 	check(memory.draw_terrain and not memory.draw_hazards and not memory.draw_actors,
 		"memory draws terrain only")
@@ -133,15 +133,9 @@ func test_flat_2d_and_diorama_2_5d_are_pure_switchable_projection_modes()->bool:
 	grid.set_observation({"width":15,"height":15,"cells":_visible_cells()})
 	grid.set_hero_centered_view(Vector2i(7,7),13,77)
 	var observation_before:Dictionary=grid._cells.duplicate(true)
-	var perspective_mapping:=grid.mapping_signature()
-	var far_25d:=grid.world_cell_rect(Vector2i(7,1))
-	var near_25d:=grid.world_cell_rect(Vector2i(7,13))
-	check_eq(grid.graphics_mode_id(),Grid.GRAPHICS_MODE_DIORAMA_2_5D,
-		"product default remains the new 2.5D camera")
-	check(near_25d.size.x>far_25d.size.x,
-		"2.5D mode retains visible perspective scaling")
-	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D),
-		"flat 2D is an accepted presentation option")
+	var flat_mapping:=grid.mapping_signature()
+	check_eq(grid.graphics_mode_id(),Grid.GRAPHICS_MODE_FLAT_2D,
+		"product defaults to the Hangul flat top-view camera")
 	var far_2d:=grid.world_cell_rect(Vector2i(7,1))
 	var near_2d:=grid.world_cell_rect(Vector2i(7,13))
 	check(far_2d.size.is_equal_approx(near_2d.size) \
@@ -153,9 +147,15 @@ func test_flat_2d_and_diorama_2_5d_are_pure_switchable_projection_modes()->bool:
 	check(not grid.set_graphics_mode("INVALID") \
 			and grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
 		"unknown graphics option is a total no-op")
-	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D) \
-			and grid.mapping_signature()==perspective_mapping,
-		"switching back restores the exact 2.5D mapping")
+	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D),
+		"2.5D remains an accepted presentation option")
+	var far_25d:=grid.world_cell_rect(Vector2i(7,1))
+	var near_25d:=grid.world_cell_rect(Vector2i(7,13))
+	check(near_25d.size.x>far_25d.size.x,
+		"2.5D option retains visible perspective scaling")
+	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D) \
+			and grid.mapping_signature()==flat_mapping,
+		"switching back restores the exact default 2D mapping")
 	check_eq(grid._cells,observation_before,
 		"graphics mode never changes observation or simulation-facing data")
 	grid.free();return finish()
@@ -249,10 +249,10 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	var enemy: Dictionary = Style.actor_spec({"faction_id":"enemy","species_id":"goblin"})
 	var unknown: Dictionary = Style.actor_spec({"faction_id":"enemy","species_id":"slime"})
 	check_eq([hero.glyph,human.glyph,goblin.glyph,enemy.glyph,unknown.glyph],
-		["@","&","g","g","?"],"actor role glyph grammar")
+		["ㅇ","ㅇ","ㄱ","ㄱ","ㅈ"],"species choseong actor grammar")
 	for spec in [hero,human,goblin,enemy,unknown]:
 		check(spec.glyph_is_body and not spec.detached_head and not spec.draw_head,
-			"ASCII glyph is the body with no detached head primitive")
+			"Hangul glyph is the body with no detached head primitive")
 		check_eq([spec.glyph_weight,spec.glyph_outline_passes],
 			["INK_STAMP",4],"actor glyph uses a compact deterministic ink stamp")
 		check(spec.underlay_ratio.x>0.0 and spec.underlay_opacity>0.0,
@@ -284,29 +284,33 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	check(moving.limb_segments.is_empty() and idle.limb_segments.is_empty() \
 			and moving.glyph_center==idle.glyph_center,
 		"movement never recreates limbs or moves the glyph identity anchor")
-	var weapon_cases:={"SHORT_SWORD":["SWORD","/"],"HAND_AXE":["AXE","7"],
-		"MACE":["MACE","o"],"SPEAR":["SPEAR","|"],"BOW":["BOW",")"],
-		"CROSSBOW":["CROSSBOW","+"]}
+	var weapon_cases:={"SHORT_SWORD":["SWORD","/"],
+		"THRUSTING_SWORD":["SWORD","|"],"HAND_AXE":["AXE","7"],
+		"MACE":["MACE","!"],"SPEAR":["SPEAR","^"],
+		"BOW":["BOW",")"],"CROSSBOW":["CROSSBOW","+"]}
 	var weapon_glyphs:Array=[]
 	for weapon_id in weapon_cases:
 		var armed:=Style.actor_spec({"is_protagonist":true,"equipment_visual":{
 			"weapon_id":weapon_id,"armor_definition_id":""}})
 		check(armed.draw_equipment and armed.equipment_primitive_count==1 \
 				and str(armed.equipment.weapon_family)==weapon_cases[weapon_id][0] \
-				and str(armed.equipment.weapon_glyph)==weapon_cases[weapon_id][1],
-			"%s owns a distinct tile-local weapon mark"%weapon_id)
+				and str(armed.equipment.weapon_glyph)==weapon_cases[weapon_id][1] \
+				and str(armed.glyph)=="ㅇ" \
+				and not bool(armed.equipment.changes_core_glyph),
+			"%s draws a static ASCII mark without changing the body"%weapon_id)
 		weapon_glyphs.append(str(armed.equipment.weapon_glyph))
 	check_eq(weapon_glyphs.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),weapon_cases.size(),
-		"six weapon families remain visually distinct")
+		"seven weapons remain visually distinct as static ASCII marks")
 	var leather:=Style.actor_spec({"is_protagonist":true,"equipment_visual":{
 		"weapon_id":"SHORT_SWORD","armor_definition_id":"ARMOR_LEATHER"}})
 	var padded:=Style.actor_spec({"is_protagonist":true,"equipment_visual":{
 		"weapon_id":"SHORT_SWORD","armor_definition_id":"ARMOR_PADDED"}})
-	check_eq([leather.equipment.armor_left_glyph,leather.equipment.armor_right_glyph,
-		padded.equipment.armor_left_glyph,padded.equipment.armor_right_glyph],
-		["{","}","[","]"],"leather and padded armor change the core-glyph outline")
+	check_eq([leather.glyph,padded.glyph,leather.equipment.armor_left_glyph,
+		leather.equipment.armor_right_glyph,padded.equipment.primitive_count],
+		["ㅇ","ㅇ","[","]",3],
+		"armor brackets and a weapon surround the unchanged Hangul body")
 	var guarded: Dictionary = Style.actor_spec({"faction_id":"party","guarded":true,
 		"status_ids":["BLEEDING"]})
 	check(guarded.bleeding and guarded.guard_segments.size()==3,
@@ -315,11 +319,74 @@ func test_actor_glyph_pose_facing_status_and_guard_contract() -> bool:
 	check_eq(downed.pose,"DOWNED","downed pose")
 	check(downed.opacity<1.0 and not downed.draw_limbs,"downed body stays legible without limbs")
 	var dead: Dictionary = Style.actor_spec({"faction_id":"party","life_state":"DEAD"})
-	check_eq(dead.glyph,"x","dead glyph")
+	check_eq(dead.glyph,"흔","dead glyph")
 	check(not dead.draw_head and not dead.draw_limbs,"dead state does not look standing")
 	var ghost: Dictionary = Style.actor_spec({"faction_id":"party"},true)
 	check(ghost.ghost and ghost.opacity<1.0,"proposal ghost is translucent")
 	return finish()
+
+
+func test_hangul_body_stays_stable_with_ascii_equipment()->bool:
+	var human_bare:=Style.actor_spec({"faction_id":"party","species_id":"human"})
+	var human_armor:=Style.actor_spec({"faction_id":"party","species_id":"human",
+		"equipment_visual":{"weapon_id":"UNARMED_STRIKE",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	var human_sword:=Style.actor_spec({"faction_id":"party","species_id":"human",
+		"equipment_visual":{"weapon_id":"SHORT_SWORD",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	var human_thrust:=Style.actor_spec({"faction_id":"party","species_id":"human",
+		"equipment_visual":{"weapon_id":"THRUSTING_SWORD",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	var goblin_bare:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin"})
+	var goblin_armor:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin",
+		"equipment_visual":{"weapon_id":"UNARMED_STRIKE",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	var goblin_sword:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin",
+		"equipment_visual":{"weapon_id":"SHORT_SWORD",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	var goblin_thrust:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin",
+		"equipment_visual":{"weapon_id":"THRUSTING_SWORD",
+			"armor_definition_id":"ARMOR_LEATHER"}})
+	check_eq([human_bare.glyph,human_armor.glyph,human_sword.glyph,human_thrust.glyph],
+		["ㅇ","ㅇ","ㅇ","ㅇ"],"human body stays ㅇ across equipment")
+	check_eq([goblin_bare.glyph,goblin_armor.glyph,goblin_sword.glyph,goblin_thrust.glyph],
+		["ㄱ","ㄱ","ㄱ","ㄱ"],"goblin body stays ㄱ across equipment")
+	for spec in [human_armor,human_sword,human_thrust,goblin_armor,goblin_sword,
+			goblin_thrust]:
+		check(str(spec.grammar_id)=="HANGUL_BODY_ASCII_EQUIPMENT_V1" \
+				and not bool(spec.composition.is_composed) and spec.draw_equipment \
+				and str(spec.equipment.composition_mode)=="STATIC_ASCII",
+			"stable Hangul body explicitly owns static ASCII equipment")
+	return finish()
+
+
+func test_ground_fire_lights_neighboring_visible_tiles_and_actor_without_fog_leak()->bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[7,7]:cell.fire_intensity=80
+		elif cell.position==[8,7]:
+			cell.actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
+				"roster_slot":0,"is_protagonist":true})
+		elif cell.position==[9,7]:cell.visibility_state="MEMORY"
+		elif cell.position==[7,9]:cell.visibility_state="UNSEEN"
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var source:=grid.fire_light_draw_spec(Vector2i(7,7),75)
+	var near:=grid.fire_light_draw_spec(Vector2i(8,7),75)
+	var edge:=grid.fire_light_draw_spec(Vector2i(8,8),75)
+	check(source.active and near.active and edge.active \
+			and source.brightness>near.brightness and near.brightness>=edge.brightness,
+		"fire uses a bounded distance falloff across surrounding cells")
+	check(not grid.fire_light_draw_spec(Vector2i(9,7),75).active \
+			and not grid.fire_light_draw_spec(Vector2i(7,9),75).active,
+		"fire light cannot reveal MEMORY or UNSEEN cells")
+	var lit_actor:=grid.actor_draw_spec(grid._actor_by_id(77),false,75)
+	check(bool(lit_actor.environment_light.active) \
+			and lit_actor.has("base_color_hex") \
+			and Color(str(lit_actor.color_hex)).get_luminance() \
+				>Color(str(lit_actor.base_color_hex)).get_luminance(),
+		"neighboring fire brightens the actor glyph without changing actor state")
+	grid.free();return finish()
 
 
 func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
@@ -337,24 +404,22 @@ func test_world_glyph_fits_15px_cell_and_preserves_hit_fov_contract() -> bool:
 	var spec:Dictionary=grid.actor_glyph_draw_spec(77)
 	check(spec.visible and spec.font_size>=9,"15px cell keeps a readable central glyph")
 	var figure_bounds:=Rect2(spec.figure_bounds);var glyph_rect:=Rect2(spec.glyph_rect)
-	check(float(spec.top_overlap_px)>0.0 \
+	check(float(spec.top_overlap_px)<=spec.cell_rect.size.y*0.20 \
 			and spec.glyph_rect.position.x>=spec.cell_rect.position.x \
 			and spec.glyph_rect.end.x<=spec.cell_rect.end.x \
 			and figure_bounds.grow(2.0).encloses(glyph_rect),
-		"upright body rises from the tile while staying laterally bounded: %s vs %s" \
+		"top-view Hangul body fills its tile while staying laterally bounded: %s vs %s" \
 		%[spec.glyph_rect,spec.cell_rect])
 	check(not spec.detached_head and spec.outline_passes==8 and not spec.selected_outline,
 		"world actor has no head or yellow selection outline")
 	check(spec.draw_equipment and spec.equipment_primitive_count==3 \
 			and str(spec.equipment.weapon_family)=="AXE" \
-			and bool(spec.equipment.armor_visible),
-		"party map adds one weapon and two armor glyphs around the unchanged core: %s"%spec)
-	check(spec.limb_segments.is_empty() and not bool(spec.equipment.changes_core_glyph),
-		"world actor has no limbs and equipment never replaces @")
-	check(figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.weapon_center)) \
-			and figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.armor_left_center)) \
-			and figure_bounds.grow(4.0).has_point(Vector2(spec.equipment.armor_right_center)),
-		"all equipment marks stay on the upright actor silhouette")
+			and bool(spec.equipment.armor_visible) and str(spec.glyph)=="ㅇ" \
+			and str(spec.equipment.weapon_glyph)=="7",
+		"party map surrounds the stable body with static ASCII equipment: %s"%spec)
+	check(spec.limb_segments.is_empty() and not bool(spec.equipment.changes_core_glyph) \
+			and str(spec.equipment.composition_mode)=="STATIC_ASCII",
+		"world actor has no detached limbs or core-glyph mutation")
 	check_eq(grid.mapping_signature(),mapping,"glyph presentation cannot alter mapping")
 	check_eq(grid.actor_hit_rect(77),hit,"glyph presentation cannot alter actor hit authority")
 	check_eq(grid.actor_at_pointer(grid.world_to_pixel_center(Vector2i(7,7))),77,
@@ -377,21 +442,20 @@ func test_actor_pseudo_depth_proportions_are_bounded_at_360_and_450()->bool:
 		var mapping:=grid.mapping_signature();var hero_hit:=grid.actor_hit_rect(77)
 		var hero:Dictionary=grid.actor_glyph_draw_spec(77)
 		var neighbor:Dictionary=grid.actor_glyph_draw_spec(88)
-		check(bool(hero.one_cell_one_glyph) and str(hero.glyph)=="@" \
-				and float(hero.top_overlap_px)>grid.world_cell_rect(Vector2i(7,7)).size.y*0.5 \
-				and float(hero.top_overlap_px)<Rect2(hero.figure_bounds).size.y,
-			"%dpx body owns one upright glyph above its projected floor tile overlap=%s cell=%s" \
+		check(bool(hero.one_cell_one_glyph) and str(hero.glyph)=="ㅇ" \
+				and float(hero.top_overlap_px)<=grid.world_cell_rect(Vector2i(7,7)).size.y*0.20,
+			"%dpx body owns one full-cell top-view Hangul glyph overlap=%s cell=%s" \
 			%[viewport,hero.top_overlap_px,grid.cell_size_px()])
 		check(hero.limb_segments.is_empty() and float(hero.feet_bottom_margin_px)==0.0,
 			"%dpx actor silhouette contains no artificial limbs"%viewport)
-		check(Rect2(hero.figure_bounds).size.y>=Rect2(neighbor.figure_bounds).size.y \
+		check(Rect2(hero.figure_bounds).size.is_equal_approx(Rect2(neighbor.figure_bounds).size) \
 				and int(hero.font_size)>=int(neighbor.font_size) \
 				and grid.world_to_pixel_center(Vector2i(7,7)).y \
 					>grid.world_to_pixel_center(Vector2i(7,6)).y \
 				and grid.actor_render_order()==[88,77],
-			"%dpx near actor grows and depth-sorts after the farther actor"%viewport)
+			"%dpx flat actors share tile scale and retain stable y render order"%viewport)
 		var goblin_color:=Color(str(grid.actor_draw_spec(grid._actor_by_id(88)).color_hex))
-		check(str(neighbor.glyph)=="g" and goblin_color.g>goblin_color.r*1.25 \
+		check(str(neighbor.glyph)=="ㄱ" and goblin_color.g>goblin_color.r*1.25 \
 				and goblin_color.g>goblin_color.b*1.25,
 			"%dpx visible enemy goblin owns an unmistakable green core glyph"%viewport)
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(77),
@@ -412,7 +476,7 @@ func test_brackets_portrait_and_specs_are_detached() -> bool:
 	var returned: Dictionary = portrait.actor_dto()
 	returned["species_id"]="orc"
 	check_eq(portrait.actor_dto().species_id,"goblin","portrait getter is detached")
-	check_eq(portrait.actor_draw_spec().glyph,"g","portrait consumes shared actor grammar")
+	check_eq(portrait.actor_draw_spec().glyph,"ㄱ","portrait consumes shared actor grammar")
 	portrait.free()
 	return finish()
 
@@ -684,8 +748,8 @@ func test_wall_roles_light_bands_and_tile_material_rules_are_quantized() -> bool
 		check_eq(Diorama.wall_role_spec(int(row[0]),0).role,row[1],
 			"connected wall role %d"%int(row[0]))
 	var south_face:Dictionary=Diorama.wall_role_spec(Diorama.NORTH,Diorama.SOUTH)
-	check(south_face.face_visible and south_face.face_glyph==":",
-		"exposed south wall becomes a darker ASCII face")
+	check(south_face.face_visible and south_face.face_glyph=="ㅂ",
+		"exposed south wall becomes a darker Hangul face")
 	check(not Diorama.wall_role_spec(Diorama.NORTH,Diorama.EAST).face_visible,
 		"non-south exposure adds no false face")
 
@@ -995,8 +1059,9 @@ func test_actor_equipment_projection_is_detached_tile_local_and_accessory_free()
 	check_eq(actor,before,"visual projection never mutates canonical equipment data")
 	check(spec.draw_equipment and spec.equipment_primitive_count==3 \
 			and str(spec.equipment.weapon_family)=="BOW" \
-			and str(spec.equipment.armor_kind)=="LEATHER",
-		"weapon and armor are the only projected equipment families")
+			and str(spec.equipment.weapon_glyph)==")" \
+			and str(spec.equipment.armor_kind)=="LEATHER" and str(spec.glyph)=="ㅇ",
+		"weapon and armor remain static ASCII around the stable actor glyph")
 	check(not spec.equipment.has("accessory_definition_id") \
 			and not spec.equipment.has("off_hand_definition_id") \
 			and bool(spec.equipment.tile_local),
@@ -1158,10 +1223,10 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				var right:=Vector2i(int(positions[right_index][0]),int(positions[right_index][1]))
 				check(maxi(absi(left.x-right.x),absi(left.y-right.y))>=5,
 					"%dpx selected torches keep five-cell spacing"%viewport)
-		check(at_zero.all(func(row):return str(row.glyph)=="!" \
+		check(at_zero.all(func(row):return str(row.glyph)=="불" \
 			and int(row.glyph_count)==1 and not bool(row.draw_image) \
 			and row.texture==null and str(row.visibility_state)!="UNSEEN"),
-			"%dpx torches are one-cell ASCII with no image or unseen row"%viewport)
+			"%dpx torches are one-cell Hangul with no image or unseen row"%viewport)
 		check_eq(at_zero.map(func(row):return row.brightness),
 			at_same_tick.map(func(row):return row.brightness),
 			"%dpx torch flicker is fixed within its 75ms quantum"%viewport)
@@ -1185,7 +1250,7 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				==[visible_source.x,visible_source.y])[0].brightness)>=0.78 \
 			and float(grid.torch_draw_specs(75).filter(func(row):return row.position \
 				==[visible_source.x,visible_source.y])[0].brightness)<=0.86,
-			"%dpx source ! remains legible at restrained brightness"%viewport)
+			"%dpx source 불 remains legible at restrained brightness"%viewport)
 		var lit_floor_found:=false;var lit_wall_found:=false
 		for y in range(15):
 			for x in range(15):

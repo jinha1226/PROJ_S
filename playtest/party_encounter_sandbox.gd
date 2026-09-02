@@ -20,6 +20,7 @@ const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
+const HangulGlyphGrammarScript=preload("res://playtest/hangul_glyph_grammar.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
@@ -153,6 +154,7 @@ var _skill_touch_dragged:=false
 var _item_touch_index:=-1
 var _item_touch_id:=""
 var _item_touch_slot:=""
+var _item_touch_action:=""
 var _item_touch_origin:=Vector2.ZERO
 var _item_touch_dragged:=false
 var member_item_window:VBoxContainer
@@ -296,32 +298,71 @@ func _input(event:InputEvent)->void:
 func _handle_item_ledger_touch(event:InputEvent)->void:
 	if event is InputEventScreenTouch:
 		if event.pressed and _item_touch_index<0:
+			var action:=_item_action_at_position(event.position)
+			if not action.is_empty():
+				_item_touch_index=event.index;_item_touch_action=action
+				_item_touch_id="";_item_touch_slot="";_item_touch_origin=event.position
+				_item_touch_dragged=false;get_viewport().set_input_as_handled();return
 			var row:=_item_row_at_position(event.position)
 			if row.is_empty():return
 			_item_touch_index=event.index;_item_touch_id=str(row.instance_id)
-			_item_touch_slot=str(row.slot);_item_touch_origin=event.position
+			_item_touch_slot=str(row.slot);_item_touch_action="";_item_touch_origin=event.position
 			_item_touch_dragged=false;get_viewport().set_input_as_handled()
 		elif not event.pressed and event.index==_item_touch_index:
 			var activate_id:=_item_touch_id if not _item_touch_dragged else ""
 			var activate_slot:=_item_touch_slot
+			var activate_action:=_item_touch_action if not _item_touch_dragged else ""
 			_item_touch_index=-1;_item_touch_id="";_item_touch_slot=""
-			_item_touch_dragged=false;get_viewport().set_input_as_handled()
-			if not activate_id.is_empty():_on_item_row_selected(activate_id,activate_slot)
+			_item_touch_action="";_item_touch_dragged=false;get_viewport().set_input_as_handled()
+			if not activate_action.is_empty():_activate_item_touch_action(activate_action)
+			elif not activate_id.is_empty():_on_item_row_selected(activate_id,activate_slot)
 	elif event is InputEventScreenDrag and event.index==_item_touch_index:
 		if event.position.distance_to(_item_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
 			_item_touch_dragged=true
 		member_detail_scroll.scroll_vertical-=int(event.relative.y)
 		get_viewport().set_input_as_handled()
 
+func _item_action_at_position(global_position:Vector2)->String:
+	var buttons:Array=[
+		[member_item_reload_button,"RELOAD"],
+		[member_item_quick_unequip_button,"UNEQUIP"],
+		[member_item_equip_button,"EQUIP"],
+		[member_item_unequip_button,"UNEQUIP"],
+		[member_item_use_button,"USE"],
+		[member_item_drop_button,"DROP"],
+	]
+	var inline:=member_item_backpack_rows.find_child("ItemInlineEquip",true,false) \
+		if member_item_backpack_rows!=null else null
+	if inline!=null:buttons.push_front([inline,"EQUIP"])
+	for entry in buttons:
+		var button:=entry[0] as Button
+		if button!=null and button.is_visible_in_tree() and not button.disabled \
+				and button.get_global_rect().has_point(global_position):return str(entry[1])
+	return ""
+
+func _activate_item_touch_action(action:String)->void:
+	match action:
+		"RELOAD":_on_item_reload()
+		"EQUIP":_on_item_equip_selected()
+		"UNEQUIP":_on_item_unequip_selected()
+		"USE":_on_item_use_selected()
+		"DROP":_on_item_drop_selected()
+
 func _item_row_at_position(global_position:Vector2)->Dictionary:
 	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
 		if ledger==null:continue
 		for child in ledger.get_children():
 			var button:=child as Button
-			if button!=null and button.is_visible_in_tree() and not button.disabled \
-					and button.get_global_rect().has_point(global_position):
-				return {"instance_id":str(button.get_meta("item_instance_id","")),
-					"slot":str(button.get_meta("item_slot",""))}
+			if button==null or not button.is_visible_in_tree() or button.disabled \
+					or not button.get_global_rect().has_point(global_position):continue
+			# Only ledger rows belong to the drag-safe row gesture. Inline actions are
+			# children of the same VBox, but must keep their ordinary Button touch
+			# path; consuming them here prevents [장착]/[교체] from ever emitting
+			# `pressed` on mobile while mouse input still appears to work.
+			var instance_id:=str(button.get_meta("item_instance_id",""))
+			if instance_id.is_empty():continue
+			return {"instance_id":instance_id,
+				"slot":str(button.get_meta("item_slot",""))}
 	return {}
 
 func _handle_product_control_touch(event:InputEvent)->bool:
@@ -954,7 +995,7 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
 	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
-	grid_graphics_mode_button.text="[2.5D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · 2.5D"
+	grid_graphics_mode_button.text="[2D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · 한글 탑뷰 2D"
 	grid_graphics_mode_button.custom_minimum_size=Vector2(68,TOUCH_TARGET)
 	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
@@ -1650,7 +1691,7 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	root.clip_contents=true
 	root.add_theme_constant_override("separation",4);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(root)
 	var count:=int(spec.get("effective_count",1));var seal_size:=44 if count==1 else (40 if count==2 else 34)
-	var seal:=Label.new();seal.name="ActorGlyphSeal";seal.text="@" if str(row.get("role",""))=="PROTAGONIST" else "&"
+	var seal:=Label.new();seal.name="ActorGlyphSeal";seal.text=_actor_seal_glyph(row)
 	seal.custom_minimum_size=Vector2(seal_size,seal_size);seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
 	seal.add_theme_font_size_override("font_size",28 if count==1 else (24 if count==2 else 20))
@@ -1688,6 +1729,12 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 		var xp_gauge:Control=_gauge("CompactXPBar","XP",int(progression.get("xp_current",0)),maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
 		xp_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(xp_gauge)
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
+
+func _actor_seal_glyph(actor:Dictionary)->String:
+	# Dossier seals express the actor's stable species/body component. The map
+	# keeps that body as ㅇ, ㄱ, etc. while equipment is static ASCII, so a
+	# protagonist never regresses to the legacy @ marker.
+	return HangulGlyphGrammarScript.species_bare_glyph(str(actor.get("species_id","human")))
 
 func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary)->void:
 	var stack:=VBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",1)
@@ -2134,7 +2181,10 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var can_step:=_product_can_step(status)
 	for button_value in product_direction_buttons.values():
 		var direction_button:=button_value as Button
-		if direction_button!=null and is_instance_valid(direction_button):direction_button.disabled=not can_step
+		if direction_button!=null and is_instance_valid(direction_button):
+			direction_button.disabled=not can_step
+			direction_button.tooltip_text="적 방향이면 이동 대신 범프 공격" \
+				if mode=="COMBAT" else "한 칸 이동"
 	# Product ATTACK is a one-turn DCSS-style Tab command. It remains enabled with
 	# no target so the player receives explicit fog-safe feedback rather than an
 	# unexplained inert control.
@@ -2586,7 +2636,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
 	member_detail_title.text=str(detail.get("display_name","파티원"))
-	member_detail_glyph_seal.text="@" if str(detail.get("role",""))=="PROTAGONIST" else "&"
+	member_detail_glyph_seal.text=_actor_seal_glyph(detail)
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
 	subtitle_parts.append(_role(str(detail.get("role",""))))
@@ -2885,8 +2935,11 @@ func _update_item_window(equipment:Variant)->void:
 
 func _update_item_inventory_ledger()->void:
 	if member_item_equipment_rows==null:return
-	for node in member_item_equipment_rows.get_children():node.queue_free()
-	for node in member_item_backpack_rows.get_children():node.queue_free()
+	# Detach old rows immediately so a just-rebuilt ledger has one input layer.
+	# queue_free() alone leaves the outgoing buttons in hit-testing until the end
+	# of the frame, directly on top of the fresh mobile actions.
+	_detach_item_ledger_children(member_item_equipment_rows)
+	_detach_item_ledger_children(member_item_backpack_rows)
 	var dto:Dictionary=session.protagonist_inventory()
 	var slot_labels:={"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
 		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}
@@ -2915,6 +2968,11 @@ func _update_item_inventory_ledger()->void:
 	member_item_use_button.disabled=not has_selection or selected_equipped \
 		or not session.has_method("use_inventory_item")
 	member_item_drop_button.disabled=not has_selection or selected_equipped
+
+func _detach_item_ledger_children(container:VBoxContainer)->void:
+	for node in container.get_children():
+		container.remove_child(node)
+		node.queue_free()
 
 func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 	if member_item_selected_id.is_empty():return {}

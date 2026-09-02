@@ -4,10 +4,10 @@ extends Node2D
 # Every adjustable melee-presentation value lives here. These values affect no
 # simulation clock, action result, entity position, glyph, or input mapping.
 const PARAMS := {
-	# The actor owns a short readable wind-up before the target-local impact.
+	# The actor owns a short readable body bump before the target-local impact.
 	# The live clock is bounded below, so a slow web frame cannot skip the pose.
 	"contact_at_ms":42,
-	"hit_stop_ms":55,
+	"hit_stop_ms":68,
 	# Durations below exclude the shared bright impact hold. Public totals are
 	# exposed by parameter_spec() so product/readability tests use actual wall.
 	"slash_duration_ms":165,
@@ -22,23 +22,25 @@ const PARAMS := {
 	# the map is scaled to a different mobile width.
 	"slash_antialiased":false,
 	"slash_color_hex":"#ffe4a3",
-	# Draw-only equipped-weapon timing. The same values apply to both factions and
-	# affect no actor position, hit rectangle, turn clock, or glyph identity.
-	"swing_duration_ms":156,
-	"swing_follow_through_ms":48,
-	"flash_duration_ms":105,
-	"flash_intensity":0.62,
+	# Draw-only whole-character bump. No weapon rotation is needed, so changing
+	# between Hangul bodies and ASCII equipment never changes this motion.
+	"bump_duration_ms":164,
+	"bump_follow_through_ms":52,
+	"bump_windup_ratio":0.055,
+	"bump_lunge_ratio":0.20,
+	"flash_duration_ms":125,
+	"flash_intensity":0.78,
 	"flash_fade_curve":0.78,
 	"flash_color_hex":"#ff334d",
-	"particle_count_min":3,
-	"particle_count_max":6,
-	"particle_duration_ms":315,
-	"particle_travel_ratio":0.68,
+	"particle_count_min":4,
+	"particle_count_max":7,
+	"particle_duration_ms":335,
+	"particle_travel_ratio":0.76,
 	"particle_color_hex":"#ffb36a",
 	"particle_font_ratio":0.52,
 	"particle_fade_curve":0.72,
-	"shake_strength_px":1.75,
-	"shake_duration_ms":95,
+	"shake_strength_px":2.75,
+	"shake_duration_ms":122,
 	# Presentation time advances by at most two 60 Hz frames per rendered frame.
 	# This prevents a slow first web draw from expiring the whole local effect.
 	"max_live_frame_advance_ms":34,
@@ -80,7 +82,7 @@ func play(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
 	return _play_pair(attacker_grid_pos,target_grid_pos,true)
 
 
-func play_attacker_swing(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
+func play_attacker_bump(attacker_grid_pos:Vector2i,target_grid_pos:Vector2i)->bool:
 	return _play_pair(attacker_grid_pos,target_grid_pos,false)
 
 
@@ -145,7 +147,7 @@ func background_flash_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	return result.duplicate(true)
 
 
-func attacker_swing_draw_spec(attacker_grid_pos:Vector2i,
+func attacker_bump_draw_spec(attacker_grid_pos:Vector2i,
 		sample_time_ms:int=-1)->Dictionary:
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	# A rapid follow-up safely supersedes an older pose for this attacker. Both
@@ -154,25 +156,27 @@ func attacker_swing_draw_spec(attacker_grid_pos:Vector2i,
 		var effect:Dictionary=_effects[index]
 		if Vector2i(effect.attacker_grid_pos)!=attacker_grid_pos:continue
 		var elapsed:=_effect_elapsed_ms(effect,now,sample_time_ms<0)
-		if elapsed>=int(PARAMS.swing_duration_ms):continue
+		if elapsed>=int(PARAMS.bump_duration_ms):continue
 		var direction:=Vector2(Vector2i(effect.target_grid_pos)-attacker_grid_pos).normalized()
 		var contact:=int(PARAMS.contact_at_ms)
-		var follow_end:=contact+int(PARAMS.swing_follow_through_ms)
+		var follow_end:=contact+int(PARAMS.bump_follow_through_ms)
 		var phase:="WIND_UP";var phase_progress:=0.0
 		if elapsed<contact:
 			phase_progress=clampf(float(elapsed)/float(maxi(1,contact)),0.0,1.0)
 		elif elapsed<follow_end:
-			phase="SWING"
+			phase="BUMP"
 			phase_progress=clampf(float(elapsed-contact)/float(maxi(1,
-				int(PARAMS.swing_follow_through_ms))),0.0,1.0)
+				int(PARAMS.bump_follow_through_ms))),0.0,1.0)
 		else:
 			phase="SETTLE"
 			phase_progress=clampf(float(elapsed-follow_end)/float(maxi(1,
-				int(PARAMS.swing_duration_ms)-follow_end)),0.0,1.0)
+				int(PARAMS.bump_duration_ms)-follow_end)),0.0,1.0)
 		return {"active":true,"sequence":int(effect.sequence),"phase":phase,
 			"phase_progress":phase_progress,
 			"direction":direction,"raw_elapsed_ms":elapsed,
-			"contact_at_ms":contact,"duration_ms":int(PARAMS.swing_duration_ms),
+			"contact_at_ms":contact,"duration_ms":int(PARAMS.bump_duration_ms),
+			"windup_ratio":float(PARAMS.bump_windup_ratio),
+			"lunge_ratio":float(PARAMS.bump_lunge_ratio),
 			"draw_impact":bool(effect.get("draw_impact",true))}.duplicate(true)
 	return {"active":false}.duplicate(true)
 
@@ -366,7 +370,7 @@ func _presentation_offset(sample_time_ms:int=-1)->Vector2:
 
 
 func _effect_duration_ms()->int:
-	return maxi(int(PARAMS.swing_duration_ms),int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms)+maxi(
+	return maxi(int(PARAMS.bump_duration_ms),int(PARAMS.contact_at_ms)+int(PARAMS.hit_stop_ms)+maxi(
 		int(PARAMS.particle_duration_ms),maxi(int(PARAMS.flash_duration_ms),
 		int(PARAMS.slash_duration_ms))))
 

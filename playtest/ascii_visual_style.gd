@@ -1,6 +1,8 @@
 class_name AsciiVisualStyle
 extends RefCounted
 
+const HangulGrammar=preload("res://playtest/hangul_glyph_grammar.gd")
+
 const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
 const AWARENESS_STATES := ["UNAWARE","SUSPICIOUS","ALERT","HUNTING","SEARCHING","RETURNING"]
@@ -15,16 +17,16 @@ const LARGE_BODY_SPECIES := ["orc","ogre","troll","giant"]
 
 const ACTOR_WEAPON_VISUALS := {
 	"SHORT_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#e6e0c8"},
-	"THRUSTING_SWORD":{"family":"SWORD","glyph":"/","color_hex":"#eef0df"},
+	"THRUSTING_SWORD":{"family":"SWORD","glyph":"|","color_hex":"#eef0df"},
 	"HAND_AXE":{"family":"AXE","glyph":"7","color_hex":"#d6c7a8"},
-	"MACE":{"family":"MACE","glyph":"o","color_hex":"#c3cad0"},
-	"SPEAR":{"family":"SPEAR","glyph":"|","color_hex":"#d9cfaa"},
+	"MACE":{"family":"MACE","glyph":"!","color_hex":"#c3cad0"},
+	"SPEAR":{"family":"SPEAR","glyph":"^","color_hex":"#d9cfaa"},
 	"BOW":{"family":"BOW","glyph":")","color_hex":"#c99652"},
 	"CROSSBOW":{"family":"CROSSBOW","glyph":"+","color_hex":"#c8aa70"},
 }
 
 const ACTOR_ARMOR_VISUALS := {
-	"ARMOR_LEATHER":{"kind":"LEATHER","left_glyph":"{","right_glyph":"}",
+	"ARMOR_LEATHER":{"kind":"LEATHER","left_glyph":"[","right_glyph":"]",
 		"color_hex":"#a7774e"},
 	"ARMOR_PADDED":{"kind":"PADDED","left_glyph":"[","right_glyph":"]",
 		"color_hex":"#8da0a5"},
@@ -87,6 +89,8 @@ static func _item_presentation_kind(value:Variant)->String:
 	var text:=str(value).strip_edges().to_upper()
 	if text in ITEM_PRESENTATION_KINDS:return text
 	var aliases:={"CONSUMABLE_POTION":"POTION","CONSUMABLE_SCROLL":"SCROLL"}
+	aliases.merge({")":"WEAPON","[":"ARMOR","!":"POTION","?":"SCROLL",
+		"=":"ACCESSORY","*":"MATERIAL"})
 	if aliases.has(text):return str(aliases[text])
 	for kind in ITEM_PRESENTATION_DEFINITIONS:
 		if str(ITEM_PRESENTATION_DEFINITIONS[kind].glyph)==str(value):return str(kind)
@@ -98,11 +102,11 @@ static func awareness_spec(value:Variant)->Dictionary:
 	if state not in AWARENESS_STATES:state="UNAWARE"
 	var definitions:={
 		"UNAWARE":{"glyph":"","color_hex":"#00000000","label":"무인지"},
-		"SUSPICIOUS":{"glyph":"?","color_hex":"#e6c45c","label":"의심"},
-		"ALERT":{"glyph":"!","color_hex":"#e88b3d","label":"경계"},
-		"HUNTING":{"glyph":"»","color_hex":"#e24f49","label":"추적"},
-		"SEARCHING":{"glyph":"~","color_hex":"#58bfc0","label":"수색"},
-		"RETURNING":{"glyph":"<","color_hex":"#849097","label":"복귀"},
+		"SUSPICIOUS":{"glyph":"의","color_hex":"#e6c45c","label":"의심"},
+		"ALERT":{"glyph":"경","color_hex":"#e88b3d","label":"경계"},
+		"HUNTING":{"glyph":"추","color_hex":"#e24f49","label":"추적"},
+		"SEARCHING":{"glyph":"수","color_hex":"#58bfc0","label":"수색"},
+		"RETURNING":{"glyph":"귀","color_hex":"#849097","label":"복귀"},
 	}
 	var definition:Dictionary=definitions[state]
 	return {"state":state,"glyph":str(definition.glyph),
@@ -114,13 +118,13 @@ static func monster_identity_spec(actor:Dictionary)->Dictionary:
 	var species_id:=str(actor.get("species_id","")).to_lower()
 	match species_id:
 		"goblin", "":
-			return {"species_id":"goblin","glyph":"g","name":"고블린",
+			return {"species_id":"goblin","glyph":"ㄱ","name":"고블린",
 				"color_hex":"#83d34f","highlight_hex":"#d8ff9a"}.duplicate(true)
 		"kobold":
-			return {"species_id":"kobold","glyph":"K","name":"코볼트",
+			return {"species_id":"kobold","glyph":"ㅋ","name":"코볼트",
 				"color_hex":"#b79a45","highlight_hex":"#ead47b"}.duplicate(true)
 		_:
-			return {"species_id":species_id,"glyph":"?",
+			return {"species_id":species_id,"glyph":HangulGrammar.species_bare_glyph(species_id),
 				"name":str(actor.get("species_name","괴물")),"color_hex":"#ff615c",
 				"highlight_hex":"#ffc2a8"}.duplicate(true)
 
@@ -141,16 +145,15 @@ const DIORAMA_PALETTE := {
 }
 
 const TERRAIN_DEFINITIONS := {
-	# The chosen HTML target uses 0.96-cell coloured floor polygons. Material
-	# families supply the room-like blue, brown, steel and water zones while the
-	# ASCII marks remain the brighter semantic layer above them.
-	"floor": {"glyph":".", "base_hex":"#2d323c", "glyph_hex":"#7f8994", "edge_hex":"#5a6470", "font_ratio":0.40, "raised":false, "ink_family":"DOT", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.0,0.15), "outline_passes":0, "weight_passes":1},
-	"stone_floor": {"glyph":".", "base_hex":"#293f50", "glyph_hex":"#8096a8", "edge_hex":"#587184", "font_ratio":0.42, "raised":false, "ink_family":"CHALK", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.08,0.13), "outline_passes":0, "weight_passes":1},
-	"wood_floor": {"glyph":",", "base_hex":"#42372b", "glyph_hex":"#a88f70", "edge_hex":"#756049", "font_ratio":0.48, "raised":false, "ink_family":"GRAIN", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.08,0.10), "outline_passes":0, "weight_passes":1},
-	"metal": {"glyph":"=", "base_hex":"#344955", "glyph_hex":"#89a6b3", "edge_hex":"#607d89", "font_ratio":0.54, "raised":false, "ink_family":"PLATE", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.0,0.04), "outline_passes":0, "weight_passes":1},
-	"rubble": {"glyph":":", "base_hex":"#4a3d2d", "glyph_hex":"#a89369", "edge_hex":"#756344", "font_ratio":0.50, "raised":false, "ink_family":"DEBRIS", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.09,0.07), "outline_passes":0, "weight_passes":1},
-	"shallow_water": {"glyph":"~", "base_hex":"#1f5262", "glyph_hex":"#79b8c7", "edge_hex":"#477f8e", "font_ratio":0.54, "raised":false, "ink_family":"WAVE", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.05,0.06), "outline_passes":0, "weight_passes":1},
-	"wall": {"glyph":"#", "base_hex":"#303740", "glyph_hex":"#aeb9c3", "edge_hex":"#707984", "font_ratio":0.82, "raised":true, "ink_family":"MASONRY", "slab_ratio":Vector2(0.94,0.92), "glyph_offset":Vector2(0.0,-0.02), "outline_passes":1, "weight_passes":2},
+	# Full-cell Hangul material words replace the old ASCII legend. Ordinary floor
+	# stays quiet; structural and hazardous materials carry the dense semantic ink.
+	"floor": {"glyph":"", "base_hex":"#11161c", "glyph_hex":"#59636d", "edge_hex":"#333c44", "font_ratio":0.24, "raised":false, "ink_family":"VOID_FLOOR", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"stone_floor": {"glyph":"돌", "base_hex":"#182732", "glyph_hex":"#718796", "edge_hex":"#465d6d", "font_ratio":0.72, "raised":false, "ink_family":"STONE_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.03,0.04), "outline_passes":0, "weight_passes":1},
+	"wood_floor": {"glyph":"나", "base_hex":"#302820", "glyph_hex":"#9b8162", "edge_hex":"#67533e", "font_ratio":0.72, "raised":false, "ink_family":"WOOD_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.03,0.04), "outline_passes":0, "weight_passes":1},
+	"metal": {"glyph":"쇠", "base_hex":"#253740", "glyph_hex":"#80a0ad", "edge_hex":"#57737e", "font_ratio":0.78, "raised":false, "ink_family":"METAL_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"rubble": {"glyph":"깨", "base_hex":"#352d23", "glyph_hex":"#9a825f", "edge_hex":"#69583d", "font_ratio":0.74, "raised":false, "ink_family":"RUBBLE_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.04,0.05), "outline_passes":0, "weight_passes":1},
+	"shallow_water": {"glyph":"물", "base_hex":"#123b48", "glyph_hex":"#759eaa", "edge_hex":"#376f80", "font_ratio":0.84, "raised":false, "ink_family":"WATER_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.02,0.03), "outline_passes":0, "weight_passes":1},
+	"wall": {"glyph":"벽", "base_hex":"#262d34", "glyph_hex":"#9faab3", "edge_hex":"#626c75", "font_ratio":0.94, "raised":true, "ink_family":"WALL_HANGUL", "slab_ratio":Vector2(0.98,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":1, "weight_passes":2},
 }
 
 
@@ -214,10 +217,10 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	var wetness := clampi(int(cell.get("wetness", 0)), 0, 100)
 	var cues: Array[Dictionary] = []
 	if bool(visibility.draw_hazards) and fire > 0:
-		cues.append({"kind":"FIRE", "glyph":"*", "color_hex":"#ff7a3d", "value":fire,
+		cues.append({"kind":"FIRE", "glyph":"불", "color_hex":"#ff7a3d", "value":fire,
 			"corner":"BOTTOM_LEFT", "fill_alpha":0.12 + 0.34 * float(fire) / 100.0})
 	if bool(visibility.draw_hazards) and wetness > 0:
-		cues.append({"kind":"WET", "glyph":"~", "color_hex":"#62c8ff", "value":wetness,
+		cues.append({"kind":"WET", "glyph":"물", "color_hex":"#62c8ff", "value":wetness,
 			"corner":"BOTTOM_RIGHT", "fill_alpha":0.08 + 0.20 * float(wetness) / 100.0})
 	# Conductivity remains inspectable simulation data, but it has no persistent
 	# floor glyph. Electricity should be communicated only when an actual event
@@ -228,10 +231,10 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 
 static func feature_spec(feature_id: String) -> Dictionary:
 	var definitions := {
-		"run_entry":{"glyph":"<", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
-		"run_exit_locked":{"glyph":">", "color_hex":"#E47A88", "halo_hex":"#51232e"},
-		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
-		"open_door":{"glyph":"/", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
+		"run_entry":{"glyph":"입", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
+		"run_exit_locked":{"glyph":"닫", "color_hex":"#E47A88", "halo_hex":"#51232e"},
+		"run_exit_open":{"glyph":"출", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
+		"open_door":{"glyph":"문", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",
@@ -249,11 +252,9 @@ static func ground_mark_spec(cell:Dictionary)->Dictionary:
 	if mark_id!="blood" or not bool(visibility.draw_terrain):
 		return {"visible":false,"mark_id":"","glyph":"","color_hex":"#00000000",
 			"opacity":0.0,"font_ratio":0.0}.duplicate(true)
-	# Semicolon reads as one droplet plus a short smear at small mobile cell sizes.
-	# Dried crimson stays below actor saturation while remaining clear on stone.
-	return {"visible":true,"mark_id":"blood","glyph":";","color_hex":"#a42f3f",
+	return {"visible":true,"mark_id":"blood","glyph":"피","color_hex":"#a42f3f",
 		"opacity":0.88 if str(visibility.state)=="VISIBLE" else 0.34,
-		"font_ratio":0.48,"draw_image":false,"draw_texture":false}.duplicate(true)
+		"font_ratio":0.78,"draw_image":false,"draw_texture":false}.duplicate(true)
 
 
 static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
@@ -262,19 +263,23 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var is_protagonist := bool(actor.get("is_protagonist", false))
 	var is_enemy := bool(actor.get("is_enemy", false)) or faction_id == "enemy"
 	var is_party := is_protagonist or faction_id == "party" or int(actor.get("roster_slot", -1)) >= 0
-	var glyph := "?"
+	var composition_actor:=actor
+	if species_id.is_empty():
+		composition_actor=actor.duplicate(false)
+		composition_actor["species_id"]="goblin" if is_enemy else "human"
+	var composition:Dictionary=HangulGrammar.actor_glyph(composition_actor)
+	var glyph := str(composition.glyph)
 	var color_hex := "#d5e2ea"
 	var highlight_hex := "#ffffff"
 	if is_protagonist:
-		glyph = "@"; color_hex = "#ffdc55"; highlight_hex = "#fff3a8"
+		color_hex = "#ffdc55"; highlight_hex = "#fff3a8"
 	elif is_enemy:
 		var identity:=monster_identity_spec(actor)
-		glyph=str(identity.glyph);color_hex=str(identity.color_hex)
+		color_hex=str(identity.color_hex)
 		highlight_hex=str(identity.highlight_hex)
 	elif is_party and species_id == "goblin":
-		glyph = "g"; color_hex = "#91e45f"; highlight_hex = "#dcffa4"
+		color_hex = "#91e45f"; highlight_hex = "#dcffa4"
 	elif is_party:
-		glyph = "&"
 		if int(actor.get("roster_slot", -1)) == 2:
 			color_hex = "#759cff"; highlight_hex = "#d7e0ff"
 		else:
@@ -284,7 +289,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	if life_state not in LIFE_STATES:
 		life_state = "DEAD" if actor.has("alive") and not bool(actor.get("alive", true)) else "ACTIVE"
 	if life_state == "DEAD":
-		glyph = "x"; color_hex = "#8d6870"; highlight_hex = "#c7959d"
+		glyph = "흔"; color_hex = "#8d6870"; highlight_hex = "#c7959d"
 	var statuses: Array[String] = []
 	var raw_statuses: Variant = actor.get("status_ids", [])
 	if raw_statuses is Array:
@@ -315,6 +320,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var equipment:=actor_equipment_spec(actor)
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
+		"composition":composition,"grammar_id":"HANGUL_BODY_ASCII_EQUIPMENT_V1",
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
 		"opacity":0.46 if ghost else (0.58 if life_state == "DOWNED" else 1.0),
 		"ghost":ghost, "life_state":life_state, "statuses":statuses,
@@ -335,11 +341,11 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"step_phase":step_phase,"stride_sign":stride_sign,
 		"limb_segments":[],
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
-		# Equipment is a presentation-only projection of the canonical inventory.
-		# The core actor glyph, logical cell, FOV and hit rectangle never change.
+		# The Hangul body stays stable. Static ASCII equipment shares its visual
+		# cell, while logical mapping, FOV and hit authority remain unchanged.
 		"equipment":equipment,
-		"draw_equipment":life_state=="ACTIVE" and bool(equipment.get("visible",false)),
-		"equipment_primitive_count":int(equipment.get("primitive_count",0)) \
+		"draw_equipment":bool(equipment.visible) and life_state=="ACTIVE",
+		"equipment_primitive_count":int(equipment.primitive_count) \
 			if life_state=="ACTIVE" else 0,
 		"draw_head":false, "draw_limbs":false,
 	}.duplicate(true)
@@ -387,9 +393,13 @@ static func actor_equipment_spec(actor:Dictionary)->Dictionary:
 		"armor_kind":str(armor.get("kind","NONE")),
 		"armor_left_glyph":str(armor.get("left_glyph","")),
 		"armor_right_glyph":str(armor.get("right_glyph","")),
+		"armor_component":"",
 		"armor_color_hex":str(armor.get("color_hex","#00000000")),
-		"primitive_count":(1 if weapon_visible else 0)+(2 if armor_visible else 0),
-		"tile_local":true,"changes_core_glyph":false,"draw_image":false,
+		"composed_glyph":"",
+		"primitive_count":int(weapon_visible)+2*int(armor_visible),
+		"semantic_component_count":int(weapon_visible)+int(armor_visible),
+		"tile_local":true,"changes_core_glyph":false,
+		"composition_mode":"STATIC_ASCII","draw_image":false,
 	}.duplicate(true)
 
 

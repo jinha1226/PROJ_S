@@ -4,9 +4,9 @@ const Grid=preload("res://playtest/party_grid_view.gd")
 const Style=preload("res://playtest/ascii_visual_style.gd")
 
 
-func test_awareness_and_species_ascii_grammar()->bool:
-	var expected:={"UNAWARE":"","SUSPICIOUS":"?","ALERT":"!","HUNTING":"»",
-		"SEARCHING":"~","RETURNING":"<"}
+func test_awareness_and_species_hangul_grammar()->bool:
+	var expected:={"UNAWARE":"","SUSPICIOUS":"의","ALERT":"경","HUNTING":"추",
+		"SEARCHING":"수","RETURNING":"귀"}
 	for state in expected:
 		var spec:Dictionary=Style.awareness_spec(state)
 		check_eq(spec.glyph,expected[state],"%s awareness glyph"%state)
@@ -14,7 +14,7 @@ func test_awareness_and_species_ascii_grammar()->bool:
 	check_eq(Style.awareness_spec("unknown").state,"UNAWARE","unknown state is safely unaware")
 	var goblin:=Style.actor_spec({"faction_id":"enemy","species_id":"goblin"})
 	var kobold:=Style.actor_spec({"faction_id":"enemy","species_id":"kobold"})
-	check_eq([goblin.glyph,kobold.glyph],["g","K"],"standard roguelike species glyphs")
+	check_eq([goblin.glyph,kobold.glyph],["ㄱ","ㅋ"],"Hangul species choseong glyphs")
 	check(Color(str(goblin.color_hex)).g>Color(str(goblin.color_hex)).r*1.2,
 		"goblin owns green ink")
 	var kobold_color:=Color(str(kobold.color_hex))
@@ -49,9 +49,9 @@ func test_visible_enemy_marks_list_grouping_and_transition_pulse_are_fov_safe()-
 		"compact list includes visible hostiles and one nearby NPC without input surface")
 	var alert_rows:Array=list.rows.filter(func(row):return row.state=="ALERT")
 	check_eq([alert_rows.size(),alert_rows[0].count,alert_rows[0].text],
-		[1,2,"g 고블린 ! ×2"],"same species and state aggregate deterministically")
+		[1,2,"ㄱ 고블린 경 ×2"],"same species and state aggregate deterministically")
 	var npc_rows:Array=list.rows.filter(func(row):return row.row_kind=="NPC")
-	check_eq([npc_rows.size(),npc_rows[0].text],[1,"? 부상당한 여행자 NPC"],
+	check_eq([npc_rows.size(),npc_rows[0].text],[1,"ㅇ 부상당한 여행자 NPC"],
 		"nearby NPC keeps its own name and role instead of monster grouping")
 	var changed:=observation.duplicate(true)
 	for cell in changed.cells:

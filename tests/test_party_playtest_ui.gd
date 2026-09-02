@@ -171,11 +171,11 @@ func test_gui_input_routes_actor_slop_without_stealing_adjacent_cell_centers() -
 		var adjacent_center:Vector2=sandbox.grid.world_to_pixel_center(adjacent)
 		var adjacent_rect:Rect2=sandbox.grid.world_cell_rect(adjacent)
 		var near_actor:=InputEventScreenTouch.new();near_actor.pressed=true
-		# Perspective compresses the center row to less than the 44 px actor target.
-		# Probe the visible adjacent trapezoid away from its exact-cell center so the
-		# hero slop owns the press, then release at the same cell's center.
-		near_actor.position=adjacent_center+Vector2(0,
-			minf(6.0,maxf(4.5,adjacent_rect.size.y*0.38)))
+		# The one-cell glyph stays visually inside its tile, while the 44 px touch
+		# target extends slightly across the adjacent tile boundary. Probe that edge,
+		# then release at the adjacent cell center to verify press-time ownership.
+		near_actor.position=adjacent_center-Vector2(
+			minf(10.0,adjacent_rect.size.x*0.40),0)
 		sandbox.grid._gui_input(near_actor)
 		check(actor_events.is_empty() and world_events.is_empty(),"%s press alone cannot select or move"%viewport_size)
 		var near_release:=InputEventScreenTouch.new();near_release.pressed=false
@@ -1105,22 +1105,22 @@ func test_product_graphics_toggle_exposes_2d_and_2_5d_without_touching_the_run()
 	sandbox.grid.size=sandbox.grid.custom_minimum_size;sandbox._refresh()
 	var snapshot_before:Dictionary=session.sim.snapshot()
 	var journal_before:Array=session.command_journal.duplicate(true)
-	var perspective_mapping:Array=sandbox.grid.mapping_signature()
+	var flat_mapping:Array=sandbox.grid.mapping_signature()
 	check(sandbox.grid_graphics_mode_button!=null \
 			and sandbox.grid_graphics_mode_button.visible \
-			and sandbox.grid_graphics_mode_button.text=="[2.5D]",
-		"product map exposes the current graphics option beside zoom")
-	sandbox.grid_graphics_mode_button.pressed.emit()
-	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
 			and sandbox.grid_graphics_mode_button.text=="[2D]",
-		"one touch selects the original flat 2D projection")
+		"product map exposes the current graphics option beside zoom")
 	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))
 	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,13))
-	check(upper.size.is_equal_approx(lower.size),"product 2D option renders uniform cells")
+	check(upper.size.is_equal_approx(lower.size),"product defaults to uniform 2D cells")
 	sandbox.grid_graphics_mode_button.pressed.emit()
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
-			and sandbox.grid.mapping_signature()==perspective_mapping,
-		"second touch restores exact 2.5D camera mapping")
+			and sandbox.grid_graphics_mode_button.text=="[2.5D]",
+		"one touch selects the optional 2.5D projection")
+	sandbox.grid_graphics_mode_button.pressed.emit()
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
+			and sandbox.grid.mapping_signature()==flat_mapping,
+		"second touch restores exact default 2D camera mapping")
 	check_eq([session.sim.snapshot(),session.command_journal],[snapshot_before,journal_before],
 		"graphics preference is presentation-only")
 	sandbox.free();return finish()

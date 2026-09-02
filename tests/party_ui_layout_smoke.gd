@@ -1325,8 +1325,9 @@ func _validate_card_content(sandbox,label:String)->void:
 		var gauge:=card.find_child("MemberState",true,false)
 		if frame!=null or content.get_parent()!=card:
 			failures.append("%s compact card retained nested frame hierarchy %s"%[label,card.name])
-		if seal==null or seal.text not in ["@","&"] or seal.custom_minimum_size.x<33.9:
-			failures.append("%s compact ASCII actor seal missing %s"%[label,card.name])
+		if seal==null or seal.text not in ["ㅇ","ㄱ","ㅋ","ㄷ","ㅅ","ㅁ","ㅂ","ㅍ","ㅈ","ㅎ"] \
+				or seal.custom_minimum_size.x<33.9:
+			failures.append("%s compact Hangul actor seal missing %s"%[label,card.name])
 		if card.find_child("SoloIdentity",true,false)==null \
 				or card.find_child("DossierText",true,false)==null:
 			failures.append("%s compact dossier identity hierarchy missing %s"%[label,card.name])
