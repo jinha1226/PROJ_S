@@ -12,6 +12,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "SHORT_SWORD",
+      "requirements":{"STR":0,"DEX":4,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -23,6 +24,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "THRUSTING_SWORD",
+      "requirements":{"STR":3,"DEX":5,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -34,6 +36,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "HAND_AXE",
+      "requirements":{"STR":5,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -45,6 +48,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "MACE",
+      "requirements":{"STR":5,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -56,6 +60,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "SPEAR",
+      "requirements":{"STR":4,"DEX":4,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -67,6 +72,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "BOW",
+      "requirements":{"STR":3,"DEX":5,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -78,6 +84,7 @@
       "stack_limit": 1,
       "equip_slots": ["MAIN_HAND"],
       "weapon_id": "CROSSBOW",
+      "requirements":{"STR":4,"DEX":4,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -89,6 +96,7 @@
       "stack_limit": 1,
       "equip_slots": ["ARMOR"],
       "weapon_id": "",
+      "requirements":{"STR":3,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -100,6 +108,7 @@
       "stack_limit": 1,
       "equip_slots": ["ARMOR"],
       "weapon_id": "",
+      "requirements":{"STR":3,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -111,6 +120,7 @@
       "stack_limit": 1,
       "equip_slots": ["OFF_HAND"],
       "weapon_id": "",
+      "requirements":{"STR":4,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 100, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -122,6 +132,7 @@
       "stack_limit": 10,
       "equip_slots": [],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "HEALING",
       "placeholder": false
@@ -133,6 +144,7 @@
       "stack_limit": 10,
       "equip_slots": [],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "HEALING",
       "placeholder": false
@@ -144,6 +156,7 @@
       "stack_limit": 1,
       "equip_slots": ["ACCESSORY_1", "ACCESSORY_2"],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 25, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
@@ -155,6 +168,7 @@
       "stack_limit": 10,
       "equip_slots": [],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": true
@@ -166,6 +180,7 @@
       "stack_limit": 1,
       "equip_slots": ["ACCESSORY_1", "ACCESSORY_2"],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": true
@@ -177,6 +192,7 @@
       "stack_limit": 99,
       "equip_slots": [],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": true
@@ -188,6 +204,7 @@
       "stack_limit": 10,
       "equip_slots": [],
       "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false

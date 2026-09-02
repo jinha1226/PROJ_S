@@ -139,14 +139,14 @@ func test_exposure_out_of_bounds_active_and_returned_dto_are_detached() -> bool:
 
 func test_affinity_registry_profiles_ceil_boundaries_and_species_differences() -> bool:
 	var human = AffinityRegistry.affinity_for("human")
-	var amphibian = AffinityRegistry.affinity_for("amphibian")
+	var elf = AffinityRegistry.affinity_for("elf")
 	var dwarf = AffinityRegistry.affinity_for("dwarf")
 	check_eq(human.to_dict(), {"species_id": "human", "fire_tolerance": 20,
 		"water_tolerance": 25, "electric_tolerance": 10, "poison_tolerance": 10},
 		"human profile")
-	check_eq(amphibian.to_dict(), {"species_id": "amphibian", "fire_tolerance": -25,
-		"water_tolerance": 100, "electric_tolerance": -25, "poison_tolerance": 30},
-		"amphibian profile")
+	check_eq(elf.to_dict(), {"species_id":"elf","fire_tolerance":20,
+		"water_tolerance":25,"electric_tolerance":10,"poison_tolerance":10},
+		"new species use the human baseline")
 	check_eq(dwarf.to_dict(), {"species_id": "dwarf", "fire_tolerance": 40,
 		"water_tolerance": -25, "electric_tolerance": 20, "poison_tolerance": 20},
 		"dwarf profile")
@@ -171,10 +171,10 @@ func test_static_water_species_scores_electric_zero_and_json_restore_exact() -> 
 	var human = sim.world.add_entity("human", "Human", Vector2i.ZERO, 100, [], "human")
 	var sample = sim.sample_exposure(Vector2i(1, 0))
 	var human_eval = Evaluation.evaluate(sample, AffinityRegistry.affinity_for("human"))
-	var amphibian_eval = Evaluation.evaluate(sample, AffinityRegistry.affinity_for("amphibian"))
+	var elf_eval = Evaluation.evaluate(sample, AffinityRegistry.affinity_for("elf"))
 	var dwarf_eval = Evaluation.evaluate(sample, AffinityRegistry.affinity_for("dwarf"))
-	check_eq([human_eval.water_score, amphibian_eval.water_score, dwarf_eval.water_score],
-		[60, 0, 100], "shallow water score difference")
+	check_eq([human_eval.water_score, elf_eval.water_score, dwarf_eval.water_score],
+		[60, 60, 100], "new species use human water affinity while dwarf stays distinct")
 	check_eq([human_eval.electric_score, sample.electric_risk, sample.conductivity],
 		[0, 0, 60], "conductivity is not persistent electric risk")
 
@@ -209,14 +209,13 @@ func test_fire_80_species_scores_and_destination_risk_never_changes_legality() -
 	check(human_destination.traversal.accepted, "hazardous fire remains legal")
 	check_eq(human_destination.move_time_cost, 100, "hazard does not change cost")
 
-	var amphibian_sim = Simulator.new(2, 1, 26)
-	amphibian_sim.world.bootstrap_set_fire(Vector2i(1, 0), 80)
-	var amphibian = amphibian_sim.world.add_entity(
-		"amphibian", "Amphibian", Vector2i.ZERO, 100, [], "amphibian")
-	var amphibian_destination = amphibian_sim.assess_destination(amphibian.id, Vector2i(1, 0))
-	check_eq(amphibian_destination.evaluation.fire_score, 100, "amphibian fire 80")
-	check(amphibian_destination.traversal.accepted, "vulnerability does not block MOVE")
-	check_eq(amphibian_destination.move_time_cost, 100, "vulnerability does not slow MOVE")
+	var orc_sim = Simulator.new(2, 1, 26)
+	orc_sim.world.bootstrap_set_fire(Vector2i(1, 0), 80)
+	var orc = orc_sim.world.add_entity("orc","Orc",Vector2i.ZERO,100,[],"orc")
+	var orc_destination = orc_sim.assess_destination(orc.id, Vector2i(1, 0))
+	check_eq(orc_destination.evaluation.fire_score,64,"orc uses human fire baseline")
+	check(orc_destination.traversal.accepted,"hazard does not block MOVE")
+	check_eq(orc_destination.move_time_cost,100,"hazard does not change MOVE cost")
 	return finish()
 
 

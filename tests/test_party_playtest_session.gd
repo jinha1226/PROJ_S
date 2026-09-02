@@ -100,10 +100,10 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 			"ground_items","safe_recovery_turns","last_protagonist_damage_step"]:
 		legacy_wire.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(5,6)
-	check(migrated.load_session_json(JSON.stringify(legacy_wire)).accepted,
-		"legacy party schema defaults the full roster active")
-	check_eq(migrated.sim.world.party_encounter.active_party_member_ids,
-		migrated.sim.world.party_encounter.party_member_ids,"legacy active roster migration exact")
+	var legacy_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_wire))
+	check(not bool(legacy_result.get("accepted",false)) \
+		and str(legacy_result.get("reason",""))=="unsupported_player_species_snapshot",
+		"legacy party schema is rejected by the species hard cut")
 	var unsafe=Session.new();var unsafe_state=unsafe.sim.world.party_encounter
 	check(unsafe.commit_exploration(Command.wait(unsafe_state.protagonist_id)).accepted,"unsafe fixture reaches contact")
 	check_eq(unsafe.dismiss_companion(int(unsafe_state.party_member_ids[1])).reason,
@@ -253,7 +253,7 @@ func test_facade_dtos_are_detached_and_save_load_preserves_contact() -> bool:
 	var session=Session.new(); var status=session.party_status(); status.safe_phase="CORRUPTED"
 	var cards=session.party_cards(); cards[0].element_exposure.total_risk=999
 	check_eq(session.party_status().safe_phase,"GROUPED","status detached")
-	check_eq(session.party_status().session_format_version,3,"session v3 surface")
+	check_eq(session.party_status().session_format_version,5,"session v5 surface")
 	check_eq(session.party_status().scenario_id,"REGRESSION_V1","default regression scenario surface")
 	check(session.party_cards()[0].element_exposure.total_risk!=999,"nested cards detached")
 	var hero=session.sim.world.party_encounter.protagonist_id; session.commit_exploration(Command.wait(hero))
@@ -388,7 +388,7 @@ func test_full_exploration_deployment_turn_regroup_journal_replays_exactly() -> 
 	check_eq(session.party_status().safe_phase, "GROUPED_COMPLETE", "journey regrouped")
 	var move = session.commit_exploration_direction(Vector2i.LEFT); check(move.accepted, "post-regroup move journaled")
 	var encoded := session.save_session_json(); var decoded = JSON.parse_string(encoded)
-	check_eq(decoded.keys().size(), 6, "exact session top key count")
+	check_eq(decoded.keys().size(), 7, "exact session top key count")
 	check_eq(decoded.scenario_id, "REGRESSION_V1", "journal replay scenario identity")
 	check(decoded.journal.size() >= 4, "journal includes exploration/deployment/turns without separate regroup")
 	for row in decoded.journal: check(str(row.kind)!="regroup","automatic regroup adds no journal command")
@@ -609,21 +609,10 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 	legacy_v5.snapshot.party_encounter.protagonist_loadout= \
 		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(3,4)
-	check(migrated.load_session_json(JSON.stringify(legacy_v5)).accepted,
-		"v5 product save reconstructs deterministic door gateways")
-	var migrated_snapshot:Dictionary=migrated.sim.snapshot()
-	var expected_legacy_snapshot:Dictionary=legacy_product.sim.snapshot()
-	# Items live in the v7 world item state, so a v5 party section neither carries
-	# nor downgrades them: the migrated world keeps the canonical starting bag.
-	var migrated_main_hand:Dictionary={}
-	for row in migrated_snapshot.item_state.inventory_rows:
-		if str(row.entity_id)!=str(migrated_snapshot.party_encounter.protagonist_id):continue
-		for equipped_row in row.inventory.equipped_slots:
-			if str(equipped_row.slot)=="MAIN_HAND":migrated_main_hand=equipped_row
-	check_eq(migrated_main_hand,{"slot":"MAIN_HAND","instance_id":"LEGACY_MAIN_HAND"},
-		"the migrated world keeps the same equipped starting weapon instance")
-	check_eq(migrated_snapshot,expected_legacy_snapshot,
-		"v5 gateway migration is exact")
+	var legacy_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
+	check(not bool(legacy_result.get("accepted",false)) \
+		and str(legacy_result.get("reason",""))=="unsupported_player_species_snapshot",
+		"v5 product save is rejected by the species hard cut")
 	return finish()
 
 

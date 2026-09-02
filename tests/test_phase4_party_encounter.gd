@@ -195,13 +195,13 @@ func test_automatic_regroup_runs_after_due_environment_tick_at_deployed_position
 
 func test_snapshot_v5_strict_xor_round_trip_and_v4_rejection() -> bool:
 	var session=Session.new(); var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(snapshot.snapshot_version,7,"snapshot v7"); check_eq(snapshot.ruleset_version,"phase5-combat-status-lifecycle-v1","ruleset")
+	check_eq(snapshot.snapshot_version,9,"snapshot v9"); check_eq(snapshot.ruleset_version,"phase5-combat-status-lifecycle-v1","ruleset")
 	var restored=WorldState.from_snapshot(snapshot)
 	check(restored!=null,"typed party snapshot restores")
 	if restored!=null:check_eq(restored.snapshot(),snapshot,"party round trip")
 	var conflict=snapshot.duplicate(true); conflict.encounter_lab={}
 	check_eq(WorldState.snapshot_restore_error(conflict),"encounter_mode_conflict","xor wire")
-	var old=snapshot.duplicate(true); old.snapshot_version=6
+	var old=snapshot.duplicate(true); old.snapshot_version=7
 	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","no v6 migration")
 	var noncanonical=snapshot.duplicate(true); noncanonical.party_encounter.revision=0
 	check_eq(WorldState.snapshot_restore_error(noncanonical),"noncanonical_party_revision","party int64 strict")

@@ -14,6 +14,7 @@ var weapon_id:String
 var bonuses:Dictionary
 var use_kind:String
 var placeholder:bool
+var requirements:Dictionary
 
 
 func _init(row:Dictionary={})->void:
@@ -30,6 +31,10 @@ func _init(row:Dictionary={})->void:
 		for key in BONUS_KEYS:bonuses[key]=int(source.get(key,0))
 	use_kind=str(row.get("use_kind","NONE"))
 	placeholder=bool(row.get("placeholder",false))
+	requirements={}
+	var requirement_source:Variant=row.get("requirements",{})
+	if requirement_source is Dictionary:
+		for stat_id in ["STR","DEX","INT"]:requirements[stat_id]=int(requirement_source.get(stat_id,0))
 
 
 func validation_error()->String:
@@ -45,6 +50,11 @@ func validation_error()->String:
 		if not bonuses.has(key) or not _integer(bonuses[key]):return "invalid_item_bonus_shape"
 		if int(bonuses[key])<-10000 or int(bonuses[key])>10000:return "invalid_item_bonus_value"
 	if use_kind not in ["NONE","HEALING"]:return "unknown_item_use_kind"
+	if requirements.keys().size()!=3:return "invalid_item_requirements_shape"
+	for stat_id in ["STR","DEX","INT"]:
+		if not requirements.has(stat_id) or not _integer(requirements[stat_id]) \
+				or int(requirements[stat_id])<0 or int(requirements[stat_id])>1000:
+			return "invalid_item_requirement"
 	match category:
 		"WEAPON":
 			if stack_limit!=1 or equip_slots!=["MAIN_HAND"] or weapon_id.is_empty():
@@ -67,7 +77,8 @@ func to_dict()->Dictionary:
 	return {"definition_id":definition_id,"label":label,"category":category,
 		"stack_limit":stack_limit,"equip_slots":equip_slots.duplicate(),
 		"weapon_id":weapon_id,"bonuses":bonuses.duplicate(true),
-		"use_kind":use_kind,"placeholder":placeholder}.duplicate(true)
+		"use_kind":use_kind,"placeholder":placeholder,
+		"requirements":requirements.duplicate(true)}.duplicate(true)
 
 
 static func _empty_bonuses()->Dictionary:

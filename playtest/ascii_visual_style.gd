@@ -370,7 +370,7 @@ static func actor_presence_class(actor:Dictionary)->String:
 static func actor_equipment_spec(actor:Dictionary)->Dictionary:
 	var raw:Variant=actor.get("equipment_visual",actor.get("equipment",{}))
 	var equipment:Dictionary=raw if raw is Dictionary else {}
-	var weapon_id:=str(equipment.get("weapon_id",actor.get("weapon_id","UNARMED"))).to_upper()
+	var weapon_id:=str(equipment.get("weapon_id",actor.get("weapon_id","UNARMED_STRIKE"))).to_upper()
 	var weapon:Dictionary=ACTOR_WEAPON_VISUALS.get(weapon_id,{})
 	var armor_id:=str(equipment.get("armor_definition_id",
 		actor.get("armor_definition_id",""))).to_upper()

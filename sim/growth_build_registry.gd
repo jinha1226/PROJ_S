@@ -3,15 +3,15 @@ extends RefCounted
 
 const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
+const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const CONTENT_PATH:="res://data/content/growth_builds.json"
 static var _CONTENT:Dictionary=ContentLoaderScript.load_document(CONTENT_PATH)
 static var RULESET_ID:String=str(_CONTENT.get("ruleset_id",""))
 static var SAVE_MIGRATION_POLICY:String=str(_CONTENT.get("save_migration_policy",""))
 
 const MUTATION_ACQUISITION_POLICY := "FIRST_ELIGIBLE_KILL_GUARANTEED"
-const BASE_MAX_HEALTH := 100
+const BASE_MAX_HEALTH := 120
 const HEALTH_PER_LEVEL := 2
-const HEALTH_PER_VITALITY := 4
 const STAT_POINT_INTERVAL := 3
 const SPECIES_POINT_LEVELS := [7, 17]
 const MUTATION_SLOT_COUNT := 3
@@ -27,14 +27,13 @@ static var STAT_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("stats",[]),"stat_id")
 const EFFECT_TRIGGERS := ["PASSIVE", "ON_HIT", "ON_HURT", "INTERACT"]
 const BONUS_KEYS := [
-	"max_health", "might", "agility", "vitality", "armor_flat",
+	"max_health", "armor_flat",
 	"parry_milli", "dodge_milli", "stealth", "accuracy_milli",
 	"damage_flat", "fire_tolerance", "water_tolerance",
 	"electric_tolerance", "poison_tolerance",
 ]
 
-static var SPECIES_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
-	_CONTENT.get("species",[]),"species_id")
+static var SPECIES_DEFINITIONS:Dictionary=_species_definitions()
 static var MUTATION_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("mutations",[]),"mutation_id")
 static var AFFIX_BUILD_PROFILES:Dictionary=ContentLoaderScript.index_rows(
@@ -48,6 +47,10 @@ static func species_ids() -> Array[String]:
 	for species_id in SPECIES_DEFINITIONS: result.append(str(species_id))
 	result.sort()
 	return result
+
+
+static func picker_species_ids() -> Array[String]:
+	return SpeciesCatalogScript.picker_ids()
 
 
 static func species_definition(species_id: String) -> Dictionary:
@@ -146,21 +149,24 @@ static func content_version()->String:
 
 
 static func registry_error() -> String:
+	var catalog_error:=SpeciesCatalogScript.registry_error()
+	if not catalog_error.is_empty():return catalog_error
 	var document_error:=ContentLoaderScript.document_error(_CONTENT,"GROWTH_BUILDS",[
 		"content_schema_version","content_version","content_type","ruleset_id",
-		"save_migration_policy","stats","species","mutations",
+		"save_migration_policy","stats","mutations",
 		"affix_build_profiles","monster_species_families"])
 	if not document_error.is_empty():return document_error
-	if RULESET_ID!="race-item-mutation-growth-v1":return "growth_ruleset_mismatch"
+	if int(_CONTENT.get("content_schema_version",0))!=1:return "growth_content_schema_mismatch"
+	if RULESET_ID!="playable-species-growth-v2":return "growth_ruleset_mismatch"
 	if SAVE_MIGRATION_POLICY!="HARD_CUT":return "growth_migration_policy_mismatch"
-	for pair in [["stats","stat_id"],["species","species_id"],
-			["mutations","mutation_id"],["affix_build_profiles","affix_id"],
+	for pair in [["stats","stat_id"],["mutations","mutation_id"],
+			["affix_build_profiles","affix_id"],
 			["monster_species_families","species_id"]]:
 		var rows_error:=ContentLoaderScript.rows_error(_CONTENT[str(pair[0])],str(pair[1]))
 		if not rows_error.is_empty():return rows_error
 	var stat_definition_ids: Array = STAT_DEFINITIONS.keys(); stat_definition_ids.sort()
 	var expected_stat_ids: Array = STAT_IDS.duplicate(); expected_stat_ids.sort()
-	if STAT_IDS != ["MIGHT","AGILITY","VITALITY"] \
+	if STAT_IDS != ["STR","DEX","INT"] \
 			or stat_definition_ids != expected_stat_ids:
 		return "invalid_growth_stat_definitions"
 	for stat_id in STAT_IDS:
@@ -170,8 +176,10 @@ static func registry_error() -> String:
 				or str(stat_row.get("stat_id", "")) != stat_id \
 				or str(stat_row.get("label", "")).is_empty():
 			return "invalid_growth_stat_definition"
-	if species_ids() != ["amphibian", "dwarf", "goblin", "human"]:
+	if species_ids()!=SpeciesCatalogScript.playable_ids():
 		return "invalid_growth_species_set"
+	if picker_species_ids()!=SpeciesCatalogScript.picker_ids():
+		return "invalid_growth_species_picker_order"
 	for species_id in SPECIES_DEFINITIONS:
 		if str(SPECIES_DEFINITIONS[species_id].get("species_id", "")) != species_id:
 			return "growth_species_key_mismatch"
@@ -210,16 +218,39 @@ static func registry_error() -> String:
 	return ""
 
 
+static func _species_definitions()->Dictionary:
+	var result:Dictionary={}
+	for species_id in SpeciesCatalogScript.playable_ids():
+		result[species_id]=SpeciesCatalogScript.growth_definition(species_id)
+	return result
+
+
 static func species_definition_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_growth_species_shape"
 	var keys: Array = row.keys(); keys.sort()
-	if keys != ["branches", "fixed_trait", "label", "species_id"]:
+	if keys != ["branches", "fixed_trait", "label", "species_id", "weapon_familiarity"]:
 		return "invalid_growth_species_keys"
 	if str(row.species_id).is_empty() or str(row.label).is_empty() \
 			or not row.branches is Array or row.branches.size() != 2:
 		return "invalid_growth_species_shape"
 	var fixed_error := effect_error(row.fixed_trait)
 	if not fixed_error.is_empty(): return fixed_error
+	if not row.weapon_familiarity is Dictionary:return "invalid_weapon_familiarity_shape"
+	var familiarity_keys:Array=row.weapon_familiarity.keys();familiarity_keys.sort()
+	if familiarity_keys!=["mode","weapon_tags"] \
+			or str(row.weapon_familiarity.get("mode","")) not in ["ADAPTIVE","FIXED"] \
+			or not row.weapon_familiarity.get("weapon_tags") is Array:
+		return "invalid_weapon_familiarity_shape"
+	if str(row.species_id)=="human" and str(row.weapon_familiarity.mode)!="ADAPTIVE":
+		return "invalid_human_weapon_familiarity"
+	if str(row.species_id)!="human" and str(row.weapon_familiarity.mode)!="FIXED":
+		return "invalid_fixed_weapon_familiarity"
+	var previous_tag:=""
+	for tag in row.weapon_familiarity.weapon_tags:
+		if not tag is String or str(tag).is_empty() \
+				or (not previous_tag.is_empty() and str(tag)<=previous_tag):
+			return "noncanonical_weapon_familiarity_tags"
+		previous_tag=str(tag)
 	var seen_branches := {}
 	for branch in row.branches:
 		if not branch is Dictionary: return "invalid_growth_species_branch_shape"

@@ -11,13 +11,13 @@ const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 
 
-func test_registry_has_four_species_two_rank_branches_and_four_hook_kinds() -> bool:
+func test_registry_has_five_species_two_rank_branches_and_four_hook_kinds() -> bool:
 	check_eq(Registry.registry_error(), "", "growth registry validates")
-	check_eq(Registry.species_ids(), ["amphibian", "dwarf", "goblin", "human"],
-		"MVP has the four established species")
-	check_eq([Registry.STAT_DEFINITIONS.MIGHT.label, Registry.STAT_DEFINITIONS.AGILITY.label,
-		Registry.STAT_DEFINITIONS.VITALITY.label, Registry.SAVE_MIGRATION_POLICY],
-		["완력", "기민", "활력", "HARD_CUT"], "recommended stat names and save cut are explicit")
+	check_eq(Registry.species_ids(), ["beastkin", "dwarf", "elf", "human", "orc"],
+		"player registry has the canonical five species")
+	check_eq([Registry.STAT_DEFINITIONS.STR.label, Registry.STAT_DEFINITIONS.DEX.label,
+		Registry.STAT_DEFINITIONS.INT.label, Registry.SAVE_MIGRATION_POLICY],
+		["근력", "민첩", "지능", "HARD_CUT"], "recommended stat names and save cut are explicit")
 	for species_id in Registry.species_ids():
 		var definition := Registry.species_definition(species_id)
 		check(not definition.fixed_trait.is_empty(), "%s has one fixed trait" % species_id)
@@ -42,16 +42,16 @@ func test_state_spending_hard_cut_wire_and_round_trip_are_deterministic() -> boo
 	state.xp_total = Registry.xp_floor_for_level(17)
 	check_eq([state.level(), state.stat_points_available(), state.species_points_available()],
 		[17, 5, 2], "level retains XP and exposes both point ledgers")
-	var result := state.commit_spend_stat_point("MIGHT")
+	var result := state.commit_spend_stat_point("STR")
 	check(result.accepted, "available stat point spends")
 	state = result.state
-	result = state.commit_spend_species_point("ADAPTIVE_BODY")
+	result = state.commit_spend_species_point("ADAPTATION")
 	check(result.accepted, "level 7 species point buys rank one")
 	state = result.state
-	result = state.commit_spend_species_point("ADAPTIVE_BODY")
+	result = state.commit_spend_species_point("ADAPTATION")
 	check(result.accepted, "level 17 species point buys rank two")
 	state = result.state
-	check_eq([state.stat_allocations.MIGHT, state.species_branch_ranks.ADAPTIVE_BODY,
+	check_eq([state.stat_allocations.STR, state.species_branch_ranks.ADAPTATION,
 		state.species_points_available()], [1, 2, 0], "points are bounded and branch ranks are sequential")
 	check_eq(state.commit_spend_species_point("FIELDCRAFT").reason,
 		"no_growth_species_points", "one run cannot spend a third species point")
@@ -72,7 +72,7 @@ func test_state_spending_hard_cut_wire_and_round_trip_are_deterministic() -> boo
 
 
 func test_first_eligible_family_kill_guarantees_trace_and_grouped_swap_costs_100() -> bool:
-	var state = State.new("goblin")
+	var state = State.new("human")
 	var result := state.commit_mutation_kill(10, "GOBLINOID", false, false)
 	check(result.accepted and not result.acquired and result.reason == "mutation_kill_not_eligible",
 		"unseen non-participated death is consumed without a trace")
@@ -111,7 +111,7 @@ func test_dwarf_rare_sword_hide_and_predator_build_composes_without_changing_wea
 	var state = State.new("dwarf")
 	state.xp_total = Registry.xp_floor_for_level(17)
 	for _rank in range(2):
-		var branch_result := state.commit_spend_species_point("IRON_FRAME")
+		var branch_result := state.commit_spend_species_point("STONE_BODY")
 		check(branch_result.accepted, "iron frame rank spends")
 		state = branch_result.state
 	for row in [[20, "GOBLINOID"], [21, "BEAST"]]:
@@ -128,12 +128,12 @@ func test_dwarf_rare_sword_hide_and_predator_build_composes_without_changing_wea
 	check(result.accepted, "species/item/mutation build calculates")
 	if result.accepted:
 		var build: Dictionary = result.build
-		check_eq(build.max_health, 156,
-			"level HP, vitality and species branch combine without level damage scaling")
-		check_eq(build.defense, {"armor_flat":6, "parry_milli":0, "dodge_milli":0,
+		check_eq(build.max_health, 152,
+			"species identity hooks do not alter legacy max health")
+		check_eq(build.defense, {"armor_flat":4, "parry_milli":0, "dodge_milli":25,
 			"stealth":0}, "item, affix, species and passive trace defense add exactly")
-		check_eq(build.hazard_tolerance_bonuses.fire, 0,
-			"dwarf heat tolerance and hide side effect compose")
+		check_eq(build.hazard_tolerance_bonuses.fire, -10,
+			"species identity hooks do not add legacy hazard bonuses")
 		check_eq([build.weapon.weapon_id, build.weapon.range_min, build.weapon.range_max,
 			build.weapon.attack_time, build.weapon.resolved_damage],
 			["SHORT_SWORD", 1, 1, 100, 4],
@@ -156,7 +156,7 @@ func test_dwarf_rare_sword_hide_and_predator_build_composes_without_changing_wea
 
 
 func test_species_item_mutation_matrix_and_tag_gates_are_stable() -> bool:
-	var species_ids := ["human", "dwarf", "goblin", "amphibian"]
+	var species_ids := ["human", "dwarf", "elf", "orc"]
 	var item_ids := ["WEAPON_SHORT_SWORD", "WEAPON_MACE", "WEAPON_SPEAR", "WEAPON_BOW"]
 	var families := ["GOBLINOID", "OOZE", "ABERRATION", "BEAST"]
 	var expected_mutations := ["PREDATOR_NERVE", "CAUSTIC_BLOOD", "DEEP_EYE", "HIDE_PLATING"]
@@ -261,7 +261,7 @@ func test_session_kill_awards_growth_trace_and_replays_exactly() -> bool:
 	return finish()
 
 
-func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
+func test_session_stat_spend_is_atomic_and_old_party_schema_is_hard_cut() -> bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var state=session.sim.world.party_encounter
 	var awarded:Dictionary=state.protagonist_growth.commit_award_xp(
@@ -269,13 +269,13 @@ func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
 	check(bool(awarded.accepted),"fixture reaches its first stat-point gate")
 	state.protagonist_growth=awarded.state
 	var start_time:int=session.sim.world.world_time
-	var spent:Dictionary=session.spend_growth_stat_point("MIGHT")
+	var spent:Dictionary=session.spend_growth_stat_point("STR")
 	check(bool(spent.get("accepted",false)) and spent.time_cost==0 \
-		and session.protagonist_growth_build().stats.MIGHT==6,
+		and session.protagonist_growth_build().stats.STR==6,
 		"session spends a stat point without consuming world time")
 	check_eq(session.sim.world.world_time,start_time,"stat allocation is a zero-time build decision")
 	var before:Dictionary=session.sim.snapshot()
-	var duplicate:Dictionary=session.spend_growth_stat_point("MIGHT")
+	var duplicate:Dictionary=session.spend_growth_stat_point("STR")
 	check(not bool(duplicate.get("accepted",false)) \
 		and session.sim.snapshot()==before,"overspend rejection is an atomic no-op")
 
@@ -296,9 +296,7 @@ func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
 		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(1,2,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var migrated_result:Dictionary=migrated.load_session_json(JSON.stringify(wire))
-	check(bool(migrated_result.get("accepted",false)),"schema 10 save migrates at the hard-cut boundary")
-	if bool(migrated_result.get("accepted",false)):
-		var growth=migrated.sim.world.party_encounter.protagonist_growth
-		check_eq([growth.species_id,growth.xp_total,growth.unlocked_mutation_ids],
-			["human",0,[]],"hard cut starts old expeditions from the species baseline")
+	check(not bool(migrated_result.get("accepted",false)) \
+		and str(migrated_result.get("reason",""))=="unsupported_player_species_snapshot",
+		"schema 10 save is rejected at raw hard-cut preflight")
 	return finish()

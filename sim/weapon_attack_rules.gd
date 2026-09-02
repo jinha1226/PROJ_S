@@ -4,21 +4,46 @@ extends RefCounted
 const RULESET_ID := "deterministic-weapon-attack-v1"
 const RegistryScript = preload("res://sim/weapon_registry.gd")
 const ProgressionRegistryScript = preload("res://sim/progression_registry.gd")
+const FixedPointScript=preload("res://sim/fixed_point.gd")
 const ROLL_LANES := ["HIT", "BLEED", "STUN"]
+
+
+static func scaling_bonus_milli(scaling:Dictionary,stats:Dictionary)->int:
+	if not _exact_stats(stats):return -1
+	var rules:=RegistryScript.stat_scaling_rules()
+	if rules.is_empty():return -1
+	var result:=0
+	for stat_id in ["STR","DEX","INT"]:
+		var grade:=str(scaling.get(stat_id,""))
+		if not rules.grade_coefficients_milli.has(grade):return -1
+		var excess:=maxi(0,int(stats[stat_id])-int(rules.stat_baseline))
+		var coefficient:=int(rules.grade_coefficients_milli[grade])
+		var remaining:=int(rules.total_bonus_cap_milli)-result
+		if coefficient>0 and excess>remaining/coefficient:return int(rules.total_bonus_cap_milli)
+		result+=excess*coefficient
+	return result
 
 
 static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 		attacker_power: int, attacker_accuracy_milli: int,
-		target_evasion_milli: int, target_armor_flat: int) -> Dictionary:
+		target_evasion_milli: int, target_armor_flat: int,
+		attacker_stats:Variant=null) -> Dictionary:
+	if attacker_stats==null:
+		var baseline:=int(RegistryScript.stat_scaling_rules().get("stat_baseline",0))
+		attacker_stats={"STR":baseline,"DEX":baseline,"INT":baseline}
 	var weapon = RegistryScript.definition(weapon_id)
 	if weapon == null or proficiency_rank < 0 or proficiency_rank > ProgressionRegistryScript.MAX_RANK \
-			or attacker_power < 0 or target_armor_flat < 0:
+			or attacker_power < 0 or target_armor_flat < 0 or not _exact_stats(attacker_stats):
 		return {}
 	var proficiency_accuracy: int = ProgressionRegistryScript.proficiency_accuracy_bonus_milli(proficiency_rank)
 	var proficiency_damage: int = ProgressionRegistryScript.proficiency_damage_bonus(proficiency_rank)
 	var hit_chance: int = clampi(500 + attacker_accuracy_milli + weapon.accuracy_milli \
 		- target_evasion_milli + proficiency_accuracy, 50, 950)
-	var raw_damage: int = attacker_power + weapon.base_damage + proficiency_damage
+	var unscaled_raw_damage: int = attacker_power + weapon.base_damage + proficiency_damage
+	var stat_scaling_bonus_milli:=scaling_bonus_milli(weapon.scaling,attacker_stats)
+	if stat_scaling_bonus_milli<0:return {}
+	var raw_damage: int = FixedPointScript.trunc_div(
+		unscaled_raw_damage*(1000+stat_scaling_bonus_milli),1000)
 	var effective_armor: int = maxi(0, target_armor_flat - weapon.armor_penetration_flat)
 	var armor_reduction: int = mini(effective_armor, maxi(0, raw_damage - 1))
 	var final_damage: int = maxi(1, raw_damage - armor_reduction)
@@ -31,6 +56,10 @@ static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 		"ammo_kind":weapon.ammo_kind, "ammo_cost":weapon.ammo_cost,
 		"reload_required":weapon.reload_required,
 		"attacker_power":attacker_power, "weapon_damage":weapon.base_damage,
+		"attacker_stats":attacker_stats.duplicate(true),
+		"weapon_scaling":weapon.scaling.duplicate(true),
+		"stat_scaling_bonus_milli":stat_scaling_bonus_milli,
+		"unscaled_raw_damage":unscaled_raw_damage,
 		"proficiency_damage":proficiency_damage, "raw_damage":raw_damage,
 		"proficiency_accuracy_milli":proficiency_accuracy,
 		"hit_chance_milli":hit_chance, "target_evasion_milli":target_evasion_milli,
@@ -39,6 +68,15 @@ static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 		"armor_reduction":armor_reduction, "normal_final_damage":final_damage,
 		"secondary_damage_milli":weapon.secondary_damage_milli,
 		"stun_chance_milli":weapon.stun_chance_milli}.duplicate(true)
+
+
+static func _exact_stats(stats:Variant)->bool:
+	if not stats is Dictionary:return false
+	var keys:Array=stats.keys();keys.sort()
+	if keys!=["DEX","INT","STR"]:return false
+	for stat_id in ["STR","DEX","INT"]:
+		if not stats[stat_id] is int or int(stats[stat_id])<0:return false
+	return true
 
 
 static func commitment_key(world_seed: int, processed_step_index: int,

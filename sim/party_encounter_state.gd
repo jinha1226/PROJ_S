@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 15
+const SCHEMA_VERSION := 17
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -23,6 +23,10 @@ const MORALE_SCHEMA_VERSION := 14
 # v15 replaces the temporary four-facet party personality with continuous
 # HEXACO and records whether an old journal predates the semantic cut.
 const HEXACO_SCHEMA_VERSION := 15
+# v16 hard-cuts the player species enum and nested GrowthBuildState v2.
+const PLAYER_SPECIES_SCHEMA_VERSION := 16
+# v17 hard-cuts STR/DEX/INT and stat-scaled equipment snapshots.
+const STAT_SCALING_SCHEMA_VERSION := 17
 const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
@@ -260,14 +264,15 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == WORLD_ITEM_SCHEMA_VERSION and keys != v12_keys) \
 		or (parsed_schema_version == WEAPON_AUTHORITY_SCHEMA_VERSION and keys != v13_keys) \
 		or (parsed_schema_version == MORALE_SCHEMA_VERSION and keys != v14_keys) \
+		or (parsed_schema_version == HEXACO_SCHEMA_VERSION and keys != v15_keys) \
 		or (parsed_schema_version == SCHEMA_VERSION and keys != v15_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
 		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
-		WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,MORALE_SCHEMA_VERSION,
-		SCHEMA_VERSION]: return "unsupported_party_schema"
+			WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,MORALE_SCHEMA_VERSION,
+			HEXACO_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"
@@ -400,7 +405,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			Rect2i(Vector2i.ZERO,Vector2i(width,height)))
 		if not combined_error.is_empty():return combined_error
 		var main=inventory.equipped_item("MAIN_HAND")
-		var bridged_weapon_id:="UNARMED"
+		var bridged_weapon_id:="UNARMED_STRIKE"
 		if main!=null:
 			var main_definition=load("res://sim/item_registry.gd").definition(main.definition_id)
 			if main_definition==null:return "inventory_loadout_bridge_mismatch"

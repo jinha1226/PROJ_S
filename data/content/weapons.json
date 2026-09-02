@@ -3,9 +3,14 @@
   "content_version": "weapons-2026-09-01",
   "content_type": "WEAPONS",
   "ruleset_id": "weapon-registry-v1",
+  "stat_scaling_rules": {
+    "stat_baseline": 5,
+    "total_bonus_cap_milli": 250,
+    "grade_coefficients_milli": {"NONE":0,"E":10,"D":20,"C":30,"B":40,"A":50}
+  },
   "definitions": [
     {
-      "weapon_id": "UNARMED",
+      "weapon_id": "UNARMED_STRIKE",
       "label": "맨손",
       "proficiency_id": "UNARMED",
       "attack_form": "IMPACT",
@@ -22,7 +27,18 @@
       "trait_id": "FAST_UNARMED",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"C","DEX":"D","INT":"NONE"},
+      "natural_weapon":true
+    },
+    {
+      "weapon_id":"NATURAL_CLAW", "label":"발톱", "proficiency_id":"UNARMED",
+      "attack_form":"SLASH", "range_min":1, "range_max":1, "base_damage":0,
+      "accuracy_milli":20, "armor_penetration_flat":0, "attack_time":70,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"FAST_UNARMED", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":false, "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
+      "natural_weapon":true
     },
     {
       "weapon_id": "SHORT_SWORD",
@@ -42,7 +58,9 @@
       "trait_id": "NONE",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"NONE","DEX":"A","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "THRUSTING_SWORD",
@@ -62,7 +80,9 @@
       "trait_id": "NONE",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "HAND_AXE",
@@ -82,7 +102,9 @@
       "trait_id": "AXE_CLEAVE",
       "secondary_damage_milli": 400,
       "stun_chance_milli": 0,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "MACE",
@@ -102,7 +124,9 @@
       "trait_id": "BLUNT_STUN",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 250,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "SPEAR",
@@ -122,7 +146,9 @@
       "trait_id": "SPEAR_REACH",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": false
+      "two_handed": false,
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "BOW",
@@ -142,7 +168,9 @@
       "trait_id": "BOW_REPEAT",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": true
+      "two_handed": true,
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
+      "natural_weapon":false
     },
     {
       "weapon_id": "CROSSBOW",
@@ -162,7 +190,9 @@
       "trait_id": "CROSSBOW_RELOAD",
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
-      "two_handed": true
+      "two_handed": true,
+      "scaling":{"STR":"NONE","DEX":"D","INT":"NONE"},
+      "natural_weapon":false
     }
   ]
 }

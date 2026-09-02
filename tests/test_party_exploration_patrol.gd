@@ -4,7 +4,6 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const WorldState=preload("res://sim/world_state.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
-const Progression=preload("res://sim/protagonist_progression.gd")
 
 
 func test_fixed_solo_fixture_patrol_is_tick_driven_visible_deterministic_and_replay_exact()->bool:
@@ -75,15 +74,15 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 	check(not "경계했다" in guard_text and not "action.hold" in guard_text,
 		"blocked patrol guard stays out of the important-event log")
 
-	var amphibian=_corridor_session("amphibian",true)
-	var amphibian_state=amphibian.sim.world.party_encounter
-	var amphibian_enemy:=int(amphibian_state.enemy_ids[0])
-	var water_cell:Vector2i=amphibian.sim.world.entities[amphibian_enemy].position+Vector2i.RIGHT
-	check(amphibian.commit_exploration(
-		Command.wait(amphibian_state.protagonist_id)).accepted,
-		"water-affine patrol cadence accepted")
-	check_eq(amphibian.sim.world.entities[amphibian_enemy].position,water_cell,
-		"amphibian affinity permits the same water cell")
+	var beastkin=_corridor_session("beastkin",true)
+	var beastkin_state=beastkin.sim.world.party_encounter
+	var beastkin_enemy:=int(beastkin_state.enemy_ids[0])
+	var beastkin_origin:Vector2i=beastkin.sim.world.entities[beastkin_enemy].position
+	check(beastkin.commit_exploration(
+			Command.wait(beastkin_state.protagonist_id)).accepted,
+		"human-baseline patrol cadence accepted")
+	check_eq(beastkin.sim.world.entities[beastkin_enemy].position,beastkin_origin,
+			"beastkin receives no invented water affinity")
 
 	var contact=_corridor_session("goblin",false)
 	var contact_state=contact.sim.world.party_encounter
@@ -124,19 +123,10 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 			"last_protagonist_damage_step"]:
 		v2_wire.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(1,2)
-	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(v2_wire))
-	check(migration_result.accepted,
-		"v2 fixture save migrates patrol feature reservations")
-	var expected_legacy:Dictionary=fixture.sim.snapshot()
-	# Items are snapshot v7 world authority, so a downgraded party section no
-	# longer implies a legacy-only inventory on either side of the comparison.
-	var legacy_progression=Progression.new()
-	legacy_progression.legacy_reward_origin=true
-	for skill_id in legacy_progression.training_modes:
-		legacy_progression.training_modes[skill_id]="NORMAL"
-	expected_legacy.party_encounter.protagonist_progression=legacy_progression.to_dict()
-	check_eq(migrated.sim.snapshot(),expected_legacy,
-		"v2 fixture migration matches canonical state")
+	var v2_result:Dictionary=migrated.load_session_json(JSON.stringify(v2_wire))
+	check(not v2_result.accepted \
+		and str(v2_result.get("reason",""))=="unsupported_player_species_snapshot",
+		"v2 fixture is rejected by the species hard cut")
 	return finish()
 
 

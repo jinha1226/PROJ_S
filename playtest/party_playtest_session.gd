@@ -21,6 +21,7 @@ const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
@@ -41,7 +42,7 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 
-const SESSION_FORMAT_VERSION := 3
+const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_party_encounter_v3.json"
 const DEFAULT_WORLD_SEED := 44
@@ -94,6 +95,7 @@ var sim
 var world_seed := DEFAULT_WORLD_SEED
 var personality_seed := DEFAULT_PERSONALITY_SEED
 var scenario_id := REGRESSION_SCENARIO_ID
+var player_species_id := "human"
 var command_journal: Array[Dictionary] = []
 var _deployment_plan: Dictionary = {}
 var _protagonist_draft = null
@@ -126,8 +128,10 @@ func _combatant_status_ids(entity_id: int) -> Array[String]:
 
 func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_personality_seed: int = DEFAULT_PERSONALITY_SEED,
-		p_scenario_id: String = REGRESSION_SCENARIO_ID) -> void:
-	reset_party(p_world_seed, p_personality_seed, p_scenario_id)
+		p_scenario_id: String = REGRESSION_SCENARIO_ID,
+		p_player_species_id: String = "human") -> void:
+	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, true,
+		p_player_species_id)
 
 
 static func new_expedition_personality_seed(entropy_seed: int,
@@ -175,8 +179,10 @@ static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
 func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
 		product_layout_override:Dictionary={},
-		bootstrap_opening_event:bool=true) -> bool:
+		bootstrap_opening_event:bool=true,
+		p_player_species_id:String="human") -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
+	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
 	var product_dungeon := VisualTestMapScript.uses_product_dungeon(p_scenario_id)
 	var map_layout: Dictionary = (product_layout_override.duplicate(true) \
@@ -205,15 +211,16 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var enemy_position: Vector2i = generated_enemies[0] if not generated_enemies.is_empty() \
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
-	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120, hero_tags, "human", "party")
+	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120,
+		hero_tags, p_player_species_id, "party")
 	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95,
 		["party_member"], "human", "party") if not solo else null
 	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105,
 		["party_member"], "goblin", "party") if not solo else null
 	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
 		["party_member", "recruitable"], "dwarf", "party") if showcase else null
-	var candidate_amphibian = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
-		["recruitable", "rescue_npc"], "amphibian", "neutral") if showcase else null
+	var candidate_beastkin = candidate.world.add_entity("companion", "세라", Vector2i(2,13), 90,
+		["recruitable", "rescue_npc"], "beastkin", "neutral") if showcase else null
 	var enemy_roster:Array=map_layout.get("enemy_roster",[]).duplicate(true)
 	if enemy_roster.is_empty():
 		for generated_position in generated_enemies:
@@ -242,7 +249,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if anchors.is_empty(): return false
 		var opening_entity = candidate.world.add_entity("companion",
 			"부상당한 여행자", anchors.spawn_position, OPENING_NPC_MAX_HEALTH,
-			["opening_event_npc"], "amphibian", "neutral")
+			["opening_event_npc"], "elf", "neutral")
 		if opening_entity == null: return false
 		opening_entity.health = maxi(1, int((opening_entity.max_health + 4) / 5))
 		var profile = OpeningHexacoScript.generated(p_world_seed, OPENING_HEXACO_SLOT)
@@ -259,14 +266,14 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 					anchors.convergence_goal.y]})
 		if discovery == null: return false
 	if protagonist == null or enemies.is_empty() or (not solo and (narae == null or miru == null)) \
-			or (showcase and (candidate_dwarf == null or candidate_amphibian == null)):
+			or (showcase and (candidate_dwarf == null or candidate_beastkin == null)):
 		return false
 	_configure_party_species_relations(candidate)
 	# The rescue story is authoritative event history, but it deliberately does
 	# not impersonate combat DOWNED. The world NPC stays ACTIVE and occupies its
 	# canonical cell until an accepted offer converts the same entity to GROUPED.
 	if showcase and not _bootstrap_rescue_candidate(candidate,
-			candidate_amphibian.id):
+			candidate_beastkin.id):
 		return false
 	var state = PartyStateScript.new(); state.protagonist_id = protagonist.id
 	state.opening_event = opening_state
@@ -342,6 +349,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	candidate.world.warm_rollback_memento_static_tiles()
 	if not candidate.world.world_state_error().is_empty(): return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
+	player_species_id=p_player_species_id
 	scenario_id = p_scenario_id
 	_map_layout = map_layout.duplicate(true)
 	_opening_blood_positions=opening_blood_positions.duplicate()
@@ -590,7 +598,8 @@ func protagonist_equipment()->Dictionary:
 	var combatant=sim.world.combatant_states.get(state.protagonist_id)
 	var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) if combatant!=null else {}
 	var spec:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
-		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0)
+		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
+		ActorStatRulesScript.for_entity(sim.world,state.protagonist_id))
 	return {"schema_version":1,"available":true,"weapon_id":weapon.weapon_id,
 		"weapon_label":weapon.label,"proficiency_id":weapon.proficiency_id,
 		"proficiency_rank":rank,"attack_form":weapon.attack_form,"trait_id":weapon.trait_id,
@@ -1151,7 +1160,7 @@ func _configure_party_species_relations(candidate) -> void:
 	# dominant baseline even after a dramatic rescue.
 	candidate.world.species_relations.set_relation("human", "human", 35, 0, 0)
 	candidate.world.species_relations.set_relation("dwarf", "human", 25, 5, 0)
-	candidate.world.species_relations.set_relation("amphibian", "human", -30, 25, 45)
+	candidate.world.species_relations.set_relation("beastkin", "human", -30, 25, 45)
 	candidate.world.species_relations.set_relation("goblin", "human", -60, 35, 75)
 
 
@@ -1358,12 +1367,22 @@ func restart_same_run() -> Dictionary:
 	var frozen_world_seed := world_seed
 	var frozen_personality_seed := personality_seed
 	var frozen_scenario_id := scenario_id
+	var frozen_species_id := player_species_id
 	if not reset_party(frozen_world_seed, frozen_personality_seed,
-			frozen_scenario_id):
+			frozen_scenario_id,{},true,frozen_species_id):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
 		"scenario_id":scenario_id, "run_progress":run_progress()})
+
+
+func start_new_run_with_species(species_id:String)->Dictionary:
+	if not GrowthBuildRegistryScript.has_species(species_id):
+		return _rejection_dto("unknown_player_species")
+	if not reset_party(world_seed,personality_seed,scenario_id,{},true,species_id):
+		return _rejection_dto("player_species_reset_failed")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"player_species_id":player_species_id,"run_progress":run_progress()})
 
 
 func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
@@ -1376,7 +1395,9 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 		return _rejection_dto("personality_seed_unchanged")
 	var frozen_world_seed := world_seed
 	var frozen_scenario_id := scenario_id
-	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id):
+	var frozen_species_id := player_species_id
+	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id,
+			{},true,frozen_species_id):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -1845,12 +1866,13 @@ func _actor_observation(entity, logical_position: Vector2i,
 
 func _protagonist_equipment_visual()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
-		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var state=sim.world.party_encounter
 	var inventory=sim.world.inventory_of(state.protagonist_id)
 	if inventory==null:
-		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+		return {"weapon_id":ItemOperationsScript.equipped_weapon_id(
+			sim.world,state.protagonist_id),"weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var main=inventory.equipped_item("MAIN_HAND")
 	var armor=inventory.equipped_item("ARMOR")
@@ -4162,7 +4184,8 @@ func _is_important_log_event(event)->bool:
 
 func save_session_json() -> String:
 	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,
-		"scenario_id":scenario_id,"world_seed":str(world_seed),
+		"scenario_id":scenario_id,"player_species_id":player_species_id,
+		"world_seed":str(world_seed),
 		"personality_seed":str(personality_seed),"snapshot":sim.snapshot(),
 		"journal":command_journal.duplicate(true)})
 
@@ -4171,16 +4194,31 @@ func load_session_json(encoded: String) -> Dictionary:
 	if not decoded is Dictionary:
 		return _rejection_dto("invalid_party_session")
 	var top_keys: Array = decoded.keys(); top_keys.sort()
-	if top_keys != ["journal", "personality_seed", "scenario_id", "session_format_version", "snapshot", "world_seed"] \
+	if top_keys != ["journal", "personality_seed", "player_species_id", "scenario_id", "session_format_version", "snapshot", "world_seed"] \
 			or not _integer(decoded.get("session_format_version")) \
 			or int(decoded.session_format_version) != SESSION_FORMAT_VERSION \
 			or not decoded.get("scenario_id") is String \
+			or not decoded.get("player_species_id") is String \
+			or not GrowthBuildRegistryScript.has_species(str(decoded.player_species_id)) \
 			or not VisualTestMapScript.has_scenario(str(decoded.scenario_id)) \
 			or not decoded.get("snapshot") is Dictionary \
 			or not Int64CodecScript.is_canonical(decoded.get("world_seed")) \
 			or not Int64CodecScript.is_canonical(decoded.get("personality_seed")) \
 			or not decoded.get("journal") is Array or decoded.journal.size() > 10000:
 		return _rejection_dto("invalid_party_session_wire")
+	if int(decoded.snapshot.get("snapshot_version",0))!=WorldStateScript.SNAPSHOT_VERSION:
+		return _rejection_dto("unsupported_snapshot_version")
+	# Raw hard-cut preflight: reject old nested growth/party schemas and species
+	# before any numeric normalization or object construction can reinterpret them.
+	var raw_party:Variant=decoded.snapshot.get("party_encounter")
+	if not raw_party is Dictionary \
+			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
+			or not raw_party.get("protagonist_growth") is Dictionary \
+			or int(raw_party.protagonist_growth.get("schema_version",0)) \
+				!=GrowthBuildStateScript.SCHEMA_VERSION \
+			or str(raw_party.protagonist_growth.get("species_id","")) \
+				!=str(decoded.player_species_id):
+		return _rejection_dto("unsupported_player_species_snapshot")
 	var journal_error := _journal_wire_error(decoded.journal)
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
@@ -4248,6 +4286,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
+	var parsed_player_species_id:=str(decoded.player_species_id)
 	if source_party_schema < PartyStateScript.HEXACO_SCHEMA_VERSION:
 		var legacy_party_error := PartyStateScript.wire_error(
 			decoded.snapshot.party_encounter, int(decoded.snapshot.width),
@@ -4326,10 +4365,11 @@ func load_session_json(encoded: String) -> Dictionary:
 					and migrated_gateway not in restored.world.party_encounter.diagonal_gateway_positions:
 				restored.world.party_encounter.diagonal_gateway_positions.append(migrated_gateway)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
-		parsed_world_seed, parsed_personality_seed, parsed_scenario_id)
+		parsed_world_seed, parsed_personality_seed, parsed_scenario_id,
+		parsed_player_species_id)
 	if not replay_layout.is_empty() and not replay.reset_party(parsed_world_seed,
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
-			not legacy_opening_replay):
+			not legacy_opening_replay,parsed_player_species_id):
 		return _rejection_dto("party_layout_replay_failed")
 	if restored.world.party_encounter.legacy_journal_origin:
 		return _install_restored_session(restored, decoded, parsed_world_seed,
@@ -4445,7 +4485,7 @@ func _install_restored_session(restored, decoded: Dictionary,
 		parsed_world_seed: int, parsed_personality_seed: int,
 		parsed_scenario_id: String, restored_layout: Dictionary) -> Dictionary:
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
-	scenario_id = parsed_scenario_id
+	scenario_id = parsed_scenario_id;player_species_id=str(decoded.player_species_id)
 	_map_layout = restored_layout.duplicate(true)
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))

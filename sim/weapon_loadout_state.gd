@@ -6,13 +6,13 @@ const RegistryScript = preload("res://sim/weapon_registry.gd")
 const AMMO_KINDS := ["ARROW", "BOLT"]
 
 var schema_version := SCHEMA_VERSION
-var equipped_weapon_id := "UNARMED"
+var equipped_weapon_id := "UNARMED_STRIKE"
 var ammo_pools := {"ARROW": 0, "BOLT": 0}
 var crossbow_loaded := false
 
 
-func _init(weapon_id: String = "UNARMED", arrows: int = 0, bolts: int = 0) -> void:
-	equipped_weapon_id = weapon_id if RegistryScript.has(weapon_id) else "UNARMED"
+func _init(weapon_id: String = "UNARMED_STRIKE", arrows: int = 0, bolts: int = 0) -> void:
+	equipped_weapon_id = weapon_id if RegistryScript.has(weapon_id) else "UNARMED_STRIKE"
 	ammo_pools = {"ARROW": maxi(0, arrows), "BOLT": maxi(0, bolts)}
 
 

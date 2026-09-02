@@ -16,6 +16,8 @@ const ItemScript=preload("res://sim/item_instance.gd")
 const RegistryScript=preload("res://sim/item_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const RuntimeScript=preload("res://sim/weapon_runtime_state.gd")
+const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 
 const EVENT_TYPES:={"PICKUP":"item.picked_up","DROP":"item.dropped","EQUIP":"item.equipped",
 	"UNEQUIP":"item.unequipped","DISCARD":"item.discarded","TRANSFER":"item.transferred"}
@@ -161,9 +163,9 @@ static func commit_spawn_ground(world,definition_id:String,quantity:int,
 
 static func equipped_weapon_id(world,entity_id:int)->String:
 	var main=_main_hand_ref(world,entity_id)
-	if main==null:return "UNARMED"
+	if main==null:return _natural_weapon_id(world,entity_id)
 	var definition=RegistryScript.definition(main.definition_id)
-	if definition==null or str(definition.weapon_id).is_empty():return "UNARMED"
+	if definition==null or str(definition.weapon_id).is_empty():return _natural_weapon_id(world,entity_id)
 	return str(definition.weapon_id)
 
 
@@ -260,6 +262,13 @@ static func _plan_equip(world,entity_id:int,instance_id:String,slot:String)->Dic
 	var guard:=_guard(world,entity_id)
 	if not guard.is_empty():return _rejected(guard)
 	var next=world.item_state.clone()
+	var item=next.inventory(entity_id)._item_ref(instance_id)
+	if item!=null:
+		var definition=RegistryScript.definition(str(item.definition_id))
+		if definition!=null:
+			var requirement_error:=ActorStatRulesScript.requirements_error(
+				ActorStatRulesScript.for_entity(world,entity_id),definition.requirements)
+			if not requirement_error.is_empty():return _rejected(requirement_error)
 	var result:=InventoryOperationsScript.commit_equip(next.inventory(entity_id),
 		instance_id,slot)
 	if not bool(result.get("accepted",false)):return _rejected(str(result.reason))
@@ -367,7 +376,27 @@ static func _swap(world,next,extra:Dictionary)->Dictionary:
 static func _global_invariant_error(world,next)->String:
 	var error:String=next.validation_error(world.width,world.height)
 	if not error.is_empty():return error
-	return next.world_membership_error(world.combatant_states.keys(),world._death_event_ids())
+	error=next.world_membership_error(world.combatant_states.keys(),world._death_event_ids())
+	if not error.is_empty():return error
+	return equipped_requirements_error(world,next)
+
+
+static func equipped_requirements_error(world,state=null)->String:
+	var checked=state if state!=null else (world.item_state if world!=null else null)
+	if world==null or checked==null:return "invalid_item_world_context"
+	for entity_id in checked.inventory_rows:
+		var inventory=checked.inventory_rows[entity_id]
+		var stats:=ActorStatRulesScript.for_entity(world,int(entity_id))
+		for slot in inventory.equipped:
+			var instance_id:=str(inventory.equipped[slot])
+			if instance_id.is_empty():continue
+			var item=inventory._item_ref(instance_id)
+			if item==null:continue
+			var definition=RegistryScript.definition(str(item.definition_id))
+			if definition!=null and not ActorStatRulesScript.requirements_error(
+					stats,definition.requirements).is_empty():
+				return "item_requirements_not_met"
+	return ""
 
 
 static func reconcile_weapon_runtime_rows(next)->void:
@@ -402,6 +431,15 @@ static func _main_hand_ref(world,entity_id:int):
 	if inventory==null:return null
 	var instance_id:=str(inventory.equipped.get("MAIN_HAND",""))
 	return null if instance_id.is_empty() else inventory._item_ref(instance_id)
+
+
+static func _natural_weapon_id(world,entity_id:int)->String:
+	var species_id:=SpeciesCatalogScript.FALLBACK_SPECIES_ID
+	if world!=null and world.entities.has(entity_id):species_id=str(world.entities[entity_id].species_id)
+	var weapon_id:=SpeciesCatalogScript.natural_weapon_id(species_id)
+	if weapon_id.is_empty():weapon_id=SpeciesCatalogScript.natural_weapon_id(
+		SpeciesCatalogScript.FALLBACK_SPECIES_ID)
+	return weapon_id
 
 
 static func _guard(world,entity_id:int)->String:

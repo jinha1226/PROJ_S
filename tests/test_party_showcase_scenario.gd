@@ -156,19 +156,19 @@ func test_grouped_followers_stay_visible_when_trail_crosses_wall_and_facing_chan
 	return finish()
 
 
-func test_showcase_session_v3_save_load_replays_scenario_and_rejects_tamper() -> bool:
+func test_showcase_session_v4_save_load_replays_scenario_and_rejects_tamper() -> bool:
 	var source = Session.new(91, 92, "SHOWCASE_V1")
 	var hero := int(source.party_status().protagonist_id)
 	check(source.commit_exploration(Command.move_to(hero, Vector2i(3, 11))).accepted,
 		"showcase journal move")
 	var encoded := source.save_session_json()
 	var wire: Dictionary = JSON.parse_string(encoded)
-	check_eq(wire.keys().size(), 6, "session v3 exact top key count")
-	check_eq([int(wire.session_format_version), wire.scenario_id], [3, "SHOWCASE_V1"],
-		"session v3 scenario identity")
+	check_eq(wire.keys().size(), 7, "session v5 exact top key count")
+	check_eq([int(wire.session_format_version), wire.scenario_id], [5, "SHOWCASE_V1"],
+		"session v5 scenario identity")
 	var restored = Session.new(1, 2)
 	var loaded: Dictionary = restored.load_session_json(encoded)
-	check(bool(loaded.accepted), "showcase v3 load accepted: %s" % str(loaded))
+	check(bool(loaded.accepted), "showcase v4 load accepted: %s" % str(loaded))
 	check_eq(restored.scenario_id, "SHOWCASE_V1", "loaded scenario identity")
 	check_eq(restored.sim.snapshot(), source.sim.snapshot(), "showcase journal replay exact")
 	var before: Dictionary = restored.sim.snapshot()

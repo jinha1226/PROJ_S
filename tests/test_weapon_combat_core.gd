@@ -8,11 +8,63 @@ const ProgressionRegistry = preload("res://sim/progression_registry.gd")
 const MeleeCombatSystem = preload("res://sim/systems/melee_combat_system.gd")
 
 
+func test_stat_scaling_is_integer_baselined_capped_and_changes_only_raw_damage()->bool:
+	check_eq(WeaponRegistry.stat_scaling_rules(),{
+		"stat_baseline":5,"total_bonus_cap_milli":250,
+		"grade_coefficients_milli":{"NONE":0,"E":10,"D":20,"C":30,"B":40,"A":50}},
+		"JSON owns the exact shared scaling table")
+	check_eq(WeaponRules.scaling_bonus_milli({"STR":"C","DEX":"D","INT":"NONE"},
+		{"STR":5,"DEX":5,"INT":5}),0,"baseline has no bonus")
+	check_eq(WeaponRules.scaling_bonus_milli({"STR":"C","DEX":"D","INT":"NONE"},
+		{"STR":7,"DEX":8,"INT":99}),120,"grades sum positive excess only")
+	check_eq(WeaponRules.scaling_bonus_milli({"STR":"A","DEX":"A","INT":"A"},
+		{"STR":99,"DEX":99,"INT":99}),250,"bonus caps at 250 milli")
+	var baseline:=WeaponRules.build_attack_spec("SHORT_SWORD",0,10,17,23,2,
+		{"STR":5,"DEX":5,"INT":5})
+	var scaled:=WeaponRules.build_attack_spec("SHORT_SWORD",0,10,17,23,2,
+		{"STR":5,"DEX":7,"INT":5})
+	check_eq([baseline.unscaled_raw_damage,baseline.raw_damage,scaled.unscaled_raw_damage,
+		scaled.stat_scaling_bonus_milli,scaled.raw_damage],[14,14,14,100,15],
+		"A scaling applies deterministically to current raw power")
+	for field in ["attack_time","range_min","range_max","hit_chance_milli",
+			"armor_penetration_flat"]:
+		check_eq(scaled[field],baseline[field],"scaling leaves %s intrinsic"%field)
+	return finish()
+
+
+func test_stat_scaling_rejects_noncanonical_attacker_stats()->bool:
+	var invalid:Array=[{}, {"STR":5,"DEX":5}, {"STR":5,"DEX":5,"INT":5,"LUCK":1},
+		{"STR":-1,"DEX":5,"INT":5}, {"STR":true,"DEX":5,"INT":5},
+		{"STR":5.0,"DEX":5,"INT":5}]
+	for stats in invalid:
+		check_eq(WeaponRules.build_attack_spec("SHORT_SWORD",0,10,0,0,0,stats),{},
+			"invalid stats fail closed: %s"%stats)
+		check_eq(WeaponRules.scaling_bonus_milli(
+			{"STR":"NONE","DEX":"A","INT":"NONE"},stats),-1,
+			"pure bonus resolver rejects malformed stats")
+	return finish()
+
+
+func test_stat_scaling_rule_validation_blocks_balance_typos()->bool:
+	var valid:=WeaponRegistry.stat_scaling_rules()
+	for mutation in ["NONE_NONZERO","NON_MONOTONIC","EXCESSIVE_CAP","FLOAT_GRADE"]:
+		var row:Dictionary=valid.duplicate(true)
+		match mutation:
+			"NONE_NONZERO":row.grade_coefficients_milli.NONE=1
+			"NON_MONOTONIC":row.grade_coefficients_milli.C=20
+			"EXCESSIVE_CAP":row.total_bonus_cap_milli=1001
+			"FLOAT_GRADE":row.grade_coefficients_milli.A=50.0
+		check_eq(WeaponRegistry._stat_scaling_rules_error(row),"invalid_stat_scaling_rules",
+			"scaling typo fails strict validation: %s"%mutation)
+	return finish()
+
+
 func test_registry_has_only_committed_weapon_families_and_three_attack_forms() -> bool:
 	check(not MeleeCombatSystem.COMBAT_RULESET_ID.is_empty(), "existing melee bridge parses")
 	check_eq(WeaponRegistry.registry_error(), "", "weapon registry validates")
-	check_eq(WeaponRegistry.ids(), ["BOW", "CROSSBOW", "HAND_AXE", "MACE", "SHORT_SWORD",
-		"SPEAR", "THRUSTING_SWORD", "UNARMED"], "small committed weapon set")
+	check_eq(WeaponRegistry.ids(), ["BOW", "CROSSBOW", "HAND_AXE", "MACE",
+		"NATURAL_CLAW", "SHORT_SWORD", "SPEAR", "THRUSTING_SWORD", "UNARMED_STRIKE"],
+		"small committed weapon set")
 	var forms := {}
 	var proficiencies := {}
 	for weapon_id in WeaponRegistry.ids():
@@ -25,7 +77,7 @@ func test_registry_has_only_committed_weapon_families_and_three_attack_forms() -
 	check_eq(form_ids, ["IMPACT", "PIERCE", "SLASH"], "exact physical forms")
 	check_eq(proficiency_ids, ["AXE", "BLUNT", "RANGED", "SPEAR", "SWORD", "UNARMED"],
 		"exact proficiency categories")
-	check(int(WeaponRegistry.definition("UNARMED").attack_time)
+	check(int(WeaponRegistry.definition("UNARMED_STRIKE").attack_time)
 		< int(WeaponRegistry.definition("SHORT_SWORD").attack_time), "unarmed is intrinsically fast")
 	check(WeaponRegistry.definition("CROSSBOW").reload_required \
 		and not WeaponRegistry.definition("BOW").reload_required, "only crossbow reloads")

@@ -99,7 +99,7 @@ static func wire_error(row:Variant)->String:
 	var actor_id:=Int64CodecScript.parse(row.entity_id,"duel actor")
 	if actor_id<1 or actor_id>5:return "invalid_duel_actor_id"
 	if not row.display_name is String or str(row.display_name).is_empty() \
-			or row.species_id not in ["amphibian","dwarf","goblin","human"] \
+			or row.species_id not in ["beastkin","dwarf","goblin","human"] \
 			or row.presence not in PRESENCES:return "invalid_duel_actor_identity"
 	if not row.position is Array or row.position.size()!=2 or not _integer(row.position[0]) \
 			or not _integer(row.position[1]) or int(row.position[0])<0 or int(row.position[0])>=21 \

@@ -82,11 +82,13 @@ total_risk = fire + water + electric + poison component
 |---|---:|---:|---:|---:|
 | `default` | 0 | 0 | 0 | 0 |
 | `human` | 20 | 25 | 10 | 10 |
+| `elf` | 20 | 25 | 10 | 10 |
+| `orc` | 20 | 25 | 10 | 10 |
+| `beastkin` | 20 | 25 | 10 | 10 |
 | `goblin` | -10 | -10 | -10 | 10 |
-| `amphibian` | -25 | 100 | -25 | 30 |
 | `dwarf` | 40 | -25 | 20 | 20 |
 
-예를 들어 얕은 물 노출 80은 human 60, amphibian 0, dwarf 100이고, 불 80은 human 64, amphibian 100입니다. `assess_destination()`은 MOVE traversal·terrain 비용·sample·affinity·component를 함께 반환하지만, 모두 detached 설명 DTO입니다.
+새 플레이어 종족 elf/orc/beastkin은 별도 환경 보너스가 정해질 때까지 human 기준값을 사용합니다. 예를 들어 얕은 물 노출 80은 human/elf/orc/beastkin 60, dwarf 100입니다. `assess_destination()`은 MOVE traversal·terrain 비용·sample·affinity·component를 함께 반환하지만, 모두 detached 설명 DTO입니다.
 
 ## 종족 기준 관계
 

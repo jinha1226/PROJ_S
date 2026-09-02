@@ -8,6 +8,7 @@ const ResolutionScript = preload("res://sim/attack_resolution.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const DefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 
 var world
@@ -68,7 +69,7 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
-			target_evasion, target_armor)
+			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id))
 		if weapon_spec.is_empty(): return {}
 	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() \
 		else clampi(500 + int(attacker_profile.accuracy_milli) - target_evasion, 50, 950)
@@ -312,7 +313,8 @@ func build_weapon_assessment(attacker_id: int, target_id: int, weapon_id: String
 	var proficiency_rank := _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
 	var spec := WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 		int(attacker_profile.power), int(attacker_profile.accuracy_milli),
-		int(target_profile.evasion_milli), int(target_profile.armor_flat))
+		int(target_profile.evasion_milli), int(target_profile.armor_flat),
+		ActorStatRulesScript.for_entity(world,attacker_id))
 	if spec.is_empty(): return {}
 	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,

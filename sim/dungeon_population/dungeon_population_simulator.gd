@@ -21,7 +21,7 @@ func _init(p_seed:int=1,p_registry=null)->void:
 
 func reset(p_seed:int=1)->Dictionary:
 	state=StateScript.new();state.seed=p_seed
-	var species:=["human","dwarf","goblin","amphibian"]
+	var species:=["human","dwarf","goblin","beastkin"]
 	var names:=["아린","보라","카일","도윤","세라"]
 	for entity_id in range(1,ACTOR_COUNT+1):
 		var actor=ActorScript.new();actor.entity_id=entity_id;actor.display_name=names[entity_id-1]
@@ -198,8 +198,8 @@ func recent_logs(limit:int=32)->Array:
 func species_relation_prior(first_species:String,second_species:String)->int:
 	if first_species==second_species:return 60
 	var pair:Array=[first_species,second_species];pair.sort()
-	var priors:={"dwarf|human":25,"goblin|human":-75,"amphibian|human":-10,
-		"dwarf|goblin":-80,"amphibian|dwarf":5,"amphibian|goblin":-35}
+	var priors:={"dwarf|human":25,"goblin|human":-75,"beastkin|human":-10,
+		"dwarf|goblin":-80,"beastkin|dwarf":5,"beastkin|goblin":-35}
 	return int(priors.get(str(pair[0])+"|"+str(pair[1]),-20))
 
 func relation_assessment(actor_id:Variant,target_id:Variant)->Dictionary:
