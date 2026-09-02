@@ -72,6 +72,12 @@ func test_registry_has_only_committed_weapon_families_and_three_attack_forms() -
 		forms[weapon.attack_form] = true
 		proficiencies[weapon.proficiency_id] = true
 		check(weapon.ammo_kind in ["NONE", "ARROW", "BOLT"], "no thrown or complex ammunition")
+		var body_keys:Array=weapon.body_attack.keys();body_keys.sort()
+		check_eq(body_keys,["base_force","contact_size","penetration","reference_damage",
+			"stagger_force"],"%s has an explicit body packet"%weapon_id)
+		check(int(weapon.body_attack.contact_size)>0 \
+			and int(weapon.body_attack.reference_damage)>0,
+			"%s body packet has nonzero divisors"%weapon_id)
 	var form_ids: Array = forms.keys(); form_ids.sort()
 	var proficiency_ids: Array = proficiencies.keys(); proficiency_ids.sort()
 	check_eq(form_ids, ["IMPACT", "PIERCE", "SLASH"], "exact physical forms")
@@ -81,6 +87,16 @@ func test_registry_has_only_committed_weapon_families_and_three_attack_forms() -
 		< int(WeaponRegistry.definition("SHORT_SWORD").attack_time), "unarmed is intrinsically fast")
 	check(WeaponRegistry.definition("CROSSBOW").reload_required \
 		and not WeaponRegistry.definition("BOW").reload_required, "only crossbow reloads")
+	check(int(WeaponRegistry.definition("CROSSBOW").body_attack.penetration) \
+		> int(WeaponRegistry.definition("BOW").body_attack.penetration),
+		"crossbow body penetration is data, not a weapon-name branch")
+	check(int(WeaponRegistry.definition("MACE").body_attack.stagger_force) \
+		> int(WeaponRegistry.definition("SHORT_SWORD").body_attack.stagger_force),
+		"impact stagger distinction is explicit data")
+	var malformed:Dictionary=WeaponRegistry.definition("SHORT_SWORD").to_dict()
+	malformed.body_attack.contact_size=0
+	check_eq(WeaponRegistry.definition_error(malformed),"invalid_weapon_body_attack",
+		"invalid body packet fails registry validation")
 	return finish()
 
 
