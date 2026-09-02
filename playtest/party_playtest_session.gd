@@ -21,6 +21,7 @@ const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -88,6 +89,16 @@ const PERSONALITY_ARCHETYPES := [
 	{"archetype_id":"FIERY_CHARGER", "label":"불같은 돌격수",
 		"center":{"aggression":830,"altruism":350,"boldness":740,"composure":300}},
 ]
+const PARTY_MORALE_TRIGGER_PRESENTATION := {
+	"SELF_DAMAGE":{"kind":"DISTRESS","label_ko":"직접 피해"},
+	"SELF_DOWNED":{"kind":"DISTRESS","label_ko":"자신이 쓰러짐"},
+	"ALLY_DOWNED":{"kind":"DISTRESS","label_ko":"동료가 쓰러짐"},
+	"ALLY_DIED":{"kind":"DISTRESS","label_ko":"동료를 잃음"},
+	"ENEMY_DIED":{"kind":"RELIEF","label_ko":"적을 쓰러뜨림"},
+	"OVERRIDE_STRESS":{"kind":"DISTRESS","label_ko":"강제 지시 부담"},
+	"ALLY_FEAR_CONTAGION":{"kind":"CONTAGION","label_ko":"가까운 동료의 공포"},
+	"SAFE_RECOVERY":{"kind":"RECOVERY","label_ko":"안전한 곳에서 진정"},
+}
 
 var sim
 var world_seed := DEFAULT_WORLD_SEED
@@ -1196,6 +1207,65 @@ func party_status() -> Dictionary:
 		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
+
+
+func party_morale_observation() -> Dictionary:
+	var empty := {"schema_version":1,"ruleset_id":PartyMoraleModelScript.RULESET_ID,
+		"available":false,"sampled_step_index":-1,"sampled_world_time":-1,
+		"panic_enter_threshold":PartyMoraleModelScript.PANIC_ENTER,
+		"panic_exit_threshold":PartyMoraleModelScript.PANIC_EXIT,
+		"members":[]}
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return empty.duplicate(true)
+	var state = sim.world.party_encounter
+	var latest_by_actor: Dictionary = {}
+	for event in sim.world.events:
+		if event.type == "party.morale_changed" \
+				and event.actor_id in state.active_party_member_ids:
+			latest_by_actor[event.actor_id] = event
+	var member_ids: Array = state.active_party_member_ids.duplicate()
+	member_ids.sort_custom(func(a,b):
+		var member_a=state.member(int(a));var member_b=state.member(int(b))
+		return int(member_a.roster_slot)<int(member_b.roster_slot) \
+			if int(member_a.roster_slot)!=int(member_b.roster_slot) else int(a)<int(b))
+	var rows: Array[Dictionary] = []
+	for member_id_value in member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		var entity = sim.world.entities.get(member_id)
+		if member == null or entity == null:
+			continue
+		var latest_change: Variant = null
+		if latest_by_actor.has(member_id):
+			var event = latest_by_actor[member_id]
+			var cause_rows: Array[Dictionary] = []
+			for trigger_value in event.data.get("trigger_codes",[]):
+				var trigger_code := str(trigger_value)
+				var presentation: Dictionary = PARTY_MORALE_TRIGGER_PRESENTATION.get(
+					trigger_code,{"kind":"DISTRESS","label_ko":"긴장 변화"})
+				cause_rows.append({"code":trigger_code,"kind":str(presentation.kind),
+					"label_ko":str(presentation.label_ko)})
+			latest_change = {"event_id":int(event.id),"step_index":int(event.step_index),
+				"world_time":int(event.world_time),
+				"stress_before":int(event.data.stress_before),
+				"stress_after":int(event.data.stress_after),
+				"net_delta":int(event.data.stress_after)-int(event.data.stress_before),
+				"direct_delta":int(event.data.direct_delta),
+				"contagion_delta":int(event.data.contagion_delta),
+				"recovery_delta":int(event.data.recovery_delta),
+				"source_event_count":event.data.get("source_event_ids",[]).size(),
+				"causes":cause_rows}
+		rows.append({"entity_id":member_id,"display_name":str(entity.display_name),
+			"role":str(member.role),"presence":str(member.presence),
+			"stress":int(member.stress),"mode":str(member.mental_mode),
+			"mode_label":"공황" if member.mental_mode=="PANIC" else "평정",
+			"latest_change":latest_change})
+	return {"schema_version":1,"ruleset_id":PartyMoraleModelScript.RULESET_ID,
+		"available":true,"sampled_step_index":int(sim.world.step_index),
+		"sampled_world_time":int(sim.world.world_time),
+		"panic_enter_threshold":PartyMoraleModelScript.PANIC_ENTER,
+		"panic_exit_threshold":PartyMoraleModelScript.PANIC_EXIT,
+		"members":rows}.duplicate(true)
 
 
 func presentation_state() -> Dictionary:

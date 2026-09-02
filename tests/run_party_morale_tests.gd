@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TEST_FILES := ["test_party_morale_model.gd"]
+const TEST_FILES := ["test_party_morale_model.gd","test_party_morale_matrix.gd"]
 
 
 func _init() -> void:

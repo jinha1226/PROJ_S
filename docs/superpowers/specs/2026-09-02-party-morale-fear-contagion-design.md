@@ -30,6 +30,27 @@
 - 출력은 `schema_version`, `ruleset_id`, `member_rows`만 가지며 각 행은 id, 이전/이후
   stress와 direct/contagion/recovery delta, 이전/이후 모드, 정렬된 trigger code를 담는다.
 
+## P3-2 권위 계약
+
+- `PartyMemberState` v14는 stress와 별도로 `mental_mode`를 저장한다. v1~v13은
+  stress 850 이상만 PANIC으로 이행하며, 현재 v14 wire에는 모드가 반드시 있어야 한다.
+- 한 행동/스케줄 배치는 사기 모델을 한 번만 커밋한다. `party.morale_changed`는 원인
+  이벤트 ID, 세 delta, 전후 stress·모드, 정렬된 trigger code를 남기고 최신 행은 저장된
+  파티원 상태와 정확히 일치해야 한다.
+- 사기 이벤트 생성 실패나 검증 실패는 해당 턴의 사건, 상태, 시간, RNG를 함께
+  롤백한다. 오버라이드는 stress를 직접 쓰지 않고 권위 이벤트를 통해서만 반영한다.
+
+## P3-3 관찰·매트릭스 계약
+
+- `party_morale_observation()`은 활성 파티원별 현재 stress·모드와 최신 변화량,
+  원인 code/한국어 label을 detached DTO로 제공한다. 원인 개수만 공개하고 내부 사건의
+  대상·위치는 노출하지 않아 관찰 표면이 숨은 적 정보를 새로 누설하지 않는다.
+- CI 시드 매트릭스는 임계값 직전의 합법적 시작 상태에서 첫 권위 오버라이드로 경계를
+  통과시킨 뒤 자율 턴을 진행한다. PANIC의 허용 행동은 RETREAT/HOLD뿐이며, 같은 상태의
+  NORMAL 반사실과 실제 선택이 달라지는지 확인한다.
+- 모든 조우가 제한 턴 안에 종료되어야 하고, 공포 전염·PANIC 진입·안전 회복이 각각
+  한 번 이상 발생해야 한다. 각 샘플 snapshot은 즉시 복원했을 때 완전히 같아야 한다.
+
 ## 비범위
 
 - 적 진영 사기와 도주, 화면 밖 전투(P4), 새 행동 타입, RNG 기반 공포 판정.

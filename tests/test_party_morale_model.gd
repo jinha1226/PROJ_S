@@ -123,6 +123,56 @@ func test_authoritative_override_commits_one_morale_chain_and_restores_exactly()
 	return finish()
 
 
+func test_morale_observation_is_explainable_detached_and_restore_exact() -> bool:
+	var session = _engaged()
+	var state = session.sim.world.party_encounter
+	var companion_id := int(state.active_party_member_ids[1])
+	check(session.begin_turn(Action.hold(state.protagonist_id)).accepted,
+		"observation fixture begins a public turn")
+	check(session.override_companion(companion_id, Action.hold(companion_id)).accepted,
+		"observation fixture records override pressure")
+	check(session.commit_turn().accepted,"observation fixture commits")
+	var snapshot_before: Dictionary = session.sim.snapshot()
+	var observation: Dictionary = session.party_morale_observation()
+	var keys: Array = observation.keys(); keys.sort()
+	check_eq(keys,["available","members","panic_enter_threshold",
+		"panic_exit_threshold","ruleset_id","sampled_step_index",
+		"sampled_world_time","schema_version"],"morale DTO has an exact envelope")
+	check(observation.available \
+		and observation.members.size()==state.active_party_member_ids.size(),
+		"morale DTO exposes the active party only")
+	var companion_row: Dictionary = {}
+	for row in observation.members:
+		if int(row.entity_id)==companion_id: companion_row=row
+	check(not companion_row.is_empty() and companion_row.latest_change is Dictionary,
+		"companion exposes its latest authoritative morale change")
+	if not companion_row.is_empty() and companion_row.latest_change is Dictionary:
+		var change: Dictionary = companion_row.latest_change
+		check_eq(change.source_event_count,1,"cause DTO counts the override source")
+		var override_causes: Array = change.causes.filter(func(row):
+			return str(row.code)=="OVERRIDE_STRESS" and str(row.kind)=="DISTRESS" \
+				and str(row.label_ko)=="강제 지시 부담")
+		check_eq(override_causes.size(),1,"cause code has stable player-facing meaning")
+		check_eq([change.stress_after,companion_row.stress,companion_row.mode],
+			[state.member(companion_id).stress,state.member(companion_id).stress,
+			state.member(companion_id).mental_mode],
+			"observation projects current morale authority")
+	var expected: Dictionary = observation.duplicate(true)
+	observation.members[0].stress = -1
+	if observation.members[1].latest_change is Dictionary:
+		observation.members[1].latest_change.causes.clear()
+	check_eq(session.party_morale_observation(),expected,
+		"nested observation rows are detached")
+	check_eq(session.sim.snapshot(),snapshot_before,
+		"reading and corrupting the DTO never mutates the world")
+	var restored = Session.new(9,9)
+	check(restored.load_session_json(session.save_session_json()).accepted,
+		"observation fixture restores")
+	check_eq(restored.party_morale_observation(),expected,
+		"morale explanation remains exact after replay")
+	return finish()
+
+
 func test_authoritative_morale_crosses_and_persists_panic_threshold() -> bool:
 	var session = _engaged()
 	var state = session.sim.world.party_encounter
@@ -139,6 +189,11 @@ func test_authoritative_morale_crosses_and_persists_panic_threshold() -> bool:
 	check_eq(transitions.size(), 1, "panic transition is emitted exactly once")
 	check_eq(state.member(companion_id).mental_mode, "PANIC",
 		"panic mode persists after the batch")
+	var observed: Dictionary = session.party_morale_observation()
+	var panic_rows: Array = observed.members.filter(func(row):
+		return int(row.entity_id)==companion_id and str(row.mode)=="PANIC" \
+			and str(row.mode_label)=="공황")
+	check_eq(panic_rows.size(),1,"public observation exposes persisted panic")
 	return finish()
 
 
