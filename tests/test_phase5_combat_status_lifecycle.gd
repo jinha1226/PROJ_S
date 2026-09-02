@@ -79,19 +79,19 @@ func test_exact_registries_formulas_and_sha_reference_vector() -> bool:
 	check_eq(Melee.lane_roll_milli(key,"BLEED"),405,"bleed roll")
 	return finish()
 
-func test_snapshot_v8_exact_rows_strict_rejection_and_round_trip() -> bool:
+func test_snapshot_v9_exact_rows_strict_rejection_and_round_trip() -> bool:
 	var sim = Simulator.new(3,2,44); var hero=sim.world.add_entity("hero","Hero",Vector2i.ZERO)
 	var goblin=sim.world.add_entity("melee_enemy","Goblin",Vector2i(1,0))
 	var snapshot: Dictionary = sim.snapshot()
 	check_eq([snapshot.snapshot_version,snapshot.ruleset_version,snapshot.combat_ruleset_id,
 		snapshot.combat_profile_ruleset_id,snapshot.combatant_schema_id,snapshot.agent_state_schema_id,
 		snapshot.life_ruleset_id,snapshot.status_ruleset_id,snapshot.party_member_schema_id],
-		[8,"phase5-combat-status-lifecycle-v1","deterministic-melee-resolution-v1",
+		[9,"phase5-combat-status-lifecycle-v1","deterministic-melee-resolution-v1",
 		"combat-profile-registry-v1","combatant-state-v1","agent-state-v2",
-		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v8 IDs")
+		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v9 IDs")
 	check_eq(snapshot.combatant_states.map(func(r): return r.entity_id),[str(hero.id),str(goblin.id)],"combatant order")
-	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v8 round trip")
-	var old=snapshot.duplicate(true);old.snapshot_version=7
+	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v9 round trip")
+	var old=snapshot.duplicate(true);old.snapshot_version=8
 	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","v6 rejected")
 	var missing=snapshot.duplicate(true);missing.combatant_states.pop_back()
 	check_eq(WorldState.snapshot_restore_error(missing),"combatant_entity_set_mismatch","missing combatant")

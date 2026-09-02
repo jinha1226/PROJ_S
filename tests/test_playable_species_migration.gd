@@ -6,6 +6,29 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const DropRegistry = preload("res://sim/species_drop_registry.gd")
 const WorldState = preload("res://sim/world_state.gd")
+const Species = preload("res://sim/species_catalog_registry.gd")
+const WeaponRegistry = preload("res://sim/weapon_registry.gd")
+
+
+func test_unified_catalog_owns_exact_stats_and_natural_weapon_cross_refs()->bool:
+	check_eq(Species.registry_error(),"","unified species catalog validates")
+	var expected:={
+		"human":[{"STR":5,"DEX":5,"INT":5},"UNARMED_STRIKE"],
+		"elf":[{"STR":3,"DEX":6,"INT":6},"UNARMED_STRIKE"],
+		"dwarf":[{"STR":6,"DEX":4,"INT":5},"UNARMED_STRIKE"],
+		"orc":[{"STR":7,"DEX":4,"INT":4},"UNARMED_STRIKE"],
+		"beastkin":[{"STR":5,"DEX":7,"INT":3},"NATURAL_CLAW"],
+		"generic_humanoid":[{"STR":5,"DEX":5,"INT":5},"UNARMED_STRIKE"],
+		"goblin":[{"STR":4,"DEX":6,"INT":3},"UNARMED_STRIKE"],
+	}
+	for species_id in expected:
+		var weapon_id:=Species.natural_weapon_id(species_id)
+		check_eq([Species.base_stats(species_id),weapon_id],expected[species_id],
+			"%s exact combat identity"%species_id)
+		check(WeaponRegistry.has(weapon_id) \
+			and bool(WeaponRegistry.definition(weapon_id).natural_weapon),
+			"%s natural weapon cross-ref is natural"%species_id)
+	return finish()
 
 
 func test_player_registry_is_the_exact_five_species_contract() -> bool:
@@ -90,7 +113,7 @@ func test_picker_has_five_ordered_touch_targets_and_commits_once() -> bool:
 
 
 func test_old_growth_and_removed_species_are_rejected_but_goblin_monster_paths_remain() -> bool:
-	var old_growth:Dictionary=State.new("human").to_dict();old_growth.schema_version=1
+	var old_growth:Dictionary=State.new("human").to_dict();old_growth.schema_version=2
 	check_eq(State.wire_error(old_growth),"unsupported_growth_build_schema",
 		"old nested growth schema is rejected")
 	var removed:Dictionary=State.new("human").to_dict();removed.species_id="am"+"phibian"
@@ -103,17 +126,31 @@ func test_old_growth_and_removed_species_are_rejected_but_goblin_monster_paths_r
 	return finish()
 
 
-func test_world_snapshot_v7_is_rejected_before_session_object_restore() -> bool:
+func test_old_session_world_party_and_growth_versions_reject_before_object_restore() -> bool:
 	var source=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var wire:Dictionary=JSON.parse_string(source.save_session_json())
-	wire.snapshot.snapshot_version=7
+	wire.snapshot.snapshot_version=8
 	check_eq(WorldState.snapshot_restore_error(wire.snapshot),"unsupported_snapshot_version",
-		"v7 world wire is rejected by header preflight")
+		"v8 world wire is rejected by header preflight")
 	var target=Session.new(77,88,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var before:Dictionary=target.sim.snapshot()
 	var result:Dictionary=target.load_session_json(JSON.stringify(wire))
 	check(not bool(result.get("accepted",false)) \
 		and str(result.get("reason",""))=="unsupported_snapshot_version",
-		"session raw preflight rejects v7 explicitly")
-	check_eq(target.sim.snapshot(),before,"rejected v7 constructs no replacement world")
+		"session raw preflight rejects v8 explicitly")
+	check_eq(target.sim.snapshot(),before,"rejected v8 constructs no replacement world")
+	var old_session:Dictionary=JSON.parse_string(source.save_session_json())
+	old_session.session_format_version=4
+	result=target.load_session_json(JSON.stringify(old_session))
+	check(not bool(result.accepted) and result.reason=="invalid_party_session_wire",
+		"session v4 rejects at outer wire preflight")
+	check_eq(target.sim.snapshot(),before,"rejected session v4 replaces nothing")
+	for pair in [["party",15],["growth",2]]:
+		var old_nested:Dictionary=JSON.parse_string(source.save_session_json())
+		if pair[0]=="party":old_nested.snapshot.party_encounter.schema_version=pair[1]
+		else:old_nested.snapshot.party_encounter.protagonist_growth.schema_version=pair[1]
+		result=target.load_session_json(JSON.stringify(old_nested))
+		check(not bool(result.accepted) and result.reason=="unsupported_player_species_snapshot",
+			"old %s schema rejects at nested raw preflight"%pair[0])
+		check_eq(target.sim.snapshot(),before,"rejected %s schema replaces nothing"%pair[0])
 	return finish()

@@ -33,6 +33,39 @@ func _fixture()->Dictionary:
 	return {"sim":sim,"hero":int(hero.id),"mate":int(mate.id)}
 
 
+func test_species_natural_weapon_and_atomic_item_requirements_are_authoritative()->bool:
+	var sim=Simulator.create(12,12,91)
+	var human=sim.world.add_entity("hero","인간",Vector2i(2,2),120,[],"human")
+	var beastkin=sim.world.add_entity("hero","수인",Vector2i(3,2),120,[],"beastkin")
+	var elf=sim.world.add_entity("hero","엘프",Vector2i(4,2),120,[],"elf")
+	check_eq([Ops.equipped_weapon_id(sim.world,human.id),
+		Ops.equipped_weapon_id(sim.world,beastkin.id)],
+		["UNARMED_STRIKE","NATURAL_CLAW"],"empty hand resolves exactly one species weapon")
+	check_eq([sim.world.inventory_of(human.id).backpack.size(),
+		sim.world.inventory_of(beastkin.id).backpack.size()],[0,0],
+		"natural weapons require no inventory instance")
+	var axe_id:="ITEM_00000000000000000501"
+	sim.world.item_state.next_item_instance_id=503
+	sim.world.item_state.inventory_rows[elf.id]=Inventory.new([
+		Item.new(axe_id,"WEAPON_HAND_AXE")])
+	var before:Dictionary=sim.world.item_state.to_dict()
+	var rejected:=Ops.commit_equip(sim.world,elf.id,axe_id,"MAIN_HAND",elf.position,0)
+	check(not bool(rejected.accepted) and rejected.reason=="item_requirements_not_met",
+		"underqualified equip has a stable rejection")
+	check_eq(sim.world.item_state.to_dict(),before,"requirement rejection is an atomic no-op")
+	# An elf is qualified for the starter sword (DEX 6) but not the STR 5 axe.
+	var sword_id:="ITEM_00000000000000000502"
+	sim.world.item_state.inventory_rows[elf.id]=Inventory.new([
+		Item.new(axe_id,"WEAPON_HAND_AXE"),Item.new(sword_id,"WEAPON_SHORT_SWORD")])
+	check(bool(Ops.commit_equip(sim.world,elf.id,sword_id,"MAIN_HAND",elf.position,0).accepted),
+		"qualified equip succeeds")
+	# Forging the underqualified axe into the slot is rejected by world validation.
+	sim.world.item_state.inventory_rows[elf.id].equipped.MAIN_HAND=axe_id
+	check_eq(sim.world.world_state_error(),"item_requirements_not_met",
+		"snapshot/world validation rejects forged equipment")
+	return finish()
+
+
 func test_every_accepted_transaction_raises_the_item_revision_by_exactly_one()->bool:
 	var fixture:=_fixture()
 	var world=fixture.sim.world
@@ -251,7 +284,7 @@ func test_protagonist_weapon_authority_is_the_equipped_main_hand_item()->bool:
 	check_eq([str(equipment.weapon_id),int(equipment.arrows),int(equipment.bolts)],
 		["SHORT_SWORD",12,6],"the world rows reproduce the starting weapon and ammo")
 	check(session.unequip_inventory_slot("MAIN_HAND").accepted,"the sword unequips")
-	check_eq(str(session.protagonist_equipment().weapon_id),"UNARMED",
+	check_eq(str(session.protagonist_equipment().weapon_id),"UNARMED_STRIKE",
 		"an empty main hand reads as unarmed")
 	check(session.equip_inventory_item("START_CROSSBOW_001","MAIN_HAND").accepted,
 		"the crossbow equips through the item facade")

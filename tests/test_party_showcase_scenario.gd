@@ -163,9 +163,9 @@ func test_showcase_session_v4_save_load_replays_scenario_and_rejects_tamper() ->
 		"showcase journal move")
 	var encoded := source.save_session_json()
 	var wire: Dictionary = JSON.parse_string(encoded)
-	check_eq(wire.keys().size(), 7, "session v4 exact top key count")
-	check_eq([int(wire.session_format_version), wire.scenario_id], [4, "SHOWCASE_V1"],
-		"session v4 scenario identity")
+	check_eq(wire.keys().size(), 7, "session v5 exact top key count")
+	check_eq([int(wire.session_format_version), wire.scenario_id], [5, "SHOWCASE_V1"],
+		"session v5 scenario identity")
 	var restored = Session.new(1, 2)
 	var loaded: Dictionary = restored.load_session_json(encoded)
 	check(bool(loaded.accepted), "showcase v4 load accepted: %s" % str(loaded))

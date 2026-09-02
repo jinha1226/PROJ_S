@@ -27,8 +27,14 @@ func test_registry_bridges_existing_weapon_authority_without_copying_attack_valu
 	var detached:=Registry.definition_dict("WEAPON_SHORT_SWORD");detached.label="변조"
 	check_eq(Registry.definition("WEAPON_SHORT_SWORD").label,"단검",
 		"registry definitions are detached immutable values")
+	for malformed in [{"STR":0,"DEX":4.0,"INT":0},{"STR":0,"DEX":"4","INT":0},
+			{"STR":0,"DEX":4,"INT":0,"LUCK":0},{"STR":0,"DEX":-1,"INT":0}]:
+		var forged:Dictionary=Registry.DEFINITIONS.WEAPON_SHORT_SWORD.duplicate(true)
+		forged.requirements=malformed
+		check(not Registry.definition_error(forged).is_empty(),
+			"raw requirements cannot be coerced: %s"%malformed)
 	for weapon_id in WeaponRegistry.ids():
-		if weapon_id=="UNARMED":continue
+		if bool(WeaponRegistry.definition(weapon_id).natural_weapon):continue
 		var definition_id:=Registry.weapon_definition_id(weapon_id)
 		check(not definition_id.is_empty() \
 				and Registry.definition(definition_id).weapon_id==weapon_id,

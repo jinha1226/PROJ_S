@@ -255,7 +255,7 @@ func test_facade_dtos_are_detached_and_save_load_preserves_contact() -> bool:
 	var session=Session.new(); var status=session.party_status(); status.safe_phase="CORRUPTED"
 	var cards=session.party_cards(); cards[0].element_exposure.total_risk=999
 	check_eq(session.party_status().safe_phase,"GROUPED","status detached")
-	check_eq(session.party_status().session_format_version,4,"session v4 surface")
+	check_eq(session.party_status().session_format_version,5,"session v5 surface")
 	check_eq(session.party_status().scenario_id,"REGRESSION_V1","default regression scenario surface")
 	check(session.party_cards()[0].element_exposure.total_risk!=999,"nested cards detached")
 	var hero=session.sim.world.party_encounter.protagonist_id; session.commit_exploration(Command.wait(hero))

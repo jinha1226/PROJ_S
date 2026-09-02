@@ -15,8 +15,8 @@ func test_snapshot_v3_header_and_json_round_trip_preserve_all_state() -> bool:
 	var source: Dictionary = sim.snapshot()
 	check_eq([source.snapshot_version, source.ruleset_version,
 		source.terrain_ruleset_id, source.hazard_affinity_ruleset_id],
-		[8, "phase5-combat-status-lifecycle-v1", "terrain-registry-v1", "hazard-affinity-v1"],
-		"v8 semantic header")
+		[9, "phase5-combat-status-lifecycle-v1", "terrain-registry-v1", "hazard-affinity-v1"],
+		"v9 semantic header")
 	check(source.has("party_encounter") and source.party_encounter == null, "v6 canonical party null")
 	check_eq([source.combat_ruleset_id,source.combat_profile_ruleset_id,source.combatant_schema_id,
 		source.agent_state_schema_id,source.life_ruleset_id,source.status_ruleset_id,source.party_member_schema_id],

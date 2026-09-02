@@ -15,9 +15,9 @@ func test_registry_has_five_species_two_rank_branches_and_four_hook_kinds() -> b
 	check_eq(Registry.registry_error(), "", "growth registry validates")
 	check_eq(Registry.species_ids(), ["beastkin", "dwarf", "elf", "human", "orc"],
 		"player registry has the canonical five species")
-	check_eq([Registry.STAT_DEFINITIONS.MIGHT.label, Registry.STAT_DEFINITIONS.AGILITY.label,
-		Registry.STAT_DEFINITIONS.VITALITY.label, Registry.SAVE_MIGRATION_POLICY],
-		["완력", "기민", "활력", "HARD_CUT"], "recommended stat names and save cut are explicit")
+	check_eq([Registry.STAT_DEFINITIONS.STR.label, Registry.STAT_DEFINITIONS.DEX.label,
+		Registry.STAT_DEFINITIONS.INT.label, Registry.SAVE_MIGRATION_POLICY],
+		["근력", "민첩", "지능", "HARD_CUT"], "recommended stat names and save cut are explicit")
 	for species_id in Registry.species_ids():
 		var definition := Registry.species_definition(species_id)
 		check(not definition.fixed_trait.is_empty(), "%s has one fixed trait" % species_id)
@@ -42,7 +42,7 @@ func test_state_spending_hard_cut_wire_and_round_trip_are_deterministic() -> boo
 	state.xp_total = Registry.xp_floor_for_level(17)
 	check_eq([state.level(), state.stat_points_available(), state.species_points_available()],
 		[17, 5, 2], "level retains XP and exposes both point ledgers")
-	var result := state.commit_spend_stat_point("MIGHT")
+	var result := state.commit_spend_stat_point("STR")
 	check(result.accepted, "available stat point spends")
 	state = result.state
 	result = state.commit_spend_species_point("ADAPTATION")
@@ -51,7 +51,7 @@ func test_state_spending_hard_cut_wire_and_round_trip_are_deterministic() -> boo
 	result = state.commit_spend_species_point("ADAPTATION")
 	check(result.accepted, "level 17 species point buys rank two")
 	state = result.state
-	check_eq([state.stat_allocations.MIGHT, state.species_branch_ranks.ADAPTATION,
+	check_eq([state.stat_allocations.STR, state.species_branch_ranks.ADAPTATION,
 		state.species_points_available()], [1, 2, 0], "points are bounded and branch ranks are sequential")
 	check_eq(state.commit_spend_species_point("FIELDCRAFT").reason,
 		"no_growth_species_points", "one run cannot spend a third species point")
@@ -269,13 +269,13 @@ func test_session_stat_spend_is_atomic_and_old_party_schema_is_hard_cut() -> boo
 	check(bool(awarded.accepted),"fixture reaches its first stat-point gate")
 	state.protagonist_growth=awarded.state
 	var start_time:int=session.sim.world.world_time
-	var spent:Dictionary=session.spend_growth_stat_point("MIGHT")
+	var spent:Dictionary=session.spend_growth_stat_point("STR")
 	check(bool(spent.get("accepted",false)) and spent.time_cost==0 \
-		and session.protagonist_growth_build().stats.MIGHT==6,
+		and session.protagonist_growth_build().stats.STR==6,
 		"session spends a stat point without consuming world time")
 	check_eq(session.sim.world.world_time,start_time,"stat allocation is a zero-time build decision")
 	var before:Dictionary=session.sim.snapshot()
-	var duplicate:Dictionary=session.spend_growth_stat_point("MIGHT")
+	var duplicate:Dictionary=session.spend_growth_stat_point("STR")
 	check(not bool(duplicate.get("accepted",false)) \
 		and session.sim.snapshot()==before,"overspend rejection is an atomic no-op")
 

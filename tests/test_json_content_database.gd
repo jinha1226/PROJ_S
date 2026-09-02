@@ -125,6 +125,6 @@ func test_species_catalog_is_the_only_species_balance_authority()->bool:
 		"picker order comes from the unified catalog")
 	for species_id in Species.playable_ids():
 		var row:=Species.catalog_row(species_id)
-		check_eq(row.keys().size(),4,
-			"%s has one row containing identity, growth and body"%species_id)
+		check_eq(row.keys().size(),6,
+			"%s has one row containing identity, combat stats, growth and body"%species_id)
 	return finish()
