@@ -71,8 +71,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var solo_identity=card.find_child("SoloIdentity",true,false) as Control
 	var actor_seal=card.find_child("ActorGlyphSeal",true,false) as Label
 	_check(card.find_child("Portrait",true,false)==null and solo_identity!=null \
-		and actor_seal!=null and actor_seal.text=="ㅇ" and actor_seal.custom_minimum_size.x==44,
-		"%s solo dossier did not use the 44px Hangul actor seal"%viewport_size)
+		and actor_seal!=null and actor_seal.text=="@" and actor_seal.custom_minimum_size.x==44,
+		"%s solo dossier did not use the 44px ASCII actor seal"%viewport_size)
 	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==68 \
 		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==80 \
 		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==84,

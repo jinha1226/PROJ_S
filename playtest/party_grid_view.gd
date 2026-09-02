@@ -12,6 +12,7 @@ const GRAPHICS_MODE_FLAT_2D := "FLAT_2D"
 const GRAPHICS_MODE_DIORAMA_2_5D := "DIORAMA_2_5D"
 const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D]
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
+const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
@@ -103,6 +104,7 @@ var _occupied_visible_cells:Dictionary={}
 var _torch_positions:Array[Vector2i]=[]
 var _fire_light_positions:Array[Dictionary]=[]
 var _visible_torch_count:=0
+var _visible_environment_count:=0
 var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
 var _awareness_pulses:Dictionary={}
@@ -120,7 +122,7 @@ func _ready() -> void:
 	set_process(false)
 
 func _on_torch_flicker_tick()->void:
-	if (_visible_torch_count>0 or not _fire_light_positions.is_empty()) \
+	if (_visible_torch_count>0 or _visible_environment_count>0) \
 			and _torch_animation_enabled():queue_redraw()
 
 func _torch_animation_enabled()->bool:
@@ -131,7 +133,7 @@ func _torch_animation_enabled()->bool:
 
 func _sync_torch_timer()->void:
 	if _torch_timer==null:return
-	if (_visible_torch_count>0 or not _fire_light_positions.is_empty()) \
+	if (_visible_torch_count>0 or _visible_environment_count>0) \
 			and _torch_animation_enabled():
 		if _torch_timer.is_stopped():_torch_timer.start()
 	elif not _torch_timer.is_stopped():_torch_timer.stop()
@@ -1116,7 +1118,7 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->D
 		style["bump_motion"]=melee_vfx.attacker_bump_draw_spec(
 			_position_from_actor(actor),sample_time_ms)
 	# Weapons are static glyphs. Melee feedback moves the whole character and uses
-	# target-local VFX, so it remains stable across Hangul/ASCII visual grammars.
+	# target-local VFX, so it remains stable across ASCII visual grammars.
 	style["weapon_swing"]={"active":false}
 	style["limb_segments"]=[]
 	return style
@@ -1502,11 +1504,15 @@ func _rebuild_torch_cache()->void:
 		var ap:Vector2i=a.position;var bp:Vector2i=b.position
 		return ap.y<bp.y or ap.y==bp.y and ap.x<bp.x)
 	_torch_positions.clear();_fire_light_positions.clear();_visible_torch_count=0
+	_visible_environment_count=0
 	for cached_value in _static_projection_cache.values():
 		var cached:=cached_value as Dictionary
 		if str(cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
 		var row:Dictionary=cached.get("row",{})
+		var terrain:Dictionary=cached.get("terrain",{})
 		var fire:=clampi(int(row.get("fire_intensity",row.get("fire",0))),0,100)
+		if str(terrain.get("motion_material","")) in ["water","grass","poison"] \
+				or fire>0:_visible_environment_count+=1
 		if fire<=0:continue
 		var position:Vector2i=cached.get("position",Vector2i(-1,-1))
 		if position!=Vector2i(-1,-1):
@@ -1545,7 +1551,8 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		var brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) if animated \
 			else (0.80 if state=="VISIBLE" else 0.20)
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
-			"visible":true,"animated":animated,"glyph":"불","glyph_count":1,
+			"visible":true,"animated":animated,"glyph":"^","glyph_count":1,
+			"phase":phase,
 			"glyph_hex":TORCH_GLYPH_HEX if animated else "#4d463c",
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
@@ -1619,10 +1626,26 @@ func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 func torch_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
 	return {"cached_count":_torch_positions.size(),"visible_count":_visible_torch_count,
+		"visible_environment_count":_visible_environment_count,
 		"max_visible":MAX_VISIBLE_TORCHES,"rebuild_count":_torch_cache_rebuild_count,
 		"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) \
 			if _torch_animation_enabled() else 0.0,
-		"timer_redraw_enabled":_torch_animation_enabled()}.duplicate(true)
+		"timer_redraw_enabled":_torch_animation_enabled() \
+			and (_visible_torch_count>0 or _visible_environment_count>0)}.duplicate(true)
+
+func environment_motion_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
+	if not _world_in_bounds(position) or not is_world_cell_visible(position):
+		return {"visible":false,"animated":false,"material_id":""}.duplicate(true)
+	var cached:=_cached_static_cell(position)
+	var state:=str(cached.get("visibility_state","UNSEEN"))
+	var terrain:Dictionary=cached.get("terrain",{})
+	var material_id:=str(terrain.get("motion_material",""))
+	var row:Dictionary=cached.get("row",{})
+	if clampi(int(row.get("fire_intensity",row.get("fire",0))),0,100)>0:
+		material_id="fire"
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	return MaterialGrammar.material_motion_spec(position,material_id,state,now,
+		_torch_animation_enabled())
 
 func _cached_static_cell(position:Vector2i)->Dictionary:
 	_ensure_static_projection_cache()
@@ -1698,7 +1721,9 @@ func visibility_ground_draw_spec(position:Vector2i)->Dictionary:
 		"pixel_rect":world_cell_rect(position)}.duplicate(true)
 
 func diorama_hazard_draw_spec(position:Vector2i)->Dictionary:
-	return DioramaScript.hazard_floor_spec(position,_cells.get(_key(position),{}))
+	var result:=DioramaScript.hazard_floor_spec(position,_cells.get(_key(position),{}))
+	result["position"]=[position.x,position.y]
+	return result
 
 func _position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("display_position",actor.get("position",[]))
@@ -2093,8 +2118,35 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			if str(cached.get("visibility_state",""))!=visibility_state:continue
 			var terrain:Dictionary=cached.get("terrain",{})
 			if str(terrain.terrain_id)=="wall":continue
-			_draw_terrain_glyph(world_cell_rect(position),terrain,
+			var display_terrain:=terrain
+			if visibility_state=="VISIBLE":
+				var motion:=environment_motion_draw_spec(position)
+				if bool(motion.get("visible",false)):
+					_draw_environment_underlay(world_cell_rect(position),display_terrain,motion)
+					# Fire is an overlay on the underlying floor. Only a terrain whose own
+					# material identity matches the motion may move its primary glyph.
+					if str(terrain.get("motion_material",""))==str(motion.material_id):
+						display_terrain=terrain.duplicate(false)
+						display_terrain["glyph_offset"]=Vector2(terrain.get(
+							"glyph_offset",Vector2.ZERO))+Vector2(motion.get(
+							"offset_ratio",Vector2.ZERO))
+						display_terrain["opacity"]=float(terrain.get("opacity",1.0)) \
+							*float(motion.get("opacity",1.0))
+			_draw_terrain_glyph(world_cell_rect(position),display_terrain,
 				visibility_state,cached.get("light",{}),_cell_is_visually_occupied(position))
+
+func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)->void:
+	var kind:=str(motion.get("material_id",""));var center:=rect.get_center()
+	if kind=="water":
+		var trail:=Color(str(terrain.get("glyph_hex","#75b8ca")),0.16)
+		var shift:=float((motion.get("offset_ratio",Vector2.ZERO) as Vector2).x)*rect.size.x
+		draw_line(center+Vector2(-rect.size.x*0.34-shift,rect.size.y*0.12),
+			center+Vector2(rect.size.x*0.28-shift,rect.size.y*0.08),trail,
+			maxf(1.0,rect.size.x*0.035),true)
+	elif kind in ["fire","poison"]:
+		var glow:=Color("#ff6b32" if kind=="fire" else "#8fcf47")
+		glow.a=float(motion.get("glow_alpha",0.0))
+		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
 	for y in range(visible_cell_count):
@@ -2173,7 +2225,7 @@ func _draw_wall_pass(visibility_state:String)->void:
 			if not connected&DioramaScript.EAST:
 				draw_line(block.top[1],block.top[2],edge,1.0,true)
 			var role_terrain:=terrain.duplicate(false)
-			role_terrain["glyph"]=str(wall_role.get("core_glyph","벽"))
+			role_terrain["glyph"]=str(wall_role.get("core_glyph","#"))
 			role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 			role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
 			_draw_terrain_glyph(DioramaScript.polygon_bounds(block.top),role_terrain,
@@ -2195,7 +2247,7 @@ func _draw_wall_torches()->void:
 		var center:Vector2=Vector2(spec.pixel_center)+Vector2(block.get("lift",Vector2.ZERO))*0.55
 		var local_cell:=maxf(8.0,rect.size.x)
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
-		# One Hangul fire glyph, confined to its wall cell. No image/texture primitive.
+		# One ASCII fire glyph, confined to its wall cell. No image/texture primitive.
 		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.12*float(spec.brightness)
 		draw_circle(center+Vector2(0,local_cell*0.10),
 			local_cell*(0.32 if uses_perspective_projection() else 0.18),glow)
@@ -2274,8 +2326,13 @@ func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 		var glow_alpha:=float(spec.fire_glow_alpha)
 		draw_circle(center,cell*0.48,Color(1.0,0.26,0.08,glow_alpha*0.22))
 		draw_circle(center+Vector2(0,cell*0.08),cell*0.29,Color(1.0,0.45,0.13,glow_alpha*0.48))
-		_draw_centered_text(BoldFont,"불",center-Vector2(0,cell*0.02),
-			maxi(10,int(cell*0.82)),Color(1.0,0.70,0.25,0.92))
+		var motion_position:=_array_to_world_position(spec.get("position",[]))
+		var motion:=MaterialGrammar.material_motion_spec(motion_position,"fire","VISIBLE",
+			Time.get_ticks_msec(),_torch_animation_enabled())
+		var fire_ink:=Color(1.0,0.70,0.25,0.92*float(motion.get("opacity",1.0)))
+		_draw_centered_text(BoldFont,"^",center-Vector2(0,cell*0.02) \
+			+Vector2(motion.offset_ratio)*cell,
+			maxi(10,int(cell*0.82)),fire_ink)
 
 func _draw_fov_edge_haze()->void:
 	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)
@@ -2354,7 +2411,7 @@ func _draw_flat_wall(cached:Dictionary,visibility_state:String)->void:
 		draw_rect((depth.get("side_rect",Rect2()) as Rect2).grow(overlap).intersection(
 			grid_rect()),side,true)
 		if bool(wall_role.get("face_visible",false)):
-			_draw_centered_text(BoldFont,str(wall_role.get("face_glyph","ㅂ")),
+			_draw_centered_text(BoldFont,str(wall_role.get("face_glyph","#")),
 				rect.get_center()+Vector2(depth.get("side_offset",Vector2.ZERO)),
 				maxi(8,int(floor(cell*0.58))),_diorama_ink_color(str(terrain.glyph_hex),
 				0.30*float(depth.get("opacity",1.0)),visibility_state,light,true))
@@ -2377,7 +2434,7 @@ func _draw_flat_wall(cached:Dictionary,visibility_state:String)->void:
 	if not connected&DioramaScript.EAST:
 		draw_line(Vector2(rect.end.x-1,rect.position.y),rect.end-Vector2(1,0),edge,1.0,true)
 	var role_terrain:=terrain.duplicate(false)
-	role_terrain["glyph"]=str(wall_role.get("core_glyph","벽"))
+	role_terrain["glyph"]=str(wall_role.get("core_glyph","#"))
 	role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 	role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
 	_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false)

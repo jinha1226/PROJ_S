@@ -271,7 +271,7 @@ func test_attacker_character_bump_is_visual_only_and_8_direction_safe()->bool:
 				and settled.limb_segments.is_empty(),
 			"%s bump never recreates artificial arms or legs"%direction)
 		check_eq([str(windup.glyph),str(contact.glyph),str(settled.glyph)],
-			["ㅇ","ㅇ","ㅇ"],"%s bump never replaces the actor glyph"%direction)
+			["@","@","@"],"%s bump never replaces the actor glyph"%direction)
 		var body_travel:=Vector2(contact.center).distance_to(Vector2(windup.center))
 		check(not bool(contact.weapon_swing.active) and bool(contact.draw_equipment) \
 				and int(contact.equipment_primitive_count)==1 \

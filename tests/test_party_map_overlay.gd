@@ -5,11 +5,11 @@ const Overlay=preload("res://playtest/party_map_overlay.gd")
 func test_full_map_preserves_coordinates_and_returns_detached_specs()->bool:
 	var overlay=Overlay.new();overlay.set_observation(_observation(48,48,[
 		_cell(0,0,"VISIBLE","wall"),_cell(47,47,"MEMORY","stone_floor")]))
-	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"벽","northwest exact wall")
-	check_eq(overlay.cell_draw_spec(Vector2i(47,47)).glyph,"·","southeast exact floor")
+	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"#","northwest exact wall")
+	check_eq(overlay.cell_draw_spec(Vector2i(47,47)).glyph,".","southeast exact floor")
 	check_eq(overlay.cell_draw_spec(Vector2i(24,24)).glyph,"","unknown remains blank")
 	var detached:=overlay.cell_draw_spec(Vector2i.ZERO);detached.glyph="X"
-	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"벽","draw spec detached")
+	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"#","draw spec detached")
 	var contract:=overlay.overlay_spec()
 	check(contract.uses_world_coordinates and not contract.uses_sector_folding,
 		"large overlay does not fold the dungeon into sectors")
@@ -18,8 +18,8 @@ func test_full_map_preserves_coordinates_and_returns_detached_specs()->bool:
 func test_expanded_product_map_preserves_ninety_six_coordinate_edges()->bool:
 	var overlay=Overlay.new();overlay.set_observation(_observation(96,96,[
 		_cell(0,0,"VISIBLE","wall"),_cell(95,95,"MEMORY","stone_floor")]))
-	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"벽","96-map northwest wall")
-	check_eq(overlay.cell_draw_spec(Vector2i(95,95)).glyph,"·","96-map southeast floor")
+	check_eq(overlay.cell_draw_spec(Vector2i.ZERO).glyph,"#","96-map northwest wall")
+	check_eq(overlay.cell_draw_spec(Vector2i(95,95)).glyph,".","96-map southeast floor")
 	check_eq(overlay.cell_draw_spec(Vector2i(96,95)).glyph,"","96-map bounds stay exact")
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var layout:Dictionary=overlay.layout_spec(viewport_size)
@@ -27,7 +27,7 @@ func test_expanded_product_map_preserves_ninety_six_coordinate_edges()->bool:
 		check_eq([layout.world_width,layout.world_height],[96,96],
 			"%s expanded overlay dimensions"%viewport_size)
 		check(Overlay.CodingFontBold.get_height(font_size)<=slot.y+0.01 \
-			and Overlay.CodingFontBold.get_string_size("벽",HORIZONTAL_ALIGNMENT_LEFT,
+			and Overlay.CodingFontBold.get_string_size("#",HORIZONTAL_ALIGNMENT_LEFT,
 					-1,font_size).x<=slot.x+0.01,
 			"%s 96-map glyphs fit their square cells"%viewport_size)
 	overlay.free();return finish()
@@ -38,9 +38,9 @@ func test_priority_and_semantic_glyph_palette_contract()->bool:
 		_cell(2,1,"VISIBLE","stone_floor","ENEMY"),
 		_cell(3,1,"MEMORY","stone_floor","EXIT"),
 		_cell(4,1,"VISIBLE","wall"),_cell(5,1,"MEMORY","stone_floor")]))
-	var expected:=[["ㅇ",Overlay.HERO_INK,"HERO"],["적",Overlay.THREAT_INK,"THREAT"],
-		["출",Overlay.EXIT_INK,"EXIT"],["벽",Overlay.WALL_VISIBLE_INK,"STRUCTURE"],
-		["·",Overlay.MEMORY_INK,"PASSABLE"]]
+	var expected:=[["@",Overlay.HERO_INK,"HERO"],["!",Overlay.THREAT_INK,"THREAT"],
+		[">",Overlay.EXIT_INK,"EXIT"],["#",Overlay.WALL_VISIBLE_INK,"STRUCTURE"],
+		[".",Overlay.MEMORY_INK,"PASSABLE"]]
 	for index in range(expected.size()):
 		var spec:=overlay.cell_draw_spec(Vector2i(index+1,1))
 		check_eq([spec.glyph,spec.color,spec.role],expected[index],"semantic ink %d"%index)
@@ -54,9 +54,9 @@ func test_fog_ingestion_strips_live_memory_and_rich_payloads()->bool:
 	var known_exit:=_cell(10,8,"MEMORY","stone_floor","EXIT")
 	var overlay=Overlay.new();overlay.set_observation(_observation(48,48,
 		[hidden_enemy,unseen_exit,known_exit]))
-	check_eq(overlay.cell_draw_spec(Vector2i(8,8)).glyph,"·","memory enemy becomes terrain")
+	check_eq(overlay.cell_draw_spec(Vector2i(8,8)).glyph,".","memory enemy becomes terrain")
 	check_eq(overlay.cell_draw_spec(Vector2i(9,8)).glyph,"","unseen exit omitted")
-	check_eq(overlay.cell_draw_spec(Vector2i(10,8)).glyph,"출","known static exit retained")
+	check_eq(overlay.cell_draw_spec(Vector2i(10,8)).glyph,">","known static exit retained")
 	var stored:Dictionary=overlay._cells["8:8"];var keys:Array=stored.keys();keys.sort()
 	check_eq(keys,["marker","terrain_id","visibility_state"],"only compact scalars retained")
 	check_eq(stored.marker,"","remembered actor marker stripped at ingestion")
@@ -112,7 +112,7 @@ func test_outside_press_closes_while_inside_press_only_consumes()->bool:
 
 func test_renderer_is_idle_font_only_dark_fantasy_ascii()->bool:
 	var overlay=Overlay.new();var contract:=overlay.overlay_spec()
-	check_eq(contract.primitive,"FULL_HANGUL_CARTOGRAPHY","full-map Hangul primitive")
+	check_eq(contract.primitive,"FULL_ASCII_CARTOGRAPHY","full-map ASCII primitive")
 	check_eq(contract.visual_family,"DARK_FANTASY_IRON_FOLIO","dark-fantasy family")
 	check_eq(contract.font_path,"res://assets/fonts/LivingWorldMonoKR.ttf","Korean mono font")
 	check(not contract.uses_images and not contract.uses_textures and not contract.per_frame_process,

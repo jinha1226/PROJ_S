@@ -89,8 +89,8 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	check(blood_cells.size()>=3,"opening route exposes a sparse readable blood trail")
 	if not blood_cells.is_empty():
 		var blood_spec:Dictionary=Style.ground_mark_spec(blood_cells[0])
-		check_eq([blood_spec.glyph,blood_spec.color_hex],["피","#a42f3f"],
-			"floor blood uses one fixed dried-red Hangul glyph")
+		check_eq([blood_spec.glyph,blood_spec.color_hex],[";","#a42f3f"],
+			"floor blood uses one fixed dried-red ASCII glyph")
 	var story_bubbles:Array=a.world_speech_bubbles()
 	check_eq(story_bubbles.size(),1,"opening choice publishes one major story bubble")
 	if not story_bubbles.is_empty():

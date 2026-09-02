@@ -20,11 +20,11 @@ func test_run_manifest_and_progress_are_exact_pure_and_detached() -> bool:
 		"run manifest exact value")
 	check(VisualMap.run_manifest("REGRESSION_V1").is_empty(),
 		"regression has no run manifest")
-	check_eq(AsciiStyle.feature_spec("run_entry").glyph, "입",
+	check_eq(AsciiStyle.feature_spec("run_entry").glyph, "<",
 		"entry has a visible feature glyph")
-	check_eq(AsciiStyle.feature_spec("run_exit_locked").glyph, "닫",
-		"locked exit uses the closed Hangul feature glyph")
-	check_eq(AsciiStyle.feature_spec("run_exit_open").glyph, "출",
+	check_eq(AsciiStyle.feature_spec("run_exit_locked").glyph, "X",
+		"locked exit uses the closed ASCII feature glyph")
+	check_eq(AsciiStyle.feature_spec("run_exit_open").glyph, ">",
 		"open exit has a visible feature glyph")
 	check(not bool(AsciiStyle.feature_spec("unknown_feature").visible),
 		"unknown feature does not draw")

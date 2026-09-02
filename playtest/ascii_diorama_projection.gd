@@ -34,6 +34,10 @@ const _TERRAIN_SALTS := {
 	"metal": 43,
 	"rubble": 59,
 	"shallow_water": 71,
+	"grass": 73,
+	"poison": 79,
+	"ice": 83,
+	"fog": 87,
 	"wall": 89,
 }
 
@@ -44,6 +48,10 @@ const _MARK_DEFINITIONS := {
 	"metal": {"kind":"SHEEN", "glyph":"+", "density":52},
 	"rubble": {"kind":"DEBRIS", "glyph":",", "density":72},
 	"shallow_water": {"kind":"RIPPLE", "glyph":"~", "density":68},
+	"grass": {"kind":"TUFT", "glyph":"\"", "density":54},
+	"poison": {"kind":"BUBBLE", "glyph":"%", "density":42},
+	"ice": {"kind":"GLINT", "glyph":"*", "density":34},
+	"fog": {"kind":"VEIL", "glyph":".", "density":30},
 	"wall": {"kind":"MASONRY", "glyph":"#", "density":34},
 }
 
@@ -223,8 +231,8 @@ static func wall_role_spec(connected_mask:int,exposed_mask:int)->Dictionary:
 	var emphasis:=float({"END":1.0,"CORNER":0.98,"JUNCTION":1.0,
 		"STRAIGHT":0.90,"SOLID":0.78}.get(role,0.90))
 	return {"role":role,"connected_mask":mask,"exposed_mask":exposed_mask,
-		"connection_count":connection_count,"core_glyph":"벽",
-		"face_glyph":"ㅂ" if exposed_mask&SOUTH else "",
+		"connection_count":connection_count,"core_glyph":"#",
+		"face_glyph":"#" if exposed_mask&SOUTH else "",
 		"face_visible":bool(exposed_mask&SOUTH),"foreground_emphasis":emphasis,
 		"slab_ratio":Vector2(0.94,0.92),
 		"glyph_offset":Vector2(0.0,-0.025 if role in ["END","CORNER"] else 0.0),

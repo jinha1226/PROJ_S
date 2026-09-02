@@ -1,7 +1,7 @@
 class_name PartyMinimap
 extends Control
 
-## Low-resolution Hangul cartography. The 48x48 world is folded into eight
+## Low-resolution ASCII cartography. The 48x48 world is folded into eight
 ## square sectors so the compact top rail retains legible glyph cells at 360px.
 ## Static presentation state is cached only when its observation changes.
 
@@ -22,11 +22,11 @@ const ENEMY_COLOR:=Color("#a74343")
 const EXIT_COLOR:=Color("#5f8a66")
 
 const GLYPH_UNKNOWN:=""
-const GLYPH_MEMORY:="·"
-const GLYPH_WALL:="벽"
-const GLYPH_EXIT:="출"
-const GLYPH_THREAT:="적"
-const GLYPH_HERO:="ㅇ"
+const GLYPH_MEMORY:="."
+const GLYPH_WALL:="#"
+const GLYPH_EXIT:=">"
+const GLYPH_THREAT:="!"
+const GLYPH_HERO:="@"
 
 const PRIORITY_UNKNOWN:=0
 const PRIORITY_MEMORY:=10
@@ -166,7 +166,7 @@ func cartography_spec()->Dictionary:
 		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
 		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
 			"wall":GLYPH_WALL,"memory":GLYPH_MEMORY,"unknown":GLYPH_UNKNOWN},
-		"primitive":"HANGUL_SECTOR_GLYPHS","background":"BLACK_FIELD",
+		"primitive":"ASCII_SECTOR_GLYPHS","background":"BLACK_FIELD",
 		"uses_tile_rects":false,"uses_circles":false,"uses_images":false,
 		"per_frame_process":false}.duplicate(true)
 
@@ -190,7 +190,7 @@ func _draw()->void:
 func _font_size_for_slot(slot:Vector2)->int:
 	for candidate in range(9,4,-1):
 		if CodingFontBold.get_height(candidate)<=slot.y+0.01 \
-			and CodingFontBold.get_string_size("벽",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
+			and CodingFontBold.get_string_size("#",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
 			return candidate
 	return 5
 

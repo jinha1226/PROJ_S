@@ -1,7 +1,7 @@
 class_name AsciiVisualStyle
 extends RefCounted
 
-const HangulGrammar=preload("res://playtest/hangul_glyph_grammar.gd")
+const MaterialGrammar=preload("res://playtest/ascii_material_grammar.gd")
 
 const VISIBILITY_STATES := ["VISIBLE", "MEMORY", "UNSEEN"]
 const LIFE_STATES := ["ACTIVE", "DOWNED", "DEAD"]
@@ -102,11 +102,11 @@ static func awareness_spec(value:Variant)->Dictionary:
 	if state not in AWARENESS_STATES:state="UNAWARE"
 	var definitions:={
 		"UNAWARE":{"glyph":"","color_hex":"#00000000","label":"무인지"},
-		"SUSPICIOUS":{"glyph":"의","color_hex":"#e6c45c","label":"의심"},
-		"ALERT":{"glyph":"경","color_hex":"#e88b3d","label":"경계"},
-		"HUNTING":{"glyph":"추","color_hex":"#e24f49","label":"추적"},
-		"SEARCHING":{"glyph":"수","color_hex":"#58bfc0","label":"수색"},
-		"RETURNING":{"glyph":"귀","color_hex":"#849097","label":"복귀"},
+		"SUSPICIOUS":{"glyph":"?","color_hex":"#e6c45c","label":"의심"},
+		"ALERT":{"glyph":"!","color_hex":"#e88b3d","label":"경계"},
+		"HUNTING":{"glyph":">","color_hex":"#e24f49","label":"추적"},
+		"SEARCHING":{"glyph":"~","color_hex":"#58bfc0","label":"수색"},
+		"RETURNING":{"glyph":"<","color_hex":"#849097","label":"복귀"},
 	}
 	var definition:Dictionary=definitions[state]
 	return {"state":state,"glyph":str(definition.glyph),
@@ -118,13 +118,13 @@ static func monster_identity_spec(actor:Dictionary)->Dictionary:
 	var species_id:=str(actor.get("species_id","")).to_lower()
 	match species_id:
 		"goblin", "":
-			return {"species_id":"goblin","glyph":"ㄱ","name":"고블린",
+			return {"species_id":"goblin","glyph":"g","name":"고블린",
 				"color_hex":"#83d34f","highlight_hex":"#d8ff9a"}.duplicate(true)
 		"kobold":
-			return {"species_id":"kobold","glyph":"ㅋ","name":"코볼트",
+			return {"species_id":"kobold","glyph":"k","name":"코볼트",
 				"color_hex":"#b79a45","highlight_hex":"#ead47b"}.duplicate(true)
 		_:
-			return {"species_id":species_id,"glyph":HangulGrammar.species_bare_glyph(species_id),
+			return {"species_id":species_id,"glyph":MaterialGrammar.species_bare_glyph(species_id),
 				"name":str(actor.get("species_name","괴물")),"color_hex":"#ff615c",
 				"highlight_hex":"#ffc2a8"}.duplicate(true)
 
@@ -145,15 +145,17 @@ const DIORAMA_PALETTE := {
 }
 
 const TERRAIN_DEFINITIONS := {
-	# Full-cell Hangul material words replace the old ASCII legend. Ordinary floor
-	# stays quiet; structural and hazardous materials carry the dense semantic ink.
-	"floor": {"glyph":"", "base_hex":"#11161c", "glyph_hex":"#59636d", "edge_hex":"#333c44", "font_ratio":0.24, "raised":false, "ink_family":"VOID_FLOOR", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"stone_floor": {"glyph":"돌", "base_hex":"#182732", "glyph_hex":"#718796", "edge_hex":"#465d6d", "font_ratio":0.72, "raised":false, "ink_family":"STONE_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.03,0.04), "outline_passes":0, "weight_passes":1},
-	"wood_floor": {"glyph":"나", "base_hex":"#302820", "glyph_hex":"#9b8162", "edge_hex":"#67533e", "font_ratio":0.72, "raised":false, "ink_family":"WOOD_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.03,0.04), "outline_passes":0, "weight_passes":1},
-	"metal": {"glyph":"쇠", "base_hex":"#253740", "glyph_hex":"#80a0ad", "edge_hex":"#57737e", "font_ratio":0.78, "raised":false, "ink_family":"METAL_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"rubble": {"glyph":"깨", "base_hex":"#352d23", "glyph_hex":"#9a825f", "edge_hex":"#69583d", "font_ratio":0.74, "raised":false, "ink_family":"RUBBLE_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(-0.04,0.05), "outline_passes":0, "weight_passes":1},
-	"shallow_water": {"glyph":"물", "base_hex":"#123b48", "glyph_hex":"#759eaa", "edge_hex":"#376f80", "font_ratio":0.84, "raised":false, "ink_family":"WATER_HANGUL", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2(0.02,0.03), "outline_passes":0, "weight_passes":1},
-	"wall": {"glyph":"벽", "base_hex":"#262d34", "glyph_hex":"#9faab3", "edge_hex":"#626c75", "font_ratio":0.94, "raised":true, "ink_family":"WALL_HANGUL", "slab_ratio":Vector2(0.98,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":1, "weight_passes":2},
+	"floor": {"glyph":".", "base_hex":"#11161c", "glyph_hex":"#59636d", "edge_hex":"#333c44", "font_ratio":0.48, "raised":false, "ink_family":"FLOOR_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"stone_floor": {"glyph":":", "base_hex":"#182732", "glyph_hex":"#718796", "edge_hex":"#465d6d", "font_ratio":0.66, "raised":false, "ink_family":"STONE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"wood_floor": {"glyph":"=", "base_hex":"#302820", "glyph_hex":"#9b8162", "edge_hex":"#67533e", "font_ratio":0.74, "raised":false, "ink_family":"WOOD_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"metal": {"glyph":"+", "base_hex":"#253740", "glyph_hex":"#80a0ad", "edge_hex":"#57737e", "font_ratio":0.78, "raised":false, "ink_family":"METAL_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"rubble": {"glyph":",", "base_hex":"#352d23", "glyph_hex":"#9a825f", "edge_hex":"#69583d", "font_ratio":0.70, "raised":false, "ink_family":"RUBBLE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"shallow_water": {"glyph":"~", "base_hex":"#123b48", "glyph_hex":"#75b8ca", "edge_hex":"#376f80", "font_ratio":0.84, "raised":false, "ink_family":"WATER_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"water"},
+	"grass": {"glyph":"\"", "base_hex":"#17291d", "glyph_hex":"#79a96c", "edge_hex":"#3d6441", "font_ratio":0.80, "raised":false, "ink_family":"GRASS_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"grass"},
+	"poison": {"glyph":"%", "base_hex":"#202817", "glyph_hex":"#9fc94b", "edge_hex":"#59732d", "font_ratio":0.78, "raised":false, "ink_family":"POISON_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"poison"},
+	"ice": {"glyph":"*", "base_hex":"#1b3441", "glyph_hex":"#b9e8f0", "edge_hex":"#659eac", "font_ratio":0.76, "raised":false, "ink_family":"ICE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"fog": {"glyph":".", "base_hex":"#1c2428", "glyph_hex":"#88969b", "edge_hex":"#4e5b60", "font_ratio":0.52, "raised":false, "ink_family":"FOG_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"wall": {"glyph":"#", "base_hex":"#262d34", "glyph_hex":"#aeb8c0", "edge_hex":"#626c75", "font_ratio":0.98, "raised":true, "ink_family":"WALL_ASCII", "slab_ratio":Vector2(1.0,0.98), "glyph_offset":Vector2.ZERO, "outline_passes":1, "weight_passes":2},
 }
 
 
@@ -186,7 +188,11 @@ static func visibility_spec(cell_or_state: Variant) -> Dictionary:
 
 
 static func terrain_spec(cell: Dictionary) -> Dictionary:
-	var terrain_id := str(cell.get("terrain_id", cell.get("terrain", "floor")))
+	var authority_terrain_id:=str(cell.get("terrain_id",cell.get("terrain","floor")))
+	var material_id:=MaterialGrammar.presentation_material_id(cell)
+	var presentation_terrain_id:="shallow_water" if material_id=="water" else material_id
+	var terrain_id:=presentation_terrain_id if TERRAIN_DEFINITIONS.has(
+		presentation_terrain_id) else authority_terrain_id
 	var registered := TERRAIN_DEFINITIONS.has(terrain_id)
 	var definition: Dictionary = TERRAIN_DEFINITIONS.get(terrain_id, {
 		"glyph":"", "base_hex":"#091017", "glyph_hex":"#091017", "edge_hex":"#060a0e",
@@ -195,6 +201,8 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	var result := definition.duplicate(true)
 	var visibility := visibility_spec(cell)
 	result["terrain_id"] = terrain_id
+	result["authority_terrain_id"] = authority_terrain_id
+	result["motion_material"] = str(result.get("motion_material",""))
 	result["visibility_state"] = visibility.state
 	result["visible"] = bool(visibility.draw_terrain)
 	result["opacity"] = float(visibility.opacity)
@@ -217,10 +225,10 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	var wetness := clampi(int(cell.get("wetness", 0)), 0, 100)
 	var cues: Array[Dictionary] = []
 	if bool(visibility.draw_hazards) and fire > 0:
-		cues.append({"kind":"FIRE", "glyph":"불", "color_hex":"#ff7a3d", "value":fire,
+		cues.append({"kind":"FIRE", "glyph":"^", "color_hex":"#ff7a3d", "value":fire,
 			"corner":"BOTTOM_LEFT", "fill_alpha":0.12 + 0.34 * float(fire) / 100.0})
 	if bool(visibility.draw_hazards) and wetness > 0:
-		cues.append({"kind":"WET", "glyph":"물", "color_hex":"#62c8ff", "value":wetness,
+		cues.append({"kind":"WET", "glyph":"~", "color_hex":"#62c8ff", "value":wetness,
 			"corner":"BOTTOM_RIGHT", "fill_alpha":0.08 + 0.20 * float(wetness) / 100.0})
 	# Conductivity remains inspectable simulation data, but it has no persistent
 	# floor glyph. Electricity should be communicated only when an actual event
@@ -231,10 +239,10 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 
 static func feature_spec(feature_id: String) -> Dictionary:
 	var definitions := {
-		"run_entry":{"glyph":"입", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
-		"run_exit_locked":{"glyph":"닫", "color_hex":"#E47A88", "halo_hex":"#51232e"},
-		"run_exit_open":{"glyph":"출", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
-		"open_door":{"glyph":"문", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
+		"run_entry":{"glyph":"<", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
+		"run_exit_locked":{"glyph":"X", "color_hex":"#E47A88", "halo_hex":"#51232e"},
+		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
+		"open_door":{"glyph":"/", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",
@@ -252,7 +260,7 @@ static func ground_mark_spec(cell:Dictionary)->Dictionary:
 	if mark_id!="blood" or not bool(visibility.draw_terrain):
 		return {"visible":false,"mark_id":"","glyph":"","color_hex":"#00000000",
 			"opacity":0.0,"font_ratio":0.0}.duplicate(true)
-	return {"visible":true,"mark_id":"blood","glyph":"피","color_hex":"#a42f3f",
+	return {"visible":true,"mark_id":"blood","glyph":";","color_hex":"#a42f3f",
 		"opacity":0.88 if str(visibility.state)=="VISIBLE" else 0.34,
 		"font_ratio":0.78,"draw_image":false,"draw_texture":false}.duplicate(true)
 
@@ -267,7 +275,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	if species_id.is_empty():
 		composition_actor=actor.duplicate(false)
 		composition_actor["species_id"]="goblin" if is_enemy else "human"
-	var composition:Dictionary=HangulGrammar.actor_glyph(composition_actor)
+	var composition:Dictionary=MaterialGrammar.actor_glyph(composition_actor)
 	var glyph := str(composition.glyph)
 	var color_hex := "#d5e2ea"
 	var highlight_hex := "#ffffff"
@@ -289,7 +297,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	if life_state not in LIFE_STATES:
 		life_state = "DEAD" if actor.has("alive") and not bool(actor.get("alive", true)) else "ACTIVE"
 	if life_state == "DEAD":
-		glyph = "흔"; color_hex = "#8d6870"; highlight_hex = "#c7959d"
+		glyph = "x"; color_hex = "#8d6870"; highlight_hex = "#c7959d"
 	var statuses: Array[String] = []
 	var raw_statuses: Variant = actor.get("status_ids", [])
 	if raw_statuses is Array:
@@ -320,7 +328,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 	var equipment:=actor_equipment_spec(actor)
 	return {
 		"glyph":glyph, "color_hex":color_hex, "highlight_hex":highlight_hex,
-		"composition":composition,"grammar_id":"HANGUL_BODY_ASCII_EQUIPMENT_V1",
+		"composition":composition,"grammar_id":"ASCII_MATERIAL_V1",
 		"shadow_hex":"#03070b", "outline_hex":"#0a1016",
 		"opacity":0.46 if ghost else (0.58 if life_state == "DOWNED" else 1.0),
 		"ghost":ghost, "life_state":life_state, "statuses":statuses,
@@ -341,7 +349,7 @@ static func actor_spec(actor: Dictionary, ghost: bool = false) -> Dictionary:
 		"step_phase":step_phase,"stride_sign":stride_sign,
 		"limb_segments":[],
 		"guard_segments":_guard_geometry(facing) if guarded and life_state == "ACTIVE" else [],
-		# The Hangul body stays stable. Static ASCII equipment shares its visual
+		# The ASCII body stays stable. Static ASCII equipment shares its visual
 		# cell, while logical mapping, FOV and hit authority remain unchanged.
 		"equipment":equipment,
 		"draw_equipment":bool(equipment.visible) and life_state=="ACTIVE",

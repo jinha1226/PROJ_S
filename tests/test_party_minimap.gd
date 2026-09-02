@@ -81,7 +81,7 @@ func test_glyph_color_and_renderer_contract_matches_dark_ascii_cartography()->bo
 		check_eq([spec.glyph,spec.color],expected[x],"semantic glyph/color %d"%x)
 	var contract:=minimap.cartography_spec()
 	check_eq([contract.columns,contract.rows,contract.primitive,contract.background],
-		[8,8,"HANGUL_SECTOR_GLYPHS","BLACK_FIELD"],"square eight-sector cartography")
+		[8,8,"ASCII_SECTOR_GLYPHS","BLACK_FIELD"],"square eight-sector cartography")
 	check(not contract.uses_tile_rects and not contract.uses_circles and not contract.uses_images,
 		"no colored tile rect, circle or image primitive")
 	check_eq(contract.font_path,"res://assets/fonts/LivingWorldMonoKR.ttf","bundled font")

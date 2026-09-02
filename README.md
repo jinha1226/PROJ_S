@@ -147,7 +147,7 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 
 `godot --path .`은 450×800 Playtest Sandbox를 바로 실행합니다. 타일을 한 번 클릭하면 해당 칸을 검사하고, 선택된 인접 칸을 다시 클릭하면 MOVE를 제출합니다. 방향키/WASD는 즉시 네 방향 MOVE, `Space` 또는 `.`은 WAIT, `1`/`2`/`3`은 선택 칸에 불/물/방전, `L`은 log drawer 열기·닫기입니다. 메뉴에서는 species·seed reset, SAVE/LOAD와 snapshot 복사를 사용할 수 있습니다.
 
-메인 파티 맵은 2D 탑뷰가 기본입니다. 인간 `ㅇ`, 고블린 `ㄱ`처럼 종족 몸체는 한글 자음으로 고정하고, 무기 `/ | 7 ! ^ ) +`와 방어구 `[ ]`는 같은 셀 안의 정적인 ASCII로 표시합니다. 근접 공격은 무기를 회전시키지 않고 캐릭터 전체 범프와 대상 셀 VFX·히트스톱·화면 흔들림으로 표현합니다. 지형과 위험은 `벽·돌·물·불·피`로 표시하며, 미니맵과 전체 지도에서 주인공은 `ㅇ`입니다. 전체 문법과 표현 계층의 경계는 [한글 몸체 + ASCII 장비 2D 탑뷰 시각 언어](docs/HANGUL_TOPVIEW_VISUAL_LANGUAGE.ko.md)에 정리되어 있습니다.
+메인 파티 맵은 ASCII 재질형 2D 탑뷰가 기본입니다. 주인공은 `@`, 인물은 종족별 `h/g/k/d/e/o/b/a/s`, 장비는 `/ | 7 ! ^ ) + [ ]`로 읽힙니다. 바닥·돌·나무·금속·잔해·벽·피·얼음·안개는 정적이고, 물 `~`·풀 `"`·불 `^`·독 `%`만 좌표별로 어긋난 낮은 주기의 동작을 가집니다. 기억/미관측 셀에는 동작이나 정보 누출이 없고 와이드 줌에서는 환경 동작이 고정됩니다. 근접 공격은 캐릭터 전체 범프와 대상 셀 VFX·히트스톱·화면 흔들림으로 표현합니다. 전체 규칙은 [ASCII 재질형 2D 탑뷰 시각 언어](docs/ASCII_MATERIAL_VISUAL_LANGUAGE.ko.md)에 정리되어 있습니다.
 
 솔로 모바일 HUD의 `3D 실험`은 기존 2D renderer 위에 여는 presentation-local 실험실입니다.
 실제 `Node3D + SubViewport + Camera3D` 15×15 ASCII 방에서 칸을 눌러 이동하고 인접한

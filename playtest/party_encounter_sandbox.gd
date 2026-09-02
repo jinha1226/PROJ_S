@@ -20,7 +20,7 @@ const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
-const HangulGlyphGrammarScript=preload("res://playtest/hangul_glyph_grammar.gd")
+const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
@@ -995,7 +995,7 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
 	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
-	grid_graphics_mode_button.text="[2D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · 한글 탑뷰 2D"
+	grid_graphics_mode_button.text="[2D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · ASCII 재질형 2D"
 	grid_graphics_mode_button.custom_minimum_size=Vector2(68,TOUCH_TARGET)
 	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
@@ -1731,10 +1731,10 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
 
 func _actor_seal_glyph(actor:Dictionary)->String:
-	# Dossier seals express the actor's stable species/body component. The map
-	# keeps that body as ㅇ, ㄱ, etc. while equipment is static ASCII, so a
-	# protagonist never regresses to the legacy @ marker.
-	return HangulGlyphGrammarScript.species_bare_glyph(str(actor.get("species_id","human")))
+	# Dossier seals share the map identity grammar; equipment stays separate.
+	return "@" if bool(actor.get("is_protagonist",false)) \
+		or str(actor.get("role","")).to_upper()=="PROTAGONIST" else \
+		AsciiMaterialGrammarScript.species_bare_glyph(str(actor.get("species_id","human")))
 
 func _add_spotlight_card_content(inset:MarginContainer,row:Dictionary,speech:Dictionary)->void:
 	var stack:=VBoxContainer.new();stack.name="CardStack";stack.add_theme_constant_override("separation",1)
