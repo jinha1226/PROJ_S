@@ -115,6 +115,7 @@ func test_wounded_panicked_companion_retreats() -> bool:
 	world.entities[companion].health = maxi(1,
 		int(world.entities[companion].max_health / 5))
 	state.member(companion).stress = 900
+	state.member(companion).mental_mode = "PANIC"
 	var explanation: Dictionary = sim.party_coordinator.explain_companion_turn(
 		Request.new(Action.hold(state.protagonist_id), []))
 	check_eq(_selected(explanation, companion), "RETREAT", "hp 20% + stress 900 retreats")

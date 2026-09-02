@@ -1876,6 +1876,11 @@ func _party_defeat_fixture() -> Dictionary:
 		if later.type == "corpse.loot_materialized" \
 				and int(later.data.source_death_event_id) == old_death_id:
 			later.data.source_death_event_id = str(old_death_id + 1)
+		if later.type == "party.morale_changed":
+			for source_index in range(later.data.get("source_event_ids", []).size()):
+				var source_id := int(later.data.source_event_ids[source_index])
+				if source_id >= old_death_id:
+					later.data.source_event_ids[source_index] = str(source_id + 1)
 	for index in range(snapshot.item_state.processed_drop_death_event_ids.size()):
 		if int(snapshot.item_state.processed_drop_death_event_ids[index]) == old_death_id:
 			snapshot.item_state.processed_drop_death_event_ids[index] = str(old_death_id + 1)

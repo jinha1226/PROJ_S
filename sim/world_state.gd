@@ -64,6 +64,7 @@ const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
+const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 
 var width: int
 var height: int
@@ -2622,7 +2623,8 @@ func _melee_defense_action_event_error(event) -> String:
 	var intent_mode: String = str(event.data.intent_mode)
 	var outcome: String = str(event.data.outcome)
 	if target_life != "ACTIVE" or intent_mode != "STRIKE" \
-			or outcome not in ["HIT", "MISS", "PARRIED"] or int(event.data.intent_ordinal) < 0:
+			or outcome not in ["HIT", "MISS", "PARRIED", "OVERKILL_SKIP"] \
+			or int(event.data.intent_ordinal) < 0:
 		return "canonical_defense_intent_invalid"
 	var key := MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
 		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id,
@@ -2653,10 +2655,17 @@ func _melee_defense_action_event_error(event) -> String:
 		if roll_hits or event.data.parry_succeeded or event.data.final_damage != 0 \
 				or event.data.bleed_proc_succeeded:
 			return "canonical_defense_miss_outcome_invalid"
-	else:
+	elif outcome == "PARRIED":
 		if not parried or not event.data.parry_succeeded or event.data.final_damage != 0 \
 				or event.data.bleed_proc_succeeded:
 			return "canonical_defense_parry_outcome_invalid"
+	else:
+		# A lower-id attacker may already have killed the protagonist in the same
+		# frozen enemy batch. The later intent keeps its committed rolls/defense
+		# snapshot but owns no result child and cannot apply damage.
+		if event.data.parry_succeeded != parried or event.data.final_damage != 0 \
+				or event.data.bleed_proc_succeeded:
+			return "canonical_defense_overkill_outcome_invalid"
 	return ""
 
 
@@ -4659,6 +4668,8 @@ func _party_event_correlation_error() -> String:
 	if not patrol_error.is_empty(): return patrol_error
 	var override_error := _party_override_history_error()
 	if not override_error.is_empty(): return override_error
+	var morale_error := _party_morale_history_error()
+	if not morale_error.is_empty(): return morale_error
 	return ""
 
 
@@ -4748,6 +4759,97 @@ func _party_override_history_error() -> String:
 				if candidate.cause_id == leaf.id and candidate.type in result_types \
 						and candidate.id < override.id:
 					return "party_override_order_invalid"
+	return ""
+
+
+func _party_morale_history_error() -> String:
+	var latest_by_actor: Dictionary = {}
+	var previous_by_actor: Dictionary = {}
+	var allowed_triggers := ["ALLY_DIED", "ALLY_DOWNED", "ALLY_FEAR_CONTAGION",
+		"ENEMY_DIED", "OVERRIDE_STRESS", "SAFE_RECOVERY", "SELF_DAMAGE",
+		"SELF_DOWNED"]
+	for event in events:
+		if event.type != "party.morale_changed":
+			continue
+		if event.actor_id not in party_encounter.active_party_member_ids \
+				or event.target_id != -1:
+			return "party_morale_actor_invalid"
+		var historical_position: Dictionary = _entity_position_at_event(
+			event.actor_id, event.id)
+		if not bool(historical_position.get("ok", false)) \
+				or event.position != historical_position.position:
+			return "party_morale_position_invalid"
+		var keys := ["contagion_delta", "direct_delta", "mode_after", "mode_before",
+			"recovery_delta", "ruleset_id", "schema_version", "source_event_ids",
+			"stress_after", "stress_before", "trigger_codes"]
+		if not _exact_keys(event.data, keys) or event.data.get("schema_version") != 1 \
+				or event.data.get("ruleset_id") != PartyMoraleModelScript.RULESET_ID:
+			return "party_morale_data_invalid"
+		for key in ["stress_before", "direct_delta", "contagion_delta",
+				"recovery_delta", "stress_after"]:
+			if not event.data.get(key) is int:
+				return "party_morale_scalar_invalid"
+		var stress_before := int(event.data.stress_before)
+		var stress_after := int(event.data.stress_after)
+		var direct_delta := int(event.data.direct_delta)
+		var contagion_delta := int(event.data.contagion_delta)
+		var recovery_delta := int(event.data.recovery_delta)
+		if stress_before < 0 or stress_before > 1000 or stress_after < 0 \
+				or stress_after > 1000 or contagion_delta < 0 \
+				or contagion_delta > PartyMoraleModelScript.MAX_CONTAGION \
+				or recovery_delta not in [0, PartyMoraleModelScript.RECOVERY_DELTA] \
+				or stress_after != clampi(stress_before + direct_delta \
+					+ contagion_delta + recovery_delta, 0, 1000) \
+				or event.magnitude != absi(stress_after - stress_before):
+			return "party_morale_projection_invalid"
+		var mode_before := str(event.data.mode_before)
+		var mode_after := str(event.data.mode_after)
+		if mode_before not in PartyMemberStateScript.MENTAL_MODES \
+				or mode_after != PartyMoraleModelScript.next_mode(mode_before, stress_after):
+			return "party_morale_mode_invalid"
+		if previous_by_actor.has(event.actor_id):
+			var previous: Dictionary = previous_by_actor[event.actor_id]
+			if stress_before != int(previous.stress_after) \
+					or mode_before != str(previous.mode_after):
+				return "party_morale_chain_invalid"
+		var trigger_codes: Variant = event.data.get("trigger_codes")
+		if not trigger_codes is Array:
+			return "party_morale_trigger_invalid"
+		var previous_trigger := ""
+		for trigger in trigger_codes:
+			if not trigger is String or trigger not in allowed_triggers \
+					or str(trigger) < previous_trigger:
+				return "party_morale_trigger_invalid"
+			previous_trigger = str(trigger)
+		var source_rows: Variant = event.data.get("source_event_ids")
+		if not source_rows is Array or source_rows.size() > 128:
+			return "party_morale_source_invalid"
+		var previous_source := -1
+		for source_wire in source_rows:
+			if not Int64CodecScript.is_canonical(source_wire):
+				return "party_morale_source_invalid"
+			var source_id := Int64CodecScript.parse(source_wire, "morale source")
+			var source = event_by_id(source_id)
+			if source_id <= previous_source or source_id >= event.id or source == null \
+					or source.step_index != event.step_index \
+					or source.type not in ["combat.physical_damage", "combat.downed_damage",
+						"entity.downed", "entity.died", "party.override_committed"]:
+				return "party_morale_source_invalid"
+			previous_source = source_id
+		if (source_rows.is_empty() and event.cause_id != -1) \
+				or (not source_rows.is_empty() and event.cause_id != previous_source):
+			return "party_morale_source_invalid"
+		previous_by_actor[event.actor_id] = {
+			"stress_after":stress_after, "mode_after":mode_after}
+		latest_by_actor[event.actor_id] = event
+	for member_id in party_encounter.active_party_member_ids:
+		if not latest_by_actor.has(member_id):
+			continue
+		var latest = latest_by_actor[member_id]
+		var member = party_encounter.member(member_id)
+		if member == null or member.stress != int(latest.data.stress_after) \
+				or member.mental_mode != str(latest.data.mode_after):
+			return "party_morale_state_projection_mismatch"
 	return ""
 
 

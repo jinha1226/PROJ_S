@@ -55,7 +55,8 @@ func test_wounded_stressed_companion_enters_panic_and_sees_ally_pressure() -> bo
 	world.entities[companion].health = maxi(1,
 		int(world.entities[companion].max_health / 5))
 	state.member(companion).stress = 900
+	state.member(companion).mental_mode = "PANIC"
 	var panicked: Dictionary = Appraisal.appraise(world, companion, board)
-	check_eq(panicked.mode, "PANIC", "hp loss plus stress crosses the panic threshold")
+	check_eq(panicked.mode, "PANIC", "stored hysteresis mode drives the action set")
 	check(panicked.panic_pressure > calm.panic_pressure, "panic pressure rises with stress")
 	return finish()

@@ -2,7 +2,10 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
+const Action = preload("res://sim/party_action_command.gd")
+const Request = preload("res://sim/party_turn_request.gd")
 const Model = preload("res://sim/party_morale_model.gd")
+const PartyState = preload("res://sim/party_encounter_state.gd")
 
 
 func test_morale_model_is_exact_pure_and_order_independent() -> bool:
@@ -69,6 +72,116 @@ func test_panic_hysteresis_and_safe_recovery_are_explicit() -> bool:
 		companion_id)
 	check_eq([row.recovery_delta, row.stress_after, row.mode_after],
 		[-40, 460, "NORMAL"], "safe batch recovers stress without changing mode")
+	return finish()
+
+
+func test_authoritative_override_commits_one_morale_chain_and_restores_exactly() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	var companion_id := int(state.active_party_member_ids[1])
+	check(session.begin_turn(Action.hold(state.protagonist_id)).accepted,
+		"journaled party turn begins")
+	check(session.override_companion(companion_id, Action.hold(companion_id)).accepted,
+		"journaled companion override is accepted")
+	var event_start: int = world.events.size()
+	var result: Dictionary = session.commit_turn()
+	check(result.accepted, "override turn with morale commits: %s" % str(result.reason))
+	var result_events: Array = world.events_since(event_start)
+	var overrides: Array = result_events.filter(func(event):
+		return event.type == "party.override_committed" and event.actor_id == companion_id)
+	check_eq(overrides.size(), 1, "override source is canonical")
+	var override_id: int = overrides[0].id if overrides.size() == 1 else -1
+	var matching: Array = result_events.filter(func(event):
+		return event.type == "party.morale_changed" and event.actor_id == companion_id \
+			and str(override_id) in event.data.get("source_event_ids", []))
+	check_eq(matching.size(), 1, "one companion morale row is emitted for the batch")
+	if matching.size() == 1:
+		var event = matching[0]
+		var keys: Array = event.data.keys(); keys.sort()
+		check_eq(keys, ["contagion_delta", "direct_delta", "mode_after", "mode_before",
+			"recovery_delta", "ruleset_id", "schema_version", "source_event_ids",
+			"stress_after", "stress_before", "trigger_codes"],
+			"morale event metadata is exact")
+		check_eq([event.data.stress_before, event.data.mode_before], [0, "NORMAL"],
+			"override consumes the authoritative starting state once")
+	var actor_morale: Array = result_events.filter(func(event):
+		return event.type == "party.morale_changed" and event.actor_id == companion_id)
+	if not actor_morale.is_empty():
+		var latest = actor_morale.back()
+		check_eq([state.member(companion_id).stress,
+			state.member(companion_id).mental_mode],
+			[latest.data.stress_after, latest.data.mode_after],
+			"latest event and authority agree")
+	check_eq(world.world_state_error(), "", "morale ledger validates before save")
+	var restored = Session.new(9, 9)
+	var loaded: Dictionary = restored.load_session_json(session.save_session_json())
+	check(loaded.accepted, "morale save/load is accepted: %s" % str(loaded.get("reason")))
+	if loaded.accepted:
+		check_eq(restored.sim.snapshot(), session.sim.snapshot(),
+			"stress and panic mode restore snapshot-exactly")
+	return finish()
+
+
+func test_authoritative_morale_crosses_and_persists_panic_threshold() -> bool:
+	var session = _engaged()
+	var state = session.sim.world.party_encounter
+	var companion_id := int(state.active_party_member_ids[1])
+	state.member(companion_id).stress = 840
+	state.member(companion_id).mental_mode = "NORMAL"
+	var request = Request.new(Action.hold(state.protagonist_id), [
+		{"actor_id":companion_id, "action":Action.hold(companion_id)}])
+	var result = session.sim.step_party_turn(session.sim.preview_party_turn(request))
+	check(result.accepted, "threshold fixture commits: %s" % str(result.reason))
+	var transitions: Array = result.events.filter(func(event):
+		return event.type == "party.morale_changed" and event.actor_id == companion_id \
+			and event.data.mode_before == "NORMAL" and event.data.mode_after == "PANIC")
+	check_eq(transitions.size(), 1, "panic transition is emitted exactly once")
+	check_eq(state.member(companion_id).mental_mode, "PANIC",
+		"panic mode persists after the batch")
+	return finish()
+
+
+func test_morale_failure_rolls_back_events_state_and_mode() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	var companion_id := int(state.active_party_member_ids[1])
+	var request = Request.new(Action.hold(state.protagonist_id), [
+		{"actor_id":companion_id, "action":Action.hold(companion_id)}])
+	var plan = session.sim.preview_party_turn(request)
+	var before: Dictionary = session.sim.snapshot()
+	session.sim.party_coordinator.fail_point = "party_morale_event"
+	var result = session.sim.step_party_turn(plan)
+	check(not result.accepted and result.reason == "party_morale_failed",
+		"morale fault rejects the complete party turn")
+	check_eq(session.sim.snapshot(), before,
+		"morale fault retracts stress, mode, events, time and RNG")
+	return finish()
+
+
+func test_schema_thirteen_migrates_to_normal_or_panicked_hysteresis_state() -> bool:
+	var session = Session.new()
+	var current: Dictionary = session.sim.world.party_encounter.to_dict()
+	var legacy: Dictionary = current.duplicate(true)
+	legacy.schema_version = PartyState.WEAPON_AUTHORITY_SCHEMA_VERSION
+	for row in legacy.member_rows:
+		row.erase("mental_mode")
+	legacy.member_rows[0].stress = 849
+	legacy.member_rows[1].stress = 850
+	check_eq(PartyState.wire_error(legacy, session.sim.world.width,
+		session.sim.world.height), "", "v13 member rows remain readable")
+	var migrated = PartyState.from_dict(legacy)
+	check_eq([migrated.member_rows[migrated.party_member_ids[0]].mental_mode,
+		migrated.member_rows[migrated.party_member_ids[1]].mental_mode],
+		["NORMAL", "PANIC"], "legacy stress deterministically seeds the new mode")
+	check_eq(migrated.schema_version, PartyState.SCHEMA_VERSION,
+		"legacy party state upgrades to v14")
+	var malformed: Dictionary = current.duplicate(true)
+	malformed.member_rows[0].erase("mental_mode")
+	check_eq(PartyState.wire_error(malformed, session.sim.world.width,
+		session.sim.world.height), "invalid_party_member_keys",
+		"v14 requires persisted mental mode")
 	return finish()
 
 

@@ -282,6 +282,8 @@ func test_session_stat_spend_is_atomic_and_schema10_uses_hard_cut() -> bool:
 	var legacy_source=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var wire:Dictionary=JSON.parse_string(legacy_source.save_session_json())
 	wire.snapshot.party_encounter.schema_version=10
+	for member_row in wire.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	wire.snapshot.party_encounter.erase("protagonist_growth")
 	# v10 party rows genuinely owned the item keys, so state the historical shape
 	# rather than letting a v12 row claim v10. Items are world state from v7 on.

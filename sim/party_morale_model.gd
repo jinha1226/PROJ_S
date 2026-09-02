@@ -26,6 +26,7 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 		return a_id < b_id)
 	for event in events:
 		var event_type := str(event.get("type", "") if event is Dictionary else event.type)
+		var actor_id := int(event.get("actor_id", -1) if event is Dictionary else event.actor_id)
 		var target_id := int(event.get("target_id", -1) if event is Dictionary else event.target_id)
 		var magnitude := maxi(0, int(event.get("magnitude", 0) \
 			if event is Dictionary else event.magnitude))
@@ -33,6 +34,9 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 				and direct.has(target_id):
 			direct[target_id] = int(direct[target_id]) + mini(220, magnitude * 4)
 			triggers[target_id].append("SELF_DAMAGE")
+		elif event_type == "party.override_committed" and direct.has(actor_id):
+			direct[actor_id] = int(direct[actor_id]) + magnitude
+			triggers[actor_id].append("OVERRIDE_STRESS")
 		elif event_type == "entity.downed" and target_id in members:
 			for member_id in members:
 				if member_id == target_id:
@@ -73,7 +77,7 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 			triggers[member_id].append("SAFE_RECOVERY")
 		var stress_after := clampi(stress_before + int(direct[member_id]) \
 			+ contagion + recovery, 0, 1000)
-		var mode_before := str(previous_modes.get(member_id, "NORMAL"))
+		var mode_before := str(previous_modes.get(member_id, member.mental_mode))
 		if mode_before not in ["NORMAL", "PANIC"]:
 			mode_before = "NORMAL"
 		var mode_after := next_mode(mode_before, stress_after)
@@ -102,7 +106,7 @@ static func _eligible_members(world) -> Array[int]:
 		var member_id := int(member_id_value)
 		var member = world.party_encounter.member(member_id)
 		var combatant = world.combatant_states.get(member_id)
-		if member != null and member.presence == "DEPLOYED" \
+		if member != null and member.presence in ["DEPLOYED", "GROUPED"] \
 				and combatant != null and combatant.life_state != "DEAD" \
 				and world.entities.has(member_id):
 			result.append(member_id)

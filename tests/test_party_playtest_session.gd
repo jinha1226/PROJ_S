@@ -92,6 +92,8 @@ func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_re
 	check_eq(restored.sim.snapshot(),session.sim.snapshot(),"exile/recruit snapshot and replay exact")
 	var legacy_wire:Dictionary=JSON.parse_string(Session.new().save_session_json())
 	legacy_wire.snapshot.party_encounter.schema_version=1
+	for member_row in legacy_wire.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	for future_key in ["active_party_member_ids","exile_records",
 			"patrol_reserved_positions","protagonist_progression","protagonist_loadout",
 			"diagonal_gateway_positions","enemy_awareness_rows","protagonist_inventory",
@@ -598,6 +600,8 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 		product._map_layout,false),"v5 product baseline excludes future opening state")
 	var legacy_v5:Dictionary=JSON.parse_string(legacy_product.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
+	for member_row in legacy_v5.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
 			"protagonist_inventory","ground_items","safe_recovery_turns",
 			"last_protagonist_damage_step","opening_event","protagonist_growth"]:
@@ -1204,6 +1208,41 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 		else:
 			preview = session.begin_turn(Action.hold(hero))
 			check(bool(preview.get("accepted",false)),"automatic combat draft %d"%turn)
+		# This test owns cause attribution, not a promise that a frightened companion
+		# will always choose aggression. When adjacent, explicitly commit that attack
+		# through the public override facade so P3 panic behavior remains free to
+		# retreat in autonomous turns.
+		if not enemy_downed and session.sim.melee.can_attack(companion,enemy_id):
+			var companion_override: Dictionary = session.override_companion(
+				companion,Action.melee(companion,enemy_id))
+			check(bool(companion_override.get("accepted",false)),
+				"companion attribution override %d"%turn)
+		elif not enemy_downed:
+			var companion_paths: Array = []
+			for direction in [Vector2i.UP,Vector2i(1,-1),Vector2i.RIGHT,
+					Vector2i(1,1),Vector2i.DOWN,Vector2i(-1,1),Vector2i.LEFT,
+					Vector2i(-1,-1)]:
+				var adjacent: Vector2i = enemy_position + direction
+				if not session.sim.world.in_bounds(adjacent) \
+						or session.sim.world.blocking_entity_at(adjacent,companion) != null:
+					continue
+				var candidate: Dictionary = session.sim.find_path(companion,adjacent)
+				if bool(candidate.get("found",false)) and candidate.get("path",[]).size()>1:
+					companion_paths.append({"path":candidate.path,
+						"cost":int(candidate.total_cost),"steps":int(candidate.steps),
+						"goal":adjacent})
+			companion_paths.sort_custom(func(a:Dictionary,b:Dictionary):
+				if int(a.cost)!=int(b.cost):return int(a.cost)<int(b.cost)
+				if int(a.steps)!=int(b.steps):return int(a.steps)<int(b.steps)
+				var ag:Vector2i=a.goal;var bg:Vector2i=b.goal
+				return ag.y<bg.y if ag.y!=bg.y else ag.x<bg.x)
+			check(not companion_paths.is_empty(),"live target has a companion approach path")
+			if not companion_paths.is_empty():
+				var destination: Vector2i = companion_paths[0].path[1]
+				var companion_override: Dictionary = session.override_companion(
+					companion,Action.move_to(companion,destination))
+				check(bool(companion_override.get("accepted",false)),
+					"companion attribution approach override %d"%turn)
 		var committed: Dictionary = session.commit_turn()
 		check(bool(committed.get("accepted",false)),"automatic combat commit %d"%turn)
 		if enemy_downed and bool(committed.get("accepted",false)):
@@ -1215,7 +1254,7 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 		if finisher_this_turn and bool(committed.get("accepted",false)):
 			finisher_committed = true
 			finisher_commit_event_ids = committed.get("event_ids",[]).duplicate()
-	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","automatic companion fixture wins")
+	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","structured log fixture wins")
 	check(finisher_previewed and finisher_committed,
 		"DOWNED enemy is finished through a fresh facade turn")
 	var log=session.combat_log(8,80)
@@ -1238,8 +1277,8 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 				and str(row.data.get("outcome",""))=="FINISHER":finisher_melee=row
 		if row.type=="combat.downed_damage" and int(row.instigator_id)==hero:finisher_pressure=row
 		if row.type=="entity.died" and int(row.target_id)==enemy_id:attributed_death=row
-	check(not companion_melee.is_empty(),"automatic companion melee retained")
-	check(not attributed_damage.is_empty(),"automatic companion damage attributed")
+	check(not companion_melee.is_empty(),"companion melee retained")
+	check(not attributed_damage.is_empty(),"companion damage attributed")
 	if not attributed_damage.is_empty() and not companion_melee.is_empty():
 		check_eq(int(attributed_damage.cause_id),int(companion_melee.event_id),"damage exact melee cause")
 		check("나래의 공격으로" in str(attributed_damage.message),"Korean damage attribution")

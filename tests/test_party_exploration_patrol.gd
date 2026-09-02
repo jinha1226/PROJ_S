@@ -116,6 +116,8 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 		"fixed fixture feature cells are authoritative patrol exclusions")
 	var v2_wire:Dictionary=JSON.parse_string(fixture.save_session_json())
 	v2_wire.snapshot.party_encounter.schema_version=2
+	for member_row in v2_wire.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	for future_key in ["patrol_reserved_positions","protagonist_progression",
 			"protagonist_loadout","diagonal_gateway_positions","enemy_awareness_rows",
 			"protagonist_inventory","ground_items","safe_recovery_turns",

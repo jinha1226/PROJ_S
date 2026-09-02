@@ -4,7 +4,6 @@ extends RefCounted
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const RelationshipSystemScript = preload("res://sim/systems/relationship_system.gd")
 const THREAT_POWER_NORM := 760
-const PANIC_THRESHOLD := 850
 
 
 static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
@@ -69,7 +68,9 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 		"ally_trust": ally_trust,
 		"protagonist_trust": protagonist_trust,
 		"stress": stress,
-		"mode": "PANIC" if panic >= PANIC_THRESHOLD else "NORMAL",
+		# Stress pressure still scores actions, while the legal action set follows
+		# the authoritative hysteresis mode persisted by PartyMoraleSystem.
+		"mode": str(member.mental_mode),
 	}
 
 

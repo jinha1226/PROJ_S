@@ -99,6 +99,8 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 		Session.SOLO_COMBAT_SCENARIO_ID,legacy,false),"legacy v5 baseline initializes")
 	var legacy_v5:Dictionary=JSON.parse_string(legacy_schema_session.save_session_json())
 	legacy_v5.snapshot.party_encounter.schema_version=5
+	for member_row in legacy_v5.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	for future_key in ["diagonal_gateway_positions","enemy_awareness_rows",
 			"protagonist_inventory","ground_items","safe_recovery_turns",
 			"last_protagonist_damage_step","opening_event","protagonist_growth"]:

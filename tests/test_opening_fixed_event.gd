@@ -248,6 +248,8 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 		{}, false), "legacy bootstrap-off fixture resets")
 	var legacy_wire: Dictionary = JSON.parse_string(legacy.save_session_json())
 	legacy_wire.snapshot.party_encounter.schema_version = 9
+	for member_row in legacy_wire.snapshot.party_encounter.member_rows:
+		member_row.erase("mental_mode")
 	legacy_wire.snapshot.party_encounter.erase("opening_event")
 	# A v9 party row really did own these two keys. Restate that historical shape
 	# instead of pretending a v12 row can claim v9; items are world state now.

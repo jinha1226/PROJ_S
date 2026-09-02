@@ -3,6 +3,7 @@ extends RefCounted
 
 const ROLES := ["PROTAGONIST", "COMPANION"]
 const PRESENCES := ["DEPLOYED", "GROUPED", "DORMANT", "RECRUITABLE", "EXILED", "DEFEATED"]
+const MENTAL_MODES := ["NORMAL", "PANIC"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
 const PersonalityProfileScript = preload("res://sim/personality_profile.gd")
@@ -14,6 +15,7 @@ var role: String
 var presence: String
 var busy_until: int
 var stress: int
+var mental_mode: String
 var personality_profile = null
 
 func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION",
@@ -25,10 +27,12 @@ func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION"
 	personality_profile = p_profile
 	busy_until = 0
 	stress = 0
+	mental_mode = "NORMAL"
 
 func to_dict() -> Dictionary:
 	return {"entity_id": str(entity_id), "roster_slot": roster_slot, "role": role,
 		"presence": presence, "busy_until": str(busy_until), "stress": stress,
+		"mental_mode": mental_mode,
 		"personality_profile": null if personality_profile == null else personality_profile.to_dict()}
 
 static func from_dict(row: Dictionary):
@@ -38,12 +42,20 @@ static func from_dict(row: Dictionary):
 		str(row.role), str(row.presence), profile)
 	state.busy_until = Int64CodecScript.parse(row.busy_until, "party busy time")
 	state.stress = int(row.stress)
+	# v1-v13 had stress but no hysteresis memory. Their pre-P3 behavior entered
+	# panic only at the upper threshold, so migration preserves that baseline.
+	state.mental_mode = str(row.get("mental_mode",
+		"PANIC" if state.stress >= 850 else "NORMAL"))
 	return state
 
-static func wire_error(row: Variant) -> String:
+static func wire_error(row: Variant, require_mental_mode: bool = true) -> String:
 	if not row is Dictionary: return "invalid_party_member_shape"
 	var keys: Array = row.keys(); keys.sort()
-	if keys != ["busy_until", "entity_id", "personality_profile", "presence", "role", "roster_slot", "stress"]:
+	var expected := ["busy_until", "entity_id", "mental_mode", "personality_profile",
+		"presence", "role", "roster_slot", "stress"] if require_mental_mode else [
+		"busy_until", "entity_id", "personality_profile", "presence", "role",
+		"roster_slot", "stress"]
+	if keys != expected:
 		return "invalid_party_member_keys"
 	if not Int64CodecScript.is_canonical(row.get("entity_id")) or Int64CodecScript.parse(row.entity_id, "member") <= 0:
 		return "noncanonical_party_member_id"
@@ -56,6 +68,8 @@ static func wire_error(row: Variant) -> String:
 		return "noncanonical_party_busy_until"
 	if not _integer(row.get("stress")) or int(row.stress) < 0 or int(row.stress) > 1000:
 		return "invalid_party_stress"
+	if require_mental_mode and row.get("mental_mode") not in MENTAL_MODES:
+		return "unknown_party_mental_mode"
 	if row.role == "PROTAGONIST":
 		if row.personality_profile != null: return "protagonist_personality_forbidden"
 	else:

@@ -27,6 +27,8 @@ func _check_legacy_loadout_defaults(errors: Array) -> void:
 	for schema_version in [1, 2, 3, 4, 5]:
 		var row: Dictionary = current.duplicate(true)
 		row.schema_version = schema_version
+		for member_row in row.member_rows:
+			member_row.erase("mental_mode")
 		row.erase("protagonist_growth")
 		row.erase("opening_event")
 		row.erase("safe_recovery_turns")

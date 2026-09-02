@@ -12,6 +12,7 @@ const PartyCoordinatorScript = preload("res://sim/systems/party_encounter_coordi
 const PartyActionScript = preload("res://sim/party_action_command.gd")
 const PartyRequestScript = preload("res://sim/party_turn_request.gd")
 const PartyPlanScript = preload("res://sim/party_turn_plan.gd")
+const PartyMoraleSystemScript = preload("res://sim/systems/party_morale_system.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const WeightedPathfinderScript = preload("res://sim/weighted_pathfinder.gd")
 const OpeningEventSystemScript = preload("res://sim/systems/opening_event_system.gd")
@@ -102,6 +103,13 @@ func step(command, supplied_rollback_memento: Variant = null):
 		party_state.group_anchor = world.entities[party_state.protagonist_id].position
 		for member_id in party_state.party_member_ids:
 			if party_state.member(member_id).presence == "GROUPED": world.entities[member_id].position = party_state.group_anchor
+	if world.party_encounter != null \
+			and not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start)):
+		var morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+		if morale_restore != null:
+			world = morale_restore
+			_rebuild_systems()
+		return StepResultScript.new(false, false, "party_morale_failed")
 	var immediate_ids: Array[int] = []
 	for index in range(event_start, world.events.size()):
 		immediate_ids.append(world.events[index].id)
@@ -129,6 +137,13 @@ func step(command, supplied_rollback_memento: Variant = null):
 				"processed_step_index": -1, "start_time": start_time,
 				"end_time": start_time, "time_cost": 0, "speed_tier": "",
 				"timeline": [], "root_event_id": -1})
+		if world.party_encounter != null and not PartyMoraleSystemScript.commit_batch(
+				world, world.events_since(tick_event_start), false):
+			var morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+			if morale_restore != null:
+				world = morale_restore
+				_rebuild_systems()
+			return StepResultScript.new(false, false, "party_morale_failed")
 		assert(world.next_schedule_id == schedule_id_before, "Phase 1 handlers cannot create logical schedules")
 		var tick_ids: Array[int] = []
 		for index in range(tick_event_start, world.events.size()):
@@ -444,7 +459,6 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 				+ (int(personal.grievance / 5) if personal != null else 0) \
 				- (int(personal.gratitude / 10) if personal != null else 0)
 			stress_delta = maxi(1, stress_delta)
-			member.stress = clampi(member.stress + stress_delta, 0, 1000)
 			if world.emit_event("party.override_committed", actor_id, -1, world.entities[actor_id].position,
 					stress_delta, leaf.id) == null or party_coordinator.fail_point == "turn_override_event":
 				return _rollback_party_step(rollback, "party_turn_failed")
@@ -494,6 +508,9 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		if target.health != resolution.target_health_after \
 				or target_state.life_state != resolution.target_life_after:
 			return _rollback_party_step(rollback, "party_attack_projection_mismatch")
+	if not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start)) \
+			or party_coordinator.fail_point == "party_morale_event":
+		return _rollback_party_step(rollback, "party_morale_failed")
 	# A party victory is terminal only after every authoritative occurrence due
 	# during this turn has run at the deployed combat positions. Liveness still
 	# has to be reconciled here so a protagonist death/defeat takes effect before
@@ -511,8 +528,13 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 				or str(expected.schedule_id) != str(entry.schedule_id):
 			return _rollback_party_step(rollback, "party_schedule_mismatch")
 		world.world_time = int(entry.due_time)
+		var schedule_event_start: int = world.events.size()
 		if not _dispatch_schedule(entry, processed_step_index, false) or party_coordinator.fail_point == "party_schedule":
 			return _rollback_party_step(rollback, "actor_tick_failed")
+		if not PartyMoraleSystemScript.commit_batch(world,
+				world.events_since(schedule_event_start), false) \
+				or party_coordinator.fail_point == "party_morale_event":
+			return _rollback_party_step(rollback, "party_morale_failed")
 		if int(entry.repeat_interval) > 0:
 			world.requeue_repeating(entry)
 		occurrence_index += 1
@@ -524,7 +546,8 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 	if not party_coordinator.finalize_automatic_regroup():
 		return _rollback_party_step(rollback, "party_turn_failed")
 	world.finish_step()
-	if not world.world_state_error().is_empty():
+	var party_turn_semantic_error: String = world.world_state_error()
+	if not party_turn_semantic_error.is_empty():
 		return _rollback_party_step(rollback, "party_turn_semantic_failure")
 	var result_events: Array = world.events_since(event_start)
 	return StepResultScript.new(true, true, "ok", result_events, {"processed_step_index": processed_step_index,
