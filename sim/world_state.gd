@@ -25,8 +25,8 @@ const MAX_SAFE_JSON_INTEGER := 9007199254740991
 const MAX_DIMENSION := 4096
 const MAX_TILE_COUNT := 1000000
 const MAX_SMALL_VALUE := 2147483647
-const BODY_RULESET_ID := "body-simulation-b0-v1"
-const BODY_STATE_SCHEMA_ID := "body-state-v1"
+const BODY_RULESET_ID := "body-simulation-b1-v1"
+const BODY_STATE_SCHEMA_ID := "body-state-v2"
 const ROLLBACK_MEMENTO_VERSION := 4
 # Packed rollback dynamic rows are [tile_index, wetness, fire,
 # fire_source_event_id, wetness_source_event_id, fire_damage_eligible_time].

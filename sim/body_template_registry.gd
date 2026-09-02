@@ -3,7 +3,7 @@ extends RefCounted
 
 const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
 const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
-const RULESET_ID:="body-simulation-b0-v1"
+const RULESET_ID:="body-simulation-b1-v1"
 const PART_IDS:=["HEAD","TORSO","LEFT_ARM","RIGHT_ARM","LEFT_LEG","RIGHT_LEG"]
 const LAYER_IDS:=["SKIN","SOFT_TISSUE","BONE"]
 const SCALAR_IDS:=["blood_capacity","shock_threshold","consciousness_threshold",
