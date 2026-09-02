@@ -6128,7 +6128,10 @@ func test_production_raw_health_numeric_comparisons_are_explicitly_allowlisted()
 	for path in production_paths:
 		if comparison_pattern.search(FileAccess.get_file_as_string(path)) != null:
 			raw_health_hits.append(path)
+	# The offscreen reducer validates the same life-state/health parity on its
+	# detached input rows before forecasting; it never mutates entity health.
 	var allowed_paths: Array[String] = ["res://playtest/party_playtest_session.gd",
+		"res://sim/party_offscreen_combat_model.gd",
 		"res://sim/sim_entity.gd",
 		"res://sim/systems/damage_system.gd", "res://sim/world_state.gd"]
 	check_eq(raw_health_hits, allowed_paths,
