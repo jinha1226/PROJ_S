@@ -2,16 +2,13 @@ class_name BodyTemplateRegistry
 extends RefCounted
 
 const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
-const CONTENT_PATH:="res://data/content/body_templates.json"
+const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const RULESET_ID:="body-simulation-b0-v1"
 const PART_IDS:=["HEAD","TORSO","LEFT_ARM","RIGHT_ARM","LEFT_LEG","RIGHT_LEG"]
 const LAYER_IDS:=["SKIN","SOFT_TISSUE","BONE"]
-const PLAYER_SPECIES_IDS:=["beastkin","dwarf","elf","human","orc"]
 const SCALAR_IDS:=["blood_capacity","shock_threshold","consciousness_threshold",
 	"skin_toughness","soft_tissue_cushioning","bone_fracture_threshold"]
-static var _CONTENT:Dictionary=ContentLoaderScript.load_document(CONTENT_PATH)
-static var _TEMPLATES:Dictionary=ContentLoaderScript.index_rows(
-	_CONTENT.get("templates",[]),"template_id")
+static var _TEMPLATES:Dictionary=_body_templates()
 
 
 static func template_ids()->Array[String]:
@@ -21,9 +18,7 @@ static func template_ids()->Array[String]:
 
 
 static func player_species_ids()->Array[String]:
-	var result:Array[String]=[]
-	for species_id in PLAYER_SPECIES_IDS:result.append(species_id)
-	return result
+	return SpeciesCatalogScript.playable_ids()
 
 
 static func template_definition(template_id:String)->Dictionary:
@@ -38,12 +33,8 @@ static func template_for_species(species_id:String)->Dictionary:
 
 
 static func registry_error()->String:
-	var document_error:=ContentLoaderScript.document_error(_CONTENT,"BODY_TEMPLATES",[
-		"content_schema_version","content_version","content_type","ruleset_id","templates"])
-	if not document_error.is_empty():return document_error
-	if str(_CONTENT.get("ruleset_id",""))!=RULESET_ID:return "body_ruleset_mismatch"
-	var rows_error:=ContentLoaderScript.rows_error(_CONTENT.get("templates",[]),"template_id")
-	if not rows_error.is_empty():return rows_error
+	var catalog_error:=SpeciesCatalogScript.registry_error()
+	if not catalog_error.is_empty():return catalog_error
 	if not _TEMPLATES.has("generic_humanoid") or not _TEMPLATES.has("goblin"):
 		return "missing_non_player_body_template"
 	var players:Array[String]=[]
@@ -57,8 +48,15 @@ static func registry_error()->String:
 		seen_species[str(row.species_id)]=true
 		if bool(row.player_template):players.append(str(row.species_id))
 	players.sort()
-	if players!=PLAYER_SPECIES_IDS:return "invalid_player_body_template_set"
+	if players!=SpeciesCatalogScript.playable_ids():return "invalid_player_body_template_set"
 	return ""
+
+
+static func _body_templates()->Dictionary:
+	var result:Dictionary={}
+	for species_id in SpeciesCatalogScript.all_ids():
+		result[species_id]=SpeciesCatalogScript.body_template(species_id)
+	return result
 
 
 static func template_error(row:Variant)->String:

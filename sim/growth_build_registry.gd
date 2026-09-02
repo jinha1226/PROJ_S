@@ -3,6 +3,7 @@ extends RefCounted
 
 const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
+const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const CONTENT_PATH:="res://data/content/growth_builds.json"
 static var _CONTENT:Dictionary=ContentLoaderScript.load_document(CONTENT_PATH)
 static var RULESET_ID:String=str(_CONTENT.get("ruleset_id",""))
@@ -20,7 +21,6 @@ const SAFE_MUTATION_SWAP_PHASE := "GROUPED"
 const MAX_AFFIXES_BY_RARITY := {"COMMON":0, "UNCOMMON":1, "RARE":2}
 const MAX_AFFIXES_PER_KIND := 1
 const MAX_XP := 1000000
-const PICKER_SPECIES_IDS := ["human", "elf", "dwarf", "orc", "beastkin"]
 
 static var STAT_IDS:Array[String]=ContentLoaderScript.ordered_ids(
 	_CONTENT.get("stats",[]),"stat_id")
@@ -34,8 +34,7 @@ const BONUS_KEYS := [
 	"electric_tolerance", "poison_tolerance",
 ]
 
-static var SPECIES_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
-	_CONTENT.get("species",[]),"species_id")
+static var SPECIES_DEFINITIONS:Dictionary=_species_definitions()
 static var MUTATION_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("mutations",[]),"mutation_id")
 static var AFFIX_BUILD_PROFILES:Dictionary=ContentLoaderScript.index_rows(
@@ -52,9 +51,7 @@ static func species_ids() -> Array[String]:
 
 
 static func picker_species_ids() -> Array[String]:
-	var result: Array[String] = []
-	for species_id in PICKER_SPECIES_IDS: result.append(species_id)
-	return result
+	return SpeciesCatalogScript.picker_ids()
 
 
 static func species_definition(species_id: String) -> Dictionary:
@@ -153,16 +150,18 @@ static func content_version()->String:
 
 
 static func registry_error() -> String:
+	var catalog_error:=SpeciesCatalogScript.registry_error()
+	if not catalog_error.is_empty():return catalog_error
 	var document_error:=ContentLoaderScript.document_error(_CONTENT,"GROWTH_BUILDS",[
 		"content_schema_version","content_version","content_type","ruleset_id",
-		"save_migration_policy","stats","species","mutations",
+		"save_migration_policy","stats","mutations",
 		"affix_build_profiles","monster_species_families"])
 	if not document_error.is_empty():return document_error
 	if int(_CONTENT.get("content_schema_version",0))!=1:return "growth_content_schema_mismatch"
 	if RULESET_ID!="playable-species-growth-v2":return "growth_ruleset_mismatch"
 	if SAVE_MIGRATION_POLICY!="HARD_CUT":return "growth_migration_policy_mismatch"
-	for pair in [["stats","stat_id"],["species","species_id"],
-			["mutations","mutation_id"],["affix_build_profiles","affix_id"],
+	for pair in [["stats","stat_id"],["mutations","mutation_id"],
+			["affix_build_profiles","affix_id"],
 			["monster_species_families","species_id"]]:
 		var rows_error:=ContentLoaderScript.rows_error(_CONTENT[str(pair[0])],str(pair[1]))
 		if not rows_error.is_empty():return rows_error
@@ -178,9 +177,10 @@ static func registry_error() -> String:
 				or str(stat_row.get("stat_id", "")) != stat_id \
 				or str(stat_row.get("label", "")).is_empty():
 			return "invalid_growth_stat_definition"
-	if species_ids() != ["beastkin", "dwarf", "elf", "human", "orc"]:
+	if species_ids()!=SpeciesCatalogScript.playable_ids():
 		return "invalid_growth_species_set"
-	if picker_species_ids()!=PICKER_SPECIES_IDS:return "invalid_growth_species_picker_order"
+	if picker_species_ids()!=SpeciesCatalogScript.picker_ids():
+		return "invalid_growth_species_picker_order"
 	for species_id in SPECIES_DEFINITIONS:
 		if str(SPECIES_DEFINITIONS[species_id].get("species_id", "")) != species_id:
 			return "growth_species_key_mismatch"
@@ -217,6 +217,13 @@ static func registry_error() -> String:
 				or mutation_for_family(str(family_row.monster_family_id)).is_empty():
 			return "invalid_growth_monster_family"
 	return ""
+
+
+static func _species_definitions()->Dictionary:
+	var result:Dictionary={}
+	for species_id in SpeciesCatalogScript.playable_ids():
+		result[species_id]=SpeciesCatalogScript.growth_definition(species_id)
+	return result
 
 
 static func species_definition_error(row: Variant) -> String:

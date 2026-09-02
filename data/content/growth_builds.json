@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "growth-builds-2026-09-02-species-v2",
+  "content_version": "growth-builds-2026-09-02-v3",
   "content_type": "GROWTH_BUILDS",
   "ruleset_id": "playable-species-growth-v2",
   "save_migration_policy": "HARD_CUT",
@@ -8,83 +8,6 @@
     {"stat_id": "MIGHT", "label": "완력"},
     {"stat_id": "AGILITY", "label": "기민"},
     {"stat_id": "VITALITY", "label": "활력"}
-  ],
-  "species": [
-    {
-      "species_id": "human", "label": "인간",
-      "weapon_familiarity": {"mode": "ADAPTIVE", "weapon_tags": []},
-      "fixed_trait": {"effect_id": "HUMAN_FIELD_RESPONSE", "label": "현장 대응", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "HUMAN_FIELD_RESPONSE", "required_item_tags": [], "side_effect_ids": []},
-      "branches": [
-        {"branch_id": "ADAPTATION", "label": "적응", "ranks": [
-          {"effect_id": "HUMAN_CROSS_TRAINING", "label": "교차 훈련", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "HUMAN_CROSS_TRAINING", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "HUMAN_QUICK_RECONFIGURE", "label": "빠른 재구성", "trigger": "INTERACT", "bonuses": {}, "hook_id": "HUMAN_QUICK_RECONFIGURE", "required_item_tags": [], "side_effect_ids": []}
-        ]},
-        {"branch_id": "FIELDCRAFT", "label": "현장 기술", "ranks": [
-          {"effect_id": "HUMAN_FIELD_REPAIR", "label": "현장 수리", "trigger": "INTERACT", "bonuses": {}, "hook_id": "FIELD_REPAIR", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "HUMAN_RESOURCE_USE", "label": "자원 활용", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "HUMAN_RESOURCE_USE", "required_item_tags": [], "side_effect_ids": []}
-        ]}
-      ]
-    },
-    {
-      "species_id": "elf", "label": "엘프",
-      "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_PIERCE", "RANGED"]},
-      "fixed_trait": {"effect_id": "ELF_KEEN_SENSES", "label": "예리한 감각", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "ELF_KEEN_SENSES", "required_item_tags": [], "side_effect_ids": []},
-      "branches": [
-        {"branch_id": "HUNTERS_EYE", "label": "사냥눈", "ranks": [
-          {"effect_id": "ELF_FAR_SIGHT", "label": "먼 시야", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "ELF_FAR_SIGHT", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "ELF_WEAKNESS_OBSERVATION", "label": "약점 관찰", "trigger": "INTERACT", "bonuses": {}, "hook_id": "ELF_WEAKNESS_OBSERVATION", "required_item_tags": [], "side_effect_ids": []}
-        ]},
-        {"branch_id": "ARCANE_RESONANCE", "label": "이능 공명", "ranks": [
-          {"effect_id": "ELF_ARCANE_SENSE", "label": "이능 감지", "trigger": "INTERACT", "bonuses": {}, "hook_id": "ELF_ARCANE_SENSE", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "ELF_PRECISE_PROJECTION", "label": "정밀 투사", "trigger": "ON_HIT", "bonuses": {}, "hook_id": "ELF_PRECISE_PROJECTION", "required_item_tags": ["RANGED"], "side_effect_ids": []}
-        ]}
-      ]
-    },
-    {
-      "species_id": "dwarf", "label": "드워프",
-      "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_IMPACT"]},
-      "fixed_trait": {"effect_id": "DWARF_DENSE_SKELETON", "label": "치밀한 골격", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "DWARF_DENSE_SKELETON", "required_item_tags": [], "side_effect_ids": []},
-      "branches": [
-        {"branch_id": "STONE_BODY", "label": "석체", "ranks": [
-          {"effect_id": "DWARF_STEADFAST_STANCE", "label": "굳건한 자세", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "DWARF_STEADFAST_STANCE", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "DWARF_STONE_BONES", "label": "돌의 뼈", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "DWARF_STONE_BONES", "required_item_tags": [], "side_effect_ids": []}
-        ]},
-        {"branch_id": "ARTISAN_SENSE", "label": "장인 감각", "ranks": [
-          {"effect_id": "DWARF_ORE_SENSE", "label": "광맥 감지", "trigger": "INTERACT", "bonuses": {}, "hook_id": "SENSE_ORE", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "DWARF_IMPACT_CRUSH", "label": "충격 파쇄", "trigger": "ON_HIT", "bonuses": {}, "hook_id": "IMPACT_CRUSH", "required_item_tags": ["FORM_IMPACT"], "side_effect_ids": []}
-        ]}
-      ]
-    },
-    {
-      "species_id": "orc", "label": "오크",
-      "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_SLASH", "MELEE"]},
-      "fixed_trait": {"effect_id": "ORC_ROBUST_PHYSIQUE", "label": "강건한 근육·혈량", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "ORC_ROBUST_PHYSIQUE", "required_item_tags": [], "side_effect_ids": []},
-      "branches": [
-        {"branch_id": "VANGUARD", "label": "선봉", "ranks": [
-          {"effect_id": "ORC_CHARGE_PRESSURE", "label": "돌진 압박", "trigger": "ON_HIT", "bonuses": {}, "hook_id": "ORC_CHARGE_PRESSURE", "required_item_tags": ["MELEE"], "side_effect_ids": []},
-          {"effect_id": "ORC_LINE_BREAKER", "label": "전선 파괴", "trigger": "ON_HIT", "bonuses": {}, "hook_id": "ORC_LINE_BREAKER", "required_item_tags": ["MELEE"], "side_effect_ids": []}
-        ]},
-        {"branch_id": "RELENTLESS", "label": "불굴", "ranks": [
-          {"effect_id": "ORC_SHOCK_SUPPRESSION", "label": "쇼크 억제", "trigger": "ON_HURT", "bonuses": {}, "hook_id": "ORC_SHOCK_SUPPRESSION", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "ORC_FINAL_PRESSURE", "label": "최후의 압박", "trigger": "ON_HIT", "bonuses": {}, "hook_id": "ORC_FINAL_PRESSURE", "required_item_tags": ["MELEE"], "side_effect_ids": []}
-        ]}
-      ]
-    },
-    {
-      "species_id": "beastkin", "label": "수인",
-      "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["MELEE", "UNARMED"]},
-      "fixed_trait": {"effect_id": "BEASTKIN_SENSITIVE_SENSES", "label": "예민한 후각·청각", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "BEASTKIN_SENSITIVE_SENSES", "required_item_tags": [], "side_effect_ids": []},
-      "branches": [
-        {"branch_id": "TRACKING", "label": "추적", "ranks": [
-          {"effect_id": "BEASTKIN_BLOOD_SCENT", "label": "피냄새", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "BEASTKIN_BLOOD_SCENT", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "BEASTKIN_RELENTLESS_TRACKING", "label": "끈질긴 추적", "trigger": "INTERACT", "bonuses": {}, "hook_id": "BEASTKIN_RELENTLESS_TRACKING", "required_item_tags": [], "side_effect_ids": []}
-        ]},
-        {"branch_id": "WILD_MOBILITY", "label": "야생 기동", "ranks": [
-          {"effect_id": "BEASTKIN_ROUGH_TERRAIN_STEP", "label": "험지 발놀림", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "BEASTKIN_ROUGH_TERRAIN_STEP", "required_item_tags": [], "side_effect_ids": []},
-          {"effect_id": "BEASTKIN_HUNTING_LEAP", "label": "사냥 도약", "trigger": "INTERACT", "bonuses": {}, "hook_id": "BEASTKIN_HUNTING_LEAP", "required_item_tags": [], "side_effect_ids": []}
-        ]}
-      ]
-    }
   ],
   "mutations": [
     {
