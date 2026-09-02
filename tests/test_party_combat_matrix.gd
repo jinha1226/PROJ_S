@@ -167,7 +167,8 @@ static func _spawn_reinforcements(session, count: int) -> bool:
 	# perception profile preserves HUNTING while retaining the melee-enemy combat
 	# profile, so this matrix cannot silently turn into a disengagement test.
 	for existing_enemy_id in state.enemy_ids:
-		world.entities[existing_enemy_id].species_id = "human"
+		if not world.bootstrap_set_entity_species(existing_enemy_id,"human"):
+			return false
 		var existing_awareness = state.enemy_awareness(existing_enemy_id)
 		existing_awareness.awareness_state = "HUNTING"
 		existing_awareness.suspicion = 1000

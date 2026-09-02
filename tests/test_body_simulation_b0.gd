@@ -58,9 +58,12 @@ func test_body_state_seeded_generation_round_trip_and_strict_malformed_rejection
 	var bool_integer:=wire.duplicate(true);bool_integer.revision=true
 	check_eq(BodyState.validation_error_for(bool_integer),"invalid_body_state_scalar",
 		"bool-as-int rejects")
-	var float_integer:=wire.duplicate(true);float_integer.revision=0.0
-	check_eq(BodyState.validation_error_for(float_integer),"invalid_body_state_scalar",
-		"float-as-int rejects")
+	var json_integer:=wire.duplicate(true);json_integer.revision=0.0
+	check_eq(BodyState.validation_error_for(json_integer),"",
+		"integral JSON number survives Godot JSON transport")
+	var fractional:=wire.duplicate(true);fractional.revision=0.5
+	check_eq(BodyState.validation_error_for(fractional),"invalid_body_state_scalar",
+		"fractional JSON number rejects")
 	var unsafe:=wire.duplicate(true);unsafe.entity_id=9007199254740992
 	check_eq(BodyState.validation_error_for(unsafe),"invalid_body_entity_id",
 		"unsafe JSON integer rejects")

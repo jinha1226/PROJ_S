@@ -84,32 +84,33 @@ func test_world_state_error_reports_item_row_membership_and_content()->bool:
 	return finish()
 
 
-func test_snapshot_v9_round_trips_item_state_and_rejects_v8_in_the_header()->bool:
+func test_snapshot_v10_round_trips_item_and_body_state_and_rejects_v9_in_header()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(int(snapshot.snapshot_version),9,"world snapshot is v9")
+	check_eq(int(snapshot.snapshot_version),10,"world snapshot is v10")
 	var top_keys:Array=snapshot.keys();top_keys.sort()
-	check(top_keys.has("item_state"),"item_state remains in the exact v9 top level key set")
+	check(top_keys.has("item_state") and top_keys.has("body_states"),
+		"item and body authority are in the exact v10 top level key set")
 	check(not snapshot.party_encounter.has("protagonist_inventory") \
 		and not snapshot.party_encounter.has("ground_items"),
 		"party state no longer duplicates inventory or ground authority")
 	var restored=Simulator.from_snapshot(snapshot)
-	check(restored!=null,"v9 snapshot restores")
+	check(restored!=null,"v10 snapshot restores")
 	if restored!=null:
-		check_eq(restored.snapshot(),snapshot,"v9 save and restore is exact")
+		check_eq(restored.snapshot(),snapshot,"v10 save and restore is exact")
 	var legacy:Dictionary=snapshot.duplicate(true)
-	legacy.snapshot_version=8
+	legacy.snapshot_version=9
 	check_eq(WorldState.snapshot_restore_error(legacy),"unsupported_snapshot_version",
-		"v8 world snapshots are refused in the header")
-	check(Simulator.from_snapshot(legacy)==null,"a v8 snapshot builds no object")
+		"v9 world snapshots are refused in the header")
+	check(Simulator.from_snapshot(legacy)==null,"a v9 snapshot builds no object")
 	var missing:Dictionary=snapshot.duplicate(true)
 	missing.erase("item_state")
 	check_eq(WorldState.snapshot_restore_error(missing),"invalid_snapshot_top_level_keys",
-		"a v9 snapshot without item_state is rejected")
+		"a v10 snapshot without item_state is rejected")
 	var json_round_trip:Variant=JSON.parse_string(JSON.stringify(snapshot))
-	check(json_round_trip is Dictionary,"v9 snapshot encodes as JSON")
+	check(json_round_trip is Dictionary,"v10 snapshot encodes as JSON")
 	check_eq(WorldState.snapshot_restore_error(json_round_trip),"",
-		"the v9 item state survives the JSON integer transport like every other row")
+		"the v10 item state survives the JSON integer transport like every other row")
 	var orphan:Dictionary=snapshot.duplicate(true)
 	orphan.item_state.inventory_rows.pop_back()
 	check(WorldState.snapshot_restore_error(orphan)!="",

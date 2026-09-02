@@ -138,7 +138,7 @@ func _corridor_session(species_id:String,water_only:bool):
 	world.entities[state.protagonist_id].position=hero_position;state.group_anchor=hero_position
 	var enemy_id:=int(state.enemy_ids[0]);var origin:=Vector2i(6,3)
 	world.entities[enemy_id].position=origin
-	world.entities[enemy_id].species_id=species_id
+	if not world.bootstrap_set_entity_species(enemy_id,species_id):return null
 	var open_direction:=Vector2i.RIGHT if water_only else Vector2i.LEFT
 	for direction in session.sim.movement.MOVE_DIRECTIONS_8:
 		var position:Vector2i=origin+direction

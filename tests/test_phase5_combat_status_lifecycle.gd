@@ -15,6 +15,15 @@ const Melee = preload("res://sim/systems/melee_combat_system.gd")
 const Defense = preload("res://sim/combat_defense_rules.gd")
 const Terrain = preload("res://sim/terrain_registry.gd")
 const SpeciesDrops = preload("res://sim/species_drop_registry.gd")
+const BodyStateScript = preload("res://sim/body_state.gd")
+
+func _reseed_snapshot_bodies(snapshot:Dictionary,seed_value:int)->void:
+	snapshot.seed=str(seed_value)
+	for index in range(snapshot.body_states.size()):
+		var row:Dictionary=snapshot.body_states[index]
+		var body=BodyStateScript.create(int(row.entity_id),str(row.species_id),
+			BodyStateScript.world_body_seed(seed_value,int(row.entity_id),str(row.species_id)))
+		if body!=null:snapshot.body_states[index]=body.to_dict()
 
 func _party_hero_defense_snapshot() -> Dictionary:
 	return Defense.build_snapshot(150, 2, {})
@@ -79,20 +88,20 @@ func test_exact_registries_formulas_and_sha_reference_vector() -> bool:
 	check_eq(Melee.lane_roll_milli(key,"BLEED"),405,"bleed roll")
 	return finish()
 
-func test_snapshot_v9_exact_rows_strict_rejection_and_round_trip() -> bool:
+func test_snapshot_v10_exact_rows_strict_rejection_and_round_trip() -> bool:
 	var sim = Simulator.new(3,2,44); var hero=sim.world.add_entity("hero","Hero",Vector2i.ZERO)
 	var goblin=sim.world.add_entity("melee_enemy","Goblin",Vector2i(1,0))
 	var snapshot: Dictionary = sim.snapshot()
 	check_eq([snapshot.snapshot_version,snapshot.ruleset_version,snapshot.combat_ruleset_id,
 		snapshot.combat_profile_ruleset_id,snapshot.combatant_schema_id,snapshot.agent_state_schema_id,
 		snapshot.life_ruleset_id,snapshot.status_ruleset_id,snapshot.party_member_schema_id],
-		[9,"phase5-combat-status-lifecycle-v1","deterministic-melee-resolution-v1",
+		[10,"phase5-combat-status-lifecycle-v1","deterministic-melee-resolution-v1",
 		"combat-profile-registry-v1","combatant-state-v1","agent-state-v2",
-		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v9 IDs")
+		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v10 IDs")
 	check_eq(snapshot.combatant_states.map(func(r): return r.entity_id),[str(hero.id),str(goblin.id)],"combatant order")
-	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v9 round trip")
-	var old=snapshot.duplicate(true);old.snapshot_version=8
-	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","v6 rejected")
+	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v10 round trip")
+	var old=snapshot.duplicate(true);old.snapshot_version=9
+	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","v9 rejected")
 	var missing=snapshot.duplicate(true);missing.combatant_states.pop_back()
 	check_eq(WorldState.snapshot_restore_error(missing),"combatant_entity_set_mismatch","missing combatant")
 	var bad_profile=snapshot.duplicate(true);bad_profile.combatant_states[0].combat_profile_id="missing"
@@ -1773,7 +1782,7 @@ func _party_dead_posthumous_bleed_forge() -> Dictionary:
 			seed_value = candidate_seed
 			break
 	if seed_value < 0: return {}
-	snapshot.seed = str(seed_value)
+	_reseed_snapshot_bodies(snapshot,seed_value)
 	for entity in snapshot.entities:
 		if int(entity.id) == 4:
 			entity.position = [8, 7]
@@ -5618,7 +5627,7 @@ func _party_override_canonical_fixture(outcome: String) -> Dictionary:
 	member.busy_until = attack_time + 100
 	world.finish_step()
 	var snapshot: Dictionary = base_snapshot.duplicate(true)
-	snapshot.seed = str(seed_value)
+	_reseed_snapshot_bodies(snapshot,seed_value)
 	snapshot.events.append(action.to_dict())
 	snapshot.events.append(override.to_dict())
 	snapshot.events.append(result_event.to_dict())
@@ -6328,7 +6337,7 @@ func _bleed_present_recovery_forge() -> Dictionary:
 		elif event.type == "entity.recovered": recovery = event
 	if action.is_empty() or damage.is_empty() or recovery.is_empty(): return {}
 	var seed_value := 2
-	snapshot.seed = str(seed_value)
+	_reseed_snapshot_bodies(snapshot,seed_value)
 	var key := Melee.commitment_key(seed_value, int(action.step_index),
 		int(action.world_time), str(action.data.batch_context), 0,
 		int(action.actor_id), int(action.target_id))

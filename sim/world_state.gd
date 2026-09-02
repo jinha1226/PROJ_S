@@ -1,7 +1,7 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 9
+const SNAPSHOT_VERSION := 10
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
@@ -25,7 +25,9 @@ const MAX_SAFE_JSON_INTEGER := 9007199254740991
 const MAX_DIMENSION := 4096
 const MAX_TILE_COUNT := 1000000
 const MAX_SMALL_VALUE := 2147483647
-const ROLLBACK_MEMENTO_VERSION := 3
+const BODY_RULESET_ID := "body-simulation-b0-v1"
+const BODY_STATE_SCHEMA_ID := "body-state-v1"
+const ROLLBACK_MEMENTO_VERSION := 4
 # Packed rollback dynamic rows are [tile_index, wetness, fire,
 # fire_source_event_id, wetness_source_event_id, fire_damage_eligible_time].
 # Terrain/flam/conductivity are bootstrap-static and are reconstructed from the
@@ -53,6 +55,8 @@ const InventoryStateScript = preload("res://sim/inventory_state.gd")
 const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
 const GroundItemStateScript = preload("res://sim/ground_item_state.gd")
+const BodyTemplateRegistryScript = preload("res://sim/body_template_registry.gd")
+const BodyStateScript = preload("res://sim/body_state.gd")
 const PartyMemberStateScript = preload("res://sim/party_member_state.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const CombatantStateScript = preload("res://sim/combatant_state.gd")
@@ -81,6 +85,7 @@ var species_relations
 var personal_relations: Dictionary = {}
 var agent_states: Dictionary = {}
 var combatant_states: Dictionary = {}
+var body_states: Dictionary = {}
 var encounter_lab = null
 var party_encounter = null
 # Canonical owner of every entity inventory, ammo pool, weapon runtime row and
@@ -217,11 +222,19 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	)
 	var combatant = CombatantStateScript.new(entity.id,
 		CombatProfileRegistryScript.profile_id_for_kind(kind))
-	# entities, combatant_states, inventory_rows and ammo_pool_rows are created all
+	# SimEntity canonicalizes an omitted species to kind. Resolve from that final
+	# identity so default goblins receive goblin bodies while unknown kinds fall
+	# back to generic_humanoid.
+	var body_species_id := _body_species_id(entity.species_id)
+	var body = BodyStateScript.create(entity.id,body_species_id,
+		BodyStateScript.world_body_seed(seed,entity.id,body_species_id))
+	if body==null:return null
+	# Entities, combatant/body states, inventory rows and ammo rows are created all
 	# or none. Everything that can refuse is checked before the first write.
 	if item_state == null or item_state.inventory_rows.has(entity.id) \
 			or item_state.ammo_pool_rows.has(entity.id) \
-			or entities.has(entity.id) or combatant_states.has(entity.id):
+			or entities.has(entity.id) or combatant_states.has(entity.id) \
+			or body_states.has(entity.id):
 		return null
 	var inventory = InventoryStateScript.new()
 	var ammo_pool = AmmoPoolStateScript.new()
@@ -237,10 +250,39 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	if not item_error.is_empty(): return null
 	entities[entity.id] = entity
 	combatant_states[entity.id] = combatant
+	body_states[entity.id] = body
 	item_state = next_items
 	_register_occupancy(entity.id, position)
 	_next_entity_id += 1
 	return entity
+
+
+static func _body_species_id(species_id:String)->String:
+	return str(BodyTemplateRegistryScript.template_for_species(species_id).get(
+		"species_id","generic_humanoid"))
+
+
+func body_of(entity_id:int):
+	var body=body_states.get(entity_id)
+	return BodyStateScript.from_dict(body.to_dict()) if body!=null else null
+
+
+func bootstrap_set_entity_species(entity_id:int,p_species_id:String)->bool:
+	# Fixture/bootstrap seam: species and its immutable generated body identity are
+	# one atomic projection. Runtime gameplay has no species-changing command.
+	var entity=entities.get(entity_id)
+	if entity==null or p_species_id.is_empty():return false
+	var body_species_id:=_body_species_id(p_species_id)
+	var body=BodyStateScript.create(entity_id,body_species_id,
+		BodyStateScript.world_body_seed(seed,entity_id,body_species_id))
+	if body==null:return false
+	var previous_body=body_states.get(entity_id)
+	if previous_body!=null:
+		if previous_body.revision>=MAX_SMALL_VALUE:return false
+		body.revision=previous_body.revision+1
+	entity.species_id=p_species_id
+	body_states[entity_id]=body
+	return true
 
 
 # Guide 5.3 read facade. Everything here is detached: gameplay and UI can never
@@ -729,6 +771,9 @@ func snapshot() -> Variant:
 	var combatant_rows: Array = []
 	var combatant_ids: Array = combatant_states.keys(); combatant_ids.sort()
 	for entity_id in combatant_ids: combatant_rows.append(combatant_states[entity_id].to_dict())
+	var body_rows:Array=[]
+	var body_ids:Array=body_states.keys();body_ids.sort()
+	for entity_id in body_ids:body_rows.append(body_states[entity_id].to_dict())
 	return {
 		"snapshot_version": SNAPSHOT_VERSION,
 		"ruleset_version": RULESET_VERSION,
@@ -747,12 +792,14 @@ func snapshot() -> Variant:
 		"life_ruleset_id": LIFE_RULESET_ID,
 		"status_ruleset_id": STATUS_RULESET_ID,
 		"party_member_schema_id": PARTY_MEMBER_SCHEMA_ID,
+		"body_ruleset_id":BODY_RULESET_ID,"body_state_schema_id":BODY_STATE_SCHEMA_ID,
 		"width": width, "height": height,
 		"step_index": str(step_index), "world_time": str(world_time), "seed": str(seed),
 		"rng_state": str(rng.state),
 		"next_entity_id": str(_next_entity_id), "next_event_id": str(_next_event_id),
 		"next_schedule_id": str(next_schedule_id), "scheduled_entries": schedule_rows,
 		"agent_states": agent_rows, "combatant_states": combatant_rows,
+		"body_states":body_rows,
 		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
 		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
 		"item_state": item_state.to_dict(),
@@ -807,6 +854,9 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 	var combatant_rows: Array = []
 	var combatant_ids: Array = combatant_states.keys(); combatant_ids.sort()
 	for entity_id in combatant_ids: combatant_rows.append(combatant_states[entity_id].to_dict())
+	var body_rows:Array=[]
+	var body_ids:Array=body_states.keys();body_ids.sort()
+	for entity_id in body_ids:body_rows.append(body_states[entity_id].to_dict())
 	var schedule_rows: Array = []
 	for entry in scheduled_entries: schedule_rows.append(_schedule_to_dict(entry))
 	var memento:={
@@ -829,6 +879,7 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 		"personal_relation_rows": relation_rows,
 		"agent_rows": agent_rows,
 		"combatant_rows": combatant_rows,
+		"body_rows":body_rows,
 		"encounter_lab": null if encounter_lab == null else encounter_lab.to_dict(),
 		"party_encounter": null if party_encounter == null else party_encounter.to_dict(),
 		"schedule_rows": schedule_rows,
@@ -976,8 +1027,23 @@ func rollback_memento_is_current(value: Variant) -> bool:
 		and int(value.get("next_schedule_id", -1)) == next_schedule_id \
 		and int(value.get("active_step_index", -2)) == _active_step_index \
 		and int(value.get("item_revision", -1)) == item_state.revision \
+		and _memento_body_rows_are_current(value.get("body_rows")) \
 		and prefix is Array and prefix.size() == events.size() \
 		and (events.is_empty() or prefix[-1] == events[-1])
+
+
+func _memento_body_rows_are_current(rows:Variant)->bool:
+	if not rows is Array or rows.size()!=body_states.size():return false
+	var previous_id:=0
+	for row in rows:
+		if not row is Dictionary or not Int64CodecScript.is_canonical(row.get("entity_id")):
+			return false
+		var entity_id:=Int64CodecScript.parse(row.entity_id,"body entity")
+		var body=body_states.get(entity_id)
+		if entity_id<=previous_id or body==null or int(row.get("revision",-1))!=body.revision:
+			return false
+		previous_id=entity_id
+	return true
 
 
 static func from_rollback_memento(value: Variant) -> SimWorldState:
@@ -1000,7 +1066,7 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 				* ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE:
 		return null
 	for key in ["entity_rows", "event_prefix", "personal_relation_rows", "agent_rows",
-			"combatant_rows", "schedule_rows"]:
+			"combatant_rows", "body_rows", "schedule_rows"]:
 		if not value.get(key) is Array: return null
 	if not value.get("species_relations") is Dictionary:
 		return null
@@ -1063,6 +1129,11 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		if not row is Dictionary: return null
 		var combatant = CombatantStateScript.from_dict(row)
 		restored.combatant_states[combatant.entity_id] = combatant
+	restored.body_states.clear()
+	for row in value.body_rows:
+		var body=BodyStateScript.from_dict(row)
+		if body==null or restored.body_states.has(body.entity_id):return null
+		restored.body_states[body.entity_id]=body
 	if not restored._restore_item_rows(value): return null
 	restored.encounter_lab = null if value.get("encounter_lab") == null \
 		else EncounterLabStateScript.from_dict(value.encounter_lab)
@@ -1133,6 +1204,10 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 	for row in data.get("combatant_states", []):
 		var combatant = CombatantStateScript.from_dict(row)
 		restored.combatant_states[combatant.entity_id] = combatant
+	restored.body_states.clear()
+	for row in data.get("body_states",[]):
+		var body=BodyStateScript.from_dict(row)
+		restored.body_states[body.entity_id]=body
 	# The wire was fully validated above, so skip the duplicate re-validation that
 	# the public WorldItemState.from_dict() front door performs.
 	restored.item_state = WorldItemStateScript._from_valid_dict(data.item_state)
@@ -1175,7 +1250,9 @@ static func snapshot_header_error(data: Dictionary) -> String:
 			["combat_profile_ruleset_id", COMBAT_PROFILE_RULESET_ID],
 			["combatant_schema_id", COMBATANT_SCHEMA_ID], ["agent_state_schema_id", AGENT_STATE_SCHEMA_ID],
 			["life_ruleset_id", LIFE_RULESET_ID], ["status_ruleset_id", STATUS_RULESET_ID],
-			["party_member_schema_id", PARTY_MEMBER_SCHEMA_ID]]:
+			["party_member_schema_id", PARTY_MEMBER_SCHEMA_ID],
+			["body_ruleset_id",BODY_RULESET_ID],
+			["body_state_schema_id",BODY_STATE_SCHEMA_ID]]:
 		if not (data.get(pair[0]) is String) or data.get(pair[0]) != pair[1]: return "unsupported_%s" % pair[0]
 	return ""
 
@@ -1185,7 +1262,8 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if not header_error.is_empty():
 		return header_error
 	var top_keys: Array = data.keys(); top_keys.sort()
-	if top_keys != ["agent_state_schema_id", "agent_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
+	if top_keys != ["agent_state_schema_id", "agent_states", "body_ruleset_id", "body_state_schema_id",
+			"body_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
 			"combat_ruleset_id", "combatant_schema_id", "combatant_states", "decision_ruleset_id",
 			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
 			"item_state", "keyed_hash_ruleset_id", "life_ruleset_id", "next_entity_id", "next_event_id",
@@ -1240,6 +1318,7 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if not (data.get("entities") is Array):
 		return "invalid_entities_shape"
 	var entity_ids: Dictionary = {}
+	var entity_species:Dictionary={}
 	for row in data["entities"]:
 		if not (row is Dictionary) or not _exact_keys(row, ["display_name", "faction_id",
 				"health", "id", "kind", "max_health", "position", "species_id", "tags"]):
@@ -1250,6 +1329,7 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		if entity_id <= 0 or entity_ids.has(entity_id):
 			return "invalid_or_duplicate_entity_id"
 		entity_ids[entity_id] = true
+		entity_species[entity_id]=str(row.get("species_id",""))
 		for key in ["kind", "display_name", "species_id", "faction_id"]:
 			if not (row.get(key) is String):
 				return "invalid_entity_%s" % key
@@ -1276,6 +1356,30 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		if not entity_ids.has(combatant_id): return "orphan_combatant_state"
 		combatant_ids[combatant_id] = true; previous_combatant_id = combatant_id
 	if combatant_ids.size() != entity_ids.size(): return "combatant_entity_set_mismatch"
+	if not data.get("body_states") is Array:return "invalid_body_states_shape"
+	var body_ids:Dictionary={}
+	var previous_body_id:=0
+	var snapshot_seed:=Int64CodecScript.parse(data.seed,"seed")
+	for row in data.body_states:
+		var body_error:=BodyStateScript.validation_error_for(row)
+		if not body_error.is_empty():return body_error
+		var body_id:=Int64CodecScript.parse(row.entity_id,"body entity")
+		if body_id<=previous_body_id or body_ids.has(body_id):
+			return "duplicate_or_unsorted_body_states"
+		if not entity_ids.has(body_id):return "orphan_body_state"
+		var expected_species:=_body_species_id(str(entity_species[body_id]))
+		if str(row.species_id)!=expected_species:return "body_species_entity_mismatch"
+		if Int64CodecScript.parse(row.body_seed,"body seed")!=BodyStateScript.world_body_seed(
+				snapshot_seed,body_id,expected_species):
+			return "body_seed_entity_mismatch"
+		var decoded_body=BodyStateScript.from_dict(row)
+		var expected_body=BodyStateScript.create(body_id,expected_species,
+			BodyStateScript.world_body_seed(snapshot_seed,body_id,expected_species))
+		if decoded_body==null or expected_body==null \
+				or decoded_body.body_scalars!=expected_body.body_scalars:
+			return "body_scalar_seed_mismatch"
+		body_ids[body_id]=true;previous_body_id=body_id
+	if body_ids.size()!=entity_ids.size():return "body_entity_set_mismatch"
 	var item_error := WorldItemStateScript.wire_error(data.get("item_state"),
 		restored_width, restored_height)
 	if not item_error.is_empty(): return item_error
@@ -1588,6 +1692,7 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 	if _next_event_id <= 0 or events.size() != _next_event_id - 1:
 		return "event_id_sequence_mismatch"
 	if _next_entity_id <= 0 or combatant_states.size() != entities.size() \
+			or body_states.size()!=entities.size() \
 			or item_state == null or item_state.inventory_rows.size() != entities.size() \
 			or item_state.ammo_pool_rows.size() != entities.size():
 		return "runtime_entity_surface_invalid"
@@ -1612,8 +1717,12 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 		var entity_id := int(entity_id_value)
 		var entity = entities[entity_id]
 		var combatant = combatant_states.get(entity_id)
+		var body=body_states.get(entity_id)
 		if entity_id <= 0 or entity.id != entity_id or combatant == null \
-				or combatant.entity_id != entity_id or not in_bounds(entity.position) \
+				or combatant.entity_id != entity_id or body==null or body.entity_id!=entity_id \
+				or body.species_id!=_body_species_id(entity.species_id) \
+				or body.body_seed!=BodyStateScript.world_body_seed(seed,entity_id,body.species_id) \
+				or not in_bounds(entity.position) \
 				or entity.max_health <= 0 or entity.health < 0 \
 				or entity.health > entity.max_health:
 			return "runtime_entity_projection_invalid"
@@ -1675,7 +1784,10 @@ func _restored_state_error() -> String:
 	if not actor_loadout_registry_error.is_empty(): return actor_loadout_registry_error
 	var species_drop_registry_error := SpeciesDropRegistryScript.registry_error()
 	if not species_drop_registry_error.is_empty(): return species_drop_registry_error
+	var body_registry_error:=BodyTemplateRegistryScript.registry_error()
+	if not body_registry_error.is_empty():return body_registry_error
 	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
+	if body_states.size()!=entities.size():return "body_entity_set_mismatch"
 	var item_state_error := _item_state_error()
 	if not item_state_error.is_empty(): return item_state_error
 	if tiles.size() != width * height:
@@ -1702,6 +1814,17 @@ func _restored_state_error() -> String:
 		var entity = entities[entity_id]
 		var combatant = combatant_states.get(entity_id)
 		if combatant == null or combatant.entity_id != entity_id: return "combatant_entity_set_mismatch"
+		var body=body_states.get(entity_id)
+		if body==null or body.entity_id!=entity_id:return "body_entity_set_mismatch"
+		var body_error:String=body.validation_error()
+		if not body_error.is_empty():return body_error
+		var expected_body_species:=_body_species_id(entity.species_id)
+		if body.species_id!=expected_body_species:return "body_species_entity_mismatch"
+		if body.body_seed!=BodyStateScript.world_body_seed(seed,entity_id,expected_body_species):
+			return "body_seed_entity_mismatch"
+		var expected_body=BodyStateScript.create(entity_id,expected_body_species,body.body_seed)
+		if expected_body==null or body.body_scalars!=expected_body.body_scalars:
+			return "body_scalar_seed_mismatch"
 		if combatant.combat_profile_id != CombatProfileRegistryScript.profile_id_for_kind(entity.kind) \
 				or not CombatProfileRegistryScript.has(combatant.combat_profile_id):
 			return "combatant_profile_kind_mismatch"
