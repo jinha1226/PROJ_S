@@ -27,7 +27,7 @@ func test_item_glyph_palette_and_bundled_font_contract()->bool:
 	check_eq(Style.item_presentation_spec({"use_kind":"SCROLL"}).glyph,"?",
 		"consumable subtype resolves without item identity")
 	check(not Style.item_presentation_spec("%").visible,"unapproved glyph is never rendered")
-	var glyphs:=[")","[","!","?","=","*","»","~","<"]
+	var glyphs:=[")","[","!","?","=","*","의","수","귀"]
 	for font in [Mono,MonoBold]:
 		for glyph in glyphs:
 			check(font.has_char(glyph.unicode_at(0)),

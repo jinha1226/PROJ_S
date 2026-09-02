@@ -88,8 +88,12 @@ static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
 	var center := _point(bounds,spec.get("glyph_center",
 		spec.get("body_center",Vector2.ZERO)))
 	if world_context:
-		var logical_cell_size:=bounds.size.x/0.72
-		center=Vector2(bounds.get_center().x,bounds.end.y-1.0-logical_cell_size*0.5)
+		var flat_topview:=bool(spec.get("flat_topview",false))
+		if flat_topview:center=bounds.get_center()
+		else:
+			var logical_cell_size:=bounds.size.x/0.72
+			center=Vector2(bounds.get_center().x,
+				bounds.end.y-1.0-logical_cell_size*0.5)
 	var glyph_offset:Vector2=spec.get("glyph_offset",Vector2.ZERO)
 	center+=Vector2(glyph_offset.x*bounds.size.x,glyph_offset.y*bounds.size.y)
 	var glyph_scale:=clampf(float(spec.get("glyph_scale",1.0)),0.82,1.16)
@@ -149,24 +153,14 @@ static func equipment_draw_spec(bounds:Rect2,spec:Dictionary,glyph_layout:Dictio
 	weapon_direction=weapon_direction.normalized()
 	var weapon_offset:=Vector2(side_sign*maxf(glyph_rect.size.x*0.68,5.0),
 		-glyph_rect.size.y*0.06)+weapon_direction*glyph_rect.size.y*0.08
-	var swing:Variant=spec.get("weapon_swing",{})
-	if swing is Dictionary and bool(swing.get("active",false)):
-		var direction:=Vector2(swing.get("direction",weapon_direction)).normalized()
-		var progress:=clampf(float(swing.get("phase_progress",0.0)),0.0,1.0)
-		var sweep:float
-		match str(swing.get("phase","SETTLE")):
-			"WIND_UP":sweep=-0.32*progress
-			"SWING":sweep=-0.32+0.94*(1.0-pow(1.0-progress,2.0))
-			_:sweep=0.62*(1.0-progress)
-		weapon_offset=(direction.rotated(sweep))*maxf(glyph_rect.size.y*0.53,5.0)
 	var tile_rect:=bounds
 	if world_context:
-		var logical_cell_size:=bounds.size.x/0.72
-		# PartyGridView grounds figure bounds one pixel above the cell bottom.
-		# Recover that exact logical cell for presentation clamping; the raised core
-		# glyph offset is intentionally irrelevant to equipment containment.
-		var logical_center:=Vector2(bounds.get_center().x,
-			bounds.end.y+1.0-logical_cell_size*0.5)
+		var flat_topview:=bool(spec.get("flat_topview",false))
+		var logical_cell_size:=bounds.size.x/(0.94 if flat_topview else 0.72)
+		# Recover PartyGridView's logical cell for presentation clamping. Flat
+		# top-view figures are centered; the optional diorama is bottom-grounded.
+		var logical_center:=bounds.get_center() if flat_topview else Vector2(
+			bounds.get_center().x,bounds.end.y+1.0-logical_cell_size*0.5)
 		tile_rect=Rect2(logical_center-Vector2.ONE*logical_cell_size*0.5,
 			Vector2.ONE*logical_cell_size)
 	var equipment_inset:=maxf(1.0,float(weapon_font_size)*0.20)
@@ -189,7 +183,7 @@ static func equipment_draw_spec(bounds:Rect2,spec:Dictionary,glyph_layout:Dictio
 		"weapon_glyph":str(equipment.get("weapon_glyph","")),
 		"weapon_color_hex":str(equipment.get("weapon_color_hex","#00000000")),
 		"weapon_center":weapon_center,"weapon_font_size":weapon_font_size,
-		"weapon_swing_active":swing is Dictionary and bool(swing.get("active",false)),
+		"weapon_swing_active":false,
 		"primitive_count":(1 if weapon_visible else 0)+(2 if armor_visible else 0),
 		"tile_local":true,"changes_core_glyph":false,"draw_image":false,
 	}.duplicate(true)

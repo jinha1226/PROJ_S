@@ -71,8 +71,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var solo_identity=card.find_child("SoloIdentity",true,false) as Control
 	var actor_seal=card.find_child("ActorGlyphSeal",true,false) as Label
 	_check(card.find_child("Portrait",true,false)==null and solo_identity!=null \
-		and actor_seal!=null and actor_seal.text=="@" and actor_seal.custom_minimum_size.x==44,
-		"%s solo dossier did not use the 44px ASCII actor seal"%viewport_size)
+		and actor_seal!=null and actor_seal.text=="ㅇ" and actor_seal.custom_minimum_size.x==44,
+		"%s solo dossier did not use the 44px Hangul actor seal"%viewport_size)
 	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==68 \
 		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==80 \
 		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==84,
@@ -357,10 +357,58 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid_zoom_controls.visible and sandbox.grid.visible_cell_count==zoom_before_item,
 		"%s closing item modal did not restore the same map zoom"%viewport_size)
 	sandbox.queue_free();await process_frame
+	await _check_item_equipment_touch(viewport_size)
 	await _check_product_direction_touch(viewport_size)
 	await _check_active_route_direction_override(viewport_size)
 	await _check_product_auto_scheduler(viewport_size)
 	await _check_direct_solo_combat_log(viewport_size)
+
+func _check_item_equipment_touch(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.name="ItemTouchProbe";root.add_child(sandbox)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session,false)
+	sandbox._open_hero_detail_tab("ITEM");await process_frame;await process_frame
+	# Selection is intentionally direct here: this probe targets the regression in
+	# which ITEM's global drag recognizer swallowed an inline Button touch.
+	sandbox._on_item_row_selected("START_HAND_AXE_001","")
+	await process_frame;await process_frame
+	var inline:=sandbox.member_item_backpack_rows.find_child("ItemInlineEquip",true,false) as Button
+	_check(inline!=null,"%s item touch probe has no inline equip action"%viewport_size)
+	if inline!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(inline)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(inline,71)
+		_check(str(session.protagonist_equipment().weapon_id)=="HAND_AXE",
+			"%s inline equipment ScreenTouch was swallowed before [교체]"%viewport_size)
+	var main_hand:Button=null
+	for child in sandbox.member_item_equipment_rows.get_children():
+		var row:=child as Button
+		if row!=null and str(row.get_meta("item_slot",""))=="MAIN_HAND":
+			main_hand=row;break
+	_check(main_hand!=null,"%s item touch probe has no main-hand row"%viewport_size)
+	if main_hand!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(main_hand)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(main_hand,72)
+		_check(sandbox.member_item_quick_unequip_button.visible,
+			"%s equipped-row ScreenTouch did not expose [해제]"%viewport_size)
+		sandbox.member_detail_scroll.ensure_control_visible(sandbox.member_item_quick_unequip_button)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(sandbox.member_item_quick_unequip_button,73)
+		_check(bool(session.protagonist_inventory().equipment_slots[0].empty),
+			"%s quick unequip ScreenTouch did not clear the main hand"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _screen_touch_plain_button(button:Button,touch_index:int)->void:
+	var center:=button.get_global_rect().get_center()
+	var press:=InputEventScreenTouch.new();press.index=touch_index
+	press.pressed=true;press.position=center;root.push_input(press,true)
+	await process_frame
+	var release:=InputEventScreenTouch.new();release.index=touch_index
+	release.pressed=false;release.position=center;root.push_input(release,true)
+	await process_frame;await process_frame
 
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()

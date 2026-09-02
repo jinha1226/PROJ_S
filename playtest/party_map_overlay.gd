@@ -16,10 +16,10 @@ const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.
 
 const GLYPH_UNKNOWN:=""
 const GLYPH_FLOOR:="·"
-const GLYPH_WALL:="#"
-const GLYPH_EXIT:=">"
-const GLYPH_THREAT:="!"
-const GLYPH_HERO:="@"
+const GLYPH_WALL:="벽"
+const GLYPH_EXIT:="출"
+const GLYPH_THREAT:="적"
+const GLYPH_HERO:="ㅇ"
 
 const BLACK_FIELD:=Color("#000306")
 const SCRIM:=Color("#000306d9")
@@ -135,7 +135,7 @@ func layout_spec(viewport_size:Vector2=size)->Dictionary:
 		"world_height":_world_height,"trigger_independent":true}.duplicate(true)
 
 func overlay_spec()->Dictionary:
-	return {"primitive":"FULL_ASCII_CARTOGRAPHY","visual_family":"DARK_FANTASY_IRON_FOLIO",
+	return {"primitive":"FULL_HANGUL_CARTOGRAPHY","visual_family":"DARK_FANTASY_IRON_FOLIO",
 		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
 		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
 		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
@@ -189,7 +189,7 @@ func _unknown_spec()->Dictionary:
 func _font_size_for_slot(slot:Vector2)->int:
 	for candidate in range(MAX_MAP_FONT_SIZE,MIN_MAP_FONT_SIZE-1,-1):
 		if CodingFontBold.get_height(candidate)<=slot.y+0.01 \
-				and CodingFontBold.get_string_size("@",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
+			and CodingFontBold.get_string_size("벽",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
 			return candidate
 	return MIN_MAP_FONT_SIZE
 
@@ -229,7 +229,7 @@ func _draw()->void:
 			draw_string(font,baseline,glyph,HORIZONTAL_ALIGNMENT_CENTER,slot.x,font_size,spec.color)
 	var footer_y:=panel.end.y-8.0
 	draw_string(CodingFont,Vector2(panel.position.x+PANEL_INSET,footer_y),
-		"@ 나  ! 적  > 출구  바깥 터치: 닫기",HORIZONTAL_ALIGNMENT_CENTER,
+		"ㅇ 주인공  적 위협  출 출구  바깥 터치: 닫기",HORIZONTAL_ALIGNMENT_CENTER,
 		panel.size.x-PANEL_INSET*2.0,10,AsciiFrame.BONE_DIM)
 
 func _draw_ascii_frame(panel:Rect2)->void:

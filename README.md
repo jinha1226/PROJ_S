@@ -147,6 +147,8 @@ godot --headless --path . --script res://examples/move_exposure_demo.gd
 
 `godot --path .`은 450×800 Playtest Sandbox를 바로 실행합니다. 타일을 한 번 클릭하면 해당 칸을 검사하고, 선택된 인접 칸을 다시 클릭하면 MOVE를 제출합니다. 방향키/WASD는 즉시 네 방향 MOVE, `Space` 또는 `.`은 WAIT, `1`/`2`/`3`은 선택 칸에 불/물/방전, `L`은 log drawer 열기·닫기입니다. 메뉴에서는 species·seed reset, SAVE/LOAD와 snapshot 복사를 사용할 수 있습니다.
 
+메인 파티 맵은 2D 탑뷰가 기본입니다. 인간 `ㅇ`, 고블린 `ㄱ`처럼 종족 몸체는 한글 자음으로 고정하고, 무기 `/ | 7 ! ^ ) +`와 방어구 `[ ]`는 같은 셀 안의 정적인 ASCII로 표시합니다. 근접 공격은 무기를 회전시키지 않고 캐릭터 전체 범프와 대상 셀 VFX·히트스톱·화면 흔들림으로 표현합니다. 지형과 위험은 `벽·돌·물·불·피`로 표시하며, 미니맵과 전체 지도에서 주인공은 `ㅇ`입니다. 전체 문법과 표현 계층의 경계는 [한글 몸체 + ASCII 장비 2D 탑뷰 시각 언어](docs/HANGUL_TOPVIEW_VISUAL_LANGUAGE.ko.md)에 정리되어 있습니다.
+
 솔로 모바일 HUD의 `3D 실험`은 기존 2D renderer 위에 여는 presentation-local 실험실입니다.
 실제 `Node3D + SubViewport + Camera3D` 15×15 ASCII 방에서 칸을 눌러 이동하고 인접한
 `g`를 공격할 수 있습니다. `2D로`를 누르면 같은 본편 session으로 돌아오며, 실험실의
@@ -165,7 +167,7 @@ SubViewport 바깥의 전용 play-area catcher가 mouse/touch를 받아 ground r
 한 번 누르면 대각선을 포함해 최대 한 칸만 이동하며, 160ms 동안 배우가 먼저 움직이고
 고정 카메라가 뒤따라 한 칸 이동을 눈으로 확인할 수 있습니다.
 
-맵 아래의 솔로 HUD는 큰 ASCII 초상, 이름·Lv, 정확한 HP와 bar, XP, 핵심 감정/상태만
+맵 위의 솔로 HUD는 큰 한글 종족 인장, 이름·Lv, 정확한 HP와 bar, XP, 핵심 감정/상태만
 유지하고 공격·방어 수치는 상시 노출하지 않습니다. 주인공 인물 창은 열 때마다 `상태`
 tab에서 시작하며 큰 초상과 신원, 생명·HP·감정·스트레스·실제 상태 효과, 파생 전투 요약을
 우선합니다. 값이 없는 노출·상태·행동 제안은 숨기고 관계는 동료 상세에서만 표시합니다.

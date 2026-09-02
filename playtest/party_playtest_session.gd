@@ -1977,6 +1977,7 @@ func party_cards() -> Array[Dictionary]:
 		var progression:=protagonist_progression() if member.role=="PROTAGONIST" else {}
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
+			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
 			"emotion": emotion, "override_state": override_state,"progression":progression,
@@ -5096,7 +5097,7 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 				"physical",0,"빗나감")
 			# Result leaves use actor_id=-1. Recover the canonical action cause and
 			# freeze its historical pair so refresh timing/occupancy cannot erase the
-			# attacker's presentation-only equipped-weapon swing.
+			# attacker's presentation-only whole-character bump.
 			var attack=sim.world.event_by_id(int(event.cause_id)) if sim!=null \
 				and sim.world!=null else null
 			if attack!=null and str(attack.type)=="action.melee_attack":

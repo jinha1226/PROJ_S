@@ -23,7 +23,7 @@ func test_melee_vfx_right_is_target_local_broken_slash_and_holds_local_clock()->
 	check(hold_a.hit_stop_active and hold_b.hit_stop_active \
 		and hold_a.visual_elapsed_ms==hold_b.visual_elapsed_ms,
 		"only the overlay visual clock is clamped at contact")
-	check(int(params.hit_stop_ms)>=40 and int(params.hit_stop_ms)<=70,
+	check(int(params.hit_stop_ms)>=55 and int(params.hit_stop_ms)<=80,
 		"local hit stop stays in the requested window")
 	check(Vector2(hold_a.line_to).x>Vector2(hold_a.line_from).x,
 		"right strike line follows the mapped target direction")
@@ -54,12 +54,12 @@ func test_melee_vfx_left_uses_only_bounded_dot_colon_star_particles()->bool:
 		"left strike reverses the mapped line")
 	_check_target_local_broken_slash(grid,spec,Vector2i(7,7),Vector2i(6,7),
 		"left")
-	check(spec.particle_count>=3 and spec.particle_count<=6,
-		"impact emits three to six particles")
+	check(spec.particle_count>=4 and spec.particle_count<=7,
+		"impact emits four to seven particles")
 	check(spec.particles.all(func(row):return str(row.glyph) in [".",":","*"]),
 		"particles use only the requested visual glyph alphabet")
-	check(int(params.particle_visible_total_ms)>=390 \
-			and int(params.particle_visible_total_ms)<=430,
+	check(int(params.particle_visible_total_ms)>=435 \
+			and int(params.particle_visible_total_ms)<=460,
 		"debris readable lifetime stays in the requested window")
 	grid.free();return finish()
 
@@ -102,10 +102,10 @@ func test_melee_vfx_down_shake_is_visual_capped_and_mapping_neutral()->bool:
 		"down strike line follows the mapped target direction")
 	_check_target_local_broken_slash(grid,slash_spec,Vector2i(7,7),Vector2i(7,8),
 		"down")
-	check(shake.length()>0.0 and shake.length()<=2.0 \
-		and float(params.shake_strength_px)>=1.0 and float(params.shake_strength_px)<=2.0,
-		"screen shake remains a one-to-two pixel visual offset")
-	check(int(params.shake_duration_ms)>=50 and int(params.shake_duration_ms)<=100 \
+	check(shake.length()>0.0 and shake.length()<=3.0 \
+		and float(params.shake_strength_px)>=2.5 and float(params.shake_strength_px)<=3.0,
+		"screen shake remains a strong but bounded two-to-three pixel visual offset")
+	check(int(params.shake_duration_ms)>=100 and int(params.shake_duration_ms)<=140 \
 		and overlay.shake_offset_px(started+contact+int(params.shake_duration_ms))==Vector2.ZERO,
 		"shake ends inside the requested duration")
 	check_eq([grid.mapping_signature(),grid.pixel_to_world_cell(
@@ -128,7 +128,7 @@ func test_melee_vfx_rapid_consecutive_effects_are_independent_and_bounded()->boo
 	var specs:=overlay.effect_draw_specs(sample)
 	check_eq([specs[0].target_grid_pos,specs[1].target_grid_pos],
 		[Vector2i(8,7),Vector2i(6,7)],"rapid hits preserve independent targets")
-	check(overlay.shake_offset_px(sample).length()<=2.0,
+	check(overlay.shake_offset_px(sample).length()<=3.0,
 		"combined rapid shake is capped instead of summed")
 	for effect in overlay._effects:
 		effect.first_drawn=true;effect.live_elapsed_ms=int(params.effect_duration_ms)
@@ -157,12 +157,12 @@ func test_melee_vfx_live_clock_waits_for_first_draw_and_caps_slow_frames()->bool
 	var first_spec:=overlay.effect_draw_specs()[0]
 	check(not bool(first_spec.line_visible) and not bool(first_spec.flash_visible) \
 		and int(first_spec.particle_count)==0,
-		"first bounded live frame preserves the readable attacker wind-up")
+		"first bounded live frame preserves the readable character wind-up")
 	overlay._effects[0].live_elapsed_ms=int(params.contact_at_ms)
 	var contact_spec:=overlay.effect_draw_specs()[0]
 	check(bool(contact_spec.line_visible) and bool(contact_spec.flash_visible) \
-		and int(contact_spec.particle_count)>=3 and overlay.shake_offset_px().length()>0.0,
-		"slash, flash, debris, and subtle shake synchronize at arm contact")
+		and int(contact_spec.particle_count)>=4 and overlay.shake_offset_px().length()>0.0,
+		"slash, flash, debris, and strong shake synchronize at bump contact")
 	grid.free();return finish()
 
 
@@ -177,9 +177,9 @@ func test_melee_vfx_readable_hold_fade_and_bidirectional_last_visible_bounds()->
 		effects[1].attacker_grid_pos,effects[1].target_grid_pos],
 		[Vector2i(7,7),Vector2i(8,7),Vector2i(8,7),Vector2i(7,7)],
 		"opposing attacks preserve canonical attacker and target direction")
-	check(int(params.slash_visible_total_ms)>=250 and int(params.slash_visible_total_ms)<=280 \
-		and int(params.flash_visible_total_ms)>=190 and int(params.flash_visible_total_ms)<=215 \
-		and int(params.particle_visible_total_ms)>=390 and int(params.particle_visible_total_ms)<=430,
+	check(int(params.slash_visible_total_ms)>=265 and int(params.slash_visible_total_ms)<=290 \
+		and int(params.flash_visible_total_ms)>=225 and int(params.flash_visible_total_ms)<=245 \
+		and int(params.particle_visible_total_ms)>=435 and int(params.particle_visible_total_ms)<=460,
 		"central parameters expose the requested slash, flash, and debris totals")
 	var started:=int(effects[0].started_at_ms)
 	var hold_last:=_effect_sequence_spec(overlay,
@@ -250,48 +250,48 @@ func test_melee_vfx_multiple_adjacent_actors_selects_passed_target_only()->bool:
 	grid.free();return finish()
 
 
-func test_attacker_weapon_swing_is_tile_local_and_8_direction_safe()->bool:
+func test_attacker_character_bump_is_visual_only_and_8_direction_safe()->bool:
 	for direction in [Vector2i(-1,-1),Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),
 			Vector2i(1,0),Vector2i(-1,1),Vector2i(0,1),Vector2i(1,1)]:
 		var fixture:=_fixture(direction);var grid:PartyGridView=fixture.grid
 		var overlay:MeleeVfxOverlay=grid.melee_vfx
 		var mapping:=grid.mapping_signature();var hit:=grid.actor_hit_rect(1)
 		check(overlay.play(Vector2i(7,7),Vector2i(7,7)+direction),
-			"%s swing starts"%direction)
+			"%s character bump starts"%direction)
 		var effect:=overlay.active_effects()[0];var params:=overlay.parameter_spec()
 		var started:=int(effect.started_at_ms)
 		var windup:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.contact_at_ms)-1)
 		var contact:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.contact_at_ms)+24)
-		var settled:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.swing_duration_ms))
-		var swing:Dictionary=contact.weapon_swing
-		check(str(windup.weapon_swing.phase)=="WIND_UP" and str(swing.phase)=="SWING" \
-				and not bool(settled.weapon_swing.active),
-			"%s owns wind-up, swing, and bounded settle"%direction)
+		var settled:Dictionary=grid.actor_glyph_draw_spec(1,started+int(params.bump_duration_ms))
+		var bump:Dictionary=contact.bump_motion
+		check(str(windup.bump_motion.phase)=="WIND_UP" and str(bump.phase)=="BUMP" \
+				and not bool(settled.bump_motion.active),
+			"%s owns wind-up, character bump, and bounded settle"%direction)
 		check(contact.limb_segments.is_empty() and windup.limb_segments.is_empty() \
 				and settled.limb_segments.is_empty(),
-			"%s swing never recreates artificial arms or legs"%direction)
+			"%s bump never recreates artificial arms or legs"%direction)
 		check_eq([str(windup.glyph),str(contact.glyph),str(settled.glyph)],
-			["@","@","@"],"%s swing never replaces the actor glyph"%direction)
-		var weapon_travel:=Vector2(contact.equipment.weapon_center).distance_to(
-			Vector2(windup.equipment.weapon_center))
-		var actor_bounds:=Rect2(contact.figure_bounds).grow(4.0)
-		check(contact.equipment.weapon_swing_active and weapon_travel>=1.0 \
-				and actor_bounds.has_point(Vector2(contact.equipment.weapon_center)),
-			"%s equipped weapon owns a visible actor-local attack arc (%s px)"%[direction,weapon_travel])
+			["ㅇ","ㅇ","ㅇ"],"%s bump never replaces the actor glyph"%direction)
+		var body_travel:=Vector2(contact.center).distance_to(Vector2(windup.center))
+		check(not bool(contact.weapon_swing.active) and bool(contact.draw_equipment) \
+				and int(contact.equipment_primitive_count)==1 \
+				and str(contact.equipment.weapon_glyph)=="/" and body_travel>=2.0,
+			"%s whole character and static weapon bump without a swing arc (%s px)" \
+			%[direction,body_travel])
 		check_eq([grid.mapping_signature(),grid.actor_hit_rect(1),
 			grid.actor_in_world_cell(Vector2i(7,7))],[mapping,hit,1],
-			"%s weapon animation is mapping and authority neutral"%direction)
+			"%s character bump is mapping and authority neutral"%direction)
 		grid.free()
 	return finish()
 
 
-func test_attacker_swing_overlap_miss_fov_and_life_state_are_safe()->bool:
+func test_attacker_bump_overlap_miss_fov_and_life_state_are_safe()->bool:
 	var fixture:=_fixture(Vector2i.RIGHT);var grid:PartyGridView=fixture.grid
 	var overlay:MeleeVfxOverlay=grid.melee_vfx
 	check(overlay.play(Vector2i(7,7),Vector2i(8,7)) \
 		and overlay.play(Vector2i(7,7),Vector2i(7,6)),
-		"rapid swings coexist without replacing impact effects")
-	var newest:=overlay.attacker_swing_draw_spec(Vector2i(7,7),
+		"rapid bumps coexist without replacing impact effects")
+	var newest:=overlay.attacker_bump_draw_spec(Vector2i(7,7),
 		int(overlay.active_effects()[1].started_at_ms)+20)
 	check_eq([overlay.active_effect_count(),Vector2(newest.direction)],
 		[2,Vector2.UP],"latest same-attacker pose wins without coalescing effects")
@@ -300,22 +300,22 @@ func test_attacker_swing_overlap_miss_fov_and_life_state_are_safe()->bool:
 		"actor_id":1,"target_id":2,"world_position":[8,7]}]),1,
 		"canonical miss row remains playable")
 	var miss_effect:=overlay.active_effects()[0]
-	check(not bool(miss_effect.draw_impact) and bool(overlay.attacker_swing_draw_spec(
+	check(not bool(miss_effect.draw_impact) and bool(overlay.attacker_bump_draw_spec(
 		Vector2i(7,7),int(miss_effect.started_at_ms)+20).active),
-		"miss animates the equipped weapon without inventing target impact")
+		"miss bumps the attacker without inventing target impact")
 	grid.melee_vfx.clear()
 	check_eq(grid.play_effects([{"effect_id":"historical-miss-arm","event_id":91,
 		"kind":"MISS","actor_id":-1,"target_id":2,"attacker_grid_pos":[7,7],
 		"target_grid_pos":[8,7],"world_position":[8,7]}]),1,
 		"product miss result leaf uses its canonical historical position pair")
 	check(not bool(overlay.active_effects()[0].draw_impact) and bool(
-		overlay.attacker_swing_draw_spec(Vector2i(7,7),
+		overlay.attacker_bump_draw_spec(Vector2i(7,7),
 		int(overlay.active_effects()[0].started_at_ms)+20).active),
-		"historical MISS animates even though the result leaf owns no actor id")
+		"historical MISS bumps even though the result leaf owns no actor id")
 	grid._actors[0]["life_state"]="DOWNED"
 	check(not bool(grid.actor_draw_spec(grid._actors[0],false,
-		int(miss_effect.started_at_ms)+20).get("weapon_swing",{}).get("active",false)),
-		"downed attacker cannot display a standing swing")
+		int(miss_effect.started_at_ms)+20).get("bump_motion",{}).get("active",false)),
+		"downed attacker cannot display a standing bump")
 	grid.free()
 
 	var hidden_fixture:=_fixture(Vector2i.RIGHT);var hidden_grid:PartyGridView=hidden_fixture.grid
