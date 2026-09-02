@@ -15,6 +15,7 @@ const InventoryOperationsScript=preload("res://sim/item_inventory_operations.gd"
 const ItemScript=preload("res://sim/item_instance.gd")
 const RegistryScript=preload("res://sim/item_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
+const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
 const RuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
@@ -183,6 +184,9 @@ static func weapon_is_loaded(world,entity_id:int)->bool:
 static func attack_error(world,entity_id:int)->String:
 	var weapon=WeaponRegistryScript.definition(equipped_weapon_id(world,entity_id))
 	if weapon==null:return "unknown_equipped_weapon"
+	var body=world.body_states.get(entity_id) if world!=null else null
+	var limb_error:=BodyFunctionRulesScript.weapon_use_error(body,weapon)
+	if not limb_error.is_empty():return limb_error
 	if weapon.ammo_kind=="NONE":return ""
 	var pool=world._ammo_pool_ref(entity_id)
 	if pool==null or pool.amount(weapon.ammo_kind)<int(weapon.ammo_cost):return "ammo_empty"

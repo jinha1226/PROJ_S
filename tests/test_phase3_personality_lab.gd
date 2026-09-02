@@ -6,6 +6,7 @@ const FixedPoint = preload("res://sim/fixed_point.gd")
 const Session = preload("res://playtest/playtest_session.gd")
 const Simulator = preload("res://sim/simulator.gd")
 const WorldState = preload("res://sim/world_state.gd")
+const BodyStateScript = preload("res://sim/body_state.gd")
 
 func test_sha256_u31_latin_hypercube_exact_vector_and_strata() -> bool:
 	var expected := {"aggression": [652, 939, 11, 457], "altruism": [357, 238, 739, 846],
@@ -383,6 +384,14 @@ func test_snapshot_rejects_status_time_fixture_relation_and_combat_semantic_tamp
 	var species_tamper := valid.duplicate(true)
 	for row in species_tamper.entities:
 		if row.id == leads[0].entity_id: row.species_id = "goblin"; break
+	for index in range(species_tamper.body_states.size()):
+		var row:Dictionary=species_tamper.body_states[index]
+		if row.entity_id!=leads[0].entity_id:continue
+		var seed_value:=int(species_tamper.seed)
+		var body=BodyStateScript.create(int(row.entity_id),"goblin",
+			BodyStateScript.world_body_seed(seed_value,int(row.entity_id),"goblin"))
+		if body!=null:species_tamper.body_states[index]=body.to_dict()
+		break
 	check_eq(WorldState.snapshot_restore_error(species_tamper), "lab_fixture_actor_identity_invalid", "fixture species immutable")
 	var health_tamper := valid.duplicate(true)
 	for row in health_tamper.entities:

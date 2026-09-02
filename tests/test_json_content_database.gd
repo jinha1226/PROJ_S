@@ -4,6 +4,7 @@ const Loader=preload("res://sim/json_content_loader.gd")
 const Growth=preload("res://sim/growth_build_registry.gd")
 const Species=preload("res://sim/species_catalog_registry.gd")
 const Bodies=preload("res://sim/body_template_registry.gd")
+const BodyCombat=preload("res://sim/body_combat_rules.gd")
 const Items=preload("res://sim/item_registry.gd")
 const Weapons=preload("res://sim/weapon_registry.gd")
 const Progression=preload("res://sim/progression_registry.gd")
@@ -15,6 +16,7 @@ const DOCUMENTS := {
 	"ITEMS":"res://data/content/items.json",
 	"WEAPONS":"res://data/content/weapons.json",
 	"PROFICIENCIES":"res://data/content/proficiencies.json",
+	"BODY_COMBAT_RULES":"res://data/content/body_combat_rules.json",
 }
 
 
@@ -32,8 +34,8 @@ func test_content_documents_are_readable_versioned_and_detached()->bool:
 		check(str(second.get("content_version",""))!="tampered",
 			"%s loads detached data"%content_type)
 	check_eq([Species.registry_error(),Growth.registry_error(),Bodies.registry_error(),
-		Items.registry_error(),Weapons.registry_error(),Progression.registry_error()],
-		["","","","","",""],
+		BodyCombat.registry_error(),Items.registry_error(),Weapons.registry_error(),
+		Progression.registry_error()],["","","","","","",""],
 		"all JSON-backed registries pass strict validation")
 	check_eq(ContentDatabase.validation_error(),"",
 		"the session-level content database passes integrated validation")
@@ -103,14 +105,15 @@ func test_registry_views_match_the_json_authority()->bool:
 			"unified catalog publishes %s exactly once"%species_id)
 	check_eq([Growth.content_version(),Items.content_version(),Weapons.content_version(),
 		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-01",
-		"weapons-2026-09-01","proficiencies-2026-09-01"],
+		"weapons-2026-09-02-body-b1","proficiencies-2026-09-01"],
 		"content versions are visible to diagnostics")
 	check_eq(ContentDatabase.content_versions(),{
 		"proficiencies":"proficiencies-2026-09-01",
-		"weapons":"weapons-2026-09-01",
+		"weapons":"weapons-2026-09-02-body-b1",
 		"items":"items-2026-09-01",
 		"species_catalog":"species-catalog-2026-09-02-v1",
 		"growth_builds":"growth-builds-2026-09-02-v3",
+		"body_combat":"body-combat-2026-09-02-b1",
 	},"integrated content versions are available for diagnostics")
 	return finish()
 

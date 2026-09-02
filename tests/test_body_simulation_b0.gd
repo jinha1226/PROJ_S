@@ -58,15 +58,80 @@ func test_body_state_seeded_generation_round_trip_and_strict_malformed_rejection
 	var bool_integer:=wire.duplicate(true);bool_integer.revision=true
 	check_eq(BodyState.validation_error_for(bool_integer),"invalid_body_state_scalar",
 		"bool-as-int rejects")
-	var float_integer:=wire.duplicate(true);float_integer.revision=0.0
-	check_eq(BodyState.validation_error_for(float_integer),"invalid_body_state_scalar",
-		"float-as-int rejects")
+	var json_integer:=wire.duplicate(true);json_integer.revision=0.0
+	check_eq(BodyState.validation_error_for(json_integer),"",
+		"integral JSON number survives Godot JSON transport")
+	var fractional:=wire.duplicate(true);fractional.revision=0.5
+	check_eq(BodyState.validation_error_for(fractional),"invalid_body_state_scalar",
+		"fractional JSON number rejects")
 	var unsafe:=wire.duplicate(true);unsafe.entity_id=9007199254740992
 	check_eq(BodyState.validation_error_for(unsafe),"invalid_body_entity_id",
 		"unsafe JSON integer rejects")
 	var canonical_large:=wire.duplicate(true);canonical_large.entity_id="9007199254740992"
 	check_eq(BodyState.validation_error_for(canonical_large),"",
 		"canonical decimal string safely preserves a large int64")
+	return finish()
+
+
+func test_limb_condition_is_monotonic_permanent_and_wire_strict() -> bool:
+	var body=BodyState.create(7,"human",12345)
+	check(body!=null,"body creates for limb transition")
+	if body==null:return finish()
+	check_eq(body.parts.map(func(part):return [part.part_id,part.condition,
+		part.condition_source_event_id]),[
+		["HEAD","FUNCTIONAL",-1],["TORSO","FUNCTIONAL",-1],
+		["LEFT_ARM","FUNCTIONAL",-1],["RIGHT_ARM","FUNCTIONAL",-1],
+		["LEFT_LEG","FUNCTIONAL",-1],["RIGHT_LEG","FUNCTIONAL",-1]],
+		"all six fixed rows start functional")
+	var before:Dictionary=body.to_dict()
+	check_eq(body.transition_part_condition("HEAD","SEVERED",10),"part_not_severable",
+		"v1 permanent loss is limb-only")
+	check_eq(body.transition_part_condition("LEFT_ARM","FUNCTIONAL",10),
+		"invalid_part_condition_target","healing cannot use the injury transition seam")
+	check_eq(body.transition_part_condition("LEFT_ARM","DISABLED",0),
+		"invalid_part_condition_source_event","injury requires a causal event")
+	check_eq(body.to_dict(),before,"rejected transitions are atomic")
+	check_eq(body.transition_part_condition("LEFT_ARM","DISABLED",41),"",
+		"functional limb can become disabled")
+	check_eq([body.part_condition("LEFT_ARM"),body.parts[2].condition_source_event_id,
+		body.revision],["DISABLED",41,1],"disability preserves cause and advances revision")
+	check_eq(body.parts[2].layers.map(func(layer):return layer.integrity),[1000,1000,1000],
+		"disability does not invent tissue damage")
+	var disabled_wire:Dictionary=body.to_dict()
+	check_eq(body.transition_part_condition("LEFT_ARM","DISABLED",42),
+		"part_condition_unchanged","same-state transition rejects")
+	check_eq(body.to_dict(),disabled_wire,"same-state rejection cannot rewrite the cause")
+	check_eq(body.transition_part_condition("LEFT_ARM","SEVERED",42),"",
+		"disabled limb can be permanently severed")
+	check_eq([body.part_condition("LEFT_ARM"),body.parts[2].condition_source_event_id,
+		body.revision],["SEVERED",42,2],"severing records its own cause")
+	check_eq(body.parts[2].layers.map(func(layer):return layer.integrity),[0,0,0],
+		"severed fixed row has no remaining tissue integrity")
+	var severed_wire:Dictionary=body.to_dict()
+	check_eq(BodyState.validation_error_for(severed_wire),"","severed body wire validates")
+	var json_wire:Dictionary=JSON.parse_string(JSON.stringify(severed_wire))
+	var restored=BodyState.from_dict(json_wire)
+	check(restored!=null,"severed body survives JSON transport")
+	if restored!=null:check_eq(restored.to_dict(),severed_wire,
+		"permanent condition and causal event round trip exactly")
+	check_eq(body.transition_part_condition("LEFT_ARM","DISABLED",43),
+		"part_condition_regression","severed anatomy cannot regenerate")
+	check_eq(body.to_dict(),severed_wire,"regression rejection preserves permanent state")
+	var bad_condition:=severed_wire.duplicate(true);bad_condition.parts[3].condition="MISSING"
+	check_eq(BodyState.validation_error_for(bad_condition),"invalid_body_part_rows",
+		"unknown condition rejects")
+	var bad_source:=severed_wire.duplicate(true)
+	bad_source.parts[3].condition_source_event_id="9"
+	check_eq(BodyState.validation_error_for(bad_source),"invalid_body_part_condition",
+		"functional limb cannot claim an injury source")
+	var restored_tissue:=severed_wire.duplicate(true);restored_tissue.parts[2].layers[0].integrity=1
+	check_eq(BodyState.validation_error_for(restored_tissue),"invalid_severed_body_part",
+		"severed wire cannot retain hidden tissue")
+	var exhausted=BodyState.create(8,"human",12345);exhausted.revision=2147483647
+	var exhausted_before:Dictionary=exhausted.to_dict()
+	check_eq(exhausted.transition_part_condition("RIGHT_ARM","DISABLED",44),
+		"body_revision_overflow","transition cannot overflow the canonical revision")
+	check_eq(exhausted.to_dict(),exhausted_before,"overflow rejection is atomic")
 	return finish()
 
 

@@ -1,8 +1,8 @@
 {
   "content_schema_version": 1,
-  "content_version": "weapons-2026-09-01",
+  "content_version": "weapons-2026-09-02-body-b1",
   "content_type": "WEAPONS",
-  "ruleset_id": "weapon-registry-v1",
+  "ruleset_id": "weapon-registry-v2",
   "stat_scaling_rules": {
     "stat_baseline": 5,
     "total_bonus_cap_milli": 250,
@@ -28,6 +28,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": false,
+      "body_attack":{"base_force":55,"penetration":0,"contact_size":35,"stagger_force":55,"reference_damage":12},
       "scaling":{"STR":"C","DEX":"D","INT":"NONE"},
       "natural_weapon":true
     },
@@ -37,7 +38,9 @@
       "accuracy_milli":20, "armor_penetration_flat":0, "attack_time":70,
       "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
       "trait_id":"FAST_UNARMED", "secondary_damage_milli":0, "stun_chance_milli":0,
-      "two_handed":false, "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
+      "two_handed":false,
+      "body_attack":{"base_force":45,"penetration":15,"contact_size":10,"stagger_force":15,"reference_damage":12},
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
       "natural_weapon":true
     },
     {
@@ -59,6 +62,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": false,
+      "body_attack":{"base_force":55,"penetration":25,"contact_size":10,"stagger_force":20,"reference_damage":16},
       "scaling":{"STR":"NONE","DEX":"A","INT":"NONE"},
       "natural_weapon":false
     },
@@ -81,6 +85,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": false,
+      "body_attack":{"base_force":55,"penetration":50,"contact_size":6,"stagger_force":18,"reference_damage":16},
       "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
       "natural_weapon":false
     },
@@ -103,6 +108,7 @@
       "secondary_damage_milli": 400,
       "stun_chance_milli": 0,
       "two_handed": false,
+      "body_attack":{"base_force":85,"penetration":35,"contact_size":14,"stagger_force":40,"reference_damage":18},
       "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"},
       "natural_weapon":false
     },
@@ -125,6 +131,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 250,
       "two_handed": false,
+      "body_attack":{"base_force":90,"penetration":10,"contact_size":45,"stagger_force":85,"reference_damage":17},
       "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"},
       "natural_weapon":false
     },
@@ -147,6 +154,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": false,
+      "body_attack":{"base_force":75,"penetration":60,"contact_size":7,"stagger_force":25,"reference_damage":17},
       "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
       "natural_weapon":false
     },
@@ -169,6 +177,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": true,
+      "body_attack":{"base_force":50,"penetration":45,"contact_size":5,"stagger_force":10,"reference_damage":16},
       "scaling":{"STR":"D","DEX":"B","INT":"NONE"},
       "natural_weapon":false
     },
@@ -191,6 +200,7 @@
       "secondary_damage_milli": 0,
       "stun_chance_milli": 0,
       "two_handed": true,
+      "body_attack":{"base_force":100,"penetration":100,"contact_size":4,"stagger_force":20,"reference_damage":21},
       "scaling":{"STR":"NONE","DEX":"D","INT":"NONE"},
       "natural_weapon":false
     }

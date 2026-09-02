@@ -37,7 +37,7 @@ static func definition_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_weapon_definition_shape"
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["accuracy_milli","ammo_cost","ammo_kind","armor_penetration_flat",
-			"attack_form","attack_time","base_damage","label","natural_weapon",
+			"attack_form","attack_time","base_damage","body_attack","label","natural_weapon",
 			"proficiency_id","range_max","range_min","reload_required","reload_time",
 			"scaling","secondary_damage_milli","stun_chance_milli","trait_id",
 			"two_handed","weapon_id"]:return "invalid_weapon_definition_keys"
@@ -52,7 +52,7 @@ static func registry_error() -> String:
 		"content_schema_version","content_version","content_type","ruleset_id",
 		"stat_scaling_rules","definitions"])
 	if not document_error.is_empty():return document_error
-	if RULESET_ID!="weapon-registry-v1":return "weapon_ruleset_mismatch"
+	if RULESET_ID!="weapon-registry-v2":return "weapon_ruleset_mismatch"
 	var scaling_error:=_stat_scaling_rules_error(STAT_SCALING_RULES)
 	if not scaling_error.is_empty():return scaling_error
 	var rows_error:=ContentLoaderScript.rows_error(_CONTENT.definitions,"weapon_id")

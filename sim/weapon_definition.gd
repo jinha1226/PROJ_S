@@ -27,6 +27,7 @@ var trait_id: String
 var secondary_damage_milli: int
 var stun_chance_milli: int
 var two_handed: bool
+var body_attack:Dictionary
 var scaling: Dictionary
 var natural_weapon: bool
 
@@ -50,6 +51,12 @@ func _init(row: Dictionary = {}) -> void:
 	secondary_damage_milli = int(row.get("secondary_damage_milli", 0))
 	stun_chance_milli = int(row.get("stun_chance_milli", 0))
 	two_handed = bool(row.get("two_handed", false))
+	body_attack={}
+	var body_source:Variant=row.get("body_attack",{})
+	if body_source is Dictionary:
+		for key in ["base_force","penetration","contact_size","stagger_force",
+				"reference_damage"]:
+			body_attack[key]=body_source.get(key,-1)
 	scaling = {}
 	var source:Variant=row.get("scaling",{})
 	if source is Dictionary:
@@ -76,6 +83,14 @@ func validation_error() -> String:
 	if secondary_damage_milli < 0 or secondary_damage_milli > 1000: return "invalid_weapon_secondary_damage"
 	if stun_chance_milli < 0 or stun_chance_milli > 1000: return "invalid_weapon_stun_chance"
 	if not two_handed is bool: return "invalid_weapon_hands"
+	var body_keys:Array=body_attack.keys();body_keys.sort()
+	if body_keys!=["base_force","contact_size","penetration","reference_damage",
+			"stagger_force"]:return "invalid_weapon_body_attack"
+	for key in body_keys:
+		if not body_attack[key] is int or int(body_attack[key])<0 \
+				or int(body_attack[key])>100000:return "invalid_weapon_body_attack"
+	if int(body_attack.contact_size)<=0 or int(body_attack.reference_damage)<=0:
+		return "invalid_weapon_body_attack"
 	if scaling.keys().size()!=STAT_IDS.size():return "invalid_weapon_scaling_shape"
 	for stat_id in STAT_IDS:
 		if not scaling.has(stat_id) or str(scaling[stat_id]) not in SCALING_GRADES:
@@ -96,5 +111,6 @@ func to_dict() -> Dictionary:
 		"trait_id": trait_id, "secondary_damage_milli": secondary_damage_milli,
 		"stun_chance_milli": stun_chance_milli,
 		"two_handed": two_handed,
+		"body_attack":body_attack.duplicate(true),
 		"scaling":scaling.duplicate(true), "natural_weapon":natural_weapon,
 	}.duplicate(true)
