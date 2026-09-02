@@ -7,7 +7,7 @@ const Action = preload("res://sim/party_action_command.gd")
 const Request = preload("res://sim/party_turn_request.gd")
 const EnemyAwareness = preload("res://sim/enemy_awareness_state.gd")
 const PartyMember = preload("res://sim/party_member_state.gd")
-const PersonalityRegistry = preload("res://sim/personality_definition_registry.gd")
+const HexacoProfile = preload("res://sim/dungeon_population/hexaco_profile.gd")
 
 const CI_SEEDS := [1,2,3,4,5,6,7,8]
 const MAX_COMBAT_TURNS := 60
@@ -167,7 +167,7 @@ static func _add_recruitable_companion(session,seed:int)->int:
 	state.party_member_ids.append(companion.id)
 	state.party_member_ids.sort()
 	state.member_rows[companion.id]=PartyMember.new(companion.id,3,"COMPANION",
-		"RECRUITABLE",PersonalityRegistry.generate(seed,2))
+		"RECRUITABLE",HexacoProfile.generated(seed,companion.id))
 	return companion.id if world.world_state_error().is_empty() else -1
 
 

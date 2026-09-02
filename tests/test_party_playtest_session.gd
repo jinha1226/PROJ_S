@@ -181,10 +181,8 @@ func test_new_expedition_personality_seed_profiles_replay_refresh_and_restart_ar
 	var session=Session.new(44,seed,"SHOWCASE_V1")
 	var summary:Dictionary=session.party_personality_summary()
 	check_eq(summary.companion_rows.size(),4,"active companions and two candidates have personality rows")
-	check(str(summary.companion_rows[0].archetype_id)!=str(summary.companion_rows[1].archetype_id),
-		"new-expedition companions use distinct archetypes")
 	var distance:=0
-	for index in range(4):
+	for index in range(6):
 		var first:int=int(summary.companion_rows[0].facet_rows[index].base_value)
 		var second:int=int(summary.companion_rows[1].facet_rows[index].base_value)
 		check(first>=Session.NEW_EXPEDITION_FACET_MIN and first<=Session.NEW_EXPEDITION_FACET_MAX,
@@ -216,13 +214,13 @@ func test_new_expedition_personality_seed_profiles_replay_refresh_and_restart_ar
 	check_eq(session.personality_seed,reroll_seed,"reroll restart stores issued seed")
 	return finish()
 
-func test_32_new_expedition_seeds_cover_archetypes_and_only_legal_personality_actions() -> bool:
-	var action_counts:={"HOLD":0,"MOVE":0,"MELEE":0};var archetype_ids:Dictionary={}
+func test_32_new_expedition_seeds_cover_styles_and_only_legal_personality_actions() -> bool:
+	var action_counts:={"HOLD":0,"MOVE":0,"MELEE":0};var style_labels:Dictionary={}
 	for entropy_seed in range(1,33):
 		var seed:=Session.new_expedition_personality_seed(entropy_seed)
 		var session=Session.new(44,seed);var state=session.sim.world.party_encounter
 		for row in session.party_personality_summary().companion_rows:
-			archetype_ids[str(row.archetype_id)]=true
+			style_labels[str(row.style_label)]=true
 		check(session.commit_exploration(Command.wait(state.protagonist_id)).accepted,
 			"seed %d reaches contact"%entropy_seed)
 		check(session.preview_deployment("WEDGE",session.available_companion_ids()).accepted,
@@ -248,7 +246,7 @@ func test_32_new_expedition_seeds_cover_archetypes_and_only_legal_personality_ac
 	# HOLD/PROTECT/RETREAT receive explicit state fixtures in the party-AI seed probe.
 	check(action_counts.MOVE>0 and action_counts.MELEE>0,
 		"32 seeds cover legal approach/melee distance fixtures: %s"%str(action_counts))
-	check(archetype_ids.size()>=4,"32 seeds cover multiple archetypes: %s"%str(archetype_ids.keys()))
+	check(style_labels.size()>=4,"32 seeds cover multiple derived styles: %s"%str(style_labels.keys()))
 	return finish()
 
 func test_facade_dtos_are_detached_and_save_load_preserves_contact() -> bool:
@@ -1349,7 +1347,7 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 	check(not hero.personality_available and not hero.personality_note.is_empty(),"protagonist null profile explained")
 	var companion=session.inspect_party_member(state.party_member_ids[1])
 	check(companion.accepted,"companion inspection")
-	check_eq(companion.personality_facets.size(),4,"all personality facets")
+	check_eq(companion.personality_facets.size(),6,"all HEXACO facets")
 	check_eq(companion.species_affinity.species_id,"human","species affinity")
 	check_eq(companion.relation_rows.size(),2,"effective relation to other party members")
 	check(companion.current_exposure.applicable,"current full exposure")

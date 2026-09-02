@@ -12,9 +12,9 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 	var actor = world.entities[actor_id]
 	var relationships = RelationshipSystemScript.new(world)
 	var profile = member.personality_profile
-	var boldness := _facet(profile, "boldness")
-	var aggression := _facet(profile, "aggression")
-	var composure := _facet(profile, "composure")
+	var emotionality := _facet(profile, "E")
+	var agreeableness := _facet(profile, "A")
+	var conscientiousness := _facet(profile, "C")
 	var stress: int = clampi(int(member.stress), 0, 1000)
 	var pressure: Dictionary = board.ally_pressure.get(actor_id,
 		{"adjacent_enemy_ids": [], "hp_milli": 1000})
@@ -33,11 +33,15 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 	var relation_fear: int = int(relation.get("fear", 0)) * 10
 	var hostility: int = int(relation.get("hostility", 0)) * 10
 	var perceived: int = clampi(objective + FixedPointScript.trunc_div(relation_fear, 2) \
-		+ FixedPointScript.trunc_div(hp_loss, 2) - FixedPointScript.trunc_div(boldness, 3) \
+		+ FixedPointScript.trunc_div(hp_loss, 2) + FixedPointScript.trunc_div(emotionality, 3) \
+		- 167 \
 		+ FixedPointScript.trunc_div(stress, 2), 0, 2000) if has_threat else 0
-	var attack_drive: int = clampi(hostility + FixedPointScript.trunc_div(aggression, 2), 0, 2000)
+	var attack_drive: int = clampi(hostility \
+		+ FixedPointScript.trunc_div(1000 - emotionality, 4) \
+		+ FixedPointScript.trunc_div(1000 - agreeableness, 4), 0, 2000)
 	var panic: int = clampi(stress + FixedPointScript.trunc_div(hp_loss, 2) \
-		- FixedPointScript.trunc_div(composure, 2), 0, 2000)
+		+ FixedPointScript.trunc_div(emotionality, 3) \
+		- FixedPointScript.trunc_div(conscientiousness, 2), 0, 2000)
 	var adjacent_count: int = pressure.adjacent_enemy_ids.size()
 	var engaged_enemies: int = 1000 if adjacent_count >= 3 else int([0, 400, 700][adjacent_count])
 	var outnumbered: int = clampi(
@@ -77,10 +81,12 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 static func inputs_for(appraisal: Dictionary, profile, candidate_target_id: int,
 		board: Dictionary, actor_id: int) -> Dictionary:
 	return {
-		"facet.aggression": _facet(profile, "aggression"),
-		"facet.altruism": _facet(profile, "altruism"),
-		"facet.boldness": _facet(profile, "boldness"),
-		"facet.composure": _facet(profile, "composure"),
+		"facet.H": _facet(profile, "H"),
+		"facet.E": _facet(profile, "E"),
+		"facet.X": _facet(profile, "X"),
+		"facet.A": _facet(profile, "A"),
+		"facet.C": _facet(profile, "C"),
+		"facet.O": _facet(profile, "O"),
 		"appraisal.attack_drive": clampi(
 			FixedPointScript.trunc_div(int(appraisal.attack_drive), 2), 0, 1000),
 		"appraisal.perceived_threat": clampi(

@@ -124,7 +124,8 @@ func test_affinity_blocked_hold_reserved_features_and_move_contact_have_one_leaf
 			"last_protagonist_damage_step"]:
 		v2_wire.snapshot.party_encounter.erase(future_key)
 	var migrated=Session.new(1,2)
-	check(migrated.load_session_json(JSON.stringify(v2_wire)).accepted,
+	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(v2_wire))
+	check(migration_result.accepted,
 		"v2 fixture save migrates patrol feature reservations")
 	var expected_legacy:Dictionary=fixture.sim.snapshot()
 	# Items are snapshot v7 world authority, so a downgraded party section no

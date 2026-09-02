@@ -413,28 +413,30 @@ func test_enemy_ambushers_resolve_by_id_and_rubble_move_sets_actual_busy_cost() 
 
 func test_weighted_companion_suggestions_use_direct_action_personality_relation_and_hazard_purely() -> bool:
 	# The utility ruleset keeps the adjacent attack legal at both personality
-	# extremes, while aggression and boldness still raise ENGAGE's disclosed score.
+	# extremes, while low E/A and high X still raise ENGAGE's disclosed score.
 	var personality = _engaged_one_companion(); var pstate = personality.sim.world.party_encounter
 	var hero: int = pstate.protagonist_id; var companion: int = pstate.party_member_ids[1]; var enemy: int = pstate.enemy_ids[0]
 	check(_relocate_with_move_events(personality.sim, enemy,
 		personality.sim.world.entities[companion].position + Vector2i.RIGHT), "personality enemy canonical relocation")
-	_set_facet(pstate.member(companion).personality_profile, "aggression", 0)
-	_set_facet(pstate.member(companion).personality_profile, "boldness", 0)
-	_set_facet(pstate.member(companion).personality_profile, "composure", 999)
+	_set_facet(pstate.member(companion).personality_profile, "E", 999)
+	_set_facet(pstate.member(companion).personality_profile, "A", 999)
+	_set_facet(pstate.member(companion).personality_profile, "X", 0)
+	_set_facet(pstate.member(companion).personality_profile, "C", 999)
 	var cautious := _suggestion_for(personality.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
 	var cautious_explanation:Dictionary=personality.sim.party_coordinator.explain_companion_turn(
 		Request.new(Action.hold(hero),[]))
 	check_eq(cautious.type, "MELEE", "adjacent ENGAGE remains a legal leaf")
-	_set_facet(pstate.member(companion).personality_profile, "aggression", 999)
-	_set_facet(pstate.member(companion).personality_profile, "boldness", 999)
+	_set_facet(pstate.member(companion).personality_profile, "E", 0)
+	_set_facet(pstate.member(companion).personality_profile, "A", 0)
+	_set_facet(pstate.member(companion).personality_profile, "X", 999)
 	var aggressive := _suggestion_for(personality.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
 	var aggressive_explanation:Dictionary=personality.sim.party_coordinator.explain_companion_turn(
 		Request.new(Action.hold(hero),[]))
-	check_eq(aggressive.type, "MELEE", "high aggression and boldness use legal melee")
+	check_eq(aggressive.type, "MELEE", "low E/A and high X use legal melee")
 	check_eq(int(aggressive.target_id), enemy, "personality melee targets encounter enemy")
 	check(_candidate_score(aggressive_explanation,companion,"ENGAGE") \
 		> _candidate_score(cautious_explanation,companion,"ENGAGE"),
-		"aggression and boldness increase the data-driven ENGAGE score")
+		"low E/A and high X increase the data-driven ENGAGE score")
 
 	# With two symmetric enemies, the protagonist's direct target becomes the
 	# support focus. P1 treats that focus as a squad hint; protagonist relation no
@@ -449,7 +451,8 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	check(support.commit_deployment().accepted, "support deployment")
 	check(_relocate_with_move_events(support.sim, focus_enemy, Vector2i(8,7)), "support enemy canonical relocation")
 	check(_relocate_with_move_events(support.sim, reserve.id, Vector2i(7,8)), "support reserve canonical relocation")
-	for facet in ["aggression", "boldness", "composure"]: _set_facet(sstate.member(companion).personality_profile, facet, 999)
+	for facet in ["X", "C"]: _set_facet(sstate.member(companion).personality_profile, facet, 999)
+	for facet in ["E", "A"]: _set_facet(sstate.member(companion).personality_profile, facet, 0)
 	var relation = PersonalRelation.new(companion, hero); relation.personal_trust_delta = 40; relation.gratitude = 100
 	support.sim.world.personal_relations["%d:%d" % [companion,hero]] = relation
 	var follow_focus := _suggestion_for(support.sim.preview_party_turn(Request.new(Action.melee(hero, focus_enemy), [])), companion)
@@ -470,10 +473,11 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 
 	# WeightedPathfinder supplies the deterministic first step. P1 exposure is a
 	# leaf-routing input, not a cross-action veto; a forced hazardous first step
-	# remains legal at either composure extreme and preview stays byte-pure.
+	# remains legal at either HEXACO resilience extreme and preview stays byte-pure.
 	var hazard = _engaged_one_companion(); var hstate = hazard.sim.world.party_encounter
 	hero = hstate.protagonist_id; companion = hstate.party_member_ids[1]; enemy = hstate.enemy_ids[0]
-	for facet in ["aggression", "boldness", "composure"]: _set_facet(hstate.member(companion).personality_profile, facet, 999)
+	for facet in ["X", "C"]: _set_facet(hstate.member(companion).personality_profile, facet, 999)
+	for facet in ["E", "A"]: _set_facet(hstate.member(companion).personality_profile, facet, 0)
 	var safe_suggestion := _suggestion_for(hazard.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
 	check_eq(safe_suggestion.type, "MOVE", "driven companion approaches distant enemy")
 	var approach_cells: Array[Vector2i] = []
@@ -488,8 +492,9 @@ func test_weighted_companion_suggestions_use_direct_action_personality_relation_
 	var hazard_tile = hazard.sim.world.tile_at(hazard_position); hazard_tile.fire = 100
 	hazard_tile.fire_source_event_id = ignition.id; hazard_tile.fire_damage_eligible_time = hazard.sim.world.world_time
 	var composed := _suggestion_for(hazard.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
-	check_eq(composed.type, "MOVE", "high composure tolerates deterministic hazard")
-	_set_facet(hstate.member(companion).personality_profile, "composure", 0)
+	check_eq(composed.type, "MOVE", "high HEXACO resilience tolerates deterministic hazard")
+	_set_facet(hstate.member(companion).personality_profile, "C", 0)
+	_set_facet(hstate.member(companion).personality_profile, "E", 999)
 	var shaken := _suggestion_for(hazard.sim.preview_party_turn(Request.new(Action.hold(hero), [])), companion)
 	check_eq(shaken.type, "MOVE", "hazard does not veto the selected utility action")
 	check_eq(shaken.destination,composed.destination,
@@ -712,10 +717,7 @@ func _snapshot_entity(snapshot: Dictionary, entity_id: int) -> Dictionary:
 	return {}
 
 func _set_facet(profile, facet_id: String, value: int) -> void:
-	for row in profile.facet_rows:
-		if str(row.facet_id) == facet_id:
-			row.base_value = value
-			return
+	profile.values[facet_id] = value
 
 func _suggestion_for(plan, actor_id: int) -> Dictionary:
 	for row in plan.to_dict().get("actor_rows", []):

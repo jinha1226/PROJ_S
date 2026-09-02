@@ -452,10 +452,11 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 			return _rollback_party_step(rollback, "party_turn_failed")
 		if bool(row.get("overridden", false)):
 			var member = world.party_encounter.member(actor_id)
-			var composure: int = member.personality_profile.value("composure") if member.personality_profile != null else 500
+			var resilience: int = PartyMoraleSystemScript.ModelScript.morale_resilience(
+				member.personality_profile)
 			var protagonist_id:int=world.party_encounter.protagonist_id
 			var personal=world.personal_relations.get("%d:%d"%[actor_id,protagonist_id])
-			var stress_delta: int = 20 + int((999 - composure) / 20) \
+			var stress_delta: int = 20 + int((1000 - resilience) / 20) \
 				+ (int(personal.grievance / 5) if personal != null else 0) \
 				- (int(personal.gratitude / 10) if personal != null else 0)
 			stress_delta = maxi(1, stress_delta)

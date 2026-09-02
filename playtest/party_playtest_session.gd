@@ -7,7 +7,7 @@ const PartyStateScript = preload("res://sim/party_encounter_state.gd")
 const MemberScript = preload("res://sim/party_member_state.gd")
 const ActionScript = preload("res://sim/party_action_command.gd")
 const RequestScript = preload("res://sim/party_turn_request.gd")
-const PersonalityRegistryScript = preload("res://sim/personality_definition_registry.gd")
+const PartyHexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const WorldStateScript = preload("res://sim/world_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
@@ -75,20 +75,10 @@ const PRODUCT_ZOOM_REFERENCE_CELL_COUNT := 15
 const PRODUCT_ZOOM_CELL_COUNTS := [9,11,13,15,17,19,21,23,25]
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 13
 const MAX_UI_VIEW_CELL_COUNT := PRODUCT_ZOOM_CELL_COUNTS[-1]
-const PERSONALITY_ARCHETYPES := [
-	{"archetype_id":"BOLD_VANGUARD", "label":"대담한 선봉",
-		"center":{"aggression":780,"altruism":420,"boldness":790,"composure":610}},
-	{"archetype_id":"CALM_GUARDIAN", "label":"침착한 수호자",
-		"center":{"aggression":360,"altruism":760,"boldness":540,"composure":800}},
-	{"archetype_id":"QUICK_SCOUT", "label":"기민한 척후",
-		"center":{"aggression":620,"altruism":400,"boldness":650,"composure":470}},
-	{"archetype_id":"KIND_SUPPORT", "label":"다정한 지원가",
-		"center":{"aggression":330,"altruism":820,"boldness":470,"composure":630}},
-	{"archetype_id":"CAUTIOUS_SENTINEL", "label":"신중한 파수꾼",
-		"center":{"aggression":280,"altruism":570,"boldness":290,"composure":810}},
-	{"archetype_id":"FIERY_CHARGER", "label":"불같은 돌격수",
-		"center":{"aggression":830,"altruism":350,"boldness":740,"composure":300}},
-]
+const HEXACO_LABELS := {
+	"H":["실리적","원칙적"], "E":["대담함","섬세함"],
+	"X":["과묵함","사교적"], "A":["직선적","온화함"],
+	"C":["즉흥적","신중함"], "O":["현실적","탐구적"]}
 const PARTY_MORALE_TRIGGER_PRESENTATION := {
 	"SELF_DAMAGE":{"kind":"DISTRESS","label_ko":"직접 피해"},
 	"SELF_DOWNED":{"kind":"DISTRESS","label_ko":"자신이 쓰러짐"},
@@ -156,37 +146,29 @@ static func new_expedition_personality_seed(entropy_seed: int,
 	return 1 + (normalized + 4096 * 104729) % NEW_EXPEDITION_SEED_LIMIT
 
 
-static func personality_archetype(profile) -> Dictionary:
-	if profile == null: return {}
-	var best: Dictionary = {}
-	var best_distance := 9223372036854775807
-	for archetype_value in PERSONALITY_ARCHETYPES:
-		var archetype: Dictionary = archetype_value
-		var center: Dictionary = archetype.center
-		var distance := 0
-		for facet_id in PersonalityRegistryScript.FACET_IDS:
-			var delta := int(profile.value(facet_id)) - int(center[facet_id])
-			distance += delta * delta
-		if distance < best_distance:
-			best_distance = distance; best = archetype
-	return {"archetype_id":str(best.get("archetype_id","")),
-		"label":str(best.get("label","")), "distance":best_distance}.duplicate(true)
+static func personality_style(profile) -> Dictionary:
+	return {} if profile == null else profile.style_summary()
+
+
+static func _hexaco_facet_rows(profile) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if profile == null: return rows
+	for facet_id in PartyHexacoScript.FACETS:
+		rows.append({"facet_id":facet_id,"base_value":int(profile.value(facet_id))})
+	return rows
 
 
 static func _new_expedition_seed_is_suitable(candidate_seed: int) -> bool:
-	var profiles: Array = [PersonalityRegistryScript.generate(candidate_seed,0),
-		PersonalityRegistryScript.generate(candidate_seed,1)]
-	var archetype_ids: Array[String] = []
+	var profiles: Array = [PartyHexacoScript.generated(candidate_seed,2),
+		PartyHexacoScript.generated(candidate_seed,3)]
 	for profile in profiles:
 		if profile == null: return false
-		for facet_id in PersonalityRegistryScript.FACET_IDS:
+		for facet_id in PartyHexacoScript.FACETS:
 			var value := int(profile.value(facet_id))
 			if value < NEW_EXPEDITION_FACET_MIN or value > NEW_EXPEDITION_FACET_MAX:
 				return false
-		archetype_ids.append(str(personality_archetype(profile).get("archetype_id","")))
-	if archetype_ids[0] == archetype_ids[1]: return false
 	var distance := 0
-	for facet_id in PersonalityRegistryScript.FACET_IDS:
+	for facet_id in PartyHexacoScript.FACETS:
 		distance += absi(int(profiles[0].value(facet_id))-int(profiles[1].value(facet_id)))
 	return distance >= NEW_EXPEDITION_MIN_PROFILE_DISTANCE
 
@@ -325,11 +307,11 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
 	if not solo:
-		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 0))
-		state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PersonalityRegistryScript.generate(p_personality_seed, 1))
+		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
+		state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, miru.id))
 	if showcase:
 		state.member_rows[candidate_dwarf.id] = MemberScript.new(candidate_dwarf.id, 3,
-			"COMPANION", "RECRUITABLE", PersonalityRegistryScript.generate(p_personality_seed, 2))
+			"COMPANION", "RECRUITABLE", PartyHexacoScript.generated(p_personality_seed, candidate_dwarf.id))
 	for enemy_entity in enemies:
 		state.enemy_busy_rows[enemy_entity.id]=0
 		state.enemy_awareness_rows[enemy_entity.id]=EnemyAwarenessScript.new(
@@ -1404,7 +1386,7 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 func party_personality_summary() -> Dictionary:
 	var rows: Array = []
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
-		return {"schema_version":1,"personality_seed":str(personality_seed),
+		return {"schema_version":2,"personality_seed":str(personality_seed),
 			"companion_rows":rows}.duplicate(true)
 	var state = sim.world.party_encounter
 	for member_id_value in state.party_member_ids:
@@ -1414,26 +1396,28 @@ func party_personality_summary() -> Dictionary:
 				or member.personality_profile == null \
 				or not sim.world.entities.has(member_id):
 			continue
-		var archetype := personality_archetype(member.personality_profile)
+		var style := personality_style(member.personality_profile)
 		rows.append({"actor_id":member_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(sim.world.entities[member_id].display_name),
-			"archetype_id":str(archetype.get("archetype_id","")),
-			"archetype_label":str(archetype.get("label","")),
-			"facet_rows":member.personality_profile.facet_rows.duplicate(true)})
+			"style_label":str(style.get("label","")),
+			"primary_facet":str(style.get("primary_facet","")),
+			"secondary_facet":str(style.get("secondary_facet","")),
+			"facet_rows":_hexaco_facet_rows(member.personality_profile)})
 	for candidate_id_value in rescue_candidate_ids():
 		var candidate_id := int(candidate_id_value)
 		var profile = _rescue_personality_profile(candidate_id)
 		if profile == null or not sim.world.entities.has(candidate_id): continue
-		var archetype := personality_archetype(profile)
+		var style := personality_style(profile)
 		rows.append({"actor_id":candidate_id,"roster_slot":63,
 			"display_name":str(sim.world.entities[candidate_id].display_name),
-			"archetype_id":str(archetype.get("archetype_id","")),
-			"archetype_label":str(archetype.get("label","")),
-			"facet_rows":profile.facet_rows.duplicate(true)})
+			"style_label":str(style.get("label","")),
+			"primary_facet":str(style.get("primary_facet","")),
+			"secondary_facet":str(style.get("secondary_facet","")),
+			"facet_rows":_hexaco_facet_rows(profile)})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.roster_slot)<int(b.roster_slot) if int(a.roster_slot)!=int(b.roster_slot) \
 			else int(a.actor_id)<int(b.actor_id))
-	return {"schema_version":1,"personality_seed":str(personality_seed),
+	return {"schema_version":2,"personality_seed":str(personality_seed),
 		"companion_rows":rows}.duplicate(true)
 
 func observe_party_world() -> Dictionary:
@@ -2053,8 +2037,8 @@ func recruitment_assessment(entity_id: int) -> Dictionary:
 	var profile = _rescue_personality_profile(entity_id)
 	var personality_term := 0
 	if profile != null:
-		personality_term = clampi(int((profile.value("altruism")-500)/5) \
-			+ int((profile.value("composure")-500)/10), -140, 140)
+		personality_term = clampi(int((profile.value("H")-500)/7) \
+			+ int((profile.value("A")-500)/10), -140, 140)
 	var hp_percent := int(entity.health*100/maxi(1,entity.max_health))
 	var survival_term := clampi((100-hp_percent)*2,0,180)
 	var rescue_term := 180
@@ -2204,8 +2188,7 @@ func _rescue_event_for(entity_id: int):
 func _rescue_personality_profile(entity_id: int):
 	var discovery = _rescue_discovery_event_for(entity_id)
 	if discovery == null: return null
-	var slot := int(discovery.data.get("personality_slot", 3))
-	return PersonalityRegistryScript.generate(personality_seed, slot)
+	return PartyHexacoScript.generated(personality_seed, entity_id)
 
 
 func _prepare_rescue_candidate_for_roster(entity_id: int) -> bool:
@@ -2278,14 +2261,14 @@ func recruitable_companions() -> Array[Dictionary]:
 		if entity_id in state.active_party_member_ids: continue
 		var member = state.member(entity_id); var entity = sim.world.entities.get(entity_id)
 		if member == null or entity == null or member.presence != "RECRUITABLE": continue
-		var archetype := personality_archetype(member.personality_profile)
+		var style := personality_style(member.personality_profile)
 		var assessment := roster_change_assessment("RECRUIT", entity_id)
 		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(entity.display_name),"presence":str(member.presence),
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"life_state":"ACTIVE","authoritative_life_state":"ACTIVE",
 			"status_ids":_combatant_status_ids(entity_id),
-			"archetype_label":str(archetype.get("label","동료")),
+			"style_label":str(style.get("label","동료")),
 			"rescue_state":"AVAILABLE","can_stabilize":false,"stabilization":{},
 			"decision_available":false,"recruitment":{},
 			"can_recruit":bool(assessment.get("accepted",false)),
@@ -2299,14 +2282,14 @@ func recruitable_companions() -> Array[Dictionary]:
 		var recruitment := recruitment_assessment(entity_id) \
 			if story_state in ["OFFER_READY","REJECTED"] else {}
 		var profile = _rescue_personality_profile(entity_id)
-		var archetype := personality_archetype(profile)
+		var style := personality_style(profile)
 		rows.append({"entity_id":entity_id,"roster_slot":63,
 			"display_name":str(entity.display_name),"presence":"WORLD_NPC",
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"life_state":"DOWNED" if story_state=="COLLAPSED_STORY" else "ACTIVE",
 			"authoritative_life_state":str(sim.world.combatant_states[entity_id].life_state),
 			"status_ids":_combatant_status_ids(entity_id),
-			"archetype_label":str(archetype.get("label","동료")),
+			"style_label":str(style.get("label","동료")),
 			"rescue_state":story_state,"can_stabilize":bool(rescue.get("accepted",false)),
 			"stabilization":rescue.duplicate(true),
 			"decision_available":story_state in ["OFFER_READY","REJECTED"],
@@ -2409,9 +2392,9 @@ func _exile_condition(entity_id:int)->Dictionary:
 	elif hp_percent<=30 or member.stress>=750 or harmful_status:band="ENDANGERED"
 	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
 		sim.world.party_encounter.protagonist_id)
-	var composure:=int(member.personality_profile.value("composure"))
+	var resilience:=PartyMoraleModelScript.morale_resilience(member.personality_profile)
 	var vulnerability:=(100-hp_percent)+int(member.stress/10)+(45 if harmful_status else 0)
-	var resentment_delta:=clampi(15+int(vulnerability/2)+int(relation.get("grievance",0)/4)-int(composure/50),10,100)
+	var resentment_delta:=clampi(15+int(vulnerability/2)+int(relation.get("grievance",0)/4)-int(resilience/50),10,100)
 	var fear_delta:=clampi(int((100-hp_percent)/2)+int(member.stress/20)+(20 if harmful_status else 0),5,100)
 	return {"valid":true,"condition_band":band,"resentment_delta":resentment_delta,
 		"fear_delta":fear_delta,"hp_percent":hp_percent,"stress":int(member.stress),
@@ -2420,19 +2403,20 @@ func _exile_condition(entity_id:int)->Dictionary:
 
 func _new_exile_record(entity_id:int,dismissal_event_id:int,condition:Dictionary)->Dictionary:
 	var entity=sim.world.entities[entity_id];var member=sim.world.party_encounter.member(entity_id)
-	var archetype:=personality_archetype(member.personality_profile)
+	var style:=personality_style(member.personality_profile)
 	var profile_wire:Dictionary=member.personality_profile.to_dict()
 	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
 		sim.world.party_encounter.protagonist_id)
-	return {"schema_version":1,"former_member_id":str(entity_id),
+	return {"schema_version":2,"former_member_id":str(entity_id),
 		"display_name":str(entity.display_name),"species_id":str(entity.species_id),
-		"personality_summary":{"archetype_id":str(archetype.get("archetype_id","")),
-			"archetype_label":str(archetype.get("label","")),
+		"personality_summary":{"style_label":str(style.get("label","")),
 			"profile_hash":JSON.stringify(profile_wire).sha256_text(),
-			"aggression":int(member.personality_profile.value("aggression")),
-			"altruism":int(member.personality_profile.value("altruism")),
-			"boldness":int(member.personality_profile.value("boldness")),
-			"composure":int(member.personality_profile.value("composure"))},
+			"H":int(member.personality_profile.value("H")),
+			"E":int(member.personality_profile.value("E")),
+			"X":int(member.personality_profile.value("X")),
+			"A":int(member.personality_profile.value("A")),
+			"C":int(member.personality_profile.value("C")),
+			"O":int(member.personality_profile.value("O"))},
 		"dismissed_world_time":str(sim.world.world_time),
 		"dismissed_step_index":str(sim.world.step_index),"dismissal_event_id":str(dismissal_event_id),
 		"condition_snapshot":{"condition_band":str(condition.condition_band),"hp":int(entity.health),
@@ -2466,7 +2450,7 @@ func _advance_exile_world()->void:
 			var hp_before:=int(record.current_hp);var behavior:="SEEK_SAFETY"
 			var status_rows:Array=record.status_effects.duplicate(true);var remaining:Array=[];var expired:Array=[]
 			if not status_rows.is_empty():
-				behavior="SELF_TREAT" if int(record.personality_summary.composure)>=450 \
+				behavior="SELF_TREAT" if int(record.personality_summary.C)>=450 \
 					or int(record.safety)>=400 else "SEEK_SAFETY"
 				for status in status_rows:
 					record.current_hp=maxi(0,int(record.current_hp)-int(status.tick_damage))
@@ -3279,13 +3263,16 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_engage.focus":"집중 표적",
 		"party_engage.threat":"체감 위협",
 		"party_engage.hp_loss":"자신의 부상",
-		"party_engage.aggression":"공격성",
-		"party_engage.boldness":"대담성",
+		"party_engage.emotionality":"정서성(E)",
+		"party_engage.agreeableness":"원만성(A)",
+		"party_engage.extraversion":"외향성(X)",
 		"party_engage.stress":"스트레스",
 		"party_protect.ally_targeted":"아군 위협",
 		"party_protect.ally_hp_loss":"아군 부상",
 		"party_protect.trust":"아군 신뢰",
-		"party_protect.altruism":"이타성",
+		"party_protect.honesty":"정직-겸손(H)",
+		"party_protect.emotionality":"정서성(E)",
+		"party_protect.agreeableness":"원만성(A)",
 		"party_protect.panic":"공황 압력",
 		"party_protect.hp_loss":"자신의 부상",
 		"party_retreat.threat":"체감 위협",
@@ -3293,9 +3280,10 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_retreat.stress":"스트레스",
 		"party_retreat.engaged":"근접한 적",
 		"party_retreat.outnumbered":"수적 열세",
-		"party_retreat.boldness":"대담성",
-		"party_retreat.composure":"침착성",
-		"party_hold.composure":"침착성",
+		"party_retreat.emotionality":"정서성(E)",
+		"party_retreat.conscientiousness":"성실성(C)",
+		"party_hold.conscientiousness":"성실성(C)",
+		"party_hold.emotionality":"정서성(E)",
 		"party_hold.threat":"체감 위협",
 		"party_hold.engaged":"근접한 적",
 	}.get(consideration_id, consideration_id)
@@ -3975,12 +3963,12 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var emotion := _emotion_presentation(member, entity)
 	var personality_profile = null
 	var personality_facets: Array = []
-	var personality_archetype_dto: Dictionary = {}
+	var personality_style_dto: Dictionary = {}
 	if member.personality_profile != null:
 		personality_profile = member.personality_profile.to_dict()
-		personality_archetype_dto = personality_archetype(member.personality_profile)
-		for row in member.personality_profile.facet_rows:
-			var labels: Array = PersonalityRegistryScript.LABELS.get(str(row.facet_id), ["낮음","높음"])
+		personality_style_dto = personality_style(member.personality_profile)
+		for row in _hexaco_facet_rows(member.personality_profile):
+			var labels: Array = HEXACO_LABELS.get(str(row.facet_id), ["낮음","높음"])
 			personality_facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
 				"low_label":str(labels[0]),"high_label":str(labels[1])})
 	var relation_rows: Array = []
@@ -4023,10 +4011,10 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
-		"personality_facets":personality_facets,"personality_archetype":personality_archetype_dto,
+		"personality_facets":personality_facets,"personality_style":personality_style_dto,
 		"personality_note":"주인공은 생성형 성격 프로필을 사용하지 않습니다." \
 			if personality_profile == null else "%s · 결정론적 성격 프로필" \
-				% str(personality_archetype_dto.get("label","분류되지 않은 성향")),
+				% str(personality_style_dto.get("label","균형 잡힌 성향")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
 		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id),
 		"rescue_assessment":rescue_assessment(entity_id) \
@@ -4047,8 +4035,8 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 	var profile = _rescue_personality_profile(entity_id)
 	var facets: Array = []
 	if profile != null:
-		for row in profile.facet_rows:
-			var labels: Array = PersonalityRegistryScript.LABELS.get(str(row.facet_id),
+		for row in _hexaco_facet_rows(profile):
+			var labels: Array = HEXACO_LABELS.get(str(row.facet_id),
 				["낮음","높음"])
 			facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
 				"low_label":str(labels[0]),"high_label":str(labels[1])})
@@ -4067,7 +4055,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 			"species_base":relation.get("species_base",{}).duplicate(true),
 			"personal":relation.get("personal",{}).duplicate(true)})
 	var position: Vector2i = entity.position
-	var archetype := personality_archetype(profile)
+	var style := personality_style(profile)
 	var collapsed := story_state == "COLLAPSED_STORY"
 	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
 		"entity_id":entity_id,"roster_slot":63,"role":"COMPANION",
@@ -4091,8 +4079,8 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"element_exposure":{"applicable":false},"current_exposure":{"applicable":false},
 		"personality_profile":profile.to_dict() if profile != null else null,
 		"personality_available":profile != null,"personality_facets":facets,
-		"personality_archetype":archetype,
-		"personality_note":"%s · 결정론적 성격 프로필"%str(archetype.get("label","동료")),
+		"personality_style":style,
+		"personality_note":"%s · 결정론적 HEXACO 프로필"%str(style.get("label","동료")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
 		"relation_rows":relation_rows,"exile_record":null,
 		"rescue_assessment":rescue_assessment(entity_id) if collapsed else {},
@@ -4198,6 +4186,15 @@ func load_session_json(encoded: String) -> Dictionary:
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
 	_normalize_world_item_json_numbers(decoded.snapshot.get("item_state"))
 	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
+	# Some migration tests intentionally downgrade a current snapshot. The v15
+	# marker distinguishes that fixture from a real pre-HEXACO save, whose old
+	# journal cannot be replayed under the new personality semantics.
+	var source_has_hexaco_marker: bool = decoded.snapshot.party_encounter.has(
+		"legacy_journal_origin")
+	var legacy_personality_origin: bool = source_party_schema \
+		< PartyStateScript.HEXACO_SCHEMA_VERSION and not source_has_hexaco_marker
+	if source_party_schema < PartyStateScript.HEXACO_SCHEMA_VERSION:
+		decoded.snapshot.party_encounter.erase("legacy_journal_origin")
 	var legacy_opening_replay := source_party_schema \
 		< PartyStateScript.OPENING_EVENT_SCHEMA_VERSION \
 		or decoded.snapshot.party_encounter.get("opening_event") == null
@@ -4251,6 +4248,32 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_world_seed := Int64CodecScript.parse(decoded.world_seed,"world seed")
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
+	if source_party_schema < PartyStateScript.HEXACO_SCHEMA_VERSION:
+		var legacy_party_error := PartyStateScript.wire_error(
+			decoded.snapshot.party_encounter, int(decoded.snapshot.width),
+			int(decoded.snapshot.height))
+		if not legacy_party_error.is_empty():
+			return _rejection_dto(legacy_party_error)
+		var migrated_party = PartyStateScript.from_dict(decoded.snapshot.party_encounter)
+		if migrated_party == null or not _migrate_party_hexaco_state(migrated_party,
+				parsed_personality_seed, legacy_personality_origin):
+			return _rejection_dto("party_hexaco_migration_failed")
+		decoded.snapshot.party_encounter = migrated_party.to_dict()
+		if legacy_progression_replay:
+			# The outer party wire must already be v15 so companion rows validate as
+			# HEXACO. Keep only the nested progression wire at its last pre-v5
+			# boundary: WorldState then rebuilds the historical reward ledger from
+			# canonical events exactly as it did before the personality migration.
+			var compatibility_progression = ProgressionScript.new()
+			compatibility_progression.training_modes = \
+				legacy_progression_modes.duplicate(true)
+			var compatibility_progression_wire: Dictionary = \
+				compatibility_progression.to_dict()
+			compatibility_progression_wire.schema_version = \
+				ProgressionScript.DEATH_SCHEMA_VERSION
+			compatibility_progression_wire.erase("legacy_reward_origin")
+			decoded.snapshot.party_encounter.protagonist_progression = \
+				compatibility_progression_wire
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
@@ -4308,6 +4331,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay):
 		return _rejection_dto("party_layout_replay_failed")
+	if restored.world.party_encounter.legacy_journal_origin:
+		return _install_restored_session(restored, decoded, parsed_world_seed,
+			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
 	# Items are world authority from snapshot v7 on. A nested party version says
 	# nothing about them any more, so replay keeps the canonical world item state.
 	if legacy_progression_replay:
@@ -4375,9 +4401,52 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.commit_turn()
 		if not bool(replay_result.get("accepted",false)):return _rejection_dto("party_journal_replay_failed")
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
+	return _install_restored_session(restored, decoded, parsed_world_seed,
+		parsed_personality_seed, parsed_scenario_id, replay._map_layout)
+
+
+func _migrate_party_hexaco(world, stored_personality_seed: int,
+		legacy_origin: bool = true) -> bool:
+	if world == null or world.party_encounter == null: return false
+	var state = world.party_encounter
+	if not _migrate_party_hexaco_state(state, stored_personality_seed, legacy_origin):
+		return false
+	return world.world_state_error().is_empty()
+
+
+func _migrate_party_hexaco_state(state, stored_personality_seed: int,
+		legacy_origin: bool) -> bool:
+	if state == null: return false
+	for member_id_value in state.party_member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		if member == null: return false
+		member.personality_profile = null if member.role == "PROTAGONIST" else \
+			PartyHexacoScript.generated(stored_personality_seed, member_id)
+	for index in range(state.exile_records.size()):
+		var record: Dictionary = state.exile_records[index]
+		var former_id := Int64CodecScript.parse(record.former_member_id,
+			"former party member")
+		var profile = PartyHexacoScript.generated(stored_personality_seed, former_id)
+		var style: Dictionary = profile.style_summary()
+		var profile_wire: Dictionary = profile.to_dict()
+		record.schema_version = 2
+		record.personality_summary = {"style_label":str(style.label),
+			"profile_hash":JSON.stringify(profile_wire).sha256_text(),
+			"H":profile.value("H"),"E":profile.value("E"),"X":profile.value("X"),
+			"A":profile.value("A"),"C":profile.value("C"),"O":profile.value("O")}
+		state.exile_records[index] = record
+	state.schema_version = PartyStateScript.SCHEMA_VERSION
+	state.legacy_journal_origin = legacy_origin
+	return true
+
+
+func _install_restored_session(restored, decoded: Dictionary,
+		parsed_world_seed: int, parsed_personality_seed: int,
+		parsed_scenario_id: String, restored_layout: Dictionary) -> Dictionary:
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
 	scenario_id = parsed_scenario_id
-	_map_layout = replay._map_layout.duplicate(true)
+	_map_layout = restored_layout.duplicate(true)
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
@@ -5054,14 +5123,14 @@ func _action_presentation(row: Variant) -> Variant:
 
 func _emotion_presentation(member, entity) -> Dictionary:
 	var health_percent: int = int(entity.health * 100 / maxi(1, entity.max_health))
-	var boldness := 500
-	var composure := 500
+	var emotionality := 500
+	var conscientiousness := 500
 	if member.personality_profile != null:
-		boldness = member.personality_profile.value("boldness")
-		composure = member.personality_profile.value("composure")
+		emotionality = member.personality_profile.value("E")
+		conscientiousness = member.personality_profile.value("C")
 	var label := "침착"; var icon := "●"; var reason := "건강과 긴장이 안정적입니다."
 	if health_percent <= 30 or member.stress >= 750:
-		if boldness >= 600 and composure >= 450:
+		if emotionality <= 400 and conscientiousness >= 450:
 			label = "용기를 냄"; icon = "◆"; reason = "생존 위협 속에서 대담한 본성이 드러납니다."
 		else:
 			label = "겁먹음"; icon = "!"; reason = "낮은 체력과 높은 긴장으로 생존 본능이 앞섭니다."

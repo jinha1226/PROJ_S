@@ -952,8 +952,8 @@ func _engage_leaf(actor_id: int, board: Dictionary) -> Dictionary:
 		return {"legal": true, "reason": "", "type": "MELEE",
 			"target_id": target_id, "destination": Vector2i(-1, -1)}
 	var goals := _adjacent_cells(world.entities[target_id].position)
-	var composure := _member_facet(actor_id, "composure")
-	var route := _best_route_to_any(actor_id, goals, composure)
+	var resilience := _member_resilience(actor_id)
+	var route := _best_route_to_any(actor_id, goals, resilience)
 	if route.is_empty():
 		return _illegal_leaf("no_route_to_target", target_id)
 	return {"legal": true, "reason": "", "type": "MOVE", "target_id": target_id,
@@ -983,14 +983,14 @@ func _protect_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> D
 	for cell in enemy_cells:
 		if cell in ally_cells:
 			dual_cells.append(cell)
-	var composure := _member_facet(actor_id, "composure")
-	var route := _best_route_to_any(actor_id, dual_cells, composure)
+	var resilience := _member_resilience(actor_id)
+	var route := _best_route_to_any(actor_id, dual_cells, resilience)
 	if route.is_empty():
 		var fallback_cells: Array[Vector2i] = enemy_cells.duplicate()
 		for cell in ally_cells:
 			if cell not in fallback_cells:
 				fallback_cells.append(cell)
-		route = _best_route_to_any(actor_id, fallback_cells, composure)
+		route = _best_route_to_any(actor_id, fallback_cells, resilience)
 	if route.is_empty():
 		return _illegal_leaf("no_route_to_ally", target_id)
 	return {"legal": true, "reason": "", "type": "MOVE", "target_id": target_id,
@@ -1003,7 +1003,7 @@ func _retreat_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> D
 		world.party_encounter.protagonist_id].position
 	var current_enemy_distance := _minimum_enemy_distance(actor_position, board.active_enemy_ids)
 	var current_protagonist_distance := _distance(actor_position, protagonist_position)
-	var composure := _member_facet(actor_id, "composure")
+	var resilience := _member_resilience(actor_id)
 	var candidates: Array[Dictionary] = []
 	for direction in movement.MOVE_DIRECTIONS_8:
 		var destination: Vector2i = actor_position + direction
@@ -1016,7 +1016,7 @@ func _retreat_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> D
 				or protagonist_distance > current_protagonist_distance:
 			continue
 		var score := enemy_distance * 100 - protagonist_distance * 10 \
-			- _hazard_penalty(actor_id, destination, composure)
+			- _hazard_penalty(actor_id, destination, resilience)
 		candidates.append({"destination": destination, "score": score})
 	if candidates.is_empty():
 		return {"legal": true, "reason": "cornered", "type": "HOLD",
@@ -1058,7 +1058,7 @@ func _party_melee_legal(actor_id: int, target_id: int) -> bool:
 	return _action_error(ActionScript.melee(actor_id, target_id)).is_empty()
 
 
-func _best_route_to_any(actor_id: int, goals: Array, composure: int) -> Dictionary:
+func _best_route_to_any(actor_id: int, goals: Array, resilience: int) -> Dictionary:
 	var sorted_goals: Array[Vector2i] = []
 	var actor_position: Vector2i = world.entities[actor_id].position
 	for value in goals:
@@ -1070,13 +1070,13 @@ func _best_route_to_any(actor_id: int, goals: Array, composure: int) -> Dictiona
 		return {}
 	# The common case has no immediate exposure. Keep the existing single weighted
 	# multi-goal search fast, and only compare individual goal routes when the
-	# canonical first step is hazardous enough for composure to matter.
+	# canonical first step is hazardous enough for HEXACO resilience to matter.
 	var direct: Dictionary = pathfinder.find_path_to_any(actor_id, sorted_goals)
 	if bool(direct.get("found", false)) and int(direct.get("steps", 0)) >= 1 \
 			and direct.path.size() >= 2:
 		var direct_step: Vector2i = direct.path[1]
 		if movement.assess_move(actor_id, direct_step).accepted:
-			var direct_hazard := _hazard_penalty(actor_id, direct_step, composure)
+			var direct_hazard := _hazard_penalty(actor_id, direct_step, resilience)
 			if direct_hazard == 0:
 				return {"first_step": direct_step, "goal": direct.goal,
 					"route_score": int(direct.total_cost) + int(direct.steps) * 20,
@@ -1091,7 +1091,7 @@ func _best_route_to_any(actor_id: int, goals: Array, composure: int) -> Dictiona
 		var first_step: Vector2i = path.path[1]
 		if not movement.assess_move(actor_id, first_step).accepted:
 			continue
-		var hazard := _hazard_penalty(actor_id, first_step, composure)
+		var hazard := _hazard_penalty(actor_id, first_step, resilience)
 		routes.append({"first_step": first_step, "goal": goal,
 			"route_score": int(path.total_cost) + int(path.steps) * 20 + hazard,
 			"total_cost": int(path.total_cost), "steps": int(path.steps), "hazard": hazard})
@@ -1135,12 +1135,16 @@ func _member_facet(actor_id: int, facet_id: String) -> int:
 	var value: int = member.personality_profile.value(facet_id)
 	return clampi(value, 0, 1000) if value >= 0 else 500
 
-func _hazard_penalty(actor_id: int, position: Vector2i, composure: int) -> int:
+func _member_resilience(actor_id: int) -> int:
+	return FixedPointScript.trunc_div(_member_facet(actor_id, "C") \
+		+ 1000 - _member_facet(actor_id, "E"), 2)
+
+func _hazard_penalty(actor_id: int, position: Vector2i, resilience: int) -> int:
 	if exposure == null: return 0
 	var evaluated = exposure.evaluate_for_entity(actor_id, position)
 	if evaluated == null or not evaluated is Dictionary or evaluated.get("evaluation") == null: return 0
 	var risk: int = maxi(0, int(evaluated.evaluation.total_risk))
-	return FixedPointScript.trunc_div(risk * (1500 - clampi(composure, 0, 999)), 30)
+	return FixedPointScript.trunc_div(risk * (1500 - clampi(resilience, 0, 1000)), 30)
 
 func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 	var cost := PARTY_ACTION_COST

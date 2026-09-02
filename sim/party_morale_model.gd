@@ -3,7 +3,7 @@ extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 
-const RULESET_ID := "party-morale-contagion-v1"
+const RULESET_ID := "party-morale-contagion-v2-hexaco"
 const PANIC_ENTER := 850
 const PANIC_EXIT := 650
 const CONTAGION_RANGE := 4
@@ -65,9 +65,10 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 					or _distance(world.entities[member_id].position,
 						world.entities[source_id].position) > CONTAGION_RANGE:
 				continue
-			var composure := _composure(world, member_id)
+			var resilience := morale_resilience(world.party_encounter.member(
+				member_id).personality_profile)
 			var base := FixedPointScript.trunc_div(int(direct[source_id]), 4)
-			contagion += FixedPointScript.trunc_div(base * (1500 - composure), 1000)
+			contagion += FixedPointScript.trunc_div(base * (1500 - resilience), 1000)
 		contagion = clampi(contagion, 0, MAX_CONTAGION)
 		if contagion > 0:
 			triggers[member_id].append("ALLY_FEAR_CONTAGION")
@@ -117,12 +118,15 @@ static func _eligible_members(world) -> Array[int]:
 	return result
 
 
-static func _composure(world, member_id: int) -> int:
-	var profile = world.party_encounter.member(member_id).personality_profile
+static func morale_resilience(profile) -> int:
 	if profile == null:
 		return 500
-	var value := int(profile.value("composure"))
-	return clampi(value, 0, 1000) if value >= 0 else 500
+	var emotionality := int(profile.value("E"))
+	var conscientiousness := int(profile.value("C"))
+	if emotionality < 0 or conscientiousness < 0:
+		return 500
+	return clampi(FixedPointScript.trunc_div(
+		conscientiousness + 1000 - emotionality, 2), 0, 1000)
 
 
 static func _near_active_enemy(world, member_id: int) -> bool:

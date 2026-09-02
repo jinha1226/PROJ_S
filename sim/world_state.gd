@@ -4739,14 +4739,27 @@ func _party_override_history_error() -> String:
 		if not bool(historical_position.get("ok", false)) \
 				or override.position != historical_position.position:
 			return "party_override_position_invalid"
-		var composure: int = member.personality_profile.value("composure")
 		var personal = personal_relations.get("%d:%d" % [override.actor_id, hero_id])
-		var expected_magnitude: int = 20 + int((999 - composure) / 20) \
+		if party_encounter.schema_version < PartyEncounterStateScript.HEXACO_SCHEMA_VERSION:
+			var composure: int = member.personality_profile.value("composure")
+			var legacy_magnitude: int = 20 + int((999 - composure) / 20) \
 				+ (int(personal.grievance / 5) if personal != null else 0) \
 				- (int(personal.gratitude / 10) if personal != null else 0)
-		expected_magnitude = maxi(1, expected_magnitude)
-		if override.magnitude != expected_magnitude:
-			return "party_override_magnitude_invalid"
+			if override.magnitude != maxi(1, legacy_magnitude):
+				return "party_override_magnitude_invalid"
+		else:
+			var emotionality: int = member.personality_profile.value("E")
+			var conscientiousness: int = member.personality_profile.value("C")
+			var resilience: int = FixedPointScript.trunc_div(
+				conscientiousness + 1000 - emotionality, 2)
+			var expected_magnitude: int = 20 + int((1000 - resilience) / 20) \
+				+ (int(personal.grievance / 5) if personal != null else 0) \
+				- (int(personal.gratitude / 10) if personal != null else 0)
+			expected_magnitude = maxi(1, expected_magnitude)
+			if override.magnitude != expected_magnitude \
+					and not (party_encounter.legacy_journal_origin \
+					and override.magnitude >= 1 and override.magnitude <= 200):
+				return "party_override_magnitude_invalid"
 		var canonical_leaf: bool = leaf.type != "action.melee_attack" \
 				or leaf.data.get("schema_version") == 1
 		if canonical_leaf:
@@ -4782,8 +4795,11 @@ func _party_morale_history_error() -> String:
 		var keys := ["contagion_delta", "direct_delta", "mode_after", "mode_before",
 			"recovery_delta", "ruleset_id", "schema_version", "source_event_ids",
 			"stress_after", "stress_before", "trigger_codes"]
+		var accepted_rulesets := [PartyMoraleModelScript.RULESET_ID]
+		if party_encounter.legacy_journal_origin:
+			accepted_rulesets.append("party-morale-contagion-v1")
 		if not _exact_keys(event.data, keys) or event.data.get("schema_version") != 1 \
-				or event.data.get("ruleset_id") != PartyMoraleModelScript.RULESET_ID:
+				or event.data.get("ruleset_id") not in accepted_rulesets:
 			return "party_morale_data_invalid"
 		for key in ["stress_before", "direct_delta", "contagion_delta",
 				"recovery_delta", "stress_after"]:

@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 14
+const SCHEMA_VERSION := 15
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -20,6 +20,9 @@ const WORLD_ITEM_SCHEMA_VERSION := 12
 const WEAPON_AUTHORITY_SCHEMA_VERSION := 13
 # v14 persists companion panic hysteresis beside stress.
 const MORALE_SCHEMA_VERSION := 14
+# v15 replaces the temporary four-facet party personality with continuous
+# HEXACO and records whether an old journal predates the semantic cut.
+const HEXACO_SCHEMA_VERSION := 15
 const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
@@ -35,6 +38,7 @@ const GroundItemScript = preload("res://sim/ground_item_state.gd")
 const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
 const OpeningEventScript = preload("res://sim/opening_event_state.gd")
 const GrowthBuildStateScript = preload("res://sim/growth_build_state.gd")
+const PartyHexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -63,6 +67,7 @@ var safe_recovery_turns: int = 0
 var last_protagonist_damage_step: int = -1
 var opening_event = null
 var protagonist_growth = GrowthBuildStateScript.new("human")
+var legacy_journal_origin := false
 
 func member(entity_id: int): return member_rows.get(entity_id)
 func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
@@ -87,7 +92,7 @@ func to_dict() -> Dictionary:
 	sorted_gateways.sort_custom(func(a: Vector2i, b: Vector2i):
 		return a.y < b.y if a.y != b.y else a.x < b.x)
 	for position in sorted_gateways: gateway_rows.append([position.x, position.y])
-	return {"schema_version": schema_version, "encounter_id": str(encounter_id), "safe_phase": safe_phase,
+	var wire := {"schema_version": schema_version, "encounter_id": str(encounter_id), "safe_phase": safe_phase,
 		"revision": str(revision), "protagonist_id": str(protagonist_id),
 		"party_member_ids": party_member_ids.map(func(id): return str(id)),
 		"active_party_member_ids": active_party_member_ids.map(func(id): return str(id)),
@@ -105,10 +110,15 @@ func to_dict() -> Dictionary:
 		"opening_event":null if opening_event == null else opening_event.to_dict(),
 		"protagonist_growth":protagonist_growth.to_dict(),
 		"exile_records":exile_records.duplicate(true)}
+	if schema_version >= HEXACO_SCHEMA_VERSION:
+		wire["legacy_journal_origin"] = legacy_journal_origin
+	return wire
 
 static func from_dict(row: Dictionary):
 	var state = load("res://sim/party_encounter_state.gd").new()
 	state.schema_version = SCHEMA_VERSION
+	state.legacy_journal_origin = bool(row.get("legacy_journal_origin",
+		int(row.get("schema_version", 1)) < HEXACO_SCHEMA_VERSION))
 	state.encounter_id = Int64CodecScript.parse(row.encounter_id, "encounter ID")
 	state.safe_phase = str(row.safe_phase); state.revision = Int64CodecScript.parse(row.revision, "revision")
 	state.protagonist_id = Int64CodecScript.parse(row.protagonist_id, "protagonist ID")
@@ -170,16 +180,25 @@ static func _canonical_exile_record(record: Dictionary) -> Dictionary:
 	for status in record.status_effects:
 		statuses.append({"status_id":str(status.status_id),
 			"remaining_ticks":int(status.remaining_ticks),"tick_damage":int(status.tick_damage)})
-	return {"schema_version":int(record.schema_version),
-		"former_member_id":str(record.former_member_id),"display_name":str(record.display_name),
-		"species_id":str(record.species_id),"personality_summary":{
+	var personality_summary: Dictionary = {}
+	if int(record.schema_version) >= 2:
+		personality_summary = {"style_label":str(record.personality_summary.style_label),
+			"profile_hash":str(record.personality_summary.profile_hash),
+			"H":int(record.personality_summary.H),"E":int(record.personality_summary.E),
+			"X":int(record.personality_summary.X),"A":int(record.personality_summary.A),
+			"C":int(record.personality_summary.C),"O":int(record.personality_summary.O)}
+	else:
+		personality_summary = {
 			"archetype_id":str(record.personality_summary.archetype_id),
 			"archetype_label":str(record.personality_summary.archetype_label),
 			"profile_hash":str(record.personality_summary.profile_hash),
 			"aggression":int(record.personality_summary.aggression),
 			"altruism":int(record.personality_summary.altruism),
 			"boldness":int(record.personality_summary.boldness),
-			"composure":int(record.personality_summary.composure)},
+			"composure":int(record.personality_summary.composure)}
+	return {"schema_version":int(record.schema_version),
+		"former_member_id":str(record.former_member_id),"display_name":str(record.display_name),
+		"species_id":str(record.species_id),"personality_summary":personality_summary,
 		"dismissed_world_time":str(record.dismissed_world_time),
 		"dismissed_step_index":str(record.dismissed_step_index),
 		"dismissal_event_id":str(record.dismissal_event_id),"condition_snapshot":{
@@ -224,6 +243,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v13_keys:Array=v12_keys.duplicate()
 	v13_keys.erase("protagonist_loadout");v13_keys.sort()
 	var v14_keys:Array=v13_keys.duplicate()
+	var v15_keys:Array=v14_keys.duplicate();v15_keys.append("legacy_journal_origin");v15_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -239,14 +259,18 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == GROWTH_BUILD_SCHEMA_VERSION and keys != v11_keys) \
 		or (parsed_schema_version == WORLD_ITEM_SCHEMA_VERSION and keys != v12_keys) \
 		or (parsed_schema_version == WEAPON_AUTHORITY_SCHEMA_VERSION and keys != v13_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v14_keys):
+		or (parsed_schema_version == MORALE_SCHEMA_VERSION and keys != v14_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v15_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
 		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
-		WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,
+		WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,MORALE_SCHEMA_VERSION,
 		SCHEMA_VERSION]: return "unsupported_party_schema"
+	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
+			and not row.get("legacy_journal_origin") is bool:
+		return "invalid_legacy_journal_origin"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:
@@ -286,7 +310,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var seen_slots: Dictionary = {}
 	for index in range(row.member_rows.size()):
 		var error := MemberScript.wire_error(row.member_rows[index],
-			parsed_schema_version >= MORALE_SCHEMA_VERSION)
+			parsed_schema_version >= MORALE_SCHEMA_VERSION,
+			parsed_schema_version >= HEXACO_SCHEMA_VERSION)
 		if not error.is_empty(): return error
 		if index > 0 and Int64CodecScript.parse(row.member_rows[index-1].entity_id,"member") \
 				>= Int64CodecScript.parse(row.member_rows[index].entity_id,"member"):
@@ -310,7 +335,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		if not row.get("exile_records") is Array: return "invalid_exile_records_shape"
 		var seen_exiles: Dictionary = {}
 		for record in row.exile_records:
-			var record_error := _exile_record_wire_error(record, party_set)
+			var record_error := _exile_record_wire_error(record, party_set,
+				parsed_schema_version >= HEXACO_SCHEMA_VERSION)
 			if not record_error.is_empty(): return record_error
 			if seen_exiles.has(record.former_member_id): return "duplicate_exile_record"
 			seen_exiles[record.former_member_id] = true
@@ -415,7 +441,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		return "engaged_contact_or_formation_invalid"
 	return ""
 
-static func _exile_record_wire_error(record: Variant, party_set: Dictionary) -> String:
+static func _exile_record_wire_error(record: Variant, party_set: Dictionary,
+		require_hexaco: bool) -> String:
 	if not record is Dictionary: return "invalid_exile_record_shape"
 	var keys: Array = record.keys(); keys.sort()
 	if keys != ["alive","condition_snapshot","current_behavior","current_hp",
@@ -425,7 +452,8 @@ static func _exile_record_wire_error(record: Variant, party_set: Dictionary) -> 
 			"location_id","max_hp","personality_summary","relationship_snapshot",
 			"safety","schema_version","species_id","status_effects"]:
 		return "invalid_exile_record_keys"
-	if record.schema_version != 1 or record.current_behavior not in ["SEEK_SAFETY","SELF_TREAT","RECOVER","DEAD"]:
+	if record.schema_version != (2 if require_hexaco else 1) \
+			or record.current_behavior not in ["SEEK_SAFETY","SELF_TREAT","RECOVER","DEAD"]:
 		return "invalid_exile_record_enum"
 	for key in ["former_member_id","dismissal_event_id","dismissed_step_index",
 			"dismissed_world_time","encounter_eligible_after_step","last_world_step","last_world_time"]:
@@ -447,13 +475,18 @@ static func _exile_record_wire_error(record: Variant, party_set: Dictionary) -> 
 	if not record.personality_summary is Dictionary:
 		return "invalid_exile_personality_summary"
 	var summary_keys:Array=record.personality_summary.keys();summary_keys.sort()
-	if summary_keys != ["aggression","altruism","archetype_id","archetype_label","boldness","composure","profile_hash"] \
-			or not record.personality_summary.archetype_id is String \
-			or not record.personality_summary.archetype_label is String \
+	var expected_summary_keys := ["A","C","E","H","O","X","profile_hash","style_label"] \
+		if require_hexaco else ["aggression","altruism","archetype_id",
+			"archetype_label","boldness","composure","profile_hash"]
+	if summary_keys != expected_summary_keys \
+			or (require_hexaco and not record.personality_summary.style_label is String) \
+			or (not require_hexaco and (not record.personality_summary.archetype_id is String \
+				or not record.personality_summary.archetype_label is String)) \
 			or not record.personality_summary.profile_hash is String \
 			or str(record.personality_summary.profile_hash).length()!=64:
 		return "invalid_exile_personality_summary"
-	for facet_key in ["aggression","altruism","boldness","composure"]:
+	for facet_key in (PartyHexacoScript.FACETS if require_hexaco else \
+			["aggression","altruism","boldness","composure"]):
 		if not _integer(record.personality_summary.get(facet_key)) \
 				or int(record.personality_summary[facet_key])<0 \
 				or int(record.personality_summary[facet_key])>1000:

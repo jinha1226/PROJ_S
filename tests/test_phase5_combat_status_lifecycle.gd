@@ -5592,8 +5592,10 @@ func _party_override_canonical_fixture(outcome: String) -> Dictionary:
 			"final_damage":final_damage})
 	if action == null: return {}
 	var member = state.member(actor_id)
-	var composure: int = member.personality_profile.value("composure")
-	var stress_delta: int = maxi(1, 20 + int((999 - composure) / 20))
+	var emotionality: int = member.personality_profile.value("E")
+	var conscientiousness: int = member.personality_profile.value("C")
+	var resilience: int = int((conscientiousness + 1000 - emotionality) / 2)
+	var stress_delta: int = maxi(1, 20 + int((1000 - resilience) / 20))
 	var override = world.emit_event("party.override_committed", actor_id, -1,
 		world.entities[actor_id].position, stress_delta, action.id)
 	if override == null: return {}

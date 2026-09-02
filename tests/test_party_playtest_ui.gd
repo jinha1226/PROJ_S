@@ -130,10 +130,10 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),4,
 			"over-cap rows safely clamp to four")
 		var companion_detail:Dictionary=sandbox.session.inspect_party_member(int(all_rows[1].entity_id))
-		check(str(companion_detail.personality_archetype.label) in sandbox._member_detail_text(companion_detail),
-			"detail modal exposes short Korean archetype")
+		check(str(companion_detail.personality_style.label) in sandbox._member_detail_text(companion_detail),
+			"detail modal exposes short Korean derived style")
 		var log_text:=sandbox._combat_log_text(sandbox.session.combat_log())
-		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies rerolled archetypes")
+		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies derived styles")
 		sandbox.free()
 	return finish()
 

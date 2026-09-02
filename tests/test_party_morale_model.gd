@@ -6,6 +6,7 @@ const Action = preload("res://sim/party_action_command.gd")
 const Request = preload("res://sim/party_turn_request.gd")
 const Model = preload("res://sim/party_morale_model.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
+const LegacyPersonality = preload("res://sim/personality_definition_registry.gd")
 
 
 func test_morale_model_is_exact_pure_and_order_independent() -> bool:
@@ -27,27 +28,29 @@ func test_morale_model_is_exact_pure_and_order_independent() -> bool:
 	var keys: Array = first.keys(); keys.sort()
 	check_eq(keys, ["member_rows", "ruleset_id", "schema_version"],
 		"morale projection has exact keys")
-	check_eq(first.ruleset_id, "party-morale-contagion-v1", "ruleset id is stable")
+	check_eq(first.ruleset_id, "party-morale-contagion-v2-hexaco", "ruleset id is stable")
 	check_eq(JSON.stringify(world.snapshot()), before,
 		"morale evaluation mutates no world event or RNG")
 	return finish()
 
 
-func test_direct_shock_spreads_and_composure_reduces_contagion() -> bool:
+func test_direct_shock_spreads_and_hexaco_resilience_reduces_contagion() -> bool:
 	var session = _engaged()
 	var world = session.sim.world
 	var state = world.party_encounter
 	var source_id := int(state.active_party_member_ids[1])
 	var calm_id := int(state.active_party_member_ids[2])
-	_set_facet(state.member(calm_id).personality_profile, "composure", 1000)
+	_set_facet(state.member(calm_id).personality_profile, "E", 0)
+	_set_facet(state.member(calm_id).personality_profile, "C", 1000)
 	var events := [{"id":1, "type":"combat.physical_damage",
 		"target_id":source_id, "magnitude":30}]
 	var calm: Dictionary = _row(Model.evaluate(world, events), calm_id)
-	_set_facet(state.member(calm_id).personality_profile, "composure", 0)
+	_set_facet(state.member(calm_id).personality_profile, "E", 1000)
+	_set_facet(state.member(calm_id).personality_profile, "C", 0)
 	var reactive: Dictionary = _row(Model.evaluate(world, events), calm_id)
 	check(int(calm.contagion_delta) > 0, "nearby ally receives fear contagion")
 	check(int(reactive.contagion_delta) > int(calm.contagion_delta),
-		"lower composure receives more contagion")
+		"high E and low C receives more contagion")
 	check(int(reactive.contagion_delta) <= Model.MAX_CONTAGION,
 		"contagion is batch capped")
 	var source: Dictionary = _row(Model.evaluate(world, events), source_id)
@@ -220,8 +223,12 @@ func test_schema_thirteen_migrates_to_normal_or_panicked_hysteresis_state() -> b
 	var current: Dictionary = session.sim.world.party_encounter.to_dict()
 	var legacy: Dictionary = current.duplicate(true)
 	legacy.schema_version = PartyState.WEAPON_AUTHORITY_SCHEMA_VERSION
+	legacy.erase("legacy_journal_origin")
 	for row in legacy.member_rows:
 		row.erase("mental_mode")
+		if row.role == "COMPANION":
+			row.personality_profile = LegacyPersonality.generate(
+				20260828, int(row.roster_slot) - 1).to_dict()
 	legacy.member_rows[0].stress = 849
 	legacy.member_rows[1].stress = 850
 	check_eq(PartyState.wire_error(legacy, session.sim.world.width,
@@ -231,12 +238,12 @@ func test_schema_thirteen_migrates_to_normal_or_panicked_hysteresis_state() -> b
 		migrated.member_rows[migrated.party_member_ids[1]].mental_mode],
 		["NORMAL", "PANIC"], "legacy stress deterministically seeds the new mode")
 	check_eq(migrated.schema_version, PartyState.SCHEMA_VERSION,
-		"legacy party state upgrades to v14")
+		"legacy party state upgrades before seed-aware session profile migration")
 	var malformed: Dictionary = current.duplicate(true)
 	malformed.member_rows[0].erase("mental_mode")
 	check_eq(PartyState.wire_error(malformed, session.sim.world.width,
 		session.sim.world.height), "invalid_party_member_keys",
-		"v14 requires persisted mental mode")
+		"v15 requires persisted mental mode")
 	return finish()
 
 
@@ -258,10 +265,4 @@ func _row(projection: Dictionary, entity_id: int) -> Dictionary:
 
 
 func _set_facet(profile, facet_id: String, value: int) -> void:
-	for row in profile.facet_rows:
-		if str(row.facet_id) == facet_id:
-			row.base_value = value
-			return
-	profile.facet_rows.append({"facet_id":facet_id, "base_value":value})
-	profile.facet_rows.sort_custom(func(a: Dictionary, b: Dictionary):
-		return str(a.facet_id) < str(b.facet_id))
+	profile.values[facet_id] = value

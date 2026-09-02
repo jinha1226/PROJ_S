@@ -4,7 +4,7 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const Command = preload("res://sim/sim_command.gd")
 const Action = preload("res://sim/party_action_command.gd")
 const Request = preload("res://sim/party_turn_request.gd")
-const Profile = preload("res://sim/personality_profile.gd")
+const Profile = preload("res://sim/dungeon_population/hexaco_profile.gd")
 
 
 func _engaged():
@@ -16,13 +16,8 @@ func _engaged():
 	return session
 
 
-func _profile(aggression: int, altruism: int, boldness: int, composure: int):
-	return Profile.new("personality-facets-v1", [
-		{"facet_id": "aggression", "base_value": aggression},
-		{"facet_id": "altruism", "base_value": altruism},
-		{"facet_id": "boldness", "base_value": boldness},
-		{"facet_id": "composure", "base_value": composure},
-	])
+func _profile(h: int, e: int, x: int, a: int, c: int, o: int = 500):
+	return Profile.new({"H":h,"E":e,"X":x,"A":a,"C":c,"O":o})
 
 
 func test_preview_is_pure_and_repeatable_with_utility_suggestions() -> bool:
@@ -91,16 +86,16 @@ func test_personality_changes_boundary_choice_protect_vs_engage() -> bool:
 	world.entities[enemy].position = world.entities[hero].position + Vector2i.RIGHT
 	world.entities[hero].health = maxi(1, int(world.entities[hero].max_health / 4))
 	world.entities[companion].position = world.entities[hero].position - Vector2i(1, 1)
-	state.member(companion).personality_profile = _profile(100, 950, 500, 500)
+	state.member(companion).personality_profile = _profile(1000, 1000, 500, 1000, 500)
 	var altruist: Dictionary = sim.party_coordinator.explain_companion_turn(
 		Request.new(Action.hold(hero), []))
-	state.member(companion).personality_profile = _profile(950, 50, 900, 500)
+	state.member(companion).personality_profile = _profile(0, 0, 1000, 0, 500)
 	var brawler: Dictionary = sim.party_coordinator.explain_companion_turn(
 		Request.new(Action.hold(hero), []))
 	check_eq(_selected(altruist, companion), "PROTECT",
-		"altruistic companion protects the pinned protagonist")
+		"high H/E/A companion protects the pinned protagonist")
 	check_eq(_selected(brawler, companion), "ENGAGE",
-		"aggressive companion attacks the same enemy")
+		"low E/A and high X companion attacks the same enemy")
 	return finish()
 
 

@@ -1819,7 +1819,7 @@ func _add_recruitment_candidates()->void:
 			label.text="%s · 영입 수락 %d%%\n%s"%[str(row.get("display_name","동료")),
 				int(recruitment.get("probability_percent",0)),_recruitment_reason_summary(recruitment)]
 		else:
-			label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","동료"))]
+			label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("style_label","동료"))]
 		label.tooltip_text=str(row.get("message",""));label.mouse_filter=Control.MOUSE_FILTER_IGNORE;line.add_child(label)
 		if rescue_state=="COLLAPSED_STORY":
 			var stabilize:=_add_button(line,"안정화","StabilizeMember%d"%int(row.get("entity_id",-1)),
@@ -3786,10 +3786,10 @@ func _member_detail_text(detail:Dictionary)->String:
 	var profile:Variant=detail.get("personality_profile",null)
 	if profile is Dictionary:
 		var facets:Array[String]=[]
-		for row in profile.get("facet_rows",[]):
-			if row is Dictionary:facets.append("%s %d"%[_facet_label(str(row.get("facet_id",""))),int(row.get("base_value",0))])
-		var archetype:Dictionary=detail.get("personality_archetype",{}) if detail.get("personality_archetype",{}) is Dictionary else {}
-		lines.append("성격 · %s%s"%[str(archetype.get("label","분류되지 않은 성향")),
+		for row in detail.get("personality_facets",[]):
+			if row is Dictionary:facets.append("%s %d"%[_facet_label(str(row.get("facet_id",""))),int(row.get("value",0))])
+		var style:Dictionary=detail.get("personality_style",{}) if detail.get("personality_style",{}) is Dictionary else {}
+		lines.append("성격 · %s%s"%[str(style.get("label","균형 잡힌 성향")),
 			(" · "+" · ".join(facets)) if not facets.is_empty() else ""])
 	var affinity:Dictionary=detail.get("species_affinity",{}) if detail.get("species_affinity",{}) is Dictionary else {}
 	var affinity_values:=[int(affinity.get("fire_tolerance",0)),int(affinity.get("water_tolerance",0)),
@@ -3827,7 +3827,7 @@ func _combat_log_text(history:Dictionary)->String:
 		if summary is Dictionary:
 			var companion_parts:Array[String]=[]
 			for row in summary.get("companion_rows",[]):
-				if row is Dictionary:companion_parts.append("%s: %s"%[str(row.get("display_name","동료")),str(row.get("archetype_label","성향 미상"))])
+				if row is Dictionary:companion_parts.append("%s: %s"%[str(row.get("display_name","동료")),str(row.get("style_label","성향 미상"))])
 			if not companion_parts.is_empty():lines.append("이번 원정 성향 · "+" · ".join(companion_parts))
 	lines.append("주요 기록 · 최근 8개 사건 턴")
 	var groups:Variant=history.get("groups",[])
@@ -4077,7 +4077,7 @@ func _phase(value:String)->String:
 func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"전투 대기","RECRUITABLE":"영입 후보","EXILED":"추방됨","DEFEATED":"쓰러짐"}.get(value,value)
 func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"동료"}.get(value,value)
 func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)
-func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
+func _facet_label(value:String)->String:return {"H":"정직-겸손","E":"정서성","X":"외향성","A":"원만성","C":"성실성","O":"개방성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
