@@ -263,9 +263,9 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 	var legacy_target = Session.new(55, 66, Session.SOLO_COMBAT_SCENARIO_ID)
 	var legacy_load: Dictionary = legacy_target.load_session_json(
 		JSON.stringify(legacy_wire))
-	check(legacy_load.accepted, "schema-9 save migrates with nullable opening event")
-	check(legacy_target.sim.world.party_encounter.opening_event == null,
-		"legacy replay does not bootstrap a new opening NPC")
+	check(not legacy_load.accepted \
+		and str(legacy_load.get("reason",""))=="unsupported_player_species_snapshot",
+		"schema-9 save is rejected by the player-species hard cut")
 
 	var corpse = Session.new(88, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	var corpse_state = corpse.sim.world.party_encounter

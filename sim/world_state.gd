@@ -1,7 +1,7 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 7
+const SNAPSHOT_VERSION := 8
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
@@ -4087,7 +4087,7 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 		if npc_id <= int(enemy_id): return "opening_npc_not_spawned_last"
 	var npc = entities[npc_id]
 	var life = combatant_states[npc_id]
-	if npc.kind != "companion" or npc.species_id != "amphibian" \
+	if npc.kind != "companion" or npc.species_id != "elf" \
 			or npc.faction_id != "neutral" or npc.tags != ["opening_event_npc"] \
 			or not _terrain_is_passable(opening.spawn_position) \
 			or not _terrain_is_passable(opening.convergence_goal):

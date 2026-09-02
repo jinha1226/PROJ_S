@@ -1145,8 +1145,8 @@ func _rejection_text(reason: String) -> String:
 
 
 func _species_label(species_id: String) -> String:
-	return str({"human": "인간", "dwarf": "드워프", "goblin": "고블린", "amphibian": "양서인",
-		"beastkin": "수인"}.get(species_id.to_lower(), species_id))
+	return str({"human":"인간","elf":"엘프","dwarf":"드워프","orc":"오크",
+		"beastkin":"수인","goblin":"고블린"}.get(species_id.to_lower(), species_id))
 
 
 func _weapon_summary(actor: Dictionary) -> String:

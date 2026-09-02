@@ -1,7 +1,7 @@
 class_name GrowthBuildState
 extends RefCounted
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const RegistryScript = preload("res://sim/growth_build_registry.gd")
 
 var schema_version := SCHEMA_VERSION

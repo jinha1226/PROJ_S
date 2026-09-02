@@ -20,6 +20,7 @@ const SAFE_MUTATION_SWAP_PHASE := "GROUPED"
 const MAX_AFFIXES_BY_RARITY := {"COMMON":0, "UNCOMMON":1, "RARE":2}
 const MAX_AFFIXES_PER_KIND := 1
 const MAX_XP := 1000000
+const PICKER_SPECIES_IDS := ["human", "elf", "dwarf", "orc", "beastkin"]
 
 static var STAT_IDS:Array[String]=ContentLoaderScript.ordered_ids(
 	_CONTENT.get("stats",[]),"stat_id")
@@ -47,6 +48,12 @@ static func species_ids() -> Array[String]:
 	var result: Array[String] = []
 	for species_id in SPECIES_DEFINITIONS: result.append(str(species_id))
 	result.sort()
+	return result
+
+
+static func picker_species_ids() -> Array[String]:
+	var result: Array[String] = []
+	for species_id in PICKER_SPECIES_IDS: result.append(species_id)
 	return result
 
 
@@ -151,7 +158,8 @@ static func registry_error() -> String:
 		"save_migration_policy","stats","species","mutations",
 		"affix_build_profiles","monster_species_families"])
 	if not document_error.is_empty():return document_error
-	if RULESET_ID!="race-item-mutation-growth-v1":return "growth_ruleset_mismatch"
+	if int(_CONTENT.get("content_schema_version",0))!=1:return "growth_content_schema_mismatch"
+	if RULESET_ID!="playable-species-growth-v2":return "growth_ruleset_mismatch"
 	if SAVE_MIGRATION_POLICY!="HARD_CUT":return "growth_migration_policy_mismatch"
 	for pair in [["stats","stat_id"],["species","species_id"],
 			["mutations","mutation_id"],["affix_build_profiles","affix_id"],
@@ -170,8 +178,9 @@ static func registry_error() -> String:
 				or str(stat_row.get("stat_id", "")) != stat_id \
 				or str(stat_row.get("label", "")).is_empty():
 			return "invalid_growth_stat_definition"
-	if species_ids() != ["amphibian", "dwarf", "goblin", "human"]:
+	if species_ids() != ["beastkin", "dwarf", "elf", "human", "orc"]:
 		return "invalid_growth_species_set"
+	if picker_species_ids()!=PICKER_SPECIES_IDS:return "invalid_growth_species_picker_order"
 	for species_id in SPECIES_DEFINITIONS:
 		if str(SPECIES_DEFINITIONS[species_id].get("species_id", "")) != species_id:
 			return "growth_species_key_mismatch"
@@ -213,13 +222,29 @@ static func registry_error() -> String:
 static func species_definition_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_growth_species_shape"
 	var keys: Array = row.keys(); keys.sort()
-	if keys != ["branches", "fixed_trait", "label", "species_id"]:
+	if keys != ["branches", "fixed_trait", "label", "species_id", "weapon_familiarity"]:
 		return "invalid_growth_species_keys"
 	if str(row.species_id).is_empty() or str(row.label).is_empty() \
 			or not row.branches is Array or row.branches.size() != 2:
 		return "invalid_growth_species_shape"
 	var fixed_error := effect_error(row.fixed_trait)
 	if not fixed_error.is_empty(): return fixed_error
+	if not row.weapon_familiarity is Dictionary:return "invalid_weapon_familiarity_shape"
+	var familiarity_keys:Array=row.weapon_familiarity.keys();familiarity_keys.sort()
+	if familiarity_keys!=["mode","weapon_tags"] \
+			or str(row.weapon_familiarity.get("mode","")) not in ["ADAPTIVE","FIXED"] \
+			or not row.weapon_familiarity.get("weapon_tags") is Array:
+		return "invalid_weapon_familiarity_shape"
+	if str(row.species_id)=="human" and str(row.weapon_familiarity.mode)!="ADAPTIVE":
+		return "invalid_human_weapon_familiarity"
+	if str(row.species_id)!="human" and str(row.weapon_familiarity.mode)!="FIXED":
+		return "invalid_fixed_weapon_familiarity"
+	var previous_tag:=""
+	for tag in row.weapon_familiarity.weapon_tags:
+		if not tag is String or str(tag).is_empty() \
+				or (not previous_tag.is_empty() and str(tag)<=previous_tag):
+			return "noncanonical_weapon_familiarity_tags"
+		previous_tag=str(tag)
 	var seen_branches := {}
 	for branch in row.branches:
 		if not branch is Dictionary: return "invalid_growth_species_branch_shape"

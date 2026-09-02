@@ -91,13 +91,13 @@ func test_registry_views_match_the_json_authority()->bool:
 		check_eq(Growth.species_definition(species_id),species_rows[species_id],
 			"species registry view matches JSON for %s"%species_id)
 	check_eq([Growth.content_version(),Items.content_version(),Weapons.content_version(),
-		Progression.content_version()],["growth-builds-2026-09-01","items-2026-09-01",
+		Progression.content_version()],["growth-builds-2026-09-02-species-v2","items-2026-09-01",
 		"weapons-2026-09-01","proficiencies-2026-09-01"],
 		"content versions are visible to diagnostics")
 	check_eq(ContentDatabase.content_versions(),{
 		"proficiencies":"proficiencies-2026-09-01",
 		"weapons":"weapons-2026-09-01",
 		"items":"items-2026-09-01",
-		"growth_builds":"growth-builds-2026-09-01",
+		"growth_builds":"growth-builds-2026-09-02-species-v2",
 	},"integrated content versions are available for diagnostics")
 	return finish()

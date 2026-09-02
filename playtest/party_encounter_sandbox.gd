@@ -19,6 +19,7 @@ const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
+const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
@@ -88,6 +89,9 @@ var record_modal:Control
 var record_panel:PanelContainer
 var record_body:Label
 var record_close_button:Button
+var species_picker_modal:Control
+var species_picker_panel:PanelContainer
+var species_picker_buttons:VBoxContainer
 var npc_expedition_lab_button:Button
 var selected_member_id:=-1
 var selected_target_id:=-1
@@ -412,6 +416,7 @@ var _refresh_pending:=false
 var _last_direct_solo_refresh_profile:Dictionary={}
 var _last_direct_solo_turn_profile:Dictionary={}
 var _last_continuous_exploration_refresh_profile:Dictionary={}
+var _species_picker_committed:=false
 
 func _ready()->void:
 	_build_ui()
@@ -420,6 +425,7 @@ func _ready()->void:
 			_issue_new_personality_seed(),SessionScript.SOLO_COMBAT_SCENARIO_ID)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
+	if not _initialized_for_headless_test:show_species_picker_for_new_run()
 	if _initialized_for_headless_test and auto_orchestration_enabled:
 		_arm_pending_auto_after_tree_entry()
 func initialize_for_headless_test(custom_session=null,auto_orchestration:bool=false)->void:
@@ -558,6 +564,7 @@ func _build_ui()->void:
 	_build_member_detail_modal()
 	_build_map_overlay()
 	_build_record_modal()
+	_build_species_picker()
 	_build_duel_decision_lab_entry()
 	resized.connect(_layout_floating_surfaces)
 
@@ -613,6 +620,52 @@ func _build_record_modal()->void:
 	record_body=Label.new();record_body.name="NarrativeRecordBody";record_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	record_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;record_body.add_theme_font_size_override("font_size",FONT_AUX)
 	record_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;scroll.add_child(record_body)
+
+func _build_species_picker()->void:
+	species_picker_modal=Control.new();species_picker_modal.name="SpeciesPickerModal"
+	species_picker_modal.visible=false;species_picker_modal.mouse_filter=Control.MOUSE_FILTER_STOP
+	species_picker_modal.z_index=80;species_picker_modal.set_anchors_and_offsets_preset(
+		Control.PRESET_FULL_RECT);add_child(species_picker_modal)
+	var scrim:=ColorRect.new();scrim.color=Color("#000306e8")
+	scrim.mouse_filter=Control.MOUSE_FILTER_STOP
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);species_picker_modal.add_child(scrim)
+	species_picker_panel=PanelContainer.new();species_picker_panel.name="SpeciesPickerPanel"
+	species_picker_panel.add_theme_stylebox_override("panel",
+		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,8))
+	species_picker_modal.add_child(species_picker_panel)
+	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",6)
+	species_picker_panel.add_child(stack)
+	var title:=Label.new();title.text="종족 선택";title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size",FONT_SECTION);stack.add_child(title)
+	var help:=Label.new();help.text="새 원정의 주인공 종족을 선택하세요."
+	help.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stack.add_child(help)
+	species_picker_buttons=VBoxContainer.new();species_picker_buttons.name="SpeciesPickerButtons"
+	species_picker_buttons.add_theme_constant_override("separation",4);stack.add_child(species_picker_buttons)
+	for species_id in GrowthBuildRegistryScript.picker_species_ids():
+		var definition:=GrowthBuildRegistryScript.species_definition(species_id)
+		var button:=Button.new();button.name="Species_%s"%species_id
+		button.text=str(definition.label);button.custom_minimum_size=Vector2(220,TOUCH_TARGET)
+		button.set_meta("species_id",species_id);button.focus_mode=Control.FOCUS_ALL
+		button.pressed.connect(_commit_species_picker.bind(species_id))
+		species_picker_buttons.add_child(button);AsciiFrameScript.apply_rail_button(
+			button,AsciiFrameScript.BRASS if species_id=="human" else AsciiFrameScript.CYAN)
+
+func show_species_picker_for_new_run()->void:
+	if species_picker_modal==null:_build_species_picker()
+	_species_picker_committed=false;species_picker_modal.visible=true
+	if grid!=null:grid.modal_open=true
+	_layout_floating_surfaces()
+
+func _commit_species_picker(species_id:String)->void:
+	if _species_picker_committed or species_picker_modal==null \
+			or not species_picker_modal.visible:return
+	_species_picker_committed=true
+	var result:Dictionary=session.start_new_run_with_species(species_id) if session!=null else {}
+	if not bool(result.get("accepted",false)):
+		_species_picker_committed=false;return
+	species_picker_modal.visible=false
+	if grid!=null:grid.modal_open=false
+	_reset_run_ui_transients();_request_refresh()
 
 func _build_build_label()->void:
 	build_label=Label.new();build_label.name="BuildLabel";build_label.text=BuildInfoScript.display_text()
@@ -936,6 +989,11 @@ func _layout_floating_surfaces()->void:
 		var record_height:=minf(size.y-24.0,620.0)
 		record_panel.position=(size-Vector2(record_width,record_height))*0.5
 		record_panel.size=Vector2(record_width,record_height)
+	if species_picker_panel!=null:
+		var picker_width:=minf(size.x-24.0,360.0)
+		var picker_height:=minf(size.y-24.0,360.0)
+		species_picker_panel.position=(size-Vector2(picker_width,picker_height))*0.5
+		species_picker_panel.size=Vector2(picker_width,picker_height)
 	if tile_popover!=null and tile_popover.visible:_position_tile_popover()
 
 func _refresh()->void:
@@ -4076,7 +4134,8 @@ func _phase(value:String)->String:
 	return {"GROUPED":"탐험","CONTACT":"조우 배치","ENGAGED":"파티 전투","REGROUP_READY":"자동 재집결","GROUPED_COMPLETE":"탐험 재개","PARTY_DEFEATED":"패배"}.get(value,value)
 func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"전투 대기","RECRUITABLE":"영입 후보","EXILED":"추방됨","DEFEATED":"쓰러짐"}.get(value,value)
 func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"동료"}.get(value,value)
-func _species(value:String)->String:return {"human":"인간","goblin":"고블린","amphibian":"양서인","dwarf":"드워프","default":"미상"}.get(value,value)
+func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwarf":"드워프",
+	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _facet_label(value:String)->String:return {"aggression":"공격성","altruism":"이타성","boldness":"대담성","composure":"침착성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,

@@ -84,33 +84,32 @@ func test_world_state_error_reports_item_row_membership_and_content()->bool:
 	return finish()
 
 
-func test_snapshot_v7_round_trips_item_state_and_rejects_v6_in_the_header()->bool:
+func test_snapshot_v8_round_trips_item_state_and_rejects_v7_in_the_header()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(int(snapshot.snapshot_version),7,"world snapshot is v7")
+	check_eq(int(snapshot.snapshot_version),8,"world snapshot is v8")
 	var top_keys:Array=snapshot.keys();top_keys.sort()
-	check(top_keys.has("item_state"),"item_state joins the exact v7 top level key set")
+	check(top_keys.has("item_state"),"item_state remains in the exact v8 top level key set")
 	check(not snapshot.party_encounter.has("protagonist_inventory") \
 		and not snapshot.party_encounter.has("ground_items"),
 		"party state no longer duplicates inventory or ground authority")
 	var restored=Simulator.from_snapshot(snapshot)
-	check(restored!=null,"v7 snapshot restores")
+	check(restored!=null,"v8 snapshot restores")
 	if restored!=null:
-		check_eq(restored.snapshot(),snapshot,"v7 save and restore is exact")
+		check_eq(restored.snapshot(),snapshot,"v8 save and restore is exact")
 	var legacy:Dictionary=snapshot.duplicate(true)
-	legacy.snapshot_version=6
-	legacy.erase("item_state")
+	legacy.snapshot_version=7
 	check_eq(WorldState.snapshot_restore_error(legacy),"unsupported_snapshot_version",
-		"v6 world snapshots are refused in the header")
-	check(Simulator.from_snapshot(legacy)==null,"a v6 snapshot builds no object")
+		"v7 world snapshots are refused in the header")
+	check(Simulator.from_snapshot(legacy)==null,"a v7 snapshot builds no object")
 	var missing:Dictionary=snapshot.duplicate(true)
 	missing.erase("item_state")
 	check_eq(WorldState.snapshot_restore_error(missing),"invalid_snapshot_top_level_keys",
-		"a v7 snapshot without item_state is rejected")
+		"a v8 snapshot without item_state is rejected")
 	var json_round_trip:Variant=JSON.parse_string(JSON.stringify(snapshot))
-	check(json_round_trip is Dictionary,"v7 snapshot encodes as JSON")
+	check(json_round_trip is Dictionary,"v8 snapshot encodes as JSON")
 	check_eq(WorldState.snapshot_restore_error(json_round_trip),"",
-		"the v7 item state survives the JSON integer transport like every other row")
+		"the v8 item state survives the JSON integer transport like every other row")
 	var orphan:Dictionary=snapshot.duplicate(true)
 	orphan.item_state.inventory_rows.pop_back()
 	check(WorldState.snapshot_restore_error(orphan)!="",
@@ -243,7 +242,7 @@ func test_the_duplicate_weapon_authority_and_its_bridge_invariant_are_gone()->bo
 	for method in world.get_method_list():world_names.append(str(method.name))
 	check("_inventory_loadout_bridge_error" not in world_names,
 		"the bridge invariant is deleted with the field it held together")
-	check_eq(int(world.party_encounter.schema_version),14,
+	check_eq(int(world.party_encounter.schema_version),15,
 		"persisting party panic hysteresis raises the nested party schema to v14")
 	check("protagonist_loadout" not in world.party_encounter.to_dict(),
 		"the party wire no longer carries a loadout row")

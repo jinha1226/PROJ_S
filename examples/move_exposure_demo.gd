@@ -12,13 +12,11 @@ func _init() -> void:
 		human_destination.evaluation.water_score,
 		human_destination.evaluation.total_risk])
 
-	var amphibian_sim = _make_lane("amphibian", 20260827)
-	var amphibian_id: int = amphibian_sim.world.entities.keys()[0]
-	var amphibian_destination = amphibian_sim.assess_destination(
-		amphibian_id, Vector2i(2, 0))
-	print("amphibian shallow_water: water_score=%d total=%d" % [
-		amphibian_destination.evaluation.water_score,
-		amphibian_destination.evaluation.total_risk])
+	var elf_sim = _make_lane("elf", 20260827)
+	var elf_id: int = elf_sim.world.entities.keys()[0]
+	var elf_destination = elf_sim.assess_destination(elf_id, Vector2i(2, 0))
+	print("elf shallow_water: water_score=%d total=%d" % [
+		elf_destination.evaluation.water_score,elf_destination.evaluation.total_risk])
 
 	var floor_move = human_sim.step(Command.move_to(human_id, Vector2i(1, 0)))
 	print("move floor @%d→%d" % [floor_move.start_time, floor_move.end_time])

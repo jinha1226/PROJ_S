@@ -111,15 +111,9 @@ func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bo
 		WeaponLoadout.new("SHORT_SWORD",12,6).to_dict()
 	var migrated=Session.new(3,4)
 	var migration_result:Dictionary=migrated.load_session_json(JSON.stringify(legacy_v5))
-	check(bool(migration_result.get("accepted",false)),
-		"legacy v5 save reconstructs gateways from the matching deployed generator: %s" \
-		%str(migration_result))
-	if bool(migration_result.get("accepted",false)):
-		var expected_legacy:Dictionary=legacy_schema_session.sim.snapshot()
-		# Items are snapshot v7 world authority, so a downgraded party section no
-		# longer implies a legacy-only inventory on either side of the comparison.
-		check_eq(migrated.sim.snapshot(),expected_legacy,
-			"legacy v5 migration preserves doors and replay")
+	check(not bool(migration_result.get("accepted",false)) \
+		and str(migration_result.get("reason",""))=="unsupported_player_species_snapshot",
+		"legacy v5 party state is rejected by the species hard cut")
 	return finish()
 
 

@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 14
+const SCHEMA_VERSION := 15
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -20,6 +20,8 @@ const WORLD_ITEM_SCHEMA_VERSION := 12
 const WEAPON_AUTHORITY_SCHEMA_VERSION := 13
 # v14 persists companion panic hysteresis beside stress.
 const MORALE_SCHEMA_VERSION := 14
+# v15 hard-cuts the player species enum and nested GrowthBuildState v2.
+const PLAYER_SPECIES_SCHEMA_VERSION := 15
 const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
@@ -224,6 +226,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v13_keys:Array=v12_keys.duplicate()
 	v13_keys.erase("protagonist_loadout");v13_keys.sort()
 	var v14_keys:Array=v13_keys.duplicate()
+	var v15_keys:Array=v14_keys.duplicate()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -239,13 +242,14 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == GROWTH_BUILD_SCHEMA_VERSION and keys != v11_keys) \
 		or (parsed_schema_version == WORLD_ITEM_SCHEMA_VERSION and keys != v12_keys) \
 		or (parsed_schema_version == WEAPON_AUTHORITY_SCHEMA_VERSION and keys != v13_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v14_keys):
+		or (parsed_schema_version == MORALE_SCHEMA_VERSION and keys != v14_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v15_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
 		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
-		WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,
+		WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,MORALE_SCHEMA_VERSION,
 		SCHEMA_VERSION]: return "unsupported_party_schema"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
