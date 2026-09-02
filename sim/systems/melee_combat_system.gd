@@ -10,6 +10,8 @@ const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const DefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
+const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
+const WorldItemOperationsScript=preload("res://sim/world_item_operations.gd")
 
 var world
 var damage
@@ -288,6 +290,10 @@ func project_batch(frozen_intents: Array) -> Array:
 func can_attack(attacker_id: int, target_id: int) -> bool:
 	if not world.entities.has(attacker_id) or not world.entities.has(target_id): return false
 	var attacker = world.entities[attacker_id]; var target = world.entities[target_id]
+	var body=world.body_states.get(attacker_id)
+	var weapon=WeaponRegistryScript.definition(
+		WorldItemOperationsScript.equipped_weapon_id(world,attacker_id))
+	if not BodyFunctionRulesScript.weapon_use_error(body,weapon).is_empty():return false
 	return world.can_act(attacker_id, world.world_time) and world.is_explicit_melee_target(target_id) \
 		and maxi(absi(attacker.position.x - target.position.x), absi(attacker.position.y - target.position.y)) == 1
 
@@ -352,6 +358,9 @@ func can_attack_with_weapon(attacker_id: int, target_id: int, weapon_id: String,
 	if not world.can_act(attacker_id, world.world_time) \
 			or not world.is_explicit_melee_target(target_id):
 		return false
+	var body=world.body_states.get(attacker_id)
+	var weapon=WeaponRegistryScript.definition(weapon_id)
+	if not BodyFunctionRulesScript.weapon_use_error(body,weapon).is_empty():return false
 	return WeaponAttackRulesScript.targeting_error(world.entities[attacker_id].position,
 		world.entities[target_id].position, weapon_id, occupants).is_empty()
 

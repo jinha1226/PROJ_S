@@ -3,6 +3,8 @@ extends "res://tests/test_case.gd"
 const BodyState=preload("res://sim/body_state.gd")
 const FunctionRules=preload("res://sim/body_function_rules.gd")
 const WeaponRegistry=preload("res://sim/weapon_registry.gd")
+const Simulator=preload("res://sim/simulator.gd")
+const MeleeSystem=preload("res://sim/systems/melee_combat_system.gd")
 
 
 func test_limb_capacity_is_pure_detached_and_has_explicit_locomotion_modes()->bool:
@@ -55,4 +57,36 @@ func test_arm_loss_gates_weapon_hands_but_keeps_generic_unarmed_fallback()->bool
 		"claw requires an arm")
 	check_eq(FunctionRules.weapon_use_error(body,unarmed),"",
 		"generic unarmed remains the universal last-resort attack")
+	return finish()
+
+
+func test_authoritative_attack_gate_consumes_the_same_limb_capacity()->bool:
+	var ranged_sim=Simulator.create(3,1,91)
+	var archer=ranged_sim.world.add_entity("hero","궁수",Vector2i.ZERO,100,[],"human")
+	var distant=ranged_sim.world.add_entity("melee_enemy","표적",Vector2i(2,0),100,[],"goblin")
+	var ranged_melee=MeleeSystem.new(ranged_sim.world,ranged_sim.damage)
+	check(ranged_melee.can_attack_with_weapon(archer.id,distant.id,"BOW"),
+		"healthy actor can use a two-handed ranged weapon")
+	check_eq(ranged_sim.world.body_states[archer.id].transition_part_condition(
+		"LEFT_ARM","DISABLED",10),"","fixture disables one arm")
+	check(not ranged_melee.can_attack_with_weapon(archer.id,distant.id,"BOW"),
+		"the combat gate rejects two-handed use with one arm")
+	var beast_sim=Simulator.create(2,1,92)
+	var beast=beast_sim.world.add_entity("hero","수인",Vector2i.ZERO,100,[],"beastkin")
+	var adjacent=beast_sim.world.add_entity("melee_enemy","표적",Vector2i.RIGHT,100,[],"goblin")
+	var beast_body=beast_sim.world.body_states[beast.id]
+	check_eq(beast_body.transition_part_condition("LEFT_ARM","SEVERED",11),"",
+		"fixture removes first arm")
+	check_eq(beast_body.transition_part_condition("RIGHT_ARM","SEVERED",12),"",
+		"fixture removes second arm")
+	check(not MeleeSystem.new(beast_sim.world,beast_sim.damage).can_attack(beast.id,adjacent.id),
+		"species claw cannot attack without an arm")
+	var human_sim=Simulator.create(2,1,93)
+	var human=human_sim.world.add_entity("hero","인간",Vector2i.ZERO,100,[],"human")
+	var human_target=human_sim.world.add_entity("melee_enemy","표적",Vector2i.RIGHT,100,[],"goblin")
+	var human_body=human_sim.world.body_states[human.id]
+	human_body.transition_part_condition("LEFT_ARM","SEVERED",13)
+	human_body.transition_part_condition("RIGHT_ARM","SEVERED",14)
+	check(MeleeSystem.new(human_sim.world,human_sim.damage).can_attack(human.id,human_target.id),
+		"generic unarmed fallback remains available without arms")
 	return finish()

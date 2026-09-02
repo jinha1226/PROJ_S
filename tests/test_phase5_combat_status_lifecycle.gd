@@ -2184,6 +2184,8 @@ func test_party_direct_melee_runtime_commits_keyed_no_bleed_hit() -> bool:
 		"Party HIT freezes exact unguarded 24 minus armor 2 formula")
 	var rng_before: int = world.rng.state
 	var hp_before: int = world.entities[target_id].health
+	var body_revision_before:int=world.body_states[target_id].revision
+	var wound_count_before:int=world.body_states[target_id].wounds.size()
 	var result = session.sim.step_party_turn(plan)
 	check(result.accepted, "HIT Party direct preview commits")
 	check_eq(result.processed_step_index, processed_step,
@@ -2246,6 +2248,18 @@ func test_party_direct_melee_runtime_commits_keyed_no_bleed_hit() -> bool:
 				"all same-batch melee actions precede the first canonical result")
 	check_eq(world.entities[target_id].health, hp_before - 22,
 		"HIT production path applies exact final health damage 22")
+	check_eq([world.body_states[target_id].revision,
+		world.body_states[target_id].wounds.size()],
+		[body_revision_before+1,wound_count_before+1],
+		"the same canonical HIT commits one parallel body injury")
+	if not world.body_states[target_id].wounds.is_empty() and action!=null:
+		var injury_wound:Dictionary=world.body_states[target_id].wounds[-1]
+		var physical_rows:Array=result.events.filter(func(event):return \
+			event.type=="combat.physical_damage" and event.cause_id==action.id)
+		var physical_child=physical_rows[0]
+		check_eq([injury_wound.source_event_id,injury_wound.form],
+			[physical_child.id,"SLASH"],
+			"body wound cites the canonical physical child and equipped attack form")
 	check_eq(world.rng.state, rng_before,
 		"HIT keyed Party commit consumes no global RNG")
 	var canonical = session.sim.snapshot()
@@ -2253,6 +2267,13 @@ func test_party_direct_melee_runtime_commits_keyed_no_bleed_hit() -> bool:
 	if canonical is Dictionary:
 		check_eq(WorldState.snapshot_restore_error(canonical), "",
 			"HIT committed Party snapshot restores")
+		var wound_source_forge:Dictionary=canonical.duplicate(true)
+		for body_row in wound_source_forge.body_states:
+			if int(body_row.entity_id)==target_id and not body_row.wounds.is_empty():
+				body_row.wounds[-1].source_event_id=str(action.id);break
+		check_eq(WorldState.snapshot_restore_error(wound_source_forge),
+			"invalid_body_wound_source",
+			"body wound cannot cite the attack instead of its physical child")
 		var restored = Simulator.from_snapshot(canonical)
 		check(restored != null, "HIT committed Party snapshot loads")
 		if restored != null:

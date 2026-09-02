@@ -26,6 +26,7 @@ const MAX_DIMENSION := 4096
 const MAX_TILE_COUNT := 1000000
 const MAX_SMALL_VALUE := 2147483647
 const BODY_RULESET_ID := "body-simulation-b1-v1"
+const BODY_COMBAT_RULESET_ID := "body-combat-b1-v1"
 const BODY_STATE_SCHEMA_ID := "body-state-v2"
 const ROLLBACK_MEMENTO_VERSION := 4
 # Packed rollback dynamic rows are [tile_index, wetness, fire,
@@ -56,6 +57,7 @@ const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
 const GroundItemStateScript = preload("res://sim/ground_item_state.gd")
 const BodyTemplateRegistryScript = preload("res://sim/body_template_registry.gd")
+const BodyCombatRulesScript=preload("res://sim/body_combat_rules.gd")
 const BodyStateScript = preload("res://sim/body_state.gd")
 const PartyMemberStateScript = preload("res://sim/party_member_state.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
@@ -792,7 +794,8 @@ func snapshot() -> Variant:
 		"life_ruleset_id": LIFE_RULESET_ID,
 		"status_ruleset_id": STATUS_RULESET_ID,
 		"party_member_schema_id": PARTY_MEMBER_SCHEMA_ID,
-		"body_ruleset_id":BODY_RULESET_ID,"body_state_schema_id":BODY_STATE_SCHEMA_ID,
+		"body_ruleset_id":BODY_RULESET_ID,"body_combat_ruleset_id":BODY_COMBAT_RULESET_ID,
+		"body_state_schema_id":BODY_STATE_SCHEMA_ID,
 		"width": width, "height": height,
 		"step_index": str(step_index), "world_time": str(world_time), "seed": str(seed),
 		"rng_state": str(rng.state),
@@ -1252,6 +1255,7 @@ static func snapshot_header_error(data: Dictionary) -> String:
 			["life_ruleset_id", LIFE_RULESET_ID], ["status_ruleset_id", STATUS_RULESET_ID],
 			["party_member_schema_id", PARTY_MEMBER_SCHEMA_ID],
 			["body_ruleset_id",BODY_RULESET_ID],
+			["body_combat_ruleset_id",BODY_COMBAT_RULESET_ID],
 			["body_state_schema_id",BODY_STATE_SCHEMA_ID]]:
 		if not (data.get(pair[0]) is String) or data.get(pair[0]) != pair[1]: return "unsupported_%s" % pair[0]
 	return ""
@@ -1262,7 +1266,8 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	if not header_error.is_empty():
 		return header_error
 	var top_keys: Array = data.keys(); top_keys.sort()
-	if top_keys != ["agent_state_schema_id", "agent_states", "body_ruleset_id", "body_state_schema_id",
+	if top_keys != ["agent_state_schema_id", "agent_states", "body_combat_ruleset_id",
+			"body_ruleset_id", "body_state_schema_id",
 			"body_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
 			"combat_ruleset_id", "combatant_schema_id", "combatant_states", "decision_ruleset_id",
 			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
@@ -1786,6 +1791,8 @@ func _restored_state_error() -> String:
 	if not species_drop_registry_error.is_empty(): return species_drop_registry_error
 	var body_registry_error:=BodyTemplateRegistryScript.registry_error()
 	if not body_registry_error.is_empty():return body_registry_error
+	var body_combat_registry_error:=BodyCombatRulesScript.registry_error()
+	if not body_combat_registry_error.is_empty():return body_combat_registry_error
 	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
 	if body_states.size()!=entities.size():return "body_entity_set_mismatch"
 	var item_state_error := _item_state_error()
@@ -2523,6 +2530,40 @@ func _restored_state_error() -> String:
 			or actor_entry["owner_id"] != -1 or actor_entry["source_event_id"] != -1 \
 			or not actor_entry["payload"].is_empty():
 		return "invalid_actor_schedule_contract"
+	# Preserve the established combat-history error precedence, then audit the
+	# derived body ledger against the already-canonical physical event chain.
+	var body_ids:Array=body_states.keys()
+	body_ids.sort()
+	for body_id in body_ids:
+		var body=body_states[body_id]
+		var body_history_error:=_body_history_error(body)
+		if not body_history_error.is_empty():return body_history_error
+	return ""
+
+
+func _body_history_error(body)->String:
+	var wound_sources:Dictionary={}
+	for wound in body.wounds:
+		var source_id:=int(wound.source_event_id)
+		if wound_sources.has(source_id):return "body_wound_source_reused"
+		var source=event_by_id(source_id)
+		if source==null or source.type!="combat.physical_damage" \
+				or source.target_id!=body.entity_id \
+				or source.data.get("schema_version")!=1 \
+				or source.data.get("damage_type")!="physical":
+			return "invalid_body_wound_source"
+		var attack=event_by_id(source.cause_id)
+		if attack==null or attack.type!="action.melee_attack" \
+				or attack.target_id!=body.entity_id \
+				or attack.data.get("outcome")!="HIT":
+			return "invalid_body_wound_attack_source"
+		wound_sources[source_id]={"part_id":str(wound.part_id)}
+	for part in body.parts:
+		if str(part.condition)=="FUNCTIONAL":continue
+		var source_id:=int(part.condition_source_event_id)
+		if not wound_sources.has(source_id) \
+				or str(wound_sources[source_id].part_id)!=str(part.part_id):
+			return "invalid_body_part_condition_source"
 	return ""
 
 

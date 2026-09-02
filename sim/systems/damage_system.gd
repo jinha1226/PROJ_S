@@ -8,6 +8,9 @@ const ACTOR_INTERVAL := 100
 const MAX_WORLD_TIME := 9223372036854775707
 const StatusRowScript = preload("res://sim/combat_status_row.gd")
 const StatusRegistryScript = preload("res://sim/status_registry.gd")
+const BodyInjurySystemScript=preload("res://sim/body_injury_system.gd")
+const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
+const WorldItemOperationsScript=preload("res://sim/world_item_operations.gd")
 
 var world
 
@@ -59,6 +62,23 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			or (should_apply_bleed and world.world_time > MAX_WORLD_TIME - 300) \
 			or not world.has_event_id_headroom(required_events):
 		return {"accepted": false, "event": null, "applied_health_damage": 0}
+	# B1 keeps legacy HP as the combat authority, but freezes a parallel body
+	# injury plan before mutating anything. It consumes only canonical attack data
+	# and the equipped weapon registry; no global RNG or UI state participates.
+	var body_injury_context:Dictionary={}
+	if damage_type=="physical" and cause.type=="action.melee_attack" \
+			and cause.data.get("outcome")=="HIT":
+		var weapon_id:=WorldItemOperationsScript.equipped_weapon_id(world,cause.actor_id)
+		var weapon=WeaponRegistryScript.definition(weapon_id)
+		var body=world.body_states.get(entity.id)
+		var body_plan:Dictionary=BodyInjurySystemScript.assess(body,weapon,
+			int(cause.data.get("base_damage",0)),int(cause.data.get("armor_flat",0)),
+			str(cause.data.get("commitment_hash","")),entity.id)
+		if not bool(body_plan.get("accepted",false)):
+			return {"accepted":false,"event":null,"applied_health_damage":0}
+		body_injury_context={"body":body,"weapon":weapon,"raw_damage":
+			int(cause.data.base_damage),"armor_flat":int(cause.data.armor_flat),
+			"commitment_hash":str(cause.data.commitment_hash)}
 	var applied_damage := mini(expected_health_before, requested_damage)
 	entity.health -= applied_damage
 	var damage_event = world.emit_event(
@@ -148,6 +168,15 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 		existing.refreshed_at = world.world_time
 		existing.expires_at = expires_at
 		existing.source_event_id = status_event.id
+	if not body_injury_context.is_empty():
+		var injury:Dictionary=BodyInjurySystemScript.apply(body_injury_context.body,
+			body_injury_context.weapon,int(body_injury_context.raw_damage),
+			int(body_injury_context.armor_flat),str(body_injury_context.commitment_hash),
+			entity.id,damage_event.id)
+		if not bool(injury.get("accepted",false)):
+			return {"accepted":false,"event":damage_event,
+				"transition_event":transition_event,"death_event":death_event,
+				"status_event":status_event,"applied_health_damage":applied_damage}
 	return {"accepted": true, "event": damage_event,
 		"transition_event": transition_event, "death_event": death_event,
 		"status_event": status_event,
