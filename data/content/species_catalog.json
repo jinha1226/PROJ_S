@@ -7,6 +7,7 @@
   "playable_species": [
     {
       "species_id": "human", "label": "인간",
+      "base_stats": {"STR":5,"DEX":5,"INT":5}, "natural_weapon_id":"UNARMED_STRIKE",
       "growth": {
         "weapon_familiarity": {"mode": "ADAPTIVE", "weapon_tags": []},
         "fixed_trait": {"effect_id": "HUMAN_FIELD_RESPONSE", "label": "현장 대응", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "HUMAN_FIELD_RESPONSE", "required_item_tags": [], "side_effect_ids": []},
@@ -37,6 +38,7 @@
     },
     {
       "species_id": "elf", "label": "엘프",
+      "base_stats": {"STR":3,"DEX":6,"INT":6}, "natural_weapon_id":"UNARMED_STRIKE",
       "growth": {
         "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_PIERCE", "RANGED"]},
         "fixed_trait": {"effect_id": "ELF_KEEN_SENSES", "label": "예리한 감각", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "ELF_KEEN_SENSES", "required_item_tags": [], "side_effect_ids": []},
@@ -67,6 +69,7 @@
     },
     {
       "species_id": "dwarf", "label": "드워프",
+      "base_stats": {"STR":6,"DEX":4,"INT":5}, "natural_weapon_id":"UNARMED_STRIKE",
       "growth": {
         "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_IMPACT"]},
         "fixed_trait": {"effect_id": "DWARF_DENSE_SKELETON", "label": "치밀한 골격", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "DWARF_DENSE_SKELETON", "required_item_tags": [], "side_effect_ids": []},
@@ -97,6 +100,7 @@
     },
     {
       "species_id": "orc", "label": "오크",
+      "base_stats": {"STR":7,"DEX":4,"INT":4}, "natural_weapon_id":"UNARMED_STRIKE",
       "growth": {
         "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["FORM_SLASH", "MELEE"]},
         "fixed_trait": {"effect_id": "ORC_ROBUST_PHYSIQUE", "label": "강건한 근육·혈량", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "ORC_ROBUST_PHYSIQUE", "required_item_tags": [], "side_effect_ids": []},
@@ -127,6 +131,7 @@
     },
     {
       "species_id": "beastkin", "label": "수인",
+      "base_stats": {"STR":5,"DEX":7,"INT":3}, "natural_weapon_id":"NATURAL_CLAW",
       "growth": {
         "weapon_familiarity": {"mode": "FIXED", "weapon_tags": ["MELEE", "UNARMED"]},
         "fixed_trait": {"effect_id": "BEASTKIN_SENSITIVE_SENSES", "label": "예민한 후각·청각", "trigger": "PASSIVE", "bonuses": {}, "hook_id": "BEASTKIN_SENSITIVE_SENSES", "required_item_tags": [], "side_effect_ids": []},
@@ -159,6 +164,7 @@
   "non_player_species": [
     {
       "species_id":"generic_humanoid", "label":"범용 인간형",
+      "base_stats":{"STR":5,"DEX":5,"INT":5}, "natural_weapon_id":"UNARMED_STRIKE",
       "body": {
         "parts": [
           {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},
@@ -175,6 +181,7 @@
     },
     {
       "species_id":"goblin", "label":"고블린",
+      "base_stats":{"STR":4,"DEX":6,"INT":3}, "natural_weapon_id":"UNARMED_STRIKE",
       "body": {
         "parts": [
           {"part_id":"HEAD","layers":["SKIN","SOFT_TISSUE","BONE"],"vital_tags":["BRAIN"]},

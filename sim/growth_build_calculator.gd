@@ -4,8 +4,9 @@ extends RefCounted
 const GrowthRegistry = preload("res://sim/growth_build_registry.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const WeaponRegistryScript = preload("res://sim/weapon_registry.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
+const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const EQUIPMENT_SLOTS := ["MAIN_HAND", "OFF_HAND", "ARMOR", "ACCESSORY_1", "ACCESSORY_2"]
-const BASE_STATS := {"MIGHT":5, "AGILITY":5, "VITALITY":5}
 
 
 static func calculate(state, equipped_items: Dictionary) -> Dictionary:
@@ -14,7 +15,7 @@ static func calculate(state, equipped_items: Dictionary) -> Dictionary:
 		return _rejected("invalid_growth_state")
 	var item_error := loadout_error(equipped_items)
 	if not item_error.is_empty(): return _rejected(item_error)
-	var item_projection := _project_items(equipped_items)
+	var item_projection := _project_items(equipped_items,state.species_id)
 	var item_tags: Array[String] = item_projection.item_tags
 	var aggregate: Dictionary = GrowthRegistry.empty_bonuses()
 	for key in aggregate: aggregate[key] = int(item_projection.bonuses.get(key, 0))
@@ -40,23 +41,16 @@ static func calculate(state, equipped_items: Dictionary) -> Dictionary:
 		effect_hooks[str(affix_hook.trigger)].append(affix_hook.duplicate(true))
 		active_effect_ids.append(str(affix_hook.effect_id))
 
-	var stats := {
-		"MIGHT":int(BASE_STATS.MIGHT) + int(state.stat_allocations.MIGHT) + int(aggregate.might),
-		"AGILITY":int(BASE_STATS.AGILITY) + int(state.stat_allocations.AGILITY) + int(aggregate.agility),
-		"VITALITY":int(BASE_STATS.VITALITY) + int(state.stat_allocations.VITALITY) + int(aggregate.vitality),
-	}
-	var might_damage := maxi(0, int((int(stats.MIGHT) - int(BASE_STATS.MIGHT)) / 2.0))
-	var agility_accuracy := (int(stats.AGILITY) - int(BASE_STATS.AGILITY)) * 10
-	var agility_dodge := (int(stats.AGILITY) - int(BASE_STATS.AGILITY)) * 10
+	var stats := ActorStatRulesScript.for_growth_state(state)
 	var weapon: Dictionary = item_projection.weapon.duplicate(true)
-	weapon.damage_flat_bonus = might_damage + int(aggregate.damage_flat)
+	weapon.damage_flat_bonus = int(aggregate.damage_flat)
 	weapon.resolved_damage = int(weapon.base_damage) + int(weapon.damage_flat_bonus)
-	weapon.accuracy_bonus_milli = agility_accuracy + int(aggregate.accuracy_milli)
+	weapon.accuracy_bonus_milli = int(aggregate.accuracy_milli)
 	weapon.resolved_accuracy_milli = int(weapon.base_accuracy_milli) \
 		+ int(weapon.accuracy_bonus_milli)
 	var defense := {
 		"armor_flat":int(aggregate.armor_flat), "parry_milli":int(aggregate.parry_milli),
-		"dodge_milli":int(aggregate.dodge_milli) + agility_dodge,
+		"dodge_milli":int(aggregate.dodge_milli),
 		"stealth":int(aggregate.stealth),
 	}
 	var hazard_tolerance_bonuses := {
@@ -66,7 +60,6 @@ static func calculate(state, equipped_items: Dictionary) -> Dictionary:
 	}
 	var maximum_health: int = GrowthRegistry.BASE_MAX_HEALTH \
 		+ (state.level() - 1) * GrowthRegistry.HEALTH_PER_LEVEL \
-		+ int(stats.VITALITY) * GrowthRegistry.HEALTH_PER_VITALITY \
 		+ int(aggregate.max_health)
 	var build := {
 		"ruleset_id":GrowthRegistry.RULESET_ID,
@@ -122,12 +115,13 @@ static func loadout_error(equipped_items: Variant) -> String:
 	return ""
 
 
-static func _project_items(equipped_items: Dictionary) -> Dictionary:
+static func _project_items(equipped_items: Dictionary,species_id:String="human") -> Dictionary:
 	var bonuses := GrowthRegistry.empty_bonuses()
 	var tags: Array[String] = []
 	var rows: Array[Dictionary] = []
 	var affix_hooks: Array[Dictionary] = []
-	var weapon_definition = WeaponRegistryScript.definition("UNARMED")
+	var weapon_definition = WeaponRegistryScript.definition(
+		SpeciesCatalogScript.natural_weapon_id(species_id))
 	for slot in EQUIPMENT_SLOTS:
 		if not equipped_items.has(slot) or equipped_items[slot] == null: continue
 		var item = equipped_items[slot]

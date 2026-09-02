@@ -21,6 +21,7 @@ const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
@@ -41,7 +42,7 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 
-const SESSION_FORMAT_VERSION := 4
+const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_party_encounter_v3.json"
 const DEFAULT_WORLD_SEED := 44
@@ -615,7 +616,8 @@ func protagonist_equipment()->Dictionary:
 	var combatant=sim.world.combatant_states.get(state.protagonist_id)
 	var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) if combatant!=null else {}
 	var spec:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
-		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0)
+		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
+		ActorStatRulesScript.for_entity(sim.world,state.protagonist_id))
 	return {"schema_version":1,"available":true,"weapon_id":weapon.weapon_id,
 		"weapon_label":weapon.label,"proficiency_id":weapon.proficiency_id,
 		"proficiency_rank":rank,"attack_form":weapon.attack_form,"trait_id":weapon.trait_id,
@@ -1880,12 +1882,13 @@ func _actor_observation(entity, logical_position: Vector2i,
 
 func _protagonist_equipment_visual()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
-		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var state=sim.world.party_encounter
 	var inventory=sim.world.inventory_of(state.protagonist_id)
 	if inventory==null:
-		return {"weapon_id":"UNARMED","weapon_definition_id":"",
+		return {"weapon_id":ItemOperationsScript.equipped_weapon_id(
+			sim.world,state.protagonist_id),"weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var main=inventory.equipped_item("MAIN_HAND")
 	var armor=inventory.equipped_item("ARMOR")

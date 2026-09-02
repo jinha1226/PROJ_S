@@ -1,7 +1,7 @@
 class_name GrowthBuildState
 extends RefCounted
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const RegistryScript = preload("res://sim/growth_build_registry.gd")
 
 var schema_version := SCHEMA_VERSION
@@ -295,7 +295,7 @@ func _rejected(reason: String) -> Dictionary:
 
 
 static func _empty_stat_allocations() -> Dictionary:
-	return {"MIGHT":0, "AGILITY":0, "VITALITY":0}
+	return {"STR":0, "DEX":0, "INT":0}
 
 
 static func _integer(value: Variant) -> bool:

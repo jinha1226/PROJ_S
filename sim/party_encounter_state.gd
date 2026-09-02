@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 15
+const SCHEMA_VERSION := 16
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -22,6 +22,7 @@ const WEAPON_AUTHORITY_SCHEMA_VERSION := 13
 const MORALE_SCHEMA_VERSION := 14
 # v15 hard-cuts the player species enum and nested GrowthBuildState v2.
 const PLAYER_SPECIES_SCHEMA_VERSION := 15
+const STAT_SCALING_SCHEMA_VERSION := 16
 const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
@@ -378,7 +379,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			Rect2i(Vector2i.ZERO,Vector2i(width,height)))
 		if not combined_error.is_empty():return combined_error
 		var main=inventory.equipped_item("MAIN_HAND")
-		var bridged_weapon_id:="UNARMED"
+		var bridged_weapon_id:="UNARMED_STRIKE"
 		if main!=null:
 			var main_definition=load("res://sim/item_registry.gd").definition(main.definition_id)
 			if main_definition==null:return "inventory_loadout_bridge_mismatch"

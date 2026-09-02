@@ -10,9 +10,8 @@ static var RULESET_ID:String=str(_CONTENT.get("ruleset_id",""))
 static var SAVE_MIGRATION_POLICY:String=str(_CONTENT.get("save_migration_policy",""))
 
 const MUTATION_ACQUISITION_POLICY := "FIRST_ELIGIBLE_KILL_GUARANTEED"
-const BASE_MAX_HEALTH := 100
+const BASE_MAX_HEALTH := 120
 const HEALTH_PER_LEVEL := 2
-const HEALTH_PER_VITALITY := 4
 const STAT_POINT_INTERVAL := 3
 const SPECIES_POINT_LEVELS := [7, 17]
 const MUTATION_SLOT_COUNT := 3
@@ -28,7 +27,7 @@ static var STAT_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("stats",[]),"stat_id")
 const EFFECT_TRIGGERS := ["PASSIVE", "ON_HIT", "ON_HURT", "INTERACT"]
 const BONUS_KEYS := [
-	"max_health", "might", "agility", "vitality", "armor_flat",
+	"max_health", "armor_flat",
 	"parry_milli", "dodge_milli", "stealth", "accuracy_milli",
 	"damage_flat", "fire_tolerance", "water_tolerance",
 	"electric_tolerance", "poison_tolerance",
@@ -167,7 +166,7 @@ static func registry_error() -> String:
 		if not rows_error.is_empty():return rows_error
 	var stat_definition_ids: Array = STAT_DEFINITIONS.keys(); stat_definition_ids.sort()
 	var expected_stat_ids: Array = STAT_IDS.duplicate(); expected_stat_ids.sort()
-	if STAT_IDS != ["MIGHT","AGILITY","VITALITY"] \
+	if STAT_IDS != ["STR","DEX","INT"] \
 			or stat_definition_ids != expected_stat_ids:
 		return "invalid_growth_stat_definitions"
 	for stat_id in STAT_IDS:

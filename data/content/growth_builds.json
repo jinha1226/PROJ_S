@@ -5,9 +5,9 @@
   "ruleset_id": "playable-species-growth-v2",
   "save_migration_policy": "HARD_CUT",
   "stats": [
-    {"stat_id": "MIGHT", "label": "완력"},
-    {"stat_id": "AGILITY", "label": "기민"},
-    {"stat_id": "VITALITY", "label": "활력"}
+    {"stat_id": "STR", "label": "근력"},
+    {"stat_id": "DEX", "label": "민첩"},
+    {"stat_id": "INT", "label": "지능"}
   ],
   "mutations": [
     {

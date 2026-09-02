@@ -1,7 +1,7 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 8
+const SNAPSHOT_VERSION := 9
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
@@ -63,6 +63,7 @@ const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
+const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 
@@ -1499,7 +1500,9 @@ func _item_state_error() -> String:
 	if item_state == null: return "missing_world_item_state"
 	var error: String = item_state.validation_error(width, height)
 	if not error.is_empty(): return error
-	return item_state.world_membership_error(combatant_states.keys(), _death_event_ids())
+	error=item_state.world_membership_error(combatant_states.keys(), _death_event_ids())
+	if not error.is_empty():return error
+	return WorldItemOperationsScript.equipped_requirements_error(self,item_state)
 
 
 func _death_event_ids() -> Array:
@@ -2422,7 +2425,8 @@ func _melee_action_event_error(event) -> String:
 		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
-			int(target_profile.evasion_milli), int(target_profile.armor_flat))
+			int(target_profile.evasion_milli), int(target_profile.armor_flat),
+			ActorStatRulesScript.for_entity(self,event.actor_id))
 		if weapon_spec.is_empty(): return "canonical_weapon_formula_invalid"
 		base_damage = int(weapon_spec.raw_damage)
 	elif party_encounter!=null and event.actor_id==party_encounter.protagonist_id:

@@ -184,7 +184,7 @@ static func equipment_draw_spec(bounds:Rect2,spec:Dictionary,glyph_layout:Dictio
 		"armor_right_center":armor_right_center,
 		"armor_font_size":armor_font_size,
 		"weapon_visible":weapon_visible,
-		"weapon_id":str(equipment.get("weapon_id","UNARMED")),
+		"weapon_id":str(equipment.get("weapon_id","UNARMED_STRIKE")),
 		"weapon_family":str(equipment.get("weapon_family","UNARMED")),
 		"weapon_glyph":str(equipment.get("weapon_glyph","")),
 		"weapon_color_hex":str(equipment.get("weapon_color_hex","#00000000")),

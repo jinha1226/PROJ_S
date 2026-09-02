@@ -6,6 +6,8 @@ const ATTACK_FORMS := ["SLASH", "PIERCE", "IMPACT"]
 const AMMO_KINDS := ["NONE", "ARROW", "BOLT"]
 const TRAIT_IDS := ["NONE", "AXE_CLEAVE", "SPEAR_REACH", "BLUNT_STUN",
 	"FAST_UNARMED", "BOW_REPEAT", "CROSSBOW_RELOAD"]
+const STAT_IDS := ["STR", "DEX", "INT"]
+const SCALING_GRADES := ["NONE", "E", "D", "C", "B", "A"]
 
 var weapon_id: String
 var label: String
@@ -25,6 +27,8 @@ var trait_id: String
 var secondary_damage_milli: int
 var stun_chance_milli: int
 var two_handed: bool
+var scaling: Dictionary
+var natural_weapon: bool
 
 
 func _init(row: Dictionary = {}) -> void:
@@ -46,6 +50,11 @@ func _init(row: Dictionary = {}) -> void:
 	secondary_damage_milli = int(row.get("secondary_damage_milli", 0))
 	stun_chance_milli = int(row.get("stun_chance_milli", 0))
 	two_handed = bool(row.get("two_handed", false))
+	scaling = {}
+	var source:Variant=row.get("scaling",{})
+	if source is Dictionary:
+		for stat_id in STAT_IDS:scaling[stat_id]=str(source.get(stat_id,"NONE"))
+	natural_weapon = bool(row.get("natural_weapon",false))
 
 
 func validation_error() -> String:
@@ -67,6 +76,10 @@ func validation_error() -> String:
 	if secondary_damage_milli < 0 or secondary_damage_milli > 1000: return "invalid_weapon_secondary_damage"
 	if stun_chance_milli < 0 or stun_chance_milli > 1000: return "invalid_weapon_stun_chance"
 	if not two_handed is bool: return "invalid_weapon_hands"
+	if scaling.keys().size()!=STAT_IDS.size():return "invalid_weapon_scaling_shape"
+	for stat_id in STAT_IDS:
+		if not scaling.has(stat_id) or str(scaling[stat_id]) not in SCALING_GRADES:
+			return "invalid_weapon_scaling_grade"
 	if (trait_id == "AXE_CLEAVE") != (secondary_damage_milli > 0): return "invalid_weapon_cleave_contract"
 	if (trait_id == "BLUNT_STUN") != (stun_chance_milli > 0): return "invalid_weapon_stun_contract"
 	return ""
@@ -83,4 +96,5 @@ func to_dict() -> Dictionary:
 		"trait_id": trait_id, "secondary_damage_milli": secondary_damage_milli,
 		"stun_chance_milli": stun_chance_milli,
 		"two_handed": two_handed,
+		"scaling":scaling.duplicate(true), "natural_weapon":natural_weapon,
 	}.duplicate(true)

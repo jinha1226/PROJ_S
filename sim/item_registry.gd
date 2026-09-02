@@ -51,9 +51,10 @@ static func definition_error(row:Variant)->String:
 	if not row is Dictionary:return "invalid_item_definition_shape"
 	var keys:Array=row.keys();keys.sort()
 	if keys!=["bonuses","category","definition_id","equip_slots","label","placeholder",
-			"stack_limit","use_kind","weapon_id"]:
+			"requirements","stack_limit","use_kind","weapon_id"]:
 		return "invalid_item_definition_keys"
 	if not row.get("equip_slots") is Array or not row.get("bonuses") is Dictionary \
+			or not row.get("requirements") is Dictionary \
 			or not row.get("placeholder") is bool:
 		return "invalid_item_definition_shape"
 	for key in ["definition_id","label","category","weapon_id","use_kind"]:
@@ -62,13 +63,19 @@ static func definition_error(row:Variant)->String:
 	var bonus_keys:Array=row.bonuses.keys();bonus_keys.sort()
 	var expected_bonus_keys:Array=DefinitionScript.BONUS_KEYS.duplicate();expected_bonus_keys.sort()
 	if bonus_keys!=expected_bonus_keys:return "invalid_item_bonus_shape"
+	var requirement_keys:Array=row.requirements.keys();requirement_keys.sort()
+	if requirement_keys!=["DEX","INT","STR"]:return "invalid_item_requirements_shape"
+	for stat_id in ["STR","DEX","INT"]:
+		if not row.requirements[stat_id] is int or int(row.requirements[stat_id])<0:
+			return "invalid_item_requirement"
 	for value in row.equip_slots:
 		if not value is String:return "invalid_item_equip_slot"
 	var value=DefinitionScript.new(row)
 	var error:String=value.validation_error()
 	if not error.is_empty():return error
 	if value.category=="WEAPON":
-		if not WeaponRegistryScript.has(value.weapon_id) or value.weapon_id=="UNARMED":
+		if not WeaponRegistryScript.has(value.weapon_id) \
+				or bool(WeaponRegistryScript.definition(value.weapon_id).natural_weapon):
 			return "unknown_item_weapon"
 	return ""
 
@@ -132,7 +139,7 @@ static func registry_error()->String:
 			if weapon_bridges.has(weapon_id):return "duplicate_item_weapon_bridge"
 			weapon_bridges[weapon_id]=definition_id
 	for weapon_id in WeaponRegistryScript.ids():
-		if weapon_id=="UNARMED":continue
+		if bool(WeaponRegistryScript.definition(weapon_id).natural_weapon):continue
 		if not weapon_bridges.has(weapon_id):return "missing_item_weapon_bridge"
 	for affix_id in AFFIX_DEFINITIONS:
 		if str(AFFIX_DEFINITIONS[affix_id].get("affix_id",""))!=affix_id:

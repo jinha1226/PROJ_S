@@ -2,6 +2,7 @@ class_name SpeciesCatalogRegistry
 extends RefCounted
 
 const ContentLoaderScript=preload("res://sim/json_content_loader.gd")
+const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const CONTENT_PATH:="res://data/content/species_catalog.json"
 const RULESET_ID:="species-catalog-v1"
 const FALLBACK_SPECIES_ID:="generic_humanoid"
@@ -58,6 +59,16 @@ static func body_template(species_id:String)->Dictionary:
 	return body
 
 
+static func base_stats(species_id:String)->Dictionary:
+	var row:=catalog_row(species_id)
+	return row.get("base_stats",{}).duplicate(true) if not row.is_empty() else {}
+
+
+static func natural_weapon_id(species_id:String)->String:
+	var row:=catalog_row(species_id)
+	return str(row.get("natural_weapon_id",""))
+
+
 static func content_version()->String:
 	return str(_CONTENT.get("content_version",""))
 
@@ -86,20 +97,37 @@ static func registry_error()->String:
 	for species_id in playable_ids():
 		var row:Dictionary=_PLAYABLE[species_id]
 		var keys:Array=row.keys();keys.sort()
-		if keys!=["body","growth","label","species_id"] \
+		if keys!=["base_stats","body","growth","label","natural_weapon_id","species_id"] \
 				or str(row.species_id)!=species_id or str(row.label).is_empty() \
 				or not row.growth is Dictionary or not row.body is Dictionary:
 			return "invalid_playable_species_row"
+		var combat_error:=_combat_identity_error(row)
+		if not combat_error.is_empty():return combat_error
 		seen[species_id]=true
 	for species_id in _NON_PLAYER:
 		if seen.has(species_id):return "duplicate_species_identity"
 		var row:Dictionary=_NON_PLAYER[species_id]
 		var keys:Array=row.keys();keys.sort()
-		if keys!=["body","label","species_id"] \
+		if keys!=["base_stats","body","label","natural_weapon_id","species_id"] \
 				or str(row.species_id)!=species_id or str(row.label).is_empty() \
 				or not row.body is Dictionary:
 			return "invalid_non_player_species_row"
+		var combat_error:=_combat_identity_error(row)
+		if not combat_error.is_empty():return combat_error
 		seen[species_id]=true
 	if not _NON_PLAYER.has(FALLBACK_SPECIES_ID) or not _NON_PLAYER.has("goblin"):
 		return "missing_required_non_player_species"
+	return ""
+
+
+static func _combat_identity_error(row:Dictionary)->String:
+	if not row.get("base_stats") is Dictionary:return "invalid_species_base_stats"
+	var keys:Array=row.base_stats.keys();keys.sort()
+	if keys!=["DEX","INT","STR"]:return "invalid_species_base_stats"
+	for stat_id in ["STR","DEX","INT"]:
+		if not row.base_stats[stat_id] is int or int(row.base_stats[stat_id])<0:
+			return "invalid_species_base_stats"
+	var weapon_id:=str(row.get("natural_weapon_id",""))
+	var weapon=WeaponRegistryScript.definition(weapon_id)
+	if weapon==null or not bool(weapon.natural_weapon):return "invalid_species_natural_weapon"
 	return ""
