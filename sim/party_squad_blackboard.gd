@@ -59,6 +59,13 @@ static func _focus_target(world, state, action, enemies: Array[int],
 		return -1
 	if action != null and action.type == "MELEE" and int(action.target_id) in enemies:
 		return int(action.target_id)
+	# The protagonist's last committed attack is an implicit party order. Keep it
+	# sticky across MOVE/HOLD turns until that target is no longer active, matching
+	# the zero-input ally loop: acting on a foe means "focus this foe" without a
+	# separate command every round.
+	var implicit_focus := _last_committed_protagonist_target(world, state, enemies)
+	if implicit_focus > 0:
+		return implicit_focus
 	var engaged: Array[int] = []
 	for enemy_id in enemies:
 		if not threat_table[enemy_id].adjacent_party_ids.is_empty():
@@ -78,6 +85,20 @@ static func _focus_target(world, state, action, enemies: Array[int],
 		var b_distance := _distance(anchor, world.entities[b].position)
 		return a_distance < b_distance if a_distance != b_distance else a < b)
 	return ranked[0]
+
+
+static func _last_committed_protagonist_target(world, state,
+		enemies: Array[int]) -> int:
+	for event_index in range(world.events.size() - 1, -1, -1):
+		var event = world.events[event_index]
+		if event.type == "party.regroup_completed":
+			break
+		if event.type == "action.melee_attack" \
+				and int(event.actor_id) == int(state.protagonist_id):
+			# Only the latest protagonist attack is an order. If its target has
+			# become invalid, clear the focus instead of resurrecting an older one.
+			return int(event.target_id) if int(event.target_id) in enemies else -1
+	return -1
 
 
 static func _most_threatened_ally(state, deployed: Array[int], pressure: Dictionary) -> int:

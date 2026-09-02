@@ -17,6 +17,7 @@ const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const PartyStateScript=preload("res://sim/party_encounter_state.gd")
+const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const MAX_DEPLOYED_PARTY := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -290,7 +291,9 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	var distance := _distance(state.group_anchor, nearest.position)
 	var has_los:=_line_of_sight(state.group_anchor,nearest.position)
 	var awareness=state.enemy_awareness(nearest.id)
-	var party_detects: bool = has_los and distance <= state.party_detection_radius
+	var party_spotters: Array[int] = PartyPerceptionRegistryScript.visible_party_members(
+		world, state, nearest.position)
+	var party_detects: bool = not party_spotters.is_empty()
 	var enemy_detects: bool = has_los and distance<=state.enemy_detection_radius
 	if not party_detects and not enemy_detects: return true
 	if awareness!=null and awareness.awareness_state!="HUNTING":
@@ -305,6 +308,25 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 			"enemy_position": [nearest.position.x, nearest.position.y],
 			"facing": [state.facing.x, state.facing.y]})
 	if contact == null or _fault("contact_event"): return false
+	# A companion-only sighting becomes an explicit party-information event. The
+	# contact still uses the established hero/enemy root for backward-compatible
+	# encounter replay, while observers can truthfully name the actual spotter.
+	if party_detects and int(party_spotters[0]) != int(state.protagonist_id):
+		var spotter_id := int(party_spotters[0])
+		var warning = world.emit_event("party.contact_reported", spotter_id,
+			nearest.id, state.group_anchor, 0, contact.id, {
+				"schema_version":1,
+				"ruleset_id":PartyPerceptionRegistryScript.RULESET_ID,
+				"spotter_id":str(spotter_id),
+				"enemy_id":str(nearest.id),
+				"observed_position":[nearest.position.x,nearest.position.y],
+				"direction":[state.facing.x,state.facing.y],
+				"distance":distance,
+				"sight_range":PartyPerceptionRegistryScript.sight_range(
+					world, state, spotter_id),
+			})
+		if warning == null or _fault("contact_report_event"):
+			return false
 	if state.contact_kind == "ENEMY_AMBUSH":
 		var ambushers: Array = []
 		for enemy_id in state.enemy_ids:
@@ -606,7 +628,9 @@ func _nearest_contact_enemy(position:Vector2i):
 		var awareness=world.party_encounter.enemy_awareness(enemy_id)
 		var legacy_small_fixture:bool=world.width<=15 and world.height<=15 \
 				and world.party_encounter.enemy_ids.size()==1
-		if distance<=world.party_encounter.party_detection_radius \
+		var party_spotters: Array[int] = PartyPerceptionRegistryScript \
+			.visible_party_members(world, world.party_encounter, enemy.position)
+		if not party_spotters.is_empty() \
 				or awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
 				and distance<=world.party_encounter.enemy_detection_radius \
 				or legacy_small_fixture \

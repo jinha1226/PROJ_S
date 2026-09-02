@@ -66,6 +66,7 @@ const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
+const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 
 var width: int
 var height: int
@@ -4478,7 +4479,55 @@ func _party_event_correlation_error() -> String:
 				or nearest_rows[0].position != contact_enemy_position:
 			return "party_contact_nearest_enemy_mismatch"
 		var distance: int = int(nearest_rows[0].distance)
-		var party_detects: bool = distance <= party_encounter.party_detection_radius
+		var contact_reports: Array = []
+		for event in events:
+			if event.type == "party.contact_reported" and event.cause_id == contact.id:
+				contact_reports.append(event)
+		if contact_reports.size() > 1:
+			return "party_contact_report_count_invalid"
+		var companion_reported := false
+		if not contact_reports.is_empty():
+			var report = contact_reports[0]
+			var report_keys: Array = report.data.keys(); report_keys.sort()
+			var expected_report_keys := ["direction","distance","enemy_id",
+				"observed_position","ruleset_id","schema_version","sight_range",
+				"spotter_id"]
+			if report_keys != expected_report_keys \
+					or int(report.data.get("schema_version",0)) != 1 \
+					or str(report.data.get("ruleset_id","")) \
+						!= PartyPerceptionRegistryScript.RULESET_ID \
+					or not Int64CodecScript.is_canonical(report.data.get("spotter_id")) \
+					or not Int64CodecScript.is_canonical(report.data.get("enemy_id")):
+				return "party_contact_report_data_mismatch"
+			var spotter_id := Int64CodecScript.parse(report.data.spotter_id,
+				"contact report spotter")
+			var reported_enemy_id := Int64CodecScript.parse(report.data.enemy_id,
+				"contact report enemy")
+			var sight_range := PartyPerceptionRegistryScript.sight_range(
+				self, party_encounter, spotter_id)
+			if spotter_id == hero_id or spotter_id not in party_encounter.party_member_ids \
+					or not _party_alive_at_event(spotter_id, report.id) \
+					or reported_enemy_id != contact_enemy_id \
+					or report.actor_id != spotter_id or report.target_id != contact_enemy_id \
+					or report.position != contact.position or report.magnitude != 0 \
+					or report.instigator_id != contact.instigator_id \
+					or not _party_metadata_position(report.data.get("observed_position")) \
+					or Vector2i(int(report.data.observed_position[0]),
+						int(report.data.observed_position[1])) != contact_enemy_position \
+					or not _party_metadata_facing(report.data.get("direction")) \
+					or Vector2i(int(report.data.direction[0]),int(report.data.direction[1])) \
+						!= contact_facing \
+					or int(report.data.get("distance",-1)) != distance \
+					or int(report.data.get("sight_range",-1)) != sight_range \
+					or distance > sight_range:
+				return "party_contact_report_semantic_mismatch"
+			companion_reported = true
+		var hero_detects: bool = distance <= party_encounter.party_detection_radius
+		if hero_detects and companion_reported \
+				or not hero_detects and companion_reported == false \
+					and contact_kind in ["DETECTED","PARTY_AMBUSH"]:
+			return "party_contact_report_presence_mismatch"
+		var party_detects: bool = hero_detects or companion_reported
 		var enemy_detects: bool = distance <= party_encounter.enemy_detection_radius
 		var derived_kind := "DETECTED" if party_detects and enemy_detects \
 			else ("PARTY_AMBUSH" if party_detects else ("ENEMY_AMBUSH" if enemy_detects else "NONE"))

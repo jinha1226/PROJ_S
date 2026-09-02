@@ -2,6 +2,7 @@ class_name NpcExpeditionLab
 extends Control
 
 const SimulatorScript = preload("res://sim/npc_expedition/npc_expedition_simulator.gd")
+const PartySimulatorScript = preload("res://sim/party_combat_observer_simulator.gd")
 const GridScript = preload("res://playtest/npc_expedition_grid.gd")
 const KoreanFont: FontFile = preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const PARTY_SCENE_PATH := "res://playtest/party_encounter_sandbox.tscn"
@@ -14,8 +15,10 @@ const BASE_PLAYBACK_INTERVAL := 0.4
 var simulator
 var grid: NpcExpeditionGrid
 var root_layout: VBoxContainer
+var title_label: Label
 var phase_label: Label
 var goal_label: Label
+var turn_queue_label: Label
 var npc_status_label: Label
 var monster_status_label: Label
 var detail_text: RichTextLabel
@@ -26,7 +29,9 @@ var reset_button: Button
 var auto_timer: Timer
 var speed_label: Label
 var speed_buttons: Dictionary = {}
+var mode_button: Button
 var playback_speed := DEFAULT_PLAYBACK_SPEED
+var observer_mode := "NPC"
 var _initialized_for_headless_test := false
 
 
@@ -42,6 +47,8 @@ func initialize_for_headless_test(custom_simulator = null) -> void:
 		_build_ui()
 	_initialized_for_headless_test = true
 	simulator = custom_simulator if custom_simulator != null else SimulatorScript.new(DEFAULT_SEED)
+	var initial_observation:Dictionary=simulator.observation()
+	observer_mode="PARTY" if str(initial_observation.get("mode",""))=="PARTY_COMBAT" else "NPC"
 	_refresh()
 
 
@@ -77,13 +84,16 @@ func _build_ui() -> void:
 	var back := _button("← 복귀", "BackToParty", _back_to_party)
 	back.custom_minimum_size.x = 62
 	header.add_child(back)
-	var title := Label.new()
-	title.name = "NpcExpeditionTitle"
-	title.text = "NPC 원정 관찰"
-	title.add_theme_font_size_override("font_size", 18)
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
+	title_label = Label.new()
+	title_label.name = "NpcExpeditionTitle"
+	title_label.text = "NPC 원정 관찰"
+	title_label.add_theme_font_size_override("font_size", 18)
+	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title_label)
+	mode_button=_button("파티 보기","ObserverModeToggle",_toggle_observer_mode)
+	mode_button.custom_minimum_size.x=78
+	header.add_child(mode_button)
 	seed_edit = LineEdit.new()
 	seed_edit.name = "NpcSeedInput"
 	seed_edit.custom_minimum_size = Vector2(72, TOUCH_TARGET)
@@ -94,7 +104,7 @@ func _build_ui() -> void:
 
 	var summary := PanelContainer.new()
 	summary.name = "NpcExpeditionSummary"
-	summary.custom_minimum_size.y = 58
+	summary.custom_minimum_size.y = 72
 	summary.add_theme_stylebox_override("panel", _panel_style("#0b1820", "#31515c"))
 	root_layout.add_child(summary)
 	var summary_stack := VBoxContainer.new()
@@ -112,6 +122,13 @@ func _build_ui() -> void:
 	goal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	goal_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	summary_stack.add_child(goal_label)
+	turn_queue_label=Label.new()
+	turn_queue_label.name="PartyTurnQueue"
+	turn_queue_label.add_theme_font_size_override("font_size",13)
+	turn_queue_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	turn_queue_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	turn_queue_label.visible=false
+	summary_stack.add_child(turn_queue_label)
 
 	grid = GridScript.new()
 	grid.name = "NpcExpeditionGrid"
@@ -193,23 +210,50 @@ func _refresh() -> void:
 	grid.set_observation(observation)
 	if not seed_edit.has_focus():
 		seed_edit.text = str(observation.seed)
+	var party_mode:=str(observation.get("mode",""))=="PARTY_COMBAT"
+	observer_mode="PARTY" if party_mode else "NPC"
+	title_label.text="파티 전투 관찰" if party_mode else "NPC 원정 관찰"
+	mode_button.text="1:1 보기" if party_mode else "파티 보기"
 	phase_label.text = "%s · 제%d차 원정 · 완료 %d회" % [observation.phase_label,
 		int(observation.expedition_number), int(observation.completed_cycles)]
+	if party_mode:
+		phase_label.text="%s · T%s"%[str(observation.phase_label),str(observation.turn_index)]
 	goal_label.text = "목표 · %s" % str(observation.goal)
-	var npc: Dictionary = observation.npc
-	npc_status_label.text = "@ 아린  HP %d/%d\n물약 %d · 전리품 %d" % [
-		int(npc.hp), int(npc.max_hp), int(npc.potions), int(npc.carried_loot)]
-	var monster: Dictionary = observation.monster
-	monster_status_label.text = "g 감염체 %d체 · 활동 %d\n목표 %d/%d · 위협 %d" % [
-		int(observation.get("monster_count", 1)), int(observation.get("active_monster_count", 0)),
-		int(monster.hp), int(monster.max_hp), int(observation.get("threat_milli", 0))]
+	turn_queue_label.visible=party_mode
+	if party_mode:
+		var tokens:Array[String]=[]
+		for row_value in observation.get("next_queue",[]):
+			if row_value is Dictionary:
+				tokens.append("%s%s"%[str(row_value.get("glyph","?")),
+					str(row_value.get("action_symbol","?"))])
+		turn_queue_label.text="NEXT  %s"%"  ".join(tokens) if not tokens.is_empty() \
+			else "NEXT  —"
+		var party:Dictionary=observation.get("party",{})
+		var enemies:Dictionary=observation.get("enemy_force",{})
+		npc_status_label.text="@ 파티 %d명 · 활동 %d\nHP %d/%d"%[
+			int(party.get("count",0)),int(party.get("active",0)),
+			int(party.get("hp",0)),int(party.get("max_hp",0))]
+		monster_status_label.text="g 적군 %d체 · 활동 %d\nHP %d/%d"%[
+			int(enemies.get("count",0)),int(enemies.get("active",0)),
+			int(enemies.get("hp",0)),int(enemies.get("max_hp",0))]
+	else:
+		var npc: Dictionary = observation.npc
+		npc_status_label.text = "@ 아린  HP %d/%d\n물약 %d · 전리품 %d" % [
+			int(npc.hp), int(npc.max_hp), int(npc.potions), int(npc.carried_loot)]
+		var monster: Dictionary = observation.monster
+		monster_status_label.text = "g 감염체 %d체 · 활동 %d\n목표 %d/%d · 위협 %d" % [
+			int(observation.get("monster_count", 1)), int(observation.get("active_monster_count", 0)),
+			int(monster.hp), int(monster.max_hp), int(observation.get("threat_milli", 0))]
 	detail_text.text = inspector_text(observation)
-	step_button.disabled = str(observation.phase) == "DEAD"
+	step_button.disabled = bool(observation.get("terminal",false)) \
+		or str(observation.phase) == "DEAD"
 	if step_button.disabled:
 		_stop_auto()
 
 
 func inspector_text(observation: Dictionary) -> String:
+	if str(observation.get("mode",""))=="PARTY_COMBAT":
+		return _party_inspector_text(observation)
 	var decision: Dictionary = observation.decision
 	var npc: Dictionary = observation.npc
 	var lines: Array[String] = []
@@ -263,6 +307,39 @@ func inspector_text(observation: Dictionary) -> String:
 	return "\n".join(lines)
 
 
+func _party_inspector_text(observation:Dictionary)->String:
+	var lines:Array[String]=[]
+	lines.append("구조 · 개별 시야 → 파티 공유 → 자동 경고 → 암묵적 지시")
+	lines.append("규칙 · %s"%str(observation.get("ruleset_id","-")))
+	var warning:Dictionary=observation.get("warning",{})
+	if bool(warning.get("available",false)):
+		lines.append("경고 · %s"%str(warning.get("message","")))
+	lines.append("")
+	lines.append("다음 행동")
+	for row_value in observation.get("next_queue",[]):
+		if not row_value is Dictionary:continue
+		var row:Dictionary=row_value
+		var target_text:=" → %s"%str(row.get("target_name","")) \
+			if not str(row.get("target_name","")).is_empty() else ""
+		lines.append("%s%s  %s%s"%[str(row.get("glyph","?")),
+			str(row.get("action_symbol","?")),str(row.get("name","행동자")),target_text])
+	lines.append("")
+	lines.append("동료 판단")
+	for row_value in observation.get("decision",{}).get("companions",[]):
+		if not row_value is Dictionary:continue
+		var row:Dictionary=row_value
+		lines.append("· %s · %s%s"%[str(row.get("name","동료")),
+			str(row.get("action_id","HOLD"))," · 공황" \
+			if str(row.get("mode","NORMAL"))=="PANIC" else ""])
+	lines.append("")
+	lines.append("최근 사건")
+	for event_value in observation.get("recent_events",[]):
+		if event_value is Dictionary:
+			lines.append("T%s · %s"%[str(event_value.get("turn","0")),
+				str(event_value.get("message",""))])
+	return "\n".join(lines)
+
+
 func _step_once() -> void:
 	if simulator != null:
 		simulator.step()
@@ -306,6 +383,18 @@ func _stop_auto() -> void:
 	if auto_button != null:
 		auto_button.set_pressed_no_signal(false)
 		auto_button.text = "자동 재생"
+
+
+func _toggle_observer_mode() -> void:
+	_stop_auto()
+	var active_seed:=int(str(simulator.seed)) if simulator!=null else DEFAULT_SEED
+	if observer_mode=="PARTY":
+		observer_mode="NPC"
+		simulator=SimulatorScript.new(active_seed)
+	else:
+		observer_mode="PARTY"
+		simulator=PartySimulatorScript.new(active_seed)
+	_refresh()
 
 
 func _reset_same_seed() -> void:

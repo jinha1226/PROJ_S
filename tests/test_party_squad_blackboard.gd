@@ -51,6 +51,21 @@ func test_protagonist_melee_target_becomes_focus_and_claims_cap_at_two() -> bool
 	return finish()
 
 
+func test_committed_protagonist_target_stays_focus_during_later_hold() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	var hero: int = state.protagonist_id
+	var enemy: int = state.enemy_ids[0]
+	var attack_event = world.emit_event("action.melee_attack", hero, enemy,
+		world.entities[enemy].position, 1)
+	check(attack_event != null, "canonical protagonist attack event is recorded")
+	var board: Dictionary = Blackboard.build(world, Action.hold(hero))
+	check_eq(board.focus_target_id, enemy,
+		"later HOLD retains the last living protagonist attack target")
+	return finish()
+
+
 func test_most_threatened_ally_uses_pressure_then_lowest_hp() -> bool:
 	var session = _engaged()
 	var world = session.sim.world

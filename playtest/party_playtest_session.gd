@@ -1195,9 +1195,27 @@ func party_status() -> Dictionary:
 		"rescue_candidate_ids":rescue_candidate_ids(),
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
 		"exiled_member_ids":_member_ids_with_presence("EXILED"),
-		"visible_enemy_ids": visible_enemy_ids, "protagonist_position": [protagonist_position.x, protagonist_position.y],
+		"visible_enemy_ids": visible_enemy_ids,
+		"contact_warning":_latest_party_contact_warning(),
+		"protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
+
+
+func _latest_party_contact_warning() -> Dictionary:
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {"available":false}
+	for event_index in range(sim.world.events.size()-1,-1,-1):
+		var event=sim.world.events[event_index]
+		if event.type=="party.regroup_completed":break
+		if event.type!="party.contact_reported":continue
+		var direction:Array=event.data.get("direction",[])
+		return {"available":true,"event_id":int(event.id),
+			"spotter_id":int(event.actor_id),"spotter_name":_event_entity_name(event.actor_id),
+			"enemy_id":int(event.target_id),"direction":direction.duplicate(true),
+			"direction_label":_direction_label(direction),
+			"message":_event_message(event)}.duplicate(true)
+	return {"available":false}
 
 
 func party_morale_observation() -> Dictionary:
@@ -4166,6 +4184,7 @@ func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
+			"party.contact_reported",
 			"action.melee_attack","combat.attack_missed","combat.attack_parried","entity.downed",
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
@@ -4863,7 +4882,8 @@ func _event_category(event_type: String) -> String:
 	if event_type == "entity.died": return "DEATH"
 	if event_type.begins_with("combat."): return "DAMAGE"
 	if event_type.begins_with("action.") or event_type == "party.override_committed": return "ACTION"
-	if event_type.begins_with("encounter.") or event_type == "party.deployment_completed" \
+	if event_type.begins_with("encounter.") or event_type == "party.contact_reported" \
+			or event_type == "party.deployment_completed" \
 			or event_type == "party.member_deployed": return "ENCOUNTER"
 	if event_type.begins_with("party.victory") or event_type.begins_with("party.regroup") \
 			or event_type == "party.member_regrouped": return "OUTCOME"
@@ -4876,7 +4896,8 @@ func _event_tone(event_type: String) -> String:
 	if event_type.begins_with("combat."): return "DANGER"
 	if event_type == "party.victory" or event_type.begins_with("party.regroup") \
 			or event_type == "party.member_regrouped": return "VICTORY"
-	if event_type.begins_with("encounter."): return "WARNING"
+	if event_type.begins_with("encounter.") or event_type == "party.contact_reported":
+		return "WARNING"
 	if event_type.begins_with("action."): return "ACTION"
 	return "INFO"
 
@@ -5356,6 +5377,9 @@ func _event_message(event) -> String:
 		"growth.species_point_spent":return "%s 종족 특성을 발전시켰다."%_subject(actor)
 		"growth.mutation_swapped":return "%s 이능 조합을 바꾸었다."%_subject(actor)
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
+		"party.contact_reported":
+			return "%s %s에서 적을 발견해 파티에 경고했다." % [
+				_subject(actor),_direction_label(event.data.get("direction",[]))]
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":
 			return "%s 영입 제안을 받아들였다. (수락 %d%% · 판정 %d)" % [
@@ -5431,6 +5455,17 @@ func _event_message(event) -> String:
 	# an explicit allowlist, so returning an empty string cannot manufacture log
 	# noise or expose an unsupported event type.
 	return ""
+
+
+func _direction_label(value:Variant)->String:
+	if not value is Array or value.size()!=2:return "알 수 없는 방향"
+	var direction:=Vector2i(int(value[0]),int(value[1]))
+	return {Vector2i.UP:"북쪽",Vector2i.DOWN:"남쪽",Vector2i.LEFT:"서쪽",
+		Vector2i.RIGHT:"동쪽"}.get(direction,"북동쪽" \
+		if direction.x>0 and direction.y<0 else ("남동쪽" \
+		if direction.x>0 and direction.y>0 else ("북서쪽" \
+		if direction.x<0 and direction.y<0 else ("남서쪽" \
+		if direction.x<0 and direction.y>0 else "가까운 곳"))))
 
 func _status_label(status_id:String)->String:
 	return {"BLEEDING":"출혈","POISONED":"중독","BURNING":"화상",

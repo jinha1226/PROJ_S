@@ -51,6 +51,9 @@ func _draw() -> void:
 	var entry_value: Array = _observation.get("entry", [-1, -1])
 	if entry_value.size() == 2:
 		_draw_glyph(">", Vector2i(int(entry_value[0]), int(entry_value[1])), COLOR_ENTRY, 0.72)
+	if str(_observation.get("mode", "")) == "PARTY_COMBAT":
+		_draw_party_combat()
+		return
 	for corpse_value in _observation.get("corpses", []):
 		if corpse_value is Dictionary:
 			_draw_row_glyph(corpse_value, COLOR_CORPSE, 0.75)
@@ -79,6 +82,41 @@ func _draw() -> void:
 			float(layout.cell * 13)) * 0.5
 		draw_string(CodingFont, center + Vector2(-width * 0.5, font_size * 0.35), message,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, COLOR_TEXT)
+
+
+func _draw_party_combat() -> void:
+	for line_value in _observation.get("intent_lines", []):
+		if not line_value is Dictionary:continue
+		var line:Dictionary=line_value
+		var from_value:Array=line.get("from",[])
+		var to_value:Array=line.get("to",[])
+		if from_value.size()!=2 or to_value.size()!=2:continue
+		var from:=cell_center(Vector2i(int(from_value[0]),int(from_value[1])))
+		var to:=cell_center(Vector2i(int(to_value[0]),int(to_value[1])))
+		var color:=Color("#69e5dc42") if str(line.get("faction",""))=="PARTY" \
+			else Color("#ef725f32")
+		draw_line(from,to,color,1.0,true)
+		var delta:Vector2=to-from
+		if delta.length()>2.0:
+			var direction:=delta.normalized()
+			var side:=Vector2(-direction.y,direction.x)
+			var tip:=to-direction*4.0
+			draw_colored_polygon(PackedVector2Array([tip,tip-direction*6.0+side*3.0,
+				tip-direction*6.0-side*3.0]),color)
+	var warning:Dictionary=_observation.get("warning",{})
+	var warning_id:=int(warning.get("spotter_id",-1)) if bool(
+		warning.get("available",false)) else -1
+	for actor_value in _observation.get("actors", []):
+		if not actor_value is Dictionary:continue
+		var actor:Dictionary=actor_value
+		if str(actor.get("life_state","ACTIVE"))=="DEAD":continue
+		var color:=COLOR_NPC if str(actor.get("force",""))=="PARTY" else COLOR_MONSTER
+		_draw_actor(actor,color)
+		if str(actor.get("mode",""))=="PANIC" or int(actor.get("entity_id",-1))==warning_id:
+			var position_value:Array=actor.get("position",[])
+			if position_value.size()==2:
+				var position:=Vector2i(int(position_value[0]),int(position_value[1]))
+				_draw_glyph("!",position,Color("#ffd166"),0.52)
 
 
 func _draw_actor(actor: Dictionary, color: Color) -> void:
