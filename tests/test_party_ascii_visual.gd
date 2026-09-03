@@ -1080,9 +1080,13 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 		"miss cue is smaller and quieter than damage")
 	check_eq(slash.primitive,"NONE","legacy inline slash path is inert")
 	check(not slash.has("attack_glyphs"),"legacy slash exposes no ASCII burst")
-	check(not death_early.visible and not death_late.visible \
-		and death_late.primitive=="NONE",
-		"monster death never paints a cross over the cleared cell")
+	check(death_early.visible and death_late.visible \
+		and death_early.primitive=="ASCII_BURST" \
+		and death_early.center_glyph=="*" \
+		and death_early.particle_count==8 \
+		and death_late.particle_count==8 \
+		and float(death_late.center_opacity)==0.0,
+		"monster death bursts into deterministic ASCII fragments without a lingering cross")
 	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
 	check(not grid.visual_effect_draw_spec(offscreen,started).visible,
 		"off-FOV hit feedback emits no field primitive")

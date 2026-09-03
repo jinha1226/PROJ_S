@@ -577,8 +577,9 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	if kind=="DEATH":color_hex="#ff6b78"
 	elif kind=="MISS":color_hex="#b8d5df" if product_style else "#b8e9ff"
 	var duration_ms:=int({"HIT_FLASH":210,"FLOATING_AMOUNT":650,
-		"MISS":500,"DEATH":780}.get(kind,360)) if product_style \
-		else (900 if kind in ["FLOATING_AMOUNT","DEATH"] else (700 if kind=="MISS" else 520))
+		"MISS":500,"DEATH":560}.get(kind,360)) if product_style \
+		else (680 if kind=="DEATH" else (900 if kind=="FLOATING_AMOUNT" \
+		else (700 if kind=="MISS" else 520)))
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var started_at:=int(effect.get("started_at_ms",now))
 	var elapsed_ms:=maxi(0,now-started_at)
@@ -609,26 +610,31 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		pixel_center.y-=cell_size_px()*(0.32+0.45*eased_progress)
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
-		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT"}.get(kind,"NONE"))
+		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"ASCII_BURST"}.get(kind,"NONE"))
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
 		if kind in ["FLOATING_AMOUNT","MISS"]:opacity=pow(1.0-age_ratio,1.15)
 		elif kind=="DEATH":
-			opacity=0.0 if age_ratio<0.22 else 0.48*(1.0-(age_ratio-0.22)/0.78)
+			opacity=pow(1.0-age_ratio,0.82)
 		else:opacity=1.0-age_ratio
 	var particles:Array=[]
 	if product_style and kind=="HIT_FLASH" and is_world_cell_visible(world_position):
 		particles=_deterministic_hit_particles(int(effect.get("event_id",0)),pixel_center,
 			cell_size_px(),age_ratio)
+	elif kind=="DEATH" and is_world_cell_visible(world_position):
+		particles=_deterministic_death_particles(int(effect.get("event_id",0)),pixel_center,
+			cell_size_px(),age_ratio,str(effect.get("text","*")))
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
-		"world_position":[world_position.x,world_position.y],"visible":kind!="DEATH" \
-			and is_world_cell_visible(world_position),
+		"world_position":[world_position.x,world_position.y],
+		"visible":is_world_cell_visible(world_position),
 		"pixel_center":pixel_center,"camera_offset_px":camera_offset,
 		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
 		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
 		"flash_active":product_style and kind=="HIT_FLASH" and elapsed_ms<=125,
 		"particles":particles,"particle_count":particles.size(),
+		"center_glyph":str(effect.get("text","*")) if kind=="DEATH" else "",
+		"center_opacity":clampf(1.0-age_ratio/0.20,0.0,1.0) if kind=="DEATH" else 0.0,
 		"line_width":4.0 if kind=="DEATH" else 3.0,
 		"radius":cell_size_px()*0.28,
 		"text":str(effect.get("text","")),
@@ -652,6 +658,24 @@ func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 			"glyph":glyphs[(seed+index)%glyphs.size()],
 			"font_size":maxi(10,int(cell*0.42)),
 			"line_width":maxf(1.0,cell*0.055),"opacity":1.0-age_ratio})
+	return rows.duplicate(true)
+
+func _deterministic_death_particles(event_id:int,center:Vector2,cell:float,
+		age_ratio:float,source_glyph:String)->Array:
+	var rows:Array=[];var count:=8
+	var eased:=1.0-pow(1.0-age_ratio,2.4)
+	var fragments:=[source_glyph if not source_glyph.is_empty() else "*",
+		source_glyph if not source_glyph.is_empty() else "*",".",":","*",".",":","*"]
+	for index in range(count):
+		var seed:=DioramaScript.visual_hash(Vector2i(event_id%997,index),397+index*29)
+		var jitter:=(float(seed%1001)/1000.0-0.5)*0.34
+		var angle:=TAU*float(index)/float(count)+jitter
+		var direction:=Vector2(cos(angle),sin(angle))
+		var distance:=cell*(0.08+0.78*eased)*(0.88+0.18*float(seed%7)/6.0)
+		var position:=center+direction*distance+Vector2(0,cell*0.16*age_ratio*age_ratio)
+		rows.append({"position":position,"glyph":str(fragments[index]),
+			"font_size":maxi(9,int(cell*lerpf(0.58,0.34,age_ratio))),
+			"opacity":pow(1.0-age_ratio,1.18)})
 	return rows.duplicate(true)
 
 func _is_enemy_actor(actor:Dictionary)->bool:
@@ -2537,9 +2561,15 @@ func _draw_visual_effect(effect:Dictionary)->void:
 					int(spec.font_size),Color(0.01,0.02,0.03,color.a*0.88))
 			_draw_centered_text(get_theme_default_font(),str(spec.text),center,
 				int(spec.font_size),color)
-		"DEATH_CROSS":
-			draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
-			draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
+		"ASCII_BURST":
+			if float(spec.center_opacity)>0.0:
+				var center_color:=color;center_color.a*=float(spec.center_opacity)
+				_draw_centered_text(BoldFont,str(spec.center_glyph),center,
+					maxi(10,int(cell_size_px()*0.74)),center_color)
+			for particle in spec.particles:
+				var particle_color:=color;particle_color.a*=float(particle.opacity)
+				_draw_centered_text(BoldFont,str(particle.glyph),Vector2(particle.position),
+					int(particle.font_size),particle_color)
 
 func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 		camera_offset:Vector2=Vector2.ZERO) -> void:

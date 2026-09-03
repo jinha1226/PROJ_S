@@ -42,6 +42,7 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
+const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -5286,13 +5287,29 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			rows.append(_visual_effect_row(event, "FLOATING_AMOUNT", "floating_amount", order,
 				damage_type, int(event.magnitude), "-%d" % int(event.magnitude)))
 			order += 1
-		# Death already removes ordinary monsters from the authoritative occupancy
-		# projection. Do not paint a second X-shaped marker over the cleared cell.
+		elif event_type=="entity.died" and sim!=null and sim.world!=null \
+				and sim.world.party_encounter!=null \
+				and int(event.target_id) in sim.world.party_encounter.enemy_ids:
+			# Keep death as a short-lived presentation event, but carry the defeated
+			# monster's own glyph instead of leaving an X-shaped corpse marker.
+			rows.append(_visual_effect_row(event,"DEATH","death",order,
+				"physical",0,_death_burst_glyph(int(event.target_id))))
+			order+=1
 		elif event_type == "health.restored":
 			rows.append(_visual_effect_row(event,"FLOATING_AMOUNT","heal",order,
 				"healing",int(event.magnitude),"+%d" % int(event.magnitude)))
 			order += 1
 	return rows.duplicate(true)
+
+
+func _death_burst_glyph(entity_id:int)->String:
+	if sim==null or sim.world==null:return "*"
+	var entity=sim.world.entities.get(entity_id)
+	if entity==null:return "*"
+	var identity:=AsciiStyleScript.monster_identity_spec({
+		"species_id":str(entity.species_id),"species_name":str(entity.display_name)})
+	var glyph:=str(identity.get("glyph","*"))
+	return glyph if not glyph.is_empty() else "*"
 
 
 func _melee_vfx_row(event,order:int)->Dictionary:

@@ -48,6 +48,7 @@ const PARAMS := {
 
 const PARTICLE_GLYPHS := [".", ":", "*"]
 const MAX_ACTIVE_EFFECTS := 24
+const BurstFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 
 var _grid:Control
 var _effects:Array[Dictionary]=[]
@@ -265,9 +266,16 @@ func _draw_generic_grid_effects(font:Font,presentation_offset:Vector2)->void:
 					_draw_centered_glyph(font,str(spec.text),center+Vector2(1.2,1.4),
 						int(spec.font_size),Color(0.01,0.02,0.03,color.a*0.88))
 				_draw_centered_glyph(font,str(spec.text),center,int(spec.font_size),color)
-			"DEATH_CROSS":
-				draw_line(center-Vector2(radius,radius),center+Vector2(radius,radius),color,width)
-				draw_line(center+Vector2(radius,-radius),center+Vector2(-radius,radius),color,width)
+			"ASCII_BURST":
+				if float(spec.center_opacity)>0.0:
+					var center_color:=color;center_color.a*=float(spec.center_opacity)
+					_draw_centered_glyph(BurstFont,str(spec.center_glyph),center,
+						maxi(10,int(_grid.call("cell_size_px")*0.74)),center_color)
+				for particle in spec.particles:
+					var particle_color:=color;particle_color.a*=float(particle.opacity)
+					_draw_centered_glyph(BurstFont,str(particle.glyph),
+						Vector2(particle.position)+presentation_offset,
+						int(particle.font_size),particle_color)
 
 
 func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionary:
