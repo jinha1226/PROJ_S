@@ -3139,12 +3139,12 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	_product_attack_targeting=false
 	# Character/item inspection is a pause, not a cancellation. Keeping the
 	# canonical AUTO/route state lets travel resume after the modal closes.
-	var travel_state:Dictionary=session.exploration_route_state()
-	route_paused_by_modal=bool(travel_state.get("active",false))
 	_reset_member_detail_pointer_state()
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
+	var travel_state:Dictionary=session.exploration_route_state()
+	route_paused_by_modal=bool(travel_state.get("active",false))
 	member_detail_title.text=str(detail.get("display_name","파티원"))
 	member_detail_glyph_seal.text=_actor_seal_glyph(detail)
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
@@ -3183,7 +3183,6 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
 	_sync_product_zoom_controls(_is_solo_product_session())
-	route_paused_by_modal=false
 	_layout_floating_surfaces();call_deferred("_measure_member_detail_body")
 	if member_detail_close.is_inside_tree():member_detail_close.grab_focus()
 

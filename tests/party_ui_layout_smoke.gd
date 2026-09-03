@@ -623,13 +623,11 @@ func _card_detail_modal(viewport_size:Vector2)->void:
 
 	var route_goal:=anchor+Vector2i(-5,0)
 	_touch_cell_now(sandbox,route_goal);await process_frame;await process_frame
-	# Opening a dossier is explicit modal input and cancels the active route without
-	# another authoritative hop. One cell tap already starts the route; a redundant
-	# second tap is now correctly treated as manual cancellation. Closing the modal
-	# must not resurrect its timer.
+	# Opening a dossier pauses the active route without another authoritative hop.
+	# The route and its scheduler stay live so closing the modal resumes travel.
 	await process_frame;await create_timer(0.0).timeout
 	var paused_at:int=int(session.sim.world.step_index)
-	if not bool(session.exploration_route_state().get("active",false)):failures.append("%s modal cancel route fixture not active"%viewport_size)
+	if not bool(session.exploration_route_state().get("active",false)):failures.append("%s modal pause route fixture not active"%viewport_size)
 	var route_before_card:Dictionary=session.exploration_route_state();var route_card:Button=_button(sandbox,"MemberCard%d"%companion)
 	_touch_control_now(route_card,false)
 	if sandbox.selected_member_id!=companion:
@@ -639,13 +637,14 @@ func _card_detail_modal(viewport_size:Vector2)->void:
 		failures.append("%s active-route first dossier tap changed route %s -> %s"%[viewport_size,route_before_card,route_after_card])
 	_touch_control_now(route_card,true)
 	await process_frame;await process_frame
-	if session.sim.world.step_index!=paused_at:failures.append("%s modal route cancellation consumed a turn"%viewport_size)
-	if str(session.exploration_route_state().get("stop_reason",""))!="route_cancelled" \
-			or sandbox.route_continue_pending:
-		failures.append("%s modal did not cancel route and its scheduler"%viewport_size)
+	if session.sim.world.step_index!=paused_at:failures.append("%s modal route pause consumed a turn"%viewport_size)
+	if session.exploration_route_state()!=route_before_card \
+			or not sandbox.route_paused_by_modal or not sandbox.route_continue_pending:
+		failures.append("%s modal did not pause route and retain its scheduler"%viewport_size)
 	_touch_control_now(sandbox.member_detail_close,false)
-	var resume_before:int=int(session.sim.world.step_index);await create_timer(0.12).timeout
-	if session.sim.world.step_index!=resume_before:failures.append("%s closing modal resumed a cancelled route"%viewport_size)
+	var resume_before:int=int(session.sim.world.step_index);await create_timer(0.2).timeout
+	if sandbox.route_paused_by_modal or session.sim.world.step_index<=resume_before:
+		failures.append("%s closing modal did not resume the paused route"%viewport_size)
 	sandbox._cancel_active_route();sandbox.queue_free();await process_frame
 
 func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
