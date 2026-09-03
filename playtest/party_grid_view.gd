@@ -609,7 +609,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		pixel_center.y-=cell_size_px()*(0.32+0.45*eased_progress)
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
-		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"DEATH_CROSS"}.get(kind,"NONE"))
+		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT"}.get(kind,"NONE"))
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
 		if kind in ["FLOATING_AMOUNT","MISS"]:opacity=pow(1.0-age_ratio,1.15)
@@ -622,7 +622,8 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 			cell_size_px(),age_ratio)
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
-		"world_position":[world_position.x,world_position.y],"visible":is_world_cell_visible(world_position),
+		"world_position":[world_position.x,world_position.y],"visible":kind!="DEATH" \
+			and is_world_cell_visible(world_position),
 		"pixel_center":pixel_center,"camera_offset_px":camera_offset,
 		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
 		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
@@ -1106,13 +1107,13 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->D
 	style["glyph_offset"]=Vector2(0.0,ACTOR_WORLD_GLYPH_OFFSET_Y) \
 		if uses_perspective_projection() else Vector2.ZERO
 	var actor_position:=_position_from_actor(actor)
-	var fire_light:=fire_light_draw_spec(actor_position,sample_time_ms) \
+	var environment_light:=_strongest_environment_light(actor_position,sample_time_ms) \
 		if actor_position!=Vector2i(-1,-1) else {"active":false}
-	style["environment_light"]=fire_light
-	if bool(fire_light.get("active",false)):
+	style["environment_light"]=environment_light
+	if bool(environment_light.get("active",false)):
 		style["base_color_hex"]=str(style.color_hex)
-		var lit_color:=Color(str(style.color_hex)).lightened(
-			0.16*float(fire_light.get("brightness",0.0)))
+		var strength:=float(environment_light.get("brightness",0.0))
+		var lit_color:=Color(str(style.color_hex)).lightened(0.18*strength)
 		style["color_hex"]="#"+lit_color.to_html(false)
 	if melee_vfx!=null:
 		style["bump_motion"]=melee_vfx.attacker_bump_draw_spec(
@@ -1680,8 +1681,9 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 		position,_hero_camera_position,state))
 	var occupied:=_cell_is_visually_occupied(position)
 	var visible:=bool(terrain.get("glyph_primary",false)) and state!="UNSEEN"
-	var rendered_glyph:=_diorama_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
-		*(0.46 if occupied else 1.0),state,light,true) if visible else Color(0,0,0,0)
+	var rendered_glyph:=_environment_lit_ink_color(str(terrain.glyph_hex),
+		float(terrain.opacity)*(0.46 if occupied else 1.0),state,light,true,
+		position) if visible else Color(0,0,0,0)
 	return {"visible":visible,"position":[position.x,position.y],
 		"terrain_id":str(terrain.terrain_id) if visible else "",
 		"visibility_state":state,"glyph":str(terrain.glyph) if visible else "",
@@ -1768,7 +1770,7 @@ func _cell_accepts_actor_input(position:Vector2i)->bool:
 	return not row.is_empty() and bool(AsciiStyleScript.visibility_spec(row).accepts_actor_input)
 
 func _cell_accepts_world_interaction(position:Vector2i)->bool:
-	return not _camera_input_blocked() and is_world_cell_visible(position) \
+	return is_world_cell_visible(position) \
 		and _cells.has(_key(position)) \
 		and bool(AsciiStyleScript.visibility_spec(_cells[_key(position)]).accepts_actor_input)
 
@@ -1834,6 +1836,10 @@ func _gui_input(event: InputEvent) -> void:
 
 func _begin_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2)->void:
 	if _pointer_gesture_active:cancel_pointer_gesture()
+	# A new tap is an explicit command. End the short visual camera settle first
+	# instead of silently discarding floor input during that animation window.
+	if _camera_input_blocked():
+		_camera_settle.clear();queue_redraw()
 	var cell:=pixel_to_world_cell(pointer)
 	if cell==Vector2i(-1,-1) or not _cell_accepts_world_interaction(cell):return
 	_pointer_gesture_generation+=1
@@ -2116,7 +2122,8 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 						display_terrain["opacity"]=float(terrain.get("opacity",1.0)) \
 							*float(motion.get("opacity",1.0))
 			_draw_terrain_glyph(world_cell_rect(position),display_terrain,
-				visibility_state,cached.get("light",{}),_cell_is_visually_occupied(position))
+				visibility_state,cached.get("light",{}),
+				_cell_is_visually_occupied(position),position)
 
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 	_ensure_static_projection_cache()
@@ -2145,7 +2152,10 @@ func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 					"from_position":[position.x,position.y],
 					"to_position":[neighbor.x,neighbor.y],
 					"visibility_state":visibility_state,"color":color,
-					"font_size":maxi(8,int(cell_size_px()*0.72)),"fov_safe":true,
+					# Horizontal '#' ink is narrower than its em box. Increase only
+					# that bridge so a row reads as one dense masonry run.
+					"font_size":maxi(8,int(cell_size_px()*(1.02 \
+						if direction==Vector2i.RIGHT else 0.72))),"fov_safe":true,
 					"changes_mapping":false,"changes_hit_rect":false,
 					"draw_image":false,"draw_surface":false}.duplicate(true))
 	return rows.duplicate(true)
@@ -2249,7 +2259,7 @@ func _draw_wall_pass(visibility_state:String)->void:
 			role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 			role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
 			_draw_terrain_glyph(DioramaScript.polygon_bounds(block.top),role_terrain,
-				visibility_state,light,false)
+				visibility_state,light,false,position)
 			if bool(wall_role.get("face_visible",false)) and exposed&DioramaScript.SOUTH:
 				var front_rect:=DioramaScript.polygon_bounds(block.front)
 				_draw_centered_text(BoldFont,str(wall_role.face_glyph),
@@ -2277,7 +2287,7 @@ func _draw_wall_torches()->void:
 			center+Vector2(0,local_cell*0.10),maxi(9,int(local_cell*font_ratio)),color)
 
 func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
-		light:Dictionary,occupied:bool)->void:
+		light:Dictionary,occupied:bool,position:Vector2i=Vector2i(-1,-1))->void:
 	if not bool(terrain.get("glyph_primary",false)):return
 	var glyph:=str(terrain.get("glyph",""))
 	if glyph.is_empty():return
@@ -2288,10 +2298,10 @@ func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 	var font_size:=maxi(8,int(floor(rect.size.x*float(terrain.get("font_ratio",0.54)))))
 	var role_emphasis:=float(terrain.get("role_emphasis",1.0))
 	var occupancy_multiplier:=0.46 if occupied else 1.0
-	var outline:=_diorama_ink_color(str(terrain.get("outline_hex","#020508")),
-		float(terrain.opacity)*role_emphasis,visibility_state,light,true)
-	var color:=_diorama_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
-		*role_emphasis*occupancy_multiplier,visibility_state,light,true)
+	var outline:=_environment_lit_ink_color(str(terrain.get("outline_hex","#020508")),
+		float(terrain.opacity)*role_emphasis,visibility_state,light,true,position)
+	var color:=_environment_lit_ink_color(str(terrain.glyph_hex),float(terrain.opacity) \
+		*role_emphasis*occupancy_multiplier,visibility_state,light,true,position)
 	var directions:=[Vector2(-1,0),Vector2(1,0),Vector2(0,-1),Vector2(0,1)]
 	for index in range(clampi(int(terrain.get("outline_passes",0)),0,directions.size())):
 		_draw_centered_text(font,glyph,center+directions[index]*0.72,font_size,outline)
@@ -2380,6 +2390,27 @@ func _diorama_ink_color(value:String,opacity:float,visibility_state:String,
 	color.a*=clampf(opacity,0.0,1.0)
 	return color
 
+func _strongest_environment_light(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
+	if position==Vector2i(-1,-1):return {"active":false}.duplicate(true)
+	var torch:=torch_light_draw_spec(position,sample_time_ms)
+	var fire:=fire_light_draw_spec(position,sample_time_ms)
+	return fire if float(fire.get("brightness",0.0)) \
+		> float(torch.get("brightness",0.0)) else torch
+
+func _environment_lit_ink_color(value:String,opacity:float,visibility_state:String,
+		light:Dictionary,foreground:bool,position:Vector2i,
+		sample_time_ms:int=-1)->Color:
+	var color:=_diorama_ink_color(value,opacity,visibility_state,light,foreground)
+	if not foreground or visibility_state!="VISIBLE" or position==Vector2i(-1,-1):
+		return color
+	var source:=_strongest_environment_light(position,sample_time_ms)
+	if not bool(source.get("active",false)):return color
+	var strength:=clampf(float(source.get("brightness",0.0)),0.0,1.0)
+	var alpha:=color.a
+	color=color.lerp(Color(str(source.get("color_hex",TORCH_AMBER_HEX))),0.38*strength)
+	color=color.lightened(0.08*strength);color.a=alpha
+	return color
+
 func _scaled_projected_polygon(points:PackedVector2Array,ratio:Vector2,
 		offset:Vector2=Vector2.ZERO)->PackedVector2Array:
 	if points.is_empty():return PackedVector2Array()
@@ -2450,7 +2481,8 @@ func _draw_flat_wall(cached:Dictionary,visibility_state:String)->void:
 	role_terrain["glyph"]=str(wall_role.get("core_glyph","#"))
 	role_terrain["glyph_offset"]=wall_role.get("glyph_offset",Vector2.ZERO)
 	role_terrain["role_emphasis"]=float(wall_role.get("foreground_emphasis",0.82))
-	_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false)
+	_draw_terrain_glyph(rect,role_terrain,visibility_state,light,false,
+		_array_to_world_position(cached.get("position",Vector2i(-1,-1))))
 
 func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector2Array:
 	var points:=PackedVector2Array()

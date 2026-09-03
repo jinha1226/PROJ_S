@@ -4248,10 +4248,21 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 	var opening = party_encounter.opening_event
 	if opening == null: return ""
 	var npc_id := int(opening.npc_entity_id)
-	if npc_id <= 0 or party_ids.has(npc_id) or npc_id in party_encounter.enemy_ids \
+	var recruit_outcomes:Array=[]
+	for event in events:
+		if event.type in ["party.recruitment_accepted","party.recruitment_refused"] \
+				and event.actor_id==npc_id \
+				and str(event.data.get("ruleset_id",""))=="opening-recruit-v1":
+			recruit_outcomes.append(event)
+	if recruit_outcomes.size()>1:return "opening_recruitment_event_count_invalid"
+	var opening_joined:=recruit_outcomes.size()==1 \
+		and str(recruit_outcomes[0].type)=="party.recruitment_accepted"
+	if party_ids.has(npc_id)!=opening_joined:return "opening_recruitment_roster_mismatch"
+	if npc_id <= 0 or npc_id in party_encounter.enemy_ids \
 			or not entities.has(npc_id) or not combatant_states.has(npc_id):
 		return "opening_npc_reference_invalid"
 	for party_id in party_encounter.party_member_ids:
+		if int(party_id)==npc_id:continue
 		if npc_id <= int(party_id): return "opening_npc_not_spawned_last"
 	for enemy_id in party_encounter.enemy_ids:
 		if npc_id <= int(enemy_id): return "opening_npc_not_spawned_last"
@@ -4273,7 +4284,11 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 	var reencounter_rows: Array = []
 	var cursor: Vector2i = opening.spawn_position
 	var projected_health := maxi(1, int((npc.max_health + 4) / 5))
+	var joined_history:=false
 	for event in events:
+		if event.type=="party.recruitment_accepted" and event.actor_id==npc_id \
+				and str(event.data.get("ruleset_id",""))=="opening-recruit-v1":
+			joined_history=true
 		if event.type == "opening.npc_discovered" and event.target_id == npc_id:
 			discovery_rows.append(event)
 		elif event.type == "opening.choice_committed" and event.target_id == npc_id:
@@ -4294,6 +4309,12 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 					or event.id <= opening.choice_event_id:
 				return "opening_npc_move_history_invalid"
 			cursor = event.position
+		elif joined_history and event.type=="party.companion_recruited" \
+				and event.target_id==npc_id:
+			cursor=event.position
+		elif joined_history and event.type=="action.move" \
+				and event.actor_id==party_encounter.protagonist_id:
+			cursor=event.position
 		if event.target_id != npc_id: continue
 		var event_type := str(event.type)
 		if event_type.begins_with("combat.") and event_type.ends_with("_damage"):
@@ -4384,6 +4405,24 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 				or reencounter.data.get("schema_version") != 1 \
 				or reencounter.data.get("choice") != opening.choice:
 			return "opening_reencounter_event_invalid"
+	if not recruit_outcomes.is_empty():
+		var outcome=recruit_outcomes[0]
+		if opening.reencounter_event_id<=0 or outcome.id<=opening.reencounter_event_id \
+				or outcome.target_id!=party_encounter.protagonist_id \
+				or outcome.data.get("schema_version")!=1 \
+				or outcome.data.get("accepted")!=opening_joined \
+				or int(outcome.data.get("probability_milli",-1))<50 \
+				or int(outcome.data.get("probability_milli",1001))>950 \
+				or int(outcome.data.get("roll_milli",-1))<0 \
+				or int(outcome.data.get("roll_milli",1000))>999:
+			return "opening_recruitment_event_invalid"
+		var roster_event_found:=false
+		for candidate in events:
+			if candidate.type=="party.companion_recruited" \
+					and candidate.target_id==npc_id and candidate.id>outcome.id:
+				roster_event_found=true;break
+		if opening_joined!=roster_event_found:
+			return "opening_recruitment_roster_event_mismatch"
 	return ""
 
 
@@ -5117,8 +5156,16 @@ func _party_morale_history_error() -> String:
 
 
 func _party_active_ids_at_event(event_id: int) -> Array:
-	var active: Array = party_encounter.party_member_ids.slice(0,
-		mini(3, party_encounter.party_member_ids.size()))
+	var runtime_recruits:Array=[]
+	for historical in events:
+		if historical.type=="party.companion_recruited" \
+				and historical.target_id in party_encounter.party_member_ids \
+				and historical.target_id not in runtime_recruits:
+			runtime_recruits.append(historical.target_id)
+	var bootstrap_members:Array=[]
+	for member_id in party_encounter.party_member_ids:
+		if member_id not in runtime_recruits:bootstrap_members.append(member_id)
+	var active: Array = bootstrap_members.slice(0,mini(3,bootstrap_members.size()))
 	for event in events:
 		if event.id >= event_id: break
 		if event.type == "party.companion_dismissed": active.erase(event.target_id)
@@ -5129,9 +5176,18 @@ func _party_active_ids_at_event(event_id: int) -> Array:
 
 func _party_roster_history_error() -> String:
 	var hero_id: int = party_encounter.protagonist_id
-	var active: Array = party_encounter.party_member_ids.slice(0,
-		mini(3, party_encounter.party_member_ids.size()))
-	var recruitable: Array = party_encounter.party_member_ids.slice(active.size())
+	var runtime_recruits:Array=[]
+	for historical in events:
+		if historical.type=="party.companion_recruited" \
+				and historical.target_id in party_encounter.party_member_ids \
+				and historical.target_id not in runtime_recruits:
+			runtime_recruits.append(historical.target_id)
+	var bootstrap_members:Array=[]
+	for member_id in party_encounter.party_member_ids:
+		if member_id not in runtime_recruits:bootstrap_members.append(member_id)
+	var active: Array = bootstrap_members.slice(0,mini(3,bootstrap_members.size()))
+	var recruitable: Array = bootstrap_members.slice(active.size())
+	recruitable.append_array(runtime_recruits);recruitable.sort()
 	var exiled: Array = []
 	var contact_id := 9223372036854775807
 	var regroup_complete_id := -1

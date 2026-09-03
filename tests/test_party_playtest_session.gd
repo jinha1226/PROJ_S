@@ -506,9 +506,9 @@ func test_movement_rejection_feedback_is_structured_korean_and_pure() -> bool:
 
 	var corner_actor = Session.new(); var corner_actor_state = corner_actor.sim.world.party_encounter
 	corner_actor.sim.world.entities[corner_actor_state.enemy_ids[0]].position = Vector2i(6,7)
-	_check_rejection_noop(corner_actor,
-		func(): return corner_actor.preview_exploration(Command.move_to(corner_actor_state.protagonist_id,Vector2i(6,6))),
-		"move_diagonal_flank_occupied", "막은 모서리", "diagonal actor")
+	check(corner_actor.preview_exploration(Command.move_to(
+		corner_actor_state.protagonist_id,Vector2i(6,6))).accepted,
+		"an NPC beside the route does not block a diagonal destination")
 	return finish()
 
 
@@ -572,9 +572,11 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 	occupied.sim.world.bootstrap_set_terrain(Vector2i(6,7),"wall")
 	occupied_state.diagonal_gateway_positions.append(gateway)
 	occupied.sim.world.entities[occupied_state.enemy_ids[0]].position=gateway
-	check_eq(occupied.preview_exploration(Command.move_to(
-		occupied_state.protagonist_id,destination)).reason,
-		"move_diagonal_flank_occupied","an actor still blocks the open doorway flank")
+	check(occupied.preview_exploration(Command.move_to(
+		occupied_state.protagonist_id,destination)).accepted,
+		"an actor beside an open doorway no longer becomes an invisible corner wall")
+	check(occupied.find_exploration_path(occupied_state.protagonist_id,destination).path \
+		==[origin,destination],"pathfinder matches the occupied-flank doorway rule")
 
 	var ordinary=Session.new();var ordinary_state=ordinary.sim.world.party_encounter
 	ordinary.sim.world.entities[ordinary_state.enemy_ids[0]].position=Vector2i(14,14)

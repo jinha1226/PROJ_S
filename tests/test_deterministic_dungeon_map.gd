@@ -49,6 +49,24 @@ func test_rooms_features_materials_and_objectives_are_connected() -> bool:
 	for material_id in ["shallow_water", "metal", "wood_floor", "rubble"]:
 		check(not layout.material_positions[material_id].is_empty(),
 			"material terrain present: %s" % material_id)
+	var region_ids:Array[String]=[]
+	for region_value in layout.field_regions:
+		var region:Dictionary=region_value
+		region_ids.append(str(region.region_id))
+		check(int(region.cell_count)>=18,
+			"field region reads as a visible cluster: %s"%str(region.region_id))
+	for expected_region_id in ["FLOODED_CISTERN","BROKEN_FORGE","BURNT_GALLERY",
+			"COLLAPSED_QUARRY","OVERGROWN_COURT","FROZEN_CRYPT","MIST_GALLERY"]:
+		check(expected_region_id in region_ids,
+			"field concept is represented: %s"%expected_region_id)
+	for material_id in ["grass","ice","fog"]:
+		var positions:Array=layout.presentation_material_positions[material_id]
+		check(not positions.is_empty(),"scenic material cluster present: %s"%material_id)
+		for position:Vector2i in positions:
+			check_eq(DungeonMap.terrain_at(layout,position),"stone_floor",
+				"scenic material does not replace authoritative terrain")
+			check_eq(DungeonMap.presentation_material_at(layout,position),material_id,
+				"scenic material lookup is exact")
 	for x in range(layout.width):
 		check_eq(DungeonMap.terrain_at(layout, Vector2i(x, 0)), "wall", "north border")
 		check_eq(DungeonMap.terrain_at(layout, Vector2i(x,layout.height-1)), "wall", "south border")
@@ -73,14 +91,25 @@ func _shortest_floor_distance(layout:Dictionary,start:Vector2i,goal:Vector2i)->i
 
 func test_large_chamber_ruleset_keeps_deployed_legacy_seed_layout_loadable()->bool:
 	var current:=DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,44)
+	var previous:=DungeonMap.generate_previous_product(DungeonMap.DEFAULT_WIDTH,
+		DungeonMap.DEFAULT_HEIGHT,44)
 	var legacy:=DungeonMap.generate_legacy(48,48,44)
-	check_eq([current.ruleset_id,legacy.ruleset_id],
-		[DungeonMap.RULESET_ID,DungeonMap.LEGACY_RULESET_ID],
-		"current and deployed map rulesets are explicit")
-	check(current.terrain!=legacy.terrain and DungeonMap.reachable(current,
+	check_eq([current.ruleset_id,previous.ruleset_id,legacy.ruleset_id],
+		[DungeonMap.RULESET_ID,DungeonMap.PREVIOUS_RULESET_ID,
+			DungeonMap.LEGACY_RULESET_ID],"current and deployed map rulesets are explicit")
+	check(current.terrain!=previous.terrain and current.terrain!=legacy.terrain \
+		and DungeonMap.reachable(current,
 		current.entry_position,current.exit_position) and DungeonMap.reachable(legacy,
 		legacy.entry_position,legacy.exit_position),
-		"both enlarged and deployed seed layouts remain deterministic and connected")
+		"current clustered and deployed legacy layouts stay distinct and connected")
+	var previous_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(previous_session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		previous),"previous 96x96 product topology fixture initializes")
+	var previous_restored=Session.new(1,2)
+	var previous_result:Dictionary=previous_restored.load_session_json(
+		previous_session.save_session_json())
+	check(bool(previous_result.get("accepted",false)),
+		"v3 scattered-material save remains loadable: %s"%str(previous_result))
 	var old_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	check(old_session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,legacy),
 		"legacy product topology fixture initializes")
@@ -157,6 +186,36 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(enemy_visible,"opening monster is present inside the initial LOS observation")
 	check_eq(first.run_progress().entry_position,
 		[hero_position.x, hero_position.y], "run manifest follows generated entry")
+	return finish()
+
+
+func test_field_materials_reach_rich_observation_without_fog_leaks()->bool:
+	var layout:=DungeonMap.generate(DungeonMap.DEFAULT_WIDTH,DungeonMap.DEFAULT_HEIGHT,8080)
+	var grass_positions:Array=layout.presentation_material_positions.grass
+	check(not grass_positions.is_empty(),"generated field exposes a scenic sample")
+	if grass_positions.is_empty():return finish()
+	var position:Vector2i=grass_positions[0]
+	var session=Session.new(8080,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var context:Dictionary=session._party_observation_context()
+	var key:="%d:%d"%[position.x,position.y]
+	context.visible={key:true};context.explored={}
+	var visible:Dictionary=session._party_rich_observation(context,
+		Rect2i(position,Vector2i.ONE),position,1)
+	check_eq([visible.cells[0].visibility_state,
+		visible.cells[0].presentation_material_id],["VISIBLE","grass"],
+		"visible field material reaches the renderer DTO")
+	context.visible={};context.explored={key:true}
+	var memory:Dictionary=session._party_rich_observation(context,
+		Rect2i(position,Vector2i.ONE),position,1)
+	check_eq([memory.cells[0].visibility_state,
+		memory.cells[0].presentation_material_id,memory.cells[0].actors],
+		["MEMORY","grass",[]],"memory keeps stable scenery but no actors")
+	context.explored={}
+	var unseen:Dictionary=session._party_rich_observation(context,
+		Rect2i(position,Vector2i.ONE),position,1)
+	check_eq([unseen.cells[0].terrain_id,
+		unseen.cells[0].presentation_material_id],["unknown",""],
+		"unseen field leaks neither terrain nor scenic identity")
 	return finish()
 
 

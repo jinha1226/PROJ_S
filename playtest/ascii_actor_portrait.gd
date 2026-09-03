@@ -85,10 +85,10 @@ static func shadow_draw_spec(bounds:Rect2,spec:Dictionary,
 static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
 		world_context: bool = false) -> Dictionary:
 	var glyph := str(spec.get("glyph", "?"))
+	var flat_topview:=world_context and bool(spec.get("flat_topview",false))
 	var center := _point(bounds,spec.get("glyph_center",
 		spec.get("body_center",Vector2.ZERO)))
 	if world_context:
-		var flat_topview:=bool(spec.get("flat_topview",false))
 		if flat_topview:center=bounds.get_center()
 		else:
 			var logical_cell_size:=bounds.size.x/0.72
@@ -98,8 +98,11 @@ static func glyph_layout_spec(font: Font, bounds: Rect2, spec: Dictionary,
 	center+=Vector2(glyph_offset.x*bounds.size.x,glyph_offset.y*bounds.size.y)
 	var glyph_scale:=clampf(float(spec.get("glyph_scale",1.0)),0.82,1.16)
 	var max_width := bounds.size.x*0.96*glyph_scale
-	var max_height := minf(bounds.size.y*(0.50 if world_context else 0.62),
-		bounds.size.x*(1.14 if world_context else 1.35))*glyph_scale
+	# A top-view actor is the primary gameplay mark, not a portrait torso. Give it
+	# most of the cell height while keeping equipment inside the same hit cell.
+	var max_height := minf(bounds.size.y*(0.68 if flat_topview else (
+		0.50 if world_context else 0.62)),bounds.size.x*(1.24 if flat_topview else (
+		1.14 if world_context else 1.35)))*glyph_scale
 	var font_size := maxi(9,int(floor(max_height)))
 	var extent := font.get_string_size(glyph,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
 	while font_size>9 and (extent.x>max_width or extent.y>max_height):

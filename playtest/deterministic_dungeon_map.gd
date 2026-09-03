@@ -4,7 +4,8 @@ extends RefCounted
 # Product dungeons deliberately outgrow the 15x15 camera.  The generator uses
 # its own RNG, so building presentation geometry never consumes simulation RNG.
 const SCHEMA_VERSION := 1
-const RULESET_ID := "sector-rooms-snake-v3-96x96-large-chambers"
+const RULESET_ID := "sector-rooms-snake-v4-clustered-field-regions"
+const PREVIOUS_RULESET_ID := "sector-rooms-snake-v3-96x96-large-chambers"
 const LEGACY_RULESET_ID := "sector-rooms-snake-v2-opening-encounter"
 const MIN_SIZE := 32
 const DEFAULT_WIDTH := 96
@@ -12,20 +13,37 @@ const DEFAULT_HEIGHT := 96
 const LEGACY_WIDTH := 48
 const LEGACY_HEIGHT := 48
 const _MATERIAL_IDS := ["shallow_water", "metal", "wood_floor", "rubble"]
+const _AUTHORITY_FIELD_PROFILES := {
+	"shallow_water":{"region_id":"FLOODED_CISTERN","label":"침수 저수조"},
+	"metal":{"region_id":"BROKEN_FORGE","label":"폐쇄된 주조장"},
+	"wood_floor":{"region_id":"BURNT_GALLERY","label":"탄 목재 회랑"},
+	"rubble":{"region_id":"COLLAPSED_QUARRY","label":"무너진 채굴실"},
+}
+const _SCENIC_FIELD_PROFILES := {
+	"grass":{"region_id":"OVERGROWN_COURT","label":"잠식된 정원"},
+	"ice":{"region_id":"FROZEN_CRYPT","label":"얼어붙은 묘실"},
+	"fog":{"region_id":"MIST_GALLERY","label":"안개 회랑"},
+}
 
 
 static func generate(width: int, height: int, seed: int) -> Dictionary:
-	return _generate_versioned(width,height,seed,false)
+	return _generate_versioned(width,height,seed,false,false)
+
+
+# Save migration only. This reproduces the 96x96 v3 terrain that scattered
+# material cells across every room before field regions became coherent.
+static func generate_previous_product(width:int,height:int,seed:int)->Dictionary:
+	return _generate_versioned(width,height,seed,false,true)
 
 
 # Save migration only. The exact deployed v2 topology remains reproducible so
 # an existing snapshot can replay against its original room and door geometry.
 static func generate_legacy(width:int,height:int,seed:int)->Dictionary:
-	return _generate_versioned(width,height,seed,true)
+	return _generate_versioned(width,height,seed,true,true)
 
 
 static func _generate_versioned(width:int,height:int,seed:int,
-		legacy_small_rooms:bool)->Dictionary:
+		legacy_small_rooms:bool,legacy_material_scatter:bool)->Dictionary:
 	if width < MIN_SIZE or height < MIN_SIZE:
 		return {}
 	var rng := RandomNumberGenerator.new()
@@ -117,23 +135,29 @@ static func _generate_versioned(width:int,height:int,seed:int,
 	var material_positions := {}
 	for material_id in _MATERIAL_IDS:
 		material_positions[material_id] = []
-	var material_candidates: Array[Vector2i] = []
-	for room_index in range(1, rooms.size() - 1):
-		var room: Rect2i = rooms[room_index]
-		for y in range(room.position.y + 1, room.end.y - 1):
-			for x in range(room.position.x + 1, room.end.x - 1):
-				var position := Vector2i(x, y)
-				if not protected.has(position):
-					material_candidates.append(position)
-	_shuffle(material_candidates, rng)
-	var material_count := mini(material_candidates.size(),maxi(20,width*height/42)) \
-		if legacy_small_rooms else mini(material_candidates.size(),
-			clampi(width*height/96,32,96))
-	for index in range(material_count):
-		var position := material_candidates[index]
-		var material_id: String = _MATERIAL_IDS[index % _MATERIAL_IDS.size()]
-		terrain[_index(position, width)] = material_id
-		material_positions[material_id].append(position)
+	var field_regions:Array[Dictionary]=[]
+	var presentation_material_positions:={"grass":[],"ice":[],"fog":[]}
+	var material_count := clampi(width*height/96,32,96)
+	if legacy_material_scatter:
+		var material_candidates: Array[Vector2i] = []
+		for room_index in range(1, rooms.size() - 1):
+			var room: Rect2i = rooms[room_index]
+			for y in range(room.position.y + 1, room.end.y - 1):
+				for x in range(room.position.x + 1, room.end.x - 1):
+					var position := Vector2i(x, y)
+					if not protected.has(position):
+						material_candidates.append(position)
+		_shuffle(material_candidates, rng)
+		material_count=mini(material_candidates.size(),maxi(20,width*height/42)) \
+			if legacy_small_rooms else mini(material_candidates.size(),material_count)
+		for index in range(material_count):
+			var position := material_candidates[index]
+			var material_id: String = _MATERIAL_IDS[index % _MATERIAL_IDS.size()]
+			terrain[_index(position, width)] = material_id
+			material_positions[material_id].append(position)
+	else:
+		field_regions=_place_clustered_field_regions(terrain,width,rooms,protected,
+			seed,material_count,material_positions,presentation_material_positions)
 	var hazards: Array[Dictionary] = []
 	var metal_cells: Array = material_positions["metal"]
 	var wood_cells: Array = material_positions["wood_floor"]
@@ -143,7 +167,8 @@ static func _generate_versioned(width:int,height:int,seed:int,
 		hazards.append({"kind":"FIRE", "position":wood_cells[0], "magnitude":55})
 	var result:Dictionary={
 		"schema_version":SCHEMA_VERSION,
-		"ruleset_id":LEGACY_RULESET_ID if legacy_small_rooms else RULESET_ID,
+		"ruleset_id":LEGACY_RULESET_ID if legacy_small_rooms else (
+			PREVIOUS_RULESET_ID if legacy_material_scatter else RULESET_ID),
 		"seed":seed,
 		"width":width,
 		"height":height,
@@ -157,9 +182,108 @@ static func _generate_versioned(width:int,height:int,seed:int,
 		"door_positions":door_positions,
 		"hazards":hazards,
 		"material_positions":material_positions,
+		"field_regions":field_regions,
+		"presentation_material_positions":presentation_material_positions,
 	}
 	if not legacy_small_rooms:result["enemy_roster"]=enemy_roster
 	return result.duplicate(true)
+
+
+static func _place_clustered_field_regions(terrain:Array[String],width:int,
+		rooms:Array[Rect2i],protected:Dictionary,seed:int,material_count:int,
+		material_positions:Dictionary,presentation_positions:Dictionary)->Array[Dictionary]:
+	var result:Array[Dictionary]=[]
+	var available_rooms:Array[int]=[]
+	for room_index in range(1,rooms.size()-1):available_rooms.append(room_index)
+	_shuffle_ints(available_rooms,seed ^ 0x4649454C445F5634)
+	var room_cursor:=0
+	for material_index in range(_MATERIAL_IDS.size()):
+		if room_cursor>=available_rooms.size():break
+		var material_id:String=_MATERIAL_IDS[material_index]
+		var room_index:int=available_rooms[room_cursor];room_cursor+=1
+		var room:Rect2i=rooms[room_index]
+		var candidates:=_room_floor_candidates(terrain,width,room,protected)
+		_sort_field_candidates(candidates,room,seed,material_index+101)
+		var requested:=material_count/_MATERIAL_IDS.size() \
+			+(1 if material_index<material_count%_MATERIAL_IDS.size() else 0)
+		var placed:=mini(requested,candidates.size())
+		for index in range(placed):
+			var position:Vector2i=candidates[index]
+			terrain[_index(position,width)]=material_id
+			material_positions[material_id].append(position)
+		var profile:Dictionary=_AUTHORITY_FIELD_PROFILES[material_id]
+		result.append(_field_region_row(profile,room_index,room,material_id,
+			material_id,placed))
+	var scenic_ids:Array[String]=["grass","ice","fog"]
+	for scenic_index in range(scenic_ids.size()):
+		if room_cursor>=available_rooms.size():break
+		var material_id:String=scenic_ids[scenic_index]
+		var room_index:int=available_rooms[room_cursor];room_cursor+=1
+		var room:Rect2i=rooms[room_index]
+		var candidates:=_room_floor_candidates(terrain,width,room,protected)
+		_sort_field_candidates(candidates,room,seed,scenic_index+211)
+		var requested:=clampi(candidates.size()*3/5,18,42)
+		var placed:=mini(requested,candidates.size())
+		for index in range(placed):
+			presentation_positions[material_id].append(candidates[index])
+		var profile:Dictionary=_SCENIC_FIELD_PROFILES[material_id]
+		result.append(_field_region_row(profile,room_index,room,"stone_floor",
+			material_id,placed))
+	result.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.room_index)<int(b.room_index))
+	return result
+
+
+static func _room_floor_candidates(terrain:Array[String],width:int,room:Rect2i,
+		protected:Dictionary)->Array[Vector2i]:
+	var result:Array[Vector2i]=[]
+	for y in range(room.position.y+1,room.end.y-1):
+		for x in range(room.position.x+1,room.end.x-1):
+			var position:=Vector2i(x,y)
+			if not protected.has(position) \
+					and terrain[_index(position,width)]=="stone_floor":
+				result.append(position)
+	return result
+
+
+static func _sort_field_candidates(candidates:Array[Vector2i],room:Rect2i,
+		seed:int,salt:int)->void:
+	var center:=Vector2i(room.position.x+room.size.x/2,
+		room.position.y+room.size.y/2)
+	candidates.sort_custom(func(a:Vector2i,b:Vector2i):
+		var a_distance:=absi(a.x-center.x)+absi(a.y-center.y)
+		var b_distance:=absi(b.x-center.x)+absi(b.y-center.y)
+		if a_distance!=b_distance:return a_distance<b_distance
+		var a_rank:=_field_cell_rank(seed,salt,a)
+		var b_rank:=_field_cell_rank(seed,salt,b)
+		return a_rank<b_rank if a_rank!=b_rank else (
+			a.y<b.y if a.y!=b.y else a.x<b.x))
+
+
+static func _field_cell_rank(seed:int,salt:int,position:Vector2i)->int:
+	var digest:PackedByteArray=("field-region-v1|%d|%d|%d|%d"%[
+		seed,salt,position.x,position.y]).sha256_buffer()
+	return ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
+		|(int(digest[2])<<8)|int(digest[3])
+
+
+static func _field_region_row(profile:Dictionary,room_index:int,room:Rect2i,
+		authority_material_id:String,presentation_material_id:String,
+		cell_count:int)->Dictionary:
+	return {"schema_version":1,"region_id":str(profile.region_id),
+		"label":str(profile.label),"room_index":room_index,
+		"bounds":[room.position.x,room.position.y,room.size.x,room.size.y],
+		"authority_material_id":authority_material_id,
+		"presentation_material_id":presentation_material_id,
+		"cell_count":cell_count}.duplicate(true)
+
+
+static func _shuffle_ints(values:Array[int],seed:int)->void:
+	var rng:=RandomNumberGenerator.new();rng.seed=seed
+	for index in range(values.size()-1,0,-1):
+		var swap_index:=rng.randi_range(0,index)
+		var value:=values[index];values[index]=values[swap_index]
+		values[swap_index]=value
 
 
 static func _distributed_enemy_roster(terrain:Array[String],width:int,height:int,
@@ -243,6 +367,28 @@ static func terrain_at(layout: Dictionary, position: Vector2i) -> String:
 	if terrain.size() != width * height:
 		return ""
 	return str(terrain[_index(position, width)])
+
+
+static func presentation_material_at(layout:Dictionary,position:Vector2i)->String:
+	if terrain_at(layout,position) in ["","wall"]:return ""
+	var rows:Variant=layout.get("presentation_material_positions",{})
+	if not rows is Dictionary:return ""
+	for material_id in ["grass","ice","fog"]:
+		var positions:Variant=rows.get(material_id,[])
+		if positions is Array and position in positions:return material_id
+	return ""
+
+
+static func field_region_at(layout:Dictionary,position:Vector2i)->Dictionary:
+	var rows:Variant=layout.get("field_regions",[])
+	if not rows is Array:return {}
+	for value in rows:
+		if not value is Dictionary:continue
+		var bounds:Variant=value.get("bounds",[])
+		if bounds is Array and bounds.size()==4 and Rect2i(int(bounds[0]),
+				int(bounds[1]),int(bounds[2]),int(bounds[3])).has_point(position):
+			return (value as Dictionary).duplicate(true)
+	return {}
 
 
 static func reachable(layout: Dictionary, from: Vector2i, to: Vector2i) -> bool:

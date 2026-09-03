@@ -664,6 +664,9 @@ func opening_event_status() -> Dictionary:
 	var relation: Dictionary = sim.relationships.effective_relation(
 		opening.npc_entity_id, state.protagonist_id)
 	var personality_style: Dictionary = opening.hexaco_profile.style_summary()
+	var reencountered:bool=int(opening.reencounter_event_id)>0
+	var recruitment:=recruitment_assessment(int(opening.npc_entity_id)) \
+		if reencountered and state.member(int(opening.npc_entity_id))==null else {}
 	return {"schema_version":1, "available":true,
 		"npc_entity_id":opening.npc_entity_id,
 		"display_name":str(npc.display_name), "choice":str(opening.choice),
@@ -675,9 +678,12 @@ func opening_event_status() -> Dictionary:
 		"convergence_goal":[opening.convergence_goal.x, opening.convergence_goal.y],
 		"hexaco_profile":opening.hexaco_profile.to_dict(),
 		"personality_style":personality_style,
-		"scene_summary":"입구에서 이어진 피 묻은 흔적 끝에 여행자가 벽에 기대 숨을 몰아쉬고 있습니다.\n성격 인상 · %s" \
-			% str(personality_style.get("label", "알 수 없는 인물")),
-		"choice_prompt":"회복 물약을 건넬지, 돕지 않고 떠날지 결정하세요.",
+		"scene_summary":("던전 안쪽에서 여행자와 다시 만났습니다. 이제 동행을 제안할 수 있습니다.\n성격 인상 · %s" \
+			%str(personality_style.get("label","알 수 없는 인물"))) if reencountered \
+			else ("입구에서 이어진 피 묻은 흔적 끝에 여행자가 벽에 기대 숨을 몰아쉬고 있습니다.\n성격 인상 · %s" \
+			%str(personality_style.get("label", "알 수 없는 인물"))),
+		"choice_prompt":"영입 가능성을 확인하고 동행을 제안하세요." if reencountered \
+			else "회복 물약을 건넬지, 돕지 않고 떠날지 결정하세요.",
 		"adjacent":adjacent,
 		"can_interact":can_interact,
 		"give_enabled":can_interact and bool(give_preview.get("accepted", false)),
@@ -686,8 +692,11 @@ func opening_event_status() -> Dictionary:
 		"trust":int(relation.get("trust", 0)),
 		"species_base_trust":int(relation.get("species_base", {}).get("base_trust", 0)),
 		"choice_event_id":opening.choice_event_id,
-		"reencountered":opening.reencounter_event_id > 0,
-		"reencounter_event_id":opening.reencounter_event_id}.duplicate(true)
+		"reencountered":reencountered,
+		"reencounter_event_id":opening.reencounter_event_id,
+		"recruitment":recruitment.duplicate(true),
+		"recruitment_probability_percent":int(recruitment.get("probability_percent",0)),
+		"can_recruit":bool(recruitment.get("accepted",false))}.duplicate(true)
 
 
 func commit_opening_event_choice(choice_action: String) -> Dictionary:
@@ -1026,17 +1035,52 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"ARMOR":glyph="["
 		"ACCESSORY":glyph="="
 		"CONSUMABLE":glyph="?" if item.definition_id.begins_with("SCROLL") else "!"
-	return {"slot":slot,"equipped":equipped,"empty":false,
+	var result:={"slot":slot,"equipped":equipped,"empty":false,
 		"instance_id":item.instance_id,"definition_id":item.definition_id,
 		"label":definition.label,"category":definition.category,"glyph":glyph,
 		"quantity":item.quantity,"rarity":item.rarity,
 		"equip_slots":definition.equip_slots.duplicate(),"placeholder":definition.placeholder,
+		"bonuses":definition.bonuses.duplicate(true),
 		"requirements":requirements,"requirements_met":requirements_met,
 		"requirement_text":" · ".join(requirement_parts),
 		"current_stats":stats.duplicate(true),
 		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)!="NONE",
 		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
-			if str(definition.use_kind)=="HEALING" else 0}.duplicate(true)
+			if str(definition.use_kind)=="HEALING" else 0,
+		"compact_stat_text":""}
+	if str(definition.category)=="WEAPON":
+		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
+		if weapon!=null:
+			var state=sim.world.party_encounter
+			var rank:int=state.protagonist_progression.rank(str(weapon.proficiency_id))
+			var combatant=sim.world.combatant_states.get(state.protagonist_id)
+			var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) \
+				if combatant!=null else {}
+			var attack:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
+				int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,stats)
+			result.merge({"weapon_id":str(weapon.weapon_id),
+				"raw_damage":int(attack.get("raw_damage",weapon.base_damage)),
+				"hit_chance_milli":int(attack.get("hit_chance_milli",500)),
+				"accuracy_milli":int(weapon.accuracy_milli),
+				"armor_penetration_flat":int(weapon.armor_penetration_flat),
+				"range_min":int(weapon.range_min),"range_max":int(weapon.range_max),
+				"attack_time":int(weapon.attack_time),"ammo_kind":str(weapon.ammo_kind),
+				"ammo_cost":int(weapon.ammo_cost),
+				"reload_required":bool(weapon.reload_required),
+				"reload_time":int(weapon.reload_time),
+				"compact_stat_text":"공격 %d"%int(attack.get("raw_damage",weapon.base_damage))},true)
+	else:
+		var parts:Array[String]=[]
+		if int(definition.bonuses.get("armor_flat",0))!=0:
+			parts.append("방어 %+d"%int(definition.bonuses.armor_flat))
+		if int(definition.bonuses.get("parry_milli",0))!=0:
+			parts.append("막기 %+d"%int(definition.bonuses.parry_milli))
+		if int(definition.bonuses.get("dodge_milli",0))!=0:
+			parts.append("회피 %+d"%int(definition.bonuses.dodge_milli))
+		if str(definition.use_kind)=="HEALING":
+			parts.append("회복 +%d"%ItemRegistryScript.HEALING_POTION_RESTORE)
+		result["compact_stat_text"]=" · ".join(parts)
+	return result.duplicate(true)
 
 
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
@@ -1612,15 +1656,18 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
 					"effective_conductivity":0, "ground_mark_id":"",
+					"presentation_material_id":"",
 					"actors":[],"ground_items":[]})
 				continue
 			var tile = sim.world.tile_at(position)
+			var presentation_material_id:=_presentation_material_at(position)
 			if visibility_state=="MEMORY":
 				# Remember only stable terrain. Features, hazards, actors and all live
 				# decision data remain unavailable outside the current field of view.
 				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
 					"feature_id":"","ground_mark_id":"blood" \
 						if position in _opening_blood_positions else "",
+					"presentation_material_id":presentation_material_id,
 					"visibility_state":"MEMORY","fire_intensity":0,
 					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
 				continue
@@ -1651,6 +1698,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
 				"feature_id":_run_feature_id_at(position, progress),
 				"ground_mark_id":"blood" if position in _opening_blood_positions else "",
+				"presentation_material_id":presentation_material_id,
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
@@ -1662,6 +1710,11 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
 			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
 			"memory_supported":true}}
+
+
+func _presentation_material_at(position:Vector2i)->String:
+	if not VisualTestMapScript.uses_product_dungeon(scenario_id):return ""
+	return DeterministicDungeonMapScript.presentation_material_at(_map_layout,position)
 
 
 func _party_minimap_observation(context:Dictionary)->Dictionary:
@@ -1939,7 +1992,7 @@ func _actor_observation(entity, logical_position: Vector2i,
 		# occupancy/hit authority continues to use the canonical world entity.
 		dto["life_state"] = "DOWNED" if story_state == "COLLAPSED_STORY" else "ACTIVE"
 	var opening = sim.world.party_encounter.opening_event
-	if opening != null and int(opening.npc_entity_id) == int(entity.id):
+	if opening != null and int(opening.npc_entity_id) == int(entity.id) and member==null:
 		dto["display_role"] = "OPENING_NPC"
 		dto["presence"] = "WORLD_NPC"
 		dto["opening_choice"] = str(opening.choice)
@@ -2110,6 +2163,8 @@ func stabilize_recruit_candidate(entity_id: int) -> Dictionary:
 func recruitment_assessment(entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
+	if _is_opening_recruitment_candidate(entity_id):
+		return _opening_recruitment_assessment(entity_id)
 	var state = sim.world.party_encounter
 	var discovery = _rescue_discovery_event_for(entity_id)
 	var entity = sim.world.entities.get(entity_id)
@@ -2184,6 +2239,82 @@ func recruitment_assessment(entity_id: int) -> Dictionary:
 			"vacancy":vacancy_term}})
 
 
+func is_opening_recruitment_candidate(entity_id:int)->bool:
+	return _is_opening_recruitment_candidate(entity_id)
+
+
+func _is_opening_recruitment_candidate(entity_id:int)->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
+	var opening=sim.world.party_encounter.opening_event
+	return opening!=null and int(opening.npc_entity_id)==entity_id \
+		and int(opening.reencounter_event_id)>0
+
+
+func _opening_recruitment_assessment(entity_id:int)->Dictionary:
+	var state=sim.world.party_encounter;var opening=state.opening_event
+	var entity=sim.world.entities.get(entity_id)
+	var combatant=sim.world.combatant_states.get(entity_id)
+	if opening==null or entity==null or combatant==null:
+		return _rejection_dto("companion_not_recruitable")
+	var prior_outcome=_recruitment_outcome_event_for(entity_id)
+	if prior_outcome!=null:
+		return _feedback_dto({"accepted":false,"reason":"recruitment_already_resolved",
+			"entity_id":entity_id,"resolved":true,
+			"joined":str(prior_outcome.type)=="party.recruitment_accepted",
+			"probability_milli":int(prior_outcome.data.get("probability_milli",0)),
+			"probability_percent":int((int(prior_outcome.data.get("probability_milli",0))+5)/10),
+			"roll_milli":int(prior_outcome.data.get("roll_milli",-1)),
+			"reasons":prior_outcome.data.get("reasons",[]).duplicate(true)})
+	var relation:Dictionary=sim.relationships.effective_relation(entity_id,state.protagonist_id)
+	var species_base:Dictionary=relation.get("species_base",{})
+	var species_term:=int(species_base.get("base_trust",0))*4 \
+		-int(species_base.get("base_hostility",0))*4 \
+		-int(species_base.get("base_fear",0))*2
+	var gratitude_term:=int(relation.get("gratitude",0))*3
+	var profile=opening.hexaco_profile;var personality_term:=clampi(
+		int((profile.value("H")-500)/8)+int((profile.value("A")-500)/10) \
+		+int((profile.value("X")-500)/14),-160,160)
+	var help_term:=220 if str(opening.choice)=="GAVE_POTION" else -120
+	var has_vacancy:bool=state.active_party_member_ids.size()<ACTIVE_PARTY_LIMIT
+	var vacancy_term:=40 if has_vacancy else 0
+	var probability:=clampi(320+species_term+gratitude_term+personality_term \
+		+help_term+vacancy_term,50,950)
+	var reasons:Array[Dictionary]=[]
+	if str(opening.choice)=="GAVE_POTION":
+		reasons.append({"code":"RESCUED","label":"처음 만났을 때 건넨 물약을 기억합니다.","tone":"POSITIVE"})
+	else:reasons.append({"code":"PASSED_BY","label":"처음 만났을 때 외면한 일을 기억합니다.","tone":"NEGATIVE"})
+	if gratitude_term>0:
+		reasons.append({"code":"PERSONAL_AFFECTION","label":"개인적인 감사가 남아 있습니다.","tone":"POSITIVE"})
+	if personality_term>=40:
+		reasons.append({"code":"OPEN_PERSONALITY","label":"낯선 동행을 받아들이는 성향입니다.","tone":"POSITIVE"})
+	elif personality_term<=-40:
+		reasons.append({"code":"GUARDED_PERSONALITY","label":"쉽게 마음을 열지 않는 성향입니다.","tone":"CAUTION"})
+	if has_vacancy:
+		reasons.append({"code":"PARTY_VACANCY","label":"파티에 함께할 빈자리가 있습니다.","tone":"POSITIVE"})
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var adjacent:=hero!=null and maxi(absi(hero.position.x-entity.position.x),
+		absi(hero.position.y-entity.position.y))<=1
+	var legal:bool=has_vacancy and adjacent and str(combatant.life_state)=="ACTIVE" \
+		and state.safe_phase in ["GROUPED","GROUPED_COMPLETE"] and not _run_is_complete()
+	var reason:="ok"
+	if not has_vacancy:reason="party_full"
+	elif not adjacent:reason="recruitment_candidate_too_far"
+	elif str(combatant.life_state)!="ACTIVE":reason="companion_unavailable"
+	elif state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or _run_is_complete():
+		reason="party_roster_unsafe_phase"
+	var key:="opening-recruit-v1|world=%d|personality=%d|candidate=%d|reencounter=%d"%[
+		world_seed,personality_seed,entity_id,int(opening.reencounter_event_id)]
+	var roll:=_stable_roll_milli(key) if legal else -1
+	return _feedback_dto({"accepted":legal,"reason":reason,"entity_id":entity_id,
+		"resolved":false,"joined":false,"probability_milli":probability,
+		"probability_percent":int((probability+5)/10),"roll_milli":roll,
+		"would_accept":legal and roll<probability,"ruleset_id":"opening-recruit-v1",
+		"key_hash":key.sha256_text() if legal else "","reasons":reasons,
+		"terms":{"species_prior":species_term,"personal_memory":gratitude_term,
+			"personality":personality_term,"first_encounter":help_term,
+			"vacancy":vacancy_term}})
+
+
 func offer_recruitment(entity_id: int) -> Dictionary:
 	var assessment := recruitment_assessment(entity_id)
 	if not bool(assessment.get("accepted",false)): return assessment
@@ -2203,7 +2334,7 @@ func offer_recruitment(entity_id: int) -> Dictionary:
 	var decision = sim.world.emit_event(event_type, entity_id, hero_id,
 		sim.world.entities[entity_id].position,
 		int(assessment.probability_milli), -1, {"schema_version":1,
-			"ruleset_id":RECRUITMENT_RULESET_ID,
+			"ruleset_id":str(assessment.get("ruleset_id",RECRUITMENT_RULESET_ID)),
 			"probability_milli":int(assessment.probability_milli),
 			"roll_milli":int(assessment.roll_milli),"accepted":joined,
 			"reason_codes":reason_codes,
@@ -2215,7 +2346,7 @@ func offer_recruitment(entity_id: int) -> Dictionary:
 		if not _prepare_rescue_candidate_for_roster(entity_id):
 			_restore_roster_rollback(rollback)
 			return _rejection_dto("recruitment_resolution_failed")
-		var roster_result := _apply_roster_change("RECRUIT",entity_id,false)
+		var roster_result := _apply_roster_change("RECRUIT",entity_id,false,rollback)
 		if not bool(roster_result.get("accepted",false)):
 			_restore_roster_rollback(rollback)
 			return _rejection_dto("recruitment_resolution_failed")
@@ -2300,14 +2431,17 @@ func _rescue_personality_profile(entity_id: int):
 
 func _prepare_rescue_candidate_for_roster(entity_id: int) -> bool:
 	if sim == null or sim.world == null or sim.world.party_encounter == null \
-			or _rescue_discovery_event_for(entity_id) == null \
+			or (_rescue_discovery_event_for(entity_id) == null \
+			and not _is_opening_recruitment_candidate(entity_id)) \
 			or not sim.world.entities.has(entity_id):
 		return false
 	var state = sim.world.party_encounter
 	if state.member(entity_id) != null \
 			or state.active_party_member_ids.size() >= ACTIVE_PARTY_LIMIT:
 		return false
-	var profile = _rescue_personality_profile(entity_id)
+	var profile = sim.world.party_encounter.opening_event.hexaco_profile \
+		if _is_opening_recruitment_candidate(entity_id) \
+		else _rescue_personality_profile(entity_id)
 	if profile == null: return false
 	state.party_member_ids.append(entity_id)
 	state.party_member_ids.sort()
@@ -2434,10 +2568,12 @@ func recruit_companion(entity_id: int) -> Dictionary:
 
 
 func _apply_roster_change(operation: String, entity_id: int,
-		append_journal: bool = true) -> Dictionary:
+		append_journal: bool = true,rollback_override:Dictionary={}) -> Dictionary:
 	var assessment := roster_change_assessment(operation, entity_id)
 	if not bool(assessment.get("accepted",false)): return assessment
-	var rollback: Dictionary = sim.snapshot()
+	var rollback: Dictionary = rollback_override.duplicate(true) \
+		if not rollback_override.is_empty() else sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("party_snapshot_unavailable")
 	var state = sim.world.party_encounter
 	var exile_condition: Dictionary = _exile_condition(entity_id) if operation=="DISMISS" else {}
 	if operation=="DISMISS" and not bool(exile_condition.get("valid",false)):
@@ -2971,12 +3107,6 @@ func _exploration_step_is_legal(actor_id: int, from: Vector2i,
 	var delta := to-from
 	if delta.x != 0 and delta.y != 0:
 		if not sim.world.diagonal_step_terrain_allowed(from,to):return false
-		for flank in [from+Vector2i(delta.x,0),from+Vector2i(0,delta.y)]:
-			if not sim.world.in_bounds(flank):continue
-			var flank_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(flank).terrain)
-			if flank_definition.is_empty() or not bool(flank_definition.get("passable", false)):
-				continue
-			if sim.world.blocking_entity_at(flank, actor_id) != null:return false
 	return true
 
 
@@ -4041,7 +4171,8 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 	var state = sim.world.party_encounter
 	var member = state.member(entity_id)
-	if member == null and _rescue_discovery_event_for(entity_id) != null:
+	if member == null and (_rescue_discovery_event_for(entity_id) != null \
+			or _is_opening_recruitment_candidate(entity_id)):
 		return _inspect_rescue_candidate(entity_id)
 	if member == null or not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found", null, null,
@@ -4146,8 +4277,10 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 	if not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found")
 	var entity = sim.world.entities[entity_id]
-	var story_state := rescue_story_state(entity_id)
-	var profile = _rescue_personality_profile(entity_id)
+	var opening_candidate:=_is_opening_recruitment_candidate(entity_id)
+	var story_state := "OFFER_READY" if opening_candidate else rescue_story_state(entity_id)
+	var profile = sim.world.party_encounter.opening_event.hexaco_profile \
+		if opening_candidate else _rescue_personality_profile(entity_id)
 	var facets: Array = []
 	if profile != null:
 		for row in _hexaco_facet_rows(profile):
@@ -4184,7 +4317,8 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"active_party_member":false,"recruitable_member":true,"exiled_member":false,
 		"logical_position":[position.x,position.y],"busy_until":int(sim.world.world_time),
 		"remaining_time":0,"stress":0,
-		"readiness":"도움 필요" if collapsed else "대화 가능",
+		"readiness":"도움 필요" if collapsed else (
+			"재회 · 영입 대화 가능" if opening_candidate else "대화 가능"),
 		"emotion":{"icon":"!" if collapsed else "●",
 			"label":"쓰러짐" if collapsed else "안정됨",
 			"reason":"심한 상처로 움직이지 못합니다." if collapsed \
@@ -4199,6 +4333,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
 		"relation_rows":relation_rows,"exile_record":null,
 		"rescue_assessment":rescue_assessment(entity_id) if collapsed else {},
+		"opening_reencounter":opening_candidate,
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if story_state in ["OFFER_READY","REJECTED"] else {}}
 	return _feedback_dto(dto, null, null,
@@ -4411,11 +4546,17 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
+		var previous_layout:=VisualTestMapScript.previous_product_dungeon(
+			parsed_world_seed)
 		var legacy_layout:=VisualTestMapScript.legacy_product_dungeon(parsed_world_seed)
 		# Detect before strict restoration, which may normalize input rows in place.
 		# Product terrain itself is immutable during play.
-		replay_layout=legacy_layout if _snapshot_terrain_matches_layout(
-			decoded.snapshot,legacy_layout) else current_layout
+		if _snapshot_terrain_matches_layout(decoded.snapshot,legacy_layout):
+			replay_layout=legacy_layout
+		elif _snapshot_terrain_matches_layout(decoded.snapshot,previous_layout):
+			replay_layout=previous_layout
+		else:
+			replay_layout=current_layout
 	var restored = SimulatorScript.from_snapshot(decoded.snapshot)
 	if restored == null or restored.world.party_encounter == null:
 		var restore_reason := WorldStateScript.snapshot_restore_error(decoded.snapshot)
@@ -5145,11 +5286,8 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			rows.append(_visual_effect_row(event, "FLOATING_AMOUNT", "floating_amount", order,
 				damage_type, int(event.magnitude), "-%d" % int(event.magnitude)))
 			order += 1
-		elif event_type == "entity.died":
-			var death_type := str(event.data.get("damage_type", "physical"))
-			rows.append(_visual_effect_row(event, "DEATH", "death", order,
-				death_type, 0, ""))
-			order += 1
+		# Death already removes ordinary monsters from the authoritative occupancy
+		# projection. Do not paint a second X-shaped marker over the cleared cell.
 		elif event_type == "health.restored":
 			rows.append(_visual_effect_row(event,"FLOATING_AMOUNT","heal",order,
 				"healing",int(event.magnitude),"+%d" % int(event.magnitude)))
@@ -5458,11 +5596,11 @@ func _event_message(event) -> String:
 		"opening.health_restored":return "%s 체력을 %d 회복했다."%[_subject(target),int(event.magnitude)]
 		"opening.reencountered":return "던전 안쪽에서 %s 다시 마주쳤다."%_object(target)
 		"relationship.gratitude_recorded":return "%s 도움을 고마운 기억으로 남겼다."%_subject(actor)
-		"item.picked_up":return "%s 바닥의 물건을 주웠다."%_subject(actor)
-		"item.equipped":return "%s 장비를 갖추었다."%_subject(actor)
-		"item.unequipped":return "%s 장비를 해제했다."%_subject(actor)
-		"item.dropped":return "%s 물건을 바닥에 내려놓았다."%_subject(actor)
-		"item.discarded":return "%s 물건을 영구히 폐기했다."%_subject(actor)
+		"item.picked_up":return "%s %s 주웠다."%[_subject(actor),_object(_item_label_for_event(event))]
+		"item.equipped":return "%s %s 장착했다."%[_subject(actor),_object(_item_label_for_event(event))]
+		"item.unequipped":return "%s %s 해제했다."%[_subject(actor),_object(_item_label_for_event(event))]
+		"item.dropped":return "%s %s 바닥에 내려놓았다."%[_subject(actor),_object(_item_label_for_event(event))]
+		"item.discarded":return "%s %s 영구히 폐기했다."%[_subject(actor),_object(_item_label_for_event(event))]
 		"item.used":return "%s 회복 물약을 마셨다." % _subject(actor)
 		"health.restored":
 			return "%s 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)] \
@@ -5471,10 +5609,11 @@ func _event_message(event) -> String:
 		"progression.enemy_reward":return "%s 처치 · 경험치 +%d · 숙련 풀 +%d" % [
 			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
 		"growth.enemy_reward":
-			return "%s 이능 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
+			var level_up:=_growth_level_up_suffix(event)
+			return ("%s 이능 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
 				_subject(actor),str(event.data.get("mutation_id","")),int(event.magnitude)] \
 				if bool(event.data.get("mutation_acquired",false)) \
-				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)]
+				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)])+level_up
 		"growth.stat_spent":return "%s 기본 능력을 단련했다."%_subject(actor)
 		"growth.species_point_spent":return "%s 종족 특성을 발전시켰다."%_subject(actor)
 		"growth.mutation_swapped":return "%s 이능 조합을 바꾸었다."%_subject(actor)
@@ -5561,6 +5700,37 @@ func _event_message(event) -> String:
 	# an explicit allowlist, so returning an empty string cannot manufacture log
 	# noise or expose an unsupported event type.
 	return ""
+
+
+func _item_label_for_event(event)->String:
+	var instance_id:=str(event.data.get("instance_id",""))
+	if instance_id.is_empty() or sim==null or sim.world==null:return "아이템"
+	for inventory in sim.world.item_state.inventory_rows.values():
+		var item=inventory.item(instance_id)
+		if item!=null:
+			var definition=ItemRegistryScript.definition(str(item.definition_id))
+			return str(definition.label) if definition!=null else "아이템"
+	for ground_row in sim.world.item_state.ground_items.rows:
+		if str(ground_row.item.instance_id)==instance_id:
+			var definition=ItemRegistryScript.definition(str(ground_row.item.definition_id))
+			return str(definition.label) if definition!=null else "아이템"
+	for historical in sim.world.events:
+		if int(historical.id)>int(event.id):break
+		if str(historical.data.get("instance_id",""))!=instance_id:continue
+		var definition_id:=str(historical.data.get("definition_id",""))
+		var definition=ItemRegistryScript.definition(definition_id)
+		if definition!=null:return str(definition.label)
+	return "아이템"
+
+
+func _growth_level_up_suffix(event)->String:
+	var current_level:=int(event.data.get("level",1));var previous_level:=1
+	for historical in sim.world.events:
+		if int(historical.id)>=int(event.id):break
+		if str(historical.type)=="growth.enemy_reward" \
+				and int(historical.actor_id)==int(event.actor_id):
+			previous_level=int(historical.data.get("level",previous_level))
+	return " · 레벨 %d 달성!"%current_level if current_level>previous_level else ""
 
 
 func _direction_label(value:Variant)->String:

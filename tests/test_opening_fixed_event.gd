@@ -242,6 +242,57 @@ func test_same_actor_travels_adjacent_and_reencounter_records_once() -> bool:
 	return finish()
 
 
+func test_second_opening_encounter_exposes_stable_recruitment_and_resolves_once()->bool:
+	var session=Session.new(77,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter
+	state.party_detection_radius=0;state.enemy_detection_radius=0
+	for enemy_id in state.enemy_ids:state.enemy_busy_rows[enemy_id]=1000000
+	check(_approach_opening(session),"recruitment fixture reaches first encounter")
+	check(session.commit_opening_event_choice("GIVE_POTION").accepted,
+		"first encounter aid commits")
+	var opening=state.opening_event;var npc_id:=int(opening.npc_entity_id)
+	var hero_id:=int(state.protagonist_id);var guard:=0
+	while session.sim.world.entities[npc_id].position!=opening.convergence_goal and guard<256:
+		var waited:Dictionary=session.commit_exploration(Command.wait(hero_id))
+		if not bool(waited.get("accepted",false)):break
+		guard+=1
+	var npc_position:Vector2i=session.sim.world.entities[npc_id].position
+	var approached:bool=false
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var destination:Vector2i=npc_position+direction
+		if not session.sim.world.in_bounds(destination) \
+				or session.sim.world.blocking_entity_at(destination)!=null:continue
+		var route:Dictionary=session.sim.find_path(hero_id,destination)
+		if not bool(route.get("found",false)):continue
+		for index in range(1,route.path.size()):
+			var moved:Dictionary=session.commit_exploration(
+				Command.move_to(hero_id,route.path[index]))
+			if not bool(moved.get("accepted",false)):break
+		approached=true;break
+	check(approached and state.opening_event.reencounter_event_id>0,
+		"second encounter becomes adjacent and records the reunion")
+	var first:Dictionary=session.recruitment_assessment(npc_id)
+	var repeated:Dictionary=session.recruitment_assessment(npc_id)
+	check(bool(first.get("accepted",false)),"adjacent reunion exposes a recruit offer")
+	check_eq([first.get("probability_milli"),first.get("roll_milli"),
+		first.get("would_accept")],[repeated.get("probability_milli"),
+		repeated.get("roll_milli"),repeated.get("would_accept")],
+		"opening recruitment chance and keyed roll are stable")
+	var result:Dictionary=session.offer_recruitment(npc_id)
+	check(bool(result.get("accepted",false)) and bool(result.get("resolved",false)),
+		"one offer resolves the second encounter")
+	check_eq(bool(result.get("joined",false)),bool(first.get("would_accept",false)),
+		"published chance and roll own the actual outcome")
+	check_eq(npc_id in session.sim.world.party_encounter.active_party_member_ids,
+		bool(result.get("joined",false)),"accepted traveller becomes the same party entity")
+	check_eq(session.sim.world.world_state_error(),"",
+		"second-encounter recruitment leaves a canonical world")
+	var duplicate:Dictionary=session.offer_recruitment(npc_id)
+	check(not bool(duplicate.get("accepted",false)),"recruitment cannot resolve twice")
+	return finish()
+
+
 func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> bool:
 	var legacy = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
 	check(legacy.reset_party(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID,

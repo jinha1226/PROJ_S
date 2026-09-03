@@ -165,6 +165,7 @@ var member_item_empty_text:Label
 var member_item_stats:Dictionary={}
 var member_item_equipment_rows:VBoxContainer
 var member_item_backpack_rows:VBoxContainer
+var member_item_selected_stats:Label
 var member_item_quick_unequip_button:Button
 var member_item_action_row:HBoxContainer
 var member_item_equip_button:Button
@@ -379,7 +380,12 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 			_product_touch_index=event.index;_product_touch_control=control_name
 			_product_touch_origin=event.position;_product_touch_dragged=false
 			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
-			get_viewport().set_input_as_handled();return true
+			get_viewport().set_input_as_handled()
+			# Combat feedback should begin under the finger, not after the full
+			# press/release cycle. Keep movement and navigation drag-cancellable.
+			if control_name=="ProductAttack":
+				_product_touch_control="";_activate_product_control(control_name)
+			return true
 		if event.index!=_product_touch_index:return false
 		# ScreenTouch coordinates may be reprojected by stretch mode between the
 		# press and release frames. A gesture that began on one exact button and did
@@ -399,8 +405,10 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
 	for button in product_direction_buttons.values():controls.append(button)
-	controls.append_array([product_attack_button,product_pickup_button,product_auto_button,product_interact_button,
-		product_wait_guard_button,product_execute_button])
+	controls.append_array([product_attack_button,product_pickup_button,product_auto_button,
+		product_interact_button,product_wait_guard_button,product_execute_button,
+		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
+		history_nav_button])
 	for control_value in controls:
 		var button:=control_value as Button
 		if button!=null and button.is_visible_in_tree() and not button.disabled \
@@ -424,6 +432,11 @@ func _activate_product_control(control_name:String)->void:
 		"ProductInteract":_on_product_interact()
 		"ProductWaitGuard":_on_product_wait_guard()
 		"ProductExecute":_on_product_execute()
+		"MapNavigation":_toggle_map_overlay()
+		"PersonNavigation":_open_hero_detail_tab("STATUS")
+		"SkillNavigation":_open_hero_detail_tab("SKILL")
+		"EquipmentNavigation":_open_hero_detail_tab("ITEM")
+		"HistoryNavigation":_toggle_record_modal()
 
 func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
 	# Product controls use one explicit pointer path. Connecting Button.pressed as
@@ -951,6 +964,15 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_reload_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_item_reload_button.pressed.connect(_on_item_reload);weapon_stack.add_child(member_item_reload_button)
 	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
+	# Keep the selected item's full numbers above the long 5-slot/12-row ledger.
+	# Putting this below the backpack made the information technically present but
+	# invisible until the player scrolled to the very end.
+	member_item_selected_stats=Label.new();member_item_selected_stats.name="SelectedItemStats"
+	member_item_selected_stats.visible=false;member_item_selected_stats.custom_minimum_size.y=42
+	member_item_selected_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	member_item_selected_stats.add_theme_font_size_override("font_size",FONT_AUX)
+	member_item_selected_stats.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	member_item_window.add_child(member_item_selected_stats)
 	var equipment_title:=_card_label("장비 슬롯","ItemEquipmentHeading",FONT_SECTION)
 	equipment_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	member_item_window.add_child(equipment_title)
@@ -2988,6 +3010,8 @@ func _update_item_inventory_ledger()->void:
 	var selected_equipped:=not member_item_selected_slot.is_empty()
 	var has_selection:=not member_item_selected_id.is_empty()
 	var selected_row:=_selected_item_ledger_row(dto)
+	member_item_selected_stats.visible=has_selection
+	member_item_selected_stats.text=_item_stats_text(selected_row) if has_selection else ""
 	member_item_equip_button.disabled=not has_selection or selected_equipped
 	member_item_unequip_button.disabled=not selected_equipped
 	member_item_quick_unequip_button.visible=selected_equipped
@@ -3030,8 +3054,37 @@ func _item_row_text(row:Dictionary)->String:
 	if not requirement.is_empty():
 		requirement_suffix=" · %s%s"%[requirement,
 			" 부족" if not bool(row.get("requirements_met",true)) else ""]
-	return "%s %s%s%s"%[str(row.get("glyph","*")),str(row.get("label","아이템")),
-		(" ×%d"%quantity) if quantity>1 else "",requirement_suffix]
+	var compact_stat:=str(row.get("compact_stat_text",""))
+	return "%s %s%s%s%s"%[str(row.get("glyph","*")),str(row.get("label","아이템")),
+		(" ×%d"%quantity) if quantity>1 else "",
+		(" · "+compact_stat) if not compact_stat.is_empty() else "",requirement_suffix]
+
+func _item_stats_text(row:Dictionary)->String:
+	if row.is_empty() or bool(row.get("empty",false)):return ""
+	var lines:Array[String]=[str(row.get("label","아이템"))]
+	if str(row.get("category",""))=="WEAPON":
+		lines.append("공격력 %d · 명중 %d%% · 관통 %d · 사거리 %d-%d칸 · 공격시간 %d"%[
+			int(row.get("raw_damage",0)),int(row.get("hit_chance_milli",500))/10,
+			int(row.get("armor_penetration_flat",0)),int(row.get("range_min",1)),
+			int(row.get("range_max",1)),int(row.get("attack_time",100))])
+		var ammo:=str(row.get("ammo_kind","NONE"))
+		if ammo!="NONE":
+			lines.append("탄약 %s ×%d%s"%["화살" if ammo=="ARROW" else "볼트",
+				int(row.get("ammo_cost",1))," · 사격 후 재장전" \
+				if bool(row.get("reload_required",false)) else ""])
+	else:
+		var bonuses:Dictionary=row.get("bonuses",{}) if row.get("bonuses",{}) is Dictionary else {}
+		var parts:Array[String]=[]
+		for entry in [["armor_flat","방어"],["parry_milli","막기"],
+				["dodge_milli","회피"],["stealth","은신"]]:
+			var value:=int(bonuses.get(str(entry[0]),0))
+			if value!=0:parts.append("%s %s%d"%[str(entry[1]),"+" if value>0 else "",value])
+		if str(row.get("use_kind",""))=="HEALING":
+			parts.append("체력 +%d"%int(row.get("heal_amount",0)))
+		lines.append("효과 없음" if parts.is_empty() else " · ".join(parts))
+	var requirement:=str(row.get("requirement_text",""))
+	if not requirement.is_empty():lines.append("요구 능력 · "+requirement)
+	return "\n".join(lines)
 
 func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,equipped:bool)->void:
 	var button:=Button.new();button.custom_minimum_size.y=TOUCH_TARGET
@@ -3236,7 +3289,9 @@ func _recruitment_reason_summary(assessment:Dictionary)->String:
 		if row is Dictionary:
 			parts.append(str({"SPECIES_AFFINITY":"종족 호감","SPECIES_DISTRUST":"종족 경계",
 				"SPECIES_WARY":"종족 차이","RESCUED":"구조를 기억함",
-				"PERSONAL_AFFECTION":"개인적 감사","SURVIVAL_THREAT":"생존이 절실함"}
+				"PASSED_BY":"첫 만남에 외면함","PERSONAL_AFFECTION":"개인적 감사",
+				"OPEN_PERSONALITY":"개방적 성향","GUARDED_PERSONALITY":"신중한 성향",
+				"PARTY_VACANCY":"파티 여석","SURVIVAL_THREAT":"생존이 절실함"}
 				.get(str(row.get("code","")),row.get("label",""))))
 		if parts.size()>=2:break
 	return " · ".join(parts) if not parts.is_empty() else str(assessment.get("message",""))
@@ -3569,6 +3624,11 @@ func _on_actor(entity_id:int)->void:
 		_product_attack_targeting=false
 		if _submit_product_melee(entity_id,status):return
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("rescue_candidate_ids",[]):
+		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
+		_open_member_detail(entity_id);return
+	if status.view_mode=="EXPLORATION" \
+			and session.has_method("is_opening_recruitment_candidate") \
+			and bool(session.is_opening_recruitment_candidate(entity_id)):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("roster_member_ids",[]) \

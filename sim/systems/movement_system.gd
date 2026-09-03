@@ -65,14 +65,8 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 		if not world.diagonal_step_terrain_allowed(actor.position, destination):
 			base["reason"] = "move_diagonal_flank_blocked"
 			return TraversalAssessmentScript.new(base)
-		for flank in [actor.position + Vector2i(delta.x, 0), actor.position + Vector2i(0, delta.y)]:
-			if not _terrain_passable(flank):
-				continue
-			var flank_blockers := _blockers_at(flank, actor_id, occupancy_projection)
-			if not flank_blockers.is_empty():
-				base["blocking_entity_ids"] = flank_blockers
-				base["reason"] = "move_diagonal_flank_occupied"
-				return TraversalAssessmentScript.new(base)
+		# Only the destination is entered. A person standing on one orthogonal
+		# flank must not become an invisible full-cell corner wall.
 	base["accepted"] = true
 	base["reason"] = "ok"
 	return TraversalAssessmentScript.new(base)

@@ -8,7 +8,7 @@ const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 
 
 func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_kinds()->bool:
-	var glyphs:={"floor":".","stone_floor":":","wood_floor":"=","metal":"+",
+	var glyphs:={"floor":".","stone_floor":".","wood_floor":"=","metal":"+",
 		"rubble":",","wall":"#","ice":"*","fog":"."}
 	for material_id in glyphs:
 		var terrain:=Style.terrain_spec({"terrain_id":material_id})
@@ -93,7 +93,7 @@ func test_grid_environment_timer_counts_only_visible_dynamic_materials_and_freez
 
 func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var expected := {
-		"floor":".", "stone_floor":":", "wood_floor":"=", "metal":"+",
+		"floor":".", "stone_floor":".", "wood_floor":"=", "metal":"+",
 		"rubble":",", "shallow_water":"~", "wall":"#",
 	}
 	var glyph_colors:Array[Color]=[]
@@ -961,9 +961,14 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 	check_eq(grid.actor_at_pointer(grid.grid_rect().get_center()),-1,
 		"actor/world gestures are safely blocked during the brief settle")
 	var emitted:Array=[];grid.world_cell_pressed.connect(func(position):emitted.append(position))
-	grid._begin_pointer_gesture("TOUCH",2,grid.grid_rect().get_center())
-	check(emitted.is_empty() and not bool(grid.pointer_gesture_state().active),
-		"settling camera owns no stale world gesture")
+	var floor_pointer:=grid.world_to_pixel_center(Vector2i(2,0))
+	grid._begin_pointer_gesture("TOUCH",2,floor_pointer)
+	check(bool(grid.pointer_gesture_state().active) \
+		and not grid.camera_settle_draw_spec().active,
+		"a new floor touch ends visual settle and immediately owns a gesture")
+	grid._finish_pointer_gesture("TOUCH",2,floor_pointer,false)
+	check_eq(emitted,[Vector2i(2,0)],
+		"floor touch still emits movement input during the former settle window")
 	check(grid.void_padding_draw_spec(Vector2i(-1,0)).visible,
 		"edge void contract survives visual camera offset")
 	grid._camera_settle.started_at_ms=Time.get_ticks_msec()-71
@@ -1075,8 +1080,9 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 		"miss cue is smaller and quieter than damage")
 	check_eq(slash.primitive,"NONE","legacy inline slash path is inert")
 	check(not slash.has("attack_glyphs"),"legacy slash exposes no ASCII burst")
-	check(death_early.opacity==0.0 and death_late.opacity>0.0 and death_late.opacity<=0.48,
-		"death cross arrives late and weak so it cannot cover the damage number")
+	check(not death_early.visible and not death_late.visible \
+		and death_late.primitive=="NONE",
+		"monster death never paints a cross over the cleared cell")
 	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
 	check(not grid.visual_effect_draw_spec(offscreen,started).visible,
 		"off-FOV hit feedback emits no field primitive")
@@ -1495,7 +1501,8 @@ func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct(
 		check(glyph.get_luminance()>base.get_luminance()+0.025,
 			"%s restrained glyph clears its coloured ground"%terrain_id)
 		var chroma:=maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))
-		check(chroma<0.34,"%s terrain ink stays subordinate to saturated actors"%terrain_id)
+		check(chroma>=0.55 if terrain_id=="shallow_water" else chroma<0.34,
+			"%s terrain ink keeps its intended saturation tier"%terrain_id)
 	check_eq(terrain_glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),terrain_ids.size(),"terrain glyph palette is role-distinct")

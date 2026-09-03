@@ -70,6 +70,11 @@ static func product_dungeon(seed: int) -> Dictionary:
 		DungeonMapScript.DEFAULT_HEIGHT, seed)
 
 
+static func previous_product_dungeon(seed:int)->Dictionary:
+	return DungeonMapScript.generate_previous_product(DungeonMapScript.DEFAULT_WIDTH,
+		DungeonMapScript.DEFAULT_HEIGHT,seed)
+
+
 static func legacy_product_dungeon(seed:int)->Dictionary:
 	return DungeonMapScript.generate_legacy(DungeonMapScript.LEGACY_WIDTH,
 		DungeonMapScript.LEGACY_HEIGHT,seed)

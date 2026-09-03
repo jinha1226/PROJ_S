@@ -244,7 +244,7 @@ func test_batch_start_alive_attackers_finish_and_damage_order_is_stable() -> boo
 	check_eq(damage_events.map(func(e): return e.target_id), [lead_id, threat_id], "damage target/attacker order")
 	return finish()
 
-func test_diagonal_flanks_block_terrain_and_live_occupancy() -> bool:
+func test_diagonal_flanks_block_terrain_but_not_bystanders() -> bool:
 	var wall_sim = Simulator.new(3, 3, 1)
 	wall_sim.world.bootstrap_set_terrain(Vector2i(2, 1), "wall")
 	var wall_actor = wall_sim.world.add_entity("human", "Mover", Vector2i.ONE)
@@ -253,8 +253,8 @@ func test_diagonal_flanks_block_terrain_and_live_occupancy() -> bool:
 	var occupied_sim = Simulator.new(3, 3, 2)
 	var occupied_actor = occupied_sim.world.add_entity("human", "Mover", Vector2i.ONE)
 	var flank = occupied_sim.world.add_entity("human", "Flank", Vector2i(2, 1))
-	check_eq(occupied_sim.assess_move(occupied_actor.id, Vector2i(2, 2)).reason,
-		"move_diagonal_flank_occupied", "living flank blocks diagonal")
+	check(occupied_sim.assess_move(occupied_actor.id, Vector2i(2, 2)).accepted,
+		"living bystander on a flank does not block diagonal movement")
 	check(occupied_sim.world.bootstrap_set_combatant_life_state(flank.id, "DEAD"), "dead flank life fixture")
 	check(occupied_sim.assess_move(occupied_actor.id, Vector2i(2, 2)).accepted, "corpse flank does not block")
 	var session = Session.new(7, 127)
