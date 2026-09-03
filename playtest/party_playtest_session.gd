@@ -1616,6 +1616,8 @@ func _party_observation_context()->Dictionary:
 	visible[_position_key(hero_position)] = true
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
 		hero_position)
+	var visited:Dictionary=(_explored_presentation_cache.get("visited",{}) as Dictionary) \
+		.duplicate(true)
 	var follower_positions := _grouped_follower_display_positions(visible)
 	var ground_items_by_cell:Dictionary={}
 	for ground_row in sim.world.item_state.ground_items.rows:
@@ -1631,7 +1633,8 @@ func _party_observation_context()->Dictionary:
 		followers_by_cell[follower_key].append(member_id)
 	return {"status":status,"progress":progress,"hide_enemies":hide_enemies,
 		"hero_id":int(status.protagonist_id),"hero_position":hero_position,
-		"visible":visible,"explored":explored,"followers_by_cell":followers_by_cell,
+		"visible":visible,"explored":explored,"visited":visited,
+		"followers_by_cell":followers_by_cell,
 		"ground_items_by_cell":ground_items_by_cell}
 
 
@@ -3955,6 +3958,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 	var status: Dictionary = context.status
 	var visible: Dictionary = context.visible
 	var explored: Dictionary = context.explored
+	var visited: Dictionary = context.visited
 	var progress: Dictionary = context.progress
 	var state = sim.world.party_encounter
 	var hero_id := int(status.protagonist_id)
@@ -4011,7 +4015,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
 		"hero_position":status.protagonist_position.duplicate(true),
-		"cells":cells, "visible":visible, "hazards":hazards,
+		"cells":cells, "visible":visible, "visited":visited, "hazards":hazards,
 		"opening_interaction":bool(opening_event_status().get("can_interact",false)),
 		"visible_enemy_keys":visible_enemy_keys}
 

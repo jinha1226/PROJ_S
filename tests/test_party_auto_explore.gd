@@ -170,12 +170,33 @@ func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_ext
 		[false, "auto_explore_modal", 0],
 		"modal/user cancellation is immediate and turn-free")
 
+	# A fully revealed map can still contain safe floor the hero has never
+	# occupied. AUTO now sweeps the nearest such cell instead of confusing
+	# "visible" with "visited" and stopping immediately.
 	var full_visibility = Session.new()
-	var no_frontier: Dictionary = full_visibility.start_auto_explore()
+	var full_snapshot: Dictionary = full_visibility._auto_explore_fog_snapshot()
+	var visited_before: Dictionary = full_snapshot.visited.duplicate(true)
+	var visit_result: Dictionary = full_visibility.start_auto_explore()
+	var visit_target:=Vector2i(int(visit_result.target[0]),int(visit_result.target[1])) \
+		if visit_result.get("target",[]).size()==2 else Vector2i(-1,-1)
+	check(bool(visit_result.get("running",false)) and bool(visit_result.get("advanced",false)) \
+		and not visited_before.has(_key(visit_target)) \
+		and full_visibility.command_journal.size()==1,
+		"fully known map advances toward a safe actually-unvisited cell")
+
+	# The terminal no-frontier state is reserved for a component whose reachable
+	# known floor has all really been visited.
+	var completed_visibility = Session.new()
+	var completed_snapshot: Dictionary = completed_visibility._auto_explore_fog_snapshot()
+	var all_known_visited: Dictionary = {}
+	for known_key in completed_snapshot.cells:
+		all_known_visited[str(known_key)]=true
+	completed_visibility._explored_presentation_cache["visited"]=all_known_visited
+	var no_frontier: Dictionary = completed_visibility.start_auto_explore()
 	check_eq([no_frontier.running, no_frontier.stop_reason,
-		full_visibility.command_journal.size()],
+		completed_visibility.command_journal.size()],
 		[false, "auto_explore_no_frontier", 0],
-		"fully known map stops without inventing a destination")
+		"fully visited map stops without inventing a destination")
 	return finish()
 
 

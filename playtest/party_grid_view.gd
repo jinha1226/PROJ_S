@@ -20,7 +20,7 @@ const RegularFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 const LONG_PRESS_SECONDS := 0.50
 const POINTER_SLOP_PX := 14.0
-const EMULATED_MOUSE_SUPPRESS_MSEC := 300
+const EMULATED_MOUSE_SUPPRESS_MSEC := 1500
 const CAMERA_SETTLE_DURATION_MS := 70
 const TORCH_FLICKER_QUANTUM_MS := 75 # 13.3 Hz: lively at close zoom, frozen when wide.
 const TORCH_ANIMATED_MAX_CELL_COUNT := 17
@@ -1850,12 +1850,15 @@ func _gui_input(event: InputEvent) -> void:
 			_update_pointer_gesture(event.position);accept_event()
 		return
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
-		if Time.get_ticks_msec()<=_suppress_mouse_until_msec:accept_event();return
+		if event.device==InputEvent.DEVICE_ID_EMULATION \
+				or Time.get_ticks_msec()<=_suppress_mouse_until_msec:
+			accept_event();return
 		if event.pressed:_begin_pointer_gesture("MOUSE",-1,event.position)
 		else:_finish_pointer_gesture("MOUSE",-1,event.position,false)
 		accept_event();return
 	if event is InputEventMouseMotion and _pointer_gesture_active and _pointer_gesture_kind=="MOUSE":
-		if Time.get_ticks_msec()<=_suppress_mouse_until_msec:return
+		if event.device==InputEvent.DEVICE_ID_EMULATION \
+				or Time.get_ticks_msec()<=_suppress_mouse_until_msec:return
 		_update_pointer_gesture(event.position);accept_event()
 
 func _begin_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2)->void:

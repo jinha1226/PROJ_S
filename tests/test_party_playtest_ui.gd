@@ -214,8 +214,11 @@ func test_grid_gesture_rejects_wrong_release_cancel_modal_and_emulated_mouse_dup
 	var correct_release:=InputEventScreenTouch.new();correct_release.index=21;correct_release.pressed=false;correct_release.position=pointer
 	sandbox.grid._gui_input(correct_release)
 	check_eq(routed,[destination],"matching release emits the stored target once")
-	var mouse_press:=InputEventMouseButton.new();mouse_press.button_index=MOUSE_BUTTON_LEFT;mouse_press.pressed=true;mouse_press.position=pointer
-	var mouse_release:=InputEventMouseButton.new();mouse_release.button_index=MOUSE_BUTTON_LEFT;mouse_release.pressed=false;mouse_release.position=pointer
+	sandbox.grid._suppress_mouse_until_msec=-1
+	var mouse_press:=InputEventMouseButton.new();mouse_press.device=InputEvent.DEVICE_ID_EMULATION
+	mouse_press.button_index=MOUSE_BUTTON_LEFT;mouse_press.pressed=true;mouse_press.position=pointer
+	var mouse_release:=InputEventMouseButton.new();mouse_release.device=InputEvent.DEVICE_ID_EMULATION
+	mouse_release.button_index=MOUSE_BUTTON_LEFT;mouse_release.pressed=false;mouse_release.position=pointer
 	sandbox.grid._gui_input(mouse_press);sandbox.grid._gui_input(mouse_release)
 	check_eq(routed,[destination],"immediate touch-emulated mouse pair is suppressed")
 	routed.clear();press.index=23;sandbox.grid._gui_input(press)
@@ -1108,16 +1111,16 @@ func test_product_graphics_toggle_exposes_2d_and_2_5d_without_touching_the_run()
 	var flat_mapping:Array=sandbox.grid.mapping_signature()
 	check(sandbox.grid_graphics_mode_button!=null \
 			and sandbox.grid_graphics_mode_button.visible \
-			and sandbox.grid_graphics_mode_button.text=="[2D]",
+			and sandbox.grid_graphics_mode_button.text=="[2D→2.5D]",
 		"product map exposes the current graphics option beside zoom")
 	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))
 	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,13))
 	check(upper.size.is_equal_approx(lower.size),"product defaults to uniform 2D cells")
-	sandbox.grid_graphics_mode_button.pressed.emit()
+	sandbox._activate_product_zoom_control("GraphicsModeToggle")
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
-			and sandbox.grid_graphics_mode_button.text=="[2.5D]",
+			and sandbox.grid_graphics_mode_button.text=="[2.5D→2D]",
 		"one touch selects the optional 2.5D projection")
-	sandbox.grid_graphics_mode_button.pressed.emit()
+	sandbox._activate_product_zoom_control("GraphicsModeToggle")
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
 			and sandbox.grid.mapping_signature()==flat_mapping,
 		"second touch restores exact default 2D camera mapping")

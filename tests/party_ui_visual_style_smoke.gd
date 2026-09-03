@@ -867,6 +867,21 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	var duplicate_release:=InputEventScreenTouch.new();duplicate_release.index=39
 	duplicate_release.pressed=false;duplicate_release.position=duplicate_point
 	root.push_input(duplicate_release,true);await process_frame
+	# The browser may deliver a compatibility mouse pair after the completed
+	# touch. Device provenance, not only a short timer, keeps it from committing a
+	# second authoritative move after a slow Web frame.
+	sandbox._product_ignore_mouse_until_msec=-1
+	var compat_press:=InputEventMouseButton.new();compat_press.device=InputEvent.DEVICE_ID_EMULATION
+	compat_press.button_index=MOUSE_BUTTON_LEFT;compat_press.pressed=true
+	compat_press.position=duplicate_point;root.push_input(compat_press,true);await process_frame
+	var compat_release:=InputEventMouseButton.new();compat_release.device=InputEvent.DEVICE_ID_EMULATION
+	compat_release.button_index=MOUSE_BUTTON_LEFT;compat_release.pressed=false
+	compat_release.position=duplicate_point;root.push_input(compat_release,true);await process_frame
+	var compat_after:Dictionary=session.party_status()
+	_check(Vector2i(int(compat_after.protagonist_position[0]),
+		int(compat_after.protagonist_position[1]))==duplicate_origin+duplicate_direction \
+		and int(compat_after.step_index)==int(duplicate_before.step_index)+1,
+		"%s touch-emulated mouse pair committed a second D-pad step"%viewport_size)
 	var opposite_button:=sandbox.product_direction_buttons.get(-duplicate_direction) as Button
 	await _screen_touch_button(sandbox,opposite_button,40,true)
 	var opposite_after:Dictionary=session.party_status()

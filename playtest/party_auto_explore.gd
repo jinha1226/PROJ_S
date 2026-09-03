@@ -138,6 +138,9 @@ func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 		"sequence":0}]
 	var best: Dictionary = {start_key:[0, 0]}
 	var parents: Dictionary = {}
+	var visited: Dictionary = snapshot.get("visited", {})
+	var use_visited_fallback := snapshot.has("visited")
+	var nearest_unvisited: Dictionary = {}
 	var sequence := 1
 	while not open.is_empty():
 		open.sort_custom(_frontier_open_less)
@@ -153,6 +156,18 @@ func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 					"visibility_state":str(cell.get("visibility_state", "MEMORY")),
 					"path":_frontier_path(start, position, parents),
 					"steps":int(node.steps), "cost":int(node.cost)}
+			# Visibility frontiers remain the first priority. Remember the nearest
+			# reachable safe cell the hero has never actually occupied, then use it
+			# only when this whole known component has no unseen frontier left.
+			if use_visited_fallback and nearest_unvisited.is_empty() \
+					and position != start and not visited.has(_key(position)):
+				var unvisited_cell: Dictionary = cells[_key(position)]
+				nearest_unvisited = {"found":true, "target":position,
+					"visibility_state":str(unvisited_cell.get(
+						"visibility_state", "MEMORY")),
+					"path":_frontier_path(start, position, parents),
+					"steps":int(node.steps), "cost":int(node.cost),
+					"target_kind":"UNVISITED"}
 			for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
 				var next := position + direction
 				if not _known_step_is_safe(position, next, cells):
@@ -170,6 +185,8 @@ func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 					"cost":candidate_cost, "sequence":sequence})
 				sequence += 1
 		open = next_open
+	if not nearest_unvisited.is_empty():
+		return nearest_unvisited
 	return {"found":false, "reason":"auto_explore_no_frontier"}
 
 

@@ -38,6 +38,7 @@ const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
+const PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:=1500
 
 var session
 var grid
@@ -258,6 +259,7 @@ var _party_command_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 var _product_zoom_touch_index:=-1
 var _product_zoom_touch_step:=0
+var _product_zoom_mouse_control:=""
 # Presentation cadence only. Tests may set this to zero; it never participates
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
@@ -422,7 +424,8 @@ func _handle_nearby_npc_touch(event:InputEvent)->bool:
 			_nearby_npc_touch_index=event.index
 			_nearby_npc_touch_control=_nearby_npc_control_at_position(event.position)
 			_nearby_npc_touch_origin=event.position;_nearby_npc_touch_dragged=false
-			_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec() \
+				+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 			_cancel_product_auto_explore("auto_explore_user_command",false)
 			_cancel_route_for_user_interruption()
 			get_viewport().set_input_as_handled();return true
@@ -430,7 +433,8 @@ func _handle_nearby_npc_touch(event:InputEvent)->bool:
 		var activate:=_nearby_npc_touch_control if not _nearby_npc_touch_dragged else ""
 		_nearby_npc_touch_index=-1;_nearby_npc_touch_control=""
 		_nearby_npc_touch_dragged=false
-		_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+		_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec() \
+			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		get_viewport().set_input_as_handled()
 		if not activate.is_empty():_activate_nearby_npc_control(activate)
 		return true
@@ -458,7 +462,8 @@ func _on_nearby_npc_button_gui_input(event:InputEvent,control_name:String)->void
 	# Mouse and touch each own one path. This also drops the compatibility mouse
 	# event browsers synthesize after an already handled ScreenTouch.
 	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
-	if Time.get_ticks_msec()<=_nearby_npc_ignore_mouse_until_msec:
+	if event.device==InputEvent.DEVICE_ID_EMULATION \
+			or Time.get_ticks_msec()<=_nearby_npc_ignore_mouse_until_msec:
 		_nearby_npc_mouse_control="";accept_event();return
 	if event.pressed:
 		_nearby_npc_mouse_control=control_name
@@ -506,7 +511,7 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 				var now_msec:=Time.get_ticks_msec()
 				_product_immediate_touch_indices[event.index]={
 					"control":control_name,"started_at_msec":now_msec}
-				_product_ignore_mouse_until_msec=now_msec+750
+				_product_ignore_mouse_until_msec=now_msec+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 				get_viewport().set_input_as_handled()
 				_activate_product_control(control_name)
 				return true
@@ -516,12 +521,14 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 			_product_touch_index=event.index;_product_touch_control=control_name
 			_product_touch_started_msec=Time.get_ticks_msec()
 			_product_touch_origin=event.position;_product_touch_dragged=false
-			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
+				+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 			get_viewport().set_input_as_handled()
 			return true
 		if _product_immediate_touch_indices.has(event.index):
 			_product_immediate_touch_indices.erase(event.index)
-			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
+				+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 			get_viewport().set_input_as_handled();return true
 		if event.index!=_product_touch_index:return false
 		# ScreenTouch coordinates may be reprojected by stretch mode between the
@@ -530,7 +537,8 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 		var activate_name:=_product_touch_control if not _product_touch_dragged else ""
 		_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 		_product_touch_started_msec=-1
-		_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
+			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		get_viewport().set_input_as_handled()
 		if not activate_name.is_empty():
 			_activate_product_control(activate_name)
@@ -588,7 +596,8 @@ func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
 	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
 	# Web/mobile may synthesize mouse press/release after a handled ScreenTouch.
 	# Ignore that compatibility event so one physical release has one command.
-	if Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
+	if event.device==InputEvent.DEVICE_ID_EMULATION \
+			or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
 		_product_mouse_control="";accept_event();return
 	if event.pressed:
 		if _product_control_activates_on_press(control_name):
@@ -1195,19 +1204,20 @@ func _item_action_button(label:String,node_name:String,callable:Callable)->Butto
 func _build_product_zoom_controls()->void:
 	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
 	grid_zoom_controls.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	grid_zoom_controls.offset_left=-160;grid_zoom_controls.offset_right=-4
+	grid_zoom_controls.offset_left=-180;grid_zoom_controls.offset_right=-4
 	grid_zoom_controls.offset_top=4;grid_zoom_controls.offset_bottom=48
-	grid_zoom_controls.custom_minimum_size=Vector2(156,TOUCH_TARGET)
+	grid_zoom_controls.custom_minimum_size=Vector2(176,TOUCH_TARGET)
 	grid_zoom_controls.add_theme_constant_override("separation",0)
 	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
 	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
-	grid_graphics_mode_button.text="[2D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · ASCII 재질형 2D"
-	grid_graphics_mode_button.custom_minimum_size=Vector2(68,TOUCH_TARGET)
+	grid_graphics_mode_button.text="[2D→2.5D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · ASCII 재질형 2D"
+	grid_graphics_mode_button.custom_minimum_size=Vector2(88,TOUCH_TARGET)
 	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_graphics_mode_button.pressed.connect(_on_product_graphics_mode_toggle)
+	grid_graphics_mode_button.gui_input.connect(
+		_on_product_zoom_button_gui_input.bind("GraphicsModeToggle"))
 	grid_zoom_controls.add_child(grid_graphics_mode_button)
 	AsciiFrameScript.apply_rail_button(grid_graphics_mode_button,AsciiFrameScript.BRASS)
 	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
@@ -1215,7 +1225,8 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	grid_zoom_out_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_zoom_out_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_zoom_out_button.pressed.connect(_on_product_zoom_step.bind(1))
+	grid_zoom_out_button.gui_input.connect(
+		_on_product_zoom_button_gui_input.bind("ProductZoomOut"))
 	grid_zoom_controls.add_child(grid_zoom_out_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_out_button,AsciiFrameScript.CYAN)
 	grid_zoom_in_button=Button.new();grid_zoom_in_button.name="ProductZoomIn"
@@ -1223,7 +1234,8 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_in_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	grid_zoom_in_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_zoom_in_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_zoom_in_button.pressed.connect(_on_product_zoom_step.bind(-1))
+	grid_zoom_in_button.gui_input.connect(
+		_on_product_zoom_button_gui_input.bind("ProductZoomIn"))
 	grid_zoom_controls.add_child(grid_zoom_in_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_in_button,AsciiFrameScript.CYAN)
 
@@ -2845,7 +2857,7 @@ func _consume_product_auto_explore_result(result:Dictionary)->void:
 			"auto_explore_enemy_visible":"적을 발견해 자동 탐험을 멈췄습니다.",
 			"auto_explore_hazard_discovered":"위험 지형을 발견해 자동 탐험을 멈췄습니다.",
 			"auto_explore_interaction_discovered":"새 상호작용을 발견해 자동 탐험을 멈췄습니다.",
-			"auto_explore_no_frontier":"더 탐험할 안전한 지점이 없습니다.",
+			"auto_explore_no_frontier":"도달 가능한 미방문 안전 지점을 모두 탐험했습니다.",
 		}.get(reason,"자동 탐험을 멈췄습니다.")
 		notice_text=action_feedback_text
 		_product_auto_stop_feedback=action_feedback_text
@@ -2975,6 +2987,8 @@ func _on_member_card_gui_input(event:InputEvent,member_id:int,_display_name:Stri
 	if event is InputEventScreenTouch:
 		pressed=event.pressed;native_double=event.double_tap;local_position=event.position
 	elif event is InputEventMouseButton:
+		if event.device==InputEvent.DEVICE_ID_EMULATION:
+			button.accept_event();return
 		pressed=event.pressed and event.button_index==MOUSE_BUTTON_LEFT
 		native_double=event.double_click;local_position=event.position
 	if not pressed:return
@@ -2986,7 +3000,8 @@ func _on_member_card_gui_input(event:InputEvent,member_id:int,_display_name:Stri
 	else:_pending_card_pointer=pointer
 
 func _on_member_card_pressed(member_id:int,display_name:String)->void:
-	if member_id==_direct_card_touch_id and Time.get_ticks_msec()-_direct_card_touch_msec<=100:
+	if member_id==_direct_card_touch_id and Time.get_ticks_msec()-_direct_card_touch_msec \
+			<=PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:
 		_direct_card_touch_id=-1;return
 	var pointer:Dictionary=_pending_card_pointer.duplicate(true) if int(_pending_card_pointer.get("member_id",-1))==member_id else {}
 	_pending_card_pointer.clear()
@@ -3985,7 +4000,7 @@ func _reset_run_ui_transients()->void:
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_touch_started_msec=-1;_product_immediate_touch_indices.clear()
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
-	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
+	_product_zoom_touch_index=-1;_product_zoom_touch_step=0;_product_zoom_mouse_control=""
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
@@ -4906,7 +4921,7 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
 	grid_zoom_in_button.disabled=zoom_index<=0
 	var flat_mode:bool=str(grid.graphics_mode_id())==GridScript.GRAPHICS_MODE_FLAT_2D
-	grid_graphics_mode_button.text="[2D]" if flat_mode else "[2.5D]"
+	grid_graphics_mode_button.text="[2D→2.5D]" if flat_mode else "[2.5D→2D]"
 	grid_graphics_mode_button.tooltip_text="그래픽 모드 · %s · 눌러서 %s로 변경"%[
 		"2D" if flat_mode else "2.5D","2.5D" if flat_mode else "2D"]
 	var out_count:=int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
@@ -4935,6 +4950,8 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 		get_viewport().set_input_as_handled();return true
 	if event.pressed:
 		if not _product_zoom_control_has_point(event.position):return false
+		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
+			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		_product_zoom_touch_index=event.index
 		_product_zoom_touch_step=0 if grid_graphics_mode_button.get_global_rect().has_point(
 			event.position) else (1 if grid_zoom_out_button.get_global_rect().has_point(
@@ -4947,11 +4964,32 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
 		and not matching_button.disabled
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
+	_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
+		+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 	get_viewport().set_input_as_handled()
 	if activate:
-		if step==0:_on_product_graphics_mode_toggle()
-		else:_on_product_zoom_step(step)
+		_activate_product_zoom_control(matching_button.name)
 	return true
+
+func _on_product_zoom_button_gui_input(event:InputEvent,control_name:String)->void:
+	# ScreenTouch is handled above. Only real mouse input enters here, while a
+	# browser's compatibility mouse event is consumed without a second zoom or
+	# graphics-mode toggle.
+	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
+	if event.device==InputEvent.DEVICE_ID_EMULATION \
+			or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
+		_product_zoom_mouse_control="";accept_event();return
+	if event.pressed:
+		_product_zoom_mouse_control=control_name;accept_event();return
+	var activate:=_product_zoom_mouse_control==control_name
+	_product_zoom_mouse_control="";accept_event()
+	if activate:_activate_product_zoom_control(control_name)
+
+func _activate_product_zoom_control(control_name:String)->void:
+	match control_name:
+		"GraphicsModeToggle":_on_product_graphics_mode_toggle()
+		"ProductZoomOut":_on_product_zoom_step(1)
+		"ProductZoomIn":_on_product_zoom_step(-1)
 
 func _on_product_graphics_mode_toggle()->void:
 	if not _is_solo_product_session() or grid==null:return
