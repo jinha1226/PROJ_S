@@ -210,10 +210,13 @@ static func terrain_spec(cell: Dictionary) -> Dictionary:
 	result["glyph_primary"] = registered and bool(visibility.draw_terrain)
 	result["draw_image"] = false
 	result["draw_tile_border"] = false
-	var slab_ratio:Vector2=result.get("slab_ratio",Vector2.ZERO)
-	result["draw_cell_surface"] = registered and slab_ratio.x>0.0 and slab_ratio.y>0.0 \
-		and bool(visibility.draw_terrain)
-	result["background_source"] = "TERRAIN_PROJECTED"
+	# Terrain is ink on one neutral canvas. Material identity comes from glyph,
+	# colour and (for the four live materials) glyph motion, never a coloured
+	# tile/slab hiding behind the character.
+	result["slab_ratio"] = Vector2.ZERO
+	result["raised"] = false
+	result["draw_cell_surface"] = false
+	result["background_source"] = "GLOBAL_CANVAS"
 	result["outline_hex"] = "#020508"
 	result["slab_hex"] = str(result.get("base_hex","#091017"))
 	return result.duplicate(true)

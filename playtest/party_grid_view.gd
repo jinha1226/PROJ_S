@@ -1557,7 +1557,8 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
 			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS) if state=="VISIBLE" else 0.0,
-			"draw_light_pool":state=="VISIBLE","draw_image":false,"texture":null,
+			"draw_light_pool":false,"light_affects_ink":state=="VISIBLE",
+			"draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
 
@@ -1916,28 +1917,16 @@ func _draw() -> void:
 	_ensure_static_projection_cache()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
-	if uses_perspective_projection():
-		# A restrained horizon glow separates the receding floor from the black void.
-		# It is presentation-only and clipped by this Control's existing bounds.
-		var horizon_center:=grid_rect().get_center()+Vector2(0,-grid_rect().size.y*0.12)
-		draw_circle(horizon_center,grid_rect().size.x*0.56,Color("#10192372"))
 	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	draw_set_transform(camera_offset+impact_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
-	_draw_ground_pass("MEMORY")
-	_draw_ground_pass("VISIBLE")
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
+	_draw_wall_connector_pass("MEMORY")
+	_draw_wall_connector_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
 	_draw_material_mark_pass("VISIBLE")
-	_draw_wall_shadow_pass("MEMORY")
-	_draw_wall_shadow_pass("VISIBLE")
-	_draw_wall_pass("MEMORY")
-	_draw_wall_pass("VISIBLE")
-	# Warm light is composited after both ground and wall ink so it remains
-	# visible on neighboring surfaces rather than being painted over.
-	_draw_torch_light_pools()
 	_draw_wall_torches()
 	_draw_ground_features()
 	_draw_ground_marks()
@@ -1956,7 +1945,6 @@ func _draw() -> void:
 		_draw_intent(intent)
 	_draw_actor_selection_overlays()
 	_draw_cursor_preview()
-	_draw_fov_edge_haze()
 	_draw_speech_bubbles()
 	draw_set_transform(Vector2.ZERO)
 	_draw_monster_list()
@@ -2004,9 +1992,6 @@ func _draw_ground_items()->void:
 	var font:Font=BoldFont
 	for spec in ground_item_draw_specs():
 		var center:=Vector2(spec.center);var font_size:=int(spec.font_size)
-		var underlay_color:=_visual_color(str(spec.underlay_hex),float(spec.underlay_opacity))
-		var underlay_radius:=maxf(2.0,float(font_size)*0.48)
-		draw_circle(center+Vector2(0.7,1.0),underlay_radius,underlay_color)
 		_draw_centered_text(font,str(spec.glyph),center+Vector2(0.8,1.0),font_size,
 			Color("#020304c8"))
 		_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
@@ -2117,12 +2102,10 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			var cached:=_cached_static_cell(position)
 			if str(cached.get("visibility_state",""))!=visibility_state:continue
 			var terrain:Dictionary=cached.get("terrain",{})
-			if str(terrain.terrain_id)=="wall":continue
 			var display_terrain:=terrain
 			if visibility_state=="VISIBLE":
 				var motion:=environment_motion_draw_spec(position)
 				if bool(motion.get("visible",false)):
-					_draw_environment_underlay(world_cell_rect(position),display_terrain,motion)
 					# Fire is an overlay on the underlying floor. Only a terrain whose own
 					# material identity matches the motion may move its primary glyph.
 					if str(terrain.get("motion_material",""))==str(motion.material_id):
@@ -2134,6 +2117,43 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 							*float(motion.get("opacity",1.0))
 			_draw_terrain_glyph(world_cell_rect(position),display_terrain,
 				visibility_state,cached.get("light",{}),_cell_is_visually_occupied(position))
+
+func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
+	_ensure_static_projection_cache()
+	var rows:Array[Dictionary]=[]
+	for y in range(visible_cell_count):
+		for x in range(visible_cell_count):
+			var position:=view_origin+Vector2i(x,y)
+			var cached:=_cached_static_cell(position)
+			var terrain:Dictionary=cached.get("terrain",{})
+			if str(cached.get("visibility_state",""))!=visibility_state \
+					or str(terrain.get("terrain_id",""))!="wall":continue
+			for direction_value in [Vector2i.RIGHT,Vector2i.DOWN]:
+				var direction:Vector2i=direction_value
+				var neighbor:Vector2i=position+direction
+				if not view_bounds().has_point(neighbor):continue
+				var neighbor_cached:=_cached_static_cell(neighbor)
+				var neighbor_terrain:Dictionary=neighbor_cached.get("terrain",{})
+				if str(neighbor_cached.get("visibility_state",""))!=visibility_state \
+						or str(neighbor_terrain.get("terrain_id",""))!="wall":continue
+				var start:=world_to_pixel_center(position)
+				var finish:=world_to_pixel_center(neighbor)
+				var color:=_diorama_ink_color(str(terrain.get("glyph_hex","#aeb8c0")),
+					float(terrain.get("opacity",1.0))*0.88,visibility_state,
+					cached.get("light",{}),true)
+				rows.append({"glyph":"#","center":start.lerp(finish,0.5),
+					"from_position":[position.x,position.y],
+					"to_position":[neighbor.x,neighbor.y],
+					"visibility_state":visibility_state,"color":color,
+					"font_size":maxi(8,int(cell_size_px()*0.72)),"fov_safe":true,
+					"changes_mapping":false,"changes_hit_rect":false,
+					"draw_image":false,"draw_surface":false}.duplicate(true))
+	return rows.duplicate(true)
+
+func _draw_wall_connector_pass(visibility_state:String)->void:
+	for spec in wall_connector_draw_specs(visibility_state):
+		_draw_centered_text(BoldFont,str(spec.glyph),Vector2(spec.center),
+			int(spec.font_size),Color(spec.color))
 
 func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)->void:
 	var kind:=str(motion.get("material_id",""));var center:=rect.get_center()
@@ -2247,10 +2267,8 @@ func _draw_wall_torches()->void:
 		var center:Vector2=Vector2(spec.pixel_center)+Vector2(block.get("lift",Vector2.ZERO))*0.55
 		var local_cell:=maxf(8.0,rect.size.x)
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
-		# One ASCII fire glyph, confined to its wall cell. No image/texture primitive.
-		var glow:=Color(TORCH_AMBER_HEX);glow.a=0.12*float(spec.brightness)
-		draw_circle(center+Vector2(0,local_cell*0.10),
-			local_cell*(0.32 if uses_perspective_projection() else 0.18),glow)
+		# One ASCII fire glyph, confined to its wall cell. Light changes ink only;
+		# it never creates a filled glow surface behind the glyph.
 		var shadow:=Color("#1a0b04",0.92)
 		var font_ratio:=0.54 if uses_perspective_projection() else 0.50
 		_draw_centered_text(BoldFont,str(spec.glyph),
@@ -2317,15 +2335,10 @@ func _draw_ground_hazards()->void:
 func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 	var center:=rect.get_center();var cell:=rect.size.x;var phase:=int(spec.get("phase",0))
 	if int(spec.get("wetness",0))>0:
-		var wet:=Color(0.32,0.78,1.0,float(spec.wet_reflection_alpha))
-		draw_colored_polygon(_ellipse_points(center+Vector2(0,cell*0.12),cell*0.41,cell*0.22),wet)
 		var shift:=(float(phase)-1.5)*cell*0.035
-		draw_line(center+Vector2(-cell*0.31,shift),center+Vector2(cell*0.25,shift-cell*0.05),
-			Color(0.65,0.92,1.0,wet.a*1.35),maxf(1.0,cell*0.040),true)
+		_draw_centered_text(RegularFont,"~",center+Vector2(0,shift),
+			maxi(8,int(cell*0.48)),Color(0.65,0.92,1.0,float(spec.wet_reflection_alpha)))
 	if int(spec.get("fire",0))>0:
-		var glow_alpha:=float(spec.fire_glow_alpha)
-		draw_circle(center,cell*0.48,Color(1.0,0.26,0.08,glow_alpha*0.22))
-		draw_circle(center+Vector2(0,cell*0.08),cell*0.29,Color(1.0,0.45,0.13,glow_alpha*0.48))
 		var motion_position:=_array_to_world_position(spec.get("position",[]))
 		var motion:=MaterialGrammar.material_motion_spec(motion_position,"fire","VISIBLE",
 			Time.get_ticks_msec(),_torch_animation_enabled())
@@ -2451,9 +2464,6 @@ func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
 	if not bool(spec.visible):return
 	var center:=rect.get_center();var font:Font=BoldFont
 	var font_size:=maxi(11,int(floor(rect.size.x*0.76)))
-	var halo:=Color(str(spec.get("halo_hex","#05090d")));halo.a=0.72
-	var slab_size:=Vector2(rect.size.x*0.58,rect.size.y*0.66)
-	draw_rect(Rect2(center-slab_size*0.5,slab_size),halo,true)
 	_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:

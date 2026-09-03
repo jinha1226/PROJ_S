@@ -2190,7 +2190,16 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	# unexplained inert control.
 	product_attack_button.disabled=terminal
 	if terminal:_product_attack_targeting=false
-	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 한 칸 접근하거나 공격합니다."
+	var equipment:Dictionary=session.protagonist_equipment() \
+		if session.has_method("protagonist_equipment") else {}
+	var ranged:=int(equipment.get("range_max",1))>1
+	product_attack_button.text="[사격]" if ranged else "[공격]"
+	if ranged:
+		product_attack_button.tooltip_text= \
+			"가장 가까운 보이는 적을 %d–%d칸 거리에서 사격하거나 사거리까지 접근합니다." \
+			%[int(equipment.get("range_min",2)),int(equipment.get("range_max",2))]
+	else:product_attack_button.tooltip_text= \
+		"가장 가까운 보이는 적에게 한 칸 접근하거나 공격합니다."
 	product_pickup_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
 	var ground_items:Array=session.ground_items_at_protagonist() \
 		if session.has_method("ground_items_at_protagonist") else []
@@ -2229,7 +2238,16 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
 		product_auto_button.tooltip_text="안전한 발견 지점까지 자동 탐험"
 	else:
-		product_interact_button.text="[INTERACT]"
+		var reload_weapon:=bool(equipment.get("reload_required",false))
+		product_interact_button.text="[RELOAD]" if reload_weapon else "[INTERACT]"
+		product_interact_button.disabled=(terminal \
+			or not bool(equipment.get("can_reload",false))) if reload_weapon else true
+		if reload_weapon:
+			if bool(equipment.get("loaded",false)):
+				product_interact_button.tooltip_text="쇠뇌가 장전되어 있습니다."
+			else:product_interact_button.tooltip_text= \
+				"쇠뇌를 장전합니다. 볼트 %d개 · %d시간" \
+				%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
 		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
 		product_auto_button.text="[AUTO]"
 		product_auto_button.disabled=terminal or mode!="COMBAT" or selected_member_id==protagonist_id
@@ -2469,6 +2487,17 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	if refresh_after:_request_refresh()
 
 func _on_product_interact()->void:
+	var status:Dictionary=session.party_status()
+	if str(status.get("view_mode",""))=="COMBAT" \
+			and session.has_method("protagonist_equipment"):
+		var equipment:Dictionary=session.protagonist_equipment()
+		if bool(equipment.get("reload_required",false)):
+			var reload_result:Dictionary=session.reload_protagonist_weapon()
+			notice_text="쇠뇌를 재장전했습니다." \
+				if bool(reload_result.get("accepted",false)) \
+				else str(reload_result.get("message","재장전할 수 없습니다."))
+			action_feedback_text=notice_text
+			_sync_product_control_state();_request_refresh();return
 	if not session.has_method("opening_event_status") \
 			or not bool(session.opening_event_status().get("can_interact",false)):
 		return
@@ -2996,8 +3025,13 @@ func _is_healing_item_row(row:Dictionary)->bool:
 func _item_row_text(row:Dictionary)->String:
 	if bool(row.get("empty",false)):return "- 비어 있음 -"
 	var quantity:=int(row.get("quantity",1))
-	return "%s %s%s"%[str(row.get("glyph","*")),str(row.get("label","아이템")),
-		(" ×%d"%quantity) if quantity>1 else ""]
+	var requirement:=str(row.get("requirement_text",""))
+	var requirement_suffix:=""
+	if not requirement.is_empty():
+		requirement_suffix=" · %s%s"%[requirement,
+			" 부족" if not bool(row.get("requirements_met",true)) else ""]
+	return "%s %s%s%s"%[str(row.get("glyph","*")),str(row.get("label","아이템")),
+		(" ×%d"%quantity) if quantity>1 else "",requirement_suffix]
 
 func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,equipped:bool)->void:
 	var button:=Button.new();button.custom_minimum_size.y=TOUCH_TARGET
@@ -3025,6 +3059,10 @@ func _add_inline_item_equip_button(parent:VBoxContainer,row:Dictionary,dto:Dicti
 	var button:=Button.new();button.name="ItemInlineEquip"
 	button.text="[%s]  %s → %s"%[
 		"교체" if occupied else "장착",str(row.get("label","아이템")),slot_label]
+	if not bool(row.get("requirements_met",true)):
+		button.text="[능력 부족]  %s · %s"%[
+			str(row.get("label","아이템")),str(row.get("requirement_text","요구치 확인"))]
+		button.tooltip_text="현재 능력치가 장비 요구치보다 낮습니다."
 	button.custom_minimum_size.y=TOUCH_TARGET
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
 	button.pressed.connect(_on_item_equip_selected)

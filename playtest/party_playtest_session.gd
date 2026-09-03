@@ -1009,6 +1009,17 @@ func _commit_item_time_party_turn(hero_id:int)->Dictionary:
 func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 	if item==null:return {"slot":slot,"equipped":equipped,"empty":true}.duplicate(true)
 	var definition=ItemRegistryScript.definition(item.definition_id)
+	var requirements:Dictionary=definition.requirements.duplicate(true)
+	var stats:=ActorStatRulesScript.baseline_stats()
+	if sim!=null and sim.world!=null and sim.world.party_encounter!=null:
+		stats=ActorStatRulesScript.for_entity(sim.world,
+			int(sim.world.party_encounter.protagonist_id))
+	var requirement_parts:Array[String]=[]
+	for stat_id in ActorStatRulesScript.STAT_IDS:
+		var required:=int(requirements.get(stat_id,0))
+		if required>0:requirement_parts.append("%s %d"%[stat_id,required])
+	var requirements_met:=ActorStatRulesScript.requirements_error(
+		stats,requirements).is_empty()
 	var glyph:="*"
 	match str(definition.category):
 		"WEAPON":glyph=")"
@@ -1020,6 +1031,9 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"label":definition.label,"category":definition.category,"glyph":glyph,
 		"quantity":item.quantity,"rarity":item.rarity,
 		"equip_slots":definition.equip_slots.duplicate(),"placeholder":definition.placeholder,
+		"requirements":requirements,"requirements_met":requirements_met,
+		"requirement_text":" · ".join(requirement_parts),
+		"current_stats":stats.duplicate(true),
 		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)!="NONE",
 		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
 			if str(definition.use_kind)=="HEALING" else 0}.duplicate(true)
@@ -1069,6 +1083,10 @@ func reload_protagonist_weapon()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
+	# The product combat screen may keep a replaceable HOLD placeholder ready for
+	# party planning. Reload is itself the player's explicit choice, so discard
+	# only that placeholder; never overwrite a real staged action.
+	if _protagonist_draft!=null and _protagonist_placeholder:_clear_draft()
 	if _protagonist_draft!=null:return _rejection_dto("turn_draft_active")
 	var before:Dictionary=sim.snapshot()
 	var reload_result:Dictionary=ItemOperationsScript.commit_reload(
@@ -2653,6 +2671,10 @@ func tab_attack_assessment() -> Dictionary:
 			"tab_action":"ENTER_COMBAT","target_id":contact_target,
 			"target_name":_name(contact_target),"destination":[]})
 	if phase == "ENGAGED":
+		var equipment:=protagonist_equipment()
+		var attack_block_reason:=str(equipment.get("attack_block_reason",""))
+		if attack_block_reason in ["reload_required","ammo_empty"]:
+			return _rejection_dto(attack_block_reason)
 		var attack_candidates: Array[int] = []
 		for enemy_id in enemy_ids:
 			var request = RequestScript.new(ActionScript.melee(state.protagonist_id,
@@ -5293,7 +5315,10 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
 			"equipment_slot_occupied":"그 장비 칸은 이미 사용 중입니다. 먼저 장비를 해제하세요.",
 			"two_handed_offhand_conflict":"활과 쇠뇌는 양손을 사용해 방패와 함께 장착할 수 없습니다.",
+			"item_requirements_not_met":"필요 능력치가 부족해 장착할 수 없습니다. 아이템 행의 STR/DEX/INT 요구치를 확인하세요.",
 			"equipped_item_locked":"장착 중인 아이템은 먼저 해제해야 합니다.",
+			"reload_required":"쇠뇌가 장전되지 않았습니다. 전투 조작의 [RELOAD]를 누르세요.",
+			"ammo_empty":"필요한 화살이나 볼트가 없습니다.",
 			"ground_item_missing":"바닥에 더 이상 그 아이템이 없습니다.",
 			"ground_item_not_at_actor":"아이템이 있는 칸으로 이동해야 주울 수 있습니다.",
 			"item_use_unimplemented":"이 아이템의 사용 효과는 아직 준비되지 않았습니다.",

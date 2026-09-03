@@ -78,6 +78,58 @@ func test_item_tab_replaces_equipment_from_an_inline_touch_action()->bool:
 	sandbox.free();return finish()
 
 
+func test_weapon_rows_explain_species_requirements_and_failed_equip()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,"elf")
+	var axe_row:Dictionary={}
+	for row in session.protagonist_inventory().backpack_rows:
+		if str(row.get("definition_id",""))=="WEAPON_HAND_AXE":axe_row=row;break
+	check(not axe_row.is_empty() and not bool(axe_row.requirements_met) \
+		and str(axe_row.requirement_text)=="STR 5" \
+		and int(axe_row.current_stats.STR)==3,
+		"weapon row exposes the exact unmet species requirement")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
+	sandbox._open_hero_detail();sandbox._select_member_detail_tab("ITEM")
+	sandbox._on_item_row_selected("START_HAND_AXE_001","")
+	var inline:=sandbox.member_item_backpack_rows.find_child(
+		"ItemInlineEquip",true,false) as Button
+	check(inline!=null and "능력 부족" in inline.text and "STR 5" in inline.text,
+		"inline weapon action explains why it cannot equip")
+	if inline!=null:inline.pressed.emit()
+	check(str(session.protagonist_equipment().weapon_id)=="SHORT_SWORD" \
+		and "필요 능력치" in sandbox.notice_text,
+		"failed weapon equip preserves equipment and gives a visible reason")
+	sandbox.free();return finish()
+
+
+func test_ranged_combat_controls_expose_shoot_and_crossbow_reload()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(_equip_starter_weapon(session,"CROSSBOW").accepted,
+		"ranged control fixture equips crossbow")
+	check(_enter_solo_combat(session),"ranged control fixture enters combat")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
+	sandbox._sync_product_control_state()
+	check(sandbox.product_attack_button.text=="[사격]" \
+		and sandbox.product_interact_button.text=="[RELOAD]" \
+		and not sandbox.product_interact_button.disabled,
+		"crossbow publishes shoot and enabled reload controls in combat")
+	var before:=session.save_session_json()
+	sandbox._on_product_attack()
+	check_eq(session.save_session_json(),before,
+		"unloaded shoot consumes no action")
+	check("[RELOAD]" in sandbox.notice_text,
+		"unloaded shoot directs the player to the reload control")
+	sandbox._on_product_interact()
+	check(bool(session.protagonist_equipment().loaded),
+		"combat reload control updates authoritative crossbow state")
+	check(sandbox.product_interact_button.disabled,
+		"loaded crossbow disables redundant combat reload")
+	check("재장전" in sandbox.notice_text,
+		"combat reload gives immediate visible feedback")
+	sandbox.free();return finish()
+
+
 func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	check(session.drop_inventory_item("START_POTION_001").accepted,

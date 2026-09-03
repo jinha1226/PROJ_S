@@ -103,9 +103,10 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 		check_eq(spec.glyph,expected[terrain_id],"%s ASCII material glyph"%terrain_id)
 		check(not str(spec.base_hex).is_empty(),"%s has a base color"%terrain_id)
 		check(spec.glyph_primary and spec.registered and not spec.draw_image \
-			and not spec.draw_tile_border,"%s glyph is primary over a code-native projected floor"%terrain_id)
-		check(bool(spec.draw_cell_surface),
-			"%s owns the selected coloured perspective surface"%terrain_id)
+			and not spec.draw_tile_border,"%s glyph is the primary terrain mark"%terrain_id)
+		check(not bool(spec.draw_cell_surface) and spec.slab_ratio==Vector2.ZERO \
+			and str(spec.background_source)=="GLOBAL_CANVAS",
+			"%s is ink on the shared canvas without a tile surface"%terrain_id)
 		var base:=Color(str(spec.base_hex));var glyph:=Color(str(spec.glyph_hex))
 		glyph_colors.append(glyph);glyph_hexes.append(str(spec.glyph_hex))
 		check(glyph.get_luminance()>base.get_luminance()+0.025,
@@ -113,11 +114,9 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	check_eq(glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),expected.size(),"seven terrain roles have distinct glyph colors")
-	for walkable_id in ["floor","stone_floor","wood_floor","metal","rubble","shallow_water"]:
-		check_eq(Style.terrain_spec({"terrain_id":walkable_id}).slab_ratio,Vector2(0.96,0.96),
-			"%s uses the target's .48-to-.48 projected tile footprint"%walkable_id)
-	check(Style.terrain_spec({"terrain_id":"wall"}).slab_ratio!=Vector2.ZERO,
-		"walls retain a structural projected top")
+	for terrain_id in expected:
+		check_eq(Style.terrain_spec({"terrain_id":terrain_id}).slab_ratio,Vector2.ZERO,
+			"%s has no coloured cell footprint"%terrain_id)
 	check(Style.terrain_spec({"terrain_id":"tree"}).glyph.is_empty() \
 		and not Style.terrain_spec({"terrain_id":"tree"}).registered,
 		"unregistered tree terrain is not invented for presentation")
@@ -161,8 +160,8 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 			"registered %s projects its primary glyph"%terrain_ids[index])
 		check(not spec.draw_image and not spec.draw_tile_border,
 			"terrain glyph adds no image, tile card, or input surface")
-		check(bool(spec.draw_cell_surface),
-			"%s emits a coloured projected surface polygon"%terrain_ids[index])
+		check(not bool(spec.draw_cell_surface) and spec.slab_ratio==Vector2.ZERO,
+			"%s emits text only and no coloured surface polygon"%terrain_ids[index])
 	var memory:Dictionary=grid.terrain_glyph_draw_spec(Vector2i(7,0))
 	check(memory.visible and memory.visibility_state=="MEMORY" and memory.opacity<1.0,
 		"memory keeps only a dim static terrain glyph")
@@ -170,6 +169,36 @@ func test_primary_terrain_glyph_projection_is_fov_safe_and_mapping_neutral() -> 
 	check(not unseen.visible and unseen.glyph.is_empty() and unseen.terrain_id.is_empty(),
 		"unseen terrain emits no glyph or terrain identity")
 	check_eq(grid.mapping_signature(),mapping,"glyph projection leaves mapping and hits unchanged")
+	grid.free();return finish()
+
+
+func test_adjacent_walls_gain_midpoint_hashes_without_new_cells_or_fov_leaks()->bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		match cell.position:
+			[1,1],[2,1],[1,2]:cell.terrain_id="wall"
+			[4,1],[5,1]:
+				cell.terrain_id="wall";cell.visibility_state="MEMORY"
+			[2,2]:
+				cell.terrain_id="wall";cell.visibility_state="UNSEEN"
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var mapping:=grid.mapping_signature()
+	var visible:Array=grid.wall_connector_draw_specs("VISIBLE")
+	var memory:Array=grid.wall_connector_draw_specs("MEMORY")
+	check_eq([visible.size(),memory.size()],[2,1],
+		"right/down wall pairs create one midpoint hash without duplicates")
+	for spec in visible+memory:
+		var from:=Vector2i(int(spec.from_position[0]),int(spec.from_position[1]))
+		var to:=Vector2i(int(spec.to_position[0]),int(spec.to_position[1]))
+		check(str(spec.glyph)=="#" and Vector2(spec.center).distance_to(
+			grid.world_to_pixel_center(from).lerp(grid.world_to_pixel_center(to),0.5))<0.01,
+			"connector is a literal # centered between canonical wall cells")
+		check(bool(spec.fov_safe) and not bool(spec.changes_mapping) \
+			and not bool(spec.changes_hit_rect) and not bool(spec.draw_surface),
+			"connector is display-only text")
+	check_eq(grid.mapping_signature(),mapping,
+		"dense wall ink never adds a logical tile or changes hit mapping")
 	grid.free();return finish()
 
 
@@ -287,7 +316,7 @@ func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct(
 	check(not unseen_glyph.visible and str(unseen_glyph.glyph).is_empty(),
 		"unseen terrain emits no glyph")
 	var layers:Array=grid.diorama_layer_order()
-	check(layers.find("GROUND_FEATURES")>layers.find("WALL_TOPS_AND_FACES") \
+	check(layers.find("GROUND_FEATURES")>layers.find("WALL_CONNECTOR_GLYPHS") \
 		and layers.find("GROUND_FEATURES")>layers.find("MATERIAL_MARKS"),
 		"stairs and doors remain above every terrain glyph layer")
 	grid.free();return finish()
@@ -864,7 +893,7 @@ func test_wall_roles_light_bands_and_tile_material_rules_are_quantized() -> bool
 	return finish()
 
 
-func test_fake_depth_specs_raise_walls_and_shadow_actors_without_fov_leaks() -> bool:
+func test_pure_ascii_depth_specs_keep_walls_and_actors_shape_free_without_fov_leaks() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[7,7]:
@@ -887,19 +916,18 @@ func test_fake_depth_specs_raise_walls_and_shadow_actors_without_fov_leaks() -> 
 	var unseen_depth:Dictionary=grid.terrain_depth_draw_spec(Vector2i(9,7))
 	check(not floor_depth.raised and floor_depth.extrusion_px==0.0,
 		"walkable floor stays low and flat")
-	check(wall_depth.raised and wall_depth.extrusion_px>=2.0 \
-		and wall_depth.extrusion_px<=4.0 and wall_depth.shadow_offset.length()>0.0,
-		"wall has a small dark side and directional shadow")
-	check(memory_depth.raised and memory_depth.opacity<wall_depth.opacity,
-		"remembered wall keeps subdued depth")
+	check(not wall_depth.raised and wall_depth.extrusion_px==0.0 \
+		and wall_depth.shadow_offset==Vector2.ZERO,
+		"wall stays a text glyph without a filled side or shadow")
+	check(not memory_depth.raised and memory_depth.opacity<wall_depth.opacity,
+		"remembered wall keeps subdued text ink without depth")
 	check(not unseen_depth.visible and not unseen_depth.raised,
 		"unseen terrain emits no extrusion or shadow")
 	check(not wall_depth.draw_cell_border and not wall_depth.draw_image,
 		"fake depth adds neither cell borders nor images")
 	var actor:Dictionary=grid.actor_glyph_draw_spec(77)
-	check(actor.visible and actor.shadow.visible and actor.shadow.directional \
-		and actor.shadow.radius.x>actor.shadow.radius.y,
-		"world actor carries a compact offset ground shadow")
+	check(actor.visible and not actor.shadow.visible,
+		"world actor is an ASCII glyph without a ground-shape underlay")
 	check(not grid.actor_glyph_draw_spec(88).visible,
 		"remembered actor and its shadow are both FOV-safe")
 	grid.free();return finish()
@@ -1098,8 +1126,8 @@ func test_diorama_hash_marks_and_layer_order_are_fixed_and_detached() -> bool:
 	first.kind="CORRUPTED"
 	check(Diorama.material_mark_spec(Vector2i(5,12),"wood_floor").kind!="CORRUPTED",
 		"material mark specs are detached")
-	var expected_layers := ["VOID","MEMORY_GROUND","VISIBLE_GROUND","MATERIAL_MARKS",
-		"WALL_SHADOWS","WALL_TOPS_AND_FACES","GROUND_FEATURES","VISIBLE_HAZARDS",
+	var expected_layers := ["VOID","MEMORY_TERRAIN_GLYPHS","VISIBLE_TERRAIN_GLYPHS",
+		"WALL_CONNECTOR_GLYPHS","MATERIAL_MARKS","GROUND_FEATURES","VISIBLE_HAZARDS",
 		"GROUND_ROUTES","ACTOR_GROUNDING","ACTORS","INTENTS_AND_SELECTION",
 		"EFFECTS","FOV_EDGE_AND_VIGNETTE"]
 	var layers:Array=Diorama.layer_order()
@@ -1439,8 +1467,9 @@ func test_wide_zoom_freezes_idle_torch_flicker_but_keeps_restrained_light() -> b
 	check(not bool(stats.timer_redraw_enabled) and float(stats.flicker_hz)==0.0,
 		"19+ cell camera does not repaint the full grid for idle flame flicker")
 	check(not torches.is_empty() and torches.all(func(row):return bool(row.visible) \
-		and not bool(row.animated) and bool(row.draw_light_pool)),
-		"wide zoom keeps stable visible torch glyphs and light pools")
+		and not bool(row.animated) and not bool(row.draw_light_pool) \
+		and bool(row.light_affects_ink)),
+		"wide zoom keeps stable torch glyphs and applies light only to ink")
 	var source:=Vector2i(int(torches[0].position[0]),int(torches[0].position[1]))
 	var light:Dictionary=grid.torch_light_draw_spec(source,125)
 	check(bool(light.active) and int(light.radius_cells)==3 \

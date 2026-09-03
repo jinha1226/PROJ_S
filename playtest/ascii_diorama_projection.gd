@@ -12,11 +12,10 @@ const ALL_CARDINALS := NORTH | EAST | SOUTH | WEST
 
 const DRAW_LAYERS := [
 	"VOID",
-	"MEMORY_GROUND",
-	"VISIBLE_GROUND",
+	"MEMORY_TERRAIN_GLYPHS",
+	"VISIBLE_TERRAIN_GLYPHS",
+	"WALL_CONNECTOR_GLYPHS",
 	"MATERIAL_MARKS",
-	"WALL_SHADOWS",
-	"WALL_TOPS_AND_FACES",
 	"GROUND_FEATURES",
 	"VISIBLE_HAZARDS",
 	"GROUND_ROUTES",
@@ -150,8 +149,10 @@ static func terrain_depth_spec(cell:Dictionary,cell_size:float)->Dictionary:
 	var observed:=sanitize_observed_cell(cell)
 	var visibility_state:=str(observed.get("visibility_state","UNSEEN"))
 	var terrain_id:=str(observed.get("terrain_id",""))
-	var raised:=visibility_state!="UNSEEN" and terrain_id=="wall"
-	var extrusion_px:=clampf(cell_size*0.12,2.0,4.0) if raised else 0.0
+	# Kept as a compatibility DTO for callers that inspect projection metadata.
+	# The ASCII renderer never extrudes a wall into a filled face.
+	var raised:=false
+	var extrusion_px:=0.0
 	var opacity:=1.0 if visibility_state=="VISIBLE" else (0.28 \
 		if visibility_state=="MEMORY" else 0.0)
 	return {"visible":visibility_state!="UNSEEN","visibility_state":visibility_state,

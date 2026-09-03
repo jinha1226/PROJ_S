@@ -47,10 +47,10 @@ static func draw_figure(canvas: CanvasItem, font: Font, bounds: Rect2,
 	var outline := _color(str(spec.get("outline_hex", "#0a1016")), opacity)
 	var shadow := _color(str(spec.get("shadow_hex", "#03070b")), opacity*0.72)
 	var life_state := str(spec.get("life_state", "ACTIVE"))
-	if draw_shadow:
+	if draw_shadow and not world_context:
 		_draw_ground_shadow(canvas,bounds,shadow,life_state,world_context)
 	var glyph_layout := glyph_layout_spec(font,bounds,spec,world_context)
-	_draw_glyph_underlay(canvas,glyph_layout,spec,opacity)
+	if not world_context:_draw_glyph_underlay(canvas,glyph_layout,spec,opacity)
 	_draw_weighted_glyph(canvas,font,str(spec.get("glyph","?")),glyph_layout.center,
 		int(glyph_layout.font_size),outline,main_color,world_context,
 		int(spec.get("glyph_outline_passes",4)),int(spec.get("glyph_weight_passes",2)))
@@ -75,7 +75,7 @@ static func shadow_draw_spec(bounds:Rect2,spec:Dictionary,
 	var width_ratio:=0.82 if life_state=="DOWNED" else 0.58
 	var radius:=Vector2(maxf(2.0,bounds.size.x*width_ratio*0.5),
 		maxf(1.2,bounds.size.y*0.075))
-	return {"visible":opacity>0.0,"center":center,"radius":radius,
+	return {"visible":opacity>0.0 and not world_context,"center":center,"radius":radius,
 		"color_hex":str(spec.get("shadow_hex","#03070b")),"opacity":opacity*0.72,
 		"directional":world_context and life_state!="DEAD",
 		"directional_offset":Vector2(bounds.size.x*0.18,bounds.size.y*0.1196),
