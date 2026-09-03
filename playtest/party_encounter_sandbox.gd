@@ -1,9 +1,9 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 50
+const EXPLORATION_ACTOR_MOTION_MSEC := 100
 const CONTINUOUS_EXPLORATION_MOTION_MSEC := 160
-const MANUAL_CAMERA_SETTLE_MSEC := 50
+const MANUAL_CAMERA_SETTLE_MSEC := 100
 # Web canonical hops commonly finish around 105-120ms. Keep continuous motion
 # alive beyond that interval so the next hop retargets the current draw position
 # instead of visibly stopping on every cell.
@@ -122,6 +122,7 @@ var selected_tile_inspection:Dictionary={}
 var tile_popover:PanelContainer
 var tile_popover_label:Label
 var nearby_npc_panel:PanelContainer
+var nearby_npc_content:VBoxContainer
 var nearby_npc_name:Label
 var nearby_npc_condition:Label
 var nearby_npc_personality:Label
@@ -131,8 +132,17 @@ var nearby_npc_recruitment:Label
 var nearby_npc_detail_button:Button
 var nearby_npc_action_button:Button
 var nearby_npc_attack_button:Button
+var nearby_npc_toggle_button:Button
 var nearby_npc_entity_id:int=-1
+var nearby_npc_last_entity_id:int=-1
 var nearby_npc_story_state:=""
+var nearby_npc_collapsed:=false
+var _nearby_npc_touch_index:=-1
+var _nearby_npc_touch_control:=""
+var _nearby_npc_touch_origin:=Vector2.ZERO
+var _nearby_npc_touch_dragged:=false
+var _nearby_npc_mouse_control:=""
+var _nearby_npc_ignore_mouse_until_msec:=-1
 var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
@@ -273,6 +283,10 @@ func _process(_delta:float)->void:
 
 func _input(event:InputEvent)->void:
 	if _handle_product_zoom_touch(event):return
+	# The nearby-NPC card is a child of the map. Claim its touch before the map's
+	# floor gesture sees it, otherwise its ordinary Buttons never receive mobile
+	# taps and the same tap may issue a movement command behind the card.
+	if _handle_nearby_npc_touch(event):return
 	# Manual screen input wins the scheduling tie even when a pass-through UI
 	# container receives the GUI event before PartyGrid. Do not consume the event:
 	# the grid still owns tap/drag semantics, while the active route is cancelled
@@ -313,10 +327,10 @@ func _input(event:InputEvent)->void:
 func _handle_item_ledger_touch(event:InputEvent)->void:
 	if event is InputEventScreenTouch:
 		if event.pressed and _item_touch_index<0:
-			var action:=_item_action_at_position(event.position)
-			if not action.is_empty():
-				_item_touch_index=event.index;_item_touch_action=action
-				_item_touch_id="";_item_touch_slot="";_item_touch_origin=event.position
+			var action_info:=_item_action_at_position(event.position)
+			if not action_info.is_empty():
+				_item_touch_index=event.index;_item_touch_action=str(action_info.get("action",""))
+				_item_touch_id="";_item_touch_slot=str(action_info.get("slot",""));_item_touch_origin=event.position
 				_item_touch_dragged=false;get_viewport().set_input_as_handled();return
 			var row:=_item_row_at_position(event.position)
 			if row.is_empty():return
@@ -329,7 +343,7 @@ func _handle_item_ledger_touch(event:InputEvent)->void:
 			var activate_action:=_item_touch_action if not _item_touch_dragged else ""
 			_item_touch_index=-1;_item_touch_id="";_item_touch_slot=""
 			_item_touch_action="";_item_touch_dragged=false;get_viewport().set_input_as_handled()
-			if not activate_action.is_empty():_activate_item_touch_action(activate_action)
+			if not activate_action.is_empty():_activate_item_touch_action(activate_action,activate_slot)
 			elif not activate_id.is_empty():_on_item_row_selected(activate_id,activate_slot)
 	elif event is InputEventScreenDrag and event.index==_item_touch_index:
 		if event.position.distance_to(_item_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
@@ -337,31 +351,98 @@ func _handle_item_ledger_touch(event:InputEvent)->void:
 		member_detail_scroll.scroll_vertical-=int(event.relative.y)
 		get_viewport().set_input_as_handled()
 
-func _item_action_at_position(global_position:Vector2)->String:
+func _item_action_at_position(global_position:Vector2)->Dictionary:
 	var buttons:Array=[
-		[member_item_reload_button,"RELOAD"],
-		[member_item_quick_unequip_button,"UNEQUIP"],
-		[member_item_equip_button,"EQUIP"],
-		[member_item_unequip_button,"UNEQUIP"],
-		[member_item_use_button,"USE"],
-		[member_item_drop_button,"DROP"],
+		[member_item_reload_button,"RELOAD",""],
+		[member_item_quick_unequip_button,"UNEQUIP",member_item_selected_slot],
+		[member_item_equip_button,"EQUIP",""],
+		[member_item_unequip_button,"UNEQUIP",member_item_selected_slot],
+		[member_item_use_button,"USE",""],
+		[member_item_drop_button,"DROP",""],
 	]
 	var inline:=member_item_backpack_rows.find_child("ItemInlineEquip",true,false) \
 		if member_item_backpack_rows!=null else null
-	if inline!=null:buttons.push_front([inline,"EQUIP"])
+	if inline!=null:buttons.push_front([inline,"EQUIP",""])
+	if member_item_equipment_rows!=null:
+		for unequip_value in member_item_equipment_rows.find_children(
+				"ItemInlineUnequip","Button",true,false):
+			var unequip:=unequip_value as Button
+			buttons.push_front([unequip,"UNEQUIP",str(unequip.get_meta("item_slot",""))])
 	for entry in buttons:
 		var button:=entry[0] as Button
 		if button!=null and button.is_visible_in_tree() and not button.disabled \
-				and button.get_global_rect().has_point(global_position):return str(entry[1])
-	return ""
+				and button.get_global_rect().has_point(global_position):
+			return {"action":str(entry[1]),"slot":str(entry[2])}
+	return {}
 
-func _activate_item_touch_action(action:String)->void:
+func _activate_item_touch_action(action:String,slot:String="")->void:
 	match action:
 		"RELOAD":_on_item_reload()
 		"EQUIP":_on_item_equip_selected()
-		"UNEQUIP":_on_item_unequip_selected()
+		"UNEQUIP":_on_item_unequip_slot(slot if not slot.is_empty() else member_item_selected_slot)
 		"USE":_on_item_use_selected()
 		"DROP":_on_item_drop_selected()
+
+func _handle_nearby_npc_touch(event:InputEvent)->bool:
+	if nearby_npc_panel==null:return false
+	if not nearby_npc_panel.is_visible_in_tree() and _nearby_npc_touch_index<0:return false
+	if member_detail_modal!=null and member_detail_modal.visible \
+			or record_modal!=null and record_modal.visible \
+			or map_overlay!=null and map_overlay.visible:return false
+	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if _nearby_npc_touch_index>=0 \
+					or not nearby_npc_panel.get_global_rect().has_point(event.position):return false
+			_nearby_npc_touch_index=event.index
+			_nearby_npc_touch_control=_nearby_npc_control_at_position(event.position)
+			_nearby_npc_touch_origin=event.position;_nearby_npc_touch_dragged=false
+			_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			_cancel_product_auto_explore("auto_explore_user_command",false)
+			_cancel_route_for_user_interruption()
+			get_viewport().set_input_as_handled();return true
+		if event.index!=_nearby_npc_touch_index:return false
+		var activate:=_nearby_npc_touch_control if not _nearby_npc_touch_dragged else ""
+		_nearby_npc_touch_index=-1;_nearby_npc_touch_control=""
+		_nearby_npc_touch_dragged=false
+		_nearby_npc_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+		get_viewport().set_input_as_handled()
+		if not activate.is_empty():_activate_nearby_npc_control(activate)
+		return true
+	if event.index==_nearby_npc_touch_index:
+		if event.position.distance_to(_nearby_npc_touch_origin)>=8.0:
+			_nearby_npc_touch_dragged=true
+		get_viewport().set_input_as_handled();return true
+	return false
+
+func _nearby_npc_control_at_position(global_position:Vector2)->String:
+	for button in [nearby_npc_toggle_button,nearby_npc_detail_button,
+			nearby_npc_action_button,nearby_npc_attack_button]:
+		if button!=null and button.is_visible_in_tree() and not button.disabled \
+				and button.get_global_rect().has_point(global_position):return button.name
+	return ""
+
+func _activate_nearby_npc_control(control_name:String)->void:
+	match control_name:
+		"NearbyNpcToggle":_on_nearby_npc_toggle()
+		"NearbyNpcDetail":_on_nearby_npc_detail()
+		"NearbyNpcRecruit":_on_nearby_npc_action()
+		"NearbyNpcAttack":_on_nearby_npc_attack()
+
+func _on_nearby_npc_button_gui_input(event:InputEvent,control_name:String)->void:
+	# Mouse and touch each own one path. This also drops the compatibility mouse
+	# event browsers synthesize after an already handled ScreenTouch.
+	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
+	if Time.get_ticks_msec()<=_nearby_npc_ignore_mouse_until_msec:
+		_nearby_npc_mouse_control="";accept_event();return
+	if event.pressed:
+		_nearby_npc_mouse_control=control_name
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		_cancel_route_for_user_interruption()
+		accept_event();return
+	var activate:=_nearby_npc_mouse_control==control_name
+	_nearby_npc_mouse_control="";accept_event()
+	if activate:_activate_nearby_npc_control(control_name)
 
 func _item_row_at_position(global_position:Vector2)->Dictionary:
 	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
@@ -395,9 +476,10 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 			_product_touch_origin=event.position;_product_touch_dragged=false
 			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
 			get_viewport().set_input_as_handled()
-			# Combat feedback should begin under the finger, not after the full
-			# press/release cycle. Keep movement and navigation drag-cancellable.
-			if control_name=="ProductAttack":
+			# Primary play controls begin under the finger. Waiting for release
+			# added the user's hold duration plus a frame before every step. Menu
+			# and modal controls retain release/cancel semantics.
+			if _product_control_activates_on_press(control_name):
 				_product_touch_control="";_activate_product_control(control_name)
 			return true
 		if event.index!=_product_touch_index:return false
@@ -415,6 +497,10 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 		if event.position.distance_to(_product_touch_origin)>=8.0:_product_touch_dragged=true
 		get_viewport().set_input_as_handled();return true
 	return false
+
+func _product_control_activates_on_press(control_name:String)->bool:
+	return control_name=="ProductAttack" or control_name=="ProductWaitCenter" \
+		or control_name.begins_with("ProductMove")
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
@@ -463,6 +549,9 @@ func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
 	if Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
 		_product_mouse_control="";accept_event();return
 	if event.pressed:
+		if _product_control_activates_on_press(control_name):
+			_product_mouse_control="";accept_event()
+			_activate_product_control(control_name);return
 		_product_mouse_control=control_name
 		accept_event();return
 	var activate:=_product_mouse_control==control_name
@@ -1076,43 +1165,58 @@ func _build_nearby_npc_card()->void:
 	nearby_npc_panel.add_child(frame)
 	var stack:=VBoxContainer.new();stack.name="NearbyNpcStack"
 	stack.add_theme_constant_override("separation",2);frame.add_child(stack)
+	var identity:=HBoxContainer.new();identity.name="NearbyNpcIdentity"
+	identity.add_theme_constant_override("separation",4);stack.add_child(identity)
 	nearby_npc_name=_card_label("","NearbyNpcName",FONT_SECTION)
 	nearby_npc_name.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
 	nearby_npc_name.add_theme_color_override("font_color",AsciiFrameScript.INK)
-	stack.add_child(nearby_npc_name)
+	nearby_npc_name.size_flags_horizontal=Control.SIZE_EXPAND_FILL;identity.add_child(nearby_npc_name)
+	nearby_npc_toggle_button=Button.new();nearby_npc_toggle_button.name="NearbyNpcToggle"
+	nearby_npc_toggle_button.text="[-]";nearby_npc_toggle_button.tooltip_text="가까운 인물 정보 접기"
+	nearby_npc_toggle_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	nearby_npc_toggle_button.focus_mode=Control.FOCUS_NONE
+	nearby_npc_toggle_button.gui_input.connect(
+		_on_nearby_npc_button_gui_input.bind(nearby_npc_toggle_button.name))
+	identity.add_child(nearby_npc_toggle_button)
+	AsciiFrameScript.apply_rail_button(nearby_npc_toggle_button,AsciiFrameScript.CYAN)
+	nearby_npc_content=VBoxContainer.new();nearby_npc_content.name="NearbyNpcContent"
+	nearby_npc_content.add_theme_constant_override("separation",2);stack.add_child(nearby_npc_content)
 	nearby_npc_condition=_card_label("","NearbyNpcCondition",FONT_CAPTION)
 	nearby_npc_condition.add_theme_color_override("font_color",AsciiFrameScript.MUTED)
-	stack.add_child(nearby_npc_condition)
+	nearby_npc_content.add_child(nearby_npc_condition)
 	nearby_npc_personality=_card_label("","NearbyNpcPersonality",FONT_AUX)
 	nearby_npc_personality.clip_text=true
 	nearby_npc_personality.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	stack.add_child(nearby_npc_personality)
+	nearby_npc_content.add_child(nearby_npc_personality)
 	nearby_npc_affinity=_card_label("","NearbyNpcAffinity",FONT_AUX)
-	stack.add_child(nearby_npc_affinity)
+	nearby_npc_content.add_child(nearby_npc_affinity)
 	nearby_npc_equipment=_card_label("","NearbyNpcEquipment",FONT_AUX)
 	nearby_npc_equipment.clip_text=true
 	nearby_npc_equipment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	stack.add_child(nearby_npc_equipment)
+	nearby_npc_content.add_child(nearby_npc_equipment)
 	nearby_npc_recruitment=_card_label("","NearbyNpcRecruitment",FONT_CAPTION)
 	nearby_npc_recruitment.clip_text=true
 	nearby_npc_recruitment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	stack.add_child(nearby_npc_recruitment)
+	nearby_npc_content.add_child(nearby_npc_recruitment)
 	var actions:=HBoxContainer.new();actions.name="NearbyNpcActions"
-	actions.add_theme_constant_override("separation",4);stack.add_child(actions)
+	actions.add_theme_constant_override("separation",4);nearby_npc_content.add_child(actions)
 	nearby_npc_detail_button=Button.new();nearby_npc_detail_button.name="NearbyNpcDetail"
 	nearby_npc_detail_button.text="[상세]";nearby_npc_detail_button.custom_minimum_size.y=TOUCH_TARGET
 	nearby_npc_detail_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	nearby_npc_detail_button.pressed.connect(_on_nearby_npc_detail);actions.add_child(nearby_npc_detail_button)
+	nearby_npc_detail_button.gui_input.connect(
+		_on_nearby_npc_button_gui_input.bind(nearby_npc_detail_button.name));actions.add_child(nearby_npc_detail_button)
 	AsciiFrameScript.apply_rail_button(nearby_npc_detail_button,AsciiFrameScript.CYAN)
 	nearby_npc_action_button=Button.new();nearby_npc_action_button.name="NearbyNpcRecruit"
 	nearby_npc_action_button.custom_minimum_size.y=TOUCH_TARGET
 	nearby_npc_action_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	nearby_npc_action_button.pressed.connect(_on_nearby_npc_action);actions.add_child(nearby_npc_action_button)
+	nearby_npc_action_button.gui_input.connect(
+		_on_nearby_npc_button_gui_input.bind(nearby_npc_action_button.name));actions.add_child(nearby_npc_action_button)
 	AsciiFrameScript.apply_rail_button(nearby_npc_action_button,AsciiFrameScript.JADE)
 	nearby_npc_attack_button=Button.new();nearby_npc_attack_button.name="NearbyNpcAttack"
 	nearby_npc_attack_button.text="[공격]";nearby_npc_attack_button.custom_minimum_size.y=TOUCH_TARGET
 	nearby_npc_attack_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	nearby_npc_attack_button.pressed.connect(_on_nearby_npc_attack);actions.add_child(nearby_npc_attack_button)
+	nearby_npc_attack_button.gui_input.connect(
+		_on_nearby_npc_button_gui_input.bind(nearby_npc_attack_button.name));actions.add_child(nearby_npc_attack_button)
 	AsciiFrameScript.apply_rail_button(nearby_npc_attack_button,AsciiFrameScript.DANGER,false,true)
 
 func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
@@ -1149,6 +1253,9 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 	var detail:Dictionary=session.inspect_party_member(int(best_actor.entity_id))
 	if not bool(detail.get("accepted",false)):return
 	nearby_npc_entity_id=int(best_actor.entity_id)
+	if nearby_npc_last_entity_id!=nearby_npc_entity_id:
+		nearby_npc_collapsed=false
+		nearby_npc_last_entity_id=nearby_npc_entity_id
 	nearby_npc_story_state=str(detail.get("rescue_story_state",""))
 	nearby_npc_name.text="%s  %d/%d"%[str(detail.get("display_name","NPC")),
 		int(detail.get("health",0)),int(detail.get("max_health",0))]
@@ -1202,7 +1309,20 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 			nearby_npc_action_button.text="[동행 수락]" if volunteers else "[영입 권유]"
 			nearby_npc_action_button.disabled=false
 		nearby_npc_action_button.tooltip_text=_recruitment_reason_summary(recruitment)
+	nearby_npc_content.visible=not nearby_npc_collapsed
+	nearby_npc_toggle_button.text="[+]" if nearby_npc_collapsed else "[-]"
+	nearby_npc_toggle_button.tooltip_text="가까운 인물 정보 펼치기" \
+		if nearby_npc_collapsed else "가까운 인물 정보 접기"
 	nearby_npc_panel.visible=true
+	nearby_npc_panel.call_deferred("reset_size")
+
+func _on_nearby_npc_toggle()->void:
+	nearby_npc_collapsed=not nearby_npc_collapsed
+	nearby_npc_content.visible=not nearby_npc_collapsed
+	nearby_npc_toggle_button.text="[+]" if nearby_npc_collapsed else "[-]"
+	nearby_npc_toggle_button.tooltip_text="가까운 인물 정보 펼치기" \
+		if nearby_npc_collapsed else "가까운 인물 정보 접기"
+	nearby_npc_panel.reset_size()
 
 func _on_nearby_npc_detail()->void:
 	if nearby_npc_entity_id>0:_open_member_detail(nearby_npc_entity_id)
@@ -1303,7 +1423,7 @@ func _refresh()->void:
 		and not _is_solo_product_session() else []
 	_sync_product_zoom_controls(product_hud)
 	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,not product_hud)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -1312,7 +1432,7 @@ func _refresh()->void:
 	var intent_overlays:Array=session.turn_intent_overlays() \
 		if combat_active and not run_complete and not direct_solo_combat else []
 	grid.set_observation(observation,ghosts)
-	minimap.set_observation(ui_observation.get("minimap",{}))
+	if not product_hud:minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_nearby_npc_card(observation,status,product_hud)
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
@@ -1421,10 +1541,9 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	var party_rows:Array=session.party_cards()
 	var observe_started:=Time.get_ticks_usec()
 	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,false)
 	var observe_finished:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,true)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
@@ -1481,15 +1600,16 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var started_usec:=Time.get_ticks_usec()
 	var observe_started_usec:=Time.get_ticks_usec()
 	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
+	var product_hud:=_is_solo_product_session()
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,not product_hud)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	minimap.set_observation(ui_observation.get("minimap",{}))
+	if not product_hud:minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
-		_is_solo_product_session())
+		product_hud)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	if _is_solo_product_session():
+	if product_hud:
 		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
 			CONTINUOUS_CAMERA_SETTLE_MSEC if continuous_motion \
 			else MANUAL_CAMERA_SETTLE_MSEC)
@@ -1511,7 +1631,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	_update_recent_event(combat_history,status)
-	if _is_solo_product_session():
+	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
 		if not _product_auto_stop_feedback.is_empty():
 			event_label.text=_product_auto_stop_feedback
@@ -2560,7 +2680,11 @@ func _on_product_attack()->void:
 				_show_product_command_feedback("적에게 다가갈 길이 없습니다.");return
 			var destination:=Vector2i(int(destination_value[0]),int(destination_value[1]))
 			if str(status.get("view_mode",""))=="EXPLORATION":
-				_on_cell(destination)
+				# Tab already resolved this to one adjacent step. Going through the
+				# arbitrary map-cell route path previewed the same move twice.
+				var origin:=Vector2i(int(status.protagonist_position[0]),
+					int(status.protagonist_position[1]))
+				_on_explore(destination-origin)
 			elif str(status.get("view_mode",""))=="COMBAT":
 				_stage_auto_combat_action("MOVE",[destination.x,destination.y])
 			else:_show_product_command_feedback("지금은 적에게 다가갈 수 없습니다.")
@@ -3261,6 +3385,9 @@ func _update_item_inventory_ledger()->void:
 		var slot:=str(row.get("slot",""))
 		_add_item_ledger_button(member_item_equipment_rows,row,
 			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
+		if not bool(row.get("empty",false)):
+			_add_inline_item_unequip_button(member_item_equipment_rows,row,
+				str(slot_labels.get(slot,slot)))
 	var backpack:Array=dto.get("backpack_rows",[])
 	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),int(dto.get("capacity",12))]
 	for index in range(12):
@@ -3384,6 +3511,17 @@ func _add_inline_item_equip_button(parent:VBoxContainer,row:Dictionary,dto:Dicti
 	button.pressed.connect(_on_item_equip_selected)
 	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,true)
 
+func _add_inline_item_unequip_button(parent:VBoxContainer,row:Dictionary,slot_label:String)->void:
+	var slot:=str(row.get("slot",""))
+	if slot.is_empty():return
+	var button:=Button.new();button.name="ItemInlineUnequip"
+	button.text="[해제]  %s · %s"%[slot_label,str(row.get("label","장비"))]
+	button.custom_minimum_size.y=TOUCH_TARGET
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
+	button.set_meta("item_slot",slot)
+	button.pressed.connect(_on_item_unequip_slot.bind(slot))
+	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS,true)
+
 func _on_item_row_selected(instance_id:String,slot:String)->void:
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
 	_update_item_inventory_ledger();_reflow_member_detail_scroll()
@@ -3412,7 +3550,18 @@ func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
 	return ""
 
 func _on_item_unequip_selected()->void:
-	_on_item_operation_result(session.unequip_inventory_slot(member_item_selected_slot))
+	var slot:=member_item_selected_slot
+	if slot.is_empty() and not member_item_selected_id.is_empty():
+		for row in session.protagonist_inventory().get("equipment_slots",[]):
+			if str(row.get("instance_id",""))==member_item_selected_id:
+				slot=str(row.get("slot",""));break
+	_on_item_unequip_slot(slot)
+
+func _on_item_unequip_slot(slot:String)->void:
+	if slot.is_empty():
+		notice_text="해제할 장비 슬롯을 선택하세요."
+		action_feedback_text=notice_text;_request_refresh();return
+	_on_item_operation_result(session.unequip_inventory_slot(slot))
 
 func _on_item_drop_selected()->void:
 	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
@@ -3606,7 +3755,13 @@ func _measure_member_detail_body()->void:
 	member_detail_body.custom_minimum_size.y=maxf(line_height,float(member_detail_body.get_line_count())*line_height+8.0)
 func _on_explore(direction:Vector2i)->void:
 	var result:Dictionary=session.commit_exploration_direction(direction)
-	_record_result(result,true);_request_refresh()
+	_record_result(result,true)
+	var status:Dictionary=session.party_status()
+	# The product D-pad is a one-step hot path. Its shell already exists, so
+	# rebuilding every card, dock and navigation button adds a visible dead frame.
+	if _is_solo_product_session() and str(status.get("view_mode",""))=="EXPLORATION":
+		_refresh_continuous_exploration_surface(status)
+	else:_request_refresh()
 func _on_restart_same_run()->void:
 	if session==null or not session.has_method("restart_same_run"):
 		notice_text="이 원정을 다시 시작할 수 없습니다.";_request_refresh();return
@@ -4425,12 +4580,12 @@ func _combat_log_text(history:Dictionary)->String:
 	return "\n".join(lines)
 
 func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
-	var damage_lines:Array[String]=[];var other_lines:Array[String]=[]
 	var groups:Variant=history.get("groups",[])
 	if groups is Array:
 		for group_index in range(groups.size()-1,-1,-1):
 			var group:Variant=groups[group_index]
 			if not group is Dictionary:continue
+			var damage_lines:Array[String]=[];var other_lines:Array[String]=[]
 			var rows:Variant=group.get("rows",[])
 			if not rows is Array:continue
 			for row_index in range(rows.size()-1,-1,-1):
@@ -4442,13 +4597,16 @@ func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->Stri
 						and str(row.get("type","")).ends_with("_damage"):
 					damage_lines.append(message)
 				else:other_lines.append(message)
-	# Two-line mobile feed prioritizes resolved damage over action declarations,
-	# so a hero hit and enemy counter-hit cannot be displaced by their MELEE rows.
-	var lines:Array[String]=damage_lines.slice(0,mini(2,damage_lines.size()))
-	for message in other_lines:
-		if lines.size()>=2:break
-		lines.append(message)
-	return "\n".join(lines)
+			if damage_lines.is_empty() and other_lines.is_empty():continue
+			# Damage wins only inside the newest meaningful turn. Older combat
+			# damage must never pin the compact feed while newer loot/level/world
+			# events are already visible in the full record.
+			var lines:Array[String]=damage_lines.slice(0,mini(2,damage_lines.size()))
+			for message in other_lines:
+				if lines.size()>=2:break
+				lines.append(message)
+			return "\n".join(lines)
+	return ""
 
 func _full_meaningful_record_text(history:Dictionary)->String:
 	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
@@ -4626,9 +4784,8 @@ func _apply_product_zoom_surface()->void:
 	# Zoom is a pure camera projection change. It deliberately bypasses `_refresh`,
 	# whose phase orchestration may own canonical work, and leaves AUTO/routes intact.
 	grid.cancel_pointer_gesture()
-	var ui_observation:Dictionary=session.observe_party_ui(_product_zoom_cell_count)
+	var ui_observation:Dictionary=session.observe_party_ui(_product_zoom_cell_count,false)
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	minimap.set_observation(ui_observation.get("minimap",{}))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	grid.set_hero_centered_view(hero_position,_product_zoom_cell_count,

@@ -142,6 +142,12 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox._compact_meaningful_event_text({"groups":[]},{"safe_phase":"ENGAGED"}).is_empty() \
 		and sandbox._compact_meaningful_event_text({"groups":[]},{"safe_phase":"GROUPED"}).is_empty(),
 		"%s empty event history synthesized product-log filler"%viewport_size)
+	var compact_history:Dictionary={"groups":[
+		{"rows":[{"type":"combat.physical_damage","message":"오래된 피해"}]},
+		{"rows":[{"type":"item.pickup","message":"새 아이템을 주웠다."}]}
+	]}
+	_check(sandbox._compact_meaningful_event_text(compact_history,{})=="새 아이템을 주웠다.",
+		"%s compact event feed stayed pinned to older combat damage"%viewport_size)
 	var visible_product_nodes:Array=[sandbox.cards,sandbox.grid,sandbox.event_surface]
 	if sandbox.combat_action_area.visible:visible_product_nodes.append(sandbox.combat_action_area)
 	visible_product_nodes.append(sandbox.bottom_navigation)
@@ -358,6 +364,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s closing item modal did not restore the same map zoom"%viewport_size)
 	sandbox.queue_free();await process_frame
 	await _check_item_equipment_touch(viewport_size)
+	await _check_nearby_npc_card_touch(viewport_size)
 	await _check_product_direction_touch(viewport_size)
 	await _check_active_route_direction_override(viewport_size)
 	await _check_product_auto_scheduler(viewport_size)
@@ -382,23 +389,57 @@ func _check_item_equipment_touch(viewport_size:Vector2)->void:
 		await _screen_touch_plain_button(inline,71)
 		_check(str(session.protagonist_equipment().weapon_id)=="HAND_AXE",
 			"%s inline equipment ScreenTouch was swallowed before [교체]"%viewport_size)
-	var main_hand:Button=null
-	for child in sandbox.member_item_equipment_rows.get_children():
-		var row:=child as Button
-		if row!=null and str(row.get_meta("item_slot",""))=="MAIN_HAND":
-			main_hand=row;break
-	_check(main_hand!=null,"%s item touch probe has no main-hand row"%viewport_size)
-	if main_hand!=null:
-		sandbox.member_detail_scroll.ensure_control_visible(main_hand)
+	var direct_unequip:=sandbox.member_item_equipment_rows.find_child(
+		"ItemInlineUnequip",true,false) as Button
+	_check(direct_unequip!=null,"%s equipped item has no direct [해제] action"%viewport_size)
+	if direct_unequip!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(direct_unequip)
 		await process_frame;await process_frame
-		await _screen_touch_plain_button(main_hand,72)
-		_check(sandbox.member_item_quick_unequip_button.visible,
-			"%s equipped-row ScreenTouch did not expose [해제]"%viewport_size)
-		sandbox.member_detail_scroll.ensure_control_visible(sandbox.member_item_quick_unequip_button)
-		await process_frame;await process_frame
-		await _screen_touch_plain_button(sandbox.member_item_quick_unequip_button,73)
+		await _screen_touch_plain_button(direct_unequip,73)
 		_check(bool(session.protagonist_inventory().equipment_slots[0].empty),
-			"%s quick unequip ScreenTouch did not clear the main hand"%viewport_size)
+			"%s direct unequip ScreenTouch did not clear the main hand"%viewport_size)
+	sandbox.queue_free();await process_frame
+
+func _check_nearby_npc_card_touch(viewport_size:Vector2)->void:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var sandbox=Sandbox.new();sandbox.name="NearbyNpcTouchProbe";root.add_child(sandbox)
+	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
+	sandbox.initialize_for_headless_test(session,false)
+	var npc_id:=int(session.opening_event_status().get("npc_entity_id",-1))
+	sandbox.nearby_npc_entity_id=npc_id;sandbox.nearby_npc_story_state="REUNION_READY"
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_detail_button.disabled=false
+	sandbox.nearby_npc_action_button.disabled=false
+	sandbox.nearby_npc_attack_button.disabled=false
+	await process_frame;await process_frame
+	var step_before:int=session.sim.world.step_index
+	await _screen_touch_plain_button(sandbox.nearby_npc_toggle_button,74)
+	_check(sandbox.nearby_npc_collapsed and not sandbox.nearby_npc_content.visible,
+		"%s nearby NPC card ScreenTouch did not collapse"%viewport_size)
+	await _screen_touch_plain_button(sandbox.nearby_npc_toggle_button,75)
+	_check(not sandbox.nearby_npc_collapsed and sandbox.nearby_npc_content.visible,
+		"%s nearby NPC card ScreenTouch did not expand"%viewport_size)
+	await _screen_touch_plain_button(sandbox.nearby_npc_detail_button,76)
+	_check(sandbox.member_detail_modal.visible,
+		"%s nearby NPC [상세] ScreenTouch was swallowed by the map"%viewport_size)
+	sandbox._close_member_detail();await process_frame
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_action_button.disabled=false
+	sandbox.action_feedback_text=""
+	await process_frame
+	await _screen_touch_plain_button(sandbox.nearby_npc_action_button,77)
+	_check(not sandbox.action_feedback_text.is_empty(),
+		"%s nearby NPC recruitment ScreenTouch did not reach its action"%viewport_size)
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_entity_id=npc_id;sandbox.nearby_npc_attack_button.disabled=false
+	sandbox.action_feedback_text=""
+	await process_frame
+	await _screen_touch_plain_button(sandbox.nearby_npc_attack_button,78)
+	_check(not sandbox.action_feedback_text.is_empty(),
+		"%s nearby NPC attack ScreenTouch did not reach its action"%viewport_size)
+	_check(session.sim.world.step_index==step_before,
+		"%s nearby NPC card touch leaked through to map movement"%viewport_size)
 	sandbox.queue_free();await process_frame
 
 func _screen_touch_plain_button(button:Button,touch_index:int)->void:
@@ -699,7 +740,7 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 			failures.append("%s %s not hittable before ScreenTouch disabled=%s rect=%s map=%s"%[
 				viewport_size,row[0],button.disabled if button!=null else true,
 				button.get_global_rect() if button!=null else Rect2(),sandbox.map_overlay.visible])
-		await _screen_touch_button(sandbox,button,31)
+		await _screen_touch_button(sandbox,button,31,true)
 		var after_status:Dictionary=session.party_status()
 		var after:=Vector2i(int(after_status.protagonist_position[0]),
 			int(after_status.protagonist_position[1]))
@@ -717,7 +758,7 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	await process_frame;await process_frame
 	var wait_before:Dictionary=session.party_status();var wait_journal:int=session.command_journal.size()
 	var wait_position:Array=wait_before.protagonist_position.duplicate()
-	await _screen_touch_button(sandbox,sandbox.find_child("ProductWaitCenter",true,false) as Button,32)
+	await _screen_touch_button(sandbox,sandbox.find_child("ProductWaitCenter",true,false) as Button,32,true)
 	var wait_after:Dictionary=session.party_status()
 	_check(wait_after.protagonist_position==wait_position \
 		and int(wait_after.step_index)==int(wait_before.step_index)+1 \
@@ -741,14 +782,19 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 		"%s map ScreenTouch stopped being an independent one-cell move"%viewport_size)
 	sandbox.queue_free();await process_frame
 
-func _screen_touch_button(sandbox,button:Button,touch_index:int)->void:
+func _screen_touch_button(sandbox,button:Button,touch_index:int,
+		assert_immediate_step:bool=false)->void:
 	if button==null:
 		failures.append("missing product control button");return
+	var step_before:=int(sandbox.session.party_status().get("step_index",-1))
 	var center:=button.get_global_rect().get_center()
 	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=center
 	root.push_input(press,true);await process_frame
 	if sandbox._product_touch_index!=touch_index:
 		failures.append("product ScreenTouch press did not reach sandbox _input at %s"%center)
+	if assert_immediate_step and int(sandbox.session.party_status().get(
+			"step_index",-1))!=step_before+1:
+		failures.append("%s waited for touch release instead of committing on press"%button.name)
 	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=center
 	root.push_input(release,true);await process_frame;await process_frame
 	if sandbox._product_touch_index!=-1:
@@ -909,10 +955,10 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 	sandbox.queue_free();await process_frame
 
 func _newest_meaningful_messages(sandbox,history:Dictionary,limit:int)->Array[String]:
-	var damage:Array[String]=[];var other:Array[String]=[]
 	var groups:Variant=history.get("groups",[])
-	if not groups is Array:return damage
+	if not groups is Array:return []
 	for group_index in range(groups.size()-1,-1,-1):
+		var damage:Array[String]=[];var other:Array[String]=[]
 		var rows:Variant=groups[group_index].get("rows",[]) if groups[group_index] is Dictionary else []
 		if not rows is Array:continue
 		for row_index in range(rows.size()-1,-1,-1):
@@ -924,12 +970,14 @@ func _newest_meaningful_messages(sandbox,history:Dictionary,limit:int)->Array[St
 					and str(row.get("type","")).ends_with("_damage"):
 				damage.append(message)
 			else:other.append(message)
-	var messages:Array[String]=[]
-	for message_value in damage+other:
-		var message:String=str(message_value)
-		messages.append(message)
-		if messages.size()>=limit:break
-	return messages
+		if damage.is_empty() and other.is_empty():continue
+		var messages:Array[String]=[]
+		for message_value in damage+other:
+			var message:String=str(message_value)
+			messages.append(message)
+			if messages.size()>=limit:break
+		return messages
+	return []
 
 func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
 	var result:Array[Vector2i]=[];var origin:Vector2i=session.sim.world.entities[entity_id].position

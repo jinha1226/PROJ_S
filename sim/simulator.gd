@@ -288,19 +288,22 @@ func deploy_solo_party():
 	var authoritative:Dictionary=party_coordinator.preview_deployment("LINE",[],false)
 	if not bool(authoritative.get("accepted",false)):
 		return StepResultScript.new(false,false,str(authoritative.get("reason","deployment_failed")))
-	var rollback_value:Variant=world.snapshot()
+	if not world.runtime_party_health_error().is_empty():
+		return StepResultScript.new(false,false,"party_snapshot_unavailable")
+	var rollback_value:Variant=world.rollback_memento(false)
 	if not rollback_value is Dictionary or rollback_value.is_empty():
 		return StepResultScript.new(false,false,"party_snapshot_unavailable")
 	var rollback:Dictionary=rollback_value
+	var event_start:int=world.events.size()
 	world.begin_step(processed_step_index)
 	var result=party_coordinator.commit_prevalidated_deployment(authoritative,
 		processed_step_index)
 	if result is Dictionary or not result.accepted:
-		world=WorldStateScript.from_snapshot(rollback);_rebuild_systems()
+		world=WorldStateScript.from_rollback_memento(rollback);_rebuild_systems()
 		return StepResultScript.new(false,false,str(result.get("reason","deployment_failed")))
 	world.finish_step()
-	if not world.world_state_error().is_empty():
-		world=WorldStateScript.from_snapshot(rollback);_rebuild_systems()
+	if not world.runtime_step_postcondition_error(event_start).is_empty():
+		world=WorldStateScript.from_rollback_memento(rollback);_rebuild_systems()
 		return StepResultScript.new(false,false,"deployment_semantic_failure")
 	return result
 
@@ -311,6 +314,18 @@ func preview_party_turn(request):
 		return PartyPlanScript.new({"accepted": false, "reason": "step_index_overflow",
 			"actor_rows": [], "base_fingerprint": JSON.stringify(world.snapshot()).sha256_text()})
 	return party_coordinator.preview_party_turn(request, processed_step_index, world.world_time)
+
+
+func direct_solo_party_action_error(request) -> String:
+	# Product Tab only needs to know whether this one protagonist action is legal.
+	# Building the damage batch, cadence timeline and integrity fingerprint here
+	# duplicated the authoritative preview immediately performed by the commit.
+	if request == null or not request is PartyTurnRequest:
+		return "invalid_party_request"
+	var request_error := PartyRequestScript.wire_error(request.to_dict())
+	if not request_error.is_empty():
+		return request_error
+	return party_coordinator.direct_solo_action_error(request)
 
 
 func step_direct_solo_party_turn(request, supplied_rollback_memento: Variant = null):
@@ -547,7 +562,11 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 	if not party_coordinator.finalize_automatic_regroup():
 		return _rollback_party_step(rollback, "party_turn_failed")
 	world.finish_step()
-	var party_turn_semantic_error: String = world.world_state_error()
+	# Match ordinary live simulation steps: validate the newly appended causal
+	# tail and every mutable surface touched by this turn. Full ledger scans remain
+	# mandatory at save/load/restore boundaries.
+	var party_turn_semantic_error: String = world.runtime_step_postcondition_error(
+		event_start)
 	if not party_turn_semantic_error.is_empty():
 		return _rollback_party_step(rollback, "party_turn_semantic_failure")
 	var result_events: Array = world.events_since(event_start)

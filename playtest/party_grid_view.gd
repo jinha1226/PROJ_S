@@ -421,7 +421,7 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 			_camera_settle={"from_offset_px":carried_offset_px \
 				+_projected_camera_step_offset(Vector2(delta)),
 				"started_at_ms":now,"duration_ms":maxi(1,settle_duration_msec),
-				"curve":"LINEAR_CONTINUOUS" if settle_duration_msec>=120 \
+				"curve":"LINEAR_CONTINUOUS" if settle_duration_msec>=90 \
 					else "CUBIC_EASE_OUT"}
 		else:_camera_settle.clear()
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()

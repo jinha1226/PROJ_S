@@ -825,6 +825,19 @@ func preview_party_turn(request, processed_step_index: int,
 	data["plan_hash"] = PlanScript.canonical_hash(data)
 	return PlanScript.new(data)
 
+
+func direct_solo_action_error(request) -> String:
+	# A product solo target probe is followed synchronously by the authoritative
+	# preview+commit. Keep this probe on the exact action-legality seam without
+	# building the same combat batch and schedule twice.
+	if world.party_encounter == null:
+		return "party_turn_phase_required"
+	var state = world.party_encounter
+	if state.active_party_member_ids != [state.protagonist_id]:
+		return "direct_solo_action_required"
+	return _turn_rejection(request)
+
+
 func _turn_rejection(request) -> String:
 	if world.party_encounter == null or world.party_encounter.safe_phase != "ENGAGED" or not world.is_settled(): return "party_turn_phase_required"
 	if request == null or not request is PartyTurnRequest or request.protagonist_action == null: return "invalid_party_request"
@@ -1266,17 +1279,46 @@ func _uses_weapon_combat(actor_id: int) -> bool:
 
 
 func _weapon_occupants(attacker_id: int, target_id: int) -> Dictionary:
-	var result := {}
-	for entity_id in world.entities:
-		if int(entity_id) in [attacker_id, target_id] or not world.occupies_tile(int(entity_id)): continue
-		var relation := "ALLY" if int(entity_id) in world.party_encounter.party_member_ids else "ENEMY"
-		result[world.entities[entity_id].position] = relation
-	for y in range(world.height):
-		for x in range(world.width):
-			var position := Vector2i(x, y)
-			var terrain = TerrainRegistryScript.definition(world.tile_at(position).terrain)
-			if terrain.is_empty() or not bool(terrain.get("passable", false)):
-				result[position] = "WALL"
+	var result:={}
+	var attacker=world.entities.get(attacker_id);var target=world.entities.get(target_id)
+	if attacker==null or target==null:return result
+	var weapon_id:=WorldItemOperationsScript.equipped_weapon_id(world,attacker_id)
+	var weapon=WeaponRegistryScript.definition(weapon_id)
+	if weapon==null:return result
+	var relevant_cells:Array[Vector2i]=[]
+	var delta:Vector2i=target.position-attacker.position
+	var distance:=maxi(absi(delta.x),absi(delta.y))
+	if str(weapon.trait_id)=="SPEAR_REACH" and distance==2:
+		relevant_cells.append(attacker.position+Vector2i(signi(delta.x),signi(delta.y)))
+	elif str(weapon.proficiency_id)=="RANGED":
+		relevant_cells=_weapon_line_cells(attacker.position,target.position)
+	for position in relevant_cells:
+		var occupant=world.blocking_entity_at(position,attacker_id)
+		if occupant!=null and occupant.id!=target_id:
+			result[position]="ALLY" if occupant.id in \
+				world.party_encounter.party_member_ids else "ENEMY"
+			continue
+		var terrain=TerrainRegistryScript.definition(world.tile_at(position).terrain)
+		if terrain.is_empty() or not bool(terrain.get("passable",false)):
+			result[position]="WALL"
+	return result
+
+
+func _weapon_line_cells(from_position:Vector2i,to_position:Vector2i)->Array[Vector2i]:
+	# Bresenham cells strictly between both endpoints, matching the weapon rules.
+	var result:Array[Vector2i]=[]
+	var x0:=from_position.x;var y0:=from_position.y
+	var x1:=to_position.x;var y1:=to_position.y
+	var dx:=absi(x1-x0);var sx:=1 if x0<x1 else -1
+	var dy:=-absi(y1-y0);var sy:=1 if y0<y1 else -1
+	var error:=dx+dy
+	while true:
+		if x0==x1 and y0==y1:break
+		var twice:=2*error
+		if twice>=dy:error+=dy;x0+=sx
+		if twice<=dx:error+=dx;y0+=sy
+		if x0==x1 and y0==y1:break
+		result.append(Vector2i(x0,y0))
 	return result
 
 func _resolve_move_conflicts(rows: Array) -> String:
