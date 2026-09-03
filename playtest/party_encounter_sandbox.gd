@@ -121,6 +121,18 @@ var selected_tile_view_mode:=""
 var selected_tile_inspection:Dictionary={}
 var tile_popover:PanelContainer
 var tile_popover_label:Label
+var nearby_npc_panel:PanelContainer
+var nearby_npc_name:Label
+var nearby_npc_condition:Label
+var nearby_npc_personality:Label
+var nearby_npc_affinity:Label
+var nearby_npc_equipment:Label
+var nearby_npc_recruitment:Label
+var nearby_npc_detail_button:Button
+var nearby_npc_action_button:Button
+var nearby_npc_attack_button:Button
+var nearby_npc_entity_id:int=-1
+var nearby_npc_story_state:=""
 var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
@@ -139,6 +151,7 @@ var member_detail_current_tab:="STATUS"
 var member_detail_has_skills:=false
 var member_detail_dismiss_available:=false
 var member_detail_candidate_available:=false
+var member_detail_attack_available:=false
 var member_progression_window:VBoxContainer
 var member_progression_xp
 var member_progression_xp_text:Label
@@ -179,6 +192,7 @@ var pending_ground_pickup_label:=""
 var member_detail_close:Button
 var member_detail_dismiss:Button
 var member_detail_candidate_action:Button
+var member_detail_attack:Button
 var member_detail_focus_buttons:GridContainer
 var member_detail_entity_id:int=-1
 var _pending_card_pointer:Dictionary={}
@@ -579,6 +593,7 @@ func _build_ui()->void:
 	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
 	_build_product_zoom_controls()
+	_build_nearby_npc_card()
 	cards=HBoxContainer.new(); cards.name="PartyCards"; cards.custom_minimum_size.y=160
 	cards.add_theme_constant_override("separation",4); root_layout.add_child(cards)
 	info_scroll=ScrollContainer.new(); info_scroll.name="InformationScroll"; info_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
@@ -867,6 +882,12 @@ func _build_member_detail_modal()->void:
 	member_detail_candidate_action.pressed.connect(_on_member_detail_candidate_action)
 	member_detail_candidate_action.visible=false;stack.add_child(member_detail_candidate_action)
 	AsciiFrameScript.apply_rail_button(member_detail_candidate_action,AsciiFrameScript.JADE)
+	member_detail_attack=Button.new();member_detail_attack.name="MemberDetailAttack"
+	member_detail_attack.text="[공격] 적대 전환";member_detail_attack.custom_minimum_size=Vector2(160,TOUCH_TARGET)
+	member_detail_attack.add_theme_font_size_override("font_size",FONT_BODY)
+	member_detail_attack.pressed.connect(_on_member_detail_attack)
+	member_detail_attack.visible=false;stack.add_child(member_detail_attack)
+	AsciiFrameScript.apply_rail_button(member_detail_attack,AsciiFrameScript.DANGER,false,true)
 
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
@@ -1041,6 +1062,160 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_controls.add_child(grid_zoom_in_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_in_button,AsciiFrameScript.CYAN)
 
+func _build_nearby_npc_card()->void:
+	nearby_npc_panel=PanelContainer.new();nearby_npc_panel.name="NearbyNpcCard"
+	nearby_npc_panel.visible=false;nearby_npc_panel.mouse_filter=Control.MOUSE_FILTER_STOP
+	nearby_npc_panel.z_index=25;nearby_npc_panel.custom_minimum_size=Vector2(224,0)
+	nearby_npc_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	nearby_npc_panel.position=Vector2(4,4)
+	nearby_npc_panel.add_theme_stylebox_override("panel",
+		AsciiFrameScript.borderless_surface(Color("#081014e6"),4))
+	grid.add_child(nearby_npc_panel)
+	var frame=AsciiFrameScript.new();frame.name="NearbyNpcAsciiFrame"
+	frame.configure("가까운 인물",AsciiFrameScript.CYAN,Color("#081014e6"),true)
+	nearby_npc_panel.add_child(frame)
+	var stack:=VBoxContainer.new();stack.name="NearbyNpcStack"
+	stack.add_theme_constant_override("separation",2);frame.add_child(stack)
+	nearby_npc_name=_card_label("","NearbyNpcName",FONT_SECTION)
+	nearby_npc_name.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	nearby_npc_name.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	stack.add_child(nearby_npc_name)
+	nearby_npc_condition=_card_label("","NearbyNpcCondition",FONT_CAPTION)
+	nearby_npc_condition.add_theme_color_override("font_color",AsciiFrameScript.MUTED)
+	stack.add_child(nearby_npc_condition)
+	nearby_npc_personality=_card_label("","NearbyNpcPersonality",FONT_AUX)
+	nearby_npc_personality.clip_text=true
+	nearby_npc_personality.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	stack.add_child(nearby_npc_personality)
+	nearby_npc_affinity=_card_label("","NearbyNpcAffinity",FONT_AUX)
+	stack.add_child(nearby_npc_affinity)
+	nearby_npc_equipment=_card_label("","NearbyNpcEquipment",FONT_AUX)
+	nearby_npc_equipment.clip_text=true
+	nearby_npc_equipment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	stack.add_child(nearby_npc_equipment)
+	nearby_npc_recruitment=_card_label("","NearbyNpcRecruitment",FONT_CAPTION)
+	nearby_npc_recruitment.clip_text=true
+	nearby_npc_recruitment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	stack.add_child(nearby_npc_recruitment)
+	var actions:=HBoxContainer.new();actions.name="NearbyNpcActions"
+	actions.add_theme_constant_override("separation",4);stack.add_child(actions)
+	nearby_npc_detail_button=Button.new();nearby_npc_detail_button.name="NearbyNpcDetail"
+	nearby_npc_detail_button.text="[상세]";nearby_npc_detail_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_detail_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	nearby_npc_detail_button.pressed.connect(_on_nearby_npc_detail);actions.add_child(nearby_npc_detail_button)
+	AsciiFrameScript.apply_rail_button(nearby_npc_detail_button,AsciiFrameScript.CYAN)
+	nearby_npc_action_button=Button.new();nearby_npc_action_button.name="NearbyNpcRecruit"
+	nearby_npc_action_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_action_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	nearby_npc_action_button.pressed.connect(_on_nearby_npc_action);actions.add_child(nearby_npc_action_button)
+	AsciiFrameScript.apply_rail_button(nearby_npc_action_button,AsciiFrameScript.JADE)
+	nearby_npc_attack_button=Button.new();nearby_npc_attack_button.name="NearbyNpcAttack"
+	nearby_npc_attack_button.text="[공격]";nearby_npc_attack_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_attack_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	nearby_npc_attack_button.pressed.connect(_on_nearby_npc_attack);actions.add_child(nearby_npc_attack_button)
+	AsciiFrameScript.apply_rail_button(nearby_npc_attack_button,AsciiFrameScript.DANGER,false,true)
+
+func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
+		product_hud:bool)->void:
+	nearby_npc_entity_id=-1;nearby_npc_story_state=""
+	if nearby_npc_panel==null:return
+	nearby_npc_panel.visible=false
+	if not product_hud or str(status.get("view_mode",""))!="EXPLORATION":return
+	var hero_raw:Variant=status.get("protagonist_position",[])
+	if not hero_raw is Array or hero_raw.size()!=2:return
+	var hero_position:=Vector2i(int(hero_raw[0]),int(hero_raw[1]))
+	var best_actor:Dictionary={};var best_distance:=999999
+	for cell_value in observation.get("cells",[]):
+		if not cell_value is Dictionary:continue
+		var cell:Dictionary=cell_value
+		if str(cell.get("visibility_state",""))!="VISIBLE":continue
+		for actor_value in cell.get("actors",[]):
+			if not actor_value is Dictionary:continue
+			var actor:Dictionary=actor_value
+			var entity_id:=int(actor.get("entity_id",-1))
+			var display_role:=str(actor.get("display_role",""))
+			var recruitable:bool=display_role=="RESCUE_NPC" or (
+				display_role=="OPENING_NPC" \
+				and session.has_method("is_opening_recruitment_candidate") \
+				and bool(session.is_opening_recruitment_candidate(entity_id)))
+			if not recruitable or str(actor.get("life_state","ACTIVE"))=="DEAD":continue
+			var position_raw:Variant=actor.get("display_position",cell.get("position",[]))
+			if not position_raw is Array or position_raw.size()!=2:continue
+			var position:=Vector2i(int(position_raw[0]),int(position_raw[1]))
+			var distance:=maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y))
+			if distance<=6 and distance<best_distance:
+				best_actor=actor;best_distance=distance
+	if best_actor.is_empty():return
+	var detail:Dictionary=session.inspect_party_member(int(best_actor.entity_id))
+	if not bool(detail.get("accepted",false)):return
+	nearby_npc_entity_id=int(best_actor.entity_id)
+	nearby_npc_story_state=str(detail.get("rescue_story_state",""))
+	nearby_npc_name.text="%s  %d/%d"%[str(detail.get("display_name","NPC")),
+		int(detail.get("health",0)),int(detail.get("max_health",0))]
+	nearby_npc_condition.text="%s · 거리 %d칸"%[
+		"재회" if bool(detail.get("opening_reencounter",false)) else \
+		("부상" if nearby_npc_story_state=="COLLAPSED_STORY" else "대화 가능"),best_distance]
+	var personality:Dictionary=detail.get("personality_style",{}) \
+		if detail.get("personality_style",{}) is Dictionary else {}
+	nearby_npc_personality.text="성격 · %s"%str(personality.get("label","알 수 없음"))
+	var affinity:Dictionary=detail.get("affinity_toward_protagonist",{}) \
+		if detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
+	var affinity_score:=int(affinity.get("score",50))
+	nearby_npc_affinity.text="나에 대한 호감 · %s %d"%[
+		str(affinity.get("label","보통")),affinity_score]
+	nearby_npc_affinity.add_theme_color_override("font_color",
+		AsciiFrameScript.JADE if affinity_score>=60 else (
+			AsciiFrameScript.DANGER if affinity_score<25 else AsciiFrameScript.INK))
+	var equipment:Dictionary=detail.get("equipment_summary",{}) \
+		if detail.get("equipment_summary",{}) is Dictionary else {}
+	nearby_npc_equipment.text="장비 · %s / %s"%[
+		str(equipment.get("weapon_label","없음")),
+		str(equipment.get("armor_label","방어구 없음"))]
+	nearby_npc_detail_button.disabled=false
+	var attack:Dictionary=detail.get("attack_assessment",{}) \
+		if detail.get("attack_assessment",{}) is Dictionary else {}
+	nearby_npc_attack_button.disabled=not bool(attack.get("accepted",false))
+	nearby_npc_attack_button.tooltip_text=str(attack.get("message","인접한 인물을 공격합니다."))
+	if nearby_npc_story_state=="COLLAPSED_STORY":
+		var rescue:Dictionary=detail.get("rescue_assessment",{}) \
+			if detail.get("rescue_assessment",{}) is Dictionary else {}
+		nearby_npc_recruitment.text="상처를 안정화해야 대화할 수 있습니다."
+		nearby_npc_action_button.text="[안정화]"
+		nearby_npc_action_button.disabled=not bool(rescue.get("accepted",false))
+		nearby_npc_action_button.tooltip_text=str(rescue.get("message",""))
+	else:
+		var recruitment:Dictionary=detail.get("recruitment_assessment",{}) \
+			if detail.get("recruitment_assessment",{}) is Dictionary else {}
+		var probability:=int(recruitment.get("probability_percent",0))
+		var volunteers:=affinity_score>=75 and bool(recruitment.get("accepted",false)) \
+			and bool(recruitment.get("would_accept",false))
+		nearby_npc_recruitment.text=("먼저 제안 · 함께 가고 싶다고 합니다. %d%%"%probability) \
+			if volunteers else "합류 의사 · %d%%"%probability
+		if bool(recruitment.get("resolved",false)):
+			nearby_npc_action_button.text="[대답 완료]"
+			nearby_npc_action_button.disabled=true
+		elif not bool(recruitment.get("accepted",false)):
+			nearby_npc_action_button.text={"recruitment_candidate_too_far":"[더 가까이]",
+				"party_full":"[파티 가득]"}.get(str(recruitment.get("reason","")),"[영입 불가]")
+			nearby_npc_action_button.disabled=true
+		else:
+			nearby_npc_action_button.text="[동행 수락]" if volunteers else "[영입 권유]"
+			nearby_npc_action_button.disabled=false
+		nearby_npc_action_button.tooltip_text=_recruitment_reason_summary(recruitment)
+	nearby_npc_panel.visible=true
+
+func _on_nearby_npc_detail()->void:
+	if nearby_npc_entity_id>0:_open_member_detail(nearby_npc_entity_id)
+
+func _on_nearby_npc_action()->void:
+	if nearby_npc_entity_id<=0:return
+	if nearby_npc_story_state=="COLLAPSED_STORY":
+		_on_stabilize_candidate(nearby_npc_entity_id)
+	else:_on_recruit_companion(nearby_npc_entity_id)
+
+func _on_nearby_npc_attack()->void:
+	if nearby_npc_entity_id>0:_attack_neutral_npc(nearby_npc_entity_id)
+
 func _layout_floating_surfaces()->void:
 	_position_build_label()
 	if member_detail_panel!=null:
@@ -1138,6 +1313,7 @@ func _refresh()->void:
 		if combat_active and not run_complete and not direct_solo_combat else []
 	grid.set_observation(observation,ghosts)
 	minimap.set_observation(ui_observation.get("minimap",{}))
+	_update_nearby_npc_card(observation,status,product_hud)
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
 			int(status.protagonist_position[1]))
@@ -1249,6 +1425,7 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	var observe_finished:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
+	_update_nearby_npc_card(ui_observation.get("grid",{}),status,true)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
@@ -1308,6 +1485,8 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
+	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
+		_is_solo_product_session())
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	if _is_solo_product_session():
@@ -2660,14 +2839,86 @@ func _update_member_status_window(detail:Dictionary)->void:
 	else:
 		var clear_status:=_card_label("[이상 없음]","StatusEffects",FONT_AUX)
 		clear_status.add_theme_color_override("font_color",AsciiFrameScript.JADE);combat_cluster.add_child(clear_status)
-	var stats:Dictionary=progression.get("combat_stats",{}) if progression.get("combat_stats",{}) is Dictionary else {}
+	var stats:Dictionary=detail.get("combat_stats",{}) \
+		if detail.get("combat_stats",{}) is Dictionary else {}
+	if stats.is_empty() and progression.get("combat_stats",{}) is Dictionary:
+		stats=progression.get("combat_stats",{})
 	if not stats.is_empty():
-		var combat:=_card_label("공격 %d  ·  방어 %d\n방어 태세 %d%%"%[
+		var combat:=_card_label("공격 %d · 방어 %d\n회피 %s · 막기 %s"%[
 			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
-			int(int(stats.get("guard_reduction_milli",250))/10)],"StatusCombatSummary",FONT_AUX)
+			_percent_milli_text(int(stats.get("evasion_milli",0))),
+			_percent_milli_text(int(stats.get("parry_milli",0)))],"StatusCombatSummary",FONT_AUX)
 		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(combat)
+	var attribute_cluster:=VBoxContainer.new();attribute_cluster.name="AttributeSealCluster"
+	attribute_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	attribute_cluster.add_theme_constant_override("separation",3);status_grid.add_child(attribute_cluster)
+	var attribute_heading:=_card_label("기본 능력","AttributeSection",FONT_AUX)
+	attribute_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	attribute_cluster.add_child(attribute_heading)
+	var core_stats:Dictionary=detail.get("core_stats",{}) \
+		if detail.get("core_stats",{}) is Dictionary else {}
+	var attribute_text:=_card_label("근력 STR %d\n민첩 DEX %d\n지능 INT %d"%[
+		int(core_stats.get("STR",0)),int(core_stats.get("DEX",0)),
+		int(core_stats.get("INT",0))],"StatusCoreStats",FONT_AUX)
+	attribute_cluster.add_child(attribute_text)
+	var body_cluster:=VBoxContainer.new();body_cluster.name="BodySealCluster"
+	body_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	body_cluster.add_theme_constant_override("separation",3);status_grid.add_child(body_cluster)
+	var body_heading:=_card_label("육체 상태","BodyStateSection",FONT_AUX)
+	body_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	body_cluster.add_child(body_heading)
+	var body:Dictionary=detail.get("body_state",{}) \
+		if detail.get("body_state",{}) is Dictionary else {}
+	var body_lines:Array[String]=[]
+	if bool(body.get("available",false)):
+		var blood_capacity:=maxi(1,int(body.get("blood_capacity",1)))
+		body_lines.append("혈액 %d%% · 의식 %d%%"%[
+			int(int(body.get("blood",0))*100/blood_capacity),
+			int(int(body.get("consciousness",0))/10)])
+		body_lines.append("충격 %d · 상처 %d"%[
+			int(body.get("shock",0)),int(body.get("wound_count",0))])
+		var part_states:Array[String]=[]
+		for part_value in body.get("parts",[]):
+			if not part_value is Dictionary:continue
+			var part:Dictionary=part_value
+			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
+				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
+		if not part_states.is_empty():body_lines.append(" · ".join(part_states))
+	else:body_lines.append("육체 정보 없음")
+	var body_text:=_card_label("\n".join(body_lines),"StatusBodyState",FONT_CAPTION)
+	body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body_cluster.add_child(body_text)
+	if str(detail.get("role",""))!="PROTAGONIST":
+		var equipment:Dictionary=detail.get("equipment_summary",{}) \
+			if detail.get("equipment_summary",{}) is Dictionary else {}
+		var equipment_heading:=_card_label("장비","StatusEquipmentSection",FONT_SECTION)
+		equipment_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+		member_status_window.add_child(equipment_heading)
+		var equipment_stats:Dictionary=equipment.get("combat_stats",{}) \
+			if equipment.get("combat_stats",{}) is Dictionary else stats
+		var equipment_text:=_card_label("무기 · %s%s\n보조 · %s / 방어구 · %s\n공격 %d · 방어 %d · 회피 %s · 막기 %s"%[
+			str(equipment.get("weapon_label","없음")),
+			" (기본)" if bool(equipment.get("natural_weapon",false)) else "",
+			str(equipment.get("off_hand_label","없음")),
+			str(equipment.get("armor_label","없음")),
+			int(equipment_stats.get("attack_power",0)),int(equipment_stats.get("armor_flat",0)),
+			_percent_milli_text(int(equipment_stats.get("evasion_milli",0))),
+			_percent_milli_text(int(equipment_stats.get("parry_milli",0)))],
+			"StatusEquipmentSummary",FONT_AUX)
+		equipment_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		member_status_window.add_child(equipment_text)
 	var dossier_heading:=_card_label("특성/내성/노출","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
+
+func _percent_milli_text(value:int)->String:
+	var positive:=maxi(0,value);var whole:=int(positive/10);var tenth:=positive%10
+	return "%d%%"%whole if tenth==0 else "%d.%d%%"%[whole,tenth]
+
+func _body_part_label(part_id:String)->String:
+	return {"HEAD":"머리","TORSO":"몸통","LEFT_ARM":"왼팔","RIGHT_ARM":"오른팔",
+		"LEFT_LEG":"왼다리","RIGHT_LEG":"오른다리"}.get(part_id,part_id)
+
+func _body_condition_label(condition:String)->String:
+	return {"FUNCTIONAL":"정상","DISABLED":"기능 상실","SEVERED":"절단"}.get(condition,condition)
 
 func _life_state_label(life_state:String)->String:
 	match life_state:
@@ -2714,6 +2965,12 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_candidate_available=can_show_candidate
 	if can_show_candidate:
 		_configure_candidate_detail_action(detail)
+		var attack:Dictionary=detail.get("attack_assessment",{}) \
+			if detail.get("attack_assessment",{}) is Dictionary else {}
+		member_detail_attack_available=true
+		member_detail_attack.disabled=not bool(attack.get("accepted",false))
+		member_detail_attack.tooltip_text=str(attack.get("message","인접한 인물을 공격합니다."))
+	else:member_detail_attack_available=false
 	_apply_member_detail_tab()
 	member_detail_scroll.scroll_vertical=0
 	grid.cancel_pointer_gesture();member_detail_modal.visible=true;grid.modal_open=true
@@ -2755,6 +3012,7 @@ func _apply_member_detail_tab()->void:
 	member_item_window.visible=item_selected
 	member_detail_dismiss.visible=not skill_selected and not item_selected and member_detail_dismiss_available
 	member_detail_candidate_action.visible=not skill_selected and not item_selected and member_detail_candidate_available
+	member_detail_attack.visible=not skill_selected and not item_selected and member_detail_attack_available
 	_sync_member_detail_scroll_children()
 	_reflow_member_detail_scroll()
 
@@ -2970,10 +3228,15 @@ func _finish_member_detail_scroll_clamp()->void:
 func _update_item_window(equipment:Variant)->void:
 	if not equipment is Dictionary or not bool(equipment.get("available",false)):return
 	member_item_weapon_text.text="장착 · %s"%str(equipment.get("weapon_label","없음"))
-	(member_item_stats.FORM as Label).text="형태  %s"%str(equipment.get("attack_form","-"))
-	(member_item_stats.DAMAGE as Label).text="피해  %d"%int(equipment.get("raw_damage",0))
-	(member_item_stats.RANGE as Label).text="사거리  %d-%d칸"%[int(equipment.get("range_min",1)),int(equipment.get("range_max",1))]
-	(member_item_stats.TIME as Label).text="공격시간  %d"%int(equipment.get("attack_time",100))
+	var summary:Dictionary=equipment.get("combat_summary",{}) \
+		if equipment.get("combat_summary",{}) is Dictionary else {}
+	(member_item_stats.FORM as Label).text="공격  %d"%int(summary.get("attack_power",
+		equipment.get("raw_damage",0)))
+	(member_item_stats.DAMAGE as Label).text="방어  %d"%int(summary.get("armor_flat",0))
+	(member_item_stats.RANGE as Label).text="회피  %s"%_percent_milli_text(
+		int(summary.get("evasion_milli",0)))
+	(member_item_stats.TIME as Label).text="막기  %s"%_percent_milli_text(
+		int(summary.get("parry_milli",0)))
 	var load_state:="해당 없음"
 	if bool(equipment.get("reload_required",false)):
 		load_state="장전됨" if bool(equipment.get("loaded",false)) else "미장전"
@@ -3226,7 +3489,13 @@ func _configure_candidate_detail_action(detail:Dictionary)->void:
 		member_detail_candidate_action.tooltip_text=str(rescue.get("message","쓰러진 인물 곁에서 도울 수 있습니다."));return
 	var recruitment:Dictionary=detail.get("recruitment_assessment",{}) if detail.get("recruitment_assessment",{}) is Dictionary else {}
 	if not recruitment.is_empty():
-		member_detail_candidate_action.text="[J 영입] 수락 %d%%"%int(recruitment.get("probability_percent",0))
+		var affinity:Dictionary=detail.get("affinity_toward_protagonist",{}) \
+			if detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
+		var volunteers:=int(affinity.get("score",0))>=75 \
+			and bool(recruitment.get("accepted",false)) \
+			and bool(recruitment.get("would_accept",false))
+		member_detail_candidate_action.text=("[동행 수락] 먼저 합류 제안" if volunteers \
+			else "[J 영입 권유] 수락 %d%%"%int(recruitment.get("probability_percent",0)))
 		member_detail_candidate_action.disabled=not bool(recruitment.get("accepted",false))
 		member_detail_candidate_action.tooltip_text=_recruitment_reason_summary(recruitment);return
 	member_detail_candidate_action.text="[J 영입 불가]"
@@ -3252,6 +3521,28 @@ func _on_member_detail_candidate_action()->void:
 	else:
 		notice_text="상처를 안정화했습니다. 이제 영입 가능성을 확인할 수 있습니다."
 	action_feedback_text=notice_text;_cancel_auto_pending(true);_request_refresh()
+
+func _on_member_detail_attack()->void:
+	if member_detail_entity_id>0:_attack_neutral_npc(member_detail_entity_id)
+
+func _attack_neutral_npc(entity_id:int)->void:
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	_cancel_route_for_user_interruption()
+	if auto_orchestration_enabled:_cancel_auto_pending(false)
+	var result:Dictionary=session.assault_npc(entity_id)
+	if not bool(result.get("accepted",false)):
+		notice_text=str(result.get("message","이 인물을 공격할 수 없습니다."))
+		action_feedback_text=notice_text
+		if member_detail_modal.visible:
+			var detail:Dictionary=session.inspect_party_member(entity_id)
+			if bool(detail.get("accepted",false)):_open_member_detail(entity_id)
+		_request_refresh();return
+	if member_detail_modal.visible:_close_member_detail()
+	notice_text="%s을(를) 공격했습니다. 이제 적대합니다."%str(result.get("target_name","NPC"))
+	action_feedback_text=notice_text
+	var status:Dictionary=session.party_status()
+	if _is_solo_product_session():_submit_product_melee(entity_id,status)
+	_request_refresh()
 
 func _on_recruit_companion(entity_id:int)->void:
 	var result:Dictionary=session.offer_recruitment(entity_id)
@@ -4069,6 +4360,12 @@ func _member_detail_text(detail:Dictionary)->String:
 		var style:Dictionary=detail.get("personality_style",{}) if detail.get("personality_style",{}) is Dictionary else {}
 		lines.append("성격 · %s%s"%[str(style.get("label","균형 잡힌 성향")),
 			(" · "+" · ".join(facets)) if not facets.is_empty() else ""])
+	var personal_affinity:Dictionary=detail.get("affinity_toward_protagonist",{}) \
+		if detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
+	if not personal_affinity.is_empty():
+		lines.append("나에 대한 호감 · %s %d · 신뢰 %d · 감사 %d"%[
+			str(personal_affinity.get("label","보통")),int(personal_affinity.get("score",50)),
+			int(personal_affinity.get("trust",0)),int(personal_affinity.get("gratitude",0))])
 	var affinity:Dictionary=detail.get("species_affinity",{}) if detail.get("species_affinity",{}) is Dictionary else {}
 	var affinity_values:=[int(affinity.get("fire_tolerance",0)),int(affinity.get("water_tolerance",0)),
 		int(affinity.get("electric_tolerance",0)),int(affinity.get("poison_tolerance",0))]
@@ -4220,7 +4517,8 @@ func _add_button(parent:Control,value:String,node_name:String,callback:Callable)
 	var button:=Button.new(); button.name=node_name; button.text=_dos_command_label(node_name,value);button.set_meta("plain_label",value)
 	button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET); button.add_theme_font_size_override("font_size",FONT_BODY)
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.pressed.connect(callback); parent.add_child(button)
-	var danger:=node_name in ["MemberDetailDismiss","RestartExpedition"]
+	var danger:=node_name in ["MemberDetailDismiss","MemberDetailAttack",
+		"NearbyNpcAttack","RestartExpedition"]
 	var accent:=AsciiFrameScript.DANGER if danger else (AsciiFrameScript.BRASS if node_name in ["TurnConfirm","AutoExecute","DeployConfirm"] else AsciiFrameScript.CYAN)
 	AsciiFrameScript.apply_rail_button(button,accent,false,danger);return button
 func _dos_command_label(node_name:String,value:String)->String:

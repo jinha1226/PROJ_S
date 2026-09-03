@@ -4249,22 +4249,30 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 	if opening == null: return ""
 	var npc_id := int(opening.npc_entity_id)
 	var recruit_outcomes:Array=[]
+	var assault_rows:Array=[]
 	for event in events:
 		if event.type in ["party.recruitment_accepted","party.recruitment_refused"] \
 				and event.actor_id==npc_id \
 				and str(event.data.get("ruleset_id",""))=="opening-recruit-v1":
 			recruit_outcomes.append(event)
+		elif event.type=="party.npc_assaulted" and event.target_id==npc_id:
+			assault_rows.append(event)
 	if recruit_outcomes.size()>1:return "opening_recruitment_event_count_invalid"
+	if assault_rows.size()>1:return "opening_assault_event_count_invalid"
 	var opening_joined:=recruit_outcomes.size()==1 \
 		and str(recruit_outcomes[0].type)=="party.recruitment_accepted"
+	var opening_hostile:=assault_rows.size()==1
 	if party_ids.has(npc_id)!=opening_joined:return "opening_recruitment_roster_mismatch"
-	if npc_id <= 0 or npc_id in party_encounter.enemy_ids \
+	if opening_joined and opening_hostile \
+			or (npc_id in party_encounter.enemy_ids)!=opening_hostile \
+			or npc_id <= 0 \
 			or not entities.has(npc_id) or not combatant_states.has(npc_id):
 		return "opening_npc_reference_invalid"
 	for party_id in party_encounter.party_member_ids:
 		if int(party_id)==npc_id:continue
 		if npc_id <= int(party_id): return "opening_npc_not_spawned_last"
 	for enemy_id in party_encounter.enemy_ids:
+		if int(enemy_id)==npc_id:continue
 		if npc_id <= int(enemy_id): return "opening_npc_not_spawned_last"
 	var npc = entities[npc_id]
 	var life = combatant_states[npc_id]
@@ -4423,6 +4431,20 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 				roster_event_found=true;break
 		if opening_joined!=roster_event_found:
 			return "opening_recruitment_roster_event_mismatch"
+	if opening_hostile:
+		var assault=assault_rows[0]
+		var assault_keys:Array=assault.data.keys();assault_keys.sort()
+		var assault_history:Dictionary=_party_entity_position_at_event(npc_id,assault.id)
+		if assault_keys!=["disposition","previous_disposition","ruleset_id","schema_version"] \
+				or assault.actor_id!=party_encounter.protagonist_id \
+				or assault.target_id!=npc_id or not bool(assault_history.get("ok",false)) \
+				or assault.position!=assault_history.position \
+				or assault.magnitude!=0 or assault.cause_id!=-1 \
+				or assault.data!={"schema_version":1,"ruleset_id":"npc-assault-v1",
+					"previous_disposition":"NEUTRAL","disposition":"HOSTILE"} \
+				or opening.reencounter_event_id<=0 \
+				or assault.id<=opening.reencounter_event_id:
+			return "opening_assault_event_invalid"
 	return ""
 
 

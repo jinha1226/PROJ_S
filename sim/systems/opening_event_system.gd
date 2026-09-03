@@ -118,6 +118,9 @@ func process_tick(processed_step_index: int, tick_start_can_act_ids: Dictionary)
 	# Once the reencounter recruit joins, ordinary grouped-party movement owns the
 	# same entity. The opening traveller AI must no longer issue independent moves.
 	if state.member(opening.npc_entity_id) != null:return true
+	# An assaulted traveller is now owned by the encounter enemy coordinator.
+	# Running both travel and hostile AI for the same actor would double-schedule it.
+	if opening.npc_entity_id in state.enemy_ids:return true
 	var npc = world.entities.get(opening.npc_entity_id)
 	var combatant = world.combatant_states.get(opening.npc_entity_id)
 	if npc == null or combatant == null: return false

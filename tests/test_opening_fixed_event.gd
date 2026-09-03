@@ -8,6 +8,8 @@ const Command = preload("res://sim/sim_command.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Style = preload("res://playtest/ascii_visual_style.gd")
+const Simulator = preload("res://sim/simulator.gd")
+const PartyAction = preload("res://sim/party_action_command.gd")
 
 
 func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
@@ -279,6 +281,62 @@ func test_second_opening_encounter_exposes_stable_recruitment_and_resolves_once(
 		first.get("would_accept")],[repeated.get("probability_milli"),
 		repeated.get("roll_milli"),repeated.get("would_accept")],
 		"opening recruitment chance and keyed roll are stable")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,false)
+	check(sandbox.nearby_npc_panel.visible and sandbox.nearby_npc_entity_id==npc_id,
+		"second encounter automatically exposes the nearby NPC card")
+	check("성격" in sandbox.nearby_npc_personality.text \
+		and "호감" in sandbox.nearby_npc_affinity.text \
+		and str(first.probability_percent) in sandbox.nearby_npc_recruitment.text \
+		and "장비" in sandbox.nearby_npc_equipment.text,
+		"nearby NPC card exposes personality, affinity, equipment, and recruitment chance")
+	check(not sandbox.nearby_npc_action_button.disabled \
+		and ("영입 권유" in sandbox.nearby_npc_action_button.text \
+			or "동행 수락" in sandbox.nearby_npc_action_button.text),
+		"adjacent second encounter exposes a direct recruitment action")
+	sandbox._on_nearby_npc_detail()
+	check(sandbox.member_detail_modal.visible \
+		and sandbox.find_child("StatusCoreStats",true,false)!=null \
+		and sandbox.find_child("StatusBodyState",true,false)!=null \
+		and sandbox.find_child("StatusEquipmentSummary",true,false)!=null \
+		and sandbox.member_detail_attack.visible \
+		and not sandbox.member_detail_attack.disabled,
+		"nearby card opens NPC stats, body, equipment, and adjacent attack action")
+	sandbox.free()
+	# Exercise hostility on a detached branch so this test can still verify the
+	# ordinary recruitment outcome against the original canonical session.
+	var hostile_session=Session.new(77,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	hostile_session.sim=Simulator.from_snapshot(session.sim.snapshot())
+	hostile_session.command_journal=session.command_journal.duplicate(true)
+	hostile_session.sim.world.party_encounter.party_detection_radius=3
+	hostile_session.sim.world.party_encounter.enemy_detection_radius=3
+	var equipment:Dictionary=hostile_session.inspect_party_member(npc_id).equipment_summary
+	check(bool(equipment.get("available",false)) \
+		and not str(equipment.get("weapon_label","")).is_empty(),
+		"NPC inspection exposes a compact weapon and defensive equipment summary")
+	var assault:Dictionary=hostile_session.assault_npc(npc_id)
+	check(bool(assault.get("accepted",false)),"adjacent neutral NPC can be attacked")
+	check(npc_id in hostile_session.sim.world.party_encounter.enemy_ids \
+		and not hostile_session.is_opening_recruitment_candidate(npc_id),
+		"assault converts the same NPC to a hostile combat target")
+	check_eq(hostile_session.sim.world.world_state_error(),"",
+		"hostile NPC contact remains canonical")
+	check(hostile_session.enter_solo_combat().accepted,
+		"hostile NPC enters the existing solo combat flow")
+	check(hostile_session.begin_turn(PartyAction.melee(hero_id,npc_id)).accepted,
+		"player can stage a normal melee attack against the hostile NPC")
+	var attacked:Dictionary=hostile_session.commit_turn()
+	check(bool(attacked.get("accepted",false)),
+		"hostile NPC resolves through ordinary bump combat")
+	check(hostile_session.sim.world.events.any(func(event):
+		return event.type=="action.melee_attack" and event.actor_id==hero_id \
+			and event.target_id==npc_id),
+		"ordinary melee history records the NPC as the target")
+	check(hostile_session.recent_event_log(12).any(func(row):
+		return "적대 관계" in str(row.get("message",""))),
+		"NPC assault is visible in the player event log")
+	check_eq(hostile_session.sim.world.world_state_error(),"",
+		"NPC attack turn leaves the world canonical")
 	var result:Dictionary=session.offer_recruitment(npc_id)
 	check(bool(result.get("accepted",false)) and bool(result.get("resolved",false)),
 		"one offer resolves the second encounter")

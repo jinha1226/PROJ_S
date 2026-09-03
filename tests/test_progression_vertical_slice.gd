@@ -230,8 +230,10 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.find_child("StatusStressBar",true,false)!=null \
 		and sandbox.find_child("StatusEmotion",true,false)!=null \
 		and sandbox.find_child("StatusStress",true,false)!=null \
-		and sandbox.find_child("StatusCombatSummary",true,false)!=null,
-		"status folio keeps identity in its header and meaningful vital/combat facts in two columns")
+		and sandbox.find_child("StatusCombatSummary",true,false)!=null \
+		and "STR" in str((sandbox.find_child("StatusCoreStats",true,false) as Label).text) \
+		and "혈액" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text),
+		"status folio keeps identity, core stats, body condition, vitals, and combat facts in two columns")
 	var status_hp=sandbox.find_child("StatusHealthBar",true,false)
 	var status_stress=sandbox.find_child("StatusStressBar",true,false)
 	check(status_hp!=null and status_stress!=null \
@@ -277,9 +279,12 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var time_stat=sandbox.find_child("WeaponTimeStat",true,false) as Label
 	check(sandbox.member_item_window.visible and "단검" in sandbox.member_item_weapon_text.text \
 		and item_stats!=null and item_stats.columns==2 and item_stats.get_child_count()==4 \
-		and time_stat!=null and time_stat.text=="공격시간  100" \
+		and time_stat!=null and time_stat.text.begins_with("막기") \
+		and (sandbox.member_item_stats.FORM as Label).text.begins_with("공격") \
+		and (sandbox.member_item_stats.DAMAGE as Label).text.begins_with("방어") \
+		and (sandbox.member_item_stats.RANGE as Label).text.begins_with("회피") \
 		and "화살 12" in sandbox.member_item_ammo_text.text,
-		"item tab owns real weapon, compact stats, and ammo information")
+		"item tab owns real weapon, attack/defense/dodge/parry summary, and ammo information")
 	sandbox._select_member_detail_tab("SKILL")
 	var modes_before:Array=session.protagonist_progression().skills.map(
 		func(row):return [str(row.skill_id),str(row.training_mode)])

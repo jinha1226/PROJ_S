@@ -1336,11 +1336,19 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 	var hero=session.inspect_party_member(state.protagonist_id)
 	check(hero.accepted and hero.personality_profile==null,"protagonist null personality explicit")
 	check(not hero.personality_available and not hero.personality_note.is_empty(),"protagonist null profile explained")
+	check_eq(hero.core_stats.keys().size(),3,"protagonist inspection exposes three core stats")
+	check(hero.combat_stats.has("attack_power") and hero.combat_stats.has("evasion_milli"),
+		"protagonist inspection exposes readable combat totals")
+	check(hero.body_state.available and hero.body_state.parts.size()==6,
+		"protagonist inspection exposes systemic and six-part body condition")
 	var companion=session.inspect_party_member(state.party_member_ids[1])
 	check(companion.accepted,"companion inspection")
 	check_eq(companion.personality_facets.size(),6,"all HEXACO facets")
 	check_eq(companion.species_affinity.species_id,"human","species affinity")
 	check_eq(companion.relation_rows.size(),2,"effective relation to other party members")
+	check(companion.affinity_toward_protagonist.has("score") \
+		and companion.affinity_toward_protagonist.has("label"),
+		"companion inspection exposes affinity toward protagonist")
 	check(companion.current_exposure.applicable,"current full exposure")
 	companion.personality_facets[0].value=9999;companion.relation_rows[0].personal.gratitude=999
 	var companion_fresh=session.inspect_party_member(state.party_member_ids[1])

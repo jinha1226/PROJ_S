@@ -22,6 +22,8 @@ const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd"
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
+const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
+const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
@@ -424,12 +426,8 @@ func protagonist_progression()->Dictionary:
 	var floor_xp:=ProgressionRegistryScript.xp_floor_for_level(level)
 	var next_total:=ProgressionRegistryScript.xp_floor_for_level(level+1)
 	var state=sim.world.party_encounter
-	var hero_combatant=sim.world.combatant_states.get(state.protagonist_id)
-	var profile:=CombatProfileRegistryScript.profile(hero_combatant.combat_profile_id) \
-		if hero_combatant!=null else {}
 	var equipment := protagonist_equipment()
-	var attack_power:=int(equipment.get("raw_damage",profile.get("power",0)))
-	var armor_flat:=int(profile.get("armor_flat",0))
+	var combat_stats:=_member_combat_stats(state.protagonist_id)
 	var skills:Array=[]
 	for skill_id in ProgressionRegistryScript.SKILL_IDS:
 		var definition:=ProgressionRegistryScript.definition(skill_id)
@@ -455,8 +453,7 @@ func protagonist_progression()->Dictionary:
 		"xp_total":int(progression.xp_total),"xp_current":int(progression.xp_total)-floor_xp,
 		"xp_required":next_total-floor_xp,"current_level_floor":floor_xp,
 		"next_level_threshold":next_total,
-		"combat_stats":{"attack_power":attack_power,"armor_flat":armor_flat,
-			"guard_reduction_milli":250,"guard_duration":200},
+		"combat_stats":combat_stats,
 		"equipment":equipment,
 		"skills":skills}.duplicate(true)
 
@@ -619,6 +616,7 @@ func protagonist_equipment()->Dictionary:
 		"reload_time":int(weapon.reload_time),
 		"can_attack":ItemOperationsScript.attack_error(sim.world,state.protagonist_id).is_empty(),
 		"attack_block_reason":ItemOperationsScript.attack_error(sim.world,state.protagonist_id),
+		"combat_summary":_member_combat_stats(state.protagonist_id),
 		"combat_modifiers":sim.world.equipment_modifiers(
 			state.protagonist_id)}.duplicate(true)
 
@@ -2072,7 +2070,8 @@ func rescue_candidate_ids() -> Array:
 		if event.type != "party.rescue_discovered" or event.target_id <= 0 \
 				or event.target_id in ids or not sim.world.entities.has(event.target_id):
 			continue
-		if rescue_story_state(event.target_id) != "JOINED": ids.append(event.target_id)
+		if rescue_story_state(event.target_id) not in ["JOINED","HOSTILE"]:
+			ids.append(event.target_id)
 	ids.sort()
 	return ids.duplicate()
 
@@ -2084,6 +2083,7 @@ func is_rescue_candidate(entity_id: int) -> bool:
 func rescue_story_state(entity_id: int) -> String:
 	var discovery = _rescue_discovery_event_for(entity_id)
 	if discovery == null: return ""
+	if _npc_assault_event_for(entity_id) != null: return "HOSTILE"
 	var outcome = _recruitment_outcome_event_for(entity_id)
 	if outcome != null:
 		return "JOINED" if outcome.type == "party.recruitment_accepted" else "REJECTED"
@@ -2248,7 +2248,82 @@ func _is_opening_recruitment_candidate(entity_id:int)->bool:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
 	var opening=sim.world.party_encounter.opening_event
 	return opening!=null and int(opening.npc_entity_id)==entity_id \
+		and int(opening.reencounter_event_id)>0 \
+		and entity_id not in sim.world.party_encounter.enemy_ids
+
+
+func npc_attack_assessment(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	var entity=sim.world.entities.get(entity_id)
+	var combatant=sim.world.combatant_states.get(entity_id)
+	var opening=state.opening_event
+	var opening_npc:=opening!=null and int(opening.npc_entity_id)==entity_id \
 		and int(opening.reencounter_event_id)>0
+	var rescue_npc:=_rescue_discovery_event_for(entity_id)!=null
+	if entity==null or combatant==null or not opening_npc and not rescue_npc \
+			or state.member(entity_id)!=null or entity_id in state.enemy_ids:
+		return _rejection_dto("npc_not_attackable")
+	if _npc_assault_event_for(entity_id)!=null:
+		return _rejection_dto("npc_already_hostile")
+	if str(combatant.life_state)!="ACTIVE" \
+			or rescue_npc and rescue_story_state(entity_id)=="COLLAPSED_STORY":
+		return _rejection_dto("npc_attack_target_unavailable")
+	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or _run_is_complete():
+		return _rejection_dto("npc_attack_unsafe_phase")
+	# Enemy membership is a floor-wide canonical set. Extending it after a victory
+	# would rewrite what that old victory meant, so that edge remains unavailable.
+	for event in sim.world.events:
+		if event.type=="party.victory":return _rejection_dto("npc_attack_after_victory")
+	var hero=sim.world.entities.get(state.protagonist_id)
+	if hero==null or maxi(absi(hero.position.x-entity.position.x),
+			absi(hero.position.y-entity.position.y))!=1:
+		return _rejection_dto("npc_attack_target_too_far")
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"target_name":str(entity.display_name),"adjacent":true,
+		"consequence":"HOSTILE","consumes_time":false})
+
+
+func assault_npc(entity_id:int)->Dictionary:
+	var assessment:=npc_attack_assessment(entity_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback_value:Variant=sim.snapshot()
+	if not rollback_value is Dictionary:return _rejection_dto("party_snapshot_unavailable")
+	var rollback:Dictionary=rollback_value
+	var state=sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	var hero=sim.world.entities[hero_id]
+	var npc=sim.world.entities[entity_id]
+	var assault=sim.world.emit_event("party.npc_assaulted",hero_id,entity_id,
+		npc.position,0,-1,{"schema_version":1,"ruleset_id":"npc-assault-v1",
+			"previous_disposition":"NEUTRAL","disposition":"HOSTILE"})
+	if assault==null:
+		_restore_roster_rollback(rollback);return _rejection_dto("npc_assault_failed")
+	state.enemy_ids.append(entity_id);state.enemy_ids.sort()
+	state.enemy_busy_rows[entity_id]=int(sim.world.world_time)
+	var awareness=EnemyAwarenessScript.new(entity_id,npc.position)
+	awareness.awareness_state="HUNTING";awareness.suspicion=1000
+	awareness.last_known_target_position=hero.position
+	awareness.last_seen_step=int(sim.world.step_index)
+	awareness.last_seen_time=int(sim.world.world_time)
+	state.enemy_awareness_rows[entity_id]=awareness
+	state.revision+=1
+	# Adjacent assault always creates ordinary contact; the next input enters the
+	# existing deployment/combat pipeline and the NPC can retaliate there.
+	if not sim.party_coordinator._detect_contact(sim.world.step_index,-1,
+			sim.world.world_time,{}):
+		_restore_roster_rollback(rollback);return _rejection_dto("npc_assault_failed")
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_roster_rollback(rollback);return _rejection_dto(state_error)
+	_clear_draft();_deployment_plan.clear()
+	if _exploration_route!=null:_exploration_route.clear()
+	if _auto_explore!=null:_auto_explore.cancel("npc_assaulted")
+	command_journal.append({"kind":"npc_assault","operation":{"entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"target_name":str(npc.display_name),"event_id":int(assault.id),
+		"consequence":"HOSTILE","contact":true,"consumes_time":false})
 
 
 func _opening_recruitment_assessment(entity_id:int)->Dictionary:
@@ -2420,6 +2495,15 @@ func _rescue_event_for(entity_id: int):
 	for index in range(sim.world.events.size()-1,-1,-1):
 		var event = sim.world.events[index]
 		if event.type=="party.npc_stabilized" and event.target_id==entity_id:
+			return event
+	return null
+
+
+func _npc_assault_event_for(entity_id:int):
+	if sim==null or sim.world==null:return null
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event=sim.world.events[index]
+		if event.type=="party.npc_assaulted" and event.target_id==entity_id:
 			return event
 	return null
 
@@ -4166,6 +4250,122 @@ func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
 		"position":[position.x,position.y],"viewer_id":resolved_viewer})
 
 
+func _member_combat_stats(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):return {}
+	var combatant=sim.world.combatant_states.get(entity_id)
+	var profile:=CombatProfileRegistryScript.profile(str(combatant.combat_profile_id)) \
+		if combatant!=null else {}
+	var modifier_dto:Dictionary=sim.world.equipment_modifiers(entity_id)
+	var bonuses:Dictionary=modifier_dto.get("totals",{}) \
+		if modifier_dto.get("totals",{}) is Dictionary else {}
+	var defense:=CombatDefenseRulesScript.build_snapshot(
+		int(profile.get("evasion_milli",0)),int(profile.get("armor_flat",0)),bonuses)
+	var weapon=WeaponRegistryScript.definition(
+		ItemOperationsScript.equipped_weapon_id(sim.world,entity_id))
+	var rank:=0
+	var state=sim.world.party_encounter
+	if weapon!=null and state!=null and int(state.protagonist_id)==entity_id \
+			and state.protagonist_progression!=null:
+		rank=state.protagonist_progression.rank(str(weapon.proficiency_id))
+	var spec:Dictionary={}
+	if weapon!=null:
+		spec=WeaponAttackRulesScript.build_attack_spec(str(weapon.weapon_id),rank,
+			int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
+			ActorStatRulesScript.for_entity(sim.world,entity_id))
+	return {"attack_power":int(spec.get("raw_damage",profile.get("power",0))),
+		"armor_flat":int(defense.get("effective_armor_flat",profile.get("armor_flat",0))),
+		"base_armor_flat":int(defense.get("base_armor_flat",profile.get("armor_flat",0))),
+		"evasion_milli":int(defense.get("effective_evasion_milli",profile.get("evasion_milli",0))),
+		"base_evasion_milli":int(defense.get("base_evasion_milli",profile.get("evasion_milli",0))),
+		"dodge_milli":int(defense.get("dodge_milli",0)),
+		"parry_milli":int(defense.get("parry_milli",0)),
+		"accuracy_milli":int(profile.get("accuracy_milli",0)) \
+			+int(spec.get("proficiency_accuracy_milli",0)),
+		"guard_reduction_milli":250,"guard_duration":200}.duplicate(true)
+
+
+func _member_equipment_summary(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
+		return {"available":false}.duplicate(true)
+	var inventory=sim.world.inventory_of(entity_id)
+	if inventory==null:return {"available":false}.duplicate(true)
+	var slot_labels:Dictionary={"MAIN_HAND":"무기","OFF_HAND":"보조",
+		"ARMOR":"방어구","ACCESSORY":"장신구"}
+	var rows:Array=[]
+	var named:Dictionary={"MAIN_HAND":"","OFF_HAND":"","ARMOR":"","ACCESSORY":""}
+	for slot in ["MAIN_HAND","OFF_HAND","ARMOR","ACCESSORY"]:
+		var item=inventory.equipped_item(slot)
+		if item==null:continue
+		var definition=ItemRegistryScript.definition(str(item.definition_id))
+		if definition==null:continue
+		var parts:Array[String]=[]
+		for bonus_key in ["armor_flat","dodge_milli","parry_milli"]:
+			var amount:=int(definition.bonuses.get(bonus_key,0))
+			if amount==0:continue
+			parts.append("%s %+d"%[{"armor_flat":"방어","dodge_milli":"회피",
+				"parry_milli":"막기"}[bonus_key],amount])
+		var row:={"slot":slot,"slot_label":str(slot_labels[slot]),
+			"definition_id":str(item.definition_id),"label":str(definition.label),
+			"stat_text":" · ".join(parts)}
+		rows.append(row);named[slot]=str(definition.label)
+	var natural_weapon:=false
+	if str(named.MAIN_HAND).is_empty():
+		var weapon=WeaponRegistryScript.definition(
+			ItemOperationsScript.equipped_weapon_id(sim.world,entity_id))
+		if weapon!=null:
+			named.MAIN_HAND=str(weapon.label);natural_weapon=true
+	var combat_stats:=_member_combat_stats(entity_id)
+	return {"available":true,"weapon_label":str(named.MAIN_HAND) \
+			if not str(named.MAIN_HAND).is_empty() else "없음",
+		"off_hand_label":str(named.OFF_HAND) if not str(named.OFF_HAND).is_empty() else "없음",
+		"armor_label":str(named.ARMOR) if not str(named.ARMOR).is_empty() else "없음",
+		"accessory_label":str(named.ACCESSORY) if not str(named.ACCESSORY).is_empty() else "없음",
+		"natural_weapon":natural_weapon,"equipped_rows":rows,
+		"combat_stats":combat_stats}.duplicate(true)
+
+
+func _member_body_presentation(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null:return {"available":false}
+	var body=sim.world.body_states.get(entity_id)
+	if body==null or not body.has_method("validation_error") \
+			or not body.validation_error().is_empty():return {"available":false}
+	var part_rows:Array=[]
+	for part_value in body.parts:
+		var part:Dictionary=part_value
+		var minimum_integrity:=1000
+		for layer_value in part.get("layers",[]):
+			if layer_value is Dictionary:
+				minimum_integrity=mini(minimum_integrity,int(layer_value.get("integrity",1000)))
+		part_rows.append({"part_id":str(part.get("part_id","")),
+			"condition":str(part.get("condition","FUNCTIONAL")),
+			"integrity_milli":minimum_integrity})
+	return {"available":true,"blood":int(body.current_blood),
+		"blood_capacity":int(body.body_scalars.get("blood_capacity",0)),
+		"shock":int(body.shock),"consciousness":int(body.consciousness),
+		"wound_count":body.wounds.size(),"parts":part_rows,
+		"function":BodyFunctionRulesScript.appraisal(body)}.duplicate(true)
+
+
+func _affinity_toward_protagonist(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or entity_id==int(sim.world.party_encounter.protagonist_id):return {}
+	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
+		int(sim.world.party_encounter.protagonist_id))
+	if relation.is_empty():return {}
+	# This is a presentation score only. Canonical recruitment continues to use
+	# its explicit species, memory, personality and keyed-roll terms.
+	var score:=clampi(50+int(int(relation.get("trust",0))/2)
+		-int(int(relation.get("fear",0))/3)-int(int(relation.get("hostility",0))/2)
+		+int(int(relation.get("gratitude",0))/2)-int(int(relation.get("grievance",0))/2),0,100)
+	var label:="매우 높음" if score>=75 else ("높음" if score>=60 else (
+		"보통" if score>=40 else ("낮음" if score>=25 else "경계")))
+	return {"score":score,"label":label,"trust":int(relation.get("trust",0)),
+		"fear":int(relation.get("fear",0)),"hostility":int(relation.get("hostility",0)),
+		"gratitude":int(relation.get("gratitude",0)),
+		"grievance":int(relation.get("grievance",0)),
+		"disposition":str(relation.get("disposition","NEUTRAL"))}.duplicate(true)
+
+
 func inspect_party_member(entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized", null, null,
@@ -4257,15 +4457,22 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"stress":int(member.stress),"readiness":readiness,"emotion":emotion,
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
+		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
+		"combat_stats":_member_combat_stats(entity_id),
+		"equipment_summary":_member_equipment_summary(entity_id),
+		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
 		"personality_facets":personality_facets,"personality_style":personality_style_dto,
 		"personality_note":"주인공은 생성형 성격 프로필을 사용하지 않습니다." \
 			if personality_profile == null else "%s · 결정론적 성격 프로필" \
 				% str(personality_style_dto.get("label","균형 잡힌 성향")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
+		"affinity_toward_protagonist":_affinity_toward_protagonist(entity_id),
 		"relation_rows":relation_rows,"exile_record":_exile_record_for_member(entity_id),
 		"rescue_assessment":rescue_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
+		"attack_assessment":npc_attack_assessment(entity_id) \
+			if member.presence=="RECRUITABLE" else {},
 		"progression":protagonist_progression() if member.role=="PROTAGONIST" else {},
 		"growth_build":protagonist_growth_build() if member.role=="PROTAGONIST" else {},
 		"recruitment_assessment":recruitment_assessment(entity_id) \
@@ -4327,13 +4534,19 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 				int(entity.health*100/maxi(1,entity.max_health))},
 		"override_state":"PENDING","expected_action":null,
 		"element_exposure":{"applicable":false},"current_exposure":{"applicable":false},
+		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
+		"combat_stats":_member_combat_stats(entity_id),
+		"equipment_summary":_member_equipment_summary(entity_id),
+		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":profile.to_dict() if profile != null else null,
 		"personality_available":profile != null,"personality_facets":facets,
 		"personality_style":style,
 		"personality_note":"%s · 결정론적 HEXACO 프로필"%str(style.get("label","동료")),
 		"species_affinity":AffinityRegistryScript.affinity_for(entity.species_id).to_dict(),
+		"affinity_toward_protagonist":_affinity_toward_protagonist(entity_id),
 		"relation_rows":relation_rows,"exile_record":null,
 		"rescue_assessment":rescue_assessment(entity_id) if collapsed else {},
+		"attack_assessment":npc_attack_assessment(entity_id),
 		"opening_reencounter":opening_candidate,
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if story_state in ["OFFER_READY","REJECTED"] else {}}
@@ -4396,7 +4609,7 @@ func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
 			"party.contact_reported",
-			"party.command_issued",
+			"party.command_issued","party.npc_assaulted",
 			"action.melee_attack","combat.attack_missed","combat.attack_parried","entity.downed",
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
@@ -4669,6 +4882,10 @@ func load_session_json(encoded: String) -> Dictionary:
 					"RECRUIT": replay_result = replay.recruit_companion(entity_id)
 					"STABILIZE": replay_result = replay.stabilize_recruit_candidate(entity_id)
 					"OFFER_RECRUIT": replay_result = replay.offer_recruitment(entity_id)
+			"npc_assault":
+				var operation:Dictionary=row.operation
+				replay_result=replay.assault_npc(Int64CodecScript.parse(
+					operation.entity_id,"assaulted npc"))
 			"party_command":
 				var operation:Dictionary=row.operation
 				replay_result=replay.issue_party_command(str(operation.command_id),
@@ -4919,6 +5136,14 @@ func _journal_wire_error(journal: Array) -> String:
 						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
 						or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
 					return "invalid_roster_journal"
+			"npc_assault":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_npc_assault_journal"
+				var assault_keys:Array=row.operation.keys();assault_keys.sort()
+				if assault_keys!=["entity_id"] \
+						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
+						or Int64CodecScript.parse(row.operation.entity_id,"assaulted npc")<=0:
+					return "invalid_npc_assault_journal"
 			"party_command":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_party_command_journal"
@@ -5121,6 +5346,7 @@ func _event_category(event_type: String) -> String:
 	if event_type.begins_with("encounter.") or event_type == "party.contact_reported" \
 			or event_type == "party.deployment_completed" \
 			or event_type == "party.member_deployed": return "ENCOUNTER"
+	if event_type=="party.npc_assaulted":return "ACTION"
 	if event_type.begins_with("party.victory") or event_type.begins_with("party.regroup") \
 			or event_type == "party.member_regrouped": return "OUTCOME"
 	if event_type.begins_with("environment."): return "ENVIRONMENT"
@@ -5134,6 +5360,7 @@ func _event_tone(event_type: String) -> String:
 			or event_type == "party.member_regrouped": return "VICTORY"
 	if event_type.begins_with("encounter.") or event_type == "party.contact_reported":
 		return "WARNING"
+	if event_type=="party.npc_assaulted":return "DANGER"
 	if event_type.begins_with("action."): return "ACTION"
 	if event_type=="party.command_issued":return "COMMAND"
 	return "INFO"
@@ -5558,6 +5785,13 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"recruitment_offer_required":"구조한 인물에게는 수락 가능성을 확인한 뒤 영입을 제안하세요.",
 		"recruitment_already_resolved":"이 영입 제안의 답은 이미 정해졌습니다.",
 		"recruitment_resolution_failed":"영입 제안이 취소되어 이전 상태로 돌아갔습니다.",
+		"npc_not_attackable":"이 인물은 공격 대상으로 지정할 수 없습니다.",
+		"npc_already_hostile":"이미 적대 중인 인물입니다.",
+		"npc_attack_target_unavailable":"쓰러졌거나 행동할 수 없는 인물은 지금 공격할 수 없습니다.",
+		"npc_attack_target_too_far":"공격하려면 그 인물 바로 옆에 있어야 합니다.",
+		"npc_attack_unsafe_phase":"다른 조우가 진행 중이라 이 인물을 공격할 수 없습니다.",
+		"npc_attack_after_victory":"이번 층의 전투가 끝난 뒤에는 중립 인물을 공격할 수 없습니다.",
+		"npc_assault_failed":"적대 전환이 취소되어 이전 상태로 돌아갔습니다.",
 		"invalid_roster_operation":"지원하지 않는 편성 변경입니다.",
 		"party_roster_change_failed":"편성 변경이 취소되어 이전 상태로 돌아갔습니다.",
 		"invalid_party_action":"지원하지 않는 행동입니다.",
@@ -5605,6 +5839,7 @@ func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
+		"party.npc_assaulted":return "%s을(를) 공격해 적대 관계가 되었다."%target
 		"opening.choice_committed":
 			return "주인공이 회복 물약을 건네기로 했다." \
 				if str(event.data.get("choice",""))=="GAVE_POTION" \

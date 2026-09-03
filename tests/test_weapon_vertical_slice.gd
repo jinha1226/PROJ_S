@@ -291,8 +291,11 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 			"%s row ends with mode multiplier and current XP"%skill_id)
 	sandbox._select_member_detail_tab("ITEM")
 	check("장착 · 단검" in sandbox.member_item_weapon_text.text \
-		and "공격시간  100" in (sandbox.member_item_stats.TIME as Label).text,
-		"item tab owns equipment and intrinsic speed")
+		and (sandbox.member_item_stats.FORM as Label).text.begins_with("공격") \
+		and (sandbox.member_item_stats.DAMAGE as Label).text.begins_with("방어") \
+		and (sandbox.member_item_stats.RANGE as Label).text.begins_with("회피") \
+		and (sandbox.member_item_stats.TIME as Label).text.begins_with("막기"),
+		"item tab owns equipment and the compact combat summary")
 	sandbox._on_item_row_selected("LEGACY_MAIN_HAND","MAIN_HAND")
 	check(sandbox.member_item_quick_unequip_button.visible \
 		and not sandbox.member_item_quick_unequip_button.disabled \
