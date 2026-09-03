@@ -1,9 +1,9 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 100
+const EXPLORATION_ACTOR_MOTION_MSEC := 140
 const CONTINUOUS_EXPLORATION_MOTION_MSEC := 160
-const MANUAL_CAMERA_SETTLE_MSEC := 100
+const MANUAL_CAMERA_SETTLE_MSEC := 140
 # Web canonical hops commonly finish around 105-120ms. Keep continuous motion
 # alive beyond that interval so the next hop retargets the current draw position
 # instead of visibly stopping on every cell.
@@ -242,6 +242,8 @@ var _product_touch_index:=-1
 var _product_touch_control:=""
 var _product_touch_origin:=Vector2.ZERO
 var _product_touch_dragged:=false
+var _product_immediate_touch_indices:Dictionary={}
+var _product_touch_started_msec:=-1
 var _product_mouse_control:=""
 var _product_ignore_mouse_until_msec:=-1
 var _product_auto_explore_generation:=0
@@ -267,7 +269,8 @@ func _process(_delta:float)->void:
 			and now_msec>=_product_auto_explore_due_msec:
 		# A held product button is an unresolved user gesture. AUTO may keep its
 		# running state, but no authoritative hop can occur until release/cancel.
-		if _product_touch_index>=0:
+		if _product_touch_index>=0 or member_detail_modal!=null \
+				and member_detail_modal.visible:
 			_product_auto_explore_due_frame=frame+1
 		else:
 			var expected_auto_generation:=_product_auto_explore_scheduled_generation
@@ -280,7 +283,8 @@ func _process(_delta:float)->void:
 		# may be held past the cadence deadline, but the old route cannot advance
 		# before release cancels it and commits the one manual step. Zoom has its own
 		# touch index and deliberately leaves continuous travel running.
-		if _product_touch_index>=0:
+		if _product_touch_index>=0 or route_paused_by_modal \
+				or member_detail_modal!=null and member_detail_modal.visible:
 			route_continue_due_frame=frame+1
 		else:
 			var expected_route_generation:=route_scheduled_generation
@@ -310,6 +314,7 @@ func _input(event:InputEvent)->void:
 			_cancel_active_route()
 	if _handle_product_control_touch(event):return
 	if member_detail_modal==null or not member_detail_modal.visible:return
+	if _handle_item_popover_outside_pointer(event):return
 	if member_detail_current_tab in ["STATUS","ITEM"]:
 		_handle_item_ledger_touch(event);return
 	if member_detail_current_tab!="SKILL":return
@@ -364,7 +369,8 @@ func _item_action_at_position(global_position:Vector2)->Dictionary:
 	var buttons:Array=[
 		[member_item_reload_button,"RELOAD",""],
 		[member_item_equip_button,"EQUIP",""],
-		[member_item_unequip_button,"UNEQUIP",member_item_selected_slot],
+		[member_item_unequip_button,"UNEQUIP",str(member_item_unequip_button.get_meta(
+			"item_slot",member_item_selected_slot)) if member_item_unequip_button!=null else ""],
 		[member_item_use_button,"USE",""],
 		[member_item_drop_button,"DROP",""],
 		[member_item_popover_close,"CLOSE",""],
@@ -375,6 +381,23 @@ func _item_action_at_position(global_position:Vector2)->Dictionary:
 				and button.get_global_rect().has_point(global_position):
 			return {"action":str(entry[1]),"slot":str(entry[2])}
 	return {}
+
+func _handle_item_popover_outside_pointer(event:InputEvent)->bool:
+	if member_item_popover==null or not member_item_popover.visible:return false
+	var pointer:=Vector2.ZERO;var pressed:=false
+	if event is InputEventScreenTouch:
+		pointer=event.position;pressed=event.pressed
+	elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
+		pointer=event.position;pressed=event.pressed
+	else:return false
+	if not pressed or member_item_popover.get_global_rect().has_point(pointer):return false
+	var row:=_item_row_at_position(pointer)
+	_hide_item_popover(row.is_empty())
+	# A visible ledger row may replace the old popover in the same tap. Any other
+	# outside pointer is exclusively a dismiss gesture and must not activate the
+	# control hidden underneath it.
+	if not row.is_empty():return false
+	get_viewport().set_input_as_handled();return true
 
 func _activate_item_touch_action(action:String,slot:String="")->void:
 	match action:
@@ -471,25 +494,42 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 			or map_overlay!=null and map_overlay.visible:return false
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if _product_touch_index>=0:return false
+			# One touch index owns exactly one immediate command until its release.
+			# Web input can redeliver a pressed packet after a slow frame or a HUD
+			# rebuild; time-window deduplication allowed those late copies to step
+			# the actor a second tile.
+			if _product_immediate_touch_indices.has(event.index):
+				get_viewport().set_input_as_handled();return true
 			var control_name:=_product_control_at_position(event.position)
 			if control_name.is_empty():return false
+			if _product_control_activates_on_press(control_name):
+				var now_msec:=Time.get_ticks_msec()
+				_product_immediate_touch_indices[event.index]={
+					"control":control_name,"started_at_msec":now_msec}
+				_product_ignore_mouse_until_msec=now_msec+750
+				get_viewport().set_input_as_handled()
+				_activate_product_control(control_name)
+				return true
+			if _product_touch_index>=0:
+				if Time.get_ticks_msec()-_product_touch_started_msec<1000:return false
+				_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 			_product_touch_index=event.index;_product_touch_control=control_name
+			_product_touch_started_msec=Time.get_ticks_msec()
 			_product_touch_origin=event.position;_product_touch_dragged=false
 			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
 			get_viewport().set_input_as_handled()
-			# Primary play controls begin under the finger. Waiting for release
-			# added the user's hold duration plus a frame before every step. Menu
-			# and modal controls retain release/cancel semantics.
-			if _product_control_activates_on_press(control_name):
-				_product_touch_control="";_activate_product_control(control_name)
 			return true
+		if _product_immediate_touch_indices.has(event.index):
+			_product_immediate_touch_indices.erase(event.index)
+			_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
+			get_viewport().set_input_as_handled();return true
 		if event.index!=_product_touch_index:return false
 		# ScreenTouch coordinates may be reprojected by stretch mode between the
 		# press and release frames. A gesture that began on one exact button and did
 		# not cross the drag threshold is still that button's short tap.
 		var activate_name:=_product_touch_control if not _product_touch_dragged else ""
 		_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+		_product_touch_started_msec=-1
 		_product_ignore_mouse_until_msec=Time.get_ticks_msec()+750
 		get_viewport().set_input_as_handled()
 		if not activate_name.is_empty():
@@ -1107,10 +1147,15 @@ func _build_item_popover()->void:
 	member_item_popover.visible=false;member_item_popover.mouse_filter=Control.MOUSE_FILTER_STOP
 	member_item_popover.z_index=8;member_item_popover.custom_minimum_size.x=288
 	member_item_popover.add_theme_stylebox_override("panel",
-		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,6))
+		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,0))
 	member_detail_modal.add_child(member_item_popover)
+	var popover_frame=AsciiFrameScript.new();popover_frame.name="ItemDetailAsciiFrame"
+	popover_frame.configure("아이템 정보",AsciiFrameScript.CYAN,
+		AsciiFrameScript.SURFACE_DEEP,true)
+	popover_frame.set_meta("major_glyph_frame",true)
+	member_item_popover.add_child(popover_frame)
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",6)
-	member_item_popover.add_child(stack)
+	popover_frame.add_child(stack)
 	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET
 	header.add_theme_constant_override("separation",4);stack.add_child(header)
 	member_item_popover_title=Label.new();member_item_popover_title.name="ItemPopoverTitle"
@@ -1470,7 +1515,8 @@ func _refresh()->void:
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
 			int(status.protagonist_position[1]))
-		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id))
+		grid.set_hero_centered_view(hero_position,view_cell_count,
+			int(status.protagonist_id),MANUAL_CAMERA_SETTLE_MSEC)
 	else:grid.set_view_window(15)
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	if product_hud:grid_style["vignette"]=false
@@ -2819,7 +2865,9 @@ func _schedule_product_auto_explore(previous_hop_started_msec:int=-1)->void:
 
 func _continue_product_auto_explore(expected_generation:int)->void:
 	if expected_generation!=_product_auto_explore_generation:return
-	if member_detail_modal.visible or record_modal.visible or map_overlay.visible \
+	if member_detail_modal.visible:
+		_schedule_product_auto_explore(Time.get_ticks_msec());return
+	if record_modal.visible or map_overlay.visible \
 			or bool(grid.pointer_gesture_state().get("active",false)):
 		_cancel_product_auto_explore("auto_explore_modal",true);return
 	if not bool(session.auto_explore_state().get("running",false)):return
@@ -3089,8 +3137,11 @@ func _status_label(status_id:String)->String:
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	_product_attack_targeting=false
-	_cancel_product_auto_explore("auto_explore_modal",false)
-	_cancel_route_for_user_interruption()
+	# Character/item inspection is a pause, not a cancellation. Keeping the
+	# canonical AUTO/route state lets travel resume after the modal closes.
+	var travel_state:Dictionary=session.exploration_route_state()
+	route_paused_by_modal=bool(travel_state.get("active",false))
+	_reset_member_detail_pointer_state()
 	var detail:Dictionary=session.inspect_party_member(member_id)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
@@ -3140,10 +3191,26 @@ func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
 	_hide_item_popover()
 	member_detail_modal.visible=false;member_detail_entity_id=-1;_product_attack_targeting=false
+	_reset_member_detail_pointer_state()
 	grid.modal_open=record_modal.visible or map_overlay.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
+	if session!=null:
+		var travel_state:Dictionary=session.exploration_route_state()
+		if bool(travel_state.get("active",false)) and not route_continue_pending:
+			_schedule_route_continue(Time.get_ticks_msec())
+		if session.has_method("auto_explore_state") \
+				and bool(session.auto_explore_state().get("running",false)) \
+				and not _product_auto_explore_pending:
+			_schedule_product_auto_explore(Time.get_ticks_msec())
 	if auto_orchestration_enabled:_request_refresh()
+
+func _reset_member_detail_pointer_state()->void:
+	_item_touch_index=-1;_item_touch_id="";_item_touch_slot="";_item_touch_action=""
+	_item_touch_dragged=false
+	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+	_product_touch_started_msec=-1;_product_immediate_touch_indices.clear();_product_mouse_control=""
+	if grid!=null:grid.cancel_pointer_gesture()
 
 func _select_member_detail_tab(tab_id:String)->void:
 	if tab_id not in ["STATUS","SKILL","ITEM"] \
@@ -3517,13 +3584,8 @@ func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,eq
 	var instance_id:=str(row.get("instance_id",""));var slot:=str(row.get("slot","")) if equipped else ""
 	button.set_meta("item_instance_id",instance_id);button.set_meta("item_slot",slot)
 	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot,button))
-	button.mouse_entered.connect(_on_item_row_hovered.bind(instance_id,slot,button))
 	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
 		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
-
-func _on_item_row_hovered(instance_id:String,slot:String,anchor:Control)->void:
-	if member_detail_modal==null or not member_detail_modal.visible:return
-	_on_item_row_selected(instance_id,slot,anchor)
 
 func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->void:
 	if instance_id.is_empty():return
@@ -3563,6 +3625,8 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_popover_compare.visible=not member_item_popover_compare.text.is_empty()
 	member_item_equip_button.visible=not selected_equipped and not target_slot.is_empty()
 	member_item_equip_button.disabled=false
+	member_item_equip_button.set_meta("item_instance_id",str(row.get("instance_id","")))
+	member_item_equip_button.set_meta("item_slot",target_slot)
 	member_item_equip_button.text="[교체]" if not compared_row.is_empty() \
 		and not bool(compared_row.get("empty",false)) else "[장착]"
 	if member_item_equip_button.visible and not bool(row.get("requirements_met",true)):
@@ -3571,6 +3635,8 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	else:member_item_equip_button.tooltip_text=""
 	member_item_unequip_button.visible=selected_equipped
 	member_item_unequip_button.disabled=not selected_equipped
+	member_item_unequip_button.set_meta("item_instance_id",str(row.get("instance_id","")))
+	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
 	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
 	member_item_use_button.disabled=not member_item_use_button.visible \
 		or not session.has_method("use_inventory_item")
@@ -3601,26 +3667,36 @@ func _item_comparison_text(row:Dictionary,equipped:Dictionary,slot:String)->Stri
 	return "현재 %s · %s\n교체 변화 · %s"%[
 		slot_label,str(equipped.get("label","장비"))," · ".join(parts)]
 
-func _position_item_popover(anchor:Control=null)->void:
+func _position_item_popover(_anchor:Control=null)->void:
 	if member_item_popover==null or not member_item_popover.visible:return
 	var horizontal_margin:=16.0
 	var popup_width:=minf(320.0,maxf(280.0,size.x-horizontal_margin*2.0))
 	member_item_popover.custom_minimum_size.x=popup_width
 	member_item_popover.reset_size()
+	member_item_popover.notification(Container.NOTIFICATION_SORT_CHILDREN)
 	var popup_size:=member_item_popover.get_combined_minimum_size()
 	popup_size.x=popup_width
 	member_item_popover.size=popup_size
-	var x:=clampf((size.x-popup_size.x)*0.5,horizontal_margin,
-		maxf(horizontal_margin,size.x-popup_size.x-horizontal_margin))
-	var y:=maxf(16.0,(size.y-popup_size.y)*0.5)
-	if anchor!=null and is_instance_valid(anchor) and anchor.is_visible_in_tree():
-		var anchor_rect:=anchor.get_global_rect()
-		var local_top:=anchor_rect.position.y-global_position.y
-		var local_bottom:=anchor_rect.end.y-global_position.y
-		y=local_top-popup_size.y-8.0
-		if y<16.0:y=local_bottom+8.0
-		y=clampf(y,16.0,maxf(16.0,size.y-popup_size.y-16.0))
-	member_item_popover.position=Vector2(x,y)
+	member_item_popover.position=_fixed_item_popover_origin(popup_width)
+	_settle_item_popover_size_after_layout(popup_width)
+
+func _settle_item_popover_size_after_layout(popup_width:float)->void:
+	if not is_inside_tree():return
+	await get_tree().process_frame
+	if member_item_popover==null or not member_item_popover.visible:return
+	var popup_size:=member_item_popover.get_combined_minimum_size()
+	popup_size.x=popup_width
+	member_item_popover.size=popup_size
+	member_item_popover.position=_fixed_item_popover_origin(popup_width)
+
+func _fixed_item_popover_origin(popup_width:float)->Vector2:
+	var horizontal_margin:=16.0
+	var x:=clampf((size.x-popup_width)*0.5,horizontal_margin,
+		maxf(horizontal_margin,size.x-popup_width-horizontal_margin))
+	# The selected row, its content height, and the scroll offset never affect
+	# placement. The popover always starts at the detail folio's content inset.
+	var panel_top:=member_detail_panel.position.y if member_detail_panel!=null else 0.0
+	return Vector2(x,maxf(16.0,panel_top+108.0))
 
 func _hide_item_popover(clear_selection:bool=true)->void:
 	if member_item_popover!=null:member_item_popover.visible=false
@@ -3629,15 +3705,22 @@ func _hide_item_popover(clear_selection:bool=true)->void:
 		member_item_selected_id="";member_item_selected_slot=""
 
 func _on_item_equip_selected()->void:
-	var dto:Dictionary=session.protagonist_inventory();var slot:="";var allowed_slots:Array=[]
-	for row in dto.get("backpack_rows",[]):
-		if str(row.get("instance_id",""))==member_item_selected_id:
-			allowed_slots=row.get("equip_slots",[]);break
-	slot=item_preferred_equip_slot(dto,allowed_slots)
+	var dto:Dictionary=session.protagonist_inventory()
+	var instance_id:=str(member_item_equip_button.get_meta(
+		"item_instance_id",member_item_selected_id)) if member_item_equip_button!=null \
+		else member_item_selected_id
+	var slot:=str(member_item_equip_button.get_meta("item_slot","")) \
+		if member_item_equip_button!=null else ""
+	if slot.is_empty():
+		var allowed_slots:Array=[]
+		for row in dto.get("backpack_rows",[]):
+			if str(row.get("instance_id",""))==instance_id:
+				allowed_slots=row.get("equip_slots",[]);break
+		slot=item_preferred_equip_slot(dto,allowed_slots)
 	if slot.is_empty():
 		notice_text="이 아이템은 장착할 수 없습니다."
 		action_feedback_text=notice_text;_request_refresh();return
-	_on_item_operation_result(session.equip_inventory_item(member_item_selected_id,slot))
+	_on_item_operation_result(session.equip_inventory_item(instance_id,slot))
 
 func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
 	# Prefer a vacant compatible slot, then deterministically replace the first
@@ -3654,7 +3737,9 @@ func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
 	return ""
 
 func _on_item_unequip_selected()->void:
-	var slot:=member_item_selected_slot
+	var slot:=str(member_item_unequip_button.get_meta(
+		"item_slot",member_item_selected_slot)) if member_item_unequip_button!=null \
+		else member_item_selected_slot
 	if slot.is_empty() and not member_item_selected_id.is_empty():
 		for row in session.protagonist_inventory().get("equipment_slots",[]):
 			if str(row.get("instance_id",""))==member_item_selected_id:
@@ -3694,7 +3779,10 @@ func _on_item_use_selected()->void:
 func _on_item_operation_result(result:Dictionary)->void:
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","아이템을 옮길 수 없습니다."))
-		action_feedback_text=notice_text;_request_refresh();return
+		action_feedback_text=notice_text
+		member_item_popover_compare.visible=true
+		member_item_popover_compare.text="실패 · %s"%notice_text
+		return
 	var return_tab:=member_detail_current_tab
 	notice_text="아이템 상태를 변경했습니다. (100시간)"
 	_hide_item_popover()
@@ -3896,6 +3984,7 @@ func _reset_run_ui_transients()->void:
 	_product_auto_last_hop_started_msec=-1;route_last_hop_started_msec=-1
 	_product_auto_stop_feedback="";_product_attack_targeting=false
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+	_product_touch_started_msec=-1;_product_immediate_touch_indices.clear()
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
@@ -4357,7 +4446,9 @@ func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
 	route_scheduled_generation=route_generation
 
 func _continue_route_on_cadence(expected_generation:int)->void:
-	if expected_generation!=route_generation or route_paused_by_modal or route_paused_by_pointer or member_detail_modal.visible:return
+	if expected_generation!=route_generation or route_paused_by_pointer:return
+	if route_paused_by_modal or member_detail_modal.visible:
+		route_paused_by_modal=true;return
 	var hop_started_msec:=Time.get_ticks_msec()
 	route_last_hop_started_msec=hop_started_msec
 	var result:Dictionary=session.continue_exploration_route()

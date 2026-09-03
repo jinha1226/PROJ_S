@@ -328,10 +328,13 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and sandbox.member_item_drop_button.text=="[버리기]",
 		"%s product item actions do not meet the touch-safe equipment/consumable contract"%viewport_size)
 	sandbox._on_item_row_selected("START_POTION_001","");await process_frame
+	var item_ascii_frame=sandbox.find_child("ItemDetailAsciiFrame",true,false)
 	_check(sandbox.member_item_popover.visible and sandbox.member_item_use_button.visible \
 		and not sandbox.member_item_use_button.disabled \
-		and sandbox.member_item_use_button.text=="[사용]",
-		"%s healing potion popover does not expose a usable consumable action"%viewport_size)
+		and sandbox.member_item_use_button.text=="[사용]" \
+		and item_ascii_frame!=null \
+		and str(item_ascii_frame.frame_spec().get("primitive",""))=="FIXED_CELL_GLYPHS",
+		"%s healing potion popover lacks a usable action or ASCII glyph border"%viewport_size)
 	sandbox._hide_item_popover()
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5,
 		"%s item tab widened/clipped the detail folio"%viewport_size)
@@ -398,12 +401,42 @@ func _check_item_equipment_touch(viewport_size:Vector2)->void:
 	await process_frame;await process_frame
 	_check(sandbox.member_item_popover.visible and sandbox.member_item_equip_button.text=="[교체]",
 		"%s item touch did not open the comparison popover"%viewport_size)
+	var fixed_popover_position:Vector2=sandbox.member_item_popover.position
 	if sandbox.member_item_popover.visible:
+		_check(str(sandbox.member_item_equip_button.get_meta("item_instance_id","")) \
+			=="START_HAND_AXE_001" and str(sandbox.member_item_equip_button.get_meta(
+			"item_slot",""))=="MAIN_HAND",
+			"%s popover replacement action lost its stable item/slot target"%viewport_size)
 		await _screen_touch_plain_button(sandbox.member_item_equip_button,71)
 		_check(str(session.protagonist_equipment().weapon_id)=="HAND_AXE",
 			"%s popover equipment ScreenTouch was swallowed before [교체]"%viewport_size)
+	var mace_row:=sandbox._find_item_row_button("START_MACE_001","") as Button
+	_check(mace_row!=null,"%s item touch probe has no mace row after replacement"%viewport_size)
+	if mace_row!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(mace_row)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(mace_row,76)
+		_check(sandbox.member_item_popover.visible \
+			and sandbox.member_item_popover.position.is_equal_approx(fixed_popover_position) \
+			and str(sandbox.member_item_equip_button.get_meta("item_instance_id","")) \
+				=="START_MACE_001",
+			"%s second replacement lost its fixed popover or stable item target"%viewport_size)
+		if sandbox.member_item_popover.visible:
+			await _screen_touch_plain_button(sandbox.member_item_equip_button,77)
+		_check(str(session.protagonist_equipment().weapon_id)=="MACE",
+			"%s second consecutive equipment replacement failed"%viewport_size)
+	var potion_row:=sandbox._find_item_row_button("START_POTION_001","") as Button
+	if potion_row!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(potion_row)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(potion_row,74)
+		_check(sandbox.member_item_popover.position.is_equal_approx(fixed_popover_position),
+			"%s item popover moved with the selected row or scroll offset"%viewport_size)
+		await _screen_touch_plain_button(sandbox.member_detail_item_tab,75)
+		_check(not sandbox.member_item_popover.visible and sandbox.member_detail_modal.visible,
+			"%s outside touch did not dismiss only the item popover"%viewport_size)
 	sandbox._select_member_detail_tab("STATUS");await process_frame;await process_frame
-	var equipped_row:=sandbox._find_item_row_button("START_HAND_AXE_001","MAIN_HAND") as Button
+	var equipped_row:=sandbox._find_item_row_button("START_MACE_001","MAIN_HAND") as Button
 	_check(equipped_row!=null and sandbox.member_item_equipment_rows.is_visible_in_tree(),
 		"%s status bottom has no equipped main-hand row"%viewport_size)
 	if equipped_row!=null:
@@ -597,6 +630,24 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			and sandbox.grid.get_instance_id()==grid_id,
 			"%s modal AUTO cancel left stale state or rebuilt the grid"%viewport_size)
 		sandbox.map_overlay.close("TEST");await process_frame
+	# The character/item modal pauses AUTO and resumes it on close. Repeatedly
+	# inspecting gear must not permanently kill automatic travel.
+	session=_safe_auto_product_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	sandbox.continuous_travel_cadence_msec=0;await process_frame;await process_frame
+	sandbox._on_product_auto()
+	if bool(session.auto_explore_state().get("running",false)):
+		var modal_step:=int(session.party_status().step_index)
+		sandbox._open_hero_detail_tab("ITEM")
+		await process_frame;await process_frame;await process_frame
+		_check(int(session.party_status().step_index)==modal_step \
+			and bool(session.auto_explore_state().get("running",false)),
+			"%s item modal cancelled or advanced AUTO instead of pausing it"%viewport_size)
+		sandbox._close_member_detail();await process_frame;await process_frame;await process_frame
+		_check(int(session.party_status().step_index)>modal_step \
+			or not bool(session.auto_explore_state().get("running",false)),
+			"%s AUTO stayed dead after the item modal closed"%viewport_size)
+		sandbox._cancel_product_auto_explore("auto_explore_user_cancel",false)
 	# Grid press wins before GUI routing: it cancels AUTO turn-free even when a
 	# pass-through container, rather than PartyGrid, becomes the headless GUI hit.
 	session=_safe_auto_product_session()
@@ -705,7 +756,7 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 		sandbox._schedule_route_continue(Time.get_ticks_msec())
 		var press:=InputEventScreenTouch.new();press.index=52;press.pressed=true;press.position=center
 		root.push_input(press,true);await process_frame
-		_check(sandbox._product_touch_index==52,
+		_check(sandbox._product_immediate_touch_indices.has(52),
 			"%s held route override press did not reach product input"%viewport_size)
 		await create_timer(float(sandbox.continuous_travel_cadence_msec+40)/1000.0).timeout
 		await process_frame
@@ -717,7 +768,8 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 		root.push_input(release,true);await process_frame;await process_frame
 		_check(int(session.party_status().step_index)==step_before+1 \
 			and session.command_journal.size()==journal_before+1 \
-			and not bool(session.exploration_route_state().get("active",false)),
+			and not bool(session.exploration_route_state().get("active",false)) \
+			and not sandbox._product_immediate_touch_indices.has(52),
 			"%s active route → direction did not cancel then commit exactly once"%viewport_size)
 		await process_frame;await process_frame
 		_check(int(session.party_status().step_index)==step_before+1,
@@ -787,6 +839,62 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	await process_frame;await process_frame
 	_check(int(session.party_status().step_index)==int(wait_before.step_index)+1,
 		"%s center WAIT double-committed"%viewport_size)
+	# Some web touch stacks can repeat the same pressed packet before release.
+	# One physical pointer id still owns exactly one immediate D-pad command.
+	session=_baseline_solo_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
+	await process_frame;await process_frame
+	var duplicate_before:Dictionary=session.party_status()
+	var duplicate_origin:=Vector2i(int(duplicate_before.protagonist_position[0]),
+		int(duplicate_before.protagonist_position[1]))
+	var duplicate_direction:=Vector2i.LEFT
+	var duplicate_button:=sandbox.product_direction_buttons.get(duplicate_direction) as Button
+	var duplicate_point:=duplicate_button.get_global_rect().get_center()
+	var duplicate_press:=InputEventScreenTouch.new();duplicate_press.index=39
+	duplicate_press.pressed=true;duplicate_press.position=duplicate_point
+	root.push_input(duplicate_press,true);root.push_input(duplicate_press,true);await process_frame
+	# Simulate the same held pointer being redelivered after the former 250ms
+	# debounce window, without making this smoke test sleep in real time.
+	if sandbox._product_immediate_touch_indices.has(39):
+		var held_touch:Dictionary=sandbox._product_immediate_touch_indices[39]
+		held_touch["started_at_msec"]=Time.get_ticks_msec()-1000
+		sandbox._product_immediate_touch_indices[39]=held_touch
+	root.push_input(duplicate_press,true);await process_frame
+	var duplicate_after:Dictionary=session.party_status()
+	_check(Vector2i(int(duplicate_after.protagonist_position[0]),
+		int(duplicate_after.protagonist_position[1]))==duplicate_origin+duplicate_direction,
+		"%s immediate or delayed repeated D-pad press moved more than one tile"%viewport_size)
+	var duplicate_release:=InputEventScreenTouch.new();duplicate_release.index=39
+	duplicate_release.pressed=false;duplicate_release.position=duplicate_point
+	root.push_input(duplicate_release,true);await process_frame
+	var opposite_button:=sandbox.product_direction_buttons.get(-duplicate_direction) as Button
+	await _screen_touch_button(sandbox,opposite_button,40,true)
+	var opposite_after:Dictionary=session.party_status()
+	_check(Vector2i(int(opposite_after.protagonist_position[0]),
+		int(opposite_after.protagonist_position[1]))==duplicate_origin,
+		"%s one opposite D-pad touch moved more than one tile"%viewport_size)
+	# The first step toward the nearby monster may atomically enter combat, but
+	# the player still changes exactly one cell and keeps a visible camera settle.
+	session=_baseline_solo_session()
+	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,true)
+	await process_frame;await process_frame
+	var contact_before:Dictionary=session.party_status()
+	var contact_origin:=Vector2i(int(contact_before.protagonist_position[0]),
+		int(contact_before.protagonist_position[1]))
+	var contact_button:=sandbox.product_direction_buttons.get(Vector2i.UP) as Button
+	await _screen_touch_button(sandbox,contact_button,41)
+	var contact_after:Dictionary=session.party_status()
+	var contact_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
+	_check(Vector2i(int(contact_after.protagonist_position[0]),
+		int(contact_after.protagonist_position[1]))==contact_origin+Vector2i.UP \
+		and int(contact_camera.get("duration_ms",0))==sandbox.MANUAL_CAMERA_SETTLE_MSEC,
+		"%s first monster-facing D-pad touch jumped cells or lost its smooth settle"%viewport_size)
+	var contact_reverse:=sandbox.product_direction_buttons.get(Vector2i.DOWN) as Button
+	await _screen_touch_button(sandbox,contact_reverse,42,true)
+	var contact_reversed:Dictionary=session.party_status()
+	_check(Vector2i(int(contact_reversed.protagonist_position[0]),
+		int(contact_reversed.protagonist_position[1]))==contact_origin,
+		"%s opposite touch after first contact moved more than one tile"%viewport_size)
 	# Map touch retains its original one-cell contract beside the button dock.
 	session=_baseline_solo_session()
 	sandbox._reset_run_ui_transients();sandbox.initialize_for_headless_test(session,false)
@@ -806,18 +914,23 @@ func _screen_touch_button(sandbox,button:Button,touch_index:int,
 		assert_immediate_step:bool=false)->void:
 	if button==null:
 		failures.append("missing product control button");return
+	var button_name:=button.name
+	var immediate:bool=bool(sandbox._product_control_activates_on_press(button_name))
 	var step_before:=int(sandbox.session.party_status().get("step_index",-1))
 	var center:=button.get_global_rect().get_center()
 	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=center
 	root.push_input(press,true);await process_frame
-	if sandbox._product_touch_index!=touch_index:
+	if immediate and not sandbox._product_immediate_touch_indices.has(touch_index):
+		failures.append("immediate product ScreenTouch press did not reach sandbox _input at %s"%center)
+	elif not immediate and sandbox._product_touch_index!=touch_index:
 		failures.append("product ScreenTouch press did not reach sandbox _input at %s"%center)
 	if assert_immediate_step and int(sandbox.session.party_status().get(
 			"step_index",-1))!=step_before+1:
-		failures.append("%s waited for touch release instead of committing on press"%button.name)
+		failures.append("%s waited for touch release instead of committing on press"%button_name)
 	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=center
 	root.push_input(release,true);await process_frame;await process_frame
-	if sandbox._product_touch_index!=-1:
+	if sandbox._product_touch_index!=-1 \
+			or sandbox._product_immediate_touch_indices.has(touch_index):
 		failures.append("product ScreenTouch release did not reach sandbox _input at %s"%center)
 
 func _screen_touch_grid_cell(sandbox,position:Vector2i,touch_index:int)->void:
