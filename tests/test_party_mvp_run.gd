@@ -55,7 +55,7 @@ func test_run_manifest_and_progress_are_exact_pure_and_detached() -> bool:
 	check_eq(session.save_session_json(), before, "run projection is pure")
 	var wire: Dictionary = JSON.parse_string(before)
 	check_eq([int(wire.session_format_version), int(wire.snapshot.snapshot_version)],
-		[5,10], "session v5 and core snapshot v10 expose the body authority hard cut")
+		[5,11], "session v5 and core snapshot v11 expose the body authority hard cut")
 	check(not _contains_run_key(wire.snapshot),
 		"core snapshot contains no derived run/reward/exit key")
 	return finish()

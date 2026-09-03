@@ -87,10 +87,10 @@ func test_world_state_error_reports_item_row_membership_and_content()->bool:
 func test_snapshot_v10_round_trips_item_and_body_state_and_rejects_v9_in_header()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var snapshot:Dictionary=session.sim.snapshot()
-	check_eq(int(snapshot.snapshot_version),10,"world snapshot is v10")
+	check_eq(int(snapshot.snapshot_version),11,"world snapshot is v11")
 	var top_keys:Array=snapshot.keys();top_keys.sort()
 	check(top_keys.has("item_state") and top_keys.has("body_states"),
-		"item and body authority are in the exact v10 top level key set")
+		"item and body authority are in the exact v11 top level key set")
 	check(not snapshot.party_encounter.has("protagonist_inventory") \
 		and not snapshot.party_encounter.has("ground_items"),
 		"party state no longer duplicates inventory or ground authority")

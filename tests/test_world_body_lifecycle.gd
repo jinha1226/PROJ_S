@@ -61,14 +61,14 @@ func test_rejected_entity_creation_never_leaves_a_body_row()->bool:
 	return finish()
 
 
-func test_snapshot_v10_body_rows_are_strict_sorted_and_hard_cut()->bool:
+func test_snapshot_v11_body_rows_are_strict_sorted_and_hard_cut()->bool:
 	var sim=Simulator.create(5,5,414)
 	var human=sim.world.add_entity("hero","인간",Vector2i(1,1),100,[],"human")
 	var goblin=sim.world.add_entity("melee_enemy","고블린",Vector2i(2,1),40,[],"goblin")
 	var wire:Dictionary=sim.snapshot()
 	check_eq([wire.snapshot_version,wire.body_ruleset_id,wire.body_combat_ruleset_id,
-		wire.body_state_schema_id],[10,"body-simulation-b1-v1","body-combat-b1-v1",
-		"body-state-v2"],"v10 declares body and injury authority")
+		wire.body_state_schema_id],[11,"body-simulation-b1-v1","body-combat-b1-v1",
+		"body-state-v2"],"v11 declares body and injury authority")
 	check_eq(wire.body_states.map(func(row):return row.entity_id),
 		[str(human.id),str(goblin.id)],"body rows use canonical entity order")
 	var json_wire:Dictionary=JSON.parse_string(JSON.stringify(wire))

@@ -1635,6 +1635,18 @@ func _party_observation_context()->Dictionary:
 		"ground_items_by_cell":ground_items_by_cell}
 
 
+func _wall_borders_visible_floor(position:Vector2i,visible:Dictionary)->bool:
+	# True when this wall touches (orthogonally or diagonally) a currently visible
+	# non-wall cell, i.e. it forms the visible boundary of the player's view.
+	for direction in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1),
+			Vector2i(1,1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var neighbor:Vector2i=position+direction
+		if not sim.world.in_bounds(neighbor):continue
+		if not visible.has(_position_key(neighbor)):continue
+		if str(sim.world.tile_at(neighbor).terrain)!="wall":return true
+	return false
+
+
 func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 		grid_origin:Vector2i,mapping_capacity:int=225)->Dictionary:
 	var status:Dictionary=context.status
@@ -1654,6 +1666,16 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			var position_key:=_position_key(position)
 			var visibility_state := "VISIBLE" if visible.has(position_key) else (
 				"MEMORY" if explored.has(position_key) else "UNSEEN")
+			# A wall that encloses the field of view is itself seen. Strict cell LOS
+			# leaves such border walls UNSEEN, which rendered as black gaps in the
+			# very walls the player stands beside (worst on diagonals). Promote a
+			# wall bordering any currently visible floor to VISIBLE so the room's
+			# walls read as solid. This is presentation only: gameplay FOV and the
+			# auto-explore fog snapshot build their own cell sets and are untouched.
+			if visibility_state != "VISIBLE" \
+					and str(sim.world.tile_at(position).terrain) == "wall" \
+					and _wall_borders_visible_floor(position, visible):
+				visibility_state = "VISIBLE"
 			if visibility_state == "UNSEEN":
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,

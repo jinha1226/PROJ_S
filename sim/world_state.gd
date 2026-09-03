@@ -1,7 +1,7 @@
 class_name SimWorldState
 extends RefCounted
 
-const SNAPSHOT_VERSION := 10
+const SNAPSHOT_VERSION := 11
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
@@ -2585,7 +2585,11 @@ func _melee_action_event_error(event) -> String:
 		and "weapon_loadout" in entities[event.actor_id].tags
 	var weapon_spec: Dictionary = {}
 	if weapon_enabled:
-		var weapon_id := WorldItemOperationsScript.equipped_weapon_id(self, event.actor_id)
+		# Validate the attack against the weapon recorded on the event, not the
+		# weapon equipped right now. The loadout may legitimately change after an
+		# attack (unequip/swap), and re-deriving from the current weapon made every
+		# past attack fail to re-validate, rolling the equipment change back.
+		var weapon_id := str(event.data.get("weapon_id", ""))
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return "canonical_weapon_missing"
 		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id)
@@ -2608,6 +2612,9 @@ func _melee_action_event_error(event) -> String:
 		"hit_chance_milli", "hit_roll_milli", "intent_mode", "intent_ordinal", "outcome",
 		"processed_step_index", "schema_version", "target_evasion_milli", "target_life_at_batch_start",
 		"target_profile_id"]
+	# A protagonist weapon attack records the weapon it was resolved with so the
+	# attack stays valid after the loadout changes.
+	if weapon_enabled: action_keys.append("weapon_id")
 	if not _exact_keys(event.data, action_keys) or event.data.get("schema_version") != 1 \
 			or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID:
 		return "canonical_melee_event_data_invalid"
