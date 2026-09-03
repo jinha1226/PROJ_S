@@ -201,6 +201,10 @@ func resolve_frozen_intent(intent):
 		"guard_reduction": int(assessment.get("guard_reduction", -1)),
 		"final_damage": final_damage,
 	}
+	if weapon_schema:
+		# Record the weapon used so replay validates this attack against it rather
+		# than the loadout equipped at validation time, which may have changed.
+		action_data["weapon_id"] = str(assessment.get("weapon_id", ""))
 	if equipment_defense:
 		action_data["defense_ruleset_id"]=DefenseRulesScript.RULESET_ID
 		action_data["target_base_evasion_milli"]=int(defense_snapshot.base_evasion_milli)

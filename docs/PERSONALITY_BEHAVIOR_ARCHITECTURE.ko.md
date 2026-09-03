@@ -3,6 +3,12 @@
 > 상태: Phase 3 이후 개인 AI의 장기 기준 문서
 > 현재 구현 프롬프트: `PHASE3_DUNGEON_PERSONALITY_LAB_IMPLEMENTATION_PROMPT.ko.md`
 
+> **파티 성격 계약 정정:** 아래 Phase 3 던전 실험실의 과거 4-facet 설명을 파티에
+> 적용하지 않는다. 파티는 `aggression/altruism/boldness/composure`를 폐기했고 연속형
+> HEXACO 6축 `H/E/X/A/C/O`만 저장·판단한다. 파티의 최신 계약은 이 문서 12~13절,
+> `docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`,
+> `docs/superpowers/specs/2026-09-02-party-hexaco-migration-design.md`가 우선한다.
+
 ## 1. 결론
 
 게임 업계에 개인 성향을 처리하는 단 하나의 표준 알고리즘은 없다. 잘 알려진 시뮬레이션 게임들은 대체로 다음을 조합한다.
@@ -115,7 +121,8 @@ TraitSet                     # 희소한 예외 특성, 후속 단계
 Skill / Role / Duty          # 성격과 별도
 ```
 
-초기 facet은 네 개만 구현한다.
+이 절의 네 facet은 원래 Phase 3 던전 성격 비교 실험실에 한정된 역사적 모델이다. 파티
+동료 모델로 재사용하지 않는다. 파티는 12절의 HEXACO 여섯 축을 사용한다.
 
 | facet | 뜻 | 중복을 피하는 경계 |
 |---|---|---|
@@ -124,7 +131,9 @@ Skill / Role / Duty          # 성격과 별도
 | `altruism` | 타인의 안전을 자기 안전보다 중시하는 정도 | 특정 대상과의 관계값은 아님 |
 | `composure` | 강한 감정 속에서도 계획을 유지하는 정도 | 위험을 좋아하는 정도는 아님 |
 
-종족 간 신뢰·공포·적대 prior는 personality facet보다 별도이며 우세한 입력으로 유지한다. 인간이 고블린을 한 번 도운 사건이나 높은 altruism 하나가 강한 종간 적대를 즉시 뒤집어서는 안 된다.
+종족 간 신뢰·공포·적대 prior는 personality facet보다 별도이며 우세한 입력으로 유지한다.
+인간이 고블린을 한 번 도운 사건이나 특정 개인 성향 하나가 강한 종간 적대를 즉시
+뒤집어서는 안 된다.
 
 ### 3.2 동적 심리 상태
 

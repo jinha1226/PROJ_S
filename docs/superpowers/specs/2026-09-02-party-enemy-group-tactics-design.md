@@ -2,6 +2,9 @@
 
 작성일 2026-09-02. 4인 파티 단체전투 시리즈의 2/4.
 
+전체 파티 전투 단계의 완료/미완료 경계는
+`docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`에서 관리한다.
+
 구현 상태: **P2-1~P2-4 완료**. 전체 배치 파티 인지, 순수 분대 블랙보드와 claim,
 결정론적 재표적, 이동 목적지 예약, 관찰 DTO와 시드 매트릭스가 권위 전투 경로에 연결됐다.
 `tests/run_party_enemy_tactics_tests.gd`는 12/12를 통과하며, 8개 조우·89턴에서
@@ -68,4 +71,5 @@ rejected step, invalid world, restore failure가 모두 0이다.
   `WorldState` 투영·cadence bridge(P4-2b)와 상세 복귀(P4-3)는 아직이다.
 - 새 공격·이동 행동 타입, RNG 기반 전술, 텔레파시로 아직 아무 적도 보지 못한
   파티원을 추적하는 규칙.
-- 화면 밖 전투의 상세/축약 전환과 시간 배치 처리는 다음 P4에서 다룬다.
+- 화면 밖 전투의 제품 상세/축약 전환과 world-time 배치 연결은 남은 P4-2b~P4-4에서
+  다룬다.

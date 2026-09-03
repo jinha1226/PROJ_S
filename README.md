@@ -188,4 +188,6 @@ Web build는 파일을 직접 열지 말고 HTTP 서버로 제공해야 합니�
 
 화면의 `DEBUG OMNI`는 시야·인지 제한 없이 개발 정보를 표시한다는 뜻입니다. `PlaytestSession`은 32×48 고정 경기장, 선택 위치, MOVE/WAIT/원소 제출, accepted command journal, snapshot v3 단일 슬롯 저장·복원, HUD용 detached 상태를 제공합니다. 이 경기장은 규칙과 카메라를 검증하는 작은 수직 슬라이스이며 최종 월드 규모를 뜻하지 않습니다. UI는 session DTO만 사용하고 simulator/world를 직접 읽거나 이동·위험 공식을 복제하지 않아야 합니다.
 
-다음 단계는 [개발 가이드](docs/NEXT_DEVELOPMENT_GUIDE.ko.md)를 따릅니다.
+파티 전투의 현재 완료 범위는
+[파티 전투 구현 현황](docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md), 다음 단계는
+[개발 가이드](docs/NEXT_DEVELOPMENT_GUIDE.ko.md)를 따릅니다.

@@ -1,5 +1,11 @@
 # Phase 4 구현 프롬프트 — 동일 월드 파티 조우·배치·재집결
 
+> **역사적 구현 프롬프트:** 배치·재집결 코어의 과거 계약을 보존한다. 아래의 임시 4-facet,
+> 제품 개별 companion override, 수동 전술 입력 설명은 현재 파티 제품 계약이 아니다.
+> 파티는 HEXACO 6축, 완전 자동 동료, 공유 인지와 다섯 파티 전체 예외 명령을 사용한다.
+> 최신 상태는 `docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`와
+> `docs/superpowers/specs/2026-09-02-party-autonomy-perception-design.md`가 우선한다.
+
 ## 0A. 2026-08-28 자동 재집결 UX 개정 — 최우선 계약
 
 이 절은 아래 문서의 `REGROUP_READY` 명시 입력, `+100` 재집결 command,

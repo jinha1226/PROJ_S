@@ -1,8 +1,12 @@
 # 다음 개발 가이드
 
+파티 전투의 완료/미완료 경계와 검증 수치는
+`docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`에 한 번에 정리한다. 이 문서에는 다음 개발
+순서와 코어 장기 계약을 유지한다.
+
 ## 현재 완료 기준
 
-2026-09-02 최신 `main`의 안정 경계는 world snapshot v9, 파티 조우 schema v17,
+2026-09-04 `fix/party-hexaco-v2`의 안정 경계는 world snapshot v10, 파티 조우 schema v17,
 8방향 MOVE, environment/actor 이중 cadence, 최대 4인 동일-grid 파티와 4개 적,
 파티 턴 원자 commit, 승리 턴의 zero-time 자동 재집결이다. Phase 5 명중·방어·상태·
 다운/죽음, 장비·루팅, 플레이어블 5종족·종족 스탯과 격리된 신체 상태 B0 모델도 같은

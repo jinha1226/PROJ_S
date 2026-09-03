@@ -1,5 +1,8 @@
 # Party HEXACO migration design
 
+The consolidated party-combat status and remaining sequence live in
+`docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`.
+
 ## Implementation status
 
 Completed. Party creation, combat utility, morale, exile summaries, observations, UI,

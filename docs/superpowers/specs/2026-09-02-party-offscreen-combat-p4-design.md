@@ -2,6 +2,9 @@
 
 작성일 2026-09-02. 4인 파티 단체전투 시리즈의 4/4.
 
+전체 파티 전투 단계의 완료/미완료 경계는
+`docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`에서 관리한다.
+
 구현 상태: **P4-1과 P4-2a 완료, P4-2b~P4-4 미구현**. P4-1은 상세/축약 전환 가능
 여부와 한 축약 라운드의 예상 피해·이유 trace를 순수 계산한다. P4-2a는 이 출력을
 독립 권위 상태에 원자적으로 반영하고 cadence·milli carry·사건·JSON save/replay·전역

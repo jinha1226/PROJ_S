@@ -1,5 +1,10 @@
 # Phase 3 구현 프롬프트 — 던전 성격 반응 실험실
 
+> **역사적 Phase 3 구현 계약:** 이 문서의 4-facet은 던전 비교 실험실 전용이며 현재 파티
+> 성격 모델이 아니다. 파티는 연속형 HEXACO 6축만 사용한다. 파티 구현에는
+> `docs/PARTY_COMBAT_IMPLEMENTATION_STATUS.ko.md`와
+> `docs/superpowers/specs/2026-09-02-party-hexaco-migration-design.md`를 우선한다.
+
 ## 0. 현재 단일 목표
 
 동일한 던전 조우를 **성격만 다른 네 캐릭터**에게 동시에 제시하고, 왜 서로 다른 반응을 골랐는지 비교할 수 있는 결정론적 실험 화면을 구현한다.
