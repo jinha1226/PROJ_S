@@ -119,6 +119,14 @@ func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictiona
 	if delta.x != 0 and delta.y != 0:
 		if not world.diagonal_step_terrain_allowed(from, to):
 			return false
+		if not movement.allows_occupied_diagonal_flanks(actor_id):
+			for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
+				if not world.in_bounds(flank):
+					continue
+				var flank_def: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(flank).terrain)
+				if flank_def.is_empty() or not bool(flank_def.get("passable", false)):
+					continue
+				if _occupant(flank, actor_id, projection) != -1:return false
 	return true
 
 
