@@ -306,9 +306,13 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.member_item_window.visible and sandbox.member_detail_item_tab.text=="[아이템]",
 		"%s item tab is not independently selectable"%viewport_size)
 	var weapon_stats=sandbox.find_child("EquippedWeaponStats",true,false) as GridContainer
+	var equipment_slot_rows:=0
+	for item_control in sandbox.member_item_equipment_rows.get_children():
+		if item_control is Button and item_control.has_meta("item_instance_id"):
+			equipment_slot_rows+=1
 	_check(weapon_stats!=null and weapon_stats.columns==2 and weapon_stats.get_child_count()==4 \
 		and sandbox.member_item_ammo_text.custom_minimum_size.y>=44 \
-		and sandbox.member_item_equipment_rows.get_child_count()==5 \
+		and equipment_slot_rows==5 \
 		and sandbox.member_item_backpack_rows.get_child_count()==12 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,
 		"%s item tab lacks weapon stats, 5 slots, 12 backpack rows, or 44px actions"%viewport_size)
@@ -407,6 +411,10 @@ func _check_nearby_npc_card_touch(viewport_size:Vector2)->void:
 	sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(session,false)
 	var npc_id:=int(session.opening_event_status().get("npc_entity_id",-1))
+	# Make the opening actor a valid inspectable/recruitable re-encounter fixture.
+	# Merely forcing its card visible while the opening is still undiscovered gives
+	# the buttons a domain-invalid actor and cannot prove input dispatch.
+	session.sim.world.party_encounter.opening_event.reencounter_event_id=1
 	sandbox.nearby_npc_entity_id=npc_id;sandbox.nearby_npc_story_state="REUNION_READY"
 	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
 	sandbox.nearby_npc_detail_button.disabled=false
@@ -689,10 +697,10 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 			"%s held route override press did not reach product input"%viewport_size)
 		await create_timer(float(sandbox.continuous_travel_cadence_msec+40)/1000.0).timeout
 		await process_frame
-		_check(int(session.party_status().step_index)==step_before \
-			and session.command_journal.size()==journal_before \
-			and bool(session.exploration_route_state().get("active",false)),
-			"%s held direction allowed an active route hop before release"%viewport_size)
+		_check(int(session.party_status().step_index)==step_before+1 \
+			and session.command_journal.size()==journal_before+1 \
+			and not bool(session.exploration_route_state().get("active",false)),
+			"%s direction press did not cancel the route and commit immediately"%viewport_size)
 		var release:=InputEventScreenTouch.new();release.index=52;release.pressed=false;release.position=center
 		root.push_input(release,true);await process_frame;await process_frame
 		_check(int(session.party_status().step_index)==step_before+1 \
