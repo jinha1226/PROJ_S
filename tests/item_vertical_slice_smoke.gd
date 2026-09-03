@@ -41,7 +41,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 			scroll.get_child(0).size,scroll.get_child(0).custom_minimum_size,
 			sandbox.member_item_window.get_combined_minimum_size()])
 	scroll.scroll_vertical=0;await process_frame
-	var drag_origin:Vector2=(sandbox.member_item_equipment_rows.get_child(0) as Control) \
+	var drag_origin:Vector2=(sandbox.member_item_backpack_rows.get_child(0) as Control) \
 		.get_global_rect().get_center()
 	_push_touch(drag_origin,true,31);await process_frame
 	for step in range(1,6):
@@ -51,12 +51,16 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_push_touch(drag_origin+Vector2(0,-180),false,31);await process_frame;await process_frame
 	_assert(scroll.scroll_vertical>0,"%s real ScreenTouch drag did not scroll ITEM ledger"%viewport_size)
 	scroll.scroll_vertical=int(bar.max_value-bar.page);await process_frame;await process_frame
-	var action_rect:Rect2=sandbox.member_item_action_row.get_global_rect()
-	_assert(scroll.get_global_rect().intersection(action_rect).size.y>=43.9,
-		"%s ITEM bottom actions remain unreachable at max scroll: %s"%[viewport_size,action_rect])
+	var final_bag_row:=sandbox.member_item_backpack_rows.get_child(11) as Control
+	var final_bag_rect:Rect2=final_bag_row.get_global_rect()
+	_assert(scroll.get_global_rect().intersection(final_bag_rect).size.y>=43.9,
+		"%s ITEM final bag row remains unreachable at max scroll: %s"%[viewport_size,final_bag_rect])
 	_assert(sandbox.member_item_equipment_rows.get_child_count()==5 \
 		and sandbox.member_item_backpack_rows.get_child_count()==12,
 		"%s item ledger is not 5 equipment + 12 bag rows"%viewport_size)
+	_assert(not sandbox.member_item_equipment_rows.is_visible_in_tree() \
+		and sandbox.member_item_backpack_rows.is_visible_in_tree(),
+		"%s item tab does not lead directly with the bag"%viewport_size)
 	var bag_text:=""
 	for child in sandbox.member_item_backpack_rows.get_children():bag_text+=str(child.text)
 	_assert("단검" not in bag_text and "회복 물약" in bag_text,

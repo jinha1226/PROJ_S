@@ -56,24 +56,25 @@ func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	return finish()
 
 
-func test_item_tab_replaces_equipment_from_an_inline_touch_action()->bool:
+func test_item_tab_replaces_equipment_from_item_popover()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	sandbox._open_hero_detail();sandbox._select_member_detail_tab("ITEM")
 	sandbox._on_item_row_selected("START_HAND_AXE_001","")
-	var inline:=sandbox.member_item_backpack_rows.find_child("ItemInlineEquip",true,false) as Button
-	check(inline!=null and not inline.disabled and "교체" in inline.text \
-			and inline.custom_minimum_size.y>=44.0,
-		"selecting carried gear exposes an immediate touch-sized replacement action")
-	if inline!=null:inline.pressed.emit()
+	var replace:=sandbox.member_item_equip_button as Button
+	check(sandbox.member_item_popover.visible and replace!=null and not replace.disabled \
+			and replace.text=="[교체]" and replace.custom_minimum_size.y>=44.0 \
+			and "현재 주무기" in sandbox.member_item_popover_compare.text,
+		"selecting carried gear opens a touch-sized comparison/replacement popover")
+	if replace!=null:replace.pressed.emit()
 	var state=session.sim.world.party_encounter
 	var inventory=session.sim.world.inventory_of(state.protagonist_id)
 	check_eq([str(inventory.equipped.MAIN_HAND),
 		inventory.unequipped_items().map(func(item):return item.instance_id).has("LEGACY_MAIN_HAND"),
 		str(session.protagonist_equipment().weapon_id)],
 		["START_HAND_AXE_001",true,"HAND_AXE"],
-		"inline replacement equips the new item and returns the old one to the bag")
+		"popover replacement equips the new item and returns the old one to the bag")
 	check("변경" in sandbox.notice_text,"replacement reports immediate visible feedback")
 	sandbox.free();return finish()
 
@@ -91,11 +92,11 @@ func test_weapon_rows_explain_species_requirements_and_failed_equip()->bool:
 	sandbox.initialize_for_headless_test(session,true)
 	sandbox._open_hero_detail();sandbox._select_member_detail_tab("ITEM")
 	sandbox._on_item_row_selected("START_HAND_AXE_001","")
-	var inline:=sandbox.member_item_backpack_rows.find_child(
-		"ItemInlineEquip",true,false) as Button
-	check(inline!=null and "능력 부족" in inline.text and "STR 5" in inline.text,
-		"inline weapon action explains why it cannot equip")
-	if inline!=null:inline.pressed.emit()
+	var equip:=sandbox.member_item_equip_button as Button
+	check(sandbox.member_item_popover.visible and equip!=null \
+		and equip.text=="[장착 불가]" and "STR 5" in sandbox.member_item_popover_body.text,
+		"weapon popover explains why it cannot equip")
+	if equip!=null:equip.pressed.emit()
 	check(str(session.protagonist_equipment().weapon_id)=="SHORT_SWORD" \
 		and "필요 능력치" in sandbox.notice_text,
 		"failed weapon equip preserves equipment and gives a visible reason")
@@ -290,24 +291,24 @@ func test_skill_and_item_tabs_separate_training_from_real_equipment() -> bool:
 			and ledger.get_child(ledger.get_child_count()-1)==xp,
 			"%s row ends with mode multiplier and current XP"%skill_id)
 	sandbox._select_member_detail_tab("ITEM")
-	check("장착 · 단검" in sandbox.member_item_weapon_text.text \
-		and (sandbox.member_item_stats.FORM as Label).text.begins_with("공격") \
-		and (sandbox.member_item_stats.DAMAGE as Label).text.begins_with("방어") \
-		and (sandbox.member_item_stats.RANGE as Label).text.begins_with("회피") \
-		and (sandbox.member_item_stats.TIME as Label).text.begins_with("막기"),
+	check("장착" not in sandbox.member_item_weapon_text.text \
+		and "공격" in sandbox.member_item_weapon_text.text \
+		and "방어" in sandbox.member_item_weapon_text.text \
+		and "회피" in sandbox.member_item_weapon_text.text \
+		and "막기" in sandbox.member_item_weapon_text.text,
 		"item tab owns equipment and the compact combat summary")
+	sandbox._select_member_detail_tab("STATUS")
 	sandbox._on_item_row_selected("LEGACY_MAIN_HAND","MAIN_HAND")
-	check(sandbox.member_item_quick_unequip_button.visible \
-		and not sandbox.member_item_quick_unequip_button.disabled \
-		and "단검" in sandbox.member_item_quick_unequip_button.text \
-		and sandbox.member_item_quick_unequip_button.get_index() \
-			< sandbox.member_item_empty_text.get_index(),
-		"selecting equipped gear exposes its touch-sized unequip action before the backpack")
+	check(sandbox.member_item_popover.visible and sandbox.member_item_unequip_button.visible \
+		and not sandbox.member_item_unequip_button.disabled \
+		and "단검" in sandbox.member_item_popover_title.text,
+		"selecting status equipment opens its touch-sized unequip popover")
 	sandbox.member_item_quick_unequip_button.pressed.emit()
 	check(bool(session.protagonist_inventory().equipment_slots[0].empty) \
-		and not sandbox.member_item_quick_unequip_button.visible \
+		and not sandbox.member_item_popover.visible \
+		and sandbox.member_detail_current_tab=="STATUS" \
 		and "단검" in JSON.stringify(session.protagonist_inventory().backpack_rows),
-		"inline unequip action commits and immediately refreshes the item ledger")
+		"popover unequip commits, refreshes equipment, and preserves the status tab")
 	sandbox.free()
 	var crossbow_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	check(_equip_starter_weapon(crossbow_session, "CROSSBOW").accepted,

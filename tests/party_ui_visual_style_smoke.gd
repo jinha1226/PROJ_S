@@ -305,17 +305,22 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox._select_member_detail_tab("ITEM");await process_frame;await process_frame
 	_check(sandbox.member_item_window.visible and sandbox.member_detail_item_tab.text=="[아이템]",
 		"%s item tab is not independently selectable"%viewport_size)
-	var weapon_stats=sandbox.find_child("EquippedWeaponStats",true,false) as GridContainer
+	var combat_summary=sandbox.find_child("EquippedCombatSummary",true,false) as Label
 	var equipment_slot_rows:=0
 	for item_control in sandbox.member_item_equipment_rows.get_children():
 		if item_control is Button and item_control.has_meta("item_instance_id"):
 			equipment_slot_rows+=1
-	_check(weapon_stats!=null and weapon_stats.columns==2 and weapon_stats.get_child_count()==4 \
+	_check(combat_summary!=null and "공격" in combat_summary.text \
+		and "방어" in combat_summary.text and "회피" in combat_summary.text \
+		and "막기" in combat_summary.text and "장착" not in combat_summary.text \
 		and sandbox.member_item_ammo_text.custom_minimum_size.y>=44 \
 		and equipment_slot_rows==5 \
 		and sandbox.member_item_backpack_rows.get_child_count()==12 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,
-		"%s item tab lacks weapon stats, 5 slots, 12 backpack rows, or 44px actions"%viewport_size)
+		"%s item/status UI lacks one-line stats, 5 slots, 12 backpack rows, or 44px popover actions"%viewport_size)
+	_check(sandbox.member_item_backpack_rows.is_visible_in_tree() \
+		and not sandbox.member_item_equipment_rows.is_visible_in_tree(),
+		"%s item tab does not lead directly with the bag"%viewport_size)
 	_check(sandbox.member_item_equip_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_unequip_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_use_button.custom_minimum_size.y>=44 \
@@ -323,9 +328,11 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and sandbox.member_item_drop_button.text=="[버리기]",
 		"%s product item actions do not meet the touch-safe equipment/consumable contract"%viewport_size)
 	sandbox._on_item_row_selected("START_POTION_001","");await process_frame
-	_check(sandbox.member_item_use_button.visible and not sandbox.member_item_use_button.disabled \
+	_check(sandbox.member_item_popover.visible and sandbox.member_item_use_button.visible \
+		and not sandbox.member_item_use_button.disabled \
 		and sandbox.member_item_use_button.text=="[사용]",
-		"%s selected healing potion does not expose a usable consumable action"%viewport_size)
+		"%s healing potion popover does not expose a usable consumable action"%viewport_size)
+	sandbox._hide_item_popover()
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5,
 		"%s item tab widened/clipped the detail folio"%viewport_size)
 	var item_scroll:ScrollContainer=sandbox.member_detail_scroll as ScrollContainer
@@ -345,20 +352,21 @@ func _check_viewport(viewport_size:Vector2)->void:
 			previous_bottom=row.position.y+row.size.y
 	item_scroll.scroll_vertical=int(item_scroll_bar.max_value);await process_frame;await process_frame
 	var scroll_rect:Rect2=item_scroll.get_global_rect()
-	var action_rect:Rect2=(sandbox.member_item_action_row as Control).get_global_rect()
+	var last_bag_row:=sandbox.member_item_backpack_rows.get_child(
+		sandbox.member_item_backpack_rows.get_child_count()-1) as Control
+	var last_bag_rect:Rect2=last_bag_row.get_global_rect()
 	var scroll_content:=item_scroll.get_child(0) as Control
-	var item_scroll_diagnostic:="%s item action row is not reachable at scroll end scroll=%s action=%s value=%s " \
+	var item_scroll_diagnostic:="%s final bag row is not reachable at scroll end scroll=%s row=%s value=%s " \
 		+ "bar(max=%s page=%s) content(size=%s min=%s) item(size=%s min=%s pos=%s) action(local=%s min=%s)"
-	_check(scroll_rect.intersection(action_rect).size.y>=43.9,
+	_check(scroll_rect.intersection(last_bag_rect).size.y>=43.9,
 		item_scroll_diagnostic%[
-			viewport_size,scroll_rect,action_rect,item_scroll.scroll_vertical,
+			viewport_size,scroll_rect,last_bag_rect,item_scroll.scroll_vertical,
 			item_scroll_bar.max_value,item_scroll_bar.page,
 			scroll_content.size if scroll_content!=null else Vector2(),
 			scroll_content.get_combined_minimum_size() if scroll_content!=null else Vector2(),
 			sandbox.member_item_window.size,sandbox.member_item_window.get_combined_minimum_size(),
 			sandbox.member_item_window.position,
-			(sandbox.member_item_action_row as Control).position,
-			(sandbox.member_item_action_row as Control).get_combined_minimum_size()])
+			last_bag_row.position,last_bag_row.get_combined_minimum_size()])
 	_check(not sandbox.grid_zoom_controls.visible,
 		"%s map zoom controls remain above the item modal"%viewport_size)
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
@@ -381,27 +389,31 @@ func _check_item_equipment_touch(viewport_size:Vector2)->void:
 	sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox._open_hero_detail_tab("ITEM");await process_frame;await process_frame
-	# Selection is intentionally direct here: this probe targets the regression in
-	# which ITEM's global drag recognizer swallowed an inline Button touch.
-	sandbox._on_item_row_selected("START_HAND_AXE_001","")
+	var axe_row:=sandbox._find_item_row_button("START_HAND_AXE_001","") as Button
+	_check(axe_row!=null,"%s item touch probe has no hand axe row"%viewport_size)
+	if axe_row!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(axe_row)
+		await process_frame;await process_frame
+		await _screen_touch_plain_button(axe_row,69)
 	await process_frame;await process_frame
-	var inline:=sandbox.member_item_backpack_rows.find_child("ItemInlineEquip",true,false) as Button
-	_check(inline!=null,"%s item touch probe has no inline equip action"%viewport_size)
-	if inline!=null:
-		sandbox.member_detail_scroll.ensure_control_visible(inline)
-		await process_frame;await process_frame
-		await _screen_touch_plain_button(inline,71)
+	_check(sandbox.member_item_popover.visible and sandbox.member_item_equip_button.text=="[교체]",
+		"%s item touch did not open the comparison popover"%viewport_size)
+	if sandbox.member_item_popover.visible:
+		await _screen_touch_plain_button(sandbox.member_item_equip_button,71)
 		_check(str(session.protagonist_equipment().weapon_id)=="HAND_AXE",
-			"%s inline equipment ScreenTouch was swallowed before [교체]"%viewport_size)
-	var direct_unequip:=sandbox.member_item_equipment_rows.find_child(
-		"ItemInlineUnequip",true,false) as Button
-	_check(direct_unequip!=null,"%s equipped item has no direct [해제] action"%viewport_size)
-	if direct_unequip!=null:
-		sandbox.member_detail_scroll.ensure_control_visible(direct_unequip)
+			"%s popover equipment ScreenTouch was swallowed before [교체]"%viewport_size)
+	sandbox._select_member_detail_tab("STATUS");await process_frame;await process_frame
+	var equipped_row:=sandbox._find_item_row_button("START_HAND_AXE_001","MAIN_HAND") as Button
+	_check(equipped_row!=null and sandbox.member_item_equipment_rows.is_visible_in_tree(),
+		"%s status bottom has no equipped main-hand row"%viewport_size)
+	if equipped_row!=null:
+		sandbox.member_detail_scroll.ensure_control_visible(equipped_row)
 		await process_frame;await process_frame
-		await _screen_touch_plain_button(direct_unequip,73)
+		await _screen_touch_plain_button(equipped_row,72)
+		await process_frame
+		await _screen_touch_plain_button(sandbox.member_item_unequip_button,73)
 		_check(bool(session.protagonist_inventory().equipment_slots[0].empty),
-			"%s direct unequip ScreenTouch did not clear the main hand"%viewport_size)
+			"%s popover unequip ScreenTouch did not clear the main hand"%viewport_size)
 	sandbox.queue_free();await process_frame
 
 func _check_nearby_npc_card_touch(viewport_size:Vector2)->void:

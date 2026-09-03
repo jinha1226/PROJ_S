@@ -275,16 +275,13 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.find_child("TrainingProgress",true,false)==null,
 		"skill ledger has no selected-row expansion")
 	sandbox._close_member_detail();sandbox.equipment_nav_button.pressed.emit()
-	var item_stats=sandbox.find_child("EquippedWeaponStats",true,false) as GridContainer
-	var time_stat=sandbox.find_child("WeaponTimeStat",true,false) as Label
-	check(sandbox.member_item_window.visible and "단검" in sandbox.member_item_weapon_text.text \
-		and item_stats!=null and item_stats.columns==2 and item_stats.get_child_count()==4 \
-		and time_stat!=null and time_stat.text.begins_with("막기") \
-		and (sandbox.member_item_stats.FORM as Label).text.begins_with("공격") \
-		and (sandbox.member_item_stats.DAMAGE as Label).text.begins_with("방어") \
-		and (sandbox.member_item_stats.RANGE as Label).text.begins_with("회피") \
+	check(sandbox.member_item_window.visible and "장착" not in sandbox.member_item_weapon_text.text \
+		and "공격" in sandbox.member_item_weapon_text.text \
+		and "방어" in sandbox.member_item_weapon_text.text \
+		and "회피" in sandbox.member_item_weapon_text.text \
+		and "막기" in sandbox.member_item_weapon_text.text \
 		and "화살 12" in sandbox.member_item_ammo_text.text,
-		"item tab owns real weapon, attack/defense/dodge/parry summary, and ammo information")
+		"item tab owns a one-line combat summary and compact ammo information")
 	sandbox._select_member_detail_tab("SKILL")
 	var modes_before:Array=session.protagonist_progression().skills.map(
 		func(row):return [str(row.skill_id),str(row.training_mode)])

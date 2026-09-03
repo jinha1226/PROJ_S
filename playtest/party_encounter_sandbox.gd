@@ -186,6 +186,7 @@ var member_item_ammo_text:Label
 var member_item_reload_button:Button
 var member_item_empty_text:Label
 var member_item_stats:Dictionary={}
+var member_status_equipment_window:VBoxContainer
 var member_item_equipment_rows:VBoxContainer
 var member_item_backpack_rows:VBoxContainer
 var member_item_selected_stats:Label
@@ -197,6 +198,12 @@ var member_item_drop_button:Button
 var member_item_use_button:Button
 var member_item_selected_id:=""
 var member_item_selected_slot:=""
+var member_item_popover:PanelContainer
+var member_item_popover_title:Label
+var member_item_popover_body:Label
+var member_item_popover_compare:Label
+var member_item_popover_close:Button
+var member_item_popover_anchor:Control
 var pending_ground_pickup_id:=""
 var pending_ground_pickup_label:=""
 var member_detail_close:Button
@@ -303,7 +310,7 @@ func _input(event:InputEvent)->void:
 			_cancel_active_route()
 	if _handle_product_control_touch(event):return
 	if member_detail_modal==null or not member_detail_modal.visible:return
-	if member_detail_current_tab=="ITEM":
+	if member_detail_current_tab in ["STATUS","ITEM"]:
 		_handle_item_ledger_touch(event);return
 	if member_detail_current_tab!="SKILL":return
 	if event is InputEventScreenTouch:
@@ -348,26 +355,20 @@ func _handle_item_ledger_touch(event:InputEvent)->void:
 	elif event is InputEventScreenDrag and event.index==_item_touch_index:
 		if event.position.distance_to(_item_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
 			_item_touch_dragged=true
-		member_detail_scroll.scroll_vertical-=int(event.relative.y)
+			if _item_touch_action.is_empty():
+				_hide_item_popover(false)
+				member_detail_scroll.scroll_vertical-=int(event.relative.y)
 		get_viewport().set_input_as_handled()
 
 func _item_action_at_position(global_position:Vector2)->Dictionary:
 	var buttons:Array=[
 		[member_item_reload_button,"RELOAD",""],
-		[member_item_quick_unequip_button,"UNEQUIP",member_item_selected_slot],
 		[member_item_equip_button,"EQUIP",""],
 		[member_item_unequip_button,"UNEQUIP",member_item_selected_slot],
 		[member_item_use_button,"USE",""],
 		[member_item_drop_button,"DROP",""],
+		[member_item_popover_close,"CLOSE",""],
 	]
-	var inline:=member_item_backpack_rows.find_child("ItemInlineEquip",true,false) \
-		if member_item_backpack_rows!=null else null
-	if inline!=null:buttons.push_front([inline,"EQUIP",""])
-	if member_item_equipment_rows!=null:
-		for unequip_value in member_item_equipment_rows.find_children(
-				"ItemInlineUnequip","Button",true,false):
-			var unequip:=unequip_value as Button
-			buttons.push_front([unequip,"UNEQUIP",str(unequip.get_meta("item_slot",""))])
 	for entry in buttons:
 		var button:=entry[0] as Button
 		if button!=null and button.is_visible_in_tree() and not button.disabled \
@@ -382,6 +383,7 @@ func _activate_item_touch_action(action:String,slot:String="")->void:
 		"UNEQUIP":_on_item_unequip_slot(slot if not slot.is_empty() else member_item_selected_slot)
 		"USE":_on_item_use_selected()
 		"DROP":_on_item_drop_selected()
+		"CLOSE":_hide_item_popover()
 
 func _handle_nearby_npc_touch(event:InputEvent)->bool:
 	if nearby_npc_panel==null:return false
@@ -960,6 +962,8 @@ func _build_member_detail_modal()->void:
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll_content.add_child(member_detail_body)
+	_build_status_equipment_window(member_detail_scroll_content)
+	_build_item_popover()
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="[D 추방]";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
@@ -1056,59 +1060,86 @@ func _build_item_window(parent:VBoxContainer)->void:
 	weapon_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,4))
 	member_item_window.add_child(weapon_panel)
 	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_panel.add_child(weapon_stack)
-	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedWeaponText"
+	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedCombatSummary"
 	member_item_weapon_text.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_SECTION)
+	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_AUX)
+	member_item_weapon_text.max_lines_visible=1;member_item_weapon_text.clip_text=true
+	member_item_weapon_text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	member_item_weapon_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;weapon_stack.add_child(member_item_weapon_text)
-	var stats_grid:=GridContainer.new();stats_grid.name="EquippedWeaponStats";stats_grid.columns=2
-	stats_grid.add_theme_constant_override("h_separation",8);stats_grid.add_theme_constant_override("v_separation",4);weapon_stack.add_child(stats_grid)
-	for stat_id in ["FORM","DAMAGE","RANGE","TIME"]:
-		var stat:=Label.new();stat.name="Weapon%sStat"%stat_id.capitalize();stat.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		stat.add_theme_font_size_override("font_size",FONT_BODY);stats_grid.add_child(stat);member_item_stats[stat_id]=stat
+	member_item_stats={"SUMMARY":member_item_weapon_text}
+	var ammo_row:=HBoxContainer.new();ammo_row.name="AmmoPoolsRow"
+	ammo_row.add_theme_constant_override("separation",4);weapon_stack.add_child(ammo_row)
 	member_item_ammo_text=Label.new();member_item_ammo_text.name="AmmoPoolsText"
 	member_item_ammo_text.custom_minimum_size.y=TOUCH_TARGET
+	member_item_ammo_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_item_ammo_text.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	member_item_ammo_text.add_theme_font_size_override("font_size",FONT_AUX);weapon_stack.add_child(member_item_ammo_text)
+	member_item_ammo_text.add_theme_font_size_override("font_size",FONT_AUX);ammo_row.add_child(member_item_ammo_text)
 	member_item_reload_button=Button.new();member_item_reload_button.name="ReloadWeaponButton"
 	member_item_reload_button.text="재장전";member_item_reload_button.custom_minimum_size.y=TOUCH_TARGET
-	member_item_reload_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_item_reload_button.pressed.connect(_on_item_reload);weapon_stack.add_child(member_item_reload_button)
+	member_item_reload_button.custom_minimum_size.x=92
+	member_item_reload_button.pressed.connect(_on_item_reload);ammo_row.add_child(member_item_reload_button)
 	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
-	# Keep the selected item's full numbers above the long 5-slot/12-row ledger.
-	# Putting this below the backpack made the information technically present but
-	# invisible until the player scrolled to the very end.
-	member_item_selected_stats=Label.new();member_item_selected_stats.name="SelectedItemStats"
-	member_item_selected_stats.visible=false;member_item_selected_stats.custom_minimum_size.y=42
-	member_item_selected_stats.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	member_item_selected_stats.add_theme_font_size_override("font_size",FONT_AUX)
-	member_item_selected_stats.add_theme_color_override("font_color",AsciiFrameScript.INK)
-	member_item_window.add_child(member_item_selected_stats)
-	var equipment_title:=_card_label("장비 슬롯","ItemEquipmentHeading",FONT_SECTION)
-	equipment_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
-	member_item_window.add_child(equipment_title)
-	member_item_equipment_rows=VBoxContainer.new();member_item_equipment_rows.name="ItemEquipmentLedger"
-	member_item_equipment_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_equipment_rows)
-	member_item_quick_unequip_button=Button.new()
-	member_item_quick_unequip_button.name="ItemQuickUnequip"
-	member_item_quick_unequip_button.text="[해제]"
-	member_item_quick_unequip_button.custom_minimum_size.y=TOUCH_TARGET
-	member_item_quick_unequip_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_item_quick_unequip_button.visible=false
-	member_item_quick_unequip_button.pressed.connect(_on_item_unequip_selected)
-	member_item_window.add_child(member_item_quick_unequip_button)
-	AsciiFrameScript.apply_rail_button(member_item_quick_unequip_button,AsciiFrameScript.BRASS)
 	var backpack_title:=_card_label("가방 0 / 12","ItemBackpackHeading",FONT_SECTION)
 	backpack_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	member_item_window.add_child(backpack_title)
 	member_item_backpack_rows=VBoxContainer.new();member_item_backpack_rows.name="ItemBackpackLedger"
 	member_item_backpack_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_backpack_rows)
-	member_item_action_row=HBoxContainer.new();member_item_action_row.name="ItemActionRow"
-	member_item_action_row.add_theme_constant_override("separation",4);member_item_window.add_child(member_item_action_row)
+	# Detail now belongs exclusively to the floating item popover and never
+	# expands or shifts the scrolling ledger.
+	member_item_selected_stats=null
+	member_item_empty_text=backpack_title
+
+func _build_status_equipment_window(parent:VBoxContainer)->void:
+	member_status_equipment_window=VBoxContainer.new()
+	member_status_equipment_window.name="StatusEquipmentWindow"
+	member_status_equipment_window.add_theme_constant_override("separation",4)
+	parent.add_child(member_status_equipment_window)
+	var heading:=_card_label("장비 슬롯","StatusEquipmentHeading",FONT_SECTION)
+	heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	member_status_equipment_window.add_child(heading)
+	member_item_equipment_rows=VBoxContainer.new()
+	member_item_equipment_rows.name="ItemEquipmentLedger"
+	member_item_equipment_rows.add_theme_constant_override("separation",2)
+	member_status_equipment_window.add_child(member_item_equipment_rows)
+
+func _build_item_popover()->void:
+	member_item_popover=PanelContainer.new();member_item_popover.name="ItemDetailPopover"
+	member_item_popover.visible=false;member_item_popover.mouse_filter=Control.MOUSE_FILTER_STOP
+	member_item_popover.z_index=8;member_item_popover.custom_minimum_size.x=288
+	member_item_popover.add_theme_stylebox_override("panel",
+		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,6))
+	member_detail_modal.add_child(member_item_popover)
+	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",6)
+	member_item_popover.add_child(stack)
+	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET
+	header.add_theme_constant_override("separation",4);stack.add_child(header)
+	member_item_popover_title=Label.new();member_item_popover_title.name="ItemPopoverTitle"
+	member_item_popover_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_item_popover_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	member_item_popover_title.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	member_item_popover_title.add_theme_font_size_override("font_size",FONT_SECTION)
+	header.add_child(member_item_popover_title)
+	member_item_popover_close=Button.new();member_item_popover_close.name="ItemPopoverClose"
+	member_item_popover_close.text="[X]";member_item_popover_close.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	member_item_popover_close.pressed.connect(_hide_item_popover);header.add_child(member_item_popover_close)
+	AsciiFrameScript.apply_rail_button(member_item_popover_close,AsciiFrameScript.CYAN)
+	member_item_popover_body=Label.new();member_item_popover_body.name="ItemPopoverDescription"
+	member_item_popover_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	member_item_popover_body.add_theme_font_size_override("font_size",FONT_AUX)
+	member_item_popover_body.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	stack.add_child(member_item_popover_body)
+	member_item_popover_compare=Label.new();member_item_popover_compare.name="ItemPopoverComparison"
+	member_item_popover_compare.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	member_item_popover_compare.add_theme_font_size_override("font_size",FONT_AUX)
+	member_item_popover_compare.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
+	stack.add_child(member_item_popover_compare)
+	member_item_action_row=HBoxContainer.new();member_item_action_row.name="ItemPopoverActionRow"
+	member_item_action_row.add_theme_constant_override("separation",4);stack.add_child(member_item_action_row)
 	member_item_equip_button=_item_action_button("[장착]","ItemEquip",_on_item_equip_selected)
 	member_item_unequip_button=_item_action_button("[해제]","ItemUnequip",_on_item_unequip_selected)
 	member_item_use_button=_item_action_button("[사용]","ItemUse",_on_item_use_selected)
 	member_item_drop_button=_item_action_button("[버리기]","ItemDrop",_on_item_drop_selected)
-	member_item_empty_text=backpack_title
+	member_item_quick_unequip_button=member_item_unequip_button
 
 func _item_action_button(label:String,node_name:String,callable:Callable)->Button:
 	var button:=Button.new();button.name=node_name;button.text=label
@@ -1344,6 +1375,8 @@ func _layout_floating_surfaces()->void:
 		member_detail_panel.position=(size-Vector2(panel_width,panel_height))*0.5
 		member_detail_panel.size=Vector2(panel_width,panel_height)
 		member_detail_body.custom_minimum_size.x=maxf(1.0,panel_width-48.0)
+	if member_item_popover!=null and member_item_popover.visible:
+		_position_item_popover(member_item_popover_anchor)
 	if record_panel!=null:
 		var record_width:=minf(size.x-24.0,420.0)
 		var record_height:=minf(size.y-24.0,620.0)
@@ -3105,6 +3138,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 
 func _close_member_detail()->void:
 	if member_detail_modal==null or not member_detail_modal.visible:return
+	_hide_item_popover()
 	member_detail_modal.visible=false;member_detail_entity_id=-1;_product_attack_targeting=false
 	grid.modal_open=record_modal.visible or map_overlay.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
@@ -3114,7 +3148,7 @@ func _close_member_detail()->void:
 func _select_member_detail_tab(tab_id:String)->void:
 	if tab_id not in ["STATUS","SKILL","ITEM"] \
 			or tab_id in ["SKILL","ITEM"] and not member_detail_has_skills:return
-	member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
+	_hide_item_popover();member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
 	_apply_member_detail_tab();_reflow_member_detail_scroll()
 
 func _apply_member_detail_tab()->void:
@@ -3132,6 +3166,8 @@ func _apply_member_detail_tab()->void:
 	AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS,item_selected)
 	member_status_window.visible=not skill_selected and not item_selected
 	member_detail_body.visible=not skill_selected and not item_selected
+	member_status_equipment_window.visible=member_detail_has_skills \
+		and not skill_selected and not item_selected
 	member_progression_window.visible=skill_selected
 	member_item_window.visible=item_selected
 	member_detail_dismiss.visible=not skill_selected and not item_selected and member_detail_dismiss_available
@@ -3149,8 +3185,9 @@ func _sync_member_detail_scroll_children()->void:
 		desired=[member_progression_window]
 	else:
 		desired=[member_status_window,member_detail_body]
+		if member_status_equipment_window.visible:desired.append(member_status_equipment_window)
 	var managed:Array[Control]=[member_progression_window,member_item_window,
-		member_status_window,member_detail_body]
+		member_status_window,member_detail_body,member_status_equipment_window]
 	for control in managed:
 		if control==null or control in desired:continue
 		if control.get_parent()!=member_detail_tab_stash:control.reparent(member_detail_tab_stash)
@@ -3351,24 +3388,21 @@ func _finish_member_detail_scroll_clamp()->void:
 
 func _update_item_window(equipment:Variant)->void:
 	if not equipment is Dictionary or not bool(equipment.get("available",false)):return
-	member_item_weapon_text.text="장착 · %s"%str(equipment.get("weapon_label","없음"))
 	var summary:Dictionary=equipment.get("combat_summary",{}) \
 		if equipment.get("combat_summary",{}) is Dictionary else {}
-	(member_item_stats.FORM as Label).text="공격  %d"%int(summary.get("attack_power",
-		equipment.get("raw_damage",0)))
-	(member_item_stats.DAMAGE as Label).text="방어  %d"%int(summary.get("armor_flat",0))
-	(member_item_stats.RANGE as Label).text="회피  %s"%_percent_milli_text(
-		int(summary.get("evasion_milli",0)))
-	(member_item_stats.TIME as Label).text="막기  %s"%_percent_milli_text(
-		int(summary.get("parry_milli",0)))
-	var load_state:="해당 없음"
+	member_item_weapon_text.text="공격 %d · 방어 %d · 회피 %s · 막기 %s"%[
+		int(summary.get("attack_power",equipment.get("raw_damage",0))),
+		int(summary.get("armor_flat",0)),
+		_percent_milli_text(int(summary.get("evasion_milli",0))),
+		_percent_milli_text(int(summary.get("parry_milli",0)))]
+	member_item_ammo_text.text="탄약 · 화살 %d · 볼트 %d"%[
+		int(equipment.get("arrows",0)),int(equipment.get("bolts",0))]
 	if bool(equipment.get("reload_required",false)):
-		load_state="장전됨" if bool(equipment.get("loaded",false)) else "미장전"
-	member_item_ammo_text.text="화살 %d · 볼트 %d · 쇠뇌 %s"%[
-		int(equipment.get("arrows",0)),int(equipment.get("bolts",0)),load_state]
+		member_item_ammo_text.text+=" · %s"%(
+			"장전됨" if bool(equipment.get("loaded",false)) else "미장전")
 	member_item_reload_button.visible=bool(equipment.get("reload_required",false))
 	member_item_reload_button.disabled=not bool(equipment.get("can_reload",false))
-	member_item_reload_button.text="재장전 · %d시간"%int(equipment.get("reload_time",0))
+	member_item_reload_button.text="재장전 %d시간"%int(equipment.get("reload_time",0))
 	_update_item_inventory_ledger()
 
 func _update_item_inventory_ledger()->void:
@@ -3385,32 +3419,16 @@ func _update_item_inventory_ledger()->void:
 		var slot:=str(row.get("slot",""))
 		_add_item_ledger_button(member_item_equipment_rows,row,
 			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
-		if not bool(row.get("empty",false)):
-			_add_inline_item_unequip_button(member_item_equipment_rows,row,
-				str(slot_labels.get(slot,slot)))
 	var backpack:Array=dto.get("backpack_rows",[])
 	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),int(dto.get("capacity",12))]
 	for index in range(12):
 		var row:Dictionary=backpack[index] if index<backpack.size() else {"empty":true}
 		_add_item_ledger_button(member_item_backpack_rows,row,
 			"%02d  %s"%[index+1,_item_row_text(row)],false)
-		if not bool(row.get("empty",false)) \
-				and str(row.get("instance_id",""))==member_item_selected_id:
-			_add_inline_item_equip_button(member_item_backpack_rows,row,dto)
-	var selected_equipped:=not member_item_selected_slot.is_empty()
-	var has_selection:=not member_item_selected_id.is_empty()
-	var selected_row:=_selected_item_ledger_row(dto)
-	member_item_selected_stats.visible=has_selection
-	member_item_selected_stats.text=_item_stats_text(selected_row) if has_selection else ""
-	member_item_equip_button.disabled=not has_selection or selected_equipped
-	member_item_unequip_button.disabled=not selected_equipped
-	member_item_quick_unequip_button.visible=selected_equipped
-	member_item_quick_unequip_button.disabled=not selected_equipped
-	member_item_quick_unequip_button.text="[해제]  %s"%str(selected_row.get("label","장비"))
-	member_item_use_button.visible=_is_healing_item_row(selected_row)
-	member_item_use_button.disabled=not has_selection or selected_equipped \
-		or not session.has_method("use_inventory_item")
-	member_item_drop_button.disabled=not has_selection or selected_equipped
+	if member_item_popover!=null and member_item_popover.visible:
+		var selected_row:=_selected_item_ledger_row(dto)
+		if selected_row.is_empty():_hide_item_popover()
+		else:_configure_item_popover(selected_row,dto)
 
 func _detach_item_ledger_children(container:VBoxContainer)->void:
 	for node in container.get_children():
@@ -3451,7 +3469,7 @@ func _item_row_text(row:Dictionary)->String:
 
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
-	var lines:Array[String]=[str(row.get("label","아이템"))]
+	var lines:Array[String]=[]
 	if str(row.get("category",""))=="WEAPON":
 		lines.append("공격력 %d · 명중 %d%% · 관통 %d · 사거리 %d-%d칸 · 공격시간 %d"%[
 			int(row.get("raw_damage",0)),int(row.get("hit_chance_milli",500))/10,
@@ -3476,6 +3494,20 @@ func _item_stats_text(row:Dictionary)->String:
 	if not requirement.is_empty():lines.append("요구 능력 · "+requirement)
 	return "\n".join(lines)
 
+func _item_description_text(row:Dictionary)->String:
+	match str(row.get("category","")):
+		"WEAPON":
+			var ammo:=str(row.get("ammo_kind","NONE"))
+			if ammo=="ARROW":return "화살을 사용하는 원거리 무기입니다. 거리를 두고 공격할 수 있습니다."
+			if ammo=="BOLT":return "볼트를 사용하는 강력한 원거리 무기입니다. 사격 뒤 재장전이 필요합니다."
+			return "주무기 슬롯에 장착하는 근접 무기입니다."
+		"ARMOR":return "몸을 보호하는 장비입니다. 대응하는 방어 슬롯에 장착됩니다."
+		"ACCESSORY":return "능력을 보완하는 장신구입니다. 빈 장신구 슬롯을 우선 사용합니다."
+		"CONSUMABLE":
+			return "사용하면 체력을 회복합니다." if _is_healing_item_row(row) \
+				else "한 번 사용하면 소모되는 아이템입니다."
+		_:return "가방에 보관하는 아이템입니다."
+
 func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,equipped:bool)->void:
 	var button:=Button.new();button.custom_minimum_size.y=TOUCH_TARGET
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
@@ -3484,47 +3516,117 @@ func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,eq
 	button.disabled=bool(row.get("empty",false))
 	var instance_id:=str(row.get("instance_id",""));var slot:=str(row.get("slot","")) if equipped else ""
 	button.set_meta("item_instance_id",instance_id);button.set_meta("item_slot",slot)
-	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot))
+	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot,button))
+	button.mouse_entered.connect(_on_item_row_hovered.bind(instance_id,slot,button))
 	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
 		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
 
-func _add_inline_item_equip_button(parent:VBoxContainer,row:Dictionary,dto:Dictionary)->void:
-	var allowed_slots:Variant=row.get("equip_slots",[])
-	if not allowed_slots is Array or allowed_slots.is_empty():return
-	var slot:=item_preferred_equip_slot(dto,allowed_slots)
-	if slot.is_empty():return
-	var occupied:=false
-	for equipped_row in dto.get("equipment_slots",[]):
-		if str(equipped_row.get("slot",""))==slot:
-			occupied=not bool(equipped_row.get("empty",false));break
-	var slot_label:=str({"MAIN_HAND":"주무기","OFF_HAND":"보조",
-		"ARMOR":"갑옷","ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}.get(slot,slot))
-	var button:=Button.new();button.name="ItemInlineEquip"
-	button.text="[%s]  %s → %s"%[
-		"교체" if occupied else "장착",str(row.get("label","아이템")),slot_label]
-	if not bool(row.get("requirements_met",true)):
-		button.text="[능력 부족]  %s · %s"%[
-			str(row.get("label","아이템")),str(row.get("requirement_text","요구치 확인"))]
-		button.tooltip_text="현재 능력치가 장비 요구치보다 낮습니다."
-	button.custom_minimum_size.y=TOUCH_TARGET
-	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
-	button.pressed.connect(_on_item_equip_selected)
-	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,true)
+func _on_item_row_hovered(instance_id:String,slot:String,anchor:Control)->void:
+	if member_detail_modal==null or not member_detail_modal.visible:return
+	_on_item_row_selected(instance_id,slot,anchor)
 
-func _add_inline_item_unequip_button(parent:VBoxContainer,row:Dictionary,slot_label:String)->void:
-	var slot:=str(row.get("slot",""))
-	if slot.is_empty():return
-	var button:=Button.new();button.name="ItemInlineUnequip"
-	button.text="[해제]  %s · %s"%[slot_label,str(row.get("label","장비"))]
-	button.custom_minimum_size.y=TOUCH_TARGET
-	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.focus_mode=Control.FOCUS_NONE
-	button.set_meta("item_slot",slot)
-	button.pressed.connect(_on_item_unequip_slot.bind(slot))
-	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS,true)
-
-func _on_item_row_selected(instance_id:String,slot:String)->void:
+func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->void:
+	if instance_id.is_empty():return
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
-	_update_item_inventory_ledger();_reflow_member_detail_scroll()
+	if anchor==null:anchor=_find_item_row_button(instance_id,slot)
+	member_item_popover_anchor=anchor
+	var dto:Dictionary=session.protagonist_inventory()
+	var selected_row:=_selected_item_ledger_row(dto)
+	if selected_row.is_empty():_hide_item_popover();return
+	_configure_item_popover(selected_row,dto)
+	member_item_popover.visible=true
+	_position_item_popover(anchor)
+
+func _find_item_row_button(instance_id:String,slot:String)->Button:
+	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
+		if ledger==null:continue
+		for child in ledger.get_children():
+			var button:=child as Button
+			if button!=null and str(button.get_meta("item_instance_id",""))==instance_id \
+					and str(button.get_meta("item_slot",""))==slot:return button
+	return null
+
+func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
+	member_item_popover_title.text="%s  %s"%[str(row.get("glyph","*")),str(row.get("label","아이템"))]
+	member_item_popover_body.text="%s\n%s"%[_item_description_text(row),_item_stats_text(row)]
+	var selected_equipped:=not member_item_selected_slot.is_empty()
+	var allowed_slots:Array=[]
+	var allowed_value:Variant=row.get("equip_slots",[])
+	if allowed_value is Array:allowed_slots=allowed_value
+	var target_slot:=item_preferred_equip_slot(dto,allowed_slots)
+	var compared_row:Dictionary={}
+	if not selected_equipped and not target_slot.is_empty():
+		for equipped_value in dto.get("equipment_slots",[]):
+			if equipped_value is Dictionary and str(equipped_value.get("slot",""))==target_slot:
+				compared_row=equipped_value;break
+	member_item_popover_compare.text=_item_comparison_text(row,compared_row,target_slot)
+	member_item_popover_compare.visible=not member_item_popover_compare.text.is_empty()
+	member_item_equip_button.visible=not selected_equipped and not target_slot.is_empty()
+	member_item_equip_button.disabled=false
+	member_item_equip_button.text="[교체]" if not compared_row.is_empty() \
+		and not bool(compared_row.get("empty",false)) else "[장착]"
+	if member_item_equip_button.visible and not bool(row.get("requirements_met",true)):
+		member_item_equip_button.text="[장착 불가]"
+		member_item_equip_button.tooltip_text="필요 능력치가 부족합니다. 눌러서 이유를 확인하세요."
+	else:member_item_equip_button.tooltip_text=""
+	member_item_unequip_button.visible=selected_equipped
+	member_item_unequip_button.disabled=not selected_equipped
+	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
+	member_item_use_button.disabled=not member_item_use_button.visible \
+		or not session.has_method("use_inventory_item")
+	member_item_drop_button.visible=not selected_equipped
+	member_item_drop_button.disabled=selected_equipped
+
+func _item_comparison_text(row:Dictionary,equipped:Dictionary,slot:String)->String:
+	if slot.is_empty():return ""
+	var slot_label:=str({"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
+		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}.get(slot,slot))
+	if equipped.is_empty() or bool(equipped.get("empty",false)):
+		return "비교 · %s 비어 있음"%slot_label
+	var parts:Array[String]=[]
+	if str(row.get("category",""))=="WEAPON":
+		parts.append("공격 %+d"%(int(row.get("raw_damage",0))-int(equipped.get("raw_damage",0))))
+		parts.append("명중 %+.1f%%"%((int(row.get("hit_chance_milli",0))-
+			int(equipped.get("hit_chance_milli",0)))/10.0))
+		parts.append("관통 %+d"%(int(row.get("armor_penetration_flat",0))-
+			int(equipped.get("armor_penetration_flat",0))))
+	else:
+		var new_bonuses:Dictionary=row.get("bonuses",{}) if row.get("bonuses",{}) is Dictionary else {}
+		var old_bonuses:Dictionary=equipped.get("bonuses",{}) \
+			if equipped.get("bonuses",{}) is Dictionary else {}
+		for entry in [["armor_flat","방어"],["dodge_milli","회피"],["parry_milli","막기"]]:
+			var difference:=int(new_bonuses.get(str(entry[0]),0))-int(old_bonuses.get(str(entry[0]),0))
+			if difference!=0:parts.append("%s %+d"%[str(entry[1]),difference])
+	if parts.is_empty():parts.append("주요 수치 변화 없음")
+	return "현재 %s · %s\n교체 변화 · %s"%[
+		slot_label,str(equipped.get("label","장비"))," · ".join(parts)]
+
+func _position_item_popover(anchor:Control=null)->void:
+	if member_item_popover==null or not member_item_popover.visible:return
+	var horizontal_margin:=16.0
+	var popup_width:=minf(320.0,maxf(280.0,size.x-horizontal_margin*2.0))
+	member_item_popover.custom_minimum_size.x=popup_width
+	member_item_popover.reset_size()
+	var popup_size:=member_item_popover.get_combined_minimum_size()
+	popup_size.x=popup_width
+	member_item_popover.size=popup_size
+	var x:=clampf((size.x-popup_size.x)*0.5,horizontal_margin,
+		maxf(horizontal_margin,size.x-popup_size.x-horizontal_margin))
+	var y:=maxf(16.0,(size.y-popup_size.y)*0.5)
+	if anchor!=null and is_instance_valid(anchor) and anchor.is_visible_in_tree():
+		var anchor_rect:=anchor.get_global_rect()
+		var local_top:=anchor_rect.position.y-global_position.y
+		var local_bottom:=anchor_rect.end.y-global_position.y
+		y=local_top-popup_size.y-8.0
+		if y<16.0:y=local_bottom+8.0
+		y=clampf(y,16.0,maxf(16.0,size.y-popup_size.y-16.0))
+	member_item_popover.position=Vector2(x,y)
+
+func _hide_item_popover(clear_selection:bool=true)->void:
+	if member_item_popover!=null:member_item_popover.visible=false
+	member_item_popover_anchor=null
+	if clear_selection:
+		member_item_selected_id="";member_item_selected_slot=""
 
 func _on_item_equip_selected()->void:
 	var dto:Dictionary=session.protagonist_inventory();var slot:="";var allowed_slots:Array=[]
@@ -3532,7 +3634,9 @@ func _on_item_equip_selected()->void:
 		if str(row.get("instance_id",""))==member_item_selected_id:
 			allowed_slots=row.get("equip_slots",[]);break
 	slot=item_preferred_equip_slot(dto,allowed_slots)
-	if slot.is_empty():notice_text="이 아이템은 장착할 수 없습니다.";return
+	if slot.is_empty():
+		notice_text="이 아이템은 장착할 수 없습니다."
+		action_feedback_text=notice_text;_request_refresh();return
 	_on_item_operation_result(session.equip_inventory_item(member_item_selected_id,slot))
 
 func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
@@ -3577,7 +3681,7 @@ func _on_item_use_selected()->void:
 	var healed:=int(result.get("healed_amount",0))
 	notice_text="회복 물약 사용 · HP +%d"%healed
 	action_feedback_text=notice_text
-	member_item_selected_id="";member_item_selected_slot=""
+	_hide_item_popover()
 	_record_result(result,true)
 	# A potion advances canonical time, so refresh cards, compact log, inventory,
 	# and overlay effects together while leaving the detail modal and its scroll
@@ -3590,12 +3694,13 @@ func _on_item_use_selected()->void:
 func _on_item_operation_result(result:Dictionary)->void:
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","아이템을 옮길 수 없습니다."))
-	else:
-		notice_text="아이템 상태를 변경했습니다. (100시간)"
-		member_item_selected_id="";member_item_selected_slot=""
+		action_feedback_text=notice_text;_request_refresh();return
+	var return_tab:=member_detail_current_tab
+	notice_text="아이템 상태를 변경했습니다. (100시간)"
+	_hide_item_popover()
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
-	_update_item_window(progression.get("equipment",{}));member_detail_current_tab="ITEM"
+	_update_item_window(progression.get("equipment",{}));member_detail_current_tab=return_tab
 	_apply_member_detail_tab();action_feedback_text=notice_text;_reflow_member_detail_scroll()
 	_request_refresh()
 
