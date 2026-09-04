@@ -27,11 +27,19 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
-	_check(sandbox.grid.visible_cell_count==13,"%s fresh product zoom is not 13 (about 1.15x)"%viewport_size)
-	_check(is_equal_approx(sandbox._product_zoom_scale(13),15.0/13.0),
+	var default_count:=Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+	var default_index:=Session.PRODUCT_ZOOM_CELL_COUNTS.find(default_count)
+	var zoomed_out_count:=int(Session.PRODUCT_ZOOM_CELL_COUNTS[default_index+1])
+	_check(sandbox.grid.visible_cell_count==default_count,
+		"%s fresh product zoom does not match the shared default"%viewport_size)
+	_check(is_equal_approx(sandbox._product_zoom_scale(default_count),15.0/float(default_count)),
 		"%s default product zoom is not derived from the 15-cell reference"%viewport_size)
 	_check(sandbox.grid_zoom_controls.is_visible_in_tree(),
 		"%s product zoom controls are hidden"%viewport_size)
+	_check(not sandbox.grid_graphics_mode_button.visible \
+		and not sandbox.grid_3d_model_button.visible \
+		and sandbox.grid.graphics_mode_id()=="FLAT_2D",
+		"%s product surface exposes a legacy 2.5D/3D control"%viewport_size)
 	var map_rect:Rect2=sandbox.grid.get_global_rect()
 	var out_rect:Rect2=sandbox.grid_zoom_out_button.get_global_rect()
 	var in_rect:Rect2=sandbox.grid_zoom_in_button.get_global_rect()
@@ -46,28 +54,6 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		and sandbox.grid_zoom_in_button.mouse_filter==Control.MOUSE_FILTER_STOP \
 		and sandbox.grid_zoom_controls.z_index>sandbox.grid.melee_vfx.z_index,
 		"%s zoom overlay input/layer contract"%viewport_size)
-	var graphics_center:Vector2=sandbox.grid_graphics_mode_button.get_global_rect().get_center()
-	await _touch(graphics_center,60)
-	_check(sandbox.grid.graphics_mode_id()=="DIORAMA_2_5D" \
-		and sandbox.grid_graphics_mode_button.text=="[2.5D→2D]",
-		"%s one graphics touch did not select 2.5D exactly once"%viewport_size)
-	# A Web export can deliver a compatibility mouse pair after ScreenTouch. It
-	# must never toggle straight back, even after the time fallback has expired.
-	sandbox._product_ignore_mouse_until_msec=-1
-	await _emulated_mouse_click(graphics_center)
-	_check(sandbox.grid.graphics_mode_id()=="DIORAMA_2_5D",
-		"%s emulated mouse duplicated the graphics touch"%viewport_size)
-	await _touch(sandbox.grid_graphics_mode_button.get_global_rect().get_center(),63)
-	_check(sandbox.grid.graphics_mode_id()=="FLAT_2D" \
-		and sandbox.grid_graphics_mode_button.text=="[2D→2.5D]",
-		"%s second graphics touch did not restore 2D exactly once"%viewport_size)
-	sandbox._product_ignore_mouse_until_msec=-1
-	await _mouse_click(sandbox.grid_graphics_mode_button.get_global_rect().get_center())
-	_check(sandbox.grid.graphics_mode_id()=="DIORAMA_2_5D",
-		"%s real mouse click no longer selects 2.5D"%viewport_size)
-	await _mouse_click(sandbox.grid_graphics_mode_button.get_global_rect().get_center())
-	_check(sandbox.grid.graphics_mode_id()=="FLAT_2D",
-		"%s second real mouse click did not restore 2D"%viewport_size)
 
 	var route_started:=_start_long_route(session)
 	_check(route_started,"%s could not prepare retained route"%viewport_size)
@@ -77,7 +63,8 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	var emitted_cells:Array=[]
 	sandbox.grid.world_cell_pressed.connect(func(position):emitted_cells.append(position))
 	await _touch(out_rect.get_center(),61)
-	_check(sandbox.grid.visible_cell_count==15 and sandbox._product_zoom_cell_count==15,
+	_check(sandbox.grid.visible_cell_count==zoomed_out_count \
+		and sandbox._product_zoom_cell_count==zoomed_out_count,
 		"%s [-] did not zoom out exactly one step"%viewport_size)
 	_check(session.sim.snapshot()==snapshot_before and session.command_journal==journal_before,
 		"%s zoom changed canonical world/journal"%viewport_size)
@@ -85,9 +72,10 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		"%s zoom touch cancelled or changed active route"%viewport_size)
 	_check(emitted_cells.is_empty(),"%s zoom touch leaked to an underlying map cell"%viewport_size)
 	await _touch(sandbox.grid_zoom_in_button.get_global_rect().get_center(),62)
-	_check(sandbox.grid.visible_cell_count==13,"%s [+] did not restore the 1.15x view"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==default_count,
+		"%s [+] did not restore the default view"%viewport_size)
 
-	for count in [9,11,13,15,19,21,23,25]:
+	for count in Session.PRODUCT_ZOOM_CELL_COUNTS:
 		sandbox._product_zoom_cell_count=count;sandbox._apply_product_zoom_surface()
 		_check(sandbox.grid.visible_cell_count==count,
 			"%s camera did not apply %d cells"%[viewport_size,count])
@@ -247,8 +235,9 @@ func _check_legacy_and_fresh_defaults()->void:
 	legacy.free()
 	var fresh=Sandbox.new();fresh.initialize_for_headless_test(
 		Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),false)
-	_check(fresh._product_zoom_cell_count==13 and fresh.grid.visible_cell_count==13,
-		"new sandbox did not reset to the default 1.15x view")
+	_check(fresh._product_zoom_cell_count==Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT \
+		and fresh.grid.visible_cell_count==Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT,
+		"new sandbox did not reset to the shared default view")
 	fresh.free()
 
 func _touch(position:Vector2,index:int)->void:
@@ -256,21 +245,6 @@ func _touch(position:Vector2,index:int)->void:
 	root.push_input(press,true);await process_frame
 	var release:=InputEventScreenTouch.new();release.index=index;release.pressed=false;release.position=position
 	root.push_input(release,true);await process_frame;await process_frame
-
-func _emulated_mouse_click(position:Vector2)->void:
-	var press:=InputEventMouseButton.new();press.device=InputEvent.DEVICE_ID_EMULATION
-	press.button_index=MOUSE_BUTTON_LEFT;press.pressed=true;press.position=position
-	root.push_input(press,true);await process_frame
-	var release:=InputEventMouseButton.new();release.device=InputEvent.DEVICE_ID_EMULATION
-	release.button_index=MOUSE_BUTTON_LEFT;release.pressed=false;release.position=position
-	root.push_input(release,true);await process_frame;await process_frame
-
-func _mouse_click(position:Vector2)->void:
-	var press:=InputEventMouseButton.new();press.button_index=MOUSE_BUTTON_LEFT
-	press.pressed=true;press.position=position;root.push_input(press,true);await process_frame
-	var release:=InputEventMouseButton.new();release.button_index=MOUSE_BUTTON_LEFT
-	release.pressed=false;release.position=position;root.push_input(release,true)
-	await process_frame;await process_frame
 
 func _check(condition:bool,message:String)->void:
 	if not condition:failures.append(message)

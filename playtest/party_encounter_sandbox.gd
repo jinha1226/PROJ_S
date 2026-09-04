@@ -5086,11 +5086,16 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
 			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		_product_zoom_touch_index=event.index
-		if grid_graphics_mode_button.get_global_rect().has_point(event.position):
+		# Hidden legacy controls can retain a stale layout rect. They must not steal
+		# a touch from the visible zoom buttons that replaced them in the product HUD.
+		if grid_graphics_mode_button.visible \
+				and grid_graphics_mode_button.get_global_rect().has_point(event.position):
 			_product_zoom_touch_step=0
-		elif grid_3d_model_button.get_global_rect().has_point(event.position):
+		elif grid_3d_model_button.visible \
+				and grid_3d_model_button.get_global_rect().has_point(event.position):
 			_product_zoom_touch_step=2
-		elif grid_zoom_out_button.get_global_rect().has_point(event.position):
+		elif grid_zoom_out_button.visible \
+				and grid_zoom_out_button.get_global_rect().has_point(event.position):
 			_product_zoom_touch_step=1
 		else:
 			_product_zoom_touch_step=-1

@@ -6,6 +6,8 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiUIFrame=preload("res://playtest/ascii_ui_frame.gd")
+const ROUTE_INTENDED_CADENCE_MSEC:=190
+const ROUTE_HEADLESS_GROSS_CEILING_MSEC:=310
 
 var failures:Array[String]=[]
 
@@ -496,23 +498,27 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	for tile in spec.tiles:
 		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
 			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
-	# Product cadence leaves the first authoritative hop immediate, then starts
-	# exactly one further hop 55-70ms later (with a 120ms headless upper bound).
+	# Product cadence leaves the first authoritative hop immediate, then keeps the
+	# 180ms walk pose visible before starting exactly one further hop. Headless CI
+	# may stretch a frame, so retain a strict intended lower bound and a wider gross
+	# ceiling while still rejecting early or duplicate canonical commits.
 	if bool(session.exploration_route_state().get("active",false)):
 		var cadence_step:=int(session.sim.world.step_index)
 		var first_hop_started:int=sandbox.route_last_hop_started_msec
 		var due_from_hop_start:int=int(sandbox.route_continue_due_msec)-first_hop_started
-		if due_from_hop_start<55 or due_from_hop_start>70:
-			failures.append("%s route cadence outside 55-70ms from hop start: %d"%[
+		if due_from_hop_start<ROUTE_INTENDED_CADENCE_MSEC-5 \
+				or due_from_hop_start>ROUTE_INTENDED_CADENCE_MSEC+10:
+			failures.append("%s route cadence outside 185-200ms from hop start: %d"%[
 				viewport_size,due_from_hop_start])
 		var wait_started:int=Time.get_ticks_msec()
 		while sandbox.route_last_hop_started_msec==first_hop_started \
-				and Time.get_ticks_msec()-wait_started<130:
+				and Time.get_ticks_msec()-wait_started<ROUTE_HEADLESS_GROSS_CEILING_MSEC+20:
 			await create_timer(0.005).timeout
 		var actual_start_interval:int=sandbox.route_last_hop_started_msec-first_hop_started
 		if session.sim.world.step_index!=cadence_step+1 \
-				or actual_start_interval<55 or actual_start_interval>120:
-			failures.append("%s route cadence did not commit exactly one hop within 55-120ms: step=%d/%d interval=%d"%[
+				or actual_start_interval<ROUTE_INTENDED_CADENCE_MSEC-5 \
+				or actual_start_interval>ROUTE_HEADLESS_GROSS_CEILING_MSEC:
+			failures.append("%s route cadence did not commit exactly one hop within 185-310ms: step=%d/%d interval=%d"%[
 				viewport_size,int(session.sim.world.step_index),cadence_step,actual_start_interval])
 		# Hero-centred camera settling is a SOLO product presentation contract. This
 		# route fixture intentionally uses the legacy multi-member regression session,
@@ -525,8 +531,8 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 					viewport_size,route_camera])
 		# Freeze only the test scheduler after measuring a real continuation. This
 		# leaves the authoritative route active so the next gesture independently
-		# verifies immediate generation-safe cancellation instead of racing another
-		# now-fast headless continuation before the coroutine resumes.
+		# verifies immediate generation-safe cancellation without racing another
+		# headless continuation before the coroutine resumes.
 		sandbox.route_continue_pending=false;sandbox.route_continue_due_frame=-1
 		sandbox.route_continue_due_msec=-1;sandbox.route_scheduled_generation=-1
 		await process_frame

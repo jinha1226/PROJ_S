@@ -165,8 +165,12 @@ func test_sandbox_refresh_consumes_viewport_and_compact_minimap_without_ui_regre
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(412,915)
 	sandbox.initialize_for_headless_test(session,false)
-	check(sandbox.grid._cells.size()<=225,
-		"sandbox main grid receives only the hero viewport")
+	var default_view_capacity:=Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT \
+		* Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+	check_eq(sandbox._product_zoom_cell_count,Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT,
+		"sandbox starts at the shared product zoom default")
+	check(sandbox.grid._cells.size()<=default_view_capacity,
+		"sandbox main grid receives only the default hero viewport")
 	check(sandbox.minimap._cells.size()<session.sim.world.width*session.sim.world.height,
 		"sandbox minimap omits never-seen cells")
 	for row in sandbox.minimap._cells.values():

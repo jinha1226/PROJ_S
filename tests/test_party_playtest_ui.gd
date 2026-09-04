@@ -1103,7 +1103,7 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 	return finish()
 
 
-func test_product_graphics_toggle_exposes_2d_and_2_5d_without_touching_the_run()->bool:
+func test_product_graphics_surface_is_pure_2d_without_touching_the_run()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(390,700)
 	sandbox.initialize_for_headless_test(session,false)
@@ -1112,22 +1112,21 @@ func test_product_graphics_toggle_exposes_2d_and_2_5d_without_touching_the_run()
 	var journal_before:Array=session.command_journal.duplicate(true)
 	var flat_mapping:Array=sandbox.grid.mapping_signature()
 	check(sandbox.grid_graphics_mode_button!=null \
-			and sandbox.grid_graphics_mode_button.visible \
-			and sandbox.grid_graphics_mode_button.text=="[2D→2.5D]",
-		"product map exposes the current graphics option beside zoom")
+			and not sandbox.grid_graphics_mode_button.visible \
+			and sandbox.grid_3d_model_button!=null \
+			and not sandbox.grid_3d_model_button.visible,
+		"product map hides the legacy 2.5D and 3D controls")
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
+		"product map starts on the shipping 2D projection")
 	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))
 	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,13))
-	check(upper.size.is_equal_approx(lower.size),"product defaults to uniform 2D cells")
-	sandbox._activate_product_zoom_control("GraphicsModeToggle")
-	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
-			and sandbox.grid_graphics_mode_button.text=="[2.5D→2D]",
-		"one touch selects the optional 2.5D projection")
-	sandbox._activate_product_zoom_control("GraphicsModeToggle")
+	check(upper.size.is_equal_approx(lower.size),"product uses uniform 2D cells")
+	sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
 			and sandbox.grid.mapping_signature()==flat_mapping,
-		"second touch restores exact default 2D camera mapping")
+		"ordinary product refresh preserves the exact 2D camera mapping")
 	check_eq([session.sim.snapshot(),session.command_journal],[snapshot_before,journal_before],
-		"graphics preference is presentation-only")
+		"2D presentation refresh never touches the run")
 	sandbox.free();return finish()
 
 func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> bool:
