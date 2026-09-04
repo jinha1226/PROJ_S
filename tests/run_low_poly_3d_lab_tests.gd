@@ -13,4 +13,4 @@ func _init()->void:
 		else:
 			failed+=1
 			for error in test_case.errors:print("FAIL %s :: %s -- %s"%[TEST_FILE,method.name,error])
-	print("---- Low-poly 3D lab: %d tests, %d failed ----"%[total,failed]);quit(1 if failed>0 else 0)
+	print("---- Top-down 2D cutout rig: %d tests, %d failed ----"%[total,failed]);quit(1 if failed>0 else 0)

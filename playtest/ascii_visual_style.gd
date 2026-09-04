@@ -253,7 +253,7 @@ static func asciident_actor_composition(actor:Dictionary,projected_style:Diction
 	var stance:=str(style.get("stance","IDLE"))
 	var stride_sign:=int(style.get("stride_sign",0))
 	var foot_row:=" / \\ "
-	if stance=="MOVING":foot_row="/   \\" if stride_sign>=0 else "\\   /"
+	if stance=="MOVING":foot_row=" / | " if stride_sign>=0 else " | \\ "
 	return {"visible":true,"rows":[
 		{"text":"  %s  "%head,"tone":"HIGHLIGHT"},
 		{"text":body_row,"tone":"PRIMARY"},

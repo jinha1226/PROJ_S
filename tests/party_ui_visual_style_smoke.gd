@@ -5,8 +5,8 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
-const AUTO_INTENDED_CADENCE_MSEC:=60
-const AUTO_HEADLESS_GROSS_CEILING_MSEC:=160
+const AUTO_INTENDED_CADENCE_MSEC:=190
+const AUTO_HEADLESS_GROSS_CEILING_MSEC:=310
 
 var failures:Array[String]=[]
 
@@ -55,8 +55,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
-	_check(sandbox.grid.visible_cell_count==13,
-		"%s product camera did not use the 13-cell (about 1.15x) default"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==19,
+		"%s product camera did not use the requested 19-cell default"%viewport_size)
 	_check(not sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==0.0 \
 		and not sandbox.top_hud_actions.visible and not sandbox.ascii_3d_lab_button.visible,
 		"%s obsolete product top rail remains visible"%viewport_size)
@@ -512,9 +512,9 @@ func _screen_touch_plain_button(button:Button,touch_index:int)->void:
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()
 	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
-	_check(sandbox.continuous_travel_cadence_msec>=60 \
-		and sandbox.continuous_travel_cadence_msec<=100,
-		"%s continuous travel cadence is outside the mobile 60-100ms window"%viewport_size)
+	_check(sandbox.continuous_travel_cadence_msec>=170 \
+		and sandbox.continuous_travel_cadence_msec<=220,
+		"%s continuous travel cadence is outside the visible 170-220ms window"%viewport_size)
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
@@ -536,16 +536,21 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	_check(running and sandbox.product_auto_button.text=="[AUTO ■]",
 		"%s AUTO did not enter a visible running state"%viewport_size)
 	if running:
+		var moving_hero_id:=int(session.party_status().get("protagonist_id",-1))
+		var auto_motion:Dictionary=sandbox.grid.actor_motion_state()
+		_check(auto_motion.has(moving_hero_id) \
+			and int((auto_motion.get(moving_hero_id,{}) as Dictionary).get("duration_ms",0)) \
+				==sandbox.CONTINUOUS_EXPLORATION_MOTION_MSEC,
+			"%s AUTO hop did not arm the visible modular walk cycle"%viewport_size)
 		var first_hop_started:int=sandbox._product_auto_last_hop_started_msec
 		var due_from_hop_start:int=int(sandbox._product_auto_explore_due_msec)-first_hop_started
-		_check(due_from_hop_start>=55 and due_from_hop_start<=70,
-			"%s AUTO continuation was not scheduled 55-70ms from hop start: %d"%[
+		_check(due_from_hop_start>=185 and due_from_hop_start<=200,
+			"%s AUTO continuation was not scheduled 185-200ms from hop start: %d"%[
 				viewport_size,due_from_hop_start])
 		var cadence_step:int=int(session.party_status().step_index)
 		var wait_started:int=Time.get_ticks_msec()
-		# Product scheduling is intentionally 60ms and normally measures 107-109ms
-		# commit-start including canonical work plus one drawable frame. Headless CI
-		# occasionally stretches that frame; 160ms is a gross regression ceiling,
+		# Product scheduling leaves enough time for the 180ms walk cycle to render.
+		# Headless CI occasionally stretches a frame; 310ms is a gross ceiling,
 		# while the lower bound and exact one-hop assertion still catch early/duplicate
 		# commits rather than treating scheduler jitter as product work.
 		while sandbox._product_auto_last_hop_started_msec==first_hop_started \
@@ -555,8 +560,8 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		_check(int(session.party_status().step_index)==cadence_step+1 \
 			and actual_start_interval>=AUTO_INTENDED_CADENCE_MSEC-5 \
 			and actual_start_interval<=AUTO_HEADLESS_GROSS_CEILING_MSEC,
-			("%s AUTO commit-start was not exactly one hop within 55-160ms " \
-			+ "(intended=60ms typical=107-109ms gross=160ms): step=%d/%d interval=%d")%[
+			("%s AUTO commit-start was not exactly one hop within 185-310ms " \
+			+ "(intended=190ms gross=310ms): step=%d/%d interval=%d")%[
 				viewport_size,int(session.party_status().step_index),cadence_step,actual_start_interval])
 		var auto_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
 		_check(int(auto_camera.get("duration_ms",0))==sandbox.CONTINUOUS_CAMERA_SETTLE_MSEC \
@@ -569,7 +574,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		sandbox._product_auto_explore_due_msec=-1
 		sandbox._product_auto_explore_scheduled_generation=-1
 		# The remaining gesture probes advance synthetic frames rather than wall
-		# time. Zero only their presentation delay; production remains 60ms.
+		# time. Zero only their presentation delay; production remains 190ms.
 		sandbox.continuous_travel_cadence_msec=0
 		await process_frame;await process_frame
 		var held_step:=int(session.party_status().step_index)
@@ -904,11 +909,16 @@ func _check_product_direction_touch(viewport_size:Vector2)->void:
 	var contact_button:=sandbox.product_direction_buttons.get(Vector2i.UP) as Button
 	await _screen_touch_button(sandbox,contact_button,41)
 	var contact_after:Dictionary=session.party_status()
-	var contact_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
+	var contact_hero_id:=int(contact_after.get("protagonist_id",-1))
+	var contact_facing:Vector2i=sandbox.grid.actor_last_facing_state().get(
+		contact_hero_id,Vector2i.ZERO)
 	_check(Vector2i(int(contact_after.protagonist_position[0]),
 		int(contact_after.protagonist_position[1]))==contact_origin+Vector2i.UP \
-		and int(contact_camera.get("duration_ms",0))==sandbox.MANUAL_CAMERA_SETTLE_MSEC,
-		"%s first monster-facing D-pad touch jumped cells or lost its smooth settle"%viewport_size)
+		and contact_facing==Vector2i.UP,
+		("%s first monster-facing D-pad touch jumped cells or lost its facing: " \
+		+ "origin=%s after=%s phase=%s/%s facing=%s")%[viewport_size,contact_origin,
+			contact_after.protagonist_position,contact_before.safe_phase,
+			contact_after.safe_phase,contact_facing])
 	var contact_reverse:=sandbox.product_direction_buttons.get(Vector2i.DOWN) as Button
 	await _screen_touch_button(sandbox,contact_reverse,42,true)
 	var contact_reversed:Dictionary=session.party_status()

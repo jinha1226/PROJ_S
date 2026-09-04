@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "hero_armored",
+  "atlas": "hero_armored_atlas_4x4_256.png",
+  "source": "source/hero_armored_atlas_source.png",
+  "cell_size": [256, 256],
+  "columns": ["idle", "walk_left", "walk_right", "attack"],
+  "rows": ["south", "east", "north", "west"],
+  "anchor": [0.5, 0.96],
+  "recommended_display_height": [48, 64],
+  "transparent": true,
+  "individual_frames": "runtime/"
+}

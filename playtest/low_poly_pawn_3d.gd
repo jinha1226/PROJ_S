@@ -3,271 +3,175 @@ extends Node3D
 
 signal attack_finished
 
-const PAINTED_SURFACE:Texture2D=preload("res://assets/3d/textures/painted_surface_v1.png")
-const HERO_FACE_DECAL:Texture2D=preload("res://assets/3d/textures/hero_face_decal_v1.png")
-const BROKEN_SUN_DECAL:Texture2D=preload("res://assets/3d/textures/broken_sun_decal_v1.png")
+const HERO_CUTOUT_ATLAS:Texture2D=preload(
+	"res://assets/generated/topdown_cutout_v1/character/runtime/hero_cutout_atlas_4x4_1024.png")
+const GOBLIN_CUTOUT_ATLAS:Texture2D=preload(
+	"res://assets/generated/topdown_cutout_v1/character/runtime/goblin_cutout_atlas_4x4_1024_v2.png")
 
 @export_enum("human", "goblin") var species := "human"
 @export var equipment_visible := true
-@export var painted_skin_enabled := true
 
+# The rig lives in the XZ gameplay plane. Nothing in this pawn is a visible 3D
+# volume: Node3D joints provide transforms while Sprite3D cutouts provide all art.
 var visual_root:Node3D
+var skeleton_root:Node3D
+var equipment_root:Node3D
+var torso_bone:Node3D
+var head_pivot:Node3D
 var left_arm_pivot:Node3D
 var right_arm_pivot:Node3D
+var left_forearm_pivot:Node3D
+var right_forearm_pivot:Node3D
 var left_leg_pivot:Node3D
 var right_leg_pivot:Node3D
-var head_pivot:Node3D
-var equipment_root:Node3D
-var mesh_parts:Array[MeshInstance3D]=[]
-var equipment_parts:Array[MeshInstance3D]=[]
+var left_shin_pivot:Node3D
+var right_shin_pivot:Node3D
+var sprite_parts:Array[Sprite3D]=[]
+var equipment_parts:Array[Sprite3D]=[]
+var rig_bones:Array[Node3D]=[]
 var walking:=false
 var animation_clock:=0.0
 var attack_progress:=-1.0
+var facing:="south"
 
-var _skin:StandardMaterial3D
-var _hair:StandardMaterial3D
-var _cloth:StandardMaterial3D
-var _accent:StandardMaterial3D
-var _leather:StandardMaterial3D
-var _iron:StandardMaterial3D
-var _dark_iron:StandardMaterial3D
-var _eye:StandardMaterial3D
-var _outline:ShaderMaterial
+var _head:Sprite3D
+var _torso:Sprite3D
+var _armor:Sprite3D
+var _cape:Sprite3D
+var _rest_visual_z:=0.0
 
 func _ready()->void:
-	if visual_root==null:
-		_build_materials()
-		_build_pawn()
-	set_painted_skin_enabled(painted_skin_enabled)
+	if visual_root==null:_build_pawn()
 	set_equipment_visible(equipment_visible)
 	set_process(true)
 
-func _build_materials()->void:
-	if species=="goblin":
-		_skin=_material(Color("#70864f"),0.0,0.94)
-		_hair=_material(Color("#302b24"),0.0,1.0)
-		_cloth=_material(Color("#392f2c"),0.0,1.0)
-		_accent=_material(Color("#6e3828"),0.0,0.96)
-	else:
-		_skin=_material(Color("#c58e67"),0.0,0.92)
-		_hair=_material(Color("#332720"),0.0,1.0)
-		_cloth=_material(Color("#262a2e"),0.0,1.0)
-		_accent=_material(Color("#75412b"),0.0,0.96)
-	_leather=_material(Color("#3c2b22"),0.0,0.92)
-	_iron=_material(Color("#71777a"),0.62,0.48)
-	_dark_iron=_material(Color("#3f4649"),0.72,0.42)
-	_eye=_material(Color("#12100e"),0.0,1.0)
-	_eye.albedo_texture=null
-
-func _material(color:Color,metallic:float,roughness:float)->StandardMaterial3D:
-	var material:=StandardMaterial3D.new()
-	material.albedo_color=color
-	material.metallic=metallic
-	material.roughness=roughness
-	material.albedo_texture=PAINTED_SURFACE
-	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	material.uv1_scale=Vector3(1.45,1.45,1.45)
-	material.diffuse_mode=BaseMaterial3D.DIFFUSE_TOON
-	material.specular_mode=BaseMaterial3D.SPECULAR_SCHLICK_GGX
-	material.next_pass=_outline_material()
-	return material
-
-func _outline_material()->ShaderMaterial:
-	if _outline!=null:return _outline
-	var shader:=Shader.new()
-	shader.code="""
-shader_type spatial;
-render_mode cull_front, unshaded;
-void vertex() { VERTEX += NORMAL * 0.012; }
-void fragment() { ALBEDO = vec3(0.025, 0.022, 0.020); }
-"""
-	_outline=ShaderMaterial.new();_outline.shader=shader
-	return _outline
-
-func _decal_material(texture:Texture2D)->StandardMaterial3D:
-	var material:=StandardMaterial3D.new()
-	material.albedo_texture=texture
-	material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.cull_mode=BaseMaterial3D.CULL_DISABLED
-	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
-	return material
-
 func _build_pawn()->void:
-	visual_root=Node3D.new();visual_root.name="AnimatedVisual";add_child(visual_root)
+	visual_root=Node3D.new();visual_root.name="TopdownCutoutVisual";add_child(visual_root)
+	skeleton_root=_bone("Skeleton3DPlane",Vector3.ZERO,visual_root)
+	equipment_root=Node3D.new();equipment_root.name="Equipment2DCutouts";visual_root.add_child(equipment_root)
 	_build_shadow()
-	_build_body()
+	_build_skeleton()
+	_build_skin()
 	_build_equipment()
+	_apply_rest_pose()
 
 func _build_shadow()->void:
-	var shadow_material:=StandardMaterial3D.new()
-	shadow_material.albedo_color=Color(0.015,0.012,0.01,0.44)
-	shadow_material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-	shadow_material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-	var shadow_mesh:=CylinderMesh.new()
-	shadow_mesh.top_radius=0.34;shadow_mesh.bottom_radius=0.34
-	shadow_mesh.height=0.012;shadow_mesh.radial_segments=12
-	_part("GroundShadow",shadow_mesh,shadow_material,self,Vector3(0,0.012,0.03),Vector3.ZERO,false)
+	var gradient:=Gradient.new()
+	gradient.set_color(0,Color(0.015,0.01,0.008,0.42))
+	gradient.set_color(1,Color(0.015,0.01,0.008,0.0))
+	var texture:=GradientTexture2D.new();texture.width=96;texture.height=64
+	texture.gradient=gradient;texture.fill=GradientTexture2D.FILL_RADIAL
+	texture.fill_from=Vector2(0.5,0.5);texture.fill_to=Vector2(0.5,0.02)
+	var shadow:=Sprite3D.new();shadow.name="GroundShadow2D";shadow.texture=texture
+	shadow.rotation_degrees.x=-90;shadow.pixel_size=0.0085;shadow.position=Vector3(0,0.012,0.20)
+	shadow.shaded=false;shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(shadow)
 
-func _build_body()->void:
-	var torso_mesh:=CylinderMesh.new()
-	torso_mesh.top_radius=0.27;torso_mesh.bottom_radius=0.22
-	torso_mesh.height=0.48;torso_mesh.radial_segments=8
-	_part("BodyCore",torso_mesh,_cloth,visual_root,Vector3(0,0.91,0),Vector3.ZERO)
+func _build_skeleton()->void:
+	torso_bone=_bone("TorsoBone",Vector3(0,0.050,-0.08),skeleton_root)
+	head_pivot=_bone("HeadBone",Vector3(0,0.084,-0.43),skeleton_root)
+	left_arm_pivot=_bone("UpperArmBone.L",Vector3(-0.25,0.058,-0.18),skeleton_root)
+	right_arm_pivot=_bone("UpperArmBone.R",Vector3(0.25,0.059,-0.18),skeleton_root)
+	left_forearm_pivot=_bone("ForearmBone.L",Vector3(0,0.002,0.31),left_arm_pivot)
+	right_forearm_pivot=_bone("ForearmBone.R",Vector3(0,0.002,0.31),right_arm_pivot)
+	left_leg_pivot=_bone("ThighBone.L",Vector3(-0.13,0.046,0.20),skeleton_root)
+	right_leg_pivot=_bone("ThighBone.R",Vector3(0.13,0.047,0.20),skeleton_root)
+	left_shin_pivot=_bone("ShinBone.L",Vector3(0,0.002,0.31),left_leg_pivot)
+	right_shin_pivot=_bone("ShinBone.R",Vector3(0,0.002,0.31),right_leg_pivot)
 
-	var belt_mesh:=CylinderMesh.new()
-	belt_mesh.top_radius=0.235;belt_mesh.bottom_radius=0.235
-	belt_mesh.height=0.09;belt_mesh.radial_segments=8
-	_part("Belt",belt_mesh,_leather,visual_root,Vector3(0,0.69,0),Vector3.ZERO)
+func _build_skin()->void:
+	_cape=_cutout("BackCloth2D",Vector2i(3,3),skeleton_root,Vector3(0,0.001,-0.01),0.0030,0)
+	_torso=_cutout("BodyCore",Vector2i(2,0),torso_bone,Vector3.ZERO,0.0030,4)
+	_head=_cutout("Head",Vector2i(0,0),head_pivot,Vector3.ZERO,0.00265,8)
+	_build_arm_skin(left_arm_pivot,left_forearm_pivot,true)
+	_build_arm_skin(right_arm_pivot,right_forearm_pivot,false)
+	_build_leg_skin(left_leg_pivot,left_shin_pivot,true)
+	_build_leg_skin(right_leg_pivot,right_shin_pivot,false)
 
-	head_pivot=Node3D.new();head_pivot.name="HeadPivot";head_pivot.position=Vector3(0,1.27,0);visual_root.add_child(head_pivot)
-	var head_mesh:=SphereMesh.new()
-	head_mesh.radius=0.34;head_mesh.height=0.66;head_mesh.radial_segments=10;head_mesh.rings=5
-	_part("Head",head_mesh,_skin,head_pivot,Vector3(0,0.19,0),Vector3.ZERO)
-	var hair_mesh:=CylinderMesh.new()
-	hair_mesh.top_radius=0.30;hair_mesh.bottom_radius=0.35
-	hair_mesh.height=0.18;hair_mesh.radial_segments=9
-	_part("Hair",hair_mesh,_hair,head_pivot,Vector3(0,0.45,0.015),Vector3.ZERO)
-	var fringe_mesh:=BoxMesh.new();fringe_mesh.size=Vector3(0.38,0.13,0.10)
-	_part("HairFringe",fringe_mesh,_hair,head_pivot,Vector3(-0.05,0.35,-0.29),Vector3(0,0,0.12))
-	_build_face()
+func _build_arm_skin(upper:Node3D,forearm:Node3D,is_left:bool)->void:
+	var suffix:=".L" if is_left else ".R"
+	var upper_sprite:=_cutout("UpperArm"+suffix,Vector2i(0,1),upper,
+		Vector3(0,0,0.155),0.00212,3)
+	var forearm_sprite:=_cutout("Forearm"+suffix,Vector2i(1,1),forearm,
+		Vector3(0,0,0.155),0.00212,5)
+	upper_sprite.flip_h=is_left;forearm_sprite.flip_h=is_left
 
-	left_arm_pivot=_limb_pivot("ArmPivot.L",Vector3(-0.31,1.08,0),visual_root)
-	right_arm_pivot=_limb_pivot("ArmPivot.R",Vector3(0.31,1.08,0),visual_root)
-	_build_arm("Arm.L",left_arm_pivot,-1.0)
-	_build_arm("Arm.R",right_arm_pivot,1.0)
-	left_leg_pivot=_limb_pivot("LegPivot.L",Vector3(-0.14,0.64,0),visual_root)
-	right_leg_pivot=_limb_pivot("LegPivot.R",Vector3(0.14,0.64,0),visual_root)
-	_build_leg("Leg.L",left_leg_pivot)
-	_build_leg("Leg.R",right_leg_pivot)
-	if species=="goblin":_build_goblin_ears()
-
-func _build_face()->void:
-	if species=="human":
-		var decal_mesh:=QuadMesh.new();decal_mesh.size=Vector2(0.54,0.54)
-		_part("FaceDecal2D",decal_mesh,_decal_material(HERO_FACE_DECAL),head_pivot,
-			Vector3(0,0.18,-0.337),Vector3.ZERO)
-		return
-	for side in [-1.0,1.0]:
-		var eye_mesh:=SphereMesh.new();eye_mesh.radius=0.036;eye_mesh.height=0.07
-		eye_mesh.radial_segments=6;eye_mesh.rings=3
-		_part("Eye.L" if side<0 else "Eye.R",eye_mesh,_eye,head_pivot,
-			Vector3(0.11*side,0.22,-0.305),Vector3.ZERO)
-	var nose_mesh:=CylinderMesh.new();nose_mesh.top_radius=0.035;nose_mesh.bottom_radius=0.055
-	nose_mesh.height=0.12;nose_mesh.radial_segments=5
-	_part("Nose",nose_mesh,_skin,head_pivot,Vector3(0,0.13,-0.34),Vector3(deg_to_rad(90),0,0))
-
-func _build_goblin_ears()->void:
-	for side in [-1.0,1.0]:
-		var ear_mesh:=PrismMesh.new();ear_mesh.size=Vector3(0.27,0.13,0.08)
-		_part("Ear.L" if side<0 else "Ear.R",ear_mesh,_skin,head_pivot,
-			Vector3(0.40*side,0.22,0),Vector3(0,0,deg_to_rad(-18.0*side)))
-
-func _limb_pivot(node_name:String,position:Vector3,parent:Node3D)->Node3D:
-	var pivot:=Node3D.new();pivot.name=node_name;pivot.position=position;parent.add_child(pivot)
-	return pivot
-
-func _build_arm(node_name:String,parent:Node3D,side:float)->void:
-	var sleeve_mesh:=CapsuleMesh.new();sleeve_mesh.radius=0.105;sleeve_mesh.height=0.42
-	sleeve_mesh.radial_segments=8;sleeve_mesh.rings=3
-	_part(node_name,sleeve_mesh,_cloth,parent,Vector3(0,-0.18,0),Vector3.ZERO)
-	var hand_mesh:=SphereMesh.new();hand_mesh.radius=0.105;hand_mesh.height=0.20
-	hand_mesh.radial_segments=8;hand_mesh.rings=4
-	_part("Hand.L" if side<0 else "Hand.R",hand_mesh,_skin,parent,Vector3(0,-0.43,0),Vector3.ZERO)
-
-func _build_leg(node_name:String,parent:Node3D)->void:
-	var leg_mesh:=CapsuleMesh.new();leg_mesh.radius=0.115;leg_mesh.height=0.43
-	leg_mesh.radial_segments=8;leg_mesh.rings=3
-	_part(node_name,leg_mesh,_cloth,parent,Vector3(0,-0.18,0),Vector3.ZERO)
-	var boot_mesh:=BoxMesh.new();boot_mesh.size=Vector3(0.20,0.18,0.31)
-	_part(node_name.replace("Leg","Boot"),boot_mesh,_leather,parent,Vector3(0,-0.42,-0.07),Vector3.ZERO)
+func _build_leg_skin(thigh:Node3D,shin:Node3D,is_left:bool)->void:
+	var suffix:=".L" if is_left else ".R"
+	var thigh_sprite:=_cutout("Thigh"+suffix,Vector2i(2,1),thigh,
+		Vector3(0,0,0.155),0.00215,2)
+	var shin_sprite:=_cutout("ShinBoot"+suffix,Vector2i(3,1),shin,
+		Vector3(0,0,0.175),0.00218,3)
+	thigh_sprite.flip_h=is_left;shin_sprite.flip_h=is_left
 
 func _build_equipment()->void:
-	equipment_root=Node3D.new();equipment_root.name="Equipment";visual_root.add_child(equipment_root)
-	var chest_mesh:=CylinderMesh.new();chest_mesh.top_radius=0.295;chest_mesh.bottom_radius=0.245
-	chest_mesh.height=0.38;chest_mesh.radial_segments=8
-	_equipment_part("ArmorTorso",chest_mesh,_dark_iron,equipment_root,Vector3(0,0.98,0),Vector3.ZERO)
-	var chest_mark:=QuadMesh.new();chest_mark.size=Vector2(0.22,0.22)
-	_equipment_part("ArmorPaintedDecal",chest_mark,_decal_material(BROKEN_SUN_DECAL),
-		equipment_root,Vector3(0,1.00,-0.297),Vector3.ZERO)
-	for side in [-1.0,1.0]:
-		var shoulder_mesh:=SphereMesh.new();shoulder_mesh.radius=0.15;shoulder_mesh.height=0.22
-		shoulder_mesh.radial_segments=8;shoulder_mesh.rings=3
-		_equipment_part("Pauldron.L" if side<0 else "Pauldron.R",shoulder_mesh,_iron,
-			equipment_root,Vector3(0.34*side,1.10,0),Vector3(0,0,deg_to_rad(12.0*side)))
-	var helmet_mesh:=CylinderMesh.new();helmet_mesh.top_radius=0.31;helmet_mesh.bottom_radius=0.36
-	helmet_mesh.height=0.22;helmet_mesh.radial_segments=9
-	_equipment_part("Helmet",helmet_mesh,_dark_iron,head_pivot,Vector3(0,0.46,0),Vector3.ZERO)
-	var helmet_brow:=BoxMesh.new();helmet_brow.size=Vector3(0.54,0.10,0.09)
-	_equipment_part("HelmetBrow",helmet_brow,_iron,head_pivot,Vector3(0,0.34,-0.29),Vector3.ZERO)
-	_build_sword()
-	_build_shield()
+	_armor=_equipment_cutout("ArmorTorso",Vector2i(0,2),torso_bone,Vector3(0,0.012,0),0.00305,9)
+	_equipment_cutout("Pauldron.L",Vector2i(2,2),left_arm_pivot,
+		Vector3(0,0.012,0.035),0.00155,10).flip_h=true
+	_equipment_cutout("Pauldron.R",Vector2i(2,2),right_arm_pivot,
+		Vector3(0,0.012,0.035),0.00155,10)
+	_equipment_cutout("Helmet",Vector2i(3,2),head_pivot,
+		Vector3(0,0.014,-0.005),0.00278,11)
+	_equipment_cutout("BeltPelvis",Vector2i(2,3),skeleton_root,
+		Vector3(0,0.064,0.18),0.00235,10)
+	var sword_socket:=_bone("SwordSocket",Vector3(0,0.006,0.27),right_forearm_pivot)
+	_equipment_cutout("SwordBlade",Vector2i(0,3),sword_socket,
+		Vector3(0,0,0.22),0.00235,12)
+	var shield_socket:=_bone("ShieldSocket",Vector3(-0.055,0.006,0.19),left_forearm_pivot)
+	_equipment_cutout("Shield",Vector2i(1,3),shield_socket,
+		Vector3.ZERO,0.00242,13)
 
-func _build_sword()->void:
-	var sword_root:=Node3D.new();sword_root.name="SwordSocket"
-	sword_root.position=Vector3(0,-0.42,0);sword_root.rotation.z=deg_to_rad(-52)
-	right_arm_pivot.add_child(sword_root)
-	var grip_mesh:=CylinderMesh.new();grip_mesh.top_radius=0.035;grip_mesh.bottom_radius=0.035
-	grip_mesh.height=0.25;grip_mesh.radial_segments=6
-	_equipment_part("SwordGrip",grip_mesh,_leather,sword_root,Vector3(0,-0.10,0),Vector3.ZERO)
-	var guard_mesh:=BoxMesh.new();guard_mesh.size=Vector3(0.30,0.055,0.06)
-	_equipment_part("SwordGuard",guard_mesh,_accent,sword_root,Vector3(0,-0.24,0),Vector3.ZERO)
-	var blade_mesh:=PrismMesh.new();blade_mesh.size=Vector3(0.11,0.68,0.045)
-	_equipment_part("SwordBlade",blade_mesh,_iron,sword_root,Vector3(0,-0.58,0),Vector3.ZERO)
+func _bone(node_name:String,position:Vector3,parent:Node3D=null)->Node3D:
+	var bone:=Node3D.new();bone.name=node_name;bone.position=position
+	(parent if parent!=null else self).add_child(bone);rig_bones.append(bone)
+	return bone
 
-func _build_shield()->void:
-	var shield_mesh:=CylinderMesh.new();shield_mesh.top_radius=0.30;shield_mesh.bottom_radius=0.27
-	shield_mesh.height=0.075;shield_mesh.radial_segments=10
-	_equipment_part("Shield",shield_mesh,_dark_iron,left_arm_pivot,
-		Vector3(-0.03,-0.46,-0.14),Vector3(deg_to_rad(90),0,0))
-	var boss_mesh:=SphereMesh.new();boss_mesh.radius=0.095;boss_mesh.height=0.11
-	boss_mesh.radial_segments=7;boss_mesh.rings=3
-	_equipment_part("ShieldBoss",boss_mesh,_accent,left_arm_pivot,
-		Vector3(-0.03,-0.46,-0.205),Vector3(deg_to_rad(90),0,0))
-	var emblem_mesh:=QuadMesh.new();emblem_mesh.size=Vector2(0.31,0.31)
-	_equipment_part("ShieldPaintedDecal",emblem_mesh,_decal_material(BROKEN_SUN_DECAL),
-		left_arm_pivot,Vector3(-0.03,-0.46,-0.245),Vector3.ZERO)
+func _atlas_texture(cell:Vector2i)->AtlasTexture:
+	var texture:=AtlasTexture.new();texture.atlas=_atlas()
+	texture.region=Rect2(cell.x*256,cell.y*256,256,256)
+	return texture
 
-func _part(node_name:String,mesh:PrimitiveMesh,material:Material,parent:Node3D,
-		position:Vector3,rotation:Vector3,track:bool=true)->MeshInstance3D:
-	var part:=MeshInstance3D.new();part.name=node_name;part.mesh=mesh;part.material_override=material
-	part.position=position;part.rotation=rotation
-	part.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	parent.add_child(part)
-	if track:mesh_parts.append(part)
-	return part
+func _atlas()->Texture2D:
+	return GOBLIN_CUTOUT_ATLAS if species=="goblin" else HERO_CUTOUT_ATLAS
 
-func _equipment_part(node_name:String,mesh:PrimitiveMesh,material:Material,parent:Node3D,
-		position:Vector3,rotation:Vector3)->MeshInstance3D:
-	var part:=_part(node_name,mesh,material,parent,position,rotation)
-	equipment_parts.append(part)
-	return part
+func _cutout(node_name:String,cell:Vector2i,parent:Node3D,position:Vector3,
+		pixel_size:float,priority:int)->Sprite3D:
+	var sprite:=Sprite3D.new();sprite.name=node_name;sprite.texture=_atlas_texture(cell)
+	sprite.position=position;sprite.rotation_degrees.x=-90;sprite.pixel_size=pixel_size
+	sprite.shaded=false;sprite.double_sided=true;sprite.render_priority=priority
+	sprite.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sprite.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	parent.add_child(sprite);sprite_parts.append(sprite)
+	return sprite
+
+func _equipment_cutout(node_name:String,cell:Vector2i,parent:Node3D,position:Vector3,
+		pixel_size:float,priority:int)->Sprite3D:
+	var sprite:=_cutout(node_name,cell,parent,position,pixel_size,priority)
+	equipment_parts.append(sprite);return sprite
 
 func set_equipment_visible(enabled:bool)->void:
 	equipment_visible=enabled
 	for part in equipment_parts:
-		if is_instance_valid(part):
-			var is_painted_decal:=part.name in [&"ArmorPaintedDecal",&"ShieldPaintedDecal"]
-			part.visible=enabled and (painted_skin_enabled or not is_painted_decal)
-
-func set_painted_skin_enabled(enabled:bool)->void:
-	painted_skin_enabled=enabled
-	for material in [_skin,_hair,_cloth,_accent,_leather,_iron,_dark_iron]:
-		if material==null:continue
-		material.albedo_texture=PAINTED_SURFACE if enabled else null
-		material.next_pass=_outline_material() if enabled else null
-	var face_decal:=find_child("FaceDecal2D",true,false)
-	if face_decal!=null:face_decal.visible=enabled
-	set_equipment_visible(equipment_visible)
+		if is_instance_valid(part):part.visible=enabled
+	if is_instance_valid(_cape):_cape.visible=enabled
 
 func set_walking(enabled:bool)->void:
 	walking=enabled
 	if not enabled and attack_progress<0.0:_apply_rest_pose()
 
 func face_direction(direction:Vector3)->void:
-	var flat:=Vector3(direction.x,0,direction.z)
-	if flat.length_squared()>0.0001:
-		look_at_from_position(position,position+flat.normalized(),Vector3.UP)
+	var flat:=Vector2(direction.x,direction.z)
+	if flat.length_squared()<=0.0001:return
+	if absf(flat.y)>=absf(flat.x):facing="south" if flat.y>=0.0 else "north"
+	else:facing="east" if flat.x>=0.0 else "west"
+	_apply_facing_skin()
+
+func _apply_facing_skin()->void:
+	var north_facing:=facing=="north"
+	_head.texture=_atlas_texture(Vector2i(1,0) if north_facing else Vector2i(0,0))
+	_torso.texture=_atlas_texture(Vector2i(3,0) if north_facing else Vector2i(2,0))
+	_armor.texture=_atlas_texture(Vector2i(1,2) if north_facing else Vector2i(0,2))
+	visual_root.scale.x=-1.0 if facing=="west" else 1.0
 
 func play_attack()->void:
 	attack_progress=0.0
@@ -275,43 +179,48 @@ func play_attack()->void:
 func _process(delta:float)->void:
 	if visual_root==null:return
 	animation_clock+=delta
-	var stride:=sin(animation_clock*10.0)*0.62 if walking else 0.0
-	left_leg_pivot.rotation.x=stride
-	right_leg_pivot.rotation.x=-stride
-	left_arm_pivot.rotation.x=-stride*0.68
-	visual_root.position.y=(absf(sin(animation_clock*10.0))*0.055 if walking \
-		else sin(animation_clock*2.4)*0.014)
-	head_pivot.rotation.z=sin(animation_clock*2.0)*0.025
+	var stride:=sin(animation_clock*10.0)*0.38 if walking else 0.0
+	left_leg_pivot.rotation.y=stride
+	right_leg_pivot.rotation.y=-stride
+	left_shin_pivot.rotation.y=-stride*0.34
+	right_shin_pivot.rotation.y=stride*0.34
+	left_arm_pivot.rotation.y=-stride*0.72+0.10
+	visual_root.position.z=_rest_visual_z-(absf(sin(animation_clock*10.0))*0.026 if walking else 0.0)
+	head_pivot.rotation.y=sin(animation_clock*2.0)*0.025
 	if attack_progress>=0.0:
 		attack_progress+=delta/0.48
 		var normalized:=minf(attack_progress,1.0)
-		var swing:=lerpf(-1.25,1.15,smoothstep(0.18,0.72,normalized))
-		right_arm_pivot.rotation.x=swing
-		right_arm_pivot.rotation.z=-0.30+sin(normalized*PI)*0.22
+		var swing:=lerpf(-0.95,1.18,smoothstep(0.14,0.74,normalized))
+		right_arm_pivot.rotation.y=swing
+		right_forearm_pivot.rotation.y=-0.35+sin(normalized*PI)*0.62
 		if attack_progress>=1.0:
-			attack_progress=-1.0
-			_apply_rest_pose()
-			attack_finished.emit()
+			attack_progress=-1.0;_apply_rest_pose();attack_finished.emit()
 	else:
-		right_arm_pivot.rotation.x=stride*0.68
-		right_arm_pivot.rotation.z=-0.16
+		right_arm_pivot.rotation.y=stride*0.72-0.10
+		right_forearm_pivot.rotation.y=0.08
 
 func _apply_rest_pose()->void:
 	if left_arm_pivot==null:return
-	left_arm_pivot.rotation=Vector3(0,0,0.16)
-	right_arm_pivot.rotation=Vector3(0,0,-0.16)
-	left_leg_pivot.rotation=Vector3.ZERO
-	right_leg_pivot.rotation=Vector3.ZERO
+	left_arm_pivot.rotation=Vector3(0,0.10,0)
+	right_arm_pivot.rotation=Vector3(0,-0.10,0)
+	left_forearm_pivot.rotation=Vector3(0,-0.06,0)
+	right_forearm_pivot.rotation=Vector3(0,0.08,0)
+	left_leg_pivot.rotation=Vector3(0,-0.055,0)
+	right_leg_pivot.rotation=Vector3(0,0.055,0)
+	left_shin_pivot.rotation=Vector3.ZERO;right_shin_pivot.rotation=Vector3.ZERO
+	visual_root.position.z=_rest_visual_z
 
 func visual_contract()->Dictionary:
 	return {
-		"actual_mesh_count":mesh_parts.size(),
+		"visible_mesh_count":0,
+		"sprite_part_count":sprite_parts.size(),
 		"equipment_part_count":equipment_parts.size(),
+		"rig_bone_count":rig_bones.size(),
 		"separate_equipment":equipment_root!=null,
-		"painted_surface":PAINTED_SURFACE!=null,
-		"face_decal":find_child("FaceDecal2D",true,false)!=null if species=="human" else true,
-		"painted_skin_enabled":painted_skin_enabled,
-		"animated_limbs":left_arm_pivot!=null and right_arm_pivot!=null \
-			and left_leg_pivot!=null and right_leg_pivot!=null,
+		"full_frame_sprite":false,
+		"topdown_cutout_skin":true,
+		"animated_limbs":left_forearm_pivot!=null and right_forearm_pivot!=null \
+			and left_shin_pivot!=null and right_shin_pivot!=null,
 		"species":species,
+		"facing":facing,
 	}

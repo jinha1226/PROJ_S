@@ -10,16 +10,19 @@ func _capture()->void:
 	var lab=LabScene.instantiate();root.add_child(lab)
 	await process_frame
 	await process_frame
-	lab.set_view_mode(lab.VIEW_PITCHED)
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://build/low_poly_3d_pitched.png")
-	lab.toggle_painted_skin()
-	await process_frame
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://build/low_poly_3d_flat_comparison.png")
-	lab.toggle_painted_skin()
 	lab.set_view_mode(lab.VIEW_TOPDOWN)
+	RenderingServer.force_draw(false,0.0)
 	await process_frame
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://build/low_poly_3d_topdown.png")
+	root.get_texture().get_image().save_png("res://build/topdown_cutout_idle.png")
+	lab.pawn.set_walking(true)
+	lab.pawn._process(0.12)
+	RenderingServer.force_draw(false,0.0)
+	await process_frame
+	root.get_texture().get_image().save_png("res://build/topdown_cutout_walk.png")
+	lab.pawn.set_walking(false)
+	lab.pawn.play_attack()
+	lab.pawn._process(0.26)
+	RenderingServer.force_draw(false,0.0)
+	await process_frame
+	root.get_texture().get_image().save_png("res://build/topdown_cutout_attack.png")
 	quit()

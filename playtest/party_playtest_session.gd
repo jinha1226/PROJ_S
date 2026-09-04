@@ -78,7 +78,7 @@ const PRODUCT_ZOOM_REFERENCE_CELL_COUNT := 15
 # an odd cell count, so the protagonist remains centered on an exact grid cell.
 # Nine cells gives the existing [+] control two closer steps beyond that target.
 const PRODUCT_ZOOM_CELL_COUNTS := [9,11,13,15,17,19,21,23,25]
-const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 13
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 19
 const MAX_UI_VIEW_CELL_COUNT := PRODUCT_ZOOM_CELL_COUNTS[-1]
 const HEXACO_LABELS := {
 	"H":["실리적","원칙적"], "E":["대담함","섬세함"],
@@ -1162,13 +1162,18 @@ func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 func reload_protagonist_weapon()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
+	if _run_is_complete() or sim.world.party_encounter.safe_phase=="PARTY_DEFEATED":
+		return _rejection_dto("run_complete")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	# The product combat screen may keep a replaceable HOLD placeholder ready for
 	# party planning. Reload is itself the player's explicit choice, so discard
 	# only that placeholder; never overwrite a real staged action.
 	if _protagonist_draft!=null and _protagonist_placeholder:_clear_draft()
 	if _protagonist_draft!=null:return _rejection_dto("turn_draft_active")
-	var before:Dictionary=sim.snapshot()
+	var before:Variant=sim.snapshot()
+	if not before is Dictionary:return _rejection_dto("party_snapshot_unavailable")
+	var phase_before:=str(sim.world.party_encounter.safe_phase)
+	var terminal_before:=bool(run_progress().get("terminal",false))
 	var reload_result:Dictionary=ItemOperationsScript.commit_reload(
 		sim.world,sim.world.party_encounter.protagonist_id)
 	if not bool(reload_result.get("accepted",false)):
@@ -1177,6 +1182,12 @@ func reload_protagonist_weapon()->Dictionary:
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
 		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(state_error)
+	# An equipment-only operation must never advance encounter/run lifecycle. Roll
+	# back defensively if a future item hook accidentally changes either surface.
+	if str(sim.world.party_encounter.safe_phase)!=phase_before \
+			or bool(run_progress().get("terminal",false))!=terminal_before:
+		sim=SimulatorScript.from_snapshot(before)
+		return _rejection_dto("reload_session_transition_forbidden")
 	command_journal.append({"kind":"equipment","operation":{
 		"action":"RELOAD","weapon_id":str(reload_result.weapon_id)}})
 	return _feedback_dto({"accepted":true,"reason":"ok","reload_time":int(reload_result.reload_time),

@@ -1,0 +1,67 @@
+{
+  "version": 2,
+  "theme": "dark_fantasy_topdown",
+  "projection_model": "unprojected_source_art_plus_runtime_fake_25d",
+  "assets": [
+    {
+      "id": "floor_flagstone",
+      "file": "runtime/floor_flagstone_tileable_512.png",
+      "source": "source/floor_flagstone_source.png",
+      "size": [512, 512],
+      "alpha": false,
+      "orientation": "top_down_90_degrees",
+      "role": "projected_floor_surface",
+      "tileable": true
+    },
+    {
+      "id": "wall_cap",
+      "file": "runtime/wall_cap_tileable_512.png",
+      "source": "source/wall_cap_source.png",
+      "size": [512, 512],
+      "alpha": false,
+      "orientation": "top_down_90_degrees",
+      "role": "projected_wall_top_surface",
+      "tileable": true
+    },
+    {
+      "id": "wall_face",
+      "file": "runtime/wall_face_tileable_512.png",
+      "source": "source/wall_face_source.png",
+      "size": [512, 512],
+      "alpha": false,
+      "orientation": "flat_front_elevation",
+      "role": "projected_wall_vertical_surface",
+      "tileable": true
+    },
+    {
+      "id": "crate_top",
+      "file": "runtime/crate_top_256.png",
+      "source": "source/crate_top_source.png",
+      "size": [256, 256],
+      "alpha": true,
+      "orientation": "top_down_90_degrees",
+      "role": "ground_prop",
+      "anchor": "center"
+    },
+    {
+      "id": "blood_pool",
+      "file": "runtime/blood_pool_256.png",
+      "source": "source/blood_pool_source.png",
+      "size": [256, 256],
+      "alpha": true,
+      "orientation": "top_down_90_degrees",
+      "role": "ground_decal",
+      "anchor": "center"
+    },
+    {
+      "id": "wall_torch_front",
+      "file": "runtime/wall_torch_front_256.png",
+      "source": "source/wall_torch_source.png",
+      "size": [256, 256],
+      "alpha": true,
+      "orientation": "flat_front_elevation",
+      "role": "wall_face_overlay",
+      "anchor": "bottom_center"
+    }
+  ]
+}

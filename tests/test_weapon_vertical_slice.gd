@@ -183,6 +183,45 @@ func test_ranged_combat_controls_expose_shoot_and_crossbow_reload()->bool:
 	sandbox.free();return finish()
 
 
+func test_crossbow_after_shot_reload_preserves_live_combat_session_and_ui()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(_equip_starter_weapon(session,"CROSSBOW").accepted,
+		"after-shot reload fixture equips crossbow")
+	check(_enter_solo_combat(session),"after-shot reload fixture enters combat")
+	if str(session.party_status().get("safe_phase",""))!="ENGAGED":return finish()
+	var state=session.sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	var enemy_id:=int(state.enemy_ids[0])
+	check(session.reload_protagonist_weapon().accepted,"fixture loads its first bolt")
+	var shot_preview:Dictionary=session.preview_actor_action(hero_id,"MELEE",[],enemy_id)
+	check(bool(shot_preview.get("accepted",false)),
+		"contact enemy begins inside the crossbow firing envelope: %s"%shot_preview)
+	var shot:Dictionary=session.commit_direct_solo_action(hero_id,"MELEE",[],enemy_id)
+	check(bool(shot.get("accepted",false)),"crossbow shot commits before reload: %s"%shot)
+	check(not bool(session.protagonist_equipment().loaded),
+		"committed crossbow shot consumes the loaded state")
+	check_eq(session.sim.world.world_state_error(),"",
+		"crossbow shot leaves a serializable settled world before reload")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
+	var live_reload_button:Button=sandbox.product_interact_button
+	sandbox._on_product_interact()
+	var after_status:Dictionary=session.party_status()
+	check(session.sim!=null and session.sim.world!=null \
+			and str(after_status.get("safe_phase",""))=="ENGAGED" \
+			and not bool(session.run_progress().get("terminal",false)),
+		"after-shot reload cannot terminate or detach the combat session")
+	check(bool(session.protagonist_equipment().loaded) \
+			and sandbox.product_interact_button==live_reload_button \
+			and sandbox.product_interact_button.disabled,
+		"after-shot reload keeps the stable combat UI and disables repeat reload: %s / %s" \
+			%[session.protagonist_equipment(),sandbox.notice_text])
+	check("재장전" in sandbox.notice_text \
+			and session.sim.world.world_state_error().is_empty(),
+		"after-shot reload reports success and leaves authoritative state valid")
+	sandbox.free();return finish()
+
+
 func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	check(session.drop_inventory_item("START_POTION_001").accepted,
@@ -478,6 +517,28 @@ func _place_enemy_on_open_line(session, enemy_id: int, distance: int) -> bool:
 					break
 			if not clear: break
 		if clear:
-			session.sim.world.entities[enemy_id].position = candidate
-			return true
+			return _relocate_with_move_events(session.sim,enemy_id,candidate)
+	return false
+
+
+func _relocate_with_move_events(sim,entity_id:int,target:Vector2i)->bool:
+	for _attempt in range(64):
+		var current:Vector2i=sim.world.entities[entity_id].position
+		if current==target:return true
+		var delta:=target-current;var moved:=false
+		for direction_value in [Vector2i(signi(delta.x),signi(delta.y)),
+				Vector2i(signi(delta.x),0),Vector2i(0,signi(delta.y))]:
+			var direction:=Vector2i(direction_value)
+			if direction==Vector2i.ZERO:continue
+			var destination:=current+direction
+			if maxi(absi(destination.x-target.x),absi(destination.y-target.y)) \
+					>=maxi(absi(current.x-target.x),absi(current.y-target.y)):continue
+			var assessment=sim.movement.assess_move(entity_id,destination)
+			if not bool(assessment.accepted):continue
+			var definition:Dictionary=load("res://sim/terrain_registry.gd").definition(
+				str(assessment.terrain_id))
+			if sim.movement.commit_preflighted_move(entity_id,destination,
+					str(assessment.terrain_id),int(definition.move_time_cost))==null:return false
+			moved=true;break
+		if not moved:return false
 	return false

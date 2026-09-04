@@ -2999,9 +2999,18 @@ func _canonical_overkill_history_error() -> String:
 				frozen_positions[entity_id] = projection.position
 			var attacker_position: Vector2i = frozen_positions[action.actor_id]
 			var target_position: Vector2i = frozen_positions[action.target_id]
-			if action.position != target_position \
-					or maxi(absi(attacker_position.x - target_position.x),
-						absi(attacker_position.y - target_position.y)) != 1:
+			var frozen_distance:=maxi(absi(attacker_position.x-target_position.x),
+				absi(attacker_position.y-target_position.y))
+			var range_min:=1
+			var range_max:=1
+			var action_weapon_id:=str(action.data.get("weapon_id",""))
+			if not action_weapon_id.is_empty():
+				var action_weapon=WeaponRegistryScript.definition(action_weapon_id)
+				if action_weapon==null:return "canonical_melee_batch_weapon_missing"
+				range_min=int(action_weapon.range_min)
+				range_max=int(action_weapon.range_max)
+			if action.position != target_position or frozen_distance<range_min \
+					or frozen_distance>range_max:
 				return "canonical_melee_batch_frozen_position_invalid"
 		var frozen_life: Dictionary = {}
 		for action in group_actions:

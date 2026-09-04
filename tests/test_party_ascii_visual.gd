@@ -5,6 +5,7 @@ const Portrait = preload("res://playtest/ascii_actor_portrait.gd")
 const Grid = preload("res://playtest/party_grid_view.gd")
 const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
+const ModularAssets = preload("res://playtest/modular_topdown_assets.gd")
 
 
 func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_kinds()->bool:
@@ -363,7 +364,7 @@ func test_asciident_armor_walk_and_melee_have_sampled_ascii_limbs()->bool:
 	var right_step:=idle_style.duplicate(true);right_step.stance="MOVING";right_step.stride_sign=-1
 	check_eq([Style.asciident_actor_composition(actor,left_step).rows[2].text,
 		Style.asciident_actor_composition(actor,right_step).rows[2].text],
-		["/   \\","\\   /"],"walking alternates the two ASCII leg poses")
+		[" / | "," | \\ "],"walking alternates compact within-body ASCII leg poses")
 
 	var cells:=_visible_cells()
 	for cell in cells:
@@ -438,13 +439,22 @@ func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct(
 
 
 func test_product_floor_draw_paths_have_no_image_texture_or_tile_atlas() -> bool:
-	for path in ["res://playtest/party_grid_view.gd", "res://playtest/duel_decision_grid.gd"]:
-		var source:=FileAccess.get_file_as_string(path)
-		check(not source.is_empty(),"product grid source is readable: %s"%path)
-		for forbidden in ["character_atlas.png","Texture2D","ImageTexture","AtlasTexture",
-				"Sprite2D","draw_texture","_draw_connected_material_blob"]:
-			check(not source.contains(forbidden),
-				"%s contains no floor image/atlas path: %s"%[path,forbidden])
+	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
+	var asset_source:=FileAccess.get_file_as_string("res://playtest/modular_topdown_assets.gd")
+	check(not grid_source.is_empty() and not asset_source.is_empty(),
+		"pure 2D product renderer and registry sources are readable")
+	check(grid_source.contains("_draw_modular_topdown") \
+			and grid_source.contains("draw_texture_rect_region") \
+			and asset_source.contains("BODY_ATLASES") \
+			and asset_source.contains("ITEM_ATLASES"),
+		"product floor and paper doll use generated 2D texture atlases")
+	for forbidden in ["Node3D","MeshInstance3D","Skeleton3D","Camera3D"]:
+		check(not grid_source.contains(forbidden) and not asset_source.contains(forbidden),
+			"shipping grid remains pure 2D without %s"%forbidden)
+	check_eq(ModularAssets.direction_region("south"),Rect2(0,0,512,512),
+		"south is the first atlas cell")
+	check_eq(ModularAssets.direction_region("east"),Rect2(512,512,512,512),
+		"east is the fourth atlas cell")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
 	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
@@ -1384,6 +1394,16 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	check(absf(float(sample75.eased_progress)-0.875)<0.0001,
 		"75ms cubic ease-out reaches deterministic 87.5 percent")
 	check_eq(sample150.world_position,Vector2(8,7),"150ms motion ends at target")
+	var walk_pose:Dictionary=grid.modular_walk_pose_spec(77,started+38)
+	var settled_pose:Dictionary=grid.modular_walk_pose_spec(77,started+150)
+	check(bool(walk_pose.active) and float(walk_pose.body_bob_ratio)<0.0 \
+			and float(walk_pose.left_leg_offset_ratio)>0.04 \
+			and float(walk_pose.right_leg_offset_ratio)<-0.04,
+		"pure 2D modular walk pose counter-moves the legs and lifts the torso")
+	check(not bool(settled_pose.active) \
+			and float(settled_pose.left_leg_offset_ratio)==0.0 \
+			and float(settled_pose.right_leg_offset_ratio)==0.0,
+		"modular legs return exactly to their authored idle silhouette")
 	check_eq(grid.actor_in_world_cell(Vector2i(8,7)),77,"authoritative hit cell changes immediately")
 	check(grid.actor_hit_rect(77).has_point(grid.world_to_pixel_center(Vector2i(8,7))),
 		"authoritative target center owns hit immediately")
@@ -1392,6 +1412,55 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	check(grid.actor_motion_state().is_empty(),"unarmed observation change snaps")
 	grid.arm_actor_motion([77],150);grid.set_observation(_actor_observation(Vector2i(12,7),"VISIBLE"))
 	check(grid.actor_motion_state().is_empty(),"two-cell teleport snaps even when armed")
+	grid.free();return finish()
+
+
+func test_modular_actor_persists_last_move_facing_after_walk_settles()->bool:
+	var grid=Grid.new();grid.size=Vector2(345,345)
+	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
+	var steps:=[
+		[Vector2i(6,7),Vector2i.LEFT,"west"],
+		[Vector2i(6,6),Vector2i.UP,"north"],
+		[Vector2i(7,6),Vector2i.RIGHT,"east"],
+		[Vector2i(7,7),Vector2i.DOWN,"south"],
+	]
+	for row in steps:
+		grid.arm_actor_motion([77],150)
+		grid.set_observation(_actor_observation(row[0],"VISIBLE"))
+		check_eq(grid.actor_last_facing_state().get(77,Vector2i.ZERO),row[1],
+			"one-step movement persists %s facing"%row[2])
+		# Re-observing the same logical cell models the settled idle frame. The DTO
+		# has no authored facing, so regression to its RIGHT fallback is detectable.
+		grid.set_observation(_actor_observation(row[0],"VISIBLE"))
+		var persisted:Vector2i=grid.actor_last_facing_state().get(77,Vector2i.ZERO)
+		check_eq(ModularAssets.direction_id({"facing":[persisted.x,persisted.y]}),row[2],
+			"settled modular actor keeps %s instead of returning east"%row[2])
+	grid.free();return finish()
+
+
+func test_flat_product_uses_foot_anchored_multirow_ascii_actor_over_2d_ground()->bool:
+	var grid=Grid.new();grid.size=Vector2(380,380)
+	grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D)
+	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
+	grid.arm_actor_motion([77],180)
+	grid.set_observation(_actor_observation(Vector2i(6,7),"VISIBLE"))
+	var started:=int(grid.actor_motion_state()[77].started_at_ms)
+	var actor:Dictionary=grid._actor_by_id(77).duplicate(true)
+	actor["equipment_visual"]={"weapon_id":"CROSSBOW"}
+	var moving:Dictionary=grid.topdown_ascii_actor_render_spec(actor,false,started+45)
+	check(bool(moving.visible) and int(moving.row_count)==3 \
+			and int(moving.column_count)==5 and not bool(moving.get("draw_image",false)),
+		"flat product actor is the existing multi-character ASCII composition")
+	check(float(moving.visual_cell_ratio[0])>=1.3 \
+			and float(moving.visual_cell_ratio[0])<=1.6 \
+			and float(moving.visual_cell_ratio[1])>=1.3 \
+			and float(moving.visual_cell_ratio[1])<=1.6,
+		"hybrid actor stays within the 1.3-1.6 cell readability envelope")
+	check(Vector2(moving.weapon_center).x<Vector2(moving.center).x \
+			and moving.rows[2].text in [" / | "," | \\ "],
+		"persisted west facing controls both weapon side and compact walking legs")
+	check_eq(grid.actor_in_world_cell(Vector2i(6,7)),77,
+		"oversized ASCII art keeps one-cell actor authority")
 	grid.free();return finish()
 
 
@@ -1412,8 +1481,8 @@ func test_centered_protagonist_keeps_walk_pose_while_camera_tracks_the_step()->b
 	var foot_text:=str(composition.rows[2].text)
 	check(str(moving.get("stance",""))=="MOVING" \
 			and int(moving.get("stride_sign",0))!=0 \
-			and foot_text.length()==5 and foot_text.substr(1,3)=="   ",
-		"centered protagonist exposes alternating 2.5D legs during a step")
+			and foot_text in [" / | "," | \\ "],
+		"centered protagonist exposes compact alternating 2.5D legs during a step")
 	var bounds:Rect2=grid._actor_figure_bounds(actor,grid.cell_size_px(),false,started+45)
 	var centered_x:=grid.world_to_pixel_center(Vector2i(8,7)).x
 	check(absf(bounds.get_center().x-centered_x)<0.01,
@@ -1478,22 +1547,22 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 		var mapping:=grid.mapping_signature();var actor_color:=str(grid.actor_draw_spec(
 			grid._actor_by_id(77)).color_hex)
 		var at_zero:Array=grid.torch_draw_specs(0)
-		var at_same_tick:Array=grid.torch_draw_specs(74)
-		var at_next_tick:Array=grid.torch_draw_specs(75)
+		var at_same_tick:Array=grid.torch_draw_specs(259)
+		var at_next_tick:Array=grid.torch_draw_specs(260)
 		var stats:Dictionary=grid.torch_cache_stats()
 		var positions:=at_zero.map(func(row):return row.position)
 		if expected_positions.is_empty():expected_positions=positions
 		check_eq(positions,expected_positions,
 			"%dpx torch placement is deterministic and viewport-independent"%viewport)
 		check(int(stats.visible_count)<=4 and int(stats.cached_count)<=8 \
-			and float(stats.flicker_hz)>=13.0 and float(stats.flicker_hz)<=14.0,
-			"%dpx close torch cadence is visibly faster while sources stay bounded"%viewport)
+			and float(stats.flicker_hz)>=3.0 and float(stats.flicker_hz)<=4.0,
+			"%dpx close torch cadence is slow and sources stay bounded"%viewport)
 		for left_index in range(positions.size()):
 			for right_index in range(left_index+1,positions.size()):
 				var left:=Vector2i(int(positions[left_index][0]),int(positions[left_index][1]))
 				var right:=Vector2i(int(positions[right_index][0]),int(positions[right_index][1]))
-				check(maxi(absi(left.x-right.x),absi(left.y-right.y))>=5,
-					"%dpx selected torches keep five-cell spacing"%viewport)
+				check(maxi(absi(left.x-right.x),absi(left.y-right.y))>=7,
+					"%dpx selected torches keep seven-cell spacing"%viewport)
 		check(at_zero.all(func(row):return str(row.glyph)=="^" \
 			and int(row.glyph_count)==1 and not bool(row.draw_image) \
 			and row.texture==null and str(row.visibility_state)!="UNSEEN"),
@@ -1503,7 +1572,7 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 			"%dpx visible torches expose a five-cell floor light pool"%viewport)
 		check_eq(at_zero.map(func(row):return row.brightness),
 			at_same_tick.map(func(row):return row.brightness),
-			"%dpx torch flicker is fixed within its 75ms quantum"%viewport)
+			"%dpx torch flicker is fixed within its 260ms quantum"%viewport)
 		var visible_changed:=false;var memory_fixed:=true
 		for index in range(at_zero.size()):
 			if bool(at_zero[index].animated):
@@ -1520,15 +1589,15 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 			if bool(row.animated):
 				visible_source=Vector2i(int(row.position[0]),int(row.position[1]));break
 		check(visible_source!=Vector2i(-1,-1) \
-			and float(grid.torch_draw_specs(75).filter(func(row):return row.position \
+			and float(grid.torch_draw_specs(260).filter(func(row):return row.position \
 				==[visible_source.x,visible_source.y])[0].brightness)>=0.72 \
-			and float(grid.torch_draw_specs(75).filter(func(row):return row.position \
+			and float(grid.torch_draw_specs(260).filter(func(row):return row.position \
 				==[visible_source.x,visible_source.y])[0].brightness)<=1.00,
 			"%dpx source fire remains legible with visible flicker contrast"%viewport)
 		var lit_floor_found:=false;var lit_wall_found:=false
 		for y in range(15):
 			for x in range(15):
-				var position:=Vector2i(x,y);var light:Dictionary=grid.torch_light_draw_spec(position,75)
+				var position:=Vector2i(x,y);var light:Dictionary=grid.torch_light_draw_spec(position,260)
 				if not bool(light.active) or int(light.distance)<=0:continue
 				if position in visible_walls:lit_wall_found=true
 				else:lit_floor_found=true
@@ -1538,9 +1607,9 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 					"%dpx warm pool only composites on visible cells"%viewport)
 		check(lit_floor_found and lit_wall_found,
 			"%dpx torch pool visibly reaches neighboring floor and wall cells"%viewport)
-		check(not bool(grid.torch_light_draw_spec(memory_walls[0],75).active),
+		check(not bool(grid.torch_light_draw_spec(memory_walls[0],260).active),
 			"%dpx live torch pool cannot illuminate MEMORY"%viewport)
-		check(not bool(grid.torch_light_draw_spec(unseen_walls[0],75).active),
+		check(not bool(grid.torch_light_draw_spec(unseen_walls[0],260).active),
 			"%dpx torch pool cannot illuminate an UNSEEN cell"%viewport)
 		check_eq([grid.mapping_signature(),str(grid.actor_draw_spec(
 			grid._actor_by_id(77)).color_hex)],[mapping,actor_color],
