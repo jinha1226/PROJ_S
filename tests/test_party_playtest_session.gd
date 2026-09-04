@@ -740,6 +740,12 @@ func test_committed_results_project_detached_visual_effects_only_from_events() -
 	check_eq(lethal_result.visual_effects.map(func(row):return row.kind),
 		["MELEE_VFX","FLOATING_AMOUNT","HIT_FLASH","FLOATING_AMOUNT","DEATH"],
 		"BLEEDOUT death projects once after physical and downed-pressure effects")
+	var death_effect:Dictionary=lethal_result.visual_effects[-1]
+	var death_cell:Dictionary={}
+	for cell in lethal.observe_party_world().cells:
+		if cell.position==death_effect.world_position:death_cell=cell;break
+	check(not death_cell.is_empty() and str(death_cell.ground_mark_id)=="blood_pool",
+		"a killed monster leaves a persistent blood pool in world observation")
 	return finish()
 
 

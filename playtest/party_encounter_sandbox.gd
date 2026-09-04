@@ -253,7 +253,9 @@ var _product_auto_explore_due_frame:=-1
 var _product_auto_explore_due_msec:=-1
 var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
+var _product_auto_restart_pending:=false
 var _product_auto_stop_feedback:=""
+var _product_transient_event_feedback:=""
 var _product_attack_targeting:=false
 var _party_command_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
@@ -276,9 +278,13 @@ func _process(_delta:float)->void:
 			_product_auto_explore_due_frame=frame+1
 		else:
 			var expected_auto_generation:=_product_auto_explore_scheduled_generation
+			var restart_after_opening:=_product_auto_restart_pending
 			_product_auto_explore_pending=false;_product_auto_explore_due_frame=-1
 			_product_auto_explore_due_msec=-1;_product_auto_explore_scheduled_generation=-1
-			_continue_product_auto_explore(expected_auto_generation)
+			_product_auto_restart_pending=false
+			if restart_after_opening:
+				_start_product_auto_explore_on_cadence(expected_auto_generation)
+			else:_continue_product_auto_explore(expected_auto_generation)
 	if route_continue_pending and frame>=route_continue_due_frame \
 			and now_msec>=route_continue_due_msec:
 		# Match AUTO's unresolved product-button gesture contract. A direction press
@@ -1595,6 +1601,9 @@ func _refresh()->void:
 	deck.visible=not product_hud and not _narrative_log_visible
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if not _product_transient_event_feedback.is_empty():
+			event_label.text=_product_transient_event_feedback
+			_product_transient_event_feedback=""
 		if not _product_auto_stop_feedback.is_empty():
 			event_label.text=_product_auto_stop_feedback
 			_product_auto_stop_feedback=""
@@ -1725,6 +1734,9 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	_update_recent_event(combat_history,status)
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if not _product_transient_event_feedback.is_empty():
+			event_label.text=_product_transient_event_feedback
+			_product_transient_event_feedback=""
 		if not _product_auto_stop_feedback.is_empty():
 			event_label.text=_product_auto_stop_feedback
 			_product_auto_stop_feedback=""
@@ -2817,6 +2829,8 @@ func _on_product_auto()->void:
 		_record_result(choice_result,true)
 		_show_product_command_feedback("회복 물약을 건넸습니다." \
 			if bool(choice_result.get("accepted",false)) else str(choice_result.get("message","물약을 건넬 수 없습니다.")))
+		if bool(choice_result.get("accepted",false)):
+			_schedule_product_auto_restart_after_opening_choice()
 		_request_refresh();return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))=="EXPLORATION":
@@ -2828,6 +2842,7 @@ func _on_product_auto()->void:
 		if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
 			_cancel_active_route()
 		_product_auto_explore_generation+=1
+		_product_auto_restart_pending=false
 		var hop_started_msec:=Time.get_ticks_msec()
 		_product_auto_last_hop_started_msec=hop_started_msec
 		var result:Dictionary=session.start_auto_explore()
@@ -2876,6 +2891,28 @@ func _schedule_product_auto_explore(previous_hop_started_msec:int=-1)->void:
 	_product_auto_explore_due_msec=cadence_origin+maxi(0,continuous_travel_cadence_msec)
 	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
 
+func _schedule_product_auto_restart_after_opening_choice()->void:
+	_product_auto_restart_pending=true
+	if not is_inside_tree():return
+	_product_auto_explore_pending=true
+	_product_auto_explore_due_frame=Engine.get_process_frames()+1
+	_product_auto_explore_due_msec=Time.get_ticks_msec()+maxi(0,
+		continuous_travel_cadence_msec)
+	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
+
+func _start_product_auto_explore_on_cadence(expected_generation:int)->void:
+	if expected_generation!=_product_auto_explore_generation or session==null:return
+	if record_modal.visible or map_overlay.visible \
+			or bool(grid.pointer_gesture_state().get("active",false)):return
+	var status:Dictionary=session.party_status()
+	if str(status.get("view_mode",""))!="EXPLORATION":return
+	var hop_started_msec:=Time.get_ticks_msec()
+	_product_auto_last_hop_started_msec=hop_started_msec
+	var result:Dictionary=session.start_auto_explore()
+	_consume_product_auto_explore_result(result)
+	_refresh_continuous_exploration_surface(session.party_status(),true)
+	if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
+
 func _continue_product_auto_explore(expected_generation:int)->void:
 	if expected_generation!=_product_auto_explore_generation:return
 	if member_detail_modal.visible:
@@ -2896,6 +2933,7 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
 	_product_auto_last_hop_started_msec=-1
+	_product_auto_restart_pending=false
 	_product_auto_stop_feedback=""
 	if session==null or not session.has_method("auto_explore_state"):
 		_sync_product_control_state();return
@@ -3720,6 +3758,7 @@ func _hide_item_popover(clear_selection:bool=true)->void:
 		member_item_selected_id="";member_item_selected_slot=""
 
 func _on_item_equip_selected()->void:
+	_cancel_navigation_for_item_operation()
 	var dto:Dictionary=session.protagonist_inventory()
 	var instance_id:=str(member_item_equip_button.get_meta(
 		"item_instance_id",member_item_selected_id)) if member_item_equip_button!=null \
@@ -3762,15 +3801,18 @@ func _on_item_unequip_selected()->void:
 	_on_item_unequip_slot(slot)
 
 func _on_item_unequip_slot(slot:String)->void:
+	_cancel_navigation_for_item_operation()
 	if slot.is_empty():
 		notice_text="해제할 장비 슬롯을 선택하세요."
 		action_feedback_text=notice_text;_request_refresh();return
 	_on_item_operation_result(session.unequip_inventory_slot(slot))
 
 func _on_item_drop_selected()->void:
+	_cancel_navigation_for_item_operation()
 	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
 
 func _on_item_use_selected()->void:
+	_cancel_navigation_for_item_operation()
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
@@ -3808,6 +3850,7 @@ func _on_item_operation_result(result:Dictionary)->void:
 	_request_refresh()
 
 func _on_item_reload()->void:
+	_cancel_navigation_for_item_operation()
 	var result:Dictionary=session.reload_protagonist_weapon()
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","재장전할 수 없습니다."));return
@@ -3816,6 +3859,12 @@ func _on_item_reload()->void:
 	_update_item_window(progression.get("equipment",{}))
 	member_detail_current_tab="ITEM";_apply_member_detail_tab()
 	notice_text="쇠뇌를 재장전했습니다.";_request_refresh()
+
+func _cancel_navigation_for_item_operation()->void:
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	var route_state:Dictionary=session.exploration_route_state() if session!=null else {}
+	if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
+		_cancel_active_route()
 
 func _on_member_detail_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_member_detail()
@@ -3996,8 +4045,10 @@ func _reset_run_ui_transients()->void:
 	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
-	_product_auto_last_hop_started_msec=-1;route_last_hop_started_msec=-1
-	_product_auto_stop_feedback="";_product_attack_targeting=false
+	_product_auto_last_hop_started_msec=-1;_product_auto_restart_pending=false
+	route_last_hop_started_msec=-1
+	_product_auto_stop_feedback="";_product_transient_event_feedback=""
+	_product_attack_targeting=false
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_touch_started_msec=-1;_product_immediate_touch_indices.clear()
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
@@ -4538,8 +4589,13 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
 			_reward_emphasis_pending=bool(reward.get("granted",false))
 		if scroll_combat_log:_scroll_log_after_refresh=true
-		notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
-			"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
+		var ground_item_notice:=str(result.get("ground_item_notice",""))
+		if not ground_item_notice.is_empty():
+			notice_text=ground_item_notice;action_feedback_text=ground_item_notice
+			_product_transient_event_feedback=ground_item_notice
+		else:
+			notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
+				"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
 		_settle_solo_product_contact()
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)

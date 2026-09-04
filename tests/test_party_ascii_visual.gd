@@ -19,6 +19,15 @@ func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_ki
 			"%s never requests timed redraw"%material_id)
 	check_eq(Style.ground_mark_spec({"visibility_state":"VISIBLE",
 		"ground_mark_id":"blood"}).glyph,";","blood is static semicolon ink")
+	var blood_pool:Dictionary=Style.ground_mark_spec({"visibility_state":"VISIBLE",
+		"ground_mark_id":"blood_pool"})
+	var memory_blood_pool:Dictionary=Style.ground_mark_spec({"visibility_state":"MEMORY",
+		"ground_mark_id":"blood_pool"})
+	check(blood_pool.visible and blood_pool.glyph==";,:;" \
+			and blood_pool.opacity>memory_blood_pool.opacity \
+			and is_equal_approx(Color(str(memory_blood_pool.color_hex)).r,
+				Color(str(memory_blood_pool.color_hex)).g),
+		"monster death leaves a broad vivid pool that memory subdues")
 	for material_id in ["water","grass","fire","poison"]:
 		var first:=MaterialGrammar.material_motion_spec(Vector2i(2,3),material_id,
 			"VISIBLE",900,true)
@@ -338,6 +347,46 @@ func test_graphics_modes_use_asciident_layers_and_color_fov_monochrome_memory()-
 		"mode-specific color and character layers never mutate observation")
 	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(7,7))),
 		Vector2i(7,7),"layered character art preserves canonical projected hit mapping")
+	grid.free();return finish()
+
+
+func test_asciident_armor_walk_and_melee_have_sampled_ascii_limbs()->bool:
+	var actor:={"entity_id":77,"position":[6,7],"logical_position":[6,7],
+		"faction_id":"party","species_id":"human","roster_slot":0,
+		"is_protagonist":true,"facing":[1,0],"equipment_visual":{
+			"weapon_id":"HAND_AXE","armor_definition_id":"ARMOR_PADDED"}}
+	var idle_style:Dictionary=Style.actor_spec(actor)
+	var idle:Dictionary=Style.asciident_actor_composition(actor,idle_style)
+	check_eq([idle.column_count,idle.rows[1].text,idle.rows[2].text],
+		[5,"/[@]\\"," / \\ "],"armor keeps two explicit arms and separated idle legs")
+	var left_step:=idle_style.duplicate(true);left_step.stance="MOVING";left_step.stride_sign=1
+	var right_step:=idle_style.duplicate(true);right_step.stance="MOVING";right_step.stride_sign=-1
+	check_eq([Style.asciident_actor_composition(actor,left_step).rows[2].text,
+		Style.asciident_actor_composition(actor,right_step).rows[2].text],
+		["/   \\","\\   /"],"walking alternates the two ASCII leg poses")
+
+	var cells:=_visible_cells()
+	for cell in cells:
+		if cell.position==[6,7]:cell.actors.append(actor)
+		elif cell.position==[7,7]:cell.actors.append({"entity_id":88,
+			"faction_id":"enemy","species_id":"goblin"})
+	var grid=Grid.new();grid.size=Vector2(390,390)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D);grid._ensure_melee_vfx()
+	var idle_render:Dictionary=grid.actor_glyph_draw_spec(77)
+	check(grid.melee_vfx.play_attacker_bump(Vector2i(6,7),Vector2i(7,7)),
+		"adjacent attack arms the perspective melee pose")
+	var started:=int(grid.melee_vfx.active_effects()[0].started_at_ms)
+	var windup:Dictionary=grid.actor_glyph_draw_spec(77,started+12)
+	var strike:Dictionary=grid.actor_glyph_draw_spec(77,started+68)
+	check(windup.ascii_composition.attack_active \
+			and windup.ascii_composition.rows[1].text=="\\[@]/" \
+			and strike.ascii_composition.rows[1].text=="/[@]-",
+		"melee visibly changes armored arms from wind-up to forward strike")
+	check(strike.weapon_swing.active \
+			and Vector2(strike.ascii_composition.weapon_center).x \
+				>Vector2(idle_render.ascii_composition.weapon_center).x,
+		"the equipped weapon follows the striking arm instead of staying static")
 	grid.free();return finish()
 
 
@@ -1150,10 +1199,16 @@ func test_product_hit_timeline_preserves_actor_glyph_and_emits_local_ascii_feedb
 	check(death_early.visible and death_late.visible \
 		and death_early.primitive=="ASCII_BURST" \
 		and death_early.center_glyph=="*" \
-		and death_early.particle_count==8 \
-		and death_late.particle_count==8 \
+		and death_early.particle_count==14 \
+		and death_late.particle_count==14 \
 		and float(death_late.center_opacity)==0.0,
-		"monster death bursts into deterministic ASCII fragments without a lingering cross")
+		"monster death bursts into a dense deterministic blood spray without a lingering cross")
+	var furthest_blood_spray:=0.0
+	for particle in death_late.particles:
+		furthest_blood_spray=maxf(furthest_blood_spray,
+			Vector2(particle.position).distance_to(Vector2(death_late.pixel_center)))
+	check(furthest_blood_spray>grid.cell_size_px(),
+		"late death blood visibly sprays beyond the victim's own cell")
 	var offscreen:=hit.duplicate(true);offscreen.world_position=[14,14]
 	check(not grid.visual_effect_draw_spec(offscreen,started).visible,
 		"off-FOV hit feedback emits no field primitive")

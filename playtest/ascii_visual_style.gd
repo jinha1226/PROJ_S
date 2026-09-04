@@ -213,8 +213,10 @@ static func asciident_terrain_cluster_spec(cell:Dictionary)->Dictionary:
 		"changes_mapping":false,"draw_image":false}.duplicate(true)
 
 
-static func asciident_actor_composition(actor:Dictionary)->Dictionary:
-	var style:=actor_spec(actor)
+static func asciident_actor_composition(actor:Dictionary,projected_style:Dictionary={})->Dictionary:
+	# The perspective renderer may supply sampled movement/melee state. It remains
+	# draw-only and cannot alter the observation, logical cell, or hit authority.
+	var style:=projected_style if not projected_style.is_empty() else actor_spec(actor)
 	var life_state:=str(style.get("life_state","ACTIVE"))
 	if life_state=="DEAD":
 		return {"visible":true,"rows":[{"text":"_x_","tone":"PRIMARY"}],
@@ -232,15 +234,34 @@ static func asciident_actor_composition(actor:Dictionary)->Dictionary:
 	var head:="v" if species_id in ["goblin","kobold"] else (
 		"O" if actor_body_class(actor)=="LARGE" else "o")
 	var body:=str(style.get("glyph","?"))
-	var body_row:="[%s]"%body if armored else "/%s\\"%body
-	var foot_row:="/\\ " if str(style.get("stance","IDLE"))=="MOVING" \
-		else "/ \\"
+	var body_row:="/[%s]\\"%body if armored else " /%s\\ "%body
+	var bump:Dictionary=style.get("bump_motion",{}) \
+		if style.get("bump_motion",{}) is Dictionary else {}
+	var attack_active:=bool(bump.get("active",false))
+	var attack_phase:=str(bump.get("phase",""))
+	if attack_active:
+		var direction:Vector2=bump.get("direction",Vector2.RIGHT)
+		if attack_phase=="WIND_UP":
+			body_row="\\[%s]/"%body if armored else "\\ %s /"%body
+		elif absf(direction.x)>=absf(direction.y):
+			if armored:
+				body_row="/[%s]-"%body if direction.x>=0.0 else "-[%s]\\"%body
+			else:
+				body_row=" /%s--"%body if direction.x>=0.0 else "--%s\\ "%body
+		else:
+			body_row="\\[%s]/"%body if armored else "\\ %s /"%body
+	var stance:=str(style.get("stance","IDLE"))
+	var stride_sign:=int(style.get("stride_sign",0))
+	var foot_row:=" / \\ "
+	if stance=="MOVING":foot_row="/   \\" if stride_sign>=0 else "\\   /"
 	return {"visible":true,"rows":[
-		{"text":" %s "%head,"tone":"HIGHLIGHT"},
+		{"text":"  %s  "%head,"tone":"HIGHLIGHT"},
 		{"text":body_row,"tone":"PRIMARY"},
 		{"text":foot_row,"tone":"PRIMARY"}],
-		"row_count":3,"column_count":3,"multi_character":true,
+		"row_count":3,"column_count":5,"multi_character":true,
 		"printable_ascii_only":true,"glow_strength":0.30,
+		"attack_active":attack_active,"attack_phase":attack_phase,
+		"stride_sign":stride_sign,
 		"weapon_visible":bool(equipment.get("weapon_visible",false)),
 		"weapon_glyph":str(equipment.get("weapon_glyph","")),
 		"weapon_hex":str(equipment.get("weapon_color_hex","#e8e8df")),
@@ -344,10 +365,16 @@ static func feature_spec(feature_id: String) -> Dictionary:
 static func ground_mark_spec(cell:Dictionary)->Dictionary:
 	var mark_id:=str(cell.get("ground_mark_id","")).to_lower()
 	var visibility:=visibility_spec(cell)
-	if mark_id!="blood" or not bool(visibility.draw_terrain):
+	if mark_id not in ["blood","blood_pool"] or not bool(visibility.draw_terrain):
 		return {"visible":false,"mark_id":"","glyph":"","color_hex":"#00000000",
 			"opacity":0.0,"font_ratio":0.0}.duplicate(true)
-	return {"visible":true,"mark_id":"blood","glyph":";","color_hex":"#a42f3f",
+	if mark_id=="blood_pool":
+		return {"visible":true,"mark_id":"blood_pool","glyph":";,:;",
+			"color_hex":"#b51f38" if str(visibility.state)=="VISIBLE" else "#656565",
+			"opacity":0.96 if str(visibility.state)=="VISIBLE" else 0.38,
+			"font_ratio":0.66,"draw_image":false,"draw_texture":false}.duplicate(true)
+	return {"visible":true,"mark_id":"blood","glyph":";",
+		"color_hex":"#a42f3f" if str(visibility.state)=="VISIBLE" else "#5d5d5d",
 		"opacity":0.88 if str(visibility.state)=="VISIBLE" else 0.34,
 		"font_ratio":0.78,"draw_image":false,"draw_texture":false}.duplicate(true)
 

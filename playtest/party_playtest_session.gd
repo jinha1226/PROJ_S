@@ -706,22 +706,25 @@ func commit_opening_event_choice(choice_action: String) -> Dictionary:
 		return _rejection_dto(str(preview.get("reason", "opening_choice_failed")))
 	if not sim.world.is_settled() or _protagonist_draft != null:
 		return _rejection_dto("world_not_settled")
-	var before: Dictionary = sim.snapshot()
-	if before.is_empty(): return _rejection_dto("snapshot_unavailable")
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var event_start: int = sim.world.events.size()
 	var journal_size_before := command_journal.size()
 	var advance: Dictionary = _advance_item_action_time()
 	if not bool(advance.get("accepted", false)):
-		sim = SimulatorScript.from_snapshot(before)
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("opening_choice_time_failed")
 	while command_journal.size() > journal_size_before: command_journal.pop_back()
 	var committed: Dictionary = sim.opening_event.commit_preflighted_choice(preview)
 	if not bool(committed.get("accepted", false)):
-		sim = SimulatorScript.from_snapshot(before)
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(str(committed.get("reason", "opening_choice_failed")))
 	var state_error: String = sim.world.world_state_error()
 	if not state_error.is_empty():
-		sim = SimulatorScript.from_snapshot(before)
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(state_error)
 	_clear_draft(); _deployment_plan.clear(); _invalidate_explored_presentation_cache()
 	command_journal.append({"kind":"opening", "operation":{
@@ -794,26 +797,37 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		sim.world,state.protagonist_id,instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
-	var before:Dictionary=sim.snapshot()
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var event_start:int=sim.world.events.size()
 	var journal_size_before:=command_journal.size()
 	var advance:Dictionary=_advance_item_action_time()
 	if not bool(advance.get("accepted",false)):
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_time_step_failed")
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
 	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
 	combatant=sim.world.combatant_states.get(state.protagonist_id)
 	if hero==null or combatant==null or str(combatant.life_state)!="ACTIVE":
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_user_unavailable")
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("item_user_unavailable")
 	if int(hero.health)>=int(hero.max_health):
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_heal_not_needed")
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("item_heal_not_needed")
 	var consumed:Dictionary=ItemOperationsScript.commit_use(
 		sim.world,state.protagonist_id,instance_id,hero.position,ITEM_ACTION_TIME_COST)
 	if not bool(consumed.get("accepted",false)):
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
 	var used=sim.world.event_by_id(int(consumed.event_id))
 	if used==null:
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_event_failed")
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("item_event_failed")
 	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
 	var restored=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
@@ -822,7 +836,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if restored==null or not state_error.is_empty():
-		sim=SimulatorScript.from_snapshot(before)
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(state_error if not state_error.is_empty() else "item_event_failed")
 	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
 	command_journal.append({"kind":"item","operation":{"action":"USE","instance_id":instance_id,"slot":""}})
@@ -859,11 +874,14 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		_:return _rejection_dto("unknown_item_operation")
 	if not bool(preview.get("accepted",false)):
 		return _rejection_dto(str(preview.get("reason","item_operation_failed")))
-	var before:Dictionary=sim.snapshot()
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var journal_size_before:=command_journal.size()
 	var step_result:Dictionary=_advance_item_action_time()
 	if not bool(step_result.get("accepted",false)):
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto("item_time_step_failed")
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
 	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
 	hero_id=state.protagonist_id
@@ -880,18 +898,30 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		"DISCARD":result=ItemOperationsScript.commit_discard(sim.world,hero_id,instance_id,
 			hero.position,ITEM_ACTION_TIME_COST)
 	if not bool(result.get("accepted",false)):
-		sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(result.get("reason","item_operation_failed")))
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(str(result.get("reason","item_operation_failed")))
 	var event=sim.world.event_by_id(int(result.event_id))
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if event==null or not state_error.is_empty():
-		sim=SimulatorScript.from_snapshot(before)
+		if not _rollback_session_transaction(rollback_memento,journal_size_before):
+			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(state_error if not state_error.is_empty() else "item_event_failed")
 	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
 	command_journal.append({"kind":"item","operation":{"action":action,
 		"instance_id":instance_id,"slot":slot}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
 		"time_cost":ITEM_ACTION_TIME_COST,"inventory":protagonist_inventory()})
+
+
+func _rollback_session_transaction(rollback_memento:Variant,
+		journal_size_before:int)->bool:
+	# Restore the existing simulator in place. Assigning the result of a failed
+	# snapshot decode used to replace `sim` with null, after which every equipment
+	# action misleadingly reported that the whole session was uninitialized.
+	while command_journal.size()>journal_size_before:command_journal.pop_back()
+	return sim!=null and sim.restore_rollback_memento(rollback_memento)
 
 
 func _advance_item_action_time()->Dictionary:
@@ -1624,6 +1654,12 @@ func _party_observation_context()->Dictionary:
 		var ground_key:=_position_key(ground_row.position)
 		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
 		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
+	var monster_blood_by_cell:Dictionary={}
+	var enemy_ids:Array=sim.world.party_encounter.enemy_ids
+	for event in sim.world.events:
+		if str(event.type)!="entity.died" or int(event.target_id) not in enemy_ids:continue
+		if sim.world.in_bounds(event.position):
+			monster_blood_by_cell[_position_key(event.position)]=true
 	var followers_by_cell: Dictionary = {}
 	for member_id_value in follower_positions:
 		var member_id := int(member_id_value)
@@ -1635,7 +1671,8 @@ func _party_observation_context()->Dictionary:
 		"hero_id":int(status.protagonist_id),"hero_position":hero_position,
 		"visible":visible,"explored":explored,"visited":visited,
 		"followers_by_cell":followers_by_cell,
-		"ground_items_by_cell":ground_items_by_cell}
+		"ground_items_by_cell":ground_items_by_cell,
+		"monster_blood_by_cell":monster_blood_by_cell}
 
 
 func _wall_borders_visible_floor(position:Vector2i,visible:Dictionary)->bool:
@@ -1658,6 +1695,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var explored:Dictionary=context.explored
 	var followers_by_cell:Dictionary=context.followers_by_cell
 	var ground_items_by_cell:Dictionary=context.ground_items_by_cell
+	var monster_blood_by_cell:Dictionary=context.monster_blood_by_cell
 	var hide_enemies:=bool(context.hide_enemies)
 	var cells: Array = []
 	var minimum:=Vector2i(maxi(0,bounds.position.x),maxi(0,bounds.position.y))
@@ -1692,8 +1730,9 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				# Remember only stable terrain. Features, hazards, actors and all live
 				# decision data remain unavailable outside the current field of view.
 				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
-					"feature_id":"","ground_mark_id":"blood" \
-						if position in _opening_blood_positions else "",
+					"feature_id":"","ground_mark_id":"blood_pool" \
+						if monster_blood_by_cell.has(position_key) else (
+							"blood" if position in _opening_blood_positions else ""),
 					"presentation_material_id":presentation_material_id,
 					"visibility_state":"MEMORY","fire_intensity":0,
 					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
@@ -1724,7 +1763,8 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					else int(a.entity_id) < int(b.entity_id))
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
 				"feature_id":_run_feature_id_at(position, progress),
-				"ground_mark_id":"blood" if position in _opening_blood_positions else "",
+				"ground_mark_id":"blood_pool" if monster_blood_by_cell.has(position_key) \
+					else ("blood" if position in _opening_blood_positions else ""),
 				"presentation_material_id":presentation_material_id,
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
 				"wetness":int(tile.wetness),
@@ -4109,7 +4149,19 @@ func _commit_exploration_one(command, preserve_route: bool,
 		command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
 	if not preserve_route: _exploration_route.cancel_for_direct_command()
-	return _result_dto(result, null, null, _exploration_context(command))
+	var dto:Dictionary=_result_dto(result,null,null,_exploration_context(command))
+	if bool(result.accepted) and command!=null \
+			and int(command.type)==int(CommandScript.Type.MOVE):
+		var ground_items:Array[Dictionary]=ground_items_at_protagonist()
+		if not ground_items.is_empty():
+			var labels:Array[String]=[]
+			for item in ground_items:
+				var label:=str(item.get("label",item.get("definition_id","아이템")))
+				if not label.is_empty() and label not in labels:labels.append(label)
+			dto["ground_items_here"]=ground_items.duplicate(true)
+			dto["ground_item_notice"]="바닥 아이템 · %s · [줍기]로 획득" \
+				% ", ".join(labels)
+	return dto.duplicate(true)
 
 func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -4293,11 +4345,16 @@ func _commit_turn_from_preview(preview:Dictionary)->Dictionary:
 	for facade_key in ["message", "reason_code", "reason_details", "visual_effect_schema_version",
 			"visual_effects"]:
 		plan_data.erase(facade_key)
-	var plan = load("res://sim/party_turn_plan.gd").new(plan_data); var before:Dictionary=sim.snapshot(); var event_start:int=sim.world.events.size(); var result = sim.step_party_turn(plan)
+	var plan = load("res://sim/party_turn_plan.gd").new(plan_data)
+	var rollback_memento:Variant=sim.capture_rollback_memento()
+	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var event_start:int=sim.world.events.size();var result=sim.step_party_turn(plan)
 	if result.accepted:
 		var recovery:=_apply_safe_exploration_recovery(event_start)
 		if not bool(recovery.accepted):
-			sim=SimulatorScript.from_snapshot(before);return _rejection_dto(str(recovery.reason))
+			if not sim.restore_rollback_memento(rollback_memento):
+				return _rejection_dto("rollback_restore_failed")
+			return _rejection_dto(str(recovery.reason))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
 		_advance_exile_world()
 		command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})

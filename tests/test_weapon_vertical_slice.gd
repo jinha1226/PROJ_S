@@ -56,6 +56,41 @@ func test_equipment_and_reload_journal_replay_exactly() -> bool:
 	return finish()
 
 
+func test_equipment_session_stays_ready_after_auto_opening_and_user_commands()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter
+	state.party_detection_radius=0;state.enemy_detection_radius=0
+	for enemy_id in state.enemy_ids:state.enemy_busy_rows[enemy_id]=1000000
+	var anchors:Dictionary=load("res://playtest/deterministic_dungeon_map.gd") \
+		.opening_event_anchors(session._map_layout,session.world_seed)
+	var route:Array=anchors.get("entry_exit_path",[])
+	var stop_index:=int(anchors.get("spawn_route_index",-1))
+	for index in range(1,mini(route.size(),stop_index+1)):
+		if bool(session.opening_event_status().get("can_interact",false)):break
+		var moved:Dictionary=session.commit_exploration(
+			Command.move_to(int(state.protagonist_id),route[index]))
+		if not bool(moved.get("accepted",false)):break
+	var auto:Dictionary=session.start_auto_explore()
+	check_eq(str(auto.get("stop_reason","")),"auto_explore_interaction_discovered",
+		"AUTO recognizes the fixed NPC interaction before equipment regression")
+	var gave:Dictionary=session.commit_opening_event_choice("GIVE_POTION")
+	check(bool(gave.get("accepted",false)),"potion handoff remains canonical")
+	var resumed:Dictionary=session.start_auto_explore()
+	if bool(resumed.get("running",false)):
+		session.cancel_auto_explore("auto_explore_user_command")
+	# Exercise a rejected inventory command too: neither it nor AUTO cancellation
+	# may invalidate the live simulator used by the next real equipment swap.
+	var rejected:Dictionary=session.equip_inventory_item("MISSING_ITEM","MAIN_HAND")
+	check(not bool(rejected.get("accepted",false)),"missing gear is a clean rejection")
+	var equipped:Dictionary=session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND")
+	check(session.sim!=null and session.sim.world!=null \
+			and str(equipped.get("reason",""))!="session_not_initialized" \
+			and bool(equipped.get("accepted",false)),
+		"AUTO, potion, cancellation, and rejection cannot detach the equipment session: %s" \
+			%equipped)
+	return finish()
+
+
 func test_item_tab_replaces_equipment_from_item_popover()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
@@ -158,6 +193,35 @@ func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn(
 		"pressing pickup on an empty tile consumes no turn and writes no journal row")
 	check("주울 아이템이 없습니다" in sandbox.notice_text,
 		"empty pickup explains why nothing happened")
+	sandbox.free();return finish()
+
+
+func test_entering_ground_item_tile_reports_its_name_in_product_log()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var state=session.sim.world.party_encounter
+	state.party_detection_radius=0;state.enemy_detection_radius=0
+	for enemy_id in state.enemy_ids:state.enemy_busy_rows[enemy_id]=1000000
+	var hero=session.sim.world.entities[state.protagonist_id]
+	var item_position:Vector2i=hero.position
+	check(session.drop_inventory_item("START_POTION_001").accepted,
+		"arrival notice fixture drops a named item")
+	var moved_away:=false
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var move:Dictionary=session.commit_exploration_direction(direction)
+		if bool(move.get("accepted",false)):moved_away=true;break
+	check(moved_away,"arrival notice fixture can leave the item tile")
+	if not moved_away:return finish()
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(session,true)
+	var current:Vector2i=session.sim.world.entities[state.protagonist_id].position
+	sandbox._on_explore(item_position-current)
+	check("바닥 아이템" in sandbox.notice_text and "회복 물약" in sandbox.notice_text \
+			and "[줍기]" in sandbox.notice_text,
+		"stepping onto loot prints its exact name and pickup affordance: %s"%sandbox.notice_text)
+	check("회복 물약" in sandbox.event_label.text,
+		"the compact product event log receives the same arrival notice: %s" \
+			%sandbox.event_label.text)
 	sandbox.free();return finish()
 
 

@@ -577,7 +577,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 			damage_type,"#fff0df") if product_style else {"fire":"#ff7a55","water":"#67c9ff",
 			"electric":"#ffe46b","poison":"#9ee86f","physical":"#fff0df"}.get(
 				damage_type,"#fff0df")) as String
-	if kind=="DEATH":color_hex="#ff6b78"
+	if kind=="DEATH":color_hex="#ff294d"
 	elif kind=="MISS":color_hex="#b8d5df" if product_style else "#b8e9ff"
 	var duration_ms:=int({"HIT_FLASH":210,"FLOATING_AMOUNT":650,
 		"MISS":500,"DEATH":560}.get(kind,360)) if product_style \
@@ -637,8 +637,8 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"flash_active":product_style and kind=="HIT_FLASH" and elapsed_ms<=125,
 		"particles":particles,"particle_count":particles.size(),
 		"center_glyph":str(effect.get("text","*")) if kind=="DEATH" else "",
-		"center_opacity":clampf(1.0-age_ratio/0.20,0.0,1.0) if kind=="DEATH" else 0.0,
-		"line_width":4.0 if kind=="DEATH" else 3.0,
+		"center_opacity":clampf(1.0-age_ratio/0.28,0.0,1.0) if kind=="DEATH" else 0.0,
+		"line_width":5.0 if kind=="DEATH" else 3.0,
 		"radius":cell_size_px()*0.28,
 		"text":str(effect.get("text","")),
 		"font_size":font_size,"floating_stack_slot":floating_stack_slot,
@@ -665,17 +665,18 @@ func _deterministic_hit_particles(event_id:int,center:Vector2,cell:float,
 
 func _deterministic_death_particles(event_id:int,center:Vector2,cell:float,
 		age_ratio:float,source_glyph:String)->Array:
-	var rows:Array=[];var count:=8
+	var rows:Array=[];var count:=14
 	var eased:=1.0-pow(1.0-age_ratio,2.4)
 	var fragments:=[source_glyph if not source_glyph.is_empty() else "*",
-		source_glyph if not source_glyph.is_empty() else "*",".",":","*",".",":","*"]
+		source_glyph if not source_glyph.is_empty() else "*",".",":",";",",","*",
+		".",":",";",",","*",".",";"]
 	for index in range(count):
 		var seed:=DioramaScript.visual_hash(Vector2i(event_id%997,index),397+index*29)
 		var jitter:=(float(seed%1001)/1000.0-0.5)*0.34
 		var angle:=TAU*float(index)/float(count)+jitter
 		var direction:=Vector2(cos(angle),sin(angle))
-		var distance:=cell*(0.08+0.78*eased)*(0.88+0.18*float(seed%7)/6.0)
-		var position:=center+direction*distance+Vector2(0,cell*0.16*age_ratio*age_ratio)
+		var distance:=cell*(0.10+1.16*eased)*(0.84+0.24*float(seed%7)/6.0)
+		var position:=center+direction*distance+Vector2(0,cell*0.24*age_ratio*age_ratio)
 		rows.append({"position":position,"glyph":str(fragments[index]),
 			"font_size":maxi(9,int(cell*lerpf(0.58,0.34,age_ratio))),
 			"opacity":pow(1.0-age_ratio,1.18)})
@@ -1145,9 +1146,18 @@ func actor_draw_spec(actor:Dictionary,ghost:bool=false,sample_time_ms:int=-1)->D
 	if melee_vfx!=null:
 		style["bump_motion"]=melee_vfx.attacker_bump_draw_spec(
 			_position_from_actor(actor),sample_time_ms)
-	# Weapons are static glyphs. Melee feedback moves the whole character and uses
-	# target-local VFX, so it remains stable across ASCII visual grammars.
-	style["weapon_swing"]={"active":false}
+	var bump:Dictionary=style.get("bump_motion",{}) \
+		if style.get("bump_motion",{}) is Dictionary else {}
+	var swing_active:=uses_perspective_projection() and bool(bump.get("active",false))
+	var swing_phase:=str(bump.get("phase",""))
+	var swing_progress:=float(bump.get("phase_progress",0.0))
+	var reach_ratio:=0.52
+	if swing_phase=="WIND_UP":reach_ratio=lerpf(0.52,0.32,swing_progress)
+	elif swing_phase=="BUMP":reach_ratio=lerpf(0.58,0.82,swing_progress)
+	elif swing_phase=="SETTLE":reach_ratio=lerpf(0.76,0.52,swing_progress)
+	style["weapon_swing"]={"active":swing_active,"phase":swing_phase,
+		"phase_progress":swing_progress,
+		"direction":bump.get("direction",Vector2.ZERO),"reach_ratio":reach_ratio}
 	style["limb_segments"]=[]
 	return style
 
@@ -1172,7 +1182,8 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 		"top_overlap_px":maxf(0.0,world_cell_rect(position).position.y-float(glyph.glyph_rect.position.y)),
 		"feet_bottom_margin_px":0.0,
 		"one_cell_one_glyph":not uses_perspective_projection(),
-		"ascii_composition":ascii_composition,"weapon_swing":{"active":false},
+		"ascii_composition":ascii_composition,
+		"weapon_swing":style.get("weapon_swing",{"active":false}),
 		"bump_motion":style.get("bump_motion",{"active":false}),
 		"shadow":shadow,
 		"selected_outline":false,"draw_equipment":bool(style.draw_equipment),
@@ -2674,7 +2685,7 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 	AsciiPortraitScript.draw_figure(self,_actor_font(style),bounds,style,true,true)
 
 func _asciident_actor_render_spec(actor:Dictionary,bounds:Rect2,style:Dictionary)->Dictionary:
-	var composition:=AsciiStyleScript.asciident_actor_composition(actor)
+	var composition:=AsciiStyleScript.asciident_actor_composition(actor,style)
 	if not bool(composition.get("visible",false)) or bounds.size.x<=0.0:
 		return {"visible":false}.duplicate(true)
 	var row_count:=maxi(1,int(composition.get("row_count",1)))
@@ -2688,13 +2699,21 @@ func _asciident_actor_render_spec(actor:Dictionary,bounds:Rect2,style:Dictionary
 	var opacity:=float(style.get("opacity",1.0))
 	var main_color:=Color(str(style.get("color_hex","#ffffff")));main_color.a*=opacity
 	var highlight_color:=Color(str(style.get("highlight_hex","#ffffff")));highlight_color.a*=opacity
-	var weapon_center:=center+Vector2(bounds.size.x*0.60,-line_step*0.10)
+	var weapon_center:=center+Vector2(bounds.size.x*0.52,-line_step*0.10)
 	var facing:=AsciiStyleScript.normalized_facing(style.get("facing",[0,1]))
-	if facing.x<0:weapon_center.x=center.x-bounds.size.x*0.60
+	if facing.x<0:weapon_center.x=center.x-bounds.size.x*0.52
+	var weapon_swing:Dictionary=style.get("weapon_swing",{}) \
+		if style.get("weapon_swing",{}) is Dictionary else {}
+	if bool(weapon_swing.get("active",false)):
+		var swing_direction:Vector2=weapon_swing.get("direction",Vector2(facing))
+		var reach:=float(weapon_swing.get("reach_ratio",0.72))
+		weapon_center=center+Vector2(swing_direction.x*bounds.size.x*reach,
+			swing_direction.y*line_step*1.15-line_step*0.10)
 	return composition.merged({"visible":true,"bounds":bounds,"center":center,
 		"font_size":font_size,"line_step":line_step,"main_color":main_color,
 		"highlight_color":highlight_color,"weapon_center":weapon_center,
 		"weapon_font_size":maxi(7,font_size-1),"opacity":opacity,
+		"weapon_swing":weapon_swing,
 		"fov_safe":true,"changes_mapping":false},true).duplicate(true)
 
 func _draw_asciident_actor(spec:Dictionary,style:Dictionary)->void:

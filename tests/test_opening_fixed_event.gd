@@ -442,6 +442,8 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 			"%s one activation commits one choice" % viewport_size)
 		check_eq(str(sandbox.session.sim.world.party_encounter.opening_event.choice),
 			"GAVE_POTION", "%s touch GIVE reaches authority" % viewport_size)
+		check(sandbox._product_auto_restart_pending,
+			"%s potion choice schedules AUTO to resume on the next cadence"%viewport_size)
 		sandbox.free()
 	return finish()
 
