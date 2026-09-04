@@ -24,7 +24,7 @@ const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
 const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
-const ASCII_3D_LAB_SCENE=preload("res://playtest/ascii_3d_lab.tscn")
+const ASCII_3D_LAB_SCENE=preload("res://playtest/low_poly_3d_lab.tscn")
 const FONT_AUX:=14
 const FONT_BODY:=16
 const FONT_KEY:=20
@@ -48,6 +48,7 @@ var session
 var grid
 var grid_zoom_controls:HBoxContainer
 var grid_graphics_mode_button:Button
+var grid_3d_model_button:Button
 var grid_zoom_out_button:Button
 var grid_zoom_in_button:Button
 var root_layout:VBoxContainer
@@ -740,7 +741,7 @@ func _build_ui()->void:
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
 	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="[3D]"
-	ascii_3d_lab_button.custom_minimum_size=Vector2(44,44);ascii_3d_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND);ascii_3d_lab_button.tooltip_text="저장과 무관한 3D 시각 실험"
+	ascii_3d_lab_button.custom_minimum_size=Vector2(44,44);ascii_3d_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND);ascii_3d_lab_button.tooltip_text="저장과 무관한 저폴리 3D 시각 실험"
 	ascii_3d_lab_button.clip_text=true;ascii_3d_lab_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	ascii_3d_lab_button.pressed.connect(_open_ascii_3d_lab);top_hud_actions.add_child(ascii_3d_lab_button)
 	AsciiFrameScript.apply_rail_button(ascii_3d_lab_button,AsciiFrameScript.BRASS)
@@ -1224,9 +1225,9 @@ func _item_action_button(label:String,node_name:String,callable:Callable)->Butto
 func _build_product_zoom_controls()->void:
 	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
 	grid_zoom_controls.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	grid_zoom_controls.offset_left=-180;grid_zoom_controls.offset_right=-4
+	grid_zoom_controls.offset_left=-228;grid_zoom_controls.offset_right=-4
 	grid_zoom_controls.offset_top=4;grid_zoom_controls.offset_bottom=48
-	grid_zoom_controls.custom_minimum_size=Vector2(176,TOUCH_TARGET)
+	grid_zoom_controls.custom_minimum_size=Vector2(224,TOUCH_TARGET)
 	grid_zoom_controls.add_theme_constant_override("separation",0)
 	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
@@ -1241,6 +1242,15 @@ func _build_product_zoom_controls()->void:
 		_on_product_zoom_button_gui_input.bind("GraphicsModeToggle"))
 	grid_zoom_controls.add_child(grid_graphics_mode_button)
 	AsciiFrameScript.apply_rail_button(grid_graphics_mode_button,AsciiFrameScript.BRASS)
+	grid_3d_model_button=Button.new();grid_3d_model_button.name="Open3DModelLab"
+	grid_3d_model_button.text="[3D]";grid_3d_model_button.tooltip_text="저폴리 3D 모델 테스트 열기"
+	grid_3d_model_button.custom_minimum_size=Vector2(48,TOUCH_TARGET)
+	grid_3d_model_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_3d_model_button.add_theme_font_size_override("font_size",FONT_CAPTION)
+	grid_3d_model_button.gui_input.connect(
+		_on_product_zoom_button_gui_input.bind("Open3DModelLab"))
+	grid_zoom_controls.add_child(grid_3d_model_button)
+	AsciiFrameScript.apply_rail_button(grid_3d_model_button,AsciiFrameScript.BRASS)
 	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
 	grid_zoom_out_button.text="[-]";grid_zoom_out_button.tooltip_text="시야 축소"
 	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
@@ -5018,7 +5028,7 @@ func _product_zoom_scale(cell_count:int)->float:
 
 func _product_zoom_control_has_point(global_position:Vector2)->bool:
 	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false
-	for button in [grid_graphics_mode_button,grid_zoom_out_button,grid_zoom_in_button]:
+	for button in [grid_graphics_mode_button,grid_3d_model_button,grid_zoom_out_button,grid_zoom_in_button]:
 		if button!=null and button.visible and button.get_global_rect().has_point(global_position):
 			return true
 	return false
@@ -5033,14 +5043,19 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
 			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		_product_zoom_touch_index=event.index
-		_product_zoom_touch_step=0 if grid_graphics_mode_button.get_global_rect().has_point(
-			event.position) else (1 if grid_zoom_out_button.get_global_rect().has_point(
-			event.position) else -1)
+		if grid_graphics_mode_button.get_global_rect().has_point(event.position):
+			_product_zoom_touch_step=0
+		elif grid_3d_model_button.get_global_rect().has_point(event.position):
+			_product_zoom_touch_step=2
+		elif grid_zoom_out_button.get_global_rect().has_point(event.position):
+			_product_zoom_touch_step=1
+		else:
+			_product_zoom_touch_step=-1
 		get_viewport().set_input_as_handled();return true
 	if event.index!=_product_zoom_touch_index:return false
 	var step:=_product_zoom_touch_step
 	var matching_button:=grid_graphics_mode_button if step==0 else (
-		grid_zoom_out_button if step>0 else grid_zoom_in_button)
+		grid_3d_model_button if step==2 else (grid_zoom_out_button if step>0 else grid_zoom_in_button))
 	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
 		and not matching_button.disabled
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
@@ -5068,6 +5083,7 @@ func _on_product_zoom_button_gui_input(event:InputEvent,control_name:String)->vo
 func _activate_product_zoom_control(control_name:String)->void:
 	match control_name:
 		"GraphicsModeToggle":_on_product_graphics_mode_toggle()
+		"Open3DModelLab":_open_ascii_3d_lab()
 		"ProductZoomOut":_on_product_zoom_step(1)
 		"ProductZoomIn":_on_product_zoom_step(-1)
 
