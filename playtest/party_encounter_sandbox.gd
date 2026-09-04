@@ -32,6 +32,10 @@ const FONT_SECTION:=18
 const FONT_COMMAND:=14
 const FONT_CAPTION:=12
 const FONT_MICRO:=11
+const NEARBY_NPC_FONT_NAME:=16
+const NEARBY_NPC_FONT_TEXT:=12
+const NEARBY_NPC_FONT_CAPTION:=11
+const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=60
@@ -434,6 +438,13 @@ func _handle_nearby_npc_touch(event:InputEvent)->bool:
 				+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 			_cancel_product_auto_explore("auto_explore_user_command",false)
 			_cancel_route_for_user_interruption()
+			# Recruitment and attack are explicit one-shot commands. Fire them on
+			# touch-down so a browser-reprojected release cannot swallow the button;
+			# the captured release below is still consumed and cannot run it twice.
+			if _nearby_npc_touch_control in ["NearbyNpcRecruit","NearbyNpcAttack"]:
+				var immediate_control:=_nearby_npc_touch_control
+				_nearby_npc_touch_control=""
+				_activate_nearby_npc_control(immediate_control)
 			get_viewport().set_input_as_handled();return true
 		if event.index!=_nearby_npc_touch_index:return false
 		var activate:=_nearby_npc_touch_control if not _nearby_npc_touch_dragged else ""
@@ -472,6 +483,9 @@ func _on_nearby_npc_button_gui_input(event:InputEvent,control_name:String)->void
 			or Time.get_ticks_msec()<=_nearby_npc_ignore_mouse_until_msec:
 		_nearby_npc_mouse_control="";accept_event();return
 	if event.pressed:
+		if control_name in ["NearbyNpcRecruit","NearbyNpcAttack"]:
+			_nearby_npc_mouse_control="";accept_event()
+			_activate_nearby_npc_control(control_name);return
 		_nearby_npc_mouse_control=control_name
 		_cancel_product_auto_explore("auto_explore_user_command",false)
 		_cancel_route_for_user_interruption()
@@ -1262,7 +1276,7 @@ func _build_nearby_npc_card()->void:
 	stack.add_theme_constant_override("separation",2);frame.add_child(stack)
 	var identity:=HBoxContainer.new();identity.name="NearbyNpcIdentity"
 	identity.add_theme_constant_override("separation",4);stack.add_child(identity)
-	nearby_npc_name=_card_label("","NearbyNpcName",FONT_SECTION)
+	nearby_npc_name=_card_label("","NearbyNpcName",NEARBY_NPC_FONT_NAME)
 	nearby_npc_name.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
 	nearby_npc_name.add_theme_color_override("font_color",AsciiFrameScript.INK)
 	nearby_npc_name.size_flags_horizontal=Control.SIZE_EXPAND_FILL;identity.add_child(nearby_npc_name)
@@ -1276,20 +1290,25 @@ func _build_nearby_npc_card()->void:
 	AsciiFrameScript.apply_rail_button(nearby_npc_toggle_button,AsciiFrameScript.CYAN)
 	nearby_npc_content=VBoxContainer.new();nearby_npc_content.name="NearbyNpcContent"
 	nearby_npc_content.add_theme_constant_override("separation",2);stack.add_child(nearby_npc_content)
-	nearby_npc_condition=_card_label("","NearbyNpcCondition",FONT_CAPTION)
+	nearby_npc_condition=_card_label("","NearbyNpcCondition",NEARBY_NPC_FONT_CAPTION)
+	nearby_npc_condition.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_CAPTION)
 	nearby_npc_condition.add_theme_color_override("font_color",AsciiFrameScript.MUTED)
 	nearby_npc_content.add_child(nearby_npc_condition)
-	nearby_npc_personality=_card_label("","NearbyNpcPersonality",FONT_AUX)
+	nearby_npc_personality=_card_label("","NearbyNpcPersonality",NEARBY_NPC_FONT_TEXT)
+	nearby_npc_personality.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_TEXT)
 	nearby_npc_personality.clip_text=true
 	nearby_npc_personality.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	nearby_npc_content.add_child(nearby_npc_personality)
-	nearby_npc_affinity=_card_label("","NearbyNpcAffinity",FONT_AUX)
+	nearby_npc_affinity=_card_label("","NearbyNpcAffinity",NEARBY_NPC_FONT_TEXT)
+	nearby_npc_affinity.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_TEXT)
 	nearby_npc_content.add_child(nearby_npc_affinity)
-	nearby_npc_equipment=_card_label("","NearbyNpcEquipment",FONT_AUX)
+	nearby_npc_equipment=_card_label("","NearbyNpcEquipment",NEARBY_NPC_FONT_TEXT)
+	nearby_npc_equipment.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_TEXT)
 	nearby_npc_equipment.clip_text=true
 	nearby_npc_equipment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	nearby_npc_content.add_child(nearby_npc_equipment)
-	nearby_npc_recruitment=_card_label("","NearbyNpcRecruitment",FONT_CAPTION)
+	nearby_npc_recruitment=_card_label("","NearbyNpcRecruitment",NEARBY_NPC_FONT_CAPTION)
+	nearby_npc_recruitment.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_CAPTION)
 	nearby_npc_recruitment.clip_text=true
 	nearby_npc_recruitment.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	nearby_npc_content.add_child(nearby_npc_recruitment)
@@ -1297,18 +1316,21 @@ func _build_nearby_npc_card()->void:
 	actions.add_theme_constant_override("separation",4);nearby_npc_content.add_child(actions)
 	nearby_npc_detail_button=Button.new();nearby_npc_detail_button.name="NearbyNpcDetail"
 	nearby_npc_detail_button.text="[상세]";nearby_npc_detail_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_detail_button.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_BUTTON)
 	nearby_npc_detail_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_detail_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_detail_button.name));actions.add_child(nearby_npc_detail_button)
 	AsciiFrameScript.apply_rail_button(nearby_npc_detail_button,AsciiFrameScript.CYAN)
 	nearby_npc_action_button=Button.new();nearby_npc_action_button.name="NearbyNpcRecruit"
 	nearby_npc_action_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_action_button.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_BUTTON)
 	nearby_npc_action_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_action_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_action_button.name));actions.add_child(nearby_npc_action_button)
 	AsciiFrameScript.apply_rail_button(nearby_npc_action_button,AsciiFrameScript.JADE)
 	nearby_npc_attack_button=Button.new();nearby_npc_attack_button.name="NearbyNpcAttack"
 	nearby_npc_attack_button.text="[공격]";nearby_npc_attack_button.custom_minimum_size.y=TOUCH_TARGET
+	nearby_npc_attack_button.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_BUTTON)
 	nearby_npc_attack_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_attack_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_attack_button.name));actions.add_child(nearby_npc_attack_button)

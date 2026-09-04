@@ -466,6 +466,11 @@ func _check_nearby_npc_card_touch(viewport_size:Vector2)->void:
 	sandbox.nearby_npc_action_button.disabled=false
 	sandbox.nearby_npc_attack_button.disabled=false
 	await process_frame;await process_frame
+	_check(sandbox.nearby_npc_name.get_theme_font_size("font_size")==16 \
+		and sandbox.nearby_npc_personality.get_theme_font_size("font_size")==12 \
+		and sandbox.nearby_npc_recruitment.get_theme_font_size("font_size")==11 \
+		and sandbox.nearby_npc_action_button.get_theme_font_size("font_size")==12,
+		"%s nearby NPC card typography was not compacted"%viewport_size)
 	var step_before:int=session.sim.world.step_index
 	await _screen_touch_plain_button(sandbox.nearby_npc_toggle_button,74)
 	_check(sandbox.nearby_npc_collapsed and not sandbox.nearby_npc_content.visible,

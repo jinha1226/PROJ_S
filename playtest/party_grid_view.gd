@@ -27,13 +27,13 @@ const TORCH_ANIMATED_MAX_CELL_COUNT := 17
 const MAX_VISIBLE_TORCHES := 6
 const MAX_MEMORY_TORCHES := 6
 const TORCH_SPACING_CELLS := 5
-const TORCH_LIGHT_RADIUS_CELLS := 3
-const TORCH_POOL_BASE_ALPHA := 0.04
-const TORCH_POOL_GAIN_ALPHA := 0.11
+const TORCH_LIGHT_RADIUS_CELLS := 5.0
+const TORCH_POOL_BASE_ALPHA := 0.035
+const TORCH_POOL_GAIN_ALPHA := 0.18
 const FIRE_LIGHT_RADIUS_CELLS := 2.3
 const FIRE_POOL_BASE_ALPHA := 0.035
 const FIRE_POOL_GAIN_ALPHA := 0.16
-const TORCH_BRIGHTNESS_PHASES := [0.78,0.86,0.81,0.84]
+const TORCH_BRIGHTNESS_PHASES := [0.82,1.00,0.72,0.92]
 const TORCH_AMBER_HEX := "#f0a64d"
 const TORCH_GLYPH_HEX := "#ffd078"
 const FLOATING_AMOUNT_START_CELLS := 0.90
@@ -430,7 +430,6 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
 	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
-	if hero_actor_id>0:_actor_motions.erase(hero_actor_id)
 	var presentation_changed:=previous_origin!=view_origin or previous_count!=visible_cell_count \
 		or previous_hero!=_hero_camera_position or previous_settle!=_camera_settle
 	if previous_origin!=view_origin or previous_count!=visible_cell_count \
@@ -1595,11 +1594,12 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
 			"visible":true,"animated":animated,"glyph":"^","glyph_count":1,
 			"phase":phase,
-			"glyph_hex":TORCH_GLYPH_HEX if animated else "#4d463c",
+			"glyph_hex":TORCH_GLYPH_HEX if animated else (
+				"#d99d57" if state=="VISIBLE" else "#4d463c"),
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
 			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS) if state=="VISIBLE" else 0.0,
-			"draw_light_pool":false,"light_affects_ink":state=="VISIBLE",
+			"draw_light_pool":state=="VISIBLE","light_affects_ink":state=="VISIBLE",
 			"draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
@@ -1646,18 +1646,18 @@ func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 		return {"active":false,"visibility_state":state,"distance":-1,
 			"brightness":0.0,"color_hex":TORCH_AMBER_HEX}
 	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
-	var best_distance:=99;var best_brightness:=0.0
+	var best_distance:=99.0;var best_brightness:=0.0
 	for torch_position in _torch_positions:
 		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
 		if str(torch_cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
-		var distance:=maxi(absi(position.x-torch_position.x),absi(position.y-torch_position.y))
+		var distance:=Vector2(position-torch_position).length()
 		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
 		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4 \
 			if _torch_animation_enabled() else 0
 		var torch_brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) \
 			if _torch_animation_enabled() else 0.80
-		var strength:=torch_brightness*clampf(1.0-float(distance) \
-			/float(TORCH_LIGHT_RADIUS_CELLS)+0.12,0.0,1.0)
+		var strength:=torch_brightness*clampf(1.0-distance \
+			/TORCH_LIGHT_RADIUS_CELLS+0.10,0.0,1.0)
 		if strength>best_brightness:
 			best_brightness=strength;best_distance=distance
 	return {"active":best_brightness>0.0,"visibility_state":state,
@@ -2015,6 +2015,7 @@ func _draw() -> void:
 	_draw_wall_connector_pass("VISIBLE")
 	_draw_material_mark_pass("MEMORY")
 	_draw_material_mark_pass("VISIBLE")
+	_draw_torch_light_pools()
 	_draw_wall_torches()
 	_draw_ground_features()
 	_draw_ground_marks()
@@ -2157,6 +2158,7 @@ func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 func _draw_torch_light_pools()->void:
 	# Cell-clipped washes cannot illuminate MEMORY/UNSEEN neighbors. This keeps
 	# the warm pool FOV-safe without a texture, shader, or offscreen viewport.
+	if _torch_positions.is_empty() and _fire_light_positions.is_empty():return
 	var now:=Time.get_ticks_msec()
 	for y in range(visible_cell_count):
 		for x in range(visible_cell_count):
@@ -2374,8 +2376,8 @@ func _draw_wall_torches()->void:
 		var center:Vector2=Vector2(spec.pixel_center)+Vector2(block.get("lift",Vector2.ZERO))*0.55
 		var local_cell:=maxf(8.0,rect.size.x)
 		var color:=Color(str(spec.glyph_hex));color.a=float(spec.brightness)
-		# One ASCII fire glyph, confined to its wall cell. Light changes ink only;
-		# it never creates a filled glow surface behind the glyph.
+		# Keep the ASCII flame inside its wall cell. The separate FOV-safe light
+		# pool pass supplies the fading amber illumination around it.
 		var shadow:=Color("#1a0b04",0.92)
 		var font_ratio:=0.54 if uses_perspective_projection() else 0.50
 		_draw_centered_text(BoldFont,str(spec.glyph),
@@ -2766,8 +2768,13 @@ func _draw_speech_bubbles()->void:
 func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 		sample_time_ms:int=-1)->Rect2:
 	var position:=_position_from_actor(actor)
-	var visual_center:=world_to_pixel_center(position) if ghost else actor_visual_center(
-		int(actor.get("entity_id",-1)),sample_time_ms)
+	var entity_id:=int(actor.get("entity_id",-1))
+	# The product camera keeps the protagonist at screen center. Preserve the
+	# actor's sampled motion for facing/leg pose, but do not also translate its
+	# figure between world cells while the camera is settling around it.
+	var camera_centered_hero:=not ghost and entity_id==_hero_camera_actor_id
+	var visual_center:=world_to_pixel_center(position) if ghost or camera_centered_hero \
+		else actor_visual_center(entity_id,sample_time_ms)
 	if visual_center==Vector2(-1,-1):return Rect2()
 	if not ghost:visual_center+=_actor_bump_offset(actor,position,cell,sample_time_ms)
 	if not uses_perspective_projection():

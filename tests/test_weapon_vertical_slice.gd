@@ -3,6 +3,7 @@ extends "res://tests/test_case.gd"
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
+const PartyAction = preload("res://sim/party_action_command.gd")
 
 const STARTER_WEAPON_INSTANCE_IDS := {
 	"HAND_AXE":"START_HAND_AXE_001",
@@ -88,6 +89,22 @@ func test_equipment_session_stays_ready_after_auto_opening_and_user_commands()->
 			and bool(equipped.get("accepted",false)),
 		"AUTO, potion, cancellation, and rejection cannot detach the equipment session: %s" \
 			%equipped)
+	return finish()
+
+
+func test_equipment_replaces_a_staged_combat_action_instead_of_returning_generic_failure()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(_enter_solo_combat(session),"equipment draft fixture reaches solo combat")
+	if str(session.party_status().get("safe_phase",""))!="ENGAGED":return finish()
+	var hero_id:=int(session.party_status().protagonist_id)
+	var draft:Dictionary=session.begin_turn(PartyAction.hold(hero_id))
+	check(bool(draft.get("accepted",false)),"a real protagonist action is staged first")
+	var equipped:Dictionary=session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND")
+	check(bool(equipped.get("accepted",false)) \
+			and str(session.protagonist_equipment().weapon_id)=="HAND_AXE",
+		"explicit equipment change replaces the staged action: %s"%equipped)
+	check(not bool(session.auto_combat_planning_state().get("active",false)),
+		"successful equipment turn leaves no stale combat draft")
 	return finish()
 
 

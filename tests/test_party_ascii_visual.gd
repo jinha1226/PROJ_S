@@ -1395,6 +1395,32 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	grid.free();return finish()
 
 
+func test_centered_protagonist_keeps_walk_pose_while_camera_tracks_the_step()->bool:
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D)
+	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
+	grid.set_hero_centered_view(Vector2i(7,7),15,77)
+	grid.arm_actor_motion([77],150)
+	grid.set_observation(_actor_observation(Vector2i(8,7),"VISIBLE"))
+	grid.set_hero_centered_view(Vector2i(8,7),15,77,150)
+	check(grid.actor_motion_state().has(77),
+		"centered camera preserves the protagonist's draw-only walk clock")
+	var started:=int(grid.actor_motion_state()[77].started_at_ms)
+	var actor:Dictionary=grid._actor_by_id(77)
+	var moving:Dictionary=grid.actor_draw_spec(actor,false,started+45)
+	var composition:Dictionary=Style.asciident_actor_composition(actor,moving)
+	var foot_text:=str(composition.rows[2].text)
+	check(str(moving.get("stance",""))=="MOVING" \
+			and int(moving.get("stride_sign",0))!=0 \
+			and foot_text.length()==5 and foot_text.substr(1,3)=="   ",
+		"centered protagonist exposes alternating 2.5D legs during a step")
+	var bounds:Rect2=grid._actor_figure_bounds(actor,grid.cell_size_px(),false,started+45)
+	var centered_x:=grid.world_to_pixel_center(Vector2i(8,7)).x
+	check(absf(bounds.get_center().x-centered_x)<0.01,
+		"walk pose does not make the camera-centered hero slide across the map")
+	grid.free();return finish()
+
+
 func test_consecutive_actor_and_hero_camera_hops_retarget_current_draw_position() -> bool:
 	var grid=Grid.new();grid.size=Vector2(360,360)
 	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
@@ -1472,6 +1498,9 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 			and int(row.glyph_count)==1 and not bool(row.draw_image) \
 			and row.texture==null and str(row.visibility_state)!="UNSEEN"),
 			"%dpx torches are one-cell ASCII with no image or unseen row"%viewport)
+		check(at_zero.filter(func(row):return str(row.visibility_state)=="VISIBLE").all(
+			func(row):return bool(row.draw_light_pool) and float(row.pool_radius_cells)==5.0),
+			"%dpx visible torches expose a five-cell floor light pool"%viewport)
 		check_eq(at_zero.map(func(row):return row.brightness),
 			at_same_tick.map(func(row):return row.brightness),
 			"%dpx torch flicker is fixed within its 75ms quantum"%viewport)
@@ -1492,10 +1521,10 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				visible_source=Vector2i(int(row.position[0]),int(row.position[1]));break
 		check(visible_source!=Vector2i(-1,-1) \
 			and float(grid.torch_draw_specs(75).filter(func(row):return row.position \
-				==[visible_source.x,visible_source.y])[0].brightness)>=0.78 \
+				==[visible_source.x,visible_source.y])[0].brightness)>=0.72 \
 			and float(grid.torch_draw_specs(75).filter(func(row):return row.position \
-				==[visible_source.x,visible_source.y])[0].brightness)<=0.86,
-			"%dpx source fire remains legible at restrained brightness"%viewport)
+				==[visible_source.x,visible_source.y])[0].brightness)<=1.00,
+			"%dpx source fire remains legible with visible flicker contrast"%viewport)
 		var lit_floor_found:=false;var lit_wall_found:=false
 		for y in range(15):
 			for x in range(15):
@@ -1504,8 +1533,8 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				if position in visible_walls:lit_wall_found=true
 				else:lit_floor_found=true
 				check(str(light.visibility_state)=="VISIBLE" \
-					and float(light.composite_alpha)>=0.04 \
-					and float(light.composite_alpha)<=0.151,
+					and float(light.composite_alpha)>=0.035 \
+					and float(light.composite_alpha)<=0.235,
 					"%dpx warm pool only composites on visible cells"%viewport)
 		check(lit_floor_found and lit_wall_found,
 			"%dpx torch pool visibly reaches neighboring floor and wall cells"%viewport)
@@ -1599,15 +1628,15 @@ func test_wide_zoom_freezes_idle_torch_flicker_but_keeps_restrained_light() -> b
 	check(not bool(stats.timer_redraw_enabled) and float(stats.flicker_hz)==0.0,
 		"19+ cell camera does not repaint the full grid for idle flame flicker")
 	check(not torches.is_empty() and torches.all(func(row):return bool(row.visible) \
-		and not bool(row.animated) and not bool(row.draw_light_pool) \
+		and not bool(row.animated) and bool(row.draw_light_pool) \
 		and bool(row.light_affects_ink)),
-		"wide zoom keeps stable torch glyphs and applies light only to ink")
+		"wide zoom keeps stable torch glyphs and a visible surrounding light pool")
 	var source:=Vector2i(int(torches[0].position[0]),int(torches[0].position[1]))
 	var light:Dictionary=grid.torch_light_draw_spec(source,125)
-	check(bool(light.active) and int(light.radius_cells)==3 \
-		and float(light.composite_alpha)>=0.04 \
-		and float(light.composite_alpha)<=0.151,
-		"wide torch light remains visible with reduced radius and alpha")
+	check(bool(light.active) and int(light.radius_cells)==5 \
+		and float(light.composite_alpha)>=0.035 \
+		and float(light.composite_alpha)<=0.235,
+		"wide torch light remains visible with five-cell distance falloff")
 	check(int(grid.static_projection_cache_stats().content_cache_count)<=count*count,
 		"wide static content cache remains viewport bounded")
 	grid.free();return finish()

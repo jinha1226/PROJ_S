@@ -787,7 +787,7 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
-	if not sim.world.is_settled() or _protagonist_draft!=null:return _rejection_dto("world_not_settled")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	var hero=sim.world.entities.get(state.protagonist_id)
 	var combatant=sim.world.combatant_states.get(state.protagonist_id)
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
@@ -797,6 +797,9 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		sim.world,state.protagonist_id,instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
+	# Opening the inventory is allowed to replace a staged combat choice. Keep an
+	# invalid item request non-mutating by clearing the draft only after preview.
+	_clear_draft()
 	var rollback_memento:Variant=sim.capture_rollback_memento()
 	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var event_start:int=sim.world.events.size()
@@ -856,7 +859,7 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	var state=sim.world.party_encounter
 	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():
 		return _rejection_dto("run_complete")
-	if not sim.world.is_settled() or _protagonist_draft!=null:
+	if not sim.world.is_settled():
 		return _rejection_dto("world_not_settled")
 	var hero=sim.world.entities.get(state.protagonist_id)
 	if hero==null or sim.world.item_state.inventory(state.protagonist_id)==null:
@@ -874,6 +877,10 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		_:return _rejection_dto("unknown_item_operation")
 	if not bool(preview.get("accepted",false)):
 		return _rejection_dto(str(preview.get("reason","item_operation_failed")))
+	# Equipment management is the protagonist's explicit action for this turn.
+	# It replaces any real or placeholder combat draft after the item itself has
+	# been validated, so a rejected selection still preserves the existing plan.
+	_clear_draft()
 	var rollback_memento:Variant=sim.capture_rollback_memento()
 	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var journal_size_before:=command_journal.size()
@@ -5875,6 +5882,11 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"run_restart_failed":"같은 원정을 다시 준비하지 못했습니다.",
 			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
 			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
+			"inventory_item_missing":"선택한 아이템이 가방에 없습니다. 목록을 새로 확인하세요.",
+			"item_already_equipped":"이미 장착한 아이템입니다.",
+			"item_equipped_in_wrong_slot":"이 아이템은 선택한 장비 칸에 장착할 수 없습니다.",
+			"invalid_item_equip_slot":"올바른 장비 칸을 선택하세요.",
+			"equipment_slot_empty":"선택한 장비 칸이 이미 비어 있습니다.",
 			"equipment_slot_occupied":"그 장비 칸은 이미 사용 중입니다. 먼저 장비를 해제하세요.",
 			"two_handed_offhand_conflict":"활과 쇠뇌는 양손을 사용해 방패와 함께 장착할 수 없습니다.",
 			"item_requirements_not_met":"필요 능력치가 부족해 장착할 수 없습니다. 아이템 행의 STR/DEX/INT 요구치를 확인하세요.",
@@ -5887,6 +5899,8 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"item_heal_not_needed":"체력이 가득 차 있어 회복 물약을 아꼈습니다.",
 			"item_user_unavailable":"쓰러진 상태에서는 물약을 사용할 수 없습니다.",
 			"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
+			"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
+			"turn_draft_active":"준비 중인 전투 행동을 취소한 뒤 다시 시도하세요.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",
 		"deployment_space_unavailable":"동료가 설 수 있는 빈 칸이 부족합니다.",
