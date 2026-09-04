@@ -13,6 +13,11 @@ func _capture()->void:
 	lab.set_view_mode(lab.VIEW_PITCHED)
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://build/low_poly_3d_pitched.png")
+	lab.toggle_painted_skin()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/low_poly_3d_flat_comparison.png")
+	lab.toggle_painted_skin()
 	lab.set_view_mode(lab.VIEW_TOPDOWN)
 	await process_frame
 	await RenderingServer.frame_post_draw

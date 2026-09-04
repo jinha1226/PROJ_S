@@ -19,10 +19,12 @@ var torch_flame:MeshInstance3D
 var status_label:Label
 var topdown_button:Button
 var pitched_button:Button
+var skin_button:Button
 var gear_button:Button
 var view_mode:=VIEW_PITCHED
 var pawn_cell:=Vector2i(0,1)
 var gear_enabled:=true
+var painted_skin_enabled:=true
 var interaction_count:=0
 var authoritative_state_accessed:=false
 var _torch_time:=0.0
@@ -181,11 +183,14 @@ func _build_overlay()->void:
 	var close:=_button("BackToGame","닫기",Vector2(58,48));close.pressed.connect(func():close_requested.emit())
 	title_row.add_child(close)
 	var view_row:=HBoxContainer.new();view_row.add_theme_constant_override("separation",6);header.add_child(view_row)
-	topdown_button=_button("TopdownCamera","2D 탑뷰",Vector2(96,44));topdown_button.toggle_mode=true
+	topdown_button=_button("TopdownCamera","2D 탑뷰",Vector2(82,44));topdown_button.toggle_mode=true
 	topdown_button.pressed.connect(func():set_view_mode(VIEW_TOPDOWN));view_row.add_child(topdown_button)
-	pitched_button=_button("PitchedCamera","2.5D 탑뷰",Vector2(112,44));pitched_button.toggle_mode=true
+	pitched_button=_button("PitchedCamera","2.5D 탑뷰",Vector2(94,44));pitched_button.toggle_mode=true
 	pitched_button.pressed.connect(func():set_view_mode(VIEW_PITCHED));view_row.add_child(pitched_button)
-	gear_button=_button("GearToggle","갑옷 켜짐",Vector2(98,44));gear_button.pressed.connect(toggle_gear)
+	skin_button=_button("PaintedSkinToggle","2D 스킨",Vector2(96,44));skin_button.toggle_mode=true
+	skin_button.set_pressed_no_signal(true);skin_button.pressed.connect(toggle_painted_skin)
+	view_row.add_child(skin_button)
+	gear_button=_button("GearToggle","갑옷 켜짐",Vector2(88,44));gear_button.pressed.connect(toggle_gear)
 	view_row.add_child(gear_button)
 	var spacer:=Control.new();spacer.size_flags_horizontal=Control.SIZE_EXPAND_FILL;view_row.add_child(spacer)
 
@@ -228,6 +233,14 @@ func toggle_gear()->void:
 	gear_button.text="갑옷 켜짐" if gear_enabled else "갑옷 꺼짐"
 	status_label.text="갑옷·검·방패를 별도 메시로 %s"%("장착" if gear_enabled else "해제")
 
+func toggle_painted_skin()->void:
+	painted_skin_enabled=not painted_skin_enabled
+	pawn.set_painted_skin_enabled(painted_skin_enabled)
+	skin_button.set_pressed_no_signal(painted_skin_enabled)
+	skin_button.text="2D 스킨" if painted_skin_enabled else "기본 3D"
+	status_label.text=("손그림 텍스처·얼굴 데칼·외곽선 적용" if painted_skin_enabled \
+		else "비교용 기본 단색 3D 재질")
+
 func move_pawn(direction:Vector2i)->void:
 	if _is_moving or direction==Vector2i.ZERO:return
 	var target:=pawn_cell+direction
@@ -253,10 +266,13 @@ func attack_demo()->void:
 func reset_demo()->void:
 	if _move_tween!=null and _move_tween.is_valid():_move_tween.kill()
 	_is_moving=false;pawn_cell=Vector2i(0,1);interaction_count=0;gear_enabled=true
+	painted_skin_enabled=true
 	pawn.position=_cell_world(pawn_cell);pawn.rotation=Vector3(0,PI,0);pawn.set_walking(false)
-	pawn.set_equipment_visible(true);enemy.position=Vector3(2.25,0,-1.1)
+	pawn.set_painted_skin_enabled(true);pawn.set_equipment_visible(true);enemy.position=Vector3(2.25,0,-1.1)
 	enemy.rotation.y=deg_to_rad(150)
 	if gear_button!=null:gear_button.text="갑옷 켜짐"
+	if skin_button!=null:
+		skin_button.text="2D 스킨";skin_button.set_pressed_no_signal(true)
 	set_view_mode(VIEW_PITCHED)
 
 func _cell_world(cell:Vector2i)->Vector3:

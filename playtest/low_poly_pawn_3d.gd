@@ -3,8 +3,13 @@ extends Node3D
 
 signal attack_finished
 
+const PAINTED_SURFACE:Texture2D=preload("res://assets/3d/textures/painted_surface_v1.png")
+const HERO_FACE_DECAL:Texture2D=preload("res://assets/3d/textures/hero_face_decal_v1.png")
+const BROKEN_SUN_DECAL:Texture2D=preload("res://assets/3d/textures/broken_sun_decal_v1.png")
+
 @export_enum("human", "goblin") var species := "human"
 @export var equipment_visible := true
+@export var painted_skin_enabled := true
 
 var visual_root:Node3D
 var left_arm_pivot:Node3D
@@ -27,11 +32,13 @@ var _leather:StandardMaterial3D
 var _iron:StandardMaterial3D
 var _dark_iron:StandardMaterial3D
 var _eye:StandardMaterial3D
+var _outline:ShaderMaterial
 
 func _ready()->void:
 	if visual_root==null:
 		_build_materials()
 		_build_pawn()
+	set_painted_skin_enabled(painted_skin_enabled)
 	set_equipment_visible(equipment_visible)
 	set_process(true)
 
@@ -50,14 +57,40 @@ func _build_materials()->void:
 	_iron=_material(Color("#71777a"),0.62,0.48)
 	_dark_iron=_material(Color("#3f4649"),0.72,0.42)
 	_eye=_material(Color("#12100e"),0.0,1.0)
+	_eye.albedo_texture=null
 
 func _material(color:Color,metallic:float,roughness:float)->StandardMaterial3D:
 	var material:=StandardMaterial3D.new()
 	material.albedo_color=color
 	material.metallic=metallic
 	material.roughness=roughness
+	material.albedo_texture=PAINTED_SURFACE
+	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	material.uv1_scale=Vector3(1.45,1.45,1.45)
 	material.diffuse_mode=BaseMaterial3D.DIFFUSE_TOON
 	material.specular_mode=BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	material.next_pass=_outline_material()
+	return material
+
+func _outline_material()->ShaderMaterial:
+	if _outline!=null:return _outline
+	var shader:=Shader.new()
+	shader.code="""
+shader_type spatial;
+render_mode cull_front, unshaded;
+void vertex() { VERTEX += NORMAL * 0.012; }
+void fragment() { ALBEDO = vec3(0.025, 0.022, 0.020); }
+"""
+	_outline=ShaderMaterial.new();_outline.shader=shader
+	return _outline
+
+func _decal_material(texture:Texture2D)->StandardMaterial3D:
+	var material:=StandardMaterial3D.new()
+	material.albedo_texture=texture
+	material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	return material
 
 func _build_pawn()->void:
@@ -110,6 +143,11 @@ func _build_body()->void:
 	if species=="goblin":_build_goblin_ears()
 
 func _build_face()->void:
+	if species=="human":
+		var decal_mesh:=QuadMesh.new();decal_mesh.size=Vector2(0.54,0.54)
+		_part("FaceDecal2D",decal_mesh,_decal_material(HERO_FACE_DECAL),head_pivot,
+			Vector3(0,0.18,-0.337),Vector3.ZERO)
+		return
 	for side in [-1.0,1.0]:
 		var eye_mesh:=SphereMesh.new();eye_mesh.radius=0.036;eye_mesh.height=0.07
 		eye_mesh.radial_segments=6;eye_mesh.rings=3
@@ -149,8 +187,9 @@ func _build_equipment()->void:
 	var chest_mesh:=CylinderMesh.new();chest_mesh.top_radius=0.295;chest_mesh.bottom_radius=0.245
 	chest_mesh.height=0.38;chest_mesh.radial_segments=8
 	_equipment_part("ArmorTorso",chest_mesh,_dark_iron,equipment_root,Vector3(0,0.98,0),Vector3.ZERO)
-	var chest_mark:=BoxMesh.new();chest_mark.size=Vector3(0.18,0.20,0.035)
-	_equipment_part("ArmorMark",chest_mark,_accent,equipment_root,Vector3(0,1.00,-0.267),Vector3.ZERO)
+	var chest_mark:=QuadMesh.new();chest_mark.size=Vector2(0.22,0.22)
+	_equipment_part("ArmorPaintedDecal",chest_mark,_decal_material(BROKEN_SUN_DECAL),
+		equipment_root,Vector3(0,1.00,-0.297),Vector3.ZERO)
 	for side in [-1.0,1.0]:
 		var shoulder_mesh:=SphereMesh.new();shoulder_mesh.radius=0.15;shoulder_mesh.height=0.22
 		shoulder_mesh.radial_segments=8;shoulder_mesh.rings=3
@@ -185,6 +224,9 @@ func _build_shield()->void:
 	boss_mesh.radial_segments=7;boss_mesh.rings=3
 	_equipment_part("ShieldBoss",boss_mesh,_accent,left_arm_pivot,
 		Vector3(-0.03,-0.46,-0.205),Vector3(deg_to_rad(90),0,0))
+	var emblem_mesh:=QuadMesh.new();emblem_mesh.size=Vector2(0.31,0.31)
+	_equipment_part("ShieldPaintedDecal",emblem_mesh,_decal_material(BROKEN_SUN_DECAL),
+		left_arm_pivot,Vector3(-0.03,-0.46,-0.245),Vector3.ZERO)
 
 func _part(node_name:String,mesh:PrimitiveMesh,material:Material,parent:Node3D,
 		position:Vector3,rotation:Vector3,track:bool=true)->MeshInstance3D:
@@ -204,7 +246,19 @@ func _equipment_part(node_name:String,mesh:PrimitiveMesh,material:Material,paren
 func set_equipment_visible(enabled:bool)->void:
 	equipment_visible=enabled
 	for part in equipment_parts:
-		if is_instance_valid(part):part.visible=enabled
+		if is_instance_valid(part):
+			var is_painted_decal:=part.name in [&"ArmorPaintedDecal",&"ShieldPaintedDecal"]
+			part.visible=enabled and (painted_skin_enabled or not is_painted_decal)
+
+func set_painted_skin_enabled(enabled:bool)->void:
+	painted_skin_enabled=enabled
+	for material in [_skin,_hair,_cloth,_accent,_leather,_iron,_dark_iron]:
+		if material==null:continue
+		material.albedo_texture=PAINTED_SURFACE if enabled else null
+		material.next_pass=_outline_material() if enabled else null
+	var face_decal:=find_child("FaceDecal2D",true,false)
+	if face_decal!=null:face_decal.visible=enabled
+	set_equipment_visible(equipment_visible)
 
 func set_walking(enabled:bool)->void:
 	walking=enabled
@@ -254,6 +308,9 @@ func visual_contract()->Dictionary:
 		"actual_mesh_count":mesh_parts.size(),
 		"equipment_part_count":equipment_parts.size(),
 		"separate_equipment":equipment_root!=null,
+		"painted_surface":PAINTED_SURFACE!=null,
+		"face_decal":find_child("FaceDecal2D",true,false)!=null if species=="human" else true,
+		"painted_skin_enabled":painted_skin_enabled,
 		"animated_limbs":left_arm_pivot!=null and right_arm_pivot!=null \
 			and left_leg_pivot!=null and right_leg_pivot!=null,
 		"species":species,

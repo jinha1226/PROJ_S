@@ -16,12 +16,32 @@ func test_real_mesh_pawn_has_modular_equipment_and_animated_limbs()->bool:
 	check(int(hero.actual_mesh_count)>=20,"prototype hero is composed from actual 3D mesh parts")
 	check(int(hero.equipment_part_count)>=8 and bool(hero.separate_equipment),
 		"armor, sword, and shield are detachable equipment meshes")
+	check(bool(hero.painted_surface) and bool(hero.face_decal),
+		"the 3D pawn carries painted surface texture and a bone-attached 2D face decal")
 	check(bool(hero.animated_limbs),"arms and legs use independent animation pivots")
 	check(lab.pawn.find_child("Head",true,false) is MeshInstance3D \
 		and lab.pawn.find_child("ArmorTorso",true,false) is MeshInstance3D \
 		and lab.pawn.find_child("SwordBlade",true,false) is MeshInstance3D \
 		and lab.pawn.find_child("Shield",true,false) is MeshInstance3D,
 		"head, armor, sword, and shield remain named reusable parts")
+	var body:=lab.pawn.find_child("BodyCore",true,false) as MeshInstance3D
+	check(body.material_override is StandardMaterial3D \
+		and (body.material_override as StandardMaterial3D).albedo_texture!=null \
+		and (body.material_override as StandardMaterial3D).next_pass is ShaderMaterial,
+		"body material combines the hand-painted albedo with a 2D-style outline pass")
+	check(lab.pawn.find_child("FaceDecal2D",true,false) is MeshInstance3D \
+		and lab.pawn.find_child("ArmorPaintedDecal",true,false) is MeshInstance3D \
+		and lab.pawn.find_child("ShieldPaintedDecal",true,false) is MeshInstance3D,
+		"face and heraldry stay separate transparent 2D overlays")
+	lab.toggle_painted_skin()
+	check(not lab.pawn.painted_skin_enabled \
+		and (body.material_override as StandardMaterial3D).albedo_texture==null \
+		and not lab.pawn.find_child("FaceDecal2D",true,false).visible,
+		"comparison toggle removes painted textures, outlines, and 2D decals together")
+	lab.toggle_painted_skin()
+	check(lab.pawn.painted_skin_enabled \
+		and (body.material_override as StandardMaterial3D).albedo_texture!=null,
+		"painted skin can be restored without rebuilding or replacing the 3D pawn")
 	check(_count_mesh_instances(lab.world_root)>130,
 		"the room, props, actors, equipment, and blood pool are true 3D geometry")
 	var right_arm:Node3D=lab.pawn.right_arm_pivot
@@ -59,7 +79,8 @@ func test_same_3d_model_switches_between_cardinal_top_views()->bool:
 		"torch light reaches several cells and fades with distance")
 	check(not bool(lab.demo_contract().authoritative_state_accessed),
 		"visual prototype is isolated from the authoritative game session")
-	for button_name in ["TopdownCamera","PitchedCamera","GearToggle","MoveLeft","Attack","BackToGame"]:
+	for button_name in ["TopdownCamera","PitchedCamera","PaintedSkinToggle","GearToggle",
+			"MoveLeft","Attack","BackToGame"]:
 		var button:=lab.find_child(button_name,true,false) as Button
 		check(button!=null and button.custom_minimum_size.y>=44.0,
 			"%s remains a mobile-safe touch target"%button_name)
