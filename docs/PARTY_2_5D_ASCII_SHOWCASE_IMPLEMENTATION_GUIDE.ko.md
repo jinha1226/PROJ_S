@@ -2,7 +2,7 @@
 
 ## 1. 목표와 고정 범위
 
-현재 Party 15×15 custom Canvas를 런타임 그림 asset에 의존하지 않는 코드 네이티브 컬러 ASCII 화면으로 표시한다. 지형 glyph, actor 글자 torso, 타일 안 절차적 머리·팔·다리, 그림자와 faux extrusion으로 직교 2.5D 깊이를 만든다. 기존 좌표·입력·9×9 전투 crop은 유지한다. `docs/concepts/ascii_2_5d_visual_target.png`는 구현 목표를 설명하는 문서 참고 이미지일 뿐 런타임 asset이 아니다.
+현재 Party custom Canvas는 런타임 그림 asset에 의존하지 않는 코드 네이티브 ASCII 화면으로 표시한다. 선택형 2.5D는 Reddit 글의 첫 번째 영상인 ASCIIDENT를 시각 기준으로 삼아, 검은 바탕·고채도 제한 팔레트·여러 printable ASCII 문자로 조립한 지형과 배우·전후 문자층·문자 글로우로 깊이를 만든다. 평면 2D는 같은 글의 두 번째 영상처럼 현재 시야는 컬러, 한 번 보았지만 현재 시야 밖인 기억 영역은 흑백, 미탐험 영역은 비표시로 구분한다. 기존 좌표·입력·전투 crop은 유지한다. `docs/concepts/ascii_2_5d_visual_target.png`는 폐기 전 초기 방향을 기록한 문서 이미지이며 현재 구현 목표가 아니다.
 
 동시에 exact `SHOWCASE_V1`을 추가하고 다음 UX를 적용한다.
 
@@ -87,16 +87,9 @@ static func follower_spec(actor: Dictionary) -> Dictionary
 
 ### 4.2 타일과 actor
 
-각 타일은 edge rectangle, 줄어든 top face, glyph 순으로 faux extrusion을 그린다. actor는 타일 안에서 다음 primitive를 사용한다.
+2.5D 타일은 단일 glyph 대신 재질별 3문자 전경 cluster와 더 어두운 후경 cluster를 겹쳐 그린다. 벽은 `###` 전경과 `|#|` 후경, 물은 `~~~`, 나무 바닥은 `===`처럼 모두 ASCII 32–126 범위로 조립한다. 글로우도 같은 문자를 낮은 알파로 여러 번 찍는 text-only pass다. actor는 ` o ` / `/@\` / `/ \`의 3행 조립을 기본으로 하며, 갑옷은 가운데 행의 `[` `]`, 무기는 별도 ASCII 한 글자로 표현한다.
 
-1. 바닥 shadow stroke
-2. 1~2 px offset torso extrusion
-3. 가운데 글자 torso
-4. torso 위 원형 head
-5. 두 arm line과 두 leg line
-6. facing point, guard/bleeding cue, corner selection bracket
-
-limb 좌표는 `cell_rect` 비율로 계산한다. actor 안정 정렬은 `(world_y, world_x, entity_id)`다. `ACTIVE`는 선 자세, `DOWNED`는 누운 자세, 관찰에 남은 `DEAD`는 흐린 `x`다. 이는 표현이며 body simulation이 아니다.
+actor 안정 정렬은 `(world_y, world_x, entity_id)`다. `ACTIVE`는 3행, `DOWNED`와 `DEAD`는 눕힌 1행 문자열이다. 이는 표현이며 body simulation이 아니다. 평면 2D는 빠른 판독을 위해 기존의 셀당 한 glyph actor를 유지한다.
 
 draw layer는 고정한다.
 

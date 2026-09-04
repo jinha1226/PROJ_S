@@ -1212,7 +1212,8 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
 	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
-	grid_graphics_mode_button.text="[2D→2.5D]";grid_graphics_mode_button.tooltip_text="그래픽 모드 · ASCII 재질형 2D"
+	grid_graphics_mode_button.text="[2D→2.5D]";grid_graphics_mode_button.tooltip_text=\
+		"2D 컬러 시야 / 흑백 기억 · 눌러서 ASCIIDENT 2.5D로 변경"
 	grid_graphics_mode_button.custom_minimum_size=Vector2(88,TOUCH_TARGET)
 	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
 	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
@@ -4922,8 +4923,9 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 	grid_zoom_in_button.disabled=zoom_index<=0
 	var flat_mode:bool=str(grid.graphics_mode_id())==GridScript.GRAPHICS_MODE_FLAT_2D
 	grid_graphics_mode_button.text="[2D→2.5D]" if flat_mode else "[2.5D→2D]"
-	grid_graphics_mode_button.tooltip_text="그래픽 모드 · %s · 눌러서 %s로 변경"%[
-		"2D" if flat_mode else "2.5D","2.5D" if flat_mode else "2D"]
+	grid_graphics_mode_button.tooltip_text=(
+		"2D 컬러 시야 / 흑백 기억 · 눌러서 ASCIIDENT 2.5D로 변경" if flat_mode \
+		else "ASCIIDENT 컬러 ASCII 2.5D · 눌러서 2D로 변경")
 	var out_count:=int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
 		else int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
 	var in_count:=int(PRODUCT_ZOOM_CELL_COUNTS[0]) if grid_zoom_in_button.disabled \

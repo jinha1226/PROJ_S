@@ -275,6 +275,72 @@ func test_flat_2d_and_diorama_2_5d_are_pure_switchable_projection_modes()->bool:
 	grid.free();return finish()
 
 
+func test_graphics_modes_use_asciident_layers_and_color_fov_monochrome_memory()->bool:
+	var cells:=_visible_cells()
+	for cell in cells:
+		match cell.position:
+			[7,7]:
+				cell.terrain_id="shallow_water"
+				cell.actors.append({"entity_id":77,"faction_id":"party",
+					"species_id":"human","roster_slot":0,"is_protagonist":true,
+					"logical_position":[7,7]})
+			[8,7]:cell.terrain_id="wall";cell.visibility_state="MEMORY"
+			[9,7]:cell.terrain_id="wall";cell.visibility_state="UNSEEN"
+	var grid=Grid.new();grid.size=Vector2(390,390)
+	grid.set_observation({"width":15,"height":15,"cells":cells})
+	var flat_contract:=grid.graphics_mode_visual_spec()
+	check_eq([flat_contract.reference_family,flat_contract.layered_ascii,
+		flat_contract.visible_saturation,flat_contract.memory_saturation],
+		["COLOR_FOV_ASCII",false,1.0,0.0],
+		"2D is colorful in current FOV and monochrome in remembered space")
+	var visible_2d:Color=grid.terrain_glyph_draw_spec(Vector2i(7,7)).rendered_glyph_color
+	var memory_2d:Color=grid.terrain_glyph_draw_spec(Vector2i(8,7)).rendered_glyph_color
+	var visible_chroma:=maxf(visible_2d.r,maxf(visible_2d.g,visible_2d.b)) \
+		-minf(visible_2d.r,minf(visible_2d.g,visible_2d.b))
+	var memory_chroma:=maxf(memory_2d.r,maxf(memory_2d.g,memory_2d.b)) \
+		-minf(memory_2d.r,minf(memory_2d.g,memory_2d.b))
+	check(visible_chroma>0.50 and memory_chroma<0.001,
+		"flat visible ink retains color while MEMORY ink is exact grayscale")
+	check(not grid.terrain_ascii_cluster_draw_spec(Vector2i(7,7)).visible,
+		"flat 2D does not borrow the ASCIIDENT multi-character layer")
+	var observation_before:Dictionary=grid._cells.duplicate(true)
+	check(grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D),
+		"ASCIIDENT presentation mode can be selected")
+	var diorama_contract:=grid.graphics_mode_visual_spec()
+	check_eq([diorama_contract.reference_family,diorama_contract.layered_ascii,
+		diorama_contract.multi_character_objects,diorama_contract.printable_ascii_only],
+		["ASCIIDENT",true,true,true],
+		"2.5D advertises the layered printable-ASCII visual contract")
+	var cluster:Dictionary=grid.terrain_ascii_cluster_draw_spec(Vector2i(7,7))
+	var memory_cluster:Dictionary=grid.terrain_ascii_cluster_draw_spec(Vector2i(8,7))
+	var unseen_cluster:Dictionary=grid.terrain_ascii_cluster_draw_spec(Vector2i(9,7))
+	check(cluster.visible and cluster.multi_character and cluster.glow_enabled \
+			and str(cluster.foreground).length()==3 and not bool(cluster.draw_image),
+		"2.5D terrain is assembled from a glowing multi-character cluster")
+	check(memory_cluster.visible and not memory_cluster.glow_enabled \
+			and not unseen_cluster.visible,
+		"remembered ASCIIDENT terrain is subdued and unseen terrain emits nothing")
+	for value in [str(cluster.foreground),str(cluster.rear)]:
+		for index in range(value.length()):
+			check(value.unicode_at(index)>=32 and value.unicode_at(index)<=126,
+				"ASCIIDENT cluster uses printable ASCII only")
+	var actor:Dictionary=grid.actor_glyph_draw_spec(77)
+	var composition:Dictionary=actor.ascii_composition
+	check(not actor.one_cell_one_glyph and composition.visible \
+			and composition.multi_character and int(composition.row_count)==3,
+		"2.5D actor becomes a three-row ASCIIDENT character construction")
+	for row in composition.rows:
+		var value:=str(row.text)
+		for index in range(value.length()):
+			check(value.unicode_at(index)>=32 and value.unicode_at(index)<=126,
+				"ASCIIDENT actor uses printable ASCII only")
+	check_eq(grid._cells,observation_before,
+		"mode-specific color and character layers never mutate observation")
+	check_eq(grid.pixel_to_world_cell(grid.world_to_pixel_center(Vector2i(7,7))),
+		Vector2i(7,7),"layered character art preserves canonical projected hit mapping")
+	grid.free();return finish()
+
+
 func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
@@ -711,7 +777,8 @@ func test_hero_centered_world_padding_is_explicit_void_and_never_interactive() -
 	var padding_position:=Vector2i(-7,-7)
 	var padding:Dictionary=grid.void_padding_draw_spec(padding_position)
 	var pointer:Vector2=padding.rect.get_center()
-	check(bool(padding.visible) and str(padding.color_hex)=="#010203" \
+	check(bool(padding.visible) and str(padding.color_hex)==str(
+		Style.diorama_palette_spec().void_hex) \
 		and not bool(padding.accepts_input),"outside-world camera cell is an explicit void surface")
 	check_eq(grid.pixel_to_world_cell(pointer),Vector2i(-1,-1),
 		"void padding rejects pixel-to-world mapping")
@@ -1505,8 +1572,9 @@ func test_colorful_terrain_palette_keeps_role_glyphs_high_contrast_and_distinct(
 		check(glyph.get_luminance()>base.get_luminance()+0.025,
 			"%s restrained glyph clears its coloured ground"%terrain_id)
 		var chroma:=maxf(glyph.r,maxf(glyph.g,glyph.b))-minf(glyph.r,minf(glyph.g,glyph.b))
-		check(chroma>=0.55 if terrain_id=="shallow_water" else chroma<0.34,
-			"%s terrain ink keeps its intended saturation tier"%terrain_id)
+		check(chroma>=0.35 if terrain_id in ["wood_floor","metal","shallow_water",
+			"grass","poison","wall"] else chroma<0.34,
+			"%s terrain ink keeps its ASCIIDENT color tier"%terrain_id)
 	check_eq(terrain_glyph_hexes.duplicate().reduce(func(accum,value):
 		if value not in accum:accum.append(value)
 		return accum,[]).size(),terrain_ids.size(),"terrain glyph palette is role-distinct")

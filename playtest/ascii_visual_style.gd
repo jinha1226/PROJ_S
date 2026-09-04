@@ -129,8 +129,8 @@ static func monster_identity_spec(actor:Dictionary)->Dictionary:
 				"highlight_hex":"#ffc2a8"}.duplicate(true)
 
 const DIORAMA_PALETTE := {
-	"void_hex":"#010203",
-	"substrate_hex":"#030507",
+	"void_hex":"#000000",
+	"substrate_hex":"#010102",
 	"unseen_ground_hex":"#020304",
 	# MEMORY must remain clearly darker than live terrain while still being
 	# distinguishable from the virtually black UNSEEN field on a phone display.
@@ -144,23 +144,107 @@ const DIORAMA_PALETTE := {
 	"ally_ink_hex":"#55d7ed",
 }
 
+const ASCIIDENT_TERRAIN_CLUSTERS := {
+	"floor":{"foreground":" . ","rear":"   ","rear_hex":"#171929","glow_strength":0.0},
+	"stone_floor":{"foreground":".:.","rear":" . ","rear_hex":"#2d314b","glow_strength":0.06},
+	"wood_floor":{"foreground":"===","rear":"---","rear_hex":"#5b3215","glow_strength":0.18},
+	"metal":{"foreground":"+=+","rear":"---","rear_hex":"#0c3e68","glow_strength":0.22},
+	"rubble":{"foreground":".,:","rear":"`..","rear_hex":"#403625","glow_strength":0.05},
+	"shallow_water":{"foreground":"~~~","rear":"~~~","rear_hex":"#111c7a","glow_strength":0.22},
+	"grass":{"foreground":"\"|\"","rear":"'''","rear_hex":"#124b25","glow_strength":0.18},
+	"poison":{"foreground":"%o%","rear":"...","rear_hex":"#4b0b55","glow_strength":0.30},
+	"ice":{"foreground":"+*+","rear":"...","rear_hex":"#15526b","glow_strength":0.20},
+	"fog":{"foreground":".:.","rear":"...","rear_hex":"#303344","glow_strength":0.04},
+	"wall":{"foreground":"###","rear":"|#|","rear_hex":"#15165e","glow_strength":0.26},
+}
+
 const TERRAIN_DEFINITIONS := {
-	"floor": {"glyph":".", "base_hex":"#11161c", "glyph_hex":"#59636d", "edge_hex":"#333c44", "font_ratio":0.48, "raised":false, "ink_family":"FLOOR_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"stone_floor": {"glyph":".", "base_hex":"#182732", "glyph_hex":"#718796", "edge_hex":"#465d6d", "font_ratio":0.50, "raised":false, "ink_family":"STONE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"wood_floor": {"glyph":"=", "base_hex":"#302820", "glyph_hex":"#9b8162", "edge_hex":"#67533e", "font_ratio":0.74, "raised":false, "ink_family":"WOOD_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"metal": {"glyph":"+", "base_hex":"#253740", "glyph_hex":"#80a0ad", "edge_hex":"#57737e", "font_ratio":0.78, "raised":false, "ink_family":"METAL_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"floor": {"glyph":".", "base_hex":"#11131d", "glyph_hex":"#7f8496", "edge_hex":"#34374b", "font_ratio":0.48, "raised":false, "ink_family":"FLOOR_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"stone_floor": {"glyph":".", "base_hex":"#1d2031", "glyph_hex":"#d7d9e3", "edge_hex":"#646b88", "font_ratio":0.50, "raised":false, "ink_family":"STONE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"wood_floor": {"glyph":"=", "base_hex":"#33200f", "glyph_hex":"#f0a23a", "edge_hex":"#9a5720", "font_ratio":0.74, "raised":false, "ink_family":"WOOD_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
+	"metal": {"glyph":"+", "base_hex":"#10243b", "glyph_hex":"#2cbaff", "edge_hex":"#176da9", "font_ratio":0.78, "raised":false, "ink_family":"METAL_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
 	"rubble": {"glyph":",", "base_hex":"#352d23", "glyph_hex":"#9a825f", "edge_hex":"#69583d", "font_ratio":0.70, "raised":false, "ink_family":"RUBBLE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"shallow_water": {"glyph":"~", "base_hex":"#071e48", "glyph_hex":"#168cff", "edge_hex":"#125fb5", "font_ratio":0.84, "raised":false, "ink_family":"WATER_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"water"},
-	"grass": {"glyph":"\"", "base_hex":"#17291d", "glyph_hex":"#79a96c", "edge_hex":"#3d6441", "font_ratio":0.80, "raised":false, "ink_family":"GRASS_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"grass"},
-	"poison": {"glyph":"%", "base_hex":"#202817", "glyph_hex":"#9fc94b", "edge_hex":"#59732d", "font_ratio":0.78, "raised":false, "ink_family":"POISON_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"poison"},
+	"shallow_water": {"glyph":"~", "base_hex":"#071b50", "glyph_hex":"#2878ff", "edge_hex":"#1d46c7", "font_ratio":0.84, "raised":false, "ink_family":"WATER_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"water"},
+	"grass": {"glyph":"\"", "base_hex":"#102916", "glyph_hex":"#36e86a", "edge_hex":"#18883c", "font_ratio":0.80, "raised":false, "ink_family":"GRASS_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"grass"},
+	"poison": {"glyph":"%", "base_hex":"#29112d", "glyph_hex":"#f33dff", "edge_hex":"#8c1aa3", "font_ratio":0.78, "raised":false, "ink_family":"POISON_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1, "motion_material":"poison"},
 	"ice": {"glyph":"*", "base_hex":"#1b3441", "glyph_hex":"#b9e8f0", "edge_hex":"#659eac", "font_ratio":0.76, "raised":false, "ink_family":"ICE_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
 	"fog": {"glyph":".", "base_hex":"#1c2428", "glyph_hex":"#88969b", "edge_hex":"#4e5b60", "font_ratio":0.52, "raised":false, "ink_family":"FOG_ASCII", "slab_ratio":Vector2(0.96,0.96), "glyph_offset":Vector2.ZERO, "outline_passes":0, "weight_passes":1},
-	"wall": {"glyph":"#", "base_hex":"#262d34", "glyph_hex":"#aeb8c0", "edge_hex":"#626c75", "font_ratio":0.98, "raised":true, "ink_family":"WALL_ASCII", "slab_ratio":Vector2(1.0,0.98), "glyph_offset":Vector2.ZERO, "outline_passes":1, "weight_passes":2},
+	"wall": {"glyph":"#", "base_hex":"#11133d", "glyph_hex":"#6677ff", "edge_hex":"#9aa5ff", "font_ratio":0.98, "raised":true, "ink_family":"WALL_ASCII", "slab_ratio":Vector2(1.0,0.98), "glyph_offset":Vector2.ZERO, "outline_passes":1, "weight_passes":2},
 }
 
 
 static func diorama_palette_spec() -> Dictionary:
 	return DIORAMA_PALETTE.duplicate(true)
+
+
+static func graphics_mode_visual_spec(mode:String)->Dictionary:
+	if mode.to_upper()=="DIORAMA_2_5D":
+		return {"mode":"DIORAMA_2_5D","reference_family":"ASCIIDENT",
+			"layered_ascii":true,"multi_character_objects":true,
+			"visible_saturation":1.0,"memory_saturation":0.0,
+			"unseen_visible":false,"glow_strength":0.24,
+			"printable_ascii_only":true,"changes_mapping":false}.duplicate(true)
+	return {"mode":"FLAT_2D","reference_family":"COLOR_FOV_ASCII",
+		"layered_ascii":false,"multi_character_objects":false,
+		"visible_saturation":1.0,"memory_saturation":0.0,
+		"unseen_visible":false,"glow_strength":0.0,
+		"printable_ascii_only":true,"changes_mapping":false}.duplicate(true)
+
+
+static func asciident_terrain_cluster_spec(cell:Dictionary)->Dictionary:
+	var terrain:=terrain_spec(cell)
+	var terrain_id:=str(terrain.get("terrain_id",""))
+	var state:=str(terrain.get("visibility_state","UNSEEN"))
+	if state=="UNSEEN" or not bool(terrain.get("registered",false)) \
+			or not ASCIIDENT_TERRAIN_CLUSTERS.has(terrain_id):
+		return {"visible":false,"foreground":"","rear":"","terrain_id":"",
+			"visibility_state":state,"multi_character":false,
+			"printable_ascii_only":true,"glow_strength":0.0}.duplicate(true)
+	var definition:Dictionary=ASCIIDENT_TERRAIN_CLUSTERS[terrain_id]
+	return {"visible":true,"foreground":str(definition.foreground),
+		"rear":str(definition.rear),"terrain_id":terrain_id,
+		"visibility_state":state,"foreground_hex":str(terrain.glyph_hex),
+		"rear_hex":str(definition.rear_hex),"opacity":float(terrain.opacity),
+		"multi_character":str(definition.foreground).length()>1,
+		"printable_ascii_only":true,"glow_strength":float(definition.get(
+			"glow_strength",0.0)) if state=="VISIBLE" else 0.0,
+		"foreground_offset_ratio":Vector2(0,-0.16) if terrain_id=="wall" else Vector2.ZERO,
+		"rear_offset_ratio":Vector2(0,0.32) if terrain_id=="wall" else Vector2(0,0.14),
+		"changes_mapping":false,"draw_image":false}.duplicate(true)
+
+
+static func asciident_actor_composition(actor:Dictionary)->Dictionary:
+	var style:=actor_spec(actor)
+	var life_state:=str(style.get("life_state","ACTIVE"))
+	if life_state=="DEAD":
+		return {"visible":true,"rows":[{"text":"_x_","tone":"PRIMARY"}],
+			"row_count":1,"column_count":3,"multi_character":true,
+			"printable_ascii_only":true,"glow_strength":0.10,
+			"changes_mapping":false}.duplicate(true)
+	if life_state=="DOWNED":
+		return {"visible":true,"rows":[{"text":"/x_","tone":"PRIMARY"}],
+			"row_count":1,"column_count":3,"multi_character":true,
+			"printable_ascii_only":true,"glow_strength":0.08,
+			"changes_mapping":false}.duplicate(true)
+	var equipment:Dictionary=style.get("equipment",{})
+	var armored:=bool(equipment.get("armor_visible",false))
+	var species_id:=str(actor.get("species_id","human")).to_lower()
+	var head:="v" if species_id in ["goblin","kobold"] else (
+		"O" if actor_body_class(actor)=="LARGE" else "o")
+	var body:=str(style.get("glyph","?"))
+	var body_row:="[%s]"%body if armored else "/%s\\"%body
+	var foot_row:="/\\ " if str(style.get("stance","IDLE"))=="MOVING" \
+		else "/ \\"
+	return {"visible":true,"rows":[
+		{"text":" %s "%head,"tone":"HIGHLIGHT"},
+		{"text":body_row,"tone":"PRIMARY"},
+		{"text":foot_row,"tone":"PRIMARY"}],
+		"row_count":3,"column_count":3,"multi_character":true,
+		"printable_ascii_only":true,"glow_strength":0.30,
+		"weapon_visible":bool(equipment.get("weapon_visible",false)),
+		"weapon_glyph":str(equipment.get("weapon_glyph","")),
+		"weapon_hex":str(equipment.get("weapon_color_hex","#e8e8df")),
+		"changes_mapping":false,"draw_image":false}.duplicate(true)
 
 
 static func visibility_state(cell: Dictionary) -> String:
@@ -183,7 +267,7 @@ static func visibility_spec(cell_or_state: Variant) -> Dictionary:
 		"background_hex":str(DIORAMA_PALETTE.get({
 			"VISIBLE":"visible_ground_hex", "MEMORY":"memory_ground_hex",
 			"UNSEEN":"unseen_ground_hex"}[state], "#030507")),
-		"glyph_desaturation":0.0 if state == "VISIBLE" else (0.78 if state == "MEMORY" else 1.0),
+		"glyph_desaturation":0.0 if state == "VISIBLE" else 1.0,
 	}.duplicate(true)
 
 

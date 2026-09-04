@@ -158,6 +158,9 @@ func _invalidate_static_projection_cache()->void:
 func graphics_mode_id()->String:
 	return _graphics_mode
 
+func graphics_mode_visual_spec()->Dictionary:
+	return AsciiStyleScript.graphics_mode_visual_spec(_graphics_mode)
+
 func set_graphics_mode(mode:String)->bool:
 	var normalized:=mode.to_upper()
 	if normalized not in GRAPHICS_MODES:return false
@@ -1161,12 +1164,15 @@ func actor_glyph_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var projected_segments:Array=[]
 	var equipment:Dictionary=(style.get("equipment",{}) as Dictionary).duplicate(true)
 	var shadow:=AsciiPortraitScript.shadow_draw_spec(bounds,style,true)
+	var ascii_composition:=_asciident_actor_render_spec(actor,bounds,style) \
+		if uses_perspective_projection() else {"visible":false}
 	return glyph.merged({"visible":true,"entity_id":entity_id,"cell_rect":world_cell_rect(position),
 		"limb_segments":projected_segments,"facing":style.facing,"stance":style.stance,
 		"figure_bounds":bounds,"logical_position":[position.x,position.y],
 		"top_overlap_px":maxf(0.0,world_cell_rect(position).position.y-float(glyph.glyph_rect.position.y)),
 		"feet_bottom_margin_px":0.0,
-		"one_cell_one_glyph":true,"weapon_swing":{"active":false},
+		"one_cell_one_glyph":not uses_perspective_projection(),
+		"ascii_composition":ascii_composition,"weapon_swing":{"active":false},
 		"bump_motion":style.get("bump_motion",{"active":false}),
 		"shadow":shadow,
 		"selected_outline":false,"draw_equipment":bool(style.draw_equipment),
@@ -1728,6 +1734,44 @@ func terrain_glyph_draw_spec(position:Vector2i)->Dictionary:
 		"background_source":str(terrain.get("background_source","GRID_FLAT")),
 		"pixel_rect":world_cell_rect(position) if visible else Rect2()}.duplicate(true)
 
+func terrain_ascii_cluster_draw_spec(position:Vector2i)->Dictionary:
+	if not uses_perspective_projection() or not _world_in_bounds(position):
+		return {"visible":false,"position":[position.x,position.y],
+			"mode":_graphics_mode,"foreground":"","rear":"",
+			"multi_character":false,"changes_mapping":false}.duplicate(true)
+	var row:Dictionary=_cells.get(_key(position),{})
+	var cluster:Dictionary=AsciiStyleScript.asciident_terrain_cluster_spec(row)
+	if not bool(cluster.get("visible",false)):
+		return cluster.merged({"position":[position.x,position.y],
+			"mode":_graphics_mode,"changes_mapping":false},true).duplicate(true)
+	var cached:=_cached_static_cell(position)
+	var light:Dictionary=cached.get("light",DioramaScript.quantized_light_spec(
+		position,_hero_camera_position,str(cluster.visibility_state)))
+	var rect:=world_cell_rect(position)
+	var font_size:=maxi(7,int(floor(rect.size.x*0.52)))
+	var widest:=str(cluster.foreground) if str(cluster.foreground).length() \
+		>=str(cluster.rear).length() else str(cluster.rear)
+	while font_size>7 and RegularFont.get_string_size(widest,HORIZONTAL_ALIGNMENT_LEFT,
+			-1,font_size).x>rect.size.x*1.48:
+		font_size-=1
+	var foreground_offset:Vector2=cluster.get("foreground_offset_ratio",Vector2.ZERO)
+	var rear_offset:Vector2=cluster.get("rear_offset_ratio",Vector2.ZERO)
+	var center:=rect.get_center()
+	var state:=str(cluster.visibility_state)
+	var opacity:=float(cluster.opacity)
+	var foreground_color:=_environment_lit_ink_color(str(cluster.foreground_hex),
+		opacity,state,light,true,position)
+	var rear_color:=_diorama_ink_color(str(cluster.rear_hex),opacity*0.72,
+		state,light,true)
+	return cluster.merged({"position":[position.x,position.y],"mode":_graphics_mode,
+		"center":center,"foreground_center":center+Vector2(
+			foreground_offset.x*rect.size.x,foreground_offset.y*rect.size.x),
+		"rear_center":center+Vector2(rear_offset.x*rect.size.x,
+			rear_offset.y*rect.size.x),"font_size":font_size,
+		"foreground_color":foreground_color,"rear_color":rear_color,
+		"glow_enabled":state=="VISIBLE","fov_safe":true,
+		"changes_mapping":false,"draw_image":false},true).duplicate(true)
+
 func visibility_ground_draw_spec(position:Vector2i)->Dictionary:
 	if view_bounds().has_point(position) and not _world_in_bounds(position):
 		return {"visible":true,"visibility_state":"VOID",
@@ -2134,6 +2178,9 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
 			if str(cached.get("visibility_state",""))!=visibility_state:continue
+			if uses_perspective_projection():
+				_draw_asciident_terrain_cluster(terrain_ascii_cluster_draw_spec(position))
+				continue
 			var terrain:Dictionary=cached.get("terrain",{})
 			var display_terrain:=terrain
 			if visibility_state=="VISIBLE":
@@ -2151,6 +2198,14 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			_draw_terrain_glyph(world_cell_rect(position),display_terrain,
 				visibility_state,cached.get("light",{}),
 				_cell_is_visually_occupied(position),position)
+
+func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
+	if not bool(spec.get("visible",false)):return
+	_draw_centered_text(RegularFont,str(spec.get("rear","")),Vector2(spec.rear_center),
+		int(spec.font_size),Color(spec.rear_color))
+	_draw_ascii_glow_text(BoldFont,str(spec.get("foreground","")),
+		Vector2(spec.foreground_center),int(spec.font_size),Color(spec.foreground_color),
+		float(spec.get("glow_strength",0.0)))
 
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 	_ensure_static_projection_cache()
@@ -2189,8 +2244,12 @@ func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 
 func _draw_wall_connector_pass(visibility_state:String)->void:
 	for spec in wall_connector_draw_specs(visibility_state):
-		_draw_centered_text(BoldFont,str(spec.glyph),Vector2(spec.center),
-			int(spec.font_size),Color(spec.color))
+		if uses_perspective_projection() and visibility_state=="VISIBLE":
+			_draw_ascii_glow_text(BoldFont,str(spec.glyph),Vector2(spec.center),
+				int(spec.font_size),Color(spec.color),0.16)
+		else:
+			_draw_centered_text(BoldFont,str(spec.glyph),Vector2(spec.center),
+				int(spec.font_size),Color(spec.color))
 
 func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)->void:
 	var kind:=str(motion.get("material_id",""));var center:=rect.get_center()
@@ -2310,8 +2369,12 @@ func _draw_wall_torches()->void:
 		var font_ratio:=0.54 if uses_perspective_projection() else 0.50
 		_draw_centered_text(BoldFont,str(spec.glyph),
 			center+Vector2(0.8,local_cell*0.10+0.8),maxi(9,int(local_cell*font_ratio)),shadow)
-		_draw_centered_text(BoldFont,str(spec.glyph),
-			center+Vector2(0,local_cell*0.10),maxi(9,int(local_cell*font_ratio)),color)
+		if uses_perspective_projection():
+			_draw_ascii_glow_text(BoldFont,str(spec.glyph),
+				center+Vector2(0,local_cell*0.10),maxi(9,int(local_cell*font_ratio)),color,0.34)
+		else:
+			_draw_centered_text(BoldFont,str(spec.glyph),
+				center+Vector2(0,local_cell*0.10),maxi(9,int(local_cell*font_ratio)),color)
 
 func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 		light:Dictionary,occupied:bool,position:Vector2i=Vector2i(-1,-1))->void:
@@ -2380,9 +2443,13 @@ func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 		var motion:=MaterialGrammar.material_motion_spec(motion_position,"fire","VISIBLE",
 			Time.get_ticks_msec(),_torch_animation_enabled())
 		var fire_ink:=Color(1.0,0.70,0.25,0.92*float(motion.get("opacity",1.0)))
-		_draw_centered_text(BoldFont,"^",center-Vector2(0,cell*0.02) \
-			+Vector2(motion.offset_ratio)*cell,
-			maxi(10,int(cell*0.82)),fire_ink)
+		var flame_center:=center-Vector2(0,cell*0.02)+Vector2(motion.offset_ratio)*cell
+		if uses_perspective_projection():
+			_draw_ascii_glow_text(BoldFont,"^",flame_center,
+				maxi(10,int(cell*0.82)),fire_ink,0.34)
+		else:
+			_draw_centered_text(BoldFont,"^",flame_center,
+				maxi(10,int(cell*0.82)),fire_ink)
 
 func _draw_fov_edge_haze()->void:
 	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)
@@ -2523,7 +2590,11 @@ func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
 	if not bool(spec.visible):return
 	var center:=rect.get_center();var font:Font=BoldFont
 	var font_size:=maxi(11,int(floor(rect.size.x*0.76)))
-	_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
+	if uses_perspective_projection():
+		_draw_ascii_glow_text(font,str(spec.glyph),center,font_size,
+			Color(str(spec.color_hex)),0.28)
+	else:
+		_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
 	var spec:Dictionary=AsciiStyleScript.hazard_spec(row);var font:Font=BoldFont
@@ -2540,6 +2611,19 @@ func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
 func _draw_centered_text(font:Font,value:String,center:Vector2,font_size:int,color:Color)->void:
 	var extent:=font.get_string_size(value,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
 	draw_string(font,center+Vector2(-extent.x*0.5,extent.y*0.38),value,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
+
+func _draw_ascii_glow_text(font:Font,value:String,center:Vector2,font_size:int,
+		color:Color,strength:float)->void:
+	var glow_strength:=clampf(strength,0.0,1.0)
+	if glow_strength>0.0 and color.a>0.0:
+		var glow:=color
+		glow.a*=0.30*glow_strength
+		var radius:=clampf(float(font_size)*0.10,1.0,2.2)
+		for offset in [Vector2(-radius,0),Vector2(radius,0),Vector2(0,-radius),
+				Vector2(0,radius),Vector2(-radius,-radius),Vector2(radius,-radius),
+				Vector2(-radius,radius),Vector2(radius,radius)]:
+			_draw_centered_text(font,value,center+offset,font_size,glow)
+	_draw_centered_text(font,value,center,font_size,color)
 
 func _visual_color(value:String,opacity:float)->Color:
 	var color:=Color(value);color.a*=clampf(opacity,0.0,1.0);return color
@@ -2584,7 +2668,59 @@ func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
 	if not ghost and int(actor.get("entity_id",-1))==_hero_camera_actor_id:
 		bounds.position-=camera_offset
 	var style:=actor_draw_spec(actor,ghost)
+	if uses_perspective_projection():
+		_draw_asciident_actor(_asciident_actor_render_spec(actor,bounds,style),style)
+		return
 	AsciiPortraitScript.draw_figure(self,_actor_font(style),bounds,style,true,true)
+
+func _asciident_actor_render_spec(actor:Dictionary,bounds:Rect2,style:Dictionary)->Dictionary:
+	var composition:=AsciiStyleScript.asciident_actor_composition(actor)
+	if not bool(composition.get("visible",false)) or bounds.size.x<=0.0:
+		return {"visible":false}.duplicate(true)
+	var row_count:=maxi(1,int(composition.get("row_count",1)))
+	var column_count:=maxi(1,int(composition.get("column_count",1)))
+	var font_size:=maxi(7,int(floor(minf(bounds.size.x/(float(column_count)*0.56),
+		bounds.size.y/(float(row_count)*0.90)))))
+	font_size=mini(font_size,18)
+	var line_step:=float(font_size)*0.82
+	var center:=Vector2(bounds.get_center().x,bounds.end.y-
+		line_step*float(row_count-1)*0.5-maxf(1.0,font_size*0.12))
+	var opacity:=float(style.get("opacity",1.0))
+	var main_color:=Color(str(style.get("color_hex","#ffffff")));main_color.a*=opacity
+	var highlight_color:=Color(str(style.get("highlight_hex","#ffffff")));highlight_color.a*=opacity
+	var weapon_center:=center+Vector2(bounds.size.x*0.60,-line_step*0.10)
+	var facing:=AsciiStyleScript.normalized_facing(style.get("facing",[0,1]))
+	if facing.x<0:weapon_center.x=center.x-bounds.size.x*0.60
+	return composition.merged({"visible":true,"bounds":bounds,"center":center,
+		"font_size":font_size,"line_step":line_step,"main_color":main_color,
+		"highlight_color":highlight_color,"weapon_center":weapon_center,
+		"weapon_font_size":maxi(7,font_size-1),"opacity":opacity,
+		"fov_safe":true,"changes_mapping":false},true).duplicate(true)
+
+func _draw_asciident_actor(spec:Dictionary,style:Dictionary)->void:
+	if not bool(spec.get("visible",false)):return
+	var rows:Array=spec.get("rows",[])
+	var line_step:=float(spec.line_step)
+	var first_y:=Vector2(spec.center).y-line_step*float(maxi(0,rows.size()-1))*0.5
+	for index in range(rows.size()):
+		var row:Dictionary=rows[index]
+		var color:Color=spec.highlight_color if str(row.get("tone","PRIMARY"))=="HIGHLIGHT" \
+			else spec.main_color
+		_draw_ascii_glow_text(BoldFont,str(row.get("text","")),
+			Vector2(Vector2(spec.center).x,first_y+line_step*float(index)),
+			int(spec.font_size),color,float(spec.get("glow_strength",0.0)))
+	if bool(spec.get("weapon_visible",false)):
+		var weapon_color:=Color(str(spec.get("weapon_hex","#e8e8df")))
+		weapon_color.a*=float(spec.get("opacity",1.0))
+		_draw_ascii_glow_text(BoldFont,str(spec.get("weapon_glyph","")),
+			Vector2(spec.weapon_center),int(spec.weapon_font_size),weapon_color,0.22)
+	if bool(style.get("guarded",false)):
+		_draw_ascii_glow_text(BoldFont,"=",Vector2(spec.center)-Vector2(0,line_step*1.72),
+			maxi(7,int(spec.font_size)-1),Color("#74d5ff"),0.18)
+	if bool(style.get("bleeding",false)):
+		_draw_ascii_glow_text(BoldFont,"!",Vector2(spec.center)+Vector2(
+			float(spec.font_size)*1.25,-line_step*0.65),maxi(7,int(spec.font_size)-1),
+			Color("#ff5364"),0.24)
 
 func _actor_font(style:Dictionary)->Font:
 	return BoldFont if str(style.get("glyph_font_weight","REGULAR"))=="BOLD" \
@@ -2623,8 +2759,8 @@ func _actor_figure_bounds(actor:Dictionary,cell:float,ghost:bool,
 	# bounds used by the typographic portrait renderer.
 	var projected_rect:=world_cell_rect(position)
 	var projected_cell:=maxf(8.0,projected_rect.size.x*1.42)
-	var figure_height:=clampf(projected_cell*1.56,24.0,58.0)
-	var figure_width:=projected_cell*0.72
+	var figure_height:=clampf(projected_cell*1.78,27.0,64.0)
+	var figure_width:=projected_cell*0.94
 	var foot_y:=visual_center.y+maxf(3.0,projected_rect.size.y*0.46)
 	var bounds:=Rect2(Vector2(visual_center.x-figure_width*0.5,
 		foot_y-figure_height-ACTOR_WORLD_FIGURE_BOTTOM_INSET_PX),

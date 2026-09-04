@@ -65,7 +65,7 @@ const ACTOR_MOTION_MAX_MS := 180
 const CAMERA_PITCH_DEGREES := 30.0
 const CAMERA_PERSPECTIVE := 0.78
 const CAMERA_DISTANCE_CELLS := 22.0
-const CAMERA_DEPTH_STRETCH := 1.65
+const CAMERA_DEPTH_STRETCH := 2.10
 const CAMERA_NEAR_WIDTH_RATIO := 0.90
 const WALL_HEIGHT_CELL_RATIO := 0.72
 
@@ -202,7 +202,7 @@ static func quantized_light_spec(position:Vector2i,hero_position:Vector2i,
 			"foreground_multiplier":0.0,"saturation":0.0}.duplicate(true)
 	if state=="MEMORY":
 		return {"band":"MEMORY","distance":-1,"background_multiplier":0.74,
-			"foreground_multiplier":0.72,"saturation":0.14}.duplicate(true)
+			"foreground_multiplier":0.72,"saturation":0.0}.duplicate(true)
 	if hero_position==Vector2i(-1,-1):
 		return {"band":"UNANCHORED","distance":-1,"background_multiplier":1.0,
 			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)

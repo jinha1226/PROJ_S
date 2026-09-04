@@ -6,6 +6,7 @@ const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const Style=preload("res://playtest/ascii_visual_style.gd")
 
 func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
@@ -1040,7 +1041,8 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 		var padding_position:Vector2i=sandbox.grid.view_origin
 		var padding:Dictionary=sandbox.grid.void_padding_draw_spec(padding_position)
 		var padding_rect:Rect2=padding.rect
-		check(bool(padding.visible) and str(padding.color_hex)=="#010203" \
+		check(bool(padding.visible) and str(padding.color_hex)==str(
+			Style.diorama_palette_spec().void_hex) \
 			and not bool(padding.accepts_input),"%s edge padding is explicit void"%viewport_size)
 		check_eq(sandbox.grid.pixel_to_world_cell(padding_rect.get_center()),
 			Vector2i(-1,-1),"%s padding pixel rejects world mapping"%viewport_size)
