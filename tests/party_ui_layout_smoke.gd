@@ -134,7 +134,8 @@ func _auto_showcase_and_combat_flow(viewport_size:Vector2)->void:
 	if str(main.session.party_status().get("scenario_id",""))!="SOLO_COMBAT_V1" \
 			or not main.auto_orchestration_enabled:
 		failures.append("%s main sandbox did not start SOLO auto mode"%viewport_size)
-	if main.session.party_status().party_member_ids.size()!=1 or main.duel_lab_button.visible \
+	if main.session.party_status().party_member_ids.size()!=1 \
+			or main.find_child("DuelDecisionLabButton",true,false)!=null \
 			or main.find_child("RosterManagement",true,false)!=null:
 		failures.append("%s main SOLO product leaked party/LAB management"%viewport_size)
 	if int(main.session.personality_seed)!=Session.new_expedition_personality_seed(123456):

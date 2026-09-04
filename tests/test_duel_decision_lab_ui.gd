@@ -330,13 +330,10 @@ func test_real_duel_facade_integrates_without_leaking_action_ids_to_ui() -> bool
 	return finish()
 
 
-func test_main_party_scene_has_clear_five_actor_lab_entry() -> bool:
+func test_main_party_scene_has_no_five_actor_lab_entry() -> bool:
 	var sandbox = PartyScene.instantiate()
 	sandbox.initialize_for_headless_test(PartySession.new(), false)
-	check(sandbox.duel_lab_button != null and sandbox.duel_lab_button.text == "5인 관찰 실험",
-		"main playtest exposes decision LAB")
-	check_eq(sandbox.duel_lab_button.get_parent(), sandbox.phase_row,
-		"entry shares existing banner row instead of growing portrait layout")
-	check_eq(sandbox.duel_lab_button.custom_minimum_size.y, 44.0, "entry keeps mobile touch target")
+	check(sandbox.find_child("DuelDecisionLabButton",true,false)==null,
+		"main product scene does not construct the decision LAB entry")
 	sandbox.free()
 	return finish()

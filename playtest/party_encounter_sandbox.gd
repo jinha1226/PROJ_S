@@ -21,11 +21,7 @@ const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
-const ModularAssets=preload("res://playtest/modular_topdown_assets.gd")
 const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
-const DUEL_DECISION_LAB_SCENE_PATH="res://playtest/duel_decision_lab.tscn"
-const NPC_EXPEDITION_LAB_SCENE_PATH="res://playtest/npc_expedition_lab.tscn"
-const ASCII_3D_LAB_SCENE=preload("res://playtest/low_poly_3d_lab.tscn")
 const FONT_AUX:=14
 const FONT_BODY:=16
 const FONT_KEY:=20
@@ -48,8 +44,6 @@ const PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:=1500
 var session
 var grid
 var grid_zoom_controls:HBoxContainer
-var grid_graphics_mode_button:Button
-var grid_3d_model_button:Button
 var grid_zoom_out_button:Button
 var grid_zoom_in_button:Button
 var root_layout:VBoxContainer
@@ -64,10 +58,7 @@ var minimap_frame
 var recent_event_label:Label
 var record_button:Button
 var hero_detail_button:Button
-var ascii_3d_lab_button:Button
-var ascii_3d_lab_view:Control
 var top_hud_actions:HBoxContainer
-var duel_lab_button:Button
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -101,7 +92,6 @@ var record_close_button:Button
 var species_picker_modal:Control
 var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
-var npc_expedition_lab_button:Button
 var selected_member_id:=-1
 var selected_target_id:=-1
 var notice_text:=""
@@ -747,12 +737,6 @@ func _build_ui()->void:
 	hero_detail_button.clip_text=true;hero_detail_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
-	ascii_3d_lab_button=Button.new();ascii_3d_lab_button.name="Ascii3DLabButton";ascii_3d_lab_button.text="[3D]"
-	ascii_3d_lab_button.custom_minimum_size=Vector2(44,44);ascii_3d_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND);ascii_3d_lab_button.tooltip_text="저장과 무관한 저폴리 3D 시각 실험"
-	ascii_3d_lab_button.clip_text=true;ascii_3d_lab_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	ascii_3d_lab_button.pressed.connect(_open_ascii_3d_lab);top_hud_actions.add_child(ascii_3d_lab_button)
-	AsciiFrameScript.apply_rail_button(ascii_3d_lab_button,AsciiFrameScript.BRASS)
-	ascii_3d_lab_button.visible=false
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
@@ -805,7 +789,6 @@ func _build_ui()->void:
 	_build_map_overlay()
 	_build_record_modal()
 	_build_species_picker()
-	_build_duel_decision_lab_entry()
 	resized.connect(_layout_floating_surfaces)
 
 func _build_bottom_navigation()->void:
@@ -817,11 +800,6 @@ func _build_bottom_navigation()->void:
 	skill_nav_button=_add_nav_button("[숙련]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
 	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
 	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
-	_apply_generated_button_icon(map_nav_button,"map")
-	_apply_generated_button_icon(person_nav_button,"person")
-	_apply_generated_button_icon(skill_nav_button,"skill")
-	_apply_generated_button_icon(equipment_nav_button,"inventory")
-	_apply_generated_button_icon(history_nav_button,"journal")
 
 func _add_nav_button(label:String,node_name:String,callback:Callable)->Button:
 	var button:=Button.new();button.name=node_name;button.text=label
@@ -831,13 +809,6 @@ func _add_nav_button(label:String,node_name:String,callback:Callable)->Button:
 	button.pressed.connect(callback);bottom_navigation.add_child(button)
 	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN)
 	return button
-
-func _apply_generated_button_icon(button:Button,icon_id:String)->void:
-	if button==null:return
-	var texture:Texture2D=ModularAssets.ui_texture(icon_id)
-	if texture==null:return
-	button.icon=texture;button.add_theme_constant_override("icon_max_width",20)
-	button.expand_icon=true
 
 func _build_map_overlay()->void:
 	map_overlay=MapOverlayScript.new();map_overlay.name="PartyMapOverlay";map_overlay.z_index=60
@@ -857,12 +828,6 @@ func _build_record_modal()->void:
 	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
 	var title:=Label.new();title.text="주요 기록";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size",FONT_SECTION);title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
-	npc_expedition_lab_button=Button.new();npc_expedition_lab_button.name="NpcExpeditionLabButton"
-	npc_expedition_lab_button.text="[NPC 관찰]";npc_expedition_lab_button.tooltip_text="NPC 한 명의 원정 주기 관찰"
-	npc_expedition_lab_button.custom_minimum_size=Vector2(92,TOUCH_TARGET)
-	npc_expedition_lab_button.add_theme_font_size_override("font_size",FONT_COMMAND)
-	npc_expedition_lab_button.pressed.connect(_open_npc_expedition_lab);header.add_child(npc_expedition_lab_button)
-	AsciiFrameScript.apply_rail_button(npc_expedition_lab_button,AsciiFrameScript.JADE)
 	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="[X]"
 	record_close_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	record_close_button.pressed.connect(_close_record_modal.bind("BUTTON"));header.add_child(record_close_button)
@@ -948,20 +913,6 @@ func _position_build_label()->void:
 			bottom_clearance=maxf(bottom_clearance,size.y-action_top+4.0)
 	build_label.offset_left=-110.0;build_label.offset_right=-6.0
 	build_label.offset_bottom=-bottom_clearance;build_label.offset_top=-bottom_clearance-16.0
-
-func _build_duel_decision_lab_entry()->void:
-	duel_lab_button=Button.new();duel_lab_button.name="DuelDecisionLabButton"
-	duel_lab_button.text="5인 관찰 실험";duel_lab_button.tooltip_text="다섯 캐릭터 판단 관찰 LAB 열기"
-	duel_lab_button.add_theme_font_size_override("font_size",FONT_BODY)
-	duel_lab_button.custom_minimum_size=Vector2(116,44)
-	duel_lab_button.pressed.connect(_open_duel_decision_lab);duel_lab_button.visible=false
-	phase_row.add_child(duel_lab_button)
-
-func _open_duel_decision_lab()->void:
-	if is_inside_tree():get_tree().change_scene_to_file(DUEL_DECISION_LAB_SCENE_PATH)
-
-func _open_npc_expedition_lab()->void:
-	if is_inside_tree():get_tree().change_scene_to_file(NPC_EXPEDITION_LAB_SCENE_PATH)
 
 func _build_tile_popover()->void:
 	tile_popover=PanelContainer.new();tile_popover.name="TileRiskPopover";tile_popover.visible=false
@@ -1252,27 +1203,6 @@ func _build_product_zoom_controls()->void:
 	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
-	grid_graphics_mode_button=Button.new();grid_graphics_mode_button.name="GraphicsModeToggle"
-	grid_graphics_mode_button.text="[2D→2.5D]";grid_graphics_mode_button.tooltip_text=\
-		"2D 컬러 시야 / 흑백 기억 · 눌러서 ASCIIDENT 2.5D로 변경"
-	grid_graphics_mode_button.custom_minimum_size=Vector2(88,TOUCH_TARGET)
-	grid_graphics_mode_button.mouse_filter=Control.MOUSE_FILTER_STOP
-	grid_graphics_mode_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_graphics_mode_button.gui_input.connect(
-		_on_product_zoom_button_gui_input.bind("GraphicsModeToggle"))
-	grid_zoom_controls.add_child(grid_graphics_mode_button)
-	AsciiFrameScript.apply_rail_button(grid_graphics_mode_button,AsciiFrameScript.BRASS)
-	grid_graphics_mode_button.visible=false
-	grid_3d_model_button=Button.new();grid_3d_model_button.name="Open3DModelLab"
-	grid_3d_model_button.text="[2D]";grid_3d_model_button.tooltip_text="2D 탑뷰 관절 캐릭터 테스트 열기"
-	grid_3d_model_button.custom_minimum_size=Vector2(48,TOUCH_TARGET)
-	grid_3d_model_button.mouse_filter=Control.MOUSE_FILTER_STOP
-	grid_3d_model_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_3d_model_button.gui_input.connect(
-		_on_product_zoom_button_gui_input.bind("Open3DModelLab"))
-	grid_zoom_controls.add_child(grid_3d_model_button)
-	AsciiFrameScript.apply_rail_button(grid_3d_model_button,AsciiFrameScript.BRASS)
-	grid_3d_model_button.visible=false
 	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
 	grid_zoom_out_button.text="[-]";grid_zoom_out_button.tooltip_text="시야 축소"
 	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
@@ -1282,7 +1212,6 @@ func _build_product_zoom_controls()->void:
 		_on_product_zoom_button_gui_input.bind("ProductZoomOut"))
 	grid_zoom_controls.add_child(grid_zoom_out_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_out_button,AsciiFrameScript.CYAN)
-	_apply_generated_button_icon(grid_zoom_out_button,"zoom")
 	grid_zoom_in_button=Button.new();grid_zoom_in_button.name="ProductZoomIn"
 	grid_zoom_in_button.text="[+]";grid_zoom_in_button.tooltip_text="시야 확대"
 	grid_zoom_in_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
@@ -1292,7 +1221,6 @@ func _build_product_zoom_controls()->void:
 		_on_product_zoom_button_gui_input.bind("ProductZoomIn"))
 	grid_zoom_controls.add_child(grid_zoom_in_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_in_button,AsciiFrameScript.CYAN)
-	_apply_generated_button_icon(grid_zoom_in_button,"zoom")
 
 func _build_nearby_npc_card()->void:
 	nearby_npc_panel=PanelContainer.new();nearby_npc_panel.name="NearbyNpcCard"
@@ -1515,7 +1443,6 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
-	if duel_lab_button!=null:duel_lab_button.visible=not _is_solo_product_session()
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
 		status=session.party_status()
@@ -1558,7 +1485,6 @@ func _refresh()->void:
 	phase_panel.visible=not product_hud
 	minimap_frame.visible=false;minimap.visible=false;recent_event_label.visible=false
 	top_hud_actions.visible=false
-	ascii_3d_lab_button.visible=false
 	event_surface.visible=product_hud;bottom_navigation.visible=product_hud
 	hud_bottom_flex.visible=product_hud
 	info_scroll.visible=not product_hud
@@ -1942,25 +1868,6 @@ func _on_record_backdrop_input(event:InputEvent)->void:
 	elif event is InputEventMouseButton and event.pressed \
 			and event.button_index==MOUSE_BUTTON_LEFT:_close_record_modal("OUTSIDE")
 
-func _open_ascii_3d_lab()->void:
-	if ascii_3d_lab_view!=null and is_instance_valid(ascii_3d_lab_view):return
-	if auto_orchestration_enabled:_cancel_auto_pending(true)
-	_cancel_product_auto_explore("auto_explore_modal",false)
-	_cancel_route_for_user_interruption()
-	grid.cancel_pointer_gesture();grid.modal_open=true
-	ascii_3d_lab_view=ASCII_3D_LAB_SCENE.instantiate();ascii_3d_lab_view.name="Ascii3DLabOverlay"
-	ascii_3d_lab_view.z_index=100;add_child(ascii_3d_lab_view)
-	ascii_3d_lab_view.close_requested.connect(_close_ascii_3d_lab)
-	_sync_product_zoom_controls(_is_solo_product_session())
-
-func _close_ascii_3d_lab()->void:
-	if ascii_3d_lab_view==null or not is_instance_valid(ascii_3d_lab_view):return
-	ascii_3d_lab_view.queue_free();ascii_3d_lab_view=null
-	grid.modal_open=false
-	_sync_product_zoom_controls(_is_solo_product_session())
-	route_paused_by_modal=false
-	if auto_orchestration_enabled:_request_refresh()
-
 func _update_recent_event(history:Dictionary,status:Dictionary)->void:
 	var latest:=""
 	var groups:Variant=history.get("groups",[])
@@ -2178,15 +2085,6 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	seal.add_theme_font_size_override("font_size",28 if count==1 else (24 if count==2 else 20))
 	seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED)
 	seal.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(seal)
-	var actor_sprite:=TextureRect.new();actor_sprite.name="ActorSpriteSeal"
-	actor_sprite.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	actor_sprite.texture=ModularAssets.atlas_texture(
-		ModularAssets.body_texture(str(row.get("species_id","human"))),"south")
-	actor_sprite.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
-	actor_sprite.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	actor_sprite.mouse_filter=Control.MOUSE_FILTER_IGNORE;seal.add_child(actor_sprite)
-	var hidden_ink:=seal.get_theme_color("font_color");hidden_ink.a=0.0
-	seal.add_theme_color_override("font_color",hidden_ink)
 	var stack:=VBoxContainer.new();stack.name="DossierText";stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	stack.clip_contents=true
 	stack.add_theme_constant_override("separation",0);stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(stack)
@@ -2638,11 +2536,9 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	primary.add_theme_constant_override("h_separation",gap);contextual.add_child(primary)
 	product_attack_button=_add_product_context_button(primary,"[공격]","ProductAttack",
 		_on_product_attack,target)
-	_apply_generated_button_icon(product_attack_button,"attack")
 	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 접근하거나 공격합니다."
 	product_pickup_button=_add_product_context_button(primary,"[줍기]","ProductPickup",
 		_on_product_pickup,target)
-	_apply_generated_button_icon(product_pickup_button,"pickup")
 	product_pickup_button.tooltip_text="현재 칸에 떨어진 아이템을 가방에 줍습니다."
 	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
 	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -2650,14 +2546,11 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	contextual.add_child(secondary)
 	product_auto_button=_add_product_context_button(secondary,"[AUTO]","ProductAuto",
 		_on_product_auto,target)
-	_apply_generated_button_icon(product_auto_button,"auto_explore")
 	product_interact_button=_add_product_context_button(secondary,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
-	_apply_generated_button_icon(product_interact_button,"interact")
 	product_wait_guard_button=_add_product_context_button(secondary,
 		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
-	_apply_generated_button_icon(product_wait_guard_button,"wait")
 	product_execute_button=_add_product_context_button(secondary,"[EXECUTE]","ProductExecute",
 		_on_product_execute,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
@@ -5040,8 +4933,7 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 	var front_surface_open:bool=grid!=null and grid.modal_open \
 		or member_detail_modal!=null and member_detail_modal.visible \
 		or record_modal!=null and record_modal.visible \
-		or map_overlay!=null and map_overlay.visible \
-		or ascii_3d_lab_view!=null and is_instance_valid(ascii_3d_lab_view)
+		or map_overlay!=null and map_overlay.visible
 	var show:bool=product_hud and grid!=null and grid.visible and not front_surface_open
 	grid_zoom_controls.visible=show
 	if not show:
@@ -5053,10 +4945,6 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 		zoom_index=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	grid_zoom_out_button.disabled=zoom_index>=PRODUCT_ZOOM_CELL_COUNTS.size()-1
 	grid_zoom_in_button.disabled=zoom_index<=0
-	# The shipping surface is pure 2D. Legacy visual labs remain source-only test
-	# fixtures and are intentionally absent from the product controls.
-	grid_graphics_mode_button.visible=false
-	grid_3d_model_button.visible=false
 	var out_count:=int(PRODUCT_ZOOM_CELL_COUNTS[-1]) if grid_zoom_out_button.disabled \
 		else int(PRODUCT_ZOOM_CELL_COUNTS[zoom_index+1])
 	var in_count:=int(PRODUCT_ZOOM_CELL_COUNTS[0]) if grid_zoom_in_button.disabled \
@@ -5071,7 +4959,7 @@ func _product_zoom_scale(cell_count:int)->float:
 
 func _product_zoom_control_has_point(global_position:Vector2)->bool:
 	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false
-	for button in [grid_graphics_mode_button,grid_3d_model_button,grid_zoom_out_button,grid_zoom_in_button]:
+	for button in [grid_zoom_out_button,grid_zoom_in_button]:
 		if button!=null and button.visible and button.get_global_rect().has_point(global_position):
 			return true
 	return false
@@ -5086,15 +4974,7 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
 			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
 		_product_zoom_touch_index=event.index
-		# Hidden legacy controls can retain a stale layout rect. They must not steal
-		# a touch from the visible zoom buttons that replaced them in the product HUD.
-		if grid_graphics_mode_button.visible \
-				and grid_graphics_mode_button.get_global_rect().has_point(event.position):
-			_product_zoom_touch_step=0
-		elif grid_3d_model_button.visible \
-				and grid_3d_model_button.get_global_rect().has_point(event.position):
-			_product_zoom_touch_step=2
-		elif grid_zoom_out_button.visible \
+		if grid_zoom_out_button.visible \
 				and grid_zoom_out_button.get_global_rect().has_point(event.position):
 			_product_zoom_touch_step=1
 		else:
@@ -5102,8 +4982,7 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 		get_viewport().set_input_as_handled();return true
 	if event.index!=_product_zoom_touch_index:return false
 	var step:=_product_zoom_touch_step
-	var matching_button:=grid_graphics_mode_button if step==0 else (
-		grid_3d_model_button if step==2 else (grid_zoom_out_button if step>0 else grid_zoom_in_button))
+	var matching_button:=grid_zoom_out_button if step>0 else grid_zoom_in_button
 	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
 		and not matching_button.disabled
 	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
@@ -5115,9 +4994,8 @@ func _handle_product_zoom_touch(event:InputEvent)->bool:
 	return true
 
 func _on_product_zoom_button_gui_input(event:InputEvent,control_name:String)->void:
-	# ScreenTouch is handled above. Only real mouse input enters here, while a
-	# browser's compatibility mouse event is consumed without a second zoom or
-	# graphics-mode toggle.
+	# ScreenTouch is handled above. Only real mouse input enters here; the
+	# browser's compatibility mouse event is consumed without a second zoom.
 	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
 	if event.device==InputEvent.DEVICE_ID_EMULATION \
 			or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
@@ -5130,18 +5008,8 @@ func _on_product_zoom_button_gui_input(event:InputEvent,control_name:String)->vo
 
 func _activate_product_zoom_control(control_name:String)->void:
 	match control_name:
-		"GraphicsModeToggle":_on_product_graphics_mode_toggle()
-		"Open3DModelLab":_open_ascii_3d_lab()
 		"ProductZoomOut":_on_product_zoom_step(1)
 		"ProductZoomIn":_on_product_zoom_step(-1)
-
-func _on_product_graphics_mode_toggle()->void:
-	if not _is_solo_product_session() or grid==null:return
-	var next_mode:=GridScript.GRAPHICS_MODE_DIORAMA_2_5D \
-		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_FLAT_2D \
-		else GridScript.GRAPHICS_MODE_FLAT_2D
-	if grid.set_graphics_mode(next_mode):
-		_sync_product_zoom_controls(true)
 
 func _on_product_zoom_step(index_delta:int)->void:
 	if not _is_solo_product_session():return

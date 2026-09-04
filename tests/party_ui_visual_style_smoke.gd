@@ -58,7 +58,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.visible_cell_count==19,
 		"%s product camera did not use the requested 19-cell default"%viewport_size)
 	_check(not sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==0.0 \
-		and not sandbox.top_hud_actions.visible and not sandbox.ascii_3d_lab_button.visible,
+		and not sandbox.top_hud_actions.visible \
+		and sandbox.find_child("Ascii3DLabButton",true,false)==null,
 		"%s obsolete product top rail remains visible"%viewport_size)
 	if viewport_size.x>=450.0:
 		_check(sandbox.grid.size.is_equal_approx(Vector2(450,450)),

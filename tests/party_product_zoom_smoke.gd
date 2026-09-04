@@ -36,8 +36,8 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		"%s default product zoom is not derived from the 15-cell reference"%viewport_size)
 	_check(sandbox.grid_zoom_controls.is_visible_in_tree(),
 		"%s product zoom controls are hidden"%viewport_size)
-	_check(not sandbox.grid_graphics_mode_button.visible \
-		and not sandbox.grid_3d_model_button.visible \
+	_check(sandbox.find_child("GraphicsModeToggle",true,false)==null \
+		and sandbox.find_child("Open3DModelLab",true,false)==null \
 		and sandbox.grid.graphics_mode_id()=="FLAT_2D",
 		"%s product surface exposes a legacy 2.5D/3D control"%viewport_size)
 	var map_rect:Rect2=sandbox.grid.get_global_rect()

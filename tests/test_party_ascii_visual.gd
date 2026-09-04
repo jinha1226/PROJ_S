@@ -5,7 +5,6 @@ const Portrait = preload("res://playtest/ascii_actor_portrait.gd")
 const Grid = preload("res://playtest/party_grid_view.gd")
 const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
-const ModularAssets = preload("res://playtest/modular_topdown_assets.gd")
 
 
 func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_kinds()->bool:
@@ -358,13 +357,14 @@ func test_asciident_armor_walk_and_melee_have_sampled_ascii_limbs()->bool:
 			"weapon_id":"HAND_AXE","armor_definition_id":"ARMOR_PADDED"}}
 	var idle_style:Dictionary=Style.actor_spec(actor)
 	var idle:Dictionary=Style.asciident_actor_composition(actor,idle_style)
-	check_eq([idle.column_count,idle.rows[1].text,idle.rows[2].text],
-		[5,"/[@]\\"," / \\ "],"armor keeps two explicit arms and separated idle legs")
+	check_eq([idle.column_count,idle.rows[0].text,idle.rows[1].text,idle.rows[2].text],
+		[5," (>) "," [@] ","  /\\ "],
+		"SD actor uses a large directional head, broad body, and short joined legs")
 	var left_step:=idle_style.duplicate(true);left_step.stance="MOVING";left_step.stride_sign=1
 	var right_step:=idle_style.duplicate(true);right_step.stance="MOVING";right_step.stride_sign=-1
 	check_eq([Style.asciident_actor_composition(actor,left_step).rows[2].text,
 		Style.asciident_actor_composition(actor,right_step).rows[2].text],
-		[" / | "," | \\ "],"walking alternates compact within-body ASCII leg poses")
+		["  /| ","  |\\ "],"walking alternates short joined ASCII leg poses")
 
 	var cells:=_visible_cells()
 	for cell in cells:
@@ -381,8 +381,8 @@ func test_asciident_armor_walk_and_melee_have_sampled_ascii_limbs()->bool:
 	var windup:Dictionary=grid.actor_glyph_draw_spec(77,started+12)
 	var strike:Dictionary=grid.actor_glyph_draw_spec(77,started+68)
 	check(windup.ascii_composition.attack_active \
-			and windup.ascii_composition.rows[1].text=="\\[@]/" \
-			and strike.ascii_composition.rows[1].text=="/[@]-",
+			and windup.ascii_composition.rows[1].text=="/[@]\\" \
+			and strike.ascii_composition.rows[1].text==" [@]-",
 		"melee visibly changes armored arms from wind-up to forward strike")
 	check(strike.weapon_swing.active \
 			and Vector2(strike.ascii_composition.weapon_center).x \
@@ -440,21 +440,15 @@ func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct(
 
 func test_product_floor_draw_paths_have_no_image_texture_or_tile_atlas() -> bool:
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
-	var asset_source:=FileAccess.get_file_as_string("res://playtest/modular_topdown_assets.gd")
-	check(not grid_source.is_empty() and not asset_source.is_empty(),
-		"pure 2D product renderer and registry sources are readable")
-	check(grid_source.contains("_draw_modular_topdown") \
-			and grid_source.contains("draw_texture_rect_region") \
-			and asset_source.contains("BODY_ATLASES") \
-			and asset_source.contains("ITEM_ATLASES"),
-		"product floor and paper doll use generated 2D texture atlases")
-	for forbidden in ["Node3D","MeshInstance3D","Skeleton3D","Camera3D"]:
-		check(not grid_source.contains(forbidden) and not asset_source.contains(forbidden),
-			"shipping grid remains pure 2D without %s"%forbidden)
-	check_eq(ModularAssets.direction_region("south"),Rect2(0,0,512,512),
-		"south is the first atlas cell")
-	check_eq(ModularAssets.direction_region("east"),Rect2(512,512,512,512),
-		"east is the fourth atlas cell")
+	check(not grid_source.is_empty(),"ASCII product renderer source is readable")
+	check(grid_source.contains("_draw_terrain_glyph_pass") \
+			and grid_source.contains("_draw_topdown_ascii_actor") \
+			and grid_source.contains("_draw_ascii_glow_text"),
+		"product floor and actors use the restored ASCII draw passes")
+	for forbidden in ["ModularAssets","_draw_modular","draw_texture","Texture2D",
+			"TextureRect","Node3D","MeshInstance3D","Skeleton3D","Camera3D"]:
+		check(not grid_source.contains(forbidden),
+			"shipping grid contains no image or 3D dependency: %s"%forbidden)
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
 	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
@@ -1394,16 +1388,17 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	check(absf(float(sample75.eased_progress)-0.875)<0.0001,
 		"75ms cubic ease-out reaches deterministic 87.5 percent")
 	check_eq(sample150.world_position,Vector2(8,7),"150ms motion ends at target")
-	var walk_pose:Dictionary=grid.modular_walk_pose_spec(77,started+38)
-	var settled_pose:Dictionary=grid.modular_walk_pose_spec(77,started+150)
-	check(bool(walk_pose.active) and float(walk_pose.body_bob_ratio)<0.0 \
-			and float(walk_pose.left_leg_offset_ratio)>0.04 \
-			and float(walk_pose.right_leg_offset_ratio)<-0.04,
-		"pure 2D modular walk pose counter-moves the legs and lifts the torso")
-	check(not bool(settled_pose.active) \
-			and float(settled_pose.left_leg_offset_ratio)==0.0 \
-			and float(settled_pose.right_leg_offset_ratio)==0.0,
-		"modular legs return exactly to their authored idle silhouette")
+	var actor:Dictionary=grid._actor_by_id(77)
+	var walk_style:Dictionary=grid.actor_draw_spec(actor,false,started+38)
+	var walk_pose:Dictionary=Style.asciident_actor_composition(actor,walk_style)
+	grid._actor_motions.erase(77)
+	var settled_style:Dictionary=grid.actor_draw_spec(actor,false,started+150)
+	var settled_pose:Dictionary=Style.asciident_actor_composition(actor,settled_style)
+	check(str(walk_style.stance)=="MOVING" \
+			and str(walk_pose.rows[2].text) in ["  /| ","  |\\ "],
+		"pure 2D ASCII walk pose alternates its compact legs")
+	check(str(settled_style.stance)=="IDLE" and settled_pose.rows[2].text=="  /\\ ",
+		"ASCII legs return exactly to their compact idle silhouette")
 	check_eq(grid.actor_in_world_cell(Vector2i(8,7)),77,"authoritative hit cell changes immediately")
 	check(grid.actor_hit_rect(77).has_point(grid.world_to_pixel_center(Vector2i(8,7))),
 		"authoritative target center owns hit immediately")
@@ -1415,26 +1410,30 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	grid.free();return finish()
 
 
-func test_modular_actor_persists_last_move_facing_after_walk_settles()->bool:
+func test_ascii_actor_persists_last_move_facing_after_walk_settles()->bool:
 	var grid=Grid.new();grid.size=Vector2(345,345)
 	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
 	var steps:=[
-		[Vector2i(6,7),Vector2i.LEFT,"west"],
-		[Vector2i(6,6),Vector2i.UP,"north"],
-		[Vector2i(7,6),Vector2i.RIGHT,"east"],
-		[Vector2i(7,7),Vector2i.DOWN,"south"],
+		[Vector2i(6,7),Vector2i.LEFT,"west"," (<) "],
+		[Vector2i(6,6),Vector2i.UP,"north"," (^) "],
+		[Vector2i(7,6),Vector2i.RIGHT,"east"," (>) "],
+		[Vector2i(7,7),Vector2i.DOWN,"south"," (v) "],
 	]
 	for row in steps:
 		grid.arm_actor_motion([77],150)
 		grid.set_observation(_actor_observation(row[0],"VISIBLE"))
 		check_eq(grid.actor_last_facing_state().get(77,Vector2i.ZERO),row[1],
 			"one-step movement persists %s facing"%row[2])
+		grid._actor_motions.erase(77)
 		# Re-observing the same logical cell models the settled idle frame. The DTO
 		# has no authored facing, so regression to its RIGHT fallback is detectable.
 		grid.set_observation(_actor_observation(row[0],"VISIBLE"))
 		var persisted:Vector2i=grid.actor_last_facing_state().get(77,Vector2i.ZERO)
-		check_eq(ModularAssets.direction_id({"facing":[persisted.x,persisted.y]}),row[2],
-			"settled modular actor keeps %s instead of returning east"%row[2])
+		var actor:Dictionary=grid._actor_by_id(77)
+		var composition:Dictionary=Style.asciident_actor_composition(actor,
+			grid.actor_draw_spec(actor))
+		check_eq(composition.rows[0].text,row[3],
+			"settled ASCII actor keeps %s instead of returning east"%row[2])
 	grid.free();return finish()
 
 
@@ -1455,9 +1454,9 @@ func test_flat_product_uses_foot_anchored_multirow_ascii_actor_over_2d_ground()-
 			and float(moving.visual_cell_ratio[0])<=1.6 \
 			and float(moving.visual_cell_ratio[1])>=1.3 \
 			and float(moving.visual_cell_ratio[1])<=1.6,
-		"hybrid actor stays within the 1.3-1.6 cell readability envelope")
+		"SD ASCII actor stays within the 1.3-1.6 cell readability envelope")
 	check(Vector2(moving.weapon_center).x<Vector2(moving.center).x \
-			and moving.rows[2].text in [" / | "," | \\ "],
+			and moving.rows[2].text in ["  /| ","  |\\ "],
 		"persisted west facing controls both weapon side and compact walking legs")
 	check_eq(grid.actor_in_world_cell(Vector2i(6,7)),77,
 		"oversized ASCII art keeps one-cell actor authority")
@@ -1481,7 +1480,7 @@ func test_centered_protagonist_keeps_walk_pose_while_camera_tracks_the_step()->b
 	var foot_text:=str(composition.rows[2].text)
 	check(str(moving.get("stance",""))=="MOVING" \
 			and int(moving.get("stride_sign",0))!=0 \
-			and foot_text in [" / | "," | \\ "],
+			and foot_text in ["  /| ","  |\\ "],
 		"centered protagonist exposes compact alternating 2.5D legs during a step")
 	var bounds:Rect2=grid._actor_figure_bounds(actor,grid.cell_size_px(),false,started+45)
 	var centered_x:=grid.world_to_pixel_center(Vector2i(8,7)).x

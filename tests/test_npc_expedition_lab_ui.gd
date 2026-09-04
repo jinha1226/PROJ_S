@@ -83,16 +83,11 @@ func test_playback_speed_changes_timer_only_and_preserves_live_observation() -> 
 	return finish()
 
 
-func test_main_record_panel_exposes_npc_expedition_observer_entry() -> bool:
+func test_main_record_panel_has_no_npc_expedition_observer_entry() -> bool:
 	var sandbox = PartyScene.instantiate()
 	sandbox._build_ui()
-	check(sandbox.npc_expedition_lab_button != null, "main screen creates observer entry")
-	check_eq(sandbox.npc_expedition_lab_button.text, "[NPC 관찰]",
-		"entry states its development purpose")
-	check_eq(sandbox.npc_expedition_lab_button.get_parent(),
-		sandbox.record_close_button.get_parent(), "observer entry lives in the record header")
-	check_eq(sandbox.npc_expedition_lab_button.custom_minimum_size.y, 44.0,
-		"observer entry keeps touch target")
+	check(sandbox.find_child("NpcExpeditionLabButton",true,false)==null,
+		"main product scene does not construct the observer entry")
 	sandbox.free()
 	return finish()
 

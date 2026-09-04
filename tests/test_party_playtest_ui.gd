@@ -913,7 +913,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			[deployed_step,deployed_journal],"%s repeated refresh deploys exactly once"%viewport_size)
 		check(session.is_solo_combat() and session.party_cards().size()==1,
 			"%s solo fixture has one authoritative member dossier"%viewport_size)
-		check(not sandbox.duel_lab_button.visible \
+		check(sandbox.find_child("DuelDecisionLabButton",true,false)==null \
 			and sandbox.find_child("RosterManagement",true,false)==null \
 			and sandbox.find_child("RosterManagementTitle",true,false)==null,
 			"%s solo hides LAB rescue recruit exile management"%viewport_size)
@@ -974,7 +974,7 @@ func test_pixel_product_hud_bottom_navigation_modals_and_map_are_fog_safe() -> b
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
 		check(not sandbox.phase_panel.visible and not sandbox.top_hud_actions.visible \
-			and not sandbox.ascii_3d_lab_button.visible,
+			and sandbox.find_child("Ascii3DLabButton",true,false)==null,
 			"%s obsolete product top rail and 3D entry are unreachable"%viewport_size)
 		check(sandbox.cards.visible and sandbox.grid.visible and sandbox.event_surface.visible \
 			and sandbox.bottom_navigation.visible and not sandbox.info_scroll.visible,
@@ -1111,11 +1111,9 @@ func test_product_graphics_surface_is_pure_2d_without_touching_the_run()->bool:
 	var snapshot_before:Dictionary=session.sim.snapshot()
 	var journal_before:Array=session.command_journal.duplicate(true)
 	var flat_mapping:Array=sandbox.grid.mapping_signature()
-	check(sandbox.grid_graphics_mode_button!=null \
-			and not sandbox.grid_graphics_mode_button.visible \
-			and sandbox.grid_3d_model_button!=null \
-			and not sandbox.grid_3d_model_button.visible,
-		"product map hides the legacy 2.5D and 3D controls")
+	check(sandbox.find_child("GraphicsModeToggle",true,false)==null \
+			and sandbox.find_child("Open3DModelLab",true,false)==null,
+		"product map does not construct legacy 2.5D or 3D controls")
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
 		"product map starts on the shipping 2D projection")
 	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))

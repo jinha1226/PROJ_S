@@ -85,19 +85,14 @@ func test_true_topdown_camera_and_directional_cutout_variants()->bool:
 		"obsolete 2.5D camera and 3D-material comparison controls are gone")
 	lab.free();return finish()
 
-func test_product_hud_exposes_the_isolated_2d_rig_probe()->bool:
+func test_product_hud_does_not_construct_the_isolated_2d_rig_probe()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var before:=session.save_session_json()
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800)
 	sandbox.initialize_for_headless_test(session,false)
-	check(sandbox.grid_3d_model_button!=null \
-		and sandbox.grid_3d_model_button.text=="[2D]" \
-		and sandbox.grid_3d_model_button.custom_minimum_size.y>=44.0,
-		"product HUD exposes a mobile-safe 2D top-down rig test button")
-	sandbox._activate_product_zoom_control("Open3DModelLab")
-	check(sandbox.ascii_3d_lab_view is LowPoly3DLab and sandbox.grid.modal_open,
-		"2D button opens the cutout-rig lab over the intact product map")
-	sandbox._close_ascii_3d_lab()
-	check(not sandbox.grid.modal_open and session.save_session_json()==before,
-		"closing the visual probe restores input without mutating the saved session")
+	check(sandbox.find_child("Open3DModelLab",true,false)==null \
+			and sandbox.find_child("Ascii3DLabOverlay",true,false)==null,
+		"product HUD does not construct the source-only rig probe")
+	check(session.save_session_json()==before,
+		"removing the visual probe entry does not mutate the saved session")
 	sandbox.free();return finish()

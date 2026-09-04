@@ -16,7 +16,6 @@ const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
-const ModularAssets = preload("res://playtest/modular_topdown_assets.gd")
 const RegularFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 const LONG_PRESS_SECONDS := 0.50
@@ -2031,9 +2030,6 @@ func _diorama_visibility_state(row:Dictionary)->String:
 
 func _draw() -> void:
 	_ensure_melee_vfx()
-	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
-		_draw_modular_topdown()
-		return
 	_ensure_static_projection_cache()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
@@ -2057,7 +2053,10 @@ func _draw() -> void:
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
 	for visual_row in _sorted_visual_actor_rows():
-		_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
+		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+			_draw_topdown_ascii_actor(visual_row.actor,bool(visual_row.ghost),camera_offset)
+		else:
+			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
 	_draw_actor_health_bars()
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
@@ -2071,35 +2070,6 @@ func _draw() -> void:
 	_draw_monster_list()
 	# Phase is communicated inside the field (glyph motion, ink impact and HUD),
 	# never by shrinking the playable view behind a decorative screen border.
-
-func _draw_modular_topdown()->void:
-	# The product renderer is a pure CanvasItem stack. The square world cells are
-	# authority/hit-testing only; no grid line or tile border is drawn.
-	draw_rect(grid_rect(),Color("#07100d"),true)
-	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
-	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
-	draw_set_transform(camera_offset+impact_offset)
-	_draw_modular_ground()
-	_draw_torch_light_pools()
-	_draw_modular_ground_details()
-	_draw_follower_footprints()
-	_draw_route_overlay()
-	_draw_exploration_companion_follow_plan()
-	_draw_ground_items()
-	for visual_row in _sorted_visual_actor_rows():
-		_draw_topdown_ascii_actor(visual_row.actor,bool(visual_row.ghost),camera_offset)
-	_draw_actor_health_bars()
-	_draw_monster_awareness_marks()
-	for intent in _secondary_intent_overlays:
-		_draw_intent(intent)
-	for intent in _intent_overlays:
-		_draw_intent(intent)
-	_draw_actor_selection_overlays()
-	_draw_cursor_preview()
-	_draw_speech_bubbles()
-	draw_set_transform(Vector2.ZERO)
-	_draw_monster_list()
-
 func _draw_topdown_ascii_actor(actor:Dictionary,ghost:bool,
 		camera_offset:Vector2=Vector2.ZERO)->void:
 	var spec:=topdown_ascii_actor_render_spec(actor,ghost,-1,camera_offset)
@@ -2126,200 +2096,6 @@ func topdown_ascii_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	spec["foot_y"]=foot_y
 	spec["visual_cell_ratio"]=[extent.x/cell,extent.y/cell]
 	return spec.duplicate(true)
-
-func _draw_modular_ground()->void:
-	# One continuous field texture sits beneath the whole camera. Ordinary floor
-	# cells only reveal or shade this field, so turn authority never becomes a
-	# visible checkerboard. Local textures are reserved for meaningful terrain.
-	draw_texture_rect(ModularAssets.TERRAIN_TEXTURES["stone_a"],grid_rect(),false,
-		Color(0.82,0.86,0.80,1.0))
-	var overlap:=clampf(cell_size_px()*0.045,0.8,1.5)
-	for y in range(visible_cell_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y)
-			var rect:=_camera_cell_rect(position).grow(overlap).intersection(grid_rect())
-			if not _world_in_bounds(position):
-				draw_rect(rect,Color("#020504"),true)
-				continue
-			var row:Dictionary=_cells.get(_key(position),{})
-			var visibility:=AsciiStyleScript.visibility_state(row) if not row.is_empty() else "UNSEEN"
-			if visibility=="UNSEEN":
-				draw_rect(rect,Color("#020504"),true)
-				continue
-			var terrain_id:=str(row.get("terrain_id","floor"))
-			var modulation:=Color.WHITE if visibility=="VISIBLE" else Color(0.30,0.34,0.32,0.78)
-			if terrain_id not in ["floor","stone_floor"]:
-				var texture:Texture2D=ModularAssets.terrain_texture(terrain_id,position)
-				draw_texture_rect(texture,rect,false,modulation)
-			elif visibility=="MEMORY":
-				draw_rect(rect,Color(0.015,0.025,0.02,0.66),true)
-			if terrain_id=="wall":
-				draw_rect(Rect2(rect.position+Vector2(0,rect.size.y*0.78),
-					Vector2(rect.size.x,rect.size.y*0.22)),Color(0.01,0.02,0.015,0.30),true)
-
-func _draw_modular_ground_details()->void:
-	for y in range(visible_cell_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y)
-			var row:Dictionary=_cells.get(_key(position),{})
-			if row.is_empty() or AsciiStyleScript.visibility_state(row)!="VISIBLE":continue
-			var rect:=world_cell_rect(position)
-			if str(row.get("ground_mark_id",""))=="blood_pool":
-				_draw_modular_detail_texture(ModularAssets.BLOOD_TEXTURE,rect,0.88,Color(0.86,0.72,0.72,0.82))
-			if int(row.get("wetness",0))>0:
-				_draw_modular_detail_texture(ModularAssets.TERRAIN_TEXTURES["water"],rect,1.02,Color(0.68,0.88,1.0,0.52))
-			if int(row.get("fire_intensity",row.get("fire",0)))>0:
-				_draw_modular_detail_texture(ModularAssets.CAMPFIRE_TEXTURE,rect,1.12,Color.WHITE)
-			var feature:Texture2D=ModularAssets.feature_texture(str(row.get("feature_id","")))
-			if feature!=null:
-				_draw_modular_detail_texture(feature,rect,1.18,Color.WHITE)
-
-func _draw_modular_detail_texture(texture:Texture2D,cell_rect:Rect2,
-		scale_ratio:float,modulation:Color)->void:
-	if texture==null:return
-	var extent:=cell_rect.size*scale_ratio
-	var destination:=Rect2(cell_rect.get_center()-extent*0.5,extent)
-	draw_texture_rect(texture,destination,false,modulation)
-
-func _draw_modular_actor(actor:Dictionary,ghost:bool,
-		camera_offset:Vector2=Vector2.ZERO)->void:
-	var position:=_position_from_actor(actor)
-	if not is_world_cell_visible(position):return
-	var entity_id:=int(actor.get("entity_id",-1))
-	var visual_world:=_actor_visual_world_position(entity_id)
-	var center:=_world_position_to_pixel_center(visual_world)
-	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
-	var cell:=cell_size_px()
-	var ground_center:=center
-	var walk_pose:=modular_walk_pose_spec(entity_id)
-	if not ghost and bool(walk_pose.get("active",false)):
-		center+=Vector2(float(walk_pose.get("body_sway_ratio",0.0))*cell,
-			float(walk_pose.get("body_bob_ratio",0.0))*cell)
-	var species_id:=str(actor.get("species_id","human")).to_lower()
-	var canvas_scale:=1.92
-	if species_id=="dwarf":canvas_scale=2.06
-	elif species_id=="goblin":canvas_scale=1.78
-	var canvas_extent:=Vector2.ONE*cell*canvas_scale
-	var foot_ratio:=0.81
-	if species_id=="dwarf":foot_ratio=0.87
-	var foot_baseline:=center.y+cell*0.34
-	var body_rect:=Rect2(Vector2(center.x-canvas_extent.x*0.5,
-		foot_baseline-canvas_extent.y*foot_ratio),canvas_extent)
-	var direction_actor:=actor.duplicate(false)
-	if not ghost and _actor_motions.has(entity_id):
-		var active_motion:Dictionary=_actor_motions[entity_id]
-		var motion_delta:Vector2=active_motion.get("to_world",Vector2.ZERO) \
-			-active_motion.get("from_world",Vector2.ZERO)
-		if not motion_delta.is_zero_approx():
-			direction_actor["facing"]=[signi(roundi(motion_delta.x)),
-				signi(roundi(motion_delta.y))]
-	elif not ghost and _actor_last_facing.has(entity_id):
-		var persisted_facing:Vector2i=_actor_last_facing[entity_id]
-		direction_actor["facing"]=[persisted_facing.x,persisted_facing.y]
-	var direction:=ModularAssets.direction_id(direction_actor)
-	var source:=ModularAssets.direction_region(direction)
-	var body_texture:Texture2D=ModularAssets.body_texture(species_id)
-	var opacity:=0.42 if ghost else (0.52 if str(actor.get("life_state","ACTIVE")).to_upper()=="DEAD" else 1.0)
-	var body_modulation:=Color(0.62,0.72,0.82,opacity) if ghost else Color(1,1,1,opacity)
-	var faction_color:=Color("#63d7e8") if bool(actor.get("is_protagonist",false)) \
-		else (Color("#e45b52") if _is_enemy_actor(actor) else Color("#e7bd63"))
-	var shadow_center:=Vector2(ground_center.x,ground_center.y+cell*0.32)
-	draw_colored_polygon(_ellipse_points(shadow_center,cell*0.34,cell*0.13),Color(0.01,0.015,0.012,0.46*opacity))
-	draw_arc(shadow_center,cell*0.38,0.05,PI-0.05,18,Color(faction_color,0.86*opacity),
-		maxf(1.15,cell*0.055),true)
-	var equipment:Dictionary=actor.get("equipment_visual",{}) \
-		if actor.get("equipment_visual",{}) is Dictionary else {}
-	var weapon_definition:=str(equipment.get("weapon_definition_id",""))
-	if weapon_definition.is_empty():
-		weapon_definition=_weapon_definition_from_id(str(equipment.get("weapon_id","")))
-	if weapon_definition.is_empty() and _is_enemy_actor(actor) and species_id=="goblin":
-		weapon_definition="WEAPON_SHORT_SWORD"
-	var armor_definition:=str(equipment.get("armor_definition_id",""))
-	var off_hand_definition:=str(equipment.get("off_hand_definition_id",""))
-	var weapon_texture:Texture2D=ModularAssets.item_texture(weapon_definition)
-	var shield_texture:Texture2D=ModularAssets.item_texture(off_hand_definition)
-	# Back-facing held items sit behind the body. All layers remain ordinary 2D
-	# atlas regions; no mesh, bone, camera or 3D material is involved.
-	if direction=="north":
-		_draw_modular_held_item(weapon_texture,source,center,cell,direction,true,body_modulation)
-		_draw_modular_held_item(shield_texture,source,center,cell,direction,false,body_modulation)
-	_draw_modular_actor_layer(body_texture,body_rect,source,direction,walk_pose,
-		cell,body_modulation)
-	var armor_texture:Texture2D=ModularAssets.item_texture(armor_definition)
-	if armor_texture!=null:
-		_draw_modular_actor_layer(armor_texture,body_rect,source,direction,walk_pose,
-			cell,body_modulation)
-	if direction!="north":
-		_draw_modular_held_item(weapon_texture,source,center,cell,direction,true,body_modulation)
-		_draw_modular_held_item(shield_texture,source,center,cell,direction,false,body_modulation)
-
-func _draw_modular_held_item(texture:Texture2D,source:Rect2,center:Vector2,
-		cell:float,direction:String,main_hand:bool,modulation:Color)->void:
-	if texture==null:return
-	var side:=1.0 if main_hand else -1.0
-	var offset:=Vector2(cell*0.34*side,-cell*0.02)
-	if direction=="north":offset=Vector2(-cell*0.34*side,-cell*0.04)
-	elif direction=="west":offset=Vector2(-cell*0.10,cell*0.02+cell*0.16*side)
-	elif direction=="east":offset=Vector2(cell*0.10,cell*0.02-cell*0.16*side)
-	var extent:=Vector2.ONE*cell*(0.98 if main_hand else 0.84)
-	draw_texture_rect_region(texture,Rect2(center+offset-extent*0.5,extent),source,modulation)
-
-func modular_walk_pose_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
-	var motion:=actor_motion_draw_spec(entity_id,sample_time_ms)
-	if not bool(motion.get("active",false)):
-		return {"active":false,"progress":1.0,"stride_ratio":0.0,
-			"body_bob_ratio":0.0,"body_sway_ratio":0.0,
-			"left_leg_offset_ratio":0.0,"right_leg_offset_ratio":0.0}.duplicate(true)
-	var progress:=float(motion.get("progress",0.0))
-	# One cell-to-cell hop owns a complete, symmetric gait cycle. The torso rises
-	# gently through the middle while the two lower-body halves counter-move.
-	var stride_ratio:=sin(TAU*progress)
-	return {"active":true,"progress":progress,"stride_ratio":stride_ratio,
-		"body_bob_ratio":-sin(PI*progress)*0.035,
-		"body_sway_ratio":stride_ratio*0.012,
-		"left_leg_offset_ratio":stride_ratio*0.055,
-		"right_leg_offset_ratio":-stride_ratio*0.055}.duplicate(true)
-
-func _draw_modular_actor_layer(texture:Texture2D,destination:Rect2,source:Rect2,
-		direction:String,walk_pose:Dictionary,cell:float,modulation:Color)->void:
-	if texture==null:return
-	if not bool(walk_pose.get("active",false)) or direction not in ["south","north"]:
-		draw_texture_rect_region(texture,destination,source,modulation);return
-	# Front/back atlases expose each leg on one side of the lower silhouette. Keep
-	# the torso stable, then offset the two lower slices by about one screen pixel
-	# at the 19-cell product zoom. Armor uses the identical cuts, so paper-doll
-	# layers remain registered throughout the step.
-	var split_ratio:=0.64
-	var upper_source:=Rect2(source.position,Vector2(source.size.x,source.size.y*split_ratio))
-	var upper_destination:=Rect2(destination.position,
-		Vector2(destination.size.x,destination.size.y*split_ratio+cell*0.06))
-	draw_texture_rect_region(texture,upper_destination,upper_source,modulation)
-	var lower_source_y:=source.position.y+source.size.y*split_ratio
-	var lower_destination_y:=destination.position.y+destination.size.y*split_ratio
-	var lower_source_height:=source.size.y*(1.0-split_ratio)
-	var lower_destination_height:=destination.size.y*(1.0-split_ratio)
-	var half_source_width:=source.size.x*0.5
-	var half_destination_width:=destination.size.x*0.5
-	var offsets:=[float(walk_pose.get("left_leg_offset_ratio",0.0))*cell,
-		float(walk_pose.get("right_leg_offset_ratio",0.0))*cell]
-	for side in range(2):
-		var lower_source:=Rect2(Vector2(source.position.x+half_source_width*side,
-			lower_source_y),Vector2(half_source_width,lower_source_height))
-		var lower_destination:=Rect2(Vector2(destination.position.x+half_destination_width*side,
-			lower_destination_y+offsets[side]),
-			Vector2(half_destination_width,lower_destination_height))
-		draw_texture_rect_region(texture,lower_destination,lower_source,modulation)
-
-func _weapon_definition_from_id(weapon_id:String)->String:
-	return {
-		"SHORT_SWORD":"WEAPON_SHORT_SWORD",
-		"THRUSTING_SWORD":"WEAPON_THRUSTING_SWORD",
-		"HAND_AXE":"WEAPON_HAND_AXE",
-		"MACE":"WEAPON_MACE",
-		"SPEAR":"WEAPON_SPEAR",
-		"BOW":"WEAPON_BOW",
-		"CROSSBOW":"WEAPON_CROSSBOW",
-	}.get(weapon_id.to_upper(),"")
 
 func _draw_monster_awareness_marks()->void:
 	for spec in monster_awareness_marker_draw_specs():

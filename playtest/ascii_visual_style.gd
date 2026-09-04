@@ -230,11 +230,13 @@ static func asciident_actor_composition(actor:Dictionary,projected_style:Diction
 			"changes_mapping":false}.duplicate(true)
 	var equipment:Dictionary=style.get("equipment",{})
 	var armored:=bool(equipment.get("armor_visible",false))
-	var species_id:=str(actor.get("species_id","human")).to_lower()
-	var head:="v" if species_id in ["goblin","kobold"] else (
-		"O" if actor_body_class(actor)=="LARGE" else "o")
+	var facing:Vector2i=normalized_facing(style.get("facing",[0,1]))
+	var head_core:="<" if facing.x<0.0 else (">" if facing.x>0.0 else (
+		"^" if facing.y<0.0 else "v"))
+	var head:="(%s)"%head_core
 	var body:=str(style.get("glyph","?"))
-	var body_row:="/[%s]\\"%body if armored else " /%s\\ "%body
+	var body_core:="[%s]"%body if armored else "{%s}"%body
+	var body_row:=" %s "%body_core
 	var bump:Dictionary=style.get("bump_motion",{}) \
 		if style.get("bump_motion",{}) is Dictionary else {}
 	var attack_active:=bool(bump.get("active",false))
@@ -242,20 +244,17 @@ static func asciident_actor_composition(actor:Dictionary,projected_style:Diction
 	if attack_active:
 		var direction:Vector2=bump.get("direction",Vector2.RIGHT)
 		if attack_phase=="WIND_UP":
-			body_row="\\[%s]/"%body if armored else "\\ %s /"%body
+			body_row="/%s\\"%body_core
 		elif absf(direction.x)>=absf(direction.y):
-			if armored:
-				body_row="/[%s]-"%body if direction.x>=0.0 else "-[%s]\\"%body
-			else:
-				body_row=" /%s--"%body if direction.x>=0.0 else "--%s\\ "%body
+			body_row=" %s-"%body_core if direction.x>=0.0 else "-%s "%body_core
 		else:
-			body_row="\\[%s]/"%body if armored else "\\ %s /"%body
+			body_row="/%s\\"%body_core
 	var stance:=str(style.get("stance","IDLE"))
 	var stride_sign:=int(style.get("stride_sign",0))
-	var foot_row:=" / \\ "
-	if stance=="MOVING":foot_row=" / | " if stride_sign>=0 else " | \\ "
+	var foot_row:="  /\\ "
+	if stance=="MOVING":foot_row="  /| " if stride_sign>=0 else "  |\\ "
 	return {"visible":true,"rows":[
-		{"text":"  %s  "%head,"tone":"HIGHLIGHT"},
+		{"text":" %s "%head,"tone":"HIGHLIGHT"},
 		{"text":body_row,"tone":"PRIMARY"},
 		{"text":foot_row,"tone":"PRIMARY"}],
 		"row_count":3,"column_count":5,"multi_character":true,
