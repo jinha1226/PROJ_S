@@ -34,6 +34,37 @@ func test_morale_model_is_exact_pure_and_order_independent() -> bool:
 	return finish()
 
 
+func test_ally_death_shock_uses_hexaco_bond_and_witness_context() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	var deceased_id := int(state.active_party_member_ids[1])
+	var observer_id := int(state.active_party_member_ids[2])
+	var observer = state.member(observer_id)
+	var observer_species := str(world.entities[observer_id].species_id)
+	var deceased_species := str(world.entities[deceased_id].species_id)
+	_set_facet(observer.personality_profile, "E", 900)
+	world.species_relations.set_relation(observer_species, deceased_species, 80, 0, 0)
+	world.entities[observer_id].position = world.entities[deceased_id].position
+	var bonded: Dictionary = Model.death_shock_appraisal(world, observer_id,
+		deceased_id)
+	_set_facet(observer.personality_profile, "E", 100)
+	world.species_relations.set_relation(observer_species, deceased_species, -80, 0, 0)
+	world.entities[observer_id].position = world.entities[deceased_id].position \
+		+ Vector2i(Model.CONTAGION_RANGE + 1, 0)
+	var distant: Dictionary = Model.death_shock_appraisal(world, observer_id,
+		deceased_id)
+	check(int(bonded.stress_delta) > int(distant.stress_delta),
+		"high emotionality, a positive bond and witnessing amplify loss")
+	check("ALLY_DIED_BONDED" in bonded.trigger_codes \
+		and "ALLY_DIED_WITNESSED" in bonded.trigger_codes \
+		and "ALLY_DIED_EMOTIONALITY" in bonded.trigger_codes,
+		"death appraisal exposes its HEXACO and context causes")
+	check_eq(distant.trigger_codes, ["ALLY_DIED"],
+		"an estranged distant observer retains only the base loss cause")
+	return finish()
+
+
 func test_direct_shock_spreads_and_hexaco_resilience_reduces_contagion() -> bool:
 	var session = _engaged()
 	var world = session.sim.world
@@ -223,6 +254,7 @@ func test_schema_thirteen_migrates_to_normal_or_panicked_hysteresis_state() -> b
 	var current: Dictionary = session.sim.world.party_encounter.to_dict()
 	var legacy: Dictionary = current.duplicate(true)
 	legacy.schema_version = PartyState.WEAPON_AUTHORITY_SCHEMA_VERSION
+	legacy.erase("expedition_cycle")
 	legacy.erase("legacy_journal_origin")
 	for row in legacy.member_rows:
 		row.erase("mental_mode")

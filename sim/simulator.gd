@@ -155,6 +155,7 @@ func step(command, supplied_rollback_memento: Variant = null):
 		marker_index += 1
 	assert(marker_index == timeline.size() - 1, "Not all previewed schedules were processed")
 	world.world_time = end_time
+	_reconcile_expedition_cycle()
 	world.finish_step()
 	# Live turns use a bounded tail/surface postcondition. Full ledger validation
 	# remains mandatory at save/load/restore boundaries; re-running it here made
@@ -561,6 +562,7 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		return _rollback_party_step(rollback, "party_turn_failed")
 	if not party_coordinator.finalize_automatic_regroup():
 		return _rollback_party_step(rollback, "party_turn_failed")
+	_reconcile_expedition_cycle()
 	world.finish_step()
 	# Match ordinary live simulation steps: validate the newly appended causal
 	# tail and every mutable surface touched by this turn. Full ledger scans remain
@@ -685,6 +687,9 @@ func _validate_command(command) -> String:
 	if not (command.type is int):
 		return "command_type_not_integer"
 	if world.party_encounter != null:
+		if world.party_encounter.expedition_cycle != null \
+				and world.party_encounter.expedition_cycle.phase == "TOWN":
+			return "expedition_in_town"
 		if world.party_encounter.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 			return "party_specialized_flow_required"
 		if not command.actor_id is int or command.actor_id != world.party_encounter.protagonist_id:
@@ -720,6 +725,15 @@ func _validate_command(command) -> String:
 		if command.power < 1 or command.power > 100:
 			return "power_out_of_range"
 	return ""
+
+
+func _reconcile_expedition_cycle() -> void:
+	if world == null or world.party_encounter == null \
+			or world.party_encounter.expedition_cycle == null \
+			or world.party_encounter.safe_phase == "PARTY_DEFEATED":
+		return
+	if world.party_encounter.expedition_cycle.auto_return_if_due(world.world_time):
+		world.party_encounter.revision += 1
 
 
 func _resolve_command(command, plan: Dictionary, processed_step_index: int):

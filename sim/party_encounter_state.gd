@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 17
+const SCHEMA_VERSION := 18
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -27,6 +27,8 @@ const HEXACO_SCHEMA_VERSION := 15
 const PLAYER_SPECIES_SCHEMA_VERSION := 16
 # v17 hard-cuts STR/DEX/INT and stat-scaled equipment snapshots.
 const STAT_SCALING_SCHEMA_VERSION := 17
+# v18 persists the town/dungeon expedition clock inside rollback and saves.
+const EXPEDITION_CYCLE_SCHEMA_VERSION := 18
 const MAX_ACTIVE_PARTY_SIZE := 4
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
@@ -43,6 +45,7 @@ const ItemOperationsScript = preload("res://sim/item_inventory_operations.gd")
 const OpeningEventScript = preload("res://sim/opening_event_state.gd")
 const GrowthBuildStateScript = preload("res://sim/growth_build_state.gd")
 const PartyHexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const ExpeditionCycleScript = preload("res://sim/expedition_cycle_state.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -72,6 +75,7 @@ var last_protagonist_damage_step: int = -1
 var opening_event = null
 var protagonist_growth = GrowthBuildStateScript.new("human")
 var legacy_journal_origin := false
+var expedition_cycle = ExpeditionCycleScript.new()
 
 func member(entity_id: int): return member_rows.get(entity_id)
 func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
@@ -116,6 +120,8 @@ func to_dict() -> Dictionary:
 		"exile_records":exile_records.duplicate(true)}
 	if schema_version >= HEXACO_SCHEMA_VERSION:
 		wire["legacy_journal_origin"] = legacy_journal_origin
+	if schema_version >= EXPEDITION_CYCLE_SCHEMA_VERSION:
+		wire["expedition_cycle"] = expedition_cycle.to_dict()
 	return wire
 
 static func from_dict(row: Dictionary):
@@ -173,6 +179,8 @@ static func from_dict(row: Dictionary):
 		if row.get("opening_event") is Dictionary else null
 	state.protagonist_growth = GrowthBuildStateScript.from_dict(row.protagonist_growth) \
 		if row.get("protagonist_growth") is Dictionary else GrowthBuildStateScript.new("human")
+	state.expedition_cycle = ExpeditionCycleScript.from_dict(row.expedition_cycle) \
+		if row.get("expedition_cycle") is Dictionary else ExpeditionCycleScript.legacy_active()
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -248,6 +256,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	v13_keys.erase("protagonist_loadout");v13_keys.sort()
 	var v14_keys:Array=v13_keys.duplicate()
 	var v15_keys:Array=v14_keys.duplicate();v15_keys.append("legacy_journal_origin");v15_keys.sort()
+	var v18_keys:Array=v15_keys.duplicate();v18_keys.append("expedition_cycle");v18_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -265,14 +274,17 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == WEAPON_AUTHORITY_SCHEMA_VERSION and keys != v13_keys) \
 		or (parsed_schema_version == MORALE_SCHEMA_VERSION and keys != v14_keys) \
 		or (parsed_schema_version == HEXACO_SCHEMA_VERSION and keys != v15_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v15_keys):
+		or (parsed_schema_version == PLAYER_SPECIES_SCHEMA_VERSION and keys != v15_keys) \
+		or (parsed_schema_version == STAT_SCALING_SCHEMA_VERSION and keys != v15_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v18_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
 		DIAGONAL_GATEWAY_SCHEMA_VERSION,AWARENESS_SCHEMA_VERSION,ITEM_SCHEMA_VERSION,
-		RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
+			RECOVERY_SCHEMA_VERSION,OPENING_EVENT_SCHEMA_VERSION,GROWTH_BUILD_SCHEMA_VERSION,
 			WORLD_ITEM_SCHEMA_VERSION,WEAPON_AUTHORITY_SCHEMA_VERSION,MORALE_SCHEMA_VERSION,
-			HEXACO_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
+			HEXACO_SCHEMA_VERSION,PLAYER_SPECIES_SCHEMA_VERSION,
+			STAT_SCALING_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"
@@ -426,6 +438,9 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	if parsed_schema_version>=GROWTH_BUILD_SCHEMA_VERSION:
 		var growth_error := GrowthBuildStateScript.wire_error(row.get("protagonist_growth"))
 		if not growth_error.is_empty(): return growth_error
+	if parsed_schema_version>=EXPEDITION_CYCLE_SCHEMA_VERSION:
+		var cycle_error := ExpeditionCycleScript.wire_error(row.get("expedition_cycle"))
+		if not cycle_error.is_empty(): return cycle_error
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

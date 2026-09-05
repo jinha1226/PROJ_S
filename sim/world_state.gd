@@ -3575,7 +3575,7 @@ func _status_history_error() -> String:
 						or event.data.get("schema_version") != 1 \
 						or event.data.get("status_ruleset_id") != STATUS_RULESET_ID \
 						or event.data.get("status_id") != "BLEEDING" \
-						or event.data.get("reason") not in ["NATURAL", "OWNER_DIED"]:
+						or event.data.get("reason") not in ["NATURAL", "OWNER_DIED", "TOWN_CARE"]:
 					return "status_expire_data_invalid"
 				var expiring_row: Dictionary = projected[status_key]
 				if event.data.reason == "NATURAL":
@@ -3587,6 +3587,15 @@ func _status_history_error() -> String:
 					if natural_tick == null or natural_tick.step_index != event.step_index \
 							or natural_tick.world_time != event.world_time or natural_tick.position != event.position:
 						return "natural_status_expire_envelope_invalid"
+				elif event.data.reason == "TOWN_CARE":
+					var clinic_source=event_by_id(event.cause_id)
+					if clinic_source==null or clinic_source.type!="town.clinic_service" \
+							or clinic_source.target_id!=owner_id \
+							or clinic_source.position!=event.position \
+							or clinic_source.step_index!=event.step_index \
+							or clinic_source.world_time!=event.world_time \
+							or clinic_source.data.get("ruleset_id")!="town-clinic-care-v1":
+						return "town_status_expire_cause_invalid"
 				else:
 					var death_driver = event_by_id(event.cause_id)
 					if death_driver == null or death_driver.type not in ["combat.downed_damage", "entity.downed"] \
@@ -3770,14 +3779,23 @@ func _lifecycle_history_error() -> String:
 				return "canonical_recovery_event_invalid"
 			var downed_projection: Dictionary = projected_downed[event.target_id]
 			var downed_source = event_by_id(int(downed_projection.event_id))
+			var town_source=event_by_id(event.cause_id)
+			var town_recovery:bool=town_source!=null \
+				and town_source.type=="town.clinic_service" \
+				and town_source.target_id==event.target_id \
+				and town_source.data.get("ruleset_id")=="town-clinic-care-v1"
 			var expected_health: int = maxi(1, int((entities[event.target_id].max_health + 9) / 10))
 			var encoded_lock: int = Int64CodecScript.parse(
 				event.data.recovery_lock_until, "recovery lock time")
 			var position_history: Dictionary = _entity_position_at_event(event.target_id, event.id)
-			if downed_source == null or event.cause_id != downed_source.id \
-					or event.world_time != int(downed_projection.resolve_at) \
-					or event.step_index < downed_source.step_index \
-					or event.world_time <= downed_source.world_time \
+			if downed_source == null \
+					or not town_recovery and event.cause_id != downed_source.id \
+					or not town_recovery and event.world_time != int(downed_projection.resolve_at) \
+					or not town_recovery and event.step_index < downed_source.step_index \
+					or not town_recovery and event.world_time <= downed_source.world_time \
+					or town_recovery and (event.world_time!=town_source.world_time \
+						or event.step_index!=town_source.step_index \
+						or event.position!=town_source.position) \
 					or not bool(position_history.ok) or event.position != position_history.position \
 					or event.magnitude != expected_health \
 					or event.data.recovered_health != expected_health \
@@ -4096,6 +4114,12 @@ func _party_runtime_error() -> String:
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
+	var cycle=party_encounter.expedition_cycle
+	if cycle==null:return "missing_expedition_cycle"
+	if cycle.opened_at_world_time>world_time \
+			or cycle.phase=="DUNGEON" and world_time>=cycle.closes_at_world_time \
+			or cycle.phase=="TOWN" and cycle.returned_at_world_time>world_time:
+		return "expedition_cycle_time_mismatch"
 	for ground_row in item_state.ground_items.rows:
 		var ground_terrain:Dictionary=TerrainRegistryScript.definition(
 			str(tile_at(ground_row.position).terrain))
@@ -4284,8 +4308,9 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			or npc_id <= 0 \
 			or not entities.has(npc_id) or not combatant_states.has(npc_id):
 		return "opening_npc_reference_invalid"
+	var guild_candidate_ids:=_party_guild_candidate_ids()
 	for party_id in party_encounter.party_member_ids:
-		if int(party_id)==npc_id:continue
+		if int(party_id)==npc_id or int(party_id) in guild_candidate_ids:continue
 		if npc_id <= int(party_id): return "opening_npc_not_spawned_last"
 	for enemy_id in party_encounter.enemy_ids:
 		if int(enemy_id)==npc_id:continue
@@ -4359,6 +4384,17 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 				projected_health + int(event.magnitude))
 			if int(event.data.health_after) != projected_health:
 				return "opening_health_restoration_projection_invalid"
+		elif event_type == "health.restored" \
+				and str(event.data.get("kind",""))=="TOWN_CLINIC":
+			var clinic_source=event_by_id(event.cause_id)
+			if event.actor_id!=npc_id or event.magnitude<=0 \
+					or clinic_source==null or clinic_source.type!="town.clinic_service" \
+					or clinic_source.target_id!=npc_id \
+					or str(event.data.get("ruleset_id",""))!="town-clinic-care-v1":
+				return "opening_town_restoration_invalid"
+			projected_health=mini(npc.max_health,projected_health+int(event.magnitude))
+			if int(event.data.get("health_after",-1))!=projected_health:
+				return "opening_town_restoration_projection_invalid"
 	if discovery_rows.size() != 1:
 		return "opening_discovery_event_count_invalid"
 	var discovery = discovery_rows[0]
@@ -4603,7 +4639,7 @@ func _party_health_restoration_error()->String:
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
-				if restoration_kind=="POTION" else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+				if restoration_kind in ["POTION","TOWN_CLINIC"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
 					or event.instigator_id!=hero_id or event.magnitude<=0 \
 					or int(event.data.get("health_after",-1))<1 \
@@ -4618,6 +4654,12 @@ func _party_health_restoration_error()->String:
 						or source.data.get("use_kind")!="HEALING" \
 						or event.data.ruleset_id!="healing-potion-v1":
 					return "party_potion_restoration_cause_invalid"
+			elif restoration_kind=="TOWN_CLINIC":
+				var clinic_source=event_by_id(event.cause_id)
+				if clinic_source==null or clinic_source.type!="town.clinic_service" \
+						or clinic_source.target_id!=hero_id or clinic_source.id>=event.id \
+						or event.data.ruleset_id!="town-clinic-care-v1":
+					return "party_town_restoration_cause_invalid"
 			elif restoration_kind=="AUTO":
 				if event.cause_id!=-1 or event.data.ruleset_id!="safe-exploration-recovery-v1" \
 						or int(event.data.get("safe_turn_count",0))<1:
@@ -5102,13 +5144,14 @@ func _party_override_history_error() -> String:
 func _party_morale_history_error() -> String:
 	var latest_by_actor: Dictionary = {}
 	var previous_by_actor: Dictionary = {}
-	var allowed_triggers := ["ALLY_DIED", "ALLY_DOWNED", "ALLY_FEAR_CONTAGION",
-		"ENEMY_DIED", "OVERRIDE_STRESS", "SAFE_RECOVERY", "SELF_DAMAGE",
-		"SELF_DOWNED"]
+	var allowed_triggers := ["ALLY_DIED", "ALLY_DIED_BONDED",
+		"ALLY_DIED_EMOTIONALITY", "ALLY_DIED_WITNESSED", "ALLY_DOWNED",
+		"ALLY_FEAR_CONTAGION", "ENEMY_DIED", "OVERRIDE_STRESS",
+		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "TOWN_REST"]
 	for event in events:
 		if event.type != "party.morale_changed":
 			continue
-		if event.actor_id not in party_encounter.active_party_member_ids \
+		if event.actor_id not in _party_active_ids_at_event(event.id) \
 				or event.target_id != -1:
 			return "party_morale_actor_invalid"
 		var historical_position: Dictionary = _entity_position_at_event(
@@ -5173,7 +5216,8 @@ func _party_morale_history_error() -> String:
 			if source_id <= previous_source or source_id >= event.id or source == null \
 					or source.step_index != event.step_index \
 					or source.type not in ["combat.physical_damage", "combat.downed_damage",
-						"entity.downed", "entity.died", "party.override_committed"]:
+						"entity.downed", "entity.died", "party.override_committed",
+						"town.shrine_service"]:
 				return "party_morale_source_invalid"
 			previous_source = source_id
 		if (source_rows.is_empty() and event.cause_id != -1) \
@@ -5195,6 +5239,7 @@ func _party_morale_history_error() -> String:
 
 func _party_active_ids_at_event(event_id: int) -> Array:
 	var runtime_recruits:Array=[]
+	var guild_candidates:=_party_guild_candidate_ids()
 	for historical in events:
 		if historical.type=="party.companion_recruited" \
 				and historical.target_id in party_encounter.party_member_ids \
@@ -5202,7 +5247,8 @@ func _party_active_ids_at_event(event_id: int) -> Array:
 			runtime_recruits.append(historical.target_id)
 	var bootstrap_members:Array=[]
 	for member_id in party_encounter.party_member_ids:
-		if member_id not in runtime_recruits:bootstrap_members.append(member_id)
+		if member_id not in runtime_recruits and member_id not in guild_candidates:
+			bootstrap_members.append(member_id)
 	var active: Array = bootstrap_members.slice(0,mini(3,bootstrap_members.size()))
 	for event in events:
 		if event.id >= event_id: break
@@ -5215,6 +5261,7 @@ func _party_active_ids_at_event(event_id: int) -> Array:
 func _party_roster_history_error() -> String:
 	var hero_id: int = party_encounter.protagonist_id
 	var runtime_recruits:Array=[]
+	var guild_candidates:=_party_guild_candidate_ids()
 	for historical in events:
 		if historical.type=="party.companion_recruited" \
 				and historical.target_id in party_encounter.party_member_ids \
@@ -5222,10 +5269,15 @@ func _party_roster_history_error() -> String:
 			runtime_recruits.append(historical.target_id)
 	var bootstrap_members:Array=[]
 	for member_id in party_encounter.party_member_ids:
-		if member_id not in runtime_recruits:bootstrap_members.append(member_id)
+		if member_id not in runtime_recruits and member_id not in guild_candidates:
+			bootstrap_members.append(member_id)
 	var active: Array = bootstrap_members.slice(0,mini(3,bootstrap_members.size()))
 	var recruitable: Array = bootstrap_members.slice(active.size())
-	recruitable.append_array(runtime_recruits);recruitable.sort()
+	for candidate_id in guild_candidates:
+		if candidate_id not in recruitable: recruitable.append(candidate_id)
+	for recruit_id in runtime_recruits:
+		if recruit_id not in recruitable: recruitable.append(recruit_id)
+	recruitable.sort()
 	var exiled: Array = []
 	var contact_id := 9223372036854775807
 	var regroup_complete_id := -1
@@ -5250,7 +5302,11 @@ func _party_roster_history_error() -> String:
 				or not bool(hero_history.get("ok", false)) or event.magnitude != 0 or event.cause_id != -1 \
 				or not event_data_valid:
 			return "party_roster_event_semantic_mismatch"
-		if event.id >= contact_id and (regroup_complete_id < 0 or event.id <= regroup_complete_id):
+		var roster_after_town_return:bool=party_encounter.expedition_cycle!=null \
+			and party_encounter.expedition_cycle.phase=="TOWN" \
+			and event.world_time>=party_encounter.expedition_cycle.returned_at_world_time
+		if not roster_after_town_return and event.id >= contact_id \
+				and (regroup_complete_id < 0 or event.id <= regroup_complete_id):
 			return "party_roster_event_unsafe_phase"
 		if operation == "DISMISS":
 			if event.target_id not in active or active.size() <= 1: return "party_roster_event_transition_invalid"
@@ -5331,6 +5387,20 @@ func _party_roster_history_error() -> String:
 					or death.data!={"reason":"OFFSCREEN_CONDITION"}:
 				return "party_exile_death_event_mismatch"
 	return ""
+
+
+func _party_guild_candidate_ids()->Array:
+	var result:Array=[]
+	for event in events:
+		if event.type!="town.guild_candidates_arrived":continue
+		for value in event.data.get("candidates",[]):
+			if not value is Dictionary \
+					or not Int64CodecScript.is_canonical(value.get("entity_id")):
+				continue
+			var entity_id:=Int64CodecScript.parse(value.entity_id,"guild candidate")
+			if entity_id in party_encounter.party_member_ids and entity_id not in result:
+				result.append(entity_id)
+	result.sort();return result
 
 
 func _event_index(event_id: int) -> int:

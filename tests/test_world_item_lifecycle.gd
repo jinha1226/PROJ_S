@@ -243,7 +243,7 @@ func test_the_duplicate_weapon_authority_and_its_bridge_invariant_are_gone()->bo
 	for method in world.get_method_list():world_names.append(str(method.name))
 	check("_inventory_loadout_bridge_error" not in world_names,
 		"the bridge invariant is deleted with the field it held together")
-	check_eq(int(world.party_encounter.schema_version),17,
+	check_eq(int(world.party_encounter.schema_version),18,
 		"HEXACO, player species, and stat scaling use the current party schema")
 	check("protagonist_loadout" not in world.party_encounter.to_dict(),
 		"the party wire no longer carries a loadout row")

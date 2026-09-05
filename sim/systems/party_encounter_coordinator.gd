@@ -668,6 +668,9 @@ func _patrol_tie_rank(enemy_id:int,processed_step_index:int,
 func preview_deployment(preset_id: String, companion_ids: Array,
 		include_integrity:bool=true) -> Dictionary:
 	var rejected := {"accepted": false, "reason": "", "preset_id": preset_id, "companion_ids": [], "placements": [], "base_fingerprint": ""}
+	if world.party_encounter != null and world.party_encounter.expedition_cycle != null \
+			and world.party_encounter.expedition_cycle.phase == "TOWN":
+		rejected.reason = "expedition_in_town"; return rejected
 	if world.party_encounter == null or world.party_encounter.safe_phase != "CONTACT" or not world.is_settled(): rejected.reason = "deployment_phase_required"; return rejected
 	if preset_id not in ["WEDGE", "LINE", "COLUMN"]: rejected.reason = "unknown_formation"; return rejected
 	var state = world.party_encounter; var selected: Array[int] = []
@@ -839,6 +842,9 @@ func direct_solo_action_error(request) -> String:
 
 
 func _turn_rejection(request) -> String:
+	if world.party_encounter != null and world.party_encounter.expedition_cycle != null \
+			and world.party_encounter.expedition_cycle.phase == "TOWN":
+		return "expedition_in_town"
 	if world.party_encounter == null or world.party_encounter.safe_phase != "ENGAGED" or not world.is_settled(): return "party_turn_phase_required"
 	if request == null or not request is PartyTurnRequest or request.protagonist_action == null: return "invalid_party_request"
 	var request_wire: Variant = request.to_dict()

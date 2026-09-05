@@ -94,6 +94,7 @@ var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
+var town_facility_id:="GUILD"
 var notice_text:=""
 var pending_move_actor_id:=-1
 var pending_move_origin:=Vector2i(-1,-1)
@@ -1463,11 +1464,15 @@ func _refresh()->void:
 			route_generation+=1;_clear_route_continue_schedule()
 			route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
+	var town_active:=str(status.view_mode)=="TOWN"
 	var combat_active:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
+	if town_active:combat_actions_visible=false
 	var party_rows:Array=session.party_cards()
-	var product_hud:=_is_solo_product_session()
+	# Town is a preparation screen in every scenario. Reusing the solo dungeon
+	# shell here left movement/attack furniture around after an automatic return.
+	var product_hud:=_is_solo_product_session() and not town_active
 	# SOLO keeps one continuous dungeon surface. CONTACT/ENGAGED remain internal
 	# turn authority, not a taller combat panel or a visible mode switch.
 	if product_hud and safe_phase=="ENGAGED":
@@ -1488,10 +1493,11 @@ func _refresh()->void:
 	event_surface.visible=product_hud;bottom_navigation.visible=product_hud
 	hud_bottom_flex.visible=product_hud
 	info_scroll.visible=not product_hud
+	grid.visible=not town_active
 	_apply_product_root_order(product_hud)
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
-		int(card_layout.get("party_height",160)))
+		int(card_layout.get("party_height",160)),product_hud)
 	cards.visible=true
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
@@ -1567,6 +1573,7 @@ func _refresh()->void:
 	if run_complete:_run_complete_deck(run_progress)
 	else:
 		match str(status.view_mode):
+			"TOWN":_town_deck(status)
 			"EXPLORATION":_exploration_deck()
 			"ENCOUNTER_PREVIEW":
 				# Product solo resolves CONTACT at the refresh boundary and keeps the
@@ -1582,7 +1589,8 @@ func _refresh()->void:
 	log_label.max_lines_visible=1 if combat_active else 3
 	deck.visible=not product_hud and not _narrative_log_visible
 	if product_hud:
-		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		event_label.text=_town_summary_text(status) if str(status.view_mode)=="TOWN" \
+			else _compact_meaningful_event_text(combat_history,status)
 		if not _product_transient_event_feedback.is_empty():
 			event_label.text=_product_transient_event_feedback
 			_product_transient_event_feedback=""
@@ -2280,6 +2288,229 @@ func _exploration_deck()->void:
 		_add_notice(summary,"MovePreviewSummary",FONT_KEY)
 	_selected_detail()
 
+
+func _town_deck(status:Dictionary)->void:
+	_add_notice(_town_summary_text(status),"TownGuildHallSummary",FONT_KEY)
+	var stations:=GridContainer.new();stations.name="TownGuildHallStations"
+	stations.columns=3;stations.add_theme_constant_override("h_separation",4)
+	stations.add_theme_constant_override("v_separation",4);deck.add_child(stations)
+	for row in [["GUILD","길드"],["CLINIC","치유소"],["SHRINE","신전"],
+			["MARKET","시장"],["ARMORY","장비"],["GATE","원정문"]]:
+		var button:=_add_button(stations,str(row[1]),"TownFacility%s"%str(row[0]),
+			_on_town_facility_selected.bind(str(row[0])))
+		button.toggle_mode=true;button.button_pressed=town_facility_id==str(row[0])
+	match town_facility_id:
+		"CLINIC":_town_clinic_panel(status)
+		"SHRINE":_town_shrine_panel(status)
+		"MARKET":_town_market_panel()
+		"ARMORY":_town_armory_panel()
+		"GATE":_town_gate_panel()
+		_:
+			town_facility_id="GUILD";_add_recruitment_candidates()
+	_add_notice("마을에서는 이동 턴이 흐르지 않습니다. 준비가 끝난 뒤 원정을 시작합니다.",
+		"TownPreparationRule",FONT_AUX)
+	_selected_detail()
+
+
+func _town_summary_text(status:Dictionary)->String:
+	var cycle:Dictionary=status.get("expedition_cycle",{}) \
+		if status.get("expedition_cycle",{}) is Dictionary else {}
+	var reason:="던전 폐쇄 시간이 되어 생존한 원정대가 귀환했습니다." \
+		if str(cycle.get("return_reason",""))=="TIME_LIMIT" else "원정대가 마을에 머물고 있습니다."
+	var gold:int=session.town_gold() if session!=null and session.has_method("town_gold") else 0
+	return "길드 홀 · 원정 %d 귀환 · %d층 · 금화 %d\n%s"%[
+		int(cycle.get("expedition_index",0)),int(cycle.get("floor_index",1)),gold,reason]
+
+
+func _town_clinic_panel(status:Dictionary)->void:
+	_add_notice("[치유소] 체력·출혈·일반 상처·기능 저하 회복 · 절단은 유지 · 1인 %d금화"%
+		SessionScript.TOWN_CLINIC_COST,"TownClinicTitle",FONT_BODY)
+	var members:Variant=status.get("party_member_ids",[])
+	for entity_id_value in members:
+		var entity_id:=int(entity_id_value)
+		var detail:Dictionary=session.inspect_party_member(entity_id)
+		if not bool(detail.get("accepted",false)):continue
+		var body:Dictionary=detail.get("body_state",{}) \
+			if detail.get("body_state",{}) is Dictionary else {}
+		var assessment:Dictionary=session.town_clinic_assessment(entity_id)
+		var severed:=0;var disabled:=0
+		for part_value in body.get("parts",[]):
+			if not part_value is Dictionary:continue
+			if str(part_value.get("condition",""))=="SEVERED":severed+=1
+			elif str(part_value.get("condition",""))=="DISABLED":disabled+=1
+		var line:=HBoxContainer.new();line.name="TownClinicMember%d"%entity_id
+		line.custom_minimum_size.y=TOUCH_TARGET;deck.add_child(line)
+		var label:=Label.new();label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size",FONT_AUX)
+		label.text="%s · HP %d/%d · 상처 %d · 기능저하 %d · 절단 %d"%[
+			str(detail.get("display_name","파티원")),int(detail.get("health",0)),
+			int(detail.get("max_health",0)),int(body.get("wound_count",0)),disabled,severed]
+		label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;line.add_child(label)
+		var treatment:=_add_button(line,"치료","TownClinicTreat%d"%entity_id,
+			_on_town_clinic_treat.bind(entity_id))
+		treatment.custom_minimum_size.x=72
+		treatment.disabled=not bool(assessment.get("accepted",false))
+		treatment.tooltip_text=str(assessment.get("message",""))
+
+
+func _town_shrine_panel(status:Dictionary)->void:
+	_add_notice("[신전] 한 번에 긴장 %d 회복 · 1인 %d금화"%[
+		SessionScript.TOWN_SHRINE_STRESS_REDUCTION,SessionScript.TOWN_SHRINE_COST],
+		"TownShrineTitle",FONT_BODY)
+	var morale:Dictionary=session.party_morale_observation()
+	for member_value in morale.get("members",[]):
+		if not member_value is Dictionary:continue
+		var member:Dictionary=member_value;var entity_id:=int(member.entity_id)
+		var assessment:Dictionary=session.town_shrine_assessment(entity_id)
+		var line:=HBoxContainer.new();line.name="TownShrineMember%d"%entity_id
+		line.custom_minimum_size.y=TOUCH_TARGET;deck.add_child(line)
+		var label:=Label.new();label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size",FONT_AUX)
+		label.text="%s · 긴장 %d/1000 · %s"%[str(member.display_name),
+			int(member.stress),str(member.mode_label)];line.add_child(label)
+		var rest:=_add_button(line,"휴식","TownShrineRest%d"%entity_id,
+			_on_town_shrine_rest.bind(entity_id))
+		rest.custom_minimum_size.x=72;rest.disabled=not bool(assessment.get("accepted",false))
+		rest.tooltip_text=str(assessment.get("message",""))
+
+
+func _town_market_panel()->void:
+	_add_notice("[시장] 귀환할 때마다 소모품과 기본 장비 재입고",
+		"TownMarketTitle",FONT_BODY)
+	for item_value in session.town_market_stock():
+		if not item_value is Dictionary:continue
+		var item:Dictionary=item_value
+		var line:=HBoxContainer.new();line.name="TownMarket%s"%str(item.definition_id)
+		line.custom_minimum_size.y=TOUCH_TARGET;deck.add_child(line)
+		var label:=Label.new();label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size",FONT_AUX)
+		label.text="%s · %d금화 · 재고 %d"%[
+			str(item.label),int(item.price),int(item.remaining)];line.add_child(label)
+		var buy:=_add_button(line,"구입","TownMarketBuy%s"%str(item.definition_id),
+			_on_town_market_buy.bind(str(item.definition_id)))
+		buy.custom_minimum_size.x=72;buy.disabled=not bool(item.can_buy)
+		buy.tooltip_text=str(item.message)
+
+
+func _town_armory_panel()->void:
+	_add_notice("[장비 보관소] 파티원이 가진 장비와 소모품을 서로 이전합니다. 장착품은 이전 시 해제됩니다.",
+		"TownArmoryTitle",FONT_BODY)
+	var owners:Array[Dictionary]=session.town_armory_rows()
+	if owners.size()<2:
+		_add_notice("동료가 합류하면 파티원 사이에서 아이템을 옮길 수 있습니다.",
+			"TownArmorySolo",FONT_AUX);return
+	for owner in owners:
+		_add_notice("%s · 가방 %d/%d"%[str(owner.display_name),
+			int(owner.used_backpack_slots),int(owner.capacity)],
+			"TownArmoryOwner%d"%int(owner.entity_id),FONT_KEY)
+		for item_value in owner.items:
+			if not item_value is Dictionary:continue
+			var item:Dictionary=item_value
+			var line:=HBoxContainer.new();line.name="TownArmoryItem%s"%str(item.instance_id)
+			line.custom_minimum_size.y=TOUCH_TARGET;deck.add_child(line)
+			var label:=Label.new();label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			label.add_theme_font_size_override("font_size",FONT_AUX)
+			label.text="%s%s"%[str(item.label)," · 장착" if bool(item.equipped) else ""]
+			label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;line.add_child(label)
+			if bool(item.equipped):
+				var unequip:=_add_button(line,"해제",
+					"TownUnequip%s"%str(item.instance_id),_on_town_unequip.bind(
+						int(owner.entity_id),str(item.slot)))
+				unequip.custom_minimum_size.x=58
+				var unequip_assessment:Dictionary=session.town_unequip_assessment(
+					int(owner.entity_id),str(item.slot))
+				unequip.disabled=not bool(unequip_assessment.get("accepted",false))
+				unequip.tooltip_text=str(unequip_assessment.get("message",""))
+			elif item.get("equip_slots",[]) is Array \
+					and not item.get("equip_slots",[]).is_empty():
+				var equip_slot:=str(item.equip_slots[0])
+				var equip:=_add_button(line,"장착","TownEquip%s"%str(item.instance_id),
+					_on_town_equip.bind(int(owner.entity_id),str(item.instance_id),equip_slot))
+				equip.custom_minimum_size.x=58
+				var equip_assessment:Dictionary=session.town_equip_assessment(
+					int(owner.entity_id),str(item.instance_id),equip_slot)
+				equip.disabled=not bool(equip_assessment.get("accepted",false))
+				equip.tooltip_text=str(equip_assessment.get("message",""))
+			for target in owners:
+				if int(target.entity_id)==int(owner.entity_id):continue
+				var move:=_add_button(line,"→%s"%str(target.display_name),
+					"TownTransfer%sTo%d"%[str(item.instance_id),int(target.entity_id)],
+					_on_town_transfer.bind(int(owner.entity_id),int(target.entity_id),
+						str(item.instance_id)))
+				move.custom_minimum_size.x=68
+				var assessment:Dictionary=session.town_transfer_assessment(
+					int(owner.entity_id),int(target.entity_id),str(item.instance_id))
+				move.disabled=not bool(assessment.get("accepted",false))
+				move.tooltip_text=str(assessment.get("message",""))
+
+
+func _town_gate_panel()->void:
+	var assessment:Dictionary=session.town_departure_assessment()
+	_add_notice("[원정문] 현재 활성화된 포탈은 1층뿐입니다. 새 원정은 1층 포탈에서 시작합니다.",
+		"TownGateTitle",FONT_BODY)
+	var depart:=_add_button(deck,"원정 출발","TownDepart",_on_town_depart)
+	depart.disabled=not bool(assessment.get("accepted",false))
+	depart.tooltip_text=str(assessment.get("message",""))
+
+
+func _on_town_facility_selected(facility_id:String)->void:
+	town_facility_id=facility_id;notice_text="";action_feedback_text=""
+	_request_refresh()
+
+
+func _on_town_clinic_treat(entity_id:int)->void:
+	var result:Dictionary=session.treat_town_clinic(entity_id)
+	if bool(result.get("accepted",false)):
+		notice_text="치료를 마쳤습니다.%s"%(
+			" 절단된 부위는 회복되지 않습니다." \
+			if bool(result.get("severed_parts_remain",false)) else "")
+	else:notice_text=str(result.get("message","치료할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_shrine_rest(entity_id:int)->void:
+	var result:Dictionary=session.rest_at_town_shrine(entity_id)
+	notice_text="긴장을 %d만큼 낮췄습니다."%(
+		int(result.get("stress_before",0))-int(result.get("stress_after",0))) \
+		if bool(result.get("accepted",false)) else str(result.get("message","휴식할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_market_buy(definition_id:String)->void:
+	var result:Dictionary=session.purchase_town_item(definition_id)
+	notice_text="물품을 구입해 주인공 가방에 넣었습니다." \
+		if bool(result.get("accepted",false)) else str(result.get("message","구입할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_transfer(from_entity_id:int,to_entity_id:int,instance_id:String)->void:
+	var result:Dictionary=session.transfer_town_item(from_entity_id,to_entity_id,instance_id)
+	notice_text="아이템을 파티원에게 이전했습니다." \
+		if bool(result.get("accepted",false)) else str(result.get("message","이전할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_equip(entity_id:int,instance_id:String,slot:String)->void:
+	var result:Dictionary=session.equip_town_item(entity_id,instance_id,slot)
+	notice_text="장비를 장착했습니다." if bool(result.get("accepted",false)) \
+		else str(result.get("message","장착할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_unequip(entity_id:int,slot:String)->void:
+	var result:Dictionary=session.unequip_town_item(entity_id,slot)
+	notice_text="장비를 해제했습니다." if bool(result.get("accepted",false)) \
+		else str(result.get("message","해제할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_depart()->void:
+	var result:Dictionary=session.depart_town()
+	if bool(result.get("accepted",false)):
+		town_facility_id="GUILD";notice_text="원정대가 던전으로 다시 출발했습니다."
+	else:notice_text=str(result.get("message","출발할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
 func _add_recruitment_candidates()->void:
 	if session==null or not session.has_method("recruitable_companions"):return
 	var status:Dictionary=session.party_status()
@@ -2300,8 +2531,9 @@ func _add_recruitment_candidates()->void:
 		var row:Dictionary=value
 		var rescue_state:=str(row.get("rescue_state","AVAILABLE"))
 		# Legacy direct-recruit fixtures remain available to core regression tests,
-		# but product controls only expose the relationship-gated rescue story.
-		if rescue_state=="AVAILABLE":continue
+		# but dungeon controls only expose the relationship-gated rescue story. The
+		# town guild deliberately uses direct AVAILABLE rows as its stagecoach board.
+		if rescue_state=="AVAILABLE" and str(status.get("view_mode",""))!="TOWN":continue
 		var line:=HBoxContainer.new();line.name="RecruitCandidate%d"%int(row.get("entity_id",-1))
 		line.custom_minimum_size.y=60;line.add_theme_constant_override("separation",6);management.add_child(line)
 		var label:=Label.new();label.name="RecruitCandidateLabel";label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -2314,7 +2546,11 @@ func _add_recruitment_candidates()->void:
 			label.text="%s · 영입 수락 %d%%\n%s"%[str(row.get("display_name","동료")),
 				int(recruitment.get("probability_percent",0)),_recruitment_reason_summary(recruitment)]
 		else:
-			label.text="영입 후보 · %s · %s"%[str(row.get("display_name","동료")),str(row.get("style_label","동료"))]
+			label.text="%s · %s · %s\n%s · %s · %s"%[
+				str(row.get("display_name","동료")),str(row.get("species_label","미상")),
+				str(row.get("role_hint","범용 전투")),str(row.get("weapon_label","맨손")),
+				str(row.get("fixed_trait_label","종족 특성")),
+				str(row.get("style_label","동료"))]
 		label.tooltip_text=str(row.get("message",""));label.mouse_filter=Control.MOUSE_FILTER_IGNORE;line.add_child(label)
 		if rescue_state=="COLLAPSED_STORY":
 			var stabilize:=_add_button(line,"안정화","StabilizeMember%d"%int(row.get("entity_id",-1)),
@@ -3920,12 +4156,19 @@ func _attack_neutral_npc(entity_id:int)->void:
 	_request_refresh()
 
 func _on_recruit_companion(entity_id:int)->void:
-	var result:Dictionary=session.offer_recruitment(entity_id)
+	var status:Dictionary=session.party_status()
+	var direct_guild_candidate:bool=str(status.get("view_mode",""))=="TOWN" \
+		and session.has_method("rescue_story_state") \
+		and str(session.rescue_story_state(entity_id)).is_empty()
+	var result:Dictionary=session.recruit_companion(entity_id) \
+		if direct_guild_candidate else session.offer_recruitment(entity_id)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","영입할 수 없습니다."));action_feedback_text=notice_text
 	else:
-		notice_text="새 동료가 파티에 합류했습니다." if bool(result.get("joined",true)) \
+		notice_text="길드 후보가 장비를 챙겨 파티에 합류했습니다." \
+			if direct_guild_candidate else ("새 동료가 파티에 합류했습니다." if bool(result.get("joined",true)) \
 			else "영입 제안을 거절했습니다. 판정과 이유를 사건 기록에 남겼습니다."
+			)
 		action_feedback_text=notice_text
 		_clear_roster_change_transients()
 	_cancel_auto_pending(true);_request_refresh()
@@ -5059,9 +5302,9 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 func _facet_label(value:String)->String:return {"H":"정직-겸손","E":"정서성","X":"외향성","A":"원만성","C":"성실성","O":"개방성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
-		run_available:bool=false,run_terminal:bool=false,party_height:int=160)->void:
+		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
+		product_hud:bool=false)->void:
 	var wide:=size.x>=450.0
-	var product_hud:=_is_solo_product_session()
 	phase_panel.custom_minimum_size.y=0 if product_hud else (52 if wide else 48)
 	# The 360px product stack has exactly eight spare pixels after its fixed
 	# surfaces. A zero-gap transparent flex owns them deterministically; relying
@@ -5092,13 +5335,19 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var banner:Dictionary=presentation.get("banner",{})
 	var tone:=str(banner.get("tone","CALM"))
 	var situation:="조용함"
-	if tone=="DEFEAT":situation="위험"
+	if str(status.get("view_mode",""))=="TOWN":situation="마을"
+	elif tone=="DEFEAT":situation="위험"
 	elif tone=="VICTORY" or str(status.get("safe_phase",""))=="GROUPED_COMPLETE":situation="승리"
 	elif str(status.get("safe_phase",""))=="ENGAGED":situation="전투"
 	elif str(status.get("safe_phase",""))=="CONTACT" \
 			or not status.get("visible_enemy_ids",[]).is_empty():situation="기척"
 	var surface_color:=AsciiFrameScript.NAVY
-	if situation=="전투":
+	if situation=="마을":
+		surface_color=Color("#25190f")
+		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
+		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS)
+		grid.set_combat_emphasis(false)
+	elif situation=="전투":
 		surface_color=Color("#2a0000")
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.DANGER); grid.set_combat_emphasis(true)

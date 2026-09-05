@@ -29,6 +29,7 @@ const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
 const InventoryScript=preload("res://sim/inventory_state.gd")
+const ItemDefinitionScript=preload("res://sim/item_definition.gd")
 const AmmoPoolScript=preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const GroundItemScript=preload("res://sim/ground_item_state.gd")
@@ -45,6 +46,7 @@ const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd"
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
+const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -66,9 +68,28 @@ const RESCUE_TIME_COST := 100
 const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
+const GUILD_RECRUITMENT_RULESET_ID := "darkest-guild-arrivals-v1"
+const GUILD_CANDIDATE_COUNT := 3
+const TOWN_ECONOMY_RULESET_ID := "town-preparation-economy-v1"
+const TOWN_CLINIC_RULESET_ID := "town-clinic-care-v1"
+const TOWN_SHRINE_RULESET_ID := "town-shrine-rest-v1"
+const TOWN_PORTAL_RULESET_ID := "town-activated-floor-portals-v1"
+const TOWN_INITIAL_GOLD := 120
+const TOWN_RETURN_STIPEND := 80
+const TOWN_CLINIC_COST := 25
+const TOWN_SHRINE_COST := 15
+const TOWN_SHRINE_STRESS_REDUCTION := 300
+const TOWN_STARTING_FLOOR := 1
+const TOWN_MARKET_CATALOG := [
+	{"definition_id":"POTION_HEALING","price":12,"stock":4},
+	{"definition_id":"ARMOR_PADDED","price":35,"stock":1},
+	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
+	{"definition_id":"ACCESSORY_BRASS_CHARM","price":28,"stock":1},
+]
 const ITEM_ACTION_TIME_COST := 100
 const OPENING_HEXACO_SLOT := 9242026
 const OPENING_NPC_MAX_HEALTH := 90
+const DEFAULT_EXPEDITION_DURATION := 120000
 const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
 # Product camera steps are a presentation contract shared with the sandbox.
 # Keep the complete sequence here so adding a zoom level cannot leave the UI
@@ -89,10 +110,27 @@ const PARTY_MORALE_TRIGGER_PRESENTATION := {
 	"SELF_DOWNED":{"kind":"DISTRESS","label_ko":"자신이 쓰러짐"},
 	"ALLY_DOWNED":{"kind":"DISTRESS","label_ko":"동료가 쓰러짐"},
 	"ALLY_DIED":{"kind":"DISTRESS","label_ko":"동료를 잃음"},
+	"ALLY_DIED_WITNESSED":{"kind":"DISTRESS","label_ko":"죽음을 목격함"},
+	"ALLY_DIED_BONDED":{"kind":"DISTRESS","label_ko":"가까운 동료를 잃음"},
+	"ALLY_DIED_EMOTIONALITY":{"kind":"DISTRESS","label_ko":"감정적으로 크게 동요함"},
 	"ENEMY_DIED":{"kind":"RELIEF","label_ko":"적을 쓰러뜨림"},
 	"OVERRIDE_STRESS":{"kind":"DISTRESS","label_ko":"강제 지시 부담"},
 	"ALLY_FEAR_CONTAGION":{"kind":"CONTAGION","label_ko":"가까운 동료의 공포"},
 	"SAFE_RECOVERY":{"kind":"RECOVERY","label_ko":"안전한 곳에서 진정"},
+	"TOWN_REST":{"kind":"RECOVERY","label_ko":"마을에서 휴식"},
+}
+const GUILD_NAMES := {
+	"human":["레아","도윤","마렌"],
+	"elf":["시에른","리엔","아셀"],
+	"dwarf":["토린","브린","하르"],
+	"orc":["우르카","그롬","바라"],
+	"beastkin":["세라","루카","나비"],
+	"goblin":["미루","피코","누크"],
+}
+const GUILD_WEAPONS := {
+	"human":"WEAPON_SHORT_SWORD", "elf":"WEAPON_BOW",
+	"dwarf":"WEAPON_MACE", "orc":"WEAPON_HAND_AXE",
+	"beastkin":"WEAPON_SPEAR", "goblin":"WEAPON_CROSSBOW",
 }
 
 var sim
@@ -345,6 +383,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		"START_CROSSBOW_001",false)
 	state.protagonist_progression.training_modes=ProgressionRegistryScript.initial_training_modes("SWORD")
 	state.protagonist_growth=GrowthBuildStateScript.new(str(protagonist.species_id))
+	state.expedition_cycle=ExpeditionCycleScript.active(1,candidate.world.world_time,
+		DEFAULT_EXPEDITION_DURATION,1)
+	if state.expedition_cycle==null:return false
 	candidate.world.item_state.ground_items=GroundItemScript.new(_initial_ground_item_rows(
 		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
@@ -1293,7 +1334,10 @@ func party_status() -> Dictionary:
 	var state = sim.world.party_encounter; var view_mode: String = {"GROUPED":"EXPLORATION", "GROUPED_COMPLETE":"EXPLORATION",
 		"CONTACT":"ENCOUNTER_PREVIEW", "ENGAGED":"COMBAT", "REGROUP_READY":"REGROUP", "PARTY_DEFEATED":"COMBAT"}[state.safe_phase]
 	var visible_enemy_ids: Array = []
-	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
+	var cycle:Dictionary=expedition_cycle_status()
+	if str(cycle.get("phase","DUNGEON"))=="TOWN":
+		view_mode="TOWN";visible_enemy_ids.clear()
+	if view_mode != "TOWN" and state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 		for enemy_id in state.enemy_ids:
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
@@ -1306,11 +1350,589 @@ func party_status() -> Dictionary:
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
 		"exiled_member_ids":_member_ids_with_presence("EXILED"),
 		"visible_enemy_ids": visible_enemy_ids,
+		"expedition_cycle":cycle,
 		"party_command":PartyCommandScript.effective(sim.world,state),
 		"contact_warning":_latest_party_contact_warning(),
 		"protagonist_position": [protagonist_position.x, protagonist_position.y],
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
+
+
+func expedition_cycle_status()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or sim.world.party_encounter.expedition_cycle==null:
+		return {"schema_version":ExpeditionCycleScript.SCHEMA_VERSION,
+			"ruleset_id":ExpeditionCycleScript.RULESET_ID,"phase":"UNAVAILABLE",
+			"expedition_index":0,"floor_index":1,"opened_at_world_time":0,
+			"closes_at_world_time":0,"returned_at_world_time":-1,
+			"return_reason":"NONE","duration":0,"remaining_world_time":0,
+			"warning_band":"UNAVAILABLE"}.duplicate(true)
+	return sim.world.party_encounter.expedition_cycle.status(
+		sim.world.world_time).duplicate(true)
+
+
+func _ensure_town_guild_candidates()->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
+	var state=sim.world.party_encounter
+	if state.expedition_cycle==null or state.expedition_cycle.phase!="TOWN" \
+			or state.expedition_cycle.expedition_index<1:return false
+	var expedition_index:=int(state.expedition_cycle.expedition_index)
+	if _guild_arrival_event(expedition_index)!=null:return true
+	var rollback_value:Variant=sim.snapshot()
+	if not rollback_value is Dictionary:return false
+	var rollback:Dictionary=rollback_value
+	var species_pool:Array[String]=GrowthBuildRegistryScript.picker_species_ids()
+	if species_pool.size()<GUILD_CANDIDATE_COUNT:return false
+	var digest:PackedByteArray=("%s|world=%d|expedition=%d"%[
+		GUILD_RECRUITMENT_RULESET_ID,world_seed,expedition_index]).sha256_buffer()
+	var start:=int(digest[0])%species_pool.size()
+	var candidate_rows:Array[Dictionary]=[]
+	for slot in range(GUILD_CANDIDATE_COUNT):
+		var species_id:=str(species_pool[(start+slot)%species_pool.size()])
+		var names:Variant=GUILD_NAMES.get(species_id,["모험가"])
+		var name_index:int=int(digest[slot+1])%names.size() if names is Array else 0
+		var display_name:=str(names[name_index]) if names is Array else "모험가"
+		var stats:=ActorStatRulesScript.for_species(species_id)
+		var spawn:=_guild_candidate_storage_position()
+		var entity=sim.world.add_entity("companion",display_name,spawn,
+			95+int(stats.get("STR",5))*3,["party_member","recruitable",
+				"guild_candidate"],species_id,"party")
+		if entity==null:
+			sim=SimulatorScript.from_snapshot(rollback);return false
+		state=sim.world.party_encounter
+		state.party_member_ids.append(entity.id);state.party_member_ids.sort()
+		state.member_rows[entity.id]=MemberScript.new(entity.id,0,"COMPANION",
+			"RECRUITABLE",PartyHexacoScript.generated(
+				personality_seed+expedition_index*104729,entity.id))
+		state.member_rows[entity.id].busy_until=sim.world.world_time
+		var weapon_definition_id:=str(GUILD_WEAPONS.get(species_id,
+			"WEAPON_SHORT_SWORD"))
+		candidate_rows.append({"entity_id":str(entity.id),
+			"weapon_definition_id":weapon_definition_id,
+			"role_hint":_guild_role_hint(weapon_definition_id)})
+	for roster_index in range(state.party_member_ids.size()):
+		state.member_rows[state.party_member_ids[roster_index]].roster_slot=roster_index
+	var arrival=sim.world.emit_event("town.guild_candidates_arrived",
+		state.protagonist_id,-1,state.group_anchor,GUILD_CANDIDATE_COUNT,-1,
+		{"schema_version":1,"ruleset_id":GUILD_RECRUITMENT_RULESET_ID,
+			"expedition_index":expedition_index,"stipend":TOWN_RETURN_STIPEND,
+			"candidates":candidate_rows})
+	state.revision+=1
+	var guild_world_error:String=sim.world.world_state_error()
+	if arrival==null or not guild_world_error.is_empty():
+		sim=SimulatorScript.from_snapshot(rollback);return false
+	return true
+
+
+func _guild_candidate_storage_position()->Vector2i:
+	for y in range(sim.world.height):
+		for x in range(sim.world.width):
+			var position:=Vector2i(x,y)
+			var terrain:=TerrainRegistryScript.definition(
+				str(sim.world.tile_at(position).terrain))
+			if not terrain.is_empty() and bool(terrain.get("passable",false)) \
+					and sim.world.blocking_entity_at(position)==null:
+				return position
+	return sim.world.party_encounter.group_anchor
+
+
+func _guild_arrival_event(expedition_index:int):
+	if sim==null or sim.world==null:return null
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event=sim.world.events[index]
+		if event.type=="town.guild_candidates_arrived" \
+				and int(event.data.get("expedition_index",0))==expedition_index:
+			return event
+	return null
+
+
+func _guild_candidate_record(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null:return {}
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event=sim.world.events[index]
+		if event.type!="town.guild_candidates_arrived":continue
+		for value in event.data.get("candidates",[]):
+			if value is Dictionary and Int64CodecScript.is_canonical(
+					value.get("entity_id")) and Int64CodecScript.parse(
+					value.entity_id,"guild candidate")==entity_id:
+				return value.duplicate(true)
+	return {}
+
+
+static func _guild_role_hint(weapon_definition_id:String)->String:
+	return {"WEAPON_BOW":"후열 사격","WEAPON_CROSSBOW":"중장 사격",
+		"WEAPON_SPEAR":"척후·견제","WEAPON_HAND_AXE":"전열 공격",
+		"WEAPON_MACE":"전열 제압","WEAPON_SHORT_SWORD":"기동 전투"}.get(
+		weapon_definition_id,"범용 전투")
+
+
+func town_overview()->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	_ensure_town_guild_candidates()
+	var cycle:Dictionary=expedition_cycle_status()
+	return _feedback_dto({"accepted":true,"reason":"ok","gold":town_gold(),
+		"expedition_index":int(cycle.get("expedition_index",0)),
+		"floor_index":int(cycle.get("floor_index",1)),
+		"clinic_cost":TOWN_CLINIC_COST,"shrine_cost":TOWN_SHRINE_COST,
+		"shrine_stress_reduction":TOWN_SHRINE_STRESS_REDUCTION,
+		"market":town_market_stock(),"armory":town_armory_rows(),
+		"available_portal_floors":[TOWN_STARTING_FLOOR],
+		"can_depart":bool(town_departure_assessment().get("accepted",false))})
+
+
+func town_gold()->int:
+	if sim==null or sim.world==null:return 0
+	var value:=TOWN_INITIAL_GOLD
+	for event in sim.world.events:
+		match str(event.type):
+			"town.guild_candidates_arrived":
+				value+=int(event.data.get("stipend",TOWN_RETURN_STIPEND))
+			"town.market_purchased","town.clinic_service","town.shrine_service":
+				value-=int(event.data.get("cost",event.magnitude))
+	return maxi(0,value)
+
+
+func town_market_stock()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	var expedition_index:=_town_expedition_index()
+	for catalog_value in TOWN_MARKET_CATALOG:
+		var catalog:Dictionary=catalog_value
+		var definition_id:=str(catalog.definition_id)
+		var bought:=0
+		if sim!=null and sim.world!=null:
+			for event in sim.world.events:
+				if event.type=="town.market_purchased" \
+						and int(event.data.get("expedition_index",0))==expedition_index \
+						and str(event.data.get("definition_id",""))==definition_id:
+					bought+=1
+		var definition:Variant=ItemRegistryScript.definition(definition_id)
+		var remaining:=maxi(0,int(catalog.stock)-bought)
+		var assessment:=town_market_purchase_assessment(definition_id)
+		rows.append({"definition_id":definition_id,
+			"label":str(definition.label) if definition!=null else definition_id,
+			"category":str(definition.category) if definition!=null else "",
+			"price":int(catalog.price),"stock":int(catalog.stock),
+			"remaining":remaining,"can_buy":bool(assessment.get("accepted",false)),
+			"message":str(assessment.get("message",""))})
+	return rows.duplicate(true)
+
+
+func town_market_purchase_assessment(definition_id:String)->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	var catalog:=_town_market_catalog_row(definition_id)
+	if catalog.is_empty():return _rejection_dto("town_market_item_unknown")
+	var expedition_index:=_town_expedition_index();var bought:=0
+	for event in sim.world.events:
+		if event.type=="town.market_purchased" \
+				and int(event.data.get("expedition_index",0))==expedition_index \
+				and str(event.data.get("definition_id",""))==definition_id:
+			bought+=1
+	if bought>=int(catalog.stock):return _rejection_dto("town_market_sold_out")
+	if town_gold()<int(catalog.price):return _rejection_dto("town_gold_insufficient")
+	var hero_id:=int(sim.world.party_encounter.protagonist_id)
+	var inventory=sim.world.item_state.inventory(hero_id)
+	if inventory==null:return _rejection_dto("item_actor_missing")
+	if inventory.used_backpack_slots()>=InventoryScript.BACKPACK_CAPACITY:
+		return _rejection_dto("inventory_full")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"definition_id":definition_id,"price":int(catalog.price),
+		"remaining_after":int(catalog.stock)-bought-1})
+
+
+func purchase_town_item(definition_id:String)->Dictionary:
+	var assessment:=town_market_purchase_assessment(definition_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var position:Vector2i=sim.world.entities[hero_id].position
+	var granted:=ItemOperationsScript.commit_grant(sim.world,hero_id,
+		definition_id,1,position,"TOWN_MARKET_PURCHASE")
+	if not bool(granted.get("accepted",false)):
+		_restore_town_rollback(rollback);return _rejection_dto(
+			str(granted.get("reason","town_market_purchase_failed")))
+	var price:=int(assessment.price)
+	var event=sim.world.emit_event("town.market_purchased",hero_id,hero_id,
+		position,price,int(granted.event_id),{"schema_version":1,
+			"ruleset_id":TOWN_ECONOMY_RULESET_ID,"cost":price,
+			"definition_id":definition_id,
+			"instance_id":str(granted.instance_id),
+			"expedition_index":_town_expedition_index()})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		_restore_town_rollback(rollback)
+		return _rejection_dto(state_error if not state_error.is_empty() \
+			else "town_market_purchase_failed")
+	command_journal.append({"kind":"town","operation":{
+		"action":"BUY","definition_id":definition_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"instance_id":str(granted.instance_id),"definition_id":definition_id,
+		"price":price,"gold":town_gold(),"market":town_market_stock(),
+		"inventory":protagonist_inventory()})
+
+
+func town_clinic_assessment(entity_id:int)->Dictionary:
+	var member_error:=_town_active_member_error(entity_id,true)
+	if not member_error.is_empty():return _rejection_dto(member_error)
+	if town_gold()<TOWN_CLINIC_COST:return _rejection_dto("town_gold_insufficient")
+	var entity=sim.world.entities[entity_id]
+	var combatant=sim.world.combatant_states[entity_id]
+	var body=sim.world.body_states.get(entity_id)
+	var damaged_parts:=0;var severed_parts:=0
+	if body!=null:
+		for part_value in body.parts:
+			var part:Dictionary=part_value
+			if str(part.condition)=="SEVERED":severed_parts+=1
+			elif str(part.condition)=="DISABLED":damaged_parts+=1
+			else:
+				for layer_value in part.layers:
+					if int(layer_value.get("integrity",1000))<1000:
+						damaged_parts+=1;break
+	var needs_care:bool=int(entity.health)<int(entity.max_health) \
+		or str(combatant.life_state)=="DOWNED" or not combatant.status_rows.is_empty() \
+		or body!=null and (not body.wounds.is_empty() or damaged_parts>0 \
+			or int(body.current_blood)<int(body.body_scalars.get("blood_capacity",0)) \
+			or int(body.shock)>0 or int(body.consciousness)<1000)
+	if not needs_care:return _rejection_dto("town_clinic_not_needed")
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"cost":TOWN_CLINIC_COST,"health":int(entity.health),
+		"max_health":int(entity.max_health),"life_state":str(combatant.life_state),
+		"wound_count":body.wounds.size() if body!=null else 0,
+		"damaged_part_count":damaged_parts,"severed_part_count":severed_parts,
+		"severed_parts_remain":severed_parts>0})
+
+
+func treat_town_clinic(entity_id:int)->Dictionary:
+	var assessment:=town_clinic_assessment(entity_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var entity=sim.world.entities[entity_id]
+	var combatant=sim.world.combatant_states[entity_id]
+	var body=sim.world.body_states.get(entity_id)
+	var source=sim.world.emit_event("town.clinic_service",hero_id,entity_id,
+		entity.position,TOWN_CLINIC_COST,-1,{"schema_version":1,
+			"ruleset_id":TOWN_CLINIC_RULESET_ID,"cost":TOWN_CLINIC_COST})
+	if source==null:
+		_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+	var cleared_status_ids:Array[String]=[]
+	for status in combatant.status_rows.duplicate():
+		if str(status.status_id)!="BLEEDING":continue
+		var expired=sim.world.emit_event("status.expired",-1,entity_id,
+			entity.position,0,source.id,{"schema_version":1,
+				"status_ruleset_id":WorldStateScript.STATUS_RULESET_ID,
+				"status_id":"BLEEDING","reason":"TOWN_CARE"})
+		if expired==null:
+			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+		combatant.status_rows.erase(status);cleared_status_ids.append("BLEEDING")
+	var recovered_from_downed:=str(combatant.life_state)=="DOWNED"
+	if recovered_from_downed:
+		var recovered_health:=maxi(1,int((entity.max_health+9)/10))
+		var recovery=sim.world.emit_event("entity.recovered",-1,entity_id,
+			entity.position,recovered_health,source.id,{"schema_version":1,
+				"life_ruleset_id":WorldStateScript.LIFE_RULESET_ID,
+				"recovered_health":recovered_health,
+				"recovery_lock_until":str(sim.world.world_time+100)})
+		if recovery==null:
+			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+		entity.health=recovered_health;combatant.life_state="ACTIVE"
+		combatant.downed_at=-1;combatant.downed_resolve_at=-1
+		combatant.downed_source_event_id=-1;combatant.guarded_until=0
+		combatant.guard_source_event_id=-1
+		combatant.recovery_lock_until=sim.world.world_time+100
+		combatant.recovery_source_event_id=int(recovery.id)
+	var healed_amount:=maxi(0,int(entity.max_health)-int(entity.health))
+	if healed_amount>0:
+		entity.health+=healed_amount
+		var health_event=sim.world.emit_event("health.restored",entity_id,entity_id,
+			entity.position,healed_amount,source.id,{"schema_version":1,
+				"ruleset_id":TOWN_CLINIC_RULESET_ID,"kind":"TOWN_CLINIC",
+				"health_after":int(entity.health)})
+		if health_event==null:
+			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+	var body_changed:=false
+	if body!=null:
+		var retained_wounds:Array[Dictionary]=[]
+		for wound_value in body.wounds:
+			var wound:Dictionary=wound_value
+			if body.part_condition(str(wound.part_id))=="SEVERED":
+				var healed_stump:Dictionary=wound.duplicate(true)
+				healed_stump.bleeding=0;healed_stump.severity=0
+				retained_wounds.append(healed_stump)
+		body.wounds=retained_wounds
+		body.current_blood=int(body.body_scalars.get("blood_capacity",body.current_blood))
+		body.shock=0;body.consciousness=1000
+		for part_value in body.parts:
+			var part:Dictionary=part_value
+			if str(part.condition)=="SEVERED":continue
+			part.condition="FUNCTIONAL";part.condition_source_event_id=-1
+			for layer_value in part.layers:layer_value.integrity=1000
+		body.revision+=1;body_changed=true
+		var body_event=sim.world.emit_event("town.body_restored",entity_id,entity_id,
+			entity.position,int(assessment.get("wound_count",0)),source.id,
+			{"schema_version":1,"ruleset_id":TOWN_CLINIC_RULESET_ID,
+				"severed_part_count":int(assessment.get("severed_part_count",0)),
+				"severed_parts_remain":bool(assessment.get("severed_parts_remain",false))})
+		if body_event==null:
+			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback);return _rejection_dto(state_error)
+	command_journal.append({"kind":"town","operation":{
+		"action":"CLINIC","entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(source.id),
+		"entity_id":entity_id,"cost":TOWN_CLINIC_COST,"gold":town_gold(),
+		"healed_amount":healed_amount,"cleared_status_ids":cleared_status_ids,
+		"recovered_from_downed":recovered_from_downed,"body_restored":body_changed,
+		"severed_parts_remain":bool(assessment.get("severed_parts_remain",false))})
+
+
+func town_shrine_assessment(entity_id:int)->Dictionary:
+	var member_error:=_town_active_member_error(entity_id,false)
+	if not member_error.is_empty():return _rejection_dto(member_error)
+	if town_gold()<TOWN_SHRINE_COST:return _rejection_dto("town_gold_insufficient")
+	var member=sim.world.party_encounter.member(entity_id)
+	if member==null or int(member.stress)<=0:return _rejection_dto("town_shrine_not_needed")
+	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
+		"cost":TOWN_SHRINE_COST,"stress_before":int(member.stress),
+		"stress_after":maxi(0,int(member.stress)-TOWN_SHRINE_STRESS_REDUCTION)})
+
+
+func rest_at_town_shrine(entity_id:int)->Dictionary:
+	var assessment:=town_shrine_assessment(entity_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var member=state.member(entity_id);var entity=sim.world.entities[entity_id]
+	var before:=int(member.stress);var after:=int(assessment.stress_after)
+	var source=sim.world.emit_event("town.shrine_service",hero_id,entity_id,
+		entity.position,TOWN_SHRINE_COST,-1,{"schema_version":1,
+			"ruleset_id":TOWN_SHRINE_RULESET_ID,"cost":TOWN_SHRINE_COST})
+	if source==null:
+		_restore_town_rollback(rollback);return _rejection_dto("town_shrine_failed")
+	var mode_before:=str(member.mental_mode)
+	var mode_after:=PartyMoraleModelScript.next_mode(mode_before,after)
+	var morale=sim.world.emit_event("party.morale_changed",entity_id,-1,
+		entity.position,absi(after-before),source.id,{"schema_version":1,
+			"ruleset_id":PartyMoraleModelScript.RULESET_ID,"stress_before":before,
+			"direct_delta":after-before,"contagion_delta":0,"recovery_delta":0,
+			"stress_after":after,"mode_before":mode_before,"mode_after":mode_after,
+			"trigger_codes":["TOWN_REST"],"source_event_ids":[str(source.id)]})
+	if morale==null:
+		_restore_town_rollback(rollback);return _rejection_dto("town_shrine_failed")
+	member.stress=after;member.mental_mode=mode_after;state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback);return _rejection_dto(state_error)
+	command_journal.append({"kind":"town","operation":{
+		"action":"SHRINE","entity_id":str(entity_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(source.id),
+		"entity_id":entity_id,"cost":TOWN_SHRINE_COST,"gold":town_gold(),
+		"stress_before":before,"stress_after":after})
+
+
+func town_armory_rows()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if _town_context_error().is_empty():
+		var state=sim.world.party_encounter
+		for entity_id_value in state.active_party_member_ids:
+			var entity_id:=int(entity_id_value);var entity=sim.world.entities.get(entity_id)
+			var inventory=sim.world.item_state.inventory(entity_id)
+			if entity==null or inventory==null:continue
+			var item_rows:Array[Dictionary]=[]
+			for item in inventory.backpack:
+				var equipped_slot:=""
+				for slot in inventory.equipped:
+					if str(inventory.equipped[slot])==str(item.instance_id):
+						equipped_slot=str(slot);break
+				item_rows.append(_item_presentation_row(item,equipped_slot,
+					not equipped_slot.is_empty()))
+			rows.append({"entity_id":entity_id,"display_name":str(entity.display_name),
+				"items":item_rows,"used_backpack_slots":inventory.used_backpack_slots(),
+				"capacity":InventoryScript.BACKPACK_CAPACITY})
+	return rows.duplicate(true)
+
+
+func town_transfer_assessment(from_entity_id:int,to_entity_id:int,
+		instance_id:String)->Dictionary:
+	for entity_id in [from_entity_id,to_entity_id]:
+		var member_error:=_town_active_member_error(entity_id,false)
+		if not member_error.is_empty():return _rejection_dto(member_error)
+	if from_entity_id==to_entity_id:return _rejection_dto("item_transfer_same_entity")
+	var preview:=ItemOperationsScript.preview_transfer(sim.world,from_entity_id,
+		to_entity_id,instance_id)
+	return _feedback_dto(preview) if bool(preview.get("accepted",false)) \
+		else _rejection_dto(str(preview.get("reason","town_transfer_failed")))
+
+
+func town_equip_assessment(entity_id:int,instance_id:String,slot:String)->Dictionary:
+	var member_error:=_town_active_member_error(entity_id,false)
+	if not member_error.is_empty():return _rejection_dto(member_error)
+	var preview:=ItemOperationsScript.preview_equip(sim.world,entity_id,instance_id,slot)
+	return _feedback_dto(preview) if bool(preview.get("accepted",false)) \
+		else _rejection_dto(str(preview.get("reason","town_equipment_failed")))
+
+
+func town_unequip_assessment(entity_id:int,slot:String)->Dictionary:
+	var member_error:=_town_active_member_error(entity_id,false)
+	if not member_error.is_empty():return _rejection_dto(member_error)
+	var preview:=ItemOperationsScript.preview_unequip(sim.world,entity_id,slot)
+	return _feedback_dto(preview) if bool(preview.get("accepted",false)) \
+		else _rejection_dto(str(preview.get("reason","town_equipment_failed")))
+
+
+func equip_town_item(entity_id:int,instance_id:String,slot:String)->Dictionary:
+	var assessment:=town_equip_assessment(entity_id,instance_id,slot)
+	if not bool(assessment.get("accepted",false)):return assessment
+	return _commit_town_equipment("EQUIP",entity_id,instance_id,slot)
+
+
+func unequip_town_item(entity_id:int,slot:String)->Dictionary:
+	var assessment:=town_unequip_assessment(entity_id,slot)
+	if not bool(assessment.get("accepted",false)):return assessment
+	return _commit_town_equipment("UNEQUIP",entity_id,"",slot)
+
+
+func _commit_town_equipment(action:String,entity_id:int,instance_id:String,
+		slot:String)->Dictionary:
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var position:Vector2i=sim.world.entities[entity_id].position
+	var result:Dictionary=ItemOperationsScript.commit_equip(sim.world,entity_id,
+		instance_id,slot,position,0) if action=="EQUIP" \
+		else ItemOperationsScript.commit_unequip(sim.world,entity_id,slot,position,0)
+	if not bool(result.get("accepted",false)):
+		_restore_town_rollback(rollback);return _rejection_dto(
+			str(result.get("reason","town_equipment_failed")))
+	sim.world.party_encounter.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback);return _rejection_dto(state_error)
+	command_journal.append({"kind":"town","operation":{"action":action,
+		"entity_id":str(entity_id),"instance_id":instance_id,"slot":slot}})
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"event_id":int(result.event_id),"action":action,"entity_id":entity_id,
+		"instance_id":str(result.get("instance_id",instance_id)),"slot":slot,
+		"armory":town_armory_rows()})
+
+
+func transfer_town_item(from_entity_id:int,to_entity_id:int,
+		instance_id:String)->Dictionary:
+	var assessment:=town_transfer_assessment(from_entity_id,to_entity_id,instance_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var position:Vector2i=sim.world.entities[from_entity_id].position
+	var moved:=ItemOperationsScript.commit_transfer(sim.world,from_entity_id,
+		to_entity_id,instance_id,position,0)
+	if not bool(moved.get("accepted",false)):
+		_restore_town_rollback(rollback);return _rejection_dto(
+			str(moved.get("reason","town_transfer_failed")))
+	sim.world.party_encounter.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback);return _rejection_dto(state_error)
+	command_journal.append({"kind":"town","operation":{"action":"TRANSFER",
+		"from_entity_id":str(from_entity_id),"to_entity_id":str(to_entity_id),
+		"instance_id":instance_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"event_id":int(moved.event_id),"from_entity_id":from_entity_id,
+		"to_entity_id":to_entity_id,"instance_id":instance_id,
+		"armory":town_armory_rows()})
+
+
+func town_departure_assessment()->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	var state=sim.world.party_encounter
+	var hero_life=sim.world.combatant_states.get(state.protagonist_id)
+	if hero_life==null or str(hero_life.life_state)!="ACTIVE":
+		return _rejection_dto("town_departure_party_unavailable")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"floor_index":TOWN_STARTING_FLOOR,
+		"returned_from_floor_index":int(state.expedition_cycle.floor_index),
+		"entry_mode":"ACTIVATED_PORTAL",
+		"portal_ruleset_id":TOWN_PORTAL_RULESET_ID,
+		"available_portal_floors":[TOWN_STARTING_FLOOR],
+		"next_expedition_index":int(state.expedition_cycle.expedition_index)+1,
+		"duration":DEFAULT_EXPEDITION_DURATION})
+
+
+func depart_town()->Dictionary:
+	var assessment:=town_departure_assessment()
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var next_cycle=ExpeditionCycleScript.active(int(assessment.floor_index),
+		sim.world.world_time,DEFAULT_EXPEDITION_DURATION,
+		int(assessment.next_expedition_index))
+	if next_cycle==null:return _rejection_dto("town_departure_failed")
+	state.expedition_cycle=next_cycle
+	var event=sim.world.emit_event("town.expedition_departed",hero_id,-1,
+		sim.world.entities[hero_id].position,0,-1,{"schema_version":1,
+			"ruleset_id":ExpeditionCycleScript.RULESET_ID,
+			"entry_ruleset_id":TOWN_PORTAL_RULESET_ID,
+			"entry_mode":"ACTIVATED_PORTAL",
+			"expedition_index":int(next_cycle.expedition_index),
+			"floor_index":int(next_cycle.floor_index),"portal_floor_index":1,
+			"closes_at_world_time":str(next_cycle.closes_at_world_time)})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		_restore_town_rollback(rollback)
+		return _rejection_dto(state_error if not state_error.is_empty() \
+			else "town_departure_failed")
+	command_journal.append({"kind":"town","operation":{"action":"DEPART"}})
+	_clear_draft();_deployment_plan.clear()
+	if _exploration_route!=null:_exploration_route.clear()
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"expedition_cycle":expedition_cycle_status()})
+
+
+func _town_context_error()->String:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return "session_not_initialized"
+	var cycle=sim.world.party_encounter.expedition_cycle
+	if cycle==null or str(cycle.phase)!="TOWN":return "town_required"
+	return ""
+
+
+func _town_active_member_error(entity_id:int,allow_downed:bool)->String:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return context_error
+	var state=sim.world.party_encounter
+	if entity_id not in state.active_party_member_ids \
+			or not sim.world.entities.has(entity_id) \
+			or not sim.world.combatant_states.has(entity_id):
+		return "town_party_member_unavailable"
+	var life_state:=str(sim.world.combatant_states[entity_id].life_state)
+	if life_state=="DEAD" or life_state=="DOWNED" and not allow_downed:
+		return "town_party_member_unavailable"
+	return ""
+
+
+func _town_market_catalog_row(definition_id:String)->Dictionary:
+	for value in TOWN_MARKET_CATALOG:
+		if str(value.get("definition_id",""))==definition_id:return value.duplicate(true)
+	return {}
+
+
+func _town_expedition_index()->int:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or sim.world.party_encounter.expedition_cycle==null:return 0
+	return int(sim.world.party_encounter.expedition_cycle.expedition_index)
+
+
+func _restore_town_rollback(snapshot:Dictionary)->void:
+	var restored=SimulatorScript.from_snapshot(snapshot)
+	if restored!=null:sim=restored
 
 
 func party_command_assessment(command_id:String,target_id:int=-1)->Dictionary:
@@ -1450,6 +2072,14 @@ func presentation_state() -> Dictionary:
 		else "파티가 한 무리로 이동합니다.", "tone": "CALM"}
 	var grid_style := {"style_id": "EXPLORATION", "tint_hex": "#ffffff",
 		"border_hex": "#617183", "vignette": false}
+	if str(status.view_mode)=="TOWN":
+		return {"schema_version": PRESENTATION_SCHEMA_VERSION, "phase_id":"TOWN",
+			"mode":"TOWN", "terminal":false,"combat_style_active":false,
+			"banner":{"visible":true,"key":"guild_hall","title":"길드 홀",
+				"subtitle":"동료와 장비를 정비하고 다음 원정을 준비합니다.",
+				"tone":"CALM"},
+			"grid_style":{"style_id":"TOWN","tint_hex":"#f2dfbd",
+				"border_hex":"#b58a4a","vignette":false}}.duplicate(true)
 	match phase_id:
 		"CONTACT":
 			mode = "ENCOUNTER"
@@ -2181,7 +2811,10 @@ func rescue_assessment(entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	var state = sim.world.party_encounter
-	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] or _run_is_complete():
+	var in_town:bool=state.expedition_cycle!=null \
+		and state.expedition_cycle.phase=="TOWN"
+	if not in_town and (state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] \
+			or _run_is_complete()):
 		return _rejection_dto("party_roster_unsafe_phase")
 	var discovery = _rescue_discovery_event_for(entity_id)
 	var entity = sim.world.entities.get(entity_id)
@@ -2643,7 +3276,13 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	var state = sim.world.party_encounter
-	if state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] or _run_is_complete():
+	# Town is a preparation surface, not a continuation of the dungeon tactical
+	# phase. A deadline may close while CONTACT/ENGAGED is still recorded as the
+	# last dungeon phase, but that stale phase must not disable guild management.
+	var in_town:bool=state.expedition_cycle!=null \
+		and state.expedition_cycle.phase=="TOWN"
+	if not in_town and (state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"] \
+			or _run_is_complete()):
 		return _rejection_dto("party_roster_unsafe_phase")
 	var member = state.member(entity_id)
 	if member == null or not sim.world.entities.has(entity_id):
@@ -2675,8 +3314,23 @@ func recruitable_companions() -> Array[Dictionary]:
 		if member == null or entity == null or member.presence != "RECRUITABLE": continue
 		var style := personality_style(member.personality_profile)
 		var assessment := roster_change_assessment("RECRUIT", entity_id)
+		var guild_record:=_guild_candidate_record(entity_id)
+		var weapon_definition_id:=str(guild_record.get("weapon_definition_id",""))
+		var weapon_definition:=ItemRegistryScript.definition_dict(weapon_definition_id)
+		var species_definition:=GrowthBuildRegistryScript.species_definition(
+			str(entity.species_id))
+		var fixed_trait:Dictionary=species_definition.get("fixed_trait",{}) \
+			if species_definition.get("fixed_trait",{}) is Dictionary else {}
 		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(entity.display_name),"presence":str(member.presence),
+			"species_id":str(entity.species_id),
+			"species_label":str(species_definition.get("label",entity.species_id)),
+			"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
+			"weapon_definition_id":weapon_definition_id,
+			"weapon_label":str(weapon_definition.get("label","맨손")),
+			"fixed_trait_label":str(fixed_trait.get("label","")),
+			"role_hint":str(guild_record.get("role_hint","범용 전투")),
+			"guild_candidate":not guild_record.is_empty(),
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"life_state":"ACTIVE","authoritative_life_state":"ACTIVE",
 			"status_ids":_combatant_status_ids(entity_id),
@@ -2735,7 +3389,35 @@ func recruit_companion(entity_id: int) -> Dictionary:
 		return _rejection_dto("recruitment_already_resolved") \
 			if _recruitment_outcome_event_for(entity_id)!=null \
 			else _rejection_dto("recruitment_offer_required")
-	return _apply_roster_change("RECRUIT", entity_id)
+	var guild_record:=_guild_candidate_record(entity_id)
+	if guild_record.is_empty():return _apply_roster_change("RECRUIT", entity_id)
+	if sim.world.party_encounter.expedition_cycle==null \
+			or sim.world.party_encounter.expedition_cycle.phase!="TOWN":
+		return _rejection_dto("guild_recruitment_town_required")
+	var rollback_value:Variant=sim.snapshot()
+	if not rollback_value is Dictionary:return _rejection_dto("party_snapshot_unavailable")
+	var rollback:Dictionary=rollback_value
+	var roster_result:=_apply_roster_change("RECRUIT",entity_id,false,rollback)
+	if not bool(roster_result.get("accepted",false)):return roster_result
+	var position:Vector2i=sim.world.party_encounter.group_anchor
+	var weapon_definition_id:=str(guild_record.get("weapon_definition_id",""))
+	var granted:=ItemOperationsScript.commit_grant(sim.world,entity_id,
+		weapon_definition_id,1,position,"GUILD_STARTING_EQUIPMENT")
+	if not bool(granted.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto("guild_recruitment_failed")
+	var equipped:=ItemOperationsScript.commit_equip(sim.world,entity_id,
+		str(granted.get("instance_id","")),"MAIN_HAND",position,0)
+	if not bool(equipped.get("accepted",false)) \
+			or not sim.world.world_state_error().is_empty():
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto("guild_recruitment_failed")
+	command_journal.append({"kind":"roster","operation":{
+		"action":"RECRUIT","entity_id":str(entity_id)}})
+	roster_result["guild_candidate"]=true
+	roster_result["weapon_definition_id"]=weapon_definition_id
+	roster_result["weapon_instance_id"]=str(granted.get("instance_id",""))
+	return roster_result.duplicate(true)
 
 
 func _apply_roster_change(operation: String, entity_id: int,
@@ -4812,9 +5494,12 @@ func _is_important_log_event(event)->bool:
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
 			"party.recruitment_refused","party.companion_recruited",
-			"party.companion_dismissed","party.exile_died","status.applied",
+			"party.companion_dismissed","town.guild_candidates_arrived",
+			"town.market_purchased","town.clinic_service","town.body_restored",
+			"town.shrine_service","town.expedition_departed",
+			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
-			"item.dropped","item.discarded","item.used","health.restored",
+			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
 			"opening.health_restored","opening.reencountered",
@@ -4853,6 +5538,16 @@ func load_session_json(encoded: String) -> Dictionary:
 	# Raw hard-cut preflight: reject old nested growth/party schemas and species
 	# before any numeric normalization or object construction can reinterpret them.
 	var raw_party:Variant=decoded.snapshot.get("party_encounter")
+	var source_party_schema:=int(raw_party.get("schema_version",0)) \
+		if raw_party is Dictionary else 0
+	# v17 is the last save before the campaign clock. It already has the complete
+	# species/stat/item authority, so migrate only the missing cycle and preserve
+	# the in-progress dungeon without inventing a near-term deadline.
+	if raw_party is Dictionary \
+			and source_party_schema==PartyStateScript.STAT_SCALING_SCHEMA_VERSION \
+			and not raw_party.has("expedition_cycle"):
+		raw_party["schema_version"]=PartyStateScript.SCHEMA_VERSION
+		raw_party["expedition_cycle"]=ExpeditionCycleScript.legacy_active().to_dict()
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -4865,7 +5560,6 @@ func load_session_json(encoded: String) -> Dictionary:
 	if not journal_error.is_empty(): return _rejection_dto(journal_error)
 	_normalize_item_json_numbers(decoded.snapshot.get("party_encounter",{}))
 	_normalize_world_item_json_numbers(decoded.snapshot.get("item_state"))
-	var source_party_schema:=int(decoded.snapshot.party_encounter.get("schema_version",1))
 	# Some migration tests intentionally downgrade a current snapshot. The v15
 	# marker distinguishes that fixture from a real pre-HEXACO save, whose old
 	# journal cannot be replayed under the new personality semantics.
@@ -5019,6 +5713,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay,parsed_player_species_id):
 		return _rejection_dto("party_layout_replay_failed")
+	if source_party_schema==PartyStateScript.STAT_SCALING_SCHEMA_VERSION:
+		replay.sim.world.party_encounter.expedition_cycle=ExpeditionCycleScript.from_dict(
+			restored.world.party_encounter.expedition_cycle.to_dict())
 	if restored.world.party_encounter.legacy_journal_origin:
 		return _install_restored_session(restored, decoded, parsed_world_seed,
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
@@ -5080,6 +5777,28 @@ func load_session_json(encoded: String) -> Dictionary:
 					"RECRUIT": replay_result = replay.recruit_companion(entity_id)
 					"STABILIZE": replay_result = replay.stabilize_recruit_candidate(entity_id)
 					"OFFER_RECRUIT": replay_result = replay.offer_recruitment(entity_id)
+			"town":
+				var operation:Dictionary=row.operation
+				match str(operation.action):
+					"BUY":replay_result=replay.purchase_town_item(
+						str(operation.definition_id))
+					"CLINIC":replay_result=replay.treat_town_clinic(
+						Int64CodecScript.parse(operation.entity_id,"town member"))
+					"SHRINE":replay_result=replay.rest_at_town_shrine(
+						Int64CodecScript.parse(operation.entity_id,"town member"))
+					"TRANSFER":replay_result=replay.transfer_town_item(
+						Int64CodecScript.parse(operation.from_entity_id,
+							"town transfer source"),
+						Int64CodecScript.parse(operation.to_entity_id,
+							"town transfer target"),str(operation.instance_id))
+					"EQUIP":replay_result=replay.equip_town_item(
+						Int64CodecScript.parse(operation.entity_id,
+							"town equipment owner"),str(operation.instance_id),
+						str(operation.slot))
+					"UNEQUIP":replay_result=replay.unequip_town_item(
+						Int64CodecScript.parse(operation.entity_id,
+							"town equipment owner"),str(operation.slot))
+					"DEPART":replay_result=replay.depart_town()
 			"npc_assault":
 				var operation:Dictionary=row.operation
 				replay_result=replay.assault_npc(Int64CodecScript.parse(
@@ -5332,8 +6051,56 @@ func _journal_wire_error(journal: Array) -> String:
 						or row.operation.get("action") not in ["DISMISS", "RECRUIT",
 							"STABILIZE", "OFFER_RECRUIT"] \
 						or not Int64CodecScript.is_canonical(row.operation.get("entity_id")) \
-						or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
+					or Int64CodecScript.parse(row.operation.entity_id,"roster member") <= 0:
 					return "invalid_roster_journal"
+			"town":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_town_journal"
+				var town_keys:Array=row.operation.keys();town_keys.sort()
+				var town_action:=str(row.operation.get("action",""))
+				match town_action:
+					"BUY":
+						if town_keys!=["action","definition_id"] \
+								or _town_market_catalog_row(str(row.operation.get(
+									"definition_id",""))).is_empty():
+							return "invalid_town_journal"
+					"CLINIC","SHRINE":
+						if town_keys!=["action","entity_id"] \
+								or not Int64CodecScript.is_canonical(
+									row.operation.get("entity_id")) \
+								or Int64CodecScript.parse(row.operation.entity_id,
+									"town member")<=0:
+							return "invalid_town_journal"
+					"TRANSFER":
+						if town_keys!=["action","from_entity_id","instance_id",
+								"to_entity_id"] or not row.operation.instance_id is String \
+								or str(row.operation.instance_id).is_empty() \
+								or not Int64CodecScript.is_canonical(
+									row.operation.get("from_entity_id")) \
+								or not Int64CodecScript.is_canonical(
+									row.operation.get("to_entity_id")) \
+								or Int64CodecScript.parse(row.operation.from_entity_id,
+									"town transfer source")<=0 \
+								or Int64CodecScript.parse(row.operation.to_entity_id,
+									"town transfer target")<=0:
+							return "invalid_town_journal"
+					"EQUIP","UNEQUIP":
+						if town_keys!=["action","entity_id","instance_id","slot"] \
+								or not Int64CodecScript.is_canonical(
+									row.operation.get("entity_id")) \
+								or Int64CodecScript.parse(row.operation.entity_id,
+									"town equipment owner")<=0 \
+								or not row.operation.instance_id is String \
+								or not row.operation.slot is String \
+								or str(row.operation.slot) not in ItemDefinitionScript.EQUIPMENT_SLOTS \
+								or town_action=="EQUIP" and str(
+									row.operation.instance_id).is_empty() \
+								or town_action=="UNEQUIP" and not str(
+									row.operation.instance_id).is_empty():
+							return "invalid_town_journal"
+					"DEPART":
+						if town_keys!=["action"]:return "invalid_town_journal"
+					_:return "invalid_town_journal"
 			"npc_assault":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_npc_assault_journal"
@@ -5395,6 +6162,14 @@ func _pending_turn_request():
 
 func _result_dto(result, action: Variant = null, request: Variant = null,
 		context: Dictionary = {}) -> Dictionary:
+	# Candidate arrivals are a deterministic consequence of crossing the expedition
+	# deadline. Running this at the facade boundary keeps simulator turn timelines
+	# untouched while save-journal replay regenerates the exact same guild board.
+	if result.accepted and sim!=null and sim.world!=null \
+			and sim.world.party_encounter!=null \
+			and sim.world.party_encounter.expedition_cycle!=null \
+			and sim.world.party_encounter.expedition_cycle.phase=="TOWN":
+		_ensure_town_guild_candidates()
 	var ids: Array = []
 	for event in result.events:
 		ids.append(event.id)
@@ -5891,6 +6666,22 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"run_restart_unavailable":"이 시나리오는 다시 시작할 원정이 없습니다.",
 			"run_restart_not_ready":"원정을 완료하거나 실패한 뒤 다시 시작할 수 있습니다.",
 			"run_restart_failed":"같은 원정을 다시 준비하지 못했습니다.",
+			"expedition_in_town":"마을에서는 던전 행동을 할 수 없습니다.",
+			"town_required":"이 기능은 마을에서만 이용할 수 있습니다.",
+			"town_gold_insufficient":"보유한 금화가 부족합니다.",
+			"town_market_item_unknown":"시장에 등록되지 않은 물품입니다.",
+			"town_market_sold_out":"이번 귀환의 시장 재고를 모두 구입했습니다.",
+			"town_market_purchase_failed":"구매가 취소되어 이전 상태로 돌아갔습니다.",
+			"town_party_member_unavailable":"치료하거나 준비할 수 있는 생존 파티원이 아닙니다.",
+			"town_clinic_not_needed":"치유소에서 치료할 부상이 없습니다.",
+			"town_clinic_failed":"치료가 취소되어 이전 상태로 돌아갔습니다.",
+			"town_shrine_not_needed":"긴장이 없어 지금은 휴식할 필요가 없습니다.",
+			"town_shrine_failed":"휴식이 취소되어 이전 상태로 돌아갔습니다.",
+			"town_transfer_failed":"장비 이전이 취소되어 이전 상태로 돌아갔습니다.",
+			"town_equipment_failed":"장비 변경이 취소되어 이전 상태로 돌아갔습니다.",
+			"town_departure_party_unavailable":"주인공이 원정에 나설 수 있는 상태가 아닙니다.",
+			"town_departure_failed":"원정 출발이 취소되어 이전 상태로 돌아갔습니다.",
+			"inventory_full":"가방 12칸이 가득 찼습니다.",
 			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
 			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
 			"inventory_item_missing":"선택한 아이템이 가방에 없습니다. 목록을 새로 확인하세요.",
@@ -5979,7 +6770,9 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"companion_not_active":"현재 파티에 없는 동료입니다.",
 		"companion_not_recruitable":"영입 후보가 아니거나 이미 떠난 인물입니다.",
 		"companion_unavailable":"현재 영입하거나 추방할 수 없는 동료입니다.",
-		"party_full":"파티가 가득 찼습니다.",
+			"party_full":"파티가 가득 찼습니다.",
+			"guild_recruitment_town_required":"길드 후보는 마을에서만 영입할 수 있습니다.",
+			"guild_recruitment_failed":"길드 영입이 취소되어 이전 상태로 돌아갔습니다.",
 		"rescue_candidate_not_recruitable":"도울 수 있는 비적대 영입 후보가 아닙니다.",
 		"rescue_candidate_unavailable":"이 인물은 현재 구조할 수 없는 상태입니다.",
 		"rescue_candidate_too_far":"쓰러진 인물 옆으로 이동해야 안정화할 수 있습니다.",
@@ -6043,6 +6836,17 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
+		"town.guild_candidates_arrived":return "길드 게시판에 새로운 동료 후보 %d명이 도착했다."%int(event.magnitude)
+		"town.market_purchased":return "%s 금화 %d에 구입했다."%[
+			_object(_item_label_for_event(event)),int(event.data.get("cost",event.magnitude))]
+		"town.clinic_service":return "%s 치유소 치료를 받았다."%_subject(target)
+		"town.body_restored":
+			return "%s 상처를 치료했다.%s"%[_subject(target),
+				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
+					"severed_parts_remain",false)) else ""]
+		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
+		"town.expedition_departed":return "원정대가 %d층 던전으로 다시 출발했다."%int(
+			event.data.get("floor_index",1))
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
 		"party.npc_assaulted":return "%s을(를) 공격해 적대 관계가 되었다."%target
 		"opening.choice_committed":
@@ -6058,8 +6862,13 @@ func _event_message(event) -> String:
 		"item.unequipped":return "%s %s 해제했다."%[_subject(actor),_object(_item_label_for_event(event))]
 		"item.dropped":return "%s %s 바닥에 내려놓았다."%[_subject(actor),_object(_item_label_for_event(event))]
 		"item.discarded":return "%s %s 영구히 폐기했다."%[_subject(actor),_object(_item_label_for_event(event))]
+		"item.transferred":return "%s %s에게 %s 건넸다."%[
+			_subject(actor),_object(target),_object(_item_label_for_event(event))]
 		"item.used":return "%s 회복 물약을 마셨다." % _subject(actor)
 		"health.restored":
+			if str(event.data.get("kind",""))=="TOWN_CLINIC":
+				return "%s 치유소에서 체력을 %d 회복했다."%[
+					_subject(target),int(event.magnitude)]
 			return "%s 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)] \
 				if str(event.data.get("kind",""))=="POTION" \
 				else "%s 안전을 되찾아 체력을 %d 회복했다." % [_subject(target),int(event.magnitude)]

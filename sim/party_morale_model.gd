@@ -2,6 +2,7 @@ class_name PartyMoraleModel
 extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
+const RelationshipSystemScript = preload("res://sim/systems/relationship_system.gd")
 
 const RULESET_ID := "party-morale-contagion-v2-hexaco"
 const PANIC_ENTER := 850
@@ -49,8 +50,11 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 			if target_id in world.party_encounter.party_member_ids:
 				for member_id in members:
 					if member_id != target_id:
-						direct[member_id] = int(direct[member_id]) + 300
-						triggers[member_id].append("ALLY_DIED")
+						var appraisal := death_shock_appraisal(world, member_id,
+							target_id)
+						direct[member_id] = int(direct[member_id]) \
+							+ int(appraisal.stress_delta)
+						triggers[member_id].append_array(appraisal.trigger_codes)
 			elif target_id in world.party_encounter.enemy_ids:
 				for member_id in members:
 					direct[member_id] = int(direct[member_id]) - 100
@@ -91,6 +95,50 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 			"trigger_codes":trigger_codes})
 	return {"schema_version":1, "ruleset_id":RULESET_ID,
 		"member_rows":rows}.duplicate(true)
+
+
+static func death_shock_appraisal(world, observer_id: int,
+		deceased_id: int) -> Dictionary:
+	# Death is not a uniform party-wide debuff. Emotionality controls the initial
+	# sensitivity, the directed relationship controls attachment, and proximity
+	# distinguishes witnessing the death from hearing about it through the party.
+	# The result stays a pure projection so the authoritative morale transaction
+	# can still roll back the complete combat step.
+	var fallback := {"stress_delta":300, "emotionality_delta":70,
+		"bond_delta":0, "witness_delta":0,
+		"trust":0, "gratitude":0,
+		"trigger_codes":["ALLY_DIED"]}
+	if world == null or world.party_encounter == null \
+			or not world.entities.has(observer_id) \
+			or not world.entities.has(deceased_id):
+		return fallback.duplicate(true)
+	var member = world.party_encounter.member(observer_id)
+	var emotionality := 500
+	if member != null and member.personality_profile != null:
+		var sampled := int(member.personality_profile.value("E"))
+		if sampled >= 0: emotionality = clampi(sampled, 0, 1000)
+	var relation: Dictionary = RelationshipSystemScript.new(world).effective_relation(
+		observer_id, deceased_id)
+	var trust := clampi(int(relation.get("trust", 0)), -100, 100)
+	var gratitude := clampi(int(relation.get("gratitude", 0)), 0, 100)
+	var emotionality_delta := FixedPointScript.trunc_div(emotionality * 140, 1000)
+	var positive_bond := maxi(0, trust) + FixedPointScript.trunc_div(gratitude, 2)
+	var estrangement_relief := FixedPointScript.trunc_div(maxi(0, -trust) * 2, 5)
+	var bond_delta := positive_bond - estrangement_relief
+	var witnessed := _distance(world.entities[observer_id].position,
+		world.entities[deceased_id].position) <= CONTAGION_RANGE
+	var witness_delta := 40 if witnessed else 0
+	var stress_delta := clampi(210 + emotionality_delta + bond_delta \
+		+ witness_delta, 120, 440)
+	var trigger_codes: Array[String] = ["ALLY_DIED"]
+	if witnessed: trigger_codes.append("ALLY_DIED_WITNESSED")
+	if trust >= 15 or gratitude >= 20: trigger_codes.append("ALLY_DIED_BONDED")
+	if emotionality >= 650: trigger_codes.append("ALLY_DIED_EMOTIONALITY")
+	trigger_codes.sort()
+	return {"stress_delta":stress_delta,
+		"emotionality_delta":emotionality_delta,"bond_delta":bond_delta,
+		"witness_delta":witness_delta,"trust":trust,"gratitude":gratitude,
+		"trigger_codes":trigger_codes}.duplicate(true)
 
 
 static func next_mode(previous_mode: String, stress: int) -> String:
