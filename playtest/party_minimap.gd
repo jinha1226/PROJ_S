@@ -20,11 +20,13 @@ const WALL_VISIBLE_COLOR:=Color("#4f9aa3")
 const HERO_COLOR:=Color("#b8954d")
 const ENEMY_COLOR:=Color("#a74343")
 const EXIT_COLOR:=Color("#5f8a66")
+const PORTAL_COLOR:=Color("#48bfc8")
 
 const GLYPH_UNKNOWN:=""
 const GLYPH_MEMORY:="."
 const GLYPH_WALL:="#"
 const GLYPH_EXIT:=">"
+const GLYPH_PORTAL:="O"
 const GLYPH_THREAT:="!"
 const GLYPH_HERO:="@"
 
@@ -32,6 +34,7 @@ const PRIORITY_UNKNOWN:=0
 const PRIORITY_MEMORY:=10
 const PRIORITY_WALL:=20
 const PRIORITY_EXIT:=30
+const PRIORITY_PORTAL:=31
 const PRIORITY_THREAT:=40
 const PRIORITY_HERO:=50
 
@@ -63,11 +66,13 @@ func set_observation(observation:Dictionary)->void:
 		if state=="UNSEEN":continue
 		var marker:=str(value.get("marker","")).to_upper()
 		if marker.is_empty() and state=="VISIBLE":marker=_legacy_actor_marker(value)
-		if marker.is_empty() and _is_exit_feature(str(value.get("feature_id",""))):marker="EXIT"
+		var feature_id:=str(value.get("feature_id",""))
+		if marker.is_empty() and _is_exit_feature(feature_id):marker="EXIT"
+		if marker.is_empty() and _is_anchor_feature(feature_id):marker="PORTAL"
 		# Remembered static exits are safe. Every live marker is stripped outside
 		# current visibility, so actors, targets and plans never leak through fog.
-		if state!="VISIBLE" and marker!="EXIT":marker=""
-		if marker not in ["","HERO","ENEMY","EXIT"]:marker=""
+		if state!="VISIBLE" and marker not in ["EXIT","PORTAL"]:marker=""
+		if marker not in ["","HERO","ENEMY","EXIT","PORTAL"]:marker=""
 		# Rich actor, feature, hazard, direction and target payloads do not enter
 		# minimap state; only three compact scalar fields are retained.
 		_cells[_key(position)]={"visibility_state":state,
@@ -84,7 +89,11 @@ func _legacy_actor_marker(row:Dictionary)->String:
 	return ""
 
 func _is_exit_feature(feature_id:String)->bool:
-	return feature_id in ["run_exit_locked","run_exit_open"]
+	return feature_id in ["run_exit_locked","run_exit_open",
+		"floor_transition_portal_locked","floor_transition_portal"]
+
+func _is_anchor_feature(feature_id:String)->bool:
+	return feature_id in ["anchor_portal_inactive","anchor_portal_active"]
 
 func _rebuild_sector_cache()->void:
 	_sectors.clear()
@@ -120,6 +129,8 @@ func _candidate_for_row(row:Dictionary)->Dictionary:
 		return _glyph_spec(GLYPH_THREAT,ENEMY_COLOR,PRIORITY_THREAT,"THREAT",state,true)
 	if marker=="EXIT":
 		return _glyph_spec(GLYPH_EXIT,EXIT_COLOR,PRIORITY_EXIT,"EXIT",state,true)
+	if marker=="PORTAL":
+		return _glyph_spec(GLYPH_PORTAL,PORTAL_COLOR,PRIORITY_PORTAL,"PORTAL",state,true)
 	if str(row.get("terrain_id","unknown"))=="wall":
 		return _glyph_spec(GLYPH_WALL,WALL_VISIBLE_COLOR if state=="VISIBLE" \
 			else WALL_MEMORY_COLOR,PRIORITY_WALL,"STRUCTURE",state,true)
@@ -156,7 +167,7 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 	if state=="MEMORY":color=WALL_MEMORY_COLOR if terrain_id=="wall" else MEMORY_COLOR
 	elif state=="VISIBLE":color=WALL_VISIBLE_COLOR if terrain_id=="wall" else VISIBLE_COLOR
 	var marker:=str(row.get("marker",""))
-	if state!="VISIBLE" and marker!="EXIT":marker=""
+	if state!="VISIBLE" and marker not in ["EXIT","PORTAL"]:marker=""
 	return {"visibility_state":state,"terrain_id":terrain_id,"color":color,
 		"marker":marker,"leaks_direction":false,"leaks_target":false}.duplicate(true)
 
@@ -165,6 +176,7 @@ func cartography_spec()->Dictionary:
 		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
 		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
 		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
+			"portal":GLYPH_PORTAL,
 			"wall":GLYPH_WALL,"memory":GLYPH_MEMORY,"unknown":GLYPH_UNKNOWN},
 		"primitive":"ASCII_SECTOR_GLYPHS","background":"BLACK_FIELD",
 		"uses_tile_rects":false,"uses_circles":false,"uses_images":false,

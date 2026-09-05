@@ -25,6 +25,9 @@ const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
+const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
+const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
+const PartyEmotionSystemScript=preload("res://sim/systems/party_emotion_system.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -74,6 +77,7 @@ const TOWN_ECONOMY_RULESET_ID := "town-preparation-economy-v1"
 const TOWN_CLINIC_RULESET_ID := "town-clinic-care-v1"
 const TOWN_SHRINE_RULESET_ID := "town-shrine-rest-v1"
 const TOWN_PORTAL_RULESET_ID := "town-activated-floor-portals-v1"
+const DUNGEON_ANCHOR_PORTAL_RULESET_ID := "map-anchor-portal-v1"
 const TOWN_INITIAL_GOLD := 120
 const TOWN_RETURN_STIPEND := 80
 const TOWN_CLINIC_COST := 25
@@ -118,6 +122,21 @@ const PARTY_MORALE_TRIGGER_PRESENTATION := {
 	"ALLY_FEAR_CONTAGION":{"kind":"CONTAGION","label_ko":"가까운 동료의 공포"},
 	"SAFE_RECOVERY":{"kind":"RECOVERY","label_ko":"안전한 곳에서 진정"},
 	"TOWN_REST":{"kind":"RECOVERY","label_ko":"마을에서 휴식"},
+}
+const PARTY_EMOTION_PRESENTATION := {
+	"FEAR":{"label":"공포", "icon":"!", "behavior":"후퇴와 생존 행동을 선호"},
+	"ANGER":{"label":"분노", "icon":"#", "behavior":"공격과 가해자 추적을 선호"},
+	"SADNESS":{"label":"슬픔", "icon":"~", "behavior":"행동을 멈추거나 물러날 가능성 증가"},
+	"GUILT":{"label":"죄책감", "icon":"?", "behavior":"위험한 동료를 엄호하려는 경향 증가"},
+	"BOND":{"label":"유대감", "icon":"+", "behavior":"도움을 준 동료를 보호하려는 경향 증가"},
+	"RESOLVE":{"label":"의지", "icon":"◆", "behavior":"공포를 누르고 전투를 이어갈 가능성 증가"},
+}
+const PARTY_EMOTION_CAUSE_LABELS := {
+	"SELF_DAMAGE":"직접 피해를 입음", "SELF_DOWNED":"자신이 쓰러짐",
+	"ALLY_DOWNED":"동료가 쓰러짐", "ALLY_DIED":"동료를 잃음",
+	"ENEMY_DIED":"적을 쓰러뜨림", "OVERRIDE_CONFLICT":"원치 않는 지시를 받음",
+	"ALLY_AID":"동료에게 도움을 받음", "SAFE_DECAY":"시간이 지나 진정됨",
+	"TOWN_REST":"마을에서 휴식함", "NONE":"뚜렷한 원인 없음",
 }
 const GUILD_NAMES := {
 	"human":["레아","도윤","마렌"],
@@ -1477,7 +1496,8 @@ func town_overview()->Dictionary:
 		"clinic_cost":TOWN_CLINIC_COST,"shrine_cost":TOWN_SHRINE_COST,
 		"shrine_stress_reduction":TOWN_SHRINE_STRESS_REDUCTION,
 		"market":town_market_stock(),"armory":town_armory_rows(),
-		"available_portal_floors":[TOWN_STARTING_FLOOR],
+		"available_portal_floors":_activated_anchor_portal_floors(),
+		"surface_entrance_floor":TOWN_STARTING_FLOOR,
 		"can_depart":bool(town_departure_assessment().get("accepted",false))})
 
 
@@ -1716,6 +1736,8 @@ func rest_at_town_shrine(entity_id:int)->Dictionary:
 			"ruleset_id":TOWN_SHRINE_RULESET_ID,"cost":TOWN_SHRINE_COST})
 	if source==null:
 		_restore_town_rollback(rollback);return _rejection_dto("town_shrine_failed")
+	if not PartyEmotionSystemScript.commit_batch(sim.world,[source]):
+		_restore_town_rollback(rollback);return _rejection_dto("town_shrine_failed")
 	var mode_before:=str(member.mental_mode)
 	var mode_after:=PartyMoraleModelScript.next_mode(mode_before,after)
 	var morale=sim.world.emit_event("party.morale_changed",entity_id,-1,
@@ -1857,9 +1879,9 @@ func town_departure_assessment()->Dictionary:
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"floor_index":TOWN_STARTING_FLOOR,
 		"returned_from_floor_index":int(state.expedition_cycle.floor_index),
-		"entry_mode":"ACTIVATED_PORTAL",
+		"entry_mode":"SURFACE_ENTRANCE",
 		"portal_ruleset_id":TOWN_PORTAL_RULESET_ID,
-		"available_portal_floors":[TOWN_STARTING_FLOOR],
+		"available_portal_floors":_activated_anchor_portal_floors(),
 		"next_expedition_index":int(state.expedition_cycle.expedition_index)+1,
 		"duration":DEFAULT_EXPEDITION_DURATION})
 
@@ -1879,9 +1901,9 @@ func depart_town()->Dictionary:
 		sim.world.entities[hero_id].position,0,-1,{"schema_version":1,
 			"ruleset_id":ExpeditionCycleScript.RULESET_ID,
 			"entry_ruleset_id":TOWN_PORTAL_RULESET_ID,
-			"entry_mode":"ACTIVATED_PORTAL",
+			"entry_mode":"SURFACE_ENTRANCE",
 			"expedition_index":int(next_cycle.expedition_index),
-			"floor_index":int(next_cycle.floor_index),"portal_floor_index":1,
+			"floor_index":int(next_cycle.floor_index),"portal_floor_index":0,
 			"closes_at_world_time":str(next_cycle.closes_at_world_time)})
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
@@ -1902,6 +1924,89 @@ func _town_context_error()->String:
 	var cycle=sim.world.party_encounter.expedition_cycle
 	if cycle==null or str(cycle.phase)!="TOWN":return "town_required"
 	return ""
+
+
+func dungeon_anchor_portal_status()->Dictionary:
+	var unavailable:={"available":false,"floor_index":0,"position":[],
+		"active":false,"can_activate":false,"nearby_enemy_ids":[],
+		"clear_radius":0,"reason":"anchor_portal_unavailable"}
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or not VisualTestMapScript.uses_product_dungeon(scenario_id):
+		return unavailable.duplicate(true)
+	var position_value:Variant=_map_layout.get("anchor_portal_position")
+	if not position_value is Vector2i:return unavailable.duplicate(true)
+	var state=sim.world.party_encounter
+	var cycle=state.expedition_cycle
+	if cycle==null or str(cycle.phase)!="DUNGEON":return unavailable.duplicate(true)
+	var floor_index:=int(_map_layout.get("floor_index",cycle.floor_index))
+	var portal_position:Vector2i=position_value
+	var clear_radius:=int(_map_layout.get("anchor_portal_clear_radius",8))
+	var nearby_enemy_ids:Array[int]=[]
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id:=int(enemy_id_value)
+		if not sim.world.is_unresolved_enemy(enemy_id):continue
+		var enemy=sim.world.entities.get(enemy_id)
+		if enemy==null:continue
+		var distance:=maxi(absi(enemy.position.x-portal_position.x),
+			absi(enemy.position.y-portal_position.y))
+		if distance<=clear_radius:nearby_enemy_ids.append(enemy_id)
+	nearby_enemy_ids.sort()
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var adjacent:=hero!=null and maxi(absi(hero.position.x-portal_position.x),
+		absi(hero.position.y-portal_position.y))<=1
+	var active:bool=floor_index in state.activated_anchor_portal_floors
+	var safe:bool=state.safe_phase in ["GROUPED","GROUPED_COMPLETE"]
+	var reason:="anchor_portal_active" if active else (
+		"anchor_portal_not_adjacent" if not adjacent else (
+			"anchor_portal_contested" if not nearby_enemy_ids.is_empty() else (
+				"anchor_portal_combat_active" if not safe else "ok")))
+	return {"available":true,"floor_index":floor_index,
+		"position":[portal_position.x,portal_position.y],"active":active,
+		"can_activate":not active and adjacent and nearby_enemy_ids.is_empty() and safe,
+		"nearby_enemy_ids":nearby_enemy_ids,"clear_radius":clear_radius,
+		"reason":reason}.duplicate(true)
+
+
+func activate_dungeon_anchor_portal()->Dictionary:
+	var status:=dungeon_anchor_portal_status()
+	if not bool(status.get("available",false)):
+		return _rejection_dto("anchor_portal_unavailable")
+	if bool(status.get("active",false)):
+		return _rejection_dto("anchor_portal_already_active")
+	if not bool(status.get("can_activate",false)):
+		return _rejection_dto(str(status.get("reason","anchor_portal_unavailable")))
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var portal_position:=Vector2i(int(status.position[0]),int(status.position[1]))
+	var floor_index:=int(status.floor_index)
+	var event=sim.world.emit_event("dungeon.anchor_portal_activated",hero_id,-1,
+		portal_position,floor_index,-1,{"schema_version":1,
+			"ruleset_id":DUNGEON_ANCHOR_PORTAL_RULESET_ID,
+			"floor_index":floor_index,"position":status.position.duplicate(true),
+			"clear_radius":int(status.clear_radius)})
+	if event==null:
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto("anchor_portal_activation_failed")
+	state.activated_anchor_portal_floors.append(floor_index)
+	state.activated_anchor_portal_floors.sort();state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto(state_error)
+	command_journal.append({"kind":"dungeon","operation":{
+		"action":"ACTIVATE_ANCHOR_PORTAL","floor_index":floor_index}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"floor_index":floor_index,"position":status.position.duplicate(true),
+		"available_portal_floors":_activated_anchor_portal_floors()})
+
+
+func _activated_anchor_portal_floors()->Array[int]:
+	var result:Array[int]=[]
+	if sim!=null and sim.world!=null and sim.world.party_encounter!=null:
+		for value in sim.world.party_encounter.activated_anchor_portal_floors:
+			result.append(int(value))
+	result.sort();return result
 
 
 func _town_active_member_error(entity_id:int,allow_downed:bool)->String:
@@ -2054,6 +2159,53 @@ func party_morale_observation() -> Dictionary:
 		"panic_enter_threshold":PartyMoraleModelScript.PANIC_ENTER,
 		"panic_exit_threshold":PartyMoraleModelScript.PANIC_EXIT,
 		"members":rows}.duplicate(true)
+
+
+func party_emotion_observation() -> Dictionary:
+	var empty := {"schema_version":1,
+		"ruleset_id":PartyEmotionModelScript.RULESET_ID, "available":false,
+		"sampled_step_index":-1, "sampled_world_time":-1, "members":[]}
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return empty.duplicate(true)
+	var state = sim.world.party_encounter
+	var member_ids: Array = state.active_party_member_ids.duplicate()
+	member_ids.sort_custom(func(a,b):
+		var member_a=state.member(int(a));var member_b=state.member(int(b))
+		return int(member_a.roster_slot)<int(member_b.roster_slot) \
+			if int(member_a.roster_slot)!=int(member_b.roster_slot) else int(a)<int(b))
+	var members: Array[Dictionary] = []
+	for member_id_value in member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		var entity = sim.world.entities.get(member_id)
+		if member == null or entity == null or member.emotion_state == null:
+			continue
+		var channels: Array[Dictionary] = []
+		for channel_value in member.emotion_state.dominant(2, 100):
+			var channel: Dictionary = channel_value
+			var emotion_id := str(channel.emotion_id)
+			var presentation: Dictionary = PARTY_EMOTION_PRESENTATION[emotion_id]
+			var target_id := int(channel.target_id)
+			var source_id := int(channel.source_event_id)
+			channels.append({"emotion_id":emotion_id,
+				"label":str(presentation.label), "icon":str(presentation.icon),
+				"intensity":int(channel.intensity),
+				"intensity_band":_emotion_intensity_band(int(channel.intensity)),
+				"target_id":target_id,
+				"target_name":_name(target_id) if target_id > 0 else "",
+				"source_event_id":source_id, "cause_code":str(channel.cause_code),
+				"cause_label":str(PARTY_EMOTION_CAUSE_LABELS.get(
+					str(channel.cause_code), "과거 사건의 영향")),
+				"behavior_hint":str(presentation.behavior)})
+		var summary := _emotion_summary(member)
+		members.append({"entity_id":member_id,
+			"display_name":str(entity.display_name), "role":str(member.role),
+			"summary_label":str(summary.label), "summary_icon":str(summary.icon),
+			"summary_reason":str(summary.reason), "dominant_channels":channels})
+	return {"schema_version":1, "ruleset_id":PartyEmotionModelScript.RULESET_ID,
+		"available":true, "sampled_step_index":int(sim.world.step_index),
+		"sampled_world_time":int(sim.world.world_time),
+		"members":members}.duplicate(true)
 
 
 func presentation_state() -> Dictionary:
@@ -2438,10 +2590,14 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	var progress:Dictionary=context.progress
 	var markers:Dictionary={}
 	var exit_key:=""
+	var anchor_key:=""
 	var exit_position_value:Variant=progress.get("exit_position",[])
 	if bool(progress.get("available",false)) and exit_position_value is Array \
 			and exit_position_value.size()==2:
 		exit_key=_position_key(Vector2i(int(exit_position_value[0]),int(exit_position_value[1])))
+	var anchor_position_value:Variant=_map_layout.get("anchor_portal_position")
+	if anchor_position_value is Vector2i:
+		anchor_key=_position_key(anchor_position_value)
 	var hero_id:=int(context.hero_id)
 	if sim.world.entities.has(hero_id):
 		var hero_position:Vector2i=sim.world.entities[hero_id].position
@@ -2469,11 +2625,12 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	for position in known_positions:
 		var key:=_position_key(position)
 		var state:="VISIBLE" if visible.has(key) else "MEMORY"
-		# EXIT is static discovered cartography, not live feature authority. Actor
-		# markers still win on a currently visible shared cell; MEMORY can retain
-		# only this static marker and never enemy/target/hazard information.
+		# Portals are static discovered cartography, not live feature authority.
+		# Actor markers still win on a currently visible shared cell; MEMORY can
+		# retain only static portal markers and never enemy/target/hazard data.
 		var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
 		if marker.is_empty() and key==exit_key:marker="EXIT"
+		if marker.is_empty() and key==anchor_key:marker="PORTAL"
 		cells.append({"position":[position.x,position.y],"visibility_state":state,
 			"terrain_id":str(sim.world.tile_at(position).terrain),"marker":marker})
 	return {"schema_version":1,"width":sim.world.width,"height":sim.world.height,
@@ -4456,6 +4613,9 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_engage.agreeableness":"원만성(A)",
 		"party_engage.extraversion":"외향성(X)",
 		"party_engage.stress":"스트레스",
+		"party_engage.anger":"분노",
+		"party_engage.resolve":"의지",
+		"party_engage.fear":"공포",
 		"party_protect.ally_targeted":"아군 위협",
 		"party_protect.ally_hp_loss":"아군 부상",
 		"party_protect.trust":"아군 신뢰",
@@ -4464,6 +4624,9 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_protect.agreeableness":"원만성(A)",
 		"party_protect.panic":"공황 압력",
 		"party_protect.hp_loss":"자신의 부상",
+		"party_protect.guilt":"죄책감",
+		"party_protect.bond":"유대감",
+		"party_protect.fear":"공포",
 		"party_retreat.threat":"체감 위협",
 		"party_retreat.hp_loss":"자신의 부상",
 		"party_retreat.stress":"스트레스",
@@ -4471,10 +4634,15 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_retreat.outnumbered":"수적 열세",
 		"party_retreat.emotionality":"정서성(E)",
 		"party_retreat.conscientiousness":"성실성(C)",
+		"party_retreat.fear":"공포",
+		"party_retreat.sadness":"슬픔",
+		"party_retreat.resolve":"의지",
 		"party_hold.conscientiousness":"성실성(C)",
 		"party_hold.emotionality":"정서성(E)",
 		"party_hold.threat":"체감 위협",
 		"party_hold.engaged":"근접한 적",
+		"party_hold.sadness":"슬픔",
+		"party_hold.anger":"분노",
 	}.get(consideration_id, consideration_id)
 
 
@@ -4737,7 +4905,8 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 			if is_visible:
 				occupied = sim.world.blocking_entity_at(position, hero_id) != null
 				var feature_id := _run_feature_id_at(position, progress)
-				objective_blocked = feature_id == "run_exit_locked"
+				objective_blocked = feature_id in ["run_exit_locked",
+					"floor_transition_portal_locked"]
 			if risk > AutoExploreScript.AFFINITY_SAFE_RISK_THRESHOLD:
 				hazards[key] = risk
 			cells[key] = {"position":[x, y],
@@ -4756,7 +4925,8 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
 		"hero_position":status.protagonist_position.duplicate(true),
 		"cells":cells, "visible":visible, "visited":visited, "hazards":hazards,
-		"opening_interaction":bool(opening_event_status().get("can_interact",false)),
+		"opening_interaction":bool(opening_event_status().get("can_interact",false)) \
+			or bool(dungeon_anchor_portal_status().get("can_activate",false)),
 		"visible_enemy_keys":visible_enemy_keys}
 
 
@@ -5497,6 +5667,7 @@ func _is_important_log_event(event)->bool:
 			"party.companion_dismissed","town.guild_candidates_arrived",
 			"town.market_purchased","town.clinic_service","town.body_restored",
 			"town.shrine_service","town.expedition_departed",
+			"dungeon.anchor_portal_activated",
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
@@ -5548,6 +5719,22 @@ func load_session_json(encoded: String) -> Dictionary:
 			and not raw_party.has("expedition_cycle"):
 		raw_party["schema_version"]=PartyStateScript.SCHEMA_VERSION
 		raw_party["expedition_cycle"]=ExpeditionCycleScript.legacy_active().to_dict()
+		raw_party["activated_anchor_portal_floors"]=[]
+	if raw_party is Dictionary \
+			and source_party_schema==PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION \
+			and not raw_party.has("activated_anchor_portal_floors"):
+		raw_party["schema_version"]=PartyStateScript.SCHEMA_VERSION
+		raw_party["activated_anchor_portal_floors"]=[]
+	# v19 already has the campaign portal authority. v17-v19 only need the new
+	# fixed six-channel emotion state, whose neutral baseline invents no history.
+	if raw_party is Dictionary and source_party_schema in [
+			PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
+			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
+			PartyStateScript.ANCHOR_PORTAL_SCHEMA_VERSION]:
+		for member_row_value in raw_party.get("member_rows", []):
+			if member_row_value is Dictionary and not member_row_value.has("emotion_state"):
+				member_row_value["emotion_state"] = PartyEmotionStateScript.new().to_dict()
+		raw_party["schema_version"] = PartyStateScript.SCHEMA_VERSION
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -5569,6 +5756,12 @@ func load_session_json(encoded: String) -> Dictionary:
 		< PartyStateScript.HEXACO_SCHEMA_VERSION and not source_has_hexaco_marker
 	if source_party_schema < PartyStateScript.HEXACO_SCHEMA_VERSION:
 		decoded.snapshot.party_encounter.erase("legacy_journal_origin")
+	if source_party_schema < PartyStateScript.STAT_SCALING_SCHEMA_VERSION:
+		decoded.snapshot.party_encounter.erase("activated_anchor_portal_floors")
+	if source_party_schema < PartyStateScript.STAT_SCALING_SCHEMA_VERSION:
+		for member_row_value in decoded.snapshot.party_encounter.get("member_rows", []):
+			if member_row_value is Dictionary:
+				member_row_value.erase("emotion_state")
 	var legacy_opening_replay := source_party_schema \
 		< PartyStateScript.OPENING_EVENT_SCHEMA_VERSION \
 		or decoded.snapshot.party_encounter.get("opening_event") == null
@@ -5654,11 +5847,15 @@ func load_session_json(encoded: String) -> Dictionary:
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
 		var previous_layout:=VisualTestMapScript.previous_product_dungeon(
 			parsed_world_seed)
+		var older_layout:=VisualTestMapScript.older_product_dungeon(
+			parsed_world_seed)
 		var legacy_layout:=VisualTestMapScript.legacy_product_dungeon(parsed_world_seed)
 		# Detect before strict restoration, which may normalize input rows in place.
 		# Product terrain itself is immutable during play.
 		if _snapshot_terrain_matches_layout(decoded.snapshot,legacy_layout):
 			replay_layout=legacy_layout
+		elif _snapshot_terrain_matches_layout(decoded.snapshot,older_layout):
+			replay_layout=older_layout
 		elif _snapshot_terrain_matches_layout(decoded.snapshot,previous_layout):
 			replay_layout=previous_layout
 		else:
@@ -5713,7 +5910,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay,parsed_player_species_id):
 		return _rejection_dto("party_layout_replay_failed")
-	if source_party_schema==PartyStateScript.STAT_SCALING_SCHEMA_VERSION:
+	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
+			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
+			PartyStateScript.ANCHOR_PORTAL_SCHEMA_VERSION]:
 		replay.sim.world.party_encounter.expedition_cycle=ExpeditionCycleScript.from_dict(
 			restored.world.party_encounter.expedition_cycle.to_dict())
 	if restored.world.party_encounter.legacy_journal_origin:
@@ -5728,6 +5927,10 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"dungeon":
+				var dungeon_operation:Dictionary=row.operation
+				if str(dungeon_operation.action)=="ACTIVATE_ANCHOR_PORTAL":
+					replay_result=replay.activate_dungeon_anchor_portal()
 			"opening":
 				replay_result = replay.commit_opening_event_choice(
 					str(row.operation.action))
@@ -5957,6 +6160,16 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"dungeon":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_dungeon_journal"
+				var dungeon_keys:Array=row.operation.keys();dungeon_keys.sort()
+				if dungeon_keys!=["action","floor_index"] \
+						or row.operation.get("action")!="ACTIVATE_ANCHOR_PORTAL" \
+						or not _integer(row.operation.get("floor_index")) \
+						or int(row.operation.floor_index)<1 \
+						or int(row.operation.floor_index)>15:
+					return "invalid_dungeon_journal"
 			"opening":
 				if keys != ["kind", "operation"] \
 						or not row.get("operation") is Dictionary:
@@ -6209,6 +6422,11 @@ func _exploration_context(command) -> Dictionary:
 
 
 func _run_feature_id_at(position: Vector2i, progress: Dictionary) -> String:
+	var anchor_value:Variant=_map_layout.get("anchor_portal_position")
+	if anchor_value is Vector2i and position==anchor_value:
+		var floor_index:=int(_map_layout.get("floor_index",1))
+		return "anchor_portal_active" if floor_index in _activated_anchor_portal_floors() \
+			else "anchor_portal_inactive"
 	if bool(progress.get("available", false)):
 		var exit_position: Variant = progress.get("exit_position", [])
 		if exit_position is Array and exit_position.size() == 2 \
@@ -6634,21 +6852,61 @@ func _action_presentation(row: Variant) -> Variant:
 
 func _emotion_presentation(member, entity) -> Dictionary:
 	var health_percent: int = int(entity.health * 100 / maxi(1, entity.max_health))
-	var emotionality := 500
-	var conscientiousness := 500
-	if member.personality_profile != null:
-		emotionality = member.personality_profile.value("E")
-		conscientiousness = member.personality_profile.value("C")
-	var label := "침착"; var icon := "●"; var reason := "건강과 긴장이 안정적입니다."
-	if health_percent <= 30 or member.stress >= 750:
-		if emotionality <= 400 and conscientiousness >= 450:
-			label = "용기를 냄"; icon = "◆"; reason = "생존 위협 속에서 대담한 본성이 드러납니다."
-		else:
-			label = "겁먹음"; icon = "!"; reason = "낮은 체력과 높은 긴장으로 생존 본능이 앞섭니다."
-	elif member.stress >= 350 or health_percent <= 60:
-		label = "긴장"; icon = "▲"; reason = "위험이 커져 경계하고 있습니다."
-	return {"icon":icon, "label":label, "reason":reason,
+	var summary := _emotion_summary(member)
+	# Immediate survival context remains visible even for bootstrap/test states
+	# whose low HP was not produced by a journalled hit. Canonical combat damage
+	# normally reaches the same label through the persisted FEAR channel.
+	if str(summary.label) == "침착" and (health_percent <= 30 or member.stress >= 750):
+		summary = {"icon":"!", "label":"겁먹음",
+			"reason":"낮은 체력이나 높은 긴장으로 생존 위협을 느낍니다.",
+			"dominant_channels":[]}
+	return {"icon":str(summary.icon), "label":str(summary.label),
+		"reason":str(summary.reason),
+		"dominant_channels":summary.dominant_channels.duplicate(true),
 		"health_percent":health_percent}.duplicate(true)
+
+
+func _emotion_summary(member) -> Dictionary:
+	if member == null or member.emotion_state == null:
+		return {"icon":"●", "label":"침착", "reason":"뚜렷한 감정 동요가 없습니다.",
+			"dominant_channels":[]}
+	var dominant: Array[Dictionary] = member.emotion_state.dominant(2, 100)
+	if dominant.is_empty():
+		return {"icon":"●", "label":"침착", "reason":"뚜렷한 감정 동요가 없습니다.",
+			"dominant_channels":[]}
+	var first: Dictionary = dominant[0]
+	var first_id := str(first.emotion_id)
+	var ids: Array[String] = []
+	for row in dominant:
+		ids.append(str(row.emotion_id))
+	var label := str(PARTY_EMOTION_PRESENTATION[first_id].label)
+	var icon := str(PARTY_EMOTION_PRESENTATION[first_id].icon)
+	if "ANGER" in ids and "SADNESS" in ids \
+			and member.emotion_state.target_id("ANGER") > 0:
+		label = "복수심"; icon = "#"
+	elif "GUILT" in ids and "SADNESS" in ids:
+		label = "생존자 죄책감"; icon = "?"
+	elif member.emotion_state.intensity("FEAR") >= 300 \
+			and member.emotion_state.intensity("RESOLVE") \
+			>= member.emotion_state.intensity("FEAR"):
+		label = "용기를 냄"; icon = "◆"
+	var cause_code := str(first.cause_code)
+	var reason := str(PARTY_EMOTION_CAUSE_LABELS.get(cause_code, "과거 사건의 영향"))
+	var target_id := int(first.target_id)
+	if target_id > 0 and sim != null and sim.world != null \
+			and sim.world.entities.has(target_id):
+		reason += " · %s과 연결된 감정" % _name(target_id)
+	return {"icon":icon, "label":label,
+		"reason":"%s (%s)" % [reason, _emotion_intensity_band(int(first.intensity))],
+		"dominant_channels":dominant}
+
+
+func _emotion_intensity_band(value: int) -> String:
+	if value >= 800: return "압도적"
+	if value >= 600: return "강함"
+	if value >= 400: return "뚜렷함"
+	if value >= 200: return "약함"
+	return "미약함"
 
 func reason_message(reason: String, details: Dictionary = {}) -> String:
 	if reason == "party_actor_busy":
@@ -6681,6 +6939,12 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"town_equipment_failed":"장비 변경이 취소되어 이전 상태로 돌아갔습니다.",
 			"town_departure_party_unavailable":"주인공이 원정에 나설 수 있는 상태가 아닙니다.",
 			"town_departure_failed":"원정 출발이 취소되어 이전 상태로 돌아갔습니다.",
+			"anchor_portal_unavailable":"이 층에는 활성화할 거점 포탈이 없습니다.",
+			"anchor_portal_already_active":"이 층의 거점 포탈은 이미 활성화되어 있습니다.",
+			"anchor_portal_not_adjacent":"거점 포탈 옆으로 이동해야 합니다.",
+			"anchor_portal_contested":"포탈 주변의 적을 먼저 정리해야 합니다.",
+			"anchor_portal_combat_active":"전투가 끝난 뒤 포탈을 활성화할 수 있습니다.",
+			"anchor_portal_activation_failed":"포탈 활성화가 취소되어 이전 상태로 돌아갔습니다.",
 			"inventory_full":"가방 12칸이 가득 찼습니다.",
 			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
 			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
@@ -6847,6 +7111,8 @@ func _event_message(event) -> String:
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
 		"town.expedition_departed":return "원정대가 %d층 던전으로 다시 출발했다."%int(
 			event.data.get("floor_index",1))
+		"dungeon.anchor_portal_activated":return "%d층 거점 포탈이 마을과 연결되었다."%int(
+			event.data.get("floor_index",event.magnitude))
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
 		"party.npc_assaulted":return "%s을(를) 공격해 적대 관계가 되었다."%target
 		"opening.choice_committed":

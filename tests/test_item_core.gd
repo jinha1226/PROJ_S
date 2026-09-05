@@ -301,6 +301,7 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 	for version in range(7,0,-1):
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
 		row.erase("expedition_cycle")
+		row.erase("activated_anchor_portal_floors")
 		row.erase("legacy_journal_origin")
 		for member_row in row.member_rows:member_row.erase("mental_mode")
 		# v5-v12 rows carried a protagonist_loadout. v13 removed that duplicate

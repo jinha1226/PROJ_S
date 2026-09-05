@@ -349,6 +349,10 @@ static func feature_spec(feature_id: String) -> Dictionary:
 		"run_entry":{"glyph":"<", "color_hex":"#55C8FF", "halo_hex":"#173c52"},
 		"run_exit_locked":{"glyph":"X", "color_hex":"#E47A88", "halo_hex":"#51232e"},
 		"run_exit_open":{"glyph":">", "color_hex":"#6EFFA8", "halo_hex":"#17442e"},
+		"anchor_portal_inactive":{"glyph":"O", "color_hex":"#7C8794", "halo_hex":"#252b33"},
+		"anchor_portal_active":{"glyph":"O", "color_hex":"#58F6FF", "halo_hex":"#164850"},
+		"floor_transition_portal_locked":{"glyph":"X", "color_hex":"#C677E8", "halo_hex":"#42204f"},
+		"floor_transition_portal":{"glyph":">", "color_hex":"#E58BFF", "halo_hex":"#4b2355"},
 		"open_door":{"glyph":"/", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
 	}
 	if not definitions.has(feature_id):

@@ -2,10 +2,14 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
+const VisualMap = preload("res://playtest/party_visual_test_map.gd")
 
 
 func test_tab_assessment_is_pure_and_attack_button_approaches_one_step()->bool:
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	check(session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		VisualMap.previous_product_dungeon(44),false),
+		"visible product enemy fixture initializes")
 	var state=session.sim.world.party_encounter
 	var hero_id:=int(state.protagonist_id)
 	var before:=session.save_session_json()

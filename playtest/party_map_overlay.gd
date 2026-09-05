@@ -18,6 +18,7 @@ const GLYPH_UNKNOWN:=""
 const GLYPH_FLOOR:="."
 const GLYPH_WALL:="#"
 const GLYPH_EXIT:=">"
+const GLYPH_PORTAL:="O"
 const GLYPH_THREAT:="!"
 const GLYPH_HERO:="@"
 
@@ -31,6 +32,7 @@ const WALL_MEMORY_INK:=Color("#3b555b")
 const WALL_VISIBLE_INK:=Color("#4f9aa3")
 const HERO_INK:=Color("#b8954d")
 const EXIT_INK:=Color("#5f8a66")
+const PORTAL_INK:=Color("#48bfc8")
 const THREAT_INK:=Color("#a74343")
 const TITLE_INK:=Color("#d2c7aa")
 
@@ -108,6 +110,7 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 		return _glyph_spec(GLYPH_HERO,HERO_INK,"HERO",state,true)
 	if state=="VISIBLE" and marker=="ENEMY":
 		return _glyph_spec(GLYPH_THREAT,THREAT_INK,"THREAT",state,true)
+	if marker=="PORTAL":return _glyph_spec(GLYPH_PORTAL,PORTAL_INK,"PORTAL",state,true)
 	if marker=="EXIT":return _glyph_spec(GLYPH_EXIT,EXIT_INK,"EXIT",state,true)
 	if str(row.get("terrain_id","unknown"))=="wall":
 		return _glyph_spec(GLYPH_WALL,WALL_VISIBLE_INK if state=="VISIBLE" \
@@ -139,6 +142,7 @@ func overlay_spec()->Dictionary:
 		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
 		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
 		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
+			"portal":GLYPH_PORTAL,
 			"wall":GLYPH_WALL,"floor":GLYPH_FLOOR,"unknown":GLYPH_UNKNOWN},
 		"uses_world_coordinates":true,"uses_sector_folding":false,
 		"stores_compact_scalars_only":true,"leaks_memory_actor":false,
@@ -152,9 +156,11 @@ func _sanitized_row(value:Dictionary)->Dictionary:
 	if state=="UNSEEN":return {}
 	var marker:=str(value.get("marker","")).to_upper()
 	if marker.is_empty() and state=="VISIBLE":marker=_legacy_actor_marker(value)
-	if marker.is_empty() and _is_exit_feature(str(value.get("feature_id",""))):marker="EXIT"
-	if state!="VISIBLE" and marker!="EXIT":marker=""
-	if marker not in ["","HERO","ENEMY","EXIT"]:marker=""
+	var feature_id:=str(value.get("feature_id",""))
+	if marker.is_empty() and _is_exit_feature(feature_id):marker="EXIT"
+	if marker.is_empty() and _is_anchor_feature(feature_id):marker="PORTAL"
+	if state!="VISIBLE" and marker not in ["EXIT","PORTAL"]:marker=""
+	if marker not in ["","HERO","ENEMY","EXIT","PORTAL"]:marker=""
 	# Deliberately retain no source dictionary and no rich/live fields.
 	return {"visibility_state":state,"terrain_id":str(value.get("terrain_id","unknown")),
 		"marker":marker}
@@ -168,12 +174,17 @@ func _legacy_actor_marker(value:Dictionary)->String:
 	return ""
 
 func _is_exit_feature(feature_id:String)->bool:
-	return feature_id in ["run_exit_locked","run_exit_open"]
+	return feature_id in ["run_exit_locked","run_exit_open",
+		"floor_transition_portal_locked","floor_transition_portal"]
+
+func _is_anchor_feature(feature_id:String)->bool:
+	return feature_id in ["anchor_portal_inactive","anchor_portal_active"]
 
 func _row_priority(row:Dictionary)->int:
 	var state:=str(row.get("visibility_state","UNSEEN"));var marker:=str(row.get("marker",""))
 	if state=="VISIBLE" and marker=="HERO":return 50
 	if state=="VISIBLE" and marker=="ENEMY":return 40
+	if marker=="PORTAL":return 31
 	if marker=="EXIT":return 30
 	if str(row.get("terrain_id","unknown"))=="wall":return 20
 	return 10
@@ -229,7 +240,7 @@ func _draw()->void:
 			draw_string(font,baseline,glyph,HORIZONTAL_ALIGNMENT_CENTER,slot.x,font_size,spec.color)
 	var footer_y:=panel.end.y-8.0
 	draw_string(CodingFont,Vector2(panel.position.x+PANEL_INSET,footer_y),
-		"@ 주인공  ! 위협  > 출구  바깥 터치: 닫기",HORIZONTAL_ALIGNMENT_CENTER,
+		"@ 주인공  ! 위협  O 거점  > 층간  바깥 터치: 닫기",HORIZONTAL_ALIGNMENT_CENTER,
 		panel.size.x-PANEL_INSET*2.0,10,AsciiFrame.BONE_DIM)
 
 func _draw_ascii_frame(panel:Rect2)->void:

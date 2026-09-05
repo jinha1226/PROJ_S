@@ -1,16 +1,6 @@
 extends SceneTree
 
-const TEST_FILES := [
-	"test_party_companion_ruleset.gd",
-	"test_party_squad_blackboard.gd",
-	"test_party_shared_perception.gd",
-	"test_party_exception_commands.gd",
-	"test_party_companion_appraisal.gd",
-	"test_party_companion_suggest.gd",
-	"test_party_companion_explanation_ui.gd",
-	"test_party_emotion_system.gd",
-	"test_party_combat_matrix.gd",
-]
+const TEST_FILES := ["test_party_emotion_system.gd"]
 
 
 func _init() -> void:
@@ -29,15 +19,13 @@ func _init() -> void:
 			total += 1
 			var test_case = script.new()
 			var completed = test_case.call(method.name)
-			if typeof(completed) != TYPE_BOOL:
+			if completed != true and test_case.errors.is_empty():
 				test_case.errors.append("test did not return explicit true completion")
-			elif completed == false and test_case.errors.is_empty():
-				test_case.errors.append("test returned false without a recorded assertion")
 			if test_case.errors.is_empty():
 				print("PASS %s :: %s" % [file, method.name])
 			else:
 				failed += 1
 				for error in test_case.errors:
 					print("FAIL %s :: %s -- %s" % [file, method.name, error])
-	print("---- Party companion AI: %d tests, %d failed ----" % [total, failed])
+	print("---- Party emotion: %d tests, %d failed ----" % [total, failed])
 	quit(1 if failed > 0 else 0)

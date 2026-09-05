@@ -5,6 +5,7 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Request=preload("res://sim/party_turn_request.gd")
 const WeaponLoadout=preload("res://sim/weapon_loadout_state.gd")
+const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 
 func test_companion_exile_and_distinct_recruitment_pool_are_authoritative_and_replay_exact() -> bool:
 	# A full four-member party must still gate a fifth recruit without consuming
@@ -587,9 +588,14 @@ func test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_fl
 	check(not ordinary.find_exploration_path(ordinary_state.protagonist_id,destination).path \
 		==[origin,destination],"pathfinder cannot cut an ordinary wall corner")
 
-	var product=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	# The campaign's open forest intentionally has no doors.  Keep the doorway
+	# persistence contract on the last authored dungeon layout that owns them.
+	var product=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	check(product.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		VisualMap.previous_product_dungeon(44),false),
+		"doorway persistence fixture initializes from the authored dungeon")
 	var gateways:Array[Vector2i]=product.sim.world.party_encounter.diagonal_gateway_positions
-	check(not gateways.is_empty(),"generated product doors publish canonical gateway cells")
+	check(not gateways.is_empty(),"authored dungeon doors publish canonical gateway cells")
 	var restored=Session.new(1,2)
 	check(restored.load_session_json(product.save_session_json()).accepted,
 		"gateway state survives strict save and journal replay")

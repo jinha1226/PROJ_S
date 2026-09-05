@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 
 const DungeonMap = preload("res://playtest/deterministic_dungeon_map.gd")
+const CampaignFloorMap = preload("res://playtest/campaign_floor_map.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
@@ -15,6 +16,49 @@ func test_same_seed_is_exact_and_different_seed_changes_layout() -> bool:
 	check_eq(first, second, "same seed reproduces the exact layout")
 	check(first.terrain != other.terrain, "different seed changes terrain topology")
 	check_eq([first.width, first.height], [96, 96], "expanded product dungeon size")
+	return finish()
+
+
+func test_campaign_floor_one_and_two_publish_distinct_portals_and_authored_routes()->bool:
+	var floor_one:=CampaignFloorMap.generate(1,44)
+	var floor_two:=CampaignFloorMap.generate(2,44)
+	check_eq([floor_one.width,floor_one.height,floor_two.width,floor_two.height],
+		[160,160,192,192],"campaign floors use the agreed forest and wasteland sizes")
+	for layout in [floor_one,floor_two]:
+		var entry:Vector2i=layout.entry_position
+		var anchor:Vector2i=layout.anchor_portal_position
+		var transition:Vector2i=layout.transition_portal_position
+		check(anchor!=transition and entry!=anchor and entry!=transition,
+			"anchor portal, surface entry and floor transition are separate features")
+		check(DungeonMap.reachable(layout,entry,anchor),
+			"surface entry reaches the map-local anchor portal")
+		check(DungeonMap.reachable(layout,entry,transition),
+			"surface entry reaches the separate floor-transition portal")
+		check_eq(layout.routes.size(),3,"each floor keeps three authored route identities")
+		check_eq(layout.encounter_groups.size(),layout.planned_contact_count,
+			"planned contact count is materialized in the content manifest")
+		var enemy_count:=0
+		for group in layout.encounter_groups:enemy_count+=group.species_ids.size()
+		check_eq(enemy_count,layout.planned_enemy_count,
+			"encounter groups exactly allocate the planned population")
+		var anchor_guards:Array=layout.encounter_groups.filter(
+			func(group):return bool(group.anchor_guard))
+		var transition_guards:Array=layout.encounter_groups.filter(
+			func(group):return bool(group.transition_guard))
+		check_eq([anchor_guards.size(),transition_guards.size()],[1,1],
+			"map anchor and floor transition own separate guard groups")
+		if anchor_guards.size()==1:
+			var guard_position:=Vector2i(int(anchor_guards[0].position[0]),
+				int(anchor_guards[0].position[1]))
+			check(maxi(absi(guard_position.x-anchor.x),absi(guard_position.y-anchor.y))
+				<=int(layout.anchor_portal_clear_radius),
+				"anchor guard occupies the activation clear radius")
+	check_eq([floor_one.regions.size(),floor_two.regions.size()],[6,7],
+		"forest and wasteland retain their distinct macro-region counts")
+	check_eq(CampaignFloorMap.generate(1,44),floor_one,
+		"campaign floor generation is deterministic for save replay")
+	check(CampaignFloorMap.generate(1,45).terrain!=floor_one.terrain,
+		"a different expedition seed changes only deterministic micro geography")
 	return finish()
 
 
@@ -152,7 +196,7 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(first.sim != null and second.sim != null, "solo sessions initialize")
 	if first.sim == null or second.sim == null:
 		return finish()
-	check_eq([first.sim.world.width, first.sim.world.height], [96, 96],
+	check_eq([first.sim.world.width, first.sim.world.height], [160, 160],
 		"solo world is larger than the viewport")
 	check_eq(first.sim.snapshot(), second.sim.snapshot(),
 		"same seed reproduces authoritative world and spawns")
@@ -161,8 +205,8 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	var enemy_position: Vector2i = first.sim.world.entities[state.enemy_ids[0]].position
 	var opening_distance:=maxi(absi(hero_position.x-enemy_position.x),
 		absi(hero_position.y-enemy_position.y))
-	check(opening_distance>=4 and opening_distance<=6,
-		"monster begins visible with two-to-four approach steps before adjacency")
+	check(opening_distance>=24,
+		"first combat group leaves a safe entrance and tutorial staging pocket")
 	check(DungeonMap.terrain_at(first._map_layout,enemy_position)!="wall" \
 		and enemy_position!=first._map_layout.exit_position \
 		and enemy_position not in first._map_layout.door_positions,
@@ -183,7 +227,7 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 		if cell.position==[enemy_position.x,enemy_position.y]:
 			enemy_visible=str(cell.visibility_state)=="VISIBLE" \
 				and not cell.actors.is_empty()
-	check(enemy_visible,"opening monster is present inside the initial LOS observation")
+	check(not enemy_visible,"first hostile does not intrude into the initial LOS observation")
 	check_eq(first.run_progress().entry_position,
 		[hero_position.x, hero_position.y], "run manifest follows generated entry")
 	return finish()
@@ -238,7 +282,13 @@ func test_large_map_save_load_regenerates_seeded_layout_exactly() -> bool:
 
 
 func test_product_touch_melee_vfx_starts_after_refresh_and_survives_a_frame()->bool:
-	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	# Touch/VFX needs a deliberately nearby target; the campaign map itself now
+	# owns a safe entrance pocket before its first combat group.
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	check(session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		DungeonMap.generate_previous_product(DungeonMap.DEFAULT_WIDTH,
+			DungeonMap.DEFAULT_HEIGHT,44),false),
+		"nearby product combat fixture initializes")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	# A live container supplies this extent. The synchronous product fixture uses

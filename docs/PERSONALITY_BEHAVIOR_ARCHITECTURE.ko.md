@@ -550,21 +550,21 @@ PersonalityChange
 - [Game AI Pro: Behavior Selection Algorithms](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter04_Behavior_Selection_Algorithms.pdf)
 - [Game AI Pro 3: Choosing Effective Utility-Based Considerations](https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf)
 
-## 12. 파티 동료 룰셋 `party-companion-utility-v2-hexaco`
+## 12. 파티 동료 룰셋 `party-companion-utility-v3-emotion`
 
 4인 파티 단체전투 P1의 임시 4축 wire는 폐기됐고, 현재 룰셋은 연속형 HEXACO 6축과
 정수 Utility evaluator를 사용한다. 고정 성격 유형은 저장하거나 판단에 사용하지 않는다.
 행동 후보는 `ENGAGE`, `PROTECT`, `RETREAT`, `HOLD` 네 개이며, 실행 리프는 기존
 `HOLD`, `MOVE`, `MELEE`만 사용한다.
 
-입력 19개는 다음 범주로 고정한다.
+입력 25개는 다음 범주로 고정한다.
 
 - 성격 6개: H, E, X, A, C, O
 - 평가 3개: attack drive, perceived threat, panic pressure
 - 상황 7개: hp loss, ally targeted, ally hp loss, engaged enemies, outnumbered,
   claim alignment, focus alignment
 - 관계 2개: ally trust, protagonist trust
-- 정동 1개: stress
+- 정동 7개: stress, fear, anger, sadness, guilt, bond, resolve
 
 `PartySquadBlackboard.build()`의 focus, threat, ally pressure, claim은 현재 권위 상태와
 주인공 행동에서 매 프리뷰마다 다시 계산하는 파생 상태다. 후보 점수, 선택 결과, 경로와
@@ -576,11 +576,33 @@ P3 완료 뒤 `PANIC`은 `PartyMemberState.mental_mode`의 권위 상태다. str
 이내 전염, 안전 회복은 `party.morale_changed` 사건으로 기록되고, HEXACO의 E와 C에서
 도출한 회복탄력성이 전염량과 공황 압력에 영향을 준다.
 
+현재 감정은 하나의 거대한 AI 모듈이 아니라 세 층으로 처리한다.
+
+```text
+권위 사건 + HEXACO + 관계 → PartyEmotionModel(순수 평가)
+                            → PartyEmotionSystem(상태·사건 커밋)
+                            → PartyCompanionAppraisal(Utility 입력 어댑터)
+```
+
+`PartyEmotionState`는 모든 파티원에게 공포, 분노, 슬픔, 죄책감, 유대감, 의지의
+6개 채널만 0~1000으로 저장한다. 신뢰·감사·원한은 장기 관계 상태에 남겨 중복하지 않는다.
+각 감정 채널은 현재 감정에 가장 크게 기여한 원인 사건과 대상을 기억하며 시간에 따라
+정수 단위로 감쇠한다. 더 약한 새 사건은 강한 상실 기억의 설명과 표적을 덮어쓰지 않는다.
+따라서 복수심은 별도 일곱 번째 수치가 아니라 `분노 + 슬픔 + 가해자 기억`, 용기는
+`의지 >= 공포`, 생존자 죄책감은 `죄책감 + 슬픔 + 동료 사망 기억`으로 화면에서 합성한다.
+
+이 감정은 설명문만 바꾸지 않는다. 공포는 후퇴 점수를 올리고 공격·엄호를 억제하며,
+분노와 의지는 교전을, 죄책감과 유대감은 엄호를 강화한다. 강한 표적 지정 분노는 공통
+분대 표적보다 기억 속 가해자를 우선할 수 있다. 다만 `PANIC` 행동 후보 제한과 플레이어의
+파티 예외 명령은 기존 권위 규칙을 유지한다. 모든 변경은 `party.emotion_changed` 사건에
+전후 6채널 상태, 원인 코드와 source event ID를 남겨 세이브·롤백·재현 검증이 가능하다.
+
 헤드리스 검증은 `tests/run_party_ai_tests.gd`가 담당한다. 12시드 전투 매트릭스는
 4인 파티·4개 적, 최대 60턴을 오버라이드 없이 실행하며 accepted step, canonical world,
 행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. P2 적 무리 전술과 P3 사기
 상태는 각각 별도 매트릭스에서 검증하며, 통합 파티 AI runner는 공유 인지와 예외 명령까지
-포함해 20개 테스트를 실행한다.
+포함해 27개 테스트를 실행한다. 별도 `tests/run_party_emotion_tests.gd`는 감정 wire,
+성격별 사건 평가, 감쇠, 행동 점수와 표적 기억, 한국어 합성 표시를 빠르게 검증한다.
 
 ## 13. DCSS형 파티 자율 제어 원칙
 

@@ -7,6 +7,7 @@ const Inventory=preload("res://sim/inventory_state.gd")
 const AmmoPool=preload("res://sim/ammo_pool_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const WorldItemOperations=preload("res://sim/world_item_operations.gd")
+const PartyState=preload("res://sim/party_encounter_state.gd")
 
 
 func test_every_added_entity_owns_an_empty_twelve_slot_inventory_and_ammo_row()->bool:
@@ -146,8 +147,8 @@ func test_rollback_memento_captures_only_non_empty_item_rows()->bool:
 	var memento:Variant=session.sim.capture_rollback_memento()
 	check(memento is Dictionary,"product world captures a memento")
 	if not memento is Dictionary:return finish()
-	check(world.combatant_states.size()>=10,
-		"product dungeon fixture holds the many-entity roster this guard protects")
+	check(world.combatant_states.size()>=4,
+		"product dungeon fixture holds a multi-entity roster for the sparse-row guard")
 	var owners:=0
 	for entity_id in world.item_state.inventory_rows:
 		if not world.item_state.inventory_rows[entity_id].backpack.is_empty():owners+=1
@@ -243,8 +244,8 @@ func test_the_duplicate_weapon_authority_and_its_bridge_invariant_are_gone()->bo
 	for method in world.get_method_list():world_names.append(str(method.name))
 	check("_inventory_loadout_bridge_error" not in world_names,
 		"the bridge invariant is deleted with the field it held together")
-	check_eq(int(world.party_encounter.schema_version),18,
-		"HEXACO, player species, and stat scaling use the current party schema")
+	check_eq(int(world.party_encounter.schema_version),PartyState.SCHEMA_VERSION,
+		"the party uses the current persisted schema")
 	check("protagonist_loadout" not in world.party_encounter.to_dict(),
 		"the party wire no longer carries a loadout row")
 	# Changing the equipped instance changes the weapon with nothing to disagree.

@@ -73,6 +73,70 @@ func test_schema_seventeen_save_migrates_to_open_legacy_cycle() -> bool:
 	return finish()
 
 
+func test_schema_eighteen_save_migrates_with_no_fabricated_anchor_portals()->bool:
+	var source=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var encoded:Dictionary=JSON.parse_string(source.save_session_json())
+	encoded.snapshot.party_encounter.schema_version= \
+		PartyState.EXPEDITION_CYCLE_SCHEMA_VERSION
+	encoded.snapshot.party_encounter.erase("activated_anchor_portal_floors")
+	var restored=Session.new(1,2)
+	var loaded:Dictionary=restored.load_session_json(JSON.stringify(encoded))
+	check(bool(loaded.get("accepted",false)),
+		"v18 save migrates without inventing a discovered map portal: %s"%str(loaded))
+	if bool(loaded.get("accepted",false)):
+		check_eq(restored.sim.world.party_encounter.activated_anchor_portal_floors,[],
+			"legacy expedition starts with no activated anchor checkpoint")
+	return finish()
+
+
+func test_map_anchor_portal_is_separate_clearable_and_persistent_in_town()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var layout:Dictionary=session._map_layout.duplicate(true)
+	var entry:Vector2i=layout.entry_position
+	layout.anchor_portal_position=entry+Vector2i.UP
+	layout.anchor_portal_clear_radius=1
+	check(session.reset_party(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		layout,false),"near-entry anchor portal fixture initializes")
+	var before:Dictionary=session.dungeon_anchor_portal_status()
+	check(before.available and before.can_activate and not before.active,
+		"an adjacent uncontested map anchor can be activated")
+	check_eq(session._run_feature_id_at(layout.anchor_portal_position,
+		session.run_progress()),"anchor_portal_inactive",
+		"map anchor has its own inactive feature identity")
+	check_eq(session._run_feature_id_at(layout.transition_portal_position,
+		session.run_progress()),"floor_transition_portal_locked",
+		"floor transition remains a separate locked feature")
+	var portal_marker:=""
+	for cell in session.observe_party_ui(15).minimap.cells:
+		if cell.position==[layout.anchor_portal_position.x,
+				layout.anchor_portal_position.y]:
+			portal_marker=str(cell.marker);break
+	check_eq(portal_marker,"PORTAL",
+		"discovered map anchor keeps its own full-map and minimap marker")
+	var activated:Dictionary=session.activate_dungeon_anchor_portal()
+	check(bool(activated.get("accepted",false)),"map anchor activation commits")
+	check_eq(session.sim.world.party_encounter.activated_anchor_portal_floors,[1],
+		"activation persists the exact floor checkpoint")
+	check_eq(session._run_feature_id_at(layout.anchor_portal_position,
+		session.run_progress()),"anchor_portal_active",
+		"activated map anchor changes presentation identity")
+	check(not session.activate_dungeon_anchor_portal().accepted,
+		"the same anchor cannot be activated twice")
+	check_eq(session.sim.world.world_state_error(),"",
+		"portal activation leaves canonical world state")
+	var state=session.sim.world.party_encounter
+	state.activated_anchor_portal_floors[0]=2
+	check_eq(session.sim.world.world_state_error(),"anchor_portal_history_mismatch",
+		"an activated floor cannot be forged independently of its event history")
+	state.activated_anchor_portal_floors[0]=1
+	state.expedition_cycle=Cycle.active(1,session.sim.world.world_time,100,1)
+	check(session.commit_exploration(Command.wait(state.protagonist_id)).accepted,
+		"portal fixture returns to town at the deadline")
+	check_eq(session.town_overview().available_portal_floors,[1],
+		"the town departure surface lists only physically activated map anchors")
+	return finish()
+
+
 func test_town_guild_hall_surface_replaces_dungeon_controls() -> bool:
 	var session = Session.new()
 	var state = session.sim.world.party_encounter
@@ -251,7 +315,7 @@ func test_town_armory_transfers_real_ownership_and_departure_reopens_dungeon() -
 	check_eq([owner.kind, owner.entity_id], ["ENTITY", companion_id],
 		"item has exactly one new canonical owner")
 	var departed: Dictionary = session.depart_town()
-	check(bool(departed.get("accepted", false)), "expedition gate departs")
+	check(bool(departed.get("accepted", false)), "expedition gate departs: %s"%str(departed))
 	check_eq(departed.expedition_cycle.floor_index, 1,
 		"only the default floor-one portal is currently available")
 	check_eq([session.expedition_cycle_status().phase,

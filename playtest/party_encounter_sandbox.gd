@@ -2446,7 +2446,10 @@ func _town_armory_panel()->void:
 
 func _town_gate_panel()->void:
 	var assessment:Dictionary=session.town_departure_assessment()
-	_add_notice("[원정문] 현재 활성화된 포탈은 1층뿐입니다. 새 원정은 1층 포탈에서 시작합니다.",
+	var active_floors:Array=assessment.get("available_portal_floors",[])
+	var portal_text:="없음" if active_floors.is_empty() else ", ".join(
+		active_floors.map(func(value):return "%d층"%int(value)))
+	_add_notice("[원정문] 1층은 지상 입구로 출발합니다. 활성화한 층 거점 포탈: %s"%portal_text,
 		"TownGateTitle",FONT_BODY)
 	var depart:=_add_button(deck,"원정 출발","TownDepart",_on_town_depart)
 	depart.disabled=not bool(assessment.get("accepted",false))
@@ -2837,6 +2840,14 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	var opening_choice:=bool(opening.get("can_interact",false))
+	var anchor_portal:Dictionary=session.dungeon_anchor_portal_status() \
+		if session.has_method("dungeon_anchor_portal_status") else {}
+	var portal_choice:=bool(anchor_portal.get("can_activate",false))
+	if portal_choice:
+		product_interact_button.text="[PORTAL 활성화]"
+		product_interact_button.disabled=false
+		product_interact_button.tooltip_text="이 층의 거점 포탈을 마을과 연결합니다."
+		return
 	if opening_choice:
 		if event_label!=null:
 			event_label.text=str(opening.get("scene_summary",
@@ -3160,6 +3171,17 @@ func _on_product_interact()->void:
 			else:
 				_sync_product_control_state(after_status);_request_refresh()
 			_show_product_command_feedback(reload_feedback);return
+	if session.has_method("dungeon_anchor_portal_status"):
+		var portal_status:Dictionary=session.dungeon_anchor_portal_status()
+		if bool(portal_status.get("can_activate",false)):
+			_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+			var portal_result:Dictionary=session.activate_dungeon_anchor_portal()
+			_record_result(portal_result,true)
+			_show_product_command_feedback("%d층 거점 포탈을 활성화했습니다."%int(
+				portal_status.get("floor_index",1)) if bool(portal_result.get(
+					"accepted",false)) else str(portal_result.get("message",
+					"포탈을 활성화할 수 없습니다.")))
+			_request_refresh();return
 	if not session.has_method("opening_event_status") \
 			or not bool(session.opening_event_status().get("can_interact",false)):
 		return

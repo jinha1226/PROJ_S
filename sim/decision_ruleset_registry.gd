@@ -5,7 +5,7 @@ const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 const RULESET_ID := "dungeon-hierarchical-utility-v1"
 const EXPEDITION_RULESET_ID := "npc-expedition-utility-v1"
-const PARTY_RULESET_ID := "party-companion-utility-v2-hexaco"
+const PARTY_RULESET_ID := "party-companion-utility-v3-emotion"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
 const SCORE_MIN := -1000000
 const SCORE_MAX := 1000000
@@ -18,7 +18,9 @@ const PARTY_INPUTS := ["facet.H", "facet.E", "facet.X", "facet.A", "facet.C", "f
 	"appraisal.attack_drive", "appraisal.perceived_threat", "appraisal.panic_pressure",
 	"context.hp_loss", "context.ally_targeted", "context.ally_hp_loss", "context.engaged_enemies",
 	"context.outnumbered", "context.claim_alignment", "context.focus_alignment",
-	"relation.ally_trust", "relation.protagonist_trust", "affect.stress"]
+	"relation.ally_trust", "relation.protagonist_trust", "affect.stress",
+	"affect.fear", "affect.anger", "affect.sadness", "affect.guilt",
+	"affect.bond", "affect.resolve"]
 
 class CurveDef extends RefCounted:
 	var def_version := 1
@@ -192,6 +194,9 @@ static func _build_party_actions() -> void:
 		_c("party_engage.agreeableness", "facet.A", "linear_down", 180),
 		_c("party_engage.extraversion", "facet.X", "linear_up", 120),
 		_c("party_engage.stress", "affect.stress", "linear_up", -200),
+		_c("party_engage.anger", "affect.anger", "linear_up", 220),
+		_c("party_engage.resolve", "affect.resolve", "linear_up", 180),
+		_c("party_engage.fear", "affect.fear", "linear_up", -240),
 	])
 	_add_party_action("PROTECT", 1, 200, [
 		_c("party_protect.ally_targeted", "context.ally_targeted", "threshold_up", 500),
@@ -202,6 +207,9 @@ static func _build_party_actions() -> void:
 		_c("party_protect.agreeableness", "facet.A", "linear_up", 140),
 		_c("party_protect.panic", "appraisal.panic_pressure", "linear_up", -300),
 		_c("party_protect.hp_loss", "context.hp_loss", "linear_up", -150),
+		_c("party_protect.guilt", "affect.guilt", "linear_up", 220),
+		_c("party_protect.bond", "affect.bond", "linear_up", 180),
+		_c("party_protect.fear", "affect.fear", "linear_up", -180),
 	])
 	_add_party_action("RETREAT", 2, 100, [
 		_c("party_retreat.threat", "appraisal.perceived_threat", "linear_up", 450),
@@ -211,12 +219,17 @@ static func _build_party_actions() -> void:
 		_c("party_retreat.outnumbered", "context.outnumbered", "linear_up", 200),
 		_c("party_retreat.emotionality", "facet.E", "linear_up", 260),
 		_c("party_retreat.conscientiousness", "facet.C", "linear_down", 140),
+		_c("party_retreat.fear", "affect.fear", "linear_up", 300),
+		_c("party_retreat.sadness", "affect.sadness", "linear_up", 140),
+		_c("party_retreat.resolve", "affect.resolve", "linear_up", -200),
 	])
 	_add_party_action("HOLD", 3, 250, [
 		_c("party_hold.conscientiousness", "facet.C", "linear_up", 180),
 		_c("party_hold.emotionality", "facet.E", "linear_down", 100),
 		_c("party_hold.threat", "appraisal.perceived_threat", "linear_up", -250),
 		_c("party_hold.engaged", "context.engaged_enemies", "linear_up", -300),
+		_c("party_hold.sadness", "affect.sadness", "linear_up", 120),
+		_c("party_hold.anger", "affect.anger", "linear_up", -120),
 	])
 
 

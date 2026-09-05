@@ -7,7 +7,7 @@ const GOLDEN_EXPEDITION := "856f22f6209d487d20f183e7227e0481ff74eb92a87f9c623405
 
 func test_party_ruleset_is_registered_and_valid() -> bool:
 	check_eq(Registry.validation_error(), "", "registry validates with party ruleset")
-	check_eq(Registry.PARTY_RULESET_ID, "party-companion-utility-v2-hexaco", "ruleset id")
+	check_eq(Registry.PARTY_RULESET_ID, "party-companion-utility-v3-emotion", "ruleset id")
 	var ids: Array = Registry.party_actions().map(func(action): return action.action_id)
 	check_eq(ids, ["ENGAGE", "HOLD", "PROTECT", "RETREAT"], "four party actions sorted")
 	check_eq(Registry.party_mode_actions("NORMAL"),

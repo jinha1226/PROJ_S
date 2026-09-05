@@ -8,6 +8,7 @@ const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
 const DungeonMapScript = preload("res://playtest/deterministic_dungeon_map.gd")
+const CampaignFloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
@@ -66,11 +67,19 @@ static func uses_los_fov(scenario_id: String) -> bool:
 
 
 static func product_dungeon(seed: int) -> Dictionary:
-	return DungeonMapScript.generate(DungeonMapScript.DEFAULT_WIDTH,
-		DungeonMapScript.DEFAULT_HEIGHT, seed)
+	return CampaignFloorMapScript.generate(1,seed)
+
+
+static func campaign_floor(floor_index:int,seed:int)->Dictionary:
+	return CampaignFloorMapScript.generate(floor_index,seed)
 
 
 static func previous_product_dungeon(seed:int)->Dictionary:
+	return DungeonMapScript.generate(DungeonMapScript.DEFAULT_WIDTH,
+		DungeonMapScript.DEFAULT_HEIGHT,seed)
+
+
+static func older_product_dungeon(seed:int)->Dictionary:
 	return DungeonMapScript.generate_previous_product(DungeonMapScript.DEFAULT_WIDTH,
 		DungeonMapScript.DEFAULT_HEIGHT,seed)
 
@@ -89,6 +98,8 @@ static func run_manifest(scenario_id: String, layout: Dictionary = {}) -> Dictio
 		var generated := layout if not layout.is_empty() else product_dungeon(44)
 		entry_position = generated.get("entry_position", ENTRY_POSITION)
 		exit_position = generated.get("exit_position", EXIT_POSITION)
+	var transition_exit:=uses_product_dungeon(scenario_id) \
+		and layout.has("transition_portal_position")
 	return {
 		"schema_version":RUN_MANIFEST_SCHEMA_VERSION,
 		"scenario_id":scenario_id,
@@ -96,8 +107,10 @@ static func run_manifest(scenario_id: String, layout: Dictionary = {}) -> Dictio
 		"entry":{"position":[entry_position.x,entry_position.y],
 			"feature_id":"run_entry"},
 		"exit":{"position":[exit_position.x,exit_position.y],
-			"locked_feature_id":"run_exit_locked",
-			"open_feature_id":"run_exit_open"},
+			"locked_feature_id":"floor_transition_portal_locked" \
+				if transition_exit else "run_exit_locked",
+			"open_feature_id":"floor_transition_portal" \
+				if transition_exit else "run_exit_open"},
 		"reward":{"reward_id":"SOLO_COMBAT_VICTORY_TOKEN" \
 			if scenario_id in [SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID] \
 			else "SHOWCASE_VICTORY_TOKEN","amount":1},
@@ -142,6 +155,8 @@ static func feature_id_at(scenario_id: String, position: Vector2i,
 	if uses_showcase_layout(scenario_id) and position == OPEN_DOOR_POSITION:
 		return "open_door"
 	if uses_product_dungeon(scenario_id):
+		if position==layout.get("transition_portal_position",Vector2i(-1,-1)):
+			return "floor_transition_portal"
 		for door_position in layout.get("door_positions", []):
 			if position == door_position:
 				return "open_door"

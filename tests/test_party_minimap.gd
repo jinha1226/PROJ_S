@@ -16,17 +16,20 @@ func test_sector_mapping_is_deterministic_and_specs_are_detached()->bool:
 		"public sector specs are detached")
 	minimap.free();return finish()
 
-func test_sector_priority_is_hero_threat_exit_wall_memory_unknown()->bool:
+func test_sector_priority_is_hero_threat_portal_exit_wall_memory_unknown()->bool:
 	var rows:Array=[_cell(0,0,"VISIBLE","stone_floor"),_cell(1,0,"VISIBLE","wall"),
 		_cell(2,0,"MEMORY","stone_floor","EXIT"),
-		_cell(3,0,"VISIBLE","stone_floor","ENEMY"),
-		_cell(4,0,"VISIBLE","stone_floor","HERO")]
+		_cell(3,0,"MEMORY","stone_floor","PORTAL"),
+		_cell(4,0,"VISIBLE","stone_floor","ENEMY"),
+		_cell(5,0,"VISIBLE","stone_floor","HERO")]
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,rows))
 	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"HERO","hero wins mixed sector")
 	rows.pop_back();minimap.set_observation(_observation(48,48,rows))
 	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"THREAT","threat follows hero")
 	rows.pop_back();minimap.set_observation(_observation(48,48,rows))
-	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"EXIT","exit follows threat")
+	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"PORTAL","portal follows threat")
+	rows.pop_back();minimap.set_observation(_observation(48,48,rows))
+	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"EXIT","exit follows portal")
 	rows.pop_back();minimap.set_observation(_observation(48,48,rows))
 	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).role,"STRUCTURE","wall follows exit")
 	rows.pop_back();minimap.set_observation(_observation(48,48,rows))
@@ -59,10 +62,13 @@ func test_memory_strips_live_markers_and_rich_payloads_without_leaking()->bool:
 
 func test_static_exit_survives_memory_but_actor_markers_require_visibility()->bool:
 	var legacy_exit:=_cell(12,12,"MEMORY","stone_floor");legacy_exit["feature_id"]="run_exit_open"
+	var anchor:=_cell(18,12,"MEMORY","stone_floor");anchor["feature_id"]="anchor_portal_active"
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,[legacy_exit,
-		_cell(24,24,"MEMORY","stone_floor","HERO")]))
+		anchor,_cell(24,24,"MEMORY","stone_floor","HERO")]))
 	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(12,12))).glyph,
 		Minimap.GLYPH_EXIT,"discovered static exit remains mapped")
+	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(18,12))).glyph,
+		Minimap.GLYPH_PORTAL,"discovered map anchor remains mapped separately")
 	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(24,24))).glyph,
 		Minimap.GLYPH_MEMORY,"remembered hero never remains live")
 	minimap.free();return finish()
@@ -72,9 +78,11 @@ func test_glyph_color_and_renderer_contract_matches_dark_ascii_cartography()->bo
 		_cell(0,0,"VISIBLE","stone_floor","HERO"),
 		_cell(6,0,"VISIBLE","stone_floor","ENEMY"),
 		_cell(12,0,"MEMORY","stone_floor","EXIT"),
-		_cell(18,0,"VISIBLE","wall"),_cell(24,0,"MEMORY","stone_floor")]))
+		_cell(18,0,"MEMORY","stone_floor","PORTAL"),
+		_cell(24,0,"VISIBLE","wall"),_cell(30,0,"MEMORY","stone_floor")]))
 	var expected:=[[Minimap.GLYPH_HERO,Minimap.HERO_COLOR],
 		[Minimap.GLYPH_THREAT,Minimap.ENEMY_COLOR],[Minimap.GLYPH_EXIT,Minimap.EXIT_COLOR],
+		[Minimap.GLYPH_PORTAL,Minimap.PORTAL_COLOR],
 		[Minimap.GLYPH_WALL,Minimap.WALL_VISIBLE_COLOR],[Minimap.GLYPH_MEMORY,Minimap.MEMORY_COLOR]]
 	for x in range(expected.size()):
 		var spec:=minimap.sector_draw_spec(Vector2i(x,0))

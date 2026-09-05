@@ -331,6 +331,8 @@ static func apply_terrain(world, layout: Dictionary) -> bool:
 	var terrain: Array = layout.get("terrain", [])
 	if terrain.size() != world.width * world.height:
 		return false
+	if world.has_method("bootstrap_set_terrain_layout"):
+		return bool(world.bootstrap_set_terrain_layout(terrain))
 	for y in range(world.height):
 		for x in range(world.width):
 			if not world.bootstrap_set_terrain(Vector2i(x, y),

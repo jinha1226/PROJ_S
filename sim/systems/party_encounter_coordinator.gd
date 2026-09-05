@@ -7,6 +7,7 @@ const PlanScript = preload("res://sim/party_turn_plan.gd")
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const BlackboardScript = preload("res://sim/party_squad_blackboard.gd")
 const AppraisalScript = preload("res://sim/party_companion_appraisal.gd")
+const EmotionModelScript = preload("res://sim/party_emotion_model.gd")
 const DecisionRegistryScript = preload("res://sim/decision_ruleset_registry.gd")
 const EnemySquadBlackboardScript = preload("res://sim/enemy_squad_blackboard.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
@@ -1067,6 +1068,13 @@ func _party_leaf(actor_id: int, action_id: String, appraisal: Dictionary,
 
 func _engage_leaf(actor_id: int, board: Dictionary) -> Dictionary:
 	var target_id: int = int(board.claims.get(actor_id, board.focus_target_id))
+	var member = world.party_encounter.member(actor_id)
+	if member != null and member.emotion_state != null \
+			and member.emotion_state.intensity("ANGER") \
+			>= EmotionModelScript.TARGETED_ANGER_THRESHOLD:
+		var remembered_aggressor: int = member.emotion_state.target_id("ANGER")
+		if remembered_aggressor in board.active_enemy_ids:
+			target_id = remembered_aggressor
 	if target_id <= 0 or target_id not in board.active_enemy_ids:
 		return _illegal_leaf("target_unavailable")
 	if _party_melee_legal(actor_id, target_id):

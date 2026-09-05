@@ -331,15 +331,15 @@ func _engaged_adjacent_fixture():
 		var next_position:Vector2i=path.path[1]
 		if not session.commit_exploration(Command.move_to(hero_id,next_position)).accepted:break
 	if session.party_status().safe_phase=="CONTACT":session.enter_solo_combat()
-	for _turn in range(4):
-		var hero:=int(session.party_status().protagonist_id)
-		var enemy:=int(session.party_status().visible_enemy_ids[0])
-		var hero_position:=_party_position(session,hero)
-		var enemy_position:=Vector2i(session.enemy_targets()[0].position[0],session.enemy_targets()[0].position[1])
-		if maxi(absi(hero_position.x-enemy_position.x),absi(hero_position.y-enemy_position.y))==1:break
-		var direction:=Vector2i(signi(enemy_position.x-hero_position.x),signi(enemy_position.y-hero_position.y))
-		session.set_actor_action(hero,"MOVE",[hero_position.x+direction.x,hero_position.y+direction.y])
-		session.commit_turn()
+	# This fixture tests the combat kernel, not approach survivability. The wider
+	# campaign floor can expose several enemies during the old four-turn approach,
+	# so place the hero on a checked adjacent cell without advancing combat time.
+	if session.party_status().safe_phase=="ENGAGED":
+		var enemy_id:=int(state.enemy_ids[0])
+		for position in _adjacent_open_cells(session,enemy_id):
+			if session.sim.world.occupying_entities_at(position).is_empty():
+				_relocate_with_move_events(session.sim,hero_id,position)
+				break
 	return session
 
 func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
@@ -352,6 +352,27 @@ func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
 			session.sim.world.tile_at(position).terrain)
 		if bool(terrain.get("passable",false)):result.append(position)
 	return result
+
+func _relocate_with_move_events(sim,entity_id:int,target:Vector2i)->bool:
+	for _attempt in range(16):
+		var current:Vector2i=sim.world.entities[entity_id].position
+		if current==target:return true
+		var delta:=target-current
+		var moved:=false
+		for direction_value in [Vector2i(signi(delta.x),signi(delta.y)),
+				Vector2i(signi(delta.x),0),Vector2i(0,signi(delta.y))]:
+			var direction:=Vector2i(direction_value)
+			if direction==Vector2i.ZERO:continue
+			var destination:=current+direction
+			var assessment=sim.movement.assess_move(entity_id,destination)
+			if not bool(assessment.accepted):continue
+			var terrain:Dictionary=load("res://sim/terrain_registry.gd").definition(
+				str(assessment.terrain_id))
+			if sim.movement.commit_preflighted_move(entity_id,destination,
+					str(assessment.terrain_id),int(terrain.move_time_cost))==null:return false
+			moved=true;break
+		if not moved:return false
+	return sim.world.entities[entity_id].position==target
 
 func _resolve_encounter(session,limit:int)->bool:
 	for _turn in range(limit):

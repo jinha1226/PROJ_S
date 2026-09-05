@@ -36,9 +36,11 @@ func test_priority_and_semantic_glyph_palette_contract()->bool:
 	var overlay=Overlay.new();overlay.set_observation(_observation(48,48,[
 		_cell(1,1,"VISIBLE","stone_floor","HERO"),
 		_cell(2,1,"VISIBLE","stone_floor","ENEMY"),
-		_cell(3,1,"MEMORY","stone_floor","EXIT"),
-		_cell(4,1,"VISIBLE","wall"),_cell(5,1,"MEMORY","stone_floor")]))
+		_cell(3,1,"MEMORY","stone_floor","PORTAL"),
+		_cell(4,1,"MEMORY","stone_floor","EXIT"),
+		_cell(5,1,"VISIBLE","wall"),_cell(6,1,"MEMORY","stone_floor")]))
 	var expected:=[["@",Overlay.HERO_INK,"HERO"],["!",Overlay.THREAT_INK,"THREAT"],
+		["O",Overlay.PORTAL_INK,"PORTAL"],
 		[">",Overlay.EXIT_INK,"EXIT"],["#",Overlay.WALL_VISIBLE_INK,"STRUCTURE"],
 		[".",Overlay.MEMORY_INK,"PASSABLE"]]
 	for index in range(expected.size()):
@@ -52,11 +54,13 @@ func test_fog_ingestion_strips_live_memory_and_rich_payloads()->bool:
 		"target_id":7,"direction":[1,0]})
 	var unseen_exit:=_cell(9,8,"UNSEEN","stone_floor","EXIT")
 	var known_exit:=_cell(10,8,"MEMORY","stone_floor","EXIT")
+	var known_portal:=_cell(11,8,"MEMORY","stone_floor","PORTAL")
 	var overlay=Overlay.new();overlay.set_observation(_observation(48,48,
-		[hidden_enemy,unseen_exit,known_exit]))
+		[hidden_enemy,unseen_exit,known_exit,known_portal]))
 	check_eq(overlay.cell_draw_spec(Vector2i(8,8)).glyph,".","memory enemy becomes terrain")
 	check_eq(overlay.cell_draw_spec(Vector2i(9,8)).glyph,"","unseen exit omitted")
 	check_eq(overlay.cell_draw_spec(Vector2i(10,8)).glyph,">","known static exit retained")
+	check_eq(overlay.cell_draw_spec(Vector2i(11,8)).glyph,"O","known map anchor retained")
 	var stored:Dictionary=overlay._cells["8:8"];var keys:Array=stored.keys();keys.sort()
 	check_eq(keys,["marker","terrain_id","visibility_state"],"only compact scalars retained")
 	check_eq(stored.marker,"","remembered actor marker stripped at ingestion")

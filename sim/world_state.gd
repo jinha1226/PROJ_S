@@ -18,6 +18,7 @@ const AGENT_STATE_SCHEMA_ID := "agent-state-v2"
 const LIFE_RULESET_ID := "active-downed-dead-v1"
 const STATUS_RULESET_ID := "bounded-status-lifecycle-v1"
 const PARTY_MEMBER_SCHEMA_ID := "party-member-v2"
+const DUNGEON_ANCHOR_PORTAL_RULESET_ID := "map-anchor-portal-v1"
 const ENVIRONMENT_INTERVAL := 100
 const ACTOR_INTERVAL := 100
 const MAX_WORLD_TIME := 9223372036854775707
@@ -72,6 +73,8 @@ const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
+const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
+const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
@@ -550,6 +553,32 @@ func bootstrap_set_terrain(position: Vector2i, terrain_id: String) -> bool:
 	tile.fire_damage_eligible_time = -1
 	_rollback_tile_terrain_cache = PackedStringArray()
 	track_dynamic_tile(position)
+	return true
+
+
+func bootstrap_set_terrain_layout(terrain_rows:Array)->bool:
+	# Large campaign floors are immutable bootstrap topology.  Validate the whole
+	# input before mutation, then install it in one pass without rebuilding the
+	# rollback cache or copying registry dictionaries once per cell.
+	if _active_step_index!=-1 or step_index!=0 or world_time!=0 \
+			or not events.is_empty() or terrain_rows.size()!=tiles.size() \
+			or not entities.is_empty():
+		return false
+	for terrain_value in terrain_rows:
+		if not terrain_value is String or not TerrainRegistryScript.has(str(terrain_value)):
+			return false
+	for index in range(terrain_rows.size()):
+		var terrain_id:=str(terrain_rows[index])
+		var definition:Dictionary=TerrainRegistryScript.definition_view(terrain_id)
+		var tile=tiles[index]
+		tile.terrain=terrain_id
+		tile.flammability=int(definition.default_flammability)
+		tile.base_conductivity=int(definition.default_base_conductivity)
+		tile.wetness=0;tile.fire=0
+		tile.fire_source_event_id=-1;tile.wetness_source_event_id=-1
+		tile.fire_damage_eligible_time=-1
+	_rollback_tile_terrain_cache=PackedStringArray()
+	_dynamic_tile_indices.clear();_dynamic_tile_index_ready=false
 	return true
 
 
@@ -5001,6 +5030,8 @@ func _party_event_correlation_error() -> String:
 		return "party_cleared_contact_without_regroup_history"
 	var roster_error := _party_roster_history_error()
 	if not roster_error.is_empty(): return roster_error
+	var anchor_portal_error := _party_anchor_portal_history_error()
+	if not anchor_portal_error.is_empty(): return anchor_portal_error
 	var patrol_error := _party_patrol_history_error()
 	if not patrol_error.is_empty(): return patrol_error
 	var override_error := _party_override_history_error()
@@ -5009,6 +5040,37 @@ func _party_event_correlation_error() -> String:
 	if not command_error.is_empty(): return command_error
 	var morale_error := _party_morale_history_error()
 	if not morale_error.is_empty(): return morale_error
+	var emotion_error := _party_emotion_history_error()
+	if not emotion_error.is_empty(): return emotion_error
+	return ""
+
+
+func _party_anchor_portal_history_error()->String:
+	var activated_floors:Array[int]=[]
+	for event in events:
+		if event.type!="dungeon.anchor_portal_activated":continue
+		if event.actor_id!=party_encounter.protagonist_id or event.target_id!=-1 \
+				or event.cause_id!=-1 or not in_bounds(event.position) \
+				or not _exact_keys(event.data,["clear_radius","floor_index","position",
+					"ruleset_id","schema_version"]):
+			return "anchor_portal_event_semantic_mismatch"
+		var floor_value:Variant=event.data.get("floor_index")
+		var radius_value:Variant=event.data.get("clear_radius")
+		var position_value:Variant=event.data.get("position")
+		if not floor_value is int or int(floor_value)<1 or int(floor_value)>15 \
+				or event.magnitude!=int(floor_value) \
+				or int(floor_value) in activated_floors \
+				or not radius_value is int or int(radius_value)<1 or int(radius_value)>32 \
+				or not position_value is Array or position_value.size()!=2 \
+				or not position_value[0] is int or not position_value[1] is int \
+				or event.position!=Vector2i(int(position_value[0]),int(position_value[1])) \
+				or event.data.get("schema_version")!=1 \
+				or event.data.get("ruleset_id")!=DUNGEON_ANCHOR_PORTAL_RULESET_ID:
+			return "anchor_portal_event_semantic_mismatch"
+		activated_floors.append(int(floor_value))
+	activated_floors.sort()
+	if activated_floors!=party_encounter.activated_anchor_portal_floors:
+		return "anchor_portal_history_mismatch"
 	return ""
 
 
@@ -5237,6 +5299,100 @@ func _party_morale_history_error() -> String:
 	return ""
 
 
+func _party_emotion_history_error() -> String:
+	var latest_by_actor: Dictionary = {}
+	var previous_after_by_actor: Dictionary = {}
+	var allowed_triggers := ["ALLY_AID", "ALLY_DIED", "ALLY_DOWNED",
+		"ENEMY_DIED", "OVERRIDE_CONFLICT", "SAFE_DECAY", "SELF_DAMAGE",
+		"SELF_DOWNED", "TOWN_REST"]
+	var source_types := ["combat.physical_damage", "combat.downed_damage",
+		"entity.downed", "entity.died", "health.restored",
+		"party.override_committed", "town.shrine_service"]
+	for event in events:
+		if event.type != "party.emotion_changed":
+			continue
+		if event.actor_id not in _party_active_ids_at_event(event.id) \
+				or event.target_id != -1:
+			return "party_emotion_actor_invalid"
+		var historical_position: Dictionary = _entity_position_at_event(
+			event.actor_id, event.id)
+		if not bool(historical_position.get("ok", false)) \
+				or event.position != historical_position.position:
+			return "party_emotion_position_invalid"
+		var keys := ["ruleset_id", "schema_version", "source_event_ids",
+			"state_after", "state_before", "trigger_codes"]
+		if not _exact_keys(event.data, keys) \
+				or event.data.get("schema_version") != 1 \
+				or event.data.get("ruleset_id") != PartyEmotionModelScript.RULESET_ID \
+				or not PartyEmotionStateScript.wire_error(
+					event.data.get("state_before")).is_empty() \
+				or not PartyEmotionStateScript.wire_error(
+					event.data.get("state_after")).is_empty():
+			return "party_emotion_data_invalid"
+		var before: Dictionary = event.data.state_before
+		var after: Dictionary = event.data.state_after
+		if Int64CodecScript.parse(after.updated_at, "emotion event time") \
+				!= event.world_time \
+				or Int64CodecScript.parse(before.updated_at, "emotion prior time") \
+				> event.world_time:
+			return "party_emotion_time_invalid"
+		if previous_after_by_actor.has(event.actor_id) \
+				and before != previous_after_by_actor[event.actor_id]:
+			return "party_emotion_chain_invalid"
+		var expected_magnitude := 0
+		for index in range(PartyEmotionStateScript.EMOTION_IDS.size()):
+			expected_magnitude += absi(int(after.channels[index].intensity) \
+				- int(before.channels[index].intensity))
+			for channel_state in [before.channels[index], after.channels[index]]:
+				var target_id := Int64CodecScript.parse(channel_state.target_id,
+					"emotion target")
+				var source_id := Int64CodecScript.parse(channel_state.source_event_id,
+					"emotion source")
+				if target_id > 0 and not entities.has(target_id):
+					return "party_emotion_reference_invalid"
+				if source_id > 0 and (event_by_id(source_id) == null \
+						or source_id >= event.id):
+					return "party_emotion_reference_invalid"
+		if expected_magnitude <= 0 or event.magnitude != expected_magnitude:
+			return "party_emotion_projection_invalid"
+		var trigger_rows: Variant = event.data.get("trigger_codes")
+		if not trigger_rows is Array or trigger_rows.is_empty():
+			return "party_emotion_trigger_invalid"
+		var previous_trigger := ""
+		for trigger in trigger_rows:
+			if not trigger is String or trigger not in allowed_triggers \
+					or str(trigger) <= previous_trigger:
+				return "party_emotion_trigger_invalid"
+			previous_trigger = str(trigger)
+		var source_rows: Variant = event.data.get("source_event_ids")
+		if not source_rows is Array or source_rows.size() > 128:
+			return "party_emotion_source_invalid"
+		var previous_source := -1
+		for source_wire in source_rows:
+			if not Int64CodecScript.is_canonical(source_wire):
+				return "party_emotion_source_invalid"
+			var source_id := Int64CodecScript.parse(source_wire, "emotion source")
+			var source = event_by_id(source_id)
+			if source_id <= previous_source or source_id >= event.id or source == null \
+					or source.step_index != event.step_index \
+					or source.type not in source_types:
+				return "party_emotion_source_invalid"
+			previous_source = source_id
+		if (source_rows.is_empty() and event.cause_id != -1) \
+				or (not source_rows.is_empty() and event.cause_id != previous_source):
+			return "party_emotion_source_invalid"
+		previous_after_by_actor[event.actor_id] = after.duplicate(true)
+		latest_by_actor[event.actor_id] = event
+	for member_id in party_encounter.active_party_member_ids:
+		if not latest_by_actor.has(member_id):
+			continue
+		var member = party_encounter.member(member_id)
+		if member == null or member.emotion_state.to_dict() \
+				!= latest_by_actor[member_id].data.state_after:
+			return "party_emotion_state_projection_mismatch"
+	return ""
+
+
 func _party_active_ids_at_event(event_id: int) -> Array:
 	var runtime_recruits:Array=[]
 	var guild_candidates:=_party_guild_candidate_ids()
@@ -5302,9 +5458,17 @@ func _party_roster_history_error() -> String:
 				or not bool(hero_history.get("ok", false)) or event.magnitude != 0 or event.cause_id != -1 \
 				or not event_data_valid:
 			return "party_roster_event_semantic_mismatch"
-		var roster_after_town_return:bool=party_encounter.expedition_cycle!=null \
-			and party_encounter.expedition_cycle.phase=="TOWN" \
-			and event.world_time>=party_encounter.expedition_cycle.returned_at_world_time
+		# Validate the phase at the historical roster event, not the current phase.
+		# Once a later departure changes the live cycle back to DUNGEON, earlier
+		# guild recruitment must remain a legal town action on every subsequent
+		# snapshot validation and journal replay.
+		var roster_after_town_return:=false
+		for phase_event in events:
+			if phase_event.id>=event.id:break
+			if phase_event.type=="town.guild_candidates_arrived":
+				roster_after_town_return=true
+			elif phase_event.type=="town.expedition_departed":
+				roster_after_town_return=false
 		if not roster_after_town_return and event.id >= contact_id \
 				and (regroup_complete_id < 0 or event.id <= regroup_complete_id):
 			return "party_roster_event_unsafe_phase"

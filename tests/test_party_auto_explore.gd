@@ -202,7 +202,10 @@ func test_auto_explore_stops_for_enemy_health_cancel_and_no_frontier_without_ext
 
 func test_product_opening_enemy_and_new_fov_enemy_stop_exactly() -> bool:
 	for seed in [44, 45, 46]:
-		var session = Session.new(seed, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+		var session=Session.new(seed,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+		check(session.reset_party(seed,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+			VisualMap.previous_product_dungeon(seed),false),
+			"seed %d visible-enemy fixture initializes"%seed)
 		var result: Dictionary = session.start_auto_explore()
 		check_eq([result.running, result.stop_reason, session.command_journal.size()],
 			[false, "auto_explore_enemy_visible", 0],

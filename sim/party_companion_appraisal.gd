@@ -55,6 +55,9 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 	var ally_trust: int = _trust_milli(relationships, actor_id, ally_id) \
 		if ally_targeted else 500
 	var protagonist_trust: int = _trust_milli(relationships, actor_id, state.protagonist_id)
+	var emotions := {}
+	for emotion_id in ["FEAR", "ANGER", "SADNESS", "GUILT", "BOND", "RESOLVE"]:
+		emotions[emotion_id] = member.emotion_state.intensity(emotion_id)
 	return {
 		"threat_id": threat_id,
 		"distance": distance,
@@ -72,6 +75,7 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 		"ally_trust": ally_trust,
 		"protagonist_trust": protagonist_trust,
 		"stress": stress,
+		"emotions": emotions,
 		# Stress pressure still scores actions, while the legal action set follows
 		# the authoritative hysteresis mode persisted by PartyMoraleSystem.
 		"mode": str(member.mental_mode),
@@ -105,6 +109,12 @@ static func inputs_for(appraisal: Dictionary, profile, candidate_target_id: int,
 		"relation.ally_trust": int(appraisal.ally_trust),
 		"relation.protagonist_trust": int(appraisal.protagonist_trust),
 		"affect.stress": int(appraisal.stress),
+		"affect.fear": int(appraisal.emotions.FEAR),
+		"affect.anger": int(appraisal.emotions.ANGER),
+		"affect.sadness": int(appraisal.emotions.SADNESS),
+		"affect.guilt": int(appraisal.emotions.GUILT),
+		"affect.bond": int(appraisal.emotions.BOND),
+		"affect.resolve": int(appraisal.emotions.RESOLVE),
 	}
 
 
