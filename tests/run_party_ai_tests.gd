@@ -9,6 +9,7 @@ const TEST_FILES := [
 	"test_party_companion_suggest.gd",
 	"test_party_companion_explanation_ui.gd",
 	"test_party_emotion_system.gd",
+	"test_party_memory_system.gd",
 	"test_party_combat_matrix.gd",
 ]
 

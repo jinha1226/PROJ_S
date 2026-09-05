@@ -1075,6 +1075,22 @@ func _engage_leaf(actor_id: int, board: Dictionary) -> Dictionary:
 		var remembered_aggressor: int = member.emotion_state.target_id("ANGER")
 		if remembered_aggressor in board.active_enemy_ids:
 			target_id = remembered_aggressor
+	if member != null and member.memory_state != null \
+			and (member.emotion_state == null \
+			or member.emotion_state.intensity("ANGER") \
+			< EmotionModelScript.TARGETED_ANGER_THRESHOLD):
+		var remembered_target := -1
+		var remembered_salience := 0
+		for enemy_id_value in board.active_enemy_ids:
+			var enemy_id := int(enemy_id_value)
+			var salience := maxi(member.memory_state.salience_for_subject(enemy_id,
+				["SELF_HARM"]), member.memory_state.salience_for_instigator(enemy_id,
+				["ALLY_DOWNED", "ALLY_LOST"]))
+			if salience > remembered_salience or salience == remembered_salience \
+					and salience > 0 and enemy_id < remembered_target:
+				remembered_target = enemy_id; remembered_salience = salience
+		if remembered_salience >= 650:
+			target_id = remembered_target
 	if target_id <= 0 or target_id not in board.active_enemy_ids:
 		return _illegal_leaf("target_unavailable")
 	if _party_melee_legal(actor_id, target_id):

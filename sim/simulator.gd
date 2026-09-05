@@ -14,6 +14,7 @@ const PartyRequestScript = preload("res://sim/party_turn_request.gd")
 const PartyPlanScript = preload("res://sim/party_turn_plan.gd")
 const PartyMoraleSystemScript = preload("res://sim/systems/party_morale_system.gd")
 const PartyEmotionSystemScript = preload("res://sim/systems/party_emotion_system.gd")
+const PartyMemorySystemScript = preload("res://sim/systems/party_memory_system.gd")
 const MeleeScript = preload("res://sim/systems/melee_combat_system.gd")
 const WeightedPathfinderScript = preload("res://sim/weighted_pathfinder.gd")
 const OpeningEventSystemScript = preload("res://sim/systems/opening_event_system.gd")
@@ -113,6 +114,14 @@ func step(command, supplied_rollback_memento: Variant = null):
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "party_emotion_failed")
 	if world.party_encounter != null \
+			and not PartyMemorySystemScript.commit_batch(world,
+				world.events_since(event_start)):
+		var memory_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+		if memory_restore != null:
+			world = memory_restore
+			_rebuild_systems()
+		return StepResultScript.new(false, false, "party_memory_failed")
+	if world.party_encounter != null \
 			and not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start)):
 		var morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		if morale_restore != null:
@@ -153,6 +162,13 @@ func step(command, supplied_rollback_memento: Variant = null):
 				world = emotion_restore
 				_rebuild_systems()
 			return StepResultScript.new(false, false, "party_emotion_failed")
+		if world.party_encounter != null and not PartyMemorySystemScript.commit_batch(
+				world, world.events_since(tick_event_start)):
+			var memory_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+			if memory_restore != null:
+				world = memory_restore
+				_rebuild_systems()
+			return StepResultScript.new(false, false, "party_memory_failed")
 		if world.party_encounter != null and not PartyMoraleSystemScript.commit_batch(
 				world, world.events_since(tick_event_start), false):
 			var morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
@@ -543,6 +559,8 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 			return _rollback_party_step(rollback, "party_attack_projection_mismatch")
 	if not PartyEmotionSystemScript.commit_batch(world, world.events_since(event_start)):
 		return _rollback_party_step(rollback, "party_emotion_failed")
+	if not PartyMemorySystemScript.commit_batch(world, world.events_since(event_start)):
+		return _rollback_party_step(rollback, "party_memory_failed")
 	if not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start)) \
 			or party_coordinator.fail_point == "party_morale_event":
 		return _rollback_party_step(rollback, "party_morale_failed")
@@ -569,6 +587,9 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		if not PartyEmotionSystemScript.commit_batch(world,
 				world.events_since(schedule_event_start), false):
 			return _rollback_party_step(rollback, "party_emotion_failed")
+		if not PartyMemorySystemScript.commit_batch(world,
+				world.events_since(schedule_event_start)):
+			return _rollback_party_step(rollback, "party_memory_failed")
 		if not PartyMoraleSystemScript.commit_batch(world,
 				world.events_since(schedule_event_start), false) \
 				or party_coordinator.fail_point == "party_morale_event":

@@ -75,6 +75,7 @@ const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
 const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
+const PartyMemoryHistoryValidatorScript=preload("res://sim/party_memory_history_validator.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
@@ -5042,6 +5043,8 @@ func _party_event_correlation_error() -> String:
 	if not morale_error.is_empty(): return morale_error
 	var emotion_error := _party_emotion_history_error()
 	if not emotion_error.is_empty(): return emotion_error
+	var memory_error := PartyMemoryHistoryValidatorScript.error(self)
+	if not memory_error.is_empty(): return memory_error
 	return ""
 
 

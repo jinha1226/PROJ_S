@@ -5,7 +5,7 @@ const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 const RULESET_ID := "dungeon-hierarchical-utility-v1"
 const EXPEDITION_RULESET_ID := "npc-expedition-utility-v1"
-const PARTY_RULESET_ID := "party-companion-utility-v3-emotion"
+const PARTY_RULESET_ID := "party-companion-utility-v4-memory"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
 const SCORE_MIN := -1000000
 const SCORE_MAX := 1000000
@@ -20,7 +20,8 @@ const PARTY_INPUTS := ["facet.H", "facet.E", "facet.X", "facet.A", "facet.C", "f
 	"context.outnumbered", "context.claim_alignment", "context.focus_alignment",
 	"relation.ally_trust", "relation.protagonist_trust", "affect.stress",
 	"affect.fear", "affect.anger", "affect.sadness", "affect.guilt",
-	"affect.bond", "affect.resolve"]
+	"affect.bond", "affect.resolve", "memory.target_grievance",
+	"memory.ally_loyalty"]
 
 class CurveDef extends RefCounted:
 	var def_version := 1
@@ -197,6 +198,8 @@ static func _build_party_actions() -> void:
 		_c("party_engage.anger", "affect.anger", "linear_up", 220),
 		_c("party_engage.resolve", "affect.resolve", "linear_up", 180),
 		_c("party_engage.fear", "affect.fear", "linear_up", -240),
+		_c("party_engage.remembered_harm", "memory.target_grievance",
+			"linear_up", 180),
 	])
 	_add_party_action("PROTECT", 1, 200, [
 		_c("party_protect.ally_targeted", "context.ally_targeted", "threshold_up", 500),
@@ -210,6 +213,8 @@ static func _build_party_actions() -> void:
 		_c("party_protect.guilt", "affect.guilt", "linear_up", 220),
 		_c("party_protect.bond", "affect.bond", "linear_up", 180),
 		_c("party_protect.fear", "affect.fear", "linear_up", -180),
+		_c("party_protect.remembered_aid", "memory.ally_loyalty",
+			"linear_up", 180),
 	])
 	_add_party_action("RETREAT", 2, 100, [
 		_c("party_retreat.threat", "appraisal.perceived_threat", "linear_up", 450),
@@ -468,7 +473,7 @@ static func validation_error() -> String:
 				or party_action_def.intent_builder_id != "party-v1" \
 				or not party_action_def.gates.is_empty() \
 				or party_action_def.considerations.is_empty() \
-				or party_action_def.considerations.size() > 12:
+				or party_action_def.considerations.size() > 16:
 			return "invalid_party_action"
 		party_ranks[party_action_def.tie_break_rank] = true
 		var action_modes: Dictionary = {}

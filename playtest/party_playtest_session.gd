@@ -28,6 +28,8 @@ const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
 const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
 const PartyEmotionSystemScript=preload("res://sim/systems/party_emotion_system.gd")
+const PartyMemoryStateScript=preload("res://sim/party_memory_state.gd")
+const PartyMemoryPresenterScript=preload("res://playtest/party_memory_presenter.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -2208,6 +2210,10 @@ func party_emotion_observation() -> Dictionary:
 		"members":members}.duplicate(true)
 
 
+func party_memory_observation() -> Dictionary:
+	return PartyMemoryPresenterScript.observation(sim.world if sim != null else null)
+
+
 func presentation_state() -> Dictionary:
 	if sim == null or sim.world.party_encounter == null:
 		return {"schema_version": PRESENTATION_SCHEMA_VERSION, "phase_id": "UNINITIALIZED",
@@ -2923,7 +2929,8 @@ func party_cards() -> Array[Dictionary]:
 			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
-			"emotion": emotion, "override_state": override_state,"progression":progression,
+			"emotion": emotion, "memory":_memory_presentation(member),
+			"override_state": override_state,"progression":progression,
 			"expected_action": expected_action})
 	return rows.duplicate(true)
 
@@ -4616,6 +4623,7 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_engage.anger":"분노",
 		"party_engage.resolve":"의지",
 		"party_engage.fear":"공포",
+		"party_engage.remembered_harm":"가해 기억",
 		"party_protect.ally_targeted":"아군 위협",
 		"party_protect.ally_hp_loss":"아군 부상",
 		"party_protect.trust":"아군 신뢰",
@@ -4627,6 +4635,7 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_protect.guilt":"죄책감",
 		"party_protect.bond":"유대감",
 		"party_protect.fear":"공포",
+		"party_protect.remembered_aid":"도움받은 기억",
 		"party_retreat.threat":"체감 위협",
 		"party_retreat.hp_loss":"자신의 부상",
 		"party_retreat.stress":"스트레스",
@@ -5505,6 +5514,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"busy_until":int(member.busy_until),
 		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
 		"stress":int(member.stress),"readiness":readiness,"emotion":emotion,
+		"memory":_memory_presentation(member),
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
 		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
@@ -5735,6 +5745,17 @@ func load_session_json(encoded: String) -> Dictionary:
 			if member_row_value is Dictionary and not member_row_value.has("emotion_state"):
 				member_row_value["emotion_state"] = PartyEmotionStateScript.new().to_dict()
 		raw_party["schema_version"] = PartyStateScript.SCHEMA_VERSION
+	# v20 already has current emotion, but no persistent factual memory. All
+	# supported pre-v21 saves receive an empty ledger rather than invented events.
+	if raw_party is Dictionary and source_party_schema in [
+			PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
+			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
+			PartyStateScript.ANCHOR_PORTAL_SCHEMA_VERSION,
+			PartyStateScript.EMOTION_STATE_SCHEMA_VERSION]:
+		for member_row_value in raw_party.get("member_rows", []):
+			if member_row_value is Dictionary and not member_row_value.has("memory_state"):
+				member_row_value["memory_state"] = PartyMemoryStateScript.new().to_dict()
+		raw_party["schema_version"] = PartyStateScript.SCHEMA_VERSION
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -5762,6 +5783,7 @@ func load_session_json(encoded: String) -> Dictionary:
 		for member_row_value in decoded.snapshot.party_encounter.get("member_rows", []):
 			if member_row_value is Dictionary:
 				member_row_value.erase("emotion_state")
+				member_row_value.erase("memory_state")
 	var legacy_opening_replay := source_party_schema \
 		< PartyStateScript.OPENING_EVENT_SCHEMA_VERSION \
 		or decoded.snapshot.party_encounter.get("opening_event") == null
@@ -5912,7 +5934,8 @@ func load_session_json(encoded: String) -> Dictionary:
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
-			PartyStateScript.ANCHOR_PORTAL_SCHEMA_VERSION]:
+			PartyStateScript.ANCHOR_PORTAL_SCHEMA_VERSION,
+			PartyStateScript.EMOTION_STATE_SCHEMA_VERSION]:
 		replay.sim.world.party_encounter.expedition_cycle=ExpeditionCycleScript.from_dict(
 			restored.world.party_encounter.expedition_cycle.to_dict())
 	if restored.world.party_encounter.legacy_journal_origin:
@@ -6908,6 +6931,11 @@ func _emotion_intensity_band(value: int) -> String:
 	if value >= 200: return "약함"
 	return "미약함"
 
+
+func _memory_presentation(member) -> Dictionary:
+	return PartyMemoryPresenterScript.member_summary(
+		sim.world if sim != null else null, member)
+
 func reason_message(reason: String, details: Dictionary = {}) -> String:
 	if reason == "party_actor_busy":
 		var remaining := int(details.get("remaining_time", 0))
@@ -6939,6 +6967,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"town_equipment_failed":"장비 변경이 취소되어 이전 상태로 돌아갔습니다.",
 			"town_departure_party_unavailable":"주인공이 원정에 나설 수 있는 상태가 아닙니다.",
 			"town_departure_failed":"원정 출발이 취소되어 이전 상태로 돌아갔습니다.",
+			"party_memory_failed":"기억 상태 반영이 취소되어 이전 상태로 돌아갔습니다.",
 			"anchor_portal_unavailable":"이 층에는 활성화할 거점 포탈이 없습니다.",
 			"anchor_portal_already_active":"이 층의 거점 포탈은 이미 활성화되어 있습니다.",
 			"anchor_portal_not_adjacent":"거점 포탈 옆으로 이동해야 합니다.",

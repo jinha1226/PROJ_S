@@ -501,7 +501,7 @@ PersonalityChange
 ### 후속 단계
 
 ```text
-관찰 기반 Thought/Memory + 관계 반응
+관찰 범위 기반 기억 확장 + 관계 반응 심화
 → Values와 duty/stress 비용
 → Needs + 객체 Affordance 기반 마을 생활
 → 문화 prior + 희귀 Trait 생성
@@ -550,14 +550,14 @@ PersonalityChange
 - [Game AI Pro: Behavior Selection Algorithms](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter04_Behavior_Selection_Algorithms.pdf)
 - [Game AI Pro 3: Choosing Effective Utility-Based Considerations](https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf)
 
-## 12. 파티 동료 룰셋 `party-companion-utility-v3-emotion`
+## 12. 파티 동료 룰셋 `party-companion-utility-v4-memory`
 
 4인 파티 단체전투 P1의 임시 4축 wire는 폐기됐고, 현재 룰셋은 연속형 HEXACO 6축과
 정수 Utility evaluator를 사용한다. 고정 성격 유형은 저장하거나 판단에 사용하지 않는다.
 행동 후보는 `ENGAGE`, `PROTECT`, `RETREAT`, `HOLD` 네 개이며, 실행 리프는 기존
 `HOLD`, `MOVE`, `MELEE`만 사용한다.
 
-입력 25개는 다음 범주로 고정한다.
+입력 27개는 다음 범주로 고정한다.
 
 - 성격 6개: H, E, X, A, C, O
 - 평가 3개: attack drive, perceived threat, panic pressure
@@ -565,6 +565,7 @@ PersonalityChange
   claim alignment, focus alignment
 - 관계 2개: ally trust, protagonist trust
 - 정동 7개: stress, fear, anger, sadness, guilt, bond, resolve
+- 장기 기억 2개: 현재 표적이 남긴 위해 기억, 위험한 동료에게 받은 도움 기억
 
 `PartySquadBlackboard.build()`의 focus, threat, ally pressure, claim은 현재 권위 상태와
 주인공 행동에서 매 프리뷰마다 다시 계산하는 파생 상태다. 후보 점수, 선택 결과, 경로와
@@ -597,12 +598,34 @@ P3 완료 뒤 `PANIC`은 `PartyMemberState.mental_mode`의 권위 상태다. str
 파티 예외 명령은 기존 권위 규칙을 유지한다. 모든 변경은 `party.emotion_changed` 사건에
 전후 6채널 상태, 원인 코드와 source event ID를 남겨 세이브·롤백·재현 검증이 가능하다.
 
+장기 기억은 감정 채널 안에 누적하지 않고 다시 세 층으로 분리한다.
+
+```text
+권위 사건 + HEXACO + 관계 → PartyMemoryModel(기억 중요도 평가)
+                            → PartyMemorySystem(상태·사건 커밋)
+                            → PartyMemoryState(최대 8개 사실 기억)
+```
+
+현재 직접 기억하는 사건은 자신이 받은 피해, 동료의 다운·사망, 자신이 받은 도움,
+원치 않는 개별 지시다. 각 기억은 종류, 원인 사건, 주체, 가해자, 발생 시각, 중요도만
+저장한다. 슬롯이 가득 차면 중요도가 낮은 기억부터 교체하고, 새 사건이 더 사소하면 기존
+기억을 유지한다. 따라서 매 전투 로그 전체를 NPC마다 복제하지 않으며 저장 크기도 고정된다.
+
+기억은 현재 감정과 별개의 장기 입력이다. 같은 가해자가 다시 피해를 주면 기존 위해 기억이
+공포·분노 평가를 높이고, 감정이 이미 가라앉은 뒤에도 충분히 중요한 위해 기억은 가해자
+교전 점수와 표적 우선순위를 높인다. 도움받은 기억은 해당 동료가 위험할 때 엄호 점수를
+높인다. `party.memory_changed` 사건은 전후 기억 상태와 원인 사건 목록을 남기며 전체
+월드 검증기가 인과 사슬과 최종 투영을 검사한다. 플레이어 표면에는 최대 3개의 중요한
+기억과 대상·가해자·행동 영향을 한국어로 표시한다.
+
 헤드리스 검증은 `tests/run_party_ai_tests.gd`가 담당한다. 12시드 전투 매트릭스는
 4인 파티·4개 적, 최대 60턴을 오버라이드 없이 실행하며 accepted step, canonical world,
 행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. P2 적 무리 전술과 P3 사기
 상태는 각각 별도 매트릭스에서 검증하며, 통합 파티 AI runner는 공유 인지와 예외 명령까지
-포함해 27개 테스트를 실행한다. 별도 `tests/run_party_emotion_tests.gd`는 감정 wire,
+포함해 33개 테스트를 실행한다. 별도 `tests/run_party_emotion_tests.gd`는 감정 wire,
 성격별 사건 평가, 감쇠, 행동 점수와 표적 기억, 한국어 합성 표시를 빠르게 검증한다.
+`tests/run_party_memory_tests.gd`의 6개 테스트는 고정 용량 교체, 성격별 중요도, 과거 기억의
+감정·행동 반영, 권위 사건과 세이브 재현, v20 마이그레이션을 검증한다.
 
 ## 13. DCSS형 파티 자율 제어 원칙
 

@@ -49,11 +49,15 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 	var enemy_ids: Array = world.party_encounter.enemy_ids
 	if event_type in ["combat.physical_damage", "combat.downed_damage"] \
 			and target_id == observer_id:
-		_add(state, "FEAR", _fear_delta(profile, mini(280, 35 + magnitude * 7)),
+		var remembered_harm := _remembered_aggressor_salience(world, observer_id,
+			instigator_id)
+		_add(state, "FEAR", _fear_delta(profile, mini(360,
+			35 + magnitude * 7 + FixedPointScript.trunc_div(remembered_harm, 10))),
 			instigator_id, source_id, "SELF_DAMAGE")
 		_append_trigger(triggers, "SELF_DAMAGE")
 		if instigator_id in enemy_ids:
-			_add(state, "ANGER", _anger_delta(profile, mini(190, 20 + magnitude * 4)),
+			_add(state, "ANGER", _anger_delta(profile, mini(300,
+				20 + magnitude * 4 + FixedPointScript.trunc_div(remembered_harm, 8))),
 				instigator_id, source_id, "SELF_DAMAGE")
 	elif event_type == "entity.downed" and target_id in party_ids:
 		if target_id == observer_id:
@@ -69,12 +73,15 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 	elif event_type == "entity.died":
 		if target_id in party_ids and target_id != observer_id:
 			var bond := _positive_bond(world, observer_id, target_id)
+			var remembered_harm := _remembered_aggressor_salience(world,
+				observer_id, instigator_id)
 			_add(state, "SADNESS", _sadness_delta(profile, 230 + bond), target_id,
 				source_id, "ALLY_DIED")
 			_add(state, "GUILT", _guilt_delta(profile, 75 + int(bond / 3)), target_id,
 				source_id, "ALLY_DIED")
 			if instigator_id in enemy_ids:
-				_add(state, "ANGER", _anger_delta(profile, 210 + int(bond / 2)),
+				_add(state, "ANGER", _anger_delta(profile, 210 + int(bond / 2)
+					+ FixedPointScript.trunc_div(remembered_harm, 8)),
 					instigator_id, source_id, "ALLY_DIED")
 			_append_trigger(triggers, "ALLY_DIED")
 		elif target_id in enemy_ids:
@@ -90,7 +97,9 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 		_append_trigger(triggers, "OVERRIDE_CONFLICT")
 	elif event_type == "health.restored" and target_id == observer_id \
 			and actor_id > 0 and actor_id != observer_id and actor_id in party_ids:
-		_add(state, "BOND", _bond_delta(profile, mini(220, 60 + magnitude * 3)),
+		var remembered_aid := _remembered_aid_salience(world, observer_id, actor_id)
+		_add(state, "BOND", _bond_delta(profile, mini(300, 60 + magnitude * 3
+			+ FixedPointScript.trunc_div(remembered_aid, 10))),
 			actor_id, source_id, "ALLY_AID")
 		_append_trigger(triggers, "ALLY_AID")
 	elif event_type == "town.shrine_service" and target_id == observer_id:
@@ -190,6 +199,23 @@ static func _positive_bond(world, observer_id: int, subject_id: int) -> int:
 static func _trust(world, observer_id: int, subject_id: int) -> int:
 	return clampi(int(RelationshipSystemScript.new(world).effective_relation(
 		observer_id, subject_id).get("trust", 0)), -100, 100)
+
+
+static func _remembered_aggressor_salience(world, observer_id: int,
+		aggressor_id: int) -> int:
+	var member = world.party_encounter.member(observer_id)
+	if member == null or member.memory_state == null or aggressor_id <= 0:
+		return 0
+	return maxi(member.memory_state.salience_for_subject(aggressor_id,
+		["SELF_HARM"]), member.memory_state.salience_for_instigator(aggressor_id,
+		["ALLY_DOWNED", "ALLY_LOST"]))
+
+
+static func _remembered_aid_salience(world, observer_id: int,
+		helper_id: int) -> int:
+	var member = world.party_encounter.member(observer_id)
+	return member.memory_state.salience_for_subject(helper_id, ["AID_RECEIVED"]) \
+		if member != null and member.memory_state != null and helper_id > 0 else 0
 
 
 static func _eligible_members(world) -> Array[int]:
