@@ -5049,6 +5049,10 @@ func _member_detail_text(detail:Dictionary)->String:
 			lines.append("· %s · %s · 신뢰 %d / 두려움 %d / 적대 %d / 감사 %d / 원한 %d"%[other_name,
 				_disposition(str(relation.get("disposition","NEUTRAL"))),int(relation.get("trust",0)),int(relation.get("fear",0)),
 				int(relation.get("hostility",0)),int(relation.get("gratitude",0)),int(relation.get("grievance",0))])
+			var recent:Variant=relation.get("recent_reaction",{})
+			if recent is Dictionary and not recent.is_empty():
+				lines.append("  최근 변화 · %s · %s"%[
+					str(recent.get("label","관계 변화")),str(recent.get("reason",""))])
 	return "\n".join(lines)
 
 func _combat_log_text(history:Dictionary)->String:

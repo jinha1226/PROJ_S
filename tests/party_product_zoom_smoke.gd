@@ -166,9 +166,12 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	sandbox._toggle_map_overlay();await process_frame
 	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"map")
 	var overlay_layout:Dictionary=sandbox.map_overlay.layout_spec(viewport_size)
-	_check(int(overlay_layout.get("world_width",0))==96 \
-			and int(overlay_layout.get("world_height",0))==96,
-		"%s map overlay did not ingest the full 96x96 discovered-map DTO"%viewport_size)
+	var expected_world_width:int=session.sim.world.width
+	var expected_world_height:int=session.sim.world.height
+	_check(int(overlay_layout.get("world_width",0))==expected_world_width \
+			and int(overlay_layout.get("world_height",0))==expected_world_height,
+		"%s map overlay did not ingest the full %dx%d discovered-map DTO"%[
+			viewport_size,expected_world_width,expected_world_height])
 	sandbox.map_overlay.close("TEST");await process_frame
 	_check_zoom_restored(sandbox,viewport_size,"map close")
 	# The successful product restart handlers call this presentation reset after

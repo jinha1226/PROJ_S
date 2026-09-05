@@ -550,7 +550,7 @@ PersonalityChange
 - [Game AI Pro: Behavior Selection Algorithms](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter04_Behavior_Selection_Algorithms.pdf)
 - [Game AI Pro 3: Choosing Effective Utility-Based Considerations](https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf)
 
-## 12. 파티 동료 룰셋 `party-companion-utility-v4-memory`
+## 12. 파티 동료 룰셋 `party-companion-utility-v5-relationship`
 
 4인 파티 단체전투 P1의 임시 4축 wire는 폐기됐고, 현재 룰셋은 연속형 HEXACO 6축과
 정수 Utility evaluator를 사용한다. 고정 성격 유형은 저장하거나 판단에 사용하지 않는다.
@@ -618,14 +618,36 @@ P3 완료 뒤 `PANIC`은 `PartyMemberState.mental_mode`의 권위 상태다. str
 월드 검증기가 인과 사슬과 최종 투영을 검사한다. 플레이어 표면에는 최대 3개의 중요한
 기억과 대상·가해자·행동 영향을 한국어로 표시한다.
 
+장기 관계 변화도 감정·기억 모듈과 분리한다.
+
+```text
+권위 사건 + HEXACO + 사실 기억 → PartyRelationshipModel(방향성 반응 평가)
+                                  → PartyRelationshipSystem(관계·사건 커밋)
+                                  → 기존 PersonalRelation(신뢰·두려움·감사·원한)
+```
+
+직접 피해는 가해자에 대한 원한, 동료의 다운·사망은 그 가해자에 대한 집단 반응,
+다른 파티원의 치료는 도움을 받은 인물의 감사로 기록한다. 기억 속 가해자를 쓰러뜨린
+파티원에게는 복수에 대한 감사가 생기고, 원치 않는 개별 지시는 동료가 주인공에게 품는
+원한이 된다. 반응 크기는 사건 강도와 HEXACO로 정하되 전투 한 번에 종족 prior를 뒤집지
+않도록 제한한다. 모든 관계는 `관찰자 → 대상` 방향으로만 변하며 반대 방향을 자동 생성하지
+않는다. 주인공 신뢰는 교전을 약하게 지지하고, 불신은 후퇴를 약하게 지지하지만 생존 판단을
+압도하지 않는다. 파티 상세창은 수치와 함께 가장 최근 관계 변화의 사건 이유를 표시한다.
+
+자동 관계 사건은 원인 사건 ID, 반응 종류, 성격 계수와 기억 증거를 보존한다. 별도 이력
+검증기가 원인 종류·관찰자·대상·HEXACO 계수·최종 관계 투영을 검사하므로 조작된 세이브가
+관계 수치나 복수의 근거를 위조할 수 없다.
+
 헤드리스 검증은 `tests/run_party_ai_tests.gd`가 담당한다. 12시드 전투 매트릭스는
 4인 파티·4개 적, 최대 60턴을 오버라이드 없이 실행하며 accepted step, canonical world,
 행동 분포, 승패와 성격 기여에 따른 선택 flip을 함께 검사한다. P2 적 무리 전술과 P3 사기
 상태는 각각 별도 매트릭스에서 검증하며, 통합 파티 AI runner는 공유 인지와 예외 명령까지
-포함해 33개 테스트를 실행한다. 별도 `tests/run_party_emotion_tests.gd`는 감정 wire,
+포함해 37개 테스트를 실행한다. 별도 `tests/run_party_emotion_tests.gd`는 감정 wire,
 성격별 사건 평가, 감쇠, 행동 점수와 표적 기억, 한국어 합성 표시를 빠르게 검증한다.
 `tests/run_party_memory_tests.gd`의 6개 테스트는 고정 용량 교체, 성격별 중요도, 과거 기억의
 감정·행동 반영, 권위 사건과 세이브 재현, v20 마이그레이션을 검증한다.
+`tests/run_party_relationship_tests.gd`의 4개 테스트는 성격별 반응 크기, 방향성·중복 방지,
+복수 감사, 주인공 신뢰의 행동 점수, 저장 재현과 위조 거부를 검사한다.
 
 ## 13. DCSS형 파티 자율 제어 원칙
 

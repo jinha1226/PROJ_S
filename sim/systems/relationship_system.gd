@@ -13,8 +13,10 @@ func _init(p_world) -> void:
 	world = p_world
 
 
-func record_aid(observer_id: int, helper_id: int, source_event_id: int, magnitude: int) -> bool:
-	if not _valid_interaction(observer_id, helper_id, source_event_id) or magnitude <= 0:
+func record_aid(observer_id: int, helper_id: int, source_event_id: int,
+		magnitude: int, party_reaction: Dictionary = {}) -> bool:
+	if not _valid_interaction(observer_id, helper_id, source_event_id) \
+			or magnitude <= 0 or not _valid_party_reaction(party_reaction):
 		return false
 	var relation = _get_or_create(observer_id, helper_id)
 	if relation.has_processed(source_event_id):
@@ -30,10 +32,14 @@ func record_aid(observer_id: int, helper_id: int, source_event_id: int, magnitud
 		relation.personal_fear_delta - FixedPointScript.trunc_div(amount, 20),
 		-FEAR_DELTA_LIMIT, FEAR_DELTA_LIMIT
 	)
+	var event_data := {"gratitude": relation.gratitude,
+		"personal_trust_delta": relation.personal_trust_delta}
+	if not party_reaction.is_empty():
+		event_data["party_reaction"] = party_reaction.duplicate(true)
 	world.emit_event(
 		"relationship.aid_recorded", observer_id, helper_id,
 		world.entities[observer_id].position, amount, source_event_id,
-		{"gratitude": relation.gratitude, "personal_trust_delta": relation.personal_trust_delta}
+		event_data
 	)
 	return true
 
@@ -59,8 +65,10 @@ func record_gratitude_only(observer_id: int, helper_id: int,
 	return event != null
 
 
-func record_harm(observer_id: int, attacker_id: int, source_event_id: int, magnitude: int) -> bool:
-	if not _valid_interaction(observer_id, attacker_id, source_event_id) or magnitude <= 0:
+func record_harm(observer_id: int, attacker_id: int, source_event_id: int,
+		magnitude: int, party_reaction: Dictionary = {}) -> bool:
+	if not _valid_interaction(observer_id, attacker_id, source_event_id) \
+			or magnitude <= 0 or not _valid_party_reaction(party_reaction):
 		return false
 	var relation = _get_or_create(observer_id, attacker_id)
 	if relation.has_processed(source_event_id):
@@ -76,10 +84,14 @@ func record_harm(observer_id: int, attacker_id: int, source_event_id: int, magni
 		relation.personal_fear_delta + FixedPointScript.trunc_div(amount + 3, 4),
 		-FEAR_DELTA_LIMIT, FEAR_DELTA_LIMIT
 	)
+	var event_data := {"grievance": relation.grievance,
+		"personal_trust_delta": relation.personal_trust_delta}
+	if not party_reaction.is_empty():
+		event_data["party_reaction"] = party_reaction.duplicate(true)
 	world.emit_event(
 		"relationship.harm_recorded", observer_id, attacker_id,
 		world.entities[observer_id].position, amount, source_event_id,
-		{"grievance": relation.grievance, "personal_trust_delta": relation.personal_trust_delta}
+		event_data
 	)
 	return true
 
@@ -139,6 +151,15 @@ func _get_or_create(observer_id: int, subject_id: int):
 	if not world.personal_relations.has(key):
 		world.personal_relations[key] = PersonalRelationScript.new(observer_id, subject_id)
 	return world.personal_relations[key]
+
+
+func _valid_party_reaction(value: Dictionary) -> bool:
+	if value.is_empty():
+		return true
+	var keys: Array = value.keys(); keys.sort()
+	return keys == ["base_magnitude", "evidence_salience",
+		"evidence_source_event_id", "personality_multiplier_milli",
+		"reaction_kind", "ruleset_id", "schema_version"]
 
 
 func _key(observer_id: int, subject_id: int) -> String:

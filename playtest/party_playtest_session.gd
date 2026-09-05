@@ -30,6 +30,7 @@ const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
 const PartyEmotionSystemScript=preload("res://sim/systems/party_emotion_system.gd")
 const PartyMemoryStateScript=preload("res://sim/party_memory_state.gd")
 const PartyMemoryPresenterScript=preload("res://playtest/party_memory_presenter.gd")
+const PartyRelationshipPresenterScript=preload("res://playtest/party_relationship_presenter.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -2212,6 +2213,11 @@ func party_emotion_observation() -> Dictionary:
 
 func party_memory_observation() -> Dictionary:
 	return PartyMemoryPresenterScript.observation(sim.world if sim != null else null)
+
+
+func party_relationship_observation() -> Dictionary:
+	return PartyRelationshipPresenterScript.observation(
+		sim.world if sim != null else null)
 
 
 func presentation_state() -> Dictionary:
@@ -4624,6 +4630,7 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_engage.resolve":"의지",
 		"party_engage.fear":"공포",
 		"party_engage.remembered_harm":"가해 기억",
+		"party_engage.leader_trust":"지휘관 신뢰",
 		"party_protect.ally_targeted":"아군 위협",
 		"party_protect.ally_hp_loss":"아군 부상",
 		"party_protect.trust":"아군 신뢰",
@@ -4646,6 +4653,7 @@ func _consideration_label(consideration_id: String) -> String:
 		"party_retreat.fear":"공포",
 		"party_retreat.sadness":"슬픔",
 		"party_retreat.resolve":"의지",
+		"party_retreat.leader_distrust":"지휘관 불신",
 		"party_hold.conscientiousness":"성실성(C)",
 		"party_hold.emotionality":"정서성(E)",
 		"party_hold.threat":"체감 위협",
@@ -5486,17 +5494,8 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	for subject_id_value in relation_ids:
 		var subject_id := int(subject_id_value)
 		if subject_id == entity_id or not sim.world.entities.has(subject_id): continue
-		var relation: Dictionary = sim.relationships.effective_relation(entity_id,subject_id)
-		relation_rows.append({"subject_id":subject_id,
-			"subject_name":str(sim.world.entities[subject_id].display_name),
-			"subject_species_id":str(sim.world.entities[subject_id].species_id),
-			"trust":int(relation.get("trust",0)),"fear":int(relation.get("fear",0)),
-			"hostility":int(relation.get("hostility",0)),
-			"gratitude":int(relation.get("gratitude",0)),
-			"grievance":int(relation.get("grievance",0)),
-			"disposition":str(relation.get("disposition","NEUTRAL")),
-			"species_base":relation.get("species_base",{}).duplicate(true),
-			"personal":relation.get("personal",{}).duplicate(true)})
+		relation_rows.append(PartyRelationshipPresenterScript.relation_row(
+			sim.world, entity_id, subject_id))
 	var override_state := "PENDING"
 	if expected_action is Dictionary: override_state = str(expected_action.source)
 	elif member.role == "PROTAGONIST": override_state = "DIRECT"
@@ -5558,18 +5557,9 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 				"low_label":str(labels[0]),"high_label":str(labels[1])})
 	var relation_rows: Array = []
 	var hero_id := int(sim.world.party_encounter.protagonist_id)
-	var relation: Dictionary = sim.relationships.effective_relation(entity_id,hero_id)
 	if sim.world.entities.has(hero_id):
-		relation_rows.append({"subject_id":hero_id,
-			"subject_name":str(sim.world.entities[hero_id].display_name),
-			"subject_species_id":str(sim.world.entities[hero_id].species_id),
-			"trust":int(relation.get("trust",0)),"fear":int(relation.get("fear",0)),
-			"hostility":int(relation.get("hostility",0)),
-			"gratitude":int(relation.get("gratitude",0)),
-			"grievance":int(relation.get("grievance",0)),
-			"disposition":str(relation.get("disposition","NEUTRAL")),
-			"species_base":relation.get("species_base",{}).duplicate(true),
-			"personal":relation.get("personal",{}).duplicate(true)})
+		relation_rows.append(PartyRelationshipPresenterScript.relation_row(
+			sim.world, entity_id, hero_id))
 	var position: Vector2i = entity.position
 	var style := personality_style(profile)
 	var collapsed := story_state == "COLLAPSED_STORY"
@@ -7195,7 +7185,16 @@ func _event_message(event) -> String:
 			return "%s 영입 제안을 거절했다. (수락 %d%% · 판정 %d)" % [
 				_subject(actor),int((event.data.get("probability_milli",0)+5)/10),
 				int(event.data.get("roll_milli",-1))]
-		"relationship.aid_recorded": return "%s 구조받은 일을 고마운 기억으로 남겼다." % _subject(actor)
+		"relationship.aid_recorded":
+			var party_aid_text := PartyRelationshipPresenterScript.event_text(
+				sim.world, event)
+			return party_aid_text if not party_aid_text.is_empty() \
+				else "%s 구조받은 일을 고마운 기억으로 남겼다." % _subject(actor)
+		"relationship.harm_recorded":
+			var party_harm_text := PartyRelationshipPresenterScript.event_text(
+				sim.world, event)
+			return party_harm_text if not party_harm_text.is_empty() \
+				else "%s %s에게 원한을 품었다." % [_subject(actor), _object(target)]
 		"encounter.detected": return "고블린과 주인공이 서로를 발견했다." if is_solo_combat() else "고블린과 파티가 서로를 발견했다."
 		"encounter.party_ambush": return "주인공이 고블린보다 먼저 기척을 알아챘다." if is_solo_combat() else "파티가 고블린보다 먼저 기척을 알아챘다."
 		"encounter.enemy_ambush": return "고블린이 숨어 있던 곳에서 주인공을 덮쳤다." if is_solo_combat() else "고블린이 숨어 있던 곳에서 파티를 덮쳤다."

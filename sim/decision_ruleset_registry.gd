@@ -5,7 +5,7 @@ const FixedPointScript = preload("res://sim/fixed_point.gd")
 
 const RULESET_ID := "dungeon-hierarchical-utility-v1"
 const EXPEDITION_RULESET_ID := "npc-expedition-utility-v1"
-const PARTY_RULESET_ID := "party-companion-utility-v4-memory"
+const PARTY_RULESET_ID := "party-companion-utility-v5-relationship"
 const SCORE_COMBINER_ID := "weighted-sum-v1"
 const SCORE_MIN := -1000000
 const SCORE_MAX := 1000000
@@ -200,6 +200,8 @@ static func _build_party_actions() -> void:
 		_c("party_engage.fear", "affect.fear", "linear_up", -240),
 		_c("party_engage.remembered_harm", "memory.target_grievance",
 			"linear_up", 180),
+		_c("party_engage.leader_trust", "relation.protagonist_trust",
+			"linear_up", 80),
 	])
 	_add_party_action("PROTECT", 1, 200, [
 		_c("party_protect.ally_targeted", "context.ally_targeted", "threshold_up", 500),
@@ -227,6 +229,8 @@ static func _build_party_actions() -> void:
 		_c("party_retreat.fear", "affect.fear", "linear_up", 300),
 		_c("party_retreat.sadness", "affect.sadness", "linear_up", 140),
 		_c("party_retreat.resolve", "affect.resolve", "linear_up", -200),
+		_c("party_retreat.leader_distrust", "relation.protagonist_trust",
+			"linear_down", 60),
 	])
 	_add_party_action("HOLD", 3, 250, [
 		_c("party_hold.conscientiousness", "facet.C", "linear_up", 180),

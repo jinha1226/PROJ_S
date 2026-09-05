@@ -4,6 +4,7 @@ const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
+const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const AUTO_INTENDED_CADENCE_MSEC:=190
 const AUTO_HEADLESS_GROSS_CEILING_MSEC:=310
@@ -123,7 +124,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and not sandbox.product_wait_guard_button.disabled \
 		and sandbox.product_execute_button.disabled,
 		"%s exploration contextual controls do not match AUTO/ATTACK/WAIT/EXECUTE authority"%viewport_size)
-	var attack_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var attack_session=_baseline_solo_session(44)
 	var attack_probe=Sandbox.new();root.add_child(attack_probe)
 	attack_probe.initialize_for_headless_test(attack_session,true)
 	var attack_time:=int(attack_session.sim.world.world_time)
@@ -714,7 +715,8 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 func _baseline_solo_session(p_world_seed:int=44):
 	var session=Session.new(p_world_seed,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	if not session.reset_party(p_world_seed,20260828,
-			Session.SOLO_COMBAT_SCENARIO_ID,{},false):
+			Session.SOLO_COMBAT_SCENARIO_ID,
+			VisualMap.previous_product_dungeon(p_world_seed),false):
 		failures.append("baseline solo fixture failed to disable the opening event")
 	return session
 

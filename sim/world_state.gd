@@ -76,6 +76,7 @@ const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
 const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
 const PartyMemoryHistoryValidatorScript=preload("res://sim/party_memory_history_validator.gd")
+const PartyRelationshipHistoryValidatorScript=preload("res://sim/party_relationship_history_validator.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
@@ -5045,6 +5046,8 @@ func _party_event_correlation_error() -> String:
 	if not emotion_error.is_empty(): return emotion_error
 	var memory_error := PartyMemoryHistoryValidatorScript.error(self)
 	if not memory_error.is_empty(): return memory_error
+	var relationship_error := PartyRelationshipHistoryValidatorScript.error(self)
+	if not relationship_error.is_empty(): return relationship_error
 	return ""
 
 
@@ -5170,12 +5173,29 @@ func _party_override_history_error() -> String:
 		if not bool(historical_position.get("ok", false)) \
 				or override.position != historical_position.position:
 			return "party_override_position_invalid"
-		var personal = personal_relations.get("%d:%d" % [override.actor_id, hero_id])
+		# An override can itself create a later grievance reaction. Reconstruct the
+		# directional relation as it stood when the order was committed instead of
+		# reading the final snapshot and making the validation circular.
+		var historical_gratitude := 0
+		var historical_grievance := 0
+		for relation_event in events:
+			if relation_event.id >= override.id:
+				break
+			if relation_event.actor_id != override.actor_id \
+					or relation_event.target_id != hero_id:
+				continue
+			if relation_event.type in ["relationship.aid_recorded",
+					"relationship.gratitude_recorded"]:
+				historical_gratitude = int(relation_event.data.get(
+					"gratitude", historical_gratitude))
+			elif relation_event.type == "relationship.harm_recorded":
+				historical_grievance = int(relation_event.data.get(
+					"grievance", historical_grievance))
 		if party_encounter.schema_version < PartyEncounterStateScript.HEXACO_SCHEMA_VERSION:
 			var composure: int = member.personality_profile.value("composure")
 			var legacy_magnitude: int = 20 + int((999 - composure) / 20) \
-				+ (int(personal.grievance / 5) if personal != null else 0) \
-				- (int(personal.gratitude / 10) if personal != null else 0)
+				+ int(historical_grievance / 5) \
+				- int(historical_gratitude / 10)
 			if override.magnitude != maxi(1, legacy_magnitude):
 				return "party_override_magnitude_invalid"
 		else:
@@ -5184,8 +5204,8 @@ func _party_override_history_error() -> String:
 			var resilience: int = FixedPointScript.trunc_div(
 				conscientiousness + 1000 - emotionality, 2)
 			var expected_magnitude: int = 20 + int((1000 - resilience) / 20) \
-				+ (int(personal.grievance / 5) if personal != null else 0) \
-				- (int(personal.gratitude / 10) if personal != null else 0)
+				+ int(historical_grievance / 5) \
+				- int(historical_gratitude / 10)
 			expected_magnitude = maxi(1, expected_magnitude)
 			if override.magnitude != expected_magnitude \
 					and not (party_encounter.legacy_journal_origin \
