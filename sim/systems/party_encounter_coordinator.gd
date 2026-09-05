@@ -19,6 +19,7 @@ const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const PartyStateScript=preload("res://sim/party_encounter_state.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
+const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const MAX_DEPLOYED_PARTY := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -93,8 +94,11 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 		var victory_cause_id := _last_enemy_death_event_id()
 		if victory_cause_id <= 0:
 			return false
+		var victory_data:Dictionary=CampaignEncounterStreamScript.victory_scope(world) \
+			if CampaignEncounterStreamScript.is_campaign_runtime(world) else {}
 		var victory = world.emit_event("party.victory", state.protagonist_id, -1,
-			world.entities[state.protagonist_id].position, 0, victory_cause_id)
+			world.entities[state.protagonist_id].position,0,victory_cause_id,
+			victory_data)
 		if victory == null:
 			return false
 		# Snapshot replay of v1-v3 runs deliberately retains their historic
@@ -225,7 +229,7 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 	# REGRESSION fixtures retain their established social/contact timing until
 	# companion-aware exploration cadence is designed as its own slice.
 	if state.party_member_ids.size()!=1:return true
-	var enemies:Array=state.enemy_ids.duplicate();enemies.sort()
+	var enemies:Array=_stream_enemy_ids();enemies.sort()
 	var dormant_patrol_id:int=int(enemies[posmod(processed_step_index,enemies.size())]) \
 		if not enemies.is_empty() else -1
 	var acted_ids:Dictionary={}
@@ -330,7 +334,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 			return false
 	if state.contact_kind == "ENEMY_AMBUSH":
 		var ambushers: Array = []
-		for enemy_id in state.enemy_ids:
+		for enemy_id in _stream_enemy_ids():
 			if tick_start_can_act_ids.has(enemy_id) \
 					and not ambush_excluded_ids.has(enemy_id) \
 					and int(state.enemy_busy_rows.get(enemy_id,MAX_WORLD_TIME))<=world.world_time \
@@ -454,7 +458,7 @@ func forecast_exploration_patrol(enemy_id:int,processed_step_index:int,
 		"risk":0}
 	if world==null or world.party_encounter==null \
 			or world.party_encounter.safe_phase!="GROUPED" \
-			or enemy_id not in world.party_encounter.enemy_ids \
+			or enemy_id not in _stream_enemy_ids() \
 			or not world.entities.has(enemy_id) or not world.is_autonomous_target(enemy_id) \
 			or processed_step_index<=0 or actor_schedule_id<=0 or due_time!=world.world_time:
 		return rejected.duplicate(true)
@@ -511,7 +515,7 @@ func forecast_exploration_patrol(enemy_id:int,processed_step_index:int,
 
 func _update_enemy_awareness_batch(processed_step_index:int)->bool:
 	var state=world.party_encounter
-	var enemy_ids:Array=state.enemy_ids.duplicate();enemy_ids.sort()
+	var enemy_ids:Array=_stream_enemy_ids();enemy_ids.sort()
 	for enemy_id_value in enemy_ids:
 		var enemy_id:=int(enemy_id_value)
 		if not world.is_unresolved_enemy(enemy_id):continue
@@ -621,14 +625,14 @@ func _awareness_move_forecast(enemy_id:int,awareness,rejected:Dictionary)->Dicti
 
 func _nearest_contact_enemy(position:Vector2i):
 	var candidates:Array=[]
-	for enemy_id in world.party_encounter.enemy_ids:
+	for enemy_id in _stream_enemy_ids():
 		if not world.is_unresolved_enemy(enemy_id):continue
 		var enemy=world.entities[enemy_id]
 		var distance:=_distance(position,enemy.position)
 		if not _line_of_sight(position,enemy.position):continue
 		var awareness=world.party_encounter.enemy_awareness(enemy_id)
 		var legacy_small_fixture:bool=world.width<=15 and world.height<=15 \
-				and world.party_encounter.enemy_ids.size()==1
+				and _stream_enemy_ids().size()==1
 		var party_spotters: Array[int] = PartyPerceptionRegistryScript \
 			.visible_party_members(world, world.party_encounter, enemy.position)
 		if not party_spotters.is_empty() \
@@ -751,7 +755,8 @@ func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int)
 	for id in state.active_party_member_ids:
 		if id != state.protagonist_id and not selected.has(id) and world.occupies_tile(id): state.member(id).presence = "DORMANT"
 	if state.contact_kind == "PARTY_AMBUSH":
-		for enemy_id in state.enemy_ids: state.enemy_busy_rows[enemy_id] = world.world_time + 100
+		for enemy_id in _stream_enemy_ids():
+			state.enemy_busy_rows[enemy_id]=world.world_time+100
 	var companion_wires: Array = []
 	for companion_id in authoritative.companion_ids: companion_wires.append(str(companion_id))
 	var completed = world.emit_event("party.deployment_completed", state.protagonist_id, -1,
@@ -880,7 +885,8 @@ func _action_error(action) -> String:
 			legal_attack = melee.can_attack_with_weapon(action.actor_id, action.target_id,
 				WorldItemOperationsScript.equipped_weapon_id(world, action.actor_id),
 				_weapon_occupants(action.actor_id, action.target_id))
-		if action.target_id not in state.enemy_ids or not world.entities.has(action.target_id) \
+		if action.target_id not in _stream_enemy_ids() \
+				or not world.entities.has(action.target_id) \
 				or not world.is_explicit_melee_target(action.target_id) or not legal_attack:
 			return "melee_not_legal"
 	return ""
@@ -1377,7 +1383,7 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
 	if not _update_enemy_awareness_batch(processed_step_index):return false
-	var state = world.party_encounter; var enemies: Array = state.enemy_ids.duplicate(); enemies.sort()
+	var state=world.party_encounter;var enemies:Array=_stream_enemy_ids();enemies.sort()
 	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world)
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
@@ -1615,7 +1621,7 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 		"from_position":[-1,-1], "destination":[-1,-1],
 		"terrain_id":"", "time_cost":PARTY_ACTION_COST}
 	if world == null or world.party_encounter == null \
-			or enemy_id not in world.party_encounter.enemy_ids \
+			or enemy_id not in _stream_enemy_ids() \
 			or not world.entities.has(enemy_id) \
 			or not world.is_autonomous_target(enemy_id):
 		return rejected.duplicate(true)
@@ -1668,7 +1674,7 @@ func _valid_deployed_party_target(entity_id:int)->bool:
 
 func _nearest_alive_enemy(position: Vector2i):
 	var candidates: Array = []
-	for id in world.party_encounter.enemy_ids:
+	for id in _stream_enemy_ids():
 		if world.is_unresolved_enemy(id): candidates.append(world.entities[id])
 	candidates.sort_custom(func(a,b): var ad = _distance(position,a.position); var bd = _distance(position,b.position); return ad < bd if ad != bd else a.id < b.id)
 	return null if candidates.is_empty() else candidates[0]
@@ -1809,14 +1815,14 @@ func _schedule_preflight(end_time: int) -> Dictionary:
 func _has_alive_enemy() -> bool:
 	if world.party_encounter == null:
 		return false
-	for enemy_id in world.party_encounter.enemy_ids:
+	for enemy_id in CampaignEncounterStreamScript.current_floor_enemy_ids(world):
 		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id):
 			return true
 	return false
 
 func _has_active_combat_enemy()->bool:
 	if world.party_encounter==null:return false
-	for enemy_id in world.party_encounter.enemy_ids:
+	for enemy_id in _stream_enemy_ids():
 		if not world.is_unresolved_enemy(enemy_id):continue
 		var awareness=world.party_encounter.enemy_awareness(enemy_id)
 		var nearest_party=EnemySquadBlackboardScript.nearest_deployed_party(
@@ -1844,11 +1850,16 @@ func _disengage_to_exploration()->bool:
 
 func _last_enemy_death_event_id() -> int:
 	if world.party_encounter == null: return -1
+	var current_ids:=CampaignEncounterStreamScript.current_floor_enemy_ids(world)
 	for index in range(world.events.size() - 1, -1, -1):
 		var event = world.events[index]
-		if event.type == "entity.died" and event.target_id in world.party_encounter.enemy_ids:
+		if event.type=="entity.died" and event.target_id in current_ids:
 			return event.id
 	return -1
+
+
+func _stream_enemy_ids()->Array[int]:
+	return CampaignEncounterStreamScript.active_enemy_ids(world)
 
 func _fault(point: String) -> bool:
 	return not fail_point.is_empty() and fail_point == point

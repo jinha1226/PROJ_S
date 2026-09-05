@@ -94,6 +94,8 @@ func test_each_species_session_save_load_and_journal_replay_is_exact() -> bool:
 
 func test_picker_has_five_ordered_touch_targets_and_commits_once() -> bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var pristine_sim_id:int=session.sim.get_instance_id()
+	var expected=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID,"orc")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session)
 	sandbox.show_species_picker_for_new_run()
@@ -109,7 +111,33 @@ func test_picker_has_five_ordered_touch_targets_and_commits_once() -> bool:
 	check_eq([session.player_species_id,session.command_journal.size(),
 		sandbox.species_picker_modal.visible],["orc",0,false],
 		"one selection starts exactly one clean run and closes the modal")
+	check_eq(session.sim.get_instance_id(),pristine_sim_id,
+		"pristine picker selection reuses the already-built world")
+	check_eq(session.sim.snapshot(),expected.sim.snapshot(),
+		"in-place picker selection equals direct species construction")
 	sandbox.free()
+	return finish()
+
+
+func test_product_picker_selection_reuses_large_campaign_world()->bool:
+	var session=Session.new(Session.DEFAULT_WORLD_SEED,20260906,
+		Session.SOLO_COMBAT_SCENARIO_ID)
+	var pristine_sim_id:int=session.sim.get_instance_id()
+	var pristine_world_id:int=session.sim.world.get_instance_id()
+	var result:Dictionary=session.start_new_run_with_species("beastkin")
+	var hero_id:int=session.sim.world.party_encounter.protagonist_id
+	check(bool(result.get("accepted",false)),
+		"product-map species selection is accepted")
+	check_eq([session.sim.get_instance_id(),session.sim.world.get_instance_id()],
+		[pristine_sim_id,pristine_world_id],
+		"product-map species selection does not rebuild the large campaign world")
+	check_eq([session.player_species_id,
+		str(session.sim.world.entities[hero_id].species_id),
+		str(session.sim.world.party_encounter.protagonist_growth.species_id)],
+		["beastkin","beastkin","beastkin"],
+		"product-map selection reaches session, entity and growth identity")
+	check_eq(session.sim.world.world_state_error(),"",
+		"product-map selected world remains valid")
 	return finish()
 
 

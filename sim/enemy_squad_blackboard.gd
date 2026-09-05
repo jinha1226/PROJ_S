@@ -3,6 +3,7 @@ extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const PerceptionRegistryScript = preload("res://sim/enemy_perception_registry.gd")
+const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const CLAIM_CAP := 2
 
 
@@ -105,7 +106,7 @@ static func nearest_deployed_party(world, position: Vector2i):
 
 static func _active_enemies(world, state) -> Array[int]:
 	var result: Array[int] = []
-	for entity_id_value in state.enemy_ids:
+	for entity_id_value in CampaignEncounterStreamScript.active_enemy_ids(world):
 		var entity_id := int(entity_id_value)
 		if world.entities.has(entity_id) and world.is_autonomous_target(entity_id):
 			result.append(entity_id)

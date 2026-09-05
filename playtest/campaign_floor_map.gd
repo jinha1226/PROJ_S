@@ -93,19 +93,12 @@ static func generate(floor_index:int, seed:int)->Dictionary:
 	for route in routes:_carve_polyline(terrain,size,route.points,2)
 	for position in [entry,anchor,transition]:_carve_disc(terrain,size,position,3,"stone_floor")
 	var encounter_groups:=_encounter_groups(floor_index,profile,routes,terrain,size,seed)
-	var runtime_roster:Array[Dictionary]=[]
-	var runtime_offsets:Array[Vector2i]=[
-		Vector2i.ZERO,Vector2i.RIGHT,Vector2i.DOWN,Vector2i(1,1)]
-	# The current encounter kernel is still single-battle authority.  Materialize
-	# only the opening group while publishing every planned group in the map
-	# manifest; later encounter streaming can consume the rest without changing
-	# geography or portal coordinates.
-	for species_id in encounter_groups[0].species_ids:
-		var slot:=runtime_roster.size()
-		var spawn:Vector2i=Vector2i(int(encounter_groups[0].position[0]),
-			int(encounter_groups[0].position[1]))+runtime_offsets[slot%4]
-		_carve_disc(terrain,size,spawn,1,"stone_floor")
-		runtime_roster.append({"position":spawn,"species_id":str(species_id)})
+	# Every authored group is materialized once, but the runtime activates only
+	# the nearby group. Keeping the complete floor roster in the deterministic
+	# map manifest makes save replay independent from the order in which routes
+	# are explored.
+	var runtime_roster:Array[Dictionary]=_runtime_enemy_roster(
+		encounter_groups,terrain,size)
 	var region_rows:Array[Dictionary]=[]
 	var rooms:Array[Rect2i]=[];var room_centers:Array[Vector2i]=[]
 	for value in profile.regions:
@@ -201,7 +194,7 @@ static func _encounter_groups(floor_index:int,profile:Dictionary,routes:Array[Di
 			species_ids.append("kobold" if (index+member_index+floor_index)%4==0 else "goblin")
 		result.append({"group_id":"F%d_G%02d"%[floor_index,index+1],
 			"route_id":str(route.route_id),"position":[position.x,position.y],
-			"species_ids":species_ids,"optional":index>=count-3,
+			"species_ids":species_ids,"optional":false,
 			"anchor_guard":anchor_guard,"transition_guard":transition_guard})
 	return result
 
@@ -212,6 +205,35 @@ static func _supply_positions(floor_index:int)->Array[Vector2i]:
 		Vector2i(116,122),Vector2i(136,46)] if floor_index==1 else [
 		Vector2i(44,104),Vector2i(72,38),Vector2i(88,154),Vector2i(122,92),
 		Vector2i(142,142),Vector2i(164,62)])
+	return result
+
+
+static func _runtime_enemy_roster(groups:Array[Dictionary],terrain:Array[String],
+		size:Vector2i)->Array[Dictionary]:
+	var result:Array[Dictionary]=[]
+	var occupied:Dictionary={}
+	var offsets:Array[Vector2i]=[
+		Vector2i.ZERO,Vector2i.RIGHT,Vector2i.DOWN,Vector2i(1,1),
+		Vector2i.LEFT,Vector2i.UP,Vector2i(-1,-1),Vector2i(1,-1),
+		Vector2i(-1,1),Vector2i(2,0),Vector2i(0,2),Vector2i(-2,0),
+		Vector2i(0,-2),Vector2i(2,1),Vector2i(1,2),Vector2i(-2,1)]
+	for group_value in groups:
+		var group:Dictionary=group_value
+		var center:=Vector2i(int(group.position[0]),int(group.position[1]))
+		for species_id_value in group.species_ids:
+			var spawn:=Vector2i(-1,-1)
+			for offset in offsets:
+				var candidate:=center+offset
+				if candidate.x<1 or candidate.y<1 or candidate.x>=size.x-1 \
+						or candidate.y>=size.y-1 or occupied.has(candidate):
+					continue
+				if terrain[candidate.y*size.x+candidate.x]=="wall":continue
+				spawn=candidate;break
+			if spawn==Vector2i(-1,-1):return []
+			occupied[spawn]=true
+			_carve_disc(terrain,size,spawn,1,"stone_floor")
+			result.append({"position":spawn,"species_id":str(species_id_value),
+				"group_id":str(group.group_id),"route_id":str(group.route_id)})
 	return result
 
 

@@ -2451,9 +2451,19 @@ func _town_gate_panel()->void:
 		active_floors.map(func(value):return "%d층"%int(value)))
 	_add_notice("[원정문] 1층은 지상 입구로 출발합니다. 활성화한 층 거점 포탈: %s"%portal_text,
 		"TownGateTitle",FONT_BODY)
-	var depart:=_add_button(deck,"원정 출발","TownDepart",_on_town_depart)
+	var depart:=_add_button(deck,"1층 지상 입구로 출발","TownDepart",
+		_on_town_depart.bind(1,"SURFACE_ENTRANCE"))
 	depart.disabled=not bool(assessment.get("accepted",false))
 	depart.tooltip_text=str(assessment.get("message",""))
+	for floor_value in active_floors:
+		var floor_index:=int(floor_value)
+		var portal_assessment:Dictionary=session.town_departure_assessment(
+			floor_index,"ANCHOR_PORTAL")
+		var portal_depart:=_add_button(deck,"%d층 거점 포탈로 출발"%floor_index,
+			"TownDepartPortal%d"%floor_index,
+			_on_town_depart.bind(floor_index,"ANCHOR_PORTAL"))
+		portal_depart.disabled=not bool(portal_assessment.get("accepted",false))
+		portal_depart.tooltip_text=str(portal_assessment.get("message",""))
 
 
 func _on_town_facility_selected(facility_id:String)->void:
@@ -2507,10 +2517,11 @@ func _on_town_unequip(entity_id:int,slot:String)->void:
 	action_feedback_text=notice_text;_request_refresh()
 
 
-func _on_town_depart()->void:
-	var result:Dictionary=session.depart_town()
+func _on_town_depart(floor_index:int=1,
+		entry_mode:String="SURFACE_ENTRANCE")->void:
+	var result:Dictionary=session.depart_town(floor_index,entry_mode)
 	if bool(result.get("accepted",false)):
-		town_facility_id="GUILD";notice_text="원정대가 던전으로 다시 출발했습니다."
+		town_facility_id="GUILD";notice_text="원정대가 %d층으로 다시 출발했습니다."%floor_index
 	else:notice_text=str(result.get("message","출발할 수 없습니다."))
 	action_feedback_text=notice_text;_request_refresh()
 
@@ -2843,6 +2854,16 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var anchor_portal:Dictionary=session.dungeon_anchor_portal_status() \
 		if session.has_method("dungeon_anchor_portal_status") else {}
 	var portal_choice:=bool(anchor_portal.get("can_activate",false))
+	var floor_transition:Dictionary=session.floor_transition_assessment() \
+		if session.has_method("floor_transition_assessment") else {}
+	if bool(floor_transition.get("accepted",false)):
+		product_interact_button.text="[%d층 진입]"%int(
+			floor_transition.get("to_floor_index",2))
+		product_interact_button.disabled=false
+		product_interact_button.tooltip_text="층간 포탈을 사용해 다음 층으로 이동합니다."
+		product_execute_button.text="[다음 층]"
+		product_execute_button.disabled=false
+		return
 	if portal_choice:
 		product_interact_button.text="[PORTAL 활성화]"
 		product_interact_button.disabled=false
@@ -3155,6 +3176,17 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 
 func _on_product_interact()->void:
 	var status:Dictionary=session.party_status()
+	if session.has_method("floor_transition_assessment"):
+		var floor_transition:Dictionary=session.floor_transition_assessment()
+		if bool(floor_transition.get("accepted",false)):
+			_cancel_product_auto_explore("auto_explore_floor_transition",false)
+			var transition_result:Dictionary=session.advance_campaign_floor()
+			_record_result(transition_result,true)
+			_show_product_command_feedback("%d층에 진입했습니다."%int(
+				floor_transition.get("to_floor_index",2)) if bool(
+				transition_result.get("accepted",false)) else str(
+				transition_result.get("message","다음 층으로 이동할 수 없습니다.")))
+			_request_refresh();return
 	if str(status.get("view_mode",""))=="COMBAT" \
 			and session.has_method("protagonist_equipment"):
 		var equipment:Dictionary=session.protagonist_equipment()
@@ -3205,6 +3237,9 @@ func _on_product_wait_guard()->void:
 func _on_product_execute()->void:
 	if bool(_current_run_progress().get("terminal",false)):
 		_on_restart_same_run();return
+	if session.has_method("floor_transition_assessment") \
+			and bool(session.floor_transition_assessment().get("accepted",false)):
+		_on_product_interact();return
 	if auto_orchestration_enabled:_on_auto_execute()
 	else:_on_turn_confirm()
 

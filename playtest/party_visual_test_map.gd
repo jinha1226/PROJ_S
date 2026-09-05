@@ -9,6 +9,7 @@ const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
 const DungeonMapScript = preload("res://playtest/deterministic_dungeon_map.gd")
 const CampaignFloorMapScript = preload("res://playtest/campaign_floor_map.gd")
+const CampaignWorldMapScript = preload("res://playtest/campaign_world_map.gd")
 const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
@@ -67,11 +68,19 @@ static func uses_los_fov(scenario_id: String) -> bool:
 
 
 static func product_dungeon(seed: int) -> Dictionary:
-	return CampaignFloorMapScript.generate(1,seed)
+	return CampaignWorldMapScript.generate(seed,1)
 
 
 static func campaign_floor(floor_index:int,seed:int)->Dictionary:
 	return CampaignFloorMapScript.generate(floor_index,seed)
+
+
+static func campaign_runtime_floor(floor_index:int,seed:int)->Dictionary:
+	return CampaignWorldMapScript.generate(seed,floor_index)
+
+
+static func select_campaign_floor(layout:Dictionary,floor_index:int)->Dictionary:
+	return CampaignWorldMapScript.select_floor(layout,floor_index)
 
 
 static func previous_product_dungeon(seed:int)->Dictionary:
@@ -103,7 +112,8 @@ static func run_manifest(scenario_id: String, layout: Dictionary = {}) -> Dictio
 	return {
 		"schema_version":RUN_MANIFEST_SCHEMA_VERSION,
 		"scenario_id":scenario_id,
-		"objective_id":"CLEAR_SINGLE_ENCOUNTER_AND_EXIT",
+		"objective_id":"CLEAR_FLOOR_ENCOUNTERS_AND_REACH_PORTAL" \
+			if transition_exit else "CLEAR_SINGLE_ENCOUNTER_AND_EXIT",
 		"entry":{"position":[entry_position.x,entry_position.y],
 			"feature_id":"run_entry"},
 		"exit":{"position":[exit_position.x,exit_position.y],

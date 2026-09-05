@@ -41,6 +41,8 @@ func test_campaign_floor_one_and_two_publish_distinct_portals_and_authored_route
 		for group in layout.encounter_groups:enemy_count+=group.species_ids.size()
 		check_eq(enemy_count,layout.planned_enemy_count,
 			"encounter groups exactly allocate the planned population")
+		check_eq(layout.enemy_roster.size(),layout.planned_enemy_count,
+			"every authored group is available to distance-streamed runtime combat")
 		var anchor_guards:Array=layout.encounter_groups.filter(
 			func(group):return bool(group.anchor_guard))
 		var transition_guards:Array=layout.encounter_groups.filter(
@@ -196,8 +198,10 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(first.sim != null and second.sim != null, "solo sessions initialize")
 	if first.sim == null or second.sim == null:
 		return finish()
-	check_eq([first.sim.world.width, first.sim.world.height], [160, 160],
-		"solo world is larger than the viewport")
+	check_eq([first.sim.world.width, first.sim.world.height], [360, 192],
+		"both immutable campaign floors share one history-safe world topology")
+	check_eq([first._map_layout.floor_width,first._map_layout.floor_height],
+		[160,160],"the selected floor retains its authored local dimensions")
 	check_eq(first.sim.snapshot(), second.sim.snapshot(),
 		"same seed reproduces authoritative world and spawns")
 	var state = first.sim.world.party_encounter
@@ -230,6 +234,33 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(not enemy_visible,"first hostile does not intrude into the initial LOS observation")
 	check_eq(first.run_progress().entry_position,
 		[hero_position.x, hero_position.y], "run manifest follows generated entry")
+	var initial_stream:Dictionary=first.campaign_encounter_observation()
+	check_eq([initial_stream.group_count,initial_stream.remaining_enemy_count,
+		initial_stream.active_group_id],[13,39,""],
+		"the safe entrance keeps all thirteen floor groups dormant")
+	var approach_cell:=Vector2i(-1,-1)
+	for direction in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN,
+			Vector2i(-1,-1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(1,1)]:
+		var candidate:Vector2i=enemy_position+direction
+		if first.sim.world.in_bounds(candidate) \
+				and first.sim.world.blocking_entity_at(candidate,state.protagonist_id)==null \
+				and first.sim.world.tile_at(candidate).terrain!="wall":
+			approach_cell=candidate;break
+	check(approach_cell!=Vector2i(-1,-1),"a streamed group has an approach cell")
+	if approach_cell!=Vector2i(-1,-1):
+		first.sim.world.entities[state.protagonist_id].position=approach_cell
+		state.group_anchor=approach_cell
+		var nearby_stream:Dictionary=first.campaign_encounter_observation()
+		var active_rows:Array=nearby_stream.groups.filter(
+			func(row):return str(row.status)=="ACTIVE")
+		check_eq(active_rows.size(),1,
+			"distance streaming activates exactly one nearest encounter group")
+		if active_rows.size()==1:
+			check(int(active_rows[0].enemy_count)<=5 \
+					and int(active_rows[0].enemy_count)<int(nearby_stream.remaining_enemy_count),
+				"active combat stays bounded instead of waking the full floor")
+	check_eq(first.sim.world.world_state_error(),"",
+		"stream activation projection does not mutate canonical authority")
 	return finish()
 
 

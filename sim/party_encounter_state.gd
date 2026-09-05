@@ -36,6 +36,7 @@ const EMOTION_STATE_SCHEMA_VERSION := 20
 # v21 persists a bounded factual memory ledger independently of current emotion.
 const MEMORY_STATE_SCHEMA_VERSION := 21
 const MAX_ACTIVE_PARTY_SIZE := 4
+const MAX_TRACKED_ENEMY_SIZE := 1024
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
 const CONTACT_KINDS := ["NONE", "DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"]
 const FORMATIONS := ["NONE", "WEDGE", "LINE", "COLUMN"]
@@ -320,7 +321,9 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	if not _integer(row.party_detection_radius) or not _integer(row.enemy_detection_radius) or row.party_detection_radius < 0 or row.party_detection_radius > 15 or row.enemy_detection_radius < 0 or row.enemy_detection_radius > 15:
 		return "invalid_detection_radius"
 	for list_key in ["party_member_ids", "enemy_ids"]:
-		if not row.get(list_key) is Array or row[list_key].is_empty() or row[list_key].size() > 64: return "invalid_%s" % list_key
+		var maximum_size:=64 if list_key=="party_member_ids" else MAX_TRACKED_ENEMY_SIZE
+		if not row.get(list_key) is Array or row[list_key].is_empty() \
+				or row[list_key].size()>maximum_size:return "invalid_%s"%list_key
 		var previous := -1
 		for value in row[list_key]:
 			if not Int64CodecScript.is_canonical(value): return "noncanonical_%s" % list_key

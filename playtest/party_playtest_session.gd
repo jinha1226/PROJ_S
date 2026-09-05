@@ -53,6 +53,7 @@ const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
+const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -81,6 +82,9 @@ const TOWN_CLINIC_RULESET_ID := "town-clinic-care-v1"
 const TOWN_SHRINE_RULESET_ID := "town-shrine-rest-v1"
 const TOWN_PORTAL_RULESET_ID := "town-activated-floor-portals-v1"
 const DUNGEON_ANCHOR_PORTAL_RULESET_ID := "map-anchor-portal-v1"
+const CAMPAIGN_FLOOR_ENTRY_RULESET_ID := "campaign-floor-entry-v1"
+const CAMPAIGN_FLOOR_TRANSITION_RULESET_ID := "campaign-floor-transition-v1"
+const MAX_IMPLEMENTED_CAMPAIGN_FLOOR := 2
 const TOWN_INITIAL_GOLD := 120
 const TOWN_RETURN_STIPEND := 80
 const TOWN_CLINIC_COST := 25
@@ -297,9 +301,15 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			str(enemy_row.get("species_id","goblin")))
 		if enemy_profile.is_empty():return false
 		var spawn_position:Vector2i=enemy_row.get("position",Vector2i(-1,-1))
+		var enemy_tags:Array=["party_enemy"]
+		var group_id:=str(enemy_row.get("group_id",""))
+		if product_dungeon and not group_id.is_empty():
+			enemy_tags.append("campaign_floor:%d"%int(map_layout.get("floor_index",1)))
+			enemy_tags.append("campaign_expedition:1")
+			enemy_tags.append("encounter_group:%s"%group_id)
 		var spawned=candidate.world.add_entity(str(enemy_profile.entity_kind),
 			str(enemy_profile.display_name),spawn_position,int(enemy_profile.max_health),
-			["party_enemy"],str(enemy_profile.species_id),"enemy",
+			enemy_tags,str(enemy_profile.species_id),"enemy",
 			"GOBLIN_MELEE_V1" if str(enemy_profile.species_id)=="goblin" else "")
 		if spawned==null:return false
 		enemies.append(spawned)
@@ -1360,7 +1370,7 @@ func party_status() -> Dictionary:
 	if str(cycle.get("phase","DUNGEON"))=="TOWN":
 		view_mode="TOWN";visible_enemy_ids.clear()
 	if view_mode != "TOWN" and state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
-		for enemy_id in state.enemy_ids:
+		for enemy_id in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
@@ -1872,28 +1882,40 @@ func transfer_town_item(from_entity_id:int,to_entity_id:int,
 		"armory":town_armory_rows()})
 
 
-func town_departure_assessment()->Dictionary:
+func town_departure_assessment(floor_index:int=TOWN_STARTING_FLOOR,
+		entry_mode:String="SURFACE_ENTRANCE")->Dictionary:
 	var context_error:=_town_context_error()
 	if not context_error.is_empty():return _rejection_dto(context_error)
 	var state=sim.world.party_encounter
 	var hero_life=sim.world.combatant_states.get(state.protagonist_id)
 	if hero_life==null or str(hero_life.life_state)!="ACTIVE":
 		return _rejection_dto("town_departure_party_unavailable")
+	if floor_index<1 or floor_index>MAX_IMPLEMENTED_CAMPAIGN_FLOOR:
+		return _rejection_dto("town_portal_floor_unavailable")
+	if entry_mode not in ["SURFACE_ENTRANCE","ANCHOR_PORTAL"]:
+		return _rejection_dto("town_portal_entry_mode_invalid")
+	if entry_mode=="SURFACE_ENTRANCE" and floor_index!=TOWN_STARTING_FLOOR:
+		return _rejection_dto("town_surface_entry_floor_invalid")
+	if entry_mode=="ANCHOR_PORTAL" \
+			and floor_index not in state.activated_anchor_portal_floors:
+		return _rejection_dto("town_portal_not_activated")
 	return _feedback_dto({"accepted":true,"reason":"ok",
-		"floor_index":TOWN_STARTING_FLOOR,
+		"floor_index":floor_index,
 		"returned_from_floor_index":int(state.expedition_cycle.floor_index),
-		"entry_mode":"SURFACE_ENTRANCE",
+		"entry_mode":entry_mode,
 		"portal_ruleset_id":TOWN_PORTAL_RULESET_ID,
 		"available_portal_floors":_activated_anchor_portal_floors(),
 		"next_expedition_index":int(state.expedition_cycle.expedition_index)+1,
 		"duration":DEFAULT_EXPEDITION_DURATION})
 
 
-func depart_town()->Dictionary:
-	var assessment:=town_departure_assessment()
+func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
+		entry_mode:String="SURFACE_ENTRANCE")->Dictionary:
+	var assessment:=town_departure_assessment(floor_index,entry_mode)
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var rollback_layout:=_map_layout.duplicate(true)
 	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
 	var next_cycle=ExpeditionCycleScript.active(int(assessment.floor_index),
 		sim.world.world_time,DEFAULT_EXPEDITION_DURATION,
@@ -1904,21 +1926,177 @@ func depart_town()->Dictionary:
 		sim.world.entities[hero_id].position,0,-1,{"schema_version":1,
 			"ruleset_id":ExpeditionCycleScript.RULESET_ID,
 			"entry_ruleset_id":TOWN_PORTAL_RULESET_ID,
-			"entry_mode":"SURFACE_ENTRANCE",
+			"entry_mode":entry_mode,
 			"expedition_index":int(next_cycle.expedition_index),
-			"floor_index":int(next_cycle.floor_index),"portal_floor_index":0,
+			"floor_index":int(next_cycle.floor_index),
+			"portal_floor_index":int(next_cycle.floor_index) \
+				if entry_mode=="ANCHOR_PORTAL" else 0,
 			"closes_at_world_time":str(next_cycle.closes_at_world_time)})
-	state.revision+=1
+	var entered:Dictionary=_enter_campaign_floor(int(assessment.floor_index),entry_mode) \
+		if VisualTestMapScript.uses_product_dungeon(scenario_id) else \
+		_feedback_dto({"accepted":true,"reason":"ok","event_ids":[],
+			"spawned_enemy_ids":[]})
+	state=sim.world.party_encounter;state.revision+=1
 	var state_error:String=sim.world.world_state_error()
-	if event==null or not state_error.is_empty():
+	if event==null or not bool(entered.get("accepted",false)) \
+			or not state_error.is_empty():
 		_restore_town_rollback(rollback)
+		_map_layout=rollback_layout
 		return _rejection_dto(state_error if not state_error.is_empty() \
 			else "town_departure_failed")
-	command_journal.append({"kind":"town","operation":{"action":"DEPART"}})
+	command_journal.append({"kind":"town","operation":{"action":"DEPART",
+		"entry_mode":entry_mode,"floor_index":int(assessment.floor_index)}})
 	_clear_draft();_deployment_plan.clear()
 	if _exploration_route!=null:_exploration_route.clear()
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"floor_entry_event_ids":entered.get("event_ids",[]).duplicate(true),
+		"spawned_enemy_ids":entered.get("spawned_enemy_ids",[]).duplicate(true),
 		"expedition_cycle":expedition_cycle_status()})
+
+
+func campaign_encounter_observation()->Dictionary:
+	return CampaignEncounterStreamScript.observation(sim.world) \
+		if sim!=null and sim.world!=null else {}
+
+
+func _current_floor_enemy_ids()->Array[int]:
+	return CampaignEncounterStreamScript.current_floor_enemy_ids(sim.world) \
+		if sim!=null and sim.world!=null else []
+
+
+func floor_transition_assessment()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or not VisualTestMapScript.uses_product_dungeon(scenario_id):
+		return _rejection_dto("floor_transition_unavailable")
+	var state=sim.world.party_encounter;var cycle=state.expedition_cycle
+	if cycle==null or str(cycle.phase)!="DUNGEON":
+		return _rejection_dto("floor_transition_unavailable")
+	var floor_index:=int(cycle.floor_index)
+	if floor_index>=MAX_IMPLEMENTED_CAMPAIGN_FLOOR:
+		return _rejection_dto("final_floor_reached")
+	var portal_value:Variant=_map_layout.get("transition_portal_position")
+	if not portal_value is Vector2i:
+		return _rejection_dto("floor_transition_unavailable")
+	var hero=sim.world.entities.get(state.protagonist_id)
+	if hero==null or hero.position!=portal_value:
+		return _rejection_dto("floor_transition_not_on_portal")
+	if state.safe_phase!="GROUPED_COMPLETE":
+		return _rejection_dto("floor_transition_locked")
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"from_floor_index":floor_index,"to_floor_index":floor_index+1,
+		"position":[portal_value.x,portal_value.y],
+		"ruleset_id":CAMPAIGN_FLOOR_TRANSITION_RULESET_ID})
+
+
+func advance_campaign_floor()->Dictionary:
+	var assessment:=floor_transition_assessment()
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback_value:Variant=sim.snapshot()
+	if not rollback_value is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var rollback:Dictionary=rollback_value;var rollback_layout:=_map_layout.duplicate(true)
+	var state=sim.world.party_encounter
+	state.expedition_cycle.floor_index=int(assessment.to_floor_index)
+	var entered:=_enter_campaign_floor(int(assessment.to_floor_index),
+		"FLOOR_TRANSITION")
+	state=sim.world.party_encounter;state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not bool(entered.get("accepted",false)) or not state_error.is_empty():
+		sim=SimulatorScript.from_snapshot(rollback);_map_layout=rollback_layout
+		return _rejection_dto(state_error if not state_error.is_empty() \
+			else "floor_transition_failed")
+	command_journal.append({"kind":"dungeon","operation":{
+		"action":"ADVANCE_FLOOR","from_floor_index":int(assessment.from_floor_index),
+		"to_floor_index":int(assessment.to_floor_index)}})
+	_clear_run_completion_transients();_invalidate_explored_presentation_cache()
+	return _feedback_dto({"accepted":true,"reason":"ok",
+		"from_floor_index":int(assessment.from_floor_index),
+		"to_floor_index":int(assessment.to_floor_index),
+		"event_ids":entered.get("event_ids",[]).duplicate(true),
+		"spawned_enemy_ids":entered.get("spawned_enemy_ids",[]).duplicate(true),
+		"expedition_cycle":expedition_cycle_status()})
+
+
+func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
+	var target_layout:=VisualTestMapScript.select_campaign_floor(_map_layout,
+		floor_index)
+	if target_layout.is_empty():return _rejection_dto("floor_transition_unavailable")
+	var state=sim.world.party_encounter;var cycle=state.expedition_cycle
+	if cycle==null or int(cycle.floor_index)!=floor_index:
+		return _rejection_dto("floor_transition_cycle_mismatch")
+	var entry_position:Vector2i=target_layout.get("anchor_portal_position",
+		Vector2i(-1,-1)) if entry_mode=="ANCHOR_PORTAL" else \
+		target_layout.get("entry_position",Vector2i(-1,-1))
+	if not sim.world.in_bounds(entry_position):
+		return _rejection_dto("floor_transition_entry_invalid")
+	# Changing cycle scope first detaches old-expedition monsters from collision.
+	# The party remains the same entities, inventories, bodies and social state.
+	_map_layout=target_layout
+	state.safe_phase="GROUPED";state.contact_kind="NONE"
+	state.contact_enemy_id=-1;state.formation_id="NONE"
+	state.group_anchor=entry_position;state.facing=Vector2i.RIGHT
+	var event_ids:Array[int]=[]
+	for member_id_value in state.active_party_member_ids:
+		var member_id:=int(member_id_value)
+		if not sim.world.entities.has(member_id):return _rejection_dto(
+			"floor_transition_party_invalid")
+		var member=state.member(member_id)
+		var life=sim.world.combatant_states.get(member_id)
+		if member==null or life==null:return _rejection_dto(
+			"floor_transition_party_invalid")
+		if str(life.life_state)=="DEAD":continue
+		member.presence="DEPLOYED" if member_id==state.protagonist_id else "GROUPED"
+		member.busy_until=sim.world.world_time
+		var from_position:Vector2i=sim.world.entities[member_id].position
+		var entry_event=sim.world.emit_event("dungeon.floor_entered",member_id,-1,
+			entry_position,0,-1,{"schema_version":1,
+				"ruleset_id":CAMPAIGN_FLOOR_ENTRY_RULESET_ID,
+				"floor_index":floor_index,
+				"expedition_index":int(cycle.expedition_index),
+				"entry_mode":entry_mode,
+				"from_position":[from_position.x,from_position.y],
+				"to_position":[entry_position.x,entry_position.y]})
+		if entry_event==null:return _rejection_dto("floor_transition_event_failed")
+		event_ids.append(int(entry_event.id))
+		sim.world.entities[member_id].position=entry_position
+	var spawned_ids:=_spawn_campaign_floor_enemies(target_layout,
+		int(cycle.expedition_index))
+	if spawned_ids.is_empty():return _rejection_dto("floor_enemy_spawn_failed")
+	for position_value in [target_layout.get("entry_position"),
+			target_layout.get("anchor_portal_position"),
+			target_layout.get("transition_portal_position")]:
+		if position_value is Vector2i \
+				and position_value not in state.patrol_reserved_positions:
+			state.patrol_reserved_positions.append(position_value)
+	state.patrol_reserved_positions.sort_custom(func(a:Vector2i,b:Vector2i):
+		return a.y<b.y if a.y!=b.y else a.x<b.x)
+	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
+		"spawned_enemy_ids":spawned_ids})
+
+
+func _spawn_campaign_floor_enemies(layout:Dictionary,
+		expedition_index:int)->Array[int]:
+	var result:Array[int]=[];var state=sim.world.party_encounter
+	for row_value in layout.get("enemy_roster",[]):
+		if not row_value is Dictionary:return []
+		var row:Dictionary=row_value
+		var species_id:=str(row.get("species_id","goblin"))
+		var profile:Dictionary=EnemyPerceptionRegistryScript.profile(species_id)
+		var position:Variant=row.get("position")
+		var group_id:=str(row.get("group_id",""))
+		if profile.is_empty() or not position is Vector2i or group_id.is_empty():return []
+		var tags:Array=["party_enemy","campaign_floor:%d"%int(layout.floor_index),
+			"campaign_expedition:%d"%expedition_index,
+			"encounter_group:%s"%group_id]
+		var entity=sim.world.add_entity(str(profile.entity_kind),
+			str(profile.display_name),position,int(profile.max_health),tags,
+			species_id,"enemy","GOBLIN_MELEE_V1" if species_id=="goblin" else "")
+		if entity==null:return []
+		state.enemy_ids.append(entity.id)
+		state.enemy_busy_rows[entity.id]=sim.world.world_time
+		state.enemy_awareness_rows[entity.id]=EnemyAwarenessScript.new(
+			entity.id,entity.position)
+		result.append(entity.id)
+	state.enemy_ids.sort();return result
 
 
 func _town_context_error()->String:
@@ -1945,7 +2123,7 @@ func dungeon_anchor_portal_status()->Dictionary:
 	var portal_position:Vector2i=position_value
 	var clear_radius:=int(_map_layout.get("anchor_portal_clear_radius",8))
 	var nearby_enemy_ids:Array[int]=[]
-	for enemy_id_value in state.enemy_ids:
+	for enemy_id_value in _current_floor_enemy_ids():
 		var enemy_id:=int(enemy_id_value)
 		if not sim.world.is_unresolved_enemy(enemy_id):continue
 		var enemy=sim.world.entities.get(enemy_id)
@@ -2053,7 +2231,8 @@ func party_command_assessment(command_id:String,target_id:int=-1)->Dictionary:
 	if command_id not in PartyCommandScript.COMMAND_IDS:
 		return _rejection_dto("unknown_party_command")
 	if command_id=="ATTACK_TARGET":
-		if target_id not in state.enemy_ids or not sim.world.entities.has(target_id) \
+		if target_id not in CampaignEncounterStreamScript.active_enemy_ids(sim.world) \
+				or not sim.world.entities.has(target_id) \
 				or not sim.world.is_autonomous_target(target_id):
 			return _rejection_dto("party_command_target_invalid")
 	elif target_id!=-1:
@@ -2304,16 +2483,25 @@ func run_progress() -> Dictionary:
 	var encounter_cleared: bool = state.safe_phase in ["REGROUP_READY", "GROUPED_COMPLETE"]
 	var exit_position := Vector2i(int(manifest.exit.position[0]),
 		int(manifest.exit.position[1]))
-	var complete: bool = state.safe_phase == "GROUPED_COMPLETE" \
-		and hero.position == exit_position
+	var floor_index:=int(state.expedition_cycle.floor_index) \
+		if state.expedition_cycle!=null else 1
+	var campaign_runtime:=VisualTestMapScript.uses_product_dungeon(scenario_id) \
+		and _map_layout.has("campaign_floors")
+	var at_open_portal:bool=state.safe_phase=="GROUPED_COMPLETE" \
+		and hero.position==exit_position
+	var transition_ready:bool=campaign_runtime and at_open_portal \
+		and floor_index<MAX_IMPLEMENTED_CAMPAIGN_FLOOR
+	var complete:bool=at_open_portal and (not campaign_runtime \
+		or floor_index>=MAX_IMPLEMENTED_CAMPAIGN_FLOOR)
 	var terminal: bool = complete or state.safe_phase == "PARTY_DEFEATED"
 	var run_state := "EXPLORE"
 	if state.safe_phase == "PARTY_DEFEATED": run_state = "DEFEATED"
 	elif complete: run_state = "COMPLETE"
+	elif transition_ready:run_state="NEXT_FLOOR_READY"
 	elif encounter_cleared: run_state = "EXIT_OPEN"
 	elif state.safe_phase in ["CONTACT", "ENGAGED", "REGROUP_READY"]:
 		run_state = "ENCOUNTER"
-	return {"schema_version":int(manifest.schema_version), "available":true,
+	var result:Dictionary={"schema_version":int(manifest.schema_version), "available":true,
 		"scenario_id":str(manifest.scenario_id),
 		"objective_id":str(manifest.objective_id), "run_state":run_state,
 		"entry_position":manifest.entry.position.duplicate(true),
@@ -2324,7 +2512,11 @@ func run_progress() -> Dictionary:
 			"granted":encounter_cleared},
 		"exit":{"feature_id":str(manifest.exit.open_feature_id) if encounter_cleared \
 			else str(manifest.exit.locked_feature_id), "open":encounter_cleared},
-		"complete":complete, "terminal":terminal}.duplicate(true)
+		"complete":complete, "terminal":terminal}
+	if campaign_runtime:
+		result["floor_index"]=floor_index
+		result["next_floor_available"]=transition_ready
+	return result.duplicate(true)
 
 
 func restart_same_run() -> Dictionary:
@@ -2348,10 +2540,66 @@ func restart_same_run() -> Dictionary:
 func start_new_run_with_species(species_id:String)->Dictionary:
 	if not GrowthBuildRegistryScript.has_species(species_id):
 		return _rejection_dto("unknown_player_species")
-	if not reset_party(world_seed,personality_seed,scenario_id,{},true,species_id):
+	# The launch scene already owns a fully built pristine product world. Rebuilding
+	# its large campaign map synchronously from the picker stalls Web long enough to
+	# look like the button did nothing. Select identity in that pristine world and
+	# retain reset_party as the defensive fallback for non-pristine callers.
+	var selected_in_place:=_can_select_starting_species_in_place() \
+		and _select_starting_species_in_place(species_id)
+	if not selected_in_place \
+			and not reset_party(world_seed,personality_seed,scenario_id,{},true,species_id):
 		return _rejection_dto("player_species_reset_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"player_species_id":player_species_id,"run_progress":run_progress()})
+
+
+func _can_select_starting_species_in_place()->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or not command_journal.is_empty() or sim.world.step_index!=0:
+		return false
+	var state=sim.world.party_encounter
+	var cycle=state.expedition_cycle
+	if state.safe_phase!="GROUPED" or cycle==null or cycle.phase!="DUNGEON" \
+			or cycle.expedition_index!=1 or cycle.floor_index!=1 \
+			or sim.world.world_time!=cycle.opened_at_world_time:
+		return false
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var growth=state.protagonist_growth
+	if hero==null or combatant==null or combatant.life_state!="ACTIVE" \
+			or hero.health!=hero.max_health or growth==null:
+		return false
+	return growth.to_dict()==GrowthBuildStateScript.new(str(hero.species_id)).to_dict()
+
+
+func _select_starting_species_in_place(species_id:String)->bool:
+	var state=sim.world.party_encounter
+	var hero_id:int=state.protagonist_id
+	var hero=sim.world.entities.get(hero_id)
+	if hero==null:return false
+	if str(hero.species_id)==species_id:
+		player_species_id=species_id
+		return true
+	var next_growth=GrowthBuildStateScript.new(species_id)
+	if not next_growth.validation_error().is_empty():return false
+	var previous_species_id:=str(hero.species_id)
+	var previous_body=sim.world.body_states.get(hero_id)
+	var previous_growth=state.protagonist_growth
+	if not sim.world.bootstrap_select_entity_species(hero_id,species_id):return false
+	state.protagonist_growth=next_growth
+	var validation_error:String=sim.world.world_state_error()
+	if not validation_error.is_empty():
+		hero.species_id=previous_species_id
+		sim.world.body_states[hero_id]=previous_body
+		state.protagonist_growth=previous_growth
+		return false
+	player_species_id=species_id
+	_invalidate_explored_presentation_cache()
+	_presentation_visibility_cache.clear()
+	_clear_draft();_deployment_plan.clear()
+	if _exploration_route!=null:_exploration_route.clear()
+	if _auto_explore!=null:_auto_explore.clear()
+	return true
 
 
 func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
@@ -2467,7 +2715,7 @@ func _party_observation_context()->Dictionary:
 		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
 		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
 	var monster_blood_by_cell:Dictionary={}
-	var enemy_ids:Array=sim.world.party_encounter.enemy_ids
+	var enemy_ids:Array=_current_floor_enemy_ids()
 	for event in sim.world.events:
 		if str(event.type)!="entity.died" or int(event.target_id) not in enemy_ids:continue
 		if sim.world.in_bounds(event.position):
@@ -2600,6 +2848,12 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	var visible:Dictionary=context.visible
 	var explored:Dictionary=context.explored
 	var progress:Dictionary=context.progress
+	var floor_bounds:=Rect2i(Vector2i.ZERO,
+		Vector2i(sim.world.width,sim.world.height))
+	var raw_bounds:Variant=_map_layout.get("floor_bounds")
+	if raw_bounds is Array and raw_bounds.size()==4:
+		floor_bounds=Rect2i(int(raw_bounds[0]),int(raw_bounds[1]),
+			int(raw_bounds[2]),int(raw_bounds[3]))
 	var markers:Dictionary={}
 	var exit_key:=""
 	var anchor_key:=""
@@ -2616,7 +2870,7 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 		if visible.has(_position_key(hero_position)):
 			markers[_position_key(hero_position)]="HERO"
 	if not bool(context.hide_enemies):
-		for enemy_id_value in sim.world.party_encounter.enemy_ids:
+		for enemy_id_value in _current_floor_enemy_ids():
 			var enemy_id:=int(enemy_id_value)
 			if not sim.world.entities.has(enemy_id) or not sim.world.occupies_tile(enemy_id):continue
 			var enemy_position:Vector2i=sim.world.entities[enemy_id].position
@@ -2630,7 +2884,8 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 		var parts:=str(key_value).split(":")
 		if parts.size()!=2:continue
 		var position:=Vector2i(int(parts[0]),int(parts[1]))
-		if sim.world.in_bounds(position):known_positions.append(position)
+		if sim.world.in_bounds(position) and floor_bounds.has_point(position):
+			known_positions.append(position)
 	known_positions.sort_custom(func(a:Vector2i,b:Vector2i):
 		return a.y<b.y if a.y!=b.y else a.x<b.x)
 	var cells:Array=[]
@@ -2643,9 +2898,11 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 		var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
 		if marker.is_empty() and key==exit_key:marker="EXIT"
 		if marker.is_empty() and key==anchor_key:marker="PORTAL"
-		cells.append({"position":[position.x,position.y],"visibility_state":state,
+		var local_position:=position-floor_bounds.position
+		cells.append({"position":[local_position.x,local_position.y],"visibility_state":state,
 			"terrain_id":str(sim.world.tile_at(position).terrain),"marker":marker})
-	return {"schema_version":1,"width":sim.world.width,"height":sim.world.height,
+	return {"schema_version":1,"width":floor_bounds.size.x,
+		"height":floor_bounds.size.y,
 		"cells":cells}
 
 
@@ -3189,6 +3446,12 @@ func assault_npc(entity_id:int)->Dictionary:
 			"previous_disposition":"NEUTRAL","disposition":"HOSTILE"})
 	if assault==null:
 		_restore_roster_rollback(rollback);return _rejection_dto("npc_assault_failed")
+	if CampaignEncounterStreamScript.is_campaign_runtime(sim.world):
+		var cycle=state.expedition_cycle
+		for tag in ["campaign_floor:%d"%int(cycle.floor_index),
+				"campaign_expedition:%d"%int(cycle.expedition_index),
+				"encounter_group:NPC_ASSAULT_%d"%entity_id]:
+			if tag not in npc.tags:npc.tags.append(tag)
 	state.enemy_ids.append(entity_id);state.enemy_ids.sort()
 	state.enemy_busy_rows[entity_id]=int(sim.world.world_time)
 	var awareness=EnemyAwarenessScript.new(entity_id,npc.position)
@@ -3815,7 +4078,7 @@ func tab_attack_assessment() -> Dictionary:
 	if hero == null: return _rejection_dto("item_actor_missing")
 	var visible := _presentation_visible_cells(hero.position)
 	var enemy_ids: Array[int] = []
-	for enemy_id_value in state.enemy_ids:
+	for enemy_id_value in _current_floor_enemy_ids():
 		var enemy_id := int(enemy_id_value)
 		var enemy = sim.world.entities.get(enemy_id)
 		if enemy != null and sim.world.is_unresolved_enemy(enemy_id) \
@@ -3917,7 +4180,7 @@ func _tab_approach_less(a:Dictionary,b:Dictionary)->bool:
 
 func inspect_enemy(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
-			or entity_id not in sim.world.party_encounter.enemy_ids \
+			or entity_id not in _current_floor_enemy_ids() \
 			or not sim.world.entities.has(entity_id):return _rejection_dto("enemy_not_found")
 	var entity=sim.world.entities[entity_id]
 	var profile=sim.world.combatant_states[entity_id]
@@ -4373,7 +4636,7 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	if hero == null: return rows
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
 	var squad_board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
-	for enemy_id_value in state.enemy_ids:
+	for enemy_id_value in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 		var enemy_id := int(enemy_id_value)
 		var enemy = sim.world.entities.get(enemy_id)
 		if enemy == null or not visible.has(_position_key(enemy.position)): continue
@@ -4891,7 +5154,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 	var hazards: Dictionary = {}
 	var visible_enemy_keys: Dictionary = {}
 	if not bool(context.hide_enemies):
-		for enemy_id_value in state.enemy_ids:
+		for enemy_id_value in _current_floor_enemy_ids():
 			var enemy_id := int(enemy_id_value)
 			if not sim.world.is_unresolved_enemy(enemy_id):
 				continue
@@ -4943,7 +5206,8 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 		"hero_position":status.protagonist_position.duplicate(true),
 		"cells":cells, "visible":visible, "visited":visited, "hazards":hazards,
 		"opening_interaction":bool(opening_event_status().get("can_interact",false)) \
-			or bool(dungeon_anchor_portal_status().get("can_activate",false)),
+			or bool(dungeon_anchor_portal_status().get("can_activate",false)) \
+			or bool(floor_transition_assessment().get("accepted",false)),
 		"visible_enemy_keys":visible_enemy_keys}
 
 
@@ -4964,7 +5228,7 @@ func _auto_explore_stop_snapshot() -> Dictionary:
 		and str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
 	var visible_enemy_keys: Dictionary = {}
 	if not hide_enemies:
-		for enemy_id_value in state.enemy_ids:
+		for enemy_id_value in _current_floor_enemy_ids():
 			var enemy_id := int(enemy_id_value)
 			if not sim.world.is_unresolved_enemy(enemy_id):
 				continue
@@ -4974,7 +5238,8 @@ func _auto_explore_stop_snapshot() -> Dictionary:
 	return {"schema_version":1, "step_index":int(status.step_index),
 		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
-		"opening_interaction":bool(opening_event_status().get("can_interact",false)),
+		"opening_interaction":bool(opening_event_status().get("can_interact",false)) \
+			or bool(floor_transition_assessment().get("accepted",false)),
 		"visible_enemy_keys":visible_enemy_keys}.duplicate(true)
 
 
@@ -5667,7 +5932,7 @@ func _is_important_log_event(event)->bool:
 			"party.companion_dismissed","town.guild_candidates_arrived",
 			"town.market_purchased","town.clinic_service","town.body_restored",
 			"town.shrine_service","town.expedition_departed",
-			"dungeon.anchor_portal_activated",
+			"dungeon.anchor_portal_activated","dungeon.floor_entered",
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
@@ -5944,6 +6209,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				var dungeon_operation:Dictionary=row.operation
 				if str(dungeon_operation.action)=="ACTIVATE_ANCHOR_PORTAL":
 					replay_result=replay.activate_dungeon_anchor_portal()
+				elif str(dungeon_operation.action)=="ADVANCE_FLOOR":
+					replay_result=replay.advance_campaign_floor()
 			"opening":
 				replay_result = replay.commit_opening_event_choice(
 					str(row.operation.action))
@@ -6014,7 +6281,9 @@ func load_session_json(encoded: String) -> Dictionary:
 					"UNEQUIP":replay_result=replay.unequip_town_item(
 						Int64CodecScript.parse(operation.entity_id,
 							"town equipment owner"),str(operation.slot))
-					"DEPART":replay_result=replay.depart_town()
+					"DEPART":replay_result=replay.depart_town(
+						int(operation.get("floor_index",TOWN_STARTING_FLOOR)),
+						str(operation.get("entry_mode","SURFACE_ENTRANCE")))
 			"npc_assault":
 				var operation:Dictionary=row.operation
 				replay_result=replay.assault_npc(Int64CodecScript.parse(
@@ -6177,11 +6446,20 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_dungeon_journal"
 				var dungeon_keys:Array=row.operation.keys();dungeon_keys.sort()
-				if dungeon_keys!=["action","floor_index"] \
-						or row.operation.get("action")!="ACTIVATE_ANCHOR_PORTAL" \
-						or not _integer(row.operation.get("floor_index")) \
-						or int(row.operation.floor_index)<1 \
-						or int(row.operation.floor_index)>15:
+				var activation:bool=dungeon_keys==["action","floor_index"] \
+					and row.operation.get("action")=="ACTIVATE_ANCHOR_PORTAL" \
+					and _integer(row.operation.get("floor_index")) \
+					and int(row.operation.floor_index)>=1 \
+					and int(row.operation.floor_index)<=15
+				var advance:bool=dungeon_keys==["action","from_floor_index",
+					"to_floor_index"] and row.operation.get("action")=="ADVANCE_FLOOR" \
+					and _integer(row.operation.get("from_floor_index")) \
+					and _integer(row.operation.get("to_floor_index")) \
+					and int(row.operation.from_floor_index)>=1 \
+					and int(row.operation.to_floor_index) \
+						==int(row.operation.from_floor_index)+1 \
+					and int(row.operation.to_floor_index)<=MAX_IMPLEMENTED_CAMPAIGN_FLOOR
+				if not activation and not advance:
 					return "invalid_dungeon_journal"
 			"opening":
 				if keys != ["kind", "operation"] \
@@ -6325,7 +6603,15 @@ func _journal_wire_error(journal: Array) -> String:
 									row.operation.instance_id).is_empty():
 							return "invalid_town_journal"
 					"DEPART":
-						if town_keys!=["action"]:return "invalid_town_journal"
+						var legacy_departure:=town_keys==["action"]
+						var portal_departure:bool=town_keys==["action","entry_mode",
+							"floor_index"] and _integer(row.operation.get("floor_index")) \
+							and int(row.operation.floor_index)>=1 \
+							and int(row.operation.floor_index)<=MAX_IMPLEMENTED_CAMPAIGN_FLOOR \
+							and row.operation.get("entry_mode") in [
+								"SURFACE_ENTRANCE","ANCHOR_PORTAL"]
+						if not legacy_departure and not portal_departure:
+							return "invalid_town_journal"
 					_:return "invalid_town_journal"
 			"npc_assault":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
@@ -6957,6 +7243,15 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"town_equipment_failed":"장비 변경이 취소되어 이전 상태로 돌아갔습니다.",
 			"town_departure_party_unavailable":"주인공이 원정에 나설 수 있는 상태가 아닙니다.",
 			"town_departure_failed":"원정 출발이 취소되어 이전 상태로 돌아갔습니다.",
+			"town_portal_floor_unavailable":"아직 진입할 수 없는 층입니다.",
+			"town_portal_entry_mode_invalid":"선택한 원정 진입 방식이 올바르지 않습니다.",
+			"town_surface_entry_floor_invalid":"지상 입구는 1층으로만 연결됩니다.",
+			"town_portal_not_activated":"해당 층의 거점 포탈을 먼저 활성화해야 합니다.",
+			"floor_transition_unavailable":"이 위치에는 사용할 수 있는 층간 포탈이 없습니다.",
+			"final_floor_reached":"현재 구현된 마지막 층입니다.",
+			"floor_transition_not_on_portal":"층간 포탈 위로 이동해야 합니다.",
+			"floor_transition_locked":"현재 층의 적을 모두 정리해야 포탈이 열립니다.",
+			"floor_transition_failed":"층 이동이 취소되어 이전 상태로 돌아갔습니다.",
 			"party_memory_failed":"기억 상태 반영이 취소되어 이전 상태로 돌아갔습니다.",
 			"anchor_portal_unavailable":"이 층에는 활성화할 거점 포탈이 없습니다.",
 			"anchor_portal_already_active":"이 층의 거점 포탈은 이미 활성화되어 있습니다.",
@@ -7130,6 +7425,9 @@ func _event_message(event) -> String:
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
 		"town.expedition_departed":return "원정대가 %d층 던전으로 다시 출발했다."%int(
 			event.data.get("floor_index",1))
+		"dungeon.floor_entered":
+			return "%s %d층에 진입했다."%[_subject(actor),int(
+				event.data.get("floor_index",event.magnitude))]
 		"dungeon.anchor_portal_activated":return "%d층 거점 포탈이 마을과 연결되었다."%int(
 			event.data.get("floor_index",event.magnitude))
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."

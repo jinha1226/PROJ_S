@@ -77,6 +77,7 @@ const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
 const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
 const PartyMemoryHistoryValidatorScript=preload("res://sim/party_memory_history_validator.gd")
 const PartyRelationshipHistoryValidatorScript=preload("res://sim/party_relationship_history_validator.gd")
+const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 
@@ -278,6 +279,18 @@ func body_of(entity_id:int):
 func bootstrap_set_entity_species(entity_id:int,p_species_id:String)->bool:
 	# Fixture/bootstrap seam: species and its immutable generated body identity are
 	# one atomic projection. Runtime gameplay has no species-changing command.
+	return _bootstrap_replace_entity_species(entity_id,p_species_id,true)
+
+
+func bootstrap_select_entity_species(entity_id:int,p_species_id:String)->bool:
+	# New-run identity selection happens before the first command. Preserve the
+	# pristine body's revision so the selected snapshot is byte-equivalent to a
+	# session that was constructed with this species from the outset.
+	return _bootstrap_replace_entity_species(entity_id,p_species_id,false)
+
+
+func _bootstrap_replace_entity_species(entity_id:int,p_species_id:String,
+		advance_revision:bool)->bool:
 	var entity=entities.get(entity_id)
 	if entity==null or p_species_id.is_empty():return false
 	var body_species_id:=_body_species_id(p_species_id)
@@ -286,8 +299,8 @@ func bootstrap_set_entity_species(entity_id:int,p_species_id:String)->bool:
 	if body==null:return false
 	var previous_body=body_states.get(entity_id)
 	if previous_body!=null:
-		if previous_body.revision>=MAX_SMALL_VALUE:return false
-		body.revision=previous_body.revision+1
+		if advance_revision and previous_body.revision>=MAX_SMALL_VALUE:return false
+		body.revision=previous_body.revision+(1 if advance_revision else 0)
 	entity.species_id=p_species_id
 	body_states[entity_id]=body
 	return true
@@ -503,7 +516,22 @@ func is_autonomous_target(entity_id: int) -> bool:
 
 func _party_member_is_detached(entity_id: int) -> bool:
 	var member = party_member_state(entity_id)
-	return member != null and member.presence in ["RECRUITABLE", "EXILED"]
+	if member != null and member.presence in ["RECRUITABLE", "EXILED"]:
+		return true
+	var entity=entities.get(entity_id)
+	if entity!=null and "party_enemy" in entity.tags:
+		var campaign_tagged:=false
+		for tag_value in entity.tags:
+			if str(tag_value).begins_with(
+					CampaignEncounterStreamScript.FLOOR_TAG_PREFIX):
+				campaign_tagged=true;break
+		var in_town:=party_encounter!=null \
+				and party_encounter.expedition_cycle!=null \
+				and str(party_encounter.expedition_cycle.phase)=="TOWN"
+		if campaign_tagged and (in_town or entity_id not in \
+				CampaignEncounterStreamScript.current_floor_enemy_ids(self)):
+			return true
+	return false
 
 
 func is_unresolved_enemy(entity_id: int) -> bool:
@@ -1935,7 +1963,8 @@ func _restored_state_error() -> String:
 			return "entity_identity_or_position_invalid"
 		var actor_state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
-		if combatant.life_state != "DEAD" and (party_state == null or party_state.presence == "DEPLOYED") \
+		if occupies_tile(entity_id) \
+				and (party_state == null or party_state.presence == "DEPLOYED") \
 				and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
 			if not _terrain_is_passable(entity.position):
 				return "live_entity_on_impassable_terrain"
@@ -3229,6 +3258,13 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 	for event in events:
 		if event.id < first_action_id:
 			continue
+		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+			var transition:=_party_floor_entry_positions(event)
+			if not bool(transition.ok) or transition.from!=final_projection:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			final_projection=transition.to
+			grouped_with_protagonist=entity_id!=party_encounter.protagonist_id
+			continue
 		if event.type == "party.member_regrouped" and event.actor_id == entity_id:
 			final_projection = event.position
 			grouped_with_protagonist = true
@@ -4165,7 +4201,9 @@ func _party_runtime_error() -> String:
 			or party_encounter.active_party_member_ids.size() \
 				> PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
 		return "party_roster_size_invalid"
-	if party_encounter.enemy_ids.is_empty() or party_encounter.enemy_ids.size() > 64: return "party_enemy_size_invalid"
+	if party_encounter.enemy_ids.is_empty() or party_encounter.enemy_ids.size() \
+			> PartyEncounterStateScript.MAX_TRACKED_ENEMY_SIZE:
+		return "party_enemy_size_invalid"
 	var previous_id := 0
 	var deployed := 0
 	var slots: Array[int] = []
@@ -4211,6 +4249,8 @@ func _party_runtime_error() -> String:
 		if party_encounter.member_rows[member_id].role != expected_role: return "party_role_invalid"
 	if deployed > PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
 		return "too_many_deployed_party"
+	var current_floor_enemy_ids:Array[int]=CampaignEncounterStreamScript \
+		.current_floor_enemy_ids(self)
 	var alive_enemies := 0; previous_id = 0
 	for enemy_id in party_encounter.enemy_ids:
 		if enemy_id <= previous_id or party_ids.has(enemy_id) or not entities.has(enemy_id) \
@@ -4223,7 +4263,8 @@ func _party_runtime_error() -> String:
 		var awareness=party_encounter.enemy_awareness_rows[enemy_id]
 		if awareness.enemy_id!=enemy_id or not _terrain_is_passable(awareness.home_position):
 			return "party_enemy_awareness_invalid"
-		if combatant_states[enemy_id].life_state != "DEAD": alive_enemies += 1
+		if enemy_id in current_floor_enemy_ids \
+				and combatant_states[enemy_id].life_state!="DEAD":alive_enemies+=1
 	if party_encounter.enemy_busy_rows.size() != party_encounter.enemy_ids.size(): return "party_enemy_busy_set_mismatch"
 	if party_encounter.enemy_awareness_rows.size()!=party_encounter.enemy_ids.size():
 		return "party_enemy_awareness_set_mismatch"
@@ -4237,7 +4278,8 @@ func _party_runtime_error() -> String:
 			and hero.position != party_encounter.group_anchor:
 		return "party_protagonist_anchor_mismatch"
 	if (party_encounter.contact_kind == "NONE") != (party_encounter.contact_enemy_id == -1): return "party_contact_identity_invalid"
-	if party_encounter.contact_enemy_id != -1 and party_encounter.contact_enemy_id not in party_encounter.enemy_ids:
+	if party_encounter.contact_enemy_id!=-1 \
+			and party_encounter.contact_enemy_id not in current_floor_enemy_ids:
 		return "party_contact_enemy_invalid"
 	match party_encounter.safe_phase:
 		"GROUPED":
@@ -4345,11 +4387,28 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 		if npc_id <= int(party_id): return "opening_npc_not_spawned_last"
 	for enemy_id in party_encounter.enemy_ids:
 		if int(enemy_id)==npc_id:continue
-		if npc_id <= int(enemy_id): return "opening_npc_not_spawned_last"
+		if npc_id<=int(enemy_id):
+			var later_enemy=entities.get(int(enemy_id));var campaign_spawn:=false
+			if later_enemy!=null:
+				for tag_value in later_enemy.tags:
+					if str(tag_value).begins_with(
+							CampaignEncounterStreamScript.FLOOR_TAG_PREFIX):
+						campaign_spawn=true;break
+			if not campaign_spawn:return "opening_npc_not_spawned_last"
 	var npc = entities[npc_id]
 	var life = combatant_states[npc_id]
+	var expected_npc_tags:Array=["opening_event_npc"]
+	if opening_hostile and CampaignEncounterStreamScript.is_campaign_runtime(self):
+		var cycle=party_encounter.expedition_cycle
+		if cycle==null:return "opening_npc_identity_invalid"
+		expected_npc_tags.append_array([
+			CampaignEncounterStreamScript.FLOOR_TAG_PREFIX+str(int(cycle.floor_index)),
+			CampaignEncounterStreamScript.EXPEDITION_TAG_PREFIX+str(
+				int(cycle.expedition_index)),
+			CampaignEncounterStreamScript.GROUP_TAG_PREFIX+"NPC_ASSAULT_%d"%npc_id,
+		])
 	if npc.kind != "companion" or npc.species_id != "elf" \
-			or npc.faction_id != "neutral" or npc.tags != ["opening_event_npc"] \
+			or npc.faction_id != "neutral" or npc.tags != expected_npc_tags \
 			or not _terrain_is_passable(opening.spawn_position) \
 			or not _terrain_is_passable(opening.convergence_goal):
 		return "opening_npc_identity_invalid"
@@ -4745,10 +4804,14 @@ func _training_modes_from_event(event)->Dictionary:
 
 func _party_event_correlation_error() -> String:
 	var hero_id: int = party_encounter.protagonist_id
+	var floor_segment_start_id:=_party_floor_segment_start_event_id()
+	var correlated_enemy_ids:Array[int]=CampaignEncounterStreamScript \
+		.current_floor_enemy_ids(self)
 	var contact_types := ["encounter.detected", "encounter.party_ambush", "encounter.enemy_ambush"]
 	var contact_events: Array = []
 	for event in events:
-		if event.type in contact_types: contact_events.append(event)
+		if event.id>floor_segment_start_id and event.type in contact_types:
+			contact_events.append(event)
 	var contact = null
 	var contact_required: bool = party_encounter.contact_kind != "NONE" \
 		or party_encounter.safe_phase == "GROUPED_COMPLETE"
@@ -4770,7 +4833,7 @@ func _party_event_correlation_error() -> String:
 		var contact_enemy_id := Int64CodecScript.parse(contact.data.enemy_id, "contact enemy")
 		var contact_enemy_position := Vector2i(int(contact.data.enemy_position[0]), int(contact.data.enemy_position[1]))
 		var contact_facing := Vector2i(int(contact.data.facing[0]), int(contact.data.facing[1]))
-		if contact_enemy_id not in party_encounter.enemy_ids:
+		if contact_enemy_id not in correlated_enemy_ids:
 			return "party_contact_enemy_invalid"
 		var hero_history: Dictionary = _party_entity_position_at_event(hero_id, contact.id)
 		var enemy_history: Dictionary = _party_entity_position_at_event(contact_enemy_id, contact.id)
@@ -4781,7 +4844,7 @@ func _party_event_correlation_error() -> String:
 		if party_encounter.safe_phase == "CONTACT" and entities[contact_enemy_id].position != contact_enemy_position:
 			return "party_contact_live_enemy_position_mismatch"
 		var nearest_rows: Array = []
-		for enemy_id in party_encounter.enemy_ids:
+		for enemy_id in correlated_enemy_ids:
 			if not _party_alive_at_event(enemy_id, contact.id): continue
 			var history: Dictionary = _party_entity_position_at_event(enemy_id, contact.id)
 			if not bool(history.ok): return "party_contact_enemy_history_invalid"
@@ -4964,6 +5027,7 @@ func _party_event_correlation_error() -> String:
 	var victory = null; var victory_rows: Array = []
 	var starts: Array = []; var completions: Array = []; var regroup_members: Array = []
 	for event in events:
+		if event.id<=floor_segment_start_id:continue
 		if event.type == "party.victory": victory_rows.append(event)
 		elif event.type == "party.regroup_started": starts.append(event)
 		elif event.type == "party.member_regrouped": regroup_members.append(event)
@@ -4975,21 +5039,8 @@ func _party_event_correlation_error() -> String:
 		if victory_required: return "party_victory_event_count_invalid"
 	else:
 		victory = victory_rows[0]
-		var latest_enemy_death_id := -1
-		for event in events:
-			if event.id >= victory.id: break
-			if event.type == "entity.died" and event.target_id in party_encounter.enemy_ids:
-				latest_enemy_death_id = event.id
-		var victory_cause = event_by_id(victory.cause_id)
-		var victory_history: Dictionary = _party_entity_position_at_event(hero_id, victory.id)
-		if victory.actor_id != hero_id or victory.target_id != -1 or victory.magnitude != 0 \
-				or not victory.data.is_empty() or latest_enemy_death_id <= 0 \
-				or victory.cause_id != latest_enemy_death_id or victory_cause == null \
-				or victory_cause.type != "entity.died" or victory_cause.target_id not in party_encounter.enemy_ids \
-				or not bool(victory_history.ok) or victory.position != victory_history.position:
-			return "party_victory_event_semantic_mismatch"
-		for enemy_id in party_encounter.enemy_ids:
-			if _party_alive_at_event(enemy_id, victory.id): return "party_victory_before_last_enemy_death"
+		var victory_error:=_party_victory_event_error(victory)
+		if not victory_error.is_empty():return victory_error
 
 	var has_regroup_history := not starts.is_empty() or not completions.is_empty() or not regroup_members.is_empty()
 	if party_encounter.safe_phase == "GROUPED_COMPLETE" and not has_regroup_history:
@@ -5034,6 +5085,8 @@ func _party_event_correlation_error() -> String:
 	if not roster_error.is_empty(): return roster_error
 	var anchor_portal_error := _party_anchor_portal_history_error()
 	if not anchor_portal_error.is_empty(): return anchor_portal_error
+	var floor_entry_error:=_party_floor_entry_history_error()
+	if not floor_entry_error.is_empty():return floor_entry_error
 	var patrol_error := _party_patrol_history_error()
 	if not patrol_error.is_empty(): return patrol_error
 	var override_error := _party_override_history_error()
@@ -5048,6 +5101,88 @@ func _party_event_correlation_error() -> String:
 	if not memory_error.is_empty(): return memory_error
 	var relationship_error := PartyRelationshipHistoryValidatorScript.error(self)
 	if not relationship_error.is_empty(): return relationship_error
+	return ""
+
+
+func _party_floor_segment_start_event_id()->int:
+	var result:=0
+	if party_encounter==null:return result
+	for event in events:
+		if event.type=="dungeon.floor_entered" \
+				and event.actor_id==party_encounter.protagonist_id:
+			result=event.id
+	return result
+
+
+func _party_victory_event_error(victory)->String:
+	var scope_ids:Array[int]=[]
+	if victory.data.is_empty():
+		for value in party_encounter.enemy_ids:scope_ids.append(int(value))
+	else:
+		if not _exact_keys(victory.data,["enemy_ids","expedition_index",
+				"floor_index","ruleset_id","schema_version"]) \
+				or victory.data.get("schema_version")!=1 \
+				or victory.data.get("ruleset_id")!=CampaignEncounterStreamScript.RULESET_ID \
+				or not victory.data.get("floor_index") is int \
+				or not victory.data.get("expedition_index") is int \
+				or int(victory.data.floor_index)<1 \
+				or int(victory.data.expedition_index)<1 \
+				or not victory.data.get("enemy_ids") is Array \
+				or victory.data.enemy_ids.is_empty():
+			return "party_victory_event_semantic_mismatch"
+		var previous_id:=0
+		for value in victory.data.enemy_ids:
+			if not Int64CodecScript.is_canonical(value):
+				return "party_victory_event_semantic_mismatch"
+			var enemy_id:=Int64CodecScript.parse(value,"victory enemy")
+			if enemy_id<=previous_id or enemy_id not in party_encounter.enemy_ids:
+				return "party_victory_event_semantic_mismatch"
+			scope_ids.append(enemy_id);previous_id=enemy_id
+	var latest_enemy_death_id:=-1
+	for event in events:
+		if event.id>=victory.id:break
+		if event.type=="entity.died" and event.target_id in scope_ids:
+			latest_enemy_death_id=event.id
+	var victory_cause=event_by_id(victory.cause_id)
+	var victory_history:Dictionary=_party_entity_position_at_event(
+		party_encounter.protagonist_id,victory.id)
+	if victory.actor_id!=party_encounter.protagonist_id or victory.target_id!=-1 \
+			or victory.magnitude!=0 or latest_enemy_death_id<=0 \
+			or victory.cause_id!=latest_enemy_death_id or victory_cause==null \
+			or victory_cause.type!="entity.died" \
+			or victory_cause.target_id not in scope_ids \
+			or not bool(victory_history.ok) \
+			or victory.position!=victory_history.position:
+		return "party_victory_event_semantic_mismatch"
+	for enemy_id in scope_ids:
+		if _party_alive_at_event(enemy_id,victory.id):
+			return "party_victory_before_last_enemy_death"
+	return ""
+
+
+func _party_floor_entry_history_error()->String:
+	for event in events:
+		if event.type!="dungeon.floor_entered":continue
+		if event.actor_id not in party_encounter.party_member_ids \
+				or event.target_id!=-1 or event.cause_id!=-1 or event.magnitude!=0 \
+				or not _exact_keys(event.data,["entry_mode","expedition_index",
+					"floor_index","from_position","ruleset_id","schema_version",
+					"to_position"]) \
+				or event.data.get("schema_version")!=1 \
+				or event.data.get("ruleset_id")!="campaign-floor-entry-v1" \
+				or event.data.get("entry_mode") not in ["SURFACE_ENTRANCE",
+					"ANCHOR_PORTAL","FLOOR_TRANSITION"] \
+				or not event.data.get("floor_index") is int \
+				or not event.data.get("expedition_index") is int \
+				or int(event.data.floor_index)<1 or int(event.data.floor_index)>15 \
+				or int(event.data.expedition_index)<1 \
+				or not _party_metadata_position(event.data.get("from_position")) \
+				or not _party_metadata_position(event.data.get("to_position")):
+			return "party_floor_entry_event_semantic_mismatch"
+		var to_position:=Vector2i(int(event.data.to_position[0]),
+			int(event.data.to_position[1]))
+		if event.position!=to_position or not _terrain_is_passable(to_position):
+			return "party_floor_entry_event_semantic_mismatch"
 	return ""
 
 
@@ -5613,6 +5748,12 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 	for index in range(events.size()-1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+			var transition:=_party_floor_entry_positions(event)
+			if not bool(transition.ok) or transition.to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=transition.from
+			continue
 		if event.type != "action.move" or event.actor_id != entity_id: continue
 		if not _party_move_event_is_canonical(event) \
 				or Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1])) != cursor:
@@ -5637,6 +5778,14 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	var grouped_with_protagonist := false
 	for event in events:
 		if event.id >= event_id: break
+		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+			var transition:=_party_floor_entry_positions(event)
+			if not bool(transition.ok) \
+					or anchored and historical_cursor!=transition.from:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor=transition.to;anchored=true
+			if tracks_grouped_protagonist:grouped_with_protagonist=true
+			continue
 		if tracks_grouped_protagonist and event.target_id == entity_id \
 				and event.type in ["party.companion_recruited", "party.companion_dismissed"]:
 			if event.type == "party.companion_recruited":
@@ -5684,6 +5833,12 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	for index in range(events.size() - 1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+			var transition:=_party_floor_entry_positions(event)
+			if not bool(transition.ok) or transition.to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=transition.from
+			continue
 		if event.type != "action.move" or event.actor_id != entity_id: continue
 		if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
 				or not _is_position(event.data.get("from_position"), width, height, false) \
@@ -5701,7 +5856,7 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 	var cursor := initial_position
 	for event in events:
 		if event.id <= event_id or event.actor_id != entity_id: continue
-		if event.type == "party.member_regrouped": return ""
+		if event.type in ["party.member_regrouped","dungeon.floor_entered"]:return ""
 		if event.type != "action.move": continue
 		if not _party_move_event_is_canonical(event) \
 				or event.data.from_position != [cursor.x,cursor.y]:
@@ -5709,6 +5864,19 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 		cursor = event.position
 	return "" if entities.has(entity_id) and entities[entity_id].position == cursor \
 		else "party_member_deployed_position_mismatch"
+
+
+func _party_floor_entry_positions(event)->Dictionary:
+	if event==null or event.type!="dungeon.floor_entered" \
+			or not _party_metadata_position(event.data.get("from_position")) \
+			or not _party_metadata_position(event.data.get("to_position")):
+		return {"ok":false,"from":Vector2i(-1,-1),"to":Vector2i(-1,-1)}
+	var from_position:=Vector2i(int(event.data.from_position[0]),
+		int(event.data.from_position[1]))
+	var to_position:=Vector2i(int(event.data.to_position[0]),
+		int(event.data.to_position[1]))
+	return {"ok":event.position==to_position,"from":from_position,
+		"to":to_position}
 
 
 func _party_move_event_is_canonical(event) -> bool:

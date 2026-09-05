@@ -4,6 +4,7 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const Command = preload("res://sim/sim_command.gd")
 const PartyAction = preload("res://sim/party_action_command.gd")
+const CampaignEncounterStream = preload("res://sim/campaign_encounter_stream.gd")
 
 const STARTER_WEAPON_INSTANCE_IDS := {
 	"HAND_AXE":"START_HAND_AXE_001",
@@ -346,7 +347,11 @@ func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
 	check(_enter_solo_combat(spear_session), "spear fixture reaches combat")
 	if spear_session.party_status().safe_phase != "ENGAGED": return finish()
 	var spear_hero := int(spear_session.party_status().protagonist_id)
-	var spear_enemy := int(spear_session.sim.world.party_encounter.enemy_ids[0])
+	var spear_active:Array[int]=CampaignEncounterStream.active_enemy_ids(
+		spear_session.sim.world)
+	check(not spear_active.is_empty(),"spear fixture exposes one active encounter group")
+	if spear_active.is_empty():return finish()
+	var spear_enemy := int(spear_active[0])
 	check(_place_enemy_on_open_line(spear_session, spear_enemy, 2),
 		"open two-cell spear line exists")
 	var spear_preview: Dictionary = spear_session.preview_actor_action(
@@ -363,7 +368,11 @@ func test_spear_and_bow_preview_at_real_weapon_range() -> bool:
 	check(_enter_solo_combat(bow_session), "bow fixture reaches combat")
 	if bow_session.party_status().safe_phase != "ENGAGED": return finish()
 	var bow_hero := int(bow_session.party_status().protagonist_id)
-	var bow_enemy := int(bow_session.sim.world.party_encounter.enemy_ids[0])
+	var bow_active:Array[int]=CampaignEncounterStream.active_enemy_ids(
+		bow_session.sim.world)
+	check(not bow_active.is_empty(),"bow fixture exposes one active encounter group")
+	if bow_active.is_empty():return finish()
+	var bow_enemy := int(bow_active[0])
 	check(_place_enemy_on_open_line(bow_session, bow_enemy, 3),
 		"open three-cell bow line exists")
 	var bow_preview: Dictionary = bow_session.preview_actor_action(
@@ -522,23 +531,15 @@ func _place_enemy_on_open_line(session, enemy_id: int, distance: int) -> bool:
 
 
 func _relocate_with_move_events(sim,entity_id:int,target:Vector2i)->bool:
-	for _attempt in range(64):
-		var current:Vector2i=sim.world.entities[entity_id].position
-		if current==target:return true
-		var delta:=target-current;var moved:=false
-		for direction_value in [Vector2i(signi(delta.x),signi(delta.y)),
-				Vector2i(signi(delta.x),0),Vector2i(0,signi(delta.y))]:
-			var direction:=Vector2i(direction_value)
-			if direction==Vector2i.ZERO:continue
-			var destination:=current+direction
-			if maxi(absi(destination.x-target.x),absi(destination.y-target.y)) \
-					>=maxi(absi(current.x-target.x),absi(current.y-target.y)):continue
-			var assessment=sim.movement.assess_move(entity_id,destination)
-			if not bool(assessment.accepted):continue
-			var definition:Dictionary=load("res://sim/terrain_registry.gd").definition(
-				str(assessment.terrain_id))
-			if sim.movement.commit_preflighted_move(entity_id,destination,
-					str(assessment.terrain_id),int(definition.move_time_cost))==null:return false
-			moved=true;break
-		if not moved:return false
-	return false
+	var route:Dictionary=sim.find_path(entity_id,target)
+	if not bool(route.get("found",false)):return false
+	for index in range(1,route.path.size()):
+		var destination:Vector2i=route.path[index]
+		var assessment=sim.movement.assess_move(entity_id,destination)
+		if not bool(assessment.accepted):return false
+		var definition:Dictionary=load("res://sim/terrain_registry.gd").definition(
+			str(assessment.terrain_id))
+		if sim.movement.commit_preflighted_move(entity_id,destination,
+				str(assessment.terrain_id),int(definition.move_time_cost))==null:
+			return false
+	return sim.world.entities[entity_id].position==target

@@ -6,6 +6,7 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiUIFrame=preload("res://playtest/ascii_ui_frame.gd")
+const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const ROUTE_INTENDED_CADENCE_MSEC:=190
 const ROUTE_HEADLESS_GROSS_CEILING_MSEC:=310
 
@@ -342,6 +343,34 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	state.group_anchor=exit
 	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=exit
 	sandbox._hide_tile_popover();sandbox._refresh();await process_frame;await process_frame
+	if str(session.run_progress().get("run_state",""))!="NEXT_FLOOR_READY" \
+			or sandbox.product_execute_button.text!="[다음 층]" \
+			or sandbox.product_execute_button.disabled:
+		failures.append("%s floor-one transition affordance"%label)
+	# The restart surface belongs to the final implemented floor. This remains a
+	# direct restored-state fixture: switch the selected presentation floor without
+	# manufacturing transition journal rows, then project the same cleared state at
+	# the second floor's exit.
+	var floor_two:Dictionary=VisualMap.select_campaign_floor(session._map_layout,2)
+	if floor_two.is_empty():
+		failures.append("%s missing floor-two completion fixture"%label)
+		sandbox.queue_free();await process_frame;return
+	session._map_layout=floor_two
+	state.expedition_cycle.floor_index=2
+	var floor_two_exit_value:Array=session.run_progress().get("exit_position",[])
+	exit=Vector2i(int(floor_two_exit_value[0]),int(floor_two_exit_value[1]))
+	near_exit=exit
+	for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+		var floor_two_near:Vector2i=exit+offset
+		if not session.sim.world.in_bounds(floor_two_near):continue
+		var floor_two_terrain:=TerrainRegistry.definition(str(
+			session.sim.world.tile_at(floor_two_near).terrain))
+		if bool(floor_two_terrain.get("passable",false)):
+			near_exit=floor_two_near;break
+	state.group_anchor=exit
+	for member_id in state.party_member_ids:
+		session.sim.world.entities[int(member_id)].position=exit
+	sandbox._refresh();await process_frame;await process_frame
 	if not bool(session.run_progress().complete) or sandbox.phase_label.text!="승리":
 		failures.append("%s complete situation"%label)
 	var restart:=_button(sandbox,"ProductExecute")

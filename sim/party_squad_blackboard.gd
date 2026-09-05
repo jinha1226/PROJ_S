@@ -3,6 +3,7 @@ extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const PartyCommandScript = preload("res://sim/party_exception_command.gd")
+const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const CLAIM_CAP := 2
 
 
@@ -14,7 +15,7 @@ static func build(world, protagonist_action) -> Dictionary:
 		if member != null and member.presence == "DEPLOYED" and world.entities.has(entity_id):
 			deployed.append(int(entity_id))
 	var enemies: Array[int] = []
-	for entity_id in state.enemy_ids:
+	for entity_id in CampaignEncounterStreamScript.active_enemy_ids(world):
 		if world.entities.has(entity_id) and world.is_autonomous_target(entity_id):
 			enemies.append(int(entity_id))
 	enemies.sort()

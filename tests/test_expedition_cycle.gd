@@ -6,6 +6,7 @@ const Simulator = preload("res://sim/simulator.gd")
 const Command = preload("res://sim/sim_command.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
+const VisualMap = preload("res://playtest/party_visual_test_map.gd")
 
 
 func test_cycle_warning_bands_and_wire_are_deterministic() -> bool:
@@ -134,6 +135,102 @@ func test_map_anchor_portal_is_separate_clearable_and_persistent_in_town()->bool
 		"portal fixture returns to town at the deadline")
 	check_eq(session.town_overview().available_portal_floors,[1],
 		"the town departure surface lists only physically activated map anchors")
+	var portal_departure:Dictionary=session.depart_town(1,"ANCHOR_PORTAL")
+	check(bool(portal_departure.get("accepted",false)),
+		"an activated map anchor is a selectable town destination")
+	if bool(portal_departure.get("accepted",false)):
+		check_eq(session.expedition_cycle_status().expedition_index,2,
+			"portal departure starts a fresh expedition scope")
+		check_eq(session.party_status().protagonist_position,
+			[layout.campaign_floors[1].anchor_portal_position.x,
+				layout.campaign_floors[1].anchor_portal_position.y],
+			"town portal departure lands on the selected floor anchor")
+		check_eq(session.campaign_encounter_observation().remaining_enemy_count,39,
+			"the selected floor receives a fresh full encounter population")
+	check_eq(session.sim.world.world_state_error(),"",
+		"direct portal departure preserves canonical party and world state")
+	return finish()
+
+
+func test_floor_one_victory_portal_advances_to_floor_two_with_party_state()->bool:
+	var layout:Dictionary=VisualMap.product_dungeon(9191)
+	var entry:Vector2i=layout.entry_position
+	var transition:=entry+Vector2i(4,0)
+	var enemy_position:=entry+Vector2i(2,0)
+	var floor_one_enemy:={"position":enemy_position,"species_id":"goblin",
+		"group_id":"F1_TEST","route_id":"CENTRAL_WOODS"}
+	layout.enemy_roster=[floor_one_enemy];layout.enemy_positions=[enemy_position]
+	layout.transition_portal_position=transition;layout.exit_position=transition
+	layout.campaign_floors[1].enemy_roster=[floor_one_enemy]
+	layout.campaign_floors[1].enemy_positions=[enemy_position]
+	layout.campaign_floors[1].transition_portal_position=transition
+	layout.campaign_floors[1].exit_position=transition
+	var floor_two:Dictionary=layout.campaign_floors[2]
+	var floor_two_enemy_position:Vector2i=floor_two.entry_position+Vector2i(3,0)
+	var floor_two_enemy:={"position":floor_two_enemy_position,
+		"species_id":"kobold","group_id":"F2_TEST","route_id":"CENTRAL_ASH"}
+	floor_two.enemy_roster=[floor_two_enemy]
+	floor_two.enemy_positions=[floor_two_enemy_position]
+	layout.campaign_floors[2]=floor_two
+	var session=Session.new(9191,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	check(session.reset_party(9191,20260828,Session.SOLO_COMBAT_SCENARIO_ID,
+		layout,false),"compact two-floor campaign fixture initializes")
+	if session.sim==null:return finish()
+	var state=session.sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var first_enemy_id:=int(state.enemy_ids[0])
+	var enemy=session.sim.world.entities[first_enemy_id]
+	enemy.max_health=10;enemy.health=10
+	check_eq(session.sim.world.world_state_error(),"",
+		"compact one-group floor remains canonical")
+	check(session.commit_exploration(Command.wait(hero_id)).accepted,
+		"nearby encounter group creates ordinary contact")
+	check_eq(session.party_status().safe_phase,"CONTACT",
+		"floor contact uses the existing combat pipeline")
+	check(session.enter_solo_combat().accepted,"solo deployment enters combat")
+	for _turn in range(12):
+		if session.party_status().safe_phase=="GROUPED_COMPLETE":break
+		var tab:Dictionary=session.tab_attack_assessment()
+		if not bool(tab.get("accepted",false)):break
+		var result:Dictionary={}
+		if str(tab.get("tab_action",""))=="ATTACK":
+			result=session.commit_direct_solo_action(hero_id,"MELEE",[],
+				int(tab.target_id))
+		elif str(tab.get("tab_action",""))=="APPROACH":
+			result=session.commit_direct_solo_action(hero_id,"MOVE",tab.destination)
+		if not bool(result.get("accepted",false)):break
+	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE",
+		"clearing the only streamed group completes floor one")
+	var route:Dictionary=session.preview_exploration_route(transition)
+	check(bool(route.get("accepted",false)),"open floor portal has a route")
+	if bool(route.get("accepted",false)):
+		var moved:Dictionary=session.start_exploration_route(transition,
+			str(route.plan_hash))
+		for _step in range(8):
+			if session.sim.world.entities[hero_id].position==transition:break
+			if not bool(moved.get("accepted",false)):break
+			moved=session.continue_exploration_route()
+	check(session.floor_transition_assessment().accepted,
+		"standing on the cleared floor portal unlocks floor two")
+	var health_before:=int(session.sim.world.entities[hero_id].health)
+	var inventory_before:Dictionary=session.sim.world.inventory_of(hero_id).to_dict()
+	var advanced:Dictionary=session.advance_campaign_floor()
+	check(bool(advanced.get("accepted",false)),
+		"floor transition commits through the campaign facade: %s"%str(advanced))
+	if bool(advanced.get("accepted",false)):
+		check_eq([session.expedition_cycle_status().floor_index,
+			session.campaign_encounter_observation().group_count,
+			session.campaign_encounter_observation().remaining_enemy_count],
+			[2,1,1],"floor two starts with only its own streamed group")
+		check(first_enemy_id not in session._current_floor_enemy_ids(),
+			"the cleared floor-one enemy is outside the new combat scope")
+		check_eq([session.sim.world.entities[hero_id].health,
+			session.sim.world.inventory_of(hero_id).to_dict()],
+			[health_before,inventory_before],
+			"health, injuries and item ownership survive the floor transition")
+	check_eq(session.sim.world.world_state_error(),"",
+		"two-floor transition leaves strict canonical state")
+	check_eq(session._journal_wire_error(session.command_journal),"",
+		"floor transition records a replayable strict journal operation")
 	return finish()
 
 
