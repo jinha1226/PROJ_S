@@ -131,8 +131,26 @@ func test_food_ration_content_market_and_start_bag() -> bool:
 	var catalog_ids: Array = []
 	for row in Session.TOWN_MARKET_CATALOG: catalog_ids.append(str(row.definition_id))
 	check("FOOD_RATION" in catalog_ids, "town market sells rations")
-	var manual: Dictionary = session.use_inventory_item("START_RATION_001")
+	# A full-health hero is refused with item_heal_not_needed before the use_kind
+	# gate is ever reached, so wound a fixture with canonical combat damage first.
+	# Health is a projection of the event ledger, so no direct HP poke is allowed.
+	var wounded = Session.new(44, 20260828, Session.SOLO_FIXTURE_SCENARIO_ID)
+	var wounded_id := int(wounded.sim.world.party_encounter.protagonist_id)
+	check(bool(wounded.commit_exploration(Command.wait(wounded_id)).get("accepted", false)) \
+		and bool(wounded.enter_solo_combat().get("accepted", false)),
+		"ration fixture enters canonical combat")
+	for _turn in range(12):
+		if int(wounded.sim.world.entities[wounded_id].health) \
+			< int(wounded.sim.world.entities[wounded_id].max_health): break
+		if not bool(wounded.commit_direct_solo_action(wounded_id, "HOLD").get("accepted", false)): break
+	check(int(wounded.sim.world.entities[wounded_id].health) \
+		< int(wounded.sim.world.entities[wounded_id].max_health),
+		"canonical enemy damage clears the item_heal_not_needed gate")
+	var manual: Dictionary = wounded.use_inventory_item("START_RATION_001")
 	check(not bool(manual.get("accepted", false)), "rations are never used by hand")
-	check_eq(int(session.sim.world.inventory_of(hero_id).item("START_RATION_001").quantity), 2,
+	check_eq(str(manual.get("reason", "")), "item_use_unimplemented",
+		"a wounded hero is refused on the EAT use_kind, not on heal-not-needed")
+	check_eq(int(wounded.sim.world.inventory_of(wounded_id).item("START_RATION_001").quantity), 2,
 		"rejected manual use consumes nothing")
+	check_eq(wounded.sim.world.world_state_error(), "", "the rejected use leaves a canonical world")
 	return finish()
