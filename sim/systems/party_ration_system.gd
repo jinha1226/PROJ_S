@@ -34,8 +34,9 @@ static func process_tick(world, damage, processed_step_index: int) -> bool:
 	var intervals := elapsed / interval
 	if intervals <= 0: return true
 	var before_band := RulesScript.band(int(state.ration_milli))
-	var drain := intervals * RulesScript.drain_per_interval_milli(active_member_count(world))
-	state.ration_milli = maxi(0, int(state.ration_milli) - drain)
+	var before_milli := int(state.ration_milli)
+	var per_interval := RulesScript.drain_per_interval_milli(active_member_count(world))
+	state.ration_milli = maxi(0, before_milli - intervals * per_interval)
 	state.ration_processed_at = int(state.ration_processed_at) + intervals * interval
 	var after_band := RulesScript.band(int(state.ration_milli))
 	if after_band != before_band:
@@ -47,8 +48,12 @@ static func process_tick(world, damage, processed_step_index: int) -> bool:
 	# The meal above may have refilled the gauge; only an empty one after eating
 	# starves, and every whole starve interval the drain just processed bites once.
 	if RulesScript.band(int(state.ration_milli)) == "STARVING":
+		# A catch-up span is only starved for the part of it the gauge spent empty:
+		# the intervals the leftover ration still paid for cost nothing.
+		var positive_intervals := mini(intervals,
+			(before_milli + per_interval - 1) / per_interval)
 		var starve_interval := int(rules.starve_interval)
-		var starve_ticks := (intervals * interval) / starve_interval
+		var starve_ticks := ((intervals - positive_intervals) * interval) / starve_interval
 		for _tick in range(starve_ticks):
 			if not _starve_once(world, damage, processed_step_index, rules): return false
 	state.revision += 1

@@ -62,7 +62,11 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 		elif event_type == "party.ration_starve_tick":
 			var data: Dictionary = event.get("data", {}) if event is Dictionary else event.data
 			var stress_delta := maxi(0, int(data.get("stress", 0)))
-			for member_id in members:
+			# The tick names the members that actually starved on that boundary; a
+			# member who was down or absent for it carries none of its stress.
+			for member_wire in data.get("member_ids", []):
+				var member_id := int(str(member_wire))
+				if not direct.has(member_id): continue
 				direct[member_id] = int(direct[member_id]) + stress_delta
 				# A catch-up step can spend dozens of intervals at once; the deltas
 				# stack but the persisted code list stays one entry long.

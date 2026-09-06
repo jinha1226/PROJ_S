@@ -69,7 +69,7 @@ func validation_error()->String:
 		"CONSUMABLE","MATERIAL":
 			if not equip_slots.is_empty() or not weapon_id.is_empty():
 				return "invalid_carried_item_contract"
-	if use_kind=="HEALING" and category!="CONSUMABLE":return "invalid_item_use_kind"
+	if use_kind in ["HEALING","EAT"] and category!="CONSUMABLE":return "invalid_item_use_kind"
 	return ""
 
 

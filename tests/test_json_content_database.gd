@@ -8,6 +8,7 @@ const BodyCombat=preload("res://sim/body_combat_rules.gd")
 const Items=preload("res://sim/item_registry.gd")
 const Weapons=preload("res://sim/weapon_registry.gd")
 const Progression=preload("res://sim/progression_registry.gd")
+const HungerRules=preload("res://sim/party_ration_rules.gd")
 const ContentDatabase=preload("res://sim/content_database.gd")
 
 const DOCUMENTS := {
@@ -17,6 +18,7 @@ const DOCUMENTS := {
 	"WEAPONS":"res://data/content/weapons.json",
 	"PROFICIENCIES":"res://data/content/proficiencies.json",
 	"BODY_COMBAT_RULES":"res://data/content/body_combat_rules.json",
+	"HUNGER_RULES":"res://data/content/hunger_rules.json",
 }
 
 
@@ -35,7 +37,8 @@ func test_content_documents_are_readable_versioned_and_detached()->bool:
 			"%s loads detached data"%content_type)
 	check_eq([Species.registry_error(),Growth.registry_error(),Bodies.registry_error(),
 		BodyCombat.registry_error(),Items.registry_error(),Weapons.registry_error(),
-		Progression.registry_error()],["","","","","","",""],
+		Progression.registry_error(),HungerRules.registry_error()],
+		["","","","","","","",""],
 		"all JSON-backed registries pass strict validation")
 	check_eq(ContentDatabase.validation_error(),"",
 		"the session-level content database passes integrated validation")

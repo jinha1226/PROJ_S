@@ -93,12 +93,12 @@ func test_legacy_snapshot_reanchors_ration_clock() -> bool:
 func test_legacy_session_save_migrates_with_a_full_anchored_gauge() -> bool:
 	var source = Session.new()
 	var hero_id: int = int(source.sim.world.party_encounter.protagonist_id)
-	# A genuine pre-ration save carries no drain history at all. Park the source
-	# clock beyond the longest single action so the journalled step drains nothing
-	# and the fixture is a faithful v20 save rather than a downgraded modern one.
-	source.sim.world.party_encounter.ration_processed_at = Timing.MAX_WAIT_COST
-	check(bool(source.commit_exploration(Command.wait(hero_id)).get("accepted", false)),
-		"waiting advances the run before the save")
+	# A genuine pre-ration save carries no drain history at all, so the journalled
+	# step is shorter than one drain interval: the replay the loader runs against
+	# the migrated snapshot then has nothing of its own to subtract.
+	check(bool(source.commit_exploration(Command.wait_for(
+		int(Rules.rules().drain_interval) / 2, hero_id)).get("accepted", false)),
+		"a sub-interval wait advances the run before the save")
 	var encoded: Dictionary = JSON.parse_string(source.save_session_json())
 	encoded.snapshot.party_encounter.schema_version = PartyState.EMOTION_STATE_SCHEMA_VERSION
 	encoded.snapshot.party_encounter.erase("ration_milli")
@@ -368,8 +368,12 @@ func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
 	var starve_damage := int(Rules.rules().starve_damage)
 	_wait(session)
 	check_eq(Rules.band(int(state.ration_milli)), "STARVING", "the last interval empties the gauge")
+	check_eq(int(hero.health), health_before, "the interval the last ration paid for costs no HP")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), 0,
+		"emptying the gauge is not itself a starving interval")
+	_wait(session)
 	check_eq(int(hero.health), health_before - starve_damage,
-		"one starving interval costs starve_damage HP")
+		"the first interval spent at zero costs starve_damage HP")
 	check_eq(_events_of(session, "party.ration_starve_tick").size(), 1, "one starve tick event")
 	check_eq(_events_of(session, "combat.starvation_damage").size(), 1, "one starvation damage event")
 	var damage_event = _events_of(session, "combat.starvation_damage")[0]
@@ -428,6 +432,19 @@ func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
 		check_eq(batched.data.trigger_codes.count("STARVING"), 1,
 			"the batched leaf records the starving code once")
 	check_eq(session.sim.world.world_state_error(), "", "the batched morale leaf validates")
+	# A catch-up span is charged only for the intervals the gauge actually spent at
+	# zero: 1500 milli still pays for two of the three solo intervals below.
+	var ticks_before := _events_of(session, "party.ration_starve_tick").size()
+	var health_before_partial := int(hero.health)
+	state.ration_milli = 1500
+	state.ration_processed_at = int(session.sim.world.world_time) - 2 * interval
+	_wait(session)
+	check_eq(int(state.ration_milli), 0, "the partial catch-up empties the gauge")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), ticks_before + 1,
+		"three intervals with two of them paid for starve exactly once")
+	check_eq(int(hero.health), health_before_partial - starve_damage,
+		"the paid intervals cost no health")
+	check_eq(session.sim.world.world_state_error(), "", "the partial catch-up stays canonical")
 	return finish()
 
 
@@ -463,6 +480,57 @@ func test_tampered_starve_ticks_are_rejected_by_the_ledger() -> bool:
 			"%s is rejected" % str(tamper[2]))
 		check(WorldState.from_snapshot(forged) == null,
 			"%s never yields a world" % str(tamper[2]))
+	# A tick nothing points at is still an allowed morale/emotion source, so it has
+	# to prove its own envelope even with no damage leaf hanging off it.
+	var starve_damage := int(Rules.rules().starve_damage)
+	var honest_data := {"schema_version": 1, "ruleset_id": Rules.RULESET_ID,
+		"member_ids": [str(hero_id)], "damage": starve_damage,
+		"stress": Rules.starve_stress()}
+	check_eq(WorldState.snapshot_restore_error(_appended(snapshot,
+		"party.ration_starve_tick", hero_id, starve_damage, honest_data)), "",
+		"an honest stray tick is still accepted, so the forgeries below are the subject")
+	var loud_data: Dictionary = honest_data.duplicate(true)
+	loud_data.stress = Rules.starve_stress() + 500
+	var loud := _appended(snapshot, "party.ration_starve_tick", hero_id, starve_damage, loud_data)
+	check_eq(WorldState.snapshot_restore_error(loud), "starve_tick_envelope_invalid",
+		"a stray tick with inflated stress is rejected without any damage leaf")
+	check(WorldState.from_snapshot(loud) == null, "the inflated stray tick never yields a world")
+	var missing := _appended(snapshot, "party.ration_missing", hero_id, 0,
+		{"schema_version": 1, "ruleset_id": Rules.RULESET_ID,
+			"ration_milli": Rules.ration_max_milli() + 1})
+	check_eq(WorldState.snapshot_restore_error(missing), "ration_missing_envelope_invalid",
+		"a forged empty-bag notice is rejected")
+	check(WorldState.from_snapshot(missing) == null, "the forged notice never yields a world")
+	return finish()
+
+
+func _appended(snapshot: Dictionary, type: String, actor_id: int, magnitude: int,
+		data: Dictionary) -> Dictionary:
+	# The ledger is contiguous, so a forged row lands at the tail with the next id
+	# and the last row's step and clock: nothing but its own envelope is unusual.
+	var forged: Dictionary = snapshot.duplicate(true)
+	var last: Dictionary = forged.events[forged.events.size() - 1]
+	forged.events.append({"id": str(forged.events.size() + 1),
+		"step_index": str(last.step_index), "world_time": str(last.world_time),
+		"type": type, "actor_id": str(actor_id), "target_id": "-1",
+		"position": last.position.duplicate(), "magnitude": magnitude,
+		"cause_id": "-1", "instigator_id": str(actor_id), "data": data.duplicate(true)})
+	forged.next_event_id = str(int(str(forged.next_event_id)) + 1)
+	return forged
+
+
+func test_ration_clock_ahead_of_world_time_is_rejected() -> bool:
+	# wire_error cannot see the world clock, so a drain clock parked in the future
+	# is only catchable where the two fields meet.
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	_wait(session)
+	var snapshot: Dictionary = session.sim.snapshot()
+	check_eq(WorldState.snapshot_restore_error(snapshot), "", "the honest snapshot restores")
+	var forged: Dictionary = snapshot.duplicate(true)
+	forged.party_encounter.ration_processed_at = str(int(str(forged.world_time)) + 100)
+	check(not WorldState.snapshot_restore_error(forged).is_empty(),
+		"a drain clock ahead of the world clock is rejected")
+	check(WorldState.from_snapshot(forged) == null, "the forged clock never yields a world")
 	return finish()
 
 

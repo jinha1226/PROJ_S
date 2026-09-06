@@ -32,6 +32,10 @@ static func registry_error() -> String:
 			return "hunger_rule_not_positive_integer:%s" % key
 	if int(_CONTENT.hungry_below) >= int(_CONTENT.ration_max): return "hunger_threshold_above_max"
 	if int(_CONTENT.food_nutrition) > int(_CONTENT.ration_max): return "hunger_nutrition_above_max"
+	# The starve boundary is counted in whole drain intervals, so a starve_interval
+	# that does not tile the drain interval would silently drop or double bites.
+	if int(_CONTENT.starve_interval) % int(_CONTENT.drain_interval) != 0:
+		return "hunger_starve_interval_not_divisible"
 	if not _CONTENT.get("food_definition_id") is String \
 			or str(_CONTENT.food_definition_id).is_empty():
 		return "hunger_food_definition_invalid"
@@ -44,6 +48,10 @@ static func ration_max_milli() -> int:
 
 static func hungry_below_milli() -> int:
 	return int(_CONTENT.get("hungry_below", 0)) * 1000
+
+
+static func starve_stress() -> int:
+	return int(_CONTENT.get("starve_stress", 0))
 
 
 static func food_nutrition_milli() -> int:

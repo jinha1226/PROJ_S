@@ -4,6 +4,11 @@ extends SceneTree
 ## returns to town, dies, or the step budget ends, and prints ration outcomes.
 ## Not a pass/fail test; read the table and tune data/content/hunger_rules.json.
 ##
+## The probe measures the solo band only; the spec's 2/3-member balance arms are
+## deferred (trio drain is the same arithmetic plus 500 milli per extra member).
+## A STUCK / actor_tick_failed outcome is a known pre-existing _exploration_enemy_cadence
+## defect (enemies leaving the encounter stream mid-cadence), not a ration result.
+##
 ## The probe drives everything AUTO EXPLORE refuses to drive itself, so a run can
 ## actually reach the expedition deadline: the opening interaction, contact
 ## deployment, the engaged combat turns, the floor portal, and the short detour to

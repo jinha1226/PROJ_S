@@ -1862,6 +1862,8 @@ func _restored_state_error() -> String:
 	if not actor_loadout_registry_error.is_empty(): return actor_loadout_registry_error
 	var species_drop_registry_error := SpeciesDropRegistryScript.registry_error()
 	if not species_drop_registry_error.is_empty(): return species_drop_registry_error
+	var ration_rules_registry_error := PartyRationRulesScript.registry_error()
+	if not ration_rules_registry_error.is_empty(): return ration_rules_registry_error
 	var body_registry_error:=BodyTemplateRegistryScript.registry_error()
 	if not body_registry_error.is_empty():return body_registry_error
 	var body_combat_registry_error:=BodyCombatRulesScript.registry_error()
@@ -2295,6 +2297,14 @@ func _restored_state_error() -> String:
 		if event.type == "combat.starvation_damage":
 			var starvation_error := _starvation_damage_event_error(event)
 			if not starvation_error.is_empty(): return starvation_error
+		# A ration tick is an allowed morale/emotion source on its own, so it has to
+		# prove its envelope here rather than only when a damage leaf leans on it.
+		if event.type == "party.ration_starve_tick":
+			var starve_tick_error := _starve_tick_event_error(event)
+			if not starve_tick_error.is_empty(): return starve_tick_error
+		if event.type == "party.ration_missing":
+			var ration_missing_error := _ration_missing_event_error(event)
+			if not ration_missing_error.is_empty(): return ration_missing_error
 		if event.type == "entity.died" and event.data.get("schema_version") != 1:
 			var legacy_death_error := _legacy_death_event_error(event)
 			if not legacy_death_error.is_empty(): return legacy_death_error
@@ -3518,13 +3528,15 @@ func _starvation_damage_event_error(event) -> String:
 
 
 func _starve_tick_event_error(tick) -> String:
+	if party_encounter == null: return "starve_tick_without_party"
 	if tick.actor_id != party_encounter.protagonist_id or tick.target_id != -1 \
 			or not _exact_keys(tick.data, ["damage", "member_ids", "ruleset_id",
 				"schema_version", "stress"]) \
 			or tick.data.get("schema_version") != 1 \
 			or tick.data.get("ruleset_id") != PartyRationRulesScript.RULESET_ID \
 			or not tick.data.get("damage") is int or not tick.data.get("stress") is int \
-			or int(tick.data.damage) <= 0 or int(tick.data.stress) < 0 \
+			or int(tick.data.damage) <= 0 \
+			or int(tick.data.stress) != PartyRationRulesScript.starve_stress() \
 			or tick.magnitude != int(tick.data.damage) \
 			or not tick.data.get("member_ids") is Array \
 			or tick.data.member_ids.is_empty():
@@ -3534,6 +3546,22 @@ func _starve_tick_event_error(tick) -> String:
 				or Int64CodecScript.parse(member_wire, "starve tick member") \
 					not in party_encounter.party_member_ids:
 			return "starve_tick_member_invalid"
+	return ""
+
+
+func _ration_missing_event_error(event) -> String:
+	# The empty-bag notice carries no leaf of its own, so its envelope is the only
+	# thing standing between a forged row and the emotion model that reads it.
+	if party_encounter == null: return "ration_missing_without_party"
+	if event.actor_id != party_encounter.protagonist_id or event.target_id != -1 \
+			or event.magnitude != 0 \
+			or not _exact_keys(event.data, ["ration_milli", "ruleset_id", "schema_version"]) \
+			or event.data.get("schema_version") != 1 \
+			or event.data.get("ruleset_id") != PartyRationRulesScript.RULESET_ID \
+			or not event.data.get("ration_milli") is int \
+			or int(event.data.ration_milli) < 0 \
+			or int(event.data.ration_milli) > PartyRationRulesScript.ration_max_milli():
+		return "ration_missing_envelope_invalid"
 	return ""
 
 
@@ -4241,6 +4269,8 @@ func _party_runtime_error() -> String:
 	if not encounter_wire_error.is_empty():return encounter_wire_error
 	var cycle=party_encounter.expedition_cycle
 	if cycle==null:return "missing_expedition_cycle"
+	if int(party_encounter.ration_processed_at) > int(world_time):
+		return "invalid_ration_processed_at"
 	if cycle.opened_at_world_time>world_time \
 			or cycle.phase=="DUNGEON" and world_time>=cycle.closes_at_world_time \
 			or cycle.phase=="TOWN" and cycle.returned_at_world_time>world_time:
