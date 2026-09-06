@@ -5,6 +5,7 @@ const Portrait = preload("res://playtest/ascii_actor_portrait.gd")
 const Grid = preload("res://playtest/party_grid_view.gd")
 const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
+const FixedFrontAssets = preload("res://playtest/fixed_front_topdown_assets.gd")
 
 
 func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_kinds()->bool:
@@ -438,21 +439,28 @@ func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct(
 	grid.free();return finish()
 
 
-func test_product_floor_draw_paths_have_no_image_texture_or_tile_atlas() -> bool:
+func test_product_floor_stays_ascii_while_flat_actors_use_fixed_front_layers() -> bool:
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
-	check(not grid_source.is_empty(),"ASCII product renderer source is readable")
+	var asset_source:=FileAccess.get_file_as_string(
+		"res://playtest/fixed_front_topdown_assets.gd")
+	check(not grid_source.is_empty() and not asset_source.is_empty(),
+		"product renderer and fixed-front registry sources are readable")
 	check(grid_source.contains("_draw_terrain_glyph_pass") \
-			and grid_source.contains("_draw_topdown_ascii_actor") \
-			and grid_source.contains("_draw_ascii_glow_text"),
-		"product floor and actors use the restored ASCII draw passes")
-	for forbidden in ["ModularAssets","_draw_modular","draw_texture","Texture2D",
-			"TextureRect","Node3D","MeshInstance3D","Skeleton3D","Camera3D"]:
+			and grid_source.contains("_draw_topdown_fixed_front_actor") \
+			and grid_source.contains("draw_texture_rect") \
+			and grid_source.contains("_draw_topdown_ascii_actor"),
+		"ASCII floor, fixed-front actors and unsupported-species fallback are explicit")
+	for forbidden in ["ModularAssets","_draw_modular","TextureRect","Node3D",
+			"MeshInstance3D","Skeleton3D","Camera3D"]:
 		check(not grid_source.contains(forbidden),
-			"shipping grid contains no image or 3D dependency: %s"%forbidden)
+			"shipping grid contains no legacy directional or 3D dependency: %s"%forbidden)
+	check("/terrain/" not in asset_source and "/props/" not in asset_source \
+		and "/ui/" not in asset_source,
+		"actor replacement does not reintroduce tile or button textures")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
 	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
-		"empty product grid defaults to no image and no tile card")
+		"product terrain remains image-free with no tile card")
 	empty_grid.free()
 	return finish()
 
@@ -1437,7 +1445,7 @@ func test_ascii_actor_persists_last_move_facing_after_walk_settles()->bool:
 	grid.free();return finish()
 
 
-func test_flat_product_uses_foot_anchored_multirow_ascii_actor_over_2d_ground()->bool:
+func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()->bool:
 	var grid=Grid.new();grid.size=Vector2(380,380)
 	grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D)
 	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
@@ -1445,22 +1453,53 @@ func test_flat_product_uses_foot_anchored_multirow_ascii_actor_over_2d_ground()-
 	grid.set_observation(_actor_observation(Vector2i(6,7),"VISIBLE"))
 	var started:=int(grid.actor_motion_state()[77].started_at_ms)
 	var actor:Dictionary=grid._actor_by_id(77).duplicate(true)
-	actor["equipment_visual"]={"weapon_id":"CROSSBOW"}
-	var moving:Dictionary=grid.topdown_ascii_actor_render_spec(actor,false,started+45)
-	check(bool(moving.visible) and int(moving.row_count)==3 \
-			and int(moving.column_count)==5 and not bool(moving.get("draw_image",false)),
-		"flat product actor is the existing multi-character ASCII composition")
-	check(float(moving.visual_cell_ratio[0])>=1.3 \
-			and float(moving.visual_cell_ratio[0])<=1.6 \
-			and float(moving.visual_cell_ratio[1])>=1.3 \
-			and float(moving.visual_cell_ratio[1])<=1.6,
-		"SD ASCII actor stays within the 1.3-1.6 cell readability envelope")
-	check(Vector2(moving.weapon_center).x<Vector2(moving.center).x \
-			and moving.rows[2].text in ["  /| ","  |\\ "],
-		"persisted west facing controls both weapon side and compact walking legs")
+	actor["equipment_visual"]={"weapon_id":"CROSSBOW",
+		"weapon_definition_id":"WEAPON_CROSSBOW","armor_definition_id":"ARMOR_LEATHER"}
+	var moving:Dictionary=grid.fixed_front_actor_render_spec(actor,false,started+45)
+	check(bool(moving.visible) and bool(moving.uses_sprite) \
+			and moving.body_texture!=null and moving.armor_texture!=null \
+			and moving.weapon_texture!=null,
+		"flat product composes the generated species, armor and weapon layers")
+	check(float(moving.visual_cell_ratio)>=1.3 \
+			and float(moving.visual_cell_ratio)<=1.6,
+		"fixed-front actor stays within the zoomed-out SD readability envelope")
+	check(bool(moving.fixed_front) and bool(moving.one_cell_authority) \
+			and not bool(moving.changes_mapping),
+		"facing-independent art never changes movement or occupancy authority")
 	check_eq(grid.actor_in_world_cell(Vector2i(6,7)),77,
-		"oversized ASCII art keeps one-cell actor authority")
+		"oversized fixed-front art keeps one-cell actor authority")
+	var ghost:=actor.duplicate(true)
+	ghost["position"]=[8,8];ghost["display_position"]=[8,8]
+	ghost["logical_position"]=[8,8]
+	var ghost_spec:=grid.fixed_front_actor_render_spec(ghost,true,started+45)
+	check(absf(Rect2(ghost_spec.bounds).get_center().x-
+		grid.world_to_pixel_center(Vector2i(8,8)).x)<0.01,
+		"formation ghost uses its preview cell rather than the live actor position")
 	grid.free();return finish()
+
+
+func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool:
+	for species_id in ["human","elf","dwarf","orc","beastkin"]:
+		var texture:Texture2D=FixedFrontAssets.body_texture(species_id)
+		check(texture!=null and texture.get_size()==Vector2(96,96),
+			"%s owns a common 96x96 fixed-front base"%species_id)
+	for definition_id in ["WEAPON_SHORT_SWORD","WEAPON_HAND_AXE","WEAPON_MACE",
+			"WEAPON_SPEAR","WEAPON_BOW","WEAPON_CROSSBOW"]:
+		var texture:Texture2D=FixedFrontAssets.weapon_texture(definition_id)
+		check(texture!=null and texture.get_size()==Vector2(96,96),
+			"%s owns an aligned weapon layer"%definition_id)
+	var west:=FixedFrontAssets.actor_layer_spec({"species_id":"elf","facing":[-1,0],
+		"equipment_visual":{"weapon_definition_id":"WEAPON_BOW",
+		"armor_definition_id":"ARMOR_PADDED"}})
+	var east:=FixedFrontAssets.actor_layer_spec({"species_id":"elf","facing":[1,0],
+		"equipment_visual":{"weapon_definition_id":"WEAPON_BOW",
+		"armor_definition_id":"ARMOR_PADDED"}})
+	check_eq([west.body_texture,west.armor_texture,west.weapon_texture],
+		[east.body_texture,east.armor_texture,east.weapon_texture],
+		"movement direction never selects a different art layer")
+	check(not bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
+		"species without approved art explicitly fall back to ASCII")
+	return finish()
 
 
 func test_centered_protagonist_keeps_walk_pose_while_camera_tracks_the_step()->bool:

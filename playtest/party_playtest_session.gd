@@ -3120,8 +3120,10 @@ func _actor_observation(entity, logical_position: Vector2i,
 		"is_enemy":is_enemy,
 		"sprite_frame":0 if member != null and member.role == "PROTAGONIST" \
 			else (4 if member != null else 5)}
-	if member != null and member.role == "PROTAGONIST":
-		dto["equipment_visual"]=_protagonist_equipment_visual()
+	if member != null:
+		# Every recruited actor uses the same loadout rules as the protagonist, so
+		# the presentation DTO must carry each member's actual paper-doll layers.
+		dto["equipment_visual"]=_entity_equipment_visual(entity.id)
 	if is_enemy:
 		# This helper is called only while materializing a currently VISIBLE cell.
 		# MEMORY and UNSEEN rows never contain actors, so awareness authority cannot
@@ -3163,17 +3165,23 @@ func _protagonist_equipment_visual()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
-	var state=sim.world.party_encounter
-	var inventory=sim.world.inventory_of(state.protagonist_id)
+	return _entity_equipment_visual(sim.world.party_encounter.protagonist_id)
+
+
+func _entity_equipment_visual(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
+		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
+			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
+	var inventory=sim.world.inventory_of(entity_id)
 	if inventory==null:
 		return {"weapon_id":ItemOperationsScript.equipped_weapon_id(
-			sim.world,state.protagonist_id),"weapon_definition_id":"",
+			sim.world,entity_id),"weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
 	var main=inventory.equipped_item("MAIN_HAND")
 	var armor=inventory.equipped_item("ARMOR")
 	var off_hand=inventory.equipped_item("OFF_HAND")
 	return {
-		"weapon_id":ItemOperationsScript.equipped_weapon_id(sim.world,state.protagonist_id),
+		"weapon_id":ItemOperationsScript.equipped_weapon_id(sim.world,entity_id),
 		"weapon_definition_id":str(main.definition_id) if main!=null else "",
 		"armor_definition_id":str(armor.definition_id) if armor!=null else "",
 		"off_hand_definition_id":str(off_hand.definition_id) if off_hand!=null else "",

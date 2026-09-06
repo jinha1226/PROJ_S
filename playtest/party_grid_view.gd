@@ -15,6 +15,7 @@ const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
+const FixedFrontAssets = preload("res://playtest/fixed_front_topdown_assets.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
 const RegularFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
@@ -114,6 +115,7 @@ var melee_vfx:MeleeVfxOverlay
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	clip_contents=true; resized.connect(_on_visual_geometry_changed)
 	_ensure_melee_vfx()
 	_torch_timer=Timer.new();_torch_timer.name="TorchFlickerTimer"
@@ -2054,7 +2056,7 @@ func _draw() -> void:
 	_draw_ground_items()
 	for visual_row in _sorted_visual_actor_rows():
 		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
-			_draw_topdown_ascii_actor(visual_row.actor,bool(visual_row.ghost),camera_offset)
+			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),camera_offset)
 		else:
 			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
 	_draw_actor_health_bars()
@@ -2070,6 +2072,79 @@ func _draw() -> void:
 	_draw_monster_list()
 	# Phase is communicated inside the field (glyph motion, ink impact and HUD),
 	# never by shrinking the playable view behind a decorative screen border.
+
+func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
+		camera_offset:Vector2=Vector2.ZERO)->void:
+	var spec:=fixed_front_actor_render_spec(actor,ghost,-1,camera_offset)
+	if not bool(spec.get("visible",false)):return
+	if not bool(spec.get("uses_sprite",false)):
+		_draw_topdown_ascii_actor(actor,ghost,camera_offset)
+		return
+	var shadow_rect:Rect2=spec.shadow_rect
+	var shadow_points:=PackedVector2Array()
+	for index in range(18):
+		var angle:=TAU*float(index)/18.0
+		shadow_points.append(shadow_rect.get_center()+Vector2(cos(angle)*shadow_rect.size.x*0.5,
+			sin(angle)*shadow_rect.size.y*0.5))
+	draw_colored_polygon(shadow_points,Color(str(spec.shadow_hex)))
+	var bounds:Rect2=spec.bounds
+	var modulate:=Color(str(spec.modulate_hex))
+	for texture_key in ["body_texture","armor_texture","weapon_texture"]:
+		var texture:Texture2D=spec.get(texture_key,null)
+		if texture!=null:draw_texture_rect(texture,bounds,false,modulate)
+	var style:Dictionary=spec.style
+	if bool(style.get("guarded",false)):
+		_draw_ascii_glow_text(BoldFont,"=",Vector2(spec.status_anchor)+Vector2(0,-5),
+			maxi(8,int(spec.status_font_size)),Color("#74d5ff"),0.18)
+	if bool(style.get("bleeding",false)):
+		_draw_ascii_glow_text(BoldFont,"!",Vector2(spec.status_anchor)+Vector2(
+			float(spec.status_font_size)*0.72,2),maxi(8,int(spec.status_font_size)),
+			Color("#ff5364"),0.24)
+
+
+func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
+		sample_time_ms:int=-1,camera_offset:Vector2=Vector2.ZERO)->Dictionary:
+	var position:=_position_from_actor(actor)
+	if not is_world_cell_visible(position):return {"visible":false}.duplicate(true)
+	var layer_spec:=FixedFrontAssets.actor_layer_spec(actor)
+	if not bool(layer_spec.uses_sprite):
+		return {"visible":true,"uses_sprite":false,
+			"fallback":"ASCII","fixed_front":true}.duplicate(true)
+	var entity_id:=int(actor.get("entity_id",-1))
+	# Formation ghosts own a preview position and must not borrow the same
+	# entity's currently deployed position from the live actor cache.
+	var visual_world:=Vector2(position) if ghost else _actor_visual_world_position(
+		entity_id,sample_time_ms)
+	if visual_world==Vector2(-1,-1):visual_world=Vector2(position)
+	var center:=_world_position_to_pixel_center(visual_world)
+	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
+	var cell:=cell_size_px()
+	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
+	var bob_ratio:=float(style.get("glyph_bob_ratio",0.0))
+	var sprite_size:=clampf(cell*1.50,24.0,42.0)
+	var foot_y:=center.y+cell*0.42+bob_ratio*cell*0.16
+	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
+	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,
+		foot_y-sprite_size*foot_anchor_ratio),Vector2.ONE*sprite_size)
+	var opacity:=float(style.get("opacity",1.0))
+	var life_state:=str(style.get("life_state","ACTIVE")).to_upper()
+	var modulate:=Color.WHITE
+	if ghost:modulate=Color(0.64,0.83,0.88,opacity)
+	elif life_state!="ACTIVE":modulate=Color(0.56,0.58,0.62,opacity)
+	else:modulate.a=opacity
+	var shadow_alpha:=0.14 if ghost else (0.20 if life_state!="ACTIVE" else 0.42)
+	var shadow_rect:=Rect2(Vector2(center.x-sprite_size*0.25,foot_y-sprite_size*0.07),
+		Vector2(sprite_size*0.50,sprite_size*0.14))
+	return layer_spec.merged({"visible":true,"uses_sprite":true,"bounds":bounds,
+		"logical_position":[position.x,position.y],"foot_y":foot_y,
+		"visual_cell_ratio":sprite_size/cell,"style":style,
+		"modulate_hex":"#"+modulate.to_html(true),"shadow_rect":shadow_rect,
+		"shadow_hex":"#"+Color(0.005,0.01,0.015,shadow_alpha).to_html(true),
+		"status_anchor":Vector2(bounds.end.x-sprite_size*0.16,bounds.position.y+sprite_size*0.12),
+		"status_font_size":clampi(int(roundf(sprite_size*0.32)),8,13),
+		"one_cell_authority":true,"changes_mapping":false},true).duplicate(true)
+
+
 func _draw_topdown_ascii_actor(actor:Dictionary,ghost:bool,
 		camera_offset:Vector2=Vector2.ZERO)->void:
 	var spec:=topdown_ascii_actor_render_spec(actor,ghost,-1,camera_offset)
@@ -2081,7 +2156,9 @@ func topdown_ascii_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var position:=_position_from_actor(actor)
 	if not is_world_cell_visible(position):return {"visible":false}.duplicate(true)
 	var entity_id:=int(actor.get("entity_id",-1))
-	var visual_world:=_actor_visual_world_position(entity_id,sample_time_ms)
+	var visual_world:=Vector2(position) if ghost else _actor_visual_world_position(
+		entity_id,sample_time_ms)
+	if visual_world==Vector2(-1,-1):visual_world=Vector2(position)
 	var center:=_world_position_to_pixel_center(visual_world)
 	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
 	var cell:=cell_size_px()
