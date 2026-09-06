@@ -1,9 +1,9 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 170
+const EXPLORATION_ACTOR_MOTION_MSEC := 85
 const CONTINUOUS_EXPLORATION_MOTION_MSEC := 100
-const MANUAL_CAMERA_SETTLE_MSEC := 140
+const MANUAL_CAMERA_SETTLE_MSEC := 85
 # AUTO and long routes should read as continuous travel rather than a sequence of
 # deliberate single-cell inputs. Motion overlaps the next 90ms cadence so actor
 # and camera interpolation remain visible without making a large floor tedious.
@@ -4513,19 +4513,19 @@ func _on_cell(position:Vector2i)->void:
 		var direct_delta:=position-hero_position
 		if direct_delta!=Vector2i.ZERO \
 				and maxi(absi(direct_delta.x),absi(direct_delta.y))==1:
-			# Adjacent taps need no macro-route snapshot/hash/path DTO. The canonical
-			# one-cell facade performs the same authoritative preview, commit, journal,
-			# turn, exposure and contact resolution without route-only bookkeeping.
+			# Adjacent taps need no macro-route snapshot/hash/path DTO. Let the canonical
+			# one-cell commit perform its own action plan exactly once; doing a separate
+			# preview here made Web touch movement plan the same step three times. A
+			# rejected direct step still falls through to the route finder so an adjacent
+			# destination can retain its established legal-detour behavior.
 			var command=CommandScript.move_to(int(status.protagonist_id),position)
-			var direct_preview:Dictionary=session.preview_exploration(command)
-			if bool(direct_preview.get("accepted",false)):
+			var result:Dictionary=session.commit_exploration(command,true)
+			if bool(result.get("accepted",false)):
 				route_generation+=1;_clear_route_continue_schedule();route_preview.clear()
 				_clear_move_preview();_clear_companion_follow_plan()
-				var result:Dictionary=session.commit_exploration(command)
 				_record_result(result,true,"%s 이동 불가"%_protagonist_name())
-				if bool(result.get("accepted",false)):
-					action_feedback_text="한 칸 이동했습니다."
-					_pickup_pending_ground_item_if_reached()
+				action_feedback_text="한 칸 이동했습니다."
+				_pickup_pending_ground_item_if_reached()
 				_refresh_continuous_exploration_surface(session.party_status())
 				return
 		var preview:Dictionary=session.preview_exploration_route(position)
