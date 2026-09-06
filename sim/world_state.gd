@@ -1202,6 +1202,12 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		else EncounterLabStateScript.from_dict(value.encounter_lab)
 	restored.party_encounter = null if value.get("party_encounter") == null \
 		else PartyEncounterStateScript.from_dict(value.party_encounter)
+	if restored.party_encounter != null \
+			and int(value.party_encounter.get("schema_version", 1)) \
+				< PartyEncounterStateScript.RATION_SCHEMA_VERSION:
+		# Pre-v22 rows carry no drain clock. Anchor it at the restored world time
+		# so the first tick after load does not bill the whole gap to the gauge.
+		restored.party_encounter.reset_ration(int(restored.world_time))
 	restored.scheduled_entries.clear()
 	for row in value.schedule_rows:
 		if not row is Dictionary: return null
@@ -1276,6 +1282,12 @@ static func _restore_unchecked(data: Dictionary) -> SimWorldState:
 	restored.item_state = WorldItemStateScript._from_valid_dict(data.item_state)
 	restored.encounter_lab = null if data.get("encounter_lab") == null else EncounterLabStateScript.from_dict(data.encounter_lab)
 	restored.party_encounter = null if data.get("party_encounter") == null else PartyEncounterStateScript.from_dict(data.party_encounter)
+	if restored.party_encounter != null \
+			and int(data.party_encounter.get("schema_version", 1)) \
+				< PartyEncounterStateScript.RATION_SCHEMA_VERSION:
+		# Pre-v22 saves carry no drain clock. Anchor it at the restored world time
+		# so the first tick after load does not bill the whole gap to the gauge.
+		restored.party_encounter.reset_ration(int(restored.world_time))
 	if restored.party_encounter!=null:
 		var progression_row:Variant=data.party_encounter.get("protagonist_progression")
 		if not progression_row is Dictionary \

@@ -3,6 +3,8 @@ extends "res://tests/test_case.gd"
 const Rules = preload("res://sim/party_ration_rules.gd")
 const Session = preload("res://playtest/party_playtest_session.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
+const WorldState = preload("res://sim/world_state.gd")
+const Command = preload("res://sim/sim_command.gd")
 
 
 func test_rules_load_and_bands_are_derived_from_content() -> bool:
@@ -58,4 +60,26 @@ func test_state_persists_ration_and_legacy_saves_load_full() -> bool:
 	check(not PartyState.wire_error(missing, session.sim.world.width, session.sim.world.height).is_empty(),
 		"v22 wire without ration keys is rejected")
 	check_eq(session.sim.world.world_state_error(), "", "world with ration state stays canonical")
+	return finish()
+
+
+func test_legacy_snapshot_reanchors_ration_clock() -> bool:
+	var session = Session.new()
+	var hero_id: int = int(session.sim.world.party_encounter.protagonist_id)
+	check(bool(session.commit_exploration(Command.wait(hero_id)).get("accepted", false)),
+		"waiting advances the run before the save")
+	check(int(session.sim.world.world_time) > 0, "waiting advanced world time before the save")
+	var snapshot: Dictionary = session.sim.snapshot()
+	var legacy_party: Dictionary = snapshot.party_encounter.duplicate(true)
+	legacy_party.erase("ration_milli"); legacy_party.erase("ration_processed_at")
+	legacy_party["schema_version"] = 21
+	snapshot["party_encounter"] = legacy_party
+	var restored = WorldState.from_snapshot(snapshot)
+	check(restored != null, "legacy v21 snapshot still restores")
+	if restored == null: return finish()
+	check_eq(int(restored.party_encounter.ration_milli), Rules.ration_max_milli(),
+		"legacy restore loads a full gauge")
+	check_eq(int(restored.party_encounter.ration_processed_at), int(restored.world_time),
+		"legacy restore anchors the drain clock at the restored world time")
+	check_eq(restored.world_state_error(), "", "re-anchored legacy world stays canonical")
 	return finish()
