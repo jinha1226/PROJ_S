@@ -84,6 +84,17 @@ jobs:
           test -s build/web/index.pck
           test -s build/web/NanumSquareR.LICENSE.txt
 
+      - name: Validate exported pack runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_log="$(mktemp)"
+          ./godot --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --quit-after 5 2>&1 | tee "$runtime_log"
+          if grep -Eq 'SCRIPT ERROR:|ERROR: Failed to load script' "$runtime_log"; then
+            echo "Exported Web pack contains a runtime script error" >&2
+            exit 1
+          fi
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
