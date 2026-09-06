@@ -118,6 +118,7 @@ var _torch_timer:Timer
 var _awareness_pulses:Dictionary={}
 var _speech_bubbles:Array[Dictionary]=[]
 var melee_vfx:MeleeVfxOverlay
+var pinch_zoom_enabled:=false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
@@ -2029,7 +2030,8 @@ func _begin_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2)->void
 	# adjacent cell therefore commits on touch-down, removing the finger-release
 	# round trip from the common one-step action. Occupied and distant cells retain
 	# release/long-press semantics for inspection, attacks, and route selection.
-	if kind=="TOUCH" and _pointer_gesture_target_kind=="CELL" \
+	if kind=="TOUCH" and not pinch_zoom_enabled \
+			and _pointer_gesture_target_kind=="CELL" \
 			and _hero_camera_position!=Vector2i(-1,-1) \
 			and maxi(absi(cell.x-_hero_camera_position.x),
 				absi(cell.y-_hero_camera_position.y))==1:
@@ -2223,7 +2225,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
-	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.15))
+	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
 	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,

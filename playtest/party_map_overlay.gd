@@ -3,8 +3,8 @@ extends Control
 
 ## Trigger-independent, full discovered-map folio. The component accepts the
 ## same compact scalar cartography DTO as PartyMinimap, but never retains rich
-## actor, intent, target or hazard data. It redraws only after data/layout/state
-## changes; there is no per-frame processing.
+## actor, intent, target or hazard data. Map cells and markers are vector shapes,
+## not ASCII glyphs. It redraws only after data/layout/state changes.
 
 signal opened
 signal closed(reason:String)
@@ -14,13 +14,12 @@ const AsciiFrame=preload("res://playtest/ascii_ui_frame.gd")
 const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 
-const GLYPH_UNKNOWN:=""
-const GLYPH_FLOOR:="."
-const GLYPH_WALL:="#"
-const GLYPH_EXIT:=">"
-const GLYPH_PORTAL:="O"
-const GLYPH_THREAT:="!"
-const GLYPH_HERO:="@"
+const PRIMITIVE_NONE:="NONE"
+const PRIMITIVE_TILE:="TILE"
+const PRIMITIVE_CIRCLE:="CIRCLE"
+const PRIMITIVE_DIAMOND:="DIAMOND"
+const PRIMITIVE_RING:="RING"
+const PRIMITIVE_TRIANGLE:="TRIANGLE"
 
 const BLACK_FIELD:=Color("#000306")
 const SCRIM:=Color("#000306d9")
@@ -42,8 +41,6 @@ const PANEL_INSET:=12.0
 const HEADER_HEIGHT:=30.0
 const FOOTER_HEIGHT:=30.0
 const FRAME_FONT_SIZE:=12
-const MIN_MAP_FONT_SIZE:=2
-const MAX_MAP_FONT_SIZE:=9
 
 var _world_width:=48
 var _world_height:=48
@@ -107,16 +104,16 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 	var state:=str(row.get("visibility_state","UNSEEN"))
 	var marker:=str(row.get("marker",""))
 	if state=="VISIBLE" and marker=="HERO":
-		return _glyph_spec(GLYPH_HERO,HERO_INK,"HERO",state,true)
+		return _shape_spec(PRIMITIVE_CIRCLE,HERO_INK,"HERO",state,0.92)
 	if state=="VISIBLE" and marker=="ENEMY":
-		return _glyph_spec(GLYPH_THREAT,THREAT_INK,"THREAT",state,true)
-	if marker=="PORTAL":return _glyph_spec(GLYPH_PORTAL,PORTAL_INK,"PORTAL",state,true)
-	if marker=="EXIT":return _glyph_spec(GLYPH_EXIT,EXIT_INK,"EXIT",state,true)
+		return _shape_spec(PRIMITIVE_DIAMOND,THREAT_INK,"THREAT",state,0.92)
+	if marker=="PORTAL":return _shape_spec(PRIMITIVE_RING,PORTAL_INK,"PORTAL",state,0.96)
+	if marker=="EXIT":return _shape_spec(PRIMITIVE_TRIANGLE,EXIT_INK,"EXIT",state,0.92)
 	if str(row.get("terrain_id","unknown"))=="wall":
-		return _glyph_spec(GLYPH_WALL,WALL_VISIBLE_INK if state=="VISIBLE" \
-			else WALL_MEMORY_INK,"STRUCTURE",state,true)
-	return _glyph_spec(GLYPH_FLOOR,VISIBLE_FLOOR_INK if state=="VISIBLE" \
-		else MEMORY_INK,"PASSABLE",state,false)
+		return _shape_spec(PRIMITIVE_TILE,WALL_VISIBLE_INK if state=="VISIBLE" \
+			else WALL_MEMORY_INK,"STRUCTURE",state,0.92)
+	return _shape_spec(PRIMITIVE_TILE,VISIBLE_FLOOR_INK if state=="VISIBLE" \
+		else MEMORY_INK,"PASSABLE",state,0.62 if state=="VISIBLE" else 0.48)
 
 func layout_spec(viewport_size:Vector2=size)->Dictionary:
 	var safe_size:=Vector2(maxf(1.0,viewport_size.x),maxf(1.0,viewport_size.y))
@@ -134,20 +131,18 @@ func layout_spec(viewport_size:Vector2=size)->Dictionary:
 		floor(panel.position.y+HEADER_HEIGHT)),Vector2(map_side,map_side))
 	var slot:=Vector2(map_rect.size.x/float(_world_width),map_rect.size.y/float(_world_height))
 	return {"panel_rect":panel,"map_rect":map_rect,"cell_size":slot,
-		"font_size":_font_size_for_slot(slot),"world_width":_world_width,
+		"minimum_marker_size":maxf(1.0,minf(slot.x,slot.y)*0.48),"world_width":_world_width,
 		"world_height":_world_height,"trigger_independent":true}.duplicate(true)
 
 func overlay_spec()->Dictionary:
-	return {"primitive":"FULL_ASCII_CARTOGRAPHY","visual_family":"DARK_FANTASY_IRON_FOLIO",
-		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
-		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
-		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
-			"portal":GLYPH_PORTAL,
-			"wall":GLYPH_WALL,"floor":GLYPH_FLOOR,"unknown":GLYPH_UNKNOWN},
+	return {"primitive":"FULL_VECTOR_CARTOGRAPHY","visual_family":"DARK_FANTASY_IRON_FOLIO",
+		"ui_font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
 		"uses_world_coordinates":true,"uses_sector_folding":false,
 		"stores_compact_scalars_only":true,"leaks_memory_actor":false,
 		"leaks_hazard":false,"leaks_target":false,"leaks_direction":false,
-		"uses_images":false,"uses_textures":false,"per_frame_process":false,
+		"uses_tile_rects":true,"uses_circles":true,"uses_polygons":true,
+		"uses_map_fonts":false,"uses_images":false,"uses_textures":false,
+		"per_frame_process":false,
 		"trigger_independent":true,
 		"close_modes":["OUTSIDE","BACK","TOGGLE","API"]}.duplicate(true)
 
@@ -189,20 +184,15 @@ func _row_priority(row:Dictionary)->int:
 	if str(row.get("terrain_id","unknown"))=="wall":return 20
 	return 10
 
-func _glyph_spec(glyph:String,color:Color,role:String,state:String,bold:bool)->Dictionary:
-	return {"glyph":glyph,"color":color,"role":role,"visibility_state":state,"bold":bold,
+func _shape_spec(primitive:String,color:Color,role:String,state:String,
+		fill_ratio:float)->Dictionary:
+	return {"primitive":primitive,"color":color,"role":role,"visibility_state":state,
+		"fill_ratio":fill_ratio,
 		"leaks_actor":false,"leaks_hazard":false,"leaks_target":false,
 		"leaks_direction":false}.duplicate(true)
 
 func _unknown_spec()->Dictionary:
-	return _glyph_spec(GLYPH_UNKNOWN,BLACK_FIELD,"UNKNOWN","UNSEEN",false)
-
-func _font_size_for_slot(slot:Vector2)->int:
-	for candidate in range(MAX_MAP_FONT_SIZE,MIN_MAP_FONT_SIZE-1,-1):
-		if CodingFontBold.get_height(candidate)<=slot.y+0.01 \
-			and CodingFontBold.get_string_size("#",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
-			return candidate
-	return MIN_MAP_FONT_SIZE
+	return _shape_spec(PRIMITIVE_NONE,BLACK_FIELD,"UNKNOWN","UNSEEN",0.0)
 
 func _gui_input(event:InputEvent)->void:
 	if not visible:return
@@ -227,42 +217,62 @@ func _draw()->void:
 	var layout:=layout_spec();var panel:Rect2=layout.panel_rect;var map_rect:Rect2=layout.map_rect
 	draw_rect(Rect2(Vector2.ZERO,size),SCRIM,true)
 	draw_rect(panel,PANEL,true)
-	_draw_ascii_frame(panel)
-	var slot:Vector2=layout.cell_size;var font_size:=int(layout.font_size)
+	_draw_vector_frame(panel)
+	draw_rect(map_rect,BLACK_FIELD,true)
+	var slot:Vector2=layout.cell_size
 	for y in range(_world_height):
 		for x in range(_world_width):
-			var spec:=cell_draw_spec(Vector2i(x,y));var glyph:=str(spec.glyph)
-			if glyph.is_empty():continue
-			var font:Font=CodingFontBold if bool(spec.bold) else CodingFont
-			var line_height:=font.get_height(font_size);var ascent:=font.get_ascent(font_size)
 			var origin:=map_rect.position+Vector2(float(x)*slot.x,float(y)*slot.y)
-			var baseline:=Vector2(origin.x,floor(origin.y+(slot.y-line_height)*0.5+ascent))
-			draw_string(font,baseline,glyph,HORIZONTAL_ALIGNMENT_CENTER,slot.x,font_size,spec.color)
-	var footer_y:=panel.end.y-8.0
-	draw_string(CodingFont,Vector2(panel.position.x+PANEL_INSET,footer_y),
-		"@ 주인공  ! 위협  O 거점  > 층간  바깥 터치: 닫기",HORIZONTAL_ALIGNMENT_CENTER,
-		panel.size.x-PANEL_INSET*2.0,10,AsciiFrame.BONE_DIM)
+			_draw_map_shape(Rect2(origin,slot),cell_draw_spec(Vector2i(x,y)),BLACK_FIELD)
+	_draw_vector_legend(panel)
 
-func _draw_ascii_frame(panel:Rect2)->void:
-	var cell_width:=maxf(1.0,CodingFont.get_string_size("━",HORIZONTAL_ALIGNMENT_LEFT,-1,
-		FRAME_FONT_SIZE).x);var line_height:=CodingFont.get_height(FRAME_FONT_SIZE)
-	var columns:=maxi(4,int(floor(panel.size.x/cell_width)))
-	var rows:=maxi(4,int(floor(panel.size.y/line_height)))
-	var top:="┏"+"━".repeat(columns-2)+"┓"
-	var bottom:="┗"+"━".repeat(columns-2)+"┛"
-	var ascent:=CodingFont.get_ascent(FRAME_FONT_SIZE)
-	draw_string(CodingFont,Vector2(panel.position.x,panel.position.y+ascent),top,
-		HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE,IRON_EDGE)
-	draw_string(CodingFont,Vector2(panel.position.x,panel.position.y+float(rows-1)*line_height+ascent),
-		bottom,HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE,IRON_EDGE.lerp(BLACK_FIELD,0.32))
-	for row in range(1,rows-1):
-		var y:=panel.position.y+float(row)*line_height+ascent
-		draw_string(CodingFont,Vector2(panel.position.x,y),"┃",HORIZONTAL_ALIGNMENT_LEFT,-1,
-			FRAME_FONT_SIZE,IRON_EDGE)
-		draw_string(CodingFont,Vector2(panel.end.x-cell_width,y),"┃",HORIZONTAL_ALIGNMENT_LEFT,-1,
-			FRAME_FONT_SIZE,IRON_EDGE)
-	draw_string(CodingFontBold,Vector2(panel.position.x+cell_width*2.0,panel.position.y+ascent),
-		"┫ 발견 지도 ┣",HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE,TITLE_INK)
+func _draw_map_shape(rect:Rect2,spec:Dictionary,hole_color:Color)->void:
+	var primitive:=str(spec.get("primitive",PRIMITIVE_NONE))
+	if primitive==PRIMITIVE_NONE:return
+	var color:Color=spec.get("color",BLACK_FIELD)
+	var ratio:=clampf(float(spec.get("fill_ratio",0.7)),0.1,1.0)
+	var center:=rect.get_center();var half:=minf(rect.size.x,rect.size.y)*ratio*0.5
+	match primitive:
+		PRIMITIVE_TILE:
+			draw_rect(Rect2(center-Vector2(half,half),Vector2(half*2.0,half*2.0)),color,true)
+		PRIMITIVE_CIRCLE:
+			draw_circle(center,maxf(0.75,half),color)
+		PRIMITIVE_DIAMOND:
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-half),
+				center+Vector2(half,0),center+Vector2(0,half),center+Vector2(-half,0)]),color)
+		PRIMITIVE_RING:
+			draw_circle(center,maxf(0.75,half),color)
+			draw_circle(center,maxf(0.35,half*0.48),hole_color)
+		PRIMITIVE_TRIANGLE:
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-half),
+				center+Vector2(half,half),center+Vector2(-half,half)]),color)
+
+func _draw_vector_frame(panel:Rect2)->void:
+	draw_rect(panel,IRON_EDGE,false,2.0)
+	draw_line(panel.position+Vector2(2,2),Vector2(panel.end.x-2,panel.position.y+2),
+		IRON_EDGE.lerp(TITLE_INK,0.18),1.0)
+	draw_line(Vector2(panel.position.x+2,panel.end.y-2),panel.end-Vector2(2,2),
+		IRON_EDGE.lerp(BLACK_FIELD,0.45),1.0)
+	var title:="발견 지도";var title_size:=CodingFontBold.get_string_size(title,
+		HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE)
+	draw_string(CodingFontBold,Vector2(panel.get_center().x-title_size.x*0.5,
+		panel.position.y+20.0),title,HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE,TITLE_INK)
+
+func _draw_vector_legend(panel:Rect2)->void:
+	var rows:=[
+		[PRIMITIVE_CIRCLE,HERO_INK,"주인공"],
+		[PRIMITIVE_DIAMOND,THREAT_INK,"위협"],
+		[PRIMITIVE_RING,PORTAL_INK,"거점"],
+		[PRIMITIVE_TRIANGLE,EXIT_INK,"층간"],
+	]
+	var usable_width:=panel.size.x-PANEL_INSET*2.0;var column_width:=usable_width/4.0
+	var y:=panel.end.y-FOOTER_HEIGHT*0.5
+	for index in range(rows.size()):
+		var origin:=Vector2(panel.position.x+PANEL_INSET+float(index)*column_width,y)
+		_draw_map_shape(Rect2(origin+Vector2(3,-5),Vector2(10,10)),
+			_shape_spec(str(rows[index][0]),rows[index][1],"LEGEND","VISIBLE",0.9),PANEL)
+		draw_string(CodingFont,origin+Vector2(17,4),str(rows[index][2]),
+			HORIZONTAL_ALIGNMENT_LEFT,column_width-19.0,10,AsciiFrame.BONE_DIM)
 
 func _key(position:Vector2i)->String:
 	return "%d:%d"%[position.x,position.y]

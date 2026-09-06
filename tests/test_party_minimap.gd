@@ -11,8 +11,8 @@ func test_sector_mapping_is_deterministic_and_specs_are_detached()->bool:
 		minimap.world_to_sector(Vector2i(6,6)),minimap.world_to_sector(Vector2i(47,47))],
 		[Vector2i(0,0),Vector2i(0,0),Vector2i(1,1),Vector2i(7,7)],
 		"48x48 folds into deterministic 6x6 world sectors")
-	var detached:=minimap.sector_draw_spec(Vector2i.ZERO);detached.glyph="X"
-	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).glyph,Minimap.GLYPH_MEMORY,
+	var detached:=minimap.sector_draw_spec(Vector2i.ZERO);detached.primitive="DIAMOND"
+	check_eq(minimap.sector_draw_spec(Vector2i.ZERO).primitive,Minimap.PRIMITIVE_TILE,
 		"public sector specs are detached")
 	minimap.free();return finish()
 
@@ -41,8 +41,8 @@ func test_sector_priority_is_hero_threat_portal_exit_wall_memory_unknown()->bool
 	var forward:=minimap.sector_draw_spec(Vector2i.ZERO)
 	visibility_tie.reverse();minimap.set_observation(_observation(48,48,visibility_tie))
 	var reverse:=minimap.sector_draw_spec(Vector2i.ZERO)
-	check_eq([forward.glyph,forward.color,forward.visibility_state],
-		[reverse.glyph,reverse.color,reverse.visibility_state],"equal priority is row-order independent")
+	check_eq([forward.primitive,forward.color,forward.visibility_state],
+		[reverse.primitive,reverse.color,reverse.visibility_state],"equal priority is row-order independent")
 	minimap.free();return finish()
 
 func test_memory_strips_live_markers_and_rich_payloads_without_leaking()->bool:
@@ -51,8 +51,8 @@ func test_memory_strips_live_markers_and_rich_payloads_without_leaking()->bool:
 	hidden["fire_intensity"]=90;hidden["target_id"]=99;hidden["direction"]=[1,0]
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,[hidden]))
 	var spec:Dictionary=minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(12,12)))
-	check_eq([spec.glyph,spec.role],[Minimap.GLYPH_MEMORY,"PASSABLE"],
-		"memory enemy becomes static passable ink")
+	check_eq([spec.primitive,spec.role],[Minimap.PRIMITIVE_TILE,"PASSABLE"],
+		"memory enemy becomes static passable tile")
 	check(not bool(spec.leaks_actor) and not bool(spec.leaks_direction) \
 		and not bool(spec.leaks_target) and not bool(spec.leaks_hazard),"no live fog data")
 	var stored:Dictionary=minimap._cells["12:12"];var keys:Array=stored.keys();keys.sort()
@@ -65,37 +65,40 @@ func test_static_exit_survives_memory_but_actor_markers_require_visibility()->bo
 	var anchor:=_cell(18,12,"MEMORY","stone_floor");anchor["feature_id"]="anchor_portal_active"
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,[legacy_exit,
 		anchor,_cell(24,24,"MEMORY","stone_floor","HERO")]))
-	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(12,12))).glyph,
-		Minimap.GLYPH_EXIT,"discovered static exit remains mapped")
-	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(18,12))).glyph,
-		Minimap.GLYPH_PORTAL,"discovered map anchor remains mapped separately")
-	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(24,24))).glyph,
-		Minimap.GLYPH_MEMORY,"remembered hero never remains live")
+	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(12,12))).primitive,
+		Minimap.PRIMITIVE_TRIANGLE,"discovered static exit remains mapped")
+	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(18,12))).primitive,
+		Minimap.PRIMITIVE_RING,"discovered map anchor remains mapped separately")
+	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(Vector2i(24,24))).primitive,
+		Minimap.PRIMITIVE_TILE,"remembered hero never remains live")
 	minimap.free();return finish()
 
-func test_glyph_color_and_renderer_contract_matches_dark_ascii_cartography()->bool:
+func test_shape_color_and_renderer_contract_matches_vector_cartography()->bool:
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,[
 		_cell(0,0,"VISIBLE","stone_floor","HERO"),
 		_cell(6,0,"VISIBLE","stone_floor","ENEMY"),
 		_cell(12,0,"MEMORY","stone_floor","EXIT"),
 		_cell(18,0,"MEMORY","stone_floor","PORTAL"),
 		_cell(24,0,"VISIBLE","wall"),_cell(30,0,"MEMORY","stone_floor")]))
-	var expected:=[[Minimap.GLYPH_HERO,Minimap.HERO_COLOR],
-		[Minimap.GLYPH_THREAT,Minimap.ENEMY_COLOR],[Minimap.GLYPH_EXIT,Minimap.EXIT_COLOR],
-		[Minimap.GLYPH_PORTAL,Minimap.PORTAL_COLOR],
-		[Minimap.GLYPH_WALL,Minimap.WALL_VISIBLE_COLOR],[Minimap.GLYPH_MEMORY,Minimap.MEMORY_COLOR]]
+	var expected:=[[Minimap.PRIMITIVE_CIRCLE,Minimap.HERO_COLOR],
+		[Minimap.PRIMITIVE_DIAMOND,Minimap.ENEMY_COLOR],
+		[Minimap.PRIMITIVE_TRIANGLE,Minimap.EXIT_COLOR],
+		[Minimap.PRIMITIVE_RING,Minimap.PORTAL_COLOR],
+		[Minimap.PRIMITIVE_TILE,Minimap.WALL_VISIBLE_COLOR],
+		[Minimap.PRIMITIVE_TILE,Minimap.MEMORY_COLOR]]
 	for x in range(expected.size()):
 		var spec:=minimap.sector_draw_spec(Vector2i(x,0))
-		check_eq([spec.glyph,spec.color],expected[x],"semantic glyph/color %d"%x)
+		check_eq([spec.primitive,spec.color],expected[x],"semantic shape/color %d"%x)
 	var contract:=minimap.cartography_spec()
 	check_eq([contract.columns,contract.rows,contract.primitive,contract.background],
-		[8,8,"ASCII_SECTOR_GLYPHS","BLACK_FIELD"],"square eight-sector cartography")
-	check(not contract.uses_tile_rects and not contract.uses_circles and not contract.uses_images,
-		"no colored tile rect, circle or image primitive")
-	check_eq(contract.font_path,"res://assets/fonts/LivingWorldMonoKR.ttf","bundled font")
+		[8,8,"VECTOR_SECTOR_MARKS","BLACK_FIELD"],"square eight-sector cartography")
+	check(contract.uses_tile_rects and contract.uses_circles and contract.uses_polygons \
+			and not contract.uses_fonts and not contract.uses_images,
+		"map uses font-free vector tiles and markers")
 	var source:=FileAccess.get_file_as_string("res://playtest/party_minimap.gd")
-	check("draw_circle" not in source and source.count("draw_rect(")==1 \
-		and "draw_texture" not in source,"product source has one black field and glyphs only")
+	check("draw_circle" in source and source.count("draw_rect(")>=2 \
+		and "draw_string" not in source and "draw_texture" not in source,
+		"product minimap draws vector shapes without glyphs or textures")
 	minimap.free();return finish()
 
 func test_legacy_rich_observation_still_maps_visible_actors()->bool:
@@ -132,8 +135,8 @@ func test_product_compact_dto_publishes_only_discovered_static_exit()->bool:
 	check_eq(keys,["marker","position","terrain_id","visibility_state"],
 		"exit row keeps the established scalar DTO")
 	var minimap=Minimap.new();minimap.set_observation(discovered_dto)
-	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(exit_position)).glyph,
-		Minimap.GLYPH_EXIT,"product DTO reaches the ASCII cartography")
+	check_eq(minimap.sector_draw_spec(minimap.world_to_sector(exit_position)).primitive,
+		Minimap.PRIMITIVE_TRIANGLE,"product DTO reaches vector cartography")
 	check_eq(session.sim.snapshot(),before_snapshot,"minimap discovery leaves authority unchanged")
 	check_eq(session.command_journal,before_journal,"minimap discovery leaves journal unchanged")
 	minimap.free();return finish()
@@ -143,9 +146,8 @@ func test_compact_allocations_are_crisp_clipped_and_idle()->bool:
 	for allocation in [Vector2(52,50),Vector2(66,50)]:
 		minimap.size=allocation
 		var slot:=Vector2(allocation.x/8.0,allocation.y/8.0)
-		var font_size:=minimap._font_size_for_slot(slot)
-		check(font_size>=5 and Minimap.CodingFontBold.get_height(font_size)<=slot.y+0.01,
-			"%s font fits sector height"%allocation)
+		check(minf(slot.x,slot.y)>=6.0,
+			"%s vector sector remains large enough to read"%allocation)
 	check(minimap.clip_contents and not bool(minimap.cartography_spec().per_frame_process),
 		"clipped and no per-frame work")
 	check_eq(minimap._sectors.size(),64,"cache remains exactly 64 sectors")

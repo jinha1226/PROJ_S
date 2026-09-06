@@ -2,6 +2,7 @@ extends SceneTree
 
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
+const Command=preload("res://sim/sim_command.gd")
 
 var failures:Array[String]=[]
 
@@ -29,31 +30,55 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	root.add_child(sandbox);await process_frame;await process_frame
 	var default_count:=Session.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 	var default_index:=Session.PRODUCT_ZOOM_CELL_COUNTS.find(default_count)
-	var zoomed_out_count:=int(Session.PRODUCT_ZOOM_CELL_COUNTS[default_index+1])
+	var zoomed_in_count:=int(Session.PRODUCT_ZOOM_CELL_COUNTS[default_index-1])
 	_check(sandbox.grid.visible_cell_count==default_count,
 		"%s fresh product zoom does not match the shared default"%viewport_size)
 	_check(is_equal_approx(sandbox._product_zoom_scale(default_count),15.0/float(default_count)),
 		"%s default product zoom is not derived from the 15-cell reference"%viewport_size)
-	_check(sandbox.grid_zoom_controls.is_visible_in_tree(),
-		"%s product zoom controls are hidden"%viewport_size)
+	_check(not sandbox.grid_zoom_controls.visible \
+			and not sandbox.grid_zoom_out_button.visible \
+			and not sandbox.grid_zoom_in_button.visible,
+		"%s obsolete zoom buttons are still visible"%viewport_size)
 	_check(sandbox.find_child("GraphicsModeToggle",true,false)==null \
 		and sandbox.find_child("Open3DModelLab",true,false)==null \
 		and sandbox.grid.graphics_mode_id()=="FLAT_2D",
 		"%s product surface exposes a legacy 2.5D/3D control"%viewport_size)
 	var map_rect:Rect2=sandbox.grid.get_global_rect()
-	var out_rect:Rect2=sandbox.grid_zoom_out_button.get_global_rect()
-	var in_rect:Rect2=sandbox.grid_zoom_in_button.get_global_rect()
-	_check(out_rect.size.x>=44.0 and out_rect.size.y>=44.0 \
-		and in_rect.size.x>=44.0 and in_rect.size.y>=44.0,
-		"%s zoom hit rect is below 44px"%viewport_size)
-	_check(map_rect.encloses(out_rect) and map_rect.encloses(in_rect) \
-		and not out_rect.intersects(in_rect),
-		"%s zoom controls overlap or leave the map"%viewport_size)
 	_check(sandbox.grid_zoom_controls.mouse_filter==Control.MOUSE_FILTER_IGNORE \
-		and sandbox.grid_zoom_out_button.mouse_filter==Control.MOUSE_FILTER_STOP \
-		and sandbox.grid_zoom_in_button.mouse_filter==Control.MOUSE_FILTER_STOP \
-		and sandbox.grid_zoom_controls.z_index>sandbox.grid.melee_vfx.z_index,
-		"%s zoom overlay input/layer contract"%viewport_size)
+		and sandbox.grid_zoom_out_button.mouse_filter==Control.MOUSE_FILTER_IGNORE \
+		and sandbox.grid_zoom_in_button.mouse_filter==Control.MOUSE_FILTER_IGNORE,
+		"%s hidden zoom buttons still claim pointer input"%viewport_size)
+	var initial_status:Dictionary=session.party_status()
+	var initial_hero:=Vector2i(int(initial_status.protagonist_position[0]),
+		int(initial_status.protagonist_position[1]))
+	var adjacent_goal:=Vector2i(-1,-1)
+	for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,
+			Vector2i(1,-1),Vector2i(1,1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		var candidate:Vector2i=initial_hero+Vector2i(direction)
+		var candidate_pixel:Vector2=sandbox.grid.get_global_rect().position \
+			+sandbox.grid.world_to_pixel_center(candidate)
+		var covered_by_npc_card:bool=sandbox.nearby_npc_panel.is_visible_in_tree() \
+			and sandbox.nearby_npc_panel.get_global_rect().has_point(candidate_pixel)
+		if not covered_by_npc_card and bool(session.preview_exploration(Command.move_to(
+				int(initial_status.protagonist_id),candidate)).get("accepted",false)):
+			adjacent_goal=candidate;break
+	_check(adjacent_goal!=Vector2i(-1,-1),
+		"%s no adjacent touch-move fixture"%viewport_size)
+	if adjacent_goal!=Vector2i(-1,-1):
+		var step_before:=int(session.sim.world.step_index)
+		var move_press:=InputEventScreenTouch.new();move_press.index=51
+		move_press.pressed=true;move_press.position=sandbox.grid.get_global_rect().position \
+			+sandbox.grid.world_to_pixel_center(adjacent_goal)
+		root.push_input(move_press,true);await process_frame
+		_check(int(session.sim.world.step_index)==step_before,
+			"%s first finger committed before pinch classification"%viewport_size)
+		var move_release:=InputEventScreenTouch.new();move_release.index=51
+		move_release.pressed=false;move_release.position=move_press.position
+		root.push_input(move_release,true);await process_frame;await process_frame
+		var moved_status:Dictionary=session.party_status()
+		_check(Vector2i(int(moved_status.protagonist_position[0]),
+				int(moved_status.protagonist_position[1]))==adjacent_goal,
+			"%s ordinary one-finger tap stopped moving after pinch support"%viewport_size)
 
 	var route_started:=_start_long_route(session)
 	_check(route_started,"%s could not prepare retained route"%viewport_size)
@@ -62,18 +87,42 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	var journal_before:Array=session.command_journal.duplicate(true)
 	var emitted_cells:Array=[]
 	sandbox.grid.world_cell_pressed.connect(func(position):emitted_cells.append(position))
-	await _touch(out_rect.get_center(),61)
-	_check(sandbox.grid.visible_cell_count==zoomed_out_count \
-		and sandbox._product_zoom_cell_count==zoomed_out_count,
-		"%s [-] did not zoom out exactly one step"%viewport_size)
+	# Keep both fingers on uncovered floor; the nearby-NPC card remains an
+	# intentional non-map interaction surface.
+	var pinch_center:=Vector2(map_rect.get_center().x,map_rect.end.y-60.0)
+	var first:=InputEventScreenTouch.new();first.index=61;first.pressed=true
+	first.position=pinch_center-Vector2(50,0)
+	var second:=InputEventScreenTouch.new();second.index=62;second.pressed=true
+	second.position=pinch_center+Vector2(50,0)
+	var spread:=InputEventScreenDrag.new();spread.index=62
+	spread.position=pinch_center+Vector2(65,0)
+	root.push_input(first,true);await process_frame
+	root.push_input(second,true);await process_frame
+	root.push_input(spread,true);await process_frame
+	_check(sandbox._product_pinch_gesture_active,
+		"%s did not recognize a two-finger pinch"%viewport_size)
+	_check(sandbox.grid.visible_cell_count==zoomed_in_count \
+		and sandbox._product_zoom_cell_count==zoomed_in_count,
+		"%s spreading two fingers did not zoom in exactly one step"%viewport_size)
 	_check(session.sim.snapshot()==snapshot_before and session.command_journal==journal_before,
 		"%s zoom changed canonical world/journal"%viewport_size)
 	_check(session.exploration_route_state()==route_before,
 		"%s zoom touch cancelled or changed active route"%viewport_size)
-	_check(emitted_cells.is_empty(),"%s zoom touch leaked to an underlying map cell"%viewport_size)
-	await _touch(sandbox.grid_zoom_in_button.get_global_rect().get_center(),62)
+	_check(emitted_cells.is_empty(),"%s pinch leaked to an underlying map cell"%viewport_size)
+	var close:=InputEventScreenDrag.new();close.index=62
+	close.position=pinch_center+Vector2(35,0)
+	root.push_input(close,true);await process_frame
 	_check(sandbox.grid.visible_cell_count==default_count,
-		"%s [+] did not restore the default view"%viewport_size)
+		"%s closing two fingers did not restore the default view"%viewport_size)
+	var release_second:=InputEventScreenTouch.new();release_second.index=62
+	release_second.pressed=false;release_second.position=close.position
+	var release_first:=InputEventScreenTouch.new();release_first.index=61
+	release_first.pressed=false;release_first.position=first.position
+	root.push_input(release_second,true);await process_frame
+	root.push_input(release_first,true);await process_frame
+	_check(sandbox._product_pinch_points.is_empty() \
+			and not sandbox._product_pinch_gesture_active,
+		"%s pinch release did not consume and clear both fingers"%viewport_size)
 
 	var actor_sizes_by_zoom:Dictionary={}
 	for count in Session.PRODUCT_ZOOM_CELL_COUNTS:
@@ -88,7 +137,7 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		var hero_actor:Dictionary=sandbox.grid._actor_by_id(int(status.protagonist_id))
 		var hero_render:Dictionary=sandbox.grid.fixed_front_actor_render_spec(hero_actor)
 		actor_sizes_by_zoom[int(count)]=Rect2(hero_render.get("bounds",Rect2())).size.x
-		_check(absf(float(hero_render.get("visual_cell_ratio",0.0))-1.15)<0.001,
+		_check(absf(float(hero_render.get("visual_cell_ratio",0.0))-1.5)<0.001,
 			"%s %d-cell zoom did not scale the character with its tile"%[viewport_size,count])
 		_check(sandbox.grid.world_to_pixel_center(hero).distance_to(
 			sandbox.grid.grid_rect().get_center())<0.01,
@@ -161,19 +210,19 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	# Zoom belongs exclusively to the uncovered game grid. Every product front
 	# surface hides the overlay immediately and restores the same camera step.
 	sandbox._open_hero_detail_tab("STATUS");await process_frame
-	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"status")
+	_check_zoom_hidden(sandbox,pinch_center,viewport_size,"status")
 	sandbox._select_member_detail_tab("SKILL");await process_frame
-	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"skill")
+	_check_zoom_hidden(sandbox,pinch_center,viewport_size,"skill")
 	sandbox._select_member_detail_tab("ITEM");await process_frame
-	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"equipment/item")
+	_check_zoom_hidden(sandbox,pinch_center,viewport_size,"equipment/item")
 	sandbox._close_member_detail();await process_frame
 	_check_zoom_restored(sandbox,viewport_size,"detail close")
 	sandbox._toggle_record_modal();await process_frame
-	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"record")
+	_check_zoom_hidden(sandbox,pinch_center,viewport_size,"record")
 	sandbox._close_record_modal("TEST");await process_frame
 	_check_zoom_restored(sandbox,viewport_size,"record close")
 	sandbox._toggle_map_overlay();await process_frame
-	_check_zoom_hidden(sandbox,out_rect.get_center(),viewport_size,"map")
+	_check_zoom_hidden(sandbox,pinch_center,viewport_size,"map")
 	var overlay_layout:Dictionary=sandbox.map_overlay.layout_spec(viewport_size)
 	var floor_bounds:Array=session._map_layout.get("floor_bounds",[])
 	var expected_floor_width:=int(floor_bounds[2])
@@ -190,22 +239,22 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	_check(sandbox.grid.visible_cell_count==25,"%s restart reset presentation zoom"%viewport_size)
 	sandbox.queue_free();await process_frame
 
-func _check_zoom_hidden(sandbox,old_button_center:Vector2,viewport_size:Vector2,
+func _check_zoom_hidden(sandbox,map_center:Vector2,viewport_size:Vector2,
 		label:String)->void:
 	var before_count:int=int(sandbox._product_zoom_cell_count)
 	var press:=InputEventScreenTouch.new();press.index=91;press.pressed=true
-	press.position=old_button_center
-	var intercepted:bool=sandbox._handle_product_zoom_touch(press)
+	press.position=map_center
+	var intercepted:bool=sandbox._handle_product_pinch_zoom(press)
 	_check(not sandbox.grid_zoom_controls.visible \
 			and not sandbox.grid_zoom_controls.is_visible_in_tree() \
-			and not sandbox._product_zoom_control_has_point(old_button_center) \
-			and not intercepted and sandbox._product_zoom_touch_index==-1 \
+			and not sandbox._product_zoom_control_has_point(map_center) \
+			and not intercepted and sandbox._product_pinch_points.is_empty() \
 			and sandbox._product_zoom_cell_count==before_count \
 			and sandbox.grid.modal_open,
 		"%s %s surface exposes/intercepts grid zoom"%[viewport_size,label])
 
 func _check_zoom_restored(sandbox,viewport_size:Vector2,label:String)->void:
-	_check(sandbox.grid_zoom_controls.is_visible_in_tree() \
+	_check(not sandbox.grid_zoom_controls.is_visible_in_tree() \
 			and sandbox._product_zoom_cell_count==25 \
 			and sandbox.grid.visible_cell_count==25 and not sandbox.grid.modal_open,
 		"%s %s did not restore preserved 25-cell zoom"%[viewport_size,label])

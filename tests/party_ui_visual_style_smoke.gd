@@ -79,7 +79,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s top rail order is not minimap / floor+timer / menu above the map"%viewport_size)
 	var ration_spec:Dictionary=sandbox.expedition_hud_spec()
 	_check(sandbox.ration_label!=null and sandbox.ration_label.is_visible_in_tree() \
-		and sandbox.ration_label.text=="식량 ▮▮▮▮" and str(ration_spec.get("ration_band",""))=="FED" \
+		and sandbox.ration_label.text=="식량 ■■■■" and str(ration_spec.get("ration_band",""))=="FED" \
 		and _inside_rect(sandbox.phase_panel,sandbox.ration_label) \
 		and sandbox.ration_label.get_theme_font_size("font_size")>=11,
 		"%s top rail lacks the four-cell ration gauge"%viewport_size)
@@ -398,8 +398,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.find_children("*","ProgressBar",true,false).is_empty(),
 		"%s DOS modal still contains a modern ProgressBar"%viewport_size)
 	sandbox._close_member_detail();await process_frame;await process_frame
-	_check(sandbox.grid_zoom_controls.visible and sandbox.grid.visible_cell_count==zoom_before_item,
-		"%s closing item modal did not restore the same map zoom"%viewport_size)
+	_check(not sandbox.grid_zoom_controls.visible \
+			and sandbox.grid.visible_cell_count==zoom_before_item,
+		"%s closing item modal changed zoom or restored obsolete buttons"%viewport_size)
 	sandbox.queue_free();await process_frame
 	await _check_item_equipment_touch(viewport_size)
 	await _check_nearby_npc_card_touch(viewport_size)
@@ -786,20 +787,21 @@ func _check_active_route_direction_override(viewport_size:Vector2)->void:
 	_check(chosen!=Vector2i.ZERO,"%s active route fixture has no manual direction"%viewport_size)
 	if chosen!=Vector2i.ZERO:
 		var step_before:=int(status.step_index);var journal_before:int=session.command_journal.size()
-		# A manual map touch on an adjacent cell cancels the active route on its
-		# press and commits exactly one authoritative step for the gesture.
+		# The first finger pauses the route while the UI waits to distinguish a tap
+		# from a pinch. Release commits the tap and cancels the old route exactly once.
 		var local_center:Vector2=sandbox.grid.world_to_pixel_center(origin+chosen)
 		var center:Vector2=sandbox.grid.get_global_rect().position+local_center
 		sandbox._schedule_route_continue(Time.get_ticks_msec())
 		var press:=InputEventScreenTouch.new();press.index=52;press.pressed=true;press.position=center
 		root.push_input(press,true);await process_frame
-		_check(not bool(session.exploration_route_state().get("active",false)),
-			"%s map touch press did not cancel the active route synchronously"%viewport_size)
+		_check(bool(session.exploration_route_state().get("active",false)) \
+				and sandbox.route_paused_by_pointer,
+			"%s first map finger did not pause the active route for pinch classification"%viewport_size)
 		await create_timer(float(sandbox.continuous_travel_cadence_msec+40)/1000.0).timeout
 		await process_frame
-		_check(int(session.party_status().step_index)<=step_before+1 \
-			and not bool(session.exploration_route_state().get("active",false)),
-			"%s cancelled route kept hopping after the manual press"%viewport_size)
+		_check(int(session.party_status().step_index)==step_before \
+			and bool(session.exploration_route_state().get("active",false)),
+			"%s paused route hopped before the first finger released"%viewport_size)
 		var release:=InputEventScreenTouch.new();release.index=52;release.pressed=false;release.position=center
 		root.push_input(release,true);await process_frame;await process_frame
 		_check(int(session.party_status().step_index)==step_before+1 \
@@ -926,28 +928,12 @@ func _screen_touch_grid_cell(sandbox,position:Vector2i,touch_index:int)->void:
 	if before_position_value is Array and before_position_value.size()==2:
 		before_position=Vector2i(int(before_position_value[0]),int(before_position_value[1]))
 	var local_position:Vector2=sandbox.grid.world_to_pixel_center(position)
-	var target:Dictionary=sandbox.grid._short_tap_target(position,local_position)
-	var targets_enemy:=false
-	for enemy_row in sandbox.session.enemy_targets():
-		if enemy_row is Dictionary and enemy_row.get("position",[])==[position.x,position.y]:
-			targets_enemy=true;break
-	var expects_immediate_move:bool=str(target.get("kind",""))=="CELL" \
-		and not targets_enemy \
-		and maxi(absi(position.x-before_position.x),absi(position.y-before_position.y))==1
 	var global_position:Vector2=sandbox.grid.get_global_rect().position+local_position
 	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=global_position
 	root.push_input(press,true);await process_frame
-	var after_press_position_value:Variant=sandbox.session.party_status().get(
-		"protagonist_position",[])
-	var after_press_position:=Vector2i(-999,-999)
-	if after_press_position_value is Array and after_press_position_value.size()==2:
-		after_press_position=Vector2i(int(after_press_position_value[0]),
-			int(after_press_position_value[1]))
-	if expects_immediate_move and after_press_position!=position:
-		failures.append(("adjacent map touch waited for release instead of moving on press " \
-			+ "phase=%s from=%s to=%s target=%s enemy=%s position=%s")%[
-			str(before_status.get("safe_phase","")),before_position,position,target,
-			targets_enemy,after_press_position])
+	if sandbox.session.party_status().get("protagonist_position",[]) \
+			!=[before_position.x,before_position.y]:
+		failures.append("first map finger moved before tap/pinch classification")
 	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=global_position
 	root.push_input(release,true);await process_frame;await process_frame
 

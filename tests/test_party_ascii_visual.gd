@@ -1493,8 +1493,8 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 			and moving.body_texture!=null and moving.armor_texture==null \
 			and moving.weapon_texture==null,
 		"flat product renders the full-body species base without equipment")
-	check(float(moving.visual_cell_ratio)>=1.0 \
-			and float(moving.visual_cell_ratio)<=1.2,
+	check(float(moving.visual_cell_ratio)>=1.3 \
+			and float(moving.visual_cell_ratio)<=1.6,
 		"fixed-front actor stays within the zoomed-out SD readability envelope")
 	check(bool(moving.outline_enabled) and absf(float(moving.outline_px)-1.0)<0.001 \
 			and not bool(moving.outline_changes_bounds),
@@ -1529,15 +1529,15 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool:
 	for species_id in ["human","elf","dwarf","orc","beastkin"]:
 		var texture:Texture2D=FixedFrontAssets.body_texture(species_id)
-		check(texture!=null and texture.get_size()==Vector2(16,16),
-			"%s owns a native 16x16 fixed-front pixel base"%species_id)
+		check(texture!=null and texture.get_size()==Vector2(24,24),
+			"%s owns a native 24x24 fixed-front pixel base"%species_id)
 		var image:=texture.get_image()
 		var left_foot_pixels:=0
 		var right_foot_pixels:=0
-		for y in range(12,16):
-			for x in range(0,8):
+		for y in range(19,24):
+			for x in range(0,12):
 				if image.get_pixel(x,y).a>0.25:left_foot_pixels+=1
-			for x in range(8,16):
+			for x in range(12,24):
 				if image.get_pixel(x,y).a>0.25:right_foot_pixels+=1
 		check(left_foot_pixels>0 and right_foot_pixels>0,
 			"%s keeps both feet in the lower full-body silhouette"%species_id)
@@ -1564,11 +1564,11 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 		var texture:Texture2D=FixedFrontAssets.monster_texture(monster_id)
 		var monster_spec:=FixedFrontAssets.actor_layer_spec({
 			"species_id":monster_id,"faction_id":"enemy","is_enemy":true})
-		check(texture!=null and texture.get_size()==Vector2(16,16) \
+		check(texture!=null and texture.get_size()==Vector2(24,24) \
 				and bool(monster_spec.uses_sprite) and bool(monster_spec.monster_sprite) \
 				and monster_spec.body_texture==texture \
-				and absf(float(monster_spec.visual_cell_ratio)-1.00)<0.001,
-			"%s hostile owns a native 16x16 fixed-front monster sprite"%monster_id)
+				and absf(float(monster_spec.visual_cell_ratio)-1.30)<0.001,
+			"%s hostile owns a native 24x24 fixed-front monster sprite"%monster_id)
 	return finish()
 
 
@@ -1581,8 +1581,8 @@ func test_flat_actor_scale_has_no_close_zoom_pixel_cap()->bool:
 	var far:Dictionary=grid.fixed_front_actor_render_spec(actor)
 	grid.set_hero_centered_view(Vector2i(7,7),9,77)
 	var close:Dictionary=grid.fixed_front_actor_render_spec(actor)
-	check(absf(float(far.visual_cell_ratio)-1.15)<0.001 \
-			and absf(float(close.visual_cell_ratio)-1.15)<0.001,
+	check(absf(float(far.visual_cell_ratio)-1.5)<0.001 \
+			and absf(float(close.visual_cell_ratio)-1.5)<0.001,
 		"flat character keeps the same world-space size at every zoom")
 	check(Rect2(close.bounds).size.x>Rect2(far.bounds).size.x*2.7,
 		"close zoom enlarges the fixed-front character instead of hitting a pixel cap")

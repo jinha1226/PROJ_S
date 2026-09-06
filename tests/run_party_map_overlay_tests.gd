@@ -17,5 +17,5 @@ func _init()->void:
 		else:
 			failed+=1
 			for error in test_case.errors:print("FAIL %s :: %s -- %s"%[TEST_FILE,method.name,error])
-	print("---- Party full ASCII map overlay: %d tests, %d failed ----"%[total,failed])
+	print("---- Party full vector map overlay: %d tests, %d failed ----"%[total,failed])
 	quit(1 if failed>0 else 0)

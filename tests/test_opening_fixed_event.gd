@@ -83,6 +83,22 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	check(_approach_opening(a), "player can follow the opening trail to the actor")
 	check(a.opening_event_status().can_interact,
 		"adjacent wounded actor exposes the choice")
+	var opening_npc_id:=int(a.sim.world.party_encounter.opening_event.npc_entity_id)
+	var opening_ui=Sandbox.new();opening_ui.size=Vector2(360,640)
+	opening_ui.initialize_for_headless_test(a,false)
+	check(opening_ui.nearby_npc_panel.visible \
+			and opening_ui.nearby_npc_entity_id==opening_npc_id \
+			and opening_ui.nearby_npc_story_state=="OPENING_CHOICE",
+		"first encounter automatically exposes the wounded NPC information card")
+	check("성격" in opening_ui.nearby_npc_personality.text \
+			and "호감" in opening_ui.nearby_npc_affinity.text \
+			and "물약 주기" in opening_ui.nearby_npc_recruitment.text,
+		"first encounter card shows NPC information before the potion decision")
+	opening_ui._on_actor(opening_npc_id)
+	check(opening_ui.member_detail_modal.visible \
+			and opening_ui.member_detail_entity_id==opening_npc_id,
+		"tapping the first-encounter NPC opens the detailed information window")
+	opening_ui.free()
 	var blood_cells:Array=[]
 	for cell in a.observe_party_world().get("cells",[]):
 		if cell is Dictionary and str(cell.get("ground_mark_id",""))=="blood" \

@@ -3467,12 +3467,21 @@ func is_opening_recruitment_candidate(entity_id:int)->bool:
 	return _is_opening_recruitment_candidate(entity_id)
 
 
-func _is_opening_recruitment_candidate(entity_id:int)->bool:
+func is_opening_npc(entity_id:int)->bool:
+	return _is_opening_npc(entity_id)
+
+
+func _is_opening_npc(entity_id:int)->bool:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
 	var opening=sim.world.party_encounter.opening_event
 	return opening!=null and int(opening.npc_entity_id)==entity_id \
-		and int(opening.reencounter_event_id)>0 \
 		and entity_id not in sim.world.party_encounter.enemy_ids
+
+
+func _is_opening_recruitment_candidate(entity_id:int)->bool:
+	if not _is_opening_npc(entity_id):return false
+	var opening=sim.world.party_encounter.opening_event
+	return int(opening.reencounter_event_id)>0
 
 
 func _is_opening_aided_candidate(entity_id:int)->bool:
@@ -5877,7 +5886,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var state = sim.world.party_encounter
 	var member = state.member(entity_id)
 	if member == null and (_rescue_discovery_event_for(entity_id) != null \
-			or _is_opening_recruitment_candidate(entity_id)):
+			or _is_opening_npc(entity_id)):
 		return _inspect_rescue_candidate(entity_id)
 	if member == null or not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found", null, null,
@@ -5981,10 +5990,15 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 	if not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found")
 	var entity = sim.world.entities[entity_id]
+	var opening_npc:=_is_opening_npc(entity_id)
 	var opening_candidate:=_is_opening_recruitment_candidate(entity_id)
-	var story_state := "OFFER_READY" if opening_candidate else rescue_story_state(entity_id)
+	var opening_choice:=str(sim.world.party_encounter.opening_event.choice) \
+		if opening_npc else ""
+	var story_state := "OFFER_READY" if opening_candidate else (
+		("OPENING_CHOICE" if opening_choice=="PENDING" else "OPENING_DEPARTING") \
+		if opening_npc else rescue_story_state(entity_id))
 	var profile = sim.world.party_encounter.opening_event.hexaco_profile \
-		if opening_candidate else _rescue_personality_profile(entity_id)
+		if opening_npc else _rescue_personality_profile(entity_id)
 	var facets: Array = []
 	if profile != null:
 		for row in _hexaco_facet_rows(profile):
@@ -5999,7 +6013,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 			sim.world, entity_id, hero_id))
 	var position: Vector2i = entity.position
 	var style := personality_style(profile)
-	var collapsed := story_state == "COLLAPSED_STORY"
+	var collapsed := story_state in ["COLLAPSED_STORY","OPENING_CHOICE"]
 	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
 		"entity_id":entity_id,"roster_slot":63,"role":"COMPANION",
 		"display_name":str(entity.display_name),"health":int(entity.health),
@@ -6012,8 +6026,9 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"active_party_member":false,"recruitable_member":true,"exiled_member":false,
 		"logical_position":[position.x,position.y],"busy_until":int(sim.world.world_time),
 		"remaining_time":0,"stress":0,
-		"readiness":"도움 필요" if collapsed else (
-			"재회 · 영입 대화 가능" if opening_candidate else "대화 가능"),
+		"readiness":"첫 조우 · 선택 대기" if story_state=="OPENING_CHOICE" else (
+			"도움 필요" if collapsed else (
+				"재회 · 영입 대화 가능" if opening_candidate else "대화 가능")),
 		"emotion":{"icon":"!" if collapsed else "●",
 			"label":"쓰러짐" if collapsed else "안정됨",
 			"reason":"심한 상처로 움직이지 못합니다." if collapsed \

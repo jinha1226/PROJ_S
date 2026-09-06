@@ -1,13 +1,11 @@
 class_name PartyMinimap
 extends Control
 
-## Low-resolution ASCII cartography. The 48x48 world is folded into eight
-## square sectors so the compact top rail retains legible glyph cells at 360px.
+## Low-resolution vector cartography. The world is folded into eight square
+## sectors so the compact top rail remains legible at 360px without font glyphs.
 ## Static presentation state is cached only when its observation changes.
 
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
-const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
-const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 
 const SECTOR_COLUMNS:=8
 const SECTOR_ROWS:=8
@@ -22,13 +20,12 @@ const ENEMY_COLOR:=Color("#a74343")
 const EXIT_COLOR:=Color("#5f8a66")
 const PORTAL_COLOR:=Color("#48bfc8")
 
-const GLYPH_UNKNOWN:=""
-const GLYPH_MEMORY:="."
-const GLYPH_WALL:="#"
-const GLYPH_EXIT:=">"
-const GLYPH_PORTAL:="O"
-const GLYPH_THREAT:="!"
-const GLYPH_HERO:="@"
+const PRIMITIVE_NONE:="NONE"
+const PRIMITIVE_TILE:="TILE"
+const PRIMITIVE_CIRCLE:="CIRCLE"
+const PRIMITIVE_DIAMOND:="DIAMOND"
+const PRIMITIVE_RING:="RING"
+const PRIMITIVE_TRIANGLE:="TRIANGLE"
 
 const PRIORITY_UNKNOWN:=0
 const PRIORITY_MEMORY:=10
@@ -124,28 +121,28 @@ func _candidate_for_row(row:Dictionary)->Dictionary:
 	var state:=AsciiStyleScript.visibility_state(row)
 	var marker:=str(row.get("marker","")).to_upper()
 	if state=="VISIBLE" and marker=="HERO":
-		return _glyph_spec(GLYPH_HERO,HERO_COLOR,PRIORITY_HERO,"HERO",state,true)
+		return _shape_spec(PRIMITIVE_CIRCLE,HERO_COLOR,PRIORITY_HERO,"HERO",state,0.78)
 	if state=="VISIBLE" and marker=="ENEMY":
-		return _glyph_spec(GLYPH_THREAT,ENEMY_COLOR,PRIORITY_THREAT,"THREAT",state,true)
+		return _shape_spec(PRIMITIVE_DIAMOND,ENEMY_COLOR,PRIORITY_THREAT,"THREAT",state,0.78)
 	if marker=="EXIT":
-		return _glyph_spec(GLYPH_EXIT,EXIT_COLOR,PRIORITY_EXIT,"EXIT",state,true)
+		return _shape_spec(PRIMITIVE_TRIANGLE,EXIT_COLOR,PRIORITY_EXIT,"EXIT",state,0.80)
 	if marker=="PORTAL":
-		return _glyph_spec(GLYPH_PORTAL,PORTAL_COLOR,PRIORITY_PORTAL,"PORTAL",state,true)
+		return _shape_spec(PRIMITIVE_RING,PORTAL_COLOR,PRIORITY_PORTAL,"PORTAL",state,0.86)
 	if str(row.get("terrain_id","unknown"))=="wall":
-		return _glyph_spec(GLYPH_WALL,WALL_VISIBLE_COLOR if state=="VISIBLE" \
-			else WALL_MEMORY_COLOR,PRIORITY_WALL,"STRUCTURE",state,true)
-	return _glyph_spec(GLYPH_MEMORY,VISIBLE_COLOR if state=="VISIBLE" else MEMORY_COLOR,
-		PRIORITY_MEMORY,"PASSABLE",state,false)
+		return _shape_spec(PRIMITIVE_TILE,WALL_VISIBLE_COLOR if state=="VISIBLE" \
+			else WALL_MEMORY_COLOR,PRIORITY_WALL,"STRUCTURE",state,0.88)
+	return _shape_spec(PRIMITIVE_TILE,VISIBLE_COLOR if state=="VISIBLE" else MEMORY_COLOR,
+		PRIORITY_MEMORY,"PASSABLE",state,0.42)
 
-func _glyph_spec(glyph:String,color:Color,priority:int,role:String,
-		visibility_state:String,bold:bool)->Dictionary:
-	return {"glyph":glyph,"color":color,"priority":priority,"role":role,
-		"visibility_state":visibility_state,"bold":bold,"leaks_actor":false,
+func _shape_spec(primitive:String,color:Color,priority:int,role:String,
+		visibility_state:String,fill_ratio:float)->Dictionary:
+	return {"primitive":primitive,"color":color,"priority":priority,"role":role,
+		"visibility_state":visibility_state,"fill_ratio":fill_ratio,"leaks_actor":false,
 		"leaks_direction":false,"leaks_target":false,"leaks_hazard":false}
 
 func _unknown_sector_spec(sector:Vector2i)->Dictionary:
-	var result:=_glyph_spec(GLYPH_UNKNOWN,UNSEEN_COLOR,PRIORITY_UNKNOWN,"UNKNOWN",
-		"UNSEEN",false)
+	var result:=_shape_spec(PRIMITIVE_NONE,UNSEEN_COLOR,PRIORITY_UNKNOWN,"UNKNOWN",
+		"UNSEEN",0.0)
 	result["sector"]=sector
 	return result
 
@@ -173,38 +170,41 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 
 func cartography_spec()->Dictionary:
 	return {"columns":SECTOR_COLUMNS,"rows":SECTOR_ROWS,"sector_count":_sectors.size(),
-		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
-		"bold_font_path":"res://assets/fonts/LivingWorldMonoKRBold.ttf",
-		"glyphs":{"hero":GLYPH_HERO,"threat":GLYPH_THREAT,"exit":GLYPH_EXIT,
-			"portal":GLYPH_PORTAL,
-			"wall":GLYPH_WALL,"memory":GLYPH_MEMORY,"unknown":GLYPH_UNKNOWN},
-		"primitive":"ASCII_SECTOR_GLYPHS","background":"BLACK_FIELD",
-		"uses_tile_rects":false,"uses_circles":false,"uses_images":false,
+		"primitive":"VECTOR_SECTOR_MARKS","background":"BLACK_FIELD",
+		"uses_tile_rects":true,"uses_circles":true,"uses_polygons":true,
+		"uses_fonts":false,"uses_images":false,
 		"per_frame_process":false}.duplicate(true)
 
 func _draw()->void:
 	if _width<=0 or _height<=0 or size.x<=0.0 or size.y<=0.0:return
 	draw_rect(Rect2(Vector2.ZERO,size),UNSEEN_COLOR,true)
 	var slot:=Vector2(size.x/float(SECTOR_COLUMNS),size.y/float(SECTOR_ROWS))
-	var font_size:=_font_size_for_slot(slot)
 	for y in range(SECTOR_ROWS):
 		for x in range(SECTOR_COLUMNS):
-			var spec:=sector_draw_spec(Vector2i(x,y));var glyph:=str(spec.glyph)
-			if glyph.is_empty():continue
-			var font:Font=CodingFontBold if bool(spec.bold) else CodingFont
-			var line_height:=font.get_height(font_size);var ascent:=font.get_ascent(font_size)
-			var cell_origin:=Vector2(float(x)*slot.x,float(y)*slot.y)
-			var baseline:=Vector2(cell_origin.x,
-				floor(cell_origin.y+(slot.y-line_height)*0.5+ascent))
-			draw_string(font,baseline,glyph,HORIZONTAL_ALIGNMENT_CENTER,slot.x,font_size,spec.color)
-	# The parent supplies the existing fixed-cell typographic frame.
+			var rect:=Rect2(Vector2(float(x)*slot.x,float(y)*slot.y),slot)
+			_draw_sector_shape(rect,sector_draw_spec(Vector2i(x,y)))
+	# The parent supplies the existing compact UI frame.
 
-func _font_size_for_slot(slot:Vector2)->int:
-	for candidate in range(9,4,-1):
-		if CodingFontBold.get_height(candidate)<=slot.y+0.01 \
-			and CodingFontBold.get_string_size("#",HORIZONTAL_ALIGNMENT_LEFT,-1,candidate).x<=slot.x+0.01:
-			return candidate
-	return 5
+func _draw_sector_shape(rect:Rect2,spec:Dictionary)->void:
+	var primitive:=str(spec.get("primitive",PRIMITIVE_NONE))
+	if primitive==PRIMITIVE_NONE:return
+	var color:Color=spec.get("color",UNSEEN_COLOR)
+	var ratio:=clampf(float(spec.get("fill_ratio",0.7)),0.1,1.0)
+	var center:=rect.get_center();var half:=minf(rect.size.x,rect.size.y)*ratio*0.5
+	match primitive:
+		PRIMITIVE_TILE:
+			draw_rect(Rect2(center-Vector2(half,half),Vector2(half*2.0,half*2.0)),color,true)
+		PRIMITIVE_CIRCLE:
+			draw_circle(center,maxf(1.0,half),color)
+		PRIMITIVE_DIAMOND:
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-half),
+				center+Vector2(half,0),center+Vector2(0,half),center+Vector2(-half,0)]),color)
+		PRIMITIVE_RING:
+			draw_circle(center,maxf(1.0,half),color)
+			draw_circle(center,maxf(0.5,half*0.48),UNSEEN_COLOR)
+		PRIMITIVE_TRIANGLE:
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-half),
+				center+Vector2(half,half),center+Vector2(-half,half)]),color)
 
 func _key(position:Vector2i)->String:
 	return "%d:%d"%[position.x,position.y]

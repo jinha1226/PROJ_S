@@ -46,6 +46,7 @@ const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
 const PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:=1500
+const PRODUCT_PINCH_STEP_RATIO:=1.12
 
 var session
 var grid
@@ -267,9 +268,10 @@ var _product_attack_targeting:=false
 var _party_command_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 var _resize_refresh_queued:=false
-var _product_zoom_touch_index:=-1
-var _product_zoom_touch_step:=0
-var _product_zoom_mouse_control:=""
+var _product_pinch_points:Dictionary={}
+var _product_pinch_last_distance:=0.0
+var _product_pinch_gesture_active:=false
+var _product_magnify_accumulator:=1.0
 # Presentation cadence only. Tests may set this to zero; it never participates
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
@@ -297,9 +299,10 @@ func _process(_delta:float)->void:
 			and now_msec>=route_continue_due_msec:
 		# Match AUTO's unresolved product-button gesture contract. A direction press
 		# may be held past the cadence deadline, but the old route cannot advance
-		# before release cancels it and commits the one manual step. Zoom has its own
-		# touch index and deliberately leaves continuous travel running.
-		if _product_touch_index>=0 or route_paused_by_modal \
+		# before release cancels it and commits the one manual step. A pinch pauses
+		# route presentation until both fingers leave, then resumes the same route.
+		if _product_touch_index>=0 or route_paused_by_modal or route_paused_by_pointer \
+				or _product_pinch_gesture_active \
 				or member_detail_modal!=null and member_detail_modal.visible:
 			route_continue_due_frame=frame+1
 		else:
@@ -309,7 +312,7 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
-	if _handle_product_zoom_touch(event):return
+	if _handle_product_pinch_zoom(event):return
 	# The nearby-NPC card is a child of the map. Claim its touch before the map's
 	# floor gesture sees it, otherwise its ordinary Buttons never receive mobile
 	# taps and the same tap may issue a movement command behind the card.
@@ -326,7 +329,7 @@ func _input(event:InputEvent)->void:
 				and bool(session.auto_explore_state().get("running",false)):
 			_cancel_product_auto_explore("auto_explore_user_command",false)
 		var route_state:Dictionary=session.exploration_route_state()
-		if bool(route_state.get("active",false)):
+		if bool(route_state.get("active",false)) and not grid.pinch_zoom_enabled:
 			_cancel_active_route()
 	if _handle_product_control_touch(event):return
 	if member_detail_modal==null or not member_detail_modal.visible:return
@@ -1257,31 +1260,31 @@ func _item_action_button(label:String,node_name:String,callable:Callable)->Butto
 	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS);return button
 
 func _build_product_zoom_controls()->void:
+	# Named compatibility nodes remain in the tree, but camera zoom is exclusively
+	# a two-finger pinch and no zoom button is drawn or allowed to claim input.
 	grid_zoom_controls=HBoxContainer.new();grid_zoom_controls.name="ProductZoomControls"
 	grid_zoom_controls.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	grid_zoom_controls.offset_left=-100;grid_zoom_controls.offset_right=-4
 	grid_zoom_controls.offset_top=4;grid_zoom_controls.offset_bottom=48
-	grid_zoom_controls.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+	grid_zoom_controls.custom_minimum_size=Vector2.ZERO
 	grid_zoom_controls.add_theme_constant_override("separation",0)
 	grid_zoom_controls.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_controls.z_index=80;grid_zoom_controls.visible=false
 	grid.add_child(grid_zoom_controls)
 	grid_zoom_out_button=Button.new();grid_zoom_out_button.name="ProductZoomOut"
 	grid_zoom_out_button.text="[-]";grid_zoom_out_button.tooltip_text="시야 축소"
-	grid_zoom_out_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
-	grid_zoom_out_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_zoom_out_button.custom_minimum_size=Vector2.ZERO
+	grid_zoom_out_button.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_out_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_zoom_out_button.gui_input.connect(
-		_on_product_zoom_button_gui_input.bind("ProductZoomOut"))
+	grid_zoom_out_button.visible=false
 	grid_zoom_controls.add_child(grid_zoom_out_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_out_button,AsciiFrameScript.CYAN)
 	grid_zoom_in_button=Button.new();grid_zoom_in_button.name="ProductZoomIn"
 	grid_zoom_in_button.text="[+]";grid_zoom_in_button.tooltip_text="시야 확대"
-	grid_zoom_in_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
-	grid_zoom_in_button.mouse_filter=Control.MOUSE_FILTER_STOP
+	grid_zoom_in_button.custom_minimum_size=Vector2.ZERO
+	grid_zoom_in_button.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	grid_zoom_in_button.add_theme_font_size_override("font_size",FONT_CAPTION)
-	grid_zoom_in_button.gui_input.connect(
-		_on_product_zoom_button_gui_input.bind("ProductZoomIn"))
+	grid_zoom_in_button.visible=false
 	grid_zoom_controls.add_child(grid_zoom_in_button)
 	AsciiFrameScript.apply_rail_button(grid_zoom_in_button,AsciiFrameScript.CYAN)
 
@@ -1380,10 +1383,7 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 			var actor:Dictionary=actor_value
 			var entity_id:=int(actor.get("entity_id",-1))
 			var display_role:=str(actor.get("display_role",""))
-			var recruitable:bool=display_role=="RESCUE_NPC" or (
-				display_role=="OPENING_NPC" \
-				and session.has_method("is_opening_recruitment_candidate") \
-				and bool(session.is_opening_recruitment_candidate(entity_id)))
+			var recruitable:bool=display_role in ["RESCUE_NPC","OPENING_NPC"]
 			if not recruitable or str(actor.get("life_state","ACTIVE"))=="DEAD":continue
 			var position_raw:Variant=actor.get("display_position",cell.get("position",[]))
 			if not position_raw is Array or position_raw.size()!=2:continue
@@ -1403,7 +1403,8 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		int(detail.get("health",0)),int(detail.get("max_health",0))]
 	nearby_npc_condition.text="%s · 거리 %d칸"%[
 		"재회" if bool(detail.get("opening_reencounter",false)) else \
-		("부상" if nearby_npc_story_state=="COLLAPSED_STORY" else "대화 가능"),best_distance]
+		("부상" if nearby_npc_story_state in ["COLLAPSED_STORY","OPENING_CHOICE"] \
+		else "대화 가능"),best_distance]
 	var personality:Dictionary=detail.get("personality_style",{}) \
 		if detail.get("personality_style",{}) is Dictionary else {}
 	nearby_npc_personality.text="성격 · %s"%str(personality.get("label","알 수 없음"))
@@ -1425,7 +1426,17 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		if detail.get("attack_assessment",{}) is Dictionary else {}
 	nearby_npc_attack_button.disabled=not bool(attack.get("accepted",false))
 	nearby_npc_attack_button.tooltip_text=str(attack.get("message","인접한 인물을 공격합니다."))
-	if nearby_npc_story_state=="COLLAPSED_STORY":
+	if nearby_npc_story_state=="OPENING_CHOICE":
+		nearby_npc_recruitment.text="하단의 [물약 주기] 또는 [돕지 않기]로 결정합니다."
+		nearby_npc_action_button.text="[선택은 하단]"
+		nearby_npc_action_button.disabled=true
+		nearby_npc_action_button.tooltip_text="첫 조우 선택은 하단 행동 버튼에서 진행합니다."
+	elif nearby_npc_story_state=="OPENING_DEPARTING":
+		nearby_npc_recruitment.text="여행자가 먼저 던전 안쪽으로 이동합니다."
+		nearby_npc_action_button.text="[이동 중]"
+		nearby_npc_action_button.disabled=true
+		nearby_npc_action_button.tooltip_text="던전 안쪽에서 다시 만날 수 있습니다."
+	elif nearby_npc_story_state=="COLLAPSED_STORY":
 		var rescue:Dictionary=detail.get("rescue_assessment",{}) \
 			if detail.get("rescue_assessment",{}) is Dictionary else {}
 		nearby_npc_recruitment.text="상처를 안정화해야 대화할 수 있습니다."
@@ -4360,7 +4371,7 @@ func _reset_run_ui_transients()->void:
 	_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 	_product_touch_started_msec=-1;_product_immediate_touch_indices.clear()
 	_product_mouse_control="";_product_ignore_mouse_until_msec=-1
-	_product_zoom_touch_index=-1;_product_zoom_touch_step=0;_product_zoom_mouse_control=""
+	_reset_product_pinch_zoom()
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
@@ -4620,6 +4631,10 @@ func _on_actor(entity_id:int)->void:
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
+	if str(status.get("view_mode",""))=="EXPLORATION":
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		if bool(session.exploration_route_state().get("has_preview",false)):
+			_cancel_active_route()
 	if _party_command_targeting:
 		if entity_id not in status.get("visible_enemy_ids",[]):
 			notice_text="활동 중인 적을 선택하세요."
@@ -4643,8 +4658,8 @@ func _on_actor(entity_id:int)->void:
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
 	if status.view_mode=="EXPLORATION" \
-			and session.has_method("is_opening_recruitment_candidate") \
-			and bool(session.is_opening_recruitment_candidate(entity_id)):
+			and session.has_method("is_opening_npc") \
+			and bool(session.is_opening_npc(entity_id)):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("roster_member_ids",[]) \
@@ -4846,7 +4861,9 @@ func _cancel_route_for_user_interruption()->void:
 
 func _on_grid_pointer_started()->void:
 	_cancel_product_auto_explore("auto_explore_user_command",false)
-	_cancel_route_for_user_interruption()
+	if grid!=null and grid.pinch_zoom_enabled:
+		route_paused_by_pointer=true
+	else:_cancel_route_for_user_interruption()
 	var cancelled_auto:=auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending)
 	if cancelled_auto:
 		_cancel_auto_pending(true)
@@ -4858,10 +4875,12 @@ func _on_grid_pointer_started()->void:
 			notice_text="자동 실행을 멈췄습니다. 현재 계획을 확인하세요."
 			action_feedback_text="행동 계획 확인 → 지금 실행"
 		_request_refresh()
-	route_paused_by_pointer=false
+	if grid==null or not grid.pinch_zoom_enabled:route_paused_by_pointer=false
 
 func _on_grid_pointer_finished(_outcome:String)->void:
+	if _product_pinch_gesture_active:return
 	route_paused_by_pointer=false
+	_schedule_route_continue()
 
 func _cancel_active_route()->void:
 	route_generation+=1;_clear_route_continue_schedule()
@@ -5301,15 +5320,14 @@ func _current_grid_view_dimensions()->Vector2i:
 
 func _sync_product_zoom_controls(product_hud:bool)->void:
 	if grid_zoom_controls==null:return
+	grid.pinch_zoom_enabled=product_hud
 	var front_surface_open:bool=grid!=null and grid.modal_open \
 		or member_detail_modal!=null and member_detail_modal.visible \
 		or record_modal!=null and record_modal.visible \
 		or map_overlay!=null and map_overlay.visible
-	var show:bool=product_hud and grid!=null and grid.visible and not front_surface_open
-	grid_zoom_controls.visible=show
-	if not show:
-		_product_zoom_touch_index=-1;_product_zoom_touch_step=0
-		return
+	# Gesture-only zoom: compatibility nodes stay hidden and have no hit surface.
+	grid_zoom_controls.visible=false
+	if not product_hud or front_surface_open:_reset_product_pinch_zoom()
 	var zoom_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	if zoom_index<0:
 		_product_zoom_cell_count=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
@@ -5328,59 +5346,77 @@ func _sync_product_zoom_controls(product_hud:bool)->void:
 func _product_zoom_scale(cell_count:int)->float:
 	return float(PRODUCT_ZOOM_REFERENCE_CELL_COUNT)/float(maxi(1,cell_count))
 
-func _product_zoom_control_has_point(global_position:Vector2)->bool:
-	if grid_zoom_controls==null or not grid_zoom_controls.is_visible_in_tree():return false
-	for button in [grid_zoom_out_button,grid_zoom_in_button]:
-		if button!=null and button.visible and button.get_global_rect().has_point(global_position):
-			return true
+func _product_zoom_control_has_point(_global_position:Vector2)->bool:
 	return false
 
-func _handle_product_zoom_touch(event:InputEvent)->bool:
+func _product_pinch_available()->bool:
+	return _is_solo_product_session() and grid!=null and grid.visible \
+		and not grid.modal_open \
+		and (member_detail_modal==null or not member_detail_modal.visible) \
+		and (record_modal==null or not record_modal.visible) \
+		and (map_overlay==null or not map_overlay.visible)
+
+func _product_pinch_point_allowed(position:Vector2)->bool:
+	if not _product_pinch_available() or not grid.get_global_rect().has_point(position):
+		return false
+	return nearby_npc_panel==null or not nearby_npc_panel.is_visible_in_tree() \
+		or not nearby_npc_panel.get_global_rect().has_point(position)
+
+func _product_pinch_distance()->float:
+	if _product_pinch_points.size()<2:return 0.0
+	var indices:Array=_product_pinch_points.keys();indices.sort()
+	return Vector2(_product_pinch_points[indices[0]]).distance_to(
+		Vector2(_product_pinch_points[indices[1]]))
+
+func _reset_product_pinch_zoom()->void:
+	_product_pinch_points.clear();_product_pinch_last_distance=0.0
+	_product_pinch_gesture_active=false;_product_magnify_accumulator=1.0
+
+func _consume_product_pinch_event()->bool:
+	get_viewport().set_input_as_handled();return true
+
+func _apply_product_pinch_distance(current_distance:float)->void:
+	if current_distance<=0.0:return
+	if _product_pinch_last_distance<=0.0:
+		_product_pinch_last_distance=current_distance;return
+	var ratio:=current_distance/_product_pinch_last_distance
+	if ratio>=PRODUCT_PINCH_STEP_RATIO:
+		_on_product_zoom_step(-1);_product_pinch_last_distance=current_distance
+	elif ratio<=1.0/PRODUCT_PINCH_STEP_RATIO:
+		_on_product_zoom_step(1);_product_pinch_last_distance=current_distance
+
+func _handle_product_pinch_zoom(event:InputEvent)->bool:
+	if event is InputEventMagnifyGesture:
+		if not _product_pinch_available() \
+				or not grid.get_global_rect().has_point(event.position):return false
+		_product_magnify_accumulator*=maxf(0.01,event.factor)
+		if _product_magnify_accumulator>=PRODUCT_PINCH_STEP_RATIO:
+			_on_product_zoom_step(-1);_product_magnify_accumulator=1.0
+		elif _product_magnify_accumulator<=1.0/PRODUCT_PINCH_STEP_RATIO:
+			_on_product_zoom_step(1);_product_magnify_accumulator=1.0
+		return _consume_product_pinch_event()
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
-	if event is InputEventScreenDrag:
-		if event.index!=_product_zoom_touch_index:return false
-		get_viewport().set_input_as_handled();return true
-	if event.pressed:
-		if not _product_zoom_control_has_point(event.position):return false
-		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
-			+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
-		_product_zoom_touch_index=event.index
-		if grid_zoom_out_button.visible \
-				and grid_zoom_out_button.get_global_rect().has_point(event.position):
-			_product_zoom_touch_step=1
-		else:
-			_product_zoom_touch_step=-1
-		get_viewport().set_input_as_handled();return true
-	if event.index!=_product_zoom_touch_index:return false
-	var step:=_product_zoom_touch_step
-	var matching_button:=grid_zoom_out_button if step>0 else grid_zoom_in_button
-	var activate:bool=not event.canceled and matching_button.get_global_rect().has_point(event.position) \
-		and not matching_button.disabled
-	_product_zoom_touch_index=-1;_product_zoom_touch_step=0
-	_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
-		+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
-	get_viewport().set_input_as_handled()
-	if activate:
-		_activate_product_zoom_control(matching_button.name)
-	return true
-
-func _on_product_zoom_button_gui_input(event:InputEvent,control_name:String)->void:
-	# ScreenTouch is handled above. Only real mouse input enters here; the
-	# browser's compatibility mouse event is consumed without a second zoom.
-	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return
-	if event.device==InputEvent.DEVICE_ID_EMULATION \
-			or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:
-		_product_zoom_mouse_control="";accept_event();return
-	if event.pressed:
-		_product_zoom_mouse_control=control_name;accept_event();return
-	var activate:=_product_zoom_mouse_control==control_name
-	_product_zoom_mouse_control="";accept_event()
-	if activate:_activate_product_zoom_control(control_name)
-
-func _activate_product_zoom_control(control_name:String)->void:
-	match control_name:
-		"ProductZoomOut":_on_product_zoom_step(1)
-		"ProductZoomIn":_on_product_zoom_step(-1)
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if not _product_pinch_point_allowed(event.position):return false
+			_product_pinch_points[event.index]=event.position
+			if _product_pinch_points.size()<2:return false
+			_product_pinch_gesture_active=true
+			_product_pinch_last_distance=_product_pinch_distance()
+			grid.cancel_pointer_gesture()
+			return _consume_product_pinch_event()
+		if not _product_pinch_points.has(event.index):return false
+		var consumed:=_product_pinch_gesture_active
+		_product_pinch_points.erase(event.index)
+		if _product_pinch_points.is_empty():
+			_reset_product_pinch_zoom();route_paused_by_pointer=false
+			_schedule_route_continue()
+		return _consume_product_pinch_event() if consumed else false
+	if not _product_pinch_points.has(event.index):return false
+	_product_pinch_points[event.index]=event.position
+	if not _product_pinch_gesture_active:return false
+	_apply_product_pinch_distance(_product_pinch_distance())
+	return _consume_product_pinch_event()
 
 func _on_product_zoom_step(index_delta:int)->void:
 	if not _is_solo_product_session():return
@@ -5469,7 +5505,9 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var ration_band:=str(party.get("ration_band","FED"))
 	var ration_max:=maxi(1,int(party.get("ration_max",1)))
 	var filled:=clampi(int(ceil(float(int(party.get("ration",0)))*4.0/float(ration_max))),0,4)
-	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"▮".repeat(filled)+"▯".repeat(4-filled)
+	# LivingWorldMonoKR contains U+25A0/U+25A1, while the previously used
+	# U+25AE/U+25AF pair had no glyph and rendered as missing-character boxes.
+	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"■".repeat(filled)+"□".repeat(4-filled)
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
