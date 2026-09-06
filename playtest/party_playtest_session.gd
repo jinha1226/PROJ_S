@@ -53,6 +53,7 @@ const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
+const RationRulesScript=preload("res://sim/party_ration_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 
 const SESSION_FORMAT_VERSION := 5
@@ -94,6 +95,7 @@ const TOWN_SHRINE_COST := 15
 const TOWN_SHRINE_STRESS_REDUCTION := 300
 const TOWN_STARTING_FLOOR := 1
 const TOWN_MARKET_CATALOG := [
+	{"definition_id":"FOOD_RATION","price":6,"stock":6},
 	{"definition_id":"POTION_HEALING","price":12,"stock":4},
 	{"definition_id":"ARMOR_PADDED","price":35,"stock":1},
 	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
@@ -412,7 +414,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		ItemScript.new("START_SPEAR_001",ItemRegistryScript.weapon_definition_id("SPEAR")),
 		ItemScript.new("START_BOW_001",ItemRegistryScript.weapon_definition_id("BOW")),
 		ItemScript.new("START_CROSSBOW_001",ItemRegistryScript.weapon_definition_id("CROSSBOW")),
-		ItemScript.new("START_POTION_001","POTION_HEALING",3)],
+		ItemScript.new("START_POTION_001","POTION_HEALING",3),
+		ItemScript.new("START_RATION_001","FOOD_RATION",2)],
 		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
 	# The historical start loadout, now stated once: 12 arrows, 6 bolts and an
 	# unloaded crossbow instance. The equipped MAIN_HAND item is the weapon.
@@ -424,6 +427,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.expedition_cycle=ExpeditionCycleScript.active(1,candidate.world.world_time,
 		DEFAULT_EXPEDITION_DURATION,1)
 	if state.expedition_cycle==null:return false
+	state.reset_ration(int(candidate.world.world_time))
 	candidate.world.item_state.ground_items=GroundItemScript.new(_initial_ground_item_rows(
 		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
@@ -490,10 +494,16 @@ func _initial_ground_item_rows(candidate,hero_position:Vector2i,
 		var db:=maxi(absi(b.x-hero_position.x),absi(b.y-hero_position.y))
 		return da<db if da!=db else (a.y<b.y if a.y!=b.y else a.x<b.x))
 	if candidates.size()<2:return []
-	return [{"position":[candidates[0].x,candidates[0].y],
+	var rows:Array=[{"position":[candidates[0].x,candidates[0].y],
 		"item":ItemScript.new("GROUND_START_SHIELD","SHIELD_WOOD").to_dict()},
 		{"position":[candidates[1].x,candidates[1].y],
 		"item":ItemScript.new("GROUND_START_PADDED","ARMOR_PADDED").to_dict()}]
+	# Candidates are sorted by distance from the hero, so the last one is farthest.
+	if candidates.size()>=3:
+		var ration_cell:Vector2i=candidates[candidates.size()-1]
+		rows.append({"position":[ration_cell.x,ration_cell.y],
+			"item":ItemScript.new("GROUND_FLOOR1_RATION","FOOD_RATION").to_dict()})
+	return rows
 
 
 func protagonist_progression()->Dictionary:
@@ -1170,7 +1180,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"requirements":requirements,"requirements_met":requirements_met,
 		"requirement_text":" · ".join(requirement_parts),
 		"current_stats":stats.duplicate(true),
-		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)!="NONE",
+		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)=="HEALING",
 		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
 			if str(definition.use_kind)=="HEALING" else 0,
 		"compact_stat_text":""}
@@ -1391,6 +1401,8 @@ func party_status() -> Dictionary:
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
+		"ration":int(state.ration_milli/1000),"ration_max":int(RationRulesScript.rules().ration_max),
+		"ration_band":RationRulesScript.band(int(state.ration_milli)),
 		"contact_kind": state.contact_kind, "formation_id": state.formation_id, "anchor": [state.group_anchor.x,state.group_anchor.y],
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
 		"protagonist_id": state.protagonist_id, "party_member_ids": state.active_party_member_ids.duplicate(),
@@ -1939,6 +1951,7 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		int(assessment.next_expedition_index))
 	if next_cycle==null:return _rejection_dto("town_departure_failed")
 	state.expedition_cycle=next_cycle
+	state.reset_ration(int(sim.world.world_time))
 	var event=sim.world.emit_event("town.expedition_departed",hero_id,-1,
 		sim.world.entities[hero_id].position,0,-1,{"schema_version":1,
 			"ruleset_id":ExpeditionCycleScript.RULESET_ID,
@@ -2075,6 +2088,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		if entry_event==null:return _rejection_dto("floor_transition_event_failed")
 		event_ids.append(int(entry_event.id))
 		sim.world.entities[member_id].position=entry_position
+	_place_floor_ration(floor_index,entry_position,target_layout)
 	var spawned_ids:=_spawn_campaign_floor_enemies(target_layout,
 		int(cycle.expedition_index))
 	if spawned_ids.is_empty():return _rejection_dto("floor_enemy_spawn_failed")
@@ -2088,6 +2102,39 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		return a.y<b.y if a.y!=b.y else a.x<b.x)
 	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
 		"spawned_enemy_ids":spawned_ids})
+
+
+func _place_floor_ration(floor_index:int,entry_position:Vector2i,
+		layout:Dictionary)->void:
+	var instance_id:="GROUND_FLOOR%d_RATION"%floor_index
+	if sim.world.item_state.ground_items.item(instance_id)!=null:return
+	var blocked:Array=layout.get("door_positions",[]).duplicate()
+	blocked.append(layout.get("entry_position",Vector2i(-1,-1)))
+	blocked.append(layout.get("exit_position",Vector2i(-1,-1)))
+	var best:=Vector2i(-1,-1);var best_distance:=-1
+	for y in range(maxi(0,entry_position.y-5),mini(sim.world.height,entry_position.y+6)):
+		for x in range(maxi(0,entry_position.x-5),mini(sim.world.width,entry_position.x+6)):
+			var position:=Vector2i(x,y)
+			var distance:=maxi(absi(position.x-entry_position.x),
+				absi(position.y-entry_position.y))
+			if distance<2 or position in blocked \
+					or not sim.world.occupying_entities_at(position).is_empty():continue
+			var tile=sim.world.tile_at(position)
+			var terrain:=TerrainRegistryScript.definition(str(tile.terrain))
+			if terrain.is_empty() or not bool(terrain.get("passable",false)) \
+					or int(tile.fire)>0 or int(tile.wetness)>0:continue
+			# Farthest cell wins; ties resolve by row then column for determinism.
+			if distance>best_distance or (distance==best_distance \
+					and (position.y<best.y or (position.y==best.y and position.x<best.x))):
+				best=position;best_distance=distance
+	if best_distance<0:return
+	var rows:Array=[]
+	for row in sim.world.item_state.ground_items.rows:
+		rows.append({"position":[row.position.x,row.position.y],
+			"item":row.item.to_dict()})
+	rows.append({"position":[best.x,best.y],
+		"item":ItemScript.new(instance_id,"FOOD_RATION").to_dict()})
+	sim.world.item_state.ground_items=GroundItemScript.new(rows)
 
 
 func _spawn_campaign_floor_enemies(layout:Dictionary,
@@ -6061,6 +6108,8 @@ func _is_important_log_event(event)->bool:
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
+			"party.ration_eaten","party.ration_missing","party.ration_changed",
+			"party.ration_starve_tick",
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
 			"opening.health_restored","opening.reencountered",
@@ -6136,6 +6185,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			if member_row_value is Dictionary and not member_row_value.has("memory_state"):
 				member_row_value["memory_state"] = PartyMemoryStateScript.new().to_dict()
 		raw_party["schema_version"] = PartyStateScript.SCHEMA_VERSION
+	# Every block above force-bumps schema_version, so any bumped row must also
+	# carry the v22 ration keys. The snapshot re-anchor only fires below v22, so
+	# the drain clock is anchored here at the save's own world time instead.
+	if raw_party is Dictionary \
+			and int(raw_party.get("schema_version",0))>=PartyStateScript.RATION_SCHEMA_VERSION \
+			and not raw_party.has("ration_milli"):
+		raw_party["ration_milli"]=RationRulesScript.ration_max_milli()
+		raw_party["ration_processed_at"]=str(decoded.snapshot.get("world_time","0"))
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -6318,6 +6375,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			PartyStateScript.EMOTION_STATE_SCHEMA_VERSION]:
 		replay.sim.world.party_encounter.expedition_cycle=ExpeditionCycleScript.from_dict(
 			restored.world.party_encounter.expedition_cycle.to_dict())
+	if source_party_schema<PartyStateScript.RATION_SCHEMA_VERSION:
+		# Migration anchors the drain clock at the save's own world time, which no
+		# journal action can reproduce. Seed the replay from the migrated gauge the
+		# same way the expedition clock above is seeded.
+		replay.sim.world.party_encounter.ration_milli= \
+			restored.world.party_encounter.ration_milli
+		replay.sim.world.party_encounter.ration_processed_at= \
+			restored.world.party_encounter.ration_processed_at
 	if restored.world.party_encounter.legacy_journal_origin:
 		return _install_restored_session(restored, decoded, parsed_world_seed,
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
@@ -7555,6 +7620,14 @@ func _event_message(event) -> String:
 				event.data.get("floor_index",event.magnitude))]
 		"dungeon.anchor_portal_activated":return "%d층 거점 포탈이 마을과 연결되었다."%int(
 			event.data.get("floor_index",event.magnitude))
+		"party.ration_eaten":return "배급 식량을 먹었다."
+		"party.ration_missing":return "식량이 떨어졌다."
+		"party.ration_changed":
+			match str(event.data.get("after","")):
+				"HUNGRY":return "배가 고프다."
+				"STARVING":return "굶주리기 시작했다."
+				_:return "허기가 가셨다."
+		"party.ration_starve_tick":return "굶주림 · 전원 −%d"%int(event.data.get("damage",0))
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
 		"party.npc_assaulted":return "%s을(를) 공격해 적대 관계가 되었다."%target
 		"opening.choice_committed":

@@ -1,0 +1,16 @@
+{
+  "content_schema_version": 1,
+  "content_version": "hunger-2026-09-06",
+  "content_type": "HUNGER_RULES",
+  "ruleset_id": "party-ration-v1",
+  "ration_max": 300,
+  "hungry_below": 100,
+  "drain_interval": 100,
+  "drain_per_interval_milli": 1000,
+  "drain_extra_member_milli": 500,
+  "starve_interval": 100,
+  "starve_damage": 1,
+  "starve_stress": 4,
+  "food_definition_id": "FOOD_RATION",
+  "food_nutrition": 300
+}

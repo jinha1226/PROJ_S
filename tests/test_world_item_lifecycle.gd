@@ -205,7 +205,7 @@ func test_protagonist_start_loadout_moved_into_world_item_state_unchanged()->boo
 		"the same starting main hand instance stays equipped")
 	check_eq(inventory.unequipped_items().map(func(item):return item.instance_id),
 		["START_BOW_001","START_CROSSBOW_001","START_HAND_AXE_001","START_MACE_001",
-		"START_POTION_001","START_SPEAR_001"],
+		"START_POTION_001","START_RATION_001","START_SPEAR_001"],
 		"the same starting backpack instances move over unchanged")
 	check_eq(int(inventory.item("START_POTION_001").quantity),3,
 		"the healing potion stack keeps its quantity")
@@ -218,10 +218,11 @@ func test_protagonist_start_loadout_moved_into_world_item_state_unchanged()->boo
 	var ground_ids:Array=[]
 	for row in world.item_state.ground_items.rows:ground_ids.append(str(row.item.instance_id))
 	ground_ids.sort()
-	check_eq(ground_ids,["GROUND_START_PADDED","GROUND_START_SHIELD"],
+	check_eq(ground_ids,["GROUND_FLOOR1_RATION","GROUND_START_PADDED",
+		"GROUND_START_SHIELD"],
 		"the product start room ground items move over with the same instance ids")
 	var dto:Dictionary=session.protagonist_inventory()
-	check_eq(int(dto.used_backpack_slots),6,"the protagonist UI still reports the same bag")
+	check_eq(int(dto.used_backpack_slots),7,"the protagonist UI still reports the same bag")
 	check_eq(WorldItemOperations.equipped_weapon_id(world,hero_id),"SHORT_SWORD",
 		"the equipped MAIN_HAND instance is the combat weapon authority")
 	return finish()

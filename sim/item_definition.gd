@@ -49,7 +49,7 @@ func validation_error()->String:
 	for key in BONUS_KEYS:
 		if not bonuses.has(key) or not _integer(bonuses[key]):return "invalid_item_bonus_shape"
 		if int(bonuses[key])<-10000 or int(bonuses[key])>10000:return "invalid_item_bonus_value"
-	if use_kind not in ["NONE","HEALING"]:return "unknown_item_use_kind"
+	if use_kind not in ["NONE","HEALING","EAT"]:return "unknown_item_use_kind"
 	if requirements.keys().size()!=3:return "invalid_item_requirements_shape"
 	for stat_id in ["STR","DEX","INT"]:
 		if not requirements.has(stat_id) or not _integer(requirements[stat_id]) \
@@ -69,7 +69,7 @@ func validation_error()->String:
 		"CONSUMABLE","MATERIAL":
 			if not equip_slots.is_empty() or not weapon_id.is_empty():
 				return "invalid_carried_item_contract"
-	if use_kind=="HEALING" and category!="CONSUMABLE":return "invalid_item_use_kind"
+	if use_kind in ["HEALING","EAT"] and category!="CONSUMABLE":return "invalid_item_use_kind"
 	return ""
 
 

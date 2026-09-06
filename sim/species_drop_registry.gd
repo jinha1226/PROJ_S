@@ -84,7 +84,7 @@ static func _table_error(row: Variant, global_roll_ids_value: Variant = null) ->
 		global_roll_ids[roll_id] = true
 		previous_roll = roll_id
 		var definition = ItemRegistryScript.definition(str(roll.definition_id))
-		if definition == null or str(definition.category) != "MATERIAL":
+		if definition == null or str(definition.category) not in ["MATERIAL", "CONSUMABLE"]:
 			return "invalid_species_drop_definition"
 		if int(roll.chance_per_1000) < 0 or int(roll.chance_per_1000) > 1000 \
 				or int(roll.min_quantity) < 1 \

@@ -8,6 +8,7 @@ const BodyCombat=preload("res://sim/body_combat_rules.gd")
 const Items=preload("res://sim/item_registry.gd")
 const Weapons=preload("res://sim/weapon_registry.gd")
 const Progression=preload("res://sim/progression_registry.gd")
+const HungerRules=preload("res://sim/party_ration_rules.gd")
 const ContentDatabase=preload("res://sim/content_database.gd")
 
 const DOCUMENTS := {
@@ -17,6 +18,7 @@ const DOCUMENTS := {
 	"WEAPONS":"res://data/content/weapons.json",
 	"PROFICIENCIES":"res://data/content/proficiencies.json",
 	"BODY_COMBAT_RULES":"res://data/content/body_combat_rules.json",
+	"HUNGER_RULES":"res://data/content/hunger_rules.json",
 }
 
 
@@ -35,7 +37,8 @@ func test_content_documents_are_readable_versioned_and_detached()->bool:
 			"%s loads detached data"%content_type)
 	check_eq([Species.registry_error(),Growth.registry_error(),Bodies.registry_error(),
 		BodyCombat.registry_error(),Items.registry_error(),Weapons.registry_error(),
-		Progression.registry_error()],["","","","","","",""],
+		Progression.registry_error(),HungerRules.registry_error()],
+		["","","","","","","",""],
 		"all JSON-backed registries pass strict validation")
 	check_eq(ContentDatabase.validation_error(),"",
 		"the session-level content database passes integrated validation")
@@ -104,13 +107,13 @@ func test_registry_views_match_the_json_authority()->bool:
 		check(species_rows.has(species_id),
 			"unified catalog publishes %s exactly once"%species_id)
 	check_eq([Growth.content_version(),Items.content_version(),Weapons.content_version(),
-		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-01",
+		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-06",
 		"weapons-2026-09-02-body-b1","proficiencies-2026-09-01"],
 		"content versions are visible to diagnostics")
 	check_eq(ContentDatabase.content_versions(),{
 		"proficiencies":"proficiencies-2026-09-01",
 		"weapons":"weapons-2026-09-02-body-b1",
-		"items":"items-2026-09-01",
+		"items":"items-2026-09-06",
 		"species_catalog":"species-catalog-2026-09-02-v1",
 		"growth_builds":"growth-builds-2026-09-02-v3",
 		"body_combat":"body-combat-2026-09-02-b1",

@@ -102,6 +102,12 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 			+ FixedPointScript.trunc_div(remembered_aid, 10))),
 			actor_id, source_id, "ALLY_AID")
 		_append_trigger(triggers, "ALLY_AID")
+	elif event_type == "party.ration_starve_tick" and observer_id in party_ids:
+		_add(state, "FEAR", _fear_delta(profile, 40), -1, source_id, "STARVING")
+		_append_trigger(triggers, "STARVING")
+	elif event_type == "party.ration_missing" and observer_id in party_ids:
+		_add(state, "FEAR", _fear_delta(profile, 25), -1, source_id, "RATION_MISSING")
+		_append_trigger(triggers, "RATION_MISSING")
 	elif event_type == "town.shrine_service" and target_id == observer_id:
 		_reduce(state, "FEAR", 300)
 		_reduce(state, "ANGER", 150)

@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 21
+const SCHEMA_VERSION := 22
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -35,6 +35,8 @@ const ANCHOR_PORTAL_SCHEMA_VERSION := 19
 const EMOTION_STATE_SCHEMA_VERSION := 20
 # v21 persists a bounded factual memory ledger independently of current emotion.
 const MEMORY_STATE_SCHEMA_VERSION := 21
+# v22 persists the shared party ration gauge and its drain clock.
+const RATION_SCHEMA_VERSION := 22
 const MAX_ACTIVE_PARTY_SIZE := 4
 const MAX_TRACKED_ENEMY_SIZE := 1024
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
@@ -53,6 +55,7 @@ const OpeningEventScript = preload("res://sim/opening_event_state.gd")
 const GrowthBuildStateScript = preload("res://sim/growth_build_state.gd")
 const PartyHexacoScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const ExpeditionCycleScript = preload("res://sim/expedition_cycle_state.gd")
+const RationRulesScript = preload("res://sim/party_ration_rules.gd")
 
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
@@ -84,6 +87,13 @@ var protagonist_growth = GrowthBuildStateScript.new("human")
 var legacy_journal_origin := false
 var expedition_cycle = ExpeditionCycleScript.new()
 var activated_anchor_portal_floors:Array[int]=[]
+var ration_milli: int = RationRulesScript.ration_max_milli()
+var ration_processed_at: int = 0
+
+
+func reset_ration(now: int) -> void:
+	ration_milli = RationRulesScript.ration_max_milli()
+	ration_processed_at = now
 
 func member(entity_id: int): return member_rows.get(entity_id)
 func enemy_awareness(entity_id:int):return enemy_awareness_rows.get(entity_id)
@@ -135,6 +145,9 @@ func to_dict() -> Dictionary:
 		wire["expedition_cycle"] = expedition_cycle.to_dict()
 	if schema_version >= ANCHOR_PORTAL_SCHEMA_VERSION:
 		wire["activated_anchor_portal_floors"] = activated_anchor_portal_floors.duplicate()
+	if schema_version >= RATION_SCHEMA_VERSION:
+		wire["ration_milli"] = ration_milli
+		wire["ration_processed_at"] = str(ration_processed_at)
 	return wire
 
 static func from_dict(row: Dictionary):
@@ -197,6 +210,12 @@ static func from_dict(row: Dictionary):
 	state.activated_anchor_portal_floors.clear()
 	for value in row.get("activated_anchor_portal_floors",[]):
 		state.activated_anchor_portal_floors.append(int(value))
+	if int(row.get("schema_version", 1)) >= RATION_SCHEMA_VERSION:
+		state.ration_milli = int(row.ration_milli)
+		state.ration_processed_at = Int64CodecScript.parse(row.ration_processed_at, "ration clock")
+	else:
+		state.ration_milli = RationRulesScript.ration_max_milli()
+		state.ration_processed_at = 0
 	return state
 
 static func _canonical_exile_record(record: Dictionary) -> Dictionary:
@@ -274,6 +293,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v15_keys:Array=v14_keys.duplicate();v15_keys.append("legacy_journal_origin");v15_keys.sort()
 	var v18_keys:Array=v15_keys.duplicate();v18_keys.append("expedition_cycle");v18_keys.sort()
 	var v19_keys:Array=v18_keys.duplicate();v19_keys.append("activated_anchor_portal_floors");v19_keys.sort()
+	var v22_keys:Array=v19_keys.duplicate();v22_keys.append_array(["ration_milli","ration_processed_at"]);v22_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -296,7 +316,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == EXPEDITION_CYCLE_SCHEMA_VERSION and keys != v18_keys) \
 		or (parsed_schema_version == ANCHOR_PORTAL_SCHEMA_VERSION and keys != v19_keys) \
 		or (parsed_schema_version == EMOTION_STATE_SCHEMA_VERSION and keys != v19_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v19_keys):
+		or (parsed_schema_version == MEMORY_STATE_SCHEMA_VERSION and keys != v19_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v22_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
@@ -306,7 +327,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			HEXACO_SCHEMA_VERSION,PLAYER_SPECIES_SCHEMA_VERSION,
 			STAT_SCALING_SCHEMA_VERSION,EXPEDITION_CYCLE_SCHEMA_VERSION,
 			ANCHOR_PORTAL_SCHEMA_VERSION,EMOTION_STATE_SCHEMA_VERSION,
-			SCHEMA_VERSION]: return "unsupported_party_schema"
+			MEMORY_STATE_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"
@@ -477,6 +498,13 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 					or int(value)<=previous_floor:
 				return "invalid_anchor_portal_floors"
 			previous_floor=int(value)
+	if parsed_schema_version>=RATION_SCHEMA_VERSION:
+		if not _integer(row.get("ration_milli")) or int(row.ration_milli)<0 \
+				or int(row.ration_milli)>RationRulesScript.ration_max_milli():
+			return "invalid_ration_milli"
+		if not Int64CodecScript.is_canonical(row.get("ration_processed_at")) \
+				or Int64CodecScript.parse(row.ration_processed_at,"ration clock")<0:
+			return "invalid_ration_processed_at"
 	if not row.enemy_busy_rows is Array or row.enemy_busy_rows.size() != row.enemy_ids.size(): return "invalid_enemy_busy_rows"
 	for index in range(row.enemy_busy_rows.size()):
 		var busy = row.enemy_busy_rows[index]

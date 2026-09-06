@@ -58,6 +58,8 @@ static func _source_event_ids(world, event_rows: Array) -> Array[int]:
 				and target_id in world.party_encounter.enemy_ids
 		elif event_type == "party.override_committed":
 			relevant = actor_id in world.party_encounter.party_member_ids
+		elif event_type in ["party.ration_missing", "party.ration_starve_tick"]:
+			relevant = true
 		elif event_type == "town.shrine_service":
 			relevant = target_id in world.party_encounter.party_member_ids
 		if not relevant:

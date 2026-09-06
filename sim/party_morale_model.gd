@@ -11,6 +11,9 @@ const CONTAGION_RANGE := 4
 const RECOVERY_THREAT_RANGE := 3
 const RECOVERY_DELTA := -40
 const MAX_CONTAGION := 180
+## Ceiling of the morale stress scale: every stress figure the model reads or
+## writes, and every stress figure the ledger accepts, lives inside 0..MAX_STRESS.
+const MAX_STRESS := 1000
 
 
 static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) -> Dictionary:
@@ -59,10 +62,23 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 				for member_id in members:
 					direct[member_id] = int(direct[member_id]) - 100
 					triggers[member_id].append("ENEMY_DIED")
+		elif event_type == "party.ration_starve_tick":
+			var data: Dictionary = event.get("data", {}) if event is Dictionary else event.data
+			var stress_delta := maxi(0, int(data.get("stress", 0)))
+			# The tick names the members that actually starved on that boundary; a
+			# member who was down or absent for it carries none of its stress.
+			for member_wire in data.get("member_ids", []):
+				var member_id := int(str(member_wire))
+				if not direct.has(member_id): continue
+				direct[member_id] = int(direct[member_id]) + stress_delta
+				# A catch-up step can spend dozens of intervals at once; the deltas
+				# stack but the persisted code list stays one entry long.
+				if "STARVING" not in triggers[member_id]:
+					triggers[member_id].append("STARVING")
 	var rows: Array[Dictionary] = []
 	for member_id in members:
 		var member = world.party_encounter.member(member_id)
-		var stress_before := clampi(int(member.stress), 0, 1000)
+		var stress_before := clampi(int(member.stress), 0, MAX_STRESS)
 		var contagion := 0
 		for source_id in members:
 			if source_id == member_id or int(direct[source_id]) <= 0 \
@@ -81,7 +97,7 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 		if recovery < 0:
 			triggers[member_id].append("SAFE_RECOVERY")
 		var stress_after := clampi(stress_before + int(direct[member_id]) \
-			+ contagion + recovery, 0, 1000)
+			+ contagion + recovery, 0, MAX_STRESS)
 		var mode_before := str(previous_modes.get(member_id, member.mental_mode))
 		if mode_before not in ["NORMAL", "PANIC"]:
 			mode_before = "NORMAL"

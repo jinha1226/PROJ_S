@@ -238,12 +238,12 @@ func test_party_schema8_new_game_items_and_session_operations_replay_exact()->bo
 		"new game equips legacy short sword item bridge")
 	check_eq(world_inventory.unequipped_items().map(func(item):return item.instance_id),
 		["START_BOW_001","START_CROSSBOW_001","START_HAND_AXE_001","START_MACE_001",
-		"START_POTION_001","START_SPEAR_001"],
-		"new game carries the deterministic weapon sampler and healing potion stack")
+		"START_POTION_001","START_RATION_001","START_SPEAR_001"],
+		"new game carries the weapon sampler, healing potion and ration stacks")
 	check_eq(world_inventory.item("START_POTION_001").quantity,3,
 		"new game starts with the three-use healing potion stack")
-	check_eq(session.sim.world.item_state.ground_items.rows.size(),2,
-		"product start room has shield and padded armor")
+	check_eq(session.sim.world.item_state.ground_items.rows.size(),3,
+		"product start room has shield, padded armor and the floor ration")
 	check_eq(PartyState.wire_error(state.to_dict(),session.sim.world.width,
 		session.sim.world.height),"","schema8 party wire validates")
 	var observation:Dictionary=session.observe_party_world();var visible_item_ids:Array=[]
@@ -288,8 +288,8 @@ func test_equipped_items_do_not_consume_or_duplicate_backpack_slots()->bool:
 		"pickup/add capacity counts only unequipped rows")
 	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var dto:Dictionary=session.protagonist_inventory()
-	check_eq([dto.used_backpack_slots,dto.backpack_rows.size()],[6,6],
-		"product DTO shows five spare weapons and the potion, excluding equipped sword")
+	check_eq([dto.used_backpack_slots,dto.backpack_rows.size()],[7,7],
+		"product DTO shows five spare weapons, the potion and the rations, excluding equipped sword")
 	check_eq(dto.equipment_slots[0].instance_id,"LEGACY_MAIN_HAND",
 		"the same sword instance remains visible in its equipment slot")
 	return finish()
@@ -302,8 +302,11 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
 		row.erase("expedition_cycle")
 		row.erase("activated_anchor_portal_floors")
+		row.erase("ration_milli");row.erase("ration_processed_at")
 		row.erase("legacy_journal_origin")
-		for member_row in row.member_rows:member_row.erase("mental_mode")
+		for member_row in row.member_rows:
+			member_row.erase("mental_mode")
+			member_row.erase("emotion_state");member_row.erase("memory_state")
 		# v5-v12 rows carried a protagonist_loadout. v13 removed that duplicate
 		# authority, so a legacy fixture must state the field the old wire had.
 		if version>=PartyState.LOADOUT_SCHEMA_VERSION:

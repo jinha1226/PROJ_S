@@ -20,6 +20,7 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const PartyStateScript=preload("res://sim/party_encounter_state.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
+const RationSystemScript = preload("res://sim/systems/party_ration_system.gd")
 const MAX_DEPLOYED_PARTY := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
 const PARTY_ACTION_COST := 100
 const MAX_INT64 := 9223372036854775807
@@ -51,6 +52,7 @@ func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: i
 		return false
 	if world.party_encounter == null: return true
 	if not reconcile_liveness(allow_victory): return false
+	if not RationSystemScript.process_tick(world, damage, processed_step_index): return false
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:

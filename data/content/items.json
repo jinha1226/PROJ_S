@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "items-2026-09-01",
+  "content_version": "items-2026-09-06",
   "content_type": "ITEMS",
   "ruleset_id": "item-registry-v2",
   "healing_potion_restore": 35,
@@ -135,6 +135,18 @@
       "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "HEALING",
+      "placeholder": false
+    },
+    {
+      "definition_id": "FOOD_RATION",
+      "label": "배급 식량",
+      "category": "CONSUMABLE",
+      "stack_limit": 10,
+      "equip_slots": [],
+      "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "EAT",
       "placeholder": false
     },
     {
