@@ -424,6 +424,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.expedition_cycle=ExpeditionCycleScript.active(1,candidate.world.world_time,
 		DEFAULT_EXPEDITION_DURATION,1)
 	if state.expedition_cycle==null:return false
+	state.reset_ration(int(candidate.world.world_time))
 	candidate.world.item_state.ground_items=GroundItemScript.new(_initial_ground_item_rows(
 		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
