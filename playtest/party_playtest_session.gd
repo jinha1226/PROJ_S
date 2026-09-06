@@ -2684,22 +2684,27 @@ func observe_party_world() -> Dictionary:
 	return _party_rich_observation(context,bounds,Vector2i.ZERO).duplicate(true)
 
 
-func observe_party_ui(cell_count:int=15,include_minimap:bool=true)->Dictionary:
+func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
+		row_count:int=-1)->Dictionary:
 	var context:=_party_observation_context()
 	if context.is_empty():return {"grid":{},"minimap":{}}
-	var count:=clampi(cell_count,1,MAX_UI_VIEW_CELL_COUNT)
+	# A supplied row count opts into the product camera's rectangular viewport.
+	# Legacy one-dimensional calls keep their established 25x25 safety ceiling.
+	var rectangular_view:=row_count>0
+	var count:=clampi(cell_count,1,64 if rectangular_view else MAX_UI_VIEW_CELL_COUNT)
+	var rows:=clampi(row_count,1,64) if rectangular_view else count
 	var hero_position:Vector2i=context.hero_position
 	# A legacy world that already fits inside the requested surface may widen its
 	# camera to keep actors at opposite edges visible. Materialize that complete
 	# world; larger product maps retain a bounded hero-centered UI DTO.
-	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=count
+	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=rows
 	var viewport_origin:=Vector2i.ZERO if full_world_fits \
-		else hero_position-Vector2i(count/2,count/2)
+		else hero_position-Vector2i(count/2,rows/2)
 	var viewport_bounds:=Rect2i(viewport_origin,
 		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
-		else Vector2i(count,count))
+		else Vector2i(count,rows))
 	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin,
-		count*count),
+		count*rows),
 		# The product HUD keeps its minimap closed during ordinary movement and
 		# combat. Let those hot paths omit the full explored-world projection;
 		# callers that render or test the minimap retain the default contract.

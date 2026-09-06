@@ -16,6 +16,7 @@ const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
 const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const FixedFrontAssets = preload("res://playtest/fixed_front_topdown_assets.gd")
+const TopdownTileAssets = preload("res://playtest/topdown_tile_assets.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
 const RegularFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
@@ -48,9 +49,14 @@ const SPEECH_BUBBLE_MAX_VISIBLE := 2
 const SPEECH_BUBBLE_FONT_SIZE := 12
 const SPEECH_BUBBLE_PADDING := Vector2(7,5)
 var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
+# Product play uses a rectangular camera so portrait and landscape screens both
+# spend their available pixels on world cells. `visible_cell_count` remains the
+# horizontal count for compatibility with zoom controls and legacy callers.
 var visible_cell_count := GRID_SIZE
+var visible_row_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
 var _graphics_mode := GRAPHICS_MODE_FLAT_2D
+var _terrain_theme_floor_index:=1
 var _cells: Dictionary = {}
 var _actors: Array[Dictionary] = []
 var _ghosts: Array[Dictionary] = []
@@ -170,6 +176,7 @@ func set_graphics_mode(mode:String)->bool:
 	if normalized==_graphics_mode:return true
 	cancel_pointer_gesture()
 	_graphics_mode=normalized
+	if uses_perspective_projection():visible_row_count=visible_cell_count
 	_actor_projection_hash=0
 	_static_cell_content_cache.clear()
 	_static_content_cell_size=-1.0
@@ -186,6 +193,12 @@ func _exit_tree()->void:
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
+	var phase_value:Variant=observation.get("phase",{})
+	var next_floor_index:=int(phase_value.get("floor_index",1)) \
+		if phase_value is Dictionary else 1
+	if next_floor_index!=_terrain_theme_floor_index:
+		_terrain_theme_floor_index=next_floor_index
+		_invalidate_static_projection_cache()
 	var previous_cells:Dictionary=_cells
 	var previous_visible_cells:Dictionary={}
 	var previous_actors:Dictionary={}
@@ -395,6 +408,7 @@ func _reconcile_actor_last_facing(previous_actors:Dictionary)->void:
 func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=[])->void:
 	cancel_pointer_gesture()
 	visible_cell_count=clampi(cell_count,1,mini(world_grid_size.x,world_grid_size.y))
+	visible_row_count=visible_cell_count
 	# The flicker timer is independent of projection rebuilds.  Reconcile it as
 	# soon as a zoom request lands so a just-wide view cannot retain the former
 	# 8 Hz redraw loop until the next draw frame builds its torch list.
@@ -423,13 +437,15 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 	view_origin=next_origin;_invalidate_static_projection_cache();queue_redraw()
 
 func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
-		hero_actor_id:int=-1,settle_duration_msec:int=CAMERA_SETTLE_DURATION_MS)->void:
+		hero_actor_id:int=-1,settle_duration_msec:int=CAMERA_SETTLE_DURATION_MS,
+		row_count:int=-1)->void:
 	# Product camera authority is the protagonist only. Negative origins are
 	# intentional at map edges: those screen cells render as void rather than
 	# pushing the hero away from the center cell.
 	cancel_pointer_gesture()
 	var previous_origin:=view_origin
 	var previous_count:=visible_cell_count
+	var previous_row_count:=visible_row_count
 	var previous_hero:=_hero_camera_position
 	var previous_settle:=_camera_settle.duplicate(true)
 	var now:=Time.get_ticks_msec()
@@ -438,6 +454,8 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		carried_offset_px=Vector2(camera_settle_draw_spec(now).get(
 			"offset_px",Vector2.ZERO))
 	visible_cell_count=clampi(cell_count,1,64)
+	visible_row_count=visible_cell_count if uses_perspective_projection() \
+		else clampi(row_count if row_count>0 else visible_cell_count,1,64)
 	# See set_view_window: a zoom change must stop/start the idle flicker timer
 	# immediately, not only after the deferred static projection rebuild.
 	_sync_torch_timer()
@@ -456,11 +474,12 @@ func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		else:_camera_settle.clear()
 	elif _hero_camera_position==Vector2i(-1,-1):_camera_settle.clear()
 	_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
-	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_cell_count/2)
+	view_origin=hero_position-Vector2i(visible_cell_count/2,visible_row_count/2)
 	var presentation_changed:=previous_origin!=view_origin or previous_count!=visible_cell_count \
+		or previous_row_count!=visible_row_count \
 		or previous_hero!=_hero_camera_position or previous_settle!=_camera_settle
 	if previous_origin!=view_origin or previous_count!=visible_cell_count \
-			or previous_hero!=_hero_camera_position:
+			or previous_row_count!=visible_row_count or previous_hero!=_hero_camera_position:
 		_invalidate_static_projection_cache()
 	_update_process_enabled()
 	if presentation_changed:queue_redraw()
@@ -761,14 +780,15 @@ func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
 		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty())
 
-func view_bounds()->Rect2i:return Rect2i(view_origin,Vector2i(visible_cell_count,visible_cell_count))
+func view_bounds()->Rect2i:return Rect2i(view_origin,
+	Vector2i(visible_cell_count,visible_row_count))
 func is_world_cell_visible(position:Vector2i)->bool:
 	return _world_in_bounds(position) and view_bounds().has_point(position)
 func _world_in_bounds(position:Vector2i)->bool:
 	return position.x>=0 and position.y>=0 and position.x<world_grid_size.x and position.y<world_grid_size.y
 func _clamp_view_origin(origin:Vector2i)->Vector2i:
 	return Vector2i(clampi(origin.x,0,maxi(0,world_grid_size.x-visible_cell_count)),
-		clampi(origin.y,0,maxi(0,world_grid_size.y-visible_cell_count)))
+		clampi(origin.y,0,maxi(0,world_grid_size.y-visible_row_count)))
 
 func set_selection(actor_id: int, target_id: int = -1) -> void:
 	if selected_actor_id==actor_id and selected_target_id==target_id:return
@@ -1059,7 +1079,13 @@ func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
 
 
 func grid_rect() -> Rect2:
-	var extent := minf(size.x,size.y); return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
+	if not uses_perspective_projection():
+		var cell:=minf(size.x/float(maxi(1,visible_cell_count)),
+			size.y/float(maxi(1,visible_row_count)))
+		var extent:=Vector2(cell*visible_cell_count,cell*visible_row_count)
+		return Rect2((size-extent)*0.5,extent)
+	var extent := minf(size.x,size.y)
+	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
 func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
@@ -1097,20 +1123,21 @@ func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 		var local:=pointer-rect.position;var cell:=cell_size_px()
 		var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
 		if local_cell.x<0 or local_cell.y<0 or local_cell.x>=visible_cell_count \
-				or local_cell.y>=visible_cell_count:return Vector2i(-1,-1)
+				or local_cell.y>=visible_row_count:return Vector2i(-1,-1)
 		var flat_world:=view_origin+local_cell
 		return flat_world if _world_in_bounds(flat_world) else Vector2i(-1,-1)
 	# Near rows are inspected first at shared projected edges. The result remains
 	# one canonical integer cell; perspective never reaches simulation authority.
-	for y in range(visible_cell_count-1,-1,-1):
+	for y in range(visible_row_count-1,-1,-1):
 		for x in range(visible_cell_count):
 			var world_position:=view_origin+Vector2i(x,y)
 			if Geometry2D.is_point_in_polygon(pointer,_camera_cell_polygon(world_position)):
 				return world_position if _world_in_bounds(world_position) else Vector2i(-1,-1)
 	return Vector2i(-1,-1)
 func mapping_signature() -> Array:
-	var rows: Array = [[view_origin.x,view_origin.y],visible_cell_count,[world_grid_size.x,world_grid_size.y]]
-	for y in range(visible_cell_count):
+	var rows: Array = [[view_origin.x,view_origin.y],[visible_cell_count,visible_row_count],
+		[world_grid_size.x,world_grid_size.y]]
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var world:=view_origin+Vector2i(x,y); rows.append([[world.x,world.y],world_to_pixel_center(world)])
 	return rows
@@ -1373,9 +1400,23 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 	if maximum<=0 or life_state=="DEAD":return hidden.duplicate(true)
 	var camera:=camera_settle_draw_spec(sample_time_ms)
 	var camera_offset:Vector2=camera.get("offset_px",Vector2.ZERO)
-	var bounds:=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
+	# Health is actor chrome, so derive it from the exact renderer bounds instead
+	# of independently reconstructing the actor position. This keeps the complete
+	# paper-doll and bar locked together throughout companion and camera motion.
+	var bounds:Rect2
+	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+		var actor_spec:=fixed_front_actor_render_spec(actor,false,sample_time_ms,
+			camera_offset)
+		if bool(actor_spec.get("visible",false)) and bool(actor_spec.get("uses_sprite",false)):
+			bounds=Rect2(actor_spec.get("bounds",Rect2()))
+		else:
+			var ascii_spec:=topdown_ascii_actor_render_spec(actor,false,sample_time_ms,
+				camera_offset)
+			bounds=Rect2(ascii_spec.get("bounds",Rect2()))
+	else:
+		bounds=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
+		if entity_id==_hero_camera_actor_id:bounds.position-=camera_offset
 	if bounds.size.x<=0.0:return hidden.duplicate(true)
-	if entity_id==_hero_camera_actor_id:bounds.position-=camera_offset
 	var ratio:=clampf(float(health)/float(maximum),0.0,1.0)
 	var bar_size:=Vector2(clampf(cell_size_px()*0.78,10.0,24.0),
 		clampf(cell_size_px()*0.13,3.0,4.0))
@@ -1444,7 +1485,7 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 
 func ground_item_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var spec:=ground_item_draw_spec(view_origin+Vector2i(x,y))
 			if bool(spec.visible):rows.append(spec)
@@ -1544,7 +1585,7 @@ func _ensure_static_projection_cache()->void:
 	if not is_equal_approx(_static_content_cell_size,cell_size):
 		_static_cell_content_cache.clear()
 		_static_content_cell_size=cell_size
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var key:=_key(position)
 			var in_world:=_world_in_bounds(position)
@@ -1750,7 +1791,7 @@ func _cached_static_cell(position:Vector2i)->Dictionary:
 func static_projection_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
 	return {"cell_count":_static_projection_cache.size(),"viewport_capacity":
-		visible_cell_count*visible_cell_count,"rebuild_count":_static_projection_rebuild_count,
+		visible_cell_count*visible_row_count,"rebuild_count":_static_projection_rebuild_count,
 		"dirty":_static_projection_dirty,"world_cell_count":_cells.size(),
 		"content_cache_count":_static_cell_content_cache.size(),
 		"content_build_count":_static_content_build_count,
@@ -2150,16 +2191,19 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var entity_id:=int(actor.get("entity_id",-1))
 	# Formation ghosts own a preview position and must not borrow the same
 	# entity's currently deployed position from the live actor cache.
-	var visual_world:=Vector2(position) if ghost else _actor_visual_world_position(
-		entity_id,sample_time_ms)
+	# The product camera follows the protagonist. Keep its complete paper-doll
+	# anchored to that camera just like the ASCII renderer; only companions slide
+	# between cells. This also gives the actor and its HP bar one shared anchor.
+	var camera_centered_hero:=not ghost and entity_id==_hero_camera_actor_id
+	var visual_world:=Vector2(position) if ghost or camera_centered_hero \
+		else _actor_visual_world_position(entity_id,sample_time_ms)
 	if visual_world==Vector2(-1,-1):visual_world=Vector2(position)
 	var center:=_world_position_to_pixel_center(visual_world)
 	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
 	var cell:=cell_size_px()
 	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
-	var bob_ratio:=float(style.get("glyph_bob_ratio",0.0))
 	var sprite_size:=clampf(cell*1.50,24.0,42.0)
-	var foot_y:=center.y+cell*0.42+bob_ratio*cell*0.16
+	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,
 		foot_y-sprite_size*foot_anchor_ratio),Vector2.ONE*sprite_size)
@@ -2193,8 +2237,9 @@ func topdown_ascii_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var position:=_position_from_actor(actor)
 	if not is_world_cell_visible(position):return {"visible":false}.duplicate(true)
 	var entity_id:=int(actor.get("entity_id",-1))
-	var visual_world:=Vector2(position) if ghost else _actor_visual_world_position(
-		entity_id,sample_time_ms)
+	var camera_centered_hero:=not ghost and entity_id==_hero_camera_actor_id
+	var visual_world:=Vector2(position) if ghost or camera_centered_hero \
+		else _actor_visual_world_position(entity_id,sample_time_ms)
 	if visual_world==Vector2(-1,-1):visual_world=Vector2(position)
 	var center:=_world_position_to_pixel_center(visual_world)
 	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
@@ -2257,7 +2302,7 @@ func _draw_ground_items()->void:
 		_draw_centered_text(font,str(spec.glyph),center,font_size,Color(str(spec.color_hex)))
 
 func _draw_void_padding(void_color:Color)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			if not _world_in_bounds(position):
@@ -2273,7 +2318,7 @@ func _draw_melee_target_background_flashes()->void:
 		draw_rect(Rect2(spec.get("rect",Rect2())),color,true)
 
 func _draw_ground_pass(visibility_state:String)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
@@ -2331,7 +2376,7 @@ func _draw_torch_light_pools()->void:
 	# the warm pool FOV-safe without a texture, shader, or offscreen viewport.
 	if _torch_positions.is_empty() and _fire_light_positions.is_empty():return
 	var now:=Time.get_ticks_msec()
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var light:=_torch_light_draw_spec_cached(position,now)
@@ -2357,13 +2402,21 @@ func _draw_torch_light_pools()->void:
 					grid_rect()),fire_amber,true)
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
 			if str(cached.get("visibility_state",""))!=visibility_state:continue
 			if uses_perspective_projection():
 				_draw_asciident_terrain_cluster(terrain_ascii_cluster_draw_spec(position))
+				continue
+			var row:Dictionary=cached.get("row",{})
+			var tile_spec:=TopdownTileAssets.tile_spec(row,position,
+				_terrain_theme_floor_index)
+			if bool(tile_spec.get("visible",false)):
+				_draw_topdown_terrain_tile(world_cell_rect(position),tile_spec)
+				# Tile imagery replaces only the primary terrain glyph. Semantic
+				# features, hazards, routes and material marks retain their passes.
 				continue
 			var terrain:Dictionary=cached.get("terrain",{})
 			var display_terrain:=terrain
@@ -2383,6 +2436,22 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 				visibility_state,cached.get("light",{}),
 				_cell_is_visually_occupied(position),position)
 
+func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
+	if uses_perspective_projection() or not is_world_cell_visible(position):
+		return {"visible":false,"draw_image":false,"changes_mapping":false,
+			"changes_fov":false}.duplicate(true)
+	var row:Dictionary=_cells.get(_key(position),{})
+	return TopdownTileAssets.tile_spec(row,position,_terrain_theme_floor_index)
+
+func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
+	var texture:Texture2D=spec.get("texture",null)
+	if texture==null:return
+	var visibility:=str(spec.get("visibility_state","UNSEEN"))
+	var modulate:=Color(0.78,0.82,0.84,0.84) if visibility=="VISIBLE" \
+		else Color(0.30,0.32,0.33,0.42)
+	# A sub-pixel overlap prevents sampling seams without changing hit mapping.
+	draw_texture_rect_region(texture,rect.grow(0.35),Rect2(spec.region),modulate)
+
 func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 	if not bool(spec.get("visible",false)):return
 	_draw_centered_text(RegularFont,str(spec.get("rear","")),Vector2(spec.rear_center),
@@ -2392,9 +2461,12 @@ func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 		float(spec.get("glow_strength",0.0)))
 
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
+	# Runtime top-down wall tiles already contain their own connected silhouette.
+	# ASCII bridges are retained only for the optional diorama renderer.
+	if not uses_perspective_projection():return []
 	_ensure_static_projection_cache()
 	var rows:Array[Dictionary]=[]
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
@@ -2449,7 +2521,7 @@ func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)
 		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
@@ -2469,7 +2541,7 @@ func _draw_material_mark_pass(visibility_state:String)->void:
 				maxi(7,int(rect.size.x*0.28)),color)
 
 func _draw_wall_shadow_pass(visibility_state:String)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
@@ -2490,7 +2562,7 @@ func _draw_wall_shadow_pass(visibility_state:String)->void:
 			draw_colored_polygon(shadow_points,shadow)
 
 func _draw_wall_pass(visibility_state:String)->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position)
@@ -2584,7 +2656,7 @@ func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 	_draw_centered_text(font,glyph,center,font_size,color)
 
 func _draw_ground_features()->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
 			if _diorama_visibility_state(row)=="VISIBLE":
@@ -2592,7 +2664,7 @@ func _draw_ground_features()->void:
 
 func ground_mark_draw_specs()->Array[Dictionary]:
 	var result:Array[Dictionary]=[]
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
 			if row.is_empty():continue
@@ -2611,7 +2683,7 @@ func _draw_ground_marks()->void:
 		_draw_centered_text(font,str(spec.glyph),Vector2(spec.center),int(spec.font_size),color)
 
 func _draw_ground_hazards()->void:
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var spec:=diorama_hazard_draw_spec(position)
 			if bool(spec.get("visible",false)):_draw_ground_hazard(world_cell_rect(position),spec)
@@ -2637,7 +2709,7 @@ func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 
 func _draw_fov_edge_haze()->void:
 	var thickness:=clampf(cell_size_px()*0.13,2.0,5.0)
-	for y in range(visible_cell_count):
+	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
 			var cached:=_cached_static_cell(position);var spec:Dictionary=cached.get("cell_spec",{})

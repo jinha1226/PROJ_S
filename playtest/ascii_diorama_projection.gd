@@ -56,7 +56,8 @@ const _MARK_DEFINITIONS := {
 
 const ACTOR_MOTION_DEFAULT_MS := 150
 const ACTOR_MOTION_MIN_MS := 70
-const ACTOR_MOTION_MAX_MS := 180
+const ACTOR_MOTION_MAX_MS := 240
+const ACTOR_MOTION_CONTINUOUS_MIN_MS := 180
 
 # The gameplay grid remains integer 2D authority. These values only project its
 # presentation into the optional camera-following typographic diorama.
@@ -171,8 +172,11 @@ static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
 		elapsed_ms: int, duration_ms: int = ACTOR_MOTION_DEFAULT_MS) -> Dictionary:
 	var safe_duration := clampi(duration_ms, ACTOR_MOTION_MIN_MS, ACTOR_MOTION_MAX_MS)
 	var progress := clampf(float(maxi(0, elapsed_ms)) / float(safe_duration), 0.0, 1.0)
-	var remaining := 1.0 - progress
-	var eased := 1.0 - remaining * remaining * remaining
+	# Long-route hops are retargeted while the prior visual motion is still live.
+	# Constant velocity keeps that chain continuous; shorter manual steps use a
+	# symmetric smoothstep instead of the old hard ease-out burst.
+	var continuous := safe_duration >= ACTOR_MOTION_CONTINUOUS_MIN_MS
+	var eased := progress if continuous else progress * progress * (3.0 - 2.0 * progress)
 	var step_phase := "SETTLE"
 	var stride_sign := 0
 	if progress < 0.30:
@@ -181,7 +185,6 @@ static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
 	elif progress < 0.74:
 		step_phase = "PASS"
 		stride_sign = -1
-	var bob_ratio := -sin(PI * progress) if progress < 1.0 else 0.0
 	return {
 		"active":progress < 1.0 and not from_world.is_equal_approx(to_world),
 		"duration_ms":safe_duration,
@@ -190,7 +193,8 @@ static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
 		"world_position":from_world.lerp(to_world, eased),
 		"step_phase":step_phase,
 		"stride_sign":stride_sign,
-		"glyph_bob_ratio":bob_ratio,
+		"glyph_bob_ratio":0.0,
+		"curve":"LINEAR_CONTINUOUS" if continuous else "SMOOTHSTEP",
 	}.duplicate(true)
 
 

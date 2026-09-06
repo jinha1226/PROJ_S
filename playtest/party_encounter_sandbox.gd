@@ -1,13 +1,13 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 70
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 70
+const EXPLORATION_ACTOR_MOTION_MSEC := 100
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 200
 const MANUAL_CAMERA_SETTLE_MSEC := 55
 # AUTO and long routes should read as continuous travel rather than a sequence of
 # deliberate single-cell inputs. Motion overlaps the next cadence so actor and
 # camera interpolation remain visible without making a large floor tedious.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 70
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 140
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -35,10 +35,11 @@ const NEARBY_NPC_FONT_TEXT:=12
 const NEARBY_NPC_FONT_CAPTION:=11
 const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
-# Product top rail: the 8x8 minimap glyph frame measures 70px with its insets.
-const PRODUCT_TOP_HUD_HEIGHT:=70
-# 360x640: 70 rail + 360 map + 36 events + 84 cards + 44 controls + 44 navigation.
-const PRODUCT_PARTY_CARD_HEIGHT:=84
+# Field-first product shell: compact fixed rails leave the remaining rectangle
+# to the dungeon camera instead of reserving a square map plus dead flex space.
+const PRODUCT_TOP_HUD_HEIGHT:=64
+const PRODUCT_EVENT_HEIGHT:=32
+const PRODUCT_PARTY_CARD_HEIGHT:=68
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=35
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
@@ -262,6 +263,7 @@ var _product_transient_event_feedback:=""
 var _product_attack_targeting:=false
 var _party_command_targeting:=false
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
+var _resize_refresh_queued:=false
 var _product_zoom_touch_index:=-1
 var _product_zoom_touch_step:=0
 var _product_zoom_mouse_control:=""
@@ -698,9 +700,9 @@ func _build_ui()->void:
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
 	minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
 	minimap_frame.configure("지도",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-	minimap_frame.custom_minimum_size=Vector2(62,60);phase_row.add_child(minimap_frame)
+	minimap_frame.custom_minimum_size=Vector2(54,52);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
-	minimap.custom_minimum_size=Vector2(52,50);minimap_frame.add_child(minimap)
+	minimap.custom_minimum_size=Vector2(46,44);minimap_frame.add_child(minimap)
 	var situation_stack:=VBoxContainer.new();situation_stack.name="SituationStack"
 	situation_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	situation_stack.add_theme_constant_override("separation",1);phase_row.add_child(situation_stack)
@@ -817,7 +819,17 @@ func _build_ui()->void:
 	_build_map_overlay()
 	_build_record_modal()
 	_build_species_picker()
-	resized.connect(_layout_floating_surfaces)
+	resized.connect(_on_surface_resized)
+
+func _on_surface_resized()->void:
+	_layout_floating_surfaces()
+	if session==null or grid==null or _resize_refresh_queued:return
+	_resize_refresh_queued=true
+	call_deferred("_refresh_after_surface_resize")
+
+func _refresh_after_surface_resize()->void:
+	_resize_refresh_queued=false
+	if is_inside_tree() and session!=null:_refresh()
 
 func _build_bottom_navigation()->void:
 	bottom_navigation=HBoxContainer.new();bottom_navigation.name="BottomNavigation"
@@ -1525,8 +1537,12 @@ func _refresh()->void:
 	# SOLO keeps one continuous dungeon surface: the situation word stays a hidden
 	# authority for tests/legacy while the rail centre names the floor and return.
 	phase_label.visible=not product_hud
-	event_surface.visible=product_hud;bottom_navigation.visible=product_hud
-	hud_bottom_flex.visible=product_hud
+	event_surface.visible=product_hud
+	# Character cards already open the dossier, while the full map and history
+	# remain available from the top rail. The old five-button footer duplicated
+	# those routes and permanently removed one world-cell row on mobile.
+	bottom_navigation.visible=false
+	hud_bottom_flex.visible=false
 	info_scroll.visible=not product_hud
 	grid.visible=not town_active
 	_apply_product_root_order(product_hud)
@@ -1542,8 +1558,10 @@ func _refresh()->void:
 	var ghosts:Array=deployment.placements if str(status.view_mode)=="ENCOUNTER_PREVIEW" \
 		and not _is_solo_product_session() else []
 	_sync_product_zoom_controls(product_hud)
-	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
+	var view_dimensions:=_current_grid_view_dimensions()
+	var view_cell_count:=view_dimensions.x
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
+		view_dimensions.y)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -1559,7 +1577,7 @@ func _refresh()->void:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
 			int(status.protagonist_position[1]))
 		grid.set_hero_centered_view(hero_position,view_cell_count,
-			int(status.protagonist_id),MANUAL_CAMERA_SETTLE_MSEC)
+			int(status.protagonist_id),MANUAL_CAMERA_SETTLE_MSEC,view_dimensions.y)
 	else:grid.set_view_window(15)
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	if product_hud:grid_style["vignette"]=false
@@ -1647,10 +1665,9 @@ func _refresh()->void:
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
 		root_layout.move_child(phase_panel,0);root_layout.move_child(grid,1)
-		root_layout.move_child(event_surface,2);root_layout.move_child(hud_bottom_flex,3)
-		root_layout.move_child(cards,4)
-		# Keep the two interactive bottom surfaces as the final direct siblings.
-		# The transparent flex consumes only otherwise-unused height before them.
+		root_layout.move_child(event_surface,2);root_layout.move_child(cards,3)
+		# The context dock is the only persistent footer. Hidden compatibility
+		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
 		root_layout.move_child(bottom_navigation,root_layout.get_child_count()-1)
 	else:
@@ -1668,15 +1685,17 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	var presentation:Dictionary=session.presentation_state()
 	var party_rows:Array=session.party_cards()
 	var observe_started:=Time.get_ticks_usec()
-	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,false)
+	var view_dimensions:=_current_grid_view_dimensions()
+	var view_cell_count:=view_dimensions.x
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,false,
+		view_dimensions.y)
 	var observe_finished:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,true)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
 	grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
-		MANUAL_CAMERA_SETTLE_MSEC)
+		MANUAL_CAMERA_SETTLE_MSEC,view_dimensions.y)
 	var grid_style:Dictionary=presentation.get("grid_style",{}).duplicate(true)
 	grid_style["vignette"]=false
 	grid.set_neutral_phase_map(true);grid.set_presentation_style(grid_style)
@@ -1727,9 +1746,11 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 		_refresh();return
 	var started_usec:=Time.get_ticks_usec()
 	var observe_started_usec:=Time.get_ticks_usec()
-	var view_cell_count:=_current_grid_view_cell_count()
+	var view_dimensions:=_current_grid_view_dimensions()
+	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
+		view_dimensions.y) if product_hud else session.observe_party_ui(view_cell_count)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
@@ -1741,7 +1762,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	if product_hud:
 		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
 			CONTINUOUS_CAMERA_SETTLE_MSEC if continuous_motion \
-			else MANUAL_CAMERA_SETTLE_MSEC)
+			else MANUAL_CAMERA_SETTLE_MSEC,view_dimensions.y)
 	else:grid.set_view_window(15)
 	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
 	grid.set_speech_bubbles(session.world_speech_bubbles() \
@@ -5217,6 +5238,32 @@ func _dos_command_label(node_name:String,value:String)->String:
 func _current_grid_view_cell_count()->int:
 	return _product_zoom_cell_count if _is_solo_product_session() else 15
 
+func _current_grid_view_dimensions()->Vector2i:
+	var base_count:=_current_grid_view_cell_count()
+	if not _is_solo_product_session():return Vector2i(base_count,base_count)
+	var status:Dictionary=session.party_status()
+	var members:Variant=status.get("party_member_ids",[])
+	var party_count:int=members.size() if members is Array else 1
+	var party_height:=int(party_card_layout_spec(party_count,size.x).get(
+		"party_height",PRODUCT_PARTY_CARD_HEIGHT))
+	var separation:=4 if size.x>=450.0 else 0
+	# Five visible siblings (HUD, map, event, party, command dock) create four
+	# gaps. The map receives every remaining pixel and derives a square cell size
+	# from the shorter axis, so portrait gains rows and landscape gains columns.
+	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
+		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-TOUCH_TARGET
+		-separation*4))
+	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
+	# Round the long axis outward: a sub-cell (at most one row/column) reduction
+	# in sprite scale is preferable to leaving an otherwise useless black strip.
+	var columns:=clampi(int(ceil(map_extent.x/cell_size-0.001)),1,63)
+	var rows:=clampi(int(ceil(map_extent.y/cell_size-0.001)),1,63)
+	# Odd dimensions keep the protagonist on a real center tile rather than on
+	# the seam between two rows while still filling the long screen axis.
+	if columns%2==0:columns=mini(63,columns+1)
+	if rows%2==0:rows=mini(63,rows+1)
+	return Vector2i(columns,rows)
+
 func _sync_product_zoom_controls(product_hud:bool)->void:
 	if grid_zoom_controls==null:return
 	var front_surface_open:bool=grid!=null and grid.modal_open \
@@ -5318,12 +5365,14 @@ func _apply_product_zoom_surface()->void:
 	# Zoom is a pure camera projection change. It deliberately bypasses `_refresh`,
 	# whose phase orchestration may own canonical work, and leaves AUTO/routes intact.
 	grid.cancel_pointer_gesture()
-	var ui_observation:Dictionary=session.observe_party_ui(_product_zoom_cell_count,false)
+	var view_dimensions:=_current_grid_view_dimensions()
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,false,
+		view_dimensions.y)
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
-	grid.set_hero_centered_view(hero_position,_product_zoom_cell_count,
-		int(status.protagonist_id))
+	grid.set_hero_centered_view(hero_position,view_dimensions.x,
+		int(status.protagonist_id),MANUAL_CAMERA_SETTLE_MSEC,view_dimensions.y)
 
 func _is_solo_product_session()->bool:
 	return session!=null and session.has_method("is_solo_combat") \
@@ -5401,29 +5450,36 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		product_hud:bool=false)->void:
 	var wide:=size.x>=450.0
 	phase_panel.custom_minimum_size.y=PRODUCT_TOP_HUD_HEIGHT if product_hud else (52 if wide else 48)
-	# The 360px product stack has exactly eight spare pixels after its fixed
-	# surfaces. A zero-gap transparent flex owns them deterministically; relying
-	# on five implicit VBox separations intermittently inflated the root to 642.
+	# Compact portrait has no gaps; desktop keeps a little rail separation while
+	# the expanding map owns all remaining height.
 	root_layout.add_theme_constant_override("separation",4 if wide else (0 if product_hud else 2))
 	combat_action_area.custom_minimum_size.y=84 if combat_actions_visible else 0
 	if product_hud:
-		grid.custom_minimum_size=Vector2(size.x,size.x)
-		hud_bottom_flex.visible=true
+		grid.custom_minimum_size=Vector2(size.x,1)
+		grid.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		grid.size_flags_vertical=Control.SIZE_EXPAND_FILL
+		hud_bottom_flex.visible=false
 		var status:Dictionary=session.party_status()
 		var members:Variant=status.get("party_member_ids",[])
 		var product_metrics:=_product_controls_metrics(members.size() if members is Array else 1)
 		combat_action_area.custom_minimum_size.y=int(product_metrics.get("dock_height",124))
 	elif wide:
+		grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+		grid.size_flags_vertical=Control.SIZE_FILL
 		grid.custom_minimum_size=Vector2(405,405)
 	elif combat_active:
+		grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+		grid.size_flags_vertical=Control.SIZE_FILL
 		grid.custom_minimum_size=Vector2(248,248) if run_available else Vector2(300,300)
 	else:
+		grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+		grid.size_flags_vertical=Control.SIZE_FILL
 		grid.custom_minimum_size=Vector2(276,276) \
 			if run_available and (run_terminal or _run_locked_exit_feedback) \
 			else (Vector2(316,316) if run_available else Vector2(348,348))
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
-	event_surface.custom_minimum_size.y=38 if wide else 36
+	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT if product_hud else (38 if wide else 36)
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:

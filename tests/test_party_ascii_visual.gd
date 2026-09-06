@@ -6,6 +6,7 @@ const Grid = preload("res://playtest/party_grid_view.gd")
 const Diorama = preload("res://playtest/ascii_diorama_projection.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const FixedFrontAssets = preload("res://playtest/fixed_front_topdown_assets.gd")
+const TopdownTileAssets = preload("res://playtest/topdown_tile_assets.gd")
 
 
 func test_ascii_material_motion_is_deterministic_fov_safe_and_limited_to_four_kinds()->bool:
@@ -193,7 +194,11 @@ func test_adjacent_walls_gain_midpoint_hashes_without_new_cells_or_fov_leaks()->
 				cell.terrain_id="wall";cell.visibility_state="UNSEEN"
 	var grid=Grid.new();grid.size=Vector2(345,345)
 	grid.set_observation({"width":15,"height":15,"cells":cells})
-	var mapping:=grid.mapping_signature()
+	check(grid.wall_connector_draw_specs("VISIBLE").is_empty() \
+		and grid.wall_connector_draw_specs("MEMORY").is_empty(),
+		"top-down image tiles do not retain ASCII wall bridges")
+	grid.set_graphics_mode(Grid.GRAPHICS_MODE_DIORAMA_2_5D)
+	var diorama_mapping:=grid.mapping_signature()
 	var visible:Array=grid.wall_connector_draw_specs("VISIBLE")
 	var memory:Array=grid.wall_connector_draw_specs("MEMORY")
 	check_eq([visible.size(),memory.size()],[2,1],
@@ -207,7 +212,7 @@ func test_adjacent_walls_gain_midpoint_hashes_without_new_cells_or_fov_leaks()->
 		check(bool(spec.fov_safe) and not bool(spec.changes_mapping) \
 			and not bool(spec.changes_hit_rect) and not bool(spec.draw_surface),
 			"connector is display-only text")
-	check_eq(grid.mapping_signature(),mapping,
+	check_eq(grid.mapping_signature(),diorama_mapping,
 		"dense wall ink never adds a logical tile or changes hit mapping")
 	grid.free();return finish()
 
@@ -439,28 +444,46 @@ func test_visibility_light_pool_memory_unseen_and_void_are_immediately_distinct(
 	grid.free();return finish()
 
 
-func test_product_floor_stays_ascii_while_flat_actors_use_fixed_front_layers() -> bool:
+func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() -> bool:
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
 	var asset_source:=FileAccess.get_file_as_string(
 		"res://playtest/fixed_front_topdown_assets.gd")
-	check(not grid_source.is_empty() and not asset_source.is_empty(),
-		"product renderer and fixed-front registry sources are readable")
+	var tile_source:=FileAccess.get_file_as_string("res://playtest/topdown_tile_assets.gd")
+	check(not grid_source.is_empty() and not asset_source.is_empty() \
+			and not tile_source.is_empty(),
+		"product renderer, actor registry and tile registry sources are readable")
 	check(grid_source.contains("_draw_terrain_glyph_pass") \
 			and grid_source.contains("_draw_topdown_fixed_front_actor") \
-			and grid_source.contains("draw_texture_rect") \
+			and grid_source.contains("draw_texture_rect_region") \
 			and grid_source.contains("_draw_topdown_ascii_actor"),
-		"ASCII floor, fixed-front actors and unsupported-species fallback are explicit")
+		"top-down tiles, fixed-front actors and unsupported-species fallback are explicit")
 	for forbidden in ["ModularAssets","_draw_modular","TextureRect","Node3D",
 			"MeshInstance3D","Skeleton3D","Camera3D"]:
 		check(not grid_source.contains(forbidden),
 			"shipping grid contains no legacy directional or 3D dependency: %s"%forbidden)
 	check("/terrain/" not in asset_source and "/props/" not in asset_source \
 		and "/ui/" not in asset_source,
-		"actor replacement does not reintroduce tile or button textures")
+		"actor registry remains isolated from tile and button textures")
+	check("floor1_atlas_16x1_128.png" in tile_source \
+			and "floor2_atlas_16x1_128.png" in tile_source,
+		"both implemented campaign floors own explicit runtime atlases")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
 	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
-		"product terrain remains image-free with no tile card")
+		"unobserved terrain remains image-free with no fabricated tile")
+	empty_grid.size=Vector2(360,360)
+	var cells:=_visible_cells()
+	cells[0]["feature_id"]="anchor_portal_active"
+	empty_grid.set_observation({"width":15,"height":15,"cells":cells,
+		"phase":{"floor_index":2}})
+	var floor_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i(1,1))
+	var portal_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i.ZERO)
+	check(bool(floor_tile.visible) and bool(floor_tile.draw_image) \
+			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(128,128),
+		"floor two terrain resolves a bounded atlas region")
+	check(int(portal_tile.tile_index)==15 and not bool(portal_tile.changes_mapping) \
+			and not bool(portal_tile.changes_fov),
+		"active portal art remains presentation-only and mapping-neutral")
 	empty_grid.free()
 	return finish()
 
@@ -1091,10 +1114,11 @@ func test_hero_camera_settle_is_move_only_centered_pure_and_input_safe() -> bool
 	var emitted:Array=[];grid.world_cell_pressed.connect(func(position):emitted.append(position))
 	var floor_pointer:=grid.world_to_pixel_center(Vector2i(2,0))
 	grid._begin_pointer_gesture("TOUCH",2,floor_pointer)
-	check(bool(grid.pointer_gesture_state().active) \
-		and not grid.camera_settle_draw_spec().active,
-		"a new floor touch ends visual settle and immediately owns a gesture")
-	grid._finish_pointer_gesture("TOUCH",2,floor_pointer,false)
+	check(not grid.camera_settle_draw_spec().active \
+			and (bool(grid.pointer_gesture_state().active) or emitted==[Vector2i(2,0)]),
+		"a new floor touch ends visual settle and immediately owns or commits its gesture")
+	if bool(grid.pointer_gesture_state().active):
+		grid._finish_pointer_gesture("TOUCH",2,floor_pointer,false)
 	check_eq(emitted,[Vector2i(2,0)],
 		"floor touch still emits movement input during the former settle window")
 	check(grid.void_padding_draw_spec(Vector2i(-1,0)).visible,
@@ -1393,8 +1417,8 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	var sample75:Dictionary=grid.actor_motion_draw_spec(77,started+75)
 	var sample150:Dictionary=grid.actor_motion_draw_spec(77,started+150)
 	check_eq(sample0.world_position,Vector2(7,7),"motion starts at prior presentation cell")
-	check(absf(float(sample75.eased_progress)-0.875)<0.0001,
-		"75ms cubic ease-out reaches deterministic 87.5 percent")
+	check(absf(float(sample75.eased_progress)-0.5)<0.0001,
+		"75ms symmetric easing reaches deterministic midpoint without a start burst")
 	check_eq(sample150.world_position,Vector2(8,7),"150ms motion ends at target")
 	var actor:Dictionary=grid._actor_by_id(77)
 	var walk_style:Dictionary=grid.actor_draw_spec(actor,false,started+38)
@@ -1468,6 +1492,11 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 		"facing-independent art never changes movement or occupancy authority")
 	check_eq(grid.actor_in_world_cell(Vector2i(6,7)),77,
 		"oversized fixed-front art keeps one-cell actor authority")
+	grid._actors[0]["health"]=8;grid._actors[0]["max_health"]=10
+	var moving_bar:Dictionary=grid.actor_health_bar_draw_spec(77,started+45)
+	check(bool(moving_bar.get("visible",false)) \
+			and absf(Rect2(moving_bar.rect).get_center().x-Rect2(moving.bounds).get_center().x)<0.01,
+		"fixed-front actor and HP bar share the exact interpolated horizontal anchor")
 	var ghost:=actor.duplicate(true)
 	ghost["position"]=[8,8];ghost["display_position"]=[8,8]
 	ghost["logical_position"]=[8,8]
@@ -1711,8 +1740,9 @@ func test_static_projection_cache_is_viewport_bounded_and_motion_phase_is_free()
 		["CONTACT","PASS","SETTLE"],"one movement owns three compact glyph phases")
 	check(contact.stride_sign==1 and passing.stride_sign==-1 and settle.stride_sign==0,
 		"step phase alternates limbs and returns to neutral")
-	check(passing.glyph_bob_ratio<0.0 and not settle.active,
-		"bob exists only during the already-active movement process")
+	check(is_zero_approx(float(contact.glyph_bob_ratio)) \
+			and is_zero_approx(float(passing.glyph_bob_ratio)) and not settle.active,
+		"movement interpolation has no vertical hop or settled bounce")
 	grid.free();return finish()
 
 
