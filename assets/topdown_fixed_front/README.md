@@ -1,11 +1,12 @@
 # Fixed-front top-down runtime art
 
-The visible body and monster bases are native 24x24 RGBA pixel sprites derived
+The visible body and monster bases are native 16x16 RGBA pixel sprites derived
 deterministically from the approved 96px designs. The conversion limits each
 sprite's palette, removes partial alpha, and retains the common foot anchor. The
 larger originals remain under `assets/generated/topdown_fixed_front_v3` and
-`assets/generated/topdown_monsters_v1`; no image generator is needed to rebuild
-this readability pass.
+`assets/generated/topdown_monsters_v1`; the prior 24px pass is preserved under
+`assets/generated/topdown_pixel_readability_v1`. No image generator is needed
+to rebuild this readability pass.
 
 The five body bases keep the approved fixed-front pose. Species readability at
 mobile zoom comes from head shape, ears, hair/fur, body proportion and color.

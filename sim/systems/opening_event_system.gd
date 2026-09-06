@@ -12,6 +12,9 @@ var world
 var movement
 var pathfinder
 var relationships
+var _travel_path: Array = []
+var _travel_npc_id := -1
+var _travel_goal := Vector2i(-1, -1)
 
 
 func _init(p_world, p_movement, p_pathfinder, p_relationships) -> void:
@@ -130,20 +133,53 @@ func process_tick(processed_step_index: int, tick_start_can_act_ids: Dictionary)
 		return true
 	if not _record_reencounter_if_visible(processed_step_index): return false
 	if npc.position != opening.convergence_goal:
-		var route: Dictionary = pathfinder.find_path(opening.npc_entity_id,
+		var route: Dictionary = _travel_route(opening.npc_entity_id, npc.position,
 			opening.convergence_goal)
 		if bool(route.get("found", false)) and int(route.get("steps", 0)) > 0:
 			var path: Array = route.get("path", [])
 			if path.size() < 2: return false
 			var destination: Vector2i = path[1]
 			var assessment = movement.assess_move(opening.npc_entity_id, destination)
+			# Another actor can enter a cached route. Rebuild once against the current
+			# occupancy instead of either aborting the turn or following stale data.
+			if not assessment.accepted:
+				_clear_travel_path()
+				route = _travel_route(opening.npc_entity_id, npc.position,
+					opening.convergence_goal)
+				path = route.get("path", [])
+				if not bool(route.get("found", false)) or path.size() < 2:
+					return false
+				destination = path[1]
+				assessment = movement.assess_move(opening.npc_entity_id, destination)
 			if not assessment.accepted: return false
 			if movement.commit_preflighted_move(opening.npc_entity_id, destination,
 					str(assessment.terrain_id),
 					int(TerrainRegistryScript.definition(assessment.terrain_id).move_time_cost)) == null:
 				return false
+			_travel_path.pop_front()
 	if not _record_reencounter_if_visible(processed_step_index): return false
 	return true
+
+
+func _travel_route(npc_id: int, start: Vector2i, goal: Vector2i) -> Dictionary:
+	if _travel_npc_id == npc_id and _travel_goal == goal \
+			and _travel_path.size() >= 2 and _travel_path[0] == start:
+		return {"found":true, "reason":"cached", "path":_travel_path,
+			"total_cost":0, "steps":_travel_path.size()-1}
+	var route: Dictionary = pathfinder.find_path(npc_id, goal)
+	if bool(route.get("found", false)) and int(route.get("steps", 0)) > 0:
+		_travel_path = Array(route.get("path", [])).duplicate()
+		_travel_npc_id = npc_id
+		_travel_goal = goal
+	else:
+		_clear_travel_path()
+	return route
+
+
+func _clear_travel_path() -> void:
+	_travel_path.clear()
+	_travel_npc_id = -1
+	_travel_goal = Vector2i(-1, -1)
 
 
 func _record_reencounter_if_visible(processed_step_index: int) -> bool:

@@ -3,6 +3,7 @@ extends RefCounted
 
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
 const MovementSystemScript = preload("res://sim/systems/movement_system.gd")
+const MIN_PASSABLE_MOVE_COST := 100
 
 var world
 var movement
@@ -28,13 +29,13 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 	if goal_def.is_empty() or not bool(goal_def.get("passable", false)):
 		return _failure("path_unreachable")
 
-	var open: Array[Dictionary] = [{"position": start, "cost": 0, "steps": 0, "sequence": 0}]
+	var open: Array[Dictionary] = [{"position": start, "cost": 0, "steps": 0,
+		"priority":_path_priority(0,start,goal),"sequence": 0}]
 	var sequence := 1
 	var best: Dictionary = {_key(start): [0, 0]}
 	var previous: Dictionary = {}
 	while not open.is_empty():
-		open.sort_custom(_open_less)
-		var node: Dictionary = open.pop_front()
+		var node: Dictionary = _heap_pop(open)
 		var position: Vector2i = node["position"]
 		var known: Array = best.get(_key(position), [])
 		if known.is_empty() or int(node["cost"]) != int(known[0]) or int(node["steps"]) != int(known[1]):
@@ -60,7 +61,9 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 				continue
 			best[next_key] = [next_cost, next_steps]
 			previous[next_key] = position
-			open.append({"position": next, "cost": next_cost, "steps": next_steps, "sequence": sequence})
+			_heap_push(open,{"position": next, "cost": next_cost,
+				"priority":_path_priority(next_cost,next,goal),
+				"steps": next_steps, "sequence": sequence})
 			sequence += 1
 	return _failure("path_unreachable")
 
@@ -81,13 +84,14 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 	if goal_set.is_empty(): return _failure("path_unreachable")
 	if goal_set.has(_key(start)):
 		return {"found":true,"reason":"already_there","path":[start],"total_cost":0,"steps":0,"goal":start}
-	var open: Array[Dictionary] = [{"position":start,"cost":0,"steps":0,"sequence":0}]
+	var goals_for_heuristic:Array=goal_set.values()
+	var open: Array[Dictionary] = [{"position":start,"cost":0,"steps":0,
+		"priority":_path_to_any_priority(0,start,goals_for_heuristic),"sequence":0}]
 	var sequence := 1
 	var best: Dictionary = {_key(start):[0,0]}
 	var previous: Dictionary = {}
 	while not open.is_empty():
-		open.sort_custom(_open_less)
-		var node: Dictionary = open.pop_front(); var position: Vector2i = node.position
+		var node: Dictionary = _heap_pop(open); var position: Vector2i = node.position
 		var known: Array = best.get(_key(position), [])
 		if known.is_empty() or int(node.cost) != int(known[0]) or int(node.steps) != int(known[1]): continue
 		if goal_set.has(_key(position)):
@@ -105,7 +109,9 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 			var old: Array = best.get(next_key, [])
 			if not old.is_empty() and (next_cost > int(old[0]) or (next_cost == int(old[0]) and next_steps >= int(old[1]))): continue
 			best[next_key] = [next_cost,next_steps]; previous[next_key] = position
-			open.append({"position":next,"cost":next_cost,"steps":next_steps,"sequence":sequence}); sequence += 1
+			_heap_push(open,{"position":next,"cost":next_cost,"steps":next_steps,
+				"priority":_path_to_any_priority(next_cost,next,goals_for_heuristic),
+				"sequence":sequence}); sequence += 1
 	return _failure("path_unreachable")
 
 
@@ -139,6 +145,8 @@ func _occupant(position: Vector2i, actor_id: int, projection: Dictionary) -> int
 
 
 func _open_less(a: Dictionary, b: Dictionary) -> bool:
+	if int(a.get("priority",a["cost"]))!=int(b.get("priority",b["cost"])):
+		return int(a.get("priority",a["cost"]))<int(b.get("priority",b["cost"]))
 	for key in ["cost", "steps"]:
 		if int(a[key]) != int(b[key]):
 			return int(a[key]) < int(b[key])
@@ -149,6 +157,53 @@ func _open_less(a: Dictionary, b: Dictionary) -> bool:
 	if ap.x != bp.x:
 		return ap.x < bp.x
 	return int(a["sequence"]) < int(b["sequence"])
+
+
+func _path_priority(cost:int,position:Vector2i,goal:Vector2i)->int:
+	return cost+maxi(absi(goal.x-position.x),absi(goal.y-position.y)) \
+		*MIN_PASSABLE_MOVE_COST
+
+
+func _path_to_any_priority(cost:int,position:Vector2i,goals:Array)->int:
+	var distance:=2147483647
+	for goal_value in goals:
+		var goal:Vector2i=goal_value
+		distance=mini(distance,maxi(absi(goal.x-position.x),absi(goal.y-position.y)))
+	return cost+distance*MIN_PASSABLE_MOVE_COST
+
+
+func _heap_push(heap:Array,node:Dictionary)->void:
+	# Maintain the A* open set with logarithmic insertion instead of sorting every
+	# discovered node after each expansion.
+	heap.append(node)
+	var index:=heap.size()-1
+	while index>0:
+		var parent:=int((index-1)/2)
+		if not _open_less(heap[index],heap[parent]):break
+		var swap:Variant=heap[parent]
+		heap[parent]=heap[index]
+		heap[index]=swap
+		index=parent
+
+
+func _heap_pop(heap:Array)->Dictionary:
+	var first:Dictionary=heap[0]
+	var tail:Variant=heap.pop_back()
+	if heap.is_empty():return first
+	heap[0]=tail
+	var index:=0
+	while true:
+		var left:=index*2+1
+		if left>=heap.size():break
+		var right:=left+1
+		var smallest:=right if right<heap.size() \
+			and _open_less(heap[right],heap[left]) else left
+		if not _open_less(heap[smallest],heap[index]):break
+		var swap:Variant=heap[index]
+		heap[index]=heap[smallest]
+		heap[smallest]=swap
+		index=smallest
+	return first
 
 
 func _failure(reason: String) -> Dictionary:

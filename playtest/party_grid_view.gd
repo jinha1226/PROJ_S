@@ -2173,7 +2173,7 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	draw_colored_polygon(shadow_points,Color(str(spec.shadow_hex)))
 	var bounds:Rect2=spec.bounds
 	var modulate:=Color(str(spec.modulate_hex))
-	# The bases are authored at their native 24px readability size. Add one stable
+	# The bases are authored at their native 16px readability size. Add one stable
 	# screen-pixel rim so they stay distinct from either biome without turning the
 	# compact silhouettes into black blobs at close zoom.
 	var body_texture:Texture2D=spec.get("body_texture",null)
@@ -2223,7 +2223,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
-	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
+	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.15))
 	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,

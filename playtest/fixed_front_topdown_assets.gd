@@ -2,11 +2,11 @@ class_name FixedFrontTopdownAssets
 extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
-## Visible bases use a native 24x24 transparent pixel canvas and common anchor.
+## Visible bases use a native 16x16 transparent pixel canvas and common anchor.
 ## Direction is deliberately ignored: movement and combat never swap or mirror
 ## these assets.
 
-const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
+const SOURCE_CANVAS_SIZE := Vector2(16.0, 16.0)
 const FOOT_ANCHOR_RATIO := 0.94
 # Keep the first full-body readability pass honest: equipment remains registered
 # but is not composited until its silhouettes are authored against these bodies.
@@ -87,7 +87,7 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"species_id":species_id,
 		"body_texture":base_texture,
 		"monster_sprite":uses_monster_sprite,
-		"visual_cell_ratio":1.30 if uses_monster_sprite else 1.50,
+		"visual_cell_ratio":1.00 if uses_monster_sprite else 1.15,
 		"armor_definition_id":armor_definition_id,
 		"armor_texture":armor_texture(armor_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
 		"weapon_definition_id":weapon_definition_id,

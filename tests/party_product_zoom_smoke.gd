@@ -88,7 +88,7 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 		var hero_actor:Dictionary=sandbox.grid._actor_by_id(int(status.protagonist_id))
 		var hero_render:Dictionary=sandbox.grid.fixed_front_actor_render_spec(hero_actor)
 		actor_sizes_by_zoom[int(count)]=Rect2(hero_render.get("bounds",Rect2())).size.x
-		_check(absf(float(hero_render.get("visual_cell_ratio",0.0))-1.5)<0.001,
+		_check(absf(float(hero_render.get("visual_cell_ratio",0.0))-1.15)<0.001,
 			"%s %d-cell zoom did not scale the character with its tile"%[viewport_size,count])
 		_check(sandbox.grid.world_to_pixel_center(hero).distance_to(
 			sandbox.grid.grid_rect().get_center())<0.01,
