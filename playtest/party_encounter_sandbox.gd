@@ -1538,10 +1538,13 @@ func _refresh()->void:
 	# authority for tests/legacy while the rail centre names the floor and return.
 	phase_label.visible=not product_hud
 	event_surface.visible=product_hud
-	# Character cards already open the dossier, while the full map and history
-	# remain available from the top rail. The old five-button footer duplicated
-	# those routes and permanently removed one world-cell row on mobile.
-	bottom_navigation.visible=false
+	# Keep the requested status/build/equipment/history access at the foot. The
+	# miniature map already opens from the top HUD, so its duplicate footer button
+	# remains hidden and the four useful destinations each receive a wider target.
+	bottom_navigation.visible=product_hud
+	map_nav_button.visible=false
+	person_nav_button.visible=true;skill_nav_button.visible=true
+	equipment_nav_button.visible=true;history_nav_button.visible=true
 	hud_bottom_flex.visible=false
 	info_scroll.visible=not product_hud
 	grid.visible=not town_active
@@ -5247,12 +5250,12 @@ func _current_grid_view_dimensions()->Vector2i:
 	var party_height:=int(party_card_layout_spec(party_count,size.x).get(
 		"party_height",PRODUCT_PARTY_CARD_HEIGHT))
 	var separation:=4 if size.x>=450.0 else 0
-	# Five visible siblings (HUD, map, event, party, command dock) create four
+	# Six visible siblings (HUD, map, event, party, command dock, navigation) create five
 	# gaps. The map receives every remaining pixel and derives a square cell size
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-TOUCH_TARGET
-		-separation*4))
+		-TOUCH_TARGET-separation*5))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction
 	# in sprite scale is preferable to leaving an otherwise useless black strip.
