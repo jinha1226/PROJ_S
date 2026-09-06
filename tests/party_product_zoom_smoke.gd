@@ -75,6 +75,7 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 	_check(sandbox.grid.visible_cell_count==default_count,
 		"%s [+] did not restore the default view"%viewport_size)
 
+	var actor_sizes_by_zoom:Dictionary={}
 	for count in Session.PRODUCT_ZOOM_CELL_COUNTS:
 		sandbox._product_zoom_cell_count=count;sandbox._apply_product_zoom_surface()
 		_check(sandbox.grid.visible_cell_count==count,
@@ -84,6 +85,11 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 			"%s %d-cell glyph surface fell below the mobile readability floor"%[viewport_size,count])
 		var status:Dictionary=session.party_status()
 		var hero:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+		var hero_actor:Dictionary=sandbox.grid._actor_by_id(int(status.protagonist_id))
+		var hero_render:Dictionary=sandbox.grid.fixed_front_actor_render_spec(hero_actor)
+		actor_sizes_by_zoom[int(count)]=Rect2(hero_render.get("bounds",Rect2())).size.x
+		_check(absf(float(hero_render.get("visual_cell_ratio",0.0))-1.5)<0.001,
+			"%s %d-cell zoom did not scale the character with its tile"%[viewport_size,count])
 		_check(sandbox.grid.world_to_pixel_center(hero).distance_to(
 			sandbox.grid.grid_rect().get_center())<0.01,
 			"%s %d-cell hero is not centered"%[viewport_size,count])
@@ -109,6 +115,9 @@ func _check_product_zoom(viewport_size:Vector2)->void:
 				_check(str(row.get("terrain_id",""))=="unknown" \
 					and row.get("actors",[]).is_empty(),
 					"%s %d-cell UNSEEN leak"%[viewport_size,count])
+	_check(float(actor_sizes_by_zoom.get(9,0.0)) \
+		>float(actor_sizes_by_zoom.get(25,0.0))*2.3,
+		"%s close zoom did not visibly enlarge the character"%viewport_size)
 
 	sandbox._product_zoom_cell_count=25
 	var zoom_started_usec:=Time.get_ticks_usec();sandbox._apply_product_zoom_surface()

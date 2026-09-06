@@ -11,11 +11,14 @@ const FLOOR_TEXTURES := {
 }
 
 const FLOOR_ONE_TERRAIN := {
-	"floor":[0,1,2,3],
-	"stone_floor":[4,5,6,7],
-	"wood_floor":[13],
-	"metal":[4,5],
-	"rubble":[12,13],
+	# Indices 4-7 are authored road fragments. Without an autotile connector they
+	# form random straight/L-shaped roads, so ordinary walkable ground uses only
+	# seamless organic fills.
+	"floor":[0,2,3],
+	"stone_floor":[0,2,3],
+	"wood_floor":[0,3],
+	"metal":[2],
+	"rubble":[12],
 	"shallow_water":[8,9],
 	"wall":[10,11],
 }
@@ -23,9 +26,11 @@ const FLOOR_ONE_TERRAIN := {
 const FLOOR_TWO_TERRAIN := {
 	"floor":[0,1],
 	"stone_floor":[2,3],
-	"wood_floor":[13],
-	"metal":[4,5,6,7],
-	"rubble":[10,11,13],
+	# The industrial corridor fragments at 4-7 and the isolated rail at 13 need
+	# connectivity metadata. Keep passable ground on continuous ash/plate fills.
+	"wood_floor":[0,1],
+	"metal":[2,3],
+	"rubble":[10,11],
 	"shallow_water":[8,9],
 	"wall":[10,12],
 }

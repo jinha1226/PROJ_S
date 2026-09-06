@@ -2202,7 +2202,9 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
 	var cell:=cell_size_px()
 	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
-	var sprite_size:=clampf(cell*1.50,24.0,42.0)
+	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
+	# made close zoom enlarge only the terrain while the character stayed fixed.
+	var sprite_size:=cell*1.50
 	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,

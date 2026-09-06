@@ -484,6 +484,15 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	check(int(portal_tile.tile_index)==15 and not bool(portal_tile.changes_mapping) \
 			and not bool(portal_tile.changes_fov),
 		"active portal art remains presentation-only and mapping-neutral")
+	for floor_index in [1,2]:
+		for terrain_id in ["floor","stone_floor","wood_floor","metal","rubble"]:
+			for position in [Vector2i(1,1),Vector2i(7,4),Vector2i(11,13)]:
+				var connected_fragment:Dictionary=TopdownTileAssets.tile_spec({
+					"visibility_state":"VISIBLE","terrain_id":terrain_id},position,
+					floor_index)
+				check(int(connected_fragment.get("tile_index",-1)) not in [4,5,6,7,13],
+					"floor %d %s never picks an unconnected road fragment"%[
+						floor_index,terrain_id])
 	empty_grid.free()
 	return finish()
 
@@ -1529,6 +1538,23 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 	check(not bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
 		"species without approved art explicitly fall back to ASCII")
 	return finish()
+
+
+func test_flat_actor_scale_has_no_close_zoom_pixel_cap()->bool:
+	var grid=Grid.new();grid.size=Vector2(360,360)
+	grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D)
+	grid.set_observation(_actor_observation(Vector2i(7,7),"VISIBLE"))
+	var actor:Dictionary=grid._actor_by_id(77)
+	grid.set_hero_centered_view(Vector2i(7,7),25,77)
+	var far:Dictionary=grid.fixed_front_actor_render_spec(actor)
+	grid.set_hero_centered_view(Vector2i(7,7),9,77)
+	var close:Dictionary=grid.fixed_front_actor_render_spec(actor)
+	check(absf(float(far.visual_cell_ratio)-1.5)<0.001 \
+			and absf(float(close.visual_cell_ratio)-1.5)<0.001,
+		"flat character keeps the same world-space size at every zoom")
+	check(Rect2(close.bounds).size.x>Rect2(far.bounds).size.x*2.7,
+		"close zoom enlarges the fixed-front character instead of hitting a pixel cap")
+	grid.free();return finish()
 
 
 func test_centered_protagonist_keeps_walk_pose_while_camera_tracks_the_step()->bool:
