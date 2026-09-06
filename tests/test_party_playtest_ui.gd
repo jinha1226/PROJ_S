@@ -922,7 +922,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			and sandbox.find_child("SoloCombatStart",true,false)==null \
 			and sandbox.grid._ghosts.is_empty(),
 			"%s solo contact has no entry, formation controls, or ghost"%viewport_size)
-		check(sandbox.phase_panel.is_visible_in_tree() and not sandbox.phase_label.visible \
+		check(sandbox.phase_panel.visible and not sandbox.phase_label.visible \
 			and sandbox.grid._intent_overlays.is_empty() \
 			and sandbox.grid._route_path.is_empty() \
 			and sandbox.grid.cursor_cell==Vector2i(-1,-1),
