@@ -1943,6 +1943,7 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		int(assessment.next_expedition_index))
 	if next_cycle==null:return _rejection_dto("town_departure_failed")
 	state.expedition_cycle=next_cycle
+	state.reset_ration(int(sim.world.world_time))
 	var event=sim.world.emit_event("town.expedition_departed",hero_id,-1,
 		sim.world.entities[hero_id].position,0,-1,{"schema_version":1,
 			"ruleset_id":ExpeditionCycleScript.RULESET_ID,

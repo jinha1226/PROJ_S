@@ -797,6 +797,7 @@ func _reconcile_expedition_cycle() -> void:
 			or world.party_encounter.safe_phase == "PARTY_DEFEATED":
 		return
 	if world.party_encounter.expedition_cycle.auto_return_if_due(world.world_time):
+		world.party_encounter.reset_ration(int(world.world_time))
 		world.party_encounter.revision += 1
 
 

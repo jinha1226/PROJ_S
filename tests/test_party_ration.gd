@@ -7,6 +7,9 @@ const WorldState = preload("res://sim/world_state.gd")
 const Command = preload("res://sim/sim_command.gd")
 const ItemRegistry = preload("res://sim/item_registry.gd")
 const DropRegistry = preload("res://sim/species_drop_registry.gd")
+const Cycle = preload("res://sim/expedition_cycle_state.gd")
+const Timing = preload("res://sim/action_timing_table.gd")
+const RationSystem = preload("res://sim/systems/party_ration_system.gd")
 
 
 func test_rules_load_and_bands_are_derived_from_content() -> bool:
@@ -90,6 +93,10 @@ func test_legacy_snapshot_reanchors_ration_clock() -> bool:
 func test_legacy_session_save_migrates_with_a_full_anchored_gauge() -> bool:
 	var source = Session.new()
 	var hero_id: int = int(source.sim.world.party_encounter.protagonist_id)
+	# A genuine pre-ration save carries no drain history at all. Park the source
+	# clock beyond the longest single action so the journalled step drains nothing
+	# and the fixture is a faithful v20 save rather than a downgraded modern one.
+	source.sim.world.party_encounter.ration_processed_at = Timing.MAX_WAIT_COST
 	check(bool(source.commit_exploration(Command.wait(hero_id)).get("accepted", false)),
 		"waiting advances the run before the save")
 	var encoded: Dictionary = JSON.parse_string(source.save_session_json())
@@ -153,4 +160,92 @@ func test_food_ration_content_market_and_start_bag() -> bool:
 	check_eq(int(wounded.sim.world.inventory_of(wounded_id).item("START_RATION_001").quantity), 2,
 		"rejected manual use consumes nothing")
 	check_eq(wounded.sim.world.world_state_error(), "", "the rejected use leaves a canonical world")
+	return finish()
+
+
+func _wait(session) -> void:
+	var hero_id := int(session.sim.world.party_encounter.protagonist_id)
+	check(bool(session.commit_exploration(Command.wait(hero_id)).accepted), "wait fixture commits")
+
+
+func _events_of(session, type: String) -> Array:
+	var rows: Array = []
+	for event in session.sim.world.events:
+		if str(event.type) == type: rows.append(event)
+	return rows
+
+
+func test_gauge_drains_by_world_time_and_party_size() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var full := Rules.ration_max_milli()
+	_wait(session)
+	check_eq(int(state.ration_milli), full - 1000, "one 100-time wait drains 1000 milli for a solo party")
+	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
+		"drain clock follows world time")
+	# Simulate 100 more elapsed time without a second real step: rewind the clock.
+	# The clock is never allowed to go negative, so pull it back to the run start.
+	state.ration_processed_at = 0
+	_wait(session)
+	check_eq(int(state.ration_milli), full - 3000, "elapsed intervals are applied in one tick")
+	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
+		"the clock lands on the last whole interval")
+	# Crossing hungry_below announces the new band exactly once.
+	state.ration_milli = Rules.hungry_below_milli() + 500
+	_wait(session)
+	check_eq(Rules.band(int(state.ration_milli)), "HUNGRY", "the drain crosses hungry_below")
+	var changed := _events_of(session, "party.ration_changed")
+	check_eq(changed.size(), 1, "band change emits exactly one event")
+	if changed.size() == 1:
+		check_eq(str(changed[0].data.get("after", "")), "HUNGRY", "event names the new band")
+		check_eq(str(changed[0].data.get("before", "")), "FED", "event names the old band")
+		check_eq(int(changed[0].data.get("ration_milli", -1)), int(state.ration_milli),
+			"event carries the gauge it announces")
+		check_eq(str(changed[0].data.get("ruleset_id", "")), Rules.RULESET_ID,
+			"event names the ration ruleset")
+	_wait(session)
+	check_eq(_events_of(session, "party.ration_changed").size(), 1,
+		"staying in the same band emits nothing")
+	check_eq(session.sim.world.world_state_error(), "", "drain keeps canonical state")
+	# Party of three drains twice as fast.
+	var trio = Session.new(44, 20260828, "SHOWCASE_V1")
+	var trio_state = trio.sim.world.party_encounter
+	check(trio_state.active_party_member_ids.size() >= 3, "showcase fixture has three active members")
+	var trio_full := int(trio_state.ration_milli)
+	_wait(trio)
+	check_eq(int(trio_state.ration_milli), trio_full - Rules.drain_per_interval_milli(
+		trio_state.active_party_member_ids.size()), "three members drain 2000 milli per interval")
+	return finish()
+
+
+func test_town_phase_freezes_and_departure_resets_the_gauge() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	state.ration_milli = 50000
+	state.expedition_cycle = Cycle.active(1, session.sim.world.world_time, 100, 1)
+	_wait(session)
+	check_eq(str(session.expedition_cycle_status().phase), "TOWN", "deadline returns the party to town")
+	check_eq(int(state.ration_milli), Rules.ration_max_milli(), "returning to town refills the gauge")
+	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
+		"the return anchors the drain clock")
+	# Town refuses exploration ticks outright, so nothing can drain there, and a
+	# tick that did arrive would still be inert and leave the clock current.
+	check_eq(str(session.commit_exploration(Command.wait(hero_id)).get("reason", "")),
+		"exploration_phase_required", "town refuses exploration commands")
+	state.ration_processed_at = 0
+	check(RationSystem.process_tick(session.sim.world, null, 1), "a town tick succeeds")
+	check_eq(int(state.ration_milli), Rules.ration_max_milli(), "town phase does not drain")
+	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
+		"town keeps the clock current so departure starts fresh")
+	# Departure re-anchors the gauge for the next expedition.
+	state.ration_milli = 50000
+	state.ration_processed_at = 0
+	check(bool(session.depart_town().get("accepted", false)), "the party departs for the next run")
+	state = session.sim.world.party_encounter
+	check_eq(str(session.expedition_cycle_status().phase), "DUNGEON", "departure reopens the dungeon")
+	check_eq(int(state.ration_milli), Rules.ration_max_milli(), "departure refills the gauge")
+	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
+		"departure anchors the drain clock")
+	check_eq(session.sim.world.world_state_error(), "", "town reset keeps canonical state")
 	return finish()
