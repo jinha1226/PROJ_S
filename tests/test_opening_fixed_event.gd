@@ -55,12 +55,12 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	check_eq([npc.health, npc.max_health,
 		str(a.sim.world.combatant_states[npc.id].life_state)],
 		[18, 90, "ACTIVE"], "opening NPC uses actual 20 percent ACTIVE health")
-	check_eq(opening.hexaco_profile.to_dict(),
-		b.sim.world.party_encounter.opening_event.hexaco_profile.to_dict(),
-		"personality seed does not affect opening HEXACO")
 	check(opening.hexaco_profile.to_dict() \
-		!= c.sim.world.party_encounter.opening_event.hexaco_profile.to_dict(),
-		"world seed changes opening HEXACO")
+		!= b.sim.world.party_encounter.opening_event.hexaco_profile.to_dict(),
+		"new personality seed rerolls opening NPC HEXACO")
+	check_eq(opening.hexaco_profile.to_dict(),
+		c.sim.world.party_encounter.opening_event.hexaco_profile.to_dict(),
+		"world seed changes map topology without changing the explicit personality seed")
 	var before := a.save_session_json()
 	var dto: Dictionary = a.opening_event_status()
 	dto.hexaco_profile.H = -1
@@ -113,7 +113,9 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 
 
 func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() -> bool:
-	var give = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var joining_seed:=_opening_personality_seed(true)
+	check(joining_seed>0,"fixture finds an opening personality that joins immediately")
+	var give = Session.new(44, joining_seed, Session.SOLO_COMBAT_SCENARIO_ID)
 	var give_state = give.sim.world.party_encounter
 	var opening = give_state.opening_event
 	var npc_id := int(opening.npc_entity_id)
@@ -133,8 +135,17 @@ func test_give_and_pass_use_existing_authorities_and_duplicate_is_atomic_noop() 
 	var relation: Dictionary = give.sim.relationships.effective_relation(npc_id, hero_id)
 	check_eq([relation.gratitude, relation.trust, relation.personal.trust_delta],
 		[60, trust_before, 0], "gratitude changes without rewriting trust")
-	check_eq(give.sim.world.party_encounter.party_member_ids, party_before,
-		"aid does not recruit the NPC")
+	var immediate:Dictionary=result.get("immediate_recruitment",{})
+	check(bool(immediate.get("joined",false)) \
+		and npc_id in give.sim.world.party_encounter.party_member_ids \
+		and npc_id in give.sim.world.party_encounter.active_party_member_ids \
+		and give.sim.world.party_encounter.party_member_ids.size()==party_before.size()+1,
+		"an open personality can join immediately after receiving the potion")
+	check(give.sim.world.events.any(func(event):
+		return event.type=="party.recruitment_accepted" and event.actor_id==npc_id \
+			and str(event.data.get("ruleset_id",""))== \
+				Session.OPENING_IMMEDIATE_RECRUITMENT_RULESET_ID),
+		"immediate personality decision is explicit event history")
 	check_eq(str(give.sim.world.party_encounter.opening_event.choice),
 		"GAVE_POTION", "GIVE choice is authoritative")
 	check_eq(give.sim.world.world_state_error(), "", "GIVE world remains canonical")
@@ -250,8 +261,13 @@ func test_second_opening_encounter_exposes_stable_recruitment_and_resolves_once(
 	state.party_detection_radius=0;state.enemy_detection_radius=0
 	for enemy_id in state.enemy_ids:state.enemy_busy_rows[enemy_id]=1000000
 	check(_approach_opening(session),"recruitment fixture reaches first encounter")
-	check(session.commit_opening_event_choice("GIVE_POTION").accepted,
-		"first encounter aid commits")
+	var first_aid:Dictionary=session.commit_opening_event_choice("GIVE_POTION")
+	check(first_aid.accepted,"first encounter aid commits")
+	check(not bool(first_aid.get("immediate_recruitment",{}).get("joined",false)) \
+		and int(Session.opening_immediate_join_affinity_milli(
+			session.sim.world.party_encounter.opening_event.hexaco_profile)) \
+			<Session.OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI,
+		"guarded fixture defers recruitment to the second encounter")
 	var opening=state.opening_event;var npc_id:=int(opening.npc_entity_id)
 	var hero_id:=int(state.protagonist_id);var guard:=0
 	while session.sim.world.entities[npc_id].position!=opening.convergence_goal and guard<256:
@@ -452,6 +468,15 @@ func _potion_quantity(session) -> int:
 	var item = session.sim.world.inventory_of(
 		session.sim.world.party_encounter.protagonist_id).item("START_POTION_001")
 	return int(item.quantity) if item != null else 0
+
+
+func _opening_personality_seed(join_immediately:bool)->int:
+	for candidate_seed in range(1,4097):
+		var profile=Hexaco.generated(candidate_seed,Session.OPENING_HEXACO_SLOT)
+		var joins:=Session.opening_immediate_join_affinity_milli(profile) \
+			>=Session.OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI
+		if joins==join_immediately:return candidate_seed
+	return -1
 
 
 func _approach_opening(session) -> bool:

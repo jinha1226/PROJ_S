@@ -75,6 +75,8 @@ const RESCUE_TIME_COST := 100
 const RESCUE_AID_MAGNITUDE := 70
 const RECRUITMENT_OFFER_TIME_COST := 100
 const RECRUITMENT_RULESET_ID := "species-dominant-rescue-recruitment-v1"
+const OPENING_IMMEDIATE_RECRUITMENT_RULESET_ID := "opening-immediate-recruit-v1"
+const OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI := 620
 const GUILD_RECRUITMENT_RULESET_ID := "darkest-guild-arrivals-v1"
 const GUILD_CANDIDATE_COUNT := 3
 const TOWN_ECONOMY_RULESET_ID := "town-preparation-economy-v1"
@@ -326,7 +328,11 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			["opening_event_npc"], "elf", "neutral")
 		if opening_entity == null: return false
 		opening_entity.health = maxi(1, int((opening_entity.max_health + 4) / 5))
-		var profile = OpeningHexacoScript.generated(p_world_seed, OPENING_HEXACO_SLOT)
+		# Map topology remains tied to the world seed, but every new expedition gets
+		# a fresh personality seed. The opening traveller must follow that same rule
+		# as companions and guild candidates instead of repeating every run.
+		var profile = OpeningHexacoScript.generated(p_personality_seed,
+			OPENING_HEXACO_SLOT)
 		opening_state = OpeningEventStateScript.new(opening_entity.id, profile,
 			anchors.spawn_position, anchors.convergence_band, anchors.convergence_goal)
 		opening_blood_positions=_opening_blood_trail(anchors)
@@ -794,6 +800,16 @@ func commit_opening_event_choice(choice_action: String) -> Dictionary:
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(str(committed.get("reason", "opening_choice_failed")))
+	var immediate_recruitment:Dictionary={"eligible":false,"resolved":false,
+		"joined":false,"deferred":false}
+	if choice_action=="GIVE_POTION":
+		immediate_recruitment=_commit_opening_immediate_recruitment(
+			int(committed.get("npc_entity_id",-1)),rollback_memento)
+		if not bool(immediate_recruitment.get("committed",false)):
+			if not _rollback_session_transaction(rollback_memento,journal_size_before):
+				return _rejection_dto("rollback_restore_failed")
+			return _rejection_dto(str(immediate_recruitment.get("reason",
+				"recruitment_resolution_failed")))
 	var state_error: String = sim.world.world_state_error()
 	if not state_error.is_empty():
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
@@ -809,6 +825,7 @@ func commit_opening_event_choice(choice_action: String) -> Dictionary:
 		"choice":str(committed.choice), "event_ids":event_ids,
 		"time_cost":int(committed.time_cost),
 		"healed_amount":int(committed.healed_amount),
+		"immediate_recruitment":immediate_recruitment.duplicate(true),
 		"opening_event":opening_event_status(),
 		"inventory":protagonist_inventory()})
 
@@ -3398,6 +3415,14 @@ func _is_opening_recruitment_candidate(entity_id:int)->bool:
 		and entity_id not in sim.world.party_encounter.enemy_ids
 
 
+func _is_opening_aided_candidate(entity_id:int)->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
+	var opening=sim.world.party_encounter.opening_event
+	return opening!=null and int(opening.npc_entity_id)==entity_id \
+		and str(opening.choice)=="GAVE_POTION" \
+		and entity_id not in sim.world.party_encounter.enemy_ids
+
+
 func npc_attack_assessment(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
@@ -3543,6 +3568,91 @@ func _opening_recruitment_assessment(entity_id:int)->Dictionary:
 			"vacancy":vacancy_term}})
 
 
+static func opening_immediate_join_affinity_milli(profile)->int:
+	if profile==null:return 0
+	# Agreeableness and extraversion dominate the choice to trust a stranger now;
+	# honesty-humility provides a smaller response to altruistic aid. This is an
+	# inspectable personality threshold, not a second hidden RNG draw.
+	var honesty:=int(profile.value("H"))-500
+	var agreeableness:=int(profile.value("A"))-500
+	var extraversion:=int(profile.value("X"))-500
+	return clampi(500+int(honesty*20/100)+int(agreeableness*45/100) \
+		+int(extraversion*35/100),50,950)
+
+
+func _opening_immediate_recruitment_assessment(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter;var opening=state.opening_event
+	var entity=sim.world.entities.get(entity_id)
+	var combatant=sim.world.combatant_states.get(entity_id)
+	if opening==null or int(opening.npc_entity_id)!=entity_id \
+			or str(opening.choice)!="GAVE_POTION" or entity==null or combatant==null:
+		return _rejection_dto("companion_not_recruitable")
+	var affinity:=opening_immediate_join_affinity_milli(opening.hexaco_profile)
+	var has_vacancy:bool=state.active_party_member_ids.size()<ACTIVE_PARTY_LIMIT
+	var hero=sim.world.entities.get(state.protagonist_id)
+	var adjacent:bool=hero!=null and maxi(absi(hero.position.x-entity.position.x),
+		absi(hero.position.y-entity.position.y))<=1
+	var legal:bool=has_vacancy and adjacent and str(combatant.life_state)=="ACTIVE" \
+		and state.safe_phase in ["GROUPED","GROUPED_COMPLETE"] and not _run_is_complete()
+	var reason:="ok"
+	if not has_vacancy:reason="party_full"
+	elif not adjacent:reason="recruitment_candidate_too_far"
+	elif str(combatant.life_state)!="ACTIVE":reason="companion_unavailable"
+	elif state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or _run_is_complete():
+		reason="party_roster_unsafe_phase"
+	var reasons:Array[Dictionary]=[{
+		"code":"IMMEDIATE_AID_AFFINITY",
+		"label":"도움을 받은 직후 함께할지를 성격에 따라 판단합니다.",
+		"tone":"POSITIVE" if affinity>=OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI \
+			else "CAUTION"}]
+	return _feedback_dto({"accepted":legal,"reason":reason,"entity_id":entity_id,
+		"eligible":legal,"resolved":false,"joined":false,
+		"affinity_milli":affinity,"probability_milli":affinity,
+		"probability_percent":int((affinity+5)/10),
+		"roll_milli":OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI-1,
+		"would_accept":legal and affinity>=OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI,
+		"ruleset_id":OPENING_IMMEDIATE_RECRUITMENT_RULESET_ID,
+		"reasons":reasons,"terms":{"personality_affinity":affinity,
+			"join_threshold":OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI}})
+
+
+func _commit_opening_immediate_recruitment(entity_id:int,
+		rollback:Dictionary)->Dictionary:
+	var assessment:=_opening_immediate_recruitment_assessment(entity_id)
+	if not bool(assessment.get("accepted",false)):
+		return {"committed":true,"eligible":false,"resolved":false,
+			"joined":false,"deferred":true,
+			"reason":str(assessment.get("reason","companion_not_recruitable"))}
+	if not bool(assessment.get("would_accept",false)):
+		return {"committed":true,"eligible":true,"resolved":true,
+			"joined":false,"deferred":true,
+			"affinity_milli":int(assessment.affinity_milli),
+			"threshold_milli":OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI,
+			"reasons":assessment.reasons.duplicate(true)}
+	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var reason_codes:Array[String]=[]
+	for row in assessment.reasons:reason_codes.append(str(row.get("code","")))
+	var decision=sim.world.emit_event("party.recruitment_accepted",entity_id,hero_id,
+		sim.world.entities[entity_id].position,int(assessment.affinity_milli),
+		int(state.opening_event.choice_event_id),{"schema_version":1,
+			"ruleset_id":OPENING_IMMEDIATE_RECRUITMENT_RULESET_ID,
+			"probability_milli":int(assessment.affinity_milli),
+			"roll_milli":OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI-1,
+			"accepted":true,"decision_basis":"HEXACO_THRESHOLD",
+			"reason_codes":reason_codes,"reasons":assessment.reasons.duplicate(true)})
+	if decision==null or not _prepare_rescue_candidate_for_roster(entity_id):
+		return {"committed":false,"reason":"recruitment_resolution_failed"}
+	var roster_result:=_apply_roster_change("RECRUIT",entity_id,false,rollback)
+	if not bool(roster_result.get("accepted",false)):
+		return {"committed":false,"reason":"recruitment_resolution_failed"}
+	return {"committed":true,"eligible":true,"resolved":true,"joined":true,
+		"deferred":false,"affinity_milli":int(assessment.affinity_milli),
+		"threshold_milli":OPENING_IMMEDIATE_JOIN_THRESHOLD_MILLI,
+		"reasons":assessment.reasons.duplicate(true),"event_id":int(decision.id)}
+
+
 func offer_recruitment(entity_id: int) -> Dictionary:
 	var assessment := recruitment_assessment(entity_id)
 	if not bool(assessment.get("accepted",false)): return assessment
@@ -3669,7 +3779,8 @@ func _rescue_personality_profile(entity_id: int):
 func _prepare_rescue_candidate_for_roster(entity_id: int) -> bool:
 	if sim == null or sim.world == null or sim.world.party_encounter == null \
 			or (_rescue_discovery_event_for(entity_id) == null \
-			and not _is_opening_recruitment_candidate(entity_id)) \
+			and not _is_opening_recruitment_candidate(entity_id) \
+			and not _is_opening_aided_candidate(entity_id)) \
 			or not sim.world.entities.has(entity_id):
 		return false
 	var state = sim.world.party_encounter
@@ -3678,6 +3789,7 @@ func _prepare_rescue_candidate_for_roster(entity_id: int) -> bool:
 		return false
 	var profile = sim.world.party_encounter.opening_event.hexaco_profile \
 		if _is_opening_recruitment_candidate(entity_id) \
+			or _is_opening_aided_candidate(entity_id) \
 		else _rescue_personality_profile(entity_id)
 	if profile == null: return false
 	state.party_member_ids.append(entity_id)
@@ -7476,6 +7588,9 @@ func _event_message(event) -> String:
 				" · %s"%_object(target) if command_id=="ATTACK_TARGET" else ""]
 		"party.npc_stabilized": return "%s %s 상처를 안정화해 목숨을 구했다." % [_subject(actor),_possessive(target)]
 		"party.recruitment_accepted":
+			if str(event.data.get("ruleset_id",""))==OPENING_IMMEDIATE_RECRUITMENT_RULESET_ID:
+				return "%s 물약을 받은 직후 성격에 따라 바로 합류했다. (합류 성향 %d%%)"%[
+					_subject(actor),int((event.data.get("probability_milli",0)+5)/10)]
 			return "%s 영입 제안을 받아들였다. (수락 %d%% · 판정 %d)" % [
 				_subject(actor),int((event.data.get("probability_milli",0)+5)/10),
 				int(event.data.get("roll_milli",-1))]

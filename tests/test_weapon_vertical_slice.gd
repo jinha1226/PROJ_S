@@ -164,8 +164,7 @@ func test_ranged_combat_controls_expose_shoot_and_crossbow_reload()->bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	sandbox._sync_product_control_state()
-	check(sandbox.product_attack_button.text=="[사격]" \
-		and sandbox.product_interact_button.text=="[RELOAD]" \
+	check(sandbox.product_interact_button.text=="[RELOAD]" \
 		and not sandbox.product_interact_button.disabled,
 		"crossbow publishes shoot and enabled reload controls in combat")
 	var before:=session.save_session_json()
@@ -229,27 +228,26 @@ func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn(
 		"pickup button fixture drops one canonical instance on the hero tile")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
-	check(sandbox.product_pickup_button!=null \
-			and sandbox.product_pickup_button.text=="[줍기]" \
-			and sandbox.product_pickup_button.custom_minimum_size.y>=32.0,
-		"D-pad context rail exposes a real touch-sized pickup button")
+	check(sandbox.find_child("ProductPickup",true,false)==null,
+		"map touch replaces the pickup button in the context dock")
+	var hero_id:=int(session.party_status().protagonist_id)
 	var pickup_time:=int(session.sim.world.world_time)
 	var pickup_journal_size:int=session.command_journal.size()
-	sandbox._activate_product_control("ProductPickup")
+	sandbox._on_actor(hero_id)
 	check_eq([session.ground_items_at_protagonist().size(),
 		int(session.sim.world.world_time),session.command_journal.size(),
 		str(session.command_journal[-1].operation.action)],
 		[0,pickup_time+100,pickup_journal_size+1,"PICKUP"],
-		"pickup button uses the canonical timed item transaction and journal")
+		"hero tap uses the canonical timed item transaction and journal")
 	check("가방에 주웠습니다" in sandbox.notice_text,
-		"successful button pickup is immediately visible")
+		"successful hero-tap pickup is immediately visible")
 	var empty_snapshot:Dictionary=session.sim.snapshot()
 	var empty_journal:Array=session.command_journal.duplicate(true)
-	sandbox._activate_product_control("ProductPickup")
+	sandbox._on_actor(hero_id)
 	check_eq([session.sim.snapshot(),session.command_journal],[empty_snapshot,empty_journal],
-		"pressing pickup on an empty tile consumes no turn and writes no journal row")
-	check("주울 아이템이 없습니다" in sandbox.notice_text,
-		"empty pickup explains why nothing happened")
+		"tapping the hero on an empty tile only previews a wait: no turn, no journal row")
+	check("대기" in sandbox.notice_text,
+		"empty hero tap explains the wait preview instead of an empty pickup")
 	sandbox.free();return finish()
 
 

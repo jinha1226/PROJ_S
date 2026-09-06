@@ -7,8 +7,8 @@ const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiUIFrame=preload("res://playtest/ascii_ui_frame.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
-const ROUTE_INTENDED_CADENCE_MSEC:=190
-const ROUTE_HEADLESS_GROSS_CEILING_MSEC:=310
+const ROUTE_INTENDED_CADENCE_MSEC:=90
+const ROUTE_HEADLESS_GROSS_CEILING_MSEC:=230
 
 var failures:Array[String]=[]
 
@@ -48,7 +48,7 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 		var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
 		await process_frame;await process_frame
 		var expected_layout:String=["SPOTLIGHT","DUAL","COMPACT"][count-1]
-		var expected_height:int=[68,80,84][count-1]
+		var expected_height:int=84
 		if str(spec.layout_id)!=expected_layout or int(spec.party_height)!=expected_height \
 				or sandbox.cards.get_child_count()!=count \
 				or int(sandbox.cards.custom_minimum_size.y)!=expected_height:
@@ -72,17 +72,16 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 			previous_rect=card_rect
 			var text_region:=card.find_child("SpotlightDetails",true,false) as Control \
 				if count==1 else card.find_child("CardIdentity",true,false) as Control
-			if card.find_child("Portrait",true,false)!=null \
-					or not bool(spec.get("portrait_removed",false)) \
-					or spec.get("portrait_min_size",[])!=[0,0] \
+			var portrait:=card.find_child("Portrait",true,false) as Control
+			var portrait_size:Array=spec.get("portrait_min_size",[0,0])
+			if portrait==null or bool(spec.get("portrait_removed",true)) \
+					or int(portrait_size[1])!=expected_height-2 or int(portrait_size[0])<44 \
+					or portrait.custom_minimum_size!=Vector2(float(portrait_size[0]),float(portrait_size[1])) \
+					or not _rect_contains(card_rect,portrait.get_global_rect()) \
 					or text_region==null or not _rect_contains(card_rect,text_region.get_global_rect()):
-				failures.append("%s count %d portrait-free text region/budget"%[viewport_size,count])
-			var seal:=card.find_child("ActorGlyphSeal",true,false) as Label
-			var expected_seal_size:int=[44,40,34][count-1]
-			var expected_seal_font:int=[28,24,20][count-1]
-			if seal==null or int(seal.custom_minimum_size.x)!=expected_seal_size \
-					or seal.get_theme_font_size("font_size")!=expected_seal_font:
-				failures.append("%s count %d card %d ASCII seal hierarchy"%[viewport_size,count,index])
+				failures.append("%s count %d portrait/text region budget"%[viewport_size,count])
+			if card.find_child("ActorGlyphSeal",true,false)!=null:
+				failures.append("%s count %d card %d duplicates the seal beside its portrait"%[viewport_size,count,index])
 			for label_name in ["MemberName","Readiness","EmotionState","MemberState","StressState"]:
 				var label:=card.find_child(label_name,true,false) as Label
 				if label==null or label.get_theme_font_size("font_size")<14 \
@@ -290,10 +289,12 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	if absf(sandbox.grid.size.x-viewport_size.x)>0.1:
 		failures.append("%s product exploration playfield does not use viewport width grid=%s"%[
 			label,sandbox.grid.get_global_rect()])
-	if sandbox.phase_panel.visible or sandbox.top_hud_actions.visible \
+	if not sandbox.phase_panel.visible or not sandbox.top_hud_actions.visible \
+			or not sandbox.minimap_frame.is_visible_in_tree() or not sandbox.product_menu_button.is_visible_in_tree() \
+			or sandbox.phase_label.visible \
 			or not sandbox.cards.is_visible_in_tree() or not sandbox.event_surface.is_visible_in_tree() \
 			or not sandbox.bottom_navigation.is_visible_in_tree():
-		failures.append("%s product status/event/navigation accessibility"%label)
+		failures.append("%s product rail/status/event/navigation accessibility"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text in ["탐험","시간","목표"]:
 		failures.append("%s initial HUD leaks objective/time copy %s"%[label,sandbox.phase_label.text])
 	_validate_run_objective_geometry(sandbox,label+" INITIAL")
@@ -344,8 +345,8 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	for member_id in state.party_member_ids:session.sim.world.entities[int(member_id)].position=exit
 	sandbox._hide_tile_popover();sandbox._refresh();await process_frame;await process_frame
 	if str(session.run_progress().get("run_state",""))!="NEXT_FLOOR_READY" \
-			or sandbox.product_execute_button.text!="[다음 층]" \
-			or sandbox.product_execute_button.disabled:
+			or sandbox.product_interact_button.text!="[2층 진입]" \
+			or sandbox.product_interact_button.disabled:
 		failures.append("%s floor-one transition affordance"%label)
 	# The restart surface belongs to the final implemented floor. This remains a
 	# direct restored-state fixture: switch the selected presentation floor without
@@ -424,8 +425,7 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 			or not sandbox.grid._active_visual_effects.is_empty() or not sandbox.grid._played_effect_ids.is_empty():
 		failures.append("%s restart retained UI/grid transient state"%label)
 	if _button(sandbox,"RestartSameRun")!=null or not sandbox.combat_action_area.visible \
-			or sandbox.product_execute_button.text!="[EXECUTE]" \
-			or not sandbox.product_execute_button.disabled:
+			or _button(sandbox,"ProductExecute")!=null or sandbox.product_execute_button!=null:
 		failures.append("%s restart left terminal controls"%label)
 	if sandbox.reward_badge.visible or sandbox.phase_label.text!="조용함":
 		failures.append("%s restart HUD did not return to calm"%label)
@@ -441,10 +441,14 @@ func _validate_run_objective_geometry(sandbox,label:String)->void:
 				label,root_box.get_global_rect(),viewport])
 		if absf(sandbox.grid.get_global_rect().size.x-viewport.size.x)>0.1:
 			failures.append("%s product grid leaves horizontal outer gutters"%label)
-		if bar.visible or sandbox.top_hud_actions.visible or sandbox.info_scroll.visible \
+		if not bar.visible or not sandbox.top_hud_actions.visible or sandbox.info_scroll.visible \
+				or not sandbox.minimap_frame.is_visible_in_tree() or sandbox.phase_label.visible \
 				or not sandbox.cards.is_visible_in_tree() or not sandbox.event_surface.is_visible_in_tree() \
 				or not sandbox.bottom_navigation.is_visible_in_tree():
 			failures.append("%s product accessible surface visibility"%label)
+		if bar.get_global_rect().end.y>sandbox.grid.get_global_rect().position.y+0.1 \
+				or sandbox.cards.get_index()<sandbox.event_surface.get_index():
+			failures.append("%s product rail/portrait strip order"%label)
 		if root_box.get_child(root_box.get_child_count()-1)!=sandbox.bottom_navigation \
 				or root_box.get_child(root_box.get_child_count()-2)!=sandbox.combat_action_area:
 			failures.append("%s product bottom sibling order"%label)
@@ -529,7 +533,7 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
 			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
 	# Product cadence leaves the first authoritative hop immediate, then keeps the
-	# 180ms walk pose visible before starting exactly one further hop. Headless CI
+	# 100ms walk pose overlaps the next fast hop. Headless CI
 	# may stretch a frame, so retain a strict intended lower bound and a wider gross
 	# ceiling while still rejecting early or duplicate canonical commits.
 	if bool(session.exploration_route_state().get("active",false)):
@@ -538,7 +542,7 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 		var due_from_hop_start:int=int(sandbox.route_continue_due_msec)-first_hop_started
 		if due_from_hop_start<ROUTE_INTENDED_CADENCE_MSEC-5 \
 				or due_from_hop_start>ROUTE_INTENDED_CADENCE_MSEC+10:
-			failures.append("%s route cadence outside 185-200ms from hop start: %d"%[
+			failures.append("%s route cadence outside 85-100ms from hop start: %d"%[
 				viewport_size,due_from_hop_start])
 		var wait_started:int=Time.get_ticks_msec()
 		while sandbox.route_last_hop_started_msec==first_hop_started \
@@ -548,7 +552,7 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 		if session.sim.world.step_index!=cadence_step+1 \
 				or actual_start_interval<ROUTE_INTENDED_CADENCE_MSEC-5 \
 				or actual_start_interval>ROUTE_HEADLESS_GROSS_CEILING_MSEC:
-			failures.append("%s route cadence did not commit exactly one hop within 185-310ms: step=%d/%d interval=%d"%[
+			failures.append("%s route cadence did not commit exactly one hop within 85-230ms: step=%d/%d interval=%d"%[
 				viewport_size,int(session.sim.world.step_index),cadence_step,actual_start_interval])
 		# Hero-centred camera settling is a SOLO product presentation contract. This
 		# route fixture intentionally uses the legacy multi-member regression session,

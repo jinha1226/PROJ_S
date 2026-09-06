@@ -190,26 +190,27 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and str(compact_xp_spec.get("primitive",""))=="DOS_TEXT_GAUGE" \
 		and sandbox.find_child("StressState",true,false)!=null \
 		and sandbox.find_child("DossierAsciiFrame",true,false)==null \
-		and actor_seal!=null and actor_seal.text=="@",
+		and actor_seal==null and sandbox.find_child("Portrait",true,false)!=null,
 		"top status strip shows exact identity, HP, LV, state, stress, and XP")
 	check("공" not in level.text and "방" not in level.text,
 		"solo mobile hero card does not persist derived attack or defense")
-	check(not sandbox.phase_panel.visible and sandbox.cards.get_index()<sandbox.grid.get_index() \
-		and sandbox.cards.custom_minimum_size.y==68.0 \
+	check(sandbox.phase_panel.visible and not sandbox.phase_label.visible \
+		and sandbox.cards.get_index()>sandbox.grid.get_index() \
+		and sandbox.cards.custom_minimum_size.y==84.0 \
 		and sandbox.grid.custom_minimum_size==Vector2(360,360) \
 		and sandbox.bottom_navigation.visible and sandbox.bottom_navigation.custom_minimum_size.y>=44.0,
-		"360x640 places the adaptive status strip before a full-width map and fixed navigation")
+		"360x640 places the portrait strip below a full-width map above fixed navigation")
 	var wide_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var wide=Sandbox.new();wide.initialize_for_headless_test(wide_session,true)
 	wide.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);wide.size=Vector2(450,800);wide._refresh()
 	var wide_card=wide.cards.get_child(0) as Button
-	check(wide.cards.get_index()<wide.grid.get_index() \
+	check(wide.cards.get_index()>wide.grid.get_index() \
 		and wide.grid.custom_minimum_size==Vector2(450,450),
-		"450x800 keeps the status strip before the full-width map")
+		"450x800 keeps the portrait strip below the full-width map")
 	check(wide_card.custom_minimum_size.x>=438,"450x800 solo card uses the available width")
-	check(wide_card.find_child("Portrait",true,false)==null \
+	check(wide_card.find_child("Portrait",true,false)!=null \
 		and wide_card.find_child("SoloIdentity",true,false)!=null,
-		"450x800 solo card spends its width on identity instead of a duplicate portrait")
+		"450x800 solo card pairs its portrait with identity")
 	check(wide_card.find_child("CompactXPBar",true,false)!=null \
 		and "공" not in str((wide_card.find_child("LevelProgress",true,false) as Label).text),
 		"450x800 solo card keeps XP but no persistent combat stats")

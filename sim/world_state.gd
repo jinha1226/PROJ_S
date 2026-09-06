@@ -4366,7 +4366,8 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 	for event in events:
 		if event.type in ["party.recruitment_accepted","party.recruitment_refused"] \
 				and event.actor_id==npc_id \
-				and str(event.data.get("ruleset_id",""))=="opening-recruit-v1":
+				and str(event.data.get("ruleset_id","")) in [
+					"opening-recruit-v1","opening-immediate-recruit-v1"]:
 			recruit_outcomes.append(event)
 		elif event.type=="party.npc_assaulted" and event.target_id==npc_id:
 			assault_rows.append(event)
@@ -4426,7 +4427,8 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 	var joined_history:=false
 	for event in events:
 		if event.type=="party.recruitment_accepted" and event.actor_id==npc_id \
-				and str(event.data.get("ruleset_id",""))=="opening-recruit-v1":
+				and str(event.data.get("ruleset_id","")) in [
+					"opening-recruit-v1","opening-immediate-recruit-v1"]:
 			joined_history=true
 		if event.type == "opening.npc_discovered" and event.target_id == npc_id:
 			discovery_rows.append(event)
@@ -4557,7 +4559,16 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			return "opening_reencounter_event_invalid"
 	if not recruit_outcomes.is_empty():
 		var outcome=recruit_outcomes[0]
-		if opening.reencounter_event_id<=0 or outcome.id<=opening.reencounter_event_id \
+		var immediate:=str(outcome.data.get("ruleset_id",""))== \
+			"opening-immediate-recruit-v1"
+		if (immediate and (opening.choice!="GAVE_POTION" \
+				or opening.reencounter_event_id!=-1 \
+				or outcome.id<=opening.choice_event_id \
+				or outcome.cause_id!=opening.choice_event_id \
+				or str(outcome.type)!="party.recruitment_accepted" \
+				or str(outcome.data.get("decision_basis",""))!="HEXACO_THRESHOLD")) \
+				or (not immediate and (opening.reencounter_event_id<=0 \
+					or outcome.id<=opening.reencounter_event_id)) \
 				or outcome.target_id!=party_encounter.protagonist_id \
 				or outcome.data.get("schema_version")!=1 \
 				or outcome.data.get("accepted")!=opening_joined \

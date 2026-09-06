@@ -922,7 +922,7 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 			and sandbox.find_child("SoloCombatStart",true,false)==null \
 			and sandbox.grid._ghosts.is_empty(),
 			"%s solo contact has no entry, formation controls, or ghost"%viewport_size)
-		check(not sandbox.phase_panel.is_visible_in_tree() \
+		check(sandbox.phase_panel.is_visible_in_tree() and not sandbox.phase_label.visible \
 			and sandbox.grid._intent_overlays.is_empty() \
 			and sandbox.grid._route_path.is_empty() \
 			and sandbox.grid.cursor_cell==Vector2i(-1,-1),
@@ -934,14 +934,14 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		var hp:=card.find_child("MemberState",true,false) as Label
 		var emotion:=card.find_child("EmotionState",true,false) as Label
 		check(card.custom_minimum_size.x>=viewport_size.x-12.0 \
-			and card.find_child("Portrait",true,false)==null \
+			and card.find_child("Portrait",true,false)!=null \
 			and card.find_child("SoloIdentity",true,false)!=null,
-			"%s solo dossier gives its horizontal width to identity and gauges"%viewport_size)
+			"%s solo dossier pairs a portrait with identity and gauges"%viewport_size)
 		check(hp.get_theme_font_size("font_size")==14 \
 			and emotion.get_theme_font_size("font_size")==14,
 			"%s solo HP and state use compact auxiliary type"%viewport_size)
 		var guard:Button=_button(sandbox,"ProductWaitGuard")
-		var expected_guard_target:=40.0 if viewport_size.x<450.0 else 44.0
+		var expected_guard_target:=44.0
 		check(guard!=null and guard.custom_minimum_size.y>=expected_guard_target \
 			and guard.text=="[WAIT]" and "25%" in guard.tooltip_text \
 			and "200 시간" in guard.tooltip_text and "물리 피해" in guard.tooltip_text,
@@ -973,14 +973,16 @@ func test_pixel_product_hud_bottom_navigation_modals_and_map_are_fog_safe() -> b
 		var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,false)
-		check(not sandbox.phase_panel.visible and not sandbox.top_hud_actions.visible \
+		check(sandbox.phase_panel.visible and sandbox.top_hud_actions.visible \
+			and sandbox.minimap_frame.visible and sandbox.product_menu_button.visible \
+			and not sandbox.phase_label.visible \
 			and sandbox.find_child("Ascii3DLabButton",true,false)==null,
-			"%s obsolete product top rail and 3D entry are unreachable"%viewport_size)
+			"%s product top rail carries minimap and menu without a 3D entry"%viewport_size)
 		check(sandbox.cards.visible and sandbox.grid.visible and sandbox.event_surface.visible \
 			and sandbox.bottom_navigation.visible and not sandbox.info_scroll.visible,
 			"%s product surfaces replace the duplicate context stack"%viewport_size)
-		check_eq(int(sandbox.cards.custom_minimum_size.y),68,
-			"%s solo status strip uses the 68px budget"%viewport_size)
+		check_eq(int(sandbox.cards.custom_minimum_size.y),84,
+			"%s solo portrait strip uses the 84px budget"%viewport_size)
 		for contract in [[sandbox.map_nav_button,"[지도]"],[sandbox.person_nav_button,"[인물]"],
 				[sandbox.skill_nav_button,"[숙련]"],[sandbox.equipment_nav_button,"[장비]"],
 				[sandbox.history_nav_button,"[기록]"]]:

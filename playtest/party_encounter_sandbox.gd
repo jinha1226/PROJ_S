@@ -2,16 +2,17 @@ class_name PartyEncounterSandbox
 extends Control
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 170
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 180
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 100
 const MANUAL_CAMERA_SETTLE_MSEC := 140
-# Web canonical hops commonly finish around 105-120ms. Keep continuous motion
-# alive beyond that interval so the next hop retargets the current draw position
-# instead of visibly stopping on every cell.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 160
+# AUTO and long routes should read as continuous travel rather than a sequence of
+# deliberate single-cell inputs. Motion overlaps the next 90ms cadence so actor
+# and camera interpolation remain visible without making a large floor tedious.
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 100
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
+const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
 const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
@@ -34,8 +35,12 @@ const NEARBY_NPC_FONT_TEXT:=12
 const NEARBY_NPC_FONT_CAPTION:=11
 const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
+# Product top rail: the 8x8 minimap glyph frame measures 70px with its insets.
+const PRODUCT_TOP_HUD_HEIGHT:=70
+# 360x640: 70 rail + 360 map + 36 events + 84 cards + 44 controls + 44 navigation.
+const PRODUCT_PARTY_CARD_HEIGHT:=84
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
-const CONTINUOUS_TRAVEL_CADENCE_MSEC:=190
+const CONTINUOUS_TRAVEL_CADENCE_MSEC:=90
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
@@ -59,6 +64,10 @@ var recent_event_label:Label
 var record_button:Button
 var hero_detail_button:Button
 var top_hud_actions:HBoxContainer
+var product_menu_button:MenuButton
+var product_restart_confirm:ConfirmationDialog
+var expedition_floor_label:Label
+var return_timer_label:Label
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -69,9 +78,6 @@ var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
 var party_command_menu:MenuButton
-var product_direction_buttons:Dictionary={}
-var product_attack_button:Button
-var product_pickup_button:Button
 var product_auto_button:Button
 var product_interact_button:Button
 var product_wait_guard_button:Button
@@ -562,13 +568,11 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 	return false
 
 func _product_control_activates_on_press(control_name:String)->bool:
-	return control_name=="ProductAttack" or control_name=="ProductWaitCenter" \
-		or control_name.begins_with("ProductMove")
+	return false
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
-	for button in product_direction_buttons.values():controls.append(button)
-	controls.append_array([product_attack_button,product_pickup_button,product_auto_button,
+	controls.append_array([product_auto_button,
 		product_interact_button,product_wait_guard_button,product_execute_button,
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
 		history_nav_button])
@@ -707,6 +711,13 @@ func _build_ui()->void:
 	phase_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	phase_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	phase_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;situation_row.add_child(phase_label)
+	expedition_floor_label=Label.new();expedition_floor_label.name="ExpeditionFloor"
+	expedition_floor_label.add_theme_font_size_override("font_size",FONT_KEY)
+	expedition_floor_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	expedition_floor_label.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	expedition_floor_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	expedition_floor_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	expedition_floor_label.visible=false;situation_row.add_child(expedition_floor_label)
 	reward_badge=Label.new();reward_badge.name="RewardBadge";reward_badge.text="$ 1"
 	reward_badge.custom_minimum_size=Vector2(42,34);reward_badge.visible=false
 	reward_badge.add_theme_font_size_override("font_size",FONT_AUX)
@@ -722,6 +733,12 @@ func _build_ui()->void:
 	recent_event_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	recent_event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	recent_event_label.clip_text=true;recent_event_label.visible=false;situation_stack.add_child(recent_event_label)
+	return_timer_label=Label.new();return_timer_label.name="ReturnTimer"
+	return_timer_label.add_theme_font_size_override("font_size",FONT_AUX)
+	return_timer_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	return_timer_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	return_timer_label.clip_text=true;return_timer_label.visible=false
+	situation_stack.add_child(return_timer_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
 	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
 	top_hud_actions.add_theme_constant_override("separation",0)
@@ -738,6 +755,16 @@ func _build_ui()->void:
 	hero_detail_button.clip_text=true;hero_detail_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
+	product_menu_button=MenuButton.new();product_menu_button.name="ProductMainMenu"
+	product_menu_button.text="[메뉴]";product_menu_button.custom_minimum_size=Vector2(44,44)
+	product_menu_button.add_theme_font_size_override("font_size",FONT_COMMAND)
+	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
+	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
+	var menu_popup:=product_menu_button.get_popup()
+	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 원정 · 종족 선택",1)
+	menu_popup.id_pressed.connect(_on_product_menu_id)
+	top_hud_actions.add_child(product_menu_button)
+	AsciiFrameScript.apply_rail_button(product_menu_button,AsciiFrameScript.CYAN)
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
@@ -1487,9 +1514,17 @@ func _refresh()->void:
 	else:
 		root_layout.offset_left=6;root_layout.offset_right=-6
 		root_layout.offset_top=4;root_layout.offset_bottom=-4
-	phase_panel.visible=not product_hud
-	minimap_frame.visible=false;minimap.visible=false;recent_event_label.visible=false
-	top_hud_actions.visible=false
+	# The product rail is the Pixel Dungeon style top HUD: minimap, current floor
+	# with the return countdown, and the main menu. Legacy keeps the phase banner.
+	phase_panel.visible=true
+	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
+	top_hud_actions.visible=product_hud
+	top_hud_actions.custom_minimum_size.x=44 if product_hud else 132
+	record_button.visible=not product_hud;hero_detail_button.visible=not product_hud
+	product_menu_button.visible=product_hud
+	# SOLO keeps one continuous dungeon surface: the situation word stays a hidden
+	# authority for tests/legacy while the rail centre names the floor and return.
+	phase_label.visible=not product_hud
 	event_surface.visible=product_hud;bottom_navigation.visible=product_hud
 	hud_bottom_flex.visible=product_hud
 	info_scroll.visible=not product_hud
@@ -1508,7 +1543,7 @@ func _refresh()->void:
 		and not _is_solo_product_session() else []
 	_sync_product_zoom_controls(product_hud)
 	var view_cell_count:=_current_grid_view_cell_count()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,not product_hud)
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -1517,7 +1552,8 @@ func _refresh()->void:
 	var intent_overlays:Array=session.turn_intent_overlays() \
 		if combat_active and not run_complete and not direct_solo_combat else []
 	grid.set_observation(observation,ghosts)
-	if not product_hud:minimap.set_observation(ui_observation.get("minimap",{}))
+	minimap.set_observation(ui_observation.get("minimap",{}))
+	_update_expedition_hud(product_hud)
 	_update_nearby_npc_card(observation,status,product_hud)
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
@@ -1610,8 +1646,9 @@ func _refresh()->void:
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
-		root_layout.move_child(cards,0);root_layout.move_child(grid,1)
+		root_layout.move_child(phase_panel,0);root_layout.move_child(grid,1)
 		root_layout.move_child(event_surface,2);root_layout.move_child(hud_bottom_flex,3)
+		root_layout.move_child(cards,4)
 		# Keep the two interactive bottom surfaces as the final direct siblings.
 		# The transparent flex consumes only otherwise-unused height before them.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -1692,10 +1729,11 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var observe_started_usec:=Time.get_ticks_usec()
 	var view_cell_count:=_current_grid_view_cell_count()
 	var product_hud:=_is_solo_product_session()
-	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count,not product_hud)
+	var ui_observation:Dictionary=session.observe_party_ui(view_cell_count)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	if not product_hud:minimap.set_observation(ui_observation.get("minimap",{}))
+	minimap.set_observation(ui_observation.get("minimap",{}))
+	_update_expedition_hud(product_hud)
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
 		product_hud)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
@@ -2028,14 +2066,24 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 			"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}.duplicate(true)
 	var gap:=4
 	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
+	var card_min_width:=maxi(44,int(floor(float(available_width)/effective_count)))
 	var spec:Dictionary={"layout_id":"COMPACT","requested_count":count,
 		"effective_count":effective_count,"party_height":84,"gap":gap,
-		"card_min_width":maxi(44,int(floor(float(available_width)/effective_count))),
+		"card_min_width":card_min_width,
 		"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}
 	if effective_count==1:
 		spec.layout_id="SPOTLIGHT";spec.party_height=68
 	elif effective_count==2:
 		spec.layout_id="DUAL";spec.party_height=80
+	if _is_solo_product_session():
+		# The product strip sits where the D-pad used to be, so every card keeps
+		# one fixed height with a typographic portrait beside its vitals. The
+		# portrait narrows with the card so three Korean dossiers still fit 360px.
+		spec.party_height=PRODUCT_PARTY_CARD_HEIGHT
+		var portrait_height:=PRODUCT_PARTY_CARD_HEIGHT-2
+		spec.portrait_min_size=[clampi(int(float(card_min_width)*0.42),44,portrait_height),
+			portrait_height]
+		spec.portrait_removed=false
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -2087,12 +2135,15 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	root.clip_contents=true
 	root.add_theme_constant_override("separation",4);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;inset.add_child(root)
 	var count:=int(spec.get("effective_count",1));var seal_size:=44 if count==1 else (40 if count==2 else 34)
-	var seal:=Label.new();seal.name="ActorGlyphSeal";seal.text=_actor_seal_glyph(row)
-	seal.custom_minimum_size=Vector2(seal_size,seal_size);seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	seal.add_theme_font_size_override("font_size",28 if count==1 else (24 if count==2 else 20))
-	seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED)
-	seal.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(seal)
+	if not bool(spec.get("portrait_removed",true)):
+		root.add_child(_member_portrait(row,spec))
+	else:
+		var seal:=Label.new();seal.name="ActorGlyphSeal";seal.text=_actor_seal_glyph(row)
+		seal.custom_minimum_size=Vector2(seal_size,seal_size);seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+		seal.add_theme_font_size_override("font_size",28 if count==1 else (24 if count==2 else 20))
+		seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN if str(row.get("role",""))=="PROTAGONIST" else AsciiFrameScript.MUTED)
+		seal.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(seal)
 	var stack:=VBoxContainer.new();stack.name="DossierText";stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	stack.clip_contents=true
 	stack.add_theme_constant_override("separation",0);stack.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(stack)
@@ -2125,6 +2176,19 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 		var xp_gauge:Control=_gauge("CompactXPBar","XP",int(progression.get("xp_current",0)),maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
 		xp_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(xp_gauge)
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
+
+func _member_portrait(row:Dictionary,spec:Dictionary)->Control:
+	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
+	var portrait_view=PortraitScript.new();portrait_view.name="Portrait"
+	portrait_view.custom_minimum_size=Vector2(float(portrait_size[0]),float(portrait_size[1]))
+	portrait_view.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	portrait_view.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var portrait_actor:Dictionary=row.duplicate(true)
+	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
+	portrait_actor["species_id"]=str(row.get("species_id","human"))
+	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
+	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
+	portrait_view.set_actor(portrait_actor);return portrait_view
 
 func _actor_seal_glyph(actor:Dictionary)->String:
 	# Dossier seals share the map identity grammar; equipment stays separate.
@@ -2721,22 +2785,14 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 		var execute:=_add_button(combat_action_dock,"지금 실행","AutoExecute",_on_auto_execute)
 		execute.size_flags_stretch_ratio=0.9
 
-func _product_controls_metrics(party_count:int)->Dictionary:
-	var wide:=size.x>=450.0
-	var gap:=3 if wide else 2
-	var target:=44
-	if not wide:
-		# 360x640 has no spare vertical row: cards + map + event + controls +
-		# navigation must all remain inside the viewport.
-		var party_height:=int(party_card_layout_spec(party_count,size.x).get("party_height",68))
-		var available:=int(size.y)-party_height-int(size.x)-36-TOUCH_TARGET-8
-		target=clampi(int(floor(float(available-gap*2)/3.0)),32,40)
-	var dock_height:=target*3+gap*2
-	return {"target":target,"gap":gap,"dock_height":dock_height}.duplicate(true)
+func _product_controls_metrics(_party_count:int)->Dictionary:
+	# Movement, attack and pickup are map touches. The dock is one row of the
+	# remaining context commands under the portrait strip.
+	var gap:=3 if size.x>=450.0 else 2
+	return {"target":TOUCH_TARGET,"gap":gap,"dock_height":TOUCH_TARGET}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
-	product_direction_buttons.clear()
-	product_attack_button=null;product_pickup_button=null;product_auto_button=null;product_interact_button=null
+	product_auto_button=null;product_interact_button=null
 	product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
 	combat_action_dock.visible=true;combat_action_area.add_theme_constant_override("separation",0)
@@ -2753,99 +2809,29 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.disabled=false
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
-	var dpad:=GridContainer.new();dpad.name="ProductDirectionPad";dpad.columns=3
-	dpad.custom_minimum_size=Vector2(dock_height,dock_height)
-	dpad.add_theme_constant_override("h_separation",gap);dpad.add_theme_constant_override("v_separation",gap)
-	combat_action_dock.add_child(dpad)
-	var direction_rows:Array=[
-		["ProductMoveNW","↖",Vector2i(-1,-1)],
-		["ProductMoveN","↑",Vector2i(0,-1)],
-		["ProductMoveNE","↗",Vector2i(1,-1)],
-		["ProductMoveW","←",Vector2i(-1,0)],
-		["ProductWaitCenter","·",Vector2i.ZERO],
-		["ProductMoveE","→",Vector2i(1,0)],
-		["ProductMoveSW","↙",Vector2i(-1,1)],
-		["ProductMoveS","↓",Vector2i(0,1)],
-		["ProductMoveSE","↘",Vector2i(1,1)],
-	]
-	var can_step:=_product_can_step(status)
-	for row in direction_rows:
-		var button:=Button.new();button.name=str(row[0]);button.text=str(row[1])
-		button.custom_minimum_size=Vector2(target,target)
-		button.add_theme_font_size_override("font_size",FONT_SECTION)
-		button.focus_mode=Control.FOCUS_NONE;button.disabled=not can_step
-		button.set_meta("direction",row[2]);button.set_meta("product_control",true)
-		button.gui_input.connect(_on_product_button_gui_input.bind(button.name));dpad.add_child(button)
-		AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN)
-		product_direction_buttons[row[2]]=button
-	var contextual:=VBoxContainer.new();contextual.name="ProductContextControls"
-	contextual.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	contextual.add_theme_constant_override("separation",gap);combat_action_dock.add_child(contextual)
-	var primary:=GridContainer.new();primary.name="ProductPrimaryControls";primary.columns=2
-	primary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	primary.add_theme_constant_override("h_separation",gap);contextual.add_child(primary)
-	product_attack_button=_add_product_context_button(primary,"[공격]","ProductAttack",
-		_on_product_attack,target)
-	product_attack_button.tooltip_text="가장 가까운 보이는 적에게 접근하거나 공격합니다."
-	product_pickup_button=_add_product_context_button(primary,"[줍기]","ProductPickup",
-		_on_product_pickup,target)
-	product_pickup_button.tooltip_text="현재 칸에 떨어진 아이템을 가방에 줍습니다."
-	var secondary:=GridContainer.new();secondary.name="ProductSecondaryControls";secondary.columns=2
-	secondary.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	secondary.add_theme_constant_override("h_separation",gap);secondary.add_theme_constant_override("v_separation",gap)
-	contextual.add_child(secondary)
-	product_auto_button=_add_product_context_button(secondary,"[AUTO]","ProductAuto",
+	product_auto_button=_add_product_context_button(combat_action_dock,"[AUTO]","ProductAuto",
 		_on_product_auto,target)
-	product_interact_button=_add_product_context_button(secondary,"[INTERACT]","ProductInteract",
+	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
-	product_wait_guard_button=_add_product_context_button(secondary,
+	product_wait_guard_button=_add_product_context_button(combat_action_dock,
 		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
-	product_execute_button=_add_product_context_button(secondary,"[EXECUTE]","ProductExecute",
-		_on_product_execute,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
 	_sync_product_control_state(status)
 
 func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	if session==null:return
 	var run_terminal:=bool(_current_run_progress().get("terminal",false))
-	if product_attack_button==null or not is_instance_valid(product_attack_button):
+	if product_auto_button==null or not is_instance_valid(product_auto_button):
 		if run_terminal and product_execute_button!=null and is_instance_valid(product_execute_button):
 			product_execute_button.text="[RESTART]";product_execute_button.disabled=false
 		return
 	var status:Dictionary=status_override if not status_override.is_empty() else session.party_status()
 	var mode:=str(status.get("view_mode",""))
 	var terminal:=bool(status.get("terminal",false)) or run_terminal
-	var can_step:=_product_can_step(status)
-	for button_value in product_direction_buttons.values():
-		var direction_button:=button_value as Button
-		if direction_button!=null and is_instance_valid(direction_button):
-			direction_button.disabled=not can_step
-			direction_button.tooltip_text="적 방향이면 이동 대신 범프 공격" \
-				if mode=="COMBAT" else "한 칸 이동"
-	# Product ATTACK is a one-turn DCSS-style Tab command. It remains enabled with
-	# no target so the player receives explicit fog-safe feedback rather than an
-	# unexplained inert control.
-	product_attack_button.disabled=terminal
 	if terminal:_product_attack_targeting=false
 	var equipment:Dictionary=session.protagonist_equipment() \
 		if session.has_method("protagonist_equipment") else {}
-	var ranged:=int(equipment.get("range_max",1))>1
-	product_attack_button.text="[사격]" if ranged else "[공격]"
-	if ranged:
-		product_attack_button.tooltip_text= \
-			"가장 가까운 보이는 적을 %d–%d칸 거리에서 사격하거나 사거리까지 접근합니다." \
-			%[int(equipment.get("range_min",2)),int(equipment.get("range_max",2))]
-	else:product_attack_button.tooltip_text= \
-		"가장 가까운 보이는 적에게 한 칸 접근하거나 공격합니다."
-	product_pickup_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
-	var ground_items:Array=session.ground_items_at_protagonist() \
-		if session.has_method("ground_items_at_protagonist") else []
-	product_pickup_button.text="[줍기 %d]"%ground_items.size() \
-		if ground_items.size()>1 else "[줍기]"
-	product_pickup_button.tooltip_text="현재 칸의 %s을(를) 가방에 줍습니다." \
-		%str(ground_items[0].get("label","아이템")) if not ground_items.is_empty() \
-		else "현재 칸에 아이템이 없으면 턴을 소비하지 않습니다."
 	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
 	var opening:Dictionary=session.opening_event_status() \
@@ -2861,8 +2847,6 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			floor_transition.get("to_floor_index",2))
 		product_interact_button.disabled=false
 		product_interact_button.tooltip_text="층간 포탈을 사용해 다음 층으로 이동합니다."
-		product_execute_button.text="[다음 층]"
-		product_execute_button.disabled=false
 		return
 	if portal_choice:
 		product_interact_button.text="[PORTAL 활성화]"
@@ -2917,10 +2901,6 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			%_guard_percent_for_actor(guard_actor)
 	else:
 		product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
-	var planning:Dictionary=session.auto_combat_planning_state() if mode=="COMBAT" else {}
-	product_execute_button.text="[RESTART]" if run_terminal else "[EXECUTE]"
-	product_execute_button.disabled=false if run_terminal else (terminal or mode!="COMBAT" \
-		or _is_direct_solo_combat(status) or not bool(planning.get("commit_ready",false)))
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -3060,6 +3040,9 @@ func _on_product_auto()->void:
 		_record_result(choice_result,true)
 		_show_product_command_feedback("회복 물약을 건넸습니다." \
 			if bool(choice_result.get("accepted",false)) else str(choice_result.get("message","물약을 건넬 수 없습니다.")))
+		if bool(choice_result.get("accepted",false)) \
+				and bool(choice_result.get("immediate_recruitment",{}).get("joined",false)):
+			_show_product_command_feedback("물약을 건넸습니다. 여행자가 바로 파티에 합류했습니다.")
 		if bool(choice_result.get("accepted",false)):
 			_schedule_product_auto_restart_after_opening_choice()
 		_request_refresh();return
@@ -5362,11 +5345,60 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _facet_label(value:String)->String:return {"H":"정직-겸손","E":"정서성","X":"외향성","A":"원만성","C":"성실성","O":"개방성"}.get(value,value)
 func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
+func _on_product_menu_id(item_id:int)->void:
+	if session==null:return
+	match item_id:
+		0:
+			if bool(_current_run_progress().get("terminal",false)):
+				_on_restart_same_run();return
+			if product_restart_confirm==null:
+				product_restart_confirm=ConfirmationDialog.new()
+				product_restart_confirm.name="ProductRestartConfirm"
+				product_restart_confirm.title="다시 시작"
+				product_restart_confirm.dialog_text="진행 중인 원정을 버리고 같은 원정을 처음부터 다시 시작할까요?"
+				product_restart_confirm.ok_button_text="다시 시작"
+				product_restart_confirm.cancel_button_text="취소"
+				product_restart_confirm.confirmed.connect(_on_restart_same_run)
+				add_child(product_restart_confirm)
+			product_restart_confirm.popup_centered()
+		1:show_species_picker_for_new_run()
+
+func expedition_hud_spec()->Dictionary:
+	var cycle:Dictionary=session.expedition_cycle_status() \
+		if session!=null and session.has_method("expedition_cycle_status") else {}
+	var phase:=str(cycle.get("phase","UNAVAILABLE"))
+	var remaining:=int(cycle.get("remaining_world_time",0))
+	var band:=str(cycle.get("warning_band","UNAVAILABLE"))
+	var tone:Color=AsciiFrameScript.INK
+	if band=="CRITICAL" or band=="CLOSED":tone=AsciiFrameScript.DANGER
+	elif band=="WARNING":tone=AsciiFrameScript.BRASS
+	var floor_text:="지하 %d층"%int(cycle.get("floor_index",1)) if phase=="DUNGEON" else ""
+	var timer_text:=""
+	if phase=="DUNGEON":
+		timer_text="던전 폐쇄 · 귀환" if remaining<=0 else "귀환까지 %s시간"%_grouped_number(remaining)
+	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
+		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false)}.duplicate(true)
+
+func _grouped_number(value:int)->String:
+	var digits:=str(absi(value));var grouped:=""
+	for index in range(digits.length()):
+		if index>0 and (digits.length()-index)%3==0:grouped+=","
+		grouped+=digits[index]
+	return ("-" if value<0 else "")+grouped
+
+func _update_expedition_hud(product_hud:bool)->void:
+	if expedition_floor_label==null or return_timer_label==null:return
+	var spec:=expedition_hud_spec() if product_hud else {}
+	var floor_text:=str(spec.get("floor_text",""));var timer_text:=str(spec.get("timer_text",""))
+	expedition_floor_label.text=floor_text;expedition_floor_label.visible=product_hud and not floor_text.is_empty()
+	return_timer_label.text=timer_text;return_timer_label.visible=product_hud and not timer_text.is_empty()
+	return_timer_label.add_theme_color_override("font_color",Color(str(spec.get("tone_hex","c7c2b3"))))
+
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
 		product_hud:bool=false)->void:
 	var wide:=size.x>=450.0
-	phase_panel.custom_minimum_size.y=0 if product_hud else (52 if wide else 48)
+	phase_panel.custom_minimum_size.y=PRODUCT_TOP_HUD_HEIGHT if product_hud else (52 if wide else 48)
 	# The 360px product stack has exactly eight spare pixels after its fixed
 	# surfaces. A zero-gap transparent flex owns them deterministically; relying
 	# on five implicit VBox separations intermittently inflated the root to 642.
