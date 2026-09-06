@@ -365,19 +365,21 @@ func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
 	check_eq(_events_of(session, "party.ration_starve_tick").size(), 0, "a hungry party is not starving yet")
 	var hero = session.sim.world.entities[hero_id]
 	var health_before := int(hero.health)
+	var starve_damage := int(Rules.rules().starve_damage)
 	_wait(session)
 	check_eq(Rules.band(int(state.ration_milli)), "STARVING", "the last interval empties the gauge")
-	check_eq(int(hero.health), health_before - 1, "one starving interval costs starve_damage HP")
+	check_eq(int(hero.health), health_before - starve_damage,
+		"one starving interval costs starve_damage HP")
 	check_eq(_events_of(session, "party.ration_starve_tick").size(), 1, "one starve tick event")
 	check_eq(_events_of(session, "combat.starvation_damage").size(), 1, "one starvation damage event")
 	var damage_event = _events_of(session, "combat.starvation_damage")[0]
 	var tick_event = _events_of(session, "party.ration_starve_tick")[0]
 	check_eq(int(damage_event.cause_id), int(tick_event.id), "damage is caused by the starve tick")
-	check_eq(int(damage_event.magnitude), int(Rules.rules().starve_damage),
+	check_eq(int(damage_event.magnitude), starve_damage,
 		"the damage leaf spends the content damage")
 	check_eq(str(tick_event.data.get("ruleset_id", "")), Rules.RULESET_ID,
 		"the tick names the ration ruleset")
-	check_eq(int(tick_event.data.get("damage", 0)), int(Rules.rules().starve_damage),
+	check_eq(int(tick_event.data.get("damage", 0)), starve_damage,
 		"the tick carries the content damage")
 	check_eq(int(tick_event.data.get("stress", 0)), int(Rules.rules().starve_stress),
 		"the tick carries the content stress")
@@ -398,7 +400,8 @@ func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
 	# Three elapsed intervals apply three separate ticks in one step.
 	check(bool(session.commit_exploration(Command.wait_for(3 * interval, hero_id)).get(
 		"accepted", false)), "a three-interval wait starves three times")
-	check_eq(int(hero.health), health_before - 4, "three intervals apply three more damages")
+	check_eq(int(hero.health), health_before - 4 * starve_damage,
+		"three intervals apply three more damages")
 	check_eq(_events_of(session, "party.ration_starve_tick").size(), 4, "each interval has its own tick event")
 	check_eq(_events_of(session, "combat.starvation_damage").size(), 4, "each tick has its own damage leaf")
 	var ticks := _events_of(session, "party.ration_starve_tick")
@@ -411,6 +414,55 @@ func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
 	check(bool(reloaded.get("accepted", false)),
 		"starved session reloads: %s" % str(reloaded.get("reason", "")))
 	check_eq(replay.sim.world.world_state_error(), "", "reloaded starvation history validates")
+	# One process_tick can spend several intervals at once. Rewind the drain clock
+	# (the journal is already saved above) to force that batch: the stress stacks
+	# per interval while the persisted trigger list stays one code long.
+	var stress := int(Rules.rules().starve_stress)
+	state.ration_processed_at = int(session.sim.world.world_time) - 2 * interval
+	_wait(session)
+	var batched = _latest_member_event(session, "party.morale_changed", hero_id)
+	check(batched != null, "a batched starve step commits a morale leaf")
+	if batched != null:
+		check_eq(int(batched.data.direct_delta), 3 * stress,
+			"three intervals in one tick stack three stress deltas")
+		check_eq(batched.data.trigger_codes.count("STARVING"), 1,
+			"the batched leaf records the starving code once")
+	check_eq(session.sim.world.world_state_error(), "", "the batched morale leaf validates")
+	return finish()
+
+
+func test_tampered_starve_ticks_are_rejected_by_the_ledger() -> bool:
+	# The tick alone says who starves and for how much, so a hand-built snapshot
+	# must not be able to widen either bound past what the ration ruleset allows.
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	check(bool(session.discard_inventory_item("START_RATION_001").get("accepted", false)),
+		"fixture discards the starting rations")
+	state.ration_milli = 0
+	_wait(session)
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), 1, "the fixture starves once")
+	var snapshot: Dictionary = session.sim.snapshot()
+	check_eq(WorldState.snapshot_restore_error(snapshot), "", "the honest starved snapshot restores")
+	var outsider_id := int(state.enemy_ids[0]) if not state.enemy_ids.is_empty() else 999999
+	check(outsider_id not in state.party_member_ids, "the tamper fixture has a non-party id")
+	var tampers: Array = [
+		["damage", 9999, "an inflated damage bound"],
+		["member_ids", [str(hero_id), str(outsider_id)], "a non-party member"],
+		["ruleset_id", "not-the-ration-ruleset", "a foreign ruleset"],
+	]
+	for tamper in tampers:
+		var forged: Dictionary = snapshot.duplicate(true)
+		var patched := false
+		for row in forged.events:
+			if str(row.type) != "party.ration_starve_tick": continue
+			row.data[str(tamper[0])] = tamper[1]
+			patched = true
+		check(patched, "the forged snapshot carries a starve tick to tamper with")
+		check(not WorldState.snapshot_restore_error(forged).is_empty(),
+			"%s is rejected" % str(tamper[2]))
+		check(WorldState.from_snapshot(forged) == null,
+			"%s never yields a world" % str(tamper[2]))
 	return finish()
 
 

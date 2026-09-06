@@ -64,7 +64,10 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 			var stress_delta := maxi(0, int(data.get("stress", 0)))
 			for member_id in members:
 				direct[member_id] = int(direct[member_id]) + stress_delta
-				triggers[member_id].append("STARVING")
+				# A catch-up step can spend dozens of intervals at once; the deltas
+				# stack but the persisted code list stays one entry long.
+				if "STARVING" not in triggers[member_id]:
+					triggers[member_id].append("STARVING")
 	var rows: Array[Dictionary] = []
 	for member_id in members:
 		var member = world.party_encounter.member(member_id)

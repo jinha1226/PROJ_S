@@ -75,6 +75,7 @@ const CombatDefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const PartyMoraleModelScript=preload("res://sim/party_morale_model.gd")
 const PartyEmotionModelScript=preload("res://sim/party_emotion_model.gd")
 const PartyEmotionStateScript=preload("res://sim/party_emotion_state.gd")
+const PartyRationRulesScript=preload("res://sim/party_ration_rules.gd")
 const PartyMemoryHistoryValidatorScript=preload("res://sim/party_memory_history_validator.gd")
 const PartyRelationshipHistoryValidatorScript=preload("res://sim/party_relationship_history_validator.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
@@ -3504,11 +3505,35 @@ func _starvation_damage_event_error(event) -> String:
 		return "starvation_damage_envelope_invalid"
 	var tick = event_by_id(event.cause_id)
 	if tick == null or tick.type != "party.ration_starve_tick" \
-			or tick.step_index != event.step_index or tick.world_time != event.world_time \
-			or not tick.data.get("member_ids") is Array \
-			or str(event.target_id) not in tick.data.member_ids \
-			or event.magnitude > int(tick.data.get("damage", 0)):
+			or tick.step_index != event.step_index or tick.world_time != event.world_time:
 		return "starvation_damage_source_invalid"
+	# The tick is the sole authority for who starves and for how much, so a leaf
+	# may only lean on it once the tick's own envelope is proven canonical.
+	var tick_error := _starve_tick_event_error(tick)
+	if not tick_error.is_empty(): return tick_error
+	if str(event.target_id) not in tick.data.member_ids \
+			or event.magnitude > int(tick.data.damage):
+		return "starvation_damage_source_invalid"
+	return ""
+
+
+func _starve_tick_event_error(tick) -> String:
+	if tick.actor_id != party_encounter.protagonist_id or tick.target_id != -1 \
+			or not _exact_keys(tick.data, ["damage", "member_ids", "ruleset_id",
+				"schema_version", "stress"]) \
+			or tick.data.get("schema_version") != 1 \
+			or tick.data.get("ruleset_id") != PartyRationRulesScript.RULESET_ID \
+			or not tick.data.get("damage") is int or not tick.data.get("stress") is int \
+			or int(tick.data.damage) <= 0 or int(tick.data.stress) < 0 \
+			or tick.magnitude != int(tick.data.damage) \
+			or not tick.data.get("member_ids") is Array \
+			or tick.data.member_ids.is_empty():
+		return "starve_tick_envelope_invalid"
+	for member_wire in tick.data.member_ids:
+		if not Int64CodecScript.is_canonical(member_wire) \
+				or Int64CodecScript.parse(member_wire, "starve tick member") \
+					not in party_encounter.party_member_ids:
+			return "starve_tick_member_invalid"
 	return ""
 
 
