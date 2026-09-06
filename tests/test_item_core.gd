@@ -242,8 +242,8 @@ func test_party_schema8_new_game_items_and_session_operations_replay_exact()->bo
 		"new game carries the weapon sampler, healing potion and ration stacks")
 	check_eq(world_inventory.item("START_POTION_001").quantity,3,
 		"new game starts with the three-use healing potion stack")
-	check_eq(session.sim.world.item_state.ground_items.rows.size(),2,
-		"product start room has shield and padded armor")
+	check_eq(session.sim.world.item_state.ground_items.rows.size(),3,
+		"product start room has shield, padded armor and the floor ration")
 	check_eq(PartyState.wire_error(state.to_dict(),session.sim.world.width,
 		session.sim.world.height),"","schema8 party wire validates")
 	var observation:Dictionary=session.observe_party_world();var visible_item_ids:Array=[]

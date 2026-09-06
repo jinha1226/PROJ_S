@@ -498,3 +498,27 @@ func test_starvation_can_kill_and_the_death_validates() -> bool:
 		"the dead hero stops accruing starve ticks")
 	check_eq(session.sim.world.world_state_error(), "", "starvation death passes ledger validation")
 	return finish()
+
+
+func test_floor_ration_dto_and_log_copy() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var ground = session.sim.world.item_state.ground_items
+	var floor_ration = ground.item("GROUND_FLOOR1_RATION")
+	check(floor_ration != null and str(floor_ration.definition_id) == "FOOD_RATION",
+		"floor one places one ration on the ground")
+	var replay = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	check_eq(replay.sim.world.item_state.ground_items.position_of("GROUND_FLOOR1_RATION"),
+		ground.position_of("GROUND_FLOOR1_RATION"), "floor ration position is seed-fixed")
+	var status: Dictionary = session.party_status()
+	check_eq(int(status.get("ration", -1)), 300, "status exposes the whole-unit gauge")
+	check_eq(int(status.get("ration_max", -1)), 300, "status exposes the max")
+	check_eq(str(status.get("ration_band", "")), "FED", "status exposes the band")
+	var state = session.sim.world.party_encounter
+	state.ration_milli = Rules.hungry_below_milli() + 500
+	_wait(session)
+	var log: Dictionary = session.combat_log(8, 80)
+	var messages: Array[String] = []
+	for group in log.get("groups", []):
+		for row in group.get("rows", []): messages.append(str(row.get("message", "")))
+	check("배급 식량을 먹었다." in messages, "meal reaches the important log with Korean copy")
+	return finish()

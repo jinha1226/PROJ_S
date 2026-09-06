@@ -494,10 +494,16 @@ func _initial_ground_item_rows(candidate,hero_position:Vector2i,
 		var db:=maxi(absi(b.x-hero_position.x),absi(b.y-hero_position.y))
 		return da<db if da!=db else (a.y<b.y if a.y!=b.y else a.x<b.x))
 	if candidates.size()<2:return []
-	return [{"position":[candidates[0].x,candidates[0].y],
+	var rows:Array=[{"position":[candidates[0].x,candidates[0].y],
 		"item":ItemScript.new("GROUND_START_SHIELD","SHIELD_WOOD").to_dict()},
 		{"position":[candidates[1].x,candidates[1].y],
 		"item":ItemScript.new("GROUND_START_PADDED","ARMOR_PADDED").to_dict()}]
+	# Candidates are sorted by distance from the hero, so the last one is farthest.
+	if candidates.size()>=3:
+		var ration_cell:Vector2i=candidates[candidates.size()-1]
+		rows.append({"position":[ration_cell.x,ration_cell.y],
+			"item":ItemScript.new("GROUND_FLOOR1_RATION","FOOD_RATION").to_dict()})
+	return rows
 
 
 func protagonist_progression()->Dictionary:
@@ -1395,6 +1401,8 @@ func party_status() -> Dictionary:
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
+		"ration":int(state.ration_milli/1000),"ration_max":int(RationRulesScript.rules().ration_max),
+		"ration_band":RationRulesScript.band(int(state.ration_milli)),
 		"contact_kind": state.contact_kind, "formation_id": state.formation_id, "anchor": [state.group_anchor.x,state.group_anchor.y],
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
 		"protagonist_id": state.protagonist_id, "party_member_ids": state.active_party_member_ids.duplicate(),
@@ -2080,6 +2088,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		if entry_event==null:return _rejection_dto("floor_transition_event_failed")
 		event_ids.append(int(entry_event.id))
 		sim.world.entities[member_id].position=entry_position
+	_place_floor_ration(floor_index,entry_position,target_layout)
 	var spawned_ids:=_spawn_campaign_floor_enemies(target_layout,
 		int(cycle.expedition_index))
 	if spawned_ids.is_empty():return _rejection_dto("floor_enemy_spawn_failed")
@@ -2093,6 +2102,39 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		return a.y<b.y if a.y!=b.y else a.x<b.x)
 	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
 		"spawned_enemy_ids":spawned_ids})
+
+
+func _place_floor_ration(floor_index:int,entry_position:Vector2i,
+		layout:Dictionary)->void:
+	var instance_id:="GROUND_FLOOR%d_RATION"%floor_index
+	if sim.world.item_state.ground_items.item(instance_id)!=null:return
+	var blocked:Array=layout.get("door_positions",[]).duplicate()
+	blocked.append(layout.get("entry_position",Vector2i(-1,-1)))
+	blocked.append(layout.get("exit_position",Vector2i(-1,-1)))
+	var best:=Vector2i(-1,-1);var best_distance:=-1
+	for y in range(maxi(0,entry_position.y-5),mini(sim.world.height,entry_position.y+6)):
+		for x in range(maxi(0,entry_position.x-5),mini(sim.world.width,entry_position.x+6)):
+			var position:=Vector2i(x,y)
+			var distance:=maxi(absi(position.x-entry_position.x),
+				absi(position.y-entry_position.y))
+			if distance<2 or position in blocked \
+					or not sim.world.occupying_entities_at(position).is_empty():continue
+			var tile=sim.world.tile_at(position)
+			var terrain:=TerrainRegistryScript.definition(str(tile.terrain))
+			if terrain.is_empty() or not bool(terrain.get("passable",false)) \
+					or int(tile.fire)>0 or int(tile.wetness)>0:continue
+			# Farthest cell wins; ties resolve by row then column for determinism.
+			if distance>best_distance or (distance==best_distance \
+					and (position.y<best.y or (position.y==best.y and position.x<best.x))):
+				best=position;best_distance=distance
+	if best_distance<0:return
+	var rows:Array=[]
+	for row in sim.world.item_state.ground_items.rows:
+		rows.append({"position":[row.position.x,row.position.y],
+			"item":row.item.to_dict()})
+	rows.append({"position":[best.x,best.y],
+		"item":ItemScript.new(instance_id,"FOOD_RATION").to_dict()})
+	sim.world.item_state.ground_items=GroundItemScript.new(rows)
 
 
 func _spawn_campaign_floor_enemies(layout:Dictionary,
@@ -6066,6 +6108,8 @@ func _is_important_log_event(event)->bool:
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
+			"party.ration_eaten","party.ration_missing","party.ration_changed",
+			"party.ration_starve_tick",
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
 			"opening.health_restored","opening.reencountered",
@@ -7576,6 +7620,14 @@ func _event_message(event) -> String:
 				event.data.get("floor_index",event.magnitude))]
 		"dungeon.anchor_portal_activated":return "%d층 거점 포탈이 마을과 연결되었다."%int(
 			event.data.get("floor_index",event.magnitude))
+		"party.ration_eaten":return "배급 식량을 먹었다."
+		"party.ration_missing":return "식량이 떨어졌다."
+		"party.ration_changed":
+			match str(event.data.get("after","")):
+				"HUNGRY":return "배가 고프다."
+				"STARVING":return "굶주리기 시작했다."
+				_:return "허기가 가셨다."
+		"party.ration_starve_tick":return "굶주림 · 전원 −%d"%int(event.data.get("damage",0))
 		"opening.npc_discovered":return "입구 안쪽으로 피 묻은 발자국이 이어진다."
 		"party.npc_assaulted":return "%s을(를) 공격해 적대 관계가 되었다."%target
 		"opening.choice_committed":
