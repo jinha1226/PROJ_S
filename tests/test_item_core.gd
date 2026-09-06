@@ -302,8 +302,11 @@ func test_party_schema_one_through_seven_migrate_to_exact_item_bridge()->bool:
 		var row:Dictionary=current.duplicate(true);row.schema_version=version
 		row.erase("expedition_cycle")
 		row.erase("activated_anchor_portal_floors")
+		row.erase("ration_milli");row.erase("ration_processed_at")
 		row.erase("legacy_journal_origin")
-		for member_row in row.member_rows:member_row.erase("mental_mode")
+		for member_row in row.member_rows:
+			member_row.erase("mental_mode")
+			member_row.erase("emotion_state");member_row.erase("memory_state")
 		# v5-v12 rows carried a protagonist_loadout. v13 removed that duplicate
 		# authority, so a legacy fixture must state the field the old wire had.
 		if version>=PartyState.LOADOUT_SCHEMA_VERSION:

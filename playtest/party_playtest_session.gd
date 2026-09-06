@@ -53,6 +53,7 @@ const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
+const RationRulesScript=preload("res://sim/party_ration_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 
 const SESSION_FORMAT_VERSION := 5
@@ -6137,6 +6138,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			if member_row_value is Dictionary and not member_row_value.has("memory_state"):
 				member_row_value["memory_state"] = PartyMemoryStateScript.new().to_dict()
 		raw_party["schema_version"] = PartyStateScript.SCHEMA_VERSION
+	# Every block above force-bumps schema_version, so any bumped row must also
+	# carry the v22 ration keys. The snapshot re-anchor only fires below v22, so
+	# the drain clock is anchored here at the save's own world time instead.
+	if raw_party is Dictionary \
+			and int(raw_party.get("schema_version",0))>=PartyStateScript.RATION_SCHEMA_VERSION \
+			and not raw_party.has("ration_milli"):
+		raw_party["ration_milli"]=RationRulesScript.ration_max_milli()
+		raw_party["ration_processed_at"]=str(decoded.snapshot.get("world_time","0"))
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -6319,6 +6328,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			PartyStateScript.EMOTION_STATE_SCHEMA_VERSION]:
 		replay.sim.world.party_encounter.expedition_cycle=ExpeditionCycleScript.from_dict(
 			restored.world.party_encounter.expedition_cycle.to_dict())
+	if source_party_schema<PartyStateScript.RATION_SCHEMA_VERSION:
+		# Migration anchors the drain clock at the save's own world time, which no
+		# journal action can reproduce. Seed the replay from the migrated gauge the
+		# same way the expedition clock above is seeded.
+		replay.sim.world.party_encounter.ration_milli= \
+			restored.world.party_encounter.ration_milli
+		replay.sim.world.party_encounter.ration_processed_at= \
+			restored.world.party_encounter.ration_processed_at
 	if restored.world.party_encounter.legacy_journal_origin:
 		return _install_restored_session(restored, decoded, parsed_world_seed,
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)

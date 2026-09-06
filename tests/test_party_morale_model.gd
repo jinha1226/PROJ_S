@@ -256,10 +256,12 @@ func test_schema_thirteen_migrates_to_normal_or_panicked_hysteresis_state() -> b
 	legacy.schema_version = PartyState.WEAPON_AUTHORITY_SCHEMA_VERSION
 	legacy.erase("expedition_cycle")
 	legacy.erase("activated_anchor_portal_floors")
+	legacy.erase("ration_milli");legacy.erase("ration_processed_at")
 	legacy.erase("legacy_journal_origin")
 	for row in legacy.member_rows:
 		row.erase("mental_mode")
 		row.erase("emotion_state")
+		row.erase("memory_state")
 		if row.role == "COMPANION":
 			row.personality_profile = LegacyPersonality.generate(
 				20260828, int(row.roster_slot) - 1).to_dict()

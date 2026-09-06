@@ -83,3 +83,28 @@ func test_legacy_snapshot_reanchors_ration_clock() -> bool:
 		"legacy restore anchors the drain clock at the restored world time")
 	check_eq(restored.world_state_error(), "", "re-anchored legacy world stays canonical")
 	return finish()
+
+
+func test_legacy_session_save_migrates_with_a_full_anchored_gauge() -> bool:
+	var source = Session.new()
+	var hero_id: int = int(source.sim.world.party_encounter.protagonist_id)
+	check(bool(source.commit_exploration(Command.wait(hero_id)).get("accepted", false)),
+		"waiting advances the run before the save")
+	var encoded: Dictionary = JSON.parse_string(source.save_session_json())
+	encoded.snapshot.party_encounter.schema_version = PartyState.EMOTION_STATE_SCHEMA_VERSION
+	encoded.snapshot.party_encounter.erase("ration_milli")
+	encoded.snapshot.party_encounter.erase("ration_processed_at")
+	var saved_world_time := int(str(encoded.snapshot.world_time))
+	check(saved_world_time > 0, "the save carries a nonzero world time")
+	var restored = Session.new(1, 2)
+	var loaded: Dictionary = restored.load_session_json(JSON.stringify(encoded))
+	check(bool(loaded.get("accepted", false)),
+		"v20 save without ration keys migrates: %s" % str(loaded.get("reason", "")))
+	if not bool(loaded.get("accepted", false)): return finish()
+	var state = restored.sim.world.party_encounter
+	check_eq(int(state.ration_milli), Rules.ration_max_milli(),
+		"a migrated save starts on a full gauge")
+	check_eq(int(state.ration_processed_at), saved_world_time,
+		"a migrated save anchors the drain clock at its own world time")
+	check_eq(restored.sim.world.world_state_error(), "", "the migrated world stays canonical")
+	return finish()
