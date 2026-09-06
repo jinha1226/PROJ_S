@@ -136,7 +136,7 @@ func _advance_one() -> Dictionary:
 	_active["current_index"] = next_index
 	_active["last_step_result"] = result.duplicate(true)
 	_active["last_step_effects"] = result.get("visual_effects", []).duplicate(true)
-	_active["resume_fingerprint"] = _snapshot_fingerprint()
+	_active["resume_fingerprint"] = _route_guard_fingerprint()
 
 	var status: Dictionary = _owner().party_status()
 	if str(status.get("safe_phase", "")) == "PARTY_DEFEATED" \
@@ -187,21 +187,21 @@ func _validate_next_step() -> Dictionary:
 		return {"accepted": false, "reason": str(next_preview.reason),
 			"details": {"destination": _position_wire(next_position)}}
 	# Always compare the immediate frozen step. A canonical hop can spread fire or
-	# otherwise alter the following cell before the post-hop fingerprint becomes
-	# the new resume baseline; fingerprint equality alone must not bless that risk.
+	# otherwise alter the following cell before the post-hop route guard becomes
+	# the new resume baseline; guard equality alone must not bless that risk.
 	var immediate_frozen: Dictionary = _active.steps[next_index - 1]
 	var immediate_validation := _validate_frozen_step(immediate_frozen, actor_id)
 	if not bool(immediate_validation.get("accepted", false)):
 		return immediate_validation
-	# The post-hop fingerprint stored by the previous canonical commit covers the
-	# complete world snapshot. On the normal unchanged path, the frozen suffix,
+	# The post-hop guard stored by the previous canonical commit covers the mutable
+	# authority state. On the normal unchanged path, the frozen suffix,
 	# risk ceilings and shortest path therefore cannot have changed, so avoid
 	# rebuilding all of them on every visual-cadence hop. If anything did change,
 	# retain the ordered detailed checks below so blocker/diagonal/hazard changes
 	# still surface their exact authority reason before the generic stale result.
-	var snapshot_matches := _snapshot_fingerprint() \
+	var guard_matches := _route_guard_fingerprint() \
 		== str(_active.get("resume_fingerprint", ""))
-	if snapshot_matches:
+	if guard_matches:
 		return {"accepted": true, "reason": "ok"}
 
 	# A route freezes every remaining terrain cost and every travelling member's
@@ -315,7 +315,7 @@ func _build_plan(goal: Vector2i) -> Dictionary:
 	base["shortest_steps"] = int(found.get("shortest_steps", step_rows.size()))
 	base["detour_limit_steps"] = int(found.get("detour_limit_steps", step_rows.size()))
 	base["remaining_steps"] = step_rows.size()
-	base["fingerprint"] = _snapshot_fingerprint()
+	base["fingerprint"] = _route_guard_fingerprint()
 	var hash_source := base.duplicate(true)
 	hash_source.erase("plan_hash")
 	base["plan_hash"] = JSON.stringify(hash_source).sha256_text()
@@ -414,8 +414,14 @@ func _route_feedback(dto: Dictionary, reason: String, accepted_override: Variant
 	return _owner()._feedback_dto(dto, null, null, context).duplicate(true)
 
 
-func _snapshot_fingerprint() -> String:
-	return JSON.stringify(_owner().sim.snapshot()).sha256_text()
+func _route_guard_fingerprint() -> String:
+	# Route validation needs a deterministic equality guard, not a public save
+	# document or a cryptographic digest. The rollback memento already represents
+	# every mutable authority surface with packed static terrain and a shared,
+	# append-only event prefix. Hashing that in-memory value avoids materializing
+	# thousands of tile/event dictionaries and encoding them as JSON twice per hop.
+	var guard_value:Variant=_owner().sim.capture_rollback_memento(false)
+	return str(hash(guard_value)) if guard_value is Dictionary else "UNAVAILABLE"
 
 
 func _same_path(first: Array, second: Array) -> bool:

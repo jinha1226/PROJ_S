@@ -1034,8 +1034,8 @@ func test_long_route_stops_on_contact_blocker_risk_stale_death_and_combat() -> b
 	check_eq(risky.command_journal.size(),1,"risk preserves accepted prefix")
 
 	# A first hop may itself spread an element onto the following cell. That
-	# changed world is already represented by the post-hop resume fingerprint, so
-	# the immediate frozen step must still be compared before a fingerprint fast
+	# changed world is already represented by the post-hop route guard, so the
+	# immediate frozen step must still be compared before the guard fast
 	# path accepts it.
 	var spread=Session.new();var spread_state=spread.sim.world.party_encounter
 	spread.sim.world.entities[spread_state.enemy_ids[0]].position=Vector2i(14,14)
@@ -1044,11 +1044,11 @@ func test_long_route_stops_on_contact_blocker_risk_stale_death_and_combat() -> b
 		"post-hop spread fixture first hop")
 	var spread_route=spread.exploration_route_state();var spread_next:Array=spread_route.path[2]
 	spread.sim.world.tile_at(Vector2i(int(spread_next[0]),int(spread_next[1]))).fire=100
-	spread._exploration_route._active["resume_fingerprint"]=JSON.stringify(
-		spread.sim.snapshot()).sha256_text()
+	spread._exploration_route._active["resume_fingerprint"]= \
+		spread._exploration_route._route_guard_fingerprint()
 	var spread_before=spread.sim.snapshot();var spread_result=spread.continue_exploration_route()
 	check_eq(spread_result.reason,"route_hazard_increased",
-		"post-hop spread cannot be hidden by the new resume fingerprint")
+		"post-hop spread cannot be hidden by the new resume route guard")
 	check_eq(spread.sim.snapshot(),spread_before,"post-hop spread stop exact no-op")
 
 	var stale=Session.new();var stale_state=stale.sim.world.party_encounter
