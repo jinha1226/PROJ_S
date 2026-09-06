@@ -7,6 +7,9 @@ extends RefCounted
 
 const SOURCE_CANVAS_SIZE := Vector2(96.0, 96.0)
 const FOOT_ANCHOR_RATIO := 0.94
+# Keep the first full-body readability pass honest: equipment remains registered
+# but is not composited until its silhouettes are authored against these bodies.
+const EQUIPMENT_LAYERS_ENABLED := false
 
 const BODY_TEXTURES := {
 	"human": preload("res://assets/topdown_fixed_front/actors/base/human.png"),
@@ -69,9 +72,10 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"species_id":species_id,
 		"body_texture":body_texture(species_id),
 		"armor_definition_id":armor_definition_id,
-		"armor_texture":armor_texture(armor_definition_id),
+		"armor_texture":armor_texture(armor_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
 		"weapon_definition_id":weapon_definition_id,
-		"weapon_texture":weapon_texture(weapon_definition_id),
+		"weapon_texture":weapon_texture(weapon_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
+		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
 		"fixed_front":true,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,

@@ -1490,9 +1490,9 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 		"weapon_definition_id":"WEAPON_CROSSBOW","armor_definition_id":"ARMOR_LEATHER"}
 	var moving:Dictionary=grid.fixed_front_actor_render_spec(actor,false,started+45)
 	check(bool(moving.visible) and bool(moving.uses_sprite) \
-			and moving.body_texture!=null and moving.armor_texture!=null \
-			and moving.weapon_texture!=null,
-		"flat product composes the generated species, armor and weapon layers")
+			and moving.body_texture!=null and moving.armor_texture==null \
+			and moving.weapon_texture==null,
+		"flat product renders the full-body species base without equipment")
 	check(float(moving.visual_cell_ratio)>=1.3 \
 			and float(moving.visual_cell_ratio)<=1.6,
 		"fixed-front actor stays within the zoomed-out SD readability envelope")
@@ -1521,6 +1521,16 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 		var texture:Texture2D=FixedFrontAssets.body_texture(species_id)
 		check(texture!=null and texture.get_size()==Vector2(96,96),
 			"%s owns a common 96x96 fixed-front base"%species_id)
+		var image:=texture.get_image()
+		var left_foot_pixels:=0
+		var right_foot_pixels:=0
+		for y in range(82,96):
+			for x in range(0,48):
+				if image.get_pixel(x,y).a>0.25:left_foot_pixels+=1
+			for x in range(48,96):
+				if image.get_pixel(x,y).a>0.25:right_foot_pixels+=1
+		check(left_foot_pixels>8 and right_foot_pixels>8,
+			"%s keeps both feet in the lower full-body silhouette"%species_id)
 	for definition_id in ["WEAPON_SHORT_SWORD","WEAPON_HAND_AXE","WEAPON_MACE",
 			"WEAPON_SPEAR","WEAPON_BOW","WEAPON_CROSSBOW"]:
 		var texture:Texture2D=FixedFrontAssets.weapon_texture(definition_id)
@@ -1535,6 +1545,9 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 	check_eq([west.body_texture,west.armor_texture,west.weapon_texture],
 		[east.body_texture,east.armor_texture,east.weapon_texture],
 		"movement direction never selects a different art layer")
+	check(not bool(west.equipment_layers_enabled) and west.armor_texture==null \
+			and west.weapon_texture==null,
+		"full-body readability pass renders the species base without equipment")
 	check(not bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
 		"species without approved art explicitly fall back to ASCII")
 	return finish()
