@@ -69,6 +69,7 @@ var product_menu_button:MenuButton
 var product_restart_confirm:ConfirmationDialog
 var expedition_floor_label:Label
 var return_timer_label:Label
+var ration_label:Label
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -740,7 +741,14 @@ func _build_ui()->void:
 	return_timer_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	return_timer_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	return_timer_label.clip_text=true;return_timer_label.visible=false
-	situation_stack.add_child(return_timer_label)
+	var clock_row:=HBoxContainer.new();clock_row.name="ClockRow"
+	clock_row.add_theme_constant_override("separation",8);situation_stack.add_child(clock_row)
+	return_timer_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;clock_row.add_child(return_timer_label)
+	ration_label=Label.new();ration_label.name="RationGauge"
+	ration_label.add_theme_font_size_override("font_size",FONT_AUX)
+	ration_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	ration_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	ration_label.visible=false;clock_row.add_child(ration_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
 	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
 	top_hud_actions.add_theme_constant_override("separation",0)
@@ -5430,8 +5438,18 @@ func expedition_hud_spec()->Dictionary:
 	var timer_text:=""
 	if phase=="DUNGEON":
 		timer_text="던전 폐쇄 · 귀환" if remaining<=0 else "귀환까지 %s시간"%_grouped_number(remaining)
+	var status:Dictionary=session.party_status() if session!=null else {}
+	var ration_band:=str(status.get("ration_band","FED"))
+	var ration_max:=maxi(1,int(status.get("ration_max",1)))
+	var filled:=clampi(int(ceil(float(int(status.get("ration",0)))*4.0/float(ration_max))),0,4)
+	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"▮".repeat(filled)+"▯".repeat(4-filled)
+	var ration_tone:Color=AsciiFrameScript.INK
+	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
+	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
 	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
-		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false)}.duplicate(true)
+		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false),
+		"ration_text":ration_text,"ration_band":ration_band,
+		"ration_tone_hex":ration_tone.to_html(false)}.duplicate(true)
 
 func _grouped_number(value:int)->String:
 	var digits:=str(absi(value));var grouped:=""
@@ -5447,6 +5465,13 @@ func _update_expedition_hud(product_hud:bool)->void:
 	expedition_floor_label.text=floor_text;expedition_floor_label.visible=product_hud and not floor_text.is_empty()
 	return_timer_label.text=timer_text;return_timer_label.visible=product_hud and not timer_text.is_empty()
 	return_timer_label.add_theme_color_override("font_color",Color(str(spec.get("tone_hex","c7c2b3"))))
+	if ration_label!=null:
+		var ration_text:=str(spec.get("ration_text",""))
+		ration_label.text=ration_text
+		ration_label.visible=product_hud and not ration_text.is_empty() \
+			and str(spec.get("phase",""))=="DUNGEON"
+		ration_label.add_theme_color_override("font_color",
+			Color(str(spec.get("ration_tone_hex","c7c2b3"))))
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,

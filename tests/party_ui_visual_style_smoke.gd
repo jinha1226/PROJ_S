@@ -75,6 +75,19 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and sandbox.expedition_floor_label.get_global_rect().end.x<=sandbox.product_menu_button.get_global_rect().position.x+0.5 \
 		and sandbox.phase_panel.get_global_rect().end.y<=sandbox.grid.get_global_rect().position.y+0.5,
 		"%s top rail order is not minimap / floor+timer / menu above the map"%viewport_size)
+	var ration_spec:Dictionary=sandbox.expedition_hud_spec()
+	_check(sandbox.ration_label!=null and sandbox.ration_label.is_visible_in_tree() \
+		and sandbox.ration_label.text=="식량 ▮▮▮▮" and str(ration_spec.get("ration_band",""))=="FED" \
+		and _inside_rect(sandbox.phase_panel,sandbox.ration_label) \
+		and sandbox.ration_label.get_theme_font_size("font_size")>=11,
+		"%s top rail lacks the four-cell ration gauge"%viewport_size)
+	sandbox.session.sim.world.party_encounter.ration_milli=0
+	sandbox._refresh();await process_frame
+	_check(sandbox.ration_label.text=="굶주림" \
+		and sandbox.ration_label.get_theme_color("font_color")==AsciiUIFrame.DANGER,
+		"%s starving rail copy is not red 굶주림"%viewport_size)
+	sandbox.session.sim.world.party_encounter.ration_milli=300000
+	sandbox._refresh();await process_frame
 	if viewport_size.x>=450.0:
 		_check(sandbox.grid.size.is_equal_approx(Vector2(450,450)),
 			"%s logical map footprint changed from 450x450: %s"%[viewport_size,sandbox.grid.size])
