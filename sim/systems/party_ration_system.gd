@@ -44,7 +44,45 @@ static func process_tick(world, damage, processed_step_index: int) -> bool:
 		var had_food := not _first_food_instance_id(world).is_empty()
 		if not auto_eat(world): return false
 		if not had_food and after_band != before_band and not _emit_missing(world): return false
+	# The meal above may have refilled the gauge; only an empty one after eating
+	# starves, and every whole starve interval the drain just processed bites once.
+	if RulesScript.band(int(state.ration_milli)) == "STARVING":
+		var starve_interval := int(rules.starve_interval)
+		var starve_ticks := (intervals * interval) / starve_interval
+		for _tick in range(starve_ticks):
+			if not _starve_once(world, damage, processed_step_index, rules): return false
 	state.revision += 1
+	return true
+
+
+static func _starve_once(world, damage, processed_step_index: int, rules: Dictionary) -> bool:
+	if damage == null: return false
+	var state = world.party_encounter
+	var victims: Array[int] = []
+	for member_id in state.active_party_member_ids:
+		var combatant = world.combatant_states.get(int(member_id))
+		if combatant != null and str(combatant.life_state) == "ACTIVE":
+			victims.append(int(member_id))
+	victims.sort()
+	if victims.is_empty(): return true
+	# One tick event plus, per victim, the damage leaf and the death pair a lethal
+	# bite draws behind it: exactly the room apply_damage demands for itself.
+	if not world.has_event_id_headroom(1 + victims.size() * 3): return false
+	var member_wire: Array = []
+	for member_id in victims: member_wire.append(str(member_id))
+	var tick = world.emit_event("party.ration_starve_tick", int(state.protagonist_id), -1,
+		_hero_position(world), int(rules.starve_damage), -1, {"schema_version": 1,
+			"ruleset_id": RulesScript.RULESET_ID, "member_ids": member_wire,
+			"damage": int(rules.starve_damage), "stress": int(rules.starve_stress)})
+	if tick == null: return false
+	for member_id in victims:
+		var entity = world.entities.get(member_id)
+		if entity == null: return false
+		# A tick that named a member and then failed to bite would leave the ledger
+		# claiming damage nobody took, so refuse the whole step instead.
+		if damage.apply_damage(entity, int(rules.starve_damage), "starvation", int(tick.id),
+				entity.position, processed_step_index) <= 0:
+			return false
 	return true
 
 

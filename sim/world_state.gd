@@ -2291,6 +2291,9 @@ func _restored_state_error() -> String:
 			else:
 				typed_damage_error = "typed_damage_schema_invalid"
 			if not typed_damage_error.is_empty(): return typed_damage_error
+		if event.type == "combat.starvation_damage":
+			var starvation_error := _starvation_damage_event_error(event)
+			if not starvation_error.is_empty(): return starvation_error
 		if event.type == "entity.died" and event.data.get("schema_version") != 1:
 			var legacy_death_error := _legacy_death_event_error(event)
 			if not legacy_death_error.is_empty(): return legacy_death_error
@@ -3493,12 +3496,28 @@ func _canonical_environment_damage_source_error(event, damage_type: String,
 	return ""
 
 
+func _starvation_damage_event_error(event) -> String:
+	if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+			or event.magnitude <= 0 or event.data != {"damage_type": "starvation"} \
+			or party_encounter == null \
+			or event.target_id not in party_encounter.party_member_ids:
+		return "starvation_damage_envelope_invalid"
+	var tick = event_by_id(event.cause_id)
+	if tick == null or tick.type != "party.ration_starve_tick" \
+			or tick.step_index != event.step_index or tick.world_time != event.world_time \
+			or not tick.data.get("member_ids") is Array \
+			or str(event.target_id) not in tick.data.member_ids \
+			or event.magnitude > int(tick.data.get("damage", 0)):
+		return "starvation_damage_source_invalid"
+	return ""
+
+
 func _legacy_death_event_error(event) -> String:
 	if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
 			or event.magnitude != 0 or not _exact_keys(event.data, ["damage_type"]):
 		return "legacy_death_event_envelope_invalid"
 	var damage_type: String = str(event.data.get("damage_type", ""))
-	if damage_type not in ["physical", "fire", "electric"]:
+	if damage_type not in ["physical", "fire", "electric", "starvation"]:
 		return "legacy_death_damage_type_invalid"
 	var damage_driver = event_by_id(event.cause_id)
 	if damage_driver == null or damage_driver.type != "combat.%s_damage" % damage_type \
@@ -3765,7 +3784,8 @@ func _lifecycle_history_error() -> String:
 				return "canonical_downed_event_invalid"
 			var damage_driver = event_by_id(event.cause_id)
 			if damage_driver == null or damage_driver.type not in ["combat.physical_damage",
-					"combat.fire_damage", "combat.electric_damage"] \
+					"combat.fire_damage", "combat.electric_damage",
+					"combat.starvation_damage"] \
 					or damage_driver.data.get("schema_version") not in [1, 3] \
 					or damage_driver.target_id != event.target_id \
 					or damage_driver.position != event.position \
@@ -3905,7 +3925,8 @@ func _lifecycle_history_error() -> String:
 			projected_recovery[event.target_id] = restored_health
 			continue
 		if event.type in ["combat.physical_damage", "combat.fire_damage",
-				"combat.electric_damage"] and projected_recovery.has(event.target_id) \
+				"combat.electric_damage", "combat.starvation_damage"] \
+				and projected_recovery.has(event.target_id) \
 				and projected_life.get(event.target_id) == "ACTIVE":
 			var projected_damage_type: String = str(event.type).trim_prefix("combat.").trim_suffix("_damage")
 			var canonical_damage: bool = event.data.get("schema_version") == 1
@@ -5390,7 +5411,7 @@ func _party_morale_history_error() -> String:
 	var allowed_triggers := ["ALLY_DIED", "ALLY_DIED_BONDED",
 		"ALLY_DIED_EMOTIONALITY", "ALLY_DIED_WITNESSED", "ALLY_DOWNED",
 		"ALLY_FEAR_CONTAGION", "ENEMY_DIED", "OVERRIDE_STRESS",
-		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "TOWN_REST"]
+		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "STARVING", "TOWN_REST"]
 	for event in events:
 		if event.type != "party.morale_changed":
 			continue
@@ -5460,7 +5481,7 @@ func _party_morale_history_error() -> String:
 					or source.step_index != event.step_index \
 					or source.type not in ["combat.physical_damage", "combat.downed_damage",
 						"entity.downed", "entity.died", "party.override_committed",
-						"town.shrine_service"]:
+						"party.ration_starve_tick", "town.shrine_service"]:
 				return "party_morale_source_invalid"
 			previous_source = source_id
 		if (source_rows.is_empty() and event.cause_id != -1) \
@@ -5484,11 +5505,12 @@ func _party_emotion_history_error() -> String:
 	var latest_by_actor: Dictionary = {}
 	var previous_after_by_actor: Dictionary = {}
 	var allowed_triggers := ["ALLY_AID", "ALLY_DIED", "ALLY_DOWNED",
-		"ENEMY_DIED", "OVERRIDE_CONFLICT", "SAFE_DECAY", "SELF_DAMAGE",
-		"SELF_DOWNED", "TOWN_REST"]
+		"ENEMY_DIED", "OVERRIDE_CONFLICT", "RATION_MISSING", "SAFE_DECAY",
+		"SELF_DAMAGE", "SELF_DOWNED", "STARVING", "TOWN_REST"]
 	var source_types := ["combat.physical_damage", "combat.downed_damage",
 		"entity.downed", "entity.died", "health.restored",
-		"party.override_committed", "town.shrine_service"]
+		"party.override_committed", "party.ration_missing",
+		"party.ration_starve_tick", "town.shrine_service"]
 	for event in events:
 		if event.type != "party.emotion_changed":
 			continue

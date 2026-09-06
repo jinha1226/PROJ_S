@@ -327,3 +327,122 @@ func test_missing_food_reports_once_per_band_entry() -> bool:
 	check_eq(_events_of(session, "party.ration_missing").size(), 1, "later hungry ticks stay silent")
 	check_eq(session.sim.world.world_state_error(), "", "missing food keeps canonical state")
 	return finish()
+
+
+func _latest_member_event(session, type: String, member_id: int):
+	var latest = null
+	for event in session.sim.world.events:
+		if str(event.type) == type and int(event.actor_id) == member_id: latest = event
+	return latest
+
+
+func _member_event_carries(session, type: String, member_id: int, trigger: String) -> bool:
+	for event in session.sim.world.events:
+		if str(event.type) == type and int(event.actor_id) == member_id \
+				and trigger in event.data.get("trigger_codes", []):
+			return true
+	return false
+
+
+func test_starving_party_takes_damage_and_stress_each_interval() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	check(bool(session.discard_inventory_item("START_RATION_001").get("accepted", false)),
+		"fixture discards the starting rations")
+	# The journal is the whole save authority, so this fixture empties the gauge
+	# through journalled waits alone: the reload below replays the very same
+	# starve ticks instead of restoring a gauge no command ever produced.
+	var interval := int(Rules.rules().drain_interval)
+	var per_interval := Rules.drain_per_interval_milli(1)
+	while int(state.ration_milli) > per_interval:
+		var intervals := maxi(1, (int(state.ration_milli) - per_interval) / per_interval)
+		var drained: bool = bool(session.commit_exploration(Command.wait_for(
+			mini(Timing.MAX_WAIT_COST, intervals * interval), hero_id)).get("accepted", false))
+		check(drained, "long waits drain the empty bag down to its last interval")
+		if not drained: return finish()
+	check_eq(int(state.ration_milli), per_interval, "the fixture parks one interval short of empty")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), 0, "a hungry party is not starving yet")
+	var hero = session.sim.world.entities[hero_id]
+	var health_before := int(hero.health)
+	_wait(session)
+	check_eq(Rules.band(int(state.ration_milli)), "STARVING", "the last interval empties the gauge")
+	check_eq(int(hero.health), health_before - 1, "one starving interval costs starve_damage HP")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), 1, "one starve tick event")
+	check_eq(_events_of(session, "combat.starvation_damage").size(), 1, "one starvation damage event")
+	var damage_event = _events_of(session, "combat.starvation_damage")[0]
+	var tick_event = _events_of(session, "party.ration_starve_tick")[0]
+	check_eq(int(damage_event.cause_id), int(tick_event.id), "damage is caused by the starve tick")
+	check_eq(int(damage_event.magnitude), int(Rules.rules().starve_damage),
+		"the damage leaf spends the content damage")
+	check_eq(str(tick_event.data.get("ruleset_id", "")), Rules.RULESET_ID,
+		"the tick names the ration ruleset")
+	check_eq(int(tick_event.data.get("damage", 0)), int(Rules.rules().starve_damage),
+		"the tick carries the content damage")
+	check_eq(int(tick_event.data.get("stress", 0)), int(Rules.rules().starve_stress),
+		"the tick carries the content stress")
+	check(str(hero_id) in tick_event.data.get("member_ids", []),
+		"the tick names its starving members")
+	var morale = _latest_member_event(session, "party.morale_changed", hero_id)
+	check(morale != null, "starving commits a morale leaf")
+	if morale != null:
+		check(int(morale.data.direct_delta) >= int(Rules.rules().starve_stress),
+			"starving raises stress by starve_stress")
+		check("STARVING" in morale.data.trigger_codes, "the morale leaf names the starving trigger")
+	var emotion = _latest_member_event(session, "party.emotion_changed", hero_id)
+	check(emotion != null and "STARVING" in emotion.data.trigger_codes,
+		"starving frightens the hero")
+	check(_member_event_carries(session, "party.emotion_changed", hero_id, "RATION_MISSING"),
+		"an empty bag frightened the hero when the party turned hungry")
+	check_eq(session.sim.world.world_state_error(), "", "starvation damage passes ledger validation")
+	# Three elapsed intervals apply three separate ticks in one step.
+	check(bool(session.commit_exploration(Command.wait_for(3 * interval, hero_id)).get(
+		"accepted", false)), "a three-interval wait starves three times")
+	check_eq(int(hero.health), health_before - 4, "three intervals apply three more damages")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), 4, "each interval has its own tick event")
+	check_eq(_events_of(session, "combat.starvation_damage").size(), 4, "each tick has its own damage leaf")
+	var ticks := _events_of(session, "party.ration_starve_tick")
+	check(int(ticks[1].step_index) == int(ticks[3].step_index),
+		"the three caught-up intervals all bite inside one step")
+	check_eq(session.sim.world.world_state_error(), "", "batched starvation stays canonical")
+	var saved := session.save_session_json()
+	var replay = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var reloaded: Dictionary = replay.load_session_json(saved)
+	check(bool(reloaded.get("accepted", false)),
+		"starved session reloads: %s" % str(reloaded.get("reason", "")))
+	check_eq(replay.sim.world.world_state_error(), "", "reloaded starvation history validates")
+	return finish()
+
+
+func test_starvation_can_kill_and_the_death_validates() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	check(bool(session.discard_inventory_item("START_RATION_001").get("accepted", false)),
+		"fixture discards the starting rations")
+	# Health is a projection of the event ledger, so the kill has to be starved
+	# for: park a whole health bar of starve intervals on the drain clock and let
+	# one step spend them all. The clock may never go negative, so buy the runway
+	# with a long fed wait first.
+	var hero = session.sim.world.entities[hero_id]
+	var max_health := int(hero.max_health)
+	var runway := max_health * int(Rules.rules().starve_interval)
+	while int(session.sim.world.world_time) < runway:
+		var span := mini(Timing.MAX_WAIT_COST, runway - int(session.sim.world.world_time))
+		var advanced: bool = bool(session.commit_exploration(
+			Command.wait_for(span, hero_id)).get("accepted", false))
+		check(advanced, "long fed waits put a health bar of intervals on the clock")
+		if not advanced: return finish()
+	check_eq(int(hero.health), max_health, "the fed runway costs no health")
+	check_eq(Rules.band(int(state.ration_milli)), "FED", "the runway never starves on its own")
+	state.ration_milli = 0
+	state.ration_processed_at = int(session.sim.world.world_time) - runway
+	_wait(session)
+	check_eq(str(session.sim.world.combatant_states[hero_id].life_state), "DEAD", "starvation kills at 0 HP")
+	check_eq(_events_of(session, "entity.died").size(), 1, "one death event")
+	check_eq(str(_events_of(session, "entity.died")[0].data.get("damage_type", "")), "starvation",
+		"death records the starvation damage type")
+	check_eq(_events_of(session, "party.ration_starve_tick").size(), max_health,
+		"the dead hero stops accruing starve ticks")
+	check_eq(session.sim.world.world_state_error(), "", "starvation death passes ledger validation")
+	return finish()

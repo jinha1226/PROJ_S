@@ -59,6 +59,12 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 				for member_id in members:
 					direct[member_id] = int(direct[member_id]) - 100
 					triggers[member_id].append("ENEMY_DIED")
+		elif event_type == "party.ration_starve_tick":
+			var data: Dictionary = event.get("data", {}) if event is Dictionary else event.data
+			var stress_delta := maxi(0, int(data.get("stress", 0)))
+			for member_id in members:
+				direct[member_id] = int(direct[member_id]) + stress_delta
+				triggers[member_id].append("STARVING")
 	var rows: Array[Dictionary] = []
 	for member_id in members:
 		var member = world.party_encounter.member(member_id)
