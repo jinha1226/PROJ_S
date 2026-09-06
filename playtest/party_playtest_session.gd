@@ -95,6 +95,7 @@ const TOWN_SHRINE_COST := 15
 const TOWN_SHRINE_STRESS_REDUCTION := 300
 const TOWN_STARTING_FLOOR := 1
 const TOWN_MARKET_CATALOG := [
+	{"definition_id":"FOOD_RATION","price":6,"stock":6},
 	{"definition_id":"POTION_HEALING","price":12,"stock":4},
 	{"definition_id":"ARMOR_PADDED","price":35,"stock":1},
 	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
@@ -413,7 +414,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		ItemScript.new("START_SPEAR_001",ItemRegistryScript.weapon_definition_id("SPEAR")),
 		ItemScript.new("START_BOW_001",ItemRegistryScript.weapon_definition_id("BOW")),
 		ItemScript.new("START_CROSSBOW_001",ItemRegistryScript.weapon_definition_id("CROSSBOW")),
-		ItemScript.new("START_POTION_001","POTION_HEALING",3)],
+		ItemScript.new("START_POTION_001","POTION_HEALING",3),
+		ItemScript.new("START_RATION_001","FOOD_RATION",2)],
 		{"MAIN_HAND":"LEGACY_MAIN_HAND"})
 	# The historical start loadout, now stated once: 12 arrows, 6 bolts and an
 	# unloaded crossbow instance. The equipped MAIN_HAND item is the weapon.
@@ -1172,7 +1174,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"requirements":requirements,"requirements_met":requirements_met,
 		"requirement_text":" · ".join(requirement_parts),
 		"current_stats":stats.duplicate(true),
-		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)!="NONE",
+		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)=="HEALING",
 		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
 			if str(definition.use_kind)=="HEALING" else 0,
 		"compact_stat_text":""}

@@ -5,6 +5,8 @@ const Session = preload("res://playtest/party_playtest_session.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
 const WorldState = preload("res://sim/world_state.gd")
 const Command = preload("res://sim/sim_command.gd")
+const ItemRegistry = preload("res://sim/item_registry.gd")
+const DropRegistry = preload("res://sim/species_drop_registry.gd")
 
 
 func test_rules_load_and_bands_are_derived_from_content() -> bool:
@@ -107,4 +109,30 @@ func test_legacy_session_save_migrates_with_a_full_anchored_gauge() -> bool:
 	check_eq(int(state.ration_processed_at), saved_world_time,
 		"a migrated save anchors the drain clock at its own world time")
 	check_eq(restored.sim.world.world_state_error(), "", "the migrated world stays canonical")
+	return finish()
+
+
+func test_food_ration_content_market_and_start_bag() -> bool:
+	var definition = ItemRegistry.definition("FOOD_RATION")
+	check(definition != null and str(definition.category) == "CONSUMABLE" \
+		and str(definition.use_kind) == "EAT" and int(definition.stack_limit) == 10,
+		"FOOD_RATION is a stackable EAT consumable")
+	check_eq(DropRegistry.registry_error(), "", "drop tables accept a consumable ration roll")
+	var dropped := false
+	for death_event_id in range(1, 200):
+		for roll in DropRegistry.rolls_for(44, death_event_id, "goblin"):
+			if str(roll.definition_id) == "FOOD_RATION": dropped = true
+	check(dropped, "goblins can drop a ration within 200 deterministic rolls")
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var hero_id := int(session.sim.world.party_encounter.protagonist_id)
+	var start_ration = session.sim.world.inventory_of(hero_id).item("START_RATION_001")
+	check(start_ration != null and str(start_ration.definition_id) == "FOOD_RATION" \
+		and int(start_ration.quantity) == 2, "hero starts with two rations")
+	var catalog_ids: Array = []
+	for row in Session.TOWN_MARKET_CATALOG: catalog_ids.append(str(row.definition_id))
+	check("FOOD_RATION" in catalog_ids, "town market sells rations")
+	var manual: Dictionary = session.use_inventory_item("START_RATION_001")
+	check(not bool(manual.get("accepted", false)), "rations are never used by hand")
+	check_eq(int(session.sim.world.inventory_of(hero_id).item("START_RATION_001").quantity), 2,
+		"rejected manual use consumes nothing")
 	return finish()

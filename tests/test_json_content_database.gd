@@ -104,13 +104,13 @@ func test_registry_views_match_the_json_authority()->bool:
 		check(species_rows.has(species_id),
 			"unified catalog publishes %s exactly once"%species_id)
 	check_eq([Growth.content_version(),Items.content_version(),Weapons.content_version(),
-		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-01",
+		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-06",
 		"weapons-2026-09-02-body-b1","proficiencies-2026-09-01"],
 		"content versions are visible to diagnostics")
 	check_eq(ContentDatabase.content_versions(),{
 		"proficiencies":"proficiencies-2026-09-01",
 		"weapons":"weapons-2026-09-02-body-b1",
-		"items":"items-2026-09-01",
+		"items":"items-2026-09-06",
 		"species_catalog":"species-catalog-2026-09-02-v1",
 		"growth_builds":"growth-builds-2026-09-02-v3",
 		"body_combat":"body-combat-2026-09-02-b1",
