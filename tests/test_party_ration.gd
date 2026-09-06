@@ -190,7 +190,11 @@ func test_gauge_drains_by_world_time_and_party_size() -> bool:
 	check_eq(int(state.ration_milli), full - 3000, "elapsed intervals are applied in one tick")
 	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
 		"the clock lands on the last whole interval")
-	# Crossing hungry_below announces the new band exactly once.
+	# Crossing hungry_below announces the new band exactly once. Empty the food bag
+	# first: a stocked hero eats on the crossing tick and swings the band straight
+	# back, which is the auto-meal test's subject rather than the drain's.
+	check(bool(session.discard_inventory_item("START_RATION_001").get("accepted", false)),
+		"the drain fixture discards its rations before crossing the threshold")
 	state.ration_milli = Rules.hungry_below_milli() + 500
 	_wait(session)
 	check_eq(Rules.band(int(state.ration_milli)), "HUNGRY", "the drain crosses hungry_below")
@@ -248,4 +252,78 @@ func test_town_phase_freezes_and_departure_resets_the_gauge() -> bool:
 	check_eq(int(state.ration_processed_at), int(session.sim.world.world_time),
 		"departure anchors the drain clock")
 	check_eq(session.sim.world.world_state_error(), "", "town reset keeps canonical state")
+	return finish()
+
+
+func test_hungry_party_eats_one_ration_automatically() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	state.ration_milli = Rules.hungry_below_milli() + 500
+	_wait(session)
+	check_eq(Rules.band(int(state.ration_milli)), "FED",
+		"one more interval leaves 99,500: eaten and refilled")
+	check_eq(int(state.ration_milli), mini(Rules.ration_max_milli(),
+		Rules.hungry_below_milli() + 500 - 1000 + Rules.food_nutrition_milli()),
+		"eating adds food_nutrition capped at max")
+	check_eq(int(session.sim.world.inventory_of(hero_id).item("START_RATION_001").quantity), 1,
+		"one ration was consumed from the hero bag")
+	var eaten := _events_of(session, "party.ration_eaten")
+	check_eq(eaten.size(), 1, "one meal event")
+	if eaten.size() == 1:
+		check_eq(str(eaten[0].data.get("definition_id", "")), "FOOD_RATION", "meal names the food")
+	check_eq(_events_of(session, "party.ration_missing").size(), 0, "no missing event while fed")
+	check_eq(session.sim.world.world_state_error(), "", "auto meal keeps canonical state")
+	return finish()
+
+
+func test_eaten_gauge_survives_a_session_save_and_reload() -> bool:
+	# The journal is the whole save authority, and a directly poked gauge is not in
+	# it, so this fixture drains through journalled waits alone: the reload below
+	# replays the very same meal instead of restoring a state no command produced.
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	var interval := int(Rules.rules().drain_interval)
+	while int(state.ration_milli) > Rules.hungry_below_milli():
+		var intervals := (int(state.ration_milli) - Rules.hungry_below_milli()) \
+			/ Rules.drain_per_interval_milli(1)
+		if intervals < 1: break
+		check(bool(session.commit_exploration(Command.wait_for(
+			mini(Timing.MAX_WAIT_COST, intervals * interval), hero_id)).get("accepted", false)),
+			"long waits drain the gauge down to the hungry threshold")
+	check_eq(int(state.ration_milli), Rules.hungry_below_milli(),
+		"journalled waits park the gauge on the threshold, still FED")
+	check_eq(_events_of(session, "party.ration_eaten").size(), 0, "a fed party eats nothing")
+	_wait(session)
+	check_eq(Rules.band(int(state.ration_milli)), "FED", "the crossing tick eats and refills")
+	check_eq(int(state.ration_milli), Rules.ration_max_milli(), "one ration covers the whole gauge")
+	check_eq(_events_of(session, "party.ration_eaten").size(), 1, "exactly one journalled meal")
+	var saved := session.save_session_json()
+	var replay = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var loaded: Dictionary = replay.load_session_json(saved)
+	check(bool(loaded.get("accepted", false)),
+		"session save/load round trip: %s" % str(loaded.get("reason", "")))
+	if not bool(loaded.get("accepted", false)): return finish()
+	check_eq(int(replay.sim.world.party_encounter.ration_milli), int(state.ration_milli),
+		"loaded gauge matches")
+	check_eq(int(replay.sim.world.inventory_of(hero_id).item("START_RATION_001").quantity), 1,
+		"the reloaded bag also lost exactly one ration")
+	check_eq(replay.sim.world.world_state_error(), "", "the reloaded world stays canonical")
+	return finish()
+
+
+func test_missing_food_reports_once_per_band_entry() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	check(bool(session.discard_inventory_item("START_RATION_001").get("accepted", false)),
+		"fixture discards the starting rations")
+	state.ration_milli = Rules.hungry_below_milli() + 500
+	_wait(session)
+	check_eq(Rules.band(int(state.ration_milli)), "HUNGRY", "no food leaves the party hungry")
+	check_eq(_events_of(session, "party.ration_missing").size(), 1, "entering HUNGRY without food reports once")
+	_wait(session); _wait(session)
+	check_eq(_events_of(session, "party.ration_missing").size(), 1, "later hungry ticks stay silent")
+	check_eq(session.sim.world.world_state_error(), "", "missing food keeps canonical state")
 	return finish()

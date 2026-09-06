@@ -5,6 +5,7 @@ extends RefCounted
 ## world time, active member count and party state; no RNG, no frame time.
 
 const RulesScript = preload("res://sim/party_ration_rules.gd")
+const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 
 
 static func band(world) -> String:
@@ -39,8 +40,57 @@ static func process_tick(world, damage, processed_step_index: int) -> bool:
 	var after_band := RulesScript.band(int(state.ration_milli))
 	if after_band != before_band:
 		if not _emit_band_change(world, before_band, after_band): return false
+	if after_band != "FED":
+		var had_food := not _first_food_instance_id(world).is_empty()
+		if not auto_eat(world): return false
+		if not had_food and after_band != before_band and not _emit_missing(world): return false
 	state.revision += 1
 	return true
+
+
+static func _first_food_instance_id(world) -> String:
+	var inventory = world.inventory_of(int(world.party_encounter.protagonist_id))
+	if inventory == null: return ""
+	var food_id := str(RulesScript.rules().food_definition_id)
+	var ids: Array = []
+	for item in inventory.backpack:
+		if str(item.definition_id) == food_id and int(item.quantity) > 0:
+			ids.append(str(item.instance_id))
+	ids.sort()
+	return "" if ids.is_empty() else str(ids[0])
+
+
+static func auto_eat(world) -> bool:
+	# Only the protagonist's bag feeds the party, and one ration is the most a
+	# single tick may consume: the gauge climbs back in food_nutrition steps.
+	var state = world.party_encounter
+	if RulesScript.band(int(state.ration_milli)) == "FED": return true
+	var instance_id := _first_food_instance_id(world)
+	if instance_id.is_empty(): return true
+	if not world.has_event_id_headroom(2): return false
+	var used: Dictionary = WorldItemOperationsScript.commit_use_without_event(world,
+		int(state.protagonist_id), instance_id)
+	if not bool(used.get("accepted", false)): return true
+	var before_band := RulesScript.band(int(state.ration_milli))
+	state.ration_milli = mini(RulesScript.ration_max_milli(),
+		int(state.ration_milli) + RulesScript.food_nutrition_milli())
+	var event = world.emit_event("party.ration_eaten", int(state.protagonist_id), -1,
+		_hero_position(world), 0, -1, {"schema_version": 1,
+			"ruleset_id": RulesScript.RULESET_ID, "definition_id": str(used.get("definition_id", "")),
+			"instance_id": instance_id, "ration_milli": int(state.ration_milli)})
+	if event == null: return false
+	var after_band := RulesScript.band(int(state.ration_milli))
+	if after_band != before_band and not _emit_band_change(world, before_band, after_band):
+		return false
+	return true
+
+
+static func _emit_missing(world) -> bool:
+	if not world.has_event_id_headroom(1): return false
+	var state = world.party_encounter
+	return world.emit_event("party.ration_missing", int(state.protagonist_id), -1,
+		_hero_position(world), 0, -1, {"schema_version": 1,
+			"ruleset_id": RulesScript.RULESET_ID, "ration_milli": int(state.ration_milli)}) != null
 
 
 static func _hero_position(world) -> Vector2i:
