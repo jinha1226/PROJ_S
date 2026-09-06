@@ -2111,9 +2111,13 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	_ensure_melee_vfx()
 	_ensure_static_projection_cache()
+	# All actor-attached presentation samples one clock value per draw pass. When
+	# movement interpolation was queried separately, the sprite could advance a
+	# fraction of a frame before its HP bar was positioned.
+	var frame_actor_sample_msec:=Time.get_ticks_msec()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
-	var camera_offset:Vector2=camera_settle_draw_spec().offset_px
+	var camera_offset:Vector2=camera_settle_draw_spec(frame_actor_sample_msec).offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	draw_set_transform(camera_offset+impact_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
@@ -2134,10 +2138,12 @@ func _draw() -> void:
 	_draw_ground_items()
 	for visual_row in _sorted_visual_actor_rows():
 		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
-			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),camera_offset)
+			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),
+				camera_offset,frame_actor_sample_msec)
 		else:
-			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),camera_offset)
-	_draw_actor_health_bars()
+			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),
+				camera_offset,frame_actor_sample_msec)
+	_draw_actor_health_bars(frame_actor_sample_msec)
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
 		_draw_intent(intent)
@@ -2152,11 +2158,11 @@ func _draw() -> void:
 	# never by shrinking the playable view behind a decorative screen border.
 
 func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
-		camera_offset:Vector2=Vector2.ZERO)->void:
-	var spec:=fixed_front_actor_render_spec(actor,ghost,-1,camera_offset)
+		camera_offset:Vector2=Vector2.ZERO,sample_time_ms:int=-1)->void:
+	var spec:=fixed_front_actor_render_spec(actor,ghost,sample_time_ms,camera_offset)
 	if not bool(spec.get("visible",false)):return
 	if not bool(spec.get("uses_sprite",false)):
-		_draw_topdown_ascii_actor(actor,ghost,camera_offset)
+		_draw_topdown_ascii_actor(actor,ghost,camera_offset,sample_time_ms)
 		return
 	var shadow_rect:Rect2=spec.shadow_rect
 	var shadow_points:=PackedVector2Array()
@@ -2167,6 +2173,19 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	draw_colored_polygon(shadow_points,Color(str(spec.shadow_hex)))
 	var bounds:Rect2=spec.bounds
 	var modulate:=Color(str(spec.modulate_hex))
+	# The bases are authored at their native 24px readability size. Add one stable
+	# screen-pixel rim so they stay distinct from either biome without turning the
+	# compact silhouettes into black blobs at close zoom.
+	var body_texture:Texture2D=spec.get("body_texture",null)
+	if body_texture!=null and bool(spec.get("outline_enabled",false)):
+		var outline_px:=float(spec.get("outline_px",1.0))
+		var outline_color:=Color(str(spec.get("outline_hex","#020509f2")))
+		outline_color.a*=modulate.a
+		for direction in [Vector2(-1,-1),Vector2(0,-1),Vector2(1,-1),
+				Vector2(-1,0),Vector2(1,0),Vector2(-1,1),Vector2(0,1),Vector2(1,1)]:
+			var outline_bounds:=bounds
+			outline_bounds.position+=direction*outline_px
+			draw_texture_rect(body_texture,outline_bounds,false,outline_color)
 	for texture_key in ["body_texture","armor_texture","weapon_texture"]:
 		var texture:Texture2D=spec.get(texture_key,null)
 		if texture!=null:draw_texture_rect(texture,bounds,false,modulate)
@@ -2204,7 +2223,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
-	var sprite_size:=cell*1.50
+	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
 	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,
@@ -2221,6 +2240,8 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	return layer_spec.merged({"visible":true,"uses_sprite":true,"bounds":bounds,
 		"logical_position":[position.x,position.y],"foot_y":foot_y,
 		"visual_cell_ratio":sprite_size/cell,"style":style,
+		"outline_enabled":not ghost,"outline_px":1.0,
+		"outline_hex":"#020509f2","outline_changes_bounds":false,
 		"modulate_hex":"#"+modulate.to_html(true),"shadow_rect":shadow_rect,
 		"shadow_hex":"#"+Color(0.005,0.01,0.015,shadow_alpha).to_html(true),
 		"status_anchor":Vector2(bounds.end.x-sprite_size*0.16,bounds.position.y+sprite_size*0.12),
@@ -2229,8 +2250,8 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 
 
 func _draw_topdown_ascii_actor(actor:Dictionary,ghost:bool,
-		camera_offset:Vector2=Vector2.ZERO)->void:
-	var spec:=topdown_ascii_actor_render_spec(actor,ghost,-1,camera_offset)
+		camera_offset:Vector2=Vector2.ZERO,sample_time_ms:int=-1)->void:
+	var spec:=topdown_ascii_actor_render_spec(actor,ghost,sample_time_ms,camera_offset)
 	if not bool(spec.get("visible",false)):return
 	_draw_asciident_actor(spec,spec.style)
 
@@ -2269,8 +2290,8 @@ func _draw_monster_awareness_marks()->void:
 			int(spec.font_size),color)
 
 
-func _draw_actor_health_bars()->void:
-	for spec in actor_health_bar_draw_specs():
+func _draw_actor_health_bars(sample_time_ms:int=-1)->void:
+	for spec in actor_health_bar_draw_specs(sample_time_ms):
 		draw_rect(Rect2(spec.rect),Color(str(spec.background_hex)),true)
 		var fill:Rect2=spec.fill_rect
 		if fill.size.x>0.0 and fill.size.y>0.0:
@@ -2917,15 +2938,15 @@ func _draw_visual_effect(effect:Dictionary)->void:
 					int(particle.font_size),particle_color)
 
 func _draw_actor(actor: Dictionary, cell: float, ghost: bool,
-		camera_offset:Vector2=Vector2.ZERO) -> void:
+		camera_offset:Vector2=Vector2.ZERO,sample_time_ms:int=-1) -> void:
 	if not actor.get("position") is Array or actor.position.size() != 2: return
 	var p := Vector2i(int(actor.position[0]),int(actor.position[1]))
 	if not is_world_cell_visible(p):return
-	var bounds:=_actor_figure_bounds(actor,cell,ghost)
+	var bounds:=_actor_figure_bounds(actor,cell,ghost,sample_time_ms)
 	if bounds.size.x<=0.0:return
 	if not ghost and int(actor.get("entity_id",-1))==_hero_camera_actor_id:
 		bounds.position-=camera_offset
-	var style:=actor_draw_spec(actor,ghost)
+	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
 	if uses_perspective_projection():
 		_draw_asciident_actor(_asciident_actor_render_spec(actor,bounds,style),style)
 		return

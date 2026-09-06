@@ -2,10 +2,11 @@ class_name FixedFrontTopdownAssets
 extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
-## Every layer owns the same 96x96 transparent canvas and anchor. Direction is
-## deliberately ignored: movement and combat never swap or mirror these assets.
+## Visible bases use a native 24x24 transparent pixel canvas and common anchor.
+## Direction is deliberately ignored: movement and combat never swap or mirror
+## these assets.
 
-const SOURCE_CANVAS_SIZE := Vector2(96.0, 96.0)
+const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
 const FOOT_ANCHOR_RATIO := 0.94
 # Keep the first full-body readability pass honest: equipment remains registered
 # but is not composited until its silhouettes are authored against these bodies.
@@ -17,6 +18,11 @@ const BODY_TEXTURES := {
 	"dwarf": preload("res://assets/topdown_fixed_front/actors/base/dwarf.png"),
 	"orc": preload("res://assets/topdown_fixed_front/actors/base/orc.png"),
 	"beastkin": preload("res://assets/topdown_fixed_front/actors/base/beastkin.png"),
+}
+
+const MONSTER_TEXTURES := {
+	"goblin": preload("res://assets/topdown_fixed_front/monsters/goblin.png"),
+	"kobold": preload("res://assets/topdown_fixed_front/monsters/kobold.png"),
 }
 
 const ARMOR_TEXTURES := {
@@ -47,6 +53,10 @@ static func body_texture(species_id:String)->Texture2D:
 	return BODY_TEXTURES.get(species_id.to_lower(),null)
 
 
+static func monster_texture(species_id:String)->Texture2D:
+	return MONSTER_TEXTURES.get(species_id.to_lower(),null)
+
+
 static func armor_texture(definition_id:String)->Texture2D:
 	return ARMOR_TEXTURES.get(definition_id.to_upper(),null)
 
@@ -59,6 +69,11 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 	var equipment_value:Variant=actor.get("equipment_visual",actor.get("equipment",{}))
 	var equipment:Dictionary=equipment_value if equipment_value is Dictionary else {}
 	var species_id:=str(actor.get("species_id","")).to_lower()
+	var hostile:=bool(actor.get("is_enemy",false)) \
+		or str(actor.get("faction_id","")).to_lower()=="enemy"
+	var uses_monster_sprite:=hostile and MONSTER_TEXTURES.has(species_id)
+	var base_texture:Texture2D=monster_texture(species_id) if uses_monster_sprite \
+		else body_texture(species_id)
 	var armor_definition_id:=str(equipment.get("armor_definition_id",
 		actor.get("armor_definition_id",""))).to_upper()
 	var weapon_definition_id:=str(equipment.get("weapon_definition_id",
@@ -68,9 +83,11 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		if not weapon_id.is_empty() and weapon_id!="UNARMED_STRIKE":
 			weapon_definition_id="WEAPON_%s"%weapon_id
 	return {
-		"uses_sprite":BODY_TEXTURES.has(species_id),
+		"uses_sprite":base_texture!=null,
 		"species_id":species_id,
-		"body_texture":body_texture(species_id),
+		"body_texture":base_texture,
+		"monster_sprite":uses_monster_sprite,
+		"visual_cell_ratio":1.30 if uses_monster_sprite else 1.50,
 		"armor_definition_id":armor_definition_id,
 		"armor_texture":armor_texture(armor_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
 		"weapon_definition_id":weapon_definition_id,

@@ -4,10 +4,10 @@ extends RefCounted
 ## Presentation-only tile atlas registry for the flat product camera. Simulation
 ## terrain, FOV, pathing and pointer mapping stay integer-grid authoritative.
 
-const TILE_SIZE := 128
+const TILE_SIZE := 16
 const FLOOR_TEXTURES := {
-	1: preload("res://assets/topdown_fixed_front/terrain/floor1_atlas_16x1_128.png"),
-	2: preload("res://assets/topdown_fixed_front/terrain/floor2_atlas_16x1_128.png"),
+	1: preload("res://assets/topdown_fixed_front/terrain/floor1_atlas_16x1_16.png"),
+	2: preload("res://assets/topdown_fixed_front/terrain/floor2_atlas_16x1_16.png"),
 }
 
 const FLOOR_ONE_TERRAIN := {

@@ -60,6 +60,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s product camera did not use the requested 19-cell default"%viewport_size)
 	_check(sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==70.0 \
 		and sandbox.minimap_frame.is_visible_in_tree() and sandbox.minimap.is_visible_in_tree() \
+		and sandbox.minimap_open_button!=null \
+		and sandbox.minimap_open_button.is_visible_in_tree() \
 		and sandbox.top_hud_actions.visible and sandbox.product_menu_button.is_visible_in_tree() \
 		and not sandbox.record_button.visible and not sandbox.hero_detail_button.visible \
 		and not sandbox.phase_label.visible \
@@ -110,22 +112,25 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s product movement/context dock is not persistently visible"%viewport_size)
 	var control_metrics:Dictionary=sandbox._product_controls_metrics(1)
 	_check(int(control_metrics.get("target",0))==44 and int(control_metrics.get("dock_height",0))==44 \
-		and sandbox.combat_action_dock.get_child_count()==3,
-		"%s product context dock is not one 44px row of three commands"%viewport_size)
+		and sandbox.combat_action_dock.get_child_count()==4,
+		"%s product context dock is not one 44px row of four commands"%viewport_size)
 	_check(sandbox.find_child("ProductDirectionPad",true,false)==null \
-		and sandbox.find_child("ProductAttack",true,false)==null \
 		and sandbox.find_child("ProductPickup",true,false)==null \
 		and sandbox.find_child("ProductExecute",true,false)==null,
-		"%s D-pad or map-touch duplicate controls survived in the dock"%viewport_size)
+		"%s D-pad or pickup duplicate controls survived in the dock"%viewport_size)
 	for button in [sandbox.product_auto_button,
-			sandbox.product_interact_button,sandbox.product_wait_guard_button]:
+			sandbox.product_interact_button,sandbox.product_attack_button,
+			sandbox.product_wait_guard_button]:
 		_check(button is Button and bool(button.get_meta("product_control",false)) \
 			and _inside_rect(sandbox.combat_action_dock,button),
 			"%s contextual control is not a real contained Button"%viewport_size)
 	_check(sandbox.product_interact_button.disabled,
 		"%s unavailable INTERACT backend was exposed as a dummy action"%viewport_size)
 	_check(not sandbox.product_auto_button.disabled and sandbox.product_auto_button.toggle_mode \
-		and not sandbox.product_wait_guard_button.disabled,
+		and not sandbox.product_attack_button.disabled \
+		and not sandbox.product_wait_guard_button.disabled \
+		and sandbox.product_attack_button.get_index()
+			==sandbox.product_wait_guard_button.get_index()-1,
 		"%s exploration contextual controls do not match AUTO/WAIT authority"%viewport_size)
 	var attack_session=_baseline_solo_session(44)
 	var attack_probe=Sandbox.new();root.add_child(attack_probe)
@@ -195,13 +200,13 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(speech_text!=null and "\n" not in speech_text.text and speech_text.max_lines_visible==1,
 		"%s companion speech is not one compact line"%viewport_size)
 	var compact_event_before:String=sandbox.event_label.text
-	sandbox.map_nav_button.pressed.emit();await process_frame
+	await _screen_touch_button(sandbox,sandbox.minimap_open_button,18)
 	_check(sandbox.map_overlay.visible and sandbox.map_nav_button.button_pressed \
 		and sandbox.grid.modal_open and bool(sandbox.map_overlay.overlay_spec().stores_compact_scalars_only),
-		"%s map navigation did not open the leak-safe discovered-map modal"%viewport_size)
-	sandbox.map_nav_button.pressed.emit();await process_frame
+		"%s minimap tap did not open the leak-safe discovered-map modal"%viewport_size)
+	await _screen_touch_button(sandbox,sandbox.minimap_open_button,19)
 	_check(not sandbox.map_overlay.visible and not sandbox.map_nav_button.button_pressed,
-		"%s map navigation toggle did not close and synchronize"%viewport_size)
+		"%s minimap tap did not close and synchronize the map modal"%viewport_size)
 	sandbox.history_nav_button.pressed.emit();await process_frame
 	_check(sandbox.record_modal.visible and sandbox.history_nav_button.button_pressed \
 		and not sandbox.record_body.text.is_empty() and sandbox.event_label.text==compact_event_before,
@@ -983,7 +988,8 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 	var combat_step_before:=int(session.party_status().step_index)
 	_check(sandbox.product_auto_button.disabled \
 		and not sandbox.product_wait_guard_button.disabled \
-		and sandbox.find_child("ProductAttack",true,false)==null,
+		and sandbox.product_attack_button!=null \
+		and not sandbox.product_attack_button.disabled,
 		"%s adjacent direct-solo controls were stale before the fast turn"%viewport_size)
 	await _screen_touch_grid_cell(sandbox,enemy_position,41)
 	_check(int(session.party_status().step_index)==combat_step_before+1,

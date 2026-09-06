@@ -1,23 +1,21 @@
 # Fixed-front top-down runtime art
 
-These are the shipping 96x96 RGBA layers. The five body bases and resized torso
-armor come from `assets/generated/topdown_fixed_front_v2/runtime`; unchanged
-headgear and weapon layers retain the approved v1 art. They live outside the
-generated source tree because the Web export intentionally excludes generated
-concepts and review sheets.
+The visible body and monster bases are native 24x24 RGBA pixel sprites derived
+deterministically from the approved 96px designs. The conversion limits each
+sprite's palette, removes partial alpha, and retains the common foot anchor. The
+larger originals remain under `assets/generated/topdown_fixed_front_v3` and
+`assets/generated/topdown_monsters_v1`; no image generator is needed to rebuild
+this readability pass.
 
-All body, armor and weapon PNGs share one canvas and foot anchor. Compose them in
-that order without directional swapping, mirroring or per-layer repositioning.
-The five body bases deliberately use smaller featureless faces and larger,
-broader torsos. Species readability at mobile zoom comes from head shape, ears,
-hair/fur, body proportion and color, while equipment remains a separate aligned
-silhouette layer.
+The five body bases keep the approved fixed-front pose. Species readability at
+mobile zoom comes from head shape, ears, hair/fur, body proportion and color.
+Equipment is still disabled for the base-readability pass; its older 96px layers
+remain registered but are not composited.
 
-`terrain/floor1_atlas_16x1_128.png` and `floor2_atlas_16x1_128.png` are the
-shipping, gutter-free 128px cells selected from the generated 4x4 sheets. The
-flat camera chooses deterministic variants for terrain and portal state. Road and
-rail fragments that require neighbor-aware autotiling are excluded from ordinary
-terrain selection, so isolated straight/L-shaped paths cannot appear. This is
-presentation-only and never changes pathing, FOV, occupancy or pointer mapping.
-The larger source sheets and review concepts remain in the generated asset folder
-and are not runtime dependencies.
+`terrain/floor1_atlas_16x1_16.png` and `floor2_atlas_16x1_16.png` are the shipping
+native-resolution atlases. Low-information ground uses broad 2x2 pixel clusters;
+walls, routes, machinery and portals retain 1px semantic shapes. The original
+128px atlases remain under `assets/generated/topdown_pixel_readability_v1/source`
+as reversible sources, outside the Web package. The flat camera chooses
+deterministic variants for terrain and portal state. This is presentation-only
+and never changes pathing, FOV, occupancy or pointer mapping.

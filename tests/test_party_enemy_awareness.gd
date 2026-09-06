@@ -152,9 +152,12 @@ func test_two_encounter_cycles_restore_with_strict_history()->bool:
 		"first threat is internally ready in its triggering move")
 	check(product_grid==sandbox.grid and not sandbox.phase_label.visible,
 		"first threat keeps the same product grid and hides internal phase chrome")
-	check(sandbox.find_child("ProductAttack",true,false)==null \
+	check(sandbox.product_attack_button!=null \
+		and sandbox.product_attack_button.text=="[ATTACK]" \
+		and sandbox.product_attack_button.get_index()
+			==sandbox.product_wait_guard_button.get_index()-1 \
 		and sandbox.product_wait_guard_button.text=="[WAIT]",
-		"solo product keeps bump movement with map-touch attacks and WAIT")
+		"solo product exposes ATTACK immediately left of WAIT")
 	check(_finish_visible_enemy(sandbox,session,hero_id,first_enemy_id),
 		"first enemy is removed through same-grid movement and bump input")
 	check_eq(session.party_status().safe_phase,"GROUPED",

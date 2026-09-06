@@ -464,8 +464,8 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	check("/terrain/" not in asset_source and "/props/" not in asset_source \
 		and "/ui/" not in asset_source,
 		"actor registry remains isolated from tile and button textures")
-	check("floor1_atlas_16x1_128.png" in tile_source \
-			and "floor2_atlas_16x1_128.png" in tile_source,
+	check("floor1_atlas_16x1_16.png" in tile_source \
+			and "floor2_atlas_16x1_16.png" in tile_source,
 		"both implemented campaign floors own explicit runtime atlases")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
@@ -479,7 +479,7 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	var floor_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i(1,1))
 	var portal_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i.ZERO)
 	check(bool(floor_tile.visible) and bool(floor_tile.draw_image) \
-			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(128,128),
+			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(16,16),
 		"floor two terrain resolves a bounded atlas region")
 	check(int(portal_tile.tile_index)==15 and not bool(portal_tile.changes_mapping) \
 			and not bool(portal_tile.changes_fov),
@@ -1496,16 +1496,26 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 	check(float(moving.visual_cell_ratio)>=1.3 \
 			and float(moving.visual_cell_ratio)<=1.6,
 		"fixed-front actor stays within the zoomed-out SD readability envelope")
+	check(bool(moving.outline_enabled) and absf(float(moving.outline_px)-1.0)<0.001 \
+			and not bool(moving.outline_changes_bounds),
+		"native pixel actor receives one draw-only screen-pixel readability rim")
 	check(bool(moving.fixed_front) and bool(moving.one_cell_authority) \
 			and not bool(moving.changes_mapping),
 		"facing-independent art never changes movement or occupancy authority")
 	check_eq(grid.actor_in_world_cell(Vector2i(6,7)),77,
 		"oversized fixed-front art keeps one-cell actor authority")
 	grid._actors[0]["health"]=8;grid._actors[0]["max_health"]=10
-	var moving_bar:Dictionary=grid.actor_health_bar_draw_spec(77,started+45)
-	check(bool(moving_bar.get("visible",false)) \
-			and absf(Rect2(moving_bar.rect).get_center().x-Rect2(moving.bounds).get_center().x)<0.01,
-		"fixed-front actor and HP bar share the exact interpolated horizontal anchor")
+	for elapsed_msec in [0,45,90,135,179]:
+		var sample_time:int=started+int(elapsed_msec)
+		var actor_sample:Dictionary=grid.fixed_front_actor_render_spec(
+			actor,false,sample_time)
+		var moving_bar:Dictionary=grid.actor_health_bar_draw_spec(77,sample_time)
+		var actor_bounds:=Rect2(actor_sample.bounds)
+		var bar_bounds:=Rect2(moving_bar.rect)
+		check(bool(moving_bar.get("visible",false)) \
+				and absf(bar_bounds.get_center().x-actor_bounds.get_center().x)<0.01 \
+				and absf(bar_bounds.end.y-(actor_bounds.position.y-2.0))<0.01,
+			"fixed-front actor and HP bar stay locked at movement sample %dms"%elapsed_msec)
 	var ghost:=actor.duplicate(true)
 	ghost["position"]=[8,8];ghost["display_position"]=[8,8]
 	ghost["logical_position"]=[8,8]
@@ -1519,17 +1529,17 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool:
 	for species_id in ["human","elf","dwarf","orc","beastkin"]:
 		var texture:Texture2D=FixedFrontAssets.body_texture(species_id)
-		check(texture!=null and texture.get_size()==Vector2(96,96),
-			"%s owns a common 96x96 fixed-front base"%species_id)
+		check(texture!=null and texture.get_size()==Vector2(24,24),
+			"%s owns a native 24x24 fixed-front pixel base"%species_id)
 		var image:=texture.get_image()
 		var left_foot_pixels:=0
 		var right_foot_pixels:=0
-		for y in range(82,96):
-			for x in range(0,48):
+		for y in range(19,24):
+			for x in range(0,12):
 				if image.get_pixel(x,y).a>0.25:left_foot_pixels+=1
-			for x in range(48,96):
+			for x in range(12,24):
 				if image.get_pixel(x,y).a>0.25:right_foot_pixels+=1
-		check(left_foot_pixels>8 and right_foot_pixels>8,
+		check(left_foot_pixels>1 and right_foot_pixels>1,
 			"%s keeps both feet in the lower full-body silhouette"%species_id)
 	for definition_id in ["WEAPON_SHORT_SWORD","WEAPON_HAND_AXE","WEAPON_MACE",
 			"WEAPON_SPEAR","WEAPON_BOW","WEAPON_CROSSBOW"]:
@@ -1549,7 +1559,16 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 			and west.weapon_texture==null,
 		"full-body readability pass renders the species base without equipment")
 	check(not bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
-		"species without approved art explicitly fall back to ASCII")
+		"non-hostile species without a playable base still fall back to ASCII")
+	for monster_id in ["goblin","kobold"]:
+		var texture:Texture2D=FixedFrontAssets.monster_texture(monster_id)
+		var monster_spec:=FixedFrontAssets.actor_layer_spec({
+			"species_id":monster_id,"faction_id":"enemy","is_enemy":true})
+		check(texture!=null and texture.get_size()==Vector2(24,24) \
+				and bool(monster_spec.uses_sprite) and bool(monster_spec.monster_sprite) \
+				and monster_spec.body_texture==texture \
+				and absf(float(monster_spec.visual_cell_ratio)-1.30)<0.001,
+			"%s hostile owns a native 24x24 fixed-front monster sprite"%monster_id)
 	return finish()
 
 

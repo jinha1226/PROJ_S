@@ -61,6 +61,7 @@ var run_objective_label:Label
 var reward_badge:Label
 var minimap
 var minimap_frame
+var minimap_open_button:Button
 var recent_event_label:Label
 var record_button:Button
 var hero_detail_button:Button
@@ -81,6 +82,7 @@ var combat_action_dock:HBoxContainer
 var party_command_menu:MenuButton
 var product_auto_button:Button
 var product_interact_button:Button
+var product_attack_button:Button
 var product_wait_guard_button:Button
 var product_execute_button:Button
 var hud_bottom_flex:Control
@@ -575,7 +577,8 @@ func _product_control_activates_on_press(control_name:String)->bool:
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
 	controls.append_array([product_auto_button,
-		product_interact_button,product_wait_guard_button,product_execute_button,
+		product_interact_button,product_attack_button,product_wait_guard_button,
+		product_execute_button,minimap_open_button,
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
 		history_nav_button])
 	for control_value in controls:
@@ -601,6 +604,7 @@ func _activate_product_control(control_name:String)->void:
 		"ProductInteract":_on_product_interact()
 		"ProductWaitGuard":_on_product_wait_guard()
 		"ProductExecute":_on_product_execute()
+		"MinimapOpen":_toggle_map_overlay()
 		"MapNavigation":_toggle_map_overlay()
 		"PersonNavigation":_open_hero_detail_tab("STATUS")
 		"SkillNavigation":_open_hero_detail_tab("SKILL")
@@ -702,7 +706,18 @@ func _build_ui()->void:
 	minimap_frame.configure("지도",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
 	minimap_frame.custom_minimum_size=Vector2(54,52);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
-	minimap.custom_minimum_size=Vector2(46,44);minimap_frame.add_child(minimap)
+	minimap.custom_minimum_size=Vector2(46,44);minimap.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	minimap_frame.add_child(minimap)
+	# The compact map itself is the navigation affordance. A transparent real
+	# Button keeps desktop mouse and mobile touch on the same single-fire path.
+	minimap_open_button=Button.new();minimap_open_button.name="MinimapOpen"
+	minimap_open_button.flat=true;minimap_open_button.focus_mode=Control.FOCUS_NONE
+	minimap_open_button.tooltip_text="발견한 전체 지도 열기"
+	minimap_open_button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
+	minimap_open_button.set_meta("product_control",true)
+	minimap_open_button.gui_input.connect(
+		_on_product_button_gui_input.bind("MinimapOpen"))
+	minimap_frame.add_child(minimap_open_button)
 	var situation_stack:=VBoxContainer.new();situation_stack.name="SituationStack"
 	situation_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	situation_stack.add_theme_constant_override("separation",1);phase_row.add_child(situation_stack)
@@ -1900,11 +1915,12 @@ func _toggle_map_overlay()->void:
 	var observation:Dictionary=session.observe_party_ui(15).get("minimap",{})
 	map_overlay.set_observation(observation)
 	grid.cancel_pointer_gesture();grid.modal_open=true
-	map_nav_button.set_pressed_no_signal(true);map_overlay.open()
+	if map_nav_button!=null:map_nav_button.set_pressed_no_signal(true)
+	map_overlay.open()
 	_sync_product_zoom_controls(_is_solo_product_session())
 
 func _on_map_overlay_closed(_reason:String)->void:
-	map_nav_button.set_pressed_no_signal(false)
+	if map_nav_button!=null:map_nav_button.set_pressed_no_signal(false)
 	grid.modal_open=member_detail_modal.visible or record_modal.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
@@ -2810,14 +2826,14 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 		execute.size_flags_stretch_ratio=0.9
 
 func _product_controls_metrics(_party_count:int)->Dictionary:
-	# Movement, attack and pickup are map touches. The dock is one row of the
-	# remaining context commands under the portrait strip.
+	# Movement and pickup remain map touches. The dock keeps the four frequent
+	# context commands visible under the portrait strip.
 	var gap:=3 if size.x>=450.0 else 2
 	return {"target":TOUCH_TARGET,"gap":gap,"dock_height":TOUCH_TARGET}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
 	product_auto_button=null;product_interact_button=null
-	product_wait_guard_button=null;product_execute_button=null
+	product_attack_button=null;product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
 	combat_action_dock.visible=true;combat_action_area.add_theme_constant_override("separation",0)
 	var members:Variant=status.get("party_member_ids",[])
@@ -2837,6 +2853,8 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		_on_product_auto,target)
 	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
+	product_attack_button=_add_product_context_button(combat_action_dock,"[ATTACK]","ProductAttack",
+		_on_product_attack,target)
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,
 		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
@@ -2866,6 +2884,12 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var portal_choice:=bool(anchor_portal.get("can_activate",false))
 	var floor_transition:Dictionary=session.floor_transition_assessment() \
 		if session.has_method("floor_transition_assessment") else {}
+	if product_attack_button!=null and is_instance_valid(product_attack_button):
+		product_attack_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"] \
+			or opening_choice or portal_choice \
+			or bool(floor_transition.get("accepted",false))
+		product_attack_button.tooltip_text= \
+			"가장 가까운 시야 내 적을 공격하거나 한 칸 접근합니다."
 	if bool(floor_transition.get("accepted",false)):
 		product_interact_button.text="[%d층 진입]"%int(
 			floor_transition.get("to_floor_index",2))
