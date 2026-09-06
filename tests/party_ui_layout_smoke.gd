@@ -220,6 +220,11 @@ func _companion_card_speech_layout(viewport_size:Vector2)->void:
 		var second_map_bubble_rect:Rect2=map_bubbles[1].rect
 		if first_map_bubble_rect.intersects(second_map_bubble_rect):
 			failures.append("%s map callouts overlap"%label)
+		for map_bubble in map_bubbles:
+			var speaker_bounds:Rect2=map_bubble.get("speaker_bounds",Rect2())
+			if speaker_bounds.size.x<=0.0 or speaker_bounds.size.y<=0.0 \
+					or (map_bubble.rect as Rect2).intersects(speaker_bounds):
+				failures.append("%s map callout covers actor head/body"%label)
 	var strip_rects:Array[Rect2]=[];var first_strip:PanelContainer=null;var first_actor:=-1
 	var hero_card:Button=_button(sandbox,"MemberCard%d"%hero)
 	if hero_card.find_child("CompanionSpeechStrip",true,false)!=null:

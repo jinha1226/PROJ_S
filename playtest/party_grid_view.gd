@@ -939,8 +939,9 @@ func speech_bubble_draw_specs()->Array[Dictionary]:
 	for bubble in _speech_bubbles:
 		if result.size()>=SPEECH_BUBBLE_MAX_VISIBLE:break
 		var actor_id:=int(bubble.get("actor_id",-1))
-		var anchor:=actor_visual_center(actor_id)
-		if anchor==Vector2(-1,-1):continue
+		var speaker_bounds:=_speech_bubble_speaker_bounds(actor_id)
+		if speaker_bounds.size.x<=0.0 or speaker_bounds.size.y<=0.0:continue
+		var speaker_center:=speaker_bounds.get_center()
 		var lines:=_wrap_speech_text(str(bubble.text),font,SPEECH_BUBBLE_FONT_SIZE,
 			max_text_width,2)
 		if lines.is_empty():continue
@@ -952,17 +953,22 @@ func speech_bubble_draw_specs()->Array[Dictionary]:
 		var bubble_size:=Vector2(text_width+SPEECH_BUBBLE_PADDING.x*2.0,
 			line_height*lines.size()+SPEECH_BUBBLE_PADDING.y*2.0)
 		var gap:=maxf(7.0,cell_size_px()*0.34)
+		var head_clearance:=maxf(4.0,cell_size_px()*0.18)
+		var above_y:=speaker_bounds.position.y-head_clearance-gap-bubble_size.y
+		var below_y:=speaker_bounds.end.y+head_clearance+gap
+		var protected_speaker:=speaker_bounds.grow(maxf(2.0,cell_size_px()*0.08))
 		var candidates:Array[Rect2]=[
-			Rect2(Vector2(anchor.x-bubble_size.x*0.5,anchor.y-gap-bubble_size.y),bubble_size),
-			Rect2(Vector2(anchor.x-bubble_size.x*0.5,anchor.y+gap),bubble_size),
-			Rect2(Vector2(anchor.x-bubble_size.x-10.0,anchor.y-gap-bubble_size.y),bubble_size),
-			Rect2(Vector2(anchor.x+10.0,anchor.y+gap),bubble_size),
+			Rect2(Vector2(speaker_center.x-bubble_size.x*0.5,above_y),bubble_size),
+			Rect2(Vector2(speaker_center.x-bubble_size.x-10.0,above_y),bubble_size),
+			Rect2(Vector2(speaker_center.x+10.0,above_y),bubble_size),
+			Rect2(Vector2(speaker_center.x-bubble_size.x*0.5,below_y),bubble_size),
 		]
 		var chosen:=_fit_bubble_rect(candidates[0],safe)
 		var placed:=false
 		for candidate in candidates:
 			var fitted:=_fit_bubble_rect(candidate,safe)
-			if not _bubble_overlaps_any(fitted,occupied):
+			if not fitted.intersects(protected_speaker) \
+					and not _bubble_overlaps_any(fitted,occupied):
 				chosen=fitted;placed=true;break
 		# Actors in a tight formation can invalidate every local above/below slot.
 		# Search a small deterministic map-edge ledger before dropping or overlapping
@@ -971,10 +977,11 @@ func speech_bubble_draw_specs()->Array[Dictionary]:
 			var y:=safe.position.y
 			while y+bubble_size.y<=safe.end.y+0.1 and not placed:
 				for x in [safe.position.x,safe.end.x-bubble_size.x,
-					clampf(anchor.x-bubble_size.x*0.5,safe.position.x,
+					clampf(speaker_center.x-bubble_size.x*0.5,safe.position.x,
 						safe.end.x-bubble_size.x)]:
 					var fallback:=Rect2(Vector2(float(x),y),bubble_size)
-					if not _bubble_overlaps_any(fallback,occupied):
+					if not fallback.intersects(protected_speaker) \
+							and not _bubble_overlaps_any(fallback,occupied):
 						chosen=fallback;placed=true;break
 				y+=bubble_size.y+6.0
 		if not placed:continue
@@ -982,18 +989,34 @@ func speech_bubble_draw_specs()->Array[Dictionary]:
 		var tone:=str(bubble.get("tone","COMPANION"))
 		var border_hex:String=str({"IMPORTANT":"#f0c674","OVERRIDE":"#8da8ff",
 			"COMPANION":"#72cfdf"}.get(tone,"#b8c4cc"))
-		var tail_on_bottom:=chosen.get_center().y<anchor.y
+		var tail_on_bottom:=chosen.get_center().y<speaker_center.y
+		var anchor:=Vector2(speaker_center.x,speaker_bounds.position.y-head_clearance*0.25) \
+			if tail_on_bottom else Vector2(speaker_center.x,speaker_bounds.end.y+head_clearance*0.25)
 		var tail_base:=Vector2(clampf(anchor.x,chosen.position.x+9.0,chosen.end.x-9.0),
 			chosen.end.y if tail_on_bottom else chosen.position.y)
 		result.append({"bubble_id":str(bubble.get("bubble_id","")),
 			"actor_id":actor_id,"speaker_name":str(bubble.get("speaker_name","")),
 			"text":str(bubble.text),"lines":lines.duplicate(),"rect":chosen,
 			"anchor":anchor,"tail_base":tail_base,"tail_on_bottom":tail_on_bottom,
+			"speaker_bounds":speaker_bounds,"head_clearance_px":head_clearance,
 			"font_size":SPEECH_BUBBLE_FONT_SIZE,"line_height":line_height,
 			"background_hex":"#101820ee","border_hex":border_hex,
 			"text_hex":"#eef3ef","dialogue_kind":str(bubble.get("dialogue_kind","")),
 			"priority":int(bubble.get("priority",0)),"mouse_passthrough":true})
 	return result.duplicate(true)
+
+
+func _speech_bubble_speaker_bounds(actor_id:int)->Rect2:
+	var actor:=_actor_by_id(actor_id)
+	if actor.is_empty():return Rect2()
+	var camera_offset:Vector2=camera_settle_draw_spec().get("offset_px",Vector2.ZERO)
+	if not uses_perspective_projection():
+		var sprite_spec:=fixed_front_actor_render_spec(actor,false,-1,camera_offset)
+		if bool(sprite_spec.get("uses_sprite",false)):
+			return sprite_spec.get("bounds",Rect2())
+		var ascii_spec:=topdown_ascii_actor_render_spec(actor,false,-1,camera_offset)
+		return ascii_spec.get("bounds",Rect2())
+	return _actor_figure_bounds(actor,cell_size_px(),false)
 
 
 func _wrap_speech_text(value:String,font:Font,font_size:int,max_width:float,

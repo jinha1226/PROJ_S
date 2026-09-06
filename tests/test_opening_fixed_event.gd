@@ -450,8 +450,12 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 			"%s opening dialogue is visible over the map"%viewport_size)
 		if not opening_bubbles.is_empty():
 			var bubble_rect:Rect2=opening_bubbles[0].rect
+			var speaker_bounds:Rect2=opening_bubbles[0].get("speaker_bounds",Rect2())
 			check(sandbox.grid.grid_rect().grow(-3.0).encloses(bubble_rect),
 				"%s opening bubble stays inside the map"%viewport_size)
+			check(speaker_bounds.size.x>0.0 and speaker_bounds.size.y>0.0 \
+					and not bubble_rect.intersects(speaker_bounds),
+				"%s opening bubble stays clear of the speaker art"%viewport_size)
 		var journal_before: int = sandbox.session.command_journal.size()
 		sandbox._activate_product_control("ProductAuto")
 		check_eq(sandbox.session.command_journal.size(), journal_before + 1,
