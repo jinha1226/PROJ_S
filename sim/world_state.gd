@@ -3535,8 +3535,8 @@ func _starve_tick_event_error(tick) -> String:
 			or tick.data.get("schema_version") != 1 \
 			or tick.data.get("ruleset_id") != PartyRationRulesScript.RULESET_ID \
 			or not tick.data.get("damage") is int or not tick.data.get("stress") is int \
-			or int(tick.data.damage) <= 0 \
-			or int(tick.data.stress) != PartyRationRulesScript.starve_stress() \
+			or int(tick.data.damage) <= 0 or int(tick.data.stress) < 0 \
+			or int(tick.data.stress) > PartyMoraleModelScript.MAX_STRESS \
 			or tick.magnitude != int(tick.data.damage) \
 			or not tick.data.get("member_ids") is Array \
 			or tick.data.member_ids.is_empty():

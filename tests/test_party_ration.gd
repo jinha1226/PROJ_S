@@ -485,15 +485,17 @@ func test_tampered_starve_ticks_are_rejected_by_the_ledger() -> bool:
 	var starve_damage := int(Rules.rules().starve_damage)
 	var honest_data := {"schema_version": 1, "ruleset_id": Rules.RULESET_ID,
 		"member_ids": [str(hero_id)], "damage": starve_damage,
-		"stress": Rules.starve_stress()}
+		"stress": int(Rules.rules().starve_stress)}
 	check_eq(WorldState.snapshot_restore_error(_appended(snapshot,
 		"party.ration_starve_tick", hero_id, starve_damage, honest_data)), "",
 		"an honest stray tick is still accepted, so the forgeries below are the subject")
+	# hunger_rules.json is the tuning surface, so the ledger cannot pin stress to
+	# the live content value; it bounds it by the morale scale instead.
 	var loud_data: Dictionary = honest_data.duplicate(true)
-	loud_data.stress = Rules.starve_stress() + 500
+	loud_data.stress = 100000
 	var loud := _appended(snapshot, "party.ration_starve_tick", hero_id, starve_damage, loud_data)
 	check_eq(WorldState.snapshot_restore_error(loud), "starve_tick_envelope_invalid",
-		"a stray tick with inflated stress is rejected without any damage leaf")
+		"a stray tick with off-scale stress is rejected without any damage leaf")
 	check(WorldState.from_snapshot(loud) == null, "the inflated stray tick never yields a world")
 	var missing := _appended(snapshot, "party.ration_missing", hero_id, 0,
 		{"schema_version": 1, "ruleset_id": Rules.RULESET_ID,

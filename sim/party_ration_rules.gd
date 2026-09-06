@@ -50,10 +50,6 @@ static func hungry_below_milli() -> int:
 	return int(_CONTENT.get("hungry_below", 0)) * 1000
 
 
-static func starve_stress() -> int:
-	return int(_CONTENT.get("starve_stress", 0))
-
-
 static func food_nutrition_milli() -> int:
 	return int(_CONTENT.get("food_nutrition", 0)) * 1000
 
