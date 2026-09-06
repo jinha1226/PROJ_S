@@ -1,13 +1,13 @@
 class_name PartyEncounterSandbox
 extends Control
 
-const EXPLORATION_ACTOR_MOTION_MSEC := 85
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 100
-const MANUAL_CAMERA_SETTLE_MSEC := 85
+const EXPLORATION_ACTOR_MOTION_MSEC := 70
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 70
+const MANUAL_CAMERA_SETTLE_MSEC := 55
 # AUTO and long routes should read as continuous travel rather than a sequence of
-# deliberate single-cell inputs. Motion overlaps the next 90ms cadence so actor
-# and camera interpolation remain visible without making a large floor tedious.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 100
+# deliberate single-cell inputs. Motion overlaps the next cadence so actor and
+# camera interpolation remain visible without making a large floor tedious.
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 70
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -40,7 +40,7 @@ const PRODUCT_TOP_HUD_HEIGHT:=70
 # 360x640: 70 rail + 360 map + 36 events + 84 cards + 44 controls + 44 navigation.
 const PRODUCT_PARTY_CARD_HEIGHT:=84
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
-const CONTINUOUS_TRAVEL_CADENCE_MSEC:=90
+const CONTINUOUS_TRAVEL_CADENCE_MSEC:=35
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
@@ -4388,7 +4388,9 @@ func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id
 			if not bool(result.get("accepted",false)):
 				auto_combat_fallback=true;_set_action_rejection(result,
 					"%s 행동 불가"%_selected_name());_request_refresh();return
-			_record_result(result,true,"자동 실행 불가",true);_clear_move_preview()
+			_record_result(result,true,"자동 실행 불가",true,
+				EXPLORATION_ACTOR_MOTION_MSEC if action_type=="MOVE" else -1)
+			_clear_move_preview()
 			selected_target_id=-1
 			var after_status:Dictionary=session.party_status()
 			if _is_direct_solo_combat(after_status):

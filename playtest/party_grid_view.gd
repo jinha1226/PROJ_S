@@ -1960,10 +1960,24 @@ func _begin_pointer_gesture(kind:String,pointer_index:int,pointer:Vector2)->void
 	var target:=_short_tap_target(cell,pointer)
 	_pointer_gesture_target_kind=str(target.kind);_pointer_gesture_target_actor_id=int(target.actor_id)
 	_pointer_gesture_long_fired=false;_pointer_gesture_cancelled=false
+	pointer_gesture_started.emit()
+	# The hero-centred product grid is a directional movement surface. An empty
+	# adjacent cell therefore commits on touch-down, removing the finger-release
+	# round trip from the common one-step action. Occupied and distant cells retain
+	# release/long-press semantics for inspection, attacks, and route selection.
+	if kind=="TOUCH" and _pointer_gesture_target_kind=="CELL" \
+			and _hero_camera_position!=Vector2i(-1,-1) \
+			and maxi(absi(cell.x-_hero_camera_position.x),
+				absi(cell.y-_hero_camera_position.y))==1:
+		var immediate_kind:=_pointer_gesture_target_kind
+		var immediate_actor_id:=_pointer_gesture_target_actor_id
+		_reset_pointer_gesture()
+		_emit_short_target(immediate_kind,immediate_actor_id,cell)
+		pointer_gesture_finished.emit("SHORT_TAP")
+		return
 	if is_inside_tree():
 		get_tree().create_timer(LONG_PRESS_SECONDS).timeout.connect(
 			_on_long_press_timeout.bind(_pointer_gesture_generation),CONNECT_ONE_SHOT)
-	pointer_gesture_started.emit()
 
 func _update_pointer_gesture(pointer:Vector2)->void:
 	if not _pointer_gesture_active:return

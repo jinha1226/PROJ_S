@@ -6,7 +6,7 @@ const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
-const AUTO_INTENDED_CADENCE_MSEC:=90
+const AUTO_INTENDED_CADENCE_MSEC:=35
 const AUTO_HEADLESS_GROSS_CEILING_MSEC:=230
 
 var failures:Array[String]=[]
@@ -517,9 +517,9 @@ func _screen_touch_plain_button(button:Button,touch_index:int)->void:
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()
 	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
-	_check(sandbox.continuous_travel_cadence_msec>=80 \
-		and sandbox.continuous_travel_cadence_msec<=110,
-		"%s continuous travel cadence is outside the fast 80-110ms window"%viewport_size)
+	_check(sandbox.continuous_travel_cadence_msec>=30 \
+		and sandbox.continuous_travel_cadence_msec<=45,
+		"%s continuous travel cadence is outside the fast 30-45ms window"%viewport_size)
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
@@ -549,12 +549,12 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			"%s AUTO hop did not arm the visible modular walk cycle"%viewport_size)
 		var first_hop_started:int=sandbox._product_auto_last_hop_started_msec
 		var due_from_hop_start:int=int(sandbox._product_auto_explore_due_msec)-first_hop_started
-		_check(due_from_hop_start>=85 and due_from_hop_start<=100,
-			"%s AUTO continuation was not scheduled 85-100ms from hop start: %d"%[
+		_check(due_from_hop_start>=30 and due_from_hop_start<=45,
+			"%s AUTO continuation was not scheduled 30-45ms from hop start: %d"%[
 				viewport_size,due_from_hop_start])
 		var cadence_step:int=int(session.party_status().step_index)
 		var wait_started:int=Time.get_ticks_msec()
-		# Product scheduling overlaps the 100ms walk cycle with the next fast hop.
+		# Product scheduling overlaps the short walk cycle with the next fast hop.
 		# Headless CI occasionally stretches a frame; 310ms is a gross ceiling,
 		# while the lower bound and exact one-hop assertion still catch early/duplicate
 		# commits rather than treating scheduler jitter as product work.
@@ -565,12 +565,13 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		_check(int(session.party_status().step_index)==cadence_step+1 \
 			and actual_start_interval>=AUTO_INTENDED_CADENCE_MSEC-5 \
 			and actual_start_interval<=AUTO_HEADLESS_GROSS_CEILING_MSEC,
-			("%s AUTO commit-start was not exactly one hop within 85-230ms " \
-			+ "(intended=90ms gross=230ms): step=%d/%d interval=%d")%[
+			("%s AUTO commit-start was not exactly one hop within 30-230ms " \
+			+ "(intended=35ms gross=230ms): step=%d/%d interval=%d")%[
 				viewport_size,int(session.party_status().step_index),cadence_step,actual_start_interval])
 		var auto_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
 		_check(int(auto_camera.get("duration_ms",0))==sandbox.CONTINUOUS_CAMERA_SETTLE_MSEC \
-			and bool(auto_camera.get("active",false)),
+			and (bool(auto_camera.get("active",false)) \
+				or actual_start_interval>=sandbox.CONTINUOUS_CAMERA_SETTLE_MSEC),
 			"%s AUTO camera stopped between cadence hops: %s"%[viewport_size,auto_camera])
 		# _on_product_auto synchronously rebuilds the dock. Quiesce only the test
 		# scheduler until Container layout has produced the next drawn hit rects.
@@ -579,7 +580,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		sandbox._product_auto_explore_due_msec=-1
 		sandbox._product_auto_explore_scheduled_generation=-1
 		# The remaining gesture probes advance synthetic frames rather than wall
-		# time. Zero only their presentation delay; production remains 90ms.
+		# time. Zero only their presentation delay; production remains 35ms.
 		sandbox.continuous_travel_cadence_msec=0
 		await process_frame;await process_frame
 		var held_step:=int(session.party_status().step_index)
@@ -901,10 +902,34 @@ func _screen_touch_button(sandbox,button:Button,touch_index:int,
 		failures.append("product ScreenTouch release did not reach sandbox _input at %s"%center)
 
 func _screen_touch_grid_cell(sandbox,position:Vector2i,touch_index:int)->void:
+	var before_status:Dictionary=sandbox.session.party_status()
+	var before_position_value:Variant=before_status.get("protagonist_position",[])
+	var before_position:=Vector2i(-999,-999)
+	if before_position_value is Array and before_position_value.size()==2:
+		before_position=Vector2i(int(before_position_value[0]),int(before_position_value[1]))
 	var local_position:Vector2=sandbox.grid.world_to_pixel_center(position)
+	var target:Dictionary=sandbox.grid._short_tap_target(position,local_position)
+	var targets_enemy:=false
+	for enemy_row in sandbox.session.enemy_targets():
+		if enemy_row is Dictionary and enemy_row.get("position",[])==[position.x,position.y]:
+			targets_enemy=true;break
+	var expects_immediate_move:bool=str(target.get("kind",""))=="CELL" \
+		and not targets_enemy \
+		and maxi(absi(position.x-before_position.x),absi(position.y-before_position.y))==1
 	var global_position:Vector2=sandbox.grid.get_global_rect().position+local_position
 	var press:=InputEventScreenTouch.new();press.index=touch_index;press.pressed=true;press.position=global_position
 	root.push_input(press,true);await process_frame
+	var after_press_position_value:Variant=sandbox.session.party_status().get(
+		"protagonist_position",[])
+	var after_press_position:=Vector2i(-999,-999)
+	if after_press_position_value is Array and after_press_position_value.size()==2:
+		after_press_position=Vector2i(int(after_press_position_value[0]),
+			int(after_press_position_value[1]))
+	if expects_immediate_move and after_press_position!=position:
+		failures.append(("adjacent map touch waited for release instead of moving on press " \
+			+ "phase=%s from=%s to=%s target=%s enemy=%s position=%s")%[
+			str(before_status.get("safe_phase","")),before_position,position,target,
+			targets_enemy,after_press_position])
 	var release:=InputEventScreenTouch.new();release.index=touch_index;release.pressed=false;release.position=global_position
 	root.push_input(release,true);await process_frame;await process_frame
 
