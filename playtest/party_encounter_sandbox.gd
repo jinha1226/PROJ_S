@@ -1582,7 +1582,7 @@ func _refresh()->void:
 		if combat_active and not run_complete and not direct_solo_combat else []
 	grid.set_observation(observation,ghosts)
 	minimap.set_observation(ui_observation.get("minimap",{}))
-	_update_expedition_hud(product_hud)
+	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(observation,status,product_hud)
 	if product_hud:
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),
@@ -1765,7 +1765,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	minimap.set_observation(ui_observation.get("minimap",{}))
-	_update_expedition_hud(product_hud)
+	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
 		product_hud)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
@@ -5425,7 +5425,7 @@ func _on_product_menu_id(item_id:int)->void:
 			product_restart_confirm.popup_centered()
 		1:show_species_picker_for_new_run()
 
-func expedition_hud_spec()->Dictionary:
+func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var cycle:Dictionary=session.expedition_cycle_status() \
 		if session!=null and session.has_method("expedition_cycle_status") else {}
 	var phase:=str(cycle.get("phase","UNAVAILABLE"))
@@ -5438,10 +5438,13 @@ func expedition_hud_spec()->Dictionary:
 	var timer_text:=""
 	if phase=="DUNGEON":
 		timer_text="던전 폐쇄 · 귀환" if remaining<=0 else "귀환까지 %s시간"%_grouped_number(remaining)
-	var status:Dictionary=session.party_status() if session!=null else {}
-	var ration_band:=str(status.get("ration_band","FED"))
-	var ration_max:=maxi(1,int(status.get("ration_max",1)))
-	var filled:=clampi(int(ceil(float(int(status.get("ration",0)))*4.0/float(ration_max))),0,4)
+	# The per-hop callers already hold a party status; recomputing it here would
+	# repeat the whole DTO (and its own cycle query) on every step.
+	var party:Dictionary=status
+	if party.is_empty():party=session.party_status() if session!=null else {}
+	var ration_band:=str(party.get("ration_band","FED"))
+	var ration_max:=maxi(1,int(party.get("ration_max",1)))
+	var filled:=clampi(int(ceil(float(int(party.get("ration",0)))*4.0/float(ration_max))),0,4)
 	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"▮".repeat(filled)+"▯".repeat(4-filled)
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
@@ -5458,9 +5461,9 @@ func _grouped_number(value:int)->String:
 		grouped+=digits[index]
 	return ("-" if value<0 else "")+grouped
 
-func _update_expedition_hud(product_hud:bool)->void:
+func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	if expedition_floor_label==null or return_timer_label==null:return
-	var spec:=expedition_hud_spec() if product_hud else {}
+	var spec:=expedition_hud_spec(status) if product_hud else {}
 	var floor_text:=str(spec.get("floor_text",""));var timer_text:=str(spec.get("timer_text",""))
 	expedition_floor_label.text=floor_text;expedition_floor_label.visible=product_hud and not floor_text.is_empty()
 	return_timer_label.text=timer_text;return_timer_label.visible=product_hud and not timer_text.is_empty()
