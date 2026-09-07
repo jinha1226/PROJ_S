@@ -51,7 +51,7 @@ const PRODUCT_TOP_HUD_HEIGHT:=48
 # Galmuri's Korean baseline needs 32 content pixels for two complete 11 px
 # event rows. The dark pixel surface contributes four pixels of inner framing.
 const PRODUCT_EVENT_HEIGHT:=24
-const PRODUCT_PARTY_CARD_HEIGHT:=48
+const PRODUCT_PARTY_CARD_HEIGHT:=72
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=35
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
@@ -672,6 +672,7 @@ var _narrative_log_visible:=false
 var _compact_fixed_surface_active:=false
 var _pending_visual_effect_rows:Array[Dictionary]=[]
 var _refresh_pending:=false
+var _refresh_after_pointer:=false
 var _last_direct_solo_refresh_profile:Dictionary={}
 var _last_direct_solo_turn_profile:Dictionary={}
 var _last_continuous_exploration_refresh_profile:Dictionary={}
@@ -723,14 +724,14 @@ func _build_ui()->void:
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
 	phase_panel=PanelContainer.new();phase_panel.name="TopExplorationHUD"
-	var top_rail:=AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0)
-	top_rail.border_width_bottom=1;top_rail.border_color=AsciiFrameScript.CYAN
+	var top_rail:=DarkPixelSkinScript.panel_surface(DarkPixelSkinScript.FOLIO,DarkPixelSkinScript.IRON_EDGE,0,1)
 	phase_panel.add_theme_stylebox_override("panel",top_rail)
 	phase_panel.custom_minimum_size.y=64;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
 	minimap_frame=DarkPixelFrameScript.new();minimap_frame.name="MinimapPixelFrame"
-	minimap_frame.configure("지도",DarkPixelSkinScript.CYAN,DarkPixelSkinScript.CANVAS,true)
+	minimap_frame.configure("",DarkPixelSkinScript.BRASS,DarkPixelSkinScript.FOLIO,true)
+	minimap_frame.add_theme_constant_override("margin_top",4)
 	minimap_frame.custom_minimum_size=Vector2(48,44);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
 	minimap.custom_minimum_size=Vector2(40,26);minimap.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -784,7 +785,12 @@ func _build_ui()->void:
 	return_timer_label.clip_text=true;return_timer_label.visible=false
 	var clock_row:=HBoxContainer.new();clock_row.name="ClockRow"
 	clock_row.add_theme_constant_override("separation",8);situation_stack.add_child(clock_row)
-	return_timer_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;clock_row.add_child(return_timer_label)
+	return_timer_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;situation_row.add_child(return_timer_label)
+	return_timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	return_timer_label.add_theme_font_size_override("font_size",16)
+	expedition_floor_label.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+	expedition_floor_label.custom_minimum_size.x=48
+	expedition_floor_label.add_theme_font_size_override("font_size",16)
 	ration_label=Label.new();ration_label.name="RationGauge"
 	ration_label.add_theme_font_size_override("font_size",FONT_AUX)
 	ration_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
@@ -807,7 +813,7 @@ func _build_ui()->void:
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	DarkPixelSkinScript.apply_action_button(hero_detail_button,DarkPixelSkinScript.BRASS)
 	product_menu_button=MenuButton.new();product_menu_button.name="ProductMainMenu"
-	product_menu_button.text="[메뉴]";product_menu_button.custom_minimum_size=Vector2(44,44)
+	product_menu_button.text="☰";product_menu_button.custom_minimum_size=Vector2(44,44)
 	product_menu_button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
@@ -1006,6 +1012,7 @@ func _build_build_label()->void:
 
 func _position_build_label()->void:
 	if build_label==null:return
+	build_label.visible=not _is_solo_product_session()
 	if event_surface!=null and event_surface.visible and event_surface.size.x>0.0:
 		build_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		var local_event_position:=event_surface.global_position-global_position
@@ -1597,6 +1604,11 @@ func _layout_floating_surfaces()->void:
 func _refresh()->void:
 	_refresh_pending=false
 	if session==null:return
+	# Presentation refreshes queued by the last AUTO hop must not erase a new
+	# finger-down before finger-up. Modal entry still cancels explicitly.
+	if grid!=null and bool(grid.pointer_gesture_state().get("active",false)):
+		_refresh_after_pointer=true
+		return
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
@@ -2251,6 +2263,7 @@ func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)-
 		var row:Variant=rows[index]
 		if row is Dictionary:
 			_add_member_card(row,speech_by_actor.get(int(row.get("entity_id",-1)),{}),spec)
+			if _is_solo_product_session():cards.get_child(cards.get_child_count()-1).party_index=index
 
 func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
 	if _is_solo_product_session():
@@ -3081,16 +3094,17 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
-	var button:=Button.new();button.name=node_name;button.text=label
+	var button:Button=preload("res://playtest/illustrated_action_button.gd").new();button.name=node_name;button.text=label
 	button.custom_minimum_size=Vector2(target,target)
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	button.add_theme_font_size_override("font_size",12)
 	button.clip_text=true
 	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
-	button.gui_input.connect(_on_product_button_gui_input.bind(node_name));parent.add_child(button)
-	var accent:=DarkPixelSkinScript.BRASS if node_name in ["ProductAttack","ProductExecute"] \
-		else DarkPixelSkinScript.CYAN
+	button.gui_input.connect(_on_product_button_gui_input.bind(node_name))
+	var accent:Color={"ProductAttack":Color("#548bb0"),"ProductAuto":Color("#61914e"),
+		"ProductWaitGuard":Color("#ba913d"),"ProductBag":Color("#a64e49")}.get(node_name,DarkPixelSkinScript.CYAN)
 	DarkPixelSkinScript.apply_action_button(button,accent)
+	parent.add_child(button)
 	return button
 
 func _product_can_step(status:Dictionary)->bool:
@@ -5055,6 +5069,9 @@ func _on_grid_pointer_finished(_outcome:String)->void:
 	if _product_pinch_gesture_active:return
 	route_paused_by_pointer=false
 	_schedule_route_continue()
+	if _refresh_after_pointer:
+		_refresh_after_pointer=false
+		_request_refresh()
 
 func _cancel_active_route()->void:
 	route_generation+=1;_clear_route_continue_schedule()
@@ -5638,10 +5655,10 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var tone:Color=AsciiFrameScript.INK
 	if band=="CRITICAL" or band=="CLOSED":tone=AsciiFrameScript.DANGER
 	elif band=="WARNING":tone=AsciiFrameScript.BRASS
-	var floor_text:="지하 %d층"%int(cycle.get("floor_index",1)) if phase=="DUNGEON" else ""
+	var floor_text:="F%d"%int(cycle.get("floor_index",1)) if phase=="DUNGEON" else ""
 	var timer_text:=""
 	if phase=="DUNGEON":
-		timer_text="던전 폐쇄 · 귀환" if remaining<=0 else "귀환까지 %s시간"%_grouped_number(remaining)
+		timer_text="귀환" if remaining<=0 else "%s시간"%_grouped_number(remaining)
 	# The per-hop callers already hold a party status; recomputing it here would
 	# repeat the whole DTO (and its own cycle query) on every step.
 	var party:Dictionary=status
@@ -5669,6 +5686,7 @@ func _grouped_number(value:int)->String:
 
 func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	if expedition_floor_label==null or return_timer_label==null:return
+	if product_hud:phase_label.visible=false
 	var spec:=expedition_hud_spec(status) if product_hud else {}
 	var floor_text:=str(spec.get("floor_text",""));var timer_text:=str(spec.get("timer_text",""))
 	expedition_floor_label.text=floor_text;expedition_floor_label.visible=product_hud and not floor_text.is_empty()
@@ -5752,8 +5770,8 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
-	var phase_style:=DarkPixelSkinScript.panel_surface(surface_color,
-		DarkPixelSkinScript.CYAN,0,1)
+	var phase_style:=DarkPixelSkinScript.panel_surface(DarkPixelSkinScript.FOLIO,
+		DarkPixelSkinScript.IRON_EDGE,0,1)
 	phase_panel.add_theme_stylebox_override("panel",phase_style)
 	phase_panel.set_meta("visible_stylebox_border",true)
 	phase_panel.set_meta("visual_family",DarkPixelSkinScript.VISUAL_FAMILY)

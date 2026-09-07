@@ -11,9 +11,7 @@ const FLOOR_TEXTURES := {
 }
 
 const FLOOR_ONE_TERRAIN := {
-	# Indices 4-7 are authored road fragments. Without an autotile connector they
-	# form random straight/L-shaped roads, so ordinary walkable ground uses only
-	# seamless organic fills.
+	# Illustrated atlas: organic moss ground and quiet slate variants.
 	"floor":[4,5],
 	"stone_floor":[0,1,3],
 	"wood_floor":[6],
@@ -26,8 +24,7 @@ const FLOOR_ONE_TERRAIN := {
 const FLOOR_TWO_TERRAIN := {
 	"floor":[6,7],
 	"stone_floor":[0,3],
-	# The industrial corridor fragments at 4-7 and the isolated rail at 13 need
-	# connectivity metadata. Keep passable ground on continuous ash/plate fills.
+	# The second floor uses ash and metal variants from the same illustrated atlas.
 	"wood_floor":[6],
 	"metal":[13],
 	"rubble":[12],

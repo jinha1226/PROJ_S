@@ -4,9 +4,9 @@ extends RefCounted
 ## Shared code-native skin for the product UI. Raster art supplies icons and
 ## atmosphere; layout and interaction states stay responsive Godot controls.
 
-const CANVAS:=Color("#030607")
-const FOLIO:=Color("#080d0f")
-const SECTION:=Color("#0d1416")
+const CANVAS:=Color("#15191d")
+const FOLIO:=Color("#20252a")
+const SECTION:=Color("#292f34")
 const SLOT_EMPTY:=Color("#070b0c")
 const SLOT_FILLED:=Color("#11191b")
 const SLOT_EQUIPPED:=Color("#1a1912")
@@ -21,8 +21,9 @@ const CYAN:=Color("#4d8f98")
 const BLOOD:=Color("#9f4544")
 const JADE:=Color("#5f8a66")
 
-const VISUAL_FAMILY:="DARK_PIXEL_DUNGEON_UI"
-const PixelFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
+const VISUAL_FAMILY:="ILLUSTRATED_DUNGEON_UI"
+# Retain the public alias used by panels, but use smooth Korean/Latin type.
+const PixelFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
 
 
 static func configure_theme(theme:Theme)->void:
@@ -59,7 +60,8 @@ static func panel_surface(fill:Color=FOLIO,border:Color=IRON_EDGE,
 	style.bg_color=fill
 	style.border_color=border
 	style.set_border_width_all(border_width)
-	style.set_corner_radius_all(0)
+	style.set_corner_radius_all(6)
+	style.anti_aliasing=true
 	style.set_content_margin_all(float(margin))
 	style.shadow_color=Color("#000000a8")
 	style.shadow_size=2
@@ -92,7 +94,7 @@ static func apply_heading(label:Label,accent:Color=BRASS)->void:
 static func apply_action_button(button:Button,accent:Color=BRASS,
 		danger:bool=false)->void:
 	var tone:=BLOOD if danger else accent
-	var normal:=panel_surface(Color("#111719"),IRON_EDGE,4,1)
+	var normal:=panel_surface(tone.darkened(0.67),tone.darkened(0.15),4,2)
 	var hover:=panel_surface(Color("#1a2224"),tone.darkened(0.18),4,2)
 	var pressed:=panel_surface(tone.darkened(0.55),tone,4,2)
 	var disabled:=panel_surface(Color("#090c0d"),IRON_SHADOW,4,1)

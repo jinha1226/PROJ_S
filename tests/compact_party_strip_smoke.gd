@@ -26,7 +26,7 @@ func _run()->void:
 			var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows)
 			await process_frame
 			await process_frame
-			if spec.party_height!=48 or sandbox.cards.get_child_count()!=count:failures.append("count/height")
+			if spec.party_height!=72 or sandbox.cards.get_child_count()!=count:failures.append("count/height")
 			for card in sandbox.cards.get_children():
 				if card.party_count!=count:failures.append("presentation mode")
 				if card.size.x<44 or card.size.y<44:failures.append("touch size")
@@ -35,6 +35,9 @@ func _run()->void:
 			rows[0].health=1
 			sandbox._update_stable_party_cards(rows)
 			if sandbox.cards.get_child(0).actor.health!=1:failures.append("stale HP")
+		if "--capture" in OS.get_cmdline_user_args():
+			await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png("/tmp/illustrated-ui-%d.png"%dimensions.x)
 		sandbox.queue_free()
 		await process_frame
 	for failure in failures:printerr(failure)

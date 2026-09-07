@@ -55,19 +55,9 @@ func _refresh_insets()->void:
 func _draw()->void:
 	if size.x<4.0 or size.y<4.0:return
 	var bounds:=Rect2(Vector2.ZERO,size).grow(-1.0)
-	draw_rect(bounds,backdrop_color,true)
 	var edge:=DarkSkin.BLOOD if danger_edge else frame_color
-	draw_rect(bounds,edge.darkened(0.45),false,2.0)
-	var inner:=bounds.grow(-2.0)
-	draw_line(inner.position,Vector2(inner.end.x,inner.position.y),
-		edge.lightened(0.18),1.0)
-	draw_line(inner.position,Vector2(inner.position.x,inner.end.y),
-		edge.lightened(0.08),1.0)
-	draw_line(Vector2(inner.position.x,inner.end.y),inner.end,
-		DarkSkin.IRON_SHADOW,2.0)
-	draw_line(Vector2(inner.end.x,inner.position.y),inner.end,
-		DarkSkin.IRON_SHADOW,2.0)
-	_draw_corner_brackets(bounds,edge)
+	var surface:=DarkSkin.panel_surface(DarkSkin.FOLIO,edge.darkened(0.25),0,1)
+	draw_style_box(surface,bounds)
 	if not frame_title.is_empty():
 		var font_size:=10 if compact_inset else 14
 		var title_size:=DarkSkin.PixelFont.get_string_size(frame_title,
