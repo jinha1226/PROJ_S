@@ -31,11 +31,6 @@ func _rebuild()->void:
 		if value is Dictionary:relations.append(value.duplicate(true))
 	var affinity:Dictionary=_detail.get("affinity_toward_protagonist",{}) \
 		if _detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
-	var heading:=HBoxContainer.new();heading.name="RelationshipHeading";add_child(heading)
-	var title:=_label("이 인물이 바라보는 관계",16,Frame.CYAN)
-	title.add_theme_font_override("font",Frame.CodingFontBold)
-	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;heading.add_child(title)
-	heading.add_child(_label("감정·기억 반영",10,Frame.MUTED))
 	var player_relation:Dictionary={};var other_relations:Array=[]
 	for raw in relations:
 		var relation:Dictionary=raw

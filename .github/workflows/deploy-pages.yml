@@ -64,10 +64,12 @@ jobs:
           ./godot --headless --path . --export-release Web build/web/index.html
           touch build/web/.nojekyll
           cp assets/fonts/NanumSquareR.LICENSE.txt build/web/
+          cp assets/fonts/Galmuri-OFL.txt build/web/
           test -s build/web/index.html
           test -s build/web/index.wasm
           test -s build/web/index.pck
           test -s build/web/NanumSquareR.LICENSE.txt
+          test -s build/web/Galmuri-OFL.txt
 
       - name: Validate exported pack runtime
         shell: bash

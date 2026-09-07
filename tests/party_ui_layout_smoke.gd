@@ -535,8 +535,12 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 	if spec.tiles.size()!=preview.path.size() or spec.direction_cues.size()!=spec.segments.size():
 		failures.append("%s route overlay omitted tile highlights/direction cues"%viewport_size)
 	for tile in spec.tiles:
-		if bool(tile.visible) and float(tile.fill_alpha)<0.099:
-			failures.append("%s route tile highlight too faint %s"%[viewport_size,tile])
+		if bool(tile.visible) and float(tile.fill_alpha)>0.091:
+			failures.append("%s route tile highlight is too strong %s"%[viewport_size,tile])
+	for segment in spec.segments:
+		if bool(segment.visible) and (float(segment.get("opacity",1.0))>0.421 \
+				or float(segment.line_width)>1.61):
+			failures.append("%s route line is too strong %s"%[viewport_size,segment])
 	# Product cadence leaves the first authoritative hop immediate, then keeps the
 	# The short walk pose overlaps the next fast hop. Headless CI
 	# may stretch a frame, so retain a strict intended lower bound and a wider gross
@@ -722,12 +726,14 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 			"StatusStressBar","StatusEmotion","StatusStress"]:
 		if sandbox.find_child(node_name,true,false)==null:
 			failures.append("%s detail modal missing %s"%[viewport_size,node_name])
-	for token in ["원소 내성 ·","현재 노출 ·"]:
-		if not token in body.text:failures.append("%s detail supplemental text missing %s"%[viewport_size,token])
+	if "원소 내성 ·" not in body.text:
+		failures.append("%s detail supplemental text is missing resistance"%viewport_size)
+	if "현재 노출 ·" in body.text:
+		failures.append("%s detail supplemental text still exposes transient risk"%viewport_size)
 	var detail:Dictionary=sandbox.session.inspect_party_member(sandbox.selected_member_id)
 	var expected_fire:=int(detail.get("current_exposure",{}).get("risk",{}).get("fire",0))
-	if expected_fire<=0 or not "현재 노출 · 불 %d"%expected_fire in body.text:
-		failures.append("%s detail modal lost nested current exposure %d"%[viewport_size,expected_fire])
+	if expected_fire<=0:
+		failures.append("%s detail fixture lost its authoritative exposure %d"%[viewport_size,expected_fire])
 
 func _combat_log_history(viewport_size:Vector2)->void:
 	var session=Session.new();var state=session.sim.world.party_encounter;var hero:=int(state.protagonist_id)

@@ -105,7 +105,13 @@ const ITEM_ACTION_TIME_COST := 100
 const OPENING_HEXACO_SLOT := 9242026
 const OPENING_NPC_MAX_HEALTH := 90
 const DEFAULT_EXPEDITION_DURATION := 120000
+# Kept only for the least-risk fallback when every known route crosses danger.
+# A fully safe route is no longer capped by this value.
 const MAX_VISIBLE_HAZARD_DETOUR_STEPS := 4
+const ROUTE_FIRE_AVOID_RISK := 200
+const ROUTE_WATER_AVOID_RISK := 80
+const ROUTE_TRAP_AVOID_RISK := 300
+const ROUTE_STEP_PRIORITY := 1000000000
 # Product camera steps are a presentation contract shared with the sandbox.
 # Keep the complete sequence here so adding a zoom level cannot leave the UI
 # observer at a smaller, silently truncated capacity.
@@ -4451,9 +4457,10 @@ func select_movement_destination(actor_id: int, destination_value: Variant) -> D
 
 
 func find_exploration_path(actor_id: int, goal: Vector2i) -> Dictionary:
-	# First preserve the exact deterministic shortest/fastest route. Risk only
-	# participates when that route crosses a currently visible hazard. The risk
-	# pass is bounded so avoiding one tile can never invent a map-wide detour.
+	# Use the exact shortest route when it is safe. If it crosses a known hazard,
+	# search the whole known component again with danger cells blocked; that makes
+	# the result the shortest safe route rather than merely a short risky route.
+	# Hidden danger never participates, preserving fog-of-war authority.
 	var visible := _exploration_visible_cells()
 	var shortest := _search_exploration_path(actor_id, goal, visible, false, -1)
 	if not bool(shortest.get("found", false)):
@@ -4464,6 +4471,15 @@ func find_exploration_path(actor_id: int, goal: Vector2i) -> Dictionary:
 		shortest["risk_weighted"] = false
 		return shortest.duplicate(true)
 	var shortest_steps := int(shortest.get("steps", 0))
+	var safe:=_search_exploration_path(actor_id,goal,visible,false,-1,true)
+	if bool(safe.get("found",false)):
+		safe["routing_policy"]="SHORTEST_KNOWN_HAZARD_FREE"
+		safe["hazard_free"]=true;safe["risk_weighted"]=true
+		safe["shortest_steps"]=shortest_steps;safe["detour_limit_steps"]=-1
+		return safe.duplicate(true)
+	# If the destination is itself dangerous or danger completely seals the known
+	# component, retain a bounded least-risk fallback instead of declaring an
+	# otherwise reachable tile unreachable.
 	var detour_allowance := mini(MAX_VISIBLE_HAZARD_DETOUR_STEPS,
 		maxi(2, shortest_steps / 2 + 1))
 	var weighted := _search_exploration_path(actor_id, goal, visible, true,
@@ -4489,6 +4505,12 @@ func find_exploration_path_to_any(actor_id:int,goals:Array[Vector2i])->Dictionar
 		shortest["hazard_free"]=true;shortest["risk_weighted"]=false
 		return shortest.duplicate(true)
 	var shortest_steps:=int(shortest.get("steps",0))
+	var safe:=_search_exploration_path_to_any(actor_id,goals,visible,false,-1,true)
+	if bool(safe.get("found",false)):
+		safe["routing_policy"]="SHORTEST_KNOWN_HAZARD_FREE"
+		safe["hazard_free"]=true;safe["risk_weighted"]=true
+		safe["shortest_steps"]=shortest_steps;safe["detour_limit_steps"]=-1
+		return safe.duplicate(true)
 	var detour_allowance:=mini(MAX_VISIBLE_HAZARD_DETOUR_STEPS,
 		maxi(2,shortest_steps/2+1))
 	var weighted:=_search_exploration_path_to_any(actor_id,goals,visible,true,
@@ -4502,7 +4524,8 @@ func find_exploration_path_to_any(actor_id:int,goals:Array[Vector2i])->Dictionar
 
 
 func _search_exploration_path_to_any(actor_id:int,goals:Array[Vector2i],
-		visible:Dictionary,risk_weighted:bool,maximum_steps:int)->Dictionary:
+		visible:Dictionary,risk_weighted:bool,maximum_steps:int,
+		avoid_known_hazards:bool=false)->Dictionary:
 	if not sim.world.entities.has(actor_id) \
 			or not sim.world.can_act(actor_id,sim.world.world_time):
 		return _exploration_path_failure("actor_not_found")
@@ -4519,6 +4542,9 @@ func _search_exploration_path_to_any(actor_id:int,goals:Array[Vector2i],
 	if goal_set.has(_position_key(start)):
 		return {"found":true,"reason":"already_there","path":[start],
 			"total_cost":0,"steps":0,"total_risk":0,"max_total_risk":0}
+	if not risk_weighted:
+		return _search_shortest_exploration_path(actor_id,goal_set,visible,
+			maximum_steps,avoid_known_hazards)
 	var start_key:=_position_key(start)+("@0" if risk_weighted else "")
 	var open:Array[Dictionary]=[{"position":start,"risk":0,"max_risk":0,
 		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start]}]
@@ -4548,7 +4574,10 @@ func _search_exploration_path_to_any(actor_id:int,goals:Array[Vector2i],
 			if maximum_steps>=0 and candidate_steps>maximum_steps:continue
 			# Risk does not affect the first pass ordering. Evaluate only the final
 			# shortest path, then run the bounded weighted pass if it is hazardous.
-			var step_risk:=_exploration_step_risk(next,visible) if risk_weighted else 0
+			var known_step_risk:=_exploration_step_risk(next,visible) \
+				if risk_weighted or avoid_known_hazards else 0
+			if avoid_known_hazards and known_step_risk>0:continue
+			var step_risk:=known_step_risk if risk_weighted else 0
 			var definition:Dictionary=TerrainRegistryScript.definition(
 				sim.world.tile_at(next).terrain)
 			var candidate_key:=_position_key(next)+("@%d"%candidate_steps \
@@ -4569,7 +4598,8 @@ func _search_exploration_path_to_any(actor_id:int,goals:Array[Vector2i],
 
 
 func _search_exploration_path(actor_id: int, goal: Vector2i,
-		visible: Dictionary, risk_weighted: bool, maximum_steps: int) -> Dictionary:
+		visible: Dictionary, risk_weighted: bool, maximum_steps: int,
+		avoid_known_hazards:bool=false) -> Dictionary:
 	if not sim.world.entities.has(actor_id) or not sim.world.can_act(actor_id, sim.world.world_time):
 		return _exploration_path_failure("actor_not_found")
 	if not sim.world.in_bounds(goal): return _exploration_path_failure("out_of_bounds")
@@ -4582,6 +4612,9 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 	var goal_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(goal).terrain)
 	if goal_definition.is_empty() or not bool(goal_definition.get("passable", false)):
 		return _exploration_path_failure("path_unreachable")
+	if not risk_weighted:
+		return _search_shortest_exploration_path(actor_id,
+			{_position_key(goal):true},visible,maximum_steps,avoid_known_hazards)
 	var start_key := _position_key(start) + ("@0" if risk_weighted else "")
 	var open: Array[Dictionary] = [{"position":start,"risk":0,"max_risk":0,
 		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start]}]
@@ -4611,7 +4644,10 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 			if not _exploration_step_is_legal(actor_id, position, next): continue
 			var candidate_steps := int(node.steps) + 1
 			if maximum_steps >= 0 and candidate_steps > maximum_steps: continue
-			var step_risk := _exploration_step_risk(next, visible) if risk_weighted else 0
+			var known_step_risk:=_exploration_step_risk(next,visible) \
+				if risk_weighted or avoid_known_hazards else 0
+			if avoid_known_hazards and known_step_risk>0:continue
+			var step_risk:=known_step_risk if risk_weighted else 0
 			var definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(next).terrain)
 			var candidate_key := _position_key(next) + ("@%d" % candidate_steps \
 				if risk_weighted else "")
@@ -4628,6 +4664,109 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 				int(candidate.steps),int(candidate.cost)]
 			open.append(candidate)
 	return _exploration_path_failure("path_unreachable")
+
+
+func _search_shortest_exploration_path(actor_id:int,goal_set:Dictionary,
+		visible:Dictionary,maximum_steps:int,avoid_known_hazards:bool)->Dictionary:
+	# A* uses Chebyshev distance because exploration allows eight directions. The
+	# large fixed step unit keeps number of cells strictly primary and movement time
+	# secondary. Parent pointers avoid copying the entire path into every node.
+	var start:Vector2i=sim.world.entities[actor_id].position
+	var start_key:=_position_key(start)
+	var goal_positions:Array[Vector2i]=[]
+	for key_value in goal_set:
+		var parts:=str(key_value).split(":")
+		if parts.size()==2:goal_positions.append(Vector2i(int(parts[0]),int(parts[1])))
+	if goal_positions.is_empty():return _exploration_path_failure("path_unreachable")
+	var start_h:=_exploration_goal_distance(start,goal_positions)
+	var open:Array[Dictionary]=[]
+	_exploration_heap_push(open,{"position":start,"steps":0,"cost":0,"score":0,
+		"estimate":int(start_h)*ROUTE_STEP_PRIORITY,"sequence":0})
+	var best:Dictionary={start_key:0};var parents:Dictionary={};var sequence:=1
+	while not open.is_empty():
+		var node:Dictionary=_exploration_heap_pop(open)
+		var position:Vector2i=node.position;var position_key:=_position_key(position)
+		if int(best.get(position_key,-1))!=int(node.score):continue
+		if goal_set.has(position_key):
+			var path:=_reconstruct_exploration_path(start,position,parents)
+			if path.is_empty():return _exploration_path_failure("path_unreachable")
+			var total_risk:=0;var max_risk:=0
+			for path_index in range(1,path.size()):
+				var step_risk:=_exploration_step_risk(path[path_index],visible)
+				total_risk+=step_risk;max_risk=maxi(max_risk,step_risk)
+			return {"found":true,"reason":"ok","path":path,
+				"total_cost":int(node.cost),"steps":int(node.steps),
+				"total_risk":total_risk,"max_total_risk":max_risk}
+		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
+			var next:=position+direction
+			if not _exploration_step_is_legal(actor_id,position,next):continue
+			var candidate_steps:=int(node.steps)+1
+			if maximum_steps>=0 and candidate_steps>maximum_steps:continue
+			if avoid_known_hazards and _exploration_step_risk(next,visible)>0:continue
+			var definition:Dictionary=TerrainRegistryScript.definition(
+				sim.world.tile_at(next).terrain)
+			var candidate_cost:=int(node.cost)+int(definition.move_time_cost)
+			var candidate_score:=candidate_steps*ROUTE_STEP_PRIORITY+candidate_cost
+			var next_key:=_position_key(next);var old_score:=int(best.get(next_key,-1))
+			if old_score>=0 and candidate_score>=old_score:continue
+			best[next_key]=candidate_score;parents[next_key]=position
+			var heuristic:=_exploration_goal_distance(next,goal_positions)
+			_exploration_heap_push(open,{"position":next,"steps":candidate_steps,
+				"cost":candidate_cost,"score":candidate_score,
+				"estimate":candidate_score+heuristic*ROUTE_STEP_PRIORITY,
+				"sequence":sequence});sequence+=1
+	return _exploration_path_failure("path_unreachable")
+
+
+static func _exploration_goal_distance(position:Vector2i,goals:Array[Vector2i])->int:
+	var result:=2147483647
+	for goal in goals:
+		result=mini(result,maxi(absi(goal.x-position.x),absi(goal.y-position.y)))
+	return result
+
+
+static func _exploration_heap_less(a:Dictionary,b:Dictionary)->bool:
+	if int(a.estimate)!=int(b.estimate):return int(a.estimate)<int(b.estimate)
+	if int(a.score)!=int(b.score):return int(a.score)<int(b.score)
+	var a_position:Vector2i=a.position;var b_position:Vector2i=b.position
+	if a_position.y!=b_position.y:return a_position.y<b_position.y
+	if a_position.x!=b_position.x:return a_position.x<b_position.x
+	return int(a.sequence)<int(b.sequence)
+
+
+static func _exploration_heap_push(heap:Array,node:Dictionary)->void:
+	heap.append(node);var index:=heap.size()-1
+	while index>0:
+		var parent:=int((index-1)/2)
+		if not _exploration_heap_less(heap[index],heap[parent]):break
+		var swap:Variant=heap[parent];heap[parent]=heap[index];heap[index]=swap
+		index=parent
+
+
+static func _exploration_heap_pop(heap:Array)->Dictionary:
+	var result:Dictionary=heap[0];var tail:Variant=heap.pop_back()
+	if not heap.is_empty():
+		heap[0]=tail;var index:=0
+		while true:
+			var left:=index*2+1
+			if left>=heap.size():break
+			var right:=left+1;var best_child:=left
+			if right<heap.size() and _exploration_heap_less(heap[right],heap[left]):
+				best_child=right
+			if not _exploration_heap_less(heap[best_child],heap[index]):break
+			var swap:Variant=heap[index];heap[index]=heap[best_child];heap[best_child]=swap
+			index=best_child
+	return result
+
+
+func _reconstruct_exploration_path(start:Vector2i,goal:Vector2i,
+		parents:Dictionary)->Array:
+	var reversed:Array=[goal];var cursor:=goal
+	while cursor!=start:
+		var parent:Variant=parents.get(_position_key(cursor),null)
+		if not parent is Vector2i:return []
+		cursor=parent;reversed.append(cursor)
+	reversed.reverse();return reversed
 
 
 func _exploration_score_less(candidate: Dictionary, old: Array,
@@ -4670,6 +4809,10 @@ func exploration_route_risk_rows(position: Vector2i) -> Array[Dictionary]:
 	return _exploration_risk_rows(position, _exploration_visible_cells()).duplicate(true)
 
 
+func exploration_route_avoidance_risk(position:Vector2i)->int:
+	return _exploration_known_hazard_risk(position,_exploration_visible_cells())
+
+
 func _exploration_visible_cells() -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return {}
@@ -4680,10 +4823,29 @@ func _exploration_visible_cells() -> Dictionary:
 
 
 func _exploration_step_risk(position: Vector2i, visible: Dictionary) -> int:
+	if not visible.has(_position_key(position)):return 0
 	var party_max := 0
 	for row in _exploration_risk_rows(position, visible):
 		party_max = maxi(party_max, int(row.total))
-	return party_max
+	return maxi(party_max,_exploration_known_hazard_risk(position,visible))
+
+
+func _exploration_known_hazard_risk(position:Vector2i,visible:Dictionary)->int:
+	if not visible.has(_position_key(position)):return 0
+	var tile=sim.world.tile_at(position)
+	var result:=0
+	if int(tile.fire)>0:result=maxi(result,ROUTE_FIRE_AVOID_RISK+int(tile.fire))
+	if str(tile.terrain)=="shallow_water" or int(tile.wetness)>0:
+		result=maxi(result,ROUTE_WATER_AVOID_RISK+int(tile.wetness))
+	var feature_id:=_run_feature_id_at(position,run_progress())
+	if _feature_is_known_trap(feature_id):result=maxi(result,ROUTE_TRAP_AVOID_RISK)
+	return result
+
+
+static func _feature_is_known_trap(feature_id:String)->bool:
+	var normalized:=feature_id.to_lower()
+	return normalized=="trap" or normalized.begins_with("trap_") \
+		or normalized.ends_with("_trap") or "_trap_" in normalized
 
 
 func _exploration_risk_rows(position: Vector2i,
@@ -5837,6 +5999,58 @@ func _member_equipment_summary(entity_id:int)->Dictionary:
 		"combat_stats":combat_stats}.duplicate(true)
 
 
+func _member_skill_summary(entity_id:int)->Dictionary:
+	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
+		return {"available":false,"skills":[]}.duplicate(true)
+	var entity=sim.world.entities[entity_id]
+	var weapon=WeaponRegistryScript.definition(
+		ItemOperationsScript.equipped_weapon_id(sim.world,entity_id))
+	var skills:Array=[]
+	if weapon!=null:
+		var proficiency:Dictionary=ProgressionRegistryScript.definition(
+			str(weapon.proficiency_id))
+		var stats:Dictionary=_member_combat_stats(entity_id)
+		var range_text:="%d"%int(weapon.range_max) if int(weapon.range_min)==int(weapon.range_max) \
+			else "%d–%d"%[int(weapon.range_min),int(weapon.range_max)]
+		var trait_label:=_weapon_trait_label(str(weapon.trait_id))
+		var summary_parts:Array[String]=[
+			str(proficiency.get("label",weapon.proficiency_id)),
+			_attack_form_label(str(weapon.attack_form)),"사거리 "+range_text]
+		if not trait_label.is_empty():summary_parts.append(trait_label)
+		skills.append({"skill_id":"EQUIPPED_WEAPON","category":"무기 기술",
+			"label":str(weapon.label),"trigger_label":"공격",
+			"summary":" · ".join(summary_parts),
+			"detail":"공격 %d · 명중 %d · 행동 시간 %d"%[
+				int(stats.get("attack_power",0)),int(stats.get("accuracy_milli",0)),
+				int(weapon.attack_time)]})
+	var species_definition:Dictionary=GrowthBuildRegistryScript.species_definition(
+		str(entity.species_id))
+	var fixed_trait:Variant=species_definition.get("fixed_trait",{})
+	if fixed_trait is Dictionary and not fixed_trait.is_empty():
+		skills.append({"skill_id":str(fixed_trait.get("effect_id","SPECIES_TRAIT")),
+			"category":"종족 특성","label":str(fixed_trait.get("label","고유 특성")),
+			"trigger_label":_effect_trigger_label(str(fixed_trait.get("trigger","PASSIVE"))),
+			"summary":"종족 고유 능력","detail":""})
+	return {"available":not skills.is_empty(),"skills":skills}.duplicate(true)
+
+
+static func _attack_form_label(attack_form:String)->String:
+	return {"SLASH":"베기","PIERCE":"찌르기","IMPACT":"타격"}.get(
+		attack_form,attack_form)
+
+
+static func _weapon_trait_label(trait_id:String)->String:
+	return {"AXE_CLEAVE":"휩쓸기","SPEAR_REACH":"긴 사거리",
+		"BLUNT_STUN":"기절","FAST_UNARMED":"빠른 공격",
+		"BOW_REPEAT":"연속 사격","CROSSBOW_RELOAD":"사격 후 장전"}.get(
+		trait_id,"")
+
+
+static func _effect_trigger_label(trigger:String)->String:
+	return {"PASSIVE":"패시브","ON_HIT":"적중 시","ON_HURT":"피격 시",
+		"INTERACT":"상호작용"}.get(trigger,trigger)
+
+
 func _member_body_presentation(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null:return {"available":false}
 	var body=sim.world.body_states.get(entity_id)
@@ -5965,6 +6179,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
+		"skill_summary":_member_skill_summary(entity_id),
 		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
 		"personality_facets":personality_facets,"personality_style":personality_style_dto,
@@ -6053,6 +6268,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
+		"skill_summary":_member_skill_summary(entity_id),
 		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":profile.to_dict() if profile != null else null,
 		"personality_available":profile != null,"personality_facets":facets,
@@ -7478,9 +7694,9 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"anchor_portal_contested":"포탈 주변의 적을 먼저 정리해야 합니다.",
 			"anchor_portal_combat_active":"전투가 끝난 뒤 포탈을 활성화할 수 있습니다.",
 			"anchor_portal_activation_failed":"포탈 활성화가 취소되어 이전 상태로 돌아갔습니다.",
-			"inventory_full":"가방 12칸이 가득 찼습니다.",
+			"inventory_full":"가방 20칸이 가득 찼습니다.",
 			"personality_seed_unchanged":"새 성격을 만들려면 다른 성격 시드가 필요합니다.",
-			"inventory_backpack_full":"가방 12칸이 가득 찼습니다.",
+			"inventory_backpack_full":"가방 20칸이 가득 찼습니다.",
 			"inventory_item_missing":"선택한 아이템이 가방에 없습니다. 목록을 새로 확인하세요.",
 			"item_already_equipped":"이미 장착한 아이템입니다.",
 			"item_equipped_in_wrong_slot":"이 아이템은 선택한 장비 칸에 장착할 수 없습니다.",

@@ -864,7 +864,7 @@ func exploration_companion_follow_draw_spec()->Dictionary:
 				"from_position":[from.x,from.y],"to_position":[to.x,to.y],
 				"from_pixel":world_to_pixel_center(from)+pixel_offset if visible else Vector2(-1,-1),
 				"to_pixel":world_to_pixel_center(to)+pixel_offset if visible else Vector2(-1,-1),
-				"color_hex":"#67bfe2","line_width":maxf(1.2,cell_size_px()*0.045),
+				"color_hex":"#5c879680","line_width":maxf(1.0,cell_size_px()*0.034),
 				"dash_count":4})
 		var next_position:=_array_to_world_position(row.get("next_position",[]))
 		var next_visible:=next_position!=Vector2i(-1,-1) and _cell_allows_overlay(next_position)
@@ -874,14 +874,14 @@ func exploration_companion_follow_draw_spec()->Dictionary:
 		result.rows.append({"entity_id":int(row.get("entity_id",-1)),"roster_slot":roster_slot,
 			"offset_px":pixel_offset,"segments":segments,
 			"next_cue":{"visible":next_visible,"position":[next_position.x,next_position.y],
-				"pixel_center":next_center,"glyph":">","color_hex":"#9cdbef"},
+				"pixel_center":next_center,"glyph":">","color_hex":"#789da880"},
 			"risk_badge":{"visible":next_visible,"value":risk,"text":str(risk),
 				"pixel_center":next_center+Vector2(cell_size_px()*0.26,-cell_size_px()*0.27) \
 					if next_visible else Vector2(-1,-1),"color_hex":risk_hex}})
 	return result.duplicate(true)
 
 func route_draw_spec() -> Dictionary:
-	var color_hex := "#65f29a" if _route_valid else "#ff6b78"
+	var color_hex := "#78a69a" if _route_valid else "#b8787e"
 	var path_rows: Array = []
 	var tiles: Array = []
 	var segments: Array = []
@@ -895,9 +895,9 @@ func route_draw_spec() -> Dictionary:
 		var kind:="START" if index==0 else ("GOAL" if index==_route_path.size()-1 else ("NEXT" if index==_route_completed_steps+1 else "STEP"))
 		tiles.append({"index":index,"position":[point.x,point.y],"visible":visible,
 			"pixel_rect":world_cell_rect(point).grow(-maxf(1.0,cell_size_px()*0.08)) if visible else Rect2(),"kind":kind,"completed":completed,
-			"fill_hex":"#607b87" if completed else color_hex,
-			"fill_alpha":0.10 if completed else (0.30 if kind in ["NEXT","GOAL"] else 0.18),
-			"border_hex":"#607b87" if completed else color_hex,"border_width":1.5 if completed else 2.0})
+			"fill_hex":"#607078" if completed else color_hex,
+			"fill_alpha":0.03 if completed else (0.09 if kind in ["NEXT","GOAL"] else 0.05),
+			"border_hex":"#607078" if completed else color_hex,"border_width":0.8 if completed else 1.0})
 	for index in range(maxi(0,_route_path.size()-1)):
 		var from: Vector2i = _route_path[index]
 		var to: Vector2i = _route_path[index+1]
@@ -909,10 +909,12 @@ func route_draw_spec() -> Dictionary:
 		segments.append({"index":index,"from_position":[from.x,from.y],"to_position":[to.x,to.y],
 			"from_pixel":from_pixel,"to_pixel":to_pixel,
 			"visible":visible,"completed":index<_route_completed_steps,
-			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,
-			"line_width":2.5 if index<_route_completed_steps else 4.0})
+			"color_hex":"#607078" if index<_route_completed_steps else color_hex,
+			"line_width":1.1 if index<_route_completed_steps else 1.6,
+			"opacity":0.30 if index<_route_completed_steps else 0.42})
 		direction_cues.append({"index":index,"visible":visible,"completed":index<_route_completed_steps,
-			"color_hex":"#607b87" if index<_route_completed_steps else color_hex,"line_width":2.0,
+			"color_hex":"#607078" if index<_route_completed_steps else color_hex,"line_width":1.1,
+			"opacity":0.30 if index<_route_completed_steps else 0.46,
 			"points":[cue_center-direction*cue_length+perpendicular*cue_width,cue_center,
 				cue_center-direction*cue_length-perpendicular*cue_width]})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
@@ -3168,13 +3170,16 @@ func _draw_route_overlay() -> void:
 	var spec:=route_draw_spec()
 	for segment in spec.segments:
 		if not bool(segment.visible):continue
+		var segment_color:=Color(str(segment.color_hex))
+		segment_color.a*=float(segment.get("opacity",1.0))
 		_draw_chalk_segment(segment.from_pixel,segment.to_pixel,
-			Color(str(segment.color_hex)),minf(2.5,float(segment.line_width)))
+			segment_color,minf(1.6,float(segment.line_width)))
 	for cue in spec.direction_cues:
 		if not bool(cue.visible):continue
 		var points:=PackedVector2Array()
 		for point in cue.points:points.append(point)
-		draw_polyline(points,Color(str(cue.color_hex)),float(cue.line_width),true)
+		var cue_color:=Color(str(cue.color_hex));cue_color.a*=float(cue.get("opacity",1.0))
+		draw_polyline(points,cue_color,float(cue.line_width),true)
 
 func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
 	var delta:=to-from
@@ -3184,7 +3189,7 @@ func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
 		if index%2==1:continue
 		var start:=from+delta*(float(index)/float(dash_count))
 		var finish:=from+delta*(minf(1.0,float(index+1)/float(dash_count)))
-		draw_line(start,finish,Color(color,0.74),width,true)
+		draw_line(start,finish,color,width,true)
 
 func _draw_intent(intent: Dictionary) -> void:
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return

@@ -23,6 +23,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_assert(destination!=Vector2i(-1,-1),"%s lacks adjacent item fixture"%viewport_size)
 	if destination==Vector2i(-1,-1):return
 	var item_state=session.sim.world.item_state
+	var moved_item_id:=str(item_state.ground_items.rows[0].item.instance_id)
 	item_state.ground_items.rows[0].position=destination;item_state.ground_items._sort_rows()
 	_assert(session.sim.world.world_state_error().is_empty(),"%s item fixture invalid"%viewport_size)
 	var sandbox=Sandbox.new();root.add_child(sandbox);sandbox.size=viewport_size
@@ -35,45 +36,38 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox._select_member_detail_tab("ITEM");await process_frame;await process_frame
 	var scroll:ScrollContainer=sandbox.member_detail_scroll
 	var bar:VScrollBar=scroll.get_v_scroll_bar()
-	_assert(bar.max_value>bar.page,
-		"%s ITEM ledger cannot scroll max/page=%s/%s content=%s root=%s root_min=%s item_min=%s"%[
+	_assert(bar.max_value<=bar.page+0.5,
+		"%s compact 5x4 ITEM grid unexpectedly needs scrolling max/page=%s/%s content=%s root=%s root_min=%s item_min=%s"%[
 			viewport_size,bar.max_value,bar.page,sandbox.member_item_window.size,
 			scroll.get_child(0).size,scroll.get_child(0).custom_minimum_size,
 			sandbox.member_item_window.get_combined_minimum_size()])
-	scroll.scroll_vertical=0;await process_frame
-	var drag_origin:Vector2=(sandbox.member_item_backpack_rows.get_child(0) as Control) \
-		.get_global_rect().get_center()
-	_push_touch(drag_origin,true,31);await process_frame
-	for step in range(1,6):
-		var drag:=InputEventScreenDrag.new();drag.index=31
-		drag.position=drag_origin+Vector2(0,-36*step);drag.relative=Vector2(0,-36)
-		root.push_input(drag,true);await process_frame
-	_push_touch(drag_origin+Vector2(0,-180),false,31);await process_frame;await process_frame
-	_assert(scroll.scroll_vertical>0,"%s real ScreenTouch drag did not scroll ITEM ledger"%viewport_size)
-	scroll.scroll_vertical=int(bar.max_value-bar.page);await process_frame;await process_frame
-	var final_bag_row:=sandbox.member_item_backpack_rows.get_child(11) as Control
+	var final_bag_row:=sandbox.member_item_backpack_rows.get_child(19) as Control
 	var final_bag_rect:Rect2=final_bag_row.get_global_rect()
-	_assert(scroll.get_global_rect().intersection(final_bag_rect).size.y>=43.9,
-		"%s ITEM final bag row remains unreachable at max scroll: %s"%[viewport_size,final_bag_rect])
-	_assert(sandbox.member_item_equipment_rows.get_child_count()==5 \
-		and sandbox.member_item_backpack_rows.get_child_count()==12,
-		"%s item ledger is not 5 equipment + 12 bag rows"%viewport_size)
-	_assert(not sandbox.member_item_equipment_rows.is_visible_in_tree() \
-		and sandbox.member_item_backpack_rows.is_visible_in_tree(),
-		"%s item tab does not lead directly with the bag"%viewport_size)
-	var bag_text:=""
-	for child in sandbox.member_item_backpack_rows.get_children():bag_text+=str(child.text)
-	_assert("단검" not in bag_text and "회복 물약" in bag_text,
-		"%s equipped sword is duplicated in bag or potion is absent"%viewport_size)
+	_assert(scroll.get_global_rect().intersection(final_bag_rect).size.y>=51.9,
+		"%s ITEM final bag slot is not visible without scrolling: %s"%[viewport_size,final_bag_rect])
+	_assert(sandbox.member_item_equipment_grid.get_child_count()==5 \
+		and sandbox.member_item_backpack_rows.get_child_count()==20 \
+		and sandbox.member_item_backpack_rows.columns==5,
+		"%s item UI is not 5 equipment slots plus a 5x4 bag"%viewport_size)
+	_assert(sandbox.member_item_equipment_grid.is_visible_in_tree() \
+		and sandbox.member_item_backpack_rows.is_visible_in_tree() \
+		and not sandbox.member_item_equipment_rows.is_visible_in_tree(),
+		"%s item tab does not show both visual equipment and bag grids"%viewport_size)
+	var bag_definition_ids:Array=[]
+	for child in sandbox.member_item_backpack_rows.get_children():
+		bag_definition_ids.append(str(child.get_meta("item_definition_id","")))
+	_assert("WEAPON_SHORT_SWORD" not in bag_definition_ids \
+		and "POTION_HEALING" in bag_definition_ids,
+		"%s equipped sword is duplicated in bag or potion icon is absent"%viewport_size)
 	_assert(sandbox.find_child("ItemDiscard",true,false)==null \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,
 		"%s exposes DISCARD or loses 44px DROP"%viewport_size)
 	sandbox._close_member_detail();await process_frame
 	var time_before:=int(session.sim.world.world_time)
 	sandbox.grid.world_cell_pressed.emit(destination);await process_frame
-	_assert(item_state.ground_items.item("GROUND_START_SHIELD")==null \
+	_assert(session.sim.world.item_state.ground_items.item(moved_item_id)==null \
 		and session.sim.world.inventory_of(state.protagonist_id).item(
-			"GROUND_START_SHIELD")!=null,
+			moved_item_id)!=null,
 		"%s one ground-cell touch did not move then pick up"%viewport_size)
 	_assert(int(session.sim.world.world_time)==time_before+200,
 		"%s adjacent move+pickup did not consume exact 100+100 time"%viewport_size)

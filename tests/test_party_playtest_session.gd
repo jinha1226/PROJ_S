@@ -870,7 +870,7 @@ func test_phase_presentation_state_is_detached_persistent_and_defeat_derived() -
 	return finish()
 
 
-func test_exploration_route_is_exact_shortest_until_visible_hazard_requires_bounded_risk() -> bool:
+func test_exploration_route_is_exact_shortest_until_visible_hazard_requires_safe_route() -> bool:
 	var session=Session.new();var state=session.sim.world.party_encounter
 	var hero:=int(state.protagonist_id);session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,14)
 	var goal:=Vector2i(9,7)
@@ -890,14 +890,44 @@ func test_exploration_route_is_exact_shortest_until_visible_hazard_requires_boun
 	check(visible_party_max>0,"visible fire produces positive party-max route risk: %s"%str(visible_risk_rows))
 	var avoided:Dictionary=session.find_exploration_path(hero,goal)
 	check(avoided.found and avoided.risk_weighted,"visible hazard enables affinity risk pass")
-	check_eq(avoided.routing_policy,"VISIBLE_AFFINITY_RISK_WEIGHTED",
-		"visible hazard policy is explicit")
+	check_eq(avoided.routing_policy,"SHORTEST_KNOWN_HAZARD_FREE",
+		"visible hazard policy selects the shortest fully safe route")
 	check(shortest_hop not in avoided.path,"visible high-risk cell is avoided")
 	check(avoided.hazard_free and int(avoided.max_total_risk)==0,
 		"available safe alternative has zero party-max exposure")
-	check(int(avoided.steps)<=int(avoided.detour_limit_steps) \
-			and int(avoided.detour_limit_steps)<=int(shortest.steps)+Session.MAX_VISIBLE_HAZARD_DETOUR_STEPS,
-		"risk route detour has a hard bound")
+	check(int(avoided.steps)>=int(shortest.steps) and int(avoided.detour_limit_steps)==-1,
+		"safe route is not forced through danger by the old four-step detour cap")
+	return finish()
+
+
+func test_long_route_uses_shortest_safe_detour_around_known_water_and_trap_ids()->bool:
+	var session=Session.new();var state=session.sim.world.party_encounter
+	var hero:=int(state.protagonist_id);var start:Vector2i=session.sim.world.entities[hero].position
+	session.sim.world.entities[state.enemy_ids[0]].position=Vector2i(14,0)
+	var barrier_x:=start.x+1;var goal:=start+Vector2i(2,0)
+	for y in range(session.sim.world.height):
+		if y in [start.y,session.sim.world.height-1]:continue
+		check(session.sim.world.bootstrap_set_terrain(Vector2i(barrier_x,y),"wall"),
+			"long safe detour wall fixture %d"%y)
+	check(session.sim.world.bootstrap_set_terrain(Vector2i(barrier_x,start.y),
+		"shallow_water"),"known shallow-water crossing fixture")
+	var route:Dictionary=session.find_exploration_path(hero,goal)
+	check(route.found and route.hazard_free,"a safe route exists around known water")
+	check(Vector2i(barrier_x,start.y) not in route.path,
+		"long route does not take the short shallow-water crossing")
+	check(int(route.steps)>2+Session.MAX_VISIBLE_HAZARD_DETOUR_STEPS \
+		and int(route.detour_limit_steps)==-1,
+		"safe route may exceed the legacy detour cap when danger blocks the shortcut")
+	check_eq(route.routing_policy,"SHORTEST_KNOWN_HAZARD_FREE",
+		"long water detour reports the safe-shortest policy")
+	for position_value in route.path:
+		var position:Vector2i=position_value
+		check(str(session.sim.world.tile_at(position).terrain)!="shallow_water",
+			"selected safe path contains no shallow water")
+	check(Session._feature_is_known_trap("spike_trap") \
+		and Session._feature_is_known_trap("trap_armed") \
+		and not Session._feature_is_known_trap("floor_transition_portal"),
+		"trap feature IDs are recognized without confusing ordinary fixtures")
 	return finish()
 
 
@@ -1358,14 +1388,19 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 	check_eq(companion.personality_facets.size(),6,"all HEXACO facets")
 	check_eq(companion.species_affinity.species_id,"human","species affinity")
 	check_eq(companion.relation_rows.size(),2,"effective relation to other party members")
+	check(companion.skill_summary.available and companion.skill_summary.skills.size()>=1 \
+		and str(companion.skill_summary.skills[0].skill_id)=="EQUIPPED_WEAPON",
+		"companion inspection exposes read-only skills from its real loadout")
 	check(companion.affinity_toward_protagonist.has("score") \
 		and companion.affinity_toward_protagonist.has("label"),
 		"companion inspection exposes affinity toward protagonist")
 	check(companion.current_exposure.applicable,"current full exposure")
 	companion.personality_facets[0].value=9999;companion.relation_rows[0].personal.gratitude=999
+	companion.skill_summary.skills[0].label="조작됨"
 	var companion_fresh=session.inspect_party_member(state.party_member_ids[1])
 	check(companion_fresh.personality_facets[0].value!=9999,"member personality detached")
 	check(companion_fresh.relation_rows[0].personal.gratitude!=999,"member relation detached")
+	check(str(companion_fresh.skill_summary.skills[0].label)!="조작됨","member skill summary detached")
 	check_eq(session.sim.snapshot(),before,"member inspectors snapshot/RNG pure")
 	check_eq(session.command_journal,journal_before,"member inspectors journal pure")
 	return finish()

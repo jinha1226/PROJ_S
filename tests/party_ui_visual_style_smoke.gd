@@ -29,8 +29,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and sandbox.product_auto_button.text=="[AUTO]" \
 		and sandbox.product_interact_button.text=="[INTERACT]",
 		"%s opening event was exposed before the actor was discovered"%viewport_size)
-	_check(sandbox.theme.default_font.resource_path=="res://assets/fonts/LivingWorldMonoKR.ttf",
-		"%s UI default is not bundled Coding font"%viewport_size)
+	_check(sandbox.theme.default_font.resource_path=="res://assets/fonts/Galmuri14.ttf",
+		"%s UI default is not bundled Korean/Latin pixel font"%viewport_size)
 	_check(sandbox.theme.default_font_size==16,
 		"%s party UI body typography did not shrink to 16px"%viewport_size)
 	_check(sandbox.root_layout.get_global_rect().size.is_equal_approx(viewport_size),
@@ -339,45 +339,45 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and "막기" in combat_summary.text and "장착" not in combat_summary.text \
 		and sandbox.member_item_ammo_text.custom_minimum_size.y>=44 \
 		and equipment_slot_rows==5 \
-		and sandbox.member_item_backpack_rows.get_child_count()==12 \
+		and sandbox.member_item_equipment_grid.get_child_count()==5 \
+		and sandbox.member_item_backpack_rows.get_child_count()==20 \
+		and sandbox.member_item_backpack_rows.columns==5 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,
-		"%s item/status UI lacks one-line stats, 5 slots, 12 backpack rows, or 44px popover actions"%viewport_size)
+		"%s item/status UI lacks one-line stats, 5 equipment icons, 5x4 bag, or 44px popover actions"%viewport_size)
 	_check(sandbox.member_item_backpack_rows.is_visible_in_tree() \
+		and sandbox.member_item_equipment_grid.is_visible_in_tree() \
 		and not sandbox.member_item_equipment_rows.is_visible_in_tree(),
-		"%s item tab does not lead directly with the bag"%viewport_size)
+		"%s item tab does not expose the visual equipment and bag grids"%viewport_size)
 	_check(sandbox.member_item_equip_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_unequip_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_use_button.custom_minimum_size.y>=44 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44 \
-		and sandbox.member_item_drop_button.text=="[버리기]",
+		and sandbox.member_item_drop_button.text=="버리기",
 		"%s product item actions do not meet the touch-safe equipment/consumable contract"%viewport_size)
 	sandbox._on_item_row_selected("START_POTION_001","");await process_frame
-	var item_ascii_frame=sandbox.find_child("ItemDetailAsciiFrame",true,false)
+	var item_pixel_frame=sandbox.find_child("ItemDetailPixelFrame",true,false)
 	_check(sandbox.member_item_popover.visible and sandbox.member_item_use_button.visible \
 		and not sandbox.member_item_use_button.disabled \
-		and sandbox.member_item_use_button.text=="[사용]" \
-		and item_ascii_frame!=null \
-		and str(item_ascii_frame.frame_spec().get("primitive",""))=="FIXED_CELL_GLYPHS",
-		"%s healing potion popover lacks a usable action or ASCII glyph border"%viewport_size)
+		and sandbox.member_item_use_button.text=="사용" \
+		and item_pixel_frame!=null \
+		and str(item_pixel_frame.get_meta("visual_family",""))=="DARK_PIXEL_DUNGEON_UI",
+		"%s healing potion popover lacks a usable action or dark pixel frame"%viewport_size)
 	sandbox._hide_item_popover()
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5,
 		"%s item tab widened/clipped the detail folio"%viewport_size)
 	var item_scroll:ScrollContainer=sandbox.member_detail_scroll as ScrollContainer
 	var item_scroll_bar:VScrollBar=item_scroll.get_v_scroll_bar()
-	_check(item_scroll.clip_contents and item_scroll_bar.max_value>item_scroll_bar.page,
-		"%s 5+12 row item ledger is not vertically scrollable scroll=%s max=%s page=%s content=%s"%[
+	_check(item_scroll.clip_contents and item_scroll_bar.max_value<=item_scroll_bar.page+0.5,
+		"%s compact visual item grids unexpectedly need scrolling scroll=%s max=%s page=%s content=%s"%[
 			viewport_size,item_scroll.size,item_scroll_bar.max_value,item_scroll_bar.page,
 			sandbox.member_item_window.size])
-	for ledger in [sandbox.member_item_equipment_rows,sandbox.member_item_backpack_rows]:
-		var previous_bottom:=-INF
+	for ledger in [sandbox.member_item_equipment_rows,sandbox.member_item_equipment_grid,
+			sandbox.member_item_backpack_rows]:
 		for row in ledger.get_children():
 			if not row is Button:continue
 			_check(row.custom_minimum_size.y>=44 and row.size.y>=43.9,
 				"%s item ledger row is below 44px: %s"%[viewport_size,row.name])
-			_check(row.position.y>=previous_bottom-0.1,
-				"%s item ledger rows overlap: %s"%[viewport_size,row.name])
-			previous_bottom=row.position.y+row.size.y
-	item_scroll.scroll_vertical=int(item_scroll_bar.max_value);await process_frame;await process_frame
+	item_scroll.scroll_vertical=0;await process_frame;await process_frame
 	var scroll_rect:Rect2=item_scroll.get_global_rect()
 	var last_bag_row:=sandbox.member_item_backpack_rows.get_child(
 		sandbox.member_item_backpack_rows.get_child_count()-1) as Control
@@ -385,7 +385,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var scroll_content:=item_scroll.get_child(0) as Control
 	var item_scroll_diagnostic:="%s final bag row is not reachable at scroll end scroll=%s row=%s value=%s " \
 		+ "bar(max=%s page=%s) content(size=%s min=%s) item(size=%s min=%s pos=%s) action(local=%s min=%s)"
-	_check(scroll_rect.intersection(last_bag_rect).size.y>=43.9,
+	_check(scroll_rect.intersection(last_bag_rect).size.y>=51.9,
 		item_scroll_diagnostic%[
 			viewport_size,scroll_rect,last_bag_rect,item_scroll.scroll_vertical,
 			item_scroll_bar.max_value,item_scroll_bar.page,

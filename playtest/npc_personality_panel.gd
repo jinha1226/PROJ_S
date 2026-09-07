@@ -53,8 +53,6 @@ func _add_summary_card(style_label:String,facets:Array)->void:
 	stack.add_child(_label("성격 유형",12,Frame.CYAN))
 	var title:=_label(style_label,20,Frame.PARCHMENT);title.name="PersonalityStyleLabel"
 	title.add_theme_font_override("font",Frame.CodingFontBold);stack.add_child(title)
-	var hint:=_label("평소 판단 경향 · 상황과 기억에 따라 실제 행동은 달라집니다.",11,Frame.MUTED)
-	hint.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(hint)
 	for raw in facets:
 		_add_facet_row(stack,raw)
 

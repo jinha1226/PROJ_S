@@ -464,8 +464,9 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	check("/terrain/" not in asset_source and "/props/" not in asset_source \
 		and "/ui/" not in asset_source,
 		"actor registry remains isolated from tile and button textures")
-	check("floor1_atlas_16x1_16.png" in tile_source \
-			and "floor2_atlas_16x1_16.png" in tile_source,
+	check("floor1_atlas_16x1_24.png" in tile_source \
+			and "floor2_atlas_16x1_24.png" in tile_source \
+			and TopdownTileAssets.TILE_SIZE==24,
 		"both implemented campaign floors own explicit runtime atlases")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
@@ -479,7 +480,7 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	var floor_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i(1,1))
 	var portal_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i.ZERO)
 	check(bool(floor_tile.visible) and bool(floor_tile.draw_image) \
-			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(16,16),
+			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(24,24),
 		"floor two terrain resolves a bounded atlas region")
 	check(int(portal_tile.tile_index)==15 and not bool(portal_tile.changes_mapping) \
 			and not bool(portal_tile.changes_fov),

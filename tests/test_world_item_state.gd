@@ -30,7 +30,10 @@ func test_general_inventory_keeps_protagonist_semantics_without_bootstrap_helper
 	for method in Inventory.new().get_method_list():names.append(str(method.name))
 	check("with_legacy_weapon" not in names and "with_legacy_short_sword" not in names,
 		"protagonist bootstrap helpers left the general state")
-	check_eq(Inventory.BACKPACK_CAPACITY,12,"twelve slot capacity is shared")
+	check_eq(Inventory.BACKPACK_CAPACITY,20,"twenty slot capacity is shared")
+	var legacy_wire:Dictionary=general.to_dict();legacy_wire.backpack_capacity=12
+	check(Inventory.from_dict(legacy_wire)!=null,
+		"existing twelve-slot saves migrate into the twenty-slot inventory")
 	return finish()
 
 

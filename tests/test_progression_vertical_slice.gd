@@ -285,6 +285,23 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and "막기" in sandbox.member_item_weapon_text.text \
 		and "화살 12" in sandbox.member_item_ammo_text.text,
 		"item tab owns a one-line combat summary and compact ammo information")
+	check(sandbox.member_item_equipment_grid is GridContainer \
+		and sandbox.member_item_equipment_grid.columns==5 \
+		and sandbox.member_item_equipment_grid.get_child_count()==5 \
+		and sandbox.member_item_backpack_rows is GridContainer \
+		and sandbox.member_item_backpack_rows.columns==5 \
+		and sandbox.member_item_backpack_rows.get_child_count()==20,
+		"item tab uses five equipment cells plus a five-by-four backpack grid")
+	var equipped_weapon=sandbox._find_item_row_button("LEGACY_MAIN_HAND","MAIN_HAND")
+	var potion_slot=sandbox._find_item_row_button("START_POTION_001","")
+	check(equipped_weapon!=null and equipped_weapon.has_method("slot_draw_spec") \
+		and bool(equipped_weapon.slot_draw_spec().uses_texture) \
+		and potion_slot!=null and potion_slot.has_method("slot_draw_spec") \
+		and not bool(potion_slot.slot_draw_spec().uses_texture) \
+		and sandbox.member_item_backpack_rows.get_children().all(
+			func(slot):return slot is Button and str(slot.text).is_empty() \
+				and slot.custom_minimum_size.x>=44 and slot.custom_minimum_size.y>=44),
+		"inventory cells render item art instead of text rows and remain touch-sized")
 	sandbox._select_member_detail_tab("SKILL")
 	var modes_before:Array=session.protagonist_progression().skills.map(
 		func(row):return [str(row.skill_id),str(row.training_mode)])
@@ -303,10 +320,16 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	check(companion_ui.member_detail_tab_row.visible and companion_ui.member_detail_body.visible \
 		and companion_ui.member_detail_personality_tab.visible \
 		and companion_ui.member_detail_relationship_tab.visible \
-		and not companion_ui.member_detail_skill_tab.visible \
+		and companion_ui.member_detail_skill_tab.visible \
 		and not companion_ui.member_detail_item_tab.visible \
 		and not companion_ui.member_progression_window.visible,
-		"companions expose status/personality/relationship without fake progression tabs")
+		"companions expose status/personality/relationship/skill without fake item progression")
+	companion_ui._select_member_detail_tab("SKILL")
+	check(companion_ui.member_skill_window.visible \
+		and companion_ui.member_detail_skill_tab.text=="[스킬]" \
+		and not companion_ui.member_progression_window.visible \
+		and companion_ui.find_child("NpcSkillName",true,false)!=null,
+		"companion skill tab is read-only and backed by equipped weapon data")
 	var engaged=_engaged_adjacent_fixture();var combat_ui=Sandbox.new();combat_ui.size=Vector2(360,640)
 	combat_ui.initialize_for_headless_test(engaged,true)
 	combat_ui.selected_target_id=int(engaged.party_status().visible_enemy_ids[0])

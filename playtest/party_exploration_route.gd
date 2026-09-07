@@ -234,6 +234,12 @@ func _validate_frozen_step(frozen_step: Dictionary, actor_id: int) -> Dictionary
 			or int(fresh_step.cost) != int(frozen_step.cost) \
 			or str(fresh_step.tier) != str(frozen_step.tier):
 		return {"accepted": false, "reason": "route_path_changed"}
+	if int(fresh_step.get("avoidance_risk",0))>int(frozen_step.get("avoidance_risk",0)):
+		return {"accepted":false,"reason":"route_hazard_increased",
+			"details":{"destination":fresh_step.to.duplicate(true),
+				"component":"known_hazard","preview_ceiling":int(
+					frozen_step.get("avoidance_risk",0)),
+				"current_risk":int(fresh_step.get("avoidance_risk",0))}}
 	var ceilings: Dictionary = {}
 	for row in frozen_step.member_risk_ceilings:
 		ceilings[int(row.entity_id)] = row
@@ -332,7 +338,8 @@ func _build_step(index: int, from_position: Vector2i, to_position: Vector2i,
 	if definition.is_empty() or not bool(sample.passable) or int(sample.move_time_cost) <= 0:
 		return {"accepted": false, "reason": "move_terrain_blocked"}
 	var risks: Array = _owner().exploration_route_risk_rows(to_position)
-	var max_total := 0
+	var avoidance_risk:=int(_owner().exploration_route_avoidance_risk(to_position))
+	var max_total := avoidance_risk
 	for risk in risks:
 		max_total = maxi(max_total, int(risk.total))
 	return {"accepted": true, "reason": "ok", "index": index,
@@ -340,7 +347,8 @@ func _build_step(index: int, from_position: Vector2i, to_position: Vector2i,
 		"terrain_id": str(sample.terrain_id),
 		"terrain_label": _terrain_label(str(sample.terrain_id)),
 		"cost": int(sample.move_time_cost), "tier": str(assessment.speed_tier),
-		"member_risk_ceilings": risks, "max_total_risk": max_total}
+		"member_risk_ceilings": risks,"avoidance_risk":avoidance_risk,
+		"max_total_risk": max_total}
 
 
 func _base_plan(goal: Vector2i) -> Dictionary:

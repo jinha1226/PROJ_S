@@ -15,6 +15,9 @@ const MinimapScript=preload("res://playtest/party_minimap.gd")
 const PortraitScript=preload("res://playtest/fixed_front_actor_portrait.gd")
 const PersonalityPanelScript=preload("res://playtest/npc_personality_panel.gd")
 const RelationshipPanelScript=preload("res://playtest/npc_relationship_panel.gd")
+const SkillPanelScript=preload("res://playtest/npc_skill_panel.gd")
+const ItemSlotScript=preload("res://playtest/item_inventory_slot.gd")
+const DarkPixelSkinScript=preload("res://playtest/dark_pixel_ui_skin.gd")
 const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
@@ -24,7 +27,10 @@ const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
-const KoreanFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
+# Proportional Korean/Latin pixel type keeps the dense mobile UI readable.
+# ASCII frames, gauges, and map glyphs deliberately retain LivingWorldMonoKR
+# because their column alignment is part of the drawing contract.
+const KoreanFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 const FONT_AUX:=14
 const FONT_BODY:=16
 const FONT_KEY:=20
@@ -49,6 +55,8 @@ const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_C
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
 const PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:=1500
 const PRODUCT_PINCH_STEP_RATIO:=1.12
+const ITEM_GRID_COLUMNS:=5
+const ITEM_SLOT_MINIMUM:=52
 
 var session
 var grid
@@ -172,10 +180,12 @@ var member_detail_skill_tab:Button
 var member_detail_item_tab:Button
 var member_detail_current_tab:="STATUS"
 var member_detail_has_skills:=false
+var member_detail_has_skill_summary:=false
 var member_detail_has_personality:=false
 var member_detail_has_relationships:=false
 var member_personality_window
 var member_relationship_window
+var member_skill_window
 var member_detail_dismiss_available:=false
 var member_detail_candidate_available:=false
 var member_detail_attack_available:=false
@@ -205,7 +215,8 @@ var member_item_empty_text:Label
 var member_item_stats:Dictionary={}
 var member_status_equipment_window:VBoxContainer
 var member_item_equipment_rows:VBoxContainer
-var member_item_backpack_rows:VBoxContainer
+var member_item_equipment_grid:GridContainer
+var member_item_backpack_rows:GridContainer
 var member_item_selected_stats:Label
 var member_item_quick_unequip_button:Button
 var member_item_action_row:HBoxContainer
@@ -340,6 +351,7 @@ func _input(event:InputEvent)->void:
 	if member_detail_current_tab in ["STATUS","ITEM"]:
 		_handle_item_ledger_touch(event);return
 	if member_detail_current_tab!="SKILL":return
+	if not member_detail_has_skills:return
 	if event is InputEventScreenTouch:
 		if event.pressed and _skill_touch_index<0:
 			var skill_id:=_skill_row_at_position(event.position)
@@ -505,7 +517,8 @@ func _on_nearby_npc_button_gui_input(event:InputEvent,control_name:String)->void
 	if activate:_activate_nearby_npc_control(control_name)
 
 func _item_row_at_position(global_position:Vector2)->Dictionary:
-	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
+	for ledger in [member_item_equipment_rows,member_item_equipment_grid,
+			member_item_backpack_rows]:
 		if ledger==null:continue
 		for child in ledger.get_children():
 			var button:=child as Button
@@ -1078,6 +1091,8 @@ func _build_member_detail_modal()->void:
 	member_personality_window.visible=false;member_detail_scroll_content.add_child(member_personality_window)
 	member_relationship_window=RelationshipPanelScript.new();member_relationship_window.name="MemberRelationshipWindow"
 	member_relationship_window.visible=false;member_detail_scroll_content.add_child(member_relationship_window)
+	member_skill_window=SkillPanelScript.new();member_skill_window.name="MemberNpcSkillWindow"
+	member_skill_window.visible=false;member_detail_scroll_content.add_child(member_skill_window)
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll_content.add_child(member_detail_body)
@@ -1173,10 +1188,12 @@ func _build_progression_window(parent:VBoxContainer)->void:
 
 func _build_item_window(parent:VBoxContainer)->void:
 	member_item_window=VBoxContainer.new();member_item_window.name="ItemWindow"
-	member_item_window.visible=false;member_item_window.add_theme_constant_override("separation",8)
+	member_item_window.visible=false
+	member_item_window.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_item_window.add_theme_constant_override("separation",8)
 	parent.add_child(member_item_window)
 	var weapon_panel:=PanelContainer.new();weapon_panel.name="EquippedWeaponCard"
-	weapon_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,4))
+	DarkPixelSkinScript.apply_panel(weapon_panel,"SECTION")
 	member_item_window.add_child(weapon_panel)
 	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_panel.add_child(weapon_stack)
 	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedCombatSummary"
@@ -1198,11 +1215,35 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_reload_button.custom_minimum_size.x=92
 	member_item_reload_button.pressed.connect(_on_item_reload);ammo_row.add_child(member_item_reload_button)
 	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
-	var backpack_title:=_card_label("가방 0 / 12","ItemBackpackHeading",FONT_SECTION)
-	backpack_title.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
-	member_item_window.add_child(backpack_title)
-	member_item_backpack_rows=VBoxContainer.new();member_item_backpack_rows.name="ItemBackpackLedger"
-	member_item_backpack_rows.add_theme_constant_override("separation",2);member_item_window.add_child(member_item_backpack_rows)
+	var equipment_panel:=PanelContainer.new();equipment_panel.name="InventoryEquipmentSection"
+	DarkPixelSkinScript.apply_panel(equipment_panel,"SECTION")
+	member_item_window.add_child(equipment_panel)
+	var equipment_stack:=VBoxContainer.new();equipment_stack.add_theme_constant_override("separation",5)
+	equipment_panel.add_child(equipment_stack)
+	var equipment_title:=_card_label("장착","ItemEquipmentGridHeading",FONT_SECTION)
+	DarkPixelSkinScript.apply_heading(equipment_title,DarkPixelSkinScript.BRASS)
+	equipment_stack.add_child(equipment_title)
+	member_item_equipment_grid=GridContainer.new()
+	member_item_equipment_grid.name="ItemEquipmentGrid"
+	member_item_equipment_grid.columns=ITEM_GRID_COLUMNS
+	member_item_equipment_grid.add_theme_constant_override("h_separation",4)
+	member_item_equipment_grid.add_theme_constant_override("v_separation",4)
+	member_item_equipment_grid.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	equipment_stack.add_child(member_item_equipment_grid)
+	var backpack_panel:=PanelContainer.new();backpack_panel.name="InventoryBackpackSection"
+	DarkPixelSkinScript.apply_panel(backpack_panel,"SECTION")
+	member_item_window.add_child(backpack_panel)
+	var backpack_stack:=VBoxContainer.new();backpack_stack.add_theme_constant_override("separation",5)
+	backpack_panel.add_child(backpack_stack)
+	var backpack_title:=_card_label("가방 0 / 20","ItemBackpackHeading",FONT_SECTION)
+	DarkPixelSkinScript.apply_heading(backpack_title,DarkPixelSkinScript.BRASS)
+	backpack_stack.add_child(backpack_title)
+	member_item_backpack_rows=GridContainer.new();member_item_backpack_rows.name="ItemBackpackGrid"
+	member_item_backpack_rows.columns=ITEM_GRID_COLUMNS
+	member_item_backpack_rows.add_theme_constant_override("h_separation",4)
+	member_item_backpack_rows.add_theme_constant_override("v_separation",4)
+	member_item_backpack_rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	backpack_stack.add_child(member_item_backpack_rows)
 	# Detail now belongs exclusively to the floating item popover and never
 	# expands or shifts the scrolling ledger.
 	member_item_selected_stats=null
@@ -1225,13 +1266,11 @@ func _build_item_popover()->void:
 	member_item_popover=PanelContainer.new();member_item_popover.name="ItemDetailPopover"
 	member_item_popover.visible=false;member_item_popover.mouse_filter=Control.MOUSE_FILTER_STOP
 	member_item_popover.z_index=8;member_item_popover.custom_minimum_size.x=288
-	member_item_popover.add_theme_stylebox_override("panel",
-		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,0))
+	DarkPixelSkinScript.apply_panel(member_item_popover,"FOLIO")
 	member_detail_modal.add_child(member_item_popover)
-	var popover_frame=AsciiFrameScript.new();popover_frame.name="ItemDetailAsciiFrame"
-	popover_frame.configure("아이템 정보",AsciiFrameScript.CYAN,
-		AsciiFrameScript.SURFACE_DEEP,true)
-	popover_frame.set_meta("major_glyph_frame",true)
+	var popover_frame:=VBoxContainer.new();popover_frame.name="ItemDetailPixelFrame"
+	popover_frame.set_meta("visual_family",DarkPixelSkinScript.VISUAL_FAMILY)
+	popover_frame.set_meta("pixel_material","BLACK_IRON_POPOVER")
 	member_item_popover.add_child(popover_frame)
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",6)
 	popover_frame.add_child(stack)
@@ -1244,9 +1283,9 @@ func _build_item_popover()->void:
 	member_item_popover_title.add_theme_font_size_override("font_size",FONT_SECTION)
 	header.add_child(member_item_popover_title)
 	member_item_popover_close=Button.new();member_item_popover_close.name="ItemPopoverClose"
-	member_item_popover_close.text="[X]";member_item_popover_close.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
+	member_item_popover_close.text="×";member_item_popover_close.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	member_item_popover_close.pressed.connect(_hide_item_popover);header.add_child(member_item_popover_close)
-	AsciiFrameScript.apply_rail_button(member_item_popover_close,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(member_item_popover_close,DarkPixelSkinScript.CYAN)
 	member_item_popover_body=Label.new();member_item_popover_body.name="ItemPopoverDescription"
 	member_item_popover_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_item_popover_body.add_theme_font_size_override("font_size",FONT_AUX)
@@ -1259,17 +1298,18 @@ func _build_item_popover()->void:
 	stack.add_child(member_item_popover_compare)
 	member_item_action_row=HBoxContainer.new();member_item_action_row.name="ItemPopoverActionRow"
 	member_item_action_row.add_theme_constant_override("separation",4);stack.add_child(member_item_action_row)
-	member_item_equip_button=_item_action_button("[장착]","ItemEquip",_on_item_equip_selected)
-	member_item_unequip_button=_item_action_button("[해제]","ItemUnequip",_on_item_unequip_selected)
-	member_item_use_button=_item_action_button("[사용]","ItemUse",_on_item_use_selected)
-	member_item_drop_button=_item_action_button("[버리기]","ItemDrop",_on_item_drop_selected)
+	member_item_equip_button=_item_action_button("장착","ItemEquip",_on_item_equip_selected)
+	member_item_unequip_button=_item_action_button("해제","ItemUnequip",_on_item_unequip_selected)
+	member_item_use_button=_item_action_button("사용","ItemUse",_on_item_use_selected)
+	member_item_drop_button=_item_action_button("버리기","ItemDrop",_on_item_drop_selected,true)
 	member_item_quick_unequip_button=member_item_unequip_button
 
-func _item_action_button(label:String,node_name:String,callable:Callable)->Button:
+func _item_action_button(label:String,node_name:String,callable:Callable,
+		danger:bool=false)->Button:
 	var button:=Button.new();button.name=node_name;button.text=label
 	button.custom_minimum_size.y=TOUCH_TARGET;button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	button.pressed.connect(callable);member_item_action_row.add_child(button)
-	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.BRASS);return button
+	DarkPixelSkinScript.apply_action_button(button,DarkPixelSkinScript.BRASS,danger);return button
 
 func _build_product_zoom_controls()->void:
 	# Named compatibility nodes remain in the tree, but camera zoom is exclusively
@@ -3466,7 +3506,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 			"StatusEquipmentSummary",FONT_AUX)
 		equipment_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		member_status_window.add_child(equipment_text)
-	var dossier_heading:=_card_label("종족 내성 / 노출","StatusDossierSection",FONT_SECTION)
+	var dossier_heading:=_card_label("내성","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
 
 func _percent_milli_text(value:int)->String:
@@ -3513,6 +3553,9 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_entity_id=member_id
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
+	var skill_summary:Variant=detail.get("skill_summary",{})
+	member_detail_has_skill_summary=skill_summary is Dictionary \
+		and bool(skill_summary.get("available",false))
 	member_detail_has_personality=bool(detail.get("personality_available",false))
 	var relations:Variant=detail.get("relation_rows",[])
 	var affinity:Variant=detail.get("affinity_toward_protagonist",{})
@@ -3520,10 +3563,12 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 		or affinity is Dictionary and not affinity.is_empty()
 	member_personality_window.call("set_detail",detail)
 	member_relationship_window.call("set_detail",detail)
+	member_skill_window.call("set_detail",detail)
 	member_detail_current_tab=initial_tab if initial_tab in ["STATUS","PERSONALITY","RELATIONSHIP","SKILL","ITEM"] \
 		and (initial_tab=="STATUS" or initial_tab=="PERSONALITY" and member_detail_has_personality \
 		or initial_tab=="RELATIONSHIP" and member_detail_has_relationships \
-		or initial_tab in ["SKILL","ITEM"] and member_detail_has_skills) else "STATUS"
+		or initial_tab=="SKILL" and (member_detail_has_skills or member_detail_has_skill_summary) \
+		or initial_tab=="ITEM" and member_detail_has_skills) else "STATUS"
 	_update_progression_window(progression)
 	_update_item_window(progression.get("equipment",{}) if progression is Dictionary else {})
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
@@ -3579,7 +3624,8 @@ func _select_member_detail_tab(tab_id:String)->void:
 	if tab_id not in ["STATUS","PERSONALITY","RELATIONSHIP","SKILL","ITEM"] \
 			or tab_id=="PERSONALITY" and not member_detail_has_personality \
 			or tab_id=="RELATIONSHIP" and not member_detail_has_relationships \
-			or tab_id in ["SKILL","ITEM"] and not member_detail_has_skills:return
+			or tab_id=="SKILL" and not (member_detail_has_skills or member_detail_has_skill_summary) \
+			or tab_id=="ITEM" and not member_detail_has_skills:return
 	_hide_item_popover();member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
 	_apply_member_detail_tab();_reflow_member_detail_scroll()
 
@@ -3588,25 +3634,30 @@ func _apply_member_detail_tab()->void:
 		and member_detail_current_tab=="PERSONALITY"
 	var relationship_selected:=member_detail_has_relationships \
 		and member_detail_current_tab=="RELATIONSHIP"
-	var skill_selected:=member_detail_has_skills and member_detail_current_tab=="SKILL"
+	var skill_selected:=(member_detail_has_skills or member_detail_has_skill_summary) \
+		and member_detail_current_tab=="SKILL"
 	var item_selected:=member_detail_has_skills and member_detail_current_tab=="ITEM"
 	var status_selected:=not personality_selected and not relationship_selected \
 		and not skill_selected and not item_selected
-	member_detail_tab_row.visible=member_detail_has_skills or member_detail_has_personality \
+	member_detail_tab_row.visible=member_detail_has_skills or member_detail_has_skill_summary \
+		or member_detail_has_personality \
 		or member_detail_has_relationships
 	member_detail_status_tab.set_pressed_no_signal(status_selected)
 	member_detail_personality_tab.visible=member_detail_has_personality
 	member_detail_personality_tab.set_pressed_no_signal(personality_selected)
 	member_detail_relationship_tab.visible=member_detail_has_relationships
 	member_detail_relationship_tab.set_pressed_no_signal(relationship_selected)
-	member_detail_skill_tab.visible=member_detail_has_skills
+	member_detail_skill_tab.visible=member_detail_has_skills or member_detail_has_skill_summary
 	member_detail_item_tab.visible=member_detail_has_skills
 	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
 	member_detail_item_tab.set_pressed_no_signal(item_selected)
 	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
 	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
-	member_detail_skill_tab.text="[숙련]" if skill_selected else " 숙련 "
+	var skill_tab_label:="숙련" if member_detail_has_skills else "스킬"
+	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
+	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정" if member_detail_has_skills \
+		else "현재 무기 기술과 종족 특성"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,status_selected)
 	AsciiFrameScript.apply_rail_button(member_detail_personality_tab,AsciiFrameScript.BRASS,personality_selected)
@@ -3617,9 +3668,10 @@ func _apply_member_detail_tab()->void:
 	member_detail_body.visible=status_selected
 	member_personality_window.visible=personality_selected
 	member_relationship_window.visible=relationship_selected
+	member_skill_window.visible=skill_selected and not member_detail_has_skills
 	member_status_equipment_window.visible=member_detail_has_skills \
 		and status_selected
-	member_progression_window.visible=skill_selected
+	member_progression_window.visible=skill_selected and member_detail_has_skills
 	member_item_window.visible=item_selected
 	member_detail_dismiss.visible=status_selected and member_detail_dismiss_available
 	member_detail_candidate_action.visible=status_selected and member_detail_candidate_available
@@ -3634,6 +3686,8 @@ func _sync_member_detail_scroll_children()->void:
 		desired=[member_item_window]
 	elif member_progression_window.visible:
 		desired=[member_progression_window]
+	elif member_skill_window.visible:
+		desired=[member_skill_window]
 	elif member_personality_window.visible:
 		desired=[member_personality_window]
 	elif member_relationship_window.visible:
@@ -3641,7 +3695,7 @@ func _sync_member_detail_scroll_children()->void:
 	else:
 		desired=[member_status_window,member_detail_body]
 		if member_status_equipment_window.visible:desired.append(member_status_equipment_window)
-	var managed:Array[Control]=[member_progression_window,member_item_window,
+	var managed:Array[Control]=[member_progression_window,member_item_window,member_skill_window,
 		member_personality_window,member_relationship_window,member_status_window,member_detail_body,
 		member_status_equipment_window]
 	for control in managed:
@@ -3773,6 +3827,7 @@ func _update_weapon_mastery_category_label()->void:
 
 func _reflow_member_detail_scroll()->void:
 	if member_progression_window!=null:member_progression_window.update_minimum_size()
+	if member_skill_window!=null:member_skill_window.update_minimum_size()
 	if member_detail_scroll==null:return
 	# ITEM rebuilds seventeen touch rows dynamically. Propagate that new combined
 	# minimum through the sole scroll content before sorting; otherwise the panel
@@ -3867,26 +3922,31 @@ func _update_item_inventory_ledger()->void:
 	# queue_free() alone leaves the outgoing buttons in hit-testing until the end
 	# of the frame, directly on top of the fresh mobile actions.
 	_detach_item_ledger_children(member_item_equipment_rows)
+	_detach_item_ledger_children(member_item_equipment_grid)
 	_detach_item_ledger_children(member_item_backpack_rows)
 	var dto:Dictionary=session.protagonist_inventory()
 	var slot_labels:={"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
 		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}
-	for row in dto.get("equipment_slots",[]):
+	var equipment_slots:Array=dto.get("equipment_slots",[])
+	for index in range(equipment_slots.size()):
+		var row:Dictionary=equipment_slots[index]
 		var slot:=str(row.get("slot",""))
 		_add_item_ledger_button(member_item_equipment_rows,row,
 			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
+		_add_item_grid_slot(member_item_equipment_grid,row,index,slot)
 	var backpack:Array=dto.get("backpack_rows",[])
-	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),int(dto.get("capacity",12))]
-	for index in range(12):
+	var capacity:=int(dto.get("capacity",20))
+	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),capacity]
+	for index in range(capacity):
 		var row:Dictionary=backpack[index] if index<backpack.size() else {"empty":true}
-		_add_item_ledger_button(member_item_backpack_rows,row,
-			"%02d  %s"%[index+1,_item_row_text(row)],false)
+		_add_item_grid_slot(member_item_backpack_rows,row,index,"")
 	if member_item_popover!=null and member_item_popover.visible:
 		var selected_row:=_selected_item_ledger_row(dto)
 		if selected_row.is_empty():_hide_item_popover()
 		else:_configure_item_popover(selected_row,dto)
 
-func _detach_item_ledger_children(container:VBoxContainer)->void:
+func _detach_item_ledger_children(container:Control)->void:
+	if container==null:return
 	for node in container.get_children():
 		container.remove_child(node)
 		node.queue_free()
@@ -3976,9 +4036,24 @@ func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,eq
 	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
 		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
 
+func _add_item_grid_slot(parent:GridContainer,row:Dictionary,index:int,
+		equipment_slot:String)->void:
+	var button=ItemSlotScript.new()
+	button.name="EquipmentSlot%s"%equipment_slot if not equipment_slot.is_empty() \
+		else "BackpackSlot%02d"%(index+1)
+	button.custom_minimum_size=Vector2(ITEM_SLOT_MINIMUM,ITEM_SLOT_MINIMUM)
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	button.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	var instance_id:=str(row.get("instance_id",""))
+	button.configure(row,index,equipment_slot,
+		instance_id==member_item_selected_id and equipment_slot==member_item_selected_slot)
+	button.pressed.connect(_on_item_row_selected.bind(instance_id,equipment_slot,button))
+	parent.add_child(button)
+
 func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->void:
 	if instance_id.is_empty():return
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
+	_sync_item_grid_selection()
 	if anchor==null:anchor=_find_item_row_button(instance_id,slot)
 	member_item_popover_anchor=anchor
 	var dto:Dictionary=session.protagonist_inventory()
@@ -3989,7 +4064,10 @@ func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->
 	_position_item_popover(anchor)
 
 func _find_item_row_button(instance_id:String,slot:String)->Button:
-	for ledger in [member_item_equipment_rows,member_item_backpack_rows]:
+	var ledgers:Array=[member_item_equipment_grid,member_item_backpack_rows,
+		member_item_equipment_rows] if member_detail_current_tab=="ITEM" else [
+		member_item_equipment_rows,member_item_equipment_grid,member_item_backpack_rows]
+	for ledger in ledgers:
 		if ledger==null:continue
 		for child in ledger.get_children():
 			var button:=child as Button
@@ -4092,6 +4170,16 @@ func _hide_item_popover(clear_selection:bool=true)->void:
 	member_item_popover_anchor=null
 	if clear_selection:
 		member_item_selected_id="";member_item_selected_slot=""
+		_sync_item_grid_selection()
+
+func _sync_item_grid_selection()->void:
+	for grid_container in [member_item_equipment_grid,member_item_backpack_rows]:
+		if grid_container==null:continue
+		for child in grid_container.get_children():
+			if child.has_method("set_selected"):
+				child.set_selected(str(child.get_meta("item_instance_id","")) \
+					==member_item_selected_id and str(child.get_meta("item_slot","")) \
+					==member_item_selected_slot and not member_item_selected_id.is_empty())
 
 func _on_item_equip_selected()->void:
 	_cancel_navigation_for_item_operation()
@@ -5132,12 +5220,6 @@ func _member_detail_text(detail:Dictionary)->String:
 		int(affinity.get("electric_tolerance",0)),int(affinity.get("poison_tolerance",0))]
 	if affinity_values.any(func(value):return int(value)!=0):
 		lines.append("원소 내성 · 불 %d · 물 %d · 전기 %d · 독 %d"%affinity_values)
-	var exposure:Dictionary=detail.get("current_exposure",detail.get("element_exposure",{})) if detail.get("current_exposure",detail.get("element_exposure",{})) is Dictionary else {}
-	var exposure_risk:Dictionary=exposure.get("risk",exposure) if exposure.get("risk",exposure) is Dictionary else {}
-	var exposure_total:=int(exposure_risk.get("total_risk",exposure_risk.get("total",0)))
-	if bool(exposure.get("applicable",false)) and exposure_total>0:
-		lines.append("현재 노출 · 불 %d · 물 %d · 전기 %d · 독 %d · 합계 %d"%[_risk_value(exposure_risk,"fire"),_risk_value(exposure_risk,"water"),
-			_risk_value(exposure_risk,"electric"),_risk_value(exposure_risk,"poison"),exposure_total])
 	var action:Variant=detail.get("expected_action",null)
 	if action is Dictionary:
 		lines.append("행동 제안 · %s"%_compact_action(action))

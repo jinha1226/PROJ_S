@@ -74,7 +74,7 @@ func test_instances_are_canonical_and_rarity_bounds_affixes_at_two()->bool:
 	return finish()
 
 
-func test_twelve_row_capacity_and_stacking_are_deterministic()->bool:
+func test_twenty_row_capacity_and_stacking_are_deterministic()->bool:
 	var inventory=Inventory.new([Item.new("MAT_01","MATERIAL_UNSPECIFIED",90)])
 	var original:=inventory.to_dict()
 	var preview:=Operations.preview_add(inventory,Item.new("MAT_02","MATERIAL_UNSPECIFIED",9))
@@ -91,7 +91,7 @@ func test_twelve_row_capacity_and_stacking_are_deterministic()->bool:
 	var full=Inventory.new(full_rows);var full_before:=full.to_dict()
 	var rejected:=Operations.commit_add(full,Item.new("OVERFLOW","MATERIAL_UNSPECIFIED",1))
 	check(not bool(rejected.accepted) and rejected.reason=="inventory_backpack_full",
-		"thirteenth non-stackable row rejected")
+		"twenty-first non-stackable row rejected")
 	check_eq(full.to_dict(),full_before,"overflow failure is atomic")
 	return finish()
 
@@ -278,8 +278,8 @@ func test_equipped_items_do_not_consume_or_duplicate_backpack_slots()->bool:
 	for index in range(Inventory.BACKPACK_CAPACITY):
 		rows.append(Item.new("BAG_%02d"%index,"ACCESSORY_UNSPECIFIED"))
 	var inventory=Inventory.new(rows,{"MAIN_HAND":"SWORD"})
-	check_eq(inventory.used_backpack_slots(),12,"equipped main hand is outside 12 bag slots")
-	check_eq(inventory.validation_error(),"","12 bag rows plus equipped ownership is valid")
+	check_eq(inventory.used_backpack_slots(),20,"equipped main hand is outside 20 bag slots")
+	check_eq(inventory.validation_error(),"","20 bag rows plus equipped ownership is valid")
 	var unequip:=Operations.commit_unequip(inventory,"MAIN_HAND")
 	check(not bool(unequip.accepted) and unequip.reason=="inventory_backpack_full",
 		"unequip cannot overflow the separated bag")

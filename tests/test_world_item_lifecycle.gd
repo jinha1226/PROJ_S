@@ -10,7 +10,7 @@ const WorldItemOperations=preload("res://sim/world_item_operations.gd")
 const PartyState=preload("res://sim/party_encounter_state.gd")
 
 
-func test_every_added_entity_owns_an_empty_twelve_slot_inventory_and_ammo_row()->bool:
+func test_every_added_entity_owns_an_empty_twenty_slot_inventory_and_ammo_row()->bool:
 	var sim=Simulator.create(8,8,31)
 	var hero=sim.world.add_entity("hero","가방 계약",Vector2i(1,1),100)
 	check(hero!=null,"fixture hero exists")
@@ -19,7 +19,7 @@ func test_every_added_entity_owns_an_empty_twelve_slot_inventory_and_ammo_row()-
 	check(inventory!=null and ammo!=null,"add_entity creates both item rows")
 	if inventory==null or ammo==null:return finish()
 	check_eq([inventory.backpack.size(),inventory.used_backpack_slots(),
-		Inventory.BACKPACK_CAPACITY],[0,0,12],"new entity starts with an empty 12 slot bag")
+		Inventory.BACKPACK_CAPACITY],[0,0,20],"new entity starts with an empty 20 slot bag")
 	check_eq([ammo.amount("ARROW"),ammo.amount("BOLT")],[0,0],"new entity starts with no ammo")
 	var lab=Simulator.create(8,8,31)
 	var actor=lab.world.add_lab_actor("MELEE_THREAT",0,Vector2i(2,2),"실험 배우","human")

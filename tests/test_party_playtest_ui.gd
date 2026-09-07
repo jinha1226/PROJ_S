@@ -7,6 +7,61 @@ const Command=preload("res://sim/sim_command.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const Style=preload("res://playtest/ascii_visual_style.gd")
+const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
+
+func test_product_ui_uses_bundled_korean_latin_pixel_font() -> bool:
+	var sandbox=Sandbox.new()
+	sandbox.initialize_for_headless_test(Session.new(44,20260828,"SHOWCASE_V1"))
+	var font:Font=sandbox.theme.default_font
+	check_eq(font.resource_path,"res://assets/fonts/Galmuri14.ttf",
+		"product UI uses bundled Galmuri pixel font")
+	for glyph in ["한","글","A","z","0"]:
+		check(font.has_char(glyph.unicode_at(0)),
+			"product pixel font contains '%s'"%glyph)
+	sandbox.free()
+	return finish()
+
+func test_item_tab_uses_five_by_four_visual_inventory_slots() -> bool:
+	var sandbox=Sandbox.new()
+	sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(Session.new(44,20260828,
+		Session.SOLO_COMBAT_SCENARIO_ID))
+	sandbox._open_hero_detail_tab("ITEM")
+	check(sandbox.member_item_equipment_grid is GridContainer \
+		and sandbox.member_item_equipment_grid.columns==5 \
+		and sandbox.member_item_equipment_grid.get_child_count()==5,
+		"item folio renders five visual equipment cells")
+	check(sandbox.member_item_backpack_rows is GridContainer \
+		and sandbox.member_item_backpack_rows.columns==5 \
+		and sandbox.member_item_backpack_rows.get_child_count()==20 \
+		and "20" in sandbox.member_item_empty_text.text,
+		"item folio renders a five-by-four twenty-cell backpack")
+	var empty_count:=0
+	for slot in sandbox.member_item_backpack_rows.get_children():
+		check(slot is Button and str(slot.text).is_empty() \
+			and bool(slot.get_meta("inventory_slot",false)) \
+			and slot.custom_minimum_size.x>=44 and slot.custom_minimum_size.y>=44,
+			"%s is a touch-sized visual cell without a text row"%slot.name)
+		if bool(slot.get_meta("empty_inventory_slot",false)):
+			empty_count+=1
+	check(empty_count>0,"unused capacity remains visible as empty cells")
+	var weapon=sandbox._find_item_row_button("LEGACY_MAIN_HAND","MAIN_HAND")
+	var potion=sandbox._find_item_row_button("START_POTION_001","")
+	check(weapon!=null and bool(weapon.slot_draw_spec().uses_texture),
+		"equipped weapon cell uses its 24px item artwork")
+	check(potion!=null and not bool(potion.slot_draw_spec().uses_texture) \
+		and str(potion.slot_draw_spec().category)=="CONSUMABLE",
+		"consumable cell uses its category pictogram")
+	var equipment_section=sandbox.find_child("InventoryEquipmentSection",true,false)
+	var backpack_section=sandbox.find_child("InventoryBackpackSection",true,false)
+	check(equipment_section!=null and backpack_section!=null \
+		and str(equipment_section.get_meta("visual_family",""))==DarkPixelSkin.VISUAL_FAMILY \
+		and str(backpack_section.get_meta("visual_family",""))==DarkPixelSkin.VISUAL_FAMILY,
+		"inventory grids use reusable dark pixel iron sections")
+	check(str(weapon.get_meta("pixel_material",""))=="RECESSED_IRON_SLOT",
+		"inventory cell exposes the dark pixel material contract")
+	sandbox.free()
+	return finish()
 
 func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
@@ -135,6 +190,9 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 		check(sandbox.member_personality_window.visible \
 				and str(companion_detail.personality_style.label)==str(
 				(sandbox.member_personality_window.call("presentation_snapshot") as Dictionary).style_label) \
+				and sandbox.member_personality_window.find_child("PersonalityStyleLabel",true,false)!=null \
+				and sandbox.member_personality_window.find_child("PersonalitySummary",true,false).find_children(
+					"*","Label",true,false).all(func(node):return "실제 행동은 달라집니다" not in (node as Label).text) \
 				and "나에 대한 호감" not in sandbox._member_detail_text(companion_detail),
 			"detail modal exposes the derived style in its visual personality tab")
 		sandbox._select_member_detail_tab("RELATIONSHIP")
@@ -143,9 +201,15 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 				"RelationshipSubjectName","Label",true,false):
 			relationship_names.append((node as Label).text)
 		check(sandbox.member_relationship_window.visible \
+				and sandbox.member_relationship_window.find_child("RelationshipHeading",true,false)==null \
 				and relationship_names.size()==companion_detail.relation_rows.size() \
 				and relationship_names[0]=="나" and relationship_names.size()>=2,
 			"relationship tab lists 나 first followed by the other party members")
+		sandbox._select_member_detail_tab("SKILL")
+		check(sandbox.member_skill_window.visible \
+				and sandbox.member_detail_skill_tab.text=="[스킬]" \
+				and sandbox.member_skill_window.find_children("NpcSkillCard","PanelContainer",true,false).size()>=1,
+			"companion detail exposes a read-only skill tab from actual loadout data")
 		var log_text:=sandbox._combat_log_text(sandbox.session.combat_log())
 		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies derived styles")
 		sandbox.free()
@@ -318,7 +382,10 @@ func test_route_overlay_draw_spec_preserves_each_step_and_is_detached() -> bool:
 	check_eq(spec.segments.size(),3,"route draws every edge instead of destination shortcut")
 	check_eq(spec.tiles.size(),path.size(),"route keeps detached per-step projection metadata")
 	check_eq(spec.direction_cues.size(),spec.segments.size(),"every route edge gets a directional cue without step numbers")
-	check(float(spec.tiles[2].fill_alpha)>=0.18 and bool(spec.tiles[2].visible),"future route step remains FOV projected")
+	check(float(spec.tiles[2].fill_alpha)>0.0 and float(spec.tiles[2].fill_alpha)<=0.09 \
+		and bool(spec.tiles[2].visible),"future route step remains subtly FOV projected")
+	check(float(spec.segments[1].opacity)<=0.42 and float(spec.segments[1].line_width)<=1.6,
+		"automatic route line stays visually subordinate to terrain and actors")
 	check_eq(spec.direction_cues[1].points.size(),3,"direction cue is a compact chevron")
 	check(bool(spec.segments[0].completed) and not bool(spec.segments[1].completed),"completed and next segments are distinct")
 	check(spec.markers.is_empty() and not bool(spec.draw_endpoint_markers) \
@@ -675,7 +742,7 @@ func test_party_hud_shows_three_full_width_dossiers_vitals_readiness_and_emotion
 	var exposure_fire:=int(member_detail.current_exposure.risk.fire)
 	check(exposure_fire>0,"member detail fixture has real fire exposure")
 	var detail_text:=sandbox._member_detail_text(member_detail)
-	check("현재 노출 · 불 %d"%exposure_fire in detail_text,"detail reads nested current_exposure.risk")
+	check("현재 노출" not in detail_text,"status detail omits transient exposure diagnostics")
 	check("원소 내성" in detail_text,"member modal keeps meaningful species affinity")
 	check("관계" not in detail_text and "없음" not in detail_text,
 		"hero supplemental detail hides relations and empty placeholders")

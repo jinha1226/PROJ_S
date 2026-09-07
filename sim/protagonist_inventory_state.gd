@@ -1,7 +1,7 @@
 class_name ProtagonistInventoryState
 extends "res://sim/inventory_state.gd"
 
-# Compatibility wrapper. `InventoryState` is the general 12-slot authority; this
+# Compatibility wrapper. `InventoryState` is the general 20-slot authority; this
 # file only keeps the protagonist bootstrap helpers alive until session bootstrap
 # owns them, so existing preloads of the old path keep resolving.
 

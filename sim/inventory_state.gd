@@ -2,7 +2,8 @@ class_name InventoryState
 extends RefCounted
 
 const SCHEMA_VERSION:=1
-const BACKPACK_CAPACITY:=12
+const LEGACY_BACKPACK_CAPACITY:=12
+const BACKPACK_CAPACITY:=20
 const ItemScript=preload("res://sim/item_instance.gd")
 const RegistryScript=preload("res://sim/item_registry.gd")
 const DefinitionScript=preload("res://sim/item_definition.gd")
@@ -161,11 +162,13 @@ static func wire_error(row:Variant)->String:
 		return "invalid_inventory_keys"
 	if not _integer(row.schema_version) or int(row.schema_version)!=SCHEMA_VERSION:
 		return "unsupported_inventory_schema"
-	if not _integer(row.backpack_capacity) or int(row.backpack_capacity)!=BACKPACK_CAPACITY:
+	if not _integer(row.backpack_capacity) or int(row.backpack_capacity) \
+			not in [LEGACY_BACKPACK_CAPACITY,BACKPACK_CAPACITY]:
 		return "invalid_inventory_capacity"
 	if not row.backpack is Array or not row.equipped_slots is Array \
 			or row.equipped_slots.size()!=DefinitionScript.EQUIPMENT_SLOTS.size():
 		return "invalid_inventory_shape"
+	var serialized_capacity:=int(row.backpack_capacity)
 	var raw_ids:Dictionary={};var previous_id:=""
 	for item_row in row.backpack:
 		var error:=ItemScript.wire_error(item_row)
@@ -175,6 +178,7 @@ static func wire_error(row:Variant)->String:
 		if not previous_id.is_empty() and instance_id<previous_id:
 			return "noncanonical_inventory_order"
 		raw_ids[instance_id]=true;previous_id=instance_id
+	var equipped_ids:Dictionary={}
 	for index in range(DefinitionScript.EQUIPMENT_SLOTS.size()):
 		var slot_row:Variant=row.equipped_slots[index]
 		if not slot_row is Dictionary:return "invalid_inventory_slot_row"
@@ -183,6 +187,13 @@ static func wire_error(row:Variant)->String:
 				or str(slot_row.get("slot",""))!=DefinitionScript.EQUIPMENT_SLOTS[index] \
 				or not slot_row.get("instance_id") is String:
 			return "invalid_inventory_slot_row"
+		var equipped_id:=str(slot_row.instance_id)
+		if not equipped_id.is_empty():equipped_ids[equipped_id]=true
+	var serialized_used:=0
+	for item_row in row.backpack:
+		if not equipped_ids.has(str(item_row.instance_id)):serialized_used+=1
+	if serialized_used>serialized_capacity:
+		return "inventory_backpack_overflow"
 	return _from_valid_dict(row).validation_error()
 
 
