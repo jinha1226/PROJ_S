@@ -3186,6 +3186,8 @@ func _product_adjacent_enemies(status:Dictionary,
 
 func _on_product_direction(direction:Vector2i)->void:
 	var status:Dictionary=session.party_status()
+	# Inspection selection is not the controllable actor in the automatic party UI.
+	if auto_orchestration_enabled:selected_member_id=int(status.get("protagonist_id",-1))
 	if not _product_can_step(status):return
 	if _product_attack_targeting:
 		_product_attack_targeting=false
@@ -4701,7 +4703,7 @@ func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id
 	# Companion selection is observation-only in the product party loop. Every
 	# ordinary combat tap remains a protagonist action; individual override stays
 	# available only through the internal session API and regression harnesses.
-	if not _is_solo_product_session() and selected_member_id!=protagonist_id:
+	if selected_member_id!=protagonist_id:
 		selected_member_id=protagonist_id
 	_cancel_auto_pending(false)
 	if selected_member_id==protagonist_id:

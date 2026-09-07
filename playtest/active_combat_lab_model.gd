@@ -4,6 +4,11 @@ extends RefCounted
 const Effects=preload("res://sim/abilities/active_effect_model.gd")
 const Skills=preload("res://sim/abilities/active_skill_registry.gd")
 const Hexaco=preload("res://sim/dungeon_population/hexaco_profile.gd")
+const Timeline=preload("res://sim/abilities/action_timeline.gd")
+const TacticalSelector=preload("res://sim/abilities/tactical_action_selector.gd")
+const BodyBridge=preload("res://sim/abilities/active_body_bridge.gd")
+var body_bridge=BodyBridge.new()
+var timeline=Timeline.new()
 const BOUNDS:=Rect2i(0,0,18,18)
 var actors:Array=[]
 var blocked:Dictionary={}
@@ -25,17 +30,25 @@ func reset(p_seed:int=44)->void:
 	for index in range(4):
 		actors.append(_actor(index+1,"PARTY",species[index],Vector2i(7+index%2,9+index/2),100,20,kits[index]))
 	for index in range(5):
-		var monster:=_actor(index+5,"ENEMY","goblin" if index%2==0 else "kobold",Vector2i(6+index,5+index%2),60,12,[])
-		if index==4:monster.resistances={"FIRE":50};monster.name="내화 코볼트"
+		var enemy_kits:=[["STRIKE","SHOVE"],["FIREBOLT"],["MEND","BARRIER"],["SHOVE"],["STRIKE"]]
+		var roles:=["돌격병","화염술사","수호술사","척후병","내화 전사"]
+		var monster:=_actor(index+5,"ENEMY","goblin" if index%2==0 else "kobold",Vector2i(6+index,5+index%2),90 if index in [0,4] else 60,16,enemy_kits[index])
+		monster.name="적 %d %s"%[index+1,roles[index]]
+		monster.energy=8 if index==2 else 6
+		if index==4:monster.resistances={"FIRE":50}
 		actors.append(monster)
-	history.append("4인 파티 · 기술 2개 · 기력 12. 주인공이 행동하면 동료와 적이 행동합니다.")
+	timeline.reset(actors)
+	body_bridge.reset(actors,seed)
+	history.append("4인 파티 · 행동 시간 기반. 주인공 차례에는 시간이 멈춥니다.")
 
 func _actor(id:int,team:String,species:String,position:Vector2i,hp:int,power:int,skills:Array)->Dictionary:
 	var profile=Hexaco.generated(seed,id)
 	return {"id":id,"team":team,"species_id":species,"name":"주인공" if id==1 else ("동료 %d"%id if team=="PARTY" else "적 %d"%(id-4)),
 		"position":position,"hp":hp,"max_hp":hp,"power":power,"energy":12,"skills":skills.duplicate(),
+		"weapon_id":"SHORT_SWORD","move_speed":85 if species=="dwarf" else (110 if species=="elf" else 100),
+		"attack_speed":110 if species=="orc" else 100,"cast_speed":110 if species=="elf" else 100,"attack_time":100,
 		"armor":0,"resistances":{},"barrier":0,"barrier_actions":0,"recoverable":0,"recovery_credit":0,
-		"profile":profile.to_dict(),"personality":str(profile.style_summary().label)}
+		"last_action":"아직 행동 전","last_target":"","last_reason":"","profile":profile.to_dict(),"personality":str(profile.style_summary().label)}
 
 func actor(id:int)->Dictionary:
 	for row in actors:
@@ -48,7 +61,11 @@ func actor_at(cell:Vector2i)->Dictionary:
 	return {}
 
 func preview(caster_id:int,skill:String,target_id:int)->Dictionary:
+	var error:String=body_bridge.use_error(actor(caster_id),skill) if not actor(caster_id).is_empty() else ""
+	if not error.is_empty():return {"accepted":false,"reason":error}
 	return Effects.assess(skill,actor(caster_id),actor(target_id),actors,blocked,BOUNDS)
+
+func basic_power(source:Dictionary)->int:return body_bridge.basic_power(source)
 
 func act(kind:String,target_id:int=-1,destination:Vector2i=Vector2i(-1,-1))->Dictionary:
 	if not terminal.is_empty():return {"accepted":false,"reason":"전투가 끝났습니다."}
@@ -57,25 +74,28 @@ func act(kind:String,target_id:int=-1,destination:Vector2i=Vector2i(-1,-1))->Dic
 	if not result.accepted:return result
 	turn+=1
 	_update_terminal()
-	if terminal.is_empty():
-		for id in range(2,5):
-			if int(actor(id).hp)>0:_automatic(actor(id))
-			_update_terminal()
-			if not terminal.is_empty():break
-	if terminal.is_empty():
-		for id in range(5,10):
-			if int(actor(id).hp)>0:_automatic(actor(id))
-			_update_terminal()
-			if not terminal.is_empty():break
+	while terminal.is_empty():
+		var id:int=timeline.next_actor(actors)
+		if id<0:break
+		timeline.now=int(timeline.ready[id])
+		if id==1:break
+		_automatic(actor(id))
+		_update_terminal()
 	if history.size()>100:history=history.slice(history.size()-100)
 	if decisions.size()>100:decisions=decisions.slice(decisions.size()-100)
 	return {"accepted":true,"reason":"ok","turn":turn,"terminal":terminal}
 
 func _execute(source:Dictionary,kind:String,target_id:int,destination:Vector2i)->Dictionary:
 	var target:=actor(target_id)
+	var description:=""
+	var prior_hp:=int(target.get("hp",0))
+	var prior_barrier:=int(target.get("barrier",0))
 	if kind in Skills.SKILLS:
 		var assessment:=preview(source.id,kind,target_id)
 		if not assessment.accepted:return assessment
+		var injury:Dictionary=body_bridge.plan(source,target,kind,mini(int(target.hp),maxi(0,int(assessment.damage)-int(target.barrier))),seed,timeline.now)
+		if not injury.accepted:return injury
+		body_bridge.commit(injury)
 		source.energy-=assessment.cost
 		if int(assessment.damage)>0:_damage(target,int(assessment.damage))
 		if int(assessment.barrier)>0:
@@ -83,19 +103,33 @@ func _execute(source:Dictionary,kind:String,target_id:int,destination:Vector2i)-
 		if int(assessment.healing)>0:
 			target.hp+=assessment.healing;target.recoverable-=assessment.healing
 		if kind=="SHOVE" and int(target.hp)>0:target.position=assessment.destination
-		history.append("%s → %s: %s (-%d 기력)"%[source.name,target.name,Skills.SKILLS[kind].name,assessment.cost])
+		description=str(Skills.SKILLS[kind].name)
+		if int(assessment.damage)>0:description+=" · 피해 %d / 흡수 %d"%[prior_hp-int(target.hp),prior_barrier-int(target.barrier)]
+		if int(assessment.healing)>0:description+=" · 회복 %d"%assessment.healing
+		if int(assessment.barrier)>0:description+=" · 보호 %d"%assessment.barrier
+		if kind=="SHOVE":description+=" · 밀치기"
+		description+=" (-%d 기력)"%assessment.cost
 	elif kind=="ATTACK":
 		if target.is_empty() or target.team==source.team or int(target.hp)<=0 \
 				or distance(source.position,target.position)>1 \
 				or not Effects.clear_line(source.position,target.position,blocked):return {"accepted":false,"reason":"인접한 적을 선택하세요."}
-		_damage(target,int(source.power));history.append("%s → %s: 공격"%[source.name,target.name])
+		var power:int=basic_power(source)
+		var injury:Dictionary=body_bridge.plan(source,target,kind,mini(int(target.hp),maxi(0,power-int(target.barrier))),seed,timeline.now)
+		if not injury.accepted:return injury
+		body_bridge.commit(injury)
+		_damage(target,power);description="기본 공격 · 피해 %d / 흡수 %d"%[prior_hp-int(target.hp),prior_barrier-int(target.barrier)]
 	elif kind=="MOVE":
 		if distance(source.position,destination)!=1 or not BOUNDS.has_point(destination) \
 				or blocked.has(destination) or not actor_at(destination).is_empty() \
 				or not Effects.clear_line(source.position,destination,blocked):return {"accepted":false,"reason":"이동 가능한 인접 칸을 선택하세요."}
-		source.position=destination
-	elif kind=="WAIT":pass
+		source.position=destination;description="이동"
+	elif kind=="WAIT":description="대기"
 	else:return {"accepted":false,"reason":"알 수 없는 행동입니다."}
+	source.last_action=description
+	source.last_reason=""
+	source.last_target=str(target.name) if not target.is_empty() else ""
+	history.append("[T%d] %s%s: %s · 소요 %d"%[timeline.now,source.name," → "+source.last_target if not source.last_target.is_empty() else "",description,timeline.duration(source,kind)])
+	timeline.complete(source,kind)
 	# Barrier lasts through the recipient's next action, then expires on the next.
 	if int(source.barrier_actions)>0 and not (kind=="BARRIER" and target_id==int(source.id)):
 		source.barrier_actions-=1
@@ -113,37 +147,15 @@ func _damage(target:Dictionary,amount:int)->void:
 	if int(target.hp)<=0:target.barrier=0;history.append("%s 쓰러짐"%target.name)
 
 func _automatic(source:Dictionary)->void:
-	var candidates:Array=[]
-	for skill in source.skills:
-		for target in actors:
-			var assessment:=preview(source.id,str(skill),target.id)
-			if not assessment.accepted:continue
-			var score:float=float(assessment.damage)
-			var support:float=0.75+float(source.profile.A)/2000.0
-			if int(assessment.healing)>0:score=float(assessment.healing)*support*(1.8 if int(target.hp)<35 else 1.0)
-			if int(assessment.barrier)>0:
-				var threats:=0
-				for foe in actors:
-					if foe.team!=target.team and int(foe.hp)>0 and distance(foe.position,target.position)<=2:threats+=1
-				score=float(assessment.barrier)*support*minf(1.5,float(threats)*0.7)
-			# Conscientious actors value keeping energy, but never bypass legality.
-			score-=float(assessment.cost)*(1.0+float(source.profile.C)/500.0)
-			candidates.append({"kind":skill,"target":target.id,"position":Vector2i(-1,-1),"score":score})
-	var nearest:Dictionary={};var nearest_distance:=999
-	for target in actors:
-		if target.team==source.team or int(target.hp)<=0:continue
-		var separation:=distance(source.position,target.position)
-		if separation<nearest_distance:nearest=target;nearest_distance=separation
-		if separation<=1 and Effects.clear_line(source.position,target.position,blocked):
-			candidates.append({"kind":"ATTACK","target":target.id,"position":Vector2i(-1,-1),"score":float(source.power)})
-	if not nearest.is_empty():
-		var next:=_next_step(source.position,nearest.position)
-		if next!=source.position:candidates.append({"kind":"MOVE","target":-1,"position":next,"score":8.0})
-	candidates.append({"kind":"WAIT","target":-1,"position":Vector2i(-1,-1),"score":0.0})
-	candidates.sort_custom(func(a,b):return float(a.score)>float(b.score) if a.score!=b.score else (str(a.kind)<str(b.kind) if a.kind!=b.kind else int(a.target)<int(b.target)))
-	var selected:Dictionary=candidates[0]
-	decisions.append({"actor_id":source.id,"kind":selected.kind,"target":selected.target,"score":selected.score})
+	var selected:Dictionary=choose_action(source)
+	decisions.append({"actor_id":source.id,"kind":selected.kind,"target":selected.target,"score":selected.score,"reason":selected.get("reason","")})
 	_execute(source,str(selected.kind),int(selected.target),selected.position)
+	source.last_reason=str(selected.get("reason",""))
+	if not source.last_reason.is_empty():history[-1]+=" · 판단: "+source.last_reason
+
+## Pure decision query shared with offline balance experiments.
+func choose_action(source:Dictionary)->Dictionary:
+	return TacticalSelector.choose(self,source)
 
 func _next_step(origin:Vector2i,target:Vector2i)->Vector2i:
 	var frontier:Array[Vector2i]=[origin];var visited:Dictionary={origin:origin};var cursor:=0

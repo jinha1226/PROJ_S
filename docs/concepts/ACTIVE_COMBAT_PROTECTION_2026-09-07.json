@@ -1,0 +1,1740 @@
+{
+  "battles": 10752,
+  "replay_ok": true,
+  "invalid": 0,
+  "censored": 0,
+  "summary": {
+    "personality:utility": {
+      "n": 256,
+      "wins": 216,
+      "rate": 84.375,
+      "ci95": [
+        79.42275431635906,
+        88.31081875277229
+      ],
+      "hp": 229.40625,
+      "survivors": 3.671875,
+      "time": 845.58203125,
+      "first_kill": {
+        "5": 19,
+        "6": 66,
+        "7": 71,
+        "8": 100
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1098,
+        "ENEMY:BARRIER": 506,
+        "ENEMY:FIREBOLT": 501,
+        "ENEMY:MOVE": 2987,
+        "ENEMY:SHOVE": 794,
+        "ENEMY:STRIKE": 406,
+        "PARTY:ATTACK": 2203,
+        "PARTY:BARRIER": 963,
+        "PARTY:FIREBOLT": 1487,
+        "PARTY:MEND": 110,
+        "PARTY:MOVE": 2593,
+        "PARTY:SHOVE": 407,
+        "PARTY:STRIKE": 124
+      }
+    },
+    "personality:mage": {
+      "n": 256,
+      "wins": 256,
+      "rate": 100,
+      "ci95": [
+        98.52156082782743,
+        100
+      ],
+      "hp": 299.20703125,
+      "survivors": 3.9921875,
+      "time": 858.58984375,
+      "first_kill": {
+        "6": 256
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 856,
+        "ENEMY:BARRIER": 512,
+        "ENEMY:MOVE": 2832,
+        "ENEMY:SHOVE": 808,
+        "ENEMY:STRIKE": 404,
+        "PARTY:ATTACK": 1869,
+        "PARTY:BARRIER": 751,
+        "PARTY:FIREBOLT": 2048,
+        "PARTY:MOVE": 2802,
+        "PARTY:SHOVE": 531,
+        "PARTY:STRIKE": 92,
+        "PARTY:MEND": 8
+      }
+    },
+    "personality:support": {
+      "n": 256,
+      "wins": 256,
+      "rate": 100,
+      "ci95": [
+        98.52156082782743,
+        100
+      ],
+      "hp": 273.25,
+      "survivors": 3.99609375,
+      "time": 767.4140625,
+      "first_kill": {
+        "7": 256
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 539,
+        "ENEMY:FIREBOLT": 512,
+        "ENEMY:MOVE": 2348,
+        "ENEMY:SHOVE": 633,
+        "ENEMY:STRIKE": 345,
+        "PARTY:ATTACK": 1331,
+        "PARTY:BARRIER": 641,
+        "PARTY:FIREBOLT": 2048,
+        "PARTY:MEND": 127,
+        "PARTY:MOVE": 2313,
+        "PARTY:STRIKE": 149,
+        "PARTY:SHOVE": 339
+      }
+    },
+    "personality:frontline": {
+      "n": 256,
+      "wins": 241,
+      "rate": 94.140625,
+      "ci95": [
+        90.55869414654005,
+        96.41737127177635
+      ],
+      "hp": 250.765625,
+      "survivors": 3.84375,
+      "time": 820.59765625,
+      "first_kill": {
+        "5": 113,
+        "6": 10,
+        "7": 31,
+        "8": 102
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 904,
+        "ENEMY:BARRIER": 512,
+        "ENEMY:FIREBOLT": 512,
+        "ENEMY:MOVE": 3087,
+        "ENEMY:SHOVE": 570,
+        "ENEMY:STRIKE": 354,
+        "PARTY:ATTACK": 1667,
+        "PARTY:BARRIER": 633,
+        "PARTY:FIREBOLT": 2048,
+        "PARTY:MEND": 135,
+        "PARTY:MOVE": 2516,
+        "PARTY:SHOVE": 397,
+        "PARTY:STRIKE": 229
+      }
+    },
+    "personality:weakest": {
+      "n": 256,
+      "wins": 256,
+      "rate": 100,
+      "ci95": [
+        98.52156082782743,
+        100
+      ],
+      "hp": 305.68359375,
+      "survivors": 3.984375,
+      "time": 819.48046875,
+      "first_kill": {
+        "6": 256
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 797,
+        "ENEMY:BARRIER": 512,
+        "ENEMY:MOVE": 2593,
+        "ENEMY:SHOVE": 728,
+        "ENEMY:STRIKE": 403,
+        "PARTY:ATTACK": 1759,
+        "PARTY:BARRIER": 711,
+        "PARTY:FIREBOLT": 2048,
+        "PARTY:MOVE": 2640,
+        "PARTY:SHOVE": 397,
+        "PARTY:STRIKE": 95,
+        "PARTY:MEND": 3
+      }
+    },
+    "personality:nearest": {
+      "n": 256,
+      "wins": 256,
+      "rate": 100,
+      "ci95": [
+        98.52156082782743,
+        100
+      ],
+      "hp": 299.20703125,
+      "survivors": 3.9921875,
+      "time": 858.58984375,
+      "first_kill": {
+        "6": 256
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 856,
+        "ENEMY:BARRIER": 512,
+        "ENEMY:MOVE": 2832,
+        "ENEMY:SHOVE": 808,
+        "ENEMY:STRIKE": 404,
+        "PARTY:ATTACK": 1869,
+        "PARTY:BARRIER": 751,
+        "PARTY:FIREBOLT": 2048,
+        "PARTY:MOVE": 2802,
+        "PARTY:SHOVE": 531,
+        "PARTY:STRIKE": 92,
+        "PARTY:MEND": 8
+      }
+    },
+    "skills:utility": {
+      "n": 256,
+      "wins": 217,
+      "rate": 84.765625,
+      "ci95": [
+        79.85208776369221,
+        88.65118499940654
+      ],
+      "hp": 224.44921875,
+      "survivors": 3.5,
+      "time": 860.59375,
+      "first_kill": {
+        "5": 30,
+        "6": 40,
+        "7": 48,
+        "8": 128,
+        "9": 8,
+        "-1": 2
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 462,
+        "ENEMY:FIREBOLT": 491,
+        "ENEMY:MOVE": 3190,
+        "ENEMY:STRIKE": 500,
+        "PARTY:ATTACK": 2439,
+        "PARTY:FIREBOLT": 1368,
+        "PARTY:MOVE": 2137,
+        "ENEMY:ATTACK": 1491,
+        "ENEMY:SHOVE": 561,
+        "PARTY:MEND": 443,
+        "PARTY:SHOVE": 524,
+        "PARTY:STRIKE": 56,
+        "PARTY:BARRIER": 982,
+        "ENEMY:MEND": 40
+      }
+    },
+    "skills:mage": {
+      "n": 256,
+      "wins": 216,
+      "rate": 84.375,
+      "ci95": [
+        79.42275431635906,
+        88.31081875277229
+      ],
+      "hp": 249.57421875,
+      "survivors": 3.55859375,
+      "time": 857.9296875,
+      "first_kill": {
+        "5": 9,
+        "6": 142,
+        "7": 30,
+        "8": 68,
+        "9": 6,
+        "-1": 1
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 469,
+        "ENEMY:MOVE": 3093,
+        "ENEMY:STRIKE": 519,
+        "PARTY:ATTACK": 2256,
+        "PARTY:FIREBOLT": 1513,
+        "PARTY:MOVE": 2287,
+        "PARTY:STRIKE": 197,
+        "ENEMY:ATTACK": 1345,
+        "ENEMY:FIREBOLT": 312,
+        "ENEMY:SHOVE": 581,
+        "PARTY:MEND": 361,
+        "PARTY:SHOVE": 447,
+        "PARTY:BARRIER": 829,
+        "ENEMY:MEND": 40
+      }
+    },
+    "skills:support": {
+      "n": 256,
+      "wins": 208,
+      "rate": 81.25,
+      "ci95": [
+        76.01970168562102,
+        85.55627383177111
+      ],
+      "hp": 229.9765625,
+      "survivors": 3.46484375,
+      "time": 838.46484375,
+      "first_kill": {
+        "5": 10,
+        "6": 16,
+        "7": 148,
+        "8": 72,
+        "9": 7,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 482,
+        "ENEMY:MOVE": 3053,
+        "ENEMY:STRIKE": 512,
+        "PARTY:ATTACK": 2269,
+        "PARTY:FIREBOLT": 1433,
+        "PARTY:MEND": 411,
+        "PARTY:MOVE": 2089,
+        "PARTY:STRIKE": 182,
+        "ENEMY:ATTACK": 1350,
+        "ENEMY:BARRIER": 297,
+        "ENEMY:SHOVE": 561,
+        "PARTY:SHOVE": 368,
+        "PARTY:BARRIER": 908,
+        "ENEMY:MEND": 40
+      }
+    },
+    "skills:frontline": {
+      "n": 256,
+      "wins": 209,
+      "rate": 81.640625,
+      "ci95": [
+        76.44222254765761,
+        85.90345266370193
+      ],
+      "hp": 225.9296875,
+      "survivors": 3.4921875,
+      "time": 848.67578125,
+      "first_kill": {
+        "5": 71,
+        "6": 16,
+        "7": 43,
+        "8": 116,
+        "9": 7,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 469,
+        "ENEMY:FIREBOLT": 506,
+        "ENEMY:MOVE": 3250,
+        "ENEMY:STRIKE": 509,
+        "PARTY:ATTACK": 2376,
+        "PARTY:FIREBOLT": 1452,
+        "PARTY:STRIKE": 187,
+        "ENEMY:ATTACK": 1389,
+        "ENEMY:SHOVE": 523,
+        "PARTY:MEND": 407,
+        "PARTY:MOVE": 2064,
+        "PARTY:SHOVE": 380,
+        "PARTY:BARRIER": 919,
+        "ENEMY:MEND": 40
+      }
+    },
+    "skills:weakest": {
+      "n": 256,
+      "wins": 218,
+      "rate": 85.15625,
+      "ci95": [
+        80.28238602392018,
+        88.99058643314598
+      ],
+      "hp": 250.77734375,
+      "survivors": 3.60546875,
+      "time": 853.29296875,
+      "first_kill": {
+        "5": 11,
+        "6": 134,
+        "7": 27,
+        "8": 77,
+        "9": 6,
+        "-1": 1
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 449,
+        "ENEMY:MOVE": 3035,
+        "ENEMY:STRIKE": 535,
+        "PARTY:ATTACK": 2301,
+        "PARTY:FIREBOLT": 1488,
+        "PARTY:MOVE": 2291,
+        "PARTY:STRIKE": 191,
+        "ENEMY:ATTACK": 1273,
+        "ENEMY:FIREBOLT": 312,
+        "ENEMY:SHOVE": 593,
+        "PARTY:MEND": 361,
+        "PARTY:SHOVE": 427,
+        "PARTY:BARRIER": 839,
+        "ENEMY:MEND": 40
+      }
+    },
+    "skills:nearest": {
+      "n": 256,
+      "wins": 212,
+      "rate": 82.8125,
+      "ci95": [
+        77.71451946116188,
+        86.94025483209987
+      ],
+      "hp": 250.7578125,
+      "survivors": 3.5390625,
+      "time": 850.19140625,
+      "first_kill": {
+        "5": 12,
+        "6": 118,
+        "7": 34,
+        "8": 81,
+        "9": 8,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 469,
+        "ENEMY:MOVE": 3107,
+        "ENEMY:STRIKE": 518,
+        "PARTY:ATTACK": 2187,
+        "PARTY:FIREBOLT": 1513,
+        "PARTY:MOVE": 2296,
+        "PARTY:STRIKE": 200,
+        "ENEMY:ATTACK": 1332,
+        "ENEMY:FIREBOLT": 312,
+        "ENEMY:SHOVE": 576,
+        "PARTY:MEND": 359,
+        "PARTY:SHOVE": 439,
+        "PARTY:BARRIER": 829,
+        "ENEMY:MEND": 40
+      }
+    },
+    "both:utility": {
+      "n": 256,
+      "wins": 216,
+      "rate": 84.375,
+      "ci95": [
+        79.42275431635906,
+        88.31081875277229
+      ],
+      "hp": 246.53515625,
+      "survivors": 3.61328125,
+      "time": 825.96484375,
+      "first_kill": {
+        "5": 14,
+        "6": 78,
+        "7": 65,
+        "8": 84,
+        "9": 9,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 431,
+        "ENEMY:MOVE": 3087,
+        "ENEMY:STRIKE": 433,
+        "PARTY:ATTACK": 2314,
+        "PARTY:FIREBOLT": 1370,
+        "PARTY:MOVE": 2101,
+        "ENEMY:ATTACK": 1380,
+        "ENEMY:FIREBOLT": 415,
+        "ENEMY:SHOVE": 595,
+        "PARTY:MEND": 375,
+        "PARTY:SHOVE": 509,
+        "PARTY:BARRIER": 969,
+        "ENEMY:MEND": 12,
+        "PARTY:STRIKE": 73
+      }
+    },
+    "both:mage": {
+      "n": 256,
+      "wins": 204,
+      "rate": 79.6875,
+      "ci95": [
+        74.33702713938375,
+        84.16014960213877
+      ],
+      "hp": 259.18359375,
+      "survivors": 3.5859375,
+      "time": 803.85546875,
+      "first_kill": {
+        "5": 9,
+        "6": 168,
+        "7": 25,
+        "8": 42,
+        "9": 5,
+        "-1": 7
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 471,
+        "ENEMY:MOVE": 2954,
+        "ENEMY:STRIKE": 439,
+        "PARTY:ATTACK": 2135,
+        "PARTY:FIREBOLT": 1494,
+        "PARTY:MOVE": 2097,
+        "PARTY:STRIKE": 211,
+        "ENEMY:ATTACK": 1364,
+        "ENEMY:FIREBOLT": 281,
+        "PARTY:MEND": 305,
+        "PARTY:SHOVE": 395,
+        "ENEMY:SHOVE": 589,
+        "PARTY:BARRIER": 832,
+        "ENEMY:MEND": 13
+      }
+    },
+    "both:support": {
+      "n": 256,
+      "wins": 204,
+      "rate": 79.6875,
+      "ci95": [
+        74.33702713938375,
+        84.16014960213877
+      ],
+      "hp": 242.671875,
+      "survivors": 3.5390625,
+      "time": 791.54296875,
+      "first_kill": {
+        "5": 15,
+        "6": 34,
+        "7": 149,
+        "8": 43,
+        "9": 5,
+        "-1": 10
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 464,
+        "ENEMY:MOVE": 2897,
+        "ENEMY:STRIKE": 426,
+        "PARTY:ATTACK": 2135,
+        "PARTY:FIREBOLT": 1414,
+        "PARTY:MEND": 355,
+        "PARTY:MOVE": 1956,
+        "PARTY:STRIKE": 202,
+        "ENEMY:ATTACK": 1342,
+        "ENEMY:BARRIER": 301,
+        "PARTY:SHOVE": 348,
+        "PARTY:BARRIER": 907,
+        "ENEMY:MEND": 16,
+        "ENEMY:SHOVE": 542
+      }
+    },
+    "both:frontline": {
+      "n": 256,
+      "wins": 208,
+      "rate": 81.25,
+      "ci95": [
+        76.01970168562102,
+        85.55627383177111
+      ],
+      "hp": 238.90234375,
+      "survivors": 3.55859375,
+      "time": 809.65625,
+      "first_kill": {
+        "5": 86,
+        "6": 47,
+        "7": 47,
+        "8": 66,
+        "9": 5,
+        "-1": 5
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 443,
+        "ENEMY:FIREBOLT": 459,
+        "ENEMY:MOVE": 3113,
+        "ENEMY:STRIKE": 417,
+        "PARTY:ATTACK": 2282,
+        "PARTY:FIREBOLT": 1407,
+        "PARTY:MEND": 358,
+        "PARTY:MOVE": 1976,
+        "PARTY:STRIKE": 200,
+        "ENEMY:ATTACK": 1449,
+        "PARTY:SHOVE": 350,
+        "PARTY:BARRIER": 915,
+        "ENEMY:MEND": 16,
+        "ENEMY:SHOVE": 520
+      }
+    },
+    "both:weakest": {
+      "n": 256,
+      "wins": 210,
+      "rate": 82.03125,
+      "ci95": [
+        76.86551946268473,
+        86.24985544264221
+      ],
+      "hp": 262.421875,
+      "survivors": 3.625,
+      "time": 807.19921875,
+      "first_kill": {
+        "5": 9,
+        "6": 161,
+        "7": 25,
+        "8": 50,
+        "9": 5,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 455,
+        "ENEMY:MOVE": 2888,
+        "ENEMY:STRIKE": 442,
+        "PARTY:ATTACK": 2163,
+        "PARTY:FIREBOLT": 1497,
+        "PARTY:MOVE": 2119,
+        "PARTY:STRIKE": 197,
+        "ENEMY:ATTACK": 1299,
+        "ENEMY:FIREBOLT": 282,
+        "PARTY:MEND": 304,
+        "PARTY:SHOVE": 396,
+        "ENEMY:SHOVE": 591,
+        "PARTY:BARRIER": 843,
+        "ENEMY:MEND": 13
+      }
+    },
+    "both:nearest": {
+      "n": 256,
+      "wins": 208,
+      "rate": 81.25,
+      "ci95": [
+        76.01970168562102,
+        85.55627383177111
+      ],
+      "hp": 260.17578125,
+      "survivors": 3.59375,
+      "time": 805.5078125,
+      "first_kill": {
+        "5": 28,
+        "6": 134,
+        "7": 28,
+        "8": 56,
+        "9": 5,
+        "-1": 5
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 467,
+        "ENEMY:MOVE": 3009,
+        "ENEMY:STRIKE": 431,
+        "PARTY:ATTACK": 2122,
+        "PARTY:FIREBOLT": 1490,
+        "PARTY:MOVE": 2115,
+        "PARTY:STRIKE": 214,
+        "ENEMY:ATTACK": 1352,
+        "ENEMY:FIREBOLT": 289,
+        "PARTY:MEND": 304,
+        "PARTY:SHOVE": 401,
+        "ENEMY:SHOVE": 568,
+        "PARTY:BARRIER": 836,
+        "ENEMY:MEND": 16
+      }
+    },
+    "random_species:utility": {
+      "n": 256,
+      "wins": 209,
+      "rate": 81.640625,
+      "ci95": [
+        76.44222254765761,
+        85.90345266370193
+      ],
+      "hp": 243.96875,
+      "survivors": 3.56640625,
+      "time": 830.7421875,
+      "first_kill": {
+        "5": 14,
+        "6": 64,
+        "7": 63,
+        "8": 100,
+        "9": 4,
+        "-1": 11
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1453,
+        "ENEMY:BARRIER": 424,
+        "ENEMY:MOVE": 3030,
+        "ENEMY:STRIKE": 427,
+        "PARTY:ATTACK": 2281,
+        "PARTY:FIREBOLT": 1350,
+        "PARTY:MEND": 362,
+        "PARTY:MOVE": 2163,
+        "PARTY:STRIKE": 78,
+        "ENEMY:FIREBOLT": 411,
+        "ENEMY:SHOVE": 581,
+        "PARTY:SHOVE": 525,
+        "PARTY:BARRIER": 1000,
+        "ENEMY:MEND": 20
+      }
+    },
+    "random_species:mage": {
+      "n": 256,
+      "wins": 207,
+      "rate": 80.859375,
+      "ci95": [
+        75.59793862462057,
+        85.20833719880419
+      ],
+      "hp": 255.71875,
+      "survivors": 3.58203125,
+      "time": 822.08984375,
+      "first_kill": {
+        "5": 10,
+        "6": 167,
+        "7": 21,
+        "8": 48,
+        "9": 2,
+        "-1": 8
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 462,
+        "ENEMY:MOVE": 2967,
+        "ENEMY:STRIKE": 440,
+        "PARTY:ATTACK": 2216,
+        "PARTY:FIREBOLT": 1495,
+        "PARTY:MOVE": 2182,
+        "PARTY:STRIKE": 182,
+        "ENEMY:ATTACK": 1399,
+        "ENEMY:FIREBOLT": 282,
+        "ENEMY:SHOVE": 599,
+        "PARTY:MEND": 300,
+        "PARTY:SHOVE": 392,
+        "PARTY:BARRIER": 866,
+        "ENEMY:MEND": 20
+      }
+    },
+    "random_species:support": {
+      "n": 256,
+      "wins": 204,
+      "rate": 79.6875,
+      "ci95": [
+        74.33702713938375,
+        84.16014960213877
+      ],
+      "hp": 243.12109375,
+      "survivors": 3.5546875,
+      "time": 795.4140625,
+      "first_kill": {
+        "5": 18,
+        "6": 31,
+        "7": 142,
+        "8": 52,
+        "9": 3,
+        "-1": 10
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 463,
+        "ENEMY:MOVE": 2871,
+        "ENEMY:STRIKE": 427,
+        "PARTY:ATTACK": 2192,
+        "PARTY:FIREBOLT": 1392,
+        "PARTY:MEND": 345,
+        "PARTY:MOVE": 1947,
+        "PARTY:SHOVE": 338,
+        "PARTY:STRIKE": 188,
+        "ENEMY:ATTACK": 1341,
+        "ENEMY:BARRIER": 295,
+        "ENEMY:SHOVE": 539,
+        "PARTY:BARRIER": 952,
+        "ENEMY:MEND": 22
+      }
+    },
+    "random_species:frontline": {
+      "n": 256,
+      "wins": 203,
+      "rate": 79.296875,
+      "ci95": [
+        73.91813023869071,
+        83.80934680886443
+      ],
+      "hp": 238.8828125,
+      "survivors": 3.5234375,
+      "time": 813.5390625,
+      "first_kill": {
+        "5": 90,
+        "6": 43,
+        "7": 40,
+        "8": 72,
+        "9": 2,
+        "-1": 9
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1461,
+        "ENEMY:BARRIER": 436,
+        "ENEMY:FIREBOLT": 455,
+        "ENEMY:MOVE": 3075,
+        "ENEMY:STRIKE": 421,
+        "PARTY:ATTACK": 2289,
+        "PARTY:FIREBOLT": 1412,
+        "PARTY:MEND": 349,
+        "PARTY:MOVE": 1971,
+        "PARTY:STRIKE": 182,
+        "ENEMY:SHOVE": 508,
+        "PARTY:SHOVE": 359,
+        "PARTY:BARRIER": 951,
+        "ENEMY:MEND": 22
+      }
+    },
+    "random_species:weakest": {
+      "n": 256,
+      "wins": 206,
+      "rate": 80.46875,
+      "ci95": [
+        75.17691603098197,
+        84.85966009847536
+      ],
+      "hp": 260.1328125,
+      "survivors": 3.609375,
+      "time": 817.08203125,
+      "first_kill": {
+        "5": 8,
+        "6": 144,
+        "7": 22,
+        "8": 74,
+        "9": 2,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 444,
+        "ENEMY:MOVE": 2875,
+        "ENEMY:STRIKE": 435,
+        "PARTY:ATTACK": 2218,
+        "PARTY:FIREBOLT": 1489,
+        "PARTY:MOVE": 2164,
+        "PARTY:STRIKE": 175,
+        "ENEMY:ATTACK": 1343,
+        "ENEMY:FIREBOLT": 283,
+        "ENEMY:SHOVE": 592,
+        "PARTY:MEND": 306,
+        "PARTY:SHOVE": 393,
+        "PARTY:BARRIER": 865,
+        "ENEMY:MEND": 20
+      }
+    },
+    "random_species:nearest": {
+      "n": 256,
+      "wins": 206,
+      "rate": 80.46875,
+      "ci95": [
+        75.17691603098197,
+        84.85966009847536
+      ],
+      "hp": 256.83203125,
+      "survivors": 3.59765625,
+      "time": 814.578125,
+      "first_kill": {
+        "5": 24,
+        "6": 130,
+        "7": 23,
+        "8": 68,
+        "9": 2,
+        "-1": 9
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 460,
+        "ENEMY:MOVE": 2966,
+        "ENEMY:STRIKE": 434,
+        "PARTY:ATTACK": 2139,
+        "PARTY:FIREBOLT": 1490,
+        "PARTY:MOVE": 2183,
+        "PARTY:STRIKE": 197,
+        "ENEMY:ATTACK": 1393,
+        "ENEMY:FIREBOLT": 287,
+        "ENEMY:SHOVE": 575,
+        "PARTY:MEND": 295,
+        "PARTY:SHOVE": 384,
+        "PARTY:BARRIER": 871,
+        "ENEMY:MEND": 22
+      }
+    },
+    "all_human:utility": {
+      "n": 256,
+      "wins": 204,
+      "rate": 79.6875,
+      "ci95": [
+        74.33702713938375,
+        84.16014960213877
+      ],
+      "hp": 241.60546875,
+      "survivors": 3.5625,
+      "time": 832.1484375,
+      "first_kill": {
+        "5": 13,
+        "6": 68,
+        "7": 67,
+        "8": 96,
+        "9": 9,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1465,
+        "ENEMY:BARRIER": 435,
+        "ENEMY:MOVE": 3065,
+        "ENEMY:STRIKE": 438,
+        "PARTY:ATTACK": 2269,
+        "PARTY:FIREBOLT": 1382,
+        "PARTY:MEND": 369,
+        "PARTY:MOVE": 2078,
+        "PARTY:STRIKE": 70,
+        "ENEMY:FIREBOLT": 409,
+        "ENEMY:SHOVE": 577,
+        "PARTY:SHOVE": 510,
+        "PARTY:BARRIER": 952,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_human:mage": {
+      "n": 256,
+      "wins": 198,
+      "rate": 77.34375,
+      "ci95": [
+        71.83357093790332,
+        82.04540763981481
+      ],
+      "hp": 252.4765625,
+      "survivors": 3.53125,
+      "time": 823.984375,
+      "first_kill": {
+        "5": 8,
+        "6": 167,
+        "7": 28,
+        "8": 48,
+        "9": 1,
+        "-1": 4
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 470,
+        "ENEMY:MOVE": 2948,
+        "ENEMY:STRIKE": 452,
+        "PARTY:ATTACK": 2205,
+        "PARTY:FIREBOLT": 1480,
+        "PARTY:MOVE": 2103,
+        "PARTY:STRIKE": 195,
+        "ENEMY:ATTACK": 1489,
+        "ENEMY:FIREBOLT": 286,
+        "PARTY:MEND": 337,
+        "PARTY:SHOVE": 387,
+        "ENEMY:SHOVE": 596,
+        "PARTY:BARRIER": 830,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_human:support": {
+      "n": 256,
+      "wins": 203,
+      "rate": 79.296875,
+      "ci95": [
+        73.91813023869071,
+        83.80934680886443
+      ],
+      "hp": 240.90625,
+      "survivors": 3.54296875,
+      "time": 799.609375,
+      "first_kill": {
+        "5": 14,
+        "6": 35,
+        "7": 147,
+        "8": 53,
+        "9": 1,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 462,
+        "ENEMY:MOVE": 2882,
+        "ENEMY:STRIKE": 424,
+        "PARTY:ATTACK": 2174,
+        "PARTY:FIREBOLT": 1407,
+        "PARTY:MEND": 363,
+        "PARTY:MOVE": 1895,
+        "PARTY:SHOVE": 344,
+        "PARTY:STRIKE": 201,
+        "ENEMY:ATTACK": 1396,
+        "ENEMY:BARRIER": 301,
+        "PARTY:BARRIER": 901,
+        "ENEMY:MEND": 17,
+        "ENEMY:SHOVE": 522
+      }
+    },
+    "all_human:frontline": {
+      "n": 256,
+      "wins": 201,
+      "rate": 78.515625,
+      "ci95": [
+        73.08236036158314,
+        83.10571729803719
+      ],
+      "hp": 236.43359375,
+      "survivors": 3.5078125,
+      "time": 821.0546875,
+      "first_kill": {
+        "5": 76,
+        "6": 50,
+        "7": 47,
+        "8": 75,
+        "9": 2,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1527,
+        "ENEMY:BARRIER": 443,
+        "ENEMY:FIREBOLT": 453,
+        "ENEMY:MOVE": 3106,
+        "ENEMY:STRIKE": 426,
+        "PARTY:ATTACK": 2285,
+        "PARTY:FIREBOLT": 1416,
+        "PARTY:MEND": 377,
+        "PARTY:MOVE": 1946,
+        "PARTY:STRIKE": 191,
+        "PARTY:SHOVE": 354,
+        "PARTY:BARRIER": 908,
+        "ENEMY:MEND": 17,
+        "ENEMY:SHOVE": 502
+      }
+    },
+    "all_human:weakest": {
+      "n": 256,
+      "wins": 202,
+      "rate": 78.90625,
+      "ci95": [
+        73.49991250131765,
+        83.45786485227008
+      ],
+      "hp": 255.3515625,
+      "survivors": 3.5859375,
+      "time": 825.859375,
+      "first_kill": {
+        "5": 4,
+        "6": 150,
+        "7": 27,
+        "8": 69,
+        "9": 2,
+        "-1": 4
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 470,
+        "ENEMY:MOVE": 2879,
+        "ENEMY:STRIKE": 460,
+        "PARTY:ATTACK": 2195,
+        "PARTY:FIREBOLT": 1489,
+        "PARTY:MOVE": 2140,
+        "PARTY:STRIKE": 176,
+        "ENEMY:ATTACK": 1422,
+        "ENEMY:FIREBOLT": 286,
+        "PARTY:MEND": 331,
+        "PARTY:SHOVE": 409,
+        "ENEMY:SHOVE": 575,
+        "PARTY:BARRIER": 826,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_human:nearest": {
+      "n": 256,
+      "wins": 202,
+      "rate": 78.90625,
+      "ci95": [
+        73.49991250131765,
+        83.45786485227008
+      ],
+      "hp": 252.46484375,
+      "survivors": 3.5625,
+      "time": 818.75,
+      "first_kill": {
+        "5": 20,
+        "6": 136,
+        "7": 26,
+        "8": 66,
+        "9": 2,
+        "-1": 6
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 468,
+        "ENEMY:MOVE": 2926,
+        "ENEMY:STRIKE": 446,
+        "PARTY:ATTACK": 2149,
+        "PARTY:FIREBOLT": 1475,
+        "PARTY:MOVE": 2105,
+        "PARTY:STRIKE": 215,
+        "ENEMY:ATTACK": 1504,
+        "ENEMY:FIREBOLT": 288,
+        "PARTY:MEND": 326,
+        "PARTY:SHOVE": 377,
+        "ENEMY:SHOVE": 562,
+        "PARTY:BARRIER": 834,
+        "ENEMY:MEND": 17
+      }
+    },
+    "all_elf:utility": {
+      "n": 256,
+      "wins": 210,
+      "rate": 82.03125,
+      "ci95": [
+        76.86551946268473,
+        86.24985544264221
+      ],
+      "hp": 240.23046875,
+      "survivors": 3.5390625,
+      "time": 834.64453125,
+      "first_kill": {
+        "5": 15,
+        "6": 75,
+        "7": 65,
+        "8": 89,
+        "9": 5,
+        "-1": 7
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 403,
+        "ENEMY:MOVE": 2881,
+        "ENEMY:STRIKE": 438,
+        "PARTY:ATTACK": 2409,
+        "PARTY:FIREBOLT": 1332,
+        "PARTY:MOVE": 2390,
+        "PARTY:STRIKE": 72,
+        "ENEMY:ATTACK": 1540,
+        "ENEMY:FIREBOLT": 399,
+        "ENEMY:SHOVE": 603,
+        "PARTY:MEND": 365,
+        "PARTY:SHOVE": 503,
+        "PARTY:BARRIER": 1055,
+        "ENEMY:MEND": 19
+      }
+    },
+    "all_elf:mage": {
+      "n": 256,
+      "wins": 211,
+      "rate": 82.421875,
+      "ci95": [
+        77.2896116682119,
+        86.59546293108245
+      ],
+      "hp": 258.6328125,
+      "survivors": 3.625,
+      "time": 811.78125,
+      "first_kill": {
+        "5": 6,
+        "6": 171,
+        "7": 28,
+        "8": 41,
+        "9": 3,
+        "-1": 7
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 453,
+        "ENEMY:MOVE": 2762,
+        "ENEMY:STRIKE": 455,
+        "PARTY:ATTACK": 2223,
+        "PARTY:FIREBOLT": 1492,
+        "PARTY:MOVE": 2359,
+        "PARTY:STRIKE": 195,
+        "ENEMY:ATTACK": 1401,
+        "ENEMY:FIREBOLT": 266,
+        "ENEMY:SHOVE": 600,
+        "PARTY:MEND": 292,
+        "PARTY:SHOVE": 401,
+        "PARTY:BARRIER": 925,
+        "ENEMY:MEND": 12
+      }
+    },
+    "all_elf:support": {
+      "n": 256,
+      "wins": 202,
+      "rate": 78.90625,
+      "ci95": [
+        73.49991250131765,
+        83.45786485227008
+      ],
+      "hp": 242.46875,
+      "survivors": 3.5703125,
+      "time": 782.8046875,
+      "first_kill": {
+        "5": 12,
+        "6": 36,
+        "7": 149,
+        "8": 51,
+        "9": 3,
+        "-1": 5
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 463,
+        "ENEMY:MOVE": 2675,
+        "ENEMY:STRIKE": 430,
+        "PARTY:ATTACK": 2176,
+        "PARTY:FIREBOLT": 1411,
+        "PARTY:MEND": 335,
+        "PARTY:MOVE": 2129,
+        "PARTY:SHOVE": 338,
+        "PARTY:STRIKE": 196,
+        "ENEMY:ATTACK": 1387,
+        "ENEMY:BARRIER": 287,
+        "PARTY:BARRIER": 984,
+        "ENEMY:MEND": 15,
+        "ENEMY:SHOVE": 530
+      }
+    },
+    "all_elf:frontline": {
+      "n": 256,
+      "wins": 207,
+      "rate": 80.859375,
+      "ci95": [
+        75.59793862462057,
+        85.20833719880419
+      ],
+      "hp": 238.94921875,
+      "survivors": 3.5546875,
+      "time": 797.08984375,
+      "first_kill": {
+        "5": 87,
+        "6": 48,
+        "7": 45,
+        "8": 69,
+        "9": 3,
+        "-1": 4
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 426,
+        "ENEMY:FIREBOLT": 457,
+        "ENEMY:MOVE": 2878,
+        "ENEMY:STRIKE": 422,
+        "PARTY:ATTACK": 2299,
+        "PARTY:FIREBOLT": 1434,
+        "PARTY:MEND": 330,
+        "PARTY:MOVE": 2083,
+        "PARTY:STRIKE": 191,
+        "ENEMY:ATTACK": 1486,
+        "PARTY:SHOVE": 367,
+        "PARTY:BARRIER": 991,
+        "ENEMY:MEND": 15,
+        "ENEMY:SHOVE": 497
+      }
+    },
+    "all_elf:weakest": {
+      "n": 256,
+      "wins": 216,
+      "rate": 84.375,
+      "ci95": [
+        79.42275431635906,
+        88.31081875277229
+      ],
+      "hp": 265.328125,
+      "survivors": 3.671875,
+      "time": 803.40625,
+      "first_kill": {
+        "5": 6,
+        "6": 158,
+        "7": 28,
+        "8": 53,
+        "9": 4,
+        "-1": 7
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 403,
+        "ENEMY:MOVE": 2617,
+        "ENEMY:STRIKE": 441,
+        "PARTY:ATTACK": 2226,
+        "PARTY:FIREBOLT": 1486,
+        "PARTY:MOVE": 2344,
+        "PARTY:STRIKE": 188,
+        "ENEMY:ATTACK": 1309,
+        "ENEMY:FIREBOLT": 267,
+        "ENEMY:SHOVE": 583,
+        "PARTY:MEND": 280,
+        "PARTY:SHOVE": 389,
+        "PARTY:BARRIER": 929,
+        "ENEMY:MEND": 12
+      }
+    },
+    "all_elf:nearest": {
+      "n": 256,
+      "wins": 208,
+      "rate": 81.25,
+      "ci95": [
+        76.01970168562102,
+        85.55627383177111
+      ],
+      "hp": 257.96484375,
+      "survivors": 3.60546875,
+      "time": 803.16796875,
+      "first_kill": {
+        "5": 18,
+        "6": 135,
+        "7": 30,
+        "8": 66,
+        "9": 3,
+        "-1": 4
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 450,
+        "ENEMY:MOVE": 2792,
+        "ENEMY:STRIKE": 455,
+        "PARTY:ATTACK": 2144,
+        "PARTY:FIREBOLT": 1486,
+        "PARTY:MOVE": 2341,
+        "PARTY:STRIKE": 213,
+        "ENEMY:ATTACK": 1385,
+        "ENEMY:FIREBOLT": 287,
+        "PARTY:MEND": 288,
+        "PARTY:SHOVE": 396,
+        "ENEMY:SHOVE": 565,
+        "PARTY:BARRIER": 927,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_orc:utility": {
+      "n": 256,
+      "wins": 216,
+      "rate": 84.375,
+      "ci95": [
+        79.42275431635906,
+        88.31081875277229
+      ],
+      "hp": 252.3984375,
+      "survivors": 3.65625,
+      "time": 812.0234375,
+      "first_kill": {
+        "5": 16,
+        "6": 69,
+        "7": 67,
+        "8": 90,
+        "9": 9,
+        "-1": 5
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1291,
+        "ENEMY:BARRIER": 435,
+        "ENEMY:MOVE": 3130,
+        "ENEMY:STRIKE": 407,
+        "PARTY:ATTACK": 2308,
+        "PARTY:FIREBOLT": 1376,
+        "PARTY:MEND": 345,
+        "PARTY:MOVE": 2089,
+        "PARTY:STRIKE": 77,
+        "ENEMY:FIREBOLT": 409,
+        "ENEMY:SHOVE": 561,
+        "PARTY:SHOVE": 580,
+        "PARTY:BARRIER": 950,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_orc:mage": {
+      "n": 256,
+      "wins": 203,
+      "rate": 79.296875,
+      "ci95": [
+        73.91813023869071,
+        83.80934680886443
+      ],
+      "hp": 259.0625,
+      "survivors": 3.58203125,
+      "time": 804.28515625,
+      "first_kill": {
+        "5": 12,
+        "6": 163,
+        "7": 30,
+        "8": 47,
+        "9": 1,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 470,
+        "ENEMY:MOVE": 2989,
+        "ENEMY:STRIKE": 432,
+        "PARTY:ATTACK": 2208,
+        "PARTY:FIREBOLT": 1478,
+        "PARTY:MOVE": 2115,
+        "PARTY:STRIKE": 209,
+        "ENEMY:ATTACK": 1339,
+        "ENEMY:FIREBOLT": 286,
+        "PARTY:MEND": 297,
+        "PARTY:SHOVE": 454,
+        "ENEMY:SHOVE": 588,
+        "PARTY:BARRIER": 815,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_orc:support": {
+      "n": 256,
+      "wins": 204,
+      "rate": 79.6875,
+      "ci95": [
+        74.33702713938375,
+        84.16014960213877
+      ],
+      "hp": 246.96875,
+      "survivors": 3.578125,
+      "time": 775.92578125,
+      "first_kill": {
+        "5": 19,
+        "6": 34,
+        "7": 146,
+        "8": 51,
+        "9": 1,
+        "-1": 5
+      },
+      "skill_uses": {
+        "ENEMY:FIREBOLT": 462,
+        "ENEMY:MOVE": 2908,
+        "ENEMY:STRIKE": 419,
+        "PARTY:ATTACK": 2154,
+        "PARTY:FIREBOLT": 1399,
+        "PARTY:MEND": 332,
+        "PARTY:MOVE": 1904,
+        "PARTY:SHOVE": 397,
+        "PARTY:STRIKE": 214,
+        "ENEMY:ATTACK": 1255,
+        "ENEMY:BARRIER": 301,
+        "PARTY:BARRIER": 887,
+        "ENEMY:MEND": 17,
+        "ENEMY:SHOVE": 508
+      }
+    },
+    "all_orc:frontline": {
+      "n": 256,
+      "wins": 203,
+      "rate": 79.296875,
+      "ci95": [
+        73.91813023869071,
+        83.80934680886443
+      ],
+      "hp": 245.74609375,
+      "survivors": 3.55859375,
+      "time": 794.76171875,
+      "first_kill": {
+        "5": 78,
+        "6": 50,
+        "7": 48,
+        "8": 75,
+        "9": 2,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:ATTACK": 1339,
+        "ENEMY:BARRIER": 443,
+        "ENEMY:FIREBOLT": 453,
+        "ENEMY:MOVE": 3145,
+        "ENEMY:STRIKE": 410,
+        "PARTY:ATTACK": 2293,
+        "PARTY:FIREBOLT": 1414,
+        "PARTY:MEND": 342,
+        "PARTY:MOVE": 1920,
+        "PARTY:STRIKE": 195,
+        "PARTY:SHOVE": 410,
+        "PARTY:BARRIER": 900,
+        "ENEMY:MEND": 17,
+        "ENEMY:SHOVE": 489
+      }
+    },
+    "all_orc:weakest": {
+      "n": 256,
+      "wins": 210,
+      "rate": 82.03125,
+      "ci95": [
+        76.86551946268473,
+        86.24985544264221
+      ],
+      "hp": 263.12890625,
+      "survivors": 3.625,
+      "time": 809.47265625,
+      "first_kill": {
+        "5": 6,
+        "6": 145,
+        "7": 28,
+        "8": 72,
+        "9": 1,
+        "-1": 4
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 470,
+        "ENEMY:MOVE": 2884,
+        "ENEMY:STRIKE": 442,
+        "PARTY:ATTACK": 2259,
+        "PARTY:FIREBOLT": 1484,
+        "PARTY:MOVE": 2139,
+        "PARTY:STRIKE": 193,
+        "ENEMY:ATTACK": 1281,
+        "ENEMY:FIREBOLT": 286,
+        "PARTY:MEND": 304,
+        "PARTY:SHOVE": 444,
+        "ENEMY:SHOVE": 559,
+        "PARTY:BARRIER": 822,
+        "ENEMY:MEND": 15
+      }
+    },
+    "all_orc:nearest": {
+      "n": 256,
+      "wins": 206,
+      "rate": 80.46875,
+      "ci95": [
+        75.17691603098197,
+        84.85966009847536
+      ],
+      "hp": 263.7890625,
+      "survivors": 3.61328125,
+      "time": 791.53515625,
+      "first_kill": {
+        "5": 23,
+        "6": 136,
+        "7": 27,
+        "8": 65,
+        "9": 2,
+        "-1": 3
+      },
+      "skill_uses": {
+        "ENEMY:BARRIER": 468,
+        "ENEMY:MOVE": 2989,
+        "ENEMY:STRIKE": 426,
+        "PARTY:ATTACK": 2141,
+        "PARTY:FIREBOLT": 1474,
+        "PARTY:MOVE": 2082,
+        "PARTY:STRIKE": 220,
+        "ENEMY:ATTACK": 1282,
+        "ENEMY:FIREBOLT": 288,
+        "PARTY:MEND": 291,
+        "PARTY:SHOVE": 442,
+        "ENEMY:SHOVE": 549,
+        "PARTY:BARRIER": 819,
+        "ENEMY:MEND": 17
+      }
+    }
+  },
+  "pairs": {
+    "personality:mage": {
+      "gain": 0,
+      "loss": 0,
+      "delta_pp": 0
+    },
+    "personality:support": {
+      "gain": 0,
+      "loss": 0,
+      "delta_pp": 0
+    },
+    "personality:frontline": {
+      "gain": 0,
+      "loss": 15,
+      "delta_pp": -5.859375
+    },
+    "personality:weakest": {
+      "gain": 0,
+      "loss": 0,
+      "delta_pp": 0
+    },
+    "skills:mage": {
+      "gain": 10,
+      "loss": 6,
+      "delta_pp": 1.5625
+    },
+    "skills:support": {
+      "gain": 2,
+      "loss": 6,
+      "delta_pp": -1.5625
+    },
+    "skills:frontline": {
+      "gain": 0,
+      "loss": 3,
+      "delta_pp": -1.171875
+    },
+    "skills:weakest": {
+      "gain": 12,
+      "loss": 6,
+      "delta_pp": 2.34375
+    },
+    "both:mage": {
+      "gain": 4,
+      "loss": 8,
+      "delta_pp": -1.5625
+    },
+    "both:support": {
+      "gain": 1,
+      "loss": 5,
+      "delta_pp": -1.5625
+    },
+    "both:frontline": {
+      "gain": 4,
+      "loss": 4,
+      "delta_pp": 0
+    },
+    "both:weakest": {
+      "gain": 7,
+      "loss": 5,
+      "delta_pp": 0.78125
+    },
+    "random_species:mage": {
+      "gain": 8,
+      "loss": 7,
+      "delta_pp": 0.390625
+    },
+    "random_species:support": {
+      "gain": 5,
+      "loss": 7,
+      "delta_pp": -0.78125
+    },
+    "random_species:frontline": {
+      "gain": 4,
+      "loss": 7,
+      "delta_pp": -1.171875
+    },
+    "random_species:weakest": {
+      "gain": 12,
+      "loss": 12,
+      "delta_pp": 0
+    },
+    "all_human:mage": {
+      "gain": 6,
+      "loss": 10,
+      "delta_pp": -1.5625
+    },
+    "all_human:support": {
+      "gain": 7,
+      "loss": 6,
+      "delta_pp": 0.390625
+    },
+    "all_human:frontline": {
+      "gain": 5,
+      "loss": 6,
+      "delta_pp": -0.390625
+    },
+    "all_human:weakest": {
+      "gain": 13,
+      "loss": 13,
+      "delta_pp": 0
+    },
+    "all_elf:mage": {
+      "gain": 10,
+      "loss": 7,
+      "delta_pp": 1.171875
+    },
+    "all_elf:support": {
+      "gain": 0,
+      "loss": 6,
+      "delta_pp": -2.34375
+    },
+    "all_elf:frontline": {
+      "gain": 2,
+      "loss": 3,
+      "delta_pp": -0.390625
+    },
+    "all_elf:weakest": {
+      "gain": 12,
+      "loss": 4,
+      "delta_pp": 3.125
+    },
+    "all_orc:mage": {
+      "gain": 6,
+      "loss": 9,
+      "delta_pp": -1.171875
+    },
+    "all_orc:support": {
+      "gain": 4,
+      "loss": 6,
+      "delta_pp": -0.78125
+    },
+    "all_orc:frontline": {
+      "gain": 0,
+      "loss": 3,
+      "delta_pp": -1.171875
+    },
+    "all_orc:weakest": {
+      "gain": 12,
+      "loss": 8,
+      "delta_pp": 1.5625
+    }
+  },
+  "kitAssociations": {
+    "FIREBOLT": {
+      "0": {
+        "n": 34,
+        "wins": 14
+      },
+      "1": {
+        "n": 80,
+        "wins": 62
+      },
+      "2": {
+        "n": 83,
+        "wins": 74
+      },
+      "3": {
+        "n": 54,
+        "wins": 53
+      },
+      "4": {
+        "n": 5,
+        "wins": 5
+      }
+    },
+    "MEND": {
+      "0": {
+        "n": 34,
+        "wins": 31
+      },
+      "1": {
+        "n": 91,
+        "wins": 77
+      },
+      "2": {
+        "n": 85,
+        "wins": 64
+      },
+      "3": {
+        "n": 43,
+        "wins": 33
+      },
+      "4": {
+        "n": 3,
+        "wins": 3
+      }
+    },
+    "BARRIER": {
+      "0": {
+        "n": 39,
+        "wins": 29
+      },
+      "1": {
+        "n": 87,
+        "wins": 77
+      },
+      "2": {
+        "n": 85,
+        "wins": 64
+      },
+      "3": {
+        "n": 35,
+        "wins": 29
+      },
+      "4": {
+        "n": 10,
+        "wins": 9
+      }
+    },
+    "STRIKE": {
+      "0": {
+        "n": 34,
+        "wins": 31
+      },
+      "1": {
+        "n": 91,
+        "wins": 76
+      },
+      "2": {
+        "n": 95,
+        "wins": 76
+      },
+      "3": {
+        "n": 27,
+        "wins": 18
+      },
+      "4": {
+        "n": 9,
+        "wins": 7
+      }
+    },
+    "SHOVE": {
+      "0": {
+        "n": 33,
+        "wins": 30
+      },
+      "1": {
+        "n": 82,
+        "wins": 71
+      },
+      "2": {
+        "n": 91,
+        "wins": 73
+      },
+      "3": {
+        "n": 46,
+        "wins": 32
+      },
+      "4": {
+        "n": 4,
+        "wins": 2
+      }
+    }
+  }
+}
