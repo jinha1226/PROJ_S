@@ -3291,7 +3291,7 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 			final_projection=transition.to
 			grouped_with_protagonist=entity_id!=party_encounter.protagonist_id
 			continue
-		if event.type == "party.member_regrouped" and event.actor_id == entity_id:
+		if event.type in ["party.member_regrouped","party.member_disengaged"] and event.actor_id == entity_id:
 			final_projection = event.position
 			grouped_with_protagonist = true
 			continue
@@ -4902,6 +4902,18 @@ func _training_modes_from_event(event)->Dictionary:
 
 
 func _party_event_correlation_error() -> String:
+	for event in events:
+		if event.type!="party.member_disengaged":continue
+		if "autonomous_party" not in entities[party_encounter.protagonist_id].tags or event.magnitude!=0 \
+				or event.actor_id==party_encounter.protagonist_id or not party_encounter.member_rows.has(event.actor_id) \
+				or event.target_id!=party_encounter.protagonist_id or event.cause_id!=-1 \
+				or not _exact_keys(event.data,["from_position","to_position"]) \
+				or not _is_position(event.data.get("from_position"),width,height,false) \
+				or event.data.get("to_position")!=[event.position.x,event.position.y]:return "invalid_party_disengage_position"
+		var origin:Dictionary=_entity_position_at_event(event.actor_id,event.id)
+		var anchor:Dictionary=_entity_position_at_event(event.target_id,event.id)
+		if not origin.ok or not anchor.ok or anchor.position!=event.position \
+				or event.data.from_position!=[origin.position.x,origin.position.y]:return "invalid_party_disengage_history"
 	var hero_id: int = party_encounter.protagonist_id
 	var floor_segment_start_id:=_party_floor_segment_start_event_id()
 	var correlated_enemy_ids:Array[int]=CampaignEncounterStreamScript \
@@ -5177,8 +5189,17 @@ func _party_event_correlation_error() -> String:
 			if member_id == hero_id: continue
 			if _party_alive_at_event(member_id, root.id) != seen_regrouped.has(member_id):
 				return "party_member_regrouped_set_mismatch"
+	var has_disengage_history:=false
+	for event in events:
+		if event.type!="party.disengage_completed":continue
+		var cause=event_by_id(event.cause_id)
+		var position_history:Dictionary=_entity_position_at_event(hero_id,event.id)
+		if "autonomous_party" not in entities[hero_id].tags or cause==null or cause.type not in contact_types \
+				or event.actor_id!=hero_id or event.target_id!=-1 or event.magnitude!=0 or not event.data.is_empty() \
+				or not position_history.ok or position_history.position!=event.position:return "invalid_party_disengage_completion"
+		if contact!=null and event.cause_id==contact.id:has_disengage_history=true
 	if party_encounter.safe_phase == "PARTY_DEFEATED" and party_encounter.contact_kind == "NONE" \
-			and contact != null and not has_regroup_history:
+			and contact != null and not has_regroup_history and not has_disengage_history:
 		return "party_cleared_contact_without_regroup_history"
 	var roster_error := _party_roster_history_error()
 	if not roster_error.is_empty(): return roster_error
@@ -5916,12 +5937,12 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			historical_cursor = to_position
 			anchored = true
-		elif event.type in ["party.member_deployed", "party.member_regrouped",
+		elif event.type in ["party.member_deployed", "party.member_regrouped", "party.member_disengaged",
 				"party.deployment_completed"]:
 			historical_cursor = event.position
 			anchored = true
 			if tracks_grouped_protagonist:
-				grouped_with_protagonist = event.type == "party.member_regrouped"
+				grouped_with_protagonist = event.type in ["party.member_regrouped","party.member_disengaged"]
 		elif event.type in actor_position_types:
 			if anchored and historical_cursor != event.position:
 				return {"ok":false,"position":Vector2i(-1,-1)}
@@ -5956,7 +5977,7 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 	var cursor := initial_position
 	for event in events:
 		if event.id <= event_id or event.actor_id != entity_id: continue
-		if event.type in ["party.member_regrouped","dungeon.floor_entered"]:return ""
+		if event.type in ["party.member_regrouped","party.member_disengaged","dungeon.floor_entered"]:return ""
 		if event.type != "action.move": continue
 		if not _party_move_event_is_canonical(event) \
 				or event.data.from_position != [cursor.x,cursor.y]:

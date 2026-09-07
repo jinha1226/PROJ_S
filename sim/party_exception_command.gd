@@ -45,7 +45,7 @@ static func effective(world, state) -> Dictionary:
 	}
 	for event_index in range(world.events.size() - 1, -1, -1):
 		var event = world.events[event_index]
-		if event.type == "party.regroup_completed":
+		if event.type in ["party.regroup_completed","party.disengage_completed"]:
 			break
 		if event.type != "party.command_issued" \
 				or not data_error(event.data).is_empty():

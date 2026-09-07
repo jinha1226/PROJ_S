@@ -897,6 +897,17 @@ func _suggest(actor_id: int, protagonist_action, board: Dictionary = {}):
 	var decision := _companion_decision(actor_id, protagonist_action, board)
 	return _leaf_to_action(actor_id, decision.selected_leaf)
 
+func suggest_protagonist_turn()->Dictionary:
+	var state=world.party_encounter
+	if state==null or state.safe_phase!="ENGAGED":return {"accepted":false,"reason":"party_turn_phase_required"}
+	var seed_action=ActionScript.hold(state.protagonist_id)
+	var board:Dictionary=BlackboardScript.build(world,seed_action)
+	# The legacy board only assigns targets to companions because the hero was
+	# manually controlled. Supply the same target-alignment input for an AI hero.
+	if int(board.focus_target_id)>0:board.claims[state.protagonist_id]=int(board.focus_target_id)
+	var decision:Dictionary=_companion_decision(state.protagonist_id,seed_action,board)
+	return {"accepted":true,"action":decision.selected_leaf,"decision":decision}
+
 
 func explain_companion_turn(request) -> Dictionary:
 	var rejection := _turn_rejection(request)
@@ -1845,7 +1856,17 @@ func _disengage_to_exploration()->bool:
 		var member=state.member(member_id)
 		if member_id==state.protagonist_id:member.presence="DEPLOYED"
 		elif world.combatant_states[member_id].life_state=="ACTIVE":
+			if "autonomous_party" in hero.tags:
+				var origin:Vector2i=world.entities[member_id].position
+				if world.emit_event("party.member_disengaged",member_id,hero.id,hero.position,0,-1,
+						{"from_position":[origin.x,origin.y],"to_position":[hero.position.x,hero.position.y]})==null:return false
 			member.presence="GROUPED";world.entities[member_id].position=hero.position
+	if "autonomous_party" in hero.tags:
+		var contact_id:int=-1
+		for index in range(world.events.size()-1,-1,-1):
+			if world.events[index].type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush"]:
+				contact_id=world.events[index].id;break
+		if world.emit_event("party.disengage_completed",hero.id,-1,hero.position,0,contact_id)==null:return false
 	state.safe_phase="GROUPED";state.formation_id="NONE"
 	state.contact_kind="NONE";state.contact_enemy_id=-1;state.revision+=1
 	return true

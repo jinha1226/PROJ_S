@@ -64,6 +64,9 @@ const DEFAULT_PERSONALITY_SEED := 20260828
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
 const SHOWCASE_SCENARIO_ID := "SHOWCASE_V1"
 const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
+const SoloRunPolicy = preload("res://playtest/solo_run_policy.gd")
+const SOLO_EXPLORATION_SCENARIO_ID := SoloRunPolicy.SCENARIO_ID
+const DUO_SCENARIO_ID := SoloRunPolicy.DUO_SCENARIO_ID
 const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
 const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
@@ -274,7 +277,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var candidate = SimulatorScript.create(world_width, world_height, p_world_seed)
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
-	var solo := p_scenario_id in [SOLO_COMBAT_SCENARIO_ID,
+	var duo := p_scenario_id == DUO_SCENARIO_ID
+	var solo := p_scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID,
 		SOLO_FIXTURE_SCENARIO_ID]
 	var showcase_layout:=VisualTestMapScript.uses_showcase_layout(p_scenario_id)
 	if showcase_layout and not VisualTestMapScript.apply_showcase_terrain(candidate.world): return false
@@ -286,15 +290,21 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var hero_position: Vector2i = map_layout.get("hero_position",
 		VisualTestMapScript.HERO_POSITION if showcase_layout else Vector2i(7,7))
 	var narae_position := Vector2i(1,12) if showcase_layout else Vector2i(6,7)
+	if duo:
+		for direction in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+			var cell:Vector2i=hero_position+direction
+			if candidate.world.in_bounds(cell) and str(map_layout.terrain[cell.y*world_width+cell.x])!="wall" and cell not in map_layout.enemy_positions:
+				narae_position=cell;break
 	var miru_position := Vector2i(2,11) if showcase_layout else Vector2i(7,6)
 	var generated_enemies: Array = map_layout.get("enemy_positions", [])
 	var enemy_position: Vector2i = generated_enemies[0] if not generated_enemies.is_empty() \
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
+	if duo:hero_tags.append("autonomous_party")
 	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120,
 		hero_tags, p_player_species_id, "party")
 	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95,
-		["party_member"], "human", "party") if not solo else null
+		["party_member"], "human", "party") if not solo or duo else null
 	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105,
 		["party_member"], "goblin", "party") if not solo else null
 	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
@@ -327,7 +337,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		enemies.append(spawned)
 	var opening_state = null
 	var opening_blood_positions:Array[Vector2i]=[]
-	var opening_enabled := p_scenario_id == SOLO_COMBAT_SCENARIO_ID \
+	var opening_enabled := p_scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID] \
 		and bootstrap_opening_event
 	if opening_enabled:
 		var anchors: Dictionary = DeterministicDungeonMapScript.opening_event_anchors(
@@ -369,6 +379,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.opening_event = opening_state
 	state.party_member_ids.append(protagonist.id)
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
+	if duo:state.party_member_ids.append(narae.id)
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	for enemy_entity in enemies:state.enemy_ids.append(enemy_entity.id)
 	if VisualTestMapScript.uses_los_fov(p_scenario_id):
@@ -399,10 +410,12 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append(protagonist.id)
 	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
+	if duo:state.active_party_member_ids.append(narae.id)
 	state.group_anchor = protagonist.position
 	state.party_detection_radius = 3 if VisualTestMapScript.uses_los_fov(p_scenario_id) \
 		else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
+	if duo:state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
 	if not solo:
 		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
 		state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, miru.id))
@@ -440,6 +453,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
+	if duo:narae.position=state.group_anchor
 	candidate.world.party_encounter = state
 	candidate.world.warm_rollback_memento_static_tiles()
 	if not candidate.world.world_state_error().is_empty(): return false
@@ -478,7 +492,18 @@ static func _opening_blood_trail(anchors:Dictionary)->Array[Vector2i]:
 
 
 func is_solo_combat()->bool:
-	return scenario_id in [SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
+	return scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
+
+func is_duo_autobattle()->bool:
+	return scenario_id==DUO_SCENARIO_ID
+
+func prepare_autonomous_party_turn()->Dictionary:
+	var suggested:Dictionary=sim.party_coordinator.suggest_protagonist_turn()
+	if not suggested.get("accepted",false):return suggested
+	return replace_auto_combat_protagonist_action(ActionScript.from_dict(suggested.action))
+
+func allows_companions()->bool:
+	return SoloRunPolicy.allows_companions(scenario_id)
 
 
 func _initial_ground_item_rows(candidate,hero_position:Vector2i,
@@ -820,7 +845,7 @@ func commit_opening_event_choice(choice_action: String) -> Dictionary:
 		return _rejection_dto(str(committed.get("reason", "opening_choice_failed")))
 	var immediate_recruitment:Dictionary={"eligible":false,"resolved":false,
 		"joined":false,"deferred":false}
-	if choice_action=="GIVE_POTION":
+	if choice_action=="GIVE_POTION" and allows_companions():
 		immediate_recruitment=_commit_opening_immediate_recruitment(
 			int(committed.get("npc_entity_id",-1)),rollback_memento)
 		if not bool(immediate_recruitment.get("committed",false)):
@@ -1441,6 +1466,7 @@ func expedition_cycle_status()->Dictionary:
 
 
 func _ensure_town_guild_candidates()->bool:
+	if not allows_companions():return true
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
 	var state=sim.world.party_encounter
 	if state.expedition_cycle==null or state.expedition_cycle.phase!="TOWN" \
@@ -3393,6 +3419,7 @@ func stabilize_recruit_candidate(entity_id: int) -> Dictionary:
 
 
 func recruitment_assessment(entity_id: int) -> Dictionary:
+	if not allows_companions():return _rejection_dto("solo_companions_disabled")
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	if _is_opening_recruitment_candidate(entity_id):
@@ -3927,6 +3954,7 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 
 
 func recruitable_companions() -> Array[Dictionary]:
+	if not allows_companions():return []
 	var rows: Array[Dictionary] = []
 	if sim == null or sim.world == null or sim.world.party_encounter == null: return rows
 	var state = sim.world.party_encounter
@@ -4007,6 +4035,7 @@ func dismiss_companion(entity_id: int) -> Dictionary:
 
 
 func recruit_companion(entity_id: int) -> Dictionary:
+	if not allows_companions():return _rejection_dto("solo_companions_disabled")
 	if _rescue_discovery_event_for(entity_id)!=null:
 		return _rejection_dto("recruitment_already_resolved") \
 			if _recruitment_outcome_event_for(entity_id)!=null \
@@ -4044,6 +4073,7 @@ func recruit_companion(entity_id: int) -> Dictionary:
 
 func _apply_roster_change(operation: String, entity_id: int,
 		append_journal: bool = true,rollback_override:Dictionary={}) -> Dictionary:
+	if operation=="RECRUIT" and not allows_companions():return _rejection_dto("solo_companions_disabled")
 	var assessment := roster_change_assessment(operation, entity_id)
 	if not bool(assessment.get("accepted",false)): return assessment
 	var rollback: Dictionary = rollback_override.duplicate(true) \
@@ -7787,6 +7817,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"route_plan_mismatch":"변경되거나 손상된 경로 계획은 시작할 수 없습니다.",
 		"route_stale":"세계가 바뀌어 장거리 이동을 멈췄습니다. 경로를 다시 확인하세요.",
 		"route_exploration_phase_required":"전투나 조우 중에는 장거리 이동을 할 수 없습니다.",
+		"solo_companions_disabled":"솔로 원정에서는 동료를 영입하지 않습니다.",
 		"route_goal_out_of_bounds":"지도 밖을 장거리 목적지로 선택할 수 없습니다.",
 		"route_actor_dead":"주인공이 쓰러져 장거리 이동을 계속할 수 없습니다.",
 		"route_already_at_goal":"이미 선택한 목적지에 있습니다.",

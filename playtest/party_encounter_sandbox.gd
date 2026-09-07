@@ -253,6 +253,8 @@ var _direct_card_touch_id:=-1
 var _direct_card_touch_msec:=-1000
 var _scroll_log_after_refresh:=false
 var auto_orchestration_enabled:=false
+var autonomous_battle_clock=preload("res://playtest/autonomous_battle_clock.gd").new()
+var autonomous_battle_summary:=""
 var auto_generation:=0
 var auto_deployment_pending:=false
 var auto_deployment_fallback:=false
@@ -303,6 +305,7 @@ var _product_magnify_accumulator:=1.0
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
 
 func _process(_delta:float)->void:
+	_tick_autonomous_battle(_delta)
 	var frame:=Engine.get_process_frames()
 	var now_msec:=Time.get_ticks_msec()
 	if _product_auto_explore_pending and frame>=_product_auto_explore_due_frame \
@@ -686,7 +689,7 @@ func _ready()->void:
 	_build_ui()
 	if not _initialized_for_headless_test and session==null:
 		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
-			_issue_new_personality_seed(),SessionScript.SOLO_COMBAT_SCENARIO_ID)
+			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
 	if not _initialized_for_headless_test and not _web_capture_preview_requested():
@@ -993,10 +996,6 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
-	var lab_button:=Button.new();lab_button.name="ActiveCombatLabStart"
-	lab_button.text="4인 전투 테스트 · 마법";lab_button.custom_minimum_size=Vector2(220,44)
-	lab_button.pressed.connect(_open_active_combat_lab)
-	species_picker_buttons.add_child(lab_button);DarkPixelSkinScript.apply_action_button(lab_button,DarkPixelSkinScript.BRASS)
 
 func _open_active_combat_lab()->void:
 	if get_node_or_null("ActiveCombatLab")!=null:return
@@ -1551,6 +1550,7 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		str(equipment.get("weapon_label","없음")),
 		str(equipment.get("armor_label","방어구 없음"))]
 	nearby_npc_detail_button.disabled=false
+	nearby_npc_action_button.visible=true
 	var attack:Dictionary=detail.get("attack_assessment",{}) \
 		if detail.get("attack_assessment",{}) is Dictionary else {}
 	nearby_npc_attack_button.disabled=not bool(attack.get("accepted",false))
@@ -1572,6 +1572,9 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		nearby_npc_action_button.text="[안정화]"
 		nearby_npc_action_button.disabled=not bool(rescue.get("accepted",false))
 		nearby_npc_action_button.tooltip_text=str(rescue.get("message",""))
+	elif not session.allows_companions():
+		nearby_npc_recruitment.text=""
+		nearby_npc_action_button.visible=false
 	else:
 		var recruitment:Dictionary=detail.get("recruitment_assessment",{}) \
 			if detail.get("recruitment_assessment",{}) is Dictionary else {}
@@ -2140,12 +2143,48 @@ func _play_reward_emphasis()->void:
 	_reward_emphasis_tween.tween_property(reward_badge,"modulate",Color.WHITE,0.45)
 
 func _reset_auto_flow()->void:
+	autonomous_battle_clock.reset()
+	autonomous_battle_summary=""
 	auto_generation+=1
 	auto_deployment_pending=false;auto_deployment_fallback=false
 	auto_deployment_signature="";auto_deployment_step_index=-1;auto_deployment_render_stage=0
 	auto_combat_pending=false;auto_combat_fallback=false
 	auto_combat_plan_hash="";auto_combat_step_index=-1;auto_combat_render_stage=0
 	auto_override_edit=false;auto_phase="";exploration_follow_plan.clear()
+
+func _tick_autonomous_battle(delta:float)->void:
+	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
+	var state=session.sim.world.party_encounter
+	var blocked:bool=grid==null or grid.modal_open or _product_touch_index>=0 or _party_command_targeting or auto_combat_pending
+	if grid!=null:blocked=blocked or bool(grid.pointer_gesture_state().get("active",false))
+	if is_instance_valid(party_command_menu):blocked=blocked or party_command_menu.get_popup().visible
+	if companion_order_editor!=null:blocked=blocked or companion_order_editor.visible
+	if not autonomous_battle_clock.due(delta,state.safe_phase=="ENGAGED",blocked):return
+	var planning:Dictionary=session.prepare_autonomous_party_turn()
+	if not bool(planning.get("commit_ready",false)):
+		autonomous_battle_clock.paused=true
+		action_feedback_text="자동 판단을 실행할 수 없어 일시정지했습니다."
+		_request_refresh();return
+	autonomous_battle_summary=" · ".join(session.turn_summary_lines())
+	var result:Dictionary=session.commit_turn()
+	if not bool(result.get("accepted",false)):autonomous_battle_clock.paused=true
+	_record_result(result,true,"자동 전투 실행 불가",true)
+	_request_refresh()
+
+func _build_duo_battle_controls(status:Dictionary)->void:
+	product_auto_button=null;product_interact_button=null;product_attack_button=null
+	product_wait_guard_button=null;product_bag_button=null
+	combat_action_area.visible=true;combat_action_dock.visible=true
+	action_feedback_label.visible=true
+	action_feedback_label.text="전투 일시정지 · 지침을 변경하세요" if autonomous_battle_clock.paused else (
+		"자동전투 · "+autonomous_battle_summary if not autonomous_battle_summary.is_empty() else "자동전투 · 인물들이 행동을 판단합니다")
+	product_execute_button=_add_product_context_button(combat_action_dock,
+		"재개" if autonomous_battle_clock.paused else "일시정지","ProductExecute",_on_product_execute,48)
+	_add_party_command_menu(status)
+	party_command_menu.reparent(combat_action_dock)
+	party_command_menu.text=party_command_menu.text.replace("파티 명령","지휘").replace("따라오기","자율 전투")
+	party_command_menu.get_popup().set_item_text(4,"자율 전투")
+	party_command_menu.tooltip_text="두 인물이 자동으로 행동합니다. 필요할 때 표적·후퇴·방어 지침을 내리세요."
 
 func _arm_pending_auto_after_tree_entry()->void:
 	if not is_inside_tree():return
@@ -2165,12 +2204,13 @@ func _orchestrate_auto_phase(status:Dictionary)->void:
 		auto_phase=phase
 	match phase:
 		"CONTACT":
-			if _is_solo_product_session():
+			if _is_solo_product_session() and not session.is_duo_autobattle():
 				var result:Dictionary=session.enter_solo_combat()
 				_record_result(result,true,"단독 전투 시작 불가")
 			elif not auto_deployment_pending and not auto_deployment_fallback:
 				_prepare_auto_deployment(status)
 		"ENGAGED":
+			if session.is_duo_autobattle():return
 			# A one-member product turn has no companion suggestion surface and commits
 			# directly from the next tap. Preparing a placeholder plan here duplicated a
 			# large canonical preview without producing any visible or authoritative work.
@@ -2576,12 +2616,14 @@ func _exploration_deck()->void:
 
 
 func _town_deck(status:Dictionary)->void:
+	if not session.allows_companions() and town_facility_id=="GUILD":town_facility_id="GATE"
 	_add_notice(_town_summary_text(status),"TownGuildHallSummary",FONT_KEY)
 	var stations:=GridContainer.new();stations.name="TownGuildHallStations"
 	stations.columns=3;stations.add_theme_constant_override("h_separation",4)
 	stations.add_theme_constant_override("v_separation",4);deck.add_child(stations)
 	for row in [["GUILD","길드"],["CLINIC","치유소"],["SHRINE","신전"],
 			["MARKET","시장"],["ARMORY","장비"],["GATE","원정문"]]:
+		if str(row[0])=="GUILD" and not session.allows_companions():continue
 		var button:=_add_button(stations,str(row[1]),"TownFacility%s"%str(row[0]),
 			_on_town_facility_selected.bind(str(row[0])))
 		button.toggle_mode=true;button.button_pressed=town_facility_id==str(row[0])
@@ -2604,7 +2646,7 @@ func _town_summary_text(status:Dictionary)->String:
 	var reason:="던전 폐쇄 시간이 되어 생존한 원정대가 귀환했습니다." \
 		if str(cycle.get("return_reason",""))=="TIME_LIMIT" else "원정대가 마을에 머물고 있습니다."
 	var gold:int=session.town_gold() if session!=null and session.has_method("town_gold") else 0
-	return "길드 홀 · 원정 %d 귀환 · %d층 · 금화 %d\n%s"%[
+	return "마을 · 원정 %d 귀환 · %d층 · 금화 %d\n%s"%[
 		int(cycle.get("expedition_index",0)),int(cycle.get("floor_index",1)),gold,reason]
 
 
@@ -3014,6 +3056,8 @@ func _product_controls_metrics(_party_count:int)->Dictionary:
 	return {"target":48,"gap":gap,"dock_height":48}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
+	if session.is_duo_autobattle() and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false)):
+		_build_duo_battle_controls(status);return
 	if companion_order_editor!=null and companion_order_editor.visible:
 		product_auto_button=null;product_interact_button=null;product_attack_button=null
 		product_wait_guard_button=null;product_execute_button=null;product_bag_button=null
@@ -3185,6 +3229,7 @@ func _product_adjacent_enemies(status:Dictionary,
 	return result
 
 func _on_product_direction(direction:Vector2i)->void:
+	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":return
 	var status:Dictionary=session.party_status()
 	# Inspection selection is not the controllable actor in the automatic party UI.
 	if auto_orchestration_enabled:selected_member_id=int(status.get("protagonist_id",-1))
@@ -3439,6 +3484,10 @@ func _on_product_wait_guard()->void:
 	elif str(status.get("view_mode",""))=="COMBAT":_on_actor_hold()
 
 func _on_product_execute()->void:
+	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
+		autonomous_battle_clock.paused=not autonomous_battle_clock.paused
+		autonomous_battle_clock.remaining=autonomous_battle_clock.INTERVAL
+		_request_refresh();return
 	if bool(_current_run_progress().get("terminal",false)):
 		_on_restart_same_run();return
 	if session.has_method("floor_transition_assessment") \
@@ -4698,6 +4747,7 @@ func _on_auto_execute()->void:
 	_schedule_auto_combat_commit(planning)
 
 func _stage_auto_combat_action(action_type:String,destination:Array=[],target_id:int=-1)->void:
+	if session!=null and session.is_duo_autobattle():return
 	var action_started:=Time.get_ticks_usec()
 	var status:Dictionary=session.party_status();var protagonist_id:=int(status.get("protagonist_id",-1))
 	# Companion selection is observation-only in the product party loop. Every
@@ -4880,6 +4930,7 @@ func _on_cell(position:Vector2i)->void:
 		_schedule_route_continue(hop_started_msec)
 		return
 	if status.view_mode!="COMBAT":return
+	if session.is_duo_autobattle():return
 	selected_target_id=-1;_clear_move_preview()
 	if auto_orchestration_enabled and _is_direct_solo_combat(status):
 		_stage_auto_combat_action("MOVE",[position.x,position.y]);return
@@ -5694,6 +5745,7 @@ func _is_solo_product_session()->bool:
 		and bool(session.call("is_solo_combat"))
 
 func _is_direct_solo_combat(status:Dictionary)->bool:
+	if session!=null and session.is_duo_autobattle():return false
 	var members:Variant=status.get("party_member_ids",[])
 	return _is_solo_product_session() and auto_orchestration_enabled \
 		and str(status.get("safe_phase",""))=="ENGAGED" \
@@ -5703,6 +5755,7 @@ func _is_direct_solo_combat(status:Dictionary)->bool:
 func _clear_container(container:Control)->void:
 	for child in container.get_children():container.remove_child(child); child.free()
 func _phase(value:String)->String:
+	if value=="ENGAGED" and session!=null and session.is_duo_autobattle():return "자동 전투"
 	if value=="ENGAGED" and _is_solo_product_session():return "단독 전투"
 	return {"GROUPED":"탐험","CONTACT":"조우 배치","ENGAGED":"파티 전투","REGROUP_READY":"자동 재집결","GROUPED_COMPLETE":"탐험 재개","PARTY_DEFEATED":"패배"}.get(value,value)
 func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동행","DORMANT":"전투 대기","RECRUITABLE":"영입 후보","EXILED":"추방됨","DEFEATED":"쓰러짐"}.get(value,value)
