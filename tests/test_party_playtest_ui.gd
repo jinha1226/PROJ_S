@@ -131,8 +131,21 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 		check_eq(int(sandbox.party_card_layout_spec(9,viewport_width).effective_count),4,
 			"over-cap rows safely clamp to four")
 		var companion_detail:Dictionary=sandbox.session.inspect_party_member(int(all_rows[1].entity_id))
-		check(str(companion_detail.personality_style.label) in sandbox._member_detail_text(companion_detail),
-			"detail modal exposes short Korean derived style")
+		sandbox._open_member_detail(int(companion_detail.entity_id),"PERSONALITY")
+		check(sandbox.member_personality_window.visible \
+				and str(companion_detail.personality_style.label)==str(
+				(sandbox.member_personality_window.call("presentation_snapshot") as Dictionary).style_label) \
+				and "나에 대한 호감" not in sandbox._member_detail_text(companion_detail),
+			"detail modal exposes the derived style in its visual personality tab")
+		sandbox._select_member_detail_tab("RELATIONSHIP")
+		var relationship_names:Array=[]
+		for node in sandbox.member_relationship_window.find_children(
+				"RelationshipSubjectName","Label",true,false):
+			relationship_names.append((node as Label).text)
+		check(sandbox.member_relationship_window.visible \
+				and relationship_names.size()==companion_detail.relation_rows.size() \
+				and relationship_names[0]=="나" and relationship_names.size()>=2,
+			"relationship tab lists 나 first followed by the other party members")
 		var log_text:=sandbox._combat_log_text(sandbox.session.combat_log())
 		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies derived styles")
 		sandbox.free()

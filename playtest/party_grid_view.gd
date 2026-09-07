@@ -1405,23 +1405,31 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 	# of independently reconstructing the actor position. This keeps the complete
 	# paper-doll and bar locked together throughout companion and camera motion.
 	var bounds:Rect2
+	var bar_center_x:=0.0
 	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
 		var actor_spec:=fixed_front_actor_render_spec(actor,false,sample_time_ms,
 			camera_offset)
 		if bool(actor_spec.get("visible",false)) and bool(actor_spec.get("uses_sprite",false)):
 			bounds=Rect2(actor_spec.get("bounds",Rect2()))
+			# The transparent texture rect may shift slightly to center its authored
+			# silhouette. Anchor chrome to that corrected visible center, not to the
+			# shifted canvas center.
+			bar_center_x=Vector2(actor_spec.get("logical_tile_center",
+				bounds.get_center())).x
 		else:
 			var ascii_spec:=topdown_ascii_actor_render_spec(actor,false,sample_time_ms,
 				camera_offset)
 			bounds=Rect2(ascii_spec.get("bounds",Rect2()))
+			bar_center_x=bounds.get_center().x
 	else:
 		bounds=_actor_figure_bounds(actor,cell_size_px(),false,sample_time_ms)
 		if entity_id==_hero_camera_actor_id:bounds.position-=camera_offset
+		bar_center_x=bounds.get_center().x
 	if bounds.size.x<=0.0:return hidden.duplicate(true)
 	var ratio:=clampf(float(health)/float(maximum),0.0,1.0)
 	var bar_size:=Vector2(clampf(cell_size_px()*0.78,10.0,24.0),
 		clampf(cell_size_px()*0.13,3.0,4.0))
-	var draw_rect:=Rect2(Vector2(bounds.get_center().x-bar_size.x*0.5,
+	var draw_rect:=Rect2(Vector2(bar_center_x-bar_size.x*0.5,
 		bounds.position.y-bar_size.y-2.0),bar_size)
 	# Specs are drawn under the world camera transform. Clamp their final screen
 	# bounds, then convert the correction back to draw coordinates.
@@ -1435,7 +1443,8 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 		"health":health,"max_health":maximum,"ratio":ratio,"rect":draw_rect,
 		"screen_rect":screen_rect,"inner_rect":inner,"fill_rect":fill,
 		"background_hex":"#160d11dd","border_hex":"#8f99a0aa","fill_hex":fill_hex,
-		"damaged":health<maximum,"life_state":life_state,"changes_hit_rect":false,
+		"damaged":health<maximum,"life_state":life_state,"actor_visual_center_x":bar_center_x,
+		"changes_hit_rect":false,
 		"mouse_filter":"IGNORE","fov_safe":true}.duplicate(true)
 
 
@@ -2175,7 +2184,7 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	draw_colored_polygon(shadow_points,Color(str(spec.shadow_hex)))
 	var bounds:Rect2=spec.bounds
 	var modulate:=Color(str(spec.modulate_hex))
-	# The bases are authored at their native 16px readability size. Add one stable
+	# The bases are authored at their native 24px readability size. Add one stable
 	# screen-pixel rim so they stay distinct from either biome without turning the
 	# compact silhouettes into black blobs at close zoom.
 	var body_texture:Texture2D=spec.get("body_texture",null)
@@ -2228,7 +2237,13 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
 	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
-	var bounds:=Rect2(Vector2(center.x-sprite_size*0.5,
+	var source_canvas:Vector2=layer_spec.get("source_canvas_size",Vector2(24,24))
+	var source_center_offset:Vector2=layer_spec.get(
+		"visual_center_offset_source_px",Vector2.ZERO)
+	var visual_center_offset:=Vector2(
+		source_center_offset.x*sprite_size/maxf(1.0,source_canvas.x),
+		source_center_offset.y*sprite_size/maxf(1.0,source_canvas.y))
+	var bounds:=Rect2(Vector2(center.x+visual_center_offset.x-sprite_size*0.5,
 		foot_y-sprite_size*foot_anchor_ratio),Vector2.ONE*sprite_size)
 	var opacity:=float(style.get("opacity",1.0))
 	var life_state:=str(style.get("life_state","ACTIVE")).to_upper()
@@ -2241,6 +2256,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 		Vector2(sprite_size*0.50,sprite_size*0.14))
 	return layer_spec.merged({"visible":true,"uses_sprite":true,"bounds":bounds,
 		"logical_position":[position.x,position.y],"foot_y":foot_y,
+		"logical_tile_center":center,"visual_center_offset_px":visual_center_offset,
 		"visual_cell_ratio":sprite_size/cell,"style":style,
 		"outline_enabled":not ghost,"outline_px":1.0,
 		"outline_hex":"#020509f2","outline_changes_bounds":false,

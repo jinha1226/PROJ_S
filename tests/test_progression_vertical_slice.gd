@@ -220,9 +220,11 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.member_status_window.visible and sandbox.member_detail_body.visible \
 		and not sandbox.member_progression_window.visible,
 		"hero detail predictably opens on the dedicated status tab")
+	var detail_portrait=sandbox.find_child("MemberDetailPortrait",true,false)
 	check(sandbox.find_child("StatusPortrait",true,false)==null \
-		and sandbox.find_child("MemberDetailPortrait",true,false)==null \
-		and sandbox.find_child("MemberDetailGlyphSeal",true,false)!=null \
+		and detail_portrait!=null \
+		and sandbox.find_child("MemberDetailGlyphSeal",true,false)==null \
+		and bool(detail_portrait.call("portrait_draw_spec").get("uses_actual_asset",false)) \
 		and sandbox.member_detail_title.text=="주인공" \
 		and "인간 / 주인공 / LV01 / 생존" in sandbox.member_detail_subtitle.text \
 		and sandbox.find_child("StatusFolioGrid",true,false) is GridContainer \
@@ -298,9 +300,13 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var companion_session=Session.new();var companion_ui=Sandbox.new();companion_ui.size=Vector2(360,640)
 	companion_ui.initialize_for_headless_test(companion_session,false)
 	var companion_id:=int(companion_session.party_status().party_member_ids[1]);companion_ui._open_member_detail(companion_id)
-	check(not companion_ui.member_detail_tab_row.visible and companion_ui.member_detail_body.visible \
+	check(companion_ui.member_detail_tab_row.visible and companion_ui.member_detail_body.visible \
+		and companion_ui.member_detail_personality_tab.visible \
+		and companion_ui.member_detail_relationship_tab.visible \
+		and not companion_ui.member_detail_skill_tab.visible \
+		and not companion_ui.member_detail_item_tab.visible \
 		and not companion_ui.member_progression_window.visible,
-		"companions without progression never expose fake tabs")
+		"companions expose status/personality/relationship without fake progression tabs")
 	var engaged=_engaged_adjacent_fixture();var combat_ui=Sandbox.new();combat_ui.size=Vector2(360,640)
 	combat_ui.initialize_for_headless_test(engaged,true)
 	combat_ui.selected_target_id=int(engaged.party_status().visible_enemy_ids[0])

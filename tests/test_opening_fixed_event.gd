@@ -91,13 +91,38 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 			and opening_ui.nearby_npc_story_state=="OPENING_CHOICE",
 		"first encounter automatically exposes the wounded NPC information card")
 	check("성격" in opening_ui.nearby_npc_personality.text \
-			and "호감" in opening_ui.nearby_npc_affinity.text \
+			and "관계" in opening_ui.nearby_npc_affinity.text \
+			and "호감" not in opening_ui.nearby_npc_affinity.text \
 			and "물약 주기" in opening_ui.nearby_npc_recruitment.text,
-		"first encounter card shows NPC information before the potion decision")
+		"first encounter card merges protagonist affinity into relationship information")
 	opening_ui._on_actor(opening_npc_id)
 	check(opening_ui.member_detail_modal.visible \
 			and opening_ui.member_detail_entity_id==opening_npc_id,
 		"tapping the first-encounter NPC opens the detailed information window")
+	opening_ui._select_member_detail_tab("PERSONALITY")
+	var personality_snapshot:Dictionary=opening_ui.member_personality_window.call(
+		"presentation_snapshot")
+	check(opening_ui.member_detail_current_tab=="PERSONALITY" \
+			and opening_ui.member_personality_window.visible \
+			and opening_ui.find_children("FacetGauge","ProgressBar",true,false).size()==6 \
+			and bool(personality_snapshot.get("shows_current_emotion",false)) \
+			and not bool(personality_snapshot.get("contains_relationships",true)) \
+			and not opening_ui.member_relationship_window.visible,
+		"NPC personality tab contains only visual personality and current emotion")
+	opening_ui._select_member_detail_tab("RELATIONSHIP")
+	var relationship_snapshot:Dictionary=opening_ui.member_relationship_window.call(
+		"presentation_snapshot")
+	var first_relationship_name=opening_ui.member_relationship_window.find_child(
+		"RelationshipSubjectName",true,false) as Label
+	check(opening_ui.member_detail_current_tab=="RELATIONSHIP" \
+			and opening_ui.member_relationship_window.visible \
+			and first_relationship_name!=null and first_relationship_name.text=="나" \
+			and bool(relationship_snapshot.get("player_listed_first",false)) \
+			and bool(relationship_snapshot.get("affinity_merged_into_player_row",false)) \
+			and not bool(relationship_snapshot.get("standalone_affinity_row",true)),
+		"relationship tab lists the protagonist as 나 and owns the merged affinity row")
+	check(bool(opening_ui.member_detail_glyph_seal.call("portrait_draw_spec").get(
+		"uses_actual_asset",false)),"member detail portrait uses the fixed-front image asset")
 	opening_ui.free()
 	var blood_cells:Array=[]
 	for cell in a.observe_party_world().get("cells",[]):
@@ -318,10 +343,11 @@ func test_second_opening_encounter_exposes_stable_recruitment_and_resolves_once(
 	check(sandbox.nearby_npc_panel.visible and sandbox.nearby_npc_entity_id==npc_id,
 		"second encounter automatically exposes the nearby NPC card")
 	check("성격" in sandbox.nearby_npc_personality.text \
-		and "호감" in sandbox.nearby_npc_affinity.text \
+		and "관계" in sandbox.nearby_npc_affinity.text \
+		and "호감" not in sandbox.nearby_npc_affinity.text \
 		and str(first.probability_percent) in sandbox.nearby_npc_recruitment.text \
 		and "장비" in sandbox.nearby_npc_equipment.text,
-		"nearby NPC card exposes personality, affinity, equipment, and recruitment chance")
+		"nearby NPC card exposes personality, relationship, equipment, and recruitment chance")
 	check(not sandbox.nearby_npc_action_button.disabled \
 		and ("영입 권유" in sandbox.nearby_npc_action_button.text \
 			or "동행 수락" in sandbox.nearby_npc_action_button.text),
@@ -478,8 +504,9 @@ func test_legacy_nullable_migration_corpse_observation_and_mobile_choices() -> b
 			"%s one activation commits one choice" % viewport_size)
 		check_eq(str(sandbox.session.sim.world.party_encounter.opening_event.choice),
 			"GAVE_POTION", "%s touch GIVE reaches authority" % viewport_size)
-		check(sandbox._product_auto_restart_pending,
-			"%s potion choice schedules AUTO to resume on the next cadence"%viewport_size)
+		check(not sandbox._product_auto_explore_pending \
+				and not bool(sandbox.session.auto_explore_state().get("running",false)),
+			"%s potion choice remains one interaction and never starts AUTO"%viewport_size)
 		sandbox.free()
 	return finish()
 

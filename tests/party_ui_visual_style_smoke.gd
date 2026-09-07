@@ -245,9 +245,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s full-size modal frame did not use reduced 14px cells"%viewport_size)
 	_check(_strictly_inside(folio,stack),"%s folio content touches border cells"%viewport_size)
 	var detail_header=sandbox.find_child("MemberDetailHeader",true,false) as Control
-	var detail_seal=sandbox.find_child("MemberDetailGlyphSeal",true,false) as Label
+	var detail_seal=sandbox.find_child("MemberDetailPortrait",true,false) as Control
 	_check(detail_header!=null and detail_header.custom_minimum_size.y==52 \
 		and detail_seal!=null and detail_seal.custom_minimum_size==Vector2(44,44) \
+		and bool(detail_seal.call("portrait_draw_spec").get("uses_actual_asset",false)) \
 		and sandbox.member_detail_close.custom_minimum_size==Vector2(44,44),
 		"%s compact detail identity header contract is missing"%viewport_size)
 	_check(sandbox.find_child("StatusIdentityPanel",true,false)==null \
@@ -256,9 +257,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var status_grid=sandbox.find_child("StatusFolioGrid",true,false) as GridContainer
 	_check(status_grid!=null and status_grid.columns==2,
 		"%s status emotion/combat sections are not a 2-column folio"%viewport_size)
-	_check(sandbox.find_child("MemberDetailPortrait",true,false)==null \
+	_check(sandbox.find_child("MemberDetailGlyphSeal",true,false)==null \
 		and sandbox.find_child("StatusPortrait",true,false)==null,
-		"%s member folio still duplicates the map actor as a portrait"%viewport_size)
+		"%s member folio retained the old ASCII seal or duplicated its portrait"%viewport_size)
 	_check(_gauge_ok(sandbox.find_child("StatusHealthBar",true,false),"HP"),
 		"%s status tab health is not a DOS gauge"%viewport_size)
 	_check(_semantic_gauge_ok(sandbox.find_child("StatusHealthBar",true,false),

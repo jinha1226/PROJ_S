@@ -1513,16 +1513,18 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 		var actor_bounds:=Rect2(actor_sample.bounds)
 		var bar_bounds:=Rect2(moving_bar.rect)
 		check(bool(moving_bar.get("visible",false)) \
-				and absf(bar_bounds.get_center().x-actor_bounds.get_center().x)<0.01 \
+				and absf(bar_bounds.get_center().x-
+					Vector2(actor_sample.logical_tile_center).x)<0.01 \
 				and absf(bar_bounds.end.y-(actor_bounds.position.y-2.0))<0.01,
 			"fixed-front actor and HP bar stay locked at movement sample %dms"%elapsed_msec)
 	var ghost:=actor.duplicate(true)
 	ghost["position"]=[8,8];ghost["display_position"]=[8,8]
 	ghost["logical_position"]=[8,8]
 	var ghost_spec:=grid.fixed_front_actor_render_spec(ghost,true,started+45)
-	check(absf(Rect2(ghost_spec.bounds).get_center().x-
-		grid.world_to_pixel_center(Vector2i(8,8)).x)<0.01,
-		"formation ghost uses its preview cell rather than the live actor position")
+	check(absf((Rect2(ghost_spec.bounds).get_center().x-
+		grid.world_to_pixel_center(Vector2i(8,8)).x)-
+		Vector2(ghost_spec.visual_center_offset_px).x)<0.01,
+		"formation ghost uses its preview cell plus the authored silhouette-centering offset")
 	grid.free();return finish()
 
 
@@ -1532,6 +1534,15 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 		check(texture!=null and texture.get_size()==Vector2(24,24),
 			"%s owns a native 24x24 fixed-front pixel base"%species_id)
 		var image:=texture.get_image()
+		var min_x:=24;var max_x:=-1
+		for alpha_y in range(24):
+			for alpha_x in range(24):
+				if image.get_pixel(alpha_x,alpha_y).a>0.25:
+					min_x=mini(min_x,alpha_x);max_x=maxi(max_x,alpha_x)
+		var layer:Dictionary=FixedFrontAssets.actor_layer_spec({"species_id":species_id})
+		var source_offset:Vector2=layer.visual_center_offset_source_px
+		check(max_x>=min_x and absf((float(min_x+max_x)*0.5)+source_offset.x-11.5)<0.01,
+			"%s visible silhouette is centered inside its logical 24px tile"%species_id)
 		var left_foot_pixels:=0
 		var right_foot_pixels:=0
 		for y in range(19,24):
@@ -1558,8 +1569,8 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 	check(not bool(west.equipment_layers_enabled) and west.armor_texture==null \
 			and west.weapon_texture==null,
 		"full-body readability pass renders the species base without equipment")
-	check(not bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
-		"non-hostile species without a playable base still fall back to ASCII")
+	check(bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
+		"recruited goblins keep an actual fixed-front asset in portraits and on the field")
 	for monster_id in ["goblin","kobold"]:
 		var texture:Texture2D=FixedFrontAssets.monster_texture(monster_id)
 		var monster_spec:=FixedFrontAssets.actor_layer_spec({

@@ -25,6 +25,20 @@ const MONSTER_TEXTURES := {
 	"kobold": preload("res://assets/topdown_fixed_front/monsters/kobold.png"),
 }
 
+# The texture rectangle is centered on the logical cell, but a few authored
+# silhouettes are not centered inside their transparent 24x24 canvas. These
+# source-pixel offsets center the visible body mass without changing occupancy,
+# hit testing, pathfinding, or the shared foot anchor.
+const VISUAL_CENTER_OFFSETS_SOURCE_PX := {
+	"human": Vector2(-1.5, 0.0),
+	"elf": Vector2(-0.5, 0.0),
+	"dwarf": Vector2.ZERO,
+	"orc": Vector2(0.5, 0.0),
+	"beastkin": Vector2(0.5, 0.0),
+	"goblin": Vector2(-1.0, 0.0),
+	"kobold": Vector2(-0.5, 0.0),
+}
+
 const ARMOR_TEXTURES := {
 	"ARMOR_PADDED": preload("res://assets/topdown_fixed_front/equipment/armor/cloth.png"),
 	"ARMOR_CLOTH": preload("res://assets/topdown_fixed_front/equipment/armor/cloth.png"),
@@ -69,9 +83,12 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 	var equipment_value:Variant=actor.get("equipment_visual",actor.get("equipment",{}))
 	var equipment:Dictionary=equipment_value if equipment_value is Dictionary else {}
 	var species_id:=str(actor.get("species_id","")).to_lower()
-	var hostile:=bool(actor.get("is_enemy",false)) \
-		or str(actor.get("faction_id","")).to_lower()=="enemy"
-	var uses_monster_sprite:=hostile and MONSTER_TEXTURES.has(species_id)
+	# Goblin/kobold currently share one neutral fixed-front base across factions.
+	# Faction tint and combat markers remain presentation state; a recruited NPC
+	# must not fall back to an ASCII portrait merely because its base lives in the
+	# monster atlas directory.
+	var uses_monster_sprite:=not BODY_TEXTURES.has(species_id) \
+		and MONSTER_TEXTURES.has(species_id)
 	var base_texture:Texture2D=monster_texture(species_id) if uses_monster_sprite \
 		else body_texture(species_id)
 	var armor_definition_id:=str(equipment.get("armor_definition_id",
@@ -95,5 +112,7 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
 		"fixed_front":true,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
+		"visual_center_offset_source_px":VISUAL_CENTER_OFFSETS_SOURCE_PX.get(
+			species_id,Vector2.ZERO),
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,
 	}.duplicate(true)

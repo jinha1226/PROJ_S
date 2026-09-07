@@ -12,7 +12,9 @@ const CONTINUOUS_CAMERA_SETTLE_MSEC := 140
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
 const MinimapScript=preload("res://playtest/party_minimap.gd")
-const PortraitScript=preload("res://playtest/ascii_actor_portrait.gd")
+const PortraitScript=preload("res://playtest/fixed_front_actor_portrait.gd")
+const PersonalityPanelScript=preload("res://playtest/npc_personality_panel.gd")
+const RelationshipPanelScript=preload("res://playtest/npc_relationship_panel.gd")
 const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
@@ -156,7 +158,7 @@ var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
 var member_detail_subtitle:Label
-var member_detail_glyph_seal:Label
+var member_detail_glyph_seal
 var member_detail_scroll:ScrollContainer
 var member_detail_scroll_content:VBoxContainer
 var member_detail_tab_stash:Node
@@ -164,10 +166,16 @@ var member_detail_body:Label
 var member_status_window:VBoxContainer
 var member_detail_tab_row:HBoxContainer
 var member_detail_status_tab:Button
+var member_detail_personality_tab:Button
+var member_detail_relationship_tab:Button
 var member_detail_skill_tab:Button
 var member_detail_item_tab:Button
 var member_detail_current_tab:="STATUS"
 var member_detail_has_skills:=false
+var member_detail_has_personality:=false
+var member_detail_has_relationships:=false
+var member_personality_window
+var member_relationship_window
 var member_detail_dismiss_available:=false
 var member_detail_candidate_available:=false
 var member_detail_attack_available:=false
@@ -261,7 +269,6 @@ var _product_auto_explore_due_frame:=-1
 var _product_auto_explore_due_msec:=-1
 var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
-var _product_auto_restart_pending:=false
 var _product_auto_stop_feedback:=""
 var _product_transient_event_feedback:=""
 var _product_attack_targeting:=false
@@ -288,13 +295,9 @@ func _process(_delta:float)->void:
 			_product_auto_explore_due_frame=frame+1
 		else:
 			var expected_auto_generation:=_product_auto_explore_scheduled_generation
-			var restart_after_opening:=_product_auto_restart_pending
 			_product_auto_explore_pending=false;_product_auto_explore_due_frame=-1
 			_product_auto_explore_due_msec=-1;_product_auto_explore_scheduled_generation=-1
-			_product_auto_restart_pending=false
-			if restart_after_opening:
-				_start_product_auto_explore_on_cadence(expected_auto_generation)
-			else:_continue_product_auto_explore(expected_auto_generation)
+			_continue_product_auto_explore(expected_auto_generation)
 	if route_continue_pending and frame>=route_continue_due_frame \
 			and now_msec>=route_continue_due_msec:
 		# Match AUTO's unresolved product-button gesture contract. A direction press
@@ -1007,13 +1010,8 @@ func _build_member_detail_modal()->void:
 	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",4);folio_frame.add_child(stack)
 	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=52
 	header.add_theme_constant_override("separation",6);stack.add_child(header)
-	member_detail_glyph_seal=Label.new();member_detail_glyph_seal.name="MemberDetailGlyphSeal"
+	member_detail_glyph_seal=PortraitScript.new();member_detail_glyph_seal.name="MemberDetailPortrait"
 	member_detail_glyph_seal.custom_minimum_size=Vector2(44,44)
-	member_detail_glyph_seal.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	member_detail_glyph_seal.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	member_detail_glyph_seal.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	member_detail_glyph_seal.add_theme_font_size_override("font_size",32)
-	member_detail_glyph_seal.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	header.add_child(member_detail_glyph_seal)
 	var title_stack:=VBoxContainer.new();title_stack.name="MemberDetailIdentity"
 	title_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title_stack.add_theme_constant_override("separation",0);header.add_child(title_stack)
@@ -1035,8 +1033,18 @@ func _build_member_detail_modal()->void:
 	member_detail_status_tab=Button.new();member_detail_status_tab.name="MemberStatusTab";member_detail_status_tab.text="상태"
 	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	member_detail_status_tab.tooltip_text="현재 상태와 관계 정보";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
+	member_detail_status_tab.tooltip_text="체력, 전투 능력, 육체 상태";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
 	member_detail_tab_row.add_child(member_detail_status_tab);AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,true)
+	member_detail_personality_tab=Button.new();member_detail_personality_tab.name="MemberPersonalityTab";member_detail_personality_tab.text="성격"
+	member_detail_personality_tab.toggle_mode=true;member_detail_personality_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
+	member_detail_personality_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_detail_personality_tab.tooltip_text="성격 유형, 판단 경향, 현재 감정";member_detail_personality_tab.pressed.connect(_select_member_detail_tab.bind("PERSONALITY"))
+	member_detail_tab_row.add_child(member_detail_personality_tab);AsciiFrameScript.apply_rail_button(member_detail_personality_tab,AsciiFrameScript.BRASS)
+	member_detail_relationship_tab=Button.new();member_detail_relationship_tab.name="MemberRelationshipTab";member_detail_relationship_tab.text="관계"
+	member_detail_relationship_tab.toggle_mode=true;member_detail_relationship_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
+	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
+	member_detail_tab_row.add_child(member_detail_relationship_tab);AsciiFrameScript.apply_rail_button(member_detail_relationship_tab,AsciiFrameScript.BRASS)
 	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -1066,6 +1074,10 @@ func _build_member_detail_modal()->void:
 	member_status_window=VBoxContainer.new();member_status_window.name="MemberStatusWindow"
 	member_status_window.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_status_window.add_theme_constant_override("separation",8);member_detail_scroll_content.add_child(member_status_window)
+	member_personality_window=PersonalityPanelScript.new();member_personality_window.name="MemberPersonalityWindow"
+	member_personality_window.visible=false;member_detail_scroll_content.add_child(member_personality_window)
+	member_relationship_window=RelationshipPanelScript.new();member_relationship_window.name="MemberRelationshipWindow"
+	member_relationship_window.visible=false;member_detail_scroll_content.add_child(member_relationship_window)
 	member_detail_body=Label.new();member_detail_body.name="MemberDetailBody";member_detail_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	member_detail_body.add_theme_font_size_override("font_size",FONT_AUX);member_detail_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll_content.add_child(member_detail_body)
@@ -1411,7 +1423,7 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 	var affinity:Dictionary=detail.get("affinity_toward_protagonist",{}) \
 		if detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
 	var affinity_score:=int(affinity.get("score",50))
-	nearby_npc_affinity.text="나에 대한 호감 · %s %d"%[
+	nearby_npc_affinity.text="관계 · 나에게 %s %d"%[
 		str(affinity.get("label","보통")),affinity_score]
 	nearby_npc_affinity.add_theme_color_override("font_color",
 		AsciiFrameScript.JADE if affinity_score>=60 else (
@@ -3110,8 +3122,9 @@ func _on_product_auto()->void:
 		if bool(choice_result.get("accepted",false)) \
 				and bool(choice_result.get("immediate_recruitment",{}).get("joined",false)):
 			_show_product_command_feedback("물약을 건넸습니다. 여행자가 바로 파티에 합류했습니다.")
-		if bool(choice_result.get("accepted",false)):
-			_schedule_product_auto_restart_after_opening_choice()
+		# Giving the potion is a complete one-shot interaction. The same control is
+		# labelled AUTO after the HUD refresh, but this released touch must never be
+		# reinterpreted as a request to begin walking.
 		_request_refresh();return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))=="EXPLORATION":
@@ -3123,7 +3136,6 @@ func _on_product_auto()->void:
 		if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
 			_cancel_active_route()
 		_product_auto_explore_generation+=1
-		_product_auto_restart_pending=false
 		var hop_started_msec:=Time.get_ticks_msec()
 		_product_auto_last_hop_started_msec=hop_started_msec
 		var result:Dictionary=session.start_auto_explore()
@@ -3172,28 +3184,6 @@ func _schedule_product_auto_explore(previous_hop_started_msec:int=-1)->void:
 	_product_auto_explore_due_msec=cadence_origin+maxi(0,continuous_travel_cadence_msec)
 	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
 
-func _schedule_product_auto_restart_after_opening_choice()->void:
-	_product_auto_restart_pending=true
-	if not is_inside_tree():return
-	_product_auto_explore_pending=true
-	_product_auto_explore_due_frame=Engine.get_process_frames()+1
-	_product_auto_explore_due_msec=Time.get_ticks_msec()+maxi(0,
-		continuous_travel_cadence_msec)
-	_product_auto_explore_scheduled_generation=_product_auto_explore_generation
-
-func _start_product_auto_explore_on_cadence(expected_generation:int)->void:
-	if expected_generation!=_product_auto_explore_generation or session==null:return
-	if record_modal.visible or map_overlay.visible \
-			or bool(grid.pointer_gesture_state().get("active",false)):return
-	var status:Dictionary=session.party_status()
-	if str(status.get("view_mode",""))!="EXPLORATION":return
-	var hop_started_msec:=Time.get_ticks_msec()
-	_product_auto_last_hop_started_msec=hop_started_msec
-	var result:Dictionary=session.start_auto_explore()
-	_consume_product_auto_explore_result(result)
-	_refresh_continuous_exploration_surface(session.party_status(),true)
-	if bool(result.get("running",false)):_schedule_product_auto_explore(hop_started_msec)
-
 func _continue_product_auto_explore(expected_generation:int)->void:
 	if expected_generation!=_product_auto_explore_generation:return
 	if member_detail_modal.visible:
@@ -3214,7 +3204,6 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
 	_product_auto_last_hop_started_msec=-1
-	_product_auto_restart_pending=false
 	_product_auto_stop_feedback=""
 	if session==null or not session.has_method("auto_explore_state"):
 		_sync_product_control_state();return
@@ -3477,7 +3466,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 			"StatusEquipmentSummary",FONT_AUX)
 		equipment_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		member_status_window.add_child(equipment_text)
-	var dossier_heading:=_card_label("특성/내성/노출","StatusDossierSection",FONT_SECTION)
+	var dossier_heading:=_card_label("종족 내성 / 노출","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
 
 func _percent_milli_text(value:int)->String:
@@ -3512,7 +3501,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	var travel_state:Dictionary=session.exploration_route_state()
 	route_paused_by_modal=bool(travel_state.get("active",false))
 	member_detail_title.text=str(detail.get("display_name","파티원"))
-	member_detail_glyph_seal.text=_actor_seal_glyph(detail)
+	member_detail_glyph_seal.call("set_actor",detail)
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
 	subtitle_parts.append(_role(str(detail.get("role",""))))
@@ -3524,8 +3513,17 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_entity_id=member_id
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
-	member_detail_current_tab=initial_tab if initial_tab in ["STATUS","SKILL","ITEM"] \
-		and (initial_tab=="STATUS" or member_detail_has_skills) else "STATUS"
+	member_detail_has_personality=bool(detail.get("personality_available",false))
+	var relations:Variant=detail.get("relation_rows",[])
+	var affinity:Variant=detail.get("affinity_toward_protagonist",{})
+	member_detail_has_relationships=relations is Array and not relations.is_empty() \
+		or affinity is Dictionary and not affinity.is_empty()
+	member_personality_window.call("set_detail",detail)
+	member_relationship_window.call("set_detail",detail)
+	member_detail_current_tab=initial_tab if initial_tab in ["STATUS","PERSONALITY","RELATIONSHIP","SKILL","ITEM"] \
+		and (initial_tab=="STATUS" or initial_tab=="PERSONALITY" and member_detail_has_personality \
+		or initial_tab=="RELATIONSHIP" and member_detail_has_relationships \
+		or initial_tab in ["SKILL","ITEM"] and member_detail_has_skills) else "STATUS"
 	_update_progression_window(progression)
 	_update_item_window(progression.get("equipment",{}) if progression is Dictionary else {})
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
@@ -3578,33 +3576,54 @@ func _reset_member_detail_pointer_state()->void:
 	if grid!=null:grid.cancel_pointer_gesture()
 
 func _select_member_detail_tab(tab_id:String)->void:
-	if tab_id not in ["STATUS","SKILL","ITEM"] \
+	if tab_id not in ["STATUS","PERSONALITY","RELATIONSHIP","SKILL","ITEM"] \
+			or tab_id=="PERSONALITY" and not member_detail_has_personality \
+			or tab_id=="RELATIONSHIP" and not member_detail_has_relationships \
 			or tab_id in ["SKILL","ITEM"] and not member_detail_has_skills:return
 	_hide_item_popover();member_detail_current_tab=tab_id;member_detail_scroll.scroll_vertical=0
 	_apply_member_detail_tab();_reflow_member_detail_scroll()
 
 func _apply_member_detail_tab()->void:
+	var personality_selected:=member_detail_has_personality \
+		and member_detail_current_tab=="PERSONALITY"
+	var relationship_selected:=member_detail_has_relationships \
+		and member_detail_current_tab=="RELATIONSHIP"
 	var skill_selected:=member_detail_has_skills and member_detail_current_tab=="SKILL"
 	var item_selected:=member_detail_has_skills and member_detail_current_tab=="ITEM"
-	member_detail_tab_row.visible=member_detail_has_skills
-	member_detail_status_tab.set_pressed_no_signal(not skill_selected and not item_selected)
+	var status_selected:=not personality_selected and not relationship_selected \
+		and not skill_selected and not item_selected
+	member_detail_tab_row.visible=member_detail_has_skills or member_detail_has_personality \
+		or member_detail_has_relationships
+	member_detail_status_tab.set_pressed_no_signal(status_selected)
+	member_detail_personality_tab.visible=member_detail_has_personality
+	member_detail_personality_tab.set_pressed_no_signal(personality_selected)
+	member_detail_relationship_tab.visible=member_detail_has_relationships
+	member_detail_relationship_tab.set_pressed_no_signal(relationship_selected)
+	member_detail_skill_tab.visible=member_detail_has_skills
+	member_detail_item_tab.visible=member_detail_has_skills
 	member_detail_skill_tab.set_pressed_no_signal(skill_selected)
 	member_detail_item_tab.set_pressed_no_signal(item_selected)
-	member_detail_status_tab.text="[상태]" if not skill_selected and not item_selected else " 상태 "
+	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
+	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
+	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
 	member_detail_skill_tab.text="[숙련]" if skill_selected else " 숙련 "
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
-	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,not skill_selected and not item_selected)
+	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,status_selected)
+	AsciiFrameScript.apply_rail_button(member_detail_personality_tab,AsciiFrameScript.BRASS,personality_selected)
+	AsciiFrameScript.apply_rail_button(member_detail_relationship_tab,AsciiFrameScript.BRASS,relationship_selected)
 	AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS,skill_selected)
 	AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS,item_selected)
-	member_status_window.visible=not skill_selected and not item_selected
-	member_detail_body.visible=not skill_selected and not item_selected
+	member_status_window.visible=status_selected
+	member_detail_body.visible=status_selected
+	member_personality_window.visible=personality_selected
+	member_relationship_window.visible=relationship_selected
 	member_status_equipment_window.visible=member_detail_has_skills \
-		and not skill_selected and not item_selected
+		and status_selected
 	member_progression_window.visible=skill_selected
 	member_item_window.visible=item_selected
-	member_detail_dismiss.visible=not skill_selected and not item_selected and member_detail_dismiss_available
-	member_detail_candidate_action.visible=not skill_selected and not item_selected and member_detail_candidate_available
-	member_detail_attack.visible=not skill_selected and not item_selected and member_detail_attack_available
+	member_detail_dismiss.visible=status_selected and member_detail_dismiss_available
+	member_detail_candidate_action.visible=status_selected and member_detail_candidate_available
+	member_detail_attack.visible=status_selected and member_detail_attack_available
 	_sync_member_detail_scroll_children()
 	_reflow_member_detail_scroll()
 
@@ -3615,11 +3634,16 @@ func _sync_member_detail_scroll_children()->void:
 		desired=[member_item_window]
 	elif member_progression_window.visible:
 		desired=[member_progression_window]
+	elif member_personality_window.visible:
+		desired=[member_personality_window]
+	elif member_relationship_window.visible:
+		desired=[member_relationship_window]
 	else:
 		desired=[member_status_window,member_detail_body]
 		if member_status_equipment_window.visible:desired.append(member_status_equipment_window)
 	var managed:Array[Control]=[member_progression_window,member_item_window,
-		member_status_window,member_detail_body,member_status_equipment_window]
+		member_personality_window,member_relationship_window,member_status_window,member_detail_body,
+		member_status_equipment_window]
 	for control in managed:
 		if control==null or control in desired:continue
 		if control.get_parent()!=member_detail_tab_stash:control.reparent(member_detail_tab_stash)
@@ -4364,7 +4388,7 @@ func _reset_run_ui_transients()->void:
 	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
-	_product_auto_last_hop_started_msec=-1;_product_auto_restart_pending=false
+	_product_auto_last_hop_started_msec=-1
 	route_last_hop_started_msec=-1
 	_product_auto_stop_feedback="";_product_transient_event_feedback=""
 	_product_attack_targeting=false
@@ -5103,20 +5127,6 @@ func _member_detail_text(detail:Dictionary)->String:
 	var ready_text:=str(detail.get("readiness","행동 준비"));var remaining:=int(detail.get("remaining_time",0))
 	if ready_text!="행동 준비" or remaining>0:
 		lines.append("행동 · %s%s"%[ready_text,(" · %d 시간 남음"%remaining) if remaining>0 else ""])
-	var profile:Variant=detail.get("personality_profile",null)
-	if profile is Dictionary:
-		var facets:Array[String]=[]
-		for row in detail.get("personality_facets",[]):
-			if row is Dictionary:facets.append("%s %d"%[_facet_label(str(row.get("facet_id",""))),int(row.get("value",0))])
-		var style:Dictionary=detail.get("personality_style",{}) if detail.get("personality_style",{}) is Dictionary else {}
-		lines.append("성격 · %s%s"%[str(style.get("label","균형 잡힌 성향")),
-			(" · "+" · ".join(facets)) if not facets.is_empty() else ""])
-	var personal_affinity:Dictionary=detail.get("affinity_toward_protagonist",{}) \
-		if detail.get("affinity_toward_protagonist",{}) is Dictionary else {}
-	if not personal_affinity.is_empty():
-		lines.append("나에 대한 호감 · %s %d · 신뢰 %d · 감사 %d"%[
-			str(personal_affinity.get("label","보통")),int(personal_affinity.get("score",50)),
-			int(personal_affinity.get("trust",0)),int(personal_affinity.get("gratitude",0))])
 	var affinity:Dictionary=detail.get("species_affinity",{}) if detail.get("species_affinity",{}) is Dictionary else {}
 	var affinity_values:=[int(affinity.get("fire_tolerance",0)),int(affinity.get("water_tolerance",0)),
 		int(affinity.get("electric_tolerance",0)),int(affinity.get("poison_tolerance",0))]
@@ -5135,19 +5145,6 @@ func _member_detail_text(detail:Dictionary)->String:
 		if not action_reason.is_empty() and action_reason!="-":lines.append("· "+action_reason)
 		var original:Variant=action.get("automatic_suggestion",null)
 		if original is Dictionary:lines.append("원래 자동 제안: %s"%_action_only(original))
-	var relations:Variant=detail.get("relation_rows",[])
-	if str(detail.get("role",""))=="COMPANION" and relations is Array and not relations.is_empty():
-		lines.append("관계")
-		for relation in relations:
-			if not relation is Dictionary:continue
-			var other_name:=str(relation.get("display_name",relation.get("subject_name",relation.get("name","파티원"))))
-			lines.append("· %s · %s · 신뢰 %d / 두려움 %d / 적대 %d / 감사 %d / 원한 %d"%[other_name,
-				_disposition(str(relation.get("disposition","NEUTRAL"))),int(relation.get("trust",0)),int(relation.get("fear",0)),
-				int(relation.get("hostility",0)),int(relation.get("gratitude",0)),int(relation.get("grievance",0))])
-			var recent:Variant=relation.get("recent_reaction",{})
-			if recent is Dictionary and not recent.is_empty():
-				lines.append("  최근 변화 · %s · %s"%[
-					str(recent.get("label","관계 변화")),str(recent.get("reason",""))])
 	return "\n".join(lines)
 
 func _combat_log_text(history:Dictionary)->String:
@@ -5465,8 +5462,6 @@ func _presence(value:String)->String:return {"DEPLOYED":"배치","GROUPED":"동�
 func _role(value:String)->String:return {"PROTAGONIST":"주인공","COMPANION":"동료"}.get(value,value)
 func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwarf":"드워프",
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
-func _facet_label(value:String)->String:return {"H":"정직-겸손","E":"정서성","X":"외향성","A":"원만성","C":"성실성","O":"개방성"}.get(value,value)
-func _disposition(value:String)->String:return {"HOSTILE":"적대","WARY":"경계","TRUSTING":"신뢰","FRIENDLY":"우호","NEUTRAL":"중립"}.get(value,value)
 func _on_product_menu_id(item_id:int)->void:
 	if session==null:return
 	match item_id:

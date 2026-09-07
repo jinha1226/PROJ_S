@@ -713,14 +713,16 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 	if body.custom_minimum_size.y+0.5<float(body.get_line_count())*line_height:
 		failures.append("%s detail body clips wrapped lines min=%s lines=%d"%[viewport_size,body.custom_minimum_size,body.get_line_count()])
 	if not _rect_contains(panel_rect,scroll.get_global_rect()):failures.append("%s detail scroll outside panel"%viewport_size)
+	var detail_portrait=sandbox.find_child("MemberDetailPortrait",true,false)
 	if sandbox.find_child("StatusPortrait",true,false)!=null \
-			or sandbox.find_child("MemberDetailPortrait",true,false)!=null:
-		failures.append("%s detail modal still duplicates map actors as portraits"%viewport_size)
-	for node_name in ["MemberDetailGlyphSeal","StatusFolioGrid","StatusHealthBar",
+			or detail_portrait==null \
+			or not bool(detail_portrait.call("portrait_draw_spec").get("uses_actual_asset",false)):
+		failures.append("%s detail modal does not use the fixed-front asset portrait"%viewport_size)
+	for node_name in ["StatusFolioGrid","StatusHealthBar",
 			"StatusStressBar","StatusEmotion","StatusStress"]:
 		if sandbox.find_child(node_name,true,false)==null:
 			failures.append("%s detail modal missing %s"%[viewport_size,node_name])
-	for token in ["성격 ·","원소 내성 ·","현재 노출 ·","관계"]:
+	for token in ["원소 내성 ·","현재 노출 ·"]:
 		if not token in body.text:failures.append("%s detail supplemental text missing %s"%[viewport_size,token])
 	var detail:Dictionary=sandbox.session.inspect_party_member(sandbox.selected_member_id)
 	var expected_fire:=int(detail.get("current_exposure",{}).get("risk",{}).get("fire",0))

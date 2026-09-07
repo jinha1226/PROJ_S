@@ -6008,9 +6008,23 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 				"low_label":str(labels[0]),"high_label":str(labels[1])})
 	var relation_rows: Array = []
 	var hero_id := int(sim.world.party_encounter.protagonist_id)
-	if sim.world.entities.has(hero_id):
-		relation_rows.append(PartyRelationshipPresenterScript.relation_row(
-			sim.world, entity_id, hero_id))
+	# A recruitable NPC's social page uses the same subject list as a companion:
+	# protagonist first, followed by every current party member. This lets the UI
+	# show more than a single affinity line when the player arrives with allies.
+	var relation_ids:Array=sim.world.party_encounter.active_party_member_ids.duplicate()
+	if hero_id not in relation_ids:relation_ids.push_front(hero_id)
+	relation_ids.sort_custom(func(a,b):
+		if int(a)==hero_id:return true
+		if int(b)==hero_id:return false
+		var member_a=sim.world.party_encounter.member(int(a))
+		var member_b=sim.world.party_encounter.member(int(b))
+		return int(member_a.roster_slot)<int(member_b.roster_slot) \
+			if member_a!=null and member_b!=null else int(a)<int(b))
+	for subject_id_value in relation_ids:
+		var subject_id:=int(subject_id_value)
+		if subject_id!=entity_id and sim.world.entities.has(subject_id):
+			relation_rows.append(PartyRelationshipPresenterScript.relation_row(
+				sim.world,entity_id,subject_id))
 	var position: Vector2i = entity.position
 	var style := personality_style(profile)
 	var collapsed := story_state in ["COLLAPSED_STORY","OPENING_CHOICE"]
