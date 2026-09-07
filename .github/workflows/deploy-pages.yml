@@ -76,7 +76,11 @@ jobs:
         run: |
           set -euo pipefail
           runtime_log="$(mktemp)"
-          ./godot --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --quit-after 5 2>&1 | tee "$runtime_log"
+          # Do not let missing packed resources fall back to checkout files.
+          # The deployed browser has the PCK only, not our source tree.
+          pack_check_dir="$(mktemp -d)"
+          cd "$pack_check_dir"
+          "$GITHUB_WORKSPACE/godot" --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --quit-after 5 2>&1 | tee "$runtime_log"
           if grep -Eq 'SCRIPT ERROR:|ERROR: Failed to load script' "$runtime_log"; then
             echo "Exported Web pack contains a runtime script error" >&2
             exit 1
