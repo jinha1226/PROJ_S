@@ -824,6 +824,7 @@ func _build_ui()->void:
 	var menu_popup:=product_menu_button.get_popup()
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 스킬",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
+	menu_popup.add_item("4인 전투 테스트 · 마법",6)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 원정 · 종족 선택",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -992,6 +993,23 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
+	var lab_button:=Button.new();lab_button.name="ActiveCombatLabStart"
+	lab_button.text="4인 전투 테스트 · 마법";lab_button.custom_minimum_size=Vector2(220,44)
+	lab_button.pressed.connect(_open_active_combat_lab)
+	species_picker_buttons.add_child(lab_button);DarkPixelSkinScript.apply_action_button(lab_button,DarkPixelSkinScript.BRASS)
+
+func _open_active_combat_lab()->void:
+	if get_node_or_null("ActiveCombatLab")!=null:return
+	_cancel_auto_pending(true)
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	_cancel_route_for_user_interruption()
+	var lab=preload("res://playtest/active_combat_lab.gd").new();lab.name="ActiveCombatLab"
+	lab.z_index=300
+	set_process(false);set_process_input(false);set_process_unhandled_key_input(false)
+	lab.closed.connect(func():
+		set_process(true);set_process_input(true);set_process_unhandled_key_input(true)
+		_request_refresh())
+	add_child(lab)
 
 func show_species_picker_for_new_run()->void:
 	if species_picker_modal==null:_build_species_picker()
@@ -1617,7 +1635,7 @@ func _layout_floating_surfaces()->void:
 		record_panel.size=Vector2(record_width,record_height)
 	if species_picker_panel!=null:
 		var picker_width:=minf(size.x-24.0,360.0)
-		var picker_height:=minf(size.y-24.0,360.0)
+		var picker_height:=minf(size.y-24.0,420.0)
 		species_picker_panel.position=(size-Vector2(picker_width,picker_height))*0.5
 		species_picker_panel.size=Vector2(picker_width,picker_height)
 	if tile_popover!=null and tile_popover.visible:_position_tile_popover()
@@ -1625,6 +1643,7 @@ func _layout_floating_surfaces()->void:
 func _refresh()->void:
 	_refresh_pending=false
 	if session==null:return
+	if get_node_or_null("ActiveCombatLab")!=null:return
 	# Presentation refreshes queued by the last AUTO hop must not erase a new
 	# finger-down before finger-up. Modal entry still cancels explicitly.
 	if grid!=null and bool(grid.pointer_gesture_state().get("active",false)):
@@ -5709,6 +5728,7 @@ func _on_product_menu_id(item_id:int)->void:
 		3:_open_hero_detail_tab("SKILL")
 		4:_open_hero_detail_tab("ITEM")
 		5:_toggle_record_modal()
+		6:_open_active_combat_lab()
 
 func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var cycle:Dictionary=session.expedition_cycle_status() \
