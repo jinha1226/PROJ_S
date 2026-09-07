@@ -10,11 +10,12 @@ var bodies:Dictionary={}
 var event_id:int=0
 var physical_hits:int=0
 var unsupported_fire_hits:int=0
+var elemental_hits:int=0
 var weapons:Dictionary={}
 var limb_errors:Dictionary={}
 
 func reset(actors:Array,seed:int)->void:
-	bodies.clear();limb_errors.clear();event_id=0;physical_hits=0;unsupported_fire_hits=0
+	bodies.clear();limb_errors.clear();event_id=0;physical_hits=0;unsupported_fire_hits=0;elemental_hits=0
 	for actor in actors:
 		bodies[int(actor.id)]=Body.create(int(actor.id),str(actor.species_id),Body.world_body_seed(seed,int(actor.id),str(actor.species_id)))
 
@@ -50,20 +51,22 @@ func basic_power(actor:Dictionary)->int:
 
 func plan(source:Dictionary,target:Dictionary,kind:String,amount:int,seed:int,now:int)->Dictionary:
 	if not enabled or amount<=0:return {"accepted":true,"skip":true}
-	if kind=="FIREBOLT":return {"accepted":true,"skip":true,"unsupported_fire":true}
 	var body=bodies.get(int(target.id))
 	var weapon=weapon_for(source,kind)
 	var key:String=("active-body-v1|%d|%d|%d|%d|%d|%s"%[seed,now,event_id+1,source.id,target.id,kind]).sha256_text()
 	# Apply to a copy first, so an invalid injury cannot half-spend energy/HP.
 	var copy=Body.from_dict(body.to_dict()) if body!=null else null
-	var result:Dictionary=Injury.apply(copy,weapon,amount,int(target.armor),key,int(target.id),event_id+1)
+	var element:String="FIRE" if kind=="FIREBOLT" else ("ELECTRIC" if kind=="ELECTRIC" else "")
+	var result:Dictionary=Injury.apply_element(copy,element,amount,key,int(target.id),event_id+1) if not element.is_empty() else Injury.apply(copy,weapon,amount,int(target.armor),key,int(target.id),event_id+1)
 	if not result.accepted:return result
-	return {"accepted":true,"skip":false,"body":copy,"result":result,"target":int(target.id)}
+	return {"accepted":true,"skip":false,"body":copy,"result":result,"target":int(target.id),"element":element}
 
 func commit(plan:Dictionary)->void:
 	if plan.get("unsupported_fire",false):unsupported_fire_hits+=1
 	if plan.get("skip",false):return
-	bodies[int(plan.target)]=plan.body;event_id+=1;physical_hits+=1
+	bodies[int(plan.target)]=plan.body;event_id+=1
+	if str(plan.get("element","")).is_empty():physical_hits+=1
+	else:elemental_hits+=1
 
 func summary()->Dictionary:
 	var wounds:int=0;var disabled:int=0;var severed:int=0;var blood_lost:int=0
@@ -72,4 +75,4 @@ func summary()->Dictionary:
 		for part in body.parts:
 			if part.condition=="DISABLED":disabled+=1
 			elif part.condition=="SEVERED":severed+=1
-	return {"physical_hits":physical_hits,"unsupported_fire_hits":unsupported_fire_hits,"wounds":wounds,"disabled":disabled,"severed":severed,"blood_lost":blood_lost}
+	return {"physical_hits":physical_hits,"elemental_hits":elemental_hits,"unsupported_fire_hits":unsupported_fire_hits,"wounds":wounds,"disabled":disabled,"severed":severed,"blood_lost":blood_lost}

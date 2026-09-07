@@ -2494,7 +2494,13 @@ func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var modulate:=Color(0.78,0.82,0.84,0.84) if visibility=="VISIBLE" \
 		else Color(0.30,0.32,0.33,0.42)
 	# A sub-pixel overlap prevents sampling seams without changing hit mapping.
+	if bool(spec.get("is_wall",false)):
+		draw_rect(rect.grow(0.35),Color("#151d26") if visibility=="VISIBLE" else Color("#101419"))
+		modulate=Color(0.48,0.56,0.66,1.0) if visibility=="VISIBLE" else Color(0.21,0.25,0.30,0.7)
 	draw_texture_rect_region(texture,rect.grow(0.35),Rect2(spec.region),modulate)
+	if bool(spec.get("is_wall",false)):
+		draw_rect(rect.grow(-1.0),Color("#0b111a"),false,maxf(2.0,rect.size.x*0.08))
+		draw_line(rect.position+Vector2(2,2),rect.position+Vector2(rect.size.x-2,2),Color("#78899b") if visibility=="VISIBLE" else Color("#303d49"),maxf(1.0,rect.size.x*0.04))
 
 func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 	if not bool(spec.get("visible",false)):return

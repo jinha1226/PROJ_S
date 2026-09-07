@@ -6571,6 +6571,9 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
+		if int(decoded.snapshot.get("width",0))==360 and int(decoded.snapshot.get("height",0))==192:
+			var authored_layout:=VisualTestMapScript.authored_campaign_dungeon(parsed_world_seed)
+			if _snapshot_terrain_matches_layout(decoded.snapshot,authored_layout):current_layout=authored_layout
 		var previous_layout:=VisualTestMapScript.previous_product_dungeon(
 			parsed_world_seed)
 		var older_layout:=VisualTestMapScript.older_product_dungeon(

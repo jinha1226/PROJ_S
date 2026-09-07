@@ -10,9 +10,9 @@ const FLOOR_GAP := 8
 const FloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 
 
-static func generate(seed:int, selected_floor:int=1)->Dictionary:
-	var floor_one:Dictionary=FloorMapScript.generate(1,seed)
-	var floor_two:Dictionary=FloorMapScript.generate(2,seed)
+static func generate(seed:int, selected_floor:int=1,compact:bool=true)->Dictionary:
+	var floor_one:Dictionary=FloorMapScript.generate(1,seed) if compact else FloorMapScript.generate_authored(1,seed)
+	var floor_two:Dictionary=FloorMapScript.generate(2,seed) if compact else FloorMapScript.generate_authored(2,seed)
 	if floor_one.is_empty() or floor_two.is_empty():return {}
 	var floor_one_size:=Vector2i(int(floor_one.width),int(floor_one.height))
 	var floor_two_size:=Vector2i(int(floor_two.width),int(floor_two.height))

@@ -6,6 +6,7 @@ const MAX_SMALL_VALUE:=2147483647
 const BodyRegistryScript=preload("res://sim/body_template_registry.gd")
 const CombatRulesScript=preload("res://sim/body_combat_rules.gd")
 const ResolverScript=preload("res://sim/body_damage_resolver.gd")
+const Elements=preload("res://sim/body_element_rules.gd")
 
 
 static func assess(body,weapon,raw_damage:int,armor_flat:int,
@@ -17,9 +18,17 @@ static func assess(body,weapon,raw_damage:int,armor_flat:int,
 			or not weapon.validation_error().is_empty() or raw_damage<=0 \
 			or armor_flat<0 or commitment_hash.length()!=64:
 		return rejected.duplicate(true)
-	var part_id:String=CombatRulesScript.select_part(body,commitment_hash,target_id)
 	var attack:Dictionary=CombatRulesScript.attack_packet(weapon,raw_damage)
 	var armor:Dictionary=CombatRulesScript.armor_packet(armor_flat)
+	return _assess_packet(body,attack,armor,str(weapon.weapon_id),commitment_hash,target_id)
+
+static func assess_element(body,element:String,damage:int,commitment_hash:String,target_id:int)->Dictionary:
+	return _assess_packet(body,Elements.packet(element,damage),CombatRulesScript.armor_packet(0),element,commitment_hash,target_id)
+
+static func _assess_packet(body,attack:Dictionary,armor:Dictionary,source_id:String,commitment_hash:String,target_id:int)->Dictionary:
+	var rejected:={"accepted":false,"reason":"invalid_body_injury_input"}
+	if body==null or not body.has_method("validation_error") or not body.validation_error().is_empty() or target_id!=body.entity_id or commitment_hash.length()!=64:return rejected
+	var part_id:String=CombatRulesScript.select_part(body,commitment_hash,target_id)
 	var template:Dictionary=BodyRegistryScript.template_definition(str(body.template_id))
 	if part_id.is_empty() or attack.is_empty() or armor.is_empty() or template.is_empty():
 		return rejected.duplicate(true)
@@ -62,7 +71,7 @@ static func assess(body,weapon,raw_damage:int,armor_flat:int,
 		return {"accepted":false,"reason":"body_injury_capacity_exhausted"}
 	return {"accepted":true,"reason":"","ruleset_id":RULESET_ID,
 		"body_combat_ruleset_id":CombatRulesScript.RULESET_ID,"target_id":target_id,
-		"weapon_id":str(weapon.weapon_id),"part_id":part_id,
+		"weapon_id":source_id,"part_id":part_id,
 		"attack_packet":attack,"armor_packet":armor,"resolution":resolution,
 		"layer_damage":layer_damage,"projected_integrity":projected_integrity,
 		"condition_before":current_condition,"condition_after":projected_condition,
@@ -72,6 +81,12 @@ static func assess(body,weapon,raw_damage:int,armor_flat:int,
 static func apply(body,weapon,raw_damage:int,armor_flat:int,
 		commitment_hash:String,target_id:int,source_event_id:int)->Dictionary:
 	var plan:Dictionary=assess(body,weapon,raw_damage,armor_flat,commitment_hash,target_id)
+	return _apply_plan(body,plan,source_event_id)
+
+static func apply_element(body,element:String,damage:int,commitment_hash:String,target_id:int,source_event_id:int)->Dictionary:
+	return _apply_plan(body,assess_element(body,element,damage,commitment_hash,target_id),source_event_id)
+
+static func _apply_plan(body,plan:Dictionary,source_event_id:int)->Dictionary:
 	if not bool(plan.get("accepted",false)):return plan
 	if source_event_id<=0:return {"accepted":false,"reason":"invalid_injury_source_event"}
 	if not bool(plan.mutated):

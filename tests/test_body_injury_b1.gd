@@ -5,6 +5,24 @@ const CombatRules=preload("res://sim/body_combat_rules.gd")
 const InjurySystem=preload("res://sim/body_injury_system.gd")
 const WeaponRegistry=preload("res://sim/weapon_registry.gd")
 
+func test_shared_fire_electric_preserve_distinct_injuries_and_roundtrip()->bool:
+	var fire=BodyState.create(7,"human",11);var electric=BodyState.create(7,"human",11)
+	var key:="f".repeat(64)
+	var before:Dictionary=fire.to_dict()
+	var plan:Dictionary=InjurySystem.assess_element(fire,"FIRE",40,key,7)
+	check(plan.accepted and fire.to_dict()==before,"element assessment is pure")
+	var burn:Dictionary=InjurySystem.apply_element(fire,"FIRE",40,key,7,1)
+	var shock:Dictionary=InjurySystem.apply_element(electric,"ELECTRIC",40,key,7,1)
+	check(burn.accepted and shock.accepted,"shared elemental rules accept both types")
+	check(burn.plan.resolution.damage>shock.plan.resolution.damage,"fire prioritizes tissue damage")
+	check(shock.plan.resolution.shock>burn.plan.resolution.shock,"electric prioritizes shock")
+	check_eq([burn.plan.resolution.bleed,shock.plan.resolution.bleed,burn.plan.resolution.fracture,shock.plan.resolution.fracture],[0,0,0,0],"elements do not invent cuts or fractures")
+	check(not InjurySystem.assess_element(fire,"UNKNOWN",40,key,7).accepted,"unsupported elements rejected")
+	for body in [fire,electric]:
+		var restored=BodyState.from_dict(JSON.parse_string(JSON.stringify(body.to_dict())))
+		check(restored!=null and restored.to_dict()==body.to_dict(),"elemental body JSON round trip")
+	return finish()
+
 
 func _commitment_for_limb(body)->String:
 	for index in range(1000):

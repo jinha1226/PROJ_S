@@ -2634,15 +2634,15 @@ func _body_history_error(body)->String:
 		var source_id:=int(wound.source_event_id)
 		if wound_sources.has(source_id):return "body_wound_source_reused"
 		var source=event_by_id(source_id)
-		if source==null or source.type!="combat.physical_damage" \
+		var expected_type:String=str(wound.form).to_lower() if str(wound.form) in ["FIRE","ELECTRIC"] else "physical"
+		if source==null or source.type!="combat.%s_damage"%expected_type \
 				or source.target_id!=body.entity_id \
-				or source.data.get("schema_version")!=1 \
-				or source.data.get("damage_type")!="physical":
+				or (expected_type=="physical" and source.data.get("schema_version")!=1) \
+				or source.data.get("damage_type")!=expected_type:
 			return "invalid_body_wound_source"
 		var attack=event_by_id(source.cause_id)
-		if attack==null or attack.type!="action.melee_attack" \
-				or attack.target_id!=body.entity_id \
-				or attack.data.get("outcome")!="HIT":
+		if attack==null \
+				or (expected_type=="physical" and (attack.target_id!=body.entity_id or attack.type!="action.melee_attack" or attack.data.get("outcome")!="HIT")):
 			return "invalid_body_wound_attack_source"
 		wound_sources[source_id]={"part_id":str(wound.part_id)}
 	for part in body.parts:

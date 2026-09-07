@@ -9,6 +9,7 @@ const RULESET_ID := "campaign-floor-regions-v1"
 const FLOOR_ONE_SIZE := Vector2i(160, 160)
 const FLOOR_TWO_SIZE := Vector2i(192, 192)
 const PORTAL_CLEAR_RADIUS := 8
+const CompactFloor=preload("res://playtest/compact_campaign_floor.gd")
 
 const _FLOOR_PROFILES := {
 	1:{
@@ -52,6 +53,10 @@ const _FLOOR_PROFILES := {
 
 
 static func generate(floor_index:int, seed:int)->Dictionary:
+	var authored:=generate_authored(floor_index,seed)
+	return CompactFloor.reduce(authored) if not authored.is_empty() else {}
+
+static func generate_authored(floor_index:int, seed:int)->Dictionary:
 	if not _FLOOR_PROFILES.has(floor_index): return {}
 	var profile:Dictionary=_FLOOR_PROFILES[floor_index]
 	var size:Vector2i=profile.size
@@ -132,7 +137,7 @@ static func generate(floor_index:int, seed:int)->Dictionary:
 
 
 static func floor_size(floor_index:int)->Vector2i:
-	return _FLOOR_PROFILES[floor_index].size if _FLOOR_PROFILES.has(floor_index) \
+	return _FLOOR_PROFILES[floor_index].size/2 if _FLOOR_PROFILES.has(floor_index) \
 		else Vector2i.ZERO
 
 

@@ -111,7 +111,7 @@ func validation_error()->String:
 		previous_wound_id=wound_id;seen_wounds[wound_id]=true
 		if str(wound.get("part_id","")) not in RegistryScript.PART_IDS \
 				or str(wound.get("layer_id","")) not in RegistryScript.LAYER_IDS \
-				or str(wound.get("form","")) not in ["SLASH","PIERCE","IMPACT"] \
+				or str(wound.get("form","")) not in ["SLASH","PIERCE","IMPACT","FIRE","ELECTRIC"] \
 				or int(wound.source_event_id)<=0:
 			return "invalid_body_wound_rows"
 		for key in ["severity","bleeding","depth"]:

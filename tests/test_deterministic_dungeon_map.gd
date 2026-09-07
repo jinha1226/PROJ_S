@@ -23,7 +23,7 @@ func test_campaign_floor_one_and_two_publish_distinct_portals_and_authored_route
 	var floor_one:=CampaignFloorMap.generate(1,44)
 	var floor_two:=CampaignFloorMap.generate(2,44)
 	check_eq([floor_one.width,floor_one.height,floor_two.width,floor_two.height],
-		[160,160,192,192],"campaign floors use the agreed forest and wasteland sizes")
+		[80,80,96,96],"campaign floors use compact forest and wasteland sizes")
 	for layout in [floor_one,floor_two]:
 		var entry:Vector2i=layout.entry_position
 		var anchor:Vector2i=layout.anchor_portal_position
@@ -198,10 +198,10 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	check(first.sim != null and second.sim != null, "solo sessions initialize")
 	if first.sim == null or second.sim == null:
 		return finish()
-	check_eq([first.sim.world.width, first.sim.world.height], [360, 192],
+	check_eq([first.sim.world.width, first.sim.world.height], [184, 96],
 		"both immutable campaign floors share one history-safe world topology")
 	check_eq([first._map_layout.floor_width,first._map_layout.floor_height],
-		[160,160],"the selected floor retains its authored local dimensions")
+		[80,80],"the selected floor retains its compact local dimensions")
 	check_eq(first.sim.snapshot(), second.sim.snapshot(),
 		"same seed reproduces authoritative world and spawns")
 	var state = first.sim.world.party_encounter
@@ -209,7 +209,7 @@ func test_solo_session_uses_large_map_los_memory_and_seeded_spawns() -> bool:
 	var enemy_position: Vector2i = first.sim.world.entities[state.enemy_ids[0]].position
 	var opening_distance:=maxi(absi(hero_position.x-enemy_position.x),
 		absi(hero_position.y-enemy_position.y))
-	check(opening_distance>=24,
+	check(opening_distance>=12,
 		"first combat group leaves a safe entrance and tutorial staging pocket")
 	check(DungeonMap.terrain_at(first._map_layout,enemy_position)!="wall" \
 		and enemy_position!=first._map_layout.exit_position \

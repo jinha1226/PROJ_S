@@ -62,6 +62,7 @@ static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int)->Dictio
 		if not choices is Array or choices.is_empty():return hidden.duplicate(true)
 		tile_index=int(choices[_variant_index(position,resolved_floor,choices.size())])
 	return {"visible":true,"texture":texture,
+		"is_wall":str(cell.get("terrain_id",""))=="wall",
 		"region":Rect2(float((tile_index%4)*TILE_SIZE),float((tile_index/4)*TILE_SIZE),TILE_SIZE,TILE_SIZE),
 		"floor_index":resolved_floor,"tile_index":tile_index,
 		"visibility_state":visibility,"changes_mapping":false,

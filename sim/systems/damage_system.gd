@@ -79,6 +79,12 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 		body_injury_context={"body":body,"weapon":weapon,"raw_damage":
 			int(cause.data.base_damage),"armor_flat":int(cause.data.armor_flat),
 			"commitment_hash":str(cause.data.commitment_hash)}
+	elif damage_type in ["fire","electric"] and world.body_states.has(entity.id):
+		var body=world.body_states[entity.id]
+		var key:String=("element-body-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()
+		var body_plan:Dictionary=BodyInjurySystemScript.assess_element(body,damage_type.to_upper(),mini(expected_health_before,requested_damage),key,entity.id)
+		if not bool(body_plan.get("accepted",false)):return {"accepted":false,"event":null,"applied_health_damage":0}
+		body_injury_context={"body":body,"element":damage_type.to_upper(),"raw_damage":mini(expected_health_before,requested_damage),"commitment_hash":key}
 	var applied_damage := mini(expected_health_before, requested_damage)
 	entity.health -= applied_damage
 	var damage_event = world.emit_event(
@@ -169,10 +175,14 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 		existing.expires_at = expires_at
 		existing.source_event_id = status_event.id
 	if not body_injury_context.is_empty():
-		var injury:Dictionary=BodyInjurySystemScript.apply(body_injury_context.body,
-			body_injury_context.weapon,int(body_injury_context.raw_damage),
-			int(body_injury_context.armor_flat),str(body_injury_context.commitment_hash),
-			entity.id,damage_event.id)
+		var injury:Dictionary
+		if body_injury_context.has("element"):
+			injury=BodyInjurySystemScript.apply_element(body_injury_context.body,str(body_injury_context.element),int(body_injury_context.raw_damage),str(body_injury_context.commitment_hash),entity.id,damage_event.id)
+		else:
+			injury=BodyInjurySystemScript.apply(body_injury_context.body,
+				body_injury_context.weapon,int(body_injury_context.raw_damage),
+				int(body_injury_context.armor_flat),str(body_injury_context.commitment_hash),
+				entity.id,damage_event.id)
 		if not bool(injury.get("accepted",false)):
 			return {"accepted":false,"event":damage_event,
 				"transition_event":transition_event,"death_event":death_event,
@@ -288,12 +298,18 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
 		return 0
 	var damage := mini(entity.health, maxi(1, amount))
+	var element_body=world.body_states.get(entity.id) if damage_type in ["fire","electric"] else null
+	var element_key:String=("element-body-legacy-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()
+	if element_body!=null and not BodyInjurySystemScript.assess_element(element_body,damage_type.to_upper(),damage,element_key,entity.id).accepted:return 0
 	entity.health -= damage
 	var resolved_position: Vector2i = entity.position if event_position == Vector2i(-1, -1) else event_position
 	var damage_event = world.emit_event(
 		"combat.%s_damage" % damage_type, -1, entity.id, resolved_position,
 		damage, cause_id, {"damage_type": damage_type}
 	)
+	if element_body!=null and damage_event!=null:
+		var injury:Dictionary=BodyInjurySystemScript.apply_element(element_body,damage_type.to_upper(),damage,element_key,entity.id,damage_event.id)
+		if not injury.accepted:return 0
 	if entity.health == 0:
 		var death_event = world.emit_event(
 			"entity.died", -1, entity.id, resolved_position, 0, damage_event.id,

@@ -25,7 +25,9 @@ func _draw()->void:
 		for x in range(18):
 			var position:=Vector2i(x,y)
 			var spec:=Tiles.tile_spec({"visibility_state":"VISIBLE","terrain_id":"wall" if model.blocked.has(position) else "stone_floor"},position,1)
-			draw_texture_rect_region(spec.texture,Rect2(rect.position+Vector2(position)*cell,Vector2.ONE*cell),spec.region,Color("#b3b8b6"))
+			var tile_rect:=Rect2(rect.position+Vector2(position)*cell,Vector2.ONE*cell)
+			draw_texture_rect_region(spec.texture,tile_rect,spec.region,Color("#718396") if spec.is_wall else Color("#b3b8b6"))
+			if spec.is_wall:draw_rect(tile_rect.grow(-1),Color("#0b111a"),false,maxf(2.0,cell*0.08))
 	for actor in model.actors:
 		if int(actor.hp)<=0:continue
 		var center:Vector2=rect.position+(Vector2(actor.position)+Vector2(0.5,0.5))*cell

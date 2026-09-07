@@ -70,6 +70,9 @@ static func uses_los_fov(scenario_id: String) -> bool:
 static func product_dungeon(seed: int) -> Dictionary:
 	return CampaignWorldMapScript.generate(seed,1)
 
+static func authored_campaign_dungeon(seed:int)->Dictionary:
+	return CampaignWorldMapScript.generate(seed,1,false)
+
 
 static func campaign_floor(floor_index:int,seed:int)->Dictionary:
 	return CampaignFloorMapScript.generate(floor_index,seed)

@@ -2,7 +2,8 @@ class_name BodyDamageResolver
 extends RefCounted
 
 const RegistryScript=preload("res://sim/body_template_registry.gd")
-const FORMS:=["SLASH","PIERCE","IMPACT"]
+const FORMS:=["SLASH","PIERCE","IMPACT","FIRE","ELECTRIC"]
+const Elements=preload("res://sim/body_element_rules.gd")
 const PACKET_MAX:=100000
 
 
@@ -30,6 +31,11 @@ static func resolve(body,template:Variant,part_id:String,attack:Variant,armor:Va
 			shock=(stagger_force+damage/4)*100/shock_threshold
 			fracture=maxi(0,force/2+stagger_force/2-int(armor.impact_padding)-bone)/4
 			absorbed_force=mini(force,barrier)
+		"FIRE","ELECTRIC":
+			var response:Dictionary=Elements.response(form,int(attack.base_force),shock_threshold)
+			damage=int(response.damage);depth=int(response.depth);shock=int(response.shock)
+			# Burns and electrical injury are not slash wounds: no invented bleeding
+			# or mechanical fractures, and no physical armour applied a second time.
 		"PIERCE":
 			var barrier:=int(armor.pierce_protection)+int(armor.rigidity)+skin
 			var drive:=maxi(0,force+penetration*2-barrier)

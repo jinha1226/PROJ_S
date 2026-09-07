@@ -121,7 +121,7 @@ func test_rollback_restores_body_exactly_and_rejects_stale_revision()->bool:
 	return finish()
 
 
-func test_environmental_damage_remains_outside_melee_body_injury_scope()->bool:
+func test_environmental_damage_uses_shared_elemental_body_injury()->bool:
 	var sim=Simulator.create(2,1,9)
 	var actor=sim.world.add_entity("hero","시험",Vector2i.ZERO,100,[],"human")
 	sim.world.tile_at(Vector2i.ZERO).flammability=100
@@ -130,6 +130,7 @@ func test_environmental_damage_remains_outside_melee_body_injury_scope()->bool:
 	var result=sim.step(Command.ignite(Vector2i.ZERO,70,actor.id))
 	check(result.accepted,"existing damage command commits")
 	check(actor.health<health_before,"legacy HP damage remains active")
-	check_eq(sim.world.body_states[actor.id].to_dict(),body_before,
-		"the first injury slice only projects canonical melee physical hits")
+	check(sim.world.body_states[actor.id].to_dict()!=body_before and not sim.world.body_states[actor.id].wounds.is_empty(),"fire now projects real elemental wounds")
+	check_eq(sim.world.body_states[actor.id].wounds[0].form,"FIRE","fire stays distinct from slash/impact")
+	check(Simulator.from_snapshot(sim.snapshot())!=null,"elemental wounds restore with canonical history")
 	return finish()

@@ -25,7 +25,7 @@ func _init()->void:
 	check(model.body_bridge.summary().physical_hits==0 and model.body_bridge.summary().wounds==0,"full barrier prevents body injury")
 	target.barrier=0
 	check(model._execute(source,"FIREBOLT",5,Vector2i(-1,-1)).accepted,"fire remains playable")
-	check(model.body_bridge.summary().unsupported_fire_hits==1 and model.body_bridge.summary().wounds==0,"fire not disguised as physical injury")
+	check(model.body_bridge.summary().elemental_hits==1 and model.body_bridge.bodies[5].wounds[-1].form=="FIRE","fire uses shared elemental injury")
 	var body=model.body_bridge.bodies[1]
 	for part in body.parts:
 		if part.part_id in ["LEFT_ARM","RIGHT_ARM"]:
