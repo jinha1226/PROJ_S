@@ -55,6 +55,9 @@ const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
 const RationRulesScript=preload("res://sim/party_ration_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
+const BaseProgressionRulesScript=preload("res://sim/base_progression_rules.gd")
+const BaseResourceCacheRulesScript=preload("res://sim/base_resource_cache_rules.gd")
+const BaseProgressionServiceScript=preload("res://playtest/base_progression_service.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -198,6 +201,7 @@ var _presentation_topology_cache:Dictionary={}
 # and while refreshing the surface; keep that presentation work step-keyed and
 # detached from canonical world state.
 var _presentation_visibility_cache:Dictionary={}
+var _base_progression_service
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -212,6 +216,7 @@ func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_personality_seed: int = DEFAULT_PERSONALITY_SEED,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
 		p_player_species_id: String = "human") -> void:
+	_base_progression_service=BaseProgressionServiceScript.new(self)
 	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, true,
 		p_player_species_id)
 
@@ -1569,14 +1574,37 @@ func town_overview()->Dictionary:
 	return _feedback_dto({"accepted":true,"reason":"ok","gold":town_gold(),
 		"expedition_index":int(cycle.get("expedition_index",0)),
 		"floor_index":int(cycle.get("floor_index",1)),
-		"clinic_cost":TOWN_CLINIC_COST,"shrine_cost":TOWN_SHRINE_COST,
-		"shrine_stress_reduction":TOWN_SHRINE_STRESS_REDUCTION,
+		"clinic_cost":_base_clinic_cost(),"shrine_cost":TOWN_SHRINE_COST,
+		"shrine_stress_reduction":_base_lodge_recovery(),
 		"market":town_market_stock(),"armory":town_armory_rows(),
 		"available_portal_floors":_activated_anchor_portal_floors(),
 		"surface_entrance_floor":TOWN_STARTING_FLOOR,
 		"can_depart":bool(town_departure_assessment().get("accepted",false))})
 
 
+func base_overview()->Dictionary:
+	return _base_progression_service.base_overview()
+
+func _base_cache_rows()->Array[Dictionary]:
+	return _base_progression_service._base_cache_rows()
+
+func base_gather_assessment()->Dictionary:
+	return _base_progression_service.base_gather_assessment()
+
+func base_gather()->Dictionary:
+	return _base_progression_service.base_gather()
+
+func base_upgrade(facility_id:String)->Dictionary:
+	return _base_progression_service.base_upgrade(facility_id)
+
+func base_sell(resource_id:String,amount:int=1)->Dictionary:
+	return _base_progression_service.base_sell(resource_id,amount)
+
+func base_return_assessment()->Dictionary:
+	return _base_progression_service.base_return_assessment()
+
+func base_return()->Dictionary:
+	return _base_progression_service.base_return()
 func town_gold()->int:
 	if sim==null or sim.world==null:return 0
 	var value:=TOWN_INITIAL_GOLD
@@ -1586,6 +1614,8 @@ func town_gold()->int:
 				value+=int(event.data.get("stipend",TOWN_RETURN_STIPEND))
 			"town.market_purchased","town.clinic_service","town.shrine_service":
 				value-=int(event.data.get("cost",event.magnitude))
+			"base.resource_sold":
+				value+=int(event.data.get("gold",event.magnitude))
 	return maxi(0,value)
 
 
@@ -1593,7 +1623,7 @@ func town_market_stock()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	var expedition_index:=_town_expedition_index()
 	for catalog_value in TOWN_MARKET_CATALOG:
-		var catalog:Dictionary=catalog_value
+		var catalog:Dictionary=_town_market_catalog_row(str(catalog_value.definition_id))
 		var definition_id:=str(catalog.definition_id)
 		var bought:=0
 		if sim!=null and sim.world!=null:
@@ -1673,7 +1703,8 @@ func purchase_town_item(definition_id:String)->Dictionary:
 func town_clinic_assessment(entity_id:int)->Dictionary:
 	var member_error:=_town_active_member_error(entity_id,true)
 	if not member_error.is_empty():return _rejection_dto(member_error)
-	if town_gold()<TOWN_CLINIC_COST:return _rejection_dto("town_gold_insufficient")
+	var clinic_cost:=_base_clinic_cost()
+	if town_gold()<clinic_cost:return _rejection_dto("town_gold_insufficient")
 	var entity=sim.world.entities[entity_id]
 	var combatant=sim.world.combatant_states[entity_id]
 	var body=sim.world.body_states.get(entity_id)
@@ -1694,7 +1725,7 @@ func town_clinic_assessment(entity_id:int)->Dictionary:
 			or int(body.shock)>0 or int(body.consciousness)<1000)
 	if not needs_care:return _rejection_dto("town_clinic_not_needed")
 	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
-		"cost":TOWN_CLINIC_COST,"health":int(entity.health),
+		"cost":clinic_cost,"health":int(entity.health),
 		"max_health":int(entity.max_health),"life_state":str(combatant.life_state),
 		"wound_count":body.wounds.size() if body!=null else 0,
 		"damaged_part_count":damaged_parts,"severed_part_count":severed_parts,
@@ -1710,9 +1741,10 @@ func treat_town_clinic(entity_id:int)->Dictionary:
 	var entity=sim.world.entities[entity_id]
 	var combatant=sim.world.combatant_states[entity_id]
 	var body=sim.world.body_states.get(entity_id)
+	var clinic_cost:=int(assessment.cost)
 	var source=sim.world.emit_event("town.clinic_service",hero_id,entity_id,
-		entity.position,TOWN_CLINIC_COST,-1,{"schema_version":1,
-			"ruleset_id":TOWN_CLINIC_RULESET_ID,"cost":TOWN_CLINIC_COST})
+		entity.position,clinic_cost,-1,{"schema_version":1,
+			"ruleset_id":TOWN_CLINIC_RULESET_ID,"cost":clinic_cost})
 	if source==null:
 		_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
 	var cleared_status_ids:Array[String]=[]
@@ -1782,7 +1814,7 @@ func treat_town_clinic(entity_id:int)->Dictionary:
 	command_journal.append({"kind":"town","operation":{
 		"action":"CLINIC","entity_id":str(entity_id)}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(source.id),
-		"entity_id":entity_id,"cost":TOWN_CLINIC_COST,"gold":town_gold(),
+		"entity_id":entity_id,"cost":clinic_cost,"gold":town_gold(),
 		"healed_amount":healed_amount,"cleared_status_ids":cleared_status_ids,
 		"recovered_from_downed":recovered_from_downed,"body_restored":body_changed,
 		"severed_parts_remain":bool(assessment.get("severed_parts_remain",false))})
@@ -1794,9 +1826,11 @@ func town_shrine_assessment(entity_id:int)->Dictionary:
 	if town_gold()<TOWN_SHRINE_COST:return _rejection_dto("town_gold_insufficient")
 	var member=sim.world.party_encounter.member(entity_id)
 	if member==null or int(member.stress)<=0:return _rejection_dto("town_shrine_not_needed")
+	var recovery:=_base_lodge_recovery()
 	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
 		"cost":TOWN_SHRINE_COST,"stress_before":int(member.stress),
-		"stress_after":maxi(0,int(member.stress)-TOWN_SHRINE_STRESS_REDUCTION)})
+		"stress_after":maxi(0,int(member.stress)-recovery),
+		"stress_recovery":recovery})
 
 
 func rest_at_town_shrine(entity_id:int)->Dictionary:
@@ -2304,8 +2338,27 @@ func _town_active_member_error(entity_id:int,allow_downed:bool)->String:
 
 func _town_market_catalog_row(definition_id:String)->Dictionary:
 	for value in TOWN_MARKET_CATALOG:
-		if str(value.get("definition_id",""))==definition_id:return value.duplicate(true)
+		if str(value.get("definition_id",""))==definition_id:
+			var result:Dictionary=value.duplicate(true)
+			if definition_id=="POTION_HEALING":
+				var levels:=BaseProgressionRulesScript.facility_levels(
+					sim.world.events if sim!=null and sim.world!=null else [])
+				result.stock=int(BaseProgressionRulesScript.CLINIC_POTION_STOCK[
+					int(levels.CLINIC)])
+			return result
 	return {}
+
+
+func _base_clinic_cost()->int:
+	var levels:=BaseProgressionRulesScript.facility_levels(
+		sim.world.events if sim!=null and sim.world!=null else [])
+	return int(BaseProgressionRulesScript.CLINIC_GOLD_COST[int(levels.CLINIC)])
+
+
+func _base_lodge_recovery()->int:
+	var levels:=BaseProgressionRulesScript.facility_levels(
+		sim.world.events if sim!=null and sim.world!=null else [])
+	return int(BaseProgressionRulesScript.LODGE_STRESS_RECOVERY[int(levels.LODGE)])
 
 
 func _town_expedition_index()->int:
@@ -2859,6 +2912,12 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var followers_by_cell:Dictionary=context.followers_by_cell
 	var ground_items_by_cell:Dictionary=context.ground_items_by_cell
 	var monster_blood_by_cell:Dictionary=context.monster_blood_by_cell
+	var base_cache_by_cell:Dictionary={}
+	if scenario_id==DUO_SCENARIO_ID:
+		for cache_row in _base_cache_rows():
+			var cache_position:Array=cache_row.position
+			base_cache_by_cell[_position_key(Vector2i(int(cache_position[0]),
+				int(cache_position[1])))]=cache_row
 	var hide_enemies:=bool(context.hide_enemies)
 	var cells: Array = []
 	var minimum:=Vector2i(maxi(0,bounds.position.x),maxi(0,bounds.position.y))
@@ -2926,6 +2985,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					else int(a.entity_id) < int(b.entity_id))
 			cells.append({"position":[x,y], "terrain_id":str(tile.terrain),
 				"feature_id":_run_feature_id_at(position, progress),
+				"resource_cache":base_cache_by_cell.get(position_key,{}).duplicate(true),
 				"ground_mark_id":"blood_pool" if monster_blood_by_cell.has(position_key) \
 					else ("blood" if position in _opening_blood_positions else ""),
 				"presentation_material_id":presentation_material_id,
@@ -6695,6 +6755,15 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"base":
+				var base_operation:Dictionary=row.operation
+				match str(base_operation.action):
+					"GATHER":replay_result=replay.base_gather()
+					"RETURN":replay_result=replay.base_return()
+					"UPGRADE":replay_result=replay.base_upgrade(
+						str(base_operation.facility_id))
+					"SELL":replay_result=replay.base_sell(
+						str(base_operation.resource_id),int(base_operation.amount))
 			"dungeon":
 				var dungeon_operation:Dictionary=row.operation
 				if str(dungeon_operation.action)=="ACTIVATE_ANCHOR_PORTAL":
@@ -6933,6 +7002,24 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"base":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_base_journal"
+				var base_keys:Array=row.operation.keys();base_keys.sort()
+				var base_action:=str(row.operation.get("action",""))
+				if base_action in ["GATHER","RETURN"]:
+					if base_keys!=["action"]:return "invalid_base_journal"
+				elif base_action=="UPGRADE":
+					if base_keys!=["action","facility_id"] \
+							or row.operation.get("facility_id") not in BaseProgressionRulesScript.FACILITY_IDS:
+						return "invalid_base_journal"
+				elif base_action=="SELL":
+					if base_keys!=["action","amount","resource_id"] \
+							or row.operation.get("resource_id") not in BaseProgressionRulesScript.RESOURCE_IDS \
+							or not _integer(row.operation.get("amount")) \
+							or int(row.operation.amount)<1:
+						return "invalid_base_journal"
+				else:return "invalid_base_journal"
 			"dungeon":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_dungeon_journal"
@@ -7895,6 +7982,29 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"tab_attack_phase_unavailable":"지금은 자동 공격을 사용할 수 없습니다.",
 		"invalid_party_session":"저장 데이터 형식이 올바르지 않습니다.",
 		"invalid_party_session_wire":"저장 데이터가 정규 형식이 아닙니다.",
+		"base_scenario_unavailable":"이 시나리오에서는 기지를 사용할 수 없습니다.",
+		"base_gather_dungeon_required":"원정 중에만 물자를 채집할 수 있습니다.",
+		"base_gather_unsafe":"안전한 탐험 상태에서만 물자를 채집할 수 있습니다.",
+		"base_gather_actor_missing":"행동할 수 있는 주인공이 없습니다.",
+		"base_gather_cache_not_reached":"물자 더미 바로 옆으로 이동해야 합니다.",
+		"base_gather_capacity_full":"운반 한도가 가득 찼습니다.",
+		"base_gather_time_failed":"채집 시간을 진행하지 못했습니다.",
+		"base_gather_interrupted":"위험이 발생해 채집을 중단했습니다.",
+		"base_upgrade_town_required":"기지 증축은 마을에서만 할 수 있습니다.",
+		"base_facility_unknown":"알 수 없는 기지 시설입니다.",
+		"base_facility_max_level":"이미 최대 레벨인 시설입니다.",
+		"base_resources_insufficient":"필요한 기지 자원이 부족합니다.",
+		"base_sell_town_required":"자원 판매는 마을에서만 할 수 있습니다.",
+		"base_trade_invalid":"판매할 자원과 수량을 확인하세요.",
+		"base_return_dungeon_required":"현재 귀환할 원정이 없습니다.",
+		"base_return_unsafe":"전투나 조우 중에는 귀환할 수 없습니다.",
+		"base_return_actor_missing":"행동할 수 있는 주인공이 없습니다.",
+		"base_return_portal_required":"입구 또는 활성화한 거점 관문에서 귀환할 수 있습니다.",
+		"base_return_contested":"주변의 적을 떨쳐낸 뒤 귀환하세요.",
+		"base_return_failed":"귀환을 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"base_trade_failed":"거래를 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"base_upgrade_failed":"증축을 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"base_gather_failed":"채집을 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"session_not_initialized":"세션이 준비되지 않았습니다."
 	}
 	if mapped.has(reason):

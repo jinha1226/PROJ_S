@@ -21,6 +21,7 @@ const DarkPixelSkinScript=preload("res://playtest/dark_pixel_ui_skin.gd")
 const DarkPixelFrameScript=preload("res://playtest/dark_pixel_ui_frame.gd")
 const CompactPortraitScript=preload("res://playtest/compact_party_portrait.gd")
 const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
+const BaseProgressPanelScript=preload("res://playtest/base_progress_panel.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
@@ -115,12 +116,16 @@ var record_modal:Control
 var record_panel:PanelContainer
 var record_body:Label
 var record_close_button:Button
+var base_modal:Control
+var base_modal_panel:PanelContainer
+var base_preview
+var base_close_button:Button
 var species_picker_modal:Control
 var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
-var town_facility_id:="GUILD"
+var town_facility_id:=""
 var notice_text:=""
 var pending_move_actor_id:=-1
 var pending_move_origin:=Vector2i(-1,-1)
@@ -827,6 +832,7 @@ func _build_ui()->void:
 	var menu_popup:=product_menu_button.get_popup()
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 스킬",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
+	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("4인 전투 테스트 · 마법",6)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 원정 · 종족 선택",1)
@@ -892,6 +898,7 @@ func _build_ui()->void:
 	_build_member_detail_modal()
 	_build_map_overlay()
 	_build_record_modal()
+	_build_base_modal()
 	_build_species_picker()
 	_apply_dark_pixel_shell_skin()
 	resized.connect(_on_surface_resized)
@@ -956,7 +963,7 @@ func _build_record_modal()->void:
 	DarkPixelSkinScript.apply_panel(record_panel,"FOLIO")
 	record_modal.add_child(record_panel)
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",4);record_panel.add_child(stack)
-	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
+	var header:=HBoxContainer.new();header.custom_minimum_size.y=48;stack.add_child(header)
 	var title:=Label.new();title.text="주요 기록";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size",FONT_SECTION);title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
 	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="×"
@@ -968,6 +975,32 @@ func _build_record_modal()->void:
 	record_body=Label.new();record_body.name="NarrativeRecordBody";record_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	record_body.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;record_body.add_theme_font_size_override("font_size",FONT_AUX)
 	record_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;scroll.add_child(record_body)
+
+func _build_base_modal()->void:
+	base_modal=Control.new();base_modal.name="BaseProgressModal";base_modal.visible=false
+	base_modal.mouse_filter=Control.MOUSE_FILTER_STOP;base_modal.z_index=65
+	base_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);add_child(base_modal)
+	var scrim:=ColorRect.new();scrim.name="BaseProgressScrim";scrim.color=Color("#000306e8")
+	scrim.mouse_filter=Control.MOUSE_FILTER_STOP;scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scrim.gui_input.connect(_on_base_backdrop_input);base_modal.add_child(scrim)
+	base_modal_panel=PanelContainer.new();base_modal_panel.name="BaseProgressModalPanel"
+	DarkPixelSkinScript.apply_panel(base_modal_panel,"FOLIO");base_modal.add_child(base_modal_panel)
+	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",4)
+	base_modal_panel.add_child(stack)
+	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
+	var title:=Label.new();title.text="거점 현황";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size",FONT_SECTION)
+	title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
+	base_close_button=Button.new();base_close_button.name="BaseProgressClose";base_close_button.text="×"
+	base_close_button.custom_minimum_size=Vector2(48,48)
+	base_close_button.pressed.connect(_close_base_modal.bind("BUTTON"));header.add_child(base_close_button)
+	DarkPixelSkinScript.apply_action_button(base_close_button,DarkPixelSkinScript.CYAN)
+	var scroll:=ScrollContainer.new();scroll.name="BaseProgressScroll"
+	scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(scroll)
+	base_preview=BaseProgressPanelScript.new();base_preview.name="BaseProgressPreview"
+	base_preview.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(base_preview)
+	base_preview.return_requested.connect(_on_base_return_requested)
 
 func _build_species_picker()->void:
 	species_picker_modal=Control.new();species_picker_modal.name="SpeciesPickerModal"
@@ -1636,6 +1669,11 @@ func _layout_floating_surfaces()->void:
 		var record_height:=minf(size.y-24.0,620.0)
 		record_panel.position=(size-Vector2(record_width,record_height))*0.5
 		record_panel.size=Vector2(record_width,record_height)
+	if base_modal_panel!=null:
+		var base_width:=minf(size.x-24.0,390.0)
+		var base_height:=minf(size.y-24.0,720.0)
+		base_modal_panel.position=(size-Vector2(base_width,base_height))*0.5
+		base_modal_panel.size=Vector2(base_width,base_height)
 	if species_picker_panel!=null:
 		var picker_width:=minf(size.x-24.0,360.0)
 		var picker_height:=minf(size.y-24.0,420.0)
@@ -1706,6 +1744,11 @@ func _refresh()->void:
 	top_hud_actions.custom_minimum_size.x=44 if product_hud else 132
 	record_button.visible=not product_hud;hero_detail_button.visible=not product_hud
 	product_menu_button.visible=product_hud
+	var base_menu_index:=product_menu_button.get_popup().get_item_index(7)
+	if base_menu_index>=0:
+		var base_menu_enabled:bool=session.has_method("base_overview") \
+			and bool(session.base_overview().get("enabled",false))
+		product_menu_button.get_popup().set_item_disabled(base_menu_index,not base_menu_enabled)
 	# SOLO keeps one continuous dungeon surface: the situation word stays a hidden
 	# authority for tests/legacy while the rail centre names the floor and return.
 	phase_label.visible=not product_hud
@@ -1738,6 +1781,7 @@ func _refresh()->void:
 	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
 		view_dimensions.y)
 	var observation:Dictionary=ui_observation.get("grid",{})
+	_decorate_visible_resource_caches(observation)
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
 	# pending plan to annotate; keeping old intent/cursor marks here made the
@@ -1836,6 +1880,21 @@ func _refresh()->void:
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
 	_flush_pending_visual_effects()
+
+func _decorate_visible_resource_caches(observation:Dictionary)->void:
+	# The session exposes cache authority only on observed cells. Reuse the
+	# established material glyph path so caches are visible without leaking an
+	# undiscovered coordinate or copying cache state into UI-owned authority.
+	var cells:Variant=observation.get("cells",[])
+	if not cells is Array:return
+	for value in cells:
+		if not value is Dictionary:continue
+		var row:Dictionary=value
+		var cache:Variant=row.get("resource_cache",{})
+		if not cache is Dictionary or not bool(cache.get("available",false)):continue
+		var visibility:=str(row.get("visibility_state",row.get("visibility",""))).to_upper()
+		if visibility!="VISIBLE":continue
+		row["ground_item_glyph"]="*"
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
@@ -2084,7 +2143,7 @@ func _toggle_map_overlay()->void:
 
 func _on_map_overlay_closed(_reason:String)->void:
 	if map_nav_button!=null:map_nav_button.set_pressed_no_signal(false)
-	grid.modal_open=member_detail_modal.visible or record_modal.visible
+	grid.modal_open=member_detail_modal.visible or record_modal.visible or base_modal.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
@@ -2096,6 +2155,7 @@ func _toggle_record_modal()->void:
 	_cancel_product_auto_explore("auto_explore_modal",false)
 	_cancel_route_for_user_interruption()
 	if map_overlay.visible:map_overlay.close("HISTORY")
+	if base_modal.visible:_close_base_modal("HISTORY")
 	var history:Dictionary=session.combat_log(64,500)
 	record_body.text=_full_meaningful_record_text(history)
 	grid.cancel_pointer_gesture();grid.modal_open=true
@@ -2107,7 +2167,7 @@ func _toggle_record_modal()->void:
 func _close_record_modal(_reason:String="API")->void:
 	if not record_modal.visible:return
 	record_modal.visible=false;history_nav_button.set_pressed_no_signal(false)
-	grid.modal_open=member_detail_modal.visible or map_overlay.visible
+	grid.modal_open=member_detail_modal.visible or map_overlay.visible or base_modal.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
@@ -2116,6 +2176,43 @@ func _on_record_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_record_modal("OUTSIDE")
 	elif event is InputEventMouseButton and event.pressed \
 			and event.button_index==MOUSE_BUTTON_LEFT:_close_record_modal("OUTSIDE")
+
+func _open_base_modal()->void:
+	if session==null or not session.has_method("base_overview"):return
+	var overview:Dictionary=session.base_overview()
+	if not bool(overview.get("enabled",false)):return
+	_product_attack_targeting=false
+	_cancel_product_auto_explore("auto_explore_modal",false)
+	_cancel_route_for_user_interruption()
+	if map_overlay.visible:map_overlay.close("BASE")
+	if record_modal.visible:_close_record_modal("BASE")
+	base_preview.present(overview,true)
+	grid.cancel_pointer_gesture();grid.modal_open=true;base_modal.visible=true
+	_sync_product_zoom_controls(_is_solo_product_session())
+	_layout_floating_surfaces()
+	if base_close_button.is_inside_tree():base_close_button.grab_focus()
+
+func _close_base_modal(_reason:String="API")->void:
+	if base_modal==null or not base_modal.visible:return
+	base_modal.visible=false
+	grid.modal_open=member_detail_modal.visible or record_modal.visible or map_overlay.visible
+	_sync_product_zoom_controls(_is_solo_product_session())
+	route_paused_by_modal=false
+	if auto_orchestration_enabled:_request_refresh()
+
+func _on_base_backdrop_input(event:InputEvent)->void:
+	if event is InputEventScreenTouch and event.pressed:_close_base_modal("OUTSIDE")
+	elif event is InputEventMouseButton and event.pressed \
+			and event.button_index==MOUSE_BUTTON_LEFT:_close_base_modal("OUTSIDE")
+
+func _on_base_return_requested()->void:
+	if not session.has_method("base_return"):
+		_show_product_command_feedback("이 위치에서는 귀환할 수 없습니다.");return
+	var result:Dictionary=session.base_return()
+	_show_product_command_feedback(str(result.get("message","안전하게 귀환했습니다." if bool(
+		result.get("accepted",false)) else "이 위치에서는 귀환할 수 없습니다.")))
+	if bool(result.get("accepted",false)):_close_base_modal("RETURN")
+	_request_refresh()
 
 func _update_recent_event(history:Dictionary,status:Dictionary)->void:
 	var latest:=""
@@ -2616,18 +2713,27 @@ func _exploration_deck()->void:
 
 
 func _town_deck(status:Dictionary)->void:
+	var base_enabled:bool=session.has_method("base_overview") \
+		and bool(session.base_overview().get("enabled",false))
+	if town_facility_id.is_empty():
+		town_facility_id="BASE" if base_enabled else ("GUILD" if session.allows_companions() else "GATE")
+	if town_facility_id=="BASE" and not base_enabled:
+		town_facility_id="GUILD" if session.allows_companions() else "GATE"
 	if not session.allows_companions() and town_facility_id=="GUILD":town_facility_id="GATE"
 	_add_notice(_town_summary_text(status),"TownGuildHallSummary",FONT_KEY)
 	var stations:=GridContainer.new();stations.name="TownGuildHallStations"
 	stations.columns=3;stations.add_theme_constant_override("h_separation",4)
 	stations.add_theme_constant_override("v_separation",4);deck.add_child(stations)
-	for row in [["GUILD","길드"],["CLINIC","치유소"],["SHRINE","신전"],
+	for row in [["BASE","거점"],["GUILD","길드"],["CLINIC","치유소"],["SHRINE","신전"],
 			["MARKET","시장"],["ARMORY","장비"],["GATE","원정문"]]:
+		if str(row[0])=="BASE" and not base_enabled:continue
 		if str(row[0])=="GUILD" and not session.allows_companions():continue
 		var button:=_add_button(stations,str(row[1]),"TownFacility%s"%str(row[0]),
 			_on_town_facility_selected.bind(str(row[0])))
+		button.custom_minimum_size.y=48
 		button.toggle_mode=true;button.button_pressed=town_facility_id==str(row[0])
 	match town_facility_id:
+		"BASE":_town_base_panel()
 		"CLINIC":_town_clinic_panel(status)
 		"SHRINE":_town_shrine_panel(status)
 		"MARKET":_town_market_panel()
@@ -2638,6 +2744,40 @@ func _town_deck(status:Dictionary)->void:
 	_add_notice("마을에서는 이동 턴이 흐르지 않습니다. 준비가 끝난 뒤 원정을 시작합니다.",
 		"TownPreparationRule",FONT_AUX)
 	_selected_detail()
+
+
+func _town_base_panel()->void:
+	if not session.has_method("base_overview"):
+		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
+	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
+	panel.upgrade_requested.connect(_on_base_upgrade_requested)
+	panel.service_requested.connect(_on_base_service_requested)
+	panel.sell_requested.connect(_on_base_sell_requested)
+	deck.add_child(panel);panel.present(session.base_overview(),false)
+
+
+func _on_base_upgrade_requested(facility_id:String)->void:
+	if not session.has_method("base_upgrade"):
+		notice_text="시설을 강화할 수 없습니다.";_request_refresh();return
+	var result:Dictionary=session.base_upgrade(facility_id)
+	notice_text=str(result.get("message","시설을 강화했습니다." if bool(
+		result.get("accepted",false)) else "시설을 강화할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_base_service_requested(facility_id:String)->void:
+	town_facility_id={"STORAGE":"MARKET","LODGE":"SHRINE","CLINIC":"CLINIC"}.get(
+		facility_id, "BASE")
+	notice_text="";action_feedback_text="";_request_refresh()
+
+
+func _on_base_sell_requested(resource_id:String,amount:int)->void:
+	if not session.has_method("base_sell"):
+		notice_text="자원 교환을 사용할 수 없습니다.";_request_refresh();return
+	var result:Dictionary=session.base_sell(resource_id,amount)
+	notice_text=str(result.get("message","자원을 금화로 교환했습니다." if bool(
+		result.get("accepted",false)) else "자원을 교환할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
 
 
 func _town_summary_text(status:Dictionary)->String:
@@ -3119,10 +3259,14 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var portal_choice:=bool(anchor_portal.get("can_activate",false))
 	var floor_transition:Dictionary=session.floor_transition_assessment() \
 		if session.has_method("floor_transition_assessment") else {}
+	var gather:Dictionary=session.base_gather_assessment() \
+		if session.has_method("base_gather_assessment") else {}
+	var gather_context:bool=bool(gather.get("accepted",false)) \
+		or not str(gather.get("resource_id","")).is_empty()
 	if product_attack_button!=null and is_instance_valid(product_attack_button):
 		product_attack_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"] \
 			or opening_choice or portal_choice \
-			or bool(floor_transition.get("accepted",false))
+			or bool(floor_transition.get("accepted",false)) or gather_context
 		product_attack_button.tooltip_text= \
 			"가장 가까운 시야 내 적을 공격하거나 한 칸 접근합니다."
 	if bool(floor_transition.get("accepted",false)):
@@ -3152,6 +3296,18 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			product_auto_button.custom_minimum_size.y)
 		product_interact_button.custom_minimum_size.y=maxf(44.0,
 			product_interact_button.custom_minimum_size.y)
+	elif gather_context and mode=="EXPLORATION":
+		var amount:=maxi(1,int(gather.get("amount",1)))
+		product_interact_button.text="[채집 %d]"%amount
+		product_interact_button.disabled=terminal or not bool(gather.get("accepted",false))
+		product_interact_button.tooltip_text=str(gather.get("message",
+			"표시된 자원 더미를 채집합니다."))
+		product_auto_button.disabled=terminal
+		product_auto_button.toggle_mode=true
+		var auto_state:Dictionary=session.auto_explore_state() \
+			if session.has_method("auto_explore_state") else {}
+		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
+		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
 	elif mode=="EXPLORATION":
 		product_interact_button.text="[INTERACT]"
 		var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
@@ -3463,15 +3619,24 @@ func _on_product_interact()->void:
 					"accepted",false)) else str(portal_result.get("message",
 					"포탈을 활성화할 수 없습니다.")))
 			_request_refresh();return
-	if not session.has_method("opening_event_status") \
-			or not bool(session.opening_event_status().get("can_interact",false)):
-		return
-	_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
-	var result:Dictionary=session.commit_opening_event_choice("PASS")
-	_record_result(result,true)
-	_show_product_command_feedback("여행자를 돕지 않기로 했습니다." \
-		if bool(result.get("accepted",false)) else str(result.get("message","선택할 수 없습니다.")))
-	_request_refresh()
+	if session.has_method("opening_event_status") \
+			and bool(session.opening_event_status().get("can_interact",false)):
+		_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+		var result:Dictionary=session.commit_opening_event_choice("PASS")
+		_record_result(result,true)
+		_show_product_command_feedback("여행자를 돕지 않기로 했습니다." \
+			if bool(result.get("accepted",false)) else str(result.get("message","선택할 수 없습니다.")))
+		_request_refresh();return
+	if session.has_method("base_gather_assessment"):
+		var assessment:Dictionary=session.base_gather_assessment()
+		if bool(assessment.get("accepted",false)):
+			_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+			var gather_result:Dictionary=session.base_gather()
+			_record_result(gather_result,true)
+			_show_product_command_feedback(str(gather_result.get("message",
+				"자원을 운반 물자에 담았습니다." if bool(gather_result.get(
+					"accepted",false)) else "자원을 채집할 수 없습니다.")))
+			_request_refresh();return
 
 func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()
@@ -3790,7 +3955,7 @@ func _close_member_detail()->void:
 	_hide_item_popover()
 	member_detail_modal.visible=false;member_detail_entity_id=-1;_product_attack_targeting=false
 	_reset_member_detail_pointer_state()
-	grid.modal_open=record_modal.visible or map_overlay.visible
+	grid.modal_open=record_modal.visible or map_overlay.visible or base_modal.visible
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if session!=null:
@@ -4698,6 +4863,7 @@ func _reset_run_ui_transients()->void:
 	if _reward_emphasis_tween!=null and _reward_emphasis_tween.is_valid():_reward_emphasis_tween.kill()
 	if reward_badge!=null:reward_badge.modulate=Color.WHITE
 	if member_detail_modal!=null:member_detail_modal.visible=false
+	if base_modal!=null:base_modal.visible=false
 	if grid!=null:
 		grid.modal_open=false;grid.cancel_pointer_gesture()
 		if grid.has_method("clear_transient_visuals"):grid.call("clear_transient_visuals")
@@ -5784,6 +5950,7 @@ func _on_product_menu_id(item_id:int)->void:
 		4:_open_hero_detail_tab("ITEM")
 		5:_toggle_record_modal()
 		6:_open_active_combat_lab()
+		7:_open_base_modal()
 
 func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var cycle:Dictionary=session.expedition_cycle_status() \
