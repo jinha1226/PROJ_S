@@ -5,6 +5,7 @@ var actor:Dictionary={}
 var selected:=false
 var party_count:=1
 var party_index:=0
+var order_reserved:=false
 
 func _portrait(texture:Texture2D,rect:Rect2)->void:
 	var tones:=[Color("#508cb0"),Color("#bd853d"),Color("#61934e"),Color("#ac4949")]
@@ -35,6 +36,7 @@ func _draw()->void:
 	else:
 		_draw_expanded(texture,font,health,maximum)
 	if selected:draw_rect(Rect2(Vector2.ONE,size-Vector2.ONE*2),Color("#c6a34c"),false,1)
+	if order_reserved:draw_circle(Vector2(size.x-8,9),5,Color("#e3bd57"))
 
 func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	var portrait_side:=minf(60.0,size.y-8.0)

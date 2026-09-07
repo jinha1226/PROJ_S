@@ -265,6 +265,9 @@ var auto_combat_plan_hash:=""
 var auto_combat_step_index:=-1
 var auto_combat_render_stage:=0
 var auto_override_edit:=false
+var companion_order_editor
+var member_order_button:Button
+var member_order_cancel:Button
 var auto_phase:=""
 var exploration_follow_plan:Dictionary={}
 var _initialized_for_headless_test:=false
@@ -607,6 +610,7 @@ func _product_control_at_position(global_position:Vector2)->String:
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
 		history_nav_button])
 	for control_value in controls:
+		if not is_instance_valid(control_value):continue
 		var button:=control_value as Button
 		if button!=null and button.is_visible_in_tree() and not button.disabled \
 				and button.get_global_rect().has_point(global_position):return button.name
@@ -867,6 +871,13 @@ func _build_ui()->void:
 	combat_action_area.add_child(action_feedback_label)
 	combat_action_dock=HBoxContainer.new(); combat_action_dock.name="CombatActionDock"; combat_action_dock.custom_minimum_size.y=TOUCH_TARGET
 	combat_action_dock.add_theme_constant_override("separation",4);combat_action_dock.visible=false;combat_action_area.add_child(combat_action_dock)
+	companion_order_editor=preload("res://playtest/companion_order_editor.gd").new()
+	combat_action_area.add_child(companion_order_editor)
+	companion_order_editor.finished.connect(_finish_companion_order_edit)
+	companion_order_editor.feedback.connect(func(message:String):
+		notice_text=message;action_feedback_text=message
+		_product_transient_event_feedback=message
+		event_label.text=message)
 	hud_bottom_flex=Control.new();hud_bottom_flex.name="HudBottomFlex"
 	hud_bottom_flex.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	hud_bottom_flex.mouse_filter=Control.MOUSE_FILTER_IGNORE;hud_bottom_flex.visible=false
@@ -1153,6 +1164,16 @@ func _build_member_detail_modal()->void:
 	member_detail_attack.pressed.connect(_on_member_detail_attack)
 	member_detail_attack.visible=false;stack.add_child(member_detail_attack)
 	DarkPixelSkinScript.apply_action_button(member_detail_attack,DarkPixelSkinScript.BLOOD,true)
+	member_order_button=Button.new();member_order_button.text="다음 행동 지시"
+	member_order_button.custom_minimum_size.y=44
+	member_order_button.pressed.connect(_begin_companion_order_edit)
+	stack.add_child(member_order_button);DarkPixelSkinScript.apply_action_button(member_order_button)
+	member_order_cancel=Button.new();member_order_cancel.text="예약 취소 · 자동전투"
+	member_order_cancel.custom_minimum_size.y=44
+	member_order_cancel.pressed.connect(func():
+		session.cancel_companion_order(member_detail_entity_id)
+		_close_member_detail();_request_refresh())
+	stack.add_child(member_order_cancel);DarkPixelSkinScript.apply_action_button(member_order_cancel)
 
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
@@ -1948,6 +1969,7 @@ func _update_stable_party_card(row:Dictionary)->void:
 	if card.get_script()==CompactPortraitScript:
 		card.actor=row.duplicate(true)
 		card.selected=int(row.get("entity_id",-1))==selected_member_id
+		card.order_reserved=session.has_companion_order(int(row.get("entity_id",-1)))
 		card.queue_redraw()
 		return
 	var health:=card.find_child("MemberState",true,false)
@@ -2114,6 +2136,7 @@ func _arm_pending_auto_after_tree_entry()->void:
 		_arm_auto_combat_preview(auto_generation)
 
 func _orchestrate_auto_phase(status:Dictionary)->void:
+	if companion_order_editor!=null and companion_order_editor.visible:return
 	var phase:=str(status.get("safe_phase",""))
 	if phase!=auto_phase:
 		auto_generation+=1;auto_deployment_pending=false;auto_combat_pending=false
@@ -2271,6 +2294,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		var member_id:=int(row.entity_id)
 		compact.name="MemberCard%d"%member_id;compact.actor=row.duplicate(true)
 		compact.selected=member_id==selected_member_id
+		compact.order_reserved=session.has_companion_order(member_id)
 		compact.party_count=int(layout_spec.get("effective_count",1))
 		compact.custom_minimum_size=Vector2(44,PRODUCT_PARTY_CARD_HEIGHT)
 		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -2971,6 +2995,12 @@ func _product_controls_metrics(_party_count:int)->Dictionary:
 	return {"target":48,"gap":gap,"dock_height":48}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
+	if companion_order_editor!=null and companion_order_editor.visible:
+		product_auto_button=null;product_interact_button=null;product_attack_button=null
+		product_wait_guard_button=null;product_execute_button=null;product_bag_button=null
+		action_feedback_label.visible=false
+		combat_action_dock.visible=false;combat_action_area.visible=true
+		return
 	product_bag_button=null
 	product_auto_button=null;product_interact_button=null
 	product_attack_button=null;product_wait_guard_button=null;product_execute_button=null
@@ -3604,6 +3634,21 @@ func _life_state_label(life_state:String)->String:
 func _status_label(status_id:String)->String:
 	return {"BLEEDING":"출혈","POISONED":"중독","WET":"젖음","GUARDED":"방어 태세"}.get(status_id,status_id)
 
+func _begin_companion_order_edit()->void:
+	var id:=member_detail_entity_id
+	_cancel_auto_pending(true)
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	_close_member_detail()
+	companion_order_editor.begin(session,id)
+	combat_action_dock.visible=false
+	selected_member_id=int(session.party_status().protagonist_id)
+	_request_refresh()
+
+func _finish_companion_order_edit()->void:
+	selected_member_id=int(session.party_status().protagonist_id)
+	auto_override_edit=false
+	_request_refresh()
+
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(true)
 	_product_attack_targeting=false
@@ -3751,6 +3796,12 @@ func _apply_member_detail_tab()->void:
 	member_detail_dismiss.visible=status_selected and member_detail_dismiss_available
 	member_detail_candidate_action.visible=status_selected and member_detail_candidate_available
 	member_detail_attack.visible=status_selected and member_detail_attack_available
+	var order_status:Dictionary=session.party_status()
+	var can_order:bool=str(order_status.get("safe_phase",""))=="ENGAGED" \
+		and member_detail_entity_id!=int(order_status.get("protagonist_id",-1)) \
+		and member_detail_entity_id in order_status.get("party_member_ids",[])
+	member_order_button.visible=status_selected and can_order
+	member_order_cancel.visible=status_selected and can_order and session.has_companion_order(member_detail_entity_id)
 	_sync_member_detail_scroll_children()
 	_reflow_member_detail_scroll()
 
@@ -4508,6 +4559,10 @@ func _clear_roster_change_transients()->void:
 		grid.clear_route_overlay();grid.clear_cursor_preview();grid.cancel_pointer_gesture()
 
 func _unhandled_key_input(event:InputEvent)->void:
+	if companion_order_editor!=null and companion_order_editor.visible:
+		if event is InputEventKey and event.pressed and event.keycode==KEY_ESCAPE:
+			companion_order_editor.close()
+		get_viewport().set_input_as_handled();return
 	if member_detail_modal!=null and member_detail_modal.visible and event is InputEventKey \
 			and event.pressed and not event.echo and event.keycode==KEY_ESCAPE:
 		_close_member_detail();get_viewport().set_input_as_handled()
@@ -4548,6 +4603,8 @@ func _on_restart_with_new_personality()->void:
 	_reset_run_ui_transients();_request_refresh()
 
 func _reset_run_ui_transients()->void:
+	if companion_order_editor!=null:
+		companion_order_editor.visible=false;companion_order_editor.actor_id=-1
 	_reset_auto_flow();route_generation+=1;_clear_route_continue_schedule()
 	_product_auto_explore_generation+=1;_product_auto_explore_pending=false
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
@@ -4733,6 +4790,8 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
+	if companion_order_editor!=null and companion_order_editor.visible:
+		companion_order_editor.pick_cell(position);return
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	var progress:=_current_run_progress()
@@ -4816,6 +4875,8 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _on_actor(entity_id:int)->void:
+	if companion_order_editor!=null and companion_order_editor.visible:
+		companion_order_editor.pick_actor(entity_id);return
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
@@ -5117,6 +5178,9 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			notice_text="";action_feedback_text="턴이 처리되었습니다. 다음 행동을 지정하세요." if consume_effects else (
 				"행동이 준비되었습니다." if auto_orchestration_enabled else "행동이 준비되었습니다. 지금 실행을 누르세요.")
 		_settle_solo_product_contact()
+		if not str(result.get("companion_order_notice","")).is_empty():
+			notice_text=str(result.companion_order_notice);action_feedback_text=notice_text
+			_product_transient_event_feedback=notice_text
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
 

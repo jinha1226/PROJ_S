@@ -178,6 +178,7 @@ var command_journal: Array[Dictionary] = []
 var _deployment_plan: Dictionary = {}
 var _protagonist_draft = null
 var _overrides: Dictionary = {}
+var companion_orders=preload("res://playtest/companion_order_queue.gd").new()
 var _draft_fingerprint := ""
 var _exploration_route = null
 var _auto_explore = null
@@ -262,6 +263,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
+	companion_orders.clear()
 	var product_dungeon := VisualTestMapScript.uses_product_dungeon(p_scenario_id)
 	var map_layout: Dictionary = (product_layout_override.duplicate(true) \
 		if product_dungeon and not product_layout_override.is_empty() \
@@ -4893,6 +4895,19 @@ func set_actor_action(actor_id: int, action_type: String, destination: Array = [
 	var state = sim.world.party_encounter
 	return begin_turn(action) if actor_id == state.protagonist_id else override_companion(actor_id, action)
 
+func reserve_companion_action(actor_id:int,action_type:String,destination:Array=[],target_id:int=-1)->Dictionary:
+	var action=_make_action(actor_id,action_type,destination,target_id)
+	if action==null:return {"accepted":false,"message":"지원하지 않는 지시입니다."}
+	return companion_orders.reserve(self,action)
+
+func cancel_companion_order(actor_id:int)->void:
+	companion_orders.orders.erase(actor_id)
+
+func has_companion_order(actor_id:int)->bool:
+	var state=sim.world.party_encounter
+	return state.safe_phase=="ENGAGED" and state.encounter_id==companion_orders.encounter_id \
+		and companion_orders.orders.has(actor_id)
+
 
 func commit_direct_solo_action(actor_id:int,action_type:String,
 		destination:Array=[],target_id:int=-1)->Dictionary:
@@ -5835,6 +5850,8 @@ func commit_turn() -> Dictionary:
 
 func _commit_turn_from_preview(preview:Dictionary)->Dictionary:
 	if not bool(preview.get("accepted",false)): return preview
+	var order_resolution:=companion_orders.resolve(self,_protagonist_draft,_overrides) \
+		if not companion_orders.orders.is_empty() else {}
 	var request = RequestScript.from_dict(preview.canonical_request)
 	var plan_data := preview.duplicate(true)
 	for facade_key in ["message", "reason_code", "reason_details", "visual_effect_schema_version",
@@ -5853,8 +5870,13 @@ func _commit_turn_from_preview(preview:Dictionary)->Dictionary:
 		if recovery.get("event")!=null:result.events.append(recovery.event)
 		_advance_exile_world()
 		command_journal.append({"kind":"party_turn", "request":preview.canonical_request.duplicate(true)})
-	if result.accepted: _clear_draft()
-	return _result_dto(result, null, request)
+	if result.accepted:
+		companion_orders.consume(order_resolution)
+		_clear_draft()
+	var dto:=_result_dto(result, null, request)
+	if result.accepted and not order_resolution.get("cancelled",[]).is_empty():
+		dto["companion_order_notice"]="실행할 수 없는 동료 지시를 취소했습니다. 해당 동료는 이번 행동을 대기합니다."
+	return dto
 
 
 func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
@@ -6780,6 +6802,7 @@ func _install_restored_session(restored, decoded: Dictionary,
 		parsed_world_seed: int, parsed_personality_seed: int,
 		parsed_scenario_id: String, restored_layout: Dictionary) -> Dictionary:
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
+	companion_orders.clear()
 	scenario_id = parsed_scenario_id;player_species_id=str(decoded.player_species_id)
 	_map_layout = restored_layout.duplicate(true)
 	command_journal.clear()
@@ -7101,10 +7124,13 @@ func _clear_draft() -> void:
 
 func _pending_turn_request():
 	var rows: Array = []
-	var ids: Array = _overrides.keys()
+	var resolved:Dictionary=_overrides
+	if not companion_orders.orders.is_empty():
+		resolved=companion_orders.resolve(self,_protagonist_draft,_overrides).overrides
+	var ids: Array = resolved.keys()
 	ids.sort()
 	for id in ids:
-		rows.append({"actor_id":id,"action":_overrides[id]})
+		rows.append({"actor_id":id,"action":resolved[id]})
 	return RequestScript.new(_protagonist_draft, rows)
 
 func _result_dto(result, action: Variant = null, request: Variant = null,
