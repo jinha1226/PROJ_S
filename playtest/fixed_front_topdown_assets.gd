@@ -2,41 +2,29 @@ class_name FixedFrontTopdownAssets
 extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
-## Visible bases use the approved native 24x24 transparent pixel canvas and common anchor.
+## Visible bases use a 256x256 transparent illustrated canvas and common anchor.
 ## Direction is deliberately ignored: movement and combat never swap or mirror
 ## these assets.
 
-const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
+const SOURCE_CANVAS_SIZE := Vector2(256.0, 256.0)
 const FOOT_ANCHOR_RATIO := 0.94
 # Keep the first full-body readability pass honest: equipment remains registered
 # but is not composited until its silhouettes are authored against these bodies.
 const EQUIPMENT_LAYERS_ENABLED := false
 
 const BODY_TEXTURES := {
-	"human": preload("res://assets/topdown_fixed_front/actors/base/human.png"),
-	"elf": preload("res://assets/topdown_fixed_front/actors/base/elf.png"),
-	"dwarf": preload("res://assets/topdown_fixed_front/actors/base/dwarf.png"),
-	"orc": preload("res://assets/topdown_fixed_front/actors/base/orc.png"),
-	"beastkin": preload("res://assets/topdown_fixed_front/actors/base/beastkin.png"),
+	"human": preload("res://assets/illustrated_front/actors/human.png"),
+	"elf": preload("res://assets/illustrated_front/actors/elf.png"),
+	"dwarf": preload("res://assets/illustrated_front/actors/dwarf.png"),
+	"orc": preload("res://assets/illustrated_front/actors/orc.png"),
+	"beastkin": preload("res://assets/illustrated_front/actors/beastkin.png"),
 }
 
 const MONSTER_TEXTURES := {
-	"goblin": preload("res://assets/topdown_fixed_front/monsters/goblin.png"),
-	"kobold": preload("res://assets/topdown_fixed_front/monsters/kobold.png"),
-}
-
-# The texture rectangle is centered on the logical cell, but a few authored
-# silhouettes are not centered inside their transparent 24x24 canvas. These
-# source-pixel offsets center the visible body mass without changing occupancy,
-# hit testing, pathfinding, or the shared foot anchor.
-const VISUAL_CENTER_OFFSETS_SOURCE_PX := {
-	"human": Vector2(-1.5, 0.0),
-	"elf": Vector2(-0.5, 0.0),
-	"dwarf": Vector2.ZERO,
-	"orc": Vector2(0.5, 0.0),
-	"beastkin": Vector2(0.5, 0.0),
-	"goblin": Vector2(-1.0, 0.0),
-	"kobold": Vector2(-0.5, 0.0),
+	"goblin": preload("res://assets/illustrated_front/actors/goblin.png"),
+	"kobold": preload("res://assets/illustrated_front/actors/kobold.png"),
+	"slime": preload("res://assets/illustrated_front/actors/slime.png"),
+	"beetle": preload("res://assets/illustrated_front/actors/beetle.png"),
 }
 
 const ARMOR_TEXTURES := {
@@ -104,7 +92,7 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"species_id":species_id,
 		"body_texture":base_texture,
 		"monster_sprite":uses_monster_sprite,
-		"visual_cell_ratio":1.30 if uses_monster_sprite else 1.50,
+		"visual_cell_ratio":1.18 if uses_monster_sprite else 1.32,
 		"armor_definition_id":armor_definition_id,
 		"armor_texture":armor_texture(armor_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
 		"weapon_definition_id":weapon_definition_id,
@@ -112,7 +100,6 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
 		"fixed_front":true,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
-		"visual_center_offset_source_px":VISUAL_CENTER_OFFSETS_SOURCE_PX.get(
-			species_id,Vector2.ZERO),
+		"visual_center_offset_source_px":Vector2.ZERO,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,
 	}.duplicate(true)

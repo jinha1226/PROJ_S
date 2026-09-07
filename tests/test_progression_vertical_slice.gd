@@ -196,17 +196,17 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		"solo mobile hero card does not persist derived attack or defense")
 	check(sandbox.phase_panel.visible and not sandbox.phase_label.visible \
 		and sandbox.cards.get_index()>sandbox.grid.get_index() \
-		and sandbox.cards.custom_minimum_size.y==84.0 \
-		and sandbox.grid.custom_minimum_size==Vector2(360,360) \
+		and sandbox.cards.custom_minimum_size.y==Sandbox.PRODUCT_PARTY_CARD_HEIGHT \
+		and sandbox.grid.custom_minimum_size==Vector2(360,1) \
 		and sandbox.bottom_navigation.visible and sandbox.bottom_navigation.custom_minimum_size.y>=44.0,
-		"360x640 places the portrait strip below a full-width map above fixed navigation")
+		"360x640 gives the field-first map all flexible height above the portrait strip")
 	var wide_session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
 	var wide=Sandbox.new();wide.initialize_for_headless_test(wide_session,true)
 	wide.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);wide.size=Vector2(450,800);wide._refresh()
 	var wide_card=wide.cards.get_child(0) as Button
 	check(wide.cards.get_index()>wide.grid.get_index() \
-		and wide.grid.custom_minimum_size==Vector2(450,450),
-		"450x800 keeps the portrait strip below the full-width map")
+		and wide.grid.custom_minimum_size==Vector2(450,1),
+		"450x800 gives the field-first map all flexible height above the portrait strip")
 	check(wide_card.custom_minimum_size.x>=438,"450x800 solo card uses the available width")
 	check(wide_card.find_child("Portrait",true,false)!=null \
 		and wide_card.find_child("SoloIdentity",true,false)!=null,
@@ -252,8 +252,9 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.member_detail_skill_tab.custom_minimum_size.y>=44 \
 		and sandbox.member_detail_item_tab.custom_minimum_size.y>=44 \
 		and "[상태]" in sandbox.member_detail_status_tab.text \
-		and bool(sandbox.member_detail_status_tab.get_meta("ascii_rail",false)),
-		"status/skill tabs are touch-sized glyph-backed segments")
+		and str(sandbox.member_detail_status_tab.get_meta("visual_family","")) \
+			=="DARK_PIXEL_DUNGEON_UI",
+		"status/skill tabs are touch-sized dark pixel segments")
 	check("집중 버튼" not in sandbox.member_detail_body.text and "레벨은 피해" not in sandbox.member_detail_body.text,
 		"status tab has no duplicate progression copy")
 	sandbox._close_member_detail();sandbox.skill_nav_button.pressed.emit()

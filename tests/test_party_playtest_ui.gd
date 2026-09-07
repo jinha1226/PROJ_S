@@ -63,6 +63,34 @@ func test_item_tab_uses_five_by_four_visual_inventory_slots() -> bool:
 	sandbox.free()
 	return finish()
 
+func test_product_surfaces_share_one_dark_pixel_skin() -> bool:
+	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
+	sandbox.initialize_for_headless_test(Session.new(44,20260828,"SHOWCASE_V1"))
+	var status:Dictionary=sandbox.session.party_status()
+	sandbox._open_member_detail(int(status.party_member_ids[1]))
+	var expected:=DarkPixelSkin.VISUAL_FAMILY
+	for frame_name in ["MinimapPixelFrame","MemberDetailPixelFrame"]:
+		var frame=sandbox.find_child(frame_name,true,false)
+		check(frame!=null and frame.has_method("frame_spec") \
+			and str(frame.frame_spec().visual_family)==expected \
+			and str(frame.frame_spec().primitive)=="PIXEL_BEVEL_FRAME",
+			"%s uses the shared pixel frame"%frame_name)
+	for panel_name in ["EmotionSealClusterPanel","CombatSealClusterPanel",
+			"AttributeSealClusterPanel","BodySealClusterPanel",
+			"PersonalitySummary","CurrentEmotionCard","RelationshipCard","NpcSkillCard"]:
+		var panel=sandbox.find_child(panel_name,true,false)
+		check(panel!=null and str(panel.get_meta("visual_family",""))==expected,
+			"%s uses the shared dark pixel panel"%panel_name)
+	for button in [sandbox.record_button,sandbox.hero_detail_button,
+			sandbox.person_nav_button,sandbox.skill_nav_button,
+			sandbox.equipment_nav_button,sandbox.history_nav_button]:
+		check(str(button.get_meta("visual_family",""))==expected,
+			"%s uses the shared dark pixel button"%button.name)
+	check(str(sandbox.map_overlay.overlay_spec().visual_family)==expected \
+		and str(sandbox.minimap.cartography_spec().visual_family)==expected,
+		"compact and full maps share the dark pixel visual family")
+	sandbox.free();return finish()
+
 func test_companion_roster_controls_relayout_cards_and_keep_44px_touch_contract() -> bool:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
@@ -1061,8 +1089,9 @@ func test_pixel_product_hud_bottom_navigation_modals_and_map_are_fog_safe() -> b
 		check(sandbox.cards.visible and sandbox.grid.visible and sandbox.event_surface.visible \
 			and sandbox.bottom_navigation.visible and not sandbox.info_scroll.visible,
 			"%s product surfaces replace the duplicate context stack"%viewport_size)
-		check_eq(int(sandbox.cards.custom_minimum_size.y),84,
-			"%s solo portrait strip uses the 84px budget"%viewport_size)
+		check_eq(int(sandbox.cards.custom_minimum_size.y),
+			int(Sandbox.PRODUCT_PARTY_CARD_HEIGHT),
+			"%s solo portrait strip uses the current compact budget"%viewport_size)
 		for contract in [[sandbox.map_nav_button,"[지도]"],[sandbox.person_nav_button,"[인물]"],
 				[sandbox.skill_nav_button,"[숙련]"],[sandbox.equipment_nav_button,"[장비]"],
 				[sandbox.history_nav_button,"[기록]"]]:
@@ -1267,16 +1296,16 @@ func test_restored_grouped_complete_keeps_victory_banner_style_without_effect_re
 	check_eq(fresh.grid._presentation_style.style_id,"VICTORY","fresh restored victory grid style")
 	check_eq(fresh.grid._presentation_style.border_hex,"#62d98b","fresh restored victory green grid border")
 	var panel_style:=fresh.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	check(panel_style!=null and panel_style.get_border_width(SIDE_LEFT)==0 \
-		and panel_style.get_border_width(SIDE_TOP)==0 \
-		and panel_style.get_border_width(SIDE_RIGHT)==0 \
+	check(panel_style!=null and panel_style.get_border_width(SIDE_LEFT)==1 \
+		and panel_style.get_border_width(SIDE_TOP)==1 \
+		and panel_style.get_border_width(SIDE_RIGHT)==1 \
 		and panel_style.get_border_width(SIDE_BOTTOM)==1 \
-		and panel_style.border_color==Color("#4f9aa3"),
-		"fresh restored banner keeps only the oxidized-cyan bottom rail")
+		and panel_style.border_color==Color("#4d8f98"),
+		"fresh restored banner uses the dark pixel HUD frame")
 	check(fresh.minimap_frame!=null and fresh.minimap_frame.frame_color==Color("#5f8a66") \
 		and str(fresh.minimap_frame.get_meta("state_tone",""))=="VICTORY" \
-		and str(fresh.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
-		"fresh restored victory consumes jade through the glyph-backed HUD frame")
+		and str(fresh.minimap_frame.frame_spec().primitive)=="PIXEL_BEVEL_FRAME",
+		"fresh restored victory consumes jade through the pixel HUD frame")
 	check(fresh.grid._active_visual_effects.is_empty(),"restoring victory does not replay commit effects")
 	check_eq(fresh.grid.visible_cell_count,15,"restored victory uses full 15x15 camera")
 	check(not fresh.combat_action_area.visible,"restored victory hides combat action area")
@@ -1294,17 +1323,17 @@ func test_terminal_defeat_and_atlas_touch_tie_break_are_explicit() -> bool:
 	check_eq(sandbox.grid._presentation_style.style_id,"DEFEAT","terminal grid presentation style")
 	check_eq(sandbox.grid._presentation_style.border_hex,"#8f5367","terminal grid presentation border")
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	check(terminal_panel!=null and terminal_panel.get_border_width(SIDE_LEFT)==0 \
-		and terminal_panel.get_border_width(SIDE_TOP)==0 \
-		and terminal_panel.get_border_width(SIDE_RIGHT)==0 \
+	check(terminal_panel!=null and terminal_panel.get_border_width(SIDE_LEFT)==1 \
+		and terminal_panel.get_border_width(SIDE_TOP)==1 \
+		and terminal_panel.get_border_width(SIDE_RIGHT)==1 \
 		and terminal_panel.get_border_width(SIDE_BOTTOM)==1 \
-		and terminal_panel.border_color==Color("#4f9aa3"),
-		"terminal panel keeps only the oxidized-cyan bottom rail")
-	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#a74343") \
+		and terminal_panel.border_color==Color("#4d8f98"),
+		"terminal panel uses the dark pixel HUD frame")
+	check(sandbox.minimap_frame!=null and sandbox.minimap_frame.frame_color==Color("#9f4544") \
 		and sandbox.minimap_frame.danger_edge \
 		and str(sandbox.minimap_frame.get_meta("state_tone",""))=="DEFEAT" \
-		and str(sandbox.minimap_frame.frame_spec().primitive)=="FIXED_CELL_GLYPHS",
-		"terminal defeat consumes vermilion through the glyph-backed HUD frame")
+		and str(sandbox.minimap_frame.frame_spec().primitive)=="PIXEL_BEVEL_FRAME",
+		"terminal defeat consumes blood tone through the pixel HUD frame")
 	var grid_source:=FileAccess.get_file_as_string("res://playtest/party_grid_view.gd")
 	check("CHARACTER_ATLAS" not in grid_source,
 		"product party grid has no stale character texture/atlas path")
@@ -1452,10 +1481,11 @@ func _relocate_with_move_events(sim, entity_id: int, target: Vector2i) -> bool:
 func _assert_hero_centered(sandbox,label:String)->void:
 	var status:Dictionary=sandbox.session.party_status();var hero:=int(status.protagonist_id)
 	var hero_position:Vector2i=sandbox.session.sim.world.entities[hero].position
-	var camera_radius:=int(sandbox.grid.visible_cell_count/2)
+	var camera_radius:=Vector2i(int(sandbox.grid.visible_cell_count/2),
+		int(sandbox.grid.visible_row_count/2))
 	check_eq(sandbox.grid.view_origin,
-		hero_position-Vector2i(camera_radius,camera_radius),
-		"%s origin follows the active zoom radius %d"%[label,camera_radius])
+		hero_position-camera_radius,
+		"%s origin follows the active zoom radius %s"%[label,camera_radius])
 	check(sandbox.grid.world_to_pixel_center(hero_position).distance_to(
 		sandbox.grid.grid_rect().get_center())<0.01,"%s hero is pixel-centered"%label)
 	check_eq(sandbox.grid.pixel_to_world_cell(sandbox.grid.grid_rect().get_center()),

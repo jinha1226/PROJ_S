@@ -10,9 +10,9 @@ signal opened
 signal closed(reason:String)
 
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
-const AsciiFrame=preload("res://playtest/ascii_ui_frame.gd")
-const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
-const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
+const CodingFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
+const CodingFontBold:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 const PRIMITIVE_NONE:="NONE"
 const PRIMITIVE_TILE:="TILE"
@@ -21,10 +21,10 @@ const PRIMITIVE_DIAMOND:="DIAMOND"
 const PRIMITIVE_RING:="RING"
 const PRIMITIVE_TRIANGLE:="TRIANGLE"
 
-const BLACK_FIELD:=Color("#000306")
+const BLACK_FIELD:=DarkSkin.CANVAS
 const SCRIM:=Color("#000306d9")
-const PANEL:=Color("#071012")
-const IRON_EDGE:=Color("#344447")
+const PANEL:=DarkSkin.FOLIO
+const IRON_EDGE:=DarkSkin.IRON_EDGE
 const MEMORY_INK:=Color("#566268")
 const VISIBLE_FLOOR_INK:=Color("#918b7d")
 const WALL_MEMORY_INK:=Color("#3b555b")
@@ -33,7 +33,7 @@ const HERO_INK:=Color("#b8954d")
 const EXIT_INK:=Color("#5f8a66")
 const PORTAL_INK:=Color("#48bfc8")
 const THREAT_INK:=Color("#a74343")
-const TITLE_INK:=Color("#d2c7aa")
+const TITLE_INK:=DarkSkin.BONE
 
 const PANEL_MARGIN:=12.0
 const PANEL_MAX_WIDTH:=420.0
@@ -57,6 +57,8 @@ func _init()->void:
 
 func _ready()->void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	set_meta("visual_family",DarkSkin.VISUAL_FAMILY)
+	set_meta("pixel_material","FULL_MAP_FOLIO")
 	resized.connect(queue_redraw)
 	queue_redraw()
 
@@ -135,8 +137,8 @@ func layout_spec(viewport_size:Vector2=size)->Dictionary:
 		"world_height":_world_height,"trigger_independent":true}.duplicate(true)
 
 func overlay_spec()->Dictionary:
-	return {"primitive":"FULL_VECTOR_CARTOGRAPHY","visual_family":"DARK_FANTASY_IRON_FOLIO",
-		"ui_font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
+	return {"primitive":"FULL_VECTOR_CARTOGRAPHY","visual_family":DarkSkin.VISUAL_FAMILY,
+		"ui_font_path":"res://assets/fonts/Galmuri14.ttf",
 		"uses_world_coordinates":true,"uses_sector_folding":false,
 		"stores_compact_scalars_only":true,"leaks_memory_actor":false,
 		"leaks_hazard":false,"leaks_target":false,"leaks_direction":false,
@@ -253,6 +255,15 @@ func _draw_vector_frame(panel:Rect2)->void:
 		IRON_EDGE.lerp(TITLE_INK,0.18),1.0)
 	draw_line(Vector2(panel.position.x+2,panel.end.y-2),panel.end-Vector2(2,2),
 		IRON_EDGE.lerp(BLACK_FIELD,0.45),1.0)
+	var corner:=10.0
+	for segment in [[panel.position,panel.position+Vector2(corner,0)],
+		[panel.position,panel.position+Vector2(0,corner)],
+		[Vector2(panel.end.x,panel.position.y),Vector2(panel.end.x-corner,panel.position.y)],
+		[Vector2(panel.end.x,panel.position.y),Vector2(panel.end.x,panel.position.y+corner)],
+		[Vector2(panel.position.x,panel.end.y),Vector2(panel.position.x+corner,panel.end.y)],
+		[Vector2(panel.position.x,panel.end.y),Vector2(panel.position.x,panel.end.y-corner)],
+		[panel.end,panel.end-Vector2(corner,0)],[panel.end,panel.end-Vector2(0,corner)]]:
+		draw_line(segment[0],segment[1],DarkSkin.BRASS_DARK,2.0)
 	var title:="발견 지도";var title_size:=CodingFontBold.get_string_size(title,
 		HORIZONTAL_ALIGNMENT_LEFT,-1,FRAME_FONT_SIZE)
 	draw_string(CodingFontBold,Vector2(panel.get_center().x-title_size.x*0.5,
@@ -272,7 +283,7 @@ func _draw_vector_legend(panel:Rect2)->void:
 		_draw_map_shape(Rect2(origin+Vector2(3,-5),Vector2(10,10)),
 			_shape_spec(str(rows[index][0]),rows[index][1],"LEGEND","VISIBLE",0.9),PANEL)
 		draw_string(CodingFont,origin+Vector2(17,4),str(rows[index][2]),
-			HORIZONTAL_ALIGNMENT_LEFT,column_width-19.0,10,AsciiFrame.BONE_DIM)
+			HORIZONTAL_ALIGNMENT_LEFT,column_width-19.0,10,DarkSkin.BONE_DIM)
 
 func _key(position:Vector2i)->String:
 	return "%d:%d"%[position.x,position.y]

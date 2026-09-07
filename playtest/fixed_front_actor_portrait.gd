@@ -11,7 +11,7 @@ var _actor:Dictionary={}
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	clip_contents=true
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	resized.connect(queue_redraw)
 
 

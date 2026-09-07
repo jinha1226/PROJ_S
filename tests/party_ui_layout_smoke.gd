@@ -48,7 +48,7 @@ func _party_card_count_layouts(viewport_size:Vector2)->void:
 		var spec:Dictionary=sandbox.render_party_cards_for_headless_test(rows,speeches)
 		await process_frame;await process_frame
 		var expected_layout:String=["SPOTLIGHT","DUAL","COMPACT"][count-1]
-		var expected_height:int=84
+		var expected_height:int=68
 		if str(spec.layout_id)!=expected_layout or int(spec.party_height)!=expected_height \
 				or sandbox.cards.get_child_count()!=count \
 				or int(sandbox.cards.custom_minimum_size.y)!=expected_height:
@@ -415,12 +415,17 @@ func _mvp_run_objective_and_restart(viewport_size:Vector2)->void:
 	var fresh_status:Dictionary=session.party_status()
 	var fresh_hero:=int(fresh_status.protagonist_id)
 	var fresh_hero_position:Vector2i=session.sim.world.entities[fresh_hero].position
+	var expected_origin:=fresh_hero_position-Vector2i(
+		sandbox.grid.visible_cell_count/2,sandbox.grid.visible_row_count/2)
 	if sandbox.grid.get_instance_id()!=grid_id \
 			or sandbox.grid.visible_cell_count!=expected_cells \
-			or sandbox.grid.view_origin!=fresh_hero_position-Vector2i(expected_radius,expected_radius) \
+			or sandbox.grid.view_origin!=expected_origin \
 			or absf(sandbox.grid.cell_size_px()-initial_cell_size)>0.001:
-		failures.append("%s restart replaced grid or lost %dx%d mapping"%[
-			label,expected_cells,expected_cells])
+		failures.append("%s restart grid mismatch id=%d/%d cells=%d/%d origin=%s/%s cell=%.3f/%.3f"%[
+			label,sandbox.grid.get_instance_id(),grid_id,sandbox.grid.visible_cell_count,
+			expected_cells,sandbox.grid.view_origin,
+			expected_origin,
+			sandbox.grid.cell_size_px(),initial_cell_size])
 	if str(fresh.run_state)!="EXPLORE" or bool(fresh.reward.granted) or not session.command_journal.is_empty():
 		failures.append("%s restart did not restore fresh run progress"%label)
 	if int(session.personality_seed)!=personality_seed_before:
@@ -710,7 +715,7 @@ func _validate_member_modal(sandbox,viewport_size:Vector2)->void:
 		failures.append("%s detail panel margin/width %s"%[viewport_size,panel_rect])
 	if sandbox.member_detail_close.size.x<43.9 or sandbox.member_detail_close.size.y<43.9 \
 			or sandbox.member_detail_close.get_theme_font_size("font_size")<14 \
-			or sandbox.member_detail_close.text!="[X]":
+			or sandbox.member_detail_close.text!="×":
 		failures.append("%s detail close accessibility"%viewport_size)
 	if body.get_theme_font_size("font_size")<14:failures.append("%s detail body font below 14"%viewport_size)
 	var line_height:=body.get_theme_font("font").get_height(body.get_theme_font_size("font_size"))
@@ -959,14 +964,14 @@ func _terminal(viewport_size:Vector2)->void:
 	if str(sandbox.grid._presentation_style.get("style_id",""))!="DEFEAT" or str(sandbox.grid._presentation_style.get("border_hex",""))!="#8f5367":
 		failures.append("%s terminal presentation style missing"%viewport_size)
 	var terminal_panel:=sandbox.phase_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	if terminal_panel==null or terminal_panel.get_border_width(SIDE_LEFT)!=0 \
-			or terminal_panel.get_border_width(SIDE_TOP)!=0 \
-			or terminal_panel.get_border_width(SIDE_RIGHT)!=0 \
+	if terminal_panel==null or terminal_panel.get_border_width(SIDE_LEFT)!=1 \
+			or terminal_panel.get_border_width(SIDE_TOP)!=1 \
+			or terminal_panel.get_border_width(SIDE_RIGHT)!=1 \
 			or terminal_panel.get_border_width(SIDE_BOTTOM)!=1 \
-			or terminal_panel.border_color!=AsciiUIFrame.CYAN \
-			or bool(sandbox.phase_panel.get_meta("visible_stylebox_border",true)):
-		failures.append("%s terminal top rail is not the compact separator"%viewport_size)
-	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=AsciiUIFrame.DANGER \
+			or terminal_panel.border_color!=Color("#4d8f98") \
+			or not bool(sandbox.phase_panel.get_meta("visible_stylebox_border",false)):
+		failures.append("%s terminal top HUD is not the dark pixel frame"%viewport_size)
+	if sandbox.minimap_frame==null or sandbox.minimap_frame.frame_color!=Color("#9f4544") \
 			or not sandbox.minimap_frame.danger_edge \
 			or str(sandbox.minimap_frame.get_meta("state_tone",""))!="DEFEAT":
 		failures.append("%s terminal glyph accent missing"%viewport_size)

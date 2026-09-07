@@ -18,6 +18,8 @@ const RelationshipPanelScript=preload("res://playtest/npc_relationship_panel.gd"
 const SkillPanelScript=preload("res://playtest/npc_skill_panel.gd")
 const ItemSlotScript=preload("res://playtest/item_inventory_slot.gd")
 const DarkPixelSkinScript=preload("res://playtest/dark_pixel_ui_skin.gd")
+const DarkPixelFrameScript=preload("res://playtest/dark_pixel_ui_frame.gd")
+const CompactPortraitScript=preload("res://playtest/compact_party_portrait.gd")
 const MapOverlayScript=preload("res://playtest/party_map_overlay.gd")
 const CommandScript=preload("res://sim/sim_command.gd")
 const ActionScript=preload("res://sim/party_action_command.gd")
@@ -45,9 +47,11 @@ const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
 # Field-first product shell: compact fixed rails leave the remaining rectangle
 # to the dungeon camera instead of reserving a square map plus dead flex space.
-const PRODUCT_TOP_HUD_HEIGHT:=64
-const PRODUCT_EVENT_HEIGHT:=32
-const PRODUCT_PARTY_CARD_HEIGHT:=68
+const PRODUCT_TOP_HUD_HEIGHT:=48
+# Galmuri's Korean baseline needs 32 content pixels for two complete 11 px
+# event rows. The dark pixel surface contributes four pixels of inner framing.
+const PRODUCT_EVENT_HEIGHT:=24
+const PRODUCT_PARTY_CARD_HEIGHT:=48
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 const CONTINUOUS_TRAVEL_CADENCE_MSEC:=35
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
@@ -78,6 +82,7 @@ var record_button:Button
 var hero_detail_button:Button
 var top_hud_actions:HBoxContainer
 var product_menu_button:MenuButton
+var product_bag_button:Button
 var product_restart_confirm:ConfirmationDialog
 var expedition_floor_label:Label
 var return_timer_label:Label
@@ -598,7 +603,7 @@ func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
 	controls.append_array([product_auto_button,
 		product_interact_button,product_attack_button,product_wait_guard_button,
-		product_execute_button,minimap_open_button,
+		product_execute_button,product_bag_button,minimap_open_button,
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
 		history_nav_button])
 	for control_value in controls:
@@ -624,6 +629,7 @@ func _activate_product_control(control_name:String)->void:
 		"ProductInteract":_on_product_interact()
 		"ProductWaitGuard":_on_product_wait_guard()
 		"ProductExecute":_on_product_execute()
+		"ProductBag":_open_hero_detail_tab("ITEM")
 		"MinimapOpen":_toggle_map_overlay()
 		"MapNavigation":_toggle_map_overlay()
 		"PersonNavigation":_open_hero_detail_tab("STATUS")
@@ -708,10 +714,11 @@ func _issue_new_personality_seed(avoid_seed:int=-1)->int:
 
 func _build_ui()->void:
 	if grid!=null:return
-	var ui_theme:=Theme.new(); ui_theme.default_font=KoreanFont; ui_theme.default_font_size=FONT_BODY; theme=ui_theme
+	var ui_theme:=Theme.new();ui_theme.default_font_size=FONT_BODY
+	DarkPixelSkinScript.configure_theme(ui_theme);theme=ui_theme
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg:=ColorRect.new();bg.name="SandboxBackground"
-	bg.color=AsciiFrameScript.SURFACE_DEEP;bg.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	bg.color=DarkPixelSkinScript.CANVAS;bg.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);add_child(bg)
 	root_layout=VBoxContainer.new(); root_layout.name="PartyLayout"; root_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_layout.offset_left=6; root_layout.offset_right=-6; root_layout.offset_top=4; root_layout.offset_bottom=-4; root_layout.add_theme_constant_override("separation",4); add_child(root_layout)
@@ -722,11 +729,11 @@ func _build_ui()->void:
 	phase_panel.custom_minimum_size.y=64;root_layout.add_child(phase_panel)
 	phase_row=HBoxContainer.new();phase_row.name="TopExplorationHUDRow"
 	phase_row.add_theme_constant_override("separation",4);phase_panel.add_child(phase_row)
-	minimap_frame=AsciiFrameScript.new();minimap_frame.name="MinimapAsciiFrame"
-	minimap_frame.configure("지도",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true)
-	minimap_frame.custom_minimum_size=Vector2(54,52);phase_row.add_child(minimap_frame)
+	minimap_frame=DarkPixelFrameScript.new();minimap_frame.name="MinimapPixelFrame"
+	minimap_frame.configure("지도",DarkPixelSkinScript.CYAN,DarkPixelSkinScript.CANVAS,true)
+	minimap_frame.custom_minimum_size=Vector2(48,44);phase_row.add_child(minimap_frame)
 	minimap=MinimapScript.new();minimap.name="ExplorationMinimap"
-	minimap.custom_minimum_size=Vector2(46,44);minimap.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	minimap.custom_minimum_size=Vector2(40,26);minimap.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	minimap_frame.add_child(minimap)
 	# The compact map itself is the navigation affordance. A transparent real
 	# Button keeps desktop mouse and mobile touch on the same single-fire path.
@@ -781,7 +788,7 @@ func _build_ui()->void:
 	ration_label=Label.new();ration_label.name="RationGauge"
 	ration_label.add_theme_font_size_override("font_size",FONT_AUX)
 	ration_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	ration_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	ration_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	ration_label.visible=false;clock_row.add_child(ration_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
 	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
@@ -793,22 +800,25 @@ func _build_ui()->void:
 	record_button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	record_button.tooltip_text="하단 사건 기록 표시/숨기기"
 	record_button.pressed.connect(_toggle_narrative_log);top_hud_actions.add_child(record_button)
-	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(record_button,DarkPixelSkinScript.CYAN)
 	hero_detail_button=Button.new();hero_detail_button.name="HeroDetailButton";hero_detail_button.text="[인물]"
 	hero_detail_button.custom_minimum_size=Vector2(44,44);hero_detail_button.add_theme_font_size_override("font_size",FONT_COMMAND);hero_detail_button.tooltip_text="주인공 상세 정보"
 	hero_detail_button.clip_text=true;hero_detail_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
-	AsciiFrameScript.apply_rail_button(hero_detail_button,AsciiFrameScript.BRASS)
+	DarkPixelSkinScript.apply_action_button(hero_detail_button,DarkPixelSkinScript.BRASS)
 	product_menu_button=MenuButton.new();product_menu_button.name="ProductMainMenu"
 	product_menu_button.text="[메뉴]";product_menu_button.custom_minimum_size=Vector2(44,44)
 	product_menu_button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
 	var menu_popup:=product_menu_button.get_popup()
+	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 스킬",3)
+	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
+	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 원정 · 종족 선택",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
 	top_hud_actions.add_child(product_menu_button)
-	AsciiFrameScript.apply_rail_button(product_menu_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
@@ -829,7 +839,7 @@ func _build_ui()->void:
 	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=44
 	log_label.max_lines_visible=3;log_label.clip_text=true;info.add_child(log_label)
 	event_surface=PanelContainer.new();event_surface.name="EventSurface";event_surface.visible=false
-	event_surface.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,2))
+	DarkPixelSkinScript.apply_panel(event_surface,"COMPACT")
 	root_layout.add_child(event_surface)
 	var event_margin:=MarginContainer.new();event_margin.name="EventSurfaceInset"
 	event_margin.size_flags_vertical=Control.SIZE_EXPAND_FILL
@@ -838,8 +848,9 @@ func _build_ui()->void:
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	# Two real combat rows must fit the fixed 36/38px event surface. The bundled
 	# Korean font needs the micro size for two complete baselines in that budget.
-	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=2
-	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=28
+	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=1
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=18
+	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
@@ -861,7 +872,24 @@ func _build_ui()->void:
 	_build_map_overlay()
 	_build_record_modal()
 	_build_species_picker()
+	_apply_dark_pixel_shell_skin()
 	resized.connect(_on_surface_resized)
+
+func _apply_dark_pixel_shell_skin()->void:
+	for panel in [record_panel,species_picker_panel]:
+		if panel is PanelContainer:DarkPixelSkinScript.apply_panel(panel,"FOLIO")
+	if event_surface!=null:DarkPixelSkinScript.apply_panel(event_surface,"COMPACT")
+	for button in find_children("*","Button",true,false):
+		if not button is Button:continue
+		if button==minimap_open_button or bool(button.get_meta("inventory_slot",false)) \
+				or button.name=="SkillModeButton":continue
+		var danger:=button.name in ["MemberDetailDismiss","MemberDetailAttack",
+			"NearbyNpcAttack","ItemDrop","RestartExpedition"]
+		var accent:=DarkPixelSkinScript.BLOOD if danger else (
+			DarkPixelSkinScript.BRASS if button.name in ["HeroDetailButton",
+				"TurnConfirm","AutoExecute","DeployConfirm","ProductAttack",
+				"ProductExecute"] else DarkPixelSkinScript.CYAN)
+		DarkPixelSkinScript.apply_action_button(button,accent,danger)
 
 func _on_surface_resized()->void:
 	_layout_floating_surfaces()
@@ -889,7 +917,7 @@ func _add_nav_button(label:String,node_name:String,callback:Callable)->Button:
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	button.pressed.connect(callback);bottom_navigation.add_child(button)
-	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(button,DarkPixelSkinScript.CYAN)
 	return button
 
 func _build_map_overlay()->void:
@@ -904,16 +932,16 @@ func _build_record_modal()->void:
 	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);scrim.gui_input.connect(_on_record_backdrop_input)
 	record_modal.add_child(scrim)
 	record_panel=PanelContainer.new();record_panel.name="NarrativeRecordPanel"
-	record_panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,6))
+	DarkPixelSkinScript.apply_panel(record_panel,"FOLIO")
 	record_modal.add_child(record_panel)
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",4);record_panel.add_child(stack)
 	var header:=HBoxContainer.new();header.custom_minimum_size.y=TOUCH_TARGET;stack.add_child(header)
 	var title:=Label.new();title.text="주요 기록";title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size",FONT_SECTION);title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;header.add_child(title)
-	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="[X]"
+	record_close_button=Button.new();record_close_button.name="NarrativeRecordClose";record_close_button.text="×"
 	record_close_button.custom_minimum_size=Vector2(TOUCH_TARGET,TOUCH_TARGET)
 	record_close_button.pressed.connect(_close_record_modal.bind("BUTTON"));header.add_child(record_close_button)
-	AsciiFrameScript.apply_rail_button(record_close_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(record_close_button,DarkPixelSkinScript.CYAN)
 	var scroll:=ScrollContainer.new();scroll.name="NarrativeRecordScroll";scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(scroll)
 	record_body=Label.new();record_body.name="NarrativeRecordBody";record_body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -929,8 +957,7 @@ func _build_species_picker()->void:
 	scrim.mouse_filter=Control.MOUSE_FILTER_STOP
 	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);species_picker_modal.add_child(scrim)
 	species_picker_panel=PanelContainer.new();species_picker_panel.name="SpeciesPickerPanel"
-	species_picker_panel.add_theme_stylebox_override("panel",
-		AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE_DEEP,8))
+	DarkPixelSkinScript.apply_panel(species_picker_panel,"FOLIO")
 	species_picker_modal.add_child(species_picker_panel)
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",6)
 	species_picker_panel.add_child(stack)
@@ -946,8 +973,8 @@ func _build_species_picker()->void:
 		button.text=str(definition.label);button.custom_minimum_size=Vector2(220,TOUCH_TARGET)
 		button.set_meta("species_id",species_id);button.focus_mode=Control.FOCUS_ALL
 		button.pressed.connect(_commit_species_picker.bind(species_id))
-		species_picker_buttons.add_child(button);AsciiFrameScript.apply_rail_button(
-			button,AsciiFrameScript.BRASS if species_id=="human" else AsciiFrameScript.CYAN)
+		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
+			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
 
 func show_species_picker_for_new_run()->void:
 	if species_picker_modal==null:_build_species_picker()
@@ -999,9 +1026,9 @@ func _position_build_label()->void:
 func _build_tile_popover()->void:
 	tile_popover=PanelContainer.new();tile_popover.name="TileRiskPopover";tile_popover.visible=false
 	tile_popover.mouse_filter=Control.MOUSE_FILTER_IGNORE;tile_popover.z_index=20;add_child(tile_popover)
-	tile_popover.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0))
-	var popover_frame=AsciiFrameScript.new();popover_frame.name="TileRiskAsciiFrame"
-	popover_frame.configure("지형",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,true);tile_popover.add_child(popover_frame)
+	tile_popover.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(Color("#00000000"),0))
+	var popover_frame=DarkPixelFrameScript.new();popover_frame.name="TileRiskPixelFrame"
+	popover_frame.configure("지형",DarkPixelSkinScript.CYAN,DarkPixelSkinScript.FOLIO,true);tile_popover.add_child(popover_frame)
 	tile_popover_label=Label.new();tile_popover_label.name="TileRiskText";tile_popover_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	tile_popover_label.add_theme_font_size_override("font_size",FONT_AUX);tile_popover_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	popover_frame.add_child(tile_popover_label)
@@ -1015,11 +1042,11 @@ func _build_member_detail_modal()->void:
 	scrim.gui_input.connect(_on_member_detail_backdrop_input);member_detail_modal.add_child(scrim)
 	member_detail_panel=PanelContainer.new();member_detail_panel.name="MemberDetailPanel";member_detail_panel.mouse_filter=Control.MOUSE_FILTER_STOP
 	member_detail_panel.clip_contents=true
-	var panel_style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.BLACK,0)
+	var panel_style:=AsciiFrameScript.borderless_surface(Color("#00000000"),0)
 	member_detail_panel.add_theme_stylebox_override("panel",panel_style);member_detail_modal.add_child(member_detail_panel)
-	var folio_frame=AsciiFrameScript.new();folio_frame.name="MemberDetailAsciiFrame"
-	folio_frame.configure("인물",AsciiFrameScript.CYAN,AsciiFrameScript.BLACK,false)
-	folio_frame.set_meta("major_glyph_frame",true);member_detail_panel.add_child(folio_frame)
+	var folio_frame=DarkPixelFrameScript.new();folio_frame.name="MemberDetailPixelFrame"
+	folio_frame.configure("인물",DarkPixelSkinScript.CYAN,DarkPixelSkinScript.CANVAS,false)
+	folio_frame.set_meta("major_pixel_frame",true);member_detail_panel.add_child(folio_frame)
 	var stack:=VBoxContainer.new();stack.name="MemberDetailStack";stack.add_theme_constant_override("separation",4);folio_frame.add_child(stack)
 	var header:=HBoxContainer.new();header.name="MemberDetailHeader";header.custom_minimum_size.y=52
 	header.add_theme_constant_override("separation",6);stack.add_child(header)
@@ -1029,17 +1056,20 @@ func _build_member_detail_modal()->void:
 	var title_stack:=VBoxContainer.new();title_stack.name="MemberDetailIdentity"
 	title_stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL;title_stack.add_theme_constant_override("separation",0);header.add_child(title_stack)
 	member_detail_title=Label.new();member_detail_title.name="MemberDetailTitle";member_detail_title.add_theme_font_size_override("font_size",FONT_KEY)
-	member_detail_title.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	member_detail_title.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	member_detail_title.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
+	member_detail_title.add_theme_color_override("font_color",DarkPixelSkinScript.BONE)
 	member_detail_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;member_detail_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;title_stack.add_child(member_detail_title)
 	member_detail_subtitle=Label.new();member_detail_subtitle.name="MemberDetailSubtitle"
-	AsciiFrameScript.label_tone(member_detail_subtitle,Color("#8ca4ae"),FONT_AUX);title_stack.add_child(member_detail_subtitle)
-	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="[X]"
+	member_detail_subtitle.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
+	member_detail_subtitle.add_theme_font_size_override("font_size",FONT_AUX)
+	member_detail_subtitle.add_theme_color_override("font_color",DarkPixelSkinScript.BONE_DIM)
+	title_stack.add_child(member_detail_subtitle)
+	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="×"
 	member_detail_close.custom_minimum_size=Vector2(44,TOUCH_TARGET)
 	member_detail_close.add_theme_font_size_override("font_size",FONT_COMMAND)
 	member_detail_close.gui_input.connect(_on_member_detail_close_input.bind(member_detail_close))
 	member_detail_close.pressed.connect(_close_member_detail);header.add_child(member_detail_close)
-	AsciiFrameScript.apply_rail_button(member_detail_close,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(member_detail_close,DarkPixelSkinScript.CYAN)
 	member_detail_tab_row=HBoxContainer.new();member_detail_tab_row.name="MemberDetailTabs"
 	member_detail_tab_row.custom_minimum_size.y=TOUCH_TARGET;member_detail_tab_row.add_theme_constant_override("separation",6)
 	stack.add_child(member_detail_tab_row)
@@ -1047,27 +1077,27 @@ func _build_member_detail_modal()->void:
 	member_detail_status_tab.toggle_mode=true;member_detail_status_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_status_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_status_tab.tooltip_text="체력, 전투 능력, 육체 상태";member_detail_status_tab.pressed.connect(_select_member_detail_tab.bind("STATUS"))
-	member_detail_tab_row.add_child(member_detail_status_tab);AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,true)
+	member_detail_tab_row.add_child(member_detail_status_tab);DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,true)
 	member_detail_personality_tab=Button.new();member_detail_personality_tab.name="MemberPersonalityTab";member_detail_personality_tab.text="성격"
 	member_detail_personality_tab.toggle_mode=true;member_detail_personality_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_personality_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_personality_tab.tooltip_text="성격 유형, 판단 경향, 현재 감정";member_detail_personality_tab.pressed.connect(_select_member_detail_tab.bind("PERSONALITY"))
-	member_detail_tab_row.add_child(member_detail_personality_tab);AsciiFrameScript.apply_rail_button(member_detail_personality_tab,AsciiFrameScript.BRASS)
+	member_detail_tab_row.add_child(member_detail_personality_tab);DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab)
 	member_detail_relationship_tab=Button.new();member_detail_relationship_tab.name="MemberRelationshipTab";member_detail_relationship_tab.text="관계"
 	member_detail_relationship_tab.toggle_mode=true;member_detail_relationship_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
-	member_detail_tab_row.add_child(member_detail_relationship_tab);AsciiFrameScript.apply_rail_button(member_detail_relationship_tab,AsciiFrameScript.BRASS)
+	member_detail_tab_row.add_child(member_detail_relationship_tab);DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab)
 	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
-	member_detail_tab_row.add_child(member_detail_skill_tab);AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS)
+	member_detail_tab_row.add_child(member_detail_skill_tab);DarkPixelSkinScript.apply_tab_button(member_detail_skill_tab)
 	member_detail_item_tab=Button.new();member_detail_item_tab.name="MemberItemTab";member_detail_item_tab.text="아이템"
 	member_detail_item_tab.toggle_mode=true;member_detail_item_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_item_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_item_tab.tooltip_text="장착 무기와 탄약";member_detail_item_tab.pressed.connect(_select_member_detail_tab.bind("ITEM"))
-	member_detail_tab_row.add_child(member_detail_item_tab);AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS)
+	member_detail_tab_row.add_child(member_detail_item_tab);DarkPixelSkinScript.apply_tab_button(member_detail_item_tab)
 	member_detail_scroll=ScrollContainer.new();member_detail_scroll.name="MemberDetailScroll";member_detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	member_detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	member_detail_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
@@ -1102,19 +1132,20 @@ func _build_member_detail_modal()->void:
 	member_detail_dismiss.text="[D 추방]";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_dismiss.pressed.connect(_on_member_detail_dismiss);member_detail_dismiss.visible=false
-	stack.add_child(member_detail_dismiss);AsciiFrameScript.apply_rail_button(member_detail_dismiss,AsciiFrameScript.DANGER,false,true)
+	stack.add_child(member_detail_dismiss);DarkPixelSkinScript.apply_action_button(
+		member_detail_dismiss,DarkPixelSkinScript.BLOOD,true)
 	member_detail_candidate_action=Button.new();member_detail_candidate_action.name="MemberDetailCandidateAction"
 	member_detail_candidate_action.custom_minimum_size=Vector2(160,TOUCH_TARGET)
 	member_detail_candidate_action.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_candidate_action.pressed.connect(_on_member_detail_candidate_action)
 	member_detail_candidate_action.visible=false;stack.add_child(member_detail_candidate_action)
-	AsciiFrameScript.apply_rail_button(member_detail_candidate_action,AsciiFrameScript.JADE)
+	DarkPixelSkinScript.apply_action_button(member_detail_candidate_action,DarkPixelSkinScript.CYAN)
 	member_detail_attack=Button.new();member_detail_attack.name="MemberDetailAttack"
 	member_detail_attack.text="[공격] 적대 전환";member_detail_attack.custom_minimum_size=Vector2(160,TOUCH_TARGET)
 	member_detail_attack.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_attack.pressed.connect(_on_member_detail_attack)
 	member_detail_attack.visible=false;stack.add_child(member_detail_attack)
-	AsciiFrameScript.apply_rail_button(member_detail_attack,AsciiFrameScript.DANGER,false,true)
+	DarkPixelSkinScript.apply_action_button(member_detail_attack,DarkPixelSkinScript.BLOOD,true)
 
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
@@ -1144,12 +1175,12 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_skill_category_button.clip_text=true
 	member_skill_category_button.pressed.connect(_toggle_weapon_mastery_category)
 	member_progression_window.add_child(member_skill_category_button)
-	AsciiFrameScript.apply_rail_button(member_skill_category_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(member_skill_category_button,DarkPixelSkinScript.CYAN)
 	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
 		panel.custom_minimum_size.y=TOUCH_TARGET;panel.clip_contents=true
 		panel.set_meta("fixed_single_line_ledger",true)
-		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(AsciiFrameScript.SURFACE,0))
+		DarkPixelSkinScript.apply_panel(panel,"SECTION")
 		member_progression_window.add_child(panel)
 		var ledger:=HBoxContainer.new();ledger.name="SkillLedgerRow"
 		ledger.mouse_filter=Control.MOUSE_FILTER_IGNORE;ledger.add_theme_constant_override("separation",4)
@@ -1197,7 +1228,7 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_window.add_child(weapon_panel)
 	var weapon_stack:=VBoxContainer.new();weapon_stack.add_theme_constant_override("separation",5);weapon_panel.add_child(weapon_stack)
 	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedCombatSummary"
-	member_item_weapon_text.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	member_item_weapon_text.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_AUX)
 	member_item_weapon_text.max_lines_visible=1;member_item_weapon_text.clip_text=true
 	member_item_weapon_text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1214,7 +1245,7 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_reload_button.text="재장전";member_item_reload_button.custom_minimum_size.y=TOUCH_TARGET
 	member_item_reload_button.custom_minimum_size.x=92
 	member_item_reload_button.pressed.connect(_on_item_reload);ammo_row.add_child(member_item_reload_button)
-	AsciiFrameScript.apply_rail_button(member_item_reload_button,AsciiFrameScript.BRASS)
+	DarkPixelSkinScript.apply_action_button(member_item_reload_button,DarkPixelSkinScript.BRASS)
 	var equipment_panel:=PanelContainer.new();equipment_panel.name="InventoryEquipmentSection"
 	DarkPixelSkinScript.apply_panel(equipment_panel,"SECTION")
 	member_item_window.add_child(equipment_panel)
@@ -1279,7 +1310,7 @@ func _build_item_popover()->void:
 	member_item_popover_title=Label.new();member_item_popover_title.name="ItemPopoverTitle"
 	member_item_popover_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_item_popover_title.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	member_item_popover_title.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	member_item_popover_title.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	member_item_popover_title.add_theme_font_size_override("font_size",FONT_SECTION)
 	header.add_child(member_item_popover_title)
 	member_item_popover_close=Button.new();member_item_popover_close.name="ItemPopoverClose"
@@ -1347,18 +1378,18 @@ func _build_nearby_npc_card()->void:
 	nearby_npc_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	nearby_npc_panel.position=Vector2(4,4)
 	nearby_npc_panel.add_theme_stylebox_override("panel",
-		AsciiFrameScript.borderless_surface(Color("#081014e6"),4))
+		AsciiFrameScript.borderless_surface(Color("#00000000"),0))
 	grid.add_child(nearby_npc_panel)
-	var frame=AsciiFrameScript.new();frame.name="NearbyNpcAsciiFrame"
-	frame.configure("가까운 인물",AsciiFrameScript.CYAN,Color("#081014e6"),true)
+	var frame=DarkPixelFrameScript.new();frame.name="NearbyNpcPixelFrame"
+	frame.configure("가까운 인물",DarkPixelSkinScript.CYAN,Color("#081014f2"),true)
 	nearby_npc_panel.add_child(frame)
 	var stack:=VBoxContainer.new();stack.name="NearbyNpcStack"
 	stack.add_theme_constant_override("separation",2);frame.add_child(stack)
 	var identity:=HBoxContainer.new();identity.name="NearbyNpcIdentity"
 	identity.add_theme_constant_override("separation",4);stack.add_child(identity)
 	nearby_npc_name=_card_label("","NearbyNpcName",NEARBY_NPC_FONT_NAME)
-	nearby_npc_name.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
-	nearby_npc_name.add_theme_color_override("font_color",AsciiFrameScript.INK)
+	nearby_npc_name.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
+	nearby_npc_name.add_theme_color_override("font_color",DarkPixelSkinScript.BONE)
 	nearby_npc_name.size_flags_horizontal=Control.SIZE_EXPAND_FILL;identity.add_child(nearby_npc_name)
 	nearby_npc_toggle_button=Button.new();nearby_npc_toggle_button.name="NearbyNpcToggle"
 	nearby_npc_toggle_button.text="[-]";nearby_npc_toggle_button.tooltip_text="가까운 인물 정보 접기"
@@ -1367,7 +1398,7 @@ func _build_nearby_npc_card()->void:
 	nearby_npc_toggle_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_toggle_button.name))
 	identity.add_child(nearby_npc_toggle_button)
-	AsciiFrameScript.apply_rail_button(nearby_npc_toggle_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(nearby_npc_toggle_button,DarkPixelSkinScript.CYAN)
 	nearby_npc_content=VBoxContainer.new();nearby_npc_content.name="NearbyNpcContent"
 	nearby_npc_content.add_theme_constant_override("separation",2);stack.add_child(nearby_npc_content)
 	nearby_npc_condition=_card_label("","NearbyNpcCondition",NEARBY_NPC_FONT_CAPTION)
@@ -1400,21 +1431,21 @@ func _build_nearby_npc_card()->void:
 	nearby_npc_detail_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_detail_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_detail_button.name));actions.add_child(nearby_npc_detail_button)
-	AsciiFrameScript.apply_rail_button(nearby_npc_detail_button,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(nearby_npc_detail_button,DarkPixelSkinScript.CYAN)
 	nearby_npc_action_button=Button.new();nearby_npc_action_button.name="NearbyNpcRecruit"
 	nearby_npc_action_button.custom_minimum_size.y=TOUCH_TARGET
 	nearby_npc_action_button.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_BUTTON)
 	nearby_npc_action_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_action_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_action_button.name));actions.add_child(nearby_npc_action_button)
-	AsciiFrameScript.apply_rail_button(nearby_npc_action_button,AsciiFrameScript.JADE)
+	DarkPixelSkinScript.apply_action_button(nearby_npc_action_button,DarkPixelSkinScript.CYAN)
 	nearby_npc_attack_button=Button.new();nearby_npc_attack_button.name="NearbyNpcAttack"
 	nearby_npc_attack_button.text="[공격]";nearby_npc_attack_button.custom_minimum_size.y=TOUCH_TARGET
 	nearby_npc_attack_button.add_theme_font_size_override("font_size",NEARBY_NPC_FONT_BUTTON)
 	nearby_npc_attack_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	nearby_npc_attack_button.gui_input.connect(
 		_on_nearby_npc_button_gui_input.bind(nearby_npc_attack_button.name));actions.add_child(nearby_npc_attack_button)
-	AsciiFrameScript.apply_rail_button(nearby_npc_attack_button,AsciiFrameScript.DANGER,false,true)
+	DarkPixelSkinScript.apply_action_button(nearby_npc_attack_button,DarkPixelSkinScript.BLOOD,true)
 
 func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		product_hud:bool)->void:
@@ -1627,7 +1658,7 @@ func _refresh()->void:
 	# Keep the requested status/build/equipment/history access at the foot. The
 	# miniature map already opens from the top HUD, so its duplicate footer button
 	# remains hidden and the four useful destinations each receive a wider target.
-	bottom_navigation.visible=product_hud
+	bottom_navigation.visible=false
 	map_nav_button.visible=false
 	person_nav_button.visible=true;skill_nav_button.visible=true
 	equipment_nav_button.visible=true;history_nav_button.visible=true
@@ -1745,7 +1776,7 @@ func _refresh()->void:
 		if record_modal.visible:
 			record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	record_button.button_pressed=_narrative_log_visible
-	AsciiFrameScript.apply_rail_button(record_button,AsciiFrameScript.CYAN,_narrative_log_visible)
+	DarkPixelSkinScript.apply_tab_button(record_button,_narrative_log_visible)
 	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
@@ -1902,6 +1933,11 @@ func _update_stable_party_cards(rows:Array)->void:
 func _update_stable_party_card(row:Dictionary)->void:
 	var card:=cards.find_child("MemberCard%d"%int(row.get("entity_id",-1)),true,false)
 	if card==null:return
+	if card.get_script()==CompactPortraitScript:
+		card.actor=row.duplicate(true)
+		card.selected=int(row.get("entity_id",-1))==selected_member_id
+		card.queue_redraw()
+		return
 	var health:=card.find_child("MemberState",true,false)
 	if health!=null and health.has_method("configure"):
 		var current:=int(row.get("health",0));var maximum:=maxi(1,int(row.get("max_health",1)))
@@ -2217,25 +2253,39 @@ func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)-
 			_add_member_card(row,speech_by_actor.get(int(row.get("entity_id",-1)),{}),spec)
 
 func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
+	if _is_solo_product_session():
+		var compact=CompactPortraitScript.new()
+		var member_id:=int(row.entity_id)
+		compact.name="MemberCard%d"%member_id;compact.actor=row.duplicate(true)
+		compact.selected=member_id==selected_member_id
+		compact.party_count=int(layout_spec.get("effective_count",1))
+		compact.custom_minimum_size=Vector2(44,PRODUCT_PARTY_CARD_HEIGHT)
+		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		compact.tooltip_text="%s · 눌러서 인물 정보"%str(row.display_name)
+		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
+		compact.pressed.connect(_open_member_detail.bind(member_id))
+		cards.add_child(compact)
+		return
 	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
 		SessionScript.ACTIVE_PARTY_LIMIT,size.x)
 	var button:=Button.new(); var member_id:=int(row.entity_id); button.name="MemberCard%d"%member_id
 	button.custom_minimum_size=Vector2(float(spec.get("card_min_width",44)),float(spec.get("party_height",160)))
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.size_flags_stretch_ratio=1.0
 	button.text=""; button.clip_contents=true
-	AsciiFrameScript.apply_rail_button(button,AsciiFrameScript.CYAN,false)
+	DarkPixelSkinScript.apply_action_button(button,DarkPixelSkinScript.CYAN)
+	button.set_meta("pixel_material","PARTY_DOSSIER")
 	var inset:=MarginContainer.new(); inset.name="CardContent"; inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for margin in ["margin_left","margin_right","margin_top","margin_bottom"]:
 		var inset_amount:=0
 		if _is_solo_product_session():
-			# Three compact dossier rows naturally consume the whole 84px strip.
+			# Three compact dossier rows naturally consume the whole 68px strip.
 			# Keep horizontal breathing room without making the content 2px taller
 			# than its touch/card surface.
 			inset_amount=2 if margin in ["margin_left","margin_right"] else 1
 		inset.add_theme_constant_override(margin,inset_amount)
 	inset.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	# PartyCards is the single outer rail; per-member nested glyph frames consumed
-	# most of an 80/84px strip and forced its measured content outside the button.
+	# most of the old tall strip and forced its measured content outside the button.
 	button.add_child(inset)
 	_add_compact_dossier_content(inset,row,speech,spec)
 	button.gui_input.connect(_on_member_card_gui_input.bind(member_id,str(row.display_name),button))
@@ -2262,8 +2312,11 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	var identity:=HBoxContainer.new();identity.name="SoloIdentity";identity.add_theme_constant_override("separation",4);stack.add_child(identity)
 	var selected:=int(row.get("entity_id",-1))==selected_member_id
 	var display_name:=("> " if selected else "")+str(row.get("display_name","파티원"))
-	var name_label:=_card_label(display_name,"MemberName",FONT_BODY if count<=2 else FONT_AUX)
-	name_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	# Two or more dossiers may also carry a one-line companion callout. Keep the
+	# name at the 14 px mobile readability floor so the complete ledger remains
+	# inside the fixed 68 px party rail.
+	var name_label:=_card_label(display_name,"MemberName",FONT_BODY if count==1 else FONT_AUX)
+	name_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	name_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if selected else AsciiFrameScript.INK)
 	name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;identity.add_child(name_label)
 	var level_label:=_card_label("LV%02d"%int(progression.get("level",1)),"LevelProgress",FONT_AUX)
@@ -2276,7 +2329,7 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	var readiness:="준비" if str(row.get("readiness","행동 준비"))=="행동 준비" else "행동중"
 	var footer:=HBoxContainer.new();footer.name="DossierVitals";footer.add_theme_constant_override("separation",3);stack.add_child(footer)
 	# Status, stress and XP share one compact ledger line. Keeping emotion on its
-	# own line made a companion speech strip exceed the fixed 80/84px cards.
+	# own line made a companion speech strip exceed the compact cards.
 	var state_label:=_card_label("%s%s · %s"%[str(emotion.get("icon","")),str(emotion.get("label","평온")),readiness],"EmotionState",FONT_AUX)
 	state_label.max_lines_visible=1;state_label.clip_text=true
 	state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -2334,7 +2387,7 @@ func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
 	var identity:=HBoxContainer.new();identity.name="SoloIdentity";identity.add_theme_constant_override("separation",6)
 	identity.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(identity)
 	var name_label:=_card_label(str(row.get("display_name","주인공")),"MemberName",FONT_KEY)
-	name_label.add_theme_font_override("font",AsciiFrameScript.CodingFontBold)
+	name_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	name_label.add_theme_color_override("font_color",AsciiFrameScript.INK)
 	name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;name_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	identity.add_child(name_label)
@@ -2415,8 +2468,10 @@ func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 	strip.set_meta("source",str(speech.get("source","SUGGESTED")))
 	strip.set_meta("full_reason",str(speech.get("reason","")))
 	var source:=str(speech.get("source","SUGGESTED"))
-	var style:=AsciiFrameScript.borderless_surface(AsciiFrameScript.NAVY,0 if product_strip else 2)
-	strip.add_theme_stylebox_override("panel",style);parent.add_child(strip)
+	strip.add_theme_stylebox_override("panel",DarkPixelSkinScript.panel_surface(
+		DarkPixelSkinScript.SLOT_EMPTY,DarkPixelSkinScript.IRON_SHADOW,
+		0 if product_strip else 2,1));parent.add_child(strip)
+	strip.set_meta("visual_family",DarkPixelSkinScript.VISUAL_FAMILY)
 	var text:=Label.new();text.name="CompanionSpeechText"
 	text.text="%s · %s"%[str(speech.get("headline","방어할게.")),
 		str(speech.get("reason_summary","피해를 줄이려고"))]
@@ -2831,7 +2886,7 @@ func _add_party_command_menu(status:Dictionary)->void:
 	party_command_menu.custom_minimum_size.y=TOUCH_TARGET
 	party_command_menu.add_theme_font_size_override("font_size",FONT_COMMAND)
 	party_command_menu.tooltip_text="평소에는 주인공 행동을 따라 자동 전투합니다. 필요할 때만 예외 명령을 사용합니다."
-	AsciiFrameScript.apply_rail_button(party_command_menu,AsciiFrameScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(party_command_menu,DarkPixelSkinScript.CYAN)
 	var popup:=party_command_menu.get_popup()
 	for row in [[0,"공격 대상 지정"],[1,"후퇴"],[2,"공격 중지"],
 			[3,"자리 지키기"],[4,"따라오기"]]:
@@ -2900,9 +2955,10 @@ func _product_controls_metrics(_party_count:int)->Dictionary:
 	# Movement and pickup remain map touches. The dock keeps the four frequent
 	# context commands visible under the portrait strip.
 	var gap:=3 if size.x>=450.0 else 2
-	return {"target":TOUCH_TARGET,"gap":gap,"dock_height":TOUCH_TARGET}.duplicate(true)
+	return {"target":48,"gap":gap,"dock_height":48}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
+	product_bag_button=null
 	product_auto_button=null;product_interact_button=null
 	product_attack_button=null;product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
@@ -2929,6 +2985,8 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,
 		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
+	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
+		_open_hero_detail_tab.bind("ITEM"),target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
 	_sync_product_control_state(status)
 
@@ -3026,11 +3084,13 @@ func _add_product_context_button(parent:Control,label:String,node_name:String,
 	var button:=Button.new();button.name=node_name;button.text=label
 	button.custom_minimum_size=Vector2(target,target)
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	button.add_theme_font_size_override("font_size",FONT_COMMAND)
+	button.add_theme_font_size_override("font_size",12)
+	button.clip_text=true
 	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
 	button.gui_input.connect(_on_product_button_gui_input.bind(node_name));parent.add_child(button)
-	var accent:=AsciiFrameScript.BRASS if node_name in ["ProductAttack","ProductExecute"] else AsciiFrameScript.CYAN
-	AsciiFrameScript.apply_rail_button(button,accent)
+	var accent:=DarkPixelSkinScript.BRASS if node_name in ["ProductAttack","ProductExecute"] \
+		else DarkPixelSkinScript.CYAN
+	DarkPixelSkinScript.apply_action_button(button,accent)
 	return button
 
 func _product_can_step(status:Dictionary)->bool:
@@ -3412,9 +3472,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
 	status_grid.columns=2;status_grid.add_theme_constant_override("h_separation",10)
 	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
-	var emotion_cluster:=VBoxContainer.new();emotion_cluster.name="EmotionSealCluster"
-	emotion_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;emotion_cluster.add_theme_constant_override("separation",3)
-	status_grid.add_child(emotion_cluster)
+	var emotion_cluster:=_add_status_pixel_section(status_grid,"EmotionSealCluster")
 	var emotion_heading:=_card_label("감정 / 스트레스","EmotionSection",FONT_AUX)
 	emotion_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);emotion_cluster.add_child(emotion_heading)
 	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
@@ -3425,9 +3483,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
 	var stress_label:=_card_label("ST %d/1000"%stress,"StatusStress",FONT_AUX);emotion_cluster.add_child(stress_label)
-	var combat_cluster:=VBoxContainer.new();combat_cluster.name="CombatSealCluster"
-	combat_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL;combat_cluster.add_theme_constant_override("separation",3)
-	status_grid.add_child(combat_cluster)
+	var combat_cluster:=_add_status_pixel_section(status_grid,"CombatSealCluster")
 	var combat_heading:=_card_label("전투 / 상태","CombatSection",FONT_AUX)
 	combat_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);combat_cluster.add_child(combat_heading)
 	var status_ids:Variant=detail.get("status_ids",[])
@@ -3449,9 +3505,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 			_percent_milli_text(int(stats.get("evasion_milli",0))),
 			_percent_milli_text(int(stats.get("parry_milli",0)))],"StatusCombatSummary",FONT_AUX)
 		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(combat)
-	var attribute_cluster:=VBoxContainer.new();attribute_cluster.name="AttributeSealCluster"
-	attribute_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	attribute_cluster.add_theme_constant_override("separation",3);status_grid.add_child(attribute_cluster)
+	var attribute_cluster:=_add_status_pixel_section(status_grid,"AttributeSealCluster")
 	var attribute_heading:=_card_label("기본 능력","AttributeSection",FONT_AUX)
 	attribute_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	attribute_cluster.add_child(attribute_heading)
@@ -3461,9 +3515,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 		int(core_stats.get("STR",0)),int(core_stats.get("DEX",0)),
 		int(core_stats.get("INT",0))],"StatusCoreStats",FONT_AUX)
 	attribute_cluster.add_child(attribute_text)
-	var body_cluster:=VBoxContainer.new();body_cluster.name="BodySealCluster"
-	body_cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	body_cluster.add_theme_constant_override("separation",3);status_grid.add_child(body_cluster)
+	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
 	var body_heading:=_card_label("육체 상태","BodyStateSection",FONT_AUX)
 	body_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
 	body_cluster.add_child(body_heading)
@@ -3508,6 +3560,15 @@ func _update_member_status_window(detail:Dictionary)->void:
 		member_status_window.add_child(equipment_text)
 	var dossier_heading:=_card_label("내성","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
+
+func _add_status_pixel_section(parent:GridContainer,node_name:String)->VBoxContainer:
+	var panel:=PanelContainer.new();panel.name=node_name+"Panel"
+	panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	DarkPixelSkinScript.apply_panel(panel,"SECTION");parent.add_child(panel)
+	var cluster:=VBoxContainer.new();cluster.name=node_name
+	cluster.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	cluster.add_theme_constant_override("separation",3);panel.add_child(cluster)
+	return cluster
 
 func _percent_milli_text(value:int)->String:
 	var positive:=maxi(0,value);var whole:=int(positive/10);var tenth:=positive%10
@@ -3659,11 +3720,11 @@ func _apply_member_detail_tab()->void:
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정" if member_detail_has_skills \
 		else "현재 무기 기술과 종족 특성"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
-	AsciiFrameScript.apply_rail_button(member_detail_status_tab,AsciiFrameScript.BRASS,status_selected)
-	AsciiFrameScript.apply_rail_button(member_detail_personality_tab,AsciiFrameScript.BRASS,personality_selected)
-	AsciiFrameScript.apply_rail_button(member_detail_relationship_tab,AsciiFrameScript.BRASS,relationship_selected)
-	AsciiFrameScript.apply_rail_button(member_detail_skill_tab,AsciiFrameScript.BRASS,skill_selected)
-	AsciiFrameScript.apply_rail_button(member_detail_item_tab,AsciiFrameScript.BRASS,item_selected)
+	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
+	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
+	DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab,relationship_selected)
+	DarkPixelSkinScript.apply_tab_button(member_detail_skill_tab,skill_selected)
+	DarkPixelSkinScript.apply_tab_button(member_detail_item_tab,item_selected)
 	member_status_window.visible=status_selected
 	member_detail_body.visible=status_selected
 	member_personality_window.visible=personality_selected
@@ -3794,19 +3855,20 @@ func _apply_skill_ledger_style(button:Button,mode_label:Label,mode:String,
 	var clear:=AsciiFrameScript.borderless_surface(Color("#00000000"),0)
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		button.add_theme_stylebox_override(state,clear)
-	var tone:=AsciiFrameScript.BRASS if equipped or mode=="FOCUS" \
-		else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.CYAN)
+	var tone:=DarkPixelSkinScript.BRASS if equipped or mode=="FOCUS" \
+		else (DarkPixelSkinScript.BONE_DIM if mode=="OFF" else DarkPixelSkinScript.CYAN)
 	mode_label.add_theme_color_override("font_color",tone)
 	button.set_meta("no_button_chrome",true);button.set_meta("raw_training_weight",
 		int(ProgressionRegistryScript.MODE_WEIGHTS.get(mode,0)))
 	button.set_meta("equipped_proficiency",equipped)
 	button.set_meta("training_paused",mode=="OFF")
 	if name_label!=null:
-		name_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if equipped \
-			else (AsciiFrameScript.MUTED if mode=="OFF" else AsciiFrameScript.INK))
+		name_label.add_theme_color_override("font_color",DarkPixelSkinScript.BRASS if equipped \
+			else (DarkPixelSkinScript.BONE_DIM if mode=="OFF" else DarkPixelSkinScript.BONE))
 	if panel!=null:
-		panel.add_theme_stylebox_override("panel",AsciiFrameScript.borderless_surface(
-			AsciiFrameScript.SURFACE if equipped else AsciiFrameScript.SURFACE_DEEP,0))
+		panel.add_theme_stylebox_override("panel",DarkPixelSkinScript.panel_surface(
+			DarkPixelSkinScript.SLOT_EQUIPPED if equipped else DarkPixelSkinScript.SLOT_EMPTY,
+			DarkPixelSkinScript.BRASS_DARK if equipped else DarkPixelSkinScript.IRON_SHADOW,2,1))
 
 func _toggle_weapon_mastery_category()->void:
 	member_skill_category_expanded=not member_skill_category_expanded
@@ -4033,8 +4095,8 @@ func _add_item_ledger_button(parent:VBoxContainer,row:Dictionary,label:String,eq
 	var instance_id:=str(row.get("instance_id",""));var slot:=str(row.get("slot","")) if equipped else ""
 	button.set_meta("item_instance_id",instance_id);button.set_meta("item_slot",slot)
 	button.pressed.connect(_on_item_row_selected.bind(instance_id,slot,button))
-	parent.add_child(button);AsciiFrameScript.apply_rail_button(button,
-		AsciiFrameScript.BRASS,instance_id==member_item_selected_id and slot==member_item_selected_slot)
+	parent.add_child(button);DarkPixelSkinScript.apply_tab_button(button,
+		instance_id==member_item_selected_id and slot==member_item_selected_slot)
 
 func _add_item_grid_slot(parent:GridContainer,row:Dictionary,index:int,
 		equipment_slot:String)->void:
@@ -5122,7 +5184,7 @@ func _render_tile_popover()->void:
 	if selected_tile_inspection.is_empty() or tile_popover==null:return
 	tile_popover_label.text=_tile_popover_text(selected_tile_inspection,route_preview)
 	var width:=minf(280.0,maxf(1.0,size.x-24.0))
-	var frame:=tile_popover.find_child("TileRiskAsciiFrame",true,false) as MarginContainer
+	var frame:=tile_popover.find_child("TileRiskPixelFrame",true,false) as MarginContainer
 	var horizontal_inset:=16.0
 	if frame!=null:
 		horizontal_inset=float(frame.get_theme_constant("margin_left")+frame.get_theme_constant("margin_right"))
@@ -5138,7 +5200,7 @@ func _measure_tile_popover()->void:
 	var line_height:=font.get_height(tile_popover_label.get_theme_font_size("font_size"))
 	var required_label_height:=maxf(line_height,float(tile_popover_label.get_line_count())*line_height)
 	tile_popover_label.custom_minimum_size.y=required_label_height
-	var frame:=tile_popover.find_child("TileRiskAsciiFrame",true,false) as MarginContainer
+	var frame:=tile_popover.find_child("TileRiskPixelFrame",true,false) as MarginContainer
 	var vertical_inset:=12.0
 	if frame!=null:
 		vertical_inset=float(frame.get_theme_constant("margin_top")+frame.get_theme_constant("margin_bottom"))
@@ -5356,8 +5418,9 @@ func _add_button(parent:Control,value:String,node_name:String,callback:Callable)
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL; button.pressed.connect(callback); parent.add_child(button)
 	var danger:=node_name in ["MemberDetailDismiss","MemberDetailAttack",
 		"NearbyNpcAttack","RestartExpedition"]
-	var accent:=AsciiFrameScript.DANGER if danger else (AsciiFrameScript.BRASS if node_name in ["TurnConfirm","AutoExecute","DeployConfirm"] else AsciiFrameScript.CYAN)
-	AsciiFrameScript.apply_rail_button(button,accent,false,danger);return button
+	var accent:=DarkPixelSkinScript.BLOOD if danger else (DarkPixelSkinScript.BRASS \
+		if node_name in ["TurnConfirm","AutoExecute","DeployConfirm"] else DarkPixelSkinScript.CYAN)
+	DarkPixelSkinScript.apply_action_button(button,accent,danger);return button
 func _dos_command_label(node_name:String,value:String)->String:
 	match node_name:
 		"ActorHold":return "[R 방어]"
@@ -5384,8 +5447,8 @@ func _current_grid_view_dimensions()->Vector2i:
 	# gaps. The map receives every remaining pixel and derives a square cell size
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
-		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-TOUCH_TARGET
-		-TOUCH_TARGET-separation*5))
+		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-48
+		-separation*4))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction
 	# in sprite scale is preferable to leaving an otherwise useless black strip.
@@ -5561,6 +5624,10 @@ func _on_product_menu_id(item_id:int)->void:
 				add_child(product_restart_confirm)
 			product_restart_confirm.popup_centered()
 		1:show_species_picker_for_new_run()
+		2:_open_hero_detail_tab("STATUS")
+		3:_open_hero_detail_tab("SKILL")
+		4:_open_hero_detail_tab("ITEM")
+		5:_toggle_record_modal()
 
 func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var cycle:Dictionary=session.expedition_cycle_status() \
@@ -5685,15 +5752,16 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
-	var phase_style:=AsciiFrameScript.borderless_surface(surface_color,0)
-	phase_style.border_width_bottom=1;phase_style.border_color=AsciiFrameScript.CYAN
+	var phase_style:=DarkPixelSkinScript.panel_surface(surface_color,
+		DarkPixelSkinScript.CYAN,0,1)
 	phase_panel.add_theme_stylebox_override("panel",phase_style)
-	phase_panel.set_meta("visible_stylebox_border",false)
+	phase_panel.set_meta("visible_stylebox_border",true)
+	phase_panel.set_meta("visual_family",DarkPixelSkinScript.VISUAL_FAMILY)
 	if minimap_frame!=null:
-		var glyph_tone:=AsciiFrameScript.CYAN
+		var glyph_tone:=DarkPixelSkinScript.CYAN
 		if situation=="승리":glyph_tone=AsciiFrameScript.JADE
-		elif situation in ["전투","위험"]:glyph_tone=AsciiFrameScript.DANGER
-		elif situation=="기척":glyph_tone=AsciiFrameScript.BRASS
+		elif situation in ["전투","위험"]:glyph_tone=DarkPixelSkinScript.BLOOD
+		elif situation=="기척":glyph_tone=DarkPixelSkinScript.BRASS
 		minimap_frame.frame_color=glyph_tone;minimap_frame.title_color=glyph_tone
 		minimap_frame.danger_edge=situation=="위험"
 		minimap_frame.set_meta("state_tone",tone)

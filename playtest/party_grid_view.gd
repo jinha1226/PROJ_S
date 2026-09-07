@@ -122,7 +122,7 @@ var pinch_zoom_enabled:=false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	clip_contents=true; resized.connect(_on_visual_geometry_changed)
 	_ensure_melee_vfx()
 	_torch_timer=Timer.new();_torch_timer.name="TorchFlickerTimer"
@@ -426,6 +426,7 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 			maximum=Vector2i(maxi(maximum.x,point.x),maxi(maximum.y,point.y)); found=true
 	if found and (maximum.x-minimum.x>visible_cell_count-1 or maximum.y-minimum.y>visible_cell_count-1):
 		visible_cell_count=mini(world_grid_size.x,world_grid_size.y)
+		visible_row_count=visible_cell_count
 		view_origin=Vector2i.ZERO;_invalidate_static_projection_cache();queue_redraw();return
 	var center:=Vector2i(world_grid_size.x/2,world_grid_size.y/2)
 	if found:center=Vector2i((minimum.x+maximum.x)/2,(minimum.y+maximum.y)/2)
@@ -2260,7 +2261,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 		"logical_position":[position.x,position.y],"foot_y":foot_y,
 		"logical_tile_center":center,"visual_center_offset_px":visual_center_offset,
 		"visual_cell_ratio":sprite_size/cell,"style":style,
-		"outline_enabled":not ghost,"outline_px":1.0,
+		"outline_enabled":false,"outline_px":0.0,
 		"outline_hex":"#020509f2","outline_changes_bounds":false,
 		"modulate_hex":"#"+modulate.to_html(true),"shadow_rect":shadow_rect,
 		"shadow_hex":"#"+Color(0.005,0.01,0.015,shadow_alpha).to_html(true),

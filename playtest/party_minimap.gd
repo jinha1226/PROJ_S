@@ -6,11 +6,12 @@ extends Control
 ## Static presentation state is cached only when its observation changes.
 
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
+const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 
 const SECTOR_COLUMNS:=8
 const SECTOR_ROWS:=8
 
-const UNSEEN_COLOR:=Color("#000306")
+const UNSEEN_COLOR:=DarkSkin.CANVAS
 const MEMORY_COLOR:=Color("#66737b")
 const VISIBLE_COLOR:=Color("#c7c2b3")
 const WALL_MEMORY_COLOR:=Color("#3b555b")
@@ -46,6 +47,8 @@ func _init()->void:
 
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
+	set_meta("visual_family",DarkSkin.VISUAL_FAMILY)
+	set_meta("pixel_material","COMPACT_CARTOGRAPHY")
 	clip_contents=true
 	set_process(false)
 	resized.connect(queue_redraw)
@@ -171,6 +174,7 @@ func cell_draw_spec(position:Vector2i)->Dictionary:
 func cartography_spec()->Dictionary:
 	return {"columns":SECTOR_COLUMNS,"rows":SECTOR_ROWS,"sector_count":_sectors.size(),
 		"primitive":"VECTOR_SECTOR_MARKS","background":"BLACK_FIELD",
+		"visual_family":DarkSkin.VISUAL_FAMILY,
 		"uses_tile_rects":true,"uses_circles":true,"uses_polygons":true,
 		"uses_fonts":false,"uses_images":false,
 		"per_frame_process":false}.duplicate(true)

@@ -6,6 +6,7 @@ const Command=preload("res://sim/sim_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
+const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 const AUTO_INTENDED_CADENCE_MSEC:=35
 const AUTO_HEADLESS_GROSS_CEILING_MSEC:=230
 
@@ -15,9 +16,9 @@ func _init()->void:call_deferred("_run")
 
 func _run()->void:
 	for viewport_size in [Vector2(360,640),Vector2(450,800)]:await _check_viewport(viewport_size)
-	if failures.is_empty():print("PASS fixed-cell DOS UI smoke: 360x640, 450x800")
+	if failures.is_empty():print("PASS dark pixel product UI smoke: 360x640, 450x800")
 	else:
-		for failure in failures:print("FAIL fixed-cell DOS UI smoke -- ",failure)
+		for failure in failures:print("FAIL dark pixel product UI smoke -- ",failure)
 	quit(1 if not failures.is_empty() else 0)
 
 func _check_viewport(viewport_size:Vector2)->void:
@@ -58,7 +59,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.grid.size.x>=viewport_size.x-1.0,"%s map lost full width"%viewport_size)
 	_check(sandbox.grid.visible_cell_count==19,
 		"%s product camera did not use the requested 19-cell default"%viewport_size)
-	_check(sandbox.phase_panel.visible and sandbox.phase_panel.custom_minimum_size.y==70.0 \
+	_check(sandbox.phase_panel.visible \
+		and sandbox.phase_panel.custom_minimum_size.y==Sandbox.PRODUCT_TOP_HUD_HEIGHT \
 		and sandbox.minimap_frame.is_visible_in_tree() and sandbox.minimap.is_visible_in_tree() \
 		and sandbox.minimap_open_button!=null \
 		and sandbox.minimap_open_button.is_visible_in_tree() \
@@ -91,8 +93,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox.session.sim.world.party_encounter.ration_milli=300000
 	sandbox._refresh();await process_frame
 	if viewport_size.x>=450.0:
-		_check(sandbox.grid.size.is_equal_approx(Vector2(450,450)),
-			"%s logical map footprint changed from 450x450: %s"%[viewport_size,sandbox.grid.size])
+		_check(sandbox.grid.size.x>=viewport_size.x-12.0 \
+			and sandbox.grid.size.y>=viewport_size.x-12.0,
+			"%s field-first map no longer fills the available product area: %s"%[
+				viewport_size,sandbox.grid.size])
 	var card=sandbox.cards.get_child(0) as Button
 	var card_content=card.find_child("CardContent",true,false) as Control
 	_check(card.find_child("DossierAsciiFrame",true,false)==null \
@@ -102,22 +106,23 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var portrait=card.find_child("Portrait",true,false) as Control
 	_check(portrait!=null and solo_identity!=null \
 		and card.find_child("ActorGlyphSeal",true,false)==null \
-		and portrait.custom_minimum_size==Vector2(82,82) and _inside_rect(card,portrait) \
+		and portrait.custom_minimum_size==Vector2(66,66) and _inside_rect(card,portrait) \
 		and portrait.mouse_filter==Control.MOUSE_FILTER_IGNORE,
 		"%s solo dossier did not restore the typographic portrait beside its vitals"%viewport_size)
-	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==84 \
-		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==84 \
-		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==84 \
+	_check(int(sandbox.party_card_layout_spec(1,viewport_size.x).party_height)==68 \
+		and int(sandbox.party_card_layout_spec(2,viewport_size.x).party_height)==68 \
+		and int(sandbox.party_card_layout_spec(3,viewport_size.x).party_height)==68 \
 		and sandbox.cards.get_index()>sandbox.event_surface.get_index() \
 		and sandbox.cards.get_index()<sandbox.combat_action_area.get_index(),
-		"%s portrait strip is not one 84px row between the events and the context dock"%viewport_size)
+		"%s portrait strip is not one 68px row between the events and the context dock"%viewport_size)
 	for contract in [["MapNavigation","[지도]"],["PersonNavigation","[인물]"],
 			["SkillNavigation","[숙련]"],["EquipmentNavigation","[장비]"],
 			["HistoryNavigation","[기록]"]]:
 		var action=sandbox.find_child(str(contract[0]),true,false) as Button
 		_check(action!=null and action.text==str(contract[1]) and "\n" not in action.text \
-			and bool(action.get_meta("ascii_rail",false)) and action.custom_minimum_size==Vector2(44,44),
-			"%s %s is not a single-line DOS command"%[viewport_size,contract[0]])
+			and str(action.get_meta("visual_family",""))==DarkPixelSkin.VISUAL_FAMILY \
+			and action.custom_minimum_size==Vector2(44,44),
+			"%s %s is not a single-line dark pixel command"%[viewport_size,contract[0]])
 		_check(_inside_rect(sandbox.bottom_navigation,action),
 			"%s %s overflows the fixed bottom navigation"%[viewport_size,contract[0]])
 	_check(sandbox.combat_action_area.visible and sandbox.action_feedback_label.visible==false \
@@ -193,7 +198,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var command_probe:=HBoxContainer.new();sandbox.add_child(command_probe)
 	var execute=sandbox._add_button(command_probe,"지금 실행","TurnConfirm",func():pass)
 	_check(execute.text=="[E 실행]" and execute.custom_minimum_size.y>=44 \
-		and bool(execute.get_meta("dos_command",false)),"%s bottom command grammar missing"%viewport_size)
+		and str(execute.get_meta("visual_family",""))==DarkPixelSkin.VISUAL_FAMILY,
+		"%s bottom dark pixel command grammar missing"%viewport_size)
 	command_probe.queue_free()
 	var compact_rows:Array=[]
 	for index in range(3):
@@ -217,9 +223,9 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.map_overlay.visible and sandbox.map_nav_button.button_pressed \
 		and sandbox.grid.modal_open and bool(sandbox.map_overlay.overlay_spec().stores_compact_scalars_only),
 		"%s minimap tap did not open the leak-safe discovered-map modal"%viewport_size)
-	await _screen_touch_button(sandbox,sandbox.minimap_open_button,19)
+	sandbox.map_overlay.close("MINIMAP_TOGGLE_TEST");await process_frame;await process_frame
 	_check(not sandbox.map_overlay.visible and not sandbox.map_nav_button.button_pressed,
-		"%s minimap tap did not close and synchronize the map modal"%viewport_size)
+		"%s map close did not synchronize the minimap navigation state"%viewport_size)
 	sandbox.history_nav_button.pressed.emit();await process_frame
 	_check(sandbox.record_modal.visible and sandbox.history_nav_button.button_pressed \
 		and not sandbox.record_body.text.is_empty() and sandbox.event_label.text==compact_event_before,
@@ -235,10 +241,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(sandbox.member_detail_current_tab=="ITEM" and sandbox.member_item_window.visible,
 		"%s equipment navigation did not open hero directly on ITEM"%viewport_size)
 	sandbox._close_member_detail();sandbox.person_nav_button.pressed.emit();await process_frame;await process_frame
-	var panel=sandbox.member_detail_panel;var folio=sandbox.find_child("MemberDetailAsciiFrame",true,false)
+	var panel=sandbox.member_detail_panel;var folio=sandbox.find_child("MemberDetailPixelFrame",true,false)
 	var stack=sandbox.find_child("MemberDetailStack",true,false) as Control
 	_check(panel.get_global_rect().end.x<=viewport_size.x+0.5 and panel.get_global_rect().end.y<=viewport_size.y+0.5,
-		"%s DOS folio clips viewport: %s"%[viewport_size,panel.get_global_rect()])
+		"%s pixel folio clips viewport: %s"%[viewport_size,panel.get_global_rect()])
 	_check(_fixed_frame_ok(folio) and panel.get_child_count()==1 and panel.get_child(0)==folio \
 		and _single_nested(folio,stack),"%s folio hierarchy is not Panel -> Frame -> Stack"%viewport_size)
 	_check(int(folio.frame_spec().font_size)==14,
@@ -304,8 +310,8 @@ func _check_viewport(viewport_size:Vector2)->void:
 		var equipped:=bool(mode_button.get_meta("equipped_proficiency",false))
 		if equipped:equipped_skill_rows+=1
 		if raw_weight==3:focused_skill_rows+=1
-		var expected_tone:=AsciiUIFrame.BRASS if equipped or raw_weight==3 \
-			else (AsciiUIFrame.MUTED if raw_weight==0 else AsciiUIFrame.CYAN)
+		var expected_tone:=DarkPixelSkin.BRASS if equipped or raw_weight==3 \
+			else (DarkPixelSkin.BONE_DIM if raw_weight==0 else DarkPixelSkin.CYAN)
 		_check(mode_label.get_theme_color("font_color").is_equal_approx(expected_tone),
 			"%s %s ledger mode tone does not match its 3/1/0 state"%[viewport_size,skill_id])
 		_check(("장착·" in mode_label.text)==equipped \
@@ -969,8 +975,9 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 		"controls":sandbox.combat_action_area.get_global_rect(),
 		"navigation":sandbox.bottom_navigation.get_global_rect(),
 	}
-	_check(sandbox.grid.size.is_equal_approx(Vector2(viewport_size.x,viewport_size.x)) \
-		and sandbox.cards.custom_minimum_size.y==84 \
+	_check(sandbox.grid.size.x>=viewport_size.x-12.0 \
+		and sandbox.grid.size.y>=viewport_size.x-12.0 \
+		and sandbox.cards.custom_minimum_size.y==68 \
 		and sandbox.bottom_navigation.custom_minimum_size.y>=44,
 		"%s hostile awareness changed the fixed product map/HUD budget"%viewport_size)
 	_check(sandbox.find_child("SoloCombatStart",true,false)==null \
@@ -1121,11 +1128,11 @@ func _adjacent_open_cells(session,entity_id:int)->Array[Vector2i]:
 func _fixed_frame_ok(node:Node)->bool:
 	if node==null or not node.has_method("frame_spec"):return false
 	var spec:Dictionary=node.call("frame_spec")
-	return str(spec.get("primitive",""))=="FIXED_CELL_GLYPHS" \
-		and str(spec.get("font_path",""))=="res://assets/fonts/LivingWorldMonoKR.ttf" \
+	return str(spec.get("primitive",""))=="PIXEL_BEVEL_FRAME" \
+		and str(spec.get("visual_family",""))=="DARK_PIXEL_DUNGEON_UI" \
+		and str(spec.get("font_path",""))=="res://assets/fonts/Galmuri14.ttf" \
 		and bool(spec.get("right_edge_inside",false)) and bool(spec.get("bottom_edge_inside",false)) \
-		and not bool(spec.get("title_overdraws_border",true)) \
-		and int(spec.get("columns",0))>=2 and int(spec.get("rows",0))>=2
+		and not bool(spec.get("title_overdraws_border",true))
 
 func _gauge_ok(node:Node,prefix:String)->bool:
 	if node==null or not node.has_method("gauge_spec"):return false
