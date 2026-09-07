@@ -29,9 +29,11 @@ static func for_growth_state(state)->Dictionary:
 static func for_entity(world,entity_id:int)->Dictionary:
 	if world==null or not world.entities.has(entity_id):return baseline_stats()
 	var entity=world.entities[entity_id]
+	var stats:Dictionary
 	if world.party_encounter!=null and int(world.party_encounter.protagonist_id)==entity_id:
-		return for_growth_state(world.party_encounter.protagonist_growth)
-	return for_species(str(entity.species_id))
+		stats=for_growth_state(world.party_encounter.protagonist_growth)
+	else:stats=for_species(str(entity.species_id))
+	return preload("res://sim/personal_talent_rules.gd").apply_stats(entity,stats)
 
 
 static func requirements_error(stats:Dictionary,requirements:Dictionary)->String:

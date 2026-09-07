@@ -126,6 +126,8 @@ var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
 var town_facility_id:=""
+var selected_base_building_id:="STORAGE"
+var _last_view_mode:=""
 var notice_text:=""
 var pending_move_actor_id:=-1
 var pending_move_origin:=Vector2i(-1,-1)
@@ -835,7 +837,7 @@ func _build_ui()->void:
 	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("4인 전투 테스트 · 마법",6)
 	menu_popup.add_separator()
-	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 원정 · 종족 선택",1)
+	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
 	top_hud_actions.add_child(product_menu_button)
 	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
@@ -1000,6 +1002,7 @@ func _build_base_modal()->void:
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;stack.add_child(scroll)
 	base_preview=BaseProgressPanelScript.new();base_preview.name="BaseProgressPreview"
 	base_preview.size_flags_horizontal=Control.SIZE_EXPAND_FILL;scroll.add_child(base_preview)
+	base_preview.building_selected.connect(_on_base_preview_building_selected)
 	base_preview.return_requested.connect(_on_base_return_requested)
 
 func _build_species_picker()->void:
@@ -1044,10 +1047,11 @@ func _open_active_combat_lab()->void:
 	add_child(lab)
 
 func show_species_picker_for_new_run()->void:
+	# Keep this entry point for existing callers, but the product now starts as
+	# human immediately. The legacy picker remains hidden for old test tooling.
 	if species_picker_modal==null:_build_species_picker()
 	_species_picker_committed=false;species_picker_modal.visible=true
-	if grid!=null:grid.modal_open=true
-	_layout_floating_surfaces()
+	_commit_species_picker("human")
 
 func _commit_species_picker(species_id:String)->void:
 	if _species_picker_committed or species_picker_modal==null \
@@ -1058,7 +1062,19 @@ func _commit_species_picker(species_id:String)->void:
 		_species_picker_committed=false;return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
-	_reset_run_ui_transients();_request_refresh()
+	_reset_run_ui_transients()
+	# Species confirmation is the explicit new-game boundary. Let the first DUO
+	# run see and build its camp before departure, without changing constructor,
+	# load, or headless-session semantics.
+	if session!=null and session.is_duo_autobattle() and session.has_method("base_return"):
+		var return_result:Dictionary=session.base_return()
+		if bool(return_result.get("accepted",false)):
+			town_facility_id="BASE"
+			notice_text="작은 거점에 도착했습니다. 빈 땅에 첫 시설을 건설하세요."
+		else:
+			notice_text="원정 입구에서 시작합니다. %s"%str(return_result.get("message",
+				"거점으로 바로 이동할 수 없습니다."))
+	_request_refresh()
 
 func _build_build_label()->void:
 	build_label=Label.new();build_label.name="BuildLabel";build_label.text=BuildInfoScript.display_text()
@@ -1714,6 +1730,13 @@ func _refresh()->void:
 			route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
 	var town_active:=str(status.view_mode)=="TOWN"
+	var base_overview_state:Dictionary=session.base_overview() \
+		if session.has_method("base_overview") else {}
+	var base_available:=bool(base_overview_state.get("enabled",false))
+	if town_active and _last_view_mode!="TOWN" and base_available:town_facility_id="BASE"
+	_last_view_mode=str(status.view_mode)
+	var town_base_active:=town_active and base_available \
+		and town_facility_id in ["","BASE"]
 	var combat_active:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
@@ -1740,14 +1763,16 @@ func _refresh()->void:
 	# with the return countdown, and the main menu. Legacy keeps the phase banner.
 	phase_panel.visible=true
 	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
-	top_hud_actions.visible=product_hud
+	top_hud_actions.visible=product_hud or town_base_active
 	top_hud_actions.custom_minimum_size.x=44 if product_hud else 132
 	record_button.visible=not product_hud;hero_detail_button.visible=not product_hud
+	var town_header_target:=48 if town_base_active else 44
+	record_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
+	hero_detail_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
 	product_menu_button.visible=product_hud
 	var base_menu_index:=product_menu_button.get_popup().get_item_index(7)
 	if base_menu_index>=0:
-		var base_menu_enabled:bool=session.has_method("base_overview") \
-			and bool(session.base_overview().get("enabled",false))
+		var base_menu_enabled:bool=base_available
 		product_menu_button.get_popup().set_item_disabled(base_menu_index,not base_menu_enabled)
 	# SOLO keeps one continuous dungeon surface: the situation word stays a hidden
 	# authority for tests/legacy while the rail centre names the floor and return.
@@ -1767,7 +1792,7 @@ func _refresh()->void:
 	var card_layout:=party_card_layout_spec(party_rows.size(),size.x)
 	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)),product_hud)
-	cards.visible=true
+	cards.visible=not town_base_active
 	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
 	if selected_target_id not in status.visible_enemy_ids:selected_target_id=-1
 	if not pending_move_mode.is_empty() and pending_move_mode!=str(status.view_mode):_clear_move_preview()
@@ -2186,7 +2211,7 @@ func _open_base_modal()->void:
 	_cancel_route_for_user_interruption()
 	if map_overlay.visible:map_overlay.close("BASE")
 	if record_modal.visible:_close_record_modal("BASE")
-	base_preview.present(overview,true)
+	base_preview.present(overview,true,selected_base_building_id)
 	grid.cancel_pointer_gesture();grid.modal_open=true;base_modal.visible=true
 	_sync_product_zoom_controls(_is_solo_product_session())
 	_layout_floating_surfaces()
@@ -2199,6 +2224,9 @@ func _close_base_modal(_reason:String="API")->void:
 	_sync_product_zoom_controls(_is_solo_product_session())
 	route_paused_by_modal=false
 	if auto_orchestration_enabled:_request_refresh()
+
+func _on_base_preview_building_selected(building_id:String)->void:
+	selected_base_building_id=building_id
 
 func _on_base_backdrop_input(event:InputEvent)->void:
 	if event is InputEventScreenTouch and event.pressed:_close_base_modal("OUTSIDE")
@@ -2720,6 +2748,24 @@ func _town_deck(status:Dictionary)->void:
 	if town_facility_id=="BASE" and not base_enabled:
 		town_facility_id="GUILD" if session.allows_companions() else "GATE"
 	if not session.allows_companions() and town_facility_id=="GUILD":town_facility_id="GATE"
+	if base_enabled:
+		if town_facility_id=="BASE":
+			_town_base_panel()
+		else:
+			_add_notice(_town_summary_text(status),"TownGuildHallSummary",FONT_KEY)
+			var back:=_add_button(deck,"← 거점 지도","TownBaseMapBack",
+				_on_town_facility_selected.bind("BASE"))
+			back.custom_minimum_size.y=48
+			match town_facility_id:
+				"CLINIC":_town_clinic_panel(status)
+				"SHRINE":_town_shrine_panel(status)
+				"MARKET":_town_market_panel()
+				"ARMORY":_town_armory_panel()
+				"GATE":_town_gate_panel()
+				_:town_facility_id="BASE";_town_base_panel()
+		_add_notice("마을에서는 이동 턴이 흐르지 않습니다. 준비가 끝난 뒤 원정을 시작합니다.",
+			"TownPreparationRule",FONT_AUX)
+		_selected_detail();return
 	_add_notice(_town_summary_text(status),"TownGuildHallSummary",FONT_KEY)
 	var stations:=GridContainer.new();stations.name="TownGuildHallStations"
 	stations.columns=3;stations.add_theme_constant_override("h_separation",4)
@@ -2750,10 +2796,39 @@ func _town_base_panel()->void:
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
 	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
+	if session.has_method("base_build_assessment"):
+		panel.configure_build_assessment(Callable(session,"base_build_assessment"))
 	panel.upgrade_requested.connect(_on_base_upgrade_requested)
 	panel.service_requested.connect(_on_base_service_requested)
 	panel.sell_requested.connect(_on_base_sell_requested)
-	deck.add_child(panel);panel.present(session.base_overview(),false)
+	panel.building_selected.connect(_on_base_building_selected)
+	panel.resident_requested.connect(_open_member_detail)
+	panel.construction_confirm_requested.connect(_on_base_construction_confirmed.bind(panel))
+	deck.add_child(panel);panel.present(session.base_overview(),false,selected_base_building_id)
+
+
+func _on_base_building_selected(building_id:String)->void:
+	selected_base_building_id=building_id
+	if building_id in ["MARKET","ARMORY","GATE"]:
+		_on_base_service_requested(building_id)
+
+
+func _on_base_construction_confirmed(type_id:String,tile_origin:Vector2i,panel)->void:
+	if not session.has_method("base_build"):
+		notice_text="건설 기능을 사용할 수 없습니다.";return
+	var result:Dictionary=session.base_build(type_id,tile_origin)
+	if bool(result.get("accepted",false)):
+		selected_base_building_id=type_id
+		notice_text=str(result.get("message","%s 건설을 마쳤습니다."%_base_building_label(type_id)))
+		action_feedback_text=notice_text;_request_refresh();return
+	var message:=str(result.get("message","이 위치에는 건설할 수 없습니다."))
+	notice_text=message;action_feedback_text=message
+	if panel!=null and is_instance_valid(panel):
+		panel.apply_placement_assessment(result)
+
+
+func _base_building_label(type_id:String)->String:
+	return {"CLINIC":"진료소","MARKET":"시장","ARMORY":"대장간"}.get(type_id,type_id)
 
 
 func _on_base_upgrade_requested(facility_id:String)->void:
@@ -2766,7 +2841,8 @@ func _on_base_upgrade_requested(facility_id:String)->void:
 
 
 func _on_base_service_requested(facility_id:String)->void:
-	town_facility_id={"STORAGE":"MARKET","LODGE":"SHRINE","CLINIC":"CLINIC"}.get(
+	town_facility_id={"LODGE":"SHRINE","CLINIC":"CLINIC","MARKET":"MARKET",
+		"ARMORY":"ARMORY","GATE":"GATE"}.get(
 		facility_id, "BASE")
 	notice_text="";action_feedback_text="";_request_refresh()
 
@@ -2791,8 +2867,10 @@ func _town_summary_text(status:Dictionary)->String:
 
 
 func _town_clinic_panel(status:Dictionary)->void:
+	var town:Dictionary=session.town_overview() if session.has_method("town_overview") else {}
+	var clinic_cost:=int(town.get("clinic_cost",SessionScript.TOWN_CLINIC_COST))
 	_add_notice("[치유소] 체력·출혈·일반 상처·기능 저하 회복 · 절단은 유지 · 1인 %d금화"%
-		SessionScript.TOWN_CLINIC_COST,"TownClinicTitle",FONT_BODY)
+		clinic_cost,"TownClinicTitle",FONT_BODY)
 	var members:Variant=status.get("party_member_ids",[])
 	for entity_id_value in members:
 		var entity_id:=int(entity_id_value)
@@ -2822,8 +2900,11 @@ func _town_clinic_panel(status:Dictionary)->void:
 
 
 func _town_shrine_panel(status:Dictionary)->void:
+	var town:Dictionary=session.town_overview() if session.has_method("town_overview") else {}
+	var stress_recovery:=int(town.get("shrine_stress_reduction",
+		SessionScript.TOWN_SHRINE_STRESS_REDUCTION))
 	_add_notice("[신전] 한 번에 긴장 %d 회복 · 1인 %d금화"%[
-		SessionScript.TOWN_SHRINE_STRESS_REDUCTION,SessionScript.TOWN_SHRINE_COST],
+		stress_recovery,SessionScript.TOWN_SHRINE_COST],
 		"TownShrineTitle",FONT_BODY)
 	var morale:Dictionary=session.party_morale_observation()
 	for member_value in morale.get("members",[]):
@@ -3739,6 +3820,13 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 
 func _update_member_status_window(detail:Dictionary)->void:
 	_clear_container(member_status_window)
+	var talent:Dictionary=detail.get("personal_talent",{})
+	if not talent.is_empty():
+		var talent_label:=_card_label("재능 · %s\n%s"%[
+			str(talent.label),str(talent.description)],"StatusPersonalTalent",FONT_AUX)
+		talent_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		talent_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS)
+		member_status_window.add_child(talent_label)
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var vitals:=HBoxContainer.new();vitals.name="StatusVitals";vitals.custom_minimum_size.y=44
 	vitals.add_theme_constant_override("separation",8);member_status_window.add_child(vitals)
@@ -4012,7 +4100,7 @@ func _apply_member_detail_tab()->void:
 	var skill_tab_label:="숙련" if member_detail_has_skills else "스킬"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정" if member_detail_has_skills \
-		else "현재 무기 기술과 종족 특성"
+		else "현재 무기 기술과 개인 재능"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
@@ -4855,6 +4943,7 @@ func _reset_run_ui_transients()->void:
 	route_paused_by_modal=false;route_paused_by_pointer=false;route_preview.clear()
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
+	selected_base_building_id="STORAGE";town_facility_id="";_last_view_mode=""
 	_pending_card_pointer.clear();_last_card_tap_id=-1;_last_card_tap_msec=-1000
 	_last_card_tap_position=Vector2(-10000,-10000);_direct_card_touch_id=-1;_direct_card_touch_msec=-1000
 	_scroll_log_after_refresh=false;_run_locked_exit_feedback=false
@@ -5944,7 +6033,13 @@ func _on_product_menu_id(item_id:int)->void:
 				product_restart_confirm.confirmed.connect(_on_restart_same_run)
 				add_child(product_restart_confirm)
 			product_restart_confirm.popup_centered()
-		1:show_species_picker_for_new_run()
+		1:
+			var fresh_seed:=_issue_new_personality_seed(int(session.personality_seed))
+			if session.reset_party(session.world_seed,fresh_seed,SessionScript.DUO_SCENARIO_ID,
+					{},true,"human"):
+				show_species_picker_for_new_run()
+			else:
+				notice_text="새 게임을 시작하지 못했습니다.";_request_refresh()
 		2:_open_hero_detail_tab("STATUS")
 		3:_open_hero_detail_tab("SKILL")
 		4:_open_hero_detail_tab("ITEM")

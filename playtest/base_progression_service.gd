@@ -27,21 +27,26 @@ func base_overview()->Dictionary:
 	var carried:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
 		expedition_index,phase)
 	var facilities:Array[Dictionary]=[]
+	var settlement:Dictionary=_session._base_settlement_service.overview()
+	var settlement_buildings:Array=settlement.get("buildings",[])
 	for facility_id in _session.BaseProgressionRulesScript.FACILITY_IDS:
 		var level:=int(levels[facility_id]);var next_level:=mini(3,level+1)
 		var price:Dictionary=_session.BaseProgressionRulesScript.cost(facility_id,level+1) \
 			if level<3 else {}
-		var can_upgrade:bool=phase=="TOWN" and level<3 \
+		var built:bool=_session.BaseSettlementRulesScript.type_built(
+			settlement_buildings,facility_id)
+		var can_upgrade:bool=built and phase=="TOWN" and level<3 \
 			and _session.BaseProgressionRulesScript.can_afford(stock,price)
-		var message:String="증축 가능" if can_upgrade else ("최대 레벨" if level>=3 \
-			else ("마을에서 증축할 수 있습니다" if phase!="TOWN" else "자원이 부족합니다"))
+		var message:String="증축 가능" if can_upgrade else ("먼저 건설해야 합니다" if not built \
+			else ("최대 레벨" if level>=3 \
+			else ("마을에서 증축할 수 있습니다" if phase!="TOWN" else "자원이 부족합니다")))
 		facilities.append({"id":facility_id,
 			"label":str(_session.BaseProgressionRulesScript.FACILITY_LABELS[facility_id]),
 			"level":level,"max_level":3,
 			"effect_text":_session.BaseProgressionRulesScript.effect_text(facility_id,level),
 			"next_effect_text":_session.BaseProgressionRulesScript.effect_text(
 				facility_id,next_level) if level<3 else "",
-			"cost":price,"can_upgrade":can_upgrade,"message":message})
+			"cost":price,"built":built,"can_upgrade":can_upgrade,"message":message})
 	var residents:Array[Dictionary]=[]
 	for entity_id_value in state.active_party_member_ids.slice(0,2):
 		var entity_id:=int(entity_id_value);var entity=_session.sim.world.entities.get(entity_id)
@@ -53,14 +58,17 @@ func base_overview()->Dictionary:
 			"activity":"기지에서 휴식 중" if phase=="TOWN" else "원정 중"})
 	var return_assessment:Dictionary=base_return_assessment()
 	var trade:Array[Dictionary]=[]
+	var market_built:bool=_session.BaseSettlementRulesScript.type_built(
+		settlement_buildings,"MARKET")
 	for resource_id in _session.BaseProgressionRulesScript.RESOURCE_IDS:
-		var can_sell:bool=phase=="TOWN" and int(stock[resource_id])>0
+		var can_sell:bool=market_built and phase=="TOWN" and int(stock[resource_id])>0
 		trade.append({"resource_id":resource_id,"label":{"TIMBER":"목재",
 			"STONE":"석재","HERBS":"약초"}[resource_id],
 			"stock":int(stock[resource_id]),"amount":1,
 			"unit_price":int(_session.BaseProgressionRulesScript.TRADE_PRICES[resource_id]),
 			"can_sell":can_sell,"message":"1개 판매" if can_sell else (
-				"마을에서 판매할 수 있습니다" if phase!="TOWN" else "재고 없음")})
+				"먼저 시장을 건설해야 합니다" if not market_built else (
+				"마을에서 판매할 수 있습니다" if phase!="TOWN" else "재고 없음"))})
 	var last_return:Dictionary={}
 	if phase=="TOWN" and expedition_index>0:
 		var banked:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
@@ -73,7 +81,8 @@ func base_overview()->Dictionary:
 		"facilities":facilities,"residents":residents,"last_return":last_return,
 		"can_return":bool(return_assessment.get("accepted",false)),
 		"return_reason":str(return_assessment.get("reason","ok")),
-		"message":str(return_assessment.get("message","")),"trade":trade}.duplicate(true)
+		"message":str(return_assessment.get("message","")),"trade":trade,
+		"settlement":settlement}.duplicate(true)
 
 
 func _base_cache_rows()->Array[Dictionary]:
@@ -186,6 +195,8 @@ func base_upgrade(facility_id:String)->Dictionary:
 	if cycle==null or cycle.phase!="TOWN":return _session._rejection_dto("base_upgrade_town_required")
 	if facility_id not in _session.BaseProgressionRulesScript.FACILITY_IDS:
 		return _session._rejection_dto("base_facility_unknown")
+	if not _session._base_settlement_service.type_built(facility_id):
+		return _session._rejection_dto("base_facility_not_built")
 	var levels:Dictionary=_session.BaseProgressionRulesScript.facility_levels(_session.sim.world.events)
 	var from_level:int=int(levels[facility_id])
 	if from_level>=3:return _session._rejection_dto("base_facility_max_level")
@@ -215,6 +226,8 @@ func base_sell(resource_id:String,amount:int=1)->Dictionary:
 	if _session.sim==null or _session.sim.world==null or _session.sim.world.party_encounter==null:
 		return _session._rejection_dto("session_not_initialized")
 	if _session.scenario_id!=_session.DUO_SCENARIO_ID:return _session._rejection_dto("base_scenario_unavailable")
+	if not _session._base_settlement_service.type_built("MARKET"):
+		return _session._rejection_dto("base_market_not_built")
 	var state=_session.sim.world.party_encounter;var cycle=state.expedition_cycle
 	if cycle==null or cycle.phase!="TOWN":return _session._rejection_dto("base_sell_town_required")
 	if resource_id not in _session.BaseProgressionRulesScript.RESOURCE_IDS or amount<1:
@@ -297,4 +310,3 @@ func base_return()->Dictionary:
 		"banked":assessment.carried.duplicate(true),"expedition_cycle":_session.expedition_cycle_status(),
 		"stock":_session.BaseProgressionRulesScript.secured_stock(_session.sim.world.events,
 			int(cycle.expedition_index),"TOWN")})
-

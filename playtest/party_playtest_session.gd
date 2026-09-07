@@ -58,6 +58,8 @@ const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream
 const BaseProgressionRulesScript=preload("res://sim/base_progression_rules.gd")
 const BaseResourceCacheRulesScript=preload("res://sim/base_resource_cache_rules.gd")
 const BaseProgressionServiceScript=preload("res://playtest/base_progression_service.gd")
+const BaseSettlementRulesScript=preload("res://sim/base_settlement_rules.gd")
+const BaseSettlementServiceScript=preload("res://playtest/base_settlement_service.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -202,6 +204,7 @@ var _presentation_topology_cache:Dictionary={}
 # detached from canonical world state.
 var _presentation_visibility_cache:Dictionary={}
 var _base_progression_service
+var _base_settlement_service
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -217,6 +220,7 @@ func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
 		p_player_species_id: String = "human") -> void:
 	_base_progression_service=BaseProgressionServiceScript.new(self)
+	_base_settlement_service=BaseSettlementServiceScript.new(self)
 	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, true,
 		p_player_species_id)
 
@@ -267,7 +271,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
 		product_layout_override:Dictionary={},
 		bootstrap_opening_event:bool=true,
-		p_player_species_id:String="human") -> bool:
+		p_player_species_id:String="human",
+		bootstrap_settlement:bool=true, bootstrap_talents:bool=true) -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -292,6 +297,10 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			candidate.world, map_layout): return false
 	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
 			candidate.world, map_layout): return false
+	if duo and bootstrap_settlement and bootstrap_talents and p_player_species_id=="human":
+		var talent_rules=preload("res://sim/personal_talent_rules.gd")
+		if candidate.world.emit_event(talent_rules.EVENT_ID,-1,-1,Vector2i(-1,-1),0,-1,
+				{"ruleset_id":talent_rules.RULESET_ID,"seed":str(p_personality_seed)})==null:return false
 	var hero_position: Vector2i = map_layout.get("hero_position",
 		VisualTestMapScript.HERO_POSITION if showcase_layout else Vector2i(7,7))
 	var narae_position := Vector2i(1,12) if showcase_layout else Vector2i(6,7)
@@ -460,8 +469,16 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		narae.position = state.group_anchor; miru.position = state.group_anchor
 	if duo:narae.position=state.group_anchor
 	candidate.world.party_encounter = state
+	if duo and bootstrap_settlement:
+		var settlement_event=candidate.world.emit_event("base.settlement_initialized",
+			protagonist.id,-1,state.group_anchor,0,-1,{"schema_version":1,
+				"ruleset_id":BaseSettlementRulesScript.RULESET_ID,
+				"layout_mode":"NEW_SPARSE"})
+		if settlement_event==null:return false
 	candidate.world.warm_rollback_memento_static_tiles()
-	if not candidate.world.world_state_error().is_empty(): return false
+	var initial_world_error:String=candidate.world.world_state_error()
+	if not initial_world_error.is_empty():
+		push_error("Party initialization: "+initial_world_error);return false
 	sim = candidate; world_seed = p_world_seed; personality_seed = p_personality_seed
 	player_species_id=p_player_species_id
 	scenario_id = p_scenario_id
@@ -602,6 +619,10 @@ func protagonist_growth_build()->Dictionary:
 		return {"schema_version":1,"available":false,
 			"reason":str(projection.get("reason","growth_projection_failed"))}.duplicate(true)
 	var build:Dictionary=projection.build.duplicate(true)
+	var personal_talent:Dictionary=preload("res://sim/personal_talent_rules.gd").for_entity(
+		sim.world.entities.get(state.protagonist_id))
+	build["personal_talent"]=personal_talent
+	build["stats"]=ActorStatRulesScript.for_entity(sim.world,state.protagonist_id)
 	var species_definition:Dictionary=GrowthBuildRegistryScript.species_definition(
 		str(state.protagonist_growth.species_id))
 	var branch_rows:Array=[]
@@ -623,6 +644,10 @@ func protagonist_growth_build()->Dictionary:
 	build["stat_allocations"]=state.protagonist_growth.stat_allocations.duplicate(true)
 	build["species_fixed_trait"]=species_definition.get("fixed_trait",{}).duplicate(true)
 	build["species_branch_rows"]=branch_rows
+	if not personal_talent.is_empty():
+		build["species_fixed_trait"]={}
+		build["species_branch_rows"]=[]
+		build["species_points_available"]=0
 	build["unlocked_mutation_ids"]=state.protagonist_growth.unlocked_mutation_ids.duplicate()
 	build["mutation_rows"]=mutation_rows
 	return build.duplicate(true)
@@ -633,6 +658,9 @@ func spend_growth_stat_point(stat_id:String)->Dictionary:
 
 
 func spend_species_trait_point(branch_id:String)->Dictionary:
+	if not preload("res://sim/personal_talent_rules.gd").for_entity(
+			sim.world.entities.get(sim.world.party_encounter.protagonist_id)).is_empty():
+		return _rejection_dto("species_traits_disabled")
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
 
 
@@ -1605,6 +1633,15 @@ func base_return_assessment()->Dictionary:
 
 func base_return()->Dictionary:
 	return _base_progression_service.base_return()
+
+func base_build_assessment(type_id:String,tile_origin:Variant)->Dictionary:
+	return _base_settlement_service.build_assessment(type_id,tile_origin)
+
+func base_build(type_id:String,tile_origin:Variant)->Dictionary:
+	return _base_settlement_service.build(type_id,tile_origin)
+
+func _base_building_built(type_id:String)->bool:
+	return _base_settlement_service.type_built(type_id)
 func town_gold()->int:
 	if sim==null or sim.world==null:return 0
 	var value:=TOWN_INITIAL_GOLD
@@ -1621,6 +1658,7 @@ func town_gold()->int:
 
 func town_market_stock()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("MARKET"):return rows
 	var expedition_index:=_town_expedition_index()
 	for catalog_value in TOWN_MARKET_CATALOG:
 		var catalog:Dictionary=_town_market_catalog_row(str(catalog_value.definition_id))
@@ -1647,6 +1685,8 @@ func town_market_stock()->Array[Dictionary]:
 func town_market_purchase_assessment(definition_id:String)->Dictionary:
 	var context_error:=_town_context_error()
 	if not context_error.is_empty():return _rejection_dto(context_error)
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("MARKET"):
+		return _rejection_dto("base_market_not_built")
 	var catalog:=_town_market_catalog_row(definition_id)
 	if catalog.is_empty():return _rejection_dto("town_market_item_unknown")
 	var expedition_index:=_town_expedition_index();var bought:=0
@@ -1701,6 +1741,8 @@ func purchase_town_item(definition_id:String)->Dictionary:
 
 
 func town_clinic_assessment(entity_id:int)->Dictionary:
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("CLINIC"):
+		return _rejection_dto("base_clinic_not_built")
 	var member_error:=_town_active_member_error(entity_id,true)
 	if not member_error.is_empty():return _rejection_dto(member_error)
 	var clinic_cost:=_base_clinic_cost()
@@ -1871,6 +1913,7 @@ func rest_at_town_shrine(entity_id:int)->Dictionary:
 
 func town_armory_rows()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):return rows
 	if _town_context_error().is_empty():
 		var state=sim.world.party_encounter
 		for entity_id_value in state.active_party_member_ids:
@@ -1893,6 +1936,8 @@ func town_armory_rows()->Array[Dictionary]:
 
 func town_transfer_assessment(from_entity_id:int,to_entity_id:int,
 		instance_id:String)->Dictionary:
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+		return _rejection_dto("base_armory_not_built")
 	for entity_id in [from_entity_id,to_entity_id]:
 		var member_error:=_town_active_member_error(entity_id,false)
 		if not member_error.is_empty():return _rejection_dto(member_error)
@@ -1904,6 +1949,8 @@ func town_transfer_assessment(from_entity_id:int,to_entity_id:int,
 
 
 func town_equip_assessment(entity_id:int,instance_id:String,slot:String)->Dictionary:
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+		return _rejection_dto("base_armory_not_built")
 	var member_error:=_town_active_member_error(entity_id,false)
 	if not member_error.is_empty():return _rejection_dto(member_error)
 	var preview:=ItemOperationsScript.preview_equip(sim.world,entity_id,instance_id,slot)
@@ -1912,6 +1959,8 @@ func town_equip_assessment(entity_id:int,instance_id:String,slot:String)->Dictio
 
 
 func town_unequip_assessment(entity_id:int,slot:String)->Dictionary:
+	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+		return _rejection_dto("base_armory_not_built")
 	var member_error:=_town_active_member_error(entity_id,false)
 	if not member_error.is_empty():return _rejection_dto(member_error)
 	var preview:=ItemOperationsScript.preview_unequip(sim.world,entity_id,slot)
@@ -4031,6 +4080,8 @@ func recruitable_companions() -> Array[Dictionary]:
 			str(entity.species_id))
 		var fixed_trait:Dictionary=species_definition.get("fixed_trait",{}) \
 			if species_definition.get("fixed_trait",{}) is Dictionary else {}
+		var personal_talent:Dictionary=preload("res://sim/personal_talent_rules.gd").for_entity(entity)
+		if not personal_talent.is_empty():fixed_trait=personal_talent
 		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(entity.display_name),"presence":str(member.presence),
 			"species_id":str(entity.species_id),
@@ -6138,7 +6189,12 @@ func _member_skill_summary(entity_id:int)->Dictionary:
 	var species_definition:Dictionary=GrowthBuildRegistryScript.species_definition(
 		str(entity.species_id))
 	var fixed_trait:Variant=species_definition.get("fixed_trait",{})
-	if fixed_trait is Dictionary and not fixed_trait.is_empty():
+	var talent:Dictionary=preload("res://sim/personal_talent_rules.gd").for_entity(entity)
+	if not talent.is_empty():
+		skills.append({"skill_id":"TALENT_"+str(talent.id),"category":"개인 재능",
+			"label":str(talent.label),"trigger_label":"상시",
+			"summary":str(talent.description),"detail":"타고난 강점"})
+	elif fixed_trait is Dictionary and not fixed_trait.is_empty():
 		skills.append({"skill_id":str(fixed_trait.get("effect_id","SPECIES_TRAIT")),
 			"category":"종족 특성","label":str(fixed_trait.get("label","고유 특성")),
 			"trigger_label":_effect_trigger_label(str(fixed_trait.get("trigger","PASSIVE"))),
@@ -6292,6 +6348,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
 		"skill_summary":_member_skill_summary(entity_id),
+		"personal_talent":preload("res://sim/personal_talent_rules.gd").for_entity(entity),
 		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
 		"personality_facets":personality_facets,"personality_style":personality_style_dto,
@@ -6378,6 +6435,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		"override_state":"PENDING","expected_action":null,
 		"element_exposure":{"applicable":false},"current_exposure":{"applicable":false},
 		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
+		"personal_talent":preload("res://sim/personal_talent_rules.gd").for_entity(entity),
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
 		"skill_summary":_member_skill_summary(entity_id),
@@ -6482,6 +6540,15 @@ func save_session_json() -> String:
 		"world_seed":str(world_seed),
 		"personality_seed":str(personality_seed),"snapshot":sim.snapshot(),
 		"journal":command_journal.duplicate(true)})
+
+
+static func _snapshot_has_settlement_marker(snapshot:Dictionary)->bool:
+	var events:Variant=snapshot.get("events",[])
+	if not events is Array:return false
+	for row in events:
+		if row is Dictionary and str(row.get("type",""))=="base.settlement_initialized":
+			return true
+	return false
 
 func load_session_json(encoded: String) -> Dictionary:
 	var decoded = JSON.parse_string(encoded)
@@ -6632,6 +6699,10 @@ func load_session_json(encoded: String) -> Dictionary:
 	var parsed_personality_seed := Int64CodecScript.parse(decoded.personality_seed,"personality seed")
 	var parsed_scenario_id := str(decoded.scenario_id)
 	var parsed_player_species_id:=str(decoded.player_species_id)
+	var legacy_settlement_replay:bool=parsed_scenario_id==DUO_SCENARIO_ID \
+		and not _snapshot_has_settlement_marker(decoded.snapshot)
+	var legacy_talent_replay:bool=parsed_scenario_id==DUO_SCENARIO_ID \
+		and not preload("res://sim/personal_talent_rules.gd").snapshot_enabled(decoded.snapshot)
 	if source_party_schema < PartyStateScript.HEXACO_SCHEMA_VERSION:
 		var legacy_party_error := PartyStateScript.wire_error(
 			decoded.snapshot.party_encounter, int(decoded.snapshot.width),
@@ -6725,9 +6796,10 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id,
 		parsed_player_species_id)
-	if not replay_layout.is_empty() and not replay.reset_party(parsed_world_seed,
+	if (not replay_layout.is_empty() or legacy_settlement_replay or legacy_talent_replay) and not replay.reset_party(parsed_world_seed,
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
-			not legacy_opening_replay,parsed_player_species_id):
+			not legacy_opening_replay,parsed_player_species_id,
+			not legacy_settlement_replay,not legacy_talent_replay):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
@@ -6755,6 +6827,10 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"base_settlement":
+				var settlement_operation:Dictionary=row.operation
+				replay_result=replay.base_build(str(settlement_operation.type_id),
+					settlement_operation.tile_origin)
 			"base":
 				var base_operation:Dictionary=row.operation
 				match str(base_operation.action):
@@ -7002,6 +7078,18 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"base_settlement":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_base_settlement_journal"
+				var settlement_keys:Array=row.operation.keys();settlement_keys.sort()
+				if settlement_keys!=["action","tile_origin","type_id"] \
+						or row.operation.get("action")!="BUILD" \
+						or row.operation.get("type_id") not in BaseSettlementRulesScript.CONSTRUCTIBLE_TYPES \
+						or not row.operation.get("tile_origin") is Array \
+						or row.operation.tile_origin.size()!=2 \
+						or not _integer(row.operation.tile_origin[0]) \
+						or not _integer(row.operation.tile_origin[1]):
+					return "invalid_base_settlement_journal"
 			"base":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_base_journal"
@@ -8005,6 +8093,20 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"base_trade_failed":"거래를 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"base_upgrade_failed":"증축을 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"base_gather_failed":"채집을 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"base_build_town_required":"건설은 마을에서만 할 수 있습니다.",
+		"base_building_type_unknown":"건설할 수 없는 시설입니다.",
+		"base_building_position_invalid":"건설 위치가 올바르지 않습니다.",
+		"base_building_already_built":"같은 종류의 시설이 이미 있습니다.",
+		"base_building_out_of_bounds":"시설이 거점 경계를 벗어납니다.",
+		"base_building_terrain_blocked":"나무나 장애물이 있는 땅에는 건설할 수 없습니다.",
+		"base_building_reserved":"원정문과 통행로는 비워 두어야 합니다.",
+		"base_building_overlap":"다른 시설과 겹치는 위치입니다.",
+		"base_building_blocks_access":"이 위치는 거점 통행로를 막습니다.",
+		"base_build_failed":"건설을 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"base_facility_not_built":"먼저 이 시설을 건설해야 합니다.",
+		"base_clinic_not_built":"먼저 진료소를 건설해야 합니다.",
+		"base_market_not_built":"먼저 시장을 건설해야 합니다.",
+		"base_armory_not_built":"먼저 대장간을 건설해야 합니다.",
 		"session_not_initialized":"세션이 준비되지 않았습니다."
 	}
 	if mapped.has(reason):

@@ -53,9 +53,8 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var attacker_profile := ProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile := ProfileRegistryScript.profile(target_state.combat_profile_id)
 	if attacker_profile.is_empty() or target_profile.is_empty(): return {}
-	# Equipment defense applies only while the protagonist is still an active
-	# combatant. Downed targets retain the established v1 finisher lane, so its
-	# death/lifecycle history remains byte-for-byte compatible.
+	# New human campaigns share equipment/talent defense for all people. Legacy
+	# actors retain their previous lane; downed targets keep the finisher lane.
 	var defense_snapshot:=_protagonist_defense_snapshot(target_id,target_profile) \
 		if target_state.life_state == "ACTIVE" else {}
 	var equipment_defense:=not defense_snapshot.is_empty()
@@ -377,8 +376,10 @@ func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
 
 
 func _protagonist_defense_snapshot(target_id:int,target_profile:Dictionary)->Dictionary:
-	if world.party_encounter==null or target_id!=world.party_encounter.protagonist_id:return {}
-	var dto:Dictionary=world.equipment_modifiers(world.party_encounter.protagonist_id)
+	if world.party_encounter==null:return {}
+	if target_id!=world.party_encounter.protagonist_id and preload(
+			"res://sim/personal_talent_rules.gd").for_entity(world.entities.get(target_id)).is_empty():return {}
+	var dto:Dictionary=world.equipment_modifiers(target_id)
 	if dto.is_empty():return {}
 	var totals:Variant=dto.get("totals",{})
 	return DefenseRulesScript.build_snapshot(int(target_profile.evasion_milli),

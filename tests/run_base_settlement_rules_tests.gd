@@ -1,0 +1,15 @@
+extends SceneTree
+const TEST_FILE:="base_settlement_rules_test.gd"
+func _init()->void:
+	var total:=0;var failed:=0;var script=load("res://tests/"+TEST_FILE)
+	if script==null or not script.can_instantiate():printerr("FAIL load");quit(1);return
+	var probe=script.new()
+	for method in probe.get_method_list():
+		if not method.name.begins_with("test_"):continue
+		total+=1;var test_case=script.new();var completed=test_case.call(method.name)
+		if completed!=true and test_case.errors.is_empty():test_case.errors.append("no true completion")
+		if test_case.errors.is_empty():print("PASS %s :: %s"%[TEST_FILE,method.name])
+		else:
+			failed+=1
+			for error in test_case.errors:print("FAIL %s :: %s -- %s"%[TEST_FILE,method.name,error])
+	print("---- Base settlement: %d tests, %d failed ----"%[total,failed]);quit(1 if failed else 0)

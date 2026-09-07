@@ -226,6 +226,13 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	var checked_tags: Array[String] = []
 	for tag in tags:
 		checked_tags.append(tag)
+	var talents = preload("res://sim/personal_talent_rules.gd")
+	var talent_seed = talents.seed_event(self) if kind in ["hero","companion"] else null
+	if talent_seed != null:
+		species_id = "human"
+		max_health = 120
+		checked_tags.append(talents.TAG_PREFIX + talents.generated_id(
+			str(talent_seed.data.seed), _next_entity_id))
 	var entity = SimEntityScript.new(
 		_next_entity_id, kind, display_name, position, max_health, checked_tags,
 		species_id, faction_id
@@ -322,7 +329,8 @@ func equipped_item(entity_id: int, slot: String):
 
 func equipment_modifiers(entity_id: int) -> Dictionary:
 	var row = _inventory_ref(entity_id)
-	return row.combat_modifier_dto() if row != null else {}
+	return preload("res://sim/personal_talent_rules.gd").apply_combat(
+		entities.get(entity_id), row.combat_modifier_dto() if row != null else {})
 
 
 func ground_item(instance_id: String):
@@ -2805,8 +2813,11 @@ func _melee_action_event_error(event) -> String:
 # historical item-definition+affix projection; add that provenance before
 # reconstructing and comparing past equipped totals at every action boundary.
 func _melee_defense_action_event_error(event) -> String:
-	if party_encounter == null or event.target_id != party_encounter.protagonist_id \
-			or event.actor_id == party_encounter.protagonist_id:
+	var talent_target:bool=not preload("res://sim/personal_talent_rules.gd").for_entity(
+		entities.get(event.target_id)).is_empty()
+	if party_encounter == null or (not talent_target and (
+			event.target_id != party_encounter.protagonist_id \
+			or event.actor_id == party_encounter.protagonist_id)):
 		return "canonical_defense_target_invalid"
 	var attacker_state = combatant_states[event.actor_id]
 	var target_state = combatant_states[event.target_id]
@@ -4496,7 +4507,9 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 				int(cycle.expedition_index)),
 			CampaignEncounterStreamScript.GROUP_TAG_PREFIX+"NPC_ASSAULT_%d"%npc_id,
 		])
-	if npc.kind != "companion" or npc.species_id != "elf" \
+	var talent = preload("res://sim/personal_talent_rules.gd").for_entity(npc)
+	if not talent.is_empty():expected_npc_tags.insert(1,"personal_talent:"+str(talent.id))
+	if npc.kind != "companion" or npc.species_id != ("human" if not talent.is_empty() else "elf") \
 			or npc.faction_id != "neutral" or npc.tags != expected_npc_tags \
 			or not _terrain_is_passable(opening.spawn_position) \
 			or not _terrain_is_passable(opening.convergence_goal):
@@ -5125,7 +5138,16 @@ func _party_event_correlation_error() -> String:
 			var chain_error := _party_deployment_move_chain_error(companion_id, event.id, event.position)
 			if not chain_error.is_empty(): return chain_error
 			reserved[_party_position_key(event.position)] = companion_id
-		if party_encounter.safe_phase not in ["GROUPED_COMPLETE"] \
+		# A completed disengage returns living companions to GROUPED without a
+		# victory/regroup event. Validate the completion below, but do not compare
+		# their current presence against the earlier deployment snapshot.
+		var disengaged_current_contact:=false
+		if party_encounter.safe_phase=="GROUPED" and party_encounter.contact_kind=="NONE":
+			for event in events:
+				if event.type=="party.disengage_completed" and event.cause_id==contact.id \
+						and event.id>deployment_completed.id:
+					disengaged_current_contact=true;break
+		if not disengaged_current_contact and party_encounter.safe_phase not in ["GROUPED_COMPLETE"] \
 				and not (party_encounter.safe_phase == "PARTY_DEFEATED" and party_encounter.formation_id == "NONE"):
 			for member_id in party_encounter.active_party_member_ids:
 				if member_id == hero_id: continue
