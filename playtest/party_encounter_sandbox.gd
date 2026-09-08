@@ -326,7 +326,11 @@ var _product_magnify_accumulator:=1.0
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
 
+var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
+var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
+
 func _process(_delta:float)->void:
+	base_work_clock.tick(self,_delta)
 	if battle_timeline_bar!=null and battle_timeline_bar.visible:
 		battle_timeline_bar.set_presentation_blocked(_battle_presentation_blocked() or autonomous_battle_clock.paused)
 	if not _battle_target_mode.is_empty() and grid!=null and grid.modal_open:
@@ -1829,7 +1833,8 @@ func _refresh()->void:
 	_apply_screen_budget(combat_active,combat_actions_visible,run_available,run_terminal,
 		int(card_layout.get("party_height",160)),product_hud)
 	cards.visible=not town_base_active
-	if selected_member_id not in status.party_member_ids:selected_member_id=int(status.protagonist_id)
+	if selected_member_id not in status.party_member_ids or session.sim.world.combatant_states[selected_member_id].life_state=="DEAD":
+		selected_member_id=int(status.protagonist_id)
 	if session.is_duo_autobattle() and combat_active:
 		var selected_alive:=false
 		for row_value in party_rows:
@@ -3089,6 +3094,7 @@ func _town_base_panel()->void:
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
 	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
+	panel.configure_camera(base_map_camera)
 	if session.has_method("base_build_assessment"):
 		panel.configure_build_assessment(Callable(session,"base_build_assessment"))
 	panel.upgrade_requested.connect(_on_base_upgrade_requested)
@@ -3097,6 +3103,9 @@ func _town_base_panel()->void:
 	panel.building_selected.connect(_on_base_building_selected)
 	panel.resident_requested.connect(_open_member_detail)
 	panel.construction_confirm_requested.connect(_on_base_construction_confirmed.bind(panel))
+	panel.work_cancel_requested.connect(func():
+		var result:Dictionary=session.base_work({"action":"CANCEL"})
+		notice_text=str(result.get("message",""));_request_refresh())
 	deck.add_child(panel);panel.present(session.base_overview(),false,selected_base_building_id)
 
 
@@ -3109,7 +3118,8 @@ func _on_base_building_selected(building_id:String)->void:
 func _on_base_construction_confirmed(type_id:String,tile_origin:Vector2i,panel)->void:
 	if not session.has_method("base_build"):
 		notice_text="건설 기능을 사용할 수 없습니다.";return
-	var result:Dictionary=session.base_build(type_id,tile_origin)
+	var result:Dictionary=session.base_work({"action":"BUILD","type_id":type_id,
+		"tile_origin":[tile_origin.x,tile_origin.y]})
 	if bool(result.get("accepted",false)):
 		selected_base_building_id=type_id
 		notice_text=str(result.get("message","%s 건설을 마쳤습니다."%_base_building_label(type_id)))
@@ -3127,7 +3137,7 @@ func _base_building_label(type_id:String)->String:
 func _on_base_upgrade_requested(facility_id:String)->void:
 	if not session.has_method("base_upgrade"):
 		notice_text="시설을 강화할 수 없습니다.";_request_refresh();return
-	var result:Dictionary=session.base_upgrade(facility_id)
+	var result:Dictionary=session.base_work({"action":"UPGRADE","type_id":facility_id})
 	notice_text=str(result.get("message","시설을 강화했습니다." if bool(
 		result.get("accepted",false)) else "시설을 강화할 수 없습니다."))
 	action_feedback_text=notice_text;_request_refresh()

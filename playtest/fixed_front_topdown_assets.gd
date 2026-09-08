@@ -100,6 +100,8 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
 		"fixed_front":true,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
-		"visual_center_offset_source_px":Vector2.ZERO,
+		# Human alpha silhouette: 139x219 at (40,22), centre x=109.5 on a
+		# 256px canvas. Shift the canvas right; logical position/HP stay centred.
+		"visual_center_offset_source_px":Vector2(18.5,0) if species_id=="human" else Vector2.ZERO,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,
 	}.duplicate(true)

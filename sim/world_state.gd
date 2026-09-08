@@ -213,6 +213,9 @@ func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
 		or is_diagonal_gateway(passable_flanks[0])
 
 
+func party_control_actor_id(event_id:int=-1)->int:
+	return preload("res://sim/party_survival_rules.gd").control_id(self,event_id)
+
 func add_entity(kind: String, display_name: String, position: Vector2i,
 		max_health: int = 100, tags: Array = [], species_id: String = "",
 		faction_id: String = "", loadout_id: String = ""):
@@ -256,7 +259,12 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 		return null
 	var inventory = InventoryStateScript.new()
 	var ammo_pool = AmmoPoolStateScript.new()
-	var next_items = item_state.clone()
+	# Prepare only the new owner's inventory. Re-copying and auditing every
+	# existing monster's bag for every spawn made floor entry quadratic.
+	# Live item_state is already canonical; the isolated candidate cannot mutate
+	# it, and instance allocation starts beyond all existing IDs.
+	var next_items = WorldItemStateScript.new()
+	next_items.next_item_instance_id = item_state.next_item_instance_id
 	next_items.inventory_rows[entity.id] = inventory
 	next_items.ammo_pool_rows[entity.id] = ammo_pool
 	if not loadout_id.is_empty():
@@ -269,7 +277,11 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	entities[entity.id] = entity
 	combatant_states[entity.id] = combatant
 	body_states[entity.id] = body
-	item_state = next_items
+	item_state.inventory_rows[entity.id] = next_items.inventory_rows[entity.id]
+	item_state.ammo_pool_rows[entity.id] = next_items.ammo_pool_rows[entity.id]
+	for instance_id in next_items.weapon_runtime_rows:
+		item_state.weapon_runtime_rows[instance_id] = next_items.weapon_runtime_rows[instance_id]
+	item_state.next_item_instance_id = next_items.next_item_instance_id
 	_register_occupancy(entity.id, position)
 	_next_entity_id += 1
 	return entity
@@ -4392,6 +4404,8 @@ func _party_runtime_error() -> String:
 	var hero_member = party_encounter.member_rows[party_encounter.protagonist_id]
 	var growth_error:=_party_growth_build_error(hero)
 	if not growth_error.is_empty():return growth_error
+	hero=entities[party_control_actor_id()]
+	hero_member=party_encounter.member_rows[hero.id]
 	if party_encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE", "CONTACT"] \
 			and hero.position != party_encounter.group_anchor:
 		return "party_protagonist_anchor_mismatch"
@@ -4433,12 +4447,15 @@ func _party_runtime_error() -> String:
 			# valid decision-boundary snapshot.
 			return "regroup_ready_not_settled"
 		"PARTY_DEFEATED":
-			if combatant_states[hero.id].life_state != "DEAD" or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
+			if preload("res://sim/party_survival_rules.gd").enabled(self):
+				if not preload("res://sim/party_survival_rules.gd").defeated(self):return "party_defeated_phase_invalid"
+			elif combatant_states[hero.id].life_state != "DEAD" or hero_member.presence != "DEFEATED": return "party_defeated_phase_invalid"
 			if party_encounter.formation_id != "NONE" and party_encounter.contact_kind == "NONE": return "party_defeated_formation_invalid"
 	if party_encounter.safe_phase == "PARTY_DEFEATED":
 		var protagonist_death_found := false
 		for event in events:
-			if event.type == "entity.died" and event.target_id == hero.id:
+			if event.target_id == hero.id and (event.type == "entity.died" or
+					preload("res://sim/party_survival_rules.gd").enabled(self) and event.type=="entity.downed"):
 				protagonist_death_found = true; break
 		if not protagonist_death_found: return "party_defeat_event_missing"
 	var opening_error := _party_opening_event_error(party_ids)
@@ -4953,8 +4970,8 @@ func _party_event_correlation_error() -> String:
 	for event in events:
 		if event.type!="party.member_disengaged":continue
 		if "autonomous_party" not in entities[party_encounter.protagonist_id].tags or event.magnitude!=0 \
-				or event.actor_id==party_encounter.protagonist_id or not party_encounter.member_rows.has(event.actor_id) \
-				or event.target_id!=party_encounter.protagonist_id or event.cause_id!=-1 \
+				or event.actor_id==party_control_actor_id(event.id) or not party_encounter.member_rows.has(event.actor_id) \
+				or event.target_id!=party_control_actor_id(event.id) or event.cause_id!=-1 \
 				or not _exact_keys(event.data,["from_position","to_position"]) \
 				or not _is_position(event.data.get("from_position"),width,height,false) \
 				or event.data.get("to_position")!=[event.position.x,event.position.y]:return "invalid_party_disengage_position"
@@ -4981,6 +4998,7 @@ func _party_event_correlation_error() -> String:
 		# latest contact segment against live state; older segments remain guarded
 		# by their immutable action/damage leaves and cause-id deployment chains.
 		contact = contact_events.back()
+		hero_id=party_control_actor_id(contact.id)
 		var contact_keys: Array = contact.data.keys(); contact_keys.sort()
 		if contact_keys != ["contact_kind", "enemy_id", "enemy_position", "facing"] \
 				or contact.data.get("contact_kind") not in ["DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"] \
@@ -5117,6 +5135,7 @@ func _party_event_correlation_error() -> String:
 	else:
 		if contact == null: return "party_deployment_contact_missing"
 		deployment_completed = completed_rows[0]
+		hero_id=party_control_actor_id(deployment_completed.id)
 		var completed_keys: Array = deployment_completed.data.keys(); completed_keys.sort()
 		if completed_keys != ["companion_ids", "formation_id"] \
 				or deployment_completed.data.get("formation_id") not in ["WEDGE", "LINE", "COLUMN"] \
@@ -5217,6 +5236,7 @@ func _party_event_correlation_error() -> String:
 		if starts.size() != 1 or completions.size() != 1 or victory == null:
 			return "party_regroup_event_count_invalid"
 		var root = starts[0]; var completed = completions[0]
+		hero_id=party_control_actor_id(root.id)
 		var root_history: Dictionary = _party_entity_position_at_event(hero_id, root.id)
 		if root.actor_id != hero_id or root.target_id != -1 or root.cause_id != victory.id or root.magnitude != 0 \
 				or not root.data.is_empty() or root.position != victory.position or not bool(root_history.ok) \
@@ -5249,9 +5269,10 @@ func _party_event_correlation_error() -> String:
 	var has_disengage_history:=false
 	for event in events:
 		if event.type!="party.disengage_completed":continue
+		hero_id=party_control_actor_id(event.id)
 		var cause=event_by_id(event.cause_id)
 		var position_history:Dictionary=_entity_position_at_event(hero_id,event.id)
-		if "autonomous_party" not in entities[hero_id].tags or cause==null or cause.type not in contact_types \
+		if "autonomous_party" not in entities[party_encounter.protagonist_id].tags or cause==null or cause.type not in contact_types \
 				or event.actor_id!=hero_id or event.target_id!=-1 or event.magnitude!=0 or not event.data.is_empty() \
 				or not position_history.ok or position_history.position!=event.position:return "invalid_party_disengage_completion"
 		if contact!=null and event.cause_id==contact.id:has_disengage_history=true
@@ -5286,7 +5307,7 @@ func _party_floor_segment_start_event_id()->int:
 	if party_encounter==null:return result
 	for event in events:
 		if event.type=="dungeon.floor_entered" \
-				and event.actor_id==party_encounter.protagonist_id:
+				and event.actor_id==party_control_actor_id(event.id):
 			result=event.id
 	return result
 
@@ -5322,8 +5343,8 @@ func _party_victory_event_error(victory)->String:
 			latest_enemy_death_id=event.id
 	var victory_cause=event_by_id(victory.cause_id)
 	var victory_history:Dictionary=_party_entity_position_at_event(
-		party_encounter.protagonist_id,victory.id)
-	if victory.actor_id!=party_encounter.protagonist_id or victory.target_id!=-1 \
+		party_control_actor_id(victory.id),victory.id)
+	if victory.actor_id!=party_control_actor_id(victory.id) or victory.target_id!=-1 \
 			or victory.magnitude!=0 or latest_enemy_death_id<=0 \
 			or victory.cause_id!=latest_enemy_death_id or victory_cause==null \
 			or victory_cause.type!="entity.died" \
@@ -5367,7 +5388,7 @@ func _party_anchor_portal_history_error()->String:
 	var activated_floors:Array[int]=[]
 	for event in events:
 		if event.type!="dungeon.anchor_portal_activated":continue
-		if event.actor_id!=party_encounter.protagonist_id or event.target_id!=-1 \
+		if event.actor_id!=party_control_actor_id(event.id) or event.target_id!=-1 \
 				or event.cause_id!=-1 or not in_bounds(event.position) \
 				or not _exact_keys(event.data,["clear_radius","floor_index","position",
 					"ruleset_id","schema_version"]):
@@ -5402,6 +5423,7 @@ func _party_command_history_error()->String:
 				"party.regroup_completed"]:
 			engaged=false
 		if event.type!="party.command_issued":continue
+		hero_id=party_control_actor_id(event.id)
 		var data_error:=PartyCommandScript.data_error(event.data)
 		if not data_error.is_empty():return data_error
 		var hero_history:Dictionary=_party_entity_position_at_event(hero_id,event.id)
@@ -5780,6 +5802,7 @@ func _party_roster_history_error() -> String:
 			regroup_complete_id = event.id
 		if event.type not in ["party.companion_dismissed", "party.companion_recruited"]: continue
 		var operation := "DISMISS" if event.type == "party.companion_dismissed" else "RECRUIT"
+		hero_id=party_control_actor_id(event.id)
 		var hero_history: Dictionary = _party_entity_position_at_event(hero_id, event.id)
 		var member = party_encounter.member(event.target_id)
 		var event_data_valid:bool=event.data=={"operation":"RECRUIT"} if operation=="RECRUIT" \
@@ -5832,6 +5855,7 @@ func _party_roster_history_error() -> String:
 		if former_id not in exiled or recorded_ids.has(former_id):return "party_exile_record_identity_mismatch"
 		recorded_ids[former_id]=true
 		var dismissal=event_by_id(Int64CodecScript.parse(record.dismissal_event_id,"dismissal event"))
+		if dismissal!=null:hero_id=party_control_actor_id(dismissal.id)
 		if dismissal==null or dismissal.type!="party.companion_dismissed" \
 				or dismissal.target_id!=former_id or dismissal.actor_id!=hero_id \
 				or dismissal.world_time!=Int64CodecScript.parse(record.dismissed_world_time,"dismissed time") \

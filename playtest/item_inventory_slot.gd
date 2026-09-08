@@ -165,6 +165,9 @@ func _draw_empty_slot(bounds:Rect2)->void:
 func _draw_fallback_icon(bounds:Rect2)->void:
 	var definition_id:=str(_row.get("definition_id","")).to_upper()
 	var category:=str(_row.get("category","")).to_upper()
+	if _row.has("resource_id"):
+		preload("res://playtest/base_resource_icon.gd").draw_icon(self,bounds,str(_row.resource_id))
+		return
 	if definition_id=="SHIELD_WOOD":
 		_draw_shield(bounds,Color("#b87a38"));return
 	if definition_id.begins_with("POTION"):

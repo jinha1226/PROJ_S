@@ -6,6 +6,7 @@ signal service_requested(facility_id:String)
 signal building_selected(building_id:String)
 signal resident_requested(entity_id:int)
 signal construction_confirm_requested(type_id:String,tile_origin:Vector2i)
+signal work_cancel_requested
 signal return_requested
 signal sell_requested(resource_id:String,amount:int)
 
@@ -24,6 +25,7 @@ var _placement_type:=""
 var _placement_origin:=Vector2i.ZERO
 var _placement_assessment:Dictionary={}
 var _confirm_pending:=false
+var _map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 
 func _ready()->void:
@@ -49,6 +51,9 @@ func overview()->Dictionary:
 func configure_build_assessment(provider:Callable)->void:
 	_build_assessment_provider=provider
 
+func configure_camera(value)->void:
+	_map_camera=value
+
 
 func apply_placement_assessment(result:Dictionary)->void:
 	_confirm_pending=false;_placement_assessment=result.duplicate(true);call_deferred("_rebuild")
@@ -64,6 +69,7 @@ func _rebuild()->void:
 	DarkPixelSkin.apply_heading(title,DarkPixelSkin.BRASS)
 	_add_resource_ledger()
 	var settlement=BaseSettlementViewScript.new();settlement.name="BaseSettlementMap"
+	settlement.camera=_map_camera
 	settlement.building_selected.connect(_on_settlement_building_selected)
 	settlement.tile_pressed.connect(_on_placement_tile)
 	settlement.tile_dragged.connect(_on_placement_tile)
@@ -72,6 +78,7 @@ func _rebuild()->void:
 	if _placement_active and not _placement_type.is_empty():
 		settlement.set_placement_ghost(_placement_ghost())
 	_add_last_return()
+	_add_work_status()
 	if _placement_active:_add_construction_editor()
 	else:
 		if not _read_only:_add_build_entry()
@@ -102,11 +109,32 @@ func _rebuild_after_selection()->void:
 
 
 func _add_build_entry()->void:
+	if not (_overview.get("work",{}) as Dictionary).is_empty():return
 	var options:=_build_options()
 	if options.is_empty():return
 	var button:=_button("건설","BaseConstructionOpen")
 	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	button.pressed.connect(_open_construction_editor);add_child(button)
+
+
+func _add_work_status()->void:
+	var work:Dictionary=_overview.get("work",{})
+	if work.is_empty():return
+	_add_text("%s · 주민 작업 중"%_building_label(str(work.type_id)),"BaseWorkTitle",FONT_BODY,true)
+	var progress:=ProgressBar.new();progress.name="BaseWorkProgress"
+	progress.max_value=float(work.required);progress.value=float(work.progress)
+	progress.custom_minimum_size.y=18;add_child(progress)
+	var cancel:=_button("공사 취소 · 재료 반환","BaseWorkCancel")
+	cancel.pressed.connect(func():work_cancel_requested.emit());add_child(cancel)
+
+
+func update_work(overview:Dictionary)->void:
+	# Keep active touch targets and camera alive during automatic work ticks.
+	_overview=overview.duplicate(true)
+	var map:=find_child("BaseSettlementMap",true,false)
+	if map!=null:map.present(_overview,_selected_id)
+	var progress:=find_child("BaseWorkProgress",true,false) as ProgressBar
+	if progress!=null:progress.value=float((_overview.get("work",{}) as Dictionary).get("progress",0))
 
 
 func _open_construction_editor()->void:
@@ -325,6 +353,11 @@ func _add_landmark_detail(building_id:String)->void:
 	else:
 		var open:=_button("%s 열기"%_building_label(building_id),
 			"BaseLandmarkOpen%s"%building_id)
+		var built:=false
+		for building in (_overview.get("settlement",{}) as Dictionary).get("buildings",[]):
+			if str(building.type_id)==building_id:built=true;break
+		open.disabled=not built
+		if not built:open.tooltip_text="공사가 완료되면 이용할 수 있습니다."
 		open.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		open.pressed.connect(func():service_requested.emit(building_id));stack.add_child(open)
 

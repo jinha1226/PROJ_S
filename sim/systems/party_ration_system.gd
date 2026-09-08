@@ -75,7 +75,7 @@ static func _starve_once(world, damage, processed_step_index: int, rules: Dictio
 	if not world.has_event_id_headroom(1 + victims.size() * 3): return false
 	var member_wire: Array = []
 	for member_id in victims: member_wire.append(str(member_id))
-	var tick = world.emit_event("party.ration_starve_tick", int(state.protagonist_id), -1,
+	var tick = world.emit_event("party.ration_starve_tick", int(world.party_control_actor_id()), -1,
 		_hero_position(world), int(rules.starve_damage), -1, {"schema_version": 1,
 			"ruleset_id": RulesScript.RULESET_ID, "member_ids": member_wire,
 			"damage": int(rules.starve_damage), "stress": int(rules.starve_stress)})
@@ -92,7 +92,7 @@ static func _starve_once(world, damage, processed_step_index: int, rules: Dictio
 
 
 static func _first_food_instance_id(world) -> String:
-	var inventory = world.inventory_of(int(world.party_encounter.protagonist_id))
+	var inventory = world.inventory_of(int(world.party_control_actor_id()))
 	if inventory == null: return ""
 	var food_id := str(RulesScript.rules().food_definition_id)
 	var ids: Array = []
@@ -104,7 +104,7 @@ static func _first_food_instance_id(world) -> String:
 
 
 static func auto_eat(world) -> bool:
-	# Only the protagonist's bag feeds the party, and one ration is the most a
+	# The living exploration leader's bag feeds the party, and one ration is the most a
 	# single tick may consume: the gauge climbs back in food_nutrition steps.
 	var state = world.party_encounter
 	if RulesScript.band(int(state.ration_milli)) == "FED": return true
@@ -112,12 +112,12 @@ static func auto_eat(world) -> bool:
 	if instance_id.is_empty(): return true
 	if not world.has_event_id_headroom(2): return false
 	var used: Dictionary = WorldItemOperationsScript.commit_use_without_event(world,
-		int(state.protagonist_id), instance_id)
+		int(world.party_control_actor_id()), instance_id)
 	if not bool(used.get("accepted", false)): return true
 	var before_band := RulesScript.band(int(state.ration_milli))
 	state.ration_milli = mini(RulesScript.ration_max_milli(),
 		int(state.ration_milli) + RulesScript.food_nutrition_milli())
-	var event = world.emit_event("party.ration_eaten", int(state.protagonist_id), -1,
+	var event = world.emit_event("party.ration_eaten", int(world.party_control_actor_id()), -1,
 		_hero_position(world), 0, -1, {"schema_version": 1,
 			"ruleset_id": RulesScript.RULESET_ID, "definition_id": str(used.get("definition_id", "")),
 			"instance_id": instance_id, "ration_milli": int(state.ration_milli)})
@@ -131,20 +131,20 @@ static func auto_eat(world) -> bool:
 static func _emit_missing(world) -> bool:
 	if not world.has_event_id_headroom(1): return false
 	var state = world.party_encounter
-	return world.emit_event("party.ration_missing", int(state.protagonist_id), -1,
+	return world.emit_event("party.ration_missing", int(world.party_control_actor_id()), -1,
 		_hero_position(world), 0, -1, {"schema_version": 1,
 			"ruleset_id": RulesScript.RULESET_ID, "ration_milli": int(state.ration_milli)}) != null
 
 
 static func _hero_position(world) -> Vector2i:
-	var hero = world.entities.get(int(world.party_encounter.protagonist_id))
+	var hero = world.entities.get(int(world.party_control_actor_id()))
 	return hero.position if hero != null else Vector2i(-1, -1)
 
 
 static func _emit_band_change(world, before_band: String, after_band: String) -> bool:
 	if not world.has_event_id_headroom(1): return false
 	var state = world.party_encounter
-	var event = world.emit_event("party.ration_changed", int(state.protagonist_id), -1,
+	var event = world.emit_event("party.ration_changed", int(world.party_control_actor_id()), -1,
 		_hero_position(world), 0, -1, {"schema_version": 1,
 			"ruleset_id": RulesScript.RULESET_ID, "before": before_band, "after": after_band,
 			"ration_milli": int(state.ration_milli)})

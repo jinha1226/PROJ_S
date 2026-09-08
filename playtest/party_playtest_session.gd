@@ -216,6 +216,8 @@ var _presentation_visibility_cache:Dictionary={}
 var _timeline_cache:Dictionary={}
 var _base_progression_service
 var _base_settlement_service
+var _last_town_departure_profile:Dictionary={}
+var _last_floor_entry_profile:Dictionary={}
 
 func _combatant_status_ids(entity_id: int) -> Array[String]:
 	var result: Array[String] = []
@@ -232,7 +234,7 @@ func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_player_species_id: String = "human") -> void:
 	_base_progression_service=BaseProgressionServiceScript.new(self)
 	_base_settlement_service=BaseSettlementServiceScript.new(self)
-	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, true,
+	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, p_scenario_id!=DUO_SCENARIO_ID,
 		p_player_species_id)
 
 
@@ -283,7 +285,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		product_layout_override:Dictionary={},
 		bootstrap_opening_event:bool=true,
 		p_player_species_id:String="human",
-		bootstrap_settlement:bool=true, bootstrap_talents:bool=true) -> bool:
+		bootstrap_settlement:bool=true, bootstrap_talents:bool=true,
+		bootstrap_survival:bool=true) -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -326,6 +329,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
 	if duo:hero_tags.append("autonomous_party")
+	if duo and bootstrap_survival:
+		hero_tags.append_array([preload("res://sim/party_survival_rules.gd").TAG,
+			preload("res://sim/party_survival_rules.gd").BOOTSTRAP_TAG])
 	var protagonist = candidate.world.add_entity("hero", "주인공", hero_position, 120,
 		hero_tags, p_player_species_id, "party")
 	var narae = candidate.world.add_entity("companion", "나래", narae_position, 95,
@@ -801,17 +807,18 @@ func protagonist_equipment()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
 	var state=sim.world.party_encounter
-	var ammo=sim.world.item_state.ammo_pool(state.protagonist_id)
+	var ammo=sim.world.item_state.ammo_pool(sim.world.party_control_actor_id())
 	if ammo==null:return {"schema_version":1,"available":false}.duplicate(true)
 	var weapon=WeaponRegistryScript.definition(
-		ItemOperationsScript.equipped_weapon_id(sim.world,state.protagonist_id))
+		ItemOperationsScript.equipped_weapon_id(sim.world,sim.world.party_control_actor_id()))
 	if weapon==null:return {"schema_version":1,"available":false}.duplicate(true)
-	var rank:int=state.protagonist_progression.rank(weapon.proficiency_id)
-	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var rank:int=state.protagonist_progression.rank(weapon.proficiency_id) \
+		if sim.world.party_control_actor_id()==int(state.protagonist_id) else 0
+	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) if combatant!=null else {}
 	var spec:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
 		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
-		ActorStatRulesScript.for_entity(sim.world,state.protagonist_id))
+		ActorStatRulesScript.for_entity(sim.world,sim.world.party_control_actor_id()))
 	return {"schema_version":1,"available":true,"weapon_id":weapon.weapon_id,
 		"weapon_label":weapon.label,"proficiency_id":weapon.proficiency_id,
 		"proficiency_rank":rank,"attack_form":weapon.attack_form,"trait_id":weapon.trait_id,
@@ -822,23 +829,23 @@ func protagonist_equipment()->Dictionary:
 		"ammo_kind":weapon.ammo_kind,"ammo_cost":weapon.ammo_cost,
 		"arrows":ammo.amount("ARROW"),"bolts":ammo.amount("BOLT"),
 		"reload_required":weapon.reload_required,
-		"loaded":ItemOperationsScript.weapon_is_loaded(sim.world,state.protagonist_id),
+		"loaded":ItemOperationsScript.weapon_is_loaded(sim.world,sim.world.party_control_actor_id()),
 		"can_reload":weapon.reload_required \
-			and not ItemOperationsScript.weapon_is_loaded(sim.world,state.protagonist_id) \
+			and not ItemOperationsScript.weapon_is_loaded(sim.world,sim.world.party_control_actor_id()) \
 			and ammo.amount(str(weapon.ammo_kind))>=int(weapon.ammo_cost),
 		"reload_time":int(weapon.reload_time),
-		"can_attack":ItemOperationsScript.attack_error(sim.world,state.protagonist_id).is_empty(),
-		"attack_block_reason":ItemOperationsScript.attack_error(sim.world,state.protagonist_id),
-		"combat_summary":_member_combat_stats(state.protagonist_id),
+		"can_attack":ItemOperationsScript.attack_error(sim.world,sim.world.party_control_actor_id()).is_empty(),
+		"attack_block_reason":ItemOperationsScript.attack_error(sim.world,sim.world.party_control_actor_id()),
+		"combat_summary":_member_combat_stats(sim.world.party_control_actor_id()),
 		"combat_modifiers":sim.world.equipment_modifiers(
-			state.protagonist_id)}.duplicate(true)
+			sim.world.party_control_actor_id())}.duplicate(true)
 
 
 func protagonist_inventory()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
 	var state=sim.world.party_encounter
-	var inventory=sim.world.inventory_of(state.protagonist_id)
+	var inventory=sim.world.inventory_of(sim.world.party_control_actor_id())
 	if inventory==null:return {"schema_version":1,"available":false}.duplicate(true)
 	var slot_rows:Array=[]
 	for slot in preload("res://sim/item_definition.gd").EQUIPMENT_SLOTS:
@@ -968,7 +975,7 @@ func ground_items_at_protagonist()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
 	var state=sim.world.party_encounter
-	var hero=sim.world.entities.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null:return rows
 	for ground_row in sim.world.item_state.ground_items.rows:
 		if ground_row.position==hero.position:
@@ -1022,13 +1029,13 @@ func use_inventory_item(instance_id:String)->Dictionary:
 	var state=sim.world.party_encounter
 	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(state.protagonist_id)
-	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
-		sim.world,state.protagonist_id,instance_id)
+		sim.world,sim.world.party_control_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
 	# Opening the inventory is allowed to replace a staged combat choice. Keep an
@@ -1044,8 +1051,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
-	combatant=sim.world.combatant_states.get(state.protagonist_id)
+	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null or str(combatant.life_state)!="ACTIVE":
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1055,7 +1062,7 @@ func use_inventory_item(instance_id:String)->Dictionary:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_heal_not_needed")
 	var consumed:Dictionary=ItemOperationsScript.commit_use(
-		sim.world,state.protagonist_id,instance_id,hero.position,ITEM_ACTION_TIME_COST)
+		sim.world,sim.world.party_control_actor_id(),instance_id,hero.position,ITEM_ACTION_TIME_COST)
 	if not bool(consumed.get("accepted",false)):
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1067,7 +1074,7 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		return _rejection_dto("item_event_failed")
 	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
-	var restored=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
+	var restored=sim.world.emit_event("health.restored",sim.world.party_control_actor_id(),sim.world.party_control_actor_id(),
 		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
 			"kind":"POTION","health_after":int(hero.health)})
 	state.revision+=1
@@ -1095,10 +1102,10 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		return _rejection_dto("run_complete")
 	if not sim.world.is_settled():
 		return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(state.protagonist_id)
-	if hero==null or sim.world.item_state.inventory(state.protagonist_id)==null:
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	if hero==null or sim.world.item_state.inventory(sim.world.party_control_actor_id())==null:
 		return _rejection_dto("item_actor_missing")
-	var hero_id:int=state.protagonist_id
+	var hero_id:int=sim.world.party_control_actor_id()
 	var preview:Dictionary
 	match action:
 		"PICKUP":preview=ItemOperationsScript.preview_pickup(sim.world,hero_id,
@@ -1124,8 +1131,8 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(state.protagonist_id)
-	hero_id=state.protagonist_id
+	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	hero_id=sim.world.party_control_actor_id()
 	var result:Dictionary
 	match action:
 		"PICKUP":result=ItemOperationsScript.commit_pickup(sim.world,hero_id,instance_id,
@@ -1175,14 +1182,14 @@ func _advance_item_action_time()->Dictionary:
 		# Item use replaces the protagonist's action while the ordinary party-turn
 		# resolver advances enemies/companions. HOLD is the existing no-movement
 		# canonical time action and retains its ordinary short guard projection.
-		var hero_id:=int(state.protagonist_id)
+		var hero_id:=int(sim.world.party_control_actor_id())
 		var advanced:Dictionary=commit_direct_solo_action(hero_id,"HOLD") \
 			if is_solo_combat() else _commit_item_time_party_turn(hero_id)
 		return advanced
 	var rollback_memento:Variant=sim.capture_rollback_memento()
 	if not rollback_memento is Dictionary:return {"accepted":false,"reason":"snapshot_unavailable"}
 	var event_start:int=sim.world.events.size()
-	var result=sim.step(CommandScript.wait_for(ITEM_ACTION_TIME_COST,state.protagonist_id),
+	var result=sim.step(CommandScript.wait_for(ITEM_ACTION_TIME_COST,sim.world.party_control_actor_id()),
 		rollback_memento)
 	if result.accepted:
 		var recovery:=_apply_safe_exploration_recovery(event_start)
@@ -1203,20 +1210,20 @@ func _apply_safe_exploration_recovery(event_start:int)->Dictionary:
 	# of taking a second full-world snapshot after the step has already succeeded.
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return {"accepted":true}
 	var state=sim.world.party_encounter
-	var hero=sim.world.entities.get(state.protagonist_id)
-	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null:return {"accepted":true}
 	for index in range(maxi(0,event_start),sim.world.events.size()):
 		var event=sim.world.events[index]
-		if int(event.target_id)==state.protagonist_id and str(event.type).begins_with("combat.") \
+		if int(event.target_id)==sim.world.party_control_actor_id() and str(event.type).begins_with("combat.") \
 				and str(event.type).ends_with("_damage") and int(event.magnitude)>0:
 			state.last_protagonist_damage_step=sim.world.step_index
 			state.safe_recovery_turns=0
 			state.revision+=1
 			return _finalize_safe_recovery({})
 	var exposure_risk:=0
-	if sim.world.is_environment_exposed(state.protagonist_id):
-		var evaluated=sim.evaluate_exposure_for_entity(state.protagonist_id,hero.position)
+	if sim.world.is_environment_exposed(sim.world.party_control_actor_id()):
+		var evaluated=sim.evaluate_exposure_for_entity(sim.world.party_control_actor_id(),hero.position)
 		if evaluated!=null and evaluated.evaluation!=null:exposure_risk=int(evaluated.evaluation.total_risk)
 	if not RecoveryRulesScript.is_safe_to_recover(sim.world,state,hero,combatant,exposure_risk):
 		if state.safe_recovery_turns!=0:
@@ -1228,7 +1235,7 @@ func _apply_safe_exploration_recovery(event_start:int)->Dictionary:
 	var healed:=mini(RecoveryRulesScript.HEAL_PER_PULSE,int(hero.max_health)-int(hero.health))
 	if healed<=0:return _finalize_safe_recovery({})
 	hero.health+=healed
-	var event=sim.world.emit_event("health.restored",state.protagonist_id,state.protagonist_id,
+	var event=sim.world.emit_event("health.restored",sim.world.party_control_actor_id(),sim.world.party_control_actor_id(),
 		hero.position,healed,-1,{"schema_version":1,"ruleset_id":RecoveryRulesScript.RULESET_ID,
 			"kind":"AUTO","safe_turn_count":state.safe_recovery_turns,"health_after":int(hero.health)})
 	if event==null:
@@ -1254,8 +1261,8 @@ func _safe_recovery_postcondition_error(details:Dictionary)->String:
 			or not sim.world.is_settled() or sim.world.party_encounter==null:
 		return "safe_recovery_world_not_settled"
 	var state=sim.world.party_encounter
-	var hero=sim.world.entities.get(state.protagonist_id)
-	var combatant=sim.world.combatant_states.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null or int(hero.health)<0 \
 			or int(hero.health)>int(hero.max_health) \
 			or int(state.safe_recovery_turns)<0 \
@@ -1269,8 +1276,8 @@ func _safe_recovery_postcondition_error(details:Dictionary)->String:
 	if details.has("event_id"):
 		var event=sim.world.event_by_id(int(details.event_id))
 		if event==null or event!=sim.world.events.back() \
-				or event.type!="health.restored" or event.actor_id!=state.protagonist_id \
-				or event.target_id!=state.protagonist_id or event.cause_id!=-1 \
+				or event.type!="health.restored" or event.actor_id!=sim.world.party_control_actor_id() \
+				or event.target_id!=sim.world.party_control_actor_id() or event.cause_id!=-1 \
 				or event.position!=hero.position or event.magnitude!=int(details.healed_amount) \
 				or event.data!={"schema_version":1,"ruleset_id":RecoveryRulesScript.RULESET_ID,
 					"kind":"AUTO","safe_turn_count":int(details.safe_turn_count),
@@ -1292,7 +1299,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 	var stats:=ActorStatRulesScript.baseline_stats()
 	if sim!=null and sim.world!=null and sim.world.party_encounter!=null:
 		stats=ActorStatRulesScript.for_entity(sim.world,
-			int(sim.world.party_encounter.protagonist_id))
+			int(sim.world.party_control_actor_id()))
 	var requirement_parts:Array[String]=[]
 	for stat_id in ActorStatRulesScript.STAT_IDS:
 		var required:=int(requirements.get(stat_id,0))
@@ -1322,8 +1329,9 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
 		if weapon!=null:
 			var state=sim.world.party_encounter
-			var rank:int=state.protagonist_progression.rank(str(weapon.proficiency_id))
-			var combatant=sim.world.combatant_states.get(state.protagonist_id)
+			var rank:int=state.protagonist_progression.rank(str(weapon.proficiency_id)) \
+				if sim.world.party_control_actor_id()==int(state.protagonist_id) else 0
+			var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 			var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) \
 				if combatant!=null else {}
 			var attack:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
@@ -1359,7 +1367,7 @@ func equip_protagonist_weapon(weapon_id:String)->Dictionary:
 	if not WeaponRegistryScript.has(weapon_id):return _rejection_dto("unknown_weapon")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	if _protagonist_draft!=null:return _rejection_dto("turn_draft_active")
-	var hero_id:int=sim.world.party_encounter.protagonist_id
+	var hero_id:int=sim.world.party_control_actor_id()
 	for event in sim.world.events:
 		if event.type=="action.melee_attack" and event.actor_id==hero_id:
 			return _rejection_dto("weapon_locked_after_first_attack")
@@ -1409,7 +1417,7 @@ func reload_protagonist_weapon()->Dictionary:
 	var phase_before:=str(sim.world.party_encounter.safe_phase)
 	var terminal_before:=bool(run_progress().get("terminal",false))
 	var reload_result:Dictionary=ItemOperationsScript.commit_reload(
-		sim.world,sim.world.party_encounter.protagonist_id)
+		sim.world,sim.world.party_control_actor_id())
 	if not bool(reload_result.get("accepted",false)):
 		return _rejection_dto(str(reload_result.get("reason","reload_failed")))
 	sim.world.party_encounter.revision+=1
@@ -1533,13 +1541,15 @@ func party_status() -> Dictionary:
 	if view_mode != "TOWN" and state.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 		for enemy_id in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
-	var protagonist_position: Vector2i = sim.world.entities[state.protagonist_id].position
+	var protagonist_position: Vector2i = sim.world.entities[sim.world.party_control_actor_id()].position
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
 		"ration":int(state.ration_milli/1000),"ration_max":int(RationRulesScript.rules().ration_max),
 		"ration_band":RationRulesScript.band(int(state.ration_milli)),
 		"contact_kind": state.contact_kind, "formation_id": state.formation_id, "anchor": [state.group_anchor.x,state.group_anchor.y],
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
-		"protagonist_id": state.protagonist_id, "party_member_ids": state.active_party_member_ids.duplicate(),
+		# Historic UI key means the controlled exploration leader, not identity.
+		"protagonist_id": sim.world.party_control_actor_id(), "founder_id":state.protagonist_id,
+		"party_member_ids": state.active_party_member_ids.duplicate(),
 		"roster_member_ids": state.party_member_ids.duplicate(),
 		"rescue_candidate_ids":rescue_candidate_ids(),
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
@@ -1681,6 +1691,9 @@ func town_overview()->Dictionary:
 func base_overview()->Dictionary:
 	return _base_progression_service.base_overview()
 
+func base_work(operation:Dictionary)->Dictionary:
+	return preload("res://playtest/base_work_service.gd").commit(self,operation)
+
 func _base_cache_rows()->Array[Dictionary]:
 	return _base_progression_service._base_cache_rows()
 
@@ -1765,7 +1778,7 @@ func town_market_purchase_assessment(definition_id:String)->Dictionary:
 			bought+=1
 	if bought>=int(catalog.stock):return _rejection_dto("town_market_sold_out")
 	if town_gold()<int(catalog.price):return _rejection_dto("town_gold_insufficient")
-	var hero_id:=int(sim.world.party_encounter.protagonist_id)
+	var hero_id:=int(sim.world.party_control_actor_id())
 	var inventory=sim.world.item_state.inventory(hero_id)
 	if inventory==null:return _rejection_dto("item_actor_missing")
 	if inventory.used_backpack_slots()>=InventoryScript.BACKPACK_CAPACITY:
@@ -1780,7 +1793,7 @@ func purchase_town_item(definition_id:String)->Dictionary:
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
-	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
 	var position:Vector2i=sim.world.entities[hero_id].position
 	var granted:=ItemOperationsScript.commit_grant(sim.world,hero_id,
 		definition_id,1,position,"TOWN_MARKET_PURCHASE")
@@ -1847,7 +1860,7 @@ func treat_town_clinic(entity_id:int)->Dictionary:
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
-	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
 	var entity=sim.world.entities[entity_id]
 	var combatant=sim.world.combatant_states[entity_id]
 	var body=sim.world.body_states.get(entity_id)
@@ -1948,7 +1961,7 @@ func rest_at_town_shrine(entity_id:int)->Dictionary:
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
-	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
 	var member=state.member(entity_id);var entity=sim.world.entities[entity_id]
 	var before:=int(member.stress);var after:=int(assessment.stress_after)
 	var source=sim.world.emit_event("town.shrine_service",hero_id,entity_id,
@@ -2101,7 +2114,7 @@ func town_departure_assessment(floor_index:int=TOWN_STARTING_FLOOR,
 	var context_error:=_town_context_error()
 	if not context_error.is_empty():return _rejection_dto(context_error)
 	var state=sim.world.party_encounter
-	var hero_life=sim.world.combatant_states.get(state.protagonist_id)
+	var hero_life=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero_life==null or str(hero_life.life_state)!="ACTIVE":
 		return _rejection_dto("town_departure_party_unavailable")
 	if floor_index<1 or floor_index>MAX_IMPLEMENTED_CAMPAIGN_FLOOR:
@@ -2125,12 +2138,14 @@ func town_departure_assessment(floor_index:int=TOWN_STARTING_FLOOR,
 
 func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		entry_mode:String="SURFACE_ENTRANCE")->Dictionary:
+	var profile_start:=Time.get_ticks_usec()
 	var assessment:=town_departure_assessment(floor_index,entry_mode)
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
+	var rollback_finished:=Time.get_ticks_usec()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
 	var rollback_layout:=_map_layout.duplicate(true)
-	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
 	var next_cycle=ExpeditionCycleScript.active(int(assessment.floor_index),
 		sim.world.world_time,DEFAULT_EXPEDITION_DURATION,
 		int(assessment.next_expedition_index))
@@ -2152,7 +2167,13 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		_feedback_dto({"accepted":true,"reason":"ok","event_ids":[],
 			"spawned_enemy_ids":[]})
 	state=sim.world.party_encounter;state.revision+=1
+	var floor_finished:=Time.get_ticks_usec()
 	var state_error:String=sim.world.world_state_error()
+	var validation_finished:=Time.get_ticks_usec()
+	_last_town_departure_profile={"rollback_ms":(rollback_finished-profile_start)/1000.0,
+		"floor_entry_ms":(floor_finished-rollback_finished)/1000.0,
+		"validation_ms":(validation_finished-floor_finished)/1000.0,
+		"total_ms":(validation_finished-profile_start)/1000.0}
 	if event==null or not bool(entered.get("accepted",false)) \
 			or not state_error.is_empty():
 		_restore_town_rollback(rollback)
@@ -2192,7 +2213,7 @@ func floor_transition_assessment()->Dictionary:
 	var portal_value:Variant=_map_layout.get("transition_portal_position")
 	if not portal_value is Vector2i:
 		return _rejection_dto("floor_transition_unavailable")
-	var hero=sim.world.entities.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
 	if state.safe_phase!="GROUPED_COMPLETE":
@@ -2232,8 +2253,10 @@ func advance_campaign_floor()->Dictionary:
 
 
 func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
+	var entry_started:=Time.get_ticks_usec()
 	var target_layout:=VisualTestMapScript.select_campaign_floor(_map_layout,
 		floor_index)
+	var layout_finished:=Time.get_ticks_usec()
 	if target_layout.is_empty():return _rejection_dto("floor_transition_unavailable")
 	var state=sim.world.party_encounter;var cycle=state.expedition_cycle
 	if cycle==null or int(cycle.floor_index)!=floor_index:
@@ -2259,7 +2282,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		if member==null or life==null:return _rejection_dto(
 			"floor_transition_party_invalid")
 		if str(life.life_state)=="DEAD":continue
-		member.presence="DEPLOYED" if member_id==state.protagonist_id else "GROUPED"
+		member.presence="DEPLOYED" if member_id==sim.world.party_control_actor_id() else "GROUPED"
 		member.busy_until=sim.world.world_time
 		var from_position:Vector2i=sim.world.entities[member_id].position
 		var entry_event=sim.world.emit_event("dungeon.floor_entered",member_id,-1,
@@ -2273,9 +2296,15 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		if entry_event==null:return _rejection_dto("floor_transition_event_failed")
 		event_ids.append(int(entry_event.id))
 		sim.world.entities[member_id].position=entry_position
+	var placement_finished:=Time.get_ticks_usec()
 	_place_floor_ration(floor_index,entry_position,target_layout)
+	var ration_finished:=Time.get_ticks_usec()
 	var spawned_ids:=_spawn_campaign_floor_enemies(target_layout,
 		int(cycle.expedition_index))
+	_last_floor_entry_profile={"layout_ms":(layout_finished-entry_started)/1000.0,
+		"party_ms":(placement_finished-layout_finished)/1000.0,
+		"ration_ms":(ration_finished-placement_finished)/1000.0,
+		"spawn_ms":(Time.get_ticks_usec()-ration_finished)/1000.0}
 	if spawned_ids.is_empty():return _rejection_dto("floor_enemy_spawn_failed")
 	for position_value in [target_layout.get("entry_position"),
 			target_layout.get("anchor_portal_position"),
@@ -2381,7 +2410,7 @@ func dungeon_anchor_portal_status()->Dictionary:
 			absi(enemy.position.y-portal_position.y))
 		if distance<=clear_radius:nearby_enemy_ids.append(enemy_id)
 	nearby_enemy_ids.sort()
-	var hero=sim.world.entities.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	var adjacent:=hero!=null and maxi(absi(hero.position.x-portal_position.x),
 		absi(hero.position.y-portal_position.y))<=1
 	var active:bool=floor_index in state.activated_anchor_portal_floors
@@ -2407,7 +2436,7 @@ func activate_dungeon_anchor_portal()->Dictionary:
 		return _rejection_dto(str(status.get("reason","anchor_portal_unavailable")))
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
-	var state=sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
 	var portal_position:=Vector2i(int(status.position[0]),int(status.position[1]))
 	var floor_index:=int(status.floor_index)
 	var event=sim.world.emit_event("dungeon.anchor_portal_activated",hero_id,-1,
@@ -2516,7 +2545,7 @@ func issue_party_command(command_id:String,target_id:int=-1,
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=sim.snapshot()
 	var state=sim.world.party_encounter
-	var hero_id:=int(state.protagonist_id)
+	var hero_id:=int(sim.world.party_control_actor_id())
 	var hero_position:Vector2i=sim.world.entities[hero_id].position
 	var event=sim.world.emit_event("party.command_issued",hero_id,target_id,
 		hero_position,0,-1,PartyCommandScript.event_data(command_id,target_id))
@@ -2846,7 +2875,7 @@ func presentation_state() -> Dictionary:
 		"PARTY_DEFEATED":
 			mode = "DEFEAT"
 			banner = {"visible": true, "key": "party_defeated", "title": "패배",
-				"subtitle": "주인공이 쓰러져 더 행동할 수 없습니다.", "tone": "DEFEAT"}
+				"subtitle": "행동할 수 있는 파티원이 없습니다.", "tone": "DEFEAT"}
 			grid_style = {"style_id": "DEFEAT", "tint_hex": "#d5c6cf",
 				"border_hex": "#8f5367", "vignette": true}
 	return {"schema_version": PRESENTATION_SCHEMA_VERSION, "phase_id": phase_id,
@@ -2868,7 +2897,7 @@ func run_progress() -> Dictionary:
 			or sim.world.party_encounter == null:
 		return unavailable.duplicate(true)
 	var state = sim.world.party_encounter
-	var hero = sim.world.entities.get(state.protagonist_id)
+	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero == null:
 		return unavailable.duplicate(true)
 	var encounter_cleared: bool = state.safe_phase in ["REGROUP_READY", "GROUPED_COMPLETE"]
@@ -2921,7 +2950,7 @@ func restart_same_run() -> Dictionary:
 	var frozen_scenario_id := scenario_id
 	var frozen_species_id := player_species_id
 	if not reset_party(frozen_world_seed, frozen_personality_seed,
-			frozen_scenario_id,{},true,frozen_species_id):
+			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -2938,7 +2967,7 @@ func start_new_run_with_species(species_id:String)->Dictionary:
 	var selected_in_place:=_can_select_starting_species_in_place() \
 		and _select_starting_species_in_place(species_id)
 	if not selected_in_place \
-			and not reset_party(world_seed,personality_seed,scenario_id,{},true,species_id):
+			and not reset_party(world_seed,personality_seed,scenario_id,{},scenario_id!=DUO_SCENARIO_ID,species_id):
 		return _rejection_dto("player_species_reset_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"player_species_id":player_species_id,"run_progress":run_progress()})
@@ -3005,7 +3034,7 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 	var frozen_scenario_id := scenario_id
 	var frozen_species_id := player_species_id
 	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id,
-			{},true,frozen_species_id):
+			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -3155,9 +3184,10 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var base_cache_by_cell:Dictionary={}
 	if scenario_id==DUO_SCENARIO_ID:
 		for cache_row in _base_cache_rows():
+			if not bool(cache_row.available):continue
 			var cache_position:Array=cache_row.position
-			base_cache_by_cell[_position_key(Vector2i(int(cache_position[0]),
-				int(cache_position[1])))]=cache_row
+			var cache_key:=_position_key(Vector2i(int(cache_position[0]),int(cache_position[1])))
+			if not base_cache_by_cell.has(cache_key):base_cache_by_cell[cache_key]=cache_row
 	var hide_enemies:=bool(context.hide_enemies)
 	var cells: Array = []
 	var minimum:=Vector2i(maxi(0,bounds.position.x),maxi(0,bounds.position.y))
@@ -3446,7 +3476,7 @@ func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) 
 	for member_id_value in state.party_member_ids:
 		var member_id := int(member_id_value)
 		var member = state.member(member_id)
-		if member_id != state.protagonist_id and member != null \
+		if member_id != sim.world.party_control_actor_id() and member != null \
 				and member.presence == "GROUPED" and sim.world.occupies_tile(member_id):
 			follower_ids.append(member_id)
 	follower_ids.sort_custom(func(a, b):
@@ -3551,7 +3581,7 @@ func _protagonist_equipment_visual()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
-	return _entity_equipment_visual(sim.world.party_encounter.protagonist_id)
+	return _entity_equipment_visual(sim.world.party_control_actor_id())
 
 
 func _entity_equipment_visual(entity_id:int)->Dictionary:
@@ -3665,7 +3695,7 @@ func rescue_assessment(entity_id: int) -> Dictionary:
 		return _rejection_dto("rescue_already_completed")
 	if str(combatant.life_state) != "ACTIVE":
 		return _rejection_dto("rescue_candidate_unavailable")
-	var hero = sim.world.entities.get(state.protagonist_id)
+	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero == null or maxi(absi(hero.position.x-entity.position.x),
 			absi(hero.position.y-entity.position.y)) > 1:
 		return _rejection_dto("rescue_candidate_too_far")
@@ -3684,7 +3714,7 @@ func stabilize_recruit_candidate(entity_id: int) -> Dictionary:
 		return _rejection_dto("party_snapshot_unavailable")
 	var rollback: Dictionary = rollback_value
 	var state = sim.world.party_encounter
-	var hero_id: int = int(state.protagonist_id)
+	var hero_id: int = int(sim.world.party_control_actor_id())
 	var result = sim.step(CommandScript.wait_for(RESCUE_TIME_COST, hero_id))
 	if not result.accepted or not sim.world.entities.has(entity_id) \
 			or str(sim.world.combatant_states[entity_id].life_state) != "ACTIVE" \
@@ -3743,7 +3773,7 @@ func recruitment_assessment(entity_id: int) -> Dictionary:
 	if rescue_event == null or rescue_story_state(entity_id) != "OFFER_READY":
 		return _rejection_dto("recruitment_requires_rescue")
 	var relation: Dictionary = sim.relationships.effective_relation(entity_id,
-		state.protagonist_id)
+		sim.world.party_control_actor_id())
 	var species_base: Dictionary = relation.get("species_base",{})
 	var personal: Dictionary = relation.get("personal",{})
 	# Species prior is intentionally the dominant single term. Personal history
@@ -3769,7 +3799,7 @@ func recruitment_assessment(entity_id: int) -> Dictionary:
 		+personality_term+survival_term+rescue_term+vacancy_term,50,950)
 	var reasons: Array[Dictionary] = _recruitment_reason_rows(species_base,
 		relation, personality_term, survival_term, rescue_term, vacancy_term)
-	var hero = sim.world.entities.get(state.protagonist_id)
+	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	var adjacent: bool = hero != null and maxi(absi(hero.position.x-entity.position.x),
 		absi(hero.position.y-entity.position.y)) <= 1
 	var legal: bool = has_vacancy and adjacent \
@@ -3851,7 +3881,7 @@ func npc_attack_assessment(entity_id:int)->Dictionary:
 	# would rewrite what that old victory meant, so that edge remains unavailable.
 	for event in sim.world.events:
 		if event.type=="party.victory":return _rejection_dto("npc_attack_after_victory")
-	var hero=sim.world.entities.get(state.protagonist_id)
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or maxi(absi(hero.position.x-entity.position.x),
 			absi(hero.position.y-entity.position.y))!=1:
 		return _rejection_dto("npc_attack_target_too_far")
@@ -3867,7 +3897,7 @@ func assault_npc(entity_id:int)->Dictionary:
 	if not rollback_value is Dictionary:return _rejection_dto("party_snapshot_unavailable")
 	var rollback:Dictionary=rollback_value
 	var state=sim.world.party_encounter
-	var hero_id:=int(state.protagonist_id)
+	var hero_id:=int(sim.world.party_control_actor_id())
 	var hero=sim.world.entities[hero_id]
 	var npc=sim.world.entities[entity_id]
 	var assault=sim.world.emit_event("party.npc_assaulted",hero_id,entity_id,
@@ -4064,7 +4094,7 @@ func offer_recruitment(entity_id: int) -> Dictionary:
 	if not rollback_value is Dictionary:
 		return _rejection_dto("party_snapshot_unavailable")
 	var rollback: Dictionary = rollback_value
-	var hero_id: int = int(sim.world.party_encounter.protagonist_id)
+	var hero_id: int = int(sim.world.party_control_actor_id())
 	var result = sim.step(CommandScript.wait_for(RECRUITMENT_OFFER_TIME_COST,hero_id))
 	if not result.accepted: return _rejection_dto(str(result.reason))
 	_advance_exile_world()
@@ -4237,7 +4267,7 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 	if member == null or not sim.world.entities.has(entity_id):
 		return _rejection_dto("party_member_not_found")
 	if operation == "DISMISS":
-		if entity_id == state.protagonist_id: return _rejection_dto("protagonist_dismiss_forbidden")
+		if entity_id in [state.protagonist_id,sim.world.party_control_actor_id()]: return _rejection_dto("protagonist_dismiss_forbidden")
 		if entity_id not in state.active_party_member_ids: return _rejection_dto("companion_not_active")
 		if member.role != "COMPANION" or sim.world.combatant_states[entity_id].life_state != "ACTIVE":
 			return _rejection_dto("companion_unavailable")
@@ -4402,10 +4432,10 @@ func _apply_roster_change(operation: String, entity_id: int,
 	if operation=="DISMISS":
 		event_data["condition_band"]=str(exile_condition.condition_band)
 		event_data["resentment_delta"]=int(exile_condition.resentment_delta)
-	var event = sim.world.emit_event(event_type, state.protagonist_id, entity_id,
+	var event = sim.world.emit_event(event_type, sim.world.party_control_actor_id(), entity_id,
 		state.group_anchor, 0, -1, event_data)
 	if event!=null and operation=="DISMISS":
-		if not sim.relationships.record_harm(entity_id,state.protagonist_id,event.id,
+		if not sim.relationships.record_harm(entity_id,sim.world.party_control_actor_id(),event.id,
 				int(exile_condition.resentment_delta)):
 			event=null
 		else:
@@ -4441,7 +4471,7 @@ func _exile_condition(entity_id:int)->Dictionary:
 	if hp_percent>=70 and member.stress<350 and not harmful_status:band="HEALTHY"
 	elif hp_percent<=30 or member.stress>=750 or harmful_status:band="ENDANGERED"
 	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
-		sim.world.party_encounter.protagonist_id)
+		sim.world.party_control_actor_id())
 	var resilience:=PartyMoraleModelScript.morale_resilience(member.personality_profile)
 	var vulnerability:=(100-hp_percent)+int(member.stress/10)+(45 if harmful_status else 0)
 	var resentment_delta:=clampi(15+int(vulnerability/2)+int(relation.get("grievance",0)/4)-int(resilience/50),10,100)
@@ -4456,7 +4486,7 @@ func _new_exile_record(entity_id:int,dismissal_event_id:int,condition:Dictionary
 	var style:=personality_style(member.personality_profile)
 	var profile_wire:Dictionary=member.personality_profile.to_dict()
 	var relation:Dictionary=sim.relationships.effective_relation(entity_id,
-		sim.world.party_encounter.protagonist_id)
+		sim.world.party_control_actor_id())
 	return {"schema_version":2,"former_member_id":str(entity_id),
 		"display_name":str(entity.display_name),"species_id":str(entity.species_id),
 		"personality_summary":{"style_label":str(style.get("label","")),
@@ -4595,7 +4625,7 @@ func tab_attack_assessment() -> Dictionary:
 	if bool(status.get("terminal", false)) or _run_is_complete():
 		return _rejection_dto("run_complete")
 	var state = sim.world.party_encounter
-	var hero = sim.world.entities.get(state.protagonist_id)
+	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero == null: return _rejection_dto("item_actor_missing")
 	var visible := _presentation_visible_cells(hero.position)
 	var enemy_ids: Array[int] = []
@@ -4630,7 +4660,7 @@ func tab_attack_assessment() -> Dictionary:
 				absi(enemy_b.position.y-hero.position.y))
 			return distance_a<distance_b if distance_a!=distance_b else a<b)
 		for enemy_id in enemy_ids:
-			var request = RequestScript.new(ActionScript.melee(state.protagonist_id,
+			var request = RequestScript.new(ActionScript.melee(sim.world.party_control_actor_id(),
 				enemy_id), [])
 			if sim.direct_solo_party_action_error(request).is_empty():
 				return _feedback_dto({"accepted":true,"reason":"ok",
@@ -4638,7 +4668,7 @@ func tab_attack_assessment() -> Dictionary:
 					"target_name":_name(enemy_id),"destination":[]})
 	elif phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 		return _rejection_dto("tab_attack_phase_unavailable")
-	var approach := _nearest_tab_approach(state.protagonist_id, enemy_ids,
+	var approach := _nearest_tab_approach(sim.world.party_control_actor_id(), enemy_ids,
 		phase == "ENGAGED")
 	if approach.is_empty(): return _rejection_dto("tab_attack_no_path")
 	return _feedback_dto({"accepted":true,"reason":"ok",
@@ -4720,9 +4750,9 @@ func inspect_enemy(entity_id:int)->Dictionary:
 
 func _enemy_threat(entity_id:int)->Dictionary:
 	var state=sim.world.party_encounter
-	var enemy=sim.world.entities[entity_id];var hero=sim.world.entities[state.protagonist_id]
+	var enemy=sim.world.entities[entity_id];var hero=sim.world.entities[sim.world.party_control_actor_id()]
 	var enemy_score:=_combat_capability_score(entity_id,true)
-	var hero_score:=maxi(1,_combat_capability_score(state.protagonist_id,false))
+	var hero_score:=maxi(1,_combat_capability_score(sim.world.party_control_actor_id(),false))
 	var ratio:=int(enemy_score*100/hero_score)
 	var threat_id:="TRIVIAL" if ratio<50 else ("EVEN" if ratio<=85 else (
 		"DANGEROUS" if ratio<=120 else "LETHAL"))
@@ -5151,7 +5181,7 @@ func _exploration_visible_cells() -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return {}
 	var state = sim.world.party_encounter
-	var hero = sim.world.entities.get(int(state.protagonist_id))
+	var hero = sim.world.entities.get(int(sim.world.party_control_actor_id()))
 	if hero == null: return {}
 	return _presentation_visible_cells(hero.position)
 
@@ -5195,7 +5225,7 @@ func _exploration_risk_rows(position: Vector2i,
 	for member_id_value in member_ids:
 		var member_id := int(member_id_value);var member = state.member(member_id)
 		var entity = sim.world.entities.get(member_id)
-		if member == null or (member.presence != "GROUPED" and member_id != state.protagonist_id) \
+		if member == null or (member.presence != "GROUPED" and member_id != sim.world.party_control_actor_id()) \
 				or entity == null or not sim.world.is_environment_exposed(member_id):continue
 		var wire := {"fire_score":0,"water_score":0,"electric_score":0,
 			"poison_score":0,"total_risk":0}
@@ -5322,7 +5352,7 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 		return rows
 	var state = sim.world.party_encounter
 	if state.safe_phase != "ENGAGED": return rows
-	var hero = sim.world.entities.get(state.protagonist_id)
+	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero == null: return rows
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
 	var squad_board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
@@ -5373,9 +5403,9 @@ func enemy_squad_tactics() -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return empty.duplicate(true)
 	var state = sim.world.party_encounter
-	if state.safe_phase != "ENGAGED" or not sim.world.entities.has(state.protagonist_id):
+	if state.safe_phase != "ENGAGED" or not sim.world.entities.has(sim.world.party_control_actor_id()):
 		return empty.duplicate(true)
-	var hero = sim.world.entities[state.protagonist_id]
+	var hero = sim.world.entities[sim.world.party_control_actor_id()]
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
 	var board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
 	var claims: Array[Dictionary] = []
@@ -5697,7 +5727,7 @@ func preview_exploration(command) -> Dictionary:
 		return _rejection_dto("exit_locked", null, null,
 			_exploration_context(command))
 	if party_status().view_mode != "EXPLORATION": return _rejection_dto("exploration_phase_required")
-	if command == null or command.actor_id != sim.world.party_encounter.protagonist_id:
+	if command == null or command.actor_id != sim.world.party_control_actor_id():
 		return _rejection_dto("protagonist_command_required")
 	var context := _exploration_context(command)
 	if int(command.type) not in [int(CommandScript.Type.WAIT), int(CommandScript.Type.MOVE)]:
@@ -5731,7 +5761,7 @@ func exploration_companion_follow_plan(route_value: Dictionary = {}) -> Dictiona
 	var completed_steps := clampi(int(route.get("completed_steps", 0)), 0, path.size() - 1)
 	var next_index := mini(path.size() - 1, completed_steps + 1)
 	for member_id in state.party_member_ids:
-		if member_id == state.protagonist_id: continue
+		if member_id == sim.world.party_control_actor_id(): continue
 		var member = state.member(member_id)
 		if member == null or member.presence != "GROUPED" \
 				or not sim.world.is_environment_exposed(member_id): continue
@@ -6225,7 +6255,7 @@ func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
 			{"action_type":"INSPECT_TILE", "position":[position.x,position.y]})
 	var resolved_viewer := viewer_id
 	if resolved_viewer == -1:
-		resolved_viewer = int(sim.world.party_encounter.protagonist_id)
+		resolved_viewer = int(sim.world.party_control_actor_id())
 	if not sim.world.entities.has(resolved_viewer):
 		return _rejection_dto("inspect_viewer_not_found", null, null,
 			{"action_type":"INSPECT_TILE", "position":[position.x,position.y],
@@ -6582,7 +6612,7 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 			facets.append({"facet_id":str(row.facet_id),"value":int(row.base_value),
 				"low_label":str(labels[0]),"high_label":str(labels[1])})
 	var relation_rows: Array = []
-	var hero_id := int(sim.world.party_encounter.protagonist_id)
+	var hero_id := int(sim.world.party_control_actor_id())
 	# A recruitable NPC's social page uses the same subject list as a companion:
 	# protagonist first, followed by every current party member. This lets the UI
 	# show more than a single affinity line when the player arrives with allies.
@@ -7001,7 +7031,9 @@ func load_session_json(encoded: String) -> Dictionary:
 	if (not replay_layout.is_empty() or legacy_settlement_replay or legacy_talent_replay) and not replay.reset_party(parsed_world_seed,
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay,parsed_player_species_id,
-			not legacy_settlement_replay,not legacy_talent_replay):
+			not legacy_settlement_replay,not legacy_talent_replay,
+			preload("res://sim/party_survival_rules.gd").BOOTSTRAP_TAG in restored.world.entities[
+				restored.world.party_encounter.protagonist_id].tags):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
@@ -7029,6 +7061,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"base_work":replay_result=replay.base_work(row.operation)
 			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
 				var settlement_operation:Dictionary=row.operation
@@ -7145,6 +7178,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.individual_battle.reserve_move(int(row.operation.actor_id),
 					Vector2i(int(row.operation.destination[0]),int(row.operation.destination[1])))
 			"individual_step":
+				replay_result=replay.individual_battle.commit(row.operation,true,false)
+			"individual_survival_step":
 				replay_result=replay.individual_battle.commit(row.operation)
 			"active_skill":
 				var operation:Dictionary=row.operation
@@ -7306,6 +7341,9 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"base_work":
+				if keys!=["kind","operation"] or not preload("res://sim/base_work_rules.gd").operation_error(row.get("operation")).is_empty():
+					return "invalid_base_work_journal"
 			"battle_loot":
 				if keys!=["battle_id","instance_id","kind"] or not _integer(row.get("battle_id")) \
 						or int(row.battle_id)<=0 or not row.get("instance_id") is String \
@@ -7547,7 +7585,7 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
-			"reserve_skill","cancel_reserved_skill","individual_step","reserve_move":
+			"reserve_skill","cancel_reserved_skill","individual_step","individual_survival_step","reserve_move":
 				if keys!=["kind","operation"]:return "invalid_individual_journal"
 				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
 				if not individual_error.is_empty():return individual_error

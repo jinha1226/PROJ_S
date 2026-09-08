@@ -15,7 +15,7 @@ static func event_error(world, event) -> String:
 		"party.expedition_auto_returned":
 			if event.data!={"schema_version":1,"ruleset_id":RULESET_ID} \
 					or world.party_encounter==null \
-					or event.actor_id!=world.party_encounter.protagonist_id \
+					or event.actor_id!=world.party_control_actor_id(event.id) \
 					or event.target_id!=-1 or event.magnitude!=0 or event.cause_id!=-1:
 				return "active_skill_auto_return_event_invalid"
 		"health.restored":
@@ -85,7 +85,7 @@ static func _refill_error(world,event)->String:
 			or event.data.get("reason") not in ["COMBAT_COMPLETE","TOWN_RETURN"] \
 			or not event.data.get("member_ids") is Array or event.data.member_ids.is_empty() \
 			or event.magnitude!=event.data.member_ids.size() or cause==null \
-			or world.party_encounter==null or event.actor_id!=world.party_encounter.protagonist_id \
+			or world.party_encounter==null or event.actor_id!=world.party_control_actor_id(event.id) \
 			or event.target_id!=-1 or cause.step_index!=event.step_index \
 			or cause.world_time!=event.world_time:
 		return "energy_refill_event_invalid"

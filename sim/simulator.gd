@@ -104,7 +104,7 @@ func step(command, supplied_rollback_memento: Variant = null):
 		return StepResultScript.new(false, false, "command_resolution_failed")
 	if world.party_encounter != null and world.party_encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
 		var party_state = world.party_encounter
-		party_state.group_anchor = world.entities[party_state.protagonist_id].position
+		party_state.group_anchor = world.entities[world.party_control_actor_id()].position
 		for member_id in party_state.party_member_ids:
 			if party_state.member(member_id).presence == "GROUPED": world.entities[member_id].position = party_state.group_anchor
 	if world.party_encounter != null \
@@ -628,8 +628,8 @@ func _refill_energy_after_combat_transition(event_start:int)->void:
 	for member_id in world.party_encounter.party_member_ids:
 		if world.party_encounter.member(member_id).refill_energy():changed.append(str(member_id))
 	if changed.is_empty():return
-	world.emit_event("party.energy_refilled",world.party_encounter.protagonist_id,-1,
-		world.entities[world.party_encounter.protagonist_id].position,changed.size(),
+	world.emit_event("party.energy_refilled",world.party_control_actor_id(),-1,
+		world.entities[world.party_control_actor_id()].position,changed.size(),
 		int(cause.id),{"schema_version":1,"ruleset_id":ActiveSkillServiceScript.RULESET_ID,
 			"reason":"COMBAT_COMPLETE","member_ids":changed})
 	world.party_encounter.revision+=1
@@ -962,7 +962,7 @@ func _validate_command(command) -> String:
 			return "expedition_in_town"
 		if world.party_encounter.safe_phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 			return "party_specialized_flow_required"
-		if not command.actor_id is int or command.actor_id != world.party_encounter.protagonist_id:
+		if not command.actor_id is int or command.actor_id != world.party_control_actor_id():
 			return "party_protagonist_command_required"
 	if int(command.type) < int(CommandScript.Type.WAIT) or int(command.type) > int(CommandScript.Type.MOVE):
 		return "unknown_command"
@@ -1016,7 +1016,7 @@ func _reconcile_expedition_cycle() -> void:
 			if world.events[index].type=="party.actor_command_issued":
 				has_actor_directive=true;break
 		if needs_energy_refill or has_actor_directive:
-			var hero_id:=int(world.party_encounter.protagonist_id)
+			var hero_id:=int(world.party_control_actor_id())
 			var returned=world.emit_event("party.expedition_auto_returned",hero_id,-1,
 				world.entities[hero_id].position,0,-1,{"schema_version":1,
 					"ruleset_id":ActiveSkillServiceScript.RULESET_ID})

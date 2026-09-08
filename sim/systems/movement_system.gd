@@ -85,7 +85,7 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 func allows_occupied_diagonal_flanks(actor_id:int)->bool:
 	if world==null or world.party_encounter==null:return false
 	var party=world.party_encounter
-	return str(party.safe_phase)=="GROUPED" and int(party.protagonist_id)==actor_id
+	return str(party.safe_phase)=="GROUPED" and world.party_control_actor_id()==actor_id
 
 
 func _terrain_passable(position: Vector2i) -> bool:

@@ -40,6 +40,8 @@ var _pointer_down:=false
 var _last_drag_tile:=Vector2i(-1,-1)
 var _pointer_origin:=Vector2.ZERO
 var _pointer_dragged:=false
+var camera=preload("res://playtest/base_map_camera.gd").new()
+var _last_pointer:=Vector2.ZERO
 
 
 func _ready()->void:
@@ -92,6 +94,7 @@ func set_placement_ghost(ghost:Dictionary)->void:
 
 func _notification(what:int)->void:
 	if what==NOTIFICATION_RESIZED:
+		if camera!=null:camera.clamp_pan(self)
 		_resolve_layout();queue_redraw()
 
 
@@ -139,7 +142,32 @@ func _draw()->void:
 	_draw_tile_grid(canvas)
 	for value in _settlement.get("buildings",[]):
 		if value is Dictionary:_draw_building(value)
+	_draw_work_and_residents()
 	_draw_placement_ghost()
+
+
+func _draw_work_and_residents()->void:
+	var job:Dictionary=_overview.get("work",{})
+	if not job.is_empty():
+		var p:=_vector2i(job.tile_origin);var footprint:=_vector2i(job.footprint)
+		var rect:=Rect2(_map_origin()+Vector2(p)*_cell_size(),Vector2(footprint)*_cell_size())
+		draw_rect(rect,Color(CYAN,0.15));draw_rect(rect,CYAN,false,2)
+		for x in range(1,footprint.x):
+			draw_line(rect.position+Vector2(x*_cell_size(),0),rect.position+Vector2(x*_cell_size(),rect.size.y),Color(CYAN,0.4),1)
+		var bar:=Rect2(rect.position+Vector2(2,rect.size.y-5),Vector2(rect.size.x-4,3))
+		draw_rect(bar,Color("#111a1c"));bar.size.x*=float(job.progress)/float(job.required)
+		draw_rect(bar,CYAN)
+	if str(_overview.get("phase",""))!="TOWN":return
+	var index:=0
+	for resident in _overview.get("residents",[]):
+		var tile:=Vector2i(7+index,7);index+=1
+		var working:bool=not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
+		if working:tile=preload("res://sim/base_work_rules.gd").worker_position(job)
+		var center:=_map_origin()+(Vector2(tile)+Vector2.ONE*0.5)*_cell_size()
+		var radius:=_cell_size()*0.24
+		draw_circle(center+Vector2(0,radius*0.7),radius*1.15,Color("#111816"))
+		draw_circle(center+Vector2(0,radius*0.35),radius,CYAN if working else Color("#96a889"))
+		draw_circle(center-Vector2(0,radius*0.65),radius*0.67,BONE)
 
 
 func _draw_tile_grid(canvas:Rect2)->void:
@@ -167,6 +195,10 @@ func _draw_building(row:Dictionary)->void:
 		rect=Rect2(_map_origin()+Vector2(origin)*_cell_size(),Vector2(footprint)*_cell_size())
 	var level:=clampi(int(row.get("level",1)),1,3)
 	if type_id==_selected_id:_draw_selection(rect.grow(-1))
+	if type_id in ["CLINIC","ARMORY"] or level>=2 and type_id in ["STORAGE","LODGE"]:
+		preload("res://playtest/base_room_renderer.gd").draw_room(self,rect,type_id,level)
+		_draw_label(rect,str(LABELS.get(type_id,type_id)))
+		return
 	match type_id:
 		"STORAGE":
 			if level==1:_draw_storage_camp(rect)
@@ -200,8 +232,10 @@ func _draw_placement_ghost()->void:
 
 
 func _on_map_gui_input(event:InputEvent)->void:
+	if camera.handle(self,event):accept_event();return
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			_last_pointer=event.position
 			_pointer_down=true;_pointer_origin=event.position;_pointer_dragged=false
 			if _placement_mode:tile_pressed.emit(_pixel_to_tile(event.position))
 		else:
@@ -210,6 +244,7 @@ func _on_map_gui_input(event:InputEvent)->void:
 			_pointer_down=false
 		accept_event()
 	elif event is InputEventScreenDrag and _pointer_down:
+		_pan_map(event.position)
 		if event.position.distance_to(_pointer_origin)>=8.0:_pointer_dragged=true
 		var tile:=_pixel_to_tile(event.position)
 		if _placement_mode and tile!=_last_drag_tile:
@@ -217,6 +252,7 @@ func _on_map_gui_input(event:InputEvent)->void:
 		accept_event()
 	elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			_last_pointer=event.position
 			_pointer_down=true;_pointer_origin=event.position;_pointer_dragged=false
 			if _placement_mode:tile_pressed.emit(_pixel_to_tile(event.position))
 		else:
@@ -225,11 +261,18 @@ func _on_map_gui_input(event:InputEvent)->void:
 			_pointer_down=false
 		accept_event()
 	elif event is InputEventMouseMotion and _pointer_down:
+		_pan_map(event.position)
 		if event.position.distance_to(_pointer_origin)>=8.0:_pointer_dragged=true
 		var tile:=_pixel_to_tile(event.position)
 		if _placement_mode and tile!=_last_drag_tile:
 			_last_drag_tile=tile;tile_dragged.emit(tile)
 		accept_event()
+
+func _pan_map(position:Vector2)->void:
+	if not _placement_mode and camera.zoom>1:
+		camera.pan+=position-_last_pointer;camera.clamp_pan(self)
+		_resolve_layout();queue_redraw()
+	_last_pointer=position
 
 
 func _select_building_at(pixel:Vector2)->void:
@@ -255,12 +298,12 @@ func _grid_size()->Vector2i:
 
 
 func _cell_size()->float:
-	var grid:=_grid_size();return minf(maxf(1.0,size.x)/float(grid.x),320.0/float(grid.y))
+	var grid:=_grid_size();return minf(maxf(1.0,size.x)/float(grid.x),320.0/float(grid.y))*camera.zoom
 
 
 func _map_origin()->Vector2:
 	var extent:=Vector2(_grid_size())*_cell_size()
-	return Vector2((size.x-extent.x)*0.5,0)
+	return Vector2((size.x-extent.x)*0.5,0)+camera.pan
 
 
 func _pixel_to_tile(pixel:Vector2)->Vector2i:

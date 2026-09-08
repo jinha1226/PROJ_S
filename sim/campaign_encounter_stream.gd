@@ -59,7 +59,7 @@ static func active_enemy_ids(world)->Array[int]:
 			aware_groups[group_id(world,enemy_id)]=true
 	if not aware_groups.is_empty():
 		return _nearest_group(world,alive,aware_groups.keys(),2147483647)
-	var hero=world.entities.get(state.protagonist_id)
+	var hero=world.entities.get(world.party_control_actor_id())
 	if hero==null:return []
 	return _nearest_group(world,alive,_group_ids(world,alive),ACTIVATION_RADIUS,
 		hero.position)
@@ -127,7 +127,7 @@ static func is_campaign_runtime(world)->bool:
 static func _nearest_group(world,alive:Array[int],groups:Array,
 		maximum_distance:int,origin:Vector2i=Vector2i(-1,-1))->Array[int]:
 	if origin==Vector2i(-1,-1):
-		var hero=world.entities.get(world.party_encounter.protagonist_id)
+		var hero=world.entities.get(world.party_control_actor_id())
 		if hero==null:return []
 		origin=hero.position
 	var ranked:Array[Dictionary]=[]

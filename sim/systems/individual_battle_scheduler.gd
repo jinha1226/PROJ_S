@@ -40,11 +40,13 @@ static func _earlier(best:Dictionary,at:int,id:int)->Dictionary:
 		return {"at":at,"actor_id":id}
 	return best
 
-static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-1,-1)):
+static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-1,-1),survival_rules:bool=true):
 	var next:=next_event(sim)
 	if next.is_empty():return Result.new(false,false,"individual_battle_not_engaged")
 	var world=sim.world;var party=world.party_encounter
 	var rollback:Dictionary=world.rollback_memento(false)
+	if survival_rules and not preload("res://sim/party_survival_rules.gd").enabled(world):
+		world.entities[party.protagonist_id].tags.append(preload("res://sim/party_survival_rules.gd").TAG)
 	var start:int=world.world_time;var event_start:int=world.events.size()
 	var step_index:int=world.step_index+1;var actor_id:int=next.actor_id
 	if step_index>=sim.MAX_INT64 or int(next.at)>sim.MAX_WORLD_TIME:

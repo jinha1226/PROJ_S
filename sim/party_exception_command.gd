@@ -60,8 +60,8 @@ static func effective(world, state) -> Dictionary:
 	var fallback := {
 		"command_id": "FOLLOW",
 		"target_id": -1,
-		"anchor": [world.entities[state.protagonist_id].position.x,
-			world.entities[state.protagonist_id].position.y],
+		"anchor": [world.entities[world.party_control_actor_id()].position.x,
+			world.entities[world.party_control_actor_id()].position.y],
 		"explicit": false,
 		"event_id": -1,
 	}

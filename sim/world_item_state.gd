@@ -157,16 +157,16 @@ static func _from_valid_dict(row:Dictionary):
 	state.inventory_rows.clear()
 	for inventory_row in row.inventory_rows:
 		state.inventory_rows[Int64CodecScript.parse(inventory_row.entity_id,"entity ID")] \
-			=InventoryScript.from_dict(inventory_row.inventory)
+			=InventoryScript._from_valid_dict(inventory_row.inventory)
 	state.ammo_pool_rows.clear()
 	for ammo_row in row.ammo_pool_rows:
 		state.ammo_pool_rows[Int64CodecScript.parse(ammo_row.entity_id,"entity ID")] \
-			=AmmoPoolScript.from_dict(ammo_row.ammo_pool)
+			=AmmoPoolScript._from_valid_dict(ammo_row.ammo_pool)
 	state.weapon_runtime_rows.clear()
 	for runtime_row in row.weapon_runtime_rows:
-		var runtime=WeaponRuntimeScript.from_dict(runtime_row)
+		var runtime=WeaponRuntimeScript._from_valid_dict(runtime_row)
 		state.weapon_runtime_rows[runtime.instance_id]=runtime
-	state.ground_items=GroundItemScript.from_dict(row.ground_items)
+	state.ground_items=GroundItemScript._from_valid_dict(row.ground_items)
 	state.processed_drop_death_event_ids.clear()
 	for death_event_id in row.processed_drop_death_event_ids:
 		state.processed_drop_death_event_ids.append(

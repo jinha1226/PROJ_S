@@ -27,6 +27,15 @@ func configure(inventory:Dictionary,loot:Dictionary,feedback:String="")->void:
 	message=Label.new();message.text=feedback if not feedback.is_empty() else "오른쪽 아이템을 눌러 가져가세요."
 	message.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;message.add_theme_font_size_override("font_size",13)
 	body.add_child(message)
+	var carried:Dictionary=loot.get("carried_resources",{})
+	if not carried.is_empty():
+		var resources:=Label.new()
+		resources.text="원정 물자 %d/%d · 목재 %d  석재 %d  약초 %d"%[
+			int(carried.get("TIMBER",0))+int(carried.get("STONE",0))+int(carried.get("HERBS",0)),
+			int(loot.get("resource_capacity",0)),int(carried.get("TIMBER",0)),
+			int(carried.get("STONE",0)),int(carried.get("HERBS",0))]
+		resources.add_theme_font_size_override("font_size",12)
+		resources.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body.add_child(resources)
 	var columns:=HBoxContainer.new();columns.name="LootColumns"
 	columns.add_theme_constant_override("separation",8);columns.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	body.add_child(columns)

@@ -148,7 +148,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			combatant.downed_at = -1; combatant.downed_resolve_at = -1
 			combatant.downed_source_event_id = -1
 			combatant.status_rows.clear()
-			world.party_encounter.safe_phase = "PARTY_DEFEATED"
+			if preload("res://sim/party_survival_rules.gd").defeated(world):
+				world.party_encounter.safe_phase = "PARTY_DEFEATED"
 	if should_apply_bleed:
 		var status_definition: Dictionary = StatusRegistryScript.definition("BLEEDING")
 		if status_definition.is_empty():

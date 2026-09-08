@@ -38,6 +38,8 @@ func overview()->Dictionary:
 
 
 func build_assessment(type_id:String,tile_value:Variant)->Dictionary:
+	if _session.sim!=null and not preload("res://sim/base_work_rules.gd").current(_session.sim.world.events).is_empty():
+		return {"accepted":false,"reason":"base_work_busy","message":"진행 중인 공사를 먼저 마치거나 취소하세요."}
 	if _session==null or _session.sim==null or _session.sim.world==null:
 		return _session._rejection_dto("session_not_initialized")
 	if _session.scenario_id!=_session.DUO_SCENARIO_ID:

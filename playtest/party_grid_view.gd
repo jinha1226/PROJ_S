@@ -1391,7 +1391,7 @@ func monster_list_draw_spec()->Dictionary:
 	var row_height:=float(font_size+4);var padding:=6.0;var max_width:=0.0
 	for group in grouped:
 		group["count_text"]=" ×%d"%int(group.count) if int(group.count)>1 else ""
-		group["text"]="%s %s%s%s"%[str(group.glyph),str(group.name),
+		group["text"]="%s%s%s"%[str(group.name),
 			(" "+str(group.mark)) if not str(group.mark).is_empty() else "",str(group.count_text)]
 		max_width=maxf(max_width,font.get_string_size(str(group.text),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x)
 	var rect:=grid_rect();var panel_size:=Vector2(max_width+padding*2.0,row_height*grouped.size()+padding*2.0)
@@ -2383,8 +2383,7 @@ func _draw_monster_list()->void:
 	var font:Font=RegularFont;var font_size:=int(spec.font_size)
 	for row in spec.rows:
 		var baseline:=Vector2(row.baseline);var x:=baseline.x
-		for segment in [[str(row.glyph),str(row.species_color_hex)],
-				[" "+str(row.name),str(spec.name_color_hex)],
+		for segment in [[str(row.name),str(spec.name_color_hex)],
 				[(" "+str(row.mark)) if not str(row.mark).is_empty() else "",str(row.mark_color_hex)],
 				[str(row.count_text),"#849097"]]:
 			var value:=str(segment[0])
@@ -2395,6 +2394,13 @@ func _draw_monster_list()->void:
 
 func _draw_ground_items()->void:
 	var font:Font=BoldFont
+	for row in _cells.values():
+		if AsciiStyleScript.visibility_state(row)!="VISIBLE":continue
+		var cache:Dictionary=row.get("resource_cache",{})
+		if cache.is_empty() or not bool(cache.get("available",false)):continue
+		var p:=Vector2i(int(row.position[0]),int(row.position[1]))
+		if not is_world_cell_visible(p):continue
+		preload("res://playtest/base_resource_icon.gd").draw_icon(self,world_cell_rect(p),str(cache.resource_id))
 	for spec in ground_item_draw_specs():
 		var center:=Vector2(spec.center);var font_size:=int(spec.font_size)
 		_draw_centered_text(font,str(spec.glyph),center+Vector2(0.8,1.0),font_size,

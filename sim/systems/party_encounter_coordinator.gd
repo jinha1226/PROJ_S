@@ -82,14 +82,24 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 		if world.combatant_states[member_id].life_state == "DEAD" and member.presence != "DEFEATED":
 			member.presence = "DEFEATED"
 			presence_changed = true
-	var protagonist_alive: bool = world.combatant_states[state.protagonist_id].life_state == "ACTIVE"
-	if not protagonist_alive:
+	if preload("res://sim/party_survival_rules.gd").defeated(world):
 		if state.safe_phase != "PARTY_DEFEATED":
 			state.safe_phase = "PARTY_DEFEATED"
 			state.revision += 1
 		elif presence_changed:
 			state.revision += 1
 		return not _fault("reconcile_liveness")
+	# Exploration can also incapacitate the leader (for example a trap). The
+	# surviving grouped actor already shares the anchor; only control/presence
+	# changes, never character identity, stats, gear, or position.
+	if preload("res://sim/party_survival_rules.gd").enabled(world) \
+			and state.safe_phase in ["GROUPED","GROUPED_COMPLETE","CONTACT"]:
+		var leader_id:int=world.party_control_actor_id()
+		if state.member(leader_id).presence!="DEPLOYED":
+			state.member(leader_id).presence="DEPLOYED";presence_changed=true
+		for member_id in state.active_party_member_ids:
+			if member_id!=leader_id and world.combatant_states[member_id].life_state=="DOWNED":
+				state.member(member_id).presence="GROUPED"
 	if allow_victory and state.safe_phase == "ENGAGED" and not _has_alive_enemy():
 		if _fault("victory_event"):
 			return false
@@ -98,8 +108,8 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 			return false
 		var victory_data:Dictionary=CampaignEncounterStreamScript.victory_scope(world) \
 			if CampaignEncounterStreamScript.is_campaign_runtime(world) else {}
-		var victory = world.emit_event("party.victory", state.protagonist_id, -1,
-			world.entities[state.protagonist_id].position,0,victory_cause_id,
+		var victory = world.emit_event("party.victory", world.party_control_actor_id(), -1,
+			world.entities[world.party_control_actor_id()].position,0,victory_cause_id,
 			victory_data)
 		if victory == null:
 			return false
@@ -180,7 +190,7 @@ func finalize_automatic_regroup() -> bool:
 	var state = world.party_encounter
 	if state == null or state.safe_phase != "REGROUP_READY":
 		return true
-	var protagonist = world.entities.get(state.protagonist_id)
+	var protagonist = world.entities.get(world.party_control_actor_id())
 	if protagonist == null or not world.can_act(protagonist.id, world.world_time):
 		return false
 	if _fault("automatic_regroup_after_victory"):
@@ -286,7 +296,7 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time: int,
 		tick_start_can_act_ids: Dictionary,ambush_excluded_ids:Dictionary={}) -> bool:
 	var state = world.party_encounter
-	var protagonist = world.entities[state.protagonist_id]
+	var protagonist = world.entities[world.party_control_actor_id()]
 	if not world.can_act(protagonist.id, world.world_time):
 		return reconcile_liveness()
 	state.group_anchor = protagonist.position
@@ -309,8 +319,8 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	state.contact_enemy_id = nearest.id
 	state.facing = _cardinal_facing(nearest.position - state.group_anchor)
 	var event_type: String = {"DETECTED": "encounter.detected", "PARTY_AMBUSH": "encounter.party_ambush", "ENEMY_AMBUSH": "encounter.enemy_ambush"}[state.contact_kind]
-	var contact = world.emit_event(event_type, nearest.id if state.contact_kind == "ENEMY_AMBUSH" else state.protagonist_id,
-		state.protagonist_id if state.contact_kind == "ENEMY_AMBUSH" else nearest.id, state.group_anchor, 0, -1,
+	var contact = world.emit_event(event_type, nearest.id if state.contact_kind == "ENEMY_AMBUSH" else world.party_control_actor_id(),
+		world.party_control_actor_id() if state.contact_kind == "ENEMY_AMBUSH" else nearest.id, state.group_anchor, 0, -1,
 		{"contact_kind": state.contact_kind, "enemy_id": str(nearest.id),
 			"enemy_position": [nearest.position.x, nearest.position.y],
 			"facing": [state.facing.x, state.facing.y]})
@@ -318,7 +328,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	# A companion-only sighting becomes an explicit party-information event. The
 	# contact still uses the established hero/enemy root for backward-compatible
 	# encounter replay, while observers can truthfully name the actual spotter.
-	if party_detects and int(party_spotters[0]) != int(state.protagonist_id):
+	if party_detects and int(party_spotters[0]) != int(world.party_control_actor_id()):
 		var spotter_id := int(party_spotters[0])
 		var warning = world.emit_event("party.contact_reported", spotter_id,
 			nearest.id, state.group_anchor, 0, contact.id, {
@@ -347,7 +357,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 		for enemy_id in ambushers:
 			rows.append({"enemy_id": enemy_id,
 				"original_action_order": rows.size(),
-				"melee": melee.can_attack(enemy_id, state.protagonist_id)})
+				"melee": melee.can_attack(enemy_id, world.party_control_actor_id())})
 		var melee_rows: Array[Dictionary] = []
 		for row in rows:
 			if bool(row.melee): melee_rows.append(row)
@@ -360,7 +370,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 		for ordinal in range(melee_rows.size()):
 			var row: Dictionary = melee_rows[ordinal]
 			var assessment: Dictionary = melee.assess_attack(int(row.enemy_id),
-				state.protagonist_id, "SUGGESTED", processed_step_index,
+				world.party_control_actor_id(), "SUGGESTED", processed_step_index,
 				due_time, context, ordinal)
 			var frozen = melee.freeze_assessment(assessment,
 				protagonist.health, int(row.original_action_order), true)
@@ -392,7 +402,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 				var target_position := Vector2i(int(assessment.target_position[0]),
 					int(assessment.target_position[1]))
 				opening = world.emit_event("action.melee_attack", enemy_id,
-					state.protagonist_id, target_position,
+					world.party_control_actor_id(), target_position,
 					int(assessment.base_damage), contact.id, resolution.action_data)
 				if opening != null:
 					pending_results.append({"action": opening, "intent": frozen,
@@ -589,7 +599,7 @@ func _set_awareness_state(awareness,next_state:String,target_position:Vector2i,
 	if before==next_state:return true
 	awareness.awareness_state=next_state
 	var observed_id:int=target_entity_id if target_entity_id>0 \
-		else world.party_encounter.protagonist_id
+		else world.party_control_actor_id()
 	var event=world.emit_event("enemy.awareness_changed",awareness.enemy_id,
 		observed_id,world.entities[awareness.enemy_id].position,
 		awareness.suspicion,-1,{"schema_version":1,"from_state":before,
@@ -684,7 +694,7 @@ func preview_deployment(preset_id: String, companion_ids: Array,
 	for value in companion_ids:
 		var companion_id := int(value) if value is int else -1
 		var companion = state.member(companion_id)
-		if not value is int or selected.has(companion_id) or companion_id == state.protagonist_id \
+		if not value is int or selected.has(companion_id) or companion_id == world.party_control_actor_id() \
 				or companion == null or companion.role != "COMPANION" or companion.presence != "GROUPED" \
 				or not world.entities.has(companion_id) or not world.can_act(companion_id, world.world_time):
 			rejected.reason = "invalid_companion_ids"; return rejected
@@ -694,9 +704,9 @@ func preview_deployment(preset_id: String, companion_ids: Array,
 		return am.roster_slot < bm.roster_slot if am.roster_slot != bm.roster_slot else a < b)
 	if selected.size() + 1 > MAX_DEPLOYED_PARTY: rejected.reason = "too_many_deployed_party"; return rejected
 	rejected.companion_ids = selected.duplicate()
-	var placements: Array = [{"entity_id": state.protagonist_id, "roster_slot": 0,
+	var placements: Array = [{"entity_id": world.party_control_actor_id(), "roster_slot": 0,
 		"position": [state.group_anchor.x, state.group_anchor.y], "placement": "anchor"}]
-	var reserved := {_key(state.group_anchor): state.protagonist_id}
+	var reserved := {_key(state.group_anchor): world.party_control_actor_id()}
 	for index in range(selected.size()):
 		var target: Vector2i = state.group_anchor + _formation_offset(preset_id, index, state.facing)
 		var chosen = target if _deployment_cell_valid(target, reserved, state.group_anchor) else _fallback_cell(state.group_anchor, reserved)
@@ -741,7 +751,7 @@ func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int)
 	for row in authoritative.placements:
 		var id := int(row.entity_id); selected[id] = true; var member = state.member(id)
 		member.presence = "DEPLOYED"; world.entities[id].position = Vector2i(int(row.position[0]), int(row.position[1]))
-		if id != state.protagonist_id:
+		if id != world.party_control_actor_id():
 			var preset_position: Vector2i = state.group_anchor + _formation_offset(
 				str(authoritative.preset_id), deployment_index, state.facing)
 			var deployment_data := {"formation_id": str(authoritative.preset_id),
@@ -752,16 +762,16 @@ func commit_prevalidated_deployment(plan: Dictionary, processed_step_index: int)
 					0, contact_cause_id, deployment_data) == null:
 				return {"reason": "event_emission_failed"}
 			deployment_index += 1
-		if id != state.protagonist_id and _fault("deployment_member_event"):
+		if id != world.party_control_actor_id() and _fault("deployment_member_event"):
 			return {"reason": "injected_deployment_failure"}
 	for id in state.active_party_member_ids:
-		if id != state.protagonist_id and not selected.has(id) and world.occupies_tile(id): state.member(id).presence = "DORMANT"
+		if id != world.party_control_actor_id() and not selected.has(id) and world.occupies_tile(id): state.member(id).presence = "DORMANT"
 	if state.contact_kind == "PARTY_AMBUSH":
 		for enemy_id in _stream_enemy_ids():
 			state.enemy_busy_rows[enemy_id]=world.world_time+100
 	var companion_wires: Array = []
 	for companion_id in authoritative.companion_ids: companion_wires.append(str(companion_id))
-	var completed = world.emit_event("party.deployment_completed", state.protagonist_id, -1,
+	var completed = world.emit_event("party.deployment_completed", world.party_control_actor_id(), -1,
 		state.group_anchor, 0, contact_cause_id, {"formation_id": str(authoritative.preset_id),
 			"companion_ids": companion_wires})
 	if completed == null or _fault("deployment_completed_event"):
@@ -1006,6 +1016,10 @@ func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -
 		return command_decision
 	var candidates: Array = []
 	for action_id in DecisionRegistryScript.party_mode_actions(str(appraisal.mode)):
+		# In the directed auto-battle mode, ordinary nerves cannot make a healthy
+		# ally abandon combat every turn. Critical HP retains self-preservation.
+		if action_id=="RETREAT" and preload("res://sim/party_survival_rules.gd").enabled(world) \
+				and int(appraisal.hp_loss)<750:continue
 		var leaf: Dictionary = _party_leaf(actor_id, action_id, appraisal, board)
 		var target_id: int = int(leaf.get("target_id", -1))
 		var inputs: Dictionary = AppraisalScript.inputs_for(appraisal,
@@ -1059,11 +1073,15 @@ func _exception_command_decision(actor_id: int, appraisal: Dictionary,
 		board: Dictionary) -> Dictionary:
 	var party_command: Dictionary = board.get("party_command", {})
 	var command_id := str(party_command.get("command_id", "FOLLOW"))
-	if command_id not in ["RETREAT", "STOP_ATTACK", "HOLD_POSITION"]:
+	var explicit_focus:=command_id=="ATTACK_TARGET" and preload("res://sim/party_survival_rules.gd").enabled(world)
+	if command_id not in ["RETREAT", "STOP_ATTACK", "HOLD_POSITION"] and not explicit_focus:
 		return {}
 	var leaf: Dictionary
 	var action_id := "HOLD"
 	match command_id:
+		"ATTACK_TARGET":
+			leaf=_engage_leaf(actor_id,board)
+			action_id="ENGAGE"
 		"RETREAT":
 			leaf = _retreat_leaf(actor_id, appraisal, board)
 			action_id = "RETREAT"
@@ -1099,7 +1117,7 @@ func _exception_command_decision(actor_id: int, appraisal: Dictionary,
 
 
 func _follow_without_attacking_leaf(actor_id: int) -> Dictionary:
-	var hero_id := int(world.party_encounter.protagonist_id)
+	var hero_id := int(world.party_control_actor_id())
 	var hero_position: Vector2i = world.entities[hero_id].position
 	if _distance(world.entities[actor_id].position, hero_position) <= 1:
 		return _hold_leaf()
@@ -1221,7 +1239,7 @@ func _protect_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> D
 func _retreat_leaf(actor_id: int, appraisal: Dictionary, board: Dictionary) -> Dictionary:
 	var actor_position: Vector2i = world.entities[actor_id].position
 	var protagonist_position: Vector2i = world.entities[
-		world.party_encounter.protagonist_id].position
+		world.party_control_actor_id()].position
 	var current_enemy_distance := _minimum_enemy_distance(actor_position, board.active_enemy_ids)
 	var current_protagonist_distance := _distance(actor_position, protagonist_position)
 	var resilience := _member_resilience(actor_id)
@@ -1906,19 +1924,19 @@ func _has_active_combat_enemy()->bool:
 
 func _disengage_to_exploration()->bool:
 	var state=world.party_encounter
-	var hero=world.entities.get(state.protagonist_id)
+	var hero=world.entities.get(world.party_control_actor_id())
 	if hero==null:return false
 	state.group_anchor=hero.position
 	for member_id in state.active_party_member_ids:
 		var member=state.member(member_id)
-		if member_id==state.protagonist_id:member.presence="DEPLOYED"
+		if member_id==world.party_control_actor_id():member.presence="DEPLOYED"
 		elif world.combatant_states[member_id].life_state=="ACTIVE":
-			if "autonomous_party" in hero.tags:
+			if "autonomous_party" in world.entities[state.protagonist_id].tags:
 				var origin:Vector2i=world.entities[member_id].position
 				if world.emit_event("party.member_disengaged",member_id,hero.id,hero.position,0,-1,
 						{"from_position":[origin.x,origin.y],"to_position":[hero.position.x,hero.position.y]})==null:return false
 			member.presence="GROUPED";world.entities[member_id].position=hero.position
-	if "autonomous_party" in hero.tags:
+	if "autonomous_party" in world.entities[state.protagonist_id].tags:
 		var contact_id:int=-1
 		for index in range(world.events.size()-1,-1,-1):
 			if world.events[index].type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush"]:

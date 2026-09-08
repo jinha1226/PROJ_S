@@ -1,0 +1,26 @@
+extends SceneTree
+const Session=preload("res://playtest/party_playtest_session.gd")
+func _init()->void:call_deferred("run")
+func run()->void:
+	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
+	var returned:Dictionary=session.base_return()
+	if not returned.get("accepted",false):printerr(returned);quit(1);return
+	var t:=Time.get_ticks_usec()
+	var body=preload("res://sim/body_state.gd").create(999,"goblin",42)
+	print("BODY_MS ",(Time.get_ticks_usec()-t)/1000.0," ",body!=null)
+	t=Time.get_ticks_usec()
+	var clone=session.sim.world.item_state.clone()
+	print("ITEM_CLONE_MS ",(Time.get_ticks_usec()-t)/1000.0)
+	t=Time.get_ticks_usec()
+	var validation:String=clone.validation_error()
+	print("ITEM_VALIDATE_MS ",(Time.get_ticks_usec()-t)/1000.0," ",validation)
+	t=Time.get_ticks_usec()
+	var loadout:Dictionary=preload("res://sim/actor_loadout_registry.gd").plan_apply(clone,
+		session.sim.world.party_encounter.protagonist_id,"GOBLIN_MELEE_V1")
+	print("LOADOUT_MS ",(Time.get_ticks_usec()-t)/1000.0," ",loadout.get("accepted",false))
+	var result:Dictionary=session.depart_town()
+	print("DEPART_PROFILE ",session._last_town_departure_profile)
+	print("FLOOR_PROFILE ",session._last_floor_entry_profile)
+	print("SPAWN_COUNT ",result.get("spawned_enemy_ids",[]).size())
+	print("DEPART_RESULT ",result.get("accepted",false)," ",result.get("reason",""))
+	quit(0 if result.get("accepted",false) else 1)

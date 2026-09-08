@@ -26,7 +26,7 @@ static func build(world, protagonist_action) -> Dictionary:
 			"adjacent_enemy_ids": [],
 			"hp_milli": _hp_milli(world, member_id),
 		}
-	var protagonist_position: Vector2i = world.entities[state.protagonist_id].position
+	var protagonist_position: Vector2i = world.entities[world.party_control_actor_id()].position
 	for enemy_id in enemies:
 		var adjacent: Array[int] = []
 		for member_id in deployed:
@@ -80,7 +80,7 @@ static func _focus_target(world, state, action, enemies: Array[int],
 			var b_hp: int = threat_table[b].hp_milli
 			return a_hp < b_hp if a_hp != b_hp else a < b)
 		return engaged[0]
-	var anchor: Vector2i = world.entities[state.protagonist_id].position
+	var anchor: Vector2i = world.entities[world.party_control_actor_id()].position
 	if action != null and action.type == "MOVE":
 		anchor = action.destination
 	var ranked: Array[int] = enemies.duplicate()

@@ -69,21 +69,21 @@ func queued(actor_id:int)->Dictionary:
 	_bind()
 	return queues.get(actor_id,{}).duplicate()
 
-func commit(expected:Dictionary={},append_journal:bool=true)->Dictionary:
+func commit(expected:Dictionary={},append_journal:bool=true,survival_rules:bool=true)->Dictionary:
 	var next:=next_event()
 	if next.is_empty():return {"accepted":false,"reason":"individual_battle_not_engaged"}
 	var operation:={"actor_id":str(next.actor_id),"at":str(next.at)}
 	if not expected.is_empty() and operation!=expected:
 		return {"accepted":false,"reason":"individual_battle_stale_event"}
 	var result=Scheduler.step(host.sim,queues.get(int(next.actor_id),{}),
-		movements.get(int(next.actor_id),Vector2i(-1,-1)))
+		movements.get(int(next.actor_id),Vector2i(-1,-1)),survival_rules)
 	if not result.accepted:return host._rejection_dto(result.reason)
 	var reservation_failed:bool=queues.has(int(next.actor_id))
 	for event in result.events:
 		if event.type=="action.skill" and int(event.actor_id)==int(next.actor_id):reservation_failed=false
 	queues.erase(int(next.actor_id));_cache_key=""
 	if host.sim.world.party_encounter.safe_phase!="ENGAGED":queues.clear();movements.clear()
-	if append_journal:host.command_journal.append({"kind":"individual_step","operation":operation})
+	if append_journal:host.command_journal.append({"kind":"individual_survival_step" if survival_rules else "individual_step","operation":operation})
 	host._clear_draft()
 	var dto:Dictionary=host._result_dto(result,null,null)
 	dto["actor_id"]=int(next.actor_id)
@@ -93,7 +93,7 @@ func commit(expected:Dictionary={},append_journal:bool=true)->Dictionary:
 static func operation_error(kind:String,row:Variant)->String:
 	if not row is Dictionary:return "invalid_individual_operation"
 	var keys:Array=row.keys();keys.sort()
-	if kind=="individual_step":
+	if kind in ["individual_step","individual_survival_step"]:
 		if keys!=["actor_id","at"] or not Codec.is_canonical(row.get("at")) \
 				or Codec.parse(row.at,"battle at")<0:return "invalid_individual_step"
 	elif kind=="cancel_reserved_skill":
@@ -111,6 +111,6 @@ static func operation_error(kind:String,row:Variant)->String:
 				or Codec.parse(row.target_id,"skill target")<=0:return "invalid_reserved_skill"
 	else:return "unknown_individual_operation"
 	if not Codec.is_canonical(row.get("actor_id")) \
-			or Codec.parse(row.actor_id,"battle actor")<(0 if kind=="individual_step" else 1):
+			or Codec.parse(row.actor_id,"battle actor")<(0 if kind in ["individual_step","individual_survival_step"] else 1):
 		return "invalid_individual_actor"
 	return ""
