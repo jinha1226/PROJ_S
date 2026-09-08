@@ -309,6 +309,9 @@ var _battle_target_skill_label:=""
 var _battle_target_prompt:=""
 var _battle_target_prior_paused:=false
 var _battle_target_committing:=false
+var battle_drag:Control
+var battle_loot_panel:Control
+var _shown_loot_battle_id:=-1
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 var _resize_refresh_queued:=false
 var _product_pinch_points:Dictionary={}
@@ -354,6 +357,8 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
+	if battle_loot_panel!=null and battle_loot_panel.visible:return
+	if battle_drag!=null and battle_drag.handle_input(self,event):return
 	if _handle_product_pinch_zoom(event):return
 	# The nearby-NPC card is a child of the map. Claim its touch before the map's
 	# floor gesture sees it, otherwise its ordinary Buttons never receive mobile
@@ -912,6 +917,11 @@ func _build_ui()->void:
 	_build_record_modal()
 	_build_base_modal()
 	_build_species_picker()
+	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
+	battle_loot_panel=preload("res://playtest/battle_loot_panel.gd").new();add_child(battle_loot_panel)
+	battle_loot_panel.hide()
+	battle_loot_panel.take_requested.connect(_take_battle_loot)
+	battle_loot_panel.closed.connect(_close_battle_loot)
 	_apply_dark_pixel_shell_skin()
 	resized.connect(_on_surface_resized)
 
@@ -2288,6 +2298,9 @@ func _play_reward_emphasis()->void:
 	_reward_emphasis_tween.tween_property(reward_badge,"modulate",Color.WHITE,0.45)
 
 func _reset_auto_flow()->void:
+	_shown_loot_battle_id=-1
+	if battle_loot_panel!=null:battle_loot_panel.hide()
+	if battle_drag!=null:battle_drag.clear()
 	autonomous_battle_clock.reset()
 	autonomous_battle_summary=""
 	auto_generation+=1
@@ -2302,6 +2315,7 @@ func _tick_autonomous_battle(delta:float)->void:
 	var state=session.sim.world.party_encounter
 	var blocked:bool=grid==null or grid.modal_open or _product_touch_index>=0 \
 		or _party_command_targeting or not _battle_target_mode.is_empty() or auto_combat_pending
+	blocked=blocked or (battle_drag!=null and (battle_drag.active or battle_drag.control_held))
 	if grid!=null:blocked=blocked or bool(grid.pointer_gesture_state().get("active",false))
 	if is_instance_valid(party_command_menu):blocked=blocked or party_command_menu.get_popup().visible
 	var manual_actor_menu:=find_child("ManualActorSelector",true,false) as MenuButton
@@ -2324,19 +2338,37 @@ func _tick_autonomous_battle(delta:float)->void:
 func _build_duo_battle_controls(status:Dictionary)->void:
 	product_auto_button=null;product_interact_button=null;product_attack_button=null
 	product_wait_guard_button=null;product_bag_button=null
-	combat_action_area.visible=true;combat_action_dock.visible=true
+	combat_action_area.visible=false;combat_action_dock.visible=false
 	action_feedback_label.visible=false
-	combat_action_area.custom_minimum_size.y=48
-	combat_action_dock.custom_minimum_size.y=48
-	var dock=ManualBattleDockScript.new();dock.name="ManualBattleDock"
-	dock.configure(session,selected_member_id,not _battle_target_mode.is_empty(),
-		_battle_target_prompt,autonomous_battle_clock.paused)
-	dock.actor_selected.connect(_on_manual_actor_selected)
-	dock.skill_selected.connect(_on_manual_skill_selected)
-	dock.command_selected.connect(_on_actor_directive_selected)
-	dock.pause_toggled.connect(_on_product_execute)
-	dock.targeting_cancelled.connect(_cancel_battle_targeting.bind("대상 선택을 취소했습니다."))
-	combat_action_dock.add_child(dock)
+	combat_action_area.custom_minimum_size.y=0
+	combat_action_dock.custom_minimum_size.y=0
+	if _battle_target_mode.is_empty() and autonomous_battle_summary.is_empty():
+		event_label.text="아군 → 적으로 끌어 공격 지정 · 기술을 누른 뒤 대상 선택"
+
+func _portrait_battle_controls_visible()->bool:
+	return session!=null and session.is_duo_autobattle() and session.sim!=null \
+		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
+
+func _add_battle_portrait_utilities()->void:
+	var utility:=VBoxContainer.new();utility.name="BattlePortraitUtilities"
+	utility.custom_minimum_size.x=48;utility.add_theme_constant_override("separation",2)
+	cards.add_child(utility)
+	var pause:=Button.new();pause.name="PortraitBattlePause"
+	pause.text="재개" if autonomous_battle_clock.paused else "정지"
+	pause.custom_minimum_size=Vector2(48,48)
+	pause.disabled=not _battle_target_mode.is_empty()
+	DarkPixelSkinScript.apply_action_button(pause,DarkPixelSkinScript.CYAN)
+	pause.pressed.connect(_on_product_execute);utility.add_child(pause)
+	var reset:=Button.new();reset.name="PortraitBattleCancel"
+	reset.text="취소" if not _battle_target_mode.is_empty() else "자율"
+	reset.custom_minimum_size=Vector2(48,48)
+	reset.tooltip_text="대상 선택 취소" if not _battle_target_mode.is_empty() else "선택한 인물의 지정 표적을 해제합니다."
+	DarkPixelSkinScript.apply_action_button(reset,DarkPixelSkinScript.BRASS)
+	reset.pressed.connect(_on_portrait_battle_reset);utility.add_child(reset)
+
+func _on_portrait_battle_reset()->void:
+	if not _battle_target_mode.is_empty():_cancel_battle_targeting("대상 선택을 취소했습니다.")
+	else:_on_actor_directive_selected(selected_member_id,"FOLLOW")
 
 func _on_manual_actor_selected(actor_id:int)->void:
 	if not _battle_target_mode.is_empty():return
@@ -2616,6 +2648,9 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 		spec.portrait_min_size=[clampi(int(float(card_min_width)*0.42),44,portrait_height),
 			portrait_height]
 		spec.portrait_removed=false
+		if _portrait_battle_controls_visible():
+			spec.party_height=PRODUCT_PARTY_CARD_HEIGHT+50
+			spec.card_min_width=maxi(48,int(floor(float(available_width-52)/effective_count)))
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -2636,13 +2671,18 @@ func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)-
 		var row:Variant=rows[index]
 		if row is Dictionary:
 			_add_member_card(row,speech_by_actor.get(int(row.get("entity_id",-1)),{}),spec)
-			if _is_solo_product_session():cards.get_child(cards.get_child_count()-1).party_index=index
+			if _is_solo_product_session():
+				var portrait:=cards.find_child("MemberCard%d"%int(row.entity_id),true,false)
+				if portrait!=null:portrait.party_index=index
+	if _portrait_battle_controls_visible():_add_battle_portrait_utilities()
 
 func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
 	if _is_solo_product_session():
 		var compact=CompactPortraitScript.new()
 		var member_id:=int(row.entity_id)
 		compact.name="MemberCard%d"%member_id;compact.actor=row.duplicate(true)
+		if _portrait_battle_controls_visible():
+			compact.actor["energy"]=session.sim.world.party_encounter.member(member_id).energy
 		compact.selected=member_id==selected_member_id
 		compact.order_reserved=session.has_companion_order(member_id)
 		compact.party_count=int(layout_spec.get("effective_count",1))
@@ -2652,7 +2692,16 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
 		compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,
 			str(row.get("display_name","파티원"))))
-		cards.add_child(compact)
+		if _portrait_battle_controls_visible():
+			var stack:=VBoxContainer.new();stack.name="BattleMember%d"%member_id
+			stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			stack.add_theme_constant_override("separation",2);cards.add_child(stack)
+			var skills=preload("res://playtest/portrait_skill_row.gd").new()
+			skills.configure(member_id,session.active_skill_rows(member_id),
+				_battle_target_actor_id,_battle_target_skill_id)
+			skills.skill_selected.connect(_on_manual_skill_selected)
+			stack.add_child(skills);stack.add_child(compact)
+		else:cards.add_child(compact)
 		return
 	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
 		SessionScript.ACTIVE_PARTY_LIMIT,size.x)
@@ -3558,6 +3607,10 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
 	elif mode=="EXPLORATION":
 		product_interact_button.text="[INTERACT]"
+		if not session.battle_loot().rows.is_empty():
+			product_interact_button.text="전리품"
+			product_interact_button.disabled=false
+			product_interact_button.tooltip_text="지난 전투에서 남겨둔 전리품을 확인합니다."
 		var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
 		product_auto_button.disabled=terminal or not session.has_method("start_auto_explore")
 		product_auto_button.toggle_mode=true
@@ -3828,6 +3881,8 @@ func _cancel_product_auto_explore(reason:String,refresh_after:bool)->void:
 	if refresh_after:_request_refresh()
 
 func _on_product_interact()->void:
+	if product_interact_button!=null and product_interact_button.text=="전리품":
+		_maybe_open_battle_loot(true);return
 	var status:Dictionary=session.party_status()
 	if session.has_method("floor_transition_assessment"):
 		var floor_transition:Dictionary=session.floor_transition_assessment()
@@ -5670,6 +5725,7 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
 	if bool(result.get("accepted",false)):
 		_product_attack_targeting=false
+		_maybe_open_battle_loot.call_deferred()
 		# Only a committed live UI action may arm the reward highlight. A loaded
 		# save or an arbitrary refresh synchronizes the badge without replaying it.
 		if _run_progress_initialized and not _observed_reward_granted:
@@ -5690,6 +5746,39 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			_product_transient_event_feedback=notice_text
 	else:
 		notice_text=str(result.get("message","행동을 처리할 수 없습니다."));_set_action_rejection(result,rejection_prefix)
+
+func _maybe_open_battle_loot(force:bool=false)->void:
+	if session==null or battle_loot_panel==null:return
+	var loot:Dictionary=session.battle_loot()
+	var battle_id:=int(loot.battle_id)
+	if battle_id<=0 or (not force and battle_id==_shown_loot_battle_id):return
+	if grid.modal_open and not battle_loot_panel.visible:return
+	_shown_loot_battle_id=battle_id
+	if loot.rows.is_empty():return
+	_cancel_product_auto_explore("battle_loot",false)
+	_cancel_active_route()
+	grid.cancel_pointer_gesture();grid.modal_open=true
+	battle_loot_panel.show()
+	battle_loot_panel.configure(session.protagonist_inventory(),loot)
+
+func _take_battle_loot(battle_id:int,instance_id:String)->void:
+	var result:Dictionary=session.take_battle_loot(battle_id,instance_id)
+	var message:="가방에 담았습니다." if result.get("accepted",false) else (
+		"가방이 가득 찼습니다. 전리품은 바닥에 남아 있습니다." if str(result.get("reason","")).contains("full") \
+		else "지금 가져올 수 없는 아이템입니다.")
+	# Rebuild after the pressed button's input dispatch has completed.
+	_refresh_battle_loot.call_deferred(message)
+	_request_refresh()
+
+func _refresh_battle_loot(message:String)->void:
+	if battle_loot_panel!=null and battle_loot_panel.visible:
+		battle_loot_panel.configure(session.protagonist_inventory(),session.battle_loot(),message)
+
+func _close_battle_loot()->void:
+	battle_loot_panel.hide()
+	grid.modal_open=member_detail_modal.visible or record_modal.visible or base_modal.visible or map_overlay.visible
+	route_paused_by_modal=false
+	_request_refresh()
 
 func _settle_solo_product_contact()->void:
 	# CONTACT is an internal authority boundary in the one-member product, not a
@@ -6035,7 +6124,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# gaps. The map receives every remaining pixel and derives a square cell size
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
-		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-48
+		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-(0 if _portrait_battle_controls_visible() else 48)
 		-separation*4))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction

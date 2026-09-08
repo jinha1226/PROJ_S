@@ -932,6 +932,16 @@ func visible_ground_items_at(position:Vector2i)->Array[Dictionary]:
 func pickup_ground_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("PICKUP",instance_id,"")
 
+func battle_loot()->Dictionary:
+	return preload("res://playtest/battle_loot_service.gd").context(self)
+
+func take_battle_loot(battle_id:int,instance_id:String)->Dictionary:
+	var result:Dictionary=preload("res://playtest/battle_loot_service.gd").take(self,battle_id,instance_id)
+	if result.get("accepted",false):
+		command_journal.append({"kind":"battle_loot","battle_id":battle_id,"instance_id":instance_id})
+		_invalidate_explored_presentation_cache()
+	return result
+
 
 func equip_inventory_item(instance_id:String,slot:String)->Dictionary:
 	return _commit_item_operation("EQUIP",instance_id,slot)
@@ -6959,6 +6969,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
 				var settlement_operation:Dictionary=row.operation
 				replay_result=replay.base_build(str(settlement_operation.type_id),
@@ -7220,6 +7231,10 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"battle_loot":
+				if keys!=["battle_id","instance_id","kind"] or not _integer(row.get("battle_id")) \
+						or int(row.battle_id)<=0 or not row.get("instance_id") is String \
+						or str(row.instance_id).is_empty():return "invalid_battle_loot_journal"
 			"base_settlement":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_base_settlement_journal"

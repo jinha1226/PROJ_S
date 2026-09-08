@@ -1,6 +1,6 @@
 extends RefCounted
 ## Presentation cadence only; canonical turns and command journal remain authoritative.
-const INTERVAL := 0.7
+const INTERVAL := 0.32
 var paused := false
 var remaining := INTERVAL
 func reset()->void:

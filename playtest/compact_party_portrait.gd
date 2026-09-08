@@ -49,6 +49,8 @@ func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	var bar:=Rect2(left,23,width,5)
 	_draw_health(bar,health,maximum)
 	draw_string(font,Vector2(left,41),"%d/%d"%[health,maximum],HORIZONTAL_ALIGNMENT_LEFT,width,10,Color("#d0c8b4"))
+	if actor.has("energy"):
+		draw_string(font,Vector2(left,57),"기력 %d"%int(actor.energy),HORIZONTAL_ALIGNMENT_LEFT,width,10,Color("#88b9ce"))
 	if party_count==1:
 		var emotion:Dictionary=actor.get("emotion",{})
 		draw_string(font,Vector2(left+86,41),str(emotion.get("label","평온")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,width-86),11,Color("#aaa896"))

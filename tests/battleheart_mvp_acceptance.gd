@@ -405,20 +405,15 @@ func _mobile_manual_dock_target_cancel_and_doublecast() -> void:
 		ui.initialize_for_headless_test(session, true)
 		ui.set_process(false)
 		await process_frame; await process_frame
-		var dock = ui.find_child("ManualBattleDock", true, false)
+		var dock = ui.cards
 		if dock == null:
 			failures.append("mobile dock missing at %dpx" % width)
 			ui.queue_free(); await process_frame; continue
 		_check(dock.get_global_rect().end.x <= float(width) + 0.5,
 			"manual dock remains inside %dpx viewport" % width)
-		for child in dock.get_children():
-			if child is Control: _check(float(child.custom_minimum_size.y) >= 48.0, "manual control is >=48px at %dpx" % width)
-		var actor_popup: PopupMenu = dock.get_node("ManualActorSelector").get_popup()
-		var tactic_popup: PopupMenu = dock.get_node("ActorDirectiveMenu").get_popup()
-		_check(actor_popup.get_theme_constant("v_separation") >= 32,
-			"actor popup keeps touch-sized rows at %dpx" % width)
-		_check(tactic_popup.get_theme_constant("v_separation") >= 32,
-			"directive popup keeps touch-sized rows at %dpx" % width)
+		for child in dock.find_children("ActorSkill_*","Button",true,false):
+			_check(child.size.y>=48 and child.size.x>=48,"portrait skill touch target >=48px")
+		_check(ui.find_child("ManualActorSelector",true,false)==null,"no actor dropdown required")
 		var state = session.sim.world.party_encounter
 		var companion_id := int(state.party_member_ids[1])
 		var target := _find_valid_target(session, companion_id, "FIREBOLT")
@@ -431,13 +426,17 @@ func _mobile_manual_dock_target_cancel_and_doublecast() -> void:
 		ui.autonomous_battle_clock.paused = false
 		ui._on_manual_actor_selected(companion_id)
 		await process_frame; await process_frame
-		var skill_button := ui.find_child("ManualSkill0", true, false) as Button
+		var skill_button := ui.find_child("ActorSkill_%d_FIREBOLT"%companion_id, true, false) as Button
+		var portrait:=ui.find_child("MemberCard%d"%companion_id,true,false) as Control
+		if skill_button!=null and portrait!=null:
+			_check(skill_button.get_global_rect().end.y<=portrait.get_global_rect().position.y,
+				"active skill is above its own portrait")
 		_check(skill_button != null, "FIREBOLT button exists at %dpx" % width)
 		if skill_button != null: await _tap_control(skill_button, 100 + width)
 		_check_eq(str(ui._battle_target_mode), "ACTIVE_SKILL", "skill tap enters target mode")
 		_check(bool(ui.autonomous_battle_clock.paused), "skill mode pauses auto combat")
 		await process_frame; await process_frame
-		var cancel_button := ui.find_child("ManualTargetCancel", true, false) as Button
+		var cancel_button := ui.find_child("PortraitBattleCancel", true, false) as Button
 		_check(cancel_button != null, "target Cancel button exists at %dpx" % width)
 		if cancel_button != null: await _tap_control(cancel_button, 200 + width)
 		_check(str(ui._battle_target_mode).is_empty(), "cancel exits target mode")
