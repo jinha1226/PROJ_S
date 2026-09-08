@@ -566,9 +566,9 @@ func battle_timeline_state()->Dictionary:
 			"world_time":int(event.world_time),"type":str(event.type),"actor_id":int(event.actor_id)})
 	var dto:Dictionary=BattleTimelinePresenterScript.build({"world_time":int(world.world_time),
 		"actor_interval":int(WorldStateScript.ACTOR_INTERVAL),"phase":str(state.safe_phase),
+		"revision":int(state.revision),
 		"engaged":str(state.safe_phase)=="ENGAGED" and str(status.get("view_mode",""))=="COMBAT",
 		"allies":allies,"enemies":enemies,"recent_events":recent})
-	dto["revision"]=int(state.revision)
 	_timeline_cache={"key":key,"dto":dto.duplicate(true)}
 	return dto.duplicate(true)
 

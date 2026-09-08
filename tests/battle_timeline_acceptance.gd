@@ -94,6 +94,14 @@ func _timeline_query_is_pure_and_matches_core() -> bool:
 		else:
 			_check_eq(int(entry.ready_at), int(party.enemy_busy_rows.get(id, 0)), "enemy ready_at mirrors the busy row")
 			_check(id in session.party_status().visible_enemy_ids, "shown enemies are visible participants")
+			# An observed participant that has not noticed the party yet is shown but
+			# never given a predicted moment (spec §3, §4).
+			var awareness = party.enemy_awareness(id)
+			if awareness != null and str(awareness.awareness_state) in ["ALERT", "HUNTING"]:
+				_check(entry.eligible_at != null, "an aware enemy carries a predicted actor tick")
+			else:
+				_check_eq(str(entry.status), "UNAVAILABLE", "an unaware participant is UNAVAILABLE")
+				_check_eq(entry.eligible_at, null, "an unaware participant has no predicted moment")
 	# One autonomous commit: recent actions must cite real root events of that step.
 	var planning: Dictionary = session.prepare_autonomous_party_turn()
 	_check(bool(planning.get("commit_ready", false)), "autonomous plan is committable")

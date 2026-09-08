@@ -50,13 +50,38 @@ func test_ready_ally_is_the_next_candidate_before_a_later_enemy() -> bool:
 	return finish()
 
 
-func test_unaware_or_hidden_enemies_and_dead_actors_are_excluded() -> bool:
-	var enemies := [_enemy(9, "g", 0), _enemy(10, "h", 0, false), _enemy(11, "u", 0, true, false), _enemy(12, "d", 0, true, true, false)]
-	var state: Dictionary = Presenter.build(_input(120, [_ally(1, "A", 0, 120), _ally(2, "B", 1, 120, false)], enemies))
+func test_hidden_and_dead_actors_are_excluded_and_unaware_enemies_stay_unavailable() -> bool:
+	# 9 is aware, 10 is not observed at all, 11 is observed but has not noticed the
+	# party yet, 12 is dead. Only 10 and 12 leave the field entirely.
+	var enemies := [_enemy(9, "g", 0), _enemy(10, "h", 0, false), _enemy(11, "u", 40, true, false), _enemy(12, "d", 0, true, true, false)]
+	# The surviving ally recovers until 400 so the aware enemy owns the next mark and
+	# the unaware one can be shown not to steal it.
+	var state: Dictionary = Presenter.build(_input(120, [_ally(1, "A", 0, 400), _ally(2, "B", 1, 120, false)], enemies))
 	var ids: Array = []
 	for entry in state.entries: ids.append(int(entry.entity_id))
-	check_eq(ids, [1, 9], "dead ally, hidden enemy, unaware enemy and dead enemy are all absent")
-	check_eq(int(state.hidden_visible_enemy_count), 0, "hidden/unaware enemies never count toward +N")
+	check_eq(ids, [1, 9, 11], "dead ally, hidden enemy and dead enemy are absent; the unaware participant stays")
+	var unaware: Dictionary = state.entries[2]
+	check_eq(str(unaware.status), "UNAVAILABLE", "an unaware participant is shown but cannot be scheduled")
+	check_eq(unaware.eligible_at, null, "an unaware participant has no predicted moment")
+	check_eq(str(unaware.timing_confidence), "READINESS_ONLY", "no tick is predicted for an unaware participant")
+	check_eq(int(unaware.ready_at), 40, "ready_at is still the raw core busy row")
+	check(not bool(unaware.is_next_candidate), "an unaware participant is never the next candidate")
+	check(bool(state.entries[1].is_next_candidate), "the aware enemy still wins the next mark")
+	check(str(unaware.group_key) != str(state.entries[1].group_key), "an unaware participant never merges into a timed group")
+	check_eq(int(state.hidden_visible_enemy_count), 0, "two observed participants fit under the cap")
+	return finish()
+
+
+func test_unaware_participants_share_the_cap_and_the_hidden_count() -> bool:
+	# Four observed participants, two of them unaware: aware first by readiness,
+	# unaware after by id, and the overflow is counted as +N whatever its awareness.
+	var enemies := [_enemy(11, "u", 0, true, false), _enemy(9, "a", 300), _enemy(10, "b", 100), _enemy(12, "v", 0, true, false)]
+	var state: Dictionary = Presenter.build(_input(120, [_ally(1, "A", 0, 120)], enemies))
+	var enemy_ids: Array = []
+	for entry in state.entries:
+		if str(entry.side) == "ENEMY": enemy_ids.append(int(entry.entity_id))
+	check_eq(enemy_ids, [10, 9, 11], "aware participants lead in time order, unaware ones follow by id")
+	check_eq(int(state.hidden_visible_enemy_count), 1, "the overflowing unaware participant is counted as +N")
 	return finish()
 
 
@@ -114,6 +139,9 @@ func test_not_engaged_is_invisible_and_pure() -> bool:
 	var state: Dictionary = Presenter.build(input)
 	check(not bool(state.visible), "timeline is hidden outside ENGAGED")
 	check_eq(JSON.stringify(input), frozen, "build does not mutate its input")
+	check_eq(int(state.revision), 0, "revision defaults to 0 when the caller supplies none")
+	input["revision"] = 17
+	check_eq(int(Presenter.build(input).revision), 17, "revision is passed through from the input")
 	return finish()
 
 
