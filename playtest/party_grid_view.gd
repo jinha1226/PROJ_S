@@ -754,6 +754,11 @@ func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)-
 		if not next_enemy_ids.has(int(raw_id)):_awareness_pulses.erase(raw_id)
 
 var _actor_emphasis:Dictionary={}
+var target_preview_id:=-1
+var target_preview_valid:=true
+
+func set_target_preview(entity_id:int,valid:bool=true)->void:
+	target_preview_id=entity_id;target_preview_valid=valid;queue_redraw()
 
 func set_actor_emphasis(entity_id:int,duration_msec:int)->void:
 	_actor_emphasis[entity_id]=Time.get_ticks_msec()+duration_msec;_update_process_enabled();queue_redraw()
@@ -2136,6 +2141,14 @@ func _diorama_visibility_state(row:Dictionary)->String:
 
 func _draw() -> void:
 	_draw_world_with_emphasis()
+	if target_preview_id>0:
+		var center:=actor_visual_center(target_preview_id)
+		if center.x>=0 and center.y>=0:
+			var color:=Color("#ffe08a") if target_preview_valid else Color("#ff6363")
+			draw_arc(center,22,0,TAU,32,Color(0,0,0,0.85),6,true)
+			draw_arc(center,22,0,TAU,32,color,3,true)
+			draw_colored_polygon(PackedVector2Array([center+Vector2(-7,-34),
+				center+Vector2(7,-34),center+Vector2(0,-25)]),color)
 	for id in _actor_emphasis:
 		if actor_emphasis_active(int(id)):
 			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)

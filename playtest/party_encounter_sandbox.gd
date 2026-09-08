@@ -312,6 +312,7 @@ var _battle_target_committing:=false
 var battle_timeline_bar
 var battle_timeline_controller
 var battle_drag:Control
+var battle_enemy_strip:ScrollContainer
 var battle_loot_panel:Control
 var _shown_loot_battle_id:=-1
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
@@ -928,6 +929,8 @@ func _build_ui()->void:
 	battle_timeline_controller=preload("res://playtest/battle_timeline_controller.gd").new()
 	add_child(battle_timeline_controller);battle_timeline_controller.setup(self,battle_timeline_bar)
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
+	battle_enemy_strip=preload("res://playtest/battle_enemy_strip.gd").new()
+	event_surface.add_child(battle_enemy_strip);battle_enemy_strip.hide()
 	battle_loot_panel=preload("res://playtest/battle_loot_panel.gd").new();add_child(battle_loot_panel)
 	battle_loot_panel.hide()
 	battle_loot_panel.take_requested.connect(_take_battle_loot)
@@ -5867,6 +5870,7 @@ func _settle_solo_product_contact()->void:
 	auto_phase=str(session.party_status().get("safe_phase",""))
 
 func _flush_pending_visual_effects()->int:
+	if battle_enemy_strip!=null:battle_enemy_strip.sync(self)
 	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0
 	var rows:Array=_pending_visual_effect_rows.duplicate(true)
@@ -6195,7 +6199,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# gaps. The map receives every remaining pixel and derives a square cell size
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
-		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-(0 if _portrait_battle_controls_visible() else 48)
+		-PRODUCT_TOP_HUD_HEIGHT-(48 if _portrait_battle_controls_visible() else PRODUCT_EVENT_HEIGHT)-party_height-(0 if _portrait_battle_controls_visible() else 48)
 		-(48 if _timeline_visible() else 0)-separation*(5 if _timeline_visible() else 4)))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction

@@ -9,6 +9,8 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 	for row in rows:
 		var button:=Button.new()
 		button.name="ActorSkill_%d_%s"%[actor_id,str(row.skill_id)]
+		button.set_meta("actor_id",actor_id);button.set_meta("skill_id",str(row.skill_id))
+		button.set_meta("skill_label",str(row.label))
 		button.text="%s\n%s"%[str(row.label),"예약 · 취소" if bool(row.get("reserved",false)) else "기력 %d"%int(row.cost)]
 		button.custom_minimum_size=Vector2(48,48)
 		button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
