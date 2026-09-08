@@ -22,6 +22,8 @@ func _run() -> void:
 	_case("timeline_query_is_pure_and_matches_core", _timeline_query_is_pure_and_matches_core)
 	_case("timeline_hides_outside_engaged_and_survives_reload", _timeline_hides_outside_engaged_and_survives_reload)
 	_case("bar_layout_places_sides_center_groups_and_cap", _bar_layout_places_sides_center_groups_and_cap)
+	_case("bar_parks_unknown_timing_beyond_the_returned_rail", _bar_parks_unknown_timing_beyond_the_returned_rail)
+	_case("bar_absorbs_pointer_input_and_mutes_taps_when_disabled", _bar_absorbs_pointer_input_and_mutes_taps_when_disabled)
 	if failures.is_empty():
 		print("PASS battle timeline acceptance")
 	else:
@@ -160,3 +162,123 @@ func _bar_layout_places_sides_center_groups_and_cap() -> bool:
 			_check(touch.size.x >= 47.9 and touch.size.y >= 47.9, "%d: every touch target is at least 48px" % int(width))
 			_check(touch.position.x >= -0.1 and touch.end.x <= width + 0.1, "%d: touch targets stay inside the bar" % int(width))
 	return true
+
+
+func _enemy_entry(entity_id: int, marker: String, ready_at: int, eligible_at, status: String, group_key: String, confidence: String) -> Dictionary:
+	return {"entity_id":entity_id,"side":"ENEMY","display_name":"e%d" % entity_id,"portrait_key":"goblin",
+		"marker":marker,"ready_at":ready_at,"eligible_at":eligible_at,"status":status,"group_key":group_key,
+		"timing_confidence":confidence,"is_next_candidate":false}
+
+## An observed participant whose moment cannot be derived parks in a reserved lane
+## past the outer end of its side's rail. The returned rail is already the shortened
+## one, so every timed item keeps the single spec 4 position formula.
+func _bar_parks_unknown_timing_beyond_the_returned_rail() -> bool:
+	var entries := [
+		_enemy_entry(9, "A", 170, 200, "RECOVERING", "ENEMY@200", "EXPECTED"),
+		_enemy_entry(11, "B", 700, 700, "RECOVERING", "ENEMY@700", "EXPECTED"),
+		_enemy_entry(12, "C", 90, null, "UNAVAILABLE", "ENEMY@unaware:12", "READINESS_ONLY"),
+	]
+	var state := {"revision":1,"world_time":120,"phase":"ENGAGED","visible":true,"entries":entries,
+		"hidden_visible_enemy_count":0,"recent_actions":[]}
+	for width in [360.0, 390.0]:
+		var spec: Dictionary = Bar.layout_spec(state, width)
+		var far: Dictionary = {}; var parked: Dictionary = {}
+		for item in spec.items:
+			if 11 in item.entity_ids: far = item
+			if 12 in item.entity_ids: parked = item
+		_check(not far.is_empty() and not parked.is_empty(), "%d: both enemies stay on the bar" % int(width))
+		if far.is_empty() or parked.is_empty(): return false
+		_check_eq(parked.entity_ids, [12], "%d: an unaware participant never merges into a timed group" % int(width))
+		_check(bool(far.out_of_range) and float(far.x) >= spec.right_rail.end.x - 24.0,
+			"%d: a beyond-horizon enemy still lands on the returned rail" % int(width))
+		_check(is_equal_approx(float(far.x), spec.right_rail.end.x),
+			"%d: a clamped timed item sits exactly at ratio 1 of the returned rail" % int(width))
+		_check(float(parked.x) > spec.right_rail.end.x, "%d: the parked entry sits past the rail" % int(width))
+		_check_eq(Bar._tag_text(parked), "", "%d: a parked entry carries no readiness tag" % int(width))
+		_check(not (far.touch as Rect2).intersects(parked.touch as Rect2),
+			"%d: the parked square never overlaps a timed one" % int(width))
+		for item in spec.items:
+			var touch: Rect2 = item.touch
+			_check(touch.position.x >= -0.1 and touch.end.x <= width + 0.1,
+				"%d: parked and timed squares stay inside the bar" % int(width))
+	return true
+
+## Nothing the strip receives may reach the map underneath, and muting taps for skill
+## targeting suppresses only the tap: the running gesture is still absorbed and still
+## reports its hold (spec 6). A Control standing in for the map sits under the bar and
+## records anything that leaks past it.
+func _bar_absorbs_pointer_input_and_mutes_taps_when_disabled() -> bool:
+	var entries := [
+		{"entity_id":1,"side":"ALLY","display_name":"A","portrait_key":"human","marker":"①","ready_at":80,
+			"eligible_at":null,"status":"READY","group_key":"ALLY@120","timing_confidence":"READINESS_ONLY",
+			"is_next_candidate":true},
+		_enemy_entry(9, "A", 170, 200, "RECOVERING", "ENEMY@200", "EXPECTED"),
+	]
+	var state := {"revision":1,"world_time":120,"phase":"ENGAGED","visible":true,"entries":entries,
+		"hidden_visible_enemy_count":0,"recent_actions":[]}
+	var taps: Array = []
+	var holds: Array = []
+	var leaked: Array = []
+	var beneath := Control.new()
+	beneath.mouse_filter = Control.MOUSE_FILTER_PASS
+	beneath.size = Vector2(500, 48)
+	beneath.gui_input.connect(func(event): leaked.append(event.get_class()))
+	root.add_child(beneath)
+	var bar = Bar.new()
+	bar.entry_tapped.connect(func(entity_ids): taps.append(entity_ids))
+	bar.pointer_held.connect(func(held): holds.append(held))
+	beneath.add_child(bar)
+	bar.position = Vector2.ZERO
+	bar.size = Vector2(390, 48)
+	bar.set_state(state)
+	var spot: Vector2 = (bar.current_layout().items[0].touch as Rect2).position + Vector2(24, 24)
+	var beside := Vector2(450, 24)
+	# A whole touch gesture over the bar is swallowed; the same gesture next to the bar
+	# reaches the surface underneath, which is what proves this probe can see a leak.
+	_check(_push_touch(spot, true, 7), "a touch press on the bar is absorbed")
+	_check_eq(holds, [true], "a press holds the autonomous battle")
+	_push_drag(spot + Vector2(3, 0), 7)
+	_check(_push_touch(spot, false, 7), "a touch release on the bar is absorbed")
+	_check(leaked.is_empty(), "no part of a bar gesture reaches the surface underneath")
+	_check_eq(taps.size(), 1, "a release on the pressed item reports one tap")
+	_check_eq(holds, [true, false], "the release ends the hold")
+	_push_touch(beside, true, 8)
+	_push_drag(beside + Vector2(3, 0), 8)
+	_push_touch(beside, false, 8)
+	_check_eq(leaked.size(), 3, "the same gesture beside the bar does reach the surface underneath")
+	# The mouse pair browsers and Android synthesize after a handled touch is absorbed
+	# and dropped: it must never replay the tap.
+	taps.clear(); holds.clear()
+	_check(_push_mouse(spot, true, InputEvent.DEVICE_ID_EMULATION), "the synthesized mouse press is still absorbed")
+	_check(_push_mouse(spot, false, InputEvent.DEVICE_ID_EMULATION), "the synthesized mouse release is still absorbed")
+	_check(taps.is_empty() and holds.is_empty(), "the synthesized mouse pair is dropped, never replayed as a tap")
+	# Muting taps mid-gesture: the hold is not abandoned, only the tap is suppressed.
+	holds.clear()
+	_check(_push_mouse(spot, true, 0), "a real mouse press on the bar is absorbed")
+	_check_eq(holds, [true], "the press opens the hold")
+	bar.set_taps_enabled(false)
+	_check_eq(holds, [true], "muting taps never abandons the gesture already under way")
+	_check(_push_mouse(spot, false, 0), "the release is absorbed while taps are muted")
+	_check_eq(holds, [true, false], "the muted release still closes the hold")
+	_check(taps.is_empty(), "a muted bar emits no tap")
+	bar.set_taps_enabled(true)
+	beneath.queue_free()
+	return true
+
+func _push_touch(at: Vector2, pressed: bool, index: int) -> bool:
+	var event := InputEventScreenTouch.new()
+	event.index = index; event.pressed = pressed; event.position = at
+	root.push_input(event, true)
+	return root.is_input_handled()
+
+func _push_drag(at: Vector2, index: int) -> void:
+	var event := InputEventScreenDrag.new()
+	event.index = index; event.position = at; event.relative = Vector2(3, 0)
+	root.push_input(event, true)
+
+func _push_mouse(at: Vector2, pressed: bool, device: int) -> bool:
+	var event := InputEventMouseButton.new()
+	event.device = device; event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = pressed; event.position = at
+	root.push_input(event, true)
+	return root.is_input_handled()

@@ -43,17 +43,20 @@ var _pointer_down := false
 ## or written here.
 static func layout_spec(state: Dictionary, width: float, height: float = BAR_HEIGHT) -> Dictionary:
 	var center := Rect2((width - CENTER_WIDTH) * 0.5, 0.0, CENTER_WIDTH, height)
-	var left_rail := Rect2(TOUCH_SIZE * 0.5, 0.0, maxf(0.0, center.position.x - TOUCH_SIZE * 0.5), height)
-	var right_rail := Rect2(center.end.x, 0.0, maxf(0.0, width - center.end.x - TOUCH_SIZE * 0.5), height)
 	var world_time := int(state.get("world_time", 0))
-	var by_side := {"ALLY": [], "ENEMY": []}
-	# A side that parks an item of unknown timing at its outer end keeps that spot
-	# clear of the timed scale, so two items that must not merge can never claim
-	# overlapping touch squares either.
+	# A side holding an entry of unknown timing reserves one 48px parking lane past
+	# the outer end of its rail. The returned rail is that shortened rail, so every
+	# timed item is exactly ratio * rail length from the center edge (spec 4) and the
+	# parked square can never overlap the furthest timed one.
 	var parked := {"ALLY": false, "ENEMY": false}
 	for entry in state.get("entries", []):
 		if entry is Dictionary and _moment_of(entry) == null:
 			parked[_side_of(entry)] = true
+	var left_span := maxf(0.0, center.position.x - TOUCH_SIZE * (1.5 if bool(parked.ALLY) else 0.5))
+	var right_span := maxf(0.0, width - center.end.x - TOUCH_SIZE * (1.5 if bool(parked.ENEMY) else 0.5))
+	var left_rail := Rect2(center.position.x - left_span, 0.0, left_span, height)
+	var right_rail := Rect2(center.end.x, 0.0, right_span, height)
+	var by_side := {"ALLY": [], "ENEMY": []}
 	for entry in state.get("entries", []):
 		if not entry is Dictionary: continue
 		var side := _side_of(entry)
@@ -64,10 +67,10 @@ static func layout_spec(state: Dictionary, width: float, height: float = BAR_HEI
 		if timed:
 			remaining = maxi(0, int(moment) - world_time)
 			ratio = clampf(float(remaining) / float(Presenter.HORIZON_WORLD_TIME), 0.0, 1.0)
-		var rail := left_rail.size.x if side == "ALLY" else right_rail.size.x
-		if timed and bool(parked[side]): rail = maxf(0.0, rail - TOUCH_SIZE)
-		var x := center.position.x - ratio * rail
-		if side == "ENEMY": x = center.end.x + ratio * rail
+		var x := center.position.x - ratio * left_rail.size.x
+		if side == "ENEMY": x = center.end.x + ratio * right_rail.size.x
+		if not timed:
+			x = left_rail.position.x - TOUCH_SIZE if side == "ALLY" else right_rail.end.x + TOUCH_SIZE
 		by_side[side].append({"entity_ids": [int(entry.get("entity_id", -1))], "side": side, "x": x,
 			"marker": str(entry.get("marker", "")), "portrait_key": str(entry.get("portrait_key", "")),
 			"status": str(entry.get("status", "")), "is_next": bool(entry.get("is_next_candidate", false)),
@@ -173,15 +176,12 @@ func flash_actor(entity_id: int) -> void:
 	queue_redraw()
 
 
-## Taps are muted while another surface owns targeting (spec 6). Input stays
-## absorbed either way so nothing reaches the map underneath.
+## Taps are muted while another surface owns targeting (spec 6). Only the
+## entry_tapped emission is suppressed: a gesture already under way keeps absorbing
+## its own motion and release, and that release still reports pointer_held(false).
 func set_taps_enabled(enabled: bool) -> void:
 	if _taps_enabled == enabled: return
 	_taps_enabled = enabled
-	if not enabled and _pointer_down:
-		_pointer_down = false
-		_held_key = -1
-		pointer_held.emit(false)
 	queue_redraw()
 
 
@@ -235,16 +235,19 @@ func _process(_delta: float) -> void:
 	if moved or flashing: queue_redraw()
 
 
+## Nothing that lands on the strip may reach the map underneath, so every mouse and
+## touch event is accepted first and only then interpreted. Browsers and Android
+## synthesize a mouse pair after a handled touch: it is absorbed and dropped.
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
+		accept_event()
 		if event.device == InputEvent.DEVICE_ID_EMULATION: return
 		if int(event.button_index) != MOUSE_BUTTON_LEFT: return
 		_handle_pointer(event.position, bool(event.pressed))
-		accept_event()
 	elif event is InputEventScreenTouch:
-		_handle_pointer(event.position, bool(event.pressed))
 		accept_event()
-	elif _pointer_down and (event is InputEventScreenDrag or event is InputEventMouseMotion):
+		_handle_pointer(event.position, bool(event.pressed))
+	elif event is InputEventScreenDrag or event is InputEventMouseMotion:
 		accept_event()
 
 
@@ -348,13 +351,17 @@ func _draw_item(item: Dictionary, font: Font, held: bool) -> void:
 		HORIZONTAL_ALIGNMENT_CENTER, badge.size.x - 2.0, LABEL_FONT_SIZE, UiSkin.BONE)
 	var count := int((item.entity_ids as Array).size())
 	if count > 1:
-		# Members were merged only because their touch squares overlapped; the batch
-		# meaning stays in group_label (brass edge = one real batch, iron = merely
-		# adjacent moments) and the member list belongs to the tap popup.
+		# Members were merged only because their touch squares overlapped. Shape, not
+		# colour alone, says which kind of group it is: a real execution batch gets a
+		# double ring and ×N, merely adjacent moments a single ring and ≈N. The literal
+		# group_label and the member list belong to the tap popup.
+		var same_batch := str(item.group_label) == "같은 행동 묶음"
 		var tally := Rect2(portrait.end.x - 13.0, portrait.position.y - 1.0, 14.0, 13.0)
 		draw_rect(tally, UiSkin.CANVAS)
-		draw_rect(tally, UiSkin.BRASS if str(item.group_label) == "같은 행동 묶음" else UiSkin.IRON_EDGE, false, 1.0)
-		draw_string(font, Vector2(tally.position.x + 1.0, tally.end.y - 3.0), "×%d" % count,
+		draw_rect(tally, UiSkin.BRASS if same_batch else UiSkin.IRON_EDGE, false, 1.0)
+		if same_batch: draw_rect(tally.grow(1.0), UiSkin.BRASS, false, 1.0)
+		draw_string(font, Vector2(tally.position.x + 1.0, tally.end.y - 3.0),
+			("×%d" if same_batch else "≈%d") % count,
 			HORIZONTAL_ALIGNMENT_CENTER, tally.size.x - 2.0, LABEL_FONT_SIZE, UiSkin.BONE)
 	var tag := _tag_text(item)
 	if tag.is_empty(): return
@@ -365,7 +372,7 @@ func _draw_item(item: Dictionary, font: Font, held: bool) -> void:
 ## Ready and next are facts the core already settled; 예상 marks a prediction that
 ## has not been confirmed against the core order, and … only says "past the horizon".
 ## An item with no known moment gets no tag at all rather than a guessed one.
-func _tag_text(item: Dictionary) -> String:
+static func _tag_text(item: Dictionary) -> String:
 	if not bool(item.timed): return ""
 	if bool(item.out_of_range):
 		return "예상 …" if str(item.confidence) == "EXPECTED" else "…"
@@ -374,7 +381,7 @@ func _tag_text(item: Dictionary) -> String:
 	return "예상" if str(item.confidence) == "EXPECTED" else ""
 
 
-func _tag_color(item: Dictionary) -> Color:
+static func _tag_color(item: Dictionary) -> Color:
 	if bool(item.is_next) and not bool(item.out_of_range): return UiSkin.BRASS
 	if str(item.status) == "READY" and not bool(item.out_of_range): return UiSkin.BONE
 	return UiSkin.BONE_DIM
