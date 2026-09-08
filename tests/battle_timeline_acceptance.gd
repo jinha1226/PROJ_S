@@ -8,6 +8,7 @@ extends SceneTree
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Presenter = preload("res://playtest/battle_timeline_presenter.gd")
 const SimCommand = preload("res://sim/sim_command.gd")
+const Bar = preload("res://playtest/battle_timeline_bar.gd")
 
 const WORLD_SEED := 44
 const PERSONALITY_SEED := 20260828
@@ -20,6 +21,7 @@ func _init() -> void:
 func _run() -> void:
 	_case("timeline_query_is_pure_and_matches_core", _timeline_query_is_pure_and_matches_core)
 	_case("timeline_hides_outside_engaged_and_survives_reload", _timeline_hides_outside_engaged_and_survives_reload)
+	_case("bar_layout_places_sides_center_groups_and_cap", _bar_layout_places_sides_center_groups_and_cap)
 	if failures.is_empty():
 		print("PASS battle timeline acceptance")
 	else:
@@ -127,4 +129,34 @@ func _timeline_hides_outside_engaged_and_survives_reload() -> bool:
 	var rebuilt: Dictionary = reloaded.battle_timeline_state()
 	_check(bool(rebuilt.visible), "reloaded engaged battle rebuilds the timeline from core state")
 	_check(rebuilt.recent_actions.is_empty() or int(rebuilt.recent_actions.back().acted_at) <= int(reloaded.sim.world.world_time), "reload never replays future actions")
+	return true
+
+
+func _bar_layout_places_sides_center_groups_and_cap() -> bool:
+	var entries := [
+		{"entity_id":1,"side":"ALLY","display_name":"A","portrait_key":"human","marker":"①","ready_at":80,"eligible_at":null,"status":"READY","group_key":"ALLY@80","timing_confidence":"READINESS_ONLY","is_next_candidate":true},
+		{"entity_id":2,"side":"ALLY","display_name":"B","portrait_key":"human","marker":"②","ready_at":80,"eligible_at":null,"status":"READY","group_key":"ALLY@80","timing_confidence":"READINESS_ONLY","is_next_candidate":true},
+		{"entity_id":9,"side":"ENEMY","display_name":"g","portrait_key":"goblin","marker":"A","ready_at":170,"eligible_at":200,"status":"RECOVERING","group_key":"ENEMY@200","timing_confidence":"EXPECTED","is_next_candidate":false},
+		{"entity_id":10,"side":"ENEMY","display_name":"h","portrait_key":"goblin","marker":"B","ready_at":700,"eligible_at":700,"status":"RECOVERING","group_key":"ENEMY@700","timing_confidence":"EXPECTED","is_next_candidate":false},
+	]
+	var state := {"revision":1,"world_time":120,"phase":"ENGAGED","visible":true,"entries":entries,"hidden_visible_enemy_count":2,"recent_actions":[]}
+	for width in [360.0, 390.0]:
+		var spec: Dictionary = Bar.layout_spec(state, width)
+		var ally_items: Array = []; var enemy_items: Array = []
+		for item in spec.items:
+			if str(item.side) == "ALLY": ally_items.append(item)
+			else: enemy_items.append(item)
+		_check_eq(ally_items.size(), 1, "%d: two allies at the same moment collapse into one group item" % int(width))
+		_check_eq(ally_items[0].entity_ids, [1, 2], "%d: group item lists both allies" % int(width))
+		_check_eq(str(ally_items[0].group_label), "같은 행동 묶음", "%d: same group key is labelled as one batch" % int(width))
+		_check(float(ally_items[0].x) < spec.center.position.x + 0.5 and float(ally_items[0].x) >= spec.center.position.x - 1.0, "%d: ready allies sit at the left edge of the center zone" % int(width))
+		_check_eq(enemy_items.size(), 2, "%d: enemies at different times stay separate" % int(width))
+		var near: Dictionary = enemy_items[0]; var far: Dictionary = enemy_items[1]
+		_check(float(near.x) > spec.center.end.x - 0.5 and float(near.x) < float(far.x), "%d: nearer enemy is closer to center on the right" % int(width))
+		_check(bool(far.out_of_range) and float(far.x) >= spec.right_rail.end.x - 24.0, "%d: beyond-horizon enemy is pinned at the outer end with a marker" % int(width))
+		_check_eq(str(spec.hidden_label), "+2", "%d: hidden participants show as +N" % int(width))
+		for item in spec.items:
+			var touch: Rect2 = item.touch
+			_check(touch.size.x >= 47.9 and touch.size.y >= 47.9, "%d: every touch target is at least 48px" % int(width))
+			_check(touch.position.x >= -0.1 and touch.end.x <= width + 0.1, "%d: touch targets stay inside the bar" % int(width))
 	return true
