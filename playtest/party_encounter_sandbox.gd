@@ -313,6 +313,7 @@ var battle_timeline_bar
 var battle_timeline_controller
 var battle_drag:Control
 var battle_enemy_strip:ScrollContainer
+var battle_command_flow=preload("res://playtest/battle_command_flow.gd").new()
 var battle_loot_panel:Control
 var _shown_loot_battle_id:=-1
 var _product_zoom_cell_count:=PRODUCT_ZOOM_DEFAULT_CELL_COUNT
@@ -1749,6 +1750,7 @@ func _refresh()->void:
 		if str(status.get("safe_phase",""))!=auto_phase:
 			_orchestrate_auto_phase(status)
 			status=session.party_status()
+	battle_command_flow.sync(self)
 	var run_progress:=_current_run_progress()
 	var run_available:=bool(run_progress.get("available",false))
 	var run_complete:=bool(run_progress.get("complete",false))
@@ -2373,6 +2375,8 @@ func _battle_presentation_blocked()->bool:
 
 func _tick_autonomous_battle(delta:float)->void:
 	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
+	if battle_command_flow.sync(self):
+		_apply_product_zoom_surface();_request_refresh()
 	var state=session.sim.world.party_encounter
 	if state.safe_phase!="ENGAGED":
 		autonomous_battle_clock.cursor=-1.0;return
@@ -2392,6 +2396,7 @@ func _tick_autonomous_battle(delta:float)->void:
 				_show_manual_battle_feedback("자동 행동 실패 · "+str(result.get("reason","")))
 				_request_refresh();break
 			_record_result(result,true,"자동 전투 실행 불가",true);changed=true
+			if battle_command_flow.check_danger(self):break
 			if not str(result.get("reservation_rejection","")).is_empty():
 				_show_manual_battle_feedback(str(result.reservation_rejection))
 			if Time.get_ticks_usec()-started>=8000:break
@@ -2401,6 +2406,7 @@ func _tick_autonomous_battle(delta:float)->void:
 	if changed:
 		if session.sim.world.party_encounter.safe_phase=="ENGAGED":_refresh_individual_battle_surface()
 		else:_request_refresh()
+	battle_command_flow.paint(self)
 	if battle_timeline_bar!=null:battle_timeline_bar.set_display_time(at)
 
 func _build_duo_battle_controls(status:Dictionary)->void:
@@ -2422,7 +2428,7 @@ func _add_battle_portrait_utilities()->void:
 	utility.custom_minimum_size.x=48;utility.add_theme_constant_override("separation",2)
 	cards.add_child(utility)
 	var pause:=Button.new();pause.name="PortraitBattlePause"
-	pause.text="재개" if autonomous_battle_clock.paused else "정지"
+	pause.text=("시작" if battle_command_flow.awaiting_start else "재개") if autonomous_battle_clock.paused else "지휘"
 	pause.custom_minimum_size=Vector2(48,48)
 	pause.disabled=not _battle_target_mode.is_empty()
 	DarkPixelSkinScript.apply_action_button(pause,DarkPixelSkinScript.CYAN)
@@ -4025,6 +4031,7 @@ func _on_product_wait_guard()->void:
 func _on_product_execute()->void:
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
 		autonomous_battle_clock.paused=not autonomous_battle_clock.paused
+		if not autonomous_battle_clock.paused:battle_command_flow.resume()
 		autonomous_battle_clock.remaining=autonomous_battle_clock.INTERVAL
 		_request_refresh();return
 	if bool(_current_run_progress().get("terminal",false)):
@@ -5505,11 +5512,22 @@ func _on_cell(position:Vector2i)->void:
 	else:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
+func _focus_battle_enemy(entity_id:int)->void:
+	var result:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
+	if result.get("accepted",false):
+		selected_target_id=entity_id
+		grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
+		_show_manual_battle_feedback("집중공격 · %s"%_entity_display_name(entity_id))
+	else:_show_manual_battle_feedback("공격 대상을 지정할 수 없습니다.")
+	_request_refresh()
+
 func _on_actor(entity_id:int)->void:
 	if not _battle_target_mode.is_empty():
 		_commit_battle_target(entity_id);return
 	if companion_order_editor!=null and companion_order_editor.visible:
 		companion_order_editor.pick_actor(entity_id);return
+	if _portrait_battle_controls_visible() and entity_id in session.party_status().get("visible_enemy_ids",[]):
+		_focus_battle_enemy(entity_id);return
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
@@ -5870,6 +5888,7 @@ func _settle_solo_product_contact()->void:
 	auto_phase=str(session.party_status().get("safe_phase",""))
 
 func _flush_pending_visual_effects()->int:
+	battle_command_flow.paint(self)
 	if battle_enemy_strip!=null:battle_enemy_strip.sync(self)
 	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0

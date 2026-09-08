@@ -20,6 +20,9 @@ var target_valid:=false
 var target_message:=""
 var host_ref:WeakRef
 var _preview_key:=""
+var move_goal:=Vector2i(-1,-1)
+var move_valid:=false
+var _move_key:=""
 
 func handle_input(host,event:InputEvent)->bool:
 	host_ref=weakref(host)
@@ -72,6 +75,7 @@ func handle_input(host,event:InputEvent)->bool:
 		if event is InputEventScreenDrag or event is InputEventMouseMotion or released:
 			update_pointer(event.position,_target_at(host,event.position))
 			_preview(host,target_id if dragged and not cancelled else -1)
+			_preview_move(host,event.position)
 		if released:
 			var actor:=actor_id
 			var target:=target_id
@@ -80,7 +84,10 @@ func handle_input(host,event:InputEvent)->bool:
 			var portrait:=portrait_origin
 			var selected_skill:=skill_id;var selected_label:=skill_label
 			var rejection:=target_message
+			var goal:=move_goal
+			var issue_move:=dragged and not cancelled and skill_id.is_empty() and target<0 and move_valid
 			if event is InputEventScreenTouch and event.canceled:issue=false;tap=false
+			if event is InputEventScreenTouch and event.canceled:issue_move=false
 			if touch:ignore_mouse_until=Time.get_ticks_msec()+350
 			clear()
 			host.selected_member_id=actor
@@ -94,6 +101,9 @@ func handle_input(host,event:InputEvent)->bool:
 						host._actor_display_name(actor),host._entity_display_name(target),
 						"공격" if selected_skill.is_empty() else selected_label+" 예약"])
 				else:host._show_manual_battle_feedback("그 적은 지정할 수 없습니다.")
+			elif issue_move:
+				var result:Dictionary=host.session.individual_battle.reserve_move(actor,goal)
+				host._show_manual_battle_feedback(str(result.get("message","이동 지시 실패")))
 			elif tap:
 				if not selected_skill.is_empty():host._on_manual_skill_selected(actor,selected_skill,selected_label)
 				elif portrait:host._on_compact_member_card_pressed(actor,host._actor_display_name(actor))
@@ -166,6 +176,24 @@ func _preview(host,id:int)->void:
 	host.grid.set_target_preview(id,target_valid)
 	if host.battle_enemy_strip!=null:host.battle_enemy_strip.set_hover(id,target_valid)
 
+func _preview_move(host,position:Vector2)->void:
+	move_goal=Vector2i(-1,-1);move_valid=false
+	if dragged and not cancelled and skill_id.is_empty() and target_id<0 \
+			and host.grid.get_global_rect().has_point(position):
+		var local:Vector2=host.grid.get_global_transform_with_canvas().affine_inverse()*position
+		move_goal=host.grid.pixel_to_world_cell(local)
+		if not host.grid.is_world_cell_visible(move_goal):move_goal=Vector2i(-1,-1)
+	var key:="%d/%s/%d"%[actor_id,str(move_goal),host.session.sim.world.step_index]
+	if key!=_move_key:
+		_move_key=key
+		if move_goal!=Vector2i(-1,-1):
+			var assessment:Dictionary=host.session.individual_battle.movement_assessment(actor_id,move_goal)
+			host.grid.move_preview_valid=bool(assessment.get("accepted",false))
+			target_message=str(assessment.get("message",""))
+		else:host.grid.move_preview_valid=false
+	move_valid=host.grid.move_preview_valid
+	host.grid.move_preview_position=move_goal;host.grid.queue_redraw()
+
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -173,6 +201,7 @@ func _ready()->void:
 
 func begin(actor:int,position:Vector2,is_touch:bool,index:int,from_portrait:bool)->void:
 	_preview_key=""
+	_move_key="";move_goal=Vector2i(-1,-1);move_valid=false
 	active=true;actor_id=actor;target_id=-1;pointer=position;start=position
 	touch=is_touch;pointer_index=index;portrait_origin=from_portrait
 	dragged=false;cancelled=false;queue_redraw()
@@ -185,6 +214,9 @@ func update_pointer(position:Vector2,target:int)->void:
 func clear()->void:
 	var host=host_ref.get_ref() if host_ref!=null else null
 	if host!=null:_preview(host,-1)
+	if host!=null:
+		host.grid.move_preview_position=Vector2i(-1,-1);host.grid.move_preview_valid=false;host.grid.queue_redraw()
+	move_goal=Vector2i(-1,-1);move_valid=false;_move_key=""
 	active=false;actor_id=-1;target_id=-1;pointer_index=-1
 	skill_id="";skill_label="";target_valid=false;target_message=""
 	dragged=false;cancelled=false;queue_redraw()
@@ -195,6 +227,7 @@ func _draw()->void:
 	var origin:Vector2=inverse*start
 	var end:Vector2=inverse*pointer
 	var color:=(Color("#e4bb67") if target_valid else Color("#ff6363")) if target_id>0 else Color("#a5b8c6")
+	if move_goal!=Vector2i(-1,-1):color=Color("#87dfcb") if move_valid else Color("#ff6363")
 	draw_line(origin,end,Color(0,0,0,0.65),6,true)
 	draw_line(origin,end,color,3,true)
 	draw_circle(origin,5,color)

@@ -2526,6 +2526,7 @@ func issue_party_command(command_id:String,target_id:int=-1,
 		var restored=SimulatorScript.from_snapshot(rollback)
 		if restored!=null:sim=restored
 		return _rejection_dto("party_command_commit_failed")
+	individual_battle._bind();individual_battle.movements.clear()
 	_clear_draft()
 	if append_journal:
 		command_journal.append({"kind":"party_command","operation":{
@@ -2571,6 +2572,7 @@ func issue_actor_command(actor_id:int,command_id:String,target_id:int=-1,
 		var restored=SimulatorScript.from_snapshot(rollback)
 		if restored!=null:sim=restored
 		return _rejection_dto("party_command_commit_failed")
+	individual_battle._bind();individual_battle.movements.erase(actor_id)
 	_clear_draft()
 	if append_journal:command_journal.append({"kind":"actor_command","operation":{
 		"actor_id":str(actor_id),"command_id":command_id,"target_id":str(target_id)}})
@@ -7139,6 +7141,9 @@ func load_session_json(encoded: String) -> Dictionary:
 					str(operation.skill_id),int(operation.target_id))
 			"cancel_reserved_skill":
 				replay_result=replay.individual_battle.cancel(int(row.operation.actor_id))
+			"reserve_move":
+				replay_result=replay.individual_battle.reserve_move(int(row.operation.actor_id),
+					Vector2i(int(row.operation.destination[0]),int(row.operation.destination[1])))
 			"individual_step":
 				replay_result=replay.individual_battle.commit(row.operation)
 			"active_skill":
@@ -7159,6 +7164,7 @@ func load_session_json(encoded: String) -> Dictionary:
 		parsed_personality_seed, parsed_scenario_id, replay._map_layout)
 	individual_battle._bind()
 	individual_battle.queues=replay.individual_battle.queues.duplicate(true)
+	individual_battle.movements=replay.individual_battle.movements.duplicate(true)
 	return installed
 
 
@@ -7541,7 +7547,7 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
-			"reserve_skill","cancel_reserved_skill","individual_step":
+			"reserve_skill","cancel_reserved_skill","individual_step","reserve_move":
 				if keys!=["kind","operation"]:return "invalid_individual_journal"
 				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
 				if not individual_error.is_empty():return individual_error

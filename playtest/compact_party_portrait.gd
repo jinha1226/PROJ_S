@@ -6,6 +6,7 @@ var selected:=false
 var party_count:=1
 var party_index:=0
 var order_reserved:=false
+var danger:=false
 
 func _portrait(texture:Texture2D,rect:Rect2)->void:
 	var tones:=[Color("#508cb0"),Color("#bd853d"),Color("#61934e"),Color("#ac4949")]
@@ -43,6 +44,7 @@ func _draw()->void:
 	else:
 		_draw_expanded(texture,font,health,maximum)
 	if selected:draw_rect(Rect2(Vector2.ONE,size-Vector2.ONE*2),Color("#c6a34c"),false,1)
+	if danger:draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#ff6262"),false,3)
 	if Time.get_ticks_msec()<emphasized_until_msec:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#e4bb67"),false,2)
 	if order_reserved:draw_circle(Vector2(size.x-8,9),5,Color("#e3bd57"))

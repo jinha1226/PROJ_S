@@ -756,6 +756,11 @@ func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)-
 var _actor_emphasis:Dictionary={}
 var target_preview_id:=-1
 var target_preview_valid:=true
+var danger_actor_ids:Array[int]=[]
+var battle_move_goals:Dictionary={}
+var battle_notice:=""
+var move_preview_position:=Vector2i(-1,-1)
+var move_preview_valid:=false
 
 func set_target_preview(entity_id:int,valid:bool=true)->void:
 	target_preview_id=entity_id;target_preview_valid=valid;queue_redraw()
@@ -2141,6 +2146,22 @@ func _diorama_visibility_state(row:Dictionary)->String:
 
 func _draw() -> void:
 	_draw_world_with_emphasis()
+	for id in battle_move_goals:
+		var goal:Vector2i=battle_move_goals[id]
+		if not is_world_cell_visible(goal):continue
+		var center:=world_to_pixel_center(goal)
+		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.4,Vector2.ONE*cell_size_px()*0.8),Color("#87c9eb"),false,2)
+		var actor_center:=actor_visual_center(id)
+		if actor_center.x>=0:draw_line(actor_center,center,Color(0.5,0.8,1,0.35),1,true)
+	if move_preview_position!=Vector2i(-1,-1) and is_world_cell_visible(move_preview_position):
+		var color:=Color("#87dfcb") if move_preview_valid else Color("#ff6363")
+		var center:=world_to_pixel_center(move_preview_position)
+		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.45,Vector2.ONE*cell_size_px()*0.9),color,false,3)
+	for id in danger_actor_ids:
+		var center:=actor_visual_center(id)
+		if center.x<0 or center.y<0:continue
+		draw_arc(center,25,0,TAU,32,Color("#ff6262"),3,true)
+		draw_string(get_theme_font("font"),center+Vector2(-5,-29),"!",HORIZONTAL_ALIGNMENT_LEFT,20,22,Color("#ff6262"))
 	if target_preview_id>0:
 		var center:=actor_visual_center(target_preview_id)
 		if center.x>=0 and center.y>=0:
@@ -2152,6 +2173,10 @@ func _draw() -> void:
 	for id in _actor_emphasis:
 		if actor_emphasis_active(int(id)):
 			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)
+	if not battle_notice.is_empty():
+		draw_rect(Rect2(2,2,maxf(1,size.x-4),24),Color(0.04,0.07,0.09,0.9))
+		draw_string(get_theme_font("font"),Vector2(6,19),battle_notice,HORIZONTAL_ALIGNMENT_CENTER,
+			maxf(1,size.x-12),12,Color("#ffe3a0"))
 
 func _draw_world_with_emphasis()->void:
 	_ensure_melee_vfx()

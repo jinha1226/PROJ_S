@@ -42,10 +42,7 @@ func sync(host)->void:
 			row.add_child(button)
 			button.pressed.connect(func():
 				if not host._battle_target_mode.is_empty():host._commit_battle_target(id)
-				else:
-					host.selected_target_id=id
-					host.grid.set_selection(host.selected_member_id,id)
-					host.grid.set_actor_emphasis(id,1200))
+				else:host._focus_battle_enemy(id))
 		var entity=world.entities[id]
 		button.icon=Assets.actor_layer_spec({"species_id":entity.species_id}).get("body_texture")
 		button.text="%s\n%d/%d"%[entity.display_name,entity.health,entity.max_health]
