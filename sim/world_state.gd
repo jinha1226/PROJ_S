@@ -81,6 +81,7 @@ const PartyRelationshipHistoryValidatorScript=preload("res://sim/party_relations
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
+const ActiveSkillValidationScript=preload("res://sim/abilities/party_active_skill_validation.gd")
 
 var width: int
 var height: int
@@ -1835,6 +1836,8 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 			if cause == null or cause.id >= event.id or cause.world_time > event.world_time \
 					or event.instigator_id != cause.instigator_id:
 				return "runtime_event_cause_invalid"
+		var active_error:String=ActiveSkillValidationScript.event_error(self,event)
+		if not active_error.is_empty():return active_error
 	if party_encounter != null:
 		var party_error := PartyEncounterStateScript.wire_error(party_encounter.to_dict(), width, height)
 		if not party_error.is_empty(): return party_error
@@ -2206,6 +2209,8 @@ func _restored_state_error() -> String:
 		if event.type == "action.melee_attack":
 			var action_semantic_error := _melee_action_event_error(event)
 			if not action_semantic_error.is_empty(): return action_semantic_error
+		var active_event_error:String=ActiveSkillValidationScript.event_error(self,event)
+		if not active_event_error.is_empty():return active_event_error
 		if event.type == "action.hold":
 			var hold_semantic_error := _hold_event_error(event)
 			if not hold_semantic_error.is_empty(): return hold_semantic_error
@@ -2275,13 +2280,16 @@ func _restored_state_error() -> String:
 		if event.type == "combat.physical_damage":
 			var physical_cause = event_by_id(event.cause_id)
 			var valid_physical_source: bool = physical_cause != null \
-					and physical_cause.type in ["action.melee_attack", "status.tick"]
+					and physical_cause.type in ["action.melee_attack", "action.skill", "status.tick"]
 			var cause_is_canonical: bool = physical_cause != null \
 					and physical_cause.data.get("schema_version") in [1, 3]
 			var expected_requested: int = physical_cause.magnitude if physical_cause != null else 0
 			if physical_cause != null and physical_cause.type == "action.melee_attack" \
 					and cause_is_canonical:
 				expected_requested = int(physical_cause.data.get("final_damage", 0))
+			elif physical_cause!=null and physical_cause.type=="action.skill":
+				expected_requested=int(physical_cause.data.get("damage",0))
+				valid_physical_source=physical_cause.data.get("skill_id") in ["STRIKE","SHOVE"]
 			var valid_physical_data: bool = cause_is_canonical \
 				and _canonical_damage_data_error(
 					event, "physical", expected_requested).is_empty()
@@ -2289,7 +2297,7 @@ func _restored_state_error() -> String:
 					or physical_cause.target_id != event.target_id or physical_cause.position != event.position \
 					or physical_cause.step_index != event.step_index \
 					or physical_cause.world_time != event.world_time or not valid_physical_data \
-					or event.magnitude <= 0 or event.magnitude > physical_cause.magnitude:
+				or event.magnitude <= 0 or event.magnitude > physical_cause.magnitude:
 				return "physical_damage_chain_invalid"
 		if event.type in ["combat.fire_damage", "combat.electric_damage"]:
 			var typed_damage_type: String = str(event.type).trim_prefix("combat.") \
@@ -2650,7 +2658,10 @@ func _body_history_error(body)->String:
 			return "invalid_body_wound_source"
 		var attack=event_by_id(source.cause_id)
 		if attack==null \
-				or (expected_type=="physical" and (attack.target_id!=body.entity_id or attack.type!="action.melee_attack" or attack.data.get("outcome")!="HIT")):
+				or (expected_type=="physical" and (attack.target_id!=body.entity_id \
+					or attack.type not in ["action.melee_attack","action.skill"] \
+					or attack.type=="action.melee_attack" and attack.data.get("outcome")!="HIT" \
+					or attack.type=="action.skill" and attack.data.get("ruleset_id")!="party-active-skills-v1")):
 			return "invalid_body_wound_attack_source"
 		wound_sources[source_id]={"part_id":str(wound.part_id)}
 	for part in body.parts:
@@ -3460,6 +3471,14 @@ func _canonical_typed_damage_event_error(event) -> String:
 	var requested_damage: int = int(event.data.requested_damage)
 	if event.magnitude > requested_damage:
 		return "canonical_typed_damage_applied_exceeds_requested"
+	var source=event_by_id(event.cause_id)
+	if source!=null and source.type=="action.skill" \
+			and source.data.get("ruleset_id")=="party-active-skills-v1" \
+			and source.data.get("skill_id")=="FIREBOLT" and damage_type=="fire" \
+			and source.target_id==event.target_id and source.position==event.position \
+			and source.step_index==event.step_index and source.world_time==event.world_time \
+			and int(source.data.get("damage",0))==requested_damage:
+		return ""
 	return _canonical_environment_damage_source_error(
 		event, damage_type, requested_damage, false)
 
@@ -4428,6 +4447,8 @@ func _party_runtime_error() -> String:
 	if not progression_error.is_empty():return progression_error
 	var restoration_error:=_party_health_restoration_error()
 	if not restoration_error.is_empty():return restoration_error
+	var energy_error:String=ActiveSkillValidationScript.energy_history_error(self)
+	if not energy_error.is_empty():return energy_error
 	return _party_event_correlation_error()
 
 
@@ -4588,6 +4609,12 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			projected_health=mini(npc.max_health,projected_health+int(event.magnitude))
 			if int(event.data.get("health_after",-1))!=projected_health:
 				return "opening_town_restoration_projection_invalid"
+		elif event_type=="health.restored" and event.data.get("kind")=="ACTIVE_SKILL":
+			var active_heal_error:String=ActiveSkillValidationScript.healing_error(self,event)
+			if not active_heal_error.is_empty():return active_heal_error
+			projected_health=mini(npc.max_health,projected_health+event.magnitude)
+			if int(event.data.health_after)!=projected_health:
+				return "opening_active_heal_projection_invalid"
 	if discovery_rows.size() != 1:
 		return "opening_discovery_event_count_invalid"
 	var discovery = discovery_rows[0]
@@ -4841,9 +4868,10 @@ func _party_health_restoration_error()->String:
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
-				if restoration_kind in ["POTION","TOWN_CLINIC"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
-					or event.instigator_id!=hero_id or event.magnitude<=0 \
+					or restoration_kind!="ACTIVE_SKILL" and event.instigator_id!=hero_id \
+					or event.magnitude<=0 \
 					or int(event.data.get("health_after",-1))<1 \
 					or int(event.data.get("health_after",-1))>int(entities[hero_id].max_health):
 				return "party_health_restoration_event_invalid"
@@ -4866,10 +4894,17 @@ func _party_health_restoration_error()->String:
 				if event.cause_id!=-1 or event.data.ruleset_id!="safe-exploration-recovery-v1" \
 						or int(event.data.get("safe_turn_count",0))<1:
 					return "party_auto_restoration_cause_invalid"
+			elif restoration_kind=="ACTIVE_SKILL":
+				var skill_source=event_by_id(event.cause_id)
+				if skill_source==null or skill_source.type!="action.skill" \
+						or skill_source.target_id!=hero_id \
+						or skill_source.data.get("skill_id")!="MEND" \
+						or event.data.ruleset_id!="party-active-skills-v1":
+					return "party_active_skill_restoration_cause_invalid"
 			else:return "party_health_restoration_kind_invalid"
 			projected=expected_after
 	if int(entities[hero_id].health)!=projected:return "party_health_restoration_projection_mismatch"
-	return ""
+	return ActiveSkillValidationScript.healing_history_error(self)
 
 
 func _focus_from_event(event)->Dictionary:
@@ -6032,11 +6067,14 @@ func _party_move_event_is_canonical(event) -> bool:
 	var from_position := Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
 	var to_position := Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
 	var definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
-	return event.target_id == -1 and event.cause_id == -1 and event.position == to_position \
+	var common_valid:bool=event.target_id == -1 and event.position == to_position \
 		and _party_distance(from_position,to_position) == 1 and not definition.is_empty() \
 		and bool(definition.get("passable",false)) and tile_at(to_position).terrain == event.data.terrain_id \
-		and int(event.data.move_time_cost) == int(definition.move_time_cost) \
 		and event.magnitude == int(event.data.move_time_cost)
+	if not common_valid:return false
+	if event.cause_id==-1:
+		return int(event.data.move_time_cost)==int(definition.move_time_cost)
+	return ActiveSkillValidationScript.forced_move_error(self,event).is_empty()
 
 
 func _party_historical_deployment_cell_valid(position: Vector2i, reserved: Dictionary,

@@ -909,6 +909,54 @@ func suggest_protagonist_turn()->Dictionary:
 	return {"accepted":true,"action":decision.selected_leaf,"decision":decision}
 
 
+func assess_ready_allies_after_active(excluded_actor_id:int,
+		processed_step_index:int,attack_start_world_time:int)->Dictionary:
+	# Called only inside the active-skill transaction, after the skill effect has
+	# committed. Every remaining ready actor is therefore assessed against the
+	# resulting HP and positions; no pre-skill melee projection can go stale.
+	var state=world.party_encounter
+	if state==null or state.safe_phase not in ["ENGAGED","REGROUP_READY"]:
+		return {"accepted":true,"rows":[],"time_cost":0}
+	var seed_action=ActionScript.hold(state.protagonist_id)
+	var board:Dictionary=BlackboardScript.build(world,seed_action)
+	var rows:Array=[]
+	var member_ids:Array=state.active_party_member_ids.duplicate()
+	member_ids.sort_custom(func(a,b):
+		return int(state.member(a).roster_slot)<int(state.member(b).roster_slot))
+	for member_id_value in member_ids:
+		var member_id:=int(member_id_value);var member=state.member(member_id)
+		if member_id==excluded_actor_id or member==null or member.presence!="DEPLOYED" \
+				or not world.can_act(member_id,world.world_time) \
+				or member.busy_until>world.world_time:continue
+		var action=_suggest(member_id,seed_action,board)
+		rows.append(_action_row(action,"SUGGESTED",member.roster_slot))
+	var conflict_error:=_resolve_move_conflicts(rows)
+	if not conflict_error.is_empty():return {"accepted":false,"reason":conflict_error}
+	var melee_rows:Array=[]
+	for row_index in range(rows.size()):
+		if str(rows[row_index].action.type)=="MELEE":
+			melee_rows.append({"row_index":row_index,
+				"actor_id":int(rows[row_index].action.actor_id),
+				"target_id":int(rows[row_index].action.target_id)})
+	melee_rows.sort_custom(func(a,b):
+		return int(a.target_id)<int(b.target_id) if int(a.target_id)!=int(b.target_id) \
+			else int(a.actor_id)<int(b.actor_id))
+	for ordinal in range(melee_rows.size()):
+		var row_index:=int(melee_rows[ordinal].row_index);var row:Dictionary=rows[row_index]
+		var weapon_id:=WorldItemOperationsScript.equipped_weapon_id(world,int(row.action.actor_id)) \
+			if _uses_weapon_combat(int(row.action.actor_id)) else ""
+		var assessment:Dictionary=melee.assess_attack(int(row.action.actor_id),
+			int(row.action.target_id),"SUGGESTED",processed_step_index,
+			attack_start_world_time,"PARTY_TURN/%d"%processed_step_index,
+			ordinal,weapon_id,_weapon_occupants(int(row.action.actor_id),
+				int(row.action.target_id)) if not weapon_id.is_empty() else {})
+		if assessment.is_empty():return {"accepted":false,"reason":"combat_assessment_failed"}
+		row.combat_assessment=assessment;rows[row_index]=row
+	var max_cost:=0
+	for row in rows:max_cost=maxi(max_cost,int(row.time_cost))
+	return {"accepted":true,"rows":rows,"time_cost":max_cost}
+
+
 func explain_companion_turn(request) -> Dictionary:
 	var rejection := _turn_rejection(request)
 	if not rejection.is_empty():
@@ -941,6 +989,15 @@ func explain_companion_turn(request) -> Dictionary:
 func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -> Dictionary:
 	if board.is_empty():
 		board = BlackboardScript.build(world, protagonist_action)
+	else:
+		board=board.duplicate(true)
+	# Resolve the newest applicable directive for this actor. A legacy whole-party
+	# command remains compatible, while an actor command changes only this copy.
+	board["party_command"]=preload("res://sim/party_exception_command.gd").effective_for_actor(
+		world,world.party_encounter,actor_id)
+	if str(board.party_command.command_id)=="ATTACK_TARGET":
+		board["focus_target_id"]=int(board.party_command.target_id)
+		board.claims[actor_id]=int(board.party_command.target_id)
 	var state = world.party_encounter
 	var member = state.member(actor_id)
 	var appraisal: Dictionary = AppraisalScript.appraise(world, actor_id, board)

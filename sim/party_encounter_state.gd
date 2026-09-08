@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 22
+const SCHEMA_VERSION := 23
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -37,6 +37,7 @@ const EMOTION_STATE_SCHEMA_VERSION := 20
 const MEMORY_STATE_SCHEMA_VERSION := 21
 # v22 persists the shared party ration gauge and its drain clock.
 const RATION_SCHEMA_VERSION := 22
+const ACTIVE_SKILL_SCHEMA_VERSION := 23
 const MAX_ACTIVE_PARTY_SIZE := 4
 const MAX_TRACKED_ENEMY_SIZE := 1024
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
@@ -104,7 +105,8 @@ func to_dict() -> Dictionary:
 	for entity_id in all_member_ids:
 		members.append(member_rows[entity_id].to_dict(
 			schema_version >= EMOTION_STATE_SCHEMA_VERSION,
-			schema_version >= MEMORY_STATE_SCHEMA_VERSION))
+			schema_version >= MEMORY_STATE_SCHEMA_VERSION,
+			schema_version >= ACTIVE_SKILL_SCHEMA_VERSION))
 	var busy_rows: Array = []
 	var ids: Array = enemy_busy_rows.keys(); ids.sort()
 	for entity_id in ids: busy_rows.append({"entity_id": str(entity_id), "busy_until": str(enemy_busy_rows[entity_id])})
@@ -294,6 +296,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v18_keys:Array=v15_keys.duplicate();v18_keys.append("expedition_cycle");v18_keys.sort()
 	var v19_keys:Array=v18_keys.duplicate();v19_keys.append("activated_anchor_portal_floors");v19_keys.sort()
 	var v22_keys:Array=v19_keys.duplicate();v22_keys.append_array(["ration_milli","ration_processed_at"]);v22_keys.sort()
+	var v23_keys:Array=v22_keys.duplicate()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -317,7 +320,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == ANCHOR_PORTAL_SCHEMA_VERSION and keys != v19_keys) \
 		or (parsed_schema_version == EMOTION_STATE_SCHEMA_VERSION and keys != v19_keys) \
 		or (parsed_schema_version == MEMORY_STATE_SCHEMA_VERSION and keys != v19_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v22_keys):
+		or (parsed_schema_version == RATION_SCHEMA_VERSION and keys != v22_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v23_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
@@ -327,7 +331,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			HEXACO_SCHEMA_VERSION,PLAYER_SPECIES_SCHEMA_VERSION,
 			STAT_SCALING_SCHEMA_VERSION,EXPEDITION_CYCLE_SCHEMA_VERSION,
 			ANCHOR_PORTAL_SCHEMA_VERSION,EMOTION_STATE_SCHEMA_VERSION,
-			MEMORY_STATE_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
+			MEMORY_STATE_SCHEMA_VERSION,RATION_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"
@@ -375,7 +379,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			parsed_schema_version >= MORALE_SCHEMA_VERSION,
 			parsed_schema_version >= HEXACO_SCHEMA_VERSION,
 			parsed_schema_version >= EMOTION_STATE_SCHEMA_VERSION,
-			parsed_schema_version >= MEMORY_STATE_SCHEMA_VERSION)
+			parsed_schema_version >= MEMORY_STATE_SCHEMA_VERSION,
+			parsed_schema_version >= ACTIVE_SKILL_SCHEMA_VERSION)
 		if not error.is_empty(): return error
 		if index > 0 and Int64CodecScript.parse(row.member_rows[index-1].entity_id,"member") \
 				>= Int64CodecScript.parse(row.member_rows[index].entity_id,"member"):

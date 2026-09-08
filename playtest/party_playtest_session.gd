@@ -51,6 +51,7 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
+const ActiveSkillRegistryScript=preload("res://sim/abilities/active_skill_registry.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
 const RationRulesScript=preload("res://sim/party_ration_rules.gd")
@@ -2466,6 +2467,126 @@ func issue_party_command(command_id:String,target_id:int=-1,
 		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
 		"target_id":target_id,"event_id":int(event.id),
 		"party_command":PartyCommandScript.effective(sim.world,state)})
+
+
+func actor_command_assessment(actor_id:int,command_id:String,target_id:int=-1)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	if state.safe_phase!="ENGAGED":return _rejection_dto("party_command_phase_required")
+	if actor_id not in state.active_party_member_ids or state.member(actor_id)==null \
+			or state.member(actor_id).presence!="DEPLOYED" \
+			or not sim.world.can_act(actor_id,sim.world.world_time):
+		return _rejection_dto("party_command_actor_invalid")
+	if command_id not in PartyCommandScript.COMMAND_IDS:
+		return _rejection_dto("unknown_party_command")
+	if command_id=="ATTACK_TARGET":
+		if target_id not in CampaignEncounterStreamScript.active_enemy_ids(sim.world) \
+				or not sim.world.entities.has(target_id) \
+				or not sim.world.is_autonomous_target(target_id):
+			return _rejection_dto("party_command_target_invalid")
+	elif target_id!=-1:return _rejection_dto("party_command_target_invalid")
+	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
+		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
+		"target_id":target_id})
+
+
+func issue_actor_command(actor_id:int,command_id:String,target_id:int=-1,
+		append_journal:bool=true)->Dictionary:
+	var assessment:=actor_command_assessment(actor_id,command_id,target_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	var position:Vector2i=sim.world.entities[actor_id].position
+	var event=sim.world.emit_event("party.actor_command_issued",actor_id,target_id,
+		position,0,-1,PartyCommandScript.actor_event_data(actor_id,command_id,target_id))
+	sim.world.party_encounter.revision+=1
+	if event==null or not sim.world.world_state_error().is_empty():
+		var restored=SimulatorScript.from_snapshot(rollback)
+		if restored!=null:sim=restored
+		return _rejection_dto("party_command_commit_failed")
+	_clear_draft()
+	if append_journal:command_journal.append({"kind":"actor_command","operation":{
+		"actor_id":str(actor_id),"command_id":command_id,"target_id":str(target_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
+		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
+		"target_id":target_id,"event_id":int(event.id),
+		"actor_command":PartyCommandScript.effective_for_actor(sim.world,
+			sim.world.party_encounter,actor_id)})
+
+
+func actor_command_status(actor_id:int)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null \
+			or actor_id not in sim.world.party_encounter.active_party_member_ids:
+		return {"available":false,"actor_id":actor_id,"command_id":"FOLLOW",
+			"target_id":-1,"explicit":false}.duplicate(true)
+	var result:=PartyCommandScript.effective_for_actor(sim.world,
+		sim.world.party_encounter,actor_id)
+	result["available"]=true
+	result["command_label"]=PartyCommandScript.label_ko(str(result.command_id))
+	return result.duplicate(true)
+
+
+func active_skill_rows(actor_id:int)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
+	var member=sim.world.party_encounter.member(actor_id)
+	if member==null:return rows
+	var common_reason:=""
+	if sim.world.party_encounter.safe_phase!="ENGAGED":common_reason="active_skill_combat_required"
+	elif actor_id not in sim.world.party_encounter.active_party_member_ids \
+			or member.presence!="DEPLOYED":common_reason="active_skill_actor_inactive"
+	elif not sim.world.can_act(actor_id,sim.world.world_time):common_reason="active_skill_actor_incapacitated"
+	elif member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
+	for skill_id_value in member.active_skill_ids():
+		var skill_id:=str(skill_id_value);var definition:=ActiveSkillRegistryScript.definition(skill_id)
+		var reason:=common_reason
+		if reason.is_empty() and member.energy<int(definition.cost):reason="active_skill_energy_insufficient"
+		rows.append({"skill_id":skill_id,"label":str(definition.name),
+			"cost":int(definition.cost),"energy":int(member.energy),
+			"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
+			"can_select":reason.is_empty(),"reason":reason,
+			"message":"사용할 수 있습니다." if reason.is_empty() else reason_message(reason)})
+	return rows
+
+
+func active_skill_assessment(actor_id:int,skill_id:String,target_id:int)->Dictionary:
+	if sim==null:return {"accepted":false,"reason":"session_not_initialized",
+		"message":reason_message("session_not_initialized")}
+	return sim.assess_active_skill(actor_id,skill_id,target_id).duplicate(true)
+
+
+func use_active_skill(actor_id:int,skill_id:String,target_id:int,
+		append_journal:bool=true)->Dictionary:
+	var assessment:=active_skill_assessment(actor_id,skill_id,target_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	_exploration_route.cancel_for_direct_command()
+	var result=sim.commit_active_skill(actor_id,skill_id,target_id)
+	if not result.accepted:return _rejection_dto(str(result.reason))
+	if append_journal:command_journal.append({"kind":"active_skill","operation":{
+		"actor_id":str(actor_id),"skill_id":skill_id,"target_id":str(target_id)}})
+	_clear_draft();_advance_exile_world()
+	var dto:=_result_dto(result,null,null)
+	var member=sim.world.party_encounter.member(actor_id)
+	var actual_damage:=0;var actual_healing:=0;var actually_shoved:=false
+	for event in result.events:
+		if int(event.cause_id)!=int(result.root_event_id):continue
+		if event.type in ["combat.physical_damage","combat.fire_damage",
+				"combat.electric_damage"]:actual_damage+=int(event.magnitude)
+		elif event.type=="health.restored":actual_healing+=int(event.magnitude)
+		elif event.type=="action.move" and int(event.actor_id)==target_id:
+			actually_shoved=true
+	var outcome_parts:Array[String]=[]
+	if actual_damage>0:outcome_parts.append("피해 %d"%actual_damage)
+	if actual_healing>0:outcome_parts.append("회복 %d"%actual_healing)
+	if actually_shoved:outcome_parts.append("밀치기")
+	var outcome_suffix:=" · "+" · ".join(outcome_parts) \
+		if not outcome_parts.is_empty() else ""
+	dto.merge({"actor_id":actor_id,"target_id":target_id,"skill_id":skill_id,
+		"cost":int(assessment.cost),"energy":int(member.energy),
+		"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
+		"message":"%s 사용%s"%[str(ActiveSkillRegistryScript.definition(skill_id).name),
+			outcome_suffix]},true)
+	return dto
 
 
 func _latest_party_contact_warning() -> Dictionary:
@@ -6617,6 +6738,17 @@ func load_session_json(encoded: String) -> Dictionary:
 			and not raw_party.has("ration_milli"):
 		raw_party["ration_milli"]=RationRulesScript.ration_max_milli()
 		raw_party["ration_processed_at"]=str(decoded.snapshot.get("world_time","0"))
+	# v17-v22 are the explicitly supported campaign-save migration window. Active
+	# skills add no historical events until first use, so a full gauge and the
+	# role-default versioned loadout preserve every earlier replay decision.
+	if raw_party is Dictionary and source_party_schema>=PartyStateScript.STAT_SCALING_SCHEMA_VERSION \
+			and source_party_schema<PartyStateScript.ACTIVE_SKILL_SCHEMA_VERSION:
+		for member_row_value in raw_party.get("member_rows",[]):
+			if not member_row_value is Dictionary:continue
+			member_row_value["energy"]=ActiveSkillRegistryScript.MAX_ENERGY
+			member_row_value["skill_loadout_id"]="VANGUARD_V1" \
+				if str(member_row_value.get("role",""))=="PROTAGONIST" else "SUPPORT_V1"
+		raw_party["schema_version"]=PartyStateScript.ACTIVE_SKILL_SCHEMA_VERSION
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -6927,6 +7059,16 @@ func load_session_json(encoded: String) -> Dictionary:
 				var operation:Dictionary=row.operation
 				replay_result=replay.issue_party_command(str(operation.command_id),
 					Int64CodecScript.parse(operation.target_id,"party command target"))
+			"actor_command":
+				var operation:Dictionary=row.operation
+				replay_result=replay.issue_actor_command(Int64CodecScript.parse(
+					operation.actor_id,"actor command actor"),str(operation.command_id),
+					Int64CodecScript.parse(operation.target_id,"actor command target"))
+			"active_skill":
+				var operation:Dictionary=row.operation
+				replay_result=replay.use_active_skill(Int64CodecScript.parse(
+					operation.actor_id,"active skill actor"),str(operation.skill_id),
+					Int64CodecScript.parse(operation.target_id,"active skill target"))
 			"party_turn":
 				var request:Dictionary=row.request; var direct=ActionScript.from_dict(request.protagonist_action)
 				replay.begin_turn(direct)
@@ -7300,6 +7442,32 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_party_command_journal"
+			"actor_command":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_actor_command_journal"
+				var operation_keys:Array=row.operation.keys();operation_keys.sort()
+				if operation_keys!=["actor_id","command_id","target_id"] \
+						or row.operation.get("command_id") not in PartyCommandScript.COMMAND_IDS \
+						or not Int64CodecScript.is_canonical(row.operation.get("actor_id")) \
+						or Int64CodecScript.parse(row.operation.actor_id,"actor command actor")<=0 \
+						or not Int64CodecScript.is_canonical(row.operation.get("target_id")):
+					return "invalid_actor_command_journal"
+				var command_target:=Int64CodecScript.parse(row.operation.target_id,
+					"actor command target")
+				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
+						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
+					return "invalid_actor_command_journal"
+			"active_skill":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_active_skill_journal"
+				var operation_keys:Array=row.operation.keys();operation_keys.sort()
+				if operation_keys!=["actor_id","skill_id","target_id"] \
+						or row.operation.get("skill_id") not in ActionScript.ACTIVE_SKILL_IDS \
+						or not Int64CodecScript.is_canonical(row.operation.get("actor_id")) \
+						or Int64CodecScript.parse(row.operation.actor_id,"active skill actor")<=0 \
+						or not Int64CodecScript.is_canonical(row.operation.get("target_id")) \
+						or Int64CodecScript.parse(row.operation.target_id,"active skill target")<=0:
+					return "invalid_active_skill_journal"
 			"party_turn":
 				if keys != ["kind", "request"]: return "invalid_party_turn_journal"
 				var request_error := RequestScript.wire_error(row.get("request"))
@@ -7962,6 +8130,24 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"unknown_party_command":"지원하지 않는 파티 명령입니다.",
 		"party_command_target_invalid":"공격 대상으로 지정할 수 있는 활동 중인 적이 아닙니다.",
 		"party_command_commit_failed":"파티 명령을 적용하지 못해 이전 상태로 돌아갔습니다.",
+		"party_command_actor_invalid":"활성 전투 파티원만 개별 지시를 받을 수 있습니다.",
+		"active_skill_combat_required":"전투 중에만 기술을 사용할 수 있습니다.",
+		"active_skill_actor_inactive":"활성 파티원이 아닙니다.",
+		"active_skill_actor_incapacitated":"쓰러진 파티원은 기술을 사용할 수 없습니다.",
+		"active_skill_actor_busy":"아직 다음 행동을 준비 중입니다.",
+		"active_skill_energy_insufficient":"기력이 부족합니다.",
+		"active_skill_not_equipped":"장착하지 않은 기술입니다.",
+		"active_skill_target_invalid":"올바른 대상을 선택하세요.",
+		"active_skill_target_incapacitated":"쓰러진 대상에게 사용할 수 없습니다.",
+		"active_skill_target_hidden":"보이지 않는 대상입니다.",
+		"active_skill_wrong_team":"대상 진영이 맞지 않습니다.",
+		"active_skill_out_of_range":"기술 사거리 밖입니다.",
+		"active_skill_no_line_of_sight":"벽에 가려져 있습니다.",
+		"active_skill_shove_blocked":"밀어낼 빈칸이 없습니다.",
+		"active_skill_shove_occupied":"밀어낼 칸에 다른 인물이 있습니다.",
+		"active_skill_shove_corner_blocked":"모서리를 통과해 밀 수 없습니다.",
+		"active_skill_no_recoverable_damage":"응급 치유 가능한 피해가 없습니다.",
+		"active_skill_commit_failed":"기술 실행이 취소되어 이전 상태로 돌아갔습니다.",
 		"protagonist_action_required":"주인공 행동이 필요합니다.",
 		"override_actor_not_deployed":"이번 전투에 배치되지 않은 예비 동료입니다.",
 		"override_actor_mismatch":"선택한 동료와 지시 대상이 다릅니다.",

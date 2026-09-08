@@ -27,6 +27,7 @@ const PreviewScript = preload("res://sim/sim_action_preview.gd")
 const TimingScript = preload("res://sim/action_timing_table.gd")
 const ClockScript = preload("res://sim/world_clock.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
+const ActiveSkillServiceScript=preload("res://sim/abilities/party_active_skill_service.gd")
 
 const MAX_SCHEDULE_OCCURRENCES_PER_STEP := 1024
 const MAX_INT64 := 9223372036854775807
@@ -430,6 +431,210 @@ func step_party_turn(plan):
 	return _commit_prevalidated_party_turn(authoritative,processed_step_index)
 
 
+func assess_active_skill(actor_id:int,skill_id:String,target_id:int)->Dictionary:
+	return ActiveSkillServiceScript.assess(world,actor_id,skill_id,target_id)
+
+
+func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
+	var assessment:=assess_active_skill(actor_id,skill_id,target_id)
+	if not bool(assessment.get("accepted",false)):
+		return StepResultScript.new(false,false,str(assessment.get("reason",
+			"active_skill_rejected")))
+	var processed_step_index:=_next_processed_step_index()
+	if processed_step_index<1:return StepResultScript.new(false,false,"step_index_overflow")
+	var start_time:int=world.world_time
+	var end_time:int=start_time+int(assessment.action_time)
+	if end_time<start_time or end_time>MAX_WORLD_TIME:
+		return StepResultScript.new(false,false,"time_overflow")
+	var schedule_plan:Dictionary=party_coordinator._schedule_preflight(end_time)
+	if not str(schedule_plan.reason).is_empty():
+		return StepResultScript.new(false,false,str(schedule_plan.reason))
+	var rollback:Variant=world.rollback_memento(false)
+	if not rollback is Dictionary:return StepResultScript.new(false,false,"party_snapshot_unavailable")
+	var event_start:int=world.events.size()
+	world.begin_step(processed_step_index)
+	var action_data:Dictionary=ActiveSkillServiceScript.action_data(assessment)
+	var magnitude:int=maxi(int(assessment.damage),int(assessment.healing))
+	var action=world.emit_event("action.skill",actor_id,target_id,
+		world.entities[target_id].position,magnitude,-1,action_data)
+	var accepted:bool=action!=null
+	if accepted and int(assessment.damage)>0:
+		var damage_type:="fire" if skill_id=="FIREBOLT" else "physical"
+		var target=world.entities[target_id]
+		var applied:Dictionary=damage.apply_canonical_active_damage(target,
+			int(assessment.damage),damage_type,int(action.id),action.position,
+			processed_step_index,int(target.health),false,false)
+		accepted=bool(applied.get("accepted",false))
+	if accepted and int(assessment.healing)>0:
+		var target=world.entities[target_id]
+		target.health+=int(assessment.healing)
+		accepted=world.emit_event("health.restored",target_id,target_id,
+			target.position,int(assessment.healing),int(action.id),{
+				"schema_version":1,"ruleset_id":ActiveSkillServiceScript.RULESET_ID,
+				"kind":"ACTIVE_SKILL","health_after":int(target.health)})!=null
+	if accepted and skill_id=="SHOVE" \
+			and str(world.combatant_states[target_id].life_state)=="ACTIVE":
+		var destination:Vector2i=assessment.destination
+		var terrain_id:=str(world.tile_at(destination).terrain)
+		accepted=movement.commit_preflighted_move(target_id,destination,terrain_id,1,
+			int(action.id))!=null
+	if accepted:
+		var member=world.party_encounter.member(actor_id)
+		member.energy-=int(assessment.cost)
+		member.busy_until=end_time
+		world.party_encounter.revision+=1
+	var ally_batch:Dictionary={"accepted":false,"rows":[],"time_cost":0}
+	if accepted:
+		ally_batch=party_coordinator.assess_ready_allies_after_active(actor_id,
+			processed_step_index,start_time)
+		accepted=bool(ally_batch.get("accepted",false)) \
+			and _commit_active_ready_allies(ally_batch.get("rows",[]),
+				processed_step_index,start_time)
+		if accepted:
+			end_time=start_time+maxi(int(assessment.action_time),
+				int(ally_batch.get("time_cost",0)))
+			accepted=end_time>=start_time and end_time<=MAX_WORLD_TIME
+			if accepted:
+				schedule_plan=party_coordinator._schedule_preflight(end_time)
+				accepted=str(schedule_plan.reason).is_empty()
+	if accepted:
+		accepted=PartyEmotionSystemScript.commit_batch(world,world.events_since(event_start)) \
+			and PartyMemorySystemScript.commit_batch(world,world.events_since(event_start)) \
+			and PartyRelationshipSystemScript.commit_batch(world,world.events_since(event_start)) \
+			and PartyMoraleSystemScript.commit_batch(world,world.events_since(event_start)) \
+			and party_coordinator.reconcile_liveness(false)
+	if accepted:
+		for expected in schedule_plan.occurrences:
+			var entry:Dictionary=world.take_next_schedule()
+			if str(entry.kind)!=str(expected.kind) or int(entry.due_time)!=int(expected.due_time):
+				accepted=false;break
+			world.world_time=int(entry.due_time)
+			var tick_start:int=world.events.size()
+			if not _dispatch_schedule(entry,processed_step_index,false) \
+					or not PartyEmotionSystemScript.commit_batch(world,
+						world.events_since(tick_start),false) \
+					or not PartyMemorySystemScript.commit_batch(world,world.events_since(tick_start)) \
+					or not PartyRelationshipSystemScript.commit_batch(world,world.events_since(tick_start)) \
+					or not PartyMoraleSystemScript.commit_batch(world,
+						world.events_since(tick_start),false):
+				accepted=false;break
+			if int(entry.repeat_interval)>0:world.requeue_repeating(entry)
+	if accepted:
+		world.world_time=end_time
+		accepted=party_coordinator.reconcile_liveness() \
+			and party_coordinator.finalize_automatic_regroup()
+	if accepted:
+		_refill_energy_after_combat_transition(event_start)
+		_reconcile_expedition_cycle();world.finish_step()
+		accepted=world.runtime_step_postcondition_error(event_start).is_empty()
+	if not accepted:
+		world=WorldStateScript.from_rollback_memento(rollback);_rebuild_systems()
+		return StepResultScript.new(false,false,"active_skill_commit_failed")
+	var result_events:Array=world.events_since(event_start)
+	return StepResultScript.new(true,true,"ok",result_events,{
+		"processed_step_index":processed_step_index,"start_time":start_time,
+		"end_time":end_time,"time_cost":end_time-start_time,
+		"root_event_id":int(action.id),"assessment":assessment.duplicate(true)})
+
+
+func _commit_active_ready_allies(rows:Array,processed_step_index:int,
+		start_time:int)->bool:
+	var frozen_by_row:Dictionary={}
+	var frozen_rows:Array=[]
+	for row_index in range(rows.size()):
+		var row:Dictionary=rows[row_index]
+		if str(row.action.type)!="MELEE":continue
+		var target=world.entities.get(int(row.action.target_id))
+		var frozen=melee.freeze_assessment(row.combat_assessment,
+			target.health if target!=null else -1,row_index)
+		if frozen==null:return false
+		frozen_rows.append(frozen);frozen_by_row[row_index]=frozen
+	var projected:Array=melee.project_batch(frozen_rows)
+	if projected.size()!=frozen_rows.size():return false
+	# Projected results are keyed by the assessment ordinal, not roster row.
+	var resolution_by_ordinal:Dictionary={}
+	for result in projected:resolution_by_ordinal[int(result.action_data.intent_ordinal)]=result
+	var pending:Array=[]
+	for row_index in range(rows.size()):
+		var row:Dictionary=rows[row_index];var actor_id:=int(row.action.actor_id)
+		var leaf=null
+		match str(row.action.type):
+			"HOLD":
+				leaf=world.emit_event("action.hold",actor_id,-1,
+					world.entities[actor_id].position,int(row.time_cost))
+				if leaf!=null:
+					var combatant=world.combatant_states[actor_id]
+					combatant.guarded_until=maxi(combatant.guarded_until,start_time+200)
+					combatant.guard_source_event_id=leaf.id
+			"MOVE":
+				var destination:=Vector2i(int(row.action.destination[0]),
+					int(row.action.destination[1]))
+				leaf=movement.commit_preflighted_move(actor_id,destination,
+					str(world.tile_at(destination).terrain),int(row.time_cost))
+			"MELEE":
+				var target_id:=int(row.action.target_id)
+				if int(row.combat_assessment.get("schema_version",1))==2:
+					var ammo:=WorldItemOperationsScript.commit_attack_consumption(world,actor_id)
+					if not bool(ammo.get("accepted",false)):return false
+				var ordinal:=int(row.combat_assessment.intent_ordinal)
+				var frozen=frozen_by_row.get(row_index)
+				var resolution=resolution_by_ordinal.get(ordinal)
+				if frozen==null or resolution==null:return false
+				leaf=world.emit_event("action.melee_attack",actor_id,target_id,
+					Vector2i(int(row.combat_assessment.target_position[0]),
+						int(row.combat_assessment.target_position[1])),
+					int(row.combat_assessment.base_damage),-1,resolution.action_data)
+				if leaf!=null:pending.append({"action":leaf,"resolution":resolution,
+					"frozen":frozen})
+		if leaf==null:return false
+		world.party_encounter.member(actor_id).busy_until=start_time+int(row.time_cost)
+	for item in pending:
+		var leaf=item.action;var resolution=item.resolution
+		var target=world.entities.get(leaf.target_id)
+		var target_state=world.combatant_states.get(leaf.target_id)
+		if target==null or target_state==null \
+				or target.health!=int(resolution.target_health_before) \
+				or str(target_state.life_state)!=str(resolution.target_life_before):return false
+		if str(resolution.outcome)=="OVERKILL_SKIP":
+			if target.health!=int(resolution.target_health_after) \
+					or str(target_state.life_state)!=str(resolution.target_life_after):return false
+			continue
+		if str(resolution.outcome)=="MISS":
+			if world.emit_event("combat.attack_missed",-1,leaf.target_id,leaf.position,0,
+					leaf.id,{"schema_version":1,"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,
+						"outcome":"MISS"})==null:return false
+		elif str(resolution.outcome)=="FINISHER":
+			if not bool(damage.apply_canonical_downed_finisher(target,
+				int(item.frozen.assessment.normal_final_damage),leaf.id,leaf.position,
+				processed_step_index).get("accepted",false)):return false
+		else:
+			var applied:Dictionary=damage.apply_canonical_active_damage(target,
+				int(resolution.final_damage),"physical",leaf.id,leaf.position,
+				processed_step_index,int(resolution.target_health_before),false,
+				bool(resolution.bleed_proc_succeeded))
+			if not bool(applied.get("accepted",false)):return false
+		if target.health!=int(resolution.target_health_after) \
+				or str(target_state.life_state)!=str(resolution.target_life_after):return false
+	return true
+
+
+func _refill_energy_after_combat_transition(event_start:int)->void:
+	var cause=null
+	for index in range(event_start,world.events.size()):
+		if world.events[index].type in ["party.victory","party.regroup_completed"]:
+			cause=world.events[index]
+	if cause==null:return
+	var changed:Array=[]
+	for member_id in world.party_encounter.party_member_ids:
+		if world.party_encounter.member(member_id).refill_energy():changed.append(str(member_id))
+	if changed.is_empty():return
+	world.emit_event("party.energy_refilled",world.party_encounter.protagonist_id,-1,
+		world.entities[world.party_encounter.protagonist_id].position,changed.size(),
+		int(cause.id),{"schema_version":1,"ruleset_id":ActiveSkillServiceScript.RULESET_ID,
+			"reason":"COMBAT_COMPLETE","member_ids":changed})
+	world.party_encounter.revision+=1
+
+
 func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		processed_step_index:int, supplied_rollback_memento: Variant = null):
 	var rollback_value: Variant = supplied_rollback_memento \
@@ -626,6 +831,7 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		return _rollback_party_step(rollback, "party_turn_failed")
 	if not party_coordinator.finalize_automatic_regroup():
 		return _rollback_party_step(rollback, "party_turn_failed")
+	_refill_energy_after_combat_transition(event_start)
 	_reconcile_expedition_cycle()
 	world.finish_step()
 	# Match ordinary live simulation steps: validate the newly appended causal
@@ -796,8 +1002,33 @@ func _reconcile_expedition_cycle() -> void:
 			or world.party_encounter.expedition_cycle == null \
 			or world.party_encounter.safe_phase == "PARTY_DEFEATED":
 		return
+	var needs_energy_refill:=false
+	for member_id in world.party_encounter.party_member_ids:
+		if world.party_encounter.member(member_id).energy \
+				< ActiveSkillServiceScript.Registry.MAX_ENERGY:
+			needs_energy_refill=true;break
 	if world.party_encounter.expedition_cycle.auto_return_if_due(world.world_time):
 		world.party_encounter.reset_ration(int(world.world_time))
+		var has_actor_directive:=false
+		for index in range(world.events.size()-1,-1,-1):
+			if world.events[index].type in ["dungeon.expedition_returned",
+					"party.expedition_auto_returned"]:break
+			if world.events[index].type=="party.actor_command_issued":
+				has_actor_directive=true;break
+		if needs_energy_refill or has_actor_directive:
+			var hero_id:=int(world.party_encounter.protagonist_id)
+			var returned=world.emit_event("party.expedition_auto_returned",hero_id,-1,
+				world.entities[hero_id].position,0,-1,{"schema_version":1,
+					"ruleset_id":ActiveSkillServiceScript.RULESET_ID})
+			var changed:Array=[]
+			for member_id in world.party_encounter.party_member_ids:
+				if world.party_encounter.member(member_id).refill_energy():
+					changed.append(str(member_id))
+			if returned!=null and not changed.is_empty():
+				world.emit_event("party.energy_refilled",hero_id,-1,
+					world.entities[hero_id].position,changed.size(),returned.id,
+					{"schema_version":1,"ruleset_id":ActiveSkillServiceScript.RULESET_ID,
+						"reason":"TOWN_RETURN","member_ids":changed})
 		world.party_encounter.revision += 1
 
 

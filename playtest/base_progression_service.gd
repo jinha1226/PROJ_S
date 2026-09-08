@@ -300,6 +300,15 @@ func base_return()->Dictionary:
 			"return_reason":"MANUAL_EXTRACT","entry_mode":str(assessment.entry_mode),
 			"expedition_index":int(assessment.expedition_index),
 			"haul":assessment.carried.duplicate(true)})
+	var refilled_ids:Array=[]
+	if event!=null:
+		for member_id in state.party_member_ids:
+			if state.member(member_id).refill_energy():refilled_ids.append(str(member_id))
+		if not refilled_ids.is_empty():
+			_session.sim.world.emit_event("party.energy_refilled",hero_id,-1,
+				_session.sim.world.entities[hero_id].position,refilled_ids.size(),int(event.id),
+				{"schema_version":1,"ruleset_id":"party-active-skills-v1",
+					"reason":"TOWN_RETURN","member_ids":refilled_ids})
 	state.revision+=1;var error:String=_session.sim.world.world_state_error()
 	if event==null or not error.is_empty():
 		_session.sim=_session.SimulatorScript.from_snapshot(rollback)

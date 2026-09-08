@@ -66,19 +66,26 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	# injury plan before mutating anything. It consumes only canonical attack data
 	# and the equipped weapon registry; no global RNG or UI state participates.
 	var body_injury_context:Dictionary={}
-	if damage_type=="physical" and cause.type=="action.melee_attack" \
-			and cause.data.get("outcome")=="HIT":
-		var weapon_id:=WorldItemOperationsScript.equipped_weapon_id(world,cause.actor_id)
+	if damage_type=="physical" and (cause.type=="action.melee_attack" \
+			and cause.data.get("outcome")=="HIT" or cause.type=="action.skill" \
+			and cause.data.get("ruleset_id")=="party-active-skills-v1"):
+		var weapon_id:="UNARMED_STRIKE" if cause.type=="action.skill" \
+			else WorldItemOperationsScript.equipped_weapon_id(world,cause.actor_id)
 		var weapon=WeaponRegistryScript.definition(weapon_id)
 		var body=world.body_states.get(entity.id)
+		var raw_damage:=requested_damage if cause.type=="action.skill" \
+			else int(cause.data.get("base_damage",0))
+		var armor_flat:=0 if cause.type=="action.skill" \
+			else int(cause.data.get("armor_flat",0))
+		var commitment_hash:=("party-active-body-v1|%d|%d|%d"%[
+			cause.id,cause.actor_id,entity.id]).sha256_text() if cause.type=="action.skill" \
+			else str(cause.data.get("commitment_hash",""))
 		var body_plan:Dictionary=BodyInjurySystemScript.assess(body,weapon,
-			int(cause.data.get("base_damage",0)),int(cause.data.get("armor_flat",0)),
-			str(cause.data.get("commitment_hash","")),entity.id)
+			raw_damage,armor_flat,commitment_hash,entity.id)
 		if not bool(body_plan.get("accepted",false)):
 			return {"accepted":false,"event":null,"applied_health_damage":0}
-		body_injury_context={"body":body,"weapon":weapon,"raw_damage":
-			int(cause.data.base_damage),"armor_flat":int(cause.data.armor_flat),
-			"commitment_hash":str(cause.data.commitment_hash)}
+		body_injury_context={"body":body,"weapon":weapon,"raw_damage":raw_damage,
+			"armor_flat":armor_flat,"commitment_hash":commitment_hash}
 	elif damage_type in ["fire","electric"] and world.body_states.has(entity.id):
 		var body=world.body_states[entity.id]
 		var key:String=("element-body-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()

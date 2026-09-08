@@ -9,6 +9,8 @@ const PersonalityProfileScript = preload("res://sim/personality_profile.gd")
 const HexacoProfileScript = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const EmotionStateScript = preload("res://sim/party_emotion_state.gd")
 const MemoryStateScript = preload("res://sim/party_memory_state.gd")
+const SkillLoadoutScript=preload("res://sim/abilities/party_skill_loadout.gd")
+const ActiveSkillRegistryScript=preload("res://sim/abilities/active_skill_registry.gd")
 const MAX_WORLD_TIME := 9223372036854775707
 
 var entity_id: int
@@ -21,6 +23,12 @@ var mental_mode: String
 var personality_profile = null
 var emotion_state
 var memory_state
+var skill_loadout_id: String
+var energy: int
+var max_energy: int:
+	get:return ActiveSkillRegistryScript.MAX_ENERGY
+
+const DEFAULT_MAX_ENERGY := ActiveSkillRegistryScript.MAX_ENERGY
 
 func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION",
 		p_presence: String = "GROUPED", p_profile = null) -> void:
@@ -34,9 +42,19 @@ func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION"
 	mental_mode = "NORMAL"
 	emotion_state = EmotionStateScript.new()
 	memory_state = MemoryStateScript.new()
+	skill_loadout_id = "VANGUARD_V1" if p_role=="PROTAGONIST" else "SUPPORT_V1"
+	energy = DEFAULT_MAX_ENERGY
+
+func active_skill_ids() -> Array:
+	return SkillLoadoutScript.skills(skill_loadout_id)
+
+func refill_energy() -> bool:
+	if energy==DEFAULT_MAX_ENERGY:return false
+	energy=DEFAULT_MAX_ENERGY
+	return true
 
 func to_dict(include_emotion_state: bool = true,
-		include_memory_state: bool = true) -> Dictionary:
+		include_memory_state: bool = true,include_active_skills:bool=true) -> Dictionary:
 	var row := {"entity_id": str(entity_id), "roster_slot": roster_slot, "role": role,
 		"presence": presence, "busy_until": str(busy_until), "stress": stress,
 		"mental_mode": mental_mode,
@@ -45,6 +63,9 @@ func to_dict(include_emotion_state: bool = true,
 		row["emotion_state"] = emotion_state.to_dict()
 	if include_memory_state:
 		row["memory_state"] = memory_state.to_dict()
+	if include_active_skills:
+		row["skill_loadout_id"] = skill_loadout_id
+		row["energy"] = energy
 	return row
 
 static func from_dict(row: Dictionary):
@@ -66,11 +87,14 @@ static func from_dict(row: Dictionary):
 		if row.get("emotion_state") is Dictionary else EmotionStateScript.new()
 	state.memory_state = MemoryStateScript.from_dict(row.memory_state) \
 		if row.get("memory_state") is Dictionary else MemoryStateScript.new()
+	state.skill_loadout_id=str(row.get("skill_loadout_id",
+		"VANGUARD_V1" if state.role=="PROTAGONIST" else "SUPPORT_V1"))
+	state.energy=int(row.get("energy",DEFAULT_MAX_ENERGY))
 	return state
 
 static func wire_error(row: Variant, require_mental_mode: bool = true,
 		require_hexaco: bool = true, require_emotion_state: bool = true,
-		require_memory_state: bool = true) -> String:
+		require_memory_state: bool = true, require_active_skills: bool = true) -> String:
 	if not row is Dictionary: return "invalid_party_member_shape"
 	var keys: Array = row.keys(); keys.sort()
 	var expected := ["busy_until", "entity_id", "mental_mode", "personality_profile",
@@ -81,6 +105,8 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		expected.append("emotion_state")
 	if require_memory_state:
 		expected.append("memory_state")
+	if require_active_skills:
+		expected.append_array(["energy","skill_loadout_id"])
 	expected.sort()
 	if keys != expected:
 		return "invalid_party_member_keys"
@@ -105,6 +131,11 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		var memory_error := MemoryStateScript.wire_error(row.get("memory_state"))
 		if not memory_error.is_empty():
 			return memory_error
+	if require_active_skills:
+		if not SkillLoadoutScript.has(str(row.get("skill_loadout_id",""))) \
+				or not _integer(row.get("energy")) or int(row.energy)<0 \
+				or int(row.energy)>DEFAULT_MAX_ENERGY:
+			return "invalid_party_active_skill_state"
 	if row.role == "PROTAGONIST":
 		if row.personality_profile != null: return "protagonist_personality_forbidden"
 	else:
