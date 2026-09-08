@@ -453,36 +453,8 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 	if not rollback is Dictionary:return StepResultScript.new(false,false,"party_snapshot_unavailable")
 	var event_start:int=world.events.size()
 	world.begin_step(processed_step_index)
-	var action_data:Dictionary=ActiveSkillServiceScript.action_data(assessment)
-	var magnitude:int=maxi(int(assessment.damage),int(assessment.healing))
-	var action=world.emit_event("action.skill",actor_id,target_id,
-		world.entities[target_id].position,magnitude,-1,action_data)
+	var action=_commit_skill_effect(actor_id,skill_id,target_id,assessment,processed_step_index)
 	var accepted:bool=action!=null
-	if accepted and int(assessment.damage)>0:
-		var damage_type:="fire" if skill_id=="FIREBOLT" else "physical"
-		var target=world.entities[target_id]
-		var applied:Dictionary=damage.apply_canonical_active_damage(target,
-			int(assessment.damage),damage_type,int(action.id),action.position,
-			processed_step_index,int(target.health),false,false)
-		accepted=bool(applied.get("accepted",false))
-	if accepted and int(assessment.healing)>0:
-		var target=world.entities[target_id]
-		target.health+=int(assessment.healing)
-		accepted=world.emit_event("health.restored",target_id,target_id,
-			target.position,int(assessment.healing),int(action.id),{
-				"schema_version":1,"ruleset_id":ActiveSkillServiceScript.RULESET_ID,
-				"kind":"ACTIVE_SKILL","health_after":int(target.health)})!=null
-	if accepted and skill_id=="SHOVE" \
-			and str(world.combatant_states[target_id].life_state)=="ACTIVE":
-		var destination:Vector2i=assessment.destination
-		var terrain_id:=str(world.tile_at(destination).terrain)
-		accepted=movement.commit_preflighted_move(target_id,destination,terrain_id,1,
-			int(action.id))!=null
-	if accepted:
-		var member=world.party_encounter.member(actor_id)
-		member.energy-=int(assessment.cost)
-		member.busy_until=end_time
-		world.party_encounter.revision+=1
 	var ally_batch:Dictionary={"accepted":false,"rows":[],"time_cost":0}
 	if accepted:
 		ally_batch=party_coordinator.assess_ready_allies_after_active(actor_id,
@@ -536,6 +508,34 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 		"end_time":end_time,"time_cost":end_time-start_time,
 		"root_event_id":int(action.id),"assessment":assessment.duplicate(true)})
 
+
+func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
+		assessment:Dictionary,processed_step_index:int):
+	var action=world.emit_event("action.skill",actor_id,target_id,
+		world.entities[target_id].position,maxi(int(assessment.damage),int(assessment.healing)),
+		-1,ActiveSkillServiceScript.action_data(assessment))
+	if action==null:return null
+	if int(assessment.damage)>0:
+		var target=world.entities[target_id]
+		var applied:Dictionary=damage.apply_canonical_active_damage(target,
+			int(assessment.damage),"fire" if skill_id=="FIREBOLT" else "physical",
+			int(action.id),action.position,processed_step_index,int(target.health),false,false)
+		if not bool(applied.get("accepted",false)):return null
+	if int(assessment.healing)>0:
+		var target=world.entities[target_id];target.health+=int(assessment.healing)
+		if world.emit_event("health.restored",target_id,target_id,target.position,
+			int(assessment.healing),int(action.id),{"schema_version":1,
+			"ruleset_id":ActiveSkillServiceScript.RULESET_ID,"kind":"ACTIVE_SKILL",
+			"health_after":int(target.health)})==null:return null
+	if skill_id=="SHOVE" and str(world.combatant_states[target_id].life_state)=="ACTIVE":
+		var destination:Vector2i=assessment.destination
+		if movement.commit_preflighted_move(target_id,destination,
+			str(world.tile_at(destination).terrain),1,int(action.id))==null:return null
+	var member=world.party_encounter.member(actor_id)
+	member.energy-=int(assessment.cost)
+	member.busy_until=world.world_time+int(assessment.action_time)
+	world.party_encounter.revision+=1
+	return action
 
 func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 		start_time:int)->bool:
@@ -1059,7 +1059,7 @@ func _resolve_command(command, plan: Dictionary, processed_step_index: int):
 
 
 func _dispatch_schedule(entry: Dictionary, processed_step_index: int,
-		allow_party_victory: bool = true) -> bool:
+		allow_party_victory: bool = true, individual_battle:bool=false) -> bool:
 	match str(entry["kind"]):
 		"system.environment_tick":
 			if not environment.process_tick(processed_step_index): return false
@@ -1074,6 +1074,10 @@ func _dispatch_schedule(entry: Dictionary, processed_step_index: int,
 					or not status_lifecycle.process_actor_occurrence(processed_step_index,
 						tick_start_can_act_ids):
 				return false
+			if individual_battle and world.party_encounter!=null:
+				return party_coordinator.RationSystemScript.process_tick(world,damage,processed_step_index) \
+					and party_coordinator._update_enemy_awareness_batch(processed_step_index) \
+					and party_coordinator.reconcile_liveness(allow_party_victory)
 			if world.encounter_lab != null: return actor_coordinator.process_tick(processed_step_index,
 				int(entry.schedule_id), int(entry.due_time), tick_start_can_act_ids)
 			if world.party_encounter != null: return party_coordinator.process_tick(processed_step_index,

@@ -1977,6 +1977,31 @@ func _apply_product_root_order(product_hud:bool)->void:
 	# The hidden timeline must not become the trailing sibling in either mode.
 	root_layout.move_child(bottom_navigation,root_layout.get_child_count()-1)
 
+func _refresh_individual_battle_surface()->void:
+	# Keep buttons and portraits alive across actions: rebuilding the full shell
+	# interrupted gestures, layout and animation after every old party batch.
+	var status:Dictionary=session.party_status()
+	var dimensions:=_current_grid_view_dimensions()
+	var observation:Dictionary=session.observe_party_ui(dimensions.x,true,dimensions.y)
+	grid.set_observation(observation.get("grid",{}),[])
+	minimap.set_observation(observation.get("minimap",{}))
+	var position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	grid.set_hero_centered_view(position,dimensions.x,int(status.protagonist_id),
+		MANUAL_CAMERA_SETTLE_MSEC,dimensions.y)
+	grid.set_intent_overlays([])
+	_update_expedition_hud(true,status)
+	_update_stable_party_cards(session.party_cards())
+	for id in session.sim.world.party_encounter.active_party_member_ids:
+		var stack:=cards.find_child("BattleMember%d"%id,true,false)
+		if stack!=null and stack.get_child_count()>0:
+			stack.get_child(0).update_rows(id,session.active_skill_rows(id))
+	var history:Dictionary=session.combat_log(8,80)
+	_update_recent_event(history,status)
+	event_label.text=_compact_meaningful_event_text(history,status)
+	if not _product_transient_event_feedback.is_empty():
+		event_label.text=_product_transient_event_feedback;_product_transient_event_feedback=""
+	_flush_pending_visual_effects()
+
 func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	# The stable one-member combat shell does not need to destroy and recreate
 	# every card, button and dossier after each turn. Refresh the authoritative
@@ -2116,8 +2141,11 @@ func _update_stable_party_card(row:Dictionary)->void:
 	if card==null:return
 	if card.get_script()==CompactPortraitScript:
 		card.actor=row.duplicate(true)
+		if _portrait_battle_controls_visible():
+			card.actor["energy"]=session.sim.world.party_encounter.member(int(row.entity_id)).energy
 		card.selected=int(row.get("entity_id",-1))==selected_member_id
-		card.order_reserved=session.has_companion_order(int(row.get("entity_id",-1)))
+		card.order_reserved=session.has_companion_order(int(row.get("entity_id",-1))) \
+			or not session.individual_battle.queued(int(row.entity_id)).is_empty()
 		card.queue_redraw()
 		return
 	var health:=card.find_child("MemberState",true,false)
@@ -2343,18 +2371,34 @@ func _battle_presentation_blocked()->bool:
 func _tick_autonomous_battle(delta:float)->void:
 	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
 	var state=session.sim.world.party_encounter
+	if state.safe_phase!="ENGAGED":
+		autonomous_battle_clock.cursor=-1.0;return
 	var blocked:=_battle_presentation_blocked()
-	if not autonomous_battle_clock.due(delta,state.safe_phase=="ENGAGED",blocked):return
-	var planning:Dictionary=session.prepare_autonomous_party_turn()
-	if not bool(planning.get("commit_ready",false)):
-		autonomous_battle_clock.paused=true
-		action_feedback_text="자동 판단을 실행할 수 없어 일시정지했습니다."
-		_request_refresh();return
-	autonomous_battle_summary=" · ".join(session.turn_summary_lines())
-	var result:Dictionary=session.commit_turn()
-	if not bool(result.get("accepted",false)):autonomous_battle_clock.paused=true
-	_record_result(result,true,"자동 전투 실행 불가",true)
-	_request_refresh()
+	var at:float=autonomous_battle_clock.advance(delta,session.sim.world.world_time,blocked)
+	var changed:=false
+	var started:=Time.get_ticks_usec()
+	if not blocked and not autonomous_battle_clock.paused:
+		# Equal-time events have no artificial delay; re-assess between actors.
+		# A bounded drain also keeps input responsive on exceptionally large fights.
+		for iteration in range(16):
+			var next:Dictionary=session.individual_battle.next_event()
+			if next.is_empty() or float(next.at)>at:break
+			var result:Dictionary=session.individual_battle.commit()
+			if not bool(result.get("accepted",false)):
+				autonomous_battle_clock.paused=true
+				_show_manual_battle_feedback("자동 행동 실패 · "+str(result.get("reason","")))
+				_request_refresh();break
+			_record_result(result,true,"자동 전투 실행 불가",true);changed=true
+			if not str(result.get("reservation_rejection","")).is_empty():
+				_show_manual_battle_feedback(str(result.reservation_rejection))
+			if Time.get_ticks_usec()-started>=8000:break
+		var remaining_event:Dictionary=session.individual_battle.next_event()
+		if not remaining_event.is_empty() and float(remaining_event.at)<at:
+			at=float(remaining_event.at);autonomous_battle_clock.cursor=at
+	if changed:
+		if session.sim.world.party_encounter.safe_phase=="ENGAGED":_refresh_individual_battle_surface()
+		else:_request_refresh()
+	if battle_timeline_bar!=null:battle_timeline_bar.set_display_time(at)
 
 func _build_duo_battle_controls(status:Dictionary)->void:
 	product_auto_button=null;product_interact_button=null;product_attack_button=null
@@ -2402,6 +2446,9 @@ func _on_manual_actor_selected(actor_id:int)->void:
 
 func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)->void:
 	if _battle_target_committing or not _battle_target_mode.is_empty():return
+	if str(session.individual_battle.queued(actor_id).get("skill_id",""))==skill_id:
+		session.individual_battle.cancel(actor_id)
+		_show_manual_battle_feedback("%s · 예약 취소"%skill_label);_request_refresh();return
 	if not session.has_method("active_skill_rows") or not session.has_method("use_active_skill"):
 		_show_manual_battle_feedback("액티브 스킬을 아직 사용할 수 없습니다.");return
 	var selected_row:Dictionary={}
@@ -2451,7 +2498,7 @@ func _commit_battle_target(target_id:int)->void:
 	_battle_target_committing=true
 	var assessment:Dictionary={}
 	if _battle_target_mode=="ACTIVE_SKILL":
-		assessment=session.active_skill_assessment(_battle_target_actor_id,
+		assessment=session.individual_battle.assessment(_battle_target_actor_id,
 			_battle_target_skill_id,target_id)
 	else:
 		assessment=session.actor_command_assessment(_battle_target_actor_id,
@@ -2469,14 +2516,13 @@ func _commit_battle_target(target_id:int)->void:
 	var prior_paused:=_battle_target_prior_paused
 	# Clear first so a refresh or duplicate pointer packet cannot cast twice.
 	_clear_battle_targeting_state()
-	var result:Dictionary=session.use_active_skill(caster_id,skill_id,target_id) \
+	var result:Dictionary=session.individual_battle.reserve(caster_id,skill_id,target_id) \
 		if mode=="ACTIVE_SKILL" else session.issue_actor_command(caster_id,
 			"ATTACK_TARGET",target_id)
 	autonomous_battle_clock.paused=prior_paused
 	_battle_target_committing=false
 	if bool(result.get("accepted",false)):
 		if mode=="ACTIVE_SKILL":_record_result(result,true,"액티브 스킬 실행 불가")
-		if not prior_paused:autonomous_battle_clock.remaining=autonomous_battle_clock.INTERVAL
 		var target_name:=_entity_display_name(target_id)
 		var result_message:=str(result.get("message","적용됨"))
 		_show_manual_battle_feedback("%s · %s → %s · %s"%[
@@ -2706,6 +2752,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 			compact.actor["energy"]=session.sim.world.party_encounter.member(member_id).energy
 		compact.selected=member_id==selected_member_id
 		compact.order_reserved=session.has_companion_order(member_id)
+		compact.order_reserved=compact.order_reserved or not session.individual_battle.queued(member_id).is_empty()
 		compact.party_count=int(layout_spec.get("effective_count",1))
 		compact.custom_minimum_size=Vector2(44,PRODUCT_PARTY_CARD_HEIGHT)
 		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL

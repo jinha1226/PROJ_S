@@ -28,6 +28,7 @@ func sync()->void:
 	if _bound_sim!=host.session.sim:
 		_bound_sim=host.session.sim;pending_actors.clear();_last_state.clear()
 		_last_recorded_event_id=-1
+		host.autonomous_battle_clock.cursor=-1.0
 		bar.clear_presentation();close_group()
 	bar.visible=host._timeline_visible()
 	if not bar.visible:
@@ -37,6 +38,7 @@ func sync()->void:
 	var state:Dictionary=host.session.battle_timeline_state()
 	if state!=_last_state:
 		bar.set_state(state);_last_state=state
+	bar.set_display_time(host.autonomous_battle_clock.cursor)
 	for entry in state.entries:
 		if pending_actors.has(int(entry.entity_id)):bar.flash_actor(int(entry.entity_id))
 	pending_actors.clear()

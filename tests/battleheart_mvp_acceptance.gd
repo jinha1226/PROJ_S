@@ -449,8 +449,9 @@ func _mobile_manual_dock_target_cancel_and_doublecast() -> void:
 		ui.autonomous_battle_clock.paused = false
 		ui._on_manual_skill_selected(companion_id, "FIREBOLT", "화염탄")
 		ui._commit_battle_target(int(target.target_id)); ui._commit_battle_target(int(target.target_id))
-		_check_eq(int(_member(session, companion_id).energy), before_energy - 3, "double confirmation spends one FIREBOLT")
-		_check(int(session.sim.world.world_time) - before_time >= 120, "double confirmation advances one canonical action")
+		_check_eq(int(_member(session, companion_id).energy), before_energy, "double confirmation only reserves; no early energy spend")
+		_check_eq(str(session.individual_battle.queued(companion_id).get("skill_id","")),"FIREBOLT","one FIREBOLT reservation")
+		_check_eq(int(session.sim.world.world_time),before_time,"reservation confirmation never advances canonical time")
 		ui.queue_free(); await process_frame
 
 func _tap_control(control: Control, _touch_index: int) -> void:

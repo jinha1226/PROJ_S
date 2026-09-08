@@ -55,12 +55,13 @@ static func build(input: Dictionary) -> Dictionary:
 			continue
 		# Enemies act only on actor ticks: the earliest real chance is the first tick
 		# at or after max(ready_at, now). This is an expectation, not a confirmation.
-		var eligible_at := _ceil_to_interval(maxi(ready_at, world_time), interval)
+		var eligible_at := maxi(ready_at,world_time) if bool(input.get("individual",false)) \
+			else _ceil_to_interval(maxi(ready_at, world_time), interval)
 		entries.append(_entry(row, "ENEMY", ENEMY_MARKERS[index], ready_at, eligible_at, world_time,
-			bool(row.get("can_act", true)), "EXPECTED"))
+			bool(row.get("can_act", true)), "READINESS_ONLY" if bool(input.get("individual",false)) else "EXPECTED"))
 	_assign_groups(entries, world_time)
 	_mark_next(entries)
-	return {"revision": int(input.get("revision", 0)), "world_time": world_time, "phase": str(input.get("phase", "")),
+	return {"individual":bool(input.get("individual",false)),"revision": int(input.get("revision", 0)), "world_time": world_time, "phase": str(input.get("phase", "")),
 		"visible": engaged and not entries.is_empty(), "entries": entries,
 		"hidden_visible_enemy_count": hidden,
 		"recent_actions": _recent_actions(input.get("recent_events", []))}

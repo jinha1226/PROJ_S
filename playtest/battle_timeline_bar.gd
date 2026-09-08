@@ -84,7 +84,7 @@ func _input(event: InputEvent) -> void:
 ## or written here.
 static func layout_spec(state: Dictionary, width: float, height: float = BAR_HEIGHT) -> Dictionary:
 	var center := Rect2((width - CENTER_WIDTH) * 0.5, 0.0, CENTER_WIDTH, height)
-	var world_time := int(state.get("world_time", 0))
+	var world_time := float(state.get("display_time",state.get("world_time", 0)))
 	# A side holding an entry of unknown timing reserves one 48px parking lane past
 	# the outer end of its rail. The returned rail is that shortened rail, so every
 	# timed item is exactly ratio * rail length from the center edge (spec 4) and the
@@ -103,10 +103,10 @@ static func layout_spec(state: Dictionary, width: float, height: float = BAR_HEI
 		var side := _side_of(entry)
 		var moment = _moment_of(entry)
 		var timed := moment != null
-		var remaining := -1
+		var remaining := -1.0
 		var ratio := 1.0
 		if timed:
-			remaining = maxi(0, int(moment) - world_time)
+			remaining = maxf(0, float(moment) - world_time)
 			ratio = clampf(float(remaining) / float(Presenter.HORIZON_WORLD_TIME), 0.0, 1.0)
 		var x := center.position.x - ratio * left_rail.size.x
 		if side == "ENEMY": x = center.end.x + ratio * right_rail.size.x
@@ -122,6 +122,8 @@ static func layout_spec(state: Dictionary, width: float, height: float = BAR_HEI
 	var items: Array = _merge_side(by_side.ALLY) + _merge_side(by_side.ENEMY)
 	items.sort_custom(_left_to_right)
 	for item in items:
+		if bool(state.get("individual",false)) and str(item.group_label)=="같은 행동 묶음":
+			item.group_label="같은 준비 시각"
 		item["touch"] = Rect2(clampf(float(item.x) - TOUCH_SIZE * 0.5, 0.0, maxf(0.0, width - TOUCH_SIZE)),
 			0.0, TOUCH_SIZE, height)
 	var hidden := int(state.get("hidden_visible_enemy_count", 0))
@@ -204,6 +206,13 @@ func set_state(state: Dictionary) -> void:
 		if id not in visible_ids:_flash_until.erase(id)
 	_relayout()
 
+func set_display_time(at:float)->void:
+	if not bool(_state.get("individual",false)):return
+	_state["display_time"]=maxf(float(_state.world_time),at)
+	_layout=layout_spec(_state,size.x,maxf(1,size.y))
+	for item in _layout.items:_shown_x[int(item.entity_ids[0])]=float(item.x)
+	queue_redraw()
+
 
 ## Pause and resume the drawing interpolation. Resuming does not fast-forward: the
 ## blocked span is added to the interpolation start so only the remaining part runs.
@@ -270,6 +279,9 @@ func _process(_delta: float) -> void:
 	var flashing := not _flash_until.is_empty()
 	for entity_id in _flash_until.keys():
 		if now >= int(_flash_until[entity_id]): _flash_until.erase(entity_id)
+	if bool(_state.get("individual",false)):
+		if flashing:queue_redraw()
+		return
 	if _blocked:
 		if flashing: queue_redraw()
 		return

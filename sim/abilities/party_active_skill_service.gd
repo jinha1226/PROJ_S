@@ -16,7 +16,8 @@ const RULESET_ID := "party-active-skills-v1"
 const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120}
 const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND"]
 
-static func assess(world,actor_id:int,skill_id:String,target_id:int)->Dictionary:
+static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
+		in_transaction:bool=false)->Dictionary:
 	var rejected:={"accepted":false,"reason":"active_skill_unavailable",
 		"message":"지금은 기술을 사용할 수 없습니다.","skill_id":skill_id,
 		"actor_id":actor_id,"target_id":target_id,"cost":0,"action_time":0}
@@ -24,7 +25,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int)->Dictionary
 	var state=world.party_encounter
 	if state.expedition_cycle!=null and str(state.expedition_cycle.phase)=="TOWN":
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")
-	if state.safe_phase!="ENGAGED" or not world.is_settled():
+	if state.safe_phase!="ENGAGED" or not world.is_settled() and not in_transaction:
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")
 	if actor_id not in state.active_party_member_ids or not state.member_rows.has(actor_id) \
 			or not world.entities.has(actor_id):
@@ -32,7 +33,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int)->Dictionary
 	var member=state.member(actor_id)
 	if member.presence!="DEPLOYED" or not world.can_act(actor_id,world.world_time):
 		return _reject(rejected,"active_skill_actor_incapacitated","행동할 수 없는 파티원입니다.")
-	if member.busy_until>world.world_time:
+	if not allow_busy and member.busy_until>world.world_time:
 		return _reject(rejected,"active_skill_actor_busy","아직 다음 행동을 준비 중입니다.")
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")

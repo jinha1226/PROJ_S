@@ -32,6 +32,7 @@ const PartyMemoryStateScript=preload("res://sim/party_memory_state.gd")
 const PartyMemoryPresenterScript=preload("res://playtest/party_memory_presenter.gd")
 const PartyRelationshipPresenterScript=preload("res://playtest/party_relationship_presenter.gd")
 const BattleTimelinePresenterScript=preload("res://playtest/battle_timeline_presenter.gd")
+const IndividualBattleScript=preload("res://playtest/individual_battle_session.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -188,6 +189,7 @@ var personality_seed := DEFAULT_PERSONALITY_SEED
 var scenario_id := REGRESSION_SCENARIO_ID
 var player_species_id := "human"
 var command_journal: Array[Dictionary] = []
+var individual_battle=IndividualBattleScript.new(self)
 var _deployment_plan: Dictionary = {}
 var _protagonist_draft = null
 var _overrides: Dictionary = {}
@@ -567,7 +569,7 @@ func battle_timeline_state()->Dictionary:
 			if cause!=null and cause.type=="action.skill":continue
 		recent.append({"event_id":int(event.id),"step_index":int(event.step_index),
 			"world_time":int(event.world_time),"type":str(event.type),"actor_id":int(event.actor_id)})
-	var dto:Dictionary=BattleTimelinePresenterScript.build({"world_time":int(world.world_time),
+	var dto:Dictionary=BattleTimelinePresenterScript.build({"individual":is_duo_autobattle(),"world_time":int(world.world_time),
 		"actor_interval":int(WorldStateScript.ACTOR_INTERVAL),"phase":str(state.safe_phase),
 		"revision":int(state.revision),
 		"engaged":str(state.safe_phase)=="ENGAGED" and str(status.get("view_mode",""))=="COMBAT",
@@ -2601,12 +2603,13 @@ func active_skill_rows(actor_id:int)->Array[Dictionary]:
 	elif actor_id not in sim.world.party_encounter.active_party_member_ids \
 			or member.presence!="DEPLOYED":common_reason="active_skill_actor_inactive"
 	elif not sim.world.can_act(actor_id,sim.world.world_time):common_reason="active_skill_actor_incapacitated"
-	elif member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
+	elif not is_duo_autobattle() and member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
 	for skill_id_value in member.active_skill_ids():
 		var skill_id:=str(skill_id_value);var definition:=ActiveSkillRegistryScript.definition(skill_id)
 		var reason:=common_reason
 		if reason.is_empty() and member.energy<int(definition.cost):reason="active_skill_energy_insufficient"
 		rows.append({"skill_id":skill_id,"label":str(definition.name),
+			"reserved":str(individual_battle.queued(actor_id).get("skill_id",""))==skill_id,
 			"cost":int(definition.cost),"energy":int(member.energy),
 			"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
 			"can_select":reason.is_empty(),"reason":reason,
@@ -7130,6 +7133,14 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.issue_actor_command(Int64CodecScript.parse(
 					operation.actor_id,"actor command actor"),str(operation.command_id),
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
+			"reserve_skill":
+				var operation:Dictionary=row.operation
+				replay_result=replay.individual_battle.reserve(int(operation.actor_id),
+					str(operation.skill_id),int(operation.target_id))
+			"cancel_reserved_skill":
+				replay_result=replay.individual_battle.cancel(int(row.operation.actor_id))
+			"individual_step":
+				replay_result=replay.individual_battle.commit(row.operation)
 			"active_skill":
 				var operation:Dictionary=row.operation
 				replay_result=replay.use_active_skill(Int64CodecScript.parse(
@@ -7144,8 +7155,11 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.commit_turn()
 		if not bool(replay_result.get("accepted",false)):return _rejection_dto("party_journal_replay_failed")
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
-	return _install_restored_session(restored, decoded, parsed_world_seed,
+	var installed:=_install_restored_session(restored, decoded, parsed_world_seed,
 		parsed_personality_seed, parsed_scenario_id, replay._map_layout)
+	individual_battle._bind()
+	individual_battle.queues=replay.individual_battle.queues.duplicate(true)
+	return installed
 
 
 func _migrate_party_hexaco(world, stored_personality_seed: int,
@@ -7527,6 +7541,10 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
+			"reserve_skill","cancel_reserved_skill","individual_step":
+				if keys!=["kind","operation"]:return "invalid_individual_journal"
+				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
+				if not individual_error.is_empty():return individual_error
 			"active_skill":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_active_skill_journal"
