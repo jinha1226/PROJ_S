@@ -31,6 +31,7 @@ const PartyEmotionSystemScript=preload("res://sim/systems/party_emotion_system.g
 const PartyMemoryStateScript=preload("res://sim/party_memory_state.gd")
 const PartyMemoryPresenterScript=preload("res://playtest/party_memory_presenter.gd")
 const PartyRelationshipPresenterScript=preload("res://playtest/party_relationship_presenter.gd")
+const BattleTimelinePresenterScript=preload("res://playtest/battle_timeline_presenter.gd")
 const EnemyAwarenessScript=preload("res://sim/enemy_awareness_state.gd")
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const EnemySquadBlackboardScript=preload("res://sim/enemy_squad_blackboard.gd")
@@ -177,6 +178,9 @@ const GUILD_WEAPONS := {
 	"dwarf":"WEAPON_MACE", "orc":"WEAPON_HAND_AXE",
 	"beastkin":"WEAPON_SPEAR", "goblin":"WEAPON_CROSSBOW",
 }
+# Newest slice of the canonical ledger the timeline scans for root actions, so a
+# long battle never makes the query walk the whole history (spec §9).
+const TIMELINE_EVENT_WINDOW:=64
 
 var sim
 var world_seed := DEFAULT_WORLD_SEED
@@ -204,6 +208,10 @@ var _presentation_topology_cache:Dictionary={}
 # and while refreshing the surface; keep that presentation work step-keyed and
 # detached from canonical world state.
 var _presentation_visibility_cache:Dictionary={}
+# Read-only battle timeline projection, keyed on the authoritative counters so a
+# UI that asks every frame rebuilds only when the core actually moved. Never
+# serialized: a load rebuilds it from canonical state (spec §7).
+var _timeline_cache:Dictionary={}
 var _base_progression_service
 var _base_settlement_service
 
@@ -519,6 +527,50 @@ func is_solo_combat()->bool:
 
 func is_duo_autobattle()->bool:
 	return scenario_id==DUO_SCENARIO_ID
+
+func battle_timeline_state()->Dictionary:
+	# Read-only presentation query. Never touches RNG, events, world time, energy,
+	# journal or staged plans; a cache keyed on authoritative counters makes
+	# repeated UI reads free.
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return BattleTimelinePresenterScript.build({"engaged":false,"allies":[],"enemies":[]})
+	var world=sim.world;var state=world.party_encounter
+	var key:="%d|%d|%d|%d"%[int(world.step_index),int(world.world_time),int(state.revision),world.events.size()]
+	if str(_timeline_cache.get("key",""))==key:return _timeline_cache.dto.duplicate(true)
+	var status:Dictionary=party_status()
+	var allies:Array=[]
+	for member_id_value in state.active_party_member_ids:
+		var member_id:=int(member_id_value);var member=state.member(member_id)
+		var entity=world.entities.get(member_id)
+		if member==null or entity==null:continue
+		allies.append({"entity_id":member_id,"display_name":str(entity.display_name),
+			"species_id":str(entity.species_id),"roster_slot":int(member.roster_slot),
+			"busy_until":int(member.busy_until),"alive":world.occupies_tile(member_id),
+			"can_act":world.can_act(member_id,int(world.world_time))})
+	var visible_ids:Array=status.get("visible_enemy_ids",[])
+	var enemies:Array=[]
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id:=int(enemy_id_value);var entity=world.entities.get(enemy_id)
+		if entity==null:continue
+		var awareness=state.enemy_awareness(enemy_id)
+		enemies.append({"entity_id":enemy_id,"display_name":str(entity.display_name),
+			"species_id":str(entity.species_id),"busy_until":int(state.enemy_busy_rows.get(enemy_id,0)),
+			"alive":world.occupies_tile(enemy_id),"can_act":world.can_act(enemy_id,int(world.world_time)),
+			"visible":enemy_id in visible_ids,
+			"aware":awareness!=null and str(awareness.awareness_state) in ["ALERT","HUNTING"]})
+	var recent:Array=[]
+	var start:=maxi(0,world.events.size()-TIMELINE_EVENT_WINDOW)
+	for index in range(start,world.events.size()):
+		var event=world.events[index]
+		recent.append({"event_id":int(event.id),"step_index":int(event.step_index),
+			"world_time":int(event.world_time),"type":str(event.type),"actor_id":int(event.actor_id)})
+	var dto:Dictionary=BattleTimelinePresenterScript.build({"world_time":int(world.world_time),
+		"actor_interval":int(WorldStateScript.ACTOR_INTERVAL),"phase":str(state.safe_phase),
+		"engaged":str(state.safe_phase)=="ENGAGED" and str(status.get("view_mode",""))=="COMBAT",
+		"allies":allies,"enemies":enemies,"recent_events":recent})
+	dto["revision"]=int(state.revision)
+	_timeline_cache={"key":key,"dto":dto.duplicate(true)}
+	return dto.duplicate(true)
 
 func prepare_autonomous_party_turn()->Dictionary:
 	var suggested:Dictionary=sim.party_coordinator.suggest_protagonist_turn()
