@@ -80,6 +80,17 @@ func test_next_candidate_moves_when_the_earliest_dies() -> bool:
 	return finish()
 
 
+func test_full_tie_marks_every_tied_group_as_next() -> bool:
+	# Ally readiness 300 and an enemy tick landing on 300 are equally next; the core
+	# decides at execution, so entry order must not promote the ally over the enemy.
+	var state: Dictionary = Presenter.build(_input(120, [_ally(1, "A", 0, 300)], [_enemy(9, "g", 300), _enemy(10, "h", 400)]))
+	check(bool(state.entries[0].is_next_candidate), "the tied ally is next")
+	check(bool(state.entries[1].is_next_candidate), "the equally tied enemy is next as well")
+	check(not bool(state.entries[2].is_next_candidate), "a later entry is still not next")
+	check(str(state.entries[0].group_key) != str(state.entries[1].group_key), "the tied sides stay in separate groups")
+	return finish()
+
+
 func test_recent_actions_use_root_events_only_and_batch_by_step() -> bool:
 	var events := [
 		{"event_id": 40, "step_index": 7, "world_time": 100, "type": "action.melee_attack", "actor_id": 1},

@@ -91,19 +91,26 @@ static func _assign_groups(entries: Array, world_time: int) -> void:
 
 
 static func _mark_next(entries: Array) -> void:
-	# Earliest expected moment wins; an exact tie falls back to who became ready
-	# first, so the UI never invents an ally-first or low-id priority of its own.
-	var best_at := 0; var best_ready := 0; var best_key := ""
+	# Earliest expected moment wins, then the earlier raw readiness. A genuine full
+	# tie -- same acts_at and same ready_at -- marks every tied group whatever the
+	# side: they are equally next and the core decides at execution. The UI never
+	# invents an ally-first or low-id priority of its own (spec 4).
+	var best_at := 0; var best_ready := 0; var found := false
 	for entry in entries:
 		if str(entry.status) == "UNAVAILABLE": continue
 		var acts_at := _acts_at(entry)
 		var ready_at := int(entry.ready_at)
-		var better := best_key.is_empty() or acts_at < best_at \
-			or (acts_at == best_at and ready_at < best_ready)
-		if not better: continue
-		best_at = acts_at; best_ready = ready_at; best_key = str(entry.group_key)
+		if found and (acts_at > best_at or (acts_at == best_at and ready_at >= best_ready)): continue
+		best_at = acts_at; best_ready = ready_at; found = true
+	var next_groups: Array = []
 	for entry in entries:
-		entry["is_next_candidate"] = not best_key.is_empty() and str(entry.group_key) == best_key
+		if str(entry.status) == "UNAVAILABLE": continue
+		if _acts_at(entry) != best_at or int(entry.ready_at) != best_ready: continue
+		var key := str(entry.group_key)
+		if not key in next_groups: next_groups.append(key)
+	for entry in entries:
+		entry["is_next_candidate"] = found and str(entry.status) != "UNAVAILABLE" \
+			and str(entry.group_key) in next_groups
 
 
 static func _recent_actions(events: Array) -> Array:
