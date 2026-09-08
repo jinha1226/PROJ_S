@@ -10,6 +10,15 @@
 
 **Spec:** `docs/concepts/BATTLE_ACTION_TIMELINE_HANDOFF.ko.md` (구속력 있는 설계. 이 계획은 그 문서의 §3~§9를 태스크로 나눈 것이다.)
 
+## 실행 상태 (2026-09-08)
+
+- Task 1~3: 기존 커밋 `d4fa832`까지 구현되어 있던 내용을 기반으로 진행.
+- Task 4·5: 구현 완료. 샌드박스의 통합 책임을 `battle_timeline_controller.gd`로 분리하고, 실제 터치 입력을 사용하는 `tests/battle_timeline_integration.gd`를 추가했다.
+- Task 6: 검증 및 보고서 완료. 검사 결과·기존 실패 비교·배치 처리의 한계·성능은 [구현 결과 보고서](../../concepts/BATTLE_ACTION_TIMELINE_REPORT.ko.md)에 기록했다. 성능 검사는 신규 통합 검사에 있다.
+- 아래 Step 체크박스와 예제 코드는 최초 실행 지침이다. 최종 구현의 변경점과 실제 검증 결과는 위 보고서를 기준으로 한다. 커밋·푸시·메인 병합은 수행하지 않았다.
+
+설계 보완: 중앙 터치 영역은 겹침을 막기 위해 48px로 넓혔고, 그룹 목록은 전역 맵 입력까지 막는 전체 화면 Control 모달로 구현했다. 전투 규칙은 변경하지 않았다.
+
 ## Global Constraints
 
 - **코어 무변경**: `sim/` 아래 파일은 수정하지 않는다. 조회는 RNG·이벤트·세계시간·기력·저널·준비 명령을 바꾸지 않는다(스펙 §7). `prepare_autonomous_party_turn()`을 그리기용으로 반복 호출하지 않는다.

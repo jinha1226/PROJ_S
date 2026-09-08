@@ -12,11 +12,11 @@ const Presenter = preload("res://playtest/battle_timeline_presenter.gd")
 const Assets = preload("res://playtest/fixed_front_topdown_assets.gd")
 const UiSkin = preload("res://playtest/dark_pixel_ui_skin.gd")
 const BAR_HEIGHT := 48.0
-const CENTER_WIDTH := 24.0
+const CENTER_WIDTH := 48.0
 const PORTRAIT_SIZE := 26.0
 const TOUCH_SIZE := 48.0
 const LERP_DURATION_MSEC := 100
-const FLASH_DURATION_MSEC := 800
+const FLASH_DURATION_MSEC := 180
 const PORTRAIT_CROP := Rect2(48, 16, 160, 160)
 const ALLY_FRAME := Color("#508cb0")
 const LABEL_FONT_SIZE := 11
@@ -36,6 +36,47 @@ var _taps_enabled := true
 var _flash_until := {}             # entity_id -> msec
 var _held_key := -1               # representative entity of the pressed item
 var _pointer_down := false
+var _touch_index := -1
+var _touch_pointer := false
+var _gesture_cancelled := false
+var _press_position := Vector2.ZERO
+
+func cancel_pointer() -> void:
+	_held_key=-1;_touch_index=-1;_gesture_cancelled=false
+	if _pointer_down:
+		_pointer_down=false;pointer_held.emit(false)
+	queue_redraw()
+
+func clear_presentation()->void:
+	cancel_pointer();_flash_until.clear();_state.clear();_layout.clear()
+	_target_x.clear();_shown_x.clear();_from_x.clear();queue_redraw()
+
+func _notification(what:int)->void:
+	if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT:cancel_pointer()
+
+## Capture the remainder of a held gesture even after it leaves the bar.
+func _input(event: InputEvent) -> void:
+	if not _pointer_down:return
+	if event is InputEventScreenTouch:
+		if not _touch_pointer or event.index!=_touch_index:
+			if event.pressed:_gesture_cancelled=true
+			get_viewport().set_input_as_handled();return
+		if not event.pressed:
+			if event.canceled:_gesture_cancelled=true
+			_handle_pointer(get_global_transform_with_canvas().affine_inverse()*event.position,false)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		if event.index==_touch_index:
+			var local:Vector2=get_global_transform_with_canvas().affine_inverse()*event.position
+			if local.distance_to(_press_position)>10:_gesture_cancelled=true
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton or event is InputEventMouseMotion:
+		if not _touch_pointer and event.device!=InputEvent.DEVICE_ID_EMULATION:
+			var local:Vector2=get_global_transform_with_canvas().affine_inverse()*event.position
+			if event is InputEventMouseMotion and local.distance_to(_press_position)>10:_gesture_cancelled=true
+			if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed:
+				_handle_pointer(local,false)
+		get_viewport().set_input_as_handled()
 
 
 ## Pure layout: the same dictionary in always yields the same geometry out, so the
@@ -144,7 +185,12 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(0.0, BAR_HEIGHT)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	clip_contents = true
-	resized.connect(_relayout)
+	resized.connect(_on_resized)
+
+func _on_resized()->void:
+	# A container's initial zero width or a viewport resize is not elapsed world
+	# time. Snap to the new geometry instead of flying in from stale coordinates.
+	_shown_x.clear();_from_x.clear();_relayout()
 
 
 ## Adopt a committed DTO. The previous interpolation is replaced, never queued
@@ -152,6 +198,10 @@ func _ready() -> void:
 ## targets within LERP_DURATION_MSEC.
 func set_state(state: Dictionary) -> void:
 	_state = state.duplicate(true)
+	var visible_ids:Array=[]
+	for entry in _state.get("entries",[]):visible_ids.append(int(entry.entity_id))
+	for id in _flash_until.keys():
+		if id not in visible_ids:_flash_until.erase(id)
 	_relayout()
 
 
@@ -243,9 +293,11 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 		if event.device == InputEvent.DEVICE_ID_EMULATION: return
 		if int(event.button_index) != MOUSE_BUTTON_LEFT: return
+		if event.pressed:_touch_pointer=false
 		_handle_pointer(event.position, bool(event.pressed))
 	elif event is InputEventScreenTouch:
 		accept_event()
+		if event.pressed:_touch_pointer=true;_touch_index=event.index
 		_handle_pointer(event.position, bool(event.pressed))
 	elif event is InputEventScreenDrag or event is InputEventMouseMotion:
 		accept_event()
@@ -255,6 +307,7 @@ func _gui_input(event: InputEvent) -> void:
 ## autonomous battle while the finger is down; the tap itself is information only.
 func _handle_pointer(at: Vector2, pressed: bool) -> void:
 	if pressed:
+		_gesture_cancelled=false;_press_position=at
 		_pointer_down = true
 		_held_key = _key_at(at)
 		pointer_held.emit(true)
@@ -266,7 +319,7 @@ func _handle_pointer(at: Vector2, pressed: bool) -> void:
 	if _pointer_down:
 		_pointer_down = false
 		pointer_held.emit(false)
-	if _taps_enabled and released_on >= 0 and released_on == held:
+	if _taps_enabled and not _gesture_cancelled and released_on >= 0 and released_on == held:
 		var entity_ids := _entity_ids_of(held)
 		if not entity_ids.is_empty(): entry_tapped.emit(entity_ids)
 	queue_redraw()
@@ -291,7 +344,8 @@ func _item_at(at: Vector2) -> int:
 	var best_distance := INF
 	for index in range(items.size()):
 		var item: Dictionary = items[index]
-		if not (item.touch as Rect2).has_point(at): continue
+		var touch:=Rect2(clampf(_drawn_x(item)-TOUCH_SIZE*0.5,0,maxf(0,size.x-TOUCH_SIZE)),0,TOUCH_SIZE,size.y)
+		if not touch.has_point(at): continue
 		var distance := absf(_drawn_x(item) - at.x)
 		if distance >= best_distance: continue
 		best = index

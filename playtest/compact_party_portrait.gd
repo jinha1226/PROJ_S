@@ -15,6 +15,13 @@ func _portrait(texture:Texture2D,rect:Rect2)->void:
 		# Portrait crops the body atlas to head/shoulders, as in the concept.
 		draw_texture_rect_region(texture,rect.grow(-3),Rect2(48,16,160,160))
 
+var emphasized_until_msec:=-1
+
+func _process(_delta:float)->void:
+	if emphasized_until_msec>=0:
+		queue_redraw()
+		if Time.get_ticks_msec()>=emphasized_until_msec:emphasized_until_msec=-1
+
 func _ready()->void:
 	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	clip_contents=true
@@ -36,6 +43,8 @@ func _draw()->void:
 	else:
 		_draw_expanded(texture,font,health,maximum)
 	if selected:draw_rect(Rect2(Vector2.ONE,size-Vector2.ONE*2),Color("#c6a34c"),false,1)
+	if Time.get_ticks_msec()<emphasized_until_msec:
+		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#e4bb67"),false,2)
 	if order_reserved:draw_circle(Vector2(size.x-8,9),5,Color("#e3bd57"))
 
 func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:

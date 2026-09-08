@@ -753,7 +753,19 @@ func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)-
 	for raw_id in _awareness_pulses.keys():
 		if not next_enemy_ids.has(int(raw_id)):_awareness_pulses.erase(raw_id)
 
+var _actor_emphasis:Dictionary={}
+
+func set_actor_emphasis(entity_id:int,duration_msec:int)->void:
+	_actor_emphasis[entity_id]=Time.get_ticks_msec()+duration_msec;_update_process_enabled();queue_redraw()
+
+func actor_emphasis_active(entity_id:int)->bool:
+	return Time.get_ticks_msec()<int(_actor_emphasis.get(entity_id,-1)) and actor_visual_center(entity_id).x>=0
+
 func _process(_delta:float)->void:
+	if not _actor_emphasis.is_empty():
+		for id in _actor_emphasis.keys():
+			if not actor_emphasis_active(int(id)):_actor_emphasis.erase(id)
+		queue_redraw()
 	var had_visual_effects:=not _active_visual_effects.is_empty()
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
 	for effect in _active_visual_effects:
@@ -780,7 +792,7 @@ func _process(_delta:float)->void:
 
 func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
-		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty())
+		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty() or not _actor_emphasis.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,
 	Vector2i(visible_cell_count,visible_row_count))
@@ -2123,6 +2135,12 @@ func _diorama_visibility_state(row:Dictionary)->String:
 	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
 
 func _draw() -> void:
+	_draw_world_with_emphasis()
+	for id in _actor_emphasis:
+		if actor_emphasis_active(int(id)):
+			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)
+
+func _draw_world_with_emphasis()->void:
 	_ensure_melee_vfx()
 	_ensure_static_projection_cache()
 	# All actor-attached presentation samples one clock value per draw pass. When

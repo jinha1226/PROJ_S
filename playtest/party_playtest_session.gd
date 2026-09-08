@@ -535,7 +535,7 @@ func battle_timeline_state()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return BattleTimelinePresenterScript.build({"engaged":false,"allies":[],"enemies":[]})
 	var world=sim.world;var state=world.party_encounter
-	var key:="%d|%d|%d|%d"%[int(world.step_index),int(world.world_time),int(state.revision),world.events.size()]
+	var key:="%d|%d|%d|%d|%d"%[world.get_instance_id(),int(world.step_index),int(world.world_time),int(state.revision),world.events.size()]
 	if str(_timeline_cache.get("key",""))==key:return _timeline_cache.dto.duplicate(true)
 	var status:Dictionary=party_status()
 	var allies:Array=[]
@@ -562,6 +562,9 @@ func battle_timeline_state()->Dictionary:
 	var start:=maxi(0,world.events.size()-TIMELINE_EVENT_WINDOW)
 	for index in range(start,world.events.size()):
 		var event=world.events[index]
+		if event.type=="action.move":
+			var cause=world.event_by_id(int(event.cause_id))
+			if cause!=null and cause.type=="action.skill":continue
 		recent.append({"event_id":int(event.id),"step_index":int(event.step_index),
 			"world_time":int(event.world_time),"type":str(event.type),"actor_id":int(event.actor_id)})
 	var dto:Dictionary=BattleTimelinePresenterScript.build({"world_time":int(world.world_time),

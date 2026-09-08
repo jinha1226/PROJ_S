@@ -309,6 +309,8 @@ var _battle_target_skill_label:=""
 var _battle_target_prompt:=""
 var _battle_target_prior_paused:=false
 var _battle_target_committing:=false
+var battle_timeline_bar
+var battle_timeline_controller
 var battle_drag:Control
 var battle_loot_panel:Control
 var _shown_loot_battle_id:=-1
@@ -323,6 +325,8 @@ var _product_magnify_accumulator:=1.0
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
 
 func _process(_delta:float)->void:
+	if battle_timeline_bar!=null and battle_timeline_bar.visible:
+		battle_timeline_bar.set_presentation_blocked(_battle_presentation_blocked() or autonomous_battle_clock.paused)
 	if not _battle_target_mode.is_empty() and grid!=null and grid.modal_open:
 		_cancel_battle_targeting("대상 선택을 취소했습니다.")
 	_tick_autonomous_battle(_delta)
@@ -357,6 +361,7 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
+	if battle_timeline_controller!=null and battle_timeline_controller.handle_group_input(event):return
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
 	if battle_drag!=null and battle_drag.handle_input(self,event):return
 	if _handle_product_pinch_zoom(event):return
@@ -917,6 +922,11 @@ func _build_ui()->void:
 	_build_record_modal()
 	_build_base_modal()
 	_build_species_picker()
+	battle_timeline_bar=preload("res://playtest/battle_timeline_bar.gd").new()
+	battle_timeline_bar.name="BattleTimelineBar";battle_timeline_bar.hide()
+	root_layout.add_child(battle_timeline_bar)
+	battle_timeline_controller=preload("res://playtest/battle_timeline_controller.gd").new()
+	add_child(battle_timeline_controller);battle_timeline_controller.setup(self,battle_timeline_bar)
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
 	battle_loot_panel=preload("res://playtest/battle_loot_panel.gd").new();add_child(battle_loot_panel)
 	battle_loot_panel.hide()
@@ -1953,17 +1963,19 @@ func _decorate_visible_resource_caches(observation:Dictionary)->void:
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
-		root_layout.move_child(phase_panel,0);root_layout.move_child(grid,1)
-		root_layout.move_child(event_surface,2);root_layout.move_child(cards,3)
+		root_layout.move_child(phase_panel,0);root_layout.move_child(battle_timeline_bar,1)
+		root_layout.move_child(grid,2);root_layout.move_child(event_surface,3);root_layout.move_child(cards,4)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
-		root_layout.move_child(bottom_navigation,root_layout.get_child_count()-1)
 	else:
 		hud_bottom_flex.visible=false
 		root_layout.move_child(phase_panel,0);root_layout.move_child(grid,1)
 		root_layout.move_child(cards,2);root_layout.move_child(info_scroll,3)
 		root_layout.move_child(combat_action_area,4)
+	# Keep the legacy footer last in both product and formation/debug layouts.
+	# The hidden timeline must not become the trailing sibling in either mode.
+	root_layout.move_child(bottom_navigation,root_layout.get_child_count()-1)
 
 func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	# The stable one-member combat shell does not need to destroy and recreate
@@ -2310,9 +2322,10 @@ func _reset_auto_flow()->void:
 	auto_combat_plan_hash="";auto_combat_step_index=-1;auto_combat_render_stage=0
 	auto_override_edit=false;auto_phase="";exploration_follow_plan.clear()
 
-func _tick_autonomous_battle(delta:float)->void:
-	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
-	var state=session.sim.world.party_encounter
+func _timeline_visible()->bool:
+	return _portrait_battle_controls_visible() and (battle_loot_panel==null or not battle_loot_panel.visible)
+
+func _battle_presentation_blocked()->bool:
 	var blocked:bool=grid==null or grid.modal_open or _product_touch_index>=0 \
 		or _party_command_targeting or not _battle_target_mode.is_empty() or auto_combat_pending
 	blocked=blocked or (battle_drag!=null and (battle_drag.active or battle_drag.control_held))
@@ -2323,6 +2336,14 @@ func _tick_autonomous_battle(delta:float)->void:
 	if manual_actor_menu!=null:blocked=blocked or manual_actor_menu.get_popup().visible
 	if directive_menu!=null:blocked=blocked or directive_menu.get_popup().visible
 	if companion_order_editor!=null:blocked=blocked or companion_order_editor.visible
+	if battle_timeline_controller!=null:
+		blocked=blocked or battle_timeline_controller.pointer_held or battle_timeline_controller.group_open
+	return blocked
+
+func _tick_autonomous_battle(delta:float)->void:
+	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
+	var state=session.sim.world.party_encounter
+	var blocked:=_battle_presentation_blocked()
 	if not autonomous_battle_clock.due(delta,state.safe_phase=="ENGAGED",blocked):return
 	var planning:Dictionary=session.prepare_autonomous_party_turn()
 	if not bool(planning.get("commit_ready",false)):
@@ -5719,6 +5740,7 @@ func _flush_requested_refresh()->void:
 	_refresh()
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",
 		scroll_combat_log:bool=false,motion_duration_msec:int=-1)->void:
+	if battle_timeline_controller!=null:battle_timeline_controller.record_result(result)
 	_arm_actor_motion_from_result(result,motion_duration_msec)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		for raw in result.get("visual_effects",[]):
@@ -5759,6 +5781,7 @@ func _maybe_open_battle_loot(force:bool=false)->void:
 	_cancel_active_route()
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	battle_loot_panel.show()
+	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	battle_loot_panel.configure(session.protagonist_inventory(),loot)
 
 func _take_battle_loot(battle_id:int,instance_id:String)->void:
@@ -5797,6 +5820,7 @@ func _settle_solo_product_contact()->void:
 	auto_phase=str(session.party_status().get("safe_phase",""))
 
 func _flush_pending_visual_effects()->int:
+	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0
 	var rows:Array=_pending_visual_effect_rows.duplicate(true)
 	_pending_visual_effect_rows.clear()
@@ -6125,7 +6149,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-party_height-(0 if _portrait_battle_controls_visible() else 48)
-		-separation*4))
+		-(48 if _timeline_visible() else 0)-separation*(5 if _timeline_visible() else 4)))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction
 	# in sprite scale is preferable to leaving an otherwise useless black strip.
@@ -6374,6 +6398,9 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
 		product_hud:bool=false)->void:
 	var wide:=size.x>=450.0
+	if battle_timeline_bar!=null:
+		battle_timeline_bar.visible=_timeline_visible()
+		battle_timeline_bar.custom_minimum_size.y=48 if _timeline_visible() else 0
 	phase_panel.custom_minimum_size.y=PRODUCT_TOP_HUD_HEIGHT if product_hud else (52 if wide else 48)
 	# Compact portrait has no gaps; desktop keeps a little rail separation while
 	# the expanding map owns all remaining height.
