@@ -356,9 +356,15 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			if parsed <= previous: return "duplicate_or_unsorted_%s" % list_key
 			previous = parsed
 	var active_rows: Variant = row.get("active_party_member_ids", row.party_member_ids)
-	if not active_rows is Array or active_rows.is_empty() \
-			or active_rows.size() > MAX_ACTIVE_PARTY_SIZE:
+	if not active_rows is Array or active_rows.is_empty() or active_rows.size()>64:
 		return "invalid_active_party_member_ids"
+	# Fallen members stay in the historical roster, but never consume a field
+	# slot. Keeping their IDs preserves death, relationship and action histories.
+	var standing_count:int=active_rows.size()
+	if not row.get("member_rows") is Array:return "invalid_party_member_rows"
+	for member_row in row.member_rows:
+		if member_row is Dictionary and member_row.get("entity_id") in active_rows and member_row.get("presence")=="DEFEATED":standing_count-=1
+	if standing_count>MAX_ACTIVE_PARTY_SIZE:return "invalid_active_party_member_ids"
 	var previous_active := -1
 	for value in active_rows:
 		if not Int64CodecScript.is_canonical(value): return "noncanonical_active_party_member_ids"

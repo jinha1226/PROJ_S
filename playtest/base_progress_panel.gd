@@ -7,6 +7,8 @@ signal building_selected(building_id:String)
 signal resident_requested(entity_id:int)
 signal construction_confirm_requested(type_id:String,tile_origin:Vector2i)
 signal work_cancel_requested
+signal production_requested(action:String,recipe_id:String)
+signal rest_requested(entity_id:int)
 signal return_requested
 signal sell_requested(resource_id:String,amount:int)
 
@@ -65,6 +67,12 @@ func _rebuild()->void:
 	if _overview.is_empty() or not bool(_overview.get("enabled",false)):
 		_add_text("거점 정보가 아직 열리지 않았습니다.","BaseUnavailable",FONT_BODY,true)
 		return
+	if not bool(_overview.get("private_home_owned",true)):
+		_add_text("여관 생활 · 아직 개인 거점이 없습니다","InnStorageTitle",16,true)
+		_add_resource_ledger()
+		_add_text("물자는 여관 보관소에 맡깁니다. 마을에서 동료를 만나고 탐험대의 집을 구하세요.","InnStorageHint",FONT_BODY,true)
+		if _read_only:_add_return_action()
+		return
 	var title:=_add_text("작은 거점 · 건물을 눌러 확인","BaseProgressTitle",16,true)
 	DarkPixelSkin.apply_heading(title,DarkPixelSkin.BRASS)
 	_add_resource_ledger()
@@ -86,12 +94,14 @@ func _rebuild()->void:
 		var facility:=_facility_by_id(_selected_id)
 		if not facility.is_empty():_add_facility(facility)
 		else:_add_landmark_detail(_selected_id)
+		_add_production()
+		if _selected_id=="LODGE":_add_rest()
 		if _selected_id=="STORAGE":_add_trade_rows()
 	var residents:Variant=_overview.get("residents",[])
-	var resident_count:=mini(2,residents.size()) if residents is Array else 0
+	var resident_count:int=residents.size() if residents is Array else 0
 	_add_section_heading("거주자 · 현재 %d인"%resident_count,"BaseResidentsHeading")
 	if residents is Array:
-		for index in range(mini(2,residents.size())):
+		for index in range(residents.size()):
 			if residents[index] is Dictionary:_add_resident(residents[index])
 	if _read_only:_add_return_action()
 
@@ -120,12 +130,55 @@ func _add_build_entry()->void:
 func _add_work_status()->void:
 	var work:Dictionary=_overview.get("work",{})
 	if work.is_empty():return
-	_add_text("%s · 주민 작업 중"%_building_label(str(work.type_id)),"BaseWorkTitle",FONT_BODY,true)
+	var title:="회복 물약 · 제조 중" if str(work.action)=="PRODUCE" else "%s · 주민 작업 중"%_building_label(str(work.type_id))
+	if str(work.action)=="REST":title="숙소 · 휴식 중"
+	_add_text(title,"BaseWorkTitle",FONT_BODY,true)
 	var progress:=ProgressBar.new();progress.name="BaseWorkProgress"
 	progress.max_value=float(work.required);progress.value=float(work.progress)
 	progress.custom_minimum_size.y=18;add_child(progress)
-	var cancel:=_button("공사 취소 · 재료 반환","BaseWorkCancel")
+	var cancel:=_button("작업 취소 · 재료 반환","BaseWorkCancel")
+	if str(work.action)=="REST":cancel.text="휴식 취소 · 골드 반환"
 	cancel.pressed.connect(func():work_cancel_requested.emit());add_child(cancel)
+
+
+func _add_rest()->void:
+	_add_section_heading("휴식 · 보유 %d골드"%int(_overview.get("gold",0)),"BaseRestHeading")
+	for resident in _overview.get("rest",[]):
+		var id:=int(resident.entity_id)
+		_add_text("%s · 긴장 %d%% → %d%%"%[str(resident.label),roundi(float(resident.stress)/10),
+			roundi(float(resident.stress_after)/10)],"BaseRestStatus%d"%id,FONT_BODY,true)
+		if int(resident.emotion)>0:
+			_add_text("%s %d%% → %d%%"%[str(resident.emotion_label),ceili(float(resident.emotion)/10),
+				ceili(float(resident.emotion_after)/10)],"BaseRestEmotion%d"%id,FONT_SMALL,true)
+		var bar:=ProgressBar.new();bar.name="BaseRestStress%d"%id
+		bar.max_value=1000;bar.value=int(resident.stress);bar.show_percentage=false
+		bar.custom_minimum_size.y=8;bar.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(bar)
+		var rest:=_button("휴식 · %d골드"%int(resident.cost),"BaseRest%d"%id)
+		rest.disabled=_read_only or not bool(resident.can_rest)
+		rest.tooltip_text=str(resident.message)
+		rest.pressed.connect(func():rest_requested.emit(id));add_child(rest)
+		if not bool(resident.can_rest):_add_text(str(resident.message),"BaseRestReason%d"%id,FONT_SMALL,true)
+
+
+func _add_production()->void:
+	for recipe in _overview.get("production",[]):
+		if str(recipe.facility_id)!=_selected_id:continue
+		_add_section_heading("제조 · %s"%str(recipe.label),"BaseProductionHeading")
+		_add_text("비용 %s · 완성품 %d/%d"%[_resource_text(recipe.cost),int(recipe.ready),
+			int(recipe.stock_limit)],"BaseProductionStock",FONT_SMALL,true)
+		var buttons:=HBoxContainer.new();buttons.add_theme_constant_override("separation",4);add_child(buttons)
+		var produce:=_button("1개 제조","BaseProduce%s"%str(recipe.recipe_id))
+		produce.disabled=_read_only or not bool(recipe.can_produce)
+		produce.tooltip_text=str(recipe.message)
+		produce.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		produce.pressed.connect(func():production_requested.emit("PRODUCE",str(recipe.recipe_id)))
+		buttons.add_child(produce)
+		var claim:=_button("가방으로 1개","BaseClaim%s"%str(recipe.recipe_id))
+		claim.disabled=_read_only or not bool(recipe.can_claim)
+		claim.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		claim.pressed.connect(func():production_requested.emit("CLAIM",str(recipe.recipe_id)))
+		buttons.add_child(claim)
+		if not bool(recipe.can_produce):_add_text(str(recipe.message),"BaseProductionReason",FONT_SMALL,true)
 
 
 func update_work(overview:Dictionary)->void:
@@ -305,7 +358,7 @@ func _add_facility(facility:Dictionary)->void:
 		"BaseFacilityCost%s"%id,FONT_SMALL)
 	cost.size_flags_horizontal=Control.SIZE_EXPAND_FILL;cost.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	action_row.add_child(cost)
-	if not _read_only and id in ["LODGE","CLINIC"]:
+	if not _read_only and (id=="CLINIC" or id=="LODGE" and not _overview.has("rest")):
 		var service:=_button("이용","BaseFacilityService%s"%id)
 		service.pressed.connect(func():service_requested.emit(id));action_row.add_child(service)
 	var upgrade:=_button("강화","BaseFacilityUpgrade%s"%id)

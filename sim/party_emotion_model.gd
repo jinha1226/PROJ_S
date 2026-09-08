@@ -1,6 +1,8 @@
 class_name PartyEmotionModel
 extends RefCounted
 
+const TOWN_REST_REDUCTION:={"FEAR":300,"ANGER":150,"SADNESS":120,"GUILT":100}
+
 const RULESET_ID := "party-emotion-appraisal-v1"
 const DECAY_QUANTUM := 100
 const TARGETED_ANGER_THRESHOLD := 600
@@ -11,6 +13,17 @@ const RelationshipSystemScript = preload("res://sim/systems/relationship_system.
 const DECAY_PER_QUANTUM := {
 	"FEAR":18, "ANGER":10, "SADNESS":5, "GUILT":4, "BOND":3, "RESOLVE":12,
 }
+
+
+static func town_rest_projection(state,world_time:int)->Dictionary:
+	var projected=EmotionStateScript.from_dict(state.to_dict())
+	var triggers:Array[String]=[]
+	_apply_decay(projected,world_time,triggers)
+	var before:Dictionary={};var after:Dictionary={}
+	for emotion_id in TOWN_REST_REDUCTION:
+		before[emotion_id]=projected.intensity(emotion_id)
+		after[emotion_id]=maxi(0,int(before[emotion_id])-int(TOWN_REST_REDUCTION[emotion_id]))
+	return {"before":before,"after":after}
 
 
 static func evaluate(world, event_rows: Array) -> Dictionary:
@@ -109,10 +122,8 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 		_add(state, "FEAR", _fear_delta(profile, 25), -1, source_id, "RATION_MISSING")
 		_append_trigger(triggers, "RATION_MISSING")
 	elif event_type == "town.shrine_service" and target_id == observer_id:
-		_reduce(state, "FEAR", 300)
-		_reduce(state, "ANGER", 150)
-		_reduce(state, "SADNESS", 120)
-		_reduce(state, "GUILT", 100)
+		for emotion_id in TOWN_REST_REDUCTION:
+			_reduce(state,emotion_id,int(TOWN_REST_REDUCTION[emotion_id]))
 		_append_trigger(triggers, "TOWN_REST")
 
 
@@ -228,11 +239,19 @@ static func _eligible_members(world) -> Array[int]:
 	var result: Array[int] = []
 	if world == null or world.party_encounter == null:
 		return result
-	for member_id_value in world.party_encounter.active_party_member_ids:
+	var member_ids:Array=world.party_encounter.active_party_member_ids.duplicate()
+	var town_residents:Dictionary={"enabled":false}
+	if world.party_encounter.expedition_cycle!=null and world.party_encounter.expedition_cycle.phase=="TOWN":
+		town_residents=preload("res://sim/town_life_rules.gd").state(world.events)
+	var at_home:bool=town_residents.enabled
+	if at_home:
+		for id in town_residents.members:
+			if id not in member_ids:member_ids.append(id)
+	for member_id_value in member_ids:
 		var member_id := int(member_id_value)
 		var member = world.party_encounter.member(member_id)
 		var combatant = world.combatant_states.get(member_id)
-		if member != null and member.presence in ["DEPLOYED", "GROUPED"] \
+		if member != null and (member.presence in ["DEPLOYED", "GROUPED"] or at_home and member.presence=="RECRUITABLE") \
 				and combatant != null and combatant.life_state != "DEAD" \
 				and world.entities.has(member_id):
 			result.append(member_id)

@@ -151,20 +151,34 @@ func _draw_work_and_residents()->void:
 	if not job.is_empty():
 		var p:=_vector2i(job.tile_origin);var footprint:=_vector2i(job.footprint)
 		var rect:=Rect2(_map_origin()+Vector2(p)*_cell_size(),Vector2(footprint)*_cell_size())
-		draw_rect(rect,Color(CYAN,0.15));draw_rect(rect,CYAN,false,2)
+		var tone:=SELECTED if str(job.action)=="PRODUCE" else CYAN
+		if str(job.action)=="REST":tone=Color("#8faad4")
+		draw_rect(rect,Color(tone,0.15));draw_rect(rect,tone,false,2)
 		for x in range(1,footprint.x):
-			draw_line(rect.position+Vector2(x*_cell_size(),0),rect.position+Vector2(x*_cell_size(),rect.size.y),Color(CYAN,0.4),1)
+			if str(job.action) in ["BUILD","UPGRADE"]:draw_line(rect.position+Vector2(x*_cell_size(),0),rect.position+Vector2(x*_cell_size(),rect.size.y),Color(CYAN,0.4),1)
 		var bar:=Rect2(rect.position+Vector2(2,rect.size.y-5),Vector2(rect.size.x-4,3))
 		draw_rect(bar,Color("#111a1c"));bar.size.x*=float(job.progress)/float(job.required)
-		draw_rect(bar,CYAN)
+		draw_rect(bar,tone)
+	for recipe in _overview.get("production",[]):
+		if int(recipe.ready)<1:continue
+		var rect:=building_rect(str(recipe.facility_id))
+		if rect.size==Vector2.ZERO:continue
+		var center:=rect.position+Vector2(rect.size.x-8,8)
+		draw_circle(center,8,SELECTED)
+		draw_string(KoreanFont,center+Vector2(-3,4),str(recipe.ready),HORIZONTAL_ALIGNMENT_LEFT,-1,12,GROUND)
 	if str(_overview.get("phase",""))!="TOWN":return
 	var index:=0
 	for resident in _overview.get("residents",[]):
 		var tile:=Vector2i(7+index,7);index+=1
+		if resident.has("tile"):tile=_vector2i(resident.tile)
 		var working:bool=not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
 		if working:tile=preload("res://sim/base_work_rules.gd").worker_position(job)
 		var center:=_map_origin()+(Vector2(tile)+Vector2.ONE*0.5)*_cell_size()
 		var radius:=_cell_size()*0.24
+		if working and str(job.action)=="REST" and int(job.progress)>=job.route.size()-1:
+			draw_rect(Rect2(center-Vector2(radius*1.5,radius),Vector2(radius*3,radius*2)),Color("#718bac"))
+			draw_circle(center-Vector2(radius,0),radius*0.65,BONE)
+			continue
 		draw_circle(center+Vector2(0,radius*0.7),radius*1.15,Color("#111816"))
 		draw_circle(center+Vector2(0,radius*0.35),radius,CYAN if working else Color("#96a889"))
 		draw_circle(center-Vector2(0,radius*0.65),radius*0.67,BONE)
@@ -197,7 +211,7 @@ func _draw_building(row:Dictionary)->void:
 	if type_id==_selected_id:_draw_selection(rect.grow(-1))
 	if type_id in ["CLINIC","ARMORY"] or level>=2 and type_id in ["STORAGE","LODGE"]:
 		preload("res://playtest/base_room_renderer.gd").draw_room(self,rect,type_id,level)
-		_draw_label(rect,str(LABELS.get(type_id,type_id)))
+		_draw_label(rect,str(row.get("label",LABELS.get(type_id,type_id))))
 		return
 	match type_id:
 		"STORAGE":

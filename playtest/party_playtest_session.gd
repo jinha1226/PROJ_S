@@ -589,7 +589,26 @@ func prepare_autonomous_party_turn()->Dictionary:
 	return replace_auto_combat_protagonist_action(ActionScript.from_dict(suggested.action))
 
 func allows_companions()->bool:
-	return SoloRunPolicy.allows_companions(scenario_id)
+	return town_life_enabled() or SoloRunPolicy.allows_companions(scenario_id)
+
+func town_life_enabled()->bool:
+	return sim!=null and preload("res://sim/town_life_rules.gd").enabled(sim.world.events)
+
+func town_life_overview()->Dictionary:
+	return preload("res://playtest/town_life_service.gd").overview(self)
+
+func town_life_command(operation:Dictionary)->Dictionary:
+	return preload("res://playtest/town_life_service.gd").commit(self,operation)
+
+func private_home_available()->bool:
+	return sim!=null and preload("res://sim/town_life_rules.gd").house_available(sim.world.events)
+
+func town_service_available(type_id:String)->bool:
+	return town_life_enabled() or _base_building_built(type_id)
+
+func company_member_ids()->Array:
+	if not town_life_enabled():return sim.world.party_encounter.active_party_member_ids.duplicate()
+	return preload("res://sim/town_life_rules.gd").state(sim.world.events).members.duplicate()
 
 
 func _initial_ground_item_rows(candidate,hero_position:Vector2i,
@@ -1584,6 +1603,14 @@ func _ensure_town_guild_candidates()->bool:
 			or state.expedition_cycle.expedition_index<1:return false
 	var expedition_index:=int(state.expedition_cycle.expedition_index)
 	if _guild_arrival_event(expedition_index)!=null:return true
+	var persistent_town:=town_life_enabled()
+	if persistent_town:
+		for past in sim.world.events:
+			if str(past.type)=="town.guild_candidates_arrived":
+				var arrival=sim.world.emit_event("town.guild_candidates_arrived",state.protagonist_id,-1,
+					state.group_anchor,0,-1,{"expedition_index":expedition_index,"stipend":0,"candidates":[]})
+				state.revision+=1
+				return arrival!=null
 	var rollback_value:Variant=sim.snapshot()
 	if not rollback_value is Dictionary:return false
 	var rollback:Dictionary=rollback_value
@@ -1593,11 +1620,15 @@ func _ensure_town_guild_candidates()->bool:
 		GUILD_RECRUITMENT_RULESET_ID,world_seed,expedition_index]).sha256_buffer()
 	var start:=int(digest[0])%species_pool.size()
 	var candidate_rows:Array[Dictionary]=[]
-	for slot in range(GUILD_CANDIDATE_COUNT):
+	var people:Array=preload("res://sim/town_population_rules.gd").PEOPLE
+	var candidate_count:int=people.size() if persistent_town else GUILD_CANDIDATE_COUNT
+	for slot in range(candidate_count):
 		var species_id:=str(species_pool[(start+slot)%species_pool.size()])
+		if persistent_town:species_id="human"
 		var names:Variant=GUILD_NAMES.get(species_id,["모험가"])
-		var name_index:int=int(digest[slot+1])%names.size() if names is Array else 0
+		var name_index:int=int(digest[(slot+1)%digest.size()])%names.size() if names is Array else 0
 		var display_name:=str(names[name_index]) if names is Array else "모험가"
+		if persistent_town:display_name=str(people[slot].name)
 		var stats:=ActorStatRulesScript.for_species(species_id)
 		var spawn:=_guild_candidate_storage_position()
 		var entity=sim.world.add_entity("companion",display_name,spawn,
@@ -1613,15 +1644,16 @@ func _ensure_town_guild_candidates()->bool:
 		state.member_rows[entity.id].busy_until=sim.world.world_time
 		var weapon_definition_id:=str(GUILD_WEAPONS.get(species_id,
 			"WEAPON_SHORT_SWORD"))
+		if persistent_town:weapon_definition_id=str(people[slot].weapon)
 		candidate_rows.append({"entity_id":str(entity.id),
 			"weapon_definition_id":weapon_definition_id,
 			"role_hint":_guild_role_hint(weapon_definition_id)})
 	for roster_index in range(state.party_member_ids.size()):
 		state.member_rows[state.party_member_ids[roster_index]].roster_slot=roster_index
 	var arrival=sim.world.emit_event("town.guild_candidates_arrived",
-		state.protagonist_id,-1,state.group_anchor,GUILD_CANDIDATE_COUNT,-1,
+		state.protagonist_id,-1,state.group_anchor,candidate_count,-1,
 		{"schema_version":1,"ruleset_id":GUILD_RECRUITMENT_RULESET_ID,
-			"expedition_index":expedition_index,"stipend":TOWN_RETURN_STIPEND,
+			"expedition_index":expedition_index,"stipend":0 if persistent_town else TOWN_RETURN_STIPEND,
 			"candidates":candidate_rows})
 	state.revision+=1
 	var guild_world_error:String=sim.world.world_state_error()
@@ -1728,18 +1760,22 @@ func town_gold()->int:
 	var value:=TOWN_INITIAL_GOLD
 	for event in sim.world.events:
 		match str(event.type):
+			"town.house_acquired","town.inn_payment":value-=int(event.data.get("cost",0))
+			"town.expedition_reward":value+=int(event.data.get("gold",0))
 			"town.guild_candidates_arrived":
 				value+=int(event.data.get("stipend",TOWN_RETURN_STIPEND))
 			"town.market_purchased","town.clinic_service","town.shrine_service":
 				value-=int(event.data.get("cost",event.magnitude))
 			"base.resource_sold":
 				value+=int(event.data.get("gold",event.magnitude))
+			"base.work_ordered":value-=int(event.data.get("gold_cost",0))
+			"base.work_cancelled","base.rest_payment_released":value+=int(event.data.get("gold_cost",0))
 	return maxi(0,value)
 
 
 func town_market_stock()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("MARKET"):return rows
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("MARKET"):return rows
 	var expedition_index:=_town_expedition_index()
 	for catalog_value in TOWN_MARKET_CATALOG:
 		var catalog:Dictionary=_town_market_catalog_row(str(catalog_value.definition_id))
@@ -1766,7 +1802,7 @@ func town_market_stock()->Array[Dictionary]:
 func town_market_purchase_assessment(definition_id:String)->Dictionary:
 	var context_error:=_town_context_error()
 	if not context_error.is_empty():return _rejection_dto(context_error)
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("MARKET"):
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("MARKET"):
 		return _rejection_dto("base_market_not_built")
 	var catalog:=_town_market_catalog_row(definition_id)
 	if catalog.is_empty():return _rejection_dto("town_market_item_unknown")
@@ -1822,7 +1858,7 @@ func purchase_town_item(definition_id:String)->Dictionary:
 
 
 func town_clinic_assessment(entity_id:int)->Dictionary:
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("CLINIC"):
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("CLINIC"):
 		return _rejection_dto("base_clinic_not_built")
 	var member_error:=_town_active_member_error(entity_id,true)
 	if not member_error.is_empty():return _rejection_dto(member_error)
@@ -1994,11 +2030,12 @@ func rest_at_town_shrine(entity_id:int)->Dictionary:
 
 func town_armory_rows()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):return rows
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("ARMORY"):return rows
 	if _town_context_error().is_empty():
 		var state=sim.world.party_encounter
-		for entity_id_value in state.active_party_member_ids:
+		for entity_id_value in company_member_ids():
 			var entity_id:=int(entity_id_value);var entity=sim.world.entities.get(entity_id)
+			if sim.world.combatant_states[entity_id].life_state=="DEAD":continue
 			var inventory=sim.world.item_state.inventory(entity_id)
 			if entity==null or inventory==null:continue
 			var item_rows:Array[Dictionary]=[]
@@ -2017,7 +2054,7 @@ func town_armory_rows()->Array[Dictionary]:
 
 func town_transfer_assessment(from_entity_id:int,to_entity_id:int,
 		instance_id:String)->Dictionary:
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("ARMORY"):
 		return _rejection_dto("base_armory_not_built")
 	for entity_id in [from_entity_id,to_entity_id]:
 		var member_error:=_town_active_member_error(entity_id,false)
@@ -2030,7 +2067,7 @@ func town_transfer_assessment(from_entity_id:int,to_entity_id:int,
 
 
 func town_equip_assessment(entity_id:int,instance_id:String,slot:String)->Dictionary:
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("ARMORY"):
 		return _rejection_dto("base_armory_not_built")
 	var member_error:=_town_active_member_error(entity_id,false)
 	if not member_error.is_empty():return _rejection_dto(member_error)
@@ -2040,7 +2077,7 @@ func town_equip_assessment(entity_id:int,instance_id:String,slot:String)->Dictio
 
 
 func town_unequip_assessment(entity_id:int,slot:String)->Dictionary:
-	if scenario_id==DUO_SCENARIO_ID and not _base_building_built("ARMORY"):
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("ARMORY"):
 		return _rejection_dto("base_armory_not_built")
 	var member_error:=_town_active_member_error(entity_id,false)
 	if not member_error.is_empty():return _rejection_dto(member_error)
@@ -2301,6 +2338,8 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	var ration_finished:=Time.get_ticks_usec()
 	var spawned_ids:=_spawn_campaign_floor_enemies(target_layout,
 		int(cycle.expedition_index))
+	if not preload("res://playtest/dungeon_visitors_service.gd").enter(self,target_layout):
+		return _rejection_dto("dungeon_visitors_failed")
 	_last_floor_entry_profile={"layout_ms":(layout_finished-entry_started)/1000.0,
 		"party_ms":(placement_finished-layout_finished)/1000.0,
 		"ration_ms":(ration_finished-placement_finished)/1000.0,
@@ -2354,6 +2393,7 @@ func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 func _spawn_campaign_floor_enemies(layout:Dictionary,
 		expedition_index:int)->Array[int]:
 	var result:Array[int]=[];var state=sim.world.party_encounter
+	var introductory_groups:Array=[]
 	for row_value in layout.get("enemy_roster",[]):
 		if not row_value is Dictionary:return []
 		var row:Dictionary=row_value
@@ -2361,6 +2401,15 @@ func _spawn_campaign_floor_enemies(layout:Dictionary,
 		var profile:Dictionary=EnemyPerceptionRegistryScript.profile(species_id)
 		var position:Variant=row.get("position")
 		var group_id:=str(row.get("group_id",""))
+		# Authored shallow entry encounters remain solo-friendly, regardless of
+		# current party size. Deeper groups retain the original composition.
+		if town_life_enabled() and int(layout.floor_index)==1:
+			if group_id not in introductory_groups:introductory_groups.append(group_id)
+			if introductory_groups.find(group_id)<3:
+				var already_spawned:=false
+				for spawned_id in result:
+					if "encounter_group:"+group_id in sim.world.entities[spawned_id].tags:already_spawned=true;break
+				if already_spawned:continue
 		if profile.is_empty() or not position is Vector2i or group_id.is_empty():return []
 		var tags:Array=["party_enemy","campaign_floor:%d"%int(layout.floor_index),
 			"campaign_expedition:%d"%expedition_index,
@@ -2472,7 +2521,7 @@ func _town_active_member_error(entity_id:int,allow_downed:bool)->String:
 	var context_error:=_town_context_error()
 	if not context_error.is_empty():return context_error
 	var state=sim.world.party_encounter
-	if entity_id not in state.active_party_member_ids \
+	if entity_id not in company_member_ids() \
 			or not sim.world.entities.has(entity_id) \
 			or not sim.world.combatant_states.has(entity_id):
 		return "town_party_member_unavailable"
@@ -3181,6 +3230,12 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var followers_by_cell:Dictionary=context.followers_by_cell
 	var ground_items_by_cell:Dictionary=context.ground_items_by_cell
 	var monster_blood_by_cell:Dictionary=context.monster_blood_by_cell
+	var visitors_by_cell:Dictionary={}
+	if town_life_enabled():
+		for visitor in preload("res://sim/town_population_rules.gd").locations(sim.world):
+			var key:="%d:%d"%[int(visitor.position[0]),int(visitor.position[1])]
+			if not visitors_by_cell.has(key):visitors_by_cell[key]=[]
+			visitors_by_cell[key].append(visitor)
 	var base_cache_by_cell:Dictionary={}
 	if scenario_id==DUO_SCENARIO_ID:
 		for cache_row in _base_cache_rows():
@@ -3230,6 +3285,13 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
 				continue
 			var actors: Array = []
+			for visitor in visitors_by_cell.get(position_key,[]):
+				var entity=sim.world.entities.get(int(visitor.entity_id))
+				if entity==null:continue
+				var npc:Dictionary=_actor_observation(entity,position,position,"WORLD_NPC")
+				npc.presence="WORLD_NPC";npc.faction_id="neutral"
+				npc["activity"]=str(visitor.activity)
+				actors.append(npc)
 			for entity in sim.world.occupying_entities_at(position):
 				var is_enemy: bool = entity.id in sim.world.party_encounter.enemy_ids
 				if is_enemy and hide_enemies: continue
@@ -3609,6 +3671,7 @@ func party_cards() -> Array[Dictionary]:
 	var preview_by_actor: Dictionary = {}
 	for actor_row in preview.get("actor_rows", []): preview_by_actor[int(actor_row.actor_id)] = actor_row
 	for member_id in state.active_party_member_ids:
+		if town_life_enabled() and sim.world.combatant_states[member_id].life_state=="DEAD":continue
 		var member = state.member(member_id); var entity = sim.world.entities[member_id]
 		var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 		var exposure := {"applicable": false, "sampled_step_index": sim.world.step_index, "sampled_world_time": sim.world.world_time,
@@ -4255,6 +4318,11 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
 	var state = sim.world.party_encounter
+	if town_life_enabled() and operation=="RECRUIT":
+		var life:Dictionary=preload("res://sim/town_life_rules.gd").state(sim.world.events)
+		if entity_id not in life.members:return _rejection_dto("town_meeting_required")
+		if preload("res://sim/town_life_rules.gd").field_count(sim.world)>=preload("res://sim/town_life_rules.gd").FIELD_LIMIT:
+			return _rejection_dto("party_full")
 	# Town is a preparation surface, not a continuation of the dungeon tactical
 	# phase. A deadline may close while CONTACT/ENGAGED is still recorded as the
 	# last dungeon phase, but that stale phase must not disable guild management.
@@ -4275,7 +4343,7 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 		if entity_id in state.active_party_member_ids or entity_id not in state.party_member_ids \
 				or member.role != "COMPANION" or member.presence != "RECRUITABLE":
 			return _rejection_dto("companion_not_recruitable")
-		if state.active_party_member_ids.size() >= ACTIVE_PARTY_LIMIT: return _rejection_dto("party_full")
+		if not town_life_enabled() and state.active_party_member_ids.size() >= ACTIVE_PARTY_LIMIT: return _rejection_dto("party_full")
 		if sim.world.combatant_states[entity_id].life_state != "ACTIVE": return _rejection_dto("companion_unavailable")
 	else:
 		return _rejection_dto("invalid_roster_operation")
@@ -7061,6 +7129,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
+			"town_life":replay_result=replay.town_life_command(row.operation)
 			"base_work":replay_result=replay.base_work(row.operation)
 			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
@@ -7341,6 +7411,12 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"population":
+				if keys!=["kind","operation"] or not preload("res://sim/town_population_rules.gd").interaction_error(row.get("operation")).is_empty():
+					return "invalid_population_journal"
+			"town_life":
+				if keys!=["kind","operation"] or not preload("res://sim/town_life_rules.gd").operation_error(row.get("operation")).is_empty():
+					return "invalid_town_life_journal"
 			"base_work":
 				if keys!=["kind","operation"] or not preload("res://sim/base_work_rules.gd").operation_error(row.get("operation")).is_empty():
 					return "invalid_base_work_journal"
@@ -7643,6 +7719,7 @@ func _pending_turn_request():
 
 func _result_dto(result, action: Variant = null, request: Variant = null,
 		context: Dictionary = {}) -> Dictionary:
+	if result.accepted:preload("res://playtest/dungeon_visitors_service.gd").advance(self)
 	# Candidate arrivals are a deterministic consequence of crossing the expedition
 	# deadline. Running this at the facade boundary keeps simulator turn timelines
 	# untouched while save-journal replay regenerates the exact same guild board.

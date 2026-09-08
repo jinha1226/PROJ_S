@@ -4328,8 +4328,7 @@ func _party_runtime_error() -> String:
 	if party_encounter.protagonist_id <= 0 or not entities.has(party_encounter.protagonist_id): return "party_protagonist_missing"
 	if party_encounter.party_member_ids.size() < 1 or party_encounter.party_member_ids.size() > 64 \
 			or party_encounter.active_party_member_ids.is_empty() \
-			or party_encounter.active_party_member_ids.size() \
-				> PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
+			or preload("res://sim/town_life_rules.gd").field_count(self)>PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
 		return "party_roster_size_invalid"
 	if party_encounter.enemy_ids.is_empty() or party_encounter.enemy_ids.size() \
 			> PartyEncounterStateScript.MAX_TRACKED_ENEMY_SIZE:
@@ -5570,7 +5569,7 @@ func _party_morale_history_error() -> String:
 	for event in events:
 		if event.type != "party.morale_changed":
 			continue
-		if event.actor_id not in _party_active_ids_at_event(event.id) \
+		if (event.actor_id not in _party_active_ids_at_event(event.id) and not _party_town_resident_at_event(event.actor_id,event.id)) \
 				or event.target_id != -1:
 			return "party_morale_actor_invalid"
 		var historical_position: Dictionary = _entity_position_at_event(
@@ -5669,7 +5668,7 @@ func _party_emotion_history_error() -> String:
 	for event in events:
 		if event.type != "party.emotion_changed":
 			continue
-		if event.actor_id not in _party_active_ids_at_event(event.id) \
+		if (event.actor_id not in _party_active_ids_at_event(event.id) and not _party_town_resident_at_event(event.actor_id,event.id)) \
 				or event.target_id != -1:
 			return "party_emotion_actor_invalid"
 		var historical_position: Dictionary = _entity_position_at_event(
@@ -5751,6 +5750,17 @@ func _party_emotion_history_error() -> String:
 	return ""
 
 
+func _party_town_resident_at_event(entity_id:int,event_id:int)->bool:
+	var members:Array=[];var in_town:=false
+	for event in events:
+		if event.id>=event_id:break
+		match str(event.type):
+			"town.life_started":members=[int(event.data.founder_id)]
+			"town.company_joined":members.append(event.target_id)
+			"dungeon.expedition_returned":in_town=true
+			"town.expedition_departed":in_town=false
+	return in_town and entity_id in members
+
 func _party_active_ids_at_event(event_id: int) -> Array:
 	var runtime_recruits:Array=[]
 	var guild_candidates:=_party_guild_candidate_ids()
@@ -5766,6 +5776,10 @@ func _party_active_ids_at_event(event_id: int) -> Array:
 	var active: Array = bootstrap_members.slice(0,mini(3,bootstrap_members.size()))
 	for event in events:
 		if event.id >= event_id: break
+		if event.type=="town.life_started":active=[party_encounter.protagonist_id]
+		elif event.type=="town.company_reserved":active.erase(event.target_id)
+		elif event.type=="town.company_assigned" and event.target_id not in active:
+			active.append(event.target_id);active.sort()
 		if event.type == "party.companion_dismissed": active.erase(event.target_id)
 		elif event.type == "party.companion_recruited" and event.target_id not in active:
 			active.append(event.target_id); active.sort()
@@ -5796,6 +5810,25 @@ func _party_roster_history_error() -> String:
 	var contact_id := 9223372036854775807
 	var regroup_complete_id := -1
 	for event in events:
+		if event.type=="town.life_started":
+			if event.actor_id!=party_encounter.protagonist_id or str(event.data.get("founder_id",""))!=str(event.actor_id):
+				return "town_life_start_invalid"
+			for id in active:
+				if id!=party_encounter.protagonist_id and id not in recruitable:recruitable.append(id)
+			active=[party_encounter.protagonist_id];recruitable.sort()
+			continue
+		if event.type in ["town.company_reserved","town.company_assigned"]:
+			if event.target_id not in party_encounter.party_member_ids or event.target_id==party_control_actor_id(event.id):
+				return "town_roster_target_invalid"
+			if event.type=="town.company_reserved":
+				if event.target_id not in active:return "town_reserve_transition_invalid"
+				active.erase(event.target_id)
+				if event.target_id not in recruitable:recruitable.append(event.target_id)
+			else:
+				if event.target_id not in active:
+					if event.target_id not in recruitable:return "town_assign_transition_invalid"
+					recruitable.erase(event.target_id);active.append(event.target_id)
+			active.sort();recruitable.sort();continue
 		if event.type in ["encounter.detected", "encounter.party_ambush", "encounter.enemy_ambush"]:
 			contact_id = mini(contact_id, event.id)
 		elif event.type == "party.regroup_completed":
@@ -5835,8 +5868,11 @@ func _party_roster_history_error() -> String:
 			if event.target_id not in active or active.size() <= 1: return "party_roster_event_transition_invalid"
 			active.erase(event.target_id); exiled.append(event.target_id); exiled.sort()
 		else:
+			var alive_active:=0
+			for id in active:
+				if _party_alive_at_event(int(id),event.id):alive_active+=1
 			if event.target_id not in recruitable \
-					or active.size() >= PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
+					or alive_active >= PartyEncounterStateScript.MAX_ACTIVE_PARTY_SIZE:
 				return "party_roster_event_transition_invalid"
 			recruitable.erase(event.target_id); active.append(event.target_id); active.sort()
 	var expected_recruitable: Array = []
@@ -5989,8 +6025,8 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 			if tracks_grouped_protagonist:grouped_with_protagonist=true
 			continue
 		if tracks_grouped_protagonist and event.target_id == entity_id \
-				and event.type in ["party.companion_recruited", "party.companion_dismissed"]:
-			if event.type == "party.companion_recruited":
+				and event.type in ["party.companion_recruited", "party.companion_dismissed","town.company_assigned","town.company_reserved"]:
+			if event.type in ["party.companion_recruited","town.company_assigned"]:
 				historical_cursor = event.position
 				anchored = true
 				grouped_with_protagonist = true

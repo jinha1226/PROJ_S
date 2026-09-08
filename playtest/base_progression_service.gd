@@ -41,7 +41,7 @@ func base_overview()->Dictionary:
 		var message:String="증축 가능" if can_upgrade else ("먼저 건설해야 합니다" if not built \
 			else ("최대 레벨" if level>=3 \
 			else ("마을에서 증축할 수 있습니다" if phase!="TOWN" else "자원이 부족합니다")))
-		if not work.is_empty():message="진행 중인 공사를 먼저 완료하세요"
+		if not work.is_empty():message="진행 중인 작업을 먼저 완료하세요"
 		facilities.append({"id":facility_id,
 			"label":str(_session.BaseProgressionRulesScript.FACILITY_LABELS[facility_id]),
 			"level":level,"max_level":3,
@@ -50,19 +50,18 @@ func base_overview()->Dictionary:
 				facility_id,next_level) if level<3 else "",
 			"cost":price,"built":built,"can_upgrade":can_upgrade,"message":message})
 	var residents:Array[Dictionary]=[]
-	for entity_id_value in state.active_party_member_ids:
-		if residents.size()>=2:break
+	for entity_id_value in _session.company_member_ids():
 		var entity_id:=int(entity_id_value);var entity=_session.sim.world.entities.get(entity_id)
 		var combatant=_session.sim.world.combatant_states.get(entity_id)
 		if entity==null or combatant==null or int(entity.health)<=0 \
 				or str(combatant.life_state)!="ACTIVE":continue
 		residents.append({"entity_id":entity_id,"display_name":str(entity.display_name),
 			"health":int(entity.health),"max_health":int(entity.max_health),
-			"activity":("공사 중" if not work.is_empty() and int(work.worker_id)==entity_id else "휴식 중") if phase=="TOWN" else "원정 중"})
+			"activity":({"PRODUCE":"물약 제조 중","REST":"휴식 중"}.get(str(work.get("action","")),"공사 중") \
+				if not work.is_empty() and int(work.worker_id)==entity_id else "대기 중") if phase=="TOWN" else "원정 중"})
 	var return_assessment:Dictionary=base_return_assessment()
 	var trade:Array[Dictionary]=[]
-	var market_built:bool=_session.BaseSettlementRulesScript.type_built(
-		settlement_buildings,"MARKET")
+	var market_built:bool=_session.town_service_available("MARKET")
 	for resource_id in _session.BaseProgressionRulesScript.RESOURCE_IDS:
 		var can_sell:bool=market_built and phase=="TOWN" and int(stock[resource_id])>0
 		trade.append({"resource_id":resource_id,"label":{"TIMBER":"목재",
@@ -80,12 +79,17 @@ func base_overview()->Dictionary:
 			"reason":str(cycle.return_reason),"world_time":int(cycle.returned_at_world_time),
 			"banked":banked,"message":"원정 물자를 기지 창고에 보관했습니다."}
 	return {"enabled":true,"phase":phase,"stock":stock,"carried":carried,
+		"private_home_owned":_session.private_home_available(),
 		"capacity":int(_session.BaseProgressionRulesScript.STORAGE_CAPACITY[int(levels.STORAGE)]),
 		"facilities":facilities,"residents":residents,"last_return":last_return,
 		"can_return":bool(return_assessment.get("accepted",false)),
 		"return_reason":str(return_assessment.get("reason","ok")),
 		"message":str(return_assessment.get("message","")),"trade":trade,
-		"settlement":settlement,"work":work}.duplicate(true)
+		"settlement":settlement,"work":work,
+		"gold":_session.town_gold(),
+		"rest":preload("res://playtest/base_rest_service.gd").overview(_session,settlement_buildings,work),
+		"production":preload("res://sim/base_production_rules.gd").overview(
+			_session.sim.world,settlement_buildings,stock,work)}.duplicate(true)
 
 
 func _base_cache_rows()->Array[Dictionary]:
@@ -220,6 +224,7 @@ func base_gather()->Dictionary:
 
 
 func base_upgrade(facility_id:String)->Dictionary:
+	if not _session.private_home_available():return _session._rejection_dto("private_home_required")
 	if _session.sim!=null and not preload("res://sim/base_work_rules.gd").current(_session.sim.world.events).is_empty():
 		return _session._rejection_dto("base_work_busy")
 	if _session.sim==null or _session.sim.world==null or _session.sim.world.party_encounter==null:
@@ -260,7 +265,7 @@ func base_sell(resource_id:String,amount:int=1)->Dictionary:
 	if _session.sim==null or _session.sim.world==null or _session.sim.world.party_encounter==null:
 		return _session._rejection_dto("session_not_initialized")
 	if _session.scenario_id!=_session.DUO_SCENARIO_ID:return _session._rejection_dto("base_scenario_unavailable")
-	if not _session._base_settlement_service.type_built("MARKET"):
+	if not _session.town_service_available("MARKET"):
 		return _session._rejection_dto("base_market_not_built")
 	var state=_session.sim.world.party_encounter;var cycle=state.expedition_cycle
 	if cycle==null or cycle.phase!="TOWN":return _session._rejection_dto("base_sell_town_required")
@@ -343,6 +348,8 @@ func base_return()->Dictionary:
 				_session.sim.world.entities[hero_id].position,refilled_ids.size(),int(event.id),
 				{"schema_version":1,"ruleset_id":"party-active-skills-v1",
 					"reason":"TOWN_RETURN","member_ids":refilled_ids})
+	if event!=null and _session.town_life_enabled():
+		if not _session._ensure_town_guild_candidates():event=null
 	state.revision+=1;var error:String=_session.sim.world.world_state_error()
 	if event==null or not error.is_empty():
 		_session.sim=_session.SimulatorScript.from_snapshot(rollback)

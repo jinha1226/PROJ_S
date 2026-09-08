@@ -38,6 +38,8 @@ func overview()->Dictionary:
 
 
 func build_assessment(type_id:String,tile_value:Variant)->Dictionary:
+	if not _session.private_home_available():
+		return {"accepted":false,"reason":"private_home_required","message":"여관에서 생활 중입니다. 먼저 탐험대의 집을 구하세요."}
 	if _session.sim!=null and not preload("res://sim/base_work_rules.gd").current(_session.sim.world.events).is_empty():
 		return {"accepted":false,"reason":"base_work_busy","message":"진행 중인 공사를 먼저 마치거나 취소하세요."}
 	if _session==null or _session.sim==null or _session.sim.world==null:

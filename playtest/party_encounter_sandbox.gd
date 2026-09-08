@@ -1101,14 +1101,12 @@ func _commit_species_picker(species_id:String)->void:
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
-	# Species confirmation is the explicit new-game boundary. Let the first DUO
-	# run see and build its camp before departure, without changing constructor,
-	# load, or headless-session semantics.
+	# A journaled campaign start leaves old saves and headless DUO fixtures intact.
 	if session!=null and session.is_duo_autobattle() and session.has_method("base_return"):
-		var return_result:Dictionary=session.base_return()
+		var return_result:Dictionary=session.town_life_command({"action":"START"})
 		if bool(return_result.get("accepted",false)):
-			town_facility_id="BASE"
-			notice_text="작은 거점에 도착했습니다. 빈 땅에 첫 시설을 건설하세요."
+			town_facility_id="INN"
+			notice_text=str(return_result.message)
 		else:
 			notice_text="원정 입구에서 시작합니다. %s"%str(return_result.get("message",
 				"거점으로 바로 이동할 수 없습니다."))
@@ -1775,8 +1773,8 @@ func _refresh()->void:
 	var base_available:=bool(base_overview_state.get("enabled",false))
 	if town_active and _last_view_mode!="TOWN" and base_available:town_facility_id="BASE"
 	_last_view_mode=str(status.view_mode)
-	var town_base_active:=town_active and base_available \
-		and town_facility_id in ["","BASE"]
+	var town_base_active:bool=town_active and base_available \
+		and (session.town_life_enabled() or town_facility_id in ["","BASE"])
 	var combat_active:=str(status.view_mode)=="COMBAT"
 	var combat_actions_visible:=safe_phase=="ENGAGED" and not bool(status.terminal) \
 		or run_terminal or _run_locked_exit_feedback
@@ -3039,6 +3037,8 @@ func _exploration_deck()->void:
 
 
 func _town_deck(status:Dictionary)->void:
+	if session.town_life_enabled():
+		_town_life_deck(status);return
 	var base_enabled:bool=session.has_method("base_overview") \
 		and bool(session.base_overview().get("enabled",false))
 	if town_facility_id.is_empty():
@@ -3090,6 +3090,43 @@ func _town_deck(status:Dictionary)->void:
 	_selected_detail()
 
 
+func _town_life_deck(status:Dictionary)->void:
+	var life:Dictionary=session.town_life_overview()
+	if town_facility_id in ["","BASE","INN","GUILD","SHRINE"]:
+		var panel=preload("res://playtest/town_life_panel.gd").new()
+		panel.name="TownLifePanel";panel.camera=base_map_camera
+		panel.command_requested.connect(_on_town_life_command)
+		panel.facility_requested.connect(_on_town_facility_selected)
+		panel.resident_requested.connect(_open_member_detail)
+		deck.add_child(panel);panel.present(life)
+	else:
+		var back:=_add_button(deck,"← 마을 · 여관","TownLifeBack",_on_town_facility_selected.bind("INN"))
+		back.custom_minimum_size.y=48
+		match town_facility_id:
+			"HOUSE":
+				if life.house_owned:_town_base_panel()
+				else:
+					_add_notice("아직 여관에서 생활 중입니다. %s"%str(life.house_reason),"TownHouseLocked",FONT_BODY)
+					var acquire:=_add_button(deck,"집 구입 · %d골드"%int(life.house_cost),"TownHousePurchase",_on_town_life_command.bind({"action":"ACQUIRE"}))
+					acquire.disabled=not bool(life.can_acquire)
+			"MARKET":
+				_town_market_panel()
+				for resource in session.base_overview().trade:
+					var sell:=_add_button(deck,"%s 판매 · 재고 %d · 개당 %dG"%[resource.label,resource.stock,resource.unit_price],
+						"TownSell%s"%str(resource.resource_id),_on_base_sell_requested.bind(str(resource.resource_id),1))
+					sell.disabled=not bool(resource.can_sell)
+			"CLINIC":_town_clinic_panel(status)
+			"ARMORY":_town_armory_panel()
+			"GATE":_town_gate_panel()
+	_selected_detail()
+
+func _on_town_life_command(operation:Dictionary)->void:
+	var result:Dictionary=session.town_life_command(operation)
+	notice_text=str(result.get("message","마을 행동을 완료하지 못했습니다."))
+	if result.get("accepted",false) and operation.action=="ACQUIRE":town_facility_id="HOUSE"
+	_request_refresh()
+
+
 func _town_base_panel()->void:
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
@@ -3106,6 +3143,10 @@ func _town_base_panel()->void:
 	panel.work_cancel_requested.connect(func():
 		var result:Dictionary=session.base_work({"action":"CANCEL"})
 		notice_text=str(result.get("message",""));_request_refresh())
+	panel.production_requested.connect(func(action:String,recipe_id:String):
+		var result:Dictionary=session.base_work({"action":action,"recipe_id":recipe_id})
+		notice_text=str(result.get("message","작업할 수 없습니다."));_request_refresh())
+	panel.rest_requested.connect(_on_town_shrine_rest)
 	deck.add_child(panel);panel.present(session.base_overview(),false,selected_base_building_id)
 
 
@@ -3174,7 +3215,7 @@ func _town_clinic_panel(status:Dictionary)->void:
 	var clinic_cost:=int(town.get("clinic_cost",SessionScript.TOWN_CLINIC_COST))
 	_add_notice("[치유소] 체력·출혈·일반 상처·기능 저하 회복 · 절단은 유지 · 1인 %d금화"%
 		clinic_cost,"TownClinicTitle",FONT_BODY)
-	var members:Variant=status.get("party_member_ids",[])
+	var members:Variant=session.company_member_ids() if session.town_life_enabled() else status.get("party_member_ids",[])
 	for entity_id_value in members:
 		var entity_id:=int(entity_id_value)
 		var detail:Dictionary=session.inspect_party_member(entity_id)
@@ -3203,6 +3244,8 @@ func _town_clinic_panel(status:Dictionary)->void:
 
 
 func _town_shrine_panel(status:Dictionary)->void:
+	if session.scenario_id==SessionScript.DUO_SCENARIO_ID:
+		selected_base_building_id="LODGE";_town_base_panel();return
 	var town:Dictionary=session.town_overview() if session.has_method("town_overview") else {}
 	var stress_recovery:=int(town.get("shrine_stress_reduction",
 		SessionScript.TOWN_SHRINE_STRESS_REDUCTION))
@@ -3334,6 +3377,14 @@ func _on_town_clinic_treat(entity_id:int)->void:
 
 
 func _on_town_shrine_rest(entity_id:int)->void:
+	if session.town_life_enabled() and town_facility_id!="HOUSE":
+		_on_town_life_command({"action":"REST","entity_id":str(entity_id)});return
+	if session.scenario_id==SessionScript.DUO_SCENARIO_ID:
+		var ordered:Dictionary=session.base_work({"action":"REST","entity_id":str(entity_id)})
+		notice_text=str(ordered.get("message","휴식할 수 없습니다."))
+		if bool(ordered.get("accepted",false)):
+			town_facility_id="HOUSE" if session.town_life_enabled() else "BASE";selected_base_building_id="LODGE"
+		action_feedback_text=notice_text;_request_refresh();return
 	var result:Dictionary=session.rest_at_town_shrine(entity_id)
 	notice_text="긴장을 %d만큼 낮췄습니다."%(
 		int(result.get("stress_before",0))-int(result.get("stress_after",0))) \
@@ -4332,6 +4383,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	_update_item_window(progression.get("equipment",{}) if progression is Dictionary else {})
 	var can_show_dismiss:=str(detail.get("role",""))=="COMPANION" \
 		and bool(detail.get("active_party_member",false))
+	if session.town_life_enabled():can_show_dismiss=false
 	member_detail_dismiss_available=can_show_dismiss
 	if can_show_dismiss:
 		var assessment:Dictionary=session.roster_change_assessment("DISMISS",member_id)
@@ -4346,6 +4398,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 		member_detail_attack_available=true
 		member_detail_attack.disabled=not bool(attack.get("accepted",false))
 		member_detail_attack.tooltip_text=str(attack.get("message","인접한 인물을 공격합니다."))
+		if session.town_life_enabled():member_detail_attack_available=false
 	else:member_detail_attack_available=false
 	_apply_member_detail_tab()
 	member_detail_scroll.scroll_vertical=0
@@ -5077,6 +5130,19 @@ func _on_member_detail_dismiss()->void:
 	_cancel_auto_pending(true);_request_refresh()
 
 func _configure_candidate_detail_action(detail:Dictionary)->void:
+	if session.town_life_enabled():
+		var id:=int(detail.entity_id)
+		if session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON":
+			var visitor:Dictionary=preload("res://playtest/dungeon_visitors_service.gd").assess(session,id)
+			member_detail_candidate_action.text="식량 1개 나누기" if visitor.get("needs_supplies",false) else "이야기 나누기"
+			member_detail_candidate_action.disabled=not bool(visitor.get("can_aid" if visitor.get("needs_supplies",false) else "can_greet",false))
+			member_detail_candidate_action.tooltip_text=str(visitor.get("message","이 층에 없는 인물입니다"))
+		else:
+			for resident in session.town_life_overview().residents:
+				if int(resident.entity_id)!=id:continue
+				member_detail_candidate_action.text="원정에 편성" if resident.joined else ("동행 제안" if resident.can_join else "이야기 나누기")
+				member_detail_candidate_action.disabled=not bool(resident.can_assign if resident.joined else (resident.can_join or resident.can_talk))
+		return
 	var story_state:=str(detail.get("rescue_story_state",""))
 	if story_state=="COLLAPSED_STORY":
 		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
@@ -5100,6 +5166,19 @@ func _configure_candidate_detail_action(detail:Dictionary)->void:
 
 func _on_member_detail_candidate_action()->void:
 	if member_detail_entity_id<=0:return
+	if session.town_life_enabled():
+		var id:=member_detail_entity_id
+		var response:Dictionary={}
+		if session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON":
+			var visitor:Dictionary=preload("res://playtest/dungeon_visitors_service.gd").assess(session,id)
+			response=preload("res://playtest/dungeon_visitors_service.gd").interact(session,
+				{"action":"AID" if visitor.get("needs_supplies",false) else "GREET","entity_id":str(id)})
+		else:
+			for resident in session.town_life_overview().residents:
+				if int(resident.entity_id)==id:
+					response=session.town_life_command({"action":"ASSIGN" if resident.joined else ("JOIN" if resident.can_join else "TALK"),"entity_id":str(id)})
+		notice_text=str(response.get("message","지금은 상호작용할 수 없습니다"))
+		_close_member_detail();_request_refresh();return
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	var result:Dictionary
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
@@ -5228,7 +5307,9 @@ func _on_restart_same_run()->void:
 		var message:="이 원정을 다시 시작할 수 없습니다." if not result is Dictionary \
 			else str(result.get("message","이 원정을 다시 시작할 수 없습니다."))
 		notice_text=message;action_feedback_text=message;_request_refresh();return
-	_reset_run_ui_transients();_request_refresh()
+	_reset_run_ui_transients()
+	if session.is_duo_autobattle():show_species_picker_for_new_run()
+	else:_request_refresh()
 
 func _on_restart_with_new_personality()->void:
 	if session==null or not session.has_method("restart_with_personality_seed"):
@@ -5239,7 +5320,9 @@ func _on_restart_with_new_personality()->void:
 		var message:="새 성격으로 원정을 다시 시작할 수 없습니다." if not result is Dictionary \
 			else str(result.get("message","새 성격으로 원정을 다시 시작할 수 없습니다."))
 		notice_text=message;action_feedback_text=message;_request_refresh();return
-	_reset_run_ui_transients();_request_refresh()
+	_reset_run_ui_transients()
+	if session.is_duo_autobattle():show_species_picker_for_new_run()
+	else:_request_refresh()
 
 func _reset_run_ui_transients()->void:
 	if companion_order_editor!=null:
@@ -6409,7 +6492,7 @@ func _on_product_menu_id(item_id:int)->void:
 		1:
 			var fresh_seed:=_issue_new_personality_seed(int(session.personality_seed))
 			if session.reset_party(session.world_seed,fresh_seed,SessionScript.DUO_SCENARIO_ID,
-					{},true,"human"):
+					{},false,"human"):
 				show_species_picker_for_new_run()
 			else:
 				notice_text="새 게임을 시작하지 못했습니다.";_request_refresh()

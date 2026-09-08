@@ -20,7 +20,8 @@ static func worker_position(job:Dictionary)->Vector2i:
 	var point:Array=route[mini(int(job.get("progress",0)),route.size()-1)]
 	return Vector2i(int(point[0]),int(point[1]))
 
-static func route_to_site(buildings:Array,origin:Vector2i,footprint:Vector2i)->Array:
+static func route_to_site(buildings:Array,origin:Vector2i,footprint:Vector2i,
+		access_tile:Vector2i=Vector2i(-1,-1))->Array:
 	var blocked:Dictionary={}
 	for p in Settlement.BLOCKED_TILES:blocked[p]=true
 	for row in buildings:
@@ -34,7 +35,7 @@ static func route_to_site(buildings:Array,origin:Vector2i,footprint:Vector2i)->A
 	var previous:Dictionary={start:start};var goal:=Vector2i(-1,-1)
 	while not queue.is_empty():
 		var p:Vector2i=queue.pop_front()
-		if site.grow(1).has_point(p):goal=p;break
+		if (p==access_tile if access_tile.x>=0 else site.grow(1).has_point(p)):goal=p;break
 		for d in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:
 			var n:Vector2i=p+d
 			if not Rect2i(0,0,Settlement.WIDTH,Settlement.HEIGHT).has_point(n) \
@@ -50,6 +51,12 @@ static func operation_error(op:Variant)->String:
 	if not op is Dictionary:return "invalid_base_work_operation"
 	var keys:Array=op.keys();keys.sort()
 	match str(op.get("action","")):
+		"REST":
+			if keys!=["action","entity_id"] or not preload("res://sim/int64_codec.gd").is_canonical(op.get("entity_id")):
+				return "invalid_base_work_operation"
+		"PRODUCE","CLAIM":
+			if keys!=["action","recipe_id"] or op.get("recipe_id") not in preload("res://sim/base_production_rules.gd").RECIPES:
+				return "invalid_base_work_operation"
 		"TICK","CANCEL":
 			if keys!=["action"]:return "invalid_base_work_operation"
 		"UPGRADE":
