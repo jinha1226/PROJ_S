@@ -42,10 +42,12 @@ var _pointer_origin:=Vector2.ZERO
 var _pointer_dragged:=false
 var camera=preload("res://playtest/base_map_camera.gd").new()
 var _last_pointer:=Vector2.ZERO
+var minimum_map_height:=320
+var fit_map_height:=false
 
 
 func _ready()->void:
-	custom_minimum_size=Vector2(300,320)
+	custom_minimum_size=Vector2(0 if fit_map_height else 300,minimum_map_height)
 	size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	mouse_filter=Control.MOUSE_FILTER_STOP
 	clip_contents=true
@@ -192,9 +194,10 @@ func _draw_tile_grid(canvas:Rect2)->void:
 		var terrain_id:=str(value.get("terrain_id","GRASS")).to_upper()
 		var fill:=PATH_DARK if bool(value.get("reserved",false)) else (
 			CLEARING if bool(value.get("buildable",false)) else GROUND)
-		draw_rect(rect,fill);draw_rect(rect,Color(CLEARING_EDGE,0.32),false,1.0)
+		draw_rect(rect,fill)
+		if not fit_map_height:draw_rect(rect,Color(CLEARING_EDGE,0.32),false,1.0)
 		if bool(value.get("reserved",false)):
-			draw_circle(rect.get_center(),maxf(1.5,_cell_size()*0.11),PATH)
+			if not fit_map_height:draw_circle(rect.get_center(),maxf(1.5,_cell_size()*0.11),PATH)
 		elif terrain_id in ["TREE","WOODS","FOREST"]:
 			draw_rect(Rect2(rect.get_center()+Vector2(-1,2),Vector2(3,_cell_size()*0.34)),TIMBER_DARK)
 			draw_circle(rect.get_center()-Vector2(0,_cell_size()*0.12),_cell_size()*0.28,
@@ -312,7 +315,9 @@ func _grid_size()->Vector2i:
 
 
 func _cell_size()->float:
-	var grid:=_grid_size();return minf(maxf(1.0,size.x)/float(grid.x),320.0/float(grid.y))*camera.zoom
+	var grid:=_grid_size()
+	var available_height:=maxf(1.0,size.y) if fit_map_height else 320.0
+	return minf(maxf(1.0,size.x)/float(grid.x),available_height/float(grid.y))*camera.zoom
 
 
 func _map_origin()->Vector2:

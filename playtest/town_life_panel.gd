@@ -1,86 +1,110 @@
 extends VBoxContainer
-## Compact public-town navigation. The map and resident cards share the same
-## observer DTO; map locations never become dungeon entity coordinates.
+## Hub and inn are separate screens; only the selected resident has actions.
 signal command_requested(operation:Dictionary)
 signal facility_requested(id:String)
 signal resident_requested(id:int)
-const PixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
+const UI=preload("res://playtest/town_ui_widgets.gd")
 const Map=preload("res://playtest/base_settlement_view.gd")
 var _view:Dictionary={}
-var _filter:="ADVENTURERS"
+var state:Dictionary={"filter":"ADVENTURERS","resident":-1}
+var screen:="BASE"
 var camera=preload("res://playtest/base_map_camera.gd").new()
 
 func present(view:Dictionary)->void:
 	_view=view.duplicate(true)
 	for child in get_children():remove_child(child);child.queue_free()
-	add_theme_constant_override("separation",6)
-	_text("%s · %d골드"%[str(view.stage),int(view.gold)],"TownLifeTitle",17)
-	_text("원정 %d/%d인 · 물자를 가져온 원정 %d회"%[view.active_count,view.field_limit,view.completed_returns],"TownLifeProgress")
-	var map=Map.new();map.name="PublicTownMap";map.camera=camera
-	map.building_selected.connect(func(id:String):facility_requested.emit(
-		{"LODGE":"INN","STORAGE":"HOUSE","GATE":"GATE"}.get(id,id)))
-	add_child(map);map.present(view,"LODGE")
-	var nav:=GridContainer.new();nav.name="TownLifeNavigation";nav.columns=3
-	nav.add_theme_constant_override("h_separation",4);nav.add_theme_constant_override("v_separation",4);add_child(nav)
-	for entry in [["INN","여관·동료"],["MARKET","시장"],["CLINIC","치유소"],
-		["ARMORY","장비"],["HOUSE","내 거점"],["GATE","던전 출발"]]:
-		var id:=str(entry[0]);var button:=_button(nav,str(entry[1]),"TownNav"+id)
-		button.pressed.connect(func():facility_requested.emit(id))
-	if int(view.reward_gold)>0:
-		var reward:=_button(self,"물자 조사 보상 받기 · %d골드"%int(view.reward_gold),"TownClaimReward")
+	add_theme_constant_override("separation",10)
+	if screen in ["INN","GUILD","SHRINE"]:_inn()
+	else:_hub()
+
+func _hub()->void:
+	UI.heading(self,"마을 광장","여관에 머무는 중" if not _view.house_owned else "탐험대의 집에서 생활 중")
+	var map:=Map.new();map.name="PublicTownMap";map.camera=camera
+	map.minimum_map_height=clampi(int(get_viewport_rect().size.y)-440-(58 if int(_view.reward_gold)>0 else 0),160,360)
+	map.fit_map_height=true
+	map.building_selected.connect(func(id:String):
+		if id=="STORAGE":state.trade="SELL";facility_requested.emit("MARKET")
+		else:facility_requested.emit({"LODGE":"INN"}.get(id,id)))
+	add_child(map);map.present(_view,"")
+	var caption:=HBoxContainer.new();add_child(caption)
+	UI.label(caption,"마을 사람 %d명"%_view.residents.size(),12,UI.MUTED)
+	var hint:=UI.label(caption,"건물을 눌러 방문",12,UI.MUTED)
+	hint.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+	var nav:=GridContainer.new();nav.name="TownLifeNavigation";nav.columns=4
+	nav.add_theme_constant_override("h_separation",8);nav.add_theme_constant_override("v_separation",8);add_child(nav)
+	for entry in [["INN","여관"],["MARKET","시장"],["CLINIC","치유소"],["HOUSE","내 거점"]]:
+		var id:=str(entry[0]);var b:=UI.shortcut(nav,str(entry[1]),"TownNav"+id,id)
+		b.pressed.connect(func():facility_requested.emit(id))
+	var line:=HBoxContainer.new();line.add_theme_constant_override("separation",8);add_child(line)
+	var names:Array[String]=[]
+	for row in _view.residents:
+		if row.active:names.append(str(row.display_name))
+	var info:=VBoxContainer.new();info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;line.add_child(info)
+	UI.label(info,"원정대  %d / %d"%[_view.active_count,_view.field_limit],14)
+	UI.label(info," · ".join(names),12,UI.MUTED)
+	var gear:=UI.button(line,"장비","TownNavARMORY");gear.size_flags_horizontal=Control.SIZE_FILL;gear.custom_minimum_size.x=64
+	gear.pressed.connect(func():facility_requested.emit("ARMORY"))
+	if int(_view.reward_gold)>0:
+		var reward:=UI.button(self,"원정 보상 받기    +%d G"%int(_view.reward_gold),"TownClaimReward")
 		reward.pressed.connect(func():command_requested.emit({"action":"CLAIM"}))
-	if not bool(view.house_owned):
-		_text("다음 목표 · 첫 동료와 두 차례 물자 원정 후 작은 집 구입","TownLifeObjective")
-		var house:=_button(self,"탐험대의 집 구입 · %d골드"%int(view.house_cost),"TownAcquireHouse")
-		house.disabled=not bool(view.can_acquire);house.tooltip_text=str(view.house_reason)
-		house.pressed.connect(func():command_requested.emit({"action":"ACQUIRE"}))
-		if not view.can_acquire:_text(str(view.house_reason),"TownHouseReason")
-	_text("마을 사람들 · %d명"%view.residents.size(),"TownResidentTitle",16)
+	var gate:=UI.button(self,"원정 준비  →","TownNavGATE",true);gate.custom_minimum_size.y=54
+	gate.pressed.connect(func():facility_requested.emit("GATE"))
+
+func _inn()->void:
+	UI.heading(self,"여관","동료를 만나고 다음 원정을 준비하세요")
 	var filters:=HBoxContainer.new();filters.name="TownResidentFilters";add_child(filters)
 	for entry in [["ADVENTURERS","모험가"],["COMPANY","탐험대"],["CITIZENS","주민"]]:
-		var key:=str(entry[0]);var button:=_button(filters,str(entry[1]),"TownFilter"+key)
-		button.toggle_mode=true;button.button_pressed=_filter==key
-		button.pressed.connect(func():_filter=key;call_deferred("present",_view))
-	for resident in view.residents:
-		if _filter=="COMPANY" and not resident.joined:continue
-		if _filter=="CITIZENS" and resident.adventurer:continue
-		if _filter=="ADVENTURERS" and (resident.joined or not resident.adventurer):continue
-		_resident(resident)
+		var key:=str(entry[0]);var b:=UI.button(filters,str(entry[1]),"TownFilter"+key,state.get("filter")==key)
+		b.pressed.connect(func():state.filter=key;state.resident=-1;state.resident_scroll=0;call_deferred("present",_view))
+	var rows:Array=[]
+	for row in _view.residents:
+		if state.get("filter")=="COMPANY" and not row.joined:continue
+		if state.get("filter")=="CITIZENS" and row.adventurer:continue
+		if state.get("filter")=="ADVENTURERS" and (row.joined or not row.adventurer):continue
+		rows.append(row)
+	if rows.is_empty():UI.label(self,"아직 함께하는 동료가 없습니다.",14,UI.MUTED);return
+	var selected:Dictionary=rows[0]
+	for row in rows:
+		if int(row.entity_id)==int(state.get("resident",-1)):selected=row
+	state.resident=int(selected.entity_id)
+	_resident_detail(selected)
+	UI.label(self,"%d명 · 인물을 선택하세요"%rows.size(),12,UI.MUTED)
+	var scroll:=ScrollContainer.new();scroll.name="TownResidentScroll"
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y=210;add_child(scroll)
+	scroll.set_deferred("scroll_vertical",int(state.get("resident_scroll",0)))
+	scroll.get_v_scroll_bar().value_changed.connect(func(value:float):state.resident_scroll=int(value))
+	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;list.add_theme_constant_override("separation",6);scroll.add_child(list)
+	for row in rows:
+		var id:=int(row.entity_id)
+		var b:=UI.button(list,"%s  ·  %s"%[row.display_name,row.occupation],"TownSelect%d"%id,id==int(state.resident))
+		b.pressed.connect(func():state.resident=id;call_deferred("present",_view))
 
-func _resident(row:Dictionary)->void:
+func _resident_detail(row:Dictionary)->void:
 	var id:=int(row.entity_id)
-	var card:=VBoxContainer.new();card.name="TownResident%d"%id
-	card.add_theme_constant_override("separation",4);add_child(card)
-	var name_button:=_button(card,"%s · %s · %s"%[row.display_name,
-		"원정 편성" if row.active else ("탐험대 대기" if row.joined else row.occupation),row.location],"TownInspect%d"%id)
-	name_button.pressed.connect(func():resident_requested.emit(id))
-	var health:=ProgressBar.new();health.max_value=row.max_health;health.value=row.health
-	health.show_percentage=false;health.custom_minimum_size.y=8;health.mouse_filter=Control.MOUSE_FILTER_IGNORE;card.add_child(health)
-	var activity:=Label.new();activity.text=str(row.activity);activity.add_theme_font_size_override("font_size",13);card.add_child(activity)
-	var actions:=GridContainer.new();actions.columns=2;actions.add_theme_constant_override("h_separation",4);card.add_child(actions)
+	var card:=UI.surface(self);card.name="TownResidentDetail"
+	var top:=HBoxContainer.new();top.add_theme_constant_override("separation",10);card.add_child(top)
+	UI.portrait(top,id,52)
+	var text:=VBoxContainer.new();text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;top.add_child(text)
+	UI.label(text,str(row.display_name),19)
+	UI.label(text,"%s · %s"%[row.occupation,row.temperament],13,UI.MUTED)
+	var inspect:=UI.button(top,"정보","TownInspect%d"%id);inspect.size_flags_horizontal=Control.SIZE_FILL
+	inspect.pressed.connect(func():resident_requested.emit(id))
+	var hp:=ProgressBar.new();hp.max_value=row.max_health;hp.value=row.health;hp.show_percentage=false
+	hp.custom_minimum_size.y=6;card.add_child(hp);UI.Palette.apply_progress(hp,UI.Palette.JADE)
+	UI.label(card,"%s · %s"%[row.location,row.activity],13,UI.MUTED)
+	var actions:=GridContainer.new();actions.columns=2;actions.add_theme_constant_override("h_separation",8);actions.add_theme_constant_override("v_separation",6);card.add_child(actions)
 	if not row.joined:
-		_action(actions,"이야기 나누기","TALK",id,bool(row.can_talk))
-		if row.adventurer:_action(actions,"동행 제안","JOIN",id,bool(row.can_join))
-		if row.adventurer and not row.can_join:
-			var reason:=Label.new();reason.text=str(row.join_reason)
-			reason.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;reason.add_theme_font_size_override("font_size",12);card.add_child(reason)
+		_action(actions,"대화" if row.can_talk else "대화 완료","TALK",id,bool(row.can_talk))
+		if row.adventurer:
+			_action(actions,"동행 제안","JOIN",id,bool(row.can_join),true)
+			if not row.can_join:UI.label(card,str(row.join_reason),12,UI.MUTED)
 	else:
-		if row.can_reserve:_action(actions,"마을에서 대기","RESERVE",id,true)
-		elif not row.active:_action(actions,"원정에 편성","ASSIGN",id,bool(row.can_assign))
-		_action(actions,"여관 휴식 · 15G","REST",id,bool(row.can_rest))
-		if row.can_talk:_action(actions,"이야기 나누기","TALK",id,true)
+		if row.can_reserve:_action(actions,"마을에 대기","RESERVE",id,true)
+		elif not row.active:_action(actions,"원정에 편성","ASSIGN",id,bool(row.can_assign),true)
+		_action(actions,"휴식 · 15 G","REST",id,bool(row.can_rest))
+		if row.can_talk:_action(actions,"대화","TALK",id,true)
 
-func _action(parent:Control,title:String,action:String,id:int,available:bool)->void:
-	var button:=_button(parent,title,"Town%s%d"%[action,id]);button.disabled=not available
-	button.pressed.connect(func():command_requested.emit({"action":action,"entity_id":str(id)}))
-
-func _button(parent:Control,title:String,id:String)->Button:
-	var button:=Button.new();button.name=id;button.text=title
-	button.custom_minimum_size=Vector2(0,48);button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	button.add_theme_font_size_override("font_size",14)
-	button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	PixelSkin.apply_action_button(button,PixelSkin.CYAN);parent.add_child(button);return button
-
-func _text(value:String,id:String,font_size:int=14)->void:
-	var label:=Label.new();label.name=id;label.text=value
-	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;label.add_theme_font_size_override("font_size",font_size);add_child(label)
+func _action(parent:Control,title:String,action:String,id:int,available:bool,primary:bool=false)->void:
+	var b:=UI.button(parent,title,"Town%s%d"%[action,id],primary);b.disabled=not available
+	b.pressed.connect(func():command_requested.emit({"action":action,"entity_id":str(id)}))

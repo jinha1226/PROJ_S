@@ -127,6 +127,7 @@ var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
 var town_facility_id:=""
+var town_ui_state:Dictionary={"filter":"ADVENTURERS","resident":-1,"trade":"BUY","owner":-1}
 var selected_base_building_id:="STORAGE"
 var _last_view_mode:=""
 var notice_text:=""
@@ -1105,7 +1106,7 @@ func _commit_species_picker(species_id:String)->void:
 	if session!=null and session.is_duo_autobattle() and session.has_method("base_return"):
 		var return_result:Dictionary=session.town_life_command({"action":"START"})
 		if bool(return_result.get("accepted",false)):
-			town_facility_id="INN"
+			town_facility_id="BASE"
 			notice_text=str(return_result.message)
 		else:
 			notice_text="원정 입구에서 시작합니다. %s"%str(return_result.get("message",
@@ -1802,12 +1803,14 @@ func _refresh()->void:
 	phase_panel.visible=true
 	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
 	top_hud_actions.visible=product_hud or town_base_active
-	top_hud_actions.custom_minimum_size.x=44 if product_hud else 132
-	record_button.visible=not product_hud;hero_detail_button.visible=not product_hud
+	top_hud_actions.custom_minimum_size.x=44 if product_hud else (100 if town_active and session.town_life_enabled() else 132)
+	record_button.visible=not product_hud and not (town_active and session.town_life_enabled())
+	hero_detail_button.visible=not product_hud
 	var town_header_target:=48 if town_base_active else 44
 	record_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
 	hero_detail_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
-	product_menu_button.visible=product_hud
+	product_menu_button.visible=product_hud or (town_active and session.town_life_enabled())
+	product_menu_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
 	var base_menu_index:=product_menu_button.get_popup().get_item_index(7)
 	if base_menu_index>=0:
 		var base_menu_enabled:bool=base_available
@@ -1931,9 +1934,9 @@ func _refresh()->void:
 	if product_hud:_build_product_controls_dock(status)
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
-	log_label.visible=not product_hud and _narrative_log_visible
+	log_label.visible=not product_hud and _narrative_log_visible and not (town_active and session.town_life_enabled())
 	log_label.max_lines_visible=1 if combat_active else 3
-	deck.visible=not product_hud and not _narrative_log_visible
+	deck.visible=not product_hud and (not _narrative_log_visible or (town_active and session.town_life_enabled()))
 	if product_hud:
 		event_label.text=_town_summary_text(status) if str(status.view_mode)=="TOWN" \
 			else _compact_meaningful_event_text(combat_history,status)
@@ -3090,40 +3093,51 @@ func _town_deck(status:Dictionary)->void:
 	_selected_detail()
 
 
-func _town_life_deck(status:Dictionary)->void:
+func _town_life_deck(_status:Dictionary)->void:
 	var life:Dictionary=session.town_life_overview()
+	var widgets=preload("res://playtest/town_ui_widgets.gd")
+	if town_facility_id not in ["","BASE"]:
+		var back:=widgets.button(deck,"← 마을","TownLifeBack")
+		back.pressed.connect(_on_town_facility_selected.bind("BASE"))
+	if not notice_text.is_empty() and not notice_text.begins_with("여관방"):
+		var feedback:=widgets.label(deck,notice_text,13,widgets.GOLD)
+		feedback.name="TownActionFeedback"
 	if town_facility_id in ["","BASE","INN","GUILD","SHRINE"]:
 		var panel=preload("res://playtest/town_life_panel.gd").new()
 		panel.name="TownLifePanel";panel.camera=base_map_camera
+		panel.state=town_ui_state;panel.screen=town_facility_id
 		panel.command_requested.connect(_on_town_life_command)
 		panel.facility_requested.connect(_on_town_facility_selected)
 		panel.resident_requested.connect(_open_member_detail)
 		deck.add_child(panel);panel.present(life)
+	elif town_facility_id=="HOUSE" and life.house_owned:
+		_town_base_panel()
 	else:
-		var back:=_add_button(deck,"← 마을 · 여관","TownLifeBack",_on_town_facility_selected.bind("INN"))
-		back.custom_minimum_size.y=48
-		match town_facility_id:
-			"HOUSE":
-				if life.house_owned:_town_base_panel()
-				else:
-					_add_notice("아직 여관에서 생활 중입니다. %s"%str(life.house_reason),"TownHouseLocked",FONT_BODY)
-					var acquire:=_add_button(deck,"집 구입 · %d골드"%int(life.house_cost),"TownHousePurchase",_on_town_life_command.bind({"action":"ACQUIRE"}))
-					acquire.disabled=not bool(life.can_acquire)
-			"MARKET":
-				_town_market_panel()
-				for resource in session.base_overview().trade:
-					var sell:=_add_button(deck,"%s 판매 · 재고 %d · 개당 %dG"%[resource.label,resource.stock,resource.unit_price],
-						"TownSell%s"%str(resource.resource_id),_on_base_sell_requested.bind(str(resource.resource_id),1))
-					sell.disabled=not bool(resource.can_sell)
-			"CLINIC":_town_clinic_panel(status)
-			"ARMORY":_town_armory_panel()
-			"GATE":_town_gate_panel()
-	_selected_detail()
+		var panel=preload("res://playtest/town_facility_panel.gd").new()
+		panel.name="TownFacilityPanel";panel.session=session;panel.life=life
+		panel.screen=town_facility_id;panel.state=town_ui_state
+		panel.action_requested.connect(_on_town_service_action)
+		panel.resident_requested.connect(_open_member_detail)
+		deck.add_child(panel);panel.present()
+
+func _on_town_service_action(operation:Dictionary)->void:
+	match str(operation.action):
+		"BUY":_on_town_market_buy(str(operation.definition_id))
+		"SELL":_on_base_sell_requested(str(operation.resource_id),1)
+		"TREAT":_on_town_clinic_treat(int(operation.entity_id))
+		"EQUIP":_on_town_equip(int(operation.entity_id),str(operation.instance_id),str(operation.slot))
+		"UNEQUIP":_on_town_unequip(int(operation.entity_id),str(operation.slot))
+		"TRANSFER":_on_town_transfer(int(operation.entity_id),int(operation.target_id),str(operation.instance_id))
+		"DEPART":_on_town_depart(int(operation.floor),str(operation.route))
+		"ACQUIRE":_on_town_life_command({"action":"ACQUIRE"})
+		"ROSTER":town_ui_state.filter="COMPANY";_on_town_facility_selected("INN")
 
 func _on_town_life_command(operation:Dictionary)->void:
 	var result:Dictionary=session.town_life_command(operation)
 	notice_text=str(result.get("message","마을 행동을 완료하지 못했습니다."))
 	if result.get("accepted",false) and operation.action=="ACQUIRE":town_facility_id="HOUSE"
+	if result.get("accepted",false) and operation.action=="JOIN":
+		town_ui_state.filter="COMPANY";town_ui_state.resident=int(operation.entity_id)
 	_request_refresh()
 
 
@@ -3363,6 +3377,7 @@ func _town_gate_panel()->void:
 
 func _on_town_facility_selected(facility_id:String)->void:
 	town_facility_id=facility_id;notice_text="";action_feedback_text=""
+	if info_scroll!=null:info_scroll.scroll_vertical=0
 	_request_refresh()
 
 
@@ -5344,6 +5359,7 @@ func _reset_run_ui_transients()->void:
 	_clear_move_preview();_clear_companion_follow_plan();_hide_tile_popover()
 	selected_member_id=-1;selected_target_id=-1;notice_text="";action_feedback_text="";_action_feedback_phase=""
 	selected_base_building_id="STORAGE";town_facility_id="";_last_view_mode=""
+	town_ui_state={"filter":"ADVENTURERS","resident":-1,"trade":"BUY","owner":-1}
 	_pending_card_pointer.clear();_last_card_tap_id=-1;_last_card_tap_msec=-1000
 	_last_card_tap_position=Vector2(-10000,-10000);_direct_card_touch_id=-1;_direct_card_touch_msec=-1000
 	_scroll_log_after_refresh=false;_run_locked_exit_feedback=false
@@ -6630,6 +6646,7 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_font_size_override("font_size",FONT_KEY)
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
+	if situation=="마을" and session.town_life_enabled():phase_label.text="마을  ·  %d G"%session.town_gold()
 	var phase_style:=DarkPixelSkinScript.panel_surface(DarkPixelSkinScript.FOLIO,
 		DarkPixelSkinScript.IRON_EDGE,0,1)
 	phase_panel.add_theme_stylebox_override("panel",phase_style)
