@@ -248,6 +248,48 @@ func apply_canonical_downed_finisher(entity, requested_pressure: int, cause_id: 
 	return {"accepted": true, "event": pressure, "death_event": death}
 
 
+func apply_canonical_downed_succumb(entity, cause_id: int, event_position: Vector2i,
+		processed_step_index: int) -> Dictionary:
+	# A downed monster reaching its deadline dies instead of recovering. The
+	# chain mirrors BLEEDOUT (pressure -> death) with the original entity.downed
+	# as the pressure source and one unit of pressure, so loot, morale and the
+	# validator see an ordinary DOWNED -> DEAD transition.
+	var resolved_position: Vector2i = entity.position \
+		if entity != null and event_position == Vector2i(-1, -1) else event_position
+	var cause = world.event_by_id(cause_id) if cause_id > 0 else null
+	var combatant = world.combatant_states.get(entity.id) if entity != null else null
+	if entity == null or combatant == null or combatant.life_state != "DOWNED" \
+			or entity.health != 0 or not combatant.status_rows.is_empty() \
+			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
+			or cause == null or cause.type != "entity.downed" \
+			or cause.id != combatant.downed_source_event_id \
+			or cause.target_id != entity.id \
+			or combatant.downed_resolve_at < 0 or world.world_time != combatant.downed_resolve_at \
+			or not world.lifecycle_succumbs(entity.id) \
+			or not world.has_event_id_headroom(2):
+		return {"accepted": false, "event": null, "death_event": null}
+	var pressure = world.emit_event("combat.downed_damage", -1, entity.id,
+		resolved_position, 1, cause_id, {"schema_version": 1,
+			"combat_ruleset_id": COMBAT_RULESET_ID, "damage_type": "physical",
+			"requested_damage": 1, "applied_health_damage": 0,
+			"reason": "SUCCUMB"})
+	if pressure == null:
+		return {"accepted": false, "event": null, "death_event": null}
+	var death = world.emit_event("entity.died", -1, entity.id, resolved_position,
+		0, pressure.id, {"schema_version": 1, "life_ruleset_id": LIFE_RULESET_ID,
+			"previous_life_state": "DOWNED", "reason": "SUCCUMB",
+			"damage_type": "physical"})
+	if death == null:
+		return {"accepted": false, "event": pressure, "death_event": null}
+	combatant.life_state = "DEAD"
+	combatant.guarded_until = 0; combatant.guard_source_event_id = -1
+	combatant.downed_at = -1; combatant.downed_resolve_at = -1
+	combatant.downed_source_event_id = -1
+	combatant.recovery_lock_until = 0; combatant.recovery_source_event_id = -1
+	combatant.status_rows.clear()
+	return {"accepted": true, "event": pressure, "death_event": death}
+
+
 func apply_canonical_downed_bleedout(entity, requested_pressure: int, cause_id: int,
 		event_position: Vector2i, processed_step_index: int) -> Dictionary:
 	var resolved_position: Vector2i = entity.position \

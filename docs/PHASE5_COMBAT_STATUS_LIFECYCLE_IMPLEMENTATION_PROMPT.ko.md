@@ -511,9 +511,16 @@ BLEED cadence:
        -> status.expired(reason=OWNER_DIED)
        -> entity.died
 
-recovery:
+recovery (party member, roster resident, independent explorer):
   entity.downed
     -> entity.recovered
+
+monster deadline (2026-09-09 amendment: `WorldState.lifecycle_succumbs`):
+  entity.downed
+    -> combat.downed_damage(reason=SUCCUMB, magnitude 1, applied 0)
+       -> entity.died(reason=SUCCUMB)
+  # party world에서 party member도 independent explorer도 아닌 개체는 회복 대신
+  # 같은 deadline에 죽는다. 상태(BLEEDING)가 있으면 BLEEDOUT chain이 우선한다.
 
 ACTIVE typed hazard:
   environment source
@@ -541,10 +548,10 @@ status/lifecycle event의 공통 envelope도 고정한다.
 
 - `combat.attack_missed`: `{schema_version, combat_ruleset_id, outcome:"MISS"}`
 - `combat.{type}_damage`: `{schema_version, combat_ruleset_id, damage_type, requested_damage, applied_health_damage}`. Phase 5 core type whitelist는 `physical`, `fire`, `electric`이며 다른 hazard는 registry에 type과 source-event whitelist를 함께 등록한 경우만 허용한다.
-- `combat.downed_damage`: `{schema_version, combat_ruleset_id, damage_type, requested_damage, applied_health_damage:0, reason:"FINISHER"|"BLEEDOUT"|"HAZARD"}`
+- `combat.downed_damage`: `{schema_version, combat_ruleset_id, damage_type, requested_damage, applied_health_damage:0, reason:"FINISHER"|"BLEEDOUT"|"HAZARD"|"SUCCUMB"}`
 - `entity.downed`: `{schema_version, life_ruleset_id, previous_life_state:"ACTIVE", downed_resolve_at, terminal_immediate}`. protagonist는 `downed_resolve_at:"-1"`, `terminal_immediate:true`; 그 외는 future time과 false다.
 - `entity.recovered`: `{schema_version, life_ruleset_id, recovered_health, recovery_lock_until}`
-- `entity.died`: `{schema_version, life_ruleset_id, previous_life_state:"DOWNED", reason:"FINISHER"|"BLEEDOUT"|"HAZARD"|"PARTY_DEFEAT", damage_type}`
+- `entity.died`: `{schema_version, life_ruleset_id, previous_life_state:"DOWNED", reason:"FINISHER"|"BLEEDOUT"|"HAZARD"|"PARTY_DEFEAT"|"SUCCUMB", damage_type}`
 - status event data는 10절의 exact schema를 쓴다.
 
 data 안의 int64 ID/time은 canonical decimal string이다. 작은 수치·milli·HP는 JSON safe integer다. exact key validator는 누락·추가 key를 모두 거부한다.

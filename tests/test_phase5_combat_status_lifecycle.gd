@@ -3733,7 +3733,7 @@ func test_party_enemy_actor_batch_commits_keyed_bleed_hit_and_status() -> bool:
 				"PARTY_ENEMY BLEED snapshot roundtrip exact")
 	return finish()
 
-func test_runtime_nonhero_downed_recovers_at_due_cadence_without_same_tick_action() -> bool:
+func test_runtime_downed_monster_succumbs_at_due_cadence_without_same_tick_action() -> bool:
 	var probe = _engaged_adjacent(1)
 	var probe_world = probe.sim.world; var probe_state = probe_world.party_encounter
 	var hero_id: int = probe_state.protagonist_id
@@ -3803,81 +3803,62 @@ func test_runtime_nonhero_downed_recovers_at_due_cadence_without_same_tick_actio
 	check_eq([recovery.processed_step_index, recovery.start_time,
 		recovery.end_time], [recovery_step, recovery_start, resolve_at],
 		"recovery operation exact processed-step/time boundary")
-	var recovered_events: Array = recovery.events.filter(func(event):
-		return event.type == "entity.recovered" and event.target_id == enemy_id)
-	check_eq(recovered_events.size(), 1, "deadline emits one canonical recovery")
-	var recovered = recovered_events[0] if recovered_events.size() == 1 else null
-	var recovered_health: int = maxi(1,
-		int((world.entities[enemy_id].max_health + 9) / 10))
-	var recovery_lock_until := resolve_at + 100
-	if recovered != null:
-		check_eq([recovered.step_index, recovered.world_time, recovered.actor_id,
-			recovered.target_id, recovered.position, recovered.magnitude,
-			recovered.cause_id, recovered.instigator_id, recovered.data],
-			[recovery_step, resolve_at, -1, enemy_id,
-				world.entities[enemy_id].position, recovered_health, downed.id, hero_id,
-				{"schema_version":1, "life_ruleset_id":"active-downed-dead-v1",
-					"recovered_health":recovered_health,
-					"recovery_lock_until":str(recovery_lock_until)}],
-			"runtime recovered event exact envelope/data/provenance")
+	var succumb_pressures: Array = recovery.events.filter(func(event):
+		return event.type == "combat.downed_damage" and event.target_id == enemy_id)
+	var succumb_deaths: Array = recovery.events.filter(func(event):
+		return event.type == "entity.died" and event.target_id == enemy_id)
 	check(recovery.events.filter(func(event):
-		return event.actor_id == enemy_id and event.world_time == resolve_at \
-			and event.type.begins_with("action.")).is_empty(),
-		"recovered actor does not join the cadence whose tick-start set excluded it")
+		return event.type == "entity.recovered" and event.target_id == enemy_id).is_empty(),
+		"a downed monster never recovers at its deadline")
+	check_eq([succumb_pressures.size(), succumb_deaths.size()], [1, 1],
+		"deadline emits one SUCCUMB pressure and one death for the monster")
+	if succumb_pressures.size() == 1 and succumb_deaths.size() == 1:
+		var pressure = succumb_pressures[0]; var death = succumb_deaths[0]
+		check_eq([pressure.step_index, pressure.world_time, pressure.actor_id, pressure.target_id,
+			pressure.position, pressure.magnitude, pressure.cause_id, pressure.data],
+			[recovery_step, resolve_at, -1, enemy_id, world.entities[enemy_id].position, 1,
+				downed.id, {"schema_version":1, "combat_ruleset_id":"deterministic-melee-resolution-v1",
+					"damage_type":"physical", "requested_damage":1, "applied_health_damage":0,
+					"reason":"SUCCUMB"}],
+			"SUCCUMB pressure cites the original entity.downed at the exact deadline")
+		check_eq([death.step_index, death.world_time, death.actor_id, death.target_id,
+			death.position, death.magnitude, death.cause_id, death.data],
+			[recovery_step, resolve_at, -1, enemy_id, world.entities[enemy_id].position, 0,
+				pressure.id, {"schema_version":1, "life_ruleset_id":"active-downed-dead-v1",
+					"previous_life_state":"DOWNED", "reason":"SUCCUMB", "damage_type":"physical"}],
+			"SUCCUMB death follows its pressure with the shared DOWNED -> DEAD envelope")
 	enemy_state = world.combatant_states[enemy_id]
 	check_eq([world.entities[enemy_id].health, enemy_state.life_state,
 		enemy_state.guarded_until, enemy_state.guard_source_event_id,
 		enemy_state.downed_at, enemy_state.downed_resolve_at,
 		enemy_state.downed_source_event_id, enemy_state.recovery_lock_until,
 		enemy_state.recovery_source_event_id, enemy_state.status_rows.size()],
-		[recovered_health, "ACTIVE", 0, -1, -1, -1, -1,
-			recovery_lock_until, recovered.id if recovered != null else -1, 0],
-		"runtime recovery state resets DOWNED/guard sentinels and sets exact lock")
-	check(not world.can_act(enemy_id, resolve_at),
-		"recovered actor remains locked at recovery cadence")
+		[0, "DEAD", 0, -1, -1, -1, -1, 0, -1, 0],
+		"succumbed monster carries the DEAD sentinel row")
+	check(not world.can_act(enemy_id, resolve_at) and not world.occupies_tile(enemy_id),
+		"succumbed monster neither acts nor occupies its tile")
+	check_eq(world.world_state_error(), "", "SUCCUMB chain validates in the strict ledger")
 	check_eq(world.rng.state, rng_before,
-		"DOWNED-to-recovered lifecycle consumes no global RNG")
-	var recovery_snapshot = session.sim.snapshot()
-	check(recovery_snapshot is Dictionary, "runtime recovered snapshot constructs")
-	if recovery_snapshot is Dictionary:
-		check_eq(WorldState.snapshot_restore_error(recovery_snapshot), "",
-			"runtime recovered snapshot restores")
-		var recovery_restored = Simulator.from_snapshot(recovery_snapshot)
-		check(recovery_restored != null, "runtime recovered snapshot loads")
-		if recovery_restored != null:
-			check_eq(recovery_restored.snapshot(), recovery_snapshot,
-				"runtime recovered snapshot roundtrip exact")
-
-	var unlocked_step: int = world.step_index + 1
-	var unlocked = session.sim.step_party_turn(session.sim.preview_party_turn(
-		Request.new(Action.hold(hero_id), overrides)))
-	check(unlocked.accepted, "next actor cadence after recovery lock accepted")
-	if not unlocked.accepted: return finish()
-	check_eq([unlocked.processed_step_index, unlocked.end_time],
-		[unlocked_step, recovery_lock_until],
-		"next actor cadence reaches exact recovery-lock boundary")
-	var enemy_actions: Array = unlocked.events.filter(func(event):
-		return event.actor_id == enemy_id and event.world_time == recovery_lock_until \
-			and event.type.begins_with("action."))
-	check_eq(enemy_actions.size(), 1,
-		"recovered actor may emit exactly one action at next cadence")
-	check(world.can_act(enemy_id, recovery_lock_until),
-		"recovery lock releases exactly at boundary")
-	check(unlocked.events.filter(func(event):
-		return event.type == "entity.recovered" and event.target_id == enemy_id).is_empty(),
-		"recovery is not duplicated at later cadence")
-	check_eq(world.rng.state, rng_before,
-		"post-lock keyed actor cadence consumes no global RNG")
-	var unlocked_snapshot = session.sim.snapshot()
-	check(unlocked_snapshot is Dictionary, "post-lock runtime snapshot constructs")
-	if unlocked_snapshot is Dictionary:
-		check_eq(WorldState.snapshot_restore_error(unlocked_snapshot), "",
-			"post-lock runtime snapshot restores")
-		var unlocked_restored = Simulator.from_snapshot(unlocked_snapshot)
-		check(unlocked_restored != null, "post-lock runtime snapshot loads")
-		if unlocked_restored != null:
-			check_eq(unlocked_restored.snapshot(), unlocked_snapshot,
-				"post-lock runtime snapshot roundtrip exact")
+		"DOWNED-to-SUCCUMB lifecycle consumes no global RNG")
+	var succumb_snapshot = session.sim.snapshot()
+	check(succumb_snapshot is Dictionary, "runtime succumbed snapshot constructs")
+	if succumb_snapshot is Dictionary:
+		check_eq(WorldState.snapshot_restore_error(succumb_snapshot), "",
+			"runtime succumbed snapshot restores")
+		var succumb_restored = Simulator.from_snapshot(succumb_snapshot)
+		check(succumb_restored != null, "runtime succumbed snapshot loads")
+		if succumb_restored != null:
+			check_eq(succumb_restored.snapshot(), succumb_snapshot,
+				"runtime succumbed snapshot roundtrip exact")
+	# Forge: the same world must reject a SUCCUMB chain whose death reason is
+	# swapped, and a recovery for a monster is no longer producible at runtime.
+	var forged: Dictionary = succumb_snapshot.duplicate(true) if succumb_snapshot is Dictionary else {}
+	if not forged.is_empty():
+		for event in forged.events:
+			if event.type == "entity.died" and int(event.target_id) == enemy_id:
+				event.data.reason = "BLEEDOUT"; break
+		check(WorldState.snapshot_restore_error(forged) != "",
+			"SUCCUMB death with a swapped reason is rejected")
 	return finish()
 
 func test_phase3_actor_batch_emits_decisions_then_exact_canonical_melee_actions() -> bool:

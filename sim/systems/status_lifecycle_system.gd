@@ -133,7 +133,7 @@ func _process_due_statuses(processed_step_index: int) -> bool:
 	return true
 
 
-func _process_due_recoveries(_processed_step_index: int) -> bool:
+func _process_due_recoveries(processed_step_index: int) -> bool:
 	var due_ids: Array[int] = []
 	var combatant_ids: Array = world.combatant_states.keys()
 	combatant_ids.sort()
@@ -157,12 +157,23 @@ func _process_due_recoveries(_processed_step_index: int) -> bool:
 		due_ids.append(entity_id)
 	if due_ids.is_empty():
 		return true
+	var required_events := 0
+	for entity_id in due_ids:
+		required_events += 2 if world.lifecycle_succumbs(entity_id) else 1
 	if world.world_time > MAX_WORLD_TIME - RECOVERY_LOCK_DURATION \
-			or not world.has_event_id_headroom(due_ids.size()):
+			or not world.has_event_id_headroom(required_events):
 		return false
 	for entity_id in due_ids:
 		var entity = world.entities[entity_id]
 		var combatant = world.combatant_states[entity_id]
+		if world.lifecycle_succumbs(entity_id):
+			# Monsters do not get back up: the deadline that would recover a party
+			# member kills a downed monster in place (SUCCUMB chain).
+			var succumbed: Dictionary = damage.apply_canonical_downed_succumb(entity,
+				combatant.downed_source_event_id, entity.position, processed_step_index)
+			if not bool(succumbed.accepted):
+				return false
+			continue
 		var recovered_health: int = maxi(1, int((entity.max_health + 9) / 10))
 		var recovery_lock_until: int = world.world_time + RECOVERY_LOCK_DURATION
 		var recovered = world.emit_event("entity.recovered", -1, entity_id,

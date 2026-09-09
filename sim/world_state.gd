@@ -510,6 +510,14 @@ func party_member_state(entity_id: int):
 	return null if party_encounter == null else party_encounter.member(entity_id)
 
 
+## Party members, roster residents and independent explorers recover from
+## DOWNED; anything else in a party world (monsters) succumbs at its deadline.
+func lifecycle_succumbs(entity_id: int) -> bool:
+	return party_encounter != null and entities.has(entity_id) \
+		and party_member_state(entity_id) == null \
+		and not preload("res://sim/living_expedition_rules.gd").independent(self, entity_id)
+
+
 func can_act(entity_id: int, at_time: int) -> bool:
 	var state = combatant_states.get(entity_id)
 	return state != null and state.life_state == "ACTIVE" and at_time >= state.recovery_lock_until \
@@ -4200,6 +4208,62 @@ func _lifecycle_history_error() -> String:
 			if consumed_canonical_lifecycle_ids.has(hazard_death.id):
 				return "canonical_lifecycle_event_consumed_twice"
 			consumed_canonical_lifecycle_ids[hazard_death.id] = true
+			projected_life[event.target_id] = "DEAD"
+			projected_downed.erase(event.target_id)
+			projected_recovery.erase(event.target_id)
+			lifecycle_touched[event.target_id] = true
+			continue
+		if event.data.get("reason") == "SUCCUMB":
+			# A downed monster dies at its own recovery deadline: the original
+			# entity.downed is the source, no status may be active (bleeding takes
+			# the BLEEDOUT chain) and the target must be one the world lets succumb.
+			if event.actor_id != -1 or event.target_id <= 0 or not entities.has(event.target_id) \
+					or event.magnitude <= 0 or projected_life[event.target_id] != "DOWNED" \
+					or not projected_downed.has(event.target_id) \
+					or active_bleed_owners.has(event.target_id) \
+					or not lifecycle_succumbs(event.target_id) \
+					or not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id",
+						"damage_type", "reason", "requested_damage", "schema_version"]) \
+					or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
+					or event.data.get("damage_type") != "physical" \
+					or event.data.get("requested_damage") != event.magnitude \
+					or event.data.get("applied_health_damage") != 0:
+				return "canonical_succumb_damage_invalid"
+			var succumb_downed: Dictionary = projected_downed[event.target_id]
+			var succumb_source = event_by_id(event.cause_id)
+			var succumb_position: Dictionary = _entity_position_at_event(event.target_id, event.id)
+			if succumb_source == null or succumb_source.id != int(succumb_downed.event_id) \
+					or succumb_source.type != "entity.downed" \
+					or succumb_source.target_id != event.target_id \
+					or event.world_time != int(succumb_downed.resolve_at) \
+					or event.step_index < succumb_source.step_index \
+					or not bool(succumb_position.ok) or event.position != succumb_position.position:
+				return "canonical_succumb_source_invalid"
+			var succumb_death_index: int = event_index + 1
+			if succumb_death_index >= events.size(): return "canonical_succumb_death_missing"
+			var succumb_death = events[succumb_death_index]
+			if succumb_death.type != "entity.died" or succumb_death.actor_id != -1 \
+					or succumb_death.target_id != event.target_id \
+					or succumb_death.position != event.position or succumb_death.magnitude != 0 \
+					or succumb_death.cause_id != event.id \
+					or succumb_death.instigator_id != event.instigator_id \
+					or succumb_death.step_index != event.step_index \
+					or succumb_death.world_time != event.world_time \
+					or not _exact_keys(succumb_death.data, ["damage_type", "life_ruleset_id",
+						"previous_life_state", "reason", "schema_version"]) \
+					or succumb_death.data.get("schema_version") != 1 \
+					or succumb_death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
+					or succumb_death.data.get("previous_life_state") != "DOWNED" \
+					or succumb_death.data.get("reason") != "SUCCUMB" \
+					or succumb_death.data.get("damage_type") != "physical":
+				return "canonical_succumb_death_invalid"
+			var succumb_final_state = combatant_states[event.target_id]
+			if succumb_final_state.life_state != "DEAD" or entities[event.target_id].health != 0:
+				return "canonical_succumb_projection_mismatch"
+			consumed_canonical_lifecycle_ids[event.id] = true
+			if consumed_canonical_lifecycle_ids.has(succumb_death.id):
+				return "canonical_lifecycle_event_consumed_twice"
+			consumed_canonical_lifecycle_ids[succumb_death.id] = true
 			projected_life[event.target_id] = "DEAD"
 			projected_downed.erase(event.target_id)
 			projected_recovery.erase(event.target_id)

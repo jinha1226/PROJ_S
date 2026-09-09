@@ -1286,8 +1286,10 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 			finisher_committed = true
 			finisher_commit_event_ids = committed.get("event_ids",[]).duplicate()
 	check_eq(session.party_status().safe_phase,"GROUPED_COMPLETE","structured log fixture wins")
-	check(finisher_previewed and finisher_committed,
-		"DOWNED enemy is finished through a fresh facade turn")
+	# Monsters no longer wait for a finisher: when the hero is not adjacent as
+	# the enemy falls, the deadline SUCCUMB kills it first. Either ending must
+	# keep exact cause attribution through the log and the replay.
+	var finished_by_hero:bool=finisher_previewed and finisher_committed
 	var log=session.combat_log(8,80)
 	check(log.groups is Array and log.row_count>0,"grouped combat log populated")
 	var rows:Array=[]
@@ -1303,7 +1305,7 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 	var finisher_melee:Dictionary={};var finisher_pressure:Dictionary={};var attributed_death:Dictionary={}
 	for row in rows:
 		if row.type=="action.melee_attack" and int(row.actor_id)==companion:companion_melee=row
-		if str(row.type).begins_with("combat.") and int(row.instigator_id)==companion:attributed_damage=row
+		if str(row.type)=="combat.physical_damage" and int(row.instigator_id)==companion:attributed_damage=row
 		if row.type=="action.melee_attack" and int(row.actor_id)==hero \
 				and str(row.data.get("outcome",""))=="FINISHER":finisher_melee=row
 		if row.type=="combat.downed_damage" and int(row.instigator_id)==hero:finisher_pressure=row
@@ -1313,17 +1315,30 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 	if not attributed_damage.is_empty() and not companion_melee.is_empty():
 		check_eq(int(attributed_damage.cause_id),int(companion_melee.event_id),"damage exact melee cause")
 		check("나래의 공격으로" in str(attributed_damage.message),"Korean damage attribution")
-	check(not finisher_melee.is_empty() and int(finisher_melee.event_id) in finisher_commit_event_ids,
-		"committed facade turn exposes explicit FINISHER event")
-	check(not finisher_pressure.is_empty(),"hero finisher pressure attribution retained")
-	if not finisher_pressure.is_empty() and not finisher_melee.is_empty():
-		check_eq(int(finisher_pressure.cause_id),int(finisher_melee.event_id),
-			"finisher pressure exact melee cause")
-	check(not attributed_death.is_empty(),"explicit finisher death retained through regroup")
-	if not attributed_death.is_empty() and not finisher_pressure.is_empty():
-		check_eq(int(attributed_death.cause_id),int(finisher_pressure.event_id),
-			"death exact finisher pressure cause")
-		check_eq(int(attributed_death.instigator_id),hero,"final death attribution is hero finisher")
+	check(not attributed_death.is_empty(),"enemy death retained through regroup")
+	if finished_by_hero:
+		check(not finisher_melee.is_empty() and int(finisher_melee.event_id) in finisher_commit_event_ids,
+			"committed facade turn exposes explicit FINISHER event")
+		check(not finisher_pressure.is_empty(),"hero finisher pressure attribution retained")
+		if not finisher_pressure.is_empty() and not finisher_melee.is_empty():
+			check_eq(int(finisher_pressure.cause_id),int(finisher_melee.event_id),
+				"finisher pressure exact melee cause")
+		if not attributed_death.is_empty() and not finisher_pressure.is_empty():
+			check_eq(int(attributed_death.cause_id),int(finisher_pressure.event_id),
+				"death exact finisher pressure cause")
+			check_eq(int(attributed_death.instigator_id),hero,"final death attribution is hero finisher")
+	elif not attributed_death.is_empty():
+		var succumb_pressure=session.sim.world.event_by_id(int(attributed_death.cause_id))
+		check(succumb_pressure!=null and str(succumb_pressure.type)=="combat.downed_damage" \
+			and str(succumb_pressure.data.get("reason",""))=="SUCCUMB",
+			"deadline death cites its SUCCUMB pressure")
+		if succumb_pressure!=null:
+			var downed_source=session.sim.world.event_by_id(int(succumb_pressure.cause_id))
+			check(downed_source!=null and str(downed_source.type)=="entity.downed",
+				"SUCCUMB pressure cites the original entity.downed")
+			if downed_source!=null:
+				check_eq(int(attributed_death.instigator_id),int(downed_source.instigator_id),
+					"final death attribution follows whoever downed the enemy")
 	check_eq(session.combat_log(0,80).groups,[],"zero turns returns zero groups")
 	var detached=session.combat_log();detached.groups[0].rows[0].data["corrupted"]=true
 	check(not session.combat_log().groups[0].rows[0].data.has("corrupted"),"combat log nested DTO detached")
