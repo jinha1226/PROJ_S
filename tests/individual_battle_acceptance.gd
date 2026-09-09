@@ -1,5 +1,55 @@
-extends "res://tests/battle_timeline_acceptance.gd"
+extends SceneTree
 
+## Per-actor battle scheduler acceptance: one action per due actor, canonical
+## time stops at the next event, reservations are free until executed, and the
+## journal replays exactly. UI checks use the single-screen sandbox.
+
+const Session=preload("res://playtest/party_playtest_session.gd")
+const SimCommand=preload("res://sim/sim_command.gd")
+const WORLD_SEED:=44
+const PERSONALITY_SEED:=20260828
+var failures:Array[String]=[]
+
+func _init()->void:call_deferred("_run")
+
+func _check(value:bool,message:String)->void:
+	if not value:failures.append(message)
+
+func _check_eq(got:Variant,expected:Variant,message:String)->void:
+	if got!=expected:failures.append("%s (expected %s, got %s)"%[message,str(expected),str(got)])
+
+func _new_engaged_duo():
+	var session=Session.new(WORLD_SEED,PERSONALITY_SEED,Session.DUO_SCENARIO_ID)
+	if session.sim==null:
+		_check(false,"DUO session did not initialize");return null
+	var state=session.sim.world.party_encounter
+	var hero_id:=int(state.protagonist_id)
+	var best:Dictionary={}
+	for enemy_id_value in state.enemy_ids:
+		var enemy_id:=int(enemy_id_value)
+		if not session.sim.world.is_unresolved_enemy(enemy_id):continue
+		var enemy_position:Vector2i=session.sim.world.entities[enemy_id].position
+		for delta in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+			var path:Dictionary=session.find_exploration_path(hero_id,enemy_position+delta)
+			if bool(path.get("found",false)) and (best.is_empty() or path.path.size()<best.path.size()):best=path
+		if not best.is_empty() and best.path.size()<=4:break
+	if best.is_empty():
+		_check(false,"normal generated DUO map has no route to an encounter");return null
+	for value in best.path.slice(1):
+		var step:Dictionary=session.commit_exploration(SimCommand.move_to(hero_id,value))
+		if not bool(step.get("accepted",false)):
+			_check(false,"normal route step rejected: %s"%str(step.get("reason","")));return null
+		if str(session.party_status().get("safe_phase",""))=="CONTACT":break
+	_check_eq(session.party_status().get("safe_phase",""),"CONTACT","generated route reaches contact")
+	if str(session.party_status().get("safe_phase",""))!="CONTACT":return null
+	var companion_id:=int(state.party_member_ids[1])
+	var preview:Dictionary=session.preview_deployment("LINE",[companion_id])
+	_check(bool(preview.get("accepted",false)),"normal deployment preview accepts companion")
+	if not bool(preview.get("accepted",false)):return null
+	var committed:Dictionary=session.commit_deployment()
+	_check(bool(committed.get("accepted",false)),"normal deployment enters combat")
+	_check_eq(session.party_status().get("safe_phase",""),"ENGAGED","generated deployment enters ENGAGED")
+	return session
 const Clock=preload("res://playtest/autonomous_battle_clock.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
 
@@ -94,8 +144,11 @@ func _reservation_and_ui()->void:
 	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui);ui.set_process(false)
 	await process_frame;await process_frame
 	var portrait=ui.cards.find_child("MemberCard%d"%companion,true,false)
-	var button=ui.cards.find_child("ActorSkill_%d_FIREBOLT"%companion,true,false)
-	_check(button!=null and button.text.contains("예약"),"reserved button is visible above portrait")
+	_check(ui.find_child("BattleTimelineBar",true,false)==null and ui.find_child("PortraitBattleMode",true,false)==null,
+		"single-screen combat has no turn clock or mode toggle")
+	_check(ui.hero_skill_row!=null and ui.hero_skill_row.visible \
+		and ui.hero_skill_row.find_child("ActorSkill_%d_STRIKE"%int(party.protagonist_id),true,false)!=null,
+		"hero skill row sits above the portraits")
 	ui.autonomous_battle_clock.paused=true
 	var frozen:int=session.sim.world.world_time
 	ui._tick_autonomous_battle(1)
@@ -116,5 +169,4 @@ func _reservation_and_ui()->void:
 	_check_eq(party.member(companion).energy,energy-3,"future reservation does not spend twice")
 	flow.cancel(companion)
 	_check(ui.cards.find_child("MemberCard%d"%companion,true,false)==portrait,"portrait node survives automatic actions")
-	_check_eq(ui.battle_timeline_bar._state.get("display_time"),ui.autonomous_battle_clock.cursor,"HUD and scheduler use same continuous cursor")
 	ui.queue_free();await process_frame

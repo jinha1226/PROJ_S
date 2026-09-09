@@ -1,5 +1,8 @@
 # Hero-Turn Combat Implementation Plan (simplified 2026-09-09)
 
+> **대체됨 (2026-09-10)**: `2026-09-10-single-screen-combat.md` 참고.
+
+
 Superseded the four-task plan: the user asked for the minimal version. No new
 journal kind, no scheduler change. Implemented directly in one commit:
 

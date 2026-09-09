@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 23
+const SCHEMA_VERSION := 24
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -38,6 +38,9 @@ const MEMORY_STATE_SCHEMA_VERSION := 21
 # v22 persists the shared party ration gauge and its drain clock.
 const RATION_SCHEMA_VERSION := 22
 const ACTIVE_SKILL_SCHEMA_VERSION := 23
+# Contact requires enemy awareness (or a party first strike); older saves keep
+# the sight-based contact rule through legacy_contact_rule.
+const CONTACT_RULE_SCHEMA_VERSION := 24
 const MAX_ACTIVE_PARTY_SIZE := 4
 const MAX_TRACKED_ENEMY_SIZE := 1024
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
@@ -86,6 +89,9 @@ var last_protagonist_damage_step: int = -1
 var opening_event = null
 var protagonist_growth = GrowthBuildStateScript.new("human")
 var legacy_journal_origin := false
+# Defaults to the sight rule: raw fixtures and legacy scenarios keep their
+# historical contact behaviour. Product dungeons opt into the awareness rule.
+var legacy_contact_rule := true
 var expedition_cycle = ExpeditionCycleScript.new()
 var activated_anchor_portal_floors:Array[int]=[]
 var ration_milli: int = RationRulesScript.ration_max_milli()
@@ -150,6 +156,8 @@ func to_dict() -> Dictionary:
 	if schema_version >= RATION_SCHEMA_VERSION:
 		wire["ration_milli"] = ration_milli
 		wire["ration_processed_at"] = str(ration_processed_at)
+	if schema_version >= CONTACT_RULE_SCHEMA_VERSION:
+		wire["legacy_contact_rule"] = legacy_contact_rule
 	return wire
 
 static func from_dict(row: Dictionary):
@@ -157,6 +165,8 @@ static func from_dict(row: Dictionary):
 	state.schema_version = SCHEMA_VERSION
 	state.legacy_journal_origin = bool(row.get("legacy_journal_origin",
 		int(row.get("schema_version", 1)) < HEXACO_SCHEMA_VERSION))
+	state.legacy_contact_rule = bool(row.get("legacy_contact_rule",
+		int(row.get("schema_version", 1)) < CONTACT_RULE_SCHEMA_VERSION))
 	state.encounter_id = Int64CodecScript.parse(row.encounter_id, "encounter ID")
 	state.safe_phase = str(row.safe_phase); state.revision = Int64CodecScript.parse(row.revision, "revision")
 	state.protagonist_id = Int64CodecScript.parse(row.protagonist_id, "protagonist ID")
@@ -297,6 +307,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v19_keys:Array=v18_keys.duplicate();v19_keys.append("activated_anchor_portal_floors");v19_keys.sort()
 	var v22_keys:Array=v19_keys.duplicate();v22_keys.append_array(["ration_milli","ration_processed_at"]);v22_keys.sort()
 	var v23_keys:Array=v22_keys.duplicate()
+	var v24_keys:Array=v23_keys.duplicate();v24_keys.append("legacy_contact_rule");v24_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -321,7 +332,8 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == EMOTION_STATE_SCHEMA_VERSION and keys != v19_keys) \
 		or (parsed_schema_version == MEMORY_STATE_SCHEMA_VERSION and keys != v19_keys) \
 		or (parsed_schema_version == RATION_SCHEMA_VERSION and keys != v22_keys) \
-		or (parsed_schema_version == SCHEMA_VERSION and keys != v23_keys):
+		or (parsed_schema_version == ACTIVE_SKILL_SCHEMA_VERSION and keys != v23_keys) \
+		or (parsed_schema_version == SCHEMA_VERSION and keys != v24_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
@@ -331,10 +343,14 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			HEXACO_SCHEMA_VERSION,PLAYER_SPECIES_SCHEMA_VERSION,
 			STAT_SCALING_SCHEMA_VERSION,EXPEDITION_CYCLE_SCHEMA_VERSION,
 			ANCHOR_PORTAL_SCHEMA_VERSION,EMOTION_STATE_SCHEMA_VERSION,
-			MEMORY_STATE_SCHEMA_VERSION,RATION_SCHEMA_VERSION,SCHEMA_VERSION]: return "unsupported_party_schema"
+			MEMORY_STATE_SCHEMA_VERSION,RATION_SCHEMA_VERSION,ACTIVE_SKILL_SCHEMA_VERSION,
+			SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"
+	if parsed_schema_version >= CONTACT_RULE_SCHEMA_VERSION \
+			and not row.get("legacy_contact_rule") is bool:
+		return "invalid_legacy_contact_rule"
 	for key in ["encounter_id", "protagonist_id", "revision", "contact_enemy_id"]:
 		if not Int64CodecScript.is_canonical(row.get(key)): return "noncanonical_party_%s" % key
 	if Int64CodecScript.parse(row.encounter_id, "encounter") <= 0 or Int64CodecScript.parse(row.protagonist_id, "protagonist") <= 0 or Int64CodecScript.parse(row.revision, "revision") < 0:

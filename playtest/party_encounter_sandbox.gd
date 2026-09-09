@@ -325,10 +325,12 @@ var _battle_target_skill_label:=""
 var _battle_target_prompt:=""
 var _battle_target_prior_paused:=false
 var _battle_target_committing:=false
-var battle_timeline_bar
-var battle_timeline_controller
 var battle_drag:Control
 var battle_enemy_strip:ScrollContainer
+var hero_skill_row:HBoxContainer
+var product_retreat_button:Button
+var _retreat_active:=false
+var _approach_step_pending:=false
 var battle_command_flow=preload("res://playtest/battle_command_flow.gd").new()
 var battle_loot_panel:Control
 var _shown_loot_battle_id:=-1
@@ -357,8 +359,6 @@ var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 func _process(_delta:float)->void:
 	base_work_clock.tick(self,_delta)
-	if battle_timeline_bar!=null and battle_timeline_bar.visible:
-		battle_timeline_bar.set_presentation_blocked(_battle_presentation_blocked() or autonomous_battle_clock.paused)
 	if not _battle_target_mode.is_empty() and grid!=null and grid.modal_open:
 		_cancel_battle_targeting("대상 선택을 취소했습니다.")
 	_tick_autonomous_battle(_delta)
@@ -396,7 +396,6 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
-	if battle_timeline_controller!=null and battle_timeline_controller.handle_group_input(event):return
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
 	if grid!=null and (battle_drag==null or not battle_drag.active) \
 			and grid.capture_nearby_list_input(event):return
@@ -933,6 +932,12 @@ func _build_ui()->void:
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
+	# Hero skills sit directly above the portraits in exploration and combat
+	# alike. Tapping one paints the reachable cells red; tapping a target there
+	# uses it (before contact: a first strike).
+	hero_skill_row=HBoxContainer.new();hero_skill_row.name="HeroSkillRow"
+	hero_skill_row.custom_minimum_size.y=44;hero_skill_row.visible=false
+	hero_skill_row.add_theme_constant_override("separation",2);root_layout.add_child(hero_skill_row)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
 	combat_action_area.add_theme_constant_override("separation",2);combat_action_area.visible=false;root_layout.add_child(combat_action_area)
 	action_feedback_label=Label.new();action_feedback_label.name="ActionFeedback";action_feedback_label.custom_minimum_size.y=38
@@ -960,18 +965,13 @@ func _build_ui()->void:
 	_build_record_modal()
 	_build_base_modal()
 	_build_species_picker()
-	battle_timeline_bar=preload("res://playtest/battle_timeline_bar.gd").new()
-	battle_timeline_bar.name="BattleTimelineBar";battle_timeline_bar.hide()
-	# The bar floats over the map's top edge instead of sitting in the column
-	# layout, so an encounter no longer pushes the whole map down by 48px.
-	grid.add_child(battle_timeline_bar)
-	battle_timeline_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	battle_timeline_bar.offset_bottom=48.0;battle_timeline_bar.z_index=20
-	battle_timeline_controller=preload("res://playtest/battle_timeline_controller.gd").new()
-	add_child(battle_timeline_controller);battle_timeline_controller.setup(self,battle_timeline_bar)
+	# No turn clock: combat is driven by the hero's taps. Enemy portraits float
+	# over the map's top edge during a fight (party focus targets).
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
 	battle_enemy_strip=preload("res://playtest/battle_enemy_strip.gd").new()
-	event_surface.add_child(battle_enemy_strip);battle_enemy_strip.hide()
+	grid.add_child(battle_enemy_strip);battle_enemy_strip.hide()
+	battle_enemy_strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	battle_enemy_strip.offset_bottom=48.0;battle_enemy_strip.z_index=20
 	battle_loot_panel=preload("res://playtest/battle_loot_panel.gd").new();add_child(battle_loot_panel)
 	battle_loot_panel.hide()
 	battle_loot_panel.take_requested.connect(_take_battle_loot)
@@ -1949,6 +1949,7 @@ func _refresh()->void:
 			if speech is Dictionary:
 				companion_speech_by_actor[int(speech.get("actor_id",-1))]=speech.duplicate(true)
 	_render_party_cards(party_rows,companion_speech_by_actor,card_layout)
+	_render_hero_skill_row(status,product_hud and not town_active and not run_complete)
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
 	action_feedback_label.visible=true
@@ -2012,7 +2013,8 @@ func _decorate_visible_resource_caches(observation:Dictionary)->void:
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
 		root_layout.move_child(phase_panel,0)
-		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2);root_layout.move_child(cards,3)
+		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2)
+		root_layout.move_child(hero_skill_row,3);root_layout.move_child(cards,4)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -2053,10 +2055,7 @@ func _refresh_individual_battle_surface()->void:
 	_update_stable_party_cards(battle_rows)
 	PerfProbeScript.end("bs.cards_update",_bu)
 	var _bk:=PerfProbeScript.begin()
-	for id in session.sim.world.party_encounter.active_party_member_ids:
-		var stack:=cards.find_child("BattleMember%d"%id,true,false)
-		if stack!=null and stack.get_child_count()>0:
-			stack.get_child(0).update_rows(id,session.active_skill_rows(id))
+	_update_hero_skill_row(status)
 	PerfProbeScript.end("bs.skill_rows",_bk)
 	var _bl:=PerfProbeScript.begin()
 	var history:Dictionary=session.combat_log(8,80)
@@ -2436,9 +2435,6 @@ func _reset_auto_flow()->void:
 	auto_combat_plan_hash="";auto_combat_step_index=-1;auto_combat_render_stage=0
 	auto_override_edit=false;auto_phase="";exploration_follow_plan.clear()
 
-func _timeline_visible()->bool:
-	return _portrait_battle_controls_visible() and (battle_loot_panel==null or not battle_loot_panel.visible)
-
 func _battle_presentation_blocked()->bool:
 	var blocked:bool=grid==null or grid.modal_open or _product_touch_index>=0 \
 		or _party_command_targeting or not _battle_target_mode.is_empty() or auto_combat_pending
@@ -2450,8 +2446,6 @@ func _battle_presentation_blocked()->bool:
 	if manual_actor_menu!=null:blocked=blocked or manual_actor_menu.get_popup().visible
 	if directive_menu!=null:blocked=blocked or directive_menu.get_popup().visible
 	if companion_order_editor!=null:blocked=blocked or companion_order_editor.visible
-	if battle_timeline_controller!=null:
-		blocked=blocked or battle_timeline_controller.pointer_held or battle_timeline_controller.group_open
 	return blocked
 
 func _tick_autonomous_battle(delta:float)->void:
@@ -2462,7 +2456,9 @@ func _tick_autonomous_battle(delta:float)->void:
 	if battle_command_flow.in_battle and not was_in_battle:_cancel_product_rest("rest_encounter")
 	var state=session.sim.world.party_encounter
 	if state.safe_phase!="ENGAGED":
-		autonomous_battle_clock.cursor=-1.0;_hero_turn_released=false;_hero_turn_was_waiting=false;return
+		autonomous_battle_clock.cursor=-1.0;_hero_turn_released=false;_hero_turn_was_waiting=false
+		_retreat_active=false;return
+	if _retreat_active and _hero_turn_holds():_hero_turn_released=true
 	var blocked:=_battle_presentation_blocked()
 	var hold_at:=-1.0
 	if _hero_turn_holds():hold_at=float(session.individual_battle.next_event().at)
@@ -2484,7 +2480,17 @@ func _tick_autonomous_battle(delta:float)->void:
 				autonomous_battle_clock.paused=true
 				_show_manual_battle_feedback("자동 행동 실패 · "+str(result.get("reason","")))
 				_request_refresh();break
-			if int(result.get("actor_id",-1))==hero_id:_hero_turn_released=false
+			if int(result.get("actor_id",-1))==hero_id:
+				_hero_turn_released=false
+				if _approach_step_pending:
+					# [공격] is one step. If the cell got taken meanwhile, the standing
+					# order would keep the hero waiting on it; settle it where the hero
+					# stands (journaled) so the next turn is the player's again.
+					_approach_step_pending=false
+					var goal:Variant=session.individual_battle.movements.get(hero_id)
+					var hero_position:Vector2i=session.sim.world.entities[hero_id].position
+					if goal is Vector2i and goal!=hero_position:
+						session.individual_battle.reserve_move(hero_id,hero_position)
 			_record_result(result,true,"자동 전투 실행 불가",true,BATTLE_ACTOR_MOTION_MSEC);changed=true
 			if battle_mode=="AUTO" and battle_command_flow.check_danger(self):break
 			if not str(result.get("reservation_rejection","")).is_empty():
@@ -2500,7 +2506,6 @@ func _tick_autonomous_battle(delta:float)->void:
 		if session.sim.world.party_encounter.safe_phase=="ENGAGED":_refresh_individual_battle_surface()
 		else:_request_refresh()
 	battle_command_flow.paint(self)
-	if battle_timeline_bar!=null:battle_timeline_bar.set_display_time(at)
 
 func _hero_turn_holds()->bool:
 	# The clock stops at the protagonist's event while nothing has released it:
@@ -2512,7 +2517,13 @@ func _hero_turn_holds()->bool:
 	if not session.individual_battle.queued(hero_id).is_empty():return false
 	var goal:Variant=session.individual_battle.movements.get(hero_id)
 	if goal is Vector2i and goal!=session.sim.world.entities[hero_id].position:return false
-	return true
+	# Nothing to decide while no enemy that can still fight is in view (only
+	# downed bodies, or hunters out of sight): let time run so the fight can
+	# end (bleed-out, lost pursuit) instead of freezing on a turn prompt.
+	var world=session.sim.world
+	for id_value in session.party_status().get("visible_enemy_ids",[]):
+		if world.is_autonomous_target(int(id_value)):return true
+	return false
 
 func hero_turn_waiting()->bool:
 	return session!=null and session.is_duo_autobattle() and session.sim!=null \
@@ -2532,55 +2543,9 @@ func _refresh_battle_surface_lightly()->void:
 		_refresh_individual_battle_surface()
 	else:_request_refresh()
 
-func _on_battle_mode_toggle()->void:
-	battle_mode="AUTO" if battle_mode=="HERO_TURN" else "HERO_TURN"
-	_hero_turn_released=false
-	if battle_mode=="AUTO":autonomous_battle_clock.paused=false;battle_command_flow.resume()
-	_show_manual_battle_feedback("자동 진행" if battle_mode=="AUTO" else "내 차례마다 멈춥니다")
-	_request_refresh()
-
-func _build_duo_battle_controls(status:Dictionary)->void:
-	product_auto_button=null;product_interact_button=null;product_attack_button=null
-	product_wait_guard_button=null;product_bag_button=null
-	combat_action_area.visible=false;combat_action_dock.visible=false
-	action_feedback_label.visible=false
-	combat_action_area.custom_minimum_size.y=0
-	combat_action_dock.custom_minimum_size.y=0
-	if _battle_target_mode.is_empty() and autonomous_battle_summary.is_empty():
-		event_label.text="아군 → 적으로 끌어 공격 지정 · 기술을 누른 뒤 대상 선택"
-
 func _portrait_battle_controls_visible()->bool:
 	return session!=null and session.is_duo_autobattle() and session.sim!=null \
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
-
-func _add_battle_portrait_utilities()->void:
-	var utility:=VBoxContainer.new();utility.name="BattlePortraitUtilities"
-	utility.custom_minimum_size.x=48;utility.add_theme_constant_override("separation",2)
-	cards.add_child(utility)
-	var mode:=Button.new();mode.name="PortraitBattleMode"
-	mode.text="자동" if battle_mode=="HERO_TURN" else "수동"
-	mode.tooltip_text="전투를 자동으로 진행합니다." if battle_mode=="HERO_TURN" else "내 차례마다 멈춥니다."
-	mode.custom_minimum_size=Vector2(48,48)
-	DarkPixelSkinScript.apply_action_button(mode,DarkPixelSkinScript.BRASS)
-	mode.pressed.connect(_on_battle_mode_toggle);utility.add_child(mode)
-	var pause:=Button.new();pause.name="PortraitBattlePause"
-	if battle_mode=="HERO_TURN":pause.text="진행"
-	else:pause.text=("시작" if battle_command_flow.awaiting_start else "재개") if autonomous_battle_clock.paused else "지휘"
-	pause.custom_minimum_size=Vector2(48,48)
-	pause.disabled=not _battle_target_mode.is_empty()
-	pause.tooltip_text="이번 차례는 자동으로 행동합니다." if battle_mode=="HERO_TURN" else ""
-	DarkPixelSkinScript.apply_action_button(pause,DarkPixelSkinScript.CYAN)
-	pause.pressed.connect(_on_product_execute);utility.add_child(pause)
-	var reset:=Button.new();reset.name="PortraitBattleCancel"
-	reset.text="취소" if not _battle_target_mode.is_empty() else "자율"
-	reset.custom_minimum_size=Vector2(48,48)
-	reset.tooltip_text="대상 선택 취소" if not _battle_target_mode.is_empty() else "선택한 인물의 지정 표적을 해제합니다."
-	DarkPixelSkinScript.apply_action_button(reset,DarkPixelSkinScript.BRASS)
-	reset.pressed.connect(_on_portrait_battle_reset);utility.add_child(reset)
-
-func _on_portrait_battle_reset()->void:
-	if not _battle_target_mode.is_empty():_cancel_battle_targeting("대상 선택을 취소했습니다.")
-	else:_on_actor_directive_selected(selected_member_id,"FOLLOW")
 
 func _on_manual_actor_selected(actor_id:int)->void:
 	if not _battle_target_mode.is_empty():return
@@ -2591,6 +2556,44 @@ func _on_manual_actor_selected(actor_id:int)->void:
 		actor_name,actor_name])
 	_request_refresh()
 
+func _hero_skill_rows(status:Dictionary)->Array:
+	# The hero's skills as the row shows them. Before contact the combat gate is
+	# lifted whenever an enemy is in view: using a skill on it is a first strike.
+	var hero_id:=int(status.get("protagonist_id",-1))
+	if hero_id<0 or not session.has_method("active_skill_rows"):return []
+	var rows:Array=[]
+	var phase:=str(status.get("safe_phase",""))
+	var enemy_visible:bool=not status.get("visible_enemy_ids",[]).is_empty()
+	for row_value in session.active_skill_rows(hero_id):
+		if not row_value is Dictionary:continue
+		var row:Dictionary=row_value.duplicate(true)
+		if phase=="GROUPED" and str(row.get("reason",""))=="active_skill_combat_required":
+			if enemy_visible and session.is_duo_autobattle():
+				row["can_select"]=true;row["reason"]="";row["message"]="적을 고르면 선공합니다."
+			else:row["message"]="적이 보일 때 선공할 수 있습니다."
+		rows.append(row)
+	return rows
+
+func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
+	if hero_skill_row==null:return
+	_clear_container(hero_skill_row)
+	hero_skill_row.visible=visible
+	if not visible:return
+	var hero_id:=int(status.get("protagonist_id",-1))
+	var rows:=_hero_skill_rows(status)
+	if rows.is_empty():hero_skill_row.visible=false;return
+	var skills=preload("res://playtest/portrait_skill_row.gd").new();skills.name="HeroSkills"
+	skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	skills.configure(hero_id,rows,_battle_target_actor_id,_battle_target_skill_id)
+	skills.skill_selected.connect(_on_manual_skill_selected)
+	hero_skill_row.add_child(skills)
+
+func _update_hero_skill_row(status:Dictionary)->void:
+	if hero_skill_row==null or not hero_skill_row.visible:return
+	var skills:=hero_skill_row.get_node_or_null("HeroSkills")
+	if skills==null:return
+	skills.update_rows(int(status.get("protagonist_id",-1)),_hero_skill_rows(status))
+
 func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)->void:
 	if _battle_target_committing or not _battle_target_mode.is_empty():return
 	if str(session.individual_battle.queued(actor_id).get("skill_id",""))==skill_id:
@@ -2599,18 +2602,23 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 	if not session.has_method("active_skill_rows") or not session.has_method("use_active_skill"):
 		_show_manual_battle_feedback("액티브 스킬을 아직 사용할 수 없습니다.");return
 	var selected_row:Dictionary={}
-	for row_value in session.active_skill_rows(actor_id):
+	for row_value in _hero_skill_rows(session.party_status()):
 		if row_value is Dictionary and str(row_value.get("skill_id",""))==skill_id:
 			selected_row=row_value;break
 	if selected_row.is_empty() or not bool(selected_row.get("can_select",false)):
 		_show_manual_battle_feedback(str(selected_row.get("message",
 			selected_row.get("reason","지금 사용할 수 없습니다."))));return
+	_retreat_active=false
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
 	_battle_target_prior_paused=autonomous_battle_clock.paused
 	autonomous_battle_clock.paused=true
-	_battle_target_prompt="%s · %s 대상 선택"%[_actor_display_name(actor_id),skill_label]
-	_show_manual_battle_feedback(_battle_target_prompt+" · 취소 가능")
+	var reach:Dictionary=session.skill_reach_cells(actor_id,skill_id) \
+		if session.has_method("skill_reach_cells") else {}
+	grid.set_skill_reach_cells(reach.get("cells",[]),str(reach.get("target","ENEMY")))
+	_battle_target_prompt="%s · 붉은 칸의 %s을 고르세요"%[skill_label,
+		"아군" if str(reach.get("target","ENEMY"))=="ALLY" else "적"]
+	_show_manual_battle_feedback(_battle_target_prompt+" · 빈 칸을 누르면 취소")
 	_request_refresh()
 
 func _on_actor_directive_selected(actor_id:int,command_id:String)->void:
@@ -2644,7 +2652,12 @@ func _commit_battle_target(target_id:int)->void:
 	if _battle_target_mode.is_empty() or _battle_target_committing:return
 	_battle_target_committing=true
 	var assessment:Dictionary={}
-	if _battle_target_mode=="ACTIVE_SKILL":
+	var first_strike:bool=_battle_target_mode=="ACTIVE_SKILL" \
+		and str(session.party_status().get("safe_phase",""))=="GROUPED"
+	if first_strike:
+		assessment={"accepted":target_id in session.party_status().get("visible_enemy_ids",[]),
+			"message":"보이는 적을 고르세요."}
+	elif _battle_target_mode=="ACTIVE_SKILL":
 		assessment=session.individual_battle.assessment(_battle_target_actor_id,
 			_battle_target_skill_id,target_id)
 	else:
@@ -2663,9 +2676,10 @@ func _commit_battle_target(target_id:int)->void:
 	var prior_paused:=_battle_target_prior_paused
 	# Clear first so a refresh or duplicate pointer packet cannot cast twice.
 	_clear_battle_targeting_state()
-	var result:Dictionary=session.individual_battle.reserve(caster_id,skill_id,target_id) \
-		if mode=="ACTIVE_SKILL" else session.issue_actor_command(caster_id,
-			"ATTACK_TARGET",target_id)
+	var result:Dictionary
+	if first_strike:result=session.strike_with_skill(skill_id,target_id)
+	elif mode=="ACTIVE_SKILL":result=session.individual_battle.reserve(caster_id,skill_id,target_id)
+	else:result=session.issue_actor_command(caster_id,"ATTACK_TARGET",target_id)
 	autonomous_battle_clock.paused=prior_paused
 	_battle_target_committing=false
 	if bool(result.get("accepted",false)):
@@ -2694,6 +2708,7 @@ func _show_manual_battle_feedback(message:String)->void:
 	_product_transient_event_feedback=message
 
 func _clear_battle_targeting_state()->void:
+	if grid!=null:grid.clear_skill_reach_cells()
 	_battle_target_mode="";_battle_target_actor_id=-1
 	_battle_target_skill_id="";_battle_target_skill_label=""
 	_battle_target_prompt="";_battle_target_prior_paused=false
@@ -2743,9 +2758,10 @@ func _orchestrate_auto_phase(status:Dictionary)->void:
 		auto_phase=phase
 	match phase:
 		"CONTACT":
-			if _is_solo_product_session() and not session.is_duo_autobattle():
-				var result:Dictionary=session.enter_solo_combat()
-				_record_result(result,true,"단독 전투 시작 불가")
+			if _is_solo_product_session():
+				var result:Dictionary=session.settle_contact()
+				_record_result(result,true,"조우 처리 불가")
+				auto_phase=str(session.party_status().get("safe_phase",""))
 			elif not auto_deployment_pending and not auto_deployment_fallback:
 				_prepare_auto_deployment(status)
 		"ENGAGED":
@@ -2890,7 +2906,6 @@ func _render_party_cards(rows:Array,speech_by_actor:Dictionary,spec:Dictionary)-
 			if _is_solo_product_session():
 				var portrait:=cards.find_child("MemberCard%d"%int(row.entity_id),true,false)
 				if portrait!=null:portrait.party_index=index
-	if _portrait_battle_controls_visible():_add_battle_portrait_utilities()
 
 func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary={})->void:
 	if _is_solo_product_session():
@@ -2909,16 +2924,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
 		compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,
 			str(row.get("display_name","파티원"))))
-		if _portrait_battle_controls_visible():
-			var stack:=VBoxContainer.new();stack.name="BattleMember%d"%member_id
-			stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-			stack.add_theme_constant_override("separation",2);cards.add_child(stack)
-			var skills=preload("res://playtest/portrait_skill_row.gd").new()
-			skills.configure(member_id,session.active_skill_rows(member_id),
-				_battle_target_actor_id,_battle_target_skill_id)
-			skills.skill_selected.connect(_on_manual_skill_selected)
-			stack.add_child(skills);stack.add_child(compact)
-		else:cards.add_child(compact)
+		cards.add_child(compact)
 		return
 	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
 		SessionScript.ACTIVE_PARTY_LIMIT,size.x)
@@ -3817,8 +3823,6 @@ func _product_controls_metrics(_party_count:int)->Dictionary:
 	return {"target":48,"gap":gap,"dock_height":48}.duplicate(true)
 
 func _build_product_controls_dock(status:Dictionary)->void:
-	if session.is_duo_autobattle() and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false)):
-		_build_duo_battle_controls(status);return
 	if companion_order_editor!=null and companion_order_editor.visible:
 		product_auto_button=null;product_interact_button=null;product_attack_button=null
 		product_wait_guard_button=null;product_execute_button=null;product_bag_button=null
@@ -3843,19 +3847,20 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.disabled=false
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
-	product_auto_button=_add_product_context_button(combat_action_dock,"[AUTO]","ProductAuto",
+	# One dock for exploration and combat: [탐험|공격] [대기|휴식] [줍기] [퇴각] [가방]
+	# plus the contextual interaction (portal, gather, loot) when one exists.
+	product_auto_button=_add_product_context_button(combat_action_dock,"[탐험]","ProductAuto",
 		_on_product_auto,target)
 	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
-	product_attack_button=_add_product_context_button(combat_action_dock,"[ATTACK]","ProductAttack",
-		_on_product_attack,target)
+	product_attack_button=null;product_rest_button=null
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,
-		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
+		"[대기]" if str(status.get("view_mode",""))=="COMBAT" else "[휴식]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
-	product_rest_button=_add_product_context_button(combat_action_dock,"[REST]","ProductRest",
-		_on_product_rest,target)
-	product_pickup_button=_add_product_context_button(combat_action_dock,"[PICKUP]","ProductPickup",
+	product_pickup_button=_add_product_context_button(combat_action_dock,"[줍기]","ProductPickup",
 		_on_product_pickup,target)
+	product_retreat_button=_add_product_context_button(combat_action_dock,"[퇴각]","ProductRetreat",
+		_on_product_retreat,target)
 	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
 		_open_hero_detail_tab.bind("ITEM"),target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
@@ -3888,12 +3893,22 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		if session.has_method("base_gather_assessment") else {}
 	var gather_context:bool=bool(gather.get("accepted",false)) \
 		or not str(gather.get("resource_id","")).is_empty()
-	if product_attack_button!=null and is_instance_valid(product_attack_button):
-		product_attack_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"] \
-			or opening_choice or portal_choice \
-			or bool(floor_transition.get("accepted",false)) or gather_context
-		product_attack_button.tooltip_text= \
-			"가장 가까운 시야 내 적을 공격하거나 한 칸 접근합니다."
+	var duo_fight:bool=_portrait_battle_controls_visible()
+	if product_retreat_button!=null and is_instance_valid(product_retreat_button):
+		product_retreat_button.disabled=terminal or not duo_fight
+		product_retreat_button.text="[퇴각 중]" if _retreat_active and duo_fight else "[퇴각]"
+		product_retreat_button.tooltip_text="파티 전체가 적에게서 물러납니다. 추적을 벗어나면 탐험으로 돌아갑니다." \
+			if duo_fight else "전투 중에만 퇴각할 수 있습니다."
+	if duo_fight:
+		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
+		product_auto_button.text="[공격]";product_auto_button.disabled=terminal
+		product_auto_button.tooltip_text="가장 가까운 적을 공격합니다. 인접하지 않으면 한 칸 다가갑니다."
+		product_interact_button.visible=false
+		product_wait_guard_button.text="[대기]";product_wait_guard_button.disabled=terminal
+		product_wait_guard_button.tooltip_text="이번 차례는 자리를 지킵니다."
+		if product_pickup_button!=null:product_pickup_button.visible=false
+		return
+	product_interact_button.visible=true
 	if bool(floor_transition.get("accepted",false)):
 		product_interact_button.text="[%d층 진입]"%int(
 			floor_transition.get("to_floor_index",2))
@@ -3932,7 +3947,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		var auto_state:Dictionary=session.auto_explore_state() \
 			if session.has_method("auto_explore_state") else {}
 		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
-		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
+		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
 	elif mode=="EXPLORATION":
 		product_interact_button.text="[INTERACT]"
 		if not session.battle_loot().rows.is_empty():
@@ -3943,8 +3958,8 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.disabled=terminal or not session.has_method("start_auto_explore")
 		product_auto_button.toggle_mode=true
 		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
-		product_auto_button.text="[AUTO ■]" if bool(auto_state.get("running",false)) else "[AUTO]"
-		product_auto_button.tooltip_text="안전한 발견 지점까지 자동 탐험"
+		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
+		product_auto_button.tooltip_text="출구 쪽 미탐색 지역으로 자동 탐험"
 	else:
 		var reload_weapon:=bool(equipment.get("reload_required",false))
 		product_interact_button.text="[RELOAD]" if reload_weapon else "[INTERACT]"
@@ -3957,18 +3972,23 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 				"쇠뇌를 장전합니다. 볼트 %d개 · %d시간" \
 				%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
 		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
-		product_auto_button.text="[AUTO]"
-		product_auto_button.disabled=terminal or mode!="COMBAT" or selected_member_id==protagonist_id
-		product_auto_button.tooltip_text="선택한 동료를 자동 제안으로 되돌립니다."
-	product_wait_guard_button.text="[WAIT]" if _is_solo_product_session() \
-		else ("[GUARD]" if mode=="COMBAT" else "[WAIT]")
-	product_wait_guard_button.disabled=terminal or not mode in ["EXPLORATION","COMBAT"]
+		product_auto_button.text="[공격]"
+		product_auto_button.disabled=terminal or mode!="COMBAT"
+		product_auto_button.tooltip_text="가장 가까운 시야 내 적을 공격하거나 한 칸 접근합니다."
+	# Exploration: the wait slot is the rest macro. Combat (non-duo legacy): guard.
 	if mode=="COMBAT":
 		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
+		product_wait_guard_button.text="[GUARD]" if not _is_solo_product_session() else "[대기]"
+		product_wait_guard_button.disabled=terminal
 		product_wait_guard_button.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다." \
 			%_guard_percent_for_actor(guard_actor)
 	else:
-		product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
+		product_wait_guard_button.text="[STOP]" if _product_rest_active else "[휴식]"
+		product_wait_guard_button.disabled=terminal or mode!="EXPLORATION"
+		product_wait_guard_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
+			else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
+	product_interact_button.visible=not (product_interact_button.disabled \
+		and product_interact_button.text=="[INTERACT]")
 	if product_pickup_button!=null:
 		var loot_here:int=session.ground_items_at_protagonist().size() if mode=="EXPLORATION" else 0
 		product_pickup_button.visible=loot_here>0
@@ -3991,7 +4011,7 @@ func _add_product_context_button(parent:Control,label:String,node_name:String,
 	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
 	button.gui_input.connect(_on_product_button_gui_input.bind(node_name))
 	var accent:Color={"ProductAttack":Color("#548bb0"),"ProductAuto":Color("#61914e"),
-		"ProductWaitGuard":Color("#ba913d"),"ProductRest":Color("#5f8a66"),"ProductPickup":Color("#c6a34c"),"ProductBag":Color("#a64e49")}.get(node_name,DarkPixelSkinScript.CYAN)
+		"ProductWaitGuard":Color("#ba913d"),"ProductRest":Color("#5f8a66"),"ProductPickup":Color("#c6a34c"),"ProductBag":Color("#a64e49"),"ProductRetreat":Color("#8a5f66")}.get(node_name,DarkPixelSkinScript.CYAN)
 	DarkPixelSkinScript.apply_action_button(button,accent)
 	parent.add_child(button)
 	return button
@@ -4129,6 +4149,8 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
+	if _portrait_battle_controls_visible():_duo_attack_nearest();return
+	if str(session.party_status().get("view_mode",""))=="COMBAT":_on_product_attack();return
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	if bool(opening.get("can_interact",false)):
@@ -4366,13 +4388,78 @@ func _cancel_product_rest(reason:String)->void:
 
 func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()
+	_retreat_active=false
 	if str(status.get("view_mode",""))=="EXPLORATION":
-		_cancel_product_auto_explore("auto_explore_user_command",false)
-		var active_route:Dictionary=session.exploration_route_state()
-		if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
-			_cancel_active_route()
-		_on_explore(Vector2i.ZERO)
+		_on_product_rest()
+	elif _portrait_battle_controls_visible():
+		autonomous_battle_clock.paused=false
+		_release_hero_turn("이번 차례 · 자리를 지킵니다")
 	elif str(status.get("view_mode",""))=="COMBAT":_on_actor_hold()
+
+func _on_product_retreat()->void:
+	if not _portrait_battle_controls_visible():
+		_show_product_command_feedback("전투 중에만 퇴각할 수 있습니다.");return
+	var result:Dictionary=session.party_retreat()
+	if not bool(result.get("accepted",false)):
+		_show_product_command_feedback(str(result.get("message",result.get("reason","퇴각할 수 없습니다."))));return
+	_retreat_active=true;autonomous_battle_clock.paused=false
+	_cancel_battle_targeting()
+	_release_hero_turn(str(result.get("message","퇴각")))
+	_request_refresh()
+
+func _duo_attack_nearest()->void:
+	# [공격]: attack the nearest visible enemy if adjacent, otherwise take one
+	# step toward it. Movement and the attack stay separate taps.
+	var status:Dictionary=session.party_status()
+	var hero_id:=int(status.get("protagonist_id",-1))
+	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	var world=session.sim.world
+	var nearest:=-1;var nearest_distance:=9999
+	for id_value in status.get("visible_enemy_ids",[]):
+		var id:=int(id_value)
+		# Downed bodies are still "unresolved" but cannot be attacked; skip them.
+		if not world.entities.has(id) or not world.is_autonomous_target(id):continue
+		var enemy_position:Vector2i=world.entities[id].position
+		var distance:=maxi(absi(enemy_position.x-hero_position.x),absi(enemy_position.y-hero_position.y))
+		if distance<nearest_distance or distance==nearest_distance and id<nearest:
+			nearest=id;nearest_distance=distance
+	if nearest<0:_show_product_command_feedback("시야 안에 적이 없습니다.");return
+	_retreat_active=false
+	if nearest_distance<=1:_strike_visible_enemy(nearest);return
+	# One step: the legal neighbour that gets closest to the enemy. The hero's
+	# own cooldown may still be running, so this never goes through the
+	# pathfinder's can_act gate; the movement assessment is the authority.
+	var enemy_position:Vector2i=world.entities[nearest].position
+	var best_step:=Vector2i(-1,-1);var best_score:=nearest_distance*10
+	for direction in [Vector2i(-1,-1),Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),Vector2i(1,0),Vector2i(-1,1),Vector2i(0,1),Vector2i(1,1)]:
+		var cell:Vector2i=hero_position+direction
+		if not world.in_bounds(cell):continue
+		var assessment:Dictionary=session.individual_battle.movement_assessment(hero_id,cell)
+		if not bool(assessment.get("accepted",false)):continue
+		var score:int=maxi(absi(enemy_position.x-cell.x),absi(enemy_position.y-cell.y))*10 \
+			+(1 if direction.x!=0 and direction.y!=0 else 0)
+		if score<best_score:best_score=score;best_step=cell
+	if best_step==Vector2i(-1,-1):
+		_show_product_command_feedback("적에게 다가갈 길이 없습니다.");return
+	autonomous_battle_clock.paused=false
+	_approach_step_pending=true
+	_reserve_battle_move(hero_id,best_step)
+
+func _strike_visible_enemy(entity_id:int)->void:
+	# Map tap on an enemy: attack if adjacent (first strike before contact),
+	# otherwise explain. Never walks for the player.
+	_retreat_active=false;_approach_step_pending=false
+	var result:Dictionary=session.strike_enemy(entity_id)
+	if bool(result.get("accepted",false)):
+		selected_target_id=entity_id
+		autonomous_battle_clock.paused=false
+		_hero_turn_released=true
+		grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
+		_show_manual_battle_feedback(str(result.get("message","공격")))
+		_request_refresh()
+	else:
+		_show_manual_battle_feedback(str(result.get("message",result.get("reason","공격할 수 없습니다."))))
+		_request_refresh()
 
 func _on_product_execute()->void:
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
@@ -5813,9 +5900,8 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	if not _battle_target_mode.is_empty():
-		_battle_target_prompt="인물이나 보이는 적을 선택하세요."
-		_show_manual_battle_feedback(_battle_target_prompt)
-		_request_refresh();return
+		_cancel_battle_targeting("대상 선택을 취소했습니다.");return
+	_retreat_active=false
 	if companion_order_editor!=null and companion_order_editor.visible:
 		companion_order_editor.pick_cell(position);return
 	var status:Dictionary=session.party_status()
@@ -5920,7 +6006,7 @@ func _on_actor(entity_id:int)->void:
 	if companion_order_editor!=null and companion_order_editor.visible:
 		companion_order_editor.pick_actor(entity_id);return
 	if _portrait_battle_controls_visible() and entity_id in session.party_status().get("visible_enemy_ids",[]):
-		_focus_battle_enemy(entity_id);return
+		_strike_visible_enemy(entity_id);return
 	var status:Dictionary=session.party_status()
 	_hide_tile_popover()
 	if bool(_current_run_progress().get("terminal",false)):return
@@ -5983,6 +6069,7 @@ func _on_actor(entity_id:int)->void:
 		_request_refresh(); return
 	if entity_id in status.visible_enemy_ids:
 		selected_target_id=entity_id; _clear_move_preview()
+		if session.is_duo_autobattle():_strike_visible_enemy(entity_id);return
 		_submit_product_melee(entity_id,status)
 		_request_refresh(); return
 	if entity_id in status.party_member_ids:
@@ -6224,7 +6311,6 @@ func _flush_requested_refresh()->void:
 	_refresh()
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",
 		scroll_combat_log:bool=false,motion_duration_msec:int=-1)->void:
-	if battle_timeline_controller!=null:battle_timeline_controller.record_result(result)
 	_arm_actor_motion_from_result(result,motion_duration_msec)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		for raw in result.get("visual_effects",[]):
@@ -6265,7 +6351,6 @@ func _maybe_open_battle_loot(force:bool=false)->void:
 	_cancel_active_route()
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	battle_loot_panel.show()
-	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	battle_loot_panel.configure(session.protagonist_inventory(),loot)
 
 func _take_battle_loot(battle_id:int,instance_id:String)->void:
@@ -6298,7 +6383,7 @@ func _settle_solo_product_contact()->void:
 	auto_deployment_signature="";auto_combat_plan_hash=""
 	auto_deployment_render_stage=0;auto_combat_render_stage=0
 	auto_deployment_fallback=false;auto_combat_fallback=false;auto_override_edit=false
-	var result:Dictionary=session.enter_solo_combat()
+	var result:Dictionary=session.settle_contact()
 	if not bool(result.get("accepted",false)):
 		_set_action_rejection(result,"조우 처리 불가")
 	auto_phase=str(session.party_status().get("safe_phase",""))
@@ -6311,7 +6396,6 @@ func _flush_pending_visual_effects()->int:
 	if battle_enemy_strip!=null:battle_enemy_strip.sync(self)
 	PerfProbeScript.end("fx.enemy_strip",_pfs)
 	var _pft:=PerfProbeScript.begin()
-	if battle_timeline_controller!=null:battle_timeline_controller.sync()
 	PerfProbeScript.end("fx.timeline",_pft)
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0
 	var rows:Array=_pending_visual_effect_rows.duplicate(true)
@@ -6896,9 +6980,6 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
 		product_hud:bool=false)->void:
 	var wide:=size.x>=450.0
-	if battle_timeline_bar!=null:
-		battle_timeline_bar.visible=_timeline_visible()
-		battle_timeline_bar.custom_minimum_size.y=48;battle_timeline_bar.offset_bottom=48.0
 	phase_panel.custom_minimum_size.y=PRODUCT_TOP_HUD_HEIGHT if product_hud else (52 if wide else 48)
 	# Compact portrait has no gaps; desktop keeps a little rail separation while
 	# the expanding map owns all remaining height.
@@ -6930,6 +7011,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT if product_hud else (38 if wide else 36)
+	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=44 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:

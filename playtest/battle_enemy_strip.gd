@@ -19,7 +19,6 @@ var _last_signature:Array=[]
 
 func sync(host)->void:
 	visible=host._portrait_battle_controls_visible()
-	host.event_surface.get_node("EventSurfaceInset").visible=not visible
 	if not visible:return
 	var world=host.session.sim.world
 	var ids:Array=[]

@@ -349,6 +349,35 @@ func deploy_party(plan: Variant):
 	return result
 
 
+func first_strike(enemy_id: int):
+	# The party opens a contact by attacking an enemy that has not noticed it.
+	# One canonical step: contact event (+report), phase CONTACT. Deployment and
+	# the attack are separate journaled commands, so replay stays composable.
+	var processed_step_index: int = _next_processed_step_index()
+	if processed_step_index < 0:
+		return StepResultScript.new(false, false, "step_index_overflow")
+	var assessment: Dictionary = party_coordinator.first_strike_assessment(enemy_id)
+	if not bool(assessment.get("accepted", false)):
+		return StepResultScript.new(false, false, str(assessment.get("reason", "first_strike_rejected")))
+	if not world.runtime_party_health_error().is_empty():
+		return StepResultScript.new(false, false, "party_snapshot_unavailable")
+	var rollback_value: Variant = world.rollback_memento(false)
+	if not rollback_value is Dictionary or rollback_value.is_empty():
+		return StepResultScript.new(false, false, "party_snapshot_unavailable")
+	var rollback: Dictionary = rollback_value
+	var event_start: int = world.events.size()
+	world.begin_step(processed_step_index)
+	var result: Dictionary = party_coordinator.first_strike_contact(enemy_id, processed_step_index)
+	if not bool(result.get("accepted", false)):
+		world = WorldStateScript.from_rollback_memento(rollback); _rebuild_systems()
+		return StepResultScript.new(false, false, str(result.get("reason", "first_strike_failed")))
+	world.finish_step()
+	if not world.runtime_step_postcondition_error(event_start).is_empty():
+		world = WorldStateScript.from_rollback_memento(rollback); _rebuild_systems()
+		return StepResultScript.new(false, false, "first_strike_semantic_failure")
+	return party_coordinator._result(true, "ok", world.events_since(event_start), 0, processed_step_index)
+
+
 func deploy_solo_party():
 	# Trusted one-member product facade: build the authoritative empty-companion
 	# deployment and commit it in one call. External deployment plans still use

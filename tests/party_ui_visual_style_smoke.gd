@@ -27,7 +27,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 	sandbox.initialize_for_headless_test(Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID),true)
 	await process_frame;await process_frame
 	_check(not bool(sandbox.session.opening_event_status().get("can_interact",false)) \
-		and sandbox.product_auto_button.text=="[AUTO]" \
+		and sandbox.product_auto_button.text=="[탐험]" \
 		and sandbox.product_interact_button.text=="[INTERACT]",
 		"%s opening event was exposed before the actor was discovered"%viewport_size)
 	_check(sandbox.theme.default_font.resource_path=="res://assets/fonts/Galmuri14.ttf",
@@ -130,16 +130,15 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s product movement/context dock is not persistently visible"%viewport_size)
 	var control_metrics:Dictionary=sandbox._product_controls_metrics(1)
 	_check(int(control_metrics.get("target",0))==44 and int(control_metrics.get("dock_height",0))==44 \
-		and sandbox.combat_action_dock.get_child_count()==4,
-		"%s product context dock is not one 44px row of four commands"%viewport_size)
+		and sandbox.combat_action_dock.get_child_count()==6,
+		"%s product context dock is not one 44px row of six commands (탐험/공격, 상호작용, 휴식/대기, 줍기, 퇴각, 가방)"%viewport_size)
 	var pickup_all:=sandbox.find_child("ProductPickup",true,false) as Button
 	_check(sandbox.find_child("ProductDirectionPad",true,false)==null \
 		and sandbox.find_child("ProductExecute",true,false)==null \
 		and (pickup_all==null or not pickup_all.visible),
 		"%s D-pad or execute duplicate controls survived, or pick-all shows without loot"%viewport_size)
-	for button in [sandbox.product_auto_button,
-			sandbox.product_interact_button,sandbox.product_attack_button,
-			sandbox.product_wait_guard_button]:
+	for button in [sandbox.product_auto_button,sandbox.product_retreat_button,
+			sandbox.product_bag_button,sandbox.product_wait_guard_button]:
 		_check(button is Button and bool(button.get_meta("product_control",false)) \
 			and _inside_rect(sandbox.combat_action_dock,button),
 			"%s contextual control is not a real contained Button"%viewport_size)
@@ -566,7 +565,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	# Start commits its first hop; a held AUTO touch must pause every continuation.
 	sandbox._on_product_auto();sandbox._sync_product_control_state()
 	var running:=bool(session.auto_explore_state().get("running",false))
-	_check(running and sandbox.product_auto_button.text=="[AUTO ■]",
+	_check(running and sandbox.product_auto_button.text=="[탐험 ■]",
 		"%s AUTO did not enter a visible running state"%viewport_size)
 	if running:
 		var moving_hero_id:=int(session.party_status().get("protagonist_id",-1))
@@ -627,7 +626,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		root.push_input(release,true);await process_frame;await process_frame
 		_check(not bool(session.auto_explore_state().get("running",false)) \
 			and int(session.party_status().step_index)==held_step \
-			and sandbox.product_auto_button.text=="[AUTO]" \
+			and sandbox.product_auto_button.text=="[탐험]" \
 			and not sandbox.product_auto_button.button_pressed,
 			"%s AUTO held-touch cancel restarted, advanced, or left stale chrome state=%s step=%d/%d text=%s pressed=%s"%[
 				viewport_size,session.auto_explore_state(),int(session.party_status().step_index),held_step,
@@ -669,7 +668,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	if bool(session.auto_explore_state().get("running",false)):
 		sandbox._toggle_map_overlay()
 		_check(not bool(session.auto_explore_state().get("running",false)) \
-			and sandbox.product_auto_button.text=="[AUTO]" \
+			and sandbox.product_auto_button.text=="[탐험]" \
 			and not sandbox.product_auto_button.button_pressed \
 			and sandbox.grid.get_instance_id()==grid_id,
 			"%s modal AUTO cancel left stale state or rebuilt the grid"%viewport_size)

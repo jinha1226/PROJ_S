@@ -106,15 +106,25 @@ func _run()->void:
 		_check_eq(session.actor_command_status(id).target_id,target,"enemy tap focuses every party member")
 	_check(session.individual_battle.movements.is_empty(),"focus replaces formation orders")
 	await process_frame;await process_frame
+	# A map tap on a monster is the hero's own attack (adjacent) or an adjacency
+	# hint (distant); it never re-targets the companions. Portraits do that.
+	var hero_id:int=int(party.protagonist_id)
 	for enemy_id in session.party_status().visible_enemy_ids:
 		if enemy_id==target:continue
 		var center:Vector2=ui.grid.actor_visual_center(enemy_id)
 		if center.x<0 or center.y<0:continue
+		var hp:Vector2i=world.entities[hero_id].position;var ep:Vector2i=world.entities[int(enemy_id)].position
+		var adjacent:bool=maxi(absi(ep.x-hp.x),absi(ep.y-hp.y))<=1
 		var pixel:Vector2=ui.grid.get_global_transform_with_canvas()*center
 		_touch(ui,0,pixel,true);_touch(ui,0,pixel,false)
 		await process_frame;await process_frame
+		if adjacent:
+			_check_eq(session.actor_command_status(hero_id).target_id,enemy_id,"adjacent map monster tap is the hero's attack order")
+		else:
+			_check_eq(session.actor_command_status(hero_id).target_id,target,"distant map monster tap leaves the hero's target alone")
 		for id in party.active_party_member_ids:
-			_check_eq(session.actor_command_status(id).target_id,enemy_id,"map monster tap focuses the party")
+			if id==hero_id:continue
+			_check_eq(session.actor_command_status(id).target_id,target,"map monster tap never re-targets companions")
 		break
 	# Leaving combat restores the user's exploration zoom; no snapshot is saved
 	# while this presentation-only phase probe is active.

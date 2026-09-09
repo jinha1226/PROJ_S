@@ -81,6 +81,7 @@ const PartyMemoryHistoryValidatorScript=preload("res://sim/party_memory_history_
 const PartyRelationshipHistoryValidatorScript=preload("res://sim/party_relationship_history_validator.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
+const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const ActiveSkillValidationScript=preload("res://sim/abilities/party_active_skill_validation.gd")
 
@@ -5164,7 +5165,13 @@ func _party_event_correlation_error() -> String:
 		contact = contact_events.back()
 		hero_id=party_control_actor_id(contact.id)
 		var contact_keys: Array = contact.data.keys(); contact_keys.sort()
-		if contact_keys != ["contact_kind", "enemy_id", "enemy_position", "facing"] \
+		var legacy_contact_rule: bool = party_encounter.legacy_contact_rule
+		var first_strike: bool = not legacy_contact_rule \
+			and contact.data.get("first_strike", false) is bool and bool(contact.data.get("first_strike", false))
+		var expected_contact_keys: Array = ["contact_kind", "enemy_id", "enemy_position", "facing"]
+		if first_strike: expected_contact_keys = ["contact_kind", "enemy_id", "enemy_position", "facing", "first_strike"]
+		if contact_keys != expected_contact_keys \
+				or (first_strike and contact.data.get("contact_kind") != "PARTY_AMBUSH") \
 				or contact.data.get("contact_kind") not in ["DETECTED", "PARTY_AMBUSH", "ENEMY_AMBUSH"] \
 				or not Int64CodecScript.is_canonical(contact.data.get("enemy_id")) \
 				or not _party_metadata_position(contact.data.get("enemy_position")) \
@@ -5189,8 +5196,18 @@ func _party_event_correlation_error() -> String:
 			if not _party_alive_at_event(enemy_id, contact.id): continue
 			var history: Dictionary = _party_entity_position_at_event(enemy_id, contact.id)
 			if not bool(history.ok): return "party_contact_enemy_history_invalid"
+			var candidate_distance: int = _party_distance(contact.position, history.position)
+			if not legacy_contact_rule:
+				# Awareness rule: only enemies that had noticed the party (or the
+				# struck enemy of a first strike) can be the contact enemy.
+				if first_strike:
+					if enemy_id != contact_enemy_id: continue
+				elif _party_enemy_awareness_at_event(enemy_id, contact.id) not in ["ALERT", "HUNTING"] \
+						or candidate_distance > party_encounter.enemy_detection_radius \
+						or not EnemyPerceptionRegistryScript.has_line_of_sight(self, contact.position, history.position):
+					continue
 			nearest_rows.append({"entity_id":enemy_id, "position":history.position,
-				"distance":_party_distance(contact.position, history.position)})
+				"distance":candidate_distance})
 		nearest_rows.sort_custom(func(a:Dictionary,b:Dictionary):
 			return int(a.distance) < int(b.distance) if int(a.distance) != int(b.distance) \
 				else int(a.entity_id) < int(b.entity_id))
@@ -5247,7 +5264,10 @@ func _party_event_correlation_error() -> String:
 					and contact_kind in ["DETECTED","PARTY_AMBUSH"]:
 			return "party_contact_report_presence_mismatch"
 		var party_detects: bool = hero_detects or companion_reported
-		var enemy_detects: bool = distance <= party_encounter.enemy_detection_radius
+		# Legacy rule: the enemy detects by distance. Awareness rule: a contact
+		# enemy has noticed the party unless the party struck first.
+		var enemy_detects: bool = distance <= party_encounter.enemy_detection_radius \
+			if legacy_contact_rule else not first_strike
 		var derived_kind := "DETECTED" if party_detects and enemy_detects \
 			else ("PARTY_AMBUSH" if party_detects else ("ENEMY_AMBUSH" if enemy_detects else "NONE"))
 		var derived_facing := _party_cardinal_facing(contact_enemy_position - contact.position)
@@ -6394,6 +6414,17 @@ func _party_metadata_position(value: Variant) -> bool:
 func _party_metadata_facing(value: Variant) -> bool:
 	return value is Array and value.size() == 2 and value[0] is int and value[1] is int \
 		and Vector2i(int(value[0]),int(value[1])) in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
+
+
+func _party_enemy_awareness_at_event(enemy_id: int, event_id: int) -> String:
+	# Awareness is a projection of enemy.awareness_changed events; the last one
+	# before the given event is the state the contact rule saw.
+	var state := "UNAWARE"
+	for event in events:
+		if event.id >= event_id: break
+		if event.type == "enemy.awareness_changed" and event.actor_id == enemy_id:
+			state = str(event.data.get("to_state", "UNAWARE"))
+	return state
 
 
 func _party_distance(a: Vector2i, b: Vector2i) -> int:

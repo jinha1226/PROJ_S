@@ -498,6 +498,10 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
 	if duo:narae.position=state.group_anchor
+	# The expedition (DUO) product uses the awareness contact rule: seeing an
+	# enemy is not a contact. Solo fixture scenarios and showcase/legacy maps keep
+	# the sight rule their tests assume.
+	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
 	if duo and bootstrap_settlement:
 		var settlement_event=candidate.world.emit_event("base.settlement_initialized",
@@ -2742,9 +2746,13 @@ func actor_command_assessment(actor_id:int,command_id:String,target_id:int=-1)->
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	if state.safe_phase!="ENGAGED":return _rejection_dto("party_command_phase_required")
+	# A directive is a standing order, so a living deployed actor may receive it
+	# while its own action cooldown is still running (the hero's turn is often
+	# pending exactly then).
+	var combatant=sim.world.combatant_states.get(actor_id)
 	if actor_id not in state.active_party_member_ids or state.member(actor_id)==null \
 			or state.member(actor_id).presence!="DEPLOYED" \
-			or not sim.world.can_act(actor_id,sim.world.world_time):
+			or combatant==null or str(combatant.life_state)!="ACTIVE":
 		return _rejection_dto("party_command_actor_invalid")
 	if command_id not in PartyCommandScript.COMMAND_IDS:
 		return _rejection_dto("unknown_party_command")
@@ -6391,6 +6399,133 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	return dto.duplicate(true)
 
 
+func first_strike_contact(target_id: int) -> Dictionary:
+	# The party attacks an enemy that has not noticed it: one journaled step that
+	# opens the contact as PARTY_AMBUSH. Deployment (settle_contact) and the
+	# attack order follow as their own journal entries.
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	_exploration_route.cancel_for_direct_command()
+	if _auto_explore != null and bool(_auto_explore.state().get("running", false)):
+		_auto_explore.cancel("auto_explore_user_command")
+	var result = sim.first_strike(target_id)
+	if result.accepted:
+		_advance_exile_world()
+		command_journal.append({"kind":"first_strike",
+			"operation":{"target_id":str(target_id)}})
+		_deployment_plan.clear()
+	return _result_dto(result)
+
+
+func settle_contact() -> Dictionary:
+	# CONTACT is an authority boundary, not a player mode: finish it at once with
+	# the first legal formation (or the one-member deployment) so the next tap is
+	# already a combat action.
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	if sim.world.party_encounter.safe_phase != "CONTACT":
+		return _rejection_dto("deployment_phase_required")
+	var companions: Array = available_companion_ids()
+	if companions.is_empty(): return enter_solo_combat()
+	for preset in ["WEDGE", "LINE", "COLUMN"]:
+		var preview := preview_deployment(preset, companions)
+		if bool(preview.get("accepted", false)): return commit_deployment()
+	return _rejection_dto("deployment_unavailable")
+
+
+func strike_enemy(target_id: int) -> Dictionary:
+	# Map tap on an adjacent enemy. Before contact this is a first strike
+	# (contact + deployment + attack order); in combat it is the hero's attack
+	# order for this turn. Movement is never implied: a distant enemy is refused.
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var state = sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	if not sim.world.entities.has(target_id) or not sim.world.is_unresolved_enemy(target_id) \
+			or not sim.world.is_autonomous_target(target_id):
+		return _rejection_dto("party_command_target_invalid")
+	var hero_position: Vector2i = sim.world.entities[hero_id].position
+	var enemy_position: Vector2i = sim.world.entities[target_id].position
+	var distance := maxi(absi(hero_position.x - enemy_position.x), absi(hero_position.y - enemy_position.y))
+	if distance > 1: return _rejection_dto("strike_requires_adjacent")
+	if state.safe_phase == "GROUPED":
+		var opened := first_strike_contact(target_id)
+		if not bool(opened.get("accepted", false)): return opened
+	if state.safe_phase == "CONTACT":
+		var settled := settle_contact()
+		if not bool(settled.get("accepted", false)): return settled
+	if state.safe_phase != "ENGAGED": return _rejection_dto("strike_phase_required")
+	var ordered := issue_actor_command(hero_id, "ATTACK_TARGET", target_id)
+	if not bool(ordered.get("accepted", false)): return ordered
+	var dto: Dictionary = ordered.duplicate(true)
+	dto["released"] = true; dto["target_id"] = target_id
+	dto["message"] = "%s 공격" % str(sim.world.entities[target_id].display_name)
+	return dto
+
+
+func strike_with_skill(skill_id: String, target_id: int) -> Dictionary:
+	# Skill tap on a target. Before contact an enemy target opens a first strike;
+	# then the skill is reserved for the hero's turn like any other reservation.
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	var state = sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	if state.safe_phase == "GROUPED":
+		if not sim.world.entities.has(target_id) or not sim.world.is_unresolved_enemy(target_id):
+			return _rejection_dto("active_skill_combat_required")
+		var opened := first_strike_contact(target_id)
+		if not bool(opened.get("accepted", false)): return opened
+	if state.safe_phase == "CONTACT":
+		var settled := settle_contact()
+		if not bool(settled.get("accepted", false)): return settled
+	if state.safe_phase != "ENGAGED": return _rejection_dto("active_skill_combat_required")
+	var reserved: Dictionary = individual_battle.reserve(hero_id, skill_id, target_id)
+	if bool(reserved.get("accepted", false)):
+		reserved = reserved.duplicate(true); reserved["released"] = true
+	return reserved
+
+
+func party_retreat() -> Dictionary:
+	# One button: companions get the RETREAT directive and the hero's own
+	# automatic decision follows the same directive until another input.
+	if _run_is_complete(): return _rejection_dto("run_complete")
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return _rejection_dto("session_not_initialized")
+	if sim.world.party_encounter.safe_phase != "ENGAGED":
+		return _rejection_dto("party_command_phase_required")
+	var result := issue_party_command("RETREAT", -1)
+	if bool(result.get("accepted", false)):
+		result = result.duplicate(true); result["released"] = true
+		result["message"] = "퇴각 · 파티가 적에게서 물러납니다"
+	return result
+
+
+func skill_reach_cells(actor_id: int, skill_id: String) -> Dictionary:
+	# Presentation query: every cell the skill can reach from the actor's cell
+	# (Chebyshev range with line of sight over passable terrain). The UI paints
+	# these red; a legal target standing on one of them can be tapped.
+	var definition: Dictionary = ActiveSkillRegistryScript.definition(skill_id)
+	if definition.is_empty() or sim == null or sim.world == null \
+			or not sim.world.entities.has(actor_id):
+		return {"skill_id":skill_id, "target":"", "range":0, "cells":[]}
+	var origin: Vector2i = sim.world.entities[actor_id].position
+	var reach := int(definition.range)
+	var cells: Array = []
+	for y in range(maxi(0, origin.y - reach), mini(sim.world.height, origin.y + reach + 1)):
+		for x in range(maxi(0, origin.x - reach), mini(sim.world.width, origin.x + reach + 1)):
+			var cell := Vector2i(x, y)
+			if cell == origin: continue
+			var terrain: Dictionary = TerrainRegistryScript.definition(str(sim.world.tile_at(cell).terrain))
+			if terrain.is_empty() or not bool(terrain.get("passable", false)): continue
+			if not EnemyPerceptionRegistryScript.has_line_of_sight(sim.world, origin, cell): continue
+			cells.append([x, y])
+	return {"skill_id":skill_id, "target":str(definition.target), "range":reach, "cells":cells}
+
+
 func enter_solo_combat() -> Dictionary:
 	# SOLO_COMBAT_V1 still uses the canonical deployment step and journal entry;
 	# it only fixes the legal companion selection to the authoritative empty set.
@@ -7226,6 +7361,12 @@ func load_session_json(encoded: String) -> Dictionary:
 			member_row_value["skill_loadout_id"]="VANGUARD_V1" \
 				if str(member_row_value.get("role",""))=="PROTAGONIST" else "SUPPORT_V1"
 		raw_party["schema_version"]=PartyStateScript.ACTIVE_SKILL_SCHEMA_VERSION
+	# v23 -> v24: contact now needs enemy awareness. A save made under the sight
+	# rule keeps that rule so its journal replays and validates unchanged.
+	if raw_party is Dictionary \
+			and int(raw_party.get("schema_version",0))==PartyStateScript.ACTIVE_SKILL_SCHEMA_VERSION:
+		raw_party["legacy_contact_rule"]=true
+		raw_party["schema_version"]=PartyStateScript.CONTACT_RULE_SCHEMA_VERSION
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -7429,6 +7570,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			restored.world.party_encounter.ration_milli
 		replay.sim.world.party_encounter.ration_processed_at= \
 			restored.world.party_encounter.ration_processed_at
+	# A save made under the sight-based contact rule replays under that rule.
+	replay.sim.world.party_encounter.legacy_contact_rule= \
+		restored.world.party_encounter.legacy_contact_rule
 	if restored.world.party_encounter.legacy_journal_origin:
 		return _install_restored_session(restored, decoded, parsed_world_seed,
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
@@ -7505,6 +7649,9 @@ func load_session_json(encoded: String) -> Dictionary:
 				var request:Dictionary=row.request; var companion_ids: Array = []
 				for value in request.companion_ids: companion_ids.append(Int64CodecScript.parse(value, "deployment companion"))
 				replay.preview_deployment(str(request.preset_id), companion_ids); replay_result=replay.commit_deployment()
+			"first_strike":
+				replay_result=replay.first_strike_contact(Int64CodecScript.parse(
+					row.operation.target_id,"first strike target"))
 			"roster":
 				var operation: Dictionary = row.operation
 				var entity_id := Int64CodecScript.parse(operation.entity_id,"roster member")
@@ -7861,6 +8008,12 @@ func _journal_wire_error(journal: Array) -> String:
 						or not CommandScript.command_wire_error(row.command).is_empty() \
 						or int(row.command.type) not in [int(CommandScript.Type.WAIT), int(CommandScript.Type.MOVE)]:
 					return "invalid_exploration_journal"
+			"first_strike":
+				if keys != ["kind", "operation"] or not row.get("operation") is Dictionary: return "invalid_first_strike_journal"
+				var strike_keys: Array = row.operation.keys(); strike_keys.sort()
+				if strike_keys != ["target_id"] or not Int64CodecScript.is_canonical(row.operation.get("target_id")) \
+						or Int64CodecScript.parse(row.operation.target_id, "first strike target") <= 0:
+					return "invalid_first_strike_journal"
 			"deployment":
 				if keys != ["kind", "request"] or not row.get("request") is Dictionary: return "invalid_deployment_journal"
 				var request_keys: Array = row.request.keys(); request_keys.sort()
@@ -8659,6 +8812,14 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"stale_turn_draft":"세계가 바뀌어 행동을 다시 지정해야 합니다.",
 		"party_turn_phase_required":"지금은 파티 턴을 확정할 수 없습니다.",
 		"party_command_phase_required":"전투 중 행동 경계에서만 파티 명령을 바꿀 수 있습니다.",
+		"strike_requires_adjacent":"인접한 적만 공격할 수 있습니다. 먼저 다가가세요.",
+		"strike_phase_required":"지금은 공격할 수 없습니다.",
+		"deployment_unavailable":"조우를 처리할 수 없습니다.",
+		"first_strike_rule_unavailable":"이 저장본에서는 선공을 쓸 수 없습니다.",
+		"first_strike_phase_required":"지금은 선공할 수 없습니다.",
+		"first_strike_target_invalid":"선공할 수 있는 적이 아닙니다.",
+		"first_strike_target_unseen":"보이지 않는 적은 선공할 수 없습니다.",
+		"first_strike_actor_incapacitated":"지금은 행동할 수 없습니다.",
 		"unknown_party_command":"지원하지 않는 파티 명령입니다.",
 		"party_command_target_invalid":"공격 대상으로 지정할 수 있는 활동 중인 적이 아닙니다.",
 		"party_command_commit_failed":"파티 명령을 적용하지 못해 이전 상태로 돌아갔습니다.",

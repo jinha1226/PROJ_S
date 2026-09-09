@@ -64,6 +64,8 @@ var _ghosts: Array[Dictionary] = []
 var _intent_overlays: Array[Dictionary] = []
 var _secondary_intent_overlays: Array[Dictionary] = []
 var _route_path: Array[Vector2i] = []
+var _skill_reach_cells: Array[Vector2i] = []
+var _skill_reach_target := "ENEMY"
 var _route_completed_steps := 0
 var _route_valid := false
 var _exploration_follow_plan: Dictionary = {}
@@ -850,6 +852,37 @@ func set_route_overlay(path: Array, completed_steps: int = 0, valid: bool = true
 	_route_completed_steps = clampi(completed_steps,0,maxi(0,_route_path.size()-1))
 	_route_valid = valid and _route_path.size() >= 2
 	queue_redraw()
+
+func set_skill_reach_cells(cells: Array, target_kind: String = "ENEMY") -> void:
+	# Skill targeting: every reachable cell is painted red (ally skills: green)
+	# so the player sees at a glance whether a legal target stands on one.
+	_skill_reach_cells.clear()
+	for value in cells:
+		var point := Vector2i(-1, -1)
+		if value is Vector2i: point = value
+		elif value is Array and value.size() == 2: point = Vector2i(int(value[0]), int(value[1]))
+		if _world_in_bounds(point): _skill_reach_cells.append(point)
+	_skill_reach_target = target_kind
+	queue_redraw()
+
+func clear_skill_reach_cells() -> void:
+	if _skill_reach_cells.is_empty(): return
+	_skill_reach_cells.clear(); queue_redraw()
+
+func skill_reach_cells() -> Array:
+	var rows: Array = []
+	for point in _skill_reach_cells: rows.append([point.x, point.y])
+	return rows
+
+func _draw_skill_reach_cells() -> void:
+	if _skill_reach_cells.is_empty(): return
+	var fill := Color("#d84a4a", 0.32) if _skill_reach_target != "ALLY" else Color("#4ad86a", 0.3)
+	var edge := Color("#ff7b7b", 0.85) if _skill_reach_target != "ALLY" else Color("#8bffa6", 0.85)
+	for point in _skill_reach_cells:
+		if not _cell_allows_overlay(point): continue
+		var rect := world_cell_rect(point).grow(-maxf(1.0, cell_size_px() * 0.06))
+		draw_rect(rect, fill, true)
+		draw_rect(rect, edge, false, 1.0)
 
 func clear_route_overlay() -> void:
 	if _route_path.is_empty() and _route_completed_steps==0 and not _route_valid:return
@@ -2263,6 +2296,7 @@ func _draw_world_with_emphasis()->void:
 	_draw_ground_hazards()
 	_draw_follower_footprints()
 	_draw_route_overlay()
+	_draw_skill_reach_cells()
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
 	for visual_row in _sorted_visual_actor_rows():

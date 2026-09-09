@@ -36,10 +36,16 @@ func run()->void:
 		if goal==Vector2i(-1,-1):break
 		var raw:Dictionary=session.sim.pathfinder.find_path(hero,goal)
 		# Tap the next cell through the UI so the product contact settlement runs.
-		ui.grid.world_cell_pressed.emit(raw.path[1]);await process_frame;await process_frame
+		# Once adjacent, wait in place: under the awareness rule the enemy opens
+		# the contact when it notices the hero.
+		if bool(raw.get("found",false)) and raw.path.size()>=2:
+			ui.grid.world_cell_pressed.emit(raw.path[1])
+		else:ui._on_explore(Vector2i.ZERO)
+		await process_frame;await process_frame
 	_check(reached_contact,"walking toward the nearest enemy makes contact")
+	ui._refresh();await process_frame
 	var phase_after:=str(session.party_status().get("safe_phase",""))
-	_check(phase_after=="ENGAGED","the tap that made contact enters combat (phase %s)"%phase_after)
+	_check(phase_after=="ENGAGED","contact is settled into combat by the next refresh (phase %s)"%phase_after)
 	_check(str(session.party_status().get("view_mode",""))=="COMBAT","view switches to COMBAT")
 	_check(ui.hero_turn_waiting() or phase_after!="ENGAGED","HERO_TURN waits for the first hero decision")
 	var saved:String=session.save_session_json();var loaded=Session.new()

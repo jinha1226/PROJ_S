@@ -24,29 +24,38 @@ func run()->void:
 	for i in range(3):await process_frame
 	var world=session.sim.world;var hero:int=int(world.party_encounter.protagonist_id)
 	_check(ui.event_label.max_lines_visible==3,"event feed shows three lines")
-	_check(ui.find_child("ProductRest",true,false)!=null,"[REST] button sits in the action dock")
+	_check(ui.product_wait_guard_button!=null and ui.product_wait_guard_button.text=="[휴식]","[휴식] sits in the wait slot of the action dock")
 	# Fight once so there is loot on the ground (and usually some damage).
 	var fought:=false
 	for round in range(700):
 		var phase:=str(session.party_status().get("safe_phase",""))
 		if phase=="ENGAGED":
-			if ui.hero_turn_waiting():ui.grid.world_cell_pressed.emit(world.entities[hero].position);await process_frame
+			# [공격]: attack the nearest enemy when adjacent, otherwise one step closer.
+			if ui.hero_turn_waiting():ui._on_product_auto();await process_frame
 			_pump(0.5)
 			if str(session.party_status().get("safe_phase",""))!="ENGAGED":fought=true;break
 			continue
 		if phase in ["CONTACT","REGROUP_READY"]:
 			for i in range(6):await process_frame
 			ui.flush_auto_flow_for_headless_test();await process_frame;continue
-		var goal:=Vector2i(-1,-1);var best_len:=9999
+		# Walk toward the nearest enemy by straight-line distance (one pathfinder
+		# call per hop); once adjacent, strike first or wait for it to notice.
+		var hp:Vector2i=world.entities[hero].position
+		var target_enemy:=-1;var target_distance:=9999
 		for id in world.party_encounter.enemy_ids:
-			if not world.is_unresolved_enemy(int(id)):continue
+			if not world.is_autonomous_target(int(id)):continue
 			var ep:Vector2i=world.entities[int(id)].position
-			for dd in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
-				var q:Dictionary=session.sim.pathfinder.find_path(hero,ep+dd)
-				if bool(q.get("found",false)) and q.path.size()<best_len:best_len=q.path.size();goal=ep+dd
-		if goal==Vector2i(-1,-1):break
-		var raw:Dictionary=session.sim.pathfinder.find_path(hero,goal)
-		ui.grid.world_cell_pressed.emit(raw.path[1]);await process_frame;await process_frame
+			var d:int=maxi(absi(ep.x-hp.x),absi(ep.y-hp.y))
+			if d<target_distance:target_distance=d;target_enemy=int(id)
+		if target_enemy<0:break
+		if target_distance<=1:
+			ui.grid.actor_pressed.emit(target_enemy)
+		else:
+			var ep:Vector2i=world.entities[target_enemy].position
+			var raw:Dictionary=session.sim.pathfinder.find_path(hero,ep+Vector2i(signi(hp.x-ep.x),signi(hp.y-ep.y)))
+			if bool(raw.get("found",false)) and raw.path.size()>=2:ui.grid.world_cell_pressed.emit(raw.path[1])
+			else:ui._on_explore(Vector2i.ZERO)
+		await process_frame;await process_frame
 	_check(fought,"fixture wins one fight")
 	# Pick up everything on the richest loot cell within reach.
 	var cells:Dictionary={}
@@ -72,6 +81,18 @@ func run()->void:
 			"arriving picks up every item on the cell (%d of %d left)"%[left,most])
 		_check(int(session.protagonist_inventory().get("used_backpack_slots",0))>bag_before,"bag gained the loot")
 		_check("주웠습니다" in str(ui.notice_text),"pickup feedback names what was taken")
+	# A nearby group may have noticed the hero on the way to the loot; finish
+	# that fight the same way before resting.
+	for round in range(400):
+		var phase:=str(session.party_status().get("safe_phase",""))
+		if phase=="ENGAGED":
+			if ui.hero_turn_waiting():ui._on_product_auto();await process_frame
+			_pump(0.5);continue
+		if phase in ["CONTACT","REGROUP_READY"]:
+			for i in range(6):await process_frame
+			ui.flush_auto_flow_for_headless_test();await process_frame;continue
+		break
+	_check(str(session.party_status().get("view_mode",""))=="EXPLORATION","exploration resumes before resting (phase %s)"%str(session.party_status().get("safe_phase","")))
 	# Rest until full.
 	var hero_entity=world.entities[hero]
 	if int(hero_entity.health)<int(hero_entity.max_health):

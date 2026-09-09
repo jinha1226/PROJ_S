@@ -340,7 +340,11 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	var party_spotters: Array[int] = PartyPerceptionRegistryScript.visible_party_members(
 		world, state, nearest.position)
 	var party_detects: bool = not party_spotters.is_empty()
-	var enemy_detects: bool = has_los and distance<=state.enemy_detection_radius
+	# Awareness rule: a candidate from _nearest_contact_enemy has already noticed
+	# the party, so the enemy side always detects; the party side only decides
+	# DETECTED vs ENEMY_AMBUSH. Sight alone never opens a contact.
+	var enemy_detects: bool = has_los and distance<=state.enemy_detection_radius \
+		if state.legacy_contact_rule else true
 	if not party_detects and not enemy_detects: return true
 	if awareness!=null and awareness.awareness_state!="HUNTING":
 		if not _set_awareness_state(awareness,"HUNTING",state.group_anchor):return false
@@ -666,19 +670,26 @@ func _awareness_move_forecast(enemy_id:int,awareness,rejected:Dictionary)->Dicti
 
 func _nearest_contact_enemy(position:Vector2i):
 	var candidates:Array=[]
+	var legacy_rule:bool=world.party_encounter.legacy_contact_rule
 	for enemy_id in _stream_enemy_ids():
 		if not world.is_unresolved_enemy(enemy_id):continue
 		var enemy=world.entities[enemy_id]
 		var distance:=_distance(position,enemy.position)
 		if not _line_of_sight(position,enemy.position):continue
 		var awareness=world.party_encounter.enemy_awareness(enemy_id)
+		var aware:bool=awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
+			and distance<=world.party_encounter.enemy_detection_radius
+		if not legacy_rule:
+			# Awareness rule: only an enemy that has noticed the party opens a
+			# contact. Seeing an unaware enemy leaves it on the map to avoid or to
+			# strike first (first_strike_contact).
+			if aware:candidates.append(enemy)
+			continue
 		var legacy_small_fixture:bool=world.width<=15 and world.height<=15 \
 				and _stream_enemy_ids().size()==1
 		var party_spotters: Array[int] = PartyPerceptionRegistryScript \
 			.visible_party_members(world, world.party_encounter, enemy.position)
-		if not party_spotters.is_empty() \
-				or awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"] \
-				and distance<=world.party_encounter.enemy_detection_radius \
+		if not party_spotters.is_empty() or aware \
 				or legacy_small_fixture \
 				and distance<=world.party_encounter.enemy_detection_radius:
 			candidates.append(enemy)
@@ -690,6 +701,79 @@ func _nearest_contact_enemy(position:Vector2i):
 
 func _line_of_sight(origin:Vector2i,target:Vector2i)->bool:
 	return EnemyPerceptionRegistryScript.has_line_of_sight(world,origin,target)
+
+
+func first_strike_assessment(enemy_id:int)->Dictionary:
+	# Pure precondition check for a party first strike on an enemy that has not
+	# noticed the party yet. Mirrors the contact validator: the party must see
+	# the enemy (hero within party detection radius, or a companion spotter).
+	var rejected:={"accepted":false,"reason":"","enemy_id":enemy_id}
+	var state=world.party_encounter
+	if state==null or state.legacy_contact_rule:
+		rejected.reason="first_strike_rule_unavailable";return rejected
+	if state.safe_phase!="GROUPED":rejected.reason="first_strike_phase_required";return rejected
+	if enemy_id not in _stream_enemy_ids() or not world.is_unresolved_enemy(enemy_id) \
+			or not world.is_autonomous_target(enemy_id):
+		rejected.reason="first_strike_target_invalid";return rejected
+	var protagonist=world.entities[world.party_control_actor_id()]
+	if not world.can_act(protagonist.id,world.world_time):
+		rejected.reason="first_strike_actor_incapacitated";return rejected
+	var enemy=world.entities[enemy_id]
+	if not _line_of_sight(protagonist.position,enemy.position):
+		rejected.reason="first_strike_target_unseen";return rejected
+	var spotters:Array[int]=PartyPerceptionRegistryScript.visible_party_members(
+		world,state,enemy.position)
+	var hero_detects:bool=_distance(protagonist.position,enemy.position) \
+		<=state.party_detection_radius
+	if spotters.is_empty() or not hero_detects and int(spotters[0])==int(protagonist.id):
+		rejected.reason="first_strike_target_unseen";return rejected
+	return {"accepted":true,"reason":"ok","enemy_id":enemy_id,
+		"spotter_id":int(spotters[0]),"hero_detects":hero_detects}
+
+
+func first_strike_contact(enemy_id:int,processed_step_index:int)->Dictionary:
+	# The party attacks an enemy that has not noticed it: open the contact as a
+	# PARTY_AMBUSH inside the caller's step. Deployment and the attack itself
+	# follow as ordinary journaled commands.
+	var assessment:=first_strike_assessment(enemy_id)
+	if not bool(assessment.accepted):return assessment
+	var state=world.party_encounter
+	var protagonist=world.entities[world.party_control_actor_id()]
+	var enemy=world.entities[enemy_id]
+	state.group_anchor=protagonist.position
+	for member_id in state.party_member_ids:
+		var member=state.member(member_id)
+		if member.presence=="GROUPED":world.entities[member_id].position=state.group_anchor
+	var awareness=state.enemy_awareness(enemy_id)
+	if awareness!=null and awareness.awareness_state!="HUNTING":
+		if not _set_awareness_state(awareness,"HUNTING",state.group_anchor):
+			return {"accepted":false,"reason":"event_emission_failed","enemy_id":enemy_id}
+	state.contact_kind="PARTY_AMBUSH"
+	state.contact_enemy_id=enemy_id
+	state.facing=_cardinal_facing(enemy.position-state.group_anchor)
+	var contact=world.emit_event("encounter.party_ambush",protagonist.id,enemy_id,
+		state.group_anchor,0,-1,{"contact_kind":"PARTY_AMBUSH","enemy_id":str(enemy_id),
+			"enemy_position":[enemy.position.x,enemy.position.y],
+			"facing":[state.facing.x,state.facing.y],"first_strike":true})
+	if contact==null or _fault("contact_event"):
+		return {"accepted":false,"reason":"event_emission_failed","enemy_id":enemy_id}
+	var spotter_id:=int(assessment.spotter_id)
+	if not bool(assessment.hero_detects) and spotter_id!=int(protagonist.id):
+		var warning=world.emit_event("party.contact_reported",spotter_id,enemy_id,
+			state.group_anchor,0,contact.id,{"schema_version":1,
+				"ruleset_id":PartyPerceptionRegistryScript.RULESET_ID,
+				"spotter_id":str(spotter_id),"enemy_id":str(enemy_id),
+				"observed_position":[enemy.position.x,enemy.position.y],
+				"direction":[state.facing.x,state.facing.y],
+				"distance":_distance(state.group_anchor,enemy.position),
+				"sight_range":PartyPerceptionRegistryScript.sight_range(world,state,spotter_id)})
+		if warning==null or _fault("contact_report_event"):
+			return {"accepted":false,"reason":"event_emission_failed","enemy_id":enemy_id}
+	state.safe_phase="CONTACT"
+	state.revision+=1
+	if not reconcile_liveness():
+		return {"accepted":false,"reason":"liveness_failed","enemy_id":enemy_id}
+	return {"accepted":true,"reason":"ok","enemy_id":enemy_id,"contact_event_id":int(contact.id)}
 
 
 func _patrol_exposure_risk(enemy_id:int,position:Vector2i)->int:
