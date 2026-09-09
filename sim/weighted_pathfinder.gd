@@ -30,15 +30,19 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 		return _failure("path_unreachable")
 
 	var open: Array[Dictionary] = [{"position": start, "cost": 0, "steps": 0,
-		"priority":_path_priority(0,start,goal),"sequence": 0}]
+		"priority":_path_priority(0,start,goal),"sequence": 0,"drift":0}]
 	var sequence := 1
-	var best: Dictionary = {_key(start): [0, 0]}
+	# Eight-direction movement leaves many equal-cost paths (a V of diagonals
+	# then a straight run is as cheap as a straight-looking line). Tie-break on
+	# distance from the start->goal line so equal-cost routes hug that line.
+	var best: Dictionary = {_key(start): [0, 0, 0]}
 	var previous: Dictionary = {}
 	while not open.is_empty():
 		var node: Dictionary = _heap_pop(open)
 		var position: Vector2i = node["position"]
 		var known: Array = best.get(_key(position), [])
-		if known.is_empty() or int(node["cost"]) != int(known[0]) or int(node["steps"]) != int(known[1]):
+		if known.is_empty() or int(node["cost"]) != int(known[0]) or int(node["steps"]) != int(known[1]) \
+				or (known.size() > 2 and int(node.get("drift", 0)) != int(known[2])):
 			continue
 		if position == goal:
 			var path: Array[Vector2i] = [goal]
@@ -55,15 +59,18 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 			var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(next).terrain)
 			var next_cost: int = int(node["cost"]) + int(definition["move_time_cost"])
 			var next_steps: int = int(node["steps"]) + 1
+			var next_drift: int = int(node["drift"]) + _line_drift(start, goal, next)
 			var next_key := _key(next)
 			var old: Array = best.get(next_key, [])
-			if not old.is_empty() and (next_cost > int(old[0]) or (next_cost == int(old[0]) and next_steps >= int(old[1]))):
+			if not old.is_empty() and (next_cost > int(old[0]) \
+					or (next_cost == int(old[0]) and next_steps > int(old[1])) \
+					or (next_cost == int(old[0]) and next_steps == int(old[1]) and next_drift >= int(old[2]))):
 				continue
-			best[next_key] = [next_cost, next_steps]
+			best[next_key] = [next_cost, next_steps, next_drift]
 			previous[next_key] = position
 			_heap_push(open,{"position": next, "cost": next_cost,
 				"priority":_path_priority(next_cost,next,goal),
-				"steps": next_steps, "sequence": sequence})
+				"steps": next_steps, "sequence": sequence, "drift": next_drift})
 			sequence += 1
 	return _failure("path_unreachable")
 
@@ -144,12 +151,21 @@ func _occupant(position: Vector2i, actor_id: int, projection: Dictionary) -> int
 	return blocker.id if blocker != null else -1
 
 
+func _line_drift(start: Vector2i, goal: Vector2i, position: Vector2i) -> int:
+	# Twice the area of the (start, goal, position) triangle: zero on the exact
+	# start->goal line, growing with perpendicular distance. Integer and exact.
+	var line := goal - start
+	var offset := position - start
+	return absi(line.x * offset.y - line.y * offset.x)
+
 func _open_less(a: Dictionary, b: Dictionary) -> bool:
 	if int(a.get("priority",a["cost"]))!=int(b.get("priority",b["cost"])):
 		return int(a.get("priority",a["cost"]))<int(b.get("priority",b["cost"]))
 	for key in ["cost", "steps"]:
 		if int(a[key]) != int(b[key]):
 			return int(a[key]) < int(b[key])
+	if int(a.get("drift",0)) != int(b.get("drift",0)):
+		return int(a.get("drift",0)) < int(b.get("drift",0))
 	var ap: Vector2i = a["position"]
 	var bp: Vector2i = b["position"]
 	if ap.y != bp.y:

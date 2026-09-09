@@ -53,7 +53,7 @@ const TOUCH_TARGET:=44
 const PRODUCT_TOP_HUD_HEIGHT:=48
 # Galmuri's Korean baseline needs 32 content pixels for two complete 11 px
 # event rows. The dark pixel surface contributes four pixels of inner framing.
-const PRODUCT_EVENT_HEIGHT:=24
+const PRODUCT_EVENT_HEIGHT:=48
 const PRODUCT_PARTY_CARD_HEIGHT:=72
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
@@ -108,6 +108,16 @@ var product_auto_button:Button
 var product_interact_button:Button
 var product_attack_button:Button
 var product_wait_guard_button:Button
+var product_rest_button:Button
+var product_pickup_button:Button
+# Rest macro (presentation-only): repeated journaled waits until HP is full.
+var _product_rest_active:=false
+var _product_rest_generation:=0
+var _product_rest_due_msec:=-1
+var _product_rest_last_health:=-1
+var _product_rest_idle_waits:=0
+const PRODUCT_REST_CADENCE_MSEC:=90
+const PRODUCT_REST_IDLE_LIMIT:=16
 var product_execute_button:Button
 var hud_bottom_flex:Control
 var build_label:Label
@@ -354,6 +364,9 @@ func _process(_delta:float)->void:
 	_tick_autonomous_battle(_delta)
 	var frame:=Engine.get_process_frames()
 	var now_msec:=Time.get_ticks_msec()
+	if _product_rest_active and now_msec>=_product_rest_due_msec \
+			and _product_touch_index<0 and (member_detail_modal==null or not member_detail_modal.visible):
+		_continue_product_rest(_product_rest_generation)
 	if _product_auto_explore_pending and frame>=_product_auto_explore_due_frame \
 			and now_msec>=_product_auto_explore_due_msec:
 		# A held product button is an unresolved user gesture. AUTO may keep its
@@ -915,8 +928,8 @@ func _build_ui()->void:
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	# Two real combat rows must fit the fixed 36/38px event surface. The bundled
 	# Korean font needs the micro size for two complete baselines in that budget.
-	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=1
-	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=18
+	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=3
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=42
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
@@ -949,7 +962,11 @@ func _build_ui()->void:
 	_build_species_picker()
 	battle_timeline_bar=preload("res://playtest/battle_timeline_bar.gd").new()
 	battle_timeline_bar.name="BattleTimelineBar";battle_timeline_bar.hide()
-	root_layout.add_child(battle_timeline_bar)
+	# The bar floats over the map's top edge instead of sitting in the column
+	# layout, so an encounter no longer pushes the whole map down by 48px.
+	grid.add_child(battle_timeline_bar)
+	battle_timeline_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	battle_timeline_bar.offset_bottom=48.0;battle_timeline_bar.z_index=20
 	battle_timeline_controller=preload("res://playtest/battle_timeline_controller.gd").new()
 	add_child(battle_timeline_controller);battle_timeline_controller.setup(self,battle_timeline_bar)
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
@@ -1994,8 +2011,8 @@ func _decorate_visible_resource_caches(observation:Dictionary)->void:
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
-		root_layout.move_child(phase_panel,0);root_layout.move_child(battle_timeline_bar,1)
-		root_layout.move_child(grid,2);root_layout.move_child(event_surface,3);root_layout.move_child(cards,4)
+		root_layout.move_child(phase_panel,0)
+		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2);root_layout.move_child(cards,3)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -2439,8 +2456,10 @@ func _battle_presentation_blocked()->bool:
 
 func _tick_autonomous_battle(delta:float)->void:
 	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
+	var was_in_battle:bool=battle_command_flow.in_battle
 	if battle_command_flow.sync(self):
 		_apply_product_zoom_surface();_request_refresh()
+	if battle_command_flow.in_battle and not was_in_battle:_cancel_product_rest("rest_encounter")
 	var state=session.sim.world.party_encounter
 	if state.safe_phase!="ENGAGED":
 		autonomous_battle_clock.cursor=-1.0;_hero_turn_released=false;_hero_turn_was_waiting=false;return
@@ -3833,6 +3852,10 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,
 		"[GUARD]" if str(status.get("view_mode",""))=="COMBAT" else "[WAIT]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
+	product_rest_button=_add_product_context_button(combat_action_dock,"[REST]","ProductRest",
+		_on_product_rest,target)
+	product_pickup_button=_add_product_context_button(combat_action_dock,"[PICKUP]","ProductPickup",
+		_on_product_pickup,target)
 	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
 		_open_hero_detail_tab.bind("ITEM"),target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
@@ -3946,6 +3969,17 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			%_guard_percent_for_actor(guard_actor)
 	else:
 		product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
+	if product_pickup_button!=null:
+		var loot_here:int=session.ground_items_at_protagonist().size() if mode=="EXPLORATION" else 0
+		product_pickup_button.visible=loot_here>0
+		product_pickup_button.disabled=terminal or loot_here==0
+		product_pickup_button.tooltip_text="이 칸의 아이템 %d개를 모두 줍습니다."%loot_here
+	if product_rest_button!=null:
+		product_rest_button.visible=mode=="EXPLORATION"
+		product_rest_button.disabled=terminal or mode!="EXPLORATION"
+		product_rest_button.text="[STOP]" if _product_rest_active else "[REST]"
+		product_rest_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
+			else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -3957,7 +3991,7 @@ func _add_product_context_button(parent:Control,label:String,node_name:String,
 	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
 	button.gui_input.connect(_on_product_button_gui_input.bind(node_name))
 	var accent:Color={"ProductAttack":Color("#548bb0"),"ProductAuto":Color("#61914e"),
-		"ProductWaitGuard":Color("#ba913d"),"ProductBag":Color("#a64e49")}.get(node_name,DarkPixelSkinScript.CYAN)
+		"ProductWaitGuard":Color("#ba913d"),"ProductRest":Color("#5f8a66"),"ProductPickup":Color("#c6a34c"),"ProductBag":Color("#a64e49")}.get(node_name,DarkPixelSkinScript.CYAN)
 	DarkPixelSkinScript.apply_action_button(button,accent)
 	parent.add_child(button)
 	return button
@@ -4086,14 +4120,8 @@ func _on_product_pickup()->void:
 	if ground_items.is_empty():
 		_show_product_command_feedback("현재 칸에 주울 아이템이 없습니다.")
 		_request_refresh();return
-	var item:Dictionary=ground_items[0]
-	var result:Dictionary=session.pickup_ground_item(str(item.get("instance_id","")))
-	_record_result(result,true,"아이템을 주울 수 없습니다.")
-	if bool(result.get("accepted",false)):
-		notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%str(item.get("label","아이템"))
-		action_feedback_text=notice_text
-		if pending_ground_pickup_id==str(item.get("instance_id","")):
-			pending_ground_pickup_id="";pending_ground_pickup_label=""
+	pending_ground_pickup_id="";pending_ground_pickup_label=""
+	_pickup_everything_here()
 	_request_refresh()
 
 func _show_product_command_feedback(message:String)->void:
@@ -4263,6 +4291,78 @@ func _on_product_interact()->void:
 				"자원을 운반 물자에 담았습니다." if bool(gather_result.get(
 					"accepted",false)) else "자원을 채집할 수 없습니다.")))
 			_request_refresh();return
+
+func _on_product_rest()->void:
+	if _product_rest_active:_cancel_product_rest("rest_user_stop");return
+	var status:Dictionary=session.party_status()
+	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):return
+	if not _rest_needed():
+		notice_text="이미 충분히 회복했습니다.";action_feedback_text=notice_text;_request_refresh();return
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	var active_route:Dictionary=session.exploration_route_state()
+	if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
+		_cancel_active_route()
+	_product_rest_active=true;_product_rest_generation+=1
+	_product_rest_due_msec=Time.get_ticks_msec()
+	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
+	notice_text="휴식 중 · HP가 다 차면 멈춥니다";action_feedback_text=notice_text
+	_request_refresh()
+
+func _rest_needed()->bool:
+	var world=session.sim.world
+	for id in world.party_encounter.active_party_member_ids:
+		var entity=world.entities.get(int(id))
+		if entity!=null and world.occupies_tile(int(id)) and int(entity.health)<int(entity.max_health):return true
+	return false
+
+func _party_health_total()->int:
+	var total:=0;var world=session.sim.world
+	for id in world.party_encounter.active_party_member_ids:
+		var entity=world.entities.get(int(id))
+		if entity!=null:total+=int(entity.health)
+	return total
+
+func _continue_product_rest(expected_generation:int)->void:
+	if not _product_rest_active or expected_generation!=_product_rest_generation:return
+	var status:Dictionary=session.party_status()
+	var stop_reason:=""
+	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):stop_reason="rest_interrupted"
+	elif not (status.get("visible_enemy_ids",[]) as Array).is_empty():stop_reason="rest_enemy_sighted"
+	elif str(status.get("ration_band",""))=="STARVING":stop_reason="rest_starving"
+	elif not _rest_needed():stop_reason="rest_complete"
+	if stop_reason.is_empty():
+		var before:int=_party_health_total()
+		var result:Dictionary=session.commit_exploration_direction(Vector2i.ZERO)
+		if not bool(result.get("accepted",false)):stop_reason="rest_interrupted"
+		else:
+			_record_result(result,true)
+			var after:int=_party_health_total()
+			if after<before:stop_reason="rest_damaged"
+			elif after>before:_product_rest_idle_waits=0
+			else:
+				# Safe recovery pauses while any enemy is alert or the tile is risky;
+				# waiting forever there is not resting.
+				_product_rest_idle_waits+=1
+				if _product_rest_idle_waits>=PRODUCT_REST_IDLE_LIMIT:stop_reason="rest_no_progress"
+	if not stop_reason.is_empty():
+		_cancel_product_rest(stop_reason);return
+	_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
+	var world=session.sim.world;var hero=world.entities.get(int(status.protagonist_id))
+	if hero!=null:
+		notice_text="휴식 중 · HP %d/%d"%[int(hero.health),int(hero.max_health)]
+		action_feedback_text=notice_text
+	_refresh_continuous_exploration_surface(session.party_status())
+
+func _cancel_product_rest(reason:String)->void:
+	if not _product_rest_active:return
+	_product_rest_active=false;_product_rest_generation+=1;_product_rest_due_msec=-1
+	notice_text={"rest_complete":"휴식 완료 · HP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
+		"rest_damaged":"피해를 입어 휴식을 멈췄습니다","rest_starving":"굶주려서 쉴 수 없습니다",
+		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
+		"rest_encounter":"적과 마주쳐 휴식을 멈췄습니다",
+		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
+	action_feedback_text=notice_text
+	_request_refresh()
 
 func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()
@@ -4564,7 +4664,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_has_personality=bool(detail.get("personality_available",false))
 	var relations:Variant=detail.get("relation_rows",[])
 	var affinity:Variant=detail.get("affinity_toward_protagonist",{})
-	member_detail_has_relationships=relations is Array and not relations.is_empty() \
+	member_detail_has_relationships=relations is Array \
 		or affinity is Dictionary and not affinity.is_empty()
 	member_personality_window.call("set_detail",detail)
 	member_relationship_window.call("set_detail",detail)
@@ -5871,12 +5971,7 @@ func _on_actor(entity_id:int)->void:
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		var ground_items:Array=session.ground_items_at_protagonist()
 		if not ground_items.is_empty():
-			var pickup:Dictionary=session.pickup_ground_item(str(ground_items[0].instance_id))
-			_record_result(pickup,true,"아이템을 주울 수 없습니다.")
-			if bool(pickup.get("accepted",false)):
-				notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%str(ground_items[0].label)
-				action_feedback_text=notice_text
-			_request_refresh();return
+			_pickup_everything_here();_request_refresh();return
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		if pending_move_mode=="EXPLORATION" and pending_exploration_wait:
 			var result:Dictionary=session.commit_exploration(CommandScript.wait(entity_id)); _clear_move_preview(); _record_result(result,true)
@@ -6003,20 +6098,43 @@ func _consume_route_result(result:Dictionary)->void:
 	_update_tile_popover_route(result)
 
 func _pickup_pending_ground_item_if_reached()->void:
-	if pending_ground_pickup_id.is_empty():return
+	# Arriving on a cell with loot picks it all up (a bounded run of journaled
+	# 100-time pickups), not just the item that was tapped. Only while nothing
+	# hostile is in view; each pickup is still an ordinary canonical action.
 	var status:Dictionary=session.party_status()
-	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
-	var rows:Array=session.visible_ground_items_at(hero_position)
-	if rows.all(func(row):return str(row.get("instance_id",""))!=pending_ground_pickup_id):return
-	var item_label:=pending_ground_pickup_label
-	var result:Dictionary=session.pickup_ground_item(pending_ground_pickup_id)
-	if bool(result.get("accepted",false)):
-		notice_text="%s 확인 · 가방에 주웠습니다. (100시간)"%item_label
-		action_feedback_text=notice_text
-	else:
-		notice_text=str(result.get("message","아이템을 주울 수 없습니다."))
-		action_feedback_text=notice_text
+	if str(status.get("view_mode",""))!="EXPLORATION":return
+	if session.ground_items_at_protagonist().is_empty():
+		pending_ground_pickup_id="";pending_ground_pickup_label="";return
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
+	_pickup_everything_here()
+
+func _pickup_everything_here()->void:
+	var status:Dictionary=session.party_status()
+	if not (status.get("visible_enemy_ids",[]) as Array).is_empty():
+		var single:Array=session.ground_items_at_protagonist()
+		if single.is_empty():return
+		var one:Dictionary=session.pickup_ground_item(str(single[0].instance_id))
+		_record_result(one,true,"아이템을 주울 수 없습니다.")
+		if bool(one.get("accepted",false)):
+			notice_text="%s 가방에 주웠습니다 · 적이 보여 나머지는 남겼습니다"%str(single[0].label);action_feedback_text=notice_text
+		return
+	var taken:Array[String]=[];var failure:=""
+	for _attempt in range(6):
+		var rows:Array=session.ground_items_at_protagonist()
+		if rows.is_empty():break
+		var result:Dictionary=session.pickup_ground_item(str(rows[0].instance_id))
+		_record_result(result,true,"아이템을 주울 수 없습니다.")
+		if not bool(result.get("accepted",false)):
+			failure=str(result.get("message","아이템을 주울 수 없습니다."));break
+		taken.append(str(rows[0].label))
+		if str(session.party_status().get("view_mode",""))!="EXPLORATION":break
+	if taken.is_empty():
+		if not failure.is_empty():notice_text=failure;action_feedback_text=notice_text
+		return
+	var remaining:int=session.ground_items_at_protagonist().size()
+	notice_text="%s 가방에 주웠습니다 (%d시간)%s"%[", ".join(taken),taken.size()*100,
+		"" if remaining==0 and failure.is_empty() else " · %s"%(failure if not failure.is_empty() else "%d개 남음"%remaining)]
+	action_feedback_text=notice_text
 
 func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
 	if route_continue_pending or route_paused_by_modal or route_paused_by_pointer or not is_inside_tree():return
@@ -6053,6 +6171,7 @@ func _cancel_route_for_user_interruption()->void:
 	route_paused_by_modal=false;route_paused_by_pointer=false
 
 func _on_grid_pointer_started()->void:
+	_cancel_product_rest("rest_user_stop")
 	if grid!=null and grid.pointer_gesture_state().get("target_kind","")=="INSPECT":
 		route_paused_by_pointer=true
 		if auto_orchestration_enabled:_cancel_auto_pending(false)
@@ -6396,8 +6515,10 @@ func _combat_log_text(history:Dictionary)->String:
 
 func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
 	var groups:Variant=history.get("groups",[])
+	var collected:Array[String]=[]
 	if groups is Array:
 		for group_index in range(groups.size()-1,-1,-1):
+			if collected.size()>=3:break
 			var group:Variant=groups[group_index]
 			if not group is Dictionary:continue
 			var damage_lines:Array[String]=[];var other_lines:Array[String]=[]
@@ -6416,12 +6537,16 @@ func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->Stri
 			# Damage wins only inside the newest meaningful turn. Older combat
 			# damage must never pin the compact feed while newer loot/level/world
 			# events are already visible in the full record.
-			var lines:Array[String]=damage_lines.slice(0,mini(2,damage_lines.size()))
+			var lines:Array[String]=damage_lines.slice(0,mini(3,damage_lines.size()))
 			for message in other_lines:
-				if lines.size()>=2:break
+				if lines.size()>=3:break
 				lines.append(message)
-			return "\n".join(lines)
-	return ""
+			# Newest turn first; older turns fill the remaining lines of the
+			# three-line feed so the last few moments stay readable.
+			for message in lines:
+				if collected.size()>=3:break
+				collected.append(message)
+	return "\n".join(collected)
 
 func _full_meaningful_record_text(history:Dictionary)->String:
 	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
@@ -6522,7 +6647,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# from the shorter axis, so portrait gains rows and landscape gains columns.
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-(48 if _portrait_battle_controls_visible() else PRODUCT_EVENT_HEIGHT)-party_height-(0 if _portrait_battle_controls_visible() else 48)
-		-(48 if _timeline_visible() else 0)-separation*(5 if _timeline_visible() else 4)))
+		-separation*4))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction
 	# in sprite scale is preferable to leaving an otherwise useless black strip.
@@ -6773,7 +6898,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	var wide:=size.x>=450.0
 	if battle_timeline_bar!=null:
 		battle_timeline_bar.visible=_timeline_visible()
-		battle_timeline_bar.custom_minimum_size.y=48 if _timeline_visible() else 0
+		battle_timeline_bar.custom_minimum_size.y=48;battle_timeline_bar.offset_bottom=48.0
 	phase_panel.custom_minimum_size.y=PRODUCT_TOP_HUD_HEIGHT if product_hud else (52 if wide else 48)
 	# Compact portrait has no gaps; desktop keeps a little rail separation while
 	# the expanding map owns all remaining height.

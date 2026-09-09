@@ -228,8 +228,9 @@ func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn(
 		"pickup button fixture drops one canonical instance on the hero tile")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
-	check(sandbox.find_child("ProductPickup",true,false)==null,
-		"map touch replaces the pickup button in the context dock")
+	var pickup_button:Button=sandbox.find_child("ProductPickup",true,false) as Button
+	check(pickup_button!=null and pickup_button.visible,
+		"the pickup button appears in the context dock while loot lies on the hero tile")
 	var hero_id:=int(session.party_status().protagonist_id)
 	var pickup_time:=int(session.sim.world.world_time)
 	var pickup_journal_size:int=session.command_journal.size()

@@ -25,7 +25,8 @@ func _mobile(width:int,height:int)->void:
 	_check(bar.visible,"timeline shown during battle")
 	_check_eq(bar.size.y,48.0,"bar height 48")
 	_check(bar.get_global_rect().position.y>=ui.phase_panel.get_global_rect().end.y,"bar below HUD")
-	_check(bar.get_global_rect().end.y<=ui.grid.get_global_rect().position.y,"bar above map")
+	_check(absf(bar.get_global_rect().position.y-ui.grid.get_global_rect().position.y)<0.5 \
+		and bar.get_global_rect().end.y<=ui.grid.get_global_rect().end.y,"bar floats over the map's top edge")
 	_check(ui.cards.get_global_rect().end.y<=height+0.5,"cards fit %dx%d screen"%[width,height])
 	for product_hud in [false,true]:
 		ui._apply_product_root_order(product_hud)

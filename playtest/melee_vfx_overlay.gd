@@ -224,7 +224,7 @@ func _draw()->void:
 		draw_rect(flash_rect,flash_color,true)
 	_draw_generic_grid_effects(font,presentation_offset)
 	for spec in effect_draw_specs():
-		if bool(spec.line_visible):
+		if bool(spec.get("line_visible",false)):
 			var line_color:=Color(str(PARAMS.slash_color_hex))
 			line_color.a=float(spec.line_opacity)
 			for segment in spec.slash_segments:

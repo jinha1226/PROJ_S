@@ -132,10 +132,11 @@ func _check_viewport(viewport_size:Vector2)->void:
 	_check(int(control_metrics.get("target",0))==44 and int(control_metrics.get("dock_height",0))==44 \
 		and sandbox.combat_action_dock.get_child_count()==4,
 		"%s product context dock is not one 44px row of four commands"%viewport_size)
+	var pickup_all:=sandbox.find_child("ProductPickup",true,false) as Button
 	_check(sandbox.find_child("ProductDirectionPad",true,false)==null \
-		and sandbox.find_child("ProductPickup",true,false)==null \
-		and sandbox.find_child("ProductExecute",true,false)==null,
-		"%s D-pad or pickup duplicate controls survived in the dock"%viewport_size)
+		and sandbox.find_child("ProductExecute",true,false)==null \
+		and (pickup_all==null or not pickup_all.visible),
+		"%s D-pad or execute duplicate controls survived, or pick-all shows without loot"%viewport_size)
 	for button in [sandbox.product_auto_button,
 			sandbox.product_interact_button,sandbox.product_attack_button,
 			sandbox.product_wait_guard_button]:
@@ -164,7 +165,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s ATTACK did not spend one turn approaching the nearest visible enemy"%viewport_size)
 	attack_probe.queue_free()
 	sandbox._refresh();await process_frame;await process_frame
-	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==2 \
+	_check(sandbox.event_surface.visible and sandbox.event_label.max_lines_visible==3 \
 		and not sandbox.info_scroll.visible and not sandbox.deck.visible and not sandbox.log_label.visible,
 		"%s compact event surface did not replace generic context/log copies"%viewport_size)
 	_check(sandbox._compact_meaningful_event_text({"groups":[]},{"safe_phase":"ENGAGED"}).is_empty() \
@@ -174,7 +175,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		{"rows":[{"type":"combat.physical_damage","message":"오래된 피해"}]},
 		{"rows":[{"type":"item.pickup","message":"새 아이템을 주웠다."}]}
 	]}
-	_check(sandbox._compact_meaningful_event_text(compact_history,{})=="새 아이템을 주웠다.",
+	_check(sandbox._compact_meaningful_event_text(compact_history,{}).split("\n")[0]=="새 아이템을 주웠다.",
 		"%s compact event feed stayed pinned to older combat damage"%viewport_size)
 	var visible_product_nodes:Array=[sandbox.phase_panel,sandbox.grid,sandbox.event_surface,sandbox.cards]
 	if sandbox.combat_action_area.visible:visible_product_nodes.append(sandbox.combat_action_area)

@@ -177,6 +177,12 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 		var candidate:=int(layout_session.party_status().recruitable_member_ids[0])
 		check(layout_session.recruit_companion(candidate).accepted,
 			"four-card UI fixture recruits third companion")
+		var social_hero:=int(layout_session.sim.world.party_control_actor_id())
+		var social_companion:=int(layout_session.sim.world.party_encounter.party_member_ids[1])
+		check(not layout_session.sim.world.events.is_empty() \
+			and layout_session.sim.relationships.record_aid(social_companion,social_hero,
+				int(layout_session.sim.world.events[0].id),10),
+			"relationship fixture records one shared event with the protagonist")
 		sandbox.initialize_for_headless_test(layout_session)
 		var all_rows:Array=sandbox.session.party_cards()
 		for count in [1,2,3,4]:
@@ -231,8 +237,8 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 		check(sandbox.member_relationship_window.visible \
 				and sandbox.member_relationship_window.find_child("RelationshipHeading",true,false)==null \
 				and relationship_names.size()==companion_detail.relation_rows.size() \
-				and relationship_names[0]=="나" and relationship_names.size()>=2,
-			"relationship tab lists 나 first followed by the other party members")
+				and relationship_names==["나"],
+			"relationship tab lists 나 and only the characters with a recorded event")
 		sandbox._select_member_detail_tab("SKILL")
 		check(sandbox.member_skill_window.visible \
 				and sandbox.member_detail_skill_tab.text=="[스킬]" \

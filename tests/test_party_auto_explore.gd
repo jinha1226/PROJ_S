@@ -334,6 +334,60 @@ func test_auto_explore_canonical_move_round_trips_through_existing_replay() -> b
 	return finish()
 
 
+func test_auto_explore_seeks_the_exit_instead_of_the_nearest_frontier() -> bool:
+	# Synthetic 7x7 known field with two unknown edge cells: (0,3) on the left
+	# and (6,3) on the right. The hero at (2,3) has its nearest frontier one
+	# step left, while the run exit sits at (6,3).
+	var explorer = load("res://playtest/party_auto_explore.gd").new(Session.new())
+	var cells: Dictionary = {}
+	for y in range(7):
+		for x in range(7):
+			if Vector2i(x, y) in [Vector2i(0, 3), Vector2i(6, 3)]:
+				continue
+			cells[_key(Vector2i(x, y))] = {"position":[x, y],
+				"visibility_state":"VISIBLE", "terrain_id":"floor",
+				"passable":true, "move_time_cost":100, "diagonal_gateway":false,
+				"occupied":false, "risk":0, "objective_blocked":false}
+	var hero := Vector2i(2, 3)
+	var plain := {"width":7, "height":7, "cells":cells}
+	var nearest: Dictionary = explorer._nearest_safe_frontier(plain, cells, hero)
+	check_eq([nearest.found, nearest.target, str(nearest.target_kind)],
+		[true, Vector2i(1, 3), "FRONTIER"],
+		"without an exit AUTO still takes the nearest frontier")
+	var seeking := {"width":7, "height":7, "cells":cells,
+		"exit_position":[6, 3], "exit_open":false}
+	var toward: Dictionary = explorer._nearest_safe_frontier(seeking, cells, hero)
+	check_eq([toward.found, toward.target, str(toward.target_kind),
+		int(toward.exit_distance)], [true, Vector2i(5, 3), "FRONTIER", 1],
+		"with a run exit AUTO prefers the frontier that brings it closer to the exit")
+	check_eq([int(toward.steps), toward.path.size()], [3, 4],
+		"exit-seeking target reports its real path")
+	# Once the exit is known and open, AUTO walks to it directly.
+	cells[_key(Vector2i(6, 3))] = cells[_key(Vector2i(5, 3))].duplicate(true)
+	cells[_key(Vector2i(6, 3))]["position"] = [6, 3]
+	var opened := {"width":7, "height":7, "cells":cells,
+		"exit_position":[6, 3], "exit_open":true}
+	var direct: Dictionary = explorer._nearest_safe_frontier(opened, cells, hero)
+	check_eq([direct.found, direct.target, str(direct.target_kind), int(direct.steps)],
+		[true, Vector2i(6, 3), "EXIT", 4],
+		"a known open exit becomes the destination")
+	var locked := {"width":7, "height":7, "cells":cells,
+		"exit_position":[6, 3], "exit_open":false}
+	var still: Dictionary = explorer._nearest_safe_frontier(locked, cells, hero)
+	check(bool(still.found) and str(still.target_kind) == "FRONTIER" \
+		and still.target != Vector2i(6, 3),
+		"a locked exit is not a destination; AUTO keeps exploring toward it")
+	# The live product snapshot publishes the run exit for this rule.
+	var product = _safe_product_session(44)
+	var snapshot: Dictionary = product._auto_explore_fog_snapshot()
+	check(snapshot.get("exit_position", []).size() == 2 and snapshot.has("exit_open"),
+		"product fog snapshot carries the run exit")
+	var started: Dictionary = product.start_auto_explore()
+	check(bool(started.running) and str(started.target_kind) in ["FRONTIER", "UNVISITED", "EXIT"],
+		"public AUTO state names the kind of destination it chose")
+	return finish()
+
+
 func _safe_product_session(seed: int):
 	var session = Session.new(seed, 20260828, "SOLO_COMBAT_V1")
 	# Generic frontier tests run without the authored opening interaction. Its

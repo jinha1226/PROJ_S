@@ -5293,9 +5293,9 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 			{_position_key(goal):true},visible,maximum_steps,avoid_known_hazards)
 	var start_key := _position_key(start) + ("@0" if risk_weighted else "")
 	var open: Array[Dictionary] = [{"position":start,"risk":0,"max_risk":0,
-		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start]}]
+		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start],"drift":0}]
 	var sequence := 1
-	var best: Dictionary = {start_key:[0,0,0,0]}
+	var best: Dictionary = {start_key:[0,0,0,0,0]}
 	while not open.is_empty():
 		open.sort_custom(func(a:Dictionary,b:Dictionary):
 			return _exploration_open_less(a,b,risk_weighted))
@@ -5303,7 +5303,7 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 		var position: Vector2i = node.position
 		var known: Array = best.get(str(node.state_key), [])
 		var signature: Array = [int(node.max_risk),int(node.risk),
-			int(node.steps),int(node.cost)]
+			int(node.steps),int(node.cost),int(node.get("drift",0))]
 		if known != signature: continue
 		if position == goal:
 			var route_risk:=int(node.risk);var route_max_risk:=int(node.max_risk)
@@ -5328,16 +5328,19 @@ func _search_exploration_path(actor_id: int, goal: Vector2i,
 			var candidate_key := _position_key(next) + ("@%d" % candidate_steps \
 				if risk_weighted else "")
 			var candidate_path:Array = node.path.duplicate();candidate_path.append(next)
+			# Same straight-line tie-break as the weighted pathfinder: among equally
+			# safe and cheap routes prefer the one hugging the start->goal line.
 			var candidate := {"position":next,"risk":int(node.risk)+step_risk,
 				"max_risk":maxi(int(node.max_risk), step_risk),"steps":candidate_steps,
 				"cost":int(node.cost)+int(definition.move_time_cost),"sequence":sequence,
-				"state_key":candidate_key,"path":candidate_path}
+				"state_key":candidate_key,"path":candidate_path,
+				"drift":int(node.get("drift",0))+_route_line_drift(start,goal,next)}
 			sequence += 1
 			var old: Array = best.get(candidate_key, [])
 			if not old.is_empty() and not _exploration_score_less(candidate, old,
 					risk_weighted):continue
 			best[candidate_key] = [int(candidate.max_risk),int(candidate.risk),
-				int(candidate.steps),int(candidate.cost)]
+				int(candidate.steps),int(candidate.cost),int(candidate.drift)]
 			open.append(candidate)
 	return _exploration_path_failure("path_unreachable")
 
@@ -5355,14 +5358,18 @@ func _search_shortest_exploration_path(actor_id:int,goal_set:Dictionary,
 		if parts.size()==2:goal_positions.append(Vector2i(int(parts[0]),int(parts[1])))
 	if goal_positions.is_empty():return _exploration_path_failure("path_unreachable")
 	var start_h:=_exploration_goal_distance(start,goal_positions)
+	# Single-goal routes tie-break equal-score cells on their distance from the
+	# start->goal line (same rule as the weighted pathfinder), so open ground is
+	# crossed in a straight line instead of a diagonal V.
+	var line_goal:Vector2i=goal_positions[0] if goal_positions.size()==1 else Vector2i(-1,-1)
 	var open:Array[Dictionary]=[]
 	_exploration_heap_push(open,{"position":start,"steps":0,"cost":0,"score":0,
-		"estimate":int(start_h)*ROUTE_STEP_PRIORITY,"sequence":0})
-	var best:Dictionary={start_key:0};var parents:Dictionary={};var sequence:=1
+		"estimate":int(start_h)*ROUTE_STEP_PRIORITY,"sequence":0,"drift":0})
+	var best:Dictionary={start_key:[0,0]};var parents:Dictionary={};var sequence:=1
 	while not open.is_empty():
 		var node:Dictionary=_exploration_heap_pop(open)
 		var position:Vector2i=node.position;var position_key:=_position_key(position)
-		if int(best.get(position_key,-1))!=int(node.score):continue
+		if best.get(position_key,[])!=[int(node.score),int(node.get("drift",0))]:continue
 		if goal_set.has(position_key):
 			var path:=_reconstruct_exploration_path(start,position,parents)
 			if path.is_empty():return _exploration_path_failure("path_unreachable")
@@ -5383,14 +5390,17 @@ func _search_shortest_exploration_path(actor_id:int,goal_set:Dictionary,
 				sim.world.tile_at(next).terrain)
 			var candidate_cost:=int(node.cost)+int(definition.move_time_cost)
 			var candidate_score:=candidate_steps*ROUTE_STEP_PRIORITY+candidate_cost
-			var next_key:=_position_key(next);var old_score:=int(best.get(next_key,-1))
-			if old_score>=0 and candidate_score>=old_score:continue
-			best[next_key]=candidate_score;parents[next_key]=position
+			var candidate_drift:=int(node.get("drift",0))+(_route_line_drift(start,line_goal,next) \
+				if line_goal.x>=0 else 0)
+			var next_key:=_position_key(next);var old:Array=best.get(next_key,[])
+			if not old.is_empty() and (candidate_score>int(old[0]) \
+					or candidate_score==int(old[0]) and candidate_drift>=int(old[1])):continue
+			best[next_key]=[candidate_score,candidate_drift];parents[next_key]=position
 			var heuristic:=_exploration_goal_distance(next,goal_positions)
 			_exploration_heap_push(open,{"position":next,"steps":candidate_steps,
 				"cost":candidate_cost,"score":candidate_score,
 				"estimate":candidate_score+heuristic*ROUTE_STEP_PRIORITY,
-				"sequence":sequence});sequence+=1
+				"sequence":sequence,"drift":candidate_drift});sequence+=1
 	return _exploration_path_failure("path_unreachable")
 
 
@@ -5404,6 +5414,7 @@ static func _exploration_goal_distance(position:Vector2i,goals:Array[Vector2i])-
 static func _exploration_heap_less(a:Dictionary,b:Dictionary)->bool:
 	if int(a.estimate)!=int(b.estimate):return int(a.estimate)<int(b.estimate)
 	if int(a.score)!=int(b.score):return int(a.score)<int(b.score)
+	if int(a.get("drift",0))!=int(b.get("drift",0)):return int(a.get("drift",0))<int(b.get("drift",0))
 	var a_position:Vector2i=a.position;var b_position:Vector2i=b.position
 	if a_position.y!=b_position.y:return a_position.y<b_position.y
 	if a_position.x!=b_position.x:return a_position.x<b_position.x
@@ -5445,11 +5456,18 @@ func _reconstruct_exploration_path(start:Vector2i,goal:Vector2i,
 	reversed.reverse();return reversed
 
 
+func _route_line_drift(start: Vector2i, goal: Vector2i, position: Vector2i) -> int:
+	var line := goal - start
+	var offset := position - start
+	return absi(line.x * offset.y - line.y * offset.x)
+
+
 func _exploration_score_less(candidate: Dictionary, old: Array,
 		risk_weighted: bool) -> bool:
 	var candidate_keys := [int(candidate.max_risk),int(candidate.risk),
-		int(candidate.steps),int(candidate.cost)]
+		int(candidate.steps),int(candidate.cost),int(candidate.get("drift",0))]
 	var order := [0,1,2,3] if risk_weighted else [2,3]
+	if old.size() > 4: order.append(4)
 	for index in order:
 		if candidate_keys[index] != int(old[index]):
 			return candidate_keys[index] < int(old[index])
@@ -5462,6 +5480,7 @@ func _exploration_open_less(a: Dictionary, b: Dictionary,
 		else ["steps","cost"]
 	for key in order:
 		if int(a[key]) != int(b[key]):return int(a[key]) < int(b[key])
+	if int(a.get("drift",0)) != int(b.get("drift",0)):return int(a.get("drift",0)) < int(b.get("drift",0))
 	var a_position: Vector2i = a.position;var b_position: Vector2i = b.position
 	if a_position.y != b_position.y:return a_position.y < b_position.y
 	if a_position.x != b_position.x:return a_position.x < b_position.x
@@ -6231,11 +6250,18 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 				"diagonal_gateway":sim.world.is_diagonal_gateway(position),
 				"occupied":occupied, "risk":risk,
 				"objective_blocked":objective_blocked}
+	var exit_wire: Array = []
+	var exit_value: Variant = progress.get("exit_position", [])
+	if bool(progress.get("available", false)) and exit_value is Array \
+			and exit_value.size() == 2:
+		exit_wire = [int(exit_value[0]), int(exit_value[1])]
 	return {"schema_version":1, "width":sim.world.width,
 		"height":sim.world.height, "step_index":int(status.step_index),
 		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
 		"hero_position":status.protagonist_position.duplicate(true),
+		"exit_position":exit_wire,
+		"exit_open":bool(progress.get("exit", {}).get("open", false)),
 		"cells":cells, "visible":visible, "visited":visited, "hazards":hazards,
 		"opening_interaction":bool(opening_event_status().get("can_interact",false)) \
 			or bool(dungeon_anchor_portal_status().get("can_activate",false)) \
@@ -6863,9 +6889,14 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		var member_a=state.member(int(a));var member_b=state.member(int(b))
 		return int(member_a.roster_slot)<int(member_b.roster_slot) \
 			if int(member_a.roster_slot)!=int(member_b.roster_slot) else int(a)<int(b))
+	# The relationship page grows with play: a character is listed only after a
+	# recorded interaction with this member (aid, harm, gratitude), not merely
+	# because both stand in the roster.
 	for subject_id_value in relation_ids:
 		var subject_id := int(subject_id_value)
 		if subject_id == entity_id or not sim.world.entities.has(subject_id): continue
+		if not PartyRelationshipPresenterScript.has_recorded_history(
+				sim.world, entity_id, subject_id): continue
 		relation_rows.append(PartyRelationshipPresenterScript.relation_row(
 			sim.world, entity_id, subject_id))
 	var override_state := "PENDING"
@@ -6961,7 +6992,9 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 			if member_a!=null and member_b!=null else int(a)<int(b))
 	for subject_id_value in relation_ids:
 		var subject_id:=int(subject_id_value)
-		if subject_id!=entity_id and sim.world.entities.has(subject_id):
+		if subject_id!=entity_id and sim.world.entities.has(subject_id) \
+				and PartyRelationshipPresenterScript.has_recorded_history(
+					sim.world,entity_id,subject_id):
 			relation_rows.append(PartyRelationshipPresenterScript.relation_row(
 				sim.world,entity_id,subject_id))
 	var position: Vector2i = entity.position

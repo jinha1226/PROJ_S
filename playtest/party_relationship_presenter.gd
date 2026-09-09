@@ -34,6 +34,17 @@ static func observation(world) -> Dictionary:
 		"relations":rows}.duplicate(true)
 
 
+static func has_recorded_history(world, observer_id: int, subject_id: int) -> bool:
+	# A personal relation record exists only after a validated interaction
+	# (record_aid / record_harm / record_gratitude_only), so its presence in
+	# either direction is the ledger's own answer to "did anything happen
+	# between these two".
+	if world == null or observer_id == subject_id:
+		return false
+	return world.personal_relations.has("%d:%d" % [observer_id, subject_id]) \
+		or world.personal_relations.has("%d:%d" % [subject_id, observer_id])
+
+
 static func relation_row(world, observer_id: int, subject_id: int) -> Dictionary:
 	if world == null or not world.entities.has(observer_id) \
 			or not world.entities.has(subject_id):

@@ -1371,6 +1371,12 @@ func test_structured_combat_log_keeps_companion_cause_attribution_and_replays() 
 
 func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() -> bool:
 	var session=Session.new();var state=session.sim.world.party_encounter
+	check_eq(session.inspect_party_member(state.party_member_ids[1]).relation_rows.size(),0,
+		"relationship list starts empty until a shared event is recorded")
+	check(session.commit_exploration_direction(Vector2i.ZERO).accepted \
+		and not session.sim.world.events.is_empty() and session.sim.relationships.record_aid(
+			state.party_member_ids[1],state.protagonist_id,int(session.sim.world.events[-1].id),10),
+		"fixture records one shared event between the first companion and the protagonist")
 	var before=session.sim.snapshot();var journal_before=session.command_journal.duplicate(true)
 	var tile=session.inspect_tile(Vector2i(0,0),state.party_member_ids[2])
 	check(tile.accepted,"distant tile inspection accepted")
@@ -1402,7 +1408,13 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 	check(companion.accepted,"companion inspection")
 	check_eq(companion.personality_facets.size(),6,"all HEXACO facets")
 	check_eq(companion.species_affinity.species_id,"human","species affinity")
-	check_eq(companion.relation_rows.size(),2,"effective relation to other party members")
+	check_eq(companion.relation_rows.size(),1,"only characters with a recorded event are listed")
+	check_eq(int(companion.relation_rows[0].subject_id),int(state.protagonist_id),
+		"the listed relation is the protagonist who shared the event")
+	check_eq(session.inspect_party_member(state.protagonist_id).relation_rows.size(),1,
+		"the protagonist lists the companion from the same event in return")
+	check_eq(session.inspect_party_member(state.party_member_ids[2]).relation_rows.size(),0,
+		"a member without shared events stays off every relationship list")
 	check(companion.skill_summary.available and companion.skill_summary.skills.size()>=1 \
 		and str(companion.skill_summary.skills[0].skill_id)=="EQUIPPED_WEAPON",
 		"companion inspection exposes read-only skills from its real loadout")
