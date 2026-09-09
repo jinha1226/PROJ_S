@@ -207,6 +207,49 @@ func test_morale_observation_is_explainable_detached_and_restore_exact() -> bool
 	return finish()
 
 
+func test_stress_bands_are_thresholds_with_panic_hysteresis() -> bool:
+	check_eq([Model.stress_band(0), Model.stress_band(299), Model.stress_band(300),
+		Model.stress_band(599), Model.stress_band(600), Model.stress_band(849),
+		Model.stress_band(850)], ["CALM", "CALM", "TENSE", "TENSE", "ANXIOUS", "ANXIOUS", "PANIC"],
+		"bands split the 0..1000 scale at 300/600/850")
+	check_eq(Model.stress_band(700, "PANIC"), "PANIC",
+		"a panicked member stays in the PANIC band until the mode exits")
+	check_eq(Model.stress_band(640, "NORMAL"), "ANXIOUS", "below the exit threshold with NORMAL mode is anxious")
+	check_eq([Model.stress_band_label("CALM"), Model.stress_band_label("TENSE"),
+		Model.stress_band_label("ANXIOUS"), Model.stress_band_label("PANIC")],
+		["안정", "긴장", "불안", "공황"], "band labels are the four Korean words")
+	return finish()
+
+
+func test_anxious_member_cannot_focus_on_active_skills() -> bool:
+	var session = _engaged()
+	var world = session.sim.world
+	var state = world.party_encounter
+	var companion_id := int(state.active_party_member_ids[1])
+	var member = state.member(companion_id)
+	var skills: Array = member.active_skill_ids()
+	check(not skills.is_empty(), "morale fixture companion has an active skill")
+	if skills.is_empty(): return finish()
+	var skill_id := str(skills[0])
+	var target_id := int(state.enemy_ids[0])
+	for probe in [[599, "TENSE"], [600, "ANXIOUS"], [860, "PANIC"]]:
+		member.stress = int(probe[0])
+		member.mental_mode = "PANIC" if int(probe[0]) >= Model.PANIC_ENTER else "NORMAL"
+		var assessment: Dictionary = session.sim.assess_active_skill(companion_id, skill_id, target_id)
+		var rows: Array = session.active_skill_rows(companion_id)
+		var row_reason := str(rows[0].get("reason", "")) if not rows.is_empty() else ""
+		if str(probe[1]) == "TENSE":
+			check(str(assessment.get("reason", "")) != "active_skill_actor_anxious",
+				"a tense member (599) is not blocked by stress")
+			check(row_reason != "active_skill_actor_anxious", "skill rows do not flag a tense member")
+		else:
+			check_eq([bool(assessment.get("accepted", false)), str(assessment.get("reason", ""))],
+				[false, "active_skill_actor_anxious"], "%s member is rejected for stress" % str(probe[1]))
+			check_eq(row_reason, "active_skill_actor_anxious", "%s skill rows carry the stress reason" % str(probe[1]))
+			check("불안" in str(rows[0].get("message", "")), "the rejection message names 불안")
+	return finish()
+
+
 func test_authoritative_morale_crosses_and_persists_panic_threshold() -> bool:
 	var session = _engaged()
 	var state = session.sim.world.party_encounter

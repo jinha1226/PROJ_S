@@ -2774,6 +2774,8 @@ func active_skill_rows(actor_id:int)->Array[Dictionary]:
 			or member.presence!="DEPLOYED":common_reason="active_skill_actor_inactive"
 	elif not sim.world.can_act(actor_id,sim.world.world_time):common_reason="active_skill_actor_incapacitated"
 	elif not is_duo_autobattle() and member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
+	elif PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
+		common_reason="active_skill_actor_anxious"
 	for skill_id_value in member.active_skill_ids():
 		var skill_id:=str(skill_id_value);var definition:=ActiveSkillRegistryScript.definition(skill_id)
 		var reason:=common_reason
@@ -2893,6 +2895,9 @@ func party_morale_observation() -> Dictionary:
 			"role":str(member.role),"presence":str(member.presence),
 			"stress":int(member.stress),"mode":str(member.mental_mode),
 			"mode_label":"공황" if member.mental_mode=="PANIC" else "평정",
+			"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
+			"stress_band_label":PartyMoraleModelScript.stress_band_label(
+				PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode))),
 			"latest_change":latest_change})
 	return {"schema_version":1,"ruleset_id":PartyMoraleModelScript.RULESET_ID,
 		"available":true,"sampled_step_index":int(sim.world.step_index),
@@ -3851,7 +3856,11 @@ func party_cards() -> Array[Dictionary]:
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
-			"element_exposure": exposure, "stress": member.stress, "readiness": readiness,
+			"element_exposure": exposure, "stress": member.stress,
+			"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
+			"stress_band_label":PartyMoraleModelScript.stress_band_label(
+				PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode))),
+			"readiness": readiness,
 			"emotion": emotion, "memory":_memory_presentation(member),
 			"override_state": override_state,"progression":progression,
 			"expected_action": expected_action})
@@ -6801,7 +6810,11 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"logical_position":[logical.x,logical.y],
 		"busy_until":int(member.busy_until),
 		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
-		"stress":int(member.stress),"readiness":readiness,"emotion":emotion,
+		"stress":int(member.stress),
+		"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
+		"stress_band_label":PartyMoraleModelScript.stress_band_label(
+			PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode))),
+		"readiness":readiness,"emotion":emotion,
 		"memory":_memory_presentation(member),
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
@@ -6993,7 +7006,17 @@ func _is_important_log_event(event)->bool:
 			"growth.stat_spent","growth.species_point_spent",
 			"growth.mutation_swapped"]:
 		return true
+	if event_type=="party.morale_changed":
+		return _morale_band_change(event)!=""
 	return event_type.begins_with("combat.") and event_type.ends_with("_damage")
+
+func _morale_band_change(event)->String:
+	# Returns the band entered by this morale event, or "" when the band held.
+	var before:=PartyMoraleModelScript.stress_band(int(event.data.get("stress_before",0)),
+		str(event.data.get("mode_before","NORMAL")))
+	var after:=PartyMoraleModelScript.stress_band(int(event.data.get("stress_after",0)),
+		str(event.data.get("mode_after","NORMAL")))
+	return after if after!=before else ""
 
 func save_session_json() -> String:
 	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,
@@ -8530,6 +8553,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"active_skill_actor_inactive":"활성 파티원이 아닙니다.",
 		"active_skill_actor_incapacitated":"쓰러진 파티원은 기술을 사용할 수 없습니다.",
 		"active_skill_actor_busy":"아직 다음 행동을 준비 중입니다.",
+		"active_skill_actor_anxious":"불안 · 기술에 집중할 수 없습니다. 물러나 진정시키세요.",
 		"active_skill_energy_insufficient":"기력이 부족합니다.",
 		"active_skill_not_equipped":"장착하지 않은 기술입니다.",
 		"active_skill_target_invalid":"올바른 대상을 선택하세요.",
@@ -8714,6 +8738,13 @@ func _event_message(event) -> String:
 				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
 					"severed_parts_remain",false)) else ""]
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
+		"party.morale_changed":
+			match _morale_band_change(event):
+				"PANIC":return "%s 공황에 빠졌다."%_subject(actor)
+				"ANXIOUS":return "%s 불안해한다 · 지금 물러나야 한다."%_subject(actor)
+				"TENSE":return "%s 긴장하고 있다."%_subject(actor)
+				"CALM":return "%s 안정을 되찾았다."%_subject(actor)
+			return "%s 스트레스가 변했다."%_subject(actor)
 		"town.expedition_departed":return "원정대가 %d층 던전으로 다시 출발했다."%int(
 			event.data.get("floor_index",1))
 		"dungeon.floor_entered":

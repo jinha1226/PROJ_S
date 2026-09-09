@@ -11,6 +11,7 @@ const Affinities=preload("res://sim/species_hazard_affinity_registry.gd")
 const Terrain=preload("res://sim/terrain_registry.gd")
 const PartyPerception=preload("res://sim/party_perception_registry.gd")
 const CampaignStream=preload("res://sim/campaign_encounter_stream.gd")
+const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
 const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120}
@@ -35,6 +36,10 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		return _reject(rejected,"active_skill_actor_incapacitated","행동할 수 없는 파티원입니다.")
 	if not allow_busy and member.busy_until>world.world_time:
 		return _reject(rejected,"active_skill_actor_busy","아직 다음 행동을 준비 중입니다.")
+	# Anxious (600+) and panicked members cannot focus on an active skill; basic
+	# attacks and movement stay available so the pressure reads as "pull back".
+	if MoraleModel.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
+		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
 	if not world.entities.has(target_id) or not world.combatant_states.has(target_id):

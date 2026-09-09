@@ -2177,7 +2177,7 @@ func _update_stable_party_card(row:Dictionary)->void:
 		health.call("configure_semantic","HP",current,maximum,10,
 			AsciiFrameScript.RED if current*4<=maximum else AsciiFrameScript.GREEN)
 	var stress:=card.find_child("StressState",true,false) as Label
-	if stress!=null:stress.text="ST %d"%int(row.get("stress",0))
+	if stress!=null:_apply_stress_band_label(stress,row)
 	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
 	var state:=card.find_child("EmotionState",true,false) as Label
 	if state!=null:
@@ -2868,11 +2868,25 @@ func _add_compact_dossier_content(inset:MarginContainer,row:Dictionary,speech:Di
 	state_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	state_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(state_label)
 	var ready_label:=_card_label(readiness,"Readiness",FONT_AUX);ready_label.visible=false;footer.add_child(ready_label)
-	var stress_label:=_card_label("ST %d"%int(row.get("stress",0)),"StressState",FONT_AUX);footer.add_child(stress_label)
+	var stress_label:=_card_label("","StressState",FONT_AUX);_apply_stress_band_label(stress_label,row);footer.add_child(stress_label)
 	if bool(progression.get("available",false)):
 		var xp_gauge:Control=_gauge("CompactXPBar","XP",int(progression.get("xp_current",0)),maxi(1,int(progression.get("xp_required",1))),5,AsciiFrameScript.YELLOW)
 		xp_gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(xp_gauge)
 	if str(row.get("role",""))=="COMPANION" and not speech.is_empty():_add_companion_speech_strip(stack,speech)
+
+func _stress_band_color(band:String)->Color:
+	match band:
+		"PANIC":return AsciiFrameScript.RED
+		"ANXIOUS":return Color("#ffae5f")
+		"TENSE":return AsciiFrameScript.YELLOW
+	return Color("#8fa5ae")
+
+func _apply_stress_band_label(label:Label,row:Dictionary)->void:
+	# Portraits show the band, not the number; the status folio keeps ST n/1000.
+	var band:=str(row.get("stress_band","CALM"))
+	label.text=str(row.get("stress_band_label","안정"))
+	label.tooltip_text="스트레스 %d/1000"%int(row.get("stress",0))
+	label.add_theme_color_override("font_color",_stress_band_color(band))
 
 func _member_portrait(row:Dictionary,spec:Dictionary)->Control:
 	var portrait_size:Array=spec.get("portrait_min_size",[52,54])
@@ -2973,7 +2987,7 @@ func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 	var hp_value:="HP %d/%d"%[int(row.health),int(row.max_health)] if show_exact_max else "HP %d"%int(row.health)
 	var health_text:=_card_label(hp_value,"MemberState",FONT_AUX)
 	health_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;health_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(health_text)
-	var stress_text:=_card_label("ST %d"%int(row.stress),"StressState",FONT_AUX)
+	var stress_text:=_card_label("","StressState",FONT_AUX);_apply_stress_band_label(stress_text,row)
 	stress_text.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stress_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals_text.add_child(stress_text)
 	var progression:Variant=row.get("progression",{})
 	if _is_solo_product_session() and progression is Dictionary \
@@ -2990,7 +3004,7 @@ func _add_vitals(parent:VBoxContainer,row:Dictionary,show_exact_max:bool)->void:
 		parent.add_child(xp_bar)
 	var bars:=HBoxContainer.new(); bars.name="VitalsBars"; bars.add_theme_constant_override("separation",3);parent.add_child(bars)
 	var health_bar:=_bar("HealthBar",int(row.health),int(row.max_health),Color("#62d98b")); health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(health_bar)
-	var stress_bar:=_bar("StressBar",int(row.stress),1000,Color("#ffae5f")); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
+	var stress_bar:=_bar("StressBar",int(row.stress),1000,_stress_band_color(str(row.get("stress_band","CALM")))); stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bars.add_child(stress_bar)
 
 func _add_companion_speech_strip(parent:VBoxContainer,speech:Dictionary)->void:
 	var product_strip:=_is_solo_product_session()
@@ -4267,8 +4281,8 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var health_bar:Control=_gauge("StatusHealthBar","HP",int(detail.get("health",0)),
 		maxi(1,int(detail.get("max_health",1))),4,AsciiFrameScript.GREEN)
 	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(health_bar)
-	var stress:=int(detail.get("stress",0))
-	var stress_bar:Control=_gauge("StatusStressBar","ST",stress,1000,4,AsciiFrameScript.YELLOW)
+	var stress:=int(detail.get("stress",0));var stress_band:=str(detail.get("stress_band","CALM"))
+	var stress_bar:Control=_gauge("StatusStressBar","ST",stress,1000,4,_stress_band_color(stress_band))
 	stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(stress_bar)
 	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
 	status_grid.columns=2;status_grid.add_theme_constant_override("h_separation",10)
@@ -4283,7 +4297,12 @@ func _update_member_status_window(detail:Dictionary)->void:
 	if not reason.is_empty() and reason!="이유 정보 없음":
 		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
-	var stress_label:=_card_label("ST %d/1000"%stress,"StatusStress",FONT_AUX);emotion_cluster.add_child(stress_label)
+	var stress_label:=_card_label("ST %d/1000 · %s"%[stress,str(detail.get("stress_band_label","안정"))],"StatusStress",FONT_AUX)
+	stress_label.add_theme_color_override("font_color",_stress_band_color(stress_band));emotion_cluster.add_child(stress_label)
+	if stress_band in ["ANXIOUS","PANIC"]:
+		var stress_note:=_card_label("기술 사용 불가 · 물러나 진정시키세요" if stress_band=="ANXIOUS" \
+			else "공황 · 후퇴를 우선한다","StatusStressNote",FONT_AUX)
+		stress_note.add_theme_color_override("font_color",_stress_band_color(stress_band));emotion_cluster.add_child(stress_note)
 	var combat_cluster:=_add_status_pixel_section(status_grid,"CombatSealCluster")
 	var combat_heading:=_card_label("전투 / 상태","CombatSection",FONT_AUX)
 	combat_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);combat_cluster.add_child(combat_heading)

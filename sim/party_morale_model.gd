@@ -14,6 +14,22 @@ const MAX_CONTAGION := 180
 ## Ceiling of the morale stress scale: every stress figure the model reads or
 ## writes, and every stress figure the ledger accepts, lives inside 0..MAX_STRESS.
 const MAX_STRESS := 1000
+## Legible stress bands. PANIC keeps its hysteresis (enter 850, exit 650); the
+## lower bands are plain thresholds on the same 0..1000 scale.
+const BAND_TENSE := 300
+const BAND_ANXIOUS := 600
+const BAND_LABELS := {"CALM":"안정","TENSE":"긴장","ANXIOUS":"불안","PANIC":"공황"}
+
+
+static func stress_band(stress: int, mental_mode: String = "NORMAL") -> String:
+	if mental_mode == "PANIC" or stress >= PANIC_ENTER: return "PANIC"
+	if stress >= BAND_ANXIOUS: return "ANXIOUS"
+	if stress >= BAND_TENSE: return "TENSE"
+	return "CALM"
+
+
+static func stress_band_label(band: String) -> String:
+	return str(BAND_LABELS.get(band, band))
 
 
 static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) -> Dictionary:
