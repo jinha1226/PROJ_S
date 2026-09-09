@@ -3867,8 +3867,24 @@ func _product_adjacent_enemies(status:Dictionary,
 			result.append(int(row.get("entity_id",-1)))
 	return result
 
+func _reserve_battle_move(actor_id:int,goal:Vector2i)->void:
+	# A companion fight keeps the shared exploration screen, so the hero stays
+	# tap-movable: the tap becomes a journaled position order on the action
+	# timeline (walk there, then hold) instead of an exploration step.
+	if not str(session.party_status().get("safe_phase",""))=="ENGAGED":return
+	var result:Dictionary=session.individual_battle.reserve_move(actor_id,goal)
+	var message:=str(result.get("message","이동을 지정할 수 없습니다."))
+	_show_manual_battle_feedback(message)
+	if bool(result.get("accepted",false)):notice_text=message;action_feedback_text=message
+	_request_refresh()
+
 func _on_product_direction(direction:Vector2i)->void:
-	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":return
+	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
+		if direction!=Vector2i.ZERO:
+			var engaged:Dictionary=session.party_status()
+			_reserve_battle_move(int(engaged.protagonist_id),Vector2i(int(engaged.protagonist_position[0]),
+				int(engaged.protagonist_position[1]))+direction)
+		return
 	var status:Dictionary=session.party_status()
 	# Inspection selection is not the controllable actor in the automatic party UI.
 	if auto_orchestration_enabled:selected_member_id=int(status.get("protagonist_id",-1))
@@ -5636,7 +5652,8 @@ func _on_cell(position:Vector2i)->void:
 		_schedule_route_continue(hop_started_msec)
 		return
 	if status.view_mode!="COMBAT":return
-	if session.is_duo_autobattle():return
+	if session.is_duo_autobattle():
+		_reserve_battle_move(int(status.protagonist_id),position);return
 	selected_target_id=-1;_clear_move_preview()
 	if auto_orchestration_enabled and _is_direct_solo_combat(status):
 		_stage_auto_combat_action("MOVE",[position.x,position.y]);return
