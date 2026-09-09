@@ -47,9 +47,10 @@ func test_item_tab_uses_five_by_four_visual_inventory_slots() -> bool:
 	check(empty_count>0,"unused capacity remains visible as empty cells")
 	var weapon=sandbox._find_item_row_button("LEGACY_MAIN_HAND","MAIN_HAND")
 	var potion=sandbox._find_item_row_button("START_POTION_001","")
-	check(weapon!=null and bool(weapon.slot_draw_spec().uses_texture),
-		"equipped weapon cell uses its 24px item artwork")
-	check(potion!=null and not bool(potion.slot_draw_spec().uses_texture) \
+	check(weapon!=null and str(weapon.slot_draw_spec().icon_kind)=="SWORD" \
+		and not bool(weapon.slot_draw_spec().uses_texture),
+		"equipped weapon cell draws the unworn sword, not its paper-doll layer")
+	check(potion!=null and str(potion.slot_draw_spec().icon_kind)=="POTION" \
 		and str(potion.slot_draw_spec().category)=="CONSUMABLE",
 		"consumable cell uses its category pictogram")
 	var equipment_section=sandbox.find_child("InventoryEquipmentSection",true,false)

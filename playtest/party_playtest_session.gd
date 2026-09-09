@@ -1100,7 +1100,12 @@ func _rollback_session_transaction(rollback_memento:Variant,
 
 func _advance_item_action_time()->Dictionary:
 	var state=sim.world.party_encounter
-	if state.safe_phase=="CONTACT" and is_solo_combat():
+	# `is_solo_combat()` is a scenario flag, not a live roster count: DUO_SCENARIO_ID
+	# declares it while still fielding a companion. Both the solo deployment and the
+	# direct-solo turn gate on the roster itself, so routing this time step on the
+	# flag alone sent every multi-member combat equip into a path that rejects it.
+	if state.safe_phase=="CONTACT" and is_solo_combat() \
+			and state.party_member_ids==[state.protagonist_id]:
 		var prepared:Dictionary=enter_solo_combat()
 		if not bool(prepared.get("accepted",false)):return prepared
 		state=sim.world.party_encounter
@@ -1110,7 +1115,8 @@ func _advance_item_action_time()->Dictionary:
 		# canonical time action and retains its ordinary short guard projection.
 		var hero_id:=int(state.protagonist_id)
 		var advanced:Dictionary=commit_direct_solo_action(hero_id,"HOLD") \
-			if is_solo_combat() else _commit_item_time_party_turn(hero_id)
+			if is_solo_combat() and state.active_party_member_ids==[hero_id] \
+			else _commit_item_time_party_turn(hero_id)
 		return advanced
 	var rollback_memento:Variant=sim.capture_rollback_memento()
 	if not rollback_memento is Dictionary:return {"accepted":false,"reason":"snapshot_unavailable"}

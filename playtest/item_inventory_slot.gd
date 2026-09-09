@@ -1,7 +1,6 @@
 class_name ItemInventorySlot
 extends Button
 
-const Assets=preload("res://playtest/fixed_front_topdown_assets.gd")
 const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 
 const EMPTY_FILL:=DarkSkin.SLOT_EMPTY
@@ -13,6 +12,21 @@ const BORDER_SELECTED:=DarkSkin.BRASS
 const MUTED:=DarkSkin.BONE_DIM
 const DANGER:=DarkSkin.BLOOD
 const COUNT_INK:=DarkSkin.BONE
+const STEEL:=Color("#b6c2ca")
+const STEEL_DARK:=Color("#5d6b74")
+const HAFT:=Color("#8a5f36")
+const HAFT_DARK:=Color("#54381f")
+const CORD:=Color("#d8cba6")
+# An inventory cell shows the item itself. Equipment art lives in the fixed-front
+# paper-doll atlas, where every silhouette is drawn at its worn position on a
+# 256px body canvas, so reusing those layers here rendered a sword floating at
+# hand height and a cuirass already shaped around a torso.
+const ARMOR_TONES:={
+	"ARMOR_PADDED":Color("#8d7f63"),"ARMOR_CLOTH":Color("#8d7f63"),
+	"ARMOR_LEATHER":Color("#8a5a32"),"ARMOR_STEEL":Color("#9aa4ad"),
+	"ARMOR_MITHRIL":Color("#7fc6d9"),"ARMOR_MYTHRIL":Color("#7fc6d9"),
+	"ARMOR_HOOD":Color("#6f6455"),"ARMOR_HELMET":Color("#9aa4ad"),
+}
 
 var _row:Dictionary={}
 var _slot_index:=0
@@ -68,7 +82,6 @@ func set_selected(value:bool)->void:
 
 
 func slot_draw_spec()->Dictionary:
-	var texture:=_item_texture()
 	return {
 		"slot_index":_slot_index,
 		"equipment_slot":_equipment_slot,
@@ -78,8 +91,9 @@ func slot_draw_spec()->Dictionary:
 		"definition_id":str(_row.get("definition_id","")),
 		"category":str(_row.get("category","")),
 		"quantity":int(_row.get("quantity",0)),
-		"uses_texture":texture!=null,
-		"texture":texture,
+		"icon_kind":_icon_kind(),
+		"uses_texture":false,
+		"texture":null,
 		"touch_size":get_combined_minimum_size(),
 	}.duplicate(true)
 
@@ -110,13 +124,7 @@ func _draw()->void:
 	if empty:
 		_draw_empty_slot(inner)
 		return
-	var texture:=_item_texture()
-	if texture!=null:
-		var side:=minf(inner.size.x,inner.size.y)
-		var icon_bounds:=Rect2(inner.get_center()-Vector2.ONE*side*0.5,Vector2.ONE*side)
-		draw_texture_rect(texture,icon_bounds,false,Color.WHITE)
-	else:
-		_draw_fallback_icon(inner)
+	_draw_item_icon(inner)
 	if equipped:_draw_equipped_corner(bounds)
 	if int(_row.get("quantity",1))>1:_draw_quantity(bounds,int(_row.quantity))
 
@@ -137,13 +145,28 @@ func _draw_selection_brackets(bounds:Rect2)->void:
 		draw_line(points[0],points[1],BORDER_SELECTED,2.0)
 
 
-func _item_texture()->Texture2D:
+func _icon_kind()->String:
+	# The unworn silhouette an inventory cell must show, keyed off the definition
+	# so a weapon reads as a weapon on the shelf rather than as a hand overlay.
 	var definition_id:=str(_row.get("definition_id","")).to_upper()
 	var category:=str(_row.get("category","")).to_upper()
-	if category=="WEAPON":return Assets.weapon_texture(definition_id)
-	if category=="ARMOR" and definition_id!="SHIELD_WOOD":
-		return Assets.armor_texture(definition_id)
-	return null
+	if definition_id=="SHIELD_WOOD":return "SHIELD"
+	if category=="WEAPON":
+		if definition_id.ends_with("HAND_AXE") or definition_id.ends_with("AXE"):return "AXE"
+		if definition_id.ends_with("MACE"):return "MACE"
+		if definition_id.ends_with("SPEAR"):return "SPEAR"
+		if definition_id.ends_with("CROSSBOW"):return "CROSSBOW"
+		if definition_id.ends_with("BOW"):return "BOW"
+		return "SWORD"
+	if category=="ARMOR":
+		if definition_id.ends_with("HELMET"):return "HELMET"
+		if definition_id.ends_with("HOOD"):return "HOOD"
+		return "ARMOR"
+	if definition_id.begins_with("POTION"):return "POTION"
+	if definition_id=="FOOD_RATION":return "RATION"
+	if definition_id.begins_with("SCROLL"):return "SCROLL"
+	if category=="ACCESSORY":return "CHARM"
+	return "MATERIAL"
 
 
 func _draw_empty_slot(bounds:Rect2)->void:
@@ -162,20 +185,111 @@ func _draw_empty_slot(bounds:Rect2)->void:
 			draw_line(center-Vector2(0,5),center+Vector2(0,5),tone,1.0)
 
 
-func _draw_fallback_icon(bounds:Rect2)->void:
-	var definition_id:=str(_row.get("definition_id","")).to_upper()
-	var category:=str(_row.get("category","")).to_upper()
-	if definition_id=="SHIELD_WOOD":
-		_draw_shield(bounds,Color("#b87a38"));return
-	if definition_id.begins_with("POTION"):
-		_draw_potion(bounds,Color("#d94b5b"));return
-	if definition_id=="FOOD_RATION":
-		_draw_ration(bounds);return
-	if definition_id.begins_with("SCROLL"):
-		_draw_scroll(bounds);return
-	if category=="ACCESSORY":
-		_draw_charm(bounds);return
-	_draw_material(bounds)
+func _draw_item_icon(bounds:Rect2)->void:
+	var tone:Color=ARMOR_TONES.get(str(_row.get("definition_id","")).to_upper(),
+		Color("#8d7f63"))
+	match _icon_kind():
+		"SWORD":_draw_sword(bounds)
+		"AXE":_draw_axe(bounds)
+		"MACE":_draw_mace(bounds)
+		"SPEAR":_draw_spear(bounds)
+		"BOW":_draw_bow(bounds)
+		"CROSSBOW":_draw_crossbow(bounds)
+		"SHIELD":_draw_shield(bounds,Color("#b87a38"))
+		"HELMET":_draw_helmet(bounds,tone)
+		"HOOD":_draw_hood(bounds,tone)
+		"ARMOR":_draw_cuirass(bounds,tone)
+		"POTION":_draw_potion(bounds,Color("#d94b5b"))
+		"RATION":_draw_ration(bounds)
+		"SCROLL":_draw_scroll(bounds)
+		"CHARM":_draw_charm(bounds)
+		_:_draw_material(bounds)
+
+
+func _draw_sword(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_colored_polygon(PackedVector2Array([center+Vector2(0,-15),
+		center+Vector2(4,-9),center+Vector2(4,3),center+Vector2(-4,3),
+		center+Vector2(-4,-9)]),STEEL)
+	draw_line(center+Vector2(0,-13),center+Vector2(0,2),STEEL_DARK,1.0)
+	draw_rect(Rect2(center+Vector2(-9,3),Vector2(18,3)),DarkSkin.BRASS,true)
+	draw_rect(Rect2(center+Vector2(-2,6),Vector2(4,7)),HAFT,true)
+	draw_circle(center+Vector2(0,14),2.5,DarkSkin.BRASS)
+
+
+func _draw_axe(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_rect(Rect2(center+Vector2(-2,-14),Vector2(4,28)),HAFT,true)
+	draw_line(center+Vector2(-2,-14),center+Vector2(-2,14),HAFT_DARK,1.0)
+	draw_colored_polygon(PackedVector2Array([center+Vector2(2,-13),
+		center+Vector2(13,-9),center+Vector2(13,0),center+Vector2(2,-3)]),STEEL)
+	draw_colored_polygon(PackedVector2Array([center+Vector2(-2,-13),
+		center+Vector2(-8,-10),center+Vector2(-8,-3),center+Vector2(-2,-4)]),STEEL_DARK)
+
+
+func _draw_mace(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_rect(Rect2(center+Vector2(-2,-4),Vector2(4,18)),HAFT,true)
+	draw_circle(center+Vector2(0,15),2.5,DarkSkin.BRASS)
+	for angle in [0.0,TAU/6.0,TAU/3.0,TAU/2.0,TAU*2.0/3.0,TAU*5.0/6.0]:
+		var spike:=Vector2(cos(angle),sin(angle))*10.0
+		draw_line(center+Vector2(0,-8),center+Vector2(0,-8)+spike,STEEL_DARK,2.0)
+	draw_circle(center+Vector2(0,-8),7.0,STEEL)
+	draw_circle(center+Vector2(-2,-10),2.5,STEEL.lightened(0.3))
+
+
+func _draw_spear(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_rect(Rect2(center+Vector2(-1.5,-6),Vector2(3,20)),HAFT,true)
+	draw_colored_polygon(PackedVector2Array([center+Vector2(0,-15),
+		center+Vector2(4,-7),center+Vector2(0,-4),center+Vector2(-4,-7)]),STEEL)
+	draw_rect(Rect2(center+Vector2(-3,-5),Vector2(6,2)),DarkSkin.BRASS,true)
+
+
+func _draw_bow(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	# A stave drawn upright with its own string, not the drawn-back hand overlay.
+	draw_arc(center+Vector2(6,0),13.0,TAU*0.30,TAU*0.70,20,HAFT,3.0)
+	draw_line(center+Vector2(-1,-12),center+Vector2(-1,12),CORD,1.0)
+
+
+func _draw_crossbow(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_rect(Rect2(center+Vector2(-2,-10),Vector2(4,22)),HAFT,true)
+	draw_arc(center+Vector2(0,-6),12.0,TAU*0.55,TAU*0.95,18,HAFT_DARK,3.0)
+	draw_line(center+Vector2(-11,-9),center+Vector2(11,-9),CORD,1.0)
+	draw_rect(Rect2(center+Vector2(-5,8),Vector2(10,3)),STEEL_DARK,true)
+
+
+func _draw_cuirass(bounds:Rect2,tone:Color)->void:
+	var center:=bounds.get_center()
+	# A breastplate on the rack: no head, no arms, symmetric about the cell.
+	draw_colored_polygon(PackedVector2Array([center+Vector2(-9,-9),
+		center+Vector2(-4,-11),center+Vector2(4,-11),center+Vector2(9,-9),
+		center+Vector2(8,10),center+Vector2(-8,10)]),tone)
+	draw_colored_polygon(PackedVector2Array([center+Vector2(-4,-11),
+		center+Vector2(0,-7),center+Vector2(4,-11)]),DarkSkin.SLOT_FILLED)
+	draw_line(center+Vector2(0,-6),center+Vector2(0,10),tone.darkened(0.35),1.0)
+	draw_polyline(PackedVector2Array([center+Vector2(-9,-9),center+Vector2(-8,10),
+		center+Vector2(8,10),center+Vector2(9,-9)]),tone.lightened(0.3),2.0)
+
+
+func _draw_helmet(bounds:Rect2,tone:Color)->void:
+	var center:=bounds.get_center()
+	draw_arc(center+Vector2(0,1),10.0,TAU*0.5,TAU,18,tone,7.0)
+	draw_rect(Rect2(center+Vector2(-10,1),Vector2(20,7)),tone,true)
+	draw_rect(Rect2(center+Vector2(-10,3),Vector2(20,3)),DarkSkin.SLOT_FILLED,true)
+	draw_rect(Rect2(center+Vector2(-1,-8),Vector2(2,14)),tone.lightened(0.35),true)
+
+
+func _draw_hood(bounds:Rect2,tone:Color)->void:
+	var center:=bounds.get_center()
+	draw_colored_polygon(PackedVector2Array([center+Vector2(0,-12),
+		center+Vector2(10,0),center+Vector2(8,11),center+Vector2(-8,11),
+		center+Vector2(-10,0)]),tone)
+	draw_colored_polygon(PackedVector2Array([center+Vector2(0,-5),
+		center+Vector2(6,3),center+Vector2(0,8),center+Vector2(-6,3)]),
+		DarkSkin.SLOT_FILLED)
 
 
 func _draw_potion(bounds:Rect2,liquid:Color)->void:

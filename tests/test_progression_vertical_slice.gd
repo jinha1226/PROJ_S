@@ -296,9 +296,9 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 	var equipped_weapon=sandbox._find_item_row_button("LEGACY_MAIN_HAND","MAIN_HAND")
 	var potion_slot=sandbox._find_item_row_button("START_POTION_001","")
 	check(equipped_weapon!=null and equipped_weapon.has_method("slot_draw_spec") \
-		and bool(equipped_weapon.slot_draw_spec().uses_texture) \
+		and str(equipped_weapon.slot_draw_spec().icon_kind)=="SWORD" \
 		and potion_slot!=null and potion_slot.has_method("slot_draw_spec") \
-		and not bool(potion_slot.slot_draw_spec().uses_texture) \
+		and str(potion_slot.slot_draw_spec().icon_kind)=="POTION" \
 		and sandbox.member_item_backpack_rows.get_children().all(
 			func(slot):return slot is Button and str(slot.text).is_empty() \
 				and slot.custom_minimum_size.x>=44 and slot.custom_minimum_size.y>=44),
