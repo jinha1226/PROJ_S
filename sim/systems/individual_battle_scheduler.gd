@@ -1,4 +1,5 @@
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 ## Event-driven combat. Rendering advances a continuous cursor, but only this
 ## transaction changes canonical time. Existing batch APIs remain for old saves.
@@ -44,7 +45,9 @@ static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-
 	var next:=next_event(sim)
 	if next.is_empty():return Result.new(false,false,"individual_battle_not_engaged")
 	var world=sim.world;var party=world.party_encounter
+	var _pmm:=PerfProbeScript.begin()
 	var rollback:Dictionary=world.rollback_memento(false)
+	PerfProbeScript.end("ib.memento",_pmm)
 	if survival_rules and not preload("res://sim/party_survival_rules.gd").enabled(world):
 		world.entities[party.protagonist_id].tags.append(preload("res://sim/party_survival_rules.gd").TAG)
 	var start:int=world.world_time;var event_start:int=world.events.size()
@@ -59,8 +62,12 @@ static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-
 			skill=Skills.assess(world,actor_id,str(reservation.skill_id),int(reservation.target_id),false,true)
 			if not bool(skill.get("accepted",false)):
 				skill_rejection=str(skill.get("reason","active_skill_rejected"));skill.clear()
-		if skill.is_empty():row=_ally_row(sim,actor_id,step_index,movement_goal)
+		if skill.is_empty():
+			var _par:=PerfProbeScript.begin()
+			row=_ally_row(sim,actor_id,step_index,movement_goal)
+			PerfProbeScript.end("ib.ally_row",_par)
 	var accepted:=true
+	var _pact:=PerfProbeScript.begin()
 	if actor_id==0:
 		# Both canonical ticks may share a timestamp; settle all of them before
 		# returning. Status/environment still run, enemy actions do not run here.
@@ -78,22 +85,29 @@ static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-
 				else not row.is_empty() and sim._commit_active_ready_allies([row],step_index,world.world_time)
 	else:
 		accepted=sim.party_coordinator._enemy_batch(step_index,step_index,world.world_time,{actor_id:true})
+	PerfProbeScript.end("ib.act."+("env" if actor_id==0 else ("ally" if party.member(actor_id)!=null else "enemy")),_pact)
+	var _prl:=PerfProbeScript.begin()
 	if accepted:
 		accepted=sim.party_coordinator.reconcile_liveness() \
 			and sim.party_coordinator.finalize_automatic_regroup()
 		if accepted and party.safe_phase=="ENGAGED" and sim.party_coordinator._has_alive_enemy() \
 				and not sim.party_coordinator._has_active_combat_enemy():
 			accepted=sim.party_coordinator._disengage_to_exploration()
+	PerfProbeScript.end("ib.liveness",_prl)
+	var _psy:=PerfProbeScript.begin()
 	if accepted:
 		accepted=Emotion.commit_batch(world,world.events_since(event_start),actor_id==0) \
 			and Memory.commit_batch(world,world.events_since(event_start)) \
 			and Relationships.commit_batch(world,world.events_since(event_start)) \
 			and Morale.commit_batch(world,world.events_since(event_start),actor_id==0)
+	PerfProbeScript.end("ib.systems",_psy)
 	if accepted:
 		sim._refill_energy_after_combat_transition(event_start)
 		sim._reconcile_expedition_cycle()
 		world.finish_step()
+		var _ppo:=PerfProbeScript.begin()
 		accepted=world.runtime_step_postcondition_error(event_start).is_empty()
+		PerfProbeScript.end("ib.postcondition",_ppo)
 	if not accepted:
 		sim.restore_rollback_memento(rollback)
 		return Result.new(false,false,"individual_battle_step_failed")

@@ -1,6 +1,7 @@
 class_name StatusLifecycleSystem
 extends RefCounted
 
+const PerfProbeScript = preload("res://sim/perf_probe.gd")
 const LIFE_RULESET_ID := "active-downed-dead-v1"
 const STATUS_RULESET_ID := "bounded-status-lifecycle-v1"
 const COMBAT_RULESET_ID := "deterministic-melee-resolution-v1"
@@ -41,9 +42,15 @@ func process_actor_occurrence(processed_step_index: int,
 		if tick_start_can_act_ids[entity_id_value] != true \
 				or not world.entities.has(entity_id):
 			return false
-	if not _process_due_statuses(processed_step_index):
+	var _pds:=PerfProbeScript.begin()
+	var statuses_ok:bool=_process_due_statuses(processed_step_index)
+	PerfProbeScript.end("lifecycle.statuses",_pds)
+	if not statuses_ok:
 		return false
-	return _process_due_recoveries(processed_step_index)
+	var _pdr:=PerfProbeScript.begin()
+	var recoveries_ok:bool=_process_due_recoveries(processed_step_index)
+	PerfProbeScript.end("lifecycle.recoveries",_pdr)
+	return recoveries_ok
 
 
 func _process_due_statuses(processed_step_index: int) -> bool:
@@ -53,8 +60,9 @@ func _process_due_statuses(processed_step_index: int) -> bool:
 	entity_ids.sort()
 	for entity_id_value in entity_ids:
 		var entity_id := int(entity_id_value)
-		var entity = world.entities.get(entity_id)
 		var combatant = world.combatant_states[entity_id]
+		if combatant.status_rows.is_empty(): continue
+		var entity = world.entities.get(entity_id)
 		var ordered_statuses: Array = combatant.status_rows.duplicate()
 		ordered_statuses.sort_custom(func(a, b): return a.status_id < b.status_id)
 		for status in ordered_statuses:
@@ -108,15 +116,19 @@ func _process_due_statuses(processed_step_index: int) -> bool:
 		if tick == null:
 			return false
 		if bool(due.downed):
+			var _pbo:=PerfProbeScript.begin()
 			var bleedout: Dictionary = damage.apply_canonical_downed_bleedout(entity,
 				BLEED_TICK_DAMAGE, tick.id, entity.position, processed_step_index)
+			PerfProbeScript.end("bleed.downed",_pbo)
 			if not bool(bleedout.accepted):
 				return false
 			continue
 		var health_before: int = entity.health
+		var _pad:=PerfProbeScript.begin()
 		var applied: Dictionary = damage.apply_canonical_active_damage(entity,
 			BLEED_TICK_DAMAGE, "physical", tick.id, entity.position,
 			processed_step_index, health_before, bool(due.terminal), false)
+		PerfProbeScript.end("bleed.active",_pad)
 		if not bool(applied.accepted):
 			return false
 		if combatant.life_state == "DEAD":

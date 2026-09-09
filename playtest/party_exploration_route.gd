@@ -1,5 +1,6 @@
 class_name PartyExplorationRoute
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const CommandScript = preload("res://sim/sim_command.gd")
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
@@ -117,7 +118,9 @@ func cancel() -> Dictionary:
 
 
 func _advance_one() -> Dictionary:
+	var _pv:=PerfProbeScript.begin()
 	var validation := _validate_next_step()
+	PerfProbeScript.end("route.validate",_pv)
 	if not bool(validation.get("accepted", false)):
 		return _stop_active(str(validation.get("reason", "route_stale")), false,
 			validation.get("details", {}))
@@ -136,7 +139,9 @@ func _advance_one() -> Dictionary:
 	_active["current_index"] = next_index
 	_active["last_step_result"] = result.duplicate(true)
 	_active["last_step_effects"] = result.get("visual_effects", []).duplicate(true)
+	var _pf:=PerfProbeScript.begin()
 	_active["resume_fingerprint"] = _route_guard_fingerprint()
+	PerfProbeScript.end("route.fingerprint",_pf)
 
 	var status: Dictionary = _owner().party_status()
 	if str(status.get("safe_phase", "")) == "PARTY_DEFEATED" \
@@ -428,8 +433,29 @@ func _route_guard_fingerprint() -> String:
 	# every mutable authority surface with packed static terrain and a shared,
 	# append-only event prefix. Hashing that in-memory value avoids materializing
 	# thousands of tile/event dictionaries and encoding them as JSON twice per hop.
-	var guard_value:Variant=_owner().sim.capture_rollback_memento(false)
-	return str(hash(guard_value)) if guard_value is Dictionary else "UNAVAILABLE"
+	# A full rollback memento hashed twice per hop cost ~19ms on the 184x96 map.
+	# The guard only needs to notice that authority moved between two hops, so
+	# digest the counters every canonical mutation bumps plus the party rows a
+	# presentation-only poke could touch (member, entity, combatant per roster id).
+	var sim=_owner().sim
+	if sim==null or sim.world==null or not sim.world.is_settled():return "UNAVAILABLE"
+	var world=sim.world;var party=world.party_encounter
+	var digest:Array=[int(world.get_instance_id()),int(world.step_index),int(world.world_time),
+		world.events.size(),int(world.events[-1].id) if not world.events.is_empty() else -1,
+		int(world.rng.state),int(world._next_entity_id),int(world._next_event_id),
+		int(party.revision) if party!=null else -1,
+		int(world.item_state.revision) if world.item_state!=null else -1,
+		world.scheduled_entries.size()]
+	if party!=null:
+		digest.append(str(party.safe_phase));digest.append(party.group_anchor)
+		var guarded_ids:Array=party.active_party_member_ids.duplicate()
+		if int(party.protagonist_id) not in guarded_ids:guarded_ids.append(int(party.protagonist_id))
+		for member_id_value in guarded_ids:
+			var member_id:=int(member_id_value);var member=party.member(member_id)
+			if member!=null:digest.append(member.to_dict())
+			if world.entities.has(member_id):digest.append(world.entities[member_id].to_dict())
+			if world.combatant_states.has(member_id):digest.append(world.combatant_states[member_id].to_dict())
+	return str(hash(digest))
 
 
 func _same_path(first: Array, second: Array) -> bool:

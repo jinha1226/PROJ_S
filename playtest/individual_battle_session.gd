@@ -1,4 +1,5 @@
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const Scheduler=preload("res://sim/systems/individual_battle_scheduler.gd")
 const Skills=preload("res://sim/abilities/party_active_skill_service.gd")
@@ -93,7 +94,9 @@ func commit(expected:Dictionary={},append_journal:bool=true,survival_rules:bool=
 	if host.sim.world.party_encounter.safe_phase!="ENGAGED":queues.clear();movements.clear()
 	if append_journal:host.command_journal.append({"kind":"individual_survival_step" if survival_rules else "individual_step","operation":operation})
 	host._clear_draft()
+	var _pdt:=PerfProbeScript.begin()
 	var dto:Dictionary=host._result_dto(result,null,null)
+	PerfProbeScript.end("ib.result_dto",_pdt)
 	dto["actor_id"]=int(next.actor_id)
 	dto["reservation_rejection"]="예약 조건이 달라져 기본 행동을 했습니다." if reservation_failed else ""
 	return dto

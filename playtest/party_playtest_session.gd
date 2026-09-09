@@ -1,5 +1,6 @@
 class_name PartyPlaytestSession
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const SimulatorScript = preload("res://sim/simulator.gd")
 const CommandScript = preload("res://sim/sim_command.gd")
@@ -208,6 +209,8 @@ var _opening_blood_positions:Array[Vector2i]=[]
 # world/history/topology identity no longer matches.
 var _explored_presentation_cache: Dictionary = {}
 var _explored_cache_epoch:int=0
+var _progression_cache:Dictionary={}
+var _equipment_visual_cache:Dictionary={}
 # Persistent minimap row stream; see _party_minimap_observation.
 var _minimap_stream:Dictionary={}
 var _presentation_topology_cache:Dictionary={}
@@ -567,9 +570,11 @@ func battle_timeline_state()->Dictionary:
 			"can_act":world.can_act(member_id,int(world.world_time))})
 	var visible_ids:Array=status.get("visible_enemy_ids",[])
 	var enemies:Array=[]
-	for enemy_id_value in state.enemy_ids:
+	for enemy_id_value in visible_ids:
+		# The presenter only shows visible enemies; skip the readiness lookups
+		# for the rest of a 72-enemy floor.
 		var enemy_id:=int(enemy_id_value);var entity=world.entities.get(enemy_id)
-		if entity==null:continue
+		if entity==null or enemy_id not in state.enemy_ids:continue
 		var awareness=state.enemy_awareness(enemy_id)
 		enemies.append({"entity_id":enemy_id,"display_name":str(entity.display_name),
 			"species_id":str(entity.species_id),"busy_until":int(state.enemy_busy_rows.get(enemy_id,0)),
@@ -658,6 +663,33 @@ func protagonist_progression()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or sim.world.party_encounter.protagonist_progression==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
+	# Pure projection of authoritative state (xp, equipment, body, level). UI
+	# surfaces ask for it many times per refresh; rebuild once per authority key.
+	var hero_id:=int(sim.world.party_encounter.protagonist_id)
+	var hero_member=sim.world.party_encounter.member(hero_id)
+	var hero_entity=sim.world.entities.get(hero_id)
+	var hero_body=sim.world.body_states.get(hero_id)
+	var hero_combatant=sim.world.combatant_states.get(hero_id)
+	var growth=sim.world.party_encounter.protagonist_growth
+	var progression_state=sim.world.party_encounter.protagonist_progression
+	var cache_key:="%d|%d|%d|%d|%d|%d|%d|%d|%d|%s"%[int(sim.world.get_instance_id()),
+		int(sim.world.item_state.revision) if sim.world.item_state!=null else -1,
+		int(progression_state.xp_total),hash(progression_state.skill_training),
+		hash(progression_state.training_modes),
+		int(hero_body.revision) if hero_body!=null else -1,
+		hero_combatant.status_rows.size() if hero_combatant!=null else -1,
+		int(hero_entity.health) if hero_entity!=null else -1,
+		int(hero_entity.max_health) if hero_entity!=null else -1,
+		hash([int(growth.xp_total),growth.stat_allocations,growth.species_branch_ranks,
+			growth.equipped_mutation_ids]) if growth!=null else 0,
+		str(hero_entity.species_id) if hero_entity!=null else ""]
+	if str(_progression_cache.get("key",""))==cache_key:
+		return (_progression_cache.dto as Dictionary).duplicate(true)
+	var built:Dictionary=_build_protagonist_progression()
+	_progression_cache={"key":cache_key,"dto":built}
+	return built.duplicate(true)
+
+func _build_protagonist_progression()->Dictionary:
 	var progression=sim.world.party_encounter.protagonist_progression
 	var level:=ProgressionRegistryScript.level_for_xp(progression.xp_total)
 	var floor_xp:=ProgressionRegistryScript.xp_floor_for_level(level)
@@ -3244,8 +3276,10 @@ func observe_party_world() -> Dictionary:
 
 
 func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
-		row_count:int=-1)->Dictionary:
+		row_count:int=-1,omit_unseen:bool=false)->Dictionary:
+	var _pc:=PerfProbeScript.begin()
 	var context:=_party_observation_context()
+	PerfProbeScript.end("obs.context",_pc)
 	if context.is_empty():return {"grid":{},"minimap":{}}
 	# A supplied row count opts into the product camera's rectangular viewport.
 	# Legacy one-dimensional calls keep their established 25x25 safety ceiling.
@@ -3262,12 +3296,13 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 	var viewport_bounds:=Rect2i(viewport_origin,
 		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
 		else Vector2i(count,rows))
-	return {"grid":_party_rich_observation(context,viewport_bounds,viewport_origin,
-		count*rows),
-		# The product HUD keeps its minimap closed during ordinary movement and
-		# combat. Let those hot paths omit the full explored-world projection;
-		# callers that render or test the minimap retain the default contract.
-		"minimap":_party_minimap_observation(context) if include_minimap else {}}
+	var _pg:=PerfProbeScript.begin()
+	var grid_dto:Dictionary=_party_rich_observation(context,viewport_bounds,viewport_origin,count*rows,omit_unseen)
+	PerfProbeScript.end("obs.rich",_pg)
+	var _pn:=PerfProbeScript.begin()
+	var minimap_dto:Dictionary=_party_minimap_observation(context) if include_minimap else {}
+	PerfProbeScript.end("obs.minimap",_pn)
+	return {"grid":grid_dto,"minimap":minimap_dto}
 
 
 func _party_observation_context()->Dictionary:
@@ -3280,27 +3315,37 @@ func _party_observation_context()->Dictionary:
 		and str(status.safe_phase) in ["GROUPED", "GROUPED_COMPLETE"]
 	var hero_position := Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
+	var _pvis:=PerfProbeScript.begin()
 	var visible: Dictionary = _presentation_visible_cells(hero_position)
+	PerfProbeScript.end("ctx.visible",_pvis)
 	# The controlled actor is always a valid presentation anchor. Keep this
 	# explicit so grouped followers can safely fall back to the hero cell even if
 	# a future LOS implementation accidentally omits its origin.
 	visible[_position_key(hero_position)] = true
+	var _pexp:=PerfProbeScript.begin()
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
 		hero_position)
 	var visited:Dictionary=(_explored_presentation_cache.get("visited",{}) as Dictionary) \
 		.duplicate(true)
+	PerfProbeScript.end("ctx.explored",_pexp)
+	var _pfol:=PerfProbeScript.begin()
 	var follower_positions := _grouped_follower_display_positions(visible)
+	PerfProbeScript.end("ctx.followers",_pfol)
+	var _pgi:=PerfProbeScript.begin()
 	var ground_items_by_cell:Dictionary={}
 	for ground_row in sim.world.item_state.ground_items.rows:
 		var ground_key:=_position_key(ground_row.position)
 		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
 		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
+	PerfProbeScript.end("ctx.ground_items",_pgi)
+	var _pbl:=PerfProbeScript.begin()
 	var monster_blood_by_cell:Dictionary={}
 	var enemy_ids:Array=_current_floor_enemy_ids()
 	for event in sim.world.events:
 		if str(event.type)!="entity.died" or int(event.target_id) not in enemy_ids:continue
 		if sim.world.in_bounds(event.position):
 			monster_blood_by_cell[_position_key(event.position)]=true
+	PerfProbeScript.end("ctx.blood_scan",_pbl)
 	var followers_by_cell: Dictionary = {}
 	for member_id_value in follower_positions:
 		var member_id := int(member_id_value)
@@ -3329,7 +3374,7 @@ func _wall_borders_visible_floor(position:Vector2i,visible:Dictionary)->bool:
 
 
 func _party_rich_observation(context:Dictionary,bounds:Rect2i,
-		grid_origin:Vector2i,mapping_capacity:int=225)->Dictionary:
+		grid_origin:Vector2i,mapping_capacity:int=225,omit_unseen:bool=false)->Dictionary:
 	var status:Dictionary=context.status
 	var progress:Dictionary=context.progress
 	var visible:Dictionary=context.visible
@@ -3372,6 +3417,9 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					and _wall_borders_visible_floor(position, visible):
 				visibility_state = "VISIBLE"
 			if visibility_state == "UNSEEN":
+				# The product grid treats an absent row as UNSEEN; its hot paths skip
+				# materializing fog rows (roughly half the viewport on a fresh floor).
+				if omit_unseen:continue
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
 					"effective_conductivity":0, "ground_mark_id":"",
@@ -3687,6 +3735,15 @@ func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) 
 	var facing: Vector2i = state.facing
 	if facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
 		facing = Vector2i.RIGHT
+	var follower_ids: Array = []
+	for member_id_value in state.party_member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		if member_id != sim.world.party_control_actor_id() and member != null \
+				and member.presence == "GROUPED" and sim.world.occupies_tile(member_id):
+			follower_ids.append(member_id)
+	# A solo party has nobody to place; skip the whole-roster occupancy scan.
+	if follower_ids.is_empty():return result
 	var used := {_position_key(anchor):true}
 	# Presentation followers should avoid every authoritative occupant when a
 	# distinct visible cell exists. Their logical position and occupancy remain
@@ -3695,13 +3752,6 @@ func _grouped_follower_display_positions(presentation_visible: Dictionary = {}) 
 		var entity_id := int(entity_id_value)
 		if sim.world.occupies_tile(entity_id):
 			used[_position_key(sim.world.entities[entity_id].position)] = true
-	var follower_ids: Array = []
-	for member_id_value in state.party_member_ids:
-		var member_id := int(member_id_value)
-		var member = state.member(member_id)
-		if member_id != sim.world.party_control_actor_id() and member != null \
-				and member.presence == "GROUPED" and sim.world.occupies_tile(member_id):
-			follower_ids.append(member_id)
 	follower_ids.sort_custom(func(a, b):
 		var member_a = state.member(int(a)); var member_b = state.member(int(b))
 		return int(member_a.roster_slot) < int(member_b.roster_slot) \
@@ -3808,6 +3858,18 @@ func _protagonist_equipment_visual()->Dictionary:
 
 
 func _entity_equipment_visual(entity_id:int)->Dictionary:
+	# Paper-doll layers depend only on the actor's equipment; ~0.9ms per actor
+	# per observation, so reuse until the item state swaps.
+	var item_state=sim.world.item_state if sim!=null and sim.world!=null else null
+	var key:="%d|%d|%d"%[entity_id,int(item_state.get_instance_id()) if item_state!=null else 0,
+		int(item_state.revision) if item_state!=null else -1]
+	if str(_equipment_visual_cache.get("key_%d"%entity_id,""))==key:
+		return (_equipment_visual_cache["dto_%d"%entity_id] as Dictionary).duplicate(true)
+	var built:Dictionary=_build_entity_equipment_visual(entity_id)
+	_equipment_visual_cache["key_%d"%entity_id]=key;_equipment_visual_cache["dto_%d"%entity_id]=built
+	return built.duplicate(true)
+
+func _build_entity_equipment_visual(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
 		return {"weapon_id":"UNARMED_STRIKE","weapon_definition_id":"",
 			"armor_definition_id":"","off_hand_definition_id":""}.duplicate(true)
@@ -3837,21 +3899,30 @@ func party_cards() -> Array[Dictionary]:
 		var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 		var exposure := {"applicable": false, "sampled_step_index": sim.world.step_index, "sampled_world_time": sim.world.world_time,
 			"position": [-1,-1], "fire_score": 0, "water_score": 0, "electric_score": 0, "poison_score": 0, "total_risk": 0}
+		var _pex:=PerfProbeScript.begin()
 		if member.presence in ["DEPLOYED", "GROUPED"] and sim.world.is_environment_exposed(member_id):
 			var evaluated = sim.evaluate_exposure_for_entity(member_id, logical); var wire: Dictionary = evaluated.evaluation.to_dict()
 			exposure = {"applicable": true, "sampled_step_index": int(wire.sampled_step_index), "sampled_world_time": int(wire.sampled_world_time),
 				"position": wire.position, "fire_score": wire.fire_score, "water_score": wire.water_score, "electric_score": wire.electric_score,
 				"poison_score": wire.poison_score, "total_risk": wire.total_risk}
+		PerfProbeScript.end("cards.exposure",_pex)
 		var expected_action = null if _protagonist_placeholder \
 				and member.role == "PROTAGONIST" \
 			else _action_presentation(preview_by_actor.get(member_id, null))
 		var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
+		var _pem:=PerfProbeScript.begin()
 		var emotion := _emotion_presentation(member, entity)
+		PerfProbeScript.end("cards.emotion",_pem)
 		var override_state := "PENDING"
 		if expected_action != null: override_state = str(expected_action.source)
 		elif member.role == "PROTAGONIST":
 			override_state = "PENDING" if _protagonist_placeholder else "DIRECT"
+		var _ppg:=PerfProbeScript.begin()
 		var progression:=protagonist_progression() if member.role=="PROTAGONIST" else {}
+		PerfProbeScript.end("cards.progression",_ppg)
+		var _pmem:=PerfProbeScript.begin()
+		var memory_dto:Dictionary=_memory_presentation(member)
+		PerfProbeScript.end("cards.memory",_pmem)
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"species_id":str(entity.species_id),
@@ -3861,7 +3932,7 @@ func party_cards() -> Array[Dictionary]:
 			"stress_band_label":PartyMoraleModelScript.stress_band_label(
 				PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode))),
 			"readiness": readiness,
-			"emotion": emotion, "memory":_memory_presentation(member),
+			"emotion": emotion, "memory":memory_dto,
 			"override_state": override_state,"progression":progression,
 			"expected_action": expected_action})
 	return rows.duplicate(true)
@@ -6247,22 +6318,32 @@ func _commit_exploration_one(command, preserve_route: bool,
 		return _rejection_dto("snapshot_unavailable")
 	# This transaction always validates the post-step world in its recovery tail.
 	# Capture a settled rollback image without paying that full history scan twice.
+	var _pm:=PerfProbeScript.begin()
 	var rollback_memento:Variant=sim.capture_rollback_memento(false)
+	PerfProbeScript.end("session.memento",_pm)
 	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var event_start:int=sim.world.events.size()
+	var _ps:=PerfProbeScript.begin()
 	var result = sim.step(command,rollback_memento)
+	PerfProbeScript.end("sim.step",_ps)
 	if result.accepted:
+		var _pr:=PerfProbeScript.begin()
 		var recovery:=_apply_safe_exploration_recovery(event_start)
+		PerfProbeScript.end("session.recovery",_pr)
 		if not bool(recovery.accepted):
 			if not sim.restore_rollback_memento(rollback_memento):
 				return _rejection_dto("rollback_restore_failed")
 			return _rejection_dto(str(recovery.reason))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
+		var _px:=PerfProbeScript.begin()
 		_advance_exile_world()
+		PerfProbeScript.end("session.exile",_px)
 		command_journal.append({"kind":"exploration", "command":command.to_dict()})
 	_clear_draft()
 	if not preserve_route: _exploration_route.cancel_for_direct_command()
+	var _pd:=PerfProbeScript.begin()
 	var dto:Dictionary=_result_dto(result,null,null,_exploration_context(command))
+	PerfProbeScript.end("session.result_dto",_pd)
 	if bool(result.accepted) and command!=null \
 			and int(command.type)==int(CommandScript.Type.MOVE):
 		var ground_items:Array[Dictionary]=ground_items_at_protagonist()

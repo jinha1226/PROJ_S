@@ -2,6 +2,7 @@ class_name PartyMoraleSystem
 extends RefCounted
 
 const ModelScript = preload("res://sim/party_morale_model.gd")
+const PerfProbeScript = preload("res://sim/perf_probe.gd")
 
 
 static func commit_batch(world, event_rows: Array, allow_idle_recovery: bool = true) -> bool:
@@ -18,7 +19,9 @@ static func commit_batch(world, event_rows: Array, allow_idle_recovery: bool = t
 		var member = world.party_encounter.member(int(member_id))
 		if member != null:
 			previous_modes[int(member_id)] = str(member.mental_mode)
+	var _pme:=PerfProbeScript.begin()
 	var projection: Dictionary = ModelScript.evaluate(world, event_rows, previous_modes)
+	PerfProbeScript.end("morale.evaluate",_pme)
 	var cause_id := int(source_ids.back()) if not source_ids.is_empty() else -1
 	var source_wire: Array[String] = []
 	for source_id in source_ids:

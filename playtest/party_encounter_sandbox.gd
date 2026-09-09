@@ -1,5 +1,6 @@
 class_name PartyEncounterSandbox
 extends Control
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
 const CONTINUOUS_EXPLORATION_MOTION_MSEC := 110
@@ -1874,7 +1875,7 @@ func _refresh()->void:
 	var view_dimensions:=_current_grid_view_dimensions()
 	var view_cell_count:=view_dimensions.x
 	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
-		view_dimensions.y)
+		view_dimensions.y,true)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	_decorate_visible_resource_caches(observation)
 	var direct_solo_combat:=_is_direct_solo_combat(status)
@@ -2012,25 +2013,44 @@ func _refresh_individual_battle_surface()->void:
 	# interrupted gestures, layout and animation after every old party batch.
 	var status:Dictionary=session.party_status()
 	var dimensions:=_current_grid_view_dimensions()
-	var observation:Dictionary=session.observe_party_ui(dimensions.x,true,dimensions.y)
+	var _bo:=PerfProbeScript.begin()
+	var observation:Dictionary=session.observe_party_ui(dimensions.x,true,dimensions.y,true)
+	PerfProbeScript.end("bs.observe",_bo)
+	var _bg:=PerfProbeScript.begin()
 	grid.set_observation(observation.get("grid",{}),[])
+	PerfProbeScript.end("bs.grid_set",_bg)
+	var _bm:=PerfProbeScript.begin()
 	minimap.set_observation(observation.get("minimap",{}))
+	PerfProbeScript.end("bs.minimap",_bm)
 	var position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
+	var _bc:=PerfProbeScript.begin()
 	grid.set_hero_centered_view(position,dimensions.x,int(status.protagonist_id),
 		MANUAL_CAMERA_SETTLE_MSEC,dimensions.y)
 	grid.set_intent_overlays([])
 	_update_expedition_hud(true,status)
-	_update_stable_party_cards(session.party_cards())
+	PerfProbeScript.end("bs.camera_hud",_bc)
+	var _bp:=PerfProbeScript.begin()
+	var battle_rows:Array=session.party_cards()
+	PerfProbeScript.end("bs.party_cards",_bp)
+	var _bu:=PerfProbeScript.begin()
+	_update_stable_party_cards(battle_rows)
+	PerfProbeScript.end("bs.cards_update",_bu)
+	var _bk:=PerfProbeScript.begin()
 	for id in session.sim.world.party_encounter.active_party_member_ids:
 		var stack:=cards.find_child("BattleMember%d"%id,true,false)
 		if stack!=null and stack.get_child_count()>0:
 			stack.get_child(0).update_rows(id,session.active_skill_rows(id))
+	PerfProbeScript.end("bs.skill_rows",_bk)
+	var _bl:=PerfProbeScript.begin()
 	var history:Dictionary=session.combat_log(8,80)
 	_update_recent_event(history,status)
 	event_label.text=_compact_meaningful_event_text(history,status)
 	if not _product_transient_event_feedback.is_empty():
 		event_label.text=_product_transient_event_feedback;_product_transient_event_feedback=""
+	PerfProbeScript.end("bs.log",_bl)
+	var _bf:=PerfProbeScript.begin()
 	_flush_pending_visual_effects()
+	PerfProbeScript.end("bs.effects",_bf)
 
 func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 	# The stable one-member combat shell does not need to destroy and recreate
@@ -2105,16 +2125,25 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var view_dimensions:=_current_grid_view_dimensions()
 	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
+	var _po:=PerfProbeScript.begin()
 	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
-		view_dimensions.y) if product_hud else session.observe_party_ui(view_cell_count)
+		view_dimensions.y,true) if product_hud else session.observe_party_ui(view_cell_count)
+	PerfProbeScript.end("ui.observe",_po)
 	var observe_finished_usec:=Time.get_ticks_usec()
+	var _pg:=PerfProbeScript.begin()
 	grid.set_observation(ui_observation.get("grid",{}),[])
+	PerfProbeScript.end("ui.grid_set",_pg)
+	var _pmm:=PerfProbeScript.begin()
 	minimap.set_observation(ui_observation.get("minimap",{}))
+	PerfProbeScript.end("ui.minimap",_pmm)
+	var _ph:=PerfProbeScript.begin()
 	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
 		product_hud)
+	PerfProbeScript.end("ui.hud_npc",_ph)
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),
 		int(status.protagonist_position[1]))
+	var _pcam:=PerfProbeScript.begin()
 	if product_hud:
 		grid.set_hero_centered_view(hero_position,view_cell_count,int(status.protagonist_id),
 			CONTINUOUS_CAMERA_SETTLE_MSEC if continuous_motion \
@@ -2123,6 +2152,8 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
 	grid.set_speech_bubbles(session.world_speech_bubbles() \
 		if session.has_method("world_speech_bubbles") else [])
+	PerfProbeScript.end("ui.camera_speech",_pcam)
+	var _prt:=PerfProbeScript.begin()
 	var route_state:Dictionary=session.exploration_route_state()
 	if bool(route_state.get("has_preview",false)) \
 			and not bool(route_state.get("completed",false)) \
@@ -2132,11 +2163,19 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	else:
 		route_preview.clear();grid.clear_route_overlay();grid.clear_cursor_preview()
 		_clear_companion_follow_plan()
+	PerfProbeScript.end("ui.route",_prt)
 	var grid_finished_usec:=Time.get_ticks_usec()
-	_update_stable_party_cards(session.party_cards())
+	var _ppc:=PerfProbeScript.begin()
+	var party_rows:Array=session.party_cards()
+	PerfProbeScript.end("ui.party_cards",_ppc)
+	var _pcu:=PerfProbeScript.begin()
+	_update_stable_party_cards(party_rows)
+	PerfProbeScript.end("ui.cards_update",_pcu)
+	var _plg:=PerfProbeScript.begin()
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	_update_recent_event(combat_history,status)
+	PerfProbeScript.end("ui.log",_plg)
 	if product_hud:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
 		if not _product_transient_event_feedback.is_empty():
@@ -6146,9 +6185,15 @@ func _settle_solo_product_contact()->void:
 	auto_phase=str(session.party_status().get("safe_phase",""))
 
 func _flush_pending_visual_effects()->int:
+	var _pfp:=PerfProbeScript.begin()
 	battle_command_flow.paint(self)
+	PerfProbeScript.end("fx.paint",_pfp)
+	var _pfs:=PerfProbeScript.begin()
 	if battle_enemy_strip!=null:battle_enemy_strip.sync(self)
+	PerfProbeScript.end("fx.enemy_strip",_pfs)
+	var _pft:=PerfProbeScript.begin()
 	if battle_timeline_controller!=null:battle_timeline_controller.sync()
+	PerfProbeScript.end("fx.timeline",_pft)
 	if grid==null or _pending_visual_effect_rows.is_empty():return 0
 	var rows:Array=_pending_visual_effect_rows.duplicate(true)
 	_pending_visual_effect_rows.clear()

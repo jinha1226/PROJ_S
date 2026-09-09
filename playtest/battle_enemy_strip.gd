@@ -15,16 +15,25 @@ func _init()->void:
 	row=HBoxContainer.new();row.add_theme_constant_override("separation",4)
 	add_child(row)
 
+var _last_signature:Array=[]
+
 func sync(host)->void:
 	visible=host._portrait_battle_controls_visible()
 	host.event_surface.get_node("EventSurfaceInset").visible=not visible
 	if not visible:return
 	var world=host.session.sim.world
 	var ids:Array=[]
+	var signature:Array=[]
 	for enemy in host.session.enemy_targets():
 		ids.append(int(enemy.entity_id))
+		signature.append([int(enemy.entity_id),int(enemy.health),int(enemy.max_health),bool(enemy.alive)])
 	ids.sort()
 	var held:bool=host.battle_drag!=null and host.battle_drag.active
+	# Rebuilding icons/text for every enemy on every battle event cost ~1.5ms;
+	# only the visible roster, its vitals, the hover and the drag state matter.
+	signature.append([held,hovered_id,hover_valid])
+	if signature==_last_signature:return
+	_last_signature=signature
 	if not held:
 		for child in row.get_children():
 			if int(child.get_meta("entity_id")) not in ids:

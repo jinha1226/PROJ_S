@@ -1,5 +1,6 @@
 class_name LivingWorldSimulator
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EnvironmentSystemScript = preload("res://sim/systems/environment_system.gd")
 const DamageSystemScript = preload("res://sim/systems/damage_system.gd")
@@ -71,7 +72,9 @@ func preview(command):
 
 
 func step(command, supplied_rollback_memento: Variant = null):
+	var _pp:=PerfProbeScript.begin()
 	var plan: Dictionary = _plan_action(command)
+	PerfProbeScript.end("step.plan",_pp)
 	if not plan["accepted"]:
 		return StepResultScript.new(false, false, plan["reason"], [], {
 			"processed_step_index": -1,
@@ -95,8 +98,13 @@ func step(command, supplied_rollback_memento: Variant = null):
 	var start_time: int = plan["start_time"]
 	var end_time: int = plan["end_time"]
 	world.begin_step(processed_step_index)
+	var _pr:=PerfProbeScript.begin()
 	var root_event = _resolve_command(command, plan, processed_step_index)
-	if root_event == null or (world.party_encounter != null and not party_coordinator.reconcile_liveness()):
+	PerfProbeScript.end("step.resolve",_pr)
+	var _pl:=PerfProbeScript.begin()
+	var _liveness_ok:bool=root_event!=null and (world.party_encounter==null or party_coordinator.reconcile_liveness())
+	PerfProbeScript.end("step.liveness",_pl)
+	if not _liveness_ok:
 		var failed_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		if failed_restore != null:
 			world = failed_restore
@@ -107,6 +115,8 @@ func step(command, supplied_rollback_memento: Variant = null):
 		party_state.group_anchor = world.entities[world.party_control_actor_id()].position
 		for member_id in party_state.party_member_ids:
 			if party_state.member(member_id).presence == "GROUPED": world.entities[member_id].position = party_state.group_anchor
+	var _psys:=PerfProbeScript.begin()
+	var _ps_emotion:=PerfProbeScript.begin()
 	if world.party_encounter != null \
 			and not PartyEmotionSystemScript.commit_batch(world,
 				world.events_since(event_start)):
@@ -115,6 +125,8 @@ func step(command, supplied_rollback_memento: Variant = null):
 			world = emotion_restore
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "party_emotion_failed")
+	PerfProbeScript.end("sys.emotion",_ps_emotion)
+	var _ps_memory:=PerfProbeScript.begin()
 	if world.party_encounter != null \
 			and not PartyMemorySystemScript.commit_batch(world,
 				world.events_since(event_start)):
@@ -123,6 +135,8 @@ func step(command, supplied_rollback_memento: Variant = null):
 			world = memory_restore
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "party_memory_failed")
+	PerfProbeScript.end("sys.memory",_ps_memory)
+	var _ps_relationship:=PerfProbeScript.begin()
 	if world.party_encounter != null \
 			and not PartyRelationshipSystemScript.commit_batch(world,
 				world.events_since(event_start)):
@@ -131,6 +145,8 @@ func step(command, supplied_rollback_memento: Variant = null):
 			world = relationship_restore
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "party_relationship_failed")
+	PerfProbeScript.end("sys.relationship",_ps_relationship)
+	var _ps_morale:=PerfProbeScript.begin()
 	if world.party_encounter != null \
 			and not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start)):
 		var morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
@@ -138,6 +154,8 @@ func step(command, supplied_rollback_memento: Variant = null):
 			world = morale_restore
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "party_morale_failed")
+	PerfProbeScript.end("sys.morale",_ps_morale)
+	PerfProbeScript.end("step.systems",_psys)
 	var immediate_ids: Array[int] = []
 	for index in range(event_start, world.events.size()):
 		immediate_ids.append(world.events[index].id)
@@ -156,7 +174,10 @@ func step(command, supplied_rollback_memento: Variant = null):
 			and marker["schedule_id"] == entry["schedule_id"], "Preview/actual schedule mismatch")
 		var tick_event_start: int = world.events.size()
 		var schedule_id_before: int = world.next_schedule_id
-		if not _dispatch_schedule(entry, processed_step_index):
+		var _pt:=PerfProbeScript.begin()
+		var _dispatched:bool=_dispatch_schedule(entry, processed_step_index)
+		PerfProbeScript.end("step.dispatch."+str(entry["kind"]),_pt)
+		if not _dispatched:
 			var restored = WorldStateScript.from_rollback_memento(rollback_memento)
 			assert(restored != null, "Validated pre-step snapshot must restore")
 			world = restored
@@ -209,7 +230,10 @@ func step(command, supplied_rollback_memento: Variant = null):
 	# Live turns use a bounded tail/surface postcondition. Full ledger validation
 	# remains mandatory at save/load/restore boundaries; re-running it here made
 	# append-only exploration slower as the journal grew.
-	if not world.runtime_step_postcondition_error(event_start).is_empty():
+	var _ppc:=PerfProbeScript.begin()
+	var _postcondition_error:String=world.runtime_step_postcondition_error(event_start)
+	PerfProbeScript.end("step.postcondition",_ppc)
+	if not _postcondition_error.is_empty():
 		var semantic_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		assert(semantic_restore != null, "Validated pre-step memento must restore")
 		world = semantic_restore
@@ -1069,17 +1093,26 @@ func _dispatch_schedule(entry: Dictionary, processed_step_index: int,
 					and party_coordinator.fail_point != "after_environment_tick"
 			return true
 		"system.actor_tick":
+			var _pfz:=PerfProbeScript.begin()
 			var tick_start_can_act_ids = status_lifecycle.freeze_tick_start_can_act_ids(
 				int(entry.due_time))
-			if not tick_start_can_act_ids is Dictionary \
-					or not status_lifecycle.process_actor_occurrence(processed_step_index,
-						tick_start_can_act_ids):
-				return false
-			if world.party_encounter!=null and not preload("res://sim/systems/independent_explorer_system.gd").process_tick(self,processed_step_index):return false
+			PerfProbeScript.end("actor.freeze_can_act",_pfz)
+			var _pfo:=PerfProbeScript.begin()
+			var _lifecycle_ok:bool=tick_start_can_act_ids is Dictionary \
+					and status_lifecycle.process_actor_occurrence(processed_step_index,
+						tick_start_can_act_ids)
+			PerfProbeScript.end("actor.lifecycle",_pfo)
+			if not _lifecycle_ok:return false
+			var _pie:=PerfProbeScript.begin()
+			var _independent_ok:bool=world.party_encounter==null or preload("res://sim/systems/independent_explorer_system.gd").process_tick(self,processed_step_index)
+			PerfProbeScript.end("actor.independent",_pie)
+			if not _independent_ok:return false
 			if individual_battle and world.party_encounter!=null:
-				return party_coordinator.RationSystemScript.process_tick(world,damage,processed_step_index) \
-					and party_coordinator._update_enemy_awareness_batch(processed_step_index) \
-					and party_coordinator.reconcile_liveness(allow_party_victory)
+				var _paw:=PerfProbeScript.begin()
+				var _batch_ok:bool=party_coordinator.RationSystemScript.process_tick(world,damage,processed_step_index) \
+					and party_coordinator._update_enemy_awareness_batch(processed_step_index)
+				PerfProbeScript.end("actor.awareness_ration",_paw)
+				return _batch_ok and party_coordinator.reconcile_liveness(allow_party_victory)
 			if world.encounter_lab != null: return actor_coordinator.process_tick(processed_step_index,
 				int(entry.schedule_id), int(entry.due_time), tick_start_can_act_ids)
 			if world.party_encounter != null: return party_coordinator.process_tick(processed_step_index,

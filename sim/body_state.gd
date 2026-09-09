@@ -21,6 +21,11 @@ var current_blood:int=0
 var shock:int=0
 var consciousness:int=1000
 var revision:int=0
+# Serialized-row memo. Every mutation bumps `revision`, and the rollback
+# memento serializes every body each hop (~3.5ms for 88 bodies), so reuse the
+# last row while the revision is unchanged. Callers receive a deep copy.
+var _row_cache:Dictionary={}
+var _row_cache_revision:int=-1
 
 
 static func create(p_entity_id:int,p_species_id:String,p_body_seed:int):
@@ -45,13 +50,22 @@ static func create(p_entity_id:int,p_species_id:String,p_body_seed:int):
 	return value if value.validation_error().is_empty() else null
 
 
+static var _world_body_seed_cache:Dictionary={}
+
 static func world_body_seed(world_seed:int,p_entity_id:int,p_species_id:String)->int:
 	# Body variation is identity-derived. Entity creation must not consume the
 	# world's command RNG or make later combat rolls depend on roster creation.
-	var digest:PackedByteArray=("body-world-v1|world=%d|entity=%d|species=%s"%[
-		world_seed,p_entity_id,p_species_id]).sha256_buffer()
-	return ((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
+	# The step postcondition recomputes this for every entity, so memoize the
+	# pure digest (a sha256 per entity per hop was ~1.4ms on a 100-entity floor).
+	var key:="body-world-v1|world=%d|entity=%d|species=%s"%[world_seed,p_entity_id,p_species_id]
+	var cached:Variant=_world_body_seed_cache.get(key)
+	if cached is int:return cached
+	var digest:PackedByteArray=key.sha256_buffer()
+	var value:int=((int(digest[0])&0x7f)<<24)|(int(digest[1])<<16) \
 		|(int(digest[2])<<8)|int(digest[3])
+	if _world_body_seed_cache.size()>4096:_world_body_seed_cache.clear()
+	_world_body_seed_cache[key]=value
+	return value
 
 
 func validation_error()->String:
@@ -125,6 +139,26 @@ func validation_error()->String:
 
 
 func to_dict()->Dictionary:
+	if _row_cache_revision==revision and not _row_cache.is_empty() \
+			and int(_row_cache.get("current_blood",-1))==current_blood \
+			and int(_row_cache.get("shock",-1))==shock \
+			and int(_row_cache.get("consciousness",-1))==consciousness:
+		return _row_cache.duplicate(true)
+	var built:Dictionary=_build_dict()
+	_row_cache=built;_row_cache_revision=revision
+	return built.duplicate(true)
+
+func shared_row()->Dictionary:
+	# Read-only view for the rollback memento: from_dict rebuilds fresh arrays,
+	# so restoring from a shared row never aliases this body's mutable state.
+	if _row_cache_revision!=revision or _row_cache.is_empty() \
+			or int(_row_cache.get("current_blood",-1))!=current_blood \
+			or int(_row_cache.get("shock",-1))!=shock \
+			or int(_row_cache.get("consciousness",-1))!=consciousness:
+		_row_cache=_build_dict();_row_cache_revision=revision
+	return _row_cache
+
+func _build_dict()->Dictionary:
 	var part_rows:Array=[]
 	for part in parts:
 		var layer_rows:Array=[]

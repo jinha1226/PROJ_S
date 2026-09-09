@@ -1,5 +1,6 @@
 class_name PartyEncounterCoordinator
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const ActionScript = preload("res://sim/party_action_command.gd")
 const RequestScript = preload("res://sim/party_turn_request.gd")
@@ -51,18 +52,35 @@ func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: i
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
 	if world.party_encounter == null: return true
-	if not reconcile_liveness(allow_victory): return false
-	if not RationSystemScript.process_tick(world, damage, processed_step_index): return false
+	var _pl:=PerfProbeScript.begin()
+	var liveness_ok:bool=reconcile_liveness(allow_victory)
+	PerfProbeScript.end("tick.liveness",_pl)
+	if not liveness_ok: return false
+	var _pr:=PerfProbeScript.begin()
+	var ration_ok:bool=RationSystemScript.process_tick(world, damage, processed_step_index)
+	PerfProbeScript.end("tick.ration",_pr)
+	if not ration_ok: return false
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
-		if opening_event != null and not opening_event.process_tick(
-				processed_step_index, tick_start_can_act_ids): return false
-		if encounter.safe_phase == "GROUPED": return _exploration_enemy_cadence(
-			processed_step_index,actor_schedule_id,due_time,tick_start_can_act_ids)
+		var _po:=PerfProbeScript.begin()
+		var opening_ok:bool=opening_event == null or opening_event.process_tick(
+				processed_step_index, tick_start_can_act_ids)
+		PerfProbeScript.end("tick.opening",_po)
+		if not opening_ok: return false
+		if encounter.safe_phase == "GROUPED":
+			var _pc:=PerfProbeScript.begin()
+			var cadence_ok:bool=_exploration_enemy_cadence(
+				processed_step_index,actor_schedule_id,due_time,tick_start_can_act_ids)
+			PerfProbeScript.end("tick.cadence",_pc)
+			return cadence_ok
 		return true
-	if encounter.safe_phase == "ENGAGED": return _enemy_batch(processed_step_index,
-		actor_schedule_id, due_time, tick_start_can_act_ids, allow_victory)
+	if encounter.safe_phase == "ENGAGED":
+		var _pb:=PerfProbeScript.begin()
+		var batch_ok:bool=_enemy_batch(processed_step_index,
+			actor_schedule_id, due_time, tick_start_can_act_ids, allow_victory)
+		PerfProbeScript.end("tick.enemy_batch",_pb)
+		return batch_ok
 	return true
 
 func reconcile_liveness(allow_victory: bool = true) -> bool:
@@ -235,10 +253,15 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 		due_time:int,tick_start_can_act_ids:Dictionary)->bool:
 	# Preserve the established contact boundary: actors already in detection range
 	# make contact before any patrol movement. Only a still-GROUPED world patrols.
-	if not _update_enemy_awareness_batch(processed_step_index):return false
-	if not _detect_contact(processed_step_index,actor_schedule_id,due_time,
-			tick_start_can_act_ids):
-		return false
+	var _pa:=PerfProbeScript.begin()
+	var awareness_ok:bool=_update_enemy_awareness_batch(processed_step_index)
+	PerfProbeScript.end("cadence.awareness",_pa)
+	if not awareness_ok:return false
+	var _pd:=PerfProbeScript.begin()
+	var contact_ok:bool=_detect_contact(processed_step_index,actor_schedule_id,due_time,
+			tick_start_can_act_ids)
+	PerfProbeScript.end("cadence.contact",_pd)
+	if not contact_ok:return false
 	var state=world.party_encounter
 	if state.safe_phase!="GROUPED":return true
 	# The current product slice is explicitly solo. Legacy party SHOWCASE and

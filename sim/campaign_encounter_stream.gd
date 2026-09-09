@@ -14,6 +14,32 @@ static func current_floor_enemy_ids(world)->Array[int]:
 	var state=world.party_encounter
 	var cycle=state.expedition_cycle
 	if cycle==null:return state.enemy_ids.duplicate()
+	# Floor/expedition tags are fixed at spawn, so the scope only changes when the
+	# cycle or the enemy roster does. can_act() asked this per entity per tick,
+	# which made every actor tick O(enemies x roster) on a 72-enemy floor.
+	var scope_key:="%d|%d|%s|%d|%d"%[int(cycle.floor_index),int(cycle.expedition_index),
+		str(cycle.phase),state.enemy_ids.size(),world.entities.size()]
+	if str(world._floor_enemy_scope_cache.get("key",""))==scope_key:
+		return (world._floor_enemy_scope_cache.ids as Array[int]).duplicate()
+	var computed:Array[int]=_compute_current_floor_enemy_ids(world,state,cycle)
+	world._floor_enemy_scope_cache={"key":scope_key,"ids":computed,
+		"set":_id_set(computed)}
+	return computed.duplicate()
+
+static func current_floor_enemy_set(world)->Dictionary:
+	# Membership view of current_floor_enemy_ids for hot predicates.
+	if world==null or world.party_encounter==null:return {}
+	current_floor_enemy_ids(world)
+	return world._floor_enemy_scope_cache.get("set",{}) if world.party_encounter.expedition_cycle!=null \
+		else _id_set(world.party_encounter.enemy_ids)
+
+static func _id_set(ids:Array)->Dictionary:
+	var result:Dictionary={}
+	for id in ids:result[int(id)]=true
+	return result
+
+static func _compute_current_floor_enemy_ids(world,state,cycle)->Array[int]:
+	var result:Array[int]=[]
 	var floor_tag:=FLOOR_TAG_PREFIX+str(int(cycle.floor_index))
 	var expedition_tag:=EXPEDITION_TAG_PREFIX+str(int(cycle.expedition_index))
 	for enemy_id_value in state.enemy_ids:

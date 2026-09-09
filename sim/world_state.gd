@@ -1,5 +1,6 @@
 class_name SimWorldState
 extends RefCounted
+const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const SNAPSHOT_VERSION := 11
 const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
@@ -112,6 +113,12 @@ var _active_step_index: int = -1
 # bootstrap-only.  Rollback still records every dynamic tile scalar, but keeps
 # this immutable portion in a packed copy-on-write template so a 96x96 turn
 # does not rebuild the dungeon topology merely to establish an atomic boundary.
+# Revision of the party wire last audited by the incremental step postcondition.
+var _postcondition_party_revision:int=-1
+# Memo for CampaignEncounterStream.current_floor_enemy_ids (never serialized).
+var _floor_enemy_scope_cache:Dictionary={}
+var _expected_body_identity_cache:Dictionary={}
+var _item_rows_cache:Dictionary={}
 var _rollback_tile_terrain_cache := PackedStringArray()
 # Fire/wetness occupy only a handful of cells in the product dungeon. Keep a
 # canonical sparse index after the audited bootstrap/restore boundary so live
@@ -560,8 +567,8 @@ func _party_member_is_detached(entity_id: int) -> bool:
 		var in_town:=party_encounter!=null \
 				and party_encounter.expedition_cycle!=null \
 				and str(party_encounter.expedition_cycle.phase)=="TOWN"
-		if campaign_tagged and (in_town or entity_id not in \
-				CampaignEncounterStreamScript.current_floor_enemy_ids(self)):
+		if campaign_tagged and (in_town or not \
+				CampaignEncounterStreamScript.current_floor_enemy_set(self).has(entity_id)):
 			return true
 	return false
 
@@ -954,7 +961,7 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 	for entity_id in combatant_ids: combatant_rows.append(combatant_states[entity_id].to_dict())
 	var body_rows:Array=[]
 	var body_ids:Array=body_states.keys();body_ids.sort()
-	for entity_id in body_ids:body_rows.append(body_states[entity_id].to_dict())
+	for entity_id in body_ids:body_rows.append(body_states[entity_id].shared_row())
 	var schedule_rows: Array = []
 	for entry in scheduled_entries: schedule_rows.append(_schedule_to_dict(entry))
 	var memento:={
@@ -990,6 +997,11 @@ func _rollback_item_rows() -> Dictionary:
 	# Inventories are as sparse as dynamic tiles: a product dungeon roster of ~14
 	# entities normally has exactly one owner. Serialize only the rows that hold
 	# something so memento capture scales with owners, never with the roster.
+	# Every item transaction swaps in a new WorldItemState with a bumped
+	# revision, so the serialized rows can be reused until that happens.
+	var item_key:="%d|%d"%[int(item_state.get_instance_id()),int(item_state.revision)]
+	if str(_item_rows_cache.get("key",""))==item_key:
+		return (_item_rows_cache.rows as Dictionary).duplicate(false)
 	var inventory_rows: Array = []
 	var entity_ids: Array = item_state.inventory_rows.keys(); entity_ids.sort()
 	for entity_id in entity_ids:
@@ -1006,12 +1018,14 @@ func _rollback_item_rows() -> Dictionary:
 	var runtime_ids: Array = item_state.weapon_runtime_rows.keys(); runtime_ids.sort()
 	for instance_id in runtime_ids:
 		runtime_rows.append(item_state.weapon_runtime_rows[instance_id].to_dict())
-	return {"item_revision": item_state.revision,
+	var item_rows:Dictionary={"item_revision": item_state.revision,
 		"item_next_instance_id": item_state.next_item_instance_id,
 		"item_inventory_rows": inventory_rows, "item_ammo_rows": ammo_rows,
 		"item_weapon_runtime_rows": runtime_rows,
 		"item_ground": item_state.ground_items.to_dict(),
 		"item_processed_death_ids": item_state.processed_drop_death_event_ids.duplicate()}
+	_item_rows_cache={"key":item_key,"rows":item_rows}
+	return item_rows.duplicate(false)
 
 
 func _restore_item_rows(value: Dictionary) -> bool:
@@ -1823,17 +1837,26 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 				and int(previous_schedule.priority) > int(entry.priority)):
 			return "runtime_schedule_order_invalid"
 		previous_schedule = entry
+	var _pdt:=PerfProbeScript.begin()
 	var dynamic_tile_error := runtime_dynamic_tiles_error()
+	PerfProbeScript.end("post.dynamic_tiles",_pdt)
 	if not dynamic_tile_error.is_empty(): return dynamic_tile_error
+	var _pent:=PerfProbeScript.begin()
 	for entity_id_value in entities:
 		var entity_id := int(entity_id_value)
 		var entity = entities[entity_id]
 		var combatant = combatant_states.get(entity_id)
 		var body=body_states.get(entity_id)
+		var expected_identity:Variant=_expected_body_identity_cache.get(entity_id)
+		if not expected_identity is Array or str(expected_identity[0])!=str(entity.species_id):
+			var expected_species:String=_body_species_id(entity.species_id)
+			expected_identity=[str(entity.species_id),expected_species,
+				BodyStateScript.world_body_seed(seed,entity_id,expected_species)]
+			_expected_body_identity_cache[entity_id]=expected_identity
 		if entity_id <= 0 or entity.id != entity_id or combatant == null \
 				or combatant.entity_id != entity_id or body==null or body.entity_id!=entity_id \
-				or body.species_id!=_body_species_id(entity.species_id) \
-				or body.body_seed!=BodyStateScript.world_body_seed(seed,entity_id,body.species_id) \
+				or body.species_id!=str(expected_identity[1]) \
+				or body.body_seed!=int(expected_identity[2]) \
 				or not in_bounds(entity.position) \
 				or entity.max_health <= 0 or entity.health < 0 \
 				or entity.health > entity.max_health:
@@ -1842,6 +1865,8 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 			return "active_health_invariant"
 		if combatant.life_state in ["DOWNED", "DEAD"] and entity.health != 0:
 			return "runtime_life_health_mismatch"
+	PerfProbeScript.end("post.entities",_pent)
+	var _pev:=PerfProbeScript.begin()
 	for index in range(event_start, events.size()):
 		var event = events[index]
 		if event == null or event.id != index + 1 or event.step_index != step_index \
@@ -1863,13 +1888,32 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 				return "runtime_event_cause_invalid"
 		var active_error:String=ActiveSkillValidationScript.event_error(self,event)
 		if not active_error.is_empty():return active_error
+	PerfProbeScript.end("post.event_tail",_pev)
 	if party_encounter != null:
-		var party_error := PartyEncounterStateScript.wire_error(party_encounter.to_dict(), width, height)
-		if not party_error.is_empty(): return party_error
+		# The party wire audit (~3ms with a 72-enemy awareness table) is only
+		# repeated when the step could have touched party authority: a revision
+		# bump, or any tail event beyond plain movement/waiting/holding.
+		# The party revision also bumps on every anchor move, so it cannot gate
+		# this; plain movement/wait/hold tails skip it and every 16th step still
+		# runs the audit unconditionally.
+		var party_touched:bool=step_index%16==0
+		if not party_touched:
+			for index in range(event_start, events.size()):
+				var tail_type:String=str(events[index].type)
+				if tail_type!="action.move" and tail_type!="action.wait" and tail_type!="action.hold":
+					party_touched=true;break
+		if party_touched:
+			var _ppw:=PerfProbeScript.begin()
+			var party_error := PartyEncounterStateScript.wire_error(party_encounter.to_dict(), width, height)
+			PerfProbeScript.end("post.party_wire",_ppw)
+			if not party_error.is_empty(): return party_error
+			_postcondition_party_revision=int(party_encounter.revision)
 		# HP is the one mutable party projection whose authority spans historical
 		# damage/restoration leaves. Keep that ledger check in the incremental seam
 		# so an out-of-band health write cannot be laundered by the next AUTO hop.
+		var _pph:=PerfProbeScript.begin()
 		var party_health_error := _party_health_restoration_error()
+		PerfProbeScript.end("post.party_health",_pph)
 		if not party_health_error.is_empty(): return party_health_error
 	return ""
 
