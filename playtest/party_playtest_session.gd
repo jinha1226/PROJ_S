@@ -131,7 +131,7 @@ const PRODUCT_ZOOM_REFERENCE_CELL_COUNT := 15
 # an odd cell count, so the protagonist remains centered on an exact grid cell.
 # Nine cells gives the existing [+] control two closer steps beyond that target.
 const PRODUCT_ZOOM_CELL_COUNTS := [9,11,13,15,17,19,21,23,25]
-const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 19
+const PRODUCT_ZOOM_DEFAULT_CELL_COUNT := 13
 const MAX_UI_VIEW_CELL_COUNT := PRODUCT_ZOOM_CELL_COUNTS[-1]
 const HEXACO_LABELS := {
 	"H":["실리적","원칙적"], "E":["대담함","섬세함"],

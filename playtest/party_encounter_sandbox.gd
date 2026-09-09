@@ -183,7 +183,7 @@ var member_detail_subtitle:Label
 var member_detail_glyph_seal
 var member_detail_scroll:ScrollContainer
 var member_detail_scroll_content:VBoxContainer
-var member_detail_tab_stash:Node
+var member_detail_tab_stash:Control
 var member_detail_body:Label
 var member_status_window:VBoxContainer
 var member_detail_tab_row:HBoxContainer
@@ -1232,7 +1232,11 @@ func _build_member_detail_modal()->void:
 	member_detail_scroll_content.size_flags_vertical=Control.SIZE_SHRINK_BEGIN
 	member_detail_scroll_content.add_theme_constant_override("separation",8)
 	member_detail_scroll.add_child(member_detail_scroll_content)
-	member_detail_tab_stash=Node.new();member_detail_tab_stash.name="MemberDetailTabStash"
+	# The stash must be a hidden Control: a plain Node breaks the CanvasItem
+	# visibility chain, so a stashed folio stayed drawn and kept swallowing map
+	# touches after the modal closed from a single-folio tab.
+	member_detail_tab_stash=Control.new();member_detail_tab_stash.name="MemberDetailTabStash"
+	member_detail_tab_stash.visible=false;member_detail_tab_stash.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	member_detail_modal.add_child(member_detail_tab_stash)
 	_build_progression_window(member_detail_scroll_content)
 	_build_item_window(member_detail_scroll_content)

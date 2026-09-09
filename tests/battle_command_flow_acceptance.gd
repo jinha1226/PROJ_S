@@ -8,8 +8,8 @@ func _run()->void:
 	var exploration_zoom:int=ui._product_zoom_cell_count
 	ui.initialize_for_headless_test(session,true);root.add_child(ui);ui.set_process(false)
 	await process_frame;await process_frame
-	_check(ui.autonomous_battle_clock.paused,"encounter starts paused")
-	_check(ui._product_zoom_cell_count<=11,"encounter zooms in")
+	_check(not ui.autonomous_battle_clock.paused,"encounter keeps running on the same screen")
+	_check_eq(ui._product_zoom_cell_count,exploration_zoom,"encounter keeps the exploration zoom")
 	var world=session.sim.world;var party=world.party_encounter
 	var actor_id:int=party.protagonist_id
 	# Inspection temporarily blocks presentation; it must not opt out of the
@@ -71,8 +71,9 @@ func _run()->void:
 	var restored:Dictionary=loaded.load_session_json(save)
 	_check(restored.get("accepted",false),"movement journal loads: "+str(restored.get("reason","")))
 	_check_eq(loaded.individual_battle.movements.get(actor_id),goal,"pending movement survives load")
+	ui.autonomous_battle_clock.paused=true
 	ui._on_product_execute()
-	_check(not ui.autonomous_battle_clock.paused,"start releases preparation pause")
+	_check(not ui.autonomous_battle_clock.paused,"resume releases an explicit pause")
 	for attempt in range(36):
 		if world.entities[actor_id].position==goal:break
 		var result:Dictionary=session.individual_battle.commit()

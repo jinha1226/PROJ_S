@@ -1,14 +1,15 @@
 extends RefCounted
 
-## Presentation policy only: pause/zoom/alarms never mutate canonical combat.
-const COMBAT_VIEW_CELLS:=11
+## Presentation policy only: pause/alarms never mutate canonical combat.
+## Exploration and battle share one camera (13 cells): entering combat neither
+## zooms nor pauses, so the fight continues on the same screen and only the
+## timeline bar and danger alarms mark it.
 const DANGER_PERCENT:=25
 const REARM_PERCENT:=35
 const Portrait=preload("res://playtest/compact_party_portrait.gd")
 var world_id:=-1
 var in_battle:=false
 var awaiting_start:=false
-var exploration_zoom:=19
 var latched:Dictionary={}
 var danger_ids:Array[int]=[]
 
@@ -17,16 +18,11 @@ func sync(host)->bool:
 	var world=host.session.sim.world
 	var changed:=false
 	if world_id!=world.get_instance_id():
-		if in_battle:host._product_zoom_cell_count=exploration_zoom
-		world_id=world.get_instance_id();in_battle=false;latched.clear();danger_ids.clear()
+		world_id=world.get_instance_id();in_battle=false;awaiting_start=false;latched.clear();danger_ids.clear()
 	var engaged:bool=host.session.is_duo_autobattle() and world.party_encounter.safe_phase=="ENGAGED"
 	if engaged and not in_battle:
-		exploration_zoom=host._product_zoom_cell_count
-		host._product_zoom_cell_count=mini(exploration_zoom,COMBAT_VIEW_CELLS)
-		host.autonomous_battle_clock.paused=true
-		in_battle=true;awaiting_start=true;latched.clear();changed=true
+		in_battle=true;awaiting_start=false;latched.clear();changed=true
 	elif not engaged and in_battle:
-		host._product_zoom_cell_count=exploration_zoom
 		in_battle=false;awaiting_start=false;latched.clear();danger_ids.clear();changed=true
 	if engaged and check_danger(host):changed=true
 	paint(host)
