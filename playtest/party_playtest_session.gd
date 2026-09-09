@@ -672,7 +672,7 @@ func protagonist_progression()->Dictionary:
 	var hero_combatant=sim.world.combatant_states.get(hero_id)
 	var growth=sim.world.party_encounter.protagonist_growth
 	var progression_state=sim.world.party_encounter.protagonist_progression
-	var cache_key:="%d|%d|%d|%d|%d|%d|%d|%d|%d|%s"%[int(sim.world.get_instance_id()),
+	var cache_key:="%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%s"%[int(sim.world.get_instance_id()),
 		int(sim.world.item_state.revision) if sim.world.item_state!=null else -1,
 		int(progression_state.xp_total),hash(progression_state.skill_training),
 		hash(progression_state.training_modes),
