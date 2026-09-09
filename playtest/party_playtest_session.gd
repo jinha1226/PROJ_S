@@ -6289,8 +6289,8 @@ func enter_solo_combat() -> Dictionary:
 	# it only fixes the legal companion selection to the authoritative empty set.
 	if not is_solo_combat():return _rejection_dto("invalid_companion_ids")
 	var state=sim.world.party_encounter if sim!=null and sim.world!=null else null
-	if state==null or state.party_member_ids!=[state.protagonist_id] \
-			or state.active_party_member_ids!=[state.protagonist_id]:
+	if state==null or state.active_party_member_ids!=[state.protagonist_id] \
+			or not available_companion_ids().is_empty():
 		return _rejection_dto("invalid_companion_ids")
 	_exploration_route.cancel_for_direct_command()
 	var result=sim.deploy_solo_party()

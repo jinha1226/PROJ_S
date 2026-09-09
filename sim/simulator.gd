@@ -330,8 +330,9 @@ func deploy_solo_party():
 	# deployment and commit it in one call. External deployment plans still use
 	# `deploy_party` and its fingerprint/recompute/tamper checks above.
 	var state=world.party_encounter if world!=null else null
-	if state==null or state.party_member_ids!=[state.protagonist_id] \
-			or state.active_party_member_ids!=[state.protagonist_id]:
+	# The roster may hold town residents and recruit candidates; solo means the
+	# active (deployable) party is the protagonist alone.
+	if state==null or state.active_party_member_ids!=[state.protagonist_id]:
 		return StepResultScript.new(false,false,"invalid_companion_ids")
 	var processed_step_index:int=_next_processed_step_index()
 	if processed_step_index<0:return StepResultScript.new(false,false,"step_index_overflow")

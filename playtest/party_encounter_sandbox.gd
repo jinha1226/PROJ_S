@@ -2404,7 +2404,7 @@ func _tick_autonomous_battle(delta:float)->void:
 		_apply_product_zoom_surface();_request_refresh()
 	var state=session.sim.world.party_encounter
 	if state.safe_phase!="ENGAGED":
-		autonomous_battle_clock.cursor=-1.0;return
+		autonomous_battle_clock.cursor=-1.0;_hero_turn_released=false;_hero_turn_was_waiting=false;return
 	var blocked:=_battle_presentation_blocked()
 	var hold_at:=-1.0
 	if _hero_turn_holds():hold_at=float(session.individual_battle.next_event().at)
@@ -2464,7 +2464,15 @@ func _release_hero_turn(message:String="")->void:
 	# Any accepted protagonist input lets the clock run to the next hero event.
 	_hero_turn_released=true
 	if not message.is_empty():_show_manual_battle_feedback(message)
-	_request_refresh()
+	_refresh_battle_surface_lightly()
+
+func _refresh_battle_surface_lightly()->void:
+	# Combat taps happen every turn; a full shell rebuild (~50ms) for each one
+	# is the stutter players feel. Refresh the live surface while engaged.
+	if session!=null and session.sim!=null and session.is_duo_autobattle() \
+			and session.sim.world.party_encounter.safe_phase=="ENGAGED":
+		_refresh_individual_battle_surface()
+	else:_request_refresh()
 
 func _on_battle_mode_toggle()->void:
 	battle_mode="AUTO" if battle_mode=="HERO_TURN" else "HERO_TURN"
@@ -3954,7 +3962,7 @@ func _reserve_battle_move(actor_id:int,goal:Vector2i)->void:
 	if bool(result.get("accepted",false)):
 		notice_text=message;action_feedback_text=message
 		if actor_id==int(session.party_status().get("protagonist_id",-1)):_hero_turn_released=true
-	_request_refresh()
+	_refresh_battle_surface_lightly()
 
 func _on_product_direction(direction:Vector2i)->void:
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
@@ -5765,7 +5773,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 		grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
 		_show_manual_battle_feedback("집중공격 · %s"%_entity_display_name(entity_id))
 	else:_show_manual_battle_feedback("공격 대상을 지정할 수 없습니다.")
-	_request_refresh()
+	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
 	if not _battle_target_mode.is_empty():
