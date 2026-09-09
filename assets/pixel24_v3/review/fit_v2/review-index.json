@@ -1,0 +1,99 @@
+{
+  "composite_order": [
+    {
+      "id": "human_base",
+      "layers": [
+        "actor_human"
+      ]
+    },
+    {
+      "foreground_points": [
+        [
+          5.0,
+          18.0
+        ],
+        [
+          17.0,
+          18.0
+        ]
+      ],
+      "foreground_source": "actor_human",
+      "id": "human_leather",
+      "layers": [
+        "actor_human",
+        "armor_leather_human_preview"
+      ]
+    },
+    {
+      "foreground_points": [
+        [
+          5.0,
+          18.0
+        ],
+        [
+          17.0,
+          18.0
+        ]
+      ],
+      "foreground_source": "actor_human",
+      "id": "human_short_sword",
+      "layers": [
+        "actor_human",
+        "weapon_short_sword_preview"
+      ]
+    },
+    {
+      "foreground_points": [
+        [
+          5.0,
+          18.0
+        ],
+        [
+          17.0,
+          18.0
+        ]
+      ],
+      "foreground_source": "actor_human",
+      "id": "human_leather_sword_shield",
+      "layers": [
+        "actor_human",
+        "armor_leather_human_preview",
+        "offhand_shield_wood_preview",
+        "weapon_short_sword_preview"
+      ]
+    }
+  ],
+  "contact_order": [
+    {
+      "fit": "",
+      "id": "actor_human",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/fit_v2/actors/human.png"
+    },
+    {
+      "fit": "",
+      "id": "armor_padded_human_preview",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/fit_v2/equipment/armor/padded_human.png"
+    },
+    {
+      "fit": "",
+      "id": "armor_leather_human_preview",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/fit_v2/equipment/armor/leather_human.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_short_sword_preview",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/fit_v2/equipment/weapons/short_sword.png"
+    },
+    {
+      "fit": "",
+      "id": "offhand_shield_wood_preview",
+      "kind": "offhand_layer",
+      "output": "res://assets/pixel24_v3/fit_v2/equipment/offhand/shield_wood.png"
+    }
+  ],
+  "schema_version": 1
+}
