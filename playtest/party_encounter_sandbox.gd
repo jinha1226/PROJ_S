@@ -333,6 +333,13 @@ var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
 # Combat actors glide for most of the 0.32s display tick instead of a 150ms hop
 # followed by a dead pause; the diorama clamps at 240ms.
 const BATTLE_ACTOR_MOTION_MSEC:=240
+# Presentation-only combat pacing. HERO_TURN stops the display clock at every
+# protagonist event until the player releases that turn (any accepted hero
+# input, or [진행]); AUTO is the old free-running clock. Never saved.
+var battle_mode:="HERO_TURN"
+const HERO_TURN_UNITS_PER_SECOND:=400.0
+var _hero_turn_released:=false
+var _hero_turn_was_waiting:=false
 
 var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
@@ -2399,33 +2406,72 @@ func _tick_autonomous_battle(delta:float)->void:
 	if state.safe_phase!="ENGAGED":
 		autonomous_battle_clock.cursor=-1.0;return
 	var blocked:=_battle_presentation_blocked()
-	var at:float=autonomous_battle_clock.advance(delta,session.sim.world.world_time,blocked)
+	var hold_at:=-1.0
+	if _hero_turn_holds():hold_at=float(session.individual_battle.next_event().at)
+	var at:float=autonomous_battle_clock.advance(delta,session.sim.world.world_time,blocked,
+		HERO_TURN_UNITS_PER_SECOND if battle_mode=="HERO_TURN" else autonomous_battle_clock.WORLD_UNITS_PER_SECOND,
+		hold_at)
 	var changed:=false
 	var started:=Time.get_ticks_usec()
+	var hero_id:=int(state.protagonist_id)
 	if not blocked and not autonomous_battle_clock.paused:
 		# Equal-time events have no artificial delay; re-assess between actors.
 		# A bounded drain also keeps input responsive on exceptionally large fights.
 		for iteration in range(16):
 			var next:Dictionary=session.individual_battle.next_event()
 			if next.is_empty() or float(next.at)>at:break
+			if _hero_turn_holds():break
 			var result:Dictionary=session.individual_battle.commit()
 			if not bool(result.get("accepted",false)):
 				autonomous_battle_clock.paused=true
 				_show_manual_battle_feedback("자동 행동 실패 · "+str(result.get("reason","")))
 				_request_refresh();break
+			if int(result.get("actor_id",-1))==hero_id:_hero_turn_released=false
 			_record_result(result,true,"자동 전투 실행 불가",true,BATTLE_ACTOR_MOTION_MSEC);changed=true
-			if battle_command_flow.check_danger(self):break
+			if battle_mode=="AUTO" and battle_command_flow.check_danger(self):break
 			if not str(result.get("reservation_rejection","")).is_empty():
 				_show_manual_battle_feedback(str(result.reservation_rejection))
 			if Time.get_ticks_usec()-started>=8000:break
 		var remaining_event:Dictionary=session.individual_battle.next_event()
 		if not remaining_event.is_empty() and float(remaining_event.at)<at:
 			at=float(remaining_event.at);autonomous_battle_clock.cursor=at
+	var waiting:=hero_turn_waiting()
+	if waiting!=_hero_turn_was_waiting:
+		_hero_turn_was_waiting=waiting;changed=true
 	if changed:
 		if session.sim.world.party_encounter.safe_phase=="ENGAGED":_refresh_individual_battle_surface()
 		else:_request_refresh()
 	battle_command_flow.paint(self)
 	if battle_timeline_bar!=null:battle_timeline_bar.set_display_time(at)
+
+func _hero_turn_holds()->bool:
+	# The clock stops at the protagonist's event while nothing has released it:
+	# no accepted hero input this turn, no reserved skill, and no unfinished
+	# position order (a standing walk keeps going until the hero arrives).
+	if battle_mode!="HERO_TURN" or session==null or session.sim==null:return false
+	if not session.individual_battle.hero_turn_pending() or _hero_turn_released:return false
+	var hero_id:=int(session.sim.world.party_encounter.protagonist_id)
+	if not session.individual_battle.queued(hero_id).is_empty():return false
+	var goal:Variant=session.individual_battle.movements.get(hero_id)
+	if goal is Vector2i and goal!=session.sim.world.entities[hero_id].position:return false
+	return true
+
+func hero_turn_waiting()->bool:
+	return session!=null and session.is_duo_autobattle() and session.sim!=null \
+		and session.sim.world.party_encounter.safe_phase=="ENGAGED" and _hero_turn_holds()
+
+func _release_hero_turn(message:String="")->void:
+	# Any accepted protagonist input lets the clock run to the next hero event.
+	_hero_turn_released=true
+	if not message.is_empty():_show_manual_battle_feedback(message)
+	_request_refresh()
+
+func _on_battle_mode_toggle()->void:
+	battle_mode="AUTO" if battle_mode=="HERO_TURN" else "HERO_TURN"
+	_hero_turn_released=false
+	if battle_mode=="AUTO":autonomous_battle_clock.paused=false;battle_command_flow.resume()
+	_show_manual_battle_feedback("자동 진행" if battle_mode=="AUTO" else "내 차례마다 멈춥니다")
+	_request_refresh()
 
 func _build_duo_battle_controls(status:Dictionary)->void:
 	product_auto_button=null;product_interact_button=null;product_attack_button=null
@@ -2445,10 +2491,18 @@ func _add_battle_portrait_utilities()->void:
 	var utility:=VBoxContainer.new();utility.name="BattlePortraitUtilities"
 	utility.custom_minimum_size.x=48;utility.add_theme_constant_override("separation",2)
 	cards.add_child(utility)
+	var mode:=Button.new();mode.name="PortraitBattleMode"
+	mode.text="자동" if battle_mode=="HERO_TURN" else "수동"
+	mode.tooltip_text="전투를 자동으로 진행합니다." if battle_mode=="HERO_TURN" else "내 차례마다 멈춥니다."
+	mode.custom_minimum_size=Vector2(48,48)
+	DarkPixelSkinScript.apply_action_button(mode,DarkPixelSkinScript.BRASS)
+	mode.pressed.connect(_on_battle_mode_toggle);utility.add_child(mode)
 	var pause:=Button.new();pause.name="PortraitBattlePause"
-	pause.text=("시작" if battle_command_flow.awaiting_start else "재개") if autonomous_battle_clock.paused else "지휘"
+	if battle_mode=="HERO_TURN":pause.text="진행"
+	else:pause.text=("시작" if battle_command_flow.awaiting_start else "재개") if autonomous_battle_clock.paused else "지휘"
 	pause.custom_minimum_size=Vector2(48,48)
 	pause.disabled=not _battle_target_mode.is_empty()
+	pause.tooltip_text="이번 차례는 자동으로 행동합니다." if battle_mode=="HERO_TURN" else ""
 	DarkPixelSkinScript.apply_action_button(pause,DarkPixelSkinScript.CYAN)
 	pause.pressed.connect(_on_product_execute);utility.add_child(pause)
 	var reset:=Button.new();reset.name="PortraitBattleCancel"
@@ -2549,6 +2603,7 @@ func _commit_battle_target(target_id:int)->void:
 	autonomous_battle_clock.paused=prior_paused
 	_battle_target_committing=false
 	if bool(result.get("accepted",false)):
+		if caster_id==int(session.party_status().get("protagonist_id",-1)):_hero_turn_released=true
 		if mode=="ACTIVE_SKILL":_record_result(result,true,"액티브 스킬 실행 불가")
 		var target_name:=_entity_display_name(target_id)
 		var result_message:=str(result.get("message","적용됨"))
@@ -3896,7 +3951,9 @@ func _reserve_battle_move(actor_id:int,goal:Vector2i)->void:
 	var result:Dictionary=session.individual_battle.reserve_move(actor_id,goal)
 	var message:=str(result.get("message","이동을 지정할 수 없습니다."))
 	_show_manual_battle_feedback(message)
-	if bool(result.get("accepted",false)):notice_text=message;action_feedback_text=message
+	if bool(result.get("accepted",false)):
+		notice_text=message;action_feedback_text=message
+		if actor_id==int(session.party_status().get("protagonist_id",-1)):_hero_turn_released=true
 	_request_refresh()
 
 func _on_product_direction(direction:Vector2i)->void:
@@ -4172,6 +4229,9 @@ func _on_product_wait_guard()->void:
 
 func _on_product_execute()->void:
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
+		if battle_mode=="HERO_TURN":
+			autonomous_battle_clock.paused=false
+			_release_hero_turn("이번 차례 · 자동 행동");return
 		autonomous_battle_clock.paused=not autonomous_battle_clock.paused
 		if not autonomous_battle_clock.paused:battle_command_flow.resume()
 		autonomous_battle_clock.remaining=autonomous_battle_clock.INTERVAL
@@ -5679,6 +5739,9 @@ func _on_cell(position:Vector2i)->void:
 		return
 	if status.view_mode!="COMBAT":return
 	if session.is_duo_autobattle():
+		if battle_mode=="HERO_TURN" and position==Vector2i(int(status.protagonist_position[0]),
+				int(status.protagonist_position[1])):
+			_release_hero_turn("이번 차례 · 자동 행동");return
 		_reserve_battle_move(int(status.protagonist_id),position);return
 	selected_target_id=-1;_clear_move_preview()
 	if auto_orchestration_enabled and _is_direct_solo_combat(status):
@@ -5698,7 +5761,7 @@ func _on_cell(position:Vector2i)->void:
 func _focus_battle_enemy(entity_id:int)->void:
 	var result:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
 	if result.get("accepted",false):
-		selected_target_id=entity_id
+		selected_target_id=entity_id;_hero_turn_released=true
 		grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
 		_show_manual_battle_feedback("집중공격 · %s"%_entity_display_name(entity_id))
 	else:_show_manual_battle_feedback("공격 대상을 지정할 수 없습니다.")

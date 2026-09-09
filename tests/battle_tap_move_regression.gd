@@ -42,7 +42,7 @@ func run()->void:
 	var session=_engaged_duo()
 	if session==null:_finish();return
 	var world=session.sim.world;var hero:int=int(world.party_encounter.protagonist_id)
-	var ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true)
+	var ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO"
 	ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);ui.size=Vector2(390,800);root.add_child(ui)
 	ui.set_process(false)
 	for i in range(4):await process_frame

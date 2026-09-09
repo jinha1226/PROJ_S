@@ -18,7 +18,7 @@ func _mobile(width:int,height:int)->void:
 	root.size=Vector2i(width,height);root.content_scale_size=Vector2i(width,height)
 	var session=_new_engaged_duo()
 	if session==null:return
-	var ui:=Sandbox.new();ui.initialize_for_headless_test(session,true);root.add_child(ui)
+	var ui:=Sandbox.new();ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui)
 	ui.set_process(false)
 	await process_frame;await process_frame
 	var bar=ui.battle_timeline_bar

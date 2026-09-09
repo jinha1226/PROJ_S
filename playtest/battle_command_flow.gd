@@ -24,7 +24,7 @@ func sync(host)->bool:
 		in_battle=true;awaiting_start=false;latched.clear();changed=true
 	elif not engaged and in_battle:
 		in_battle=false;awaiting_start=false;latched.clear();danger_ids.clear();changed=true
-	if engaged and check_danger(host):changed=true
+	if engaged and host.battle_mode=="AUTO" and check_danger(host):changed=true
 	paint(host)
 	return changed
 
@@ -50,9 +50,12 @@ func paint(host)->void:
 	if host.grid==null:return
 	var pause_button:=host.cards.find_child("PortraitBattlePause",true,false) as Button
 	if pause_button!=null:
-		pause_button.text=("시작" if awaiting_start else "재개") if host.autonomous_battle_clock.paused else "지휘"
+		if host.battle_mode=="HERO_TURN":pause_button.text="진행"
+		else:pause_button.text=("시작" if awaiting_start else "재개") if host.autonomous_battle_clock.paused else "지휘"
 	var notice:=""
-	if in_battle and host.autonomous_battle_clock.paused:
+	if in_battle and host.battle_mode=="HERO_TURN":
+		if host.hero_turn_waiting():notice="내 차례 · 칸/적/기술을 고르거나 [진행]"
+	elif in_battle and host.autonomous_battle_clock.paused:
 		if not danger_ids.is_empty():
 			var names:Array[String]=[]
 			for id in danger_ids:names.append(host._actor_display_name(id))

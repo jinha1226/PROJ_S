@@ -36,6 +36,14 @@ func reserve_move(actor_id:int,goal:Vector2i,append_journal:bool=true)->Dictiona
 		"actor_id":str(actor_id),"destination":[goal.x,goal.y]}})
 	return {"accepted":true,"reason":"ok","message":"이동 지시 예약 · 도착 후 위치 유지"}
 
+func hero_turn_pending()->bool:
+	# The protagonist's own event is next. Presentation decides whether to hold
+	# the display clock there; nothing canonical depends on this query.
+	_bind()
+	if _sim==null:return false
+	var next:Dictionary=next_event()
+	return not next.is_empty() and int(next.actor_id)==int(_sim.world.party_encounter.protagonist_id)
+
 func next_event()->Dictionary:
 	_bind()
 	if _sim==null:return {}

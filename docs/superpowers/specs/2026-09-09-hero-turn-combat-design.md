@@ -36,46 +36,29 @@
 - `AUTO` 모드는 지금 동작 그대로다. 두 모드는 초상화 행의 버튼 하나로 전환하며
   (`자동`/`수동`), 세션이 아니라 샌드박스 설정이다. 기본은 `HERO_TURN`.
 
-## 2. 주인공 행동 예약 — `reserve_action`
+## 2. 차례 해제 (2026-09-09 단순화)
 
-주인공(또는 어떤 파티원이든)의 **기본 행동**을 다음 이벤트에 예약하는 새 예약 종류다.
-스킬 예약(`reserve_skill`)·이동 지시(`reserve_move`)와 같은 자리에서 소비된다.
+새 예약 종류는 두지 않는다. 주인공 차례 대기는 "플레이어가 이번 차례를 아직 풀지 않았다"는
+표시 상태(`_hero_turn_released == false`)일 뿐이며, 다음 중 하나가 받아들여지면 풀린다.
 
-```
-individual_battle.reserve_action(actor_id, action) -> DTO
-action := {"type":"MELEE","target_id":id} | {"type":"MOVE","destination":[x,y]} | {"type":"HOLD"}
-저널 행: {"kind":"reserve_action","operation":{"actor_id":"7","type":"MELEE","target_id":"12"}}
-        {"kind":"reserve_action","operation":{"actor_id":"7","type":"MOVE","destination":[x,y]}}
-        {"kind":"reserve_action","operation":{"actor_id":"7","type":"HOLD"}}
-individual_battle.cancel_action(actor_id)  저널 {"kind":"cancel_reserved_action",...}
-```
+- 빈 칸 탭 → 기존 위치 지시(`reserve_move`, 도착 후 유지). 걷는 동안은 도착할 때까지 멈추지
+  않는다.
+- 적 탭 → 기존 집중 표적(`ATTACK_TARGET`). 주인공의 자동 판단이 그 적을 노린다.
+- 스킬 버튼 → 대상 선택 → 기존 `reserve_skill`.
+- 자기 칸 탭 또는 `[진행]` 버튼 → 이번 차례는 자동 판단대로 행동한다.
 
-- 예약 시 검증: ENGAGED, 활성·DEPLOYED, `can_act`, MELEE는 인접한 살아있는 적,
-  MOVE는 인접 1칸이고 `coordinator._action_error`가 비어 있음, HOLD는 항상 가능.
-- 실행(`Scheduler.step`): 그 액터의 이벤트에서 스킬 예약이 없고 행동 예약이 있으면
-  `_ally_row`가 `_suggest` 대신 예약된 `PartyActionCommand`를 쓴다. 실행 시점에 다시
-  `_action_error`로 검증하고, 실패하면 스킬 예약과 같은 방식으로 자동 행동으로 대체하고
-  `reservation_rejection` 메시지를 돌려준다. 예약은 소비된다.
-- 한 액터에는 스킬 예약과 행동 예약 중 하나만 둔다. 새 예약이 이전 예약을 덮는다.
-- `AUTO` 모드에서도 같은 API를 쓴다(한 번 지시). 이동 지시(`reserve_move`, 도착 후 유지)는
-  `AUTO` 모드의 맵 탭에 그대로 남는다.
+주인공 이벤트가 커밋되면 해제 상태는 자동으로 되돌아가 다음 차례에 다시 멈춘다. 스킬
+예약이 있거나 위치 지시로 걷는 중이면 멈추지 않는다.
 
-## 3. 조작 (HERO_TURN, 주인공 차례 대기 중)
+## 3. 조작 (HERO_TURN)
 
-| 입력 | 예약 |
+| 입력 | 뜻 |
 |---|---|
-| 빈 칸 탭 (인접) | MOVE 그 칸 |
-| 빈 칸 탭 (멀리) | 최단 경로의 첫 칸으로 MOVE. 한 탭에 한 걸음. |
-| 적 탭 (인접) | MELEE |
-| 적 탭 (멀리) | 그 적 쪽 경로의 첫 칸으로 MOVE |
-| 자기 칸 탭 | HOLD (대기) |
-| 스킬 버튼 → 대상 | 기존 `reserve_skill` |
-| `자동` 버튼 | 모드를 `AUTO`로 전환하고 시계를 흘린다 |
-
-- 대기 중이 아닐 때(시계가 흐르는 동안)의 탭은 다음 주인공 차례에 대한 예약으로 받는다.
-  즉 미리 눌러 두면 차례가 오는 즉시 실행된다.
-- 예약을 바꾸고 싶으면 다시 탭한다(덮어쓰기). 취소는 자기 칸 탭(HOLD)으로 갈음한다.
-- 동료 탭은 지금처럼 인물창(1회 지시 포함)이다.
+| 빈 칸 탭 | 그 칸까지 걸어가 유지 (한 번 탭이면 도착까지 계속) |
+| 적 탭 | 집중 표적 지정 후 진행 |
+| 자기 칸 탭 / `진행` | 이번 차례 자동 행동 |
+| 스킬 버튼 → 대상 | 스킬 예약 후 진행 |
+| `자동` 버튼 | `AUTO`로 전환 (`수동` 버튼으로 복귀) |
 
 ## 4. 표시
 
@@ -93,28 +76,23 @@ individual_battle.cancel_action(actor_id)  저널 {"kind":"cancel_reserved_actio
   차례 대기가 된다(주인공 이벤트가 먼저 오지 않으면 그 앞 이벤트까지 흐른 뒤 멈춘다).
 - 같은 저널은 두 모드에서 같은 세계를 만든다. 모드는 어느 이벤트를 언제 커밋할지의
   표시 순서만 바꾸고, 커밋 순서 자체는 스케줄러가 정한다.
-- 행동 예약은 스킬 예약과 같은 규칙으로 저널에 남고 재생된다. `journal_wire_error`가
-  모양을 검사한다.
+- 저널에는 새 종류가 없다. 차례 해제는 표시 상태라 저장·재생과 무관하다.
 
 ## 6. 테스트
 
-- `tests/test_individual_battle_scheduler.gd`(있으면 확장): MELEE/MOVE/HOLD 예약 실행,
-  실행 시점 무효화 시 자동 대체와 `reservation_rejection`, 스킬 예약과의 배타, 저널 재생 동일.
 - `tests/hero_turn_combat_acceptance.gd`(신규, 헤드리스 UI): 조우 → 주인공 차례 대기 →
-  인접 적 탭 → 주인공 공격 이벤트 → 동료·적 이벤트가 흐른 뒤 다시 대기 → 먼 칸 탭이
-  한 걸음만 → 자기 칸 탭이 HOLD → `자동` 전환 시 대기 없이 진행 → 저장/불러오기 후
-  상태 동일.
+  대기 중 아무 일도 없음 → 자기 칸 탭·`진행`이 주인공 행동 하나만 풀고 다시 대기 → 먼 칸
+  위치 지시는 도착까지 계속 걷기 → 적 탭이 차례를 풀기 → `자동` 전환 시 대기 없이 진행 →
+  저장/불러오기 후 재생 동일, 기본 모드 HERO_TURN.
 - 기존 자동 진행을 전제로 한 스위트(`duo_autobattle_smoke`, `battle_command_flow_acceptance`,
   `battle_timeline_integration`, `battle_tap_move_regression`, `battleheart_mvp_acceptance`)는
   픽스처에서 `AUTO` 모드를 켠다. 위험 정지 계약은 `AUTO`에서만 검사한다.
 
-## 파일별 변경 예상
+## 파일별 변경
 
-- `sim/systems/individual_battle_scheduler.gd`: `step`이 행동 예약을 받는다.
-- `playtest/individual_battle_session.gd`: `reserve_action`, `cancel_action`, `operation_error`,
-  `hero_turn_pending()`.
-- `playtest/party_playtest_session.gd`: 저널 재생·검증에 두 종류 추가.
-- `playtest/autonomous_battle_clock.gd`: 속도 상수 분리(`units_per_second` 인자).
-- `playtest/party_encounter_sandbox.gd`: `battle_mode`, 대기 판정, 탭 매핑, 버튼.
-- `playtest/battle_command_flow.gd`: `AUTO` 전용 정지 정책으로 한정, 안내 문구.
-- `playtest/battle_timeline_bar.gd` / `battle_timeline_presenter.gd`: `내 차례` 강조.
+- `playtest/individual_battle_session.gd`: `hero_turn_pending()` 조회.
+- `playtest/autonomous_battle_clock.gd`: `advance(..., units_per_second, hold_at)`.
+- `playtest/party_encounter_sandbox.gd`: `battle_mode`, 대기·해제 판정, 탭이 차례를 푸는 연결,
+  `자동/수동`·`진행` 버튼.
+- `playtest/battle_command_flow.gd`: 위험 정지는 `AUTO` 전용, `내 차례` 안내.
+- 시뮬·저널은 변경 없음.

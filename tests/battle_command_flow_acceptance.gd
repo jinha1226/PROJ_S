@@ -6,7 +6,7 @@ func _run()->void:
 	root.size=Vector2i(360,640);root.content_scale_size=Vector2i(360,640)
 	var ui:=Sandbox.new()
 	var exploration_zoom:int=ui._product_zoom_cell_count
-	ui.initialize_for_headless_test(session,true);root.add_child(ui);ui.set_process(false)
+	ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui);ui.set_process(false)
 	await process_frame;await process_frame
 	_check(not ui.autonomous_battle_clock.paused,"encounter keeps running on the same screen")
 	_check_eq(ui._product_zoom_cell_count,exploration_zoom,"encounter keeps the exploration zoom")

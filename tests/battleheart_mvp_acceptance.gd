@@ -402,7 +402,7 @@ func _mobile_manual_dock_target_cancel_and_doublecast() -> void:
 		var ui := Sandbox.new()
 		ui.size = Vector2(width, 640)
 		root.add_child(ui)
-		ui.initialize_for_headless_test(session, true)
+		ui.initialize_for_headless_test(session, true);ui.battle_mode="AUTO"
 		ui.set_process(false)
 		await process_frame; await process_frame
 		var dock = ui.cards

@@ -27,7 +27,7 @@ func run()->void:
 		check(step.accepted,"manual exploration advances")
 		if not step.accepted:break
 	check(session.party_status().safe_phase=="CONTACT","encounter detected")
-	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);root.add_child(ui)
+	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui)
 	ui.set_process(false)
 	for i in range(6):await process_frame
 	check(session.party_status().safe_phase=="ENGAGED","automatic deployment")

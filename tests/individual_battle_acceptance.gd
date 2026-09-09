@@ -91,7 +91,7 @@ func _reservation_and_ui()->void:
 	_check(load_result.get("accepted",false),"pending reservation saves/replays: "+str(load_result.get("reason","")))
 	if load_result.get("accepted",false):_check_eq(loaded.individual_battle.queued(companion),flow.queued(companion),"queue survives restore")
 	root.size=Vector2i(360,640);root.content_scale_size=Vector2i(360,640)
-	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);root.add_child(ui);ui.set_process(false)
+	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui);ui.set_process(false)
 	await process_frame;await process_frame
 	var portrait=ui.cards.find_child("MemberCard%d"%companion,true,false)
 	var button=ui.cards.find_child("ActorSkill_%d_FIREBOLT"%companion,true,false)
