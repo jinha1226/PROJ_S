@@ -2,12 +2,12 @@ class_name PartyEncounterSandbox
 extends Control
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 200
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 110
 const MANUAL_CAMERA_SETTLE_MSEC := 55
 # AUTO and long routes should read as continuous travel rather than a sequence of
 # deliberate single-cell inputs. Motion overlaps the next cadence so actor and
 # camera interpolation remain visible without making a large floor tedious.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 140
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 110
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -55,7 +55,11 @@ const PRODUCT_TOP_HUD_HEIGHT:=48
 const PRODUCT_EVENT_HEIGHT:=24
 const PRODUCT_PARTY_CARD_HEIGHT:=72
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
-const CONTINUOUS_TRAVEL_CADENCE_MSEC:=35
+# One hop per motion: the canonical step, its actor motion and the camera settle
+# all take the same 110ms, so the drawn hero never trails the logical one and the
+# main thread is idle between hops for touch input. The old 35ms cadence under a
+# 200ms motion ran hops back to back (each ~40ms of CPU) and smeared movement.
+const CONTINUOUS_TRAVEL_CADENCE_MSEC:=110
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
@@ -326,6 +330,7 @@ var _product_magnify_accumulator:=1.0
 # Presentation cadence only. Tests may set this to zero; it never participates
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
+var _continuous_hop_counter:=0
 
 var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
@@ -2091,11 +2096,18 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var view_dimensions:=_current_grid_view_dimensions()
 	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
-	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
+	# The minimap is a full explored-world projection (~3ms per hop with its
+	# redraw). Mid-route hops refresh it every fourth step and at the route end.
+	var hop_route:Dictionary=session.exploration_route_state() if continuous_motion else {}
+	var include_minimap:bool=not product_hud or not continuous_motion \
+		or not bool(hop_route.get("active",false)) or bool(hop_route.get("completed",false)) \
+		or bool(hop_route.get("terminal",false)) or (_continuous_hop_counter%4)==0
+	if continuous_motion:_continuous_hop_counter+=1
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,include_minimap,
 		view_dimensions.y) if product_hud else session.observe_party_ui(view_cell_count)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	minimap.set_observation(ui_observation.get("minimap",{}))
+	if include_minimap:minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
 		product_hud)

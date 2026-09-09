@@ -1109,7 +1109,11 @@ func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
 
 func grid_rect() -> Rect2:
 	if not uses_perspective_projection():
-		var cell:=minf(size.x/float(maxi(1,visible_cell_count)),
+		# Fill the control: the cell is sized by the axis that fits exactly and
+		# the other axis overflows symmetrically under clip_contents. Fitting both
+		# axes (minf) let the rounded-outward row count shrink the cell whenever a
+		# combat surface stole map height, so the world zoomed on every encounter.
+		var cell:=maxf(size.x/float(maxi(1,visible_cell_count)),
 			size.y/float(maxi(1,visible_row_count)))
 		var extent:=Vector2(cell*visible_cell_count,cell*visible_row_count)
 		return Rect2((size-extent)*0.5,extent)

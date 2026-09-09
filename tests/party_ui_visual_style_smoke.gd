@@ -543,9 +543,10 @@ func _screen_touch_plain_button(button:Button,touch_index:int)->void:
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()
 	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
-	_check(sandbox.continuous_travel_cadence_msec>=30 \
-		and sandbox.continuous_travel_cadence_msec<=45,
-		"%s continuous travel cadence is outside the fast 30-45ms window"%viewport_size)
+	_check(sandbox.continuous_travel_cadence_msec==sandbox.CONTINUOUS_EXPLORATION_MOTION_MSEC \
+		and sandbox.continuous_travel_cadence_msec>=90 \
+		and sandbox.continuous_travel_cadence_msec<=130,
+		"%s continuous travel cadence must match the hop motion inside 90-130ms"%viewport_size)
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
