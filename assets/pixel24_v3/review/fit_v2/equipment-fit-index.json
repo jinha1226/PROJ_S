@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "status": "staged_for_user_review_not_runtime",
+  "logical_size": [24, 24],
+  "nearest_scale": 12,
+  "rows": ["human", "elf", "dwarf", "orc", "beastkin"],
+  "columns": ["base", "padded", "leather", "short_sword", "thrusting_sword", "hand_axe", "mace", "spear", "bow", "crossbow", "leather_short_sword_wood_shield"],
+  "artifacts": {
+    "actual_size": "res://assets/pixel24_v3/review/fit_v2/actual-size-composites.png",
+    "nearest_labeled": "res://assets/pixel24_v3/review/fit_v2/equipment-fit-matrix-labeled-12x.png"
+  },
+  "manifest": "res://tools/art/pixel24_human_fit_preview.json",
+  "runtime_status": "not_connected",
+  "verification": {
+    "focused_geometry": "PASS",
+    "deterministic_double_build": "PASS",
+    "log": "/tmp/pixel24-equipment-fit-test.log",
+    "labeled_matrix_sha256": "f3dd350f7590bf954b3abd2540417f5156aa6454a45f560cce99e8ed33f6bd8c"
+  },
+  "notes": [
+    "Rows are fixed by species and columns are fixed by equipment for direct comparison.",
+    "Human, elf, orc, and beastkin share the measured main-hand anchor at 17,18.",
+    "Dwarf uses dedicated weapon transforms at 19,17 and a selective beard foreground mask.",
+    "Bow and crossbow use compact below-face carried poses; no direction mirroring is used.",
+    "The approved frozen base PNGs are copied byte-equivalently into fit_v2."
+  ]
+}

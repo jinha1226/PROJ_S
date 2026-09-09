@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "logical_size": 24,
+  "alpha_threshold": 128,
+  "review_scale": 6,
+  "runtime_root": "res://assets/pixel24_v3/runtime",
+  "review_root": "res://assets/pixel24_v3/review",
+  "entries": [
+    {
+      "id": "actor_human",
+      "kind": "actor_base",
+      "source": "res://assets/pixel24_v3/source/actors-keyed.png",
+      "source_rect": [0, 0, 309, 725],
+      "output": "actors/base/human.png",
+      "palette_limit": 18,
+      "alpha_mode": "magenta_hue",
+      "trim_keyed": true,
+      "fit_mode": "contain",
+      "fit_size": [22, 21],
+      "destination": [1, 2],
+      "fit_align": "bottom_center",
+      "fit": "standard",
+      "active": true
+    },
+    {
+      "id": "actor_elf",
+      "kind": "actor_base",
+      "source": "res://assets/pixel24_v3/source/actors-keyed.png",
+      "source_rect": [309, 0, 310, 725],
+      "output": "actors/base/elf.png",
+      "palette_limit": 18,
+      "alpha_mode": "magenta_hue",
+      "trim_keyed": true,
+      "fit_mode": "contain",
+      "fit_size": [22, 21],
+      "destination": [1, 2],
+      "fit_align": "bottom_center",
+      "fit": "slender",
+      "active": true
+    },
+    {
+      "id": "actor_dwarf",
+      "kind": "actor_base",
+      "source": "res://assets/pixel24_v3/source/actors-keyed.png",
+      "source_rect": [619, 0, 310, 725],
+      "output": "actors/base/dwarf.png",
+      "palette_limit": 18,
+      "alpha_mode": "magenta_hue",
+      "trim_keyed": true,
+      "fit_mode": "contain",
+      "fit_size": [22, 21],
+      "destination": [1, 2],
+      "fit_align": "bottom_center",
+      "fit": "broad",
+      "active": true
+    },
+    {
+      "id": "actor_orc",
+      "kind": "actor_base",
+      "source": "res://assets/pixel24_v3/source/actors-keyed.png",
+      "source_rect": [929, 0, 310, 725],
+      "output": "actors/base/orc.png",
+      "palette_limit": 18,
+      "alpha_mode": "magenta_hue",
+      "trim_keyed": true,
+      "fit_mode": "contain",
+      "fit_size": [22, 21],
+      "destination": [1, 2],
+      "fit_align": "bottom_center",
+      "fit": "broad",
+      "active": true
+    },
+    {
+      "id": "actor_beastkin",
+      "kind": "actor_base",
+      "source": "res://assets/pixel24_v3/source/actors-keyed.png",
+      "source_rect": [1239, 0, 310, 725],
+      "output": "actors/base/beastkin.png",
+      "palette_limit": 18,
+      "alpha_mode": "magenta_hue",
+      "trim_keyed": true,
+      "fit_mode": "contain",
+      "fit_size": [22, 21],
+      "destination": [1, 2],
+      "fit_align": "bottom_center",
+      "fit": "standard",
+      "active": true
+    },
+    {
+      "id":"armor_padded_human","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,0,307,319],"output":"equipment/armor/padded_human.png","fit":"human","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,6],"destination":[7,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_padded_elf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,0,307,319],"output":"equipment/armor/padded_elf.png","fit":"elf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[8,6],"destination":[8,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_padded_dwarf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,0,307,319],"output":"equipment/armor/padded_dwarf.png","fit":"dwarf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,3],"destination":[6,17],"protected_rects":[[0,0,24,17]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_padded_orc","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,0,307,319],"output":"equipment/armor/padded_orc.png","fit":"orc","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,6],"destination":[6,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_padded_beastkin","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,0,307,319],"output":"equipment/armor/padded_beastkin.png","fit":"beastkin","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,6],"destination":[7,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_leather_human","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,0,308,319],"output":"equipment/armor/leather_human.png","fit":"human","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,6],"destination":[7,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_leather_elf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,0,308,319],"output":"equipment/armor/leather_elf.png","fit":"elf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[8,6],"destination":[8,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_leather_dwarf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,0,308,319],"output":"equipment/armor/leather_dwarf.png","fit":"dwarf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,3],"destination":[6,17],"protected_rects":[[0,0,24,17]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_leather_orc","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,0,308,319],"output":"equipment/armor/leather_orc.png","fit":"orc","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,6],"destination":[6,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_leather_beastkin","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,0,308,319],"output":"equipment/armor/leather_beastkin.png","fit":"beastkin","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,6],"destination":[7,14],"protected_rects":[[0,0,24,14]],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_steel_human","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"equipment/armor/steel_human.png","fit":"human","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,7],"destination":[7,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_steel_elf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"equipment/armor/steel_elf.png","fit":"elf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[8,7],"destination":[8,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_steel_dwarf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"equipment/armor/steel_dwarf.png","fit":"dwarf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,5],"destination":[6,15],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_steel_orc","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"equipment/armor/steel_orc.png","fit":"orc","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,7],"destination":[6,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_steel_beastkin","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"equipment/armor/steel_beastkin.png","fit":"beastkin","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,7],"destination":[7,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_mithril_human","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"equipment/armor/mithril_human.png","fit":"human","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,7],"destination":[7,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_mithril_elf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"equipment/armor/mithril_elf.png","fit":"elf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[8,7],"destination":[8,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_mithril_dwarf","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"equipment/armor/mithril_dwarf.png","fit":"dwarf","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,5],"destination":[6,15],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_mithril_orc","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"equipment/armor/mithril_orc.png","fit":"orc","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[12,7],"destination":[6,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"armor_mithril_beastkin","kind":"armor_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"equipment/armor/mithril_beastkin.png","fit":"beastkin","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[10,7],"destination":[7,12],"palette_limit":12,"active":true
+    },
+    {
+      "id":"weapon_short_sword","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,639,307,319],"output":"equipment/weapons/short_sword.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[5,13],"destination":[18,8],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_thrusting_sword","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,639,308,319],"output":"equipment/weapons/thrusting_sword.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[5,14],"destination":[18,7],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_hand_axe","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,639,307,319],"output":"equipment/weapons/hand_axe.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[6,11],"destination":[17,9],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_mace","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,639,308,319],"output":"equipment/weapons/mace.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[6,11],"destination":[17,9],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_spear","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,930,307,348],"output":"equipment/weapons/spear.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[4,19],"destination":[19,3],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_bow","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,930,308,348],"output":"equipment/weapons/bow.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[5,16],"destination":[18,5],"palette_limit":10,"active":true
+    },
+    {
+      "id":"weapon_crossbow","kind":"weapon_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,958,307,320],"output":"equipment/weapons/crossbow.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[9,9],"destination":[15,9],"palette_limit":10,"active":true
+    },
+    {
+      "id":"icon_armor_steel","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,0,307,319],"output":"items/armor_steel.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[20,18],"destination":[2,3],"palette_limit":12,"active":true
+    },
+    {
+      "id":"icon_armor_mithril","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,0,308,319],"output":"items/armor_mithril.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[20,18],"destination":[2,3],"palette_limit":12,"active":true
+    },
+    {
+      "id":"icon_hood","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[0,319,307,320],"output":"items/hood.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[18,18],"destination":[3,3],"palette_limit":10,"active":true
+    },
+    {
+      "id":"icon_helmet","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[307,319,308,320],"output":"items/helmet.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[18,18],"destination":[3,3],"palette_limit":10,"active":true
+    },
+    {
+      "id":"icon_shield_wood","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,319,307,320],"output":"items/shield_wood.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[18,18],"destination":[3,3],"palette_limit":10,"active":true
+    },
+    {
+      "id":"offhand_shield_wood","kind":"offhand_layer","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[615,319,307,320],"output":"equipment/offhand/shield_wood.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[8,9],"destination":[0,10],"protected_rects":[[0,0,24,10]],"palette_limit":10,"active":true
+    },
+    {
+      "id":"icon_shield_steel","kind":"item_icon","source":"res://assets/pixel24_v3/source/equipment-keyed.png","source_rect":[922,319,308,320],"output":"items/shield_steel.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[18,18],"destination":[3,3],"palette_limit":10,"active":true
+    },
+    {
+      "id":"monster_goblin","kind":"monster","source":"res://assets/pixel24_v3/source/actors-keyed.png","source_rect":[1549,0,310,725],"output":"monsters/goblin.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[22,21],"destination":[1,2],"fit_align":"bottom_center","palette_limit":16,"active":true
+    },
+    {
+      "id":"monster_kobold","kind":"monster","source":"res://assets/pixel24_v3/source/actors-keyed.png","source_rect":[1859,0,310,725],"output":"monsters/kobold.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[22,21],"destination":[1,2],"fit_align":"bottom_center","palette_limit":16,"active":true
+    },
+    {
+      "id":"monster_slime","kind":"monster","source":"res://assets/pixel24_v3/source/monsters-detail-study.png","source_rect":[0,627,627,627],"output":"monsters/slime.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[22,17],"destination":[1,6],"palette_limit":16,"active":true
+    },
+    {
+      "id":"monster_beetle","kind":"monster","source":"res://assets/pixel24_v3/source/monsters-detail-study.png","source_rect":[627,627,627,627],"output":"monsters/beetle.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_mode":"contain","fit_size":[22,18],"destination":[1,5],"palette_limit":16,"active":true
+    },
+    {
+      "id":"terrain_floor1","kind":"terrain_atlas","source":"res://assets/pixel24_v3/source/terrain-floor1.png","source_rect":[0,0,1254,1254],"output":"terrain/floor1.png","output_size":[96,96],"alpha_mode":"source","tile_source_grid":[4,4],"tile_source_inset":[2,2,2,2],"tile_grid":[4,4],"tile_palette_limits":[8,8,8,8,8,8,10,8,12,12,12,8,12,12,12,12],"active":true
+    },
+    {
+      "id":"terrain_floor2","kind":"terrain_atlas","source":"res://assets/pixel24_v3/source/terrain-floor2.png","source_rect":[0,0,1254,1254],"output":"terrain/floor2.png","output_size":[96,96],"alpha_mode":"source","tile_source_grid":[4,4],"tile_source_inset":[12,12,12,12],"tile_grid":[4,4],"tile_palette_limits":[8,8,8,8,8,8,10,8,12,12,12,8,12,12,12,12],"active":true
+    }
+  ],
+  "composites": [
+    {"id":"base_human","layers":["actor_human"]},
+    {"id":"base_elf","layers":["actor_elf"]},
+    {"id":"base_dwarf","layers":["actor_dwarf"]},
+    {"id":"base_orc","layers":["actor_orc"]},
+    {"id":"base_beastkin","layers":["actor_beastkin"]},
+    {"id":"padded_human","layers":["actor_human","armor_padded_human"]},
+    {"id":"padded_elf","layers":["actor_elf","armor_padded_elf"]},
+    {"id":"padded_dwarf","layers":["actor_dwarf","armor_padded_dwarf"]},
+    {"id":"padded_orc","layers":["actor_orc","armor_padded_orc"]},
+    {"id":"padded_beastkin","layers":["actor_beastkin","armor_padded_beastkin"]},
+    {"id":"leather_human","layers":["actor_human","armor_leather_human"]},
+    {"id":"leather_elf","layers":["actor_elf","armor_leather_elf"]},
+    {"id":"leather_dwarf","layers":["actor_dwarf","armor_leather_dwarf"]},
+    {"id":"leather_orc","layers":["actor_orc","armor_leather_orc"]},
+    {"id":"leather_beastkin","layers":["actor_beastkin","armor_leather_beastkin"]},
+    {"id":"steel_human","layers":["actor_human","armor_steel_human"]},
+    {"id":"steel_elf","layers":["actor_elf","armor_steel_elf"]},
+    {"id":"steel_dwarf","layers":["actor_dwarf","armor_steel_dwarf"]},
+    {"id":"steel_orc","layers":["actor_orc","armor_steel_orc"]},
+    {"id":"steel_beastkin","layers":["actor_beastkin","armor_steel_beastkin"]},
+    {"id":"mithril_human","layers":["actor_human","armor_mithril_human"]},
+    {"id":"mithril_elf","layers":["actor_elf","armor_mithril_elf"]},
+    {"id":"mithril_dwarf","layers":["actor_dwarf","armor_mithril_dwarf"]},
+    {"id":"mithril_orc","layers":["actor_orc","armor_mithril_orc"]},
+    {"id":"mithril_beastkin","layers":["actor_beastkin","armor_mithril_beastkin"]},
+    {"id":"human_short_sword","layers":["actor_human","weapon_short_sword"]},
+    {"id":"human_thrusting_sword","layers":["actor_human","weapon_thrusting_sword"]},
+    {"id":"human_hand_axe","layers":["actor_human","weapon_hand_axe"]},
+    {"id":"human_mace","layers":["actor_human","weapon_mace"]},
+    {"id":"human_spear","layers":["actor_human","weapon_spear"]},
+    {"id":"human_bow","layers":["actor_human","weapon_bow"]},
+    {"id":"human_crossbow","layers":["actor_human","weapon_crossbow"]},
+    {"id":"human_shield_wood","layers":["actor_human","offhand_shield_wood"]},
+    {"id":"dwarf_crossbow","layers":["actor_dwarf","weapon_crossbow"]},
+    {"id":"orc_crossbow","layers":["actor_orc","weapon_crossbow"]}
+  ],
+  "deployment_ready": true,
+  "deployment_gate": "Approved first playable pass; runtime registries use normalized outputs."
+}
