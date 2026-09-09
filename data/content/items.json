@@ -210,10 +210,10 @@
       "placeholder": true
     },
     {
-      "definition_id": "GOBLIN_EAR",
-      "label": "고블린 귀",
+      "definition_id": "MAGIC_STONE",
+      "label": "마석",
       "category": "MATERIAL",
-      "stack_limit": 10,
+      "stack_limit": 20,
       "equip_slots": [],
       "weapon_id": "",
       "requirements":{"STR":0,"DEX":0,"INT":0},

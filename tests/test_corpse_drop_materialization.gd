@@ -59,7 +59,7 @@ func test_death_materializes_once_preserves_loadout_and_consumes_no_rng() -> boo
 		"the goblin species roll is recorded once")
 	if materialized != null and not materialized.data.generated_items.is_empty():
 		var generated: Dictionary = materialized.data.generated_items[0]
-		check_eq(str(generated.definition_id), "GOBLIN_EAR",
+		check_eq(str(generated.definition_id), "MAGIC_STONE",
 			"the real species material, not a placeholder, is generated")
 		check_eq(str(generated.location), "GROUND",
 			"species loot is materialized directly on the ground")
@@ -270,7 +270,9 @@ func _seed_with_goblin_drop() -> int:
 func _seed_with_goblin_drop_for_first_two_deaths() -> int:
 	for candidate in range(1, 5000):
 		# Each death emits source, damage, death and materialization: IDs 3 and 7.
-		if not SpeciesDrops.rolls_for(candidate, 3, "goblin").is_empty() \
-				and not SpeciesDrops.rolls_for(candidate, 7, "goblin").is_empty():
+		# Exactly one roll per death: the goblin table has two independent rolls
+		# (magic stone, ration) and this test wants one instance per corpse.
+		if SpeciesDrops.rolls_for(candidate, 3, "goblin").size() == 1 \
+				and SpeciesDrops.rolls_for(candidate, 7, "goblin").size() == 1:
 			return candidate
 	return -1

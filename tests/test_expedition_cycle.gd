@@ -7,6 +7,7 @@ const Command = preload("res://sim/sim_command.gd")
 const PartyState = preload("res://sim/party_encounter_state.gd")
 const Sandbox = preload("res://playtest/party_encounter_sandbox.gd")
 const VisualMap = preload("res://playtest/party_visual_test_map.gd")
+const ItemOperations = preload("res://sim/world_item_operations.gd")
 
 
 func test_cycle_warning_bands_and_wire_are_deterministic() -> bool:
@@ -472,6 +473,56 @@ func _returned_town_session(floor_index:int=1):
 	var result: Dictionary = session.commit_exploration(Command.wait(state.protagonist_id))
 	return session if bool(result.get("accepted", false)) \
 		and session.expedition_cycle_status().phase == "TOWN" else null
+
+
+func test_town_market_buys_magic_stones_and_replays_the_sale() -> bool:
+	var session = _returned_town_session()
+	check(session != null, "sell fixture returns to town")
+	if session == null: return finish()
+	var world = session.sim.world
+	var hero_id: int = int(world.party_encounter.protagonist_id)
+	# Granted directly (not journaled): the fixture has no goblin kill, so the
+	# replay check below is against a session loaded from the same snapshot.
+	var granted: Dictionary = ItemOperations.commit_grant(world, hero_id, "MAGIC_STONE", 3,
+		world.entities[hero_id].position, "TEST_MAGIC_STONES")
+	check(bool(granted.get("accepted", false)), "fixture hero holds magic stones")
+	if not bool(granted.get("accepted", false)): return finish()
+	var instance_id := str(granted.instance_id)
+	var rows: Array = session.town_market_sell_rows()
+	check_eq(rows.size(), 1, "only the magic stone stack is offered for sale")
+	if rows.size() == 1:
+		check_eq([str(rows[0].instance_id), int(rows[0].quantity), int(rows[0].gold),
+			bool(rows[0].can_sell)], [instance_id, 3, 24, true],
+			"sell row prices the whole stack at the unit price")
+	var potion: Dictionary = session.purchase_town_item("POTION_HEALING")
+	check(bool(potion.get("accepted", false)), "fixture also buys a potion")
+	check(not bool(session.sell_town_item(str(potion.get("instance_id", ""))).get(
+		"accepted", false)), "the market does not buy back catalog goods")
+	check(not bool(session.sell_town_item("NO_SUCH_ITEM").get("accepted", false)),
+		"an unknown instance is rejected")
+	var gold_before: int = session.town_gold()
+	var journal_before: int = session.command_journal.size()
+	var replay_base: Dictionary = session.sim.snapshot()
+	var sold: Dictionary = session.sell_town_item(instance_id)
+	check(bool(sold.get("accepted", false)), "magic stone sale commits")
+	check_eq(session.town_gold(), gold_before + 24, "sale gold joins the event-sourced purse")
+	check(world.item_state.inventory(hero_id).item(instance_id) == null,
+		"the sold stack leaves the hero bag")
+	check(session.town_market_sell_rows().is_empty(), "nothing sellable remains")
+	check_eq(session.sim.world.world_state_error(), "", "sale leaves a canonical world")
+	check_eq(session.command_journal.size(), journal_before + 1, "sale appends one journal row")
+	check_eq(session.command_journal[-1], {"kind": "town", "operation": {
+		"action": "SELL", "instance_id": instance_id}}, "sale journal row is the instance")
+	check_eq(session._journal_wire_error(session.command_journal), "",
+		"sale journal row validates")
+	var replay = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	replay.sim = Simulator.from_snapshot(replay_base)
+	check(replay.sim != null, "replay session restores the pre-sale snapshot")
+	if replay.sim != null:
+		check(bool(replay.sell_town_item(instance_id).get("accepted", false)),
+			"the sale replays from the journal row")
+		check_eq(replay.sim.snapshot(), session.sim.snapshot(), "sale replay is exact")
+	return finish()
 
 
 func _market_remaining(session, definition_id: String) -> int:

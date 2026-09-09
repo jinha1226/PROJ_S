@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "2026-09-06",
+  "content_version": "2026-09-09",
   "content_type": "SPECIES_DROP_TABLES",
   "ruleset_id": "species-drops-v1",
   "tables": [
@@ -8,11 +8,11 @@
       "species_id": "goblin",
       "rolls": [
         {
-          "roll_id": "GOBLIN_EAR",
-          "definition_id": "GOBLIN_EAR",
-          "chance_per_1000": 700,
+          "roll_id": "GOBLIN_MAGIC_STONE",
+          "definition_id": "MAGIC_STONE",
+          "chance_per_1000": 600,
           "min_quantity": 1,
-          "max_quantity": 2
+          "max_quantity": 1
         },
         {
           "roll_id": "GOBLIN_RATION",

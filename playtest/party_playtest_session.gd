@@ -112,6 +112,9 @@ const TOWN_MARKET_CATALOG := [
 	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
 	{"definition_id":"ACCESSORY_BRASS_CHARM","price":28,"stock":1},
 ]
+# Monster byproducts are equipment (carried loadouts) plus magic stones; the
+# market buys stones back per unit at these prices. Only listed definitions sell.
+const TOWN_MARKET_SELL_PRICES := {"MAGIC_STONE":8}
 const ITEM_ACTION_TIME_COST := 100
 const OPENING_HEXACO_SLOT := 9242026
 const OPENING_NPC_MAX_HEALTH := 90
@@ -1772,7 +1775,7 @@ func town_gold()->int:
 				value+=int(event.data.get("stipend",TOWN_RETURN_STIPEND))
 			"town.market_purchased","town.clinic_service","town.shrine_service":
 				value-=int(event.data.get("cost",event.magnitude))
-			"base.resource_sold":
+			"base.resource_sold","town.market_sold":
 				value+=int(event.data.get("gold",event.magnitude))
 			"base.work_ordered":value-=int(event.data.get("gold_cost",0))
 			"base.work_cancelled","base.rest_payment_released":value+=int(event.data.get("gold_cost",0))
@@ -1861,6 +1864,84 @@ func purchase_town_item(definition_id:String)->Dictionary:
 		"instance_id":str(granted.instance_id),"definition_id":definition_id,
 		"price":price,"gold":town_gold(),"market":town_market_stock(),
 		"inventory":protagonist_inventory()})
+
+
+func town_market_sell_rows()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("MARKET"):return rows
+	var inventory=sim.world.inventory_of(sim.world.party_control_actor_id())
+	if inventory==null:return rows
+	for item in inventory.unequipped_items():
+		if not TOWN_MARKET_SELL_PRICES.has(str(item.definition_id)):continue
+		var definition:Variant=ItemRegistryScript.definition(str(item.definition_id))
+		var assessment:=town_market_sell_assessment(str(item.instance_id))
+		var unit_price:=int(TOWN_MARKET_SELL_PRICES[str(item.definition_id)])
+		rows.append({"instance_id":str(item.instance_id),
+			"definition_id":str(item.definition_id),
+			"label":str(definition.label) if definition!=null else str(item.definition_id),
+			"quantity":int(item.quantity),"unit_price":unit_price,
+			"gold":unit_price*int(item.quantity),
+			"can_sell":bool(assessment.get("accepted",false)),
+			"message":str(assessment.get("message",""))})
+	return rows.duplicate(true)
+
+
+func town_market_sell_assessment(instance_id:String)->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	if scenario_id==DUO_SCENARIO_ID and not town_service_available("MARKET"):
+		return _rejection_dto("base_market_not_built")
+	var hero_id:=int(sim.world.party_control_actor_id())
+	var inventory=sim.world.item_state.inventory(hero_id)
+	if inventory==null:return _rejection_dto("item_actor_missing")
+	var item=inventory.item(instance_id)
+	if item==null or instance_id.is_empty():return _rejection_dto("town_market_sell_missing")
+	if not TOWN_MARKET_SELL_PRICES.has(str(item.definition_id)):
+		return _rejection_dto("town_market_item_unsellable")
+	for slot in inventory.equipped:
+		if str(inventory.equipped[slot])==instance_id:
+			return _rejection_dto("town_market_item_unsellable")
+	var unit_price:=int(TOWN_MARKET_SELL_PRICES[str(item.definition_id)])
+	return _feedback_dto({"accepted":true,"reason":"ok","instance_id":instance_id,
+		"definition_id":str(item.definition_id),"quantity":int(item.quantity),
+		"unit_price":unit_price,"gold":unit_price*int(item.quantity)})
+
+
+func sell_town_item(instance_id:String)->Dictionary:
+	# Sells the whole stack: the market takes the instance off the hero through
+	# the ordinary discard transaction and the sale event cites that leaf, so
+	# gold stays an event projection and the journal row is just the instance.
+	var assessment:=town_market_sell_assessment(instance_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var state=sim.world.party_encounter;var hero_id:=int(sim.world.party_control_actor_id())
+	var position:Vector2i=sim.world.entities[hero_id].position
+	var removed:=ItemOperationsScript.commit_discard(sim.world,hero_id,instance_id,position)
+	if not bool(removed.get("accepted",false)):
+		_restore_town_rollback(rollback)
+		return _rejection_dto(str(removed.get("reason","town_market_sale_failed")))
+	var gold:=int(assessment.gold)
+	var event=sim.world.emit_event("town.market_sold",hero_id,hero_id,
+		position,gold,int(removed.event_id),{"schema_version":1,
+			"ruleset_id":TOWN_ECONOMY_RULESET_ID,"gold":gold,
+			"definition_id":str(assessment.definition_id),
+			"instance_id":instance_id,"quantity":int(assessment.quantity),
+			"unit_price":int(assessment.unit_price),
+			"expedition_index":_town_expedition_index()})
+	state.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if event==null or not state_error.is_empty():
+		_restore_town_rollback(rollback)
+		return _rejection_dto(state_error if not state_error.is_empty() \
+			else "town_market_sale_failed")
+	command_journal.append({"kind":"town","operation":{
+		"action":"SELL","instance_id":instance_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"instance_id":instance_id,"definition_id":str(assessment.definition_id),
+		"quantity":int(assessment.quantity),"gold_earned":gold,"gold":town_gold(),
+		"sellable":town_market_sell_rows(),"inventory":protagonist_inventory()})
 
 
 func town_clinic_assessment(entity_id:int)->Dictionary:
@@ -7249,6 +7330,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				match str(operation.action):
 					"BUY":replay_result=replay.purchase_town_item(
 						str(operation.definition_id))
+					"SELL":replay_result=replay.sell_town_item(
+						str(operation.instance_id))
 					"CLINIC":replay_result=replay.treat_town_clinic(
 						Int64CodecScript.parse(operation.entity_id,"town member"))
 					"SHRINE":replay_result=replay.rest_at_town_shrine(
@@ -7622,6 +7705,11 @@ func _journal_wire_error(journal: Array) -> String:
 						if town_keys!=["action","definition_id"] \
 								or _town_market_catalog_row(str(row.operation.get(
 									"definition_id",""))).is_empty():
+							return "invalid_town_journal"
+					"SELL":
+						if town_keys!=["action","instance_id"] \
+								or not row.operation.instance_id is String \
+								or str(row.operation.instance_id).is_empty():
 							return "invalid_town_journal"
 					"CLINIC","SHRINE":
 						if town_keys!=["action","entity_id"] \
@@ -8526,6 +8614,9 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"base_resources_insufficient":"필요한 기지 자원이 부족합니다.",
 		"base_sell_town_required":"자원 판매는 마을에서만 할 수 있습니다.",
 		"base_trade_invalid":"판매할 자원과 수량을 확인하세요.",
+		"town_market_sell_missing":"판매할 물품이 가방에 없습니다.",
+		"town_market_item_unsellable":"시장이 사들이지 않는 물품입니다.",
+		"town_market_sale_failed":"판매를 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"base_return_dungeon_required":"현재 귀환할 원정이 없습니다.",
 		"base_return_unsafe":"전투나 조우 중에는 귀환할 수 없습니다.",
 		"base_return_actor_missing":"행동할 수 있는 주인공이 없습니다.",

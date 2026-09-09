@@ -3305,6 +3305,21 @@ func _town_market_panel()->void:
 			_on_town_market_buy.bind(str(item.definition_id)))
 		buy.custom_minimum_size.x=72;buy.disabled=not bool(item.can_buy)
 		buy.tooltip_text=str(item.message)
+	var sell_rows:Array[Dictionary]=session.town_market_sell_rows()
+	if sell_rows.is_empty():return
+	_add_notice("[매입] 원정에서 모은 마석을 금화로 바꿉니다",
+		"TownMarketSellTitle",FONT_BODY)
+	for sell_value in sell_rows:
+		var line:=HBoxContainer.new();line.name="TownMarketSell%s"%str(sell_value.instance_id)
+		line.custom_minimum_size.y=TOUCH_TARGET;deck.add_child(line)
+		var label:=Label.new();label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size",FONT_AUX)
+		label.text="%s ×%d · %d금화"%[str(sell_value.label),int(sell_value.quantity),
+			int(sell_value.gold)];line.add_child(label)
+		var sell:=_add_button(line,"판매","TownMarketSellButton%s"%str(sell_value.instance_id),
+			_on_town_market_sell.bind(str(sell_value.instance_id)))
+		sell.custom_minimum_size.x=72;sell.disabled=not bool(sell_value.can_sell)
+		sell.tooltip_text=str(sell_value.message)
 
 
 func _town_armory_panel()->void:
@@ -3417,6 +3432,14 @@ func _on_town_market_buy(definition_id:String)->void:
 	var result:Dictionary=session.purchase_town_item(definition_id)
 	notice_text="물품을 구입해 주인공 가방에 넣었습니다." \
 		if bool(result.get("accepted",false)) else str(result.get("message","구입할 수 없습니다."))
+	action_feedback_text=notice_text;_request_refresh()
+
+
+func _on_town_market_sell(instance_id:String)->void:
+	var result:Dictionary=session.sell_town_item(instance_id)
+	notice_text="%s ×%d을(를) %d금화에 팔았습니다."%[str(result.get("definition_id","")),
+		int(result.get("quantity",0)),int(result.get("gold_earned",0))] \
+		if bool(result.get("accepted",false)) else str(result.get("message","판매할 수 없습니다."))
 	action_feedback_text=notice_text;_request_refresh()
 
 

@@ -31,7 +31,7 @@ snapshot v7 전환과 v6 저장 거부는 HARD_CUT 정책에 따른 명시적인
 ├─ 장착했던 녹슨 단검       # 생전부터 존재한 동일 item instance
 ├─ 장착했던 누더기 갑옷     # 생전부터 존재한 동일 item instance
 ├─ 가방에 있던 회복약       # 생전 소지품
-└─ 고블린 귀                # 사망 시 종족 드롭 테이블로 생성
+└─ 마석                     # 사망 시 종족 드롭 테이블로 생성 (판매용 부산물)
 ```
 
 장착품을 드롭 테이블로 다시 생성하지 않는다. 생전 아이템과 사망 생성 아이템을 분리하여
@@ -376,11 +376,11 @@ sim/species_drop_registry.gd
       "species_id": "goblin",
       "rolls": [
         {
-          "roll_id": "GOBLIN_EAR",
-          "definition_id": "GOBLIN_EAR",
-          "chance_per_1000": 700,
+          "roll_id": "GOBLIN_MAGIC_STONE",
+          "definition_id": "MAGIC_STONE",
+          "chance_per_1000": 600,
           "min_quantity": 1,
-          "max_quantity": 2
+          "max_quantity": 1
         }
       ]
     }
@@ -397,7 +397,7 @@ sim/species_drop_registry.gd
 - 테이블이 없는 종족은 종족 전용 추가 드롭 0개이며 오류가 아니다.
 - 장비와 생전 소지품을 종족 드롭 테이블에 넣지 않는다.
 
-초기 `GOBLIN_EAR`처럼 아직 없는 종족 재료는 먼저 `data/content/items.json`에 정상
+종족 부산물은 장비(생전 loadout)와 `MAGIC_STONE`(마을 시장 매입)으로 통일한다. 새 종족 재료는 먼저 `data/content/items.json`에 정상
 `MATERIAL` 정의로 추가한 뒤 drop table에서 참조한다. placeholder인
 `MATERIAL_UNSPECIFIED`를 실제 종족 드롭으로 사용하지 않는다.
 
