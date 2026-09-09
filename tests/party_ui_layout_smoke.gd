@@ -7,7 +7,7 @@ const Action=preload("res://sim/party_action_command.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const AsciiUIFrame=preload("res://playtest/ascii_ui_frame.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
-const ROUTE_INTENDED_CADENCE_MSEC:=35
+const ROUTE_INTENDED_CADENCE_MSEC:=110
 const ROUTE_HEADLESS_GROSS_CEILING_MSEC:=230
 
 var failures:Array[String]=[]
@@ -556,8 +556,8 @@ func _exploration_route_and_popover(viewport_size:Vector2)->void:
 		var due_from_hop_start:int=int(sandbox.route_continue_due_msec)-first_hop_started
 		if due_from_hop_start<ROUTE_INTENDED_CADENCE_MSEC-5 \
 				or due_from_hop_start>ROUTE_INTENDED_CADENCE_MSEC+10:
-			failures.append("%s route cadence outside 30-45ms from hop start: %d"%[
-				viewport_size,due_from_hop_start])
+			failures.append("%s route cadence outside the intended %d(-5/+10)ms window from hop start: %d"%[
+				viewport_size,ROUTE_INTENDED_CADENCE_MSEC,due_from_hop_start])
 		var wait_started:int=Time.get_ticks_msec()
 		while sandbox.route_last_hop_started_msec==first_hop_started \
 				and Time.get_ticks_msec()-wait_started<ROUTE_HEADLESS_GROSS_CEILING_MSEC+20:

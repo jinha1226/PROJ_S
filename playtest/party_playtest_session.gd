@@ -207,6 +207,9 @@ var _opening_blood_positions:Array[Vector2i]=[]
 # authority: this cache is never serialized and is discarded whenever its
 # world/history/topology identity no longer matches.
 var _explored_presentation_cache: Dictionary = {}
+var _explored_cache_epoch:int=0
+# Persistent minimap row stream; see _party_minimap_observation.
+var _minimap_stream:Dictionary={}
 var _presentation_topology_cache:Dictionary={}
 # LOS is a pure function of the bootstrap-only topology, scenario and hero
 # cell. AUTO asks it for the same post-hop cell while checking its stop gate
@@ -3445,8 +3448,12 @@ func _presentation_material_at(position:Vector2i)->String:
 
 
 func _party_minimap_observation(context:Dictionary)->Dictionary:
+	# Incremental cartography stream. The row list is persistent for one
+	# (world, explored-cache epoch, floor bounds) identity: newly explored cells
+	# are appended once, and only the rows whose visibility or live marker
+	# changed since the previous call are touched. Consumers read the rows as
+	# shared, read-only data; the DTO shape stays the established compact row.
 	var visible:Dictionary=context.visible
-	var explored:Dictionary=context.explored
 	var progress:Dictionary=context.progress
 	var floor_bounds:=Rect2i(Vector2i.ZERO,
 		Vector2i(sim.world.width,sim.world.height))
@@ -3454,7 +3461,6 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	if raw_bounds is Array and raw_bounds.size()==4:
 		floor_bounds=Rect2i(int(raw_bounds[0]),int(raw_bounds[1]),
 			int(raw_bounds[2]),int(raw_bounds[3]))
-	var markers:Dictionary={}
 	var exit_key:=""
 	var anchor_key:=""
 	var exit_position_value:Variant=progress.get("exit_position",[])
@@ -3464,46 +3470,86 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	var anchor_position_value:Variant=_map_layout.get("anchor_portal_position")
 	if anchor_position_value is Vector2i:
 		anchor_key=_position_key(anchor_position_value)
+	var epoch:="%d:%d:%d:%d:%d:%d:%s:%s"%[int(sim.world.get_instance_id()),
+		int(_explored_presentation_cache.get("epoch",0)),floor_bounds.position.x,
+		floor_bounds.position.y,floor_bounds.size.x,floor_bounds.size.y,exit_key,anchor_key]
+	if str(_minimap_stream.get("epoch",""))!=epoch:
+		_minimap_stream={"epoch":epoch,"rows":[],"index":{},"static_markers":{},
+			"emitted":0,"touched":[]}
+	var rows:Array=_minimap_stream.rows
+	var index:Dictionary=_minimap_stream.index
+	var static_markers:Dictionary=_minimap_stream.static_markers
+	var explored_order:Array=_explored_presentation_cache.get("explored_order",[])
+	var added:Array=[]
+	for order_index in range(int(_minimap_stream.emitted),explored_order.size()):
+		var key:=str(explored_order[order_index])
+		var parts:=key.split(":")
+		if parts.size()!=2:continue
+		var position:=Vector2i(int(parts[0]),int(parts[1]))
+		if not sim.world.in_bounds(position) or not floor_bounds.has_point(position):continue
+		var local_position:=position-floor_bounds.position
+		var local_key:="%d:%d"%[local_position.x,local_position.y]
+		if index.has(local_key):continue
+		var static_marker:="EXIT" if key==exit_key else ("PORTAL" if key==anchor_key else "")
+		var row:Dictionary={"position":[local_position.x,local_position.y],"visibility_state":"MEMORY",
+			"terrain_id":str(sim.world.tile_at(position).terrain),"marker":static_marker}
+		index[local_key]=row;static_markers[local_key]=static_marker
+		# Rows stay in deterministic y/x order (the full-scan contract); a binary
+		# insert costs one memmove per newly explored cell, never a resort.
+		var low:=0;var high:=rows.size()
+		while low<high:
+			var middle:int=(low+high)/2;var probe:Array=rows[middle].position
+			if int(probe[1])<local_position.y \
+					or int(probe[1])==local_position.y and int(probe[0])<local_position.x:
+				low=middle+1
+			else:high=middle
+		rows.insert(low,row);added.append(row)
+	_minimap_stream.emitted=explored_order.size()
+	for touched_row in _minimap_stream.touched:
+		var row:Dictionary=touched_row
+		row.visibility_state="MEMORY"
+		row.marker=str(static_markers.get("%d:%d"%[int(row.position[0]),int(row.position[1])],""))
+	var touched:Array=[]
+	var visible_positions:Array=[]
+	var visible_rows:Dictionary={}
+	for key_value in visible:
+		var parts:=str(key_value).split(":")
+		if parts.size()!=2:continue
+		var position:=Vector2i(int(parts[0]),int(parts[1]))
+		if not floor_bounds.has_point(position):continue
+		var local_position:=position-floor_bounds.position
+		var local_key:="%d:%d"%[local_position.x,local_position.y]
+		if not index.has(local_key):continue
+		var row:Dictionary=index[local_key]
+		row.visibility_state="VISIBLE"
+		touched.append(row);visible_rows[local_key]=true
+		visible_positions.append([local_position.x,local_position.y])
+	var marker_rows:Array=[]
 	var hero_id:=int(context.hero_id)
-	if sim.world.entities.has(hero_id):
-		var hero_position:Vector2i=sim.world.entities[hero_id].position
-		if visible.has(_position_key(hero_position)):
-			markers[_position_key(hero_position)]="HERO"
+	var candidates:Array=[]
+	if sim.world.entities.has(hero_id):candidates.append([sim.world.entities[hero_id].position,"HERO"])
 	if not bool(context.hide_enemies):
 		for enemy_id_value in _current_floor_enemy_ids():
 			var enemy_id:=int(enemy_id_value)
 			if not sim.world.entities.has(enemy_id) or not sim.world.occupies_tile(enemy_id):continue
-			var enemy_position:Vector2i=sim.world.entities[enemy_id].position
-			var enemy_key:=_position_key(enemy_position)
-			if visible.has(enemy_key) and not markers.has(enemy_key):markers[enemy_key]="ENEMY"
-	var known_keys:Dictionary={}
-	for key_value in explored:known_keys[str(key_value)]=true
-	for key_value in visible:known_keys[str(key_value)]=true
-	var known_positions:Array[Vector2i]=[]
-	for key_value in known_keys:
-		var parts:=str(key_value).split(":")
-		if parts.size()!=2:continue
-		var position:=Vector2i(int(parts[0]),int(parts[1]))
-		if sim.world.in_bounds(position) and floor_bounds.has_point(position):
-			known_positions.append(position)
-	known_positions.sort_custom(func(a:Vector2i,b:Vector2i):
-		return a.y<b.y if a.y!=b.y else a.x<b.x)
-	var cells:Array=[]
-	for position in known_positions:
-		var key:=_position_key(position)
-		var state:="VISIBLE" if visible.has(key) else "MEMORY"
-		# Portals are static discovered cartography, not live feature authority.
-		# Actor markers still win on a currently visible shared cell; MEMORY can
-		# retain only static portal markers and never enemy/target/hazard data.
-		var marker:=str(markers.get(key,"")) if state=="VISIBLE" else ""
-		if marker.is_empty() and key==exit_key:marker="EXIT"
-		if marker.is_empty() and key==anchor_key:marker="PORTAL"
+			candidates.append([sim.world.entities[enemy_id].position,"ENEMY"])
+	for candidate in candidates:
+		var position:Vector2i=candidate[0]
+		if not floor_bounds.has_point(position):continue
 		var local_position:=position-floor_bounds.position
-		cells.append({"position":[local_position.x,local_position.y],"visibility_state":state,
-			"terrain_id":str(sim.world.tile_at(position).terrain),"marker":marker})
+		var local_key:="%d:%d"%[local_position.x,local_position.y]
+		# Live markers exist only on currently visible cells; the hero keeps a
+		# shared cell, later enemies never override an earlier marker.
+		if not visible_rows.has(local_key):continue
+		var row:Dictionary=index[local_key]
+		if row.marker in ["HERO","ENEMY"]:continue
+		row.marker=str(candidate[1])
+		marker_rows.append({"position":[local_position.x,local_position.y],"marker":str(candidate[1])})
+	_minimap_stream.touched=touched
 	return {"schema_version":1,"width":floor_bounds.size.x,
 		"height":floor_bounds.size.y,
-		"cells":cells}
+		"cells":rows,"epoch":epoch,"static_count":rows.size(),"added":added,
+		"visible":visible_positions,"markers":marker_rows}
 
 
 func _explored_cells_from_hero_history(hero_id:int,current_position:Vector2i)->Dictionary:
@@ -3526,11 +3572,12 @@ func _explored_cells_from_hero_history(hero_id:int,current_position:Vector2i)->D
 			and _presentation_event_boundary_signature(prefix_event)==str(
 				_explored_presentation_cache.get("boundary_event_signature",""))
 	if not cache_valid:
+		_explored_cache_epoch+=1
 		_explored_presentation_cache={"world_instance_id":int(sim.world.get_instance_id()),
 			"scenario_id":scenario_id,"hero_id":hero_id,
 			"topology_fingerprint":topology_fingerprint,"scanned_event_count":0,
 			"boundary_event_id":-1,"boundary_event_signature":"",
-			"visited":{},"explored":{}}
+			"visited":{},"explored":{},"explored_order":[],"epoch":_explored_cache_epoch}
 		scanned_count=0
 	for index in range(scanned_count,event_count):
 		var event=sim.world.events[index]
@@ -3562,10 +3609,14 @@ func _cache_explored_origin(origin:Vector2i)->void:
 	if visited.has(origin_key):return
 	visited[origin_key]=true
 	var explored:Dictionary=_explored_presentation_cache.get("explored",{})
+	var explored_order:Array=_explored_presentation_cache.get("explored_order",[])
 	var historical_visible:Dictionary=_presentation_visible_cells(origin)
-	for key in historical_visible:explored[str(key)]=true
+	for key in historical_visible:
+		if explored.has(str(key)):continue
+		explored[str(key)]=true;explored_order.append(str(key))
 	_explored_presentation_cache["visited"]=visited
 	_explored_presentation_cache["explored"]=explored
+	_explored_presentation_cache["explored_order"]=explored_order
 
 
 func _presentation_event_boundary_signature(event)->String:

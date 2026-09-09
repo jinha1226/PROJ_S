@@ -330,7 +330,9 @@ var _product_magnify_accumulator:=1.0
 # Presentation cadence only. Tests may set this to zero; it never participates
 # in canonical route choice, journal contents, simulation time, or replay.
 var continuous_travel_cadence_msec:=CONTINUOUS_TRAVEL_CADENCE_MSEC
-var _continuous_hop_counter:=0
+# Combat actors glide for most of the 0.32s display tick instead of a 150ms hop
+# followed by a dead pause; the diorama clamps at 240ms.
+const BATTLE_ACTOR_MOTION_MSEC:=240
 
 var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
@@ -2096,18 +2098,11 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var view_dimensions:=_current_grid_view_dimensions()
 	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
-	# The minimap is a full explored-world projection (~3ms per hop with its
-	# redraw). Mid-route hops refresh it every fourth step and at the route end.
-	var hop_route:Dictionary=session.exploration_route_state() if continuous_motion else {}
-	var include_minimap:bool=not product_hud or not continuous_motion \
-		or not bool(hop_route.get("active",false)) or bool(hop_route.get("completed",false)) \
-		or bool(hop_route.get("terminal",false)) or (_continuous_hop_counter%4)==0
-	if continuous_motion:_continuous_hop_counter+=1
-	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,include_minimap,
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
 		view_dimensions.y) if product_hud else session.observe_party_ui(view_cell_count)
 	var observe_finished_usec:=Time.get_ticks_usec()
 	grid.set_observation(ui_observation.get("grid",{}),[])
-	if include_minimap:minimap.set_observation(ui_observation.get("minimap",{}))
+	minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(ui_observation.get("grid",{}),status,
 		product_hud)
@@ -2418,7 +2413,7 @@ func _tick_autonomous_battle(delta:float)->void:
 				autonomous_battle_clock.paused=true
 				_show_manual_battle_feedback("자동 행동 실패 · "+str(result.get("reason","")))
 				_request_refresh();break
-			_record_result(result,true,"자동 전투 실행 불가",true);changed=true
+			_record_result(result,true,"자동 전투 실행 불가",true,BATTLE_ACTOR_MOTION_MSEC);changed=true
 			if battle_command_flow.check_danger(self):break
 			if not str(result.get("reservation_rejection","")).is_empty():
 				_show_manual_battle_feedback(str(result.reservation_rejection))

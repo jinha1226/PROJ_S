@@ -40,6 +40,16 @@ var _width:=15
 var _height:=15
 var _cells:Dictionary={}
 var _sectors:Dictionary={}
+# Incremental stream identity: the session appends static rows to one persistent
+# list per epoch and reports which cells are visible / carry live markers.
+var _epoch:=""
+var _static_count:=0
+var _sector_static:Dictionary={}
+# Cell rows keep exactly the three compact scalars; static exit/portal markers
+# live beside them so a live marker can be reverted after visibility passes.
+var _static_markers:Dictionary={}
+var _visible_keys:Array=[]
+var _marker_keys:Array=[]
 
 func _init()->void:
 	clip_contents=true
@@ -54,31 +64,138 @@ func _ready()->void:
 	resized.connect(queue_redraw)
 
 func set_observation(observation:Dictionary)->void:
-	_width=maxi(1,int(observation.get("width",15)))
-	_height=maxi(1,int(observation.get("height",15)))
-	_cells.clear()
-	for value in observation.get("cells",[]):
-		if not value is Dictionary or not value.get("position") is Array \
-				or value.position.size()!=2:continue
-		var position:=Vector2i(int(value.position[0]),int(value.position[1]))
-		if position.x<0 or position.y<0 or position.x>=_width or position.y>=_height:continue
-		var state:=AsciiStyleScript.visibility_state(value)
-		if state=="UNSEEN":continue
-		var marker:=str(value.get("marker","")).to_upper()
-		if marker.is_empty() and state=="VISIBLE":marker=_legacy_actor_marker(value)
-		var feature_id:=str(value.get("feature_id",""))
-		if marker.is_empty() and _is_exit_feature(feature_id):marker="EXIT"
-		if marker.is_empty() and _is_anchor_feature(feature_id):marker="PORTAL"
-		# Remembered static exits are safe. Every live marker is stripped outside
-		# current visibility, so actors, targets and plans never leak through fog.
-		if state!="VISIBLE" and marker not in ["EXIT","PORTAL"]:marker=""
-		if marker not in ["","HERO","ENEMY","EXIT","PORTAL"]:marker=""
-		# Rich actor, feature, hazard, direction and target payloads do not enter
-		# minimap state; only three compact scalar fields are retained.
-		_cells[_key(position)]={"visibility_state":state,
-			"terrain_id":str(value.get("terrain_id","unknown")),"marker":marker}
-	_rebuild_sector_cache()
+	if not observation.has("cells"):return
+	var rows:Array=observation.get("cells",[]) if observation.get("cells",[]) is Array else []
+	var epoch:=str(observation.get("epoch",""))
+	var static_count:=int(observation.get("static_count",-1))
+	var incremental:bool=not epoch.is_empty() and epoch==_epoch \
+		and observation.get("visible") is Array and observation.get("markers") is Array \
+		and observation.get("added") is Array \
+		and static_count==rows.size() and static_count>=_static_count \
+		and static_count-_static_count==observation.added.size() \
+		and _width==maxi(1,int(observation.get("width",15))) \
+		and _height==maxi(1,int(observation.get("height",15)))
+	if not incremental:
+		_width=maxi(1,int(observation.get("width",15)))
+		_height=maxi(1,int(observation.get("height",15)))
+		_cells.clear();_sector_static.clear();_static_markers.clear();_visible_keys=[];_marker_keys=[]
+		_epoch=epoch;_static_count=0
+		for value in rows:_ingest_row(value)
+		_static_count=rows.size() if not epoch.is_empty() else 0
+	else:
+		for row in observation.added:_ingest_row(row,true)
+		_static_count=rows.size()
+		for key in _visible_keys:
+			if _cells.has(key):_cells[key].visibility_state="MEMORY"
+		for key in _marker_keys:
+			if _cells.has(key):_cells[key].marker=str(_static_markers.get(key,""))
+		_visible_keys=[];_marker_keys=[]
+		for value in observation.visible:
+			if not value is Array or value.size()!=2:continue
+			var key:=_key(Vector2i(int(value[0]),int(value[1])))
+			if not _cells.has(key):continue
+			_cells[key].visibility_state="VISIBLE";_visible_keys.append(key)
+		for value in observation.markers:
+			if not value is Dictionary or not value.get("position") is Array \
+					or value.position.size()!=2:continue
+			var key:=_key(Vector2i(int(value.position[0]),int(value.position[1])))
+			var marker:=str(value.get("marker","")).to_upper()
+			if not _cells.has(key) or marker not in ["HERO","ENEMY"] \
+					or str(_cells[key].visibility_state)!="VISIBLE":continue
+			_cells[key].marker=marker;_marker_keys.append(key)
+	_recompute_sectors()
 	queue_redraw()
+
+func _ingest_row(value:Variant,static_only:bool=false)->void:
+	if not value is Dictionary or not value.get("position") is Array \
+			or value.position.size()!=2:return
+	var position:=Vector2i(int(value.position[0]),int(value.position[1]))
+	if position.x<0 or position.y<0 or position.x>=_width or position.y>=_height:return
+	var state:=AsciiStyleScript.visibility_state(value)
+	if state=="UNSEEN":return
+	var marker:=str(value.get("marker","")).to_upper()
+	if marker.is_empty() and state=="VISIBLE":marker=_legacy_actor_marker(value)
+	var feature_id:=str(value.get("feature_id",""))
+	if marker.is_empty() and _is_exit_feature(feature_id):marker="EXIT"
+	if marker.is_empty() and _is_anchor_feature(feature_id):marker="PORTAL"
+	# Remembered static exits are safe. Every live marker is stripped outside
+	# current visibility, so actors, targets and plans never leak through fog.
+	if state!="VISIBLE" and marker not in ["EXIT","PORTAL"]:marker=""
+	if marker not in ["","HERO","ENEMY","EXIT","PORTAL"]:marker=""
+	var static_marker:=marker if marker in ["EXIT","PORTAL"] else ""
+	if static_only:state="MEMORY";marker=static_marker
+	var key:=_key(position)
+	# Rich actor, feature, hazard, direction and target payloads do not enter
+	# minimap state; only compact scalar fields are retained.
+	_cells[key]={"visibility_state":state,
+		"terrain_id":str(value.get("terrain_id","unknown")),"marker":marker}
+	_static_markers[key]=static_marker
+	var sector_key:=_key(world_to_sector(position))
+	var flags:Dictionary=_sector_static.get(sector_key,{"wall":false,"passable":false,
+		"exit":[],"portal":[]})
+	if str(value.get("terrain_id","unknown"))=="wall":flags.wall=true
+	else:flags.passable=true
+	if static_marker=="EXIT" and key not in flags.exit:flags.exit.append(key)
+	if static_marker=="PORTAL" and key not in flags.portal:flags.portal.append(key)
+	_sector_static[sector_key]=flags
+	if state=="VISIBLE":_visible_keys.append(key)
+	if marker in ["HERO","ENEMY"]:_marker_keys.append(key)
+
+func _recompute_sectors()->void:
+	# Sixty-four sectors from per-sector static flags plus the current visible /
+	# marker sets: O(64 + visible) instead of a full pass over explored cells.
+	var visible_wall:Dictionary={};var visible_passable:Dictionary={}
+	for key in _visible_keys:
+		var row:Dictionary=_cells.get(key,{})
+		if row.is_empty():continue
+		var sector_key:=_key(world_to_sector(_position_from_key(key)))
+		if str(row.get("terrain_id",""))=="wall":visible_wall[sector_key]=true
+		else:visible_passable[sector_key]=true
+	var hero_sectors:Dictionary={};var threat_sectors:Dictionary={}
+	for key in _marker_keys:
+		var row:Dictionary=_cells.get(key,{})
+		if row.is_empty() or str(row.get("visibility_state",""))!="VISIBLE":continue
+		var sector_key:=_key(world_to_sector(_position_from_key(key)))
+		if str(row.get("marker",""))=="HERO":hero_sectors[sector_key]=true
+		elif str(row.get("marker",""))=="ENEMY":threat_sectors[sector_key]=true
+	_sectors.clear()
+	for y in range(SECTOR_ROWS):
+		for x in range(SECTOR_COLUMNS):
+			var sector:=Vector2i(x,y);var sector_key:=_key(sector)
+			var flags:Dictionary=_sector_static.get(sector_key,{})
+			var spec:Dictionary
+			if hero_sectors.has(sector_key):
+				spec=_shape_spec(PRIMITIVE_CIRCLE,HERO_COLOR,PRIORITY_HERO,"HERO","VISIBLE",0.78)
+			elif threat_sectors.has(sector_key):
+				spec=_shape_spec(PRIMITIVE_DIAMOND,ENEMY_COLOR,PRIORITY_THREAT,"THREAT","VISIBLE",0.78)
+			elif not flags.is_empty() and not flags.portal.is_empty():
+				spec=_shape_spec(PRIMITIVE_RING,PORTAL_COLOR,PRIORITY_PORTAL,"PORTAL",
+					_static_visibility(flags.portal),0.86)
+			elif not flags.is_empty() and not flags.exit.is_empty():
+				spec=_shape_spec(PRIMITIVE_TRIANGLE,EXIT_COLOR,PRIORITY_EXIT,"EXIT",
+					_static_visibility(flags.exit),0.80)
+			elif not flags.is_empty() and bool(flags.wall):
+				var wall_visible:bool=visible_wall.has(sector_key)
+				spec=_shape_spec(PRIMITIVE_TILE,WALL_VISIBLE_COLOR if wall_visible \
+					else WALL_MEMORY_COLOR,PRIORITY_WALL,"STRUCTURE",
+					"VISIBLE" if wall_visible else "MEMORY",0.88)
+			elif not flags.is_empty() and bool(flags.passable):
+				var passable_visible:bool=visible_passable.has(sector_key)
+				spec=_shape_spec(PRIMITIVE_TILE,VISIBLE_COLOR if passable_visible \
+					else MEMORY_COLOR,PRIORITY_MEMORY,"PASSABLE",
+					"VISIBLE" if passable_visible else "MEMORY",0.42)
+			else:spec=_unknown_sector_spec(sector)
+			spec["sector"]=sector
+			_sectors[sector_key]=spec
+
+func _static_visibility(keys:Array)->String:
+	for key in keys:
+		if str(_cells.get(key,{}).get("visibility_state",""))=="VISIBLE":return "VISIBLE"
+	return "MEMORY"
+
+func stream_state()->Dictionary:
+	return {"epoch":_epoch,"static_count":_static_count,"cell_count":_cells.size(),
+		"visible_count":_visible_keys.size(),"marker_count":_marker_keys.size()}.duplicate(true)
 
 func _legacy_actor_marker(row:Dictionary)->String:
 	for actor in row.get("actors",[]):
@@ -94,48 +211,6 @@ func _is_exit_feature(feature_id:String)->bool:
 
 func _is_anchor_feature(feature_id:String)->bool:
 	return feature_id in ["anchor_portal_inactive","anchor_portal_active"]
-
-func _rebuild_sector_cache()->void:
-	_sectors.clear()
-	for key_value in _cells:
-		var position:=_position_from_key(str(key_value))
-		var sector:=world_to_sector(position)
-		var candidate:=_candidate_for_row(_cells[key_value])
-		var sector_key:=_key(sector)
-		var current:Dictionary=_sectors.get(sector_key,_unknown_sector_spec(sector))
-		if _candidate_wins(candidate,current):
-			candidate["sector"]=sector
-			_sectors[sector_key]=candidate
-	# Materialize blanks so draw/test iteration remains a bounded 8x8 contract.
-	for y in range(SECTOR_ROWS):
-		for x in range(SECTOR_COLUMNS):
-			var sector:=Vector2i(x,y);var sector_key:=_key(sector)
-			if not _sectors.has(sector_key):_sectors[sector_key]=_unknown_sector_spec(sector)
-
-func _candidate_wins(candidate:Dictionary,current:Dictionary)->bool:
-	var candidate_priority:=int(candidate.get("priority",PRIORITY_UNKNOWN))
-	var current_priority:=int(current.get("priority",PRIORITY_UNKNOWN))
-	if candidate_priority!=current_priority:return candidate_priority>current_priority
-	# Same-role sectors prefer current visibility regardless of DTO row order.
-	return str(candidate.get("visibility_state","UNSEEN"))=="VISIBLE" \
-		and str(current.get("visibility_state","UNSEEN"))!="VISIBLE"
-
-func _candidate_for_row(row:Dictionary)->Dictionary:
-	var state:=AsciiStyleScript.visibility_state(row)
-	var marker:=str(row.get("marker","")).to_upper()
-	if state=="VISIBLE" and marker=="HERO":
-		return _shape_spec(PRIMITIVE_CIRCLE,HERO_COLOR,PRIORITY_HERO,"HERO",state,0.78)
-	if state=="VISIBLE" and marker=="ENEMY":
-		return _shape_spec(PRIMITIVE_DIAMOND,ENEMY_COLOR,PRIORITY_THREAT,"THREAT",state,0.78)
-	if marker=="EXIT":
-		return _shape_spec(PRIMITIVE_TRIANGLE,EXIT_COLOR,PRIORITY_EXIT,"EXIT",state,0.80)
-	if marker=="PORTAL":
-		return _shape_spec(PRIMITIVE_RING,PORTAL_COLOR,PRIORITY_PORTAL,"PORTAL",state,0.86)
-	if str(row.get("terrain_id","unknown"))=="wall":
-		return _shape_spec(PRIMITIVE_TILE,WALL_VISIBLE_COLOR if state=="VISIBLE" \
-			else WALL_MEMORY_COLOR,PRIORITY_WALL,"STRUCTURE",state,0.88)
-	return _shape_spec(PRIMITIVE_TILE,VISIBLE_COLOR if state=="VISIBLE" else MEMORY_COLOR,
-		PRIORITY_MEMORY,"PASSABLE",state,0.42)
 
 func _shape_spec(primitive:String,color:Color,priority:int,role:String,
 		visibility_state:String,fill_ratio:float)->Dictionary:

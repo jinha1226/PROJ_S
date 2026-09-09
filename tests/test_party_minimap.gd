@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const Minimap=preload("res://playtest/party_minimap.gd")
 const Session=preload("res://playtest/party_playtest_session.gd")
+const Command=preload("res://sim/sim_command.gd")
 
 func test_sector_mapping_is_deterministic_and_specs_are_detached()->bool:
 	var minimap=Minimap.new();minimap.set_observation(_observation(48,48,[
@@ -152,6 +153,45 @@ func test_compact_allocations_are_crisp_clipped_and_idle()->bool:
 		"clipped and no per-frame work")
 	check_eq(minimap._sectors.size(),64,"cache remains exactly 64 sectors")
 	minimap.free();return finish()
+
+func test_incremental_stream_matches_a_fresh_full_rebuild()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_COMBAT_SCENARIO_ID)
+	var hero:int=int(session.sim.world.party_encounter.protagonist_id)
+	var live=Minimap.new()
+	var first:Dictionary=session.observe_party_ui(13,true,21).minimap
+	live.set_observation(first)
+	var first_state:Dictionary=live.stream_state()
+	check(first_state.static_count==first.cells.size() and first_state.static_count>0,
+		"first observation seeds the persistent row stream")
+	var moved:=0
+	for _step in range(8):
+		var position:Vector2i=session.sim.world.entities[hero].position
+		for delta in [Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,Vector2i.UP]:
+			if bool(session.commit_exploration(Command.move_to(hero,position+delta)).get("accepted",false)):
+				moved+=1;break
+		var incremental:Dictionary=session.observe_party_ui(13,true,21).minimap
+		check(incremental.cells==first.cells,"the stream reuses one persistent row list")
+		live.set_observation(incremental)
+		var fresh=Minimap.new();var full:Dictionary=incremental.duplicate(true)
+		full.erase("epoch");full.erase("static_count");full.erase("visible");full.erase("markers")
+		fresh.set_observation(full)
+		for y in range(Minimap.SECTOR_ROWS):
+			for x in range(Minimap.SECTOR_COLUMNS):
+				var sector:=Vector2i(x,y)
+				check_eq(live.sector_draw_spec(sector),fresh.sector_draw_spec(sector),
+					"incremental sector %s equals a fresh full rebuild"%sector)
+		for row in incremental.cells:
+			var cell:=Vector2i(int(row.position[0]),int(row.position[1]))
+			check_eq(live.cell_draw_spec(cell),fresh.cell_draw_spec(cell),
+				"incremental cell %s equals a fresh full rebuild"%cell)
+		check_eq(live.stream_state().epoch,str(incremental.epoch),"stream epoch follows the session")
+	check(moved>0,"parity fixture walked at least one step")
+	var visible_rows:=0
+	for row in first.cells:
+		if str(row.visibility_state)=="VISIBLE":visible_rows+=1
+	check(visible_rows>0 and visible_rows<first.cells.size(),
+		"rows carry the current visibility split between VISIBLE and MEMORY")
+	return finish()
 
 func _observation(width:int,height:int,cells:Array)->Dictionary:
 	return {"width":width,"height":height,"cells":cells}

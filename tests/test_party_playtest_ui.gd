@@ -1227,9 +1227,12 @@ func test_product_graphics_surface_is_pure_2d_without_touching_the_run()->bool:
 		"product map does not construct legacy 2.5D or 3D controls")
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
 		"product map starts on the shipping 2D projection")
+	# Both probed rows must exist in the 15x15 fixture world and the 13-row view;
+	# the old (7,13) probe fell outside the world and only "matched" while the
+	# unlaid-out grid still collapsed every cell to a zero rect.
 	var upper:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,1))
-	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,13))
-	check(upper.size.is_equal_approx(lower.size),"product uses uniform 2D cells")
+	var lower:Rect2=sandbox.grid.world_cell_rect(sandbox.grid.view_origin+Vector2i(7,5))
+	check(upper.size.x>0.0 and upper.size.is_equal_approx(lower.size),"product uses uniform 2D cells")
 	sandbox._refresh();sandbox.grid.size=sandbox.grid.custom_minimum_size
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
 			and sandbox.grid.mapping_signature()==flat_mapping,
