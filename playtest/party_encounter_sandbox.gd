@@ -3822,10 +3822,11 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	if companion_order_editor!=null and companion_order_editor.visible:
 		product_auto_button=null;product_interact_button=null;product_attack_button=null
 		product_wait_guard_button=null;product_execute_button=null;product_bag_button=null
+		product_rest_button=null;product_pickup_button=null;product_retreat_button=null
 		action_feedback_label.visible=false
 		combat_action_dock.visible=false;combat_action_area.visible=true
 		return
-	product_bag_button=null
+	product_bag_button=null;product_rest_button=null;product_pickup_button=null;product_retreat_button=null
 	product_auto_button=null;product_interact_button=null
 	product_attack_button=null;product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
@@ -3833,32 +3834,38 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	var members:Variant=status.get("party_member_ids",[])
 	var party_count:int=members.size() if members is Array else 1
 	var metrics:=_product_controls_metrics(party_count)
-	var target:=int(metrics.target);var gap:=int(metrics.gap);var dock_height:=int(metrics.dock_height)
+	var gap:=int(metrics.gap);var dock_height:=int(metrics.dock_height)
 	combat_action_area.custom_minimum_size.y=dock_height
 	combat_action_dock.custom_minimum_size.y=dock_height
 	combat_action_dock.add_theme_constant_override("separation",gap)
 	if bool(_current_run_progress().get("terminal",false)):
 		product_execute_button=_add_product_context_button(combat_action_dock,
-			"[RESTART]","ProductExecute",_on_product_execute,target)
+			"[RESTART]","ProductExecute",_on_product_execute,int(metrics.target))
 		product_execute_button.disabled=false
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
-	# One dock for exploration and combat: [탐험|공격] [대기|휴식] [줍기] [퇴각] [가방]
-	# plus the contextual interaction (portal, gather, loot) when one exists.
+	# One fixed dock, the same in exploration and in a fight:
+	# [공격] [대기] [휴식] [탐험] [줍기] [퇴각] [가방] + the contextual interaction.
+	# Eight 44px+ touch targets must fit the narrowest phone width; the gap
+	# shrinks before the targets do.
+	if 8.0*44.0+float(gap)*7.0>size.x:gap=1;combat_action_dock.add_theme_constant_override("separation",gap)
+	var target:=clampi(int(floor((size.x-float(gap)*7.0)/8.0)),44,int(metrics.target))
+	product_attack_button=_add_product_context_button(combat_action_dock,"[공격]","ProductAttack",
+		_on_product_attack_any,target)
+	product_wait_guard_button=_add_product_context_button(combat_action_dock,"[대기]",
+		"ProductWaitGuard",_on_product_wait_guard,target)
+	product_rest_button=_add_product_context_button(combat_action_dock,"[휴식]","ProductRest",
+		_on_product_rest,target)
 	product_auto_button=_add_product_context_button(combat_action_dock,"[탐험]","ProductAuto",
 		_on_product_auto,target)
-	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
-		_on_product_interact,target)
-	product_attack_button=null;product_rest_button=null
-	product_wait_guard_button=_add_product_context_button(combat_action_dock,
-		"[대기]" if str(status.get("view_mode",""))=="COMBAT" else "[휴식]",
-		"ProductWaitGuard",_on_product_wait_guard,target)
 	product_pickup_button=_add_product_context_button(combat_action_dock,"[줍기]","ProductPickup",
 		_on_product_pickup,target)
 	product_retreat_button=_add_product_context_button(combat_action_dock,"[퇴각]","ProductRetreat",
 		_on_product_retreat,target)
 	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
 		_open_hero_detail_tab.bind("ITEM"),target)
+	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
+		_on_product_interact,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
 	_sync_product_control_state(status)
 
@@ -3875,8 +3882,40 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	if terminal:_product_attack_targeting=false
 	var equipment:Dictionary=session.protagonist_equipment() \
 		if session.has_method("protagonist_equipment") else {}
-	product_interact_button.disabled=true
 	var protagonist_id:=int(status.get("protagonist_id",-1))
+	var duo_fight:bool=_portrait_battle_controls_visible()
+	var world=session.sim.world
+	var enemy_in_view:=false
+	for id_value in status.get("visible_enemy_ids",[]):
+		if world.is_autonomous_target(int(id_value)):enemy_in_view=true;break
+	# [공격]: same button always; it explains itself when nothing is in reach.
+	product_attack_button.disabled=terminal or mode=="TOWN"
+	product_attack_button.tooltip_text="가장 가까운 적을 공격합니다. 조우 전이면 선공, 인접하지 않으면 한 칸 다가갑니다." \
+		if enemy_in_view else "시야 안에 적이 없습니다."
+	# [대기]: one turn. In a fight it is a guard, otherwise a plain wait.
+	product_wait_guard_button.disabled=terminal or mode=="TOWN"
+	if duo_fight:product_wait_guard_button.tooltip_text="이번 차례는 자리를 지킵니다."
+	elif mode=="COMBAT":
+		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
+		product_wait_guard_button.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다." \
+			%_guard_percent_for_actor(guard_actor)
+	else:product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
+	# [휴식]: rest until full; refused with a reason while enemies are near.
+	product_rest_button.text="[STOP]" if _product_rest_active else "[휴식]"
+	product_rest_button.disabled=terminal or mode=="TOWN"
+	product_rest_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
+		else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
+	# [줍기]: always in place, enabled when loot is underfoot.
+	var loot_here:int=session.ground_items_at_protagonist().size() if mode!="TOWN" else 0
+	product_pickup_button.disabled=terminal or loot_here==0
+	product_pickup_button.tooltip_text="이 칸의 아이템 %d개를 모두 줍습니다."%loot_here if loot_here>0 \
+		else "발밑에 주울 것이 없습니다."
+	# [퇴각]: meaningful only while something is chasing the party.
+	product_retreat_button.disabled=terminal or not duo_fight
+	product_retreat_button.text="[퇴각 중]" if _retreat_active and duo_fight else "[퇴각]"
+	product_retreat_button.tooltip_text="파티 전체가 적에게서 물러납니다. 추적을 벗어나면 탐험으로 돌아갑니다." \
+		if duo_fight else "쫓아오는 적이 없습니다."
+	# [탐험]: auto explore toggle; the opening event borrows it for the potion.
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	var opening_choice:=bool(opening.get("can_interact",false))
@@ -3889,113 +3928,51 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		if session.has_method("base_gather_assessment") else {}
 	var gather_context:bool=bool(gather.get("accepted",false)) \
 		or not str(gather.get("resource_id","")).is_empty()
-	var duo_fight:bool=_portrait_battle_controls_visible()
-	if product_retreat_button!=null and is_instance_valid(product_retreat_button):
-		product_retreat_button.disabled=terminal or not duo_fight
-		product_retreat_button.text="[퇴각 중]" if _retreat_active and duo_fight else "[퇴각]"
-		product_retreat_button.tooltip_text="파티 전체가 적에게서 물러납니다. 추적을 벗어나면 탐험으로 돌아갑니다." \
-			if duo_fight else "전투 중에만 퇴각할 수 있습니다."
-	if duo_fight:
-		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
-		product_auto_button.text="[공격]";product_auto_button.disabled=terminal
-		product_auto_button.tooltip_text="가장 가까운 적을 공격합니다. 인접하지 않으면 한 칸 다가갑니다."
-		product_interact_button.visible=false
-		product_wait_guard_button.text="[대기]";product_wait_guard_button.disabled=terminal
-		product_wait_guard_button.tooltip_text="이번 차례는 자리를 지킵니다."
-		if product_pickup_button!=null:product_pickup_button.visible=false
-		return
-	product_interact_button.visible=true
-	if bool(floor_transition.get("accepted",false)):
-		product_interact_button.text="[%d층 진입]"%int(
-			floor_transition.get("to_floor_index",2))
-		product_interact_button.disabled=false
-		product_interact_button.tooltip_text="층간 포탈을 사용해 다음 층으로 이동합니다."
-		return
-	if portal_choice:
-		product_interact_button.text="[PORTAL 활성화]"
-		product_interact_button.disabled=false
-		product_interact_button.tooltip_text="이 층의 거점 포탈을 마을과 연결합니다."
-		return
+	var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
 	if opening_choice:
 		if event_label!=null:
 			event_label.text=str(opening.get("scene_summary",
 				"부상당한 여행자가 벽에 기대 숨을 몰아쉬고 있습니다."))
-		product_auto_button.toggle_mode=false
-		product_auto_button.set_pressed_no_signal(false)
+		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
 		product_auto_button.text="[물약 주기]"
 		product_auto_button.disabled=not bool(opening.get("give_enabled",false))
 		product_auto_button.tooltip_text="회복 물약 1개를 건네 실제 체력을 회복시킵니다."
+	else:
+		product_auto_button.toggle_mode=true
+		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
+		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
+		product_auto_button.disabled=terminal or mode=="TOWN" or not session.has_method("start_auto_explore")
+		product_auto_button.tooltip_text="출구 쪽 미탐색 지역으로 자동 탐험" if not duo_fight \
+			else "적이 보이는 동안은 자동 탐험이 멈춥니다."
+	# Contextual interaction: only when there is one.
+	product_interact_button.disabled=true;product_interact_button.text="[INTERACT]"
+	if bool(floor_transition.get("accepted",false)):
+		product_interact_button.text="[%d층 진입]"%int(floor_transition.get("to_floor_index",2))
+		product_interact_button.disabled=false
+		product_interact_button.tooltip_text="층간 포탈을 사용해 다음 층으로 이동합니다."
+	elif portal_choice:
+		product_interact_button.text="[PORTAL 활성화]"
+		product_interact_button.disabled=false
+		product_interact_button.tooltip_text="이 층의 거점 포탈을 마을과 연결합니다."
+	elif opening_choice:
 		product_interact_button.text="[돕지 않기]"
 		product_interact_button.disabled=not bool(opening.get("pass_enabled",false))
 		product_interact_button.tooltip_text="여행자를 돕지 않고 원정을 계속합니다."
-		product_auto_button.custom_minimum_size.y=maxf(44.0,
-			product_auto_button.custom_minimum_size.y)
-		product_interact_button.custom_minimum_size.y=maxf(44.0,
-			product_interact_button.custom_minimum_size.y)
 	elif gather_context and mode=="EXPLORATION":
 		var amount:=maxi(1,int(gather.get("amount",1)))
 		product_interact_button.text="[채집 %d]"%amount
 		product_interact_button.disabled=terminal or not bool(gather.get("accepted",false))
-		product_interact_button.tooltip_text=str(gather.get("message",
-			"표시된 자원 더미를 채집합니다."))
-		product_auto_button.disabled=terminal
-		product_auto_button.toggle_mode=true
-		var auto_state:Dictionary=session.auto_explore_state() \
-			if session.has_method("auto_explore_state") else {}
-		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
-		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
-	elif mode=="EXPLORATION":
-		product_interact_button.text="[INTERACT]"
-		if not session.battle_loot().rows.is_empty():
-			product_interact_button.text="전리품"
-			product_interact_button.disabled=false
-			product_interact_button.tooltip_text="지난 전투에서 남겨둔 전리품을 확인합니다."
-		var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
-		product_auto_button.disabled=terminal or not session.has_method("start_auto_explore")
-		product_auto_button.toggle_mode=true
-		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
-		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
-		product_auto_button.tooltip_text="출구 쪽 미탐색 지역으로 자동 탐험"
-	else:
-		var reload_weapon:=bool(equipment.get("reload_required",false))
-		product_interact_button.text="[RELOAD]" if reload_weapon else "[INTERACT]"
-		product_interact_button.disabled=(terminal \
-			or not bool(equipment.get("can_reload",false))) if reload_weapon else true
-		if reload_weapon:
-			if bool(equipment.get("loaded",false)):
-				product_interact_button.tooltip_text="쇠뇌가 장전되어 있습니다."
-			else:product_interact_button.tooltip_text= \
-				"쇠뇌를 장전합니다. 볼트 %d개 · %d시간" \
-				%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
-		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
-		product_auto_button.text="[공격]"
-		product_auto_button.disabled=terminal or mode!="COMBAT"
-		product_auto_button.tooltip_text="가장 가까운 시야 내 적을 공격하거나 한 칸 접근합니다."
-	# Exploration: the wait slot is the rest macro. Combat (non-duo legacy): guard.
-	if mode=="COMBAT":
-		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
-		product_wait_guard_button.text="[GUARD]" if not _is_solo_product_session() else "[대기]"
-		product_wait_guard_button.disabled=terminal
-		product_wait_guard_button.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다." \
-			%_guard_percent_for_actor(guard_actor)
-	else:
-		product_wait_guard_button.text="[STOP]" if _product_rest_active else "[휴식]"
-		product_wait_guard_button.disabled=terminal or mode!="EXPLORATION"
-		product_wait_guard_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
-			else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
+		product_interact_button.tooltip_text=str(gather.get("message","표시된 자원 더미를 채집합니다."))
+	elif mode=="EXPLORATION" and not session.battle_loot().rows.is_empty():
+		product_interact_button.text="전리품";product_interact_button.disabled=false
+		product_interact_button.tooltip_text="지난 전투에서 남겨둔 전리품을 확인합니다."
+	elif bool(equipment.get("reload_required",false)):
+		product_interact_button.text="[RELOAD]"
+		product_interact_button.disabled=terminal or not bool(equipment.get("can_reload",false))
+		product_interact_button.tooltip_text="쇠뇌가 장전되어 있습니다." if bool(equipment.get("loaded",false)) \
+			else "쇠뇌를 장전합니다. 볼트 %d개 · %d시간"%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
 	product_interact_button.visible=not (product_interact_button.disabled \
 		and product_interact_button.text=="[INTERACT]")
-	if product_pickup_button!=null:
-		var loot_here:int=session.ground_items_at_protagonist().size() if mode=="EXPLORATION" else 0
-		product_pickup_button.visible=loot_here>0
-		product_pickup_button.disabled=terminal or loot_here==0
-		product_pickup_button.tooltip_text="이 칸의 아이템 %d개를 모두 줍습니다."%loot_here
-	if product_rest_button!=null:
-		product_rest_button.visible=mode=="EXPLORATION"
-		product_rest_button.disabled=terminal or mode!="EXPLORATION"
-		product_rest_button.text="[STOP]" if _product_rest_active else "[REST]"
-		product_rest_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
-			else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -4145,8 +4122,6 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
-	if _portrait_battle_controls_visible():_duo_attack_nearest();return
-	if str(session.party_status().get("view_mode",""))=="COMBAT":_on_product_attack();return
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	if bool(opening.get("can_interact",false)):
@@ -4386,7 +4361,11 @@ func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()
 	_retreat_active=false
 	if str(status.get("view_mode",""))=="EXPLORATION":
-		_on_product_rest()
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		var active_route:Dictionary=session.exploration_route_state()
+		if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
+			_cancel_active_route()
+		_on_explore(Vector2i.ZERO)
 	elif _portrait_battle_controls_visible():
 		var hero_id:=int(status.get("protagonist_id",-1))
 		var held:Dictionary=session.individual_battle.reserve_hold(hero_id)
@@ -4407,10 +4386,13 @@ func _on_product_retreat()->void:
 	_release_hero_turn(str(result.get("message","퇴각")))
 	_request_refresh()
 
-func _duo_attack_nearest()->void:
-	# [공격]: attack the nearest visible enemy if adjacent, otherwise take one
-	# step toward it. Movement and the attack stay separate taps.
+func _on_product_attack_any()->void:
+	# [공격], exploration or fight alike: attack the nearest visible enemy if
+	# adjacent (a first strike before contact), otherwise take one step toward
+	# it. Movement and the attack stay separate taps.
 	var status:Dictionary=session.party_status()
+	if bool(status.get("terminal",false)) or str(status.get("view_mode",""))=="TOWN":return
+	if not session.is_duo_autobattle():_on_product_attack();return
 	var hero_id:=int(status.get("protagonist_id",-1))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 	var world=session.sim.world
@@ -4434,13 +4416,21 @@ func _duo_attack_nearest()->void:
 	for direction in [Vector2i(-1,-1),Vector2i(0,-1),Vector2i(1,-1),Vector2i(-1,0),Vector2i(1,0),Vector2i(-1,1),Vector2i(0,1),Vector2i(1,1)]:
 		var cell:Vector2i=hero_position+direction
 		if not world.in_bounds(cell):continue
-		var assessment:Dictionary=session.individual_battle.movement_assessment(hero_id,cell)
+		var assessment:Dictionary=session.individual_battle.movement_assessment(hero_id,cell) \
+			if _portrait_battle_controls_visible() else session.preview_exploration(CommandScript.move_to(hero_id,cell))
 		if not bool(assessment.get("accepted",false)):continue
 		var score:int=maxi(absi(enemy_position.x-cell.x),absi(enemy_position.y-cell.y))*10 \
 			+(1 if direction.x!=0 and direction.y!=0 else 0)
 		if score<best_score:best_score=score;best_step=cell
 	if best_step==Vector2i(-1,-1):
 		_show_product_command_feedback("적에게 다가갈 길이 없습니다.");return
+	if not _portrait_battle_controls_visible():
+		# Exploration: one ordinary step toward the enemy.
+		_cancel_product_auto_explore("auto_explore_user_command",false)
+		var active_route:Dictionary=session.exploration_route_state()
+		if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
+			_cancel_active_route()
+		_on_explore(best_step-hero_position);return
 	autonomous_battle_clock.paused=false
 	_approach_step_pending=true
 	_reserve_battle_move(hero_id,best_step)

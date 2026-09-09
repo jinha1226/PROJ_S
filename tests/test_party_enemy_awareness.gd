@@ -152,10 +152,10 @@ func test_two_encounter_cycles_restore_with_strict_history()->bool:
 		"first threat is internally ready in its triggering move")
 	check(product_grid==sandbox.grid and not sandbox.phase_label.visible,
 		"first threat keeps the same product grid and hides internal phase chrome")
-	check(sandbox.product_auto_button!=null \
-		and sandbox.product_auto_button.text=="[공격]" \
+	check(sandbox.product_attack_button!=null \
+		and sandbox.product_attack_button.text=="[공격]" \
 		and sandbox.product_wait_guard_button.text=="[대기]",
-		"solo product turns the explore slot into 공격 and the rest slot into 대기 in combat")
+		"solo product keeps 공격 and 대기 in the fixed dock during combat")
 	check(_finish_visible_enemy(sandbox,session,hero_id,first_enemy_id),
 		"first enemy is removed through same-grid movement and bump input")
 	check_eq(session.party_status().safe_phase,"GROUPED",

@@ -24,14 +24,15 @@ func run()->void:
 	for i in range(3):await process_frame
 	var world=session.sim.world;var hero:int=int(world.party_encounter.protagonist_id)
 	_check(ui.event_label.max_lines_visible==3,"event feed shows three lines")
-	_check(ui.product_wait_guard_button!=null and ui.product_wait_guard_button.text=="[휴식]","[휴식] sits in the wait slot of the action dock")
+	_check(ui.product_rest_button!=null and ui.product_rest_button.text=="[휴식]" and ui.product_wait_guard_button.text=="[대기]" \
+		and ui.product_attack_button.text=="[공격]","the fixed dock has 공격, 대기 and 휴식 in exploration")
 	# Fight once so there is loot on the ground (and usually some damage).
 	var fought:=false
 	for round in range(700):
 		var phase:=str(session.party_status().get("safe_phase",""))
 		if phase=="ENGAGED":
 			# [공격]: attack the nearest enemy when adjacent, otherwise one step closer.
-			if ui.hero_turn_waiting():ui._on_product_auto();await process_frame
+			if ui.hero_turn_waiting():ui._on_product_attack_any();await process_frame
 			_pump(0.5)
 			if str(session.party_status().get("safe_phase",""))!="ENGAGED":fought=true;break
 			continue
@@ -86,7 +87,7 @@ func run()->void:
 	for round in range(400):
 		var phase:=str(session.party_status().get("safe_phase",""))
 		if phase=="ENGAGED":
-			if ui.hero_turn_waiting():ui._on_product_auto();await process_frame
+			if ui.hero_turn_waiting():ui._on_product_attack_any();await process_frame
 			_pump(0.5);continue
 		if phase in ["CONTACT","REGROUP_READY"]:
 			for i in range(6):await process_frame

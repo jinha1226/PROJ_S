@@ -68,10 +68,11 @@ func run()->void:
 	# 1. One screen: no clock, no toggle; dock reads 공격/대기/퇴각; skill row above portraits; enemy strip over the map.
 	_check(ui.find_child("BattleTimelineBar",true,false)==null and ui.find_child("PortraitBattleMode",true,false)==null \
 		and ui.find_child("PortraitBattlePause",true,false)==null,"no turn clock or mode controls in combat")
-	_check(ui.product_auto_button!=null and ui.product_auto_button.text=="[공격]" \
-		and ui.product_wait_guard_button.text=="[대기]" and ui.product_retreat_button!=null \
+	_check(ui.product_attack_button!=null and ui.product_attack_button.text=="[공격]" \
+		and ui.product_wait_guard_button.text=="[대기]" and ui.product_rest_button.text=="[휴식]" \
+		and ui.product_auto_button.text=="[탐험]" and ui.product_retreat_button!=null \
 		and not ui.product_retreat_button.disabled and ui.product_bag_button!=null,
-		"combat dock is 공격 / 대기 / 퇴각 / 가방")
+		"the dock keeps 공격 / 대기 / 휴식 / 탐험 / 퇴각 / 가방 during a fight")
 	_check(ui.hero_skill_row.visible and ui.hero_skill_row.get_index()==ui.cards.get_index()-1 \
 		and ui.event_surface.get_index()==ui.hero_skill_row.get_index()-1,
 		"feed, then hero skills, then portraits")
@@ -119,7 +120,7 @@ func run()->void:
 					if str(event.type)=="action.melee_attack" and int(event.actor_id)==hero:attacked=true
 				if attacked:break
 			else:
-				ui._on_product_auto();await process_frame;_pump(ui,3.0)
+				ui._on_product_attack_any();await process_frame;_pump(ui,3.0)
 				_check(_hero_actions_since(world,hero,before_round)<=2,"[공격] approach is a short step, not a chase (got %d)"%_hero_actions_since(world,hero,before_round))
 		_check(attacked or not _engaged(session),"an adjacent enemy tap attacks it")
 	# 6. Skill tap paints red cells; empty cell tap cancels.

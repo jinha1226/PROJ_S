@@ -123,13 +123,13 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s product movement/context dock is not persistently visible"%viewport_size)
 	var control_metrics:Dictionary=sandbox._product_controls_metrics(1)
 	_check(int(control_metrics.get("target",0))==44 and int(control_metrics.get("dock_height",0))==44 \
-		and sandbox.combat_action_dock.get_child_count()==6,
-		"%s product context dock is not one 44px row of six commands (탐험/공격, 상호작용, 휴식/대기, 줍기, 퇴각, 가방)"%viewport_size)
+		and sandbox.combat_action_dock.get_child_count()==8,
+		"%s product context dock is not one 44px row of eight commands (공격, 대기, 휴식, 탐험, 줍기, 퇴각, 가방, 상호작용)"%viewport_size)
 	var pickup_all:=sandbox.find_child("ProductPickup",true,false) as Button
 	_check(sandbox.find_child("ProductDirectionPad",true,false)==null \
 		and sandbox.find_child("ProductExecute",true,false)==null \
-		and (pickup_all==null or not pickup_all.visible),
-		"%s D-pad or execute duplicate controls survived, or pick-all shows without loot"%viewport_size)
+		and pickup_all!=null and pickup_all.visible and pickup_all.disabled,
+		"%s D-pad or execute duplicate controls survived, or pick-all is not a disabled fixed button without loot"%viewport_size)
 	for button in [sandbox.product_auto_button,sandbox.product_retreat_button,
 			sandbox.product_bag_button,sandbox.product_wait_guard_button]:
 		_check(button is Button and bool(button.get_meta("product_control",false)) \
