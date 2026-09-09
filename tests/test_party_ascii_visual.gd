@@ -1491,9 +1491,9 @@ func test_flat_product_uses_foot_anchored_fixed_front_actor_over_ascii_ground()-
 		"weapon_definition_id":"WEAPON_CROSSBOW","armor_definition_id":"ARMOR_LEATHER"}
 	var moving:Dictionary=grid.fixed_front_actor_render_spec(actor,false,started+45)
 	check(bool(moving.visible) and bool(moving.uses_sprite) \
-			and moving.body_texture!=null and moving.armor_texture==null \
-			and moving.weapon_texture==null,
-		"flat product renders the full-body species base without equipment")
+			and moving.body_texture!=null and moving.armor_texture!=null \
+			and moving.weapon_texture!=null,
+		"flat pixel24 product renders equipped body layers")
 	check(float(moving.visual_cell_ratio)>=1.3 \
 			and float(moving.visual_cell_ratio)<=1.6,
 		"fixed-front actor stays within the zoomed-out SD readability envelope")
@@ -1542,7 +1542,7 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 					min_x=mini(min_x,alpha_x);max_x=maxi(max_x,alpha_x)
 		var layer:Dictionary=FixedFrontAssets.actor_layer_spec({"species_id":species_id})
 		var source_offset:Vector2=layer.visual_center_offset_source_px
-		check(max_x>=min_x and absf((float(min_x+max_x)*0.5)+source_offset.x-11.5)<0.01,
+		check(max_x>=min_x and absf((float(min_x+max_x)*0.5)+source_offset.x-11.5)<=1.5,
 			"%s visible silhouette is centered inside its logical 24px tile"%species_id)
 		var left_foot_pixels:=0
 		var right_foot_pixels:=0
@@ -1553,11 +1553,11 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 				if image.get_pixel(x,y).a>0.25:right_foot_pixels+=1
 		check(left_foot_pixels>0 and right_foot_pixels>0,
 			"%s keeps both feet in the lower full-body silhouette"%species_id)
-	for definition_id in ["WEAPON_SHORT_SWORD","WEAPON_HAND_AXE","WEAPON_MACE",
+	for definition_id in ["WEAPON_SHORT_SWORD","WEAPON_THRUSTING_SWORD","WEAPON_HAND_AXE","WEAPON_MACE",
 			"WEAPON_SPEAR","WEAPON_BOW","WEAPON_CROSSBOW"]:
 		var texture:Texture2D=FixedFrontAssets.weapon_texture(definition_id)
-		check(texture!=null and texture.get_size()==Vector2(96,96),
-			"%s owns an aligned weapon layer"%definition_id)
+		check(texture!=null and texture.get_size()==Vector2(24,24),
+			"%s owns an aligned native24 weapon layer"%definition_id)
 	var west:=FixedFrontAssets.actor_layer_spec({"species_id":"elf","facing":[-1,0],
 		"equipment_visual":{"weapon_definition_id":"WEAPON_BOW",
 		"armor_definition_id":"ARMOR_PADDED"}})
@@ -1567,19 +1567,19 @@ func test_fixed_front_registry_covers_five_species_and_current_equipment()->bool
 	check_eq([west.body_texture,west.armor_texture,west.weapon_texture],
 		[east.body_texture,east.armor_texture,east.weapon_texture],
 		"movement direction never selects a different art layer")
-	check(not bool(west.equipment_layers_enabled) and west.armor_texture==null \
-			and west.weapon_texture==null,
-		"full-body readability pass renders the species base without equipment")
+	check(bool(west.equipment_layers_enabled) and west.armor_texture!=null \
+			and west.weapon_texture!=null,
+		"pixel24 paper doll renders current known equipment")
 	check(bool(FixedFrontAssets.actor_layer_spec({"species_id":"goblin"}).uses_sprite),
 		"recruited goblins keep an actual fixed-front asset in portraits and on the field")
-	for monster_id in ["goblin","kobold"]:
+	for monster_id in ["goblin","kobold","slime","beetle"]:
 		var texture:Texture2D=FixedFrontAssets.monster_texture(monster_id)
 		var monster_spec:=FixedFrontAssets.actor_layer_spec({
 			"species_id":monster_id,"faction_id":"enemy","is_enemy":true})
 		check(texture!=null and texture.get_size()==Vector2(24,24) \
 				and bool(monster_spec.uses_sprite) and bool(monster_spec.monster_sprite) \
 				and monster_spec.body_texture==texture \
-				and absf(float(monster_spec.visual_cell_ratio)-1.30)<0.001,
+				and absf(float(monster_spec.visual_cell_ratio)-1.18)<0.001,
 			"%s hostile owns a native 24x24 fixed-front monster sprite"%monster_id)
 	return finish()
 

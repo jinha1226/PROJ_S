@@ -17,6 +17,7 @@ func present()->void:
 		"ARMORY":_armory()
 		"GATE":_gate()
 		"HOUSE":_house()
+		"STORAGE":_storage()
 
 func _request(parent:Node,title:String,id:String,operation:Dictionary,available:bool=true,primary:bool=false)->Button:
 	var b:=UI.button(parent,title,id,primary);b.disabled=not available
@@ -24,6 +25,7 @@ func _request(parent:Node,title:String,id:String,operation:Dictionary,available:
 
 func _market()->void:
 	UI.heading(self,"시장","원정에 필요한 물자를 준비하세요")
+	UI.workplace_residents(self,life.residents,"MARKET",func(id:int):resident_requested.emit(id))
 	var tabs:=HBoxContainer.new();add_child(tabs)
 	for entry in [["BUY","구입"],["SELL","물자 판매"]]:
 		var key:=str(entry[0]);var b:=UI.button(tabs,str(entry[1]),"TownMarketTab"+key,state.get("trade","BUY")==key)
@@ -48,11 +50,12 @@ func _market()->void:
 
 func _clinic()->void:
 	UI.heading(self,"치유소","체력과 일반 상처를 회복합니다 · 절단 부위는 유지")
+	UI.workplace_residents(self,life.residents,"CLINIC",func(id:int):resident_requested.emit(id))
 	for row in life.residents:
 		if not row.joined:continue
 		var id:=int(row.entity_id);var box:=UI.surface(self)
 		var line:=HBoxContainer.new();line.add_theme_constant_override("separation",10);box.add_child(line)
-		UI.portrait(line,id)
+		UI.portrait(line,id,48,str(row.get("species_id","human")))
 		var info:=VBoxContainer.new();info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;line.add_child(info)
 		UI.label(info,str(row.display_name),17)
 		UI.label(info,"체력  %d / %d"%[row.health,row.max_health],13,UI.MUTED)
@@ -62,7 +65,8 @@ func _clinic()->void:
 		if not assessment.get("accepted",false):UI.label(box,str(assessment.get("message","치료가 필요하지 않습니다")),12,UI.MUTED)
 
 func _armory()->void:
-	UI.heading(self,"장비 관리","대원별 장착과 아이템 전달")
+	UI.heading(self,"대장간","대원별 장착과 아이템 전달")
+	UI.workplace_residents(self,life.residents,"ARMORY",func(id:int):resident_requested.emit(id))
 	var owners:Array=session.town_armory_rows()
 	if owners.is_empty():UI.label(self,"관리할 장비가 없습니다.");return
 	var selected:Dictionary=owners[0]
@@ -100,10 +104,20 @@ func _gate()->void:
 	for row in life.residents:
 		if not row.active:continue
 		var line:=HBoxContainer.new();line.add_theme_constant_override("separation",10);box.add_child(line)
-		UI.portrait(line,int(row.entity_id))
+		UI.portrait(line,int(row.entity_id),48,str(row.get("species_id","human")))
 		var info:=VBoxContainer.new();info.size_flags_horizontal=Control.SIZE_EXPAND_FILL;line.add_child(info)
 		UI.label(info,str(row.display_name),17);UI.label(info,"체력  %d / %d"%[row.health,row.max_health],13,UI.MUTED)
 	_request(box,"대원 편성 바꾸기","TownGateRoster",{"action":"ROSTER"})
+	UI.label(self,"챙긴 물자",15,UI.GOLD)
+	var world=session.sim.world
+	UI.label(self,"출전 대원의 가방 기준 · 구입한 물자는 %s의 가방에 들어갑니다"%str(world.entities[world.party_control_actor_id()].display_name),12,UI.MUTED)
+	for supply in preload("res://playtest/expedition_supply_presenter.gd").rows(session):
+		var supply_box:=UI.surface(self)
+		UI.label(supply_box,"%s   %d개"%[supply.label,supply.carried],16)
+		UI.label(supply_box,str(supply.owners) if int(supply.carried)>0 else "챙긴 물자가 없습니다",12,UI.MUTED)
+		_request(supply_box,"1개 구입 · %d G   (재고 %d)"%[supply.price,supply.remaining],
+			"TownSupplyBuy"+str(supply.definition_id),{"action":"BUY","definition_id":str(supply.definition_id)},bool(supply.can_buy))
+		if not supply.can_buy:UI.label(supply_box,str(supply.message),12,UI.MUTED)
 	UI.label(self,"출발 지점",15,UI.GOLD)
 	var assessment:Dictionary=session.town_departure_assessment()
 	_request(self,"1층 입구로 출발  →","TownDepart",{"action":"DEPART","floor":1,"route":"SURFACE_ENTRANCE"},bool(assessment.get("accepted",false)),true)
@@ -128,3 +142,12 @@ func _house()->void:
 		progress.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 	_request(self,"집 구입   %d G"%int(life.house_cost),"TownHousePurchase",{"action":"ACQUIRE"},bool(life.can_acquire),true)
 	if not life.can_acquire:UI.label(self,str(life.house_reason),13,UI.MUTED)
+
+func _storage()->void:
+	UI.heading(self,"보관소","원정에서 가져온 공용 물자")
+	UI.workplace_residents(self,life.residents,"STORAGE",func(id:int):resident_requested.emit(id))
+	for row in session.base_overview().trade:
+		var box:=UI.surface(self)
+		UI.label(box,"%s   %d개"%[row.label,row.stock],17)
+		_request(box,"1개 판매   +%d G"%int(row.unit_price),"TownSell"+str(row.resource_id),
+			{"action":"SELL","resource_id":str(row.resource_id)},bool(row.can_sell))

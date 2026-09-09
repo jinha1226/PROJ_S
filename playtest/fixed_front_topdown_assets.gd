@@ -2,52 +2,58 @@ class_name FixedFrontTopdownAssets
 extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
-## Visible bases use a 256x256 transparent illustrated canvas and common anchor.
+## Visible bases use a native 24x24 transparent pixel canvas and common anchor.
 ## Direction is deliberately ignored: movement and combat never swap or mirror
 ## these assets.
 
-const SOURCE_CANVAS_SIZE := Vector2(256.0, 256.0)
+const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
 const FOOT_ANCHOR_RATIO := 0.94
-# Keep the first full-body readability pass honest: equipment remains registered
-# but is not composited until its silhouettes are authored against these bodies.
-const EQUIPMENT_LAYERS_ENABLED := false
+const EQUIPMENT_LAYERS_ENABLED := true
+const BIPED_WALK_SPECIES := ["human","elf","dwarf","orc","beastkin","goblin","kobold"]
+const FITTED_EQUIPMENT_SPECIES := ["human","elf","dwarf","orc","beastkin"]
 
 const BODY_TEXTURES := {
-	"human": preload("res://assets/illustrated_front/actors/human.png"),
-	"elf": preload("res://assets/illustrated_front/actors/elf.png"),
-	"dwarf": preload("res://assets/illustrated_front/actors/dwarf.png"),
-	"orc": preload("res://assets/illustrated_front/actors/orc.png"),
-	"beastkin": preload("res://assets/illustrated_front/actors/beastkin.png"),
+	"human": preload("res://assets/pixel24_v3/runtime/actors/base/human.png"),
+	"elf": preload("res://assets/pixel24_v3/runtime/actors/base/elf.png"),
+	"dwarf": preload("res://assets/pixel24_v3/runtime/actors/base/dwarf.png"),
+	"orc": preload("res://assets/pixel24_v3/runtime/actors/base/orc.png"),
+	"beastkin": preload("res://assets/pixel24_v3/runtime/actors/base/beastkin.png"),
 }
 
 const MONSTER_TEXTURES := {
-	"goblin": preload("res://assets/illustrated_front/actors/goblin.png"),
-	"kobold": preload("res://assets/illustrated_front/actors/kobold.png"),
-	"slime": preload("res://assets/illustrated_front/actors/slime.png"),
-	"beetle": preload("res://assets/illustrated_front/actors/beetle.png"),
+	"goblin": preload("res://assets/pixel24_v3/runtime/monsters/goblin.png"),
+	"kobold": preload("res://assets/pixel24_v3/runtime/monsters/kobold.png"),
+	"slime": preload("res://assets/pixel24_v3/runtime/monsters/slime.png"),
+	"beetle": preload("res://assets/pixel24_v3/runtime/monsters/beetle.png"),
 }
 
 const ARMOR_TEXTURES := {
-	"ARMOR_PADDED": preload("res://assets/topdown_fixed_front/equipment/armor/cloth.png"),
-	"ARMOR_CLOTH": preload("res://assets/topdown_fixed_front/equipment/armor/cloth.png"),
-	"ARMOR_LEATHER": preload("res://assets/topdown_fixed_front/equipment/armor/leather.png"),
-	"ARMOR_STEEL": preload("res://assets/topdown_fixed_front/equipment/armor/steel.png"),
-	"ARMOR_MITHRIL": preload("res://assets/topdown_fixed_front/equipment/armor/mythril.png"),
-	"ARMOR_MYTHRIL": preload("res://assets/topdown_fixed_front/equipment/armor/mythril.png"),
-	"ARMOR_HOOD": preload("res://assets/topdown_fixed_front/equipment/armor/hood.png"),
-	"ARMOR_HELMET": preload("res://assets/topdown_fixed_front/equipment/armor/helmet.png"),
+	"ARMOR_PADDED": {
+		"human":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/padded_human.png"),"elf":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/padded_elf.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/padded_dwarf.png"),"orc":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/padded_orc.png"),"beastkin":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/padded_beastkin.png")},
+	"ARMOR_LEATHER": {
+		"human":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/leather_human.png"),"elf":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/leather_elf.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/leather_dwarf.png"),"orc":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/leather_orc.png"),"beastkin":preload("res://assets/pixel24_v3/fit_v2/equipment/armor/leather_beastkin.png")},
 }
 
 const WEAPON_TEXTURES := {
-	"WEAPON_SHORT_SWORD": preload("res://assets/topdown_fixed_front/equipment/weapons/short_sword.png"),
-	# The first sheet has one sword silhouette. Keep the alternate definition on
-	# that honest fallback until it receives its own authored layer.
-	"WEAPON_THRUSTING_SWORD": preload("res://assets/topdown_fixed_front/equipment/weapons/short_sword.png"),
-	"WEAPON_HAND_AXE": preload("res://assets/topdown_fixed_front/equipment/weapons/hand_axe.png"),
-	"WEAPON_MACE": preload("res://assets/topdown_fixed_front/equipment/weapons/mace.png"),
-	"WEAPON_SPEAR": preload("res://assets/topdown_fixed_front/equipment/weapons/spear.png"),
-	"WEAPON_BOW": preload("res://assets/topdown_fixed_front/equipment/weapons/bow.png"),
-	"WEAPON_CROSSBOW": preload("res://assets/topdown_fixed_front/equipment/weapons/crossbow.png"),
+	"WEAPON_SHORT_SWORD":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/short_sword.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_short_sword.png")},
+	"WEAPON_THRUSTING_SWORD":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/thrusting_sword.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_thrusting_sword.png")},
+	"WEAPON_HAND_AXE":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/hand_axe.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_hand_axe.png")},
+	"WEAPON_MACE":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/mace.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_mace.png")},
+	"WEAPON_SPEAR":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/spear.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_spear.png")},
+	"WEAPON_BOW":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/bow.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_bow.png")},
+	"WEAPON_CROSSBOW":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/crossbow.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/weapons/dwarf_crossbow.png")},
+}
+
+const OFFHAND_TEXTURES := {
+	"SHIELD_WOOD":{"standard":preload("res://assets/pixel24_v3/fit_v2/equipment/offhand/shield_wood.png"),"dwarf":preload("res://assets/pixel24_v3/fit_v2/equipment/offhand/dwarf_shield_wood.png")},
+}
+
+const FOREGROUND_TEXTURES := {
+	"human":preload("res://assets/pixel24_v3/fit_v2/foreground/human.png"),
+	"elf":preload("res://assets/pixel24_v3/fit_v2/foreground/elf.png"),
+	"dwarf":preload("res://assets/pixel24_v3/fit_v2/foreground/dwarf.png"),
+	"orc":preload("res://assets/pixel24_v3/fit_v2/foreground/orc.png"),
+	"beastkin":preload("res://assets/pixel24_v3/fit_v2/foreground/beastkin.png"),
 }
 
 
@@ -59,12 +65,24 @@ static func monster_texture(species_id:String)->Texture2D:
 	return MONSTER_TEXTURES.get(species_id.to_lower(),null)
 
 
-static func armor_texture(definition_id:String)->Texture2D:
-	return ARMOR_TEXTURES.get(definition_id.to_upper(),null)
+static func armor_texture(definition_id:String,species_id:String="human")->Texture2D:
+	var variants:Variant=ARMOR_TEXTURES.get(definition_id.to_upper(),{})
+	return variants.get(species_id.to_lower(),null) \
+		if variants is Dictionary else null
 
 
-static func weapon_texture(definition_id:String)->Texture2D:
-	return WEAPON_TEXTURES.get(definition_id.to_upper(),null)
+static func weapon_texture(definition_id:String,species_id:String="human")->Texture2D:
+	if species_id.to_lower() not in FITTED_EQUIPMENT_SPECIES:return null
+	var variants:Variant=WEAPON_TEXTURES.get(definition_id.to_upper(),{})
+	if not variants is Dictionary:return null
+	return variants.get("dwarf" if species_id.to_lower()=="dwarf" else "standard",null)
+
+
+static func offhand_texture(definition_id:String,species_id:String="human")->Texture2D:
+	if species_id.to_lower() not in FITTED_EQUIPMENT_SPECIES:return null
+	var variants:Variant=OFFHAND_TEXTURES.get(definition_id.to_upper(),{})
+	if not variants is Dictionary:return null
+	return variants.get("dwarf" if species_id.to_lower()=="dwarf" else "standard",null)
 
 
 static func actor_layer_spec(actor:Dictionary)->Dictionary:
@@ -87,21 +105,37 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		var weapon_id:=str(equipment.get("weapon_id",actor.get("weapon_id",""))).to_upper()
 		if not weapon_id.is_empty() and weapon_id!="UNARMED_STRIKE":
 			weapon_definition_id="WEAPON_%s"%weapon_id
+	var off_hand_definition_id:=str(equipment.get("off_hand_definition_id",
+		actor.get("off_hand_definition_id",""))).to_upper()
+	var fitted_species:=species_id in FITTED_EQUIPMENT_SPECIES
+	var fitted_armor:=armor_texture(armor_definition_id,species_id) \
+		if EQUIPMENT_LAYERS_ENABLED and fitted_species else null
+	var fitted_weapon:=weapon_texture(weapon_definition_id,species_id) \
+		if EQUIPMENT_LAYERS_ENABLED and fitted_species else null
+	var fitted_offhand:=offhand_texture(off_hand_definition_id,species_id) \
+		if EQUIPMENT_LAYERS_ENABLED and fitted_species else null
+	var has_fitted_equipment:=fitted_armor!=null or fitted_weapon!=null or fitted_offhand!=null
 	return {
 		"uses_sprite":base_texture!=null,
 		"species_id":species_id,
 		"body_texture":base_texture,
 		"monster_sprite":uses_monster_sprite,
+		"supports_walk":species_id in BIPED_WALK_SPECIES,
 		"visual_cell_ratio":1.18 if uses_monster_sprite else 1.32,
 		"armor_definition_id":armor_definition_id,
-		"armor_texture":armor_texture(armor_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
+		"armor_texture":fitted_armor,
 		"weapon_definition_id":weapon_definition_id,
-		"weapon_texture":weapon_texture(weapon_definition_id) if EQUIPMENT_LAYERS_ENABLED else null,
+		"weapon_texture":fitted_weapon,
+		"off_hand_definition_id":off_hand_definition_id,
+		"offhand_texture":fitted_offhand,
+		"foreground_texture":FOREGROUND_TEXTURES.get(species_id,null) if has_fitted_equipment else null,
+		"equipment_fit_supported":fitted_species,
+		"equipment_fit_fallback_base_only":not fitted_species and (not armor_definition_id.is_empty() \
+			or not weapon_definition_id.is_empty() or not off_hand_definition_id.is_empty()),
+		"layer_order":["body","armor","offhand","weapon","foreground"],
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
 		"fixed_front":true,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
-		# Human alpha silhouette: 139x219 at (40,22), centre x=109.5 on a
-		# 256px canvas. Shift the canvas right; logical position/HP stay centred.
-		"visual_center_offset_source_px":Vector2(18.5,0) if species_id=="human" else Vector2.ZERO,
+		"visual_center_offset_source_px":Vector2.ZERO,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,
 	}.duplicate(true)

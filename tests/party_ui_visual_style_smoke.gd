@@ -1031,8 +1031,8 @@ func _check_direct_solo_combat_log(viewport_size:Vector2)->void:
 		_check(not bool(awareness_spec.get("changes_hit_rect",true)),
 			"%s awareness mark changes actor/map hit authority"%viewport_size)
 	var monster_list:Dictionary=sandbox.grid.monster_list_draw_spec()
-	_check(str(monster_list.get("mouse_filter","IGNORE"))=="IGNORE",
-		"%s monster list intercepts map input"%viewport_size)
+	_check(not bool(monster_list.visible) or str(monster_list.get("mouse_filter",""))=="STOP",
+		"%s nearby list owns inspection taps without map fallthrough"%viewport_size)
 	var history:Dictionary=session.combat_log(8,80)
 	var latest_messages:=_newest_meaningful_messages(sandbox,history,2)
 	var fast_text:String=sandbox.event_label.text

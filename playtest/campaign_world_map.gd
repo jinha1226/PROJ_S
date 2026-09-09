@@ -10,10 +10,13 @@ const FLOOR_GAP := 8
 const FloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 
 
-static func generate(seed:int, selected_floor:int=1,compact:bool=true)->Dictionary:
+static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:bool=false)->Dictionary:
 	var floor_one:Dictionary=FloorMapScript.generate(1,seed) if compact else FloorMapScript.generate_authored(1,seed)
 	var floor_two:Dictionary=FloorMapScript.generate(2,seed) if compact else FloorMapScript.generate_authored(2,seed)
 	if floor_one.is_empty() or floor_two.is_empty():return {}
+	if living:
+		floor_one=preload("res://playtest/living_floor_design.gd").apply(floor_one,1)
+		floor_two=preload("res://playtest/living_floor_design.gd").apply(floor_two,2)
 	var floor_one_size:=Vector2i(int(floor_one.width),int(floor_one.height))
 	var floor_two_size:=Vector2i(int(floor_two.width),int(floor_two.height))
 	var offsets:={1:Vector2i.ZERO,
@@ -90,6 +93,11 @@ static func _translated_floor(source:Dictionary,offset:Vector2i)->Dictionary:
 		"room_centers":_positions(source.get("room_centers",[]),offset),
 		"supply_positions":_positions(source.get("supply_positions",[]),offset)}
 	var rooms:Array[Rect2i]=[]
+	result["landmarks"]=[]
+	for raw in source.get("landmarks",[]):
+		var landmark:Dictionary=raw.duplicate(true);landmark.position=raw.position+offset
+		result.landmarks.append(landmark)
+	result["visitor_positions"]=_positions(source.get("visitor_positions",[]),offset)
 	for room_value in source.get("rooms",[]):
 		var room:Rect2i=room_value;rooms.append(Rect2i(room.position+offset,room.size))
 	result["rooms"]=rooms

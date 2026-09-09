@@ -370,6 +370,8 @@ func _process(_delta:float)->void:
 func _input(event:InputEvent)->void:
 	if battle_timeline_controller!=null and battle_timeline_controller.handle_group_input(event):return
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
+	if grid!=null and (battle_drag==null or not battle_drag.active) \
+			and grid.capture_nearby_list_input(event):return
 	if battle_drag!=null and battle_drag.handle_input(self,event):return
 	if _handle_product_pinch_zoom(event):return
 	# The nearby-NPC card is a child of the map. Claim its touch before the map's
@@ -873,6 +875,7 @@ func _build_ui()->void:
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
+	grid.actor_inspect_requested.connect(_open_member_detail)
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
 	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
@@ -1086,17 +1089,15 @@ func _open_active_combat_lab()->void:
 	add_child(lab)
 
 func show_species_picker_for_new_run()->void:
-	# Keep this entry point for existing callers, but the product now starts as
-	# human immediately. The legacy picker remains hidden for old test tooling.
 	if species_picker_modal==null:_build_species_picker()
 	_species_picker_committed=false;species_picker_modal.visible=true
-	_commit_species_picker("human")
+	if grid!=null:grid.modal_open=true
 
 func _commit_species_picker(species_id:String)->void:
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
-	var result:Dictionary=session.start_new_run_with_species(species_id) if session!=null else {}
+	var result:Dictionary=session.start_new_run_with_species(species_id,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_species_picker_committed=false;return
 	species_picker_modal.visible=false
@@ -2599,6 +2600,7 @@ func _arm_pending_auto_after_tree_entry()->void:
 		_arm_auto_combat_preview(auto_generation)
 
 func _orchestrate_auto_phase(status:Dictionary)->void:
+	if member_detail_modal!=null and member_detail_modal.visible:return
 	if companion_order_editor!=null and companion_order_editor.visible:return
 	var phase:=str(status.get("safe_phase",""))
 	if phase!=auto_phase:
@@ -4355,12 +4357,14 @@ func _finish_companion_order_edit()->void:
 	_request_refresh()
 
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
-	if auto_orchestration_enabled:_cancel_auto_pending(true)
+	if auto_orchestration_enabled:_cancel_auto_pending(false)
 	_product_attack_targeting=false
 	# Character/item inspection is a pause, not a cancellation. Keeping the
 	# canonical AUTO/route state lets travel resume after the modal closes.
 	_reset_member_detail_pointer_state()
 	var detail:Dictionary=session.inspect_party_member(member_id)
+	if not bool(detail.get("accepted",false)):
+		detail=session.inspect_enemy(member_id,true)
 	if not bool(detail.get("accepted",false)):
 		notice_text=str(detail.get("message","파티원 상세 정보를 불러올 수 없습니다."));_request_refresh();return
 	var travel_state:Dictionary=session.exploration_route_state()
@@ -4369,7 +4373,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_glyph_seal.call("set_actor",detail)
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
-	subtitle_parts.append(_role(str(detail.get("role",""))))
+	subtitle_parts.append(str(detail.get("role_label",_role(str(detail.get("role",""))))))
 	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV%02d"%int(detail_progression.get("level",1)))
 	subtitle_parts.append(_life_state_label(str(detail.get("life_state","ACTIVE"))))
 	member_detail_subtitle.text=" / ".join(subtitle_parts)
@@ -5869,6 +5873,10 @@ func _cancel_route_for_user_interruption()->void:
 	route_paused_by_modal=false;route_paused_by_pointer=false
 
 func _on_grid_pointer_started()->void:
+	if grid!=null and grid.pointer_gesture_state().get("target_kind","")=="INSPECT":
+		route_paused_by_pointer=true
+		if auto_orchestration_enabled:_cancel_auto_pending(false)
+		return
 	_cancel_product_auto_explore("auto_explore_user_command",false)
 	if grid!=null and grid.pinch_zoom_enabled:
 		route_paused_by_pointer=true

@@ -28,6 +28,14 @@ static func commitment_key(world_seed: int, processed_step_index: int, attack_st
 
 static func commitment_hash(key: String) -> String: return key.sha256_text()
 
+static func combined_commitment_key(world_seed:int,processed_step_index:int,
+		attack_start_world_time:int,batch_context:String,intent_ordinal:int,
+		attacker_id:int,target_id:int,weapon_id:String,proficiency_rank:int,
+		defense_fragment:String)->String:
+	return WeaponAttackRulesScript.commitment_key(world_seed,processed_step_index,
+		attack_start_world_time,batch_context,intent_ordinal,attacker_id,target_id,
+		weapon_id,proficiency_rank)+"|defense="+defense_fragment
+
 static func lane_hash(key: String, lane: String) -> String:
 	return (key + "|lane=" + lane).sha256_text() if lane in ["HIT", "BLEED"] else ""
 
@@ -89,12 +97,16 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	var guard_reduction := int(after_armor * guard_rate_milli / 1000) if guarded else 0
 	var normal_final_damage := maxi(1, after_armor - guard_reduction)
 	var defense_fragment:=DefenseRulesScript.commitment_fragment(defense_snapshot) if equipment_defense else ""
-	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
+	var key := combined_commitment_key(world.seed,processed_step_index,
+		attack_start_world_time,batch_context,intent_ordinal,attacker_id,target_id,
+		weapon_id,proficiency_rank,DefenseRulesScript.commitment_fragment(defense_snapshot)) \
+		if not weapon_spec.is_empty() and equipment_defense else WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
 		weapon_id, proficiency_rank) if not weapon_spec.is_empty() else commitment_key(world.seed,
 		processed_step_index, attack_start_world_time, batch_context, intent_ordinal,
 		attacker_id, target_id, defense_fragment)
-	var result := {"schema_version":3 if equipment_defense else (2 if not weapon_spec.is_empty() else 1),
+	var result := {"schema_version":4 if equipment_defense and not weapon_spec.is_empty() \
+		else (3 if equipment_defense else (2 if not weapon_spec.is_empty() else 1)),
 		"attacker_id":str(attacker_id), "target_id":str(target_id),
 		"attacker_position":[attacker.position.x, attacker.position.y],
 		"target_position":[target.position.x, target.position.y],
@@ -146,11 +158,15 @@ func resolve_frozen_intent(intent):
 			or attack_start_world_time < 0 or batch_context.is_empty() or intent_ordinal < 0:
 		return null
 	var schema_version:=int(assessment.get("schema_version",1))
-	var weapon_schema := schema_version == 2
-	var equipment_defense:=schema_version==3
+	var weapon_schema := schema_version in [2,4]
+	var equipment_defense:=schema_version in [3,4]
 	var defense_snapshot:=_defense_snapshot_from_assessment(assessment) if equipment_defense else {}
 	if equipment_defense and defense_snapshot.is_empty():return null
-	var key := WeaponAttackRulesScript.commitment_key(intent.world_seed, processed_step_index,
+	var key := combined_commitment_key(intent.world_seed,processed_step_index,
+		attack_start_world_time,batch_context,intent_ordinal,attacker_id,target_id,
+		str(assessment.get("weapon_id","")),int(assessment.get("proficiency_rank",0)),
+		DefenseRulesScript.commitment_fragment(defense_snapshot)) \
+		if weapon_schema and equipment_defense else WeaponAttackRulesScript.commitment_key(intent.world_seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
 		str(assessment.get("weapon_id", "")), int(assessment.get("proficiency_rank", 0))) \
 		if weapon_schema else commitment_key(intent.world_seed, processed_step_index,
@@ -173,7 +189,7 @@ func resolve_frozen_intent(intent):
 	var final_damage := int(assessment.get("normal_final_damage", 0)) \
 		if outcome == "HIT" else 0
 	var action_data := {
-		"schema_version": 3 if equipment_defense else 1,
+		"schema_version": 4 if equipment_defense and weapon_schema else (3 if equipment_defense else 1),
 		"combat_ruleset_id": COMBAT_RULESET_ID,
 		"attacker_profile_id": str(assessment.get("attacker_profile_id", "")),
 		"target_profile_id": str(assessment.get("target_profile_id", "")),

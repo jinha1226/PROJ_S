@@ -143,6 +143,10 @@ func _award_canonical_enemy_deaths(state) -> bool:
 		var event=world.events[index]
 		if event.type!="entity.died" or event.target_id not in state.enemy_ids:continue
 		if event.id in state.protagonist_progression.processed_source_death_event_ids:continue
+		if preload("res://sim/living_expedition_rules.gd").enabled(world) \
+				and preload("res://sim/living_expedition_rules.gd").independent(world,event.instigator_id) \
+				and event.instigator_id not in world._party_active_ids_at_event(event.id):
+			continue
 		if not state.protagonist_progression.award_enemy_death(event.id):return false
 		var xp_result:Dictionary=state.protagonist_growth.commit_award_xp(
 			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
@@ -240,7 +244,9 @@ func _exploration_enemy_cadence(processed_step_index:int,actor_schedule_id:int,
 	# The current product slice is explicitly solo. Legacy party SHOWCASE and
 	# REGRESSION fixtures retain their established social/contact timing until
 	# companion-aware exploration cadence is designed as its own slice.
-	if state.party_member_ids.size()!=1:return true
+	if (state.active_party_member_ids.size() if preload(
+			"res://sim/living_expedition_rules.gd").enabled(world) \
+			else state.party_member_ids.size())!=1:return true
 	var enemies:Array=_stream_enemy_ids();enemies.sort()
 	var dormant_patrol_id:int=int(enemies[posmod(processed_step_index,enemies.size())]) \
 		if not enemies.is_empty() else -1

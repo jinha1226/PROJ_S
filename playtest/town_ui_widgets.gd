@@ -38,9 +38,9 @@ static func button(parent:Node,title:String,id:String,primary:bool=false)->Butto
 	b.add_theme_color_override("font_color",INK)
 	b.add_theme_color_override("font_disabled_color",MUTED.darkened(0.25))
 	parent.add_child(b);return b
-static func portrait(parent:Node,id:int,side:int=48)->Control:
+static func portrait(parent:Node,id:int,side:int=48,species_id:String="human")->Control:
 	var p:=Portrait.new();p.custom_minimum_size=Vector2(side,side)
-	p.set_actor({"entity_id":id,"species_id":"human"});parent.add_child(p);return p
+	p.set_actor({"entity_id":id,"species_id":species_id});parent.add_child(p);return p
 static func shortcut(parent:Node,title:String,id:String,kind:String)->Button:
 	var b:=button(parent,"",id);b.custom_minimum_size.y=68;b.tooltip_text=title
 	var stack:=VBoxContainer.new();stack.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -53,3 +53,15 @@ static func shortcut(parent:Node,title:String,id:String,kind:String)->Button:
 static func heading(parent:Node,title:String,subtitle:String="")->void:
 	label(parent,title,21,GOLD)
 	if not subtitle.is_empty():label(parent,subtitle,13,MUTED)
+
+static func workplace_residents(parent:Node,residents:Array,facility_id:String,on_inspect:Callable)->void:
+	var staff:Array=[]
+	for row in residents:
+		if not row.adventurer and str(row.get("facility_id",""))==facility_id:staff.append(row)
+	if staff.is_empty():return
+	var line:=HBoxContainer.new();line.name="TownWorkplaceResidents";line.add_theme_constant_override("separation",6);parent.add_child(line)
+	for row in staff:
+		var id:=int(row.entity_id)
+		var b:=button(line,"%s · %s"%[row.display_name,row.occupation],"TownWorker%d"%id)
+		b.tooltip_text="%s · 성격과 관계 보기"%row.display_name
+		b.pressed.connect(on_inspect.bind(id))

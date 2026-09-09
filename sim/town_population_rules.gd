@@ -26,18 +26,21 @@ static func identity(name:String)->Dictionary:
 
 static func town_activity(name:String,id:int,visit:int,profile)->Dictionary:
 	var person:=identity(name)
-	var places:={"여관 주인":["여관 손님 맞이",[12,4]],"대장장이":["장비 수선",[12,10]],
-		"치유사":["환자 돌보기",[2,11]],"상인":["물자 거래",[6,10]],
-		"요리사":["식사 준비",[11,4]],"창고 관리인":["물자 정리",[2,5]]}
+	var places:={"여관 주인":["여관 손님 맞이",[12,4],"INN","여관"],"대장장이":["장비 수선",[12,10],"ARMORY","대장간"],
+		"치유사":["환자 돌보기",[2,11],"CLINIC","치유소"],"상인":["물자 거래",[6,10],"MARKET","시장"],
+		"요리사":["식사 준비",[11,4],"INN","여관 주방"],"창고 관리인":["물자 정리",[2,5],"STORAGE","보관소"]}
 	if places.has(person.job):
 		var activity:Array=places[person.job]
-		return {"label":activity[0],"location":person.job,"tile":activity[1]}
+		return {"label":activity[0],"location":activity[3],"tile":activity[1],"facility_id":activity[2]}
+	# Adventurers gather at the inn between expeditions; civic workers remain
+	# at their own workplaces. The roster and map use this same projection.
 	var routines:=[{"label":"여관에서 휴식","location":"여관","tile":[13,5]},
-		{"label":"시장에서 물자 준비","location":"시장","tile":[5,11]},
-		{"label":"대장간에서 장비 점검","location":"대장간","tile":[11,11]},
-		{"label":"광장에서 이야기 중","location":"광장","tile":[7,7]}]
+		{"label":"원정 물자 꾸리는 중","location":"여관","tile":[11,5]},
+		{"label":"장비 점검 중","location":"여관","tile":[12,6]},
+		{"label":"원정 이야기 중","location":"여관","tile":[10,5]}]
 	var offset:=1 if profile!=null and profile.value("X")>=500 else 0
 	var result:Dictionary=routines[posmod(id+visit+offset,4)].duplicate(true)
+	result.facility_id="INN"
 	result.tile=[int(result.tile[0])+posmod(id,2),int(result.tile[1])+posmod(id/2,2)]
 	return result
 

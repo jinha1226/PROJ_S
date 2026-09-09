@@ -1,7 +1,7 @@
 extends SceneTree
 
 const METHODS := [
-	"test_exploration_route_is_exact_shortest_until_visible_hazard_requires_bounded_risk",
+	"test_exploration_route_is_exact_shortest_until_visible_hazard_requires_safe_route",
 	"test_exploration_route_never_reads_unseen_live_hazards",
 	"test_select_movement_destination_is_one_mutating_facade_in_both_modes",
 	"test_open_door_gateway_allows_only_the_matching_diagonal_across_one_wall_flank",

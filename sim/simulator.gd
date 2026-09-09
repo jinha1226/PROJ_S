@@ -1074,6 +1074,7 @@ func _dispatch_schedule(entry: Dictionary, processed_step_index: int,
 					or not status_lifecycle.process_actor_occurrence(processed_step_index,
 						tick_start_can_act_ids):
 				return false
+			if world.party_encounter!=null and not preload("res://sim/systems/independent_explorer_system.gd").process_tick(self,processed_step_index):return false
 			if individual_battle and world.party_encounter!=null:
 				return party_coordinator.RationSystemScript.process_tick(world,damage,processed_step_index) \
 					and party_coordinator._update_enemy_awareness_batch(processed_step_index) \

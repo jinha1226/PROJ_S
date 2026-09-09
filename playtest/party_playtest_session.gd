@@ -286,7 +286,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		bootstrap_opening_event:bool=true,
 		p_player_species_id:String="human",
 		bootstrap_settlement:bool=true, bootstrap_talents:bool=true,
-		bootstrap_survival:bool=true) -> bool:
+		bootstrap_survival:bool=true,bootstrap_living:bool=false) -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -296,6 +296,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if product_dungeon and not product_layout_override.is_empty() \
 		else (VisualTestMapScript.product_dungeon(p_world_seed) if product_dungeon else {}))
 	if product_dungeon and map_layout.is_empty(): return false
+	if product_dungeon and bootstrap_living and product_layout_override.is_empty():
+		map_layout=preload("res://playtest/campaign_world_map.gd").generate(p_world_seed,1,true,true)
 	var world_width := int(map_layout.get("width", 15))
 	var world_height := int(map_layout.get("height", 15))
 	var candidate = SimulatorScript.create(world_width, world_height, p_world_seed)
@@ -311,7 +313,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 			candidate.world, map_layout): return false
 	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
 			candidate.world, map_layout): return false
-	if duo and bootstrap_settlement and bootstrap_talents and p_player_species_id=="human":
+	if bootstrap_living:
+		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":2})==null:return false
+	if duo and bootstrap_settlement and bootstrap_talents and (p_player_species_id=="human" or bootstrap_living):
 		var talent_rules=preload("res://sim/personal_talent_rules.gd")
 		if candidate.world.emit_event(talent_rules.EVENT_ID,-1,-1,Vector2i(-1,-1),0,-1,
 				{"ruleset_id":talent_rules.RULESET_ID,"seed":str(p_personality_seed)})==null:return false
@@ -727,7 +731,7 @@ func protagonist_growth_build()->Dictionary:
 	build["stat_allocations"]=state.protagonist_growth.stat_allocations.duplicate(true)
 	build["species_fixed_trait"]=species_definition.get("fixed_trait",{}).duplicate(true)
 	build["species_branch_rows"]=branch_rows
-	if not personal_talent.is_empty():
+	if not personal_talent.is_empty() and not preload("res://sim/living_expedition_rules.gd").enabled(sim.world):
 		build["species_fixed_trait"]={}
 		build["species_branch_rows"]=[]
 		build["species_points_available"]=0
@@ -741,7 +745,8 @@ func spend_growth_stat_point(stat_id:String)->Dictionary:
 
 
 func spend_species_trait_point(branch_id:String)->Dictionary:
-	if not preload("res://sim/personal_talent_rules.gd").for_entity(
+	if not preload("res://sim/living_expedition_rules.gd").enabled(sim.world) and not preload(
+			"res://sim/personal_talent_rules.gd").for_entity(
 			sim.world.entities.get(sim.world.party_encounter.protagonist_id)).is_empty():
 		return _rejection_dto("species_traits_disabled")
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
@@ -1624,7 +1629,8 @@ func _ensure_town_guild_candidates()->bool:
 	var candidate_count:int=people.size() if persistent_town else GUILD_CANDIDATE_COUNT
 	for slot in range(candidate_count):
 		var species_id:=str(species_pool[(start+slot)%species_pool.size()])
-		if persistent_town:species_id="human"
+		if persistent_town:species_id=preload("res://sim/living_expedition_rules.gd").species(world_seed,slot) \
+			if preload("res://sim/living_expedition_rules.gd").enabled(sim.world) else "human"
 		var names:Variant=GUILD_NAMES.get(species_id,["모험가"])
 		var name_index:int=int(digest[(slot+1)%digest.size()])%names.size() if names is Array else 0
 		var display_name:=str(names[name_index]) if names is Array else "모험가"
@@ -3006,9 +3012,21 @@ func restart_same_run() -> Dictionary:
 		"scenario_id":scenario_id, "run_progress":run_progress()})
 
 
-func start_new_run_with_species(species_id:String)->Dictionary:
+func start_new_run_with_species(species_id:String,living:bool=false)->Dictionary:
 	if not GrowthBuildRegistryScript.has_species(species_id):
 		return _rejection_dto("unknown_player_species")
+	if living:
+		var pristine_sim=sim if _can_select_starting_species_in_place() else null
+		if not reset_party(world_seed,personality_seed,scenario_id,{},false,species_id,true,true,true,true):
+			return _rejection_dto("player_species_reset_failed")
+		# Keep the launch scene's simulator identity stable. The rebuilt canonical
+		# world is swapped into the already-wired simulator so picker input does not
+		# invalidate UI references or create a second long-lived simulation object.
+		if pristine_sim!=null and pristine_sim!=sim:
+			pristine_sim.world=sim.world
+			pristine_sim._rebuild_systems()
+			sim=pristine_sim
+		return _feedback_dto({"accepted":true,"reason":"ok","player_species_id":player_species_id,"run_progress":run_progress()})
 	# The launch scene already owns a fully built pristine product world. Rebuilding
 	# its large campaign map synchronously from the picker stalls Web long enough to
 	# look like the button did nothing. Select identity in that pristine world and
@@ -3288,6 +3306,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			for visitor in visitors_by_cell.get(position_key,[]):
 				var entity=sim.world.entities.get(int(visitor.entity_id))
 				if entity==null:continue
+				if preload("res://sim/living_expedition_rules.gd").enabled(sim.world):continue
 				var npc:Dictionary=_actor_observation(entity,position,position,"WORLD_NPC")
 				npc.presence="WORLD_NPC";npc.faction_id="neutral"
 				npc["activity"]=str(visitor.activity)
@@ -3295,7 +3314,12 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			for entity in sim.world.occupying_entities_at(position):
 				var is_enemy: bool = entity.id in sim.world.party_encounter.enemy_ids
 				if is_enemy and hide_enemies: continue
-				actors.append(_actor_observation(entity, position, position, ""))
+				var observed:Dictionary=_actor_observation(entity,position,position,"")
+				if sim.world.is_independent_visitor(entity.id):
+					observed.presence="WORLD_NPC";observed.faction_id="neutral"
+					for visitor in visitors_by_cell.get(position_key,[]):
+						if int(visitor.entity_id)==entity.id:observed["activity"]=str(visitor.activity);observed["activity_state"]=str(visitor.get("state","EXPLORE"))
+				actors.append(observed)
 			# DEAD actors intentionally do not occupy a tile. The opening NPC corpse
 			# remains observable from its same authoritative entity and position.
 			var opening = sim.world.party_encounter.opening_event
@@ -4370,7 +4394,6 @@ func recruitable_companions() -> Array[Dictionary]:
 		var fixed_trait:Dictionary=species_definition.get("fixed_trait",{}) \
 			if species_definition.get("fixed_trait",{}) is Dictionary else {}
 		var personal_talent:Dictionary=preload("res://sim/personal_talent_rules.gd").for_entity(entity)
-		if not personal_talent.is_empty():fixed_trait=personal_talent
 		rows.append({"entity_id":entity_id,"roster_slot":int(member.roster_slot),
 			"display_name":str(entity.display_name),"presence":str(member.presence),
 			"species_id":str(entity.species_id),
@@ -4379,6 +4402,7 @@ func recruitable_companions() -> Array[Dictionary]:
 			"weapon_definition_id":weapon_definition_id,
 			"weapon_label":str(weapon_definition.get("label","맨손")),
 			"fixed_trait_label":str(fixed_trait.get("label","")),
+			"personal_talent_label":str(personal_talent.get("label","")),
 			"role_hint":str(guild_record.get("role_hint","범용 전투")),
 			"guild_candidate":not guild_record.is_empty(),
 			"health":int(entity.health),"max_health":int(entity.max_health),
@@ -4797,7 +4821,7 @@ func _tab_approach_less(a:Dictionary,b:Dictionary)->bool:
 	return ap.y < bp.y if ap.y != bp.y else ap.x < bp.x
 
 
-func inspect_enemy(entity_id:int)->Dictionary:
+func inspect_enemy(entity_id:int,include_details:bool=false)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or entity_id not in _current_floor_enemy_ids() \
 			or not sim.world.entities.has(entity_id):return _rejection_dto("enemy_not_found")
@@ -4805,7 +4829,13 @@ func inspect_enemy(entity_id:int)->Dictionary:
 	var profile=sim.world.combatant_states[entity_id]
 	var combat_profile=load("res://sim/combat_profile_registry.gd").profile(profile.combat_profile_id)
 	var threat:=_enemy_threat(entity_id)
-	return _feedback_dto({"accepted":true,"reason":"ok","schema_version":1,
+	var detail:Dictionary={}
+	if include_details:
+		detail={"role_label":"적","species_id":str(entity.species_id),"faction_id":str(entity.faction_id),
+			"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
+			"combat_stats":_member_combat_stats(entity_id),"body_state":_member_body_presentation(entity_id),
+			"equipment_summary":_member_equipment_summary(entity_id),"skill_summary":_member_skill_summary(entity_id)}
+	var dto:=_feedback_dto({"accepted":true,"reason":"ok","schema_version":1,
 		"entity_id":entity_id,"display_name":str(entity.display_name),
 		"health":int(entity.health),"max_health":int(entity.max_health),
 		"life_state":str(profile.life_state),"level":int(threat.level),
@@ -4814,6 +4844,8 @@ func inspect_enemy(entity_id:int)->Dictionary:
 		"base_power":int(combat_profile.get("power",0)),
 		"armor_flat":int(combat_profile.get("armor_flat",0)),
 		"level_derivation":"canonical combat profile and maximum health"})
+	dto.merge(detail)
+	return dto
 
 
 func _enemy_threat(entity_id:int)->Dictionary:
@@ -6479,15 +6511,15 @@ func _member_skill_summary(entity_id:int)->Dictionary:
 		str(entity.species_id))
 	var fixed_trait:Variant=species_definition.get("fixed_trait",{})
 	var talent:Dictionary=preload("res://sim/personal_talent_rules.gd").for_entity(entity)
-	if not talent.is_empty():
-		skills.append({"skill_id":"TALENT_"+str(talent.id),"category":"개인 재능",
-			"label":str(talent.label),"trigger_label":"상시",
-			"summary":str(talent.description),"detail":"타고난 강점"})
-	elif fixed_trait is Dictionary and not fixed_trait.is_empty():
+	if fixed_trait is Dictionary and not fixed_trait.is_empty():
 		skills.append({"skill_id":str(fixed_trait.get("effect_id","SPECIES_TRAIT")),
 			"category":"종족 특성","label":str(fixed_trait.get("label","고유 특성")),
 			"trigger_label":_effect_trigger_label(str(fixed_trait.get("trigger","PASSIVE"))),
 			"summary":"종족 고유 능력","detail":""})
+	if not talent.is_empty():
+		skills.append({"skill_id":"TALENT_"+str(talent.id),"category":"개인 재능",
+			"label":str(talent.label),"trigger_label":"상시",
+			"summary":str(talent.description),"detail":"타고난 강점"})
 	return {"available":not skills.is_empty(),"skills":skills}.duplicate(true)
 
 
@@ -6565,7 +6597,8 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var entity = sim.world.entities[entity_id]
 	var combatant = sim.world.combatant_states.get(entity_id)
 	var life_state := str(combatant.life_state) if combatant != null else "DEAD"
-	var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (
+	var logical: Vector2i = entity.position if member.presence == "DEPLOYED" \
+			or sim.world.is_independent_visitor(entity_id) else (
 		state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 	var full_exposure := {"applicable":false,"position":[logical.x,logical.y],
 		"sample":null,"affinity":null,"risk":null}
@@ -6589,7 +6622,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 				"fire_score":int(risk_wire.fire_score),"water_score":int(risk_wire.water_score),
 				"electric_score":int(risk_wire.electric_score),"poison_score":int(risk_wire.poison_score),
 				"total_risk":int(risk_wire.total_risk)}
-	var expected_action: Variant = _pure_expected_action(entity_id)
+	var expected_action: Variant = _pure_expected_action(entity_id) if entity_id in state.active_party_member_ids else null
 	var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
 	var emotion := _emotion_presentation(member, entity)
 	var personality_profile = null
@@ -6616,8 +6649,15 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var override_state := "PENDING"
 	if expected_action is Dictionary: override_state = str(expected_action.source)
 	elif member.role == "PROTAGONIST": override_state = "DIRECT"
+	var role_label:String={"PROTAGONIST":"주인공","COMPANION":"동료"}.get(str(member.role),str(member.role))
+	if town_life_enabled():
+		var life:Dictionary=preload("res://sim/town_life_rules.gd").state(sim.world.events)
+		if entity_id not in life.members:
+			var identity:Dictionary=preload("res://sim/town_population_rules.gd").identity(str(entity.display_name))
+			role_label="중립 모험가" if identity.explores else str(identity.job)
 	var dto := {"schema_version":PRESENTATION_SCHEMA_VERSION,"accepted":true,"reason":"ok",
 		"entity_id":entity_id,"roster_slot":int(member.roster_slot),"role":str(member.role),
+		"role_label":role_label,
 		"display_name":str(entity.display_name),"health":int(entity.health),
 		"max_health":int(entity.max_health),"alive":sim.world.occupies_tile(entity_id),
 		"kind":str(entity.kind),"tags":entity.tags.duplicate(),"species_id":str(entity.species_id),
@@ -7032,6 +7072,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
+		if preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
+			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true)
 		if int(decoded.snapshot.get("width",0))==360 and int(decoded.snapshot.get("height",0))==192:
 			var authored_layout:=VisualTestMapScript.authored_campaign_dungeon(parsed_world_seed)
 			if _snapshot_terrain_matches_layout(decoded.snapshot,authored_layout):current_layout=authored_layout
@@ -7101,7 +7143,8 @@ func load_session_json(encoded: String) -> Dictionary:
 			not legacy_opening_replay,parsed_player_species_id,
 			not legacy_settlement_replay,not legacy_talent_replay,
 			preload("res://sim/party_survival_rules.gd").BOOTSTRAP_TAG in restored.world.entities[
-				restored.world.party_encounter.protagonist_id].tags):
+				restored.world.party_encounter.protagonist_id].tags,
+			preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot)):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
@@ -7781,6 +7824,10 @@ func _run_feature_id_at(position: Vector2i, progress: Dictionary) -> String:
 		if entry_position is Array and entry_position.size() == 2 \
 				and position == Vector2i(int(entry_position[0]), int(entry_position[1])):
 			return "run_entry"
+	for value in _map_layout.get("landmarks",[]):
+		if value is Dictionary and value.get("position") is Vector2i \
+				and value.position==position:
+			return "landmark_"+str(value.get("kind","camp")).to_lower()
 	return VisualTestMapScript.feature_id_at(scenario_id, position, _map_layout)
 
 

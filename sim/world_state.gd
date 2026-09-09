@@ -233,8 +233,9 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 	var talents = preload("res://sim/personal_talent_rules.gd")
 	var talent_seed = talents.seed_event(self) if kind in ["hero","companion"] else null
 	if talent_seed != null:
-		species_id = "human"
-		max_health = 120
+		if not preload("res://sim/living_expedition_rules.gd").enabled(self):
+			species_id = "human"
+			max_health = 120
 		checked_tags.append(talents.TAG_PREFIX + talents.generated_id(
 			str(talent_seed.data.seed), _next_entity_id))
 	var entity = SimEntityScript.new(
@@ -421,7 +422,7 @@ func occupying_entities_at(position: Vector2i) -> Array:
 		var entity = entities[entity_id]
 		var state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
-		var party_occupies: bool = party_state == null or party_state.presence == "DEPLOYED"
+		var party_occupies: bool = party_state == null or party_state.presence == "DEPLOYED" or is_independent_visitor(entity_id)
 		if entity.position == position and occupies_tile(entity_id) and party_occupies \
 				and (state == null or state.encounter_status == "ACTIVE"):
 			result.append(entity)
@@ -493,7 +494,8 @@ func exposed_entities_at(position: Vector2i) -> Array:
 		if not is_environment_exposed(entity_id): continue
 		var party_state = party_member_state(entity_id)
 		if party_state != null:
-			if party_state.presence == "DEPLOYED" and entity.position == position:
+			if (party_state.presence == "DEPLOYED" or is_independent_visitor(entity_id)) \
+					and entity.position == position:
 				result.append(entity)
 			elif party_state.presence == "GROUPED" and party_encounter.group_anchor == position:
 				result.append(entity)
@@ -539,7 +541,7 @@ func is_autonomous_target(entity_id: int) -> bool:
 func _party_member_is_detached(entity_id: int) -> bool:
 	var member = party_member_state(entity_id)
 	if member != null and member.presence in ["RECRUITABLE", "EXILED"]:
-		return true
+		return not is_independent_visitor(entity_id)
 	var entity=entities.get(entity_id)
 	if entity!=null and "party_enemy" in entity.tags:
 		var campaign_tagged:=false
@@ -554,6 +556,9 @@ func _party_member_is_detached(entity_id: int) -> bool:
 				CampaignEncounterStreamScript.current_floor_enemy_ids(self)):
 			return true
 	return false
+
+func is_independent_visitor(entity_id:int)->bool:
+	return preload("res://sim/living_expedition_rules.gd").present(self,entity_id)
 
 
 func is_unresolved_enemy(entity_id: int) -> bool:
@@ -2002,7 +2007,8 @@ func _restored_state_error() -> String:
 		var actor_state = agent_states.get(entity_id)
 		var party_state = party_member_state(entity_id)
 		if occupies_tile(entity_id) \
-				and (party_state == null or party_state.presence == "DEPLOYED") \
+				and (party_state == null or party_state.presence == "DEPLOYED" \
+					or is_independent_visitor(entity_id)) \
 				and (actor_state == null or actor_state.encounter_status == "ACTIVE"):
 			if not _terrain_is_passable(entity.position):
 				return "live_entity_on_impassable_terrain"
@@ -2221,6 +2227,19 @@ func _restored_state_error() -> String:
 		if event.type == "action.melee_attack":
 			var action_semantic_error := _melee_action_event_error(event)
 			if not action_semantic_error.is_empty(): return action_semantic_error
+		if event.type=="population.arrived" and not bool(_population_arrival_positions(event).ok):
+			return "population_arrival_event_invalid"
+		if event.type=="population.rested":
+			var rest_keys:Array=event.data.keys();rest_keys.sort()
+			if rest_keys!=["health_after","health_before","schema_version"] \
+					or event.data.get("schema_version")!=1 or event.actor_id!=event.target_id \
+					or not entities.has(event.actor_id) \
+					or not event.data.get("health_before") is int \
+					or not event.data.get("health_after") is int \
+					or int(event.data.health_after)!=int(event.data.health_before)+event.magnitude \
+					or event.magnitude<=0 \
+					or int(event.data.health_after)>entities[event.actor_id].max_health:
+				return "population_rest_event_invalid"
 		var active_event_error:String=ActiveSkillValidationScript.event_error(self,event)
 		if not active_event_error.is_empty():return active_event_error
 		if event.type == "action.hold":
@@ -2274,7 +2293,7 @@ func _restored_state_error() -> String:
 					return "move_event_semantic_invalid"
 			if event.type == "action.melee_attack":
 				var melee_target_state = agent_states.get(event.target_id)
-				var canonical_melee: bool = event.data.get("schema_version") in [1, 3] \
+				var canonical_melee: bool = event.data.get("schema_version") in [1, 3, 4] \
 					and event.data.get("combat_ruleset_id") == COMBAT_RULESET_ID
 				if event_actor_state == null or melee_target_state == null \
 						or event_actor_state.trial_slot != melee_target_state.trial_slot \
@@ -2294,7 +2313,7 @@ func _restored_state_error() -> String:
 			var valid_physical_source: bool = physical_cause != null \
 					and physical_cause.type in ["action.melee_attack", "action.skill", "status.tick"]
 			var cause_is_canonical: bool = physical_cause != null \
-					and physical_cause.data.get("schema_version") in [1, 3]
+					and physical_cause.data.get("schema_version") in [1, 3, 4]
 			var expected_requested: int = physical_cause.magnitude if physical_cause != null else 0
 			if physical_cause != null and physical_cause.type == "action.melee_attack" \
 					and cause_is_canonical:
@@ -2690,16 +2709,21 @@ func _melee_action_event_error(event) -> String:
 			or not entities.has(event.actor_id) or not entities.has(event.target_id) \
 			or event.position == Vector2i(-1, -1):
 		return "melee_event_envelope_invalid"
-	if event.data.get("schema_version") == 3:
+	if event.data.get("schema_version") in [3,4]:
 		return _melee_defense_action_event_error(event)
 	var attacker_state = combatant_states[event.actor_id]
 	var target_state = combatant_states[event.target_id]
 	var attacker_profile: Dictionary = CombatProfileRegistryScript.profile(attacker_state.combat_profile_id)
 	var target_profile: Dictionary = CombatProfileRegistryScript.profile(target_state.combat_profile_id)
 	var base_damage: int = int(attacker_profile.get("power", 0))
-	var weapon_enabled:bool = party_encounter != null \
-		and event.actor_id == party_encounter.protagonist_id \
-		and "weapon_loadout" in entities[event.actor_id].tags
+	var weapon_enabled:bool = party_encounter != null and (
+		event.actor_id == party_encounter.protagonist_id \
+		and "weapon_loadout" in entities[event.actor_id].tags \
+		or preload("res://sim/living_expedition_rules.gd").independent(self,event.actor_id) \
+		and event.data.has("weapon_id") \
+		or preload("res://sim/living_expedition_rules.gd").enabled(self) \
+		and str(event.data.get("batch_context","")).begins_with("INDEPENDENT/") \
+		and event.data.has("weapon_id"))
 	var weapon_spec: Dictionary = {}
 	if weapon_enabled:
 		# Validate the attack against the weapon recorded on the event, not the
@@ -2709,7 +2733,8 @@ func _melee_action_event_error(event) -> String:
 		var weapon_id := str(event.data.get("weapon_id", ""))
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return "canonical_weapon_missing"
-		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id)
+		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id) \
+			if event.actor_id==party_encounter.protagonist_id else 0
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
 			int(target_profile.evasion_milli), int(target_profile.armor_flat),
@@ -2836,6 +2861,7 @@ func _melee_action_event_error(event) -> String:
 # historical item-definition+affix projection; add that provenance before
 # reconstructing and comparing past equipped totals at every action boundary.
 func _melee_defense_action_event_error(event) -> String:
+	var combined_weapon:bool=int(event.data.get("schema_version",0))==4
 	var talent_target:bool=not preload("res://sim/personal_talent_rules.gd").for_entity(
 		entities.get(event.target_id)).is_empty()
 	if party_encounter == null or (not talent_target and (
@@ -2858,7 +2884,9 @@ func _melee_defense_action_event_error(event) -> String:
 		"processed_step_index", "schema_version", "target_base_armor_flat",
 		"target_base_evasion_milli", "target_evasion_milli", "target_life_at_batch_start",
 		"target_profile_id"]
+	if combined_weapon:action_keys.append("weapon_id")
 	if not _exact_keys(event.data, action_keys) \
+			or event.data.get("schema_version") not in [3,4] \
 			or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
 			or event.data.get("defense_ruleset_id") != CombatDefenseRulesScript.RULESET_ID:
 		return "canonical_defense_event_data_invalid"
@@ -2907,13 +2935,26 @@ func _melee_defense_action_event_error(event) -> String:
 			or event.data.target_evasion_milli != int(snapshot.effective_evasion_milli) \
 			or event.data.armor_flat != int(snapshot.effective_armor_flat):
 		return "canonical_defense_snapshot_invalid"
-	var base_damage: int = int(attacker_profile.power)
-	var armor_reduction: int = CombatDefenseRulesScript.armor_reduction(base_damage, 0, snapshot)
+	var weapon_spec:Dictionary={}
+	if combined_weapon:
+		var weapon_id:=str(event.data.get("weapon_id",""))
+		var weapon=WeaponRegistryScript.definition(weapon_id)
+		if weapon==null:return "canonical_combined_weapon_missing"
+		var weapon_rank:=_progression_rank_before(weapon.proficiency_id,event.id) \
+			if party_encounter!=null and event.actor_id==party_encounter.protagonist_id else 0
+		weapon_spec=WeaponAttackRulesScript.build_attack_spec(weapon_id,weapon_rank,
+			int(attacker_profile.power),int(attacker_profile.accuracy_milli),
+			int(snapshot.effective_evasion_milli),int(snapshot.effective_armor_flat),
+			ActorStatRulesScript.for_entity(self,event.actor_id))
+		if weapon_spec.is_empty():return "canonical_combined_weapon_formula_invalid"
+	var base_damage:int=int(weapon_spec.raw_damage) if combined_weapon else int(attacker_profile.power)
+	var armor_reduction:int=int(weapon_spec.armor_reduction) if combined_weapon \
+		else CombatDefenseRulesScript.armor_reduction(base_damage,0,snapshot)
 	if armor_reduction < 0 or event.data.base_damage != base_damage \
 			or event.data.armor_reduction != armor_reduction or event.magnitude != base_damage:
 		return "canonical_defense_armor_formula_invalid"
-	var hit_chance: int = clampi(500 + int(attacker_profile.accuracy_milli) \
-		- int(snapshot.effective_evasion_milli), 50, 950)
+	var hit_chance:int=int(weapon_spec.hit_chance_milli) if combined_weapon else clampi(
+		500+int(attacker_profile.accuracy_milli)-int(snapshot.effective_evasion_milli),50,950)
 	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
 		- int(target_profile.bleed_resist_milli), 0, 1000)
 	var target_life: String = str(event.data.target_life_at_batch_start)
@@ -2923,18 +2964,24 @@ func _melee_defense_action_event_error(event) -> String:
 			or outcome not in ["HIT", "MISS", "PARRIED", "OVERKILL_SKIP"] \
 			or int(event.data.intent_ordinal) < 0:
 		return "canonical_defense_intent_invalid"
-	var key := MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
+	var key := MeleeCombatSystemScript.combined_commitment_key(seed,processed_step,attack_start,
+		str(event.data.batch_context),int(event.data.intent_ordinal),event.actor_id,event.target_id,
+		str(weapon_spec.weapon_id),int(weapon_spec.proficiency_rank),
+		CombatDefenseRulesScript.commitment_fragment(snapshot)) if combined_weapon else MeleeCombatSystemScript.commitment_key(seed, processed_step, attack_start,
 		str(event.data.batch_context), int(event.data.intent_ordinal), event.actor_id, event.target_id,
 		CombatDefenseRulesScript.commitment_fragment(snapshot))
-	var hit_roll := MeleeCombatSystemScript.lane_roll_milli(key, "HIT")
-	var bleed_roll := MeleeCombatSystemScript.lane_roll_milli(key, "BLEED")
+	var hit_roll:=WeaponAttackRulesScript.lane_roll_milli(key,"HIT") if combined_weapon \
+		else MeleeCombatSystemScript.lane_roll_milli(key,"HIT")
+	var bleed_roll:=WeaponAttackRulesScript.lane_roll_milli(key,"BLEED") if combined_weapon \
+		else MeleeCombatSystemScript.lane_roll_milli(key,"BLEED")
 	var parry_roll := CombatDefenseRulesScript.parry_roll_milli(key)
 	if event.data.commitment_hash != MeleeCombatSystemScript.commitment_hash(key) \
 			or event.data.hit_roll_milli != hit_roll or event.data.bleed_roll_milli != bleed_roll \
 			or event.data.parry_roll_milli != parry_roll:
 		return "canonical_defense_commitment_invalid"
 	var expected_guarded: bool = attack_start < frozen_guarded_until
-	var guard_rank := _progression_rank_before("GUARD", event.id)
+	var guard_rank := _progression_rank_before("GUARD", event.id) \
+		if party_encounter!=null and event.target_id==party_encounter.protagonist_id else 0
 	var guard_reduction: int = int((base_damage - armor_reduction) \
 		* ProgressionRegistryScript.guard_reduction_milli(guard_rank) / 1000) if expected_guarded else 0
 	var normal_damage := maxi(1, base_damage - armor_reduction - guard_reduction)
@@ -2970,7 +3017,7 @@ func _canonical_miss_history_error() -> String:
 	var consumed_miss_ids: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") not in [1, 3] \
+				or action.data.get("schema_version") not in [1, 3, 4] \
 				or action.data.get("outcome") != "MISS":
 			continue
 		var direct_children: Array = []
@@ -3006,7 +3053,7 @@ func _canonical_hit_history_error() -> String:
 	var consumed_physical_ids: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") not in [1, 3] \
+				or action.data.get("schema_version") not in [1, 3, 4] \
 				or action.data.get("outcome") != "HIT":
 			continue
 		var direct_children: Array = []
@@ -3036,7 +3083,7 @@ func _canonical_hit_history_error() -> String:
 			continue
 		var source = event_by_id(event.cause_id)
 		if source != null and source.type == "action.melee_attack" \
-				and source.data.get("schema_version") in [1, 3] \
+				and source.data.get("schema_version") in [1, 3, 4] \
 				and source.data.get("outcome") == "HIT" \
 				and not consumed_physical_ids.has(event.id):
 			return "canonical_hit_physical_unconsumed"
@@ -3047,7 +3094,7 @@ func _canonical_parry_history_error() -> String:
 	var consumed_parry_ids: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") != 3 \
+				or action.data.get("schema_version") not in [3,4] \
 				or action.data.get("outcome") != "PARRIED":
 			continue
 		var direct_children: Array = []
@@ -3083,7 +3130,7 @@ func _canonical_overkill_history_error() -> String:
 	var batch_groups: Dictionary = {}
 	for action in events:
 		if action.type != "action.melee_attack" \
-				or action.data.get("schema_version") not in [1, 3]:
+				or action.data.get("schema_version") not in [1, 3, 4]:
 			continue
 		var group_key := "%d|%d|%s" % [action.step_index, action.world_time,
 			str(action.data.get("batch_context", ""))]
@@ -3631,6 +3678,11 @@ static func _combat_batch_context_valid(context: String, processed_step: int,
 	if parts.size() == 2 and parts[0] == "PARTY_TURN":
 		return Int64CodecScript.is_canonical(parts[1]) \
 			and Int64CodecScript.parse(parts[1], "party context step") == processed_step
+	if parts.size()==4 and parts[0]=="INDEPENDENT":
+		return Int64CodecScript.is_canonical(parts[1]) \
+			and Int64CodecScript.parse(parts[1],"independent context step")==processed_step \
+			and Int64CodecScript.is_canonical(parts[2]) and int(parts[2])>0 \
+			and Int64CodecScript.is_canonical(parts[3]) and int(parts[3])>0
 	if parts.size() != 3 or parts[0] not in ["PARTY_ENEMY", "PARTY_AMBUSH", "PHASE3_ACTOR"] \
 			or not Int64CodecScript.is_canonical(parts[1]) \
 			or not Int64CodecScript.is_canonical(parts[2]):
@@ -3684,7 +3736,7 @@ func _status_history_error() -> String:
 						or not _canonical_damage_data_error(damage_source, "physical",
 							int(damage_driver.data.get("final_damage", 0)) if damage_driver != null else 0).is_empty() \
 						or damage_driver == null or damage_driver.type != "action.melee_attack" \
-						or damage_driver.data.get("schema_version") not in [1, 3] \
+						or damage_driver.data.get("schema_version") not in [1, 3, 4] \
 						or damage_driver.data.get("outcome") != "HIT" \
 						or damage_driver.data.get("bleed_proc_succeeded") != true \
 						or damage_source.target_id != owner_id or damage_source.position != event.position \
@@ -3817,7 +3869,8 @@ func _status_history_error() -> String:
 		var final_key := "%d:BLEEDING" % int(entity_id)
 		var actual_rows: Array = combatant_states[entity_id].status_rows
 		var party_member = party_member_state(int(entity_id))
-		if party_member != null and party_member.presence in ["RECRUITABLE", "EXILED"]:
+		if party_member != null and party_member.presence in ["RECRUITABLE", "EXILED"] \
+				and not preload("res://sim/living_expedition_rules.gd").independent(self,int(entity_id)):
 			if not actual_rows.is_empty(): return "inactive_party_status_row_present"
 			continue
 		if projected.has(final_key):
@@ -3881,7 +3934,7 @@ func _lifecycle_history_error() -> String:
 			if damage_driver == null or damage_driver.type not in ["combat.physical_damage",
 					"combat.fire_damage", "combat.electric_damage",
 					"combat.starvation_damage"] \
-					or damage_driver.data.get("schema_version") not in [1, 3] \
+					or damage_driver.data.get("schema_version") not in [1, 3, 4] \
 					or damage_driver.target_id != event.target_id \
 					or damage_driver.position != event.position \
 					or damage_driver.step_index != event.step_index \
@@ -4351,7 +4404,7 @@ func _party_runtime_error() -> String:
 				or not PartyMemberStateScript.wire_error(member.to_dict()).is_empty() \
 				or member.busy_until < 0 or member.busy_until > MAX_WORLD_TIME:
 			return "party_member_state_invalid"
-		if not active_ids.has(member_id) and (member.role != "COMPANION" \
+		if not active_ids.has(member_id) and not preload("res://sim/living_expedition_rules.gd").independent(self,member_id) and (member.role != "COMPANION" \
 				or member.presence not in ["RECRUITABLE", "EXILED"] \
 				or combatant_states[member_id].life_state != "ACTIVE" \
 				or not combatant_states[member_id].status_rows.is_empty()):
@@ -4812,7 +4865,11 @@ func _party_progression_error()->String:
 	if not party_encounter.protagonist_progression.legacy_reward_origin:
 		for event in events:
 			if event.type=="entity.died" and event.target_id in party_encounter.enemy_ids \
-					and event.id not in party_encounter.protagonist_progression.processed_source_death_event_ids:
+					and event.id not in party_encounter.protagonist_progression.processed_source_death_event_ids \
+					and not (preload("res://sim/living_expedition_rules.gd").enabled(self) \
+					and preload("res://sim/living_expedition_rules.gd").independent(
+					self,int(event.instigator_id)) \
+					and event.instigator_id not in _party_active_ids_at_event(event.id)):
 				return "progression_enemy_death_award_missing"
 		for reward in events:
 			if reward.type!="progression.enemy_reward":continue
@@ -5879,7 +5936,8 @@ func _party_roster_history_error() -> String:
 	var expected_exiled: Array = []
 	for member_id in party_encounter.party_member_ids:
 		var presence: String = str(party_encounter.member(member_id).presence)
-		if presence == "RECRUITABLE": expected_recruitable.append(member_id)
+		if presence == "RECRUITABLE" or presence=="DEFEATED" and member_id not in active \
+				and preload("res://sim/living_expedition_rules.gd").independent(self,member_id): expected_recruitable.append(member_id)
 		elif presence == "EXILED": expected_exiled.append(member_id)
 	if active != party_encounter.active_party_member_ids \
 			or recruitable != expected_recruitable or exiled != expected_exiled:
@@ -5986,6 +6044,11 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 	for index in range(events.size()-1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="population.arrived" and event.actor_id==entity_id:
+			if not _population_arrival_positions(event).ok \
+					or _population_arrival_positions(event).to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=_population_arrival_positions(event).from;continue
 		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.to!=cursor:
@@ -6016,6 +6079,11 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	var grouped_with_protagonist := false
 	for event in events:
 		if event.id >= event_id: break
+		if event.type=="population.arrived" and event.actor_id==entity_id:
+			var arrival:=_population_arrival_positions(event)
+			if not bool(arrival.ok) or anchored and historical_cursor!=arrival.from:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor=arrival.to;anchored=true;continue
 		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) \
@@ -6071,6 +6139,11 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	for index in range(events.size() - 1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="population.arrived" and event.actor_id==entity_id:
+			var arrival:=_population_arrival_positions(event)
+			if not bool(arrival.ok) or arrival.to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=arrival.from;continue
 		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.to!=cursor:
@@ -6115,6 +6188,17 @@ func _party_floor_entry_positions(event)->Dictionary:
 		int(event.data.to_position[1]))
 	return {"ok":event.position==to_position,"from":from_position,
 		"to":to_position}
+
+
+func _population_arrival_positions(event)->Dictionary:
+	if event==null or event.type!="population.arrived" or event.actor_id<=0 \
+			or event.target_id!=-1 or event.cause_id!=-1 or event.magnitude!=0 \
+			or not _party_metadata_position(event.data.get("from")) \
+			or not _party_metadata_position(event.data.get("to")):
+		return {"ok":false,"from":Vector2i(-1,-1),"to":Vector2i(-1,-1)}
+	var from:=Vector2i(int(event.data.from[0]),int(event.data.from[1]))
+	var to:=Vector2i(int(event.data.to[0]),int(event.data.to[1]))
+	return {"ok":event.position==to,"from":from,"to":to}
 
 
 func _party_move_event_is_canonical(event) -> bool:

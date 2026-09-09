@@ -2,6 +2,7 @@ class_name BaseSettlementView
 extends Control
 
 signal building_selected(id:String)
+signal resident_selected(id:int)
 signal tile_pressed(position:Vector2i)
 signal tile_dragged(position:Vector2i)
 
@@ -293,6 +294,15 @@ func _pan_map(position:Vector2)->void:
 
 
 func _select_building_at(pixel:Vector2)->void:
+	# Public map only. Match the visible marker, not a large invisible area
+	# that would steal neighbouring building taps. Facility cards provide 48px access.
+	if fit_map_height:
+		var nearest_id:=-1;var nearest_distance:=maxf(8.0,_cell_size()*0.38)
+		for row in _overview.get("residents",[]):
+			var center:=_map_origin()+(Vector2(_vector2i(row.tile))+Vector2.ONE*0.5)*_cell_size()
+			var distance:=pixel.distance_to(center)
+			if distance<nearest_distance:nearest_distance=distance;nearest_id=int(row.entity_id)
+		if nearest_id>0:resident_selected.emit(nearest_id);return
 	var candidates:Array[Dictionary]=[]
 	for value in _settlement.get("buildings",[]):
 		if not value is Dictionary:continue

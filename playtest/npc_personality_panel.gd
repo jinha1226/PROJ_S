@@ -52,6 +52,7 @@ func _add_summary_card(style_label:String,facets:Array)->void:
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",4);panel.add_child(stack)
 	stack.add_child(_label("성격 유형",12,DarkSkin.CYAN))
 	var title:=_label(style_label,20,DarkSkin.BONE);title.name="PersonalityStyleLabel"
+	title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	title.add_theme_font_override("font",DarkSkin.PixelFont);stack.add_child(title)
 	for raw in facets:
 		_add_facet_row(stack,raw)

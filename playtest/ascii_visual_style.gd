@@ -354,6 +354,9 @@ static func feature_spec(feature_id: String) -> Dictionary:
 		"floor_transition_portal_locked":{"glyph":"X", "color_hex":"#C677E8", "halo_hex":"#42204f"},
 		"floor_transition_portal":{"glyph":">", "color_hex":"#E58BFF", "halo_hex":"#4b2355"},
 		"open_door":{"glyph":"/", "color_hex":"#FFD166", "halo_hex":"#4a3512"},
+		"landmark_camp":{"glyph":"A", "color_hex":"#F2C879", "halo_hex":"#49371f"},
+		"landmark_relic":{"glyph":"*", "color_hex":"#B8A0E8", "halo_hex":"#352a4c"},
+		"landmark_well":{"glyph":"o", "color_hex":"#82C7CE", "halo_hex":"#203f46"},
 	}
 	if not definitions.has(feature_id):
 		return {"visible":false, "feature_id":"", "glyph":"",

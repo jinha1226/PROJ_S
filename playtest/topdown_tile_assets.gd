@@ -4,32 +4,32 @@ extends RefCounted
 ## Presentation-only tile atlas registry for the flat product camera. Simulation
 ## terrain, FOV, pathing and pointer mapping stay integer-grid authoritative.
 
-const TILE_SIZE := 256
+const TILE_SIZE := 24
 const FLOOR_TEXTURES := {
-	1: preload("res://assets/illustrated_front/terrain.png"),
-	2: preload("res://assets/illustrated_front/terrain.png"),
+	1: preload("res://assets/pixel24_v3/runtime/terrain/floor1.png"),
+	2: preload("res://assets/pixel24_v3/runtime/terrain/floor2.png"),
 }
 
 const FLOOR_ONE_TERRAIN := {
 	# Illustrated atlas: organic moss ground and quiet slate variants.
-	"floor":[4,5],
-	"stone_floor":[0,1,3],
-	"wood_floor":[6],
-	"metal":[13],
-	"rubble":[12],
-	"shallow_water":[8,9],
-	"wall":[10,11],
+	"floor":[0,1,11],
+	"stone_floor":[2,3],
+	"wood_floor":[4],
+	"metal":[5],
+	"rubble":[6],
+	"shallow_water":[7],
+	# Cell 8 is deliberately rejected: it reads as a pit, not a solid wall.
+	"wall":[9],
 }
 
 const FLOOR_TWO_TERRAIN := {
-	"floor":[6,7],
-	"stone_floor":[0,3],
-	# The second floor uses ash and metal variants from the same illustrated atlas.
-	"wood_floor":[6],
-	"metal":[13],
-	"rubble":[12],
-	"shallow_water":[8,9],
-	"wall":[10,11],
+	"floor":[0,1,11],
+	"stone_floor":[2,3],
+	"wood_floor":[4],
+	"metal":[5],
+	"rubble":[6],
+	"shallow_water":[7],
+	"wall":[8,9],
 }
 
 const INACTIVE_PORTALS := [
@@ -52,8 +52,8 @@ static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int)->Dictio
 	if texture==null:return hidden.duplicate(true)
 	var feature_id:=str(cell.get("feature_id",""))
 	var tile_index:=-1
-	if feature_id in INACTIVE_PORTALS:tile_index=14
-	elif feature_id in ACTIVE_PORTALS:tile_index=15
+	if feature_id in INACTIVE_PORTALS:tile_index=12
+	elif feature_id in ACTIVE_PORTALS:tile_index=13
 	else:
 		var terrain_id:=str(cell.get("terrain_id","floor"))
 		var table:Dictionary=FLOOR_TWO_TERRAIN if resolved_floor==2 \

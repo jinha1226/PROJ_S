@@ -12,6 +12,26 @@ func _run()->void:
 	_check(ui._product_zoom_cell_count<=11,"encounter zooms in")
 	var world=session.sim.world;var party=world.party_encounter
 	var actor_id:int=party.protagonist_id
+	# Inspection temporarily blocks presentation; it must not opt out of the
+	# automatic scheduler or override an intentional pause.
+	ui.autonomous_battle_clock.paused=false
+	var before_inspect:int=world.world_time
+	ui._open_member_detail(int(party.active_party_member_ids[-1]),"PERSONALITY")
+	_check(ui.member_detail_modal.visible and ui._battle_presentation_blocked(),"inspection blocks battle clock")
+	ui._tick_autonomous_battle(0.5)
+	_check_eq(world.world_time,before_inspect,"no battle action during inspection")
+	ui._close_member_detail()
+	_check(not ui._battle_presentation_blocked(),"closing inspection releases battle clock")
+	_check(not ui.auto_combat_fallback and not ui.auto_deployment_fallback,"inspection retains automatic battle mode")
+	_check(not ui.autonomous_battle_clock.paused,"inspection does not introduce a permanent pause")
+	ui.autonomous_battle_clock.paused=true
+	ui._open_member_detail(actor_id);ui._close_member_detail()
+	_check(ui.autonomous_battle_clock.paused,"explicit battle pause is preserved")
+	var inspect_enemy:int=session.party_status().visible_enemy_ids[0]
+	ui._open_member_detail(inspect_enemy)
+	_check(ui.member_detail_modal.visible and ui.member_detail_entity_id==inspect_enemy,"enemy uses character status modal")
+	_check(ui.member_detail_subtitle.text.contains("적"),"enemy is labeled hostile")
+	ui._close_member_detail()
 	var origin:Vector2i=world.entities[actor_id].position
 	var before:int=world.world_time
 	ui._tick_autonomous_battle(1)

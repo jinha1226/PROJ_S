@@ -22,8 +22,9 @@ func _hub()->void:
 	var map:=Map.new();map.name="PublicTownMap";map.camera=camera
 	map.minimum_map_height=clampi(int(get_viewport_rect().size.y)-440-(58 if int(_view.reward_gold)>0 else 0),160,360)
 	map.fit_map_height=true
+	map.resident_selected.connect(func(id:int):resident_requested.emit(id))
 	map.building_selected.connect(func(id:String):
-		if id=="STORAGE":state.trade="SELL";facility_requested.emit("MARKET")
+		if id=="STORAGE":facility_requested.emit("STORAGE")
 		else:facility_requested.emit({"LODGE":"INN"}.get(id,id)))
 	add_child(map);map.present(_view,"")
 	var caption:=HBoxContainer.new();add_child(caption)
@@ -52,14 +53,16 @@ func _hub()->void:
 
 func _inn()->void:
 	UI.heading(self,"여관","동료를 만나고 다음 원정을 준비하세요")
+	UI.workplace_residents(self,_view.residents,"INN",func(id:int):resident_requested.emit(id))
+	if state.get("filter") not in ["ADVENTURERS","COMPANY"]:state.filter="ADVENTURERS"
 	var filters:=HBoxContainer.new();filters.name="TownResidentFilters";add_child(filters)
-	for entry in [["ADVENTURERS","모험가"],["COMPANY","탐험대"],["CITIZENS","주민"]]:
+	for entry in [["ADVENTURERS","모험가"],["COMPANY","탐험대"]]:
 		var key:=str(entry[0]);var b:=UI.button(filters,str(entry[1]),"TownFilter"+key,state.get("filter")==key)
 		b.pressed.connect(func():state.filter=key;state.resident=-1;state.resident_scroll=0;call_deferred("present",_view))
 	var rows:Array=[]
 	for row in _view.residents:
+		if not row.adventurer:continue
 		if state.get("filter")=="COMPANY" and not row.joined:continue
-		if state.get("filter")=="CITIZENS" and row.adventurer:continue
 		if state.get("filter")=="ADVENTURERS" and (row.joined or not row.adventurer):continue
 		rows.append(row)
 	if rows.is_empty():UI.label(self,"아직 함께하는 동료가 없습니다.",14,UI.MUTED);return
@@ -68,7 +71,7 @@ func _inn()->void:
 		if int(row.entity_id)==int(state.get("resident",-1)):selected=row
 	state.resident=int(selected.entity_id)
 	_resident_detail(selected)
-	UI.label(self,"%d명 · 인물을 선택하세요"%rows.size(),12,UI.MUTED)
+	UI.label(self,"%d명 · 이름을 누르면 상태·성격·관계 확인"%rows.size(),12,UI.MUTED)
 	var scroll:=ScrollContainer.new();scroll.name="TownResidentScroll"
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size.y=210;add_child(scroll)
@@ -78,17 +81,17 @@ func _inn()->void:
 	for row in rows:
 		var id:=int(row.entity_id)
 		var b:=UI.button(list,"%s  ·  %s"%[row.display_name,row.occupation],"TownSelect%d"%id,id==int(state.resident))
-		b.pressed.connect(func():state.resident=id;call_deferred("present",_view))
+		b.pressed.connect(func():state.resident=id;call_deferred("present",_view);resident_requested.emit(id))
 
 func _resident_detail(row:Dictionary)->void:
 	var id:=int(row.entity_id)
 	var card:=UI.surface(self);card.name="TownResidentDetail"
 	var top:=HBoxContainer.new();top.add_theme_constant_override("separation",10);card.add_child(top)
-	UI.portrait(top,id,52)
+	UI.portrait(top,id,52,str(row.get("species_id","human")))
 	var text:=VBoxContainer.new();text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;top.add_child(text)
 	UI.label(text,str(row.display_name),19)
 	UI.label(text,"%s · %s"%[row.occupation,row.temperament],13,UI.MUTED)
-	var inspect:=UI.button(top,"정보","TownInspect%d"%id);inspect.size_flags_horizontal=Control.SIZE_FILL
+	var inspect:=UI.button(top,"상태창","TownInspect%d"%id);inspect.size_flags_horizontal=Control.SIZE_FILL
 	inspect.pressed.connect(func():resident_requested.emit(id))
 	var hp:=ProgressBar.new();hp.max_value=row.max_health;hp.value=row.health;hp.show_percentage=false
 	hp.custom_minimum_size.y=6;card.add_child(hp);UI.Palette.apply_progress(hp,UI.Palette.JADE)

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "staged_for_user_review_not_runtime",
+  "status": "user_approved_applied_local",
   "logical_size": [24, 24],
   "nearest_scale": 12,
   "rows": ["human", "elf", "dwarf", "orc", "beastkin"],
@@ -10,7 +10,7 @@
     "nearest_labeled": "res://assets/pixel24_v3/review/fit_v2/equipment-fit-matrix-labeled-12x.png"
   },
   "manifest": "res://tools/art/pixel24_human_fit_preview.json",
-  "runtime_status": "not_connected",
+  "runtime_status": "connected_to_fixed_front_world_and_portrait",
   "verification": {
     "focused_geometry": "PASS",
     "deterministic_double_build": "PASS",

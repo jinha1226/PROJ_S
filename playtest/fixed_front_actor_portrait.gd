@@ -11,7 +11,7 @@ var _actor:Dictionary={}
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	clip_contents=true
-	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	resized.connect(queue_redraw)
 
 
@@ -48,6 +48,7 @@ func _draw()->void:
 		bounds.end.y-bounds.size.y*0.14),Vector2(bounds.size.x*0.48,bounds.size.y*0.10))
 	draw_set_transform(Vector2.ZERO)
 	draw_circle(shadow_rect.get_center(),shadow_rect.size.x*0.5,SHADOW)
-	for texture_key in ["body_texture","armor_texture","weapon_texture"]:
+	for texture_key in ["body_texture","armor_texture","offhand_texture","weapon_texture",
+			"foreground_texture"]:
 		var texture:Texture2D=spec.get(texture_key,null)
 		if texture!=null:draw_texture_rect(texture,bounds,false,Color.WHITE)

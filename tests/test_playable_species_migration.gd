@@ -95,7 +95,8 @@ func test_each_species_session_save_load_and_journal_replay_is_exact() -> bool:
 func test_picker_has_five_ordered_touch_targets_and_commits_once() -> bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var pristine_sim_id:int=session.sim.get_instance_id()
-	var expected=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID,"orc")
+	var expected=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	expected.start_new_run_with_species("orc",true)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session)
 	sandbox.show_species_picker_for_new_run()

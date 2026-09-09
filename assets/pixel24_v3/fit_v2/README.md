@@ -1,7 +1,8 @@
 # Pixel24 equipment fit v2
 
-This directory is a review-only staging set. The product runtime does not load
-these files yet. It contains five frozen bases, two fitted armor layers per
+This directory contains the user-approved fitted equipment set. The local
+product runtime now loads its armor, weapon, offhand, and selective foreground
+layers from this directory. It contains five frozen bases, two fitted armor layers per
 species, seven carried weapon poses (standard and dwarf grip families), wooden
 shield poses, and selective hand/beard foreground layers.
 

@@ -44,14 +44,14 @@ func test_visible_enemy_marks_list_grouping_and_transition_pulse_are_fov_safe()-
 		check(Rect2(mark.cell_rect).encloses(Rect2(mark.text_rect)),
 			"%s mark remains inside its own upper-right cell"%mark.state)
 	var list:=grid.monster_list_draw_spec()
-	check(list.visible and list.mouse_filter=="IGNORE" and list.row_count==4 \
+	check(list.visible and list.mouse_filter=="STOP" and list.row_count==5 \
 		and list.list_kind=="NEARBY_ACTORS" and list.npc_row_count==1,
-		"compact list includes visible hostiles and one nearby NPC without input surface")
+		"interactive list includes individual visible hostiles and one nearby NPC")
 	var alert_rows:Array=list.rows.filter(func(row):return row.state=="ALERT")
 	check_eq([alert_rows.size(),alert_rows[0].count,alert_rows[0].text],
-		[1,2,"g 고블린 ! ×2"],"same species and state aggregate deterministically")
+		[2,1,"고블린 !"],"same species remain individually inspectable")
 	var npc_rows:Array=list.rows.filter(func(row):return row.row_kind=="NPC")
-	check_eq([npc_rows.size(),npc_rows[0].text],[1,"h 부상당한 여행자 NPC"],
+	check_eq([npc_rows.size(),npc_rows[0].text],[1,"부상당한 여행자 NPC"],
 		"nearby NPC keeps its own name and role instead of monster grouping")
 	var changed:=observation.duplicate(true)
 	for cell in changed.cells:

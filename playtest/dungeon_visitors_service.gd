@@ -12,11 +12,14 @@ static func enter(session,layout:Dictionary)->bool:
 	var company:Array=session.company_member_ids()
 	var candidates:Array=[]
 	for id in party.party_member_ids:
-		if id in company or party.member(id).presence!="RECRUITABLE":continue
-		if Rules.identity(str(world.entities[id].display_name)).explores:candidates.append(id)
+		var member=party.member(id);var entity=world.entities.get(id)
+		if entity==null or member==null or id in company or member.presence!="RECRUITABLE":continue
+		if Rules.identity(str(entity.display_name)).explores:candidates.append(id)
 	var occupied:Array=[]
 	var entry:Vector2i=layout.entry_position
 	var seeds:Array[Vector2i]=[entry+Vector2i(3,2),entry+Vector2i(-3,3)]
+	var living:=preload("res://sim/living_expedition_rules.gd").enabled(world)
+	if living and not layout.get("visitor_positions",[]).is_empty():seeds.assign(layout.visitor_positions)
 	for cache in session._base_progression_service._base_cache_rows():
 		var p:Array=cache.position
 		seeds.append(Vector2i(int(p[0]),int(p[1]))+Vector2i(2,0))
@@ -27,7 +30,7 @@ static func enter(session,layout:Dictionary)->bool:
 			for dy in range(-radius,radius+1):
 				for dx in range(-radius,radius+1):
 					var p:=seed+Vector2i(dx,dy)
-					if p in occupied or not _safe(world,p,entry):continue
+					if p in occupied or not _safe(world,p,entry,living):continue
 					var close:=false
 					for used in occupied:
 						if _distance(p,used)<3:close=true;break
@@ -39,19 +42,46 @@ static func enter(session,layout:Dictionary)->bool:
 		occupied.append(chosen)
 		rows.append({"entity_id":str(candidates[index]),"position":[chosen.x,chosen.y],
 			"anchor":[chosen.x,chosen.y],"needs_supplies":index%4==0,"activity":"물자가 떨어져 대기 중" if index%4==0 else "주변 탐색 중"})
+		if living:
+			var id:=int(candidates[index]);var entity=world.entities[id]
+			var old:Vector2i=entity.position
+			entity.tags.erase("visitor_returned")
+			for tag in entity.tags.duplicate():
+				if str(tag).begins_with("visitor_floor:"):entity.tags.erase(tag)
+			if "independent_explorer" not in entity.tags:entity.tags.append("independent_explorer")
+			entity.tags.append("visitor_floor:"+str(party.expedition_cycle.floor_index))
+			entity.position=chosen
+			if world.emit_event("population.arrived",id,-1,chosen,0,-1,{"from":[old.x,old.y],"to":[chosen.x,chosen.y]})==null:return false
+			var row:Dictionary=rows[-1]
+			row["entry"]=[entry.x,entry.y];row["state"]="REST" if index==0 else ("RETURN" if index==2 else "EXPLORE")
+			row["rest_until"]=world.world_time+300 if index==0 else 0
+			row["fatigue"]=4 if index==0 else 0;row["goal_index"]=0
+			row["goals"]=[[chosen.x+2,chosen.y],[chosen.x,chosen.y+2],[chosen.x-2,chosen.y]]
+			row.activity=preload("res://sim/systems/independent_explorer_system.gd").LABELS[row.state]
+			row.needs_supplies=index==2
+			var inventory=world.item_state.inventory(id)
+			if inventory==null:return false
+			if inventory.equipped_item("MAIN_HAND")==null:
+				var grant:Dictionary=Items.commit_grant(world,id,"WEAPON_SHORT_SWORD",1,chosen,"INDEPENDENT_EXPEDITION")
+				if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
+			if index!=2 and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
+				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
 
-static func _safe(world,p:Vector2i,entry:Vector2i)->bool:
+static func _safe(world,p:Vector2i,entry:Vector2i,living:bool=false)->bool:
 	if not world.in_bounds(p) or _distance(p,entry)<2:return false
 	var tile=world.tile_at(p)
 	if not Terrain.definition(str(tile.terrain)).get("passable",false) or tile.fire>0 or tile.wetness>0:return false
 	if not world.occupying_entities_at(p).is_empty():return false
+	if living:return true
 	for id in world.party_encounter.enemy_ids:
-		if world.is_unresolved_enemy(id) and _distance(p,world.entities[id].position)<5:return false
+		var enemy=world.entities.get(id)
+		if enemy!=null and world.is_unresolved_enemy(id) and _distance(p,enemy.position)<5:return false
 	return true
 
 static func advance(session)->void:
 	if not session.town_life_enabled():return
+	if preload("res://sim/living_expedition_rules.gd").enabled(session.sim.world):return
 	var world=session.sim.world;var party=world.party_encounter
 	if party.expedition_cycle.phase!="DUNGEON" or party.safe_phase not in ["GROUPED","GROUPED_COMPLETE"]:return
 	var rows:=Rules.locations(world)
@@ -66,9 +96,12 @@ static func advance(session)->void:
 	for row in rows:used.append(Vector2i(int(row.position[0]),int(row.position[1])))
 	for row in rows:
 		if bool(row.needs_supplies):continue
+		var member=party.member(int(row.entity_id))
+		if member==null:continue
 		var p:=Vector2i(int(row.position[0]),int(row.position[1]))
 		var anchor:=Vector2i(int(row.anchor[0]),int(row.anchor[1]))
-		var profile=party.member(int(row.entity_id)).personality_profile
+		var profile=member.personality_profile
+		if profile==null:continue
 		var radius:=3 if profile.value("O")>=500 else 1
 		for offset in range(4):
 			var next:Vector2i=p+directions[posmod(int(row.entity_id)+int(world.world_time/Rules.PATROL_INTERVAL)+offset,4)]
@@ -109,11 +142,20 @@ static func interact(session,operation:Dictionary)->Dictionary:
 	if not captured is Dictionary or captured.is_empty():return {"accepted":false,"reason":"snapshot_unavailable"}
 	var rollback:Dictionary=captured
 	var leader:int=world.party_control_actor_id();var ok:=true
-	if action=="AID":ok=bool(Items.commit_use(world,leader,_ration(world,leader),world.entities[leader].position,0).get("accepted",false))
+	if action=="AID":
+		ok=bool(Items.commit_transfer(world,leader,id,_ration(world,leader),
+			world.entities[leader].position,0).get("accepted",false))
 	var event=world.emit_event("population.assisted" if action=="AID" else "population.greeted",leader,id,
 		world.entities[leader].position,30 if action=="AID" else 10,-1,
 		{"entity_id":str(id),"expedition_index":int(party.expedition_cycle.expedition_index)})
 	ok=ok and event!=null and session.sim.relationships.record_aid(id,leader,event.id,30 if action=="AID" else 10)
+	if ok and action=="AID":
+		var rows:=Rules.locations(world)
+		for row in rows:
+			if int(row.get("entity_id","-1"))!=id:continue
+			row["needs_supplies"]=false;row["state"]="RETURN"
+			row["activity"]="물자를 받고 귀환 중";break
+		ok=_emit(world,"population.patrol",rows)!=null
 	party.revision+=1
 	if not ok or not world.world_state_error().is_empty():
 		session.sim=session.SimulatorScript.from_snapshot(rollback)

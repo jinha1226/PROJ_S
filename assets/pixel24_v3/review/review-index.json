@@ -220,6 +220,13 @@
       ]
     },
     {
+      "id": "human_shield_wood",
+      "layers": [
+        "actor_human",
+        "offhand_shield_wood"
+      ]
+    },
+    {
       "id": "dwarf_crossbow",
       "layers": [
         "actor_dwarf",
@@ -456,6 +463,12 @@
       "id": "icon_shield_wood",
       "kind": "item_icon",
       "output": "res://assets/pixel24_v3/runtime/items/shield_wood.png"
+    },
+    {
+      "fit": "",
+      "id": "offhand_shield_wood",
+      "kind": "offhand_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/offhand/shield_wood.png"
     },
     {
       "fit": "",

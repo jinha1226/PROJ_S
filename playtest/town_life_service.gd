@@ -52,9 +52,11 @@ static func overview(session)->Dictionary:
 		var activity:=Population.town_activity(str(entity.display_name),id,int(life.visits),member.personality_profile)
 		if joined and active and party.expedition_cycle.phase=="DUNGEON":activity={"label":"원정 중","location":"던전","tile":[7,12]}
 		rows.append({"entity_id":id,"display_name":str(entity.display_name),"health":int(entity.health),
+			"species_id":str(entity.species_id),
 			"max_health":int(entity.max_health),"active":active,"joined":joined,"temperament":temperament,
 			"occupation":identity.job,"adventurer":bool(identity.explores),
 			"activity":activity.label,"tile":activity.tile,"location":activity.location,
+			"facility_id":str(activity.get("facility_id","DUNGEON")),
 			"can_talk":id!=world.party_control_actor_id() and not talked,"talks":talks.size(),
 			"can_join":not joined and join_reason.is_empty(),"join_reason":join_reason,
 			"can_assign":joined and not active and not roster_full and world.combatant_states[id].life_state=="ACTIVE",

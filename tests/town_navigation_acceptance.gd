@@ -18,7 +18,7 @@ func run()->void:
 	root.size=Vector2i(360,800)
 	root.content_scale_size=Vector2i(360,800)
 	var ui=Sandbox.new();ui.set_personality_entropy_source_for_headless_test(func():return 20260828)
-	root.add_child(ui);await settle()
+	root.add_child(ui);await settle();ui._commit_species_picker("human");await settle()
 	for dimensions in [Vector2i(320,640),Vector2i(360,800),Vector2i(430,932)]:
 		root.size=dimensions;root.content_scale_size=dimensions;await settle()
 		ui._on_town_facility_selected("BASE");await settle()
@@ -48,9 +48,8 @@ func run()->void:
 	check(talk!=null and talk.disabled,"talk feedback reflects committed state")
 	check(ui.find_children("TownResidentDetail","",true,false).size()==1,"one resident action card only")
 	var filter:=ui.find_child("TownFilterCITIZENS",true,false) as Button
-	filter.pressed.emit();await settle()
-	check(ui.find_children("TownJOIN*","Button",true,false).is_empty(),"civic resident has no recruitment action")
-	for screen in ["CLINIC","ARMORY","HOUSE","GATE","MARKET"]:
+	check(filter==null,"civic residents live at workplaces, not the inn roster")
+	for screen in ["CLINIC","ARMORY","HOUSE","GATE","STORAGE","MARKET"]:
 		ui._on_town_facility_selected(screen);await settle()
 		check(ui.find_child("TownFacilityPanel",true,false)!=null,"dedicated service "+screen)
 		check(ui.deck.get_global_rect().end.x<=361,"service width "+screen)
@@ -75,7 +74,7 @@ func run()->void:
 	check(ui.town_facility_id=="INN","map and shortcut use same facility navigation")
 	ui._on_town_facility_selected("BASE");await settle()
 	map=ui.find_child("PublicTownMap",true,false);map.building_selected.emit("STORAGE");await settle()
-	check(ui.town_facility_id=="MARKET" and ui.town_ui_state.trade=="SELL","public storage is not private-house purchase")
+	check(ui.town_facility_id=="STORAGE","public storage has its own workplace and stock")
 	check(ui.session.sim.world.world_state_error().is_empty(),"UI actions preserve canonical state")
 	ui.queue_free();await process_frame
 	print("TOWN_NAVIGATION_ACCEPTANCE ","PASS" if failures.is_empty() else str(failures))
