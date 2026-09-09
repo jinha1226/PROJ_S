@@ -1,0 +1,504 @@
+{
+  "composite_order": [
+    {
+      "id": "base_human",
+      "layers": [
+        "actor_human"
+      ]
+    },
+    {
+      "id": "base_elf",
+      "layers": [
+        "actor_elf"
+      ]
+    },
+    {
+      "id": "base_dwarf",
+      "layers": [
+        "actor_dwarf"
+      ]
+    },
+    {
+      "id": "base_orc",
+      "layers": [
+        "actor_orc"
+      ]
+    },
+    {
+      "id": "base_beastkin",
+      "layers": [
+        "actor_beastkin"
+      ]
+    },
+    {
+      "id": "padded_human",
+      "layers": [
+        "actor_human",
+        "armor_padded_human"
+      ]
+    },
+    {
+      "id": "padded_elf",
+      "layers": [
+        "actor_elf",
+        "armor_padded_elf"
+      ]
+    },
+    {
+      "id": "padded_dwarf",
+      "layers": [
+        "actor_dwarf",
+        "armor_padded_dwarf"
+      ]
+    },
+    {
+      "id": "padded_orc",
+      "layers": [
+        "actor_orc",
+        "armor_padded_orc"
+      ]
+    },
+    {
+      "id": "padded_beastkin",
+      "layers": [
+        "actor_beastkin",
+        "armor_padded_beastkin"
+      ]
+    },
+    {
+      "id": "leather_human",
+      "layers": [
+        "actor_human",
+        "armor_leather_human"
+      ]
+    },
+    {
+      "id": "leather_elf",
+      "layers": [
+        "actor_elf",
+        "armor_leather_elf"
+      ]
+    },
+    {
+      "id": "leather_dwarf",
+      "layers": [
+        "actor_dwarf",
+        "armor_leather_dwarf"
+      ]
+    },
+    {
+      "id": "leather_orc",
+      "layers": [
+        "actor_orc",
+        "armor_leather_orc"
+      ]
+    },
+    {
+      "id": "leather_beastkin",
+      "layers": [
+        "actor_beastkin",
+        "armor_leather_beastkin"
+      ]
+    },
+    {
+      "id": "steel_human",
+      "layers": [
+        "actor_human",
+        "armor_steel_human"
+      ]
+    },
+    {
+      "id": "steel_elf",
+      "layers": [
+        "actor_elf",
+        "armor_steel_elf"
+      ]
+    },
+    {
+      "id": "steel_dwarf",
+      "layers": [
+        "actor_dwarf",
+        "armor_steel_dwarf"
+      ]
+    },
+    {
+      "id": "steel_orc",
+      "layers": [
+        "actor_orc",
+        "armor_steel_orc"
+      ]
+    },
+    {
+      "id": "steel_beastkin",
+      "layers": [
+        "actor_beastkin",
+        "armor_steel_beastkin"
+      ]
+    },
+    {
+      "id": "mithril_human",
+      "layers": [
+        "actor_human",
+        "armor_mithril_human"
+      ]
+    },
+    {
+      "id": "mithril_elf",
+      "layers": [
+        "actor_elf",
+        "armor_mithril_elf"
+      ]
+    },
+    {
+      "id": "mithril_dwarf",
+      "layers": [
+        "actor_dwarf",
+        "armor_mithril_dwarf"
+      ]
+    },
+    {
+      "id": "mithril_orc",
+      "layers": [
+        "actor_orc",
+        "armor_mithril_orc"
+      ]
+    },
+    {
+      "id": "mithril_beastkin",
+      "layers": [
+        "actor_beastkin",
+        "armor_mithril_beastkin"
+      ]
+    },
+    {
+      "id": "human_short_sword",
+      "layers": [
+        "actor_human",
+        "weapon_short_sword"
+      ]
+    },
+    {
+      "id": "human_thrusting_sword",
+      "layers": [
+        "actor_human",
+        "weapon_thrusting_sword"
+      ]
+    },
+    {
+      "id": "human_hand_axe",
+      "layers": [
+        "actor_human",
+        "weapon_hand_axe"
+      ]
+    },
+    {
+      "id": "human_mace",
+      "layers": [
+        "actor_human",
+        "weapon_mace"
+      ]
+    },
+    {
+      "id": "human_spear",
+      "layers": [
+        "actor_human",
+        "weapon_spear"
+      ]
+    },
+    {
+      "id": "human_bow",
+      "layers": [
+        "actor_human",
+        "weapon_bow"
+      ]
+    },
+    {
+      "id": "human_crossbow",
+      "layers": [
+        "actor_human",
+        "weapon_crossbow"
+      ]
+    },
+    {
+      "id": "dwarf_crossbow",
+      "layers": [
+        "actor_dwarf",
+        "weapon_crossbow"
+      ]
+    },
+    {
+      "id": "orc_crossbow",
+      "layers": [
+        "actor_orc",
+        "weapon_crossbow"
+      ]
+    }
+  ],
+  "contact_order": [
+    {
+      "fit": "standard",
+      "id": "actor_human",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/runtime/actors/base/human.png"
+    },
+    {
+      "fit": "slender",
+      "id": "actor_elf",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/runtime/actors/base/elf.png"
+    },
+    {
+      "fit": "broad",
+      "id": "actor_dwarf",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/runtime/actors/base/dwarf.png"
+    },
+    {
+      "fit": "broad",
+      "id": "actor_orc",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/runtime/actors/base/orc.png"
+    },
+    {
+      "fit": "standard",
+      "id": "actor_beastkin",
+      "kind": "actor_base",
+      "output": "res://assets/pixel24_v3/runtime/actors/base/beastkin.png"
+    },
+    {
+      "fit": "human",
+      "id": "armor_padded_human",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/padded_human.png"
+    },
+    {
+      "fit": "elf",
+      "id": "armor_padded_elf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/padded_elf.png"
+    },
+    {
+      "fit": "dwarf",
+      "id": "armor_padded_dwarf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/padded_dwarf.png"
+    },
+    {
+      "fit": "orc",
+      "id": "armor_padded_orc",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/padded_orc.png"
+    },
+    {
+      "fit": "beastkin",
+      "id": "armor_padded_beastkin",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/padded_beastkin.png"
+    },
+    {
+      "fit": "human",
+      "id": "armor_leather_human",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/leather_human.png"
+    },
+    {
+      "fit": "elf",
+      "id": "armor_leather_elf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/leather_elf.png"
+    },
+    {
+      "fit": "dwarf",
+      "id": "armor_leather_dwarf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/leather_dwarf.png"
+    },
+    {
+      "fit": "orc",
+      "id": "armor_leather_orc",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/leather_orc.png"
+    },
+    {
+      "fit": "beastkin",
+      "id": "armor_leather_beastkin",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/leather_beastkin.png"
+    },
+    {
+      "fit": "human",
+      "id": "armor_steel_human",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/steel_human.png"
+    },
+    {
+      "fit": "elf",
+      "id": "armor_steel_elf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/steel_elf.png"
+    },
+    {
+      "fit": "dwarf",
+      "id": "armor_steel_dwarf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/steel_dwarf.png"
+    },
+    {
+      "fit": "orc",
+      "id": "armor_steel_orc",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/steel_orc.png"
+    },
+    {
+      "fit": "beastkin",
+      "id": "armor_steel_beastkin",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/steel_beastkin.png"
+    },
+    {
+      "fit": "human",
+      "id": "armor_mithril_human",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/mithril_human.png"
+    },
+    {
+      "fit": "elf",
+      "id": "armor_mithril_elf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/mithril_elf.png"
+    },
+    {
+      "fit": "dwarf",
+      "id": "armor_mithril_dwarf",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/mithril_dwarf.png"
+    },
+    {
+      "fit": "orc",
+      "id": "armor_mithril_orc",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/mithril_orc.png"
+    },
+    {
+      "fit": "beastkin",
+      "id": "armor_mithril_beastkin",
+      "kind": "armor_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/armor/mithril_beastkin.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_short_sword",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/short_sword.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_thrusting_sword",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/thrusting_sword.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_hand_axe",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/hand_axe.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_mace",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/mace.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_spear",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/spear.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_bow",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/bow.png"
+    },
+    {
+      "fit": "",
+      "id": "weapon_crossbow",
+      "kind": "weapon_layer",
+      "output": "res://assets/pixel24_v3/runtime/equipment/weapons/crossbow.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_armor_steel",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/armor_steel.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_armor_mithril",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/armor_mithril.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_hood",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/hood.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_helmet",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/helmet.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_shield_wood",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/shield_wood.png"
+    },
+    {
+      "fit": "",
+      "id": "icon_shield_steel",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/shield_steel.png"
+    },
+    {
+      "fit": "",
+      "id": "monster_goblin",
+      "kind": "monster",
+      "output": "res://assets/pixel24_v3/runtime/monsters/goblin.png"
+    },
+    {
+      "fit": "",
+      "id": "monster_kobold",
+      "kind": "monster",
+      "output": "res://assets/pixel24_v3/runtime/monsters/kobold.png"
+    },
+    {
+      "fit": "",
+      "id": "monster_slime",
+      "kind": "monster",
+      "output": "res://assets/pixel24_v3/runtime/monsters/slime.png"
+    },
+    {
+      "fit": "",
+      "id": "monster_beetle",
+      "kind": "monster",
+      "output": "res://assets/pixel24_v3/runtime/monsters/beetle.png"
+    },
+    {
+      "fit": "",
+      "id": "terrain_floor1",
+      "kind": "terrain_atlas",
+      "output": "res://assets/pixel24_v3/runtime/terrain/floor1.png"
+    },
+    {
+      "fit": "",
+      "id": "terrain_floor2",
+      "kind": "terrain_atlas",
+      "output": "res://assets/pixel24_v3/runtime/terrain/floor2.png"
+    }
+  ],
+  "schema_version": 1
+}
