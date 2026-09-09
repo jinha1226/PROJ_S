@@ -1,14 +1,15 @@
 # LW-D3D-01 — 현재 Pixel24 에셋 기반 실제 3D 탑뷰 프로토타입
 
-작성일: 2026-09-09 KST. 상태: 사용자 승인 범위에 따른 실행 요청 준비.
+작성일: 2026-09-09 KST. 상태: 계획 커밋 완료. 기존 UUID queue 실패에 따라 이번 작업 전담 Sol medium 실행 에이전트로 위임.
 
 ## 역할과 전달
 
 - 이번 작업의 설계·감독·결과 검토: 현재 사용자 대화 `01a08481-b273-7f32-8421-9f318803262e`.
 - 사용자가 이번 대화에 계획·감독 역할을 명시적으로 지정했다. 저장소 전체 실험 역할표를 변경하는 요청은 아니다.
-- 실행: 기존 세션 `01a056c9-3e9c-7d22-908e-b0e51fa3878c`.
+- 실행 우선 대상: 기존 세션 `01a056c9-3e9c-7d22-908e-b0e51fa3878c`.
+- 실제 전달 경로: 기존 UUID queue가 `no rollout found for thread id`로 실패하여 이번 작업 전담 협업 에이전트 `pixel24_diorama_impl`에 위임한다. 사용자 지정 Sol medium을 유지하며 저장소 전체 실행 역할을 자동 승계하지 않는다.
 - 사용자 지정 실행 설정: `gpt-5.6-sol`, `model_reasoning_effort="medium"`.
-- 결과 반환: 이 작업의 설계 대화 `01a08481-b273-7f32-8421-9f318803262e`.
+- 결과 반환: 이 작업의 설계 대화 `01a08481-b273-7f32-8421-9f318803262e`, 협업 에이전트의 부모 `/root`에 메시지/완료 응답으로 반환한다.
 
 ## 기준 저장소와 최신 푸시 확인
 
@@ -117,7 +118,9 @@
 - protocol: `docs/plans/pixel24-diorama3d-protocol.md`.
 - 결과: `docs/results/pixel24-diorama3d-result.md`.
 - 검증 수치 및 캡처: `docs/results/pixel24-diorama3d/`.
-- 결과 commit을 만든 뒤 `codex queue --thread 01a08481-b273-7f32-8421-9f318803262e --message ...`로 반환.
+- 결과 commit을 만든 뒤 부모 `/root`에 협업 메시지 및 완료 응답으로 반환. 실패한 기존 queue를 반복하지 않는다.
 - 반환 메시지는 `LW-D3D-01` 상태, 결과 문서 절대 경로, 결과 commit, 해석·다음 진행 판단 요청만 간결히 담는다.
 
-계획 담당은 접수 성공 후 반복 조회하거나 완료 대기하지 않는다. 반환 후 결과 검토를 수행한다.
+계획 담당은 실행 위임 성공 후 반복 조회하거나 완료 대기하지 않는다. 반환 후 결과 검토를 수행한다.
+
+전달 기록: 계획 최초 commit `f7d0d8c3ca417b61705e54b74489847aeb7ee8f1`. 지정 UUID에 `codex queue --model gpt-5.6-sol -c model_reasoning_effort="medium"` 전달을 시도했으나 thread/queue/add가 세션 기록 없음으로 실패했다. 실행 요청은 기존 세션에 접수되지 않았다.
