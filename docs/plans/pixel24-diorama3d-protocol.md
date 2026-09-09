@@ -55,7 +55,8 @@ godot --headless --path . --script res://tests/run_pixel24_diorama3d_tests.gd
 godot --headless --path . --script res://tests/pixel24_asset_acceptance.gd
 godot --headless --path . --script res://tests/pixel24_equipment_fit_acceptance.gd
 godot --headless --path . --script res://tests/pixel24_item_building_acceptance.gd
-godot --headless --path . --script res://tools/capture_pixel24_diorama3d.gd
+godot --display-driver x11 --rendering-driver opengl3 --path . \
+  --script res://tools/capture_pixel24_diorama3d.gd
 ```
 
 - 새 focused test와 관련 Pixel24 회귀 세 개가 exit 0이어야 한다.
@@ -65,6 +66,8 @@ godot --headless --path . --script res://tools/capture_pixel24_diorama3d.gd
 - 클릭 왕복과 이동/차단/경계/검 토글/수관 가림 계약이 자동 검사되어야 한다.
 - 원본 audit 7개 파일의 SHA-256이 계획의 JSON과 일치해야 한다.
 - 캡처 PNG를 직접 열어 1× 종족·장비·건물·길·장애물 판독성과 팔레트 연속성을 평가한다.
+- 캡처는 실제 viewport readback이 필요하므로 dummy renderer만 제공하는
+  `--headless`가 아니라 사용 가능한 X11/OpenGL display driver에서 실행한다.
 - `render_metrics.json`의 환경을 명시하며 측정치를 실제 모바일 성능으로 일반화하지 않는다.
 
 ## 중단 및 보고

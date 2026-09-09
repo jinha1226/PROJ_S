@@ -1,0 +1,74 @@
+{
+  "camera_left_vertical_after_capture": true,
+  "contract": {
+    "armory_footprint": [
+      3,
+      2
+    ],
+    "authoritative_state_accessed": false,
+    "camera_forward": [
+      0.0,
+      -1.0,
+      0.0000000437113882867379
+    ],
+    "camera_projection": 1,
+    "camera_size": 18.0,
+    "canopy_faded": false,
+    "grid_size": 18,
+    "human_cell": [
+      8,
+      14
+    ],
+    "mesh_instances": 117,
+    "pixels_per_cell": 24.0,
+    "quad_meshes": 0,
+    "render_size": [
+      432,
+      432
+    ],
+    "sprite3d": 0,
+    "storage_footprint": [
+      3,
+      3
+    ],
+    "sword_equipped": true,
+    "triangles": 2304,
+    "vertical_camera": true
+  },
+  "display_server": "X11",
+  "experiment_id": "LW-D3D-01",
+  "frame_interval_sample": {
+    "max_ms": 22.999,
+    "mean_ms": 18.2850666666667,
+    "min_ms": 16.057,
+    "p95_ms": 21.257,
+    "scope": "60 process-frame wall intervals during X11 software-render capture; not GPU time"
+  },
+  "godot_version": "4.6.2-stable (official)",
+  "os": "Linux",
+  "projection": {
+    "camera_size": 18.0,
+    "origin_screen": [
+      204.0,
+      203.999984741211
+    ],
+    "roundtrip_cell": [
+      8,
+      8
+    ],
+    "viewport": [
+      432,
+      432
+    ],
+    "x_spacing_px": 24.0,
+    "z_spacing_px": 24.0
+  },
+  "render_info": {
+    "draw_calls_in_frame": 386,
+    "objects_in_frame": 431,
+    "primitives_in_frame": 8918
+  },
+  "rendering_method": "gl_compatibility",
+  "video_adapter": "llvmpipe (LLVM 20.1.2, 256 bits)",
+  "video_adapter_vendor": "Mesa"
+}

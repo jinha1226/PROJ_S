@@ -1,0 +1,44 @@
+{
+  "armory": {
+    "carried": "open timber deck, anvil, forge, rear weapon rack",
+    "inferred": "solid forge, chimney, rear posts and rack depth",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_armory",
+    "source": "assets/pixel24_v3/runtime/buildings/armory_timber.png"
+  },
+  "dwarf": {
+    "carried": "wide copper beard, bald crown, ochre apron, short body",
+    "inferred": "beard wraps the jaw; compact back and boots",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_actor(dwarf)",
+    "source": "assets/pixel24_v3/runtime/actors/base/dwarf.png"
+  },
+  "goblin": {
+    "carried": "olive skin, long side ears, dark olive tunic",
+    "inferred": "ears taper as solid wedges; plain back tunic",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_actor(goblin)",
+    "source": "assets/pixel24_v3/runtime/monsters/goblin.png"
+  },
+  "human": {
+    "carried": "round brown hair cap, warm face, grey tunic, brown boots",
+    "inferred": "solid back hair, short block torso and limbs",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_actor(human)",
+    "source": "assets/pixel24_v3/runtime/actors/base/human.png"
+  },
+  "human_sword": {
+    "carried": "short pale blade, dark guard and grip",
+    "inferred": "rectangular blade thickness and solid pommel",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_actor(human)/SwordEquipment",
+    "source": "assets/pixel24_v3/fit_v2/equipment/weapons/short_sword.png"
+  },
+  "storage": {
+    "carried": "open timber deck, four posts, crates, sack and barrel",
+    "inferred": "post depth, raised deck and solid container backs",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_storage",
+    "source": "assets/pixel24_v3/runtime/buildings/storage_timber.png"
+  },
+  "tree": {
+    "carried": "Pixel24 moss/timber earth palette only",
+    "inferred": "six-sided trunk and clustered low-poly crown",
+    "model": "playtest/pixel24_diorama3d_factory.gd::build_tree",
+    "source": "none — new derivative design"
+  }
+}
