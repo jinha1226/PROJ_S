@@ -8,6 +8,7 @@ signal tile_dragged(position:Vector2i)
 
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 const BuildingAssets=preload("res://playtest/pixel24_building_assets.gd")
+const ActorAssets=preload("res://playtest/fixed_front_topdown_assets.gd")
 const KoreanFont:FontFile=DarkPixelSkin.PixelFont
 const LANDMARK_IDS:=["STORAGE","LODGE","CLINIC","MARKET","ARMORY","GATE"]
 const FACILITY_IDS:=["STORAGE","LODGE","CLINIC"]
@@ -179,14 +180,46 @@ func _draw_work_and_residents()->void:
 		var working:bool=not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
 		if working:tile=preload("res://sim/base_work_rules.gd").worker_position(job)
 		var center:=_map_origin()+(Vector2(tile)+Vector2.ONE*0.5)*_cell_size()
-		var radius:=_cell_size()*0.24
-		if working and str(job.action)=="REST" and int(job.progress)>=job.route.size()-1:
-			draw_rect(Rect2(center-Vector2(radius*1.5,radius),Vector2(radius*3,radius*2)),Color("#718bac"))
-			draw_circle(center-Vector2(radius,0),radius*0.65,BONE)
-			continue
-		draw_circle(center+Vector2(0,radius*0.7),radius*1.15,Color("#111816"))
-		draw_circle(center+Vector2(0,radius*0.35),radius,CYAN if working else Color("#96a889"))
-		draw_circle(center-Vector2(0,radius*0.65),radius*0.67,BONE)
+		var resting:bool=working and str(job.action)=="REST" \
+			and int(job.progress)>=job.route.size()-1
+		_draw_resident(resident,center,working,resting)
+
+
+func resident_visual_spec(resident:Dictionary,center:Vector2,cell_size:float)->Dictionary:
+	var actor:=resident.duplicate(true)
+	if str(actor.get("species_id","")).is_empty():actor["species_id"]="human"
+	var layer:=ActorAssets.actor_layer_spec(actor)
+	var sprite_size:=maxf(12.0,floorf(cell_size*0.92))
+	var bounds:=Rect2(center-Vector2.ONE*sprite_size*0.5,Vector2.ONE*sprite_size)
+	return layer.merged({"bounds":bounds,
+		"uses_actual_asset":bool(layer.get("uses_sprite",false)),
+		"ascii_glyph":false},true).duplicate(true)
+
+
+func _draw_resident(resident:Dictionary,center:Vector2,working:bool,resting:bool)->void:
+	var spec:=resident_visual_spec(resident,center,_cell_size())
+	var bounds:Rect2=spec.bounds
+	var radius:=bounds.size.x*0.24
+	if resting:
+		var bed:=Rect2(center-Vector2(bounds.size.x*0.54,bounds.size.y*0.38),
+			Vector2(bounds.size.x*1.08,bounds.size.y*0.76))
+		draw_rect(bed,Color("#3e516b"))
+		draw_rect(bed.grow(-2),Color("#718bac"))
+		draw_rect(Rect2(bed.position+Vector2(2,2),Vector2(bed.size.x*0.29,bed.size.y-4)),BONE)
+	else:
+		draw_circle(center+Vector2(0,bounds.size.y*0.36),radius,Color("#111816bb"))
+	if working:
+		draw_arc(center,bounds.size.x*0.48,0,TAU,16,CYAN,2.0)
+	if bool(spec.get("uses_actual_asset",false)):
+		for texture_key in ["body_texture","armor_texture","offhand_texture",
+				"weapon_texture","foreground_texture"]:
+			var texture:Texture2D=spec.get(texture_key,null)
+			if texture!=null:draw_texture_rect(texture,bounds,false,Color.WHITE)
+		return
+	# Unknown future species remain visible instead of disappearing from town.
+	draw_circle(center+Vector2(0,radius*0.35),radius,
+		CYAN if working else Color("#96a889"))
+	draw_circle(center-Vector2(0,radius*0.65),radius*0.67,BONE)
 
 
 func _draw_tile_grid(canvas:Rect2)->void:
