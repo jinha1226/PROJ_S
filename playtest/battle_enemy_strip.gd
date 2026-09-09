@@ -18,7 +18,7 @@ func _init()->void:
 var _last_signature:Array=[]
 
 func sync(host)->void:
-	visible=host._portrait_battle_controls_visible()
+	visible=host._enemy_strip_visible()
 	if not visible:return
 	var world=host.session.sim.world
 	var ids:Array=[]

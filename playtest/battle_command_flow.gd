@@ -54,7 +54,7 @@ func paint(host)->void:
 		else:pause_button.text=("시작" if awaiting_start else "재개") if host.autonomous_battle_clock.paused else "지휘"
 	var notice:=""
 	if in_battle and host.battle_mode=="HERO_TURN":
-		if host.hero_turn_waiting():notice="내 차례 · 칸은 이동, 인접한 적은 공격"
+		notice=""
 	elif in_battle and host.autonomous_battle_clock.paused:
 		if not danger_ids.is_empty():
 			var names:Array[String]=[]

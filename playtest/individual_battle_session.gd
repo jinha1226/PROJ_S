@@ -9,6 +9,7 @@ var host:
 	get:return _host_ref.get_ref()
 var queues:Dictionary={}
 var movements:Dictionary={}
+var holds:Dictionary={}
 var _sim
 var _cache_key:=""
 var _next:Dictionary={}
@@ -36,6 +37,21 @@ func reserve_move(actor_id:int,goal:Vector2i,append_journal:bool=true)->Dictiona
 	if append_journal:host.command_journal.append({"kind":"reserve_move","operation":{
 		"actor_id":str(actor_id),"destination":[goal.x,goal.y]}})
 	return {"accepted":true,"reason":"ok","message":"이동 지시 예약 · 도착 후 위치 유지"}
+
+func reserve_hold(actor_id:int,append_journal:bool=true)->Dictionary:
+	# 대기: the actor's next action is a guard, never an automatic attack.
+	_bind()
+	if _sim==null or _sim.world.party_encounter.safe_phase!="ENGAGED":
+		return {"accepted":false,"message":"전투 중에만 대기를 지정할 수 있습니다."}
+	if not _sim.world.party_encounter.active_party_member_ids.has(actor_id):
+		return {"accepted":false,"message":"행동 가능한 파티원을 선택하세요."}
+	holds[actor_id]=true
+	if append_journal:host.command_journal.append({"kind":"reserve_hold","operation":{
+		"actor_id":str(actor_id)}})
+	return {"accepted":true,"reason":"ok","message":"이번 차례 대기"}
+
+func hold_reserved(actor_id:int)->bool:
+	return bool(holds.get(actor_id,false))
 
 func hero_turn_pending()->bool:
 	# The protagonist's own event is next. Presentation decides whether to hold
@@ -85,13 +101,15 @@ func commit(expected:Dictionary={},append_journal:bool=true,survival_rules:bool=
 	if not expected.is_empty() and operation!=expected:
 		return {"accepted":false,"reason":"individual_battle_stale_event"}
 	var result=Scheduler.step(host.sim,queues.get(int(next.actor_id),{}),
-		movements.get(int(next.actor_id),Vector2i(-1,-1)),survival_rules)
+		movements.get(int(next.actor_id),Vector2i(-1,-1)),survival_rules,
+		bool(holds.get(int(next.actor_id),false)))
 	if not result.accepted:return host._rejection_dto(result.reason)
+	holds.erase(int(next.actor_id))
 	var reservation_failed:bool=queues.has(int(next.actor_id))
 	for event in result.events:
 		if event.type=="action.skill" and int(event.actor_id)==int(next.actor_id):reservation_failed=false
 	queues.erase(int(next.actor_id));_cache_key=""
-	if host.sim.world.party_encounter.safe_phase!="ENGAGED":queues.clear();movements.clear()
+	if host.sim.world.party_encounter.safe_phase!="ENGAGED":queues.clear();movements.clear();holds.clear()
 	if append_journal:host.command_journal.append({"kind":"individual_survival_step" if survival_rules else "individual_step","operation":operation})
 	host._clear_draft()
 	var _pdt:=PerfProbeScript.begin()
@@ -109,6 +127,8 @@ static func operation_error(kind:String,row:Variant)->String:
 				or Codec.parse(row.at,"battle at")<0:return "invalid_individual_step"
 	elif kind=="cancel_reserved_skill":
 		if keys!=["actor_id"]:return "invalid_reserved_skill_cancel"
+	elif kind=="reserve_hold":
+		if keys!=["actor_id"]:return "invalid_reserved_hold"
 	elif kind=="reserve_move":
 		if keys!=["actor_id","destination"] or not row.get("destination") is Array \
 				or row.destination.size()!=2:return "invalid_reserved_move"

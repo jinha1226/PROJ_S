@@ -41,7 +41,7 @@ static func _earlier(best:Dictionary,at:int,id:int)->Dictionary:
 		return {"at":at,"actor_id":id}
 	return best
 
-static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-1,-1),survival_rules:bool=true):
+static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-1,-1),survival_rules:bool=true,hold:bool=false):
 	var next:=next_event(sim)
 	if next.is_empty():return Result.new(false,false,"individual_battle_not_engaged")
 	var world=sim.world;var party=world.party_encounter
@@ -64,7 +64,7 @@ static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-
 				skill_rejection=str(skill.get("reason","active_skill_rejected"));skill.clear()
 		if skill.is_empty():
 			var _par:=PerfProbeScript.begin()
-			row=_ally_row(sim,actor_id,step_index,movement_goal)
+			row=_ally_row(sim,actor_id,step_index,movement_goal,hold)
 			PerfProbeScript.end("ib.ally_row",_par)
 	var accepted:=true
 	var _pact:=PerfProbeScript.begin()
@@ -115,7 +115,7 @@ static func step(sim,reservation:Dictionary={},movement_goal:Vector2i=Vector2i(-
 		"processed_step_index":step_index,"start_time":start,"end_time":world.world_time,
 		"time_cost":world.world_time-start,"actor_id":actor_id,"skill_rejection":skill_rejection})
 
-static func _ally_row(sim,id:int,step_index:int,movement_goal:Vector2i=Vector2i(-1,-1))->Dictionary:
+static func _ally_row(sim,id:int,step_index:int,movement_goal:Vector2i=Vector2i(-1,-1),hold:bool=false)->Dictionary:
 	var coordinator=sim.party_coordinator;var world=sim.world;var party=world.party_encounter
 	var seed=Action.hold(party.protagonist_id)
 	var board:Dictionary=Blackboard.build(world,seed)
@@ -123,6 +123,8 @@ static func _ally_row(sim,id:int,step_index:int,movement_goal:Vector2i=Vector2i(
 	var action=coordinator._suggest(id,seed,board)
 	if movement_goal!=Vector2i(-1,-1):
 		action=preload("res://sim/systems/battle_position_order.gd").action(sim,id,movement_goal,action)
+	# An explicit hold (the player's 대기) is a guard: no automatic attack.
+	if hold:action=Action.hold(id)
 	if not coordinator._action_error(action).is_empty():action=Action.hold(id)
 	var row:Dictionary=coordinator._action_row(action,"SUGGESTED",party.member(id).roster_slot)
 	if action.type=="MELEE":

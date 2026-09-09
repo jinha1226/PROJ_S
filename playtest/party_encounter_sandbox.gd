@@ -2515,6 +2515,7 @@ func _hero_turn_holds()->bool:
 	if not session.individual_battle.hero_turn_pending() or _hero_turn_released:return false
 	var hero_id:=int(session.sim.world.party_encounter.protagonist_id)
 	if not session.individual_battle.queued(hero_id).is_empty():return false
+	if session.individual_battle.hold_reserved(hero_id):return false
 	var goal:Variant=session.individual_battle.movements.get(hero_id)
 	if goal is Vector2i and goal!=session.sim.world.entities[hero_id].position:return false
 	# Nothing to decide while no enemy that can still fight is in view (only
@@ -2546,6 +2547,15 @@ func _refresh_battle_surface_lightly()->void:
 func _portrait_battle_controls_visible()->bool:
 	return session!=null and session.is_duo_autobattle() and session.sim!=null \
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
+
+func _enemy_strip_visible()->bool:
+	# Enemy portraits follow visibility, not the encounter phase: an enemy in
+	# view shows its portrait before, during and after a fight the same way.
+	if session==null or session.sim==null or not session.is_duo_autobattle():return false
+	var world=session.sim.world
+	for id_value in session.party_status().get("visible_enemy_ids",[]):
+		if world.is_autonomous_target(int(id_value)):return true
+	return false
 
 func _on_manual_actor_selected(actor_id:int)->void:
 	if not _battle_target_mode.is_empty():return
@@ -2880,9 +2890,6 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 		spec.portrait_min_size=[clampi(int(float(card_min_width)*0.42),44,portrait_height),
 			portrait_height]
 		spec.portrait_removed=false
-		if _portrait_battle_controls_visible():
-			spec.party_height=PRODUCT_PARTY_CARD_HEIGHT+50
-			spec.card_min_width=maxi(48,int(floor(float(available_width-52)/effective_count)))
 	return spec.duplicate(true)
 
 func render_party_cards_for_headless_test(rows:Array,speeches:Array=[])->Dictionary:
@@ -4392,8 +4399,12 @@ func _on_product_wait_guard()->void:
 	if str(status.get("view_mode",""))=="EXPLORATION":
 		_on_product_rest()
 	elif _portrait_battle_controls_visible():
+		var hero_id:=int(status.get("protagonist_id",-1))
+		var held:Dictionary=session.individual_battle.reserve_hold(hero_id)
+		if not bool(held.get("accepted",false)):
+			_show_product_command_feedback(str(held.get("message","지금은 대기할 수 없습니다.")));return
 		autonomous_battle_clock.paused=false
-		_release_hero_turn("이번 차례 · 자리를 지킵니다")
+		_release_hero_turn("이번 차례 · 대기")
 	elif str(status.get("view_mode",""))=="COMBAT":_on_actor_hold()
 
 func _on_product_retreat()->void:
@@ -5992,6 +6003,9 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
+	# Portrait tap: party focus during a fight; before contact it is the same as
+	# tapping the enemy on the map (strike when adjacent, hint otherwise).
+	if not _portrait_battle_controls_visible():_strike_visible_enemy(entity_id);return
 	var result:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
 	if result.get("accepted",false):
 		selected_target_id=entity_id;_hero_turn_released=true
@@ -6726,12 +6740,12 @@ func _current_grid_view_dimensions()->Vector2i:
 	var party_height:=int(party_card_layout_spec(party_count,size.x).get(
 		"party_height",PRODUCT_PARTY_CARD_HEIGHT))
 	var separation:=4 if size.x>=450.0 else 0
-	# Six visible siblings (HUD, map, event, party, command dock, navigation) create five
-	# gaps. The map receives every remaining pixel and derives a square cell size
-	# from the shorter axis, so portrait gains rows and landscape gains columns.
+	# HUD, map, event feed, hero skill row, party, command dock: the same stack in
+	# exploration and in a fight, so the map never changes size on contact.
+	var skill_row_height:int=44 if hero_skill_row!=null and hero_skill_row.visible else 0
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
-		-PRODUCT_TOP_HUD_HEIGHT-(48 if _portrait_battle_controls_visible() else PRODUCT_EVENT_HEIGHT)-party_height-(0 if _portrait_battle_controls_visible() else 48)
-		-separation*4))
+		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-skill_row_height-party_height-48
+		-separation*5))
 	var cell_size:=minf(map_extent.x,map_extent.y)/float(maxi(1,base_count))
 	# Round the long axis outward: a sub-cell (at most one row/column) reduction
 	# in sprite scale is preferable to leaving an otherwise useless black strip.

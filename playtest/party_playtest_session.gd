@@ -7708,6 +7708,8 @@ func load_session_json(encoded: String) -> Dictionary:
 			"reserve_move":
 				replay_result=replay.individual_battle.reserve_move(int(row.operation.actor_id),
 					Vector2i(int(row.operation.destination[0]),int(row.operation.destination[1])))
+			"reserve_hold":
+				replay_result=replay.individual_battle.reserve_hold(int(row.operation.actor_id))
 			"individual_step":
 				replay_result=replay.individual_battle.commit(row.operation,true,false)
 			"individual_survival_step":
@@ -7731,6 +7733,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	individual_battle._bind()
 	individual_battle.queues=replay.individual_battle.queues.duplicate(true)
 	individual_battle.movements=replay.individual_battle.movements.duplicate(true)
+	individual_battle.holds=replay.individual_battle.holds.duplicate(true)
 	return installed
 
 
@@ -8133,7 +8136,7 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
-			"reserve_skill","cancel_reserved_skill","individual_step","individual_survival_step","reserve_move":
+			"reserve_skill","cancel_reserved_skill","individual_step","individual_survival_step","reserve_move","reserve_hold":
 				if keys!=["kind","operation"]:return "invalid_individual_journal"
 				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
 				if not individual_error.is_empty():return individual_error
