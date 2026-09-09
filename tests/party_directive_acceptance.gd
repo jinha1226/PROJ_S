@@ -1,4 +1,4 @@
-extends "res://tests/battle_timeline_acceptance.gd"
+extends "res://tests/duo_battle_fixture_base.gd"
 
 func _run()->void:
 	var session=_new_engaged_duo()

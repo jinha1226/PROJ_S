@@ -1,4 +1,4 @@
-extends "res://tests/battle_timeline_acceptance.gd"
+extends "res://tests/duo_battle_fixture_base.gd"
 
 const Work=preload("res://sim/base_work_rules.gd")
 const BasePanel=preload("res://playtest/base_progress_panel.gd")

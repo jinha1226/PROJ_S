@@ -4469,7 +4469,10 @@ func _strike_visible_enemy(entity_id:int)->void:
 		_show_manual_battle_feedback(str(result.get("message","공격")))
 		_request_refresh()
 	else:
-		_show_manual_battle_feedback(str(result.get("message",result.get("reason","공격할 수 없습니다."))))
+		var detail:=str(result.get("reason_details",{}).get("detail","")) \
+			if result.get("reason_details",{}) is Dictionary else ""
+		_show_manual_battle_feedback(str(result.get("message",result.get("reason","공격할 수 없습니다.")))
+			+(" ("+detail+")" if not detail.is_empty() else ""))
 		_request_refresh()
 
 func _on_product_execute()->void:

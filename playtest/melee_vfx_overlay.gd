@@ -231,7 +231,7 @@ func _draw()->void:
 				draw_line(Vector2(segment.from)+presentation_offset,
 					Vector2(segment.to)+presentation_offset,line_color,
 					float(PARAMS.slash_width_px),bool(PARAMS.slash_antialiased))
-		for particle in spec.particles:
+		for particle in spec.get("particles",[]):
 			var particle_color:=Color(str(PARAMS.particle_color_hex))
 			particle_color.a=float(particle.opacity)
 			_draw_centered_glyph(font,str(particle.glyph),

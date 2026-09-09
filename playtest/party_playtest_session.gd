@@ -2725,11 +2725,15 @@ func issue_party_command(command_id:String,target_id:int=-1,
 	var event=sim.world.emit_event("party.command_issued",hero_id,target_id,
 		hero_position,0,-1,PartyCommandScript.event_data(command_id,target_id))
 	state.revision+=1
-	var semantic_error:String=sim.world.world_state_error()
-	if event==null or not semantic_error.is_empty():
+	# Validate the command history itself, not the whole world: a latent error
+	# elsewhere must not make every directive bounce with the same message.
+	var semantic_error:String="event_emission_failed" if event==null \
+		else sim.world._party_command_history_error()
+	if not semantic_error.is_empty():
 		var restored=SimulatorScript.from_snapshot(rollback)
 		if restored!=null:sim=restored
-		return _rejection_dto("party_command_commit_failed")
+		push_warning("party command rejected: %s"%semantic_error)
+		return _rejection_dto("party_command_commit_failed",null,null,{"detail":semantic_error})
 	individual_battle._bind();individual_battle.movements.clear()
 	_clear_draft()
 	if append_journal:
@@ -2776,10 +2780,13 @@ func issue_actor_command(actor_id:int,command_id:String,target_id:int=-1,
 	var event=sim.world.emit_event("party.actor_command_issued",actor_id,target_id,
 		position,0,-1,PartyCommandScript.actor_event_data(actor_id,command_id,target_id))
 	sim.world.party_encounter.revision+=1
-	if event==null or not sim.world.world_state_error().is_empty():
+	var directive_error:String="event_emission_failed" if event==null \
+		else PartyCommandScript.actor_data_error(event.data)
+	if not directive_error.is_empty():
 		var restored=SimulatorScript.from_snapshot(rollback)
 		if restored!=null:sim=restored
-		return _rejection_dto("party_command_commit_failed")
+		push_warning("actor command rejected: %s"%directive_error)
+		return _rejection_dto("party_command_commit_failed",null,null,{"detail":directive_error})
 	individual_battle._bind();individual_battle.movements.erase(actor_id)
 	_clear_draft()
 	if append_journal:command_journal.append({"kind":"actor_command","operation":{
