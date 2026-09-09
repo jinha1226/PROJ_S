@@ -1149,7 +1149,7 @@ func _commit_species_picker(species_id:String)->void:
 func _build_build_label()->void:
 	build_label=Label.new();build_label.name="BuildLabel";build_label.text=BuildInfoScript.display_text()
 	build_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;build_label.clip_text=true
-	build_label.z_index=1
+	build_label.z_index=40
 	build_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 	build_label.vertical_alignment=VERTICAL_ALIGNMENT_BOTTOM
 	build_label.add_theme_font_size_override("font_size",FONT_MICRO)
@@ -1158,24 +1158,13 @@ func _build_build_label()->void:
 	add_child(build_label);_position_build_label()
 
 func _position_build_label()->void:
+	# Build version: always the bottom-right corner of the game screen, drawn
+	# above whatever sits there. Input passes through it.
 	if build_label==null:return
-	build_label.visible=not _is_solo_product_session()
-	if event_surface!=null and event_surface.visible and event_surface.size.x>0.0:
-		build_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		var local_event_position:=event_surface.global_position-global_position
-		build_label.position=Vector2(local_event_position.x+maxf(0.0,event_surface.size.x-98.0),
-			local_event_position.y+maxf(0.0,event_surface.size.y-16.0))
-		build_label.size=Vector2(92,16)
-		return
+	build_label.visible=true
 	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	var bottom_clearance:=4.0
-	if combat_action_area!=null and combat_action_area.visible:
-		bottom_clearance=maxf(bottom_clearance,float(combat_action_area.custom_minimum_size.y)+4.0)
-		var action_top:=combat_action_area.global_position.y-global_position.y
-		if action_top>0.0 and action_top<size.y:
-			bottom_clearance=maxf(bottom_clearance,size.y-action_top+4.0)
-	build_label.offset_left=-110.0;build_label.offset_right=-6.0
-	build_label.offset_bottom=-bottom_clearance;build_label.offset_top=-bottom_clearance-16.0
+	build_label.offset_left=-110.0;build_label.offset_right=-4.0
+	build_label.offset_bottom=-2.0;build_label.offset_top=-18.0
 
 func _build_tile_popover()->void:
 	tile_popover=PanelContainer.new();tile_popover.name="TileRiskPopover";tile_popover.visible=false

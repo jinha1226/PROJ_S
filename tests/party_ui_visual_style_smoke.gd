@@ -36,23 +36,16 @@ func _check_viewport(viewport_size:Vector2)->void:
 		"%s party UI body typography did not shrink to 16px"%viewport_size)
 	_check(sandbox.root_layout.get_global_rect().size.is_equal_approx(viewport_size),
 		"%s product layout is not full bleed"%viewport_size)
-	_check(sandbox.build_label!=null and sandbox.build_label.text=="BUILD LOCAL" \
+	_check(sandbox.build_label!=null and sandbox.build_label.visible \
+		and sandbox.build_label.text.begins_with("BUILD ") and sandbox.build_label.text.length()>6 \
 		and sandbox.build_label.mouse_filter==Control.MOUSE_FILTER_IGNORE,
-		"%s local build label is missing or intercepts input"%viewport_size)
+		"%s build version label is missing, empty or intercepts input"%viewport_size)
 	_check(_inside_rect(sandbox,sandbox.build_label),
 		"%s build label clips the viewport"%viewport_size)
-	_check(_inside_rect(sandbox.event_surface,sandbox.build_label) \
-		and not sandbox.build_label.get_global_rect().intersects(sandbox.event_label.get_global_rect()),
-		"%s build label is not isolated in the event surface"%viewport_size)
+	var label_rect:Rect2=sandbox.build_label.get_global_rect();var screen_rect:Rect2=sandbox.get_global_rect()
+	_check(absf(label_rect.end.x-screen_rect.end.x)<=6.0 and absf(label_rect.end.y-screen_rect.end.y)<=6.0,
+		"%s build label is not in the bottom-right corner (%s vs %s)"%[viewport_size,label_rect,screen_rect])
 	var grid_size_before_build_probe:Vector2=sandbox.grid.size
-	var action_visibility_before_probe:bool=sandbox.combat_action_area.visible
-	sandbox.combat_action_area.visible=true;sandbox._position_build_label();await process_frame
-	sandbox._position_build_label();await process_frame
-	_check(not sandbox.build_label.get_global_rect().intersects(
-		sandbox.combat_action_area.get_global_rect()),
-		"%s build label %s overlaps bottom action rect %s"%[viewport_size,
-			sandbox.build_label.get_global_rect(),sandbox.combat_action_area.get_global_rect()])
-	sandbox.combat_action_area.visible=action_visibility_before_probe
 	sandbox._position_build_label();await process_frame
 	_check(sandbox.grid.size.is_equal_approx(grid_size_before_build_probe),
 		"%s absolute build overlay changed the map footprint"%viewport_size)
