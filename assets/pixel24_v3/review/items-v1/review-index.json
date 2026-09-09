@@ -1,0 +1,102 @@
+{
+  "composite_order": [],
+  "contact_order": [
+    {
+      "fit": "",
+      "id": "item_potion_healing",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/potion_healing.png"
+    },
+    {
+      "fit": "",
+      "id": "item_food_ration",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/food_ration.png"
+    },
+    {
+      "fit": "",
+      "id": "item_scroll_unspecified",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/scroll_unspecified.png"
+    },
+    {
+      "fit": "",
+      "id": "item_accessory_brass_charm",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/accessory_brass_charm.png"
+    },
+    {
+      "fit": "",
+      "id": "item_goblin_ear",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/goblin_ear.png"
+    },
+    {
+      "fit": "",
+      "id": "item_material_unspecified",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/material_unspecified.png"
+    },
+    {
+      "fit": "",
+      "id": "resource_timber",
+      "kind": "resource_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/resource_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "resource_stone",
+      "kind": "resource_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/resource_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "resource_herbs",
+      "kind": "resource_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/resource_herbs.png"
+    },
+    {
+      "fit": "",
+      "id": "town_gold",
+      "kind": "ui_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/town_gold.png"
+    },
+    {
+      "fit": "",
+      "id": "item_potion_unspecified",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/potion_unspecified.png"
+    },
+    {
+      "fit": "",
+      "id": "item_accessory_unspecified",
+      "kind": "item_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/accessory_unspecified.png"
+    },
+    {
+      "fit": "",
+      "id": "dropped_item_marker",
+      "kind": "presentation_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/dropped_item_marker.png"
+    },
+    {
+      "fit": "",
+      "id": "loot_sack",
+      "kind": "presentation_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/loot_sack.png"
+    },
+    {
+      "fit": "",
+      "id": "reserved_key",
+      "kind": "reserved_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/reserved_key.png"
+    },
+    {
+      "fit": "",
+      "id": "reserved_blank",
+      "kind": "reserved_icon",
+      "output": "res://assets/pixel24_v3/runtime/items/reserved_blank.png"
+    }
+  ],
+  "schema_version": 1
+}

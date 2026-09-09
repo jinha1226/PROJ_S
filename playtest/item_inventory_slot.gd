@@ -2,6 +2,7 @@ class_name ItemInventorySlot
 extends Button
 
 const Assets=preload("res://playtest/fixed_front_topdown_assets.gd")
+const ItemAssets=preload("res://playtest/pixel24_item_assets.gd")
 const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 
 const EMPTY_FILL:=DarkSkin.SLOT_EMPTY
@@ -141,9 +142,10 @@ func _item_texture()->Texture2D:
 	var definition_id:=str(_row.get("definition_id","")).to_upper()
 	var category:=str(_row.get("category","")).to_upper()
 	if category=="WEAPON":return Assets.weapon_texture(definition_id)
-	if category=="ARMOR" and definition_id!="SHIELD_WOOD":
-		return Assets.armor_texture(definition_id)
-	return null
+	if category=="ARMOR":
+		return Assets.offhand_texture(definition_id) if definition_id=="SHIELD_WOOD" \
+			else Assets.armor_texture(definition_id)
+	return ItemAssets.texture_for_row(_row)
 
 
 func _draw_empty_slot(bounds:Rect2)->void:

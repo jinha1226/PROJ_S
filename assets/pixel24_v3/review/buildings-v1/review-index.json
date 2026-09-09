@@ -1,0 +1,114 @@
+{
+  "composite_order": [],
+  "contact_order": [
+    {
+      "fit": "",
+      "id": "building_storage_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/storage_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_lodge_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/lodge_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_clinic_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/clinic_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_market_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/market_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_armory_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/armory_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_gate_camp",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/gate_camp.png"
+    },
+    {
+      "fit": "",
+      "id": "building_storage_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/storage_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_lodge_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/lodge_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_clinic_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/clinic_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_market_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/market_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_armory_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/armory_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_gate_timber",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/gate_timber.png"
+    },
+    {
+      "fit": "",
+      "id": "building_storage_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/storage_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "building_lodge_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/lodge_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "building_clinic_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/clinic_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "building_market_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/market_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "building_armory_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/armory_stone.png"
+    },
+    {
+      "fit": "",
+      "id": "building_gate_stone",
+      "kind": "building",
+      "output": "res://assets/pixel24_v3/runtime/buildings/gate_stone.png"
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version":1,"logical_size":24,"review_columns":4,"review_scale":8,"alpha_threshold":128,
+  "runtime_root":"res://assets/pixel24_v3/runtime/items","review_root":"res://assets/pixel24_v3/review/items-v1",
+  "entries":[
+    {"id":"item_potion_healing","kind":"item_icon","source_rect":[80,70,190,230],"output":"potion_healing.png"},
+    {"id":"item_food_ration","kind":"item_icon","source_rect":[360,70,250,230],"output":"food_ration.png"},
+    {"id":"item_scroll_unspecified","kind":"item_icon","source_rect":[660,70,250,230],"output":"scroll_unspecified.png"},
+    {"id":"item_accessory_brass_charm","kind":"item_icon","source_rect":[1010,70,170,230],"output":"accessory_brass_charm.png"},
+    {"id":"item_goblin_ear","kind":"item_icon","source_rect":[90,390,170,220],"output":"goblin_ear.png"},
+    {"id":"item_material_unspecified","kind":"item_icon","source_rect":[370,390,230,220],"output":"material_unspecified.png"},
+    {"id":"resource_timber","kind":"resource_icon","source_rect":[660,390,250,220],"output":"resource_timber.png"},
+    {"id":"resource_stone","kind":"resource_icon","source_rect":[980,390,260,220],"output":"resource_stone.png"},
+    {"id":"resource_herbs","kind":"resource_icon","source_rect":[70,660,230,250],"output":"resource_herbs.png"},
+    {"id":"town_gold","kind":"ui_icon","source_rect":[360,660,250,250],"output":"town_gold.png"},
+    {"id":"item_potion_unspecified","kind":"item_icon","source_rect":[670,660,230,250],"output":"potion_unspecified.png"},
+    {"id":"item_accessory_unspecified","kind":"item_icon","source_rect":[990,660,210,250],"output":"accessory_unspecified.png"},
+    {"id":"dropped_item_marker","kind":"presentation_icon","source_rect":[60,910,280,320],"output":"dropped_item_marker.png"},
+    {"id":"loot_sack","kind":"presentation_icon","source_rect":[360,910,250,320],"output":"loot_sack.png"},
+    {"id":"reserved_key","kind":"reserved_icon","source_rect":[670,930,240,290],"output":"reserved_key.png"},
+    {"id":"reserved_blank","kind":"reserved_icon","source_rect":[970,950,240,240],"output":"reserved_blank.png","trim_keyed":false,"fit_size":[]}
+  ],
+  "entry_defaults":{"source":"res://assets/pixel24_v3/source/items-generated-v1.png","alpha_mode":"magenta_hue","trim_keyed":true,"fit_size":[20,20],"fit_mode":"contain","fit_align":"center","destination":[2,2],"palette_limit":10,"active":true},
+  "composites":[]
+}

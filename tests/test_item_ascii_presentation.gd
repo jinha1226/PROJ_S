@@ -53,14 +53,14 @@ func test_ground_items_draw_visible_after_features_before_actors_and_preserve_ma
 	check(potion.visible and potion.glyph=="!" and potion.occupied_corner,
 		"actor-occupied item becomes a small corner mark")
 	for spec in [weapon,potion]:
-		check(Rect2(spec.cell_rect).encloses(Rect2(spec.text_rect)),
-			"item ink remains inside its logical cell")
+		check(Rect2(spec.cell_rect).encloses(Rect2(spec.image_rect)),
+			"item sprite remains inside its logical cell")
 		check_eq([spec.draw_after,spec.draw_before],
 			[["GROUND_FEATURES","GROUND_HAZARDS"],["ACTORS"]],
 			"item layer sits behind actors and above ground cues")
 		check(not spec.changes_hit_rect and spec.mouse_filter=="IGNORE" \
-			and not spec.draw_image and spec.texture_free,
-			"item creates no input surface, image, or texture")
+			and spec.draw_image and not spec.texture_free,
+			"item texture creates no input surface or mapping change")
 	check_eq([grid.mapping_signature(),grid.actor_hit_rect(77)],[mapping,actor_hit],
 		"item projection preserves world-pixel mapping and actor hit authority")
 	# The observation array remains caller-owned; mutating it cannot inject a new

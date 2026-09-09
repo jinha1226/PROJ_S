@@ -7,6 +7,7 @@ signal tile_pressed(position:Vector2i)
 signal tile_dragged(position:Vector2i)
 
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
+const BuildingAssets=preload("res://playtest/pixel24_building_assets.gd")
 const KoreanFont:FontFile=DarkPixelSkin.PixelFont
 const LANDMARK_IDS:=["STORAGE","LODGE","CLINIC","MARKET","ARMORY","GATE"]
 const FACILITY_IDS:=["STORAGE","LODGE","CLINIC"]
@@ -48,6 +49,7 @@ var fit_map_height:=false
 
 
 func _ready()->void:
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size=Vector2(0 if fit_map_height else 300,minimum_map_height)
 	size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	mouse_filter=Control.MOUSE_FILTER_STOP
@@ -213,6 +215,11 @@ func _draw_building(row:Dictionary)->void:
 		rect=Rect2(_map_origin()+Vector2(origin)*_cell_size(),Vector2(footprint)*_cell_size())
 	var level:=clampi(int(row.get("level",1)),1,3)
 	if type_id==_selected_id:_draw_selection(rect.grow(-1))
+	var texture:=BuildingAssets.texture(type_id,level)
+	if texture!=null:
+		draw_texture_rect(texture,rect,false,Color.WHITE)
+		_draw_label(rect,str(row.get("label",LABELS.get(type_id,type_id))))
+		return
 	if type_id in ["CLINIC","ARMORY"] or level>=2 and type_id in ["STORAGE","LODGE"]:
 		preload("res://playtest/base_room_renderer.gd").draw_room(self,rect,type_id,level)
 		_draw_label(rect,str(row.get("label",LABELS.get(type_id,type_id))))

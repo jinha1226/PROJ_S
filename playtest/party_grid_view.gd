@@ -236,6 +236,8 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		row.erase("ground_items")
 		row["ground_item_glyph"]=str(ground_item_spec.glyph) \
 			if bool(ground_item_spec.visible) else ""
+		row["ground_item_icon_id"]=preload("res://playtest/pixel24_item_assets.gd").ground_icon_key(raw) \
+			if visibility_state=="VISIBLE" and bool(ground_item_spec.visible) else ""
 		var cell_key:=_key(p)
 		if not previous_cells.has(cell_key) or previous_cells[cell_key]!=row:
 			_invalidate_static_cell_content_at(p)
@@ -1529,6 +1531,12 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 		str(row.get("ground_item_glyph","")))
 	if not bool(item.visible):return hidden.duplicate(true)
 	var rect:=world_cell_rect(position);var occupied:=_cell_is_visually_occupied(position)
+	var texture:Texture2D=preload("res://playtest/pixel24_item_assets.gd").texture_for_id(
+		str(row.get("ground_item_icon_id","")))
+	var image_side:float=floor(minf(rect.size.x,rect.size.y)*(0.42 if occupied else 0.72))
+	var image_center:Vector2=rect.position+Vector2(rect.size.x-image_side*0.55,image_side*0.55) \
+		if occupied else rect.get_center()
+	var image_rect:Rect2=Rect2(image_center-Vector2.ONE*image_side*0.5,Vector2.ONE*image_side)
 	var font_ratio:=float(item.corner_font_ratio) if occupied else float(item.font_ratio)
 	var font_size:=maxi(8,int(floor(rect.size.x*font_ratio)))
 	var font:=get_theme_default_font()
@@ -1545,9 +1553,10 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 		"color_hex":str(item.color_hex),"highlight_hex":str(item.highlight_hex),
 		"underlay_hex":str(item.underlay_hex),
 		"underlay_opacity":float(item.underlay_opacity),"occupied_corner":occupied,
+		"texture":texture,"image_rect":image_rect,
 		"layer":"GROUND_ITEMS","draw_after":["GROUND_FEATURES","GROUND_HAZARDS"],
 		"draw_before":["ACTORS"],"changes_hit_rect":false,"mouse_filter":"IGNORE",
-		"draw_image":false,"texture_free":true,"fov_safe":true}.duplicate(true)
+		"draw_image":texture!=null,"texture_free":texture==null,"fov_safe":true}.duplicate(true)
 
 func ground_item_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
@@ -2480,6 +2489,9 @@ func _draw_ground_items()->void:
 		if not is_world_cell_visible(p):continue
 		preload("res://playtest/base_resource_icon.gd").draw_icon(self,world_cell_rect(p),str(cache.resource_id))
 	for spec in ground_item_draw_specs():
+		if bool(spec.get("draw_image",false)):
+			draw_texture_rect(spec.texture,spec.image_rect,false,Color.WHITE)
+			continue
 		var center:=Vector2(spec.center);var font_size:=int(spec.font_size)
 		_draw_centered_text(font,str(spec.glyph),center+Vector2(0.8,1.0),font_size,
 			Color("#020304c8"))

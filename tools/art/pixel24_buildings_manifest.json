@@ -1,0 +1,25 @@
+{
+  "schema_version":1,"logical_size":24,"review_columns":6,"review_cell_size":72,"review_scale":4,"alpha_threshold":128,
+  "runtime_root":"res://assets/pixel24_v3/runtime/buildings","review_root":"res://assets/pixel24_v3/review/buildings-v2",
+  "entry_defaults":{"source":"res://assets/pixel24_v3/source/buildings-generated-v2.png","alpha_mode":"magenta_hue","key_hue_tolerance":0.12,"key_min_saturation":0.50,"reject_hue_range":[0.72,0.98],"reject_hue_min_saturation":0.18,"trim_keyed":true,"fit_mode":"stretch","fit_align":"center","destination":[2,2],"palette_limit":12,"active":true},
+  "entries":[
+    {"id":"building_storage_camp","source_rect":[20,20,270,265],"output":"storage_camp.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_lodge_camp","source_rect":[310,20,275,265],"output":"lodge_camp.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_clinic_camp","source_rect":[605,20,275,265],"output":"clinic_camp.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_market_camp","source_rect":[900,20,270,265],"output":"market_camp.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_armory_camp","source_rect":[1190,20,275,265],"output":"armory_camp.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_gate_camp","source_rect":[1490,20,270,265],"output":"gate_camp.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_storage_timber","source_rect":[20,300,270,250],"output":"storage_timber.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_lodge_timber","source_rect":[310,300,275,250],"output":"lodge_timber.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_clinic_timber","source_rect":[605,300,275,250],"output":"clinic_timber.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_market_timber","source_rect":[900,300,270,250],"output":"market_timber.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_armory_timber","source_rect":[1190,300,275,250],"output":"armory_timber.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_gate_timber","source_rect":[1490,300,270,250],"output":"gate_timber.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_storage_stone","source_rect":[20,560,270,310],"output":"storage_stone.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_lodge_stone","source_rect":[310,560,275,310],"output":"lodge_stone.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_clinic_stone","source_rect":[605,560,275,310],"output":"clinic_stone.png","output_size":[72,72],"fit_size":[68,68]},
+    {"id":"building_market_stone","source_rect":[900,560,270,310],"output":"market_stone.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_armory_stone","source_rect":[1190,560,275,310],"output":"armory_stone.png","output_size":[72,48],"fit_size":[68,44]},
+    {"id":"building_gate_stone","source_rect":[1490,560,270,310],"output":"gate_stone.png","output_size":[72,72],"fit_size":[68,68]}
+  ],"composites":[]
+}

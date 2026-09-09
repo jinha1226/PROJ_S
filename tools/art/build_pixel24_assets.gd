@@ -38,11 +38,14 @@ func _build(manifest_path:String)->int:
 		return 2
 	var seen_ids:Dictionary={}
 	var seen_outputs:Dictionary={}
+	var entry_defaults:Dictionary=_manifest.get("entry_defaults",{}) \
+		if _manifest.get("entry_defaults",{}) is Dictionary else {}
 	for raw_entry in entries:
 		if not raw_entry is Dictionary:
 			push_error("pixel24: every entry must be an object")
 			return 2
-		var entry:Dictionary=raw_entry
+		var entry:Dictionary=entry_defaults.duplicate(true)
+		entry.merge(raw_entry,true)
 		if not bool(entry.get("active",false)):continue
 		var entry_id:=str(entry.get("id",""))
 		var output:=str(entry.get("output",""))
@@ -141,7 +144,10 @@ func _build_entry(entry:Dictionary)->Dictionary:
 				return {"ok":false}
 			destination=Vector2i(int(destination_values[0]),int(destination_values[1]))
 		var fit_align:=str(entry.get("fit_align","top_left"))
-		if fit_align=="bottom_center":
+		if fit_align=="center":
+			destination+=Vector2i((fit_size.x-resized.get_width())/2,
+				(fit_size.y-resized.get_height())/2)
+		elif fit_align=="bottom_center":
 			destination+=Vector2i((fit_size.x-resized.get_width())/2,
 				fit_size.y-resized.get_height())
 		elif fit_align!="top_left":
@@ -483,18 +489,21 @@ func _color_from_rgb_key(key:int)->Color:
 
 func _write_reviews()->bool:
 	var logical_size:=int(_manifest.get("logical_size",24))
+	var review_cell_size:=int(_manifest.get("review_cell_size",logical_size))
 	var scale:=int(_manifest.get("review_scale",6))
-	var columns:=mini(8,maxi(1,_built.size()))
+	var requested_contact_columns:=int(_manifest.get("review_columns",8))
+	var columns:=mini(maxi(1,requested_contact_columns),maxi(1,_built.size()))
 	var rows:=ceili(float(_built.size())/float(columns))
-	var actual:=Image.create(columns*logical_size,rows*logical_size,false,Image.FORMAT_RGBA8)
+	var actual:=Image.create(columns*review_cell_size,rows*review_cell_size,false,Image.FORMAT_RGBA8)
 	actual.fill(REVIEW_BG)
 	for index in range(_built.size()):
 		var source:Image=_built[index].image
 		var thumbnail:=source.duplicate()
-		if thumbnail.get_size()!=Vector2i(logical_size,logical_size):
-			thumbnail.resize(logical_size,logical_size,Image.INTERPOLATE_NEAREST)
+		if thumbnail.get_width()>review_cell_size or thumbnail.get_height()>review_cell_size:
+			thumbnail=_resize_for_fit(thumbnail,Vector2i(review_cell_size,review_cell_size),"contain")
 		actual.blend_rect(thumbnail,Rect2i(Vector2i.ZERO,thumbnail.get_size()),
-			Vector2i((index%columns)*logical_size,(index/columns)*logical_size))
+			Vector2i((index%columns)*review_cell_size+(review_cell_size-thumbnail.get_width())/2,
+				(index/columns)*review_cell_size+(review_cell_size-thumbnail.get_height())/2))
 	var review_root:=str(_manifest.get("review_root",""))
 	if not _save_review(actual,review_root.path_join("actual-size-contact.png")):return false
 	var enlarged:=actual.duplicate()
