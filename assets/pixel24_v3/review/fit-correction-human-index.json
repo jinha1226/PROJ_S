@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "awaiting_user_visual_approval",
+  "logical_sprite_size": [24, 24],
+  "nearest_review_scale": 12,
+  "contact_order": [
+    "BASE",
+    "LEATHER",
+    "SHORT SWORD",
+    "LEATHER + SWORD + SHIELD"
+  ],
+  "human_fit": {
+    "neck_shoulder_y": 13,
+    "torso_rect": [6, 13, 12, 7],
+    "waist_y": 20,
+    "main_hand_grip": [17, 18],
+    "off_hand_grip": [5, 18],
+    "foreground_regions": [
+      [4, 2, 16, 12],
+      [4, 13, 3, 7],
+      [17, 13, 3, 7]
+    ]
+  },
+  "artifacts": {
+    "actual": "res://assets/pixel24_v3/review/fit-correction-human-actual.png",
+    "nearest_labeled": "res://assets/pixel24_v3/review/fit-correction-human-12x.png"
+  },
+  "sha256": {
+    "frozen_human_base": "32de2e3f3b86de5b63366c110d2e8f86d10d971b9450991438eb3cfbc85dc87d",
+    "actual": "ec35feb730b72af2c37ab2420da521d8c4bd3db73a67929724f026917ba0c128",
+    "nearest_labeled": "5c2e767a3d090395e88f931111079af18aca0726e126c77a12182bd13c79857e"
+  },
+  "notes": [
+    "The runtime equipment rasters were not changed by this preview build.",
+    "Both sword cases use the same head-and-hands foreground regions.",
+    "Species propagation is blocked on user visual approval."
+  ]
+}
