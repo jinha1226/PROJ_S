@@ -133,8 +133,8 @@ func _check_sources_and_isolation(lab: Pixel24Diorama3DLab) -> void:
 	check(not bool(lab.demo_contract().authoritative_state_accessed),
 		"isolated lab never accesses authoritative save/session state")
 	var project_text := FileAccess.get_file_as_string("res://project.godot")
-	check('run/main_scene="res://playtest/party_encounter_sandbox.tscn"' in project_text,
-		"product main scene remains unchanged")
+	check('run/main_scene="res://playtest/pixel24_diorama3d_lab.tscn"' in project_text,
+		"Pages entry scene exposes the diorama after the explicit deployment request")
 	for button_name in ["MoveLeft", "MoveUp", "MoveDown", "MoveRight", "SwordToggle", "ResetDiorama"]:
 		var button := lab.find_child(button_name, true, false) as Button
 		check(button != null and button.custom_minimum_size.y >= 44.0,

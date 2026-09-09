@@ -28,8 +28,10 @@ godot --path . res://playtest/pixel24_diorama3d_lab.tscn
 - `G` 또는 `검 ON/OFF` 버튼: 검 장착 토글
 - `초기화`: 시작 위치·검 장착·수직 카메라 복원
 
-본편 `run/main_scene`은 `party_encounter_sandbox.tscn`으로 유지되며 이 실험실은
-저장/session 또는 본편 simulation 상태를 읽거나 쓰지 않는다.
+최초 실험 결과 commit까지는 본편 `run/main_scene`을 유지했다. 이후 사용자의
+명시적 main/모바일 배포 요청에 따라 Pages 진입 scene만
+`pixel24_diorama3d_lab.tscn`으로 전환했다. 기존 본편 scene 파일은 보존되며,
+이 실험실은 저장/session 또는 본편 simulation 상태를 읽거나 쓰지 않는다.
 
 ## 구현 사실
 
@@ -99,7 +101,8 @@ godot --headless --path . --script res://tests/pixel24_item_building_acceptance.
 Focused test는 실제 메시/삼각형, Sprite3D 부재, 카메라와 24px 투영,
 화면↔칸 왕복, footprint, 이동·경계·장애물 차단, 검 토글, 수관 fade와 선택 표시,
 본편 격리 및 원본 hash를 검사한다. 계획 audit의 원본 7개 SHA-256은 모두
-일치했고 기존 PNG·registry·`project.godot`에는 변경이 없다.
+일치했고 기존 PNG·registry에는 변경이 없다. 최초 실험 범위 이후의 명시적 배포
+요청으로 `project.godot`의 main scene 한 줄만 디오라마 진입점으로 변경했다.
 
 ## 렌더 측정과 한계
 
@@ -116,3 +119,11 @@ capture/UI를 포함한 소프트웨어 렌더 환경의 표본이므로 실제 
 이번 범위에 없다. 다음 단계에서는 본편에 즉시 통합하기보다 실제 목표 기기에서
 성능을 측정하고, 다양한 지형 위 1× 식별성과 애니메이션 중 실루엣을 먼저 검증하는
 것이 안전하다.
+
+## 후속 모바일 Pages 배포 검증
+
+사용자의 후속 지시로 GitHub Pages 진입점을 이 scene으로 전환했다. 변경 후 focused
+test가 다시 PASS했고 Godot 4.6.2 Web release export가 완료됐다. 생성된 산출물은
+`index.html` 5.4KB, `index.wasm` 36MB, `index.pck` 11MB였으며, checkout 파일이
+없는 상태를 흉내 낸 PCK 단독 headless 시작도 script/resource 오류 없이 exit `0`이었다.
+실제 모바일 브라우저 성능과 터치 동작의 최종 판정은 Pages 배포 후 기기에서 한다.
