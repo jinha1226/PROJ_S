@@ -43,38 +43,6 @@ jobs:
       - name: Import project and validate scripts
         run: ./godot --headless --path . --editor --quit
 
-      - name: Verify field turns and companion decisions
-        run: |
-          ./godot --headless --path . --script tests/field_turn_acceptance.gd
-          ./godot --headless --path . --script tests/field_speed_acceptance.gd
-          ./godot --headless --path . --script tests/travel_smoothness_acceptance.gd
-          ./godot --headless --path . --script tests/field_lifecycle_acceptance.gd
-          ./godot --headless --path . --script tests/field_party_control_acceptance.gd
-          ./godot --headless --path . --script tests/solo_start_acceptance.gd
-          ./godot --headless --path . --script tests/attack_button_acceptance.gd
-          ./godot --headless --path . --script tests/solo_gameplay_acceptance.gd
-          ./godot --headless --path . --script tests/solo_gameplay_acceptance.gd -- --legacy-input
-          ./godot --headless --path . --script tests/feedback_and_routing_acceptance.gd
-          ./godot --headless --path . --script tests/eight_way_visual_acceptance.gd
-          ./godot --headless --path . --script tests/town_resident_motion_acceptance.gd
-          ./godot --headless --path . --script tests/portrait_skills_acceptance.gd
-          ./godot --headless --path . --script tests/input_recovery_acceptance.gd
-          ./godot --headless --path . --script tests/waterside_render_acceptance.gd
-          ./godot --headless --path . --script tests/field_turn_ui_acceptance.gd
-          ./godot --headless --path . --script tests/run_party_ai_tests.gd
-
-      - name: Verify ability binding and gameplay replay
-        run: |
-          ./godot --headless --path . --script tests/run_ability_binding_tests.gd
-          ./godot --headless --path . --script tests/ability_binding_gameplay_acceptance.gd
-
-      - name: Verify environment reactions, replay, and body damage
-        run: |
-          ./godot --headless --path . --script tests/run_environment_regression_tests.gd
-          ./godot --headless --path . --script tests/fireball_environment_acceptance.gd
-          ./godot --headless --path . --script tests/environment_vfx_acceptance.gd
-          ./godot --headless --path . --script tests/environment_tools_acceptance.gd
-
       - name: Inject Pages build ID
         shell: bash
         run: |

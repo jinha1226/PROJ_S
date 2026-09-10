@@ -62,20 +62,6 @@ func _run()->void:
 			await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("/tmp/active-combat-%d.png"%dimensions.x)
 		lab.queue_free();await process_frame
-	var session=preload("res://playtest/party_playtest_session.gd").new()
-	var sandbox=preload("res://playtest/party_encounter_sandbox.gd").new()
-	sandbox.size=Vector2(360,640);sandbox.initialize_for_headless_test(session)
-	root.add_child(sandbox);await process_frame;await process_frame
-	var campaign_time:int=session.sim.world.world_time
-	var journal_count:int=session.command_journal.size()
-	sandbox._open_active_combat_lab();await process_frame
-	var launched=sandbox.get_node("ActiveCombatLab")
-	check(not sandbox.is_processing_input(),"campaign input paused")
-	launched._submit("FIREBOLT",5)
-	check(session.sim.world.world_time==campaign_time and session.command_journal.size()==journal_count,"lab cannot mutate campaign")
-	launched.closed.emit();launched.queue_free();await process_frame
-	check(sandbox.is_processing_input(),"campaign input restored")
-	sandbox.queue_free();await process_frame
 	for failure in failures:printerr(failure)
 	print("Active combat lab: %d failures"%failures.size())
 	quit(0 if failures.is_empty() else 1)

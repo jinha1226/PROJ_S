@@ -974,12 +974,6 @@ func _build_ui()->void:
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
-	menu_popup.add_item("4인 전투 테스트 · 마법",6)
-	menu_popup.add_separator("환경 시험 · 선택 후 바닥 터치")
-	menu_popup.add_item("물 생성 → 물웅덩이 / 소화",20)
-	menu_popup.add_item("냉각 → 물 결빙",21)
-	menu_popup.add_item("방전 → 물 / 금속 전도",22)
-	menu_popup.add_item("화염구 → 증발 / 해빙 / 점화",23)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1201,19 +1195,6 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
-
-func _open_active_combat_lab()->void:
-	if get_node_or_null("ActiveCombatLab")!=null:return
-	_cancel_auto_pending(true)
-	_cancel_product_auto_explore("auto_explore_user_command",false)
-	_cancel_route_for_user_interruption()
-	var lab=preload("res://playtest/active_combat_lab.gd").new();lab.name="ActiveCombatLab"
-	lab.z_index=300
-	set_process(false);set_process_input(false);set_process_unhandled_key_input(false)
-	lab.closed.connect(func():
-		set_process(true);set_process_input(true);set_process_unhandled_key_input(true)
-		_request_refresh())
-	add_child(lab)
 
 func show_species_picker_for_new_run()->void:
 	if species_picker_modal==null:_build_species_picker()
@@ -7273,12 +7254,6 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _on_product_menu_id(item_id:int)->void:
 	if session==null:return
-	if item_id in [20,21,22,23]:
-		var id:String={20:"TEST_WATER",21:"TEST_FROST",22:"TEST_SPARK",23:"FIREBALL"}[item_id]
-		if _battle_target_skill_id!=id:_cancel_battle_targeting()
-		_on_manual_skill_selected(session.sim.world.party_encounter.protagonist_id,id,
-			str(preload("res://sim/abilities/active_skill_registry.gd").definition(id).name))
-		return
 	match item_id:
 		0:
 			if bool(_current_run_progress().get("terminal",false)):
@@ -7304,7 +7279,6 @@ func _on_product_menu_id(item_id:int)->void:
 		3:_open_hero_detail_tab("SKILL")
 		4:_open_hero_detail_tab("ITEM")
 		5:_toggle_record_modal()
-		6:_open_active_combat_lab()
 		7:_open_base_modal()
 
 func expedition_hud_spec(status:Dictionary={})->Dictionary:
