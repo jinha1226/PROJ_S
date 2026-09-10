@@ -14,24 +14,41 @@ func run()->void:
 	ui.initialize_for_headless_test(session,true);root.add_child(ui);ui.set_process(false)
 	for i in range(3):await process_frame
 	var members:Array=session.party_cards()
-	check(ui.hero_skill_row.get_child_count()==members.size(),"one skill pair per portrait")
+	check(ui.hero_skill_row.get_child_count()==1,"one shared skill row")
 	check(ui.product_tactics_button.get_theme_stylebox("normal") is StyleBoxTexture,"game buttons use image nine-slice")
 	check(ui.product_tactics_button.get_theme_stylebox("normal").texture.get_size()==Vector2(48,48),"UI texture is cached on a 24px multiple")
 	for member in members:
 		var id:int=member.entity_id
+		var before_time:int=session.sim.world.world_time
+		ui._on_compact_member_card_pressed(id,str(member.display_name))
+		for i in range(3):await process_frame
+		check(session.sim.world.party_control_actor_id()==id,"portrait switches skill bar owner")
+		check(session.sim.world.world_time==before_time,"switching skill bar costs no time")
+		check(ui.hero_skill_row.get_child_count()==1,"switch replaces shared row without duplicating it")
 		var pair=ui.hero_skill_row.get_node_or_null("PortraitSkills%d"%id)
-		check(pair!=null,"portrait has skills: %d"%id)
+		check(pair!=null,"shared bar belongs to selected actor: %d"%id)
 		if pair==null:continue
-		check(pair.get_child_count()==2,"exactly two slots")
+		check(pair.get_child_count()==3,"shared bar reserves three slots")
 		var portrait=ui.cards.find_child("MemberCard%d"%id,true,false)
-		check(absf(pair.global_position.x-portrait.global_position.x)<2,"skill pair aligns with portrait")
+		check(absf(pair.global_position.x-ui.hero_skill_row.global_position.x)<2,"shared row aligns with full-width container")
+		check(pair.get_global_rect().end.x<=root.size.x,"shared row fits viewport")
 		check(pair.global_position.y+pair.size.y<=portrait.global_position.y+1,"skills sit above portrait")
+		var expected:Array=session.sim.world.party_encounter.member(id).active_skill_ids()
+		var shown:Array=[]
 		for button in pair.get_children():
-			check(button is Button and int(button.get_meta("actor_id"))==id,"skill belongs to portrait owner")
+			if button is Button:
+				check(int(button.get_meta("actor_id"))==id,"skill belongs to selected actor")
+				shown.append(str(button.get_meta("skill_id")))
+			else:check(button.mouse_filter==Control.MOUSE_FILTER_IGNORE,"empty slot does not capture input")
+		check(shown==expected.slice(0,3),"shared bar contains only equipped skills")
 	var empty=SkillRow.new();empty.configure(999,[],-1,"")
 	check(empty.get_child_count()==2,"no skills retains two empty slots")
 	for child in empty.get_children():check(not child is Button,"empty slot has no clickable substitute")
 	empty.free()
+	var field_empty=SkillRow.new();field_empty.slot_count=3;field_empty.configure(999,[],-1,"")
+	check(field_empty.get_child_count()==3,"empty shared bar retains three slots")
+	for child in field_empty.get_children():check(not child is Button,"empty shared slot has no fake skill")
+	field_empty.free()
 	var healer:=-1
 	for member in members:
 		if "MEND" in session.sim.world.party_encounter.member(int(member.entity_id)).active_skill_ids():healer=int(member.entity_id)
