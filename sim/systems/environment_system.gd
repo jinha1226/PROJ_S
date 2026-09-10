@@ -8,6 +8,7 @@ const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 const Config = preload("res://sim/environment_config.gd")
 const Materials = preload("res://sim/material_registry.gd")
 const Terrain = preload("res://sim/terrain_registry.gd")
+const CombatProfiles = preload("res://sim/combat_profile_registry.gd")
 const FIRE_DECAY_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.FIRE_DECAY_PER_ENVIRONMENT_TICK
 const WETNESS_DECAY_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.WETNESS_DECAY_PER_ENVIRONMENT_TICK
 const FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK
@@ -119,6 +120,9 @@ func apply_water(position: Vector2i, amount: int, cause_id: int,
 	if actual_increase > 0:
 		tile.wetness += actual_increase
 		tile.wetness_source_event_id = water_event.id
+		if tile.surface_id=="WATER":
+			tile.surface_amount=mini(Config.MAX_MASS,
+				tile.surface_amount+actual_increase*10)
 	world.track_dynamic_tile(position)
 	return true
 
@@ -216,6 +220,8 @@ func explode(position: Vector2i, power: int, cause_id: int,
 	var queue: Array[Dictionary] = [{"position": position, "power": power,
 		"distance": 0, "parent_id": root.id}]
 	var best_power: Dictionary = {}
+	var knockback_candidates:Dictionary={}
+	var destruction_candidates:Dictionary={}
 	var processed := 0
 	while not queue.is_empty() and processed < Config.MAX_EXPLOSION_CHAIN:
 		var row: Dictionary = queue.pop_front()
@@ -231,11 +237,26 @@ func explode(position: Vector2i, power: int, cause_id: int,
 		tile.temperature = mini(Config.MAX_TEMPERATURE,
 			tile.temperature + remaining * (2 if explosion_kind == "combustion" else 1))
 		world.track_dynamic_tile(current)
+		for entity in world.exposed_entities_at(current):
+			_apply_explosion_impact(entity,current,remaining,wave,processed_step_index,
+				explosion_kind)
 		if explosion_kind == "combustion":
 			for entity in world.exposed_entities_at(current):
 				damage_system.apply_damage(entity,
 					mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, remaining), "fire",
 					wave.id, current, processed_step_index)
+		if int(row.distance)>0 and remaining>=Config.EXPLOSION_KNOCKBACK_MIN_POWER:
+			for entity in world.occupying_entities_at(current):
+				var previous:Dictionary=knockback_candidates.get(entity.id,{})
+				if previous.is_empty() or remaining>int(previous.power):
+					knockback_candidates[entity.id]={"entity":entity,"from":current,
+						"power":remaining,"wave_id":wave.id}
+		var material:Dictionary=Materials.definition(tile.material_id)
+		if tile.terrain in ["wall","door_closed","wood_floor","rubber_floor"] \
+				and remaining>int(material.get("mechanical_resistance",100)):
+			destruction_candidates[current]={"position":current,"from_terrain":tile.terrain,
+				"power":remaining,"resistance":int(material.mechanical_resistance),
+				"wave_id":wave.id}
 		for neighbor in world.cardinal_neighbors(current):
 			var terrain: Dictionary = Terrain.definition(world.tile_at(neighbor).terrain)
 			var cover_loss := Config.COVER_POWER_LOSS if not bool(terrain.get("passable", false)) else 0
@@ -246,7 +267,84 @@ func explode(position: Vector2i, power: int, cause_id: int,
 	if processed >= Config.MAX_EXPLOSION_CHAIN and not queue.is_empty():
 		world.emit_event("environment.explosion_chain_stopped", -1, -1,
 			position, processed, root.id)
+	_apply_explosion_destruction(destruction_candidates)
+	_apply_explosion_knockback(position,knockback_candidates)
 	return true
+
+
+func _apply_explosion_impact(entity,position:Vector2i,wave_power:int,wave,
+		processed_step_index:int,explosion_kind:String)->void:
+	if entity==null or not world.combatant_states.has(entity.id) \
+			or world.combatant_states[entity.id].life_state!="ACTIVE":return
+	var raw_force:=mini(Config.EXPLOSION_IMPACT_DAMAGE_CAP,
+		maxi(1,wave_power/Config.EXPLOSION_IMPACT_DAMAGE_DIVISOR))
+	var combatant=world.combatant_states[entity.id]
+	var profile:Dictionary=CombatProfiles.profile(str(combatant.combat_profile_id))
+	var armor_flat:=int(profile.get("armor_flat",0))
+	var equipment:Dictionary=world.equipment_modifiers(entity.id)
+	armor_flat+=int(equipment.get("totals",{}).get("armor_flat",0))
+	armor_flat=clampi(armor_flat,0,100000)
+	var applied_force:=maxi(1,raw_force-mini(armor_flat,maxi(0,raw_force-1)))
+	var impact=world.emit_event("environment.explosion_impact",-1,entity.id,position,
+		applied_force,wave.id,{"armor_flat":armor_flat,"kind":explosion_kind,
+			"raw_force":raw_force,"wave_power":wave_power})
+	if impact==null:return
+	var protagonist:bool=world.party_encounter!=null \
+		and world.party_encounter.protagonist_id==entity.id
+	damage_system.apply_canonical_active_damage(entity,applied_force,"physical",
+		impact.id,position,processed_step_index,entity.health,
+		protagonist and applied_force>=entity.health)
+
+
+func _apply_explosion_destruction(candidates:Dictionary)->void:
+	var positions:Array=candidates.keys()
+	positions.sort_custom(func(a:Vector2i,b:Vector2i):
+		return a.y<b.y or a.y==b.y and a.x<b.x)
+	for position:Vector2i in positions:
+		var row:Dictionary=candidates[position]
+		var event=world.emit_event("environment.terrain_destroyed",-1,-1,position,
+			int(row.power),int(row.wave_id),{"from_terrain":str(row.from_terrain),
+				"to_terrain":"rubble","mechanical_resistance":int(row.resistance)})
+		if event==null:continue
+		var tile=world.tile_at(position)
+		var rubble:Dictionary=Terrain.definition("rubble")
+		tile.terrain="rubble";tile.material_id=Materials.material_for_terrain("rubble")
+		tile.flammability=int(rubble.default_flammability)
+		tile.base_conductivity=int(rubble.default_base_conductivity)
+		tile.fuel_amount=Materials.initial_fuel(tile.material_id);tile.sealed=false
+		world._rollback_tile_terrain_cache=PackedStringArray()
+		world.track_dynamic_tile(position)
+
+
+func _apply_explosion_knockback(origin:Vector2i,candidates:Dictionary)->void:
+	var entity_ids:Array=candidates.keys();entity_ids.sort()
+	var reserved:Dictionary={}
+	for entity_id_value in entity_ids:
+		var entity_id:=int(entity_id_value);var row:Dictionary=candidates[entity_id]
+		var entity=row.entity;var from_position:Vector2i=row.from
+		if entity==null or entity.position!=from_position or not world.occupies_tile(entity_id):continue
+		var direction:=_blast_direction(origin,from_position)
+		if direction==Vector2i.ZERO:continue
+		var destination:=from_position+direction
+		if not world.in_bounds(destination) or reserved.has(destination):continue
+		var terrain:Dictionary=Terrain.definition(world.tile_at(destination).terrain)
+		if terrain.is_empty() or not bool(terrain.passable) \
+				or int(terrain.occupancy_capacity)<1 \
+				or world.blocking_entity_at(destination)!=null:continue
+		var event=world.emit_event("environment.knockback",entity_id,-1,destination,
+			int(row.power),int(row.wave_id),{"from_position":[from_position.x,from_position.y],
+				"kind":str(world.event_by_id(int(row.wave_id)).data.kind),
+				"to_position":[destination.x,destination.y]})
+		if event==null:continue
+		entity.position=destination;reserved[destination]=true
+
+
+func _blast_direction(origin:Vector2i,position:Vector2i)->Vector2i:
+	var delta:=position-origin
+	if absi(delta.x)>=absi(delta.y) and delta.x!=0:
+		return Vector2i(signi(delta.x),0)
+	if delta.y!=0:return Vector2i(0,signi(delta.y))
+	return Vector2i.ZERO
 
 
 func _process_passive_environment(processed_step_index: int) -> void:
@@ -321,7 +419,9 @@ func _apply_phase_change(position: Vector2i, tile) -> void:
 			tile.surface_amount, -1)
 		tile.wetness_source_event_id = event.id if tile.wetness > 0 else -1
 	if tile.surface_id == "WATER" and tile.temperature >= Config.BOILING_TEMPERATURE:
-		var amount := mini(Config.PHASE_CHANGE_RATE, tile.surface_amount)
+		var amount := mini(mini(Config.PHASE_CHANGE_RATE, tile.surface_amount),
+			Config.MAX_MASS-tile.steam_amount)
+		if amount<=0:return
 		tile.surface_amount -= amount; tile.steam_amount = mini(Config.MAX_MASS,
 			tile.steam_amount + amount)
 		tile.wetness = mini(100, tile.surface_amount / 10)
@@ -330,7 +430,9 @@ func _apply_phase_change(position: Vector2i, tile) -> void:
 		world.emit_event("environment.water_evaporated", -1, -1, position, amount, -1)
 	elif tile.steam_amount > 0 and tile.temperature <= Config.CONDENSATION_TEMPERATURE \
 			and tile.surface_id in ["NONE", "WATER"]:
-		var amount := mini(Config.PHASE_CHANGE_RATE, tile.steam_amount)
+		var amount := mini(mini(Config.PHASE_CHANGE_RATE, tile.steam_amount),
+			Config.MAX_MASS-tile.surface_amount)
+		if amount<=0:return
 		tile.steam_amount -= amount; tile.surface_id = "WATER"
 		tile.surface_amount = mini(Config.MAX_MASS, tile.surface_amount + amount)
 		tile.wetness = mini(100, tile.surface_amount / 10)

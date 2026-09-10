@@ -200,31 +200,8 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 
 
 static func _has_line_of_sight(world, origin: Vector2i, target: Vector2i) -> bool:
-	if origin == target:
-		return true
-	var x0 := origin.x
-	var y0 := origin.y
-	var x1 := target.x
-	var y1 := target.y
-	var dx := absi(x1 - x0)
-	var sx := 1 if x0 < x1 else -1
-	var dy := -absi(y1 - y0)
-	var sy := 1 if y0 < y1 else -1
-	var error := dx + dy
-	while x0 != x1 or y0 != y1:
-		var doubled := 2 * error
-		if doubled >= dy:
-			error += dy
-			x0 += sx
-		if doubled <= dx:
-			error += dx
-			y0 += sy
-		var position := Vector2i(x0, y0)
-		if position == target:
-			return true
-		if world.tile_at(position).terrain == "wall":
-			return false
-	return true
+	return preload("res://sim/enemy_perception_registry.gd").has_line_of_sight(
+		world,origin,target)
 
 
 static func _key(position: Vector2i) -> String:

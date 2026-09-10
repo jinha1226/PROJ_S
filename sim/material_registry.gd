@@ -19,6 +19,14 @@ const _DEFINITIONS := {
 		"electric_conductivity": 0, "flammability": 45,
 		"ignition_temperature": 800, "combustion_heat": 65,
 		"initial_fuel": 700, "mechanical_resistance": 25},
+	"LEATHER": {"thermal_conductivity": 5, "heat_capacity": 60,
+		"electric_conductivity": 3, "flammability": 55,
+		"ignition_temperature": 750, "combustion_heat": 55,
+		"initial_fuel": 500, "mechanical_resistance": 30},
+	"TEXTILE": {"thermal_conductivity": 4, "heat_capacity": 75,
+		"electric_conductivity": 2, "flammability": 70,
+		"ignition_temperature": 600, "combustion_heat": 50,
+		"initial_fuel": 450, "mechanical_resistance": 18},
 }
 
 const _TERRAIN_MATERIAL := {
@@ -43,4 +51,3 @@ static func material_for_terrain(terrain_id: String) -> String:
 
 static func initial_fuel(material_id: String) -> int:
 	return int(_DEFINITIONS.get(material_id, {}).get("initial_fuel", 0))
-

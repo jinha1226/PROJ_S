@@ -5,10 +5,14 @@ const Command = preload("res://sim/sim_command.gd")
 const Materials = preload("res://sim/material_registry.gd")
 const Config = preload("res://sim/environment_config.gd")
 const Style = preload("res://playtest/ascii_visual_style.gd")
+const Perception = preload("res://sim/enemy_perception_registry.gd")
+const VisualMap = preload("res://playtest/party_visual_test_map.gd")
+const EnvironmentArmor = preload("res://sim/environment_armor_registry.gd")
+const BodyCombatRules = preload("res://sim/body_combat_rules.gd")
 
 
-func test_material_registry_is_gameplay_data_and_covers_four_substrates() -> bool:
-	for material_id in ["STONE", "WOOD", "IRON", "RUBBER"]:
+func test_material_registry_covers_terrain_and_armor_substrates() -> bool:
+	for material_id in ["STONE", "WOOD", "IRON", "RUBBER", "LEATHER", "TEXTILE"]:
 		var row: Dictionary = Materials.definition(material_id)
 		check(not row.is_empty(), "%s exists" % material_id)
 		for key in ["thermal_conductivity", "heat_capacity", "electric_conductivity",
@@ -17,6 +21,43 @@ func test_material_registry_is_gameplay_data_and_covers_four_substrates() -> boo
 			check(row.get(key) is int, "%s.%s integer" % [material_id, key])
 	check_eq(Materials.material_for_terrain("metal"), "IRON", "metal mapping")
 	check_eq(Materials.material_for_terrain("wood_floor"), "WOOD", "wood mapping")
+	return finish()
+
+
+func test_phase_change_respects_destination_capacity_without_mass_loss() -> bool:
+	var evaporation=Simulator.new(1,1,117)
+	check(evaporation.world.bootstrap_set_surface(Vector2i.ZERO,"WATER",100)!=null,
+		"evaporation water")
+	check(evaporation.world.bootstrap_set_atmosphere(Vector2i.ZERO,0,0,950,0,true),
+		"nearly full steam destination")
+	check(evaporation.world.bootstrap_set_temperature(Vector2i.ZERO,1200),
+		"boiling temperature")
+	var evaporation_before:int=evaporation.world.tile_at(Vector2i.ZERO).surface_amount \
+		+evaporation.world.tile_at(Vector2i.ZERO).steam_amount
+	var evaporation_result=evaporation.step(Command.wait())
+	var evaporated=find_event(evaporation_result.events,"environment.water_evaporated")
+	check(evaporated!=null and evaporated.magnitude==50,
+		"evaporation stops at steam capacity")
+	check_eq(evaporation.world.tile_at(Vector2i.ZERO).surface_amount \
+		+evaporation.world.tile_at(Vector2i.ZERO).steam_amount,evaporation_before,
+		"capacity-limited evaporation conserves represented water")
+
+	var condensation=Simulator.new(1,1,118)
+	check(condensation.world.bootstrap_set_surface(Vector2i.ZERO,"WATER",950)!=null,
+		"nearly full surface destination")
+	check(condensation.world.bootstrap_set_atmosphere(Vector2i.ZERO,0,0,100,0,true),
+		"condensing steam")
+	check(condensation.world.bootstrap_set_temperature(Vector2i.ZERO,200),
+		"condensation temperature")
+	var condensation_before:int=condensation.world.tile_at(Vector2i.ZERO).surface_amount \
+		+condensation.world.tile_at(Vector2i.ZERO).steam_amount
+	var condensation_result=condensation.step(Command.wait())
+	var condensed=find_event(condensation_result.events,"environment.steam_condensed")
+	check(condensed!=null and condensed.magnitude==50,
+		"condensation stops at surface capacity")
+	check_eq(condensation.world.tile_at(Vector2i.ZERO).surface_amount \
+		+condensation.world.tile_at(Vector2i.ZERO).steam_amount,condensation_before,
+		"capacity-limited condensation conserves represented water")
 	return finish()
 
 
@@ -207,6 +248,118 @@ func test_environment_fields_survive_sparse_rollback() -> bool:
 	check(sim.restore_rollback_memento(memento), "memento restored")
 	check_eq(sim.snapshot(), before, "all environment scalars restored")
 	return finish()
+
+
+func test_explosion_knockback_and_destruction_are_single_ordered_and_restorable() -> bool:
+	var sim=Simulator.new(6,3,113)
+	check(sim.world.bootstrap_set_terrain(Vector2i(1,2),"door_closed"),"door fixture")
+	var target=sim.world.add_entity("goblin","밀쳐질 대상",Vector2i(2,1))
+	var before=sim.capture_rollback_memento()
+	var root=sim.world.emit_event("test.explosion_source")
+	sim.world.begin_step(1)
+	check(sim.environment.explode(Vector2i(1,1),100,root.id,1,"combustion"),"explosion")
+	sim.world.finish_step()
+	check_eq(target.position,Vector2i(3,1),"target is pushed exactly one cell")
+	check_eq(sim.world.tile_at(Vector2i(1,2)).terrain,"rubble","weak closed door is destroyed")
+	check_eq(sim.world.events.filter(func(event):return event.type=="environment.knockback").size(),
+		1,"one knockback event per original occupant")
+	check_eq(sim.world.events.filter(func(event):return event.type=="environment.terrain_destroyed").size(),
+		1,"one destruction event per tile")
+	check_eq(sim.world.events.filter(func(event):return event.type=="environment.explosion_impact").size(),
+		1,"one mechanical impact per original occupant")
+	check_eq(sim.world.events.filter(func(event):return event.type=="combat.physical_damage").size(),
+		1,"explosion impact uses the physical damage and body path")
+	check_eq(sim.world.world_state_error(),"","post-explosion state validates")
+	var snapshot:Dictionary=sim.snapshot()
+	var restored=Simulator.from_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
+	check(restored!=null,"dynamic terrain and knockback restore")
+	if restored!=null:check_eq(restored.snapshot(),snapshot,"explosion round trip is exact")
+	check(sim.restore_rollback_memento(before),"pre-explosion rollback restores")
+	check_eq([sim.world.entities[target.id].position,
+		sim.world.tile_at(Vector2i(1,2)).terrain],[Vector2i(2,1),"door_closed"],
+		"rollback restores position and topology")
+	return finish()
+
+
+func test_rupture_explosion_applies_impact_without_combustion_damage() -> bool:
+	var sim=Simulator.new(4,1,117)
+	var target=sim.world.add_entity("goblin","파열 충격 대상",Vector2i(1,0))
+	var root=sim.world.emit_event("test.rupture_source")
+	sim.world.begin_step(1)
+	check(sim.environment.explode(Vector2i.ZERO,80,root.id,1,"rupture"),
+		"rupture explosion")
+	sim.world.finish_step()
+	check(target.health<100,"rupture wave applies mechanical damage")
+	check_eq(sim.world.events.filter(func(event):return event.type=="combat.fire_damage").size(),
+		0,"rupture does not invent combustion damage")
+	check_eq(sim.world.events.filter(func(event):return event.type=="combat.physical_damage").size(),
+		1,"rupture uses the physical damage path once")
+	check_eq(sim.world.world_state_error(),"","rupture impact state validates")
+	return finish()
+
+
+func test_environment_armor_coverage_material_and_wetness_apply_once() -> bool:
+	check_eq(EnvironmentArmor.registry_error(),"","environment armor registry")
+	var uncovered=_armor_probe("ARMOR_PADDED","fire",80,"HEAD",0)
+	var covered=_armor_probe("ARMOR_PADDED","fire",80,"TORSO",0)
+	check_eq([uncovered.final_damage,covered.final_damage],[80,44],
+		"coverage gates the padded material reduction")
+	var padded_dry:=_environment_damage_with_armor("ARMOR_PADDED",0)
+	var leather_dry:=_environment_damage_with_armor("ARMOR_LEATHER",0)
+	var padded_wet:=_environment_damage_with_armor("ARMOR_PADDED",100)
+	check_eq([padded_dry,leather_dry,padded_wet],[36,56,69],
+		"material differs, wet insulation weakens, and reduction is applied once")
+	return finish()
+
+
+func test_dense_smoke_blocks_shared_los_without_hiding_its_own_cell() -> bool:
+	var sim=Simulator.new(5,1,114)
+	check(sim.world.bootstrap_set_atmosphere(Vector2i(2,0),500,
+		Config.SMOKE_LOS_BLOCK_AMOUNT,0,0),"middle smoke")
+	check(not Perception.has_line_of_sight(sim.world,Vector2i.ZERO,Vector2i(4,0)),
+		"dense intermediate smoke blocks authoritative LOS")
+	check(Perception.has_line_of_sight(sim.world,Vector2i.ZERO,Vector2i(2,0)),
+		"the smoke tile itself remains observable")
+	var visible:Dictionary=VisualMap.visible_cells(sim.world,Vector2i.ZERO,
+		VisualMap.SHOWCASE_SCENARIO_ID)
+	check(not visible.has("4:0") and visible.has("2:0"),
+		"presentation FOV uses the same smoke rule")
+	return finish()
+
+
+func _armor_probe(definition_id:String,damage_type:String,damage:int,
+		part_id:String,wetness:int)->Dictionary:
+	var sim=Simulator.new(1,1,115)
+	var target=sim.world.add_entity("goblin","방어구 probe",Vector2i.ZERO,100,[],
+		"goblin","","GOBLIN_MELEE_V1")
+	var inventory=sim.world.item_state.inventory(target.id)
+	for item in inventory.backpack:
+		if item.definition_id=="ARMOR_PADDED":item.definition_id=definition_id
+	return EnvironmentArmor.assess(sim.world,target.id,damage_type,damage,part_id,wetness)
+
+
+func _environment_damage_with_armor(definition_id:String,wetness:int)->int:
+	var sim=Simulator.new(1,1,116)
+	var target=sim.world.add_entity("goblin","환경 피격",Vector2i.ZERO,100,[],
+		"goblin","","GOBLIN_MELEE_V1")
+	var inventory=sim.world.item_state.inventory(target.id)
+	for item in inventory.backpack:
+		if item.definition_id=="ARMOR_PADDED":item.definition_id=definition_id
+	if wetness>0:sim.world.bootstrap_set_surface(Vector2i.ZERO,"WATER",wetness*10)
+	sim.world.begin_step(1)
+	var next_id:int=sim.world._next_event_id
+	while BodyCombatRules.select_part(sim.world.body_states[target.id],
+			("environment-armor-v1|%d|%d|%d|electric"%[
+			next_id,target.id,sim.world.world_time]).sha256_text(),target.id)=="HEAD":
+		sim.world.emit_event("test.armor_part_padding")
+		next_id=sim.world._next_event_id
+	var arc=sim.world.emit_event("environment.electric_arc",-1,-1,Vector2i.ZERO,80,-1,
+		{"distance":0,"from_position":[-1,-1]})
+	var applied:int=sim.damage.apply_damage(target,80,"electric",arc.id,
+		Vector2i.ZERO,1)
+	sim.world.finish_step()
+	check_eq(sim.world.world_state_error(),"","armored environment damage validates")
+	return applied
 
 
 func _atmosphere_total(sim) -> int:

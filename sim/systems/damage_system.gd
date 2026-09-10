@@ -9,6 +9,8 @@ const MAX_WORLD_TIME := 9223372036854775707
 const StatusRowScript = preload("res://sim/combat_status_row.gd")
 const StatusRegistryScript = preload("res://sim/status_registry.gd")
 const BodyInjurySystemScript=preload("res://sim/body_injury_system.gd")
+const BodyCombatRulesScript=preload("res://sim/body_combat_rules.gd")
+const EnvironmentArmorScript=preload("res://sim/environment_armor_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WorldItemOperationsScript=preload("res://sim/world_item_operations.gd")
 
@@ -26,7 +28,11 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var resolved_position: Vector2i = entity.position \
 		if entity != null and event_position == Vector2i(-1, -1) else event_position
 	var cause = world.event_by_id(cause_id) if cause_id > 0 else null
-	var lethal: bool = entity != null and requested_damage >= expected_health_before
+	var raw_requested_damage:=requested_damage
+	var armor_context:Dictionary=_element_armor_context(entity,damage_type,
+		requested_damage,cause_id,resolved_position)
+	var resolved_requested_damage:=int(armor_context.get("final_damage",requested_damage))
+	var lethal: bool = entity != null and resolved_requested_damage >= expected_health_before
 	var protagonist_target: bool = entity != null and world.party_encounter != null \
 		and world.party_encounter.protagonist_id == entity.id
 	var status_count: int = world.combatant_states[entity.id].status_rows.size() \
@@ -68,16 +74,24 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var body_injury_context:Dictionary={}
 	if damage_type=="physical" and (cause.type=="action.melee_attack" \
 			and cause.data.get("outcome")=="HIT" or cause.type=="action.skill" \
-			and cause.data.get("ruleset_id")=="party-active-skills-v1"):
-		var weapon_id:="UNARMED_STRIKE" if cause.type=="action.skill" \
+			and cause.data.get("ruleset_id")=="party-active-skills-v1" \
+			or cause.type=="environment.explosion_impact"):
+		var weapon_id:="UNARMED_STRIKE" if cause.type in ["action.skill",
+			"environment.explosion_impact"] \
 			else WorldItemOperationsScript.equipped_weapon_id(world,cause.actor_id)
 		var weapon=WeaponRegistryScript.definition(weapon_id)
 		var body=world.body_states.get(entity.id)
-		var raw_damage:=requested_damage if cause.type=="action.skill" \
+		var raw_damage:=int(cause.data.get("raw_force",0)) \
+			if cause.type=="environment.explosion_impact" else requested_damage \
+			if cause.type=="action.skill" \
 			else int(cause.data.get("base_damage",0))
-		var armor_flat:=0 if cause.type=="action.skill" \
+		var armor_flat:=int(cause.data.get("armor_flat",0)) \
+			if cause.type=="environment.explosion_impact" else 0 \
+			if cause.type=="action.skill" \
 			else int(cause.data.get("armor_flat",0))
-		var commitment_hash:=("party-active-body-v1|%d|%d|%d"%[
+		var commitment_hash:=("explosion-impact-body-v1|%d|%d"%[
+			cause.id,entity.id]).sha256_text() \
+			if cause.type=="environment.explosion_impact" else ("party-active-body-v1|%d|%d|%d"%[
 			cause.id,cause.actor_id,entity.id]).sha256_text() if cause.type=="action.skill" \
 			else str(cause.data.get("commitment_hash",""))
 		var body_plan:Dictionary=BodyInjurySystemScript.assess(body,weapon,
@@ -89,16 +103,20 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	elif damage_type in ["fire","electric"] and world.body_states.has(entity.id):
 		var body=world.body_states[entity.id]
 		var key:String=("element-body-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()
-		var body_plan:Dictionary=BodyInjurySystemScript.assess_element(body,damage_type.to_upper(),mini(expected_health_before,requested_damage),key,entity.id)
+		var body_plan:Dictionary=BodyInjurySystemScript.assess_element_at_part(body,
+			damage_type.to_upper(),mini(expected_health_before,resolved_requested_damage),key,
+			entity.id,str(armor_context.get("part_id","")))
 		if not bool(body_plan.get("accepted",false)):return {"accepted":false,"event":null,"applied_health_damage":0}
-		body_injury_context={"body":body,"element":damage_type.to_upper(),"raw_damage":mini(expected_health_before,requested_damage),"commitment_hash":key}
-	var applied_damage := mini(expected_health_before, requested_damage)
+		body_injury_context={"body":body,"element":damage_type.to_upper(),
+			"raw_damage":mini(expected_health_before,resolved_requested_damage),
+			"commitment_hash":key,"part_id":str(armor_context.get("part_id",""))}
+	var applied_damage := mini(expected_health_before, resolved_requested_damage)
 	entity.health -= applied_damage
 	var damage_event = world.emit_event(
 		"combat.%s_damage" % damage_type, -1, entity.id, resolved_position,
 		applied_damage, cause_id, {"schema_version": 1,
 			"combat_ruleset_id": COMBAT_RULESET_ID,
-			"damage_type": damage_type, "requested_damage": requested_damage,
+			"damage_type": damage_type, "requested_damage": raw_requested_damage,
 			"applied_health_damage": applied_damage})
 	if damage_event == null:
 		return {"accepted": false, "event": null,
@@ -185,7 +203,10 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	if not body_injury_context.is_empty():
 		var injury:Dictionary
 		if body_injury_context.has("element"):
-			injury=BodyInjurySystemScript.apply_element(body_injury_context.body,str(body_injury_context.element),int(body_injury_context.raw_damage),str(body_injury_context.commitment_hash),entity.id,damage_event.id)
+			injury=BodyInjurySystemScript.apply_element_at_part(body_injury_context.body,
+				str(body_injury_context.element),int(body_injury_context.raw_damage),
+				str(body_injury_context.commitment_hash),entity.id,damage_event.id,
+				str(body_injury_context.part_id))
 		else:
 			injury=BodyInjurySystemScript.apply(body_injury_context.body,
 				body_injury_context.weapon,int(body_injury_context.raw_damage),
@@ -347,18 +368,24 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
 			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
 		return 0
-	var damage := mini(entity.health, maxi(1, amount))
+	var resolved_position: Vector2i = entity.position if event_position == Vector2i(-1, -1) else event_position
+	var armor_context:Dictionary=_element_armor_context(entity,damage_type,amount,
+		cause_id,resolved_position)
+	var damage := mini(entity.health, maxi(1, int(armor_context.get("final_damage",amount))))
 	var element_body=world.body_states.get(entity.id) if damage_type in ["fire","electric"] else null
 	var element_key:String=("element-body-legacy-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()
-	if element_body!=null and not BodyInjurySystemScript.assess_element(element_body,damage_type.to_upper(),damage,element_key,entity.id).accepted:return 0
+	if element_body!=null and not BodyInjurySystemScript.assess_element_at_part(
+			element_body,damage_type.to_upper(),damage,element_key,entity.id,
+			str(armor_context.get("part_id",""))).accepted:return 0
 	entity.health -= damage
-	var resolved_position: Vector2i = entity.position if event_position == Vector2i(-1, -1) else event_position
 	var damage_event = world.emit_event(
 		"combat.%s_damage" % damage_type, -1, entity.id, resolved_position,
 		damage, cause_id, {"damage_type": damage_type}
 	)
 	if element_body!=null and damage_event!=null:
-		var injury:Dictionary=BodyInjurySystemScript.apply_element(element_body,damage_type.to_upper(),damage,element_key,entity.id,damage_event.id)
+		var injury:Dictionary=BodyInjurySystemScript.apply_element_at_part(element_body,
+			damage_type.to_upper(),damage,element_key,entity.id,damage_event.id,
+			str(armor_context.get("part_id","")))
 		if not injury.accepted:return 0
 	if entity.health == 0:
 		var death_event = world.emit_event(
@@ -373,3 +400,17 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			combatant.recovery_lock_until = 0; combatant.recovery_source_event_id = -1
 			combatant.status_rows.clear()
 	return damage
+
+
+func _element_armor_context(entity,damage_type:String,raw_damage:int,cause_id:int,
+		position:Vector2i)->Dictionary:
+	if entity==null or damage_type not in ["fire","electric"] \
+			or not world.body_states.has(entity.id) or not world.in_bounds(position):
+		return {"final_damage":raw_damage}
+	var body=world.body_states[entity.id]
+	var key:String=("environment-armor-v1|%d|%d|%d|%s"%[
+		cause_id,entity.id,world.world_time,damage_type]).sha256_text()
+	var part_id:String=BodyCombatRulesScript.select_part(body,key,entity.id)
+	if part_id.is_empty():return {"final_damage":raw_damage}
+	return EnvironmentArmorScript.assess(world,entity.id,damage_type,raw_damage,
+		part_id,int(world.tile_at(position).wetness))

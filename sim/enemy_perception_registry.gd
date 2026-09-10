@@ -2,6 +2,7 @@ class_name EnemyPerceptionRegistry
 extends RefCounted
 
 const TerrainRegistryScript = preload("res://sim/terrain_registry.gd")
+const EnvironmentConfigScript = preload("res://sim/environment_config.gd")
 
 const RULESET_ID := "enemy-perception-v1"
 const HERO_BASE_STEALTH := 500
@@ -38,6 +39,8 @@ static func has_line_of_sight(world,origin:Vector2i,target:Vector2i)->bool:
 		if doubled>=dy:error+=dy;x0+=sx
 		if doubled<=dx:error+=dx;y0+=sy
 		if Vector2i(x0,y0)==target:return true
+		if int(world.tile_at(Vector2i(x0,y0)).smoke_amount) \
+				>=EnvironmentConfigScript.SMOKE_LOS_BLOCK_AMOUNT:return false
 		var definition:Dictionary=TerrainRegistryScript.definition(
 			str(world.tile_at(Vector2i(x0,y0)).terrain))
 		if definition.is_empty() or not bool(definition.get("passable",false)):return false

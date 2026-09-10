@@ -25,10 +25,24 @@ static func assess(body,weapon,raw_damage:int,armor_flat:int,
 static func assess_element(body,element:String,damage:int,commitment_hash:String,target_id:int)->Dictionary:
 	return _assess_packet(body,Elements.packet(element,damage),CombatRulesScript.armor_packet(0),element,commitment_hash,target_id)
 
+static func assess_element_at_part(body,element:String,damage:int,commitment_hash:String,
+		target_id:int,part_id:String)->Dictionary:
+	return _assess_packet_at_part(body,Elements.packet(element,damage),
+		CombatRulesScript.armor_packet(0),element,commitment_hash,target_id,part_id)
+
 static func _assess_packet(body,attack:Dictionary,armor:Dictionary,source_id:String,commitment_hash:String,target_id:int)->Dictionary:
 	var rejected:={"accepted":false,"reason":"invalid_body_injury_input"}
 	if body==null or not body.has_method("validation_error") or not body.validation_error().is_empty() or target_id!=body.entity_id or commitment_hash.length()!=64:return rejected
 	var part_id:String=CombatRulesScript.select_part(body,commitment_hash,target_id)
+	return _assess_packet_at_part(body,attack,armor,source_id,commitment_hash,target_id,part_id)
+
+static func _assess_packet_at_part(body,attack:Dictionary,armor:Dictionary,source_id:String,
+		commitment_hash:String,target_id:int,part_id:String)->Dictionary:
+	var rejected:={"accepted":false,"reason":"invalid_body_injury_input"}
+	if body==null or not body.has_method("validation_error") or not body.validation_error().is_empty() \
+			or target_id!=body.entity_id or commitment_hash.length()!=64 \
+			or part_id not in BodyRegistryScript.PART_IDS:
+		return rejected
 	var template:Dictionary=BodyRegistryScript.template_definition(str(body.template_id))
 	if part_id.is_empty() or attack.is_empty() or armor.is_empty() or template.is_empty():
 		return rejected.duplicate(true)
@@ -85,6 +99,11 @@ static func apply(body,weapon,raw_damage:int,armor_flat:int,
 
 static func apply_element(body,element:String,damage:int,commitment_hash:String,target_id:int,source_event_id:int)->Dictionary:
 	return _apply_plan(body,assess_element(body,element,damage,commitment_hash,target_id),source_event_id)
+
+static func apply_element_at_part(body,element:String,damage:int,commitment_hash:String,
+		target_id:int,source_event_id:int,part_id:String)->Dictionary:
+	return _apply_plan(body,assess_element_at_part(body,element,damage,
+		commitment_hash,target_id,part_id),source_event_id)
 
 static func _apply_plan(body,plan:Dictionary,source_event_id:int)->Dictionary:
 	if not bool(plan.get("accepted",false)):return plan

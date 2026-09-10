@@ -34,8 +34,9 @@ const ENVIRONMENT_RULESET_ID := "tile-environment-v1"
 const ROLLBACK_MEMENTO_VERSION := 5
 # Packed rollback dynamic rows contain the tile index, the five legacy
 # fire/wetness scalars, and nine environment-state scalars.
-# Terrain/flam/conductivity are bootstrap-static and are reconstructed from the
-# terrain registry on the rare restore path.
+# Terrain/flam/conductivity are cached as a packed rollback baseline and are
+# reconstructed from the terrain registry on the rare restore path. Explosion
+# destruction invalidates that cache after the current transaction captures it.
 const ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE := 15
 const SimTileScript = preload("res://sim/sim_tile.gd")
 const SimEntityScript = preload("res://sim/sim_entity.gd")
@@ -71,6 +72,7 @@ const MeleeCombatSystemScript = preload("res://sim/systems/melee_combat_system.g
 const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
 const EnvironmentConfigScript = preload("res://sim/environment_config.gd")
 const MaterialRegistryScript = preload("res://sim/material_registry.gd")
+const EnvironmentArmorRegistryScript=preload("res://sim/environment_armor_registry.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
@@ -973,9 +975,9 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 		return null
 	if validate_state and not world_state_error().is_empty():return null
 	_ensure_rollback_tile_static_cache()
-	# Terrain is immutable after bootstrap. Dynamic tile fields are sparse in a
-	# dungeon turn (normally no burning/wet tiles), so retain only non-default
-	# rows instead of allocating a 7×map-size scalar buffer on every hop.
+	# Terrain is normally stable and uses a packed copy-on-write baseline. Dynamic
+	# tile fields stay sparse; an explosion invalidates the baseline only after a
+	# transaction has captured the version it may need to restore.
 	var tile_terrain := _rollback_tile_terrain_cache
 	_ensure_dynamic_tile_index()
 	var tile_scalars := PackedInt64Array([tiles.size(), 0])
@@ -2077,6 +2079,8 @@ func _restored_state_error() -> String:
 	if not body_registry_error.is_empty():return body_registry_error
 	var body_combat_registry_error:=BodyCombatRulesScript.registry_error()
 	if not body_combat_registry_error.is_empty():return body_combat_registry_error
+	var environment_armor_error:=EnvironmentArmorRegistryScript.registry_error()
+	if not environment_armor_error.is_empty():return environment_armor_error
 	if combatant_states.size() != entities.size(): return "combatant_entity_set_mismatch"
 	if body_states.size()!=entities.size():return "body_entity_set_mismatch"
 	var item_state_error := _item_state_error()
@@ -2437,6 +2441,15 @@ func _restored_state_error() -> String:
 		if event.type == "action.hold":
 			var hold_semantic_error := _hold_event_error(event)
 			if not hold_semantic_error.is_empty(): return hold_semantic_error
+		if event.type=="environment.knockback" \
+				and not bool(_environment_knockback_positions(event).ok):
+			return "environment_knockback_event_invalid"
+		if event.type=="environment.terrain_destroyed" \
+				and not _environment_destruction_event_valid(event):
+			return "environment_destruction_event_invalid"
+		if event.type=="environment.explosion_impact" \
+				and not _environment_explosion_impact_event_valid(event):
+			return "environment_explosion_impact_event_invalid"
 		if encounter_lab != null:
 			var event_actor_state = agent_states.get(event.actor_id)
 			if event.type in ["action.move", "action.melee_attack", "action.hold", "action.freeze", "encounter.actor_escaped"] \
@@ -2503,9 +2516,11 @@ func _restored_state_error() -> String:
 		if event.type == "combat.physical_damage":
 			var physical_cause = event_by_id(event.cause_id)
 			var valid_physical_source: bool = physical_cause != null \
-					and physical_cause.type in ["action.melee_attack", "action.skill", "status.tick"]
+					and physical_cause.type in ["action.melee_attack", "action.skill",
+						"status.tick", "environment.explosion_impact"]
 			var cause_is_canonical: bool = physical_cause != null \
-					and physical_cause.data.get("schema_version") in [1, 3, 4]
+					and (physical_cause.data.get("schema_version") in [1, 3, 4] \
+						or physical_cause.type=="environment.explosion_impact")
 			var expected_requested: int = physical_cause.magnitude if physical_cause != null else 0
 			if physical_cause != null and physical_cause.type == "action.melee_attack" \
 					and cause_is_canonical:
@@ -2883,7 +2898,8 @@ func _body_history_error(body)->String:
 		var attack=event_by_id(source.cause_id)
 		if attack==null \
 				or (expected_type=="physical" and (attack.target_id!=body.entity_id \
-					or attack.type not in ["action.melee_attack","action.skill"] \
+					or attack.type not in ["action.melee_attack","action.skill",
+						"environment.explosion_impact"] \
 					or attack.type=="action.melee_attack" and attack.data.get("outcome")!="HIT" \
 					or attack.type=="action.skill" and attack.data.get("ruleset_id")!="party-active-skills-v1")):
 			return "invalid_body_wound_attack_source"
@@ -6351,6 +6367,12 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			cursor=transition.from
 			continue
+		if event.type=="environment.knockback" and event.actor_id==entity_id:
+			var knockback:=_environment_knockback_positions(event)
+			if not bool(knockback.ok) or knockback.to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=knockback.from
+			continue
 		if event.type != "action.move" or event.actor_id != entity_id: continue
 		if not _party_move_event_is_canonical(event) \
 				or Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1])) != cursor:
@@ -6408,7 +6430,13 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 			anchored = true
 			continue
 		if event.actor_id != entity_id: continue
-		if event.type == "action.move":
+		if event.type=="environment.knockback":
+			var knockback:=_environment_knockback_positions(event)
+			if not bool(knockback.ok) \
+					or anchored and historical_cursor!=knockback.from:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor=knockback.to;anchored=true
+		elif event.type == "action.move":
 			if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
 					or not _is_position(event.data.get("from_position"), width, height, false) \
 					or not _is_position(event.data.get("to_position"), width, height, false):
@@ -6447,6 +6475,12 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			cursor=transition.from
 			continue
+		if event.type=="environment.knockback" and event.actor_id==entity_id:
+			var knockback:=_environment_knockback_positions(event)
+			if not bool(knockback.ok) or knockback.to!=cursor:
+				return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=knockback.from
+			continue
 		if event.type != "action.move" or event.actor_id != entity_id: continue
 		if not _exact_keys(event.data, ["from_position", "move_time_cost", "terrain_id", "to_position"]) \
 				or not _is_position(event.data.get("from_position"), width, height, false) \
@@ -6465,6 +6499,12 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 	for event in events:
 		if event.id <= event_id or event.actor_id != entity_id: continue
 		if event.type in ["party.member_regrouped","party.member_disengaged","dungeon.floor_entered"]:return ""
+		if event.type=="environment.knockback":
+			var knockback:=_environment_knockback_positions(event)
+			if not bool(knockback.ok) or knockback.from!=cursor:
+				return "party_member_move_history_mismatch"
+			cursor=knockback.to
+			continue
 		if event.type != "action.move": continue
 		if not _party_move_event_is_canonical(event) \
 				or event.data.from_position != [cursor.x,cursor.y]:
@@ -6472,6 +6512,73 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 		cursor = event.position
 	return "" if entities.has(entity_id) and entities[entity_id].position == cursor \
 		else "party_member_deployed_position_mismatch"
+
+
+func _environment_knockback_positions(event)->Dictionary:
+	var rejected:={"ok":false,"from":Vector2i(-1,-1),"to":Vector2i(-1,-1)}
+	if event==null or event.type!="environment.knockback" or event.actor_id<=0 \
+			or not entities.has(event.actor_id) or event.target_id!=-1 \
+			or not _exact_keys(event.data,["from_position","kind","to_position"]) \
+			or not _is_position(event.data.from_position,width,height,false) \
+			or not _is_position(event.data.to_position,width,height,false):
+		return rejected
+	var from:=Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+	var to:=Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
+	var source=event_by_id(event.cause_id)
+	if not _environment_explosion_wave_valid_for_child(source,event) \
+			or str(event.data.kind)!=str(source.data.get("kind","")) \
+			or source.position!=from or event.position!=to \
+			or event.magnitude!=source.magnitude \
+			or absi(to.x-from.x)+absi(to.y-from.y)!=1 \
+			or not _terrain_is_passable(to):
+		return rejected
+	return {"ok":true,"from":from,"to":to}
+
+
+func _environment_destruction_event_valid(event)->bool:
+	if event==null or event.actor_id!=-1 or event.target_id!=-1 \
+			or not _exact_keys(event.data,["from_terrain","mechanical_resistance",
+				"to_terrain"]) or event.data.get("to_terrain")!="rubble" \
+			or not event.data.get("from_terrain") is String \
+			or str(event.data.from_terrain) not in ["wall","door_closed",
+				"wood_floor","rubber_floor"] \
+			or not event.data.get("mechanical_resistance") is int \
+			or int(event.data.mechanical_resistance)<0 \
+			or event.magnitude<=int(event.data.mechanical_resistance):
+		return false
+	var source=event_by_id(event.cause_id)
+	return _environment_explosion_wave_valid_for_child(source,event) \
+		and source.position==event.position and source.magnitude==event.magnitude \
+		and tile_at(event.position).terrain=="rubble"
+
+
+func _environment_explosion_impact_event_valid(event)->bool:
+	if event==null or event.actor_id!=-1 or event.target_id<=0 \
+			or not entities.has(event.target_id) \
+			or not _exact_keys(event.data,["armor_flat","kind","raw_force","wave_power"]) \
+			or not event.data.get("armor_flat") is int or int(event.data.armor_flat)<0 \
+			or not event.data.get("raw_force") is int \
+			or not event.data.get("wave_power") is int:
+		return false
+	var source=event_by_id(event.cause_id)
+	if not _environment_explosion_wave_valid_for_child(source,event) \
+			or source.position!=event.position or source.magnitude!=int(event.data.wave_power) \
+			or str(source.data.get("kind",""))!=str(event.data.kind):
+		return false
+	var raw_force:=mini(EnvironmentConfigScript.EXPLOSION_IMPACT_DAMAGE_CAP,
+		maxi(1,source.magnitude/EnvironmentConfigScript.EXPLOSION_IMPACT_DAMAGE_DIVISOR))
+	var expected:=maxi(1,raw_force-mini(int(event.data.armor_flat),maxi(0,raw_force-1)))
+	return int(event.data.raw_force)==raw_force and event.magnitude==expected
+
+
+func _environment_explosion_wave_valid_for_child(source,child)->bool:
+	return source!=null and source.type=="environment.explosion_wave" \
+		and source.id<child.id and source.actor_id==-1 and source.target_id==-1 \
+		and source.step_index==child.step_index and source.world_time==child.world_time \
+		and source.magnitude>0 and source.magnitude<=100 \
+		and _exact_keys(source.data,["distance","kind"]) \
+		and source.data.get("distance") is int and int(source.data.distance)>=0 \
+		and str(source.data.get("kind","")) in ["combustion","rupture"]
 
 
 func _party_floor_entry_positions(event)->Dictionary:

@@ -3762,24 +3762,34 @@ func _presentation_event_boundary_signature(event)->String:
 
 
 func _presentation_topology_fingerprint()->int:
-	# Product dungeon terrain is bootstrap-only: once its initial environment
-	# events exist, `bootstrap_set_terrain` cannot mutate it. Reuse the verified
-	# topology value for the same live world instead of rescanning all 96x96 tiles
-	# on every AUTO/route hop. Small fixture worlds keep the per-call regression
-	# check used by topology-mutation tests; reset/load already clears this cache.
+	# Product dungeon terrain normally stays fixed. Inspect only events appended
+	# since the last check, and rescan the large map after terrain destruction.
+	# Small fixture worlds keep the per-call topology-mutation regression check.
 	if sim.world.width*sim.world.height>MAX_UI_VIEW_CELL_COUNT*MAX_UI_VIEW_CELL_COUNT \
 			and int(_presentation_topology_cache.get("world_instance_id",-1)) \
 			==int(sim.world.get_instance_id()) \
 			and str(_presentation_topology_cache.get("scenario_id",""))==scenario_id \
 			and _presentation_topology_cache.has("topology_fingerprint"):
-		return int(_presentation_topology_cache.topology_fingerprint)
+		var scanned_count:=int(_presentation_topology_cache.get("event_count",-1))
+		var event_count:int=sim.world.events.size()
+		if scanned_count>=0 and scanned_count<=event_count:
+			var topology_changed:=false
+			for index in range(scanned_count,event_count):
+				if str(sim.world.events[index].type)=="environment.terrain_destroyed":
+					topology_changed=true
+			_presentation_topology_cache["event_count"]=event_count
+			if not topology_changed:
+				return int(_presentation_topology_cache.topology_fingerprint)
+			var fingerprint:=_scan_presentation_topology_fingerprint()
+			_presentation_topology_cache["topology_fingerprint"]=fingerprint
+			return fingerprint
 	return _scan_presentation_topology_fingerprint()
 
 
 func _presentation_visible_cells(origin:Vector2i)->Dictionary:
 	if sim==null or sim.world==null:return {}
-	var key:="%d:%s:%d:%d"%[int(sim.world.get_instance_id()),scenario_id,
-		origin.x,origin.y]
+	var key:="%d:%s:%d:%d:%d"%[int(sim.world.get_instance_id()),scenario_id,
+		origin.x,origin.y,sim.world.events.size()]
 	var shared:bool=field_turns_active() and origin==sim.world.entities[sim.world.party_control_actor_id()].position
 	if shared:key+="/%d/%d"%[sim.world.step_index,sim.world.party_encounter.revision]
 	var cached:Variant=_presentation_visibility_cache.get(key)
@@ -3807,6 +3817,7 @@ func _warm_product_topology_presentation_cache()->void:
 	_presentation_topology_cache={
 		"world_instance_id":int(sim.world.get_instance_id()),
 		"scenario_id":scenario_id,
+		"event_count":sim.world.events.size(),
 		"topology_fingerprint":_scan_presentation_topology_fingerprint(),
 	}
 

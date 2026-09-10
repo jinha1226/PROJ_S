@@ -29,6 +29,10 @@ const EQUILIBRIUM_EPSILON := 2
 const EXPLOSION_POWER_LOSS_PER_TILE := 20
 const COVER_POWER_LOSS := 25
 const MAX_EXPLOSION_CHAIN := 128
+const EXPLOSION_KNOCKBACK_MIN_POWER := 35
+const EXPLOSION_IMPACT_DAMAGE_DIVISOR := 5
+const EXPLOSION_IMPACT_DAMAGE_CAP := 20
+const SMOKE_LOS_BLOCK_AMOUNT := 600
 
 
 static func pressure_for(tile) -> int:
@@ -37,4 +41,3 @@ static func pressure_for(tile) -> int:
 	var absolute_temperature := maxi(1, tile.temperature + 1000)
 	return gas_total * absolute_temperature * PRESSURE_SCALE \
 		/ (DEFAULT_EFFECTIVE_VOLUME * 1000)
-
