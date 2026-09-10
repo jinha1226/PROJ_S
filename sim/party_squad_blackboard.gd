@@ -16,6 +16,8 @@ static func build(world, protagonist_action) -> Dictionary:
 			deployed.append(int(entity_id))
 	var enemies: Array[int] = []
 	for entity_id in CampaignEncounterStreamScript.active_enemy_ids(world):
+		if preload("res://sim/field_turn_rules.gd").active(world) \
+			and not preload("res://sim/field_turn_rules.gd").visible(world,entity_id):continue
 		if world.entities.has(entity_id) and world.is_autonomous_target(entity_id):
 			enemies.append(int(entity_id))
 	enemies.sort()

@@ -52,7 +52,8 @@ static func _action_error(world,event)->String:
 	var definition:Dictionary=Registry.definition(str(data.skill_id))
 	for key in ["action_time","cost","damage","healing"]:
 		if not data.get(key) is int or int(data[key])<0:return "active_skill_event_invalid"
-	if int(data.cost)!=int(definition.cost) or int(data.action_time)!=int(TIMES[data.skill_id]) \
+	if int(data.cost)!=int(definition.cost) or int(data.action_time)!=preload("res://sim/field_action_timing.gd").duration(
+			world,event.actor_id,str(data.skill_id),int(TIMES[data.skill_id])) \
 			or not data.destination is Array or data.destination.size()!=2 \
 			or not data.destination[0] is int or not data.destination[1] is int \
 			or event.magnitude!=maxi(int(data.damage),int(data.healing)) or event.magnitude<=0:

@@ -62,6 +62,8 @@ func process_tick(processed_step_index: int, actor_schedule_id: int, due_time: i
 	if not ration_ok: return false
 	var encounter = world.party_encounter
 	if encounter.safe_phase == "PARTY_DEFEATED": return true
+	if preload("res://sim/field_turn_rules.gd").active(world):
+		return _update_enemy_awareness_batch(processed_step_index)
 	if encounter.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
 		var _po:=PerfProbeScript.begin()
 		var opening_ok:bool=opening_event == null or opening_event.process_tick(
@@ -111,6 +113,7 @@ func reconcile_liveness(allow_victory: bool = true) -> bool:
 	# surviving grouped actor already shares the anchor; only control/presence
 	# changes, never character identity, stats, gear, or position.
 	if preload("res://sim/party_survival_rules.gd").enabled(world) \
+			and not preload("res://sim/field_turn_rules.gd").active(world) \
 			and state.safe_phase in ["GROUPED","GROUPED_COMPLETE","CONTACT"]:
 		var leader_id:int=world.party_control_actor_id()
 		if state.member(leader_id).presence!="DEPLOYED":
@@ -1150,6 +1153,12 @@ func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -
 	var state = world.party_encounter
 	var member = state.member(actor_id)
 	var appraisal: Dictionary = AppraisalScript.appraise(world, actor_id, board)
+	if preload("res://sim/field_turn_rules.gd").active(world) and board.active_enemy_ids.is_empty() \
+			and str(board.party_command.command_id)=="FOLLOW":
+		var follow:Dictionary=_follow_without_attacking_leaf(actor_id)
+		return {"actor_id":actor_id,"mode":str(appraisal.mode),"command_id":"FOLLOW",
+			"selected_action_id":"FOLLOW","selected_leaf":_leaf_to_action(actor_id,follow).to_dict(),
+			"reason_code":"follow_leader","appraisal":appraisal,"candidates":[]}
 	var command_decision := _exception_command_decision(actor_id, appraisal, board)
 	if not command_decision.is_empty():
 		return command_decision
@@ -1157,7 +1166,8 @@ func _companion_decision(actor_id: int, protagonist_action, board: Dictionary) -
 	for action_id in DecisionRegistryScript.party_mode_actions(str(appraisal.mode)):
 		# In the directed auto-battle mode, ordinary nerves cannot make a healthy
 		# ally abandon combat every turn. Critical HP retains self-preservation.
-		if action_id=="RETREAT" and preload("res://sim/party_survival_rules.gd").enabled(world) \
+		if action_id=="RETREAT" and not preload("res://sim/field_turn_rules.gd").enabled(world) \
+				and preload("res://sim/party_survival_rules.gd").enabled(world) \
 				and int(appraisal.hp_loss)<750:continue
 		var leaf: Dictionary = _party_leaf(actor_id, action_id, appraisal, board)
 		var target_id: int = int(leaf.get("target_id", -1))
@@ -1212,7 +1222,8 @@ func _exception_command_decision(actor_id: int, appraisal: Dictionary,
 		board: Dictionary) -> Dictionary:
 	var party_command: Dictionary = board.get("party_command", {})
 	var command_id := str(party_command.get("command_id", "FOLLOW"))
-	var explicit_focus:=command_id=="ATTACK_TARGET" and preload("res://sim/party_survival_rules.gd").enabled(world)
+	var explicit_focus:=command_id=="ATTACK_TARGET" and preload("res://sim/party_survival_rules.gd").enabled(world) \
+		and not preload("res://sim/field_turn_rules.gd").enabled(world)
 	if command_id not in ["RETREAT", "STOP_ATTACK", "HOLD_POSITION"] and not explicit_focus:
 		return {}
 	var leaf: Dictionary
@@ -1222,7 +1233,8 @@ func _exception_command_decision(actor_id: int, appraisal: Dictionary,
 			leaf=_engage_leaf(actor_id,board)
 			action_id="ENGAGE"
 		"RETREAT":
-			leaf = _retreat_leaf(actor_id, appraisal, board)
+			leaf = _follow_without_attacking_leaf(actor_id) if preload("res://sim/field_turn_rules.gd").active(world) \
+				and board.active_enemy_ids.is_empty() else _retreat_leaf(actor_id, appraisal, board)
 			action_id = "RETREAT"
 		"STOP_ATTACK":
 			leaf = _follow_without_attacking_leaf(actor_id)
@@ -1302,13 +1314,15 @@ func _party_leaf(actor_id: int, action_id: String, appraisal: Dictionary,
 func _engage_leaf(actor_id: int, board: Dictionary) -> Dictionary:
 	var target_id: int = int(board.claims.get(actor_id, board.focus_target_id))
 	var member = world.party_encounter.member(actor_id)
-	if member != null and member.emotion_state != null \
+	var directed:bool=preload("res://sim/field_turn_rules.gd").active(world) \
+		and str(board.get("party_command",{}).get("command_id",""))=="ATTACK_TARGET"
+	if not directed and member != null and member.emotion_state != null \
 			and member.emotion_state.intensity("ANGER") \
 			>= EmotionModelScript.TARGETED_ANGER_THRESHOLD:
 		var remembered_aggressor: int = member.emotion_state.target_id("ANGER")
 		if remembered_aggressor in board.active_enemy_ids:
 			target_id = remembered_aggressor
-	if member != null and member.memory_state != null \
+	if not directed and member != null and member.memory_state != null \
 			and (member.emotion_state == null \
 			or member.emotion_state.intensity("ANGER") \
 			< EmotionModelScript.TARGETED_ANGER_THRESHOLD):
@@ -1531,6 +1545,7 @@ func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 		var weapon = WeaponRegistryScript.definition(
 			WorldItemOperationsScript.equipped_weapon_id(world, action.actor_id))
 		if weapon != null: cost = int(weapon.attack_time)
+	cost=preload("res://sim/field_action_timing.gd").duration(world,action.actor_id,action.type,cost)
 	return {"actor_id": action.actor_id, "roster_slot": roster_slot, "source": source, "action": action.to_dict(), "time_cost": cost,
 		"resolution_note": "", "suggestion": null, "overridden": false, "combat_assessment": null}
 
@@ -1609,7 +1624,8 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
-	if not _update_enemy_awareness_batch(processed_step_index):return false
+	if not preload("res://sim/field_turn_rules.gd").active(world) \
+		and not _update_enemy_awareness_batch(processed_step_index):return false
 	var state=world.party_encounter;var enemies:Array=_stream_enemy_ids();enemies.sort()
 	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world)
 	var rows: Array[Dictionary] = []
@@ -1646,7 +1662,9 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		var row: Dictionary = melee_rows[ordinal]
 		var target = world.entities.get(int(row.target_id))
 		var assessment: Dictionary = melee.assess_attack(int(row.enemy_id), int(row.target_id),
-			"SUGGESTED", processed_step_index, due_time, context, ordinal)
+			"SUGGESTED", processed_step_index, due_time,
+			"FIELD_ACTOR/%d/%d/%d"%[processed_step_index,int(row.enemy_id),due_time] \
+			if preload("res://sim/field_turn_rules.gd").active(world) else context, ordinal)
 		var frozen = melee.freeze_assessment(assessment,
 			target.health if target != null else -1, int(row.original_action_order),
 			int(row.target_id) == state.protagonist_id)

@@ -74,6 +74,14 @@ static func active_enemy_ids(world)->Array[int]:
 		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id):
 			alive.append(enemy_id)
 	if alive.is_empty() or str(state.safe_phase)=="GROUPED_COMPLETE":return []
+	if preload("res://sim/field_turn_rules.gd").active(world):
+		var nearby:Array[int]=[]
+		for id in alive:
+			for member_id in state.active_party_member_ids:
+				var delta:Vector2i=world.entities[id].position-world.entities[member_id].position
+				if maxi(absi(delta.x),absi(delta.y))<=ACTIVATION_RADIUS:
+					nearby.append(id);break
+		return nearby
 	var contact_group:=group_id(world,int(state.contact_enemy_id)) \
 		if int(state.contact_enemy_id)>0 else ""
 	if not contact_group.is_empty():return _alive_group(world,alive,contact_group)

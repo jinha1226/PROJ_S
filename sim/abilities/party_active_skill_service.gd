@@ -26,7 +26,8 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	var state=world.party_encounter
 	if state.expedition_cycle!=null and str(state.expedition_cycle.phase)=="TOWN":
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")
-	if state.safe_phase!="ENGAGED" or not world.is_settled() and not in_transaction:
+	if (state.safe_phase!="ENGAGED" and not preload("res://sim/field_turn_rules.gd").active(world)) \
+			or not world.is_settled() and not in_transaction:
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")
 	if actor_id not in state.active_party_member_ids or not state.member_rows.has(actor_id) \
 			or not world.entities.has(actor_id):
@@ -100,7 +101,8 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 			return _reject(rejected,"active_skill_no_recoverable_damage",
 				"응급 치유 가능한 피해가 없습니다.")
 	result.reason="ok";result.message="사용할 수 있습니다."
-	result.actor_id=actor_id;result.action_time=int(ACTION_TIMES[skill_id])
+	result.actor_id=actor_id
+	result.action_time=preload("res://sim/field_action_timing.gd").duration(world,actor_id,skill_id,int(ACTION_TIMES[skill_id]))
 	result["ruleset_id"]=RULESET_ID
 	return result
 

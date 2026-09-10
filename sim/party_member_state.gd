@@ -25,6 +25,8 @@ var emotion_state
 var memory_state
 var skill_loadout_id: String
 var energy: int
+const DEFAULT_ACTION_SPEEDS:={"MOVE":100,"ATTACK":100,"CAST":100}
+var action_speeds:Dictionary=DEFAULT_ACTION_SPEEDS.duplicate()
 var max_energy: int:
 	get:return ActiveSkillRegistryScript.MAX_ENERGY
 
@@ -66,6 +68,7 @@ func to_dict(include_emotion_state: bool = true,
 	if include_active_skills:
 		row["skill_loadout_id"] = skill_loadout_id
 		row["energy"] = energy
+	if action_speeds!=DEFAULT_ACTION_SPEEDS:row["action_speeds"]=action_speeds.duplicate()
 	return row
 
 static func from_dict(row: Dictionary):
@@ -90,6 +93,8 @@ static func from_dict(row: Dictionary):
 	state.skill_loadout_id=str(row.get("skill_loadout_id",
 		"VANGUARD_V1" if state.role=="PROTAGONIST" else "SUPPORT_V1"))
 	state.energy=int(row.get("energy",DEFAULT_MAX_ENERGY))
+	state.action_speeds=row.get("action_speeds",DEFAULT_ACTION_SPEEDS).duplicate()
+	for channel in state.action_speeds:state.action_speeds[channel]=int(state.action_speeds[channel])
 	return state
 
 static func wire_error(row: Variant, require_mental_mode: bool = true,
@@ -107,6 +112,13 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		expected.append("memory_state")
 	if require_active_skills:
 		expected.append_array(["energy","skill_loadout_id"])
+	if row.has("action_speeds"):
+		expected.append("action_speeds")
+		if not row.action_speeds is Dictionary:return "invalid_action_speeds"
+		var channels:Array=row.action_speeds.keys();channels.sort()
+		if channels!=["ATTACK","CAST","MOVE"]:return "invalid_action_speeds"
+		for rate in row.action_speeds.values():
+			if not _integer(rate) or int(rate)<25 or int(rate)>400:return "invalid_action_speeds"
 	expected.sort()
 	if keys != expected:
 		return "invalid_party_member_keys"

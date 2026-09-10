@@ -101,6 +101,8 @@ static func effective_for_actor(world,state,actor_id:int)->Dictionary:
 				"dungeon.expedition_returned","party.expedition_auto_returned"]:
 			break
 		if event.type=="party.command_issued" and data_error(event.data).is_empty():
+			if preload("res://sim/field_turn_rules.gd").enabled(world) and actor_id==state.protagonist_id:
+				continue
 			var global_target:=Int64CodecScript.parse(event.data.target_id,
 				"party command target")
 			if str(event.data.command_id)=="ATTACK_TARGET" and (
@@ -131,5 +133,5 @@ static func label_ko(command_id: String) -> String:
 		"RETREAT": "후퇴",
 		"STOP_ATTACK": "공격 중지",
 		"HOLD_POSITION": "자리 지키기",
-		"FOLLOW": "자율 전투",
+		"FOLLOW": "따라오기",
 	}.get(command_id, command_id)

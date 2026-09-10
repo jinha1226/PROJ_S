@@ -2441,6 +2441,7 @@ func _battle_presentation_blocked()->bool:
 	return blocked
 
 func _tick_autonomous_battle(delta:float)->void:
+	if session!=null and session.field_turns_active():return
 	if session==null or not session.is_duo_autobattle() or not auto_orchestration_enabled:return
 	var was_in_battle:bool=battle_command_flow.in_battle
 	if battle_command_flow.sync(self):
@@ -2656,7 +2657,10 @@ func _commit_battle_target(target_id:int)->void:
 	var assessment:Dictionary={}
 	var first_strike:bool=_battle_target_mode=="ACTIVE_SKILL" \
 		and str(session.party_status().get("safe_phase",""))=="GROUPED"
-	if first_strike:
+	if session.field_turns_active() and _battle_target_mode=="ACTIVE_SKILL":
+		assessment=session.FieldTurns.assess(session.sim,ActionScript.skill(
+			_battle_target_actor_id,_battle_target_skill_id,target_id))
+	elif first_strike:
 		assessment={"accepted":target_id in session.party_status().get("enemies_in_view",[]),
 			"message":"보이는 적을 고르세요."}
 	elif _battle_target_mode=="ACTIVE_SKILL":
@@ -3893,7 +3897,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		if world.is_autonomous_target(int(id_value)):enemy_in_view=true;break
 	# [공격]: same button always; it explains itself when nothing is in reach.
 	product_attack_button.disabled=terminal or mode=="TOWN"
-	product_attack_button.tooltip_text="가장 가까운 적을 공격합니다. 조우 전이면 선공, 인접하지 않으면 한 칸 다가갑니다." \
+	product_attack_button.tooltip_text="가장 가까운 적을 공격합니다. 사거리 밖이면 한 칸 다가갑니다." \
 		if enemy_in_view else "시야 안에 적이 없습니다."
 	# [대기]: one turn. In a fight it is a guard, otherwise a plain wait.
 	product_wait_guard_button.disabled=terminal or mode=="TOWN"
@@ -3917,10 +3921,10 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	# place; the menu explains itself when there is no fight to direct.
 	product_tactics_button.disabled=terminal or mode=="TOWN"
 	var current_tactic:=str(PartyCommandScript.effective(world,world.party_encounter).get("command_id","FOLLOW")) \
-		if duo_fight else "FOLLOW"
+		if duo_fight or session.field_turns_active() else "FOLLOW"
 	product_tactics_button.text="[전술 · 후퇴]" if _retreat_active and duo_fight else "[전술]"
 	product_tactics_button.tooltip_text="파티 전술: %s"%str({"ATTACK_TARGET":"집중 공격","RETREAT":"후퇴",
-		"STOP_ATTACK":"공격 중지","HOLD_POSITION":"자리 지키기","FOLLOW":"자율 전투"}.get(current_tactic,"자율 전투"))
+		"STOP_ATTACK":"공격 중지","HOLD_POSITION":"자리 지키기","FOLLOW":"따라오기"}.get(current_tactic,"따라오기"))
 	# [탐험]: auto explore toggle; the opening event borrows it for the potion.
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
@@ -4384,7 +4388,7 @@ func _on_product_wait_guard()->void:
 
 func _build_product_tactics_popup()->void:
 	product_tactics_popup=PopupMenu.new();product_tactics_popup.name="ProductTacticsPopup"
-	for row in [[0,"집중 공격 · 적 선택"],[1,"후퇴"],[2,"자리 지키기"],[3,"공격 중지"],[4,"자율 전투"]]:
+	for row in [[0,"동료 · 공격 대상 지정"],[1,"동료 · 후퇴"],[2,"동료 · 자리 지키기"],[3,"동료 · 공격 중지"],[4,"동료 · 따라오기"]]:
 		product_tactics_popup.add_item(str(row[1]),int(row[0]))
 	product_tactics_popup.id_pressed.connect(_on_product_tactic_selected)
 	add_child(product_tactics_popup)
@@ -4393,7 +4397,7 @@ func _on_product_tactics()->void:
 	# [전술]: one menu for the party directives. Items that need a fight are
 	# disabled outside one instead of the button changing.
 	if product_tactics_popup==null or product_tactics_button==null:return
-	var fighting:=_portrait_battle_controls_visible()
+	var fighting:bool=session.field_turns_active() or _portrait_battle_controls_visible()
 	var current:=str(PartyCommandScript.effective(session.sim.world,
 		session.sim.world.party_encounter).get("command_id","FOLLOW")) if fighting else ""
 	var ids:={0:"ATTACK_TARGET",1:"RETREAT",2:"HOLD_POSITION",3:"STOP_ATTACK",4:"FOLLOW"}
@@ -4410,7 +4414,7 @@ func _on_product_tactics()->void:
 
 func _on_product_tactic_selected(item_id:int)->void:
 	if session==null:return
-	if not _portrait_battle_controls_visible():return
+	if not session.field_turns_active() and not _portrait_battle_controls_visible():return
 	if item_id==0:
 		_party_command_targeting=true
 		_show_product_command_feedback("집중 공격할 적을 누르세요.");_request_refresh();return
@@ -4426,7 +4430,7 @@ func _on_product_tactic_selected(item_id:int)->void:
 	_request_refresh()
 
 func _on_product_retreat()->void:
-	if not _portrait_battle_controls_visible():
+	if not session.field_turns_active() and not _portrait_battle_controls_visible():
 		_show_product_command_feedback("전투 중에만 퇴각할 수 있습니다.");return
 	var result:Dictionary=session.party_retreat()
 	if not bool(result.get("accepted",false)):
@@ -4490,6 +4494,9 @@ func _strike_visible_enemy(entity_id:int)->void:
 	# otherwise explain. Never walks for the player.
 	_retreat_active=false;_approach_step_pending=false
 	var result:Dictionary=session.strike_enemy(entity_id)
+	if session.field_turns_active():
+		_record_result(result,true,"공격할 수 없습니다.")
+		_request_refresh();return
 	if bool(result.get("accepted",false)):
 		selected_target_id=entity_id
 		autonomous_battle_clock.paused=false
@@ -6035,6 +6042,8 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
+	if session.field_turns_active():
+		_on_actor(entity_id);return
 	# Portrait tap: party focus during a fight; before contact it is the same as
 	# tapping the enemy on the map (strike when adjacent, hint otherwise).
 	if not _portrait_battle_controls_visible():_strike_visible_enemy(entity_id);return

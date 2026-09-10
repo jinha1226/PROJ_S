@@ -72,6 +72,15 @@ func preview(command):
 
 
 func step(command, supplied_rollback_memento: Variant = null):
+	if preload("res://sim/field_turn_rules.gd").active(world) and command is SimCommand \
+			and command.type in [CommandScript.Type.MOVE,CommandScript.Type.WAIT]:
+		var error:=_validate_command(command)
+		if not error.is_empty():return StepResultScript.new(false,false,error)
+		if supplied_rollback_memento!=null and not world.rollback_memento_is_current(supplied_rollback_memento):
+			return StepResultScript.new(false,false,"snapshot_unavailable")
+		var action=preload("res://sim/party_action_command.gd").move_to(command.actor_id,command.position) \
+			if command.type==CommandScript.Type.MOVE else preload("res://sim/party_action_command.gd").hold(command.actor_id)
+		return preload("res://sim/systems/field_turn_system.gd").step(self,action,int(command.wait_duration_time_units))
 	var _pp:=PerfProbeScript.begin()
 	var plan: Dictionary = _plan_action(command)
 	PerfProbeScript.end("step.plan",_pp)

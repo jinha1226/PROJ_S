@@ -43,6 +43,14 @@ jobs:
       - name: Import project and validate scripts
         run: ./godot --headless --path . --editor --quit
 
+      - name: Verify field turns and companion decisions
+        run: |
+          ./godot --headless --path . --script tests/field_turn_acceptance.gd
+          ./godot --headless --path . --script tests/field_speed_acceptance.gd
+          ./godot --headless --path . --script tests/field_lifecycle_acceptance.gd
+          ./godot --headless --path . --script tests/field_turn_ui_acceptance.gd
+          ./godot --headless --path . --script tests/run_party_ai_tests.gd
+
       - name: Inject Pages build ID
         shell: bash
         run: |

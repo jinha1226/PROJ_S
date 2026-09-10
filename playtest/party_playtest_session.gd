@@ -54,6 +54,8 @@ const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const GrowthBuildCalculatorScript=preload("res://sim/growth_build_calculator.gd")
 const ContentDatabaseScript=preload("res://sim/content_database.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
+const FieldRules=preload("res://sim/field_turn_rules.gd")
+const FieldTurns=preload("res://sim/systems/field_turn_system.gd")
 const ActiveSkillRegistryScript=preload("res://sim/abilities/active_skill_registry.gd")
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
@@ -67,7 +69,7 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
-const SAVE_PATH := "user://living_world_party_encounter_v3.json"
+const SAVE_PATH := "user://living_world_field_turns_v1.json"
 const DEFAULT_WORLD_SEED := 44
 const DEFAULT_PERSONALITY_SEED := 20260828
 const REGRESSION_SCENARIO_ID := "REGRESSION_V1"
@@ -503,6 +505,10 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	# the sight rule their tests assume.
 	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
+	if duo:
+		protagonist.tags.append(FieldRules.TAG)
+		state.party_detection_radius=VisualTestMapScript.SHOWCASE_FOV_RADIUS
+		if not FieldRules.place_companions(candidate):return false
 	if duo and bootstrap_settlement:
 		var settlement_event=candidate.world.emit_event("base.settlement_initialized",
 			protagonist.id,-1,state.group_anchor,0,-1,{"schema_version":1,
@@ -1620,6 +1626,11 @@ func party_status() -> Dictionary:
 			var enemy = sim.world.entities.get(enemy_id)
 			if enemy != null and seen.has(_position_key(enemy.position)):
 				enemies_in_view.append(enemy_id)
+	if FieldRules.active(sim.world):
+		enemies_in_view.clear()
+		for enemy_id in _current_floor_enemy_ids():
+			if FieldRules.visible(sim.world,enemy_id):enemies_in_view.append(enemy_id)
+		visible_enemy_ids=enemies_in_view.duplicate()
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
 		"ration":int(state.ration_milli/1000),"ration_max":int(RationRulesScript.rules().ration_max),
 		"ration_band":RationRulesScript.band(int(state.ration_milli)),
@@ -2392,7 +2403,7 @@ func floor_transition_assessment()->Dictionary:
 	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
-	if state.safe_phase!="GROUPED_COMPLETE":
+	if state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
 		return _rejection_dto("floor_transition_locked")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"from_floor_index":floor_index,"to_floor_index":floor_index+1,
@@ -2461,17 +2472,23 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		member.presence="DEPLOYED" if member_id==sim.world.party_control_actor_id() else "GROUPED"
 		member.busy_until=sim.world.world_time
 		var from_position:Vector2i=sim.world.entities[member_id].position
+		var arrival:Vector2i=entry_position
+		if FieldRules.active(sim.world) and member_id!=sim.world.party_control_actor_id():
+			var cell:Variant=sim.party_coordinator._fallback_cell(entry_position,{})
+			if cell==null:return _rejection_dto("field_companion_placement_failed")
+			arrival=cell;member.presence="DEPLOYED"
 		var entry_event=sim.world.emit_event("dungeon.floor_entered",member_id,-1,
-			entry_position,0,-1,{"schema_version":1,
+			arrival,0,-1,{"schema_version":1,
 				"ruleset_id":CAMPAIGN_FLOOR_ENTRY_RULESET_ID,
 				"floor_index":floor_index,
 				"expedition_index":int(cycle.expedition_index),
 				"entry_mode":entry_mode,
 				"from_position":[from_position.x,from_position.y],
-				"to_position":[entry_position.x,entry_position.y]})
+				"to_position":[arrival.x,arrival.y]})
 		if entry_event==null:return _rejection_dto("floor_transition_event_failed")
 		event_ids.append(int(entry_event.id))
-		sim.world.entities[member_id].position=entry_position
+		sim.world.entities[member_id].position=arrival
+		sim.world.reindex_entity_occupancy(member_id,from_position,arrival)
 	var placement_finished:=Time.get_ticks_usec()
 	_place_floor_ration(floor_index,entry_position,target_layout)
 	var ration_finished:=Time.get_ticks_usec()
@@ -2492,6 +2509,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 			state.patrol_reserved_positions.append(position_value)
 	state.patrol_reserved_positions.sort_custom(func(a:Vector2i,b:Vector2i):
 		return a.y<b.y if a.y!=b.y else a.x<b.x)
+	if not FieldRules.place_companions(sim):return _rejection_dto("field_companion_placement_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
 		"spawned_enemy_ids":spawned_ids})
 
@@ -2711,11 +2729,13 @@ func party_command_assessment(command_id:String,target_id:int=-1)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
-	if state.safe_phase!="ENGAGED" or not sim.world.is_settled():
+	if (state.safe_phase!="ENGAGED" and not FieldRules.active(sim.world)) or not sim.world.is_settled():
 		return _rejection_dto("party_command_phase_required")
 	if command_id not in PartyCommandScript.COMMAND_IDS:
 		return _rejection_dto("unknown_party_command")
 	if command_id=="ATTACK_TARGET":
+		if FieldRules.active(sim.world) and not FieldRules.visible(sim.world,target_id):
+			return _rejection_dto("field_target_unseen")
 		if target_id not in CampaignEncounterStreamScript.active_enemy_ids(sim.world) \
 				or not sim.world.entities.has(target_id) \
 				or not sim.world.is_autonomous_target(target_id):
@@ -2752,6 +2772,12 @@ func issue_party_command(command_id:String,target_id:int=-1,
 	if append_journal:
 		command_journal.append({"kind":"party_command","operation":{
 			"command_id":command_id,"target_id":str(target_id)}})
+	if FieldRules.active(sim.world):
+		var ordered_turn=FieldTurns.step(sim,ActionScript.hold(hero_id))
+		if not ordered_turn.accepted:
+			sim=SimulatorScript.from_snapshot(rollback)
+			if append_journal:command_journal.pop_back()
+			return _rejection_dto("field_order_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"command_id":command_id,"command_label":PartyCommandScript.label_ko(command_id),
 		"target_id":target_id,"event_id":int(event.id),
@@ -2857,6 +2883,7 @@ func active_skill_assessment(actor_id:int,skill_id:String,target_id:int)->Dictio
 
 func use_active_skill(actor_id:int,skill_id:String,target_id:int,
 		append_journal:bool=true)->Dictionary:
+	if field_turns_active():return commit_field_action(ActionScript.skill(actor_id,skill_id,target_id))
 	var assessment:=active_skill_assessment(actor_id,skill_id,target_id)
 	if not bool(assessment.get("accepted",false)):return assessment
 	_exploration_route.cancel_for_direct_command()
@@ -3105,13 +3132,14 @@ func run_progress() -> Dictionary:
 	if hero == null:
 		return unavailable.duplicate(true)
 	var encounter_cleared: bool = state.safe_phase in ["REGROUP_READY", "GROUPED_COMPLETE"]
+	if FieldRules.active(sim.world):encounter_cleared=_field_floor_cleared()
 	var exit_position := Vector2i(int(manifest.exit.position[0]),
 		int(manifest.exit.position[1]))
 	var floor_index:=int(state.expedition_cycle.floor_index) \
 		if state.expedition_cycle!=null else 1
 	var campaign_runtime:=VisualTestMapScript.uses_product_dungeon(scenario_id) \
 		and _map_layout.has("campaign_floors")
-	var at_open_portal:bool=state.safe_phase=="GROUPED_COMPLETE" \
+	var at_open_portal:bool=encounter_cleared \
 		and hero.position==exit_position
 	var transition_ready:bool=campaign_runtime and at_open_portal \
 		and floor_index<MAX_IMPLEMENTED_CAMPAIGN_FLOOR
@@ -3353,6 +3381,12 @@ func _party_observation_context()->Dictionary:
 	var _pexp:=PerfProbeScript.begin()
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
 		hero_position)
+	if field_turns_active():
+		for cell in visible:
+			if not explored.has(cell):
+				explored[cell]=true
+				_explored_presentation_cache.explored[cell]=true
+				_explored_presentation_cache.explored_order.append(cell)
 	var visited:Dictionary=(_explored_presentation_cache.get("visited",{}) as Dictionary) \
 		.duplicate(true)
 	PerfProbeScript.end("ctx.explored",_pexp)
@@ -3723,9 +3757,13 @@ func _presentation_visible_cells(origin:Vector2i)->Dictionary:
 	if sim==null or sim.world==null:return {}
 	var key:="%d:%s:%d:%d"%[int(sim.world.get_instance_id()),scenario_id,
 		origin.x,origin.y]
+	var shared:bool=field_turns_active() and origin==sim.world.entities[sim.world.party_control_actor_id()].position
+	if shared:key+="/%d/%d"%[sim.world.step_index,sim.world.party_encounter.revision]
 	var cached:Variant=_presentation_visibility_cache.get(key)
 	if cached is Dictionary:return (cached as Dictionary).duplicate()
-	var visible:Dictionary=VisualTestMapScript.visible_cells(sim.world,origin,scenario_id)
+	var visible:Dictionary=FieldRules.visible_cells(sim.world) if shared \
+		else VisualTestMapScript.visible_cells(sim.world,origin,scenario_id)
+	if shared and _presentation_visibility_cache.size()>128:_presentation_visibility_cache.clear()
 	_presentation_visibility_cache[key]=visible
 	return visible.duplicate()
 
@@ -4970,6 +5008,11 @@ func tab_attack_assessment() -> Dictionary:
 	enemy_ids.sort()
 	if enemy_ids.is_empty(): return _rejection_dto("tab_attack_no_visible_enemy")
 	var phase := str(status.get("safe_phase", ""))
+	if field_turns_active():
+		for id in enemy_ids:
+			if FieldTurns.assess(sim,ActionScript.melee(hero.id,id)).accepted:
+				return _feedback_dto({"accepted":true,"reason":"ok","tab_action":"ATTACK",
+					"target_id":id,"target_name":_name(id),"destination":[]})
 	if phase == "CONTACT":
 		var contact_target := _nearest_tab_enemy(hero.position, enemy_ids)
 		return _feedback_dto({"accepted":true,"reason":"ok",
@@ -5124,6 +5167,11 @@ func commit_exploration_direction(direction: Vector2i) -> Dictionary:
 	if str(status.get("view_mode",""))!="EXPLORATION":
 		return _rejection_dto("exploration_phase_required")
 	var hero_id := int(status.protagonist_id)
+	if field_turns_active() and direction!=Vector2i.ZERO:
+		var destination:Vector2i=sim.world.entities[hero_id].position+direction
+		var occupant=sim.world.blocking_entity_at(destination)
+		if occupant!=null and occupant.id in status.enemies_in_view:
+			return strike_enemy(occupant.id)
 	var command = CommandScript.wait(hero_id) if direction == Vector2i.ZERO else CommandScript.move_to(
 		hero_id, Vector2i(int(status.protagonist_position[0]), int(status.protagonist_position[1])) + direction)
 	return commit_exploration(command,true)
@@ -5632,6 +5680,8 @@ func has_companion_order(actor_id:int)->bool:
 
 func commit_direct_solo_action(actor_id:int,action_type:String,
 		destination:Array=[],target_id:int=-1)->Dictionary:
+	if field_turns_active():
+		return commit_field_action(_make_action(actor_id,action_type,destination,target_id))
 	# Product solo input is already the complete trusted request. The simulator
 	# validates/freezes it once and then uses the same rollback, event, schedule and
 	# semantic-validation commit tail as the externally supplied plan path.
@@ -6091,6 +6141,8 @@ func preview_exploration(command) -> Dictionary:
 	var context := _exploration_context(command)
 	if int(command.type) not in [int(CommandScript.Type.WAIT), int(CommandScript.Type.MOVE)]:
 		return _rejection_dto("invalid_exploration_action", null, null, context)
+	if FieldRules.active(sim.world):
+		return _feedback_dto(FieldTurns.assess(sim,_field_exploration_action(command)),null,null,context)
 	var preview = sim.preview(command)
 	return _feedback_dto({"accepted": preview.accepted, "reason": preview.reason,
 		"time_cost": preview.time_cost}, null, null, context)
@@ -6365,6 +6417,8 @@ func commit_exploration(command,prevalidated_one_step:bool=false) -> Dictionary:
 
 func _commit_exploration_one(command, preserve_route: bool,
 		prevalidated_auto_hop: bool = false) -> Dictionary:
+	if FieldRules.active(sim.world):
+		return commit_field_action(_field_exploration_action(command))
 	if not prevalidated_auto_hop:
 		var preview := preview_exploration(command)
 		if not preview.accepted: return preview
@@ -6419,6 +6473,35 @@ func preview_deployment(preset_id: String, companion_ids: Array) -> Dictionary:
 	return dto.duplicate(true)
 
 
+func field_turns_active()->bool:
+	return sim!=null and FieldRules.active(sim.world)
+
+func _field_floor_cleared()->bool:
+	for enemy_id in _current_floor_enemy_ids():
+		if sim.world.is_unresolved_enemy(enemy_id):return false
+	return true
+
+func _field_exploration_action(command):
+	if command==null:return null
+	return ActionScript.move_to(command.actor_id,command.position) if command.type==CommandScript.Type.MOVE \
+		else ActionScript.hold(command.actor_id) if command.type==CommandScript.Type.WAIT else null
+
+func commit_field_action(action)->Dictionary:
+	if _run_is_complete():return _rejection_dto("run_complete")
+	var rollback:Dictionary=sim.capture_rollback_memento(false)
+	var event_start:int=sim.world.events.size()
+	var result=FieldTurns.step(sim,action)
+	if result.accepted:
+		var recovery:Dictionary=_apply_safe_exploration_recovery(event_start)
+		if not recovery.accepted:
+			sim.restore_rollback_memento(rollback)
+			return _rejection_dto(str(recovery.reason))
+		if recovery.get("event")!=null:result.events.append(recovery.event)
+		command_journal.append({"kind":"field_action","action":action.to_dict()})
+		_advance_exile_world()
+	_clear_draft()
+	return _result_dto(result)
+
 func first_strike_contact(target_id: int) -> Dictionary:
 	# The party attacks an enemy that has not noticed it: one journaled step that
 	# opens the contact as PARTY_AMBUSH. Deployment (settle_contact) and the
@@ -6456,6 +6539,8 @@ func settle_contact() -> Dictionary:
 
 
 func strike_enemy(target_id: int) -> Dictionary:
+	if FieldRules.active(sim.world):
+		return commit_field_action(ActionScript.melee(sim.world.party_control_actor_id(),target_id))
 	# Map tap on an adjacent enemy. Before contact this is a first strike
 	# (contact + deployment + attack order); in combat it is the hero's attack
 	# order for this turn. Movement is never implied: a distant enemy is refused.
@@ -6487,6 +6572,8 @@ func strike_enemy(target_id: int) -> Dictionary:
 
 
 func strike_with_skill(skill_id: String, target_id: int) -> Dictionary:
+	if FieldRules.active(sim.world):
+		return commit_field_action(ActionScript.skill(sim.world.party_control_actor_id(),skill_id,target_id))
 	# Skill tap on a target. Before contact an enemy target opens a first strike;
 	# then the skill is reserved for the hero's turn like any other reservation.
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -6515,12 +6602,13 @@ func party_retreat() -> Dictionary:
 	if _run_is_complete(): return _rejection_dto("run_complete")
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return _rejection_dto("session_not_initialized")
-	if sim.world.party_encounter.safe_phase != "ENGAGED":
+	if sim.world.party_encounter.safe_phase != "ENGAGED" and not FieldRules.active(sim.world):
 		return _rejection_dto("party_command_phase_required")
 	var result := issue_party_command("RETREAT", -1)
 	if bool(result.get("accepted", false)):
 		result = result.duplicate(true); result["released"] = true
-		result["message"] = "퇴각 · 파티가 적에게서 물러납니다"
+		result["message"] = "후퇴 · 동료들이 적에게서 물러납니다" if field_turns_active() \
+			else "퇴각 · 파티가 적에게서 물러납니다"
 	return result
 
 
@@ -7322,6 +7410,12 @@ func load_session_json(encoded: String) -> Dictionary:
 		return _rejection_dto("invalid_party_session_wire")
 	if int(decoded.snapshot.get("snapshot_version",0))!=WorldStateScript.SNAPSHOT_VERSION:
 		return _rejection_dto("unsupported_snapshot_version")
+	if str(decoded.scenario_id)==DUO_SCENARIO_ID:
+		var field_save:=false
+		for entity in decoded.snapshot.get("entities",[]):
+			if entity is Dictionary and FieldRules.TAG in entity.get("tags",[]):field_save=true;break
+		if not field_save:return _feedback_dto({"accepted":false,"reason":"legacy_battle_save",
+			"message":"전투 구조가 변경되어 새 원정이 필요합니다. 이전 저장 파일은 그대로 보존됩니다."})
 	# Raw hard-cut preflight: reject old nested growth/party schemas and species
 	# before any numeric normalization or object construction can reinterpret them.
 	var raw_party:Variant=decoded.snapshot.get("party_encounter")
@@ -7719,6 +7813,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.issue_actor_command(Int64CodecScript.parse(
 					operation.actor_id,"actor command actor"),str(operation.command_id),
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
+			"field_action":
+				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
 			"reserve_skill":
 				var operation:Dictionary=row.operation
 				replay_result=replay.individual_battle.reserve(int(operation.actor_id),
@@ -8156,6 +8252,9 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
+			"field_action":
+				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
+					return "invalid_field_action_journal"
 			"reserve_skill","cancel_reserved_skill","individual_step","individual_survival_step","reserve_move","reserve_hold":
 				if keys!=["kind","operation"]:return "invalid_individual_journal"
 				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
@@ -8838,6 +8937,10 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"strike_requires_adjacent":"인접한 적만 공격할 수 있습니다. 먼저 다가가세요.",
 		"strike_phase_required":"지금은 공격할 수 없습니다.",
 		"deployment_unavailable":"조우를 처리할 수 없습니다.",
+		"field_target_unseen":"보이는 적을 선택하세요.",
+		"field_action_unavailable":"지금은 행동할 수 없습니다.",
+		"field_turn_failed":"행동을 완료하지 못해 이전 상태로 되돌렸습니다.",
+		"field_order_failed":"동료 명령을 완료하지 못해 이전 상태로 되돌렸습니다.",
 		"first_strike_rule_unavailable":"이 저장본에서는 선공을 쓸 수 없습니다.",
 		"first_strike_phase_required":"지금은 선공할 수 없습니다.",
 		"first_strike_target_invalid":"선공할 수 있는 적이 아닙니다.",

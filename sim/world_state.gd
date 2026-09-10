@@ -3402,6 +3402,9 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 	var boundary_projection: Dictionary = _entity_position_at_event(entity_id, first_action_id)
 	if not bool(boundary_projection.ok):
 		return {"ok":false, "position":Vector2i(-1, -1)}
+	var attack=event_by_id(first_action_id)
+	if attack!=null and str(attack.data.get("batch_context","")).begins_with("FIELD_ACTOR/"):
+		return boundary_projection
 	var boundary_position: Vector2i = boundary_projection.position
 	var frozen_position := boundary_position
 	for index in range(_event_index(first_action_id) - 1, -1, -1):
@@ -3509,7 +3512,8 @@ func _canonical_guard_at_event(entity_id: int, event_boundary_id: int,
 		if event.id >= event_boundary_id:
 			break
 		if event.type == "action.hold" and event.actor_id == entity_id:
-			if event.step_index == processed_step and event.world_time == attack_time:
+			if event.step_index == processed_step and event.world_time == attack_time \
+				and not preload("res://sim/field_turn_rules.gd").enabled(self):
 				continue
 			if event.world_time > MAX_WORLD_TIME - 200:
 				return {"ok":false}
@@ -3728,6 +3732,10 @@ func _legacy_death_event_error(event) -> String:
 static func _combat_batch_context_valid(context: String, processed_step: int,
 		attack_start: int) -> bool:
 	var parts: PackedStringArray = context.split("/")
+	if parts.size()==4 and parts[0]=="FIELD_ACTOR":
+		return Int64CodecScript.is_canonical(parts[1]) and int(parts[1])==processed_step \
+			and Int64CodecScript.is_canonical(parts[2]) and int(parts[2])>0 \
+			and Int64CodecScript.is_canonical(parts[3]) and int(parts[3])==attack_start
 	if parts.size() == 2 and parts[0] == "PARTY_TURN":
 		return Int64CodecScript.is_canonical(parts[1]) \
 			and Int64CodecScript.parse(parts[1], "party context step") == processed_step
@@ -4576,12 +4584,14 @@ func _party_runtime_error() -> String:
 		return "party_contact_enemy_invalid"
 	match party_encounter.safe_phase:
 		"GROUPED":
-			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies == 0 \
+			var field:bool=preload("res://sim/field_turn_rules.gd").active(self)
+			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" \
+					or (not field and (deployed != 1 or alive_enemies == 0)) \
 					or party_encounter.contact_kind != "NONE" or party_encounter.formation_id != "NONE":
 				return "grouped_phase_invalid"
 			for member_id in party_encounter.active_party_member_ids:
 				if member_id != hero.id and combatant_states[member_id].life_state != "DEAD" \
-						and party_encounter.member_rows[member_id].presence != "GROUPED": return "grouped_companion_presence_invalid"
+						and party_encounter.member_rows[member_id].presence != ("DEPLOYED" if field else "GROUPED"): return "grouped_companion_presence_invalid"
 		"GROUPED_COMPLETE":
 			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" or deployed != 1 or alive_enemies != 0 \
 					or party_encounter.contact_kind != "NONE" or party_encounter.contact_enemy_id != -1 \
@@ -5614,7 +5624,8 @@ func _party_command_history_error()->String:
 		var command_id:=str(event.data.command_id)
 		var target_id:=Int64CodecScript.parse(event.data.target_id,
 			"party command target")
-		if not engaged or event.actor_id!=hero_id or event.target_id!=target_id \
+		if (not engaged and not preload("res://sim/field_turn_rules.gd").enabled(self)) \
+				or event.actor_id!=hero_id or event.target_id!=target_id \
 				or event.position!=hero_history.get("position",Vector2i(-1,-1)) \
 				or not bool(hero_history.get("ok",false)) or event.magnitude!=0 \
 				or event.cause_id!=-1 or event.instigator_id!=hero_id:
@@ -6218,7 +6229,8 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 					or anchored and historical_cursor!=transition.from:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			historical_cursor=transition.to;anchored=true
-			if tracks_grouped_protagonist:grouped_with_protagonist=true
+			if tracks_grouped_protagonist:
+				grouped_with_protagonist=not preload("res://sim/field_turn_rules.gd").enabled(self)
 			continue
 		if tracks_grouped_protagonist and event.target_id == entity_id \
 				and event.type in ["party.companion_recruited", "party.companion_dismissed","town.company_assigned","town.company_reserved"]:
@@ -6345,7 +6357,8 @@ func _party_move_event_is_canonical(event) -> bool:
 		and event.magnitude == int(event.data.move_time_cost)
 	if not common_valid:return false
 	if event.cause_id==-1:
-		return int(event.data.move_time_cost)==int(definition.move_time_cost)
+		return int(event.data.move_time_cost)==preload("res://sim/field_action_timing.gd").duration(
+			self,event.actor_id,"MOVE",int(definition.move_time_cost))
 	return ActiveSkillValidationScript.forced_move_error(self,event).is_empty()
 
 
