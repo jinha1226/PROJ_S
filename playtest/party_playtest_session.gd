@@ -655,19 +655,25 @@ func town_life_overview()->Dictionary:
 func town_life_command(operation:Dictionary)->Dictionary:
 	return preload("res://playtest/town_life_service.gd").commit(self,operation)
 
+var _guild_tutorial_index=preload("res://sim/guild_tutorial_index.gd").new()
+
+func guild_tutorial_progress()->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return {"quests":[]}
+	return _guild_tutorial_index.observe(sim.world.events,int(sim.world.party_encounter.protagonist_id),
+		_sim_enemy_ids(),GuildTutorialRulesScript.definitions())
+
 func guild_tutorial_overview()->Dictionary:
 	var unavailable:=_rejection_dto("town_required")
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	if not _town_context_error().is_empty(): return unavailable
 	var hero_id:=int(sim.world.party_control_actor_id())
-	var result:=GuildTutorialRulesScript.state(sim.world.events,hero_id,
-		_sim_enemy_ids())
+	var result:=guild_tutorial_progress()
 	result["available"]=true;result["phase"]="TOWN";result["hero_id"]=hero_id
-	result["hint"]="길드 의뢰는 권장 순서이며, 수락한 뒤 1층에서 성공한 행동만 기록됩니다."
+	result["hint"]="기본 탐험 의뢰는 1층, 성장·부상 의뢰는 각 설명의 장소에서 진행합니다. 모두 선택 사항이며 수락 후 성공한 행동만 인정됩니다."
 	return _feedback_dto(result)
 
-func guild_tutorial_command(operation:Dictionary)->Dictionary:
+func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dictionary:
 	if not operation is Dictionary:
 		return _rejection_dto("guild_tutorial_operation_invalid")
 	var operation_keys:Array=operation.keys();operation_keys.sort()
@@ -680,7 +686,8 @@ func guild_tutorial_command(operation:Dictionary)->Dictionary:
 	if quest_id not in GuildTutorialRulesScript.QUEST_IDS:
 		return _rejection_dto("guild_tutorial_unknown_quest")
 	var hero_id:=int(sim.world.party_control_actor_id())
-	var before:=GuildTutorialRulesScript.state(sim.world.events,hero_id,_sim_enemy_ids())
+	var before:Dictionary=GuildTutorialRulesScript.legacy_state(sim.world.events,hero_id,_sim_enemy_ids()) \
+		if legacy_rules else guild_tutorial_progress()
 	var row:Dictionary={}
 	for value in before.quests:
 		if str(value.quest_id)==quest_id:row=value;break
@@ -701,6 +708,7 @@ func guild_tutorial_command(operation:Dictionary)->Dictionary:
 	var payload:Dictionary={"schema_version":1,"ruleset_id":GuildTutorialRulesScript.RULESET_ID,
 		"campaign_id":GuildTutorialRulesScript.CAMPAIGN_ID,"quest_id":quest_id,
 		"expedition_index":_town_expedition_index(),"protagonist_id":str(hero_id)}
+	if legacy_rules:payload.ruleset_id="guild-tutorial-v1"
 	match action:
 		"ACCEPT":
 			event=world.emit_event(GuildTutorialRulesScript.EVENT_ACCEPTED,hero_id,-1,hero.position,0,-1,payload)
@@ -731,7 +739,9 @@ func guild_tutorial_command(operation:Dictionary)->Dictionary:
 	var state_error:String=world.world_state_error()
 	if not state_error.is_empty():
 		_restore_town_rollback(rollback);return _rejection_dto(state_error)
-	command_journal.append({"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}})
+	var journal_row:Dictionary={"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}}
+	if not legacy_rules:journal_row["ruleset_id"]=GuildTutorialRulesScript.RULESET_ID
+	command_journal.append(journal_row)
 	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"quest_id":quest_id,"action":action,"message":str(messages[action]),
@@ -2376,6 +2386,7 @@ func treat_town_clinic(entity_id:int)->Dictionary:
 		if health_event==null:
 			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
 	var body_changed:=false
+	var tutorial_treated_parts:Array=preload("res://sim/guild_tutorial_events.gd").injured_parts(body)
 	if body!=null:
 		var retained_wounds:Array[Dictionary]=[]
 		for wound_value in body.wounds:
@@ -2400,6 +2411,11 @@ func treat_town_clinic(entity_id:int)->Dictionary:
 				"severed_parts_remain":bool(assessment.get("severed_parts_remain",false))})
 		if body_event==null:
 			_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
+		if not tutorial_treated_parts.is_empty() and preload("res://sim/guild_tutorial_events.gd").enabled(sim.world):
+			var tutorial_event=sim.world.emit_event("guild.tutorial_limb_treated",entity_id,entity_id,entity.position,
+				1,body_event.id,{"part_ids":tutorial_treated_parts.duplicate()})
+			if tutorial_event==null:
+				_restore_town_rollback(rollback);return _rejection_dto("town_clinic_failed")
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
@@ -8343,7 +8359,7 @@ func load_session_json(encoded: String) -> Dictionary:
 		match str(row.kind):
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
-			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation)
+			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation,not row.has("ruleset_id"))
 			"base_work":replay_result=replay.base_work(row.operation)
 			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
@@ -8889,8 +8905,9 @@ func _journal_wire_error(journal: Array) -> String:
 							return "invalid_town_journal"
 					_:return "invalid_town_journal"
 			"guild_tutorial":
-				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+				if keys not in [["kind","operation"],["kind","operation","ruleset_id"]] or not row.get("operation") is Dictionary:
 					return "invalid_guild_tutorial_journal"
+				if row.has("ruleset_id") and row.ruleset_id!=GuildTutorialRulesScript.RULESET_ID:return "invalid_guild_tutorial_journal"
 				var tutorial_keys:Array=row.operation.keys();tutorial_keys.sort()
 				if tutorial_keys!=["action","quest_id"] \
 						or row.operation.get("action") not in ["ACCEPT","SUPPORT","CLAIM"] \

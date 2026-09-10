@@ -216,7 +216,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 				body_injury_context.weapon,int(body_injury_context.raw_damage),
 				int(body_injury_context.armor_flat),str(body_injury_context.commitment_hash),
 				entity.id,damage_event.id)
-		if not bool(injury.get("accepted",false)):
+		if not bool(injury.get("accepted",false)) or not preload("res://sim/guild_tutorial_events.gd").record_injury(world,injury,damage_event):
 			return {"accepted":false,"event":damage_event,
 				"transition_event":transition_event,"death_event":death_event,
 				"status_event":status_event,"applied_health_damage":applied_damage}

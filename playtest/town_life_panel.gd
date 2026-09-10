@@ -87,7 +87,7 @@ func _inn()->void:
 
 func _guild()->void:
 	var tutorial:Dictionary=_view.get("guild_tutorial",{}) if _view.get("guild_tutorial",{}) is Dictionary else {}
-	UI.heading(self,"길드 튜토리얼","원정의 기본을 익히는 다섯 가지 선택형 의뢰")
+	UI.heading(self,"길드 튜토리얼","탐험·성장·부상 관리를 익히는 선택형 의뢰")
 	if not bool(tutorial.get("available",false)):
 		UI.label(self,str(tutorial.get("message",tutorial.get("hint","마을에서만 확인할 수 있습니다."))),14,UI.MUTED)
 		return

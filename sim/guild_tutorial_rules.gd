@@ -2,7 +2,7 @@ class_name GuildTutorialRules
 extends RefCounted
 
 ## Event-derived, campaign-scoped guild tutorial progression.
-const RULESET_ID := "guild-tutorial-v1"
+const RULESET_ID := "guild-tutorial-v2"
 const CAMPAIGN_ID := "GUILD_TUTORIAL_CAMPAIGN_V1"
 const EVENT_ACCEPTED := "town.guild_tutorial_accepted"
 const EVENT_SUPPORT_GRANTED := "town.guild_tutorial_support_granted"
@@ -10,7 +10,8 @@ const EVENT_REWARD_CLAIMED := "town.guild_tutorial_reward_claimed"
 
 const QUEST_IDS := [
 	"GUILD_TUTORIAL_MOVE", "GUILD_TUTORIAL_GUARD", "GUILD_TUTORIAL_HEAL",
-	"GUILD_TUTORIAL_LOOT", "GUILD_TUTORIAL_RETURN"]
+	"GUILD_TUTORIAL_LOOT", "GUILD_TUTORIAL_RETURN", "GUILD_TUTORIAL_BIND",
+	"GUILD_TUTORIAL_SKILL", "GUILD_TUTORIAL_UPGRADE", "GUILD_TUTORIAL_INJURY", "GUILD_TUTORIAL_TREAT"]
 
 static func definitions() -> Array[Dictionary]:
 	var result:Array[Dictionary]=[
@@ -38,6 +39,28 @@ static func definitions() -> Array[Dictionary]:
 			"reward_kind":"ITEM","reward_text":"기본 보급 묶음",
 			"reward_rows":[{"definition_id":"FOOD_RATION","quantity":1},
 				{"definition_id":"POTION_HEALING","quantity":1}]},
+		{"quest_id":"GUILD_TUTORIAL_BIND","title":"내 것이 된 이능",
+			"description":"이능 획득물을 보관한 뒤 효과와 슬롯을 확인하고 자신에게 결속하세요.",
+			"hint":"줍기만으로 완료되지 않습니다. 레벨당 한 칸, 최대 여섯 칸이며 제거는 잠겨 있습니다. 준비되었을 때만 진행하세요.",
+			"reward_kind":"GOLD","reward_text":"금화 20개","gold":20},
+		{"quest_id":"GUILD_TUTORIAL_SKILL","title":"힘을 쓰는 법",
+			"description":"던전에서 자신의 액티브 스킬을 한 번 성공적으로 실행하세요.",
+			"hint":"스킬 버튼을 눌러 대상이나 지점을 선택하세요. 기존 스킬도 인정하며 취소·자원 부족은 인정하지 않습니다.",
+			"reward_kind":"ITEM","reward_text":"회복 물약 1개",
+			"reward_rows":[{"definition_id":"POTION_HEALING","quantity":1}]},
+		{"quest_id":"GUILD_TUTORIAL_UPGRADE","title":"한 단계 나은 무기",
+			"description":"마을에서 재료를 사용해 자신의 무기를 한 번 재제작하세요.",
+			"hint":"재제작 미리보기 후 확정하세요. 장착 교체나 무기 구입만으로는 완료되지 않습니다.",
+			"reward_kind":"GOLD","reward_text":"금화 20개","gold":20},
+		{"quest_id":"GUILD_TUTORIAL_INJURY","title":"상처를 읽는 법",
+			"description":"전투 중 팔이나 다리에 부상이 생기면 부위 상태와 기능 영향을 확인하세요.",
+			"hint":"일부러 다칠 필요 없습니다. 팔 기능 저하는 무기 사용에, 다리 기능 저하는 이동에 영향을 줍니다. 초상화를 길게 눌러 상태를 확인하세요.",
+			"reward_kind":"ITEM","reward_text":"회복 물약 1개",
+			"reward_rows":[{"definition_id":"POTION_HEALING","quantity":1}]},
+		{"quest_id":"GUILD_TUTORIAL_TREAT","title":"팔다리 돌보기",
+			"description":"의뢰 수락 후 전투에서 다친 팔다리를 마을 치유소에서 치료하세요.",
+			"hint":"HP 물약과 부위 치료는 다릅니다. 치유소는 상처와 기능 손상을 치료하지만 절단된 팔다리를 재생하지는 않습니다.",
+			"reward_kind":"GOLD","reward_text":"금화 20개","gold":20},
 	]
 	return result
 
@@ -47,6 +70,9 @@ static func definition(quest_id: String) -> Dictionary:
 	return {}
 
 static func state(events: Array, protagonist_id: int = -1, enemy_ids: Array = []) -> Dictionary:
+	return preload("res://sim/guild_tutorial_index.gd").new().observe(events,protagonist_id,enemy_ids,definitions())
+
+static func legacy_state(events: Array, protagonist_id: int = -1, enemy_ids: Array = []) -> Dictionary:
 	var accepted: Dictionary = {}
 	var claimed: Dictionary = {}
 	var support: Dictionary = {}

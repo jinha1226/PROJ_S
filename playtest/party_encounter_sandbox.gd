@@ -98,6 +98,7 @@ var ration_label:Label
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
+var guild_tutorial_hud:MenuButton
 var info_scroll:ScrollContainer
 var event_surface:PanelContainer
 var event_label:Label
@@ -989,6 +990,12 @@ func _build_ui()->void:
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
 	_build_product_zoom_controls()
 	_build_nearby_npc_card()
+	guild_tutorial_hud=preload("res://playtest/guild_tutorial_hud.gd").new()
+	grid.add_child(guild_tutorial_hud)
+	guild_tutorial_hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	guild_tutorial_hud.offset_left=4;guild_tutorial_hud.offset_right=-4
+	guild_tutorial_hud.offset_top=-48;guild_tutorial_hud.offset_bottom=-4
+	guild_tutorial_hud.z_index=5;guild_tutorial_hud.hide()
 	cards=HBoxContainer.new(); cards.name="PartyCards"; cards.custom_minimum_size.y=160
 	cards.add_theme_constant_override("separation",4); root_layout.add_child(cards)
 	info_scroll=ScrollContainer.new(); info_scroll.name="InformationScroll"; info_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
@@ -1886,6 +1893,8 @@ func _refresh()->void:
 			route_preview.clear();grid.clear_route_overlay();_hide_tile_popover()
 	var presentation:Dictionary=session.presentation_state()
 	var town_active:=str(status.view_mode)=="TOWN"
+	guild_tutorial_hud.present(session.guild_tutorial_progress(),int(session.sim.world.get_instance_id()),
+		str(session.sim.world.party_encounter.expedition_cycle.phase)=="DUNGEON" and not bool(status.terminal))
 	var base_overview_state:Dictionary=session.base_overview() \
 		if session.has_method("base_overview") else {}
 	var base_available:=bool(base_overview_state.get("enabled",false))

@@ -14,7 +14,7 @@ func test_town_board_accepts_without_time_and_is_idempotently_blocked()->bool:
 	var before_time:=int(session.sim.world.world_time)
 	var overview:Dictionary=session.guild_tutorial_overview()
 	check(bool(overview.get("available",false)),"guild tutorial is available in town")
-	check_eq(overview.get("quests",[]).size(),5,"the board exposes five independent quests")
+	check_eq(overview.get("quests",[]).size(),10,"the board exposes ten independent quests")
 	var accepted:Dictionary=session.guild_tutorial_command({"action":"ACCEPT","quest_id":"GUILD_TUTORIAL_MOVE"})
 	check(bool(accepted.get("accepted",false)),"a tutorial quest can be accepted")
 	check_eq(int(session.sim.world.world_time),before_time,"town tutorial clicks consume no world time")
@@ -44,22 +44,34 @@ func test_support_never_duplicates_existing_potion()->bool:
 	check_eq(session.protagonist_inventory(),before,"rejected support does not duplicate items")
 	return finish()
 
+func test_legacy_guild_journal_keeps_original_event_version()->bool:
+	var session=Session.new(4403,20260828,Session.DUO_SCENARIO_ID,"human",true)
+	check(session.town_life_command({"action":"START"}).accepted,"legacy town")
+	check(session.guild_tutorial_command({"action":"ACCEPT","quest_id":"GUILD_TUTORIAL_MOVE"},true).accepted,"legacy acceptance")
+	check(not session.command_journal[-1].has("ruleset_id"),"legacy journal shape")
+	var restored=Session.new();var loaded:Dictionary=restored.load_session_json(session.save_session_json())
+	check(loaded.accepted,"legacy guild journal loads")
+	if loaded.accepted:check_eq(restored.sim.snapshot(),session.sim.snapshot(),"legacy guild snapshot exact")
+	return finish()
+
 func test_event_rules_require_canonical_floor_one_progress()->bool:
 	var hero:=7
 	var accepted_move=_event(1,Rules.EVENT_ACCEPTED,hero,-1,{"campaign_id":Rules.CAMPAIGN_ID,"quest_id":"GUILD_TUTORIAL_MOVE"})
 	var move_events:Array=[accepted_move,
-		_event(2,"action.move",hero,-1,{"from_position":[1,1],"to_position":[2,1]}),
-		_event(3,"action.move",hero,-1,{"from_position":[2,1],"to_position":[3,1]}),
-		_event(4,"action.move",hero,-1,{"from_position":[3,1],"to_position":[4,2]})]
+		_event(2,"town.expedition_departed",hero,-1,{"expedition_index":1,"floor_index":1}),
+		_event(3,"action.move",hero,-1,{"from_position":[1,1],"to_position":[2,1]}),
+		_event(4,"action.move",hero,-1,{"from_position":[2,1],"to_position":[3,1]}),
+		_event(5,"action.move",hero,-1,{"from_position":[3,1],"to_position":[4,2]})]
 	var move_state:Dictionary=Rules.state(move_events,hero,[])
 	check(move_state.quests[0].completed,"three floor-one moves including a diagonal complete the move quest")
 	var guard_events:Array=[_event(1,Rules.EVENT_ACCEPTED,hero,-1,{"campaign_id":Rules.CAMPAIGN_ID,"quest_id":"GUILD_TUTORIAL_GUARD"}),
-		_event(2,"action.hold",hero),_event(3,"action.melee_attack",hero,99,{"outcome":"HIT"})]
+		_event(2,"town.expedition_departed",hero,-1,{"expedition_index":1,"floor_index":1}),
+		_event(3,"action.hold",hero),_event(4,"action.melee_attack",hero,99,{"outcome":"HIT"})]
 	var guard_state:Dictionary=Rules.state(guard_events,hero,[99])
 	check(guard_state.quests[1].completed,"guard requires both hold and a valid enemy hit")
 	var return_events:Array=[_event(1,Rules.EVENT_ACCEPTED,hero,-1,{"campaign_id":Rules.CAMPAIGN_ID,"quest_id":"GUILD_TUTORIAL_RETURN"}),
 		_event(2,"town.expedition_departed",hero,-1,{"expedition_index":4,"floor_index":1}),
-		_event(3,"item.picked_up",hero,-1,{},1),
+		_event(3,"base.resource_gathered",hero,-1,{},1),
 		_event(4,"dungeon.expedition_returned",hero,-1,{"expedition_index":4})]
 	var return_state:Dictionary=Rules.state(return_events,hero,[])
 	check(return_state.quests[4].completed,"return completes only after loot and an actual return in one expedition")
