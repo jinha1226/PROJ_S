@@ -537,8 +537,9 @@ static func actor_equipment_spec(actor:Dictionary)->Dictionary:
 	var armor:Dictionary=ACTOR_ARMOR_VISUALS.get(armor_id,{})
 	var weapon_visible:=not weapon.is_empty()
 	var armor_visible:=not armor.is_empty()
+	var torch_lit:=bool(equipment.get("off_hand_torch_lit",false))
 	return {
-		"visible":weapon_visible or armor_visible,
+		"visible":weapon_visible or armor_visible or torch_lit,
 		"weapon_visible":weapon_visible,"weapon_id":weapon_id,
 		"weapon_family":str(weapon.get("family","UNARMED")),
 		"weapon_glyph":str(weapon.get("glyph","")),
@@ -549,9 +550,10 @@ static func actor_equipment_spec(actor:Dictionary)->Dictionary:
 		"armor_right_glyph":str(armor.get("right_glyph","")),
 		"armor_component":"",
 		"armor_color_hex":str(armor.get("color_hex","#00000000")),
+		"torch_visible":torch_lit,"torch_glyph":"†","torch_color_hex":"#ffd078",
 		"composed_glyph":"",
-		"primitive_count":int(weapon_visible)+2*int(armor_visible),
-		"semantic_component_count":int(weapon_visible)+int(armor_visible),
+		"primitive_count":int(weapon_visible)+2*int(armor_visible)+int(torch_lit),
+		"semantic_component_count":int(weapon_visible)+int(armor_visible)+int(torch_lit),
 		"tile_local":true,"changes_core_glyph":false,
 		"composition_mode":"STATIC_ASCII","draw_image":false,
 	}.duplicate(true)

@@ -39,7 +39,7 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 		profile["base_sight_range"] = member_range
 		profile["peripheral_range"] = mini(int(profile.get("peripheral_range", 0)), member_range)
 		var observation := VisionRulesScript.observe(world, origin, target_position,
-			state.facing, profile)
+			state.facing, profile, VisionRulesScript.lighting_for_world(world))
 		if not bool(observation.get("visible", false)):
 			continue
 		var distance := int(observation.get("distance", _distance(origin, target_position)))

@@ -172,6 +172,8 @@ func _draw_fallback_icon(bounds:Rect2)->void:
 		return
 	if definition_id=="SHIELD_WOOD":
 		_draw_shield(bounds,Color("#b87a38"));return
+	if definition_id=="TORCH":
+		_draw_torch(bounds);return
 	if definition_id.begins_with("POTION"):
 		_draw_potion(bounds,Color("#d94b5b"));return
 	if definition_id=="FOOD_RATION":
@@ -233,6 +235,13 @@ func _draw_shield(bounds:Rect2,tone:Color)->void:
 	draw_colored_polygon(points,tone)
 	draw_polyline(PackedVector2Array([points[0],points[1],points[2],points[3],points[4],points[0]]),
 		tone.lightened(0.35),2.0)
+
+func _draw_torch(bounds:Rect2)->void:
+	var center:=bounds.get_center()
+	draw_line(center+Vector2(0,10),center+Vector2(0,-4),Color("#9b6336"),4.0)
+	draw_rect(Rect2(center+Vector2(-6,-10),Vector2(12,8)),Color("#e9a64b"),true)
+	draw_rect(Rect2(center+Vector2(-4,-15),Vector2(8,7)),Color("#ffe28a"),true)
+	draw_circle(center+Vector2(0,-11),6.0,Color("#ffd078",0.34))
 
 
 func _draw_armor(bounds:Rect2,tone:Color)->void:

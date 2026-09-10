@@ -32,7 +32,8 @@ static func build(world) -> Dictionary:
 				var observation:=VisionRulesScript.observe(world,enemy.position,
 					world.entities[target_id].position,
 					VisionRulesScript.facing_for_entity(world,enemy_id),
-					VisionRulesScript.profile_for_entity(enemy))
+					VisionRulesScript.profile_for_entity(enemy),
+					VisionRulesScript.lighting_for_world(world))
 				if bool(observation.get("visible",false)):
 					visible.append(target_id)
 					target_pressure[target_id].visible_enemy_ids.append(enemy_id)
@@ -82,7 +83,7 @@ static func visible_party_ids(world, enemy_id: int) -> Array[int]:
 	for target_id in deployed_party_ids(world):
 		var observation:=VisionRulesScript.observe(world,enemy.position,
 			world.entities[target_id].position,VisionRulesScript.facing_for_entity(world,enemy_id),
-			VisionRulesScript.profile_for_entity(enemy))
+			VisionRulesScript.profile_for_entity(enemy),VisionRulesScript.lighting_for_world(world))
 		if bool(observation.get("visible",false)):
 			result.append(target_id)
 	result.sort_custom(func(a: int, b: int):

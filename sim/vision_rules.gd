@@ -12,6 +12,7 @@ const DARK_AMBIENT := 120
 const MAX_LIGHT := 1000
 const LIGHT_SOURCE_KEYS := ["position", "brightness", "radius"]
 const LIGHTING_TEST_SCENARIO_ID := "VISION_TEST_LIGHTING_V1"
+const TorchRulesScript = preload("res://sim/torch_rules.gd")
 
 
 static func observe(world, observer_position: Vector2i, target_position: Vector2i,
@@ -109,6 +110,16 @@ static func lighting_for_scenario(scenario_id: String) -> Dictionary:
 			{"position": [4, 2], "brightness": 1000, "radius": 3},
 		]}.duplicate(true)
 	return {"ambient_level": DEFAULT_AMBIENT, "sources": []}
+
+
+static func lighting_for_world(world, scenario_id: String = "") -> Dictionary:
+	var resolved := scenario_id
+	if resolved.is_empty() and world != null:
+		resolved = str(world.vision_scenario_id)
+	var result := lighting_for_scenario(resolved)
+	if world != null:
+		result["sources"] = TorchRulesScript.active_light_sources(world)
+	return result.duplicate(true)
 
 
 static func light_band(value: int) -> String:

@@ -87,6 +87,7 @@ var minimap_open_button:Button
 var recent_event_label:Label
 var record_button:Button
 var hero_detail_button:Button
+var enemy_vision_overlay_button:Button
 var top_hud_actions:HBoxContainer
 var product_menu_button:MenuButton
 var product_bag_button:Button
@@ -143,6 +144,7 @@ var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
 var enemy_vision_overlay_enabled:=false
+var _last_torch_depletion_alert_event_id:=-1
 var town_facility_id:=""
 var town_ui_state:Dictionary={"filter":"ADVENTURERS","resident":-1,"trade":"BUY","owner":-1}
 var selected_base_building_id:="STORAGE"
@@ -629,8 +631,7 @@ func _handle_field_shortcuts(event:InputEvent)->bool:
 	if grid==null or grid.modal_open or member_detail_modal!=null and member_detail_modal.visible:return false
 	if record_modal!=null and record_modal.visible or map_overlay!=null and map_overlay.visible:return false
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_V:
-		enemy_vision_overlay_enabled=!enemy_vision_overlay_enabled
-		_request_refresh()
+		_toggle_enemy_vision_overlay()
 		get_viewport().set_input_as_handled();return true
 	if not session.field_turns_active():return false
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_ESCAPE and not _battle_target_mode.is_empty():
@@ -642,6 +643,11 @@ func _handle_field_shortcuts(event:InputEvent)->bool:
 		if index<ids.size():_on_compact_member_card_pressed(int(ids[index]),"")
 		get_viewport().set_input_as_handled();return true
 	return false
+
+func _toggle_enemy_vision_overlay()->void:
+	# This is a presentation toggle only: it never enters the field action path.
+	enemy_vision_overlay_enabled=!enemy_vision_overlay_enabled
+	_request_refresh()
 
 func _handle_product_control_touch(event:InputEvent)->bool:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
@@ -717,7 +723,7 @@ func _product_control_at_position(global_position:Vector2)->String:
 		product_interact_button,product_attack_button,product_wait_guard_button,
 		product_execute_button,product_bag_button,minimap_open_button,
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
-		history_nav_button])
+		history_nav_button,enemy_vision_overlay_button])
 	if session!=null and session.field_turns_active():
 		if hero_skill_row!=null:controls.append_array(hero_skill_row.find_children("ActorSkill_*","Button",true,false))
 	for control_value in controls:
@@ -736,6 +742,7 @@ func _activate_product_control(control_name:String)->void:
 	if control_name.begins_with("MemberCard"):
 		_on_compact_member_card_pressed(int(control_name.trim_prefix("MemberCard")),"");return
 	match control_name:
+		"EnemyVisionOverlay":_toggle_enemy_vision_overlay()
 		"ProductTactics":_on_product_tactics()
 		"ProductRest":_on_product_rest()
 		"ProductMoveNW":_on_product_direction(Vector2i(-1,-1))
@@ -942,6 +949,14 @@ func _build_ui()->void:
 	hero_detail_button.clip_text=true;hero_detail_button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	hero_detail_button.pressed.connect(_open_hero_detail);top_hud_actions.add_child(hero_detail_button)
 	DarkPixelSkinScript.apply_action_button(hero_detail_button,DarkPixelSkinScript.BRASS)
+	enemy_vision_overlay_button=Button.new();enemy_vision_overlay_button.name="EnemyVisionOverlay"
+	enemy_vision_overlay_button.text="V";enemy_vision_overlay_button.custom_minimum_size=Vector2(44,44)
+	enemy_vision_overlay_button.toggle_mode=true;enemy_vision_overlay_button.focus_mode=Control.FOCUS_NONE
+	enemy_vision_overlay_button.add_theme_font_size_override("font_size",FONT_KEY)
+	enemy_vision_overlay_button.tooltip_text="적 시야 표시 (V) · 시간 진행 없음"
+	enemy_vision_overlay_button.pressed.connect(_toggle_enemy_vision_overlay)
+	top_hud_actions.add_child(enemy_vision_overlay_button)
+	DarkPixelSkinScript.apply_action_button(enemy_vision_overlay_button,DarkPixelSkinScript.BLOOD)
 	product_menu_button=MenuButton.new();product_menu_button.name="ProductMainMenu"
 	product_menu_button.text="☰";product_menu_button.custom_minimum_size=Vector2(44,44)
 	product_menu_button.add_theme_font_size_override("font_size",FONT_COMMAND)
@@ -1840,6 +1855,14 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
+	var torch_status:Variant=status.get("torch",{})
+	if torch_status is Dictionary \
+			and bool(torch_status.get("depleted",false)) \
+			and str(torch_status.get("source_event_type",""))=="torch.ignited" \
+			and int(torch_status.get("last_event_id",-1))!=_last_torch_depletion_alert_event_id:
+		_last_torch_depletion_alert_event_id=int(torch_status.get("last_event_id",-1))
+		notice_text="횃불 연료가 모두 소진되었습니다."
+		action_feedback_text=notice_text
 	_validate_battle_targeting(status)
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
@@ -1900,6 +1923,9 @@ func _refresh()->void:
 	top_hud_actions.custom_minimum_size.x=44 if product_hud else (100 if town_active and session.town_life_enabled() else 132)
 	record_button.visible=not product_hud and not (town_active and session.town_life_enabled())
 	hero_detail_button.visible=not product_hud
+	enemy_vision_overlay_button.visible=product_hud
+	enemy_vision_overlay_button.set_pressed_no_signal(enemy_vision_overlay_enabled)
+	enemy_vision_overlay_button.text="V✓" if enemy_vision_overlay_enabled else "V"
 	var town_header_target:=48 if town_base_active else 44
 	record_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
 	hero_detail_button.custom_minimum_size=Vector2(town_header_target,town_header_target)
@@ -2009,7 +2035,7 @@ func _refresh()->void:
 			if speech is Dictionary:
 				companion_speech_by_actor[int(speech.get("actor_id",-1))]=speech.duplicate(true)
 	_render_party_cards(party_rows,companion_speech_by_actor,card_layout)
-	_render_hero_skill_row(status,product_hud and not town_active and not run_complete)
+	_render_hero_skill_row(status,product_hud and not town_active)
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
 	action_feedback_label.visible=true
@@ -2654,6 +2680,9 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	_clear_container(hero_skill_row)
 	hero_skill_row.visible=visible
 	if not visible:return
+	# Keep the 48px rail on defeat/completion; hide actions, not map geometry.
+	if bool(status.get("terminal",false)) or str(status.get("safe_phase",""))=="PARTY_DEFEATED" \
+			or bool(_current_run_progress().get("complete",false)):return
 	if session.field_turns_active():
 		var members:Array=session.party_cards()
 		for member in members:
@@ -2971,7 +3000,8 @@ func party_card_layout_spec(count:int,viewport_width:float)->Dictionary:
 	var effective_count:=clampi(count,0,SessionScript.ACTIVE_PARTY_LIMIT)
 	if effective_count==0:
 		return {"layout_id":"EMPTY","requested_count":count,"effective_count":0,
-			"party_height":0,"gap":0,"card_min_width":0,
+			# A defeated solo roster can be empty; keep its HUD allocation.
+			"party_height":PRODUCT_PARTY_CARD_HEIGHT if _is_solo_product_session() else 0,"gap":0,"card_min_width":0,
 			"portrait_min_size":[0,0],"portrait_removed":true,"font_size":FONT_AUX}.duplicate(true)
 	var gap:=4
 	var available_width:=maxi(44,int(floor(viewport_width))-12-gap*(effective_count-1))
@@ -5410,6 +5440,8 @@ func _item_stats_text(row:Dictionary)->String:
 			if value!=0:parts.append("%s %s%d"%[str(entry[1]),"+" if value>0 else "",value])
 		if str(row.get("use_kind",""))=="HEALING":
 			parts.append("체력 +%d"%int(row.get("heal_amount",0)))
+		if str(row.get("definition_id",""))=="TORCH":
+			parts.append("연료 %d/%d"%[int(row.get("fuel_remaining",0)),int(row.get("fuel_capacity",0))])
 		lines.append("효과 없음" if parts.is_empty() else " · ".join(parts))
 	var requirement:=str(row.get("requirement_text",""))
 	if not requirement.is_empty():lines.append("요구 능력 · "+requirement)
@@ -5422,7 +5454,10 @@ func _item_description_text(row:Dictionary)->String:
 			if ammo=="ARROW":return "화살을 사용하는 원거리 무기입니다. 거리를 두고 공격할 수 있습니다."
 			if ammo=="BOLT":return "볼트를 사용하는 강력한 원거리 무기입니다. 사격 뒤 재장전이 필요합니다."
 			return "주무기 슬롯에 장착하는 근접 무기입니다."
-		"ARMOR":return "몸을 보호하는 장비입니다. 대응하는 방어 슬롯에 장착됩니다."
+		"ARMOR":
+			if str(row.get("definition_id",""))=="TORCH":
+				return "보조 손에 장착해 주변을 밝히는 횃불입니다. 켜진 동안 게임 시간에 따라 연료가 줄어듭니다."
+			return "몸을 보호하는 장비입니다. 대응하는 방어 슬롯에 장착됩니다."
 		"ACCESSORY":return "능력을 보완하는 장신구입니다. 빈 장신구 슬롯을 우선 사용합니다."
 		"CONSUMABLE":
 			return "사용하면 체력을 회복합니다." if _is_healing_item_row(row) \
@@ -5509,9 +5544,16 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.disabled=not selected_equipped
 	member_item_unequip_button.set_meta("item_instance_id",str(row.get("instance_id","")))
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
-	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
+	var torch_row:=str(row.get("definition_id",""))=="TORCH"
+	member_item_use_button.visible=(not selected_equipped and _is_healing_item_row(row)) \
+		or (torch_row and selected_equipped)
 	member_item_use_button.disabled=not member_item_use_button.visible \
 		or not session.has_method("use_inventory_item")
+	if torch_row and selected_equipped:
+		member_item_use_button.disabled=false
+		member_item_use_button.text="[소화]" if bool(row.get("torch_lit",false)) else "[점화]"
+	else:
+		member_item_use_button.text="사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -5645,6 +5687,17 @@ func _on_item_use_selected()->void:
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
+	var selected:=_selected_item_ledger_row(session.protagonist_inventory())
+	var is_torch:=str(selected.get("definition_id",""))=="TORCH"
+	if is_torch:
+		var method_name:="extinguish_torch" if bool(selected.get("torch_lit",false)) else "ignite_torch"
+		var torch_result:Dictionary=session.call(method_name,member_item_selected_id)
+		if not bool(torch_result.get("accepted",false)):
+			notice_text=str(torch_result.get("message","횃불을 사용할 수 없습니다."))
+			action_feedback_text=notice_text;member_item_popover_compare.text=notice_text
+			member_item_popover_compare.visible=true;_position_item_popover();return
+		notice_text="횃불을 %s했습니다." % ("껐" if method_name=="extinguish_torch" else "켰")
+		action_feedback_text=notice_text;_hide_item_popover();_record_result(torch_result,true);_refresh();return
 	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
@@ -6977,7 +7030,8 @@ func _current_grid_view_dimensions()->Vector2i:
 	var separation:=4 if size.x>=450.0 else 0
 	# HUD, map, event feed, hero skill row, party, command dock: the same stack in
 	# exploration and in a fight, so the map never changes size on contact.
-	var skill_row_height:int=48 if hero_skill_row!=null and hero_skill_row.visible else 0
+	# Projection must not depend on the previous refresh\'s skill visibility.
+	var skill_row_height:int=48
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-skill_row_height-party_height-48
 		-separation*5))

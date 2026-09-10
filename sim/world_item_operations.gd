@@ -121,6 +121,15 @@ static func commit_torch_event(world, entity_id: int, instance_id: String,
 		return _rejected("item_actor_missing")
 	if event_type not in ["torch.ignited", "torch.extinguished"]:
 		return _rejected("unknown_torch_event")
+	if instance_id.is_empty(): return _rejected("torch_item_missing")
+	var owner:Dictionary=world.item_owner(instance_id)
+	if str(owner.get("kind","NONE"))!="ENTITY" \
+			or int(owner.get("entity_id",-1))!=entity_id:
+		return _rejected("torch_item_not_owned")
+	var inventory=world.item_state.inventory(entity_id)
+	var item=inventory._item_ref(instance_id) if inventory!=null else null
+	if item==null or str(item.definition_id)!="TORCH":
+		return _rejected("torch_item_missing")
 	var next = world.item_state.clone()
 	var invariant := _global_invariant_error(world, next)
 	if not invariant.is_empty(): return _rejected(invariant)

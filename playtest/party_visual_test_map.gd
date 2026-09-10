@@ -199,7 +199,7 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 				visible[_key(Vector2i(x, y))] = true
 		return visible
 	return VisionRulesScript.visible_cells(world,origin,facing,profile,
-		VisionRulesScript.lighting_for_scenario(scenario_id))
+		VisionRulesScript.lighting_for_world(world,scenario_id))
 
 
 static func _has_line_of_sight(world, origin: Vector2i, target: Vector2i) -> bool:

@@ -2662,6 +2662,18 @@ func _draw_torch_light_pools()->void:
 	# the warm pool FOV-safe without a texture, shader, or offscreen viewport.
 	if _torch_positions.is_empty() and _fire_light_positions.is_empty():return
 	var now:=Time.get_ticks_msec()
+	# Handheld torches are carried in the actor DTO; their deterministic flicker
+	# is presentation-only and never feeds the shared vision query.
+	for actor in _actors:
+		var equipment:Dictionary=actor.get("equipment_visual",{})
+		if not bool(equipment.get("off_hand_torch_lit",false)):continue
+		var torch_position:=_position_from_actor(actor)
+		if not is_world_cell_visible(torch_position):continue
+		var torch_center:=world_to_pixel_center(torch_position)
+		var torch_radius:=cell_size_px()*2.8
+		var glow:=Color("#f0a64d",0.10)
+		draw_circle(torch_center,torch_radius,glow)
+		draw_circle(torch_center,cell_size_px()*1.15,Color("#ffd078",0.08))
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
@@ -3316,6 +3328,11 @@ func _asciident_actor_render_spec(actor:Dictionary,bounds:Rect2,style:Dictionary
 		"highlight_color":highlight_color,"weapon_center":weapon_center,
 		"weapon_font_size":maxi(7,font_size-1),"opacity":opacity,
 		"weapon_swing":weapon_swing,
+		"torch_visible":bool(style.get("equipment",{}).get("torch_visible",false)),
+		"torch_glyph":str(style.get("equipment",{}).get("torch_glyph","†")),
+		"torch_color_hex":str(style.get("equipment",{}).get("torch_color_hex","#ffd078")),
+		"torch_center":center+Vector2(-bounds.size.x*0.50,-line_step*0.30) \
+			if facing.x>=0 else center+Vector2(bounds.size.x*0.50,-line_step*0.30),
 		"fov_safe":true,"changes_mapping":false},true).duplicate(true)
 
 func _draw_asciident_actor(spec:Dictionary,style:Dictionary)->void:
@@ -3335,6 +3352,11 @@ func _draw_asciident_actor(spec:Dictionary,style:Dictionary)->void:
 		weapon_color.a*=float(spec.get("opacity",1.0))
 		_draw_ascii_glow_text(BoldFont,str(spec.get("weapon_glyph","")),
 			Vector2(spec.weapon_center),int(spec.weapon_font_size),weapon_color,0.22)
+	if bool(spec.get("torch_visible",false)):
+		var torch_color:=Color(str(spec.get("torch_color_hex","#ffd078")))
+		torch_color.a*=float(spec.get("opacity",1.0))
+		_draw_ascii_glow_text(BoldFont,str(spec.get("torch_glyph","†")),
+			Vector2(spec.torch_center),int(spec.weapon_font_size),torch_color,0.30)
 	if bool(style.get("guarded",false)):
 		_draw_ascii_glow_text(BoldFont,"=",Vector2(spec.center)-Vector2(0,line_step*1.72),
 			maxi(7,int(spec.font_size)-1),Color("#74d5ff"),0.18)
