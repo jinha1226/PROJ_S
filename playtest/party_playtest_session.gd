@@ -1105,7 +1105,7 @@ func discard_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DISCARD",instance_id,"")
 
 
-func use_inventory_item(instance_id:String)->Dictionary:
+func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
@@ -1120,7 +1120,7 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		sim.world,sim.world.party_control_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
-	if field_turns_active() and preload("res://sim/living_expedition_rules.gd").expanded_exploration(sim.world):
+	if field_turns_active() and (heal_before_time or preload("res://sim/living_expedition_rules.gd").expanded_exploration(sim.world)):
 		return _use_field_potion(instance_id)
 	# Opening the inventory is allowed to replace a staged combat choice. Keep an
 	# invalid item request non-mutating by clearing the draft only after preview.
@@ -1198,7 +1198,10 @@ func _use_field_potion(instance_id:String)->Dictionary:
 		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(error)
 	while command_journal.size()>journal_size:command_journal.pop_back()
-	command_journal.append({"kind":"item","operation":{"action":"USE","instance_id":instance_id,"slot":""}})
+	var operation:Dictionary={"action":"USE","instance_id":instance_id,"slot":""}
+	# Existing saves can use the corrected order without rewriting their past.
+	if not preload("res://sim/living_expedition_rules.gd").expanded_exploration(sim.world):operation["heal_before_time"]=true
+	command_journal.append({"kind":"item","operation":operation})
 	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
 	var ids:Array=[]
 	for index in range(start,sim.world.events.size()):ids.append(sim.world.events[index].id)
@@ -6609,7 +6612,10 @@ func commit_field_action(action)->Dictionary:
 		var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,result.time_cost) \
 			if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
 		if recovery.accepted and not recovery.get("events",[]).is_empty():
-			var recovery_error:String=sim.world.world_state_error()
+			# The step already audited mutable state. Recovery adds only its HP/MP
+			# tail; do not replay the entire combat history every 300 time units.
+			# Full history validation remains mandatory at load/save boundaries.
+			var recovery_error:String=sim.world.runtime_step_postcondition_error(event_start)
 			if not recovery_error.is_empty():recovery={"accepted":false,"reason":recovery_error}
 		if not recovery.accepted:
 			sim.restore_rollback_memento(rollback)
@@ -7207,9 +7213,7 @@ func _affinity_toward_protagonist(entity_id:int)->Dictionary:
 	if relation.is_empty():return {}
 	# This is a presentation score only. Canonical recruitment continues to use
 	# its explicit species, memory, personality and keyed-roll terms.
-	var score:=clampi(50+int(int(relation.get("trust",0))/2)
-		-int(int(relation.get("fear",0))/3)-int(int(relation.get("hostility",0))/2)
-		+int(int(relation.get("gratitude",0))/2)-int(int(relation.get("grievance",0))/2),0,100)
+	var score:=preload("res://playtest/relationship_log_index.gd").score(relation)
 	var label:="매우 높음" if score>=75 else ("높음" if score>=60 else (
 		"보통" if score>=40 else ("낮음" if score>=25 else "경계")))
 	return {"score":score,"label":label,"trust":int(relation.get("trust",0)),
@@ -7434,25 +7438,41 @@ func _inspect_rescue_candidate(entity_id: int) -> Dictionary:
 		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
 
 
+var _log_world_id:=-1
+var _log_cursor:=0
+var _log_tail=null
+var _log_events:Array=[]
+var _relationship_log=preload("res://playtest/relationship_log_index.gd").new()
+
+func _indexed_log_events()->Array:
+	var world=sim.world
+	# Rollback/load can replace a tail without changing the event count.
+	if _log_world_id!=world.get_instance_id() or _log_cursor>world.events.size() \
+			or _log_cursor>0 and world.events[_log_cursor-1]!=_log_tail:
+		_log_world_id=world.get_instance_id();_log_cursor=0;_log_events.clear()
+		_relationship_log=preload("res://playtest/relationship_log_index.gd").new()
+	for index in range(_log_cursor,world.events.size()):
+		var event=world.events[index]
+		_relationship_log.append(world,event)
+		if _is_important_log_event(event):_log_events.append(event)
+	_log_cursor=world.events.size()
+	_log_tail=world.events[-1] if _log_cursor>0 else null
+	return _log_events
+
 func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 	var checked_turn_limit := clampi(turn_limit,0,64)
 	var checked_row_limit := clampi(row_limit,0,500)
-	var important_events:Array=[]
-	for event in sim.world.events:
-		if _is_important_log_event(event):important_events.append(event)
+	var important_events:Array=_indexed_log_events()
 	var selected_steps: Array = []
+	var selected_events: Array = []
 	if checked_turn_limit > 0 and checked_row_limit > 0:
 		for index in range(important_events.size()-1,-1,-1):
 			var step_index := int(important_events[index].step_index)
 			if not selected_steps.has(step_index):
+				if selected_steps.size()>=checked_turn_limit:break
 				selected_steps.append(step_index)
-				if selected_steps.size() >= checked_turn_limit: break
-	selected_steps.sort()
-	var selected_events: Array = []
-	for event in important_events:
-		if selected_steps.has(int(event.step_index)): selected_events.append(event)
-	if selected_events.size() > checked_row_limit:
-		selected_events = selected_events.slice(selected_events.size()-checked_row_limit)
+			selected_events.push_front(important_events[index])
+			if selected_events.size()>=checked_row_limit:break
 	var groups_by_step: Dictionary = {}
 	var ordered_steps: Array = []
 	for event in selected_events:
@@ -7474,9 +7494,7 @@ func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	var important_events:Array=[]
-	for event in sim.world.events:
-		if _is_important_log_event(event):important_events.append(event)
+	var important_events:Array=_indexed_log_events()
 	var start := maxi(0,important_events.size()-clampi(limit,0,100))
 	for index in range(start,important_events.size()):
 		var event=important_events[index]
@@ -7506,7 +7524,7 @@ func _is_important_log_event(event)->bool:
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
 			"opening.health_restored","opening.reencountered",
-			"relationship.gratitude_recorded","growth.enemy_reward",
+			"relationship.gratitude_recorded","relationship.aid_recorded","relationship.harm_recorded","growth.enemy_reward",
 			"growth.stat_spent","growth.species_point_spent",
 			"growth.mutation_swapped"]:
 		return true
@@ -7913,7 +7931,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					"UNEQUIP":replay_result=replay.unequip_inventory_slot(str(item_operation.slot))
 					"DROP":replay_result=replay.drop_inventory_item(str(item_operation.instance_id))
 					"DISCARD":replay_result=replay.discard_inventory_item(str(item_operation.instance_id))
-					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id))
+					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -8267,6 +8285,10 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_item_journal"
 				var item_keys:Array=row.operation.keys();item_keys.sort()
+				if item_keys.has("heal_before_time"):
+					if row.operation.get("action")!="USE" or not row.operation.heal_before_time is bool \
+							or not row.operation.heal_before_time:return "invalid_item_journal"
+					item_keys.erase("heal_before_time")
 				if item_keys!=["action","instance_id","slot"] \
 						or not row.operation.action is String \
 					or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE"] \
@@ -9325,6 +9347,9 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 	return "요청을 처리할 수 없습니다. 상태를 확인하고 다시 시도하세요."
 
 func _event_message(event) -> String:
+	if event.type in preload("res://playtest/relationship_log_index.gd").TYPES:
+		_indexed_log_events()
+		return str(_relationship_log.suffixes.get(event.id,"")).trim_prefix(" · ")
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
 		"town.guild_candidates_arrived":return "길드 게시판에 새로운 동료 후보 %d명이 도착했다."%int(event.magnitude)

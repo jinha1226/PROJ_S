@@ -52,9 +52,8 @@ const TOUCH_TARGET:=44
 # Field-first product shell: compact fixed rails leave the remaining rectangle
 # to the dungeon camera instead of reserving a square map plus dead flex space.
 const PRODUCT_TOP_HUD_HEIGHT:=48
-# Galmuri's Korean baseline needs 32 content pixels for two complete 11 px
-# event rows. The dark pixel surface contributes four pixels of inner framing.
-const PRODUCT_EVENT_HEIGHT:=48
+# Three Korean-font baselines plus dark panel padding.
+const PRODUCT_EVENT_HEIGHT:=66
 const PRODUCT_PARTY_CARD_HEIGHT:=72
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
@@ -117,6 +116,7 @@ var _product_rest_generation:=0
 var _product_rest_due_msec:=-1
 var _product_rest_last_health:=-1
 var _product_rest_idle_waits:=0
+var _product_rest_started_time:=0
 const PRODUCT_REST_CADENCE_MSEC:=90
 const PRODUCT_REST_IDLE_LIMIT:=16
 var product_execute_button:Button
@@ -985,10 +985,9 @@ func _build_ui()->void:
 	event_margin.add_theme_constant_override("margin_left",6);event_margin.add_theme_constant_override("margin_right",100)
 	event_surface.add_child(event_margin)
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	# Two real combat rows must fit the fixed 36/38px event surface. The bundled
-	# Korean font needs the micro size for two complete baselines in that budget.
+	# Reserve three complete Korean-font baselines, including panel padding.
 	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=3
-	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=42
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=54
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
@@ -1907,7 +1906,7 @@ func _refresh()->void:
 	# SOLO keeps one continuous dungeon surface: the situation word stays a hidden
 	# authority for tests/legacy while the rail centre names the floor and return.
 	phase_label.visible=not product_hud
-	event_surface.visible=product_hud
+	event_surface.visible=product_hud or town_active and session.town_life_enabled()
 	# Keep the requested status/build/equipment/history access at the foot. The
 	# miniature map already opens from the top HUD, so its duplicate footer button
 	# remains hidden and the four useful destinations each receive a wider target.
@@ -2025,11 +2024,11 @@ func _refresh()->void:
 	var combat_history:Dictionary=session.combat_log(8,80)
 	log_label.text=_combat_log_text(combat_history)
 	log_label.visible=not product_hud and _narrative_log_visible and not (town_active and session.town_life_enabled())
-	log_label.max_lines_visible=1 if combat_active else 3
+	log_label.max_lines_visible=3
 	deck.visible=not product_hud and (not _narrative_log_visible or (town_active and session.town_life_enabled()))
-	if product_hud:
-		event_label.text=_town_summary_text(status) if str(status.view_mode)=="TOWN" \
-			else _compact_meaningful_event_text(combat_history,status)
+	if event_surface.visible:
+		event_label.text=_compact_meaningful_event_text(combat_history,status)
+		if event_label.text.is_empty() and str(status.view_mode)=="TOWN":event_label.text=_town_summary_text(status)
 		if not _product_transient_event_feedback.is_empty():
 			event_label.text=_product_transient_event_feedback
 			_product_transient_event_feedback=""
@@ -4032,10 +4031,6 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var portal_choice:=bool(anchor_portal.get("can_activate",false))
 	var floor_transition:Dictionary=session.floor_transition_assessment() \
 		if session.has_method("floor_transition_assessment") else {}
-	var gather:Dictionary=session.base_gather_assessment() \
-		if session.has_method("base_gather_assessment") else {}
-	var gather_context:bool=bool(gather.get("accepted",false)) \
-		or not str(gather.get("resource_id","")).is_empty()
 	var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
 	if opening_choice:
 		if event_label!=null:
@@ -4066,11 +4061,6 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_interact_button.text="[돕지 않기]"
 		product_interact_button.disabled=not bool(opening.get("pass_enabled",false))
 		product_interact_button.tooltip_text="여행자를 돕지 않고 원정을 계속합니다."
-	elif gather_context and mode=="EXPLORATION":
-		var amount:=maxi(1,int(gather.get("amount",1)))
-		product_interact_button.text="[채집 %d]"%amount
-		product_interact_button.disabled=terminal or not bool(gather.get("accepted",false))
-		product_interact_button.tooltip_text=str(gather.get("message","표시된 자원 더미를 채집합니다."))
 	elif mode=="EXPLORATION" and not session.battle_loot().rows.is_empty():
 		product_interact_button.text="전리품";product_interact_button.disabled=false
 		product_interact_button.tooltip_text="지난 전투에서 남겨둔 전리품을 확인합니다."
@@ -4382,16 +4372,6 @@ func _on_product_interact()->void:
 		_show_product_command_feedback("여행자를 돕지 않기로 했습니다." \
 			if bool(result.get("accepted",false)) else str(result.get("message","선택할 수 없습니다.")))
 		_request_refresh();return
-	if session.has_method("base_gather_assessment"):
-		var assessment:Dictionary=session.base_gather_assessment()
-		if bool(assessment.get("accepted",false)):
-			_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
-			var gather_result:Dictionary=session.base_gather()
-			_record_result(gather_result,true)
-			_show_product_command_feedback(str(gather_result.get("message",
-				"자원을 운반 물자에 담았습니다." if bool(gather_result.get(
-					"accepted",false)) else "자원을 채집할 수 없습니다.")))
-			_request_refresh();return
 
 func _on_product_rest()->void:
 	if _product_rest_active:_cancel_product_rest("rest_user_stop");return
@@ -4404,6 +4384,7 @@ func _on_product_rest()->void:
 	if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
 		_cancel_active_route()
 	_product_rest_active=true;_product_rest_generation+=1
+	_product_rest_started_time=session.sim.world.world_time
 	_product_rest_due_msec=Time.get_ticks_msec()
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
 	notice_text="휴식 중 · 파티 HP·MP가 다 차면 멈춥니다";action_feedback_text=notice_text
@@ -4459,7 +4440,10 @@ func _continue_product_rest(expected_generation:int)->void:
 		var before:int=_party_health_total()
 		var energy_before:=_party_energy_total()
 		var result:Dictionary=session.commit_exploration_direction(Vector2i.ZERO)
-		if not bool(result.get("accepted",false)):stop_reason="rest_interrupted"
+		if not bool(result.get("accepted",false)):
+			_cancel_product_rest("rest_interrupted")
+			notice_text="휴식 중단 · "+str(result.get("message",result.get("reason","행동 실패")))
+			action_feedback_text=notice_text;_product_auto_stop_feedback=notice_text;_request_refresh();return
 		else:
 			_record_result(result,true)
 			var after:int=_party_health_total()
@@ -4476,7 +4460,7 @@ func _continue_product_rest(expected_generation:int)->void:
 	var world=session.sim.world;var hero=world.entities.get(int(status.protagonist_id))
 	if hero!=null:
 		var member=session.sim.world.party_encounter.member(int(status.protagonist_id))
-		notice_text="휴식 중 · HP %d/%d · MP %d/%d"%[int(hero.health),int(hero.max_health),member.energy,member.max_energy]
+		notice_text="휴식 %d시간 · HP %d/%d · MP %d/%d"%[world.world_time-_product_rest_started_time,int(hero.health),int(hero.max_health),member.energy,member.max_energy]
 		action_feedback_text=notice_text
 	_refresh_continuous_exploration_surface(session.party_status())
 
@@ -4490,6 +4474,7 @@ func _cancel_product_rest(reason:String)->void:
 		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
 	if reason=="rest_no_progress":notice_text="HP·MP 회복 중단 · "+_rest_block_detail()
 	action_feedback_text=notice_text
+	_product_auto_stop_feedback=notice_text
 	_request_refresh()
 
 func _on_product_wait_guard()->void:
@@ -5654,7 +5639,10 @@ func _on_item_use_selected()->void:
 	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
-		action_feedback_text=notice_text;_request_refresh();return
+		action_feedback_text=notice_text
+		member_item_popover_compare.text=notice_text
+		member_item_popover_compare.visible=true
+		_position_item_popover();return
 	var healed:=int(result.get("healed_amount",0))
 	notice_text="회복 물약 사용 · HP +%d"%healed
 	action_feedback_text=notice_text
@@ -6851,6 +6839,7 @@ func _combat_log_text(history:Dictionary)->String:
 func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
 	var groups:Variant=history.get("groups",[])
 	var collected:Array[String]=[]
+	if _product_rest_active:collected.append(notice_text)
 	if groups is Array:
 		for group_index in range(groups.size()-1,-1,-1):
 			if collected.size()>=3:break
@@ -7267,7 +7256,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 			else (Vector2(316,316) if run_available else Vector2(348,348))
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
-	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT if product_hud else (38 if wide else 36)
+	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT
 	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 

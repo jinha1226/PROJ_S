@@ -126,6 +126,7 @@ var _floor_enemy_scope_cache:Dictionary={}
 var _expected_body_identity_cache:Dictionary={}
 var _item_rows_cache:Dictionary={}
 var _rollback_tile_terrain_cache := PackedStringArray()
+var _shallow_water_positions:Array[Vector2i]=[]
 # Fire/wetness occupy only a handful of cells in the product dungeon. Keep a
 # canonical sparse index after the audited bootstrap/restore boundary so live
 # turns and rollback capture do not rescan every one of the 96x96 tiles.
@@ -1133,6 +1134,17 @@ func dynamic_tile_positions() -> Array[Vector2i]:
 		positions.append(Vector2i(index % width, index / width))
 	return positions
 
+func explorer_hazard_positions()->Dictionary:
+	# Static water follows the existing topology invalidation; mutable fire and
+	# wetness use the same sparse producer index as rollback and validation.
+	_ensure_rollback_tile_static_cache()
+	var positions:Dictionary={}
+	for p in _shallow_water_positions:positions[p]=true
+	for p in dynamic_tile_positions():
+		var tile=tile_at(p)
+		if tile.fire>0 or tile.wetness>0:positions[p]=true
+	return positions
+
 
 func track_dynamic_tile(position: Vector2i) -> void:
 	if not _dynamic_tile_index_ready or not in_bounds(position): return
@@ -1221,9 +1233,11 @@ func _ensure_rollback_tile_static_cache() -> void:
 	if _rollback_tile_terrain_cache.size() == tiles.size():
 		return
 	_rollback_tile_terrain_cache.resize(tiles.size())
+	_shallow_water_positions.clear()
 	for tile_index in range(tiles.size()):
 		var tile = tiles[tile_index]
 		_rollback_tile_terrain_cache[tile_index] = str(tile.terrain)
+		if str(tile.terrain)=="shallow_water":_shallow_water_positions.append(Vector2i(tile_index%width,tile_index/width))
 
 
 func rollback_memento_is_current(value: Variant) -> bool:
@@ -3559,8 +3573,13 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 	if not bool(boundary_projection.ok):
 		return {"ok":false, "position":Vector2i(-1, -1)}
 	var attack=event_by_id(first_action_id)
-	if attack!=null and str(attack.data.get("batch_context","")).begins_with("FIELD_ACTOR/"):
-		return boundary_projection
+	if attack!=null:
+		var context:=str(attack.data.get("batch_context",""))
+		# Independent NPC strikes are sequential too: another actor may already
+		# have moved at this timestamp. Rewinding that move invents an out-of-range
+		# past attack, poisoning later full validation (potions/recovery/save).
+		if context.begins_with("FIELD_ACTOR/") or context.begins_with("INDEPENDENT/"):
+			return boundary_projection
 	var boundary_position: Vector2i = boundary_projection.position
 	var frozen_position := boundary_position
 	for index in range(_event_index(first_action_id) - 1, -1, -1):

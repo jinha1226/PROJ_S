@@ -52,6 +52,8 @@ jobs:
           ./godot --headless --path . --script tests/solo_start_acceptance.gd
           ./godot --headless --path . --script tests/attack_button_acceptance.gd
           ./godot --headless --path . --script tests/solo_gameplay_acceptance.gd
+          ./godot --headless --path . --script tests/solo_gameplay_acceptance.gd -- --legacy-input
+          ./godot --headless --path . --script tests/feedback_and_routing_acceptance.gd
           ./godot --headless --path . --script tests/eight_way_visual_acceptance.gd
           ./godot --headless --path . --script tests/town_resident_motion_acceptance.gd
           ./godot --headless --path . --script tests/portrait_skills_acceptance.gd

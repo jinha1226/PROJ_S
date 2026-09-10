@@ -221,6 +221,7 @@ static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictio
 	return cost
 
 static func _safe_occupancy_projection(world,actor_id:int)->Dictionary:
+	var started:=preload("res://sim/perf_probe.gd").begin()
 	# Non-empty projections replace real occupancy, so copy all blockers too.
 	var result:Dictionary={}
 	for entity_id_value in world.entities.keys():
@@ -228,12 +229,9 @@ static func _safe_occupancy_projection(world,actor_id:int)->Dictionary:
 		if entity_id==actor_id or not world.occupies_tile(entity_id):continue
 		var entity=world.entities.get(entity_id)
 		if entity!=null:result["%d:%d"%[entity.position.x,entity.position.y]]=entity_id
-	for y in range(world.height):
-		for x in range(world.width):
-			var tile=world.tile_at(Vector2i(x,y))
-			if tile.fire>0 or tile.wetness>0 or str(tile.terrain)=="shallow_water":
-				result["%d:%d"%[x,y]]=-2
+	for p in world.explorer_hazard_positions():result["%d:%d"%[p.x,p.y]]=-2
 	if result.is_empty():result["safe-routing"]=-2
+	preload("res://sim/perf_probe.gd").end("npc.routing_projection",started)
 	return result
 
 static func _nearest_enemy(sim,position:Vector2i)->Dictionary:

@@ -14,6 +14,12 @@ func tap(button:Control,jitter:float=0):
 	if jitter>0:
 		var drag=InputEventScreenDrag.new();drag.index=0;drag.position=p+Vector2(jitter,0);root.push_input(drag,true)
 	event.pressed=false;event.position=p+Vector2(jitter,0);root.push_input(event,true)
+func click(button:Control):
+	var p:=button.get_global_rect().get_center()
+	var motion=InputEventMouseMotion.new();motion.position=p;root.push_input(motion,true)
+	var event=InputEventMouseButton.new();event.button_index=MOUSE_BUTTON_LEFT;event.position=p
+	event.pressed=true;root.push_input(event,true)
+	event.pressed=false;root.push_input(event,true)
 func replay(s,label:String):
 	var loaded=Session.new();var result:Dictionary=loaded.load_session_json(s.save_session_json())
 	check(result.accepted,label+" loads: "+str(result.get("reason","")))
@@ -22,6 +28,8 @@ func run():
 	root.size=Vector2i(390,800);root.content_scale_size=root.size
 	var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	check(s.start_new_run_with_species("human",true,true).accepted,"living bootstrap")
+	var legacy_input:= "--legacy-input" in OS.get_cmdline_user_args()
+	if legacy_input:check(s.reset_party(44,20260828,Session.DUO_SCENARIO_ID,{},false,"human",true,true,true,true,true,true,false),"old save input fixture")
 	check(s.town_life_command({"action":"START"}).accepted,"start in town")
 	check(s.depart_town().accepted,"depart alone")
 	var hero:int=s.sim.world.party_control_actor_id()
@@ -31,7 +39,7 @@ func run():
 		var anchor:=Vector2i(visitor.anchor[0],visitor.anchor[1])
 		for goal in visitor.get("goals",[]):
 			if anchor.distance_to(Vector2i(goal[0],goal[1]))>=8:far_goals+=1
-	check(far_goals>0,"NPC destinations extend beyond entry patrol")
+	if not legacy_input:check(far_goals>0,"NPC destinations extend beyond entry patrol")
 	var ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(s,true);root.add_child(ui);ui.set_process(false)
 	for i in range(4):await process_frame
 	ui._open_member_detail(hero,"ITEM")
@@ -46,9 +54,10 @@ func run():
 	for i in range(4):await process_frame
 	tap(ui.product_rest_button,12)
 	check(ui._product_rest_active,"real rest tap starts continuous macro with jitter")
-	for i in range(30):
-		if not ui._product_rest_active:break
-		ui._continue_product_rest(ui._product_rest_generation)
+	ui.set_process(true)
+	var rest_deadline:=Time.get_ticks_msec()+15000
+	while ui._product_rest_active and Time.get_ticks_msec()<rest_deadline:await process_frame
+	ui.set_process(false)
 	check(s.sim.world.party_encounter.member(hero).energy==12,"rest restores full MP: "+ui.notice_text)
 	check(not ui._product_rest_active,"rest ends at full resources")
 	var card=ui.cards.find_child("MemberCard%d"%hero,true,false)
@@ -93,10 +102,16 @@ func run():
 	check(s.sim.world.entities[hero].health<s.sim.world.entities[hero].max_health,"fixture takes damage")
 	ui._open_member_detail(hero,"ITEM")
 	for i in range(4):await process_frame
-	ui._on_item_row_selected("START_POTION_001","")
+	var potion_slot=ui._find_item_row_button("START_POTION_001","")
+	check(potion_slot!=null and potion_slot.is_visible_in_tree(),"potion bag slot visible")
+	if potion_slot!=null:
+		ui.member_detail_scroll.ensure_control_visible(potion_slot)
+		for i in range(3):await process_frame
+		click(potion_slot)
 	for i in range(4):await process_frame
+	check(ui.member_item_popover.visible and ui.member_item_use_button.is_visible_in_tree(),"real bag click opens potion use")
 	var quantity:int=s.sim.world.item_state.inventory(hero).item("START_POTION_001").quantity
-	tap(ui.member_item_use_button,16)
+	click(ui.member_item_use_button)
 	check(s.sim.world.item_state.inventory(hero).item("START_POTION_001").quantity==quantity-1,"potion touch consumes once: "+ui.notice_text)
 	check(s.sim.world.world_state_error().is_empty(),"potion world valid: "+s.sim.world.world_state_error())
 	replay(s,"potion before enemy response")

@@ -7,6 +7,9 @@ const MIN_PASSABLE_MOVE_COST := 100
 
 var world
 var movement
+var _cell_cache:Dictionary={}
+var _occupant_cache:Dictionary={}
+var _search_active:=false
 
 
 func _init(p_world, p_movement = null) -> void:
@@ -15,6 +18,15 @@ func _init(p_world, p_movement = null) -> void:
 
 
 func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary = {}) -> Dictionary:
+	var started:=preload("res://sim/perf_probe.gd").begin()
+	_cell_cache.clear();_occupant_cache.clear()
+	_search_active=true
+	var result:=_find_path(actor_id,goal,occupancy_projection)
+	_search_active=false
+	preload("res://sim/perf_probe.gd").end("path.single",started)
+	return result
+
+func _find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary = {}) -> Dictionary:
 	if not world.entities.has(actor_id) or not world.can_act(actor_id, world.world_time):
 		return _failure("actor_not_found")
 	if not world.in_bounds(goal):
@@ -76,6 +88,15 @@ func find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary =
 
 
 func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
+	var started:=preload("res://sim/perf_probe.gd").begin()
+	_cell_cache.clear();_occupant_cache.clear()
+	_search_active=true
+	var result:=_find_path_to_any(actor_id,goals,occupancy_projection)
+	_search_active=false
+	preload("res://sim/perf_probe.gd").end("path.multigoal",started)
+	return result
+
+func _find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
 	if not world.entities.has(actor_id) or not world.can_act(actor_id, world.world_time):
 		return _failure("actor_not_found")
 	var start: Vector2i = world.entities[actor_id].position
@@ -125,7 +146,7 @@ func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Diction
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
 	if not world.in_bounds(to):
 		return false
-	var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(to).terrain)
+	var definition: Dictionary = _cell_definition(to)
 	if definition.is_empty() or not bool(definition.get("passable", false)) or _occupant(to, actor_id, projection) != -1:
 		return false
 	var delta := to - from
@@ -136,7 +157,7 @@ func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictiona
 			for flank in [from + Vector2i(delta.x, 0), from + Vector2i(0, delta.y)]:
 				if not world.in_bounds(flank):
 					continue
-				var flank_def: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(flank).terrain)
+				var flank_def: Dictionary = _cell_definition(flank)
 				if flank_def.is_empty() or not bool(flank_def.get("passable", false)):
 					continue
 				if _occupant(flank, actor_id, projection) != -1:return false
@@ -144,11 +165,24 @@ func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictiona
 
 
 func _occupant(position: Vector2i, actor_id: int, projection: Dictionary) -> int:
+	# Search is synchronous: occupancy is immutable until this call returns.
+	# Many parents inspect the same cell and diagonal flanks repeatedly.
+	if _search_active and _occupant_cache.has(position):return int(_occupant_cache[position])
+	var occupant:=-1
 	if not projection.is_empty():
 		var value: Variant = projection.get(_key(position), -1)
-		return int(value) if value is int and int(value) != actor_id else -1
-	var blocker = world.blocking_entity_at(position, actor_id)
-	return blocker.id if blocker != null else -1
+		occupant=int(value) if value is int and int(value) != actor_id else -1
+	else:
+		var blocker = world.blocking_entity_at(position, actor_id)
+		occupant=blocker.id if blocker != null else -1
+	if _search_active:_occupant_cache[position]=occupant
+	return occupant
+
+func _cell_definition(position:Vector2i)->Dictionary:
+	if not _search_active:return TerrainRegistryScript.definition_view(world.tile_at(position).terrain)
+	if not _cell_cache.has(position):
+		_cell_cache[position]=TerrainRegistryScript.definition_view(world.tile_at(position).terrain)
+	return _cell_cache[position]
 
 
 func _line_drift(start: Vector2i, goal: Vector2i, position: Vector2i) -> int:
