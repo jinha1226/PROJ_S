@@ -664,8 +664,8 @@ func _awareness_move_forecast(enemy_id:int,awareness,rejected:Dictionary)->Dicti
 	var target:Vector2i=awareness.home_position if awareness.awareness_state=="RETURNING" \
 		else awareness.last_known_target_position
 	if target==Vector2i(-1,-1) or enemy.position==target:
-		if awareness.awareness_state=="RETURNING":
-			awareness.awareness_state="UNAWARE";awareness.suspicion=0
+		# The cadence awareness update owns state transitions and emits the
+		# canonical enemy.awareness_changed event. Do not silently reset here.
 		return {}
 	var goals:Array=[]
 	var blocker=world.blocking_entity_at(target,enemy_id)

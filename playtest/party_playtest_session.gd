@@ -3437,6 +3437,61 @@ func vision_debug_observation() -> Dictionary:
 		"lighting": lighting, "cells": rows}.duplicate(true)
 
 
+func enemy_vision_overlay() -> Dictionary:
+	# Stage-2 development/user projection. Only enemies whose current cell is in
+	# the player's authoritative visible set are eligible; the returned cells are
+	# then the intersection of that set and the enemy's common vision query.
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {"available": false, "reason": "session_not_initialized", "rows": []}
+	var world = sim.world
+	var observer_id: int = world.party_control_actor_id()
+	if not world.entities.has(observer_id):
+		return {"available": false, "reason": "observer_missing", "rows": []}
+	var observer = world.entities[observer_id]
+	var player_visible: Dictionary = _presentation_visible_cells(observer.position)
+	player_visible[_position_key(observer.position)] = true
+	var candidates: Array[int] = []
+	for enemy_id_value in _current_floor_enemy_ids():
+		var enemy_id := int(enemy_id_value)
+		if not world.entities.has(enemy_id) or not world.is_unresolved_enemy(enemy_id):
+			continue
+		var enemy = world.entities[enemy_id]
+		if player_visible.has(_position_key(enemy.position)):
+			candidates.append(enemy_id)
+	candidates.sort()
+	var lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var rows: Array[Dictionary] = []
+	for enemy_id in candidates:
+		var enemy = world.entities[enemy_id]
+		var profile: Dictionary = VisionRulesScript.profile_for_entity(enemy)
+		var facing: Vector2i = VisionRulesScript.facing_for_entity(world, enemy_id)
+		var cells: Array[Dictionary] = []
+		var sight_radius := int(profile.get("base_sight_range", 0))
+		for y in range(maxi(0, enemy.position.y - sight_radius),
+				mini(world.height, enemy.position.y + sight_radius + 1)):
+			for x in range(maxi(0, enemy.position.x - sight_radius),
+					mini(world.width, enemy.position.x + sight_radius + 1)):
+				var position := Vector2i(x, y)
+				if not player_visible.has(_position_key(position)):
+					continue
+				var result: Dictionary = VisionRulesScript.observe(world, enemy.position,
+					position, facing, profile, lighting)
+				if not bool(result.get("visible", false)):
+					continue
+				cells.append({"position": [x, y],
+					"identification_strength": int(result.get("identification_strength", 0)),
+					"identified": bool(result.get("identified", false)),
+					"target_light_band": str(result.get("target_light_band", "DARK"))})
+		var awareness = world.party_encounter.enemy_awareness(enemy_id)
+		rows.append({"enemy_id": enemy_id, "enemy_position": [enemy.position.x, enemy.position.y],
+			"species_id": str(enemy.species_id), "facing": [facing.x, facing.y],
+			"awareness_state": str(awareness.awareness_state) if awareness != null else "UNAWARE",
+			"cells": cells})
+	return {"available": true, "development_only": true, "schema_version": 1,
+		"ruleset_id": VisionRulesScript.RULESET_ID, "scenario_id": scenario_id,
+		"observer_id": observer_id, "rows": rows}.duplicate(true)
+
+
 func observe_minimap()->Dictionary:
 	var context:=_party_observation_context()
 	return {} if context.is_empty() else _party_minimap_observation(context)

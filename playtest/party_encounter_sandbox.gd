@@ -142,6 +142,7 @@ var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
+var enemy_vision_overlay_enabled:=false
 var town_facility_id:=""
 var town_ui_state:Dictionary={"filter":"ADVENTURERS","resident":-1,"trade":"BUY","owner":-1}
 var selected_base_building_id:="STORAGE"
@@ -624,9 +625,14 @@ func _item_row_at_position(global_position:Vector2)->Dictionary:
 	return {}
 
 func _handle_field_shortcuts(event:InputEvent)->bool:
-	if session==null or not session.field_turns_active():return false
+	if session==null:return false
 	if grid==null or grid.modal_open or member_detail_modal!=null and member_detail_modal.visible:return false
 	if record_modal!=null and record_modal.visible or map_overlay!=null and map_overlay.visible:return false
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_V:
+		enemy_vision_overlay_enabled=!enemy_vision_overlay_enabled
+		_request_refresh()
+		get_viewport().set_input_as_handled();return true
+	if not session.field_turns_active():return false
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_ESCAPE and not _battle_target_mode.is_empty():
 		_cancel_battle_targeting();_request_refresh()
 		get_viewport().set_input_as_handled();return true
@@ -1953,6 +1959,9 @@ func _refresh()->void:
 	var intent_overlays:Array=session.turn_intent_overlays() \
 		if not run_complete and (session.field_turns_active() or combat_active and not direct_solo_combat) else []
 	grid.set_observation(observation,ghosts)
+	var enemy_vision:Dictionary=session.enemy_vision_overlay() \
+		if enemy_vision_overlay_enabled else {"rows":[]}
+	grid.set_enemy_vision_overlay(enemy_vision.get("rows",[]))
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_expedition_hud(product_hud,status)
 	_update_nearby_npc_card(observation,status,product_hud)

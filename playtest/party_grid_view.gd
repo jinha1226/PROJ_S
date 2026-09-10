@@ -65,6 +65,7 @@ var _actors: Array[Dictionary] = []
 var _ghosts: Array[Dictionary] = []
 var _intent_overlays: Array[Dictionary] = []
 var _secondary_intent_overlays: Array[Dictionary] = []
+var _enemy_vision_overlays: Array[Dictionary] = []
 var _route_path: Array[Vector2i] = []
 var _skill_reach_cells: Array[Vector2i] = []
 var _skill_reach_target := "ENEMY"
@@ -1018,6 +1019,17 @@ func set_intent_overlays(rows: Array) -> void:
 		next_intents.append(copy)
 	if _intent_overlays==next_intents and _secondary_intent_overlays==next_secondary:return
 	_intent_overlays=next_intents;_secondary_intent_overlays=next_secondary
+	queue_redraw()
+
+
+func set_enemy_vision_overlay(rows: Array) -> void:
+	var next: Array[Dictionary] = []
+	for raw in rows:
+		if raw is Dictionary:
+			next.append(raw.duplicate(true))
+	if next == _enemy_vision_overlays:
+		return
+	_enemy_vision_overlays = next
 	queue_redraw()
 
 
@@ -2332,6 +2344,7 @@ func _draw_world_with_emphasis()->void:
 	_draw_ground_features()
 	_draw_ground_marks()
 	_draw_ground_hazards()
+	_draw_enemy_vision_overlays()
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_skill_reach_cells()
@@ -2974,6 +2987,33 @@ func _draw_ground_hazards()->void:
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y);var spec:=diorama_hazard_draw_spec(position)
 			if bool(spec.get("visible",false)):_draw_ground_hazard(world_cell_rect(position),spec)
+
+
+func _draw_enemy_vision_overlays() -> void:
+	var state_colors := {
+		"UNAWARE": "#7f8b99", "SUSPICIOUS": "#e4bd61", "ALERT": "#ff9d52",
+		"HUNTING": "#ff5964", "SEARCHING": "#c47bd9", "RETURNING": "#8da4d7"}
+	for row in _enemy_vision_overlays:
+		var state := str(row.get("awareness_state", "UNAWARE"))
+		var color := Color(str(state_colors.get(state, "#ff5964")))
+		for raw_cell in row.get("cells", []):
+			if not raw_cell is Dictionary:
+				continue
+			var position := _array_to_world_position(raw_cell.get("position", []))
+			if not _cell_allows_overlay(position):
+				continue
+			var strength := clampf(float(raw_cell.get("identification_strength", 0)) / 1000.0,
+				0.0, 1.0)
+			var alpha := 0.045 + 0.105 * strength
+			if state in ["ALERT", "HUNTING"]:
+				alpha += 0.025
+			var fill := color
+			fill.a = alpha
+			var rect := world_cell_rect(position).grow(-maxf(1.0, cell_size_px() * 0.08))
+			draw_rect(rect, fill, true)
+			var border := color
+			border.a = minf(0.58, alpha + 0.18)
+			draw_rect(rect, border, false, maxf(1.0, cell_size_px() * 0.035))
 
 func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 	if not uses_perspective_projection():
