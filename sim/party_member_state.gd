@@ -11,6 +11,7 @@ const EmotionStateScript = preload("res://sim/party_emotion_state.gd")
 const MemoryStateScript = preload("res://sim/party_memory_state.gd")
 const SkillLoadoutScript=preload("res://sim/abilities/party_skill_loadout.gd")
 const ActiveSkillRegistryScript=preload("res://sim/abilities/active_skill_registry.gd")
+const AbilityBindingRulesScript=preload("res://sim/abilities/ability_binding_rules.gd")
 const MAX_WORLD_TIME := 9223372036854775707
 
 var entity_id: int
@@ -25,6 +26,7 @@ var emotion_state
 var memory_state
 var skill_loadout_id: String
 var energy: int
+var bound_ability_ids:Array[String]=[]
 const DEFAULT_ACTION_SPEEDS:={"MOVE":100,"ATTACK":100,"CAST":100}
 var action_speeds:Dictionary=DEFAULT_ACTION_SPEEDS.duplicate()
 var max_energy: int:
@@ -59,7 +61,8 @@ func refill_energy() -> bool:
 	return true
 
 func to_dict(include_emotion_state: bool = true,
-		include_memory_state: bool = true,include_active_skills:bool=true) -> Dictionary:
+		include_memory_state: bool = true,include_active_skills:bool=true,
+		include_ability_bindings:bool=true) -> Dictionary:
 	var row := {"entity_id": str(entity_id), "roster_slot": roster_slot, "role": role,
 		"presence": presence, "busy_until": str(busy_until), "stress": stress,
 		"mental_mode": mental_mode,
@@ -71,6 +74,8 @@ func to_dict(include_emotion_state: bool = true,
 	if include_active_skills:
 		row["skill_loadout_id"] = skill_loadout_id
 		row["energy"] = energy
+	if include_ability_bindings:
+		row["bound_ability_ids"] = bound_ability_ids.duplicate()
 	if action_speeds!=DEFAULT_ACTION_SPEEDS:row["action_speeds"]=action_speeds.duplicate()
 	return row
 
@@ -96,13 +101,17 @@ static func from_dict(row: Dictionary):
 	state.skill_loadout_id=str(row.get("skill_loadout_id",
 		"VANGUARD_V1" if state.role=="PROTAGONIST" else "SUPPORT_V1"))
 	state.energy=int(row.get("energy",DEFAULT_MAX_ENERGY))
+	state.bound_ability_ids.clear()
+	for ability_id in row.get("bound_ability_ids",[]):
+		state.bound_ability_ids.append(AbilityBindingRulesScript.canonical_id(str(ability_id)))
 	state.action_speeds=row.get("action_speeds",DEFAULT_ACTION_SPEEDS).duplicate()
 	for channel in state.action_speeds:state.action_speeds[channel]=int(state.action_speeds[channel])
 	return state
 
 static func wire_error(row: Variant, require_mental_mode: bool = true,
 		require_hexaco: bool = true, require_emotion_state: bool = true,
-		require_memory_state: bool = true, require_active_skills: bool = true) -> String:
+		require_memory_state: bool = true, require_active_skills: bool = true,
+		require_ability_bindings: bool = true) -> String:
 	if not row is Dictionary: return "invalid_party_member_shape"
 	var keys: Array = row.keys(); keys.sort()
 	var expected := ["busy_until", "entity_id", "mental_mode", "personality_profile",
@@ -115,6 +124,8 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		expected.append("memory_state")
 	if require_active_skills:
 		expected.append_array(["energy","skill_loadout_id"])
+	if require_ability_bindings:
+		expected.append("bound_ability_ids")
 	if row.has("action_speeds"):
 		expected.append("action_speeds")
 		if not row.action_speeds is Dictionary:return "invalid_action_speeds"
@@ -151,6 +162,10 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 				or not _integer(row.get("energy")) or int(row.energy)<0 \
 				or int(row.energy)>DEFAULT_MAX_ENERGY:
 			return "invalid_party_active_skill_state"
+	if require_ability_bindings:
+		var binding_error:=AbilityBindingRulesScript.binding_ids_error(
+			row.get("bound_ability_ids"))
+		if not binding_error.is_empty():return binding_error
 	if row.role == "PROTAGONIST":
 		if row.personality_profile != null: return "protagonist_personality_forbidden"
 	else:

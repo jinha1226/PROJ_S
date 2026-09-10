@@ -4999,6 +4999,10 @@ func _finish_companion_order_edit()->void:
 	auto_override_edit=false
 	_request_refresh()
 
+func _bind_member_ability(instance_id:String,actor_id:int)->Dictionary:
+	return session.bind_ability_item(actor_id,instance_id)
+
+
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if auto_orchestration_enabled:_cancel_auto_pending(false)
 	_product_attack_targeting=false
@@ -5023,7 +5027,9 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
-	member_ability_window.configure(member_id,session.active_skill_rows(member_id))
+	member_ability_window.configure(member_id,session.ability_binding_rows(member_id),
+		session.ability_binding_item_rows(member_id),
+		Callable(self,"_bind_member_ability").bind(member_id))
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
 	var skill_summary:Variant=detail.get("skill_summary",{})
@@ -5131,7 +5137,7 @@ func _apply_member_detail_tab()->void:
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
 	var skill_tab_label:="이능"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
-	member_detail_skill_tab.tooltip_text="이능 6칸 장착 미리보기 · 전투 적용/저장 없음"
+	member_detail_skill_tab.tooltip_text="이능 6칸 결속 · 아이템 소비 후 저장"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)

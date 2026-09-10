@@ -43,10 +43,11 @@ func run()->void:
 	ui._open_member_detail(ally,"SKILL");await settle()
 	check(ui.member_detail_skill_tab.text.contains("이능"),"ability tab replaces mastery label")
 	var mock=ui.member_ability_window
-	check(mock.visible and mock.slot_grid.get_child_count()==6 and mock.slot_grid.columns==2,"six-slot two-column in-game mockup")
+	check(mock.visible and mock.slot_grid.get_child_count()==6 and mock.slot_grid.columns==2,"six-slot two-column in-game ability panel")
 	var before:Dictionary=session.sim.snapshot()
-	mock._select(4);mock._equip(mock.owned.back());mock._toggle_mode()
-	check(session.sim.snapshot()==before,"mock equipment never changes real character")
+	check(mock.item_rows.is_empty(),"fixture has no stored ability item")
+	check(mock.remove_button.disabled,"removal is locked until its policy is defined")
+	check(session.sim.snapshot()==before,"ability panel inspection never changes real character")
 	check(mock.get_global_rect().end.x<=390,"mock fits mobile width")
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw

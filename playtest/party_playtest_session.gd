@@ -59,6 +59,8 @@ const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const ItemOperationsScript=preload("res://sim/world_item_operations.gd")
 const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const ItemRewardRulesScript=preload("res://sim/item_reward_rules.gd")
+const AbilityBindingRulesScript=preload("res://sim/abilities/ability_binding_rules.gd")
+const InventoryOperationsScript=preload("res://sim/item_inventory_operations.gd")
 const RecoveryRulesScript=preload("res://sim/exploration_recovery_rules.gd")
 const DeterministicDungeonMapScript=preload("res://playtest/deterministic_dungeon_map.gd")
 const OpeningEventStateScript=preload("res://sim/opening_event_state.gd")
@@ -2587,22 +2589,161 @@ func monster_ability_rows()->Array[Dictionary]:
 	return monster_ability_acquisition_rows()
 
 
-func ability_absorption_assessment(instance_id:String)->Dictionary:
-	if sim==null or sim.world==null:return _rejection_dto("session_not_initialized")
-	var item=sim.world.ground_item(instance_id)
-	if item==null:
-		var hero_id:=int(sim.world.party_control_actor_id())
-		var inventory=sim.world.inventory_of(hero_id)
-		item=inventory.item(instance_id) if inventory!=null else null
+func ability_binding_level(actor_id:int)->int:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return 1
+	var state=sim.world.party_encounter
+	if actor_id==int(state.protagonist_id) and state.protagonist_progression!=null:
+		return ProgressionRegistryScript.level_for_xp(
+			int(state.protagonist_progression.xp_total))
+	# Companion level progression is not yet an independent authority. Keep its
+	# safe baseline at level 1 rather than deriving a level from unrelated combat.
+	return 1
+
+
+func ability_binding_rows(actor_id:int)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
+	var member=sim.world.party_encounter.member(actor_id)
+	if member==null:return rows
+	var level:=ability_binding_level(actor_id)
+	var limit:=AbilityBindingRulesScript.slot_limit(level)
+	for slot_index in range(AbilityBindingRulesScript.MAX_SLOTS):
+		if slot_index<member.bound_ability_ids.size():
+			var ability_id:=str(member.bound_ability_ids[slot_index])
+			var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
+			preview.merge({"slot_index":slot_index,"state":"BOUND",
+				"unlock_level":slot_index+1,"removable":false},true)
+			rows.append(preview)
+		elif slot_index>=limit:
+			rows.append({"slot_index":slot_index,"state":"LOCKED",
+				"unlock_level":slot_index+1,"ability_id":"","label":"잠금",
+				"removable":false})
+		else:
+			rows.append({"slot_index":slot_index,"state":"EMPTY",
+				"unlock_level":slot_index+1,"ability_id":"","label":"빈 슬롯",
+				"removable":false})
+	return rows.duplicate(true)
+
+
+func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null:return rows
+	var inventory=sim.world.inventory_of(actor_id)
+	if inventory==null:return rows
+	for item in inventory.backpack:
+		var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
+		if ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id):continue
+		var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
+		rows.append({"instance_id":str(item.instance_id),
+			"definition_id":str(item.definition_id),"quantity":int(item.quantity),
+			"ability_id":ability_id,"label":str(preview.get("label",ability_id)),
+			"effect_preview":preview})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):
+		return str(a.instance_id)<str(b.instance_id))
+	return rows.duplicate(true)
+
+
+func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	var member=state.member(actor_id)
+	if member==null or actor_id not in state.party_member_ids:
+		return _rejection_dto("ability_binding_actor_missing")
+	if member.presence in ["DEFEATED","EXILED","RECRUITABLE"] \
+			or sim.world.combatant_states.get(actor_id)==null \
+			or sim.world.combatant_states[actor_id].life_state!="ACTIVE":
+		return _rejection_dto("ability_binding_actor_unavailable")
+	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"]:
+		return _rejection_dto("ability_binding_unsafe_phase")
+	var inventory=sim.world.inventory_of(actor_id)
+	if inventory==null:return _rejection_dto("ability_binding_inventory_missing")
+	var item=inventory.item(instance_id)
 	if item==null:return _rejection_dto("ability_item_missing")
+	if instance_id in inventory.equipped.values():
+		return _rejection_dto("ability_binding_equipped_item")
 	var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
-	if ability_id.is_empty():return _rejection_dto("not_ability_item")
-	return _rejection_dto("ability_absorption_unavailable",null,null,{
-		"instance_id":instance_id,"ability_id":ability_id,"can_absorb":false})
+	if ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id):
+		return _rejection_dto("not_ability_item")
+	ability_id=AbilityBindingRulesScript.canonical_id(ability_id)
+	var level:=ability_binding_level(actor_id)
+	var limit:=AbilityBindingRulesScript.slot_limit(level)
+	var bound:Array=member.bound_ability_ids.duplicate()
+	if ability_id in bound:
+		return _rejection_dto("ability_already_bound",null,null,{
+			"actor_id":actor_id,"ability_id":ability_id,"level":level,
+			"current_slots":bound.size(),"max_slots":limit})
+	if bound.size()>=limit:
+		return _rejection_dto("ability_binding_slots_full",null,null,{
+			"actor_id":actor_id,"ability_id":ability_id,"level":level,
+			"current_slots":bound.size(),"max_slots":limit})
+	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
+		"instance_id":instance_id,"ability_id":ability_id,"level":level,
+		"current_slots":bound.size(),"max_slots":limit,"slot_index":bound.size(),
+		"effect_preview":AbilityBindingRulesScript.effect_preview(ability_id),
+		"consumes_item":true})
+
+
+func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
+	var assessment:=ability_binding_assessment(actor_id,instance_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Variant=sim.snapshot()
+	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var next=sim.world.item_state.clone()
+	var removed:=InventoryOperationsScript.commit_discard(next.inventory(actor_id),instance_id)
+	if not bool(removed.get("accepted",false)):
+		return _rejection_dto(str(removed.get("reason","ability_binding_item_failed")))
+	next.inventory_rows[actor_id]=removed.inventory
+	next.revision=int(sim.world.item_state.revision)+1
+	var member=sim.world.party_encounter.member(actor_id)
+	member.bound_ability_ids.append(str(assessment.ability_id))
+	member.bound_ability_ids.sort()
+	var position:Vector2i=sim.world.entities[actor_id].position
+	var event=sim.world.emit_event("party.ability_bound",actor_id,actor_id,position,1,-1,{
+		"schema_version":1,"ruleset_id":AbilityBindingRulesScript.RULESET_ID,
+		"ability_id":str(assessment.ability_id),"instance_id":instance_id,
+		"slot_index":int(assessment.slot_index)})
+	if event==null:
+		_restore_town_rollback(rollback)
+		return _rejection_dto("ability_binding_event_failed")
+	sim.world.item_state=next
+	sim.world.party_encounter.revision+=1
+	var state_error:String=sim.world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback)
+		return _rejection_dto(state_error)
+	command_journal.append({"kind":"ability","operation":{"action":"BIND",
+		"actor_id":str(actor_id),"instance_id":instance_id,
+		"ability_id":str(assessment.ability_id)}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"actor_id":actor_id,"instance_id":instance_id,
+		"ability_id":str(assessment.ability_id),"slot_index":int(assessment.slot_index),
+		"bindings":ability_binding_rows(actor_id)})
+
+
+func ability_removal_assessment(actor_id:int,slot_index:int)->Dictionary:
+	return _rejection_dto("ability_removal_policy_undefined",null,null,{
+		"actor_id":actor_id,"slot_index":slot_index,
+		"removal_policy":AbilityBindingRulesScript.REMOVAL_POLICY})
+
+
+func remove_bound_ability(actor_id:int,slot_index:int)->Dictionary:
+	return ability_removal_assessment(actor_id,slot_index)
+
+
+func ability_absorption_assessment(instance_id:String)->Dictionary:
+	var actor_id:=int(sim.world.party_control_actor_id()) \
+		if sim!=null and sim.world!=null else -1
+	var result:=ability_binding_assessment(actor_id,instance_id)
+	if bool(result.get("accepted",false)):return result
+	return result
 
 
 func absorb_ability_item(instance_id:String)->Dictionary:
-	return ability_absorption_assessment(instance_id)
+	var actor_id:=int(sim.world.party_control_actor_id()) \
+		if sim!=null and sim.world!=null else -1
+	return bind_ability_item(actor_id,instance_id)
 
 
 func town_weapon_recraft_assessment(instance_id:String)->Dictionary:
@@ -7807,6 +7948,8 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
 		"skill_summary":_member_skill_summary(entity_id),
+		"ability_bindings":ability_binding_rows(entity_id),
+		"ability_items":ability_binding_item_rows(entity_id),
 		"personal_talent":preload("res://sim/personal_talent_rules.gd").for_entity(entity),
 		"body_state":_member_body_presentation(entity_id),
 		"personality_profile":personality_profile,"personality_available":personality_profile != null,
@@ -8127,6 +8270,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			and int(raw_party.get("schema_version",0))==PartyStateScript.ACTIVE_SKILL_SCHEMA_VERSION:
 		raw_party["legacy_contact_rule"]=true
 		raw_party["schema_version"]=PartyStateScript.CONTACT_RULE_SCHEMA_VERSION
+	# v24 had no character-bound ability state. Start old saves with empty
+	# bindings; no ability is inferred or auto-equipped during migration.
+	if raw_party is Dictionary \
+			and int(raw_party.get("schema_version",0))==PartyStateScript.CONTACT_RULE_SCHEMA_VERSION:
+		for member_row_value in raw_party.get("member_rows",[]):
+			if member_row_value is Dictionary and not member_row_value.has("bound_ability_ids"):
+				member_row_value["bound_ability_ids"]=[]
+		raw_party["schema_version"]=PartyStateScript.ABILITY_BINDING_SCHEMA_VERSION
 	if not raw_party is Dictionary \
 			or int(raw_party.get("schema_version",0))!=PartyStateScript.SCHEMA_VERSION \
 			or not raw_party.get("protagonist_growth") is Dictionary \
@@ -8417,6 +8568,11 @@ func load_session_json(encoded: String) -> Dictionary:
 					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)))
 					"TORCH_IGNITE":replay_result=replay.ignite_torch(str(item_operation.instance_id))
 					"TORCH_EXTINGUISH":replay_result=replay.extinguish_torch(str(item_operation.instance_id))
+			"ability":
+				var ability_operation:Dictionary=row.operation
+				replay_result=replay.bind_ability_item(
+					Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),
+					str(ability_operation.instance_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -8783,6 +8939,22 @@ func _journal_wire_error(journal: Array) -> String:
 						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE","TORCH_IGNITE","TORCH_EXTINGUISH"] \
 						or not row.operation.instance_id is String or not row.operation.slot is String:
 					return "invalid_item_journal"
+			"ability":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_ability_journal"
+				var ability_keys:Array=row.operation.keys();ability_keys.sort()
+				var ability_id:=AbilityBindingRulesScript.canonical_id(
+					str(row.operation.get("ability_id","")))
+				if ability_keys!=["ability_id","action","actor_id","instance_id"] \
+						or row.operation.action!="BIND" \
+						or not Int64CodecScript.is_canonical(row.operation.actor_id) \
+						or Int64CodecScript.parse(row.operation.actor_id,"ability actor")<=0 \
+						or not row.operation.instance_id is String \
+						or str(row.operation.instance_id).is_empty() \
+						or not row.operation.ability_id is String \
+						or str(row.operation.ability_id)!=ability_id \
+						or not AbilityBindingRulesScript.has(ability_id):
+					return "invalid_ability_journal"
 			"equipment":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_equipment_journal"
@@ -9647,6 +9819,15 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
 		"ability_item_missing":"흡수할 이능 획득물을 찾을 수 없습니다.",
 		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
+		"ability_binding_actor_missing":"결속할 캐릭터를 찾을 수 없습니다.",
+		"ability_binding_actor_unavailable":"현재 결속할 수 없는 상태의 캐릭터입니다.",
+		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 이능을 결속할 수 있습니다.",
+		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
+		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",
+		"ability_already_bound":"이미 결속한 이능입니다. 효과가 중첩되지 않습니다.",
+		"ability_binding_slots_full":"열린 이능 슬롯이 가득 찼습니다.",
+		"ability_binding_event_failed":"이능 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
+		"ability_removal_policy_undefined":"이능 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
 		"ability_absorption_unavailable":"이능 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
 		"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
 			"turn_draft_active":"준비 중인 전투 행동을 취소한 뒤 다시 시도하세요.",
@@ -9882,6 +10063,8 @@ func _event_message(event) -> String:
 				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
 					"severed_parts_remain",false)) else ""]
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
+		"party.ability_bound":return "%s가 %s을(를) 결속했다."%[
+			_subject(actor),str(event.data.get("ability_id","이능"))]
 		"party.morale_changed":
 			match _morale_band_change(event):
 				"PANIC":return "%s 공황에 빠졌다."%_subject(actor)

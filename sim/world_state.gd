@@ -90,6 +90,7 @@ const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry
 const EnemyPerceptionRegistryScript=preload("res://sim/enemy_perception_registry.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const ActiveSkillValidationScript=preload("res://sim/abilities/party_active_skill_validation.gd")
+const AbilityBindingRulesScript=preload("res://sim/abilities/ability_binding_rules.gd")
 
 var width: int
 var height: int
@@ -2005,6 +2006,45 @@ func _corpse_drop_history_error() -> String:
 	return ""
 
 
+func _ability_binding_history_error() -> String:
+	if party_encounter == null:
+		return ""
+	var expected:Dictionary={}
+	var seen_items:Dictionary={}
+	for member_id in party_encounter.party_member_ids:
+		expected[int(member_id)]=[]
+	for event in events:
+		if event.type!="party.ability_bound":continue
+		var keys:Array=event.data.keys();keys.sort()
+		if keys!=["ability_id","instance_id","ruleset_id","schema_version","slot_index"] \
+				or event.actor_id!=event.target_id or event.cause_id!=-1 \
+				or event.magnitude!=1 or event.data.schema_version!=1 \
+				or event.data.ruleset_id!=AbilityBindingRulesScript.RULESET_ID \
+				or not event.data.ability_id is String \
+				or not event.data.instance_id is String \
+				or not event.data.slot_index is int \
+				or not expected.has(event.target_id):
+			return "ability_binding_event_shape_invalid"
+		var ability_id:=AbilityBindingRulesScript.canonical_id(str(event.data.ability_id))
+		if ability_id!=str(event.data.ability_id) or not AbilityBindingRulesScript.has(ability_id):
+			return "ability_binding_event_ability_invalid"
+		var instance_id:=str(event.data.instance_id)
+		if instance_id.is_empty() or seen_items.has(instance_id) \
+				or int(event.data.slot_index)!=expected[event.target_id].size():
+			return "ability_binding_event_transition_invalid"
+		if str(item_owner(instance_id).kind)!="NONE":
+			return "ability_binding_item_not_consumed"
+		expected[event.target_id].append(ability_id)
+		seen_items[instance_id]=true
+	for member_id in expected:
+		var projected:Array=expected[member_id].duplicate()
+		projected.sort()
+		var member=party_encounter.member(int(member_id))
+		if member==null or projected!=member.bound_ability_ids:
+			return "ability_binding_projection_mismatch"
+	return ""
+
+
 func runtime_step_postcondition_error(event_start: int) -> String:
 	# A live world begins at a fully-audited reset/load/restore boundary. During a
 	# normal step, all mutation goes through checked systems and emit_event();
@@ -2637,6 +2677,8 @@ func _restored_state_error() -> String:
 				return "event_entity_reference_invalid"
 	var corpse_drop_history_error := _corpse_drop_history_error()
 	if not corpse_drop_history_error.is_empty(): return corpse_drop_history_error
+	var ability_binding_history_error := _ability_binding_history_error()
+	if not ability_binding_history_error.is_empty(): return ability_binding_history_error
 	var miss_history_error := _canonical_miss_history_error()
 	if not miss_history_error.is_empty(): return miss_history_error
 	var hit_history_error := _canonical_hit_history_error()
