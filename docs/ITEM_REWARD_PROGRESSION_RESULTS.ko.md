@@ -2,7 +2,7 @@
 
 - 기준 commit: `e55672d`
 - 결과 상태: 구현 및 집중 검증 완료
-- 결과 commit: 이 문서가 포함된 구현 커밋(최종 hash는 `git log -1`로 확인)
+- 구현 commit: `9c64064` (`fix: align item rewards with split progression scope`)
 
 ## 구현 결과
 
