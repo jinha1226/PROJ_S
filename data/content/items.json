@@ -30,6 +30,18 @@
       "placeholder": false
     },
     {
+      "definition_id": "WEAPON_SHORT_SWORD_IRON",
+      "label": "철 단검",
+      "category": "WEAPON",
+      "stack_limit": 1,
+      "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "SHORT_SWORD_IRON",
+      "requirements":{"STR":0,"DEX":4,"INT":0},
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
       "definition_id": "WEAPON_HAND_AXE",
       "label": "손도끼",
       "category": "WEAPON",
@@ -126,6 +138,18 @@
       "placeholder": false
     },
     {
+      "definition_id": "TORCH",
+      "label": "횃불",
+      "category": "ARMOR",
+      "stack_limit": 1,
+      "equip_slots": ["OFF_HAND"],
+      "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
       "definition_id": "POTION_HEALING",
       "label": "회복 물약",
       "category": "CONSUMABLE",
@@ -212,6 +236,18 @@
     {
       "definition_id": "MAGIC_STONE",
       "label": "마석",
+      "category": "MATERIAL",
+      "stack_limit": 20,
+      "equip_slots": [],
+      "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
+      "definition_id": "MATERIAL_IRON_INGOT",
+      "label": "철 주괴",
       "category": "MATERIAL",
       "stack_limit": 20,
       "equip_slots": [],

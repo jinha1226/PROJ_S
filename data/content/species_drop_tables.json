@@ -2,7 +2,7 @@
   "content_schema_version": 1,
   "content_version": "2026-09-09",
   "content_type": "SPECIES_DROP_TABLES",
-  "ruleset_id": "species-drops-v1",
+  "ruleset_id": "species-drops-v2",
   "tables": [
     {
       "species_id": "goblin",
@@ -20,6 +20,24 @@
           "chance_per_1000": 300,
           "min_quantity": 1,
           "max_quantity": 1
+        }
+      ],
+      "reward_rows": [
+        {
+          "reward_id": "GOBLIN_FIREBOLT_ABILITY",
+          "reward_family": "MONSTER_ABILITY",
+          "definition_id": "",
+          "ability_id": "FIREBOLT",
+          "amount": 1,
+          "chance_per_1000": 1000
+        },
+        {
+          "reward_id": "GOBLIN_GOLD_POUCH",
+          "reward_family": "CURRENCY",
+          "definition_id": "",
+          "ability_id": "",
+          "amount": 12,
+          "chance_per_1000": 1000
         }
       ]
     }

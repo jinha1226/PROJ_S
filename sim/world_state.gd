@@ -54,6 +54,7 @@ const WorldItemStateScript = preload("res://sim/world_item_state.gd")
 const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
 const ActorLoadoutRegistryScript = preload("res://sim/actor_loadout_registry.gd")
 const SpeciesDropRegistryScript = preload("res://sim/species_drop_registry.gd")
+const WeaponRecraftRegistryScript = preload("res://sim/weapon_recraft_registry.gd")
 const CorpseLootSystemScript = preload("res://sim/systems/corpse_loot_system.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
 const InventoryStateScript = preload("res://sim/inventory_state.gd")
@@ -94,6 +95,9 @@ var width: int
 var height: int
 var step_index: int = 0
 var world_time: int = 0
+# Presentation/session context only. It is deliberately not part of the save
+# wire; PartyPlaytestSession restores the scenario identity after loading.
+var vision_scenario_id: String = ""
 var seed: int
 var rng: RandomNumberGenerator
 var tiles: Array = []
@@ -1900,9 +1904,13 @@ func _corpse_drop_history_error() -> String:
 	for event in events:
 		if event.type != "corpse.loot_materialized": continue
 		var keys: Array = event.data.keys(); keys.sort()
-		if keys != ["generated_items", "ruleset_id", "schema_version",
-				"source_death_event_id"] or event.data.get("schema_version") != 1 \
-				or event.data.get("ruleset_id") != SpeciesDropRegistryScript.RULESET_ID \
+		var legacy_drop_event:bool=event.data.get("ruleset_id") == SpeciesDropRegistryScript.LEGACY_RULESET_ID
+		var expected_keys:Array=["generated_items","ruleset_id","schema_version",
+			"source_death_event_id"] if legacy_drop_event else ["generated_items","reward_rows",
+			"ruleset_id","schema_version","source_death_event_id"]
+		if keys != expected_keys or event.data.get("schema_version") != 1 \
+				or (event.data.get("ruleset_id") not in [SpeciesDropRegistryScript.RULESET_ID,
+				SpeciesDropRegistryScript.LEGACY_RULESET_ID]) \
 				or not Int64CodecScript.is_canonical(event.data.get("source_death_event_id")) \
 				or not event.data.get("generated_items") is Array:
 			return "corpse_drop_event_shape_invalid"
@@ -1918,7 +1926,7 @@ func _corpse_drop_history_error() -> String:
 		var corpse = entities.get(death.target_id)
 		if corpse == null: return "corpse_drop_event_source_invalid"
 		var expected_rolls := SpeciesDropRegistryScript.rolls_for(seed, death_id,
-			str(corpse.species_id))
+			str(corpse.species_id),str(event.data.ruleset_id))
 		var actual_rolls: Array = []
 		var previous_instance_id := ""
 		var total_quantity := 0
@@ -1941,6 +1949,10 @@ func _corpse_drop_history_error() -> String:
 			total_quantity += int(generated.quantity)
 		if actual_rolls != expected_rolls or event.magnitude != total_quantity:
 			return "corpse_drop_roll_mismatch"
+		if not legacy_drop_event:
+			var expected_rewards:=SpeciesDropRegistryScript.rewards_for(seed,death_id,
+				str(corpse.species_id))
+			if event.data.reward_rows!=expected_rewards:return "corpse_reward_mismatch"
 		materialized_by_death[death_id] = true
 	for event in events:
 		if event.type != "entity.died": continue
@@ -2087,6 +2099,8 @@ func _restored_state_error() -> String:
 	if not actor_loadout_registry_error.is_empty(): return actor_loadout_registry_error
 	var species_drop_registry_error := SpeciesDropRegistryScript.registry_error()
 	if not species_drop_registry_error.is_empty(): return species_drop_registry_error
+	var weapon_recraft_registry_error := WeaponRecraftRegistryScript.registry_error()
+	if not weapon_recraft_registry_error.is_empty(): return weapon_recraft_registry_error
 	var ration_rules_registry_error := PartyRationRulesScript.registry_error()
 	if not ration_rules_registry_error.is_empty(): return ration_rules_registry_error
 	var body_registry_error:=BodyTemplateRegistryScript.registry_error()

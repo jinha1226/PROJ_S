@@ -46,6 +46,9 @@ const GroundItemScript=preload("res://sim/ground_item_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const ItemOperationsScript=preload("res://sim/world_item_operations.gd")
+const TorchRulesScript=preload("res://sim/torch_rules.gd")
+const ItemRewardRulesScript=preload("res://sim/item_reward_rules.gd")
+const WeaponRecraftRegistryScript=preload("res://sim/weapon_recraft_registry.gd")
 const RecoveryRulesScript=preload("res://sim/exploration_recovery_rules.gd")
 const DeterministicDungeonMapScript=preload("res://playtest/deterministic_dungeon_map.gd")
 const OpeningEventStateScript=preload("res://sim/opening_event_state.gd")
@@ -113,6 +116,8 @@ const TOWN_STARTING_FLOOR := 1
 const TOWN_MARKET_CATALOG := [
 	{"definition_id":"FOOD_RATION","price":6,"stock":6},
 	{"definition_id":"POTION_HEALING","price":12,"stock":4},
+	{"definition_id":"TORCH","price":8,"stock":6},
+	{"definition_id":"MATERIAL_IRON_INGOT","price":18,"stock":2},
 	{"definition_id":"ARMOR_PADDED","price":35,"stock":1},
 	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
 	{"definition_id":"ACCESSORY_BRASS_CHARM","price":28,"stock":1},
@@ -318,6 +323,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var world_height := int(map_layout.get("height", 15))
 	var candidate = SimulatorScript.create(world_width, world_height, p_world_seed)
 	if candidate == null: return false
+	candidate.world.vision_scenario_id = p_scenario_id
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
 	var duo := p_scenario_id == DUO_SCENARIO_ID
 	var starting_companion:=duo and not bootstrap_solo
@@ -1098,6 +1104,60 @@ func unequip_inventory_slot(slot:String)->Dictionary:
 	return _commit_item_operation("UNEQUIP","",slot)
 
 
+func ignite_torch(instance_id:String)->Dictionary:
+	return _commit_torch_action("IGNITE",instance_id)
+
+
+func extinguish_torch(instance_id:String)->Dictionary:
+	return _commit_torch_action("EXTINGUISH",instance_id)
+
+
+func _commit_torch_action(action:String,instance_id:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	var world=sim.world;var state=world.party_encounter
+	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
+	if not world.is_settled():return _rejection_dto("world_not_settled")
+	var hero_id:=int(world.party_control_actor_id());var hero=world.entities.get(hero_id)
+	if hero==null:return _rejection_dto("item_actor_missing")
+	var error:=TorchRulesScript.action_error(world,hero_id,instance_id,action)
+	if not error.is_empty():return _rejection_dto(error)
+	_clear_draft()
+	var rollback:Variant=sim.capture_rollback_memento()
+	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var journal_size:int=command_journal.size();var event_start:int=world.events.size()
+	var advance:Dictionary=_advance_item_action_time()
+	if not bool(advance.get("accepted",false)):
+		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto("torch_time_step_failed")
+	while command_journal.size()>journal_size:command_journal.pop_back()
+	world=sim.world;hero_id=int(world.party_control_actor_id());hero=world.entities.get(hero_id)
+	error=TorchRulesScript.action_error(world,hero_id,instance_id,action)
+	if not error.is_empty():
+		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(error)
+	var torch_state:=TorchRulesScript.state(world,instance_id)
+	var fuel:=int(torch_state.get("fuel_remaining",0))
+	var event_type:=TorchRulesScript.EVENT_IGNITED if action=="IGNITE" else TorchRulesScript.EVENT_EXTINGUISHED
+	var result:Dictionary=ItemOperationsScript.commit_torch_event(world,hero_id,instance_id,
+		hero.position,event_type,fuel,ITEM_ACTION_TIME_COST)
+	if not bool(result.get("accepted",false)):
+		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(str(result.get("reason","torch_event_failed")))
+	state=world.party_encounter;state.revision+=1
+	var state_error:String=world.world_state_error()
+	if not state_error.is_empty():
+		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(state_error)
+	command_journal.append({"kind":"item","operation":{"action":"TORCH_"+action,
+		"instance_id":instance_id,"slot":TorchRulesScript.EQUIP_SLOT}})
+	var ids:Array=[]
+	for index in range(event_start,world.events.size()):ids.append(int(world.events[index].id))
+	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":ids,
+		"event_id":int(result.event_id),"time_cost":ITEM_ACTION_TIME_COST,
+		"torch":TorchRulesScript.state(world,instance_id),"inventory":protagonist_inventory()})
+
+
 func drop_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DROP",instance_id,"")
 
@@ -1182,7 +1242,9 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictiona
 func _use_field_potion(instance_id:String)->Dictionary:
 	# Heal on input, then let the world respond. Advancing first could reject a
 	# potion after passive recovery, or kill its user before they drank it.
-	var rollback:Variant=sim.capture_rollback_memento()
+	# Live field actions validate their changed state, not the entire saved history.
+	# The rollback copy and exhaustive save/load audits are still retained.
+	var rollback:Variant=sim.capture_rollback_memento(false)
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var start:int=sim.world.events.size();var journal_size:=command_journal.size()
 	var id:int=sim.world.party_control_actor_id();var hero=sim.world.entities[id]
@@ -1193,8 +1255,12 @@ func _use_field_potion(instance_id:String)->Dictionary:
 	var event=sim.world.emit_event("health.restored",id,id,hero.position,healed,int(consumed.event_id),
 		{"schema_version":1,"ruleset_id":"healing-potion-v1","kind":"POTION","health_after":int(hero.health)})
 	_clear_draft()
-	var advanced:Dictionary=_advance_item_action_time() if event!=null else {"accepted":false,"reason":"item_event_failed"}
-	var error:String=sim.world.world_state_error() if advanced.get("accepted",false) else str(advanced.get("reason","item_time_step_failed"))
+	# Healing precedes the next step. Validate this tail before advancing, since
+	# runtime tail validation requires events to belong to the current step.
+	var healing_error:String=sim.world.runtime_step_postcondition_error(start) if event!=null else "item_event_failed"
+	var response_start:int=sim.world.events.size()
+	var advanced:Dictionary=_advance_item_action_time() if healing_error.is_empty() else {"accepted":false,"reason":healing_error}
+	var error:String=sim.world.runtime_step_postcondition_error(response_start) if advanced.get("accepted",false) else str(advanced.get("reason","item_time_step_failed"))
 	if not error.is_empty():
 		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(error)
@@ -1223,6 +1289,13 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	if hero==null or sim.world.item_state.inventory(sim.world.party_control_actor_id())==null:
 		return _rejection_dto("item_actor_missing")
 	var hero_id:int=sim.world.party_control_actor_id()
+	var pre_offhand_id:=""
+	var pre_offhand_lit:=false
+	var pre_inventory=sim.world.item_state.inventory(hero_id)
+	if pre_inventory!=null:
+		pre_offhand_id=str(pre_inventory.equipped.get("OFF_HAND", ""))
+		if not pre_offhand_id.is_empty():
+			pre_offhand_lit=bool(TorchRulesScript.state(sim.world,pre_offhand_id).get("lit",false))
 	var preview:Dictionary
 	match action:
 		"PICKUP":preview=ItemOperationsScript.preview_pickup(sim.world,hero_id,
@@ -1267,6 +1340,24 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto(str(result.get("reason","item_operation_failed")))
 	var event=sim.world.event_by_id(int(result.event_id))
+	# Removing/replacing an equipped torch always extinguishes it. This is a
+	# separate meaningful event so re-equipping the same instance cannot silently
+	# relight the old flame.
+	var extinguish_event_id:=-1
+	if pre_offhand_lit and not pre_offhand_id.is_empty():
+		var post_inventory=sim.world.item_state.inventory(hero_id)
+		var post_offhand_id:=str(post_inventory.equipped.get("OFF_HAND", "")) \
+			if post_inventory!=null else ""
+		if post_offhand_id!=pre_offhand_id:
+			var fuel_state:=TorchRulesScript.state(sim.world,pre_offhand_id)
+			var extinguished:=ItemOperationsScript.commit_torch_event(sim.world,hero_id,
+				pre_offhand_id,hero.position,TorchRulesScript.EVENT_EXTINGUISHED,
+				int(fuel_state.get("fuel_remaining",0)),0)
+			if not bool(extinguished.get("accepted",false)):
+				if not _rollback_session_transaction(rollback_memento,journal_size_before):
+					return _rejection_dto("rollback_restore_failed")
+				return _rejection_dto(str(extinguished.get("reason","torch_event_failed")))
+			extinguish_event_id=int(extinguished.get("event_id",-1))
 	state.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if event==null or not state_error.is_empty():
@@ -1277,6 +1368,7 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	command_journal.append({"kind":"item","operation":{"action":action,
 		"instance_id":instance_id,"slot":slot}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":event.id,
+		"extinguish_event_id":extinguish_event_id,
 		"time_cost":ITEM_ACTION_TIME_COST,"inventory":protagonist_inventory()})
 
 
@@ -1444,6 +1536,15 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
 			if str(definition.use_kind)=="HEALING" else 0,
 		"compact_stat_text":""}
+	result.merge({"reward_family":ItemRewardRulesScript.family_for_item(str(item.definition_id)),
+		"purpose":ItemRewardRulesScript.purpose_for_item(str(item.definition_id))},true)
+	if str(item.definition_id)==TorchRulesScript.DEFINITION_ID:
+		var torch_state:=TorchRulesScript.state(sim.world,item.instance_id)
+		result.merge({"torch":true,"torch_lit":bool(torch_state.lit),
+			"torch_depleted":bool(torch_state.depleted),
+			"fuel_remaining":int(torch_state.fuel_remaining),
+			"fuel_capacity":int(torch_state.fuel_capacity),
+			"compact_stat_text":"연료 %d/%d"%[int(torch_state.fuel_remaining),int(torch_state.fuel_capacity)]},true)
 	if str(definition.category)=="WEAPON":
 		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
 		if weapon!=null:
@@ -1663,9 +1764,11 @@ func party_status() -> Dictionary:
 	var protagonist_position: Vector2i = sim.world.entities[sim.world.party_control_actor_id()].position
 	var vision_profile: Dictionary = VisionRulesScript.profile_for_entity(
 		sim.world.entities[sim.world.party_control_actor_id()])
-	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_world(sim.world,scenario_id)
 	var vision_illumination: int = VisionRulesScript.illumination(
 		sim.world, protagonist_position, vision_lighting)
+	var torch_status:Dictionary=TorchRulesScript.equipped_torch_state(
+		sim.world,sim.world.party_control_actor_id())
 	# Enemies the party can see right now, contact or not. Exploration taps,
 	# the enemy strip and the hero's skills use this so a first strike is
 	# possible on an enemy that has not opened the fight.
@@ -1706,6 +1809,7 @@ func party_status() -> Dictionary:
 		"vision_profile": vision_profile,
 		"vision_observer_illumination": vision_illumination,
 		"vision_observer_light_band": VisionRulesScript.light_band(vision_illumination),
+		"torch":torch_status,
 		"vision_debug_available": true,
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
@@ -1901,6 +2005,10 @@ func town_gold()->int:
 				value-=int(event.data.get("cost",event.magnitude))
 			"base.resource_sold","town.market_sold":
 				value+=int(event.data.get("gold",event.magnitude))
+			"corpse.loot_materialized":
+				for reward in event.data.get("reward_rows",[]):
+					if str(reward.get("reward_family",""))=="CURRENCY":
+						value+=int(reward.get("amount",0))
 			"base.work_ordered":value-=int(event.data.get("gold_cost",0))
 			"base.work_cancelled","base.rest_payment_released":value+=int(event.data.get("gold_cost",0))
 	return maxi(0,value)
@@ -2307,6 +2415,90 @@ func unequip_town_item(entity_id:int,slot:String)->Dictionary:
 	var assessment:=town_unequip_assessment(entity_id,slot)
 	if not bool(assessment.get("accepted",false)):return assessment
 	return _commit_town_equipment("UNEQUIP",entity_id,"",slot)
+
+
+func monster_ability_rows()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if sim==null or sim.world==null:return rows
+	var acquired:Dictionary={}
+	for event in sim.world.events:
+		if event.type!="corpse.loot_materialized":continue
+		for reward in event.data.get("reward_rows",[]):
+			if str(reward.get("reward_family",""))!="MONSTER_ABILITY":continue
+			var ability_id:=str(reward.get("ability_id",""))
+			if ability_id.is_empty() or acquired.has(ability_id):continue
+			acquired[ability_id]=int(event.id)
+	var hero_id:=int(sim.world.party_encounter.protagonist_id) if sim.world.party_encounter!=null else -1
+	var member=sim.world.party_encounter.member(hero_id) if sim.world.party_encounter!=null else null
+	for ability_id in acquired:
+		var definition:=ActiveSkillRegistryScript.definition(str(ability_id))
+		rows.append({"ability_id":str(ability_id),"label":str(definition.get("name",ability_id)),
+			"source_event_id":int(acquired[ability_id]),"acquired":true,
+			"equipped":member!=null and str(member.skill_loadout_id)=="MONSTER_%s_V1"%ability_id,
+			"can_equip":member!=null and str(member.skill_loadout_id)!="MONSTER_%s_V1"%ability_id})
+	rows.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.ability_id)<str(b.ability_id))
+	return rows.duplicate(true)
+
+
+func equip_monster_ability(ability_id:String)->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	var loadout_id:="MONSTER_%s_V1"%ability_id
+	if not preload("res://sim/abilities/party_skill_loadout.gd").has(loadout_id):
+		return _rejection_dto("monster_ability_unknown")
+	var owned:=false
+	for row in monster_ability_rows():
+		if str(row.ability_id)==ability_id:owned=true;break
+	if not owned:return _rejection_dto("monster_ability_not_acquired")
+	var hero_id:=int(sim.world.party_encounter.protagonist_id)
+	var member=sim.world.party_encounter.member(hero_id)
+	if member==null:return _rejection_dto("item_actor_missing")
+	if str(member.skill_loadout_id)==loadout_id:return _rejection_dto("monster_ability_already_equipped")
+	var rollback:Dictionary=sim.snapshot()
+	member.skill_loadout_id=loadout_id
+	var event=sim.world.emit_event("party.monster_ability_equipped",hero_id,hero_id,
+		sim.world.entities[hero_id].position,1,-1,{"schema_version":1,
+			"ruleset_id":"monster-ability-loadout-v1","ability_id":ability_id,
+			"loadout_id":loadout_id})
+	sim.world.party_encounter.revision+=1
+	var error:String=sim.world.world_state_error()
+	if event==null or not error.is_empty():
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto(error if not error.is_empty() else "monster_ability_equip_failed")
+	command_journal.append({"kind":"ability","operation":{"action":"EQUIP",
+		"ability_id":ability_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"ability_id":ability_id,"loadout_id":loadout_id,"abilities":monster_ability_rows()})
+
+
+func town_weapon_recraft_assessment(instance_id:String)->Dictionary:
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	var hero_id:=int(sim.world.party_control_actor_id())
+	var preview:=ItemOperationsScript.preview_recraft(sim.world,hero_id,instance_id)
+	return _feedback_dto(preview) if bool(preview.get("accepted",false)) \
+		else _rejection_dto(str(preview.get("reason","recraft_failed")))
+
+
+func recraft_town_weapon(instance_id:String)->Dictionary:
+	var assessment:=town_weapon_recraft_assessment(instance_id)
+	if not bool(assessment.get("accepted",false)):return assessment
+	var rollback:Dictionary=sim.snapshot()
+	var hero_id:=int(sim.world.party_control_actor_id())
+	var position:Vector2i=sim.world.entities[hero_id].position
+	var result:=ItemOperationsScript.commit_recraft(sim.world,hero_id,instance_id,position)
+	if not bool(result.get("accepted",false)):
+		sim=SimulatorScript.from_snapshot(rollback)
+		return _rejection_dto(str(result.get("reason","recraft_failed")))
+	sim.world.party_encounter.revision+=1
+	var error:String=sim.world.world_state_error()
+	if not error.is_empty():
+		sim=SimulatorScript.from_snapshot(rollback);return _rejection_dto(error)
+	command_journal.append({"kind":"town","operation":{"action":"RECRAFT",
+		"instance_id":instance_id}})
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(result.event_id),
+		"instance_id":instance_id,"from_definition_id":str(result.from_definition_id),
+		"to_definition_id":str(result.to_definition_id),"inventory":protagonist_inventory()})
 
 
 func _commit_town_equipment(action:String,entity_id:int,instance_id:String,
@@ -3412,7 +3604,7 @@ func vision_debug_observation() -> Dictionary:
 	var state = world.party_encounter
 	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
 	var facing: Vector2i = state.facing
-	var lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var lighting: Dictionary = VisionRulesScript.lighting_for_world(world,scenario_id)
 	var rows: Array[Dictionary] = []
 	for y in range(world.height):
 		for x in range(world.width):
@@ -3459,7 +3651,7 @@ func enemy_vision_overlay() -> Dictionary:
 		if player_visible.has(_position_key(enemy.position)):
 			candidates.append(enemy_id)
 	candidates.sort()
-	var lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var lighting: Dictionary = VisionRulesScript.lighting_for_world(world,scenario_id)
 	var rows: Array[Dictionary] = []
 	for enemy_id in candidates:
 		var enemy = world.entities[enemy_id]
@@ -3723,7 +3915,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	var vision_profile: Dictionary = VisionRulesScript.profile_for_entity(
 		sim.world.entities.get(int(status.protagonist_id)))
-	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_world(sim.world,scenario_id)
 	var vision_illumination: int = VisionRulesScript.illumination(
 		sim.world, context.hero_position, vision_lighting)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
@@ -4150,6 +4342,8 @@ func _build_entity_equipment_visual(entity_id:int)->Dictionary:
 		"weapon_definition_id":str(main.definition_id) if main!=null else "",
 		"armor_definition_id":str(armor.definition_id) if armor!=null else "",
 		"off_hand_definition_id":str(off_hand.definition_id) if off_hand!=null else "",
+		"off_hand_torch_lit":bool(TorchRulesScript.equipped_torch_state(sim.world,entity_id).get("lit",false)),
+		"off_hand_torch_fuel":int(TorchRulesScript.equipped_torch_state(sim.world,entity_id).get("fuel_remaining",0)),
 	}.duplicate(true)
 
 func party_cards() -> Array[Dictionary]:
@@ -8049,6 +8243,12 @@ func load_session_json(encoded: String) -> Dictionary:
 					"DROP":replay_result=replay.drop_inventory_item(str(item_operation.instance_id))
 					"DISCARD":replay_result=replay.discard_inventory_item(str(item_operation.instance_id))
 					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)))
+					"TORCH_IGNITE":replay_result=replay.ignite_torch(str(item_operation.instance_id))
+					"TORCH_EXTINGUISH":replay_result=replay.extinguish_torch(str(item_operation.instance_id))
+					"RECRAFT":replay_result=replay.recraft_town_weapon(str(item_operation.instance_id))
+			"ability":
+				var ability_operation:Dictionary=row.operation
+				replay_result=replay.equip_monster_ability(str(ability_operation.ability_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -8093,6 +8293,8 @@ func load_session_json(encoded: String) -> Dictionary:
 					"DEPART":replay_result=replay.depart_town(
 						int(operation.get("floor_index",TOWN_STARTING_FLOOR)),
 						str(operation.get("entry_mode","SURFACE_ENTRANCE")))
+					"RECRAFT":replay_result=replay.recraft_town_weapon(
+						str(operation.instance_id))
 			"npc_assault":
 				var operation:Dictionary=row.operation
 				replay_result=replay.assault_npc(Int64CodecScript.parse(
@@ -8193,6 +8395,7 @@ func _install_restored_session(restored, decoded: Dictionary,
 	sim = restored; world_seed = parsed_world_seed; personality_seed = parsed_personality_seed
 	companion_orders.clear()
 	scenario_id = parsed_scenario_id;player_species_id=str(decoded.player_species_id)
+	sim.world.vision_scenario_id = parsed_scenario_id
 	_map_layout = restored_layout.duplicate(true)
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
@@ -8408,7 +8611,7 @@ func _journal_wire_error(journal: Array) -> String:
 					item_keys.erase("heal_before_time")
 				if item_keys!=["action","instance_id","slot"] \
 						or not row.operation.action is String \
-					or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE"] \
+						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE","TORCH_IGNITE","TORCH_EXTINGUISH","RECRAFT"] \
 						or not row.operation.instance_id is String or not row.operation.slot is String:
 					return "invalid_item_journal"
 			"equipment":
@@ -8475,7 +8678,7 @@ func _journal_wire_error(journal: Array) -> String:
 					"BUY":
 						if town_keys!=["action","definition_id"] \
 								or _town_market_catalog_row(str(row.operation.get(
-									"definition_id",""))).is_empty():
+								"definition_id",""))).is_empty():
 							return "invalid_town_journal"
 					"SELL":
 						if town_keys!=["action","instance_id"] \
@@ -8485,36 +8688,41 @@ func _journal_wire_error(journal: Array) -> String:
 					"CLINIC","SHRINE":
 						if town_keys!=["action","entity_id"] \
 								or not Int64CodecScript.is_canonical(
-									row.operation.get("entity_id")) \
+								row.operation.get("entity_id")) \
 								or Int64CodecScript.parse(row.operation.entity_id,
-									"town member")<=0:
+								"town member")<=0:
 							return "invalid_town_journal"
 					"TRANSFER":
 						if town_keys!=["action","from_entity_id","instance_id",
 								"to_entity_id"] or not row.operation.instance_id is String \
 								or str(row.operation.instance_id).is_empty() \
 								or not Int64CodecScript.is_canonical(
-									row.operation.get("from_entity_id")) \
+								row.operation.get("from_entity_id")) \
 								or not Int64CodecScript.is_canonical(
-									row.operation.get("to_entity_id")) \
+								row.operation.get("to_entity_id")) \
 								or Int64CodecScript.parse(row.operation.from_entity_id,
-									"town transfer source")<=0 \
+								"town transfer source")<=0 \
 								or Int64CodecScript.parse(row.operation.to_entity_id,
-									"town transfer target")<=0:
+								"town transfer target")<=0:
 							return "invalid_town_journal"
 					"EQUIP","UNEQUIP":
 						if town_keys!=["action","entity_id","instance_id","slot"] \
 								or not Int64CodecScript.is_canonical(
-									row.operation.get("entity_id")) \
+								row.operation.get("entity_id")) \
 								or Int64CodecScript.parse(row.operation.entity_id,
-									"town equipment owner")<=0 \
+								"town equipment owner")<=0 \
 								or not row.operation.instance_id is String \
 								or not row.operation.slot is String \
 								or str(row.operation.slot) not in ItemDefinitionScript.EQUIPMENT_SLOTS \
 								or town_action=="EQUIP" and str(
-									row.operation.instance_id).is_empty() \
+								row.operation.instance_id).is_empty() \
 								or town_action=="UNEQUIP" and not str(
-									row.operation.instance_id).is_empty():
+								row.operation.instance_id).is_empty():
+							return "invalid_town_journal"
+					"RECRAFT":
+						if town_keys!=["action","instance_id"] \
+								or not row.operation.instance_id is String \
+								or str(row.operation.instance_id).is_empty():
 							return "invalid_town_journal"
 					"DEPART":
 						var legacy_departure:=town_keys==["action"]
@@ -8527,6 +8735,15 @@ func _journal_wire_error(journal: Array) -> String:
 						if not legacy_departure and not portal_departure:
 							return "invalid_town_journal"
 					_:return "invalid_town_journal"
+			"ability":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_ability_journal"
+				var ability_keys:Array=row.operation.keys();ability_keys.sort()
+				if ability_keys!=["ability_id","action"] \
+						or row.operation.get("action")!="EQUIP" \
+						or not row.operation.ability_id is String \
+						or str(row.operation.ability_id).is_empty():
+					return "invalid_ability_journal"
 			"npc_assault":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_npc_assault_journal"

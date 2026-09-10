@@ -19,6 +19,7 @@ const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
 const RuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
+const WeaponRecraftRegistryScript=preload("res://sim/weapon_recraft_registry.gd")
 
 const EVENT_TYPES:={"PICKUP":"item.picked_up","DROP":"item.dropped","EQUIP":"item.equipped",
 	"UNEQUIP":"item.unequipped","DISCARD":"item.discarded","TRANSFER":"item.transferred"}
@@ -110,6 +111,30 @@ static func commit_use_without_event(world,entity_id:int,instance_id:String)->Di
 	return _swap(world,next,result)
 
 
+static func commit_torch_event(world, entity_id: int, instance_id: String,
+		position: Vector2i, event_type: String, fuel_remaining: int,
+		time_cost: int = 0) -> Dictionary:
+	# Torch state is event-sourced rather than stored in ItemInstance.  Still bump
+	# the item revision so detached inventory/equipment projections invalidate on
+	# ignition, extinguish and fuel depletion boundaries.
+	if world == null or world.item_state == null or not world.entities.has(entity_id):
+		return _rejected("item_actor_missing")
+	if event_type not in ["torch.ignited", "torch.extinguished"]:
+		return _rejected("unknown_torch_event")
+	var next = world.item_state.clone()
+	var invariant := _global_invariant_error(world, next)
+	if not invariant.is_empty(): return _rejected(invariant)
+	next.revision = world.item_state.revision + 1
+	var payload := {"schema_version":1, "ruleset_id":"hand-torch-v1",
+		"instance_id":instance_id, "fuel_remaining":clampi(fuel_remaining, 0, 1000),
+		"time_cost":maxi(0, time_cost)}
+	var event = world.emit_event(event_type, entity_id, entity_id, position, 0, -1, payload)
+	if event == null: return _rejected("torch_event_failed")
+	world.item_state = next
+	return _accepted({"event_id":int(event.id), "revision":int(next.revision),
+		"instance_id":instance_id, "fuel_remaining":int(payload.fuel_remaining)})
+
+
 static func commit_grant(world,entity_id:int,definition_id:String,quantity:int,
 		position:Vector2i,reason:String)->Dictionary:
 	# Creation is distinct from cross-container movement: it consumes the world
@@ -155,6 +180,20 @@ static func commit_spawn_ground(world,definition_id:String,quantity:int,
 	return _commit_planned(world,plan,"item.spawned_on_ground",actor_id,-1,position,
 		{"instance_id":instance_id,"definition_id":definition_id,"quantity":quantity,
 			"reason":reason},cause_id)
+
+
+static func preview_recraft(world,entity_id:int,instance_id:String)->Dictionary:
+	return _preview(_plan_recraft(world,entity_id,instance_id))
+
+
+static func commit_recraft(world,entity_id:int,instance_id:String,position:Vector2i)->Dictionary:
+	var plan:=_plan_recraft(world,entity_id,instance_id)
+	if not bool(plan.get("accepted",false)):return plan
+	return _commit_planned(world,plan,"weapon.recrafted",entity_id,entity_id,position,
+		{"instance_id":instance_id,"from_definition_id":str(plan.from_definition_id),
+			"to_definition_id":str(plan.to_definition_id),
+			"material_definition_id":str(plan.material_definition_id),
+			"material_quantity":int(plan.material_quantity)})
 
 
 # --- weapon authority (guide 4.3) -------------------------------------------
@@ -310,6 +349,45 @@ static func _plan_use(world,entity_id:int,instance_id:String)->Dictionary:
 	next.inventory_rows[entity_id]=result.inventory
 	return _accepted({"item_state":next,"instance_id":instance_id,
 		"definition_id":str(result.definition_id),"use_kind":str(result.use_kind)})
+
+
+static func _plan_recraft(world,entity_id:int,instance_id:String)->Dictionary:
+	var guard:=_guard(world,entity_id)
+	if not guard.is_empty():return _rejected(guard)
+	var registry_error:=WeaponRecraftRegistryScript.registry_error()
+	if not registry_error.is_empty():return _rejected(registry_error)
+	var source_inventory=world.item_state.inventory(entity_id)
+	var source=source_inventory._item_ref(instance_id)
+	if source==null:return _rejected("recraft_item_missing")
+	var recipe:=WeaponRecraftRegistryScript.recipe_for(str(source.definition_id))
+	if recipe.is_empty():return _rejected("recraft_not_available")
+	var material_id:=str(recipe.material_definition_id)
+	var material=null
+	for candidate in source_inventory.backpack:
+		if str(candidate.definition_id)==material_id and candidate.instance_id not in source_inventory.equipped.values():
+			material=candidate;break
+	if material==null or int(material.quantity)<int(recipe.material_quantity):
+		return _rejected("recraft_material_insufficient")
+	var next=world.item_state.clone()
+	var next_inventory=next.inventory(entity_id)
+	var next_source=next_inventory._item_ref(instance_id)
+	var next_material=next_inventory._item_ref(str(material.instance_id))
+	if next_source==null or next_material==null:return _rejected("recraft_item_missing")
+	var from_id:=str(next_source.definition_id)
+	next_source.definition_id=str(recipe.target_definition_id)
+	# The permanent instance, rarity, affixes, ownership, equipment slot and any
+	# weapon runtime row remain attached to the same item identity.
+	var amount:=int(recipe.material_quantity)
+	if next_material.quantity==amount:
+		for material_index in range(next_inventory.backpack.size()):
+			if str(next_inventory.backpack[material_index].instance_id)==str(next_material.instance_id):
+				next_inventory.backpack.remove_at(material_index)
+				break
+	else:next_material.quantity-=amount
+	next_inventory._sort_backpack()
+	return _accepted({"item_state":next,"instance_id":instance_id,
+		"from_definition_id":from_id,"to_definition_id":str(recipe.target_definition_id),
+		"material_definition_id":material_id,"material_quantity":amount})
 
 
 static func _plan_transfer(world,from_entity_id:int,to_entity_id:int,
