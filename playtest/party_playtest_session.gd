@@ -80,6 +80,7 @@ const BaseResourceCacheRulesScript=preload("res://sim/base_resource_cache_rules.
 const BaseProgressionServiceScript=preload("res://playtest/base_progression_service.gd")
 const BaseSettlementRulesScript=preload("res://sim/base_settlement_rules.gd")
 const BaseSettlementServiceScript=preload("res://playtest/base_settlement_service.gd")
+const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
 const PRESENTATION_SCHEMA_VERSION := 1
@@ -653,6 +654,105 @@ func town_life_overview()->Dictionary:
 
 func town_life_command(operation:Dictionary)->Dictionary:
 	return preload("res://playtest/town_life_service.gd").commit(self,operation)
+
+func guild_tutorial_overview()->Dictionary:
+	var unavailable:=_rejection_dto("town_required")
+	if sim==null or sim.world==null or sim.world.party_encounter==null:
+		return _rejection_dto("session_not_initialized")
+	if not _town_context_error().is_empty(): return unavailable
+	var hero_id:=int(sim.world.party_control_actor_id())
+	var result:=GuildTutorialRulesScript.state(sim.world.events,hero_id,
+		_sim_enemy_ids())
+	result["available"]=true;result["phase"]="TOWN";result["hero_id"]=hero_id
+	result["hint"]="길드 의뢰는 권장 순서이며, 수락한 뒤 1층에서 성공한 행동만 기록됩니다."
+	return _feedback_dto(result)
+
+func guild_tutorial_command(operation:Dictionary)->Dictionary:
+	if not operation is Dictionary:
+		return _rejection_dto("guild_tutorial_operation_invalid")
+	var operation_keys:Array=operation.keys();operation_keys.sort()
+	if operation_keys!=["action","quest_id"] \
+			or str(operation.get("action","")) not in ["ACCEPT","SUPPORT","CLAIM"]:
+		return _rejection_dto("guild_tutorial_operation_invalid")
+	var context_error:=_town_context_error()
+	if not context_error.is_empty():return _rejection_dto(context_error)
+	var quest_id:=str(operation.get("quest_id",""))
+	if quest_id not in GuildTutorialRulesScript.QUEST_IDS:
+		return _rejection_dto("guild_tutorial_unknown_quest")
+	var hero_id:=int(sim.world.party_control_actor_id())
+	var before:=GuildTutorialRulesScript.state(sim.world.events,hero_id,_sim_enemy_ids())
+	var row:Dictionary={}
+	for value in before.quests:
+		if str(value.quest_id)==quest_id:row=value;break
+	var action:=str(operation.action)
+	if row.is_empty():return _rejection_dto("guild_tutorial_unknown_quest")
+	if action=="ACCEPT" and not bool(row.can_accept):return _rejection_dto("guild_tutorial_already_accepted")
+	if action=="CLAIM" and not bool(row.can_claim):return _rejection_dto("guild_tutorial_reward_unavailable")
+	if action=="SUPPORT":
+		if quest_id!="GUILD_TUTORIAL_HEAL" or not bool(row.accepted) or bool(row.completed):
+			return _rejection_dto("guild_tutorial_support_unavailable")
+		if bool(row.support_granted):return _rejection_dto("guild_tutorial_support_already_granted")
+		if _hero_has_item_definition("POTION_HEALING"):
+			return _rejection_dto("guild_tutorial_support_not_needed")
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var world=sim.world;var hero=world.entities[hero_id];var event:Variant=null
+	var cause_id:=-1;var reward_rows:Array=[];var grant_ids:Array=[]
+	var payload:Dictionary={"schema_version":1,"ruleset_id":GuildTutorialRulesScript.RULESET_ID,
+		"campaign_id":GuildTutorialRulesScript.CAMPAIGN_ID,"quest_id":quest_id,
+		"expedition_index":_town_expedition_index(),"protagonist_id":str(hero_id)}
+	match action:
+		"ACCEPT":
+			event=world.emit_event(GuildTutorialRulesScript.EVENT_ACCEPTED,hero_id,-1,hero.position,0,-1,payload)
+		"SUPPORT":
+			var granted:=ItemOperationsScript.commit_grant(world,hero_id,"POTION_HEALING",1,
+				hero.position,"GUILD_TUTORIAL_SUPPORT")
+			if not bool(granted.get("accepted",false)):
+				_restore_town_rollback(rollback);return _rejection_dto(str(granted.get("reason","guild_tutorial_support_failed")))
+			cause_id=int(granted.event_id);grant_ids.append(cause_id)
+			payload["instance_id"]=str(granted.instance_id);payload["support_id"]="HEALING_POTION"
+			event=world.emit_event(GuildTutorialRulesScript.EVENT_SUPPORT_GRANTED,hero_id,-1,hero.position,1,cause_id,payload)
+		"CLAIM":
+			var definition:=GuildTutorialRulesScript.definition(quest_id)
+			for reward_value in definition.get("reward_rows",[]):
+				var reward:Dictionary=reward_value
+				var granted:=ItemOperationsScript.commit_grant(world,hero_id,
+					str(reward.definition_id),int(reward.quantity),hero.position,"GUILD_TUTORIAL_REWARD")
+				if not bool(granted.get("accepted",false)):
+					_restore_town_rollback(rollback);return _rejection_dto(str(granted.get("reason","guild_tutorial_reward_failed")))
+				cause_id=int(granted.event_id);grant_ids.append(cause_id)
+				reward_rows.append({"definition_id":str(reward.definition_id),"quantity":int(reward.quantity),"instance_id":str(granted.instance_id)})
+			payload["reward_rows"]=reward_rows;payload["grant_event_ids"]=grant_ids
+			event=world.emit_event(GuildTutorialRulesScript.EVENT_REWARD_CLAIMED,hero_id,-1,hero.position,
+				int(definition.get("gold",0)),cause_id,payload)
+	if event==null:
+		_restore_town_rollback(rollback);return _rejection_dto("guild_tutorial_event_failed")
+	world.party_encounter.revision+=1
+	var state_error:String=world.world_state_error()
+	if not state_error.is_empty():
+		_restore_town_rollback(rollback);return _rejection_dto(state_error)
+	command_journal.append({"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}})
+	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
+	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"quest_id":quest_id,"action":action,"message":str(messages[action]),
+		"guild_tutorial":guild_tutorial_overview()})
+
+func _sim_enemy_ids()->Array[int]:
+	var result:Array[int]=[]
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return result
+	for value in sim.world.party_encounter.enemy_ids:result.append(int(value))
+	return result
+
+func _hero_has_item_definition(definition_id:String)->bool:
+	if sim==null or sim.world==null:return false
+	var inventory=sim.world.item_state.inventory(sim.world.party_control_actor_id())
+	if inventory==null:return false
+	for item in inventory.backpack:
+		if str(item.definition_id)==definition_id and int(item.quantity)>0:return true
+	for instance_id in inventory.equipped.values():
+		var item=inventory._item_ref(str(instance_id))
+		if item!=null and str(item.definition_id)==definition_id and int(item.quantity)>0:return true
+	return false
 
 func private_home_available()->bool:
 	return sim!=null and preload("res://sim/town_life_rules.gd").house_available(sim.world.events)
@@ -2016,6 +2116,8 @@ func town_gold()->int:
 				value+=int(event.data.get("stipend",TOWN_RETURN_STIPEND))
 			"town.market_purchased","town.clinic_service","town.shrine_service":
 				value-=int(event.data.get("cost",event.magnitude))
+			"town.guild_tutorial_reward_claimed":
+				value+=int(event.data.get("gold",event.magnitude))
 			"base.resource_sold","town.market_sold":
 				value+=int(event.data.get("gold",event.magnitude))
 			"corpse.loot_materialized":
@@ -7872,8 +7974,10 @@ func _is_important_log_event(event)->bool:
 			"action.melee_attack","combat.attack_missed","combat.attack_parried","entity.downed",
 			"entity.recovered","entity.died","party.victory","party.rescue_discovered",
 			"party.npc_stabilized","party.recruitment_accepted",
-			"party.recruitment_refused","party.companion_recruited",
-			"party.companion_dismissed","town.guild_candidates_arrived",
+				"party.recruitment_refused","party.companion_recruited",
+				"party.companion_dismissed","town.guild_candidates_arrived",
+				"town.guild_tutorial_accepted","town.guild_tutorial_support_granted",
+				"town.guild_tutorial_reward_claimed",
 			"town.market_purchased","town.clinic_service","town.body_restored",
 			"town.shrine_service","town.expedition_departed",
 			"dungeon.anchor_portal_activated","dungeon.floor_entered",
@@ -8239,6 +8343,7 @@ func load_session_json(encoded: String) -> Dictionary:
 		match str(row.kind):
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
+			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation)
 			"base_work":replay_result=replay.base_work(row.operation)
 			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
@@ -8783,6 +8888,14 @@ func _journal_wire_error(journal: Array) -> String:
 						if not legacy_departure and not portal_departure:
 							return "invalid_town_journal"
 					_:return "invalid_town_journal"
+			"guild_tutorial":
+				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
+					return "invalid_guild_tutorial_journal"
+				var tutorial_keys:Array=row.operation.keys();tutorial_keys.sort()
+				if tutorial_keys!=["action","quest_id"] \
+						or row.operation.get("action") not in ["ACCEPT","SUPPORT","CLAIM"] \
+						or row.operation.get("quest_id") not in GuildTutorialRulesScript.QUEST_IDS:
+					return "invalid_guild_tutorial_journal"
 			"npc_assault":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_npc_assault_journal"
@@ -9624,6 +9737,16 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"party_full":"파티가 가득 찼습니다.",
 			"guild_recruitment_town_required":"길드 후보는 마을에서만 영입할 수 있습니다.",
 			"guild_recruitment_failed":"길드 영입이 취소되어 이전 상태로 돌아갔습니다.",
+			"guild_tutorial_operation_invalid":"길드 튜토리얼 명령이 올바르지 않습니다.",
+			"guild_tutorial_unknown_quest":"알 수 없는 길드 튜토리얼 의뢰입니다.",
+			"guild_tutorial_already_accepted":"이미 수락한 길드 의뢰입니다.",
+			"guild_tutorial_reward_unavailable":"아직 완료하지 않은 길드 의뢰입니다.",
+			"guild_tutorial_support_unavailable":"지금은 훈련용 지원을 받을 수 없습니다.",
+			"guild_tutorial_support_already_granted":"훈련용 지원은 한 번만 받을 수 있습니다.",
+			"guild_tutorial_support_not_needed":"이미 회복 물약을 가지고 있습니다.",
+			"guild_tutorial_support_failed":"훈련용 회복 물약을 지급하지 못했습니다.",
+			"guild_tutorial_reward_failed":"길드 의뢰 보상을 지급하지 못했습니다.",
+			"guild_tutorial_event_failed":"길드 의뢰 기록을 저장하지 못했습니다.",
 		"rescue_candidate_not_recruitable":"도울 수 있는 비적대 영입 후보가 아닙니다.",
 		"rescue_candidate_unavailable":"이 인물은 현재 구조할 수 없는 상태입니다.",
 		"rescue_candidate_too_far":"쓰러진 인물 옆으로 이동해야 안정화할 수 있습니다.",
@@ -9731,6 +9854,9 @@ func _event_message(event) -> String:
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
 		"town.guild_candidates_arrived":return "길드 게시판에 새로운 동료 후보 %d명이 도착했다."%int(event.magnitude)
+		"town.guild_tutorial_accepted":return "%s가 길드 튜토리얼 의뢰를 수락했다."%_subject(actor)
+		"town.guild_tutorial_support_granted":return "%s에게 훈련용 회복 물약을 지급했다."%_subject(actor)
+		"town.guild_tutorial_reward_claimed":return "%s가 길드 튜토리얼 보상을 받았다."%_subject(actor)
 		"town.market_purchased":return "%s 금화 %d에 구입했다."%[
 			_object(_item_label_for_event(event)),int(event.data.get("cost",event.magnitude))]
 		"town.clinic_service":return "%s 치유소 치료를 받았다."%_subject(target)

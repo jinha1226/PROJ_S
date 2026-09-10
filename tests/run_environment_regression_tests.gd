@@ -7,6 +7,7 @@ const TEST_FILES := [
 	"test_enemy_stealth_stage2.gd",
 	"test_torch_stage3.gd",
 	"test_darkness_stage5.gd",
+	"test_guild_tutorial.gd",
 ]
 
 

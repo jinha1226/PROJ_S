@@ -31,9 +31,9 @@ func _hub()->void:
 	UI.label(caption,"마을 사람 %d명"%_view.residents.size(),12,UI.MUTED)
 	var hint:=UI.label(caption,"건물을 눌러 방문",12,UI.MUTED)
 	hint.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
-	var nav:=GridContainer.new();nav.name="TownLifeNavigation";nav.columns=4
+	var nav:=GridContainer.new();nav.name="TownLifeNavigation";nav.columns=5
 	nav.add_theme_constant_override("h_separation",8);nav.add_theme_constant_override("v_separation",8);add_child(nav)
-	for entry in [["INN","여관"],["MARKET","시장"],["CLINIC","치유소"],["HOUSE","내 거점"]]:
+	for entry in [["INN","여관"],["GUILD","길드"],["MARKET","시장"],["CLINIC","치유소"],["HOUSE","내 거점"]]:
 		var id:=str(entry[0]);var b:=UI.shortcut(nav,str(entry[1]),"TownNav"+id,id)
 		b.pressed.connect(func():facility_requested.emit(id))
 	var line:=HBoxContainer.new();line.add_theme_constant_override("separation",8);add_child(line)
@@ -52,6 +52,8 @@ func _hub()->void:
 	gate.pressed.connect(func():facility_requested.emit("GATE"))
 
 func _inn()->void:
+	if screen=="GUILD":
+		_guild();return
 	UI.heading(self,"여관","동료를 만나고 다음 원정을 준비하세요")
 	UI.workplace_residents(self,_view.residents,"INN",func(id:int):resident_requested.emit(id))
 	if state.get("filter") not in ["ADVENTURERS","COMPANY"]:state.filter="ADVENTURERS"
@@ -82,6 +84,49 @@ func _inn()->void:
 		var id:=int(row.entity_id)
 		var b:=UI.button(list,"%s  ·  %s"%[row.display_name,row.occupation],"TownSelect%d"%id,id==int(state.resident))
 		b.pressed.connect(func():state.resident=id;call_deferred("present",_view);resident_requested.emit(id))
+
+func _guild()->void:
+	var tutorial:Dictionary=_view.get("guild_tutorial",{}) if _view.get("guild_tutorial",{}) is Dictionary else {}
+	UI.heading(self,"길드 튜토리얼","원정의 기본을 익히는 다섯 가지 선택형 의뢰")
+	if not bool(tutorial.get("available",false)):
+		UI.label(self,str(tutorial.get("message",tutorial.get("hint","마을에서만 확인할 수 있습니다."))),14,UI.MUTED)
+		return
+	UI.label(self,str(tutorial.get("hint","수락한 의뢰의 실제 행동만 기록됩니다.")),13,UI.MUTED)
+	var list:=VBoxContainer.new();list.name="GuildTutorialQuestList";list.add_theme_constant_override("separation",8);add_child(list)
+	for value in tutorial.get("quests",[]):
+		if not value is Dictionary:continue
+		var row:Dictionary=value
+		var card:=UI.surface(list);card.name="GuildTutorial%s"%str(row.get("quest_id",""))
+		var top:=HBoxContainer.new();top.add_theme_constant_override("separation",8);card.add_child(top)
+		var title:=UI.label(top,"%s  ·  %s"%[str(row.get("title","의뢰")),str(row.get("status","AVAILABLE"))],16)
+		title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		UI.label(card,str(row.get("description","")),13)
+		var progress:Dictionary=row.get("progress",{}) if row.get("progress",{}) is Dictionary else {}
+		var progress_text:=_guild_progress_text(row,progress)
+		UI.label(card,progress_text,12,UI.MUTED)
+		var actions:=HBoxContainer.new();actions.add_theme_constant_override("separation",6);card.add_child(actions)
+		var quest_id:=str(row.get("quest_id",""))
+		if bool(row.get("can_accept",false)):
+			var accept:=UI.button(actions,"수락","GuildAccept%s"%quest_id,true)
+			accept.pressed.connect(func():command_requested.emit({"action":"GUILD_TUTORIAL","quest_action":"ACCEPT","quest_id":quest_id}))
+		if quest_id=="GUILD_TUTORIAL_HEAL" and bool(row.get("accepted",false)) \
+				and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
+			var support:=UI.button(actions,"지원 물약","GuildSupport%s"%quest_id)
+			support.pressed.connect(func():command_requested.emit({"action":"GUILD_TUTORIAL","quest_action":"SUPPORT","quest_id":quest_id}))
+		if bool(row.get("can_claim",false)):
+			var claim:=UI.button(actions,"보상 받기","GuildClaim%s"%quest_id,true)
+			claim.pressed.connect(func():command_requested.emit({"action":"GUILD_TUTORIAL","quest_action":"CLAIM","quest_id":quest_id}))
+
+func _guild_progress_text(row:Dictionary,progress:Dictionary)->String:
+	var status:=str(row.get("status","AVAILABLE"))
+	if status=="CLAIMED":return "완료 · 보상을 받았습니다 · %s"%str(row.get("reward_text",""))
+	if status=="AVAILABLE":return "권장 보상 · %s"%str(row.get("reward_text",""))
+	var quest_id:=str(row.get("quest_id",""))
+	if quest_id=="GUILD_TUTORIAL_MOVE":
+		return "진행 %d/3 · 대각선 %s · 보상 %s"%[int(progress.get("count",0)),"완료" if bool(progress.get("diagonal",false)) else "필요",str(row.get("reward_text",""))]
+	if quest_id=="GUILD_TUTORIAL_GUARD":
+		return "대기 방어 %s · 유효 공격 %s · 보상 %s"%["완료" if bool(progress.get("hold_done",false)) else "필요","완료" if bool(progress.get("attack_done",false)) else "필요",str(row.get("reward_text",""))]
+	return "진행 %d/1 · 보상 %s"%[int(progress.get("count",0)),str(row.get("reward_text",""))]
 
 func _resident_detail(row:Dictionary)->void:
 	var id:=int(row.entity_id)

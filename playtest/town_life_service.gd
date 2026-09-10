@@ -77,6 +77,8 @@ static func overview(session)->Dictionary:
 		"phase":str(party.expedition_cycle.phase),"stage":"탐험대의 집" if life.house_owned else (
 			"여관 · 동료와 함께" if company_count>1 else "여관 · 혼자 시작"),
 		"settlement":_public_map(),"work":{}},true)
+	if session.has_method("guild_tutorial_overview"):
+		life["guild_tutorial"] = session.guild_tutorial_overview()
 	return life
 
 static func _public_map()->Dictionary:

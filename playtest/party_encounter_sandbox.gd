@@ -3426,7 +3426,12 @@ func _on_town_service_action(operation:Dictionary)->void:
 		"ROSTER":town_ui_state.filter="COMPANY";_on_town_facility_selected("INN")
 
 func _on_town_life_command(operation:Dictionary)->void:
-	var result:Dictionary=session.town_life_command(operation)
+	var result:Dictionary
+	if str(operation.get("action",""))=="GUILD_TUTORIAL":
+		result=session.guild_tutorial_command({"action":str(operation.get("quest_action","")),
+			"quest_id":str(operation.get("quest_id",""))})
+	else:
+		result=session.town_life_command(operation)
 	notice_text=str(result.get("message","마을 행동을 완료하지 못했습니다."))
 	if result.get("accepted",false) and operation.action=="ACQUIRE":town_facility_id="HOUSE"
 	if result.get("accepted",false) and operation.action=="JOIN":
@@ -3761,6 +3766,7 @@ func _on_town_depart(floor_index:int=1,
 
 func _add_recruitment_candidates()->void:
 	if session==null or not session.has_method("recruitable_companions"):return
+	_add_legacy_guild_tutorial()
 	var status:Dictionary=session.party_status()
 	var active_ids:Variant=status.get("party_member_ids",[])
 	var exiled_ids:Variant=status.get("exiled_member_ids",[])
@@ -3814,6 +3820,40 @@ func _add_recruitment_candidates()->void:
 			recruit.custom_minimum_size=Vector2(72,TOUCH_TARGET);recruit.disabled=not bool(row.get("can_recruit",false))
 			recruit.size_flags_horizontal=Control.SIZE_SHRINK_END
 			recruit.tooltip_text=str(row.get("message",""))
+
+func _add_legacy_guild_tutorial()->void:
+	if session==null or not session.has_method("guild_tutorial_overview"):return
+	var tutorial:Dictionary=session.guild_tutorial_overview()
+	if not bool(tutorial.get("available",false)):return
+	_add_notice("길드 튜토리얼 · 선택형 의뢰", "LegacyGuildTutorialTitle", FONT_KEY)
+	var board:=VBoxContainer.new();board.name="LegacyGuildTutorial";board.add_theme_constant_override("separation",4);deck.add_child(board)
+	for value in tutorial.get("quests",[]):
+		if not value is Dictionary:continue
+		var row:Dictionary=value;var quest_id:=str(row.get("quest_id",""))
+		var line:=HBoxContainer.new();line.name="LegacyGuildQuest%s"%quest_id;line.add_theme_constant_override("separation",6);board.add_child(line)
+		var progress:Dictionary=row.get("progress",{}) if row.get("progress",{}) is Dictionary else {}
+		var text:=Label.new();text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		text.text="%s · %s\n%s · %s"%[str(row.get("title","의뢰")),str(row.get("status","AVAILABLE")),str(row.get("description","")),_legacy_guild_progress(row,progress)]
+		line.add_child(text)
+		if bool(row.get("can_accept",false)):
+			var accept:=_add_button(line,"수락","LegacyGuildAccept%s"%quest_id,_on_legacy_guild_tutorial_command.bind("ACCEPT",quest_id))
+			accept.custom_minimum_size=Vector2(80,TOUCH_TARGET)
+		if quest_id=="GUILD_TUTORIAL_HEAL" and bool(row.get("accepted",false)) and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
+			var support:=_add_button(line,"지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
+			support.custom_minimum_size=Vector2(96,TOUCH_TARGET)
+		if bool(row.get("can_claim",false)):
+			var claim:=_add_button(line,"보상","LegacyGuildClaim%s"%quest_id,_on_legacy_guild_tutorial_command.bind("CLAIM",quest_id))
+			claim.custom_minimum_size=Vector2(80,TOUCH_TARGET)
+
+func _legacy_guild_progress(row:Dictionary,progress:Dictionary)->String:
+	var quest_id:=str(row.get("quest_id",""))
+	if quest_id=="GUILD_TUTORIAL_MOVE":return "이동 %d/3 · 대각선 %s"%[int(progress.get("count",0)),"완료" if bool(progress.get("diagonal",false)) else "필요"]
+	if quest_id=="GUILD_TUTORIAL_GUARD":return "방어 %s · 공격 %s"%["완료" if bool(progress.get("hold_done",false)) else "필요","완료" if bool(progress.get("attack_done",false)) else "필요"]
+	return "진행 %d/1"%int(progress.get("count",0))
+
+func _on_legacy_guild_tutorial_command(action:String,quest_id:String)->void:
+	var result:Dictionary=session.guild_tutorial_command({"action":action,"quest_id":quest_id})
+	notice_text=str(result.get("message","길드 의뢰를 처리하지 못했습니다."));action_feedback_text=notice_text;_request_refresh()
 
 func _run_complete_deck(progress:Dictionary)->void:
 	var reward:Dictionary=progress.get("reward",{}) if progress.get("reward",{}) is Dictionary else {}
