@@ -84,14 +84,19 @@ func test_wet_wood_delays_ignition_and_water_mass_changes_phase_once() -> bool:
 	var tile = sim.world.tile_at(Vector2i.ZERO)
 	sim.step(Command.ignite(Vector2i.ZERO, 40))
 	check_eq(tile.fire, 0, "wet wood ignition delayed")
-	check_eq(tile.surface_amount, 100, "ignition energy removes one water amount")
+	check_eq(tile.surface_amount + tile.steam_amount, 500,
+		"ignition moves water into steam instead of deleting it")
+	check(tile.steam_amount > 0, "ignition produces steam")
 	tile.temperature = 1200; sim.world.track_dynamic_tile(Vector2i.ZERO)
 	var before_mass: int = tile.surface_amount + tile.steam_amount
 	sim.step(Command.wait())
 	check_eq(tile.surface_amount + tile.steam_amount, before_mass,
 		"evaporation does not duplicate water")
-	tile.temperature = -100; sim.world.track_dynamic_tile(Vector2i.ZERO)
-	sim.step(Command.wait())
+	# Conducted/high ambient heat now ignites wood too. Cool through burnout,
+	# rather than expecting cold condensate to survive an active flame.
+	for i in range(20):
+		tile.temperature = -100; sim.world.track_dynamic_tile(Vector2i.ZERO)
+		check(sim.step(Command.wait()).accepted, "cooling tick accepted")
 	check_eq(tile.surface_amount + tile.steam_amount, before_mass,
 		"condensation/freezing conserves represented water")
 	check(tile.surface_id in ["WATER", "ICE"], "condensed water has one phase")
@@ -360,6 +365,120 @@ func _environment_damage_with_armor(definition_id:String,wetness:int)->int:
 	sim.world.finish_step()
 	check_eq(sim.world.world_state_error(),"","armored environment damage validates")
 	return applied
+
+
+func test_small_water_remainders_do_not_block_turns_or_restore() -> bool:
+	for mass in range(81, 90):
+		var sim = Simulator.new(1, 1, 201)
+		sim.world.bootstrap_set_surface(Vector2i.ZERO, "WATER", mass)
+		sim.world.bootstrap_set_atmosphere(Vector2i.ZERO, 0, 0, 0, 0, true)
+		sim.world.bootstrap_set_temperature(Vector2i.ZERO, 1200)
+		check(sim.step(Command.wait()).accepted, "evaporation accepted %d" % mass)
+		var tile = sim.world.tile_at(Vector2i.ZERO)
+		check_eq(tile.surface_amount, mass - 80, "small remainder retained")
+		check_eq(tile.wetness_source_event_id, -1, "zero wetness clears source")
+		var restored = Simulator.from_snapshot(sim.snapshot())
+		check(restored != null, "remainder snapshot restores")
+		check(sim.step(Command.wait()).accepted, "next turn accepted")
+		if restored != null:
+			check(restored.step(Command.wait()).accepted, "restored next turn accepted")
+			check_eq(restored.snapshot(), sim.snapshot(), "midpoint replay exact")
+	return finish()
+
+
+func test_conducted_heat_ignites_wood_and_fire_spreads_to_oil() -> bool:
+	var heat = Simulator.new(2, 1, 202)
+	heat.world.bootstrap_set_terrain(Vector2i.RIGHT, "wood_floor")
+	for pos in [Vector2i.ZERO, Vector2i.RIGHT]:
+		heat.world.bootstrap_set_atmosphere(pos, 500, 0, 0, 0, true)
+	heat.world.bootstrap_set_temperature(Vector2i.ZERO, 4000)
+	heat.world.bootstrap_set_temperature(Vector2i.RIGHT, 649)
+	check(heat.step(Command.wait()).accepted, "conducted heat tick accepted")
+	check(heat.world.tile_at(Vector2i.RIGHT).fire > 0, "crossing ignition point ignites wood")
+	check_eq(heat.world.world_state_error(), "", "thermal ignition source validates")
+	var oil = Simulator.new(2, 1, 101)
+	oil.world.bootstrap_set_terrain(Vector2i.ZERO, "wood_floor")
+	oil.world.bootstrap_set_surface(Vector2i.RIGHT, "OIL", 300)
+	check(oil.step(Command.ignite(Vector2i.ZERO, 100)).accepted, "source ignites")
+	for i in range(10): check(oil.step(Command.wait()).accepted, "spread tick")
+	check(oil.world.tile_at(Vector2i.RIGHT).surface_amount < 300,
+		"adjacent oil on nonflammable stone catches and burns")
+	return finish()
+
+
+func test_poured_water_enters_freezing_and_boiling_paths() -> bool:
+	for temperature in [-100, 1200]:
+		var sim = Simulator.new(1, 1, 203)
+		sim.world.bootstrap_set_temperature(Vector2i.ZERO, temperature)
+		sim.world.bootstrap_set_atmosphere(Vector2i.ZERO, 500, 0, 0, 0, true)
+		check(sim.step(Command.pour_water(Vector2i.ZERO, 60)).accepted, "pour accepted")
+		check(sim.step(Command.wait()).accepted, "phase cadence accepted")
+		var tile = sim.world.tile_at(Vector2i.ZERO)
+		check_eq(tile.surface_amount + tile.steam_amount, 600, "poured mass exists")
+		if temperature < 0:
+			check_eq(tile.surface_id, "ICE", "poured water freezes")
+		else:
+			check(tile.steam_amount > 0, "poured water boils")
+		check(Simulator.from_snapshot(sim.snapshot()) != null, "poured phase restores")
+	return finish()
+
+
+func test_saturated_steam_preserves_water_during_ignition_and_suppression() -> bool:
+	for burning in [false, true]:
+		var sim = Simulator.new(1, 1, 204)
+		sim.world.bootstrap_set_terrain(Vector2i.ZERO, "wood_floor")
+		sim.world.bootstrap_set_surface(Vector2i.ZERO, "WATER", 500)
+		sim.world.bootstrap_set_atmosphere(Vector2i.ZERO, 0, 0, 1000, 0, true)
+		if burning:
+			check(sim.world.bootstrap_set_fire(Vector2i.ZERO, 80) != null,
+				"valid existing fire fixture")
+		var result = sim.step(Command.wait() if burning else Command.ignite(Vector2i.ZERO, 80))
+		check(result.accepted, "saturated reaction accepted")
+		var tile = sim.world.tile_at(Vector2i.ZERO)
+		check_eq(tile.surface_amount + tile.steam_amount, 1500, "represented water conserved")
+		check_eq(sim.world.world_state_error(), "", "saturated wetness source valid")
+	return finish()
+
+
+func test_resting_water_and_consumed_fuel_skip_flux_but_survive_rollback() -> bool:
+	var sim = Simulator.new(2, 1, 205)
+	sim.world.bootstrap_set_surface(Vector2i.ZERO, "WATER", 500)
+	sim.world.bootstrap_set_terrain(Vector2i.RIGHT, "wood_floor")
+	var wood = sim.world.tile_at(Vector2i.RIGHT)
+	wood.fuel_amount = 0; sim.world.track_dynamic_tile(Vector2i.RIGHT)
+	check(not sim.environment._needs_passive_tick(wood), "spent fuel needs no flux")
+	check(not sim.environment._needs_passive_tick(sim.world.tile_at(Vector2i.ZERO)),
+		"resting water needs no flux")
+	var before: Dictionary = sim.snapshot()
+	var memento = sim.capture_rollback_memento()
+	for i in range(100): check(sim.step(Command.wait()).accepted, "resting tick")
+	check_eq(sim.world.tile_at(Vector2i.ZERO).surface_amount, 500, "resting water retained")
+	check_eq(wood.fuel_amount, 0, "spent fuel never resets")
+	check(sim.restore_rollback_memento(memento), "resting state rollback")
+	check_eq(sim.snapshot(), before, "persistent sparse state retained exactly")
+	return finish()
+
+
+func test_resting_water_wakes_from_neighbor_heat_and_equilibrium_snaps() -> bool:
+	var sim = Simulator.new(2, 1, 206)
+	sim.world.bootstrap_set_surface(Vector2i.ZERO, "WATER", 500)
+	for pos in [Vector2i.ZERO, Vector2i.RIGHT]:
+		sim.world.bootstrap_set_atmosphere(pos, 500, 0, 0, 0, true)
+	sim.world.bootstrap_set_temperature(Vector2i.RIGHT, 4000)
+	check(not sim.environment._needs_passive_tick(sim.world.tile_at(Vector2i.ZERO)),
+		"water starts resting")
+	check(sim.step(Command.wait()).accepted, "neighbor heat tick accepted")
+	check(sim.world.tile_at(Vector2i.ZERO).temperature > Config.AMBIENT_TEMPERATURE,
+		"resting water participates in neighbor flux")
+	var equilibrium = Simulator.new(1, 1, 207)
+	equilibrium.world.bootstrap_set_temperature(Vector2i.ZERO, Config.AMBIENT_TEMPERATURE + 2)
+	equilibrium.world.bootstrap_set_atmosphere(Vector2i.ZERO, 500, 0, 0, 0, true)
+	check(equilibrium.step(Command.wait()).accepted, "equilibrium tick accepted")
+	check_eq(equilibrium.world.tile_at(Vector2i.ZERO).temperature, Config.AMBIENT_TEMPERATURE,
+		"epsilon residual settles")
+	check(not equilibrium.environment._needs_passive_tick(equilibrium.world.tile_at(Vector2i.ZERO)),
+		"settled temperature stops flux work")
+	return finish()
 
 
 func _atmosphere_total(sim) -> int:

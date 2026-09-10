@@ -8,6 +8,12 @@ const Perf = preload("res://sim/perf_probe.gd")
 
 func _init() -> void:
 	var rows: Array[Dictionary] = []
+	if "--resting-only" in OS.get_cmdline_user_args():
+		rows.append(_measure("resting_100x100_water_spent_fuel", _resting_map(206), 100))
+		print("ENV_PERF_JSON " + JSON.stringify({"godot":Engine.get_version_info().string,
+			"platform":OS.get_name(),"rows":rows}))
+		quit(0)
+		return
 	rows.append(_measure("existing_96x96_idle", _existing_map(201), 3))
 	rows.append(_measure("existing_96x96_local_fire", _local_fire_map(202), 3))
 	rows.append(_measure("stress_100x100_wide_fire_gas", _wide_fire_map(203), 3))
@@ -22,6 +28,21 @@ func _existing_map(seed: int):
 	var layout: Dictionary = DungeonMap.generate(96, 96, seed)
 	var sim = Simulator.new(96, 96, seed)
 	sim.world.bootstrap_set_terrain_layout(layout.terrain)
+	return sim
+
+
+func _resting_map(seed: int):
+	var sim = Simulator.new(100, 100, seed)
+	var terrain: Array = []
+	terrain.resize(10000); terrain.fill("wood_floor")
+	sim.world.bootstrap_set_terrain_layout(terrain)
+	for y in range(100):
+		for x in range(100):
+			var pos := Vector2i(x, y)
+			sim.world.tile_at(pos).fuel_amount = 0
+			if (x + y) % 2 == 0:
+				sim.world.bootstrap_set_surface(pos, "WATER", 500)
+			sim.world.track_dynamic_tile(pos)
 	return sim
 
 

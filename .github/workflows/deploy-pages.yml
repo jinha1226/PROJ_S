@@ -53,6 +53,9 @@ jobs:
           ./godot --headless --path . --script tests/field_turn_ui_acceptance.gd
           ./godot --headless --path . --script tests/run_party_ai_tests.gd
 
+      - name: Verify environment reactions, replay, and body damage
+        run: ./godot --headless --path . --script tests/run_environment_regression_tests.gd
+
       - name: Inject Pages build ID
         shell: bash
         run: |

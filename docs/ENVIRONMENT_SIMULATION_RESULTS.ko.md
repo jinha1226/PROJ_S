@@ -1,5 +1,9 @@
 # 재료·원소·환경 시뮬레이션 결과
 
+후속 검토에서 확인한 증발 경계 오류·자연 발화·물 붓기 연결 및 정지 상태 성능 수정은
+[검토 후 마무리 기록](ENVIRONMENT_SIMULATION_REVIEW_FIXES.ko.md)을 참조한다.
+아래 수치는 해당 구현 당시의 기록이며 후속 검증 결과를 대체하지 않는다.
+
 실험 ID: `SOL-MEDIUM-ENV-001`
 
 보완 실험 ID: `SOL-MEDIUM-ENV-002`

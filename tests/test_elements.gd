@@ -25,7 +25,9 @@ func test_water_fire_reaction_occurs_exactly_once() -> bool:
 func test_wetness_decay_and_zero_boundary() -> bool:
 	var sim = Simulator.new(2, 2, 2)
 	var tile = sim.world.tile_at(Vector2i.ZERO)
-	sim.step(Command.pour_water(Vector2i.ZERO, 5))
+	# Contact wetness without a persistent water surface still dries naturally.
+	sim.world.bootstrap_set_wetness(Vector2i.ZERO, 5)
+	sim.step(Command.wait_for(80))
 	check_eq(tile.wetness, 5, "fast application does not cross cadence")
 	sim.step(Command.wait_for(20))
 	check_eq(tile.wetness, 3, "wetness after first environment tick")
