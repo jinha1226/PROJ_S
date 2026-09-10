@@ -20,6 +20,14 @@ func run()->void:
 	for i in range(ui.product_tactics_popup.item_count):
 		check(not ui.product_tactics_popup.is_item_disabled(i),"order menu is available")
 	ui.product_tactics_popup.hide()
+	ui._on_product_tactic_selected(13)
+	check(session.FieldRules.formation(session.sim.world)=="WEDGE","formation menu applies wedge")
+	var hero:int=session.sim.world.party_control_actor_id()
+	var allies:Array=session.sim.world.party_encounter.active_party_member_ids.duplicate();allies.erase(hero)
+	ui._on_actor(allies[0])
+	check(session.sim.world.party_control_actor_id()==allies[0],"map companion tap changes control")
+	ui._on_compact_member_card_pressed(hero,"hero")
+	check(session.sim.world.party_control_actor_id()==hero,"portrait tap changes control back")
 	var time_before:int=session.sim.world.world_time
 	ui._on_product_tactic_selected(3)
 	check(session.sim.world.world_time==time_before+100,"cease attack spends one turn")

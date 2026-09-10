@@ -4390,6 +4390,8 @@ func _build_product_tactics_popup()->void:
 	product_tactics_popup=PopupMenu.new();product_tactics_popup.name="ProductTacticsPopup"
 	for row in [[0,"동료 · 공격 대상 지정"],[1,"동료 · 후퇴"],[2,"동료 · 자리 지키기"],[3,"동료 · 공격 중지"],[4,"동료 · 따라오기"]]:
 		product_tactics_popup.add_item(str(row[1]),int(row[0]))
+	for row in [[10,"탐험 대형 · 자유"],[11,"탐험 대형 · 종대"],[12,"탐험 대형 · 횡대"],[13,"탐험 대형 · 쐐기"]]:
+		product_tactics_popup.add_item(str(row[1]),int(row[0]))
 	product_tactics_popup.id_pressed.connect(_on_product_tactic_selected)
 	add_child(product_tactics_popup)
 
@@ -4406,6 +4408,10 @@ func _on_product_tactics()->void:
 		product_tactics_popup.set_item_disabled(index,not fighting)
 		product_tactics_popup.set_item_as_checkable(index,true)
 		product_tactics_popup.set_item_checked(index,fighting and str(ids.get(item_id,""))==current)
+		if item_id>=10:
+			product_tactics_popup.set_item_disabled(index,not session.field_turns_active())
+			product_tactics_popup.set_item_checked(index,session.field_turns_active() and \
+				str({10:"NONE",11:"COLUMN",12:"LINE",13:"WEDGE"}.get(item_id,""))==session.FieldRules.formation(session.sim.world))
 	if not fighting:_show_product_command_feedback("쫓아오는 적이 없어 지금은 전술이 필요 없습니다.")
 	var anchor:Rect2=product_tactics_button.get_global_rect()
 	var popup_size:Vector2=product_tactics_popup.get_contents_minimum_size()
@@ -4414,6 +4420,12 @@ func _on_product_tactics()->void:
 
 func _on_product_tactic_selected(item_id:int)->void:
 	if session==null:return
+	if item_id>=10:
+		var formation:String=str({10:"NONE",11:"COLUMN",12:"LINE",13:"WEDGE"}.get(item_id,""))
+		var result:Dictionary=session.set_exploration_formation(formation)
+		_record_result(result,false,"대형 설정 불가")
+		if result.accepted:_show_product_command_feedback("탐험 대형 · "+str(session.FieldRules.FORMATIONS[formation]))
+		_request_refresh();return
 	if not session.field_turns_active() and not _portrait_battle_controls_visible():return
 	if item_id==0:
 		_party_command_targeting=true
@@ -4559,6 +4571,8 @@ func _selected_detail()->void:
 		return
 
 func _select_member(member_id:int,display_name:String)->void:
+	if session.field_turns_active():
+		_switch_field_member(member_id);return
 	var view_mode:=str(session.party_status().get("view_mode",""))
 	selected_member_id=member_id;selected_target_id=-1;notice_text="%s 선택"%display_name
 	action_feedback_text="판단 관찰 · 전투 입력은 주인공 행동으로 처리됩니다." \
@@ -4572,7 +4586,21 @@ func _on_compact_member_card_pressed(member_id:int,_display_name:String)->void:
 	if not _battle_target_mode.is_empty():
 		_commit_battle_target(member_id)
 		return
+	if session.field_turns_active():
+		_switch_field_member(member_id);return
 	_open_member_detail(member_id)
+
+func _switch_field_member(member_id:int)->void:
+	_cancel_product_rest("rest_user_stop")
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
+	var result:Dictionary=session.select_field_actor(member_id)
+	_record_result(result,false,"조작 전환 불가")
+	if result.accepted:
+		selected_member_id=member_id;selected_target_id=-1
+		_clear_move_preview()
+		_show_product_command_feedback("직접 조작 · "+_entity_display_name(member_id))
+	_request_refresh()
 
 func _on_member_card_gui_input(event:InputEvent,member_id:int,_display_name:String,button:Button)->void:
 	var pressed:=false;var native_double:=false;var local_position:=Vector2.ZERO
@@ -6102,6 +6130,8 @@ func _on_actor(entity_id:int)->void:
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("rescue_candidate_ids",[]):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
+	if session.field_turns_active() and entity_id in status.party_member_ids:
+		_switch_field_member(entity_id);return
 	if status.view_mode=="EXPLORATION" \
 			and session.has_method("is_opening_npc") \
 			and bool(session.is_opening_npc(entity_id)):

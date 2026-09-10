@@ -1638,6 +1638,7 @@ func party_status() -> Dictionary:
 		"facing": [state.facing.x,state.facing.y], "step_index": sim.world.step_index, "world_time": sim.world.world_time,
 		# Historic UI key means the controlled exploration leader, not identity.
 		"protagonist_id": sim.world.party_control_actor_id(), "founder_id":state.protagonist_id,
+		"exploration_formation":FieldRules.formation(sim.world) if FieldRules.enabled(sim.world) else "NONE",
 		"party_member_ids": state.active_party_member_ids.duplicate(),
 		"roster_member_ids": state.party_member_ids.duplicate(),
 		"rescue_candidate_ids":rescue_candidate_ids(),
@@ -6502,6 +6503,33 @@ func commit_field_action(action)->Dictionary:
 	_clear_draft()
 	return _result_dto(result)
 
+func select_field_actor(actor_id:int)->Dictionary:
+	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
+	var world=sim.world;var party=world.party_encounter
+	if actor_id not in party.active_party_member_ids or not world.can_act(actor_id,world.world_time):
+		return _rejection_dto("field_actor_unavailable")
+	if party.member(actor_id).busy_until>world.world_time:return _rejection_dto("field_actor_busy")
+	if actor_id==world.party_control_actor_id():return _feedback_dto({"accepted":true,"reason":"ok"})
+	var event=world.emit_event("party.field_control_selected",world.party_control_actor_id(),actor_id,
+		world.entities[actor_id].position)
+	if event==null:return _rejection_dto("field_action_unavailable")
+	party.group_anchor=world.entities[actor_id].position;party.revision+=1
+	command_journal.append({"kind":"field_control","actor_id":str(actor_id)})
+	_clear_draft()
+	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id})
+
+func set_exploration_formation(formation:String)->Dictionary:
+	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
+	if formation not in FieldRules.FORMATIONS:return _rejection_dto("unknown_formation")
+	var world=sim.world;var actor_id:int=world.party_control_actor_id()
+	var event=world.emit_event("party.field_formation_selected",actor_id,-1,
+		world.entities[actor_id].position,0,-1,{"formation":formation})
+	if event==null:return _rejection_dto("field_action_unavailable")
+	world.party_encounter.revision+=1
+	command_journal.append({"kind":"field_formation","formation":formation})
+	_clear_draft()
+	return _feedback_dto({"accepted":true,"reason":"ok","formation":formation})
+
 func first_strike_contact(target_id: int) -> Dictionary:
 	# The party attacks an enemy that has not noticed it: one journaled step that
 	# opens the contact as PARTY_AMBUSH. Deployment (settle_contact) and the
@@ -7815,6 +7843,10 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
+			"field_control":
+				replay_result=replay.select_field_actor(Int64CodecScript.parse(row.actor_id,"field actor"))
+			"field_formation":
+				replay_result=replay.set_exploration_formation(str(row.formation))
 			"reserve_skill":
 				var operation:Dictionary=row.operation
 				replay_result=replay.individual_battle.reserve(int(operation.actor_id),
@@ -8255,6 +8287,12 @@ func _journal_wire_error(journal: Array) -> String:
 			"field_action":
 				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
 					return "invalid_field_action_journal"
+			"field_control":
+				if keys!=["actor_id","kind"] or not Int64CodecScript.is_canonical(row.get("actor_id")):
+					return "invalid_field_control_journal"
+			"field_formation":
+				if keys!=["formation","kind"] or row.get("formation") not in FieldRules.FORMATIONS:
+					return "invalid_field_formation_journal"
 			"reserve_skill","cancel_reserved_skill","individual_step","individual_survival_step","reserve_move","reserve_hold":
 				if keys!=["kind","operation"]:return "invalid_individual_journal"
 				var individual_error:String=IndividualBattleScript.operation_error(str(row.kind),row.operation)
@@ -8939,6 +8977,8 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"deployment_unavailable":"조우를 처리할 수 없습니다.",
 		"field_target_unseen":"보이는 적을 선택하세요.",
 		"field_action_unavailable":"지금은 행동할 수 없습니다.",
+		"field_actor_busy":"이 동료는 아직 이전 행동의 대기시간이 남아 있습니다.",
+		"field_actor_unavailable":"지금은 이 동료를 조작할 수 없습니다.",
 		"field_turn_failed":"행동을 완료하지 못해 이전 상태로 되돌렸습니다.",
 		"field_order_failed":"동료 명령을 완료하지 못해 이전 상태로 되돌렸습니다.",
 		"first_strike_rule_unavailable":"이 저장본에서는 선공을 쓸 수 없습니다.",

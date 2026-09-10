@@ -3,6 +3,27 @@ extends RefCounted
 ## One dungeon timeline. GROUPED is retained as a save wire value, not a
 ## combat gate; living companions occupy their own cells throughout a floor.
 const TAG := "field_turns_v1"
+const FORMATIONS := {"NONE":"자유", "COLUMN":"종대", "LINE":"횡대", "WEDGE":"쐐기"}
+
+static func formation(world)->String:
+	for index in range(world.events.size()-1,-1,-1):
+		if world.events[index].type=="party.field_formation_selected":
+			return str(world.events[index].data.get("formation","NONE"))
+	return "NONE"
+
+static func formation_cell(world,actor_id:int)->Vector2i:
+	var party=world.party_encounter
+	var leader:int=world.party_control_actor_id()
+	var followers:Array=party.active_party_member_ids.duplicate()
+	followers.erase(leader)
+	var index:int=followers.find(actor_id)
+	var back:Vector2i=-party.facing
+	var right:=Vector2i(-party.facing.y,party.facing.x)
+	var offset:Vector2i=back*(index+1)
+	match formation(world):
+		"LINE":offset=right*((index/2+1)*(1 if index%2==0 else -1))
+		"WEDGE":offset=back*(index/2+1)+right*((index/2+1)*(1 if index%2==0 else -1))
+	return world.entities[leader].position+offset
 
 static func enabled(world)->bool:
 	return world!=null and world.party_encounter!=null and world.entities.has(

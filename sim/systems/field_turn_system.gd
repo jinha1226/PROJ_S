@@ -17,6 +17,8 @@ static func assess(sim,action)->Dictionary:
 	if action==null or not Rules.active(sim.world) or not sim.world.is_settled():return rejected
 	var world=sim.world
 	if action.actor_id!=world.party_control_actor_id():return rejected
+	if world.party_encounter.member(action.actor_id).busy_until>world.world_time:
+		rejected.reason="field_actor_busy";return rejected
 	if action.type in ["MELEE","SKILL"] and action.target_id in world.party_encounter.enemy_ids \
 			and not Rules.visible(world,action.target_id):
 		rejected.reason="field_target_unseen";return rejected
@@ -39,6 +41,8 @@ static func step(sim,action,wait_duration:int=100):
 	var start:int=world.world_time;var event_start:int=world.events.size()
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
+	if action.type=="MOVE" and Rules.formation(world)!="NONE":
+		party.facing=sim.party_coordinator._cardinal_facing(action.destination-world.entities[action.actor_id].position)
 	var ok:=_commit_ally(sim,action,step_index,cost)
 	if ok:
 		party.group_anchor=world.entities[world.party_control_actor_id()].position

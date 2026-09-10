@@ -1270,6 +1270,15 @@ func _exception_command_decision(actor_id: int, appraisal: Dictionary,
 func _follow_without_attacking_leaf(actor_id: int) -> Dictionary:
 	var hero_id := int(world.party_control_actor_id())
 	var hero_position: Vector2i = world.entities[hero_id].position
+	var field=preload("res://sim/field_turn_rules.gd")
+	if field.active(world) and field.formation(world)!="NONE":
+		var destination:Vector2i=field.formation_cell(world,actor_id)
+		if world.entities[actor_id].position==destination:return _hold_leaf()
+		var formation_route:Dictionary=_best_route_to_any(actor_id,[destination],_member_resilience(actor_id))
+		if not formation_route.is_empty():
+			return {"legal":true,"reason":"formation","type":"MOVE","target_id":-1,
+				"destination":formation_route.first_step}
+		# Blocked slots use ordinary following until the formation fits again.
 	if _distance(world.entities[actor_id].position, hero_position) <= 1:
 		return _hold_leaf()
 	var route := _best_route_to_any(actor_id, _adjacent_cells(hero_position),

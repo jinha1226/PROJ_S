@@ -2105,6 +2105,18 @@ func _restored_state_error() -> String:
 			return "event_position_invalid"
 		if not _is_valid_event_data(event.data):
 			return "event_data_invalid"
+		if event.type in ["party.field_control_selected","party.field_formation_selected"]:
+			if not preload("res://sim/field_turn_rules.gd").enabled(self) \
+					or event.actor_id!=party_control_actor_id(event.id) \
+					or event.magnitude!=0 or event.cause_id!=-1:
+				return "field_setting_event_invalid"
+			if event.type=="party.field_control_selected":
+				if not event.data.is_empty() or event.target_id not in _party_active_ids_at_event(event.id) \
+						or not preload("res://sim/party_survival_rules.gd")._active_at(self,event.target_id,event.id):
+					return "field_control_event_invalid"
+			elif event.target_id!=-1 or event.data.keys()!=["formation"] \
+					or event.data.get("formation") not in preload("res://sim/field_turn_rules.gd").FORMATIONS:
+				return "field_formation_event_invalid"
 		if event.type == "ai.decision_selected":
 			var trace_error := _decision_trace_wire_error(event.data)
 			if not trace_error.is_empty(): return trace_error

@@ -101,7 +101,7 @@ static func effective_for_actor(world,state,actor_id:int)->Dictionary:
 				"dungeon.expedition_returned","party.expedition_auto_returned"]:
 			break
 		if event.type=="party.command_issued" and data_error(event.data).is_empty():
-			if preload("res://sim/field_turn_rules.gd").enabled(world) and actor_id==state.protagonist_id:
+			if preload("res://sim/field_turn_rules.gd").enabled(world) and actor_id==world.party_control_actor_id():
 				continue
 			var global_target:=Int64CodecScript.parse(event.data.target_id,
 				"party command target")
