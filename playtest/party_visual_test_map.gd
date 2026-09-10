@@ -7,11 +7,13 @@ const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const SOLO_EXPLORATION_SCENARIO_ID := preload("res://playtest/solo_run_policy.gd").SCENARIO_ID
 const DUO_SCENARIO_ID := preload("res://playtest/solo_run_policy.gd").DUO_SCENARIO_ID
 const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
+const VISION_TEST_SCENARIO_ID := VisionRulesScript.LIGHTING_TEST_SCENARIO_ID
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
 const DungeonMapScript = preload("res://playtest/deterministic_dungeon_map.gd")
 const CampaignFloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 const CampaignWorldMapScript = preload("res://playtest/campaign_world_map.gd")
+const VisionRulesScript = preload("res://sim/vision_rules.gd")
 const SHOWCASE_ROWS := [
 	"###############",
 	"#......#......#",
@@ -54,7 +56,8 @@ const _TERRAIN_BY_GLYPH := {
 
 static func has_scenario(scenario_id: String) -> bool:
 	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID,
-		DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID, SOLO_FIXTURE_SCENARIO_ID]
+		DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID,
+		SOLO_FIXTURE_SCENARIO_ID, VISION_TEST_SCENARIO_ID]
 
 
 static func uses_showcase_layout(scenario_id:String)->bool:
@@ -182,21 +185,21 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 	var visible: Dictionary = {}
 	if world == null:
 		return visible
+	var observer_id: int = world.party_control_actor_id() if world.party_encounter != null else -1
+	var observer = world.entities.get(observer_id)
+	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
+	var facing: Vector2i = world.party_encounter.facing if world.party_encounter != null else Vector2i.RIGHT
+	if scenario_id==VISION_TEST_SCENARIO_ID:
+		return VisionRulesScript.visible_cells(world,origin,Vector2i.RIGHT,
+			VisionRulesScript.profile_for("human"),
+			VisionRulesScript.lighting_for_scenario(scenario_id))
 	if not uses_los_fov(scenario_id):
 		for y in range(world.height):
 			for x in range(world.width):
 				visible[_key(Vector2i(x, y))] = true
 		return visible
-	var min_y := maxi(0, origin.y - SHOWCASE_FOV_RADIUS)
-	var max_y := mini(world.height - 1, origin.y + SHOWCASE_FOV_RADIUS)
-	var min_x := maxi(0, origin.x - SHOWCASE_FOV_RADIUS)
-	var max_x := mini(world.width - 1, origin.x + SHOWCASE_FOV_RADIUS)
-	for y in range(min_y, max_y + 1):
-		for x in range(min_x, max_x + 1):
-			var target := Vector2i(x, y)
-			if _has_line_of_sight(world, origin, target):
-				visible[_key(target)] = true
-	return visible
+	return VisionRulesScript.visible_cells(world,origin,facing,profile,
+		VisionRulesScript.lighting_for_scenario(scenario_id))
 
 
 static func _has_line_of_sight(world, origin: Vector2i, target: Vector2i) -> bool:

@@ -3,6 +3,7 @@ extends RefCounted
 
 const FixedPointScript = preload("res://sim/fixed_point.gd")
 const PerceptionRegistryScript = preload("res://sim/enemy_perception_registry.gd")
+const VisionRulesScript = preload("res://sim/vision_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const CLAIM_CAP := 2
 
@@ -27,9 +28,12 @@ static func build(world) -> Dictionary:
 			for target_id in party:
 				var distance := _distance(world.entities[enemy_id].position,
 					world.entities[target_id].position)
-				if distance <= int(profile.sight_range) and PerceptionRegistryScript \
-						.has_line_of_sight(world, world.entities[enemy_id].position,
-							world.entities[target_id].position):
+				var enemy=world.entities[enemy_id]
+				var observation:=VisionRulesScript.observe(world,enemy.position,
+					world.entities[target_id].position,
+					VisionRulesScript.facing_for_entity(world,enemy_id),
+					VisionRulesScript.profile_for_entity(enemy))
+				if bool(observation.get("visible",false)):
 					visible.append(target_id)
 					target_pressure[target_id].visible_enemy_ids.append(enemy_id)
 				if distance <= 1:
@@ -76,9 +80,10 @@ static func visible_party_ids(world, enemy_id: int) -> Array[int]:
 	if profile.is_empty():
 		return result
 	for target_id in deployed_party_ids(world):
-		if _distance(enemy.position, world.entities[target_id].position) \
-				<= int(profile.sight_range) and PerceptionRegistryScript.has_line_of_sight(
-					world, enemy.position, world.entities[target_id].position):
+		var observation:=VisionRulesScript.observe(world,enemy.position,
+			world.entities[target_id].position,VisionRulesScript.facing_for_entity(world,enemy_id),
+			VisionRulesScript.profile_for_entity(enemy))
+		if bool(observation.get("visible",false)):
 			result.append(target_id)
 	result.sort_custom(func(a: int, b: int):
 		var a_distance := _distance(enemy.position, world.entities[a].position)

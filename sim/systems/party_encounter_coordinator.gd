@@ -20,6 +20,7 @@ const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const PartyStateScript=preload("res://sim/party_encounter_state.gd")
 const PartyPerceptionRegistryScript=preload("res://sim/party_perception_registry.gd")
+const VisionRulesScript=preload("res://sim/vision_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const RationSystemScript = preload("res://sim/systems/party_ration_system.gd")
 const MAX_DEPLOYED_PARTY := PartyStateScript.MAX_ACTIVE_PARTY_SIZE
@@ -729,7 +730,7 @@ func _nearest_contact_enemy(position:Vector2i,processed_step_index:int=-1):
 
 
 func _line_of_sight(origin:Vector2i,target:Vector2i)->bool:
-	return EnemyPerceptionRegistryScript.has_line_of_sight(world,origin,target)
+	return VisionRulesScript.has_line_of_sight(world,origin,target)
 
 
 func first_strike_assessment(enemy_id:int)->Dictionary:

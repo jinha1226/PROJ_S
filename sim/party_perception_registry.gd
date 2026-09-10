@@ -2,6 +2,7 @@ class_name PartyPerceptionRegistry
 extends RefCounted
 
 const EnemyPerceptionRegistryScript = preload("res://sim/enemy_perception_registry.gd")
+const VisionRulesScript = preload("res://sim/vision_rules.gd")
 
 const RULESET_ID := "party-shared-perception-v1"
 const SIGHT_TAG_BONUSES := {
@@ -31,11 +32,17 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 			continue
 		var origin: Vector2i = state.group_anchor if member.presence == "GROUPED" \
 			else world.entities[member_id].position
-		var distance := _distance(origin, target_position)
 		var member_range := sight_range(world, state, member_id)
-		if distance > member_range or not EnemyPerceptionRegistryScript.has_line_of_sight(
-				world, origin, target_position):
+		var profile: Dictionary = VisionRulesScript.profile_for_entity(world.entities[member_id])
+		# The party state radius and tag bonuses remain the authoritative party
+		# detection budget; the shared query supplies lighting, direction and LOS.
+		profile["base_sight_range"] = member_range
+		profile["peripheral_range"] = mini(int(profile.get("peripheral_range", 0)), member_range)
+		var observation := VisionRulesScript.observe(world, origin, target_position,
+			state.facing, profile)
+		if not bool(observation.get("visible", false)):
 			continue
+		var distance := int(observation.get("distance", _distance(origin, target_position)))
 		rows.append({"entity_id": member_id, "distance": distance,
 			"sight_range": member_range, "roster_slot": int(member.roster_slot)})
 	rows.sort_custom(func(a: Dictionary, b: Dictionary):

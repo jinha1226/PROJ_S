@@ -17,6 +17,7 @@ const AffinityRegistryScript = preload("res://sim/species_hazard_affinity_regist
 const ExplorationRouteScript = preload("res://playtest/party_exploration_route.gd")
 const AutoExploreScript = preload("res://playtest/party_auto_explore.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
+const VisionRulesScript = preload("res://sim/vision_rules.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
@@ -1660,6 +1661,11 @@ func party_status() -> Dictionary:
 		for enemy_id in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[sim.world.party_control_actor_id()].position
+	var vision_profile: Dictionary = VisionRulesScript.profile_for_entity(
+		sim.world.entities[sim.world.party_control_actor_id()])
+	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var vision_illumination: int = VisionRulesScript.illumination(
+		sim.world, protagonist_position, vision_lighting)
 	# Enemies the party can see right now, contact or not. Exploration taps,
 	# the enemy strip and the hero's skills use this so a first strike is
 	# possible on an enemy that has not opened the fight.
@@ -1696,6 +1702,11 @@ func party_status() -> Dictionary:
 		"party_command":PartyCommandScript.effective(sim.world,state),
 		"contact_warning":_latest_party_contact_warning(),
 		"protagonist_position": [protagonist_position.x, protagonist_position.y],
+		"vision_ruleset_id": VisionRulesScript.RULESET_ID,
+		"vision_profile": vision_profile,
+		"vision_observer_illumination": vision_illumination,
+		"vision_observer_light_band": VisionRulesScript.light_band(vision_illumination),
+		"vision_debug_available": true,
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
 
@@ -3388,6 +3399,44 @@ func observe_party_world() -> Dictionary:
 	return _party_rich_observation(context,bounds,Vector2i.ZERO).duplicate(true)
 
 
+func vision_debug_observation() -> Dictionary:
+	# Development-only projection. It calls the same pure query used by gameplay
+	# visibility and intentionally returns no actor or hidden-object payload.
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return {"available": false, "reason": "session_not_initialized"}
+	var world = sim.world
+	var observer_id: int = world.party_control_actor_id()
+	if not world.entities.has(observer_id):
+		return {"available": false, "reason": "observer_missing"}
+	var observer = world.entities[observer_id]
+	var state = world.party_encounter
+	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
+	var facing: Vector2i = state.facing
+	var lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var rows: Array[Dictionary] = []
+	for y in range(world.height):
+		for x in range(world.width):
+			var position := Vector2i(x, y)
+			var result: Dictionary = VisionRulesScript.observe(world, observer.position,
+				position, facing, profile, lighting)
+			rows.append({"position": [x, y], "visible": bool(result.get("visible", false)),
+				"identified": bool(result.get("identified", false)),
+				"reason": str(result.get("reason", "")),
+				"distance": int(result.get("distance", 0)),
+				"direction": result.get("direction", [0, 0]),
+				"observer_illumination": int(result.get("observer_illumination", 0)),
+				"target_illumination": int(result.get("target_illumination", 0)),
+				"observer_light_band": str(result.get("observer_light_band", "DARK")),
+				"target_light_band": str(result.get("target_light_band", "DARK")),
+				"directional": bool(result.get("directional", false)),
+				"identification_strength": int(result.get("identification_strength", 0))})
+	return {"available": true, "development_only": true, "schema_version": 1,
+		"ruleset_id": VisionRulesScript.RULESET_ID, "scenario_id": scenario_id,
+		"observer_id": observer_id, "observer_position": [observer.position.x, observer.position.y],
+		"facing": [facing.x, facing.y], "profile": profile,
+		"lighting": lighting, "cells": rows}.duplicate(true)
+
+
 func observe_minimap()->Dictionary:
 	var context:=_party_observation_context()
 	return {} if context.is_empty() else _party_minimap_observation(context)
@@ -3617,12 +3666,20 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
 				"ground_items":ground_items_by_cell.get(position_key,[]).duplicate(true)})
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
+	var vision_profile: Dictionary = VisionRulesScript.profile_for_entity(
+		sim.world.entities.get(int(status.protagonist_id)))
+	var vision_lighting: Dictionary = VisionRulesScript.lighting_for_scenario(scenario_id)
+	var vision_illumination: int = VisionRulesScript.illumination(
+		sim.world, context.hero_position, vision_lighting)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
 		"phase":status, "grid_mapping": {"origin": [grid_origin.x,grid_origin.y],
 			"cell_count":mini(maxi(1,mapping_capacity),bounds.size.x*bounds.size.y)},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
 			"radius":VisualTestMapScript.SHOWCASE_FOV_RADIUS if los_radius else 15,
-			"memory_supported":true}}
+			"memory_supported":true, "vision_ruleset_id":VisionRulesScript.RULESET_ID,
+			"vision_profile":vision_profile,
+			"observer_illumination":vision_illumination,
+			"observer_light_band":VisionRulesScript.light_band(vision_illumination)}}
 
 
 func _presentation_material_at(position:Vector2i)->String:
@@ -3835,8 +3892,13 @@ func _presentation_topology_fingerprint()->int:
 
 func _presentation_visible_cells(origin:Vector2i)->Dictionary:
 	if sim==null or sim.world==null:return {}
-	var key:="%d:%s:%d:%d:%d"%[int(sim.world.get_instance_id()),scenario_id,
-		origin.x,origin.y,sim.world.events.size()]
+	var observer_id: int = sim.world.party_control_actor_id()
+	var observer = sim.world.entities.get(observer_id)
+	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
+	var facing: Vector2i = sim.world.party_encounter.facing if sim.world.party_encounter != null else Vector2i.RIGHT
+	var key:="%d:%s:%d:%d:%d:%d:%d:%s"%[int(sim.world.get_instance_id()),scenario_id,
+		origin.x,origin.y,sim.world.events.size(),facing.x,facing.y,
+		int(profile.get("base_sight_range",0))]
 	var shared:bool=field_turns_active() and origin==sim.world.entities[sim.world.party_control_actor_id()].position
 	if shared:key+="/%d/%d"%[sim.world.step_index,sim.world.party_encounter.revision]
 	var cached:Variant=_presentation_visibility_cache.get(key)

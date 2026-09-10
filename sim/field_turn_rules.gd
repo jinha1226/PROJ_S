@@ -43,15 +43,14 @@ static func visible(world,enemy_id:int)->bool:
 
 static func visible_cells(world)->Dictionary:
 	var cells:Dictionary={}
+	var vision=preload("res://sim/vision_rules.gd")
 	for id in world.party_encounter.active_party_member_ids:
 		var member=world.party_encounter.member(id)
 		if member.presence!="DEPLOYED" or not world.can_act(id,world.world_time):continue
 		var origin:Vector2i=world.entities[id].position
-		var radius:int=preload("res://sim/party_perception_registry.gd").sight_range(world,world.party_encounter,id)
-		for y in range(maxi(0,origin.y-radius),mini(world.height,origin.y+radius+1)):
-			for x in range(maxi(0,origin.x-radius),mini(world.width,origin.x+radius+1)):
-				if preload("res://sim/enemy_perception_registry.gd").has_line_of_sight(world,origin,Vector2i(x,y)):
-					cells["%d:%d"%[x,y]]=true
+		var profile=vision.profile_for_entity(world.entities[id])
+		var visible=vision.visible_cells(world,origin,world.party_encounter.facing,profile)
+		for key in visible:cells[key]=true
 	return cells
 
 static func place_companions(sim)->bool:
