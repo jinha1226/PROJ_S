@@ -122,15 +122,6 @@ func handle_input(host,event:InputEvent)->bool:
 
 func _source_at(host,position:Vector2)->Dictionary:
 	var state=host.session.sim.world.party_encounter
-	for button in host.cards.find_children("ActorSkill_*","Button",true,false):
-		if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(position):
-			return {"actor_id":int(button.get_meta("actor_id")),"portrait":true,
-				"skill_id":str(button.get_meta("skill_id")),"skill_label":str(button.get_meta("skill_label"))}
-	for id in state.active_party_member_ids:
-		if not host.session.sim.world.can_act(id,host.session.sim.world.world_time):continue
-		var portrait:=host.cards.find_child("MemberCard%d"%int(id),true,false) as Control
-		if portrait!=null and portrait.is_visible_in_tree() and portrait.get_global_rect().has_point(position):
-			return {"actor_id":int(id),"portrait":true}
 	if host.grid.get_global_rect().has_point(position):
 		var local:Vector2=host.grid.get_global_transform_with_canvas().affine_inverse()*position
 		var id:int=host.grid.actor_at_pointer(local)

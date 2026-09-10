@@ -30,12 +30,21 @@ func run():
 	for i in range(4):await process_frame
 	var touch=InputEventScreenTouch.new();touch.index=0;touch.position=pos;touch.pressed=true
 	root.push_input(touch,true)
+	var jitter=InputEventScreenDrag.new();jitter.index=0;jitter.position=pos+Vector2(12,0)
+	root.push_input(jitter,true)
 	await create_timer(0.8).timeout
-	check(ui.member_detail_modal.visible,"real touch hold opens details")
+	check(ui.member_detail_modal.visible,"touch hold tolerates natural finger jitter")
 	touch.pressed=false;root.push_input(touch,true)
 	ui._close_member_detail()
 	var key=InputEventKey.new();key.keycode=KEY_F1;key.pressed=true;root.push_input(key,true)
 	check(session.sim.world.party_control_actor_id()==ids[0],"F1 switches without a turn")
+	var before_time:int=session.sim.world.world_time
+	touch.index=1;touch.pressed=true;root.push_input(touch,true)
+	jitter.index=1;jitter.position=pos+Vector2(80,-80);root.push_input(jitter,true)
+	touch.position=jitter.position;touch.pressed=false;root.push_input(touch,true)
+	check(not ui.battle_drag.active and session.sim.world.world_time==before_time,"portrait drag never issues a command")
+	check(ui.battle_drag._source_at(ui,pos).is_empty(),"legacy drag cannot start on portrait")
+	check(not ui.member_detail_modal.visible,"large canceled drag does not inspect")
 	ui.queue_free();await process_frame
 	session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
 	var hero:int=session.sim.world.party_control_actor_id()

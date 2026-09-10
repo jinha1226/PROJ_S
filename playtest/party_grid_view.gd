@@ -125,6 +125,7 @@ var _callout_lifetimes:Dictionary={}
 const CALLOUT_DURATION_MSEC:=2200
 var melee_vfx:MeleeVfxOverlay
 var pinch_zoom_enabled:=false
+var animate_passive_terrain:=true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
@@ -1794,7 +1795,7 @@ func _rebuild_torch_cache()->void:
 		var row:Dictionary=cached.get("row",{})
 		var terrain:Dictionary=cached.get("terrain",{})
 		var fire:=clampi(int(row.get("fire_intensity",row.get("fire",0))),0,100)
-		if str(terrain.get("motion_material","")) in ["water","grass","poison"] \
+		if animate_passive_terrain and str(terrain.get("motion_material","")) in ["water","grass","poison"] \
 				or fire>0:_visible_environment_count+=1
 		if fire<=0:continue
 		var position:Vector2i=cached.get("position",Vector2i(-1,-1))
@@ -1930,7 +1931,7 @@ func environment_motion_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dict
 		material_id="fire"
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	return MaterialGrammar.material_motion_spec(position,material_id,state,now,
-		_torch_animation_enabled())
+		_torch_animation_enabled() and (animate_passive_terrain or material_id=="fire"))
 
 func _cached_static_cell(position:Vector2i)->Dictionary:
 	_ensure_static_projection_cache()

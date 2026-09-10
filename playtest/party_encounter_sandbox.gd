@@ -311,7 +311,7 @@ var _product_touch_started_msec:=-1
 var _product_mouse_control:=""
 var _product_mouse_started_msec:=-1
 var _product_mouse_origin:=Vector2.ZERO
-const PORTRAIT_LONG_PRESS_MSEC:=550
+var portrait_gesture=preload("res://playtest/portrait_gesture.gd").new()
 var _product_ignore_mouse_until_msec:=-1
 var _product_auto_explore_generation:=0
 var _product_auto_explore_pending:=false
@@ -363,8 +363,13 @@ var _hero_turn_was_waiting:=false
 var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
+func _notification(what:int)->void:
+	if what==NOTIFICATION_APPLICATION_FOCUS_OUT and portrait_gesture!=null:
+		portrait_gesture.actor_id=-1
+
 func _process(_delta:float)->void:
 	_tick_portrait_long_press()
+	if portrait_gesture.actor_id>=0:return
 	base_work_clock.tick(self,_delta)
 	if not _battle_target_mode.is_empty() and grid!=null and grid.modal_open:
 		_cancel_battle_targeting("대상 선택을 취소했습니다.")
@@ -404,7 +409,8 @@ func _process(_delta:float)->void:
 
 func _input(event:InputEvent)->void:
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
-	if _handle_field_portrait_input(event):return
+	if portrait_gesture.handle(self,event):return
+	if _handle_field_shortcuts(event):return
 	if grid!=null and (battle_drag==null or not battle_drag.active) \
 			and grid.capture_nearby_list_input(event):return
 	if battle_drag!=null and battle_drag.handle_input(self,event):return
@@ -616,7 +622,7 @@ func _item_row_at_position(global_position:Vector2)->Dictionary:
 				"slot":str(button.get_meta("item_slot",""))}
 	return {}
 
-func _handle_field_portrait_input(event:InputEvent)->bool:
+func _handle_field_shortcuts(event:InputEvent)->bool:
 	if session==null or not session.field_turns_active():return false
 	if grid==null or grid.modal_open or member_detail_modal!=null and member_detail_modal.visible:return false
 	if record_modal!=null and record_modal.visible or map_overlay!=null and map_overlay.visible:return false
@@ -628,24 +634,7 @@ func _handle_field_portrait_input(event:InputEvent)->bool:
 		var ids:Array=session.sim.world.party_encounter.active_party_member_ids
 		if index<ids.size():_on_compact_member_card_pressed(int(ids[index]),"")
 		get_viewport().set_input_as_handled();return true
-	# Own the gesture by actor name and viewport coordinates, not a transient
-	# Button instance. HUD rebuilding or mouse_exited must not cancel a hold.
-	if event is InputEventMouseMotion and _product_mouse_control.begins_with("MemberCard"):
-		if event.position.distance_to(_product_mouse_origin)>=8.0:_product_mouse_control=""
-		get_viewport().set_input_as_handled();return true
-	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return false
-	var name_value:=_product_control_at_position(event.position)
-	if not name_value.begins_with("MemberCard") and not _product_mouse_control.begins_with("MemberCard"):return false
-	get_viewport().set_input_as_handled()
-	if event.device==InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:return true
-	if event.pressed:
-		_product_mouse_control=name_value;_product_mouse_origin=event.position
-		_product_mouse_started_msec=Time.get_ticks_msec()
-	else:
-		var activate:bool=_product_mouse_control==name_value and name_value.begins_with("MemberCard")
-		_product_mouse_control=""
-		if activate:_activate_product_control(name_value)
-	return true
+	return false
 
 func _handle_product_control_touch(event:InputEvent)->bool:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
@@ -712,20 +701,7 @@ func _product_control_activates_on_press(control_name:String)->bool:
 	return false
 
 func _tick_portrait_long_press()->void:
-	if session==null or not session.field_turns_active():return
-	var now:=Time.get_ticks_msec()
-	var name_value:=""
-	if _product_touch_index>=0 and not _product_touch_dragged and _product_touch_control.begins_with("MemberCard"):
-		if now-_product_touch_started_msec>=PORTRAIT_LONG_PRESS_MSEC:
-			name_value=_product_touch_control;_product_touch_dragged=true
-	elif _product_mouse_control.begins_with("MemberCard"):
-		var card=cards.find_child(_product_mouse_control,true,false)
-		if card==null or not card.is_visible_in_tree():
-			_product_mouse_control=""
-		elif now-_product_mouse_started_msec>=PORTRAIT_LONG_PRESS_MSEC:
-			name_value=_product_mouse_control;_product_mouse_control=""
-	if not name_value.is_empty():
-		_open_member_detail(int(name_value.trim_prefix("MemberCard")))
+	portrait_gesture.tick(self)
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
@@ -737,7 +713,6 @@ func _product_control_at_position(global_position:Vector2)->String:
 		history_nav_button])
 	if session!=null and session.field_turns_active():
 		if hero_skill_row!=null:controls.append_array(hero_skill_row.find_children("ActorSkill_*","Button",true,false))
-		if cards!=null:controls.append_array(cards.find_children("MemberCard*","Button",true,false))
 	for control_value in controls:
 		if not is_instance_valid(control_value):continue
 		var button:=control_value as Button
@@ -984,6 +959,7 @@ func _build_ui()->void:
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+	grid.animate_passive_terrain=false
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.actor_inspect_requested.connect(_open_member_detail)
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
@@ -3047,9 +3023,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		compact.tooltip_text="%s · 탭 또는 F1~F4: 조작 전환 / 길게 누르기: 상태창"%str(row.display_name)
 		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
-		if session.field_turns_active():
-			compact.gui_input.connect(_on_product_button_gui_input.bind(str(compact.name)))
-		else:compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,str(row.get("display_name","파티원"))))
+		compact.focus_mode=Control.FOCUS_NONE
 		cards.add_child(compact)
 		return
 	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
@@ -5941,6 +5915,7 @@ func _on_restart_with_new_personality()->void:
 	else:_request_refresh()
 
 func _reset_run_ui_transients()->void:
+	portrait_gesture=preload("res://playtest/portrait_gesture.gd").new()
 	if companion_order_editor!=null:
 		companion_order_editor.visible=false;companion_order_editor.actor_id=-1
 	_reset_auto_flow();route_generation+=1;_clear_route_continue_schedule()
