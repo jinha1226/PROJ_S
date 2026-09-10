@@ -56,6 +56,7 @@ const WeaponRuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const GroundItemScript=preload("res://sim/ground_item_state.gd")
 const ItemScript=preload("res://sim/item_instance.gd")
 const ItemRegistryScript=preload("res://sim/item_registry.gd")
+const ItemCatalogScript=preload("res://sim/item_catalog_registry.gd")
 const ItemOperationsScript=preload("res://sim/world_item_operations.gd")
 const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const ItemRewardRulesScript=preload("res://sim/item_reward_rules.gd")
@@ -127,17 +128,20 @@ const TOWN_SHRINE_COST := 15
 const TOWN_SHRINE_STRESS_REDUCTION := 300
 const TOWN_STARTING_FLOOR := 1
 const TOWN_MARKET_CATALOG := [
-	{"definition_id":"FOOD_RATION","price":6,"stock":6},
-	{"definition_id":"POTION_HEALING","price":12,"stock":4},
+	{"definition_id":"FOOD_HARDTACK","stock":4},
+	{"definition_id":"FOOD_RATION","stock":6},
+	{"definition_id":"FOOD_DRIED_MEAT","stock":4},
+	{"definition_id":"POTION_HEALING_MINOR","stock":4},
+	{"definition_id":"POTION_HEALING","stock":4},
+	{"definition_id":"POTION_HEALING_GREATER","stock":2},
 	{"definition_id":"TORCH","price":8,"stock":6},
-	{"definition_id":"MATERIAL_IRON_INGOT","price":18,"stock":2},
-	{"definition_id":"ARMOR_PADDED","price":35,"stock":1},
-	{"definition_id":"SHIELD_WOOD","price":30,"stock":1},
+	{"definition_id":"MATERIAL_IRON_INGOT","stock":2},
+	{"definition_id":"MAT_WEAPON_TOUGH_WOOD","stock":2},
+	{"definition_id":"ARMOR_CLOTH_ROBE","stock":1},
+	{"definition_id":"ARMOR_PADDED","stock":1},
+	{"definition_id":"SHIELD_WOOD","stock":1},
 	{"definition_id":"ACCESSORY_BRASS_CHARM","price":28,"stock":1},
 ]
-# Monster byproducts are equipment (carried loadouts) plus magic stones; the
-# market buys stones back per unit at these prices. Only listed definitions sell.
-const TOWN_MARKET_SELL_PRICES := {"MAGIC_STONE":8}
 const ITEM_ACTION_TIME_COST := 100
 const OPENING_HEXACO_SLOT := 9242026
 const OPENING_NPC_MAX_HEALTH := 90
@@ -1308,6 +1312,8 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictiona
 		sim.world,sim.world.party_control_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
+	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
+	if heal_power<=0:return _rejection_dto("item_effect_missing")
 	if field_turns_active() and (heal_before_time or preload("res://sim/living_expedition_rules.gd").expanded_exploration(sim.world)):
 		return _use_field_potion(instance_id)
 	# Opening the inventory is allowed to replace a staged combat choice. Keep an
@@ -1344,7 +1350,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictiona
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_event_failed")
-	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
+	var healed:=mini(heal_power,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
 	var restored=sim.world.emit_event("health.restored",sim.world.party_control_actor_id(),sim.world.party_control_actor_id(),
 		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
@@ -1375,9 +1381,13 @@ func _use_field_potion(instance_id:String)->Dictionary:
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var start:int=sim.world.events.size();var journal_size:=command_journal.size()
 	var id:int=sim.world.party_control_actor_id();var hero=sim.world.entities[id]
+	var preview:Dictionary=ItemOperationsScript.preview_use(sim.world,id,instance_id)
+	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
+	if not bool(preview.get("accepted",false)) or heal_power<=0:
+		return _rejection_dto("item_effect_missing")
 	var consumed:Dictionary=ItemOperationsScript.commit_use(sim.world,id,instance_id,hero.position,ITEM_ACTION_TIME_COST)
 	if not consumed.get("accepted",false):return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
-	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
+	var healed:=mini(heal_power,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
 	var event=sim.world.emit_event("health.restored",id,id,hero.position,healed,int(consumed.event_id),
 		{"schema_version":1,"ruleset_id":"healing-potion-v1","kind":"POTION","health_after":int(hero.health)})
@@ -1660,7 +1670,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		"requirement_text":" · ".join(requirement_parts),
 		"current_stats":stats.duplicate(true),
 		"use_kind":str(definition.use_kind),"usable":str(definition.use_kind)=="HEALING",
-		"heal_amount":ItemRegistryScript.HEALING_POTION_RESTORE \
+		"heal_amount":ItemCatalogScript.healing_amount(str(item.definition_id)) \
 			if str(definition.use_kind)=="HEALING" else 0,
 		"compact_stat_text":""}
 	result.merge({"reward_family":ItemRewardRulesScript.family_for_item(str(item.definition_id)),
@@ -1703,7 +1713,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		if int(definition.bonuses.get("dodge_milli",0))!=0:
 			parts.append("회피 %+d"%int(definition.bonuses.dodge_milli))
 		if str(definition.use_kind)=="HEALING":
-			parts.append("회복 +%d"%ItemRegistryScript.HEALING_POTION_RESTORE)
+			parts.append("회복 +%d"%ItemCatalogScript.healing_amount(str(item.definition_id)))
 		result["compact_stat_text"]=" · ".join(parts)
 	return result.duplicate(true)
 
@@ -2235,10 +2245,11 @@ func town_market_sell_rows()->Array[Dictionary]:
 	var inventory=sim.world.inventory_of(sim.world.party_control_actor_id())
 	if inventory==null:return rows
 	for item in inventory.unequipped_items():
-		if not TOWN_MARKET_SELL_PRICES.has(str(item.definition_id)):continue
+		if ItemCatalogScript.family(str(item.definition_id))!="MAGIC_STONE" \
+				or ItemCatalogScript.sell_price(str(item.definition_id))<=0:continue
 		var definition:Variant=ItemRegistryScript.definition(str(item.definition_id))
 		var assessment:=town_market_sell_assessment(str(item.instance_id))
-		var unit_price:=int(TOWN_MARKET_SELL_PRICES[str(item.definition_id)])
+		var unit_price:=ItemCatalogScript.sell_price(str(item.definition_id))
 		rows.append({"instance_id":str(item.instance_id),
 			"definition_id":str(item.definition_id),
 			"label":str(definition.label) if definition!=null else str(item.definition_id),
@@ -2259,12 +2270,13 @@ func town_market_sell_assessment(instance_id:String)->Dictionary:
 	if inventory==null:return _rejection_dto("item_actor_missing")
 	var item=inventory.item(instance_id)
 	if item==null or instance_id.is_empty():return _rejection_dto("town_market_sell_missing")
-	if not TOWN_MARKET_SELL_PRICES.has(str(item.definition_id)):
+	if ItemCatalogScript.family(str(item.definition_id))!="MAGIC_STONE" \
+			or ItemCatalogScript.sell_price(str(item.definition_id))<=0:
 		return _rejection_dto("town_market_item_unsellable")
 	for slot in inventory.equipped:
 		if str(inventory.equipped[slot])==instance_id:
 			return _rejection_dto("town_market_item_unsellable")
-	var unit_price:=int(TOWN_MARKET_SELL_PRICES[str(item.definition_id)])
+	var unit_price:=ItemCatalogScript.sell_price(str(item.definition_id))
 	return _feedback_dto({"accepted":true,"reason":"ok","instance_id":instance_id,
 		"definition_id":str(item.definition_id),"quantity":int(item.quantity),
 		"unit_price":unit_price,"gold":unit_price*int(item.quantity)})
@@ -3227,6 +3239,8 @@ func _town_market_catalog_row(definition_id:String)->Dictionary:
 	for value in TOWN_MARKET_CATALOG:
 		if str(value.get("definition_id",""))==definition_id:
 			var result:Dictionary=value.duplicate(true)
+			if not result.has("price"):
+				result["price"]=ItemCatalogScript.buy_price(definition_id)
 			if definition_id=="POTION_HEALING":
 				var levels:=BaseProgressionRulesScript.facility_levels(
 					sim.world.events if sim!=null and sim.world!=null else [])
