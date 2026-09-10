@@ -5748,13 +5748,27 @@ func _party_event_correlation_error() -> String:
 
 func _darkness_history_error() -> String:
 	var previous_by_actor: Dictionary = {}
+	var v2_active:=false
 	for event in events:
+		if event.type=="darkness.rules_activated":
+			if v2_active or event.actor_id!=-1 or event.target_id!=-1 or event.cause_id!=-1 \
+					or event.magnitude!=0 or event.data!={"ruleset_id":"darkness-stress-v2"}:
+				return "darkness_activation_invalid"
+			v2_active=true
+			continue
 		if event.type != "darkness.exposure_changed": continue
 		if event.target_id != -1 or event.actor_id not in _party_active_ids_at_event(event.id):
 			return "darkness_actor_invalid"
 		var historical: Dictionary = _entity_position_at_event(event.actor_id, event.id)
 		if not bool(historical.get("ok", false)) or historical.position != event.position:
 			return "darkness_position_invalid"
+		if event.data.get("ruleset_id","")=="darkness-stress-v2":
+			if not v2_active:return "darkness_activation_missing"
+			var v2_error:String=preload("res://sim/darkness_stress_rules.gd").event_error(event.data,previous_by_actor.get(event.actor_id,{}),event.magnitude)
+			if not v2_error.is_empty():return v2_error
+			previous_by_actor[event.actor_id]=event.data
+			continue
+		if v2_active:return "darkness_legacy_after_activation"
 		var keys: Array = event.data.keys(); keys.sort()
 		if keys != ["deep_dark", "elapsed", "exposure_after", "exposure_before",
 				"illumination", "resistance_milli", "ruleset_id", "schema_version",

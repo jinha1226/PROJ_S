@@ -108,6 +108,7 @@ func step(command, supplied_rollback_memento: Variant = null):
 	var start_time: int = plan["start_time"]
 	var end_time: int = plan["end_time"]
 	world.begin_step(processed_step_index)
+	var darkness_sample:=DarknessStressRulesScript.begin_sample(world)
 	var _pr:=PerfProbeScript.begin()
 	var root_event = _resolve_command(command, plan, processed_step_index)
 	PerfProbeScript.end("step.resolve",_pr)
@@ -170,6 +171,7 @@ func step(command, supplied_rollback_memento: Variant = null):
 	for index in range(event_start, world.events.size()):
 		immediate_ids.append(world.events[index].id)
 	timeline[0]["event_ids"] = immediate_ids
+	DarknessStressRulesScript.checkpoint(world,darkness_sample)
 	var marker_index := 1
 	for planned_occurrence in plan["_occurrences"]:
 		var entry: Dictionary = world.take_next_schedule()
@@ -232,17 +234,19 @@ func step(command, supplied_rollback_memento: Variant = null):
 		timeline[marker_index] = marker
 		if int(entry["repeat_interval"]) > 0:
 			world.requeue_repeating(entry)
+		DarknessStressRulesScript.checkpoint(world,darkness_sample)
 		marker_index += 1
 	assert(marker_index == timeline.size() - 1, "Not all previewed schedules were processed")
 	world.world_time = end_time
-	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time):
+	var darkness_start:int=world.events.size()
+	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time,darkness_sample):
 		var darkness_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		if darkness_restore != null:
 			world = darkness_restore
 			_rebuild_systems()
 		return StepResultScript.new(false, false, "darkness_stress_failed")
 	if world.party_encounter != null \
-			and not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start), false):
+			and not PartyMoraleSystemScript.commit_batch(world, DarknessStressRulesScript.morale_sources(world,event_start,darkness_start), false):
 		var darkness_morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
 		if darkness_morale_restore != null:
 			world = darkness_morale_restore
@@ -531,6 +535,7 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 	if not rollback is Dictionary:return StepResultScript.new(false,false,"party_snapshot_unavailable")
 	var event_start:int=world.events.size()
 	world.begin_step(processed_step_index)
+	var darkness_sample:=DarknessStressRulesScript.begin_sample(world)
 	var action=_commit_skill_effect(actor_id,skill_id,target_id,assessment,processed_step_index)
 	var accepted:bool=action!=null
 	var ally_batch:Dictionary={"accepted":false,"rows":[],"time_cost":0}
@@ -553,6 +558,7 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 			and PartyRelationshipSystemScript.commit_batch(world,world.events_since(event_start)) \
 			and PartyMoraleSystemScript.commit_batch(world,world.events_since(event_start)) \
 			and party_coordinator.reconcile_liveness(false)
+	DarknessStressRulesScript.checkpoint(world,darkness_sample)
 	if accepted:
 		for expected in schedule_plan.occurrences:
 			var entry:Dictionary=world.take_next_schedule()
@@ -569,11 +575,13 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 						world.events_since(tick_start),false):
 				accepted=false;break
 			if int(entry.repeat_interval)>0:world.requeue_repeating(entry)
+			DarknessStressRulesScript.checkpoint(world,darkness_sample)
 	if accepted:
 		world.world_time=end_time
-		accepted=DarknessStressRulesScript.commit_boundary(world,start_time,end_time)
+		var darkness_start:int=world.events.size()
+		accepted=DarknessStressRulesScript.commit_boundary(world,start_time,end_time,darkness_sample)
 		if accepted and world.party_encounter != null:
-			accepted=PartyMoraleSystemScript.commit_batch(world,world.events_since(event_start),false)
+			accepted=PartyMoraleSystemScript.commit_batch(world,DarknessStressRulesScript.morale_sources(world,event_start,darkness_start),false)
 	if accepted:
 		accepted=party_coordinator.reconcile_liveness() \
 			and party_coordinator.finalize_automatic_regroup()
@@ -782,6 +790,7 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 		for resolution in projected_party_results:
 			resolution_by_ordinal[int(resolution.action_data.intent_ordinal)] = resolution
 	world.begin_step(processed_step_index)
+	var darkness_sample:=DarknessStressRulesScript.begin_sample(world)
 	var leaf_index := 0
 	var pending_attack_results: Array = []
 	for row in authoritative.actor_rows:
@@ -901,6 +910,7 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 	if not party_coordinator.reconcile_liveness(false):
 		return _rollback_party_step(rollback, "party_turn_failed")
 	var end_time: int = start_time + cost
+	DarknessStressRulesScript.checkpoint(world,darkness_sample)
 	var occurrence_index := 0
 	while not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time) <= end_time:
 		var entry: Dictionary = world.take_next_schedule()
@@ -929,13 +939,15 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 			return _rollback_party_step(rollback, "party_morale_failed")
 		if int(entry.repeat_interval) > 0:
 			world.requeue_repeating(entry)
+		DarknessStressRulesScript.checkpoint(world,darkness_sample)
 		occurrence_index += 1
 	if occurrence_index != authoritative.timeline.size():
 		return _rollback_party_step(rollback, "party_schedule_mismatch")
 	world.world_time = end_time
-	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time):
+	var darkness_start:int=world.events.size()
+	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time,darkness_sample):
 		return _rollback_party_step(rollback, "darkness_stress_failed")
-	if not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start), false):
+	if not PartyMoraleSystemScript.commit_batch(world, DarknessStressRulesScript.morale_sources(world,event_start,darkness_start), false):
 		return _rollback_party_step(rollback, "party_morale_failed")
 	if not party_coordinator.reconcile_liveness():
 		return _rollback_party_step(rollback, "party_turn_failed")

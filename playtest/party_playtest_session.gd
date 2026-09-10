@@ -19,6 +19,16 @@ const AutoExploreScript = preload("res://playtest/party_auto_explore.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const VisionRulesScript = preload("res://sim/vision_rules.gd")
 const DarknessStressRulesScript = preload("res://sim/darkness_stress_rules.gd")
+var _darkness_replay_mode:=false
+
+func enable_darkness_rules()->Dictionary:
+	if sim==null or sim.world==null:return {"accepted":false,"reason":"session_not_initialized"}
+	if DarknessStressRulesScript.enabled(sim.world):return {"accepted":true,"reason":"already_enabled"}
+	if not sim.world.is_settled():return {"accepted":false,"reason":"world_not_settled"}
+	var event=sim.world.emit_event("darkness.rules_activated",-1,-1,Vector2i(-1,-1),0,-1,{"ruleset_id":"darkness-stress-v2"})
+	if event==null:return {"accepted":false,"reason":"darkness_activation_failed"}
+	command_journal.append({"kind":"darkness_rules"})
+	return {"accepted":true,"reason":"ok"}
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
@@ -2628,6 +2638,10 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 			else "town_departure_failed")
 	command_journal.append({"kind":"town","operation":{"action":"DEPART",
 		"entry_mode":entry_mode,"floor_index":int(assessment.floor_index)}})
+	# Explicit, top-level boundary: old journals retain their original outcomes.
+	# Never activate inside item/field transactions which collapse nested journals.
+	if not _darkness_replay_mode and preload("res://sim/living_expedition_rules.gd").enabled(sim.world):
+		enable_darkness_rules()
 	_clear_draft();_deployment_plan.clear()
 	if _exploration_route!=null:_exploration_route.clear()
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
@@ -8176,6 +8190,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id,
 		parsed_player_species_id,SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags)
+	replay._darkness_replay_mode=true
 	if (not replay_layout.is_empty() or legacy_settlement_replay or legacy_talent_replay) and not replay.reset_party(parsed_world_seed,
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay,parsed_player_species_id,
@@ -8341,6 +8356,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					operation.actor_id,"actor command actor"),str(operation.command_id),
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
+			"darkness_rules":replay_result=replay.enable_darkness_rules()
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
 			"field_control":
@@ -8805,6 +8821,8 @@ func _journal_wire_error(journal: Array) -> String:
 					return "invalid_actor_command_journal"
 			"field_care_enabled":
 				if keys!=["kind"]:return "invalid_field_care_journal"
+			"darkness_rules":
+				if keys!=["kind"]:return "invalid_darkness_rules_journal"
 			"field_action":
 				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
 					return "invalid_field_action_journal"

@@ -8,12 +8,14 @@ const Terrain = preload("res://sim/terrain_registry.gd")
 const BRIGHT_THRESHOLD := 700
 const DIM_THRESHOLD := 300
 const DEFAULT_AMBIENT := 900
+const EXPEDITION_DIM_AMBIENT := 400
 const DARK_AMBIENT := 120
 const MAX_LIGHT := 1000
 const LIGHT_SOURCE_KEYS := ["position", "brightness", "radius"]
 const LIGHTING_TEST_SCENARIO_ID := "VISION_TEST_LIGHTING_V1"
 const DARK_TORCH_SCENARIO_ID := "TORCH_DARK_FIXTURE_V1"
 const TorchRulesScript = preload("res://sim/torch_rules.gd")
+const DarknessIndex = preload("res://sim/darkness_event_index.gd")
 
 
 static func observe(world, observer_position: Vector2i, target_position: Vector2i,
@@ -121,7 +123,16 @@ static func lighting_for_world(world, scenario_id: String = "") -> Dictionary:
 		resolved = str(world.vision_scenario_id)
 	var result := lighting_for_scenario(resolved)
 	if world != null:
-		result["sources"] = TorchRulesScript.active_light_sources(world)
+		if DarknessIndex.enabled(world) and world.party_encounter!=null \
+				and resolved not in [LIGHTING_TEST_SCENARIO_ID,DARK_TORCH_SCENARIO_ID]:
+			var cycle=world.party_encounter.expedition_cycle
+			if cycle.phase=="DUNGEON":
+				# Shallow exploration stays comfortable; deeper expedition floors
+				# require a light. Town retains its bright preparation surface.
+				result.ambient_level=DEFAULT_AMBIENT if int(cycle.floor_index)<=1 \
+					else EXPEDITION_DIM_AMBIENT if int(cycle.floor_index)==2 else DARK_AMBIENT
+			elif cycle.phase=="TOWN":result.ambient_level=DEFAULT_AMBIENT
+		result["sources"].append_array(TorchRulesScript.active_light_sources(world))
 	return result.duplicate(true)
 
 

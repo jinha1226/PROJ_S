@@ -42,6 +42,7 @@ static func step(sim,action,wait_duration:int=100):
 	var start:int=world.world_time;var event_start:int=world.events.size()
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
+	var darkness_sample:=Darkness.begin_sample(world)
 	if action.type=="MOVE" and Rules.formation(world)!="NONE":
 		party.facing=sim.party_coordinator._cardinal_facing(action.destination-world.entities[action.actor_id].position)
 	var ok:=_commit_ally(sim,action,step_index,cost)
@@ -55,6 +56,7 @@ static func step(sim,action,wait_duration:int=100):
 			ok=sim.party_coordinator._set_awareness_state(awareness,"HUNTING",
 				world.entities[action.actor_id].position,str(awareness.awareness_state),action.actor_id)
 	if ok:ok=_social(sim,event_start,false)
+	Darkness.checkpoint(world,darkness_sample)
 	var iterations:=0
 	while ok:
 		var next:=_next(sim,end)
@@ -77,10 +79,12 @@ static func step(sim,action,wait_duration:int=100):
 			ok=_commit_enemy(sim,int(next.id),step_index)
 		if ok:ok=sim.party_coordinator.reconcile_liveness()
 		if ok:ok=_social(sim,leaf_start,int(next.id)==0)
+		Darkness.checkpoint(world,darkness_sample)
 	world.world_time=end
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
-	if ok:ok=Darkness.commit_boundary(world,start,end)
-	if ok:ok=Morale.commit_batch(world,world.events_since(event_start),false)
+	var darkness_start:int=world.events.size()
+	if ok:ok=Darkness.commit_boundary(world,start,end,darkness_sample)
+	if ok:ok=Morale.commit_batch(world,Darkness.morale_sources(world,event_start,darkness_start),false)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()

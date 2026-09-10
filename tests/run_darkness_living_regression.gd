@@ -1,0 +1,27 @@
+extends SceneTree
+const Session=preload("res://playtest/party_playtest_session.gd")
+const Rules=preload("res://sim/darkness_stress_rules.gd")
+const Vision=preload("res://sim/vision_rules.gd")
+var errors:Array[String]=[]
+func _init():call_deferred("run")
+func check(value:bool,label:String):
+	if not value:errors.append(label);printerr("FAIL ",label)
+func run():
+	var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
+	check(s.start_new_run_with_species("human",true,true).accepted,"living bootstrap")
+	check(s.command_journal.is_empty(),"bootstrap preserves pristine town start")
+	check(s.town_life_command({"action":"START"}).accepted,"town life starts")
+	var restored=Session.new()
+	var loaded:Dictionary=restored.load_session_json(s.save_session_json())
+	check(loaded.accepted,"pre-v2 town loads: "+str(loaded.get("reason","")))
+	check(restored.sim.snapshot()==s.sim.snapshot(),"old town replay remains exact")
+	check(restored.depart_town().accepted,"loaded town departs")
+	check(Rules.enabled(restored.sim.world),"departure activates darkness v2")
+	check(restored.command_journal[-1]=={"kind":"darkness_rules"},"migration is separate final journal entry")
+	check(Vision.lighting_for_world(restored.sim.world).ambient_level==900,"first floor bright")
+	check(restored.sim.world.world_state_error().is_empty(),"departure marker audit")
+	loaded=s.load_session_json(restored.save_session_json())
+	check(loaded.accepted,"departure migration journal replays: "+str(loaded.get("reason","")))
+	if loaded.accepted:check(s.sim.snapshot()==restored.sim.snapshot(),"migration replay exact")
+	print("DARKNESS LIVING: ",errors)
+	quit(0 if errors.is_empty() else 1)

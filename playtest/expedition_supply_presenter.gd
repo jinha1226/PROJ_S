@@ -14,12 +14,7 @@ static func rows(session)->Array[Dictionary]:
 			var count:=0
 			for item in inventory.backpack:
 				if item.definition_id==definition_id:count+=int(item.quantity)
-			for slot in inventory.equipped:
-				var equipped_id:=str(inventory.equipped[slot])
-				if equipped_id.is_empty():continue
-				var equipped=inventory._item_ref(equipped_id)
-				if equipped!=null and str(equipped.definition_id)==definition_id:
-					count+=int(equipped.quantity)
+			# Equipped slots reference these same owned instances; do not add twice.
 			if count>0:owners.append("%s %d"%[world.entities[id].display_name,count])
 			total+=count
 		for stock in session.town_market_stock():

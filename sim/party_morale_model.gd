@@ -40,6 +40,12 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 		direct[member_id] = 0
 		triggers[member_id] = []
 	var events: Array = event_rows.duplicate()
+	var darkness_only_v2:=false
+	for source in events:
+		var source_type:String=str(source.get("type","") if source is Dictionary else source.type)
+		var source_data:Dictionary=source.get("data",{}) if source is Dictionary else source.data
+		if source_type=="darkness.exposure_changed" and source_data.get("ruleset_id","")=="darkness-stress-v2":
+			darkness_only_v2=true
 	events.sort_custom(func(a, b):
 		var a_id := int(a.get("id", 0) if a is Dictionary else a.id)
 		var b_id := int(b.get("id", 0) if b is Dictionary else b.id)
@@ -114,7 +120,13 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 		contagion = clampi(contagion, 0, MAX_CONTAGION)
 		if contagion > 0:
 			triggers[member_id].append("ALLY_FEAR_CONTAGION")
-		var recovery := RECOVERY_DELTA if int(direct[member_id]) <= 0 \
+		var darkness_blocks_recovery:=false
+		if preload("res://sim/darkness_event_index.gd").enabled(world):
+			var vision=preload("res://sim/vision_rules.gd")
+			var profile:Dictionary=vision.profile_for_entity(world.entities[member_id])
+			darkness_blocks_recovery=int(profile.get("darkness_stress_resistance_milli",500))<1000 \
+				and vision.illumination(world,world.entities[member_id].position,vision.lighting_for_world(world))<180
+		var recovery := RECOVERY_DELTA if not darkness_only_v2 and not darkness_blocks_recovery and int(direct[member_id]) <= 0 \
 			and contagion == 0 and not _near_active_enemy(world, member_id) else 0
 		if recovery < 0:
 			triggers[member_id].append("SAFE_RECOVERY")
