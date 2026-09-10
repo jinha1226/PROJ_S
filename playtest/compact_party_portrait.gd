@@ -13,8 +13,15 @@ func _portrait(texture:Texture2D,rect:Rect2)->void:
 	var style=preload("res://playtest/dark_pixel_ui_skin.gd").panel_surface(Color("#11191e"),tones[party_index%4],0,2)
 	draw_style_box(style,rect)
 	if texture!=null:
-		# Portrait crops the body atlas to head/shoulders, as in the concept.
-		draw_texture_rect_region(texture,rect.grow(-3),Rect2(48,16,160,160))
+		# Native 24px actors need a 16px bust crop, not the old 256px-art crop.
+		var source_side:=texture.get_width()*2.0/3.0
+		var source:=Rect2(texture.get_width()/6.0,0,source_side,source_side)
+		var side:=maxf(source_side,floor((minf(rect.size.x,rect.size.y)-4)/source_side)*source_side)
+		var destination:=Rect2((rect.get_center()-Vector2.ONE*side/2).floor(),Vector2.ONE*side)
+		var layers:=Assets.actor_layer_spec(actor)
+		for key in ["body_texture","armor_texture","offhand_texture","weapon_texture","foreground_texture"]:
+			var layer:Texture2D=layers.get(key)
+			if layer!=null:draw_texture_rect_region(layer,destination,source)
 
 var emphasized_until_msec:=-1
 
@@ -24,7 +31,7 @@ func _process(_delta:float)->void:
 		if Time.get_ticks_msec()>=emphasized_until_msec:emphasized_until_msec=-1
 
 func _ready()->void:
-	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	clip_contents=true
 	resized.connect(queue_redraw)
 

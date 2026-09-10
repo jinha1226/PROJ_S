@@ -1,8 +1,16 @@
 class_name DarkPixelUISkin
 extends RefCounted
 
-## Shared code-native skin for the product UI. Raster art supplies icons and
-## atmosphere; layout and interaction states stay responsive Godot controls.
+## Image-backed nine-slice ironwork. Layout, text and input remain native controls.
+const FrameTexture=preload("res://assets/ui/dark_fantasy_v1/iron_frame.png")
+static var _runtime_frame:Texture2D
+
+static func frame_texture()->Texture2D:
+	if _runtime_frame==null:
+		var pixels:Image=FrameTexture.get_image()
+		pixels.resize(48,48,Image.INTERPOLATE_NEAREST)
+		_runtime_frame=ImageTexture.create_from_image(pixels)
+	return _runtime_frame
 
 const CANVAS:=Color("#15191d")
 const FOLIO:=Color("#20252a")
@@ -21,9 +29,9 @@ const CYAN:=Color("#4d8f98")
 const BLOOD:=Color("#9f4544")
 const JADE:=Color("#5f8a66")
 
-const VISUAL_FAMILY:="ILLUSTRATED_DUNGEON_UI"
+const VISUAL_FAMILY:="DARK_FANTASY_PIXEL_9SLICE"
 # Retain the public alias used by panels, but use smooth Korean/Latin type.
-const PixelFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
+const PixelFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 
 static func configure_theme(theme:Theme)->void:
@@ -48,6 +56,14 @@ static func configure_theme(theme:Theme)->void:
 		theme.set_stylebox("disabled",type_name,
 			panel_surface(Color("#080b0c"),IRON_SHADOW,4,1))
 	theme.set_stylebox("panel","PanelContainer",section_surface(4))
+	theme.set_stylebox("panel","PopupMenu",panel_surface(FOLIO,IRON_EDGE,8,2))
+	theme.set_stylebox("hover","PopupMenu",panel_surface(SECTION,BRASS,4,2))
+	theme.set_color("font_color","PopupMenu",BONE)
+	theme.set_color("font_hover_color","PopupMenu",Color("#fff0c9"))
+	theme.set_color("font_disabled_color","PopupMenu",BONE_DIM)
+	theme.set_constant("v_separation","PopupMenu",10)
+	theme.set_stylebox("panel","TooltipPanel",panel_surface(FOLIO,BRASS_DARK,8,1))
+	theme.set_color("font_color","TooltipLabel",BONE)
 	theme.set_stylebox("background","ProgressBar",
 		panel_surface(SLOT_EMPTY,IRON_SHADOW,0,1))
 	theme.set_stylebox("fill","ProgressBar",
@@ -55,21 +71,26 @@ static func configure_theme(theme:Theme)->void:
 
 
 static func panel_surface(fill:Color=FOLIO,border:Color=IRON_EDGE,
-		margin:int=8,border_width:int=2)->StyleBoxFlat:
-	var style:=StyleBoxFlat.new()
-	style.bg_color=fill
-	style.border_color=border
-	style.set_border_width_all(border_width)
-	style.set_corner_radius_all(6)
-	style.anti_aliasing=true
+		margin:int=8,border_width:int=2)->StyleBox:
+	# Gauges and explicit unframed fills stay solid for accurate proportional fill.
+	if border_width==0:
+		var flat:=StyleBoxFlat.new();flat.bg_color=fill;flat.anti_aliasing=false
+		flat.set_content_margin_all(float(margin));return flat
+	var style:=StyleBoxTexture.new()
+	style.texture=frame_texture()
+	var cut:=8.0
+	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+		style.set_texture_margin(side,cut)
+		style.set_expand_margin(side,0)
+	style.axis_stretch_horizontal=StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	style.axis_stretch_vertical=StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	style.modulate_color=Color(border.r*1.3+0.28,border.g*1.3+0.28,border.b*1.3+0.28,1)
+	style.draw_center=fill.a>0
 	style.set_content_margin_all(float(margin))
-	style.shadow_color=Color("#000000a8")
-	style.shadow_size=2
-	style.shadow_offset=Vector2(2,2)
 	return style
 
 
-static func section_surface(margin:int=7)->StyleBoxFlat:
+static func section_surface(margin:int=7)->StyleBox:
 	return panel_surface(SECTION,IRON_SHADOW,margin,1)
 
 
@@ -78,6 +99,7 @@ static func apply_panel(panel:PanelContainer,kind:String="FOLIO")->void:
 	if kind=="SECTION":style=section_surface()
 	elif kind=="COMPACT":style=panel_surface(SECTION,IRON_SHADOW,2,1)
 	panel.add_theme_stylebox_override("panel",style)
+	panel.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.set_meta("visual_family",VISUAL_FAMILY)
 	panel.set_meta("pixel_material","BLACK_IRON")
 	panel.set_meta("skin_kind",kind)
@@ -93,6 +115,7 @@ static func apply_heading(label:Label,accent:Color=BRASS)->void:
 
 static func apply_action_button(button:Button,accent:Color=BRASS,
 		danger:bool=false)->void:
+	button.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	var tone:=BLOOD if danger else accent
 	var normal:=panel_surface(tone.darkened(0.67),tone.darkened(0.15),4,2)
 	var hover:=panel_surface(Color("#1a2224"),tone.darkened(0.18),4,2)

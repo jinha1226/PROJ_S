@@ -2856,11 +2856,11 @@ func active_skill_rows(actor_id:int)->Array[Dictionary]:
 	var member=sim.world.party_encounter.member(actor_id)
 	if member==null:return rows
 	var common_reason:=""
-	if sim.world.party_encounter.safe_phase!="ENGAGED":common_reason="active_skill_combat_required"
+	if sim.world.party_encounter.safe_phase!="ENGAGED" and not field_turns_active():common_reason="active_skill_combat_required"
 	elif actor_id not in sim.world.party_encounter.active_party_member_ids \
 			or member.presence!="DEPLOYED":common_reason="active_skill_actor_inactive"
 	elif not sim.world.can_act(actor_id,sim.world.world_time):common_reason="active_skill_actor_incapacitated"
-	elif not is_duo_autobattle() and member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
+	elif (field_turns_active() or not is_duo_autobattle()) and member.busy_until>sim.world.world_time:common_reason="active_skill_actor_busy"
 	elif PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
 		common_reason="active_skill_actor_anxious"
 	for skill_id_value in member.active_skill_ids():

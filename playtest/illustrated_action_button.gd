@@ -3,6 +3,7 @@ extends Button
 ## Code-native icons stay sharp at phone resolutions; text remains the command
 ## state/accessibility source so contextual AUTO/reload/portal actions still work.
 func _ready()->void:
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	add_theme_color_override("font_color",Color.TRANSPARENT)
 	add_theme_color_override("font_hover_color",Color.TRANSPARENT)
 	add_theme_color_override("font_pressed_color",Color.TRANSPARENT)
@@ -26,12 +27,24 @@ func _draw()->void:
 		"ProductAttack":
 			for direction in [-1,1]:
 				var d:=float(direction)
-				draw_line(center+Vector2(-9*d,10),center+Vector2(9*d,-10),ink,3,true)
-				draw_line(center+Vector2(-10*d,2),center+Vector2(-2*d,9),ink,2,true)
+				draw_line(center+Vector2(-9*d,10),center+Vector2(9*d,-10),ink,3,false)
+				draw_line(center+Vector2(-10*d,2),center+Vector2(-2*d,9),ink,2,false)
 		"ProductWaitGuard":
 			var points:=PackedVector2Array([center+Vector2(-10,-10),center+Vector2(10,-10),center+Vector2(8,5),center+Vector2(0,11),center+Vector2(-8,5),center+Vector2(-10,-10)])
-			draw_polyline(points,ink,2,true)
-			draw_line(center+Vector2(0,-5),center+Vector2(0,5),ink,2,true)
+			draw_polyline(points,ink,2,false)
+			draw_line(center+Vector2(0,-5),center+Vector2(0,5),ink,2,false)
+		"ProductTactics":
+			draw_rect(Rect2(center+Vector2(-7,-11),Vector2(2,22)),ink)
+			draw_rect(Rect2(center+Vector2(-5,-10),Vector2(14,8)),ink)
+			draw_rect(Rect2(center+Vector2(-10,10),Vector2(9,2)),ink)
+		"ProductRest":
+			draw_line(center+Vector2(-10,9),center+Vector2(10,13),ink,2,false)
+			draw_line(center+Vector2(10,9),center+Vector2(-10,13),ink,2,false)
+			draw_colored_polygon(PackedVector2Array([center+Vector2(-6,6),center+Vector2(-6,-2),center+Vector2(-2,0),center+Vector2(1,-11),center+Vector2(7,-1),center+Vector2(6,6)]),ink)
+		"ProductPickup":
+			draw_rect(Rect2(center+Vector2(-2,-11),Vector2(4,12)),ink)
+			draw_polyline(PackedVector2Array([center+Vector2(-7,-2),center+Vector2(0,5),center+Vector2(7,-2)]),ink,2,false)
+			draw_polyline(PackedVector2Array([center+Vector2(-10,5),center+Vector2(-10,10),center+Vector2(10,10),center+Vector2(10,5)]),ink,2,false)
 		"ProductAuto":
 			draw_arc(center,10,0,TAU,32,ink,1.5,true)
 			draw_colored_polygon(PackedVector2Array([center+Vector2(5,-7),center+Vector2(2,3),center+Vector2(-5,7),center+Vector2(-2,-3)]),ink)

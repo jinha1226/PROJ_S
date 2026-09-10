@@ -16,6 +16,7 @@ var danger_edge:=false
 
 
 func _init()->void:
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	clip_contents=true
 	set_meta("visual_family",DarkSkin.VISUAL_FAMILY)

@@ -787,6 +787,7 @@ func _issue_new_personality_seed(avoid_seed:int=-1)->int:
 
 func _build_ui()->void:
 	if grid!=null:return
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	var ui_theme:=Theme.new();ui_theme.default_font_size=FONT_BODY
 	DarkPixelSkinScript.configure_theme(ui_theme);theme=ui_theme
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -938,7 +939,7 @@ func _build_ui()->void:
 	# alike. Tapping one paints the reachable cells red; tapping a target there
 	# uses it (before contact: a first strike).
 	hero_skill_row=HBoxContainer.new();hero_skill_row.name="HeroSkillRow"
-	hero_skill_row.custom_minimum_size.y=44;hero_skill_row.visible=false
+	hero_skill_row.custom_minimum_size.y=48;hero_skill_row.visible=false
 	hero_skill_row.add_theme_constant_override("separation",2);root_layout.add_child(hero_skill_row)
 	combat_action_area=VBoxContainer.new();combat_action_area.name="CombatActionArea";combat_action_area.custom_minimum_size.y=84
 	combat_action_area.add_theme_constant_override("separation",2);combat_action_area.visible=false;root_layout.add_child(combat_action_area)
@@ -2582,6 +2583,19 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	_clear_container(hero_skill_row)
 	hero_skill_row.visible=visible
 	if not visible:return
+	if session.field_turns_active():
+		var members:Array=session.party_cards()
+		var spec:=party_card_layout_spec(members.size(),size.x)
+		hero_skill_row.add_theme_constant_override("separation",int(spec.gap))
+		for member in members.slice(0,int(spec.effective_count)):
+			var actor_id:int=member.entity_id
+			var skills=preload("res://playtest/portrait_skill_row.gd").new()
+			skills.name="PortraitSkills%d"%actor_id
+			skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			skills.configure(actor_id,session.active_skill_rows(actor_id),_battle_target_actor_id,_battle_target_skill_id)
+			skills.skill_selected.connect(_on_manual_skill_selected)
+			hero_skill_row.add_child(skills)
+		return
 	var hero_id:=int(status.get("protagonist_id",-1))
 	var rows:=_hero_skill_rows(status)
 	if rows.is_empty():hero_skill_row.visible=false;return
@@ -2593,6 +2607,11 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 
 func _update_hero_skill_row(status:Dictionary)->void:
 	if hero_skill_row==null or not hero_skill_row.visible:return
+	if session.field_turns_active():
+		for member in session.party_cards():
+			var skills=hero_skill_row.get_node_or_null("PortraitSkills%d"%int(member.entity_id))
+			if skills!=null:skills.update_rows(int(member.entity_id),session.active_skill_rows(int(member.entity_id)))
+		return
 	var skills:=hero_skill_row.get_node_or_null("HeroSkills")
 	if skills==null:return
 	skills.update_rows(int(status.get("protagonist_id",-1)),_hero_skill_rows(status))
@@ -2605,12 +2624,16 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 	if not session.has_method("active_skill_rows") or not session.has_method("use_active_skill"):
 		_show_manual_battle_feedback("액티브 스킬을 아직 사용할 수 없습니다.");return
 	var selected_row:Dictionary={}
-	for row_value in _hero_skill_rows(session.party_status()):
+	var available_rows:Array=session.active_skill_rows(actor_id) if session.field_turns_active() else _hero_skill_rows(session.party_status())
+	for row_value in available_rows:
 		if row_value is Dictionary and str(row_value.get("skill_id",""))==skill_id:
 			selected_row=row_value;break
 	if selected_row.is_empty() or not bool(selected_row.get("can_select",false)):
 		_show_manual_battle_feedback(str(selected_row.get("message",
 			selected_row.get("reason","지금 사용할 수 없습니다."))));return
+	if session.field_turns_active():
+		_switch_field_member(actor_id)
+		if session.sim.world.party_control_actor_id()!=actor_id:return
 	_retreat_active=false
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
@@ -2683,7 +2706,8 @@ func _commit_battle_target(target_id:int)->void:
 	# Clear first so a refresh or duplicate pointer packet cannot cast twice.
 	_clear_battle_targeting_state()
 	var result:Dictionary
-	if first_strike:result=session.strike_with_skill(skill_id,target_id)
+	if session.field_turns_active() and mode=="ACTIVE_SKILL":result=session.use_active_skill(caster_id,skill_id,target_id)
+	elif first_strike:result=session.strike_with_skill(skill_id,target_id)
 	elif mode=="ACTIVE_SKILL":result=session.individual_battle.reserve(caster_id,skill_id,target_id)
 	else:result=session.issue_actor_command(caster_id,"ATTACK_TARGET",target_id)
 	autonomous_battle_clock.paused=prior_paused
@@ -6824,7 +6848,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	var separation:=4 if size.x>=450.0 else 0
 	# HUD, map, event feed, hero skill row, party, command dock: the same stack in
 	# exploration and in a fight, so the map never changes size on contact.
-	var skill_row_height:int=44 if hero_skill_row!=null and hero_skill_row.visible else 0
+	var skill_row_height:int=48 if hero_skill_row!=null and hero_skill_row.visible else 0
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-skill_row_height-party_height-48
 		-separation*5))
@@ -7107,7 +7131,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT if product_hud else (38 if wide else 36)
-	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=44 if product_hud else 0
+	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:

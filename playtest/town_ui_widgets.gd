@@ -18,7 +18,7 @@ static func label(parent:Node,text:String,font_size:int=14,color:Color=INK)->Lab
 static func surface(parent:Node)->VBoxContainer:
 	var panel:=PanelContainer.new();parent.add_child(panel)
 	var style:=Palette.panel_surface(Color("#20292b"),EDGE,12,1)
-	style.shadow_size=0;style.set_corner_radius_all(8)
+	panel.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.add_theme_stylebox_override("panel",style)
 	var box:=VBoxContainer.new();box.add_theme_constant_override("separation",8)
 	panel.add_child(box);return box
@@ -33,7 +33,7 @@ static func button(parent:Node,title:String,id:String,primary:bool=false)->Butto
 		if state in ["hover","pressed"]:fill=fill.lightened(0.13)
 		if state=="disabled":fill=Color("#1c2426")
 		var style:=Palette.panel_surface(fill,tone if state!="disabled" else EDGE,8,1)
-		style.shadow_size=0;style.set_corner_radius_all(7)
+		b.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 		b.add_theme_stylebox_override(state,style)
 	b.add_theme_color_override("font_color",INK)
 	b.add_theme_color_override("font_disabled_color",MUTED.darkened(0.25))
