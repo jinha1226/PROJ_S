@@ -4581,6 +4581,7 @@ func _on_product_attack_any()->void:
 	# it. Movement and the attack stay separate taps.
 	var status:Dictionary=session.party_status()
 	if bool(status.get("terminal",false)) or str(status.get("view_mode",""))=="TOWN":return
+	if session.field_turns_active():_on_product_attack();return
 	if not session.is_duo_autobattle():_on_product_attack();return
 	var hero_id:=int(status.get("protagonist_id",-1))
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
@@ -6323,6 +6324,14 @@ func _on_actor(entity_id:int)->void:
 
 func _submit_product_melee(entity_id:int,status:Dictionary)->bool:
 	if bool(status.get("terminal",false)):return false
+	if session.field_turns_active():
+		var result:Dictionary=session.strike_enemy(entity_id)
+		_record_result(result,true,"공격할 수 없습니다.")
+		if bool(result.get("accepted",false)):
+			selected_target_id=entity_id
+			grid.set_selection(selected_member_id,entity_id)
+		_request_refresh()
+		return bool(result.get("accepted",false))
 	var current_status:=status
 	# CONTACT is an internal transition for the solo product. It never constructs
 	# a deployment or a separate battle surface; the same tap continues into the

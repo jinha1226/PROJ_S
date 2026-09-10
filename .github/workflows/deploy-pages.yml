@@ -50,6 +50,7 @@ jobs:
           ./godot --headless --path . --script tests/field_lifecycle_acceptance.gd
           ./godot --headless --path . --script tests/field_party_control_acceptance.gd
           ./godot --headless --path . --script tests/solo_start_acceptance.gd
+          ./godot --headless --path . --script tests/attack_button_acceptance.gd
           ./godot --headless --path . --script tests/town_resident_motion_acceptance.gd
           ./godot --headless --path . --script tests/portrait_skills_acceptance.gd
           ./godot --headless --path . --script tests/input_recovery_acceptance.gd

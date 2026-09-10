@@ -5046,6 +5046,7 @@ func tab_attack_assessment() -> Dictionary:
 		var enemy = sim.world.entities.get(enemy_id)
 		if enemy != null and sim.world.is_unresolved_enemy(enemy_id) \
 				and visible.has(_position_key(enemy.position)):
+			if field_turns_active() and not sim.world.is_autonomous_target(enemy_id):continue
 			enemy_ids.append(enemy_id)
 	enemy_ids.sort()
 	if enemy_ids.is_empty(): return _rejection_dto("tab_attack_no_visible_enemy")
@@ -5055,12 +5056,12 @@ func tab_attack_assessment() -> Dictionary:
 			if FieldTurns.assess(sim,ActionScript.melee(hero.id,id)).accepted:
 				return _feedback_dto({"accepted":true,"reason":"ok","tab_action":"ATTACK",
 					"target_id":id,"target_name":_name(id),"destination":[]})
-	if phase == "CONTACT":
+	if not field_turns_active() and phase == "CONTACT":
 		var contact_target := _nearest_tab_enemy(hero.position, enemy_ids)
 		return _feedback_dto({"accepted":true,"reason":"ok",
 			"tab_action":"ENTER_COMBAT","target_id":contact_target,
 			"target_name":_name(contact_target),"destination":[]})
-	if phase == "ENGAGED":
+	if not field_turns_active() and phase == "ENGAGED":
 		var equipment:=protagonist_equipment()
 		var attack_block_reason:=str(equipment.get("attack_block_reason",""))
 		if attack_block_reason in ["reload_required","ammo_empty"]:
@@ -5083,10 +5084,10 @@ func tab_attack_assessment() -> Dictionary:
 				return _feedback_dto({"accepted":true,"reason":"ok",
 					"tab_action":"ATTACK","target_id":enemy_id,
 					"target_name":_name(enemy_id),"destination":[]})
-	elif phase not in ["GROUPED", "GROUPED_COMPLETE"]:
+	elif not field_turns_active() and phase not in ["GROUPED", "GROUPED_COMPLETE"]:
 		return _rejection_dto("tab_attack_phase_unavailable")
 	var approach := _nearest_tab_approach(sim.world.party_control_actor_id(), enemy_ids,
-		phase == "ENGAGED")
+		not field_turns_active() and phase == "ENGAGED")
 	if approach.is_empty(): return _rejection_dto("tab_attack_no_path")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"tab_action":"APPROACH","target_id":int(approach.target_id),
