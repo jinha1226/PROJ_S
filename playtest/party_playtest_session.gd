@@ -5689,9 +5689,9 @@ func deployment_draft() -> Dictionary:
 		"placements": _deployment_plan.get("placements", []).duplicate(true)}, null, null,
 		{"action_type": "DEPLOY"})
 
-func enemy_targets() -> Array[Dictionary]:
+func enemy_targets(status:Dictionary={}) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	var status := party_status()
+	if status.is_empty():status=party_status()
 	for enemy_id in status.get("enemies_in_view", status.get("visible_enemy_ids", [])):
 		var entity = sim.world.entities[int(enemy_id)]
 		var threat:=_enemy_threat(entity.id)
@@ -6615,9 +6615,16 @@ func turn_intent_overlays() -> Array[Dictionary]:
 	if field_turns_active():
 		var world=sim.world
 		var control:int=world.party_control_actor_id()
+		var companions:Array=[]
+		for id in world.party_encounter.active_party_member_ids:
+			if id!=control and world.can_act(id,world.world_time) and world.party_encounter.member(id).presence=="DEPLOYED":
+				companions.append(id)
+		# Solo travel has no companion intention to predict. Do not build an AI
+		# tactical board for an empty result on every portrait refresh.
+		if companions.is_empty():return rows
 		var hold=FieldTurns.Action.hold(control)
 		var board:Dictionary=FieldTurns.Board.build(world,hold)
-		for id in world.party_encounter.active_party_member_ids:
+		for id in companions:
 			if id==control or not world.can_act(id,world.world_time):continue
 			var member=world.party_encounter.member(id)
 			if member.presence!="DEPLOYED":continue

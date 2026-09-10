@@ -311,12 +311,13 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	_update_process_enabled()
 	if melee_vfx!=null:melee_vfx.queue_redraw()
 
-func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->void:
+func arm_actor_motion(actor_ids:Array,duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS,
+		continuous_motion:bool=false)->void:
 	var safe_duration:=clampi(duration_ms,DioramaScript.ACTOR_MOTION_MIN_MS,
 		DioramaScript.ACTOR_MOTION_MAX_MS)
 	for value in actor_ids:
 		var entity_id:=int(value)
-		if entity_id>0:_actor_motion_requests[entity_id]=safe_duration
+		if entity_id>0:_actor_motion_requests[entity_id]={"duration":safe_duration,"continuous":continuous_motion}
 
 func actor_motion_sample(from_world:Vector2,to_world:Vector2,elapsed_ms:int,
 		duration_ms:int=DioramaScript.ACTOR_MOTION_DEFAULT_MS)->Dictionary:
@@ -340,7 +341,7 @@ func actor_motion_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var sample:=DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
-		now-int(motion.started_at_ms),int(motion.duration_ms))
+		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false)))
 	return {"active":bool(sample.active),"entity_id":entity_id,
 		"from_world":motion.from_world,"to_world":motion.to_world,
 		"world_position":sample.world_position,"progress":float(sample.progress),
@@ -393,7 +394,8 @@ func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:D
 		if not one_step or not fov_safe or from_world.is_equal_approx(to_world):
 			_actor_motions.erase(entity_id);continue
 		_actor_motions[entity_id]={"from_world":from_world,"to_world":to_world,
-			"started_at_ms":observed_at_ms,"duration_ms":int(_actor_motion_requests[entity_id])}
+			"started_at_ms":observed_at_ms,"duration_ms":int(_actor_motion_requests[entity_id].duration),
+			"continuous":bool(_actor_motion_requests[entity_id].continuous)}
 	_actor_motion_requests.clear()
 	_update_process_enabled()
 
@@ -2080,7 +2082,7 @@ func _actor_visual_world_position(entity_id:int,sample_time_ms:int=-1)->Vector2:
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	return DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
-		now-int(motion.started_at_ms),int(motion.duration_ms)).world_position
+		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false))).world_position
 
 func _logical_position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("logical_position",actor.get("position",[]))

@@ -169,13 +169,14 @@ static func layer_order() -> Array:
 
 
 static func actor_motion_sample(from_world: Vector2, to_world: Vector2,
-		elapsed_ms: int, duration_ms: int = ACTOR_MOTION_DEFAULT_MS) -> Dictionary:
+		elapsed_ms: int, duration_ms: int = ACTOR_MOTION_DEFAULT_MS,
+		continuous_motion:bool=false) -> Dictionary:
 	var safe_duration := clampi(duration_ms, ACTOR_MOTION_MIN_MS, ACTOR_MOTION_MAX_MS)
 	var progress := clampf(float(maxi(0, elapsed_ms)) / float(safe_duration), 0.0, 1.0)
 	# Long-route hops are retargeted while the prior visual motion is still live.
 	# Constant velocity keeps that chain continuous; shorter manual steps use a
 	# symmetric smoothstep instead of the old hard ease-out burst.
-	var continuous := safe_duration >= ACTOR_MOTION_CONTINUOUS_MIN_MS
+	var continuous := continuous_motion or safe_duration >= ACTOR_MOTION_CONTINUOUS_MIN_MS
 	var eased := progress if continuous else progress * progress * (3.0 - 2.0 * progress)
 	var step_phase := "SETTLE"
 	var stride_sign := 0

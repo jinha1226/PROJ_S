@@ -47,6 +47,7 @@ jobs:
         run: |
           ./godot --headless --path . --script tests/field_turn_acceptance.gd
           ./godot --headless --path . --script tests/field_speed_acceptance.gd
+          ./godot --headless --path . --script tests/travel_smoothness_acceptance.gd
           ./godot --headless --path . --script tests/field_lifecycle_acceptance.gd
           ./godot --headless --path . --script tests/field_party_control_acceptance.gd
           ./godot --headless --path . --script tests/solo_start_acceptance.gd

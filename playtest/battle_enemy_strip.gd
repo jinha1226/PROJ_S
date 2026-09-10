@@ -17,13 +17,14 @@ func _init()->void:
 
 var _last_signature:Array=[]
 
-func sync(host)->void:
-	visible=host._enemy_strip_visible()
+func sync(host,status:Dictionary={})->void:
+	if status.is_empty():status=host.session.party_status()
+	visible=host._enemy_strip_visible(status)
 	if not visible:return
 	var world=host.session.sim.world
 	var ids:Array=[]
 	var signature:Array=[]
-	for enemy in host.session.enemy_targets():
+	for enemy in host.session.enemy_targets(status):
 		ids.append(int(enemy.entity_id))
 		signature.append([int(enemy.entity_id),int(enemy.health),int(enemy.max_health),bool(enemy.alive)])
 	ids.sort()

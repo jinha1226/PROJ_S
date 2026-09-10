@@ -33,6 +33,10 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 		var origin: Vector2i = state.group_anchor if member.presence == "GROUPED" \
 			else world.entities[member_id].position
 		var member_range := sight_range(world, state, member_id)
+		# All registered lighting factors are <= 1000 and peripheral range is
+		# capped below. Reject distant targets before profiles, light sources and
+		# LOS; callers query every monster repeatedly during a UI refresh.
+		if _distance(origin,target_position)>member_range:continue
 		var profile: Dictionary = VisionRulesScript.profile_for_entity(world.entities[member_id])
 		# The party state radius and tag bonuses remain the authoritative party
 		# detection budget; the shared query supplies lighting, direction and LOS.

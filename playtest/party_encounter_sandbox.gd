@@ -3,12 +3,12 @@ extends Control
 const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 110
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 90
 const MANUAL_CAMERA_SETTLE_MSEC := 55
 # AUTO and long routes should read as continuous travel rather than a sequence of
 # deliberate single-cell inputs. Motion overlaps the next cadence so actor and
 # camera interpolation remain visible without making a large floor tedious.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 110
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 90
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -60,7 +60,7 @@ const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # all take the same 110ms, so the drawn hero never trails the logical one and the
 # main thread is idle between hops for touch input. The old 35ms cadence under a
 # 200ms motion ran hops back to back (each ~40ms of CPU) and smeared movement.
-const CONTINUOUS_TRAVEL_CADENCE_MSEC:=110
+const CONTINUOUS_TRAVEL_CADENCE_MSEC:=90
 const PRODUCT_ZOOM_CELL_COUNTS:=SessionScript.PRODUCT_ZOOM_CELL_COUNTS
 const PRODUCT_ZOOM_DEFAULT_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_DEFAULT_CELL_COUNT
 const PRODUCT_ZOOM_REFERENCE_CELL_COUNT:=SessionScript.PRODUCT_ZOOM_REFERENCE_CELL_COUNT
@@ -2095,7 +2095,7 @@ func _refresh()->void:
 	_update_recent_event(combat_history,status)
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
-	_flush_pending_visual_effects()
+	_flush_pending_visual_effects(status)
 
 func _decorate_visible_resource_caches(observation:Dictionary)->void:
 	# The session exposes cache authority only on observed cells. Reuse the
@@ -2167,7 +2167,7 @@ func _refresh_individual_battle_surface()->void:
 		event_label.text=_product_transient_event_feedback;_product_transient_event_feedback=""
 	PerfProbeScript.end("bs.log",_bl)
 	var _bf:=PerfProbeScript.begin()
-	_flush_pending_visual_effects()
+	_flush_pending_visual_effects(status)
 	PerfProbeScript.end("bs.effects",_bf)
 
 func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
@@ -2212,7 +2212,7 @@ func _refresh_direct_solo_combat_surface(status:Dictionary)->void:
 		record_body.text=_full_meaningful_record_text(session.combat_log(64,500))
 	var hud_finished:=Time.get_ticks_usec()
 	_sync_product_control_state(status)
-	var effect_count:=_flush_pending_visual_effects()
+	var effect_count:=_flush_pending_visual_effects(status)
 	var finished:=Time.get_ticks_usec()
 	_last_direct_solo_refresh_profile={
 		"observe_ui_usec":observe_finished-observe_started,
@@ -2306,7 +2306,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 		_update_action_feedback(status)
 	_sync_product_control_state(status)
 	var hud_finished_usec:=Time.get_ticks_usec()
-	var effect_count:=_flush_pending_visual_effects()
+	var effect_count:=_flush_pending_visual_effects(status)
 	var finished_usec:=Time.get_ticks_usec()
 	_last_continuous_exploration_refresh_profile={
 		"observe_ui_usec":observe_finished_usec-observe_started_usec,
@@ -2655,12 +2655,13 @@ func _portrait_battle_controls_visible()->bool:
 		and not session.field_turns_active() \
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
 
-func _enemy_strip_visible()->bool:
+func _enemy_strip_visible(status:Dictionary={})->bool:
 	# Enemy portraits follow visibility, not the encounter phase: an enemy in
 	# view shows its portrait before, during and after a fight the same way.
 	if session==null or session.sim==null or not session.is_duo_autobattle():return false
 	var world=session.sim.world
-	for id_value in session.party_status().get("enemies_in_view",[]):
+	if status.is_empty():status=session.party_status()
+	for id_value in status.get("enemies_in_view",[]):
 		if world.is_autonomous_target(int(id_value)):return true
 	return false
 
@@ -6763,12 +6764,12 @@ func _settle_solo_product_contact()->void:
 		_set_action_rejection(result,"조우 처리 불가")
 	auto_phase=str(session.party_status().get("safe_phase",""))
 
-func _flush_pending_visual_effects()->int:
+func _flush_pending_visual_effects(status:Dictionary={})->int:
 	var _pfp:=PerfProbeScript.begin()
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
-	if battle_enemy_strip!=null:battle_enemy_strip.sync(self)
+	if battle_enemy_strip!=null:battle_enemy_strip.sync(self,status)
 	PerfProbeScript.end("fx.enemy_strip",_pfs)
 	var _pft:=PerfProbeScript.begin()
 	PerfProbeScript.end("fx.timeline",_pft)
@@ -6796,7 +6797,8 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 	var duration_msec:=duration_override_msec if duration_override_msec>0 else (
 		EXPLORATION_ACTOR_MOTION_MSEC \
 		if str(status.get("view_mode",""))=="EXPLORATION" else -1)
-	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec)
+	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec,
+		duration_override_msec==CONTINUOUS_EXPLORATION_MOTION_MSEC)
 	else:grid.arm_actor_motion(moved.keys())
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
