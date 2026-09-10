@@ -61,22 +61,22 @@ func test_rejected_entity_creation_never_leaves_a_body_row()->bool:
 	return finish()
 
 
-func test_snapshot_v11_body_rows_are_strict_sorted_and_hard_cut()->bool:
+func test_snapshot_v12_body_rows_are_strict_sorted_and_hard_cut()->bool:
 	var sim=Simulator.create(5,5,414)
 	var human=sim.world.add_entity("hero","인간",Vector2i(1,1),100,[],"human")
 	var goblin=sim.world.add_entity("melee_enemy","고블린",Vector2i(2,1),40,[],"goblin")
 	var wire:Dictionary=sim.snapshot()
 	check_eq([wire.snapshot_version,wire.body_ruleset_id,wire.body_combat_ruleset_id,
-		wire.body_state_schema_id],[11,"body-simulation-b1-v1","body-combat-b1-v1",
-		"body-state-v2"],"v11 declares body and injury authority")
+		wire.body_state_schema_id],[12,"body-simulation-b1-v1","body-combat-b1-v1",
+		"body-state-v2"],"v12 declares body and injury authority")
 	check_eq(wire.body_states.map(func(row):return row.entity_id),
 		[str(human.id),str(goblin.id)],"body rows use canonical entity order")
 	var json_wire:Dictionary=JSON.parse_string(JSON.stringify(wire))
 	check_eq(WorldState.snapshot_restore_error(json_wire),"",
-		"v10 JSON body wire passes checked decode")
+		"v12 JSON body wire passes checked decode")
 	var restored=Simulator.from_snapshot(json_wire)
-	check(restored!=null,"v10 JSON snapshot restores")
-	if restored!=null:check_eq(restored.snapshot(),wire,"v10 body snapshot round trip is exact")
+	check(restored!=null,"v12 JSON snapshot restores")
+	if restored!=null:check_eq(restored.snapshot(),wire,"v12 body snapshot round trip is exact")
 	var legacy:=wire.duplicate(true);legacy.snapshot_version=9
 	check_eq(WorldState.snapshot_restore_error(legacy),"unsupported_snapshot_version",
 		"v9 snapshot is a deliberate hard cut")
@@ -108,8 +108,8 @@ func test_rollback_restores_body_exactly_and_rejects_stale_revision()->bool:
 	var memento:Variant=sim.capture_rollback_memento()
 	check(memento is Dictionary,"settled world captures body memento")
 	if not memento is Dictionary:return finish()
-	check_eq([memento.schema_version,memento.body_rows.size()],[4,1],
-		"rollback v4 carries one body row per entity")
+	check_eq([memento.schema_version,memento.body_rows.size()],[5,1],
+		"rollback v5 carries one body row per entity")
 	sim.world.body_states[hero.id].shock=300
 	sim.world.body_states[hero.id].revision=1
 	check(sim.restore_rollback_memento(memento),"body mutation restores")

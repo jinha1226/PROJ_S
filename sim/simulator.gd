@@ -1132,7 +1132,10 @@ func _dispatch_schedule(entry: Dictionary, processed_step_index: int,
 		allow_party_victory: bool = true, individual_battle:bool=false) -> bool:
 	match str(entry["kind"]):
 		"system.environment_tick":
-			if not environment.process_tick(processed_step_index): return false
+			var _penv := PerfProbeScript.begin()
+			var _environment_ok: bool = environment.process_tick(processed_step_index)
+			PerfProbeScript.end("environment.tick", _penv)
+			if not _environment_ok: return false
 			if world.party_encounter != null:
 				return party_coordinator.reconcile_liveness(allow_party_victory) \
 					and party_coordinator.fail_point != "after_environment_tick"

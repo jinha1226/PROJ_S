@@ -119,10 +119,6 @@ func apply_water(position: Vector2i, amount: int, cause_id: int,
 	if actual_increase > 0:
 		tile.wetness += actual_increase
 		tile.wetness_source_event_id = water_event.id
-		if tile.surface_id in ["NONE", "WATER"]:
-			tile.surface_id = "WATER"
-			tile.surface_amount = mini(Config.MAX_MASS,
-				tile.surface_amount + actual_increase * 10)
 	world.track_dynamic_tile(position)
 	return true
 
@@ -323,7 +319,7 @@ func _apply_phase_change(position: Vector2i, tile) -> void:
 		tile.surface_id = "WATER"; tile.wetness = mini(100, tile.surface_amount / 10)
 		var event = world.emit_event("environment.ice_melted", -1, -1, position,
 			tile.surface_amount, -1)
-		tile.wetness_source_event_id = event.id
+		tile.wetness_source_event_id = event.id if tile.wetness > 0 else -1
 	if tile.surface_id == "WATER" and tile.temperature >= Config.BOILING_TEMPERATURE:
 		var amount := mini(Config.PHASE_CHANGE_RATE, tile.surface_amount)
 		tile.surface_amount -= amount; tile.steam_amount = mini(Config.MAX_MASS,
@@ -340,13 +336,15 @@ func _apply_phase_change(position: Vector2i, tile) -> void:
 		tile.wetness = mini(100, tile.surface_amount / 10)
 		var event = world.emit_event("environment.steam_condensed", -1, -1,
 			position, amount, -1)
-		tile.wetness_source_event_id = event.id
+		tile.wetness_source_event_id = event.id if tile.wetness > 0 else -1
 
 
 func _apply_combustion(position: Vector2i, tile) -> void:
 	if tile.fire <= 0: return
 	var consumed := 0
+	var fuel_kind: String = tile.material_id
 	if tile.surface_id == "OIL":
+		fuel_kind = "OIL"
 		consumed = mini(Config.OIL_BURN_RATE, tile.surface_amount)
 		tile.surface_amount -= consumed
 		if tile.surface_amount == 0: tile.surface_id = "NONE"
@@ -361,7 +359,7 @@ func _apply_combustion(position: Vector2i, tile) -> void:
 			tile.smoke_amount + consumed * Config.SMOKE_PER_FUEL)
 		world.emit_event("environment.fuel_consumed", -1, -1, position,
 			consumed, tile.fire_source_event_id,
-			{"fuel_kind": "OIL" if tile.surface_id == "OIL" else tile.material_id})
+			{"fuel_kind": fuel_kind})
 
 
 func _gas_connection_open(a: Vector2i, b: Vector2i) -> bool:
@@ -480,6 +478,7 @@ func _decay_wetness() -> void:
 			continue
 		if tile.surface_id == "WATER" and tile.surface_amount > 0:
 			tile.wetness = mini(100, tile.surface_amount / 10)
+			if tile.wetness == 0: tile.wetness_source_event_id = -1
 			world.track_dynamic_tile(position)
 			continue
 		tile.wetness = maxi(0, tile.wetness - WETNESS_DECAY_PER_ENVIRONMENT_TICK)

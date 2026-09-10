@@ -703,7 +703,7 @@ func bootstrap_set_surface(position: Vector2i, surface_id: String, amount: int):
 	tile.surface_amount = amount
 	if surface_id == "WATER":
 		tile.wetness = mini(100, amount / 10)
-		tile.wetness_source_event_id = event.id
+		tile.wetness_source_event_id = event.id if tile.wetness > 0 else -1
 	else:
 		tile.wetness = 0
 		tile.wetness_source_event_id = -1
@@ -2595,7 +2595,8 @@ func _restored_state_error() -> String:
 			var wetness_source = event_by_id(tile.wetness_source_event_id)
 			if wetness_source == null or wetness_source.world_time > world_time:
 				return "wetness_source_missing_or_future"
-			if wetness_source.type != "environment.water_applied" \
+			if wetness_source.type not in ["environment.water_applied",
+					"environment.ice_melted", "environment.steam_condensed"] \
 					or wetness_source.position != tile_position \
 					or wetness_source.magnitude <= 0:
 				return "wetness_source_semantic_invalid"

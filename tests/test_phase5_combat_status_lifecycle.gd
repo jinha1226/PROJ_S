@@ -97,9 +97,9 @@ func test_snapshot_v10_exact_rows_strict_rejection_and_round_trip() -> bool:
 		snapshot.life_ruleset_id,snapshot.status_ruleset_id,snapshot.party_member_schema_id],
 		[12,"environment-simulation-v1","deterministic-melee-resolution-v1",
 		"combat-profile-registry-v1","combatant-state-v1","agent-state-v2",
-		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v11 IDs")
+		"active-downed-dead-v1","bounded-status-lifecycle-v1","party-member-v2"],"v12 IDs")
 	check_eq(snapshot.combatant_states.map(func(r): return r.entity_id),[str(hero.id),str(goblin.id)],"combatant order")
-	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v11 round trip")
+	check_eq(Simulator.from_snapshot(snapshot).snapshot(),snapshot,"v12 round trip")
 	var old=snapshot.duplicate(true);old.snapshot_version=9
 	check_eq(WorldState.snapshot_restore_error(old),"unsupported_snapshot_version","v9 rejected")
 	var missing=snapshot.duplicate(true);missing.combatant_states.pop_back()

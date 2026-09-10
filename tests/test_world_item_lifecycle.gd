@@ -91,7 +91,7 @@ func test_snapshot_v10_round_trips_item_and_body_state_and_rejects_v9_in_header(
 	check_eq(int(snapshot.snapshot_version),12,"world snapshot is v12")
 	var top_keys:Array=snapshot.keys();top_keys.sort()
 	check(top_keys.has("item_state") and top_keys.has("body_states"),
-		"item and body authority are in the exact v11 top level key set")
+		"item, body, and environment authority are in the exact v12 top level key set")
 	check(not snapshot.party_encounter.has("protagonist_inventory") \
 		and not snapshot.party_encounter.has("ground_items"),
 		"party state no longer duplicates inventory or ground authority")
