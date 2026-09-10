@@ -240,10 +240,10 @@ func test_party_card_layout_specs_and_detached_render_support_up_to_four_members
 				and relationship_names==["나"],
 			"relationship tab lists 나 and only the characters with a recorded event")
 		sandbox._select_member_detail_tab("SKILL")
-		check(sandbox.member_skill_window.visible \
-				and sandbox.member_detail_skill_tab.text=="[스킬]" \
-				and sandbox.member_skill_window.find_children("NpcSkillCard","PanelContainer",true,false).size()>=1,
-			"companion detail exposes a read-only skill tab from actual loadout data")
+		check(sandbox.member_ability_window.visible \
+				and sandbox.member_detail_skill_tab.text=="[이능]" \
+				and sandbox.member_ability_window.slot_grid.get_child_count()==6,
+				"companion detail exposes the authoritative six-slot ability binding panel")
 		var log_text:=sandbox._combat_log_text(sandbox.session.combat_log())
 		check("이번 원정 성향" in log_text and "나래:" in log_text,"new expedition log identifies derived styles")
 		sandbox.free()
