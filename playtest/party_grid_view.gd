@@ -19,6 +19,7 @@ const DioramaScript = preload("res://playtest/ascii_diorama_projection.gd")
 const FixedFrontAssets = preload("res://playtest/fixed_front_topdown_assets.gd")
 const TopdownTileAssets = preload("res://playtest/topdown_tile_assets.gd")
 const MeleeVfxScript = preload("res://playtest/melee_vfx_overlay.gd")
+const EnvironmentVfx = preload("res://playtest/environment_vfx.gd")
 const RegularFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
 const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
 const LONG_PRESS_SECONDS := 0.50
@@ -545,10 +546,19 @@ func set_presentation_style(value:Dictionary)->void:
 
 func play_effects(rows:Array)->int:
 	var started_at:=Time.get_ticks_msec();var appended:=0
+	var reaction_cells:Dictionary={}
 	for raw in rows:
 		if not raw is Dictionary:continue
 		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
 		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
+		if str(raw.get("kind","")).begins_with("ENV_"):
+			var position:=_array_to_world_position(raw.get("world_position",[]))
+			var key:="%s:%d:%d"%[str(raw.kind),position.x,position.y]
+			if not is_world_cell_visible(position) or reaction_cells.has(key) \
+					or reaction_cells.size()>=EnvironmentVfx.MAX_PER_BATCH:
+				_played_effect_ids[effect_id]=true;_played_effect_event_ids[event_id]=true
+				continue
+			reaction_cells[key]=true
 		var attack_from:=_array_to_world_position(raw.get("attacker_grid_pos",[]))
 		var attack_to:=_array_to_world_position(raw.get("target_grid_pos",[]))
 		var attack_actor:=int(raw.get("actor_id",-1))
@@ -645,6 +655,9 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		else (680 if kind=="DEATH" else (900 if kind=="FLOATING_AMOUNT" \
 		else (700 if kind=="MISS" else 520)))
 	if kind in ["FIREBALL","STEAM"]:duration_ms=1000
+	var reaction_style:Dictionary=EnvironmentVfx.style(kind)
+	if not reaction_style.is_empty():
+		color_hex=str(reaction_style.color);duration_ms=int(reaction_style.duration)
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var started_at:=int(effect.get("started_at_ms",now))
 	var elapsed_ms:=maxi(0,now-started_at)
@@ -677,6 +690,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
 		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"ASCII_BURST"}.get(kind,"NONE"))
 	if kind in ["FIREBALL","STEAM"]:primitive=kind
+	if not reaction_style.is_empty():primitive=kind
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
 		if kind in ["FLOATING_AMOUNT","MISS"]:opacity=pow(1.0-age_ratio,1.15)
@@ -2953,6 +2967,13 @@ func _draw_ground_hazards()->void:
 
 func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 	var center:=rect.get_center();var cell:=rect.size.x;var phase:=int(spec.get("phase",0))
+	if spec.get("surface_id","")=="ICE":
+		draw_rect(rect.grow(-cell*0.1),Color(0.55,0.83,1,0.18))
+		draw_line(center-Vector2(cell*0.25,cell*0.2),center+Vector2(cell*0.2,cell*0.18),Color(0.72,0.91,1,0.6),1)
+	elif spec.get("surface_id","")=="OIL":
+		draw_rect(rect.grow(-cell*0.2),Color(0.32,0.25,0.09,0.45))
+	if int(spec.get("smoke",0))>0:
+		draw_rect(rect.grow(-cell*0.08),Color(0.32,0.35,0.38,0.08+0.24*float(spec.smoke)/1000.0))
 	if int(spec.get("steam",0))>0:
 		for i in range(3):
 			var size:=Vector2.ONE*maxf(2.0,cell*0.16)

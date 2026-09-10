@@ -329,13 +329,18 @@ static func hazard_floor_spec(position: Vector2i, row: Dictionary) -> Dictionary
 	if str(observed.get("visibility_state", "UNSEEN")) != "VISIBLE":
 		return {
 			"visible":false, "fire":0, "wetness":0, "steam":0,
+			"smoke":0,"surface_id":"NONE","surface_amount":0,
 			"phase":0, "fire_glow_alpha":0.0, "wet_reflection_alpha":0.0,
 		}.duplicate(true)
 	var fire := clampi(int(row.get("fire_intensity", row.get("fire", 0))), 0, 100)
 	var wetness := clampi(int(row.get("wetness", 0)), 0, 100)
 	var steam := clampi(int(row.get("steam_amount", 0)), 0, 1000)
+	var smoke := clampi(int(row.get("smoke_amount", 0)), 0, 1000)
+	var surface_id:=str(row.get("surface_id","NONE"))
+	var surface_amount:=clampi(int(row.get("surface_amount",0)),0,1000)
 	return {
-		"visible":fire > 0 or wetness > 0 or steam > 0,
+		"visible":fire > 0 or wetness > 0 or steam > 0 or smoke>0 or surface_amount>0,
+		"smoke":smoke,"surface_id":surface_id,"surface_amount":surface_amount,
 		"steam":steam,
 		"fire":fire,
 		"wetness":wetness,

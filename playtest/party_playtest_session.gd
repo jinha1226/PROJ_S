@@ -8746,7 +8746,10 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 	var order := 0
 	for event in result.events:
 		var event_type := str(event.type)
-		if event_type == "action.skill" and event.data.get("skill_id")=="FIREBALL":
+		var environment_kind:String=preload("res://playtest/environment_vfx.gd").kind(event)
+		if not environment_kind.is_empty():
+			rows.append(_visual_effect_row(event,environment_kind,"reaction",order,"physical",event.magnitude,""));order+=1
+		elif event_type == "action.skill" and event.data.get("skill_id")=="FIREBALL":
 			var effect:=_visual_effect_row(event,"FIREBALL","fireball",order,"fire",0,"")
 			var history:Dictionary=sim.world._entity_position_at_event(event.actor_id,event.id)
 			if history.get("ok",false):

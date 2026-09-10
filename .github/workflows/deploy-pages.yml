@@ -57,6 +57,7 @@ jobs:
         run: |
           ./godot --headless --path . --script tests/run_environment_regression_tests.gd
           ./godot --headless --path . --script tests/fireball_environment_acceptance.gd
+          ./godot --headless --path . --script tests/environment_vfx_acceptance.gd
 
       - name: Inject Pages build ID
         shell: bash

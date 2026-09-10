@@ -251,6 +251,31 @@ func _draw_generic_grid_effects(font:Font,presentation_offset:Vector2)->void:
 		var radius:=float(spec.radius)
 		var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 		match str(spec.primitive):
+			"ENV_IGNITE", "ENV_EXTINGUISH", "ENV_DEBRIS":
+				for i in range(5):
+					var angle:float=-PI*0.9+float(i)*PI*0.2
+					var travel:float=radius*(0.3+float(spec.age_ratio)*2.0)
+					var offset:=Vector2(cos(angle),sin(angle))*travel
+					if spec.kind=="ENV_DEBRIS":offset.y+=radius*float(spec.age_ratio)*float(spec.age_ratio)*2
+					draw_rect(Rect2(center+offset-Vector2.ONE*2,Vector2(4,4)),color)
+			"ENV_FREEZE":
+				for i in range(6):
+					var direction:=Vector2.from_angle(float(i)*TAU/6)
+					draw_line(center,center+direction*radius*(0.4+float(spec.age_ratio)*1.5),color,2)
+			"ENV_MELT", "ENV_CONDENSE", "ENV_SPLASH":
+				draw_arc(center,radius*(0.2+float(spec.age_ratio)*1.8),0,TAU,12,color,2)
+				for i in range(3):
+					var offset:=Vector2((i-1)*radius*0.7,-sin(float(spec.age_ratio)*PI)*radius)
+					draw_rect(Rect2(center+offset,Vector2(2,3)),color)
+			"ENV_SPARK":
+				var points:=PackedVector2Array([center+Vector2(-radius,0),center+Vector2(-radius*0.3,-radius*0.5),
+					center+Vector2(radius*0.2,radius*0.4),center+Vector2(radius,-radius*0.2)])
+				draw_polyline(points,color,2)
+			"ENV_BLAST", "ENV_RUPTURE":
+				draw_arc(center,radius*(0.3+float(spec.age_ratio)*2),0,TAU,16,color,3)
+				for i in range(6):
+					var direction:=Vector2.from_angle(float(i)*TAU/6)
+					draw_line(center+direction*radius*float(spec.age_ratio),center+direction*radius*(0.4+float(spec.age_ratio)*2),color,2)
 			"FIREBALL":
 				var age:float=spec.age_ratio
 				var origin:=Vector2(spec.projectile_origin)+presentation_offset
