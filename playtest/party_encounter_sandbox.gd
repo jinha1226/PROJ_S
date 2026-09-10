@@ -404,6 +404,7 @@ func _process(_delta:float)->void:
 
 func _input(event:InputEvent)->void:
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
+	if _handle_field_portrait_input(event):return
 	if grid!=null and (battle_drag==null or not battle_drag.active) \
 			and grid.capture_nearby_list_input(event):return
 	if battle_drag!=null and battle_drag.handle_input(self,event):return
@@ -614,6 +615,37 @@ func _item_row_at_position(global_position:Vector2)->Dictionary:
 			return {"instance_id":instance_id,
 				"slot":str(button.get_meta("item_slot",""))}
 	return {}
+
+func _handle_field_portrait_input(event:InputEvent)->bool:
+	if session==null or not session.field_turns_active():return false
+	if grid==null or grid.modal_open or member_detail_modal!=null and member_detail_modal.visible:return false
+	if record_modal!=null and record_modal.visible or map_overlay!=null and map_overlay.visible:return false
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_ESCAPE and not _battle_target_mode.is_empty():
+		_cancel_battle_targeting();_request_refresh()
+		get_viewport().set_input_as_handled();return true
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_F1,KEY_F2,KEY_F3,KEY_F4]:
+		var index:int=event.keycode-KEY_F1
+		var ids:Array=session.sim.world.party_encounter.active_party_member_ids
+		if index<ids.size():_on_compact_member_card_pressed(int(ids[index]),"")
+		get_viewport().set_input_as_handled();return true
+	# Own the gesture by actor name and viewport coordinates, not a transient
+	# Button instance. HUD rebuilding or mouse_exited must not cancel a hold.
+	if event is InputEventMouseMotion and _product_mouse_control.begins_with("MemberCard"):
+		if event.position.distance_to(_product_mouse_origin)>=8.0:_product_mouse_control=""
+		get_viewport().set_input_as_handled();return true
+	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return false
+	var name_value:=_product_control_at_position(event.position)
+	if not name_value.begins_with("MemberCard") and not _product_mouse_control.begins_with("MemberCard"):return false
+	get_viewport().set_input_as_handled()
+	if event.device==InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec()<=_product_ignore_mouse_until_msec:return true
+	if event.pressed:
+		_product_mouse_control=name_value;_product_mouse_origin=event.position
+		_product_mouse_started_msec=Time.get_ticks_msec()
+	else:
+		var activate:bool=_product_mouse_control==name_value and name_value.begins_with("MemberCard")
+		_product_mouse_control=""
+		if activate:_activate_product_control(name_value)
+	return true
 
 func _handle_product_control_touch(event:InputEvent)->bool:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
@@ -938,6 +970,11 @@ func _build_ui()->void:
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("4인 전투 테스트 · 마법",6)
+	menu_popup.add_separator("환경 시험 · 선택 후 바닥 터치")
+	menu_popup.add_item("물 생성 → 물웅덩이 / 소화",20)
+	menu_popup.add_item("냉각 → 물 결빙",21)
+	menu_popup.add_item("방전 → 물 / 금속 전도",22)
+	menu_popup.add_item("화염구 → 증발 / 해빙 / 점화",23)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -2698,8 +2735,8 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 		if session.has_method("skill_reach_cells") else {}
 	grid.set_skill_reach_cells(reach.get("cells",[]),str(reach.get("target","ENEMY")))
 	if str(reach.get("target",""))=="TILE":
-		_battle_target_prompt="화염구(시험) · 사거리 5칸 · 물이나 바닥을 누르세요"
-		_show_manual_battle_feedback(_battle_target_prompt+" · 취소: 스킬 다시 누르기")
+		_battle_target_prompt=skill_label+" · 사거리 5칸 · 물이나 바닥을 누르세요"
+		_show_manual_battle_feedback(_battle_target_prompt+" · 취소: 같은 기술 다시 선택 / Esc")
 		_request_refresh();return
 	_battle_target_prompt="%s · 붉은 칸의 %s을 고르세요"%[skill_label,
 		"아군" if str(reach.get("target","ENEMY"))=="ALLY" else "적"]
@@ -3008,12 +3045,10 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		compact.party_count=int(layout_spec.get("effective_count",1))
 		compact.custom_minimum_size=Vector2(44,PRODUCT_PARTY_CARD_HEIGHT)
 		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		compact.tooltip_text="%s · 탭: 조작 전환 / 길게 누르기: 상태창"%str(row.display_name)
+		compact.tooltip_text="%s · 탭 또는 F1~F4: 조작 전환 / 길게 누르기: 상태창"%str(row.display_name)
 		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
 		if session.field_turns_active():
 			compact.gui_input.connect(_on_product_button_gui_input.bind(str(compact.name)))
-			compact.mouse_exited.connect(func():
-				if _product_mouse_control==str(compact.name):_product_mouse_control="")
 		else:compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,str(row.get("display_name","파티원"))))
 		cards.add_child(compact)
 		return
@@ -4421,6 +4456,21 @@ func _party_energy_total()->int:
 		total+=int(session.sim.world.party_encounter.member(id).energy)
 	return total
 
+func _rest_block_detail()->String:
+	var world=session.sim.world
+	for id in world.party_encounter.active_party_member_ids:
+		var member=world.party_encounter.member(id)
+		if member.presence!="DEPLOYED" or not world.can_act(id,world.world_time):continue
+		var exposure=session.sim.evaluate_exposure_for_entity(id,world.entities[id].position)
+		if exposure!=null and exposure.evaluation!=null and exposure.evaluation.total_risk>0:
+			var risks:Array[String]=[]
+			if exposure.evaluation.fire_score>0:risks.append("불")
+			if exposure.evaluation.water_score>0:risks.append("물·젖은 바닥")
+			if exposure.evaluation.poison_score>0:risks.append("연기·가스")
+			if exposure.evaluation.electric_score>0:risks.append("전기")
+			return _entity_display_name(id)+" 주변 "+" / ".join(risks)+" · 파티 전원이 안전한 곳으로 이동하세요"
+	return "경계 중인 적이나 상태이상을 확인하세요"
+
 func _continue_product_rest(expected_generation:int)->void:
 	if not _product_rest_active or expected_generation!=_product_rest_generation:return
 	var status:Dictionary=session.party_status()
@@ -4450,7 +4500,8 @@ func _continue_product_rest(expected_generation:int)->void:
 	_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
 	var world=session.sim.world;var hero=world.entities.get(int(status.protagonist_id))
 	if hero!=null:
-		notice_text="휴식 중 · HP %d/%d"%[int(hero.health),int(hero.max_health)]
+		var member=session.sim.world.party_encounter.member(int(status.protagonist_id))
+		notice_text="휴식 중 · HP %d/%d · MP %d/%d"%[int(hero.health),int(hero.max_health),member.energy,member.max_energy]
 		action_feedback_text=notice_text
 	_refresh_continuous_exploration_surface(session.party_status())
 
@@ -4462,6 +4513,7 @@ func _cancel_product_rest(reason:String)->void:
 		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
 		"rest_encounter":"적이 나타나 휴식을 멈췄습니다",
 		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
+	if reason=="rest_no_progress":notice_text="HP·MP 회복 중단 · "+_rest_block_detail()
 	action_feedback_text=notice_text
 	_request_refresh()
 
@@ -6082,16 +6134,16 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	if not _battle_target_mode.is_empty():
-		if _battle_target_skill_id=="FIREBALL" and session.field_turns_active():
+		if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.field_turns_active():
 			if _battle_target_committing:return
 			_battle_target_committing=true
 			var result:Dictionary=session.commit_field_action(ActionScript.skill_at(
-				_battle_target_actor_id,"FIREBALL",position))
+				_battle_target_actor_id,_battle_target_skill_id,position))
 			_battle_target_committing=false
 			if result.get("accepted",false):
 				_cancel_battle_targeting()
-				_record_result(result,true,"화염구 실행 불가")
-				_show_manual_battle_feedback("화염구! · 물이 증발하면 흰 수증기가 표시됩니다.")
+				_record_result(result,true,"환경 기술 실행 불가")
+				_show_manual_battle_feedback("환경 기술 사용 · 물·얼음·수증기·전도 반응을 확인하세요.")
 			else:_show_manual_battle_feedback(str(result.get("message",result.get("reason","사용 불가"))))
 			_request_refresh();return
 		_cancel_battle_targeting("대상 선택을 취소했습니다.");return
@@ -6200,7 +6252,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
-	if _battle_target_skill_id=="FIREBALL" and session.sim.world.entities.has(entity_id):
+	if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.sim.world.entities.has(entity_id):
 		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():
 		_commit_battle_target(entity_id);return
@@ -7108,6 +7160,12 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _on_product_menu_id(item_id:int)->void:
 	if session==null:return
+	if item_id in [20,21,22,23]:
+		var id:String={20:"TEST_WATER",21:"TEST_FROST",22:"TEST_SPARK",23:"FIREBALL"}[item_id]
+		if _battle_target_skill_id!=id:_cancel_battle_targeting()
+		_on_manual_skill_selected(session.sim.world.party_encounter.protagonist_id,id,
+			str(preload("res://sim/abilities/active_skill_registry.gd").definition(id).name))
+		return
 	match item_id:
 		0:
 			if bool(_current_run_progress().get("terminal",false)):

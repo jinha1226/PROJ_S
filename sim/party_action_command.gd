@@ -2,7 +2,7 @@ class_name PartyActionCommand
 extends RefCounted
 
 const TYPES := ["HOLD", "MOVE", "MELEE", "SKILL"]
-const ACTIVE_SKILL_IDS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL"]
+const ACTIVE_SKILL_IDS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 var type: String
 var actor_id: int
@@ -63,7 +63,7 @@ static func wire_error(row: Variant) -> String:
 		if not (value is int or value is float and value == floor(value)) \
 				or int(value) < -2147483648 or int(value) > 2147483647:return "invalid_party_destination"
 	var target:=Int64CodecScript.parse(row.target_id,"target")
-	if row.type=="SKILL" and row.skill_id=="FIREBALL":
+	if row.type=="SKILL" and row.skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS:
 		if target!=-1:return "party_target_forbidden"
 		if int(row.destination[0])<0 or int(row.destination[1])<0:return "skill_destination_required"
 		return ""

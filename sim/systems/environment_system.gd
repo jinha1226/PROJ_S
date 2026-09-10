@@ -199,6 +199,15 @@ func process_tick(processed_step_index: int) -> bool:
 	return true
 
 
+func apply_cold(position:Vector2i,amount:int,cause_id:int,processed_step_index:int)->bool:
+	if not world.in_bounds(position) or amount<=0 or not _processed_step_matches(processed_step_index):return false
+	var tile=world.tile_at(position)
+	var applied:int=mini(amount,tile.temperature-Config.MIN_TEMPERATURE)
+	if world.emit_event("environment.cold_applied",-1,-1,position,applied,cause_id)==null:return false
+	tile.temperature-=applied
+	world.track_dynamic_tile(position)
+	return true
+
 func apply_heat(position: Vector2i, amount: int, cause_id: int,
 		processed_step_index: int) -> bool:
 	if not world.in_bounds(position) or amount <= 0 \

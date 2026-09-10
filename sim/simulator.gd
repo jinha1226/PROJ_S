@@ -574,7 +574,7 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 
 func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		assessment:Dictionary,processed_step_index:int):
-	var ground_cast:bool=skill_id=="FIREBALL"
+	var ground_cast:bool=skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS
 	var position:Vector2i=assessment.destination if ground_cast else world.entities[target_id].position
 	var magnitude:int=int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).power) \
 		if ground_cast else maxi(int(assessment.damage),int(assessment.healing))
@@ -588,7 +588,13 @@ func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		var tile=world.tile_at(position)
 		if tile.terrain=="shallow_water" and tile.surface_id=="NONE":
 			if not environment.apply_water(position,100,action.id,processed_step_index):return null
-		if not environment.apply_heat(position,magnitude,action.id,processed_step_index):return null
+		var applied:=false
+		match skill_id:
+			"FIREBALL":applied=environment.apply_heat(position,magnitude,action.id,processed_step_index)
+			"TEST_WATER":applied=environment.apply_water(position,magnitude,action.id,processed_step_index)
+			"TEST_FROST":applied=environment.apply_cold(position,magnitude,action.id,processed_step_index)
+			"TEST_SPARK":applied=environment.discharge(position,magnitude,action.id,processed_step_index)
+		if not applied:return null
 	if int(assessment.damage)>0:
 		var target=world.entities[target_id]
 		var applied:Dictionary=damage.apply_canonical_active_damage(target,

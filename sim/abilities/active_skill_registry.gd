@@ -4,7 +4,11 @@ extends RefCounted
 ## Initial balance hypotheses, not production progression values.
 const RULESET_ID:="active-combat-prototype-v1"
 const MAX_ENERGY:=12
+const GROUND_SKILLS:=["FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 const SKILLS:={
+	"TEST_WATER":{"name":"물 생성(시험)","cost":1,"range":5,"target":"TILE","effect":"WATER","power":100,"element":"WATER"},
+	"TEST_FROST":{"name":"냉각(시험)","cost":1,"range":5,"target":"TILE","effect":"COLD","power":1800,"element":"ICE"},
+	"TEST_SPARK":{"name":"방전(시험)","cost":1,"range":5,"target":"TILE","effect":"ELECTRIC","power":70,"element":"ELECTRIC"},
 	"FIREBALL":{"name":"화염구(시험)","cost":3,"range":5,"target":"TILE","effect":"HEAT","power":1400,"element":"FIRE"},
 	"STRIKE":{"name":"강타","cost":3,"range":1,"target":"ENEMY","effect":"DAMAGE","power":30,"element":"PHYSICAL"},
 	"FIREBOLT":{"name":"화염탄","cost":3,"range":5,"target":"ENEMY","effect":"DAMAGE","power":32,"element":"FIRE"},

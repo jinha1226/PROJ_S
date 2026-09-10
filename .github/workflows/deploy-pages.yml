@@ -50,6 +50,7 @@ jobs:
           ./godot --headless --path . --script tests/field_lifecycle_acceptance.gd
           ./godot --headless --path . --script tests/field_party_control_acceptance.gd
           ./godot --headless --path . --script tests/portrait_skills_acceptance.gd
+          ./godot --headless --path . --script tests/input_recovery_acceptance.gd
           ./godot --headless --path . --script tests/field_turn_ui_acceptance.gd
           ./godot --headless --path . --script tests/run_party_ai_tests.gd
 
@@ -58,6 +59,7 @@ jobs:
           ./godot --headless --path . --script tests/run_environment_regression_tests.gd
           ./godot --headless --path . --script tests/fireball_environment_acceptance.gd
           ./godot --headless --path . --script tests/environment_vfx_acceptance.gd
+          ./godot --headless --path . --script tests/environment_tools_acceptance.gd
 
       - name: Inject Pages build ID
         shell: bash

@@ -50,7 +50,7 @@ func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION"
 func active_skill_ids() -> Array:
 	var skills:Array=SkillLoadoutScript.skills(skill_loadout_id)
 	# Temporary environment playtest grant; no save/loadout migration needed.
-	if role=="PROTAGONIST":skills.append("FIREBALL")
+	if role=="PROTAGONIST":skills.append_array(preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS)
 	return skills
 
 func refill_energy() -> bool:

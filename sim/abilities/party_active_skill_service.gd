@@ -14,8 +14,8 @@ const CampaignStream=preload("res://sim/campaign_encounter_stream.gd")
 const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
-const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120}
-const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL"]
+const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
+const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 
 static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
 		in_transaction:bool=false, ground_position:Vector2i=Vector2i(-1,-1))->Dictionary:
@@ -43,7 +43,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
-	if skill_id=="FIREBALL":
+	if skill_id in Registry.GROUND_SKILLS:
 		var definition:=Registry.definition(skill_id)
 		if target_id!=-1 or not world.in_bounds(ground_position):
 			return _reject(rejected,"active_skill_target_invalid","물이나 바닥을 선택하세요.")
@@ -55,7 +55,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 			return _reject(rejected,"active_skill_target_hidden","보이는 칸을 선택하세요.")
 		if member.energy<int(definition.cost):
 			return _reject(rejected,"active_skill_energy_insufficient","기력이 부족합니다.")
-		return {"accepted":true,"reason":"ok","message":"환경 시험용 화염구",
+		return {"accepted":true,"reason":"ok","message":str(definition.name),
 			"skill_id":skill_id,"actor_id":actor_id,"target_id":-1,"cost":int(definition.cost),
 			"action_time":preload("res://sim/field_action_timing.gd").duration(world,actor_id,skill_id,120),
 			"damage":0,"healing":0,"destination":ground_position,"ruleset_id":RULESET_ID}
