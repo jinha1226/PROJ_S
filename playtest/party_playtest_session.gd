@@ -49,7 +49,6 @@ const ItemRegistryScript=preload("res://sim/item_registry.gd")
 const ItemOperationsScript=preload("res://sim/world_item_operations.gd")
 const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const ItemRewardRulesScript=preload("res://sim/item_reward_rules.gd")
-const WeaponRecraftRegistryScript=preload("res://sim/weapon_recraft_registry.gd")
 const RecoveryRulesScript=preload("res://sim/exploration_recovery_rules.gd")
 const DeterministicDungeonMapScript=preload("res://playtest/deterministic_dungeon_map.gd")
 const OpeningEventStateScript=preload("res://sim/opening_event_state.gd")
@@ -2421,7 +2420,7 @@ func unequip_town_item(entity_id:int,slot:String)->Dictionary:
 	return _commit_town_equipment("UNEQUIP",entity_id,"",slot)
 
 
-func monster_ability_rows()->Array[Dictionary]:
+func monster_ability_acquisition_rows()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null:return rows
 	var acquired:Dictionary={}
@@ -2429,50 +2428,53 @@ func monster_ability_rows()->Array[Dictionary]:
 		if event.type!="corpse.loot_materialized":continue
 		for reward in event.data.get("reward_rows",[]):
 			if str(reward.get("reward_family",""))!="MONSTER_ABILITY":continue
+			var definition_id:=str(reward.get("definition_id",""))
 			var ability_id:=str(reward.get("ability_id",""))
-			if ability_id.is_empty() or acquired.has(ability_id):continue
-			acquired[ability_id]=int(event.id)
-	var hero_id:=int(sim.world.party_encounter.protagonist_id) if sim.world.party_encounter!=null else -1
-	var member=sim.world.party_encounter.member(hero_id) if sim.world.party_encounter!=null else null
+			if definition_id.is_empty() or ability_id.is_empty() \
+				or ItemRewardRulesScript.ability_for_item(definition_id)!=ability_id \
+				or acquired.has(ability_id):continue
+			var reward_item_id:=""
+			for item_row in event.data.get("generated_reward_items",[]):
+				if str(item_row.get("reward_id",""))==str(reward.reward_id):
+					reward_item_id=str(item_row.get("instance_id",""));break
+			acquired[ability_id]={"event_id":int(event.id),"reward":reward,
+				"instance_id":reward_item_id}
 	for ability_id in acquired:
+		var entry:Dictionary=acquired[ability_id]
+		var reward:Dictionary=entry.reward
 		var definition:=ActiveSkillRegistryScript.definition(str(ability_id))
+		var owner:Dictionary=sim.world.item_owner(str(entry.instance_id))
 		rows.append({"ability_id":str(ability_id),"label":str(definition.get("name",ability_id)),
-			"source_event_id":int(acquired[ability_id]),"acquired":true,
-			"equipped":member!=null and str(member.skill_loadout_id)=="MONSTER_%s_V1"%ability_id,
-			"can_equip":member!=null and str(member.skill_loadout_id)!="MONSTER_%s_V1"%ability_id})
+			"definition_id":str(reward.get("definition_id","")),
+			"instance_id":str(entry.instance_id),"source_event_id":int(entry.event_id),
+			"stored":owner.kind=="ENTITY","on_ground":owner.kind=="GROUND",
+			"can_absorb":false,"message":"이능 서비스 준비 전까지 보관만 가능합니다."})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.ability_id)<str(b.ability_id))
 	return rows.duplicate(true)
 
 
-func equip_monster_ability(ability_id:String)->Dictionary:
-	var context_error:=_town_context_error()
-	if not context_error.is_empty():return _rejection_dto(context_error)
-	var loadout_id:="MONSTER_%s_V1"%ability_id
-	if not preload("res://sim/abilities/party_skill_loadout.gd").has(loadout_id):
-		return _rejection_dto("monster_ability_unknown")
-	var owned:=false
-	for row in monster_ability_rows():
-		if str(row.ability_id)==ability_id:owned=true;break
-	if not owned:return _rejection_dto("monster_ability_not_acquired")
-	var hero_id:=int(sim.world.party_encounter.protagonist_id)
-	var member=sim.world.party_encounter.member(hero_id)
-	if member==null:return _rejection_dto("item_actor_missing")
-	if str(member.skill_loadout_id)==loadout_id:return _rejection_dto("monster_ability_already_equipped")
-	var rollback:Dictionary=sim.snapshot()
-	member.skill_loadout_id=loadout_id
-	var event=sim.world.emit_event("party.monster_ability_equipped",hero_id,hero_id,
-		sim.world.entities[hero_id].position,1,-1,{"schema_version":1,
-			"ruleset_id":"monster-ability-loadout-v1","ability_id":ability_id,
-			"loadout_id":loadout_id})
-	sim.world.party_encounter.revision+=1
-	var error:String=sim.world.world_state_error()
-	if event==null or not error.is_empty():
-		sim=SimulatorScript.from_snapshot(rollback)
-		return _rejection_dto(error if not error.is_empty() else "monster_ability_equip_failed")
-	command_journal.append({"kind":"ability","operation":{"action":"EQUIP",
-		"ability_id":ability_id}})
-	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
-		"ability_id":ability_id,"loadout_id":loadout_id,"abilities":monster_ability_rows()})
+func monster_ability_rows()->Array[Dictionary]:
+	# Read-only compatibility alias. Ability equip/loadout fields intentionally
+	# do not return; acquisition is represented by the physical item instead.
+	return monster_ability_acquisition_rows()
+
+
+func ability_absorption_assessment(instance_id:String)->Dictionary:
+	if sim==null or sim.world==null:return _rejection_dto("session_not_initialized")
+	var item=sim.world.ground_item(instance_id)
+	if item==null:
+		var hero_id:=int(sim.world.party_control_actor_id())
+		var inventory=sim.world.inventory_of(hero_id)
+		item=inventory.item(instance_id) if inventory!=null else null
+	if item==null:return _rejection_dto("ability_item_missing")
+	var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
+	if ability_id.is_empty():return _rejection_dto("not_ability_item")
+	return _rejection_dto("ability_absorption_unavailable",null,null,{
+		"instance_id":instance_id,"ability_id":ability_id,"can_absorb":false})
+
+
+func absorb_ability_item(instance_id:String)->Dictionary:
+	return ability_absorption_assessment(instance_id)
 
 
 func town_weapon_recraft_assessment(instance_id:String)->Dictionary:
@@ -8279,10 +8281,6 @@ func load_session_json(encoded: String) -> Dictionary:
 					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)))
 					"TORCH_IGNITE":replay_result=replay.ignite_torch(str(item_operation.instance_id))
 					"TORCH_EXTINGUISH":replay_result=replay.extinguish_torch(str(item_operation.instance_id))
-					"RECRAFT":replay_result=replay.recraft_town_weapon(str(item_operation.instance_id))
-			"ability":
-				var ability_operation:Dictionary=row.operation
-				replay_result=replay.equip_monster_ability(str(ability_operation.ability_id))
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)
@@ -8645,7 +8643,7 @@ func _journal_wire_error(journal: Array) -> String:
 					item_keys.erase("heal_before_time")
 				if item_keys!=["action","instance_id","slot"] \
 						or not row.operation.action is String \
-						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE","TORCH_IGNITE","TORCH_EXTINGUISH","RECRAFT"] \
+						or str(row.operation.action) not in ["PICKUP","EQUIP","UNEQUIP","DROP","DISCARD","USE","TORCH_IGNITE","TORCH_EXTINGUISH"] \
 						or not row.operation.instance_id is String or not row.operation.slot is String:
 					return "invalid_item_journal"
 			"equipment":
@@ -8769,15 +8767,6 @@ func _journal_wire_error(journal: Array) -> String:
 						if not legacy_departure and not portal_departure:
 							return "invalid_town_journal"
 					_:return "invalid_town_journal"
-			"ability":
-				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
-					return "invalid_ability_journal"
-				var ability_keys:Array=row.operation.keys();ability_keys.sort()
-				if ability_keys!=["ability_id","action"] \
-						or row.operation.get("action")!="EQUIP" \
-						or not row.operation.ability_id is String \
-						or str(row.operation.ability_id).is_empty():
-					return "invalid_ability_journal"
 			"npc_assault":
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_npc_assault_journal"
@@ -9507,8 +9496,11 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"item_use_unimplemented":"이 아이템의 사용 효과는 아직 준비되지 않았습니다.",
 			"item_heal_not_needed":"체력이 가득 차 있어 회복 물약을 아꼈습니다.",
 			"item_user_unavailable":"쓰러진 상태에서는 물약을 사용할 수 없습니다.",
-			"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
-			"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
+		"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
+		"ability_item_missing":"흡수할 이능 획득물을 찾을 수 없습니다.",
+		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
+		"ability_absorption_unavailable":"이능 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
+		"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
 			"turn_draft_active":"준비 중인 전투 행동을 취소한 뒤 다시 시도하세요.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
 		"invalid_companion_ids":"동료 선택이 올바르지 않습니다.", "too_many_deployed_party":"한 전투에 배치할 수 있는 파티원 수를 넘었습니다.",

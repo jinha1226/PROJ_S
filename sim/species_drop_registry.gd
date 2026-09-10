@@ -2,10 +2,12 @@ class_name SpeciesDropRegistry
 extends RefCounted
 
 const CONTENT_PATH := "res://data/content/species_drop_tables.json"
-const RULESET_ID := "species-drops-v2"
+const RULESET_ID := "species-drops-v3"
+const PREVIOUS_RULESET_ID := "species-drops-v2"
 const LEGACY_RULESET_ID := "species-drops-v1"
 const ContentLoaderScript = preload("res://sim/json_content_loader.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
+const ItemRewardRulesScript = preload("res://sim/item_reward_rules.gd")
 const ActiveSkillRegistryScript = preload("res://sim/abilities/active_skill_registry.gd")
 const REWARD_FAMILIES := ["CURRENCY", "MONSTER_ABILITY"]
 
@@ -28,7 +30,7 @@ static func species_ids() -> Array[String]:
 static func rolls_for(world_seed: int, death_event_id: int, species_id: String,
 		ruleset_id:String=RULESET_ID) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if death_event_id < 1 or ruleset_id not in [RULESET_ID,LEGACY_RULESET_ID] \
+	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
 			or not registry_error().is_empty() or not has_table(species_id):
 		return result
 	for row in _TABLES[species_id].rolls:
@@ -43,16 +45,21 @@ static func rolls_for(world_seed: int, death_event_id: int, species_id: String,
 	return result.duplicate(true)
 
 
-static func rewards_for(world_seed:int,death_event_id:int,species_id:String)->Array[Dictionary]:
+static func rewards_for(world_seed:int,death_event_id:int,species_id:String,
+		source_depth:int=1,floor_generation:int=0,source_id:String="")->Array[Dictionary]:
 	var result:Array[Dictionary]=[]
 	if death_event_id<1 or not registry_error().is_empty() or not has_table(species_id):return result
 	for row in _TABLES[species_id].get("reward_rows",[]):
+		if source_depth<int(row.min_depth) or source_depth>int(row.max_depth):continue
+		if not source_id.is_empty() and str(row.source_id)!=source_id:continue
 		var key:="%s|seed=%d|death=%d|species=%s|reward=%s"%[
 			RULESET_ID,world_seed,death_event_id,species_id,str(row.reward_id)]
 		if _keyed_u31(key,"CHANCE")%1000>=int(row.chance_per_1000):continue
 		result.append({"reward_id":str(row.reward_id),
 			"reward_family":str(row.reward_family),"definition_id":str(row.definition_id),
-			"ability_id":str(row.ability_id),"amount":int(row.amount)})
+			"ability_id":str(row.ability_id),"amount":int(row.amount),
+			"source_id":str(row.source_id),"min_depth":int(row.min_depth),
+			"max_depth":int(row.max_depth),"floor_generation":floor_generation})
 	return result.duplicate(true)
 
 
@@ -91,7 +98,6 @@ static func _table_error(row: Variant, global_roll_ids_value: Variant = null) ->
 		var roll_keys: Array = roll.keys(); roll_keys.sort()
 		if roll_keys != ["chance_per_1000", "definition_id", "max_quantity",
 				"min_quantity", "roll_id"] \
-				or not roll.roll_id is String or str(roll.roll_id).is_empty() \
 				or not roll.definition_id is String \
 				or not roll.chance_per_1000 is int or not roll.min_quantity is int \
 				or not roll.max_quantity is int:
@@ -115,24 +121,32 @@ static func _table_error(row: Variant, global_roll_ids_value: Variant = null) ->
 		if not reward is Dictionary:return "invalid_species_reward_shape"
 		var reward_keys:Array=reward.keys();reward_keys.sort()
 		if reward_keys!=["ability_id","amount","chance_per_1000","definition_id",
-				"reward_family","reward_id"] or not reward.reward_id is String \
+				"max_depth","min_depth","reward_family","reward_id","source_id"] \
+				or not reward.reward_id is String \
 				or str(reward.reward_id).is_empty() or not reward.reward_family is String \
 				or str(reward.reward_family) not in REWARD_FAMILIES \
 				or not reward.definition_id is String or not reward.ability_id is String \
-				or not reward.chance_per_1000 is int or not reward.amount is int:
+				or not reward.source_id is String or str(reward.source_id).is_empty() \
+				or not reward.chance_per_1000 is int or not reward.amount is int \
+				or not reward.min_depth is int or not reward.max_depth is int:
 			return "invalid_species_reward_shape"
 		if not previous_reward.is_empty() and str(reward.reward_id)<=previous_reward:
 			return "duplicate_or_unsorted_species_reward"
 		previous_reward=str(reward.reward_id)
 		if int(reward.chance_per_1000)<0 or int(reward.chance_per_1000)>1000 \
-				or int(reward.amount)<1 or int(reward.amount)>1000:
+				or int(reward.amount)<1 or int(reward.amount)>1000 \
+				or int(reward.min_depth)<1 or int(reward.max_depth)<int(reward.min_depth) \
+				or int(reward.max_depth)>15:
 			return "invalid_species_reward_range"
 		if str(reward.reward_family)=="CURRENCY":
 			if not str(reward.definition_id).is_empty() or not str(reward.ability_id).is_empty():
 				return "invalid_species_currency_reward"
 		elif str(reward.reward_family)=="MONSTER_ABILITY":
-			if str(reward.definition_id)!="" or not ActiveSkillRegistryScript.SKILLS.has(str(reward.ability_id)) \
-					or int(reward.amount)!=1:
+			if not ItemRegistryScript.has(str(reward.definition_id)) \
+				or ItemRewardRulesScript.family_for_item(str(reward.definition_id))!="MONSTER_ABILITY" \
+				or ItemRewardRulesScript.ability_for_item(str(reward.definition_id))!=str(reward.ability_id) \
+				or not ActiveSkillRegistryScript.SKILLS.has(str(reward.ability_id)) \
+				or int(reward.amount)!=1:
 				return "invalid_species_ability_reward"
 	return ""
 

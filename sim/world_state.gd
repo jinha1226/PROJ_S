@@ -98,6 +98,8 @@ var world_time: int = 0
 # Presentation/session context only. It is deliberately not part of the save
 # wire; PartyPlaytestSession restores the scenario identity after loading.
 var vision_scenario_id: String = ""
+# Derived only: rebuilt after snapshot/rollback, never canonical save authority.
+var darkness_event_cache: Dictionary = {}
 var seed: int
 var rng: RandomNumberGenerator
 var tiles: Array = []
@@ -1904,13 +1906,18 @@ func _corpse_drop_history_error() -> String:
 	for event in events:
 		if event.type != "corpse.loot_materialized": continue
 		var keys: Array = event.data.keys(); keys.sort()
-		var legacy_drop_event:bool=event.data.get("ruleset_id") == SpeciesDropRegistryScript.LEGACY_RULESET_ID
+		var ruleset_id:=str(event.data.get("ruleset_id",""))
+		var legacy_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.PREVIOUS_RULESET_ID,
+			SpeciesDropRegistryScript.LEGACY_RULESET_ID]
+		var current_drop_event:bool=ruleset_id==SpeciesDropRegistryScript.RULESET_ID
 		var expected_keys:Array=["generated_items","ruleset_id","schema_version",
-			"source_death_event_id"] if legacy_drop_event else ["generated_items","reward_rows",
-			"ruleset_id","schema_version","source_death_event_id"]
+			"source_death_event_id"] if ruleset_id==SpeciesDropRegistryScript.LEGACY_RULESET_ID else [
+			"generated_items","reward_rows","ruleset_id","schema_version",
+			"source_death_event_id"] if legacy_drop_event else ["floor_generation",
+			"generated_items","generated_reward_items","reward_rows","ruleset_id",
+			"schema_version","source_death_event_id","source_depth","source_id"]
 		if keys != expected_keys or event.data.get("schema_version") != 1 \
-				or (event.data.get("ruleset_id") not in [SpeciesDropRegistryScript.RULESET_ID,
-				SpeciesDropRegistryScript.LEGACY_RULESET_ID]) \
+				or not (current_drop_event or legacy_drop_event) \
 				or not Int64CodecScript.is_canonical(event.data.get("source_death_event_id")) \
 				or not event.data.get("generated_items") is Array:
 			return "corpse_drop_event_shape_invalid"
@@ -1949,10 +1956,45 @@ func _corpse_drop_history_error() -> String:
 			total_quantity += int(generated.quantity)
 		if actual_rolls != expected_rolls or event.magnitude != total_quantity:
 			return "corpse_drop_roll_mismatch"
-		if not legacy_drop_event:
+		if current_drop_event:
+			if not event.data.source_id is String or str(event.data.source_id).is_empty() \
+					or not event.data.source_depth is int or int(event.data.source_depth)<1 \
+					or int(event.data.source_depth)>15 or not event.data.floor_generation is int \
+					or int(event.data.floor_generation)<0 or not event.data.generated_reward_items is Array \
+					or not event.data.reward_rows is Array:
+				return "corpse_reward_source_invalid"
 			var expected_rewards:=SpeciesDropRegistryScript.rewards_for(seed,death_id,
-				str(corpse.species_id))
+				str(corpse.species_id),int(event.data.source_depth),
+				int(event.data.floor_generation),str(event.data.source_id))
 			if event.data.reward_rows!=expected_rewards:return "corpse_reward_mismatch"
+			var expected_reward_items:Dictionary={}
+			for reward in expected_rewards:
+				if not str(reward.definition_id).is_empty():
+					expected_reward_items[str(reward.reward_id)]=str(reward.definition_id)
+			var previous_reward_instance_id:=""
+			var seen_reward_items:Dictionary={}
+			for generated_reward in event.data.generated_reward_items:
+				if not generated_reward is Dictionary:return "corpse_reward_item_shape_invalid"
+				var reward_item_keys:Array=generated_reward.keys();reward_item_keys.sort()
+				if reward_item_keys!=["definition_id","instance_id","location","quantity","reward_id"] \
+						or not generated_reward.instance_id is String \
+						or not generated_reward.definition_id is String \
+						or not generated_reward.reward_id is String \
+						or generated_reward.location!="GROUND" \
+						or not generated_reward.quantity is int or int(generated_reward.quantity)<1 \
+						or not expected_reward_items.has(str(generated_reward.reward_id)) \
+						or str(generated_reward.definition_id)!=expected_reward_items[str(generated_reward.reward_id)] \
+						or seen_reward_items.has(str(generated_reward.reward_id)):
+					return "corpse_reward_item_shape_invalid"
+				if not previous_reward_instance_id.is_empty() \
+						and str(generated_reward.instance_id)<=previous_reward_instance_id:
+					return "corpse_reward_item_order_invalid"
+				previous_reward_instance_id=str(generated_reward.instance_id)
+				seen_reward_items[str(generated_reward.reward_id)]=true
+				var owner:=item_owner(str(generated_reward.instance_id))
+				if str(owner.kind)=="NONE":return "corpse_reward_item_missing"
+			if seen_reward_items.size()!=expected_reward_items.size():
+				return "corpse_reward_item_count_invalid"
 		materialized_by_death[death_id] = true
 	for event in events:
 		if event.type != "entity.died": continue

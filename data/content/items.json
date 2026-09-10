@@ -246,6 +246,18 @@
       "placeholder": false
     },
     {
+      "definition_id": "ESSENCE_FIRE_BOLT",
+      "label": "화염탄 이능 정수",
+      "category": "MATERIAL",
+      "stack_limit": 1,
+      "equip_slots": [],
+      "weapon_id": "",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "use_kind": "NONE",
+      "placeholder": false
+    },
+    {
       "definition_id": "MATERIAL_IRON_INGOT",
       "label": "철 주괴",
       "category": "MATERIAL",

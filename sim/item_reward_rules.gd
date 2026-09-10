@@ -17,6 +17,7 @@ const LABELS := {
 const ITEM_FAMILIES := {
 	"MATERIAL_IRON_INGOT":"WEAPON_MATERIAL",
 	"MAGIC_STONE":"CURRENCY",
+	"ESSENCE_FIRE_BOLT":"MONSTER_ABILITY",
 	"FOOD_RATION":"SUPPLY",
 	"POTION_HEALING":"SUPPLY",
 	"POTION_UNSPECIFIED":"SUPPLY",
@@ -24,6 +25,7 @@ const ITEM_FAMILIES := {
 const ITEM_PURPOSES := {
 	"MATERIAL_IRON_INGOT":"무기 재제작용",
 	"MAGIC_STONE":"환금품·거래용",
+	"ESSENCE_FIRE_BOLT":"이능 흡수 전 보관",
 	"FOOD_RATION":"원정 보급품",
 	"POTION_HEALING":"회복용 보급품",
 }
@@ -35,6 +37,10 @@ static func family_for_item(definition_id:String)->String:
 
 static func purpose_for_item(definition_id:String)->String:
 	return str(ITEM_PURPOSES.get(definition_id,""))
+
+
+static func ability_for_item(definition_id:String)->String:
+	return {"ESSENCE_FIRE_BOLT":"FIREBOLT"}.get(definition_id,"")
 
 
 static func family_label(family:String)->String:

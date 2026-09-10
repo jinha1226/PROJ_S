@@ -22,7 +22,8 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 		return _rejected("drop_corpse_missing")
 	if int(death_event.id) in world.item_state.processed_drop_death_event_ids:
 		return {"accepted": true, "reason": "already_processed", "already_processed": true,
-			"event_id": -1, "generated_items": []}
+			"event_id": -1, "generated_items": [], "generated_rewards": [],
+			"generated_reward_items": []}
 	if not SpeciesDropRegistryScript.registry_error().is_empty():
 		return _rejected("species_drop_registry_invalid")
 	var next = world.item_state.clone()
@@ -35,8 +36,15 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 	for item in carried_items:
 		next.ground_items.rows.append({"position": corpse.position, "item": item})
 	var generated_rows: Array[Dictionary] = []
+	var source_depth:=1
+	var floor_generation:=0
+	if world.party_encounter!=null and world.party_encounter.expedition_cycle!=null:
+		source_depth=int(world.party_encounter.expedition_cycle.floor_index)
+		floor_generation=int(world.party_encounter.expedition_cycle.expedition_index)
+	var source_id:="species:%s"%str(corpse.species_id)
 	var generated_rewards:Array[Dictionary]=SpeciesDropRegistryScript.rewards_for(world.seed,
-		int(death_event.id),str(corpse.species_id))
+		int(death_event.id),str(corpse.species_id),source_depth,floor_generation,source_id)
+	var generated_reward_items:Array[Dictionary]=[]
 	var rolls := SpeciesDropRegistryScript.rolls_for(world.seed, int(death_event.id),
 		str(corpse.species_id))
 	for roll in rolls:
@@ -47,6 +55,16 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 		generated_rows.append({"instance_id": instance_id,
 			"definition_id": str(roll.definition_id), "quantity": int(roll.quantity),
 			"location": "GROUND", "roll_id": str(roll.roll_id)})
+	for reward in generated_rewards:
+		var reward_definition_id:=str(reward.definition_id)
+		if reward_definition_id.is_empty():continue
+		var reward_instance_id: String = next.instance_id_for(next.next_item_instance_id)
+		next.next_item_instance_id += 1
+		next.ground_items.rows.append({"position":corpse.position,
+			"item":ItemScript.new(reward_instance_id,reward_definition_id,int(reward.amount))})
+		generated_reward_items.append({"instance_id":reward_instance_id,
+			"definition_id":reward_definition_id,"quantity":int(reward.amount),
+			"location":"GROUND","reward_id":str(reward.reward_id)})
 	next.ground_items._sort_rows()
 	next.processed_drop_death_event_ids.append(int(death_event.id))
 	next.processed_drop_death_event_ids.sort()
@@ -65,12 +83,15 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 			corpse.position, total_quantity, int(death_event.id), {"schema_version": 1,
 				"ruleset_id": SpeciesDropRegistryScript.RULESET_ID,
 				"source_death_event_id": str(death_event.id),
-				"generated_items": generated_rows,"reward_rows":generated_rewards})
+				"generated_items": generated_rows,"generated_reward_items":generated_reward_items,
+				"reward_rows":generated_rewards,"source_id":source_id,
+				"source_depth":source_depth,"floor_generation":floor_generation})
 	if materialized == null: return _rejected("corpse_drop_event_failed")
 	world.item_state = next
 	return {"accepted": true, "reason": "ok", "already_processed": false,
 		"event_id": int(materialized.id), "generated_items": generated_rows.duplicate(true),
 		"generated_rewards":generated_rewards.duplicate(true),
+		"generated_reward_items":generated_reward_items.duplicate(true),
 		"revision": int(next.revision)}
 
 

@@ -20,6 +20,10 @@ func test_reward_and_recraft_registries_validate() -> bool:
 		"WEAPON_MATERIAL", "iron is a weapon material")
 	check_eq(ItemRewardRules.family_for_item("MAGIC_STONE"),
 		"CURRENCY", "magic stone is currency")
+	check_eq(ItemRewardRules.family_for_item("ESSENCE_FIRE_BOLT"),
+		"MONSTER_ABILITY", "ability essence is a distinct acquisition item")
+	check_eq(ItemRewardRules.ability_for_item("ESSENCE_FIRE_BOLT"),
+		"FIREBOLT", "ability essence points to a real skill")
 	return finish()
 
 
@@ -27,7 +31,7 @@ func test_goblin_rewards_are_keyed_and_have_no_duplicate_reward_ids() -> bool:
 	var first := SpeciesDrops.rewards_for(4417, 9, "goblin")
 	var second := SpeciesDrops.rewards_for(4417, 9, "goblin")
 	check_eq(first, second, "same seed and death id replay the same reward rows")
-	check_eq(first.size(), 2, "the representative goblin has two reward families")
+	check_eq(first.size(), 1, "the representative goblin has one currently authored reward")
 	var ids:Dictionary = {}
 	var families:Dictionary = {}
 	for row in first:
@@ -35,7 +39,8 @@ func test_goblin_rewards_are_keyed_and_have_no_duplicate_reward_ids() -> bool:
 		families[str(row.reward_family)] = true
 	check_eq(ids.size(), first.size(), "reward ids are unique")
 	check(families.has("CURRENCY"), "goblin rewards include currency")
-	check(families.has("MONSTER_ABILITY"), "goblin rewards include a monster ability")
+	check(not families.has("MONSTER_ABILITY"),
+		"an ability is not generated without a monster source that uses it")
 	return finish()
 
 
