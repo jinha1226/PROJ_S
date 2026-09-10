@@ -14,6 +14,7 @@ const PartyActionScript = preload("res://sim/party_action_command.gd")
 const PartyRequestScript = preload("res://sim/party_turn_request.gd")
 const PartyPlanScript = preload("res://sim/party_turn_plan.gd")
 const PartyMoraleSystemScript = preload("res://sim/systems/party_morale_system.gd")
+const DarknessStressRulesScript = preload("res://sim/darkness_stress_rules.gd")
 const PartyEmotionSystemScript = preload("res://sim/systems/party_emotion_system.gd")
 const PartyMemorySystemScript = preload("res://sim/systems/party_memory_system.gd")
 const PartyRelationshipSystemScript = preload("res://sim/systems/party_relationship_system.gd")
@@ -234,6 +235,20 @@ func step(command, supplied_rollback_memento: Variant = null):
 		marker_index += 1
 	assert(marker_index == timeline.size() - 1, "Not all previewed schedules were processed")
 	world.world_time = end_time
+	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time):
+		var darkness_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+		if darkness_restore != null:
+			world = darkness_restore
+			_rebuild_systems()
+		return StepResultScript.new(false, false, "darkness_stress_failed")
+	if world.party_encounter != null \
+			and not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start), false):
+		var darkness_morale_restore = WorldStateScript.from_rollback_memento(rollback_memento)
+		if darkness_morale_restore != null:
+			world = darkness_morale_restore
+			_rebuild_systems()
+		return StepResultScript.new(false, false, "party_morale_failed")
+	_append_boundary_events_to_timeline(timeline, event_start)
 	_reconcile_expedition_cycle()
 	world.finish_step()
 	# Live turns use a bounded tail/surface postcondition. Full ledger validation
@@ -556,6 +571,10 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 			if int(entry.repeat_interval)>0:world.requeue_repeating(entry)
 	if accepted:
 		world.world_time=end_time
+		accepted=DarknessStressRulesScript.commit_boundary(world,start_time,end_time)
+		if accepted and world.party_encounter != null:
+			accepted=PartyMoraleSystemScript.commit_batch(world,world.events_since(event_start),false)
+	if accepted:
 		accepted=party_coordinator.reconcile_liveness() \
 			and party_coordinator.finalize_automatic_regroup()
 	if accepted:
@@ -914,6 +933,10 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 	if occurrence_index != authoritative.timeline.size():
 		return _rollback_party_step(rollback, "party_schedule_mismatch")
 	world.world_time = end_time
+	if not DarknessStressRulesScript.commit_boundary(world, start_time, end_time):
+		return _rollback_party_step(rollback, "darkness_stress_failed")
+	if not PartyMoraleSystemScript.commit_batch(world, world.events_since(event_start), false):
+		return _rollback_party_step(rollback, "party_morale_failed")
 	if not party_coordinator.reconcile_liveness():
 		return _rollback_party_step(rollback, "party_turn_failed")
 	if not party_coordinator.finalize_automatic_regroup():
@@ -1279,6 +1302,18 @@ func _assert_event_partition(result_events: Array, timeline: Array) -> void:
 	assert(assigned.size() == result_events.size(), "Timeline contains non-step event IDs")
 	assert(assigned_in_order == expected_in_order,
 		"Timeline event partition must equal the step event sequence in order")
+
+
+func _append_boundary_events_to_timeline(timeline: Array, event_start: int) -> void:
+	if timeline.size() < 2: return
+	var assigned: Dictionary = {}
+	for marker in timeline:
+		for event_id in marker.get("event_ids", []): assigned[int(event_id)] = true
+	var tail: Array = timeline[timeline.size() - 2].get("event_ids", [])
+	for index in range(event_start, world.events.size()):
+		var event_id := int(world.events[index].id)
+		if not assigned.has(event_id): tail.append(event_id)
+	timeline[timeline.size() - 2]["event_ids"] = tail
 
 
 func _saturating_add(a: int, b: int) -> int:

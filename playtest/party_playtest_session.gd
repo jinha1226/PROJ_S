@@ -18,6 +18,7 @@ const ExplorationRouteScript = preload("res://playtest/party_exploration_route.g
 const AutoExploreScript = preload("res://playtest/party_auto_explore.gd")
 const VisualTestMapScript = preload("res://playtest/party_visual_test_map.gd")
 const VisionRulesScript = preload("res://sim/vision_rules.gd")
+const DarknessStressRulesScript = preload("res://sim/darkness_stress_rules.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const ProgressionScript=preload("res://sim/protagonist_progression.gd")
 const CombatProfileRegistryScript=preload("res://sim/combat_profile_registry.gd")
@@ -160,6 +161,7 @@ const PARTY_MORALE_TRIGGER_PRESENTATION := {
 	"ALLY_DIED_EMOTIONALITY":{"kind":"DISTRESS","label_ko":"감정적으로 크게 동요함"},
 	"ENEMY_DIED":{"kind":"RELIEF","label_ko":"적을 쓰러뜨림"},
 	"OVERRIDE_STRESS":{"kind":"DISTRESS","label_ko":"강제 지시 부담"},
+	"DARKNESS":{"kind":"DISTRESS","label_ko":"어둠에 노출됨"},
 	"ALLY_FEAR_CONTAGION":{"kind":"CONTAGION","label_ko":"가까운 동료의 공포"},
 	"SAFE_RECOVERY":{"kind":"RECOVERY","label_ko":"안전한 곳에서 진정"},
 	"TOWN_REST":{"kind":"RECOVERY","label_ko":"마을에서 휴식"},
@@ -177,7 +179,8 @@ const PARTY_EMOTION_CAUSE_LABELS := {
 	"ALLY_DOWNED":"동료가 쓰러짐", "ALLY_DIED":"동료를 잃음",
 	"ENEMY_DIED":"적을 쓰러뜨림", "OVERRIDE_CONFLICT":"원치 않는 지시를 받음",
 	"ALLY_AID":"동료에게 도움을 받음", "SAFE_DECAY":"시간이 지나 진정됨",
-	"TOWN_REST":"마을에서 휴식함", "NONE":"뚜렷한 원인 없음",
+	"TOWN_REST":"마을에서 휴식함", "DARKNESS":"어둠에 노출됨",
+	"NONE":"뚜렷한 원인 없음",
 }
 const GUILD_NAMES := {
 	"human":["레아","도윤","마렌"],
@@ -1810,6 +1813,7 @@ func party_status() -> Dictionary:
 		"vision_observer_illumination": vision_illumination,
 		"vision_observer_light_band": VisionRulesScript.light_band(vision_illumination),
 		"torch":torch_status,
+		"darkness_stress":darkness_stress_observation(),
 		"vision_debug_available": true,
 			"snapshot_version": sim.world.SNAPSHOT_VERSION, "ruleset_version": sim.world.RULESET_VERSION,
 			"session_format_version": SESSION_FORMAT_VERSION, "scenario_id": scenario_id}.duplicate(true)
@@ -3247,6 +3251,34 @@ func party_morale_observation() -> Dictionary:
 		"members":rows}.duplicate(true)
 
 
+func darkness_stress_observation() -> Dictionary:
+	var empty := {"schema_version":1,"ruleset_id":DarknessStressRulesScript.RULESET_ID,
+		"available":false,"sampled_step_index":-1,"sampled_world_time":-1,
+		"deep_dark_threshold":DarknessStressRulesScript.DEEP_DARK_THRESHOLD,
+		"grace_time":DarknessStressRulesScript.GRACE_TIME,"members":[]}
+	if sim == null or sim.world == null or sim.world.party_encounter == null:
+		return empty.duplicate(true)
+	var state = sim.world.party_encounter
+	var member_ids: Array = state.active_party_member_ids.duplicate()
+	member_ids.sort()
+	var rows: Array[Dictionary] = []
+	for member_id_value in member_ids:
+		var member_id := int(member_id_value)
+		var member = state.member(member_id)
+		if member == null or not sim.world.entities.has(member_id): continue
+		var sample: Dictionary = DarknessStressRulesScript.state(sim.world, member_id)
+		rows.append({"entity_id":member_id,"display_name":str(sim.world.entities[member_id].display_name),
+			"presence":str(member.presence),"exposure":int(sample.exposure),
+			"deep_dark":bool(sample.deep_dark),"illumination":int(sample.illumination),
+			"grace_remaining":int(sample.grace_remaining),"last_event_id":int(sample.last_event_id),
+			"sampled_world_time":int(sample.sampled_world_time)})
+	return {"schema_version":1,"ruleset_id":DarknessStressRulesScript.RULESET_ID,
+		"available":true,"sampled_step_index":int(sim.world.step_index),
+		"sampled_world_time":int(sim.world.world_time),
+		"deep_dark_threshold":DarknessStressRulesScript.DEEP_DARK_THRESHOLD,
+		"grace_time":DarknessStressRulesScript.GRACE_TIME,"members":rows}.duplicate(true)
+
+
 func party_emotion_observation() -> Dictionary:
 	var empty := {"schema_version":1,
 		"ruleset_id":PartyEmotionModelScript.RULESET_ID, "available":false,
@@ -4381,11 +4413,13 @@ func party_cards() -> Array[Dictionary]:
 		var _pmem:=PerfProbeScript.begin()
 		var memory_dto:Dictionary=_memory_presentation(member)
 		PerfProbeScript.end("cards.memory",_pmem)
+		var darkness_stress:Dictionary=DarknessStressRulesScript.state(sim.world,member_id)
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress,
+			"darkness_stress": darkness_stress,
 			"energy":int(member.energy),"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
 			"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
 			"stress_band_label":PartyMoraleModelScript.stress_band_label(

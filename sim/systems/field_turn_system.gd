@@ -11,6 +11,7 @@ const Emotion=preload("res://sim/systems/party_emotion_system.gd")
 const Memory=preload("res://sim/systems/party_memory_system.gd")
 const Relationships=preload("res://sim/systems/party_relationship_system.gd")
 const Morale=preload("res://sim/systems/party_morale_system.gd")
+const Darkness=preload("res://sim/darkness_stress_rules.gd")
 
 static func assess(sim,action)->Dictionary:
 	var rejected:={"accepted":false,"reason":"field_action_unavailable","time_cost":0}
@@ -78,6 +79,8 @@ static func step(sim,action,wait_duration:int=100):
 		if ok:ok=_social(sim,leaf_start,int(next.id)==0)
 	world.world_time=end
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
+	if ok:ok=Darkness.commit_boundary(world,start,end)
+	if ok:ok=Morale.commit_batch(world,world.events_since(event_start),false)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()

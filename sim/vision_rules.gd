@@ -12,6 +12,7 @@ const DARK_AMBIENT := 120
 const MAX_LIGHT := 1000
 const LIGHT_SOURCE_KEYS := ["position", "brightness", "radius"]
 const LIGHTING_TEST_SCENARIO_ID := "VISION_TEST_LIGHTING_V1"
+const DARK_TORCH_SCENARIO_ID := "TORCH_DARK_FIXTURE_V1"
 const TorchRulesScript = preload("res://sim/torch_rules.gd")
 
 
@@ -109,6 +110,8 @@ static func lighting_for_scenario(scenario_id: String) -> Dictionary:
 		return {"ambient_level": DARK_AMBIENT, "sources": [
 			{"position": [4, 2], "brightness": 1000, "radius": 3},
 		]}.duplicate(true)
+	if scenario_id == DARK_TORCH_SCENARIO_ID:
+		return {"ambient_level": DARK_AMBIENT, "sources": []}.duplicate(true)
 	return {"ambient_level": DEFAULT_AMBIENT, "sources": []}
 
 

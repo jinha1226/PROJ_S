@@ -9,6 +9,17 @@ func _draw()->void:
 	var scale:=minf(size.x,size.y)/32.0
 	draw_set_transform((size-Vector2.ONE*32*scale)*0.5,0,Vector2.ONE*scale)
 	match kind:
+		"FOOD":
+			draw_rect(Rect2(7,12,18,13),color,false,2)
+			draw_arc(Vector2(16,12),9,PI,TAU,16,color,2,true)
+			draw_line(Vector2(12,18),Vector2(21,18),color,2,true)
+		"POTION":
+			draw_rect(Rect2(12,5,8,5),color,true)
+			draw_rect(Rect2(8,10,16,17),color,false,2)
+			draw_line(Vector2(10,18),Vector2(22,18),color,2,true)
+		"TORCH":
+			draw_line(Vector2(16,27),Vector2(16,10),color,3,true)
+			draw_polyline(PackedVector2Array([Vector2(10,11),Vector2(16,4),Vector2(22,11),Vector2(16,15),Vector2(10,11)]),color,2,true)
 		"INN":
 			draw_circle(Vector2(12,10),4,color)
 			draw_arc(Vector2(12,25),8,PI,TAU,16,color,2,true)

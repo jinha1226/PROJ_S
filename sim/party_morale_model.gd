@@ -91,6 +91,12 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 				# stack but the persisted code list stays one entry long.
 				if "STARVING" not in triggers[member_id]:
 					triggers[member_id].append("STARVING")
+		elif event_type == "darkness.exposure_changed" and direct.has(actor_id):
+			var data: Dictionary = event.get("data", {}) if event is Dictionary else event.data
+			var stress_delta := maxi(0, int(data.get("stress_delta", 0)))
+			direct[actor_id] = int(direct[actor_id]) + stress_delta
+			if stress_delta > 0:
+				triggers[actor_id].append("DARKNESS")
 	var rows: Array[Dictionary] = []
 	for member_id in members:
 		var member = world.party_encounter.member(member_id)

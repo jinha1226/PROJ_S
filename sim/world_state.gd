@@ -5691,6 +5691,8 @@ func _party_event_correlation_error() -> String:
 	if not override_error.is_empty(): return override_error
 	var command_error := _party_command_history_error()
 	if not command_error.is_empty(): return command_error
+	var darkness_error := _darkness_history_error()
+	if not darkness_error.is_empty(): return darkness_error
 	var morale_error := _party_morale_history_error()
 	if not morale_error.is_empty(): return morale_error
 	var emotion_error := _party_emotion_history_error()
@@ -5699,6 +5701,53 @@ func _party_event_correlation_error() -> String:
 	if not memory_error.is_empty(): return memory_error
 	var relationship_error := PartyRelationshipHistoryValidatorScript.error(self)
 	if not relationship_error.is_empty(): return relationship_error
+	return ""
+
+
+func _darkness_history_error() -> String:
+	var previous_by_actor: Dictionary = {}
+	for event in events:
+		if event.type != "darkness.exposure_changed": continue
+		if event.target_id != -1 or event.actor_id not in _party_active_ids_at_event(event.id):
+			return "darkness_actor_invalid"
+		var historical: Dictionary = _entity_position_at_event(event.actor_id, event.id)
+		if not bool(historical.get("ok", false)) or historical.position != event.position:
+			return "darkness_position_invalid"
+		var keys: Array = event.data.keys(); keys.sort()
+		if keys != ["deep_dark", "elapsed", "exposure_after", "exposure_before",
+				"illumination", "resistance_milli", "ruleset_id", "schema_version",
+				"stress_delta"] or event.data.schema_version != 1 \
+				or not event.data.get("deep_dark") is bool \
+				or event.data.ruleset_id != "darkness-stress-v1":
+			return "darkness_data_invalid"
+		for key in ["elapsed", "exposure_after", "exposure_before", "illumination",
+				"resistance_milli", "stress_delta"]:
+			if not event.data.get(key) is int: return "darkness_scalar_invalid"
+		var before := int(event.data.exposure_before)
+		var after := int(event.data.exposure_after)
+		var elapsed := int(event.data.elapsed)
+		var resistance := int(event.data.resistance_milli)
+		var stress_delta := int(event.data.stress_delta)
+		if before < 0 or before > 2000 or after < 0 or after > 2000 \
+				or elapsed <= 0 or resistance < 0 or resistance > 1000 \
+				or int(event.data.illumination) < 0 or int(event.data.illumination) > 1000 \
+				or stress_delta < 0 or event.magnitude != stress_delta:
+			return "darkness_scalar_invalid"
+		if previous_by_actor.has(event.actor_id) \
+				and before != int(previous_by_actor[event.actor_id].exposure_after):
+			return "darkness_chain_invalid"
+		var deep_dark := bool(event.data.deep_dark)
+		var expected_after := mini(2000, before + elapsed) if deep_dark else maxi(0, before - elapsed)
+		if after != expected_after:
+			return "darkness_projection_invalid"
+		var before_progress := maxi(0, before - 300)
+		var after_progress := maxi(0, after - 300)
+		var susceptibility := 1000 - resistance
+		var expected_stress := maxi(0, int(after_progress * 12 * susceptibility / 100000.0) \
+			- int(before_progress * 12 * susceptibility / 100000.0))
+		if stress_delta != expected_stress:
+			return "darkness_stress_projection_invalid"
+		previous_by_actor[event.actor_id] = {"exposure_after": after}
 	return ""
 
 
@@ -5967,7 +6016,8 @@ func _party_morale_history_error() -> String:
 	var allowed_triggers := ["ALLY_DIED", "ALLY_DIED_BONDED",
 		"ALLY_DIED_EMOTIONALITY", "ALLY_DIED_WITNESSED", "ALLY_DOWNED",
 		"ALLY_FEAR_CONTAGION", "ENEMY_DIED", "OVERRIDE_STRESS",
-		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "STARVING", "TOWN_REST"]
+		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "STARVING", "TOWN_REST",
+		"DARKNESS"]
 	for event in events:
 		if event.type != "party.morale_changed":
 			continue
@@ -6037,7 +6087,8 @@ func _party_morale_history_error() -> String:
 					or source.step_index != event.step_index \
 					or source.type not in ["combat.physical_damage", "combat.downed_damage",
 						"entity.downed", "entity.died", "party.override_committed",
-						"party.ration_starve_tick", "town.shrine_service"]:
+						"party.ration_starve_tick", "town.shrine_service",
+						"darkness.exposure_changed"]:
 				return "party_morale_source_invalid"
 			previous_source = source_id
 		if (source_rows.is_empty() and event.cause_id != -1) \

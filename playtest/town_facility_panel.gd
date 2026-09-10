@@ -113,8 +113,18 @@ func _gate()->void:
 	UI.label(self,"출전 대원의 가방 기준 · 구입한 물자는 %s의 가방에 들어갑니다"%str(world.entities[world.party_control_actor_id()].display_name),12,UI.MUTED)
 	for supply in preload("res://playtest/expedition_supply_presenter.gd").rows(session):
 		var supply_box:=UI.surface(self)
-		UI.label(supply_box,"%s   %d개"%[supply.label,supply.carried],16)
-		UI.label(supply_box,str(supply.owners) if int(supply.carried)>0 else "챙긴 물자가 없습니다",12,UI.MUTED)
+		var supply_line:=HBoxContainer.new();supply_line.add_theme_constant_override("separation",8);supply_box.add_child(supply_line)
+		var supply_icon:=preload("res://playtest/town_ui_icon.gd").new()
+		supply_icon.kind="TORCH" if bool(supply.get("is_torch",false)) else ("FOOD" if str(supply.definition_id)=="FOOD_RATION" else "POTION")
+		supply_icon.color=UI.GOLD;supply_icon.custom_minimum_size=Vector2(32,32);supply_line.add_child(supply_icon)
+		var title_text:="%s   %d개"%[supply.label,supply.carried]
+		if bool(supply.get("is_torch",false)) and bool(supply.get("equipped",false)):
+			title_text+=" · 보조 손 장착"
+		UI.label(supply_line,title_text,16)
+		var owner_text:=str(supply.owners) if int(supply.carried)>0 else "챙긴 물자가 없습니다"
+		if bool(supply.get("is_torch",false)):
+			owner_text+="\n횃불은 원정문에서 장비·점화할 수 있습니다."
+		UI.label(supply_box,owner_text,12,UI.MUTED)
 		_request(supply_box,"1개 구입 · %d G   (재고 %d)"%[supply.price,supply.remaining],
 			"TownSupplyBuy"+str(supply.definition_id),{"action":"BUY","definition_id":str(supply.definition_id)},bool(supply.can_buy))
 		if not supply.can_buy:UI.label(supply_box,str(supply.message),12,UI.MUTED)
