@@ -85,6 +85,9 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 func allows_occupied_diagonal_flanks(actor_id:int)->bool:
 	if world==null or world.party_encounter==null:return false
 	var party=world.party_encounter
+	if preload("res://sim/field_turn_rules.gd").active(world) \
+			and preload("res://sim/party_recovery_rules.gd").enabled(world) \
+			and actor_id in party.active_party_member_ids:return true
 	return str(party.safe_phase)=="GROUPED" and world.party_control_actor_id()==actor_id
 
 

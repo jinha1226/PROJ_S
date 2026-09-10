@@ -74,6 +74,7 @@ func run()->void:
 	var drag:=InputEventScreenDrag.new();drag.index=0;drag.position=center+Vector2(25,0);root.push_input(drag,true)
 	touch(center,false);await settle()
 	check(session.sim.world.party_control_actor_id()==hero,"portrait drag cancels short tap")
+	await tap(ui.cards.find_child("MemberCard%d"%ally,true,false))
 	var button=ui.hero_skill_row.find_child("ActorSkill_%d_MEND"%ally,true,false)
 	await tap(button)
 	check(ui._battle_target_actor_id==ally and ui._battle_target_mode=="ACTIVE_SKILL","actual skill tap enters target selection")

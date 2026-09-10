@@ -12,9 +12,9 @@ const THREAT_AWARENESS_STATES := ["SUSPICIOUS", "ALERT", "HUNTING", "SEARCHING"]
 
 
 static func is_safe_to_recover(world, state, hero, hero_combatant,
-		environment_risk: int = 0) -> bool:
+		environment_risk: int = 0, include_full_health:bool=false) -> bool:
 	if world==null or state==null or hero==null or hero_combatant==null:return false
-	if str(hero_combatant.life_state)!="ACTIVE" or int(hero.health)>=int(hero.max_health):return false
+	if str(hero_combatant.life_state)!="ACTIVE" or not include_full_health and int(hero.health)>=int(hero.max_health):return false
 	if str(state.safe_phase) not in ["GROUPED","GROUPED_COMPLETE"]:return false
 	if not hero_combatant.status_rows.is_empty():return false
 	if int(state.last_protagonist_damage_step)>=0 and int(world.step_index) \

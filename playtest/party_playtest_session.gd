@@ -512,6 +512,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	candidate.world.party_encounter = state
 	if duo:
 		protagonist.tags.append(FieldRules.TAG)
+		protagonist.tags.append(preload("res://sim/party_recovery_rules.gd").TAG)
 		state.party_detection_radius=VisualTestMapScript.SHOWCASE_FOV_RADIUS
 		if not FieldRules.place_companions(candidate):return false
 	if duo and bootstrap_settlement:
@@ -1250,6 +1251,8 @@ func _rollback_session_transaction(rollback_memento:Variant,
 
 
 func _advance_item_action_time()->Dictionary:
+	if field_turns_active() and preload("res://sim/party_recovery_rules.gd").enabled(sim.world):
+		return commit_field_action(ActionScript.hold(sim.world.party_control_actor_id()))
 	var state=sim.world.party_encounter
 	if state.safe_phase=="CONTACT" and is_solo_combat():
 		var prepared:Dictionary=enter_solo_combat()
@@ -6547,10 +6550,15 @@ func commit_field_action(action)->Dictionary:
 	var event_start:int=sim.world.events.size()
 	var result=FieldTurns.step(sim,action)
 	if result.accepted:
-		var recovery:Dictionary=_apply_safe_exploration_recovery(event_start)
+		var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,result.time_cost) \
+			if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
+		if recovery.accepted and not recovery.get("events",[]).is_empty():
+			var recovery_error:String=sim.world.world_state_error()
+			if not recovery_error.is_empty():recovery={"accepted":false,"reason":recovery_error}
 		if not recovery.accepted:
 			sim.restore_rollback_memento(rollback)
 			return _rejection_dto(str(recovery.reason))
+		result.events.append_array(recovery.get("events",[]))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
 		command_journal.append({"kind":"field_action","action":action.to_dict()})
 		_advance_exile_world()
@@ -7782,6 +7790,12 @@ func load_session_json(encoded: String) -> Dictionary:
 		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
 		legacy_progression.legacy_reward_origin=true
 		legacy_progression.training_modes=legacy_progression_modes.duplicate(true)
+	var care=preload("res://sim/party_recovery_rules.gd")
+	var care_is_migrated:=false
+	for row in decoded.journal:
+		if row.kind=="field_care_enabled":care_is_migrated=true
+	if not care.enabled(restored.world) or care_is_migrated:
+		replay.sim.world.entities[replay.sim.world.party_encounter.protagonist_id].tags.erase(care.TAG)
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
@@ -7899,6 +7913,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.issue_actor_command(Int64CodecScript.parse(
 					operation.actor_id,"actor command actor"),str(operation.command_id),
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
+			"field_care_enabled":replay_result=replay._enable_party_care()
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
 			"field_control":
@@ -7988,6 +8003,7 @@ func _install_restored_session(restored, decoded: Dictionary,
 	_map_layout = restored_layout.duplicate(true)
 	command_journal.clear()
 	for row in decoded.journal: command_journal.append(row.duplicate(true))
+	if FieldRules.enabled(sim.world) and not preload("res://sim/party_recovery_rules.gd").enabled(sim.world):_enable_party_care()
 	_deployment_plan.clear(); _clear_draft(); _exploration_route.clear()
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
@@ -7996,6 +8012,14 @@ func _install_restored_session(restored, decoded: Dictionary,
 	_presentation_visibility_cache.clear()
 	_warm_product_topology_presentation_cache()
 	return _feedback_dto({"accepted":true,"reason":"ok"})
+
+func _enable_party_care()->Dictionary:
+	var care=preload("res://sim/party_recovery_rules.gd")
+	if care.enabled(sim.world):return {"accepted":false,"reason":"party_care_already_enabled"}
+	sim.world.entities[sim.world.party_encounter.protagonist_id].tags.append(care.TAG)
+	sim.world.party_encounter.safe_recovery_turns=0
+	command_journal.append({"kind":"field_care_enabled"})
+	return {"accepted":true,"reason":"ok"}
 
 func _snapshot_terrain_matches_layout(snapshot:Dictionary,layout:Dictionary)->bool:
 	var tiles:Variant=snapshot.get("tiles",[]);var terrain:Variant=layout.get("terrain",[])
@@ -8342,6 +8366,8 @@ func _journal_wire_error(journal: Array) -> String:
 				if (str(row.operation.command_id)=="ATTACK_TARGET" and command_target<=0) \
 						or (str(row.operation.command_id)!="ATTACK_TARGET" and command_target!=-1):
 					return "invalid_actor_command_journal"
+			"field_care_enabled":
+				if keys!=["kind"]:return "invalid_field_care_journal"
 			"field_action":
 				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
 					return "invalid_field_action_journal"

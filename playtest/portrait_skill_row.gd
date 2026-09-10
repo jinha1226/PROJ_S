@@ -4,12 +4,13 @@ signal skill_selected(actor_id:int,skill_id:String,label:String)
 const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 var targeting:=false
 var explicit_pointer_input:=false
+var slot_count:=2
 
 func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->void:
 	targeting=pending_actor>0
 	custom_minimum_size.y=48
 	add_theme_constant_override("separation",2)
-	for row in rows.slice(0,2):
+	for row in rows.slice(0,slot_count):
 		var button:=Button.new()
 		button.name="ActorSkill_%d_%s"%[actor_id,str(row.skill_id)]
 		button.set_meta("actor_id",actor_id);button.set_meta("skill_id",str(row.skill_id))
@@ -26,7 +27,7 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 		button.pressed.connect(func():
 			if not explicit_pointer_input:skill_selected.emit(actor_id,str(row.skill_id),str(row.label)))
 		add_child(button)
-	for slot in range(mini(rows.size(),2),2):
+	for slot in range(mini(rows.size(),slot_count),slot_count):
 		var empty:=Control.new()
 		empty.name="EmptySkillSlot%d"%slot
 		empty.custom_minimum_size=Vector2(44,48)

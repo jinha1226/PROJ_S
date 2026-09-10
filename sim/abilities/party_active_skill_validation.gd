@@ -12,6 +12,14 @@ static func event_error(world, event) -> String:
 		"action.skill": return _action_error(world,event)
 		"party.actor_command_issued": return _command_error(world,event)
 		"party.energy_refilled": return _refill_error(world,event)
+		"party.energy_recovered":
+			var keys:Array=event.data.keys();keys.sort()
+			if world.party_encounter==null or world.party_encounter.member(event.actor_id)==null \
+					or event.actor_id!=event.target_id or event.magnitude<=0 or event.cause_id!=-1 \
+					or keys!=["energy_after","ruleset_id","schema_version"] \
+					or not event.data.get("energy_after") is int \
+					or event.data.get("schema_version")!=1 or event.data.get("ruleset_id")!="party-rest-recovery-v1" \
+					or int(event.data.get("energy_after",-1)) not in range(1,Registry.MAX_ENERGY+1):return "energy_recovery_event_invalid"
 		"party.expedition_auto_returned":
 			if event.data!={"schema_version":1,"ruleset_id":RULESET_ID} \
 					or world.party_encounter==null \
@@ -176,6 +184,11 @@ static func energy_history_error(world)->String:
 				var member_id:int=Int64.parse(wire,"refilled member")
 				if not projected.has(member_id):return "active_skill_actor_missing"
 				projected[member_id]=int(Registry.MAX_ENERGY)
+		elif event.type=="party.energy_recovered":
+			if not projected.has(event.actor_id):return "active_skill_actor_missing"
+			projected[event.actor_id]+=event.magnitude
+			if int(projected[event.actor_id])>Registry.MAX_ENERGY \
+					or int(projected[event.actor_id])!=int(event.data.get("energy_after",-1)):return "energy_recovery_projection_mismatch"
 	for member_id in projected:
 		if int(world.party_encounter.member_rows[member_id].energy)!=int(projected[member_id]):
 			return "active_skill_energy_projection_mismatch"

@@ -220,6 +220,7 @@ var member_detail_dismiss_available:=false
 var member_detail_candidate_available:=false
 var member_detail_attack_available:=false
 var member_progression_window:VBoxContainer
+var member_ability_window:VBoxContainer
 var member_progression_xp
 var member_progression_xp_text:Label
 var member_progression_stats:Label
@@ -933,7 +934,7 @@ func _build_ui()->void:
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
 	var menu_popup:=product_menu_button.get_popup()
-	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 스킬",3)
+	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("4인 전투 테스트 · 마법",6)
@@ -1057,7 +1058,7 @@ func _build_bottom_navigation()->void:
 	bottom_navigation.add_theme_constant_override("separation",0);root_layout.add_child(bottom_navigation)
 	map_nav_button=_add_nav_button("[지도]","MapNavigation",_toggle_map_overlay);map_nav_button.toggle_mode=true
 	person_nav_button=_add_nav_button("[인물]","PersonNavigation",_open_hero_detail_tab.bind("STATUS"))
-	skill_nav_button=_add_nav_button("[숙련]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
+	skill_nav_button=_add_nav_button("[이능]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
 	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
 	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
 
@@ -1277,7 +1278,7 @@ func _build_member_detail_modal()->void:
 	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
 	member_detail_tab_row.add_child(member_detail_relationship_tab);DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련"
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="이능"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
@@ -1351,6 +1352,8 @@ func _build_member_detail_modal()->void:
 	stack.add_child(member_order_cancel);DarkPixelSkinScript.apply_action_button(member_order_cancel)
 
 func _build_progression_window(parent:VBoxContainer)->void:
+	member_ability_window=preload("res://playtest/ability_loadout_mockup.gd").new()
+	member_ability_window.visible=false;parent.add_child(member_ability_window)
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
 	member_progression_window.add_theme_constant_override("separation",4);member_progression_window.visible=false
 	parent.add_child(member_progression_window)
@@ -2631,12 +2634,12 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	if not visible:return
 	if session.field_turns_active():
 		var members:Array=session.party_cards()
-		var spec:=party_card_layout_spec(members.size(),size.x)
-		hero_skill_row.add_theme_constant_override("separation",int(spec.gap))
-		for member in members.slice(0,int(spec.effective_count)):
+		for member in members:
 			var actor_id:int=member.entity_id
+			if actor_id!=session.sim.world.party_control_actor_id():continue
 			var skills=preload("res://playtest/portrait_skill_row.gd").new()
 			skills.name="PortraitSkills%d"%actor_id
+			skills.slot_count=3
 			skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			skills.configure(actor_id,session.active_skill_rows(actor_id),_battle_target_actor_id,_battle_target_skill_id)
 			skills.explicit_pointer_input=true
@@ -4386,14 +4389,16 @@ func _on_product_rest()->void:
 	_product_rest_active=true;_product_rest_generation+=1
 	_product_rest_due_msec=Time.get_ticks_msec()
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
-	notice_text="휴식 중 · HP가 다 차면 멈춥니다";action_feedback_text=notice_text
+	notice_text="휴식 중 · 파티 HP·MP가 다 차면 멈춥니다";action_feedback_text=notice_text
 	_request_refresh()
 
 func _rest_needed()->bool:
 	var world=session.sim.world
 	for id in world.party_encounter.active_party_member_ids:
 		var entity=world.entities.get(int(id))
-		if entity!=null and world.occupies_tile(int(id)) and int(entity.health)<int(entity.max_health):return true
+		var member=world.party_encounter.member(int(id))
+		if entity!=null and world.can_act(int(id),world.world_time) and member.presence=="DEPLOYED" \
+				and (int(entity.health)<int(entity.max_health) or member.energy<member.max_energy):return true
 	return false
 
 func _party_health_total()->int:
@@ -4401,6 +4406,12 @@ func _party_health_total()->int:
 	for id in world.party_encounter.active_party_member_ids:
 		var entity=world.entities.get(int(id))
 		if entity!=null:total+=int(entity.health)
+	return total
+
+func _party_energy_total()->int:
+	var total:=0
+	for id in session.sim.world.party_encounter.active_party_member_ids:
+		total+=int(session.sim.world.party_encounter.member(id).energy)
 	return total
 
 func _continue_product_rest(expected_generation:int)->void:
@@ -4414,13 +4425,14 @@ func _continue_product_rest(expected_generation:int)->void:
 	elif not _rest_needed():stop_reason="rest_complete"
 	if stop_reason.is_empty():
 		var before:int=_party_health_total()
+		var energy_before:=_party_energy_total()
 		var result:Dictionary=session.commit_exploration_direction(Vector2i.ZERO)
 		if not bool(result.get("accepted",false)):stop_reason="rest_interrupted"
 		else:
 			_record_result(result,true)
 			var after:int=_party_health_total()
 			if after<before:stop_reason="rest_damaged"
-			elif after>before:_product_rest_idle_waits=0
+			elif after>before or _party_energy_total()>energy_before:_product_rest_idle_waits=0
 			else:
 				# Safe recovery pauses while any enemy is alert or the tile is risky;
 				# waiting forever there is not resting.
@@ -4438,7 +4450,7 @@ func _continue_product_rest(expected_generation:int)->void:
 func _cancel_product_rest(reason:String)->void:
 	if not _product_rest_active:return
 	_product_rest_active=false;_product_rest_generation+=1;_product_rest_due_msec=-1
-	notice_text={"rest_complete":"휴식 완료 · HP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
+	notice_text={"rest_complete":"휴식 완료 · 파티 HP·MP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
 		"rest_damaged":"피해를 입어 휴식을 멈췄습니다","rest_starving":"굶주려서 쉴 수 없습니다",
 		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
 		"rest_encounter":"적이 나타나 휴식을 멈췄습니다",
@@ -4785,6 +4797,10 @@ func _update_member_status_window(detail:Dictionary)->void:
 		int(core_stats.get("STR",0)),int(core_stats.get("DEX",0)),
 		int(core_stats.get("INT",0))],"StatusCoreStats",FONT_AUX)
 	attribute_cluster.add_child(attribute_text)
+	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
+	var recovery_text:=_card_label("HP 회복력 +%d\nMP 회복력 +%d\n안전 500 시간단위 후\n300 시간단위마다"%[
+		int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",FONT_AUX)
+	recovery_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;attribute_cluster.add_child(recovery_text)
 	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
 	var body_heading:=_card_label("육체 상태","BodyStateSection",FONT_AUX)
 	body_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
@@ -4899,6 +4915,7 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
+	member_ability_window.configure(member_id,session.active_skill_rows(member_id))
 	var progression:Variant=detail.get("progression",{})
 	member_detail_has_skills=progression is Dictionary and bool(progression.get("available",false))
 	var skill_summary:Variant=detail.get("skill_summary",{})
@@ -5004,10 +5021,9 @@ func _apply_member_detail_tab()->void:
 	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
 	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
-	var skill_tab_label:="숙련" if member_detail_has_skills else "스킬"
+	var skill_tab_label:="이능"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
-	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정" if member_detail_has_skills \
-		else "현재 무기 기술과 개인 재능"
+	member_detail_skill_tab.tooltip_text="이능 6칸 장착 미리보기 · 전투 적용/저장 없음"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
@@ -5018,10 +5034,11 @@ func _apply_member_detail_tab()->void:
 	member_detail_body.visible=status_selected
 	member_personality_window.visible=personality_selected
 	member_relationship_window.visible=relationship_selected
-	member_skill_window.visible=skill_selected and not member_detail_has_skills
+	member_skill_window.visible=false
+	member_ability_window.visible=skill_selected
 	member_status_equipment_window.visible=member_detail_has_skills \
 		and status_selected
-	member_progression_window.visible=skill_selected and member_detail_has_skills
+	member_progression_window.visible=false
 	member_item_window.visible=item_selected
 	member_detail_dismiss.visible=status_selected and member_detail_dismiss_available
 	member_detail_candidate_action.visible=status_selected and member_detail_candidate_available
@@ -5038,7 +5055,9 @@ func _apply_member_detail_tab()->void:
 func _sync_member_detail_scroll_children()->void:
 	if member_detail_scroll_content==null or member_detail_tab_stash==null:return
 	var desired:Array[Control]=[]
-	if member_item_window.visible:
+	if member_ability_window.visible:
+		desired=[member_ability_window]
+	elif member_item_window.visible:
 		desired=[member_item_window]
 	elif member_progression_window.visible:
 		desired=[member_progression_window]
@@ -5051,7 +5070,7 @@ func _sync_member_detail_scroll_children()->void:
 	else:
 		desired=[member_status_window,member_detail_body]
 		if member_status_equipment_window.visible:desired.append(member_status_equipment_window)
-	var managed:Array[Control]=[member_progression_window,member_item_window,member_skill_window,
+	var managed:Array[Control]=[member_ability_window,member_progression_window,member_item_window,member_skill_window,
 		member_personality_window,member_relationship_window,member_status_window,member_detail_body,
 		member_status_equipment_window]
 	for control in managed:

@@ -4948,6 +4948,12 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			projected_health=mini(npc.max_health,projected_health+int(event.magnitude))
 			if int(event.data.get("health_after",-1))!=projected_health:
 				return "opening_town_restoration_projection_invalid"
+		elif event_type=="health.restored" and event.data.get("kind")=="AUTO":
+			if event.actor_id!=npc_id or event.cause_id!=-1 or event.magnitude<=0 \
+					or event.data.get("ruleset_id")!="safe-exploration-recovery-v1" \
+					or int(event.data.get("safe_turn_count",0))<=0:return "opening_auto_recovery_invalid"
+			projected_health=mini(npc.max_health,projected_health+event.magnitude)
+			if int(event.data.get("health_after",-1))!=projected_health:return "opening_auto_recovery_projection_invalid"
 		elif event_type=="health.restored" and event.data.get("kind")=="ACTIVE_SKILL":
 			var active_heal_error:String=ActiveSkillValidationScript.healing_error(self,event)
 			if not active_heal_error.is_empty():return active_heal_error

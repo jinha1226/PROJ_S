@@ -40,14 +40,18 @@ func _draw()->void:
 	var maximum:=maxi(1,int(actor.get("max_health",1)))
 	var health:=int(actor.get("health",0))
 	var font:=get_theme_font("font")
-	if party_count>=3:
-		var side:=36.0
-		var portrait_x:=3.0
-		_portrait(texture,Rect2(portrait_x,3,side,side))
-		draw_string(font,Vector2(42,24),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,size.x-44),10,Color("#d0c8b4"))
-		_draw_stats(font,2,size.x-4,47,health,maximum,HORIZONTAL_ALIGNMENT_CENTER)
-	else:
-		_draw_expanded(texture,font,health,maximum)
+	var layout:=portrait_layout_spec()
+	_portrait(texture,layout.portrait)
+	draw_string(font,layout.name_position,str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_CENTER,
+		float(layout.name_width),10,Color("#d0c8b4"))
+	var labels:=["HP %d"%health,"MP %d"%int(actor.get("energy",0)),"STR %d"%int(actor.get("stress",0))]
+	if size.x>=150:
+		labels[0]+="/%d"%maximum
+		labels[1]+="/%d"%int(actor.get("max_energy",12))
+	var colors:=[Color("#b7d99d"),Color("#88b9ce"),Color("#d5a5b8")]
+	for index in range(3):
+		draw_string(font,Vector2(layout.stats_x,15+index*13),labels[index],HORIZONTAL_ALIGNMENT_LEFT,
+			float(layout.stats_width),9 if size.x<110 else 10,colors[index])
 	if selected:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#f5cc67"),false,3)
 		draw_circle(Vector2(9,9),3,Color("#f5cc67"))
@@ -55,6 +59,11 @@ func _draw()->void:
 	if Time.get_ticks_msec()<emphasized_until_msec:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#e4bb67"),false,2)
 	if order_reserved:draw_circle(Vector2(size.x-8,9),5,Color("#e3bd57"))
+
+func portrait_layout_spec()->Dictionary:
+	var side:=24.0 if size.x<110 else 36.0
+	return {"portrait":Rect2(3,3,side,side),"name_position":Vector2(3,size.y-5),
+		"name_width":size.x-6,"stats_x":side+6,"stats_width":maxf(1,size.x-side-9)}
 
 func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	var portrait_side:=minf(60.0,size.y-8.0)
