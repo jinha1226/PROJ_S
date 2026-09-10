@@ -18,7 +18,8 @@ func run()->void:
 	_check(bool(session.town_life_command({"action":"START"}).get("accepted",false)),"town life starts")
 	_check(bool(session.depart_town().get("accepted",false)),"solo expedition departs")
 	var world=session.sim.world;var state=world.party_encounter;var hero:int=int(state.protagonist_id)
-	_check(state.party_member_ids.size()>1 and state.active_party_member_ids==[hero],"fixture is solo with a resident roster")
+	_check(state.party_member_ids.size()>1 and state.active_party_member_ids.size()==3 and hero in state.active_party_member_ids,
+		"the first expedition departs with two companions from the inn (active %s)"%str(state.active_party_member_ids))
 	var ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);ui.size=Vector2(390,800);root.add_child(ui);ui.set_process(false)
 	for i in range(3):await process_frame

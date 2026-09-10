@@ -5202,7 +5202,7 @@ func _party_event_correlation_error() -> String:
 				# struck enemy of a first strike) can be the contact enemy.
 				if first_strike:
 					if enemy_id != contact_enemy_id: continue
-				elif _party_enemy_awareness_at_event(enemy_id, contact.id) not in ["ALERT", "HUNTING"] \
+				elif _party_enemy_awareness_before_step(enemy_id, contact.id, int(contact.step_index)) not in ["ALERT", "HUNTING"] \
 						or candidate_distance > party_encounter.enemy_detection_radius \
 						or not EnemyPerceptionRegistryScript.has_line_of_sight(self, contact.position, history.position):
 					continue
@@ -6385,6 +6385,9 @@ func _party_historical_blocker_at(position: Vector2i, contact_event_id: int) -> 
 	var ids: Array = entities.keys(); ids.sort()
 	for entity_id in ids:
 		if entity_id in party_encounter.party_member_ids and entity_id != party_encounter.protagonist_id: continue
+		# Old-expedition monsters stay in the world detached from collision; the
+		# live placement never sees them, so the historical check must not either.
+		if "party_enemy" in entities[entity_id].tags and _party_member_is_detached(entity_id): continue
 		if not _party_alive_at_event(entity_id,contact_event_id): continue
 		var history: Dictionary = _party_entity_position_at_event(entity_id,contact_event_id)
 		if not bool(history.ok): return -2
@@ -6414,6 +6417,18 @@ func _party_metadata_position(value: Variant) -> bool:
 func _party_metadata_facing(value: Variant) -> bool:
 	return value is Array and value.size() == 2 and value[0] is int and value[1] is int \
 		and Vector2i(int(value[0]),int(value[1])) in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
+
+
+func _party_enemy_awareness_before_step(enemy_id: int, event_id: int, step_index: int) -> String:
+	# Awareness as the contact rule saw it: the state after the last change in an
+	# earlier step. A change made in the contact's own step counts next step.
+	var state := "UNAWARE"
+	for event in events:
+		if event.id >= event_id: break
+		if event.type == "enemy.awareness_changed" and event.actor_id == enemy_id \
+				and int(event.step_index) < step_index:
+			state = str(event.data.get("to_state", "UNAWARE"))
+	return state
 
 
 func _party_enemy_awareness_at_event(enemy_id: int, event_id: int) -> String:

@@ -332,7 +332,7 @@ func _detect_contact(processed_step_index: int, actor_schedule_id: int, due_time
 	for member_id in state.party_member_ids:
 		var member = state.member(member_id)
 		if member.presence == "GROUPED": world.entities[member_id].position = state.group_anchor
-	var nearest: Variant = _nearest_contact_enemy(state.group_anchor)
+	var nearest: Variant = _nearest_contact_enemy(state.group_anchor,processed_step_index)
 	if nearest == null: return true
 	var distance := _distance(state.group_anchor, nearest.position)
 	var has_los:=_line_of_sight(state.group_anchor,nearest.position)
@@ -584,6 +584,19 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		else int(visible_party_ids[0])
 	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
+	# Awareness rule: standing next to an unaware enemy is not an instant alarm.
+	# It gains the maximum suspicion per tick, so a party that sneaks up gets one
+	# action to strike first; a suspicious watcher still turns on you next tick.
+	if observed != null and _distance(enemy.position,observed.position)<=1 \
+			and not state.legacy_contact_rule and previous_state in ["UNAWARE","SUSPICIOUS","RETURNING"] \
+			and awareness.suspicion+600<EnemyPerceptionRegistryScript.ALERT_THRESHOLD:
+		awareness.suspicion=clampi(awareness.suspicion+600,0,1000)
+		awareness.last_known_target_position=observed.position
+		awareness.last_seen_step=processed_step_index
+		awareness.last_seen_time=world.world_time
+		awareness.search_turns_remaining=0
+		return _set_awareness_state(awareness,"SUSPICIOUS",observed.position,
+			previous_state,observed_id)
 	if observed != null and _distance(enemy.position,observed.position)<=1:
 		awareness.suspicion=1000
 		awareness.last_known_target_position=observed.position
@@ -668,7 +681,18 @@ func _awareness_move_forecast(enemy_id:int,awareness,rejected:Dictionary)->Dicti
 	return result
 
 
-func _nearest_contact_enemy(position:Vector2i):
+func _awareness_settled_before_step(enemy_id:int,processed_step_index:int)->bool:
+	# Awareness rule: an enemy that noticed the party during this step opens the
+	# contact on the next step. That leaves the party exactly one action to
+	# strike first after stepping up to an enemy that has just spotted them.
+	for index in range(world.events.size()-1,-1,-1):
+		var event=world.events[index]
+		if event.type=="enemy.awareness_changed" and int(event.actor_id)==enemy_id:
+			return int(event.step_index)<processed_step_index
+	return false
+
+
+func _nearest_contact_enemy(position:Vector2i,processed_step_index:int=-1):
 	var candidates:Array=[]
 	var legacy_rule:bool=world.party_encounter.legacy_contact_rule
 	for enemy_id in _stream_enemy_ids():
@@ -681,9 +705,11 @@ func _nearest_contact_enemy(position:Vector2i):
 			and distance<=world.party_encounter.enemy_detection_radius
 		if not legacy_rule:
 			# Awareness rule: only an enemy that has noticed the party opens a
-			# contact. Seeing an unaware enemy leaves it on the map to avoid or to
-			# strike first (first_strike_contact).
-			if aware:candidates.append(enemy)
+			# contact, and only from the step after it noticed. Seeing an unaware
+			# enemy leaves it on the map to avoid or to strike first.
+			if aware and (processed_step_index<0 \
+					or _awareness_settled_before_step(enemy_id,processed_step_index)):
+				candidates.append(enemy)
 			continue
 		var legacy_small_fixture:bool=world.width<=15 and world.height<=15 \
 				and _stream_enemy_ids().size()==1

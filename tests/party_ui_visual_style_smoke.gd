@@ -130,7 +130,7 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and sandbox.find_child("ProductExecute",true,false)==null \
 		and pickup_all!=null and pickup_all.visible and pickup_all.disabled,
 		"%s D-pad or execute duplicate controls survived, or pick-all is not a disabled fixed button without loot"%viewport_size)
-	for button in [sandbox.product_auto_button,sandbox.product_retreat_button,
+	for button in [sandbox.product_auto_button,sandbox.product_tactics_button,
 			sandbox.product_bag_button,sandbox.product_wait_guard_button]:
 		_check(button is Button and bool(button.get_meta("product_control",false)) \
 			and _inside_rect(sandbox.combat_action_dock,button),

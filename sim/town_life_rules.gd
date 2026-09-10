@@ -3,7 +3,8 @@ extends RefCounted
 const START_EVENT := "town.life_started"
 const HOUSE_COST := 240
 const REQUIRED_RETURNS := 2
-const FIELD_LIMIT := 2
+# Hero plus two companions in the field.
+const FIELD_LIMIT := 3
 const BOUNTY := 80
 
 static func field_count(world)->int:

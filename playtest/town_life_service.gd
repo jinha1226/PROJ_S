@@ -46,7 +46,7 @@ static func overview(session)->Dictionary:
 		elif int(member.stress)>=700:join_reason="불안이 커서 먼저 휴식이 필요합니다"
 		elif world.combatant_states[id].life_state!="ACTIVE":join_reason="먼저 치료가 필요합니다"
 		if not identity.explores:join_reason="마을에서 %s 일을 맡고 있습니다"%str(identity.job)
-		elif not life.house_owned and company_count>=2:join_reason="더 많은 대원이 머물려면 탐험대의 집이 필요합니다"
+		elif not life.house_owned and company_count>=3:join_reason="더 많은 대원이 머물려면 탐험대의 집이 필요합니다"
 		elif company_count>=6:join_reason="탐험대 정원은 여섯 명입니다"
 		var roster_full:bool=field_count>=Rules.FIELD_LIMIT
 		var activity:=Population.town_activity(str(entity.display_name),id,int(life.visits),member.personality_profile)
@@ -143,7 +143,7 @@ static func commit(session,operation:Dictionary)->Dictionary:
 			for member_id in party.active_party_member_ids.duplicate():
 				if member_id==party.protagonist_id:continue
 				party.active_party_member_ids.erase(member_id);party.member(member_id).presence="RECRUITABLE"
-			message="여관방에서 첫 원정을 준비합니다. 먼저 물자를 구해 돌아오세요."
+			message="여관방에서 첫 원정을 준비합니다."
 		"TALK":
 			event=world.emit_event("town.conversation",world.party_control_actor_id(),id,party.group_anchor,1,-1,data)
 			# Sharing useful expedition information is a small, remembered aid.
@@ -152,7 +152,7 @@ static func commit(session,operation:Dictionary)->Dictionary:
 		"JOIN","ASSIGN":
 			if action=="JOIN":
 				event=world.emit_event("town.company_joined",world.party_control_actor_id(),id,party.group_anchor,1,-1,data)
-				if not life.house_owned and Rules.living_company_count(world)>2:
+				if not life.house_owned and Rules.living_company_count(world)>3:
 					ok=false;message="여관 생활 중에는 탐험대원이 두 명까지 함께 머물 수 있습니다"
 			if ok and Rules.field_count(world)<Rules.FIELD_LIMIT:
 				# Existing equip/roster path, journaled only as the enclosing command.
@@ -185,6 +185,12 @@ static func commit(session,operation:Dictionary)->Dictionary:
 	if action=="START" and event!=null:
 		ok=bool(session.base_return().get("accepted",false))
 		if ok:ok=session._ensure_town_guild_candidates()
+		# Two residents ride along from the first expedition so fights show the
+		# party flow at once (the field limit). The guild keeps the rest.
+		if ok:
+			var joined:=_auto_join_first_company(session)
+			ok=joined>=0
+			if ok and joined>0:message="여관방에서 첫 원정을 준비합니다. 동료 %d명이 함께 나섭니다."%joined
 	var audit:String=world.world_state_error()
 	if not ok or event==null or not audit.is_empty():
 		session.sim=session.SimulatorScript.from_snapshot(rollback)
@@ -196,6 +202,26 @@ static func commit(session,operation:Dictionary)->Dictionary:
 
 static func _reject(reason:String,message:String)->Dictionary:
 	return {"accepted":false,"reason":reason,"message":message}
+
+static func _auto_join_first_company(session)->int:
+	# Joins up to the field limit of adventurer residents, waiving the
+	# first-expedition supply gate. Returns the count, or -1 on a failed step.
+	var world=session.sim.world;var party=world.party_encounter
+	var joined:=0
+	for resident in overview(session).get("residents",[]):
+		if joined+1>=Rules.FIELD_LIMIT or Rules.field_count(world)>=Rules.FIELD_LIMIT:break
+		var rid:=int(resident.entity_id)
+		if rid==party.protagonist_id or bool(resident.get("joined",false)) \
+				or not bool(resident.get("adventurer",false)) \
+				or world.combatant_states[rid].life_state!="ACTIVE":continue
+		var join_data:={"expedition_index":int(party.expedition_cycle.expedition_index),"entity_id":str(rid)}
+		if world.emit_event("town.company_joined",world.party_control_actor_id(),rid,party.group_anchor,1,-1,join_data)==null \
+				or not bool(session._apply_roster_change("RECRUIT",rid,false).get("accepted",false)) \
+				or world.emit_event("town.company_assigned",world.party_control_actor_id(),rid,party.group_anchor,1,-1,join_data)==null \
+				or not _equip_new_resident(session,rid):
+			return -1
+		joined+=1
+	return joined
 
 static func _equip_new_resident(session,id:int)->bool:
 	var world=session.sim.world

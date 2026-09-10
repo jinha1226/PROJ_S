@@ -1608,6 +1608,18 @@ func party_status() -> Dictionary:
 		for enemy_id in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 			if sim.world.is_unresolved_enemy(enemy_id): visible_enemy_ids.append(enemy_id)
 	var protagonist_position: Vector2i = sim.world.entities[sim.world.party_control_actor_id()].position
+	# Enemies the party can see right now, contact or not. Exploration taps,
+	# the enemy strip and the hero's skills use this so a first strike is
+	# possible on an enemy that has not opened the fight.
+	var enemies_in_view: Array = visible_enemy_ids.duplicate()
+	if view_mode != "TOWN" and state.safe_phase in ["GROUPED", "GROUPED_COMPLETE"]:
+		var seen: Dictionary = _presentation_visible_cells(protagonist_position)
+		for enemy_id_value in _current_floor_enemy_ids():
+			var enemy_id := int(enemy_id_value)
+			if not sim.world.is_autonomous_target(enemy_id): continue
+			var enemy = sim.world.entities.get(enemy_id)
+			if enemy != null and seen.has(_position_key(enemy.position)):
+				enemies_in_view.append(enemy_id)
 	return {"ok": true, "safe_phase": state.safe_phase, "view_mode": view_mode, "terminal": state.safe_phase == "PARTY_DEFEATED",
 		"ration":int(state.ration_milli/1000),"ration_max":int(RationRulesScript.rules().ration_max),
 		"ration_band":RationRulesScript.band(int(state.ration_milli)),
@@ -1621,6 +1633,7 @@ func party_status() -> Dictionary:
 		"recruitable_member_ids":_member_ids_with_presence("RECRUITABLE"),
 		"exiled_member_ids":_member_ids_with_presence("EXILED"),
 		"visible_enemy_ids": visible_enemy_ids,
+		"enemies_in_view": enemies_in_view,
 		"expedition_cycle":cycle,
 		"party_command":PartyCommandScript.effective(sim.world,state),
 		"contact_warning":_latest_party_contact_warning(),
@@ -4922,7 +4935,7 @@ func deployment_draft() -> Dictionary:
 func enemy_targets() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	var status := party_status()
-	for enemy_id in status.get("visible_enemy_ids", []):
+	for enemy_id in status.get("enemies_in_view", status.get("visible_enemy_ids", [])):
 		var entity = sim.world.entities[int(enemy_id)]
 		var threat:=_enemy_threat(entity.id)
 		rows.append({"entity_id": entity.id, "display_name": entity.display_name, "health": entity.health,

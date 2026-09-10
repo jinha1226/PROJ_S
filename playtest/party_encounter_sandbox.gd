@@ -29,6 +29,7 @@ const ActionScript=preload("res://sim/party_action_command.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const AsciiFrameScript=preload("res://playtest/ascii_ui_frame.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
+const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
@@ -328,7 +329,8 @@ var _battle_target_committing:=false
 var battle_drag:Control
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
-var product_retreat_button:Button
+var product_tactics_button:Button
+var product_tactics_popup:PopupMenu
 var _retreat_active:=false
 var _approach_step_pending:=false
 var battle_command_flow=preload("res://playtest/battle_command_flow.gd").new()
@@ -959,6 +961,7 @@ func _build_ui()->void:
 	root_layout.add_child(hud_bottom_flex)
 	_build_bottom_navigation()
 	_build_build_label()
+	_build_product_tactics_popup()
 	_build_tile_popover()
 	_build_member_detail_modal()
 	_build_map_overlay()
@@ -2511,7 +2514,7 @@ func _hero_turn_holds()->bool:
 	# downed bodies, or hunters out of sight): let time run so the fight can
 	# end (bleed-out, lost pursuit) instead of freezing on a turn prompt.
 	var world=session.sim.world
-	for id_value in session.party_status().get("visible_enemy_ids",[]):
+	for id_value in session.party_status().get("enemies_in_view",[]):
 		if world.is_autonomous_target(int(id_value)):return true
 	return false
 
@@ -2542,7 +2545,7 @@ func _enemy_strip_visible()->bool:
 	# view shows its portrait before, during and after a fight the same way.
 	if session==null or session.sim==null or not session.is_duo_autobattle():return false
 	var world=session.sim.world
-	for id_value in session.party_status().get("visible_enemy_ids",[]):
+	for id_value in session.party_status().get("enemies_in_view",[]):
 		if world.is_autonomous_target(int(id_value)):return true
 	return false
 
@@ -2562,7 +2565,7 @@ func _hero_skill_rows(status:Dictionary)->Array:
 	if hero_id<0 or not session.has_method("active_skill_rows"):return []
 	var rows:Array=[]
 	var phase:=str(status.get("safe_phase",""))
-	var enemy_visible:bool=not status.get("visible_enemy_ids",[]).is_empty()
+	var enemy_visible:bool=not status.get("enemies_in_view",status.get("visible_enemy_ids",[])).is_empty()
 	for row_value in session.active_skill_rows(hero_id):
 		if not row_value is Dictionary:continue
 		var row:Dictionary=row_value.duplicate(true)
@@ -2654,7 +2657,7 @@ func _commit_battle_target(target_id:int)->void:
 	var first_strike:bool=_battle_target_mode=="ACTIVE_SKILL" \
 		and str(session.party_status().get("safe_phase",""))=="GROUPED"
 	if first_strike:
-		assessment={"accepted":target_id in session.party_status().get("visible_enemy_ids",[]),
+		assessment={"accepted":target_id in session.party_status().get("enemies_in_view",[]),
 			"message":"보이는 적을 고르세요."}
 	elif _battle_target_mode=="ACTIVE_SKILL":
 		assessment=session.individual_battle.assessment(_battle_target_actor_id,
@@ -3822,11 +3825,11 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	if companion_order_editor!=null and companion_order_editor.visible:
 		product_auto_button=null;product_interact_button=null;product_attack_button=null
 		product_wait_guard_button=null;product_execute_button=null;product_bag_button=null
-		product_rest_button=null;product_pickup_button=null;product_retreat_button=null
+		product_rest_button=null;product_pickup_button=null;product_tactics_button=null
 		action_feedback_label.visible=false
 		combat_action_dock.visible=false;combat_action_area.visible=true
 		return
-	product_bag_button=null;product_rest_button=null;product_pickup_button=null;product_retreat_button=null
+	product_bag_button=null;product_rest_button=null;product_pickup_button=null;product_tactics_button=null
 	product_auto_button=null;product_interact_button=null
 	product_attack_button=null;product_wait_guard_button=null;product_execute_button=null
 	combat_action_area.visible=true;action_feedback_label.visible=false
@@ -3845,7 +3848,7 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
 	# One fixed dock, the same in exploration and in a fight:
-	# [공격] [대기] [휴식] [탐험] [줍기] [퇴각] [가방] + the contextual interaction.
+	# [공격] [대기] [휴식] [탐험] [줍기] [전술] [가방] + the contextual interaction.
 	# Eight 44px+ touch targets must fit the narrowest phone width; the gap
 	# shrinks before the targets do.
 	if 8.0*44.0+float(gap)*7.0>size.x:gap=1;combat_action_dock.add_theme_constant_override("separation",gap)
@@ -3860,8 +3863,8 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		_on_product_auto,target)
 	product_pickup_button=_add_product_context_button(combat_action_dock,"[줍기]","ProductPickup",
 		_on_product_pickup,target)
-	product_retreat_button=_add_product_context_button(combat_action_dock,"[퇴각]","ProductRetreat",
-		_on_product_retreat,target)
+	product_tactics_button=_add_product_context_button(combat_action_dock,"[전술]","ProductTactics",
+		_on_product_tactics,target)
 	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
 		_open_hero_detail_tab.bind("ITEM"),target)
 	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
@@ -3886,7 +3889,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var duo_fight:bool=_portrait_battle_controls_visible()
 	var world=session.sim.world
 	var enemy_in_view:=false
-	for id_value in status.get("visible_enemy_ids",[]):
+	for id_value in status.get("enemies_in_view",status.get("visible_enemy_ids",[])):
 		if world.is_autonomous_target(int(id_value)):enemy_in_view=true;break
 	# [공격]: same button always; it explains itself when nothing is in reach.
 	product_attack_button.disabled=terminal or mode=="TOWN"
@@ -3910,11 +3913,14 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_pickup_button.disabled=terminal or loot_here==0
 	product_pickup_button.tooltip_text="이 칸의 아이템 %d개를 모두 줍습니다."%loot_here if loot_here>0 \
 		else "발밑에 주울 것이 없습니다."
-	# [퇴각]: meaningful only while something is chasing the party.
-	product_retreat_button.disabled=terminal or not duo_fight
-	product_retreat_button.text="[퇴각 중]" if _retreat_active and duo_fight else "[퇴각]"
-	product_retreat_button.tooltip_text="파티 전체가 적에게서 물러납니다. 추적을 벗어나면 탐험으로 돌아갑니다." \
-		if duo_fight else "쫓아오는 적이 없습니다."
+	# [전술]: party directives (focus, retreat, hold, cease, free). Always in
+	# place; the menu explains itself when there is no fight to direct.
+	product_tactics_button.disabled=terminal or mode=="TOWN"
+	var current_tactic:=str(PartyCommandScript.effective(world,world.party_encounter).get("command_id","FOLLOW")) \
+		if duo_fight else "FOLLOW"
+	product_tactics_button.text="[전술 · 후퇴]" if _retreat_active and duo_fight else "[전술]"
+	product_tactics_button.tooltip_text="파티 전술: %s"%str({"ATTACK_TARGET":"집중 공격","RETREAT":"후퇴",
+		"STOP_ATTACK":"공격 중지","HOLD_POSITION":"자리 지키기","FOLLOW":"자율 전투"}.get(current_tactic,"자율 전투"))
 	# [탐험]: auto explore toggle; the opening event borrows it for the potion.
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
@@ -3984,7 +3990,7 @@ func _add_product_context_button(parent:Control,label:String,node_name:String,
 	button.focus_mode=Control.FOCUS_NONE;button.set_meta("product_control",true)
 	button.gui_input.connect(_on_product_button_gui_input.bind(node_name))
 	var accent:Color={"ProductAttack":Color("#548bb0"),"ProductAuto":Color("#61914e"),
-		"ProductWaitGuard":Color("#ba913d"),"ProductRest":Color("#5f8a66"),"ProductPickup":Color("#c6a34c"),"ProductBag":Color("#a64e49"),"ProductRetreat":Color("#8a5f66")}.get(node_name,DarkPixelSkinScript.CYAN)
+		"ProductWaitGuard":Color("#ba913d"),"ProductRest":Color("#5f8a66"),"ProductPickup":Color("#c6a34c"),"ProductBag":Color("#a64e49"),"ProductTactics":Color("#8a5f66")}.get(node_name,DarkPixelSkinScript.CYAN)
 	DarkPixelSkinScript.apply_action_button(button,accent)
 	parent.add_child(button)
 	return button
@@ -4319,7 +4325,8 @@ func _continue_product_rest(expected_generation:int)->void:
 	if not _product_rest_active or expected_generation!=_product_rest_generation:return
 	var status:Dictionary=session.party_status()
 	var stop_reason:=""
-	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):stop_reason="rest_interrupted"
+	if str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"]:stop_reason="rest_encounter"
+	elif str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):stop_reason="rest_interrupted"
 	elif not (status.get("visible_enemy_ids",[]) as Array).is_empty():stop_reason="rest_enemy_sighted"
 	elif str(status.get("ration_band",""))=="STARVING":stop_reason="rest_starving"
 	elif not _rest_needed():stop_reason="rest_complete"
@@ -4352,7 +4359,7 @@ func _cancel_product_rest(reason:String)->void:
 	notice_text={"rest_complete":"휴식 완료 · HP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
 		"rest_damaged":"피해를 입어 휴식을 멈췄습니다","rest_starving":"굶주려서 쉴 수 없습니다",
 		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
-		"rest_encounter":"적과 마주쳐 휴식을 멈췄습니다",
+		"rest_encounter":"적이 나타나 휴식을 멈췄습니다",
 		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
 	action_feedback_text=notice_text
 	_request_refresh()
@@ -4374,6 +4381,49 @@ func _on_product_wait_guard()->void:
 		autonomous_battle_clock.paused=false
 		_release_hero_turn("이번 차례 · 대기")
 	elif str(status.get("view_mode",""))=="COMBAT":_on_actor_hold()
+
+func _build_product_tactics_popup()->void:
+	product_tactics_popup=PopupMenu.new();product_tactics_popup.name="ProductTacticsPopup"
+	for row in [[0,"집중 공격 · 적 선택"],[1,"후퇴"],[2,"자리 지키기"],[3,"공격 중지"],[4,"자율 전투"]]:
+		product_tactics_popup.add_item(str(row[1]),int(row[0]))
+	product_tactics_popup.id_pressed.connect(_on_product_tactic_selected)
+	add_child(product_tactics_popup)
+
+func _on_product_tactics()->void:
+	# [전술]: one menu for the party directives. Items that need a fight are
+	# disabled outside one instead of the button changing.
+	if product_tactics_popup==null or product_tactics_button==null:return
+	var fighting:=_portrait_battle_controls_visible()
+	var current:=str(PartyCommandScript.effective(session.sim.world,
+		session.sim.world.party_encounter).get("command_id","FOLLOW")) if fighting else ""
+	var ids:={0:"ATTACK_TARGET",1:"RETREAT",2:"HOLD_POSITION",3:"STOP_ATTACK",4:"FOLLOW"}
+	for index in range(product_tactics_popup.item_count):
+		var item_id:=product_tactics_popup.get_item_id(index)
+		product_tactics_popup.set_item_disabled(index,not fighting)
+		product_tactics_popup.set_item_as_checkable(index,true)
+		product_tactics_popup.set_item_checked(index,fighting and str(ids.get(item_id,""))==current)
+	if not fighting:_show_product_command_feedback("쫓아오는 적이 없어 지금은 전술이 필요 없습니다.")
+	var anchor:Rect2=product_tactics_button.get_global_rect()
+	var popup_size:Vector2=product_tactics_popup.get_contents_minimum_size()
+	product_tactics_popup.position=Vector2i(int(anchor.position.x),int(anchor.position.y-popup_size.y-4.0))
+	product_tactics_popup.popup()
+
+func _on_product_tactic_selected(item_id:int)->void:
+	if session==null:return
+	if not _portrait_battle_controls_visible():return
+	if item_id==0:
+		_party_command_targeting=true
+		_show_product_command_feedback("집중 공격할 적을 누르세요.");_request_refresh();return
+	if item_id==1:_on_product_retreat();return
+	var command_id:String=str({2:"HOLD_POSITION",3:"STOP_ATTACK",4:"FOLLOW"}.get(item_id,""))
+	if command_id.is_empty():return
+	_retreat_active=false;_party_command_targeting=false
+	var result:Dictionary=session.issue_party_command(command_id)
+	if not bool(result.get("accepted",false)):
+		_show_product_command_feedback(str(result.get("message",result.get("reason","전술을 적용할 수 없습니다."))));return
+	autonomous_battle_clock.paused=false
+	_release_hero_turn("파티 전술 · %s"%str(result.get("command_label",command_id)))
+	_request_refresh()
 
 func _on_product_retreat()->void:
 	if not _portrait_battle_controls_visible():
@@ -4397,7 +4447,7 @@ func _on_product_attack_any()->void:
 	var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 	var world=session.sim.world
 	var nearest:=-1;var nearest_distance:=9999
-	for id_value in status.get("visible_enemy_ids",[]):
+	for id_value in status.get("enemies_in_view",status.get("visible_enemy_ids",[])):
 		var id:=int(id_value)
 		# Downed bodies are still "unresolved" but cannot be attacked; skip them.
 		if not world.entities.has(id) or not world.is_autonomous_target(id):continue
@@ -6001,6 +6051,17 @@ func _on_actor(entity_id:int)->void:
 		_commit_battle_target(entity_id);return
 	if companion_order_editor!=null and companion_order_editor.visible:
 		companion_order_editor.pick_actor(entity_id);return
+	if _party_command_targeting and _portrait_battle_controls_visible():
+		if entity_id not in session.party_status().get("visible_enemy_ids",[]):
+			_show_product_command_feedback("보이는 적을 누르세요.");return
+		_party_command_targeting=false;_retreat_active=false
+		var focus:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
+		if bool(focus.get("accepted",false)):
+			selected_target_id=entity_id;autonomous_battle_clock.paused=false
+			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
+			_release_hero_turn("집중 공격 · %s"%_entity_display_name(entity_id))
+		else:_show_product_command_feedback(str(focus.get("message",focus.get("reason","지정할 수 없습니다."))))
+		_request_refresh();return
 	if _portrait_battle_controls_visible() and entity_id in session.party_status().get("visible_enemy_ids",[]):
 		_strike_visible_enemy(entity_id);return
 	var status:Dictionary=session.party_status()
@@ -6063,7 +6124,7 @@ func _on_actor(entity_id:int)->void:
 			pending_move_valid=bool(preview.get("accepted",false)); pending_move_cost=int(preview.get("time_cost",0)); notice_text="현재 칸을 한 번 더 누르면 대기합니다."
 			action_feedback_text="대기 미리보기 · 현재 칸을 한 번 더 누르세요." if pending_move_valid else str(preview.get("message","대기할 수 없습니다."))
 		_request_refresh(); return
-	if entity_id in status.visible_enemy_ids:
+	if entity_id in status.visible_enemy_ids or entity_id in status.get("enemies_in_view",[]):
 		selected_target_id=entity_id; _clear_move_preview()
 		if session.is_duo_autobattle():_strike_visible_enemy(entity_id);return
 		_submit_product_melee(entity_id,status)

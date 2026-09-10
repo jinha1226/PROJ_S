@@ -26,6 +26,9 @@ func run()->void:
 		var step:Dictionary=session.commit_exploration(Command.move_to(hero,cell))
 		check(step.accepted,"manual exploration advances")
 		if not step.accepted:break
+	for wait_turn in range(3):
+		if session.party_status().safe_phase!="GROUPED":break
+		if not session.commit_exploration(Command.wait(hero)).accepted:break
 	check(session.party_status().safe_phase=="CONTACT","encounter detected")
 	var ui=Sandbox.new();ui.initialize_for_headless_test(session,true);ui.battle_mode="AUTO";root.add_child(ui)
 	ui.set_process(false)
@@ -45,7 +48,8 @@ func run()->void:
 		ui._tick_autonomous_battle(1.0)
 		await process_frame
 	check(session.sim.world.step_index>before,"autonomous party advances without taps")
-	check(not ui.autonomous_battle_clock.paused,"automatic decisions accepted")
+	# AUTO (test-only) still pauses when an ally drops low; that is not a failed decision.
+	check(not ui.autonomous_battle_clock.paused or not ui.battle_command_flow.danger_ids.is_empty(),"automatic decisions accepted")
 	print("After autonomous battle: ",session.party_status().safe_phase)
 	var hero_attacks:int=session.sim.world.events.filter(func(event):return event.type=="action.melee_attack" and event.actor_id==hero).size()
 	print("Autonomous hero attacks: ",hero_attacks)

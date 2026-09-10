@@ -72,6 +72,11 @@ func _new_engaged_duo():
 		if not bool(step.get("accepted", false)):
 			_check(false, "normal route step rejected: %s" % str(step.get("reason", ""))); return null
 		if str(session.party_status().get("safe_phase", "")) == "CONTACT": break
+	# Awareness rule: an enemy that noticed the party opens the contact on its
+	# next step. Give it up to three turns after the walk.
+	for wait_turn in range(3):
+		if str(session.party_status().get("safe_phase", "")) != "GROUPED": break
+		if not bool(session.commit_exploration(SimCommand.wait(hero_id)).get("accepted", false)): break
 	_check_eq(session.party_status().get("safe_phase", ""), "CONTACT", "generated route reaches contact")
 	if str(session.party_status().get("safe_phase", "")) != "CONTACT": return null
 	var companion_id := int(state.party_member_ids[1])

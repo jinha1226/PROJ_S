@@ -30,6 +30,11 @@ func _engaged_duo():
 		var step:Dictionary=session.commit_exploration(SimCommand.move_to(hero_id,value))
 		if not bool(step.get("accepted",false)):_check(false,"route step rejected");return null
 		if str(session.party_status().get("safe_phase",""))=="CONTACT":break
+	# Awareness rule: an enemy that noticed the party opens the contact on its
+	# next step. Give it up to three turns after the walk.
+	for wait_turn in range(3):
+		if str(session.party_status().get("safe_phase",""))!="GROUPED":break
+		if not bool(session.commit_exploration(SimCommand.wait(hero_id)).get("accepted",false)):break
 	var companion_id:=int(state.party_member_ids[1])
 	if not bool(session.preview_deployment("LINE",[companion_id]).get("accepted",false)):
 		_check(false,"deployment preview rejected");return null

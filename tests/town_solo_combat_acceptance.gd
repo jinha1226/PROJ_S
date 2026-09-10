@@ -21,6 +21,9 @@ func run()->void:
 		var moved:Dictionary=session.commit_exploration(Command.move_to(leader,p))
 		check(moved.get("accepted",false),"approach encounter: "+str(moved.get("reason")))
 		if not moved.get("accepted",false) or party.safe_phase=="CONTACT":break
+	for wait_turn in range(3):
+		if party.safe_phase!="GROUPED":break
+		if not session.commit_exploration(Command.wait(leader)).get("accepted",false):break
 	check(party.safe_phase=="CONTACT","solo encounter begins")
 	var preview:Dictionary=session.preview_deployment("LINE",[])
 	check(preview.get("accepted",false),"solo formation accepts no companions")

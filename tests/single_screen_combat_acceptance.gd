@@ -30,6 +30,11 @@ func _engaged_duo():
 	for v in best.path.slice(1):
 		if not bool(session.commit_exploration(SimCommand.move_to(hero_id,v)).get("accepted",false)):return null
 		if str(session.party_status().get("safe_phase",""))=="CONTACT":break
+	# Awareness rule: an enemy that noticed the party opens the contact on its
+	# next step. Give it up to three turns after the walk.
+	for wait_turn in range(3):
+		if str(session.party_status().get("safe_phase",""))!="GROUPED":break
+		if not bool(session.commit_exploration(SimCommand.wait(hero_id)).get("accepted",false)):break
 	if str(session.party_status().get("safe_phase",""))!="CONTACT":return null
 	var settled:Dictionary=session.settle_contact()
 	return session if bool(settled.get("accepted",false)) and str(session.party_status().get("safe_phase",""))=="ENGAGED" else null
@@ -70,9 +75,9 @@ func run()->void:
 		and ui.find_child("PortraitBattlePause",true,false)==null,"no turn clock or mode controls in combat")
 	_check(ui.product_attack_button!=null and ui.product_attack_button.text=="[공격]" \
 		and ui.product_wait_guard_button.text=="[대기]" and ui.product_rest_button.text=="[휴식]" \
-		and ui.product_auto_button.text=="[탐험]" and ui.product_retreat_button!=null \
-		and not ui.product_retreat_button.disabled and ui.product_bag_button!=null,
-		"the dock keeps 공격 / 대기 / 휴식 / 탐험 / 퇴각 / 가방 during a fight")
+		and ui.product_auto_button.text=="[탐험]" and ui.product_tactics_button!=null \
+		and not ui.product_tactics_button.disabled and ui.product_bag_button!=null,
+		"the dock keeps 공격 / 대기 / 휴식 / 탐험 / 전술 / 가방 during a fight")
 	_check(ui.hero_skill_row.visible and ui.hero_skill_row.get_index()==ui.cards.get_index()-1 \
 		and ui.event_surface.get_index()==ui.hero_skill_row.get_index()-1,
 		"feed, then hero skills, then portraits")
@@ -139,8 +144,8 @@ func run()->void:
 	if _engaged(session):
 		_pump(ui,3.0)
 		var before_retreat:int=world.events.size()
-		ui._on_product_retreat();await process_frame
-		_check(ui._retreat_active and str(PartyCommand.effective(world,world.party_encounter).get("command_id",""))=="RETREAT","퇴각 issues the party RETREAT directive")
+		ui._on_product_tactic_selected(1);await process_frame
+		_check(ui._retreat_active and str(PartyCommand.effective(world,world.party_encounter).get("command_id",""))=="RETREAT","전술 → 후퇴 issues the party RETREAT directive")
 		_pump(ui,6.0)
 		_check(_hero_actions_since(world,hero,before_retreat)>=2 or not _engaged(session),"retreat keeps the hero acting without taps (got %d)"%_hero_actions_since(world,hero,before_retreat))
 		ui.grid.world_cell_pressed.emit(world.entities[hero].position);await process_frame

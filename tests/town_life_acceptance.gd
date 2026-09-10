@@ -29,7 +29,7 @@ func run()->void:
 	check(start.get("accepted",false),"start town life")
 	if not start.get("accepted",false):quit(1);return
 	var world=session.sim.world;var party=world.party_encounter
-	check(party.active_party_member_ids.size()==1,"solo start")
+	check(party.active_party_member_ids.size()==3,"the inn sends two companions along from the start")
 	check(party.expedition_cycle.phase=="TOWN","start in inn")
 	check(session.town_gold()==120,"no bootstrap return stipend")
 	check(not session.private_home_available(),"no private home yet")
@@ -54,7 +54,7 @@ func run()->void:
 	check(not session.recruit_companion(companion).get("accepted",false),"legacy recruit cannot bypass meeting")
 	replay(session,"inn conversation")
 	check(session.depart_town().get("accepted",false),"depart solo")
-	check(Population.locations(world).size()==8,"eight neutral explorers distributed through the dungeon")
+	check(Population.locations(world).size()==6,"six neutral explorers distributed through the dungeon (two ride with the party)")
 	var citizen:=-1
 	for resident in session.town_life_overview().residents:
 		if not resident.adventurer:citizen=int(resident.entity_id);break
@@ -74,8 +74,8 @@ func run()->void:
 		check(not session.town_life_command({"action":"CLAIM"}).get("accepted",false),"no reward duplication")
 		if run_index==0:
 			var joined:Dictionary=session.town_life_command({"action":"JOIN","entity_id":str(companion)})
-			check(joined.get("accepted",false),"first companion joins: "+str(joined))
-			check(session.sim.world.party_encounter.active_party_member_ids.size()==2,"two-person field party")
+			check(not joined.get("accepted",false),"the first companion already rides along; a repeat join is refused: "+str(joined))
+			check(session.sim.world.party_encounter.active_party_member_ids.size()==3,"three-person field party from the start")
 			replay(session,"first companion")
 	var gold:int=session.town_gold()
 	var acquire:Dictionary=session.town_life_command({"action":"ACQUIRE"})
@@ -101,9 +101,9 @@ func run()->void:
 	check(extra>0,"dungeon acquaintances become town recruitment candidates")
 	if extra>0:
 		check(session.town_life_command({"action":"JOIN","entity_id":str(extra)}).get("accepted",false),"third company member joins without third field fighter")
-		check(session.sim.world.party_encounter.active_party_member_ids.size()==2,"company is separate from field party")
+		check(session.sim.world.party_encounter.active_party_member_ids.size()==3,"company is separate from field party")
 		check(session.sim.world.item_state.inventory(extra).equipped_item("MAIN_HAND")!=null,"standby recruit receives starting equipment once")
-		check(not session.town_life_command({"action":"ASSIGN","entity_id":str(extra)}).get("accepted",false),"field party remains limited to two")
+		check(not session.town_life_command({"action":"ASSIGN","entity_id":str(extra)}).get("accepted",false),"field party remains limited to the hero and two companions")
 	replay(session,"expanded company")
 	if extra>0:
 		var build_tile:=Vector2i(-1,-1)
