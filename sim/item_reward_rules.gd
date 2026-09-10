@@ -5,9 +5,11 @@ extends RefCounted
 ## registry remains the ownership authority; this table only says what a
 ## registered item is primarily for.
 const RULESET_ID := "item-reward-families-v1"
-const FAMILIES := ["WEAPON_MATERIAL", "CURRENCY", "MONSTER_ABILITY", "BASE_MATERIAL", "SUPPLY", "SPECIAL"]
+const ItemCatalog = preload("res://sim/item_catalog_registry.gd")
+const FAMILIES := ["WEAPON_MATERIAL", "CRAFT_MATERIAL", "CURRENCY", "MONSTER_ABILITY", "BASE_MATERIAL", "SUPPLY", "SPECIAL"]
 const LABELS := {
 	"WEAPON_MATERIAL":"무기 업그레이드 소재",
+	"CRAFT_MATERIAL":"제작 재료",
 	"CURRENCY":"돈·환금품",
 	"MONSTER_ABILITY":"몬스터 이능",
 	"BASE_MATERIAL":"거점 업그레이드 재료",
@@ -32,11 +34,25 @@ const ITEM_PURPOSES := {
 
 
 static func family_for_item(definition_id:String)->String:
-	return str(ITEM_FAMILIES.get(definition_id,"SPECIAL"))
+	if ITEM_FAMILIES.has(definition_id):return str(ITEM_FAMILIES[definition_id])
+	match ItemCatalog.family(definition_id):
+		"MAGIC_STONE":return "CURRENCY"
+		"POTION","FOOD":return "SUPPLY"
+		"MATERIAL":
+			return "WEAPON_MATERIAL" if definition_id in ["MATERIAL_IRON_INGOT",
+				"MAT_WEAPON_TOUGH_WOOD","MAT_WEAPON_STEEL","MAT_WEAPON_HEARTWOOD"] \
+				else "CRAFT_MATERIAL"
+	return "SPECIAL"
 
 
 static func purpose_for_item(definition_id:String)->String:
-	return str(ITEM_PURPOSES.get(definition_id,""))
+	if ITEM_PURPOSES.has(definition_id):return str(ITEM_PURPOSES[definition_id])
+	match ItemCatalog.family(definition_id):
+		"MAGIC_STONE":return "환금품·거래용"
+		"POTION":return "회복용 보급품"
+		"FOOD":return "원정 보급품"
+		"MATERIAL":return "제작 재료"
+	return ""
 
 
 static func ability_for_item(definition_id:String)->String:

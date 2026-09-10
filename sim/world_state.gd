@@ -57,6 +57,7 @@ const SpeciesDropRegistryScript = preload("res://sim/species_drop_registry.gd")
 const WeaponRecraftRegistryScript = preload("res://sim/weapon_recraft_registry.gd")
 const CorpseLootSystemScript = preload("res://sim/systems/corpse_loot_system.gd")
 const ItemRegistryScript = preload("res://sim/item_registry.gd")
+const ItemCatalogScript = preload("res://sim/item_catalog_registry.gd")
 const InventoryStateScript = preload("res://sim/inventory_state.gd")
 const AmmoPoolStateScript = preload("res://sim/ammo_pool_state.gd")
 const WeaponRuntimeStateScript = preload("res://sim/weapon_runtime_state.gd")
@@ -5361,10 +5362,14 @@ func _party_health_restoration_error()->String:
 			if int(event.data.health_after)!=expected_after:return "party_health_restoration_amount_invalid"
 			if restoration_kind=="POTION":
 				var source=event_by_id(event.cause_id)
+				var potion_power:=ItemCatalogScript.healing_amount(
+					str(source.data.get("definition_id","")) if source!=null else "")
 				if source==null or source.type!="item.used" or source.actor_id!=hero_id \
 						or source.target_id!=hero_id or source.id>=event.id \
 						or source.data.get("use_kind")!="HEALING" \
-						or event.data.ruleset_id!="healing-potion-v1":
+						or event.data.ruleset_id!="healing-potion-v1" or potion_power<=0 \
+						or int(event.magnitude)!=mini(potion_power,
+							int(entities[hero_id].max_health)-projected):
 					return "party_potion_restoration_cause_invalid"
 			elif restoration_kind=="TOWN_CLINIC":
 				var clinic_source=event_by_id(event.cause_id)

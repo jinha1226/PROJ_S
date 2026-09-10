@@ -277,6 +277,30 @@ func test_hungry_party_eats_one_ration_automatically() -> bool:
 	return finish()
 
 
+func test_hungry_party_uses_the_selected_food_nutrition() -> bool:
+	var session = Session.new(44, 20260828, Session.SOLO_COMBAT_SCENARIO_ID)
+	var state = session.sim.world.party_encounter
+	var hero_id := int(state.protagonist_id)
+	var food = null
+	for item in session.sim.world.item_state.inventory(hero_id).backpack:
+		if str(item.instance_id) == "START_RATION_001":
+			item.definition_id = "FOOD_HARDTACK"
+			food = item
+	state.ration_milli = Rules.hungry_below_milli() + 500
+	_wait(session)
+	check_eq(int(state.ration_milli), Rules.hungry_below_milli() - 500 + 120000,
+		"hardtack adds its catalog nutrition instead of ration nutrition")
+	check_eq(int(session.sim.world.inventory_of(hero_id).item("START_RATION_001").quantity),
+		1, "one hardtack is consumed")
+	var eaten := _events_of(session, "party.ration_eaten")
+	check_eq(eaten.size(), 1, "alternate food writes one meal event")
+	if eaten.size() == 1:
+		check_eq([str(eaten[0].data.get("definition_id", "")),
+			int(eaten[0].data.get("nutrition_milli", 0))],
+			["FOOD_HARDTACK", 120000], "meal event records the chosen food effect")
+	return finish()
+
+
 func test_eaten_gauge_survives_a_session_save_and_reload() -> bool:
 	# The journal is the whole save authority, and a directly poked gauge is not in
 	# it, so this fixture drains through journalled waits alone: the reload below

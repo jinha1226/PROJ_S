@@ -6,6 +6,7 @@ extends RefCounted
 
 const RulesScript = preload("res://sim/party_ration_rules.gd")
 const WorldItemOperationsScript = preload("res://sim/world_item_operations.gd")
+const ItemCatalog = preload("res://sim/item_catalog_registry.gd")
 
 
 static func band(world) -> String:
@@ -94,10 +95,9 @@ static func _starve_once(world, damage, processed_step_index: int, rules: Dictio
 static func _first_food_instance_id(world) -> String:
 	var inventory = world.inventory_of(int(world.party_control_actor_id()))
 	if inventory == null: return ""
-	var food_id := str(RulesScript.rules().food_definition_id)
 	var ids: Array = []
 	for item in inventory.backpack:
-		if str(item.definition_id) == food_id and int(item.quantity) > 0:
+		if ItemCatalog.family(str(item.definition_id)) == "FOOD" and int(item.quantity) > 0:
 			ids.append(str(item.instance_id))
 	ids.sort()
 	return "" if ids.is_empty() else str(ids[0])
@@ -115,12 +115,14 @@ static func auto_eat(world) -> bool:
 		int(world.party_control_actor_id()), instance_id)
 	if not bool(used.get("accepted", false)): return true
 	var before_band := RulesScript.band(int(state.ration_milli))
-	state.ration_milli = mini(RulesScript.ration_max_milli(),
-		int(state.ration_milli) + RulesScript.food_nutrition_milli())
+	var nutrition := ItemCatalog.nutrition_milli(str(used.get("definition_id", "")))
+	if nutrition <= 0: return false
+	state.ration_milli = mini(RulesScript.ration_max_milli(), int(state.ration_milli) + nutrition)
 	var event = world.emit_event("party.ration_eaten", int(world.party_control_actor_id()), -1,
 		_hero_position(world), 0, -1, {"schema_version": 1,
 			"ruleset_id": RulesScript.RULESET_ID, "definition_id": str(used.get("definition_id", "")),
-			"instance_id": instance_id, "ration_milli": int(state.ration_milli)})
+			"instance_id": instance_id, "nutrition_milli": nutrition,
+			"ration_milli": int(state.ration_milli)})
 	if event == null: return false
 	var after_band := RulesScript.band(int(state.ration_milli))
 	if after_band != before_band and not _emit_band_change(world, before_band, after_band):

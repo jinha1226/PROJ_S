@@ -8,6 +8,12 @@ const Materials = preload("res://sim/material_registry.gd")
 # material properties. The item wire keeps stable definition IDs; this table
 # adds only the environmental interpretation needed by the damage bridge.
 const _DEFINITIONS := {
+	"ARMOR_CLOTH_ROBE": {
+		"material_id":"TEXTILE",
+		"coverage":["TORSO", "LEFT_ARM", "RIGHT_ARM", "LEFT_LEG", "RIGHT_LEG"],
+		"fire_reduction_milli":500, "electric_reduction_milli":600,
+		"wet_electric_retention_milli":200,
+	},
 	"ARMOR_LEATHER": {
 		"material_id":"LEATHER",
 		"coverage":["TORSO", "LEFT_ARM", "RIGHT_ARM", "LEFT_LEG", "RIGHT_LEG"],
@@ -20,10 +26,27 @@ const _DEFINITIONS := {
 		"fire_reduction_milli":450, "electric_reduction_milli":550,
 		"wet_electric_retention_milli":250,
 	},
+	"ARMOR_CHAIN": {
+		"material_id":"IRON",
+		"coverage":["TORSO", "LEFT_ARM", "RIGHT_ARM", "LEFT_LEG", "RIGHT_LEG"],
+		"fire_reduction_milli":150, "electric_reduction_milli":100,
+		"wet_electric_retention_milli":850,
+	},
+	"ARMOR_PLATE": {
+		"material_id":"IRON",
+		"coverage":["TORSO", "LEFT_ARM", "RIGHT_ARM", "LEFT_LEG", "RIGHT_LEG"],
+		"fire_reduction_milli":200, "electric_reduction_milli":150,
+		"wet_electric_retention_milli":900,
+	},
 	"SHIELD_WOOD": {
 		"material_id":"WOOD", "coverage":["LEFT_ARM"],
 		"fire_reduction_milli":150, "electric_reduction_milli":200,
 		"wet_electric_retention_milli":400,
+	},
+	"SHIELD_IRON": {
+		"material_id":"IRON", "coverage":["LEFT_ARM"],
+		"fire_reduction_milli":100, "electric_reduction_milli":50,
+		"wet_electric_retention_milli":950,
 	},
 }
 

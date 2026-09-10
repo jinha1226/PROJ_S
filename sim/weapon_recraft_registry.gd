@@ -10,7 +10,21 @@ const RECIPES := {
 		"material_definition_id":"MATERIAL_IRON_INGOT",
 		"material_quantity":1,
 		"gold_cost":0,
-	}
+	},
+	"WEAPON_SHORT_SWORD_IRON": {"target_definition_id":"WEAPON_SHORT_SWORD_STEEL",
+		"material_definition_id":"MAT_WEAPON_STEEL","material_quantity":1,"gold_cost":0},
+	"WEAPON_THRUSTING_SWORD": {"target_definition_id":"WEAPON_THRUSTING_SWORD_STEEL",
+		"material_definition_id":"MAT_WEAPON_STEEL","material_quantity":1,"gold_cost":0},
+	"WEAPON_HAND_AXE": {"target_definition_id":"WEAPON_HAND_AXE_STEEL",
+		"material_definition_id":"MAT_WEAPON_STEEL","material_quantity":1,"gold_cost":0},
+	"WEAPON_MACE": {"target_definition_id":"WEAPON_MACE_STEEL",
+		"material_definition_id":"MAT_WEAPON_STEEL","material_quantity":1,"gold_cost":0},
+	"WEAPON_SPEAR": {"target_definition_id":"WEAPON_SPEAR_STEEL",
+		"material_definition_id":"MAT_WEAPON_STEEL","material_quantity":1,"gold_cost":0},
+	"WEAPON_BOW": {"target_definition_id":"WEAPON_BOW_HEARTWOOD",
+		"material_definition_id":"MAT_WEAPON_HEARTWOOD","material_quantity":1,"gold_cost":0},
+	"WEAPON_CROSSBOW": {"target_definition_id":"WEAPON_CROSSBOW_STEEL_HEARTWOOD",
+		"material_definition_id":"MAT_WEAPON_HEARTWOOD","material_quantity":1,"gold_cost":0},
 }
 
 

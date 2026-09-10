@@ -8,6 +8,7 @@ Godot 코드는 이 파일을 읽고 유효성 및 파일 사이의 참조를 �
 - `species_catalog.json`: 종족 표시 순서, 고정 특성·분기·무기 친숙도, 신체 수치
 - `growth_builds.json`: 공통 능력치, 이능, 접사 빌드 효과
 - `items.json`: 장비·소모품과 접사
+- `item_catalog.json`: 아이템 분류·티어·출현 깊이·거래가·소비 효과
 - `weapons.json`: 무기 전투 수치와 사용 숙련 ID
 - `proficiencies.json`: 숙련/스킬 ID와 표시 이름
 
@@ -23,6 +24,8 @@ Godot 코드는 이 파일을 읽고 유효성 및 파일 사이의 참조를 �
 4. 무기 아이템의 `weapon_id`는 `weapons.json`에, 무기의 `proficiency_id`는
    `proficiencies.json`에 존재해야 한다. 성장 접사의 `affix_id`는 `items.json`의
    접사와 일치해야 한다.
+   `item_catalog.json`의 `definition_id`도 `items.json`에 존재해야 하며 분류와
+   장착·소비 범주가 일치해야 한다.
 5. 저장 데이터에는 JSON 행 전체가 아니라 영구 ID와 플레이어의 선택/진행도만 남긴다.
    따라서 밸런스 수치 수정은 기존 저장에 반영되며, ID 변경은 별도 마이그레이션이
    필요하다.

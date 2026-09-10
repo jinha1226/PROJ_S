@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "weapons-2026-09-02-body-b1",
+  "content_version": "weapons-2026-09-10-catalog-v1",
   "content_type": "WEAPONS",
   "ruleset_id": "weapon-registry-v2",
   "stat_scaling_rules": {
@@ -226,6 +226,76 @@
       "body_attack":{"base_force":100,"penetration":100,"contact_size":4,"stagger_force":20,"reference_damage":21},
       "scaling":{"STR":"NONE","DEX":"D","INT":"NONE"},
       "natural_weapon":false
+    },
+    {
+      "weapon_id":"SHORT_SWORD_STEEL", "label":"강철 단검", "proficiency_id":"SWORD",
+      "attack_form":"SLASH", "range_min":1, "range_max":1, "base_damage":6,
+      "accuracy_milli":40, "armor_penetration_flat":1, "attack_time":100,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":false,
+      "body_attack":{"base_force":60,"penetration":30,"contact_size":10,"stagger_force":25,"reference_damage":17},
+      "scaling":{"STR":"NONE","DEX":"A","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"THRUSTING_SWORD_STEEL", "label":"강철 찌르기검", "proficiency_id":"SWORD",
+      "attack_form":"PIERCE", "range_min":1, "range_max":1, "base_damage":5,
+      "accuracy_milli":30, "armor_penetration_flat":2, "attack_time":100,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"NONE", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":false,
+      "body_attack":{"base_force":60,"penetration":65,"contact_size":6,"stagger_force":20,"reference_damage":17},
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"HAND_AXE_STEEL", "label":"강철 손도끼", "proficiency_id":"AXE",
+      "attack_form":"SLASH", "range_min":1, "range_max":1, "base_damage":7,
+      "accuracy_milli":-20, "armor_penetration_flat":1, "attack_time":120,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"AXE_CLEAVE", "secondary_damage_milli":400, "stun_chance_milli":0,
+      "two_handed":false,
+      "body_attack":{"base_force":95,"penetration":40,"contact_size":14,"stagger_force":45,"reference_damage":19},
+      "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"MACE_STEEL", "label":"강철 철퇴", "proficiency_id":"BLUNT",
+      "attack_form":"IMPACT", "range_min":1, "range_max":1, "base_damage":6,
+      "accuracy_milli":-10, "armor_penetration_flat":2, "attack_time":125,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"BLUNT_STUN", "secondary_damage_milli":0, "stun_chance_milli":250,
+      "two_handed":false,
+      "body_attack":{"base_force":100,"penetration":15,"contact_size":45,"stagger_force":95,"reference_damage":18},
+      "scaling":{"STR":"B","DEX":"NONE","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"SPEAR_STEEL", "label":"강철촉 창", "proficiency_id":"SPEAR",
+      "attack_form":"PIERCE", "range_min":1, "range_max":2, "base_damage":6,
+      "accuracy_milli":10, "armor_penetration_flat":2, "attack_time":110,
+      "ammo_kind":"NONE", "ammo_cost":0, "reload_required":false, "reload_time":0,
+      "trait_id":"SPEAR_REACH", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":false,
+      "body_attack":{"base_force":80,"penetration":75,"contact_size":7,"stagger_force":30,"reference_damage":18},
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"BOW_HEARTWOOD", "label":"심재궁", "proficiency_id":"RANGED",
+      "attack_form":"PIERCE", "range_min":2, "range_max":8, "base_damage":5,
+      "accuracy_milli":10, "armor_penetration_flat":1, "attack_time":90,
+      "ammo_kind":"ARROW", "ammo_cost":1, "reload_required":false, "reload_time":0,
+      "trait_id":"BOW_REPEAT", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":true,
+      "body_attack":{"base_force":58,"penetration":52,"contact_size":5,"stagger_force":12,"reference_damage":17},
+      "scaling":{"STR":"D","DEX":"B","INT":"NONE"}, "natural_weapon":false
+    },
+    {
+      "weapon_id":"CROSSBOW_STEEL_HEARTWOOD", "label":"강철·심재 쇠뇌", "proficiency_id":"RANGED",
+      "attack_form":"PIERCE", "range_min":2, "range_max":10, "base_damage":10,
+      "accuracy_milli":40, "armor_penetration_flat":4, "attack_time":115,
+      "ammo_kind":"BOLT", "ammo_cost":1, "reload_required":true, "reload_time":140,
+      "trait_id":"CROSSBOW_RELOAD", "secondary_damage_milli":0, "stun_chance_milli":0,
+      "two_handed":true,
+      "body_attack":{"base_force":110,"penetration":115,"contact_size":4,"stagger_force":22,"reference_damage":22},
+      "scaling":{"STR":"NONE","DEX":"D","INT":"NONE"}, "natural_weapon":false
     }
   ]
 }

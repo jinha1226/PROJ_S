@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "items-2026-09-06",
+  "content_version": "items-2026-09-10-catalog-v1",
   "content_type": "ITEMS",
   "ruleset_id": "item-registry-v2",
   "healing_potion_restore": 35,
@@ -268,6 +268,181 @@
       "bonuses": {"armor_flat": 0, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
+    },
+    {
+      "definition_id": "WEAPON_SHORT_SWORD_STEEL", "label": "강철 단검",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "SHORT_SWORD_STEEL", "requirements":{"STR":0,"DEX":5,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_THRUSTING_SWORD_STEEL", "label": "강철 찌르기검",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "THRUSTING_SWORD_STEEL", "requirements":{"STR":4,"DEX":6,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_HAND_AXE_STEEL", "label": "강철 손도끼",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "HAND_AXE_STEEL", "requirements":{"STR":6,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_MACE_STEEL", "label": "강철 철퇴",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "MACE_STEEL", "requirements":{"STR":6,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_SPEAR_STEEL", "label": "강철촉 창",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "SPEAR_STEEL", "requirements":{"STR":4,"DEX":5,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_BOW_HEARTWOOD", "label": "심재궁",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "BOW_HEARTWOOD", "requirements":{"STR":4,"DEX":6,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id": "WEAPON_CROSSBOW_STEEL_HEARTWOOD", "label": "강철·심재 쇠뇌",
+      "category": "WEAPON", "stack_limit": 1, "equip_slots": ["MAIN_HAND"],
+      "weapon_id": "CROSSBOW_STEEL_HEARTWOOD", "requirements":{"STR":5,"DEX":4,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"ARMOR_CLOTH_ROBE", "label":"천 로브", "category":"ARMOR",
+      "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":30,"stealth":25},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"ARMOR_CHAIN", "label":"사슬 갑옷", "category":"ARMOR",
+      "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
+      "requirements":{"STR":5,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":3,"parry_milli":0,"dodge_milli":-25,"stealth":-30},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"ARMOR_PLATE", "label":"판금 갑옷", "category":"ARMOR",
+      "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
+      "requirements":{"STR":7,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":5,"parry_milli":0,"dodge_milli":-70,"stealth":-80},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"SHIELD_IRON", "label":"철 방패", "category":"ARMOR",
+      "stack_limit":1, "equip_slots":["OFF_HAND"], "weapon_id":"",
+      "requirements":{"STR":6,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":1,"parry_milli":140,"dodge_milli":-20,"stealth":-20},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"POTION_HEALING_MINOR", "label":"소형 회복 물약", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"HEALING", "placeholder":false
+    },
+    {
+      "definition_id":"POTION_HEALING_GREATER", "label":"상급 회복 물약", "category":"CONSUMABLE",
+      "stack_limit":5, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"HEALING", "placeholder":false
+    },
+    {
+      "definition_id":"FOOD_HARDTACK", "label":"건빵", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"EAT", "placeholder":false
+    },
+    {
+      "definition_id":"FOOD_DRIED_MEAT", "label":"말린 고기", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"EAT", "placeholder":false
+    },
+    {
+      "definition_id":"MAGIC_STONE_FRAGMENT", "label":"마석 조각", "category":"MATERIAL",
+      "stack_limit":50, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MAGIC_STONE_REFINED", "label":"정제 마석", "category":"MATERIAL",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MAT_WEAPON_TOUGH_WOOD", "label":"질긴 목재", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MAT_WEAPON_STEEL", "label":"강철재", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MAT_WEAPON_HEARTWOOD", "label":"심재", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MATERIAL_LEATHER_HIDE", "label":"질긴 가죽", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MATERIAL_CLOTH_BOLT", "label":"천 두루마리", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MATERIAL_CHITIN_PLATE", "label":"갑각판", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MATERIAL_OOZE_GEL", "label":"점액 젤", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
+    },
+    {
+      "definition_id":"MATERIAL_MEDICINAL_HERBS", "label":"약용 약초", "category":"MATERIAL",
+      "stack_limit":20, "equip_slots":[], "weapon_id":"",
+      "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
+      "use_kind":"NONE", "placeholder":false
     }
   ],
   "affixes": [

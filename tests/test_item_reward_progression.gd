@@ -4,6 +4,7 @@ const Simulator = preload("res://sim/simulator.gd")
 const Inventory = preload("res://sim/inventory_state.gd")
 const Item = preload("res://sim/item_instance.gd")
 const ItemRegistry = preload("res://sim/item_registry.gd")
+const ItemCatalog = preload("res://sim/item_catalog_registry.gd")
 const ItemRewardRules = preload("res://sim/item_reward_rules.gd")
 const SpeciesDrops = preload("res://sim/species_drop_registry.gd")
 const WeaponRegistry = preload("res://sim/weapon_registry.gd")
@@ -13,6 +14,7 @@ const WorldItems = preload("res://sim/world_item_operations.gd")
 
 func test_reward_and_recraft_registries_validate() -> bool:
 	check_eq(ItemRegistry.registry_error(), "", "item content validates")
+	check_eq(ItemCatalog.registry_error(), "", "item catalog validates")
 	check_eq(WeaponRegistry.registry_error(), "", "weapon content validates")
 	check_eq(SpeciesDrops.registry_error(), "", "species reward content validates")
 	check_eq(WeaponRecraftRegistry.registry_error(), "", "recraft recipes validate")
@@ -74,8 +76,25 @@ func test_recraft_preserves_identity_affixes_and_equipment_atomically() -> bool:
 	check_eq(count_events(sim.world.events, "weapon.recrafted"), 1,
 		"recraft writes one canonical event")
 	var rejected := WorldItems.commit_recraft(sim.world, hero.id, "SWORD_01", hero.position)
-	check(not bool(rejected.accepted), "the same source cannot be silently rerolled")
-	check_eq(rejected.reason, "recraft_not_available", "recraft rejects an already upgraded weapon")
+	check(not bool(rejected.accepted), "the next tier requires its own material")
+	check_eq(rejected.reason, "recraft_material_insufficient", "iron to steel cannot skip its material cost")
+	return finish()
+
+
+func test_six_item_families_publish_tier_depth_trade_and_effect_contracts() -> bool:
+	for family in ItemCatalog.FAMILIES:
+		check(not ItemCatalog.ids_for_family(family).is_empty(), "%s has active definitions" % family)
+	check_eq(ItemCatalog.healing_amount("POTION_HEALING_MINOR"), 20, "minor potion heals its own amount")
+	check_eq(ItemCatalog.healing_amount("POTION_HEALING"), 35, "standard potion keeps legacy balance")
+	check_eq(ItemCatalog.healing_amount("POTION_HEALING_GREATER"), 60, "greater potion heals its own amount")
+	check_eq(ItemCatalog.nutrition_milli("FOOD_HARDTACK"), 120000, "hardtack has compact nutrition")
+	check_eq(ItemCatalog.nutrition_milli("FOOD_DRIED_MEAT"), 200000, "dried meat has medium nutrition")
+	check_eq(ItemCatalog.nutrition_milli("FOOD_RATION"), 300000, "ration keeps legacy nutrition")
+	check_eq([ItemCatalog.sell_price("MAGIC_STONE_FRAGMENT"),
+		ItemCatalog.sell_price("MAGIC_STONE"),ItemCatalog.sell_price("MAGIC_STONE_REFINED")],
+		[2,8,30], "magic stone grades have one authoritative sell price")
+	check(not ItemCatalog.available_at_depth("ARMOR_PLATE",3), "plate is withheld before depth four")
+	check(ItemCatalog.available_at_depth("ARMOR_PLATE",4), "plate unlocks at its authored depth")
 	return finish()
 
 

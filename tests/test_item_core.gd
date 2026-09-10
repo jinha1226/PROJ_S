@@ -404,6 +404,28 @@ func test_healing_potion_session_use_is_timed_consumed_logged_and_replay_exact()
 	return finish()
 
 
+func test_minor_healing_potion_uses_its_catalog_effect()->bool:
+	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
+	var state=session.sim.world.party_encounter;var hero_id:=int(state.protagonist_id)
+	for item in session.sim.world.item_state.inventory(hero_id).backpack:
+		if str(item.instance_id)=="START_POTION_001":
+			item.definition_id="POTION_HEALING_MINOR"
+	check(session.commit_exploration(Command.wait(hero_id)).accepted \
+		and session.enter_solo_combat().accepted,"minor potion fixture enters combat")
+	for _turn in range(12):
+		var hero=session.sim.world.entities[hero_id]
+		if int(hero.health)<int(hero.max_health):break
+		if not session.commit_direct_solo_action(hero_id,"HOLD").accepted:break
+	var hero=session.sim.world.entities[hero_id]
+	var missing:=int(hero.max_health)-int(hero.health)
+	check(missing>0,"minor potion fixture is wounded")
+	var used:Dictionary=session.use_inventory_item("START_POTION_001")
+	check(bool(used.get("accepted",false)),"minor potion use succeeds")
+	check_eq(int(used.get("healed_amount",0)),20,
+		"minor potion restores its catalog amount after hostile action time")
+	return finish()
+
+
 func test_failed_session_item_operation_is_atomic_and_combat_item_action_advances_time()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var before:=session.save_session_json();var rejected:=session.drop_inventory_item("LEGACY_MAIN_HAND")
