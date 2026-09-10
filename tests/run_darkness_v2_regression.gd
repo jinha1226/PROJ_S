@@ -78,7 +78,7 @@ func run():
 	for floor_index in [1,2,3]:
 		cycle.floor_index=floor_index
 		var light:Dictionary=Vision.lighting_for_world(w)
-		check(int(light.ambient_level)=={1:900,2:400,3:120}[floor_index],"production floor light %d"%floor_index)
+		check(int(light.ambient_level)=={1:600,2:400,3:120}[floor_index],"production floor light %d"%floor_index)
 	cycle.phase="TOWN"
 	# Production town is bright, independently of its previous dungeon floor.
 	check(Vision.lighting_for_world(w).ambient_level==900,"town stays bright")

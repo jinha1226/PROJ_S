@@ -18,7 +18,7 @@ func run():
 	check(restored.depart_town().accepted,"loaded town departs")
 	check(Rules.enabled(restored.sim.world),"departure activates darkness v2")
 	check(restored.command_journal[-1]=={"kind":"darkness_rules"},"migration is separate final journal entry")
-	check(Vision.lighting_for_world(restored.sim.world).ambient_level==900,"first floor bright")
+	check(Vision.lighting_for_world(restored.sim.world).ambient_level==600,"first floor dim")
 	check(restored.sim.world.world_state_error().is_empty(),"departure marker audit")
 	loaded=s.load_session_json(restored.save_session_json())
 	check(loaded.accepted,"departure migration journal replays: "+str(loaded.get("reason","")))

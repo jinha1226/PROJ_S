@@ -8,6 +8,7 @@ const Terrain = preload("res://sim/terrain_registry.gd")
 const BRIGHT_THRESHOLD := 700
 const DIM_THRESHOLD := 300
 const DEFAULT_AMBIENT := 900
+const EXPEDITION_FLOOR1_AMBIENT := 600
 const EXPEDITION_DIM_AMBIENT := 400
 const DARK_AMBIENT := 120
 const MAX_LIGHT := 1000
@@ -129,7 +130,7 @@ static func lighting_for_world(world, scenario_id: String = "") -> Dictionary:
 			if cycle.phase=="DUNGEON":
 				# Shallow exploration stays comfortable; deeper expedition floors
 				# require a light. Town retains its bright preparation surface.
-				result.ambient_level=DEFAULT_AMBIENT if int(cycle.floor_index)<=1 \
+				result.ambient_level=EXPEDITION_FLOOR1_AMBIENT if int(cycle.floor_index)<=1 \
 					else EXPEDITION_DIM_AMBIENT if int(cycle.floor_index)==2 else DARK_AMBIENT
 			elif cycle.phase=="TOWN":result.ambient_level=DEFAULT_AMBIENT
 		result["sources"].append_array(TorchRulesScript.active_light_sources(world))
