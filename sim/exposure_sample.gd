@@ -15,6 +15,16 @@ var known_fire_damage_at_next_tick: int
 var terrain_water_exposure: int
 var wetness: int
 var water_exposure: int
+var material_id: String
+var surface_id: String
+var surface_amount: int
+var temperature: int
+var smoke_amount: int
+var steam_amount: int
+var flammable_gas_amount: int
+var pressure: int
+var pressure_tier: String
+var vision_obscurity: int
 var conductivity: int
 var electric_risk: int
 var electric_certainty: String
@@ -39,6 +49,16 @@ func _init(data: Dictionary = {}) -> void:
 	terrain_water_exposure = int(data.get("terrain_water_exposure", 0))
 	wetness = int(data.get("wetness", 0))
 	water_exposure = int(data.get("water_exposure", 0))
+	material_id = str(data.get("material_id", "STONE"))
+	surface_id = str(data.get("surface_id", "NONE"))
+	surface_amount = int(data.get("surface_amount", 0))
+	temperature = int(data.get("temperature", 200))
+	smoke_amount = int(data.get("smoke_amount", 0))
+	steam_amount = int(data.get("steam_amount", 0))
+	flammable_gas_amount = int(data.get("flammable_gas_amount", 0))
+	pressure = int(data.get("pressure", 0))
+	pressure_tier = str(data.get("pressure_tier", "NORMAL"))
+	vision_obscurity = int(data.get("vision_obscurity", 0))
 	conductivity = int(data.get("conductivity", 0))
 	electric_risk = int(data.get("electric_risk", 0))
 	electric_certainty = str(data.get("electric_certainty", "NONE"))
@@ -66,7 +86,12 @@ func to_dict() -> Dictionary:
 		"fire_damage_eligible_time": str(fire_damage_eligible_time),
 		"known_fire_damage_at_next_tick": known_fire_damage_at_next_tick,
 		"terrain_water_exposure": terrain_water_exposure, "wetness": wetness,
-		"water_exposure": water_exposure, "conductivity": conductivity,
+		"water_exposure": water_exposure, "material_id": material_id,
+		"surface_id": surface_id, "surface_amount": surface_amount,
+		"temperature": temperature, "smoke_amount": smoke_amount,
+		"steam_amount": steam_amount, "flammable_gas_amount": flammable_gas_amount,
+		"pressure": pressure, "pressure_tier": pressure_tier,
+		"vision_obscurity": vision_obscurity, "conductivity": conductivity,
 		"electric_risk": electric_risk, "electric_certainty": electric_certainty,
 		"poison_intensity": poison_intensity,
 		"fire_source_event_id": str(fire_source_event_id),

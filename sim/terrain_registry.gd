@@ -46,6 +46,24 @@ const _DEFINITIONS := {
 		"default_flammability": 0, "default_base_conductivity": 0,
 		"presentation_key": "terrain.wall",
 	},
+	"rubber_floor": {
+		"terrain_id": "rubber_floor", "passable": true, "occupancy_capacity": 1,
+		"move_time_cost": 110, "terrain_water_exposure": 0,
+		"default_flammability": 45, "default_base_conductivity": 0,
+		"presentation_key": "terrain.rubber_floor",
+	},
+	"door_closed": {
+		"terrain_id": "door_closed", "passable": false, "occupancy_capacity": 0,
+		"move_time_cost": 0, "terrain_water_exposure": 0,
+		"default_flammability": 70, "default_base_conductivity": 4,
+		"presentation_key": "terrain.door_closed",
+	},
+	"door_open": {
+		"terrain_id": "door_open", "passable": true, "occupancy_capacity": 1,
+		"move_time_cost": 100, "terrain_water_exposure": 0,
+		"default_flammability": 70, "default_base_conductivity": 4,
+		"presentation_key": "terrain.door_open",
+	},
 }
 
 

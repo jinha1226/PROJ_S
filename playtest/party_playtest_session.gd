@@ -3497,6 +3497,8 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				if omit_unseen:continue
 				cells.append({"position":[x,y], "terrain_id":"unknown", "feature_id":"",
 					"visibility_state":"UNSEEN", "fire_intensity":0, "wetness":0,
+					"surface_id":"NONE", "surface_amount":0, "temperature":200,
+					"smoke_amount":0, "steam_amount":0, "flammable_gas_amount":0,
 					"effective_conductivity":0, "ground_mark_id":"",
 					"presentation_material_id":"",
 					"actors":[],"ground_items":[]})
@@ -3512,7 +3514,9 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 							"blood" if position in _opening_blood_positions else ""),
 					"presentation_material_id":presentation_material_id,
 					"visibility_state":"MEMORY","fire_intensity":0,
-					"wetness":0,"effective_conductivity":0,"actors":[],"ground_items":[]})
+					"wetness":0,"surface_id":"NONE","surface_amount":0,"temperature":200,
+					"smoke_amount":0,"steam_amount":0,"flammable_gas_amount":0,
+					"effective_conductivity":0,"actors":[],"ground_items":[]})
 				continue
 			var actors: Array = []
 			for visitor in visitors_by_cell.get(position_key,[]):
@@ -3558,7 +3562,10 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 					else ("blood" if position in _opening_blood_positions else ""),
 				"presentation_material_id":presentation_material_id,
 				"visibility_state":"VISIBLE", "fire_intensity":int(tile.fire),
-				"wetness":int(tile.wetness),
+				"wetness":int(tile.wetness), "surface_id":str(tile.surface_id),
+				"surface_amount":int(tile.surface_amount), "temperature":int(tile.temperature),
+				"smoke_amount":int(tile.smoke_amount), "steam_amount":int(tile.steam_amount),
+				"flammable_gas_amount":int(tile.flammable_gas_amount),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
 				"ground_items":ground_items_by_cell.get(position_key,[]).duplicate(true)})
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)

@@ -39,6 +39,11 @@ func sample(position: Vector2i, require_settled: bool = true):
 		if source_id != -1 and not sources.has(source_id):
 			sources.append(source_id)
 	sources.sort()
+	var pressure: int = tile.pressure()
+	var pressure_tier := "DANGEROUS" if pressure >= 1800 else (
+		"HIGH" if pressure >= 1300 else ("LOW" if pressure < 700 else "NORMAL"))
+	var atmosphere_risk := mini(100, maxi(tile.smoke_amount / 10,
+		tile.flammable_gas_amount / 10))
 	return ExposureSampleScript.new({
 		"position": position, "sampled_step_index": world.step_index,
 		"sampled_world_time": world.world_time,
@@ -52,8 +57,15 @@ func sample(position: Vector2i, require_settled: bool = true):
 		"terrain_water_exposure": terrain["terrain_water_exposure"],
 		"wetness": tile.wetness,
 		"water_exposure": maxi(int(terrain["terrain_water_exposure"]), tile.wetness),
+		"material_id": tile.material_id, "surface_id": tile.surface_id,
+		"surface_amount": tile.surface_amount, "temperature": tile.temperature,
+		"smoke_amount": tile.smoke_amount, "steam_amount": tile.steam_amount,
+		"flammable_gas_amount": tile.flammable_gas_amount,
+		"pressure": pressure, "pressure_tier": pressure_tier,
+		"vision_obscurity": mini(100, tile.smoke_amount / 8),
 		"conductivity": tile.effective_conductivity(),
-		"electric_risk": 0, "electric_certainty": "NONE", "poison_intensity": 0,
+		"electric_risk": 0, "electric_certainty": "NONE",
+		"poison_intensity": atmosphere_risk,
 		"fire_source_event_id": tile.fire_source_event_id,
 		"wetness_source_event_id": tile.wetness_source_event_id,
 		"source_event_ids": sources,

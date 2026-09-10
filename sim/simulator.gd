@@ -584,6 +584,13 @@ func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 			int(assessment.damage),"fire" if skill_id=="FIREBOLT" else "physical",
 			int(action.id),action.position,processed_step_index,int(target.health),false,false)
 		if not bool(applied.get("accepted",false)):return null
+		if skill_id=="FIREBOLT":
+			# The skill and direct environment actions share the same heat/ignition
+			# path. Damage remains on DamageSystem, so resistance/body handling is
+			# applied once.
+			if not environment.apply_heat(action.position,
+				maxi(100,int(assessment.damage)*20),int(action.id),processed_step_index):
+				return null
 	if int(assessment.healing)>0:
 		var target=world.entities[target_id];target.health+=int(assessment.healing)
 		if world.emit_event("health.restored",target_id,target_id,target.position,

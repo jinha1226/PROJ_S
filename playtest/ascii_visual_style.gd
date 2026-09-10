@@ -330,6 +330,11 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	var visibility := visibility_spec(cell)
 	var fire := clampi(int(cell.get("fire_intensity", cell.get("fire", 0))), 0, 100)
 	var wetness := clampi(int(cell.get("wetness", 0)), 0, 100)
+	var surface_id := str(cell.get("surface_id", "NONE"))
+	var surface_amount := clampi(int(cell.get("surface_amount", 0)), 0, 1000)
+	var temperature := clampi(int(cell.get("temperature", 200)), -1000, 4000)
+	var smoke := clampi(int(cell.get("smoke_amount", 0)), 0, 1000)
+	var flammable_gas := clampi(int(cell.get("flammable_gas_amount", 0)), 0, 1000)
 	var cues: Array[Dictionary] = []
 	if bool(visibility.draw_hazards) and fire > 0:
 		cues.append({"kind":"FIRE", "glyph":"^", "color_hex":"#ff7a3d", "value":fire,
@@ -337,10 +342,27 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	if bool(visibility.draw_hazards) and wetness > 0:
 		cues.append({"kind":"WET", "glyph":"~", "color_hex":"#62c8ff", "value":wetness,
 			"corner":"BOTTOM_RIGHT", "fill_alpha":0.08 + 0.20 * float(wetness) / 100.0})
+	if bool(visibility.draw_hazards) and surface_id == "OIL" and surface_amount > 0:
+		cues.append({"kind":"OIL", "glyph":"o", "color_hex":"#9b7c39", "value":surface_amount,
+			"corner":"TOP_RIGHT", "fill_alpha":0.08 + 0.18 * float(surface_amount) / 1000.0})
+	if bool(visibility.draw_hazards) and surface_id == "ICE" and surface_amount > 0:
+		cues.append({"kind":"ICE", "glyph":"*", "color_hex":"#b8efff", "value":surface_amount,
+			"corner":"BOTTOM_RIGHT", "fill_alpha":0.08 + 0.18 * float(surface_amount) / 1000.0})
+	if bool(visibility.draw_hazards) and temperature >= 700:
+		cues.append({"kind":"HEAT", "glyph":"'", "color_hex":"#ffb25c", "value":temperature,
+			"corner":"TOP_RIGHT", "fill_alpha":0.06})
+	if bool(visibility.draw_hazards) and smoke >= 80:
+		cues.append({"kind":"SMOKE", "glyph":"%", "color_hex":"#8b9298", "value":smoke,
+			"corner":"TOP_RIGHT", "fill_alpha":0.06 + 0.20 * float(smoke) / 1000.0})
+	if bool(visibility.draw_hazards) and flammable_gas >= 120:
+		cues.append({"kind":"GAS", "glyph":"!", "color_hex":"#b6d96a", "value":flammable_gas,
+			"corner":"TOP_RIGHT", "fill_alpha":0.08 + 0.18 * float(flammable_gas) / 1000.0})
 	# Conductivity remains inspectable simulation data, but it has no persistent
 	# floor glyph. Electricity should be communicated only when an actual event
 	# happens, not as a misleading lightning mark on every conductive tile.
 	return {"visibility_state":visibility.state, "fire":fire, "wetness":wetness,
+		"surface_id":surface_id,"surface_amount":surface_amount,
+		"temperature":temperature,"smoke":smoke,"flammable_gas":flammable_gas,
 		"cues":cues}.duplicate(true)
 
 

@@ -2,8 +2,8 @@ class_name SimWorldState
 extends RefCounted
 const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
-const SNAPSHOT_VERSION := 11
-const RULESET_VERSION := "phase5-combat-status-lifecycle-v1"
+const SNAPSHOT_VERSION := 12
+const RULESET_VERSION := "environment-simulation-v1"
 const CALENDAR_RULESET_ID := "abstract-calendar-v1"
 const TERRAIN_RULESET_ID := "terrain-registry-v1"
 const HAZARD_AFFINITY_RULESET_ID := "hazard-affinity-v1"
@@ -30,12 +30,13 @@ const MAX_SMALL_VALUE := 2147483647
 const BODY_RULESET_ID := "body-simulation-b1-v1"
 const BODY_COMBAT_RULESET_ID := "body-combat-b1-v1"
 const BODY_STATE_SCHEMA_ID := "body-state-v2"
-const ROLLBACK_MEMENTO_VERSION := 4
-# Packed rollback dynamic rows are [tile_index, wetness, fire,
-# fire_source_event_id, wetness_source_event_id, fire_damage_eligible_time].
+const ENVIRONMENT_RULESET_ID := "tile-environment-v1"
+const ROLLBACK_MEMENTO_VERSION := 5
+# Packed rollback dynamic rows contain the tile index, the five legacy
+# fire/wetness scalars, and nine environment-state scalars.
 # Terrain/flam/conductivity are bootstrap-static and are reconstructed from the
 # terrain registry on the rare restore path.
-const ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE := 6
+const ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE := 15
 const SimTileScript = preload("res://sim/sim_tile.gd")
 const SimEntityScript = preload("res://sim/sim_entity.gd")
 const SimEventScript = preload("res://sim/sim_event.gd")
@@ -68,6 +69,8 @@ const CombatProfileRegistryScript = preload("res://sim/combat_profile_registry.g
 const StatusRegistryScript = preload("res://sim/status_registry.gd")
 const MeleeCombatSystemScript = preload("res://sim/systems/melee_combat_system.gd")
 const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
+const EnvironmentConfigScript = preload("res://sim/environment_config.gd")
+const MaterialRegistryScript = preload("res://sim/material_registry.gd")
 const ProgressionRegistryScript=preload("res://sim/progression_registry.gd")
 const WeaponRegistryScript=preload("res://sim/weapon_registry.gd")
 const WeaponAttackRulesScript=preload("res://sim/weapon_attack_rules.gd")
@@ -619,11 +622,7 @@ func bootstrap_set_terrain(position: Vector2i, terrain_id: String) -> bool:
 	tile.terrain = terrain_id
 	tile.flammability = definition["default_flammability"]
 	tile.base_conductivity = definition["default_base_conductivity"]
-	tile.wetness = 0
-	tile.fire = 0
-	tile.fire_source_event_id = -1
-	tile.wetness_source_event_id = -1
-	tile.fire_damage_eligible_time = -1
+	_reset_tile_environment(tile, terrain_id)
 	_rollback_tile_terrain_cache = PackedStringArray()
 	track_dynamic_tile(position)
 	return true
@@ -647,9 +646,7 @@ func bootstrap_set_terrain_layout(terrain_rows:Array)->bool:
 		tile.terrain=terrain_id
 		tile.flammability=int(definition.default_flammability)
 		tile.base_conductivity=int(definition.default_base_conductivity)
-		tile.wetness=0;tile.fire=0
-		tile.fire_source_event_id=-1;tile.wetness_source_event_id=-1
-		tile.fire_damage_eligible_time=-1
+		_reset_tile_environment(tile, terrain_id)
 	_rollback_tile_terrain_cache=PackedStringArray()
 	_dynamic_tile_indices.clear();_dynamic_tile_index_ready=false
 	return true
@@ -689,6 +686,53 @@ func bootstrap_set_wetness(position: Vector2i, amount: int):
 	tile.wetness_source_event_id = event.id
 	track_dynamic_tile(position)
 	return event
+
+
+func bootstrap_set_surface(position: Vector2i, surface_id: String, amount: int):
+	if _active_step_index != -1 or step_index != 0 or world_time != 0 \
+			or not in_bounds(position) or surface_id not in ["WATER", "OIL", "ICE"] \
+			or amount < 1 or amount > EnvironmentConfigScript.MAX_MASS:
+		return null
+	var tile = tile_at(position)
+	var event_type := "environment.water_applied" if surface_id == "WATER" \
+		else "environment.surface_added"
+	var event = emit_event(event_type, -1, -1, position, amount, -1,
+		{"surface_id": surface_id, "requested_amount": amount})
+	if event == null: return null
+	tile.surface_id = surface_id
+	tile.surface_amount = amount
+	if surface_id == "WATER":
+		tile.wetness = mini(100, amount / 10)
+		tile.wetness_source_event_id = event.id
+	else:
+		tile.wetness = 0
+		tile.wetness_source_event_id = -1
+	track_dynamic_tile(position)
+	return event
+
+
+func bootstrap_set_temperature(position: Vector2i, temperature: int) -> bool:
+	if _active_step_index != -1 or step_index != 0 or world_time != 0 \
+			or not in_bounds(position) or temperature < -1000 \
+			or temperature > EnvironmentConfigScript.MAX_TEMPERATURE:
+		return false
+	tile_at(position).temperature = temperature
+	track_dynamic_tile(position)
+	return true
+
+
+func bootstrap_set_atmosphere(position: Vector2i, gas: int, smoke: int,
+		steam: int, flammable_gas: int, sealed_cell: bool = false) -> bool:
+	if _active_step_index != -1 or step_index != 0 or world_time != 0 \
+			or not in_bounds(position): return false
+	for value in [gas, smoke, steam, flammable_gas]:
+		if value < 0 or value > EnvironmentConfigScript.MAX_MASS: return false
+	var tile = tile_at(position)
+	tile.gas_amount = gas; tile.smoke_amount = smoke
+	tile.steam_amount = steam; tile.flammable_gas_amount = flammable_gas
+	tile.sealed = sealed_cell
+	track_dynamic_tile(position)
+	return true
 
 
 func begin_step(p_step_index: int) -> void:
@@ -899,6 +943,7 @@ func snapshot() -> Variant:
 		"party_member_schema_id": PARTY_MEMBER_SCHEMA_ID,
 		"body_ruleset_id":BODY_RULESET_ID,"body_combat_ruleset_id":BODY_COMBAT_RULESET_ID,
 		"body_state_schema_id":BODY_STATE_SCHEMA_ID,
+		"environment_ruleset_id": ENVIRONMENT_RULESET_ID,
 		"width": width, "height": height,
 		"step_index": str(step_index), "world_time": str(world_time), "seed": str(seed),
 		"rng_state": str(rng.state),
@@ -946,6 +991,15 @@ func rollback_memento(validate_state: bool = true) -> Variant:
 		tile_scalars.append(int(tile.fire_source_event_id))
 		tile_scalars.append(int(tile.wetness_source_event_id))
 		tile_scalars.append(int(tile.fire_damage_eligible_time))
+		tile_scalars.append(int(tile.temperature))
+		tile_scalars.append(int(tile.fuel_amount))
+		tile_scalars.append(_surface_code(tile.surface_id))
+		tile_scalars.append(int(tile.surface_amount))
+		tile_scalars.append(int(tile.gas_amount))
+		tile_scalars.append(int(tile.smoke_amount))
+		tile_scalars.append(int(tile.steam_amount))
+		tile_scalars.append(int(tile.flammable_gas_amount))
+		tile_scalars.append(1 if tile.sealed else 0)
 		dynamic_row_count += 1
 	tile_scalars[1] = dynamic_row_count
 	var entity_rows: Array = []
@@ -1089,7 +1143,7 @@ func runtime_dynamic_tiles_error() -> String:
 	_ensure_dynamic_tile_index()
 	for index_value in _dynamic_tile_indices:
 		var tile = tiles[int(index_value)]
-		if tile.wetness < 0 or tile.wetness > 100 or tile.fire < 0 or tile.fire > 100:
+		if not _tile_environment_valid(tile):
 			return "tile_scalar_invalid"
 		if (tile.fire == 0) != (tile.fire_source_event_id == -1) \
 				or (tile.fire == 0) != (tile.fire_damage_eligible_time == -1) \
@@ -1110,7 +1164,55 @@ func _ensure_dynamic_tile_index() -> void:
 func _tile_has_dynamic_state(tile) -> bool:
 	return tile.wetness != 0 or tile.fire != 0 \
 		or tile.fire_source_event_id != -1 or tile.wetness_source_event_id != -1 \
-		or tile.fire_damage_eligible_time != -1
+		or tile.fire_damage_eligible_time != -1 \
+		or tile.temperature != EnvironmentConfigScript.AMBIENT_TEMPERATURE \
+		or tile.fuel_amount != MaterialRegistryScript.initial_fuel(tile.material_id) \
+		or tile.surface_id != "NONE" or tile.surface_amount != 0 \
+		or tile.gas_amount != EnvironmentConfigScript.DEFAULT_GAS_AMOUNT \
+		or tile.smoke_amount != 0 or tile.steam_amount != 0 \
+		or tile.flammable_gas_amount != 0 or tile.sealed
+
+
+static func _reset_tile_environment(tile, terrain_id: String) -> void:
+	tile.material_id = MaterialRegistryScript.material_for_terrain(terrain_id)
+	tile.wetness = 0
+	tile.fire = 0
+	tile.fire_source_event_id = -1
+	tile.wetness_source_event_id = -1
+	tile.fire_damage_eligible_time = -1
+	tile.temperature = EnvironmentConfigScript.AMBIENT_TEMPERATURE
+	tile.fuel_amount = MaterialRegistryScript.initial_fuel(tile.material_id)
+	tile.surface_id = "NONE"
+	tile.surface_amount = 0
+	tile.gas_amount = EnvironmentConfigScript.DEFAULT_GAS_AMOUNT
+	tile.smoke_amount = 0
+	tile.steam_amount = 0
+	tile.flammable_gas_amount = 0
+	tile.sealed = false
+
+
+static func _surface_code(surface_id: String) -> int:
+	return ["NONE", "WATER", "OIL", "ICE"].find(surface_id)
+
+
+static func _surface_id(code: int) -> String:
+	return ["NONE", "WATER", "OIL", "ICE"][code] if code >= 0 and code < 4 else ""
+
+
+static func _tile_environment_valid(tile) -> bool:
+	if not MaterialRegistryScript.has(tile.material_id):
+		return false
+	if tile.wetness < 0 or tile.wetness > 100 or tile.fire < 0 or tile.fire > 100 \
+			or tile.temperature < -1000 or tile.temperature > EnvironmentConfigScript.MAX_TEMPERATURE:
+		return false
+	if tile.surface_id not in ["NONE", "WATER", "OIL", "ICE"] \
+			or (tile.surface_id == "NONE") != (tile.surface_amount == 0):
+		return false
+	for value in [tile.fuel_amount, tile.surface_amount, tile.gas_amount,
+			tile.smoke_amount, tile.steam_amount, tile.flammable_gas_amount]:
+		if value < 0 or value > EnvironmentConfigScript.MAX_MASS:
+			return false
+	return true
 
 
 func _ensure_rollback_tile_static_cache() -> void:
@@ -1199,9 +1301,7 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		if terrain_definition.is_empty(): return null
 		tile.flammability = int(terrain_definition.default_flammability)
 		tile.base_conductivity = int(terrain_definition.default_base_conductivity)
-		tile.wetness = 0; tile.fire = 0
-		tile.fire_source_event_id = -1; tile.wetness_source_event_id = -1
-		tile.fire_damage_eligible_time = -1
+		_reset_tile_environment(tile, tile.terrain)
 	var previous_dynamic_tile := -1
 	for row_index in range(int(scalar_values[1])):
 		var offset := 2 + row_index * ROLLBACK_TILE_DYNAMIC_SCALAR_STRIDE
@@ -1215,6 +1315,15 @@ static func from_rollback_memento(value: Variant) -> SimWorldState:
 		tile.fire_source_event_id = int(scalar_values[offset + 3])
 		tile.wetness_source_event_id = int(scalar_values[offset + 4])
 		tile.fire_damage_eligible_time = int(scalar_values[offset + 5])
+		tile.temperature = int(scalar_values[offset + 6])
+		tile.fuel_amount = int(scalar_values[offset + 7])
+		tile.surface_id = _surface_id(int(scalar_values[offset + 8]))
+		tile.surface_amount = int(scalar_values[offset + 9])
+		tile.gas_amount = int(scalar_values[offset + 10])
+		tile.smoke_amount = int(scalar_values[offset + 11])
+		tile.steam_amount = int(scalar_values[offset + 12])
+		tile.flammable_gas_amount = int(scalar_values[offset + 13])
+		tile.sealed = int(scalar_values[offset + 14]) == 1
 		restored._dynamic_tile_indices[tile_index] = true
 	restored._dynamic_tile_index_ready = true
 	restored.entities.clear()
@@ -1378,8 +1487,11 @@ static func snapshot_header_error(data: Dictionary) -> String:
 			["party_member_schema_id", PARTY_MEMBER_SCHEMA_ID],
 			["body_ruleset_id",BODY_RULESET_ID],
 			["body_combat_ruleset_id",BODY_COMBAT_RULESET_ID],
-			["body_state_schema_id",BODY_STATE_SCHEMA_ID]]:
+		["body_state_schema_id",BODY_STATE_SCHEMA_ID]]:
 		if not (data.get(pair[0]) is String) or data.get(pair[0]) != pair[1]: return "unsupported_%s" % pair[0]
+	if not (data.get("environment_ruleset_id") is String) \
+			or data.environment_ruleset_id != ENVIRONMENT_RULESET_ID:
+		return "unsupported_environment_ruleset"
 	return ""
 
 
@@ -1392,7 +1504,7 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 			"body_ruleset_id", "body_state_schema_id",
 			"body_states", "calendar_ruleset_id", "combat_profile_ruleset_id",
 			"combat_ruleset_id", "combatant_schema_id", "combatant_states", "decision_ruleset_id",
-			"encounter_lab", "entities", "events", "hazard_affinity_ruleset_id", "height",
+			"encounter_lab", "entities", "environment_ruleset_id", "events", "hazard_affinity_ruleset_id", "height",
 			"item_state", "keyed_hash_ruleset_id", "life_ruleset_id", "next_entity_id", "next_event_id",
 			"next_schedule_id",
 			"party_encounter", "party_member_schema_id", "personal_relations", "personality_generator_ruleset_id",
@@ -1431,6 +1543,8 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 	for row in data["tiles"]:
 		if not (row is Dictionary) or not _exact_keys(row, ["base_conductivity",
 				"fire", "fire_damage_eligible_time", "fire_source_event_id", "flammability",
+				"flammable_gas_amount", "fuel_amount", "gas_amount", "material_id", "sealed",
+				"smoke_amount", "steam_amount", "surface_amount", "surface_id", "temperature",
 				"terrain", "wetness", "wetness_source_event_id"]) \
 				or not (row.get("terrain") is String):
 			return "invalid_tile_shape"
@@ -1442,6 +1556,20 @@ static func snapshot_wire_error(data: Dictionary) -> String:
 		for key in ["fire_source_event_id", "wetness_source_event_id", "fire_damage_eligible_time"]:
 			if not Int64CodecScript.is_canonical(row.get(key)):
 				return "noncanonical_tile_%s" % key
+		if not row.get("material_id") is String \
+				or not MaterialRegistryScript.has(str(row.material_id)):
+			return "invalid_tile_material"
+		if row.get("surface_id") not in ["NONE", "WATER", "OIL", "ICE"]:
+			return "invalid_tile_surface"
+		for key in ["fuel_amount", "surface_amount", "gas_amount", "smoke_amount",
+				"steam_amount", "flammable_gas_amount"]:
+			if not _is_small_int(row.get(key), 0, EnvironmentConfigScript.MAX_MASS):
+				return "invalid_tile_%s" % key
+		if not _is_small_int(row.get("temperature"), -1000, EnvironmentConfigScript.MAX_TEMPERATURE) \
+				or not row.get("sealed") is bool:
+			return "invalid_tile_environment_state"
+		if (str(row.surface_id) == "NONE") != (int(row.surface_amount) == 0):
+			return "invalid_tile_surface_sentinel"
 	if not (data.get("entities") is Array):
 		return "invalid_entities_shape"
 	var entity_ids: Dictionary = {}
@@ -1960,8 +2088,7 @@ func _restored_state_error() -> String:
 			return "unknown_terrain_id"
 		if tile.flammability < 0 or tile.flammability > 100 \
 				or tile.base_conductivity < 0 or tile.base_conductivity > 100 \
-				or tile.wetness < 0 or tile.wetness > 100 \
-				or tile.fire < 0 or tile.fire > 100:
+				or not _tile_environment_valid(tile):
 			return "tile_scalar_invalid"
 	if step_index < 0:
 		return "negative_step_index"
@@ -3628,6 +3755,17 @@ func _canonical_environment_damage_source_error(event, damage_type: String,
 			or source.instigator_id != event.instigator_id:
 		return "canonical_typed_damage_source_envelope_invalid"
 	if damage_type == "fire":
+		if source.type == "environment.explosion_wave":
+			if source.step_index != event.step_index or source.world_time != event.world_time \
+					or requested_damage > mini(
+						EnvironmentRulesScript.FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK,
+						source.magnitude) \
+					or not _exact_keys(source.data, ["distance", "kind"]) \
+					or source.data.get("kind") != "combustion" \
+					or not source.data.get("distance") is int \
+					or int(source.data.distance) < 0:
+				return "canonical_fire_damage_source_invalid"
+			return ""
 		if source.type not in ["environment.ignited", "environment.fire_spread"] \
 				or source.step_index > event.step_index or source.world_time > event.world_time \
 				or requested_damage > mini(

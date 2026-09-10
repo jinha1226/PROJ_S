@@ -6,7 +6,7 @@ const WorldState = preload("res://sim/world_state.gd")
 const Int64Codec = preload("res://sim/int64_codec.gd")
 
 
-func test_snapshot_v3_header_and_json_round_trip_preserve_all_state() -> bool:
+func test_snapshot_v12_header_and_json_round_trip_preserve_all_state() -> bool:
 	var sim = Simulator.new(2, 1, 4142397736433585562)
 	var actor = sim.world.add_entity("human", "Actor", Vector2i.ZERO)
 	sim.world.tile_at(Vector2i.ZERO).flammability = 100
@@ -15,8 +15,9 @@ func test_snapshot_v3_header_and_json_round_trip_preserve_all_state() -> bool:
 	var source: Dictionary = sim.snapshot()
 	check_eq([source.snapshot_version, source.ruleset_version,
 		source.terrain_ruleset_id, source.hazard_affinity_ruleset_id],
-		[11, "phase5-combat-status-lifecycle-v1", "terrain-registry-v1", "hazard-affinity-v1"],
-		"v11 semantic header")
+		[12, "environment-simulation-v1", "terrain-registry-v1", "hazard-affinity-v1"],
+		"v12 semantic header")
+	check_eq(source.environment_ruleset_id, "tile-environment-v1", "environment ruleset")
 	check(source.has("party_encounter") and source.party_encounter == null, "v6 canonical party null")
 	check_eq([source.combat_ruleset_id,source.combat_profile_ruleset_id,source.combatant_schema_id,
 		source.agent_state_schema_id,source.life_ruleset_id,source.status_ruleset_id,source.party_member_schema_id],

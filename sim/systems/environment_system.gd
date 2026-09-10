@@ -5,6 +5,9 @@ const ENVIRONMENT_INTERVAL := 100
 const CONDUCTION_THRESHOLD := 25
 const ELECTRIC_POWER_LOSS_PER_TILE := 8
 const EnvironmentRulesScript = preload("res://sim/environment_rules.gd")
+const Config = preload("res://sim/environment_config.gd")
+const Materials = preload("res://sim/material_registry.gd")
+const Terrain = preload("res://sim/terrain_registry.gd")
 const FIRE_DECAY_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.FIRE_DECAY_PER_ENVIRONMENT_TICK
 const WETNESS_DECAY_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.WETNESS_DECAY_PER_ENVIRONMENT_TICK
 const FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK := EnvironmentRulesScript.FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK
@@ -46,6 +49,9 @@ func try_ignite(position: Vector2i, power: int, cause_id: int,
 	var evaporated: int = preview["evaporated"]
 	if evaporated > 0:
 		tile.wetness -= evaporated
+		if tile.surface_id == "WATER":
+			tile.surface_amount = maxi(0, tile.surface_amount - evaporated * 10)
+			if tile.surface_amount == 0: tile.surface_id = "NONE"
 		evaporation = world.emit_event(
 			"environment.wetness_evaporated", -1, -1, position, evaporated, cause_id,
 			{"from_position": [from_position.x, from_position.y]}
@@ -79,7 +85,15 @@ func try_ignite(position: Vector2i, power: int, cause_id: int,
 
 
 func _preview_ignite(tile, power: int) -> Dictionary:
-	if tile.flammability <= 0:
+	var effective_flammability: int = maxi(tile.flammability,
+		90 if tile.surface_id == "OIL" and tile.surface_amount > 0 else 0)
+	if tile.flammable_gas_amount >= Config.FLAMMABLE_GAS_IGNITION:
+		effective_flammability = maxi(effective_flammability, 100)
+	var combustible: bool = effective_flammability > 0 and (tile.fuel_amount > 0 \
+		or Materials.initial_fuel(tile.material_id) == 0) \
+		or tile.surface_id == "OIL" and tile.surface_amount > 0 \
+		or tile.flammable_gas_amount >= Config.FLAMMABLE_GAS_IGNITION
+	if not combustible:
 		return {"reason": "nonflammable", "evaporated": 0, "resulting_fire": 0}
 	if tile.fire > 0:
 		return {"reason": "already_burning", "evaporated": 0, "resulting_fire": 0}
@@ -89,7 +103,7 @@ func _preview_ignite(tile, power: int) -> Dictionary:
 	if remaining_power <= 0:
 		return {"reason": "wet", "evaporated": evaporated, "resulting_fire": 0}
 	return {"reason": "", "evaporated": evaporated,
-		"resulting_fire": mini(remaining_power, tile.flammability)}
+		"resulting_fire": mini(remaining_power, effective_flammability)}
 
 
 func apply_water(position: Vector2i, amount: int, cause_id: int,
@@ -105,6 +119,10 @@ func apply_water(position: Vector2i, amount: int, cause_id: int,
 	if actual_increase > 0:
 		tile.wetness += actual_increase
 		tile.wetness_source_event_id = water_event.id
+		if tile.surface_id in ["NONE", "WATER"]:
+			tile.surface_id = "WATER"
+			tile.surface_amount = mini(Config.MAX_MASS,
+				tile.surface_amount + actual_increase * 10)
 	world.track_dynamic_tile(position)
 	return true
 
@@ -149,6 +167,7 @@ func discharge(position: Vector2i, power: int, cause_id: int,
 func process_tick(processed_step_index: int) -> bool:
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index:
 		return false
+	_process_passive_environment(processed_step_index)
 	var burning_positions: Array[Vector2i] = []
 	for position in world.dynamic_tile_positions():
 		if world.tile_at(position).fire > 0: burning_positions.append(position)
@@ -170,6 +189,206 @@ func process_tick(processed_step_index: int) -> bool:
 	return true
 
 
+func apply_heat(position: Vector2i, amount: int, cause_id: int,
+		processed_step_index: int) -> bool:
+	if not world.in_bounds(position) or amount <= 0 \
+			or not _processed_step_matches(processed_step_index): return false
+	var tile = world.tile_at(position)
+	var applied := mini(amount, Config.MAX_TEMPERATURE - tile.temperature)
+	var event = world.emit_event("environment.heat_applied", -1, -1, position,
+		applied, cause_id)
+	if event == null: return false
+	tile.temperature += applied
+	world.track_dynamic_tile(position)
+	if tile.fire == 0:
+		var material: Dictionary = Materials.definition(tile.material_id)
+		if tile.temperature >= int(material.get("ignition_temperature", Config.MAX_TEMPERATURE)) \
+				or tile.surface_id == "OIL" and tile.temperature >= 500:
+			try_ignite(position, mini(100, maxi(1, amount / 10)), event.id,
+				processed_step_index)
+	return true
+
+
+func explode(position: Vector2i, power: int, cause_id: int,
+		processed_step_index: int, explosion_kind: String = "combustion") -> bool:
+	if not world.in_bounds(position) or power < 1 or power > 100 \
+			or explosion_kind not in ["combustion", "rupture"] \
+			or not _processed_step_matches(processed_step_index): return false
+	var root = world.emit_event("environment.explosion", -1, -1, position, power,
+		cause_id, {"kind": explosion_kind})
+	if root == null: return false
+	var queue: Array[Dictionary] = [{"position": position, "power": power,
+		"distance": 0, "parent_id": root.id}]
+	var best_power: Dictionary = {}
+	var processed := 0
+	while not queue.is_empty() and processed < Config.MAX_EXPLOSION_CHAIN:
+		var row: Dictionary = queue.pop_front()
+		var current: Vector2i = row.position
+		var remaining: int = row.power
+		if remaining <= int(best_power.get(current, 0)): continue
+		best_power[current] = remaining; processed += 1
+		var wave = world.emit_event("environment.explosion_wave", -1, -1,
+			current, remaining, int(row.parent_id), {"kind": explosion_kind,
+				"distance": int(row.distance)})
+		if wave == null: return false
+		var tile = world.tile_at(current)
+		tile.temperature = mini(Config.MAX_TEMPERATURE,
+			tile.temperature + remaining * (2 if explosion_kind == "combustion" else 1))
+		world.track_dynamic_tile(current)
+		if explosion_kind == "combustion":
+			for entity in world.exposed_entities_at(current):
+				damage_system.apply_damage(entity,
+					mini(FIRE_DAMAGE_CAP_PER_ENVIRONMENT_TICK, remaining), "fire",
+					wave.id, current, processed_step_index)
+		for neighbor in world.cardinal_neighbors(current):
+			var terrain: Dictionary = Terrain.definition(world.tile_at(neighbor).terrain)
+			var cover_loss := Config.COVER_POWER_LOSS if not bool(terrain.get("passable", false)) else 0
+			var next_power := remaining - Config.EXPLOSION_POWER_LOSS_PER_TILE - cover_loss
+			if next_power > int(best_power.get(neighbor, 0)):
+				queue.append({"position": neighbor, "power": next_power,
+					"distance": int(row.distance) + 1, "parent_id": wave.id})
+	if processed >= Config.MAX_EXPLOSION_CHAIN and not queue.is_empty():
+		world.emit_event("environment.explosion_chain_stopped", -1, -1,
+			position, processed, root.id)
+	return true
+
+
+func _process_passive_environment(processed_step_index: int) -> void:
+	var positions: Array[Vector2i] = world.dynamic_tile_positions()
+	var included: Dictionary = {}
+	for position in positions:
+		included[position] = true
+		for neighbor in world.cardinal_neighbors(position): included[neighbor] = true
+	positions.assign(included.keys())
+	positions.sort_custom(func(a: Vector2i, b: Vector2i):
+		return a.y < b.y or (a.y == b.y and a.x < b.x))
+	var temperature_delta: Dictionary = {}
+	var gas_deltas: Dictionary = {}
+	for position in positions:
+		temperature_delta[position] = 0
+		gas_deltas[position] = [0, 0, 0, 0]
+	for position in positions:
+		var tile = world.tile_at(position)
+		for neighbor in [position + Vector2i.RIGHT, position + Vector2i.DOWN]:
+			if not world.in_bounds(neighbor) or not included.has(neighbor): continue
+			var other = world.tile_at(neighbor)
+			var a_material: Dictionary = Materials.definition(tile.material_id)
+			var b_material: Dictionary = Materials.definition(other.material_id)
+			var conductivity := mini(int(a_material.thermal_conductivity),
+				int(b_material.thermal_conductivity))
+			var energy: int = (tile.temperature - other.temperature) * conductivity \
+				/ Config.HEAT_FLOW_DIVISOR
+			temperature_delta[position] -= energy / maxi(1, int(a_material.heat_capacity))
+			temperature_delta[neighbor] += energy / maxi(1, int(b_material.heat_capacity))
+			if _gas_connection_open(position, neighbor):
+				for component in range(4):
+					var difference := _gas_component(tile, component) \
+						- _gas_component(other, component)
+					var transfer := difference / Config.FLOW_DIVISOR
+					gas_deltas[position][component] -= transfer
+					gas_deltas[neighbor][component] += transfer
+	for position in positions:
+		var tile = world.tile_at(position)
+		tile.temperature = clampi(tile.temperature + int(temperature_delta[position]),
+			-1000, Config.MAX_TEMPERATURE)
+		var delta: Array = gas_deltas[position]
+		tile.gas_amount = clampi(tile.gas_amount + int(delta[0]), 0, Config.MAX_MASS)
+		tile.smoke_amount = clampi(tile.smoke_amount + int(delta[1]), 0, Config.MAX_MASS)
+		tile.steam_amount = clampi(tile.steam_amount + int(delta[2]), 0, Config.MAX_MASS)
+		tile.flammable_gas_amount = clampi(tile.flammable_gas_amount + int(delta[3]), 0, Config.MAX_MASS)
+		_apply_open_boundary_loss(position, tile)
+		_apply_phase_change(position, tile)
+		_apply_combustion(position, tile)
+		if tile.sealed and tile.pressure() > Config.RUPTURE_PRESSURE:
+			var rupture = world.emit_event("environment.container_ruptured", -1, -1,
+				position, mini(100, tile.pressure() / 20), -1,
+				{"pressure": tile.pressure()})
+			tile.sealed = false
+			explode(position, mini(100, maxi(1, tile.pressure() / 20)),
+				rupture.id, processed_step_index, "rupture")
+		if tile.fire > 0 and tile.flammable_gas_amount >= Config.FLAMMABLE_GAS_IGNITION:
+			var consumed := mini(tile.flammable_gas_amount, tile.fire * 4)
+			tile.flammable_gas_amount -= consumed
+			explode(position, mini(100, maxi(1, consumed / 4)),
+				tile.fire_source_event_id, processed_step_index, "combustion")
+		world.track_dynamic_tile(position)
+
+
+func _apply_phase_change(position: Vector2i, tile) -> void:
+	if tile.surface_id == "WATER" and tile.temperature <= Config.FREEZING_TEMPERATURE:
+		tile.surface_id = "ICE"; tile.wetness = 0; tile.wetness_source_event_id = -1
+		world.emit_event("environment.water_frozen", -1, -1, position,
+			tile.surface_amount, -1)
+	elif tile.surface_id == "ICE" and tile.temperature >= Config.MELTING_TEMPERATURE:
+		tile.surface_id = "WATER"; tile.wetness = mini(100, tile.surface_amount / 10)
+		var event = world.emit_event("environment.ice_melted", -1, -1, position,
+			tile.surface_amount, -1)
+		tile.wetness_source_event_id = event.id
+	if tile.surface_id == "WATER" and tile.temperature >= Config.BOILING_TEMPERATURE:
+		var amount := mini(Config.PHASE_CHANGE_RATE, tile.surface_amount)
+		tile.surface_amount -= amount; tile.steam_amount = mini(Config.MAX_MASS,
+			tile.steam_amount + amount)
+		tile.wetness = mini(100, tile.surface_amount / 10)
+		if tile.surface_amount == 0:
+			tile.surface_id = "NONE"; tile.wetness_source_event_id = -1
+		world.emit_event("environment.water_evaporated", -1, -1, position, amount, -1)
+	elif tile.steam_amount > 0 and tile.temperature <= Config.CONDENSATION_TEMPERATURE \
+			and tile.surface_id in ["NONE", "WATER"]:
+		var amount := mini(Config.PHASE_CHANGE_RATE, tile.steam_amount)
+		tile.steam_amount -= amount; tile.surface_id = "WATER"
+		tile.surface_amount = mini(Config.MAX_MASS, tile.surface_amount + amount)
+		tile.wetness = mini(100, tile.surface_amount / 10)
+		var event = world.emit_event("environment.steam_condensed", -1, -1,
+			position, amount, -1)
+		tile.wetness_source_event_id = event.id
+
+
+func _apply_combustion(position: Vector2i, tile) -> void:
+	if tile.fire <= 0: return
+	var consumed := 0
+	if tile.surface_id == "OIL":
+		consumed = mini(Config.OIL_BURN_RATE, tile.surface_amount)
+		tile.surface_amount -= consumed
+		if tile.surface_amount == 0: tile.surface_id = "NONE"
+	elif tile.fuel_amount > 0:
+		consumed = mini(tile.fuel_amount,
+			maxi(1, tile.fire / Config.FIRE_FUEL_USE_DIVISOR))
+		tile.fuel_amount -= consumed
+	if consumed > 0:
+		tile.temperature = mini(Config.MAX_TEMPERATURE,
+			tile.temperature + tile.fire * Config.FIRE_HEAT_PER_INTENSITY)
+		tile.smoke_amount = mini(Config.MAX_MASS,
+			tile.smoke_amount + consumed * Config.SMOKE_PER_FUEL)
+		world.emit_event("environment.fuel_consumed", -1, -1, position,
+			consumed, tile.fire_source_event_id,
+			{"fuel_kind": "OIL" if tile.surface_id == "OIL" else tile.material_id})
+
+
+func _gas_connection_open(a: Vector2i, b: Vector2i) -> bool:
+	var first = world.tile_at(a); var second = world.tile_at(b)
+	if first.sealed or second.sealed: return false
+	return first.terrain not in ["wall", "door_closed"] \
+		and second.terrain not in ["wall", "door_closed"]
+
+
+func _gas_component(tile, component: int) -> int:
+	return [tile.gas_amount, tile.smoke_amount, tile.steam_amount,
+		tile.flammable_gas_amount][component]
+
+
+func _apply_open_boundary_loss(position: Vector2i, tile) -> void:
+	if tile.sealed or tile.terrain in ["wall", "door_closed"]: return
+	if position.x > 0 and position.y > 0 and position.x < world.width - 1 \
+			and position.y < world.height - 1: return
+	for property in ["smoke_amount", "steam_amount", "flammable_gas_amount"]:
+		var amount: int = tile.get(property)
+		tile.set(property, maxi(0, amount - mini(Config.GAS_LOSS_AT_OPEN_EDGE,
+			maxi(1, amount / Config.FLOW_DIVISOR))))
+	tile.gas_amount += (Config.DEFAULT_GAS_AMOUNT - tile.gas_amount) / Config.FLOW_DIVISOR
+	tile.temperature += (Config.AMBIENT_TEMPERATURE - tile.temperature) \
+		/ Config.HEAT_LOSS_AT_OPEN_EDGE
+
+
 func _tick_existing_fire(position: Vector2i) -> void:
 	var tile = world.tile_at(position)
 	if tile.fire <= 0:
@@ -180,6 +399,9 @@ func _tick_existing_fire(position: Vector2i) -> void:
 	if suppression > 0:
 		tile.fire = projection["fire_after_suppression"]
 		tile.wetness = projection["wetness_after_suppression"]
+		if tile.surface_id == "WATER":
+			tile.surface_amount = maxi(0, tile.surface_amount - suppression * 10)
+			if tile.surface_amount == 0: tile.surface_id = "NONE"
 		var event_type := "environment.fire_extinguished" if tile.fire == 0 else "environment.fire_weakened"
 		world.emit_event(event_type, -1, -1, position, suppression, tile.wetness_source_event_id)
 		if tile.wetness == 0:
@@ -255,6 +477,10 @@ func _decay_wetness() -> void:
 	for position in world.dynamic_tile_positions():
 		var tile = world.tile_at(position)
 		if tile.wetness <= 0:
+			continue
+		if tile.surface_id == "WATER" and tile.surface_amount > 0:
+			tile.wetness = mini(100, tile.surface_amount / 10)
+			world.track_dynamic_tile(position)
 			continue
 		tile.wetness = maxi(0, tile.wetness - WETNESS_DECAY_PER_ENVIRONMENT_TICK)
 		if tile.wetness == 0:
