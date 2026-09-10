@@ -14,11 +14,11 @@ const CampaignStream=preload("res://sim/campaign_encounter_stream.gd")
 const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
-const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120}
-const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND"]
+const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120}
+const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL"]
 
 static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
-		in_transaction:bool=false)->Dictionary:
+		in_transaction:bool=false, ground_position:Vector2i=Vector2i(-1,-1))->Dictionary:
 	var rejected:={"accepted":false,"reason":"active_skill_unavailable",
 		"message":"지금은 기술을 사용할 수 없습니다.","skill_id":skill_id,
 		"actor_id":actor_id,"target_id":target_id,"cost":0,"action_time":0}
@@ -43,6 +43,22 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
+	if skill_id=="FIREBALL":
+		var definition:=Registry.definition(skill_id)
+		if target_id!=-1 or not world.in_bounds(ground_position):
+			return _reject(rejected,"active_skill_target_invalid","물이나 바닥을 선택하세요.")
+		var origin:Vector2i=world.entities[actor_id].position
+		if maxi(absi(origin.x-ground_position.x),absi(origin.y-ground_position.y))>int(definition.range):
+			return _reject(rejected,"active_skill_out_of_range","사거리 밖입니다.")
+		if not preload("res://sim/enemy_perception_registry.gd").has_line_of_sight(world,origin,ground_position) \
+				or PartyPerception.visible_party_members(world,state,ground_position).is_empty():
+			return _reject(rejected,"active_skill_target_hidden","보이는 칸을 선택하세요.")
+		if member.energy<int(definition.cost):
+			return _reject(rejected,"active_skill_energy_insufficient","기력이 부족합니다.")
+		return {"accepted":true,"reason":"ok","message":"환경 시험용 화염구",
+			"skill_id":skill_id,"actor_id":actor_id,"target_id":-1,"cost":int(definition.cost),
+			"action_time":preload("res://sim/field_action_timing.gd").duration(world,actor_id,skill_id,120),
+			"damage":0,"healing":0,"destination":ground_position,"ruleset_id":RULESET_ID}
 	if not world.entities.has(target_id) or not world.combatant_states.has(target_id):
 		return _reject(rejected,"active_skill_target_invalid","대상을 선택하세요.")
 	var ally_skill:=skill_id=="MEND"

@@ -48,7 +48,10 @@ func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION"
 	energy = DEFAULT_MAX_ENERGY
 
 func active_skill_ids() -> Array:
-	return SkillLoadoutScript.skills(skill_loadout_id)
+	var skills:Array=SkillLoadoutScript.skills(skill_loadout_id)
+	# Temporary environment playtest grant; no save/loadout migration needed.
+	if role=="PROTAGONIST":skills.append("FIREBALL")
+	return skills
 
 func refill_energy() -> bool:
 	if energy==DEFAULT_MAX_ENERGY:return false

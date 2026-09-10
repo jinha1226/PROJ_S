@@ -2,7 +2,7 @@ class_name PartyActionCommand
 extends RefCounted
 
 const TYPES := ["HOLD", "MOVE", "MELEE", "SKILL"]
-const ACTIVE_SKILL_IDS := ["STRIKE","SHOVE","FIREBOLT","MEND"]
+const ACTIVE_SKILL_IDS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 var type: String
 var actor_id: int
@@ -22,6 +22,9 @@ static func melee(actor_id: int, target_id: int): return load("res://sim/party_a
 static func skill(actor_id: int, skill_id: String, target_id: int):
 	return load("res://sim/party_action_command.gd").new("SKILL", actor_id,
 		Vector2i(-1,-1), target_id, skill_id)
+
+static func skill_at(actor_id:int, skill_id:String, position:Vector2i):
+	return load("res://sim/party_action_command.gd").new("SKILL", actor_id, position, -1, skill_id)
 
 func to_dict() -> Dictionary:
 	var row:={"type": type, "actor_id": str(actor_id),
@@ -60,6 +63,10 @@ static func wire_error(row: Variant) -> String:
 		if not (value is int or value is float and value == floor(value)) \
 				or int(value) < -2147483648 or int(value) > 2147483647:return "invalid_party_destination"
 	var target:=Int64CodecScript.parse(row.target_id,"target")
+	if row.type=="SKILL" and row.skill_id=="FIREBALL":
+		if target!=-1:return "party_target_forbidden"
+		if int(row.destination[0])<0 or int(row.destination[1])<0:return "skill_destination_required"
+		return ""
 	if row.type in ["MELEE","SKILL"] and target<=0:return "party_target_required"
 	if row.type not in ["MELEE","SKILL"] and target!=-1:return "party_target_forbidden"
 	if row.type=="MOVE" and Vector2i(int(row.destination[0]),int(row.destination[1]))==Vector2i(-1,-1):return "move_destination_required"

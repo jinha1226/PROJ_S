@@ -5,6 +5,7 @@ extends RefCounted
 const RULESET_ID:="active-combat-prototype-v1"
 const MAX_ENERGY:=12
 const SKILLS:={
+	"FIREBALL":{"name":"화염구(시험)","cost":3,"range":5,"target":"TILE","effect":"HEAT","power":1400,"element":"FIRE"},
 	"STRIKE":{"name":"강타","cost":3,"range":1,"target":"ENEMY","effect":"DAMAGE","power":30,"element":"PHYSICAL"},
 	"FIREBOLT":{"name":"화염탄","cost":3,"range":5,"target":"ENEMY","effect":"DAMAGE","power":32,"element":"FIRE"},
 	"BARRIER":{"name":"보호막","cost":4,"range":4,"target":"ALLY","effect":"BARRIER","power":28,"element":"NONE"},

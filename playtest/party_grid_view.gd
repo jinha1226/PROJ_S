@@ -644,6 +644,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"MISS":500,"DEATH":560}.get(kind,360)) if product_style \
 		else (680 if kind=="DEATH" else (900 if kind=="FLOATING_AMOUNT" \
 		else (700 if kind=="MISS" else 520)))
+	if kind in ["FIREBALL","STEAM"]:duration_ms=1000
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
 	var started_at:=int(effect.get("started_at_ms",now))
 	var elapsed_ms:=maxi(0,now-started_at)
@@ -675,6 +676,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
 		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"ASCII_BURST"}.get(kind,"NONE"))
+	if kind in ["FIREBALL","STEAM"]:primitive=kind
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
 		if kind in ["FLOATING_AMOUNT","MISS"]:opacity=pow(1.0-age_ratio,1.15)
@@ -689,6 +691,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		particles=_deterministic_death_particles(int(effect.get("event_id",0)),pixel_center,
 			cell_size_px(),age_ratio,str(effect.get("text","*")))
 	return {"effect_id":str(effect.get("effect_id","")),"event_id":int(effect.get("event_id",-1)),
+		"projectile_origin":world_to_pixel_center(_array_to_world_position(effect.get("attacker_grid_pos",world_value))),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
 		"world_position":[world_position.x,world_position.y],
 		"visible":is_world_cell_visible(world_position),
@@ -2950,6 +2953,11 @@ func _draw_ground_hazards()->void:
 
 func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
 	var center:=rect.get_center();var cell:=rect.size.x;var phase:=int(spec.get("phase",0))
+	if int(spec.get("steam",0))>0:
+		for i in range(3):
+			var size:=Vector2.ONE*maxf(2.0,cell*0.16)
+			var offset:=Vector2((i-1)*cell*0.18,-cell*(0.13+i*0.08))
+			draw_rect(Rect2(center+offset-size*0.5,size),Color(0.88,0.96,1,0.4))
 	if int(spec.get("wetness",0))>0:
 		var shift:=(float(phase)-1.5)*cell*0.035
 		_draw_centered_text(RegularFont,"~",center+Vector2(0,shift),
@@ -3117,6 +3125,7 @@ func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:
 	for cue in spec.cues:
 		var color:=_visual_color(str(cue.color_hex),1.0);var center:=rect.get_center()
 		match str(cue.corner):
+			"TOP_LEFT":center=rect.position+Vector2(rect.size.x*0.26,rect.size.y*0.25)
 			"BOTTOM_LEFT":center=rect.position+Vector2(rect.size.x*0.25,rect.size.y*0.76)
 			"BOTTOM_RIGHT":center=rect.position+Vector2(rect.size.x*0.76,rect.size.y*0.76)
 			"TOP_RIGHT":center=rect.position+Vector2(rect.size.x*0.77,rect.size.y*0.25)

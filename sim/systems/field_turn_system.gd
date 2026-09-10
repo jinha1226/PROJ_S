@@ -22,7 +22,7 @@ static func assess(sim,action)->Dictionary:
 	if action.type in ["MELEE","SKILL"] and action.target_id in world.party_encounter.enemy_ids \
 			and not Rules.visible(world,action.target_id):
 		rejected.reason="field_target_unseen";return rejected
-	if action.type=="SKILL":return Skills.assess(world,action.actor_id,action.skill_id,action.target_id)
+	if action.type=="SKILL":return Skills.assess(world,action.actor_id,action.skill_id,action.target_id,false,false,action.destination)
 	var error:String=sim.party_coordinator._action_error(action)
 	if not error.is_empty():rejected.reason=error;return rejected
 	return {"accepted":true,"reason":"ok","time_cost":int(sim.party_coordinator._action_row(
@@ -123,7 +123,7 @@ static func _earlier(best:Dictionary,at:int,id:int,end:int)->Dictionary:
 static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 	var world=sim.world;var coordinator=sim.party_coordinator
 	if action.type=="SKILL":
-		var skill:Dictionary=Skills.assess(world,action.actor_id,action.skill_id,action.target_id,false,true)
+		var skill:Dictionary=Skills.assess(world,action.actor_id,action.skill_id,action.target_id,false,true,action.destination)
 		return bool(skill.get("accepted",false)) and sim._commit_skill_effect(
 			action.actor_id,action.skill_id,action.target_id,skill,step_index)!=null
 	var row:Dictionary=coordinator._action_row(action,"DIRECT" if action.actor_id==world.party_control_actor_id()

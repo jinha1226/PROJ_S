@@ -574,10 +574,21 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 
 func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		assessment:Dictionary,processed_step_index:int):
+	var ground_cast:bool=skill_id=="FIREBALL"
+	var position:Vector2i=assessment.destination if ground_cast else world.entities[target_id].position
+	var magnitude:int=int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).power) \
+		if ground_cast else maxi(int(assessment.damage),int(assessment.healing))
 	var action=world.emit_event("action.skill",actor_id,target_id,
-		world.entities[target_id].position,maxi(int(assessment.damage),int(assessment.healing)),
+		position,magnitude,
 		-1,ActiveSkillServiceScript.action_data(assessment))
 	if action==null:return null
+	if ground_cast:
+		# Legacy shallow-water terrain is a reservoir, not yet a surface layer.
+		# Materialize a sample for the environment test without rewriting old maps.
+		var tile=world.tile_at(position)
+		if tile.terrain=="shallow_water" and tile.surface_id=="NONE":
+			if not environment.apply_water(position,100,action.id,processed_step_index):return null
+		if not environment.apply_heat(position,magnitude,action.id,processed_step_index):return null
 	if int(assessment.damage)>0:
 		var target=world.entities[target_id]
 		var applied:Dictionary=damage.apply_canonical_active_damage(target,

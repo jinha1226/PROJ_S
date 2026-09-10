@@ -2669,6 +2669,9 @@ func _update_hero_skill_row(status:Dictionary)->void:
 	skills.update_rows(int(status.get("protagonist_id",-1)),_hero_skill_rows(status))
 
 func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)->void:
+	if not _battle_target_committing and _battle_target_mode=="ACTIVE_SKILL" \
+			and _battle_target_actor_id==actor_id and _battle_target_skill_id==skill_id:
+		_cancel_battle_targeting("대상 선택을 취소했습니다.");_request_refresh();return
 	if _battle_target_committing or not _battle_target_mode.is_empty():return
 	if str(session.individual_battle.queued(actor_id).get("skill_id",""))==skill_id:
 		session.individual_battle.cancel(actor_id)
@@ -2694,6 +2697,10 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 	var reach:Dictionary=session.skill_reach_cells(actor_id,skill_id) \
 		if session.has_method("skill_reach_cells") else {}
 	grid.set_skill_reach_cells(reach.get("cells",[]),str(reach.get("target","ENEMY")))
+	if str(reach.get("target",""))=="TILE":
+		_battle_target_prompt="화염구(시험) · 사거리 5칸 · 물이나 바닥을 누르세요"
+		_show_manual_battle_feedback(_battle_target_prompt+" · 취소: 스킬 다시 누르기")
+		_request_refresh();return
 	_battle_target_prompt="%s · 붉은 칸의 %s을 고르세요"%[skill_label,
 		"아군" if str(reach.get("target","ENEMY"))=="ALLY" else "적"]
 	_show_manual_battle_feedback(_battle_target_prompt+" · 빈 칸을 누르면 취소")
@@ -6075,6 +6082,18 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	if not _battle_target_mode.is_empty():
+		if _battle_target_skill_id=="FIREBALL" and session.field_turns_active():
+			if _battle_target_committing:return
+			_battle_target_committing=true
+			var result:Dictionary=session.commit_field_action(ActionScript.skill_at(
+				_battle_target_actor_id,"FIREBALL",position))
+			_battle_target_committing=false
+			if result.get("accepted",false):
+				_cancel_battle_targeting()
+				_record_result(result,true,"화염구 실행 불가")
+				_show_manual_battle_feedback("화염구! · 물이 증발하면 흰 수증기가 표시됩니다.")
+			else:_show_manual_battle_feedback(str(result.get("message",result.get("reason","사용 불가"))))
+			_request_refresh();return
 		_cancel_battle_targeting("대상 선택을 취소했습니다.");return
 	_retreat_active=false
 	if companion_order_editor!=null and companion_order_editor.visible:
@@ -6181,6 +6200,8 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
+	if _battle_target_skill_id=="FIREBALL" and session.sim.world.entities.has(entity_id):
+		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():
 		_commit_battle_target(entity_id);return
 	if companion_order_editor!=null and companion_order_editor.visible:

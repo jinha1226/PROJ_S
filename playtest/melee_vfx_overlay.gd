@@ -251,6 +251,19 @@ func _draw_generic_grid_effects(font:Font,presentation_offset:Vector2)->void:
 		var radius:=float(spec.radius)
 		var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 		match str(spec.primitive):
+			"FIREBALL":
+				var age:float=spec.age_ratio
+				var origin:=Vector2(spec.projectile_origin)+presentation_offset
+				if age<0.55:
+					var point:=origin.lerp(center,age/0.55)
+					draw_line(origin.lerp(center,maxf(0.0,age/0.55-0.15)),point,Color(1,0.28,0.06,color.a),maxf(2,radius*0.45))
+					draw_rect(Rect2(point-Vector2.ONE*radius*0.3,Vector2.ONE*radius*0.6),Color(1,0.82,0.28,color.a))
+				else:draw_arc(center,radius*(0.5+(age-0.55)*3),0,TAU,16,color,3)
+			"STEAM":
+				for i in range(3):
+					var offset:=Vector2((i-1)*radius*0.6,-radius*(spec.age_ratio*2.5+i*0.2))
+					var size:=Vector2.ONE*maxf(3,radius*(0.5+spec.age_ratio))
+					draw_rect(Rect2(center+offset-size*0.5,size),Color(0.88,0.96,1,color.a*0.55))
 			"FLASH_RING":draw_arc(center,radius,0,TAU,20,color,width)
 			"GLYPH_FLASH":
 				for particle in spec.particles:

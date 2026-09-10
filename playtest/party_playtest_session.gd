@@ -8746,7 +8746,16 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 	var order := 0
 	for event in result.events:
 		var event_type := str(event.type)
-		if event_type == "action.melee_attack":
+		if event_type == "action.skill" and event.data.get("skill_id")=="FIREBALL":
+			var effect:=_visual_effect_row(event,"FIREBALL","fireball",order,"fire",0,"")
+			var history:Dictionary=sim.world._entity_position_at_event(event.actor_id,event.id)
+			if history.get("ok",false):
+				var origin:Vector2i=history.position
+				effect["attacker_grid_pos"]=[origin.x,origin.y]
+			rows.append(effect);order+=1
+		elif event_type in ["environment.water_evaporated","environment.wetness_evaporated"]:
+			rows.append(_visual_effect_row(event,"STEAM","steam",order,"water",0,""));order+=1
+		elif event_type == "action.melee_attack":
 			if str(event.data.get("outcome","")) in ["HIT","FINISHER"]:
 				var melee_row:=_melee_vfx_row(event,order)
 				if not melee_row.is_empty():rows.append(melee_row);order+=1

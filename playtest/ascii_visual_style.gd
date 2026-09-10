@@ -334,6 +334,7 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	var surface_amount := clampi(int(cell.get("surface_amount", 0)), 0, 1000)
 	var temperature := clampi(int(cell.get("temperature", 200)), -1000, 4000)
 	var smoke := clampi(int(cell.get("smoke_amount", 0)), 0, 1000)
+	var steam := clampi(int(cell.get("steam_amount", 0)), 0, 1000)
 	var flammable_gas := clampi(int(cell.get("flammable_gas_amount", 0)), 0, 1000)
 	var cues: Array[Dictionary] = []
 	if bool(visibility.draw_hazards) and fire > 0:
@@ -351,6 +352,9 @@ static func hazard_spec(cell: Dictionary) -> Dictionary:
 	if bool(visibility.draw_hazards) and temperature >= 700:
 		cues.append({"kind":"HEAT", "glyph":"'", "color_hex":"#ffb25c", "value":temperature,
 			"corner":"TOP_RIGHT", "fill_alpha":0.06})
+	if bool(visibility.draw_hazards) and steam > 0:
+		cues.append({"kind":"STEAM", "glyph":"≈", "color_hex":"#e0f5ff", "value":steam,
+			"corner":"TOP_LEFT", "fill_alpha":0.16 + 0.20 * float(steam) / 1000.0})
 	if bool(visibility.draw_hazards) and smoke >= 80:
 		cues.append({"kind":"SMOKE", "glyph":"%", "color_hex":"#8b9298", "value":smoke,
 			"corner":"TOP_RIGHT", "fill_alpha":0.06 + 0.20 * float(smoke) / 1000.0})
