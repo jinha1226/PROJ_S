@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const Session = preload("res://playtest/party_playtest_session.gd")
 const Simulator = preload("res://sim/simulator.gd")
+const Command = preload("res://sim/sim_command.gd")
 const VisualMap = preload("res://playtest/party_visual_test_map.gd")
 const ItemOps = preload("res://sim/world_item_operations.gd")
 const TorchRules = preload("res://sim/torch_rules.gd")
@@ -76,4 +77,10 @@ func test_torch_removes_deep_dark_and_snapshot_preserves_exposure() -> bool:
 	check_eq(DarknessRules.state(restored.world, hero_id),
 		DarknessRules.state(world, hero_id), "darkness state survives snapshot")
 	check_eq(restored.world.world_state_error(), "", "restored darkness history validates")
+	var original_next = session.sim.step(Command.wait_for(100, hero_id))
+	var restored_next = restored.step(Command.wait_for(100, hero_id))
+	check(bool(original_next.accepted) and bool(restored_next.accepted),
+		"original and restored darkness turns replay")
+	check_eq(restored.snapshot(), session.sim.snapshot(),
+		"snapshot replay remains deterministic after darkness")
 	return finish()
