@@ -336,10 +336,12 @@ static func hazard_floor_spec(position: Vector2i, row: Dictionary) -> Dictionary
 	var wetness := clampi(int(row.get("wetness", 0)), 0, 100)
 	var steam := clampi(int(row.get("steam_amount", 0)), 0, 1000)
 	var smoke := clampi(int(row.get("smoke_amount", 0)), 0, 1000)
+	var gas := clampi(int(row.get("flammable_gas_amount", 0)), 0, 1000)
 	var surface_id:=str(row.get("surface_id","NONE"))
 	var surface_amount:=clampi(int(row.get("surface_amount",0)),0,1000)
 	return {
-		"visible":fire > 0 or wetness > 0 or steam > 0 or smoke>0 or surface_amount>0,
+		"visible":fire > 0 or wetness > 0 or steam > 0 or smoke>0 or gas>0 or surface_amount>0,
+		"flammable_gas":gas,
 		"smoke":smoke,"surface_id":surface_id,"surface_amount":surface_amount,
 		"steam":steam,
 		"fire":fire,

@@ -480,7 +480,8 @@ func _handle_item_ledger_touch(event:InputEvent)->void:
 			if not activate_action.is_empty():_activate_item_touch_action(activate_action,activate_slot)
 			elif not activate_id.is_empty():_on_item_row_selected(activate_id,activate_slot)
 	elif event is InputEventScreenDrag and event.index==_item_touch_index:
-		if event.position.distance_to(_item_touch_origin)>=float(member_detail_scroll.scroll_deadzone):
+		var slop:=24.0 if not _item_touch_action.is_empty() else float(member_detail_scroll.scroll_deadzone)
+		if event.position.distance_to(_item_touch_origin)>=slop:
 			_item_touch_dragged=true
 			if _item_touch_action.is_empty():
 				_hide_item_popover(false)
@@ -693,7 +694,7 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 			_activate_product_control(activate_name)
 		return true
 	if event.index==_product_touch_index:
-		if event.position.distance_to(_product_touch_origin)>=8.0:_product_touch_dragged=true
+		if event.position.distance_to(_product_touch_origin)>=24.0:_product_touch_dragged=true
 		get_viewport().set_input_as_handled();return true
 	return false
 
@@ -2368,7 +2369,7 @@ func _toggle_map_overlay()->void:
 	_cancel_product_auto_explore("auto_explore_modal",false)
 	_cancel_route_for_user_interruption()
 	if record_modal.visible:_close_record_modal("MAP")
-	var observation:Dictionary=session.observe_party_ui(15).get("minimap",{})
+	var observation:Dictionary=session.observe_minimap()
 	map_overlay.set_observation(observation)
 	grid.cancel_pointer_gesture();grid.modal_open=true
 	if map_nav_button!=null:map_nav_button.set_pressed_no_signal(true)
@@ -4449,7 +4450,7 @@ func _continue_product_rest(expected_generation:int)->void:
 	if not _product_rest_active or expected_generation!=_product_rest_generation:return
 	var status:Dictionary=session.party_status()
 	var stop_reason:=""
-	if str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"]:stop_reason="rest_encounter"
+	if not session.field_turns_active() and str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"]:stop_reason="rest_encounter"
 	elif str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):stop_reason="rest_interrupted"
 	elif not (status.get("visible_enemy_ids",[]) as Array).is_empty():stop_reason="rest_enemy_sighted"
 	elif str(status.get("ration_band",""))=="STARVING":stop_reason="rest_starving"

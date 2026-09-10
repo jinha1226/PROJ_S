@@ -50,6 +50,13 @@ func _draw()->void:
 		labels[1]+="/%d"%int(actor.get("max_energy",12))
 	var colors:=[Color("#b7d99d"),Color("#88b9ce"),Color("#d5a5b8")]
 	for index in range(3):
+		if party_count==1:
+			var meter:Dictionary=resource_meter_specs()[index]
+			draw_rect(meter.rect,Color("#080b10"))
+			var fill:Rect2=meter.rect.grow(-1)
+			fill.size.x=floor(fill.size.x*float(meter.ratio))
+			draw_rect(fill,[Color("#396548"),Color("#294e73"),Color("#6f3c57")][index])
+			draw_rect(meter.rect,Color("#5b5548"),false,1)
 		draw_string(font,Vector2(layout.stats_x,15+index*13),labels[index],HORIZONTAL_ALIGNMENT_LEFT,
 			float(layout.stats_width),9 if size.x<110 else 10,colors[index])
 	if selected:
@@ -64,6 +71,16 @@ func portrait_layout_spec()->Dictionary:
 	var side:=24.0 if size.x<110 else 36.0
 	return {"portrait":Rect2(3,3,side,side),"name_position":Vector2(3,size.y-5),
 		"name_width":size.x-6,"stats_x":side+6,"stats_width":maxf(1,size.x-side-9)}
+
+func resource_meter_specs()->Array:
+	var layout:=portrait_layout_spec()
+	var values:=[int(actor.get("health",0)),int(actor.get("energy",0)),int(actor.get("stress",0))]
+	var maxima:=[maxi(1,int(actor.get("max_health",1))),maxi(1,int(actor.get("max_energy",12))),1000]
+	var meters:Array=[]
+	for i in range(3):
+		meters.append({"rect":Rect2(layout.stats_x-1,5+i*13,layout.stats_width,12),
+			"value":values[i],"maximum":maxima[i],"ratio":clampf(float(values[i])/maxima[i],0,1)})
+	return meters
 
 func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	var portrait_side:=minf(60.0,size.y-8.0)

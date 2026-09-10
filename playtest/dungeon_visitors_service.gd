@@ -57,6 +57,8 @@ static func enter(session,layout:Dictionary)->bool:
 			row["rest_until"]=world.world_time+300 if index==0 else 0
 			row["fatigue"]=4 if index==0 else 0;row["goal_index"]=0
 			row["goals"]=[[chosen.x+2,chosen.y],[chosen.x,chosen.y+2],[chosen.x-2,chosen.y]]
+			if preload("res://sim/living_expedition_rules.gd").expanded_exploration(world):
+				row["goals"]=_exploration_goals(world,layout,chosen,index)
 			row.activity=preload("res://sim/systems/independent_explorer_system.gd").LABELS[row.state]
 			row.needs_supplies=index==2
 			var inventory=world.item_state.inventory(id)
@@ -67,6 +69,34 @@ static func enter(session,layout:Dictionary)->bool:
 			if index!=2 and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
 				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
+
+static func _exploration_goals(world,layout:Dictionary,start:Vector2i,ordinal:int)->Array:
+	# One bounded flood on arrival. Goals are journaled with the visitor, so
+	# neither rendering nor hidden player knowledge drives neutral exploration.
+	var reachable:Dictionary={start:true};var frontier:Array[Vector2i]=[start];var cursor:=0
+	while cursor<frontier.size():
+		var here:Vector2i=frontier[cursor];cursor+=1
+		for direction in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:
+			var next:Vector2i=here+direction
+			if reachable.has(next) or not world.in_bounds(next):continue
+			var tile=world.tile_at(next)
+			if not Terrain.definition(str(tile.terrain)).get("passable",false) \
+					or tile.fire>0 or tile.wetness>0 or str(tile.terrain)=="shallow_water":continue
+			reachable[next]=true;frontier.append(next)
+	var candidates:Array[Vector2i]=[]
+	for center in layout.get("room_centers",[]):
+		if reachable.has(center) and _distance(center,start)>=8:candidates.append(center)
+	if candidates.is_empty():
+		for cell in frontier:
+			if _distance(cell,start)>=8 and (cell.x+cell.y)%7==0:candidates.append(cell)
+	var goals:Array=[]
+	if candidates.is_empty():return [[start.x,start.y]]
+	# Different explorers start in different rooms; each then visits the circuit.
+	var offset:=posmod(ordinal*3,candidates.size())
+	for i in range(mini(8,candidates.size())):
+		var p:Vector2i=candidates[(offset+i)%candidates.size()]
+		goals.append([p.x,p.y])
+	return goals
 
 static func _safe(world,p:Vector2i,entry:Vector2i,living:bool=false)->bool:
 	if not world.in_bounds(p) or _distance(p,entry)<2:return false

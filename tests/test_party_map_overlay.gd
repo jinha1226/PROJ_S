@@ -123,7 +123,7 @@ func test_outside_press_closes_while_inside_press_only_consumes()->bool:
 func test_renderer_is_idle_vector_dark_fantasy_cartography()->bool:
 	var overlay=Overlay.new();var contract:=overlay.overlay_spec()
 	check_eq(contract.primitive,"FULL_VECTOR_CARTOGRAPHY","full-map vector primitive")
-	check_eq(contract.visual_family,"DARK_PIXEL_DUNGEON_UI","dark pixel UI family")
+	check_eq(contract.visual_family,preload("res://playtest/dark_pixel_ui_skin.gd").VISUAL_FAMILY,"dark pixel UI family")
 	check(contract.uses_tile_rects and contract.uses_circles and contract.uses_polygons \
 			and not contract.uses_map_fonts and not contract.uses_images \
 			and not contract.uses_textures and not contract.per_frame_process,

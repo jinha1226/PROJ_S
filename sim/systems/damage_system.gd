@@ -85,6 +85,10 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			if cause.type=="environment.explosion_impact" else requested_damage \
 			if cause.type=="action.skill" \
 			else int(cause.data.get("base_damage",0))
+		if cause.type=="action.melee_attack" and preload("res://sim/living_expedition_rules.gd").expanded_exploration(world):
+			# HP already uses final_damage. The parallel injury packet must also
+			# respect the guard, instead of inflicting the unguarded wound.
+			raw_damage=maxi(1,raw_damage-int(cause.data.get("guard_reduction",0)))
 		var armor_flat:=int(cause.data.get("armor_flat",0)) \
 			if cause.type=="environment.explosion_impact" else 0 \
 			if cause.type=="action.skill" \

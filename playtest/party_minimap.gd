@@ -50,6 +50,7 @@ var _sector_static:Dictionary={}
 var _static_markers:Dictionary={}
 var _visible_keys:Array=[]
 var _marker_keys:Array=[]
+var full_rebuild_count:=0
 
 func _init()->void:
 	clip_contents=true
@@ -68,14 +69,17 @@ func set_observation(observation:Dictionary)->void:
 	var rows:Array=observation.get("cells",[]) if observation.get("cells",[]) is Array else []
 	var epoch:=str(observation.get("epoch",""))
 	var static_count:=int(observation.get("static_count",-1))
+	var discoveries:Variant=observation.get("discovery_rows")
+	var has_cursor_stream:bool=discoveries is Array and discoveries.size()==rows.size()
 	var incremental:bool=not epoch.is_empty() and epoch==_epoch \
 		and observation.get("visible") is Array and observation.get("markers") is Array \
-		and observation.get("added") is Array \
 		and static_count==rows.size() and static_count>=_static_count \
-		and static_count-_static_count==observation.added.size() \
+		and (has_cursor_stream or observation.get("added") is Array \
+			and static_count-_static_count==observation.added.size()) \
 		and _width==maxi(1,int(observation.get("width",15))) \
 		and _height==maxi(1,int(observation.get("height",15)))
 	if not incremental:
+		full_rebuild_count+=1
 		_width=maxi(1,int(observation.get("width",15)))
 		_height=maxi(1,int(observation.get("height",15)))
 		_cells.clear();_sector_static.clear();_static_markers.clear();_visible_keys=[];_marker_keys=[]
@@ -83,7 +87,12 @@ func set_observation(observation:Dictionary)->void:
 		for value in rows:_ingest_row(value)
 		_static_count=rows.size() if not epoch.is_empty() else 0
 	else:
-		for row in observation.added:_ingest_row(row,true)
+		# Each consumer owns its cursor. Opening the full map may have consumed
+		# the producer's previous delta; that must not invalidate this cache.
+		if has_cursor_stream:
+			for index in range(_static_count,discoveries.size()):_ingest_row(discoveries[index],true)
+		else:
+			for row in observation.added:_ingest_row(row,true)
 		_static_count=rows.size()
 		for key in _visible_keys:
 			if _cells.has(key):_cells[key].visibility_state="MEMORY"

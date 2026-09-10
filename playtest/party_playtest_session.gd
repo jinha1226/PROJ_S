@@ -299,7 +299,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_player_species_id:String="human",
 		bootstrap_settlement:bool=true, bootstrap_talents:bool=true,
 		bootstrap_survival:bool=true,bootstrap_living:bool=false,bootstrap_roster:bool=false,
-		bootstrap_solo:bool=false) -> bool:
+		bootstrap_solo:bool=false,bootstrap_expanded_exploration:bool=false) -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -330,7 +330,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
 			candidate.world, map_layout): return false
 	if bootstrap_living:
-		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":3 if bootstrap_roster else 2})==null:return false
+		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":4 if bootstrap_expanded_exploration else 3 if bootstrap_roster else 2})==null:return false
 	if duo and bootstrap_settlement and bootstrap_talents and (p_player_species_id=="human" or bootstrap_living):
 		var talent_rules=preload("res://sim/personal_talent_rules.gd")
 		if candidate.world.emit_event(talent_rules.EVENT_ID,-1,-1,Vector2i(-1,-1),0,-1,
@@ -1120,6 +1120,8 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		sim.world,sim.world.party_control_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
+	if field_turns_active() and preload("res://sim/living_expedition_rules.gd").expanded_exploration(sim.world):
+		return _use_field_potion(instance_id)
 	# Opening the inventory is allowed to replace a staged combat choice. Keep an
 	# invalid item request non-mutating by clearing the draft only after preview.
 	_clear_draft()
@@ -1175,6 +1177,35 @@ func use_inventory_item(instance_id:String)->Dictionary:
 		"time_cost":ITEM_ACTION_TIME_COST,"healed_amount":healed,"current_hp":int(hero.health),
 		"inventory":protagonist_inventory(),"visual_effects":[healing_vfx]})
 
+
+func _use_field_potion(instance_id:String)->Dictionary:
+	# Heal on input, then let the world respond. Advancing first could reject a
+	# potion after passive recovery, or kill its user before they drank it.
+	var rollback:Variant=sim.capture_rollback_memento()
+	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
+	var start:int=sim.world.events.size();var journal_size:=command_journal.size()
+	var id:int=sim.world.party_control_actor_id();var hero=sim.world.entities[id]
+	var consumed:Dictionary=ItemOperationsScript.commit_use(sim.world,id,instance_id,hero.position,ITEM_ACTION_TIME_COST)
+	if not consumed.get("accepted",false):return _rejection_dto(str(consumed.get("reason","item_operation_failed")))
+	var healed:=mini(ItemRegistryScript.HEALING_POTION_RESTORE,int(hero.max_health)-int(hero.health))
+	hero.health+=healed
+	var event=sim.world.emit_event("health.restored",id,id,hero.position,healed,int(consumed.event_id),
+		{"schema_version":1,"ruleset_id":"healing-potion-v1","kind":"POTION","health_after":int(hero.health)})
+	_clear_draft()
+	var advanced:Dictionary=_advance_item_action_time() if event!=null else {"accepted":false,"reason":"item_event_failed"}
+	var error:String=sim.world.world_state_error() if advanced.get("accepted",false) else str(advanced.get("reason","item_time_step_failed"))
+	if not error.is_empty():
+		if not _rollback_session_transaction(rollback,journal_size):return _rejection_dto("rollback_restore_failed")
+		return _rejection_dto(error)
+	while command_journal.size()>journal_size:command_journal.pop_back()
+	command_journal.append({"kind":"item","operation":{"action":"USE","instance_id":instance_id,"slot":""}})
+	_clear_draft();_deployment_plan.clear();_invalidate_explored_presentation_cache()
+	var ids:Array=[]
+	for index in range(start,sim.world.events.size()):ids.append(sim.world.events[index].id)
+	var effects:Array=[_visual_effect_row(event,"FLOATING_AMOUNT","heal",0,"healing",healed,"+%d"%healed)]
+	effects.append_array(advanced.get("visual_effects",[]))
+	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":ids,"time_cost":ITEM_ACTION_TIME_COST,
+		"healed_amount":healed,"current_hp":int(hero.health),"inventory":protagonist_inventory(),"visual_effects":effects})
 
 func _commit_item_operation(action:String,instance_id:String,slot:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
@@ -3200,7 +3231,7 @@ func restart_same_run() -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, frozen_personality_seed,
-			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled()):
+			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -3215,7 +3246,7 @@ func start_new_run_with_species(species_id:String,living:bool=false,solo_start:b
 		return _rejection_dto("unknown_player_species")
 	if living or solo_start:
 		var pristine_sim=sim if _can_select_starting_species_in_place() else null
-		if not reset_party(world_seed,personality_seed,scenario_id,{},false,species_id,true,true,true,living,living,solo_start):
+		if not reset_party(world_seed,personality_seed,scenario_id,{},false,species_id,true,true,true,living,living,solo_start,living):
 			return _rejection_dto("player_species_reset_failed")
 		# Keep the launch scene's simulator identity stable. The rebuilt canonical
 		# world is swapped into the already-wired simulator so picker input does not
@@ -3301,7 +3332,7 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id,
-			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled()):
+			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -3353,6 +3384,10 @@ func observe_party_world() -> Dictionary:
 	# freely mutate this 48x48 DTO without touching either authority or cache.
 	return _party_rich_observation(context,bounds,Vector2i.ZERO).duplicate(true)
 
+
+func observe_minimap()->Dictionary:
+	var context:=_party_observation_context()
+	return {} if context.is_empty() else _party_minimap_observation(context)
 
 func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 		row_count:int=-1,omit_unseen:bool=false)->Dictionary:
@@ -3620,7 +3655,7 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 		floor_bounds.position.y,floor_bounds.size.x,floor_bounds.size.y,exit_key,anchor_key]
 	if str(_minimap_stream.get("epoch",""))!=epoch:
 		_minimap_stream={"epoch":epoch,"rows":[],"index":{},"static_markers":{},
-			"emitted":0,"touched":[]}
+			"emitted":0,"touched":[],"discovery_rows":[]}
 	var rows:Array=_minimap_stream.rows
 	var index:Dictionary=_minimap_stream.index
 	var static_markers:Dictionary=_minimap_stream.static_markers
@@ -3649,6 +3684,7 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 				low=middle+1
 			else:high=middle
 		rows.insert(low,row);added.append(row)
+		_minimap_stream.discovery_rows.append(row)
 	_minimap_stream.emitted=explored_order.size()
 	for touched_row in _minimap_stream.touched:
 		var row:Dictionary=touched_row
@@ -3694,6 +3730,7 @@ func _party_minimap_observation(context:Dictionary)->Dictionary:
 	return {"schema_version":1,"width":floor_bounds.size.x,
 		"height":floor_bounds.size.y,
 		"cells":rows,"epoch":epoch,"static_count":rows.size(),"added":added,
+		"discovery_rows":_minimap_stream.discovery_rows,
 		"visible":visible_positions,"markers":marker_rows}
 
 
@@ -7782,7 +7819,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				restored.world.party_encounter.protagonist_id].tags,
 			preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot),
 			preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot),
-			SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags):
+			SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags,
+			preload("res://sim/living_expedition_rules.gd").snapshot_expanded_exploration(decoded.snapshot)):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
@@ -8799,8 +8837,11 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 				rows.append(_visual_effect_row(event, "HIT_FLASH", "hit_flash", order,
 					damage_type, int(event.magnitude), ""))
 				order += 1
+			var damage_label:="-%d"%int(event.magnitude)
+			if cause!=null and cause.type=="action.melee_attack" and int(cause.data.get("guard_reduction",0))>0:
+				damage_label+=" (방어 -%d)"%int(cause.data.guard_reduction)
 			rows.append(_visual_effect_row(event, "FLOATING_AMOUNT", "floating_amount", order,
-				damage_type, int(event.magnitude), "-%d" % int(event.magnitude)))
+				damage_type, int(event.magnitude), damage_label))
 			order += 1
 		elif event_type=="entity.died" and sim!=null and sim.world!=null \
 				and sim.world.party_encounter!=null \

@@ -29,7 +29,8 @@ static func process_tick(sim,step_index:int)->bool:
 	if rows.is_empty():return true
 	var hero=world.entities.get(world.party_control_actor_id())
 	if hero==null:return false
-	var changed:bool=false;var routing:Dictionary=_safe_occupancy_projection(world,-1)
+	var expanded:bool=Rules.expanded_exploration(world)
+	var changed:bool=false;var routing:Dictionary={}
 	for row in rows:
 		if not row is Dictionary:continue
 		var id:=int(row.get("entity_id","-1"))
@@ -40,7 +41,9 @@ static func process_tick(sim,step_index:int)->bool:
 		if life!="ACTIVE":
 			row["state"]=life;row["activity"]=LABELS.get(life,life)
 			row["position"]=[entity.position.x,entity.position.y];changed=true;continue
-		if member.busy_until>world.world_time or distance(entity.position,hero.position)>16:continue
+		var distant:=distance(entity.position,hero.position)>16
+		if member.busy_until>world.world_time or distant and not expanded:continue
+		if routing.is_empty():routing=_safe_occupancy_projection(world,-1)
 		var nearest:Dictionary=_nearest_enemy(sim,entity.position)
 		var enemy_id:int=int(nearest.id);var enemy_distance:int=int(nearest.distance)
 		var food:String=item_id(world,id,"FOOD_RATION")
@@ -66,7 +69,7 @@ static func process_tick(sim,step_index:int)->bool:
 			if distance(entity.position,exit)<=1:
 				if "visitor_returned" not in entity.tags:entity.tags.append("visitor_returned")
 				mode="RETURNED"
-			else:cost=_walk(sim,id,exit,true,routing)
+			else:cost=_walk(sim,id,exit,true,routing,row if expanded else {})
 		elif mode=="REST" and enemy_distance>5:
 			if int(row.get("rest_until",0))<=world.world_time:
 				if not food.is_empty() and int(row.get("fatigue",0))>=4:
@@ -87,7 +90,12 @@ static func process_tick(sim,step_index:int)->bool:
 			if distance(entity.position,goal)<=1:
 				row["goal_index"]=(goal_index+1)%goals.size()
 				row["fatigue"]=int(row.get("fatigue",0))+1
-			else:cost=_walk(sim,id,goal,true,routing)
+			else:
+				var before:Vector2i=entity.position
+				cost=_walk(sim,id,goal,true,routing,row if expanded else {})
+				if expanded and entity.position==before:row["goal_index"]=(goal_index+1)%goals.size()
+		# Off-screen expeditions still move, at a bounded coarse cadence.
+		if expanded and distant:cost=maxi(cost,300)
 		member.busy_until=world.world_time+maxi(1,cost)
 		row["state"]=mode;row["activity"]=LABELS[mode]
 		row["position"]=[entity.position.x,entity.position.y]
@@ -174,7 +182,7 @@ static func _step_away(sim,id:int,threat:Vector2i,routing:Dictionary)->int:
 	routing["%d:%d"%[best.x,best.y]]=id
 	return cost
 
-static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictionary={})->int:
+static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictionary={},route_row:Dictionary={})->int:
 	var world=sim.world
 	if not world.entities.has(id):return 100
 	if routing.is_empty():routing=_safe_occupancy_projection(world,-1)
@@ -183,9 +191,21 @@ static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictio
 	var goals:Array=[]
 	if not adjacent_ok:goals.append(goal)
 	for direction in Movement.MOVE_DIRECTIONS_8:goals.append(goal+direction)
-	var path:Dictionary=sim.pathfinder.find_path_to_any(id,goals,
-		routing)
-	var cells:Array=path.get("path",[])
+	var cells:Array=[]
+	# A short, journaled route prefix avoids searching the whole dungeon every
+	# time an explorer takes one step. Every cached hop is assessed again.
+	if not route_row.is_empty() and route_row.get("route_goal",[])==[goal.x,goal.y]:
+		var route:Array=route_row.get("route",[])
+		if not route.is_empty():
+			var cached:Vector2i=_position(route[0])
+			if distance(old_position,cached)==1 and not routing.has("%d:%d"%[cached.x,cached.y]) \
+					and sim.movement.assess_move(id,cached).accepted:cells=[old_position,cached]
+	if cells.is_empty():
+		var path:Dictionary=sim.pathfinder.find_path_to_any(id,goals,routing)
+		cells=path.get("path",[])
+		if not route_row.is_empty():
+			route_row["route_goal"]=[goal.x,goal.y];route_row["route"]=[]
+			for p in cells.slice(1,9):route_row.route.append([p.x,p.y])
 	if cells.size()<2:
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	var next:Vector2i=cells[1]
@@ -197,6 +217,7 @@ static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictio
 	if sim.movement.commit_preflighted_move(id,next,str(assessment.terrain_id),cost)==null:
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	routing["%d:%d"%[next.x,next.y]]=id
+	if not route_row.is_empty() and not route_row.get("route",[]).is_empty():route_row.route.pop_front()
 	return cost
 
 static func _safe_occupancy_projection(world,actor_id:int)->Dictionary:

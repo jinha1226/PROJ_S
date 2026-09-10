@@ -26,6 +26,13 @@ static func is_safe_to_recover(world, state, hero, hero_combatant,
 	for enemy_id in state.enemy_ids:
 		var enemy_combatant=world.combatant_states.get(enemy_id)
 		if enemy_combatant==null or str(enemy_combatant.life_state)!="ACTIVE":continue
+		# Another expedition's fight across the dungeon must not prevent rest.
+		# Versioned bootstrap keeps historical save replay unchanged.
+		if preload("res://sim/living_expedition_rules.gd").expanded_exploration(world):
+			var enemy=world.entities.get(enemy_id)
+			if enemy==null or not world.is_autonomous_target(enemy_id):continue
+			var offset:Vector2i=enemy.position-hero.position
+			if maxi(absi(offset.x),absi(offset.y))>8:continue
 		var awareness=state.enemy_awareness(enemy_id)
 		if awareness!=null and str(awareness.awareness_state) in THREAT_AWARENESS_STATES:return false
 	return true

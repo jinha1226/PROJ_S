@@ -3,8 +3,9 @@ extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
 ## Visible bases use a native 24x24 transparent pixel canvas and common anchor.
-## Humans use native eight-way frames; other species retain their original bases.
+## Species direction atlases share a native anchor; equipment stays a paper doll.
 const HumanDirections=preload("res://playtest/human_directional_assets.gd")
+const Directions=preload("res://playtest/eight_way_actor_assets.gd")
 
 const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
 const FOOT_ANCHOR_RATIO := 0.94
@@ -115,9 +116,10 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 	var fitted_offhand:=offhand_texture(off_hand_definition_id,species_id) \
 		if EQUIPMENT_LAYERS_ENABLED and fitted_species else null
 	var has_fitted_equipment:=fitted_armor!=null or fitted_weapon!=null or fitted_offhand!=null
-	var direction_index:=HumanDirections.index(actor.get("facing",[0,1])) if species_id=="human" else 0
-	if species_id=="human":
-		base_texture=HumanDirections.FRAMES[direction_index]
+	var directional:=Directions.supports(species_id)
+	var direction_index:=HumanDirections.index(actor.get("facing",[0,1])) if directional else 0
+	if directional:
+		base_texture=Directions.texture(species_id,actor.get("facing",[0,1]))
 		fitted_armor=HumanDirections.equipment(fitted_armor,direction_index,true)
 		fitted_weapon=HumanDirections.equipment(fitted_weapon,direction_index)
 		fitted_offhand=HumanDirections.equipment(fitted_offhand,direction_index)
@@ -140,7 +142,7 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 			or not weapon_definition_id.is_empty() or not off_hand_definition_id.is_empty()),
 		"layer_order":["body","armor","offhand","weapon","foreground"],
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
-		"fixed_front":species_id!="human","direction_index":direction_index,
+		"fixed_front":not directional,"direction_index":direction_index,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
 		"visual_center_offset_source_px":Vector2.ZERO,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,

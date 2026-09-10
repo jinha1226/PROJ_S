@@ -9,6 +9,7 @@ signal pointer_gesture_started()
 signal pointer_gesture_finished(outcome: String)
 
 const GRID_SIZE := 15
+const WorldEffectAssets=preload("res://playtest/pixel24_world_effect_assets.gd")
 const GRAPHICS_MODE_FLAT_2D := "FLAT_2D"
 const GRAPHICS_MODE_DIORAMA_2_5D := "DIORAMA_2_5D"
 const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D]
@@ -2777,6 +2778,7 @@ func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 	return rows.duplicate(true)
 
 func _draw_wall_connector_pass(visibility_state:String)->void:
+	if not uses_perspective_projection():return # The wall atlas already joins cells.
 	for spec in wall_connector_draw_specs(visibility_state):
 		if uses_perspective_projection() and visibility_state=="VISIBLE":
 			_draw_ascii_glow_text(BoldFont,str(spec.glyph),Vector2(spec.center),
@@ -2799,6 +2801,7 @@ func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)
 		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
+	if not uses_perspective_projection():return # Material identity is in the tile image.
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
@@ -2892,6 +2895,9 @@ func _draw_wall_torches()->void:
 		if not bool(spec.visible):continue
 		var position:=_array_to_world_position(spec.get("position",[]))
 		var rect:=world_cell_rect(position)
+		if not uses_perspective_projection():
+			WorldEffectAssets.draw_icon(self,"TORCH",rect.grow(-rect.size.x*0.14),Color(1,1,1,float(spec.brightness)))
+			continue
 		var block:=DioramaScript.perspective_wall_block(_camera_cell_polygon(position)) \
 			if uses_perspective_projection() else {}
 		var center:Vector2=Vector2(spec.pixel_center)+Vector2(block.get("lift",Vector2.ZERO))*0.55
@@ -2957,6 +2963,9 @@ func ground_mark_draw_specs()->Array[Dictionary]:
 func _draw_ground_marks()->void:
 	var font:Font=BoldFont
 	for spec in ground_mark_draw_specs():
+		if not uses_perspective_projection():
+			WorldEffectAssets.draw_icon(self,"BLOOD",world_cell_rect(_array_to_world_position(spec.world_position)),Color(1,1,1,float(spec.opacity)))
+			continue
 		var color:=Color(str(spec.color_hex));color.a=float(spec.opacity)
 		_draw_centered_text(font,str(spec.glyph),Vector2(spec.center),int(spec.font_size),color)
 
@@ -2967,6 +2976,13 @@ func _draw_ground_hazards()->void:
 			if bool(spec.get("visible",false)):_draw_ground_hazard(world_cell_rect(position),spec)
 
 func _draw_ground_hazard(rect:Rect2,spec:Dictionary)->void:
+	if not uses_perspective_projection():
+		if int(spec.get("wetness",0))>0:WorldEffectAssets.draw_icon(self,"WET",rect,Color(1,1,1,0.45))
+		if str(spec.get("surface_id","")) in ["ICE","OIL"]:WorldEffectAssets.draw_icon(self,str(spec.surface_id),rect,Color(1,1,1,0.75))
+		for entry in [["smoke","SMOKE"],["steam","STEAM"],["flammable_gas","GAS"]]:
+			if int(spec.get(entry[0],0))>0:WorldEffectAssets.draw_icon(self,entry[1],rect,Color(1,1,1,0.42))
+		if int(spec.get("fire",0))>0:WorldEffectAssets.draw_icon(self,"FIRE",rect)
+		return
 	var center:=rect.get_center();var cell:=rect.size.x;var phase:=int(spec.get("phase",0))
 	if spec.get("surface_id","")=="ICE":
 		draw_rect(rect.grow(-cell*0.1),Color(0.55,0.83,1,0.18))
@@ -3132,6 +3148,9 @@ func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector
 	return points
 
 func _draw_feature_cue(rect:Rect2,feature_id:String)->void:
+	if not uses_perspective_projection():
+		WorldEffectAssets.draw_icon(self,str(WorldEffectAssets.FEATURE_IDS.get(feature_id,"")),rect)
+		return
 	var spec:Dictionary=AsciiStyleScript.feature_spec(feature_id)
 	if not bool(spec.visible):return
 	var center:=rect.get_center();var font:Font=BoldFont
@@ -3187,7 +3206,9 @@ func _draw_visual_effect(effect:Dictionary)->void:
 				var particle_color:=color;particle_color.a*=float(particle.opacity)
 				draw_line(particle.from,particle.to,particle_color,
 					float(particle.line_width),true)
-				_draw_centered_text(get_theme_default_font(),str(particle.get("glyph","*")),
+				if not uses_perspective_projection():
+					WorldEffectAssets.draw_icon(self,"IMPACT",Rect2(Vector2(particle.to)-Vector2.ONE*5,Vector2.ONE*10),particle_color)
+				else:_draw_centered_text(get_theme_default_font(),str(particle.get("glyph","*")),
 					Vector2(particle.to),int(particle.get("font_size",11)),particle_color)
 		"TEXT":
 			if str(spec.kind)=="FLOATING_AMOUNT":
@@ -3196,6 +3217,11 @@ func _draw_visual_effect(effect:Dictionary)->void:
 			_draw_centered_text(get_theme_default_font(),str(spec.text),center,
 				int(spec.font_size),color)
 		"ASCII_BURST":
+			if not uses_perspective_projection():
+				for particle in spec.particles:
+					var ink:=color;ink.a*=float(particle.opacity)
+					WorldEffectAssets.draw_icon(self,"ASH",Rect2(Vector2(particle.position)-Vector2.ONE*4,Vector2.ONE*8),ink)
+				return
 			if float(spec.center_opacity)>0.0:
 				var center_color:=color;center_color.a*=float(spec.center_opacity)
 				_draw_centered_text(BoldFont,str(spec.center_glyph),center,
