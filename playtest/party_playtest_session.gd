@@ -5915,19 +5915,27 @@ func turn_intent_overlays() -> Array[Dictionary]:
 			if id==control or not world.can_act(id,world.world_time):continue
 			var member=world.party_encounter.member(id)
 			if member.presence!="DEPLOYED":continue
-			var action=sim.party_coordinator._suggest(id,hold,board)
+			var decision:Dictionary=sim.party_coordinator._companion_decision(id,hold,board)
+			var action=sim.party_coordinator._leaf_to_action(id,decision.selected_leaf)
 			if not sim.party_coordinator._action_error(action).is_empty():action=FieldTurns.Action.hold(id)
+			var callout:=""
+			if action.type=="MELEE":callout="%s 공격!"%_name(action.target_id)
+			elif action.type=="SKILL":callout="%s 사용!"%str({"STRIKE":"강타","SHOVE":"밀치기","FIREBOLT":"화염탄","MEND":"치유"}.get(action.skill_id,action.skill_id))
+			elif action.type=="MOVE" and str(decision.get("selected_action_id",""))=="RETREAT":callout="퇴각할게!"
 			var origin:Vector2i=world.entities[id].position
 			var target:Vector2i=world.entities[action.target_id].position if world.entities.has(action.target_id) else Vector2i(-1,-1)
 			rows.append({"actor_id":id,"actor_name":str(world.entities[id].display_name),
 				"role":"COMPANION","roster_slot":int(member.roster_slot),
 				"from_position":[origin.x,origin.y],"source":"SUGGESTED",
 				"type":action.type,"destination":[action.destination.x,action.destination.y],
+				"type_label":str({"HOLD":"대기","MOVE":"이동","MELEE":"공격","SKILL":"스킬"}.get(action.type,action.type)),
+				"source_label":"예상","automatic_suggestion":null,
 				"target_id":action.target_id,"target_position":[target.x,target.y],
-				"source_color":"#ff9b85" if action.type in ["MELEE","SKILL"] else "#75c8ff",
+				"source_color":"#ff5555" if action.type in ["MELEE","SKILL"] else "#75c8ff",
+				"opacity":0.32,"skill_id":action.skill_id,"callout_key":"%s:%s:%d:%s"%[str(decision.get("selected_action_id","")),action.type,action.target_id,action.skill_id],
 				"line_style":"DASHED_THIN","marker_style":"CIRCLE","draw_connector":true,
 				"approximate":true,"ready_in":maxi(0,member.busy_until-world.world_time),
-				"speech_headline":"공격 예상" if action.type in ["MELEE","SKILL"] else "이동 예상" if action.type=="MOVE" else "대기 예상",
+				"speech_headline":callout,
 				"reason":"field_preview","resolution_note":"","speech_reason_summary":"입력 후 상황에 따라 변경","reason_text":""})
 		return rows
 	if _protagonist_draft == null: return rows
@@ -5969,7 +5977,9 @@ func companion_speech_bubbles() -> Array[Dictionary]:
 	var bubbles: Array[Dictionary] = []
 	for intent in turn_intent_overlays():
 		if str(intent.get("role", "")) != "COMPANION": continue
+		if str(intent.get("speech_headline","")).is_empty():continue
 		bubbles.append({"schema_version":1,
+			"callout_key":str(intent.get("callout_key",intent.type)),
 			"actor_id":int(intent.actor_id), "actor_name":str(intent.actor_name),
 			"roster_slot":int(intent.roster_slot), "role":"COMPANION",
 			"from_position":intent.from_position.duplicate(true),
@@ -5992,7 +6002,7 @@ func world_speech_bubbles() -> Array[Dictionary]:
 	for speech in companion_speech_bubbles():
 		var row:Dictionary=speech.duplicate(true)
 		row["bubble_id"]="intent:%d:%s:%s"%[int(row.get("actor_id",-1)),
-			str(row.get("source","SUGGESTED")),str(row.get("action_type","HOLD"))]
+			str(row.get("source","SUGGESTED")),str(row.get("callout_key",row.get("action_type","HOLD")))]
 		row["speaker_name"]=str(row.get("actor_name","동료"))
 		row["text"]=str(row.get("headline","방어할게."))
 		row["dialogue_kind"]="COMPANION_CALLOUT"

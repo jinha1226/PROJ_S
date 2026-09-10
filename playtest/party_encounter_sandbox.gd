@@ -2585,6 +2585,7 @@ func _refresh_battle_surface_lightly()->void:
 
 func _portrait_battle_controls_visible()->bool:
 	return session!=null and session.is_duo_autobattle() and session.sim!=null \
+		and not session.field_turns_active() \
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
 
 func _enemy_strip_visible()->bool:
@@ -2796,7 +2797,7 @@ func _validate_battle_targeting(status:Dictionary)->void:
 	var valid_phase:=str(status.get("view_mode",""))=="COMBAT" \
 		and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false))
 	if session.field_turns_active():
-		valid_phase=str(status.get("view_mode",""))=="EXPLORATION" and not bool(status.get("terminal",false))
+		valid_phase=str(status.get("view_mode","")) in ["EXPLORATION","COMBAT"] and not bool(status.get("terminal",false))
 	var caster_alive:=false
 	for row_value in session.party_cards():
 		if row_value is Dictionary and int(row_value.get("entity_id",-1))==_battle_target_actor_id:

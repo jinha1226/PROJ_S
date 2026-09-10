@@ -120,6 +120,8 @@ var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
 var _awareness_pulses:Dictionary={}
 var _speech_bubbles:Array[Dictionary]=[]
+var _callout_lifetimes:Dictionary={}
+const CALLOUT_DURATION_MSEC:=2200
 var melee_vfx:MeleeVfxOverlay
 var pinch_zoom_enabled:=false
 
@@ -617,6 +619,7 @@ func clear_transient_visuals()->void:
 	_actor_motion_requests.clear();_actor_motions.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
+	_speech_bubbles.clear();_callout_lifetimes.clear()
 	_route_path.clear();_route_completed_steps=0;_route_valid=false
 	_exploration_follow_plan.clear()
 	preview_actor_id=-1;preview_origin=Vector2i(-1,-1)
@@ -1001,6 +1004,8 @@ func set_intent_overlays(rows: Array) -> void:
 
 func set_speech_bubbles(rows:Array)->void:
 	var normalized:Array[Dictionary]=[]
+	var live_callouts:Dictionary={}
+	var now:=Time.get_ticks_msec()
 	for raw in rows:
 		if not raw is Dictionary:continue
 		var actor_id:=int(raw.get("actor_id",-1))
@@ -1009,7 +1014,14 @@ func set_speech_bubbles(rows:Array)->void:
 		var row:Dictionary=raw.duplicate(true)
 		row["actor_id"]=actor_id;row["text"]=value
 		row["priority"]=int(row.get("priority",0))
+		if str(row.get("dialogue_kind",""))=="COMPANION_CALLOUT":
+			var key:=str(row.get("bubble_id","%d:%s"%[actor_id,value]))
+			var until:int=int(_callout_lifetimes.get(key,now+CALLOUT_DURATION_MSEC))
+			live_callouts[key]=until;row["expires_at_msec"]=until
+			if not _callout_lifetimes.has(key) and is_inside_tree():
+				get_tree().create_timer(float(CALLOUT_DURATION_MSEC)/1000.0).timeout.connect(queue_redraw)
 		normalized.append(row)
+	_callout_lifetimes=live_callouts
 	normalized.sort_custom(func(a:Dictionary,b:Dictionary):
 		if int(a.priority)!=int(b.priority):return int(a.priority)>int(b.priority)
 		return int(a.actor_id)<int(b.actor_id))
@@ -1025,6 +1037,7 @@ func speech_bubble_draw_specs()->Array[Dictionary]:
 	var font:=get_theme_default_font()
 	var max_text_width:=minf(176.0,safe.size.x*0.54)-SPEECH_BUBBLE_PADDING.x*2.0
 	for bubble in _speech_bubbles:
+		if bubble.has("expires_at_msec") and Time.get_ticks_msec()>=int(bubble.expires_at_msec):continue
 		if result.size()>=SPEECH_BUBBLE_MAX_VISIBLE:break
 		var actor_id:=int(bubble.get("actor_id",-1))
 		var speaker_bounds:=_speech_bubble_speaker_bounds(actor_id)
@@ -3402,6 +3415,7 @@ func _draw_intent(intent: Dictionary) -> void:
 	var spec := intent_draw_spec(intent)
 	if not bool(spec.visible):return
 	var color := Color(str(spec.color_hex))
+	color.a*=float(spec.opacity)
 	var action_type := str(spec.action_type)
 	if action_type == "MOVE" and intent.get("destination") is Array and intent.destination.size() == 2:
 		var destination := Vector2i(int(intent.destination[0]), int(intent.destination[1]))
@@ -3442,6 +3456,7 @@ func intent_draw_spec(intent: Dictionary) -> Dictionary:
 		var target:=_array_to_world_position(intent.get("target_position",[]))
 		visible=visible and target!=Vector2i(-1,-1) and _cell_allows_overlay(target)
 	return {"action_type":str(intent.get("type","HOLD")),
+		"opacity":clampf(float(intent.get("opacity",1.0)),0.0,1.0),
 		"primitive":"RING" if action_type=="HOLD" else ("TARGET_MARKER" if action_type=="MELEE" else "ARROW"),
 		"draw_connector":action_type=="MOVE" or bool(intent.get("draw_connector",false)),
 		"visible":visible,

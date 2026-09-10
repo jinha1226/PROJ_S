@@ -25,13 +25,16 @@ func run()->void:
 		check(Art.index(Art.DIRECTIONS[index])==index,"eight direction mapping %d"%index)
 	check(Art.FRAMES[0].get_image().get_data()==load("res://assets/pixel24_v3/runtime/actors/base/human.png").get_image().get_data(),"south preserves original pixels")
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
-	var ui=Sandbox.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
+	var ui=Sandbox.new();ui.initialize_for_headless_test(session,false);root.add_child(ui)
 	await settle()
 	var hero:int=session.sim.world.party_control_actor_id()
 	var ally:int=session.sim.world.party_encounter.active_party_member_ids[1]
 	var before:Dictionary=session.sim.snapshot()
 	var intents:Array=session.turn_intent_overlays()
 	check(not intents.is_empty(),"field provides companion intent")
+	for intent in intents:
+		check(float(ui.grid.intent_draw_spec(intent).opacity)==0.32,"field paths are translucent")
+		if intent.type=="HOLD":check(intent.speech_headline=="","ordinary waiting is silent")
 	check(before==session.sim.snapshot(),"intent preview does not mutate world")
 	await tap(ui.product_tactics_button)
 	check(ui.product_tactics_popup.visible,"actual touchscreen tactics release opens menu")
@@ -47,7 +50,11 @@ func run()->void:
 	check(controlled,"map actually draws control highlight")
 	var card=ui.cards.find_child("MemberCard%d"%hero,true,false)
 	var center:Vector2=card.get_global_rect().get_center()
-	touch(center,true);await create_timer(0.6).timeout;ui._tick_portrait_long_press()
+	# Reproduce the retained legacy phase that used to let battle drag steal input.
+	var prior_phase:String=session.sim.world.party_encounter.safe_phase
+	session.sim.world.party_encounter.safe_phase="ENGAGED"
+	touch(center,true);await create_timer(0.65).timeout
+	check(not ui.battle_drag.active,"field portrait never starts legacy battle drag")
 	check(ui.member_detail_modal.visible and ui.member_detail_entity_id==hero,"held touchscreen opens correct status")
 	touch(center,false);await settle()
 	check(session.sim.world.party_control_actor_id()==ally,"long press release does not switch control")
@@ -58,7 +65,7 @@ func run()->void:
 	mouse(center,true);mouse(center,false);await settle()
 	check(session.sim.world.party_control_actor_id()==hero,"actual mouse portrait click selects hero")
 	center=ui.cards.find_child("MemberCard%d"%ally,true,false).get_global_rect().get_center()
-	mouse(center,true);await create_timer(0.6).timeout;ui._tick_portrait_long_press()
+	mouse(center,true);await create_timer(0.65).timeout
 	check(ui.member_detail_modal.visible and ui.member_detail_entity_id==ally,"held mouse opens status")
 	mouse(center,false);ui._close_member_detail();await settle()
 	check(session.sim.world.party_control_actor_id()==hero,"mouse long press does not switch")
@@ -73,9 +80,23 @@ func run()->void:
 	check(session.sim.world.party_control_actor_id()==ally,"skill tap selects caster")
 	ui._cancel_battle_targeting();await settle()
 	check(not ui.hero_skill_row.find_child("ActorSkill_%d_MEND"%ally,true,false).disabled,"cancel restores skill availability")
+	session.sim.world.party_encounter.safe_phase=prior_phase
 	for row in session.party_cards():
 		check(row.has("energy") and row.has("max_energy") and row.has("stress"),"portrait stats available")
 	check(session.sim.world.world_time==int(before.world_time),"all UI gestures cost no simulation time")
+	# Callouts expire in presentation time without refreshing the simulation.
+	var speech:={"actor_id":hero,"text":"공격!","bubble_id":"test:attack:1","dialogue_kind":"COMPANION_CALLOUT"}
+	ui.grid.set_speech_bubbles([speech])
+	var expires:int=ui.grid._callout_lifetimes[speech.bubble_id]
+	ui.grid.set_speech_bubbles([speech])
+	check(ui.grid._callout_lifetimes[speech.bubble_id]==expires,"same intent does not renew callout")
+	await create_timer(2.3).timeout
+	check(ui.grid.speech_bubble_draw_specs().is_empty(),"callout disappears while waiting for player")
+	ui.grid.set_speech_bubbles([speech])
+	check(ui.grid._callout_lifetimes[speech.bubble_id]==expires,"expired intent remains silent on refresh")
+	speech.bubble_id="test:attack:2";ui.grid.set_speech_bubbles([speech])
+	check(int(ui.grid._callout_lifetimes[speech.bubble_id])>expires,"changed target gets fresh callout")
+	ui.grid.set_speech_bubbles([])
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("/tmp/living-world-field-controls.png")

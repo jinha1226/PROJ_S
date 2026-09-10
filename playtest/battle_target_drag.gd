@@ -26,6 +26,11 @@ var _move_key:=""
 
 func handle_input(host,event:InputEvent)->bool:
 	host_ref=weakref(host)
+	# Field turns own portrait tap/hold and skill targeting, even when an old
+	# encounter still carries ENGAGED. Do not steal their pointer-down event.
+	if host.session!=null and host.session.field_turns_active():
+		if active:clear()
+		control_held=false;return false
 	if active and event is InputEventKey and event.pressed and event.keycode==KEY_ESCAPE:
 		clear();host.get_viewport().set_input_as_handled();return true
 	if event is InputEventScreenTouch and event.pressed and not active:ignore_mouse_until=-1
