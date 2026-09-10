@@ -337,6 +337,7 @@ var _battle_target_committing:=false
 var battle_drag:Control
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
+var _skill_pages:Dictionary={}
 var product_tactics_button:Button
 var product_tactics_popup:PopupMenu
 var _retreat_active:=false
@@ -727,6 +728,7 @@ func _product_control_at_position(global_position:Vector2)->String:
 		history_nav_button,enemy_vision_overlay_button])
 	if session!=null and session.field_turns_active():
 		if hero_skill_row!=null:controls.append_array(hero_skill_row.find_children("ActorSkill_*","Button",true,false))
+		if hero_skill_row!=null:controls.append_array(hero_skill_row.find_children("ActorSkillPage_*","Button",true,false))
 	for control_value in controls:
 		if not is_instance_valid(control_value):continue
 		var button:=control_value as Button
@@ -735,6 +737,11 @@ func _product_control_at_position(global_position:Vector2)->String:
 	return ""
 
 func _activate_product_control(control_name:String)->void:
+	if control_name.begins_with("ActorSkillPage_"):
+		var button=hero_skill_row.find_child(control_name,true,false)
+		if button!=null and not button.disabled:
+			_on_skill_page_requested(int(button.get_meta("actor_id")),int(button.get_meta("next_page")))
+		return
 	if control_name.begins_with("ActorSkill_"):
 		var button=hero_skill_row.find_child(control_name,true,false)
 		if button!=null and not button.disabled:
@@ -2700,6 +2707,8 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 			var skills=preload("res://playtest/portrait_skill_row.gd").new()
 			skills.name="PortraitSkills%d"%actor_id
 			skills.slot_count=3
+			skills.page_index=int(_skill_pages.get(actor_id,0))
+			skills.page_requested.connect(_on_skill_page_requested)
 			skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			skills.configure(actor_id,session.active_skill_rows(actor_id),_battle_target_actor_id,_battle_target_skill_id)
 			skills.explicit_pointer_input=true
@@ -2712,10 +2721,16 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	var rows:=_hero_skill_rows(status)
 	if rows.is_empty():hero_skill_row.visible=false;return
 	var skills=preload("res://playtest/portrait_skill_row.gd").new();skills.name="HeroSkills"
+	skills.page_index=int(_skill_pages.get(hero_id,0))
+	skills.page_requested.connect(_on_skill_page_requested)
 	skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	skills.configure(hero_id,rows,_battle_target_actor_id,_battle_target_skill_id)
 	skills.skill_selected.connect(_on_manual_skill_selected)
 	hero_skill_row.add_child(skills)
+
+func _on_skill_page_requested(actor_id:int,page:int)->void:
+	_skill_pages[actor_id]=page
+	_request_refresh()
 
 func _update_hero_skill_row(status:Dictionary)->void:
 	if hero_skill_row==null or not hero_skill_row.visible:return
@@ -3847,8 +3862,8 @@ func _add_legacy_guild_tutorial()->void:
 		if bool(row.get("can_accept",false)):
 			var accept:=_add_button(line,"수락","LegacyGuildAccept%s"%quest_id,_on_legacy_guild_tutorial_command.bind("ACCEPT",quest_id))
 			accept.custom_minimum_size=Vector2(80,TOUCH_TARGET)
-		if quest_id=="GUILD_TUTORIAL_HEAL" and bool(row.get("accepted",false)) and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
-			var support:=_add_button(line,"지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
+		if quest_id in ["GUILD_TUTORIAL_HEAL","GUILD_TUTORIAL_BIND"] and bool(row.get("accepted",false)) and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
+			var support:=_add_button(line,"지원 이능" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
 			support.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 		if bool(row.get("can_claim",false)):
 			var claim:=_add_button(line,"보상","LegacyGuildClaim%s"%quest_id,_on_legacy_guild_tutorial_command.bind("CLAIM",quest_id))
@@ -5000,7 +5015,11 @@ func _finish_companion_order_edit()->void:
 	_request_refresh()
 
 func _bind_member_ability(instance_id:String,actor_id:int)->Dictionary:
-	return session.bind_ability_item(actor_id,instance_id)
+	var result:Dictionary=session.bind_ability_item(actor_id,instance_id)
+	if bool(result.get("accepted",false)):
+		_skill_pages[actor_id]=0
+		_request_refresh()
+	return result
 
 
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:

@@ -36,7 +36,7 @@ func run()->void:
 	var ui=Sandbox.new();ui.initialize_for_headless_test(session,false);root.add_child(ui)
 	await settle()
 	check(ui.hero_skill_row.get_child_count()==1,"one full-width skill bar")
-	check(ui.hero_skill_row.get_child(0).get_child_count()==3,"three active slots including empties")
+	check(ui.hero_skill_row.get_child(0).get_child_count()==4,"three active slots and overflow navigation")
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("/tmp/lw-party-hud.png")

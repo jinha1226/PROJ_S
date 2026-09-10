@@ -41,7 +41,7 @@ static func definitions() -> Array[Dictionary]:
 				{"definition_id":"POTION_HEALING","quantity":1}]},
 		{"quest_id":"GUILD_TUTORIAL_BIND","title":"내 것이 된 이능",
 			"description":"이능 획득물을 보관한 뒤 효과와 슬롯을 확인하고 자신에게 결속하세요.",
-			"hint":"줍기만으로 완료되지 않습니다. 레벨당 한 칸, 최대 여섯 칸이며 제거는 잠겨 있습니다. 준비되었을 때만 진행하세요.",
+			"hint":"획득물이 없으면 길드에서 화염탄 훈련 지원을 한 번 받을 수 있습니다. 상태창 이능 탭에서 결속하세요. 레벨당 한 칸, 최대 여섯 칸이며 현재 해제할 수 없습니다.",
 			"reward_kind":"GOLD","reward_text":"금화 20개","gold":20},
 		{"quest_id":"GUILD_TUTORIAL_SKILL","title":"힘을 쓰는 법",
 			"description":"던전에서 자신의 액티브 스킬을 한 번 성공적으로 실행하세요.",

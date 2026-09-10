@@ -62,6 +62,11 @@ jobs:
           ./godot --headless --path . --script tests/field_turn_ui_acceptance.gd
           ./godot --headless --path . --script tests/run_party_ai_tests.gd
 
+      - name: Verify ability binding and gameplay replay
+        run: |
+          ./godot --headless --path . --script tests/run_ability_binding_tests.gd
+          ./godot --headless --path . --script tests/ability_binding_gameplay_acceptance.gd
+
       - name: Verify environment reactions, replay, and body damage
         run: |
           ./godot --headless --path . --script tests/run_environment_regression_tests.gd

@@ -4,6 +4,10 @@ const TEST_FILE := "test_ability_binding.gd"
 
 
 func _init() -> void:
+	var content_error:String=preload("res://sim/content_database.gd").validation_error()
+	if not content_error.is_empty():
+		printerr("FAIL ability binding prerequisite: "+content_error)
+		quit(1);return
 	var script=load("res://tests/"+TEST_FILE)
 	var total:=0
 	var failed:=0

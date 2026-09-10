@@ -35,7 +35,7 @@ func test_slot_capacity_and_canonical_duplicate_rules()->bool:
 	return finish()
 
 
-func test_bind_consumes_item_persists_and_replays()->bool:
+func test_bind_consumes_item_and_restores_party_wire()->bool:
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
 	var hero:=_grant_ability_item(session,"ABILITY_BIND_01")
 	var world=session.sim.world
@@ -67,6 +67,62 @@ func test_bind_consumes_item_persists_and_replays()->bool:
 	if restored_state!=null:
 		check_eq(restored_state.member(hero).bound_ability_ids,["FIREBOLT"],
 			"restored party state keeps exactly one bound ability")
+	return finish()
+
+
+func test_real_support_binding_and_full_session_replay()->bool:
+	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
+	check(session.sim!=null,"session initialized")
+	if session.sim==null:return finish()
+	check(session.town_life_command({"action":"START"}).accepted,"enter town")
+	var quest:="GUILD_TUTORIAL_BIND"
+	check(session.guild_tutorial_command({"action":"ACCEPT","quest_id":quest}).accepted,"accept binding tutorial")
+	check(session.guild_tutorial_command({"action":"SUPPORT","quest_id":quest}).accepted,"obtain real journaled essence")
+	var hero:int=session.sim.world.party_control_actor_id()
+	var items:Array=session.ability_binding_item_rows(hero)
+	check_eq(items.size(),1,"one support essence")
+	if items.size()!=1:return finish()
+	var before:Dictionary=session.sim.snapshot()
+	check(not session.guild_tutorial_command({"action":"SUPPORT","quest_id":quest}).accepted,"support is one-time")
+	check_eq(session.sim.snapshot(),before,"duplicate support does not mutate")
+	check("FIREBOLT" not in session.sim.world.party_encounter.member(hero).active_skill_ids(),"not available before binding")
+	var result:Dictionary=session.bind_ability_item(hero,str(items[0].instance_id))
+	check(result.accepted,"real binding: "+str(result.get("reason","")))
+	check_eq(session.sim.world.party_encounter.member(hero).active_skill_ids().count("FIREBOLT"),1,"bound skill available exactly once")
+	check(session.active_skill_rows(hero).any(func(row):return row.skill_id=="FIREBOLT"),"HUD DTO includes acquired skill")
+	var saved:String=session.save_session_json()
+	var restored=Session.new()
+	var loaded:Dictionary=restored.load_session_json(saved)
+	check(loaded.accepted,"full session replay: "+str(loaded.get("reason","")))
+	if loaded.accepted:
+		check_eq(restored.sim.snapshot(),session.sim.snapshot(),"full snapshot including consumption and events matches")
+		check_eq(restored.sim.world.party_encounter.member(hero).active_skill_ids().count("FIREBOLT"),1,"load does not duplicate effect")
+		check(restored.ability_binding_item_rows(hero).is_empty(),"load does not resurrect essence")
+	var tampered:Dictionary=JSON.parse_string(saved)
+	tampered.journal[-1].operation.ability_id="MEND"
+	var before_load:Dictionary=restored.sim.snapshot()
+	check(not restored.load_session_json(JSON.stringify(tampered)).accepted,"mismatched ability journal is rejected")
+	check_eq(restored.sim.snapshot(),before_load,"failed load is atomic")
+	return finish()
+
+
+func test_innate_skill_binding_is_not_duplicated()->bool:
+	var member=preload("res://sim/party_member_state.gd").new(1,0,"COMPANION","GROUPED")
+	member.bound_ability_ids.append("FIREBOLT")
+	check_eq(member.active_skill_ids().count("FIREBOLT"),1,"innate plus bound is one skill")
+	return finish()
+
+
+func test_v24_session_migrates_without_free_abilities()->bool:
+	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
+	var saved:Dictionary=JSON.parse_string(session.save_session_json())
+	saved.snapshot.party_encounter.schema_version=24
+	for row in saved.snapshot.party_encounter.member_rows:row.erase("bound_ability_ids")
+	var loaded=Session.new()
+	var result:Dictionary=loaded.load_session_json(JSON.stringify(saved))
+	check(result.accepted,"v24 full-session migration: "+str(result.get("reason","")))
+	if result.accepted:
+		check_eq(loaded.sim.snapshot(),session.sim.snapshot(),"migration reconstructs empty bindings without changing world")
 	return finish()
 
 

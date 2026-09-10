@@ -15,6 +15,8 @@ var picker:VBoxContainer
 var remove_button:Button
 var bind_action:Callable=Callable()
 var remove_action:Callable=Callable()
+var confirmation:ConfirmationDialog
+var pending_instance_id:=""
 
 func _ready()->void:
 	name="AbilityLoadout"
@@ -43,11 +45,19 @@ func _ready()->void:
 	feedback.add_theme_font_size_override("font_size",11);add_child(feedback)
 	var label:=Label.new();label.text="보관 중인 이능 획득물";add_child(label)
 	picker=VBoxContainer.new();add_child(picker)
+	confirmation=ConfirmationDialog.new();confirmation.title="이능 결속 확인"
+	confirmation.dialog_autowrap=true
+	confirmation.ok_button_text="소비하고 결속";confirmation.cancel_button_text="취소"
+	confirmation.confirmed.connect(_confirm_binding)
+	confirmation.canceled.connect(func():pending_instance_id="")
+	add_child(confirmation)
 	if not binding_rows.is_empty():_refresh()
 
 
 func configure(id:int, rows:Array, stored_items:Array=[], bind_callback:Callable=Callable(), remove_callback:Callable=Callable())->void:
 	actor_id=id
+	pending_instance_id=""
+	if confirmation!=null:confirmation.hide()
 	binding_rows=rows.duplicate(true)
 	item_rows=stored_items.duplicate(true)
 	bind_action=bind_callback
@@ -86,7 +96,7 @@ func _refresh()->void:
 		button.disabled=state=="LOCKED"
 		PixelSkin.apply_action_button(button,PixelSkin.BRASS if i==selected_slot else PixelSkin.CYAN)
 	summary.text="결속 %d / 개방 %d / 6칸 · 액티브·패시브 공용"%[bound,open_slots]
-	remove_button.disabled=not remove_action.is_valid() or str(binding_rows[selected_slot].get("state",""))!="BOUND"
+	remove_button.disabled=not remove_action.is_valid() or selected_slot>=binding_rows.size() or str(binding_rows[selected_slot].get("state",""))!="BOUND"
 	for child in picker.get_children():
 		picker.remove_child(child);child.queue_free()
 	if item_rows.is_empty():
@@ -108,6 +118,21 @@ func _bind_item(instance_id:String)->void:
 	if not bind_action.is_valid():
 		feedback.text="결속 서비스가 연결되지 않았습니다."
 		return
+	for row in item_rows:
+		if str(row.get("instance_id",""))!=instance_id:continue
+		var preview:Dictionary=row.get("effect_preview",{})
+		pending_instance_id=instance_id
+		confirmation.dialog_text="%s\nMP %d · 사거리 %d\n\n획득물 1개를 소비하고 빈 결속 한도 1칸을 사용합니다.\n현재 해제할 수 없습니다. 결속할까요?"%[
+			str(preview.get("label",row.get("ability_id","이능"))),
+			int(preview.get("cost",0)),int(preview.get("range",0))]
+		confirmation.popup_centered(Vector2i(300,220))
+		return
+
+
+func _confirm_binding()->void:
+	var instance_id:=pending_instance_id
+	pending_instance_id=""
+	if instance_id.is_empty() or not bind_action.is_valid():return
 	var result:Variant=bind_action.call(instance_id)
 	if not result is Dictionary or not bool(result.get("accepted",false)):
 		feedback.text=str(result.get("message","이능을 결속할 수 없습니다.")) if result is Dictionary else "이능을 결속할 수 없습니다."

@@ -698,10 +698,11 @@ func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dicti
 	if action=="ACCEPT" and not bool(row.can_accept):return _rejection_dto("guild_tutorial_already_accepted")
 	if action=="CLAIM" and not bool(row.can_claim):return _rejection_dto("guild_tutorial_reward_unavailable")
 	if action=="SUPPORT":
-		if quest_id!="GUILD_TUTORIAL_HEAL" or not bool(row.accepted) or bool(row.completed):
+		if quest_id not in ["GUILD_TUTORIAL_HEAL","GUILD_TUTORIAL_BIND"] or not bool(row.accepted) or bool(row.completed):
 			return _rejection_dto("guild_tutorial_support_unavailable")
+		if legacy_rules and quest_id!="GUILD_TUTORIAL_HEAL":return _rejection_dto("guild_tutorial_support_unavailable")
 		if bool(row.support_granted):return _rejection_dto("guild_tutorial_support_already_granted")
-		if _hero_has_item_definition("POTION_HEALING"):
+		if _hero_has_item_definition("ESSENCE_FIRE_BOLT" if quest_id=="GUILD_TUTORIAL_BIND" else "POTION_HEALING"):
 			return _rejection_dto("guild_tutorial_support_not_needed")
 	var rollback:Dictionary=sim.snapshot()
 	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
@@ -715,12 +716,14 @@ func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dicti
 		"ACCEPT":
 			event=world.emit_event(GuildTutorialRulesScript.EVENT_ACCEPTED,hero_id,-1,hero.position,0,-1,payload)
 		"SUPPORT":
-			var granted:=ItemOperationsScript.commit_grant(world,hero_id,"POTION_HEALING",1,
+			var support_item:="ESSENCE_FIRE_BOLT" if quest_id=="GUILD_TUTORIAL_BIND" else "POTION_HEALING"
+			var granted:=ItemOperationsScript.commit_grant(world,hero_id,support_item,1,
 				hero.position,"GUILD_TUTORIAL_SUPPORT")
 			if not bool(granted.get("accepted",false)):
 				_restore_town_rollback(rollback);return _rejection_dto(str(granted.get("reason","guild_tutorial_support_failed")))
 			cause_id=int(granted.event_id);grant_ids.append(cause_id)
-			payload["instance_id"]=str(granted.instance_id);payload["support_id"]="HEALING_POTION"
+			payload["instance_id"]=str(granted.instance_id)
+			payload["support_id"]="FIRE_BOLT_ESSENCE" if quest_id=="GUILD_TUTORIAL_BIND" else "HEALING_POTION"
 			event=world.emit_event(GuildTutorialRulesScript.EVENT_SUPPORT_GRANTED,hero_id,-1,hero.position,1,cause_id,payload)
 		"CLAIM":
 			var definition:=GuildTutorialRulesScript.definition(quest_id)
@@ -744,7 +747,7 @@ func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dicti
 	var journal_row:Dictionary={"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}}
 	if not legacy_rules:journal_row["ruleset_id"]=GuildTutorialRulesScript.RULESET_ID
 	command_journal.append(journal_row)
-	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
+	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 이능 획득물을 지급했습니다." if quest_id=="GUILD_TUTORIAL_BIND" else "훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"quest_id":quest_id,"action":action,"message":str(messages[action]),
 		"guild_tutorial":guild_tutorial_overview()})
@@ -8573,6 +8576,8 @@ func load_session_json(encoded: String) -> Dictionary:
 				replay_result=replay.bind_ability_item(
 					Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),
 					str(ability_operation.instance_id))
+				if bool(replay_result.get("accepted",false)) and str(replay_result.get("ability_id",""))!=str(ability_operation.ability_id):
+					return _rejection_dto("party_journal_snapshot_mismatch")
 			"exploration":
 				var command=CommandScript.from_dict(row.command)
 				replay_result=replay.commit_exploration(command)

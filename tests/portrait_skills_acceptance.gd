@@ -28,7 +28,7 @@ func run()->void:
 		var pair=ui.hero_skill_row.get_node_or_null("PortraitSkills%d"%id)
 		check(pair!=null,"shared bar belongs to selected actor: %d"%id)
 		if pair==null:continue
-		check(pair.get_child_count()==3,"shared bar reserves three slots")
+		check(pair.get_child_count()==(4 if session.active_skill_rows(id).size()>3 else 3),"three slots plus overflow navigation when needed")
 		var portrait=ui.cards.find_child("MemberCard%d"%id,true,false)
 		check(absf(pair.global_position.x-ui.hero_skill_row.global_position.x)<2,"shared row aligns with full-width container")
 		check(pair.get_global_rect().end.x<=root.size.x,"shared row fits viewport")
@@ -36,6 +36,7 @@ func run()->void:
 		var expected:Array=session.sim.world.party_encounter.member(id).active_skill_ids()
 		var shown:Array=[]
 		for button in pair.get_children():
+			if button.name.begins_with("ActorSkillPage_"):continue
 			if button is Button:
 				check(int(button.get_meta("actor_id"))==id,"skill belongs to selected actor")
 				shown.append(str(button.get_meta("skill_id")))
