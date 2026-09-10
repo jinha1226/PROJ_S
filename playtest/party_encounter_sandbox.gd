@@ -804,7 +804,7 @@ func _ready()->void:
 	_build_ui()
 	if not _initialized_for_headless_test and session==null:
 		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
-			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID)
+			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID,"human",true)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
 	if not _initialized_for_headless_test and not _web_capture_preview_requested():
@@ -1189,7 +1189,7 @@ func _commit_species_picker(species_id:String)->void:
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
-	var result:Dictionary=session.start_new_run_with_species(species_id,true) if session!=null else {}
+	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_species_picker_committed=false;return
 	species_picker_modal.visible=false
@@ -7158,7 +7158,7 @@ func _on_product_menu_id(item_id:int)->void:
 		1:
 			var fresh_seed:=_issue_new_personality_seed(int(session.personality_seed))
 			if session.reset_party(session.world_seed,fresh_seed,SessionScript.DUO_SCENARIO_ID,
-					{},false,"human"):
+					{},false,"human",true,true,true,false,false,true):
 				show_species_picker_for_new_run()
 			else:
 				notice_text="새 게임을 시작하지 못했습니다.";_request_refresh()

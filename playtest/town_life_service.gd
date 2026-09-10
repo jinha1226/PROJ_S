@@ -52,6 +52,7 @@ static func overview(session)->Dictionary:
 		var activity:=Population.town_activity(str(entity.display_name),id,int(life.visits),member.personality_profile)
 		if joined and active and party.expedition_cycle.phase=="DUNGEON":activity={"label":"원정 중","location":"던전","tile":[7,12]}
 		rows.append({"entity_id":id,"display_name":str(entity.display_name),"health":int(entity.health),
+			"is_player":id==party.protagonist_id,
 			"species_id":str(entity.species_id),
 			"max_health":int(entity.max_health),"active":active,"joined":joined,"temperament":temperament,
 			"occupation":identity.job,"adventurer":bool(identity.explores),
@@ -187,7 +188,7 @@ static func commit(session,operation:Dictionary)->Dictionary:
 		if ok:ok=session._ensure_town_guild_candidates()
 		# Two residents ride along from the first expedition so fights show the
 		# party flow at once (the field limit). The guild keeps the rest.
-		if ok:
+		if ok and not session.solo_start_enabled():
 			var joined:=_auto_join_first_company(session)
 			ok=joined>=0
 			if ok and joined>0:message="여관방에서 첫 원정을 준비합니다. 동료 %d명이 함께 나섭니다."%joined

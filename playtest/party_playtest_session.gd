@@ -78,6 +78,7 @@ const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const SoloRunPolicy = preload("res://playtest/solo_run_policy.gd")
 const SOLO_EXPLORATION_SCENARIO_ID := SoloRunPolicy.SCENARIO_ID
 const DUO_SCENARIO_ID := SoloRunPolicy.DUO_SCENARIO_ID
+const SOLO_START_TAG := "solo_start_v1"
 const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
 const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
@@ -242,11 +243,11 @@ func _combatant_status_ids(entity_id: int) -> Array[String]:
 func _init(p_world_seed: int = DEFAULT_WORLD_SEED,
 		p_personality_seed: int = DEFAULT_PERSONALITY_SEED,
 		p_scenario_id: String = REGRESSION_SCENARIO_ID,
-		p_player_species_id: String = "human") -> void:
+		p_player_species_id: String = "human", solo_start:bool=false) -> void:
 	_base_progression_service=BaseProgressionServiceScript.new(self)
 	_base_settlement_service=BaseSettlementServiceScript.new(self)
 	reset_party(p_world_seed, p_personality_seed, p_scenario_id, {}, p_scenario_id!=DUO_SCENARIO_ID,
-		p_player_species_id)
+		p_player_species_id,true,true,true,false,false,solo_start)
 
 
 static func new_expedition_personality_seed(entropy_seed: int,
@@ -297,7 +298,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		bootstrap_opening_event:bool=true,
 		p_player_species_id:String="human",
 		bootstrap_settlement:bool=true, bootstrap_talents:bool=true,
-		bootstrap_survival:bool=true,bootstrap_living:bool=false,bootstrap_roster:bool=false) -> bool:
+		bootstrap_survival:bool=true,bootstrap_living:bool=false,bootstrap_roster:bool=false,
+		bootstrap_solo:bool=false) -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -317,6 +319,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if candidate == null: return false
 	var showcase := p_scenario_id == SHOWCASE_SCENARIO_ID
 	var duo := p_scenario_id == DUO_SCENARIO_ID
+	var starting_companion:=duo and not bootstrap_solo
 	var solo := p_scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID,
 		SOLO_FIXTURE_SCENARIO_ID]
 	var showcase_layout:=VisualTestMapScript.uses_showcase_layout(p_scenario_id)
@@ -346,6 +349,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
 	if duo:hero_tags.append("autonomous_party")
+	if duo and bootstrap_solo:hero_tags.append(SOLO_START_TAG)
 	if duo and bootstrap_survival:
 		hero_tags.append_array([preload("res://sim/party_survival_rules.gd").TAG,
 			preload("res://sim/party_survival_rules.gd").BOOTSTRAP_TAG])
@@ -354,7 +358,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var companion_identity:Dictionary=preload("res://playtest/seeded_roster.gd").companion(p_world_seed,p_personality_seed) \
 		if bootstrap_living and bootstrap_roster else {"name":"나래","species":"human","loadout":"SUPPORT_V1"}
 	var narae = candidate.world.add_entity("companion", str(companion_identity.name), narae_position, 95,
-		["party_member"], str(companion_identity.species), "party") if not solo or duo else null
+		["party_member"], str(companion_identity.species), "party") if not solo or starting_companion else null
 	var miru = candidate.world.add_entity("companion", "미루", miru_position, 105,
 		["party_member"], "goblin", "party") if not solo else null
 	var candidate_dwarf = candidate.world.add_entity("companion", "보린", Vector2i(1,13), 110,
@@ -429,7 +433,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.opening_event = opening_state
 	state.party_member_ids.append(protagonist.id)
 	if not solo:state.party_member_ids.append_array([narae.id, miru.id])
-	if duo:state.party_member_ids.append(narae.id)
+	if starting_companion:state.party_member_ids.append(narae.id)
 	if showcase: state.party_member_ids.append(candidate_dwarf.id)
 	for enemy_entity in enemies:state.enemy_ids.append(enemy_entity.id)
 	if VisualTestMapScript.uses_los_fov(p_scenario_id):
@@ -460,13 +464,13 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.active_party_member_ids.clear()
 	state.active_party_member_ids.append(protagonist.id)
 	if not solo:state.active_party_member_ids.append_array([narae.id, miru.id])
-	if duo:state.active_party_member_ids.append(narae.id)
+	if starting_companion:state.active_party_member_ids.append(narae.id)
 	state.group_anchor = protagonist.position
 	state.party_detection_radius = 3 if VisualTestMapScript.uses_los_fov(p_scenario_id) \
 		else 4; state.enemy_detection_radius = 3
 	state.member_rows[protagonist.id] = MemberScript.new(protagonist.id, 0, "PROTAGONIST", "DEPLOYED", null)
-	if duo:state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
-	if duo:state.member_rows[narae.id].skill_loadout_id=str(companion_identity.loadout)
+	if starting_companion:state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
+	if starting_companion:state.member_rows[narae.id].skill_loadout_id=str(companion_identity.loadout)
 	if not solo:
 		state.member_rows[narae.id] = MemberScript.new(narae.id, 1, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, narae.id))
 		state.member_rows[miru.id] = MemberScript.new(miru.id, 2, "COMPANION", "GROUPED", PartyHexacoScript.generated(p_personality_seed, miru.id))
@@ -504,7 +508,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		candidate,hero_position,map_layout) if product_dungeon else [])
 	if not solo:
 		narae.position = state.group_anchor; miru.position = state.group_anchor
-	if duo:narae.position=state.group_anchor
+	if starting_companion:narae.position=state.group_anchor
 	# The expedition (DUO) product uses the awareness contact rule: seeing an
 	# enemy is not a contact. Solo fixture scenarios and showcase/legacy maps keep
 	# the sight rule their tests assume.
@@ -3196,19 +3200,22 @@ func restart_same_run() -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, frozen_personality_seed,
-			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized):
+			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled()):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
 		"scenario_id":scenario_id, "run_progress":run_progress()})
 
 
-func start_new_run_with_species(species_id:String,living:bool=false)->Dictionary:
+func solo_start_enabled()->bool:
+	return sim!=null and sim.world.party_encounter!=null and SOLO_START_TAG in sim.world.entities[sim.world.party_encounter.protagonist_id].tags
+
+func start_new_run_with_species(species_id:String,living:bool=false,solo_start:bool=false)->Dictionary:
 	if not GrowthBuildRegistryScript.has_species(species_id):
 		return _rejection_dto("unknown_player_species")
-	if living:
+	if living or solo_start:
 		var pristine_sim=sim if _can_select_starting_species_in_place() else null
-		if not reset_party(world_seed,personality_seed,scenario_id,{},false,species_id,true,true,true,true,true):
+		if not reset_party(world_seed,personality_seed,scenario_id,{},false,species_id,true,true,true,living,living,solo_start):
 			return _rejection_dto("player_species_reset_failed")
 		# Keep the launch scene's simulator identity stable. The rebuilt canonical
 		# world is swapped into the already-wired simulator so picker input does not
@@ -3294,7 +3301,7 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id,
-			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized):
+			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled()):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -7765,7 +7772,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				restored.world.party_encounter.diagonal_gateway_positions.append(migrated_gateway)
 	var replay = load("res://playtest/party_playtest_session.gd").new(
 		parsed_world_seed, parsed_personality_seed, parsed_scenario_id,
-		parsed_player_species_id)
+		parsed_player_species_id,SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags)
 	if (not replay_layout.is_empty() or legacy_settlement_replay or legacy_talent_replay) and not replay.reset_party(parsed_world_seed,
 			parsed_personality_seed,parsed_scenario_id,replay_layout,
 			not legacy_opening_replay,parsed_player_species_id,
@@ -7773,7 +7780,8 @@ func load_session_json(encoded: String) -> Dictionary:
 			preload("res://sim/party_survival_rules.gd").BOOTSTRAP_TAG in restored.world.entities[
 				restored.world.party_encounter.protagonist_id].tags,
 			preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot),
-			preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot)):
+			preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot),
+			SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,

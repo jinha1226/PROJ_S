@@ -47,6 +47,8 @@ var camera=preload("res://playtest/base_map_camera.gd").new()
 var _last_pointer:=Vector2.ZERO
 var minimum_map_height:=320
 var fit_map_height:=false
+var resident_motion=preload("res://playtest/town_resident_motion.gd").new()
+var _ambient_elapsed:=0.0
 
 
 func _ready()->void:
@@ -65,7 +67,23 @@ func present(overview:Dictionary,selected_id:String="STORAGE")->void:
 	_settlement=_overview.get("settlement",{}).duplicate(true) \
 		if _overview.get("settlement",{}) is Dictionary else {}
 	_selected_id=selected_id
+	resident_motion.configure(_overview)
 	_resolve_layout();queue_redraw()
+
+func _process(delta:float)->void:
+	if not is_visible_in_tree() or str(_overview.get("phase",""))!="TOWN" \
+			or _placement_mode or _pointer_down or not camera.contacts.is_empty():return
+	_ambient_elapsed+=minf(delta,0.1)
+	if _ambient_elapsed<0.1:return
+	var elapsed:=_ambient_elapsed;_ambient_elapsed=0.0
+	if resident_motion.tick(elapsed):queue_redraw()
+
+func resident_center(resident:Dictionary)->Vector2:
+	var tile:=Vector2(_vector2i(resident.get("tile",[7,7])))
+	var id:=int(resident.entity_id)
+	if id==resident_motion.worker_id:tile=Vector2(resident_motion.worker_tile)
+	else:tile=resident_motion.position(id,tile)
+	return _map_origin()+(tile+Vector2.ONE*0.5)*_cell_size()
 
 
 func building_rect(id:String)->Rect2:
@@ -173,16 +191,15 @@ func _draw_work_and_residents()->void:
 		draw_circle(center,8,SELECTED)
 		draw_string(KoreanFont,center+Vector2(-3,4),str(recipe.ready),HORIZONTAL_ALIGNMENT_LEFT,-1,12,GROUND)
 	if str(_overview.get("phase",""))!="TOWN":return
-	var index:=0
 	for resident in _overview.get("residents",[]):
-		var tile:=Vector2i(7+index,7);index+=1
-		if resident.has("tile"):tile=_vector2i(resident.tile)
 		var working:bool=not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
-		if working:tile=preload("res://sim/base_work_rules.gd").worker_position(job)
-		var center:=_map_origin()+(Vector2(tile)+Vector2.ONE*0.5)*_cell_size()
+		var center:=resident_center(resident)
 		var resting:bool=working and str(job.action)=="REST" \
 			and int(job.progress)>=job.route.size()-1
-		_draw_resident(resident,center,working,resting)
+		var directed:Dictionary=resident.duplicate(false)
+		var facing:=resident_motion.facing(int(resident.entity_id))
+		directed["facing"]=[facing.x,facing.y]
+		_draw_resident(directed,center,working,resting)
 
 
 func resident_visual_spec(resident:Dictionary,center:Vector2,cell_size:float)->Dictionary:
@@ -339,7 +356,7 @@ func _select_building_at(pixel:Vector2)->void:
 	if fit_map_height:
 		var nearest_id:=-1;var nearest_distance:=maxf(8.0,_cell_size()*0.38)
 		for row in _overview.get("residents",[]):
-			var center:=_map_origin()+(Vector2(_vector2i(row.tile))+Vector2.ONE*0.5)*_cell_size()
+			var center:=resident_center(row)
 			var distance:=pixel.distance_to(center)
 			if distance<nearest_distance:nearest_distance=distance;nearest_id=int(row.entity_id)
 		if nearest_id>0:resident_selected.emit(nearest_id);return

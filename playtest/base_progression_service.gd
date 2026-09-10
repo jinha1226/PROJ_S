@@ -56,6 +56,7 @@ func base_overview()->Dictionary:
 		if entity==null or combatant==null or int(entity.health)<=0 \
 				or str(combatant.life_state)!="ACTIVE":continue
 		residents.append({"entity_id":entity_id,"display_name":str(entity.display_name),
+			"is_player":entity_id==_session.sim.world.party_encounter.protagonist_id,
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"activity":({"PRODUCE":"물약 제조 중","REST":"휴식 중"}.get(str(work.get("action","")),"공사 중") \
 				if not work.is_empty() and int(work.worker_id)==entity_id else "대기 중") if phase=="TOWN" else "원정 중"})
