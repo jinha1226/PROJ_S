@@ -3,8 +3,8 @@ extends RefCounted
 
 ## Fixed-front paper-doll registry for the product's flat top-down camera.
 ## Visible bases use a native 24x24 transparent pixel canvas and common anchor.
-## Direction is deliberately ignored: movement and combat never swap or mirror
-## these assets.
+## Humans use native eight-way frames; other species retain their original bases.
+const HumanDirections=preload("res://playtest/human_directional_assets.gd")
 
 const SOURCE_CANVAS_SIZE := Vector2(24.0, 24.0)
 const FOOT_ANCHOR_RATIO := 0.94
@@ -115,6 +115,12 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 	var fitted_offhand:=offhand_texture(off_hand_definition_id,species_id) \
 		if EQUIPMENT_LAYERS_ENABLED and fitted_species else null
 	var has_fitted_equipment:=fitted_armor!=null or fitted_weapon!=null or fitted_offhand!=null
+	var direction_index:=HumanDirections.index(actor.get("facing",[0,1])) if species_id=="human" else 0
+	if species_id=="human":
+		base_texture=HumanDirections.FRAMES[direction_index]
+		fitted_armor=HumanDirections.equipment(fitted_armor,direction_index,true)
+		fitted_weapon=HumanDirections.equipment(fitted_weapon,direction_index)
+		fitted_offhand=HumanDirections.equipment(fitted_offhand,direction_index)
 	return {
 		"uses_sprite":base_texture!=null,
 		"species_id":species_id,
@@ -128,13 +134,13 @@ static func actor_layer_spec(actor:Dictionary)->Dictionary:
 		"weapon_texture":fitted_weapon,
 		"off_hand_definition_id":off_hand_definition_id,
 		"offhand_texture":fitted_offhand,
-		"foreground_texture":FOREGROUND_TEXTURES.get(species_id,null) if has_fitted_equipment else null,
+		"foreground_texture":FOREGROUND_TEXTURES.get(species_id,null) if has_fitted_equipment and direction_index==0 else null,
 		"equipment_fit_supported":fitted_species,
 		"equipment_fit_fallback_base_only":not fitted_species and (not armor_definition_id.is_empty() \
 			or not weapon_definition_id.is_empty() or not off_hand_definition_id.is_empty()),
 		"layer_order":["body","armor","offhand","weapon","foreground"],
 		"equipment_layers_enabled":EQUIPMENT_LAYERS_ENABLED,
-		"fixed_front":true,
+		"fixed_front":species_id!="human","direction_index":direction_index,
 		"source_canvas_size":SOURCE_CANVAS_SIZE,
 		"visual_center_offset_source_px":Vector2.ZERO,
 		"foot_anchor_ratio":FOOT_ANCHOR_RATIO,

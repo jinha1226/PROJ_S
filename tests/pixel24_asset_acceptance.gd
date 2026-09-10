@@ -17,6 +17,7 @@ func check(ok:bool,message:String)->void:
 
 func run()->void:
 	_check_registry_images()
+	_check_directional_map()
 	_check_layer_resolution_is_fixed_front_and_pure()
 	_check_floor_mapping_is_distinct_and_pure()
 	_check_two_phase_walk_is_motion_only()
@@ -64,6 +65,23 @@ func _check_registry_images()->void:
 		"both terrain atlases are 4x4 logical24")
 
 
+func _check_directional_map()->void:
+	var directions=preload("res://playtest/human_directional_assets.gd")
+	for index in range(8):
+		check(_is_binary_rgba_24(directions.FRAMES[index]),"direction frame uses binary-alpha native24")
+		var grid=Grid.new();grid.size=Vector2(450,450)
+		grid.set_observation(_observation(Vector2i(7,7)))
+		grid.set_observation(_observation(Vector2i(7,7)+directions.DIRECTIONS[index]))
+		var spec:Dictionary=grid.fixed_front_actor_render_spec(grid._actors[0])
+		check(spec.get("direction_index",-1)==index,"runtime movement selects direction %d"%index)
+		grid.free()
+	var grid=Grid.new();grid.size=Vector2(450,450);grid.set_observation(_observation(Vector2i(7,7)))
+	var attack:={"type":"MELEE","from_position":[7,7],"target_position":[8,7],"draw_connector":true}
+	check(grid.intent_draw_spec(attack).draw_connector and grid.intent_draw_spec(attack).visible,"field attack connector draws to visible target")
+	attack.target_position=[90,90]
+	check(not grid.intent_draw_spec(attack).visible,"intent does not reveal unseen target")
+	grid.free()
+
 func _check_layer_resolution_is_fixed_front_and_pure()->void:
 	var empty_actor:={"species_id":"human","facing":[-1,0],"equipment_visual":{}}
 	var snapshot:=empty_actor.duplicate(true)
@@ -78,18 +96,19 @@ func _check_layer_resolution_is_fixed_front_and_pure()->void:
 	var west:=Assets.actor_layer_spec(equipped)
 	equipped.facing=[1,0]
 	var east:=Assets.actor_layer_spec(equipped)
-	check(west.body_texture==east.body_texture and west.armor_texture==east.armor_texture \
-		and west.weapon_texture==east.weapon_texture,
-		"facing never selects or mirrors fixed-front textures")
+	check(west.body_texture!=east.body_texture and not west.fixed_front and not east.fixed_front,
+		"human facing selects distinct native directional textures")
 	check(west.armor_texture!=null and west.weapon_texture!=null,
 		"known equipped IDs change visible layers")
-	check(west.foreground_texture!=null \
+	equipped.facing=[0,1]
+	var south:=Assets.actor_layer_spec(equipped)
+	check(south.foreground_texture!=null and west.foreground_texture==null \
 		and west.layer_order==["body","armor","offhand","weapon","foreground"],
-		"fitted equipment restores selective foreground last")
-	check("/fit_v2/" in west.armor_texture.resource_path \
-		and "/fit_v2/" in west.weapon_texture.resource_path \
-		and "/fit_v2/" in west.offhand_texture.resource_path,
-		"approved fit_v2 supplies all human equipment layers")
+		"front foreground preserved without pasting front face over profiles")
+	check("/fit_v2/" in south.armor_texture.resource_path \
+		and "/fit_v2/" in south.weapon_texture.resource_path \
+		and "/fit_v2/" in south.offhand_texture.resource_path,
+		"approved fit_v2 remains equipment source")
 	var dwarf:=Assets.actor_layer_spec({"species_id":"dwarf","equipment_visual":{
 		"weapon_definition_id":"WEAPON_HAND_AXE","off_hand_definition_id":"SHIELD_WOOD"}})
 	check("dwarf_hand_axe.png" in dwarf.weapon_texture.resource_path \
@@ -108,9 +127,9 @@ func _check_layer_resolution_is_fixed_front_and_pure()->void:
 			"%s safely keeps base-only art when no fitted equipment exists"%species_id)
 	var portrait=Portrait.new();portrait.size=Vector2(96,96);portrait.set_actor(equipped)
 	var portrait_spec:Dictionary=portrait.portrait_draw_spec()
-	check(portrait_spec.foreground_texture==west.foreground_texture \
-		and portrait_spec.layer_order==west.layer_order,
-		"portrait and world share fitted layer metadata and order")
+	check(portrait_spec.foreground_texture==south.foreground_texture \
+		and portrait_spec.layer_order==south.layer_order,
+		"portraits retain front-facing equipment metadata and order")
 	portrait.free()
 
 

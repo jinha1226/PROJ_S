@@ -397,7 +397,7 @@ func _reconcile_actor_last_facing(previous_actors:Dictionary)->void:
 		var entity_id:=int(actor.get("entity_id",-1))
 		if entity_id<=0:continue
 		next_ids[entity_id]=true
-		var facing_value:Variant=actor.get("facing",[1,0])
+		var facing_value:Variant=actor.get("facing",[0,1])
 		if not _actor_last_facing.has(entity_id) and facing_value is Array \
 				and facing_value.size()==2:
 			_actor_last_facing[entity_id]=Vector2i(int(facing_value[0]),int(facing_value[1]))
@@ -547,6 +547,12 @@ func play_effects(rows:Array)->int:
 		if not raw is Dictionary:continue
 		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
 		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
+		var attack_from:=_array_to_world_position(raw.get("attacker_grid_pos",[]))
+		var attack_to:=_array_to_world_position(raw.get("target_grid_pos",[]))
+		var attack_actor:=int(raw.get("actor_id",-1))
+		if attack_actor>0 and attack_from!=Vector2i(-1,-1) and attack_to!=Vector2i(-1,-1) and attack_from!=attack_to:
+			var direction:=attack_to-attack_from
+			_actor_last_facing[attack_actor]=Vector2i(signi(direction.x),signi(direction.y))
 		if str(raw.get("kind",""))=="MELEE_VFX":
 			_ensure_melee_vfx()
 			var attacker:=_array_to_world_position(raw.get("attacker_grid_pos",[]))
@@ -1607,11 +1613,11 @@ func selection_overlay_draw_specs()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	for actor in _actors:
 		var entity_id:=int(actor.get("entity_id",-1))
-		if entity_id!=selected_target_id:continue
+		if entity_id!=selected_target_id and entity_id!=selected_actor_id:continue
 		var position:=_position_from_actor(actor)
 		if not is_world_cell_visible(position):continue
-		rows.append({"kind":"TARGET","entity_id":entity_id,
-			"position":[position.x,position.y],"color_hex":"#ff6b70","line_width":2.5,
+		rows.append({"kind":"CONTROLLED" if entity_id==selected_actor_id else "TARGET","entity_id":entity_id,
+			"position":[position.x,position.y],"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70","line_width":3.0,
 			"segments":AsciiStyleScript.bracket_segments(world_cell_rect(position))})
 	for ghost in _ghosts:
 		var position:=_position_from_actor(ghost)
@@ -2391,7 +2397,9 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 		sample_time_ms:int=-1,camera_offset:Vector2=Vector2.ZERO)->Dictionary:
 	var position:=_position_from_actor(actor)
 	if not is_world_cell_visible(position):return {"visible":false}.duplicate(true)
-	var layer_spec:=FixedFrontAssets.actor_layer_spec(actor)
+	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
+	var directed:=actor.duplicate(true);directed["facing"]=style.get("facing",[0,1])
+	var layer_spec:=FixedFrontAssets.actor_layer_spec(directed)
 	if not bool(layer_spec.uses_sprite):
 		return {"visible":true,"uses_sprite":false,
 			"fallback":"ASCII","fixed_front":true}.duplicate(true)
@@ -2408,7 +2416,6 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	var center:=_world_position_to_pixel_center(visual_world)
 	if not ghost and entity_id==_hero_camera_actor_id:center-=camera_offset
 	var cell:=cell_size_px()
-	var style:=actor_draw_spec(actor,ghost,sample_time_ms)
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
 	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
@@ -3402,11 +3409,11 @@ func _draw_intent(intent: Dictionary) -> void:
 		_draw_arrow(world_to_pixel_center(origin), world_to_pixel_center(destination), color,
 			float(spec.line_width), bool(spec.dashed))
 		_draw_source_marker(destination, str(spec.marker_style), color)
-	elif action_type == "MELEE" and intent.get("target_position") is Array and intent.target_position.size() == 2:
+	elif action_type in ["MELEE","SKILL"] and intent.get("target_position") is Array and intent.target_position.size() == 2:
 		var target := Vector2i(int(intent.target_position[0]), int(intent.target_position[1]))
 		if not _cell_allows_overlay(target):return
-		# Keep the target-cell marker but never draw an attacker-target connector:
-		# across adjacent glyphs it reads as a route and obscures the terrain.
+		if bool(spec.draw_connector):
+			_draw_arrow(world_to_pixel_center(origin),world_to_pixel_center(target),color,float(spec.line_width),bool(spec.dashed))
 		var center := world_to_pixel_center(target); var radius := cell_size_px() * 0.28
 		draw_line(center-Vector2(radius,radius), center+Vector2(radius,radius), color, float(spec.line_width))
 		draw_line(center+Vector2(radius,-radius), center+Vector2(-radius,radius), color, float(spec.line_width))
@@ -3431,12 +3438,12 @@ func intent_draw_spec(intent: Dictionary) -> Dictionary:
 	if action_type=="MOVE":
 		var destination:=_array_to_world_position(intent.get("destination",[]))
 		visible=visible and destination!=Vector2i(-1,-1) and _cell_allows_overlay(destination)
-	elif action_type=="MELEE":
+	elif action_type in ["MELEE","SKILL"]:
 		var target:=_array_to_world_position(intent.get("target_position",[]))
 		visible=visible and target!=Vector2i(-1,-1) and _cell_allows_overlay(target)
 	return {"action_type":str(intent.get("type","HOLD")),
 		"primitive":"RING" if action_type=="HOLD" else ("TARGET_MARKER" if action_type=="MELEE" else "ARROW"),
-		"draw_connector":action_type=="MOVE",
+		"draw_connector":action_type=="MOVE" or bool(intent.get("draw_connector",false)),
 		"visible":visible,
 		"line_style":line_style, "line_width":width,
 		"dashed":line_style=="DASHED_THIN", "dash_segments":8 if line_style=="DASHED_THIN" else 0,

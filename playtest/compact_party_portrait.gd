@@ -41,16 +41,16 @@ func _draw()->void:
 	var health:=int(actor.get("health",0))
 	var font:=get_theme_font("font")
 	if party_count>=3:
-		var side:=52.0
-		var portrait_x:=4.0 if party_count==3 else (size.x-side)*0.5
+		var side:=36.0
+		var portrait_x:=3.0
 		_portrait(texture,Rect2(portrait_x,3,side,side))
-		if party_count==3:
-			draw_string(font,Vector2(59,28),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,size.x-63,11,Color("#d0c8b4"))
-		_draw_health(Rect2(5,57,size.x-10,5),health,maximum)
-		draw_string(font,Vector2(2,68),"%d/%d"%[health,maximum],HORIZONTAL_ALIGNMENT_CENTER,size.x-4,11,Color("#e4e2d8"))
+		draw_string(font,Vector2(42,24),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,size.x-44),10,Color("#d0c8b4"))
+		_draw_stats(font,2,size.x-4,47,health,maximum,HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		_draw_expanded(texture,font,health,maximum)
-	if selected:draw_rect(Rect2(Vector2.ONE,size-Vector2.ONE*2),Color("#c6a34c"),false,1)
+	if selected:
+		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#f5cc67"),false,3)
+		draw_circle(Vector2(9,9),3,Color("#f5cc67"))
 	if danger:draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#ff6262"),false,3)
 	if Time.get_ticks_msec()<emphasized_until_msec:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#e4bb67"),false,2)
@@ -66,12 +66,16 @@ func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	draw_string(font,Vector2(left,17),name_text,HORIZONTAL_ALIGNMENT_LEFT,width,11,Color("#d0c8b4"))
 	var bar:=Rect2(left,23,width,5)
 	_draw_health(bar,health,maximum)
-	draw_string(font,Vector2(left,41),"%d/%d"%[health,maximum],HORIZONTAL_ALIGNMENT_LEFT,width,10,Color("#d0c8b4"))
-	if actor.has("energy"):
-		draw_string(font,Vector2(left,57),"기력 %d"%int(actor.energy),HORIZONTAL_ALIGNMENT_LEFT,width,10,Color("#88b9ce"))
+	_draw_stats(font,left,width,39,health,maximum,HORIZONTAL_ALIGNMENT_LEFT)
 	if party_count==1:
 		var emotion:Dictionary=actor.get("emotion",{})
 		draw_string(font,Vector2(left+86,41),str(emotion.get("label","평온")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,width-86),11,Color("#aaa896"))
+
+func _draw_stats(font:Font,left:float,width:float,baseline:float,health:int,maximum:int,alignment:int)->void:
+	var labels:=["HP %d/%d"%[health,maximum],"MP %d/%d"%[int(actor.get("energy",0)),int(actor.get("max_energy",12))],"STR %d"%int(actor.get("stress",0))]
+	var colors:=[Color("#b7d99d"),Color("#88b9ce"),Color("#d5a5b8")]
+	for index in range(3):
+		draw_string(font,Vector2(left,baseline+index*11),labels[index],alignment,width,10,colors[index])
 
 func _draw_health(bar:Rect2,health:int,maximum:int)->void:
 	draw_rect(bar,Color("#030607"))

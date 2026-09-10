@@ -25,7 +25,8 @@ func actor_dto()->Dictionary:
 
 
 func portrait_draw_spec()->Dictionary:
-	var layer:=Assets.actor_layer_spec(_actor)
+	var portrait_actor:=_actor.duplicate(true);portrait_actor["facing"]=[0,1]
+	var layer:=Assets.actor_layer_spec(portrait_actor)
 	var inset:=maxf(2.0,minf(size.x,size.y)*0.05)
 	var square_size:=maxf(1.0,minf(size.x,size.y)-inset*2.0)
 	var source_size:Vector2=layer.get("source_canvas_size",Assets.SOURCE_CANVAS_SIZE)

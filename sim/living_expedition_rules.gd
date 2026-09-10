@@ -3,6 +3,14 @@ const EVENT:="campaign.living_expedition_initialized"
 const TAG:="independent_explorer"
 const FLOOR_TAG:="visitor_floor:"
 const SPECIES:=["human","elf","dwarf","orc","beastkin"]
+static func roster_randomized(world)->bool:
+	for event in world.events:
+		if event.type==EVENT:return int(event.data.get("version",1))>=3
+	return false
+static func snapshot_roster_randomized(snapshot:Dictionary)->bool:
+	for row in snapshot.get("events",[]):
+		if row.get("type","")==EVENT:return int(row.get("data",{}).get("version",1))>=3
+	return false
 static func enabled(world)->bool:
 	for event in world.events:
 		if event.type==EVENT:return true

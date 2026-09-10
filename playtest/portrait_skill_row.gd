@@ -3,6 +3,7 @@ extends HBoxContainer
 signal skill_selected(actor_id:int,skill_id:String,label:String)
 const DarkSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 var targeting:=false
+var explicit_pointer_input:=false
 
 func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->void:
 	targeting=pending_actor>0
@@ -22,7 +23,8 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 		button.tooltip_text=str(row.get("message",""))
 		DarkSkin.apply_action_button(button,DarkSkin.BRASS if bool(row.get("reserved",false)) \
 			or actor_id==pending_actor and str(row.skill_id)==pending_skill else DarkSkin.CYAN)
-		button.pressed.connect(func():skill_selected.emit(actor_id,str(row.skill_id),str(row.label)))
+		button.pressed.connect(func():
+			if not explicit_pointer_input:skill_selected.emit(actor_id,str(row.skill_id),str(row.label)))
 		add_child(button)
 	for slot in range(mini(rows.size(),2),2):
 		var empty:=Control.new()

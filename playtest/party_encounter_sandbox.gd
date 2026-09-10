@@ -308,6 +308,9 @@ var _product_touch_dragged:=false
 var _product_immediate_touch_indices:Dictionary={}
 var _product_touch_started_msec:=-1
 var _product_mouse_control:=""
+var _product_mouse_started_msec:=-1
+var _product_mouse_origin:=Vector2.ZERO
+const PORTRAIT_LONG_PRESS_MSEC:=550
 var _product_ignore_mouse_until_msec:=-1
 var _product_auto_explore_generation:=0
 var _product_auto_explore_pending:=false
@@ -360,6 +363,7 @@ var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 func _process(_delta:float)->void:
+	_tick_portrait_long_press()
 	base_work_clock.tick(self,_delta)
 	if not _battle_target_mode.is_empty() and grid!=null and grid.modal_open:
 		_cancel_battle_targeting("대상 선택을 취소했습니다.")
@@ -612,6 +616,10 @@ func _item_row_at_position(global_position:Vector2)->Dictionary:
 
 func _handle_product_control_touch(event:InputEvent)->bool:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return false
+	if event is InputEventScreenTouch and not event.pressed and event.index==_product_touch_index and _product_touch_dragged:
+		_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
+		_product_ignore_mouse_until_msec=Time.get_ticks_msec()+PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC
+		get_viewport().set_input_as_handled();return true
 	if not _is_solo_product_session() or not combat_action_area.visible:return false
 	if member_detail_modal!=null and member_detail_modal.visible \
 			or record_modal!=null and record_modal.visible \
@@ -653,7 +661,7 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 		# ScreenTouch coordinates may be reprojected by stretch mode between the
 		# press and release frames. A gesture that began on one exact button and did
 		# not cross the drag threshold is still that button's short tap.
-		var activate_name:=_product_touch_control if not _product_touch_dragged else ""
+		var activate_name:=_product_touch_control if not _product_touch_dragged and not event.canceled else ""
 		_product_touch_index=-1;_product_touch_control="";_product_touch_dragged=false
 		_product_touch_started_msec=-1
 		_product_ignore_mouse_until_msec=Time.get_ticks_msec() \
@@ -670,13 +678,33 @@ func _handle_product_control_touch(event:InputEvent)->bool:
 func _product_control_activates_on_press(control_name:String)->bool:
 	return false
 
+func _tick_portrait_long_press()->void:
+	if session==null or not session.field_turns_active():return
+	var now:=Time.get_ticks_msec()
+	var name_value:=""
+	if _product_touch_index>=0 and not _product_touch_dragged and _product_touch_control.begins_with("MemberCard"):
+		if now-_product_touch_started_msec>=PORTRAIT_LONG_PRESS_MSEC:
+			name_value=_product_touch_control;_product_touch_dragged=true
+	elif _product_mouse_control.begins_with("MemberCard"):
+		var card=cards.find_child(_product_mouse_control,true,false)
+		if card==null or not card.is_visible_in_tree():
+			_product_mouse_control=""
+		elif now-_product_mouse_started_msec>=PORTRAIT_LONG_PRESS_MSEC:
+			name_value=_product_mouse_control;_product_mouse_control=""
+	if not name_value.is_empty():
+		_open_member_detail(int(name_value.trim_prefix("MemberCard")))
+
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
 	controls.append_array([product_auto_button,
+		product_tactics_button,product_rest_button,product_pickup_button,
 		product_interact_button,product_attack_button,product_wait_guard_button,
 		product_execute_button,product_bag_button,minimap_open_button,
 		map_nav_button,person_nav_button,skill_nav_button,equipment_nav_button,
 		history_nav_button])
+	if session!=null and session.field_turns_active():
+		if hero_skill_row!=null:controls.append_array(hero_skill_row.find_children("ActorSkill_*","Button",true,false))
+		if cards!=null:controls.append_array(cards.find_children("MemberCard*","Button",true,false))
 	for control_value in controls:
 		if not is_instance_valid(control_value):continue
 		var button:=control_value as Button
@@ -685,7 +713,16 @@ func _product_control_at_position(global_position:Vector2)->String:
 	return ""
 
 func _activate_product_control(control_name:String)->void:
+	if control_name.begins_with("ActorSkill_"):
+		var button=hero_skill_row.find_child(control_name,true,false)
+		if button!=null and not button.disabled:
+			_on_manual_skill_selected(int(button.get_meta("actor_id")),str(button.get_meta("skill_id")),str(button.get_meta("skill_label")))
+		return
+	if control_name.begins_with("MemberCard"):
+		_on_compact_member_card_pressed(int(control_name.trim_prefix("MemberCard")),"");return
 	match control_name:
+		"ProductTactics":_on_product_tactics()
+		"ProductRest":_on_product_rest()
 		"ProductMoveNW":_on_product_direction(Vector2i(-1,-1))
 		"ProductMoveN":_on_product_direction(Vector2i(0,-1))
 		"ProductMoveNE":_on_product_direction(Vector2i(1,-1))
@@ -710,6 +747,9 @@ func _activate_product_control(control_name:String)->void:
 		"HistoryNavigation":_toggle_record_modal()
 
 func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
+	if event is InputEventMouseMotion and _product_mouse_control==control_name:
+		if event.position.distance_to(_product_mouse_origin)>=8.0:_product_mouse_control=""
+		return
 	# Product controls use one explicit pointer path. Connecting Button.pressed as
 	# well as handling ScreenTouch in _input caused a mobile release to execute the
 	# same authoritative command twice. Mouse activation is handled here; touch is
@@ -725,6 +765,8 @@ func _on_product_button_gui_input(event:InputEvent,control_name:String)->void:
 			_product_mouse_control="";accept_event()
 			_activate_product_control(control_name);return
 		_product_mouse_control=control_name
+		_product_mouse_started_msec=Time.get_ticks_msec()
+		_product_mouse_origin=event.position
 		accept_event();return
 	var activate:=_product_mouse_control==control_name
 	_product_mouse_control="";accept_event()
@@ -1893,7 +1935,7 @@ func _refresh()->void:
 	# pending plan to annotate; keeping old intent/cursor marks here made the
 	# already-authoritative result look as though it still awaited confirmation.
 	var intent_overlays:Array=session.turn_intent_overlays() \
-		if combat_active and not run_complete and not direct_solo_combat else []
+		if not run_complete and (session.field_turns_active() or combat_active and not direct_solo_combat) else []
 	grid.set_observation(observation,ghosts)
 	minimap.set_observation(ui_observation.get("minimap",{}))
 	_update_expedition_hud(product_hud,status)
@@ -2213,13 +2255,16 @@ func _update_direct_solo_card(rows:Array)->void:
 func _update_stable_party_cards(rows:Array)->void:
 	for row in rows:
 		if row is Dictionary:_update_stable_party_card(row)
+	if session.field_turns_active():
+		_update_hero_skill_row(session.party_status())
+		grid.set_intent_overlays(session.turn_intent_overlays())
 
 func _update_stable_party_card(row:Dictionary)->void:
 	var card:=cards.find_child("MemberCard%d"%int(row.get("entity_id",-1)),true,false)
 	if card==null:return
 	if card.get_script()==CompactPortraitScript:
 		card.actor=row.duplicate(true)
-		if _portrait_battle_controls_visible():
+		if _portrait_battle_controls_visible() or session.field_turns_active():
 			card.actor["energy"]=session.sim.world.party_encounter.member(int(row.entity_id)).energy
 		card.selected=int(row.get("entity_id",-1))==selected_member_id
 		card.order_reserved=session.has_companion_order(int(row.get("entity_id",-1))) \
@@ -2593,7 +2638,10 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 			skills.name="PortraitSkills%d"%actor_id
 			skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			skills.configure(actor_id,session.active_skill_rows(actor_id),_battle_target_actor_id,_battle_target_skill_id)
+			skills.explicit_pointer_input=true
 			skills.skill_selected.connect(_on_manual_skill_selected)
+			for button in skills.get_children():
+				if button is Button:button.gui_input.connect(_on_product_button_gui_input.bind(str(button.name)))
 			hero_skill_row.add_child(skills)
 		return
 	var hero_id:=int(status.get("protagonist_id",-1))
@@ -2747,6 +2795,8 @@ func _validate_battle_targeting(status:Dictionary)->void:
 	if _battle_target_mode.is_empty():return
 	var valid_phase:=str(status.get("view_mode",""))=="COMBAT" \
 		and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false))
+	if session.field_turns_active():
+		valid_phase=str(status.get("view_mode",""))=="EXPLORATION" and not bool(status.get("terminal",false))
 	var caster_alive:=false
 	for row_value in session.party_cards():
 		if row_value is Dictionary and int(row_value.get("entity_id",-1))==_battle_target_actor_id:
@@ -2939,7 +2989,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		var compact=CompactPortraitScript.new()
 		var member_id:=int(row.entity_id)
 		compact.name="MemberCard%d"%member_id;compact.actor=row.duplicate(true)
-		if _portrait_battle_controls_visible():
+		if _portrait_battle_controls_visible() or session.field_turns_active():
 			compact.actor["energy"]=session.sim.world.party_encounter.member(member_id).energy
 		compact.selected=member_id==selected_member_id
 		compact.order_reserved=session.has_companion_order(member_id)
@@ -2947,10 +2997,13 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		compact.party_count=int(layout_spec.get("effective_count",1))
 		compact.custom_minimum_size=Vector2(44,PRODUCT_PARTY_CARD_HEIGHT)
 		compact.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		compact.tooltip_text="%s · 눌러서 인물 정보"%str(row.display_name)
+		compact.tooltip_text="%s · 탭: 조작 전환 / 길게 누르기: 상태창"%str(row.display_name)
 		DarkPixelSkinScript.apply_action_button(compact,DarkPixelSkinScript.CYAN)
-		compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,
-			str(row.get("display_name","파티원"))))
+		if session.field_turns_active():
+			compact.gui_input.connect(_on_product_button_gui_input.bind(str(compact.name)))
+			compact.mouse_exited.connect(func():
+				if _product_mouse_control==str(compact.name):_product_mouse_control="")
+		else:compact.pressed.connect(_on_compact_member_card_pressed.bind(member_id,str(row.get("display_name","파티원"))))
 		cards.add_child(compact)
 		return
 	var spec:=layout_spec if not layout_spec.is_empty() else party_card_layout_spec(
