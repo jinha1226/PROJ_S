@@ -14,11 +14,16 @@ const SIGHT_TAG_BONUSES := {
 static func sight_range(world, state, member_id: int) -> int:
 	if world == null or state == null or not world.entities.has(member_id):
 		return 0
+	if preload("res://sim/field_turn_rules.gd").enabled(world):return 6
 	var result := clampi(int(state.party_detection_radius), 0, 15)
 	for tag in world.entities[member_id].tags:
 		result = maxi(result, clampi(int(state.party_detection_radius) \
 			+ int(SIGHT_TAG_BONUSES.get(str(tag), 0)), 0, 15))
 	return result
+
+static func field_visible(world,origin:Vector2i,target:Vector2i)->bool:
+	return world.in_bounds(target) and preload("res://sim/combat_kernel.gd").sees(
+		origin,target,world.combat_sight_blocked)
 
 
 static func visible_party_members(world, state, target_position: Vector2i) -> Array[int]:
@@ -37,6 +42,11 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 		# capped below. Reject distant targets before profiles, light sources and
 		# LOS; callers query every monster repeatedly during a UI refresh.
 		if _distance(origin,target_position)>member_range:continue
+		if preload("res://sim/field_turn_rules.gd").enabled(world):
+			if field_visible(world,origin,target_position):
+				rows.append({"entity_id":member_id,"distance":_distance(origin,target_position),
+					"sight_range":member_range,"roster_slot":int(member.roster_slot)})
+			continue
 		var profile: Dictionary = VisionRulesScript.profile_for_entity(world.entities[member_id])
 		# The party state radius and tag bonuses remain the authoritative party
 		# detection budget; the shared query supplies lighting, direction and LOS.

@@ -43,16 +43,14 @@ static func visible(world,enemy_id:int)->bool:
 
 static func visible_cells(world)->Dictionary:
 	var cells:Dictionary={}
-	var vision=preload("res://sim/vision_rules.gd")
+	var perception=preload("res://sim/party_perception_registry.gd")
 	for id in world.party_encounter.active_party_member_ids:
 		var member=world.party_encounter.member(id)
 		if member.presence!="DEPLOYED" or not world.can_act(id,world.world_time):continue
 		var origin:Vector2i=world.entities[id].position
-		var profile=vision.profile_for_entity(world.entities[id])
-		profile["circular_sight"] = true
-		var visible=vision.visible_cells(world,origin,world.party_encounter.facing,profile,
-			vision.lighting_for_world(world))
-		for key in visible:cells[key]=true
+		for y in range(maxi(0,origin.y-6),mini(world.height,origin.y+7)):
+			for x in range(maxi(0,origin.x-6),mini(world.width,origin.x+7)):
+				if perception.field_visible(world,origin,Vector2i(x,y)):cells["%d:%d"%[x,y]]=true
 	return cells
 
 static func place_companions(sim)->bool:

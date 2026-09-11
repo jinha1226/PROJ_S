@@ -214,6 +214,8 @@ func is_diagonal_gateway(position: Vector2i) -> bool:
 
 
 func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
+	if preload("res://sim/field_turn_rules.gd").enabled(self):
+		return preload("res://sim/combat_kernel.gd").open_edge(from,to,combat_solid)
 	var delta := to - from
 	if delta.x == 0 or delta.y == 0:
 		return true
@@ -233,6 +235,14 @@ func diagonal_step_terrain_allowed(from: Vector2i, to: Vector2i) -> bool:
 	# an open doorway or crosses the doorway's passable threshold cell.
 	return is_diagonal_gateway(from) or is_diagonal_gateway(to) \
 		or is_diagonal_gateway(passable_flanks[0])
+
+func combat_solid(position:Vector2i)->bool:
+	if not in_bounds(position):return true
+	var definition:Dictionary=TerrainRegistryScript.definition_view(tile_at(position).terrain)
+	return definition.is_empty() or not bool(definition.get("passable",false))
+
+func combat_sight_blocked(position:Vector2i)->bool:
+	return combat_solid(position) or int(tile_at(position).smoke_amount)>=600
 
 
 func party_control_actor_id(event_id:int=-1)->int:

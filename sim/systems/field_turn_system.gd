@@ -12,6 +12,7 @@ const Memory=preload("res://sim/systems/party_memory_system.gd")
 const Relationships=preload("res://sim/systems/party_relationship_system.gd")
 const Morale=preload("res://sim/systems/party_morale_system.gd")
 const Darkness=preload("res://sim/darkness_stress_rules.gd")
+const Kernel=preload("res://sim/combat_kernel.gd")
 
 static func assess(sim,action)->Dictionary:
 	var rejected:={"accepted":false,"reason":"field_action_unavailable","time_cost":0}
@@ -57,29 +58,9 @@ static func step(sim,action,wait_duration:int=100):
 				world.entities[action.actor_id].position,str(awareness.awareness_state),action.actor_id)
 	if ok:ok=_social(sim,event_start,false)
 	Darkness.checkpoint(world,darkness_sample)
-	var iterations:=0
-	while ok:
-		var next:=_next(sim,end)
-		if next.is_empty():break
-		iterations+=1
-		if iterations>10000:ok=false;break
-		world.world_time=int(next.at)
-		var leaf_start:int=world.events.size()
-		if int(next.id)==0:
-			var entry:Dictionary=world.take_next_schedule()
-			ok=sim._dispatch_schedule(entry,step_index,true,true)
-			world.requeue_repeating(entry)
-		elif party.member(int(next.id))!=null:
-			var id:=int(next.id)
-			var board:Dictionary=Board.build(world,action)
-			var suggestion=sim.party_coordinator._suggest(id,action,board)
-			if not sim.party_coordinator._action_error(suggestion).is_empty():suggestion=Action.hold(id)
-			ok=_commit_ally(sim,suggestion,step_index)
-		else:
-			ok=_commit_enemy(sim,int(next.id),step_index)
-		if ok:ok=sim.party_coordinator.reconcile_liveness()
-		if ok:ok=_social(sim,leaf_start,int(next.id)==0)
-		Darkness.checkpoint(world,darkness_sample)
+	if ok:
+		ok=Kernel.advance(end,func(until:int)->Dictionary:return _next(sim,until),
+			func(next:Dictionary)->bool:return _dispatch_kernel_action(sim,next,action,step_index,darkness_sample))
 	world.world_time=end
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
 	var darkness_start:int=world.events.size()
@@ -108,6 +89,27 @@ static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
 	if delta==Vector2i.ZERO:return fallback
 	return Vector2i(signi(delta.x),signi(delta.y))
 
+static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,darkness_sample:Dictionary)->bool:
+	var world=sim.world;var party=world.party_encounter
+	world.world_time=int(next.at)
+	var leaf_start:int=world.events.size()
+	var ok:bool
+	if int(next.id)==0:
+		var entry:Dictionary=world.take_next_schedule()
+		ok=sim._dispatch_schedule(entry,step_index,true,true)
+		world.requeue_repeating(entry)
+	elif party.member(int(next.id))!=null:
+		var id:=int(next.id)
+		var board:Dictionary=Board.build(world,action)
+		var suggestion=sim.party_coordinator._suggest(id,action,board)
+		if not sim.party_coordinator._action_error(suggestion).is_empty():suggestion=Action.hold(id)
+		ok=_commit_ally(sim,suggestion,step_index)
+	else:ok=_commit_enemy(sim,int(next.id),step_index)
+	if ok:ok=sim.party_coordinator.reconcile_liveness()
+	if ok:ok=_social(sim,leaf_start,int(next.id)==0)
+	Darkness.checkpoint(world,darkness_sample)
+	return ok
+
 static func _social(sim,event_start:int,decay:bool)->bool:
 	var world=sim.world
 	return Emotion.commit_batch(world,world.events_since(event_start),decay) \
@@ -133,10 +135,7 @@ static func _next(sim,end:int)->Dictionary:
 static func _earlier(best:Dictionary,at:int,id:int,end:int)->Dictionary:
 	# The player's next input wins actor ties at the end of this action. Cadence
 	# at that boundary is still settled, as in the core simulator's time contract.
-	if at>=end:return best
-	if best.is_empty() or at<int(best.at) or at==int(best.at) and id<int(best.id):
-		return {"at":at,"id":id}
-	return best
+	return Kernel.earlier(best,at,id,end)
 
 static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 	var world=sim.world;var coordinator=sim.party_coordinator

@@ -2,9 +2,9 @@ extends RefCounted
 
 ## Standalone turn authority. No scene, campaign, save or rendering dependencies.
 const SIZE := Vector2i(9, 9)
-const DIRECTIONS := [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN,
-	Vector2i(-1,-1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(1,1)]
-const SIGHT_RADIUS := 6
+const Kernel=preload("res://sim/combat_kernel.gd")
+const DIRECTIONS = Kernel.DIRECTIONS
+const SIGHT_RADIUS = Kernel.SIGHT_RADIUS
 var visible:Dictionary = {}
 var memory:Dictionary = {}
 var walls: Dictionary = {}
@@ -30,34 +30,11 @@ func solid(cell:Vector2i) -> bool:
 	return not Rect2i(Vector2i.ZERO,SIZE).has_point(cell) or walls.has(cell)
 
 func open_edge(origin:Vector2i, target:Vector2i) -> bool:
-	var delta := target-origin
-	if delta == Vector2i.ZERO or delta not in DIRECTIONS:return false
-	return not (delta.x != 0 and delta.y != 0 and
-		solid(origin+Vector2i(delta.x,0)) and solid(origin+Vector2i(0,delta.y)))
+	return Kernel.open_edge(origin,target,solid)
 
 func sees(origin:Vector2i, target:Vector2i) -> bool:
 	if not Rect2i(Vector2i.ZERO,SIZE).has_point(target):return false
-	var delta := target-origin
-	if delta.length_squared() > SIGHT_RADIUS*SIGHT_RADIUS:return false
-	# Trace cell centres. At an exact corner only two solid flanks block sight.
-	var cell := origin
-	var dx := absi(delta.x)
-	var dy := absi(delta.y)
-	var sx := signi(delta.x)
-	var sy := signi(delta.y)
-	var ix := 0
-	var iy := 0
-	while cell != target:
-		var decision := (1+2*ix)*dy-(1+2*iy)*dx
-		var next := cell
-		if decision == 0:
-			next += Vector2i(sx,sy);ix += 1;iy += 1
-		elif decision < 0:next.x += sx;ix += 1
-		else:next.y += sy;iy += 1
-		if not open_edge(cell,next):return false
-		cell = next
-		if cell != target and solid(cell):return false
-	return true
+	return Kernel.sees(origin,target,solid)
 
 func refresh_sight() -> void:
 	visible.clear()
@@ -86,16 +63,24 @@ func submit(delta:Vector2i) -> Dictionary:
 		return {"accepted":false,"reason":"adjacent_only"}
 	if not resolve(actors[0],delta):return {"accepted":false,"reason":"blocked"}
 	# All actors use the same absolute action clock. Input pauses at hero readiness.
-	while terminal().is_empty():
-		var next:Dictionary = actors[0]
-		for actor in actors:
-			if actor.hp > 0 and (actor.ready_at < next.ready_at or
-				actor.ready_at == next.ready_at and actor.id < next.id):next = actor
-		time = int(next.ready_at)
-		if next.id == 1:break
-		resolve(next,enemy_step(next))
+	var completed:=Kernel.advance(int(actors[0].ready_at),_next_actor,_dispatch_actor)
+	assert(completed,"Combat timeline failed to advance")
+	if terminal().is_empty():time=int(actors[0].ready_at)
 	refresh_sight()
 	return {"accepted":true,"events":events.duplicate(true),"time":time,"terminal":terminal()}
+
+func _next_actor(end:int)->Dictionary:
+	var best:Dictionary={}
+	if not terminal().is_empty():return best
+	for actor in actors.slice(1):
+		if actor.hp>0:best=Kernel.earlier(best,int(actor.ready_at),int(actor.id),end)
+	return best
+
+func _dispatch_actor(next:Dictionary)->bool:
+	time=int(next.at)
+	for actor in actors:
+		if actor.id==next.id:return resolve(actor,enemy_step(actor))
+	return false
 
 func resolve(actor:Dictionary, delta:Vector2i) -> bool:
 	var target_cell:Vector2i = actor.position + delta

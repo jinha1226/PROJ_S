@@ -309,6 +309,7 @@ func project_batch(frozen_intents: Array) -> Array:
 func can_attack(attacker_id: int, target_id: int) -> bool:
 	if not world.entities.has(attacker_id) or not world.entities.has(target_id): return false
 	var attacker = world.entities[attacker_id]; var target = world.entities[target_id]
+	if not _kernel_attack_line_open(attacker.position,target.position):return false
 	var body=world.body_states.get(attacker_id)
 	var weapon=WeaponRegistryScript.definition(
 		WorldItemOperationsScript.equipped_weapon_id(world,attacker_id))
@@ -377,11 +378,18 @@ func can_attack_with_weapon(attacker_id: int, target_id: int, weapon_id: String,
 	if not world.can_act(attacker_id, world.world_time) \
 			or not world.is_explicit_melee_target(target_id):
 		return false
+	if not _kernel_attack_line_open(world.entities[attacker_id].position,
+		world.entities[target_id].position):return false
 	var body=world.body_states.get(attacker_id)
 	var weapon=WeaponRegistryScript.definition(weapon_id)
 	if not BodyFunctionRulesScript.weapon_use_error(body,weapon).is_empty():return false
 	return WeaponAttackRulesScript.targeting_error(world.entities[attacker_id].position,
 		world.entities[target_id].position, weapon_id, occupants).is_empty()
+
+func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
+	if not preload("res://sim/field_turn_rules.gd").enabled(world):return true
+	return preload("res://sim/combat_kernel.gd").sees(origin,target,world.combat_solid,
+		maxi(1,ceili(Vector2(target-origin).length())))
 
 
 func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:

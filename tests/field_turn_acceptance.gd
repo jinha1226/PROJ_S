@@ -11,6 +11,13 @@ func run()->void:
 	if session.sim==null:quit(1);return
 	var world=session.sim.world;var hero:int=world.party_control_actor_id()
 	check(session.field_turns_active(),"new expedition uses field turns")
+	var cells:Dictionary=session.FieldRules.visible_cells(world)
+	var perception=preload("res://sim/party_perception_registry.gd")
+	var origin:Vector2i=world.entities[hero].position
+	for y in range(maxi(0,origin.y-7),mini(world.height,origin.y+8)):
+		for x in range(maxi(0,origin.x-7),mini(world.width,origin.x+8)):
+			check(cells.has("%d:%d"%[x,y]) == not perception.visible_party_members(
+				world,world.party_encounter,Vector2i(x,y)).is_empty(),"render and target visibility agree")
 	check(world.world_state_error().is_empty(),"initial world validates: "+world.world_state_error())
 	for id in world.party_encounter.active_party_member_ids:
 		check(world.party_encounter.member(id).presence=="DEPLOYED","companions occupy field cells")
