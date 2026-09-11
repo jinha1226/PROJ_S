@@ -96,6 +96,11 @@ var _actor_last_facing:Dictionary={}
 var _hero_camera_position:=Vector2i(-1,-1)
 var _hero_camera_actor_id:=-1
 var _vision_facing:=Vector2i.RIGHT
+var _vision_facing_visual:=Vector2(Vector2i.RIGHT)
+var _vision_facing_transition_from:=Vector2(Vector2i.RIGHT)
+var _vision_facing_transition_to:=Vector2(Vector2i.RIGHT)
+var _vision_facing_transition_started_msec:=-1
+const VISION_FACING_TRANSITION_MSEC:=220
 var _camera_settle:Dictionary={}
 var _pointer_gesture_active := false
 var _pointer_gesture_kind := ""
@@ -218,7 +223,11 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	if facing_value is Array and facing_value.size()==2:
 		var next_facing:=Vector2i(signi(int(facing_value[0])),signi(int(facing_value[1])))
 		if next_facing!=Vector2i.ZERO and next_facing!=_vision_facing:
+			_vision_facing_visual=_current_vision_facing(observed_at_ms)
 			_vision_facing=next_facing
+			_vision_facing_transition_from=_vision_facing_visual
+			_vision_facing_transition_to=Vector2(next_facing).normalized()
+			_vision_facing_transition_started_msec=observed_at_ms
 			_radial_darkness_mesh=null;_radial_darkness_mesh_key=""
 	var next_floor_index:=int(phase_value.get("floor_index",1)) \
 		if phase_value is Dictionary else 1
@@ -836,6 +845,11 @@ func _process(_delta:float)->void:
 		queue_redraw()
 	var had_visual_effects:=not _active_visual_effects.is_empty()
 	var now:=Time.get_ticks_msec();var retained:Array[Dictionary]=[]
+	var vision_transition_active:=_vision_facing_transition_started_msec>=0
+	if vision_transition_active and now-_vision_facing_transition_started_msec>=VISION_FACING_TRANSITION_MSEC:
+		_vision_facing_visual=_vision_facing_transition_to
+		_vision_facing_transition_started_msec=-1
+		_radial_darkness_mesh=null;_radial_darkness_mesh_key=""
 	for effect in _active_visual_effects:
 		var spec:=visual_effect_draw_spec(effect)
 		if now-int(effect.get("started_at_ms",now))<int(spec.duration_ms):retained.append(effect)
@@ -854,13 +868,27 @@ func _process(_delta:float)->void:
 			_awareness_pulses.erase(raw_id);awareness_changed=true
 	_update_process_enabled()
 	if not _actor_motions.is_empty() or not _camera_settle.is_empty() \
-			or not _awareness_pulses.is_empty() or awareness_changed:queue_redraw()
+			or not _awareness_pulses.is_empty() or awareness_changed or vision_transition_active:queue_redraw()
 	if melee_vfx!=null and (had_visual_effects or not _active_visual_effects.is_empty()):
 		melee_vfx.queue_redraw()
 
 func _update_process_enabled()->void:
 	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
-		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty() or not _actor_emphasis.is_empty())
+		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty() or not _actor_emphasis.is_empty() \
+		or _vision_facing_transition_started_msec>=0)
+
+func _current_vision_facing(now_msec:int=-1)->Vector2:
+	if now_msec<0:now_msec=Time.get_ticks_msec()
+	if _vision_facing_transition_started_msec<0:return _vision_facing_visual
+	var progress:=clampf(float(now_msec-_vision_facing_transition_started_msec)
+		/float(VISION_FACING_TRANSITION_MSEC),0.0,1.0)
+	var eased:=progress*progress*(3.0-2.0*progress)
+	var facing:=_vision_facing_transition_from.lerp(_vision_facing_transition_to,eased)
+	return facing.normalized() if not facing.is_zero_approx() else _vision_facing_transition_to
+
+func _vision_facing_cache_key()->String:
+	var facing:=_current_vision_facing()
+	return "%d:%d"%[roundi(facing.x*100.0),roundi(facing.y*100.0)]
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,
 	Vector2i(visible_cell_count,visible_row_count))
@@ -2842,7 +2870,7 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 	if state!="VISIBLE":return {"drawable":false}.duplicate(true)
 	var offset_cells:=(point-world_to_pixel_center(_hero_camera_position)) \
 		/maxf(1.0,cell_size_px())
-	var hero_distance:=directional_darkness_distance(offset_cells,_vision_facing,
+	var hero_distance:=_directional_darkness_distance(offset_cells,_current_vision_facing(),
 		_hero_torch_lit())
 	var alpha:=float(radial_darkness_sample(hero_distance,_hero_torch_lit(),
 		_terrain_theme_floor_index).alpha)
@@ -2854,6 +2882,10 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 		"wall_lit":wall_alpha>=0.0,"fire_lit":fire_alpha>=0.0}.duplicate(true)
 
 static func directional_darkness_distance(offset_cells:Vector2,facing:Vector2i,
+		torch_lit:bool)->float:
+	return _directional_darkness_distance(offset_cells,Vector2(facing),torch_lit)
+
+static func _directional_darkness_distance(offset_cells:Vector2,facing:Vector2,
 		torch_lit:bool)->float:
 	if torch_lit or offset_cells.is_zero_approx():return offset_cells.length()
 	var facing_vector:=Vector2(facing).normalized()
@@ -2916,7 +2948,7 @@ func _draw_radial_darkness_overlay()->void:
 	var torch_lit:=_hero_torch_lit()
 	var key:="%d:%d:%d:%d:%d:%s:%d:%d"%[_static_projection_rebuild_count,
 		int(size.x),int(size.y),_terrain_theme_floor_index,_hero_camera_actor_id,
-		str(torch_lit),_vision_facing.x,_vision_facing.y]
+		str(torch_lit),_vision_facing_cache_key(),_vision_facing.x+_vision_facing.y]
 	if _radial_darkness_mesh==null or key!=_radial_darkness_mesh_key:
 		_radial_darkness_mesh=_build_radial_darkness_mesh()
 		_radial_darkness_mesh_key=key
