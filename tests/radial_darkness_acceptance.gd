@@ -20,7 +20,7 @@ func run()->void:
 		"held torch brightens a circular area")
 	check(torch_center.radius_cells>center.radius_cells,
 		"held torch widens the soft light radius")
-	check(center.alpha<=0.05 and edge.alpha<=0.62,
+	check(center.alpha<=0.03 and edge.alpha<=0.45,
 		"floor one ambient darkness stays gently brighter")
 	var forward_distance:=Grid.directional_darkness_distance(Vector2(4,0),Vector2i.RIGHT,false)
 	var side_distance:=Grid.directional_darkness_distance(Vector2(0,4),Vector2i.RIGHT,false)

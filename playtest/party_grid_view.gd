@@ -32,7 +32,7 @@ const TORCH_ANIMATED_MAX_CELL_COUNT := 17
 const MAX_VISIBLE_TORCHES := 4
 const MAX_MEMORY_TORCHES := 4
 const TORCH_SPACING_CELLS := 7
-const TORCH_LIGHT_RADIUS_CELLS := 5.0
+const TORCH_LIGHT_RADIUS_CELLS := 6.0
 const TORCH_POOL_BASE_ALPHA := 0.035
 const TORCH_POOL_GAIN_ALPHA := 0.18
 const FIRE_LIGHT_RADIUS_CELLS := 2.3
@@ -2793,10 +2793,10 @@ func _draw_torch_light_pools()->void:
 static func radial_darkness_sample(distance_cells:float,torch_lit:bool,
 		floor_index:int)->Dictionary:
 	var floor:=maxi(1,floor_index)
-	var radius:=7.0 if torch_lit else (5.8 if floor<=1 else (4.6 if floor==2 else 3.2))
+	var radius:=8.0 if torch_lit else (6.0 if floor<=1 else (4.8 if floor==2 else 3.5))
 	var core_radius:=1.15 if torch_lit else 0.45
-	var center_alpha:=0.0 if torch_lit else (0.05 if floor<=1 else (0.10 if floor==2 else 0.18))
-	var edge_alpha:=0.62 if floor<=1 else (0.72 if floor==2 else 0.84)
+	var center_alpha:=0.0 if torch_lit else (0.02 if floor<=1 else (0.07 if floor==2 else 0.15))
+	var edge_alpha:=0.42 if floor<=1 else (0.58 if floor==2 else 0.78)
 	var ratio:=clampf((maxf(0.0,distance_cells)-core_radius) \
 		/maxf(0.001,radius-core_radius),0.0,1.0)
 	var eased:=ratio*ratio*(3.0-2.0*ratio)
@@ -2808,13 +2808,13 @@ static func wall_torch_darkness_sample(distance_cells:float)->float:
 	var ratio:=clampf((maxf(0.0,distance_cells)-0.55) \
 		/maxf(0.001,TORCH_LIGHT_RADIUS_CELLS-0.55),0.0,1.0)
 	var eased:=ratio*ratio*(3.0-2.0*ratio)
-	return lerpf(0.01,0.76,eased)
+	return lerpf(0.01,0.58,eased)
 
 static func campfire_darkness_sample(distance_cells:float,radius_cells:float)->float:
 	var ratio:=clampf((maxf(0.0,distance_cells)-0.45) \
 		/maxf(0.001,radius_cells-0.45),0.0,1.0)
 	var eased:=ratio*ratio*(3.0-2.0*ratio)
-	return lerpf(0.0,0.78,eased)
+	return lerpf(0.0,0.62,eased)
 
 func _hero_torch_lit()->bool:
 	for actor in _actors:
