@@ -42,6 +42,7 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 		# detection budget; the shared query supplies lighting, direction and LOS.
 		profile["base_sight_range"] = member_range
 		profile["peripheral_range"] = mini(int(profile.get("peripheral_range", 0)), member_range)
+		profile["circular_sight"] = true
 		var observation := VisionRulesScript.observe(world, origin, target_position,
 			state.facing, profile, VisionRulesScript.lighting_for_world(world))
 		if not bool(observation.get("visible", false)):

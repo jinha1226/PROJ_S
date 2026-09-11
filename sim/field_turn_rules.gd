@@ -49,6 +49,7 @@ static func visible_cells(world)->Dictionary:
 		if member.presence!="DEPLOYED" or not world.can_act(id,world.world_time):continue
 		var origin:Vector2i=world.entities[id].position
 		var profile=vision.profile_for_entity(world.entities[id])
+		profile["circular_sight"] = true
 		var visible=vision.visible_cells(world,origin,world.party_encounter.facing,profile,
 			vision.lighting_for_world(world))
 		for key in visible:cells[key]=true

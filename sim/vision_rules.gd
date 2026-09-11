@@ -35,11 +35,12 @@ static func observe(world, observer_position: Vector2i, target_position: Vector2
 	var bright_target := target_light >= BRIGHT_THRESHOLD
 	var range_milli := _effective_range_milli(profile, maxi(observer_light, target_light))
 	var in_range := distance * 1000 <= range_milli
-	var directional := bright_observer or bright_target \
-		or distance == 0 or _within_front_cone(observer_facing, direction,
+	var circular_sight:=bool(profile.get("circular_sight",false))
+	var directional := circular_sight or bright_observer or bright_target \
+			or distance == 0 or _within_front_cone(observer_facing, direction,
 			int(profile.dark_front_angle))
-	var allowed_distance := int(profile.peripheral_range) if not directional else \
-		maxi(int(profile.peripheral_range), int(profile.base_sight_range) \
+	var allowed_distance := int(profile.base_sight_range) if circular_sight else int(profile.peripheral_range) if not directional else \
+			maxi(int(profile.peripheral_range), int(profile.base_sight_range) \
 			* maxi(int(profile.dark_vision_milli), _light_factor(observer_light)) / 1000)
 	var visible := los and in_range and (directional or distance <= allowed_distance)
 	var strength := _identification_strength(profile, observer_light, target_light,
@@ -157,6 +158,8 @@ static func facing_for_entity(world, entity_id: int, fallback: Vector2i = Vector
 
 
 static func _effective_range_milli(profile: Dictionary, light: int) -> int:
+	if bool(profile.get("circular_sight",false)):
+		return int(profile.base_sight_range) * 1000
 	if light >= BRIGHT_THRESHOLD:
 		return int(profile.base_sight_range) * 1000
 	var factor := maxi(int(profile.dark_vision_milli), _light_factor(light))

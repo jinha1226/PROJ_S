@@ -188,6 +188,7 @@ static func visible_cells(world, origin: Vector2i, scenario_id: String) -> Dicti
 	var observer_id: int = world.party_control_actor_id() if world.party_encounter != null else -1
 	var observer = world.entities.get(observer_id)
 	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
+	profile["circular_sight"] = true
 	var facing: Vector2i = world.party_encounter.facing if world.party_encounter != null else Vector2i.RIGHT
 	if scenario_id==VISION_TEST_SCENARIO_ID:
 		return VisionRulesScript.visible_cells(world,origin,Vector2i.RIGHT,

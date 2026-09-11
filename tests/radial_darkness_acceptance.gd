@@ -25,9 +25,9 @@ func run()->void:
 	var forward_distance:=Grid.directional_darkness_distance(Vector2(4,0),Vector2i.RIGHT,false)
 	var side_distance:=Grid.directional_darkness_distance(Vector2(0,4),Vector2i.RIGHT,false)
 	var rear_distance:=Grid.directional_darkness_distance(Vector2(-4,0),Vector2i.RIGHT,false)
-	check(forward_distance<side_distance and side_distance<rear_distance
-		and rear_distance-forward_distance<0.6,
-		"unlit darkness follows facing with a restrained non-circular edge")
+	check(is_equal_approx(forward_distance,side_distance)
+		and is_equal_approx(side_distance,rear_distance),
+		"unlit darkness is character-centred and radial")
 	check(is_equal_approx(Grid.directional_darkness_distance(Vector2(4,0),Vector2i.RIGHT,true),
 		Grid.directional_darkness_distance(Vector2(-4,0),Vector2i.RIGHT,true)),
 		"held torch keeps a circular light pool")
