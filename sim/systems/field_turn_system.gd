@@ -43,7 +43,7 @@ static func step(sim,action,wait_duration:int=100):
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
 	var darkness_sample:=Darkness.begin_sample(world)
-	if action.type=="MOVE" and Rules.formation(world)!="NONE":
+	if action.type=="MOVE":
 		party.facing=sim.party_coordinator._cardinal_facing(action.destination-world.entities[action.actor_id].position)
 	var ok:=_commit_ally(sim,action,step_index,cost)
 	if ok:
