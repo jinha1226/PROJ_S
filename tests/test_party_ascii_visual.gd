@@ -1011,7 +1011,7 @@ func test_diorama_connected_masks_cover_all_cardinals_without_unseen_leak() -> b
 	return finish()
 
 
-func test_wall_roles_light_bands_and_tile_material_rules_are_quantized() -> bool:
+func test_wall_roles_radial_light_and_tile_material_rules_are_continuous() -> bool:
 	var role_vectors:=[
 		[0,"END"],[Diorama.NORTH,"END"],
 		[Diorama.NORTH|Diorama.SOUTH,"STRAIGHT"],
@@ -1029,15 +1029,28 @@ func test_wall_roles_light_bands_and_tile_material_rules_are_quantized() -> bool
 		"non-south exposure adds no false face")
 
 	var near:Dictionary=Diorama.quantized_light_spec(Vector2i(7,7),Vector2i(7,7),"VISIBLE")
-	var mid:Dictionary=Diorama.quantized_light_spec(Vector2i(11,7),Vector2i(7,7),"VISIBLE")
+	var mid:Dictionary=Diorama.quantized_light_spec(Vector2i(10,7),Vector2i(7,7),"VISIBLE")
 	var edge:Dictionary=Diorama.quantized_light_spec(Vector2i(13,7),Vector2i(7,7),"VISIBLE")
 	var memory:Dictionary=Diorama.quantized_light_spec(Vector2i(7,7),Vector2i(7,7),"MEMORY")
-	check_eq([near.band,mid.band,edge.band,memory.band],["NEAR","MID","EDGE","MEMORY"],
-		"hero light uses four explicit knowledge-safe bands")
+	check_eq([near.band,mid.band,edge.band,memory.band],["RADIAL","RADIAL","RADIAL","MEMORY"],
+		"hero light uses a continuous knowledge-safe radial band")
 	check(near.foreground_multiplier>mid.foreground_multiplier \
 		and mid.foreground_multiplier>edge.foreground_multiplier,
-		"foreground ink falls in three discrete visible steps")
+		"foreground ink falls continuously with Euclidean distance")
 	check(memory.saturation<=0.14,"memory remains consistently near-monochrome")
+	var unlit_center:Dictionary=Grid.radial_darkness_sample(0.0,false,1)
+	var unlit_mid:Dictionary=Grid.radial_darkness_sample(3.0,false,1)
+	var unlit_edge:Dictionary=Grid.radial_darkness_sample(6.0,false,1)
+	var torch_center:Dictionary=Grid.radial_darkness_sample(0.0,true,1)
+	var torch_mid:Dictionary=Grid.radial_darkness_sample(3.0,true,1)
+	check(unlit_center.alpha<unlit_mid.alpha and unlit_mid.alpha<unlit_edge.alpha,
+		"darkness increases continuously from the hero to the edge")
+	check(torch_center.alpha<unlit_center.alpha and torch_mid.alpha<unlit_mid.alpha \
+		and torch_center.radius_cells>unlit_center.radius_cells,
+		"held torch creates a brighter wider circular light")
+	check(Grid.radial_darkness_sample(3.0,false,1).alpha \
+		<Grid.radial_darkness_sample(3.0,false,3).alpha,
+		"deeper floors retain a stronger darkness curve")
 
 	var material_families:Array=[]
 	for terrain_id in ["floor","stone_floor","wood_floor","metal","rubble",

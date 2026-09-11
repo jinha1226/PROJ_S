@@ -211,15 +211,13 @@ static func quantized_light_spec(position:Vector2i,hero_position:Vector2i,
 	if hero_position==Vector2i(-1,-1):
 		return {"band":"UNANCHORED","distance":-1,"background_multiplier":1.0,
 			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)
-	var distance:=maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y))
-	if distance<=2:
-		return {"band":"NEAR","distance":distance,"background_multiplier":1.0,
-			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)
-	if distance<=4:
-		return {"band":"MID","distance":distance,"background_multiplier":0.82,
-			"foreground_multiplier":0.90,"saturation":0.92}.duplicate(true)
-	return {"band":"EDGE","distance":distance,"background_multiplier":0.64,
-		"foreground_multiplier":0.76,"saturation":0.78}.duplicate(true)
+	var distance:=Vector2(position-hero_position).length()
+	var ratio:=clampf((distance-1.5)/5.5,0.0,1.0)
+	var eased:=ratio*ratio*(3.0-2.0*ratio)
+	return {"band":"RADIAL","distance":distance,
+		"background_multiplier":lerpf(1.0,0.64,eased),
+		"foreground_multiplier":lerpf(1.0,0.76,eased),
+		"saturation":lerpf(1.0,0.78,eased)}.duplicate(true)
 
 
 static func wall_role_spec(connected_mask:int,exposed_mask:int)->Dictionary:

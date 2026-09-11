@@ -41,6 +41,8 @@ const FIRE_POOL_GAIN_ALPHA := 0.16
 const TORCH_BRIGHTNESS_PHASES := [0.88,1.00,0.84,0.94]
 const TORCH_AMBER_HEX := "#f0a64d"
 const TORCH_GLYPH_HEX := "#ffd078"
+const RADIAL_DARKNESS_RINGS := 18
+const RADIAL_DARKNESS_SEGMENTS := 48
 const FLOATING_AMOUNT_START_CELLS := 0.90
 const FLOATING_AMOUNT_TRAVEL_CELLS := 0.55
 const FLOATING_STACK_WINDOW_MS := 420
@@ -121,6 +123,8 @@ var _visible_torch_count:=0
 var _visible_environment_count:=0
 var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
+var _radial_darkness_mesh:ArrayMesh
+var _radial_darkness_mesh_key:=""
 var _awareness_pulses:Dictionary={}
 var _speech_bubbles:Array[Dictionary]=[]
 var _callout_lifetimes:Dictionary={}
@@ -173,6 +177,7 @@ func _on_visual_geometry_changed()->void:
 
 func _invalidate_static_projection_cache()->void:
 	_static_projection_dirty=true
+	_radial_darkness_mesh=null;_radial_darkness_mesh_key=""
 
 func graphics_mode_id()->String:
 	return _graphics_mode
@@ -2359,6 +2364,7 @@ func _draw_world_with_emphasis()->void:
 		else:
 			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),
 				camera_offset,frame_actor_sample_msec)
+	_draw_radial_darkness_overlay()
 	_draw_actor_health_bars(frame_actor_sample_msec)
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
@@ -2671,11 +2677,6 @@ func _draw_torch_light_pools()->void:
 		if not bool(equipment.get("off_hand_torch_lit",false)):continue
 		var torch_position:=_position_from_actor(actor)
 		if not is_world_cell_visible(torch_position):continue
-		var torch_center:=world_to_pixel_center(torch_position)
-		var torch_radius:=cell_size_px()*2.8
-		var glow:=Color("#f0a64d",0.10)
-		draw_circle(torch_center,torch_radius,glow)
-		draw_circle(torch_center,cell_size_px()*1.15,Color("#ffd078",0.08))
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
@@ -2700,6 +2701,105 @@ func _draw_torch_light_pools()->void:
 				var fire_overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
 				draw_rect(world_cell_rect(position).grow(fire_overlap).intersection(
 					grid_rect()),fire_amber,true)
+
+static func radial_darkness_sample(distance_cells:float,torch_lit:bool,
+		floor_index:int)->Dictionary:
+	var floor:=maxi(1,floor_index)
+	var radius:=6.4 if torch_lit else (5.4 if floor<=1 else (4.2 if floor==2 else 2.8))
+	var core_radius:=1.15 if torch_lit else 0.45
+	var center_alpha:=0.02 if torch_lit else (0.10 if floor<=1 else (0.18 if floor==2 else 0.28))
+	var edge_alpha:=0.76 if floor<=1 else (0.84 if floor==2 else 0.92)
+	var ratio:=clampf((maxf(0.0,distance_cells)-core_radius) \
+		/maxf(0.001,radius-core_radius),0.0,1.0)
+	var eased:=ratio*ratio*(3.0-2.0*ratio)
+	return {"alpha":lerpf(center_alpha,edge_alpha,eased),"radius_cells":radius,
+		"core_radius_cells":core_radius,"distance_cells":distance_cells,
+		"torch_lit":torch_lit,"floor_index":floor}.duplicate(true)
+
+func _hero_torch_lit()->bool:
+	for actor in _actors:
+		if int(actor.get("entity_id",-1))!=_hero_camera_actor_id \
+				and not bool(actor.get("is_protagonist",false)):continue
+		return bool((actor.get("equipment_visual",{}) as Dictionary).get(
+			"off_hand_torch_lit",false))
+	return false
+
+func radial_darkness_draw_specs()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[]
+	if _hero_camera_position==Vector2i(-1,-1):return rows
+	var center:=world_to_pixel_center(_hero_camera_position)
+	var cell:=cell_size_px()
+	var torch_lit:=_hero_torch_lit()
+	var maximum_radius:=center.distance_to(grid_rect().position)
+	for corner in [grid_rect().end,
+			Vector2(grid_rect().end.x,grid_rect().position.y),
+			Vector2(grid_rect().position.x,grid_rect().end.y)]:
+		maximum_radius=maxf(maximum_radius,center.distance_to(corner))
+	for ring in range(RADIAL_DARKNESS_RINGS):
+		var inner_radius:=maximum_radius*float(ring)/float(RADIAL_DARKNESS_RINGS)
+		var outer_radius:=maximum_radius*float(ring+1)/float(RADIAL_DARKNESS_RINGS)
+		var sample_radius:=(inner_radius+outer_radius)*0.5
+		var darkness:=radial_darkness_sample(sample_radius/maxf(1.0,cell),
+			torch_lit,_terrain_theme_floor_index)
+		for segment in range(RADIAL_DARKNESS_SEGMENTS):
+			var angle0:=TAU*float(segment)/float(RADIAL_DARKNESS_SEGMENTS)
+			var angle1:=TAU*float(segment+1)/float(RADIAL_DARKNESS_SEGMENTS)
+			var sample_angle:=(angle0+angle1)*0.5
+			var sample_point:=center+Vector2(cos(sample_angle),sin(sample_angle))*sample_radius
+			var sample_cell:=pixel_to_world_cell(sample_point)
+			if sample_cell==Vector2i(-1,-1):continue
+			var cached:=_cached_static_cell(sample_cell)
+			if str(cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
+			var polygon:=PackedVector2Array([
+				center,
+				center+Vector2(cos(angle1),sin(angle1))*outer_radius,
+				center+Vector2(cos(angle0),sin(angle0))*outer_radius]) \
+				if is_zero_approx(inner_radius) else PackedVector2Array([
+				center+Vector2(cos(angle0),sin(angle0))*inner_radius,
+				center+Vector2(cos(angle1),sin(angle1))*inner_radius,
+				center+Vector2(cos(angle1),sin(angle1))*outer_radius,
+				center+Vector2(cos(angle0),sin(angle0))*outer_radius])
+			rows.append({"polygon":polygon,
+				"alpha":float(darkness.alpha),"sample_cell":sample_cell,
+				"distance_cells":float(darkness.distance_cells),
+				"torch_lit":torch_lit})
+	return rows
+
+func _draw_radial_darkness_overlay()->void:
+	var torch_lit:=_hero_torch_lit()
+	var key:="%d:%d:%d:%d:%d:%s"%[_static_projection_rebuild_count,
+		int(size.x),int(size.y),_terrain_theme_floor_index,_hero_camera_actor_id,
+		str(torch_lit)]
+	if _radial_darkness_mesh==null or key!=_radial_darkness_mesh_key:
+		_radial_darkness_mesh=_build_radial_darkness_mesh()
+		_radial_darkness_mesh_key=key
+	if _radial_darkness_mesh!=null:draw_mesh(_radial_darkness_mesh,null)
+
+func _build_radial_darkness_mesh()->ArrayMesh:
+	var specs:=radial_darkness_draw_specs()
+	if specs.is_empty():return null
+	var center:=world_to_pixel_center(_hero_camera_position)
+	var torch_lit:=_hero_torch_lit()
+	var vertices:=PackedVector3Array();var colors:=PackedColorArray()
+	var indices:=PackedInt32Array()
+	for spec in specs:
+		var polygon:PackedVector2Array=spec.polygon
+		if polygon.size()<3:continue
+		var base:=vertices.size()
+		for point in polygon:
+			vertices.append(Vector3(point.x,point.y,0.0))
+			var darkness:=radial_darkness_sample(center.distance_to(point) \
+				/maxf(1.0,cell_size_px()),torch_lit,_terrain_theme_floor_index)
+			colors.append(Color(0.002,0.004,0.008,
+				clampf(float(darkness.alpha),0.0,0.96)))
+		for index in range(1,polygon.size()-1):
+			indices.append(base);indices.append(base+index);indices.append(base+index+1)
+	if vertices.is_empty():return null
+	var arrays:=[];arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_COLOR]=colors
+	arrays[Mesh.ARRAY_INDEX]=indices
+	var mesh:=ArrayMesh.new();mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_row_count):
