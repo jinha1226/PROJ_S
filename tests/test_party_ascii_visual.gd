@@ -1434,7 +1434,7 @@ func test_diorama_route_style_preserves_mapping_and_actor_hit_authority() -> boo
 	grid.free();return finish()
 
 
-func test_selected_actor_has_no_yellow_overlay_but_target_and_ghost_remain() -> bool:
+func test_selected_actor_has_thin_yellow_overlay_and_target_and_ghost_remain() -> bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[7,7]:cell.actors.append({"entity_id":1,"faction_id":"party",
@@ -1446,13 +1446,16 @@ func test_selected_actor_has_no_yellow_overlay_but_target_and_ghost_remain() -> 
 		{"entity_id":3,"faction_id":"party","roster_slot":1,"position":[6,7]}])
 	grid.set_selection(1,2)
 	var overlays:Array=grid.selection_overlay_draw_specs()
-	check_eq(overlays.map(func(row):return row.kind),["TARGET","DEPLOYMENT_GHOST"],
-		"selected party actor emits no map bracket")
-	check_eq([overlays[0].entity_id,overlays[0].color_hex],[2,"#ff6b70"],
+	check_eq(overlays.map(func(row):return row.kind),
+		["CONTROLLED","TARGET","DEPLOYMENT_GHOST"],
+		"selected party actor retains a map bracket")
+	check_eq([overlays[0].entity_id,overlays[0].color_hex,overlays[0].line_width],
+		[1,"#f5cc67",1.25],"selected party actor uses the thin yellow line")
+	check_eq([overlays[1].entity_id,overlays[1].color_hex],[2,"#ff6b70"],
 		"enemy target retains red selection semantics")
-	check_eq(overlays[1].entity_id,3,"deployment proposal retains cyan ghost bracket")
+	check_eq(overlays[2].entity_id,3,"deployment proposal retains cyan ghost bracket")
 	overlays[0].kind="CORRUPTED"
-	check_eq(grid.selection_overlay_draw_specs()[0].kind,"TARGET","overlay specs are detached")
+	check_eq(grid.selection_overlay_draw_specs()[0].kind,"CONTROLLED","overlay specs are detached")
 	grid.free();return finish()
 
 
@@ -1472,6 +1475,15 @@ func test_actor_motion_eases_draw_only_and_snaps_without_canonical_arm() -> bool
 	check(absf(float(sample75.eased_progress)-0.5)<0.0001,
 		"75ms symmetric easing reaches deterministic midpoint without a start burst")
 	check_eq(sample150.world_position,Vector2(8,7),"150ms motion ends at target")
+	grid.set_selection(77,-1)
+	var selection_start:Dictionary=grid.selection_overlay_draw_specs(started)[0]
+	var selection_mid:Dictionary=grid.selection_overlay_draw_specs(started+75)[0]
+	check(absf(Vector2(selection_start.visual_center).x-grid.world_to_pixel_center(
+		Vector2i(7,7)).x)<0.01 and Vector2(selection_mid.visual_center).x \
+		>Vector2(selection_start.visual_center).x,
+		"selection outline follows the interpolated actor instead of jumping first")
+	check(is_equal_approx(float(selection_start.line_width),1.25),
+		"controlled actor selection outline stays thin")
 	var actor:Dictionary=grid._actor_by_id(77)
 	var walk_style:Dictionary=grid.actor_draw_spec(actor,false,started+38)
 	var walk_pose:Dictionary=Style.asciident_actor_composition(actor,walk_style)

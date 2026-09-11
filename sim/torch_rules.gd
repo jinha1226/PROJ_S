@@ -7,7 +7,7 @@ extends RefCounted
 const RULESET_ID := "hand-torch-v1"
 const DEFINITION_ID := "TORCH"
 const EQUIP_SLOT := "OFF_HAND"
-const FUEL_DURATION := 1000
+const FUEL_DURATION := 2000
 const LIGHT_BRIGHTNESS := 1000
 const LIGHT_RADIUS := 4
 const ACTION_TIME_COST := 100

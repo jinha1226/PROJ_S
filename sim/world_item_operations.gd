@@ -20,6 +20,7 @@ const RuntimeScript=preload("res://sim/weapon_runtime_state.gd")
 const SpeciesCatalogScript=preload("res://sim/species_catalog_registry.gd")
 const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const WeaponRecraftRegistryScript=preload("res://sim/weapon_recraft_registry.gd")
+const TorchRulesScript=preload("res://sim/torch_rules.gd")
 
 const EVENT_TYPES:={"PICKUP":"item.picked_up","DROP":"item.dropped","EQUIP":"item.equipped",
 	"UNEQUIP":"item.unequipped","DISCARD":"item.discarded","TRANSFER":"item.transferred"}
@@ -135,7 +136,8 @@ static func commit_torch_event(world, entity_id: int, instance_id: String,
 	if not invariant.is_empty(): return _rejected(invariant)
 	next.revision = world.item_state.revision + 1
 	var payload := {"schema_version":1, "ruleset_id":"hand-torch-v1",
-		"instance_id":instance_id, "fuel_remaining":clampi(fuel_remaining, 0, 1000),
+		"instance_id":instance_id,"fuel_remaining":clampi(fuel_remaining,0,
+			TorchRulesScript.FUEL_DURATION),
 		"time_cost":maxi(0, time_cost)}
 	var event = world.emit_event(event_type, entity_id, entity_id, position, 0, -1, payload)
 	if event == null: return _rejected("torch_event_failed")

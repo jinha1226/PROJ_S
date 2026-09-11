@@ -10,9 +10,12 @@ func check(ok:bool,label:String):
 func _init():call_deferred("run")
 func run():
 	check(Sandbox.CONTINUOUS_TRAVEL_CADENCE_MSEC==90,"faster travel cadence")
-	for elapsed in [0,15,30,45,60,75,90]:
-		var sample:Dictionary=Motion.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,elapsed,90,true)
-		check(is_equal_approx(float(sample.world_position.x),float(elapsed)/90),"short AUTO motion remains linear")
+	check(Sandbox.CONTINUOUS_EXPLORATION_MOTION_MSEC>Sandbox.CONTINUOUS_TRAVEL_CADENCE_MSEC,
+		"AUTO motion overlaps the next hop instead of stopping between commits")
+	for elapsed in [0,20,40,60,80,100,120,130]:
+		var sample:Dictionary=Motion.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,elapsed,130,true)
+		check(is_equal_approx(float(sample.world_position.x),float(elapsed)/130),
+			"overlapping AUTO motion remains linear")
 	var manual:Dictionary=Motion.actor_motion_sample(Vector2.ZERO,Vector2.RIGHT,25,100)
 	check(not is_equal_approx(float(manual.world_position.x),0.25),"manual motion preserves ease")
 	var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)

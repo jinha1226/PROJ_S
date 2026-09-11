@@ -3,12 +3,12 @@ extends Control
 const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
-const CONTINUOUS_EXPLORATION_MOTION_MSEC := 90
+const CONTINUOUS_EXPLORATION_MOTION_MSEC := 130
 const MANUAL_CAMERA_SETTLE_MSEC := 55
 # AUTO and long routes should read as continuous travel rather than a sequence of
 # deliberate single-cell inputs. Motion overlaps the next cadence so actor and
 # camera interpolation remain visible without making a large floor tedious.
-const CONTINUOUS_CAMERA_SETTLE_MSEC := 90
+const CONTINUOUS_CAMERA_SETTLE_MSEC := 130
 
 const SessionScript=preload("res://playtest/party_playtest_session.gd")
 const GridScript=preload("res://playtest/party_grid_view.gd")
@@ -822,6 +822,7 @@ var _refresh_after_pointer:=false
 var _last_direct_solo_refresh_profile:Dictionary={}
 var _last_direct_solo_turn_profile:Dictionary={}
 var _last_continuous_exploration_refresh_profile:Dictionary={}
+var _last_continuous_aux_refresh_step:=-1
 var _species_picker_committed:=false
 
 func _ready()->void:
@@ -2231,8 +2232,15 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var view_dimensions:=_current_grid_view_dimensions()
 	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
+	var step_index:=int(status.get("step_index",-1))
+	# The field and torch clock remain live every hop. Minimap, party dossier and
+	# history are stable chrome during AUTO, so coalesce them to one refresh per
+	# four hops and force one immediately whenever AUTO stops.
+	var refresh_aux:=not continuous_motion \
+		or not bool(session.auto_explore_state().get("running",false)) \
+		or _last_continuous_aux_refresh_step<0 or step_index%4==0
 	var _po:=PerfProbeScript.begin()
-	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
+	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,refresh_aux,
 		view_dimensions.y,true) if product_hud else session.observe_party_ui(view_cell_count)
 	PerfProbeScript.end("ui.observe",_po)
 	var observe_finished_usec:=Time.get_ticks_usec()
@@ -2240,7 +2248,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	grid.set_observation(ui_observation.get("grid",{}),[])
 	PerfProbeScript.end("ui.grid_set",_pg)
 	var _pmm:=PerfProbeScript.begin()
-	minimap.set_observation(ui_observation.get("minimap",{}))
+	if refresh_aux:minimap.set_observation(ui_observation.get("minimap",{}))
 	PerfProbeScript.end("ui.minimap",_pmm)
 	var _ph:=PerfProbeScript.begin()
 	_update_expedition_hud(product_hud,status)
@@ -2272,17 +2280,18 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	PerfProbeScript.end("ui.route",_prt)
 	var grid_finished_usec:=Time.get_ticks_usec()
 	var _ppc:=PerfProbeScript.begin()
-	var party_rows:Array=session.party_cards()
+	var party_rows:Array=session.party_cards() if refresh_aux else []
 	PerfProbeScript.end("ui.party_cards",_ppc)
 	var _pcu:=PerfProbeScript.begin()
-	_update_stable_party_cards(party_rows)
+	if refresh_aux:_update_stable_party_cards(party_rows)
 	PerfProbeScript.end("ui.cards_update",_pcu)
 	var _plg:=PerfProbeScript.begin()
-	var combat_history:Dictionary=session.combat_log(8,80)
-	log_label.text=_combat_log_text(combat_history)
-	_update_recent_event(combat_history,status)
+	var combat_history:Dictionary=session.combat_log(8,80) if refresh_aux else {}
+	if refresh_aux:
+		log_label.text=_combat_log_text(combat_history)
+		_update_recent_event(combat_history,status)
 	PerfProbeScript.end("ui.log",_plg)
-	if product_hud:
+	if product_hud and refresh_aux:
 		event_label.text=_compact_meaningful_event_text(combat_history,status)
 		if not _product_transient_event_feedback.is_empty():
 			event_label.text=_product_transient_event_feedback
@@ -2290,18 +2299,20 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 		if not _product_auto_stop_feedback.is_empty():
 			event_label.text=_product_auto_stop_feedback
 			_product_auto_stop_feedback=""
-	else:
+	elif not product_hud and refresh_aux:
 		_update_action_feedback(status)
 	_sync_product_control_state(status)
 	var hud_finished_usec:=Time.get_ticks_usec()
 	var effect_count:=_flush_pending_visual_effects(status)
 	var finished_usec:=Time.get_ticks_usec()
+	if refresh_aux:_last_continuous_aux_refresh_step=step_index
 	_last_continuous_exploration_refresh_profile={
 		"observe_ui_usec":observe_finished_usec-observe_started_usec,
 		"grid_minimap_usec":grid_finished_usec-observe_finished_usec,
 		"stable_hud_usec":hud_finished_usec-grid_finished_usec,
 		"effects_usec":finished_usec-hud_finished_usec,
-		"effect_count":effect_count,"total_usec":finished_usec-started_usec,
+		"effect_count":effect_count,"aux_refreshed":refresh_aux,
+		"total_usec":finished_usec-started_usec,
 	}.duplicate(true)
 
 func _update_direct_solo_card(rows:Array)->void:
@@ -6058,6 +6069,7 @@ func _reset_run_ui_transients()->void:
 	_product_auto_explore_due_frame=-1;_product_auto_explore_due_msec=-1
 	_product_auto_explore_scheduled_generation=-1
 	_product_auto_last_hop_started_msec=-1
+	_last_continuous_aux_refresh_step=-1
 	route_last_hop_started_msec=-1
 	_product_auto_stop_feedback="";_product_transient_event_feedback=""
 	_product_attack_targeting=false

@@ -7,7 +7,7 @@ const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const VisualMap=preload("res://playtest/party_visual_test_map.gd")
 const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
-const AUTO_INTENDED_CADENCE_MSEC:=35
+const AUTO_INTENDED_CADENCE_MSEC:=90
 const AUTO_HEADLESS_GROSS_CEILING_MSEC:=230
 
 var failures:Array[String]=[]
@@ -536,10 +536,10 @@ func _screen_touch_plain_button(button:Button,touch_index:int)->void:
 func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 	var session=_safe_auto_product_session()
 	var sandbox=Sandbox.new();sandbox.name="ProductAutoSchedulerProbe";sandbox.size=viewport_size
-	_check(sandbox.continuous_travel_cadence_msec==sandbox.CONTINUOUS_EXPLORATION_MOTION_MSEC \
+	_check(sandbox.continuous_travel_cadence_msec<sandbox.CONTINUOUS_EXPLORATION_MOTION_MSEC \
 		and sandbox.continuous_travel_cadence_msec>=90 \
 		and sandbox.continuous_travel_cadence_msec<=130,
-		"%s continuous travel cadence must match the hop motion inside 90-130ms"%viewport_size)
+		"%s continuous travel motion must overlap the 90-130ms hop cadence"%viewport_size)
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=viewport_size
 	root.add_child(sandbox);await process_frame;await process_frame
@@ -569,8 +569,8 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			"%s AUTO hop did not arm the visible modular walk cycle"%viewport_size)
 		var first_hop_started:int=sandbox._product_auto_last_hop_started_msec
 		var due_from_hop_start:int=int(sandbox._product_auto_explore_due_msec)-first_hop_started
-		_check(due_from_hop_start>=30 and due_from_hop_start<=45,
-			"%s AUTO continuation was not scheduled 30-45ms from hop start: %d"%[
+		_check(due_from_hop_start>=85 and due_from_hop_start<=105,
+			"%s AUTO continuation was not scheduled near 90ms from hop start: %d"%[
 				viewport_size,due_from_hop_start])
 		var cadence_step:int=int(session.party_status().step_index)
 		var wait_started:int=Time.get_ticks_msec()
@@ -586,7 +586,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 			and actual_start_interval>=AUTO_INTENDED_CADENCE_MSEC-5 \
 			and actual_start_interval<=AUTO_HEADLESS_GROSS_CEILING_MSEC,
 			("%s AUTO commit-start was not exactly one hop within 30-230ms " \
-			+ "(intended=35ms gross=230ms): step=%d/%d interval=%d")%[
+			+ "(intended=90ms gross=230ms): step=%d/%d interval=%d")%[
 				viewport_size,int(session.party_status().step_index),cadence_step,actual_start_interval])
 		var auto_camera:Dictionary=sandbox.grid.camera_settle_draw_spec()
 		_check(int(auto_camera.get("duration_ms",0))==sandbox.CONTINUOUS_CAMERA_SETTLE_MSEC \
@@ -600,7 +600,7 @@ func _check_product_auto_scheduler(viewport_size:Vector2)->void:
 		sandbox._product_auto_explore_due_msec=-1
 		sandbox._product_auto_explore_scheduled_generation=-1
 		# The remaining gesture probes advance synthetic frames rather than wall
-		# time. Zero only their presentation delay; production remains 35ms.
+		# time. Zero only their presentation delay; production remains 90ms.
 		sandbox.continuous_travel_cadence_msec=0
 		await process_frame;await process_frame
 		var held_step:=int(session.party_status().step_index)

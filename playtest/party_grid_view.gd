@@ -1681,16 +1681,21 @@ func ground_item_draw_specs()->Array[Dictionary]:
 			if bool(spec.visible):rows.append(spec)
 	return rows.duplicate(true)
 
-func selection_overlay_draw_specs()->Array[Dictionary]:
+func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	for actor in _actors:
 		var entity_id:=int(actor.get("entity_id",-1))
 		if entity_id!=selected_target_id and entity_id!=selected_actor_id:continue
 		var position:=_position_from_actor(actor)
 		if not is_world_cell_visible(position):continue
+		var cell_rect:=world_cell_rect(position)
+		var visual_center:=actor_visual_center(entity_id,sample_time_ms)
+		var visual_rect:=Rect2(visual_center-cell_rect.size*0.5,cell_rect.size)
 		rows.append({"kind":"CONTROLLED" if entity_id==selected_actor_id else "TARGET","entity_id":entity_id,
-			"position":[position.x,position.y],"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70","line_width":3.0,
-			"segments":AsciiStyleScript.bracket_segments(world_cell_rect(position))})
+			"position":[position.x,position.y],"visual_center":visual_center,
+			"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70",
+			"line_width":1.25 if entity_id==selected_actor_id else 2.0,
+			"segments":AsciiStyleScript.bracket_segments(visual_rect)})
 	for ghost in _ghosts:
 		var position:=_position_from_actor(ghost)
 		if not is_world_cell_visible(position):continue
@@ -2426,7 +2431,7 @@ func _draw_world_with_emphasis()->void:
 		_draw_intent(intent)
 	for intent in _intent_overlays:
 		_draw_intent(intent)
-	_draw_actor_selection_overlays()
+	_draw_actor_selection_overlays(frame_actor_sample_msec)
 	_draw_cursor_preview()
 	_draw_speech_bubbles()
 	draw_set_transform(Vector2.ZERO)
@@ -2913,30 +2918,53 @@ func _draw_radial_darkness_overlay()->void:
 	if _radial_darkness_mesh!=null:draw_mesh(_radial_darkness_mesh,null)
 
 func _build_radial_darkness_mesh()->ArrayMesh:
-	var specs:=radial_darkness_draw_specs()
-	if specs.is_empty():return null
+	if _hero_camera_position==Vector2i(-1,-1):return null
 	var center:=world_to_pixel_center(_hero_camera_position)
-	var torch_lit:=_hero_torch_lit()
 	var vertices:=PackedVector3Array();var colors:=PackedColorArray()
 	var indices:=PackedInt32Array()
-	for spec in specs:
-		var polygon:PackedVector2Array=spec.polygon
-		if polygon.size()<3:continue
-		var base:=vertices.size()
-		for point in polygon:
+	var maximum_radius:=center.distance_to(grid_rect().position)
+	for corner in [grid_rect().end,Vector2(grid_rect().end.x,grid_rect().position.y),
+		Vector2(grid_rect().position.x,grid_rect().end.y)]:
+		maximum_radius=maxf(maximum_radius,center.distance_to(corner))
+	vertices.append(Vector3(center.x,center.y,0.0))
+	colors.append(_darkness_vertex_color(_composite_darkness_at(center)))
+	# Adjacent wedges share their polar vertices. Previously every polygon copied
+	# and resampled the same corners, multiplying the FOV rebuild cost while AUTO
+	# moved the camera every hop.
+	for ring in range(1,RADIAL_DARKNESS_RINGS+1):
+		var radius:=maximum_radius*float(ring)/float(RADIAL_DARKNESS_RINGS)
+		for segment in range(RADIAL_DARKNESS_SEGMENTS):
+			var angle:=TAU*float(segment)/float(RADIAL_DARKNESS_SEGMENTS)
+			var point:=center+Vector2(cos(angle),sin(angle))*radius
 			vertices.append(Vector3(point.x,point.y,0.0))
-			var sample:=_composite_darkness_at(point)
-			var alpha:=float(sample.get("alpha",0.94))
-			colors.append(Color(0.002,0.004,0.008,
-				clampf(alpha,0.0,0.96)))
-		for index in range(1,polygon.size()-1):
-			indices.append(base);indices.append(base+index);indices.append(base+index+1)
-	if vertices.is_empty():return null
+			colors.append(_darkness_vertex_color(_composite_darkness_at(point)))
+	for ring in range(1,RADIAL_DARKNESS_RINGS+1):
+		var sample_radius:=maximum_radius*(float(ring)-0.5) \
+			/float(RADIAL_DARKNESS_RINGS)
+		for segment in range(RADIAL_DARKNESS_SEGMENTS):
+			var next_segment:=(segment+1)%RADIAL_DARKNESS_SEGMENTS
+			var sample_angle:=TAU*(float(segment)+0.5)/float(RADIAL_DARKNESS_SEGMENTS)
+			var midpoint:=center+Vector2(cos(sample_angle),sin(sample_angle))*sample_radius
+			if not bool(_composite_darkness_at(midpoint).get("drawable",false)):continue
+			var outer:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+segment
+			var outer_next:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+next_segment
+			if ring==1:
+				indices.append(0);indices.append(outer_next);indices.append(outer)
+			else:
+				var inner:=1+(ring-2)*RADIAL_DARKNESS_SEGMENTS+segment
+				var inner_next:=1+(ring-2)*RADIAL_DARKNESS_SEGMENTS+next_segment
+				indices.append(inner);indices.append(outer_next);indices.append(outer)
+				indices.append(inner);indices.append(inner_next);indices.append(outer_next)
+	if indices.is_empty():return null
 	var arrays:=[];arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_COLOR]=colors
 	arrays[Mesh.ARRAY_INDEX]=indices
 	var mesh:=ArrayMesh.new();mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return mesh
+
+func _darkness_vertex_color(sample:Dictionary)->Color:
+	var alpha:=float(sample.get("alpha",0.0)) if bool(sample.get("drawable",false)) else 0.0
+	return Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
 	for y in range(visible_row_count):
@@ -3723,8 +3751,8 @@ func _draw_exploration_companion_follow_plan()->void:
 				maxi(8,int(cell_size_px()*0.25)),Color(str(risk_badge.color_hex)))
 
 
-func _draw_actor_selection_overlays()->void:
-	for row in selection_overlay_draw_specs():
+func _draw_actor_selection_overlays(sample_time_ms:int=-1)->void:
+	for row in selection_overlay_draw_specs(sample_time_ms):
 		var color:=Color(str(row.color_hex))
 		color.a*=float(row.get("opacity",1.0))
 		for segment in row.segments:
