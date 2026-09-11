@@ -28,19 +28,19 @@ func _init()->void:
 	check(w.submit("EQUIP",w.inventory.find("MAIL")),"equip armor")
 	var mail:Dictionary=Gear.stats(hero).duplicate()
 	check(mail.protection>sword.protection and mail.burden>sword.burden,"armor protection burden")
-	check(w.submit("TRAIN",Gear.SKILLS.find("AXE")),"training selection")
+	check(not w.submit("TRAIN",0),"obsolete focused training removed")
 	var target:=enemy(w);target.hp=1
 	for i in range(20):
 		if target.hp==0:break
 		w.attack(hero,target)
-	check(target.hp==0 and hero.skill_xp.AXE==25,"kill grants focused XP once")
+	check(target.hp==0 and hero.growth.xp==25,"kill grants character XP once")
 	w.attack(hero,target)
-	check(hero.skill_xp.AXE==25,"dead actor cannot farm XP")
-	check(Gear.level(hero,"AXE")==1 and Gear.stats(hero).delay<mail.delay,"skill improves attack time")
+	check(hero.growth.xp==25,"dead actor cannot farm XP")
+	World.Growth.gain(hero,75)
+	check(w.invest(0,"MELEE") and Gear.stats(hero).damage>mail.damage,"point investment raises damage")
+	check(Gear.stats(hero).delay==mail.delay and Gear.stats(hero).accuracy==mail.accuracy,"no double speed or accuracy scaling")
 	for i in range(5):w.submit("WAIT")
-	check(hero.skill_xp.AXE==25,"waiting grants no XP")
-	hero.skill_xp.AXE=8000
-	check(Gear.level(hero,"AXE")==20 and Gear.stats(hero).delay>=90,"level cap and minimum delay")
+	check(hero.growth.xp==100,"waiting grants no XP")
 	w.inventory.append("BUCKLER")
 	check(w.submit("EQUIP",w.inventory.find("BUCKLER")) and Gear.stats(hero).block>0,"shield equipped and active")
 	w.injury_serial+=1
@@ -56,7 +56,7 @@ func _init()->void:
 	check(loaded.restore(JSON.parse_string(JSON.stringify(saved))) and loaded.save_data()==saved,"equipment and skills exact JSON roundtrip")
 	var corrupt:Dictionary=saved.duplicate(true);corrupt.actors[0].gear.weapon="UNKNOWN"
 	check(not loaded.restore(corrupt) and loaded.save_data()==saved,"invalid gear rejects atomically")
-	corrupt=saved.duplicate(true);corrupt.actors[0].skill_xp.AXE=-1
+	corrupt=saved.duplicate(true);corrupt.actors[0].growth.xp=-1
 	check(not loaded.restore(corrupt),"invalid XP rejected")
 	arena(w);hero=w.hero();target=enemy(w)
 	target.hp=100000;target.max_hp=100000;hero.power=1
@@ -79,6 +79,6 @@ func _init()->void:
 	saved=w.save_data();saved.schema=2;saved.erase("inventory")
 	for actor in saved.actors:
 		for key in ["gear","skill_xp","training"]:actor.erase(key)
-	check(loaded.restore(saved) and Gear.valid(loaded.hero()),"v2 gets default equipment")
+	check(not loaded.restore(saved),"old schema is not silently converted")
 	print("REBUILT EQUIPMENT: ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)

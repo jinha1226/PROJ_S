@@ -53,11 +53,11 @@ func _init()->void:
 	var malformed:Dictionary=saved.duplicate(true);malformed.actors[1].body.current_blood=-1
 	var before:Dictionary=loaded.save_data()
 	check(not loaded.restore(malformed) and loaded.save_data()==before,"malformed body rejected without mutation")
-	# The pre-body v1 save contains no recoverable limb history: initialise bodies.
+	# Old saves remain separate; no implicit conversion into point-based growth.
 	var legacy:Dictionary=saved.duplicate(true);legacy.schema=1;legacy.erase("injury_serial")
 	for actor in legacy.actors:
 		for key in ["body","order","move_factor","attack_factor"]:actor.erase(key)
-	check(loaded.restore(legacy) and loaded.hero().body!=null,"v1 rebuilt saves migrate")
+	check(not loaded.restore(legacy),"old save is rejected without implicit migration")
 	var ally_body:Dictionary=ally.body.to_dict()
 	var ally_hp:int=ally.hp
 	w.floor_number+=1;w.generate_floor()

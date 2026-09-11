@@ -3,7 +3,8 @@ extends Control
 const World=preload("res://game/rebuilt/world.gd")
 const Board=preload("res://game/rebuilt/board.gd")
 const GameFont=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
-const SAVE:="user://rebuilt_dungeon_v1.json"
+const SAVE:="user://rebuilt_dungeon_v4.json"
+const GrowthPanel=preload("res://game/rebuilt/growth_panel.gd")
 var world=World.new()
 var board
 var status:Label
@@ -15,10 +16,10 @@ var save_timer:Timer
 var save_allowed:=true
 var party_dialog:AcceptDialog
 var party_info:Label
-var gear_dialog:AcceptDialog
-var gear_info:Label
-var gear_choice:OptionButton
-var training_choice:OptionButton
+var gear_dialog
+var targeting:String=""
+var targeting_label:Label
+var growth_button:Button
 
 func _ready()->void:
 	var theme_data:=Theme.new();theme_data.default_font=GameFont;theme_data.default_font_size=15;theme=theme_data
@@ -41,7 +42,10 @@ func _ready()->void:
 	add_button(actions,"저장",save_game)
 	add_button(actions,"새 게임",confirm_new)
 	add_button(actions,"동료",show_party)
-	add_button(actions,"장비·숙련",show_equipment)
+	growth_button=add_button(actions,"성장",show_equipment)
+	add_button(actions,"사격",func():begin_target("SHOOT"))
+	add_button(actions,"화염탄",func():begin_target("FIREBOLT"))
+	targeting_label=Label.new();column.add_child(targeting_label)
 	history=Label.new();history.custom_minimum_size.y=70;column.add_child(history)
 	details=AcceptDialog.new();add_child(details)
 	party_dialog=AcceptDialog.new();party_dialog.title="동료";add_child(party_dialog)
@@ -53,20 +57,16 @@ func _ready()->void:
 		var allies:Array[Dictionary]=world.companions()
 		if not allies.is_empty():command("POTION",allies[0].id);update_party())
 	add_button(party_actions,"합류",func():command("RECRUIT");update_party())
-	gear_dialog=AcceptDialog.new();gear_dialog.title="장비 · 숙련도";add_child(gear_dialog)
-	var gear_column:=VBoxContainer.new();gear_dialog.add_child(gear_column)
-	gear_info=Label.new();gear_column.add_child(gear_info)
-	gear_choice=OptionButton.new();gear_choice.custom_minimum_size.y=42;gear_column.add_child(gear_choice)
-	add_button(gear_column,"선택 장비 장착",func():command("EQUIP",gear_choice.selected);update_equipment())
-	training_choice=OptionButton.new();training_choice.custom_minimum_size.y=42;gear_column.add_child(training_choice)
-	for label in World.Equipment.LABELS:training_choice.add_item(label)
-	add_button(gear_column,"선택 숙련도 훈련",func():command("TRAIN",training_choice.selected);update_equipment())
+	gear_dialog=GrowthPanel.new();add_child(gear_dialog)
+	gear_dialog.changed.connect(func():refresh(false);save_timer.start())
 	timer=Timer.new();timer.wait_time=0.16;timer.timeout.connect(continue_auto);add_child(timer)
 	save_timer=Timer.new();save_timer.one_shot=true;save_timer.wait_time=0.6;save_timer.timeout.connect(save_game);add_child(save_timer)
 	if FileAccess.file_exists(SAVE):
 		var data:Variant=JSON.parse_string(FileAccess.get_file_as_string(SAVE))
 		if data is Dictionary and world.restore(data):world.message("저장한 탐험을 불러왔습니다.")
 		else:save_allowed=false;world.message("저장 읽기 실패 · 새 게임 선택 전까지 저장을 잠급니다.")
+	if not FileAccess.file_exists(SAVE) and FileAccess.file_exists("user://rebuilt_dungeon_v1.json"):
+		world.message("새 성장 규칙으로 시작합니다. 이전 저장은 보존됩니다.")
 	refresh(false)
 
 func add_button(parent:Node,label:String,callback:Callable)->Button:
@@ -75,13 +75,19 @@ func add_button(parent:Node,label:String,callback:Callable)->Button:
 
 func refresh(animate:bool=true)->void:
 	board.sync(world,animate)
-	status.text="%d층 · HP %d/%d · 금화 %d\n횃불 %s %d · 회복약 %d · 시간 %d"%[world.floor_number,world.hero().hp,world.hero().max_hp,world.gold,
+	status.text="%d층 · Lv%d · HP %d/%d · MP %d\n횃불 %s %d · 회복약 %d · 시간 %d"%[world.floor_number,world.hero().growth.level,world.hero().hp,world.hero().max_hp,world.hero().mp,
 		"켜짐" if world.torch_lit else "꺼짐",world.torch_fuel,world.potions,world.time]
+	growth_button.text="성장 · %dP"%world.hero().growth.points
+	targeting_label.text=("적을 터치 · 같은 버튼으로 취소" if not targeting.is_empty() else "화살 %d · 금화 %d"%[world.arrows,world.gold])
 	auto_button.text="중지" if world.auto_explore else "자동탐험"
 	history.text="\n".join(world.log.slice(maxi(0,world.log.size()-3)))
 
 func on_cell(cell:int)->void:
 	world.stop_auto();timer.stop()
+	if not targeting.is_empty():
+		if world.submit(targeting,cell):targeting="";refresh();save_timer.start()
+		else:world.message("대상·사거리·장비·MP/화살을 확인하세요.");refresh(false)
+		return
 	if world.memory[cell]==0:return
 	var delta:Vector2i=world.position(cell)-world.position(world.hero().cell)
 	if delta==Vector2i.ZERO:command("WAIT");return
@@ -92,11 +98,12 @@ func on_cell(cell:int)->void:
 	else:world.message("이동할 수 있는 경로가 없습니다.");refresh(false)
 
 func command(kind:String,target:int=-1)->void:
-	world.stop_auto();timer.stop()
+	world.stop_auto();timer.stop();targeting=""
 	if world.submit(kind,target):refresh();save_timer.start()
 	else:world.message("지금은 할 수 없는 행동입니다.");refresh(false)
 
 func toggle_auto()->void:
+	targeting=""
 	if world.auto_explore or not world.route_steps.is_empty():world.stop_auto();timer.stop();refresh(false);return
 	world.auto_explore=true;continue_auto()
 	if world.auto_explore:timer.start()
@@ -114,17 +121,17 @@ func show_status()->void:
 		a.personality,World.Body.description(a),World.Equipment.ITEMS[a.gear.weapon].label,World.Equipment.stats(a).protection]
 	details.popup_centered(Vector2i(380,340))
 
-func update_equipment()->void:
-	gear_info.text=World.Equipment.description(world.hero())
-	var selected:=gear_choice.selected
-	gear_choice.clear()
-	for id in world.inventory:gear_choice.add_item(World.Equipment.ITEMS[id].label)
-	if selected>=0 and selected<gear_choice.item_count:gear_choice.select(selected)
-	training_choice.select(World.Equipment.SKILLS.find(world.hero().training))
+func begin_target(kind:String)->void:
+	world.stop_auto();timer.stop()
+	if targeting==kind:targeting="";refresh(false);return
+	if kind=="SHOOT" and (world.Equipment.effective_weapon(world.hero())!="BOW" or world.arrows<1):
+		world.message("성장 → 장비에서 활을 장착하고 화살을 준비하세요.");refresh(false);return
+	if kind=="FIREBOLT" and ("FIREBOLT" not in world.hero().bound_abilities or world.hero().mp<int(world.Growth.DATA.actions.FIREBOLT.mp)):
+		world.message("화염탄 결속과 MP가 필요합니다.");refresh(false);return
+	targeting=kind;refresh(false)
 
 func show_equipment()->void:
-	world.stop_auto();timer.stop();update_equipment()
-	gear_dialog.popup_centered(Vector2i(410,510))
+	world.stop_auto();timer.stop();targeting="";gear_dialog.open(world)
 
 func update_party()->void:
 	var allies:Array[Dictionary]=world.companions()

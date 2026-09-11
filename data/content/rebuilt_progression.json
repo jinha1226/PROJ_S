@@ -1,0 +1,27 @@
+{
+  "content_schema_version": 1,
+  "content_version": "rebuilt-four-axis-initial-2026-09-11",
+  "content_type": "REBUILT_PROGRESSION",
+  "max_level": 21,
+  "max_rank": 10,
+  "xp_factor": 100,
+  "points_per_level": 1,
+  "attack_per_rank_milli": 80,
+  "defense_per_rank_milli": 20,
+  "defense_cap_milli": 200,
+  "kill_xp_base": 20,
+  "kill_xp_per_floor": 5,
+  "axes": [
+    {"id":"MELEE","label":"근접","description":"검·도끼·둔기·창·맨손 피해"},
+    {"id":"RANGED","label":"원거리","description":"활 사격 피해"},
+    {"id":"MAGIC","label":"마법","description":"화염탄 등 지정된 마법 효과량"},
+    {"id":"DEFENSE","label":"방어","description":"적중한 공격의 받는 피해 감소"}
+  ],
+  "actions": {
+    "FIREBOLT":{"label":"화염탄","axis":"MAGIC","element":"FIRE","power":12,"range":6,"cost":110,"mp":4},
+    "SHOOT":{"label":"사격","axis":"RANGED","range":6,"ammo":1}
+  },
+  "max_mp":20,
+  "starting_arrows":30,
+  "arrow_pickup":10
+}

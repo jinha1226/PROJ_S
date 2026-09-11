@@ -1,0 +1,103 @@
+{
+  "content_schema_version": 1,
+  "content_version": "rebuilt-four-axis-2026-09-11",
+  "content_type": "REBUILT_EQUIPMENT",
+  "items": {
+    "SHORT_SWORD": {
+      "label": "단검",
+      "slot": "weapon",
+      "skill": "MELEE",
+      "damage": 0,
+      "accuracy": 90,
+      "delay": 110,
+      "minimum": 70,
+      "penetration": 0,
+      "body": "SHORT_SWORD"
+    },
+    "HAND_AXE": {
+      "label": "손도끼",
+      "slot": "weapon",
+      "skill": "MELEE",
+      "damage": 4,
+      "accuracy": 78,
+      "delay": 140,
+      "minimum": 90,
+      "penetration": 0,
+      "body": "HAND_AXE"
+    },
+    "MACE": {
+      "label": "철퇴",
+      "slot": "weapon",
+      "skill": "MELEE",
+      "damage": 2,
+      "accuracy": 84,
+      "delay": 130,
+      "minimum": 85,
+      "penetration": 2,
+      "body": "MACE"
+    },
+    "SPEAR": {
+      "label": "창",
+      "slot": "weapon",
+      "skill": "MELEE",
+      "damage": 1,
+      "accuracy": 92,
+      "delay": 125,
+      "minimum": 80,
+      "penetration": 1,
+      "body": "SPEAR"
+    },
+    "UNARMED": {
+      "label": "맨손",
+      "slot": "weapon",
+      "skill": "MELEE",
+      "damage": -4,
+      "accuracy": 88,
+      "delay": 90,
+      "minimum": 60,
+      "penetration": 0,
+      "body": "UNARMED_STRIKE"
+    },
+    "CLOTH": {
+      "label": "천옷",
+      "slot": "armor",
+      "protection": 0,
+      "burden": 0
+    },
+    "LEATHER": {
+      "label": "가죽 갑옷",
+      "slot": "armor",
+      "protection": 2,
+      "burden": 2
+    },
+    "MAIL": {
+      "label": "사슬 갑옷",
+      "slot": "armor",
+      "protection": 5,
+      "burden": 8
+    },
+    "NO_SHIELD": {
+      "label": "방패 없음",
+      "slot": "shield",
+      "block": 0,
+      "burden": 0
+    },
+    "BUCKLER": {
+      "label": "소형 방패",
+      "slot": "shield",
+      "block": 12,
+      "burden": 3
+    },
+    "BOW": {
+      "label": "활",
+      "slot": "weapon",
+      "skill": "RANGED",
+      "damage": 0,
+      "accuracy": 88,
+      "delay": 125,
+      "minimum": 125,
+      "penetration": 0,
+      "body": "BOW"
+    }
+  }
+}

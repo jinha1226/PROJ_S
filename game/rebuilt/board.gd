@@ -87,6 +87,8 @@ func _draw()->void:
 		var centre:=pixel(p)
 		var rect:=Rect2(centre-Vector2.ONE*unit*0.5,Vector2.ONE*unit)
 		draw_texture_rect(Human if actor.team!="enemy" else Goblin,rect,false)
+		if actor.team=="enemy" and "FIREBOLT" in actor.bound_abilities:
+			draw_circle(centre+Vector2(unit*0.3,-unit*0.3),unit*0.12,Color("ff8040"))
 		if actor.team=="companion":draw_arc(centre,unit*0.43,0,TAU,16,Color("78d8c5"),1.0)
 		if actor.id==0:draw_rect(rect.grow(-1.5),Color("e9c366"),false,1.0)
 	last_draw_usec=Time.get_ticks_usec()-started

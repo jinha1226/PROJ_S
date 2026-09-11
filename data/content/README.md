@@ -11,6 +11,8 @@ Godot 코드는 이 파일을 읽고 유효성 및 파일 사이의 참조를 �
 - `item_catalog.json`: 아이템 분류·티어·출현 깊이·거래가·소비 효과
 - `weapons.json`: 무기 전투 수치와 사용 숙련 ID
 - `proficiencies.json`: 숙련/스킬 ID와 표시 이름
+- `rebuilt_progression.json`: 재구축 실행부의 4계열·포인트·효과 배수 초기 규칙
+- `rebuilt_equipment.json`: 재구축 실행부의 장비 및 4계열 연결. 기존 실행부의 무기 규칙과 별도 버전이며 중복 적용하지 않는다.
 
 ## 수정 원칙
 

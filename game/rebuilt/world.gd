@@ -7,7 +7,9 @@ const Navigation=preload("res://game/rebuilt/navigation.gd")
 const Personality=preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Body=preload("res://game/rebuilt/body_bridge.gd")
 const Equipment=preload("res://game/rebuilt/equipment.gd")
-const SCHEMA:=3
+const Growth=preload("res://game/rebuilt/progression.gd")
+const Binding=preload("res://sim/abilities/ability_binding_rules.gd")
+const SCHEMA:=4
 const WIDTH:=64
 const HEIGHT:=64
 var seed:int=44
@@ -40,9 +42,12 @@ var last_path_usec:int=0
 var route_steps:=PackedInt32Array()
 var auto_explore:bool=false
 var injury_serial:int=0
-var inventory:Array[String]=["SHORT_SWORD","HAND_AXE","MACE","SPEAR","UNARMED","CLOTH","LEATHER","NO_SHIELD"]
+var inventory:Array[String]=["SHORT_SWORD","HAND_AXE","MACE","SPEAR","UNARMED","BOW","CLOTH","LEATHER","NO_SHIELD"]
+var arrows:int=int(Growth.DATA.starting_arrows)
+var fire_essences:int=0
 
 func _init(p_seed:int=44)->void:
+	assert(Growth.config_error().is_empty(),Growth.config_error())
 	seed=p_seed;generate_floor()
 
 func index(p:Vector2i)->int:return p.y*WIDTH+p.x
@@ -55,7 +60,7 @@ func move_cost(cell:int)->int:return 130 if terrain[cell]=="shallow_water" else 
 func hero()->Dictionary:return actors[0]
 func terminal()->bool:return int(hero().hp)<=0
 func friendly(actor:Dictionary)->bool:return actor.team!="enemy"
-func actor_name(actor:Dictionary)->String:return "나" if actor.id==0 else "동료" if friendly(actor) else "적"
+func actor_name(actor:Dictionary)->String:return "나" if actor.id==0 else "동료" if friendly(actor) else "불주술사" if "FIREBOLT" in actor.bound_abilities else "적"
 func movement_time(actor:Dictionary,cell:int)->int:
 	return maxi(int(actor.move_time),move_cost(cell))*int(actor.move_factor)/100
 func companions()->Array[Dictionary]:
@@ -77,6 +82,9 @@ func make_actor(id:int,cell:int,team:String)->Dictionary:
 		actor.hp=60;actor.max_hp=60;actor.power=8;actor.move_time=100
 	Body.sync(actor)
 	Equipment.initialise(actor)
+	actor.mp=int(Growth.DATA.max_mp);actor.max_mp=int(Growth.DATA.max_mp)
+	actor.bound_abilities=[]
+	actor.fire_resistance=0
 	return actor
 
 func generate_floor()->void:
@@ -109,6 +117,7 @@ func generate_floor()->void:
 		var cell:=index(point)
 		if occupancy[cell]>=0 or blocked(cell):continue
 		var actor:=make_actor(actors.size(),cell,"enemy")
+		if actor.id%5==0:actor.bound_abilities=["FIREBOLT"]
 		actors.append(actor);occupancy[cell]=actor.id
 		# Never act before the first player input; same-time hero wins ties.
 		scheduler.push([time,actor.id,actor.id])
@@ -116,6 +125,7 @@ func generate_floor()->void:
 		if blocked(cell) or cell==entry or cell==exit_cell:continue
 		if cell%97==0:lights.append(cell)
 		if cell%173==0:loot[str(cell)]="potion"
+		elif cell%157==0:loot[str(cell)]="arrows"
 		elif cell%211==0:loot[str(cell)]="MAIL" if cell%2==0 else "BUCKLER"
 		elif cell%127==0:loot[str(cell)]="gold"
 	rebuild_lights()
@@ -191,11 +201,22 @@ func submit(kind:String,target:int=-1)->bool:
 					var old:int=player.cell
 					move_actor(actors[occupant],old);move_actor(player,target)
 					occupancy[old]=occupant
-				else:cost=int(Equipment.stats(player).delay);attack(player,actors[occupant])
+				else:cost=int(attack_stats(player).delay);attack(player,actors[occupant])
 			elif occupant==-1:
 				cost=movement_time(player,target);move_actor(player,target);pickup()
 			else:return false
 		"WAIT":pass
+		"SHOOT","FIREBOLT":
+			if not valid_target(player,target,int(Growth.DATA.actions[kind].range)):return false
+			var victim:Dictionary=actors[occupancy[target]]
+			if kind=="SHOOT":
+				if Equipment.effective_weapon(player)!="BOW" or arrows<int(Growth.DATA.actions.SHOOT.ammo):return false
+				arrows-=int(Growth.DATA.actions.SHOOT.ammo)
+				cost=int(Equipment.stats(player).delay);attack(player,victim,true)
+			else:
+				var action:Dictionary=Growth.DATA.actions.FIREBOLT
+				if "FIREBOLT" not in player.bound_abilities or player.mp<int(action.mp):return false
+				player.mp-=int(action.mp);cost=int(action.cost);cast_fire(player,victim)
 		"EQUIP":
 			if target<0 or target>=inventory.size():return false
 			var id:String=inventory[target]
@@ -204,18 +225,19 @@ func submit(kind:String,target:int=-1)->bool:
 			weapon=Equipment.ITEMS[player.gear.weapon].label
 			armor=int(Equipment.stats(player).protection)
 			message(Equipment.ITEMS[id].label+" 장착")
-		"TRAIN":
-			if target<0 or target>=Equipment.SKILLS.size():return false
-			player.training=Equipment.SKILLS[target]
-			message(Equipment.LABELS[target]+" 훈련 선택")
+		"BIND_FIRE":
+			if fire_essences<1 or "FIREBOLT" in player.bound_abilities or player.bound_abilities.size()>=Binding.slot_limit(player.growth.level):return false
+			fire_essences-=1;player.bound_abilities.append("FIREBOLT")
+			message("화염탄 결속 · 해제 정책 미정으로 현재 해제 불가")
 		"POTION":
 			var patient:Dictionary=player
 			if target>0:
 				if target>=actors.size() or actors[target].team!="companion" or actors[target].hp<=0:return false
 				patient=actors[target]
 				if not open_edge(player.cell,patient.cell):return false
-			if potions<=0 or patient.hp>=patient.max_hp and patient.blood>=100:return false
+			if potions<=0 or patient.hp>=patient.max_hp and patient.blood>=100 and patient.mp>=patient.max_mp:return false
 			potions-=1;patient.hp=mini(patient.max_hp,patient.hp+30);Body.heal(patient)
+			patient.mp=patient.max_mp
 			message("회복약을 사용했습니다.")
 		"RECRUIT":
 			if not add_companion():return false
@@ -250,6 +272,34 @@ func submit(kind:String,target:int=-1)->bool:
 	last_action_usec=Time.get_ticks_usec()-started
 	return true
 
+func invest(actor_id:int,axis:String)->bool:
+	if terminal() or actor_id<0 or actor_id>=actors.size() or not friendly(actors[actor_id]):return false
+	if not visible_enemies().is_empty():return false
+	# A companion cannot spend points while fighting outside the hero's view.
+	for actor in actors:
+		if actor.hp>0 and not friendly(actor) and Kernel.sees(position(actors[actor_id].cell),position(actor.cell),solid):return false
+	if not Growth.invest(actors[actor_id],axis):return false
+	message(actor_name(actors[actor_id])+" 숙련 투자")
+	return true
+
+func valid_target(source:Dictionary,cell:int,sight_range:int=6)->bool:
+	if blocked(cell) or occupancy[cell]<0:return false
+	var target:Dictionary=actors[occupancy[cell]]
+	return target.hp>0 and friendly(source)!=friendly(target) and Kernel.sees(position(source.cell),position(cell),solid,sight_range)
+
+func cast_fire(source:Dictionary,target:Dictionary)->void:
+	var action:Dictionary=Growth.DATA.actions.FIREBOLT
+	var raw:=Growth.scale(source,action.axis,int(action.power))
+	var resisted:=maxi(0,raw*(100-clampi(int(target.fire_resistance),0,100))/100)
+	var damage:=Growth.defend(target,resisted)
+	injury_serial+=1
+	if damage>0:
+		var result:Dictionary=Body.Injury.apply_element(target.body,action.element,damage,
+			("%d|%d|magic"%[seed,injury_serial]).sha256_text(),int(target.id)+1,injury_serial)
+		assert(result.get("accepted",false))
+		Body.sync(target)
+	apply_damage(source,target,damage)
+
 func move_actor(actor:Dictionary,target:int)->void:
 	var old:int=actor.cell
 	var direction:=position(target)-position(old)
@@ -257,13 +307,20 @@ func move_actor(actor:Dictionary,target:int)->void:
 	occupancy[old]=-1;occupancy[target]=actor.id;actor.cell=target
 	effects.append({"kind":"move","actor":actor.id,"from":old,"to":target})
 
-func attack(source:Dictionary,target:Dictionary)->void:
+func attack_stats(source:Dictionary,ranged:bool=false)->Dictionary:
+	if not ranged and Equipment.effective_weapon(source)=="BOW":
+		var unarmed:Dictionary=source.duplicate()
+		unarmed.gear=source.gear.duplicate();unarmed.gear.weapon="UNARMED"
+		return Equipment.stats(unarmed)
+	return Equipment.stats(source)
+
+func attack(source:Dictionary,target:Dictionary,ranged:bool=false)->void:
 	if friendly(source)==friendly(target) or source.hp<=0 or target.hp<=0:return
-	var offense:Dictionary=Equipment.stats(source)
+	var offense:Dictionary=attack_stats(source,ranged)
 	var defense_stats:Dictionary=Equipment.stats(target)
 	var defense:=maxi(0,int(defense_stats.protection)-int(offense.penetration))
 	var raw:int=offense.damage
-	var damage:=maxi(1,raw-defense-2)
+	var damage:=Growth.defend(target,maxi(1,raw-defense-2))
 	injury_serial+=1
 	# Separate deterministic lanes: saving/reloading cannot reroll an attack.
 	var roll:int=("%d|%d|%d|accuracy"%[seed,injury_serial,source.id]).sha256_text().substr(0,8).hex_to_int()%100
@@ -275,8 +332,12 @@ func attack(source:Dictionary,target:Dictionary)->void:
 	if block_roll<int(defense_stats.block):
 		if visible[int(target.cell)]==1 or target.id==0:message(actor_name(target)+" 방패 방어")
 		return
-	var injury:Dictionary=Body.hit(source,target,raw,defense,injury_serial,seed,offense.body)
+	var injury:Dictionary=Body.hit(source,target,damage,0,injury_serial,seed,offense.body)
 	assert(injury.get("accepted",false),"Body injury rejected")
+	apply_damage(source,target,damage)
+
+func apply_damage(source:Dictionary,target:Dictionary,damage:int)->void:
+	if target.hp<=0:return
 	target.hp=maxi(0,int(target.hp)-damage)
 	if target.body.current_blood==0:target.hp=0
 	target.stress=mini(100,int(target.stress)+5)
@@ -286,11 +347,12 @@ func attack(source:Dictionary,target:Dictionary)->void:
 	if target.hp==0:
 		occupancy[int(target.cell)]=-1
 		if not friendly(target):
-			loot[str(target.cell)]="gold"
+			loot[str(target.cell)]="fire_essence" if "FIREBOLT" in target.bound_abilities else "gold"
 			if friendly(source):
-				Equipment.award(hero(),20+floor_number*5)
-				for ally in companions():
-					if ally.hp>0:Equipment.award(ally,20+floor_number*5)
+				var party:Array[Dictionary]=[hero()];party.append_array(companions())
+				for ally in party:
+					var gained:=Growth.gain(ally,int(Growth.DATA.kill_xp_base)+floor_number*int(Growth.DATA.kill_xp_per_floor))
+					if gained>0:message("%s 레벨 %d · 숙련 포인트 +%d"%[actor_name(ally),ally.growth.level,gained])
 		if friendly(target) or visible[int(target.cell)]==1:message(actor_name(target)+" 전투 불능")
 
 func companion_turn(actor:Dictionary)->void:
@@ -325,6 +387,9 @@ func enemy_turn(actor:Dictionary,party:Variant=null)->void:
 	var destination:int=actor.last_seen
 	if destination<0:actor.ready=time+100;return
 	var delta:=position(goal)-position(start)
+	if sees and "FIREBOLT" in actor.bound_abilities and actor.mp>=int(Growth.DATA.actions.FIREBOLT.mp) and valid_target(actor,goal,int(Growth.DATA.actions.FIREBOLT.range)):
+		actor.mp-=int(Growth.DATA.actions.FIREBOLT.mp);cast_fire(actor,victim)
+		actor.ready=time+int(Growth.DATA.actions.FIREBOLT.cost);return
 	if sees and maxi(absi(delta.x),absi(delta.y))==1 and open_edge(start,goal):
 		var delay:int=Equipment.stats(actor).delay
 		attack(actor,victim);actor.ready=time+delay;return
@@ -349,6 +414,8 @@ func pickup()->void:
 	var key:=str(hero().cell)
 	if not loot.has(key):return
 	if loot[key]=="potion":potions+=1;message("회복약을 주웠습니다.")
+	elif loot[key]=="fire_essence":fire_essences+=1;message("화염탄 정수 획득 · 이능 메뉴에서 결속")
+	elif loot[key]=="arrows":arrows+=int(Growth.DATA.arrow_pickup);message("화살 획득")
 	elif Equipment.ITEMS.has(loot[key]):
 		var id:String=loot[key]
 		if id not in inventory:inventory.append(id);message(Equipment.ITEMS[id].label+" 획득")
@@ -399,14 +466,16 @@ func save_data()->Dictionary:
 		var row:Dictionary=actor.duplicate(true)
 		row.body=actor.body.to_dict();rows.append(row)
 	return {"schema":SCHEMA,"seed":seed,"floor":floor_number,"time":time,
-		"terrain":Array(terrain),"memory":Array(memory),"actors":rows,"injury_serial":injury_serial,"inventory":inventory.duplicate(),
+		"terrain":Array(terrain),"memory":Array(memory),"actors":rows,"injury_serial":injury_serial,"inventory":inventory.duplicate(),"arrows":arrows,"fire_essences":fire_essences,
 		"loot":loot.duplicate(),"lights":Array(lights),"exit":exit_cell,"gold":gold,
 		"potions":potions,"torch_fuel":torch_fuel,"torch_lit":torch_lit,"armor":armor,"weapon":weapon}
 
 func restore(data:Dictionary)->bool:
 	var version:=int(data.get("schema",-1))
-	if version not in [1,2,SCHEMA]:return false
-	if version>=2 and (not data.has("injury_serial") or int(data.injury_serial)<0):return false
+	if version!=SCHEMA:return false
+	for key in ["arrows","fire_essences"]:
+		if not Growth.integer(data.get(key)) or data[key]<0 or data[key]>1000000:return false
+	if not Growth.integer(data.get("injury_serial")) or int(data.injury_serial)<0:return false
 	if version==SCHEMA:
 		if not data.get("inventory") is Array or data.inventory.size()>Equipment.ITEMS.size():return false
 		var seen:Dictionary={}
@@ -429,23 +498,24 @@ func restore(data:Dictionary)->bool:
 		var a:Variant=data.actors[i]
 		if not a is Dictionary:return false
 		for field in required:
-			if version==1 and field in ["body","order","move_factor","attack_factor"]:continue
-			if version<3 and field in ["gear","skill_xp","training"]:continue
 			if not a.has(field):return false
 		if a.team not in ["hero","companion","enemy"] or (i==0)!=(a.team=="hero"):return false
 		if not a.profile is Dictionary or not a.facing is Array or a.facing.size()!=2:return false
-		if version==SCHEMA and not Equipment.valid(a):return false
-		if version==SCHEMA and i==0:
+		if not Equipment.valid(a):return false
+		if not Growth.integer(a.mp) or not Growth.integer(a.max_mp) or int(a.max_mp)!=int(Growth.DATA.max_mp) or a.mp<0 or a.mp>a.max_mp:return false
+		if not Growth.integer(a.fire_resistance) or a.fire_resistance<0 or a.fire_resistance>100:return false
+		if not a.bound_abilities is Array or not Binding.binding_ids_error(a.bound_abilities).is_empty() or a.bound_abilities.size()>Binding.slot_limit(a.growth.level):return false
+		for ability in a.bound_abilities:
+			if ability!="FIREBOLT":return false
+		if i==0:
 			for id in a.gear.values():
 				if id not in data.inventory:return false
-		if version>=2:
-			if a.order not in ["FOLLOW","HOLD"]:return false
-			var body=Body.State.from_dict(a.body)
-			if body==null or body.entity_id!=i+1:return false
-			for wound in body.wounds:
-				if int(wound.source_event_id)>int(data.injury_serial):return false
-			restored_bodies[i]=body
-		else:restored_bodies[i]=Body.create(i,int(data.seed),a.team=="enemy")
+		if a.order not in ["FOLLOW","HOLD"]:return false
+		var body=Body.State.from_dict(a.body)
+		if body==null or body.entity_id!=i+1:return false
+		for wound in body.wounds:
+			if int(wound.source_event_id)>int(data.injury_serial):return false
+		restored_bodies[i]=body
 		var cell:=int(a.cell)
 		if int(a.id)!=i or cell<0 or cell>=WIDTH*HEIGHT or int(a.max_hp)<=0 or int(a.hp)<0 or int(a.hp)>int(a.max_hp):return false
 		if int(a.ready)<0 or int(a.move_time)<1 or int(a.attack_time)<1:return false
@@ -455,13 +525,13 @@ func restore(data:Dictionary)->bool:
 	seed=int(data.seed);floor_number=int(data.floor);time=int(data.time)
 	terrain=PackedStringArray(data.terrain);memory=PackedByteArray(data.memory)
 	actors.assign(data.actors.duplicate(true))
-	if version==SCHEMA:inventory.assign(data.inventory)
+	inventory.assign(data.inventory)
 	injury_serial=int(data.get("injury_serial",0))
+	arrows=int(data.arrows);fire_essences=int(data.fire_essences)
 	for actor in actors:
 		actor.body=restored_bodies[int(actor.id)]
-		if version<3:Equipment.initialise(actor)
-		else:
-			for skill in Equipment.SKILLS:actor.skill_xp[skill]=int(actor.skill_xp[skill])
+		actor.growth=Growth.normalized(actor.growth)
+		actor.mp=int(actor.mp);actor.max_mp=int(actor.max_mp);actor.fire_resistance=int(actor.fire_resistance)
 		actor.order=str(actor.get("order","FOLLOW"))
 		Body.sync(actor)
 		for key in ["id","cell","hp","max_hp","ready","power","move_time","attack_time","stress","skin","bone","blood","last_seen"]:
