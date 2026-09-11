@@ -565,8 +565,14 @@ func play_effects(rows:Array)->int:
 		if not raw is Dictionary:continue
 		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
 		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
+		var effect_position:=_array_to_world_position(raw.get("world_position",[]))
+		# Combat results remain authoritative in the event log, but spatial VFX
+		# must not reveal activity in MEMORY, UNSEEN, or off-camera cells.
+		if effect_position!=Vector2i(-1,-1) and not is_observed_cell_visible(effect_position):
+			_played_effect_ids[effect_id]=true;_played_effect_event_ids[event_id]=true
+			continue
 		if str(raw.get("kind","")).begins_with("ENV_"):
-			var position:=_array_to_world_position(raw.get("world_position",[]))
+			var position:=effect_position
 			var key:="%s:%d:%d"%[str(raw.kind),position.x,position.y]
 			if not is_world_cell_visible(position) or reaction_cells.has(key) \
 					or reaction_cells.size()>=EnvironmentVfx.MAX_PER_BATCH:
@@ -722,7 +728,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 		"projectile_origin":world_to_pixel_center(_array_to_world_position(effect.get("attacker_grid_pos",world_value))),
 		"kind":kind,"primitive":primitive,"product_style":product_style,
 		"world_position":[world_position.x,world_position.y],
-		"visible":is_world_cell_visible(world_position),
+		"visible":is_observed_cell_visible(world_position),
 		"pixel_center":pixel_center,"camera_offset_px":camera_offset,
 		"color_hex":color_hex,"age_ratio":age_ratio,"elapsed_ms":elapsed_ms,
 		"eased_progress":eased_progress,"opacity":clampf(opacity,0.0,1.0),
@@ -853,6 +859,10 @@ func view_bounds()->Rect2i:return Rect2i(view_origin,
 	Vector2i(visible_cell_count,visible_row_count))
 func is_world_cell_visible(position:Vector2i)->bool:
 	return _world_in_bounds(position) and view_bounds().has_point(position)
+func is_observed_cell_visible(position:Vector2i)->bool:
+	if not is_world_cell_visible(position):return false
+	var row:Dictionary=_cells.get(_key(position),{})
+	return not row.is_empty() and AsciiStyleScript.visibility_state(row)=="VISIBLE"
 func _world_in_bounds(position:Vector2i)->bool:
 	return position.x>=0 and position.y>=0 and position.x<world_grid_size.x and position.y<world_grid_size.y
 func _clamp_view_origin(origin:Vector2i)->Vector2i:

@@ -156,6 +156,8 @@ func attacker_bump_draw_spec(attacker_grid_pos:Vector2i,
 	for index in range(_effects.size()-1,-1,-1):
 		var effect:Dictionary=_effects[index]
 		if Vector2i(effect.attacker_grid_pos)!=attacker_grid_pos:continue
+		if not _position_drawable(Vector2i(effect.attacker_grid_pos)) \
+				or not _position_drawable(Vector2i(effect.target_grid_pos)):continue
 		var elapsed:=_effect_elapsed_ms(effect,now,sample_time_ms<0)
 		if elapsed>=int(PARAMS.bump_duration_ms):continue
 		var direction:=Vector2(Vector2i(effect.target_grid_pos)-attacker_grid_pos).normalized()
@@ -327,6 +329,9 @@ func _effect_draw_spec(effect:Dictionary,now:int,use_live_clock:bool)->Dictionar
 	var impact_elapsed:=maxi(0,visual_elapsed-contact_at)
 	var attacker:Vector2i=effect.attacker_grid_pos
 	var target:Vector2i=effect.target_grid_pos
+	if not _position_drawable(attacker) or not _position_drawable(target):
+		return {"active":true,"visible":false,
+			"sequence":int(effect.sequence),"hit_stop_active":hit_stop_active}.duplicate(true)
 	var attacker_center:=_screen_center(attacker)
 	var target_center:=_screen_center(target)
 	var attacker_rect:=_screen_rect(attacker)
