@@ -5939,6 +5939,14 @@ func find_exploration_path(actor_id: int, goal: Vector2i) -> Dictionary:
 	var shortest := _search_exploration_path(actor_id, goal, visible, false, -1)
 	if not bool(shortest.get("found", false)):
 		return shortest.duplicate(true)
+	# Water is a passable terrain hazard, not a reason to run two additional
+	# whole-map detour searches. The old safe/weighted fallback made a distant
+	# water tap feel frozen on touch devices; keep the shortest route and expose
+	# its risk instead of blocking input on redundant searches.
+	if str(sim.world.tile_at(goal).terrain)=="shallow_water":
+		shortest["routing_policy"]="SHORTEST_WATER_ROUTE"
+		shortest["hazard_free"]=false;shortest["risk_weighted"]=false
+		return shortest.duplicate(true)
 	if int(shortest.get("max_total_risk", 0)) <= 0:
 		shortest["routing_policy"] = "SHORTEST_HAZARD_FREE"
 		shortest["hazard_free"] = true
