@@ -4174,10 +4174,12 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 			var tile = sim.world.tile_at(position)
 			var presentation_material_id:=_presentation_material_at(position)
 			if visibility_state=="MEMORY":
-				# Remember only stable terrain. Features, hazards, actors and all live
-				# decision data remain unavailable outside the current field of view.
+				# Remember stable terrain and the authored camp landmark. Hazards,
+				# actors and all live decision data remain unavailable outside FOV.
+				var remembered_feature:=_run_feature_id_at(position,progress)
+				if remembered_feature!="landmark_camp":remembered_feature=""
 				cells.append({"position":[x,y],"terrain_id":str(tile.terrain),
-					"feature_id":"","ground_mark_id":"blood_pool" \
+					"feature_id":remembered_feature,"ground_mark_id":"blood_pool" \
 						if monster_blood_by_cell.has(position_key) else (
 							"blood" if position in _opening_blood_positions else ""),
 					"presentation_material_id":presentation_material_id,
