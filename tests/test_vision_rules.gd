@@ -14,6 +14,7 @@ func test_profile_registry_inheritance_and_fallback() -> bool:
 	var scout: Dictionary = VisionProfiles.profile_for("human", "scout")
 	var unknown: Dictionary = VisionProfiles.profile_for("unknown_species")
 	check_eq(human.get("base_sight_range"), 6, "human base profile")
+	check_eq(human.get("peripheral_range"), 2, "human rear peripheral range")
 	check_eq(scout.get("base_sight_range"), 8, "monster type override inherits species")
 	check_eq(scout.get("dark_vision_milli"), human.get("dark_vision_milli"),
 		"override leaves unspecified species fields intact")
@@ -33,13 +34,16 @@ func test_bright_is_omnidirectional_and_dark_is_forward_peripheral() -> bool:
 		profile, dark)
 	var rear := VisionRules.observe(sim.world, origin, Vector2i(2, 1), Vector2i.RIGHT,
 		profile, dark)
+	var far_rear := VisionRules.observe(sim.world, origin, Vector2i(1, 1), Vector2i.RIGHT,
+		profile, dark)
 	var bright_rear := VisionRules.observe(sim.world, origin, Vector2i(2, 1), Vector2i.RIGHT,
 		profile, bright)
 	var torch_rear := VisionRules.observe(sim.world, origin, Vector2i(2, 1), Vector2i.RIGHT,
 		profile, {"ambient_level": 120, "sources": [
 			{"position": [2, 1], "brightness": 1000, "radius": 1}]})
 	check(bool(front.visible), "dark forward target remains visible")
-	check(not bool(rear.visible), "dark rear target is outside peripheral range")
+	check(bool(rear.visible), "dark rear target remains visible through two peripheral cells")
+	check(not bool(far_rear.visible), "dark rear target beyond two cells stays hidden")
 	check(bool(bright_rear.visible), "bright light restores omnidirectional sight")
 	check(bool(torch_rear.visible), "lit target is visible from darkness")
 	check_eq(str(bright_rear.observer_light_band), "BRIGHT", "bright band")

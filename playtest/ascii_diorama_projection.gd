@@ -206,8 +206,8 @@ static func quantized_light_spec(position:Vector2i,hero_position:Vector2i,
 		return {"band":"UNSEEN","distance":-1,"background_multiplier":0.0,
 			"foreground_multiplier":0.0,"saturation":0.0}.duplicate(true)
 	if state=="MEMORY":
-		return {"band":"MEMORY","distance":-1,"background_multiplier":0.74,
-			"foreground_multiplier":0.72,"saturation":0.0}.duplicate(true)
+		return {"band":"MEMORY","distance":-1,"background_multiplier":0.58,
+			"foreground_multiplier":0.55,"saturation":0.0}.duplicate(true)
 	if hero_position==Vector2i(-1,-1):
 		return {"band":"UNANCHORED","distance":-1,"background_multiplier":1.0,
 			"foreground_multiplier":1.0,"saturation":1.0}.duplicate(true)

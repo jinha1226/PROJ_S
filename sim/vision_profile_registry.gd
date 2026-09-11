@@ -6,12 +6,12 @@ const PROFILE_KEYS := ["base_sight_range", "dark_front_angle", "dark_vision_mill
 	"detection_sensitivity_milli", "darkness_stress_resistance_milli", "peripheral_range"]
 const BASE_PROFILE := {
 	"base_sight_range": 6, "dark_vision_milli": 350, "dark_front_angle": 120,
-	"peripheral_range": 1, "detection_sensitivity_milli": 500,
+	"peripheral_range": 2, "detection_sensitivity_milli": 500,
 	"darkness_stress_resistance_milli": 500,
 }
 const SPECIES_PROFILES := {
 	"human": {"base_sight_range": 6, "dark_vision_milli": 300,
-		"dark_front_angle": 120, "peripheral_range": 1,
+		"dark_front_angle": 120, "peripheral_range": 2,
 		"detection_sensitivity_milli": 500, "darkness_stress_resistance_milli": 500},
 	"elf": {"base_sight_range": 8, "dark_vision_milli": 650,
 		"dark_front_angle": 150, "peripheral_range": 2,
@@ -20,7 +20,7 @@ const SPECIES_PROFILES := {
 		"dark_front_angle": 180, "peripheral_range": 2,
 		"detection_sensitivity_milli": 560, "darkness_stress_resistance_milli": 650},
 	"orc": {"base_sight_range": 5, "dark_vision_milli": 400,
-		"dark_front_angle": 110, "peripheral_range": 1,
+		"dark_front_angle": 110, "peripheral_range": 2,
 		"detection_sensitivity_milli": 520, "darkness_stress_resistance_milli": 550},
 	"beastkin": {"base_sight_range": 7, "dark_vision_milli": 550,
 		"dark_front_angle": 135, "peripheral_range": 2,
@@ -32,7 +32,7 @@ const SPECIES_PROFILES := {
 		"dark_front_angle": 180, "peripheral_range": 2,
 		"detection_sensitivity_milli": 680, "darkness_stress_resistance_milli": 700},
 	"generic_humanoid": {"base_sight_range": 6, "dark_vision_milli": 350,
-		"dark_front_angle": 120, "peripheral_range": 1,
+		"dark_front_angle": 120, "peripheral_range": 2,
 		"detection_sensitivity_milli": 500, "darkness_stress_resistance_milli": 500},
 }
 const TYPE_OVERRIDES := {

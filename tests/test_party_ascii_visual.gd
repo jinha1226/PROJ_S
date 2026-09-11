@@ -145,7 +145,8 @@ func test_seven_terrain_glyphs_and_visibility_contract() -> bool:
 	var memory: Dictionary = Style.visibility_spec("MEMORY")
 	check(memory.draw_terrain and not memory.draw_hazards and not memory.draw_actors,
 		"memory draws terrain only")
-	check(not memory.accepts_actor_input and memory.opacity<1.0,"memory is dim and non-interactive")
+	check(not memory.accepts_actor_input and memory.opacity<=0.30,
+		"memory terrain is faint and non-interactive")
 	var unseen: Dictionary = Style.visibility_spec("UNSEEN")
 	check(not unseen.draw_terrain and not unseen.draw_actors and unseen.opacity==0.0,
 		"unseen draws and accepts nothing")
@@ -651,9 +652,9 @@ func test_ground_fire_lights_neighboring_known_tiles_and_actor_without_unseen_le
 	check(source.active and near.active and edge.active \
 			and source.brightness>near.brightness and near.brightness>=edge.brightness,
 		"fire uses a bounded distance falloff across surrounding cells")
-	check(grid.fire_light_draw_spec(Vector2i(9,7),75).active \
+	check(not grid.fire_light_draw_spec(Vector2i(9,7),75).active \
 			and not grid.fire_light_draw_spec(Vector2i(7,9),75).active,
-		"fire light reaches known MEMORY but cannot reveal UNSEEN cells")
+		"fire light stays in VISIBLE and cannot animate MEMORY or UNSEEN cells")
 	var lit_actor:=grid.actor_draw_spec(grid._actor_by_id(77),false,75)
 	check(bool(lit_actor.environment_light.active) \
 			and lit_actor.has("base_color_hex") \
@@ -663,7 +664,7 @@ func test_ground_fire_lights_neighboring_known_tiles_and_actor_without_unseen_le
 	grid.free();return finish()
 
 
-func test_landmark_camp_is_a_soft_radial_light_source()->bool:
+func test_remembered_landmark_camp_is_a_static_faint_marker()->bool:
 	var cells:=_visible_cells()
 	for cell in cells:
 		if cell.position==[9,7]:
@@ -677,16 +678,17 @@ func test_landmark_camp_is_a_soft_radial_light_source()->bool:
 	grid.set_hero_centered_view(Vector2i(7,7),15,77)
 	var source:=grid.fire_light_draw_spec(Vector2i(9,7),75)
 	var near:=grid.fire_light_draw_spec(Vector2i(10,7),75)
-	check(source.active and near.active and source.brightness>near.brightness,
-		"remembered landmark camp emits distance-faded firelight")
-	check_eq(int(source.source_count),1,
-		"malformed MEMORY live fire is not accepted as a light source")
+	check(not source.active and not near.active,
+		"remembered landmark camp emits no live firelight")
+	check_eq(grid._fire_light_positions.size(),0,
+		"MEMORY camp and malformed MEMORY fire are excluded from live light sources")
+	check(str(grid._cells["9:7"].feature_id)=="landmark_camp",
+		"remembered landmark camp remains as a static scene marker")
 	check(not grid.fire_light_draw_spec(Vector2i(12,7),75).active,
 		"landmark camp does not reveal UNSEEN terrain")
 	var darkness:=grid.radial_darkness_draw_specs()
-	check(darkness.any(func(row):return bool(row.get("fire_lit",false)) \
-			and Vector2i(row.sample_cell).x>7),
-		"landmark camp cuts a soft light area into radial darkness")
+	check(darkness.all(func(row):return not bool(row.get("fire_lit",false))),
+		"remembered landmark camp does not cut firelight into MEMORY")
 	grid.free();return finish()
 
 
@@ -1744,9 +1746,11 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 			and int(row.glyph_count)==1 and not bool(row.draw_image) \
 			and row.texture==null and str(row.visibility_state)!="UNSEEN"),
 			"%dpx torches are one-cell ASCII with no image or unseen row"%viewport)
-		check(at_zero.all(
-			func(row):return bool(row.draw_light_pool) and float(row.pool_radius_cells)==5.0),
-			"%dpx known torches expose a five-cell floor light pool"%viewport)
+		check(at_zero.all(func(row):return (str(row.visibility_state)=="VISIBLE" \
+			and bool(row.draw_light_pool) and float(row.pool_radius_cells)==5.0) \
+			or (str(row.visibility_state)=="MEMORY" and not bool(row.draw_light_pool) \
+			and float(row.pool_radius_cells)==0.0 and not bool(row.light_affects_ink))),
+			"%dpx only visible torches expose a five-cell floor light pool"%viewport)
 		check_eq(at_zero.map(func(row):return row.brightness),
 			at_same_tick.map(func(row):return row.brightness),
 			"%dpx torch flicker is fixed within its 260ms quantum"%viewport)
@@ -1778,23 +1782,28 @@ func test_deterministic_ascii_wall_torches_are_fov_safe_quantized_and_bounded() 
 				if not bool(light.active) or int(light.distance)<=0:continue
 				if position in visible_walls:lit_wall_found=true
 				else:lit_floor_found=true
-				check(str(light.visibility_state) in ["VISIBLE","MEMORY"] \
+				check(str(light.visibility_state)=="VISIBLE" \
 					and float(light.composite_alpha)>=0.035 \
 					and float(light.composite_alpha)<=0.235,
 					"%dpx warm pool only composites on known cells"%viewport)
 		check(lit_floor_found and lit_wall_found,
 			"%dpx torch pool visibly reaches neighboring floor and wall cells"%viewport)
-		check(bool(grid.torch_light_draw_spec(memory_walls[0],260).active),
-			"%dpx remembered wall torch illuminates nearby MEMORY"%viewport)
+		check(not bool(grid.torch_light_draw_spec(memory_walls[0],260).active),
+			"%dpx remembered wall torch is a static faint marker"%viewport)
 		check(not bool(grid.torch_light_draw_spec(unseen_walls[0],260).active),
 			"%dpx torch pool cannot illuminate an UNSEEN cell"%viewport)
 		check_eq([grid.mapping_signature(),str(grid.actor_draw_spec(
 			grid._actor_by_id(77)).color_hex)],[mapping,actor_color],
 			"%dpx torches alter neither mapping nor actor semantic color"%viewport)
 		var rebuilds:=int(stats.rebuild_count)
+		var los_builds:=int(stats.los_build_count)
 		grid.torch_draw_specs(5000)
+		for y in range(15):
+			for x in range(15):grid.torch_light_draw_spec(Vector2i(x,y),5000)
 		check_eq(grid.torch_cache_stats().rebuild_count,rebuilds,
 			"%dpx flicker reuses the static torch cache"%viewport)
+		check_eq(grid.torch_cache_stats().los_build_count,los_builds,
+			"%dpx repeated light queries perform no new LOS traces"%viewport)
 		grid.free()
 	return finish()
 

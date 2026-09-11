@@ -121,6 +121,8 @@ var _static_hash_initialized:=false
 var _occupied_visible_cells:Dictionary={}
 var _torch_positions:Array[Vector2i]=[]
 var _fire_light_positions:Array[Dictionary]=[]
+var _visible_light_sources_by_cell:Dictionary={}
+var _presentation_light_los_build_count:=0
 var _visible_torch_count:=0
 var _visible_environment_count:=0
 var _torch_cache_rebuild_count:=0
@@ -1818,7 +1820,7 @@ func _rebuild_torch_cache()->void:
 		var row:Dictionary=cached.get("row",{})
 		var terrain:Dictionary=cached.get("terrain",{})
 		var fire:=clampi(int(row.get("fire_intensity",row.get("fire",0))),0,100)
-		var campfire:=str(row.get("feature_id",""))=="landmark_camp"
+		var campfire:=str(row.get("feature_id",""))=="landmark_camp" and state=="VISIBLE"
 		if state!="VISIBLE":fire=0 # Live hazards are never authoritative in MEMORY.
 		if state=="VISIBLE" and (animate_passive_terrain \
 				and str(terrain.get("motion_material","")) in ["water","grass","poison"] \
@@ -1842,7 +1844,39 @@ func _rebuild_torch_cache()->void:
 		var position:Vector2i=candidate.position
 		if _torch_spacing_clear(position):
 			_torch_positions.append(position);memory_count+=1
+	_rebuild_visible_light_source_cache()
 	_torch_cache_rebuild_count+=1;_sync_torch_timer()
+
+func _rebuild_visible_light_source_cache()->void:
+	_visible_light_sources_by_cell.clear()
+	var sources:Array[Dictionary]=[]
+	for position in _torch_positions:
+		if str((_static_projection_cache.get(_key(position),{}) as Dictionary).get(
+				"visibility_state","UNSEEN"))=="VISIBLE":
+			sources.append({"kind":"TORCH","position":position,
+				"radius_cells":float(TORCH_LIGHT_RADIUS_CELLS),"intensity":100})
+	for source in _fire_light_positions:
+		if str(source.get("visibility_state","UNSEEN"))=="VISIBLE":
+			var fire_source:Dictionary=source.duplicate(false);fire_source["kind"]="FIRE"
+			sources.append(fire_source)
+	for source in sources:
+		var origin:Vector2i=source.position
+		var radius:=float(source.get("radius_cells",TORCH_LIGHT_RADIUS_CELLS))
+		var bound:=int(ceil(radius))
+		for y in range(origin.y-bound,origin.y+bound+1):
+			for x in range(origin.x-bound,origin.x+bound+1):
+				var target:=Vector2i(x,y)
+				var cached:Dictionary=_static_projection_cache.get(_key(target),{})
+				if str(cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
+				# Keep edge cells as candidates so sub-cell radial samples can fade
+				# smoothly; public cell light specs still enforce the exact radius.
+				if Vector2(target-origin).length()>radius+0.75:continue
+				_presentation_light_los_build_count+=1
+				if not _presentation_light_line_open(origin,target):continue
+				var key:=_key(target)
+				var rows:Array=_visible_light_sources_by_cell.get(key,[])
+				rows.append(source)
+				_visible_light_sources_by_cell[key]=rows
 
 func _torch_spacing_clear(position:Vector2i)->bool:
 	for selected in _torch_positions:
@@ -1863,16 +1897,16 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		var animated:=state=="VISIBLE" and animate_wide_safe
 		var phase:=(tick+DioramaScript.visual_hash(position,313))%4 if animated else 0
 		var brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) if animated \
-			else (0.80 if state=="VISIBLE" else 0.68)
+			else (0.80 if state=="VISIBLE" else 0.26)
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
 			"visible":true,"animated":animated,"glyph":"^","glyph_count":1,
 			"phase":phase,
 			"glyph_hex":TORCH_GLYPH_HEX if animated else (
-				"#d99d57" if state=="VISIBLE" else "#a36f3d"),
+				"#d99d57" if state=="VISIBLE" else "#71665b"),
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
-			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS),
-			"draw_light_pool":true,"light_affects_ink":true,
+			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS) if state=="VISIBLE" else 0.0,
+			"draw_light_pool":state=="VISIBLE","light_affects_ink":state=="VISIBLE",
 			"draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
@@ -1886,28 +1920,20 @@ func fire_light_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
 	_ensure_static_projection_cache()
 	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
 	var state:=str(cached.get("visibility_state","UNSEEN"))
-	if state=="UNSEEN":
+	if state!="VISIBLE":
 		return {"active":false,"visibility_state":state,"distance":-1.0,
 			"brightness":0.0,"color_hex":"#ff7438"}.duplicate(true)
-	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
-	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
 	var best_distance:=99.0;var best_brightness:=0.0
 	var best_radius:=FIRE_LIGHT_RADIUS_CELLS
-	for source in _fire_light_positions:
+	for source in _visible_light_sources_by_cell.get(_key(position),[]):
+		if str(source.get("kind",""))!="FIRE":continue
 		var source_position:Vector2i=source.position
-		if not _presentation_light_line_open(source_position,position):continue
 		var distance:=Vector2(position-source_position).length()
 		var radius:=float(source.get("radius_cells",FIRE_LIGHT_RADIUS_CELLS))
 		if distance>radius:continue
-		var animated:=_torch_animation_enabled() \
-			and str(source.get("visibility_state","VISIBLE"))=="VISIBLE"
-		var phase:=(tick+DioramaScript.visual_hash(source_position,733))%4 \
-			if animated else 0
-		var flicker:float=float(TORCH_BRIGHTNESS_PHASES[phase]) \
-			if animated else 0.82
 		var intensity:=float(source.intensity)/100.0
 		var falloff:=clampf(1.0-distance/radius+0.16,0.0,1.0)
-		var strength:=flicker*intensity*falloff
+		var strength:=0.82*intensity*falloff
 		if strength>best_brightness:
 			best_brightness=strength;best_distance=distance;best_radius=radius
 	return {"active":best_brightness>0.0,"visibility_state":state,
@@ -1920,22 +1946,16 @@ func fire_light_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
 func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
 	var state:=str(cached.get("visibility_state","UNSEEN"))
-	if state=="UNSEEN":
+	if state!="VISIBLE":
 		return {"active":false,"visibility_state":state,"distance":-1,
 			"brightness":0.0,"color_hex":TORCH_AMBER_HEX}
-	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
 	var best_distance:=99.0;var best_brightness:=0.0
-	for torch_position in _torch_positions:
-		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
-		if str(torch_cached.get("visibility_state","UNSEEN"))=="UNSEEN":continue
-		if not _presentation_light_line_open(torch_position,position):continue
+	for source in _visible_light_sources_by_cell.get(_key(position),[]):
+		if str(source.get("kind",""))!="TORCH":continue
+		var torch_position:Vector2i=source.position
 		var distance:=Vector2(position-torch_position).length()
 		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
-		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4 \
-			if _torch_animation_enabled() else 0
-		var torch_brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) \
-			if _torch_animation_enabled() else 0.80
-		var strength:=torch_brightness*clampf(1.0-distance \
+		var strength:=0.80*clampf(1.0-distance \
 			/TORCH_LIGHT_RADIUS_CELLS+0.10,0.0,1.0)
 		if strength>best_brightness:
 			best_brightness=strength;best_distance=distance
@@ -1949,6 +1969,8 @@ func torch_cache_stats()->Dictionary:
 	_ensure_static_projection_cache()
 	return {"cached_count":_torch_positions.size(),"visible_count":_visible_torch_count,
 		"visible_environment_count":_visible_environment_count,
+		"light_cell_count":_visible_light_sources_by_cell.size(),
+		"los_build_count":_presentation_light_los_build_count,
 		"max_visible":MAX_VISIBLE_TORCHES,"rebuild_count":_torch_cache_rebuild_count,
 		"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) \
 			if _torch_animation_enabled() else 0.0,
@@ -2682,9 +2704,9 @@ func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 		draw_polyline(outline,seam,1.0,true)
 
 func _draw_torch_light_pools()->void:
-	# Cell-clipped washes may illuminate known MEMORY around a remembered wall
-	# torch, but never UNSEEN cells. The radial darkness pass softens their edge.
-	if _torch_positions.is_empty() and _fire_light_positions.is_empty():return
+	# Cell-clipped washes illuminate current VISIBLE cells only. MEMORY retains
+	# static, muted scene marks without live glow or flicker.
+	if _visible_light_sources_by_cell.is_empty():return
 	var now:=Time.get_ticks_msec()
 	# Handheld torches are carried in the actor DTO; their deterministic flicker
 	# is presentation-only and never feeds the shared vision query.
@@ -2795,27 +2817,24 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 	if sample_cell==Vector2i(-1,-1):return {"drawable":false}.duplicate(true)
 	var cached:=_cached_static_cell(sample_cell)
 	var state:=str(cached.get("visibility_state","UNSEEN"))
-	if state=="UNSEEN":return {"drawable":false}.duplicate(true)
+	if state!="VISIBLE":return {"drawable":false}.duplicate(true)
 	var hero_distance:=world_to_pixel_center(_hero_camera_position).distance_to(point) \
 		/maxf(1.0,cell_size_px())
 	var alpha:=float(radial_darkness_sample(hero_distance,_hero_torch_lit(),
-		_terrain_theme_floor_index).alpha) if state=="VISIBLE" else 0.94
+		_terrain_theme_floor_index).alpha)
 	var wall_alpha:=_wall_torch_alpha_at(sample_cell,point)
 	if wall_alpha>=0.0:alpha=minf(alpha,wall_alpha)
 	var fire_alpha:=_fire_alpha_at(sample_cell,point)
 	if fire_alpha>=0.0:alpha=minf(alpha,fire_alpha)
-	if state!="VISIBLE" and wall_alpha<0.0 and fire_alpha<0.0:
-		return {"drawable":false}.duplicate(true)
 	return {"drawable":true,"alpha":alpha,"sample_cell":sample_cell,
 		"wall_lit":wall_alpha>=0.0,"fire_lit":fire_alpha>=0.0}.duplicate(true)
 
 func _wall_torch_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
 	var best:=-1.0
-	for source in _torch_positions:
-		var cached:=_cached_static_cell(source)
-		if str(cached.get("visibility_state","UNSEEN"))=="UNSEEN":continue
-		if not _presentation_light_line_open(source,sample_cell):continue
-		var distance:=world_to_pixel_center(source).distance_to(point) \
+	for source in _visible_light_sources_by_cell.get(_key(sample_cell),[]):
+		if str(source.get("kind",""))!="TORCH":continue
+		var source_position:Vector2i=source.position
+		var distance:=world_to_pixel_center(source_position).distance_to(point) \
 			/maxf(1.0,cell_size_px())
 		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
 		var alpha:=wall_torch_darkness_sample(distance)
@@ -2824,9 +2843,9 @@ func _wall_torch_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
 
 func _fire_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
 	var best:=-1.0
-	for source in _fire_light_positions:
+	for source in _visible_light_sources_by_cell.get(_key(sample_cell),[]):
+		if str(source.get("kind",""))!="FIRE":continue
 		var source_position:Vector2i=source.position
-		if not _presentation_light_line_open(source_position,sample_cell):continue
 		var radius:=float(source.get("radius_cells",FIRE_LIGHT_RADIUS_CELLS))
 		var distance:=world_to_pixel_center(source_position).distance_to(point) \
 			/maxf(1.0,cell_size_px())
@@ -3111,7 +3130,9 @@ func _draw_wall_torches()->void:
 		var position:=_array_to_world_position(spec.get("position",[]))
 		var rect:=world_cell_rect(position)
 		if not uses_perspective_projection():
-			WorldEffectAssets.draw_icon(self,"TORCH",rect.grow(-rect.size.x*0.14),Color(1,1,1,float(spec.brightness)))
+			var tint:=Color(1,1,1,float(spec.brightness)) if str(spec.visibility_state)=="VISIBLE" \
+				else Color(0.46,0.47,0.48,float(spec.brightness))
+			WorldEffectAssets.draw_icon(self,"TORCH",rect.grow(-rect.size.x*0.14),tint)
 			continue
 		var block:=DioramaScript.perspective_wall_block(_camera_cell_polygon(position)) \
 			if uses_perspective_projection() else {}
@@ -3162,7 +3183,7 @@ func _draw_ground_features()->void:
 			var feature_id:=str(row.get("feature_id",""))
 			if state=="VISIBLE" or state=="MEMORY" and feature_id=="landmark_camp":
 				_draw_feature_cue(world_cell_rect(position),feature_id,
-					1.0 if state=="VISIBLE" else 0.68)
+					1.0 if state=="VISIBLE" else 0.28,state=="VISIBLE")
 
 func ground_mark_draw_specs()->Array[Dictionary]:
 	var result:Array[Dictionary]=[]
@@ -3392,20 +3413,22 @@ func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector
 		points.append(center+Vector2(cos(angle)*radius_x,sin(angle)*radius_y))
 	return points
 
-func _draw_feature_cue(rect:Rect2,feature_id:String,opacity:float=1.0)->void:
+func _draw_feature_cue(rect:Rect2,feature_id:String,opacity:float=1.0,live:bool=true)->void:
 	if not uses_perspective_projection():
 		WorldEffectAssets.draw_icon(self,str(WorldEffectAssets.FEATURE_IDS.get(feature_id,"")),
-			rect,Color(1,1,1,opacity))
+			rect,Color(1,1,1,opacity) if live else Color(0.46,0.47,0.48,opacity))
 		return
 	var spec:Dictionary=AsciiStyleScript.feature_spec(feature_id)
 	if not bool(spec.visible):return
 	var center:=rect.get_center();var font:Font=BoldFont
 	var font_size:=maxi(11,int(floor(rect.size.x*0.76)))
-	if uses_perspective_projection():
+	if uses_perspective_projection() and live:
 		_draw_ascii_glow_text(font,str(spec.glyph),center,font_size,
 			Color(str(spec.color_hex),opacity),0.28*opacity)
 	else:
-		var color:=Color(str(spec.color_hex));color.a=opacity
+		var color:=Color(str(spec.color_hex))
+		if not live:color=color.lerp(Color(0.30,0.32,0.34),0.72)
+		color.a=opacity
 		_draw_centered_text(font,str(spec.glyph),center,font_size,color)
 
 func _draw_hazard_cues(rect:Rect2,row:Dictionary)->void:

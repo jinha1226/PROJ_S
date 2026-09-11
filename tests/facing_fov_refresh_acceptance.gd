@@ -3,6 +3,7 @@ extends SceneTree
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Vision=preload("res://sim/vision_rules.gd")
+const FieldTurns=preload("res://sim/systems/field_turn_system.gd")
 var failures:Array[String]=[]
 
 func check(value:bool,label:String)->void:
@@ -60,5 +61,13 @@ func run()->void:
 	var observation:Dictionary=session.observe_party_world()
 	check(observation.get("phase",{}).get("facing",[])==[
 		expected_facing.x,expected_facing.y],"grid observation carries the new facing")
+	var enemy_id:=int(party.enemy_ids[0])
+	var attack_facing:Vector2i=FieldTurns.facing_for_action(world,
+		Action.melee(hero_id,enemy_id),party.facing)
+	var attack_delta:Vector2i=world.entities[enemy_id].position-world.entities[hero_id].position
+	var expected_attack_facing:=Vector2i(signi(attack_delta.x),0) \
+		if absi(attack_delta.x)>=absi(attack_delta.y) else Vector2i(0,signi(attack_delta.y))
+	check(attack_facing==expected_attack_facing,
+		"melee and targeted combat actions face their target before FOV refresh")
 	print("FACING FOV REFRESH: ",failures)
 	quit(0 if failures.is_empty() else 1)

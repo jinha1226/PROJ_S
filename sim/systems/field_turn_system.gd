@@ -43,8 +43,8 @@ static func step(sim,action,wait_duration:int=100):
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
 	var darkness_sample:=Darkness.begin_sample(world)
-	if action.type=="MOVE":
-		party.facing=sim.party_coordinator._cardinal_facing(action.destination-world.entities[action.actor_id].position)
+	var action_facing:=facing_for_action(world,action,party.facing)
+	if action_facing!=party.facing:party.facing=action_facing
 	var ok:=_commit_ally(sim,action,step_index,cost)
 	if ok:
 		party.group_anchor=world.entities[world.party_control_actor_id()].position
@@ -96,6 +96,18 @@ static func step(sim,action,wait_duration:int=100):
 	return Result.new(true,true,"ok",world.events_since(event_start),{
 		"processed_step_index":step_index,"start_time":start,"end_time":end,
 		"time_cost":cost,"actor_id":action.actor_id})
+
+static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
+	var delta:=Vector2i.ZERO
+	if action.type=="MOVE":
+		delta=action.destination-world.entities[action.actor_id].position
+	elif action.type in ["MELEE","SKILL"] and world.entities.has(action.target_id):
+		delta=world.entities[action.target_id].position-world.entities[action.actor_id].position
+	elif action.type=="SKILL" and action.destination!=Vector2i(-1,-1):
+		delta=action.destination-world.entities[action.actor_id].position
+	if delta==Vector2i.ZERO:return fallback
+	if absi(delta.x)>=absi(delta.y):return Vector2i(signi(delta.x),0)
+	return Vector2i(0,signi(delta.y))
 
 static func _social(sim,event_start:int,decay:bool)->bool:
 	var world=sim.world

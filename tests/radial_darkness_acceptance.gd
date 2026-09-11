@@ -43,11 +43,10 @@ func run()->void:
 		var specs:=grid.radial_darkness_draw_specs()
 		check(specs.size()>Grid.RADIAL_DARKNESS_SEGMENTS,
 			"%dpx uses multi-ring radial sampling"%viewport)
-		check(specs.any(func(row):return bool(row.wall_lit) \
-				and Vector2i(row.sample_cell).x>7),
-			"%dpx known wall torch lights nearby MEMORY outside hero sight"%viewport)
-		check(specs.all(func(row):return Vector2i(row.sample_cell).x<13),
-			"%dpx wall torch never reveals UNSEEN terrain"%viewport)
+		check(specs.all(func(row):return Vector2i(row.sample_cell).x<=7),
+			"%dpx dynamic darkness and light stay inside current sight"%viewport)
+		check(not bool(grid.torch_light_draw_spec(Vector2i(10,7),260).active),
+			"%dpx remembered wall torch keeps no live light pool"%viewport)
 		check(grid._presentation_light_line_open(Vector2i(10,7),Vector2i(8,7)),
 			"%dpx wall torch reaches known terrain along open LOS"%viewport)
 		var blocker:Dictionary=grid._cells["9:7"]
@@ -59,6 +58,12 @@ func run()->void:
 		var mesh:ArrayMesh=grid._build_radial_darkness_mesh()
 		check(mesh!=null and mesh.get_surface_count()==1,
 			"%dpx radial gradient batches into one draw surface"%viewport)
+		var los_builds:=int(grid.torch_cache_stats().los_build_count)
+		for repeat in range(4):
+			grid.radial_darkness_draw_specs()
+			grid.torch_light_draw_spec(Vector2i(7,7),repeat*260)
+		check(int(grid.torch_cache_stats().los_build_count)==los_builds,
+			"%dpx redraws reuse cached light LOS"%viewport)
 		if "--capture" in OS.get_cmdline_user_args():
 			grid.queue_redraw();await process_frame
 			await RenderingServer.frame_post_draw
