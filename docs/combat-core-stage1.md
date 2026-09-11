@@ -7,6 +7,10 @@
 
 `godot --path . prototype/combat_scene.tscn`
 
+Web 배포 주소에 `?prototype=combat`를 붙이면 원형으로 진입한다.
+기본 주소와 다른 쿼리는 기존 게임을 연다. 로컬 라우터 검증은
+`godot --path . -- --prototype-combat`로 가능하다.
+
 9×9 격자, 주인공 1명, 적 2명. 상하좌우 인접 칸 클릭/터치 또는
 WASD/방향키 이동, 적 칸 진입으로 공격, Space/버튼으로 대기, 재시작 버튼.
 이 단계는 고정 피해와 동일 행동 비용 100을 사용한다. 대각선 이동,
