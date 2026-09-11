@@ -2860,9 +2860,14 @@ static func directional_darkness_distance(offset_cells:Vector2,facing:Vector2i,
 	if facing_vector.is_zero_approx():facing_vector=Vector2.RIGHT
 	var forward:=offset_cells.dot(facing_vector)
 	var lateral:=absf(offset_cells.cross(facing_vector))
-	var forward_scale:=1.18 if forward>=0.0 else 0.82
-	var side_scale:=0.92
-	return sqrt(pow(forward/forward_scale,2.0)+pow(lateral/side_scale,2.0))
+	# Keep the remembered direction readable without making a turn snap the whole
+	# darkness field from bright to dim. Most of the distance remains the natural
+	# circular falloff; only a restrained 30% directional bias is applied.
+	var forward_scale:=1.10 if forward>=0.0 else 0.90
+	var side_scale:=0.96
+	var directional_distance:=sqrt(pow(forward/forward_scale,2.0)
+		+pow(lateral/side_scale,2.0))
+	return lerpf(offset_cells.length(),directional_distance,0.30)
 
 func _wall_torch_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
 	var best:=-1.0
