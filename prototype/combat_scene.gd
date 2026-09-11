@@ -7,13 +7,14 @@ var status:Label
 var history:Label
 
 func _ready() -> void:
+	configure_demo()
 	var column := VBoxContainer.new()
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(column)
 	status = Label.new()
 	column.add_child(status)
 	var hint := Label.new()
-	hint.text = "전투 코어 1단계\n상하좌우 인접 칸 터치 · 적을 누르면 공격\n방향키/WASD 이동 · Space 대기"
+	hint.text = "전투 코어 2단계 · 8방향 인접 칸 터치\n시야 6칸 · 모서리 한쪽 벽 통과 가능\n내 이동/대기 100 · 공격 140 · 적 이동 120\n방향키/WASD 이동 · Space 대기"
 	column.add_child(hint)
 	var board := GridContainer.new()
 	board.columns = Core.SIZE.x
@@ -32,11 +33,15 @@ func _ready() -> void:
 	column.add_child(wait_button)
 	var reset_button := Button.new()
 	reset_button.text = "다시 시작"
-	reset_button.pressed.connect(func():core = Core.new();history.text = "";refresh())
+	reset_button.pressed.connect(func():core = Core.new();configure_demo();history.text = "";refresh())
 	column.add_child(reset_button)
 	history = Label.new()
 	column.add_child(history)
 	refresh()
+
+func configure_demo() -> void:
+	core.actors[0].attack_cost = 140
+	for actor in core.actors.slice(1):actor.move_cost = 120
 
 func tap(cell:Vector2i) -> void:act(cell-core.actors[0].position)
 
@@ -56,8 +61,12 @@ func refresh() -> void:
 		for x in range(Core.SIZE.x):
 			var cell := Vector2i(x,y)
 			var actor:Dictionary = core.actor_at(cell)
-			cells[y*Core.SIZE.x+x].text = "#" if core.walls.has(cell) else "."
-			if not actor.is_empty():cells[y*Core.SIZE.x+x].text = "@" if actor.id == 1 else "E%d"%actor.hp
+			var button := cells[y*Core.SIZE.x+x]
+			var seen:bool = core.visible.has(cell)
+			button.text = ""
+			button.modulate = Color.WHITE if seen else Color(0.35,0.35,0.35)
+			if core.memory.has(cell):button.text = "#" if core.memory[cell] else "."
+			if seen and not actor.is_empty():button.text = "@" if actor.id == 1 else "E%d"%actor.hp
 
 func _unhandled_key_input(event:InputEvent) -> void:
 	if not event.is_pressed() or event.is_echo():return
