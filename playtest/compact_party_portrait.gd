@@ -44,7 +44,7 @@ func _draw()->void:
 	_portrait(texture,layout.portrait)
 	draw_string(font,layout.name_position,str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_CENTER,
 		float(layout.name_width),10,Color("#d0c8b4"))
-	var labels:=["HP %d"%health,"MP %d"%int(actor.get("energy",0)),"STR %d"%int(actor.get("stress",0))]
+	var labels:=resource_labels(false)
 	if size.x>=150:
 		labels[0]+="/%d"%maximum
 		labels[1]+="/%d"%int(actor.get("max_energy",12))
@@ -82,6 +82,15 @@ func resource_meter_specs()->Array:
 			"value":values[i],"maximum":maxima[i],"ratio":clampf(float(values[i])/maxima[i],0,1)})
 	return meters
 
+func resource_labels(include_maximum:bool=true)->Array[String]:
+	var health:=int(actor.get("health",0));var energy:=int(actor.get("energy",0))
+	var labels:Array[String]=["HP %d"%health,"MP %d"%energy,
+		"TNS %d"%int(actor.get("stress",0))]
+	if include_maximum:
+		labels[0]+="/%d"%maxi(1,int(actor.get("max_health",1)))
+		labels[1]+="/%d"%maxi(1,int(actor.get("max_energy",12)))
+	return labels
+
 func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 	var portrait_side:=minf(60.0,size.y-8.0)
 	var portrait:=Rect2(Vector2(4,2),Vector2.ONE*portrait_side)
@@ -98,7 +107,7 @@ func _draw_expanded(texture:Texture2D,font:Font,health:int,maximum:int)->void:
 		draw_string(font,Vector2(left+86,41),str(emotion.get("label","평온")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,width-86),11,Color("#aaa896"))
 
 func _draw_stats(font:Font,left:float,width:float,baseline:float,health:int,maximum:int,alignment:int)->void:
-	var labels:=["HP %d/%d"%[health,maximum],"MP %d/%d"%[int(actor.get("energy",0)),int(actor.get("max_energy",12))],"STR %d"%int(actor.get("stress",0))]
+	var labels:=resource_labels(true)
 	var colors:=[Color("#b7d99d"),Color("#88b9ce"),Color("#d5a5b8")]
 	for index in range(3):
 		draw_string(font,Vector2(left,baseline+index*11),labels[index],alignment,width,10,colors[index])

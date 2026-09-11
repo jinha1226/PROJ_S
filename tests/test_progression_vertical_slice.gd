@@ -235,8 +235,16 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and sandbox.find_child("StatusStress",true,false)!=null \
 		and sandbox.find_child("StatusCombatSummary",true,false)!=null \
 		and "STR" in str((sandbox.find_child("StatusCoreStats",true,false) as Label).text) \
-		and "혈액" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text),
+		and "혈액" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text) \
+		and "피부 질김" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text) \
+		and "연부조직 완충" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text) \
+		and "뼈 강도" in str((sandbox.find_child("StatusBodyState",true,false) as Label).text),
 		"status folio keeps identity, core stats, body condition, vitals, and combat facts in two columns")
+	var body_status_text:=str((sandbox.find_child("StatusBodyState",true,false) as Label).text)
+	var hero_detail:Dictionary=session.inspect_party_member(int(session.party_status().protagonist_id))
+	check("%d/%d"%[int(hero_detail.body_state.blood),
+			int(hero_detail.body_state.blood_capacity)] in body_status_text,
+		"body status shows exact current and maximum blood amount")
 	var status_hp=sandbox.find_child("StatusHealthBar",true,false)
 	var status_stress=sandbox.find_child("StatusStressBar",true,false)
 	check(status_hp!=null and status_stress!=null \

@@ -3154,10 +3154,10 @@ func _stress_band_color(band:String)->Color:
 	return Color("#8fa5ae")
 
 func _apply_stress_band_label(label:Label,row:Dictionary)->void:
-	# Portraits show the band, not the number; the status folio keeps ST n/1000.
+	# Portraits show the band, not the number; the status folio keeps TNS n/1000.
 	var band:=str(row.get("stress_band","CALM"))
 	label.text=str(row.get("stress_band_label","안정"))
-	label.tooltip_text="스트레스 %d/1000"%int(row.get("stress",0))
+	label.tooltip_text="긴장(TNS) %d/1000"%int(row.get("stress",0))
 	label.add_theme_color_override("font_color",_stress_band_color(band))
 
 func _member_portrait(row:Dictionary,spec:Dictionary)->Control:
@@ -4849,13 +4849,13 @@ func _update_member_status_window(detail:Dictionary)->void:
 		maxi(1,int(detail.get("max_health",1))),4,AsciiFrameScript.GREEN)
 	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(health_bar)
 	var stress:=int(detail.get("stress",0));var stress_band:=str(detail.get("stress_band","CALM"))
-	var stress_bar:Control=_gauge("StatusStressBar","ST",stress,1000,4,_stress_band_color(stress_band))
+	var stress_bar:Control=_gauge("StatusStressBar","TNS",stress,1000,4,_stress_band_color(stress_band))
 	stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(stress_bar)
 	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
 	status_grid.columns=2;status_grid.add_theme_constant_override("h_separation",10)
 	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
 	var emotion_cluster:=_add_status_pixel_section(status_grid,"EmotionSealCluster")
-	var emotion_heading:=_card_label("감정 / 스트레스","EmotionSection",FONT_AUX)
+	var emotion_heading:=_card_label("감정 / 긴장","EmotionSection",FONT_AUX)
 	emotion_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);emotion_cluster.add_child(emotion_heading)
 	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
 	var emotion_label:=_card_label("[%s%s]"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
@@ -4864,7 +4864,8 @@ func _update_member_status_window(detail:Dictionary)->void:
 	if not reason.is_empty() and reason!="이유 정보 없음":
 		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
-	var stress_label:=_card_label("ST %d/1000 · %s"%[stress,str(detail.get("stress_band_label","안정"))],"StatusStress",FONT_AUX)
+	var stress_label:=_card_label("긴장 TNS %d/1000 · %s"%[stress,
+		str(detail.get("stress_band_label","안정"))],"StatusStress",FONT_AUX)
 	stress_label.add_theme_color_override("font_color",_stress_band_color(stress_band));emotion_cluster.add_child(stress_label)
 	if stress_band in ["ANXIOUS","PANIC"]:
 		var stress_note:=_card_label("기술 사용 불가 · 물러나 진정시키세요" if stress_band=="ANXIOUS" \
@@ -4912,22 +4913,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 	body_cluster.add_child(body_heading)
 	var body:Dictionary=detail.get("body_state",{}) \
 		if detail.get("body_state",{}) is Dictionary else {}
-	var body_lines:Array[String]=[]
-	if bool(body.get("available",false)):
-		var blood_capacity:=maxi(1,int(body.get("blood_capacity",1)))
-		body_lines.append("혈액 %d%% · 의식 %d%%"%[
-			int(int(body.get("blood",0))*100/blood_capacity),
-			int(int(body.get("consciousness",0))/10)])
-		body_lines.append("충격 %d · 상처 %d"%[
-			int(body.get("shock",0)),int(body.get("wound_count",0))])
-		var part_states:Array[String]=[]
-		for part_value in body.get("parts",[]):
-			if not part_value is Dictionary:continue
-			var part:Dictionary=part_value
-			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
-				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
-		if not part_states.is_empty():body_lines.append(" · ".join(part_states))
-	else:body_lines.append("육체 정보 없음")
+	var body_lines:=body_status_lines(body)
 	var body_text:=_card_label("\n".join(body_lines),"StatusBodyState",FONT_CAPTION)
 	body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body_cluster.add_child(body_text)
 	if str(detail.get("role",""))!="PROTAGONIST":
@@ -4952,6 +4938,30 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var dossier_heading:=_card_label("내성","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
 
+static func body_status_lines(body:Dictionary)->Array[String]:
+	var body_lines:Array[String]=[]
+	if bool(body.get("available",false)):
+		var blood_capacity:=maxi(1,int(body.get("blood_capacity",1)))
+		var blood:=clampi(int(body.get("blood",0)),0,blood_capacity)
+		body_lines.append("혈액 %d/%d (%d%%) · 의식 %d%%"%[
+			blood,blood_capacity,int(blood*100/blood_capacity),
+			int(int(body.get("consciousness",0))/10)])
+		body_lines.append("피부 질김 %d · 연부조직 완충 %d"%[
+			int(body.get("skin_toughness",0)),
+			int(body.get("soft_tissue_cushioning",0))])
+		body_lines.append("뼈 강도 %d · 충격 %d/%d · 상처 %d"%[
+			int(body.get("bone_fracture_threshold",0)),int(body.get("shock",0)),
+			maxi(1,int(body.get("shock_threshold",1))),int(body.get("wound_count",0))])
+		var part_states:Array[String]=[]
+		for part_value in body.get("parts",[]):
+			if not part_value is Dictionary:continue
+			var part:Dictionary=part_value
+			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
+				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
+		if not part_states.is_empty():body_lines.append(" · ".join(part_states))
+	else:body_lines.append("육체 정보 없음")
+	return body_lines
+
 func _add_status_pixel_section(parent:GridContainer,node_name:String)->VBoxContainer:
 	var panel:=PanelContainer.new();panel.name=node_name+"Panel"
 	panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -4965,11 +4975,11 @@ func _percent_milli_text(value:int)->String:
 	var positive:=maxi(0,value);var whole:=int(positive/10);var tenth:=positive%10
 	return "%d%%"%whole if tenth==0 else "%d.%d%%"%[whole,tenth]
 
-func _body_part_label(part_id:String)->String:
+static func _body_part_label(part_id:String)->String:
 	return {"HEAD":"머리","TORSO":"몸통","LEFT_ARM":"왼팔","RIGHT_ARM":"오른팔",
 		"LEFT_LEG":"왼다리","RIGHT_LEG":"오른다리"}.get(part_id,part_id)
 
-func _body_condition_label(condition:String)->String:
+static func _body_condition_label(condition:String)->String:
 	return {"FUNCTIONAL":"정상","DISABLED":"기능 상실","SEVERED":"절단"}.get(condition,condition)
 
 func _life_state_label(life_state:String)->String:

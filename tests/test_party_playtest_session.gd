@@ -1404,6 +1404,18 @@ func test_tile_and_member_inspectors_are_authoritative_pure_and_deep_detached() 
 		"protagonist inspection exposes readable combat totals")
 	check(hero.body_state.available and hero.body_state.parts.size()==6,
 		"protagonist inspection exposes systemic and six-part body condition")
+	var authority_body=session.sim.world.body_states[int(state.protagonist_id)]
+	check_eq([hero.body_state.blood,hero.body_state.blood_capacity,
+		hero.body_state.skin_toughness,hero.body_state.soft_tissue_cushioning,
+		hero.body_state.bone_fracture_threshold,hero.body_state.shock_threshold,
+		hero.body_state.consciousness_threshold],
+		[authority_body.current_blood,authority_body.body_scalars.blood_capacity,
+		authority_body.body_scalars.skin_toughness,
+		authority_body.body_scalars.soft_tissue_cushioning,
+		authority_body.body_scalars.bone_fracture_threshold,
+		authority_body.body_scalars.shock_threshold,
+		authority_body.body_scalars.consciousness_threshold],
+		"member inspection exposes exact authoritative body scalars")
 	var companion=session.inspect_party_member(state.party_member_ids[1])
 	check(companion.accepted,"companion inspection")
 	check_eq(companion.personality_facets.size(),6,"all HEXACO facets")

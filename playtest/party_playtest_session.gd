@@ -7846,6 +7846,11 @@ func _member_body_presentation(entity_id:int)->Dictionary:
 			"integrity_milli":minimum_integrity})
 	return {"available":true,"blood":int(body.current_blood),
 		"blood_capacity":int(body.body_scalars.get("blood_capacity",0)),
+		"skin_toughness":int(body.body_scalars.get("skin_toughness",0)),
+		"soft_tissue_cushioning":int(body.body_scalars.get("soft_tissue_cushioning",0)),
+		"bone_fracture_threshold":int(body.body_scalars.get("bone_fracture_threshold",0)),
+		"shock_threshold":int(body.body_scalars.get("shock_threshold",0)),
+		"consciousness_threshold":int(body.body_scalars.get("consciousness_threshold",0)),
 		"shock":int(body.shock),"consciousness":int(body.consciousness),
 		"wound_count":body.wounds.size(),"parts":part_rows,
 		"function":BodyFunctionRulesScript.appraisal(body)}.duplicate(true)

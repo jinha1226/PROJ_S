@@ -40,6 +40,8 @@ func run():
 		check(portrait.resource_meter_specs()[0].ratio==0.5,"HP proportion")
 		check(portrait.resource_meter_specs()[1].ratio==0.25,"MP proportion")
 		check(portrait.resource_meter_specs()[2].ratio==0.8,"stress proportion")
+		check(portrait.resource_labels(true)==["HP 60/120","MP 3/12","TNS 800"],
+			"portrait reserves STR for strength and labels tension as TNS")
 		portrait.free()
 	check(WorldIcons.FEATURES.get_size()==Vector2(96,96),"16 native feature tiles")
 	check(WorldIcons.PROPS.get_size()==Vector2(96,48),"8 native prop tiles")
