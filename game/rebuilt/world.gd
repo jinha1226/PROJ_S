@@ -5,7 +5,8 @@ const Kernel=preload("res://sim/combat_kernel.gd")
 const Heap=preload("res://game/rebuilt/min_heap.gd")
 const Navigation=preload("res://game/rebuilt/navigation.gd")
 const Personality=preload("res://sim/dungeon_population/hexaco_profile.gd")
-const SCHEMA:=1
+const Body=preload("res://game/rebuilt/body_bridge.gd")
+const SCHEMA:=2
 const WIDTH:=64
 const HEIGHT:=64
 var seed:int=44
@@ -37,6 +38,7 @@ var last_action_usec:int=0
 var last_path_usec:int=0
 var route_steps:=PackedInt32Array()
 var auto_explore:bool=false
+var injury_serial:int=0
 
 func _init(p_seed:int=44)->void:
 	seed=p_seed;generate_floor()
@@ -50,18 +52,33 @@ func open_edge(a:int,b:int)->bool:return Kernel.open_edge(position(a),position(b
 func move_cost(cell:int)->int:return 130 if terrain[cell]=="shallow_water" else 140 if terrain[cell]=="rubble" else 100
 func hero()->Dictionary:return actors[0]
 func terminal()->bool:return int(hero().hp)<=0
+func friendly(actor:Dictionary)->bool:return actor.team!="enemy"
+func actor_name(actor:Dictionary)->String:return "나" if actor.id==0 else "동료" if friendly(actor) else "적"
+func movement_time(actor:Dictionary,cell:int)->int:
+	return maxi(int(actor.move_time),move_cost(cell))*int(actor.move_factor)/100
+func companions()->Array[Dictionary]:
+	var result:Array[Dictionary]=[]
+	for actor in actors:
+		if actor.team=="companion":result.append(actor)
+	return result
 
 func make_actor(id:int,cell:int,team:String)->Dictionary:
 	var profile=Personality.generated(seed+floor_number,id+1)
-	return {"id":id,"cell":cell,"team":team,"hp":80 if team=="hero" else 18+floor_number*3,
+	var actor:Dictionary={"id":id,"cell":cell,"team":team,"hp":80 if team=="hero" else 18+floor_number*3,
 		"max_hp":80 if team=="hero" else 18+floor_number*3,"ready":time,
 		"power":10 if team=="hero" else 3+floor_number,"move_time":100 if team=="hero" else 120,
 		"attack_time":110 if team=="hero" else 140,"stress":0,"skin":2,"bone":100,
 		"blood":100,"profile":profile.to_dict(),"personality":profile.style_summary().label,
-		"last_seen":-1,"facing":[0,1]}
+		"last_seen":-1,"facing":[0,1],"order":"FOLLOW",
+		"body":Body.create(id,seed,team=="enemy"),"move_factor":100,"attack_factor":100}
+	if team=="companion":
+		actor.hp=60;actor.max_hp=60;actor.power=8;actor.move_time=100
+	Body.sync(actor)
+	return actor
 
 func generate_floor()->void:
 	var previous:Dictionary=actors[0].duplicate(true) if not actors.is_empty() else {}
+	var previous_party:Array[Dictionary]=companions()
 	var layout:Dictionary=Map.generate(WIDTH,HEIGHT,seed+floor_number*7919)
 	terrain=PackedStringArray(layout.terrain)
 	occupancy.resize(terrain.size());occupancy.fill(-1)
@@ -75,6 +92,16 @@ func generate_floor()->void:
 	if not previous.is_empty():
 		player=previous;player.cell=entry;player.ready=time
 	actors.append(player);occupancy[entry]=0
+	if previous.is_empty():
+		add_companion()
+	else:
+		for ally in previous_party:
+			var cell:=free_near(entry)
+			if cell<0:continue
+			ally.id=actors.size();ally.body.entity_id=int(ally.id)+1;ally.body.revision+=1
+			ally.cell=cell;ally.ready=time;ally.last_seen=-1
+			actors.append(ally)
+			if ally.hp>0:occupancy[cell]=ally.id;scheduler.push([time,ally.id,ally.id])
 	for point in layout.enemy_positions:
 		var cell:=index(point)
 		if occupancy[cell]>=0 or blocked(cell):continue
@@ -90,6 +117,23 @@ func generate_floor()->void:
 	rebuild_lights()
 	sight_origin=-1;route_steps.clear();auto_explore=false;update_sight()
 	message("%d층에 도착했습니다."%floor_number)
+
+func free_near(origin:int)->int:
+	for direction in Kernel.DIRECTIONS:
+		var point:Vector2i=position(origin)+direction
+		if not in_bounds(point):continue
+		var cell:=index(point)
+		if not blocked(cell) and occupancy[cell]<0 and open_edge(origin,cell):return cell
+	return -1
+
+func add_companion()->bool:
+	if not companions().is_empty():return false
+	var cell:=free_near(hero().cell)
+	if cell<0:return false
+	var ally:=make_actor(actors.size(),cell,"companion")
+	actors.append(ally);occupancy[cell]=ally.id;scheduler.push([time,ally.id,ally.id])
+	message("동료가 합류했습니다.")
+	return true
 
 func rebuild_lights()->void:
 	light_strength.resize(terrain.size());light_strength.fill(0.0)
@@ -124,7 +168,7 @@ func visible_enemies()->Array[int]:
 	var ids:Array[int]=[]
 	for cell in visible_cells:
 		var id:=occupancy[cell]
-		if id>0:ids.append(id)
+		if id>0 and not friendly(actors[id]):ids.append(id)
 	return ids
 
 func submit(kind:String,target:int=-1)->bool:
@@ -138,15 +182,29 @@ func submit(kind:String,target:int=-1)->bool:
 			if blocked(target) or not open_edge(player.cell,target):return false
 			var occupant:=occupancy[target]
 			if occupant>0:
-				cost=int(player.attack_time);attack(player,actors[occupant])
+				if friendly(actors[occupant]):
+					cost=movement_time(player,target)
+					var old:int=player.cell
+					move_actor(actors[occupant],old);move_actor(player,target)
+					occupancy[old]=occupant
+				else:cost=int(player.attack_time);attack(player,actors[occupant])
 			elif occupant==-1:
-				cost=move_cost(target);move_actor(player,target);pickup()
+				cost=movement_time(player,target);move_actor(player,target);pickup()
 			else:return false
 		"WAIT":pass
 		"POTION":
-			if potions<=0 or player.hp>=player.max_hp:return false
-			potions-=1;player.hp=mini(player.max_hp,player.hp+30);player.blood=mini(100,player.blood+20)
+			var patient:Dictionary=player
+			if target>0:
+				if target>=actors.size() or actors[target].team!="companion" or actors[target].hp<=0:return false
+				patient=actors[target]
+				if not open_edge(player.cell,patient.cell):return false
+			if potions<=0 or patient.hp>=patient.max_hp and patient.blood>=100:return false
+			potions-=1;patient.hp=mini(patient.max_hp,patient.hp+30);Body.heal(patient)
 			message("회복약을 사용했습니다.")
+		"RECRUIT":
+			if not add_companion():return false
+		"ORDER":
+			for ally in companions():ally.order="HOLD" if ally.order=="FOLLOW" else "FOLLOW"
 		"TORCH":torch_lit=not torch_lit and torch_fuel>0
 		"DESCEND":
 			if player.cell!=exit_cell:return false
@@ -154,12 +212,15 @@ func submit(kind:String,target:int=-1)->bool:
 		_:return false
 	player.ready=time+cost
 	var limit:=0
+	var party:Array[Dictionary]=companions()
 	while not scheduler.empty() and not terminal():
 		var row:Array=scheduler.pop()
 		var actor:Dictionary=actors[int(row[2])]
 		if actor.hp<=0 or int(actor.ready)!=int(row[0]):continue
 		if int(row[0])>=int(player.ready):scheduler.push(row);break
-		time=int(row[0]);enemy_turn(actor)
+		time=int(row[0])
+		if actor.team=="companion":companion_turn(actor)
+		else:enemy_turn(actor,party)
 		scheduler.push([actor.ready,actor.id,actor.id])
 		limit+=1
 		assert(limit<10000,"Action clock failed to advance")
@@ -181,22 +242,49 @@ func move_actor(actor:Dictionary,target:int)->void:
 	effects.append({"kind":"move","actor":actor.id,"from":old,"to":target})
 
 func attack(source:Dictionary,target:Dictionary)->void:
-	var defense:int=armor+int(target.skin) if target.team=="hero" else int(target.skin)
-	var damage:=maxi(1,int(source.power)-defense)
+	if friendly(source)==friendly(target) or source.hp<=0 or target.hp<=0:return
+	var defense:int=armor if friendly(target) else 0
+	var raw:=maxi(1,int(source.power)*int(source.attack_factor)/100)
+	var damage:=maxi(1,raw-defense-2)
+	injury_serial+=1
+	var injury:Dictionary=Body.hit(source,target,raw,defense,injury_serial,seed)
+	assert(injury.get("accepted",false),"Body injury rejected")
 	target.hp=maxi(0,int(target.hp)-damage)
-	target.blood=maxi(0,100*int(target.hp)/int(target.max_hp))
+	if target.body.current_blood==0:target.hp=0
 	target.stress=mini(100,int(target.stress)+5)
 	if visible[int(target.cell)]==1 or target.id==0:
-		message("%s → %s: %d 피해"%["나" if source.id==0 else "적","나" if target.id==0 else "적",damage])
+		message("%s → %s: %d 피해"%[actor_name(source),actor_name(target),damage])
 		effects.append({"kind":"hit","cell":target.cell,"amount":damage})
 	if target.hp==0:
 		occupancy[int(target.cell)]=-1
-		if target.id>0:loot[str(target.cell)]="gold"
-		message("적을 쓰러뜨렸습니다." if target.id>0 else "전투 불능")
+		if not friendly(target):loot[str(target.cell)]="gold"
+		if friendly(target) or visible[int(target.cell)]==1:message(actor_name(target)+" 전투 불능")
 
-func enemy_turn(actor:Dictionary)->void:
+func companion_turn(actor:Dictionary)->void:
+	actor.ready=time+100
+	# Local perception only: never target enemies behind a wall.
+	for direction in Kernel.DIRECTIONS:
+		var point:Vector2i=position(actor.cell)+direction
+		if not in_bounds(point):continue
+		var cell:=index(point)
+		var id:=occupancy[cell]
+		if id>0 and not friendly(actors[id]) and open_edge(actor.cell,cell):
+			attack(actor,actors[id]);actor.ready=time+int(actor.attack_time);return
+	if actor.order=="HOLD":return
+	if position(actor.cell).distance_squared_to(position(hero().cell))<=2:return
+	var next:=navigation.next_step(self,actor.cell,hero().cell)
+	if next>=0:
+		var cost:=movement_time(actor,next)
+		move_actor(actor,next);actor.ready=time+cost
+
+func enemy_turn(actor:Dictionary,party:Variant=null)->void:
 	var start:int=actor.cell
 	var goal:int=hero().cell
+	var victim:Dictionary=hero()
+	if party==null:party=companions()
+	for ally in party:
+		if ally.hp>0 and position(start).distance_squared_to(position(ally.cell))<position(start).distance_squared_to(position(goal)) and Kernel.sees(position(start),position(ally.cell),solid):
+			victim=ally;goal=ally.cell
 	var sees:bool=Kernel.sees(position(start),position(goal),solid)
 	if sees:actor.last_seen=goal
 	elif actor.last_seen==start:actor.last_seen=-1
@@ -204,7 +292,7 @@ func enemy_turn(actor:Dictionary)->void:
 	if destination<0:actor.ready=time+100;return
 	var delta:=position(goal)-position(start)
 	if sees and maxi(absi(delta.x),absi(delta.y))==1 and open_edge(start,goal):
-		attack(actor,hero());actor.ready=time+int(actor.attack_time);return
+		attack(actor,victim);actor.ready=time+int(actor.attack_time);return
 	# Personality influences low-health retreat, without extra world simulation.
 	if sees and actor.hp*3<actor.max_hp and int(actor.profile.E)>600:
 		var best:=start
@@ -220,7 +308,7 @@ func enemy_turn(actor:Dictionary)->void:
 	else:
 		var next:=navigation.next_step(self,start,destination)
 		if next>=0:move_actor(actor,next)
-	actor.ready=time+maxi(int(actor.move_time),move_cost(actor.cell))
+	actor.ready=time+movement_time(actor,actor.cell)
 
 func pickup()->void:
 	var key:=str(hero().cell)
@@ -267,13 +355,19 @@ func auto_step()->bool:
 	return true
 
 func save_data()->Dictionary:
+	var rows:Array=[]
+	for actor in actors:
+		var row:Dictionary=actor.duplicate(true)
+		row.body=actor.body.to_dict();rows.append(row)
 	return {"schema":SCHEMA,"seed":seed,"floor":floor_number,"time":time,
-		"terrain":Array(terrain),"memory":Array(memory),"actors":actors.duplicate(true),
+		"terrain":Array(terrain),"memory":Array(memory),"actors":rows,"injury_serial":injury_serial,
 		"loot":loot.duplicate(),"lights":Array(lights),"exit":exit_cell,"gold":gold,
 		"potions":potions,"torch_fuel":torch_fuel,"torch_lit":torch_lit,"armor":armor,"weapon":weapon}
 
 func restore(data:Dictionary)->bool:
-	if int(data.get("schema",-1))!=SCHEMA:return false
+	var version:=int(data.get("schema",-1))
+	if version not in [1,SCHEMA]:return false
+	if version==SCHEMA and (not data.has("injury_serial") or int(data.injury_serial)<0):return false
 	for key in ["seed","floor","time","terrain","memory","actors","loot","lights","exit","gold","potions","torch_fuel","torch_lit","armor","weapon"]:
 		if not data.has(key):return false
 	if not data.loot is Dictionary or not data.lights is Array:return false
@@ -284,13 +378,26 @@ func restore(data:Dictionary)->bool:
 	if not data.get("memory") is Array or data.memory.size()!=WIDTH*HEIGHT:return false
 	if not data.get("actors") is Array or data.actors.is_empty() or data.actors.size()>512:return false
 	var taken:Dictionary={}
+	var required:Array=make_actor(0,0,"hero").keys()
+	var restored_bodies:Dictionary={}
 	for i in range(data.actors.size()):
 		var a:Variant=data.actors[i]
 		if not a is Dictionary:return false
-		for field in make_actor(0,0,"hero"):
+		for field in required:
+			if version==1 and field in ["body","order","move_factor","attack_factor"]:continue
 			if not a.has(field):return false
+		if a.team not in ["hero","companion","enemy"] or (i==0)!=(a.team=="hero"):return false
+		if not a.profile is Dictionary or not a.facing is Array or a.facing.size()!=2:return false
+		if version==SCHEMA:
+			if a.order not in ["FOLLOW","HOLD"]:return false
+			var body=Body.State.from_dict(a.body)
+			if body==null or body.entity_id!=i+1:return false
+			for wound in body.wounds:
+				if int(wound.source_event_id)>int(data.injury_serial):return false
+			restored_bodies[i]=body
+		else:restored_bodies[i]=Body.create(i,int(data.seed),a.team=="enemy")
 		var cell:=int(a.cell)
-		if int(a.id)!=i or cell<0 or cell>=WIDTH*HEIGHT or int(a.hp)<0 or int(a.hp)>int(a.max_hp):return false
+		if int(a.id)!=i or cell<0 or cell>=WIDTH*HEIGHT or int(a.max_hp)<=0 or int(a.hp)<0 or int(a.hp)>int(a.max_hp):return false
 		if int(a.ready)<0 or int(a.move_time)<1 or int(a.attack_time)<1:return false
 		if int(a.hp)>0:
 			if taken.has(cell) or data.terrain[cell]=="wall":return false
@@ -298,7 +405,11 @@ func restore(data:Dictionary)->bool:
 	seed=int(data.seed);floor_number=int(data.floor);time=int(data.time)
 	terrain=PackedStringArray(data.terrain);memory=PackedByteArray(data.memory)
 	actors.assign(data.actors.duplicate(true))
+	injury_serial=int(data.get("injury_serial",0))
 	for actor in actors:
+		actor.body=restored_bodies[int(actor.id)]
+		actor.order=str(actor.get("order","FOLLOW"))
+		Body.sync(actor)
 		for key in ["id","cell","hp","max_hp","ready","power","move_time","attack_time","stress","skin","bone","blood","last_seen"]:
 			actor[key]=int(actor[key])
 		actor.profile=Personality.from_dict(actor.profile).to_dict()
@@ -311,4 +422,5 @@ func restore(data:Dictionary)->bool:
 		if actor.hp<=0:continue
 		occupancy[int(actor.cell)]=actor.id
 		if actor.id>0:scheduler.push([actor.ready,actor.id,actor.id])
+	log.clear();effects.clear()
 	navigation.fields.clear();rebuild_lights();sight_origin=-1;stop_auto();update_sight();return true

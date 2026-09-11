@@ -13,6 +13,8 @@ var auto_button:Button
 var timer:Timer
 var save_timer:Timer
 var save_allowed:=true
+var party_dialog:AcceptDialog
+var party_info:Label
 
 func _ready()->void:
 	var theme_data:=Theme.new();theme_data.default_font=GameFont;theme_data.default_font_size=15;theme=theme_data
@@ -34,8 +36,18 @@ func _ready()->void:
 	add_button(actions,"상태",show_status)
 	add_button(actions,"저장",save_game)
 	add_button(actions,"새 게임",confirm_new)
+	add_button(actions,"동료",show_party)
 	history=Label.new();history.custom_minimum_size.y=70;column.add_child(history)
 	details=AcceptDialog.new();add_child(details)
+	party_dialog=AcceptDialog.new();party_dialog.title="동료";add_child(party_dialog)
+	var party_column:=VBoxContainer.new();party_dialog.add_child(party_column)
+	party_info=Label.new();party_column.add_child(party_info)
+	var party_actions:=HBoxContainer.new();party_column.add_child(party_actions)
+	add_button(party_actions,"추종/대기",func():command("ORDER");update_party())
+	add_button(party_actions,"동료 회복",func():
+		var allies:Array[Dictionary]=world.companions()
+		if not allies.is_empty():command("POTION",allies[0].id);update_party())
+	add_button(party_actions,"합류",func():command("RECRUIT");update_party())
 	timer=Timer.new();timer.wait_time=0.16;timer.timeout.connect(continue_auto);add_child(timer)
 	save_timer=Timer.new();save_timer.one_shot=true;save_timer.wait_time=0.6;save_timer.timeout.connect(save_game);add_child(save_timer)
 	if FileAccess.file_exists(SAVE):
@@ -85,10 +97,22 @@ func show_status()->void:
 	world.stop_auto();timer.stop()
 	var a:Dictionary=world.hero()
 	details.title="캐릭터 상태"
-	details.dialog_text="성격: %s\nHP %d/%d · 스트레스 %d\n피부 질김 %d · 뼈 강도 %d · 혈액 %d%%\n무기: %s · 방어력 %d\n\n처리 %.2fms · 경로 %.2fms · 그리기 %.2fms"%[
-		a.personality,a.hp,a.max_hp,a.stress,a.skin,a.bone,a.blood,world.weapon,world.armor,
-		world.last_action_usec/1000.0,world.last_path_usec/1000.0,board.last_draw_usec/1000.0]
-	details.popup_centered(Vector2i(380,280))
+	details.dialog_text="성격: %s\n%s\n무기: %s · 방어력 %d"%[
+		a.personality,World.Body.description(a),world.weapon,world.armor]
+	details.popup_centered(Vector2i(380,340))
+
+func update_party()->void:
+	var allies:Array[Dictionary]=world.companions()
+	party_info.text="동료 없음 · 합류를 누르면 동료 1명이 합류합니다."
+	if not allies.is_empty():
+		var ally:Dictionary=allies[0]
+		party_info.text="%s · %s\n성격: %s\n%s"%[
+			"동료" if ally.hp>0 else "사망",
+			"추종" if ally.order=="FOLLOW" else "대기",ally.personality,World.Body.description(ally)]
+
+func show_party()->void:
+	world.stop_auto();timer.stop();update_party()
+	party_dialog.popup_centered(Vector2i(410,390))
 
 func confirm_new()->void:
 	world.stop_auto();timer.stop()
@@ -110,7 +134,7 @@ func save_game()->void:
 	if DirAccess.rename_absolute(temp,SAVE)!=OK:world.message("저장 실패")
 
 func _unhandled_key_input(event:InputEvent)->void:
-	if not event.is_pressed() or event.is_echo() or details.visible:return
+	if not event.is_pressed() or event.is_echo() or details.visible or party_dialog.visible:return
 	for pair in [["move_up",Vector2i.UP],["move_down",Vector2i.DOWN],["move_left",Vector2i.LEFT],["move_right",Vector2i.RIGHT]]:
 		if event.is_action_pressed(pair[0]):
 			var point:Vector2i=world.position(world.hero().cell)+pair[1]
