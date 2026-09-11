@@ -19,8 +19,8 @@ static func sync(actor:Dictionary)->void:
 	actor.move_factor=100 if function.usable_leg_count==2 else 160 if function.usable_leg_count==1 else 250
 	actor.attack_factor=100 if function.usable_arm_count==2 else 75 if function.usable_arm_count==1 else 35
 
-static func hit(source:Dictionary,target:Dictionary,damage:int,armor:int,serial:int,seed:int)->Dictionary:
-	var weapon=Weapons.definition("SHORT_SWORD" if int(source.attack_factor)>35 else "UNARMED_STRIKE")
+static func hit(source:Dictionary,target:Dictionary,damage:int,armor:int,serial:int,seed:int,weapon_id:String="")->Dictionary:
+	var weapon=Weapons.definition(weapon_id if not weapon_id.is_empty() else "SHORT_SWORD" if int(source.attack_factor)>35 else "UNARMED_STRIKE")
 	var commitment:=("%d|%d|%d|%d"%[seed,serial,source.id,target.id]).sha256_text()
 	var result:Dictionary=Injury.apply(target.body,weapon,damage,armor,commitment,int(target.id)+1,serial)
 	sync(target)

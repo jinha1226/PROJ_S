@@ -69,7 +69,10 @@ func _init()->void:
 	var blood:int=ally.body.current_blood
 	check(w.submit("POTION",ally.id) and ally.hp==50 and ally.body.current_blood>blood,"targeted companion potion")
 	var attacker:=append_actor(w,Vector2i(12,10),"enemy");ally.hp=1
-	w.attack(attacker,ally)
+	# Accuracy now permits misses; death must occur on the first landed lethal hit.
+	for i in range(20):
+		if ally.hp==0:break
+		w.attack(attacker,ally)
 	check(ally.hp==0 and w.occupancy[ally.cell]==-1 and not w.loot.has(str(ally.cell)),"companion death no enemy loot")
 	check(not w.submit("POTION",ally.id),"potion cannot revive dead companion")
 	print("REBUILT PARTY BODY: ","PASS" if failures.is_empty() else failures)

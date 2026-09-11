@@ -15,6 +15,10 @@ var save_timer:Timer
 var save_allowed:=true
 var party_dialog:AcceptDialog
 var party_info:Label
+var gear_dialog:AcceptDialog
+var gear_info:Label
+var gear_choice:OptionButton
+var training_choice:OptionButton
 
 func _ready()->void:
 	var theme_data:=Theme.new();theme_data.default_font=GameFont;theme_data.default_font_size=15;theme=theme_data
@@ -37,6 +41,7 @@ func _ready()->void:
 	add_button(actions,"저장",save_game)
 	add_button(actions,"새 게임",confirm_new)
 	add_button(actions,"동료",show_party)
+	add_button(actions,"장비·숙련",show_equipment)
 	history=Label.new();history.custom_minimum_size.y=70;column.add_child(history)
 	details=AcceptDialog.new();add_child(details)
 	party_dialog=AcceptDialog.new();party_dialog.title="동료";add_child(party_dialog)
@@ -48,6 +53,14 @@ func _ready()->void:
 		var allies:Array[Dictionary]=world.companions()
 		if not allies.is_empty():command("POTION",allies[0].id);update_party())
 	add_button(party_actions,"합류",func():command("RECRUIT");update_party())
+	gear_dialog=AcceptDialog.new();gear_dialog.title="장비 · 숙련도";add_child(gear_dialog)
+	var gear_column:=VBoxContainer.new();gear_dialog.add_child(gear_column)
+	gear_info=Label.new();gear_column.add_child(gear_info)
+	gear_choice=OptionButton.new();gear_choice.custom_minimum_size.y=42;gear_column.add_child(gear_choice)
+	add_button(gear_column,"선택 장비 장착",func():command("EQUIP",gear_choice.selected);update_equipment())
+	training_choice=OptionButton.new();training_choice.custom_minimum_size.y=42;gear_column.add_child(training_choice)
+	for label in World.Equipment.LABELS:training_choice.add_item(label)
+	add_button(gear_column,"선택 숙련도 훈련",func():command("TRAIN",training_choice.selected);update_equipment())
 	timer=Timer.new();timer.wait_time=0.16;timer.timeout.connect(continue_auto);add_child(timer)
 	save_timer=Timer.new();save_timer.one_shot=true;save_timer.wait_time=0.6;save_timer.timeout.connect(save_game);add_child(save_timer)
 	if FileAccess.file_exists(SAVE):
@@ -98,8 +111,20 @@ func show_status()->void:
 	var a:Dictionary=world.hero()
 	details.title="캐릭터 상태"
 	details.dialog_text="성격: %s\n%s\n무기: %s · 방어력 %d"%[
-		a.personality,World.Body.description(a),world.weapon,world.armor]
+		a.personality,World.Body.description(a),World.Equipment.ITEMS[a.gear.weapon].label,World.Equipment.stats(a).protection]
 	details.popup_centered(Vector2i(380,340))
+
+func update_equipment()->void:
+	gear_info.text=World.Equipment.description(world.hero())
+	var selected:=gear_choice.selected
+	gear_choice.clear()
+	for id in world.inventory:gear_choice.add_item(World.Equipment.ITEMS[id].label)
+	if selected>=0 and selected<gear_choice.item_count:gear_choice.select(selected)
+	training_choice.select(World.Equipment.SKILLS.find(world.hero().training))
+
+func show_equipment()->void:
+	world.stop_auto();timer.stop();update_equipment()
+	gear_dialog.popup_centered(Vector2i(410,510))
 
 func update_party()->void:
 	var allies:Array[Dictionary]=world.companions()
@@ -134,7 +159,7 @@ func save_game()->void:
 	if DirAccess.rename_absolute(temp,SAVE)!=OK:world.message("저장 실패")
 
 func _unhandled_key_input(event:InputEvent)->void:
-	if not event.is_pressed() or event.is_echo() or details.visible or party_dialog.visible:return
+	if not event.is_pressed() or event.is_echo() or details.visible or party_dialog.visible or gear_dialog.visible:return
 	for pair in [["move_up",Vector2i.UP],["move_down",Vector2i.DOWN],["move_left",Vector2i.LEFT],["move_right",Vector2i.RIGHT]]:
 		if event.is_action_pressed(pair[0]):
 			var point:Vector2i=world.position(world.hero().cell)+pair[1]

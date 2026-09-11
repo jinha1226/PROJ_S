@@ -6,7 +6,8 @@ const Heap=preload("res://game/rebuilt/min_heap.gd")
 const Navigation=preload("res://game/rebuilt/navigation.gd")
 const Personality=preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Body=preload("res://game/rebuilt/body_bridge.gd")
-const SCHEMA:=2
+const Equipment=preload("res://game/rebuilt/equipment.gd")
+const SCHEMA:=3
 const WIDTH:=64
 const HEIGHT:=64
 var seed:int=44
@@ -39,6 +40,7 @@ var last_path_usec:int=0
 var route_steps:=PackedInt32Array()
 var auto_explore:bool=false
 var injury_serial:int=0
+var inventory:Array[String]=["SHORT_SWORD","HAND_AXE","MACE","SPEAR","UNARMED","CLOTH","LEATHER","NO_SHIELD"]
 
 func _init(p_seed:int=44)->void:
 	seed=p_seed;generate_floor()
@@ -74,6 +76,7 @@ func make_actor(id:int,cell:int,team:String)->Dictionary:
 	if team=="companion":
 		actor.hp=60;actor.max_hp=60;actor.power=8;actor.move_time=100
 	Body.sync(actor)
+	Equipment.initialise(actor)
 	return actor
 
 func generate_floor()->void:
@@ -113,6 +116,7 @@ func generate_floor()->void:
 		if blocked(cell) or cell==entry or cell==exit_cell:continue
 		if cell%97==0:lights.append(cell)
 		if cell%173==0:loot[str(cell)]="potion"
+		elif cell%211==0:loot[str(cell)]="MAIL" if cell%2==0 else "BUCKLER"
 		elif cell%127==0:loot[str(cell)]="gold"
 	rebuild_lights()
 	sight_origin=-1;route_steps.clear();auto_explore=false;update_sight()
@@ -187,11 +191,23 @@ func submit(kind:String,target:int=-1)->bool:
 					var old:int=player.cell
 					move_actor(actors[occupant],old);move_actor(player,target)
 					occupancy[old]=occupant
-				else:cost=int(player.attack_time);attack(player,actors[occupant])
+				else:cost=int(Equipment.stats(player).delay);attack(player,actors[occupant])
 			elif occupant==-1:
 				cost=movement_time(player,target);move_actor(player,target);pickup()
 			else:return false
 		"WAIT":pass
+		"EQUIP":
+			if target<0 or target>=inventory.size():return false
+			var id:String=inventory[target]
+			if not Equipment.can_equip(player,id) or player.gear[Equipment.ITEMS[id].slot]==id:return false
+			player.gear[Equipment.ITEMS[id].slot]=id
+			weapon=Equipment.ITEMS[player.gear.weapon].label
+			armor=int(Equipment.stats(player).protection)
+			message(Equipment.ITEMS[id].label+" 장착")
+		"TRAIN":
+			if target<0 or target>=Equipment.SKILLS.size():return false
+			player.training=Equipment.SKILLS[target]
+			message(Equipment.LABELS[target]+" 훈련 선택")
 		"POTION":
 			var patient:Dictionary=player
 			if target>0:
@@ -243,11 +259,23 @@ func move_actor(actor:Dictionary,target:int)->void:
 
 func attack(source:Dictionary,target:Dictionary)->void:
 	if friendly(source)==friendly(target) or source.hp<=0 or target.hp<=0:return
-	var defense:int=armor if friendly(target) else 0
-	var raw:=maxi(1,int(source.power)*int(source.attack_factor)/100)
+	var offense:Dictionary=Equipment.stats(source)
+	var defense_stats:Dictionary=Equipment.stats(target)
+	var defense:=maxi(0,int(defense_stats.protection)-int(offense.penetration))
+	var raw:int=offense.damage
 	var damage:=maxi(1,raw-defense-2)
 	injury_serial+=1
-	var injury:Dictionary=Body.hit(source,target,raw,defense,injury_serial,seed)
+	# Separate deterministic lanes: saving/reloading cannot reroll an attack.
+	var roll:int=("%d|%d|%d|accuracy"%[seed,injury_serial,source.id]).sha256_text().substr(0,8).hex_to_int()%100
+	var chance:=clampi(int(offense.accuracy)-int(defense_stats.evasion),10,99)
+	if roll>=chance:
+		if visible[int(target.cell)]==1 or target.id==0:message(actor_name(source)+" 공격 빗나감")
+		return
+	var block_roll:int=("%d|%d|block"%[seed,injury_serial]).sha256_text().substr(0,8).hex_to_int()%100
+	if block_roll<int(defense_stats.block):
+		if visible[int(target.cell)]==1 or target.id==0:message(actor_name(target)+" 방패 방어")
+		return
+	var injury:Dictionary=Body.hit(source,target,raw,defense,injury_serial,seed,offense.body)
 	assert(injury.get("accepted",false),"Body injury rejected")
 	target.hp=maxi(0,int(target.hp)-damage)
 	if target.body.current_blood==0:target.hp=0
@@ -257,7 +285,12 @@ func attack(source:Dictionary,target:Dictionary)->void:
 		effects.append({"kind":"hit","cell":target.cell,"amount":damage})
 	if target.hp==0:
 		occupancy[int(target.cell)]=-1
-		if not friendly(target):loot[str(target.cell)]="gold"
+		if not friendly(target):
+			loot[str(target.cell)]="gold"
+			if friendly(source):
+				Equipment.award(hero(),20+floor_number*5)
+				for ally in companions():
+					if ally.hp>0:Equipment.award(ally,20+floor_number*5)
 		if friendly(target) or visible[int(target.cell)]==1:message(actor_name(target)+" 전투 불능")
 
 func companion_turn(actor:Dictionary)->void:
@@ -269,7 +302,8 @@ func companion_turn(actor:Dictionary)->void:
 		var cell:=index(point)
 		var id:=occupancy[cell]
 		if id>0 and not friendly(actors[id]) and open_edge(actor.cell,cell):
-			attack(actor,actors[id]);actor.ready=time+int(actor.attack_time);return
+			var delay:int=Equipment.stats(actor).delay
+			attack(actor,actors[id]);actor.ready=time+delay;return
 	if actor.order=="HOLD":return
 	if position(actor.cell).distance_squared_to(position(hero().cell))<=2:return
 	var next:=navigation.next_step(self,actor.cell,hero().cell)
@@ -292,7 +326,8 @@ func enemy_turn(actor:Dictionary,party:Variant=null)->void:
 	if destination<0:actor.ready=time+100;return
 	var delta:=position(goal)-position(start)
 	if sees and maxi(absi(delta.x),absi(delta.y))==1 and open_edge(start,goal):
-		attack(actor,victim);actor.ready=time+int(actor.attack_time);return
+		var delay:int=Equipment.stats(actor).delay
+		attack(actor,victim);actor.ready=time+delay;return
 	# Personality influences low-health retreat, without extra world simulation.
 	if sees and actor.hp*3<actor.max_hp and int(actor.profile.E)>600:
 		var best:=start
@@ -314,6 +349,10 @@ func pickup()->void:
 	var key:=str(hero().cell)
 	if not loot.has(key):return
 	if loot[key]=="potion":potions+=1;message("회복약을 주웠습니다.")
+	elif Equipment.ITEMS.has(loot[key]):
+		var id:String=loot[key]
+		if id not in inventory:inventory.append(id);message(Equipment.ITEMS[id].label+" 획득")
+		else:gold+=5;message("중복 장비를 금화 5개로 교환했습니다.")
 	else:gold+=5;message("금화 5개를 주웠습니다.")
 	loot.erase(key)
 
@@ -360,14 +399,20 @@ func save_data()->Dictionary:
 		var row:Dictionary=actor.duplicate(true)
 		row.body=actor.body.to_dict();rows.append(row)
 	return {"schema":SCHEMA,"seed":seed,"floor":floor_number,"time":time,
-		"terrain":Array(terrain),"memory":Array(memory),"actors":rows,"injury_serial":injury_serial,
+		"terrain":Array(terrain),"memory":Array(memory),"actors":rows,"injury_serial":injury_serial,"inventory":inventory.duplicate(),
 		"loot":loot.duplicate(),"lights":Array(lights),"exit":exit_cell,"gold":gold,
 		"potions":potions,"torch_fuel":torch_fuel,"torch_lit":torch_lit,"armor":armor,"weapon":weapon}
 
 func restore(data:Dictionary)->bool:
 	var version:=int(data.get("schema",-1))
-	if version not in [1,SCHEMA]:return false
-	if version==SCHEMA and (not data.has("injury_serial") or int(data.injury_serial)<0):return false
+	if version not in [1,2,SCHEMA]:return false
+	if version>=2 and (not data.has("injury_serial") or int(data.injury_serial)<0):return false
+	if version==SCHEMA:
+		if not data.get("inventory") is Array or data.inventory.size()>Equipment.ITEMS.size():return false
+		var seen:Dictionary={}
+		for id in data.inventory:
+			if not id is String or not Equipment.ITEMS.has(id) or seen.has(id):return false
+			seen[id]=true
 	for key in ["seed","floor","time","terrain","memory","actors","loot","lights","exit","gold","potions","torch_fuel","torch_lit","armor","weapon"]:
 		if not data.has(key):return false
 	if not data.loot is Dictionary or not data.lights is Array:return false
@@ -385,10 +430,15 @@ func restore(data:Dictionary)->bool:
 		if not a is Dictionary:return false
 		for field in required:
 			if version==1 and field in ["body","order","move_factor","attack_factor"]:continue
+			if version<3 and field in ["gear","skill_xp","training"]:continue
 			if not a.has(field):return false
 		if a.team not in ["hero","companion","enemy"] or (i==0)!=(a.team=="hero"):return false
 		if not a.profile is Dictionary or not a.facing is Array or a.facing.size()!=2:return false
-		if version==SCHEMA:
+		if version==SCHEMA and not Equipment.valid(a):return false
+		if version==SCHEMA and i==0:
+			for id in a.gear.values():
+				if id not in data.inventory:return false
+		if version>=2:
 			if a.order not in ["FOLLOW","HOLD"]:return false
 			var body=Body.State.from_dict(a.body)
 			if body==null or body.entity_id!=i+1:return false
@@ -405,9 +455,13 @@ func restore(data:Dictionary)->bool:
 	seed=int(data.seed);floor_number=int(data.floor);time=int(data.time)
 	terrain=PackedStringArray(data.terrain);memory=PackedByteArray(data.memory)
 	actors.assign(data.actors.duplicate(true))
+	if version==SCHEMA:inventory.assign(data.inventory)
 	injury_serial=int(data.get("injury_serial",0))
 	for actor in actors:
 		actor.body=restored_bodies[int(actor.id)]
+		if version<3:Equipment.initialise(actor)
+		else:
+			for skill in Equipment.SKILLS:actor.skill_xp[skill]=int(actor.skill_xp[skill])
 		actor.order=str(actor.get("order","FOLLOW"))
 		Body.sync(actor)
 		for key in ["id","cell","hp","max_hp","ready","power","move_time","attack_time","stress","skin","bone","blood","last_seen"]:
