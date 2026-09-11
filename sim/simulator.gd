@@ -624,9 +624,17 @@ func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		if not applied:return null
 	if int(assessment.damage)>0:
 		var target=world.entities[target_id]
+		var damage_type:="fire" if skill_id=="FIREBOLT" else "physical"
+		var resolved_damage:=int(damage._element_armor_context(target,damage_type,
+			int(assessment.damage),int(action.id),action.position).get(
+			"final_damage",int(assessment.damage)))
+		var terminal_immediate:bool=resolved_damage>=int(target.health) \
+			and (world.lifecycle_succumbs(target_id) or world.party_encounter!=null \
+			and world.party_encounter.protagonist_id==target_id)
 		var applied:Dictionary=damage.apply_canonical_active_damage(target,
-			int(assessment.damage),"fire" if skill_id=="FIREBOLT" else "physical",
-			int(action.id),action.position,processed_step_index,int(target.health),false,false)
+			int(assessment.damage),damage_type,
+			int(action.id),action.position,processed_step_index,int(target.health),
+			terminal_immediate,false)
 		if not bool(applied.get("accepted",false)):return null
 		if skill_id=="FIREBOLT":
 			# The skill and direct environment actions share the same heat/ignition
@@ -724,7 +732,8 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 		else:
 			var applied:Dictionary=damage.apply_canonical_active_damage(target,
 				int(resolution.final_damage),"physical",leaf.id,leaf.position,
-				processed_step_index,int(resolution.target_health_before),false,
+				processed_step_index,int(resolution.target_health_before),
+				bool(resolution.terminal_immediate),
 				bool(resolution.bleed_proc_succeeded))
 			if not bool(applied.get("accepted",false)):return false
 		if target.health!=int(resolution.target_health_after) \
@@ -883,7 +892,7 @@ func _commit_prevalidated_party_turn(authoritative:Dictionary,
 			var applied: Dictionary = damage.apply_canonical_active_damage(target,
 				resolution.final_damage, "physical", attack_action.id,
 				attack_action.position, processed_step_index,
-				resolution.target_health_before, false,
+				resolution.target_health_before, resolution.terminal_immediate,
 				resolution.bleed_proc_succeeded)
 			var expected_applied: int = resolution.target_health_before \
 				- resolution.target_health_after

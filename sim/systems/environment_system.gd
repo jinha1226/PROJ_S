@@ -307,9 +307,10 @@ func _apply_explosion_impact(entity,position:Vector2i,wave_power:int,wave,
 	if impact==null:return
 	var protagonist:bool=world.party_encounter!=null \
 		and world.party_encounter.protagonist_id==entity.id
+	var terminal_target:bool=protagonist or world.lifecycle_succumbs(entity.id)
 	damage_system.apply_canonical_active_damage(entity,applied_force,"physical",
 		impact.id,position,processed_step_index,entity.health,
-		protagonist and applied_force>=entity.health)
+		terminal_target and applied_force>=entity.health)
 
 
 func _apply_explosion_destruction(candidates:Dictionary)->void:

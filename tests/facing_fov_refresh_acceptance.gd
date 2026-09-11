@@ -65,9 +65,17 @@ func run()->void:
 	var attack_facing:Vector2i=FieldTurns.facing_for_action(world,
 		Action.melee(hero_id,enemy_id),party.facing)
 	var attack_delta:Vector2i=world.entities[enemy_id].position-world.entities[hero_id].position
-	var expected_attack_facing:=Vector2i(signi(attack_delta.x),0) \
-		if absi(attack_delta.x)>=absi(attack_delta.y) else Vector2i(0,signi(attack_delta.y))
+	var expected_attack_facing:=Vector2i(signi(attack_delta.x),signi(attack_delta.y))
 	check(attack_facing==expected_attack_facing,
 		"melee and targeted combat actions face their target before FOV refresh")
+	var diagonal_facing:=FieldTurns.facing_for_action(world,Action.move_to(hero_id,
+		world.entities[hero_id].position+Vector2i(1,1)),party.facing)
+	check(diagonal_facing==Vector2i(1,1),
+		"diagonal movement preserves both facing axes")
+	check(Vision._within_front_cone(Vector2i(1,1),Vector2i(1,0),120) \
+		and not Vision._within_front_cone(Vector2i(1,1),Vector2i(-1,-1),120),
+		"diagonal sight cone is normalized around its true heading")
+	party.facing=Vector2i(1,1)
+	check(world.world_state_error().is_empty(),"runtime accepts diagonal party facing")
 	print("FACING FOV REFRESH: ",failures)
 	quit(0 if failures.is_empty() else 1)

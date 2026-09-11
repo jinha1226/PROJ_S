@@ -81,18 +81,20 @@ func _process_due_statuses(processed_step_index: int) -> bool:
 				return false
 			var downed_owner: bool = combatant.life_state == "DOWNED"
 			var lethal: bool = not downed_owner and entity.health <= BLEED_TICK_DAMAGE
-			var protagonist_terminal: bool = lethal and world.party_encounter != null \
-					and world.party_encounter.protagonist_id == entity_id
-			# DOWNED bleedout and immediate protagonist death each add the C1
+			var protagonist:bool=world.party_encounter!=null \
+				and world.party_encounter.protagonist_id==entity_id
+			var terminal_target:bool=lethal and (protagonist \
+				or world.lifecycle_succumbs(entity_id))
+			# DOWNED bleedout and immediate terminal death each add the C1
 			# corpse-materialization child after entity.died.
 			var damage_events: int = (3 + combatant.status_rows.size()) if downed_owner \
 				else ((4 + combatant.status_rows.size()) \
-					if protagonist_terminal else (2 if lethal else 1))
+					if terminal_target else (2 if lethal else 1))
 			var natural_expiry: bool = not downed_owner \
-					and world.world_time >= status.expires_at and not protagonist_terminal
+					and world.world_time >= status.expires_at and not terminal_target
 			required_events += 1 + damage_events + (1 if natural_expiry else 0)
 			due_rows.append({"entity_id": entity_id, "status": status,
-				"downed": downed_owner, "terminal": protagonist_terminal,
+				"downed": downed_owner, "terminal": terminal_target,
 				"natural": natural_expiry})
 	if due_rows.is_empty():
 		return true

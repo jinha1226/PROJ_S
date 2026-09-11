@@ -32,6 +32,7 @@ const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
+const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
 # Proportional Korean/Latin pixel type keeps the dense mobile UI readable.
 # ASCII frames, gauges, and map glyphs deliberately retain LivingWorldMonoKR
@@ -95,6 +96,7 @@ var product_restart_confirm:ConfirmationDialog
 var expedition_floor_label:Label
 var return_timer_label:Label
 var ration_label:Label
+var torch_timer_label:Label
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -941,6 +943,11 @@ func _build_ui()->void:
 	ration_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	ration_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	ration_label.visible=false;clock_row.add_child(ration_label)
+	torch_timer_label=Label.new();torch_timer_label.name="TorchTimer"
+	torch_timer_label.add_theme_font_size_override("font_size",FONT_AUX)
+	torch_timer_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	torch_timer_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
+	torch_timer_label.visible=false;clock_row.add_child(torch_timer_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
 	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
 	top_hud_actions.add_theme_constant_override("separation",0)
@@ -7327,10 +7334,32 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
+	var torch_text:="";var torch_band:="NONE";var torch_remaining:=0
+	var torch_capacity:=TorchRulesScript.FUEL_DURATION
+	var torch_tone:=AsciiFrameScript.INK
+	if phase=="DUNGEON" and session!=null and session.sim!=null:
+		var world=session.sim.world
+		var hero_id:=int(world.party_control_actor_id())
+		var torch_state:Dictionary=TorchRulesScript.equipped_torch_state(world,hero_id)
+		if bool(torch_state.get("is_torch",false)):
+			torch_remaining=int(torch_state.get("fuel_remaining",0))
+			torch_capacity=maxi(1,int(torch_state.get("fuel_capacity",
+				TorchRulesScript.FUEL_DURATION)))
+			if bool(torch_state.get("depleted",false)):
+				torch_text="횃불 소진";torch_band="DEPLETED";torch_tone=AsciiFrameScript.DANGER
+			elif bool(torch_state.get("lit",false)):
+				torch_text="횃불 %s시간"%_grouped_number(torch_remaining)
+				torch_band="WARNING" if torch_remaining*4<=torch_capacity else "LIT"
+				torch_tone=AsciiFrameScript.DANGER if torch_band=="WARNING" else AsciiFrameScript.BRASS
+			else:
+				torch_text="횃불 꺼짐 · %s시간"%_grouped_number(torch_remaining)
+				torch_band="OFF"
 	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
 		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false),
 		"ration_text":ration_text,"ration_band":ration_band,
-		"ration_tone_hex":ration_tone.to_html(false)}.duplicate(true)
+		"ration_tone_hex":ration_tone.to_html(false),"torch_text":torch_text,
+		"torch_band":torch_band,"torch_remaining":torch_remaining,
+		"torch_capacity":torch_capacity,"torch_tone_hex":torch_tone.to_html(false)}.duplicate(true)
 
 func _grouped_number(value:int)->String:
 	var digits:=str(absi(value));var grouped:=""
@@ -7354,6 +7383,13 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 			and str(spec.get("phase",""))=="DUNGEON"
 		ration_label.add_theme_color_override("font_color",
 			Color(str(spec.get("ration_tone_hex","c7c2b3"))))
+	if torch_timer_label!=null:
+		var torch_text:=str(spec.get("torch_text",""))
+		torch_timer_label.text=torch_text
+		torch_timer_label.visible=product_hud and not torch_text.is_empty() \
+			and str(spec.get("phase",""))=="DUNGEON"
+		torch_timer_label.add_theme_color_override("font_color",
+			Color(str(spec.get("torch_tone_hex","c7c2b3"))))
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,

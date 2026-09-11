@@ -22,6 +22,14 @@ func run()->void:
 		"held torch widens the soft light radius")
 	check(center.alpha<=0.05 and edge.alpha<=0.62,
 		"floor one ambient darkness stays gently brighter")
+	var forward_distance:=Grid.directional_darkness_distance(Vector2(4,0),Vector2i.RIGHT,false)
+	var side_distance:=Grid.directional_darkness_distance(Vector2(0,4),Vector2i.RIGHT,false)
+	var rear_distance:=Grid.directional_darkness_distance(Vector2(-4,0),Vector2i.RIGHT,false)
+	check(forward_distance<side_distance and side_distance<rear_distance,
+		"unlit darkness follows facing without a perfect circular edge")
+	check(is_equal_approx(Grid.directional_darkness_distance(Vector2(4,0),Vector2i.RIGHT,true),
+		Grid.directional_darkness_distance(Vector2(-4,0),Vector2i.RIGHT,true)),
+		"held torch keeps a circular light pool")
 	for viewport in [360,450]:
 		root.size=Vector2i(viewport,viewport);root.content_scale_size=root.size
 		var grid=Grid.new();grid.size=Vector2(viewport,viewport);root.add_child(grid)

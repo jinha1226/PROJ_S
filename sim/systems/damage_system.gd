@@ -35,6 +35,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var lethal: bool = entity != null and resolved_requested_damage >= expected_health_before
 	var protagonist_target: bool = entity != null and world.party_encounter != null \
 		and world.party_encounter.protagonist_id == entity.id
+	var terminal_target:bool=protagonist_target or (entity!=null \
+		and world.lifecycle_succumbs(entity.id))
 	var status_count: int = world.combatant_states[entity.id].status_rows.size() \
 		if entity != null and world.combatant_states.has(entity.id) else 0
 	var should_apply_bleed: bool = apply_bleed_status and not terminal_immediate
@@ -62,7 +64,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 				or cause.data.get("outcome") != "HIT" \
 				or cause.data.get("bleed_proc_succeeded") != true \
 				or int(cause.data.get("final_damage", -1)) != requested_damage)) \
-			or terminal_immediate != (lethal and protagonist_target) \
+			or terminal_immediate != (lethal and terminal_target) \
 			or (lethal and not terminal_immediate \
 				and world.world_time > MAX_WORLD_TIME - 200) \
 			or (should_apply_bleed and world.world_time > MAX_WORLD_TIME - 300) \
@@ -160,7 +162,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			death_event = world.emit_event("entity.died", -1, entity.id,
 				resolved_position, 0, transition_event.id, {"schema_version": 1,
 					"life_ruleset_id": LIFE_RULESET_ID,
-					"previous_life_state": "DOWNED", "reason": "PARTY_DEFEAT",
+					"previous_life_state": "DOWNED",
+					"reason": "PARTY_DEFEAT" if protagonist_target else "LETHAL_DAMAGE",
 					"damage_type": damage_type})
 			if death_event == null:
 				return {"accepted": false, "event": damage_event,
@@ -170,7 +173,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			combatant.downed_at = -1; combatant.downed_resolve_at = -1
 			combatant.downed_source_event_id = -1
 			combatant.status_rows.clear()
-			if preload("res://sim/party_survival_rules.gd").defeated(world):
+			if protagonist_target and preload("res://sim/party_survival_rules.gd").defeated(world):
 				world.party_encounter.safe_phase = "PARTY_DEFEATED"
 	if should_apply_bleed:
 		var status_definition: Dictionary = StatusRegistryScript.definition("BLEEDING")

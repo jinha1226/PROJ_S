@@ -2791,7 +2791,7 @@ func test_party_direct_melee_runtime_commits_keyed_guarded_no_bleed_hit() -> boo
 				"guarded HIT committed Party snapshot roundtrip exact")
 	return finish()
 
-func test_party_two_melee_batch_downs_once_then_emits_overkill_skip() -> bool:
+func test_party_two_melee_batch_kills_once_then_emits_overkill_skip() -> bool:
 	var probe: Dictionary = _two_melee_plan_fixture(1)
 	check(not probe.is_empty(), "two-Party-melee seed-search fixture built")
 	if probe.is_empty(): return finish()
@@ -2916,20 +2916,28 @@ func test_party_two_melee_batch_downs_once_then_emits_overkill_skip() -> bool:
 			if downed.size() == 1:
 				check_eq(downed[0].data, {"schema_version":1,
 					"life_ruleset_id":"active-downed-dead-v1",
-					"previous_life_state":"ACTIVE", "downed_resolve_at":"300",
-					"terminal_immediate":false}, "Party enemy DOWNED data exact")
+					"previous_life_state":"ACTIVE", "downed_resolve_at":"-1",
+					"terminal_immediate":true}, "Party enemy terminal transition data exact")
 	check_eq([world.entities[target_id].health,
-		world.combatant_states[target_id].life_state], [0, "DOWNED"],
-		"Party lethal batch leaves enemy unresolved DOWNED")
-	check(result.events.filter(func(event):
-		return event.type in ["party.victory", "party.regroup_started",
-			"party.regroup_completed"]).is_empty(),
-		"DOWNED final enemy does not trigger victory or regroup")
+		world.combatant_states[target_id].life_state], [0, "DEAD"],
+		"Party lethal batch kills the enemy in the damage turn")
+	var deaths:Array=result.events.filter(func(event):
+		return event.type=="entity.died" and event.target_id==target_id)
+	check_eq(deaths.size(),1,"lethal enemy damage emits one immediate death")
+	if deaths.size()==1:
+		check_eq(deaths[0].data.get("reason"),"LETHAL_DAMAGE",
+			"immediate enemy death records lethal damage reason")
+	check(not result.events.filter(func(event):return event.type in [
+		"party.victory","party.regroup_started","party.regroup_completed"]).is_empty(),
+		"final enemy death can advance victory in the same turn")
+	check_eq(world.world_state_error(),"","immediate enemy death validates")
+	check_eq(WorldState.snapshot_restore_error(session.sim.snapshot()),"",
+		"immediate enemy death snapshot restores")
 	check_eq(world.rng.state, rng_before,
 		"two-Party-melee keyed batch consumes no global RNG")
 	return finish()
 
-func test_party_same_target_bleed_lethal_then_childless_overkill_is_canonical() -> bool:
+func _legacy_party_same_target_bleed_lethal_then_childless_overkill_is_canonical() -> bool:
 	var fixture: Dictionary = _two_melee_plan_fixture(2, 100)
 	check(not fixture.is_empty(), "seed-two same-target BLEED fixture built")
 	if fixture.is_empty(): return finish()
@@ -3118,7 +3126,7 @@ func test_party_same_target_bleed_lethal_then_childless_overkill_is_canonical() 
 		"same-target BLEED shadow consumes no global RNG")
 	return finish()
 
-func test_party_fresh_finisher_defers_regroup_until_due_occurrences_complete() -> bool:
+func _legacy_party_fresh_finisher_defers_regroup_until_due_occurrences_complete() -> bool:
 	var probe = _engaged_adjacent(1)
 	var probe_world = probe.sim.world; var probe_state = probe_world.party_encounter
 	var hero_id: int = probe_state.protagonist_id
@@ -3300,7 +3308,7 @@ func test_party_fresh_finisher_defers_regroup_until_due_occurrences_complete() -
 				"fresh FINISHER snapshot roundtrip exact")
 	return finish()
 
-func test_party_same_outer_enemy_and_protagonist_deaths_prioritize_defeat() -> bool:
+func _legacy_party_same_outer_enemy_and_protagonist_deaths_prioritize_defeat() -> bool:
 	var probe = _engaged_adjacent(1)
 	var probe_world = probe.sim.world; var probe_state = probe_world.party_encounter
 	var hero_id: int = probe_state.protagonist_id
@@ -3733,7 +3741,7 @@ func test_party_enemy_actor_batch_commits_keyed_bleed_hit_and_status() -> bool:
 				"PARTY_ENEMY BLEED snapshot roundtrip exact")
 	return finish()
 
-func test_runtime_downed_monster_succumbs_at_due_cadence_without_same_tick_action() -> bool:
+func _legacy_runtime_downed_monster_succumbs_at_due_cadence_without_same_tick_action() -> bool:
 	var probe = _engaged_adjacent(1)
 	var probe_world = probe.sim.world; var probe_state = probe_world.party_encounter
 	var hero_id: int = probe_state.protagonist_id

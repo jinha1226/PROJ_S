@@ -158,7 +158,8 @@ static func _issue_attack(sim,attacker:int,target:int,step_index:int)->Dictionar
 			int(assessment.normal_final_damage),event.id,entity.position,step_index)
 		return {"accepted":bool(finished.get("accepted",false)),"cost":int(weapon.attack_time)}
 	var damaged:Dictionary=sim.damage.apply_canonical_active_damage(entity,int(resolved.final_damage),
-		"physical",event.id,entity.position,step_index,entity.health,false,
+		"physical",event.id,entity.position,step_index,entity.health,
+		bool(resolved.terminal_immediate),
 		bool(resolved.bleed_proc_succeeded))
 	return {"accepted":bool(damaged.get("accepted",false)),"cost":int(weapon.attack_time)}
 

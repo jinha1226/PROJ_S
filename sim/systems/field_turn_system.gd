@@ -106,8 +106,7 @@ static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
 	elif action.type=="SKILL" and action.destination!=Vector2i(-1,-1):
 		delta=action.destination-world.entities[action.actor_id].position
 	if delta==Vector2i.ZERO:return fallback
-	if absi(delta.x)>=absi(delta.y):return Vector2i(signi(delta.x),0)
-	return Vector2i(0,signi(delta.y))
+	return Vector2i(signi(delta.x),signi(delta.y))
 
 static func _social(sim,event_start:int,decay:bool)->bool:
 	var world=sim.world

@@ -47,6 +47,15 @@ func test_bright_is_omnidirectional_and_dark_is_forward_peripheral() -> bool:
 	check(bool(bright_rear.visible), "bright light restores omnidirectional sight")
 	check(bool(torch_rear.visible), "lit target is visible from darkness")
 	check_eq(str(bright_rear.observer_light_band), "BRIGHT", "bright band")
+	var diagonal_sim=Simulator.new(9,9,602)
+	var diagonal_rear:=VisionRules.observe(diagonal_sim.world,Vector2i(4,4),
+		Vector2i(2,2),Vector2i(1,1),profile,dark)
+	var diagonal_far_rear:=VisionRules.observe(diagonal_sim.world,Vector2i(4,4),
+		Vector2i(1,1),Vector2i(1,1),profile,dark)
+	check(bool(diagonal_rear.visible),
+		"diagonal facing keeps two rear peripheral cells visible")
+	check(not bool(diagonal_far_rear.visible),
+		"diagonal rear sight still ends beyond two cells")
 	return finish()
 
 

@@ -659,8 +659,10 @@ static func _position(value: Variant, width: int, height: int) -> bool:
 	return value is Array and value.size() == 2 and _integer(value[0]) and _integer(value[1]) and value[0] >= 0 and value[1] >= 0 and value[0] < width and value[1] < height
 
 static func _facing(value: Variant) -> bool:
-	return value is Array and value.size() == 2 and _integer(value[0]) and _integer(value[1]) \
-		and Vector2i(int(value[0]), int(value[1])) in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+	if not value is Array or value.size()!=2 or not _integer(value[0]) or not _integer(value[1]):
+		return false
+	var facing:=Vector2i(int(value[0]),int(value[1]))
+	return facing!=Vector2i.ZERO and absi(facing.x)<=1 and absi(facing.y)<=1
 
 static func _integer(value: Variant) -> bool:
 	return value is int or (value is float and value == floor(value))

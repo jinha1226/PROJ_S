@@ -4196,7 +4196,8 @@ func _status_history_error() -> String:
 						return "owner_death_status_expire_cause_invalid"
 					if death_driver.type == "entity.downed" \
 							and (party_encounter == null \
-							or party_encounter.protagonist_id != owner_id \
+							or (party_encounter.protagonist_id != owner_id \
+								and not lifecycle_succumbs(owner_id)) \
 							or death_driver.actor_id != -1 or death_driver.magnitude != 0 \
 							or not _exact_keys(death_driver.data, ["downed_resolve_at", "life_ruleset_id",
 								"previous_life_state", "schema_version", "terminal_immediate"]) \
@@ -4288,10 +4289,12 @@ func _lifecycle_history_error() -> String:
 				return "canonical_downed_damage_driver_invalid"
 			var protagonist: bool = party_encounter != null \
 					and party_encounter.protagonist_id == event.target_id
+			var terminal_target:bool=protagonist or bool(event.data.terminal_immediate)
 			var encoded_deadline: int = Int64CodecScript.parse(
 				event.data.downed_resolve_at, "downed resolve time")
-			if protagonist:
-				if encoded_deadline != -1 or event.data.terminal_immediate != true:
+			if terminal_target:
+				if (not protagonist and not lifecycle_succumbs(event.target_id)) \
+						or encoded_deadline != -1 or event.data.terminal_immediate != true:
 					return "canonical_downed_terminal_mismatch"
 				var party_death_index: int = event_index + 1
 				if active_bleed_owners.has(event.target_id):
@@ -4332,7 +4335,8 @@ func _lifecycle_history_error() -> String:
 						or party_death.data.get("schema_version") != 1 \
 						or party_death.data.get("life_ruleset_id") != LIFE_RULESET_ID \
 						or party_death.data.get("previous_life_state") != "DOWNED" \
-						or party_death.data.get("reason") != "PARTY_DEFEAT" \
+						or party_death.data.get("reason") \
+						!= ("PARTY_DEFEAT" if protagonist else "LETHAL_DAMAGE") \
 						or party_death.data.get("damage_type") != party_damage_type:
 					return "canonical_party_defeat_death_invalid"
 				var party_final_state = combatant_states[event.target_id]
@@ -4852,7 +4856,8 @@ func _party_runtime_error() -> String:
 	if party_encounter.enemy_busy_rows.size() != party_encounter.enemy_ids.size(): return "party_enemy_busy_set_mismatch"
 	if party_encounter.enemy_awareness_rows.size()!=party_encounter.enemy_ids.size():
 		return "party_enemy_awareness_set_mismatch"
-	if not in_bounds(party_encounter.group_anchor) or party_encounter.facing not in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+	if not in_bounds(party_encounter.group_anchor) or party_encounter.facing==Vector2i.ZERO \
+			or absi(party_encounter.facing.x)>1 or absi(party_encounter.facing.y)>1:
 		return "party_anchor_or_facing_invalid"
 	var hero = entities[party_encounter.protagonist_id]
 	var hero_member = party_encounter.member_rows[party_encounter.protagonist_id]
@@ -5584,7 +5589,7 @@ func _party_event_correlation_error() -> String:
 				or contact.type != derived_type or contact.actor_id != expected_actor or contact.target_id != expected_target \
 				or contact.cause_id != -1 or contact.magnitude != 0:
 			return "party_contact_event_semantic_mismatch"
-		if party_encounter.facing != derived_facing:
+		if party_encounter.safe_phase=="CONTACT" and party_encounter.facing != derived_facing:
 			return "party_contact_state_facing_mismatch"
 		if party_encounter.contact_kind != "NONE" and (party_encounter.contact_kind != derived_kind \
 				or party_encounter.contact_enemy_id != contact_enemy_id \
@@ -6860,6 +6865,7 @@ func _party_historical_blocker_at(position: Vector2i, contact_event_id: int) -> 
 
 
 func _party_formation_offset(formation_id: String, index: int, facing: Vector2i) -> Vector2i:
+	facing=_party_cardinal_facing(facing)
 	var back := -facing; var right := Vector2i(-facing.y,facing.x); var left := -right
 	if formation_id == "WEDGE":
 		return back+left if index == 0 else (back+right if index == 1 else back*index)

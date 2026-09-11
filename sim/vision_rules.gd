@@ -184,18 +184,10 @@ static func _within_front_cone(facing: Vector2i, direction: Vector2i, angle: int
 		return true
 	if facing == Vector2i.ZERO:
 		facing = Vector2i.RIGHT
-	var dot := facing.x * direction.x + facing.y * direction.y
-	var facing_length := maxi(1, maxi(absi(facing.x), absi(facing.y)))
-	var direction_length := maxi(1, maxi(absi(direction.x), absi(direction.y)))
-	var cosine_milli := dot * 1000 / (facing_length * direction_length)
-	var threshold := 1000 if angle >= 180 else (707 if angle >= 45 else 0)
-	if angle >= 135:
-		threshold = -707
-	elif angle >= 90:
-		threshold = 0
-	elif angle >= 45:
-		threshold = 707
-	return cosine_milli >= threshold
+	var facing_vector:=Vector2(facing).normalized()
+	var direction_vector:=Vector2(direction).normalized()
+	var half_angle:=deg_to_rad(clampf(float(angle),0.0,360.0)*0.5)
+	return facing_vector.dot(direction_vector)+0.0001>=cos(half_angle)
 
 
 static func _has_line_of_sight(world, origin: Vector2i, target: Vector2i) -> bool:

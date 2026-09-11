@@ -73,6 +73,29 @@ func test_torch_save_load_and_journal_replay_are_exact() -> bool:
 	return finish()
 
 
+func test_top_hud_reports_equipped_torch_remaining_fuel() -> bool:
+	var session=Session.new(733,20260828,VisualMap.SOLO_FIXTURE_SCENARIO_ID)
+	var instance_id:=_give_torch(session)
+	check(bool(session.equip_inventory_item(instance_id,TorchRules.EQUIP_SLOT).accepted),
+		"torch equips for HUD")
+	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800)
+	sandbox.initialize_for_headless_test(session,true)
+	var off_spec:Dictionary=sandbox.expedition_hud_spec()
+	check(str(off_spec.get("torch_text","")).begins_with("횃불 꺼짐"),
+		"equipped unlit torch exposes remaining fuel")
+	check(bool(session.ignite_torch(instance_id).accepted),"HUD torch ignites")
+	sandbox._refresh()
+	var lit_spec:Dictionary=sandbox.expedition_hud_spec()
+	check(str(lit_spec.get("torch_text","")).begins_with("횃불 ") \
+		and str(lit_spec.get("torch_band",""))=="LIT",
+		"lit torch HUD exposes remaining duration")
+	check(sandbox.torch_timer_label!=null and sandbox.torch_timer_label.visible \
+		and sandbox.torch_timer_label.text==str(lit_spec.torch_text),
+		"top rail renders torch duration")
+	sandbox.free()
+	return finish()
+
+
 func test_torch_depletion_removes_light_and_blocks_reignite() -> bool:
 	var session = Session.new(734, 20260828, VisualMap.SOLO_FIXTURE_SCENARIO_ID)
 	var instance_id := _give_torch(session)

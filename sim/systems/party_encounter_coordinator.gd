@@ -1981,6 +1981,7 @@ func _fallback_cell(anchor: Vector2i, reserved: Dictionary):
 	return null if candidates.is_empty() else candidates[0]
 
 func _formation_offset(preset: String, index: int, facing: Vector2i) -> Vector2i:
+	facing=_cardinal_facing(facing)
 	var back := -facing; var right := Vector2i(-facing.y, facing.x); var left := -right
 	# In a four-person party the third companion occupies the protected rear.
 	# This keeps a support build out of the two front flanks without assigning

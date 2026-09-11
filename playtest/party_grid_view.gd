@@ -95,6 +95,7 @@ var _actor_motions: Dictionary = {}
 var _actor_last_facing:Dictionary={}
 var _hero_camera_position:=Vector2i(-1,-1)
 var _hero_camera_actor_id:=-1
+var _vision_facing:=Vector2i.RIGHT
 var _camera_settle:Dictionary={}
 var _pointer_gesture_active := false
 var _pointer_gesture_kind := ""
@@ -213,6 +214,12 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
 	var phase_value:Variant=observation.get("phase",{})
+	var facing_value:Variant=phase_value.get("facing",[]) if phase_value is Dictionary else []
+	if facing_value is Array and facing_value.size()==2:
+		var next_facing:=Vector2i(signi(int(facing_value[0])),signi(int(facing_value[1])))
+		if next_facing!=Vector2i.ZERO and next_facing!=_vision_facing:
+			_vision_facing=next_facing
+			_radial_darkness_mesh=null;_radial_darkness_mesh_key=""
 	var next_floor_index:=int(phase_value.get("floor_index",1)) \
 		if phase_value is Dictionary else 1
 	if next_floor_index!=_terrain_theme_floor_index:
@@ -2828,8 +2835,10 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 	var cached:=_cached_static_cell(sample_cell)
 	var state:=str(cached.get("visibility_state","UNSEEN"))
 	if state!="VISIBLE":return {"drawable":false}.duplicate(true)
-	var hero_distance:=world_to_pixel_center(_hero_camera_position).distance_to(point) \
+	var offset_cells:=(point-world_to_pixel_center(_hero_camera_position)) \
 		/maxf(1.0,cell_size_px())
+	var hero_distance:=directional_darkness_distance(offset_cells,_vision_facing,
+		_hero_torch_lit())
 	var alpha:=float(radial_darkness_sample(hero_distance,_hero_torch_lit(),
 		_terrain_theme_floor_index).alpha)
 	var wall_alpha:=_wall_torch_alpha_at(sample_cell,point)
@@ -2838,6 +2847,17 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 	if fire_alpha>=0.0:alpha=minf(alpha,fire_alpha)
 	return {"drawable":true,"alpha":alpha,"sample_cell":sample_cell,
 		"wall_lit":wall_alpha>=0.0,"fire_lit":fire_alpha>=0.0}.duplicate(true)
+
+static func directional_darkness_distance(offset_cells:Vector2,facing:Vector2i,
+		torch_lit:bool)->float:
+	if torch_lit or offset_cells.is_zero_approx():return offset_cells.length()
+	var facing_vector:=Vector2(facing).normalized()
+	if facing_vector.is_zero_approx():facing_vector=Vector2.RIGHT
+	var forward:=offset_cells.dot(facing_vector)
+	var lateral:=absf(offset_cells.cross(facing_vector))
+	var forward_scale:=1.18 if forward>=0.0 else 0.82
+	var side_scale:=0.92
+	return sqrt(pow(forward/forward_scale,2.0)+pow(lateral/side_scale,2.0))
 
 func _wall_torch_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
 	var best:=-1.0
@@ -2884,9 +2904,9 @@ func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
 
 func _draw_radial_darkness_overlay()->void:
 	var torch_lit:=_hero_torch_lit()
-	var key:="%d:%d:%d:%d:%d:%s"%[_static_projection_rebuild_count,
+	var key:="%d:%d:%d:%d:%d:%s:%d:%d"%[_static_projection_rebuild_count,
 		int(size.x),int(size.y),_terrain_theme_floor_index,_hero_camera_actor_id,
-		str(torch_lit)]
+		str(torch_lit),_vision_facing.x,_vision_facing.y]
 	if _radial_darkness_mesh==null or key!=_radial_darkness_mesh_key:
 		_radial_darkness_mesh=_build_radial_darkness_mesh()
 		_radial_darkness_mesh_key=key

@@ -540,7 +540,8 @@ func _attack(attacker_id: int, target_id: int, weapon_id: String, side: String,
 	else:
 		var applied: Dictionary = simulator.damage.apply_canonical_active_damage(target,
 			int(resolution.final_damage), "physical", action.id, target.position,
-			processed_step, int(resolution.target_health_before), false,
+			processed_step, int(resolution.target_health_before),
+			bool(resolution.terminal_immediate),
 			bool(resolution.bleed_proc_succeeded))
 		applied_ok = bool(applied.get("accepted", false))
 	if not applied_ok:
