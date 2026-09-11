@@ -5692,16 +5692,26 @@ func _on_item_equip_selected()->void:
 		else member_item_selected_id
 	var slot:=str(member_item_equip_button.get_meta("item_slot","")) \
 		if member_item_equip_button!=null else ""
+	var is_torch:=false
 	if slot.is_empty():
 		var allowed_slots:Array=[]
 		for row in dto.get("backpack_rows",[]):
 			if str(row.get("instance_id",""))==instance_id:
-				allowed_slots=row.get("equip_slots",[]);break
+				allowed_slots=row.get("equip_slots",[])
+				is_torch=bool(row.get("torch",false));break
 		slot=item_preferred_equip_slot(dto,allowed_slots)
+	else:
+		for row in dto.get("backpack_rows",[]):
+			if str(row.get("instance_id",""))==instance_id:
+				is_torch=bool(row.get("torch",false));break
 	if slot.is_empty():
 		notice_text="이 아이템은 장착할 수 없습니다."
 		action_feedback_text=notice_text;_request_refresh();return
-	_on_item_operation_result(session.equip_inventory_item(instance_id,slot))
+	var result:Dictionary=session.equip_inventory_item(instance_id,slot)
+	if bool(result.get("accepted",false)) and is_torch:
+		var lit:Dictionary=session.ignite_torch(instance_id)
+		if bool(lit.get("accepted",false)):result=lit
+	_on_item_operation_result(result)
 
 func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
 	# Prefer a vacant compatible slot, then deterministically replace the first

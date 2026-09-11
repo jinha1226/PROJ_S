@@ -1853,16 +1853,16 @@ func torch_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		var animated:=state=="VISIBLE" and animate_wide_safe
 		var phase:=(tick+DioramaScript.visual_hash(position,313))%4 if animated else 0
 		var brightness:float=float(TORCH_BRIGHTNESS_PHASES[phase]) if animated \
-			else (0.80 if state=="VISIBLE" else 0.20)
+			else (0.80 if state=="VISIBLE" else 0.68)
 		rows.append({"position":[position.x,position.y],"visibility_state":state,
 			"visible":true,"animated":animated,"glyph":"^","glyph_count":1,
 			"phase":phase,
 			"glyph_hex":TORCH_GLYPH_HEX if animated else (
-				"#d99d57" if state=="VISIBLE" else "#4d463c"),
+				"#d99d57" if state=="VISIBLE" else "#a36f3d"),
 			"brightness":brightness,"flicker_tick":tick if animated else 0,
 			"flicker_hz":1000.0/float(TORCH_FLICKER_QUANTUM_MS) if animated else 0.0,
-			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS) if state=="VISIBLE" else 0.0,
-			"draw_light_pool":state=="VISIBLE","light_affects_ink":state=="VISIBLE",
+			"pool_radius_cells":float(TORCH_LIGHT_RADIUS_CELLS),
+			"draw_light_pool":true,"light_affects_ink":true,
 			"draw_image":false,"texture":null,
 			"pixel_center":world_to_pixel_center(position)}.duplicate(true))
 	return rows.duplicate(true)
@@ -1905,14 +1905,15 @@ func fire_light_draw_spec(position:Vector2i,sample_time_ms:int=-1)->Dictionary:
 func _torch_light_draw_spec_cached(position:Vector2i,now:int)->Dictionary:
 	var cached:Dictionary=_static_projection_cache.get(_key(position),{})
 	var state:=str(cached.get("visibility_state","UNSEEN"))
-	if state!="VISIBLE":
+	if state=="UNSEEN":
 		return {"active":false,"visibility_state":state,"distance":-1,
 			"brightness":0.0,"color_hex":TORCH_AMBER_HEX}
 	var tick:=int(floor(float(now)/float(TORCH_FLICKER_QUANTUM_MS)))
 	var best_distance:=99.0;var best_brightness:=0.0
 	for torch_position in _torch_positions:
 		var torch_cached:Dictionary=_static_projection_cache.get(_key(torch_position),{})
-		if str(torch_cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
+		if str(torch_cached.get("visibility_state","UNSEEN"))=="UNSEEN":continue
+		if not _presentation_light_line_open(torch_position,position):continue
 		var distance:=Vector2(position-torch_position).length()
 		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
 		var phase:=(tick+DioramaScript.visual_hash(torch_position,313))%4 \
@@ -2666,8 +2667,8 @@ func _draw_ground_surface(position:Vector2i,terrain:Dictionary,
 		draw_polyline(outline,seam,1.0,true)
 
 func _draw_torch_light_pools()->void:
-	# Cell-clipped washes cannot illuminate MEMORY/UNSEEN neighbors. This keeps
-	# the warm pool FOV-safe without a texture, shader, or offscreen viewport.
+	# Cell-clipped washes may illuminate known MEMORY around a remembered wall
+	# torch, but never UNSEEN cells. The radial darkness pass softens their edge.
 	if _torch_positions.is_empty() and _fire_light_positions.is_empty():return
 	var now:=Time.get_ticks_msec()
 	# Handheld torches are carried in the actor DTO; their deterministic flicker
@@ -2705,16 +2706,22 @@ func _draw_torch_light_pools()->void:
 static func radial_darkness_sample(distance_cells:float,torch_lit:bool,
 		floor_index:int)->Dictionary:
 	var floor:=maxi(1,floor_index)
-	var radius:=6.4 if torch_lit else (5.4 if floor<=1 else (4.2 if floor==2 else 2.8))
+	var radius:=7.0 if torch_lit else (5.8 if floor<=1 else (4.6 if floor==2 else 3.2))
 	var core_radius:=1.15 if torch_lit else 0.45
-	var center_alpha:=0.02 if torch_lit else (0.10 if floor<=1 else (0.18 if floor==2 else 0.28))
-	var edge_alpha:=0.76 if floor<=1 else (0.84 if floor==2 else 0.92)
+	var center_alpha:=0.0 if torch_lit else (0.05 if floor<=1 else (0.10 if floor==2 else 0.18))
+	var edge_alpha:=0.62 if floor<=1 else (0.72 if floor==2 else 0.84)
 	var ratio:=clampf((maxf(0.0,distance_cells)-core_radius) \
 		/maxf(0.001,radius-core_radius),0.0,1.0)
 	var eased:=ratio*ratio*(3.0-2.0*ratio)
 	return {"alpha":lerpf(center_alpha,edge_alpha,eased),"radius_cells":radius,
 		"core_radius_cells":core_radius,"distance_cells":distance_cells,
 		"torch_lit":torch_lit,"floor_index":floor}.duplicate(true)
+
+static func wall_torch_darkness_sample(distance_cells:float)->float:
+	var ratio:=clampf((maxf(0.0,distance_cells)-0.55) \
+		/maxf(0.001,TORCH_LIGHT_RADIUS_CELLS-0.55),0.0,1.0)
+	var eased:=ratio*ratio*(3.0-2.0*ratio)
+	return lerpf(0.01,0.76,eased)
 
 func _hero_torch_lit()->bool:
 	for actor in _actors:
@@ -2739,17 +2746,14 @@ func radial_darkness_draw_specs()->Array[Dictionary]:
 		var inner_radius:=maximum_radius*float(ring)/float(RADIAL_DARKNESS_RINGS)
 		var outer_radius:=maximum_radius*float(ring+1)/float(RADIAL_DARKNESS_RINGS)
 		var sample_radius:=(inner_radius+outer_radius)*0.5
-		var darkness:=radial_darkness_sample(sample_radius/maxf(1.0,cell),
-			torch_lit,_terrain_theme_floor_index)
 		for segment in range(RADIAL_DARKNESS_SEGMENTS):
 			var angle0:=TAU*float(segment)/float(RADIAL_DARKNESS_SEGMENTS)
 			var angle1:=TAU*float(segment+1)/float(RADIAL_DARKNESS_SEGMENTS)
 			var sample_angle:=(angle0+angle1)*0.5
 			var sample_point:=center+Vector2(cos(sample_angle),sin(sample_angle))*sample_radius
-			var sample_cell:=pixel_to_world_cell(sample_point)
-			if sample_cell==Vector2i(-1,-1):continue
-			var cached:=_cached_static_cell(sample_cell)
-			if str(cached.get("visibility_state","UNSEEN"))!="VISIBLE":continue
+			var sample:Dictionary=_composite_darkness_at(sample_point)
+			if not bool(sample.get("drawable",false)):continue
+			var sample_cell:Vector2i=sample.sample_cell
 			var polygon:=PackedVector2Array([
 				center,
 				center+Vector2(cos(angle1),sin(angle1))*outer_radius,
@@ -2759,11 +2763,56 @@ func radial_darkness_draw_specs()->Array[Dictionary]:
 				center+Vector2(cos(angle1),sin(angle1))*inner_radius,
 				center+Vector2(cos(angle1),sin(angle1))*outer_radius,
 				center+Vector2(cos(angle0),sin(angle0))*outer_radius])
-			rows.append({"polygon":polygon,
-				"alpha":float(darkness.alpha),"sample_cell":sample_cell,
-				"distance_cells":float(darkness.distance_cells),
-				"torch_lit":torch_lit})
+			rows.append({"polygon":polygon,"alpha":float(sample.alpha),
+				"sample_cell":sample_cell,"distance_cells":sample_radius/maxf(1.0,cell),
+				"torch_lit":torch_lit,"wall_lit":bool(sample.wall_lit)})
 	return rows
+
+func _composite_darkness_at(point:Vector2)->Dictionary:
+	var sample_cell:=pixel_to_world_cell(point)
+	if sample_cell==Vector2i(-1,-1):return {"drawable":false}.duplicate(true)
+	var cached:=_cached_static_cell(sample_cell)
+	var state:=str(cached.get("visibility_state","UNSEEN"))
+	if state=="UNSEEN":return {"drawable":false}.duplicate(true)
+	var hero_distance:=world_to_pixel_center(_hero_camera_position).distance_to(point) \
+		/maxf(1.0,cell_size_px())
+	var alpha:=float(radial_darkness_sample(hero_distance,_hero_torch_lit(),
+		_terrain_theme_floor_index).alpha) if state=="VISIBLE" else 0.94
+	var wall_alpha:=_wall_torch_alpha_at(sample_cell,point)
+	if wall_alpha>=0.0:alpha=minf(alpha,wall_alpha)
+	if state!="VISIBLE" and wall_alpha<0.0:return {"drawable":false}.duplicate(true)
+	return {"drawable":true,"alpha":alpha,"sample_cell":sample_cell,
+		"wall_lit":wall_alpha>=0.0}.duplicate(true)
+
+func _wall_torch_alpha_at(sample_cell:Vector2i,point:Vector2)->float:
+	var best:=-1.0
+	for source in _torch_positions:
+		var cached:=_cached_static_cell(source)
+		if str(cached.get("visibility_state","UNSEEN"))=="UNSEEN":continue
+		if not _presentation_light_line_open(source,sample_cell):continue
+		var distance:=world_to_pixel_center(source).distance_to(point) \
+			/maxf(1.0,cell_size_px())
+		if distance>TORCH_LIGHT_RADIUS_CELLS:continue
+		var alpha:=wall_torch_darkness_sample(distance)
+		best=alpha if best<0.0 else minf(best,alpha)
+	return best
+
+func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
+	if origin==target:return true
+	var x0:=origin.x;var y0:=origin.y
+	var dx:=absi(target.x-x0);var sx:=1 if x0<target.x else -1
+	var dy:=-absi(target.y-y0);var sy:=1 if y0<target.y else -1
+	var error:=dx+dy
+	while x0!=target.x or y0!=target.y:
+		var doubled:=2*error
+		if doubled>=dy:error+=dy;x0+=sx
+		if doubled<=dx:error+=dx;y0+=sy
+		var position:=Vector2i(x0,y0)
+		if position==target:return true
+		var row:Dictionary=_cells.get(_key(position),{})
+		if row.is_empty() or AsciiStyleScript.visibility_state(row)=="UNSEEN" \
+				or str(row.get("terrain_id",""))=="wall":return false
+	return true
 
 func _draw_radial_darkness_overlay()->void:
 	var torch_lit:=_hero_torch_lit()
@@ -2788,10 +2837,10 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 		var base:=vertices.size()
 		for point in polygon:
 			vertices.append(Vector3(point.x,point.y,0.0))
-			var darkness:=radial_darkness_sample(center.distance_to(point) \
-				/maxf(1.0,cell_size_px()),torch_lit,_terrain_theme_floor_index)
+			var sample:=_composite_darkness_at(point)
+			var alpha:=float(sample.get("alpha",0.94))
 			colors.append(Color(0.002,0.004,0.008,
-				clampf(float(darkness.alpha),0.0,0.96)))
+				clampf(alpha,0.0,0.96)))
 		for index in range(1,polygon.size()-1):
 			indices.append(base);indices.append(base+index);indices.append(base+index+1)
 	if vertices.is_empty():return null

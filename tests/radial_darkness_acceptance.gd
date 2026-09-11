@@ -20,28 +20,40 @@ func run()->void:
 		"held torch brightens a circular area")
 	check(torch_center.radius_cells>center.radius_cells,
 		"held torch widens the soft light radius")
+	check(center.alpha<=0.05 and edge.alpha<=0.62,
+		"floor one ambient darkness stays gently brighter")
 	for viewport in [360,450]:
 		root.size=Vector2i(viewport,viewport);root.content_scale_size=root.size
 		var grid=Grid.new();grid.size=Vector2(viewport,viewport);root.add_child(grid)
 		var cells:Array=[]
 		for y in range(15):
 			for x in range(15):
-				var visible:=x<=7
+				var state:="VISIBLE" if x<=7 else ("MEMORY" if x<=12 else "UNSEEN")
 				var actors:Array=[]
 				if x==7 and y==7:
 					actors.append({"entity_id":77,"faction_id":"party","species_id":"human",
 						"roster_slot":0,"is_protagonist":true,
 						"equipment_visual":{"off_hand_torch_lit":true}})
-				cells.append({"position":[x,y],"terrain_id":"floor",
-					"visibility_state":"VISIBLE" if visible else "MEMORY","actors":actors})
+				cells.append({"position":[x,y],
+					"terrain_id":"wall" if x==10 and y==7 else "floor",
+					"visibility_state":state,"actors":actors})
 		grid.set_observation({"width":15,"height":15,"phase":{"floor_index":1},
 			"cells":cells})
 		grid.set_hero_centered_view(Vector2i(7,7),15,77)
 		var specs:=grid.radial_darkness_draw_specs()
 		check(specs.size()>Grid.RADIAL_DARKNESS_SEGMENTS,
 			"%dpx uses multi-ring radial sampling"%viewport)
-		check(specs.all(func(row):return Vector2i(row.sample_cell).x<=7),
-			"%dpx light never enters MEMORY behind the visibility wall"%viewport)
+		check(specs.any(func(row):return bool(row.wall_lit) \
+				and Vector2i(row.sample_cell).x>7),
+			"%dpx known wall torch lights nearby MEMORY outside hero sight"%viewport)
+		check(specs.all(func(row):return Vector2i(row.sample_cell).x<13),
+			"%dpx wall torch never reveals UNSEEN terrain"%viewport)
+		check(grid._presentation_light_line_open(Vector2i(10,7),Vector2i(8,7)),
+			"%dpx wall torch reaches known terrain along open LOS"%viewport)
+		var blocker:Dictionary=grid._cells["9:7"]
+		blocker["terrain_id"]="wall";grid._cells["9:7"]=blocker
+		check(not grid._presentation_light_line_open(Vector2i(10,7),Vector2i(8,7)),
+			"%dpx wall blocks remembered torch light"%viewport)
 		check(specs.all(func(row):return row.polygon.size()>=3),
 			"%dpx radial pieces are drawable polygons"%viewport)
 		var mesh:ArrayMesh=grid._build_radial_darkness_mesh()

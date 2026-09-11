@@ -106,3 +106,21 @@ func test_mobile_v_button_is_touch_sized_and_time_free() -> bool:
 		"V overlay toggle does not advance world time")
 	sandbox.free()
 	return finish()
+
+
+func test_inventory_equip_action_auto_ignites_fresh_torch() -> bool:
+	var session = Session.new(736, 20260828, VisualMap.SOLO_FIXTURE_SCENARIO_ID)
+	var instance_id := _give_torch(session)
+	var sandbox = Sandbox.new()
+	sandbox.size = Vector2(360, 640)
+	sandbox.initialize_for_headless_test(session)
+	sandbox.member_item_equip_button.set_meta("item_instance_id", instance_id)
+	sandbox.member_item_equip_button.set_meta("item_slot", TorchRules.EQUIP_SLOT)
+	sandbox.member_item_selected_id = instance_id
+	sandbox._on_item_equip_selected()
+	check(bool(TorchRules.state(session.sim.world, instance_id).get("lit", false)),
+		"inventory equip action auto-ignites a fresh torch")
+	check_eq(TorchRules.active_light_sources(session.sim.world).size(), 1,
+		"auto-ignited equipped torch contributes a light source")
+	sandbox.free()
+	return finish()
