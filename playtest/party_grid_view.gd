@@ -842,6 +842,10 @@ func actor_emphasis_active(entity_id:int)->bool:
 	return Time.get_ticks_msec()<int(_actor_emphasis.get(entity_id,-1)) and actor_visual_center(entity_id).x>=0
 
 func _process(_delta:float)->void:
+	# Expiring the final motion still changes the rendered pose and camera.
+	# Draw that snapped endpoint before disabling processing; otherwise cached
+	# canvas commands retain the previous frame's offset until the next action.
+	var had_motion:=not _actor_motions.is_empty() or not _camera_settle.is_empty()
 	if not _actor_emphasis.is_empty():
 		for id in _actor_emphasis.keys():
 			if not actor_emphasis_active(int(id)):_actor_emphasis.erase(id)
@@ -865,7 +869,7 @@ func _process(_delta:float)->void:
 				"duration_ms",AWARENESS_PULSE_DURATION_MS)):
 			_awareness_pulses.erase(raw_id);awareness_changed=true
 	_update_process_enabled()
-	if not _actor_motions.is_empty() or not _camera_settle.is_empty() \
+	if had_motion or not _actor_motions.is_empty() or not _camera_settle.is_empty() \
 			or not _awareness_pulses.is_empty() or awareness_changed:queue_redraw()
 	if melee_vfx!=null and (had_visual_effects or not _active_visual_effects.is_empty()):
 		melee_vfx.queue_redraw()

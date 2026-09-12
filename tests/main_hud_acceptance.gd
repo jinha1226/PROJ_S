@@ -33,6 +33,12 @@ func run()->void:
 		check(ui.food_meter.value==spec.ration,"food gauge authoritative")
 		check(ui.torch_timer_label.text.contains("×%d"%count),"owned count visible")
 	for i in range(8):await process_frame
+	check(ui.ration_label.size.x>=30 and ui.torch_timer_label.size.x>=50,"supply text has visible width")
+	ui.food_icon.configure(0.0);check(ui.food_icon.level==0,"empty food silhouette")
+	ui.food_icon.configure(1.0);check(ui.food_icon.level==4,"full food silhouette")
+	ui.torch_icon.configure(0.25,true);check(ui.torch_icon.level==1 and ui.torch_icon.lit,"low fuel flame")
+	ui.torch_icon.configure(1.0,false);check(not ui.torch_icon.lit,"unlit flame hidden")
+	ui._refresh()
 	check(ui.phase_panel.get_global_rect().end.x<=ui.size.x,"HUD fits viewport")
 	check(ui.product_menu_button.get_global_rect().end.x<=ui.size.x,"menu fits viewport")
 	check(ui.grid.get_global_rect().position.y>=ui.phase_panel.get_global_rect().end.y,"HUD does not overlay game")

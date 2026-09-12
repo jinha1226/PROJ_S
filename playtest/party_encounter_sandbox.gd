@@ -98,6 +98,8 @@ var return_timer_label:Label
 var ration_label:Label
 var torch_timer_label:Label
 var food_meter:ProgressBar
+var food_icon:Control
+var torch_icon:Control
 var torch_meter:ProgressBar
 var food_hud:VBoxContainer
 var torch_hud:VBoxContainer
@@ -1009,8 +1011,11 @@ func _build_ui()->void:
 	torch_hud=VBoxContainer.new();torch_hud.name="TorchHUD";torch_hud.custom_minimum_size.x=108
 	torch_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(torch_hud);phase_row.move_child(torch_hud,3)
 	ration_label.reparent(food_hud);torch_timer_label.reparent(torch_hud)
+	food_icon=_supply_icon_row(food_hud,ration_label,"FOOD")
+	torch_icon=_supply_icon_row(torch_hud,torch_timer_label,"TORCH")
 	for label in [ration_label,torch_timer_label]:
 		label.add_theme_font_size_override("font_size",12);label.clip_text=true
+		label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		label.custom_minimum_size.y=34
 	food_meter=_hud_supply_meter(food_hud,"FoodRemaining",DarkPixelSkinScript.JADE)
 	torch_meter=_hud_supply_meter(torch_hud,"TorchRemaining",DarkPixelSkinScript.CYAN)
@@ -1871,8 +1876,8 @@ func _on_nearby_npc_attack()->void:
 func _layout_floating_surfaces()->void:
 	_position_build_label()
 	if member_detail_panel!=null:
-		var panel_width:=minf(size.x-24.0,420.0 if size.x>=450.0 else 336.0)
-		var panel_height:=minf(size.y-24.0,720.0)
+		var panel_width:=minf(size.x-12.0,520.0)
+		var panel_height:=size.y-12.0
 		member_detail_panel.position=(size-Vector2(panel_width,panel_height))*0.5
 		member_detail_panel.size=Vector2(panel_width,panel_height)
 		member_detail_body.custom_minimum_size.x=maxf(1.0,panel_width-48.0)
@@ -5652,7 +5657,7 @@ func _add_item_grid_slot(parent:GridContainer,row:Dictionary,index:int,
 
 func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->void:
 	if instance_id.is_empty():return
-	var host:Control=member_item_window if member_detail_current_tab=="ITEM" else member_detail_modal
+	var host:Control=member_detail_modal
 	if member_item_popover.get_parent()!=host:member_item_popover.reparent(host)
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
 	_sync_item_grid_selection()
@@ -5746,11 +5751,6 @@ func _item_comparison_text(row:Dictionary,equipped:Dictionary,slot:String)->Stri
 
 func _position_item_popover(_anchor:Control=null)->void:
 	if member_item_popover==null or not member_item_popover.visible:return
-	if member_item_popover.get_parent()==member_item_window:
-		member_item_popover.custom_minimum_size.x=0
-		_reflow_member_detail_scroll()
-		_show_inline_item_detail.call_deferred()
-		return
 	var horizontal_margin:=16.0
 	var popup_width:=minf(320.0,maxf(280.0,size.x-horizontal_margin*2.0))
 	member_item_popover.custom_minimum_size.x=popup_width
@@ -5761,12 +5761,6 @@ func _position_item_popover(_anchor:Control=null)->void:
 	member_item_popover.size=popup_size
 	member_item_popover.position=_fixed_item_popover_origin(popup_width)
 	_settle_item_popover_size_after_layout(popup_width)
-
-func _show_inline_item_detail()->void:
-	await get_tree().process_frame
-	await get_tree().process_frame
-	if member_item_popover.visible and member_item_popover.get_parent()==member_item_window and member_item_window.is_visible_in_tree():
-		member_detail_scroll.ensure_control_visible(member_item_popover)
 
 func _settle_item_popover_size_after_layout(popup_width:float)->void:
 	if not is_inside_tree():return
@@ -5782,10 +5776,13 @@ func _fixed_item_popover_origin(popup_width:float)->Vector2:
 	var horizontal_margin:=16.0
 	var x:=clampf((size.x-popup_width)*0.5,horizontal_margin,
 		maxf(horizontal_margin,size.x-popup_width-horizontal_margin))
-	# The selected row, its content height, and the scroll offset never affect
-	# placement. The popover always starts at the detail folio's content inset.
-	var panel_top:=member_detail_panel.position.y if member_detail_panel!=null else 0.0
-	return Vector2(x,maxf(16.0,panel_top+108.0))
+	var popup_height:=member_item_popover.size.y
+	var y:=size.y-popup_height-16.0
+	if is_instance_valid(member_item_popover_anchor):
+		var rect:=member_item_popover_anchor.get_global_rect()
+		var below:=rect.end.y+8.0
+		y=below if below+popup_height<=size.y-12.0 else rect.position.y-popup_height-8.0
+	return Vector2(x,clampf(y,12.0,maxf(12.0,size.y-popup_height-12.0)))
 
 func _hide_item_popover(clear_selection:bool=true)->void:
 	if member_item_popover!=null:member_item_popover.visible=false
@@ -7397,6 +7394,15 @@ func _on_product_menu_id(item_id:int)->void:
 		7:_open_base_modal()
 		8:_toggle_enemy_vision_overlay()
 
+func _supply_icon_row(parent:Control,label:Label,kind:String)->Control:
+	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",2)
+	parent.add_child(row);parent.move_child(row,0)
+	var icon=preload("res://playtest/supply_icon.gd").new()
+	icon.kind=kind;icon.custom_minimum_size=Vector2(20,22)
+	icon.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon);label.reparent(row)
+	return icon
+
 func _hud_supply_meter(parent:Control,node_name:String,tone:Color)->ProgressBar:
 	var bar:=ProgressBar.new();bar.name=node_name;bar.show_percentage=false
 	bar.custom_minimum_size.y=9;bar.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -7497,14 +7503,16 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	torch_hud.visible=food_hud.visible
 	if food_hud.visible:
 		food_meter.max_value=int(spec.ration_max);food_meter.value=int(spec.ration)
-		ration_label.text="식량 ×%d\n포만 %d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
+		food_icon.configure(float(spec.ration)/maxi(1,int(spec.ration_max)))
+		torch_icon.configure(float(spec.torch_remaining)/maxi(1,int(spec.torch_capacity)),spec.torch_band in ["LIT","WARNING"])
+		ration_label.text="×%d\n%d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
 		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
 		torch_meter.max_value=maxi(1,int(spec.torch_capacity));torch_meter.value=int(spec.torch_remaining)
-		var fuel_text:="잔여 약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
+		var fuel_text:="약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
 		if spec.torch_band=="NONE":fuel_text="미장착"
-		elif spec.torch_band=="OFF":fuel_text="꺼짐 · 약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
+		elif spec.torch_band=="OFF":fuel_text="꺼짐"
 		elif spec.torch_band=="DEPLETED":fuel_text="연료 소진"
-		torch_timer_label.text="횃불 ×%d\n%s"%[int(spec.torch_count),fuel_text]
+		torch_timer_label.text="×%d\n%s"%[int(spec.torch_count),fuel_text]
 		torch_hud.tooltip_text="소지 개수는 장착분 포함 / 게이지는 장착 횃불 연료 / 약 100시간단위당 1턴"
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,

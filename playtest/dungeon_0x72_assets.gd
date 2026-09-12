@@ -71,7 +71,9 @@ static func draw_actor(canvas:CanvasItem,spec:Dictionary,bounds:Rect2,tint:Color
 	var body_rect:=fit(body,bounds)
 	body_rect.position.y=bounds.end.y-body_rect.size.y
 	if bool(spec.get("flip_h",false)):
-		body_rect.position.x+=body_rect.size.x;body_rect.size.x=-body_rect.size.x
+		# CanvasItem mirrors UVs for negative width, keeping the destination origin.
+		# Moving x as well displaced every left-facing body by one sprite width.
+		body_rect.size.x=-body_rect.size.x
 	canvas.draw_texture_rect(body,body_rect,false,tint)
 	if str(spec.get("off_hand_definition_id",""))=="SHIELD_WOOD":
 		draw_shield(canvas,Rect2(bounds.position+bounds.size*Vector2(0.15,0.57),bounds.size*Vector2(0.23,0.25)),tint)
