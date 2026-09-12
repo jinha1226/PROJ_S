@@ -808,7 +808,11 @@ func _initial_ground_item_rows(candidate,hero_position:Vector2i,
 	var rows:Array=[{"position":[candidates[0].x,candidates[0].y],
 		"item":ItemScript.new("GROUND_START_SHIELD","SHIELD_WOOD").to_dict()},
 		{"position":[candidates[1].x,candidates[1].y],
-		"item":ItemScript.new("GROUND_START_PADDED","ARMOR_PADDED").to_dict()}]
+		"item":ItemScript.new("GROUND_START_PADDED","ARMOR_PADDED").to_dict()},
+		# Guaranteed first-run ability sample for mobile build comparison. It is
+		# a real ground item: pickup/binding consume it through normal authorities.
+		{"position":[hero_position.x,hero_position.y],
+		"item":ItemScript.new("GROUND_START_FIREBOLT","ESSENCE_FIRE_BOLT").to_dict()}]
 	# Candidates are sorted by distance from the hero, so the last one is farthest.
 	if candidates.size()>=3:
 		var ration_cell:Vector2i=candidates[candidates.size()-1]

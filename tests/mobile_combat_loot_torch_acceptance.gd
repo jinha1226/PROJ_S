@@ -94,6 +94,7 @@ func loot_ui()->void:
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var world=session.sim.world;var hero:int=world.party_control_actor_id()
 	var pos:Vector2i=world.entities[hero].position
+	var expected_count:int=session.ground_item_count_at_protagonist()+2
 	var grant:Dictionary=Ops.commit_grant(world,hero,"POTION_HEALING",1,pos,"LOOT_UI_TEST")
 	check(grant.get("accepted",false),"canonical grant")
 	check(Ops.commit_drop(world,hero,str(grant.instance_id),pos,0).accepted,"canonical drop underfoot")
@@ -113,12 +114,12 @@ func loot_ui()->void:
 	var before:int=world.world_time;var events:int=world.events.size()
 	ui._pickup_pending_ground_item_if_reached()
 	check(world.world_time==before and world.events.size()==events,"arrival adds no hidden pickup turns")
-	check(session.ground_item_count_at_protagonist()==2 and not ui.product_pickup_button.disabled,"loot remains and pickup enables")
+	check(session.ground_item_count_at_protagonist()==expected_count and not ui.product_pickup_button.disabled,"loot remains and pickup enables")
 	ui._on_product_pickup()
-	check(session.ground_item_count_at_protagonist()==1,"explicit button acquires only one ground item")
+	check(session.ground_item_count_at_protagonist()==expected_count-1,"explicit button acquires only one ground item")
 	check(world.world_time==before+100,"one item uses one canonical turn")
-	ui._on_product_pickup()
-	check(session.ground_item_count_at_protagonist()==0 and world.world_time==before+200,"second press handles remaining item")
+	for i in range(expected_count-1):ui._on_product_pickup()
+	check(session.ground_item_count_at_protagonist()==0 and world.world_time==before+expected_count*100,"each additional press handles one remaining item")
 	ui._refresh();await process_frame
 	check(ui.product_pickup_button.disabled,"empty tile disables pickup")
 	var detail:Dictionary=session.inspect_party_member(hero)
