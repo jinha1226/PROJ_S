@@ -267,7 +267,7 @@ func _draw_building(row:Dictionary)->void:
 	if type_id==_selected_id:_draw_selection(rect.grow(-1))
 	var texture:=BuildingAssets.texture(type_id,level)
 	if texture!=null:
-		draw_texture_rect(texture,rect,false,Color.WHITE)
+		draw_texture_rect(texture,preload("res://playtest/dungeon_0x72_assets.gd").fit(texture,rect),false,Color.WHITE)
 		_draw_label(rect,str(row.get("label",LABELS.get(type_id,type_id))))
 		return
 	if type_id in ["CLINIC","ARMORY"] or level>=2 and type_id in ["STORAGE","LODGE"]:

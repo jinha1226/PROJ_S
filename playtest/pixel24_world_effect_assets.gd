@@ -1,5 +1,5 @@
 extends RefCounted
-const Kenney=preload("res://playtest/kenney_dungeon_assets.gd")
+const PackAssets=preload("res://playtest/dungeon_0x72_assets.gd")
 const CELLS:={"STAIRS_DOWN":0,"STAIRS_UP":1,"PORTAL_DORMANT":2,"PORTAL":3,
 	"CAMP":4,"TORCH":5,"BLOOD":6,"BONES":7,"OIL":8,"ICE":9,
 	"STEAM":10,"SMOKE":11,"GAS":12,"ELECTRIC":13,"LOOT":14,"CHEST":15,
@@ -11,10 +11,12 @@ const FEATURE_IDS:={"run_entry":"STAIRS_UP","run_exit_locked":"PORTAL_DORMANT",
 	"landmark_relic":"RELIC","landmark_well":"WELL"}
 static func draw_icon(canvas:CanvasItem,kind:String,rect:Rect2,modulate:Color=Color.WHITE)->void:
 	if not CELLS.has(kind):return
-	var icons:={"STAIRS_DOWN":36,"STAIRS_UP":38,"PORTAL_DORMANT":45,"PORTAL":21,
-		"CAMP":29,"TORCH":29,"BONES":121,"LOOT":90,"CHEST":89,"DOOR":45,"WELL":55,"RELIC":59,"FIRE":29}
+	var icons:={"STAIRS_DOWN":"floor_stairs","STAIRS_UP":"floor_ladder","PORTAL_DORMANT":"door_closed","PORTAL":"door_open",
+		"CAMP":"torch_floor","TORCH":"torch_wall","BONES":"skull","LOOT":"bag","CHEST":"chest_full_open_anim_f0",
+		"DOOR":"door_open","WELL":"wall_fountain_basin_blue_anim_f0","RELIC":"coin_anim_f0","FIRE":"flame"}
 	if icons.has(kind):
-		canvas.draw_texture_rect(Kenney.texture(int(icons[kind])),rect,false,modulate)
+		var part:=PackAssets.texture(str(icons[kind]))
+		canvas.draw_texture_rect(part,PackAssets.fit(part,rect),false,modulate)
 	else:
 		# Gameplay overlays stay procedural; no old generated sprite is mixed in.
 		var tones:={"BLOOD":Color("#a53030"),"OIL":Color("#352b42"),"ICE":Color("#a3d5e8"),

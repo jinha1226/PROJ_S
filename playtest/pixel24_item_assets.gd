@@ -1,11 +1,11 @@
 class_name Pixel24ItemAssets
 extends RefCounted
 
-const ITEM_TEXTURES=preload("res://playtest/kenney_dungeon_assets.gd").ITEMS
+const ITEM_TEXTURES=preload("res://playtest/dungeon_0x72_assets.gd").ITEMS
 
 
 static func texture_for_id(value:String)->Texture2D:
-	return preload("res://playtest/kenney_dungeon_assets.gd").item(value.strip_edges())
+	return preload("res://playtest/dungeon_0x72_assets.gd").item(value.strip_edges())
 
 
 static func texture_for_row(row:Dictionary)->Texture2D:

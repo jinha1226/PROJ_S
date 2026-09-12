@@ -24,7 +24,7 @@ class TerrainChunk extends Node2D:
 			var rect:=Rect2(Vector2(tile.local)*cell_size,Vector2.ONE*cell_size)
 			var spec:Dictionary=tile.spec
 			var visible_cell:=str(spec.visibility_state)=="VISIBLE"
-			if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+			if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
 				var tint:Color=spec.get("tint",Color.WHITE)
 				if not visible_cell:tint*=Color(0.30,0.32,0.35,0.55)
 				draw_texture_rect_region(spec.texture,rect.grow(0.2),spec.region,tint)

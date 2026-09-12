@@ -108,6 +108,10 @@ func _draw()->void:
 	if _selected or is_hovered():draw_rect(bounds,border,false,2.0)
 	if _selected:_draw_selection_brackets(bounds)
 	var inner:=plate.grow(-4.0)
+	if str(_row.get("definition_id",""))=="SHIELD_WOOD":
+		preload("res://playtest/dungeon_0x72_assets.gd").draw_shield(self,inner.grow(-inner.size.x*0.20))
+		if equipped:_draw_equipped_corner(bounds)
+		return
 	if empty:
 		_draw_empty_slot(inner)
 		return
@@ -115,7 +119,7 @@ func _draw()->void:
 	if texture!=null:
 		var side:=minf(inner.size.x,inner.size.y)
 		var icon_bounds:=Rect2(inner.get_center()-Vector2.ONE*side*0.5,Vector2.ONE*side)
-		draw_texture_rect(texture,icon_bounds,false,Color.WHITE)
+		draw_texture_rect(texture,preload("res://playtest/dungeon_0x72_assets.gd").fit(texture,icon_bounds),false,Color.WHITE)
 	else:
 		_draw_fallback_icon(inner)
 	if equipped:_draw_equipped_corner(bounds)

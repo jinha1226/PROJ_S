@@ -1668,6 +1668,7 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 	var image_center:Vector2=rect.position+Vector2(rect.size.x-image_side*0.55,image_side*0.55) \
 		if occupied else rect.get_center()
 	var image_rect:Rect2=Rect2(image_center-Vector2.ONE*image_side*0.5,Vector2.ONE*image_side)
+	if texture!=null:image_rect=preload("res://playtest/dungeon_0x72_assets.gd").fit(texture,image_rect)
 	var font_ratio:=float(item.corner_font_ratio) if occupied else float(item.font_ratio)
 	var font_size:=maxi(8,int(floor(rect.size.x*font_ratio)))
 	var font:=get_theme_default_font()
@@ -2541,8 +2542,8 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	# screen-pixel rim so they stay distinct from either biome without turning the
 	# compact silhouettes into black blobs at close zoom.
 	var body_texture:Texture2D=spec.get("body_texture",null)
-	if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
-		preload("res://playtest/kenney_dungeon_assets.gd").draw_actor(self,spec,bounds,modulate)
+	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
+		preload("res://playtest/dungeon_0x72_assets.gd").draw_actor(self,spec,bounds,modulate)
 		body_texture=null
 	if body_texture!=null and bool(spec.get("outline_enabled",false)):
 		var outline_px:=float(spec.get("outline_px",1.0))
@@ -2560,7 +2561,7 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	elif body_texture!=null:
 		draw_texture_rect(body_texture,bounds,false,modulate)
 	for texture_key in ["armor_texture","offhand_texture","weapon_texture"]:
-		if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":break
+		if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":break
 		var texture:Texture2D=spec.get(texture_key,null)
 		if texture!=null:draw_texture_rect(texture,bounds,false,modulate)
 	var foreground_texture:Texture2D=spec.get("foreground_texture",null)
@@ -3148,7 +3149,7 @@ func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
-	if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
 		var tint:Color=spec.get("tint",Color.WHITE)
 		if str(spec.visibility_state)!="VISIBLE":tint*=Color(0.30,0.32,0.35,0.55)
 		draw_texture_rect_region(texture,rect.grow(0.2),spec.region,tint)

@@ -6,8 +6,8 @@ static func draw_icon(canvas:CanvasItem,rect:Rect2,resource_id:String)->void:
 	var texture:=ItemAssets.texture_for_id(resource_id)
 	if texture!=null:
 		var side:=minf(rect.size.x,rect.size.y)
-		canvas.draw_texture_rect(texture,Rect2(rect.get_center()-Vector2.ONE*side*0.5,
-			Vector2.ONE*side),false,Color.WHITE)
+		canvas.draw_texture_rect(texture,preload("res://playtest/dungeon_0x72_assets.gd").fit(texture,
+			Rect2(rect.get_center()-Vector2.ONE*side*0.5,Vector2.ONE*side)),false,Color.WHITE)
 		return
 	var c:=rect.get_center();var s:=minf(rect.size.x,rect.size.y)*0.65
 	var edge:=maxf(1.0,s*0.08)

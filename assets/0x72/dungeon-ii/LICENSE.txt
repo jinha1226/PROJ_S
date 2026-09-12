@@ -1,0 +1,13 @@
+0x72 DungeonTileset II v1.7
+Author: 0x72 (Robert)
+Asset license: Creative Commons Zero v1.0 Universal (CC0)
+Author's license declaration: https://0x72.itch.io/dungeontileset-ii
+
+Dungeon Tileset II Extended v1.1
+Author: Niji, based on 0x72's DungeonTileset II
+Asset license: Creative Commons Zero v1.0 Universal (CC0)
+Author's license declaration: https://nijikokun.itch.io/dungeontileset-ii-extended
+
+CC0 legal text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+This notice records the authors' published asset licenses; it is not an
+additional restriction or a claim that these images were created by this game.
