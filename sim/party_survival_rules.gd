@@ -10,7 +10,12 @@ static func control_id(world,event_id:int=-1)->int:
 	var party=world.party_encounter
 	if party==null:return -1
 	if preload("res://sim/field_turn_rules.gd").enabled(world):
-		for index in range(world.events.size()-1,-1,-1):
+		var current=preload("res://sim/runtime_history_index.gd").sync(world).latest.get("party.field_control_selected") if event_id<0 else null
+		if current!=null and int(current.target_id) in party.active_party_member_ids \
+				and _active_at(world,int(current.target_id),-1):return int(current.target_id)
+		# Historical validation still reconstructs the requested boundary; normal
+		# visibility/item/path queries need only the latest control selection.
+		for index in range(world.events.size()-1,-1,-1) if event_id>=0 else []:
 			var event=world.events[index]
 			if event_id>=0 and event.id>=event_id:continue
 			if event.type!="party.field_control_selected":continue

@@ -653,7 +653,7 @@ func allows_companions()->bool:
 	return town_life_enabled() or SoloRunPolicy.allows_companions(scenario_id)
 
 func town_life_enabled()->bool:
-	return sim!=null and preload("res://sim/town_life_rules.gd").enabled(sim.world.events)
+	return sim!=null and preload("res://sim/runtime_history_index.gd").sync(sim.world).first.has("town.life_started")
 
 func town_life_overview()->Dictionary:
 	return preload("res://playtest/town_life_service.gd").overview(self)
@@ -3497,10 +3497,10 @@ func use_active_skill(actor_id:int,skill_id:String,target_id:int,
 func _latest_party_contact_warning() -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return {"available":false}
-	for event_index in range(sim.world.events.size()-1,-1,-1):
-		var event=sim.world.events[event_index]
-		if event.type=="party.regroup_completed":break
-		if event.type!="party.contact_reported":continue
+	var latest:Dictionary=preload("res://sim/runtime_history_index.gd").sync(sim.world).latest
+	var event=latest.get("party.contact_reported")
+	var regroup=latest.get("party.regroup_completed")
+	if event!=null and (regroup==null or int(event.id)>int(regroup.id)):
 		var direction:Array=event.data.get("direction",[])
 		return {"available":true,"event_id":int(event.id),
 			"spotter_id":int(event.actor_id),"spotter_name":_event_entity_name(event.actor_id),
@@ -3519,11 +3519,7 @@ func party_morale_observation() -> Dictionary:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return empty.duplicate(true)
 	var state = sim.world.party_encounter
-	var latest_by_actor: Dictionary = {}
-	for event in sim.world.events:
-		if event.type == "party.morale_changed" \
-				and event.actor_id in state.active_party_member_ids:
-			latest_by_actor[event.actor_id] = event
+	var latest_by_actor: Dictionary = preload("res://sim/runtime_history_index.gd").sync(sim.world).morale
 	var member_ids: Array = state.active_party_member_ids.duplicate()
 	member_ids.sort_custom(func(a,b):
 		var member_a=state.member(int(a));var member_b=state.member(int(b))
@@ -4071,7 +4067,7 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 	return {"grid":grid_dto,"minimap":minimap_dto}
 
 
-func _party_observation_context()->Dictionary:
+func _party_observation_context(include_decoration:bool=true)->Dictionary:
 	var status := party_status()
 	if not bool(status.get("ok",false)):return {}
 	var progress := run_progress()
@@ -4101,20 +4097,24 @@ func _party_observation_context()->Dictionary:
 		.duplicate(true)
 	PerfProbeScript.end("ctx.explored",_pexp)
 	var _pfol:=PerfProbeScript.begin()
-	var follower_positions := _grouped_follower_display_positions(visible)
+	var follower_positions:Dictionary = _grouped_follower_display_positions(visible) if include_decoration else {}
 	PerfProbeScript.end("ctx.followers",_pfol)
 	var _pgi:=PerfProbeScript.begin()
 	var ground_items_by_cell:Dictionary={}
 	for ground_row in sim.world.item_state.ground_items.rows:
+		if not include_decoration:break
 		var ground_key:=_position_key(ground_row.position)
+		if not visible.has(ground_key):continue
 		if not ground_items_by_cell.has(ground_key):ground_items_by_cell[ground_key]=[]
 		ground_items_by_cell[ground_key].append(_item_presentation_row(ground_row.item,"",false))
 	PerfProbeScript.end("ctx.ground_items",_pgi)
 	var _pbl:=PerfProbeScript.begin()
 	var monster_blood_by_cell:Dictionary={}
 	var enemy_ids:Array=_current_floor_enemy_ids()
-	for event in sim.world.events:
-		if str(event.type)!="entity.died" or int(event.target_id) not in enemy_ids:continue
+	var deaths:Dictionary=preload("res://sim/runtime_history_index.gd").sync(sim.world).deaths if include_decoration else {}
+	for enemy_id in enemy_ids:
+		var event=deaths.get(int(enemy_id))
+		if event==null:continue
 		if sim.world.in_bounds(event.position):
 			monster_blood_by_cell[_position_key(event.position)]=true
 	PerfProbeScript.end("ctx.blood_scan",_pbl)
@@ -4769,7 +4769,7 @@ func available_companion_ids() -> Array:
 func rescue_candidate_ids() -> Array:
 	var ids: Array = []
 	if sim == null or sim.world == null: return ids
-	for event in sim.world.events:
+	for event in preload("res://sim/runtime_history_index.gd").sync(sim.world).rescues.values():
 		if event.type != "party.rescue_discovered" or event.target_id <= 0 \
 				or event.target_id in ids or not sim.world.entities.has(event.target_id):
 			continue
@@ -6843,7 +6843,7 @@ func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
 
 
 func _auto_explore_fog_snapshot(retained_path:Array=[]) -> Dictionary:
-	var context := _party_observation_context()
+	var context := _party_observation_context(false)
 	if context.is_empty():
 		return {}
 	var status: Dictionary = context.status
@@ -10152,11 +10152,8 @@ func _is_enemy_patrol_event(event)->bool:
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or int(event.actor_id) not in sim.world.party_encounter.enemy_ids:
 		return false
-	for candidate in sim.world.events:
-		if str(candidate.type) in ["encounter.detected","encounter.party_ambush",
-				"encounter.enemy_ambush"]:
-			return int(event.id)<int(candidate.id)
-	return true
+	var first_contact:int=preload("res://sim/runtime_history_index.gd").sync(sim.world).first_contact
+	return first_contact<0 or int(event.id)<first_contact
 
 func _name(entity_id: int) -> String: return str(sim.world.entities[entity_id].display_name) if entity_id > 0 and sim.world.entities.has(entity_id) else "대상"
 func _position_key(position:Vector2i)->String:return "%d:%d"%[position.x,position.y]

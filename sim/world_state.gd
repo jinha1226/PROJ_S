@@ -102,6 +102,7 @@ var world_time: int = 0
 var vision_scenario_id: String = ""
 # Derived only: rebuilt after snapshot/rollback, never canonical save authority.
 var darkness_event_cache: Dictionary = {}
+var runtime_history_cache: Dictionary = {}
 var torch_event_cache: Dictionary = {}
 var seed: int
 var rng: RandomNumberGenerator

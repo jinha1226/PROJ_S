@@ -65,8 +65,9 @@ static func effective(world, state) -> Dictionary:
 		"explicit": false,
 		"event_id": -1,
 	}
-	for event_index in range(world.events.size() - 1, -1, -1):
-		var event = world.events[event_index]
+	var commands:Array=preload("res://sim/runtime_history_index.gd").sync(world).commands
+	for event_index in range(commands.size() - 1, -1, -1):
+		var event = commands[event_index]
 		if event.type in ["party.regroup_completed","party.disengage_completed",
 				"dungeon.expedition_returned","party.expedition_auto_returned"]:
 			break
@@ -95,8 +96,9 @@ static func effective_for_actor(world,state,actor_id:int)->Dictionary:
 		"explicit":false,"event_id":-1}
 	if state.expedition_cycle!=null and str(state.expedition_cycle.phase)=="TOWN":
 		return fallback
-	for event_index in range(world.events.size()-1,-1,-1):
-		var event=world.events[event_index]
+	var commands:Array=preload("res://sim/runtime_history_index.gd").sync(world).commands
+	for event_index in range(commands.size()-1,-1,-1):
+		var event=commands[event_index]
 		if event.type in ["party.regroup_completed","party.disengage_completed",
 				"dungeon.expedition_returned","party.expedition_auto_returned"]:
 			break

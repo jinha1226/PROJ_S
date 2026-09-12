@@ -34,7 +34,8 @@ func run()->void:
 		session.sim.world.party_encounter.enemy_busy_rows[id]=1000000000
 	check(session.field_turns_active(),"test uses real campaign engine")
 	var world=session.sim.world;var party=world.party_encounter
-	party.protagonist_growth.xp_total=State.RegistryScript.xp_floor_for_level(6)
+	party.protagonist_growth.xp_total=State.RegistryScript.xp_floor_for_level(3)
+	check(session.mastery_status().points==2,"level THREE immediately has two unspent points")
 	var before_time:int=world.world_time;var before_journal:int=session.command_journal.size()
 	var invested:Dictionary=session.spend_mastery_point("DEFENSE")
 	check(invested.accepted,"live facade commits mastery: "+str(invested.reason))
@@ -46,17 +47,40 @@ func run()->void:
 	party.protagonist_growth.mastery_ranks.DEFENSE=2
 	check(session.sim.restore_rollback_memento(memento),"restore mastery memento")
 	check(session.mastery_status().ranks.DEFENSE==1,"rank rollback exact")
+	world=session.sim.world;party=world.party_encounter
 	root.size=Vector2i(360,800)
 	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
 	await process_frame;await process_frame
 	ui._open_hero_detail_tab("SKILL");await process_frame
 	check(ui.mastery_panel.is_visible_in_tree() and ui.mastery_panel.rows.size()==4,"existing character tab exposes four-axis UI")
 	check(ui.mastery_panel.summary.text.contains("남은 포인트"),"points shown in real UI")
+	check(not ui.mastery_panel.rows.MELEE.button.disabled,"level THREE investment button enabled in safety")
+	var threat_id:int=party.enemy_ids[0]
+	var saved_position:Vector2i=world.entities[threat_id].position
+	var threat_cell:Vector2i=fixture._visible_empty_cell(session,session._auto_explore_fog_snapshot())
+	world.entities[threat_id].position=threat_cell;party.revision+=1
+	ui._refresh_open_member_detail()
+	check(ui.mastery_panel.rows.MELEE.button.disabled and ui.mastery_panel.summary.text.contains("주변 적"),"visible threat explains level THREE lock")
+	world.entities[threat_id].position=saved_position;party.revision+=1
+	ui._refresh_open_member_detail()
+	check(not ui.mastery_panel.rows.MELEE.button.disabled,"safety restores investment without another level-up or reopening")
 	ui.mastery_panel.preview("MELEE")
 	check(ui.mastery_panel.confirm.visible,"investment preview requires confirmation")
 	ui.mastery_panel.commit()
 	check(session.mastery_status().ranks.MELEE==1,"UI commits to campaign, not demo")
 	ui.mastery_panel.confirm.hide()
+	ui._open_hero_detail_tab("STATUS")
+	ui._refresh_open_member_detail()
+	await process_frame
+	var before_summary:String=ui.find_child("StatusCombatSummary",true,false).text
+	check(session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND").accepted,"change weapon with status open")
+	ui._refresh()
+	await process_frame
+	check(ui.member_detail_modal.visible and ui.member_detail_current_tab=="STATUS","refresh preserves open status tab")
+	check(ui.find_child("StatusCombatSummary",true,false).text!=before_summary,"open status combat numbers update without reopening")
+	var summary_node=ui.find_child("StatusCombatSummary",true,false)
+	ui._refresh_open_member_detail()
+	check(ui.find_child("StatusCombatSummary",true,false)==summary_node,"unchanged frame does not rebuild modal")
 	if DisplayServer.get_name()!="headless":
 		for i in range(5):await process_frame
 		await RenderingServer.frame_post_draw

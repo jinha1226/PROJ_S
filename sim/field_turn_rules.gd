@@ -6,10 +6,8 @@ const TAG := "field_turns_v1"
 const FORMATIONS := {"NONE":"자유", "COLUMN":"종대", "LINE":"횡대", "WEDGE":"쐐기"}
 
 static func formation(world)->String:
-	for index in range(world.events.size()-1,-1,-1):
-		if world.events[index].type=="party.field_formation_selected":
-			return str(world.events[index].data.get("formation","NONE"))
-	return "NONE"
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).latest.get("party.field_formation_selected")
+	return str(event.data.get("formation","NONE")) if event!=null else "NONE"
 
 static func formation_cell(world,actor_id:int)->Vector2i:
 	var party=world.party_encounter

@@ -4,25 +4,21 @@ const TAG:="independent_explorer"
 const FLOOR_TAG:="visitor_floor:"
 const SPECIES:=["human","elf","dwarf","orc","beastkin"]
 static func expanded_exploration(world)->bool:
-	for event in world.events:
-		if event.type==EVENT:return int(event.data.get("version",1))>=4
-	return false
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
+	return event!=null and int(event.data.get("version",1))>=4
 static func snapshot_expanded_exploration(snapshot:Dictionary)->bool:
 	for row in snapshot.get("events",[]):
 		if row.get("type","")==EVENT:return int(row.get("data",{}).get("version",1))>=4
 	return false
 static func roster_randomized(world)->bool:
-	for event in world.events:
-		if event.type==EVENT:return int(event.data.get("version",1))>=3
-	return false
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
+	return event!=null and int(event.data.get("version",1))>=3
 static func snapshot_roster_randomized(snapshot:Dictionary)->bool:
 	for row in snapshot.get("events",[]):
 		if row.get("type","")==EVENT:return int(row.get("data",{}).get("version",1))>=3
 	return false
 static func enabled(world)->bool:
-	for event in world.events:
-		if event.type==EVENT:return true
-	return false
+	return preload("res://sim/runtime_history_index.gd").sync(world).first.has(EVENT)
 static func snapshot_enabled(snapshot:Dictionary)->bool:
 	for row in snapshot.get("events",[]):
 		if row.get("type","")==EVENT:return true

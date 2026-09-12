@@ -39,12 +39,16 @@ func refresh(owner_session)->void:
 	progress.min_value=floor_xp;progress.max_value=maxi(floor_xp+1,next_xp);progress.value=status.xp
 	var safety:Dictionary=session._auto_explore_stop_snapshot()
 	var safe:bool=safety.get("visible_enemy_keys",{}).is_empty() and str(safety.get("safe_phase","")) in ["GROUPED","GROUPED_COMPLETE"]
+	if not safe:summary.text+="\n주변 적을 벗어나 전투가 끝나면 투자할 수 있습니다."
+	elif int(status.points)<1:summary.text+="\n다음 레벨업에 숙련 포인트 1점을 얻습니다."
 	for definition in Growth.DATA.axes:
 		var axis:String=definition.id;var rank:int=status.ranks[axis]
 		var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
 		rows[axis].info.text="%s %d/%d · %s ×%.2f\n%s"%[definition.label,rank,status.max_rank,
 			"방어 수치" if axis=="DEFENSE" else "효과량",(1000+rank*per_rank)/1000.0,definition.description]
 		rows[axis].button.disabled=status.points<1 or rank>=status.max_rank or not safe
+		rows[axis].button.tooltip_text="전투 중에는 투자할 수 없습니다." if not safe else \
+			("숙련 포인트가 없습니다." if status.points<1 else ("최대 숙련입니다." if rank>=status.max_rank else "1점 투자"))
 
 func preview(axis:String)->void:
 	var status:Dictionary=session.mastery_status()

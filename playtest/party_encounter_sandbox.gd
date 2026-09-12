@@ -376,6 +376,7 @@ func _notification(what:int)->void:
 		portrait_gesture.actor_id=-1
 
 func _process(_delta:float)->void:
+	_refresh_open_member_detail()
 	_tick_portrait_long_press()
 	if portrait_gesture.actor_id>=0:return
 	base_work_clock.tick(self,_delta)
@@ -1853,6 +1854,7 @@ func _layout_floating_surfaces()->void:
 func _refresh()->void:
 	_refresh_pending=false
 	if session==null:return
+	_refresh_open_member_detail()
 	if get_node_or_null("ActiveCombatLab")!=null:return
 	# Presentation refreshes queued by the last AUTO hop must not erase a new
 	# finger-down before finger-up. Modal entry still cancels explicitly.
@@ -5037,7 +5039,32 @@ func _bind_member_ability(instance_id:String,actor_id:int)->Dictionary:
 	return result
 
 
+var _member_detail_live_key:Array=[]
+
+func _refresh_open_member_detail()->void:
+	if session==null or member_detail_modal==null or not member_detail_modal.visible:return
+	var world=session.sim.world
+	var party=world.party_encounter
+	var growth=party.protagonist_growth
+	var key:Array=[world.get_instance_id(),member_detail_entity_id,world.world_time,
+		world.events.size(),party.revision,world.item_state.revision,growth.xp_total,
+		growth.mastery_ranks.hash()]
+	if key==_member_detail_live_key:return
+	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	if not bool(detail.get("accepted",false)):detail=session.inspect_enemy(member_detail_entity_id,true)
+	if not bool(detail.get("accepted",false)):return
+	_member_detail_live_key=key
+	# Update data without reopening: keep the tab, scroll, pending confirmation
+	# and item gesture intact. No work on unchanged render frames.
+	member_detail_body.text=_member_detail_text(detail)
+	_update_member_status_window(detail)
+	_update_progression_window(detail.get("progression",{}))
+	member_skill_window.call("set_detail",detail)
+	if member_detail_entity_id==int(party.protagonist_id):mastery_panel.refresh(session)
+	call_deferred("_measure_member_detail_body")
+
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
+	_member_detail_live_key.clear()
 	if auto_orchestration_enabled:_cancel_auto_pending(false)
 	_product_attack_targeting=false
 	# Character/item inspection is a pause, not a cancellation. Keeping the
