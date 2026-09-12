@@ -17,33 +17,38 @@ var bind_action:Callable=Callable()
 var remove_action:Callable=Callable()
 var confirmation:ConfirmationDialog
 var pending_instance_id:=""
+var detail_title:Label
+var mode_rows:VBoxContainer
+var selected_item:=""
 
 func _ready()->void:
 	name="AbilityLoadout"
 	size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	add_theme_constant_override("separation",8)
-	var title:=Label.new();title.text="이능 결속 · 6칸";add_child(title)
-	var help:=Label.new();help.text="보관 중인 이능 획득물을 선택해 빈 슬롯에 결속합니다.\n결속 시 아이템을 소비하며, 같은 이능은 중복 결속할 수 없습니다."
-	help.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	help.add_theme_font_size_override("font_size",11);add_child(help)
-	summary=Label.new();add_child(summary)
-	slot_grid=GridContainer.new();slot_grid.name="AbilitySlots";slot_grid.columns=2
-	slot_grid.add_theme_constant_override("h_separation",6)
+	summary=Label.new();PixelSkin.apply_heading(summary);add_child(summary)
+	slot_grid=GridContainer.new();slot_grid.name="AbilitySlots";slot_grid.columns=6
+	slot_grid.add_theme_constant_override("h_separation",3)
 	slot_grid.add_theme_constant_override("v_separation",6);add_child(slot_grid)
 	for i in range(6):
 		var button:=Button.new();button.name="AbilitySlot%d"%i
-		button.custom_minimum_size=Vector2(0,68)
+		button.custom_minimum_size=Vector2(44,48)
 		button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.clip_text=true
 		button.pressed.connect(_select.bind(i));slot_grid.add_child(button)
+	var card:=PanelContainer.new();card.add_theme_stylebox_override("panel",PixelSkin.panel_surface(PixelSkin.SLOT_FILLED,PixelSkin.BRASS_DARK,8,1));add_child(card)
+	var content:=VBoxContainer.new();card.add_child(content)
+	detail_title=Label.new();detail_title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	PixelSkin.apply_heading(detail_title);content.add_child(detail_title)
+	mode_rows=VBoxContainer.new();content.add_child(mode_rows)
 	var actions:=HBoxContainer.new();add_child(actions)
 	remove_button=Button.new();remove_button.text="해제 · 정책 미정"
 	remove_button.custom_minimum_size.y=44
 	remove_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	remove_button.pressed.connect(_remove_selected);actions.add_child(remove_button)
 	PixelSkin.apply_action_button(remove_button,PixelSkin.BRASS)
+	actions.visible=false
 	feedback=Label.new();feedback.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	feedback.add_theme_font_size_override("font_size",11);add_child(feedback)
-	var label:=Label.new();label.text="보관 중인 이능 획득물";add_child(label)
+	feedback.add_theme_font_size_override("font_size",11);feedback.visible=false;add_child(feedback)
+	var label:=Label.new();label.text="보관 중인 정수";PixelSkin.apply_heading(label);add_child(label)
 	picker=VBoxContainer.new();add_child(picker)
 	confirmation=ConfirmationDialog.new();confirmation.title="이능 결속 확인"
 	confirmation.dialog_autowrap=true
@@ -56,6 +61,7 @@ func _ready()->void:
 
 func configure(id:int, rows:Array, stored_items:Array=[], bind_callback:Callable=Callable(), remove_callback:Callable=Callable())->void:
 	actor_id=id
+	selected_item=""
 	pending_instance_id=""
 	if confirmation!=null:confirmation.hide()
 	binding_rows=rows.duplicate(true)
@@ -68,7 +74,38 @@ func configure(id:int, rows:Array, stored_items:Array=[], bind_callback:Callable
 
 
 func _select(index:int)->void:
-	selected_slot=index;_refresh()
+	selected_slot=index;selected_item="";_refresh()
+
+func update_rows(rows:Array,stored_items:Array)->void:
+	if binding_rows==rows and item_rows==stored_items:return
+	binding_rows=rows.duplicate(true);item_rows=stored_items.duplicate(true)
+	if not selected_item.is_empty() and not item_rows.any(func(item):return str(item.get("instance_id",""))==selected_item):selected_item=""
+	_refresh()
+
+func _select_item(instance_id:String)->void:
+	selected_item=instance_id;_refresh_detail()
+
+func _refresh_detail()->void:
+	for child in mode_rows.get_children():child.free()
+	var row:Dictionary=binding_rows[selected_slot] if selected_slot<binding_rows.size() else {}
+	for item in item_rows:
+		if str(item.instance_id)==selected_item:row=item.get("effect_preview",{});break
+	var filled:bool=not selected_item.is_empty() or str(row.get("state",""))=="BOUND"
+	detail_title.text=str(row.get("label","이능")) if filled else "빈 슬롯"
+	if not filled:
+		var empty:=Label.new();empty.text="정수를 선택해 효과를 확인하세요."
+		empty.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;empty.add_theme_font_size_override("font_size",12);mode_rows.add_child(empty);return
+	var planned:bool=bool(row.get("planned",false))
+	_mode("패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),false)
+	var effect:=str(row.get("active",""))
+	if effect.is_empty():effect="기본 위력 %d · 기력 %d · 사거리 %d"%[int(row.get("power",0)),int(row.get("cost",0)),int(row.get("range",0))]
+	_mode("액티브 · 미구현" if planned else "액티브",effect,not planned)
+
+func _mode(title:String,effect:String,active:bool)->void:
+	var card:=PanelContainer.new();card.custom_minimum_size.y=56
+	card.add_theme_stylebox_override("panel",PixelSkin.panel_surface(PixelSkin.SLOT_FILLED,PixelSkin.CYAN if active else PixelSkin.IRON_EDGE,6,1))
+	var label:=Label.new();label.text=title+"\n"+effect;label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size",14);card.add_child(label);mode_rows.add_child(card)
 
 
 func _bound_count()->int:
@@ -87,15 +124,18 @@ func _refresh()->void:
 		var state:=str(row.get("state","LOCKED"))
 		var button:=slot_grid.get_child(i) as Button
 		if state=="BOUND":
-			button.text="%d  %s\n%s"%[i+1,str(row.get("label",row.get("ability_id","이능"))),
-				str(row.get("effect","결속됨"))]
+			button.text="A"
+			button.icon=preload("res://playtest/dungeon_0x72_assets.gd").texture("flask_big_blue")
+			button.expand_icon=true;button.add_theme_constant_override("icon_max_width",16)
 		elif state=="EMPTY":
-			button.text="%d  빈 슬롯\nLV%02d부터 개방"%[i+1,int(row.get("unlock_level",i+1))]
+			button.text="+";button.icon=null
 		else:
-			button.text="%d  잠금\nLV%02d부터 개방"%[i+1,int(row.get("unlock_level",i+1))]
+			button.text="잠금";button.icon=null;button.add_theme_font_size_override("font_size",11)
+		button.tooltip_text=str(row.get("label","잠금"))+" · Lv.%d 개방"%int(row.get("unlock_level",i+1))
 		button.disabled=state=="LOCKED"
 		PixelSkin.apply_action_button(button,PixelSkin.BRASS if i==selected_slot else PixelSkin.CYAN)
-	summary.text="결속 %d / 개방 %d / 6칸 · 액티브·패시브 공용"%[bound,open_slots]
+	summary.text="이능 · 결속 %d / %d"%[bound,open_slots]
+	_refresh_detail()
 	remove_button.disabled=not remove_action.is_valid() or selected_slot>=binding_rows.size() or str(binding_rows[selected_slot].get("state",""))!="BOUND"
 	for child in picker.get_children():
 		picker.remove_child(child);child.queue_free()
@@ -103,15 +143,19 @@ func _refresh()->void:
 		var empty:=Label.new();empty.text="결속할 이능 획득물이 없습니다.";picker.add_child(empty)
 	else:
 		for row in item_rows:
+			var line:=HBoxContainer.new();picker.add_child(line)
 			var button:=Button.new()
 			var preview:Dictionary=row.get("effect_preview",{}) if row.get("effect_preview",{}) is Dictionary else {}
-			button.text="%s · %s\n%s · MP%d · 사거리%d"%[
-				str(row.get("label",row.get("ability_id","이능"))),
-				str(row.get("ability_id","")),str(preview.get("effect","효과 미리보기 없음")),
-				int(preview.get("cost",0)),int(preview.get("range",0))]
+			button.text="%s · %d개"%[str(row.get("label","정수")),int(row.get("quantity",1))]
+			button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			button.custom_minimum_size.y=48;button.clip_text=true
-			button.pressed.connect(_bind_item.bind(str(row.get("instance_id",""))))
-			picker.add_child(button);PixelSkin.apply_action_button(button)
+			button.pressed.connect(_select_item.bind(str(row.get("instance_id",""))))
+			line.add_child(button);PixelSkin.apply_action_button(button)
+			var absorb:=Button.new();absorb.text="흡수";absorb.custom_minimum_size=Vector2(52,48)
+			absorb.disabled=bool(preview.get("planned",false)) or not bind_action.is_valid()
+			absorb.tooltip_text="효과 구현 전에는 정수를 소비하지 않습니다." if absorb.disabled else "정수 1개 소비 · 해제 불가"
+			absorb.pressed.connect(_bind_item.bind(str(row.get("instance_id",""))))
+			line.add_child(absorb);PixelSkin.apply_action_button(absorb,PixelSkin.CYAN)
 
 
 func _bind_item(instance_id:String)->void:
@@ -121,6 +165,7 @@ func _bind_item(instance_id:String)->void:
 	for row in item_rows:
 		if str(row.get("instance_id",""))!=instance_id:continue
 		var preview:Dictionary=row.get("effect_preview",{})
+		if bool(preview.get("planned",false)):return
 		pending_instance_id=instance_id
 		confirmation.dialog_text="%s\nMP %d · 사거리 %d\n\n획득물 1개를 소비하고 빈 결속 한도 1칸을 사용합니다.\n현재 해제할 수 없습니다. 결속할까요?"%[
 			str(preview.get("label",row.get("ability_id","이능"))),
@@ -130,6 +175,7 @@ func _bind_item(instance_id:String)->void:
 
 
 func _confirm_binding()->void:
+	feedback.visible=true
 	var instance_id:=pending_instance_id
 	pending_instance_id=""
 	if instance_id.is_empty() or not bind_action.is_valid():return
@@ -142,6 +188,7 @@ func _confirm_binding()->void:
 		binding_rows=result.bindings.duplicate(true)
 	for index in range(item_rows.size()-1,-1,-1):
 		if str(item_rows[index].get("instance_id",""))==instance_id:item_rows.remove_at(index)
+	selected_item=""
 	_refresh()
 
 

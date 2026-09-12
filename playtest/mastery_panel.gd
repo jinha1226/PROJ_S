@@ -14,15 +14,26 @@ func _ready()->void:
 	name="MasteryPanel";add_theme_constant_override("separation",6)
 	summary=Label.new();summary.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;add_child(summary)
 	progress=ProgressBar.new();progress.custom_minimum_size.y=12;progress.show_percentage=false;add_child(progress)
+	progress.visible=false
+	var grid:=GridContainer.new();grid.name="MasteryGrid";grid.columns=2
+	grid.add_theme_constant_override("h_separation",6);grid.add_theme_constant_override("v_separation",6);add_child(grid)
 	for definition in Growth.DATA.axes:
 		var axis:String=definition.id
-		var row:=HBoxContainer.new();row.custom_minimum_size.y=76;add_child(row)
+		var card:=PanelContainer.new();card.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		card.add_theme_stylebox_override("panel",PixelSkin.panel_surface(PixelSkin.SLOT_FILLED,PixelSkin.BRASS_DARK,6,1));grid.add_child(card)
+		var stack:=VBoxContainer.new();card.add_child(stack)
+		var heading:=HBoxContainer.new();stack.add_child(heading)
+		var emblem:=preload("res://playtest/growth_emblem.gd").new();emblem.symbol=axis;heading.add_child(emblem)
+		var title:=Label.new();title.add_theme_font_size_override("font_size",14);heading.add_child(title)
+		PixelSkin.apply_heading(title)
+		var row:=HBoxContainer.new();stack.add_child(row)
 		var info:=Label.new();info.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		info.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;info.add_theme_font_size_override("font_size",12);row.add_child(info)
-		var button:=Button.new();button.text="+1";button.custom_minimum_size=Vector2(48,48)
+		info.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;info.add_theme_font_size_override("font_size",14);row.add_child(info)
+		var button:=Button.new();button.text="+";button.custom_minimum_size=Vector2(44,44)
+		button.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 		button.pressed.connect(preview.bind(axis));row.add_child(button);PixelSkin.apply_action_button(button,PixelSkin.BRASS)
-		rows[axis]={"info":info,"button":button}
-	var note:=Label.new();note.text="레벨업마다 1점 (최대 %d점) · 전투 밖 투자\n재분배 미지원 · 이능 해금이 아닌 효과 강화"%[(int(Growth.DATA.max_level)-1)*int(Growth.DATA.points_per_level)]
+		rows[axis]={"info":info,"button":button,"title":title}
+	var note:=Label.new();note.text="전투 밖에서 투자 · 재분배 불가"
 	note.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;note.add_theme_font_size_override("font_size",11);add_child(note)
 	confirm=ConfirmationDialog.new();confirm.title="숙련 투자";confirm.ok_button_text="1점 투자"
 	confirm.cancel_button_text="취소";confirm.get_label().autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
@@ -35,17 +46,18 @@ func refresh(owner_session)->void:
 	var registry=session.GrowthBuildRegistryScript
 	var floor_xp:int=registry.xp_floor_for_level(status.level)
 	var next_xp:int=registry.xp_floor_for_level(int(status.level)+1)
-	summary.text="숙련 · Lv.%d · 남은 포인트 %d\n경험치 %d / %d"%[status.level,status.points,status.xp,next_xp]
+	summary.text="숙련 · 남은 포인트 %d"%status.points
+	PixelSkin.apply_heading(summary)
 	progress.min_value=floor_xp;progress.max_value=maxi(floor_xp+1,next_xp);progress.value=status.xp
 	var safety:Dictionary=session._auto_explore_stop_snapshot()
 	var safe:bool=safety.get("visible_enemy_keys",{}).is_empty() and str(safety.get("safe_phase","")) in ["GROUPED","GROUPED_COMPLETE"]
-	if not safe:summary.text+="\n주변 적을 벗어나 전투가 끝나면 투자할 수 있습니다."
-	elif int(status.points)<1:summary.text+="\n다음 레벨업에 숙련 포인트 1점을 얻습니다."
+	if not safe:summary.text+=" · 전투 중"
 	for definition in Growth.DATA.axes:
 		var axis:String=definition.id;var rank:int=status.ranks[axis]
 		var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
-		rows[axis].info.text="%s %d/%d · %s ×%.2f\n%s"%[definition.label,rank,status.max_rank,
-			"방어 수치" if axis=="DEFENSE" else "효과량",(1000+rank*per_rank)/1000.0,definition.description]
+		rows[axis].title.text="%s %d/%d"%[definition.label,rank,status.max_rank]
+		rows[axis].info.text="%s\n+%d%%"%[
+			"방어·회피·막기" if axis=="DEFENSE" else "공격·이능 효과",rank*per_rank/10]
 		rows[axis].button.disabled=status.points<1 or rank>=status.max_rank or not safe
 		rows[axis].button.tooltip_text="전투 중에는 투자할 수 없습니다." if not safe else \
 			("숙련 포인트가 없습니다." if status.points<1 else ("최대 숙련입니다." if rank>=status.max_rank else "1점 투자"))

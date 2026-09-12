@@ -2673,8 +2673,13 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 	if inventory==null:return rows
 	for item in inventory.backpack:
 		var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
-		if ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id):continue
+		var catalog:Dictionary=preload("res://sim/abilities/monster_ability_catalog.gd").for_item(str(item.definition_id))
+		if (ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id)) and catalog.is_empty():continue
 		var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
+		if preview.is_empty():
+			ability_id=str(catalog.ability_id)
+			preview={"ability_id":ability_id,"label":str(catalog.label),"planned":true,
+				"passive":str(catalog.passive),"active":str(catalog.active)}
 		rows.append({"instance_id":str(item.instance_id),
 			"definition_id":str(item.definition_id),"quantity":int(item.quantity),
 			"ability_id":ability_id,"label":str(preview.get("label",ability_id)),

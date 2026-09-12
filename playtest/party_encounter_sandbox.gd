@@ -1317,7 +1317,7 @@ func _build_member_detail_modal()->void:
 	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
 	member_detail_tab_row.add_child(member_detail_relationship_tab);DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="이능"
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·이능"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
@@ -5074,6 +5074,7 @@ func _refresh_open_member_detail()->void:
 	_update_progression_window(detail.get("progression",{}))
 	member_skill_window.call("set_detail",detail)
 	if member_detail_entity_id==int(party.protagonist_id):mastery_panel.refresh(session)
+	member_ability_window.update_rows(session.ability_binding_rows(member_detail_entity_id),session.ability_binding_item_rows(member_detail_entity_id))
 	call_deferred("_measure_member_detail_body")
 
 func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
