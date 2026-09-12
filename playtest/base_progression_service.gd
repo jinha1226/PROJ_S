@@ -350,6 +350,7 @@ func base_return()->Dictionary:
 				{"schema_version":1,"ruleset_id":"party-active-skills-v1",
 					"reason":"TOWN_RETURN","member_ids":refilled_ids})
 	if event!=null and _session.town_life_enabled():
+		preload("res://playtest/dungeon_visitors_service.gd").release_temporary(_session)
 		if not _session._ensure_town_guild_candidates():event=null
 	state.revision+=1;var error:String=_session.sim.world.world_state_error()
 	if event==null or not error.is_empty():

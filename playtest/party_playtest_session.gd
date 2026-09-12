@@ -5377,7 +5377,8 @@ func roster_change_assessment(operation: String, entity_id: int) -> Dictionary:
 	var state = sim.world.party_encounter
 	if town_life_enabled() and operation=="RECRUIT":
 		var life:Dictionary=preload("res://sim/town_life_rules.gd").state(sim.world.events)
-		if entity_id not in life.members:return _rejection_dto("town_meeting_required")
+		if entity_id not in life.members and not preload("res://playtest/dungeon_visitors_service.gd").assess(self,entity_id).get("can_join",false):
+			return _rejection_dto("town_meeting_required")
 		if preload("res://sim/town_life_rules.gd").field_count(sim.world)>=preload("res://sim/town_life_rules.gd").FIELD_LIMIT:
 			return _rejection_dto("party_full")
 	# Town is a preparation surface, not a continuation of the dungeon tactical
@@ -5549,11 +5550,19 @@ func _apply_roster_change(operation: String, entity_id: int,
 		sim.world.combatant_states[entity_id].status_rows.clear()
 	else:
 		state.active_party_member_ids.append(entity_id); state.active_party_member_ids.sort()
-		state.member(entity_id).presence = "GROUPED"
-		sim.world.entities[entity_id].position = state.group_anchor
+		if field_turns_active() and state.expedition_cycle.phase=="DUNGEON" and state.safe_phase=="GROUPED":
+			# Field companions are physical actors; preserve the adjacent NPC tile.
+			state.member(entity_id).presence="DEPLOYED"
+			state.member(entity_id).busy_until=sim.world.world_time
+		else:
+			state.member(entity_id).presence = "GROUPED"
+			sim.world.entities[entity_id].position = state.group_anchor
 	var event_type := "party.companion_dismissed" if operation == "DISMISS" \
 		else "party.companion_recruited"
 	var event_data:={"operation":operation}
+	if operation=="RECRUIT" and state.member(entity_id).presence=="DEPLOYED":
+		var recruited_position:Vector2i=sim.world.entities[entity_id].position
+		event_data["field_position"]=[recruited_position.x,recruited_position.y]
 	if operation=="DISMISS":
 		event_data["condition_band"]=str(exile_condition.condition_band)
 		event_data["resentment_delta"]=int(exile_condition.resentment_delta)
@@ -9084,6 +9093,7 @@ func _result_dto(result, action: Variant = null, request: Variant = null,
 			and sim.world.party_encounter!=null \
 			and sim.world.party_encounter.expedition_cycle!=null \
 			and sim.world.party_encounter.expedition_cycle.phase=="TOWN":
+		preload("res://playtest/dungeon_visitors_service.gd").release_temporary(self)
 		_ensure_town_guild_candidates()
 	var ids: Array = []
 	for event in result.events:

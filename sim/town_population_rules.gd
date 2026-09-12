@@ -58,7 +58,7 @@ static func locations(world)->Array:
 static func interaction_error(value:Variant)->String:
 	if not value is Dictionary:return "invalid_population_command"
 	var keys:Array=value.keys();keys.sort()
-	if keys!=["action","entity_id"] or value.get("action") not in ["GREET","AID"]:
+	if keys!=["action","entity_id"] or value.get("action") not in ["GREET","AID","HEAL","ACCEPT"]:
 		return "invalid_population_command"
 	var id:Variant=value.get("entity_id")
 	return "" if id is String and id.is_valid_int() and int(id)>0 and str(int(id))==id else "invalid_population_actor"

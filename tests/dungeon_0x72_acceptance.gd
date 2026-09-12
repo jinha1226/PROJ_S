@@ -30,6 +30,8 @@ func run()->void:
 	check(not ui.species_picker_modal.visible,"species selection completed")
 	check(session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON","picker starts directly in dungeon")
 	check(session.sim.world.party_encounter.expedition_cycle.floor_index==1,"picker starts on first floor")
+	check(session.allows_companions(),"direct dungeon start enables companions")
+	check(not preload("res://sim/town_population_rules.gd").locations(session.sim.world).is_empty(),"direct start spawns autonomous explorers")
 	var hero:int=session.sim.world.party_control_actor_id()
 	var before:Dictionary=session.sim.snapshot()
 	session.observe_party_ui(15,true,19,true)

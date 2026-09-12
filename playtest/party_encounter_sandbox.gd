@@ -1218,6 +1218,13 @@ func _commit_species_picker(species_id:String)->void:
 	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_species_picker_committed=false;return
+	# Initialize the persistent population through its journaled authorities,
+	# without ever displaying the intermediate town scene.
+	var started:Dictionary=session.town_life_command({"action":"START"})
+	var departed:Dictionary=session.depart_town() if started.get("accepted",false) else started
+	if not departed.get("accepted",false):
+		_species_picker_committed=false
+		notice_text=str(departed.get("message","원정 준비에 실패했습니다."));return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
@@ -1707,7 +1714,8 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 			var actor:Dictionary=actor_value
 			var entity_id:=int(actor.get("entity_id",-1))
 			var display_role:=str(actor.get("display_role",""))
-			var recruitable:bool=display_role in ["RESCUE_NPC","OPENING_NPC"]
+			var recruitable:bool=display_role in ["RESCUE_NPC","OPENING_NPC"] \
+				or str(actor.get("presence",""))=="WORLD_NPC"
 			if not recruitable or str(actor.get("life_state","ACTIVE"))=="DEAD":continue
 			var position_raw:Variant=actor.get("display_position",cell.get("position",[]))
 			if not position_raw is Array or position_raw.size()!=2:continue
@@ -1751,7 +1759,13 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 		if detail.get("attack_assessment",{}) is Dictionary else {}
 	nearby_npc_attack_button.disabled=not bool(attack.get("accepted",false))
 	nearby_npc_attack_button.tooltip_text=str(attack.get("message","인접한 인물을 공격합니다."))
-	if nearby_npc_story_state=="OPENING_CHOICE":
+	if session.sim.world.is_independent_visitor(nearby_npc_entity_id):
+		var visitor:Dictionary=preload("res://playtest/dungeon_visitors_service.gd").assess(session,nearby_npc_entity_id)
+		nearby_npc_condition.text=str(visitor.get("activity","탐험 중"))+" · 거리 %d칸"%best_distance
+		nearby_npc_recruitment.text=str(visitor.get("message",""))
+		nearby_npc_action_button.text=str(visitor.get("action_label","이야기 나누기"))
+		nearby_npc_action_button.disabled=not bool(visitor.get("can_act",false))
+	elif nearby_npc_story_state=="OPENING_CHOICE":
 		nearby_npc_recruitment.text="하단의 [물약 주기] 또는 [돕지 않기]로 결정합니다."
 		nearby_npc_action_button.text="[선택은 하단]"
 		nearby_npc_action_button.disabled=true
@@ -1809,6 +1823,11 @@ func _on_nearby_npc_detail()->void:
 	if nearby_npc_entity_id>0:_open_member_detail(nearby_npc_entity_id)
 
 func _on_nearby_npc_action()->void:
+	if nearby_npc_entity_id>0 and session.sim.world.is_independent_visitor(nearby_npc_entity_id):
+		var service=preload("res://playtest/dungeon_visitors_service.gd")
+		var view:Dictionary=service.assess(session,nearby_npc_entity_id)
+		var result:Dictionary=service.interact(session,{"action":str(view.get("action","GREET")),"entity_id":str(nearby_npc_entity_id)})
+		notice_text=str(result.get("message",""));_request_refresh();return
 	if nearby_npc_entity_id<=0:return
 	if nearby_npc_story_state=="COLLAPSED_STORY":
 		_on_stabilize_candidate(nearby_npc_entity_id)
@@ -5898,8 +5917,8 @@ func _configure_candidate_detail_action(detail:Dictionary)->void:
 		var id:=int(detail.entity_id)
 		if session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON":
 			var visitor:Dictionary=preload("res://playtest/dungeon_visitors_service.gd").assess(session,id)
-			member_detail_candidate_action.text="식량 1개 나누기" if visitor.get("needs_supplies",false) else "이야기 나누기"
-			member_detail_candidate_action.disabled=not bool(visitor.get("can_aid" if visitor.get("needs_supplies",false) else "can_greet",false))
+			member_detail_candidate_action.text=str(visitor.get("action_label","이야기 나누기"))
+			member_detail_candidate_action.disabled=not bool(visitor.get("can_act",false))
 			member_detail_candidate_action.tooltip_text=str(visitor.get("message","이 층에 없는 인물입니다"))
 		else:
 			for resident in session.town_life_overview().residents:
@@ -5936,13 +5955,13 @@ func _on_member_detail_candidate_action()->void:
 		if session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON":
 			var visitor:Dictionary=preload("res://playtest/dungeon_visitors_service.gd").assess(session,id)
 			response=preload("res://playtest/dungeon_visitors_service.gd").interact(session,
-				{"action":"AID" if visitor.get("needs_supplies",false) else "GREET","entity_id":str(id)})
+				{"action":str(visitor.get("action","GREET")),"entity_id":str(id)})
 		else:
 			for resident in session.town_life_overview().residents:
 				if int(resident.entity_id)==id:
 					response=session.town_life_command({"action":"ASSIGN" if resident.joined else ("JOIN" if resident.can_join else "TALK"),"entity_id":str(id)})
 		notice_text=str(response.get("message","지금은 상호작용할 수 없습니다"))
-		_close_member_detail();_request_refresh();return
+		_request_refresh();_open_member_detail(id);return
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
 	var result:Dictionary
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":

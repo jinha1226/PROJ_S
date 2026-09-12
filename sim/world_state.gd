@@ -6446,6 +6446,13 @@ func _party_roster_history_error() -> String:
 				and event.data.get("resentment_delta") is int \
 				and int(event.data.get("resentment_delta"))>=10 \
 				and int(event.data.get("resentment_delta"))<=100)
+		if operation=="RECRUIT" and _exact_keys(event.data,["field_position","operation"]):
+			var p:Variant=event.data.field_position
+			event_data_valid=event.data.operation=="RECRUIT" and p is Array and p.size()==2 \
+				and p[0] is int and p[1] is int
+			if event_data_valid:
+				var pos:=Vector2i(p[0],p[1])
+				event_data_valid=in_bounds(pos) and maxi(absi(pos.x-event.position.x),absi(pos.y-event.position.y))<=1
 		if event.actor_id != hero_id or member == null or member.role != "COMPANION" \
 				or event.target_id == hero_id or event.position != hero_history.get("position", Vector2i(-1,-1)) \
 				or not bool(hero_history.get("ok", false)) or event.magnitude != 0 or event.cause_id != -1 \
@@ -6646,9 +6653,11 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 		if tracks_grouped_protagonist and event.target_id == entity_id \
 				and event.type in ["party.companion_recruited", "party.companion_dismissed","town.company_assigned","town.company_reserved"]:
 			if event.type in ["party.companion_recruited","town.company_assigned"]:
-				historical_cursor = event.position
+				var field_position:Variant=event.data.get("field_position",[])
+				var physical:bool=field_position is Array and field_position.size()==2
+				historical_cursor = Vector2i(int(field_position[0]),int(field_position[1])) if physical else event.position
 				anchored = true
-				grouped_with_protagonist = true
+				grouped_with_protagonist = not physical
 			else:
 				grouped_with_protagonist = false
 			continue
