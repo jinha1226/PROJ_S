@@ -96,6 +96,11 @@ var return_timer_label:Label
 var ration_label:Label
 var torch_timer_label:Label
 var food_meter:ProgressBar
+var detail_hp:ProgressBar
+var detail_mp:ProgressBar
+var detail_hp_text:Label
+var detail_mp_text:Label
+var stat_help:Node
 var food_icon:Control
 var torch_icon:Control
 var torch_meter:ProgressBar
@@ -1328,6 +1333,14 @@ func _build_member_detail_modal()->void:
 	member_detail_close.gui_input.connect(_on_member_detail_close_input.bind(member_detail_close))
 	member_detail_close.pressed.connect(_close_member_detail);header.add_child(member_detail_close)
 	DarkPixelSkinScript.apply_action_button(member_detail_close,DarkPixelSkinScript.CYAN)
+	var header_vitals:=HBoxContainer.new();header_vitals.name="CharacterHeaderVitals"
+	header_vitals.add_theme_constant_override("separation",12);stack.add_child(header_vitals)
+	for kind in ["HP","MP"]:
+		var column:=VBoxContainer.new();column.size_flags_horizontal=Control.SIZE_EXPAND_FILL;header_vitals.add_child(column)
+		var label:=_card_label(kind,"Header"+kind+"Text",12);column.add_child(label)
+		var bar:=_hud_supply_meter(column,"Header"+kind,DarkPixelSkinScript.BLOOD if kind=="HP" else DarkPixelSkinScript.CYAN)
+		if kind=="HP":detail_hp=bar;detail_hp_text=label
+		else:detail_mp=bar;detail_mp_text=label
 	member_detail_tab_row=HBoxContainer.new();member_detail_tab_row.name="MemberDetailTabs"
 	member_detail_tab_row.custom_minimum_size.y=TOUCH_TARGET;member_detail_tab_row.add_theme_constant_override("separation",6)
 	stack.add_child(member_detail_tab_row)
@@ -1390,6 +1403,7 @@ func _build_member_detail_modal()->void:
 	member_detail_body.mouse_filter=Control.MOUSE_FILTER_IGNORE;member_detail_scroll_content.add_child(member_detail_body)
 	_build_status_equipment_window(member_detail_scroll_content)
 	_build_item_popover()
+	stat_help=preload("res://playtest/character_stat_help.gd").new();stat_help.host=self;add_child(stat_help)
 	member_detail_dismiss=Button.new();member_detail_dismiss.name="MemberDetailDismiss"
 	member_detail_dismiss.text="[D 추방]";member_detail_dismiss.custom_minimum_size=Vector2(120,TOUCH_TARGET)
 	member_detail_dismiss.add_theme_font_size_override("font_size",FONT_BODY)
@@ -4904,12 +4918,10 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 	_select_member(member_id,display_name)
 
 func _update_member_status_window(detail:Dictionary)->void:
+	_update_detail_vitals(detail)
 	_clear_container(member_status_window)
 	var progression:Dictionary=detail.get("progression",{})
 	var vitals:=VBoxContainer.new();vitals.name="StatusVitals";member_status_window.add_child(vitals)
-	vitals.add_child(_status_gauge("체력",int(detail.get("health",0)),maxi(1,int(detail.get("max_health",1))),DarkPixelSkinScript.BLOOD))
-	var member=session.sim.world.party_encounter.member(int(detail.get("entity_id",-1)))
-	if member!=null:vitals.add_child(_status_gauge("기력",int(member.energy),int(member.max_energy),DarkPixelSkinScript.CYAN))
 	var stress:=int(detail.get("stress",0))
 	var stress_band:=str(detail.get("stress_band","CALM"))
 	vitals.add_child(_card_label("스트레스 %d / 1000 · %s"%[stress,str(detail.get("stress_band_label","안정"))],"StatusStress",14))
@@ -4925,19 +4937,28 @@ func _update_member_status_window(detail:Dictionary)->void:
 	combat_cluster.add_child(_card_label("전투","CombatSection",16))
 	var stats:Dictionary=detail.get("combat_stats",{})
 	if stats.is_empty():stats=progression.get("combat_stats",{})
+	var explanations:Dictionary=session._member_combat_stats(int(detail.get("entity_id",-1)),true).get("explanations",{})
 	var combat_grid:=GridContainer.new();combat_grid.name="StatusCombatGrid";combat_grid.columns=2
 	combat_grid.add_theme_constant_override("h_separation",6);combat_grid.add_theme_constant_override("v_separation",6);combat_cluster.add_child(combat_grid)
 	for entry in [["공격력",str(stats.get("attack_power",0))],["방어력",str(stats.get("armor_flat",0))],
 			["회피율",_percent_milli_text(int(stats.get("evasion_milli",0)))],["막기율",_percent_milli_text(int(stats.get("parry_milli",0)))]]:
 		_add_status_value(combat_grid,str(entry[0]),str(entry[1]))
+		var card:=combat_grid.get_child(combat_grid.get_child_count()-1)
+		card.set_meta("stat_title",str(entry[0]))
+		card.set_meta("stat_help",str(explanations.get(entry[0],"계산 정보가 없습니다.")))
 	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
 	body_cluster.add_child(_card_label("육체 상태","BodyStateSection",16))
 	var body:Dictionary=detail.get("body_state",{})
 	var body_row:=HBoxContainer.new();body_cluster.add_child(body_row)
 	var silhouette:=preload("res://playtest/body_status_silhouette.gd").new();silhouette.body=body;body_row.add_child(silhouette)
-	var body_text:=_card_label("\n".join(body_status_lines(body)),"StatusBodyState",14)
-	body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body_row.add_child(body_text)
-	body_text.clip_text=false;body_text.custom_minimum_size.y=126
+	var body_list:=VBoxContainer.new();body_list.name="StatusBodyRows";body_list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body_row.add_child(body_list)
+	for line in body_status_lines(body):
+		var body_text:=_card_label(line,"BodyValue",14);body_text.clip_text=false
+		body_text.custom_minimum_size.y=30;body_list.add_child(body_text)
+		body_text.set_meta("stat_title",line.get_slice(" ",0))
+		body_text.set_meta("stat_help",_body_help(line))
+	# Keep an invisible text projection for existing accessibility/test consumers.
+	var body_summary:=Label.new();body_summary.name="StatusBodyState";body_summary.text="\n".join(body_status_lines(body));body_summary.visible=false;body_cluster.add_child(body_summary)
 	var effects:=_add_status_pixel_section(status_grid,"EmotionSealCluster")
 	effects.add_child(_card_label("적용 중인 효과","EmotionSection",16))
 	var status_labels:Array[String]=[]
@@ -4978,6 +4999,27 @@ func _update_member_status_window(detail:Dictionary)->void:
 		member_status_window.add_child(equipment_text)
 	var dossier_heading:=_card_label("내성","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
+	preload("res://playtest/character_stat_help.gd").make_scroll_transparent(member_status_window)
+
+func _update_detail_vitals(detail:Dictionary)->void:
+	if detail_hp==null:return
+	var hp:=int(detail.get("health",0));var max_hp:=maxi(1,int(detail.get("max_health",1)))
+	var member=session.sim.world.party_encounter.member(int(detail.get("entity_id",-1)))
+	detail_hp.max_value=max_hp;detail_hp.value=hp;detail_hp_text.text="HP %d / %d"%[hp,max_hp]
+	var mp:=int(member.energy) if member!=null else 0
+	var max_mp:=maxi(1,int(member.max_energy)) if member!=null else 1
+	detail_mp.max_value=max_mp;detail_mp.value=mp
+	detail_mp_text.text="MP %d / %d"%[mp,max_mp] if member!=null else "MP —"
+
+static func _body_help(line:String)->String:
+	if line.begins_with("혈액"):return "현재 혈액 / 최대 혈액입니다. 신체 손상 시 출혈량만큼 줄어듭니다. 최대 혈액량은 출혈 계산에도 사용됩니다. HP와는 별도의 신체 수치입니다."
+	if line.begins_with("의식"):return "현재 기록된 의식 수준입니다. 현재 버전에서는 출혈·충격에 따라 의식을 갱신하거나 의식 수치로 행동을 제한하는 기능은 아직 연결되지 않았습니다."
+	if line.begins_with("피부"):return "베기·찌르기의 방어 장벽에 더해져 조직에 전달되는 힘을 줄입니다. 타격 상처의 깊이 계산에도 사용됩니다. 일반 방어력에 이 수치를 그대로 더하지는 않습니다."
+	if line.begins_with("연부"):return "타격 피해의 완충값입니다. 방어구의 충격 완충과 합산해 몸에 전달되는 힘을 줄입니다."
+	if line.begins_with("뼈"):return "골절 발생 계산의 저항 기준입니다. 높을수록 같은 공격에서 골절 위험이 줄어듭니다. 일반 HP 피해감소 수치가 아닙니다."
+	if line.begins_with("충격"):return "현재 신체 충격 / 충격 저항 기준입니다. 공격의 충격과 조직 손상으로 증가하며, 저항 기준이 높을수록 공격에서 발생하는 충격이 작아집니다."
+	if line.begins_with("상처"):return "현재 기록된 상처 수입니다. 상처의 종류·깊이·위치에 따라 출혈과 부위 기능 손상이 달라집니다."
+	return "부위의 기능 상태입니다. 정상은 기능을 유지한 상태, 기능 상실은 사용할 수 없는 상태, 절단은 해당 부위가 분리된 상태입니다."
 
 func _status_gauge(title:String,value:int,maximum:int,color:Color)->Control:
 	var line:=HBoxContainer.new();line.custom_minimum_size.y=26
@@ -4997,22 +5039,20 @@ static func body_status_lines(body:Dictionary)->Array[String]:
 	if bool(body.get("available",false)):
 		var blood_capacity:=maxi(1,int(body.get("blood_capacity",1)))
 		var blood:=clampi(int(body.get("blood",0)),0,blood_capacity)
-		body_lines.append("혈액 %d/%d (%d%%) · 의식 %d%%"%[
-			blood,blood_capacity,int(blood*100/blood_capacity),
-			int(int(body.get("consciousness",0))/10)])
-		body_lines.append("피부 질김 %d · 연부조직 완충 %d"%[
-			int(body.get("skin_toughness",0)),
-			int(body.get("soft_tissue_cushioning",0))])
-		body_lines.append("뼈 강도 %d · 충격 %d/%d · 상처 %d"%[
-			int(body.get("bone_fracture_threshold",0)),int(body.get("shock",0)),
-			maxi(1,int(body.get("shock_threshold",1))),int(body.get("wound_count",0))])
+		body_lines.append("혈액 %d/%d (%d%%)"%[blood,blood_capacity,int(blood*100/blood_capacity)])
+		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
+		body_lines.append("피부 질김 %d"%int(body.get("skin_toughness",0)))
+		body_lines.append("연부조직 완충 %d"%int(body.get("soft_tissue_cushioning",0)))
+		body_lines.append("뼈 강도 %d"%int(body.get("bone_fracture_threshold",0)))
+		body_lines.append("충격 %d/%d"%[int(body.get("shock",0)),maxi(1,int(body.get("shock_threshold",1)))])
+		body_lines.append("상처 %d"%int(body.get("wound_count",0)))
 		var part_states:Array[String]=[]
 		for part_value in body.get("parts",[]):
 			if not part_value is Dictionary:continue
 			var part:Dictionary=part_value
 			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
 				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
-		if not part_states.is_empty():body_lines.append(" · ".join(part_states))
+		body_lines.append_array(part_states)
 	else:body_lines.append("육체 정보 없음")
 	return body_lines
 

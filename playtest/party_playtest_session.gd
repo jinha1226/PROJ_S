@@ -1475,7 +1475,8 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	# It replaces any real or placeholder combat draft after the item itself has
 	# been validated, so a rejected selection still preserves the existing plan.
 	_clear_draft()
-	var rollback_memento:Variant=sim.capture_rollback_memento()
+	var live_item:=field_turns_active() and preload("res://sim/party_recovery_rules.gd").enabled(sim.world)
+	var rollback_memento:Variant=sim.capture_rollback_memento(not live_item)
 	if not rollback_memento is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var journal_size_before:=command_journal.size()
 	var step_result:Dictionary=_advance_item_action_time()
@@ -1486,6 +1487,9 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
 	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	hero_id=sim.world.party_control_actor_id()
+	# The turn resolver already checked its response. Audit the item's new tail
+	# separately; save/load and rollback retain exhaustive history validation.
+	var item_event_start:int=sim.world.events.size()
 	var result:Dictionary
 	match action:
 		"PICKUP":result=ItemOperationsScript.commit_pickup(sim.world,hero_id,instance_id,
@@ -1522,7 +1526,7 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 				return _rejection_dto(str(extinguished.get("reason","torch_event_failed")))
 			extinguish_event_id=int(extinguished.get("event_id",-1))
 	state.revision+=1
-	var state_error:String=sim.world.world_state_error()
+	var state_error:String=sim.world.runtime_step_postcondition_error(item_event_start) if live_item else sim.world.world_state_error()
 	if event==null or not state_error.is_empty():
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -7533,7 +7537,7 @@ func inspect_tile(position_value: Variant, viewer_id: int = -1) -> Dictionary:
 		"position":[position.x,position.y],"viewer_id":resolved_viewer})
 
 
-func _member_combat_stats(entity_id:int)->Dictionary:
+func _member_combat_stats(entity_id:int,include_explanations:bool=false)->Dictionary:
 	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):return {}
 	var combatant=sim.world.combatant_states.get(entity_id)
 	var profile:=CombatProfileRegistryScript.profile(str(combatant.combat_profile_id)) \
@@ -7557,6 +7561,7 @@ func _member_combat_stats(entity_id:int)->Dictionary:
 			int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
 			ActorStatRulesScript.for_entity(sim.world,entity_id),FieldRules.enabled(sim.world))
 	return {"attack_power":int(spec.get("raw_damage",profile.get("power",0))),
+		"explanations":_combat_stat_explanations(entity_id,profile,spec,defense) if include_explanations else {},
 		"armor_flat":int(defense.get("effective_armor_flat",profile.get("armor_flat",0))),
 		"base_armor_flat":int(defense.get("base_armor_flat",profile.get("armor_flat",0))),
 		"evasion_milli":int(defense.get("effective_evasion_milli",profile.get("evasion_milli",0))),
@@ -7567,6 +7572,38 @@ func _member_combat_stats(entity_id:int)->Dictionary:
 			+int(spec.get("proficiency_accuracy_milli",0)),
 		"guard_reduction_milli":250,"guard_duration":200}.duplicate(true)
 
+
+func _combat_stat_explanations(entity_id:int,profile:Dictionary,attack:Dictionary,defense:Dictionary)->Dictionary:
+	var inventory=sim.world.inventory_of(entity_id)
+	var gear:Dictionary=inventory.combat_modifier_dto() if inventory!=null else {}
+	var talent:Dictionary=preload("res://sim/personal_talent_rules.gd").apply_combat(sim.world.entities.get(entity_id),gear.duplicate(true))
+	var gear_totals:Dictionary=gear.get("totals",{})
+	var talent_totals:Dictionary=talent.get("totals",{})
+	var descriptions:Dictionary={}
+	var base:=int(attack.get("attacker_power",profile.get("power",0)))
+	var weapon:=int(attack.get("weapon_damage",0))
+	var training:=int(attack.get("proficiency_damage",0))
+	var scale:=int(attack.get("stat_scaling_bonus_milli",0))
+	var scaling_lines:Array[String]=[]
+	for pair in [["STR","힘"],["DEX","민첩"],["INT","지능"]]:
+		scaling_lines.append("%s %d · 무기 보정 등급 %s"%[pair[1],int(attack.get("attacker_stats",{}).get(pair[0],0)),str(attack.get("weapon_scaling",{}).get(pair[0],"—"))])
+	descriptions["공격력"]="기본 %d + 무기 %d + 숙련 보정 %d = %d\n능력치 보정 × %.3f\n최종 공격력 %d (소수점 버림)\n\n숙련 레벨 %d · %s\n%s\n\n대상의 방어·막기 적용 전 수치입니다."%[base,weapon,training,base+weapon+training,1.0+scale/1000.0,int(attack.get("raw_damage",base)),int(attack.get("proficiency_rank",0)),str(attack.get("weapon_label","없음")),"\n".join(scaling_lines)]
+	var defense_rank:=0
+	var party=sim.world.party_encounter
+	if party!=null and party.protagonist_id==entity_id:defense_rank=int(party.protagonist_growth.mastery_ranks.DEFENSE)
+	for entry in [["방어력","armor_flat","effective_armor_flat"],["회피율","dodge_milli","effective_evasion_milli"],["막기율","parry_milli","parry_milli"]]:
+		var label:=str(entry[0]);var key:=str(entry[1]);var result:=int(defense.get(entry[2],0))
+		var initial:=int(profile.get("armor_flat" if key=="armor_flat" else "evasion_milli",0)) if key!="parry_milli" else 0
+		var equipment:=int(gear_totals.get(key,0));var personal:=int(talent_totals.get(key,0))-equipment
+		var mastery:=result-initial-equipment-personal
+		var unit:=1.0 if key=="armor_flat" else 10.0
+		var suffix:="" if key=="armor_flat" else "%"
+		descriptions[label]="기본 %.1f%s\n장비 +%.1f%s\n재능 %+.1f%s\n숙련·상한 보정 %+.1f%s\n최종 %.1f%s"%[initial/unit,suffix,equipment/unit,suffix,personal/unit,suffix,mastery/unit,suffix,result/unit,suffix]
+		descriptions[label]+="\n방어숙련 Lv.%d · 합계 ×%.2f (반올림)"%[defense_rank,1.0+defense_rank*int(preload("res://game/rebuilt/progression.gd").DATA.defense_per_rank_milli)/1000.0]
+		if key=="armor_flat":descriptions[label]+="\n\n피격 시 관통을 적용한 뒤 피해를 줄이는 수치입니다."
+		elif key=="dodge_milli":descriptions[label]+="\n\n상대의 명중과 함께 계산되는 회피 수치입니다. 실제 회피 확률이 항상 이 값과 같지는 않습니다. 상한 100%."
+		else:descriptions[label]+="\n\n명중 이후 별도로 적용되는 막기 수치입니다. 상한 100%."
+	return descriptions
 
 func _member_equipment_summary(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
