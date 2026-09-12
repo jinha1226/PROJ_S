@@ -79,7 +79,8 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
-			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id))
+			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id),
+			preload("res://sim/field_turn_rules.gd").enabled(world))
 		if weapon_spec.is_empty(): return {}
 	var basic:=TurnEngine.physical(int(attacker_profile.power),500+int(attacker_profile.accuracy_milli),target_evasion,target_armor)
 	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() else int(basic.hit_chance)
@@ -341,7 +342,7 @@ func build_weapon_assessment(attacker_id: int, target_id: int, weapon_id: String
 	var spec := WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 		int(attacker_profile.power), int(attacker_profile.accuracy_milli),
 		int(target_profile.evasion_milli), int(target_profile.armor_flat),
-		ActorStatRulesScript.for_entity(world,attacker_id))
+		ActorStatRulesScript.for_entity(world,attacker_id),preload("res://sim/field_turn_rules.gd").enabled(world))
 	if spec.is_empty(): return {}
 	var key := WeaponAttackRulesScript.commitment_key(world.seed, processed_step_index,
 		attack_start_world_time, batch_context, intent_ordinal, attacker_id, target_id,
@@ -394,6 +395,9 @@ func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
 
 
 func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
+	if world.party_encounter!=null and attacker_id==world.party_encounter.protagonist_id \
+			and preload("res://sim/field_turn_rules.gd").enabled(world):
+		return int(world.party_encounter.protagonist_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])
 	if world.party_encounter != null and attacker_id == world.party_encounter.protagonist_id \
 			and world.party_encounter.protagonist_progression != null:
 		return world.party_encounter.protagonist_progression.rank(proficiency_id)

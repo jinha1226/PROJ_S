@@ -28,7 +28,7 @@ static func scaling_bonus_milli(scaling:Dictionary,stats:Dictionary)->int:
 static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 		attacker_power: int, attacker_accuracy_milli: int,
 		target_evasion_milli: int, target_armor_flat: int,
-		attacker_stats:Variant=null) -> Dictionary:
+		attacker_stats:Variant=null, mastery_mode:bool=false) -> Dictionary:
 	if attacker_stats==null:
 		var baseline:=int(RegistryScript.stat_scaling_rules().get("stat_baseline",0))
 		attacker_stats={"STR":baseline,"DEX":baseline,"INT":baseline}
@@ -39,6 +39,11 @@ static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 	var proficiency_accuracy: int = ProgressionRegistryScript.proficiency_accuracy_bonus_milli(proficiency_rank)
 	var proficiency_damage: int = ProgressionRegistryScript.proficiency_damage_bonus(proficiency_rank)
 	var unscaled_raw_damage: int = attacker_power + weapon.base_damage + proficiency_damage
+	if mastery_mode:
+		proficiency_accuracy=0
+		unscaled_raw_damage=((attacker_power+weapon.base_damage)*(1000+proficiency_rank
+			*int(preload("res://game/rebuilt/progression.gd").DATA.attack_per_rank_milli))+500)/1000
+		proficiency_damage=unscaled_raw_damage-attacker_power-weapon.base_damage
 	var stat_scaling_bonus_milli:=scaling_bonus_milli(weapon.scaling,attacker_stats)
 	if stat_scaling_bonus_milli<0:return {}
 	var raw_damage: int = FixedPointScript.trunc_div(

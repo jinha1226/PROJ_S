@@ -227,6 +227,7 @@ var member_detail_candidate_available:=false
 var member_detail_attack_available:=false
 var member_progression_window:VBoxContainer
 var member_ability_window:VBoxContainer
+var mastery_panel:VBoxContainer
 var member_progression_xp
 var member_progression_xp_text:Label
 var member_progression_stats:Label
@@ -979,7 +980,7 @@ func _build_ui()->void:
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
 	var menu_popup:=product_menu_button.get_popup()
-	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("이능",3)
+	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_separator()
@@ -1108,7 +1109,7 @@ func _build_bottom_navigation()->void:
 	bottom_navigation.add_theme_constant_override("separation",0);root_layout.add_child(bottom_navigation)
 	map_nav_button=_add_nav_button("[지도]","MapNavigation",_toggle_map_overlay);map_nav_button.toggle_mode=true
 	person_nav_button=_add_nav_button("[인물]","PersonNavigation",_open_hero_detail_tab.bind("STATUS"))
-	skill_nav_button=_add_nav_button("[이능]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
+	skill_nav_button=_add_nav_button("[숙련·이능]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
 	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
 	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
 
@@ -1391,6 +1392,9 @@ func _build_member_detail_modal()->void:
 func _build_progression_window(parent:VBoxContainer)->void:
 	member_ability_window=preload("res://playtest/ability_loadout_mockup.gd").new()
 	member_ability_window.visible=false;parent.add_child(member_ability_window)
+	mastery_panel=preload("res://playtest/mastery_panel.gd").new()
+	member_ability_window.add_child(mastery_panel);member_ability_window.move_child(mastery_panel,0)
+	mastery_panel.changed.connect(func():_request_refresh())
 	member_progression_window=VBoxContainer.new();member_progression_window.name="ProgressionWindow"
 	member_progression_window.add_theme_constant_override("separation",4);member_progression_window.visible=false
 	parent.add_child(member_progression_window)
@@ -5164,9 +5168,9 @@ func _apply_member_detail_tab()->void:
 	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
 	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
-	var skill_tab_label:="이능"
+	var skill_tab_label:="숙련·이능"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
-	member_detail_skill_tab.tooltip_text="이능 6칸 결속 · 아이템 소비 후 저장"
+	member_detail_skill_tab.tooltip_text="숙련 포인트 배분 · 이능 6칸 결속"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
@@ -5179,6 +5183,8 @@ func _apply_member_detail_tab()->void:
 	member_relationship_window.visible=relationship_selected
 	member_skill_window.visible=false
 	member_ability_window.visible=skill_selected
+	mastery_panel.visible=member_detail_entity_id==int(session.sim.world.party_encounter.protagonist_id)
+	if skill_selected and mastery_panel.visible:mastery_panel.refresh(session)
 	member_status_equipment_window.visible=member_detail_has_skills \
 		and status_selected
 	member_progression_window.visible=false

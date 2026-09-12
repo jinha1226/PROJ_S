@@ -3,15 +3,35 @@ extends RefCounted
 
 const SCHEMA_VERSION := 3
 const RegistryScript = preload("res://sim/growth_build_registry.gd")
+const Mastery = preload("res://game/rebuilt/progression.gd")
 
 var schema_version := SCHEMA_VERSION
 var species_id: String
 var xp_total := 0
+var mastery_ranks := {"MELEE":0,"RANGED":0,"MAGIC":0,"DEFENSE":0}
 var stat_allocations: Dictionary = _empty_stat_allocations()
 var species_branch_ranks: Dictionary = {}
 var unlocked_mutation_ids: Array[String] = []
 var equipped_mutation_ids: Array[String] = ["", "", ""]
 var processed_mutation_death_event_ids: Array[int] = []
+
+func mastery_points_available() -> int:
+	var spent := 0
+	for axis in Mastery.IDS: spent += int(mastery_ranks[axis])
+	return (mini(level(),int(Mastery.DATA.max_level))-1)*int(Mastery.DATA.points_per_level)-spent
+
+func commit_spend_mastery_point(axis:String) -> Dictionary:
+	if not validation_error().is_empty():return _rejected("invalid_growth_state")
+	if axis not in Mastery.IDS:return _rejected("unknown_mastery")
+	if mastery_points_available()<1:return _rejected("no_mastery_points")
+	if int(mastery_ranks[axis])>=int(Mastery.DATA.max_rank):return _rejected("mastery_maxed")
+	var candidate = _clone()
+	candidate.mastery_ranks[axis]+=1
+	return _accepted(candidate,0)
+
+func mastery_scale(axis:String,base:int)->int:
+	var per_rank:int=Mastery.DATA.defense_per_rank_milli if axis=="DEFENSE" else Mastery.DATA.attack_per_rank_milli
+	return maxi(0,(base*(1000+int(mastery_ranks.get(axis,0))*per_rank)+500)/1000)
 
 
 func _init(p_species_id: String = "human") -> void:
@@ -115,6 +135,11 @@ func commit_mutation_swap(slot_index: int, mutation_id: String, safe_phase: Stri
 
 
 func validation_error() -> String:
+	if mastery_ranks.size()!=4:return "invalid_mastery_ranks"
+	for axis in Mastery.IDS:
+		if not _integer(mastery_ranks.get(axis)) or int(mastery_ranks[axis])<0 \
+				or int(mastery_ranks[axis])>int(Mastery.DATA.max_rank):return "invalid_mastery_rank"
+	if mastery_points_available()<0:return "mastery_points_overspent"
 	if schema_version != SCHEMA_VERSION: return "unsupported_growth_build_schema"
 	if not RegistryScript.has_species(species_id): return "unknown_growth_species"
 	if xp_total < 0 or xp_total > RegistryScript.MAX_XP: return "invalid_growth_xp"
@@ -173,6 +198,7 @@ func to_dict() -> Dictionary:
 		branch_rows.append({"branch_id":branch_id, "rank":int(species_branch_ranks[branch_id])})
 	return {
 		"schema_version":schema_version, "species_id":species_id, "xp_total":xp_total,
+		"mastery_ranks":mastery_ranks.duplicate(),
 		"stat_allocations":stat_rows, "species_branch_ranks":branch_rows,
 		"unlocked_mutation_ids":unlocked_mutation_ids.duplicate(),
 		"equipped_mutation_ids":equipped_mutation_ids.duplicate(),
@@ -186,6 +212,8 @@ static func from_dict(row: Dictionary):
 	var value = load("res://sim/growth_build_state.gd").new(str(row.species_id))
 	value.schema_version = int(row.schema_version)
 	value.xp_total = int(row.xp_total)
+	if row.has("mastery_ranks"):
+		for axis in Mastery.IDS:value.mastery_ranks[axis]=int(row.mastery_ranks[axis])
 	value.stat_allocations.clear()
 	for stat_row in row.stat_allocations:
 		value.stat_allocations[str(stat_row.stat_id)] = int(stat_row.points)
@@ -206,6 +234,16 @@ static func from_dict(row: Dictionary):
 static func wire_error(row: Variant) -> String:
 	if not row is Dictionary: return "invalid_growth_build_shape"
 	var keys: Array = row.keys(); keys.sort()
+	# Optional for pre-mastery saves; rank-zero migration does not grant XP.
+	if row.has("mastery_ranks"):
+		if not row.mastery_ranks is Dictionary or row.mastery_ranks.size()!=4:return "invalid_mastery_ranks"
+		var spent:=0
+		for axis in Mastery.IDS:
+			var rank_value:Variant=row.mastery_ranks.get(axis)
+			if not _integer(rank_value) or int(rank_value)<0 or int(rank_value)>int(Mastery.DATA.max_rank):return "invalid_mastery_rank"
+			spent+=int(rank_value)
+		if not _integer(row.get("xp_total")) or spent>(mini(RegistryScript.level_for_xp(int(row.xp_total)),int(Mastery.DATA.max_level))-1)*int(Mastery.DATA.points_per_level):return "mastery_points_overspent"
+		keys.erase("mastery_ranks")
 	if keys != ["equipped_mutation_ids", "processed_mutation_death_event_ids",
 			"schema_version", "species_branch_ranks", "species_id", "stat_allocations",
 			"unlocked_mutation_ids", "xp_total"]:
@@ -257,6 +295,8 @@ static func from_dict_unchecked(row: Dictionary):
 	var value = load("res://sim/growth_build_state.gd").new(str(row.species_id))
 	value.schema_version = int(row.schema_version)
 	value.xp_total = int(row.xp_total)
+	if row.has("mastery_ranks"):
+		for axis in Mastery.IDS:value.mastery_ranks[axis]=int(row.mastery_ranks[axis])
 	value.stat_allocations.clear()
 	for stat_row in row.stat_allocations:
 		value.stat_allocations[str(stat_row.stat_id)] = int(stat_row.points)

@@ -375,8 +375,20 @@ func equipped_item(entity_id: int, slot: String):
 
 func equipment_modifiers(entity_id: int) -> Dictionary:
 	var row = _inventory_ref(entity_id)
-	return preload("res://sim/personal_talent_rules.gd").apply_combat(
+	var result:Dictionary=preload("res://sim/personal_talent_rules.gd").apply_combat(
 		entities.get(entity_id), row.combat_modifier_dto() if row != null else {})
+	if party_encounter!=null and entity_id==party_encounter.protagonist_id and party_encounter.protagonist_growth!=null:
+		var growth=party_encounter.protagonist_growth
+		if int(growth.mastery_ranks.DEFENSE)>0:
+			result=result.duplicate(true)
+			var totals:Dictionary=result.get("totals",{})
+			var profile:Dictionary=CombatProfileRegistryScript.profile(combatant_states[entity_id].combat_profile_id)
+			for key in ["armor_flat","dodge_milli","parry_milli"]:
+				var base:=int(profile.get("armor_flat" if key=="armor_flat" else "evasion_milli",0)) if key!="parry_milli" else 0
+				totals[key]=growth.mastery_scale("DEFENSE",base+int(totals.get(key,0)))-base
+				totals[key]=clampi(int(totals[key]),0,1000000 if key=="armor_flat" else 1000)
+			result["totals"]=totals
+	return result
 
 
 func ground_item(instance_id: String):
@@ -3070,7 +3082,7 @@ func _melee_action_event_error(event) -> String:
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
 			int(target_profile.evasion_milli), int(target_profile.armor_flat),
-			ActorStatRulesScript.for_entity(self,event.actor_id))
+			ActorStatRulesScript.for_entity(self,event.actor_id),preload("res://sim/field_turn_rules.gd").enabled(self))
 		if weapon_spec.is_empty(): return "canonical_weapon_formula_invalid"
 		base_damage = int(weapon_spec.raw_damage)
 	elif party_encounter!=null and event.actor_id==party_encounter.protagonist_id:
@@ -3277,7 +3289,7 @@ func _melee_defense_action_event_error(event) -> String:
 		weapon_spec=WeaponAttackRulesScript.build_attack_spec(weapon_id,weapon_rank,
 			int(attacker_profile.power),int(attacker_profile.accuracy_milli),
 			int(snapshot.effective_evasion_milli),int(snapshot.effective_armor_flat),
-			ActorStatRulesScript.for_entity(self,event.actor_id))
+			ActorStatRulesScript.for_entity(self,event.actor_id),preload("res://sim/field_turn_rules.gd").enabled(self))
 		if weapon_spec.is_empty():return "canonical_combined_weapon_formula_invalid"
 	var base_damage:int=int(weapon_spec.raw_damage) if combined_weapon else int(attacker_profile.power)
 	var armor_reduction:int=int(weapon_spec.armor_reduction) if combined_weapon \
@@ -4947,6 +4959,15 @@ func _party_growth_build_error(hero) -> String:
 	if str(growth.species_id)!=str(hero.species_id):
 		return "party_growth_species_mismatch"
 	var Registry=preload("res://sim/growth_build_registry.gd")
+	var mastery_ledger:={"MELEE":0,"RANGED":0,"MAGIC":0,"DEFENSE":0}
+	for event in events:
+		if event.type!="growth.mastery_spent":continue
+		var axis:=str(event.data.get("target_id",""))
+		if axis not in mastery_ledger or event.actor_id!=hero.id or event.target_id!=hero.id \
+				or event.magnitude!=1 or event.data.get("ruleset_id","")!=Registry.RULESET_ID:
+			return "party_mastery_event_invalid"
+		mastery_ledger[axis]+=1
+	if mastery_ledger!=growth.mastery_ranks:return "party_mastery_ledger_mismatch"
 	var processed_families:Dictionary={}
 	for death_event_id in growth.processed_mutation_death_event_ids:
 		var source=event_by_id(int(death_event_id))
@@ -5312,6 +5333,13 @@ func _progression_melee_rank_before(event_id:int)->int:
 
 
 func _progression_rank_before(skill_id:String,event_id:int)->int:
+	if preload("res://sim/field_turn_rules.gd").enabled(self):
+		var axis:="RANGED" if skill_id=="RANGED" else "MELEE"
+		var rank_value:=0
+		for historical in events:
+			if historical.id>=event_id:break
+			if historical.type=="growth.mastery_spent" and str(historical.data.get("target_id",""))==axis:rank_value+=1
+		return rank_value
 	if skill_id not in ProgressionRegistryScript.SKILL_IDS:return 0
 	var modes:Dictionary=_legacy_party_training_modes() \
 		if party_encounter.protagonist_progression.legacy_reward_origin \

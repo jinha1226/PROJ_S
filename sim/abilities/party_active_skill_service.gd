@@ -104,15 +104,20 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	var stat_id:="STR" if skill_id in ["STRIKE","SHOVE"] else "INT"
 	var scale:=1 if skill_id=="SHOVE" else 2
 	var bonus:=(int(stats.get(stat_id,5))-int(baseline.get(stat_id,5)))*scale
+	var growth=state.protagonist_growth if actor_id==state.protagonist_id else null
+	var axis:="MELEE" if skill_id in ["STRIKE","SHOVE"] else "MAGIC"
 	if int(result.damage)>0:
 		var raw:=maxi(1,int(definition.power)+bonus)
+		if growth!=null:raw=growth.mastery_scale(axis,raw)
 		if str(definition.element)=="PHYSICAL":raw=maxi(1,raw-int(target.armor))
 		var resistance:=clampi(int(target.resistances.get(
 			str(definition.element),0)),-25,75)
 		result.damage=maxi(1,roundi(raw*(1.0-resistance/100.0)))
 	if int(result.healing)>0:
+		var healing_power:=maxi(1,int(definition.power)+bonus)
+		if growth!=null:healing_power=growth.mastery_scale("MAGIC",healing_power)
 		result.healing=mini(maxi(0,int(target.max_hp)-int(target.hp)),
-			mini(recoverable_damage(world,target_id),maxi(1,int(definition.power)+bonus)))
+			mini(recoverable_damage(world,target_id),healing_power))
 		if int(result.healing)<=0:
 			return _reject(rejected,"active_skill_no_recoverable_damage",
 				"응급 치유 가능한 피해가 없습니다.")

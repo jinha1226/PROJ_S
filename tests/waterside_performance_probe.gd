@@ -19,8 +19,12 @@ func run():
 		Perf.reset();Perf.enabled=true
 		var begun:=Time.get_ticks_usec()
 		for i in range(6):
+			var command_start:=Perf.begin()
 			ui._on_explore(Vector2i.RIGHT if i%2==0 else Vector2i.LEFT)
+			Perf.end("probe.command",command_start)
+			var frame_start:=Perf.begin()
 			await process_frame
+			Perf.end("probe.frame_wait",frame_start)
 		var elapsed:=Time.get_ticks_usec()-begun
 		Perf.enabled=false
 		print("WATERSIDE wet=",wet," time_us=",elapsed," world_time=",session.sim.world.world_time," error=",session.sim.world.world_state_error())

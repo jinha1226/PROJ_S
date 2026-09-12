@@ -16,6 +16,9 @@ var _steps_committed := 0
 var _started_step_index := -1
 var _last_step_index := -1
 var _last_step_result: Dictionary = {}
+var _planned_path: Array = []
+var _exhausted_frontiers: Dictionary = {}
+var plan_builds := 0
 
 
 func _init(session) -> void:
@@ -32,6 +35,9 @@ func clear() -> void:
 	_started_step_index = -1
 	_last_step_index = -1
 	_last_step_result.clear()
+	_planned_path.clear()
+	_exhausted_frontiers.clear()
+	plan_builds=0
 
 
 func start() -> Dictionary:
@@ -125,11 +131,32 @@ func _advance(snapshot: Dictionary) -> Dictionary:
 func _choose_frontier(snapshot: Dictionary) -> Dictionary:
 	var cells: Dictionary = snapshot.get("cells", {})
 	var current := _wire_position(snapshot.get("hero_position", [-1, -1]))
-	return _nearest_safe_frontier(snapshot, cells, current)
+	# Reaching a reveal boundary is the probe. A boundary still present after
+	# standing there is occluded, not an invitation to bounce back to it.
+	_exhausted_frontiers[_key(current)] = true
+	if _planned_path.size() > 1 and _planned_path[1] == current:
+		_planned_path.pop_front()
+	if _planned_path.size() > 1 and _planned_path[0] == current:
+		var valid := true
+		for i in range(1, _planned_path.size()):
+			if not _known_step_is_safe(_planned_path[i-1], _planned_path[i], cells):
+				valid = false; break
+		if valid and (snapshot.get("visible", {}) as Dictionary).has(_key(_planned_path[1])):
+			return {"found":true,"target":_target,"visibility_state":_target_visibility,
+				"target_kind":_target_kind,"path":_planned_path}
+	_planned_path.clear()
+	if bool(snapshot.get("path_only",false)):
+		snapshot=_owner()._auto_explore_fog_snapshot()
+		cells=snapshot.get("cells",{})
+	var choice := _nearest_safe_frontier(snapshot, cells, current)
+	if bool(choice.get("found", false)):
+		_planned_path = choice.path.duplicate()
+	return choice
 
 
 func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 		start: Vector2i) -> Dictionary:
+	plan_builds+=1
 	var start_key := _key(start)
 	if not cells.has(start_key):
 		return {"found":false, "reason":"auto_explore_no_frontier"}
@@ -178,7 +205,8 @@ func _nearest_safe_frontier(snapshot: Dictionary, cells: Dictionary,
 			var candidate := {"position":position, "steps":int(node.steps),
 				"cost":int(node.cost), "score":int(node.steps) + exit_distance,
 				"exit_distance":exit_distance if seek_exit else -1}
-			if position != start and _is_frontier(position, cells,
+			if position != start and not _exhausted_frontiers.has(_key(position)) \
+					and not visited.has(_key(position)) and _is_frontier(position, cells,
 					int(snapshot.get("width", 0)), int(snapshot.get("height", 0))):
 				if best_frontier.is_empty() \
 						or _frontier_candidate_less(candidate, best_frontier):
@@ -358,7 +386,7 @@ func _state(reason: String, advanced: bool = false,
 
 func _snapshot() -> Dictionary:
 	var owner = _owner()
-	return owner._auto_explore_fog_snapshot() if owner != null else {}
+	return owner._auto_explore_fog_snapshot(_planned_path if _planned_path.size()>2 else []) if owner != null else {}
 
 
 func _stop_snapshot() -> Dictionary:

@@ -839,7 +839,7 @@ func protagonist_progression()->Dictionary:
 		int(hero_entity.health) if hero_entity!=null else -1,
 		int(hero_entity.max_health) if hero_entity!=null else -1,
 		hash([int(growth.xp_total),growth.stat_allocations,growth.species_branch_ranks,
-			growth.equipped_mutation_ids]) if growth!=null else 0,
+			growth.equipped_mutation_ids,growth.mastery_ranks]) if growth!=null else 0,
 		str(hero_entity.species_id) if hero_entity!=null else ""]
 	if str(_progression_cache.get("key",""))==cache_key:
 		return (_progression_cache.dto as Dictionary).duplicate(true)
@@ -948,6 +948,19 @@ func spend_species_trait_point(branch_id:String)->Dictionary:
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
 
 
+func spend_mastery_point(axis:String)->Dictionary:
+	var stop_snapshot:=_auto_explore_stop_snapshot()
+	if stop_snapshot.is_empty() or not stop_snapshot.get("visible_enemy_keys",{}).is_empty() \
+			or str(stop_snapshot.get("safe_phase","")) not in ["GROUPED","GROUPED_COMPLETE"]:
+		return _rejection_dto("mastery_requires_safety")
+	return _commit_growth_point("SPEND_MASTERY_POINT",axis)
+
+func mastery_status()->Dictionary:
+	if sim==null or sim.world.party_encounter==null:return {}
+	var growth=sim.world.party_encounter.protagonist_growth
+	return {"level":growth.level(),"xp":growth.xp_total,"points":growth.mastery_points_available(),
+		"ranks":growth.mastery_ranks.duplicate(),"max_rank":int(growth.Mastery.DATA.max_rank)}
+
 func _commit_growth_point(action:String,target_id:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
@@ -956,9 +969,12 @@ func _commit_growth_point(action:String,target_id:String)->Dictionary:
 		return _rejection_dto("run_complete")
 	if not sim.world.is_settled() or _protagonist_draft!=null:
 		return _rejection_dto("world_not_settled")
-	var preview:Dictionary=state.protagonist_growth.commit_spend_stat_point(target_id) \
-		if action=="SPEND_STAT_POINT" \
-		else state.protagonist_growth.commit_spend_species_point(target_id)
+	var preview:Dictionary
+	match action:
+		"SPEND_STAT_POINT":preview=state.protagonist_growth.commit_spend_stat_point(target_id)
+		"SPEND_MASTERY_POINT":preview=state.protagonist_growth.commit_spend_mastery_point(target_id)
+		"SPEND_SPECIES_POINT":preview=state.protagonist_growth.commit_spend_species_point(target_id)
+		_:return _rejection_dto("unknown_growth_action")
 	if not bool(preview.get("accepted",false)):
 		return _rejection_dto(str(preview.get("reason","growth_point_failed")))
 	var before:Dictionary=sim.snapshot()
@@ -967,6 +983,7 @@ func _commit_growth_point(action:String,target_id:String)->Dictionary:
 	var hero=sim.world.entities.get(state.protagonist_id)
 	var event_type:="growth.stat_spent" if action=="SPEND_STAT_POINT" \
 		else "growth.species_point_spent"
+	if action=="SPEND_MASTERY_POINT":event_type="growth.mastery_spent"
 	var event=sim.world.emit_event(event_type,state.protagonist_id,state.protagonist_id,
 		hero.position,1,-1,{"schema_version":1,"ruleset_id":GrowthBuildRegistryScript.RULESET_ID,
 			"target_id":target_id})
@@ -1032,20 +1049,19 @@ func protagonist_equipment()->Dictionary:
 	var weapon=WeaponRegistryScript.definition(
 		ItemOperationsScript.equipped_weapon_id(sim.world,sim.world.party_control_actor_id()))
 	if weapon==null:return {"schema_version":1,"available":false}.duplicate(true)
-	var rank:int=state.protagonist_progression.rank(weapon.proficiency_id) \
-		if sim.world.party_control_actor_id()==int(state.protagonist_id) else 0
+	var rank:int=sim.melee._weapon_proficiency_rank(sim.world.party_control_actor_id(),weapon.proficiency_id)
 	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) if combatant!=null else {}
 	var spec:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
 		int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
-		ActorStatRulesScript.for_entity(sim.world,sim.world.party_control_actor_id()))
+		ActorStatRulesScript.for_entity(sim.world,sim.world.party_control_actor_id()),FieldRules.enabled(sim.world))
 	return {"schema_version":1,"available":true,"weapon_id":weapon.weapon_id,
 		"weapon_label":weapon.label,"proficiency_id":weapon.proficiency_id,
 		"proficiency_rank":rank,"attack_form":weapon.attack_form,"trait_id":weapon.trait_id,
 		"range_min":weapon.range_min,"range_max":weapon.range_max,
 		"attack_time":weapon.attack_time,"raw_damage":int(spec.get("raw_damage",0)),
-		"accuracy_bonus_milli":ProgressionRegistryScript.proficiency_accuracy_bonus_milli(rank),
-		"damage_bonus":ProgressionRegistryScript.proficiency_damage_bonus(rank),
+		"accuracy_bonus_milli":int(spec.get("proficiency_accuracy_milli",0)),
+		"damage_bonus":int(spec.get("proficiency_damage",0)),
 		"ammo_kind":weapon.ammo_kind,"ammo_cost":weapon.ammo_cost,
 		"arrows":ammo.amount("ARROW"),"bolts":ammo.amount("BOLT"),
 		"reload_required":weapon.reload_required,
@@ -1686,13 +1702,12 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
 		if weapon!=null:
 			var state=sim.world.party_encounter
-			var rank:int=state.protagonist_progression.rank(str(weapon.proficiency_id)) \
-				if sim.world.party_control_actor_id()==int(state.protagonist_id) else 0
+			var rank:int=sim.melee._weapon_proficiency_rank(sim.world.party_control_actor_id(),str(weapon.proficiency_id))
 			var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 			var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) \
 				if combatant!=null else {}
 			var attack:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
-				int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,stats)
+				int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,stats,FieldRules.enabled(sim.world))
 			result.merge({"weapon_id":str(weapon.weapon_id),
 				"raw_damage":int(attack.get("raw_damage",weapon.base_damage)),
 				"hit_chance_milli":int(attack.get("hit_chance_milli",500)),
@@ -6809,7 +6824,7 @@ func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
 	return _commit_exploration_one(command, false, true)
 
 
-func _auto_explore_fog_snapshot() -> Dictionary:
+func _auto_explore_fog_snapshot(retained_path:Array=[]) -> Dictionary:
 	var context := _party_observation_context()
 	if context.is_empty():
 		return {}
@@ -6833,7 +6848,15 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 				continue
 			visible_enemy_keys["ENEMY:%d" % enemy_id] = true
 	var known_keys: Dictionary = {}
-	for key_value in explored: known_keys[str(key_value)] = true
+	if retained_path.is_empty():
+		for key_value in explored: known_keys[str(key_value)] = true
+	else:
+		# A retained route needs fresh occupancy/hazards on its corridor and
+		# diagonal flanks, not reconstruction of the entire discovered floor.
+		for position in retained_path:
+			for offset in [Vector2i.ZERO,Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]:
+				var key:=_position_key(position+offset)
+				if explored.has(key):known_keys[key]=true
 	for key_value in visible: known_keys[str(key_value)] = true
 	var known_positions: Array[Vector2i] = []
 	for key_value in known_keys:
@@ -6874,7 +6897,7 @@ func _auto_explore_fog_snapshot() -> Dictionary:
 	if bool(progress.get("available", false)) and exit_value is Array \
 			and exit_value.size() == 2:
 		exit_wire = [int(exit_value[0]), int(exit_value[1])]
-	return {"schema_version":1, "width":sim.world.width,
+	return {"schema_version":1, "path_only":not retained_path.is_empty(), "width":sim.world.width,
 		"height":sim.world.height, "step_index":int(status.step_index),
 		"safe_phase":str(status.safe_phase), "view_mode":str(status.view_mode),
 		"terminal":bool(status.terminal) or bool(progress.get("terminal", false)),
@@ -7027,9 +7050,12 @@ func _field_exploration_action(command):
 
 func commit_field_action(action)->Dictionary:
 	if _run_is_complete():return _rejection_dto("run_complete")
+	var begun:=PerfProbeScript.begin()
 	var rollback:Dictionary=sim.capture_rollback_memento(false)
+	PerfProbeScript.end("field.memento",begun)
 	var event_start:int=sim.world.events.size()
-	var result=FieldTurns.step(sim,action)
+	var result=FieldTurns.step(sim,action,100,rollback)
+	begun=PerfProbeScript.begin()
 	if result.accepted:
 		var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,result.time_cost) \
 			if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
@@ -7047,7 +7073,11 @@ func commit_field_action(action)->Dictionary:
 		command_journal.append({"kind":"field_action","action":action.to_dict()})
 		_advance_exile_world()
 	_clear_draft()
-	return _result_dto(result)
+	PerfProbeScript.end("field.recovery_exile",begun)
+	begun=PerfProbeScript.begin()
+	var dto:=_result_dto(result)
+	PerfProbeScript.end("field.result",begun)
+	return dto
 
 func select_field_actor(actor_id:int)->Dictionary:
 	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
@@ -7491,11 +7521,12 @@ func _member_combat_stats(entity_id:int)->Dictionary:
 	if weapon!=null and state!=null and int(state.protagonist_id)==entity_id \
 			and state.protagonist_progression!=null:
 		rank=state.protagonist_progression.rank(str(weapon.proficiency_id))
+		if FieldRules.enabled(sim.world):rank=int(state.protagonist_growth.mastery_ranks["RANGED" if weapon.proficiency_id=="RANGED" else "MELEE"])
 	var spec:Dictionary={}
 	if weapon!=null:
 		spec=WeaponAttackRulesScript.build_attack_spec(str(weapon.weapon_id),rank,
 			int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
-			ActorStatRulesScript.for_entity(sim.world,entity_id))
+			ActorStatRulesScript.for_entity(sim.world,entity_id),FieldRules.enabled(sim.world))
 	return {"attack_power":int(spec.get("raw_damage",profile.get("power",0))),
 		"armor_flat":int(defense.get("effective_armor_flat",profile.get("armor_flat",0))),
 		"base_armor_flat":int(defense.get("base_armor_flat",profile.get("armor_flat",0))),
@@ -8345,6 +8376,8 @@ func load_session_json(encoded: String) -> Dictionary:
 			"growth":
 				var growth_operation:Dictionary=row.operation
 				match str(growth_operation.action):
+					"SPEND_MASTERY_POINT":
+						replay_result=replay.spend_mastery_point(str(growth_operation.target_id))
 					"SPEND_STAT_POINT":
 						replay_result=replay.spend_growth_stat_point(
 							str(growth_operation.target_id))
@@ -8712,12 +8745,14 @@ func _journal_wire_error(journal: Array) -> String:
 				if growth_keys!=["action","mutation_id","slot_index","target_id"] \
 						or not row.operation.action is String \
 						or str(row.operation.action) not in ["SPEND_STAT_POINT",
-							"SPEND_SPECIES_POINT","SWAP_MUTATION"] \
+							"SPEND_SPECIES_POINT","SPEND_MASTERY_POINT","SWAP_MUTATION"] \
 						or not row.operation.target_id is String \
 						or not row.operation.mutation_id is String \
 						or not _integer(row.operation.slot_index):
 					return "invalid_growth_journal"
 				var growth_action:=str(row.operation.action)
+				if growth_action=="SPEND_MASTERY_POINT" and (str(row.operation.target_id) not in GrowthBuildStateScript.Mastery.IDS \
+						or int(row.operation.slot_index)!=-1 or not str(row.operation.mutation_id).is_empty()):return "invalid_growth_journal"
 				if growth_action=="SPEND_STAT_POINT" \
 						and (str(row.operation.target_id) not in GrowthBuildRegistryScript.STAT_IDS \
 						or int(row.operation.slot_index)!=-1 \

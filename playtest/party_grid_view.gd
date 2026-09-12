@@ -1,5 +1,6 @@
 class_name PartyGridView
 extends Control
+const Perf=preload("res://sim/perf_probe.gd")
 
 signal world_cell_pressed(position: Vector2i)
 signal actor_pressed(entity_id: int)
@@ -1241,6 +1242,10 @@ func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 		grid_rect(),visible_cell_count)
 func _camera_cell_rect(position:Vector2i)->Rect2:
 	if not view_bounds().has_point(position):return Rect2()
+	if not uses_perspective_projection():
+		var rect:=grid_rect()
+		var cell:=rect.size.x/float(visible_cell_count)
+		return Rect2(rect.position+Vector2(position-view_origin)*cell,Vector2(cell,cell))
 	return DioramaScript.polygon_bounds(_camera_cell_polygon(position))
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
@@ -1797,6 +1802,7 @@ func _ensure_static_projection_cache()->void:
 			var wall_role:Dictionary=content.wall_role
 			_static_projection_cache[key]={"position":position,"in_world":true,"rect":rect,
 				"polygon":polygon,
+				"tile_spec":TopdownTileAssets.tile_spec(row,position,_terrain_theme_floor_index),
 				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
 				"depth":depth,"wall_role":wall_role,
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
@@ -2347,7 +2353,9 @@ func _diorama_visibility_state(row:Dictionary)->String:
 	return "UNSEEN" if row.is_empty() else AsciiStyleScript.visibility_state(row)
 
 func _draw() -> void:
+	var begun:=Perf.begin()
 	_draw_world_with_emphasis()
+	Perf.end("grid.draw_world",begun)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]
 		if not is_world_cell_visible(goal):continue
@@ -2393,6 +2401,7 @@ func _draw_world_with_emphasis()->void:
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	draw_set_transform(camera_offset+impact_offset)
 	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
+	var begun:=Perf.begin()
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
 	_draw_wall_connector_pass("MEMORY")
@@ -2410,6 +2419,8 @@ func _draw_world_with_emphasis()->void:
 	_draw_skill_reach_cells()
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
+	Perf.end("grid.terrain_passes",begun)
+	begun=Perf.begin()
 	for visual_row in _sorted_visual_actor_rows():
 		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
 			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),
@@ -2418,6 +2429,7 @@ func _draw_world_with_emphasis()->void:
 			_draw_actor(visual_row.actor,cell_size_px(),bool(visual_row.ghost),
 				camera_offset,frame_actor_sample_msec)
 	_draw_radial_darkness_overlay()
+	Perf.end("grid.actors_darkness",begun)
 	_draw_actor_health_bars(frame_actor_sample_msec)
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
@@ -2829,10 +2841,10 @@ func radial_darkness_draw_specs()->Array[Dictionary]:
 
 func _composite_darkness_at(point:Vector2)->Dictionary:
 	var sample_cell:=pixel_to_world_cell(point)
-	if sample_cell==Vector2i(-1,-1):return {"drawable":false}.duplicate(true)
+	if sample_cell==Vector2i(-1,-1):return {"drawable":false}
 	var cached:=_cached_static_cell(sample_cell)
 	var state:=str(cached.get("visibility_state","UNSEEN"))
-	if state!="VISIBLE":return {"drawable":false}.duplicate(true)
+	if state!="VISIBLE":return {"drawable":false}
 	var offset_cells:=(point-world_to_pixel_center(_hero_camera_position)) \
 		/maxf(1.0,cell_size_px())
 	var hero_distance:=offset_cells.length()
@@ -2843,7 +2855,7 @@ func _composite_darkness_at(point:Vector2)->Dictionary:
 	var fire_alpha:=_fire_alpha_at(sample_cell,point)
 	if fire_alpha>=0.0:alpha=minf(alpha,fire_alpha)
 	return {"drawable":true,"alpha":alpha,"sample_cell":sample_cell,
-		"wall_lit":wall_alpha>=0.0,"fire_lit":fire_alpha>=0.0}.duplicate(true)
+		"wall_lit":wall_alpha>=0.0,"fire_lit":fire_alpha>=0.0}
 
 static func directional_darkness_distance(offset_cells:Vector2,facing:Vector2i,
 		torch_lit:bool)->float:
@@ -2899,6 +2911,7 @@ func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
 	return true
 
 func _draw_radial_darkness_overlay()->void:
+	var begun:=Perf.begin()
 	var torch_lit:=_hero_torch_lit()
 	var key:="%d:%d:%d:%d:%d:%s"%[_static_projection_rebuild_count,
 		int(size.x),int(size.y),_terrain_theme_floor_index,_hero_camera_actor_id,
@@ -2907,6 +2920,7 @@ func _draw_radial_darkness_overlay()->void:
 		_radial_darkness_mesh=_build_radial_darkness_mesh()
 		_radial_darkness_mesh_key=key
 	if _radial_darkness_mesh!=null:draw_mesh(_radial_darkness_mesh,null)
+	Perf.end("grid.darkness",begun)
 
 func _build_radial_darkness_mesh()->ArrayMesh:
 	if _hero_camera_position==Vector2i(-1,-1):return null
@@ -2936,7 +2950,11 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 			var next_segment:=(segment+1)%RADIAL_DARKNESS_SEGMENTS
 			var sample_angle:=TAU*(float(segment)+0.5)/float(RADIAL_DARKNESS_SEGMENTS)
 			var midpoint:=center+Vector2(cos(sample_angle),sin(sample_angle))*sample_radius
-			if not bool(_composite_darkness_at(midpoint).get("drawable",false)):continue
+			# Triangle inclusion only needs visibility. Computing all light falloff
+			# curves here duplicated 864 lighting samples whose alpha was discarded.
+			var midpoint_cell:=pixel_to_world_cell(midpoint)
+			if midpoint_cell==Vector2i(-1,-1) or str((_static_projection_cache.get(
+				_key(midpoint_cell),{}) as Dictionary).get("visibility_state","UNSEEN"))!="VISIBLE":continue
 			var outer:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+segment
 			var outer_next:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+next_segment
 			if ring==1:
@@ -2967,10 +2985,9 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 				_draw_asciident_terrain_cluster(terrain_ascii_cluster_draw_spec(position))
 				continue
 			var row:Dictionary=cached.get("row",{})
-			var tile_spec:=TopdownTileAssets.tile_spec(row,position,
-				_terrain_theme_floor_index)
+			var tile_spec:Dictionary=cached.get("tile_spec",{})
 			if bool(tile_spec.get("visible",false)):
-				_draw_topdown_terrain_tile(world_cell_rect(position),tile_spec)
+				_draw_topdown_terrain_tile(cached.rect,tile_spec)
 				# Tile imagery replaces only the primary terrain glyph. Semantic
 				# features, hazards, routes and material marks retain their passes.
 				continue

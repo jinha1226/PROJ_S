@@ -1,5 +1,7 @@
 # a788c30 계열 화면의 전투·이동 엔진 교체
 
+후속 적용: [자동탐험·이동 렌더링·4계열 숙련 UI 통합](AUTO_EXPLORE_MASTERY_INTEGRATION.ko.md). 아래 범위 구분은 `dc30b99` 당시 상태이며, 후속 작업에서 주인공 4계열 숙련을 기존 게임에 연결했다.
+
 ## 기준과 의도
 
 사용자가 지정한 UI 기준은 `a788c30`이다. 실제 작업은 `39ec270`에서 분리한 `feat/legacy-shell-new-core`이며, 그 사이의 횃불 HUD·시야·입력 수정은 보존했다. 기존 `party_encounter_sandbox.tscn`과 `PartyPlaytestSession`을 사용한다. 간이 던전의 UI를 비슷하게 꾸미는 방식은 중단했다.

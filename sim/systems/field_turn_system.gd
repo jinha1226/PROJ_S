@@ -14,6 +14,7 @@ const Morale=preload("res://sim/systems/party_morale_system.gd")
 const Darkness=preload("res://sim/darkness_stress_rules.gd")
 const Kernel=preload("res://sim/combat_kernel.gd")
 const ActorQueue=preload("res://sim/systems/field_actor_queue.gd")
+const Perf=preload("res://sim/perf_probe.gd")
 
 static func assess(sim,action)->Dictionary:
 	var rejected:={"accepted":false,"reason":"field_action_unavailable","time_cost":0}
@@ -31,7 +32,8 @@ static func assess(sim,action)->Dictionary:
 	return {"accepted":true,"reason":"ok","time_cost":int(sim.party_coordinator._action_row(
 		action,"DIRECT",0).time_cost)}
 
-static func step(sim,action,wait_duration:int=100):
+static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null):
+	var begun:=Perf.begin()
 	var assessed:=assess(sim,action)
 	if not assessed.accepted:return Result.new(false,false,str(assessed.reason))
 	var world=sim.world;var party=world.party_encounter
@@ -40,7 +42,8 @@ static func step(sim,action,wait_duration:int=100):
 	if cost<1 or cost>10000:return Result.new(false,false,"invalid_field_duration")
 	if world.world_time>sim.MAX_WORLD_TIME-cost or world.step_index>=sim.MAX_INT64:
 		return Result.new(false,false,"time_overflow")
-	var rollback:Dictionary=world.rollback_memento(false)
+	var rollback:Dictionary=supplied_rollback if supplied_rollback is Dictionary else world.rollback_memento(false)
+	Perf.end("field.assess_rollback",begun)
 	var start:int=world.world_time;var event_start:int=world.events.size()
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
@@ -60,6 +63,7 @@ static func step(sim,action,wait_duration:int=100):
 	if ok:ok=_social(sim,event_start,false)
 	Darkness.checkpoint(world,darkness_sample)
 	var actor_queue=ActorQueue.new()
+	begun=Perf.begin()
 	if ok:
 		ok=Kernel.advance(end,func(until:int)->Dictionary:return actor_queue.next(sim,until),
 			func(next:Dictionary)->bool:
@@ -67,6 +71,8 @@ static func step(sim,action,wait_duration:int=100):
 				if accepted:actor_queue.completed(sim,int(next.id))
 				return accepted)
 	world.world_time=end
+	Perf.end("field.actor_loop",begun)
+	begun=Perf.begin()
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
 	var darkness_start:int=world.events.size()
 	if ok:ok=Darkness.commit_boundary(world,start,end,darkness_sample)
@@ -79,6 +85,7 @@ static func step(sim,action,wait_duration:int=100):
 	if not ok:
 		sim.restore_rollback_memento(rollback)
 		return Result.new(false,false,"field_turn_failed")
+	Perf.end("field.postcondition",begun)
 	return Result.new(true,true,"ok",world.events_since(event_start),{
 		"processed_step_index":step_index,"start_time":start,"end_time":end,
 		"time_cost":cost,"actor_id":action.actor_id,"turn_engine":"turn-engine-v2","queue_builds":actor_queue.builds})
