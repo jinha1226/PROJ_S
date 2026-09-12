@@ -12,6 +12,8 @@ var end_time: int
 var time_cost: int
 var speed_tier: String
 var root_event_id: int
+var turn_engine: String
+var queue_builds: int
 
 
 func _init(
@@ -34,3 +36,5 @@ func _init(
 	time_cost = p_data.get("time_cost", 0)
 	speed_tier = p_data.get("speed_tier", "")
 	root_event_id = p_data.get("root_event_id", -1)
+	turn_engine=p_data.get("turn_engine", "")
+	queue_builds=p_data.get("queue_builds",0)

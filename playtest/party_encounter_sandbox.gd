@@ -2105,7 +2105,7 @@ func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
 		root_layout.move_child(phase_panel,0)
 		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2)
-		root_layout.move_child(hero_skill_row,3);root_layout.move_child(cards,4)
+		root_layout.move_child(cards,3);root_layout.move_child(hero_skill_row,4)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -7346,7 +7346,7 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
-	var torch_text:="";var torch_band:="NONE";var torch_remaining:=0
+	var torch_text:="횃불 없음" if phase=="DUNGEON" else "";var torch_band:="NONE";var torch_remaining:=0
 	var torch_capacity:=TorchRulesScript.FUEL_DURATION
 	var torch_tone:=AsciiFrameScript.INK
 	if phase=="DUNGEON" and session!=null and session.sim!=null:
@@ -7360,11 +7360,11 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 			if bool(torch_state.get("depleted",false)):
 				torch_text="횃불 소진";torch_band="DEPLETED";torch_tone=AsciiFrameScript.DANGER
 			elif bool(torch_state.get("lit",false)):
-				torch_text="횃불 %s시간"%_grouped_number(torch_remaining)
+				torch_text="횃불 약 %d턴"%ceili(torch_remaining/100.0)
 				torch_band="WARNING" if torch_remaining*4<=torch_capacity else "LIT"
 				torch_tone=AsciiFrameScript.DANGER if torch_band=="WARNING" else AsciiFrameScript.BRASS
 			else:
-				torch_text="횃불 꺼짐 · %s시간"%_grouped_number(torch_remaining)
+				torch_text="횃불 꺼짐 · %d턴"%ceili(torch_remaining/100.0)
 				torch_band="OFF"
 	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
 		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false),

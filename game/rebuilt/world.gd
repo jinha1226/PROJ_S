@@ -2,6 +2,7 @@ extends RefCounted
 
 const Map=preload("res://playtest/deterministic_dungeon_map.gd")
 const Kernel=preload("res://sim/combat_kernel.gd")
+const TurnEngine=preload("res://sim/turn_engine.gd")
 const Heap=preload("res://game/rebuilt/min_heap.gd")
 const Navigation=preload("res://game/rebuilt/navigation.gd")
 const Personality=preload("res://sim/dungeon_population/hexaco_profile.gd")
@@ -320,12 +321,13 @@ func attack(source:Dictionary,target:Dictionary,ranged:bool=false)->void:
 	var defense_stats:Dictionary=Equipment.stats(target)
 	var defense:=maxi(0,int(defense_stats.protection)-int(offense.penetration))
 	var raw:int=offense.damage
-	var damage:=maxi(1,raw-defense-2)
+	var physical:=TurnEngine.physical(raw,int(offense.accuracy)*10,int(defense_stats.evasion)*10,defense+2,0,100,990)
+	var damage:int=physical.damage
 	injury_serial+=1
 	# Separate deterministic lanes: saving/reloading cannot reroll an attack.
 	var roll:int=("%d|%d|%d|accuracy"%[seed,injury_serial,source.id]).sha256_text().substr(0,8).hex_to_int()%100
-	var chance:=clampi(int(offense.accuracy)-int(defense_stats.evasion),10,99)
-	if roll>=chance:
+	var chance:int=physical.hit_chance
+	if TurnEngine.damage_outcome(roll*10,chance)=="MISS":
 		if visible[int(target.cell)]==1 or target.id==0:message(actor_name(source)+" 공격 빗나감")
 		return
 	var block_roll:int=("%d|%d|block"%[seed,injury_serial]).sha256_text().substr(0,8).hex_to_int()%100

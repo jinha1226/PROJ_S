@@ -1,10 +1,6 @@
 extends RefCounted
 
-const Heap=preload("res://game/rebuilt/min_heap.gd")
 const Kernel=preload("res://sim/combat_kernel.gd")
-var costs:=PackedInt32Array()
-var parents:=PackedInt32Array()
-var heap=Heap.new()
 var expanded:=0
 var fields:Dictionary={}
 
@@ -42,31 +38,15 @@ func route(world,start:int,goal:int,known_only:bool=true)->PackedInt32Array:
 	expanded=0
 	if goal<0 or goal>=world.terrain.size() or world.blocked(goal):return PackedInt32Array()
 	if known_only and world.memory[goal]==0:return PackedInt32Array()
-	var count:int=world.terrain.size()
-	costs.resize(count);costs.fill(2147483647)
-	parents.resize(count);parents.fill(-1);heap.clear()
-	costs[start]=0;heap.push([0,start,start,0])
-	while not heap.empty():
-		var row:Array=heap.pop()
-		var cell:int=row[2]
-		if int(row[3])!=costs[cell]:continue
-		expanded+=1
-		if cell==goal:
-			var path:=PackedInt32Array()
-			while cell!=start:path.append(cell);cell=parents[cell]
-			path.reverse();return path
-		var origin:Vector2i=world.position(cell)
-		for direction in Kernel.DIRECTIONS:
-			var point:Vector2i=origin+direction
-			if not world.in_bounds(point):continue
-			var next:int=world.index(point)
-			if world.blocked(next) or not world.open_edge(cell,next):continue
-			if known_only and world.memory[next]==0:continue
-			if world.occupancy[next]>=0 and next!=goal:continue
-			var score:int=costs[cell]+world.move_cost(next)
-			if score>=costs[next]:continue
-			costs[next]=score;parents[next]=cell
-			var delta:Vector2i=world.position(goal)-point
-			var estimate:int=score+maxi(absi(delta.x),absi(delta.y))*100
-			heap.push([estimate,next,next,score])
-	return PackedInt32Array()
+	var result:Dictionary=preload("res://sim/turn_engine.gd").path(world.WIDTH,world.HEIGHT,
+		world.position(start),[world.position(goal)],
+		func(from:Vector2i,to:Vector2i)->bool:
+			var cell:int=world.index(to)
+			return not world.blocked(cell) and world.open_edge(world.index(from),cell) \
+				and (not known_only or world.memory[cell]!=0) and (world.occupancy[cell]<0 or cell==goal),
+		func(point:Vector2i)->int:return world.move_cost(world.index(point)))
+	expanded=int(result.expanded)
+	var path:=PackedInt32Array()
+	if result.found:
+		for point in result.path.slice(1):path.append(world.index(point))
+	return path

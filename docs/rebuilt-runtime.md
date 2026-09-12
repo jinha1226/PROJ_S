@@ -1,5 +1,7 @@
 # 독립 던전 실행부 재구축
 
+> 현재 제품 기본 화면은 [기존 UI + 새 엔진](LEGACY_SHELL_ENGINE_REPLACEMENT.ko.md)이다. 아래 기본 진입점 설명은 이전 구현 이력이며, 독립 데모는 `?demo=rebuilt`로 연다.
+
 > 최신 UI 및 방어 숙련: [기존 UI 연결 결과](REBUILT_UI_CONNECTION.ko.md).
 
 > 최신 구현: [4계열 숙련 내부 시스템·UI 결과](PROFICIENCY_FOUR_AXIS_RESULTS.ko.md).

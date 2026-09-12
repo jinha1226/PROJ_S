@@ -6,6 +6,7 @@ const RegistryScript = preload("res://sim/weapon_registry.gd")
 const ProgressionRegistryScript = preload("res://sim/progression_registry.gd")
 const FixedPointScript=preload("res://sim/fixed_point.gd")
 const ROLL_LANES := ["HIT", "BLEED", "STUN"]
+const TurnEngine=preload("res://sim/turn_engine.gd")
 
 
 static func scaling_bonus_milli(scaling:Dictionary,stats:Dictionary)->int:
@@ -37,16 +38,16 @@ static func build_attack_spec(weapon_id: String, proficiency_rank: int,
 		return {}
 	var proficiency_accuracy: int = ProgressionRegistryScript.proficiency_accuracy_bonus_milli(proficiency_rank)
 	var proficiency_damage: int = ProgressionRegistryScript.proficiency_damage_bonus(proficiency_rank)
-	var hit_chance: int = clampi(500 + attacker_accuracy_milli + weapon.accuracy_milli \
-		- target_evasion_milli + proficiency_accuracy, 50, 950)
 	var unscaled_raw_damage: int = attacker_power + weapon.base_damage + proficiency_damage
 	var stat_scaling_bonus_milli:=scaling_bonus_milli(weapon.scaling,attacker_stats)
 	if stat_scaling_bonus_milli<0:return {}
 	var raw_damage: int = FixedPointScript.trunc_div(
 		unscaled_raw_damage*(1000+stat_scaling_bonus_milli),1000)
-	var effective_armor: int = maxi(0, target_armor_flat - weapon.armor_penetration_flat)
-	var armor_reduction: int = mini(effective_armor, maxi(0, raw_damage - 1))
-	var final_damage: int = maxi(1, raw_damage - armor_reduction)
+	var physical:=TurnEngine.physical(raw_damage,500+attacker_accuracy_milli+weapon.accuracy_milli+proficiency_accuracy,
+		target_evasion_milli,target_armor_flat,weapon.armor_penetration_flat)
+	var hit_chance:int=physical.hit_chance
+	var armor_reduction:int=physical.armor_reduction
+	var final_damage:int=physical.damage
 	return {"schema_version":1, "ruleset_id":RULESET_ID,
 		"weapon_id":weapon.weapon_id, "weapon_label":weapon.label,
 		"proficiency_id":weapon.proficiency_id, "proficiency_rank":proficiency_rank,
@@ -101,7 +102,7 @@ static func resolve_attack_spec(spec: Dictionary, commitment: String) -> Diction
 		return {}
 	var hit_roll: int = lane_roll_milli(commitment, "HIT")
 	var stun_roll: int = lane_roll_milli(commitment, "STUN")
-	var hit: bool = hit_roll < int(spec.hit_chance_milli)
+	var hit: bool = TurnEngine.damage_outcome(hit_roll,int(spec.hit_chance_milli))=="HIT"
 	var damage: int = int(spec.normal_final_damage) if hit else 0
 	var secondary_damage: int = int(damage * int(spec.secondary_damage_milli) / 1000) if hit else 0
 	var stunned: bool = hit and int(spec.stun_chance_milli) > 0 \

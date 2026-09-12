@@ -12,6 +12,7 @@ const ActorStatRulesScript=preload("res://sim/actor_stat_rules.gd")
 const DefenseRulesScript=preload("res://sim/combat_defense_rules.gd")
 const BodyFunctionRulesScript=preload("res://sim/body_function_rules.gd")
 const WorldItemOperationsScript=preload("res://sim/world_item_operations.gd")
+const TurnEngine=preload("res://sim/turn_engine.gd")
 
 var world
 var damage
@@ -80,13 +81,13 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
 			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id))
 		if weapon_spec.is_empty(): return {}
-	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() \
-		else clampi(500 + int(attacker_profile.accuracy_milli) - target_evasion, 50, 950)
+	var basic:=TurnEngine.physical(int(attacker_profile.power),500+int(attacker_profile.accuracy_milli),target_evasion,target_armor)
+	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() else int(basic.hit_chance)
 	var bleed_chance := clampi(int(attacker_profile.bleed_proc_milli) - int(target_profile.bleed_resist_milli), 0, 1000)
 	var base_damage := int(weapon_spec.raw_damage) if not weapon_spec.is_empty() \
 		else int(attacker_profile.power)
 	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \
-		else mini(target_armor, maxi(0, base_damage - 1))
+		else int(basic.armor_reduction)
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
 	var guard_rank:=0
@@ -181,9 +182,9 @@ func resolve_frozen_intent(intent):
 	var parry_roll:=DefenseRulesScript.parry_roll_milli(key) if equipment_defense else -1
 	var finisher: bool = str(assessment.get("target_life_state", "")) == "DOWNED" \
 		and str(assessment.get("intent_mode", "")) == "FINISHER"
-	var outcome := "FINISHER" if finisher else ("MISS" \
-		if hit_roll >= int(assessment.get("hit_chance_milli", -1)) else ("PARRIED" \
-		if equipment_defense and DefenseRulesScript.parry_succeeds(parry_roll,defense_snapshot) else "HIT"))
+	var outcome := "FINISHER" if finisher else TurnEngine.damage_outcome(hit_roll,
+		int(assessment.get("hit_chance_milli",-1)),parry_roll,
+		int(defense_snapshot.get("parry_milli",0)) if equipment_defense else 0)
 	var bleed_proc_succeeded := not finisher and outcome == "HIT" \
 		and bleed_roll < int(assessment.get("bleed_chance_milli", -1))
 	var final_damage := int(assessment.get("normal_final_damage", 0)) \

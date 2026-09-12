@@ -1,5 +1,7 @@
 # 공통 전투 코어 실제 게임 연결
 
+> 후속 교체: [기존 화면의 전투·이동 엔진 교체](LEGACY_SHELL_ENGINE_REPLACEMENT.ko.md). 기본 화면, 힙 행동 큐, 공격 계산, 일반·자동 경로 엔진을 연결했다.
+
 ## 적용 범위
 
 기본 게임 던전의 field turn 경로와 원형이 `sim/combat_kernel.gd`를 함께 사용한다.

@@ -13,6 +13,7 @@ const Relationships=preload("res://sim/systems/party_relationship_system.gd")
 const Morale=preload("res://sim/systems/party_morale_system.gd")
 const Darkness=preload("res://sim/darkness_stress_rules.gd")
 const Kernel=preload("res://sim/combat_kernel.gd")
+const ActorQueue=preload("res://sim/systems/field_actor_queue.gd")
 
 static func assess(sim,action)->Dictionary:
 	var rejected:={"accepted":false,"reason":"field_action_unavailable","time_cost":0}
@@ -58,9 +59,13 @@ static func step(sim,action,wait_duration:int=100):
 				world.entities[action.actor_id].position,str(awareness.awareness_state),action.actor_id)
 	if ok:ok=_social(sim,event_start,false)
 	Darkness.checkpoint(world,darkness_sample)
+	var actor_queue=ActorQueue.new()
 	if ok:
-		ok=Kernel.advance(end,func(until:int)->Dictionary:return _next(sim,until),
-			func(next:Dictionary)->bool:return _dispatch_kernel_action(sim,next,action,step_index,darkness_sample))
+		ok=Kernel.advance(end,func(until:int)->Dictionary:return actor_queue.next(sim,until),
+			func(next:Dictionary)->bool:
+				var accepted:=_dispatch_kernel_action(sim,next,action,step_index,darkness_sample)
+				if accepted:actor_queue.completed(sim,int(next.id))
+				return accepted)
 	world.world_time=end
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
 	var darkness_start:int=world.events.size()
@@ -76,7 +81,7 @@ static func step(sim,action,wait_duration:int=100):
 		return Result.new(false,false,"field_turn_failed")
 	return Result.new(true,true,"ok",world.events_since(event_start),{
 		"processed_step_index":step_index,"start_time":start,"end_time":end,
-		"time_cost":cost,"actor_id":action.actor_id})
+		"time_cost":cost,"actor_id":action.actor_id,"turn_engine":"turn-engine-v2","queue_builds":actor_queue.builds})
 
 static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
 	var delta:=Vector2i.ZERO
@@ -117,25 +122,6 @@ static func _social(sim,event_start:int,decay:bool)->bool:
 		and Relationships.commit_batch(world,world.events_since(event_start)) \
 		and Morale.commit_batch(world,world.events_since(event_start),decay)
 
-static func _next(sim,end:int)->Dictionary:
-	var world=sim.world;var party=world.party_encounter
-	var best:Dictionary={}
-	if not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time)<=end:
-		best={"at":int(world.scheduled_entries[0].due_time),"id":0}
-	if party.safe_phase=="PARTY_DEFEATED":return best
-	for id in party.active_party_member_ids:
-		if id==world.party_control_actor_id() or party.member(id).presence!="DEPLOYED" \
-			or not world.can_act(id,world.world_time):continue
-		best=_earlier(best,maxi(world.world_time,party.member(id).busy_until),id,end)
-	for id in sim.party_coordinator._stream_enemy_ids():
-		if not world.can_act(id,world.world_time):continue
-		best=_earlier(best,maxi(world.world_time,int(party.enemy_busy_rows[id])),id,end)
-	return best
-
-static func _earlier(best:Dictionary,at:int,id:int,end:int)->Dictionary:
-	# The player's next input wins actor ties at the end of this action. Cadence
-	# at that boundary is still settled, as in the core simulator's time contract.
-	return Kernel.earlier(best,at,id,end)
 
 static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 	var world=sim.world;var coordinator=sim.party_coordinator

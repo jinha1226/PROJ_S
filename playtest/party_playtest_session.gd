@@ -6008,289 +6008,57 @@ func find_exploration_path_to_any(actor_id:int,goals:Array[Vector2i])->Dictionar
 func _search_exploration_path_to_any(actor_id:int,goals:Array[Vector2i],
 		visible:Dictionary,risk_weighted:bool,maximum_steps:int,
 		avoid_known_hazards:bool=false)->Dictionary:
-	if not sim.world.entities.has(actor_id) \
-			or not sim.world.can_act(actor_id,sim.world.world_time):
+	if not sim.world.entities.has(actor_id) or not sim.world.can_act(actor_id,sim.world.world_time):
 		return _exploration_path_failure("actor_not_found")
-	var goal_set:Dictionary={}
+	var available:Array=[]
 	for goal in goals:
-		if not sim.world.in_bounds(goal):continue
-		if sim.world.blocking_entity_at(goal,actor_id)!=null:continue
-		var definition:Dictionary=TerrainRegistryScript.definition(
-			sim.world.tile_at(goal).terrain)
-		if not definition.is_empty() and bool(definition.get("passable",false)):
-			goal_set[_position_key(goal)]=true
-	if goal_set.is_empty():return _exploration_path_failure("path_unreachable")
-	var start:Vector2i=sim.world.entities[actor_id].position
-	if goal_set.has(_position_key(start)):
-		return {"found":true,"reason":"already_there","path":[start],
-			"total_cost":0,"steps":0,"total_risk":0,"max_total_risk":0}
-	if not risk_weighted:
-		return _search_shortest_exploration_path(actor_id,goal_set,visible,
-			maximum_steps,avoid_known_hazards)
-	var start_key:=_position_key(start)+("@0" if risk_weighted else "")
-	var open:Array[Dictionary]=[{"position":start,"risk":0,"max_risk":0,
-		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start]}]
-	var sequence:=1;var best:Dictionary={start_key:[0,0,0,0]}
-	while not open.is_empty():
-		open.sort_custom(func(a:Dictionary,b:Dictionary):
-			return _exploration_open_less(a,b,risk_weighted))
-		var node:Dictionary=open.pop_front();var position:Vector2i=node.position
-		var known:Array=best.get(str(node.state_key),[])
-		var signature:Array=[int(node.max_risk),int(node.risk),
-			int(node.steps),int(node.cost)]
-		if known!=signature:continue
-		if goal_set.has(_position_key(position)):
-			var route_risk:=int(node.risk);var route_max_risk:=int(node.max_risk)
-			if not risk_weighted:
-				route_risk=0;route_max_risk=0
-				for path_index in range(1,node.path.size()):
-					var path_risk:=_exploration_step_risk(node.path[path_index],visible)
-					route_risk+=path_risk;route_max_risk=maxi(route_max_risk,path_risk)
-			return {"found":true,"reason":"ok","path":node.path.duplicate(),
-				"total_cost":int(node.cost),"steps":int(node.steps),
-				"total_risk":route_risk,"max_total_risk":route_max_risk}
-		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
-			var next:Vector2i=position+direction
-			if not _exploration_step_is_legal(actor_id,position,next):continue
-			var candidate_steps:=int(node.steps)+1
-			if maximum_steps>=0 and candidate_steps>maximum_steps:continue
-			# Risk does not affect the first pass ordering. Evaluate only the final
-			# shortest path, then run the bounded weighted pass if it is hazardous.
-			var known_step_risk:=_exploration_step_risk(next,visible) \
-				if risk_weighted or avoid_known_hazards else 0
-			if avoid_known_hazards and known_step_risk>0:continue
-			var step_risk:=known_step_risk if risk_weighted else 0
-			var definition:Dictionary=TerrainRegistryScript.definition(
-				sim.world.tile_at(next).terrain)
-			var candidate_key:=_position_key(next)+("@%d"%candidate_steps \
-				if risk_weighted else "")
-			var candidate_path:Array=node.path.duplicate();candidate_path.append(next)
-			var candidate:={"position":next,"risk":int(node.risk)+step_risk,
-				"max_risk":maxi(int(node.max_risk),step_risk),"steps":candidate_steps,
-				"cost":int(node.cost)+int(definition.move_time_cost),
-				"sequence":sequence,"state_key":candidate_key,"path":candidate_path}
-			sequence+=1
-			var old:Array=best.get(candidate_key,[])
-			if not old.is_empty() and not _exploration_score_less(candidate,old,
-					risk_weighted):continue
-			best[candidate_key]=[int(candidate.max_risk),int(candidate.risk),
-				int(candidate.steps),int(candidate.cost)]
-			open.append(candidate)
-	return _exploration_path_failure("path_unreachable")
+		if not sim.world.in_bounds(goal) or sim.world.blocking_entity_at(goal,actor_id)!=null:continue
+		var definition:Dictionary=TerrainRegistryScript.definition_view(sim.world.tile_at(goal).terrain)
+		if not definition.is_empty() and bool(definition.get("passable",false)):available.append(goal)
+	if available.is_empty():return _exploration_path_failure("path_unreachable")
+	return _search_core_exploration(actor_id,available,visible,risk_weighted,maximum_steps,avoid_known_hazards)
 
-
-func _search_exploration_path(actor_id: int, goal: Vector2i,
-		visible: Dictionary, risk_weighted: bool, maximum_steps: int,
-		avoid_known_hazards:bool=false) -> Dictionary:
-	if not sim.world.entities.has(actor_id) or not sim.world.can_act(actor_id, sim.world.world_time):
+func _search_exploration_path(actor_id:int,goal:Vector2i,visible:Dictionary,
+		risk_weighted:bool,maximum_steps:int,avoid_known_hazards:bool=false)->Dictionary:
+	if not sim.world.entities.has(actor_id) or not sim.world.can_act(actor_id,sim.world.world_time):
 		return _exploration_path_failure("actor_not_found")
-	if not sim.world.in_bounds(goal): return _exploration_path_failure("out_of_bounds")
-	var start: Vector2i = sim.world.entities[actor_id].position
-	if start == goal:
-		return {"found":true,"reason":"already_there","path":[start],
-			"total_cost":0,"steps":0,"total_risk":0,"max_total_risk":0}
-	if sim.world.blocking_entity_at(goal, actor_id) != null:
-		return _exploration_path_failure("occupied")
-	var goal_definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(goal).terrain)
-	if goal_definition.is_empty() or not bool(goal_definition.get("passable", false)):
-		return _exploration_path_failure("path_unreachable")
-	if not risk_weighted:
-		return _search_shortest_exploration_path(actor_id,
-			{_position_key(goal):true},visible,maximum_steps,avoid_known_hazards)
-	var start_key := _position_key(start) + ("@0" if risk_weighted else "")
-	var open: Array[Dictionary] = [{"position":start,"risk":0,"max_risk":0,
-		"steps":0,"cost":0,"sequence":0,"state_key":start_key,"path":[start],"drift":0}]
-	var sequence := 1
-	var best: Dictionary = {start_key:[0,0,0,0,0]}
-	while not open.is_empty():
-		open.sort_custom(func(a:Dictionary,b:Dictionary):
-			return _exploration_open_less(a,b,risk_weighted))
-		var node: Dictionary = open.pop_front()
-		var position: Vector2i = node.position
-		var known: Array = best.get(str(node.state_key), [])
-		var signature: Array = [int(node.max_risk),int(node.risk),
-			int(node.steps),int(node.cost),int(node.get("drift",0))]
-		if known != signature: continue
-		if position == goal:
-			var route_risk:=int(node.risk);var route_max_risk:=int(node.max_risk)
-			if not risk_weighted:
-				route_risk=0;route_max_risk=0
-				for path_index in range(1,node.path.size()):
-					var path_risk:=_exploration_step_risk(node.path[path_index],visible)
-					route_risk+=path_risk;route_max_risk=maxi(route_max_risk,path_risk)
-			return {"found":true,"reason":"ok","path":node.path.duplicate(),
-				"total_cost":int(node.cost),"steps":int(node.steps),
-				"total_risk":route_risk,"max_total_risk":route_max_risk}
-		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
-			var next: Vector2i = position + direction
-			if not _exploration_step_is_legal(actor_id, position, next): continue
-			var candidate_steps := int(node.steps) + 1
-			if maximum_steps >= 0 and candidate_steps > maximum_steps: continue
-			var known_step_risk:=_exploration_step_risk(next,visible) \
-				if risk_weighted or avoid_known_hazards else 0
-			if avoid_known_hazards and known_step_risk>0:continue
-			var step_risk:=known_step_risk if risk_weighted else 0
-			var definition: Dictionary = TerrainRegistryScript.definition(sim.world.tile_at(next).terrain)
-			var candidate_key := _position_key(next) + ("@%d" % candidate_steps \
-				if risk_weighted else "")
-			var candidate_path:Array = node.path.duplicate();candidate_path.append(next)
-			# Same straight-line tie-break as the weighted pathfinder: among equally
-			# safe and cheap routes prefer the one hugging the start->goal line.
-			var candidate := {"position":next,"risk":int(node.risk)+step_risk,
-				"max_risk":maxi(int(node.max_risk), step_risk),"steps":candidate_steps,
-				"cost":int(node.cost)+int(definition.move_time_cost),"sequence":sequence,
-				"state_key":candidate_key,"path":candidate_path,
-				"drift":int(node.get("drift",0))+_route_line_drift(start,goal,next)}
-			sequence += 1
-			var old: Array = best.get(candidate_key, [])
-			if not old.is_empty() and not _exploration_score_less(candidate, old,
-					risk_weighted):continue
-			best[candidate_key] = [int(candidate.max_risk),int(candidate.risk),
-				int(candidate.steps),int(candidate.cost),int(candidate.drift)]
-			open.append(candidate)
-	return _exploration_path_failure("path_unreachable")
+	if not sim.world.in_bounds(goal):return _exploration_path_failure("out_of_bounds")
+	if sim.world.blocking_entity_at(goal,actor_id)!=null:return _exploration_path_failure("occupied")
+	var definition:Dictionary=TerrainRegistryScript.definition_view(sim.world.tile_at(goal).terrain)
+	if definition.is_empty() or not bool(definition.get("passable",false)):return _exploration_path_failure("path_unreachable")
+	return _search_core_exploration(actor_id,[goal],visible,risk_weighted,maximum_steps,avoid_known_hazards)
 
-
-func _search_shortest_exploration_path(actor_id:int,goal_set:Dictionary,
-		visible:Dictionary,maximum_steps:int,avoid_known_hazards:bool)->Dictionary:
-	# A* uses Chebyshev distance because exploration allows eight directions. The
-	# large fixed step unit keeps number of cells strictly primary and movement time
-	# secondary. Parent pointers avoid copying the entire path into every node.
+func _search_core_exploration(actor_id:int,goals:Array,visible:Dictionary,
+		risk_weighted:bool,maximum_steps:int,avoid_known_hazards:bool)->Dictionary:
 	var start:Vector2i=sim.world.entities[actor_id].position
-	var start_key:=_position_key(start)
-	var goal_positions:Array[Vector2i]=[]
-	for key_value in goal_set:
-		var parts:=str(key_value).split(":")
-		if parts.size()==2:goal_positions.append(Vector2i(int(parts[0]),int(parts[1])))
-	if goal_positions.is_empty():return _exploration_path_failure("path_unreachable")
-	var start_h:=_exploration_goal_distance(start,goal_positions)
-	# Single-goal routes tie-break equal-score cells on their distance from the
-	# start->goal line (same rule as the weighted pathfinder), so open ground is
-	# crossed in a straight line instead of a diagonal V.
-	var line_goal:Vector2i=goal_positions[0] if goal_positions.size()==1 else Vector2i(-1,-1)
-	var open:Array[Dictionary]=[]
-	_exploration_heap_push(open,{"position":start,"steps":0,"cost":0,"score":0,
-		"estimate":int(start_h)*ROUTE_STEP_PRIORITY,"sequence":0,"drift":0})
-	var best:Dictionary={start_key:[0,0]};var parents:Dictionary={};var sequence:=1
-	while not open.is_empty():
-		var node:Dictionary=_exploration_heap_pop(open)
-		var position:Vector2i=node.position;var position_key:=_position_key(position)
-		if best.get(position_key,[])!=[int(node.score),int(node.get("drift",0))]:continue
-		if goal_set.has(position_key):
-			var path:=_reconstruct_exploration_path(start,position,parents)
-			if path.is_empty():return _exploration_path_failure("path_unreachable")
-			var total_risk:=0;var max_risk:=0
-			for path_index in range(1,path.size()):
-				var step_risk:=_exploration_step_risk(path[path_index],visible)
-				total_risk+=step_risk;max_risk=maxi(max_risk,step_risk)
-			return {"found":true,"reason":"ok","path":path,
-				"total_cost":int(node.cost),"steps":int(node.steps),
-				"total_risk":total_risk,"max_total_risk":max_risk}
-		for direction in MovementSystemScript.MOVE_DIRECTIONS_8:
-			var next:=position+direction
-			if not _exploration_step_is_legal(actor_id,position,next):continue
-			var candidate_steps:=int(node.steps)+1
-			if maximum_steps>=0 and candidate_steps>maximum_steps:continue
-			if avoid_known_hazards and _exploration_step_risk(next,visible)>0:continue
-			var definition:Dictionary=TerrainRegistryScript.definition(
-				sim.world.tile_at(next).terrain)
-			var candidate_cost:=int(node.cost)+int(definition.move_time_cost)
-			var candidate_score:=candidate_steps*ROUTE_STEP_PRIORITY+candidate_cost
-			var candidate_drift:=int(node.get("drift",0))+(_route_line_drift(start,line_goal,next) \
-				if line_goal.x>=0 else 0)
-			var next_key:=_position_key(next);var old:Array=best.get(next_key,[])
-			if not old.is_empty() and (candidate_score>int(old[0]) \
-					or candidate_score==int(old[0]) and candidate_drift>=int(old[1])):continue
-			best[next_key]=[candidate_score,candidate_drift];parents[next_key]=position
-			var heuristic:=_exploration_goal_distance(next,goal_positions)
-			_exploration_heap_push(open,{"position":next,"steps":candidate_steps,
-				"cost":candidate_cost,"score":candidate_score,
-				"estimate":candidate_score+heuristic*ROUTE_STEP_PRIORITY,
-				"sequence":sequence,"drift":candidate_drift});sequence+=1
-	return _exploration_path_failure("path_unreachable")
-
-
-static func _exploration_goal_distance(position:Vector2i,goals:Array[Vector2i])->int:
-	var result:=2147483647
-	for goal in goals:
-		result=mini(result,maxi(absi(goal.x-position.x),absi(goal.y-position.y)))
+	if start in goals:
+		return {"found":true,"reason":"already_there","path":[start],"total_cost":0,
+			"steps":0,"total_risk":0,"max_total_risk":0,"engine":"turn-engine-v2"}
+	var core=preload("res://sim/turn_engine.gd")
+	var risks:Dictionary={}
+	var cost_cache:Dictionary={}
+	var risk_at:=func(point:Vector2i)->int:
+		if not risks.has(point):risks[point]=_exploration_step_risk(point,visible)
+		return risks[point]
+	var time_at:=func(point:Vector2i)->int:
+		if not cost_cache.has(point):cost_cache[point]=int(TerrainRegistryScript.definition_view(sim.world.tile_at(point).terrain).move_time_cost)
+		return cost_cache[point]
+	var legal:=func(from:Vector2i,to:Vector2i)->bool:
+		return _exploration_step_is_legal(actor_id,from,to) and (not avoid_known_hazards or risk_at.call(to)==0)
+	var result:Dictionary
+	if risk_weighted:
+		result=core.risk_path(sim.world.width,sim.world.height,start,goals,legal,time_at,risk_at,maximum_steps)
+	else:
+		result=core.path(sim.world.width,sim.world.height,start,goals,legal,
+			func(point:Vector2i)->int:return ROUTE_STEP_PRIORITY+int(time_at.call(point)),
+			ROUTE_STEP_PRIORITY,maximum_steps)
+	if not result.found:return _exploration_path_failure("path_unreachable")
+	result.total_cost=0;result.total_risk=0;result.max_total_risk=0
+	for point in result.path.slice(1):
+		result.total_cost+=int(time_at.call(point))
+		var exposure:int=risk_at.call(point)
+		result.total_risk+=exposure;result.max_total_risk=maxi(result.max_total_risk,exposure)
 	return result
-
-
-static func _exploration_heap_less(a:Dictionary,b:Dictionary)->bool:
-	if int(a.estimate)!=int(b.estimate):return int(a.estimate)<int(b.estimate)
-	if int(a.score)!=int(b.score):return int(a.score)<int(b.score)
-	if int(a.get("drift",0))!=int(b.get("drift",0)):return int(a.get("drift",0))<int(b.get("drift",0))
-	var a_position:Vector2i=a.position;var b_position:Vector2i=b.position
-	if a_position.y!=b_position.y:return a_position.y<b_position.y
-	if a_position.x!=b_position.x:return a_position.x<b_position.x
-	return int(a.sequence)<int(b.sequence)
-
-
-static func _exploration_heap_push(heap:Array,node:Dictionary)->void:
-	heap.append(node);var index:=heap.size()-1
-	while index>0:
-		var parent:=int((index-1)/2)
-		if not _exploration_heap_less(heap[index],heap[parent]):break
-		var swap:Variant=heap[parent];heap[parent]=heap[index];heap[index]=swap
-		index=parent
-
-
-static func _exploration_heap_pop(heap:Array)->Dictionary:
-	var result:Dictionary=heap[0];var tail:Variant=heap.pop_back()
-	if not heap.is_empty():
-		heap[0]=tail;var index:=0
-		while true:
-			var left:=index*2+1
-			if left>=heap.size():break
-			var right:=left+1;var best_child:=left
-			if right<heap.size() and _exploration_heap_less(heap[right],heap[left]):
-				best_child=right
-			if not _exploration_heap_less(heap[best_child],heap[index]):break
-			var swap:Variant=heap[index];heap[index]=heap[best_child];heap[best_child]=swap
-			index=best_child
-	return result
-
-
-func _reconstruct_exploration_path(start:Vector2i,goal:Vector2i,
-		parents:Dictionary)->Array:
-	var reversed:Array=[goal];var cursor:=goal
-	while cursor!=start:
-		var parent:Variant=parents.get(_position_key(cursor),null)
-		if not parent is Vector2i:return []
-		cursor=parent;reversed.append(cursor)
-	reversed.reverse();return reversed
-
-
-func _route_line_drift(start: Vector2i, goal: Vector2i, position: Vector2i) -> int:
-	var line := goal - start
-	var offset := position - start
-	return absi(line.x * offset.y - line.y * offset.x)
-
-
-func _exploration_score_less(candidate: Dictionary, old: Array,
-		risk_weighted: bool) -> bool:
-	var candidate_keys := [int(candidate.max_risk),int(candidate.risk),
-		int(candidate.steps),int(candidate.cost),int(candidate.get("drift",0))]
-	var order := [0,1,2,3] if risk_weighted else [2,3]
-	if old.size() > 4: order.append(4)
-	for index in order:
-		if candidate_keys[index] != int(old[index]):
-			return candidate_keys[index] < int(old[index])
-	return false
-
-
-func _exploration_open_less(a: Dictionary, b: Dictionary,
-		risk_weighted: bool) -> bool:
-	var order := ["max_risk","risk","steps","cost"] if risk_weighted \
-		else ["steps","cost"]
-	for key in order:
-		if int(a[key]) != int(b[key]):return int(a[key]) < int(b[key])
-	if int(a.get("drift",0)) != int(b.get("drift",0)):return int(a.get("drift",0)) < int(b.get("drift",0))
-	var a_position: Vector2i = a.position;var b_position: Vector2i = b.position
-	if a_position.y != b_position.y:return a_position.y < b_position.y
-	if a_position.x != b_position.x:return a_position.x < b_position.x
-	return int(a.sequence) < int(b.sequence)
 
 
 func _exploration_step_is_legal(actor_id: int, from: Vector2i,
@@ -9248,6 +9016,7 @@ func _result_dto(result, action: Variant = null, request: Variant = null,
 	var dto := {"accepted":result.accepted,"reason":result.reason,
 		"consumes_time":result.consumes_time,"step_index":result.processed_step_index,
 		"start_time":result.start_time,"end_time":result.end_time,"time_cost":result.time_cost,
+		"turn_engine":result.turn_engine,"queue_builds":result.queue_builds,
 		"event_ids":ids,"visual_effects":_visual_effects_from_result(result)}
 	return _feedback_dto(dto, action, request, context)
 

@@ -1,11 +1,14 @@
 extends RefCounted
 
 var rows:Array = []
+var sort_keys:int=2
 
 func clear()->void:rows.clear()
 func empty()->bool:return rows.is_empty()
 func before(a:Array,b:Array)->bool:
-	return a[0]<b[0] or a[0]==b[0] and a[1]<b[1]
+	for i in range(sort_keys):
+		if a[i]!=b[i]:return a[i]<b[i]
+	return false
 func push(row:Array)->void:
 	rows.append(row)
 	var index:=rows.size()-1
