@@ -40,8 +40,8 @@ func _draw()->void:
 		if int(actor.barrier)>0:draw_arc(center,cell*0.58,0,TAU,24,Color("#55cce0"),2,true)
 		var marker:=str(actor.id) if actor.team=="PARTY" else "E%d"%(int(actor.id)-4)
 		var marker_pos:=center+Vector2(-cell*0.5,cell*0.65)
-		draw_string_outline(ThemeDB.fallback_font,marker_pos,marker,HORIZONTAL_ALIGNMENT_LEFT,-1,11,3,Color.BLACK)
-		draw_string(ThemeDB.fallback_font,marker_pos,marker,HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("#b8e8a0") if actor.team=="PARTY" else Color("#ffac9e"))
+		draw_string_outline(preload("res://assets/fonts/Galmuri14.ttf"),marker_pos,marker,HORIZONTAL_ALIGNMENT_LEFT,-1,11,3,Color.BLACK)
+		draw_string(preload("res://assets/fonts/Galmuri14.ttf"),marker_pos,marker,HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("#b8e8a0") if actor.team=="PARTY" else Color("#ffac9e"))
 		if not skill.is_empty() and model.preview(1,skill,int(actor.id)).accepted:
 			draw_rect(Rect2(center-Vector2.ONE*cell*0.47,Vector2.ONE*cell*0.94),Color("#d4b96a"),false,1)
 		if actor.id==selected_id:draw_arc(center,cell*0.65,0,TAU,24,Color.WHITE,2,true)

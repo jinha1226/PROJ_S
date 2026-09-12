@@ -1,7 +1,7 @@
 class_name AsciiGauge
 extends Label
 
-const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
+const CodingFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 const GREEN:=Color("#5f8a66")
 const HP_FILL:=Color("#b84b4b")
 const MP_FILL:=Color("#4f82b8")
@@ -89,7 +89,7 @@ func _draw()->void:
 
 func gauge_spec()->Dictionary:
 	var filled:=clampi(int(floor(float(value)*float(columns)/float(maxi(1,max_value)))),0,columns)
-	return {"primitive":"DOS_TEXT_GAUGE","font_path":"res://assets/fonts/LivingWorldMonoKR.ttf",
+	return {"primitive":"DOS_TEXT_GAUGE","font_path":"res://assets/fonts/Galmuri14.ttf",
 		"prefix":prefix,"columns":columns,"value":value,"max_value":max_value,
 		"filled_glyph":"#","empty_glyph":".","text":text,
 		"font_size":get_theme_font_size("font_size"),

@@ -34,9 +34,7 @@ const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
 const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
-# Proportional Korean/Latin pixel type keeps the dense mobile UI readable.
-# ASCII frames, gauges, and map glyphs deliberately retain LivingWorldMonoKR
-# because their column alignment is part of the drawing contract.
+# Korean/Latin pixel type is shared by UI, map text and combat effects.
 const KoreanFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 const FONT_AUX:=14
 const FONT_BODY:=16
@@ -7428,8 +7426,7 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var ration_band:=str(party.get("ration_band","FED"))
 	var ration_max:=maxi(1,int(party.get("ration_max",1)))
 	var filled:=clampi(int(ceil(float(int(party.get("ration",0)))*4.0/float(ration_max))),0,4)
-	# LivingWorldMonoKR contains U+25A0/U+25A1, while the previously used
-	# U+25AE/U+25AF pair had no glyph and rendered as missing-character boxes.
+	# Use common square glyphs for the legacy text-only supply label.
 	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"■".repeat(filled)+"□".repeat(4-filled)
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER

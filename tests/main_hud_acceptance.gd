@@ -10,6 +10,12 @@ func run()->void:
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
 	ui.show_species_picker_for_new_run();ui._commit_species_picker("human");ui._refresh()
+	var pixel_font=preload("res://assets/fonts/Galmuri14.ttf")
+	check(ui.ration_label.get_theme_font("font")==pixel_font,"HUD pixel font")
+	check(ui.product_menu_button.get_theme_font("font")==pixel_font,"button pixel font")
+	check(pixel_font.antialiasing==TextServer.FONT_ANTIALIASING_NONE,"crisp pixel font import")
+	for character in "상태관계숙련이능식량횃불0123HP":
+		check(pixel_font.has_char(character.unicode_at(0)),"font glyph "+character)
 	var world=session.sim.world;var hero:int=world.party_control_actor_id()
 	# Canonical test-only grant; production starts are unchanged.
 	var grant:Dictionary=preload("res://sim/world_item_operations.gd").commit_grant(world,hero,"TORCH",1,world.entities[hero].position,"HUD_TEST")

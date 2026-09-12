@@ -30,7 +30,7 @@ const BLOOD:=Color("#9f4544")
 const JADE:=Color("#5f8a66")
 
 const VISUAL_FAMILY:="DARK_FANTASY_PIXEL_9SLICE"
-# Retain the public alias used by panels, but use smooth Korean/Latin type.
+# Shared Korean/Latin pixel face, imported without antialiasing or subpixels.
 const PixelFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 

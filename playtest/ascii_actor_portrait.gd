@@ -2,7 +2,7 @@ class_name AsciiActorPortrait
 extends Control
 
 const StyleScript = preload("res://playtest/ascii_visual_style.gd")
-const BoldFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const BoldFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 var _actor: Dictionary = {}
 

@@ -1,7 +1,7 @@
 class_name NpcExpeditionGrid
 extends Control
 
-const CodingFont: FontFile = preload("res://assets/fonts/LivingWorldMonoKR.ttf")
+const CodingFont: FontFile = preload("res://assets/fonts/Galmuri14.ttf")
 
 const COLOR_VOID := Color("#050a0e")
 const COLOR_FLOOR := Color("#10202a")

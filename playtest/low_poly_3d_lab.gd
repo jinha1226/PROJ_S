@@ -4,7 +4,7 @@ extends Control
 signal close_requested
 
 const PawnScript=preload("res://playtest/low_poly_pawn_3d.gd")
-const FONT:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const FONT:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 const FLOOR_TEXTURE:Texture2D=preload(
 	"res://assets/generated/dark_fantasy_topdown_v2/runtime/floor_flagstone_tileable_512.png")
 const WALL_CAP_TEXTURE:Texture2D=preload(

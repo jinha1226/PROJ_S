@@ -2,7 +2,7 @@ class_name DuelDecisionLab
 extends Control
 
 const GridScript = preload("res://playtest/duel_decision_grid.gd")
-const KoreanFont: FontFile = preload("res://assets/fonts/NanumSquareR.ttf")
+const KoreanFont: FontFile = preload("res://assets/fonts/Galmuri14.ttf")
 const SIMULATOR_PATH := "res://sim/dungeon_population/dungeon_population_simulator.gd"
 const PARTY_SCENE_PATH := "res://playtest/party_encounter_sandbox.tscn"
 const DEFAULT_SEED := 22002

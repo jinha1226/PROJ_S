@@ -3,7 +3,7 @@ extends Control
 
 const SessionScript = preload("res://playtest/playtest_session.gd")
 const GridScript = preload("res://playtest/playtest_grid_view.gd")
-const KoreanUIFont: FontFile = preload("res://assets/fonts/NanumSquareR.ttf")
+const KoreanUIFont: FontFile = preload("res://assets/fonts/Galmuri14.ttf")
 const LEAD_UI_COLORS := [Color("#ff766d"), Color("#f3c85b"), Color("#8fcf62"), Color("#75a7ff")]
 
 var session

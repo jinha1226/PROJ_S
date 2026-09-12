@@ -5,7 +5,7 @@ signal close_requested
 
 const GRID_SIZE:=15
 const CENTER:=7
-const FONT:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const FONT:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 const HERO_START:=Vector2i(7,8)
 const ENEMY_START:=Vector2i(10,8)
 const VISIBLE_RADIUS:=5

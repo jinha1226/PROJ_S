@@ -18,6 +18,7 @@ func run()->void:
 	ui.show_species_picker_for_new_run();ui._commit_species_picker("human");ui._refresh()
 	var before:Dictionary=session.sim.snapshot()
 	ui._open_hero_detail_tab("STATUS")
+	check(ui.member_detail_title.get_theme_font("font")==preload("res://assets/fonts/Galmuri14.ttf"),"status pixel font")
 	check(ui.member_status_window.find_child("StatusCombatGrid",true,false).get_child_count()==4,"four combat cards")
 	check(ui.member_status_window.find_child("StatusAttributes",true,false).get_child_count()==3,"three core attributes")
 	check(ui.member_status_window.find_child("StatusBodyState",true,false).text.contains("피부 질김"),"body values preserved")

@@ -4,8 +4,8 @@ extends MarginContainer
 ## Fixed-cell DOS/TUI frame. Every boundary glyph is placed at an explicit
 ## column/row; no repeated border string or proportional layout is used.
 
-const CodingFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKR.ttf")
-const CodingFontBold:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const CodingFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
+const CodingFontBold:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 const BLACK:=Color("#000306")
 const NAVY:=Color("#05090b")
@@ -140,7 +140,7 @@ func frame_spec()->Dictionary:
 	return {"primitive":"FIXED_CELL_GLYPHS","boundary_glyphs":"┏━┓┃┗┛",
 		"visual_family":"DARK_FANTASY_IRON_FOLIO","frame_material":"OXIDIZED_BLACK_IRON",
 		"title_material":"AGED_PARCHMENT","grammar":FRAME_GRAMMAR.duplicate(true),
-		"font_path":"res://assets/fonts/LivingWorldMonoKR.ttf","title":frame_title,
+		"font_path":"res://assets/fonts/Galmuri14.ttf","title":frame_title,
 		"title_text":title_text,"title_start_column":title_start,"title_cell_span":title_span,
 		"title_cells":title_cells,"title_overdraws_border":false,
 		"columns":columns,"rows":rows,"cell_width":int(metrics.cell_width),

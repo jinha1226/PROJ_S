@@ -48,7 +48,7 @@ const PARAMS := {
 
 const PARTICLE_GLYPHS := [".", ":", "*"]
 const MAX_ACTIVE_EFFECTS := 24
-const BurstFont:FontFile=preload("res://assets/fonts/LivingWorldMonoKRBold.ttf")
+const BurstFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
 
 var _grid:Control
 var _effects:Array[Dictionary]=[]
