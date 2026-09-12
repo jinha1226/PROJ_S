@@ -4,6 +4,8 @@ const Perception=preload("res://sim/party_perception_registry.gd")
 const Vision=preload("res://sim/vision_rules.gd")
 const Motion=preload("res://playtest/ascii_diorama_projection.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
+const FieldRules=preload("res://sim/field_turn_rules.gd")
+const Kernel=preload("res://sim/combat_kernel.gd")
 var errors:Array[String]=[]
 func check(ok:bool,label:String):
 	if not ok:errors.append(label);printerr("FAIL ",label)
@@ -23,8 +25,9 @@ func run():
 	check(s.turn_intent_overlays().is_empty(),"solo returns no companion predictions")
 	var w=s.sim.world;var state=w.party_encounter
 	var lighting:Dictionary=Vision.lighting_for_world(w)
-	# Exhaustively compare target visibility against the original shared vision
-	# predicate; distant rejection must never hide an in-range light/LOS result.
+	# The live campaign switched to the circular combat kernel in 6ca6859.
+	# Compare each integration mode against its actual geometry authority, not
+	# the retired directional/light-adjusted predicate for the new field mode.
 	for y in range(w.height):
 		for x in range(w.width):
 			var target:=Vector2i(x,y);var expected:Array=[]
@@ -32,9 +35,13 @@ func run():
 				var member=state.member(id)
 				if member.presence not in ["GROUPED","DEPLOYED"] or not w.can_act(id,w.world_time):continue
 				var origin:Vector2i=state.group_anchor if member.presence=="GROUPED" else w.entities[id].position
+				if FieldRules.enabled(w):
+					if Kernel.sees(origin,target,w.combat_sight_blocked):expected.append(id)
+					continue
 				var profile:Dictionary=Vision.profile_for_entity(w.entities[id])
 				profile.base_sight_range=Perception.sight_range(w,state,id)
 				profile.peripheral_range=mini(profile.peripheral_range,profile.base_sight_range)
+				profile.circular_sight=true
 				if Vision.observe(w,origin,target,state.facing,profile,lighting).visible:expected.append(id)
 			var actual:Array=Perception.visible_party_members(w,state,target)
 			expected.sort();actual.sort()

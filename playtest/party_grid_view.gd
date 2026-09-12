@@ -124,12 +124,31 @@ var _torch_positions:Array[Vector2i]=[]
 var _fire_light_positions:Array[Dictionary]=[]
 var _visible_light_sources_by_cell:Dictionary={}
 var _presentation_light_los_build_count:=0
+var _light_ray_cache:Dictionary={}
+var _retained_terrain:Node2D
+var _retained_terrain_revision:=-1
+var _retain_terrain_commands:=true # Test-only reference renderer comparison.
+var _ground_candidates:Dictionary={"features":[],"marks":[],"hazards":[],"items":[],"resources":[]}
 var _visible_torch_count:=0
 var _visible_environment_count:=0
 var _torch_cache_rebuild_count:=0
 var _torch_timer:Timer
 var _radial_darkness_mesh:ArrayMesh
 var _radial_darkness_mesh_key:=""
+var _darkness_projection_inputs:Array=[]
+var _darkness_revision:=0
+var _darkness_vertex_context:Array=[]
+var _darkness_vertex_cache:Dictionary={}
+var _darkness_cell_dependencies:Dictionary={}
+var _darkness_dirty_cells:Dictionary={}
+var _darkness_frame_sources:Dictionary={}
+var _darkness_frame_rect:=Rect2()
+var _darkness_frame_center:=Vector2.ZERO
+var _darkness_inverse_cell:=1.0
+var _darkness_curve:=Vector4()
+var _darkness_frame_flat:=true
+var _darkness_sample_builds:=0
+var _darkness_mesh_builds:=0
 var _awareness_pulses:Dictionary={}
 var _speech_bubbles:Array[Dictionary]=[]
 var _callout_lifetimes:Dictionary={}
@@ -182,7 +201,6 @@ func _on_visual_geometry_changed()->void:
 
 func _invalidate_static_projection_cache()->void:
 	_static_projection_dirty=true
-	_radial_darkness_mesh=null;_radial_darkness_mesh_key=""
 
 func graphics_mode_id()->String:
 	return _graphics_mode
@@ -1672,11 +1690,11 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 		"draw_image":texture!=null,"texture_free":texture==null,"fov_safe":true}.duplicate(true)
 
 func ground_item_draw_specs()->Array[Dictionary]:
+	_ensure_static_projection_cache()
 	var rows:Array[Dictionary]=[]
-	for y in range(visible_row_count):
-		for x in range(visible_cell_count):
-			var spec:=ground_item_draw_spec(view_origin+Vector2i(x,y))
-			if bool(spec.visible):rows.append(spec)
+	for position in _ground_candidates.items:
+		var spec:=ground_item_draw_spec(position)
+		if bool(spec.visible):rows.append(spec)
 	return rows.duplicate(true)
 
 func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
@@ -1807,6 +1825,34 @@ func _ensure_static_projection_cache()->void:
 				"depth":depth,"wall_role":wall_role,
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
 	_rebuild_torch_cache()
+	_ground_candidates={"features":[],"marks":[],"hazards":[],"items":[],"resources":[]}
+	for cached in _static_projection_cache.values():
+		var row:Dictionary=cached.get("row",{})
+		var state:=str(cached.visibility_state)
+		if state not in ["VISIBLE","MEMORY"]:continue
+		var position:Vector2i=cached.position
+		var feature:=str(row.get("feature_id",""))
+		if not feature.is_empty() and (state=="VISIBLE" or feature=="landmark_camp"):
+			_ground_candidates.features.append([cached.rect,feature,state=="VISIBLE"])
+		if bool(AsciiStyleScript.ground_mark_spec(row).visible):_ground_candidates.marks.append(position)
+		var hazard:=DioramaScript.hazard_floor_spec(position,row)
+		if bool(hazard.get("visible",false)):
+			hazard["position"]=[position.x,position.y]
+			_ground_candidates.hazards.append([cached.rect,hazard])
+		if state!="VISIBLE":continue
+		if not str(row.get("ground_item_glyph","")).is_empty():_ground_candidates.items.append(position)
+		var resource:Dictionary=row.get("resource_cache",{})
+		if bool(resource.get("available",false)):
+			_ground_candidates.resources.append([cached.rect,str(resource.resource_id)])
+	# Fog has separate dependencies from terrain features/items. Keep its mesh
+	# through damage, item and decorative changes that leave visibility/light
+	# unchanged. CPU vertex samples below also survive local light/FOV changes.
+	var darkness_inputs:Array=[view_origin,world_grid_size,_hero_camera_position,
+		_graphics_mode,grid_rect(),_visible_light_sources_by_cell]
+	for cached in _static_projection_cache.values():
+		darkness_inputs.append([cached.position,cached.visibility_state])
+	if darkness_inputs!=_darkness_projection_inputs:
+		_darkness_projection_inputs=darkness_inputs;_darkness_revision+=1
 	_static_projection_dirty=false;_static_projection_rebuild_count+=1
 
 func _rebuild_torch_cache()->void:
@@ -1869,7 +1915,7 @@ func _rebuild_torch_cache()->void:
 	_torch_cache_rebuild_count+=1;_sync_torch_timer()
 
 func _rebuild_visible_light_source_cache()->void:
-	_visible_light_sources_by_cell.clear()
+	_visible_light_sources_by_cell={}
 	var sources:Array[Dictionary]=[]
 	for position in _torch_positions:
 		if str((_static_projection_cache.get(_key(position),{}) as Dictionary).get(
@@ -1880,10 +1926,26 @@ func _rebuild_visible_light_source_cache()->void:
 		if str(source.get("visibility_state","UNSEEN"))=="VISIBLE":
 			var fire_source:Dictionary=source.duplicate(false);fire_source["kind"]="FIRE"
 			sources.append(fire_source)
+	var retained_sources:Dictionary={}
 	for source in sources:
 		var origin:Vector2i=source.position
 		var radius:=float(source.get("radius_cells",TORCH_LIGHT_RADIUS_CELLS))
 		var bound:=int(ceil(radius))
+		# LOS depends on known blocking terrain, not camera position, actor HP,
+		# visibility VISIBLE->MEMORY, or flame intensity. Invalidate only sources
+		# whose own influence region changed topology. UNSEEN remains blocking.
+		var topology:=PackedByteArray()
+		for y in range(origin.y-bound,origin.y+bound+1):
+			for x in range(origin.x-bound,origin.x+bound+1):
+				var row:Dictionary=_cells.get(_key(Vector2i(x,y)),{})
+				topology.append(1 if row.is_empty() or AsciiStyleScript.visibility_state(row)=="UNSEEN" \
+					or str(row.get("terrain_id",""))=="wall" else 0)
+		var source_key:=str(origin)+":"+str(bound)
+		var ray_entry:Dictionary=_light_ray_cache.get(source_key,{})
+		if ray_entry.get("topology",PackedByteArray())!=topology:
+			ray_entry={"topology":topology,"rays":{}}
+		retained_sources[source_key]=ray_entry
+		var rays:Dictionary=ray_entry.rays
 		for y in range(origin.y-bound,origin.y+bound+1):
 			for x in range(origin.x-bound,origin.x+bound+1):
 				var target:=Vector2i(x,y)
@@ -1892,12 +1954,15 @@ func _rebuild_visible_light_source_cache()->void:
 				# Keep edge cells as candidates so sub-cell radial samples can fade
 				# smoothly; public cell light specs still enforce the exact radius.
 				if Vector2(target-origin).length()>radius+0.75:continue
-				_presentation_light_los_build_count+=1
-				if not _presentation_light_line_open(origin,target):continue
+				if not rays.has(target):
+					_presentation_light_los_build_count+=1
+					rays[target]=_presentation_light_line_open(origin,target)
+				if not bool(rays[target]):continue
 				var key:=_key(target)
 				var rows:Array=_visible_light_sources_by_cell.get(key,[])
 				rows.append(source)
 				_visible_light_sources_by_cell[key]=rows
+	_light_ray_cache=retained_sources
 
 func _torch_spacing_clear(position:Vector2i)->bool:
 	for selected in _torch_positions:
@@ -2396,11 +2461,23 @@ func _draw_world_with_emphasis()->void:
 	# fraction of a frame before its HP bar was positioned.
 	var frame_actor_sample_msec:=Time.get_ticks_msec()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
-	draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	var retained:=_retain_terrain_commands and not uses_perspective_projection()
+	if retained and _retained_terrain==null:
+		_retained_terrain=preload("res://playtest/retained_terrain_layer.gd").new()
+		_retained_terrain.name="RetainedTerrain"
+		_retained_terrain.show_behind_parent=true
+		add_child(_retained_terrain)
+	if _retained_terrain!=null:_retained_terrain.visible=retained
+	if retained:
+		if _retained_terrain_revision!=_static_projection_rebuild_count:
+			_retained_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,cell_size_px(),palette)
+			_retained_terrain_revision=_static_projection_rebuild_count
+	else:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec(frame_actor_sample_msec).offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
+	if retained:_retained_terrain.set_camera_offset(camera_offset+impact_offset)
 	draw_set_transform(camera_offset+impact_offset)
-	_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
+	if not retained:_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	var begun:=Perf.begin()
 	_draw_terrain_glyph_pass("MEMORY")
 	_draw_terrain_glyph_pass("VISIBLE")
@@ -2644,13 +2721,8 @@ func _draw_monster_list()->void:
 
 func _draw_ground_items()->void:
 	var font:Font=BoldFont
-	for row in _cells.values():
-		if AsciiStyleScript.visibility_state(row)!="VISIBLE":continue
-		var cache:Dictionary=row.get("resource_cache",{})
-		if cache.is_empty() or not bool(cache.get("available",false)):continue
-		var p:=Vector2i(int(row.position[0]),int(row.position[1]))
-		if not is_world_cell_visible(p):continue
-		preload("res://playtest/base_resource_icon.gd").draw_icon(self,world_cell_rect(p),str(cache.resource_id))
+	for row in _ground_candidates.resources:
+		preload("res://playtest/base_resource_icon.gd").draw_icon(self,row[0],row[1])
 	for spec in ground_item_draw_specs():
 		if bool(spec.get("draw_image",false)):
 			draw_texture_rect(spec.texture,spec.image_rect,false,Color.WHITE)
@@ -2735,37 +2807,29 @@ func _draw_torch_light_pools()->void:
 	# static, muted scene marks without live glow or flicker.
 	if _visible_light_sources_by_cell.is_empty():return
 	var now:=Time.get_ticks_msec()
-	# Handheld torches are carried in the actor DTO; their deterministic flicker
-	# is presentation-only and never feeds the shared vision query.
-	for actor in _actors:
-		var equipment:Dictionary=actor.get("equipment_visual",{})
-		if not bool(equipment.get("off_hand_torch_lit",false)):continue
-		var torch_position:=_position_from_actor(actor)
-		if not is_world_cell_visible(torch_position):continue
-	for y in range(visible_row_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y)
-			var light:=_torch_light_draw_spec_cached(position,now)
-			if bool(light.active):
-				var amber:=Color(str(light.color_hex))
-				amber.a=float(light.get("composite_alpha",TORCH_POOL_BASE_ALPHA \
-					+TORCH_POOL_GAIN_ALPHA*float(light.brightness)))
-				if uses_perspective_projection():
-					draw_colored_polygon(_camera_cell_polygon(position),amber)
-				else:
-					var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
-					draw_rect(world_cell_rect(position).grow(overlap).intersection(
-						grid_rect()),amber,true)
-			var fire_light:=fire_light_draw_spec(position,now)
-			if not bool(fire_light.active):continue
-			var fire_amber:=Color(str(fire_light.color_hex))
-			fire_amber.a=float(fire_light.composite_alpha)
+	for key in _visible_light_sources_by_cell:
+		var position:Vector2i=_static_projection_cache[key].position
+		var light:=_torch_light_draw_spec_cached(position,now)
+		if bool(light.active):
+			var amber:=Color(str(light.color_hex))
+			amber.a=float(light.get("composite_alpha",TORCH_POOL_BASE_ALPHA \
+				+TORCH_POOL_GAIN_ALPHA*float(light.brightness)))
 			if uses_perspective_projection():
-				draw_colored_polygon(_camera_cell_polygon(position),fire_amber)
+				draw_colored_polygon(_camera_cell_polygon(position),amber)
 			else:
-				var fire_overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
-				draw_rect(world_cell_rect(position).grow(fire_overlap).intersection(
-					grid_rect()),fire_amber,true)
+				var overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
+				draw_rect(world_cell_rect(position).grow(overlap).intersection(
+					grid_rect()),amber,true)
+		var fire_light:=fire_light_draw_spec(position,now)
+		if not bool(fire_light.active):continue
+		var fire_amber:=Color(str(fire_light.color_hex))
+		fire_amber.a=float(fire_light.composite_alpha)
+		if uses_perspective_projection():
+			draw_colored_polygon(_camera_cell_polygon(position),fire_amber)
+		else:
+			var fire_overlap:=clampf(cell_size_px()*0.025,0.5,1.0)
+			draw_rect(world_cell_rect(position).grow(fire_overlap).intersection(
+				grid_rect()),fire_amber,true)
 
 static func radial_darkness_sample(distance_cells:float,torch_lit:bool,
 		floor_index:int)->Dictionary:
@@ -2913,7 +2977,7 @@ func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
 func _draw_radial_darkness_overlay()->void:
 	var begun:=Perf.begin()
 	var torch_lit:=_hero_torch_lit()
-	var key:="%d:%d:%d:%d:%d:%s"%[_static_projection_rebuild_count,
+	var key:="%d:%d:%d:%d:%d:%s"%[_darkness_revision,
 		int(size.x),int(size.y),_terrain_theme_floor_index,_hero_camera_actor_id,
 		str(torch_lit)]
 	if _radial_darkness_mesh==null or key!=_radial_darkness_mesh_key:
@@ -2924,7 +2988,13 @@ func _draw_radial_darkness_overlay()->void:
 
 func _build_radial_darkness_mesh()->ArrayMesh:
 	if _hero_camera_position==Vector2i(-1,-1):return null
+	_darkness_mesh_builds+=1
 	var center:=world_to_pixel_center(_hero_camera_position)
+	var context:Array=[center,grid_rect(),view_origin,world_grid_size,_hero_camera_position,
+		cell_size_px(),_graphics_mode,_terrain_theme_floor_index,_hero_torch_lit()]
+	if context!=_darkness_vertex_context:
+		_darkness_vertex_context=context;_darkness_vertex_cache.clear()
+	_prepare_darkness_frame(center)
 	var vertices:=PackedVector3Array();var colors:=PackedColorArray()
 	var indices:=PackedInt32Array()
 	var maximum_radius:=center.distance_to(grid_rect().position)
@@ -2932,7 +3002,7 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 		Vector2(grid_rect().position.x,grid_rect().end.y)]:
 		maximum_radius=maxf(maximum_radius,center.distance_to(corner))
 	vertices.append(Vector3(center.x,center.y,0.0))
-	colors.append(_darkness_vertex_color(_composite_darkness_at(center)))
+	colors.append(_cached_darkness_vertex_color(center))
 	# Adjacent wedges share their polar vertices. Previously every polygon copied
 	# and resampled the same corners, multiplying the FOV rebuild cost while AUTO
 	# moved the camera every hop.
@@ -2942,7 +3012,7 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 			var angle:=TAU*float(segment)/float(RADIAL_DARKNESS_SEGMENTS)
 			var point:=center+Vector2(cos(angle),sin(angle))*radius
 			vertices.append(Vector3(point.x,point.y,0.0))
-			colors.append(_darkness_vertex_color(_composite_darkness_at(point)))
+			colors.append(_cached_darkness_vertex_color(point))
 	for ring in range(1,RADIAL_DARKNESS_RINGS+1):
 		var sample_radius:=maximum_radius*(float(ring)-0.5) \
 			/float(RADIAL_DARKNESS_RINGS)
@@ -2952,9 +3022,8 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 			var midpoint:=center+Vector2(cos(sample_angle),sin(sample_angle))*sample_radius
 			# Triangle inclusion only needs visibility. Computing all light falloff
 			# curves here duplicated 864 lighting samples whose alpha was discarded.
-			var midpoint_cell:=pixel_to_world_cell(midpoint)
-			if midpoint_cell==Vector2i(-1,-1) or str((_static_projection_cache.get(
-				_key(midpoint_cell),{}) as Dictionary).get("visibility_state","UNSEEN"))!="VISIBLE":continue
+			var midpoint_cell:=_darkness_sample_cell(midpoint)
+			if not _darkness_frame_sources.has(midpoint_cell):continue
 			var outer:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+segment
 			var outer_next:=1+(ring-1)*RADIAL_DARKNESS_SEGMENTS+next_segment
 			if ring==1:
@@ -2971,11 +3040,67 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 	var mesh:=ArrayMesh.new();mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return mesh
 
+func _cached_darkness_vertex_color(point:Vector2)->Color:
+	var cell:=_darkness_sample_cell(point)
+	if not _darkness_dirty_cells.has(cell) and _darkness_vertex_cache.has(point):
+		return _darkness_vertex_cache[point]
+	var alpha:=0.0
+	if _darkness_frame_sources.has(cell):
+		var distance:=point.distance_to(_darkness_frame_center)*_darkness_inverse_cell
+		var ratio:=clampf((distance-_darkness_curve.x)*_darkness_curve.y,0.0,1.0)
+		alpha=lerpf(_darkness_curve.z,_darkness_curve.w,ratio*ratio*(3.0-2.0*ratio))
+		for source in _darkness_frame_sources[cell]:
+			var source_distance:=point.distance_to(Vector2(source[0]))*_darkness_inverse_cell
+			if source_distance>float(source[1]):continue
+			var source_alpha:=wall_torch_darkness_sample(source_distance) if bool(source[2]) \
+				else lerpf(0.94,campfire_darkness_sample(source_distance,float(source[1])),float(source[3]))
+			alpha=minf(alpha,source_alpha)
+	var color:=Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
+	_darkness_vertex_cache[point]=color
+	_darkness_sample_builds+=1
+	return color
+
+func _prepare_darkness_frame(center:Vector2)->void:
+	_darkness_frame_rect=grid_rect();_darkness_frame_center=center
+	_darkness_inverse_cell=1.0/maxf(1.0,cell_size_px())
+	_darkness_frame_flat=not uses_perspective_projection()
+	var torch_lit:=_hero_torch_lit()
+	var center_sample:=radial_darkness_sample(0.0,torch_lit,_terrain_theme_floor_index)
+	var edge_sample:=radial_darkness_sample(100.0,torch_lit,_terrain_theme_floor_index)
+	_darkness_curve=Vector4(float(center_sample.core_radius_cells),
+		1.0/(float(center_sample.radius_cells)-float(center_sample.core_radius_cells)),
+		float(center_sample.alpha),float(edge_sample.alpha))
+	var dependencies:Dictionary={}
+	_darkness_dirty_cells.clear();_darkness_frame_sources.clear()
+	for cached in _static_projection_cache.values():
+		var cell:Vector2i=cached.position
+		var sources:Array=_visible_light_sources_by_cell.get(_key(cell),[])
+		var inputs:Array=[cached.visibility_state,sources]
+		dependencies[cell]=inputs
+		if _darkness_cell_dependencies.get(cell,[])!=inputs:_darkness_dirty_cells[cell]=true
+		if str(cached.visibility_state)!="VISIBLE":continue
+		var prepared:Array=[]
+		for source in sources:
+			prepared.append([world_to_pixel_center(source.position),float(source.radius_cells),
+				str(source.kind)=="TORCH",clampf(float(source.get("intensity",100))/100.0,0.0,1.0)])
+		_darkness_frame_sources[cell]=prepared
+	for cell in _darkness_cell_dependencies:
+		if not dependencies.has(cell):_darkness_dirty_cells[cell]=true
+	_darkness_cell_dependencies=dependencies
+
+func _darkness_sample_cell(point:Vector2)->Vector2i:
+	if not _darkness_frame_flat:return pixel_to_world_cell(point)
+	if not _darkness_frame_rect.has_point(point):return Vector2i(-1,-1)
+	var local:Vector2=(point-_darkness_frame_rect.position)*_darkness_inverse_cell
+	var cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
+	return cell if _world_in_bounds(cell) else Vector2i(-1,-1)
+
 func _darkness_vertex_color(sample:Dictionary)->Color:
 	var alpha:=float(sample.get("alpha",0.0)) if bool(sample.get("drawable",false)) else 0.0
 	return Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
+	if _retained_terrain!=null and _retained_terrain.visible and not _retained_terrain.has_fallback:return
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
 			var position:=view_origin+Vector2i(x,y)
@@ -2987,7 +3112,7 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 			var row:Dictionary=cached.get("row",{})
 			var tile_spec:Dictionary=cached.get("tile_spec",{})
 			if bool(tile_spec.get("visible",false)):
-				_draw_topdown_terrain_tile(cached.rect,tile_spec)
+				if _retained_terrain==null or not _retained_terrain.visible:_draw_topdown_terrain_tile(cached.rect,tile_spec)
 				# Tile imagery replaces only the primary terrain glyph. Semantic
 				# features, hazards, routes and material marks retain their passes.
 				continue
@@ -3242,27 +3367,19 @@ func _draw_terrain_glyph(rect:Rect2,terrain:Dictionary,visibility_state:String,
 	_draw_centered_text(font,glyph,center,font_size,color)
 
 func _draw_ground_features()->void:
-	for y in range(visible_row_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
-			var state:=_diorama_visibility_state(row)
-			var feature_id:=str(row.get("feature_id",""))
-			if state=="VISIBLE" or state=="MEMORY" and feature_id=="landmark_camp":
-				_draw_feature_cue(world_cell_rect(position),feature_id,
-					1.0 if state=="VISIBLE" else 0.28,state=="VISIBLE")
+	for row in _ground_candidates.features:
+		_draw_feature_cue(row[0],row[1],1.0 if bool(row[2]) else 0.28,bool(row[2]))
 
 func ground_mark_draw_specs()->Array[Dictionary]:
+	_ensure_static_projection_cache()
 	var result:Array[Dictionary]=[]
-	for y in range(visible_row_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y);var row:Dictionary=_cells.get(_key(position),{})
-			if row.is_empty():continue
-			var mark:=AsciiStyleScript.ground_mark_spec(row)
-			if not bool(mark.visible):continue
-			var rect:=world_cell_rect(position)
-			result.append(mark.merged({"world_position":[position.x,position.y],
-				"center":rect.get_center()+Vector2(0,rect.size.y*0.12),
-				"font_size":maxi(9,int(rect.size.x*float(mark.font_ratio)))},true))
+	for position in _ground_candidates.marks:
+		var row:Dictionary=_cells.get(_key(position),{})
+		var mark:=AsciiStyleScript.ground_mark_spec(row)
+		var rect:=world_cell_rect(position)
+		result.append(mark.merged({"world_position":[position.x,position.y],
+			"center":rect.get_center()+Vector2(0,rect.size.y*0.12),
+			"font_size":maxi(9,int(rect.size.x*float(mark.font_ratio)))},true))
 	return result.duplicate(true)
 
 func _draw_ground_marks()->void:
@@ -3275,10 +3392,7 @@ func _draw_ground_marks()->void:
 		_draw_centered_text(font,str(spec.glyph),Vector2(spec.center),int(spec.font_size),color)
 
 func _draw_ground_hazards()->void:
-	for y in range(visible_row_count):
-		for x in range(visible_cell_count):
-			var position:=view_origin+Vector2i(x,y);var spec:=diorama_hazard_draw_spec(position)
-			if bool(spec.get("visible",false)):_draw_ground_hazard(world_cell_rect(position),spec)
+	for row in _ground_candidates.hazards:_draw_ground_hazard(row[0],row[1])
 
 
 func _draw_enemy_vision_overlays() -> void:
