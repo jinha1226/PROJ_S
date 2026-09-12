@@ -5,9 +5,9 @@ static var DATA:Dictionary=Loader.load_document("res://data/content/rebuilt_prog
 const IDS=["MELEE","RANGED","MAGIC","DEFENSE"]
 
 static func config_error()->String:
-	for key in ["max_level","max_rank","xp_factor","points_per_level","attack_per_rank_milli","defense_per_rank_milli","defense_cap_milli","max_mp","starting_arrows","arrow_pickup","kill_xp_base","kill_xp_per_floor"]:
+	for key in ["max_level","max_rank","xp_factor","points_per_level","attack_per_rank_milli","defense_per_rank_milli","base_evasion","block_cap","max_mp","starting_arrows","arrow_pickup","kill_xp_base","kill_xp_per_floor"]:
 		if not integer(DATA.get(key)) or DATA[key]<0:return "invalid "+key
-	if DATA.max_level<2 or DATA.max_level>100 or DATA.max_rank<1 or DATA.max_rank>100 or DATA.xp_factor<1 or DATA.points_per_level<1 or DATA.defense_cap_milli>=1000:return "invalid progression bounds"
+	if DATA.max_level<2 or DATA.max_level>100 or DATA.max_rank<1 or DATA.max_rank>100 or DATA.xp_factor<1 or DATA.points_per_level<1 or DATA.block_cap>100 or DATA.base_evasion>90:return "invalid progression bounds"
 	if not DATA.get("axes") is Array or DATA.axes.size()!=4:return "invalid axes"
 	for i in range(4):
 		if DATA.axes[i].id!=IDS[i]:return "axis mismatch"
@@ -45,19 +45,17 @@ static func multiplier(actor:Dictionary,axis:String)->int:
 static func scale(actor:Dictionary,axis:String,base:int)->int:
 	return maxi(0,(base*multiplier(actor,axis)+500)/1000)
 
-static func reduction(actor:Dictionary)->int:
-	return mini(int(DATA.defense_cap_milli),int(actor.growth.ranks.DEFENSE)*int(DATA.defense_per_rank_milli))
+static func defense_multiplier(actor:Dictionary)->int:
+	return 1000+int(actor.growth.ranks.DEFENSE)*int(DATA.defense_per_rank_milli)
 
-static func defend(actor:Dictionary,damage:int)->int:
-	if damage<=0:return 0
-	return maxi(1,(damage*(1000-reduction(actor))+500)/1000)
+static func defense_stat(actor:Dictionary,base:int)->int:
+	return maxi(0,(base*defense_multiplier(actor)+500)/1000)
 
 static func preview(actor:Dictionary,axis:String)->String:
 	var rank:int=actor.growth.ranks[axis]
 	if axis=="DEFENSE":
-		var current:=reduction(actor)
-		var next:=mini(int(DATA.defense_cap_milli),(rank+1)*int(DATA.defense_per_rank_milli))
-		return "피해 감소 %d%% → %d%%"%[current/10,next/10]
+		var current:=defense_multiplier(actor)
+		return "방어 수치 ×%.2f → ×%.2f\n보호·회피·방패 적용 (반올림)"%[current/1000.0,(current+int(DATA.defense_per_rank_milli))/1000.0]
 	var current:=multiplier(actor,axis)
 	return "효과량 ×%.2f → ×%.2f"%[current/1000.0,(current+int(DATA.attack_per_rank_milli))/1000.0]
 

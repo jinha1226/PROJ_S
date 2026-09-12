@@ -1,5 +1,7 @@
 # 독립 던전 실행부 재구축
 
+> 최신 UI 및 방어 숙련: [기존 UI 연결 결과](REBUILT_UI_CONNECTION.ko.md).
+
 > 최신 구현: [4계열 숙련 내부 시스템·UI 결과](PROFICIENCY_FOUR_AXIS_RESULTS.ko.md).
 > 아래 8계열 숙련과 이전 저장 스키마 설명은 과거 구현 이력이다.
 

@@ -39,7 +39,13 @@ func run()->void:
 	Growth.gain(hero,1000000)
 	check(hero.growth.level==Growth.DATA.max_level and Growth.valid(hero.growth),"level cap preserves budget")
 	for i in range(20):Growth.invest(hero,"DEFENSE")
-	check(hero.growth.ranks.DEFENSE==10 and Growth.defend(hero,100)==80 and Growth.defend(hero,1)==1,"defense cap and minimum")
+	check(hero.growth.ranks.DEFENSE==10 and Growth.defense_multiplier(hero)==1800,"defense rank cap")
+	hero.gear.armor="MAIL";hero.gear.shield="BUCKLER"
+	var defenses:Dictionary=World.Equipment.stats(hero)
+	check(defenses.protection==9 and defenses.evasion==9 and defenses.block==22,"defense scales actual armor evasion shield")
+	hero.gear.armor="CLOTH";hero.gear.shield="NO_SHIELD"
+	defenses=World.Equipment.stats(hero)
+	check(defenses.protection==0 and defenses.block==0,"no armor or shield invented by proficiency")
 	arena(w);hero=w.hero();var target:=enemy(w)
 	var before_state:Dictionary=w.save_data()
 	check(not w.submit("FIREBOLT",target.cell) and w.save_data()==before_state,"unbound spell rejected atomically")
@@ -67,7 +73,9 @@ func run()->void:
 	var caster_cell:Vector2i=w.position(hero.cell)
 	target=enemy(w,caster_cell+Vector2i(3,0));target.hp=100;target.max_hp=100;target.fire_resistance=50
 	Growth.gain(hero,100);Growth.invest(hero,"MAGIC")
-	var expected:=Growth.defend(target,Growth.scale(hero,"MAGIC",12)*50/100)
+	Growth.gain(target,1000000)
+	for i in range(10):Growth.invest(target,"DEFENSE")
+	var expected:=Growth.scale(hero,"MAGIC",12)*50/100
 	initial=target.hp
 	check(w.submit("FIREBOLT",target.cell) and initial-target.hp==expected,"magic one multiplier then resistance")
 	check(hero.mp==16 and target.body.wounds.size()>0,"MP and elemental injury")

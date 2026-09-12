@@ -35,9 +35,9 @@ static func stats(actor:Dictionary)->Dictionary:
 		"base_damage":base,"damage":Growth.scale(actor,w.skill,base),
 		"accuracy":int(w.accuracy),
 		"delay":int(w.delay)+burden*2,
-		"protection":int(a.protection),
-		"evasion":0,
-		"block":int(s.block),
+		"protection":Growth.defense_stat(actor,int(a.protection)),
+		"evasion":Growth.defense_stat(actor,int(Growth.DATA.base_evasion)),
+		"block":mini(int(Growth.DATA.block_cap),Growth.defense_stat(actor,int(s.block))),
 		"penetration":int(w.penetration),"burden":burden}
 	if _cache.size()>=512:_cache.clear()
 	_cache[identity]={"key":key,"value":result}
@@ -67,5 +67,5 @@ static func description(actor:Dictionary)->String:
 		"피해 %d · 기본 명중 %d%% · 공격 시간 %d"%[values.damage,values.accuracy,values.delay],
 		"보호 %d · 회피 %d · 방패 %d%%"%[values.protection,values.evasion,values.block]]
 	if values.weapon!=actor.gear.weapon:lines.append("부상으로 무기 사용 불가 → 맨손")
-	lines.append("숙련 피해 감소 %d%%"%[Growth.reduction(actor)/10])
+	lines.append("방어 숙련: 방어 수치 +%d%%"%[(Growth.defense_multiplier(actor)-1000)/10])
 	return "\n".join(lines)

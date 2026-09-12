@@ -291,7 +291,7 @@ func cast_fire(source:Dictionary,target:Dictionary)->void:
 	var action:Dictionary=Growth.DATA.actions.FIREBOLT
 	var raw:=Growth.scale(source,action.axis,int(action.power))
 	var resisted:=maxi(0,raw*(100-clampi(int(target.fire_resistance),0,100))/100)
-	var damage:=Growth.defend(target,resisted)
+	var damage:=resisted
 	injury_serial+=1
 	if damage>0:
 		var result:Dictionary=Body.Injury.apply_element(target.body,action.element,damage,
@@ -320,7 +320,7 @@ func attack(source:Dictionary,target:Dictionary,ranged:bool=false)->void:
 	var defense_stats:Dictionary=Equipment.stats(target)
 	var defense:=maxi(0,int(defense_stats.protection)-int(offense.penetration))
 	var raw:int=offense.damage
-	var damage:=Growth.defend(target,maxi(1,raw-defense-2))
+	var damage:=maxi(1,raw-defense-2)
 	injury_serial+=1
 	# Separate deterministic lanes: saving/reloading cannot reroll an attack.
 	var roll:int=("%d|%d|%d|accuracy"%[seed,injury_serial,source.id]).sha256_text().substr(0,8).hex_to_int()%100
