@@ -18,11 +18,13 @@ static func is_torch_item(item) -> bool:
 	return item != null and str(item.definition_id) == DEFINITION_ID
 
 static func state(world, instance_id: String) -> Dictionary:
+	return _state_for_item(world,instance_id,_item_in_world(world,instance_id) if world!=null else null)
+
+static func _state_for_item(world,instance_id:String,item)->Dictionary:
 	var result := {"instance_id": instance_id, "is_torch": false, "lit": false,
 		"depleted": false, "fuel_remaining": FUEL_DURATION, "fuel_capacity": FUEL_DURATION,
 		"ignited_at": -1, "last_event_id": -1, "source_event_type": ""}
 	if world == null or instance_id.is_empty(): return result
-	var item = _item_in_world(world, instance_id)
 	if not is_torch_item(item): return result
 	result.is_torch = true
 	var latest = _latest_event(world, instance_id)
@@ -53,7 +55,7 @@ static func equipped_torch(world, entity_id: int):
 
 static func equipped_torch_state(world, entity_id: int) -> Dictionary:
 	var item = equipped_torch(world, entity_id)
-	return state(world, str(item.instance_id)) if item != null else {
+	return _state_for_item(world, str(item.instance_id),item) if item != null else {
 		"instance_id":"", "is_torch":false, "lit":false, "depleted":false,
 		"fuel_remaining":0, "fuel_capacity":FUEL_DURATION, "ignited_at":-1,
 		"last_event_id":-1, "source_event_type":""}
@@ -67,7 +69,7 @@ static func active_light_sources(world) -> Array[Dictionary]:
 		if not world.entities.has(entity_id): continue
 		var item = equipped_torch(world, entity_id)
 		if item == null: continue
-		var torch_state := state(world, str(item.instance_id))
+		var torch_state := _state_for_item(world, str(item.instance_id),item)
 		if not bool(torch_state.get("lit", false)): continue
 		var position: Vector2i = world.entities[entity_id].position
 		result.append({"position":[position.x, position.y], "brightness":LIGHT_BRIGHTNESS,
@@ -108,9 +110,17 @@ static func _item_in_world(world, instance_id: String):
 	return null
 
 static func _latest_event(world, instance_id: String):
-	for index in range(world.events.size() - 1, -1, -1):
-		var event = world.events[index]
-		if str(event.type) in [EVENT_IGNITED, EVENT_EXTINGUISHED] \
-				and str(event.data.get("instance_id", "")) == instance_id:
-			return event
-	return null
+	# Derived per-world index. Fuel still depends on current canonical time;
+	# rollback/replay invalidates the index when its prefix is no longer present.
+	var cache:Dictionary=world.torch_event_cache
+	var count:int=world.events.size()
+	if cache.is_empty() or int(cache.get("count",0))>count \
+			or (int(cache.get("count",0))>0 and cache.get("tail")!=world.events[int(cache.count)-1]):
+		cache={"count":0,"tail":null,"latest":{}}
+	for index in range(int(cache.count),count):
+		var event=world.events[index]
+		if str(event.type) in [EVENT_IGNITED,EVENT_EXTINGUISHED]:
+			cache.latest[str(event.data.get("instance_id",""))]=event
+	cache.count=count;cache.tail=world.events[-1] if count>0 else null
+	world.torch_event_cache=cache
+	return cache.latest.get(instance_id)

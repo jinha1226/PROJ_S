@@ -55,7 +55,7 @@ const TOUCH_TARGET:=44
 const PRODUCT_TOP_HUD_HEIGHT:=48
 # Three Korean-font baselines plus dark panel padding.
 const PRODUCT_EVENT_HEIGHT:=66
-const PRODUCT_PARTY_CARD_HEIGHT:=72
+const PRODUCT_PARTY_CARD_HEIGHT:=84
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
 # all take the same 110ms, so the drawn hero never trails the logical one and the
@@ -4117,9 +4117,9 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_rest_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
 		else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
 	# [줍기]: always in place, enabled when loot is underfoot.
-	var loot_here:int=session.ground_items_at_protagonist().size() if mode!="TOWN" else 0
+	var loot_here:int=session.ground_item_count_at_protagonist() if mode!="TOWN" else 0
 	product_pickup_button.disabled=terminal or loot_here==0
-	product_pickup_button.tooltip_text="이 칸의 아이템 %d개를 모두 줍습니다."%loot_here if loot_here>0 \
+	product_pickup_button.tooltip_text="발밑 아이템 %d개 · 한 번에 하나씩 줍습니다 (100시간)."%loot_here if loot_here>0 \
 		else "발밑에 주울 것이 없습니다."
 	# [전술]: party directives (focus, retreat, hold, cease, free). Always in
 	# place; the menu explains itself when there is no fight to direct.
@@ -4314,8 +4314,7 @@ func _on_product_pickup()->void:
 	var route_state:Dictionary=session.exploration_route_state()
 	if bool(route_state.get("active",false)) or bool(route_state.get("has_preview",false)):
 		_cancel_active_route()
-	var ground_items:Array=session.ground_items_at_protagonist()
-	if ground_items.is_empty():
+	if session.ground_item_count_at_protagonist()==0:
 		_show_product_command_feedback("현재 칸에 주울 아이템이 없습니다.")
 		_request_refresh();return
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
@@ -4910,11 +4909,13 @@ func _update_member_status_window(detail:Dictionary)->void:
 	if stats.is_empty() and progression.get("combat_stats",{}) is Dictionary:
 		stats=progression.get("combat_stats",{})
 	if not stats.is_empty():
-		var combat:=_card_label("공격 %d · 방어 %d\n회피 %s · 막기 %s"%[
+		var combat:=_card_label("공격력 %d\n방어력 %d\n회피율 %s\n블록율 %s"%[
 			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
 			_percent_milli_text(int(stats.get("evasion_milli",0))),
 			_percent_milli_text(int(stats.get("parry_milli",0)))],"StatusCombatSummary",FONT_AUX)
-		combat.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(combat)
+		# Four short explicit rows retain a nonzero minimum height in the narrow
+		# status grid; clipped/autowrapped labels could collapse out of view.
+		combat_cluster.add_child(combat)
 	var attribute_cluster:=_add_status_pixel_section(status_grid,"AttributeSealCluster")
 	var attribute_heading:=_card_label("기본 능력","AttributeSection",FONT_AUX)
 	attribute_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
@@ -6292,11 +6293,8 @@ func _on_cell(position:Vector2i)->void:
 		_sync_product_control_state(status);return
 	if status.view_mode=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
-		var tapped_items:Array=session.visible_ground_items_at(position)
-		pending_ground_pickup_id=str(tapped_items[0].get("instance_id","")) \
-			if not tapped_items.is_empty() else ""
-		pending_ground_pickup_label=str(tapped_items[0].get("label","아이템")) \
-			if not tapped_items.is_empty() else ""
+		# Navigation no longer pre-builds loot descriptions or schedules pickups.
+		pending_ground_pickup_id="";pending_ground_pickup_label=""
 		if _is_locked_visible_run_exit(position,progress):
 			_run_locked_exit_feedback=true
 			notice_text="적을 쓰러뜨리면 출구가 열립니다."
@@ -6449,8 +6447,7 @@ func _on_actor(entity_id:int)->void:
 			_on_cell(follower_cell);return
 	if status.view_mode=="EXPLORATION" and entity_id==int(status.protagonist_id):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
-		var ground_items:Array=session.ground_items_at_protagonist()
-		if not ground_items.is_empty():
+		if session.ground_item_count_at_protagonist()>0:
 			_pickup_everything_here();_request_refresh();return
 		var hero_position:=Vector2i(int(status.protagonist_position[0]),int(status.protagonist_position[1]))
 		if pending_move_mode=="EXPLORATION" and pending_exploration_wait:
@@ -6587,42 +6584,26 @@ func _consume_route_result(result:Dictionary)->void:
 	_update_tile_popover_route(result)
 
 func _pickup_pending_ground_item_if_reached()->void:
-	# Arriving on a cell with loot picks it all up (a bounded run of journaled
-	# 100-time pickups), not just the item that was tapped. Only while nothing
-	# hostile is in view; each pickup is still an ordinary canonical action.
-	var status:Dictionary=session.party_status()
-	if str(status.get("view_mode",""))!="EXPLORATION":return
-	if session.ground_items_at_protagonist().is_empty():
-		pending_ground_pickup_id="";pending_ground_pickup_label="";return
+	# Arrival is movement only: no synchronous multi-turn pickup loop.
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
-	_pickup_everything_here()
+	var count:int=session.ground_item_count_at_protagonist()
+	if count>0:
+		notice_text="발밑 아이템 %d개 · [줍기]로 획득"%count
+		action_feedback_text=notice_text
+	if product_pickup_button!=null:
+		product_pickup_button.disabled=count==0
 
 func _pickup_everything_here()->void:
-	var status:Dictionary=session.party_status()
-	if not (status.get("visible_enemy_ids",[]) as Array).is_empty():
-		var single:Array=session.ground_items_at_protagonist()
-		if single.is_empty():return
-		var one:Dictionary=session.pickup_ground_item(str(single[0].instance_id))
-		_record_result(one,true,"아이템을 주울 수 없습니다.")
-		if bool(one.get("accepted",false)):
-			notice_text="%s 가방에 주웠습니다 · 적이 보여 나머지는 남겼습니다"%str(single[0].label);action_feedback_text=notice_text
-		return
-	var taken:Array[String]=[];var failure:=""
-	for _attempt in range(6):
-		var rows:Array=session.ground_items_at_protagonist()
-		if rows.is_empty():break
-		var result:Dictionary=session.pickup_ground_item(str(rows[0].instance_id))
-		_record_result(result,true,"아이템을 주울 수 없습니다.")
-		if not bool(result.get("accepted",false)):
-			failure=str(result.get("message","아이템을 주울 수 없습니다."));break
-		taken.append(str(rows[0].label))
-		if str(session.party_status().get("view_mode",""))!="EXPLORATION":break
-	if taken.is_empty():
-		if not failure.is_empty():notice_text=failure;action_feedback_text=notice_text
-		return
-	var remaining:int=session.ground_items_at_protagonist().size()
-	notice_text="%s 가방에 주웠습니다 (%d시간)%s"%[", ".join(taken),taken.size()*100,
-		"" if remaining==0 and failure.is_empty() else " · %s"%(failure if not failure.is_empty() else "%d개 남음"%remaining)]
+	# Keep the existing callback name, but one press is exactly one item action.
+	# A stack is one ground item; no extra turns run inside the input callback.
+	var rows:Array=session.ground_items_at_protagonist()
+	if rows.is_empty():return
+	var result:Dictionary=session.pickup_ground_item(str(rows[0].instance_id))
+	_record_result(result,true,"아이템을 주울 수 없습니다.")
+	if not bool(result.get("accepted",false)):return
+	var remaining:int=session.ground_item_count_at_protagonist()
+	notice_text="%s 가방에 주웠습니다 (100시간)%s"%[str(rows[0].label),
+		" · %d개 남음"%remaining if remaining>0 else ""]
 	action_feedback_text=notice_text
 
 func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
@@ -6941,6 +6922,9 @@ func _route_goal(value:Dictionary)->Vector2i:
 
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
+	var stats:Dictionary=detail.get("combat_stats",{})
+	if not stats.is_empty():
+		lines.append("회피는 적 명중률에 따라 달라지며, 블록은 명중한 공격의 막기 확률입니다.")
 	var npc_activity:=str(detail.get("npc_activity",""))
 	if not npc_activity.is_empty():lines.append("현재 행동 · "+npc_activity)
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":

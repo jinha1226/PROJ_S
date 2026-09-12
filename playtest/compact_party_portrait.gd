@@ -59,6 +59,10 @@ func _draw()->void:
 			draw_rect(meter.rect,Color("#5b5548"),false,1)
 		draw_string(font,Vector2(layout.stats_x,15+index*13),labels[index],HORIZONTAL_ALIGNMENT_LEFT,
 			float(layout.stats_width),9 if size.x<110 else 10,colors[index])
+	var combat_lines:=combat_labels()
+	for index in range(combat_lines.size()):
+		draw_string(font,Vector2(4,54+index*12),combat_lines[index],HORIZONTAL_ALIGNMENT_LEFT,
+			maxf(1,size.x-8),9 if size.x<110 else 10,Color("#d0c8b4"))
 	if selected:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#f5cc67"),false,3)
 		draw_circle(Vector2(9,9),3,Color("#f5cc67"))
@@ -71,6 +75,16 @@ func portrait_layout_spec()->Dictionary:
 	var side:=24.0 if size.x<110 else 36.0
 	return {"portrait":Rect2(3,3,side,side),"name_position":Vector2(3,size.y-5),
 		"name_width":size.x-6,"stats_x":side+6,"stats_width":maxf(1,size.x-side-9)}
+
+func combat_labels()->Array[String]:
+	var stats:Dictionary=actor.get("combat_stats",{})
+	if stats.is_empty():return []
+	return ["공 %d · 방 %d"%[int(stats.get("attack_power",0)),int(stats.get("armor_flat",0))],
+		"회 %s%% · 막 %s%%"%[_percent(int(stats.get("evasion_milli",0))),
+			_percent(int(stats.get("parry_milli",0)))]]
+
+func _percent(value:int)->String:
+	return ("%.1f"%(value/10.0)).trim_suffix(".0")
 
 func resource_meter_specs()->Array:
 	var layout:=portrait_layout_spec()

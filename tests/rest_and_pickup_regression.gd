@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## Product exploration: the three-line event feed, the [REST] macro that waits
-## until HP is full, and picking up every item on the cell you arrive at.
+## until HP is full, and explicit single-turn pickup after arriving on loot.
 
 const Session=preload("res://playtest/party_playtest_session.gd")
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
@@ -78,8 +78,11 @@ func run()->void:
 		var left:=0
 		for row in world.item_state.ground_items.rows:
 			if row.position==target:left+=1
-		_check(left==0 or int(session.protagonist_inventory().get("used_backpack_slots",0))>=int(session.protagonist_inventory().get("capacity",0)),
-			"arriving picks up every item on the cell (%d of %d left)"%[left,most])
+		_check(left==most,"arrival leaves loot for explicit pickup")
+		for attempt in range(most):
+			var count_before:int=session.ground_item_count_at_protagonist()
+			ui._on_product_pickup()
+			if session.ground_item_count_at_protagonist()>=count_before:break
 		_check(int(session.protagonist_inventory().get("used_backpack_slots",0))>bag_before,"bag gained the loot")
 		_check("주웠습니다" in str(ui.notice_text),"pickup feedback names what was taken")
 	# A nearby group may have noticed the hero on the way to the loot; finish

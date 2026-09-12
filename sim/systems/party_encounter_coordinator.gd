@@ -1908,6 +1908,17 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 		signi(target.position.y-enemy.position.y))
 	var destination: Vector2i = enemy.position + direction
 	var assessment = movement.assess_move(enemy_id, destination)
+	if not assessment.accepted:
+		# Route to a free attack slot when another monster blocks the direct step.
+		var goals:Array=[]
+		for offset in movement.MOVE_DIRECTIONS_8:
+			var slot:Vector2i=target.position+offset
+			if world.in_bounds(slot) and world.diagonal_step_terrain_allowed(slot,target.position):
+				goals.append(slot)
+		var route:Dictionary=pathfinder.find_path_to_any(enemy_id,goals,{},12)
+		if bool(route.get("found",false)) and int(route.get("steps",0))>0:
+			destination=route.path[1]
+			assessment=movement.assess_move(enemy_id,destination)
 	if assessment.accepted:
 		var terrain_id := str(assessment.terrain_id)
 		rejected.reason = "approach_nearest_target"

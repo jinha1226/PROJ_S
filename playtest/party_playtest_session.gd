@@ -1207,6 +1207,16 @@ func commit_opening_event_choice(choice_action: String) -> Dictionary:
 		"inventory":protagonist_inventory()})
 
 
+func ground_item_count_at_protagonist()->int:
+	if sim==null or sim.world==null or sim.world.item_state==null or sim.world.party_encounter==null:return 0
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	if hero==null:return 0
+	var count:=0
+	for row in sim.world.item_state.ground_items.rows:
+		if row.position==hero.position:count+=1
+	return count
+
+
 func ground_items_at_protagonist()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return rows
@@ -4660,11 +4670,16 @@ func _entity_equipment_visual(entity_id:int)->Dictionary:
 	var item_state=sim.world.item_state if sim!=null and sim.world!=null else null
 	var key:="%d|%d|%d"%[entity_id,int(item_state.get_instance_id()) if item_state!=null else 0,
 		int(item_state.revision) if item_state!=null else -1]
-	if str(_equipment_visual_cache.get("key_%d"%entity_id,""))==key:
-		return (_equipment_visual_cache["dto_%d"%entity_id] as Dictionary).duplicate(true)
-	var built:Dictionary=_build_entity_equipment_visual(entity_id)
-	_equipment_visual_cache["key_%d"%entity_id]=key;_equipment_visual_cache["dto_%d"%entity_id]=built
-	return built.duplicate(true)
+	if str(_equipment_visual_cache.get("key_%d"%entity_id,""))!=key:
+		_equipment_visual_cache["key_%d"%entity_id]=key
+		_equipment_visual_cache["dto_%d"%entity_id]=_build_entity_equipment_visual(entity_id)
+	var result:Dictionary=(_equipment_visual_cache["dto_%d"%entity_id] as Dictionary).duplicate(true)
+	# Fuel/ignition change without an equipment revision. Do not freeze light
+	# state together with cached paper-doll geometry.
+	var torch:Dictionary=TorchRulesScript.equipped_torch_state(sim.world if sim!=null else null,entity_id)
+	result["off_hand_torch_lit"]=bool(torch.get("lit",false))
+	result["off_hand_torch_fuel"]=int(torch.get("fuel_remaining",0))
+	return result
 
 func _build_entity_equipment_visual(entity_id:int)->Dictionary:
 	if sim==null or sim.world==null or not sim.world.entities.has(entity_id):
@@ -4683,8 +4698,6 @@ func _build_entity_equipment_visual(entity_id:int)->Dictionary:
 		"weapon_definition_id":str(main.definition_id) if main!=null else "",
 		"armor_definition_id":str(armor.definition_id) if armor!=null else "",
 		"off_hand_definition_id":str(off_hand.definition_id) if off_hand!=null else "",
-		"off_hand_torch_lit":bool(TorchRulesScript.equipped_torch_state(sim.world,entity_id).get("lit",false)),
-		"off_hand_torch_fuel":int(TorchRulesScript.equipped_torch_state(sim.world,entity_id).get("fuel_remaining",0)),
 	}.duplicate(true)
 
 func party_cards() -> Array[Dictionary]:
@@ -4736,6 +4749,7 @@ func party_cards() -> Array[Dictionary]:
 			"readiness": readiness,
 			"emotion": emotion, "memory":memory_dto,
 			"override_state": override_state,"progression":progression,
+			"combat_stats":progression.get("combat_stats",{}) if member.role=="PROTAGONIST" else _member_combat_stats(member_id),
 			"expected_action": expected_action})
 	return rows.duplicate(true)
 

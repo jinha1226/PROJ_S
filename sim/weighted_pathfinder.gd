@@ -44,16 +44,16 @@ func _find_path(actor_id: int, goal: Vector2i, occupancy_projection: Dictionary 
 	return _search(actor_id,start,[goal],occupancy_projection)
 
 
-func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
+func find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}, maximum_steps:int=-1) -> Dictionary:
 	var started:=preload("res://sim/perf_probe.gd").begin()
 	_cell_cache.clear();_occupant_cache.clear()
 	_search_active=true
-	var result:=_find_path_to_any(actor_id,goals,occupancy_projection)
+	var result:=_find_path_to_any(actor_id,goals,occupancy_projection,maximum_steps)
 	_search_active=false
 	preload("res://sim/perf_probe.gd").end("path.multigoal",started)
 	return result
 
-func _find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}) -> Dictionary:
+func _find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictionary = {}, maximum_steps:int=-1) -> Dictionary:
 	if not world.entities.has(actor_id) or not world.can_act(actor_id, world.world_time):
 		return _failure("actor_not_found")
 	var start: Vector2i = world.entities[actor_id].position
@@ -69,12 +69,12 @@ func _find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictio
 	if goal_set.is_empty(): return _failure("path_unreachable")
 	if goal_set.has(_key(start)):
 		return {"found":true,"reason":"already_there","path":[start],"total_cost":0,"steps":0,"goal":start}
-	return _search(actor_id,start,goal_set.values(),occupancy_projection)
+	return _search(actor_id,start,goal_set.values(),occupancy_projection,maximum_steps)
 
-func _search(actor_id:int,start:Vector2i,goals:Array,projection:Dictionary)->Dictionary:
+func _search(actor_id:int,start:Vector2i,goals:Array,projection:Dictionary,maximum_steps:int=-1)->Dictionary:
 	return preload("res://sim/turn_engine.gd").path(world.width,world.height,start,goals,
 		func(from:Vector2i,to:Vector2i)->bool:return _can_step(actor_id,from,to,projection),
-		func(point:Vector2i)->int:return int(_cell_definition(point).move_time_cost),MIN_PASSABLE_MOVE_COST)
+		func(point:Vector2i)->int:return int(_cell_definition(point).move_time_cost),MIN_PASSABLE_MOVE_COST,maximum_steps)
 
 
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
