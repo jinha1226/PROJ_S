@@ -6941,6 +6941,8 @@ func _route_goal(value:Dictionary)->Vector2i:
 
 func _member_detail_text(detail:Dictionary)->String:
 	var lines:Array[String]=[]
+	var npc_activity:=str(detail.get("npc_activity",""))
+	if not npc_activity.is_empty():lines.append("현재 행동 · "+npc_activity)
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
 		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
 		var time_cost:=int(rescue.get("time_cost",0))

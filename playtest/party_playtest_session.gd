@@ -7779,6 +7779,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"stress_band_label":PartyMoraleModelScript.stress_band_label(
 			PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode))),
 		"readiness":readiness,"emotion":emotion,
+		"npc_activity":_visible_independent_activity(entity_id),
 		"memory":_memory_presentation(member),
 		"override_state":override_state,"expected_action":expected_action,
 		"element_exposure":compact_exposure,"current_exposure":full_exposure,
@@ -7808,6 +7809,25 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
 	return _feedback_dto(dto, null, null,
 		{"action_type":"INSPECT_MEMBER","actor_id":entity_id})
+
+
+func _visible_independent_activity(entity_id:int)->String:
+	if not preload("res://sim/living_expedition_rules.gd").present(sim.world,entity_id):return ""
+	var entity=sim.world.entities.get(entity_id)
+	if entity==null:return ""
+	var observer_id:int=sim.world.party_control_actor_id()
+	var observer=sim.world.entities.get(observer_id)
+	if observer==null:return ""
+	var observer_member=sim.world.party_encounter.member(observer_id)
+	var origin:Vector2i=sim.world.party_encounter.group_anchor \
+		if observer_member!=null and observer_member.presence=="GROUPED" else observer.position
+	if not _presentation_visible_cells(origin).has(_position_key(entity.position)):return ""
+	var life=sim.world.combatant_states.get(entity_id)
+	if life!=null and life.life_state!="ACTIVE":
+		return "구조 필요" if life.life_state=="DOWNED" else "사망"
+	for row in preload("res://sim/town_population_rules.gd").locations(sim.world):
+		if int(row.get("entity_id",-1))==entity_id:return str(row.get("activity",""))
+	return ""
 
 
 func _inspect_rescue_candidate(entity_id: int) -> Dictionary:

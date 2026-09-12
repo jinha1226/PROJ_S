@@ -8,18 +8,13 @@ const Perception=preload("res://sim/enemy_perception_registry.gd")
 const Terrain=preload("res://sim/terrain_registry.gd")
 const Movement=preload("res://sim/systems/movement_system.gd")
 const Weapons=preload("res://sim/weapon_registry.gd")
+const Decision=preload("res://sim/independent_explorer_decision.gd")
 const LABELS:={"EXPLORE":"탐색 중","FIGHT":"교전 중","REST":"휴식 중",
 	"RETURN":"귀환 중","RETURNED":"마을로 귀환","DOWNED":"구조 필요","DEAD":"사망"}
 
 static func choose(profile,health_ratio:int,enemy_distance:int,supplies:int,fatigue:int)->String:
-	var caution:int=profile.value("C") if profile!=null else 500
-	var emotion:int=profile.value("E") if profile!=null else 500
-	var retreat_at:=25+int((caution+emotion)/60)
-	if health_ratio<retreat_at or supplies<=0:return "RETURN"
-	if enemy_distance<=1:return "FIGHT"
-	if enemy_distance<=4 and health_ratio>=60+int(caution/50):return "FIGHT"
-	if fatigue>=4 or health_ratio<85:return "REST" if enemy_distance>5 else "RETURN"
-	return "EXPLORE"
+	return str(Decision.decide(profile,{"health_ratio":health_ratio,"enemy_distance":enemy_distance,
+		"supplies":supplies,"fatigue":fatigue}).mode)
 
 static func process_tick(sim,step_index:int)->bool:
 	var world=sim.world
@@ -42,18 +37,27 @@ static func process_tick(sim,step_index:int)->bool:
 			row["state"]=life;row["activity"]=LABELS.get(life,life)
 			row["position"]=[entity.position.x,entity.position.y];changed=true;continue
 		var distant:=distance(entity.position,hero.position)>16
-		if member.busy_until>world.world_time or distant and not expanded:continue
+		if member.busy_until>world.world_time or distant and not expanded \
+				or not world.can_act(id,world.world_time):continue
 		if routing.is_empty():routing=_safe_occupancy_projection(world,-1)
 		var nearest:Dictionary=_nearest_enemy(sim,entity.position)
 		var enemy_id:int=int(nearest.id);var enemy_distance:int=int(nearest.distance)
 		var food:String=item_id(world,id,"FOOD_RATION")
-		var mode:String=choose(member.personality_profile,
-			int(entity.health*100/maxi(1,entity.max_health)),enemy_distance,
-			1 if not food.is_empty() else 0,int(row.get("fatigue",0)))
-		# An explicit service decision remains durable after supplies arrive.
-		if str(row.get("state",""))=="RETURN":mode="RETURN"
-		if row.get("state","")=="REST" and int(row.get("rest_until",0))>world.world_time \
-				and enemy_distance>5:mode="REST"
+		var weapon=Weapons.definition(Items.equipped_weapon_id(world,id))
+		var grievance:=0
+		if member.memory_state!=null and enemy_id>0:
+			grievance=member.memory_state.salience_for_subject(enemy_id,["SELF_HARM"])
+		var decision:Dictionary=Decision.decide(member.personality_profile,{
+			"health_ratio":int(entity.health*100/maxi(1,entity.max_health)),
+			"enemy_distance":enemy_distance,"supplies":1 if not food.is_empty() else 0,
+			"fatigue":int(row.get("fatigue",0)),"stress":int(member.stress),
+			"fear":member.emotion_state.intensity("FEAR") if member.emotion_state!=null else 0,
+			"anger":member.emotion_state.intensity("ANGER") if member.emotion_state!=null else 0,
+			"grievance":grievance,"can_attack":weapon!=null and int(weapon.range_min)<=1 \
+				and Items.attack_error(world,id).is_empty()},row,world.world_time)
+		var mode:String=decision.mode
+		row["decision_mode"]=mode;row["decision_reason"]=str(decision.reason)
+		row["decision_until"]=int(decision.decision_until);row["decision_ruleset"]=Decision.RULESET_ID
 		var cost:int=100
 		if mode=="FIGHT" and enemy_id>0:
 			if enemy_distance==1:
@@ -98,6 +102,7 @@ static func process_tick(sim,step_index:int)->bool:
 		if expanded and distant:cost=maxi(cost,300)
 		member.busy_until=world.world_time+maxi(1,cost)
 		row["state"]=mode;row["activity"]=LABELS[mode]
+		if mode!="RETURNED":row["activity"]=str(decision.label)
 		row["position"]=[entity.position.x,entity.position.y]
 		row["needs_supplies"]=item_id(world,id,"FOOD_RATION").is_empty();changed=true
 	# One shared enemy busy clock prevents the normal coordinator acting it again.
