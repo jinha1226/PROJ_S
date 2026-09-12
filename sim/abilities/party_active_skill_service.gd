@@ -15,7 +15,7 @@ const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
 const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
-const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
+const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND"]
 
 static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
 		in_transaction:bool=false, ground_position:Vector2i=Vector2i(-1,-1))->Dictionary:

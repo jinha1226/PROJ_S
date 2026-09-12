@@ -18,7 +18,8 @@ static func canonical_id(ability_id: String) -> String:
 
 
 static func has(ability_id: String) -> bool:
-	return ActiveSkillRegistryScript.SKILLS.has(canonical_id(ability_id))
+	return ActiveSkillRegistryScript.SKILLS.has(canonical_id(ability_id)) \
+		and canonical_id(ability_id) not in ActiveSkillRegistryScript.GROUND_SKILLS
 
 
 static func definition(ability_id: String) -> Dictionary:

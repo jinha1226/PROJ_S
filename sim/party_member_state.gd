@@ -50,13 +50,11 @@ func _init(p_entity_id: int = -1, p_slot: int = -1, p_role: String = "COMPANION"
 	energy = DEFAULT_MAX_ENERGY
 
 func active_skill_ids() -> Array:
-	var skills:Array=SkillLoadoutScript.skills(skill_loadout_id)
-	# Binding grants access, not a second copy of an innate skill.
+	# Role kits were prototype grants, not acquired monster abilities.
+	var skills:Array=[]
 	for ability_id in bound_ability_ids:
-		if ActiveSkillRegistryScript.SKILLS.has(ability_id) and ability_id not in skills:
+		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills:
 			skills.append(ability_id)
-	# Temporary environment playtest grant; no save/loadout migration needed.
-	if role=="PROTAGONIST":skills.append_array(preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS)
 	return skills
 
 func refill_energy() -> bool:
