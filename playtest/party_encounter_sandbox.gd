@@ -208,6 +208,7 @@ var member_detail_scroll_content:VBoxContainer
 var member_detail_tab_stash:Control
 var member_detail_body:Label
 var member_status_window:VBoxContainer
+var _item_category:="ALL"
 var member_detail_tab_row:HBoxContainer
 var member_detail_status_tab:Button
 var member_detail_personality_tab:Button
@@ -516,6 +517,7 @@ func _item_action_at_position(global_position:Vector2)->Dictionary:
 
 func _handle_item_popover_outside_pointer(event:InputEvent)->bool:
 	if member_item_popover==null or not member_item_popover.visible:return false
+	if member_item_popover.get_parent()==member_item_window:return false
 	var pointer:=Vector2.ZERO;var pressed:=false
 	if event is InputEventScreenTouch:
 		pointer=event.position;pressed=event.pressed
@@ -1478,7 +1480,7 @@ func _build_item_window(parent:VBoxContainer)->void:
 	member_item_weapon_text=Label.new();member_item_weapon_text.name="EquippedCombatSummary"
 	member_item_weapon_text.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	member_item_weapon_text.add_theme_font_size_override("font_size",FONT_AUX)
-	member_item_weapon_text.max_lines_visible=1;member_item_weapon_text.clip_text=true
+	member_item_weapon_text.max_lines_visible=1;member_item_weapon_text.clip_text=true;member_item_weapon_text.custom_minimum_size.y=22
 	member_item_weapon_text.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	member_item_weapon_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;weapon_stack.add_child(member_item_weapon_text)
 	member_item_stats={"SUMMARY":member_item_weapon_text}
@@ -1504,7 +1506,7 @@ func _build_item_window(parent:VBoxContainer)->void:
 	equipment_stack.add_child(equipment_title)
 	member_item_equipment_grid=GridContainer.new()
 	member_item_equipment_grid.name="ItemEquipmentGrid"
-	member_item_equipment_grid.columns=ITEM_GRID_COLUMNS
+	member_item_equipment_grid.columns=3
 	member_item_equipment_grid.add_theme_constant_override("h_separation",4)
 	member_item_equipment_grid.add_theme_constant_override("v_separation",4)
 	member_item_equipment_grid.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -1517,6 +1519,12 @@ func _build_item_window(parent:VBoxContainer)->void:
 	var backpack_title:=_card_label("가방 0 / 20","ItemBackpackHeading",FONT_SECTION)
 	DarkPixelSkinScript.apply_heading(backpack_title,DarkPixelSkinScript.BRASS)
 	backpack_stack.add_child(backpack_title)
+	var filters:=HBoxContainer.new();filters.name="ItemCategoryFilters";backpack_stack.add_child(filters)
+	for entry in [["ALL","전체"],["GEAR","장비"],["CONSUMABLE","소모품"],["MATERIAL","재료"]]:
+		var button:=Button.new();button.text=entry[1];button.custom_minimum_size.y=44
+		button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.toggle_mode=true;button.button_pressed=entry[0]==_item_category
+		button.set_meta("category",entry[0]);button.pressed.connect(_set_item_category.bind(str(entry[0])))
+		DarkPixelSkinScript.apply_action_button(button,DarkPixelSkinScript.CYAN);filters.add_child(button)
 	member_item_backpack_rows=GridContainer.new();member_item_backpack_rows.name="ItemBackpackGrid"
 	member_item_backpack_rows.columns=ITEM_GRID_COLUMNS
 	member_item_backpack_rows.add_theme_constant_override("h_separation",4)
@@ -1546,7 +1554,7 @@ func _build_item_popover()->void:
 	member_item_popover.visible=false;member_item_popover.mouse_filter=Control.MOUSE_FILTER_STOP
 	member_item_popover.z_index=8;member_item_popover.custom_minimum_size.x=288
 	DarkPixelSkinScript.apply_panel(member_item_popover,"FOLIO")
-	member_detail_modal.add_child(member_item_popover)
+	member_item_window.add_child(member_item_popover)
 	var popover_frame:=VBoxContainer.new();popover_frame.name="ItemDetailPixelFrame"
 	popover_frame.set_meta("visual_family",DarkPixelSkinScript.VISUAL_FAMILY)
 	popover_frame.set_meta("pixel_material","BLACK_IRON_POPOVER")
@@ -4870,89 +4878,58 @@ func _activate_member_card(member_id:int,display_name:String,pointer:Dictionary)
 
 func _update_member_status_window(detail:Dictionary)->void:
 	_clear_container(member_status_window)
+	var progression:Dictionary=detail.get("progression",{})
+	var vitals:=VBoxContainer.new();vitals.name="StatusVitals";member_status_window.add_child(vitals)
+	vitals.add_child(_status_gauge("체력",int(detail.get("health",0)),maxi(1,int(detail.get("max_health",1))),DarkPixelSkinScript.BLOOD))
+	var member=session.sim.world.party_encounter.member(int(detail.get("entity_id",-1)))
+	if member!=null:vitals.add_child(_status_gauge("기력",int(member.energy),int(member.max_energy),DarkPixelSkinScript.CYAN))
+	var stress:=int(detail.get("stress",0))
+	var stress_band:=str(detail.get("stress_band","CALM"))
+	vitals.add_child(_card_label("스트레스 %d / 1000 · %s"%[stress,str(detail.get("stress_band_label","안정"))],"StatusStress",14))
+	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid";status_grid.columns=1
+	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
+	var attributes:=_add_status_pixel_section(status_grid,"AttributeSealCluster")
+	attributes.add_child(_card_label("능력치","AttributeSection",16))
+	var core:Dictionary=detail.get("core_stats",{})
+	var attribute_grid:=GridContainer.new();attribute_grid.name="StatusAttributes";attribute_grid.columns=3;attributes.add_child(attribute_grid)
+	for pair in [["STR","힘"],["DEX","민첩"],["INT","지능"]]:
+		_add_status_value(attribute_grid,str(pair[1]),str(core.get(pair[0],0)))
+	var combat_cluster:=_add_status_pixel_section(status_grid,"CombatSealCluster")
+	combat_cluster.add_child(_card_label("전투","CombatSection",16))
+	var stats:Dictionary=detail.get("combat_stats",{})
+	if stats.is_empty():stats=progression.get("combat_stats",{})
+	var combat_grid:=GridContainer.new();combat_grid.name="StatusCombatGrid";combat_grid.columns=2
+	combat_grid.add_theme_constant_override("h_separation",6);combat_grid.add_theme_constant_override("v_separation",6);combat_cluster.add_child(combat_grid)
+	for entry in [["공격력",str(stats.get("attack_power",0))],["방어력",str(stats.get("armor_flat",0))],
+			["회피율",_percent_milli_text(int(stats.get("evasion_milli",0)))],["막기율",_percent_milli_text(int(stats.get("parry_milli",0)))]]:
+		_add_status_value(combat_grid,str(entry[0]),str(entry[1]))
+	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
+	body_cluster.add_child(_card_label("육체 상태","BodyStateSection",16))
+	var body:Dictionary=detail.get("body_state",{})
+	var body_row:=HBoxContainer.new();body_cluster.add_child(body_row)
+	var silhouette:=preload("res://playtest/body_status_silhouette.gd").new();silhouette.body=body;body_row.add_child(silhouette)
+	var body_text:=_card_label("\n".join(body_status_lines(body)),"StatusBodyState",14)
+	body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body_text.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body_row.add_child(body_text)
+	body_text.clip_text=false;body_text.custom_minimum_size.y=126
+	var effects:=_add_status_pixel_section(status_grid,"EmotionSealCluster")
+	effects.add_child(_card_label("적용 중인 효과","EmotionSection",16))
+	var status_labels:Array[String]=[]
+	for id in detail.get("status_ids",[]):status_labels.append(_status_label(str(id)))
+	var statuses:=_card_label(" · ".join(status_labels) if not status_labels.is_empty() else "상태 이상 없음","StatusEffects",14)
+	statuses.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;effects.add_child(statuses)
+	statuses.clip_text=false;statuses.custom_minimum_size.y=22
+	var emotion:Dictionary=detail.get("emotion",{})
+	var emotion_label:=_card_label(str(emotion.get("label",""))+" · "+str(emotion.get("reason","")),"StatusEmotion",13)
+	emotion_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;effects.add_child(emotion_label)
+	emotion_label.clip_text=false;emotion_label.custom_minimum_size.y=32
+	if stress_band in ["ANXIOUS","PANIC"]:effects.add_child(_card_label("불안 · 기술 사용 제한","StatusStressNote",13))
+	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
+	effects.add_child(_card_label("회복력 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",13))
 	var talent:Dictionary=detail.get("personal_talent",{})
 	if not talent.is_empty():
-		var talent_label:=_card_label("재능 · %s\n%s"%[
-			str(talent.label),str(talent.description)],"StatusPersonalTalent",FONT_AUX)
-		talent_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		talent_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS)
-		member_status_window.add_child(talent_label)
-	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
-	var vitals:=HBoxContainer.new();vitals.name="StatusVitals";vitals.custom_minimum_size.y=44
-	vitals.add_theme_constant_override("separation",8);member_status_window.add_child(vitals)
-	var health_bar:Control=_gauge("StatusHealthBar","HP",int(detail.get("health",0)),
-		maxi(1,int(detail.get("max_health",1))),4,AsciiFrameScript.GREEN)
-	health_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(health_bar)
-	var stress:=int(detail.get("stress",0));var stress_band:=str(detail.get("stress_band","CALM"))
-	var stress_bar:Control=_gauge("StatusStressBar","TNS",stress,1000,4,_stress_band_color(stress_band))
-	stress_bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;vitals.add_child(stress_bar)
-	var status_grid:=GridContainer.new();status_grid.name="StatusFolioGrid"
-	status_grid.columns=2;status_grid.add_theme_constant_override("h_separation",10)
-	status_grid.add_theme_constant_override("v_separation",8);member_status_window.add_child(status_grid)
-	var emotion_cluster:=_add_status_pixel_section(status_grid,"EmotionSealCluster")
-	var emotion_heading:=_card_label("감정 / 긴장","EmotionSection",FONT_AUX)
-	emotion_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);emotion_cluster.add_child(emotion_heading)
-	var emotion:Dictionary=detail.get("emotion",{}) if detail.get("emotion",{}) is Dictionary else {}
-	var emotion_label:=_card_label("[%s%s]"%[str(emotion.get("icon","")),str(emotion.get("label","감정 정보 없음"))],"StatusEmotion",FONT_BODY)
-	emotion_label.add_theme_color_override("font_color",AsciiFrameScript.INK);emotion_cluster.add_child(emotion_label)
-	var reason:=str(emotion.get("reason","")).strip_edges()
-	if not reason.is_empty() and reason!="이유 정보 없음":
-		var reason_label:=_card_label(reason,"StatusEmotionReason",FONT_AUX);reason_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		reason_label.modulate=Color("#8fa5ae");emotion_cluster.add_child(reason_label)
-	var stress_label:=_card_label("긴장 TNS %d/1000 · %s"%[stress,
-		str(detail.get("stress_band_label","안정"))],"StatusStress",FONT_AUX)
-	stress_label.add_theme_color_override("font_color",_stress_band_color(stress_band));emotion_cluster.add_child(stress_label)
-	if stress_band in ["ANXIOUS","PANIC"]:
-		var stress_note:=_card_label("기술 사용 불가 · 물러나 진정시키세요" if stress_band=="ANXIOUS" \
-			else "공황 · 후퇴를 우선한다","StatusStressNote",FONT_AUX)
-		stress_note.add_theme_color_override("font_color",_stress_band_color(stress_band));emotion_cluster.add_child(stress_note)
-	var combat_cluster:=_add_status_pixel_section(status_grid,"CombatSealCluster")
-	var combat_heading:=_card_label("전투 / 상태","CombatSection",FONT_AUX)
-	combat_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);combat_cluster.add_child(combat_heading)
-	var status_ids:Variant=detail.get("status_ids",[])
-	if status_ids is Array and not status_ids.is_empty():
-		var status_labels:Array[String]=[]
-		for status_id in status_ids:status_labels.append(_status_label(str(status_id)))
-		var statuses:=_card_label(" ".join(status_labels.map(func(value):return "[%s]"%str(value))),"StatusEffects",FONT_AUX)
-		statuses.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;combat_cluster.add_child(statuses)
-	else:
-		var clear_status:=_card_label("[이상 없음]","StatusEffects",FONT_AUX)
-		clear_status.add_theme_color_override("font_color",AsciiFrameScript.JADE);combat_cluster.add_child(clear_status)
-	var stats:Dictionary=detail.get("combat_stats",{}) \
-		if detail.get("combat_stats",{}) is Dictionary else {}
-	if stats.is_empty() and progression.get("combat_stats",{}) is Dictionary:
-		stats=progression.get("combat_stats",{})
-	if not stats.is_empty():
-		var combat:=_card_label("공격력 %d\n방어력 %d\n회피율 %s\n블록율 %s"%[
-			int(stats.get("attack_power",0)),int(stats.get("armor_flat",0)),
-			_percent_milli_text(int(stats.get("evasion_milli",0))),
-			_percent_milli_text(int(stats.get("parry_milli",0)))],"StatusCombatSummary",FONT_AUX)
-		# Four short explicit rows retain a nonzero minimum height in the narrow
-		# status grid; clipped/autowrapped labels could collapse out of view.
-		combat_cluster.add_child(combat)
-	var attribute_cluster:=_add_status_pixel_section(status_grid,"AttributeSealCluster")
-	var attribute_heading:=_card_label("기본 능력","AttributeSection",FONT_AUX)
-	attribute_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
-	attribute_cluster.add_child(attribute_heading)
-	var core_stats:Dictionary=detail.get("core_stats",{}) \
-		if detail.get("core_stats",{}) is Dictionary else {}
-	var attribute_text:=_card_label("근력 STR %d\n민첩 DEX %d\n지능 INT %d"%[
-		int(core_stats.get("STR",0)),int(core_stats.get("DEX",0)),
-		int(core_stats.get("INT",0))],"StatusCoreStats",FONT_AUX)
-	attribute_cluster.add_child(attribute_text)
-	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
-	var recovery_text:=_card_label("HP 회복력 +%d\nMP 회복력 +%d\n안전 500 시간단위 후\n300 시간단위마다"%[
-		int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",FONT_AUX)
-	recovery_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;attribute_cluster.add_child(recovery_text)
-	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
-	var body_heading:=_card_label("육체 상태","BodyStateSection",FONT_AUX)
-	body_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN)
-	body_cluster.add_child(body_heading)
-	var body:Dictionary=detail.get("body_state",{}) \
-		if detail.get("body_state",{}) is Dictionary else {}
-	var body_lines:=body_status_lines(body)
-	var body_text:=_card_label("\n".join(body_lines),"StatusBodyState",FONT_CAPTION)
-	body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;body_cluster.add_child(body_text)
+		var label:=_card_label("재능 · %s\n%s"%[talent.label,talent.description],"StatusPersonalTalent",13)
+		label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;effects.add_child(label)
+		label.clip_text=false;label.custom_minimum_size.y=44
 	if str(detail.get("role",""))!="PROTAGONIST":
 		var equipment:Dictionary=detail.get("equipment_summary",{}) \
 			if detail.get("equipment_summary",{}) is Dictionary else {}
@@ -4974,6 +4951,19 @@ func _update_member_status_window(detail:Dictionary)->void:
 		member_status_window.add_child(equipment_text)
 	var dossier_heading:=_card_label("내성","StatusDossierSection",FONT_SECTION)
 	dossier_heading.add_theme_color_override("font_color",AsciiFrameScript.CYAN);member_status_window.add_child(dossier_heading)
+
+func _status_gauge(title:String,value:int,maximum:int,color:Color)->Control:
+	var line:=HBoxContainer.new();line.custom_minimum_size.y=26
+	var label:=_card_label("%s %d/%d"%[title,value,maximum],"VitalValue",14);label.custom_minimum_size.x=138;line.add_child(label)
+	var bar:=ProgressBar.new();bar.max_value=maximum;bar.value=value;bar.show_percentage=false
+	bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL;bar.size_flags_vertical=Control.SIZE_SHRINK_CENTER;bar.custom_minimum_size.y=10
+	DarkPixelSkinScript.apply_progress(bar,color,false);line.add_child(bar);return line
+
+func _add_status_value(parent:GridContainer,title:String,value:String)->void:
+	var panel:=PanelContainer.new();panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size.y=58
+	panel.add_theme_stylebox_override("panel",DarkPixelSkinScript.panel_surface(DarkPixelSkinScript.SLOT_FILLED,DarkPixelSkinScript.IRON_EDGE,6,1))
+	var label:=_card_label(title+"\n"+value,"StatValue",16);panel.add_child(label);parent.add_child(panel)
 
 static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
@@ -5073,6 +5063,7 @@ func _refresh_open_member_detail()->void:
 	_update_member_status_window(detail)
 	_update_progression_window(detail.get("progression",{}))
 	member_skill_window.call("set_detail",detail)
+	member_relationship_window.call("set_detail",detail)
 	if member_detail_entity_id==int(party.protagonist_id):mastery_panel.refresh(session)
 	member_ability_window.update_rows(session.ability_binding_rows(member_detail_entity_id),session.ability_binding_item_rows(member_detail_entity_id))
 	call_deferred("_measure_member_detail_body")
@@ -5501,16 +5492,29 @@ func _update_item_inventory_ledger()->void:
 		_add_item_ledger_button(member_item_equipment_rows,row,
 			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
 		_add_item_grid_slot(member_item_equipment_grid,row,index,slot)
+	var portrait:=PortraitScript.new();portrait.name="EquipmentPortrait";portrait.custom_minimum_size=Vector2(48,64)
+	member_item_equipment_grid.add_child(portrait);member_item_equipment_grid.move_child(portrait,mini(1,member_item_equipment_grid.get_child_count()-1))
+	portrait.set_actor(session.inspect_party_member(int(session.sim.world.party_encounter.protagonist_id)))
 	var backpack:Array=dto.get("backpack_rows",[])
 	var capacity:=int(dto.get("capacity",20))
 	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),capacity]
-	for index in range(capacity):
-		var row:Dictionary=backpack[index] if index<backpack.size() else {"empty":true}
+	var filtered:Array=[]
+	for item in backpack:
+		var category:=str(item.get("category",""))
+		if _item_category=="ALL" or (_item_category=="GEAR" and category in ["WEAPON","ARMOR","ACCESSORY"]) or category==_item_category:filtered.append(item)
+	for index in range(capacity if _item_category=="ALL" else filtered.size()):
+		var row:Dictionary=filtered[index] if index<filtered.size() else {"empty":true}
 		_add_item_grid_slot(member_item_backpack_rows,row,index,"")
 	if member_item_popover!=null and member_item_popover.visible:
 		var selected_row:=_selected_item_ledger_row(dto)
 		if selected_row.is_empty():_hide_item_popover()
 		else:_configure_item_popover(selected_row,dto)
+
+func _set_item_category(category:String)->void:
+	_item_category=category
+	var filters=member_item_window.find_child("ItemCategoryFilters",true,false)
+	for button in filters.get_children():button.button_pressed=str(button.get_meta("category"))==category
+	_hide_item_popover();_update_item_inventory_ledger();_reflow_member_detail_scroll()
 
 func _detach_item_ledger_children(container:Control)->void:
 	if container==null:return
@@ -5624,6 +5628,8 @@ func _add_item_grid_slot(parent:GridContainer,row:Dictionary,index:int,
 
 func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->void:
 	if instance_id.is_empty():return
+	var host:Control=member_item_window if member_detail_current_tab=="ITEM" else member_detail_modal
+	if member_item_popover.get_parent()!=host:member_item_popover.reparent(host)
 	member_item_selected_id=instance_id;member_item_selected_slot=slot
 	_sync_item_grid_selection()
 	if anchor==null:anchor=_find_item_row_button(instance_id,slot)
@@ -5697,7 +5703,8 @@ func _item_comparison_text(row:Dictionary,equipped:Dictionary,slot:String)->Stri
 		return "비교 · %s 비어 있음"%slot_label
 	var parts:Array[String]=[]
 	if str(row.get("category",""))=="WEAPON":
-		parts.append("공격 %+d"%(int(row.get("raw_damage",0))-int(equipped.get("raw_damage",0))))
+		parts.append("공격력 %d → %d"%[int(equipped.get("raw_damage",0)),int(row.get("raw_damage",0))])
+		parts.append("공격시간 %d → %d (낮을수록 빠름)"%[int(equipped.get("attack_time",100)),int(row.get("attack_time",100))])
 		parts.append("명중 %+.1f%%"%((int(row.get("hit_chance_milli",0))-
 			int(equipped.get("hit_chance_milli",0)))/10.0))
 		parts.append("관통 %+d"%(int(row.get("armor_penetration_flat",0))-
@@ -5715,6 +5722,11 @@ func _item_comparison_text(row:Dictionary,equipped:Dictionary,slot:String)->Stri
 
 func _position_item_popover(_anchor:Control=null)->void:
 	if member_item_popover==null or not member_item_popover.visible:return
+	if member_item_popover.get_parent()==member_item_window:
+		member_item_popover.custom_minimum_size.x=0
+		_reflow_member_detail_scroll()
+		_show_inline_item_detail.call_deferred()
+		return
 	var horizontal_margin:=16.0
 	var popup_width:=minf(320.0,maxf(280.0,size.x-horizontal_margin*2.0))
 	member_item_popover.custom_minimum_size.x=popup_width
@@ -5726,10 +5738,17 @@ func _position_item_popover(_anchor:Control=null)->void:
 	member_item_popover.position=_fixed_item_popover_origin(popup_width)
 	_settle_item_popover_size_after_layout(popup_width)
 
+func _show_inline_item_detail()->void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if member_item_popover.visible and member_item_popover.get_parent()==member_item_window and member_item_window.is_visible_in_tree():
+		member_detail_scroll.ensure_control_visible(member_item_popover)
+
 func _settle_item_popover_size_after_layout(popup_width:float)->void:
 	if not is_inside_tree():return
 	await get_tree().process_frame
 	if member_item_popover==null or not member_item_popover.visible:return
+	if member_item_popover.get_parent()==member_item_window:return
 	var popup_size:=member_item_popover.get_combined_minimum_size()
 	popup_size.x=popup_width
 	member_item_popover.size=popup_size

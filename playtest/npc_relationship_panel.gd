@@ -5,6 +5,8 @@ const DarkSkin = preload("res://playtest/dark_pixel_ui_skin.gd")
 
 var _detail:Dictionary={}
 var _snapshot:Dictionary={}
+var _selected:=0
+var _cards:Array=[]
 
 
 func _ready()->void:
@@ -15,6 +17,8 @@ func _ready()->void:
 
 
 func set_detail(value:Dictionary)->void:
+	if _detail==value:return
+	if _detail.get("entity_id")!=value.get("entity_id"):_selected=0
 	_detail=value.duplicate(true)
 	_rebuild()
 
@@ -39,20 +43,35 @@ func _rebuild()->void:
 			player_relation=relation
 		else:other_relations.append(relation)
 	var card_count:=0
+	_cards.clear()
 	# The inspected NPC's relationship toward the protagonist is always the first
 	# row. The old standalone affinity line is represented only through this card.
 	if not affinity.is_empty():
-		_add_relationship_card(player_relation,affinity,true);card_count+=1
+		_cards.append([player_relation,affinity,true]);card_count+=1
 	for relation in other_relations:
-		_add_relationship_card(relation,{},false);card_count+=1
+		_cards.append([relation,{},false]);card_count+=1
 	if affinity.is_empty() and not player_relation.is_empty():
-		_add_relationship_card(player_relation,{},false);card_count+=1
+		_cards.append([player_relation,{},false]);card_count+=1
 	if card_count==0:add_child(_label("아직 형성된 관계가 없습니다.",12,DarkSkin.BONE_DIM))
+	_selected=clampi(_selected,0,maxi(0,card_count-1))
+	if card_count>0:
+		add_child(_label("인물",16,DarkSkin.BRASS))
+		for i in range(_cards.size()):
+			var data:Array=_cards[i];var relation:Dictionary=data[0]
+			var button:=Button.new();button.custom_minimum_size.y=48
+			button.text=("나" if data[2] else str(relation.get("subject_name","상대")))+" · "+_disposition(str(data[1].get("disposition",relation.get("disposition","NEUTRAL"))))
+			button.clip_text=true;DarkSkin.apply_action_button(button,DarkSkin.CYAN if i==_selected else DarkSkin.BRASS_DARK)
+			button.pressed.connect(_select.bind(i));add_child(button)
+		var chosen:Array=_cards[_selected]
+		_add_relationship_card(chosen[0],chosen[1],chosen[2])
 	_snapshot={"relationship_count":card_count,"player_listed_first":not affinity.is_empty(),
 		"affinity_merged_into_player_row":not affinity.is_empty(),
 		"standalone_affinity_row":false,"contains_personality":false,
 		"uses_visual_bars":true}.duplicate(true)
 	update_minimum_size()
+
+func _select(index:int)->void:
+	_selected=index;_rebuild()
 
 
 func _add_relationship_card(relation:Dictionary,affinity:Dictionary,is_player:bool)->void:
@@ -67,7 +86,8 @@ func _add_relationship_card(relation:Dictionary,affinity:Dictionary,is_player:bo
 	var head:=HBoxContainer.new();head.add_theme_constant_override("separation",5);stack.add_child(head)
 	var person_name:="나" if is_player else str(relation.get("subject_name",
 		relation.get("display_name","상대")))
-	var name_label:=_label(person_name,15,DarkSkin.BONE)
+	var name_label:=_label(str(_detail.get("display_name","선택 인물"))+" → "+person_name,15,DarkSkin.BONE)
+	name_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	name_label.name="RelationshipSubjectName";name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	name_label.add_theme_font_override("font",DarkSkin.PixelFont);head.add_child(name_label)
 	var state:=_label("%s · %s %d"%[_disposition(disposition),band,score],12,
@@ -77,11 +97,13 @@ func _add_relationship_card(relation:Dictionary,affinity:Dictionary,is_player:bo
 	bar.value=score;bar.show_percentage=false;bar.custom_minimum_size.y=6
 	DarkSkin.apply_progress(bar,_relationship_tone(score),score<25);stack.add_child(bar)
 	var values:=affinity if not affinity.is_empty() else relation
-	var metrics:=_label("신뢰 %d   두려움 %d   적대 %d   감사 %d   원한 %d"%[
-		int(values.get("trust",0)),int(values.get("fear",0)),int(values.get("hostility",0)),
-		int(values.get("gratitude",0)),int(values.get("grievance",0))],11,DarkSkin.BONE_DIM)
-	metrics.name="RelationshipMetrics";metrics.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	stack.add_child(metrics)
+	var metrics:=VBoxContainer.new();metrics.name="RelationshipMetrics";stack.add_child(metrics)
+	for entry in [["trust","신뢰"],["gratitude","감사"],["fear","두려움"],["hostility","적대"],["grievance","원한"]]:
+		var value:=int(values.get(entry[0],0));var line:=HBoxContainer.new();line.custom_minimum_size.y=32;metrics.add_child(line)
+		var label:=_label("%s %d"%[entry[1],value],14,DarkSkin.BONE);label.custom_minimum_size.x=100;line.add_child(label)
+		var gauge:=ProgressBar.new();gauge.min_value=0;gauge.max_value=maxi(100,absi(value));gauge.value=absi(value)
+		gauge.show_percentage=false;gauge.custom_minimum_size.y=10;gauge.size_flags_horizontal=Control.SIZE_EXPAND_FILL;gauge.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+		DarkSkin.apply_progress(gauge,DarkSkin.CYAN if entry[0] in ["trust","gratitude"] and value>=0 else DarkSkin.BLOOD,false);line.add_child(gauge)
 	var recent:Variant=relation.get("recent_reaction",{})
 	if recent is Dictionary and not recent.is_empty():
 		var note:=_label("최근 · %s — %s"%[str(recent.get("label","관계 변화")),
