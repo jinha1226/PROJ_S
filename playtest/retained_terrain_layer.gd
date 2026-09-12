@@ -24,6 +24,11 @@ class TerrainChunk extends Node2D:
 			var rect:=Rect2(Vector2(tile.local)*cell_size,Vector2.ONE*cell_size)
 			var spec:Dictionary=tile.spec
 			var visible_cell:=str(spec.visibility_state)=="VISIBLE"
+			if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+				var tint:Color=spec.get("tint",Color.WHITE)
+				if not visible_cell:tint*=Color(0.30,0.32,0.35,0.55)
+				draw_texture_rect_region(spec.texture,rect.grow(0.2),spec.region,tint)
+				continue
 			var modulate_color:=Color(0.78,0.82,0.84,0.84) if visible_cell else Color(0.30,0.32,0.33,0.42)
 			if bool(spec.is_wall):
 				draw_rect(rect.grow(0.35),Color("#151d26") if visible_cell else Color("#101419"))
@@ -65,7 +70,7 @@ func synchronize(cache:Dictionary,rect:Rect2,origin:Vector2i,cell_size:float,
 		var signature:Array=[cell_size]
 		for tile in tiles:
 			var spec:Dictionary=tile.spec
-			signature.append([tile.local,spec.texture,spec.region,spec.is_wall,spec.visibility_state])
+			signature.append([tile.local,spec.texture,spec.region,spec.is_wall,spec.visibility_state,spec.get("tint",Color.WHITE)])
 		if not chunks.has(key):
 			var fresh:=TerrainChunk.new();add_child(fresh);chunks[key]=fresh
 		var chunk:TerrainChunk=chunks[key]

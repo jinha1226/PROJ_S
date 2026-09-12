@@ -4753,6 +4753,7 @@ func party_cards() -> Array[Dictionary]:
 			"readiness": readiness,
 			"emotion": emotion, "memory":memory_dto,
 			"override_state": override_state,"progression":progression,
+			"equipment_visual":_entity_equipment_visual(member_id),
 			"combat_stats":progression.get("combat_stats",{}) if member.role=="PROTAGONIST" else _member_combat_stats(member_id),
 			"expected_action": expected_action})
 	return rows.duplicate(true)
@@ -7804,6 +7805,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"core_stats":ActorStatRulesScript.for_entity(sim.world,entity_id),
 		"combat_stats":_member_combat_stats(entity_id),
 		"equipment_summary":_member_equipment_summary(entity_id),
+		"equipment_visual":_entity_equipment_visual(entity_id),
 		"skill_summary":_member_skill_summary(entity_id),
 		"ability_bindings":ability_binding_rows(entity_id),
 		"ability_items":ability_binding_item_rows(entity_id),

@@ -13,6 +13,11 @@ func _portrait(texture:Texture2D,rect:Rect2)->void:
 	var style=preload("res://playtest/dark_pixel_ui_skin.gd").panel_surface(Color("#11191e"),tones[party_index%4],0,2)
 	draw_style_box(style,rect)
 	if texture!=null:
+		var spec:=Assets.actor_layer_spec(actor)
+		if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+			var side:=floorf(minf(rect.size.x,rect.size.y)/16.0)*16.0
+			preload("res://playtest/kenney_dungeon_assets.gd").draw_actor(self,spec,Rect2(rect.get_center()-Vector2.ONE*side/2,Vector2.ONE*side))
+			return
 		# Native 24px actors need a 16px bust crop, not the old 256px-art crop.
 		var source_side:=texture.get_width()*2.0/3.0
 		var source:=Rect2(texture.get_width()/6.0,0,source_side,source_side)

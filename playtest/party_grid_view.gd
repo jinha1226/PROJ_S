@@ -2541,6 +2541,9 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	# screen-pixel rim so they stay distinct from either biome without turning the
 	# compact silhouettes into black blobs at close zoom.
 	var body_texture:Texture2D=spec.get("body_texture",null)
+	if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+		preload("res://playtest/kenney_dungeon_assets.gd").draw_actor(self,spec,bounds,modulate)
+		body_texture=null
 	if body_texture!=null and bool(spec.get("outline_enabled",false)):
 		var outline_px:=float(spec.get("outline_px",1.0))
 		var outline_color:=Color(str(spec.get("outline_hex","#020509f2")))
@@ -2557,6 +2560,7 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	elif body_texture!=null:
 		draw_texture_rect(body_texture,bounds,false,modulate)
 	for texture_key in ["armor_texture","offhand_texture","weapon_texture"]:
+		if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":break
 		var texture:Texture2D=spec.get(texture_key,null)
 		if texture!=null:draw_texture_rect(texture,bounds,false,modulate)
 	var foreground_texture:Texture2D=spec.get("foreground_texture",null)
@@ -3144,6 +3148,11 @@ func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
+	if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+		var tint:Color=spec.get("tint",Color.WHITE)
+		if str(spec.visibility_state)!="VISIBLE":tint*=Color(0.30,0.32,0.35,0.55)
+		draw_texture_rect_region(texture,rect.grow(0.2),spec.region,tint)
+		return
 	var visibility:=str(spec.get("visibility_state","UNSEEN"))
 	var modulate:=Color(0.78,0.82,0.84,0.84) if visibility=="VISIBLE" \
 		else Color(0.30,0.32,0.33,0.42)

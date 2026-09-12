@@ -21,7 +21,7 @@ func refresh(model,kind:String)->void:
 		button.add_theme_font_size_override("font_size",11)
 		var marker:="나" if int(actor.id)==1 else (str(actor.id) if actor.team=="PARTY" else "E%d"%(int(actor.id)-4))
 		button.text="%s\n%s+%d"%[marker,"~" if entry.estimated else "",int(entry.time)-model.timeline.now]
-		button.icon=Assets.BODY_TEXTURES.get(actor.species_id,Assets.MONSTER_TEXTURES.get(actor.species_id))
+		button.icon=Assets.body_texture(str(actor.species_id))
 		button.expand_icon=true;button.add_theme_constant_override("icon_max_width",14)
 		button.modulate=Color("#b8e8a0") if actor.team=="PARTY" else Color("#ffac9e")
 		button.pressed.connect(func():inspected.emit(int(actor.id)))

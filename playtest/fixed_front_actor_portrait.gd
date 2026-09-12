@@ -49,6 +49,9 @@ func _draw()->void:
 		bounds.end.y-bounds.size.y*0.14),Vector2(bounds.size.x*0.48,bounds.size.y*0.10))
 	draw_set_transform(Vector2.ZERO)
 	draw_circle(shadow_rect.get_center(),shadow_rect.size.x*0.5,SHADOW)
+	if str(spec.get("asset_family",""))=="KENNEY_TINY_DUNGEON":
+		preload("res://playtest/kenney_dungeon_assets.gd").draw_actor(self,spec,bounds)
+		return
 	for texture_key in ["body_texture","armor_texture","offhand_texture","weapon_texture",
 			"foreground_texture"]:
 		var texture:Texture2D=spec.get(texture_key,null)

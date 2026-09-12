@@ -5054,6 +5054,7 @@ func _refresh_open_member_detail()->void:
 	if not bool(detail.get("accepted",false)):detail=session.inspect_enemy(member_detail_entity_id,true)
 	if not bool(detail.get("accepted",false)):return
 	_member_detail_live_key=key
+	member_detail_glyph_seal.call("set_actor",detail)
 	# Update data without reopening: keep the tab, scroll, pending confirmation
 	# and item gesture intact. No work on unchanged render frames.
 	member_detail_body.text=_member_detail_text(detail)

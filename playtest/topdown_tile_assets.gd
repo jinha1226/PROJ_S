@@ -4,32 +4,31 @@ extends RefCounted
 ## Presentation-only tile atlas registry for the flat product camera. Simulation
 ## terrain, FOV, pathing and pointer mapping stay integer-grid authoritative.
 
-const TILE_SIZE := 24
+const TILE_SIZE := 16
 const FLOOR_TEXTURES := {
-	1: preload("res://assets/pixel24_v3/runtime/terrain/floor1.png"),
-	2: preload("res://assets/pixel24_v3/runtime/terrain/floor2.png"),
+	1: preload("res://assets/kenney/tiny-dungeon/tilemap_packed.png"),
+	2: preload("res://assets/kenney/tiny-dungeon/tilemap_packed.png"),
 }
 
 const FLOOR_ONE_TERRAIN := {
-	# Illustrated atlas: organic moss ground and quiet slate variants.
-	"floor":[0,1,11],
-	"stone_floor":[2,3],
-	"wood_floor":[4],
-	"metal":[5],
-	"rubble":[6],
-	"shallow_water":[7],
-	# Cell 8 is deliberately rejected: it reads as a pit, not a solid wall.
-	"wall":[9],
+	# Native Kenney sand/slate variants, 12 columns in the packed atlas.
+	"floor":[48,49,50],
+	"stone_floor":[48,50],
+	"wood_floor":[51],
+	"metal":[41],
+	"rubble":[42],
+	"shallow_water":[48],
+	"wall":[40],
 }
 
 const FLOOR_TWO_TERRAIN := {
-	"floor":[0,1,11],
-	"stone_floor":[2,3],
-	"wood_floor":[4],
-	"metal":[5],
-	"rubble":[6],
-	"shallow_water":[7],
-	"wall":[8,9],
+	"floor":[48,49,50],
+	"stone_floor":[48,50],
+	"wood_floor":[51],
+	"metal":[41],
+	"rubble":[42],
+	"shallow_water":[48],
+	"wall":[58],
 }
 
 const INACTIVE_PORTALS := [
@@ -52,8 +51,8 @@ static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int)->Dictio
 	if texture==null:return hidden.duplicate(true)
 	var feature_id:=str(cell.get("feature_id",""))
 	var tile_index:=-1
-	if feature_id in INACTIVE_PORTALS:tile_index=12
-	elif feature_id in ACTIVE_PORTALS:tile_index=13
+	if feature_id in INACTIVE_PORTALS:tile_index=48
+	elif feature_id in ACTIVE_PORTALS:tile_index=48
 	else:
 		var terrain_id:=str(cell.get("terrain_id","floor"))
 		var table:Dictionary=FLOOR_TWO_TERRAIN if resolved_floor==2 \
@@ -63,7 +62,9 @@ static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int)->Dictio
 		tile_index=int(choices[_variant_index(position,resolved_floor,choices.size())])
 	return {"visible":true,"texture":texture,
 		"is_wall":str(cell.get("terrain_id",""))=="wall",
-		"region":Rect2(float((tile_index%4)*TILE_SIZE),float((tile_index/4)*TILE_SIZE),TILE_SIZE,TILE_SIZE),
+		"asset_family":"KENNEY_TINY_DUNGEON",
+		"tint":Color(0.32,0.65,0.86) if str(cell.get("terrain_id",""))=="shallow_water" else Color.WHITE,
+		"region":Rect2(float((tile_index%12)*TILE_SIZE),float((tile_index/12)*TILE_SIZE),TILE_SIZE,TILE_SIZE),
 		"floor_index":resolved_floor,"tile_index":tile_index,
 		"visibility_state":visibility,"changes_mapping":false,
 		"changes_fov":false,"draw_image":true}.duplicate(true)
