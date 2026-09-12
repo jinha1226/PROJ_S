@@ -77,7 +77,8 @@ func _draw()->void:
 	if order_reserved:draw_circle(Vector2(size.x-8,9),5,Color("#e3bd57"))
 
 func portrait_layout_spec()->Dictionary:
-	var side:=24.0 if size.x<110 else 36.0
+	# Combat text starts at y=44; leave its two lines unobstructed.
+	var side:=minf(size.y-36.0,36.0 if size.x<130 else 40.0)
 	return {"portrait":Rect2(3,3,side,side),"name_position":Vector2(3,size.y-5),
 		"name_width":size.x-6,"stats_x":side+6,"stats_width":maxf(1,size.x-side-9)}
 

@@ -52,7 +52,7 @@ const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
 # Field-first product shell: compact fixed rails leave the remaining rectangle
 # to the dungeon camera instead of reserving a square map plus dead flex space.
-const PRODUCT_TOP_HUD_HEIGHT:=48
+const PRODUCT_TOP_HUD_HEIGHT:=76
 # Three Korean-font baselines plus dark panel padding.
 const PRODUCT_EVENT_HEIGHT:=66
 const PRODUCT_PARTY_CARD_HEIGHT:=84
@@ -97,6 +97,10 @@ var expedition_floor_label:Label
 var return_timer_label:Label
 var ration_label:Label
 var torch_timer_label:Label
+var food_meter:ProgressBar
+var torch_meter:ProgressBar
+var food_hud:VBoxContainer
+var torch_hud:VBoxContainer
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -986,11 +990,31 @@ func _build_ui()->void:
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
+	menu_popup.add_item("적 시야 표시 전환",8)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
 	top_hud_actions.add_child(product_menu_button)
 	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
+	# One aligned rail: map / floor and return clock / food / torch / menu.
+	minimap_frame.custom_minimum_size=Vector2(64,64)
+	minimap.custom_minimum_size=Vector2(54,54)
+	return_timer_label.reparent(situation_stack)
+	return_timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+	return_timer_label.add_theme_font_size_override("font_size",12)
+	situation_stack.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	expedition_floor_label.custom_minimum_size.x=60
+	food_hud=VBoxContainer.new();food_hud.name="FoodHUD";food_hud.custom_minimum_size.x=72
+	food_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(food_hud);phase_row.move_child(food_hud,2)
+	torch_hud=VBoxContainer.new();torch_hud.name="TorchHUD";torch_hud.custom_minimum_size.x=108
+	torch_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(torch_hud);phase_row.move_child(torch_hud,3)
+	ration_label.reparent(food_hud);torch_timer_label.reparent(torch_hud)
+	for label in [ration_label,torch_timer_label]:
+		label.add_theme_font_size_override("font_size",12);label.clip_text=true
+		label.custom_minimum_size.y=34
+	food_meter=_hud_supply_meter(food_hud,"FoodRemaining",DarkPixelSkinScript.JADE)
+	torch_meter=_hud_supply_meter(torch_hud,"TorchRemaining",DarkPixelSkinScript.CYAN)
+	top_hud_actions.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
@@ -1954,7 +1978,7 @@ func _refresh()->void:
 	top_hud_actions.custom_minimum_size.x=44 if product_hud else (100 if town_active and session.town_life_enabled() else 132)
 	record_button.visible=not product_hud and not (town_active and session.town_life_enabled())
 	hero_detail_button.visible=not product_hud
-	enemy_vision_overlay_button.visible=product_hud
+	enemy_vision_overlay_button.visible=false
 	enemy_vision_overlay_button.set_pressed_no_signal(enemy_vision_overlay_enabled)
 	enemy_vision_overlay_button.text="V✓" if enemy_vision_overlay_enabled else "V"
 	var town_header_target:=48 if town_base_active else 44
@@ -7371,6 +7395,12 @@ func _on_product_menu_id(item_id:int)->void:
 		4:_open_hero_detail_tab("ITEM")
 		5:_toggle_record_modal()
 		7:_open_base_modal()
+		8:_toggle_enemy_vision_overlay()
+
+func _hud_supply_meter(parent:Control,node_name:String,tone:Color)->ProgressBar:
+	var bar:=ProgressBar.new();bar.name=node_name;bar.show_percentage=false
+	bar.custom_minimum_size.y=9;bar.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	DarkPixelSkinScript.apply_progress(bar,tone,false);parent.add_child(bar);return bar
 
 func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var cycle:Dictionary=session.expedition_cycle_status() \
@@ -7401,9 +7431,16 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var torch_text:="횃불 없음" if phase=="DUNGEON" else "";var torch_band:="NONE";var torch_remaining:=0
 	var torch_capacity:=TorchRulesScript.FUEL_DURATION
 	var torch_tone:=AsciiFrameScript.INK
+	var torch_count:=0;var food_count:=0
 	if phase=="DUNGEON" and session!=null and session.sim!=null:
 		var world=session.sim.world
 		var hero_id:=int(world.party_control_actor_id())
+		var inventory=world.inventory_of(hero_id)
+		# Equipped instances remain in the ownership table: count exactly once.
+		if inventory!=null:
+			for item in inventory.backpack:
+				if str(item.definition_id)=="TORCH":torch_count+=int(item.quantity)
+				elif str(item.definition_id)=="FOOD_RATION":food_count+=int(item.quantity)
 		var torch_state:Dictionary=TorchRulesScript.equipped_torch_state(world,hero_id)
 		if bool(torch_state.get("is_torch",false)):
 			torch_remaining=int(torch_state.get("fuel_remaining",0))
@@ -7419,6 +7456,8 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 				torch_text="횃불 꺼짐 · %d턴"%ceili(torch_remaining/100.0)
 				torch_band="OFF"
 	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
+		"ration":clampi(int(party.get("ration",0)),0,ration_max),"ration_max":ration_max,
+		"food_count":food_count,"torch_count":torch_count,
 		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false),
 		"ration_text":ration_text,"ration_band":ration_band,
 		"ration_tone_hex":ration_tone.to_html(false),"torch_text":torch_text,
@@ -7454,6 +7493,19 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 			and str(spec.get("phase",""))=="DUNGEON"
 		torch_timer_label.add_theme_color_override("font_color",
 			Color(str(spec.get("torch_tone_hex","c7c2b3"))))
+	food_hud.visible=product_hud and str(spec.get("phase",""))=="DUNGEON"
+	torch_hud.visible=food_hud.visible
+	if food_hud.visible:
+		food_meter.max_value=int(spec.ration_max);food_meter.value=int(spec.ration)
+		ration_label.text="식량 ×%d\n포만 %d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
+		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
+		torch_meter.max_value=maxi(1,int(spec.torch_capacity));torch_meter.value=int(spec.torch_remaining)
+		var fuel_text:="잔여 약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
+		if spec.torch_band=="NONE":fuel_text="미장착"
+		elif spec.torch_band=="OFF":fuel_text="꺼짐 · 약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
+		elif spec.torch_band=="DEPLETED":fuel_text="연료 소진"
+		torch_timer_label.text="횃불 ×%d\n%s"%[int(spec.torch_count),fuel_text]
+		torch_hud.tooltip_text="소지 개수는 장착분 포함 / 게이지는 장착 횃불 연료 / 약 100시간단위당 1턴"
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
