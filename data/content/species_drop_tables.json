@@ -5,8 +5,106 @@
   "ruleset_id": "species-drops-v3",
   "tables": [
     {
+      "species_id": "aberration",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_ABERRATION",
+          "definition_id": "ESSENCE_DEEP_EYE",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "bat",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_BAT",
+          "definition_id": "ESSENCE_ECHO_SENSE",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "beetle",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_BEETLE",
+          "definition_id": "ESSENCE_CARAPACE",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "boar",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_BOAR",
+          "definition_id": "ESSENCE_HIDE_PLATING",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "electric_eel",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_ELECTRIC_EEL",
+          "definition_id": "ESSENCE_CHARGE_ORGAN",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "fire_lizard",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_FIRE_LIZARD",
+          "definition_id": "ESSENCE_FIRE_BOLT",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "frost_spider",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_FROST_SPIDER",
+          "definition_id": "ESSENCE_FROST_SILK",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
       "species_id": "goblin",
       "rolls": [
+        {
+          "roll_id": "ESSENCE_GOBLIN",
+          "definition_id": "ESSENCE_PREDATOR_NERVE",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        },
         {
           "roll_id": "GOBLIN_MAGIC_STONE",
           "definition_id": "MAGIC_STONE",
@@ -35,6 +133,110 @@
           "max_depth": 15
         }
       ]
+    },
+    {
+      "species_id": "kobold",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_KOBOLD",
+          "definition_id": "ESSENCE_THROWING_INSTINCT",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "leech",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_LEECH",
+          "definition_id": "ESSENCE_BLOOD_SIPHON",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "shadow_beast",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_SHADOW_BEAST",
+          "definition_id": "ESSENCE_SHADOW_VEIL",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "slime",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_SLIME",
+          "definition_id": "ESSENCE_CAUSTIC_BLOOD",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "stone_golem",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_STONE_GOLEM",
+          "definition_id": "ESSENCE_STONE_SKELETON",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "troll",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_TROLL",
+          "definition_id": "ESSENCE_REGENERATIVE_TISSUE",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "viper",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_VIPER",
+          "definition_id": "ESSENCE_VENOM_FANG",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
+    },
+    {
+      "species_id": "wolf",
+      "rolls": [
+        {
+          "roll_id": "ESSENCE_WOLF",
+          "definition_id": "ESSENCE_HUNTER_LEAP",
+          "chance_per_1000": 200,
+          "min_quantity": 1,
+          "max_quantity": 1
+        }
+      ],
+      "reward_rows": []
     }
   ]
 }

@@ -219,6 +219,30 @@ func test_lethal_damage_reserves_the_materialization_event_before_mutating() -> 
 	return finish()
 
 
+func test_monster_essence_materializes_and_can_be_picked_up() -> bool:
+	var selected:=-1
+	for candidate in range(1,5000):
+		for roll in SpeciesDrops.rolls_for(candidate,3,"goblin"):
+			if roll.definition_id=="ESSENCE_PREDATOR_NERVE":selected=candidate;break
+		if selected>0:break
+	check(selected>0,"essence roll seed exists")
+	var fixture:=_goblin_fixture(selected,false)
+	var sim=fixture.sim;var corpse=fixture.goblin
+	var death=_kill_with_damage(sim,corpse,"electric")
+	check(death!=null,"real damage death")
+	if death==null:return finish()
+	var materialized=_materialized_for(sim.world,int(death.id))
+	var essence_id:=""
+	for row in materialized.data.generated_items:
+		if row.definition_id=="ESSENCE_PREDATOR_NERVE":essence_id=str(row.instance_id)
+	check(not essence_id.is_empty(),"monster essence lands on death tile")
+	var collector=sim.world.add_entity("melee_enemy","수집자",Vector2i(3,3),100,[],"human","party")
+	var picked:Dictionary=WorldItems.commit_pickup(sim.world,collector.id,essence_id,collector.position,0)
+	check(picked.get("accepted",false),"ordinary inventory pickup accepts essence")
+	var restored=Simulator.from_snapshot(sim.snapshot())
+	check(restored!=null and restored.snapshot()==sim.snapshot(),"essence drop and pickup survive snapshot")
+	return finish()
+
 func _goblin_fixture(seed: int, with_loadout: bool) -> Dictionary:
 	var sim = Simulator.create(7, 7, seed)
 	var goblin = sim.world.add_entity("melee_enemy", "고블린", Vector2i(3, 3), 10,
@@ -232,9 +256,10 @@ func _kill_with_damage(sim, entity, damage_type: String):
 	var event_start: int = sim.world.events.size()
 	var source = sim.world.emit_event("environment.ignited" if damage_type == "fire" \
 		else "environment.electric_arc", -1, -1, entity.position,
-		100 if damage_type == "fire" else int(entity.health), -1,
+		100 if damage_type=="fire" else 20, -1,
 		{} if damage_type == "fire" else {"distance": 0, "from_position": [-1, -1]})
-	var applied: int = sim.damage.apply_damage(entity, int(entity.health), damage_type,
+	# Exceed current armor/element resistance; this tests loot, not mitigation.
+	var applied: int = sim.damage.apply_damage(entity, 20, damage_type,
 		int(source.id),
 		entity.position, processed_step)
 	var death = null
@@ -263,7 +288,8 @@ func _ground_item_ids_at(world, position: Vector2i) -> Array[String]:
 func _seed_with_goblin_drop() -> int:
 	for candidate in range(1, 5000):
 		# Environment source + damage precede death, so the source death ID is 3.
-		if not SpeciesDrops.rolls_for(candidate, 3, "goblin").is_empty(): return candidate
+		var rolls:=SpeciesDrops.rolls_for(candidate,3,"goblin")
+		if rolls.size()==1 and rolls[0].definition_id=="MAGIC_STONE":return candidate
 	return -1
 
 

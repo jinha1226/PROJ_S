@@ -443,7 +443,22 @@
       "requirements":{"STR":0,"DEX":0,"INT":0},
       "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},
       "use_kind":"NONE", "placeholder":false
-    }
+    },
+    {"definition_id":"ESSENCE_PREDATOR_NERVE","label":"포식 신경 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_THROWING_INSTINCT","label":"투척 본능 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_HUNTER_LEAP","label":"사냥꾼의 도약 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_HIDE_PLATING","label":"질긴 가죽 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_CARAPACE","label":"갑각 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_CAUSTIC_BLOOD","label":"부식성 혈액 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_ECHO_SENSE","label":"반향 감각 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_FROST_SILK","label":"서리실 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_CHARGE_ORGAN","label":"축전 기관 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_VENOM_FANG","label":"독니 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_REGENERATIVE_TISSUE","label":"재생 조직 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_STONE_SKELETON","label":"암석 골격 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_SHADOW_VEIL","label":"그림자막 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_BLOOD_SIPHON","label":"흡혈 기관 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+    {"definition_id":"ESSENCE_DEEP_EYE","label":"심층안 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false}
   ],
   "affixes": [
     {

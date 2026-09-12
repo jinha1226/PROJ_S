@@ -1,0 +1,149 @@
+{
+  "content_schema_version": 1,
+  "definitions": [
+    {
+      "species_id": "goblin",
+      "ability_id": "PREDATOR_NERVE",
+      "label": "포식 신경",
+      "essence_id": "ESSENCE_PREDATOR_NERVE",
+      "passive": "다친 적에게 근접 추가 피해",
+      "active": "약점을 노리는 일격",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "kobold",
+      "ability_id": "THROWING_INSTINCT",
+      "label": "투척 본능",
+      "essence_id": "ESSENCE_THROWING_INSTINCT",
+      "passive": "원거리 명중 보정",
+      "active": "돌 파편 발사",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "wolf",
+      "ability_id": "HUNTER_LEAP",
+      "label": "사냥꾼의 도약",
+      "essence_id": "ESSENCE_HUNTER_LEAP",
+      "passive": "이동 직후 근접 공격 강화",
+      "active": "도약 공격",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "boar",
+      "ability_id": "HIDE_PLATING",
+      "label": "질긴 가죽",
+      "essence_id": "ESSENCE_HIDE_PLATING",
+      "passive": "피부 보호 증가",
+      "active": "일시적으로 피부 경화",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "beetle",
+      "ability_id": "CARAPACE",
+      "label": "갑각",
+      "essence_id": "ESSENCE_CARAPACE",
+      "passive": "몸통 관통 저항",
+      "active": "이동을 멈추고 방어",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "slime",
+      "ability_id": "CAUSTIC_BLOOD",
+      "label": "부식성 혈액",
+      "essence_id": "ESSENCE_CAUSTIC_BLOOD",
+      "passive": "근접 피격 산성 반격",
+      "active": "체력을 소모하는 산성 투사체",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "bat",
+      "ability_id": "ECHO_SENSE",
+      "label": "반향 감각",
+      "essence_id": "ESSENCE_ECHO_SENSE",
+      "passive": "가까운 생명체 기척 감지",
+      "active": "넓은 범위 생명체 탐지",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "fire_lizard",
+      "ability_id": "FIRE_GLAND",
+      "label": "화염샘",
+      "essence_id": "ESSENCE_FIRE_BOLT",
+      "passive": "적중 시 화염 추가 피해",
+      "active": "화염탄",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "frost_spider",
+      "ability_id": "FROST_SILK",
+      "label": "서리실",
+      "essence_id": "ESSENCE_FROST_SILK",
+      "passive": "적의 다음 이동 지연",
+      "active": "둔화 구역 생성",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "electric_eel",
+      "ability_id": "CHARGE_ORGAN",
+      "label": "축전 기관",
+      "essence_id": "ESSENCE_CHARGE_ORGAN",
+      "passive": "피격 시 전하 축적",
+      "active": "주변 전하 방출",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "viper",
+      "ability_id": "VENOM_FANG",
+      "label": "독니",
+      "essence_id": "ESSENCE_VENOM_FANG",
+      "passive": "공격으로 독 축적",
+      "active": "강한 독 주입",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "troll",
+      "ability_id": "REGENERATIVE_TISSUE",
+      "label": "재생 조직",
+      "essence_id": "ESSENCE_REGENERATIVE_TISSUE",
+      "passive": "비전투 회복 보조",
+      "active": "식량 소모 회복",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "stone_golem",
+      "ability_id": "STONE_SKELETON",
+      "label": "암석 골격",
+      "essence_id": "ESSENCE_STONE_SKELETON",
+      "passive": "골절 및 밀려남 저항",
+      "active": "고정 자세로 충격 방어",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "shadow_beast",
+      "ability_id": "SHADOW_VEIL",
+      "label": "그림자막",
+      "essence_id": "ESSENCE_SHADOW_VEIL",
+      "passive": "어둠 속 은신",
+      "active": "일시 은폐",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "leech",
+      "ability_id": "BLOOD_SIPHON",
+      "label": "흡혈 기관",
+      "essence_id": "ESSENCE_BLOOD_SIPHON",
+      "passive": "근접 공격 회복",
+      "active": "인접 적 흡혈",
+      "effect_status": "PLANNED_DUAL_MODE"
+    },
+    {
+      "species_id": "aberration",
+      "ability_id": "DEEP_EYE",
+      "label": "심층안",
+      "essence_id": "ESSENCE_DEEP_EYE",
+      "passive": "가까운 숨은 위험 감지",
+      "active": "지정 방향 집중 탐지",
+      "effect_status": "PLANNED_DUAL_MODE"
+    }
+  ]
+}

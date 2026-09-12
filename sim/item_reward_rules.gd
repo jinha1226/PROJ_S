@@ -34,6 +34,7 @@ const ITEM_PURPOSES := {
 
 
 static func family_for_item(definition_id:String)->String:
+	if not preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id).is_empty():return "MONSTER_ABILITY"
 	if ITEM_FAMILIES.has(definition_id):return str(ITEM_FAMILIES[definition_id])
 	match ItemCatalog.family(definition_id):
 		"MAGIC_STONE":return "CURRENCY"
@@ -46,6 +47,8 @@ static func family_for_item(definition_id:String)->String:
 
 
 static func purpose_for_item(definition_id:String)->String:
+	if not preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id).is_empty():
+		return "이능 정수 보관 · 패시브/액티브 선택 구현 예정"
 	if ITEM_PURPOSES.has(definition_id):return str(ITEM_PURPOSES[definition_id])
 	match ItemCatalog.family(definition_id):
 		"MAGIC_STONE":return "환금품·거래용"
