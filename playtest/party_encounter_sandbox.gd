@@ -1221,15 +1221,8 @@ func _commit_species_picker(species_id:String)->void:
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
-	# A journaled campaign start leaves old saves and headless DUO fixtures intact.
-	if session!=null and session.is_duo_autobattle() and session.has_method("base_return"):
-		var return_result:Dictionary=session.town_life_command({"action":"START"})
-		if bool(return_result.get("accepted",false)):
-			town_facility_id="BASE"
-			notice_text=str(return_result.message)
-		else:
-			notice_text="원정 입구에서 시작합니다. %s"%str(return_result.get("message",
-				"거점으로 바로 이동할 수 없습니다."))
+	# New runs already own a valid first-floor dungeon. Do not move them to town.
+	notice_text="던전 1층에서 원정을 시작합니다."
 	_request_refresh()
 
 func _build_build_label()->void:

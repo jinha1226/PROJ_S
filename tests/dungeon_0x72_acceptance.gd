@@ -18,9 +18,18 @@ func run()->void:
 	for species in Assets.BODIES:
 		check(Assets.actor_spec({"species_id":species}).body_texture!=null,"species "+species)
 	check(not Tiles.tile_spec({"visibility_state":"UNSEEN"},Vector2i.ZERO,1).visible,"unseen terrain remains hidden")
+	var wall:={"visibility_state":"VISIBLE","terrain_id":"wall"}
+	var floor_cell:={"visibility_state":"VISIBLE","terrain_id":"floor"}
+	for pair in [["E","wall_outer_mid_left"],["W","wall_outer_mid_right"],["S","wall_mid"],["N","wall_top_mid"],["SE","wall_outer_top_left"],["NW","wall_outer_front_right"]]:
+		check(Tiles.tile_spec(wall,Vector2i.ZERO,1,{pair[0]:floor_cell}).sprite_key==pair[1],"wall direction "+pair[0])
+	check(Tiles.tile_spec(wall,Vector2i.ZERO,1,{"E":{"visibility_state":"UNSEEN","terrain_id":"floor"}}).sprite_key=="wall_mid","unseen neighbor does not leak shape")
+	check(Tiles.tile_spec(wall,Vector2i.ZERO,1,{"E":{"visibility_state":"MEMORY","terrain_id":"floor"}}).sprite_key=="wall_outer_mid_left","remembered geometry keeps side wall")
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
-	check(session.town_life_command({"action":"START"}).accepted,"town starts")
-	check(session.depart_town().accepted,"dungeon departure")
+	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
+	ui.show_species_picker_for_new_run();ui._commit_species_picker("human")
+	check(not ui.species_picker_modal.visible,"species selection completed")
+	check(session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON","picker starts directly in dungeon")
+	check(session.sim.world.party_encounter.expedition_cycle.floor_index==1,"picker starts on first floor")
 	var hero:int=session.sim.world.party_control_actor_id()
 	var before:Dictionary=session.sim.snapshot()
 	session.observe_party_ui(15,true,19,true)
@@ -35,7 +44,7 @@ func run()->void:
 	check(bare.weapon_texture==null and bare.offhand_texture==null,"empty hands have no equipment icon")
 	var shield:Dictionary=Assets.actor_spec({"species_id":"human","equipment_visual":{"off_hand_definition_id":"SHIELD_WOOD"}})
 	check(shield.off_hand_definition_id=="SHIELD_WOOD" and shield.offhand_texture==null,"shield overlay connected")
-	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
+	ui._refresh()
 	for i in range(6):await process_frame
 	if DisplayServer.get_name()!="headless":
 		await RenderingServer.frame_post_draw

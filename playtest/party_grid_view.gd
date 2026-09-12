@@ -1821,7 +1821,7 @@ func _ensure_static_projection_cache()->void:
 			var wall_role:Dictionary=content.wall_role
 			_static_projection_cache[key]={"position":position,"in_world":true,"rect":rect,
 				"polygon":polygon,
-				"tile_spec":TopdownTileAssets.tile_spec(row,position,_terrain_theme_floor_index),
+				"tile_spec":_observed_tile_spec(row,position),
 				"row":row,"visibility_state":state,"terrain":terrain,"cell_spec":cell_spec,
 				"depth":depth,"wall_role":wall_role,
 				"light":DioramaScript.quantized_light_spec(position,_hero_camera_position,state)}
@@ -3144,7 +3144,16 @@ func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
 		return {"visible":false,"draw_image":false,"changes_mapping":false,
 			"changes_fov":false}.duplicate(true)
 	var row:Dictionary=_cells.get(_key(position),{})
-	return TopdownTileAssets.tile_spec(row,position,_terrain_theme_floor_index)
+	return _observed_tile_spec(row,position)
+
+func _observed_tile_spec(row:Dictionary,position:Vector2i)->Dictionary:
+	var neighbors:Dictionary={}
+	if str(row.get("terrain_id",""))=="wall":
+		var offsets:={"N":Vector2i.UP,"E":Vector2i.RIGHT,"S":Vector2i.DOWN,"W":Vector2i.LEFT,
+			"NE":Vector2i(1,-1),"SE":Vector2i(1,1),"SW":Vector2i(-1,1),"NW":Vector2i(-1,-1)}
+		for side in offsets:
+			neighbors[side]=_cells.get(_key(position+offsets[side]),{})
+	return TopdownTileAssets.tile_spec(row,position,_terrain_theme_floor_index,neighbors)
 
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
