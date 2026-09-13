@@ -123,6 +123,8 @@ func _draw()->void:
 	else:
 		_draw_fallback_icon(inner)
 	if equipped:_draw_equipped_corner(bounds)
+	if _row.has("appearance_mark"):
+		draw_string(get_theme_default_font(),Vector2(4,16),str(_row.appearance_mark),HORIZONTAL_ALIGNMENT_LEFT,-1,12,COUNT_INK)
 	if int(_row.get("quantity",1))>1:_draw_quantity(bounds,int(_row.quantity))
 
 

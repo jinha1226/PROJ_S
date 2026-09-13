@@ -74,6 +74,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 				return accepted)
 	world.world_time=end
 	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").tick(sim,start,end)
+	if ok:ok=preload("res://sim/consumable_effects.gd").tick(sim,start,end)
 	Perf.end("field.actor_loop",begun)
 	begun=Perf.begin()
 	party.group_anchor=world.entities[world.party_control_actor_id()].position

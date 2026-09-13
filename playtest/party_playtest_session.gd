@@ -1325,7 +1325,7 @@ func discard_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DISCARD",instance_id,"")
 
 
-func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictionary:
+func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:Dictionary={})->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
@@ -1337,7 +1337,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictiona
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
-		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id)
+		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
 		sim.world,sim.world.party_control_actor_id(),instance_id)
@@ -4482,6 +4482,12 @@ func _explored_cells_from_hero_history(hero_id:int,current_position:Vector2i)->D
 		scanned_count=0
 	for index in range(scanned_count,event_count):
 		var event=sim.world.events[index]
+		if event.type=="consumable.map" and event.data.floor==sim.world.party_encounter.expedition_cycle.floor_index and event.data.generation==sim.world.party_encounter.expedition_cycle.expedition_index:
+			for y in range(event.position.y-10,event.position.y+11):
+				for x in range(event.position.x-10,event.position.x+11):
+					var p:=Vector2i(x,y)
+					if sim.world.in_bounds(p) and not _explored_presentation_cache.explored.has(p):
+						_explored_presentation_cache.explored[p]=true;_explored_presentation_cache.explored_order.append(p)
 		if str(event.type)!="action.move" or int(event.actor_id)!=hero_id:continue
 		_cache_explored_position(event.data.get("from_position",[]))
 		_cache_explored_position(event.data.get("to_position",[]))
@@ -8552,7 +8558,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					"UNEQUIP":replay_result=replay.unequip_inventory_slot(str(item_operation.slot))
 					"DROP":replay_result=replay.drop_inventory_item(str(item_operation.instance_id))
 					"DISCARD":replay_result=replay.discard_inventory_item(str(item_operation.instance_id))
-					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)))
+					"USE":replay_result=replay.use_inventory_item(str(item_operation.instance_id),bool(item_operation.get("heal_before_time",false)),item_operation.get("selection",{}))
 					"TORCH_IGNITE":replay_result=replay.ignite_torch(str(item_operation.instance_id))
 					"TORCH_EXTINGUISH":replay_result=replay.extinguish_torch(str(item_operation.instance_id))
 			"ability":
@@ -8931,6 +8937,9 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_item_journal"
 				var item_keys:Array=row.operation.keys();item_keys.sort()
+				if item_keys.has("selection"):
+					if row.operation.get("action")!="USE" or not row.operation.selection is Dictionary or not preload("res://playtest/consumable_utility_service.gd").selection_valid(row.operation.selection):return "invalid_item_selection"
+					item_keys.erase("selection")
 				if item_keys.has("heal_before_time"):
 					if row.operation.get("action")!="USE" or not row.operation.heal_before_time is bool \
 							or not row.operation.heal_before_time:return "invalid_item_journal"

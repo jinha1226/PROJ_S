@@ -23,6 +23,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		"message":"지금은 기술을 사용할 수 없습니다.","skill_id":skill_id,
 		"actor_id":actor_id,"target_id":target_id,"cost":0,"action_time":0}
 	if world==null or world.party_encounter==null:return rejected
+	if preload("res://sim/consumable_effects.gd").skill_blocked(world,actor_id):return _reject(rejected,"skill_sealed","봉인·혼란 중에는 기술을 사용할 수 없습니다.")
 	var state=world.party_encounter
 	if state.expedition_cycle!=null and str(state.expedition_cycle.phase)=="TOWN":
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")

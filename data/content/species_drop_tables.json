@@ -2,7 +2,7 @@
   "content_schema_version": 1,
   "content_version": "2026-09-10",
   "content_type": "SPECIES_DROP_TABLES",
-  "ruleset_id": "species-drops-v4",
+  "ruleset_id": "species-drops-v5",
   "tables": [
     {
       "species_id": "aberration",

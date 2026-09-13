@@ -5,7 +5,7 @@ const Loader = preload("res://sim/json_content_loader.gd")
 const Items = preload("res://sim/item_registry.gd")
 const CONTENT_PATH := "res://data/content/item_catalog.json"
 const FAMILIES := ["WEAPON", "ARMOR", "POTION", "SCROLL", "FOOD", "MAGIC_STONE", "MATERIAL"]
-const EFFECT_KINDS := ["NONE", "HEAL", "ENERGY", "NUTRITION"]
+const EFFECT_KINDS := ["NONE", "HEAL", "ENERGY", "UTILITY", "NUTRITION"]
 static var _CONTENT:Dictionary = Loader.load_document(CONTENT_PATH)
 static var _DEFINITIONS:Dictionary = Loader.index_rows(
 	_CONTENT.get("definitions", []), "definition_id")
@@ -100,7 +100,7 @@ static func _row_error(row:Variant) -> String:
 		"FOOD":"CONSUMABLE", "MAGIC_STONE":"MATERIAL", "MATERIAL":"MATERIAL",
 	}[str(row.family)])
 	if str(item.category) != expected_category: return "item_catalog_category_mismatch"
-	if str(row.family) in ["POTION","SCROLL"] and str(item.use_kind) not in ["HEALING","ENERGY"]:
+	if str(row.family) in ["POTION","SCROLL"] and str(item.use_kind) not in ["HEALING","ENERGY","UTILITY"]:
 		return "item_catalog_use_kind_mismatch"
 	if str(row.family) == "FOOD" and str(item.use_kind) != "EAT":
 		return "item_catalog_use_kind_mismatch"

@@ -83,9 +83,10 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id),
 			preload("res://sim/field_turn_rules.gd").enabled(world))
 		if weapon_spec.is_empty(): return {}
-	var basic:=TurnEngine.physical(int(attacker_profile.power),500+int(attacker_profile.accuracy_milli),target_evasion,target_armor)
+	var basic:=TurnEngine.physical(int(attacker_profile.power),500+int(attacker_profile.accuracy_milli)+preload("res://sim/consumable_effects.gd").accuracy(world,attacker_id),target_evasion,target_armor)
 	var hit_chance := int(weapon_spec.hit_chance_milli) if not weapon_spec.is_empty() else int(basic.hit_chance)
 	var bleed_chance := clampi(int(attacker_profile.bleed_proc_milli) - int(target_profile.bleed_resist_milli), 0, 1000)
+	if preload("res://sim/consumable_effects.gd").status(world,attacker_id,"SEAL")!=null:bleed_chance=0
 	var base_damage := int(weapon_spec.raw_damage) if not weapon_spec.is_empty() \
 		else int(attacker_profile.power)
 	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \

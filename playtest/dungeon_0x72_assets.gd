@@ -51,6 +51,7 @@ static func item(id:String)->Texture2D:
 	if key=="ARMOR_PLATE":return generated_icon("plate")
 	if key=="MYSTERY_POTION_0":return texture("flask_red")
 	if key=="MYSTERY_POTION_1":return texture("flask_blue")
+	if key.begins_with("MYSTERY_POTION_"):return texture(["flask_red","flask_blue","flask_green","flask_yellow","flask_big_red","flask_big_blue","flask_big_green","flask_big_yellow","flask_big_red"][posmod(int(key.get_slice("_",2)),9)])
 	if key.begins_with("POTION_"):return texture("flask_red")
 	if not ITEMS.has(key):
 		for base in ITEMS:

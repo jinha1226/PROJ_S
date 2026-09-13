@@ -577,6 +577,12 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	var awareness=state.enemy_awareness(enemy_id)
 	var enemy=world.entities.get(enemy_id)
 	if awareness==null or enemy==null:return false
+	var noise=preload("res://sim/consumable_effects.gd").status(world,enemy_id,"NOISE")
+	if noise==null:noise=preload("res://sim/consumable_effects.gd").status(world,enemy_id,"FEAR")
+	if noise!=null:
+		var source=world.event_by_id(noise.cause_id)
+		awareness.last_known_target_position=source.position
+		return _set_awareness_state(awareness,"HUNTING",source.position)
 	var profile:Dictionary=EnemyPerceptionRegistryScript.profile(str(enemy.species_id))
 	# Legacy fixtures intentionally substitute affinity-only species on the
 	# historical patrol enemy. Those actors predate perception profiles: keep
@@ -1807,6 +1813,7 @@ func _resolve_enemy_move_reservations(rows: Array[Dictionary]) -> void:
 func _enemy_alternative_move(row: Dictionary,
 		reserved: Array[Dictionary]) -> Dictionary:
 	var enemy_id := int(row.enemy_id)
+	if preload("res://sim/consumable_effects.gd").status(world,enemy_id,"FEAR")!=null:return {}
 	var target = world.entities.get(int(row.target_id))
 	if target == null or not world.entities.has(enemy_id):
 		return {}
@@ -1901,6 +1908,15 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 		return rejected.duplicate(true)
 	rejected.accepted = true
 	rejected.target_id = target.id
+	if preload("res://sim/consumable_effects.gd").status(world,enemy_id,"FEAR")!=null:
+		var best:=_distance(enemy.position,target.position)
+		for delta in movement.MOVE_DIRECTIONS_8:
+			var cell:Vector2i=enemy.position+delta
+			if _distance(cell,target.position)>best and movement.assess_move(enemy_id,cell).accepted:
+				best=_distance(cell,target.position);rejected.destination=[cell.x,cell.y]
+				rejected.terrain_id=str(world.tile_at(cell).terrain);rejected.action_type="MOVE"
+				rejected.time_cost=int(TerrainRegistryScript.definition(rejected.terrain_id).move_time_cost)
+		rejected.reason="fear_retreat";return rejected.duplicate(true)
 	if melee.can_attack(enemy_id, target.id):
 		rejected.reason = "target_adjacent"
 		rejected.action_type = "MELEE"

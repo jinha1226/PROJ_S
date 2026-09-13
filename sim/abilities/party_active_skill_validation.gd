@@ -8,6 +8,7 @@ const RULESET_ID := "party-active-skills-v1"
 const TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
+	if str(event.type).begins_with("consumable."):return preload("res://sim/consumable_effects.gd").event_error(world,event)
 	if event.type in ["item.identified","item.energy_restored"]:return preload("res://sim/mystery_consumables.gd").event_error(world,event)
 	if str(event.type).begins_with("ability.") and event.type!="ability.passive_triggered":return preload("res://sim/abilities/monster_ability_runtime.gd").event_error(world,event)
 	if event.type=="health.restored" and event.data.get("kind")=="MONSTER_ABILITY":return preload("res://sim/abilities/monster_ability_runtime.gd").heal_error(world,event)
@@ -39,6 +40,7 @@ static func event_error(world, event) -> String:
 
 static func forced_move_error(world,event)->String:
 	var source=world.event_by_id(event.cause_id)
+	if source!=null and source.type=="consumable.activated":return preload("res://sim/consumable_effects.gd").move_error(world,event)
 	if source==null or source.type!="action.skill" or source.data.get("skill_id")!="SHOVE" \
 			or not _action_error(world,source).is_empty() or source.target_id!=event.actor_id \
 			or source.step_index!=event.step_index or source.world_time!=event.world_time \
@@ -66,7 +68,7 @@ static func _action_error(world,event)->String:
 	for key in ["action_time","cost","damage","healing"]:
 		if not data.get(key) is int or int(data[key])<0:return "active_skill_event_invalid"
 	if int(data.cost)!=int(definition.cost) or int(data.action_time)!=preload("res://sim/field_action_timing.gd").duration(
-			world,event.actor_id,str(data.skill_id),int(TIMES[data.skill_id])) \
+			world,event.actor_id,str(data.skill_id),int(TIMES[data.skill_id]),event.id) \
 			or not data.destination is Array or data.destination.size()!=2 \
 			or not data.destination[0] is int or not data.destination[1] is int \
 			or event.magnitude!=(int(definition.power) if data.skill_id in Registry.GROUND_SKILLS else maxi(int(data.damage),int(data.healing))) or event.magnitude<=0:

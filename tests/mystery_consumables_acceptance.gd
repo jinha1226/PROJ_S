@@ -8,6 +8,7 @@ const Item=preload("res://sim/item_instance.gd")
 const Inventory=preload("res://sim/inventory_state.gd")
 const Assets=preload("res://playtest/dungeon_0x72_assets.gd")
 const Action=preload("res://sim/party_action_command.gd")
+const RECOVERY_IDS=["POTION_MYSTERY_HEAL","POTION_MYSTERY_MANA","SCROLL_MYSTERY_HEAL","SCROLL_MYSTERY_MANA"]
 var failures:Array[String]=[]
 func _init():run.call_deferred()
 func check(ok:bool,label:String):
@@ -35,7 +36,7 @@ func recovery_tests():
 		if not moved.accepted:break
 	check(s.sim.world.entities[hero].health<s.sim.world.entities[hero].max_health,"injured fixture")
 	var baseline:Dictionary=s.sim.snapshot()
-	for id in Mystery.IDS:
+	for id in RECOVERY_IDS:
 		s.sim=Simulator.from_snapshot(baseline)
 		check(s.sim!=null,"restore recovery baseline")
 		if s.sim==null:return
@@ -61,15 +62,15 @@ func run():
 			if Mystery.has(row.definition_id):seen[row.definition_id]=true
 		for row in Drops.rolls_for(44,death,"goblin",Drops.PRE_MYSTERY_RULESET_ID):
 			check(not Mystery.has(row.definition_id),"legacy drops unchanged")
-	check(seen.size()==4,"all four mystery supplies drop")
+	check(seen.size()>12,"expanded mystery supplies drop")
 	var appearances:Dictionary={}
 	for seed_value in range(20):
 		var stub={"seed":seed_value}
 		check(Mystery.appearance(stub,Mystery.IDS[0])!=Mystery.appearance(stub,Mystery.IDS[1]),"potion bijection")
 		check(Mystery.appearance(stub,Mystery.IDS[2])!=Mystery.appearance(stub,Mystery.IDS[3]),"scroll bijection")
 		appearances[Mystery.appearance(stub,Mystery.IDS[0])]=true
-	check(appearances.size()==2,"new seed changes appearance")
-	for id in Mystery.IDS:
+	check(appearances.size()>2,"new seed changes appearance")
+	for id in RECOVERY_IDS:
 		var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 		check(s.town_life_command({"action":"START"}).accepted,"start")
 		check(s.depart_town().accepted,"depart")

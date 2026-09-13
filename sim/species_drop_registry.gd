@@ -2,7 +2,8 @@ class_name SpeciesDropRegistry
 extends RefCounted
 
 const CONTENT_PATH := "res://data/content/species_drop_tables.json"
-const RULESET_ID := "species-drops-v4"
+const RULESET_ID := "species-drops-v5"
+const PRE_EXPANSION_RULESET_ID := "species-drops-v4"
 const PRE_MYSTERY_RULESET_ID := "species-drops-v3"
 const PREVIOUS_RULESET_ID := "species-drops-v2"
 const LEGACY_RULESET_ID := "species-drops-v1"
@@ -31,22 +32,25 @@ static func species_ids() -> Array[String]:
 static func rolls_for(world_seed: int, death_event_id: int, species_id: String,
 		ruleset_id:String=RULESET_ID) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PRE_MYSTERY_RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
+	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PRE_EXPANSION_RULESET_ID,PRE_MYSTERY_RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
 			or not registry_error().is_empty() or not has_table(species_id):
 		return result
 	for row in _TABLES[species_id].rolls:
 		var key := "%s|seed=%d|death=%d|species=%s|roll=%s" % [
-			PRE_MYSTERY_RULESET_ID if ruleset_id==RULESET_ID else ruleset_id, world_seed, death_event_id, species_id, str(row.roll_id)]
+			PRE_MYSTERY_RULESET_ID if ruleset_id in [RULESET_ID,PRE_EXPANSION_RULESET_ID] else ruleset_id, world_seed, death_event_id, species_id, str(row.roll_id)]
 		if _keyed_u31(key, "CHANCE") % 1000 >= int(row.chance_per_1000):
 			continue
 		var span := int(row.max_quantity) - int(row.min_quantity) + 1
 		var quantity := int(row.min_quantity) + _keyed_u31(key, "QUANTITY") % span
 		result.append({"roll_id": str(row.roll_id),
 			"definition_id": str(row.definition_id), "quantity": quantity})
-	if ruleset_id==RULESET_ID:
+	if ruleset_id in [RULESET_ID,PRE_EXPANSION_RULESET_ID]:
 		var key:String="mystery-supply-v1/%d/%d/%s"%[world_seed,death_event_id,species_id]
 		if _keyed_u31(key,"CHANCE")%1000<180:
-			var ids:Array=preload("res://sim/mystery_consumables.gd").IDS
+			var ids:Array=["POTION_MYSTERY_HEAL","POTION_MYSTERY_MANA","SCROLL_MYSTERY_HEAL","SCROLL_MYSTERY_MANA"]
+			if ruleset_id==RULESET_ID:
+				var negative:bool=_keyed_u31(key,"POLARITY")%1000<250
+				ids=preload("res://sim/consumable_catalog.gd").DROP_IDS.filter(func(id):return preload("res://sim/consumable_catalog.gd").definition(id).negative==negative)
 			result.append({"roll_id":species_id.to_upper()+"_MYSTERY_SUPPLY","definition_id":ids[_keyed_u31(key,"KIND")%ids.size()],"quantity":1})
 	return result.duplicate(true)
 

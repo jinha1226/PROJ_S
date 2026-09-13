@@ -15,11 +15,12 @@ func run():
 	check(s.depart_town().accepted,"depart")
 	var w=s.sim.world;var hero:int=w.party_control_actor_id();var inv=w.inventory_of(hero)
 	var items:Array=inv.backpack.duplicate()
-	for id in Mystery.IDS:items.append(Item.new("UI_"+id,id,2))
+	for id in ["POTION_MYSTERY_HEAL","POTION_MYSTERY_MANA","SCROLL_MYSTERY_HEAL","SCROLL_MYSTERY_MANA"]:items.append(Item.new("UI_"+id,id,2))
+	items.append(Item.new("UI_POISON","POTION_MYSTERY_POISON",2))
 	w.item_state.inventory_rows[hero]=Inventory.new(items,inv.equipped)
 	var ui=Shell.new();ui.initialize_for_headless_test(s,false);root.add_child(ui);ui.set_process(false)
 	ui._open_hero_detail_tab("ITEM")
-	for id in Mystery.IDS:
+	for id in ["POTION_MYSTERY_HEAL","POTION_MYSTERY_MANA","SCROLL_MYSTERY_HEAL","SCROLL_MYSTERY_MANA"]:
 		ui._on_item_row_selected("UI_"+id,"")
 		var row:Dictionary=s.protagonist_inventory().backpack_rows.filter(func(r):return r.definition_id==id)[0]
 		check(ui._item_stats_text(row).contains("미감정"),"hidden stats")
@@ -34,6 +35,21 @@ func run():
 	ui._refresh();ui._on_item_row_selected("UI_SCROLL_MYSTERY_MANA","")
 	var row:Dictionary=s.protagonist_inventory().backpack_rows.filter(func(r):return r.definition_id=="SCROLL_MYSTERY_MANA")[0]
 	check(row.identified and ui._item_stats_text(row).contains("MP +10"),"identified effect revealed")
+	check(s.use_inventory_item("UI_POISON").accepted,"discover poison")
+	ui._refresh();ui._on_item_row_selected("UI_POISON","")
+	check(ui.member_item_use_button.visible,"known utility usable")
+	check(ui.consumable_status_label.text.contains("독"),"poison duration shown")
+	var before:Dictionary=s.sim.snapshot()
+	ui._on_item_use_selected()
+	var picker=ui.find_child("ConsumableTargetPicker",true,false)
+	check(picker!=null,"target picker opens")
+	for i in range(5):await process_frame
+	if DisplayServer.get_name()!="headless":
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("/tmp/consumable-target-mobile.png")
+	if picker!=null:picker.hide()
+	await process_frame
+	check(s.sim.snapshot()==before,"cancel picker consumes nothing")
 	ui.queue_free();await process_frame
 	print("MYSTERY ITEMS UI ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)

@@ -27,6 +27,7 @@ static func projection(world)->Dictionary:
 
 static func status(world,id:int,key:String):
 	var e=projection(world).statuses.get("%d:%s"%[id,key])
+	if key in ["POISON","SLOW"] and e!=null and int(preload("res://sim/consumable_effects.gd").projection(world).clears.get(id,-1))>e.id:return null
 	return e if e!=null and int(e.data.until)>world.world_time and e.magnitude>0 else null
 
 static func add_status(world,actor:int,target:int,id:String,key:String,power:int,duration:int,cause:int)->bool:
@@ -41,6 +42,7 @@ static func scale(world,id:int,ability:String,value:int)->int:
 static func assess(world,actor:int,id:String,target:int)->Dictionary:
 	var d:=Defs.definition(id)
 	var no:={"accepted":false,"reason":"monster_ability_invalid","message":"사용할 수 없는 대상입니다."}
+	if preload("res://sim/consumable_effects.gd").skill_blocked(world,actor):no.message="봉인·혼란 중에는 스킬을 사용할 수 없습니다.";return no
 	if d.is_empty() or not alive(world,actor) or not alive(world,target):return no
 	var member=world.party_encounter.member(actor)
 	if member==null or id not in member.active_skill_ids():return no
@@ -160,7 +162,7 @@ static func stealth(world,id:int)->bool:
 	return vision.illumination(world,world.entities[id].position,lighting)<300
 
 static func armor(world,id:int,form:String="")->int:
-	var value:=4 if passive(world,id,"HIDE_PLATING") else 0
+	var value:int=preload("res://sim/consumable_effects.gd").armor(world,id)+(4 if passive(world,id,"HIDE_PLATING") else 0)
 	if passive(world,id,"CARAPACE"):value+=3+(5 if form=="PIERCE" else 0)
 	if passive(world,id,"STONE_SKELETON") and form=="IMPACT":value+=6
 	for key in ["HIDE","SHELL","STONE"]:
@@ -228,15 +230,16 @@ static func delay_before(world,event)->int:
 	return delay
 
 static func accuracy_bonus(world,actor:int,weapon_id:String,before:int=-1)->int:
+	var penalty:int=preload("res://sim/consumable_effects.gd").accuracy(world,actor,before)
 	var weapon=preload("res://sim/weapon_registry.gd").definition(weapon_id)
-	if weapon==null or weapon.proficiency_id!="RANGED":return 0
+	if weapon==null or weapon.proficiency_id!="RANGED":return penalty
 	var enabled:=passive(world,actor,"THROWING_INSTINCT")
 	if before>0:
 		enabled=false
 		for e in world.events:
 			if e.id>=before:break
 			if e.type=="party.ability_mode_changed" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=e.data.mode=="PASSIVE"
-	return 150 if enabled else 0
+	return penalty+(150 if enabled else 0)
 
 static func tick(sim,start:int,end:int)->bool:
 	var w=sim.world
@@ -244,6 +247,7 @@ static func tick(sim,start:int,end:int)->bool:
 	var statuses:Array=projection(w).statuses.values().duplicate()
 	for s in statuses:
 		if s.data.status!="POISON" or not alive(w,s.target_id):continue
+		if int(preload("res://sim/consumable_effects.gd").projection(w).clears.get(s.target_id,-1))>s.id:continue
 		var until:int=mini(end,int(s.data.until))
 		var ticks:int=maxi(0,(until-s.world_time)/100-maxi(0,(start-s.world_time)/100))
 		for n in range(mini(3,ticks)):
@@ -324,6 +328,10 @@ static func event_error(world,e)->String:
 		_:return "unknown_monster_event"
 	if e.type not in ["ability.cast","ability.pulse","ability.reaction"]:
 		var source=world.event_by_id(e.cause_id)
+		if source!=null and source.type=="consumable.pulse" and e.type=="ability.impact":
+			var expected:String="VENOM_FANG" if source.data.effect=="POISON" else "REGENERATIVE_TISSUE"
+			var kind:String="physical" if source.data.effect=="POISON" else "HEAL"
+			return "" if id==expected and e.data.kind==kind and e.actor_id==source.actor_id and e.target_id==source.target_id and e.magnitude==source.magnitude and e.world_time==source.world_time and e.step_index==source.step_index and preload("res://sim/consumable_effects.gd").event_error(world,source).is_empty() else "consumable_impact_invalid"
 		if source==null or source.type not in ["ability.cast","ability.status","ability.pulse","ability.reaction","combat.physical_damage","action.move","action.melee_attack","action.skill"]:return "monster_effect_source_invalid"
 	return ""
 

@@ -211,6 +211,7 @@ var member_detail_modal:Control
 var member_detail_panel:PanelContainer
 var member_detail_title:Label
 var member_detail_subtitle:Label
+var consumable_status_label:Label
 var member_detail_glyph_seal
 var member_detail_scroll:ScrollContainer
 var member_detail_scroll_content:VBoxContainer
@@ -1331,6 +1332,8 @@ func _build_member_detail_modal()->void:
 	member_detail_subtitle.add_theme_font_size_override("font_size",FONT_AUX)
 	member_detail_subtitle.add_theme_color_override("font_color",DarkPixelSkinScript.BONE_DIM)
 	title_stack.add_child(member_detail_subtitle)
+	consumable_status_label=Label.new();consumable_status_label.name="ConsumableStatuses";consumable_status_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	consumable_status_label.add_theme_font_size_override("font_size",FONT_AUX);title_stack.add_child(consumable_status_label)
 	member_detail_close=Button.new();member_detail_close.name="MemberDetailClose";member_detail_close.text="×"
 	member_detail_close.custom_minimum_size=Vector2(44,TOUCH_TARGET)
 	member_detail_close.add_theme_font_size_override("font_size",FONT_COMMAND)
@@ -5052,6 +5055,9 @@ func _update_member_status_window(detail:Dictionary)->void:
 	preload("res://playtest/character_stat_help.gd").make_scroll_transparent(member_status_window)
 
 func _update_detail_vitals(detail:Dictionary)->void:
+	if consumable_status_label!=null and session!=null:
+		consumable_status_label.text=preload("res://sim/consumable_effects.gd").summary(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
+		consumable_status_label.visible=not consumable_status_label.text.is_empty()
 	if detail_hp==null:return
 	var hp:=int(detail.get("health",0));var max_hp:=maxi(1,int(detail.get("max_health",1)))
 	var member=session.sim.world.party_encounter.member(int(detail.get("entity_id",-1)))
@@ -5203,6 +5209,8 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV%02d"%int(detail_progression.get("level",1)))
 	subtitle_parts.append(_life_state_label(str(detail.get("life_state","ACTIVE"))))
 	member_detail_subtitle.text=" / ".join(subtitle_parts)
+	consumable_status_label.text=preload("res://sim/consumable_effects.gd").summary(session.sim.world,member_id)
+	consumable_status_label.visible=not consumable_status_label.text.is_empty()
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
@@ -5653,7 +5661,7 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
-	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UNIDENTIFIED"]:return true
+	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UTILITY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
 	return str(row.get("definition_id","")) in ["POTION_HEALING","POTION_UNSPECIFIED"]
@@ -5674,6 +5682,7 @@ func _item_row_text(row:Dictionary)->String:
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
 	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
+	if str(row.get("use_kind",""))=="UTILITY":return str(row.get("compact_stat_text",""))
 	var lines:Array[String]=[]
 	if str(row.get("category",""))=="WEAPON":
 		lines.append("공격력 %d · 명중 %d%% · 관통 %d · 사거리 %d-%d칸 · 공격시간 %d"%[
@@ -5704,6 +5713,7 @@ func _item_stats_text(row:Dictionary)->String:
 
 func _item_description_text(row:Dictionary)->String:
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
+	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
 	match str(row.get("category","")):
 		"WEAPON":
@@ -5956,8 +5966,9 @@ func _on_item_drop_selected()->void:
 	_cancel_navigation_for_item_operation()
 	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
 
-func _on_item_use_selected()->void:
+func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")->void:
 	_cancel_navigation_for_item_operation()
+	if not selected_instance.is_empty():member_item_selected_id=selected_instance
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
@@ -5972,7 +5983,13 @@ func _on_item_use_selected()->void:
 			member_item_popover_compare.visible=true;_position_item_popover();return
 		notice_text="횃불을 %s했습니다." % ("껐" if method_name=="extinguish_torch" else "켰")
 		action_feedback_text=notice_text;_hide_item_popover();_record_result(torch_result,true);_refresh();return
-	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id)
+	if selection.is_empty():
+		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
+		if not choices.is_empty():
+			var frozen_id:String=member_item_selected_id
+			preload("res://playtest/consumable_target_picker.gd").open(self,choices,func(choice):_on_item_use_selected(choice,frozen_id))
+			return
+	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id,true,selection)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
 		action_feedback_text=notice_text

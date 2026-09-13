@@ -1691,7 +1691,7 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 		"color_hex":str(item.color_hex),"highlight_hex":str(item.highlight_hex),
 		"underlay_hex":str(item.underlay_hex),
 		"underlay_opacity":float(item.underlay_opacity),"occupied_corner":occupied,
-		"texture":texture,"image_rect":image_rect,
+		"texture":texture,"image_rect":image_rect,"appearance_mark":str(int(str(row.get("ground_item_icon_id","")).get_slice("_",2))+1) if str(row.get("ground_item_icon_id","")).begins_with("MYSTERY_") else "",
 		"layer":"GROUND_ITEMS","draw_after":["GROUND_FEATURES","GROUND_HAZARDS"],
 		"draw_before":["ACTORS"],"changes_hit_rect":false,"mouse_filter":"IGNORE",
 		"draw_image":texture!=null,"texture_free":texture==null,"fov_safe":true}.duplicate(true)
@@ -2749,6 +2749,7 @@ func _draw_ground_items()->void:
 	for spec in ground_item_draw_specs():
 		if bool(spec.get("draw_image",false)):
 			draw_texture_rect(spec.texture,spec.image_rect,false,Color.WHITE)
+			if not str(spec.get("appearance_mark","")).is_empty():draw_string(get_theme_default_font(),spec.image_rect.position+Vector2(0,10),str(spec.appearance_mark),HORIZONTAL_ALIGNMENT_LEFT,-1,10,Color.WHITE)
 			continue
 		var center:=Vector2(spec.center);var font_size:=int(spec.font_size)
 		_draw_centered_text(font,str(spec.glyph),center+Vector2(0.8,1.0),font_size,

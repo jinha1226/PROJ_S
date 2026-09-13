@@ -391,10 +391,10 @@ func equipment_modifiers(entity_id: int) -> Dictionary:
 				totals[key]=clampi(int(totals[key]),0,1000000 if key=="armor_flat" else 1000)
 			result["totals"]=totals
 	var monster_armor:int=preload("res://sim/abilities/monster_ability_runtime.gd").armor(self,entity_id)
-	if monster_armor>0:
+	if monster_armor!=0:
 		result=result.duplicate(true)
 		var totals:Dictionary=result.get("totals",{})
-		totals["armor_flat"]=int(totals.get("armor_flat",0))+monster_armor;result["totals"]=totals
+		totals["armor_flat"]=maxi(0,int(totals.get("armor_flat",0))+monster_armor);result["totals"]=totals
 	return result
 
 
@@ -1940,7 +1940,7 @@ func _corpse_drop_history_error() -> String:
 		var ruleset_id:=str(event.data.get("ruleset_id",""))
 		var legacy_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.PREVIOUS_RULESET_ID,
 			SpeciesDropRegistryScript.LEGACY_RULESET_ID]
-		var current_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.RULESET_ID,SpeciesDropRegistryScript.PRE_MYSTERY_RULESET_ID]
+		var current_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.RULESET_ID,SpeciesDropRegistryScript.PRE_EXPANSION_RULESET_ID,SpeciesDropRegistryScript.PRE_MYSTERY_RULESET_ID]
 		var expected_keys:Array=["generated_items","ruleset_id","schema_version",
 			"source_death_event_id"] if ruleset_id==SpeciesDropRegistryScript.LEGACY_RULESET_ID else [
 			"generated_items","reward_rows","ruleset_id","schema_version",
@@ -3178,10 +3178,11 @@ func _melee_action_event_error(event) -> String:
 			or event.magnitude != base_damage:
 		return "canonical_melee_profile_formula_invalid"
 	var hit_chance: int = int(weapon_spec.hit_chance_milli) if weapon_enabled \
-		else clampi(500 + int(attacker_profile.accuracy_milli) \
+		else clampi(500 + int(attacker_profile.accuracy_milli)+preload("res://sim/consumable_effects.gd").accuracy(self,event.actor_id,event.id) \
 		- int(target_profile.evasion_milli), 50, 950)
 	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
 		- int(target_profile.bleed_resist_milli), 0, 1000)
+	if preload("res://sim/consumable_effects.gd").status(self,event.actor_id,"SEAL",event.id)!=null:bleed_chance=0
 	var target_life: String = str(event.data.target_life_at_batch_start)
 	var intent_mode: String = str(event.data.intent_mode)
 	var outcome: String = str(event.data.outcome)
@@ -3335,9 +3336,10 @@ func _melee_defense_action_event_error(event) -> String:
 			or event.data.armor_reduction != armor_reduction or event.magnitude != base_damage:
 		return "canonical_defense_armor_formula_invalid"
 	var hit_chance:int=int(weapon_spec.hit_chance_milli) if combined_weapon else clampi(
-		500+int(attacker_profile.accuracy_milli)-int(snapshot.effective_evasion_milli),50,950)
+		500+int(attacker_profile.accuracy_milli)+preload("res://sim/consumable_effects.gd").accuracy(self,event.actor_id,event.id)-int(snapshot.effective_evasion_milli),50,950)
 	var bleed_chance: int = clampi(int(attacker_profile.bleed_proc_milli) \
 		- int(target_profile.bleed_resist_milli), 0, 1000)
+	if preload("res://sim/consumable_effects.gd").status(self,event.actor_id,"SEAL",event.id)!=null:bleed_chance=0
 	var target_life: String = str(event.data.target_life_at_batch_start)
 	var intent_mode: String = str(event.data.intent_mode)
 	var outcome: String = str(event.data.outcome)
@@ -6107,6 +6109,10 @@ func _party_patrol_history_error()->String:
 		if event.actor_id not in party_encounter.enemy_ids:continue
 		if event.type not in ["action.move","action.hold"]:
 			continue
+		var forced_source=event_by_id(event.cause_id)
+		if forced_source!=null and forced_source.type=="consumable.activated":
+			if not _party_move_event_is_canonical(event):return "consumable_patrol_move_invalid"
+			continue
 		var cadence_key:="%d:%d:%d"%[event.step_index,event.world_time,event.actor_id]
 		if occupied_cadences.has(cadence_key):return "party_patrol_duplicate_action"
 		occupied_cadences[cadence_key]=true
@@ -6910,6 +6916,8 @@ func _party_move_event_is_canonical(event) -> bool:
 	var to_position := Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
 	var definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
 	var leap_source=event_by_id(event.cause_id)
+	if leap_source!=null and leap_source.type=="consumable.activated":
+		return event.target_id==-1 and event.position==to_position and not definition.is_empty() and bool(definition.get("passable",false)) and preload("res://sim/consumable_effects.gd").move_error(self,event).is_empty()
 	if leap_source!=null and leap_source.type=="ability.cast" and leap_source.data.get("skill_id")=="HUNTER_LEAP":
 		return event.actor_id==leap_source.actor_id and event.target_id==-1 and event.position==to_position \
 			and _party_distance(from_position,to_position) in range(1,5) and not definition.is_empty() and bool(definition.get("passable",false)) \
@@ -6922,7 +6930,9 @@ func _party_move_event_is_canonical(event) -> bool:
 	if event.cause_id==-1:
 		var base:int=int(definition.move_time_cost)+preload("res://sim/abilities/monster_ability_runtime.gd").delay_before(self,event)
 		var member=party_encounter.member(event.actor_id) if party_encounter!=null else null
-		if member!=null and preload("res://sim/field_turn_rules.gd").enabled(self):base=maxi(1,(base*100+int(member.action_speeds.MOVE)-1)/int(member.action_speeds.MOVE))
+		if member!=null and preload("res://sim/field_turn_rules.gd").enabled(self):
+			var rate:int=maxi(25,int(member.action_speeds.MOVE)+preload("res://sim/consumable_effects.gd").rate(self,event.actor_id,event.id))
+			base=maxi(1,(base*100+rate-1)/rate)
 		return int(event.data.move_time_cost)==base
 	return ActiveSkillValidationScript.forced_move_error(self,event).is_empty()
 
