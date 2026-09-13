@@ -243,6 +243,31 @@ func test_monster_essence_materializes_and_can_be_picked_up() -> bool:
 	check(restored!=null and restored.snapshot()==sim.snapshot(),"essence drop and pickup survive snapshot")
 	return finish()
 
+func test_mystery_supply_materializes_unidentified_and_can_be_picked_up() -> bool:
+	var mystery=preload("res://sim/mystery_consumables.gd")
+	var seed_value:=-1
+	for candidate in range(1,200):
+		if SpeciesDrops.rolls_for(candidate,3,"goblin").any(func(r):return mystery.has(r.definition_id)):
+			seed_value=candidate;break
+	check(seed_value!=-1,"find deterministic mystery supply seed")
+	if seed_value==-1:return finish()
+	var fixture:=_goblin_fixture(seed_value,false);var sim=fixture.sim
+	var death=_kill_with_damage(sim,fixture.goblin,"electric")
+	check(death!=null,"real damage creates mystery loot")
+	if death==null:return finish()
+	var materialized=_materialized_for(sim.world,int(death.id));var found:Dictionary={}
+	for row in materialized.data.generated_items:
+		if mystery.has(str(row.definition_id)):found=row
+	check(not found.is_empty(),"mystery supply lands on ground")
+	if found.is_empty():return finish()
+	check(not mystery.known(sim.world,str(found.definition_id)),"drop does not identify effect")
+	var collector=sim.world.add_entity("melee_enemy","수집자",Vector2i(3,3),100,[],"human","party")
+	check(WorldItems.commit_pickup(sim.world,collector.id,str(found.instance_id),collector.position,0).accepted,"pickup mystery supply")
+	check(sim.world.world_state_error().is_empty(),"mystery drop history validates")
+	var restored=Simulator.from_snapshot(sim.snapshot())
+	check(restored!=null and restored.snapshot()==sim.snapshot(),"mystery drop pickup snapshot")
+	return finish()
+
 func _goblin_fixture(seed: int, with_loadout: bool) -> Dictionary:
 	var sim = Simulator.create(7, 7, seed)
 	var goblin = sim.world.add_entity("melee_enemy", "고블린", Vector2i(3, 3), 10,

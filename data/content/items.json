@@ -347,6 +347,26 @@
       "use_kind":"NONE", "placeholder":false
     },
     {
+      "definition_id":"POTION_MYSTERY_HEAL", "label":"활력 물약", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"", "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0}, "use_kind":"HEALING", "placeholder":false
+    },
+    {
+      "definition_id":"POTION_MYSTERY_MANA", "label":"마력 물약", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"", "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0}, "use_kind":"ENERGY", "placeholder":false
+    },
+    {
+      "definition_id":"SCROLL_MYSTERY_HEAL", "label":"치유의 두루마리", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"", "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0}, "use_kind":"HEALING", "placeholder":false
+    },
+    {
+      "definition_id":"SCROLL_MYSTERY_MANA", "label":"마력 회복의 두루마리", "category":"CONSUMABLE",
+      "stack_limit":10, "equip_slots":[], "weapon_id":"", "requirements":{"STR":0,"DEX":0,"INT":0},
+      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0}, "use_kind":"ENERGY", "placeholder":false
+    },
+    {
       "definition_id":"POTION_HEALING_MINOR", "label":"소형 회복 물약", "category":"CONSUMABLE",
       "stack_limit":10, "equip_slots":[], "weapon_id":"",
       "requirements":{"STR":0,"DEX":0,"INT":0},

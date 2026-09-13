@@ -4,8 +4,8 @@ extends RefCounted
 const Loader = preload("res://sim/json_content_loader.gd")
 const Items = preload("res://sim/item_registry.gd")
 const CONTENT_PATH := "res://data/content/item_catalog.json"
-const FAMILIES := ["WEAPON", "ARMOR", "POTION", "FOOD", "MAGIC_STONE", "MATERIAL"]
-const EFFECT_KINDS := ["NONE", "HEAL", "NUTRITION"]
+const FAMILIES := ["WEAPON", "ARMOR", "POTION", "SCROLL", "FOOD", "MAGIC_STONE", "MATERIAL"]
+const EFFECT_KINDS := ["NONE", "HEAL", "ENERGY", "NUTRITION"]
 static var _CONTENT:Dictionary = Loader.load_document(CONTENT_PATH)
 static var _DEFINITIONS:Dictionary = Loader.index_rows(
 	_CONTENT.get("definitions", []), "definition_id")
@@ -96,16 +96,18 @@ static func _row_error(row:Variant) -> String:
 	var item = Items.definition(str(row.definition_id))
 	if item == null: return "item_catalog_item_missing"
 	var expected_category:String = str({
-		"WEAPON":"WEAPON", "ARMOR":"ARMOR", "POTION":"CONSUMABLE",
+		"WEAPON":"WEAPON", "ARMOR":"ARMOR", "POTION":"CONSUMABLE", "SCROLL":"CONSUMABLE",
 		"FOOD":"CONSUMABLE", "MAGIC_STONE":"MATERIAL", "MATERIAL":"MATERIAL",
 	}[str(row.family)])
 	if str(item.category) != expected_category: return "item_catalog_category_mismatch"
-	if str(row.family) == "POTION" and str(item.use_kind) != "HEALING":
+	if str(row.family) in ["POTION","SCROLL"] and str(item.use_kind) not in ["HEALING","ENERGY"]:
 		return "item_catalog_use_kind_mismatch"
 	if str(row.family) == "FOOD" and str(item.use_kind) != "EAT":
 		return "item_catalog_use_kind_mismatch"
-	if str(row.effect_kind) == "HEAL" and (str(row.family) != "POTION" or int(row.effect_power) <= 0):
+	if str(row.effect_kind) in ["HEAL","ENERGY"] and (str(row.family) not in ["POTION","SCROLL"] or int(row.effect_power) <= 0):
 		return "item_catalog_effect_mismatch"
+	if (str(row.effect_kind)=="HEAL" and str(item.use_kind)!="HEALING") or (str(row.effect_kind)=="ENERGY" and str(item.use_kind)!="ENERGY"):
+		return "item_catalog_use_kind_mismatch"
 	if str(row.effect_kind) == "NUTRITION" and (str(row.family) != "FOOD" or int(row.effect_power) <= 0):
 		return "item_catalog_effect_mismatch"
 	if str(row.effect_kind) == "NONE" and int(row.effect_power) != 0:

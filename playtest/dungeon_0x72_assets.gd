@@ -21,6 +21,15 @@ const ITEMS={"WEAPON_SHORT_SWORD":"weapon_regular_sword","WEAPON_THRUSTING_SWORD
 	"TIMBER":"crate","STONE":"floor_4","HERBS":"plants","DROPPED_ITEM":"bag",
 	"LOOT_SACK":"bag","TOWN_GOLD":"coin_anim_f0"}
 static var regions:Dictionary={}
+static var generated:Dictionary={}
+static func generated_icon(key:String)->Texture2D:
+	if not generated.has(key):
+		var source:Texture2D=load("res://assets/generated/item-icons-v1/"+key+".png")
+		if source==null:return null
+		var pixels:Image=source.get_image()
+		pixels.resize(48,48,Image.INTERPOLATE_NEAREST)
+		generated[key]=ImageTexture.create_from_image(pixels)
+	return generated[key]
 static func texture(key:String)->Texture2D:
 	if not RECTS.has(key) and not EXTRA.has(key):return null
 	if not regions.has(key):
@@ -30,7 +39,22 @@ static func texture(key:String)->Texture2D:
 	return regions[key]
 static func item(id:String)->Texture2D:
 	var key:=id.to_upper()
-	if key.begins_with("ESSENCE_"):return texture("flask_big_blue")
+	if key.begins_with("ESSENCE_"):return generated_icon("essence")
+	if key.begins_with("FOOD_"):return generated_icon("food")
+	if key.begins_with("MAGIC_STONE"):return generated_icon("stone")
+	if key=="MYSTERY_SCROLL_1":return generated_icon("scroll_moon")
+	if key.begins_with("SCROLL_") or key.begins_with("MYSTERY_SCROLL_"):return generated_icon("scroll")
+	if key=="ARMOR_LEATHER":return generated_icon("armor")
+	if key=="ARMOR_PADDED":return generated_icon("padded")
+	if key=="ARMOR_CLOTH_ROBE":return generated_icon("robe")
+	if key=="ARMOR_CHAIN":return generated_icon("chain")
+	if key=="ARMOR_PLATE":return generated_icon("plate")
+	if key=="MYSTERY_POTION_0":return texture("flask_red")
+	if key=="MYSTERY_POTION_1":return texture("flask_blue")
+	if key.begins_with("POTION_"):return texture("flask_red")
+	if not ITEMS.has(key):
+		for base in ITEMS:
+			if str(base).begins_with("WEAPON_") and key.begins_with(str(base)+"_"):return texture(str(ITEMS[base]))
 	return texture(str(ITEMS[key])) if ITEMS.has(key) else null
 static func actor_spec(actor:Dictionary)->Dictionary:
 	var species:=str(actor.get("species_id","human")).to_lower()

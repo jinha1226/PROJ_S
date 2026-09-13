@@ -2,7 +2,8 @@ class_name SpeciesDropRegistry
 extends RefCounted
 
 const CONTENT_PATH := "res://data/content/species_drop_tables.json"
-const RULESET_ID := "species-drops-v3"
+const RULESET_ID := "species-drops-v4"
+const PRE_MYSTERY_RULESET_ID := "species-drops-v3"
 const PREVIOUS_RULESET_ID := "species-drops-v2"
 const LEGACY_RULESET_ID := "species-drops-v1"
 const ContentLoaderScript = preload("res://sim/json_content_loader.gd")
@@ -30,18 +31,23 @@ static func species_ids() -> Array[String]:
 static func rolls_for(world_seed: int, death_event_id: int, species_id: String,
 		ruleset_id:String=RULESET_ID) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
+	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PRE_MYSTERY_RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
 			or not registry_error().is_empty() or not has_table(species_id):
 		return result
 	for row in _TABLES[species_id].rolls:
 		var key := "%s|seed=%d|death=%d|species=%s|roll=%s" % [
-			ruleset_id, world_seed, death_event_id, species_id, str(row.roll_id)]
+			PRE_MYSTERY_RULESET_ID if ruleset_id==RULESET_ID else ruleset_id, world_seed, death_event_id, species_id, str(row.roll_id)]
 		if _keyed_u31(key, "CHANCE") % 1000 >= int(row.chance_per_1000):
 			continue
 		var span := int(row.max_quantity) - int(row.min_quantity) + 1
 		var quantity := int(row.min_quantity) + _keyed_u31(key, "QUANTITY") % span
 		result.append({"roll_id": str(row.roll_id),
 			"definition_id": str(row.definition_id), "quantity": quantity})
+	if ruleset_id==RULESET_ID:
+		var key:String="mystery-supply-v1/%d/%d/%s"%[world_seed,death_event_id,species_id]
+		if _keyed_u31(key,"CHANCE")%1000<180:
+			var ids:Array=preload("res://sim/mystery_consumables.gd").IDS
+			result.append({"roll_id":species_id.to_upper()+"_MYSTERY_SUPPLY","definition_id":ids[_keyed_u31(key,"KIND")%ids.size()],"quantity":1})
 	return result.duplicate(true)
 
 
@@ -53,7 +59,7 @@ static func rewards_for(world_seed:int,death_event_id:int,species_id:String,
 		if source_depth<int(row.min_depth) or source_depth>int(row.max_depth):continue
 		if not source_id.is_empty() and str(row.source_id)!=source_id:continue
 		var key:="%s|seed=%d|death=%d|species=%s|reward=%s"%[
-			RULESET_ID,world_seed,death_event_id,species_id,str(row.reward_id)]
+			PRE_MYSTERY_RULESET_ID,world_seed,death_event_id,species_id,str(row.reward_id)]
 		if _keyed_u31(key,"CHANCE")%1000>=int(row.chance_per_1000):continue
 		result.append({"reward_id":str(row.reward_id),
 			"reward_family":str(row.reward_family),"definition_id":str(row.definition_id),

@@ -1335,6 +1335,9 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true)->Dictiona
 	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
+	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
+	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
+		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id)
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
 		sim.world,sim.world.party_control_actor_id(),instance_id)
@@ -1748,7 +1751,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		if str(definition.use_kind)=="HEALING":
 			parts.append("회복 +%d"%ItemCatalogScript.healing_amount(str(item.definition_id)))
 		result["compact_stat_text"]=" · ".join(parts)
-	return result.duplicate(true)
+	return preload("res://sim/mystery_consumables.gd").decorate(sim.world,result).duplicate(true)
 
 
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
@@ -8121,7 +8124,7 @@ func _is_important_log_event(event)->bool:
 			"dungeon.anchor_portal_activated","dungeon.floor_entered",
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
-			"item.dropped","item.discarded","item.transferred","item.used","health.restored",
+			"item.dropped","item.discarded","item.transferred","item.used","item.identified","item.energy_restored","health.restored",
 			"party.ration_eaten","party.ration_missing","party.ration_changed",
 			"party.ration_starve_tick",
 			"progression.enemy_reward","opening.npc_discovered",
@@ -10106,7 +10109,9 @@ func _event_message(event) -> String:
 		"item.discarded":return "%s %s 영구히 폐기했다."%[_subject(actor),_object(_item_label_for_event(event))]
 		"item.transferred":return "%s %s에게 %s 건넸다."%[
 			_subject(actor),_object(target),_object(_item_label_for_event(event))]
-		"item.used":return "%s 회복 물약을 마셨다." % _subject(actor)
+		"item.used":return "%s %s 사용했다." % [_subject(actor),_object(_item_label_for_event(event))]
+		"item.identified":return "감정 · "+preload("res://sim/mystery_consumables.gd").label(sim.world,str(event.data.definition_id))
+		"item.energy_restored":return "%s MP를 %d 회복했다." % [_subject(target),int(event.magnitude)]
 		"health.restored":
 			if str(event.data.get("kind",""))=="TOWN_CLINIC":
 				return "%s 치유소에서 체력을 %d 회복했다."%[
@@ -10229,17 +10234,17 @@ func _item_label_for_event(event)->String:
 		var item=inventory.item(instance_id)
 		if item!=null:
 			var definition=ItemRegistryScript.definition(str(item.definition_id))
-			return str(definition.label) if definition!=null else "아이템"
+			return preload("res://sim/mystery_consumables.gd").label(sim.world,str(item.definition_id)) if definition!=null else "아이템"
 	for ground_row in sim.world.item_state.ground_items.rows:
 		if str(ground_row.item.instance_id)==instance_id:
 			var definition=ItemRegistryScript.definition(str(ground_row.item.definition_id))
-			return str(definition.label) if definition!=null else "아이템"
+			return preload("res://sim/mystery_consumables.gd").label(sim.world,str(ground_row.item.definition_id)) if definition!=null else "아이템"
 	for historical in sim.world.events:
 		if int(historical.id)>int(event.id):break
 		if str(historical.data.get("instance_id",""))!=instance_id:continue
 		var definition_id:=str(historical.data.get("definition_id",""))
 		var definition=ItemRegistryScript.definition(definition_id)
-		if definition!=null:return str(definition.label)
+		if definition!=null:return preload("res://sim/mystery_consumables.gd").label(sim.world,definition_id)
 	return "아이템"
 
 

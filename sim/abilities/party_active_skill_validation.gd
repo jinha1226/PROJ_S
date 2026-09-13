@@ -8,6 +8,7 @@ const RULESET_ID := "party-active-skills-v1"
 const TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
+	if event.type in ["item.identified","item.energy_restored"]:return preload("res://sim/mystery_consumables.gd").event_error(world,event)
 	if str(event.type).begins_with("ability.") and event.type!="ability.passive_triggered":return preload("res://sim/abilities/monster_ability_runtime.gd").event_error(world,event)
 	if event.type=="health.restored" and event.data.get("kind")=="MONSTER_ABILITY":return preload("res://sim/abilities/monster_ability_runtime.gd").heal_error(world,event)
 	if event.type=="ability.passive_triggered":return preload("res://sim/abilities/monster_passive_service.gd").event_error(world,event)
@@ -190,7 +191,7 @@ static func energy_history_error(world)->String:
 				var member_id:int=Int64.parse(wire,"refilled member")
 				if not projected.has(member_id):return "active_skill_actor_missing"
 				projected[member_id]=int(Registry.MAX_ENERGY)
-		elif event.type=="party.energy_recovered":
+		elif event.type in ["party.energy_recovered","item.energy_restored"]:
 			if not projected.has(event.actor_id):return "active_skill_actor_missing"
 			projected[event.actor_id]+=event.magnitude
 			if int(projected[event.actor_id])>Registry.MAX_ENERGY \

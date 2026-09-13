@@ -5653,7 +5653,7 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
-	if str(row.get("use_kind",""))=="HEALING":return true
+	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
 	return str(row.get("definition_id","")) in ["POTION_HEALING","POTION_UNSPECIFIED"]
@@ -5673,6 +5673,7 @@ func _item_row_text(row:Dictionary)->String:
 
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
+	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
 	var lines:Array[String]=[]
 	if str(row.get("category",""))=="WEAPON":
 		lines.append("공격력 %d · 명중 %d%% · 관통 %d · 사거리 %d-%d칸 · 공격시간 %d"%[
@@ -5693,6 +5694,7 @@ func _item_stats_text(row:Dictionary)->String:
 			if value!=0:parts.append("%s %s%d"%[str(entry[1]),"+" if value>0 else "",value])
 		if str(row.get("use_kind",""))=="HEALING":
 			parts.append("체력 +%d"%int(row.get("heal_amount",0)))
+		if str(row.get("use_kind",""))=="ENERGY":parts.append("MP +%d"%int(row.get("energy_amount",0)))
 		if str(row.get("definition_id",""))=="TORCH":
 			parts.append("연료 %d/%d"%[int(row.get("fuel_remaining",0)),int(row.get("fuel_capacity",0))])
 		lines.append("효과 없음" if parts.is_empty() else " · ".join(parts))
@@ -5701,6 +5703,8 @@ func _item_stats_text(row:Dictionary)->String:
 	return "\n".join(lines)
 
 func _item_description_text(row:Dictionary)->String:
+	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
+	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
 	match str(row.get("category","")):
 		"WEAPON":
 			var ammo:=str(row.get("ammo_kind","NONE"))
@@ -5808,7 +5812,7 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 		member_item_use_button.disabled=false
 		member_item_use_button.text="[소화]" if bool(row.get("torch_lit",false)) else "[점화]"
 	else:
-		member_item_use_button.text="사용"
+		member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -5976,7 +5980,7 @@ func _on_item_use_selected()->void:
 		member_item_popover_compare.visible=true
 		_position_item_popover();return
 	var healed:=int(result.get("healed_amount",0))
-	notice_text="회복 물약 사용 · HP +%d"%healed
+	notice_text=str(result.get("message","회복 물약 사용 · HP +%d"%healed))
 	action_feedback_text=notice_text
 	_hide_item_popover()
 	_record_result(result,true)

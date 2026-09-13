@@ -253,7 +253,9 @@ static func _healing_item(world,id:int)->String:
 	var inventory=world.item_state.inventory(id)
 	if inventory!=null:
 		for item in inventory.backpack:
-			if preload("res://sim/item_catalog_registry.gd").healing_amount(str(item.definition_id))>0 and item.quantity>0:
+			if preload("res://sim/item_catalog_registry.gd").healing_amount(str(item.definition_id))>0 and item.quantity>0 \
+					and str(item.definition_id).begins_with("POTION_") \
+					and preload("res://sim/mystery_consumables.gd").known(world,str(item.definition_id)):
 				return str(item.instance_id)
 	return ""
 

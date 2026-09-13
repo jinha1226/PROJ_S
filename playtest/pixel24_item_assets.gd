@@ -9,7 +9,7 @@ static func texture_for_id(value:String)->Texture2D:
 
 
 static func texture_for_row(row:Dictionary)->Texture2D:
-	for key in ["definition_id","resource_id","item_definition_id"]:
+	for key in ["visual_icon_key","definition_id","resource_id","item_definition_id"]:
 		if row.has(key):
 			var texture:=texture_for_id(str(row[key]))
 			if texture!=null:return texture
@@ -38,7 +38,7 @@ static func ground_icon_key(cell:Dictionary)->String:
 		var spec:=preload("res://playtest/ascii_visual_style.gd").item_presentation_spec(value)
 		if not bool(spec.visible):continue
 		if value is Dictionary:
-			for key in ["definition_id","resource_id","item_definition_id"]:
+			for key in ["visual_icon_key","definition_id","resource_id","item_definition_id"]:
 				var id:=str(value.get(key,"")).to_upper()
 				if texture_for_id(id)!=null:return id
 		match str(spec.kind):
