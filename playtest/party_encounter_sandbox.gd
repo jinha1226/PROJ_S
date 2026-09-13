@@ -2155,6 +2155,11 @@ func _refresh()->void:
 	if _scroll_log_after_refresh:
 		_scroll_log_after_refresh=false;call_deferred("_scroll_information_to_latest_log")
 	_flush_pending_visual_effects(status)
+	if find_child("SettlementMobileStage",true,false)!=null:
+		phase_panel.hide();event_surface.hide();log_label.hide()
+		root_layout.offset_left=0;root_layout.offset_right=0;root_layout.offset_top=0;root_layout.offset_bottom=0
+		info_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	else:info_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 
 func _decorate_visible_resource_caches(observation:Dictionary)->void:
 	# The session exposes cache authority only on observed cells. Reuse the
@@ -3482,13 +3487,8 @@ func _town_deck(status:Dictionary)->void:
 
 func _town_life_deck(_status:Dictionary)->void:
 	var life:Dictionary=session.town_life_overview()
-	if bool(life.get("frontier",false)) and town_facility_id!="HOUSE":
-		var frontier=preload("res://playtest/frontier_campaign_panel.gd").new()
-		frontier.session=session;frontier.name="FrontierCampaign"
-		frontier.facility_requested.connect(_on_town_facility_selected)
-		frontier.depart_requested.connect(_on_town_depart)
-		frontier.command_requested.connect(_on_town_life_command)
-		deck.add_child(frontier);return
+	if bool(life.get("frontier",false)) and town_facility_id in ["","BASE","HOUSE"]:
+		_town_base_panel();return
 	var widgets=preload("res://playtest/town_ui_widgets.gd")
 	if town_facility_id not in ["","BASE"]:
 		var back:=widgets.button(deck,"← 마을","TownLifeBack")
@@ -3545,6 +3545,14 @@ func _town_base_panel()->void:
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
 	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
+	panel.immersive=bool(session.town_life_overview().get("frontier",false))
+	panel.feedback_text=notice_text
+	panel.sheet_open=bool(town_ui_state.get("base_sheet_open",false))
+	panel.selected_resource=str(town_ui_state.get("base_resource","TIMBER"))
+	panel.resource_selected.connect(func(resource):town_ui_state["base_resource"]=resource)
+	panel.sheet_visibility_changed.connect(func(open):town_ui_state["base_sheet_open"]=open)
+	panel.menu_requested.connect(func():product_menu_button.get_popup().popup_centered(Vector2i(280,440)))
+	panel.expedition_requested.connect(_on_town_depart)
 	panel.section_tab=int(town_ui_state.get("base_section_tab",0))
 	panel.section_selected.connect(func(index):town_ui_state["base_section_tab"]=index)
 	panel.resident_assignment_requested.connect(func(entity_id,action):
@@ -3552,7 +3560,7 @@ func _town_base_panel()->void:
 		notice_text=str(result.get("message",""));_request_refresh())
 	panel.gathering_requested.connect(func(resource_id,enabled):
 		var result:Dictionary=session.base_work({"action":"GATHER_POLICY","resource_id":resource_id,"enabled":enabled})
-		notice_text=str(result.get("message",""));panel.update_work(session.base_overview()))
+		notice_text=str(result.get("message",""));panel.show_feedback(notice_text);panel.update_work(session.base_overview()))
 	panel.configure_camera(base_map_camera)
 	if session.has_method("base_build_assessment"):
 		panel.configure_build_assessment(Callable(session,"base_build_assessment"))
@@ -3564,7 +3572,7 @@ func _town_base_panel()->void:
 	panel.construction_confirm_requested.connect(_on_base_construction_confirmed.bind(panel))
 	panel.work_priority_requested.connect(func(entity_id:int,kind:String,priority:int):
 		var result:Dictionary=session.base_work({"action":"PRIORITY","entity_id":entity_id,"kind":kind,"priority":priority})
-		notice_text=str(result.get("message","")))
+		notice_text=str(result.get("message",""));panel.show_feedback(notice_text))
 	panel.work_cancel_requested.connect(func(job_id:int):
 		var op:Dictionary={"action":"CANCEL"}
 		if job_id>=0:op["job_id"]=job_id
@@ -3575,10 +3583,18 @@ func _town_base_panel()->void:
 		notice_text=str(result.get("message","작업할 수 없습니다."));_request_refresh())
 	panel.rest_requested.connect(_on_town_shrine_rest)
 	deck.add_child(panel);panel.present(session.base_overview(),false,selected_base_building_id)
+	if panel.immersive:
+		for route in [["FrontierExplore",1,"SURFACE_ENTRANCE"],["FrontierMine",2,"ANCHOR_PORTAL"]]:
+			var button=panel.find_child(str(route[0]),true,false)
+			var assessment:Dictionary=session.town_departure_assessment(int(route[1]),str(route[2]))
+			if button!=null:button.disabled=not bool(assessment.get("accepted",false));button.tooltip_text=str(assessment.get("message",""))
 
 
 func _on_base_building_selected(building_id:String)->void:
 	selected_base_building_id=building_id
+	var panel=find_child("TownBaseProgress",true,false)
+	if building_id=="GATE" and panel!=null and panel.immersive:
+		panel.select_section(4);return
 	if building_id in ["MARKET","ARMORY","GATE"]:
 		_on_base_service_requested(building_id)
 

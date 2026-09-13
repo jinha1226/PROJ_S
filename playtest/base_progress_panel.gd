@@ -16,6 +16,14 @@ signal gathering_requested(resource_id:String,enabled:bool)
 signal section_selected(index:int)
 signal resident_assignment_requested(entity_id:int,action:String)
 var section_tab:=0
+var immersive:=false
+var sheet_open:=false
+var selected_resource:="TIMBER"
+var feedback_text:=""
+signal resource_selected(resource_id:String)
+signal sheet_visibility_changed(open:bool)
+signal menu_requested
+signal expedition_requested(floor_index:int,route:String)
 
 const WorkLabels=preload("res://sim/settlement_work_rules.gd")
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
@@ -90,6 +98,7 @@ func _rebuild()->void:
 	settlement.building_selected.connect(_on_settlement_building_selected)
 	settlement.tile_pressed.connect(_on_placement_tile)
 	settlement.tile_dragged.connect(_on_placement_tile)
+	settlement.gathering_selected.connect(select_resource)
 	add_child(settlement);settlement.present(_overview,_selected_id)
 	settlement.set_placement_mode(_placement_active)
 	if _placement_active and not _placement_type.is_empty():
@@ -117,6 +126,13 @@ func _rebuild()->void:
 		for index in range(residents.size()):
 			if residents[index] is Dictionary:_add_resident(residents[index])
 	sections.append(_collect_section(start))
+	if immersive:
+		start=get_child_count()
+		_add_text("원정대에 편성한 주민과 함께 출발합니다.","SettlementExpeditionHint",FONT_SMALL,false)
+		for route in [[1,"SURFACE_ENTRANCE","변방 숲길","FrontierExplore"],[2,"ANCHOR_PORTAL","폐광","FrontierMine"]]:
+			var button:=_button(str(route[2]),str(route[3]));add_child(button)
+			button.pressed.connect(func():expedition_requested.emit(int(route[0]),str(route[1])))
+		sections.append(_collect_section(start))
 	_mount_sections(sections)
 	if _read_only:_add_return_action()
 
@@ -129,6 +145,8 @@ func _collect_section(start:int)->Array:
 
 
 func _mount_sections(sections:Array)->void:
+	if immersive:
+		preload("res://playtest/settlement_mobile_layout.gd").mount(self,sections);return
 	var bar:=HBoxContainer.new();bar.name="BaseSectionTabs";add_child(bar)
 	for i in range(sections.size()):
 		var button:=_button(["시설","채집","작업","주민"][i],"BaseSectionTab%d"%i)
@@ -145,16 +163,53 @@ func _mount_sections(sections:Array)->void:
 
 
 func select_section(index:int,notify:bool=true)->void:
-	section_tab=clampi(index,0,3)
-	for i in range(4):
+	section_tab=clampi(index,0,4 if immersive else 3)
+	if immersive and section_tab!=0 and _placement_active:_cancel_construction()
+	if immersive and notify:sheet_open=true;sheet_visibility_changed.emit(true)
+	for i in range(5 if immersive else 4):
 		var scroll:=find_child("BaseSectionScroll%d"%i,true,false)
 		if scroll!=null:scroll.visible=i==section_tab
 		var button:=find_child("BaseSectionTab%d"%i,true,false) as Button
-		if button!=null:button.set_pressed_no_signal(i==section_tab)
+		if button!=null:button.set_pressed_no_signal(i==section_tab or (immersive and i==1 and section_tab==2))
+	if immersive:
+		var sheet:=find_child("SettlementBottomSheet",true,false)
+		if sheet!=null:sheet.visible=sheet_open
+		var heading:=find_child("SettlementSheetTitle",true,false) as Label
+		if heading!=null:heading.text=[_building_label(_selected_id),{"TIMBER":"벌목 구역","STONE":"채석 구역","HERBS":"약초 구역"}.get(selected_resource,"주변 채집"),"진행 작업","주민 배정","원정 준비"][section_tab]
 	if notify:section_selected.emit(section_tab)
+	if immersive:update_work(_overview)
+
+func close_sheet()->void:
+	sheet_open=false;sheet_visibility_changed.emit(false)
+	if _placement_active:_cancel_construction()
+	var sheet:=find_child("SettlementBottomSheet",true,false)
+	if sheet!=null:sheet.hide()
+
+func show_feedback(text:String)->void:
+	feedback_text=text
+	var label:=find_child("SettlementFeedback",true,false) as Label
+	if label!=null:label.text=text;label.visible=not text.is_empty()
 
 
 func _add_gathering()->void:
+	if immersive:
+		var chips:=HBoxContainer.new();add_child(chips)
+		for resource in ["TIMBER","STONE","HERBS"]:
+			var chip:=_button(_resource_label(resource),"GatherResource"+resource);chip.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			chip.pressed.connect(func():select_resource(resource));chips.add_child(chip)
+		_add_text("","GatheringSelectionStatus",FONT_BODY,false)
+		for row in _overview.get("gathering",[]):
+			var toggle:=CheckButton.new();toggle.name="BaseGather"+str(row.resource_id);toggle.custom_minimum_size.y=_touch_target()
+			preload("res://playtest/settlement_mobile_layout.gd").style_button(toggle)
+			toggle.disabled=_read_only;toggle.button_pressed=bool(row.enabled);toggle.visible=str(row.resource_id)==selected_resource
+			toggle.text="채집 중 · 중지" if bool(row.enabled) else "채집 시작"
+			toggle.toggled.connect(func(enabled):gathering_requested.emit(str(row.resource_id),enabled));add_child(toggle)
+		var actions:=HBoxContainer.new();add_child(actions)
+		var assign:=_button("주민 배정","GatherAssign");assign.size_flags_horizontal=Control.SIZE_EXPAND_FILL;actions.add_child(assign)
+		assign.pressed.connect(func():select_section(3))
+		var jobs:=_button("진행 작업","GatherJobs");jobs.size_flags_horizontal=Control.SIZE_EXPAND_FILL;actions.add_child(jobs)
+		jobs.pressed.connect(func():select_section(2))
+		return
 	_add_text("주변 자원 · 채집 후 창고로 운반","BaseGatherHeading",FONT_BODY,true)
 	for row in _overview.get("gathering",[]):
 		var toggle:=CheckButton.new();toggle.name="BaseGather"+str(row.resource_id)
@@ -165,9 +220,14 @@ func _add_gathering()->void:
 		add_child(toggle)
 	_add_text("켜두면 잔류 주민이 반복 채집합니다. 끄면 다음 주문을 멈춥니다. 진행 중 작업은 작업 탭에서 취소할 수 있습니다.","BaseGatherHelp",FONT_SMALL,true)
 
+func select_resource(resource:String)->void:
+	selected_resource=resource;resource_selected.emit(resource)
+	select_section(1);update_work(_overview)
+
 
 func _on_settlement_building_selected(building_id:String)->void:
 	section_tab=0
+	if immersive:sheet_open=true;sheet_visibility_changed.emit(true)
 	_selected_id=building_id
 	building_selected.emit(building_id)
 	# The selected hit target is emitting this signal. Rebuild after its dispatch
@@ -272,12 +332,21 @@ func update_work(overview:Dictionary)->void:
 	# Keep active touch targets and camera alive during automatic work ticks.
 	_overview=overview.duplicate(true)
 	_sync_work_rows()
+	if immersive:preload("res://playtest/settlement_mobile_layout.gd").update(self)
 	for row in _overview.get("gathering",[]):
 		var toggle:=find_child("BaseGather"+str(row.resource_id),true,false) as CheckButton
 		if toggle!=null:
-			toggle.text="%s · 잔량 %d"%[row.label,int(row.remaining)]
+			toggle.text=("채집 중 · 중지" if bool(row.enabled) else "채집 시작") if immersive else "%s · 잔량 %d"%[row.label,int(row.remaining)]
+			if immersive:toggle.visible=str(row.resource_id)==selected_resource
 			toggle.set_pressed_no_signal(bool(row.enabled))
+		if immersive and str(row.resource_id)==selected_resource:
+			var status:=find_child("GatheringSelectionStatus",true,false) as Label
+			var workers:=0
+			for job in _overview.get("jobs",[]):
+				if str(job.get("resource_id",""))==selected_resource and int(job.worker_id)>=0:workers+=1
+			if status!=null:status.text="작업 중 %d명 · 잔량 %d"%[workers,int(row.remaining)]
 	var map:=find_child("BaseSettlementMap",true,false)
+	if map!=null and immersive:map.selected_resource=selected_resource if sheet_open and section_tab==1 else ""
 	if map!=null:map.present(_overview,_selected_id)
 	var progress:=find_child("BaseWorkProgress",true,false) as ProgressBar
 	if progress!=null:progress.value=float((_overview.get("work",{}) as Dictionary).get("progress",0))
@@ -594,6 +663,7 @@ func _button(text:String,node_name:String)->Button:
 	button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	button.custom_minimum_size=Vector2(72,_touch_target());button.add_theme_font_size_override("font_size",FONT_SMALL)
 	button.focus_mode=Control.FOCUS_ALL;DarkPixelSkin.apply_action_button(button,DarkPixelSkin.CYAN)
+	if immersive:preload("res://playtest/settlement_mobile_layout.gd").style_button(button)
 	return button
 
 

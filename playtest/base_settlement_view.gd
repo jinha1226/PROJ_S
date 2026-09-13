@@ -5,6 +5,8 @@ signal building_selected(id:String)
 signal resident_selected(id:int)
 signal tile_pressed(position:Vector2i)
 signal tile_dragged(position:Vector2i)
+signal gathering_selected(resource_id:String)
+var selected_resource:=""
 
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 const BuildingAssets=preload("res://playtest/pixel24_building_assets.gd")
@@ -47,6 +49,7 @@ var camera=preload("res://playtest/base_map_camera.gd").new()
 var _last_pointer:=Vector2.ZERO
 var minimum_map_height:=320
 var fit_map_height:=false
+var immersive_map:=false
 var resident_motion=preload("res://playtest/town_resident_motion.gd").new()
 var _ambient_elapsed:=0.0
 
@@ -163,6 +166,7 @@ func _sync_button_input()->void:
 
 
 func _draw()->void:
+	if immersive_map:draw_rect(Rect2(Vector2.ZERO,size),CLEARING)
 	var canvas:=Rect2(_map_origin(),Vector2(_grid_size())*_cell_size())
 	draw_rect(canvas,GROUND)
 	_draw_tile_grid(canvas)
@@ -174,6 +178,7 @@ func _draw()->void:
 		var tone:Color={"TIMBER":Color("73a760"),"STONE":Color("9eacb5"),"HERBS":Color("75b99b")}[str(site.resource_id)]
 		if int(site.remaining)<=0:tone=tone.darkened(0.6)
 		draw_circle(center,maxf(3,_cell_size()*0.3),tone)
+		if immersive_map and str(site.resource_id)==selected_resource:draw_rect(Rect2(center-Vector2.ONE*_cell_size()*0.5,Vector2.ONE*_cell_size()),SELECTED,false,2)
 	_draw_placement_ghost()
 
 
@@ -369,6 +374,10 @@ func _pan_map(position:Vector2)->void:
 
 
 func _select_building_at(pixel:Vector2)->void:
+	if immersive_map:
+		for site in _overview.get("gathering",[]):
+			var center:=_map_origin()+(Vector2(_vector2i(site.tile))+Vector2.ONE*0.5)*_cell_size()
+			if pixel.distance_to(center)<=maxf(24,_cell_size()*0.7):gathering_selected.emit(str(site.resource_id));return
 	# Public map only. Match the visible marker, not a large invisible area
 	# that would steal neighbouring building taps. Facility cards provide 48px access.
 	if fit_map_height:
@@ -401,13 +410,14 @@ func _grid_size()->Vector2i:
 
 func _cell_size()->float:
 	var grid:=_grid_size()
+	if immersive_map:return maxf(1.0,size.x)/float(grid.x)*camera.zoom
 	var available_height:=maxf(1.0,size.y) if fit_map_height else 320.0
 	return minf(maxf(1.0,size.x)/float(grid.x),available_height/float(grid.y))*camera.zoom
 
 
 func _map_origin()->Vector2:
 	var extent:=Vector2(_grid_size())*_cell_size()
-	return Vector2((size.x-extent.x)*0.5,0)+camera.pan
+	return Vector2((size.x-extent.x)*0.5,100 if immersive_map else 0)+camera.pan
 
 
 func _pixel_to_tile(pixel:Vector2)->Vector2i:

@@ -109,7 +109,12 @@ func base_overview()->Dictionary:
 		gathering.append({"resource_id":resource,"label":site.label,"tile":site.tile,
 			"remaining":local_rules.remaining(_session.sim.world,resource),
 			"enabled":bool(work_state.get("gathering",{}).get(resource,false))})
-	return {"enabled":true,"phase":phase,"stock":stock,"carried":carried,"gathering":gathering,
+	var food:=0
+	var inventory=_session.sim.world.item_state.inventory(int(state.protagonist_id))
+	if inventory!=null:
+		for item in inventory.backpack:
+			if str(item.definition_id)=="FOOD_RATION":food+=int(item.quantity)
+	return {"enabled":true,"phase":phase,"stock":stock,"carried":carried,"gathering":gathering,"food":food,
 		"private_home_owned":_session.private_home_available(),
 		"capacity":int(_session.BaseProgressionRulesScript.STORAGE_CAPACITY[int(levels.STORAGE)]),
 		"facilities":facilities,"residents":residents,"last_return":last_return,

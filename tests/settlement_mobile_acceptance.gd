@@ -26,6 +26,14 @@ func run()->void:
 		for i in range(4):await process_frame
 		check(panel.section_tab==1,"gather tab opens without reconstructing map")
 		check(map.get_instance_id()==identity,"tab preserves map")
+		var nav=panel.find_child("SettlementBottomNavigation",true,false)
+		check(nav!=null and nav.get_global_rect().end.y<=ui.get_viewport_rect().end.y,"navigation stays inside viewport")
+		var sheet=panel.find_child("SettlementBottomSheet",true,false)
+		panel.find_child("SettlementSheetClose",true,false).pressed.emit()
+		check(not sheet.visible,"close collapses bottom sheet")
+		map.gathering_selected.emit("TIMBER")
+		check(sheet.visible and panel.section_tab==1,"map resource selection opens matching sheet")
+		check(bool(panel.find_child("FrontierMine",true,false).disabled),"undiscovered mine stays locked")
 		var toggle=panel.find_child("BaseGatherTIMBER",true,false)
 		toggle.set_pressed_no_signal(true);toggle.toggled.emit(true)
 		check(bool(Rules.state(s.sim.world).get("gathering",{}).get("TIMBER",false)),"real UI enables gathering policy")
@@ -42,6 +50,11 @@ func run()->void:
 		for i in range(4):await process_frame
 		check(scroll.scroll_vertical>0,"resident details scroll independently")
 		check(map.get_instance_id()==identity,"scroll preserves map")
+		panel.select_section(4)
+		check(panel.find_child("FrontierExplore",true,false).is_visible_in_tree(),"expedition reachable from bottom navigation")
+		panel.find_child("SettlementMenu",true,false).pressed.emit()
+		check(ui.product_menu_button.get_popup().visible,"menu remains available without old HUD")
+		ui.product_menu_button.get_popup().hide()
 	ui.queue_free();await process_frame
 	print("SETTLEMENT_MOBILE ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)
