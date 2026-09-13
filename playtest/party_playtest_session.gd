@@ -3312,9 +3312,8 @@ func _base_clinic_cost()->int:
 
 
 func _base_lodge_recovery()->int:
-	var levels:=BaseProgressionRulesScript.facility_levels(
-		sim.world.events if sim!=null and sim.world!=null else [])
-	return int(BaseProgressionRulesScript.LODGE_STRESS_RECOVERY[int(levels.LODGE)])
+	var level:=int(preload("res://sim/settlement_work_rules.gd").index(sim.world).levels.LODGE) if sim!=null else 1
+	return int(BaseProgressionRulesScript.LODGE_STRESS_RECOVERY[level])
 
 
 func _town_expedition_index()->int:

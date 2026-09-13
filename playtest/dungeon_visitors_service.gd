@@ -198,6 +198,7 @@ static func interact(session,operation:Dictionary)->Dictionary:
 	var world=session.sim.world;var party=world.party_encounter
 	var rollback:Dictionary=session.sim.snapshot()
 	if rollback.is_empty():return {"accepted":false,"reason":"snapshot_unavailable"}
+	var settlement_tick_before:int=preload("res://sim/settlement_work_rules.gd").state(world).tick
 	var leader:int=world.party_control_actor_id();var ok:=true
 	var message:="서로 인사를 나눴습니다."
 	if action=="ACCEPT":
@@ -239,6 +240,9 @@ static func interact(session,operation:Dictionary)->Dictionary:
 			ok=_emit(world,"population.patrol",rows)!=null
 			message="도움을 받은 NPC가 동행을 제안합니다. [동행 수락]을 누르면 합류합니다."
 	party.revision+=1
+	if ok and int(preload("res://sim/settlement_work_rules.gd").state(world).tick)==settlement_tick_before:
+		var settlement_result:=preload("res://playtest/settlement_work_service.gd").expedition_advance(session,true)
+		ok=bool(settlement_result.accepted)
 	if not ok or not session.sim.world.world_state_error().is_empty():
 		session.sim=session.SimulatorScript.from_snapshot(rollback)
 		return {"accepted":false,"reason":"visitor_interaction_failed","message":"상호작용을 완료하지 못했습니다"}

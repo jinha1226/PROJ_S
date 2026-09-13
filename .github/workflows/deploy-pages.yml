@@ -43,6 +43,16 @@ jobs:
       - name: Import project and validate scripts
         run: ./godot --headless --path . --editor --quit
 
+      - name: Validate settlement workers and material reservations
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./godot --headless --path . --script tests/settlement_work_unit.gd 2>&1 | tee settlement-test.log
+          if grep -Eq 'SCRIPT ERROR:|^FAIL ' settlement-test.log; then
+            exit 1
+          fi
+
       - name: Inject Pages build ID
         shell: bash
         run: |

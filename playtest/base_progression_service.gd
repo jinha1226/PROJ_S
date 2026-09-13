@@ -31,8 +31,7 @@ func base_overview()->Dictionary:
 	var stock:Dictionary=work_rules.stock(_session.sim.world).available
 	var material_stock:Dictionary=work_rules.stock(_session.sim.world)
 	if bool(work_state.enabled):stock=material_stock.available
-	var carried:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
-		expedition_index,phase)
+	var carried:Dictionary=work_rules.index(_session.sim.world).gathered.get(str(expedition_index),{"TIMBER":0,"STONE":0,"HERBS":0}).duplicate() if phase=="DUNGEON" else {"TIMBER":0,"STONE":0,"HERBS":0}
 	var facilities:Array[Dictionary]=[]
 	var settlement:Dictionary=_session._base_settlement_service.overview()
 	var settlement_buildings:Array=settlement.get("buildings",[])
@@ -50,6 +49,9 @@ func base_overview()->Dictionary:
 		if bool(work_state.enabled):
 			can_upgrade=built and phase=="TOWN" and level<3
 			message="자원 부족 시 대기 주문" if can_upgrade else message
+		for job in jobs:
+			if str(job.action)=="UPGRADE" and str(job.type_id)==facility_id and not bool(job.cancel_requested):
+				can_upgrade=false;message="증축 주문이 이미 있습니다"
 		facilities.append({"id":facility_id,
 			"label":str(_session.BaseProgressionRulesScript.FACILITY_LABELS[facility_id]),
 			"level":level,"max_level":3,
@@ -95,8 +97,7 @@ func base_overview()->Dictionary:
 				"마을에서 판매할 수 있습니다" if phase!="TOWN" else "재고 없음"))})
 	var last_return:Dictionary={}
 	if phase=="TOWN" and expedition_index>0:
-		var banked:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
-			expedition_index,"DUNGEON")
+		var banked:Dictionary=work_rules.index(_session.sim.world).gathered.get(str(expedition_index),{"TIMBER":0,"STONE":0,"HERBS":0}).duplicate()
 		last_return={"expedition_index":expedition_index,
 			"reason":str(cycle.return_reason),"world_time":int(cycle.returned_at_world_time),
 			"banked":banked,"message":"원정 물자를 기지 창고에 보관했습니다."}

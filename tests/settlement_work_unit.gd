@@ -56,6 +56,17 @@ func run()->void:
 	party.member(resident).stress=650
 	ticks(s,70)
 	check(int(party.member(resident).stress)<600,"mandatory lodge rest independent of labor switches")
+	var rest_gold:int=s.town_gold()
+	var ordered_rest:Dictionary=s.base_work({"action":"REST","entity_id":resident})
+	check(ordered_rest.get("accepted",false),"rest before assignment")
+	ticks(s,1)
+	check(s.town_gold()==rest_gold-s.TOWN_SHRINE_COST,"rest fee reserved")
+	party.active_party_member_ids.append(resident)
+	check(Service.release_assigned(s).is_empty(),"release assigned resting resident")
+	check(Rules.state(world).jobs[str(ordered_rest.job_id)].state=="CANCELLED","resting worker departure cancels personal job")
+	check(s.town_gold()==rest_gold,"worker departure releases reserved rest gold")
+	check(not s.base_work({"action":"CANCEL","job_id":str(ordered_rest.job_id)}).get("accepted",false),"cancel cannot refund departure twice")
+	party.active_party_member_ids.erase(resident)
 	# Cancel after physical site delivery; refund must wait for return transport.
 	var next:Dictionary=s.base_work({"action":"PRODUCE","recipe_id":"HEALING_POTION"})
 	var id:=str(next.job_id)
@@ -63,6 +74,8 @@ func run()->void:
 		if Rules.state(world).jobs[id].material_location=="SITE":break
 		ticks(s,1)
 	check(Rules.state(world).jobs[id].material_location=="SITE","site delivered before production")
+	ticks(s,1)
+	check(Rules.state(world).jobs[id].state=="WORKING","site work begins only after delivery")
 	var before:Dictionary=Rules.stock(world).available
 	check(s.base_work({"action":"CANCEL","job_id":id}).get("accepted",false),"cancel site")
 	check(Rules.stock(world).available==before,"site cancel no instant refund")
@@ -83,6 +96,20 @@ func run()->void:
 	check(Rules.state(world).jobs[str(queued.job_id)].material_location=="RECOVERY","carried material stays recoverable")
 	if party.expedition_cycle.phase!="TOWN":s.base_return()
 	check(Rules.audit(Rules.state(world),Rules.stock(world)).is_empty(),"invariants after release")
+	if s.sim.world.party_encounter.expedition_cycle.phase=="TOWN":check(s.depart_town().get("accepted",false),"clock test departure")
+	var boundary_tick:int=Rules.state(s.sim.world).tick
+	check(Service.expedition_advance(s,true).get("accepted",false),"zero-time confirmed action")
+	check(int(Rules.state(s.sim.world).tick)==boundary_tick+1,"zero-time action advances once")
+	Service.expedition_advance(s)
+	check(int(Rules.state(s.sim.world).tick)==boundary_tick+1,"nested time boundary does not advance twice")
+	# Short duration is a controlled clock fixture, not a gameplay-policy change.
+	s.sim.world.party_encounter.expedition_cycle.closes_at_world_time=s.sim.world.world_time+100
+	var auto_before:int=Rules.state(s.sim.world).tick
+	var held:Dictionary=s.commit_field_action(preload("res://sim/party_action_command.gd").hold(s.sim.world.party_control_actor_id()))
+	check(held.get("accepted",false),"deadline action accepted "+str(held.get("reason","")))
+	check(s.sim.world.party_encounter.expedition_cycle.phase=="TOWN","deadline returns to shelter")
+	check(int(Rules.state(s.sim.world).tick)==auto_before+1,"deadline action still contributes one base tick")
+	check(int(Rules.state(s.sim.world).residents[str(hero)].job_id)==-1,"returning founder does not work during expedition tick")
 	await mobile(s)
 	print("SETTLEMENT_WORK_UNIT ","PASS" if errors.is_empty() else errors)
 	quit(0 if errors.is_empty() else 1)

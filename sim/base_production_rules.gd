@@ -25,15 +25,18 @@ static func overview(world,buildings:Array,stock:Dictionary,work:Dictionary)->Ar
 	for id in RECIPES:
 		var recipe:Dictionary=RECIPES[id]
 		var built:=preload("res://sim/base_settlement_rules.gd").type_built(buildings,recipe.facility_id)
+		var pending:=0
+		for job in preload("res://sim/settlement_work_rules.gd").active(preload("res://sim/settlement_work_rules.gd").index(world).state):
+			if str(job.get("recipe_id",""))==str(id) and not bool(job.get("cancel_requested",false)):pending+=1
 		var message:="제조 가능"
 		if not town:message="거점에서 제조할 수 있습니다"
 		elif not built:message="진료소를 먼저 건설하세요"
 		elif not work.is_empty():message="진행 중인 작업을 먼저 마치세요"
-		elif int(ready[id])>=int(recipe.stock_limit):message="완성품을 먼저 가져가세요"
+		elif int(ready[id])+pending>=int(recipe.stock_limit):message="진행 중 주문과 완성품이 보관 한도에 도달했습니다"
 		elif not preload("res://sim/base_progression_rules.gd").can_afford(stock,recipe.cost):
 			message="제조 가능" if preload("res://sim/settlement_work_rules.gd").index(world).state.enabled else "약초가 부족합니다"
 		result.append({"recipe_id":id,"label":recipe.label,"facility_id":recipe.facility_id,
-			"cost":recipe.cost.duplicate(),"quantity":recipe.quantity,"ready":ready[id],
+			"cost":recipe.cost.duplicate(),"quantity":recipe.quantity,"ready":ready[id],"pending":pending,
 			"stock_limit":recipe.stock_limit,"can_produce":message=="제조 가능",
 			"can_claim":town and int(ready[id])>0,"message":message})
 	return result

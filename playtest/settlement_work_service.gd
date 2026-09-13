@@ -20,13 +20,14 @@ static func reject(reason:String)->Dictionary:
 static func available(session,id:int)->bool:
 	var world=session.sim.world;var party=world.party_encounter
 	return id in session.company_member_ids() and Legacy.worker_available(session,id) \
-		and (party.expedition_cycle.phase=="TOWN" or id not in party.active_party_member_ids)
+		and ((party.expedition_cycle.phase=="TOWN" and not bool(world.get_meta("settlement_expedition_advance",false))) or id not in party.active_party_member_ids)
 
 static func needs_rest(world,id:int)->bool:
 	var member=world.party_encounter.member(id)
 	if member==null:return false
 	return int(member.stress)>=600 or int(member.emotion_state.intensity("FEAR"))>=600 \
-		or int(member.emotion_state.intensity("ANGER"))>=600 or int(member.emotion_state.intensity("SADNESS"))>=600
+		or int(member.emotion_state.intensity("ANGER"))>=600 or int(member.emotion_state.intensity("SADNESS"))>=600 \
+		or int(member.emotion_state.intensity("GUILT"))>=600
 
 static func sync_residents(session,value:Dictionary)->void:
 	var ids:Array=session.company_member_ids();ids.sort()
@@ -45,7 +46,20 @@ static func sync_residents(session,value:Dictionary)->void:
 		if available(session,int(resident.entity_id)):continue
 		if int(resident.job_id)<0:continue
 		var job:Dictionary=value.jobs[str(resident.job_id)]
-		release_worker(job,resident);value.schedule_revision=int(value.schedule_revision)+1
+		invalidate_worker(value,job,resident);value.schedule_revision=int(value.schedule_revision)+1
+
+	for job in Rules.active(value):
+		if str(job.action)!="REST" or int(job.worker_id)>=0 or available(session,int(job.target_worker)):continue
+		job.state="CANCELLED";job.cancel_requested=true;job.blocked_reason=""
+		if not value.has("gold_releases"):value["gold_releases"]=[]
+		value.gold_releases.append(int(job.job_id));value.schedule_revision=int(value.schedule_revision)+1
+
+static func invalidate_worker(value:Dictionary,job:Dictionary,resident:Dictionary)->void:
+	release_worker(job,resident)
+	if str(job.action)=="REST":
+		job.state="CANCELLED";job.cancel_requested=true;job.blocked_reason=""
+		if not value.has("gold_releases"):value["gold_releases"]=[]
+		value.gold_releases.append(int(job.job_id))
 
 static func release_worker(job:Dictionary,resident:Dictionary)->void:
 	if str(job.material_location)=="CARRIED":
@@ -211,6 +225,10 @@ static func changed_row(before:Dictionary,after:Dictionary,id_field:String)->Dic
 	return patch
 
 static func persist(world,before:Dictionary,value:Dictionary)->String:
+	for id in value.get("gold_releases",[]):
+		var job:Dictionary=value.jobs[str(id)]
+		var released=world.emit_event("base.rest_payment_released",int(job.target_worker),-1,world.party_encounter.group_anchor,int(job.gold_cost),int(job.order_id),{"gold_cost":int(job.gold_cost)})
+		if released==null:return "settlement_rest_release_failed"
 	var error:=Rules.audit(value,Rules.stock(world,value))
 	if not error.is_empty():return error
 	var delta:Dictionary={"enabled":value.enabled,"tick":value.tick,"next_job_id":value.next_job_id,
@@ -295,7 +313,7 @@ static func assign(session,value:Dictionary,resident:Dictionary)->void:
 		path=Rules.route(resident.tile,site,footprint,Rules.obstacles(world,value),[],occupied)
 		if path.is_empty():job.state="BLOCKED";job.blocked_reason="path_or_slot_missing";continue
 		best=job;best.facility_slot=facility_key
-		if str(best.stage) not in ["HAUL","RETURN"] and str(best.material_location)!="RECOVERY":best.slot=path[-1].duplicate()
+		best.slot=path[-1].duplicate()
 		break
 	if best.is_empty():return
 	best.worker_id=int(resident.entity_id);resident.job_id=int(best.job_id);value.schedule_revision=int(value.schedule_revision)+1
@@ -362,14 +380,17 @@ static func advance_state(session,value:Dictionary)->Dictionary:
 				value.schedule_revision=int(value.schedule_revision)+1
 				job.material_location="SITE";job.material_tile=job.tile_origin.duplicate()
 				job.stage="BUILD" if str(job.action)=="UPGRADE" else str(job.action)
-				job.state="QUEUED";job.worker_id=-1;resident.job_id=-1;continue
+				job.state="QUEUED";job.worker_id=-1;job.slot=[];job.facility_slot="";resident.job_id=-1;continue
 			else:job.state="WORKING";continue
 			var site:Array=job.tile_origin;var footprint:Array=job.footprint
 			if str(job.stage)=="RETURN":
 				var store:=storage(world);site=store.tile_origin;footprint=store.footprint
-			var path:=Rules.route(resident.tile,site,footprint,Rules.obstacles(world,value),[],occupied_tiles(session,value,int(resident.entity_id)))
+			var occupied:=occupied_tiles(session,value,int(resident.entity_id))
+			for other in Rules.active(value):
+				if int(other.job_id)!=int(job.job_id) and not other.slot.is_empty():occupied.append(other.slot)
+			var path:=Rules.route(resident.tile,site,footprint,Rules.obstacles(world,value),[],occupied)
 			if path.is_empty():release_worker(job,resident);job.blocked_reason="path_missing";continue
-			job.route=path;job.route_cursor=0;job.material_tile=resident.tile.duplicate();continue
+			job.route=path;job.route_cursor=0;job.slot=path[-1].duplicate();job.material_tile=resident.tile.duplicate();continue
 		if str(job.state)!="WORKING":continue
 		job.progress=int(job.progress)+1
 		if int(job.progress)<int(job.required):continue
@@ -397,13 +418,18 @@ static func complete(session,job:Dictionary)->Dictionary:
 	return {"accepted":true}
 
 # Called inside the owning expedition transaction; no separate journal row.
-static func expedition_advance(session)->Dictionary:
+static func expedition_advance(session,force:bool=false)->Dictionary:
 	var world=session.sim.world;var before:=Rules.state(world)
-	if not bool(before.enabled) or world.party_encounter.expedition_cycle.phase!="DUNGEON":return {"accepted":true}
-	if int(before.last_step)==int(world.step_index) and int(before.last_time)==int(world.world_time):return {"accepted":true}
+	if not bool(before.enabled):return {"accepted":true}
+	var cycle=world.party_encounter.expedition_cycle
+	var returning_action:bool=str(cycle.return_reason)=="TIME_LIMIT" and int(cycle.returned_at_world_time)==int(world.world_time)
+	if cycle.phase!="DUNGEON" and not returning_action:return {"accepted":true}
+	if not force and int(before.last_step)==int(world.step_index) and int(before.last_time)==int(world.world_time):return {"accepted":true}
 	var value:=before.duplicate(true)
 	value.last_step=int(world.step_index);value.last_time=int(world.world_time)
+	world.set_meta("settlement_expedition_advance",true)
 	var result:=advance_state(session,value)
+	world.remove_meta("settlement_expedition_advance")
 	if not bool(result.accepted):return result
 	var error:=persist(world,before,value)
 	return {"accepted":error.is_empty(),"reason":error}
@@ -415,5 +441,5 @@ static func release_assigned(session)->String:
 	value.last_step=int(world.step_index);value.last_time=int(world.world_time)
 	for resident in value.residents.values():
 		if int(resident.entity_id) not in world.party_encounter.active_party_member_ids or int(resident.job_id)<0:continue
-		release_worker(value.jobs[str(resident.job_id)],resident);value.schedule_revision=int(value.schedule_revision)+1
+		invalidate_worker(value,value.jobs[str(resident.job_id)],resident);value.schedule_revision=int(value.schedule_revision)+1
 	return persist(world,before,value)

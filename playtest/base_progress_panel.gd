@@ -170,8 +170,8 @@ func _add_production()->void:
 	for recipe in _overview.get("production",[]):
 		if str(recipe.facility_id)!=_selected_id:continue
 		_add_section_heading("제조 · %s"%str(recipe.label),"BaseProductionHeading")
-		_add_text("비용 %s · 완성품 %d/%d"%[_resource_text(recipe.cost),int(recipe.ready),
-			int(recipe.stock_limit)],"BaseProductionStock",FONT_SMALL,true)
+		_add_text("비용 %s · 완성품 %d/%d · 주문 %d"%[_resource_text(recipe.cost),int(recipe.ready),
+			int(recipe.stock_limit),int(recipe.get("pending",0))],"BaseProductionStock",FONT_SMALL,true)
 		var buttons:=HBoxContainer.new();buttons.add_theme_constant_override("separation",4);add_child(buttons)
 		var produce:=_button("1개 제조","BaseProduce%s"%str(recipe.recipe_id))
 		produce.disabled=_read_only or not bool(recipe.can_produce)
