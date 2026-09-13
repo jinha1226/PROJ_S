@@ -25,6 +25,7 @@ const STYLES := {
 const MAX_PER_BATCH := 24
 
 static func kind(event) -> String:
+	if event.type=="ability.passive_triggered" and event.data.get("ability_id")=="FIREBOLT":return "ENV_IGNITE"
 	if event.type=="environment.explosion_wave" and event.data.get("kind")=="rupture":
 		return "ENV_RUPTURE"
 	if event.magnitude<=0 and event.type!="environment.fire_burned_out":return ""

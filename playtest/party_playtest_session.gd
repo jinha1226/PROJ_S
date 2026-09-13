@@ -2676,6 +2676,7 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 		if slot_index<member.bound_ability_ids.size():
 			var ability_id:=str(member.bound_ability_ids[slot_index])
 			var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
+			preview["mode"]="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
 			preview.merge({"slot_index":slot_index,"state":"BOUND",
 				"unlock_level":slot_index+1,"removable":false},true)
 			rows.append(preview)
@@ -2789,6 +2790,34 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 		"actor_id":actor_id,"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id),"slot_index":int(assessment.slot_index),
 		"bindings":ability_binding_rows(actor_id)})
+
+
+func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
+	var state=sim.world.party_encounter
+	var member=state.member(actor_id)
+	if member==null or actor_id not in state.party_member_ids or ability_id not in member.bound_ability_ids \
+			or not AbilityBindingRulesScript.dual_mode(ability_id) or mode not in ["PASSIVE","ACTIVE"]:
+		return _rejection_dto("invalid_ability_mode")
+	if member.presence in ["DEFEATED","EXILED","RECRUITABLE"] or not sim.world.combatant_states.has(actor_id) \
+			or sim.world.combatant_states[actor_id].life_state!="ACTIVE":return _rejection_dto("ability_binding_actor_unavailable")
+	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or not sim.world.is_settled() \
+			or preload("res://sim/field_turn_rules.gd").active(sim.world):return _rejection_dto("ability_binding_unsafe_phase")
+	var old_mode:="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
+	if mode==old_mode:return _feedback_dto({"accepted":true,"reason":"ok","ability_id":ability_id,"mode":mode})
+	var rollback:Variant=sim.snapshot()
+	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
+	if mode=="PASSIVE":member.passive_ability_ids.append(ability_id);member.passive_ability_ids.sort()
+	else:member.passive_ability_ids.erase(ability_id)
+	var event=sim.world.emit_event("party.ability_mode_changed",actor_id,actor_id,sim.world.entities[actor_id].position,0,-1,
+		{"schema_version":1,"ability_id":ability_id,"mode":mode})
+	state.revision+=1
+	var error:String=sim.world.world_state_error()
+	if event==null or not error.is_empty():
+		_restore_town_rollback(rollback)
+		return _rejection_dto(error if not error.is_empty() else "ability_mode_event_failed")
+	command_journal.append({"kind":"ability","operation":{"action":"MODE","actor_id":str(actor_id),"ability_id":ability_id,"instance_id":mode}})
+	return _feedback_dto({"accepted":true,"reason":"ok","ability_id":ability_id,"mode":mode})
 
 
 func ability_removal_assessment(actor_id:int,slot_index:int)->Dictionary:
@@ -8525,7 +8554,8 @@ func load_session_json(encoded: String) -> Dictionary:
 					"TORCH_EXTINGUISH":replay_result=replay.extinguish_torch(str(item_operation.instance_id))
 			"ability":
 				var ability_operation:Dictionary=row.operation
-				replay_result=replay.bind_ability_item(
+				if ability_operation.action=="MODE":replay_result=replay.set_ability_mode(Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),str(ability_operation.ability_id),str(ability_operation.instance_id))
+				else:replay_result=replay.bind_ability_item(
 					Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),
 					str(ability_operation.instance_id))
 				if bool(replay_result.get("accepted",false)) and str(replay_result.get("ability_id",""))!=str(ability_operation.ability_id):
@@ -8905,10 +8935,11 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_ability_journal"
 				var ability_keys:Array=row.operation.keys();ability_keys.sort()
+				if row.operation.get("action")=="MODE" and row.operation.get("instance_id") not in ["PASSIVE","ACTIVE"]:return "invalid_ability_journal"
 				var ability_id:=AbilityBindingRulesScript.canonical_id(
 					str(row.operation.get("ability_id","")))
 				if ability_keys!=["ability_id","action","actor_id","instance_id"] \
-						or row.operation.action!="BIND" \
+						or row.operation.action not in ["BIND","MODE"] \
 						or not Int64CodecScript.is_canonical(row.operation.actor_id) \
 						or Int64CodecScript.parse(row.operation.actor_id,"ability actor")<=0 \
 						or not row.operation.instance_id is String \

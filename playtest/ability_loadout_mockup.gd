@@ -20,6 +20,7 @@ var pending_instance_id:=""
 var detail_title:Label
 var mode_rows:VBoxContainer
 var selected_item:=""
+var mode_action:Callable=Callable()
 
 func _ready()->void:
 	name="AbilityLoadout"
@@ -86,7 +87,7 @@ func _select_item(instance_id:String)->void:
 	selected_item=instance_id;_refresh_detail()
 
 func _refresh_detail()->void:
-	for child in mode_rows.get_children():child.free()
+	for child in mode_rows.get_children():mode_rows.remove_child(child);child.queue_free()
 	var row:Dictionary=binding_rows[selected_slot] if selected_slot<binding_rows.size() else {}
 	for item in item_rows:
 		if str(item.instance_id)==selected_item:row=item.get("effect_preview",{});break
@@ -96,10 +97,25 @@ func _refresh_detail()->void:
 		var empty:=Label.new();empty.text="정수를 선택해 효과를 확인하세요."
 		empty.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;empty.add_theme_font_size_override("font_size",12);mode_rows.add_child(empty);return
 	var planned:bool=bool(row.get("planned",false))
-	_mode("패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),false)
+	var dual:bool=bool(row.get("dual_mode",false))
+	_mode("패시브" if dual else "패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),dual and str(row.get("mode","ACTIVE"))=="PASSIVE")
 	var effect:=str(row.get("active",""))
 	if effect.is_empty():effect="기본 위력 %d · 기력 %d · 사거리 %d"%[int(row.get("power",0)),int(row.get("cost",0)),int(row.get("range",0))]
-	_mode("액티브 · 미구현" if planned else "액티브",effect,not planned)
+	_mode("액티브 · 미구현" if planned else "액티브",effect,not planned and str(row.get("mode","ACTIVE"))=="ACTIVE")
+	if dual and selected_item.is_empty() and row.get("state")=="BOUND":
+		var choices:=HBoxContainer.new();mode_rows.add_child(choices)
+		for mode in ["PASSIVE","ACTIVE"]:
+			var button:=Button.new();button.name="AbilityMode"+mode
+			button.text="패시브 사용" if mode=="PASSIVE" else "액티브 사용"
+			button.custom_minimum_size.y=48;button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			button.toggle_mode=true;button.button_pressed=str(row.get("mode","ACTIVE"))==mode
+			button.disabled=not mode_action.is_valid()
+			button.pressed.connect(func():
+				var result:Dictionary=mode_action.call(str(row.ability_id),mode)
+				feedback.text=str(result.get("message","모드를 변경했습니다."));feedback.visible=true
+				if result.get("accepted",false):row["mode"]=mode
+				_refresh_detail())
+			choices.add_child(button)
 
 func _mode(title:String,effect:String,active:bool)->void:
 	var card:=PanelContainer.new();card.custom_minimum_size.y=56

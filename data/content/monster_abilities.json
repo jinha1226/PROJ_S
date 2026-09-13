@@ -71,7 +71,7 @@
       "essence_id": "ESSENCE_FIRE_BOLT",
       "passive": "적중 시 화염 추가 피해",
       "active": "화염탄",
-      "effect_status": "PLANNED_DUAL_MODE"
+      "effect_status": "IMPLEMENTED_DUAL_MODE"
     },
     {
       "species_id": "frost_spider",

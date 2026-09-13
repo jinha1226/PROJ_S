@@ -8,6 +8,7 @@ const RULESET_ID := "party-active-skills-v1"
 const TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
+	if event.type=="ability.passive_triggered":return preload("res://sim/abilities/monster_passive_service.gd").event_error(world,event)
 	match str(event.type):
 		"action.skill": return _action_error(world,event)
 		"party.actor_command_issued": return _command_error(world,event)

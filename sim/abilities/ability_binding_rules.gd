@@ -11,6 +11,9 @@ const ALIASES := {
 }
 const ActiveSkillRegistryScript = preload("res://sim/abilities/active_skill_registry.gd")
 
+static func dual_mode(id:String)->bool:
+	return canonical_id(id)=="FIREBOLT"
+
 
 static func canonical_id(ability_id: String) -> String:
 	var value := str(ability_id)
@@ -57,7 +60,11 @@ static func effect_preview(ability_id: String) -> Dictionary:
 	var row := definition(canonical)
 	if row.is_empty():
 		return {}
-	return {"ability_id": canonical, "label": str(row.get("name", canonical)),
+	var preview:Dictionary={"ability_id": canonical, "label": str(row.get("name", canonical)),
 		"kind": "ACTIVE", "cost": int(row.get("cost", 0)),
 		"range": int(row.get("range", 0)), "effect": str(row.get("effect", "")),
-		"power": int(row.get("power", 0))}.duplicate(true)
+		"power": int(row.get("power", 0)),"dual_mode":dual_mode(canonical)}
+	if dual_mode(canonical):
+		preview.passive="일반 공격 적중 시 기본 화염 피해 6 추가 · 추가 MP 소모 없음"
+		preview.active="화염탄 · 기본 위력 32 · MP 3 · 사거리 5"
+	return preview

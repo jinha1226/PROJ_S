@@ -27,6 +27,7 @@ var memory_state
 var skill_loadout_id: String
 var energy: int
 var bound_ability_ids:Array[String]=[]
+var passive_ability_ids:Array[String]=[]
 const DEFAULT_ACTION_SPEEDS:={"MOVE":100,"ATTACK":100,"CAST":100}
 var action_speeds:Dictionary=DEFAULT_ACTION_SPEEDS.duplicate()
 var max_energy: int:
@@ -53,7 +54,7 @@ func active_skill_ids() -> Array:
 	# Role kits were prototype grants, not acquired monster abilities.
 	var skills:Array=[]
 	for ability_id in bound_ability_ids:
-		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills:
+		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills and ability_id not in passive_ability_ids:
 			skills.append(ability_id)
 	return skills
 
@@ -78,6 +79,7 @@ func to_dict(include_emotion_state: bool = true,
 		row["energy"] = energy
 	if include_ability_bindings:
 		row["bound_ability_ids"] = bound_ability_ids.duplicate()
+		if not passive_ability_ids.is_empty():row["passive_ability_ids"]=passive_ability_ids.duplicate()
 	if action_speeds!=DEFAULT_ACTION_SPEEDS:row["action_speeds"]=action_speeds.duplicate()
 	return row
 
@@ -104,6 +106,7 @@ static func from_dict(row: Dictionary):
 		"VANGUARD_V1" if state.role=="PROTAGONIST" else "SUPPORT_V1"))
 	state.energy=int(row.get("energy",DEFAULT_MAX_ENERGY))
 	state.bound_ability_ids.clear()
+	for ability_id in row.get("passive_ability_ids",[]):state.passive_ability_ids.append(str(ability_id))
 	for ability_id in row.get("bound_ability_ids",[]):
 		state.bound_ability_ids.append(AbilityBindingRulesScript.canonical_id(str(ability_id)))
 	state.action_speeds=row.get("action_speeds",DEFAULT_ACTION_SPEEDS).duplicate()
@@ -128,6 +131,13 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		expected.append_array(["energy","skill_loadout_id"])
 	if require_ability_bindings:
 		expected.append("bound_ability_ids")
+	if row.has("passive_ability_ids"):
+		expected.append("passive_ability_ids")
+		if not row.passive_ability_ids is Array:return "invalid_passive_abilities"
+		var previous:=""
+		for id in row.passive_ability_ids:
+			if not id is String or id<=previous or id not in row.get("bound_ability_ids",[]) or not AbilityBindingRulesScript.dual_mode(id):return "invalid_passive_abilities"
+			previous=id
 	if row.has("action_speeds"):
 		expected.append("action_speeds")
 		if not row.action_speeds is Dictionary:return "invalid_action_speeds"

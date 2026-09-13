@@ -2036,9 +2036,24 @@ func _ability_binding_history_error() -> String:
 		return ""
 	var expected:Dictionary={}
 	var seen_items:Dictionary={}
+	var passive:Dictionary={}
 	for member_id in party_encounter.party_member_ids:
 		expected[int(member_id)]=[]
+		passive[int(member_id)]=[]
 	for event in events:
+		if event.type=="party.ability_mode_changed":
+			var keys:Array=event.data.keys();keys.sort()
+			var id:String=str(event.data.get("ability_id",""))
+			var mode:String=str(event.data.get("mode",""))
+			if keys!=["ability_id","mode","schema_version"] or event.data.get("schema_version")!=1 \
+					or event.actor_id!=event.target_id or event.cause_id!=-1 or event.magnitude!=0 \
+					or not expected.has(event.actor_id) or id not in expected[event.actor_id] \
+					or not AbilityBindingRulesScript.dual_mode(id) or mode not in ["ACTIVE","PASSIVE"]:
+				return "ability_mode_event_invalid"
+			if (id in passive[event.actor_id])==(mode=="PASSIVE"):return "ability_mode_transition_invalid"
+			if mode=="PASSIVE":passive[event.actor_id].append(id)
+			else:passive[event.actor_id].erase(id)
+			continue
 		if event.type!="party.ability_bound":continue
 		var keys:Array=event.data.keys();keys.sort()
 		if keys!=["ability_id","instance_id","ruleset_id","schema_version","slot_index"] \
@@ -2067,6 +2082,8 @@ func _ability_binding_history_error() -> String:
 		var member=party_encounter.member(int(member_id))
 		if member==null or projected!=member.bound_ability_ids:
 			return "ability_binding_projection_mismatch"
+		passive[member_id].sort()
+		if passive[member_id]!=member.passive_ability_ids:return "ability_mode_projection_mismatch"
 	return ""
 
 
@@ -3886,6 +3903,12 @@ func _canonical_typed_damage_event_error(event) -> String:
 	if event.magnitude > requested_damage:
 		return "canonical_typed_damage_applied_exceeds_requested"
 	var source=event_by_id(event.cause_id)
+	if source!=null and source.type=="ability.passive_triggered" and damage_type=="fire" \
+			and preload("res://sim/abilities/monster_passive_service.gd").event_error(self,source,true).is_empty() \
+			and source.target_id==event.target_id and source.position==event.position \
+			and source.step_index==event.step_index and source.world_time==event.world_time \
+			and int(source.data.get("damage",0))==requested_damage:
+		return ""
 	if source!=null and source.type=="action.skill" \
 			and source.data.get("ruleset_id")=="party-active-skills-v1" \
 			and source.data.get("skill_id")=="FIREBOLT" and damage_type=="fire" \

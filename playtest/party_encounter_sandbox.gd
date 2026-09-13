@@ -5201,6 +5201,10 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	member_detail_entity_id=member_id
+	member_ability_window.mode_action=func(ability_id:String,mode:String)->Dictionary:
+		var result:Dictionary=session.set_ability_mode(member_id,ability_id,mode)
+		if result.get("accepted",false):_request_refresh()
+		return result
 	member_ability_window.configure(member_id,session.ability_binding_rows(member_id),
 		session.ability_binding_item_rows(member_id),
 		Callable(self,"_bind_member_ability").bind(member_id))
