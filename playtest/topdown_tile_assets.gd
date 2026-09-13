@@ -8,21 +8,8 @@ const TERRAIN={"floor":["floor_1","floor_2","floor_3","floor_5"],
 	"stone_floor":["floor_1","floor_2"],"wood_floor":["floor_7"],
 	"metal":["floor_spikes_anim_f0"],"rubble":["floor_4","floor_8"],
 	"shallow_water":["floor_1"],"wall":["wall_mid"]}
-static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int,neighbors:Dictionary={})->Dictionary:
-	var visibility:=str(cell.get("visibility_state","UNSEEN")).to_upper()
-	if visibility=="UNSEEN":return {"visible":false,"texture":null,"region":Rect2(),
-		"floor_index":floor_index,"tile_index":-1,"visibility_state":visibility,
-		"changes_mapping":false,"changes_fov":false,"draw_image":false}
-	var terrain:=str(cell.get("terrain_id","floor"))
-	var choices:Array=TERRAIN.get(terrain,TERRAIN.floor)
-	var key:String=choices[_variant_index(position,floor_index,choices.size())]
-	if terrain=="wall":key=_wall_key(neighbors)
-	var region:Rect2=PackAssets.RECTS[key]
-	return {"visible":true,"texture":PackAssets.ATLAS,"region":region,"is_wall":terrain=="wall",
-		"asset_family":"0X72_DUNGEON_II","sprite_key":key,"floor_index":floor_index,
-		"tile_index":int(region.position.y/16)*32+int(region.position.x/16),
-		"tint":Color(0.4,0.85,1.0) if terrain=="shallow_water" else Color.WHITE,
-		"visibility_state":visibility,"changes_mapping":false,"changes_fov":false,"draw_image":true}
+static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int,_neighbors:Dictionary={})->Dictionary:
+	return preload("res://playtest/dcss_world_assets.gd").tile_spec(cell,position,floor_index)
 
 static func _known_floor(neighbors:Dictionary,side:String)->bool:
 	var row:Dictionary=neighbors.get(side,{})

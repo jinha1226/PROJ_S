@@ -51,7 +51,7 @@ const TOUCH_TARGET:=44
 # to the dungeon camera instead of reserving a square map plus dead flex space.
 const PRODUCT_TOP_HUD_HEIGHT:=76
 # Three Korean-font baselines plus dark panel padding.
-const PRODUCT_EVENT_HEIGHT:=66
+const PRODUCT_EVENT_HEIGHT:=84
 const PRODUCT_PARTY_CARD_HEIGHT:=84
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
@@ -1036,7 +1036,7 @@ func _build_ui()->void:
 	var info:=VBoxContainer.new(); info.name="InformationStack"; info.size_flags_horizontal=Control.SIZE_EXPAND_FILL; info.add_theme_constant_override("separation",6); info_scroll.add_child(info)
 	deck=VBoxContainer.new(); deck.name="ContextDeck"; deck.add_theme_constant_override("separation",2); info.add_child(deck)
 	log_label=Label.new(); log_label.name="NarrativeLog"; log_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=44
+	log_label.add_theme_font_size_override("font_size",16); log_label.custom_minimum_size.y=66
 	log_label.max_lines_visible=3;log_label.clip_text=true;info.add_child(log_label)
 	event_surface=PanelContainer.new();event_surface.name="EventSurface";event_surface.visible=false
 	DarkPixelSkinScript.apply_panel(event_surface,"COMPACT")
@@ -1047,8 +1047,8 @@ func _build_ui()->void:
 	event_surface.add_child(event_margin)
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	# Reserve three complete Korean-font baselines, including panel padding.
-	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=3
-	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=54
+	event_label.add_theme_font_size_override("font_size",16);event_label.max_lines_visible=3
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=72
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)

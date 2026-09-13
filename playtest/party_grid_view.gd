@@ -3177,7 +3177,7 @@ func _observed_tile_spec(row:Dictionary,position:Vector2i)->Dictionary:
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
-	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
+	if str(spec.get("asset_family","")) in ["0X72_DUNGEON_II","DCSS_CC0"]:
 		var tint:Color=spec.get("tint",Color.WHITE)
 		if str(spec.visibility_state)!="VISIBLE":tint*=Color(0.30,0.32,0.35,0.55)
 		draw_texture_rect_region(texture,rect.grow(0.2),spec.region,tint)

@@ -25,7 +25,8 @@ static func enter(session,layout:Dictionary)->bool:
 	for cache in session._base_progression_service._base_cache_rows():
 		var p:Array=cache.position
 		seeds.append(Vector2i(int(p[0]),int(p[1]))+Vector2i(2,0))
-	for index in range(mini(Rules.FLOOR_COUNT,candidates.size())):
+	var visitor_limit:=3 if str(layout.get("floor_ruleset_id",""))=="four-zone-mobile-v1" else Rules.FLOOR_COUNT
+	for index in range(mini(visitor_limit,candidates.size())):
 		var seed:Vector2i=seeds[index%seeds.size()]
 		var chosen:=Vector2i(-1,-1)
 		for radius in range(0,9):
@@ -65,15 +66,16 @@ static func enter(session,layout:Dictionary)->bool:
 				row["goals"]=_exploration_goals(world,layout,chosen,index)
 			row.activity=preload("res://sim/systems/independent_explorer_system.gd").LABELS[row.state]
 			row.needs_supplies=index==2
-			if frontier and "frontier_survivor" in entity.tags:
+			if (frontier and "frontier_survivor" in entity.tags) or (index==0 and int(party.expedition_cycle.floor_index)==1 and str(layout.get("floor_ruleset_id",""))=="four-zone-mobile-v1"):
 				row.state="REST";row.rest_until=world.world_time+12000;row.needs_supplies=true
 				row.activity="식량을 기다리는 생존자"
+				if "first_companion_candidate" not in entity.tags:entity.tags.append("first_companion_candidate")
 			var inventory=world.item_state.inventory(id)
 			if inventory==null:return false
 			if inventory.equipped_item("MAIN_HAND")==null:
 				var grant:Dictionary=Items.commit_grant(world,id,"WEAPON_SHORT_SWORD",1,chosen,"INDEPENDENT_EXPEDITION")
 				if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
-			if index!=2 and "frontier_survivor" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
+			if index!=2 and "frontier_survivor" not in entity.tags and "first_companion_candidate" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
 				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
 

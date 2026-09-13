@@ -56,6 +56,9 @@ static func process_tick(sim,step_index:int)->bool:
 			"grievance":grievance,"can_attack":weapon!=null and int(weapon.range_min)<=1 \
 				and Items.attack_error(world,id).is_empty()},row,world.world_time)
 		var mode:String=decision.mode
+		# The first recruit waits for aid, but can still react to nearby danger.
+		if "first_companion_candidate" in entity.tags and food.is_empty() and enemy_distance>5:
+			mode="REST"
 		row["decision_mode"]=mode;row["decision_reason"]=str(decision.reason)
 		row["decision_until"]=int(decision.decision_until);row["decision_ruleset"]=Decision.RULESET_ID
 		var cost:int=100

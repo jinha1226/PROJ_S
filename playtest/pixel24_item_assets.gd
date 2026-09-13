@@ -5,6 +5,8 @@ const ITEM_TEXTURES=preload("res://playtest/dungeon_0x72_assets.gd").ITEMS
 
 
 static func texture_for_id(value:String)->Texture2D:
+	var dcss:=preload("res://playtest/dcss_item_assets.gd").texture_for_id(value)
+	if dcss!=null:return dcss
 	return preload("res://playtest/dungeon_0x72_assets.gd").item(value.strip_edges())
 
 
