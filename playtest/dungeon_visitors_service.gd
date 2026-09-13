@@ -10,6 +10,7 @@ static func enter(session,layout:Dictionary)->bool:
 	if not session.town_life_enabled():return true
 	var world=session.sim.world;var party=world.party_encounter;var rows:Array=[]
 	var company:Array=session.company_member_ids()
+	var frontier:=bool(Life.state(world.events).get("frontier",false))
 	var candidates:Array=[]
 	for id in party.party_member_ids:
 		var member=party.member(id);var entity=world.entities.get(id)
@@ -20,6 +21,7 @@ static func enter(session,layout:Dictionary)->bool:
 	var seeds:Array[Vector2i]=[entry+Vector2i(3,2),entry+Vector2i(-3,3)]
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(world)
 	if living and not layout.get("visitor_positions",[]).is_empty():seeds.assign(layout.visitor_positions)
+	if frontier and company.size()==1:seeds[0]=entry+Vector2i(2,0)
 	for cache in session._base_progression_service._base_cache_rows():
 		var p:Array=cache.position
 		seeds.append(Vector2i(int(p[0]),int(p[1]))+Vector2i(2,0))
@@ -53,6 +55,8 @@ static func enter(session,layout:Dictionary)->bool:
 			entity.position=chosen
 			if world.emit_event("population.arrived",id,-1,chosen,0,-1,{"from":[old.x,old.y],"to":[chosen.x,chosen.y]})==null:return false
 			var row:Dictionary=rows[-1]
+			if frontier and index==0 and company.size()==1:
+				if "frontier_survivor" not in entity.tags:entity.tags.append("frontier_survivor")
 			row["entry"]=[entry.x,entry.y];row["state"]="REST" if index==0 else ("RETURN" if index==2 else "EXPLORE")
 			row["rest_until"]=world.world_time+300 if index==0 else 0
 			row["fatigue"]=4 if index==0 else 0;row["goal_index"]=0
@@ -61,12 +65,15 @@ static func enter(session,layout:Dictionary)->bool:
 				row["goals"]=_exploration_goals(world,layout,chosen,index)
 			row.activity=preload("res://sim/systems/independent_explorer_system.gd").LABELS[row.state]
 			row.needs_supplies=index==2
+			if frontier and "frontier_survivor" in entity.tags:
+				row.state="REST";row.rest_until=world.world_time+12000;row.needs_supplies=true
+				row.activity="식량을 기다리는 생존자"
 			var inventory=world.item_state.inventory(id)
 			if inventory==null:return false
 			if inventory.equipped_item("MAIN_HAND")==null:
 				var grant:Dictionary=Items.commit_grant(world,id,"WEAPON_SHORT_SWORD",1,chosen,"INDEPENDENT_EXPEDITION")
 				if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
-			if index!=2 and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
+			if index!=2 and "frontier_survivor" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
 				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
 
@@ -202,6 +209,7 @@ static func interact(session,operation:Dictionary)->Dictionary:
 				if int(rows[i].entity_id)==id:rows.remove_at(i)
 			ok=_emit(world,"population.patrol",rows)!=null
 		message="이번 원정의 동료로 합류했습니다."
+		if bool(Life.state(world.events).get("frontier",false)):message="생존자가 동행합니다. 입구로 함께 돌아가면 피난처 주민으로 남습니다."
 	else:
 		if action in ["AID","HEAL"]:
 			var item_id:String=_ration(world,leader) if action=="AID" else _healing_item(world,leader)
@@ -252,6 +260,11 @@ static func release_temporary(session)->void:
 		var entity=world.entities[id]
 		if id==world.party_control_actor_id():continue
 		if "expedition_companion" not in entity.tags:continue
+		if bool(Life.state(world.events).get("frontier",false)) and world.combatant_states[id].life_state!="DEAD" and id not in session.company_member_ids():
+			world.emit_event("town.company_joined",party.protagonist_id,id,entity.position,0,-1,{"entity_id":str(id),"expedition_index":int(party.expedition_cycle.expedition_index),"reason":"RESCUED_TO_SHELTER"})
+			entity.tags.erase("independent_explorer")
+			for tag in entity.tags.duplicate():
+				if str(tag).begins_with("visitor_floor:"):entity.tags.erase(tag)
 		entity.tags.erase("expedition_companion")
 		party.active_party_member_ids.erase(id)
 		party.member(id).presence="DEFEATED" if world.combatant_states[id].life_state=="DEAD" else "RECRUITABLE"

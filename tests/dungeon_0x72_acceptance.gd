@@ -26,7 +26,7 @@ func run()->void:
 	check(Tiles.tile_spec(wall,Vector2i.ZERO,1,{"E":{"visibility_state":"MEMORY","terrain_id":"floor"}}).sprite_key=="wall_outer_mid_left","remembered geometry keeps side wall")
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
-	ui.show_species_picker_for_new_run();ui._commit_species_picker("human")
+	ui.show_species_picker_for_new_run();ui._commit_species_picker("human",false)
 	check(not ui.species_picker_modal.visible,"species selection completed")
 	check(session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON","picker starts directly in dungeon")
 	check(session.sim.world.party_encounter.expedition_cycle.floor_index==1,"picker starts on first floor")

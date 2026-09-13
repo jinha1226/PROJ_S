@@ -231,7 +231,7 @@ func _check_species_confirm_base_first()->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);sandbox.size=Vector2(360,640)
 	root.add_child(sandbox);await process_frame
 	sandbox.show_species_picker_for_new_run();await process_frame
-	sandbox._commit_species_picker("human");await process_frame;await process_frame
+	sandbox._commit_species_picker("human",false);await process_frame;await process_frame
 	_check(str(session.party_status().get("view_mode",""))=="TOWN" \
 		and str(session.base_overview().get("phase",""))=="TOWN",
 		"explicit species-confirmed DUO new game did not canonically return base-first")

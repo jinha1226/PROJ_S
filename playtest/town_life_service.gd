@@ -65,6 +65,11 @@ static func overview(session)->Dictionary:
 			"can_rest":joined and _needs_rest(member,world.world_time) and session.town_gold()>=session.TOWN_SHRINE_COST,
 			"trust":int(relation.get("personal",{}).get("trust_delta",0))})
 	_place_residents(rows)
+	if life.frontier:
+		rows=rows.filter(func(row):return bool(row.joined))
+		for row in rows:
+			row.activity="피난처에서 생활 중" if not row.active else "다음 탐험 준비 중"
+			row.location="피난처"
 	var reason:=""
 	if life.house_owned:reason="이미 탐험대의 집이 있습니다"
 	elif completed.size()<Rules.REQUIRED_RETURNS:reason="물자를 가져온 원정 %d/%d"%[completed.size(),Rules.REQUIRED_RETURNS]
@@ -142,11 +147,14 @@ static func commit(session,operation:Dictionary)->Dictionary:
 	match action:
 		"START":
 			data["founder_id"]=str(party.protagonist_id)
+			if bool(operation.get("frontier",false)):data["frontier"]=true
+			if bool(operation.get("frontier",false)):world.entities[party.protagonist_id].tags.append("frontier_campaign")
 			event=world.emit_event(Rules.START_EVENT,party.protagonist_id,-1,party.group_anchor,0,-1,data)
 			for member_id in party.active_party_member_ids.duplicate():
 				if member_id==party.protagonist_id:continue
 				party.active_party_member_ids.erase(member_id);party.member(member_id).presence="RECRUITABLE"
 			message="여관방에서 첫 원정을 준비합니다."
+			if bool(operation.get("frontier",false)):message="점령지 변방의 버려진 피난처. 숲길에서 물자와 생존자를 찾으세요."
 		"TALK":
 			event=world.emit_event("town.conversation",world.party_control_actor_id(),id,party.group_anchor,1,-1,data)
 			# Sharing useful expedition information is a small, remembered aid.
@@ -190,7 +198,7 @@ static func commit(session,operation:Dictionary)->Dictionary:
 		if ok:ok=session._ensure_town_guild_candidates()
 		# Two residents ride along from the first expedition so fights show the
 		# party flow at once (the field limit). The guild keeps the rest.
-		if ok and not session.solo_start_enabled():
+		if ok and not session.solo_start_enabled() and not bool(operation.get("frontier",false)):
 			var joined:=_auto_join_first_company(session)
 			ok=joined>=0
 			if ok and joined>0:message="여관방에서 첫 원정을 준비합니다. 동료 %d명이 함께 나섭니다."%joined

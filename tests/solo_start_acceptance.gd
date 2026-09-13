@@ -26,7 +26,7 @@ func run():
 	var ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true);root.add_child(ui);ui.set_process(false)
 	for i in range(3):await process_frame
 	ui.show_species_picker_for_new_run()
-	ui._commit_species_picker("human")
+	ui._commit_species_picker("human",false)
 	for i in range(3):await process_frame
 	check(session.solo_start_enabled(),"product species picker selects solo start")
 	check(session.sim.world.party_encounter.active_party_member_ids.size()==1,"product new game deploys only hero")

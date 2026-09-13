@@ -18,7 +18,7 @@ func run()->void:
 	root.size=Vector2i(360,800)
 	root.content_scale_size=Vector2i(360,800)
 	var ui=Sandbox.new();ui.set_personality_entropy_source_for_headless_test(func():return 20260828)
-	root.add_child(ui);await settle();ui._commit_species_picker("human");await settle()
+	root.add_child(ui);await settle();ui._commit_species_picker("human",false);await settle()
 	for dimensions in [Vector2i(320,640),Vector2i(360,800),Vector2i(430,932)]:
 		root.size=dimensions;root.content_scale_size=dimensions;await settle()
 		ui._on_town_facility_selected("BASE");await settle()

@@ -15,7 +15,7 @@ func run()->void:
 	root.size=Vector2i(390,844)
 	var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Shell.new();ui.initialize_for_headless_test(s,false);root.add_child(ui);ui.set_process(false)
-	ui.show_species_picker_for_new_run();ui._commit_species_picker("human");ui._refresh()
+	ui.show_species_picker_for_new_run();ui._commit_species_picker("human",false);ui._refresh()
 	var hero:int=s.sim.world.party_control_actor_id()
 	check(s.drop_inventory_item("START_HAND_AXE_001").get("accepted",false),"canonical drop fixture")
 	var before:Dictionary=s.sim.snapshot();var journal:Array=s.command_journal.duplicate(true)

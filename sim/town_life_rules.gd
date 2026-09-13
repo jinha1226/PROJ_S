@@ -22,13 +22,15 @@ static func living_company_count(world)->int:
 
 static func state(events:Array)->Dictionary:
 	var result:={"enabled":false,"house_owned":false,"members":[],"talks":{},
-		"claimed":[],"visits":0,"start_expedition":0}
+		"claimed":[],"visits":0,"start_expedition":0,"frontier":false}
 	for event in events:
 		var data:Dictionary=event.data
 		match str(event.type):
 			START_EVENT:
 				result.enabled=true;result.start_expedition=int(data.expedition_index)
 				result.members=[int(data.founder_id)]
+				result.frontier=bool(data.get("frontier",false))
+				if result.frontier:result.house_owned=true
 			"town.conversation","population.greeted","population.assisted":
 				var key:=str(data.entity_id)
 				if not result.talks.has(key):result.talks[key]=[]
@@ -69,6 +71,8 @@ static func successful_returns(events:Array)->Array[int]:
 static func operation_error(value:Variant)->String:
 	if not value is Dictionary or not value.get("action") is String:return "invalid_town_life_operation"
 	var keys:Array=value.keys();keys.sort()
+	if value.action=="START" and keys==["action","frontier"]:
+		return "" if value.frontier is bool else "invalid_town_life_operation"
 	if value.action in ["START","CLAIM","ACQUIRE"]:
 		return "" if keys==["action"] else "invalid_town_life_operation"
 	if value.action not in ["TALK","JOIN","ASSIGN","RESERVE","REST"] or keys!=["action","entity_id"]:

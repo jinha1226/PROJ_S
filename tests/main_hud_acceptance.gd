@@ -9,7 +9,7 @@ func run()->void:
 	root.size=Vector2i(390,844)
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
-	ui.show_species_picker_for_new_run();ui._commit_species_picker("human");ui._refresh()
+	ui.show_species_picker_for_new_run();ui._commit_species_picker("human",false);ui._refresh()
 	var pixel_font=preload("res://assets/fonts/Galmuri14.ttf")
 	check(ui.ration_label.get_theme_font("font")==pixel_font,"HUD pixel font")
 	check(ui.product_menu_button.get_theme_font("font")==pixel_font,"button pixel font")

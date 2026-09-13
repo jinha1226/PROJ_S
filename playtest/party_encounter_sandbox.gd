@@ -996,6 +996,8 @@ func _build_ui()->void:
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("적 시야 표시 전환",8)
+	menu_popup.add_item("원정 목표",9)
+	menu_popup.add_item("피난처 귀환 · 입구에서",10)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1245,25 +1247,26 @@ func show_species_picker_for_new_run()->void:
 	_species_picker_committed=false;species_picker_modal.visible=true
 	if grid!=null:grid.modal_open=true
 
-func _commit_species_picker(species_id:String)->void:
+func _commit_species_picker(species_id:String,frontier:bool=true)->void:
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
 	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_species_picker_committed=false;return
-	# Initialize the persistent population through its journaled authorities,
-	# without ever displaying the intermediate town scene.
-	var started:Dictionary=session.town_life_command({"action":"START"})
-	var departed:Dictionary=session.depart_town() if started.get("accepted",false) else started
+	# Journaled frontier start keeps the shelter; explicit legacy fixtures may
+	# still choose the old direct-dungeon entry.
+	var started:Dictionary=session.town_life_command({"action":"START","frontier":true} if frontier else {"action":"START"})
+	var departed:Dictionary=session.depart_town() if started.get("accepted",false) and not frontier else started
 	if not departed.get("accepted",false):
 		_species_picker_committed=false
 		notice_text=str(departed.get("message","원정 준비에 실패했습니다."));return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
-	# New runs already own a valid first-floor dungeon. Do not move them to town.
+	# START has already established the campaign's canonical initial location.
 	notice_text="던전 1층에서 원정을 시작합니다."
+	if frontier:notice_text="변방의 피난처에서 시작합니다. 숲길을 탐험해 첫 생존자를 데려오세요."
 	_request_refresh()
 
 func _build_build_label()->void:
@@ -3479,9 +3482,17 @@ func _town_deck(status:Dictionary)->void:
 
 func _town_life_deck(_status:Dictionary)->void:
 	var life:Dictionary=session.town_life_overview()
+	if bool(life.get("frontier",false)) and town_facility_id!="HOUSE":
+		var frontier=preload("res://playtest/frontier_campaign_panel.gd").new()
+		frontier.session=session;frontier.name="FrontierCampaign"
+		frontier.facility_requested.connect(_on_town_facility_selected)
+		frontier.depart_requested.connect(_on_town_depart)
+		frontier.command_requested.connect(_on_town_life_command)
+		deck.add_child(frontier);return
 	var widgets=preload("res://playtest/town_ui_widgets.gd")
 	if town_facility_id not in ["","BASE"]:
 		var back:=widgets.button(deck,"← 마을","TownLifeBack")
+		if bool(life.get("frontier",false)):back.text="← 피난처 · 지역 지도"
 		back.pressed.connect(_on_town_facility_selected.bind("BASE"))
 	if not notice_text.is_empty() and not notice_text.begins_with("여관방"):
 		var feedback:=widgets.label(deck,notice_text,13,widgets.GOLD)
@@ -3852,6 +3863,7 @@ func _on_town_depart(floor_index:int=1,
 	var result:Dictionary=session.depart_town(floor_index,entry_mode)
 	if bool(result.get("accepted",false)):
 		town_facility_id="GUILD";notice_text="원정대가 %d층으로 다시 출발했습니다."%floor_index
+		if preload("res://playtest/frontier_campaign.gd").enabled(session):notice_text=preload("res://playtest/frontier_campaign.gd").region(floor_index)+" · "+preload("res://playtest/frontier_campaign.gd").objective(session)
 	else:notice_text=str(result.get("message","출발할 수 없습니다."))
 	action_feedback_text=notice_text;_request_refresh()
 
@@ -7404,6 +7416,9 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _on_product_menu_id(item_id:int)->void:
 	if session==null:return
+	if item_id==9:
+		_show_product_command_feedback(preload("res://playtest/frontier_campaign.gd").objective(session));return
+	if item_id==10:_on_base_return_requested();return
 	match item_id:
 		0:
 			if bool(_current_run_progress().get("terminal",false)):
@@ -7520,6 +7535,8 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	var spec:=expedition_hud_spec(status) if product_hud else {}
 	var floor_text:=str(spec.get("floor_text",""));var timer_text:=str(spec.get("timer_text",""))
 	expedition_floor_label.text=floor_text;expedition_floor_label.visible=product_hud and not floor_text.is_empty()
+	if preload("res://playtest/frontier_campaign.gd").enabled(session):
+		expedition_floor_label.text="숲길" if session.sim.world.party_encounter.expedition_cycle.floor_index==1 else "폐광"
 	return_timer_label.text=timer_text;return_timer_label.visible=product_hud and not timer_text.is_empty()
 	return_timer_label.add_theme_color_override("font_color",Color(str(spec.get("tone_hex","c7c2b3"))))
 	if ration_label!=null:
@@ -7624,6 +7641,7 @@ func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 		phase_label.add_theme_color_override("font_color",AsciiFrameScript.BRASS if situation=="기척" else AsciiFrameScript.INK); grid.set_combat_emphasis(false)
 	phase_label.text=situation
 	if situation=="마을" and session.town_life_enabled():phase_label.text="마을  ·  %d G"%session.town_gold()
+	if situation=="마을" and preload("res://playtest/frontier_campaign.gd").enabled(session):phase_label.text="피난처"
 	var phase_style:=DarkPixelSkinScript.panel_surface(DarkPixelSkinScript.FOLIO,
 		DarkPixelSkinScript.IRON_EDGE,0,1)
 	phase_panel.add_theme_stylebox_override("panel",phase_style)

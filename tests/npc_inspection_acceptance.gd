@@ -14,7 +14,7 @@ func run()->void:
 	for error in list_checks.errors:check(false,str(error))
 	root.size=Vector2i(360,800);root.content_scale_size=root.size
 	var ui=Sandbox.new();ui.set_personality_entropy_source_for_headless_test(func():return 20260828)
-	root.add_child(ui);await settle();ui._commit_species_picker("human");await settle()
+	root.add_child(ui);await settle();ui._commit_species_picker("human",false);await settle()
 	var session=ui.session
 	var styles:Dictionary={};var profiles:Dictionary={}
 	for resident in session.town_life_overview().residents:

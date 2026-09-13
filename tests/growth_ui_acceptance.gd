@@ -9,7 +9,7 @@ func run()->void:
 	root.size=Vector2i(390,844)
 	var session=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Shell.new();ui.initialize_for_headless_test(session,false);root.add_child(ui);ui.set_process(false)
-	ui.show_species_picker_for_new_run();ui._commit_species_picker("human");ui._refresh()
+	ui.show_species_picker_for_new_run();ui._commit_species_picker("human",false);ui._refresh()
 	ui._open_hero_detail_tab("SKILL")
 	for i in range(6):await process_frame
 	var mastery=ui.mastery_panel;var abilities=ui.member_ability_window
