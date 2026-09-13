@@ -36,7 +36,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var protagonist_target: bool = entity != null and world.party_encounter != null \
 		and world.party_encounter.protagonist_id == entity.id
 	var terminal_target:bool=protagonist_target or (entity!=null \
-		and world.lifecycle_succumbs(entity.id))
+		and world.lifecycle_succumbs(entity.id)) or (cause!=null and cause.type=="body.blood_depleted")
 	var status_count: int = world.combatant_states[entity.id].status_rows.size() \
 		if entity != null and world.combatant_states.has(entity.id) else 0
 	var should_apply_bleed: bool = apply_bleed_status and not terminal_immediate
@@ -227,6 +227,30 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 		"transition_event": transition_event, "death_event": death_event,
 		"status_event": status_event,
 		"applied_health_damage": applied_damage}
+
+
+func resolve_blood_depletions(event_start:int)->bool:
+	# Complete the frozen HP batch first, then reconcile injuries before the next actor.
+	var targets:Dictionary={}
+	for index in range(event_start,world.events.size()):
+		var event=world.events[index]
+		if event.type in ["combat.physical_damage","combat.fire_damage","combat.electric_damage"]:
+			targets[event.target_id]=true
+	for id in targets:
+		if not resolve_blood_depletion(world.entities[id]):return false
+	return true
+
+
+func resolve_blood_depletion(entity)->bool:
+	var body=world.body_states.get(entity.id)
+	var state=world.combatant_states.get(entity.id)
+	if body==null or state==null or state.life_state!="ACTIVE" or body.current_blood>0:return true
+	if entity.health<=0 or body.wounds.is_empty():return false
+	var source=world.emit_event("body.blood_depleted",-1,entity.id,entity.position,entity.health,
+		int(body.wounds[-1].source_event_id),{"schema_version":1,"blood_remaining":0})
+	if source==null:return false
+	return bool(apply_canonical_active_damage(entity,entity.health,"physical",source.id,
+		entity.position,world._active_step_index,entity.health,true,false).get("accepted",false))
 
 
 func apply_canonical_downed_finisher(entity, requested_pressure: int, cause_id: int,

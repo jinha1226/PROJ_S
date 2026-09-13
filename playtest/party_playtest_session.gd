@@ -10047,6 +10047,7 @@ func _event_message(event) -> String:
 		return str(_relationship_log.suffixes.get(event.id,"")).trim_prefix(" · ")
 	var actor := _name(event.actor_id); var target := _name(event.target_id)
 	match event.type:
+		"body.blood_depleted":return "%s: 혈액 고갈로 사망했다."%target
 		"town.guild_candidates_arrived":return "주변 지역에서 생존자들의 흔적이 발견되었다." if preload("res://playtest/frontier_campaign.gd").enabled(self) else "길드 게시판에 새로운 동료 후보 %d명이 도착했다."%int(event.magnitude)
 		"town.guild_tutorial_accepted":return "%s가 길드 튜토리얼 의뢰를 수락했다."%_subject(actor)
 		"town.guild_tutorial_support_granted":return "%s에게 훈련용 회복 물약을 지급했다."%_subject(actor)

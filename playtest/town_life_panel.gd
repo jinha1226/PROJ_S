@@ -20,7 +20,8 @@ func present(view:Dictionary)->void:
 func _hub()->void:
 	UI.heading(self,"마을 광장","여관에 머무는 중" if not _view.house_owned else "탐험대의 집에서 생활 중")
 	var map:=Map.new();map.name="PublicTownMap";map.camera=camera
-	map.minimum_map_height=clampi(int(get_viewport_rect().size.y)-440-(58 if int(_view.reward_gold)>0 else 0),160,360)
+	var viewport_height:int=int(get_viewport_rect().size.y) if is_inside_tree() else 800
+	map.minimum_map_height=clampi(viewport_height-440-(58 if int(_view.reward_gold)>0 else 0),160,360)
 	map.fit_map_height=true
 	map.resident_selected.connect(func(id:int):resident_requested.emit(id))
 	map.building_selected.connect(func(id:String):
@@ -34,6 +35,7 @@ func _hub()->void:
 	var nav:=GridContainer.new();nav.name="TownLifeNavigation";nav.columns=5
 	nav.add_theme_constant_override("h_separation",8);nav.add_theme_constant_override("v_separation",8);add_child(nav)
 	for entry in [["INN","여관"],["GUILD","길드"],["MARKET","시장"],["CLINIC","치유소"],["HOUSE","내 거점"]]:
+		if entry[0]=="HOUSE" and not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:continue
 		var id:=str(entry[0]);var b:=UI.shortcut(nav,str(entry[1]),"TownNav"+id,id)
 		b.pressed.connect(func():facility_requested.emit(id))
 	var line:=HBoxContainer.new();line.add_theme_constant_override("separation",8);add_child(line)

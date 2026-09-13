@@ -2675,11 +2675,19 @@ func _restored_state_error() -> String:
 			if event.type == "encounter.actor_escaped" and (event.target_id != -1 \
 					or event.magnitude != 1 or not event.data.is_empty()):
 				return "escape_event_semantic_invalid"
+		if event.type=="body.blood_depleted":
+			var blood_source=event_by_id(event.cause_id)
+			if event.data!={"schema_version":1,"blood_remaining":0} or event.actor_id!=-1 \
+					or event.magnitude<=0 or not body_states.has(event.target_id) \
+					or body_states[event.target_id].current_blood!=0 or blood_source==null \
+					or blood_source.target_id!=event.target_id \
+					or blood_source.type not in ["combat.physical_damage","combat.fire_damage","combat.electric_damage"]:
+				return "blood_depletion_event_invalid"
 		if event.type == "combat.physical_damage":
 			var physical_cause = event_by_id(event.cause_id)
 			var valid_physical_source: bool = physical_cause != null \
 					and physical_cause.type in ["action.melee_attack", "action.skill", "ability.impact",
-						"status.tick", "environment.explosion_impact"]
+						"status.tick", "environment.explosion_impact", "body.blood_depleted"]
 			var cause_is_canonical: bool = physical_cause != null \
 					and (physical_cause.data.get("schema_version") in [1, 3, 4] \
 						or physical_cause.type=="environment.explosion_impact")

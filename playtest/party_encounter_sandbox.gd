@@ -994,10 +994,10 @@ func _build_ui()->void:
 	var menu_popup:=product_menu_button.get_popup()
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
-	menu_popup.add_item("거점 현황",7)
+	if preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("적 시야 표시 전환",8)
 	menu_popup.add_item("원정 목표",9)
-	menu_popup.add_item("피난처 귀환 · 입구에서",10)
+	menu_popup.add_item("마을 귀환 · 입구에서",10)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1247,7 +1247,8 @@ func show_species_picker_for_new_run()->void:
 	_species_picker_committed=false;species_picker_modal.visible=true
 	if grid!=null:grid.modal_open=true
 
-func _commit_species_picker(species_id:String,frontier:bool=true)->void:
+func _commit_species_picker(species_id:String,frontier:bool=false)->void:
+	frontier=frontier and preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
@@ -1963,7 +1964,7 @@ func _refresh()->void:
 		str(session.sim.world.party_encounter.expedition_cycle.phase)=="DUNGEON" and not bool(status.terminal))
 	var base_overview_state:Dictionary=session.base_overview() \
 		if session.has_method("base_overview") else {}
-	var base_available:=bool(base_overview_state.get("enabled",false))
+	var base_available:=bool(base_overview_state.get("enabled",false)) and preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED
 	if town_active and _last_view_mode!="TOWN" and base_available:town_facility_id="BASE"
 	_last_view_mode=str(status.view_mode)
 	var town_base_active:bool=town_active and base_available \
@@ -2537,6 +2538,7 @@ func _on_record_backdrop_input(event:InputEvent)->void:
 			and event.button_index==MOUSE_BUTTON_LEFT:_close_record_modal("OUTSIDE")
 
 func _open_base_modal()->void:
+	if not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return
 	if session==null or not session.has_method("base_overview"):return
 	var overview:Dictionary=session.base_overview()
 	if not bool(overview.get("enabled",false)):return
@@ -3437,7 +3439,7 @@ func _town_deck(status:Dictionary)->void:
 	if session.town_life_enabled():
 		_town_life_deck(status);return
 	var base_enabled:bool=session.has_method("base_overview") \
-		and bool(session.base_overview().get("enabled",false))
+		and bool(session.base_overview().get("enabled",false)) and preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED
 	if town_facility_id.is_empty():
 		town_facility_id="BASE" if base_enabled else ("GUILD" if session.allows_companions() else "GATE")
 	if town_facility_id=="BASE" and not base_enabled:
@@ -3489,6 +3491,9 @@ func _town_deck(status:Dictionary)->void:
 
 func _town_life_deck(_status:Dictionary)->void:
 	var life:Dictionary=session.town_life_overview()
+	if not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:
+		life=life.duplicate(true);life.frontier=false;life.house_owned=false;life.can_acquire=false
+		if town_facility_id=="HOUSE":town_facility_id="BASE"
 	if bool(life.get("frontier",false)) and town_facility_id in ["","BASE","HOUSE"]:
 		_town_base_panel();return
 	var widgets=preload("res://playtest/town_ui_widgets.gd")
@@ -3530,6 +3535,7 @@ func _on_town_service_action(operation:Dictionary)->void:
 		"ROSTER":town_ui_state.filter="COMPANY";_on_town_facility_selected("INN")
 
 func _on_town_life_command(operation:Dictionary)->void:
+	if operation.get("action")=="ACQUIRE" and not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return
 	var result:Dictionary
 	if str(operation.get("action",""))=="GUILD_TUTORIAL":
 		result=session.guild_tutorial_command({"action":str(operation.get("quest_action","")),
@@ -3544,6 +3550,7 @@ func _on_town_life_command(operation:Dictionary)->void:
 
 
 func _town_base_panel()->void:
+	if not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
 	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
@@ -5055,7 +5062,7 @@ func _update_detail_vitals(detail:Dictionary)->void:
 	detail_mp_text.text="MP %d / %d"%[mp,max_mp] if member!=null else "MP —"
 
 static func _body_help(line:String)->String:
-	if line.begins_with("혈액"):return "현재 혈액 / 최대 혈액입니다. 신체 손상 시 출혈량만큼 줄어듭니다. 최대 혈액량은 출혈 계산에도 사용됩니다. HP와는 별도의 신체 수치입니다."
+	if line.begins_with("혈액"):return "현재 혈액 / 최대 혈액입니다. 신체 손상 시 출혈량만큼 줄어들며, 0이 되면 남은 HP와 관계없이 사망합니다. 일반 HP 회복만으로 혈액이 복구되지는 않습니다. 치유소에서 치료할 수 있습니다."
 	if line.begins_with("의식"):return "현재 기록된 의식 수준입니다. 현재 버전에서는 출혈·충격에 따라 의식을 갱신하거나 의식 수치로 행동을 제한하는 기능은 아직 연결되지 않았습니다."
 	if line.begins_with("피부"):return "베기·찌르기의 방어 장벽에 더해져 조직에 전달되는 힘을 줄입니다. 타격 상처의 깊이 계산에도 사용됩니다. 일반 방어력에 이 수치를 그대로 더하지는 않습니다."
 	if line.begins_with("연부"):return "타격 피해의 완충값입니다. 방어구의 충격 완충과 합산해 몸에 전달되는 힘을 줄입니다."

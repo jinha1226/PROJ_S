@@ -2,6 +2,7 @@ extends RefCounted
 var elapsed:=0.0
 var completion_refresh_pending:=false
 func tick(ui,delta:float)->void:
+	if not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return
 	if ui.session==null or ui.session.sim==null or ui.session.sim.world.party_encounter.expedition_cycle.phase!="TOWN":elapsed=0;return
 	if not ui.session.private_home_available() or not ui.get_window().has_focus():elapsed=0;return
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):return
