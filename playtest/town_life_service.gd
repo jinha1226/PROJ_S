@@ -127,7 +127,7 @@ static func commit(session,operation:Dictionary)->Dictionary:
 	if action=="START":
 		if life.enabled or not session.command_journal.is_empty():return _reject("town_life_started","새 게임에서만 여관 생활을 시작할 수 있습니다")
 	elif not life.enabled or party.expedition_cycle.phase!="TOWN":return _reject("town_required","마을에서만 가능합니다")
-	if not Work.current(world.events).is_empty():return _reject("base_work_busy","진행 중인 작업을 먼저 마치거나 취소하세요")
+	if not Work.legacy_current(world.events).is_empty():return _reject("base_work_busy","기존 작업을 먼저 마치거나 취소하세요")
 	var view:Dictionary=overview(session) if life.enabled else {}
 	var id:=int(operation.get("entity_id","-1"));var row:Dictionary={}
 	for resident in view.get("residents",[]):
@@ -192,6 +192,9 @@ static func commit(session,operation:Dictionary)->Dictionary:
 		"ACQUIRE":
 			event=world.emit_event("town.house_acquired",world.party_control_actor_id(),-1,party.group_anchor,Rules.HOUSE_COST,-1,{"cost":Rules.HOUSE_COST})
 			message="탐험대의 집을 구했습니다. 창고와 숙소를 확장하고 작업실을 지을 수 있습니다."
+	if action in ["JOIN","ASSIGN"]:
+		var work_error:=preload("res://playtest/settlement_work_service.gd").release_assigned(session)
+		if not work_error.is_empty():ok=false
 	party.revision+=1
 	if action=="START" and event!=null:
 		ok=bool(session.base_return().get("accepted",false))

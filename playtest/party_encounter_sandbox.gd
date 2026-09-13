@@ -3554,8 +3554,13 @@ func _town_base_panel()->void:
 	panel.building_selected.connect(_on_base_building_selected)
 	panel.resident_requested.connect(_open_member_detail)
 	panel.construction_confirm_requested.connect(_on_base_construction_confirmed.bind(panel))
-	panel.work_cancel_requested.connect(func():
-		var result:Dictionary=session.base_work({"action":"CANCEL"})
+	panel.work_priority_requested.connect(func(entity_id:int,kind:String,priority:int):
+		var result:Dictionary=session.base_work({"action":"PRIORITY","entity_id":entity_id,"kind":kind,"priority":priority})
+		notice_text=str(result.get("message","")))
+	panel.work_cancel_requested.connect(func(job_id:int):
+		var op:Dictionary={"action":"CANCEL"}
+		if job_id>=0:op["job_id"]=job_id
+		var result:Dictionary=session.base_work(op)
 		notice_text=str(result.get("message",""));_request_refresh())
 	panel.production_requested.connect(func(action:String,recipe_id:String):
 		var result:Dictionary=session.base_work({"action":action,"recipe_id":recipe_id})

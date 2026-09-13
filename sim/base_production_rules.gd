@@ -20,7 +20,7 @@ static func ready_stock(events:Array)->Dictionary:
 
 static func overview(world,buildings:Array,stock:Dictionary,work:Dictionary)->Array[Dictionary]:
 	var result:Array[Dictionary]=[]
-	var ready:=ready_stock(world.events)
+	var ready:Dictionary=preload("res://sim/settlement_work_rules.gd").index(world).ready
 	var town:bool=world.party_encounter.expedition_cycle.phase=="TOWN"
 	for id in RECIPES:
 		var recipe:Dictionary=RECIPES[id]
@@ -30,7 +30,8 @@ static func overview(world,buildings:Array,stock:Dictionary,work:Dictionary)->Ar
 		elif not built:message="진료소를 먼저 건설하세요"
 		elif not work.is_empty():message="진행 중인 작업을 먼저 마치세요"
 		elif int(ready[id])>=int(recipe.stock_limit):message="완성품을 먼저 가져가세요"
-		elif not preload("res://sim/base_progression_rules.gd").can_afford(stock,recipe.cost):message="약초가 부족합니다"
+		elif not preload("res://sim/base_progression_rules.gd").can_afford(stock,recipe.cost):
+			message="제조 가능" if preload("res://sim/settlement_work_rules.gd").index(world).state.enabled else "약초가 부족합니다"
 		result.append({"recipe_id":id,"label":recipe.label,"facility_id":recipe.facility_id,
 			"cost":recipe.cost.duplicate(),"quantity":recipe.quantity,"ready":ready[id],
 			"stock_limit":recipe.stock_limit,"can_produce":message=="제조 가능",

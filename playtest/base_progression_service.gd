@@ -21,10 +21,16 @@ func base_overview()->Dictionary:
 			"message":"이 시나리오에서는 기지를 사용할 수 없습니다.","trade":[]}.duplicate(true)
 	var state=_session.sim.world.party_encounter;var cycle=state.expedition_cycle
 	var phase:=str(cycle.phase);var expedition_index:=int(cycle.expedition_index)
-	var work:Dictionary=preload("res://sim/base_work_rules.gd").current(_session.sim.world.events)
-	var levels:Dictionary=_session.BaseProgressionRulesScript.facility_levels(_session.sim.world.events)
-	var stock:Dictionary=_session.BaseProgressionRulesScript.secured_stock(_session.sim.world.events,
-		expedition_index,phase)
+	var work:Dictionary={}
+	var work_rules=preload("res://sim/settlement_work_rules.gd")
+	var work_state:Dictionary=work_rules.state(_session.sim.world)
+	var jobs:Array=work_rules.active(work_state)
+	if bool(work_state.enabled):work=jobs[0].duplicate(true) if not jobs.is_empty() else {}
+	else:work=preload("res://sim/base_work_rules.gd").legacy_current(_session.sim.world.events)
+	var levels:Dictionary=preload("res://sim/settlement_work_rules.gd").index(_session.sim.world).levels
+	var stock:Dictionary=work_rules.stock(_session.sim.world).available
+	var material_stock:Dictionary=work_rules.stock(_session.sim.world)
+	if bool(work_state.enabled):stock=material_stock.available
 	var carried:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
 		expedition_index,phase)
 	var facilities:Array[Dictionary]=[]
@@ -36,12 +42,14 @@ func base_overview()->Dictionary:
 			if level<3 else {}
 		var built:bool=_session.BaseSettlementRulesScript.type_built(
 			settlement_buildings,facility_id)
-		var can_upgrade:bool=work.is_empty() and built and phase=="TOWN" and level<3 \
+		var can_upgrade:bool=built and phase=="TOWN" and level<3 \
 			and _session.BaseProgressionRulesScript.can_afford(stock,price)
 		var message:String="증축 가능" if can_upgrade else ("먼저 건설해야 합니다" if not built \
 			else ("최대 레벨" if level>=3 \
 			else ("마을에서 증축할 수 있습니다" if phase!="TOWN" else "자원이 부족합니다")))
-		if not work.is_empty():message="진행 중인 작업을 먼저 완료하세요"
+		if bool(work_state.enabled):
+			can_upgrade=built and phase=="TOWN" and level<3
+			message="자원 부족 시 대기 주문" if can_upgrade else message
 		facilities.append({"id":facility_id,
 			"label":str(_session.BaseProgressionRulesScript.FACILITY_LABELS[facility_id]),
 			"level":level,"max_level":3,
@@ -60,6 +68,19 @@ func base_overview()->Dictionary:
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"activity":({"PRODUCE":"물약 제조 중","REST":"휴식 중"}.get(str(work.get("action","")),"공사 중") \
 				if not work.is_empty() and int(work.worker_id)==entity_id else "대기 중") if phase=="TOWN" else "원정 중"})
+	if bool(work_state.enabled):
+		for resident in residents:
+			var row:Dictionary=work_state.residents.get(str(resident.entity_id),{})
+			resident["tile"]=row.get("tile",[7,7])
+			resident["canonical_work"]=true
+			resident["priorities"]=row.get("priorities",{"HAUL":2,"BUILD":2,"PRODUCE":2})
+			resident["job_id"]=int(row.get("job_id",-1))
+			resident["activity"]="거점 대기"
+			if phase!="TOWN" and int(resident.entity_id) in state.active_party_member_ids:resident.activity="원정 중"
+			elif bool(row.get("rest_blocked",false)):resident.activity="필수 휴식 대기 · 골드/숙소 확인"
+			elif int(resident.job_id)>=0:
+				var job:Dictionary=work_state.jobs[str(resident.job_id)]
+				resident.activity="%s · %s"%[work_rules.action_label(str(job.action)),work_rules.status_label(job)]
 	var return_assessment:Dictionary=base_return_assessment()
 	var trade:Array[Dictionary]=[]
 	var market_built:bool=_session.town_service_available("MARKET")
@@ -86,11 +107,11 @@ func base_overview()->Dictionary:
 		"can_return":bool(return_assessment.get("accepted",false)),
 		"return_reason":str(return_assessment.get("reason","ok")),
 		"message":str(return_assessment.get("message","")),"trade":trade,
-		"settlement":settlement,"work":work,
+		"settlement":settlement,"work":work,"jobs":jobs,"work_state":work_state,"material_stock":material_stock,
 		"gold":_session.town_gold(),
-		"rest":preload("res://playtest/base_rest_service.gd").overview(_session,settlement_buildings,work),
+		"rest":preload("res://playtest/base_rest_service.gd").overview(_session,settlement_buildings,{} if bool(work_state.enabled) else work),
 		"production":preload("res://sim/base_production_rules.gd").overview(
-			_session.sim.world,settlement_buildings,stock,work)}.duplicate(true)
+			_session.sim.world,settlement_buildings,stock,{} if bool(work_state.enabled) else work)}.duplicate(true)
 
 
 func _base_cache_rows()->Array[Dictionary]:
@@ -168,7 +189,7 @@ func base_gather_assessment()->Dictionary:
 	if candidates.is_empty():return _session._rejection_dto("base_gather_cache_not_reached")
 	candidates.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.cache_id)<str(b.cache_id))
 	var row:Dictionary=candidates[0]
-	var levels:Dictionary=_session.BaseProgressionRulesScript.facility_levels(_session.sim.world.events)
+	var levels:Dictionary=preload("res://sim/settlement_work_rules.gd").index(_session.sim.world).levels
 	var carried:Dictionary=_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
 		int(cycle.expedition_index),"DUNGEON")
 	var free:int=int(_session.BaseProgressionRulesScript.STORAGE_CAPACITY[int(levels.STORAGE)]) \
@@ -237,7 +258,7 @@ func base_upgrade(facility_id:String)->Dictionary:
 		return _session._rejection_dto("base_facility_unknown")
 	if not _session._base_settlement_service.type_built(facility_id):
 		return _session._rejection_dto("base_facility_not_built")
-	var levels:Dictionary=_session.BaseProgressionRulesScript.facility_levels(_session.sim.world.events)
+	var levels:Dictionary=preload("res://sim/settlement_work_rules.gd").index(_session.sim.world).levels
 	var from_level:int=int(levels[facility_id])
 	if from_level>=3:return _session._rejection_dto("base_facility_max_level")
 	var stock:Dictionary=_session.BaseProgressionRulesScript.secured_stock(_session.sim.world.events,
@@ -272,8 +293,7 @@ func base_sell(resource_id:String,amount:int=1)->Dictionary:
 	if cycle==null or cycle.phase!="TOWN":return _session._rejection_dto("base_sell_town_required")
 	if resource_id not in _session.BaseProgressionRulesScript.RESOURCE_IDS or amount<1:
 		return _session._rejection_dto("base_trade_invalid")
-	var stock:Dictionary=_session.BaseProgressionRulesScript.secured_stock(_session.sim.world.events,
-		int(cycle.expedition_index),"TOWN")
+	var stock:Dictionary=preload("res://sim/settlement_work_rules.gd").stock(_session.sim.world).available
 	if int(stock[resource_id])<amount:return _session._rejection_dto("base_resources_insufficient")
 	var rollback:Dictionary=_session.sim.snapshot();var hero_id:=int(_session.sim.world.party_control_actor_id())
 	var unit_price:int=int(_session.BaseProgressionRulesScript.TRADE_PRICES[resource_id])

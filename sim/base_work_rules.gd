@@ -2,7 +2,7 @@ extends RefCounted
 
 const Settlement=preload("res://sim/base_settlement_rules.gd")
 
-static func current(events:Array)->Dictionary:
+static func legacy_current(events:Array)->Dictionary:
 	var job:Dictionary={}
 	for event in events:
 		match event.type:
@@ -14,10 +14,25 @@ static func current(events:Array)->Dictionary:
 			"base.work_completed","base.work_cancelled":job={}
 	return job
 
+static func current(events:Array)->Dictionary:
+	var legacy:=legacy_current(events)
+	if not legacy.is_empty():return legacy
+	var jobs:Dictionary={}
+	for event in events:
+		if event.type=="base.settlement_work_changed":
+			for row in event.data.get("jobs",[]):
+				var id:=str(row.job_id)
+				if not jobs.has(id):jobs[id]={}
+				jobs[id].merge(row,true)
+	for job in jobs.values():
+		if str(job.state) not in ["COMPLETED","CANCELLED"]:return job.duplicate(true)
+	return {}
+
 static func worker_position(job:Dictionary)->Vector2i:
 	if job.is_empty():return Vector2i(7,7)
 	var route:Array=job.get("route",[[7,7]])
-	var point:Array=route[mini(int(job.get("progress",0)),route.size()-1)]
+	if route.is_empty():return Vector2i(7,7)
+	var point:Array=route[mini(int(job.get("route_cursor",job.get("progress",0))),route.size()-1)]
 	return Vector2i(int(point[0]),int(point[1]))
 
 static func route_to_site(buildings:Array,origin:Vector2i,footprint:Vector2i,
@@ -49,6 +64,18 @@ static func route_to_site(buildings:Array,origin:Vector2i,footprint:Vector2i,
 
 static func operation_error(op:Variant)->String:
 	if not op is Dictionary:return "invalid_base_work_operation"
+	if op.has("version"):
+		if not (op.version is int or op.version is float) or op.version!=2:return "invalid_base_work_operation"
+		var clean:Dictionary=op.duplicate();clean.erase("version")
+		if str(clean.get("action",""))=="PRIORITY":
+			var priority_keys:Array=clean.keys();priority_keys.sort()
+			if priority_keys!=["action","entity_id","kind","priority"] or clean.kind not in ["HAUL","BUILD","PRODUCE"]:return "invalid_base_work_operation"
+			if not preload("res://sim/int64_codec.gd").is_canonical(clean.entity_id) or not (clean.priority is int or clean.priority is float) or clean.priority!=floor(clean.priority) or clean.priority<0 or clean.priority>3:return "invalid_base_work_operation"
+			return ""
+		if str(clean.get("action",""))=="CANCEL" and clean.has("job_id"):
+			if not preload("res://sim/int64_codec.gd").is_canonical(clean.job_id):return "invalid_base_work_operation"
+			clean.erase("job_id")
+		return operation_error(clean)
 	var keys:Array=op.keys();keys.sort()
 	match str(op.get("action","")):
 		"REST":

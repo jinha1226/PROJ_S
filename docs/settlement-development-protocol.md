@@ -25,3 +25,7 @@
 - 외부 코드 반입 없음. S0~S4 이후 농업/습격 등 확장하지 않는다.
 
 결과: `docs/settlement-development-result.md` 및 관련 코드/테스트 commit.
+
+## 구현 중 확인한 검증 경계
+
+거점 tick은 던전 지형/전투/HP/인벤토리를 변경하지 않는다. 전체 world memento(전체 이벤트 배열 복사) 및 전역 party wire 검증을 매 tick 수행하면 과거 길이/세계 크기에 따라 비용이 증가한다. 거점 거래는 이벤트 suffix·next ID·party revision·휴식이 변경할 emotion/stress를 제한적으로 캡처하고, 정규 작업/자원 불변식·새 이벤트 ID/시간/인과·변경된 emotion wire를 검증한다. 실패 시 suffix와 해당 필드를 원자적으로 복원한다. 저장/복원과 통합 테스트에서 기존 전체 world audit을 유지한다. 원정은 기존 상위 transaction의 memento와 검증을 사용한다.

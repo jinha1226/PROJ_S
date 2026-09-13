@@ -71,6 +71,7 @@ func present(overview:Dictionary,selected_id:String="STORAGE")->void:
 	_resolve_layout();queue_redraw()
 
 func _process(delta:float)->void:
+	if bool(_overview.get("work_state",{}).get("enabled",false)):return
 	if not is_visible_in_tree() or str(_overview.get("phase",""))!="TOWN" \
 			or _placement_mode or _pointer_down or not camera.contacts.is_empty():return
 	_ambient_elapsed+=minf(delta,0.1)
@@ -80,6 +81,7 @@ func _process(delta:float)->void:
 
 func resident_center(resident:Dictionary)->Vector2:
 	var tile:=Vector2(_vector2i(resident.get("tile",[7,7])))
+	if bool(resident.get("canonical_work",false)):return _map_origin()+(tile+Vector2.ONE*0.5)*_cell_size()
 	var id:=int(resident.entity_id)
 	if id==resident_motion.worker_id:tile=Vector2(resident_motion.worker_tile)
 	else:tile=resident_motion.position(id,tile)
@@ -172,7 +174,10 @@ func _draw()->void:
 
 func _draw_work_and_residents()->void:
 	var job:Dictionary=_overview.get("work",{})
-	if not job.is_empty():
+	var jobs:Array=_overview.get("jobs",[])
+	if jobs.is_empty() and not job.is_empty():jobs=[job]
+	for work_job in jobs:
+		job=work_job
 		var p:=_vector2i(job.tile_origin);var footprint:=_vector2i(job.footprint)
 		var rect:=Rect2(_map_origin()+Vector2(p)*_cell_size(),Vector2(footprint)*_cell_size())
 		var tone:=SELECTED if str(job.action)=="PRODUCE" else CYAN
@@ -183,6 +188,12 @@ func _draw_work_and_residents()->void:
 		var bar:=Rect2(rect.position+Vector2(2,rect.size.y-5),Vector2(rect.size.x-4,3))
 		draw_rect(bar,Color("#111a1c"));bar.size.x*=float(job.progress)/float(job.required)
 		draw_rect(bar,tone)
+	for work_job in jobs:
+		if not bool(work_job.get("materials_reserved",false)) or work_job.get("material_tile",[]).is_empty():continue
+		var tile:=_vector2i(work_job.material_tile)
+		var center:=_map_origin()+(Vector2(tile)+Vector2.ONE*0.5)*_cell_size()
+		var bundle:=Rect2(center+Vector2(3,-6),Vector2(6,6))
+		draw_rect(bundle,SELECTED);draw_rect(bundle,GROUND,false,1)
 	for recipe in _overview.get("production",[]):
 		if int(recipe.ready)<1:continue
 		var rect:=building_rect(str(recipe.facility_id))
@@ -192,10 +203,12 @@ func _draw_work_and_residents()->void:
 		draw_string(KoreanFont,center+Vector2(-3,4),str(recipe.ready),HORIZONTAL_ALIGNMENT_LEFT,-1,12,GROUND)
 	if str(_overview.get("phase",""))!="TOWN":return
 	for resident in _overview.get("residents",[]):
-		var working:bool=not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
+		var working:bool=int(resident.get("job_id",-1))>=0 if bool(resident.get("canonical_work",false)) else not job.is_empty() and int(job.worker_id)==int(resident.entity_id)
+		if bool(resident.get("canonical_work",false)):
+			job=(_overview.get("work_state",{}).get("jobs",{}) as Dictionary).get(str(resident.get("job_id",-1)),{})
 		var center:=resident_center(resident)
 		var resting:bool=working and str(job.action)=="REST" \
-			and int(job.progress)>=job.route.size()-1
+			and (str(job.get("state",""))=="WORKING" if bool(resident.get("canonical_work",false)) else int(job.progress)>=job.route.size()-1)
 		var directed:Dictionary=resident.duplicate(false)
 		var facing:=resident_motion.facing(int(resident.entity_id))
 		directed["facing"]=[facing.x,facing.y]

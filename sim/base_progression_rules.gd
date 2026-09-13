@@ -54,7 +54,7 @@ static func secured_stock(events:Array,current_expedition_index:int,
 				var resource_id:=str(event.data.get("resource_id",""))
 				if resource_id in RESOURCE_IDS:
 					result[resource_id]-=int(event.data.get("amount",0))
-			"base.building_constructed","base.work_ordered":
+			"base.building_constructed","base.work_ordered","base.settlement_material_consumed":
 				for resource_id in RESOURCE_IDS:
 					result[resource_id]-=int(event.data.get("cost",{}).get(
 						resource_id,0))

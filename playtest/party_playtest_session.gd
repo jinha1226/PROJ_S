@@ -774,14 +774,16 @@ func _hero_has_item_definition(definition_id:String)->bool:
 	return false
 
 func private_home_available()->bool:
-	return sim!=null and preload("res://sim/town_life_rules.gd").house_available(sim.world.events)
+	if sim==null:return false
+	var life:Dictionary=preload("res://sim/settlement_work_rules.gd").index(sim.world).life
+	return not bool(life.enabled) or bool(life.house_owned)
 
 func town_service_available(type_id:String)->bool:
 	return town_life_enabled() or _base_building_built(type_id)
 
 func company_member_ids()->Array:
 	if not town_life_enabled():return sim.world.party_encounter.active_party_member_ids.duplicate()
-	return preload("res://sim/town_life_rules.gd").state(sim.world.events).members.duplicate()
+	return preload("res://sim/settlement_work_rules.gd").index(sim.world).life.members.duplicate()
 
 
 func _initial_ground_item_rows(candidate,hero_position:Vector2i,
@@ -1626,6 +1628,8 @@ func _finalize_safe_recovery(details:Dictionary)->Dictionary:
 	var recovery_error:=_safe_recovery_postcondition_error(details)
 	if not recovery_error.is_empty():
 		return {"accepted":false,"reason":recovery_error}
+	var settlement_result:=preload("res://playtest/settlement_work_service.gd").expedition_advance(self)
+	if not bool(settlement_result.accepted):return settlement_result
 	var result:Dictionary={"accepted":true};result.merge(details,true)
 	return result
 
@@ -2128,7 +2132,16 @@ func base_overview()->Dictionary:
 	return _base_progression_service.base_overview()
 
 func base_work(operation:Dictionary)->Dictionary:
-	return preload("res://playtest/base_work_service.gd").commit(self,operation)
+	var canonical:=operation.duplicate(true)
+	if not canonical.has("version"):
+		var legacy:Dictionary={}
+		if sim!=null and not bool(preload("res://sim/settlement_work_rules.gd").index(sim.world).state.enabled):
+			legacy=preload("res://sim/base_work_rules.gd").legacy_current(sim.world.events)
+		if legacy.is_empty() or str(operation.action) not in ["TICK","CANCEL"]:canonical["version"]=2
+	if int(canonical.get("version",1))==2:
+		for field in ["entity_id","job_id"]:
+			if canonical.has(field) and canonical[field] is int:canonical[field]=str(canonical[field])
+	return preload("res://playtest/base_work_service.gd").commit(self,canonical)
 
 func _base_cache_rows()->Array[Dictionary]:
 	return _base_progression_service._base_cache_rows()
@@ -2152,7 +2165,7 @@ func base_return()->Dictionary:
 	return _base_progression_service.base_return()
 
 func base_build_assessment(type_id:String,tile_origin:Variant)->Dictionary:
-	return _base_settlement_service.build_assessment(type_id,tile_origin)
+	return _base_settlement_service.work_build_assessment(type_id,tile_origin)
 
 func base_build(type_id:String,tile_origin:Variant)->Dictionary:
 	return _base_settlement_service.build(type_id,tile_origin)
@@ -2161,8 +2174,13 @@ func _base_building_built(type_id:String)->bool:
 	return _base_settlement_service.type_built(type_id)
 func town_gold()->int:
 	if sim==null or sim.world==null:return 0
-	var value:=TOWN_INITIAL_GOLD
-	for event in sim.world.events:
+	var world=sim.world
+	var cache:Dictionary=world.get_meta("town_gold_index",{})
+	if cache.is_empty() or int(cache.cursor)>world.events.size() or (int(cache.cursor)>0 and cache.tail!=world.events[int(cache.cursor)-1]):
+		cache={"cursor":0,"tail":null,"gold":TOWN_INITIAL_GOLD}
+	var value:=int(cache.gold)
+	for n in range(int(cache.cursor),world.events.size()):
+		var event=world.events[n]
 		match str(event.type):
 			"town.house_acquired","town.inn_payment":value-=int(event.data.get("cost",0))
 			"town.expedition_reward":value+=int(event.data.get("gold",0))
@@ -2178,8 +2196,10 @@ func town_gold()->int:
 				for reward in event.data.get("reward_rows",[]):
 					if str(reward.get("reward_family",""))=="CURRENCY":
 						value+=int(reward.get("amount",0))
-			"base.work_ordered":value-=int(event.data.get("gold_cost",0))
+			"base.work_ordered","base.settlement_rest_reserved":value-=int(event.data.get("gold_cost",0))
 			"base.work_cancelled","base.rest_payment_released":value+=int(event.data.get("gold_cost",0))
+	cache.gold=value;cache.cursor=world.events.size();cache.tail=world.events[-1] if not world.events.is_empty() else null
+	world.set_meta("town_gold_index",cache)
 	return maxi(0,value)
 
 
@@ -2932,7 +2952,8 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 			"spawned_enemy_ids":[]})
 	state=sim.world.party_encounter;state.revision+=1
 	var floor_finished:=Time.get_ticks_usec()
-	var state_error:String=sim.world.world_state_error()
+	var settlement_error:=preload("res://playtest/settlement_work_service.gd").release_assigned(self)
+	var state_error:String=settlement_error if not settlement_error.is_empty() else sim.world.world_state_error()
 	var validation_finished:=Time.get_ticks_usec()
 	_last_town_departure_profile={"rollback_ms":(rollback_finished-profile_start)/1000.0,
 		"floor_entry_ms":(floor_finished-rollback_finished)/1000.0,
@@ -5658,6 +5679,8 @@ func _new_exile_record(entity_id:int,dismissal_event_id:int,condition:Dictionary
 
 
 func _advance_exile_world()->void:
+	var settlement_result:=preload("res://playtest/settlement_work_service.gd").expedition_advance(self)
+	if not bool(settlement_result.accepted):push_error("Settlement advance failed: "+str(settlement_result.get("reason","")))
 	var state=sim.world.party_encounter
 	for index in range(state.exile_records.size()):
 		var record:Dictionary=state.exile_records[index]
@@ -7101,6 +7124,9 @@ func commit_field_action(action)->Dictionary:
 		if not recovery.accepted:
 			sim.restore_rollback_memento(rollback)
 			return _rejection_dto(str(recovery.reason))
+		var settlement_result:=preload("res://playtest/settlement_work_service.gd").expedition_advance(self)
+		if not bool(settlement_result.accepted):
+			sim.restore_rollback_memento(rollback);return _rejection_dto(str(settlement_result.get("reason","settlement_advance_failed")))
 		result.events.append_array(recovery.get("events",[]))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
 		command_journal.append({"kind":"field_action","action":action.to_dict()})
@@ -8090,6 +8116,9 @@ func _morale_band_change(event)->String:
 	return after if after!=before else ""
 
 func save_session_json() -> String:
+	if sim==null:return ""
+	var work_rules=preload("res://sim/settlement_work_rules.gd")
+	if not work_rules.audit(work_rules.state(sim.world),work_rules.stock(sim.world)).is_empty():return ""
 	return JSON.stringify({"session_format_version":SESSION_FORMAT_VERSION,
 		"scenario_id":scenario_id,"player_species_id":player_species_id,
 		"world_seed":str(world_seed),
@@ -8436,7 +8465,7 @@ func load_session_json(encoded: String) -> Dictionary:
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
 			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation,not row.has("ruleset_id"))
-			"base_work":replay_result=replay.base_work(row.operation)
+			"base_work":replay_result=preload("res://playtest/base_work_service.gd").commit(replay,row.operation)
 			"battle_loot":replay_result=replay.take_battle_loot(int(row.battle_id),str(row.instance_id))
 			"base_settlement":
 				var settlement_operation:Dictionary=row.operation
@@ -8596,7 +8625,10 @@ func load_session_json(encoded: String) -> Dictionary:
 					var action=ActionScript.from_dict(override.action)
 					replay.override_companion(Int64CodecScript.parse(override.actor_id,"override actor"),action)
 				replay_result=replay.commit_turn()
-		if not bool(replay_result.get("accepted",false)):return _rejection_dto("party_journal_replay_failed")
+		if not bool(replay_result.get("accepted",false)):
+			var failed:=_rejection_dto("party_journal_replay_failed")
+			failed["replay_kind"]=str(row.kind);failed["replay_reason"]=str(replay_result.get("reason",""))
+			return failed
 	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
 	var installed:=_install_restored_session(restored, decoded, parsed_world_seed,
 		parsed_personality_seed, parsed_scenario_id, replay._map_layout)

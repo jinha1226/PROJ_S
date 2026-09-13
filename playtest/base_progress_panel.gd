@@ -6,18 +6,21 @@ signal service_requested(facility_id:String)
 signal building_selected(building_id:String)
 signal resident_requested(entity_id:int)
 signal construction_confirm_requested(type_id:String,tile_origin:Vector2i)
-signal work_cancel_requested
+signal work_cancel_requested(job_id:int)
+signal work_priority_requested(entity_id:int,kind:String,priority:int)
 signal production_requested(action:String,recipe_id:String)
 signal rest_requested(entity_id:int)
 signal return_requested
 signal sell_requested(resource_id:String,amount:int)
 
+const WorkLabels=preload("res://sim/settlement_work_rules.gd")
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 const BaseSettlementViewScript=preload("res://playtest/base_settlement_view.gd")
 const TOUCH_TARGET:=48
 const FONT_BODY:=14
 const FONT_SMALL:=12
 
+var rebuild_count:=0
 var _overview:Dictionary={}
 var _read_only:=false
 var _selected_id:="STORAGE"
@@ -62,6 +65,7 @@ func apply_placement_assessment(result:Dictionary)->void:
 
 
 func _rebuild()->void:
+	rebuild_count+=1
 	for child in get_children():
 		remove_child(child);child.free()
 	if _overview.is_empty() or not bool(_overview.get("enabled",false)):
@@ -128,17 +132,19 @@ func _add_build_entry()->void:
 
 
 func _add_work_status()->void:
+	var jobs:Array=_overview.get("jobs",[])
 	var work:Dictionary=_overview.get("work",{})
-	if work.is_empty():return
-	var title:="회복 물약 · 제조 중" if str(work.action)=="PRODUCE" else "%s · 주민 작업 중"%_building_label(str(work.type_id))
-	if str(work.action)=="REST":title="숙소 · 휴식 중"
-	_add_text(title,"BaseWorkTitle",FONT_BODY,true)
-	var progress:=ProgressBar.new();progress.name="BaseWorkProgress"
-	progress.max_value=float(work.required);progress.value=float(work.progress)
-	progress.custom_minimum_size.y=18;add_child(progress)
-	var cancel:=_button("작업 취소 · 재료 반환","BaseWorkCancel")
-	if str(work.action)=="REST":cancel.text="휴식 취소 · 골드 반환"
-	cancel.pressed.connect(func():work_cancel_requested.emit());add_child(cancel)
+	if jobs.is_empty() and not work.is_empty():jobs=[work]
+	for job in jobs:
+		var id:=int(job.get("job_id",-1));var suffix:=str(id) if id>=0 else ""
+		_add_text("%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)],"BaseWorkTitle"+suffix,FONT_BODY,true)
+		_add_text(WorkLabels.reason_label(str(job.get("blocked_reason",""))),"BaseWorkReason"+suffix,FONT_SMALL,true)
+		var progress:=ProgressBar.new();progress.name="BaseWorkProgress"+suffix
+		progress.max_value=float(job.required);progress.value=float(job.progress)
+		progress.custom_minimum_size.y=18;add_child(progress)
+		var cancel:=_button("작업 취소 · 미소비 재료 회수","BaseWorkCancel"+suffix)
+		cancel.disabled=_read_only or bool(job.get("cancel_requested",false))
+		cancel.pressed.connect(func():work_cancel_requested.emit(id));add_child(cancel)
 
 
 func _add_rest()->void:
@@ -188,6 +194,19 @@ func update_work(overview:Dictionary)->void:
 	if map!=null:map.present(_overview,_selected_id)
 	var progress:=find_child("BaseWorkProgress",true,false) as ProgressBar
 	if progress!=null:progress.value=float((_overview.get("work",{}) as Dictionary).get("progress",0))
+	for job in _overview.get("jobs",[]):
+		var suffix:=str(job.job_id)
+		var gauge:=find_child("BaseWorkProgress"+suffix,true,false) as ProgressBar
+		if gauge!=null:gauge.value=float(job.progress)
+		var reason:=find_child("BaseWorkReason"+suffix,true,false) as Label
+		if reason!=null:reason.text=WorkLabels.reason_label(str(job.blocked_reason))
+		var title:=find_child("BaseWorkTitle"+suffix,true,false) as Label
+		if title!=null:title.text="%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)]
+	for resident in _overview.get("residents",[]):
+		var card:=find_child("BaseResident%d"%int(resident.entity_id),true,false) as Button
+		if card!=null:card.text="%s · 체력 %d/%d · %s"%[resident.display_name,resident.health,resident.max_health,resident.activity]
+	var bank:=find_child("BaseStock",true,false) as Label
+	if bank!=null:bank.text=_stock_text()
 
 
 func _open_construction_editor()->void:
@@ -306,6 +325,11 @@ func _facility_by_id(facility_id:String)->Dictionary:
 	return {}
 
 
+func _stock_text()->String:
+	var materials:Dictionary=_overview.get("material_stock",{})
+	if materials.is_empty():return "보관 자원 · "+_resource_text(_overview.get("stock",{}))
+	return "창고 보유 %s\n예약 %s · 운반/현장 %s\n가용 %s"%[_resource_text(materials.physical),_resource_text(materials.reserved),_resource_text(materials.outside),_resource_text(materials.available)]
+
 func _add_resource_ledger()->void:
 	var panel:=_section("BaseResourceLedger")
 	var stack:=VBoxContainer.new();stack.add_theme_constant_override("separation",2);panel.add_child(stack)
@@ -318,6 +342,7 @@ func _add_resource_ledger()->void:
 		else "보관 자원 (안전) · 합계 %d\n%s")%[
 		_resource_total(stock),_resource_text(stock)],
 		"BaseStock",FONT_BODY)
+	bank.text=_stock_text()
 	bank.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;stack.add_child(bank)
 	if town_phase:return
 	var haul:=_new_label("운반 자원 (귀환 전 손실 위험) · %d/%d\n%s"%[
@@ -389,6 +414,16 @@ func _add_resident(resident:Dictionary)->void:
 	button.disabled=_read_only or entity_id<=0
 	button.tooltip_text="마을에서 인물 상세 열기" if _read_only else "인물 상세 열기"
 	button.pressed.connect(func():resident_requested.emit(entity_id));add_child(button)
+	if _read_only:return
+	var priorities:Dictionary=resident.get("priorities",{"HAUL":2,"BUILD":2,"PRODUCE":2})
+	for kind in ["HAUL","BUILD","PRODUCE"]:
+		var picker:=OptionButton.new();picker.name="BasePriority%d%s"%[entity_id,kind]
+		picker.custom_minimum_size.y=TOUCH_TARGET
+		var label:String={"HAUL":"운반","BUILD":"건설","PRODUCE":"생산"}[kind]
+		for level in ["끄기","낮음","보통","높음"]:picker.add_item(label+" · "+level)
+		picker.select(int(priorities.get(kind,2)))
+		picker.item_selected.connect(func(priority):work_priority_requested.emit(entity_id,kind,priority))
+		add_child(picker)
 
 
 func _add_landmark_detail(building_id:String)->void:

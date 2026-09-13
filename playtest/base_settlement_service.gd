@@ -9,26 +9,27 @@ func _init(session)->void:_session_ref=weakref(session)
 
 
 func overview()->Dictionary:
-	var levels:Dictionary=_session.BaseProgressionRulesScript.facility_levels(
-		_session.sim.world.events)
-	var rows:Array[Dictionary]=_session.BaseSettlementRulesScript.buildings(
-		_session.sim.world.events,levels)
+	var rules=preload("res://sim/settlement_work_rules.gd")
+	var cached:Dictionary=rules.index(_session.sim.world)
+	var rows:Array[Dictionary]=[]
+	for row in cached.buildings:rows.append(row)
 	var cycle=_session.sim.world.party_encounter.expedition_cycle
-	var stock:Dictionary=_session.BaseProgressionRulesScript.secured_stock(
-		_session.sim.world.events,int(cycle.expedition_index),str(cycle.phase))
+	var stock:Dictionary=rules.stock(_session.sim.world).available
 	var options:Array[Dictionary]=[]
 	for type_id in _session.BaseSettlementRulesScript.CONSTRUCTIBLE_TYPES:
-		var built:bool=_session.BaseSettlementRulesScript.type_built(rows,type_id)
+		var pending_rows:Array=preload("res://sim/settlement_work_rules.gd").obstacles(_session.sim.world,
+			preload("res://sim/settlement_work_rules.gd").state(_session.sim.world))
+		var built:bool=_session.BaseSettlementRulesScript.type_built(pending_rows,type_id)
 		var cost:Dictionary=_session.BaseSettlementRulesScript.CONSTRUCTION_COSTS[type_id].duplicate(true)
 		var affordable:bool=_session.BaseProgressionRulesScript.can_afford(stock,cost)
 		var in_town:bool=str(cycle.phase)=="TOWN"
 		options.append({"type_id":type_id,
 			"label":str(_session.BaseSettlementRulesScript.LABELS[type_id]),
 			"footprint":_footprint_wire(type_id),"cost":cost,
-			"can_build":not built and affordable and in_town,
+			"can_build":not built and in_town,
 			"message":"이미 건설했습니다." if built else (
 				"마을에서 건설할 수 있습니다." if not in_town else (
-					"건설 자원이 부족합니다." if not affordable else "빈 터를 선택하세요."))})
+					"자원 보급 후 착공합니다." if not affordable else "빈 터를 선택하세요."))})
 	return {"schema_version":_session.BaseSettlementRulesScript.SCHEMA_VERSION,
 		"ruleset_id":_session.BaseSettlementRulesScript.RULESET_ID,
 		"width":_session.BaseSettlementRulesScript.WIDTH,
@@ -36,6 +37,21 @@ func overview()->Dictionary:
 		"tiles":_session.BaseSettlementRulesScript.tiles(),"buildings":rows,
 		"build_options":options}.duplicate(true)
 
+
+func work_build_assessment(type_id:String,tile_value:Variant)->Dictionary:
+	var parsed:=_tile_position(tile_value)
+	if not bool(parsed.get("ok",false)):return _session._rejection_dto("base_building_position_invalid")
+	if _session.sim==null:return _session._rejection_dto("session_not_initialized")
+	if not _session.private_home_available():return _session._rejection_dto("private_home_required")
+	if _session.sim.world.party_encounter.expedition_cycle.phase!="TOWN":return _session._rejection_dto("base_build_town_required")
+	if type_id not in _session.BaseSettlementRulesScript.CONSTRUCTIBLE_TYPES:return _session._rejection_dto("base_building_type_unknown")
+	var point:Vector2i=parsed.position
+	var rules=preload("res://sim/settlement_work_rules.gd")
+	var result:Dictionary=preload("res://playtest/settlement_work_service.gd").assess(_session,
+		{"action":"BUILD","type_id":type_id,"tile_origin":[point.x,point.y]},rules.state(_session.sim.world))
+	if bool(result.get("accepted",false)):
+		result.message="이 위치에 배치할 수 있습니다." if _session.BaseProgressionRulesScript.can_afford(rules.stock(_session.sim.world).available,result.cost) else "배치 가능 · 자원 보급 후 착공합니다."
+	return result
 
 func build_assessment(type_id:String,tile_value:Variant)->Dictionary:
 	if not _session.private_home_available():
