@@ -16,3 +16,9 @@
 - `tests/frontier_campaign_acceptance.gd`: PASS.
 - `tests/settlement_mobile_acceptance.gd`: X11 렌더링 모드 PASS. 360×640, 390×844 창 크기로 레이아웃·입력을 검증했다.
 - [실제 실행 화면](ui/settlement-mobile-layout-runtime.png). 화면 배율은 Godot viewport 설정을 따른다.
+
+## 후속 시각 정리
+
+버튼의 대괄호를 제거하고 본문/버튼 최소 글자 크기를 18로 올렸다. 자원 수량은 20, 하단 메뉴는 18로 통일했다. 패널 여백·그림자·상태별 버튼 색을 정리하고 상세 패널 높이를 화면에 맞춰 늘렸다. 채집 자원 탭은 선택 상태를 강조한다. 픽셀폰트와 기존 지도 에셋은 유지한다.
+
+현재 건설은 `sim/base_settlement_rules.gd`의 16×16 격자에 시설 단위(3×2 또는 3×3)로 배치하는 방식이다. 벽/문/바닥 개별 배치, 방 경계 판정, 실내 가구 배치는 아직 없다. 타일 기반 자유 건설은 별도 기능이며 이번 UI 변경에 포함하지 않는다.

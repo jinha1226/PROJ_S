@@ -196,6 +196,7 @@ func _add_gathering()->void:
 		var chips:=HBoxContainer.new();add_child(chips)
 		for resource in ["TIMBER","STONE","HERBS"]:
 			var chip:=_button(_resource_label(resource),"GatherResource"+resource);chip.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			chip.toggle_mode=true;chip.set_pressed_no_signal(resource==selected_resource)
 			chip.pressed.connect(func():select_resource(resource));chips.add_child(chip)
 		_add_text("","GatheringSelectionStatus",FONT_BODY,false)
 		for row in _overview.get("gathering",[]):
@@ -334,6 +335,9 @@ func update_work(overview:Dictionary)->void:
 	_sync_work_rows()
 	if immersive:preload("res://playtest/settlement_mobile_layout.gd").update(self)
 	for row in _overview.get("gathering",[]):
+		if immersive:
+			var chip:=find_child("GatherResource"+str(row.resource_id),true,false) as Button
+			if chip!=null:chip.set_pressed_no_signal(str(row.resource_id)==selected_resource)
 		var toggle:=find_child("BaseGather"+str(row.resource_id),true,false) as CheckButton
 		if toggle!=null:
 			toggle.text=("채집 중 · 중지" if bool(row.enabled) else "채집 시작") if immersive else "%s · 잔량 %d"%[row.label,int(row.remaining)]
@@ -659,7 +663,7 @@ func _touch_target()->float:
 	return ceilf(TOUCH_TARGET*maxf(1.0,get_viewport_rect().size.x/maxf(1.0,get_window().size.x)))
 
 func _button(text:String,node_name:String)->Button:
-	var button:=Button.new();button.name=node_name;button.text="[ %s ]"%text
+	var button:=Button.new();button.name=node_name;button.text=text if immersive else "[ %s ]"%text
 	button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	button.custom_minimum_size=Vector2(72,_touch_target());button.add_theme_font_size_override("font_size",FONT_SMALL)
 	button.focus_mode=Control.FOCUS_ALL;DarkPixelSkin.apply_action_button(button,DarkPixelSkin.CYAN)
@@ -677,7 +681,7 @@ func _add_text(text:String,node_name:String,font_size:int,centered:bool)->Label:
 func _new_label(text:String,node_name:String,font_size:int)->Label:
 	var label:=Label.new();label.name=node_name;label.text=text
 	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size",font_size)
+	label.add_theme_font_size_override("font_size",maxi(18,font_size) if immersive else font_size)
 	label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	return label
 
