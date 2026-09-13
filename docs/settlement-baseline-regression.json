@@ -1,0 +1,54 @@
+{
+  "commit": "e569b8c",
+  "rows": [
+    {
+      "test": "base_work_acceptance",
+      "exit_code": 1,
+      "errors": [
+        "FAIL return to base",
+        "FAIL reachable construction footprint"
+      ],
+      "log": "settlement-validation/baseline-base_work_acceptance.log"
+    },
+    {
+      "test": "base_settlement_build_acceptance",
+      "exit_code": 1,
+      "errors": [
+        "FAIL entry extraction enters the canonical town phase",
+        "FAIL guard fixture reaches town through the entry API",
+        "FAIL 360px pointer fixture reaches town",
+        "FAIL 390px pointer fixture reaches town",
+        "FAIL cancel fixture reaches town"
+      ],
+      "log": "settlement-validation/baseline-base_settlement_build_acceptance.log"
+    },
+    {
+      "test": "base_production_acceptance",
+      "exit_code": 1,
+      "errors": [
+        "FAIL walk to entry",
+        "FAIL bank herbs",
+        "FAIL clinic site available",
+        "FAIL build clinic",
+        "FAIL order potion",
+        "FAIL worker moves to clinic",
+        "FAIL cancel production",
+        "FAIL reorder",
+        "FAIL one completed potion stored at clinic",
+        "FAIL herbs charged once",
+        "FAIL depart with finished goods stored at base",
+        "FAIL expedition preserves stored goods",
+        "FAIL return for stored goods",
+        "FAIL return preserves stored goods",
+        "FAIL ready goods expose claim button"
+      ],
+      "log": "settlement-validation/baseline-base_production_acceptance.log"
+    },
+    {
+      "test": "base_rest_acceptance",
+      "exit_code": 1,
+      "errors": [],
+      "log": "settlement-validation/baseline-base_rest_acceptance.log"
+    }
+  ]
+}

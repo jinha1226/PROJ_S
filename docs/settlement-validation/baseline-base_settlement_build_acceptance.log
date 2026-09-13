@@ -1,0 +1,10 @@
+Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3450)
+
+FAIL entry extraction enters the canonical town phase
+FAIL guard fixture reaches town through the entry API
+FAIL 360px pointer fixture reaches town
+FAIL 390px pointer fixture reaches town
+FAIL cancel fixture reaches town

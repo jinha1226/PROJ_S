@@ -1,0 +1,24 @@
+Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3450)
+
+FAIL walk to entry
+FAIL bank herbs
+FAIL clinic site available
+FAIL build clinic
+FAIL order potion
+FAIL worker moves to clinic
+FAIL cancel production
+FAIL reorder
+FAIL one completed potion stored at clinic
+FAIL herbs charged once
+FAIL depart with finished goods stored at base
+FAIL expedition preserves stored goods
+FAIL return for stored goods
+FAIL return preserves stored goods
+FAIL ready goods expose claim button
+FAIL mobile claim control emits one precise request
+FAIL claim into actual inventory
+FAIL usable potion quantity increased
+BASE_PRODUCTION_ACCEPTANCE ["walk to entry", "bank herbs", "clinic site available", "build clinic", "order potion", "worker moves to clinic", "cancel production", "reorder", "one completed potion stored at clinic", "herbs charged once", "depart with finished goods stored at base", "expedition preserves stored goods", "return for stored goods", "return preserves stored goods", "ready goods expose claim button", "mobile claim control emits one precise request", "claim into actual inventory", "usable potion quantity increased"]

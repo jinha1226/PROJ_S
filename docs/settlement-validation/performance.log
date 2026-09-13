@@ -1,0 +1,15 @@
+Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3450)
+
+SETTLEMENT_PERF {"actual_residents":1,"events":10000,"first_p95_ms":0.29,"last_p95_ms":0.333,"max_ms":2.341,"memory_delta_bytes":36464980,"orders":0,"p50_ms":0.175,"p95_ms":0.357,"path_searches":0,"residents":1,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":1,"events":10000,"first_p95_ms":0.743,"last_p95_ms":0.426,"max_ms":2.166,"memory_delta_bytes":42683756,"orders":8,"p50_ms":0.311,"p95_ms":0.604,"path_searches":3,"residents":1,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":1,"events":10000,"first_p95_ms":1.441,"last_p95_ms":0.923,"max_ms":4.831,"memory_delta_bytes":42703668,"orders":32,"p50_ms":0.657,"p95_ms":1.083,"path_searches":3,"residents":1,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":4,"events":10000,"first_p95_ms":1.506,"last_p95_ms":1.051,"max_ms":4.952,"memory_delta_bytes":36156064,"orders":0,"p50_ms":0.743,"p95_ms":1.23,"path_searches":0,"residents":4,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":4,"events":10000,"first_p95_ms":1.826,"last_p95_ms":1.125,"max_ms":4.263,"memory_delta_bytes":44053752,"orders":8,"p50_ms":0.839,"p95_ms":1.399,"path_searches":22,"residents":4,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":4,"events":10000,"first_p95_ms":2.608,"last_p95_ms":1.351,"max_ms":6.459,"memory_delta_bytes":43085888,"orders":32,"p50_ms":1.088,"p95_ms":1.77,"path_searches":70,"residents":4,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":12,"events":10000,"first_p95_ms":2.329,"last_p95_ms":1.774,"max_ms":6.733,"memory_delta_bytes":36898504,"orders":0,"p50_ms":1.303,"p95_ms":2.175,"path_searches":0,"residents":12,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":12,"events":10000,"first_p95_ms":3.395,"last_p95_ms":1.638,"max_ms":6.871,"memory_delta_bytes":42726076,"orders":8,"p50_ms":1.34,"p95_ms":2.157,"path_searches":27,"residents":12,"ui_rebuilds":0}
+SETTLEMENT_PERF {"actual_residents":12,"events":10000,"first_p95_ms":6.271,"last_p95_ms":1.88,"max_ms":33.851,"memory_delta_bytes":44426340,"orders":32,"p50_ms":1.412,"p95_ms":2.414,"path_searches":968,"residents":12,"ui_rebuilds":0}
+SETTLEMENT_PERFORMANCE PASS
