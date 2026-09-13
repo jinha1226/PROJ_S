@@ -60,22 +60,9 @@ static func equipped_torch_state(world, entity_id: int) -> Dictionary:
 		"fuel_remaining":0, "fuel_capacity":FUEL_DURATION, "ignited_at":-1,
 		"last_event_id":-1, "source_event_type":""}
 
-static func active_light_sources(world) -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	if world == null or world.item_state == null: return result
-	var entity_ids: Array = world.item_state.inventory_rows.keys(); entity_ids.sort()
-	for raw_id in entity_ids:
-		var entity_id := int(raw_id)
-		if not world.entities.has(entity_id): continue
-		var item = equipped_torch(world, entity_id)
-		if item == null: continue
-		var torch_state := _state_for_item(world, str(item.instance_id),item)
-		if not bool(torch_state.get("lit", false)): continue
-		var position: Vector2i = world.entities[entity_id].position
-		result.append({"position":[position.x, position.y], "brightness":LIGHT_BRIGHTNESS,
-			"radius":LIGHT_RADIUS, "instance_id":str(item.instance_id),
-			"entity_id":entity_id})
-	return result
+static func active_light_sources(_world) -> Array[Dictionary]:
+	# Historical event decoding remains; carried torches no longer emit light.
+	return []
 
 static func action_error(world, entity_id: int, instance_id: String, action: String) -> String:
 	if world == null or not world.entities.has(entity_id): return "item_actor_missing"

@@ -148,6 +148,7 @@ static func commit_torch_event(world, entity_id: int, instance_id: String,
 
 static func commit_grant(world,entity_id:int,definition_id:String,quantity:int,
 		position:Vector2i,reason:String)->Dictionary:
+	if definition_id=="TORCH":return _rejected("torch_system_removed")
 	# Creation is distinct from cross-container movement: it consumes the world
 	# allocator and introduces one permanent instance directly into an owner bag.
 	var guard:=_guard(world,entity_id)
@@ -317,6 +318,7 @@ static func _plan_equip(world,entity_id:int,instance_id:String,slot:String)->Dic
 	if not guard.is_empty():return _rejected(guard)
 	var next=world.item_state.clone()
 	var item=next.inventory(entity_id)._item_ref(instance_id)
+	if item!=null and str(item.definition_id)=="TORCH":return _rejected("torch_system_removed")
 	if item!=null:
 		var definition=RegistryScript.definition(str(item.definition_id))
 		if definition!=null:

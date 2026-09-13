@@ -32,7 +32,6 @@ const AsciiGaugeScript=preload("res://playtest/ascii_gauge.gd")
 const PartyCommandScript=preload("res://sim/party_exception_command.gd")
 const BuildInfoScript=preload("res://playtest/build_info.gd")
 const GrowthBuildRegistryScript=preload("res://sim/growth_build_registry.gd")
-const TorchRulesScript=preload("res://sim/torch_rules.gd")
 const AsciiMaterialGrammarScript=preload("res://playtest/ascii_material_grammar.gd")
 # Korean/Latin pixel type is shared by UI, map text and combat effects.
 const KoreanFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
@@ -94,7 +93,6 @@ var product_restart_confirm:ConfirmationDialog
 var expedition_floor_label:Label
 var return_timer_label:Label
 var ration_label:Label
-var torch_timer_label:Label
 var food_meter:ProgressBar
 var detail_hp:ProgressBar
 var detail_mp:ProgressBar
@@ -102,10 +100,7 @@ var detail_hp_text:Label
 var detail_mp_text:Label
 var stat_help:Node
 var food_icon:Control
-var torch_icon:Control
-var torch_meter:ProgressBar
 var food_hud:VBoxContainer
-var torch_hud:VBoxContainer
 var cards:HBoxContainer
 var deck:VBoxContainer
 var log_label:Label
@@ -156,7 +151,6 @@ var species_picker_buttons:VBoxContainer
 var selected_member_id:=-1
 var selected_target_id:=-1
 var enemy_vision_overlay_enabled:=false
-var _last_torch_depletion_alert_event_id:=-1
 var town_facility_id:=""
 var town_ui_state:Dictionary={"filter":"ADVENTURERS","resident":-1,"trade":"BUY","owner":-1}
 var selected_base_building_id:="STORAGE"
@@ -958,11 +952,6 @@ func _build_ui()->void:
 	ration_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	ration_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
 	ration_label.visible=false;clock_row.add_child(ration_label)
-	torch_timer_label=Label.new();torch_timer_label.name="TorchTimer"
-	torch_timer_label.add_theme_font_size_override("font_size",FONT_AUX)
-	torch_timer_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	torch_timer_label.add_theme_font_override("font",DarkPixelSkinScript.PixelFont)
-	torch_timer_label.visible=false;clock_row.add_child(torch_timer_label)
 	top_hud_actions=HBoxContainer.new();top_hud_actions.name="TopHUDActions"
 	top_hud_actions.custom_minimum_size.x=132;top_hud_actions.alignment=BoxContainer.ALIGNMENT_END
 	top_hud_actions.add_theme_constant_override("separation",0)
@@ -1004,7 +993,7 @@ func _build_ui()->void:
 	menu_popup.id_pressed.connect(_on_product_menu_id)
 	top_hud_actions.add_child(product_menu_button)
 	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
-	# One aligned rail: map / floor and return clock / food / torch / menu.
+	# One aligned rail: map / floor and return clock / food / menu.
 	minimap_frame.custom_minimum_size=Vector2(64,64)
 	minimap.custom_minimum_size=Vector2(54,54)
 	return_timer_label.reparent(situation_stack)
@@ -1014,17 +1003,13 @@ func _build_ui()->void:
 	expedition_floor_label.custom_minimum_size.x=60
 	food_hud=VBoxContainer.new();food_hud.name="FoodHUD";food_hud.custom_minimum_size.x=72
 	food_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(food_hud);phase_row.move_child(food_hud,2)
-	torch_hud=VBoxContainer.new();torch_hud.name="TorchHUD";torch_hud.custom_minimum_size.x=108
-	torch_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(torch_hud);phase_row.move_child(torch_hud,3)
-	ration_label.reparent(food_hud);torch_timer_label.reparent(torch_hud)
+	ration_label.reparent(food_hud)
 	food_icon=_supply_icon_row(food_hud,ration_label,"FOOD")
-	torch_icon=_supply_icon_row(torch_hud,torch_timer_label,"TORCH")
-	for label in [ration_label,torch_timer_label]:
+	for label in [ration_label]:
 		label.add_theme_font_size_override("font_size",12);label.clip_text=true
 		label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		label.custom_minimum_size.y=34
 	food_meter=_hud_supply_meter(food_hud,"FoodRemaining",DarkPixelSkinScript.JADE)
-	torch_meter=_hud_supply_meter(torch_hud,"TorchRemaining",DarkPixelSkinScript.CYAN)
 	top_hud_actions.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
@@ -1932,14 +1917,6 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
-	var torch_status:Variant=status.get("torch",{})
-	if torch_status is Dictionary \
-			and bool(torch_status.get("depleted",false)) \
-			and str(torch_status.get("source_event_type",""))=="torch.ignited" \
-			and int(torch_status.get("last_event_id",-1))!=_last_torch_depletion_alert_event_id:
-		_last_torch_depletion_alert_event_id=int(torch_status.get("last_event_id",-1))
-		notice_text="횃불 연료가 모두 소진되었습니다."
-		action_feedback_text=notice_text
 	_validate_battle_targeting(status)
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
@@ -2312,7 +2289,7 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 	var view_cell_count:=view_dimensions.x
 	var product_hud:=_is_solo_product_session()
 	var step_index:=int(status.get("step_index",-1))
-	# The field and torch clock remain live every hop. Minimap, party dossier and
+	# The field remains live every hop. Minimap, party dossier and
 	# history are stable chrome during AUTO, so coalesce them to one refresh per
 	# four hops and force one immediately whenever AUTO stops.
 	var refresh_aux:=not continuous_motion \
@@ -5704,8 +5681,7 @@ func _item_stats_text(row:Dictionary)->String:
 		if str(row.get("use_kind",""))=="HEALING":
 			parts.append("체력 +%d"%int(row.get("heal_amount",0)))
 		if str(row.get("use_kind",""))=="ENERGY":parts.append("MP +%d"%int(row.get("energy_amount",0)))
-		if str(row.get("definition_id",""))=="TORCH":
-			parts.append("연료 %d/%d"%[int(row.get("fuel_remaining",0)),int(row.get("fuel_capacity",0))])
+
 		lines.append("효과 없음" if parts.is_empty() else " · ".join(parts))
 	var requirement:=str(row.get("requirement_text",""))
 	if not requirement.is_empty():lines.append("요구 능력 · "+requirement)
@@ -5723,7 +5699,7 @@ func _item_description_text(row:Dictionary)->String:
 			return "주무기 슬롯에 장착하는 근접 무기입니다."
 		"ARMOR":
 			if str(row.get("definition_id",""))=="TORCH":
-				return "보조 손에 장착해 주변을 밝히는 횃불입니다. 켜진 동안 게임 시간에 따라 연료가 줄어듭니다."
+				return "더 이상 사용하지 않는 장비입니다. 해제하거나 버릴 수 있습니다."
 			return "몸을 보호하는 장비입니다. 대응하는 방어 슬롯에 장착됩니다."
 		"ACCESSORY":return "능력을 보완하는 장신구입니다. 빈 장신구 슬롯을 우선 사용합니다."
 		"CONSUMABLE":
@@ -5813,16 +5789,9 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.disabled=not selected_equipped
 	member_item_unequip_button.set_meta("item_instance_id",str(row.get("instance_id","")))
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
-	var torch_row:=str(row.get("definition_id",""))=="TORCH"
-	member_item_use_button.visible=(not selected_equipped and _is_healing_item_row(row)) \
-		or (torch_row and selected_equipped)
-	member_item_use_button.disabled=not member_item_use_button.visible \
-		or not session.has_method("use_inventory_item")
-	if torch_row and selected_equipped:
-		member_item_use_button.disabled=false
-		member_item_use_button.text="[소화]" if bool(row.get("torch_lit",false)) else "[점화]"
-	else:
-		member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
+	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
+	member_item_use_button.disabled=not member_item_use_button.visible or not session.has_method("use_inventory_item")
+	member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -5910,25 +5879,17 @@ func _on_item_equip_selected()->void:
 		else member_item_selected_id
 	var slot:=str(member_item_equip_button.get_meta("item_slot","")) \
 		if member_item_equip_button!=null else ""
-	var is_torch:=false
 	if slot.is_empty():
 		var allowed_slots:Array=[]
 		for row in dto.get("backpack_rows",[]):
 			if str(row.get("instance_id",""))==instance_id:
-				allowed_slots=row.get("equip_slots",[])
-				is_torch=bool(row.get("torch",false));break
+				allowed_slots=row.get("equip_slots",[]);break
 		slot=item_preferred_equip_slot(dto,allowed_slots)
-	else:
-		for row in dto.get("backpack_rows",[]):
-			if str(row.get("instance_id",""))==instance_id:
-				is_torch=bool(row.get("torch",false));break
 	if slot.is_empty():
 		notice_text="이 아이템은 장착할 수 없습니다."
 		action_feedback_text=notice_text;_request_refresh();return
 	var result:Dictionary=session.equip_inventory_item(instance_id,slot)
-	if bool(result.get("accepted",false)) and is_torch:
-		var lit:Dictionary=session.ignite_torch(instance_id)
-		if bool(lit.get("accepted",false)):result=lit
+
 	_on_item_operation_result(result)
 
 func item_preferred_equip_slot(dto:Dictionary,allowed_slots:Array)->String:
@@ -5972,17 +5933,7 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")-
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
-	var selected:=_selected_item_ledger_row(session.protagonist_inventory())
-	var is_torch:=str(selected.get("definition_id",""))=="TORCH"
-	if is_torch:
-		var method_name:="extinguish_torch" if bool(selected.get("torch_lit",false)) else "ignite_torch"
-		var torch_result:Dictionary=session.call(method_name,member_item_selected_id)
-		if not bool(torch_result.get("accepted",false)):
-			notice_text=str(torch_result.get("message","횃불을 사용할 수 없습니다."))
-			action_feedback_text=notice_text;member_item_popover_compare.text=notice_text
-			member_item_popover_compare.visible=true;_position_item_popover();return
-		notice_text="횃불을 %s했습니다." % ("껐" if method_name=="extinguish_torch" else "켰")
-		action_feedback_text=notice_text;_hide_item_popover();_record_result(torch_result,true);_refresh();return
+
 	if selection.is_empty():
 		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
 		if not choices.is_empty():
@@ -7545,41 +7496,19 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	var ration_tone:Color=AsciiFrameScript.INK
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
-	var torch_text:="횃불 없음" if phase=="DUNGEON" else "";var torch_band:="NONE";var torch_remaining:=0
-	var torch_capacity:=TorchRulesScript.FUEL_DURATION
-	var torch_tone:=AsciiFrameScript.INK
-	var torch_count:=0;var food_count:=0
+	var food_count:=0
 	if phase=="DUNGEON" and session!=null and session.sim!=null:
 		var world=session.sim.world
-		var hero_id:=int(world.party_control_actor_id())
-		var inventory=world.inventory_of(hero_id)
-		# Equipped instances remain in the ownership table: count exactly once.
+		var inventory=world.inventory_of(world.party_control_actor_id())
 		if inventory!=null:
 			for item in inventory.backpack:
-				if str(item.definition_id)=="TORCH":torch_count+=int(item.quantity)
-				elif str(item.definition_id)=="FOOD_RATION":food_count+=int(item.quantity)
-		var torch_state:Dictionary=TorchRulesScript.equipped_torch_state(world,hero_id)
-		if bool(torch_state.get("is_torch",false)):
-			torch_remaining=int(torch_state.get("fuel_remaining",0))
-			torch_capacity=maxi(1,int(torch_state.get("fuel_capacity",
-				TorchRulesScript.FUEL_DURATION)))
-			if bool(torch_state.get("depleted",false)):
-				torch_text="횃불 소진";torch_band="DEPLETED";torch_tone=AsciiFrameScript.DANGER
-			elif bool(torch_state.get("lit",false)):
-				torch_text="횃불 약 %d턴"%ceili(torch_remaining/100.0)
-				torch_band="WARNING" if torch_remaining*4<=torch_capacity else "LIT"
-				torch_tone=AsciiFrameScript.DANGER if torch_band=="WARNING" else AsciiFrameScript.BRASS
-			else:
-				torch_text="횃불 꺼짐 · %d턴"%ceili(torch_remaining/100.0)
-				torch_band="OFF"
+				if str(item.definition_id)=="FOOD_RATION":food_count+=int(item.quantity)
 	return {"phase":phase,"floor_text":floor_text,"timer_text":timer_text,
 		"ration":clampi(int(party.get("ration",0)),0,ration_max),"ration_max":ration_max,
-		"food_count":food_count,"torch_count":torch_count,
+		"food_count":food_count,
 		"warning_band":band,"remaining_world_time":remaining,"tone_hex":tone.to_html(false),
 		"ration_text":ration_text,"ration_band":ration_band,
-		"ration_tone_hex":ration_tone.to_html(false),"torch_text":torch_text,
-		"torch_band":torch_band,"torch_remaining":torch_remaining,
-		"torch_capacity":torch_capacity,"torch_tone_hex":torch_tone.to_html(false)}.duplicate(true)
+		"ration_tone_hex":ration_tone.to_html(false)}.duplicate(true)
 
 func _grouped_number(value:int)->String:
 	var digits:=str(absi(value));var grouped:=""
@@ -7605,28 +7534,12 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 			and str(spec.get("phase",""))=="DUNGEON"
 		ration_label.add_theme_color_override("font_color",
 			Color(str(spec.get("ration_tone_hex","c7c2b3"))))
-	if torch_timer_label!=null:
-		var torch_text:=str(spec.get("torch_text",""))
-		torch_timer_label.text=torch_text
-		torch_timer_label.visible=product_hud and not torch_text.is_empty() \
-			and str(spec.get("phase",""))=="DUNGEON"
-		torch_timer_label.add_theme_color_override("font_color",
-			Color(str(spec.get("torch_tone_hex","c7c2b3"))))
 	food_hud.visible=product_hud and str(spec.get("phase",""))=="DUNGEON"
-	torch_hud.visible=food_hud.visible
 	if food_hud.visible:
 		food_meter.max_value=int(spec.ration_max);food_meter.value=int(spec.ration)
 		food_icon.configure(float(spec.ration)/maxi(1,int(spec.ration_max)))
-		torch_icon.configure(float(spec.torch_remaining)/maxi(1,int(spec.torch_capacity)),spec.torch_band in ["LIT","WARNING"])
 		ration_label.text="×%d\n%d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
 		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
-		torch_meter.max_value=maxi(1,int(spec.torch_capacity));torch_meter.value=int(spec.torch_remaining)
-		var fuel_text:="약 %d턴"%ceili(int(spec.torch_remaining)/100.0)
-		if spec.torch_band=="NONE":fuel_text="미장착"
-		elif spec.torch_band=="OFF":fuel_text="꺼짐"
-		elif spec.torch_band=="DEPLETED":fuel_text="연료 소진"
-		torch_timer_label.text="×%d\n%s"%[int(spec.torch_count),fuel_text]
-		torch_hud.tooltip_text="소지 개수는 장착분 포함 / 게이지는 장착 횃불 연료 / 약 100시간단위당 1턴"
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
