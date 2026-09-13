@@ -12,6 +12,8 @@ const BodyCombatRulesScript=preload("res://sim/body_combat_rules.gd")
 
 
 static func validation_error()->String:
+	var imported_error:=preload("res://sim/dcss_enemy_registry.gd").registry_error()
+	if not imported_error.is_empty():return imported_error
 	# Validate dependency leaves first so a broken permanent-id reference reports
 	# its owning database instead of surfacing later during world bootstrap.
 	for registry in [ProgressionRegistryScript,WeaponRegistryScript,
@@ -24,6 +26,7 @@ static func validation_error()->String:
 
 static func content_versions()->Dictionary:
 	return {
+		"dcss_enemies":preload("res://sim/dcss_enemy_registry.gd").content_version(),
 		"proficiencies":ProgressionRegistryScript.content_version(),
 		"weapons":WeaponRegistryScript.content_version(),
 		"items":ItemRegistryScript.content_version(),

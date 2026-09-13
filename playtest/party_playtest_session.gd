@@ -86,6 +86,8 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
+const BALANCE_ID := "dcss-balance-0.34.1-v1"
+const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"
 const DEFAULT_WORLD_SEED := 44
@@ -373,6 +375,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	var enemy_position: Vector2i = generated_enemies[0] if not generated_enemies.is_empty() \
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
+	hero_tags.append(BALANCE_TAG)
 	if duo:hero_tags.append("autonomous_party")
 	if duo and bootstrap_solo:hero_tags.append(SOLO_START_TAG)
 	if duo and bootstrap_survival:
@@ -411,7 +414,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		var spawned=candidate.world.add_entity(str(enemy_profile.entity_kind),
 			str(enemy_profile.display_name),spawn_position,int(enemy_profile.max_health),
 			enemy_tags,str(enemy_profile.species_id),"enemy",
-			"GOBLIN_MELEE_V1" if str(enemy_profile.species_id)=="goblin" else "")
+			"GOBLIN_MELEE_V1" if str(enemy_profile.species_id)=="goblin" else preload("res://sim/dcss_enemy_registry.gd").loadout_id(str(enemy_profile.species_id)))
 		if spawned==null:return false
 		enemies.append(spawned)
 	var opening_state = null
@@ -550,6 +553,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 				"ruleset_id":BaseSettlementRulesScript.RULESET_ID,
 				"layout_mode":"NEW_SPARSE"})
 		if settlement_event==null:return false
+	if product_dungeon:
+		var finds_error:=preload("res://sim/dcss_equipment_finds.gd").initialise(candidate.world,map_layout,p_world_seed)
+		if not finds_error.is_empty():return false
 	candidate.world.warm_rollback_memento_static_tiles()
 	var initial_world_error:String=candidate.world.world_state_error()
 	if not initial_world_error.is_empty():
@@ -3128,7 +3134,7 @@ func _spawn_campaign_floor_enemies(layout:Dictionary,
 			"encounter_group:%s"%group_id]
 		var entity=sim.world.add_entity(str(profile.entity_kind),
 			str(profile.display_name),position,int(profile.max_health),tags,
-			species_id,"enemy","GOBLIN_MELEE_V1" if species_id=="goblin" else "")
+			species_id,"enemy","GOBLIN_MELEE_V1" if species_id=="goblin" else preload("res://sim/dcss_enemy_registry.gd").loadout_id(species_id))
 		if entity==null:return []
 		state.enemy_ids.append(entity.id)
 		state.enemy_busy_rows[entity.id]=sim.world.world_time
@@ -8108,6 +8114,14 @@ func load_session_json(encoded: String) -> Dictionary:
 			or not Int64CodecScript.is_canonical(decoded.get("personality_seed")) \
 			or not decoded.get("journal") is Array or decoded.journal.size() > 10000:
 		return _rejection_dto("invalid_party_session_wire")
+	var compatible_balance:=false
+	var saved_entities:Variant=decoded.snapshot.get("entities",[])
+	if saved_entities is Array:
+		for row in saved_entities:
+			if row is Dictionary and row.get("tags",[]) is Array and BALANCE_TAG in row.tags:
+				compatible_balance=true;break
+	if not compatible_balance:return _feedback_dto({"accepted":false,"reason":"balance_version_changed",
+		"message":"전투 밸런스가 변경되어 새 게임이 필요합니다. 이전 저장 파일은 그대로 보존됩니다."})
 	if int(decoded.snapshot.get("snapshot_version",0))!=WorldStateScript.SNAPSHOT_VERSION:
 		return _rejection_dto("unsupported_snapshot_version")
 	if str(decoded.scenario_id)==DUO_SCENARIO_ID:

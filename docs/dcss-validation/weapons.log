@@ -1,0 +1,15 @@
+Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3450)
+
+PASS test_weapon_combat_core.gd :: test_stat_scaling_is_integer_baselined_capped_and_changes_only_raw_damage
+PASS test_weapon_combat_core.gd :: test_stat_scaling_rejects_noncanonical_attacker_stats
+PASS test_weapon_combat_core.gd :: test_stat_scaling_rule_validation_blocks_balance_typos
+PASS test_weapon_combat_core.gd :: test_registry_has_only_committed_weapon_families_and_three_attack_forms
+PASS test_weapon_combat_core.gd :: test_proficiency_only_changes_accuracy_and_damage_never_weapon_speed
+PASS test_weapon_combat_core.gd :: test_weapon_identity_exports_reach_cleave_stun_and_deterministic_resolution
+PASS test_weapon_combat_core.gd :: test_numeric_ammo_and_crossbow_reload_are_minimal_and_exact
+PASS test_weapon_combat_core.gd :: test_enemy_kill_awards_independent_character_xp_and_focused_mastery
+PASS test_weapon_combat_core.gd :: test_starter_modes_allocate_enemy_mastery_and_migrate_schema_two
+---- Weapon combat: 9 tests, 0 failed ----

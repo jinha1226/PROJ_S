@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "item-catalog-2026-09-10-v1",
+  "content_version": "dcss-balance-0.34.1-2026-09-13-v1",
   "content_type": "ITEM_CATALOG",
   "ruleset_id": "item-catalog-v1",
   "definitions": [
@@ -64,6 +64,126 @@
     {"definition_id":"MATERIAL_CLOTH_BOLT","family":"MATERIAL","tier":1,"min_depth":1,"buy_price":9,"sell_price":3,"effect_kind":"NONE","effect_power":0},
     {"definition_id":"MATERIAL_CHITIN_PLATE","family":"MATERIAL","tier":1,"min_depth":2,"buy_price":0,"sell_price":5,"effect_kind":"NONE","effect_power":0},
     {"definition_id":"MATERIAL_OOZE_GEL","family":"MATERIAL","tier":1,"min_depth":2,"buy_price":0,"sell_price":4,"effect_kind":"NONE","effect_power":0},
-    {"definition_id":"MATERIAL_MEDICINAL_HERBS","family":"MATERIAL","tier":1,"min_depth":1,"buy_price":7,"sell_price":2,"effect_kind":"NONE","effect_power":0}
+    {"definition_id":"MATERIAL_MEDICINAL_HERBS","family":"MATERIAL","tier":1,"min_depth":1,"buy_price":7,"sell_price":2,"effect_kind":"NONE","effect_power":0},
+{
+  "definition_id": "WEAPON_DCSS_CLUB",
+  "family": "WEAPON",
+  "tier": 1,
+  "min_depth": 1,
+  "buy_price": 38,
+  "sell_price": 10,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_WHIP",
+  "family": "WEAPON",
+  "tier": 1,
+  "min_depth": 1,
+  "buy_price": 41,
+  "sell_price": 12,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_FLAIL",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 64,
+  "sell_price": 20,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_DAGGER",
+  "family": "WEAPON",
+  "tier": 1,
+  "min_depth": 1,
+  "buy_price": 30,
+  "sell_price": 8,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_FALCHION",
+  "family": "WEAPON",
+  "tier": 1,
+  "min_depth": 1,
+  "buy_price": 53,
+  "sell_price": 16,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_LONG_SWORD",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 64,
+  "sell_price": 20,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_SCIMITAR",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 74,
+  "sell_price": 24,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_WAR_AXE",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 70,
+  "sell_price": 22,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_TRIDENT",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 58,
+  "sell_price": 18,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_STAFF",
+  "family": "WEAPON",
+  "tier": 1,
+  "min_depth": 1,
+  "buy_price": 37,
+  "sell_price": 10,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_QUARTERSTAFF",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 63,
+  "sell_price": 20,
+  "effect_kind": "NONE",
+  "effect_power": 0
+},
+{
+  "definition_id": "WEAPON_DCSS_ORCBOW",
+  "family": "WEAPON",
+  "tier": 2,
+  "min_depth": 2,
+  "buy_price": 70,
+  "sell_price": 22,
+  "effect_kind": "NONE",
+  "effect_power": 0
+}
   ]
 }

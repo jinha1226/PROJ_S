@@ -16,15 +16,17 @@ const KIND_TO_PROFILE := {
 	"passive_ally": "phase3-passive-v1",
 }
 
-const PROFILES := {
-	"party-hero-v1": {"profile_id":"party-hero-v1", "accuracy_milli":600, "evasion_milli":150,
+const DcssEnemies=preload("res://sim/dcss_enemy_registry.gd")
+
+const BUILTIN_PROFILES := {
+	"party-hero-v1": {"profile_id":"party-hero-v1", "accuracy_milli":300, "evasion_milli":150,
 		"power":24, "armor_flat":2, "bleed_proc_milli":650, "bleed_resist_milli":100},
-	"party-companion-v1": {"profile_id":"party-companion-v1", "accuracy_milli":575, "evasion_milli":130,
+	"party-companion-v1": {"profile_id":"party-companion-v1", "accuracy_milli":275, "evasion_milli":130,
 		"power":24, "armor_flat":2, "bleed_proc_milli":550, "bleed_resist_milli":100},
-	"party-goblin-v1": {"profile_id":"party-goblin-v1", "accuracy_milli":550, "evasion_milli":100,
-		"power":16, "armor_flat":2, "bleed_proc_milli":400, "bleed_resist_milli":50},
-	"party-kobold-v1": {"profile_id":"party-kobold-v1", "accuracy_milli":590, "evasion_milli":145,
-		"power":13, "armor_flat":1, "bleed_proc_milli":300, "bleed_resist_milli":40},
+	"party-goblin-v1": {"profile_id":"party-goblin-v1", "accuracy_milli":245, "evasion_milli":120,
+		"power":29, "armor_flat":0, "bleed_proc_milli":400, "bleed_resist_milli":50},
+	"party-kobold-v1": {"profile_id":"party-kobold-v1", "accuracy_milli":260, "evasion_milli":120,
+		"power":25, "armor_flat":4, "bleed_proc_milli":300, "bleed_resist_milli":40},
 	"phase3-lead-v1": {"profile_id":"phase3-lead-v1", "accuracy_milli":600, "evasion_milli":150,
 		"power":24, "armor_flat":2, "bleed_proc_milli":650, "bleed_resist_milli":100},
 	"phase3-threat-v1": {"profile_id":"phase3-threat-v1", "accuracy_milli":550, "evasion_milli":100,
@@ -35,7 +37,17 @@ const PROFILES := {
 		"power":12, "armor_flat":2, "bleed_proc_milli":300, "bleed_resist_milli":100},
 }
 
-static func profile_id_for_kind(kind: String) -> String:
+static var PROFILES:Dictionary=_all_profiles()
+
+static func _all_profiles()->Dictionary:
+	var result:Dictionary=BUILTIN_PROFILES.duplicate(true)
+	for row in DcssEnemies.DEFINITIONS.values():result[str(row.combat_profile.profile_id)]=row.combat_profile.duplicate(true)
+	return result
+
+static func profile_id_for_kind(kind: String, species_id:String="") -> String:
+	if kind in ["melee_enemy","kobold_enemy"]:
+		var imported:=DcssEnemies.profile_id(species_id)
+		if not imported.is_empty():return imported
 	return str(KIND_TO_PROFILE.get(kind, DEFAULT_PROFILE_ID))
 
 static func has(profile_id: String) -> bool:

@@ -1,6 +1,6 @@
 {
   "content_schema_version": 1,
-  "content_version": "items-2026-09-10-catalog-v1",
+  "content_version": "dcss-balance-0.34.1-2026-09-13-v1",
   "content_type": "ITEMS",
   "ruleset_id": "item-registry-v2",
   "healing_potion_restore": 35,
@@ -125,7 +125,7 @@
       "equip_slots": ["ARMOR"],
       "weapon_id": "",
       "requirements":{"STR":3,"DEX":0,"INT":0},
-      "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "bonuses": {"armor_flat": 6, "parry_milli": 0, "dodge_milli": -20, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
     },
@@ -137,7 +137,7 @@
       "equip_slots": ["ARMOR"],
       "weapon_id": "",
       "requirements":{"STR":3,"DEX":0,"INT":0},
-      "bonuses": {"armor_flat": 1, "parry_milli": 0, "dodge_milli": 0, "stealth": 0},
+      "bonuses": {"armor_flat": 10, "parry_milli": 0, "dodge_milli": -35, "stealth": 0},
       "use_kind": "NONE",
       "placeholder": false
     },
@@ -338,21 +338,21 @@
       "definition_id":"ARMOR_CLOTH_ROBE", "label":"천 로브", "category":"ARMOR",
       "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
       "requirements":{"STR":0,"DEX":0,"INT":0},
-      "bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":30,"stealth":25},
+      "bonuses":{"armor_flat":4,"parry_milli":0,"dodge_milli":0,"stealth":25},
       "use_kind":"NONE", "placeholder":false
     },
     {
       "definition_id":"ARMOR_CHAIN", "label":"사슬 갑옷", "category":"ARMOR",
       "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
       "requirements":{"STR":5,"DEX":0,"INT":0},
-      "bonuses":{"armor_flat":3,"parry_milli":0,"dodge_milli":-25,"stealth":-30},
+      "bonuses":{"armor_flat":16,"parry_milli":0,"dodge_milli":-70,"stealth":-30},
       "use_kind":"NONE", "placeholder":false
     },
     {
       "definition_id":"ARMOR_PLATE", "label":"판금 갑옷", "category":"ARMOR",
       "stack_limit":1, "equip_slots":["ARMOR"], "weapon_id":"",
       "requirements":{"STR":7,"DEX":0,"INT":0},
-      "bonuses":{"armor_flat":5,"parry_milli":0,"dodge_milli":-70,"stealth":-80},
+      "bonuses":{"armor_flat":20,"parry_milli":0,"dodge_milli":-90,"stealth":-80},
       "use_kind":"NONE", "placeholder":false
     },
     {
@@ -494,7 +494,283 @@
     {"definition_id":"ESSENCE_STONE_SKELETON","label":"암석 골격 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
     {"definition_id":"ESSENCE_SHADOW_VEIL","label":"그림자막 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
     {"definition_id":"ESSENCE_BLOOD_SIPHON","label":"흡혈 기관 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
-    {"definition_id":"ESSENCE_DEEP_EYE","label":"심층안 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false}
+    {"definition_id":"ESSENCE_DEEP_EYE","label":"심층안 이능 정수","category":"MATERIAL","stack_limit":1,"equip_slots":[],"weapon_id":"","requirements":{"STR":0,"DEX":0,"INT":0},"bonuses":{"armor_flat":0,"parry_milli":0,"dodge_milli":0,"stealth":0},"use_kind":"NONE","placeholder":false},
+{
+  "definition_id": "WEAPON_DCSS_CLUB",
+  "label": "몽둥이",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_CLUB",
+  "requirements": {
+    "STR": 4,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_WHIP",
+  "label": "채찍",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_WHIP",
+  "requirements": {
+    "STR": 4,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_FLAIL",
+  "label": "플레일",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_FLAIL",
+  "requirements": {
+    "STR": 6,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_DAGGER",
+  "label": "단도",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_DAGGER",
+  "requirements": {
+    "STR": 0,
+    "DEX": 4,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_FALCHION",
+  "label": "팔시온",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_FALCHION",
+  "requirements": {
+    "STR": 5,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_LONG_SWORD",
+  "label": "장검",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_LONG_SWORD",
+  "requirements": {
+    "STR": 6,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_SCIMITAR",
+  "label": "시미터",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_SCIMITAR",
+  "requirements": {
+    "STR": 7,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_WAR_AXE",
+  "label": "전투 도끼",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_WAR_AXE",
+  "requirements": {
+    "STR": 6,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_TRIDENT",
+  "label": "삼지창",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_TRIDENT",
+  "requirements": {
+    "STR": 5,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_STAFF",
+  "label": "지팡이",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_STAFF",
+  "requirements": {
+    "STR": 4,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_QUARTERSTAFF",
+  "label": "봉",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_QUARTERSTAFF",
+  "requirements": {
+    "STR": 6,
+    "DEX": 0,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+},
+{
+  "definition_id": "WEAPON_DCSS_ORCBOW",
+  "label": "오크 활",
+  "category": "WEAPON",
+  "stack_limit": 1,
+  "equip_slots": [
+    "MAIN_HAND"
+  ],
+  "weapon_id": "DCSS_ORCBOW",
+  "requirements": {
+    "STR": 6,
+    "DEX": 6,
+    "INT": 0
+  },
+  "bonuses": {
+    "armor_flat": 0,
+    "parry_milli": 0,
+    "dodge_milli": 0,
+    "stealth": 0
+  },
+  "use_kind": "NONE",
+  "placeholder": false
+}
   ],
   "affixes": [
     {

@@ -196,7 +196,7 @@ static func _encounter_groups(floor_index:int,profile:Dictionary,routes:Array[Di
 		remaining-=group_size
 		var species_ids:Array[String]=[]
 		for member_index in range(group_size):
-			species_ids.append("kobold" if (index+member_index+floor_index)%4==0 else "goblin")
+			species_ids.append(preload("res://sim/dcss_enemy_registry.gd").spawn_species(floor_index,seed,index,member_index))
 		result.append({"group_id":"F%d_G%02d"%[floor_index,index+1],
 			"route_id":str(route.route_id),"position":[position.x,position.y],
 			"species_ids":species_ids,"optional":false,

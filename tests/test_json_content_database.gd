@@ -109,15 +109,16 @@ func test_registry_views_match_the_json_authority()->bool:
 		check(species_rows.has(species_id),
 			"unified catalog publishes %s exactly once"%species_id)
 	check_eq([Growth.content_version(),Items.content_version(),Weapons.content_version(),
-		Progression.content_version()],["growth-builds-2026-09-02-v3","items-2026-09-10-catalog-v1",
-		"weapons-2026-09-10-catalog-v1","proficiencies-2026-09-01"],
+		Progression.content_version()],["growth-builds-2026-09-02-v3","dcss-balance-0.34.1-2026-09-13-v1",
+		"dcss-balance-0.34.1-2026-09-13-v1","proficiencies-2026-09-01"],
 		"content versions are visible to diagnostics")
 	check_eq(ContentDatabase.content_versions(),{
+		"dcss_enemies":"dcss-balance-0.34.1-2026-09-13-v1",
 		"proficiencies":"proficiencies-2026-09-01",
-		"weapons":"weapons-2026-09-10-catalog-v1",
-		"items":"items-2026-09-10-catalog-v1",
-		"item_catalog":"item-catalog-2026-09-10-v1",
-		"species_catalog":"species-catalog-2026-09-02-v1",
+		"weapons":"dcss-balance-0.34.1-2026-09-13-v1",
+		"items":"dcss-balance-0.34.1-2026-09-13-v1",
+		"item_catalog":"dcss-balance-0.34.1-2026-09-13-v1",
+		"species_catalog":"dcss-balance-0.34.1-2026-09-13-v1",
 		"growth_builds":"growth-builds-2026-09-02-v3",
 		"body_combat":"body-combat-2026-09-02-b1",
 	},"integrated content versions are available for diagnostics")

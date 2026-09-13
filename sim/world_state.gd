@@ -277,7 +277,7 @@ func add_entity(kind: String, display_name: String, position: Vector2i,
 		species_id, faction_id
 	)
 	var combatant = CombatantStateScript.new(entity.id,
-		CombatProfileRegistryScript.profile_id_for_kind(kind))
+		CombatProfileRegistryScript.profile_id_for_kind(kind,entity.species_id))
 	# SimEntity canonicalizes an omitted species to kind. Resolve from that final
 	# identity so default goblins receive goblin bodies while unknown kinds fall
 	# back to generic_humanoid.
@@ -2281,7 +2281,7 @@ func _restored_state_error() -> String:
 		var expected_body=BodyStateScript.create(entity_id,expected_body_species,body.body_seed)
 		if expected_body==null or body.body_scalars!=expected_body.body_scalars:
 			return "body_scalar_seed_mismatch"
-		if combatant.combat_profile_id != CombatProfileRegistryScript.profile_id_for_kind(entity.kind) \
+		if combatant.combat_profile_id != CombatProfileRegistryScript.profile_id_for_kind(entity.kind,entity.species_id) \
 				or not CombatProfileRegistryScript.has(combatant.combat_profile_id):
 			return "combatant_profile_kind_mismatch"
 		if combatant.life_state == "ACTIVE":

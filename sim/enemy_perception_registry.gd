@@ -11,15 +11,22 @@ const SEARCH_TURNS := 3
 const ALERT_THRESHOLD := 1000
 const SUSPICION_DECAY := 180
 
+const DcssEnemies=preload("res://sim/dcss_enemy_registry.gd")
+
 const PROFILES := {
 	"goblin":{"species_id":"goblin","display_name":"고블린","glyph":"g",
-		"sight_range":6,"perception":520,"max_health":60,"entity_kind":"melee_enemy"},
+		"sight_range":6,"perception":520,"max_health":40,"entity_kind":"melee_enemy"},
 	"kobold":{"species_id":"kobold","display_name":"코볼트","glyph":"K",
-		"sight_range":7,"perception":650,"max_health":48,"entity_kind":"kobold_enemy"},
+		"sight_range":7,"perception":650,"max_health":35,"entity_kind":"kobold_enemy"},
 }
 
 static func profile(species_id:String)->Dictionary:
-	return PROFILES.get(species_id,{}).duplicate(true)
+	if PROFILES.has(species_id):return PROFILES[species_id].duplicate(true)
+	var raw:=DcssEnemies.profile(species_id)
+	if raw.is_empty():return {}
+	var result:Dictionary={}
+	for key in ["species_id","display_name","glyph","sight_range","perception","max_health","entity_kind"]:result[key]=raw[key]
+	return result
 
 static func suspicion_gain(species_id:String,distance:int,hero_stealth:int=HERO_BASE_STEALTH)->int:
 	var row:Dictionary=profile(species_id)
@@ -50,6 +57,8 @@ static func has_line_of_sight(world,origin:Vector2i,target:Vector2i)->bool:
 	return true
 
 static func registry_error()->String:
+	var imported_error:=DcssEnemies.registry_error()
+	if not imported_error.is_empty():return imported_error
 	for species_id in PROFILES:
 		var row:Dictionary=PROFILES[species_id]
 		var keys:Array=row.keys();keys.sort()

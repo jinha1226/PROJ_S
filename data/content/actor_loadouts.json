@@ -1,18 +1,23 @@
 {
   "content_schema_version": 1,
-  "content_version": "2026-09-01",
+  "content_version": "dcss-balance-0.34.1-2026-09-13-v1",
   "content_type": "ACTOR_LOADOUTS",
   "ruleset_id": "actor-loadouts-v1",
   "loadouts": [
     {
-      "loadout_id": "GOBLIN_MELEE_V1",
+      "loadout_id": "DCSS_MONSTER_CLUB_V1",
       "items": [
         {
-          "entry_id": "BODY_ARMOR",
-          "definition_id": "ARMOR_PADDED",
+          "entry_id": "MAIN_WEAPON",
+          "definition_id": "WEAPON_DCSS_CLUB",
           "quantity": 1,
-          "equip_slot": "ARMOR"
-        },
+          "equip_slot": "MAIN_HAND"
+        }
+      ]
+    },
+    {
+      "loadout_id": "GOBLIN_MELEE_V1",
+      "items": [
         {
           "entry_id": "MAIN_WEAPON",
           "definition_id": "WEAPON_SHORT_SWORD",

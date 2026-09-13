@@ -1,6 +1,7 @@
 class_name VisionProfileRegistry
 extends RefCounted
 
+const DcssEnemies=preload("res://sim/dcss_enemy_registry.gd")
 const RULESET_ID := "shared-vision-profiles-v1"
 const PROFILE_KEYS := ["base_sight_range", "dark_front_angle", "dark_vision_milli",
 	"detection_sensitivity_milli", "darkness_stress_resistance_milli", "peripheral_range"]
@@ -52,6 +53,9 @@ static func profile_for(species_id: String, monster_type: String = "") -> Dictio
 	var result: Dictionary = BASE_PROFILE.duplicate(true)
 	if SPECIES_PROFILES.has(species):
 		result.merge(SPECIES_PROFILES[species], true)
+	elif DcssEnemies.DEFINITIONS.has(species):
+		result.base_sight_range=int(DcssEnemies.DEFINITIONS[species].sight_range)
+		result.detection_sensitivity_milli=int(DcssEnemies.DEFINITIONS[species].perception)
 	else:
 		_warn_unknown("species", species)
 	var override_key := str(monster_type).to_lower()

@@ -24,7 +24,7 @@ func test_stat_scaling_is_integer_baselined_capped_and_changes_only_raw_damage()
 	var scaled:=WeaponRules.build_attack_spec("SHORT_SWORD",0,10,17,23,2,
 		{"STR":5,"DEX":7,"INT":5})
 	check_eq([baseline.unscaled_raw_damage,baseline.raw_damage,scaled.unscaled_raw_damage,
-		scaled.stat_scaling_bonus_milli,scaled.raw_damage],[14,14,14,100,15],
+		scaled.stat_scaling_bonus_milli,scaled.raw_damage],[11,11,11,100,12],
 		"A scaling applies deterministically to current raw power")
 	for field in ["attack_time","range_min","range_max","hit_chance_milli",
 			"armor_penetration_flat"]:
@@ -62,9 +62,9 @@ func test_stat_scaling_rule_validation_blocks_balance_typos()->bool:
 func test_registry_has_only_committed_weapon_families_and_three_attack_forms() -> bool:
 	check(not MeleeCombatSystem.COMBAT_RULESET_ID.is_empty(), "existing melee bridge parses")
 	check_eq(WeaponRegistry.registry_error(), "", "weapon registry validates")
-	check_eq(WeaponRegistry.ids(), ["BOW", "CROSSBOW", "HAND_AXE", "MACE",
-		"NATURAL_CLAW", "SHORT_SWORD", "SPEAR", "THRUSTING_SWORD", "UNARMED_STRIKE"],
-		"small committed weapon set")
+	check_eq(WeaponRegistry.ids().size(),35,"19 DCSS types, 8 material variants, 8 natural attacks")
+	for id in ["SHORT_SWORD","HAND_AXE","MACE","SPEAR","BOW","CROSSBOW","UNARMED_STRIKE","NATURAL_CLAW"]:
+		check(WeaponRegistry.has(id),"original family remains registered: "+id)
 	var forms := {}
 	var proficiencies := {}
 	for weapon_id in WeaponRegistry.ids():
