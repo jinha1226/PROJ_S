@@ -3,7 +3,7 @@ extends RefCounted
 const Grid=preload("res://sim/base_settlement_rules.gd")
 const Ledger=preload("res://sim/base_progression_rules.gd")
 const TERMINAL=["COMPLETED","CANCELLED"]
-const KINDS=["HAUL","BUILD","PRODUCE"]
+const KINDS=["GATHER","HAUL","BUILD","PRODUCE"]
 static var path_searches:=0
 const DIRECTIONS=[Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
 
@@ -25,6 +25,7 @@ static func index(world)->Dictionary:
 			if id not in cache.life.members:cache.life.members.append(id)
 		elif event.type=="town.house_acquired":cache.life.house_owned=true
 		if event.type=="base.settlement_work_changed":
+			if data.has("gathering"):cache.state["gathering"]=data.gathering.duplicate(true)
 			for key in ["enabled","tick","next_job_id","last_step","last_time","schedule_revision"]:
 				if data.has(key):cache.state[key]=data[key]
 			for row in data.get("jobs",[]):
@@ -35,7 +36,7 @@ static func index(world)->Dictionary:
 				var id:=str(row.entity_id)
 				if not cache.state.residents.has(id):cache.state.residents[id]={}
 				cache.state.residents[id].merge(row.duplicate(true),true)
-		if event.type in ["base.resource_gathered","base.resource_sold","dungeon.expedition_returned","party.expedition_auto_returned","base.building_constructed","base.facility_upgraded"]:cache.resource_revision=int(event.id)
+		if event.type in ["base.local_resource_deposited","base.resource_gathered","base.resource_sold","dungeon.expedition_returned","party.expedition_auto_returned","base.building_constructed","base.facility_upgraded"]:cache.resource_revision=int(event.id)
 		if event.type=="base.resource_gathered":
 			var expedition:=str(data.expedition_index)
 			if not cache.gathered.has(expedition):cache.gathered[expedition]={"TIMBER":0,"STONE":0,"HERBS":0}
@@ -155,7 +156,7 @@ static func reason_label(reason:String)->String:
 		"resident_in_way":"앞의 주민이 이동하기를 기다립니다", "return_materials":"미소비 자재 회수 대기"}.get(reason,"")
 
 static func action_label(action:String)->String:
-	return {"BUILD":"건설","UPGRADE":"증축","PRODUCE":"물약 제조","REST":"휴식"}.get(action,"작업")
+	return {"BUILD":"건설","UPGRADE":"증축","PRODUCE":"물약 제조","REST":"휴식","GATHER":"주변 채집"}.get(action,"작업")
 
 static func status_label(job:Dictionary)->String:
 	var reason:=reason_label(str(job.get("blocked_reason","")))

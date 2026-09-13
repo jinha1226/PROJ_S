@@ -39,6 +39,8 @@ static func secured_stock(events:Array,current_expedition_index:int,
 	var result:Dictionary=STARTER_STOCK.duplicate(true)
 	for event in events:
 		match str(event.type):
+			"base.local_resource_deposited":
+				result[str(event.data.resource_id)]+=int(event.data.amount)
 			"base.resource_gathered":
 				var expedition_index:=int(event.data.get("expedition_index",0))
 				if expedition_index<current_expedition_index or (expedition_index \

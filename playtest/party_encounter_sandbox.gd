@@ -3545,6 +3545,14 @@ func _town_base_panel()->void:
 	if not session.has_method("base_overview"):
 		_add_notice("거점 현황을 불러올 수 없습니다.","BaseUnavailable",FONT_BODY);return
 	var panel=BaseProgressPanelScript.new();panel.name="TownBaseProgress"
+	panel.section_tab=int(town_ui_state.get("base_section_tab",0))
+	panel.section_selected.connect(func(index):town_ui_state["base_section_tab"]=index)
+	panel.resident_assignment_requested.connect(func(entity_id,action):
+		var result:Dictionary=session.town_life_command({"action":action,"entity_id":str(entity_id)})
+		notice_text=str(result.get("message",""));_request_refresh())
+	panel.gathering_requested.connect(func(resource_id,enabled):
+		var result:Dictionary=session.base_work({"action":"GATHER_POLICY","resource_id":resource_id,"enabled":enabled})
+		notice_text=str(result.get("message",""));panel.update_work(session.base_overview()))
 	panel.configure_camera(base_map_camera)
 	if session.has_method("base_build_assessment"):
 		panel.configure_build_assessment(Callable(session,"base_build_assessment"))

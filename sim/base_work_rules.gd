@@ -67,9 +67,13 @@ static func operation_error(op:Variant)->String:
 	if op.has("version"):
 		if not (op.version is int or op.version is float) or op.version!=2:return "invalid_base_work_operation"
 		var clean:Dictionary=op.duplicate();clean.erase("version")
+		if str(clean.get("action",""))=="GATHER_POLICY":
+			var policy_keys:Array=clean.keys();policy_keys.sort()
+			if policy_keys!=["action","enabled","resource_id"] or clean.resource_id not in ["TIMBER","STONE","HERBS"] or not clean.enabled is bool:return "invalid_base_work_operation"
+			return ""
 		if str(clean.get("action",""))=="PRIORITY":
 			var priority_keys:Array=clean.keys();priority_keys.sort()
-			if priority_keys!=["action","entity_id","kind","priority"] or clean.kind not in ["HAUL","BUILD","PRODUCE"]:return "invalid_base_work_operation"
+			if priority_keys!=["action","entity_id","kind","priority"] or clean.kind not in ["HAUL","BUILD","PRODUCE","GATHER"]:return "invalid_base_work_operation"
 			if not preload("res://sim/int64_codec.gd").is_canonical(clean.entity_id) or not (clean.priority is int or clean.priority is float) or clean.priority!=floor(clean.priority) or clean.priority<0 or clean.priority>3:return "invalid_base_work_operation"
 			return ""
 		if str(clean.get("action",""))=="CANCEL" and clean.has("job_id"):

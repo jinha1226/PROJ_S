@@ -66,6 +66,7 @@ func base_overview()->Dictionary:
 		if entity==null or combatant==null or int(entity.health)<=0 \
 				or str(combatant.life_state)!="ACTIVE":continue
 		residents.append({"entity_id":entity_id,"display_name":str(entity.display_name),
+			"active":entity_id in state.active_party_member_ids,
 			"is_player":entity_id==_session.sim.world.party_encounter.protagonist_id,
 			"health":int(entity.health),"max_health":int(entity.max_health),
 			"activity":({"PRODUCE":"물약 제조 중","REST":"휴식 중"}.get(str(work.get("action","")),"공사 중") \
@@ -101,7 +102,14 @@ func base_overview()->Dictionary:
 		last_return={"expedition_index":expedition_index,
 			"reason":str(cycle.return_reason),"world_time":int(cycle.returned_at_world_time),
 			"banked":banked,"message":"원정 물자를 기지 창고에 보관했습니다."}
-	return {"enabled":true,"phase":phase,"stock":stock,"carried":carried,
+	var gathering:Array=[]
+	var local_rules=preload("res://sim/settlement_gathering_rules.gd")
+	for resource in local_rules.SITES:
+		var site:Dictionary=local_rules.SITES[resource]
+		gathering.append({"resource_id":resource,"label":site.label,"tile":site.tile,
+			"remaining":local_rules.remaining(_session.sim.world,resource),
+			"enabled":bool(work_state.get("gathering",{}).get(resource,false))})
+	return {"enabled":true,"phase":phase,"stock":stock,"carried":carried,"gathering":gathering,
 		"private_home_owned":_session.private_home_available(),
 		"capacity":int(_session.BaseProgressionRulesScript.STORAGE_CAPACITY[int(levels.STORAGE)]),
 		"facilities":facilities,"residents":residents,"last_return":last_return,

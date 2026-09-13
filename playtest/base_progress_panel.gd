@@ -12,6 +12,10 @@ signal production_requested(action:String,recipe_id:String)
 signal rest_requested(entity_id:int)
 signal return_requested
 signal sell_requested(resource_id:String,amount:int)
+signal gathering_requested(resource_id:String,enabled:bool)
+signal section_selected(index:int)
+signal resident_assignment_requested(entity_id:int,action:String)
+var section_tab:=0
 
 const WorkLabels=preload("res://sim/settlement_work_rules.gd")
 const DarkPixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
@@ -77,10 +81,11 @@ func _rebuild()->void:
 		_add_text("물자는 여관 보관소에 맡깁니다. 마을에서 동료를 만나고 탐험대의 집을 구하세요.","InnStorageHint",FONT_BODY,true)
 		if _read_only:_add_return_action()
 		return
-	var title:=_add_text("작은 거점 · 건물을 눌러 확인","BaseProgressTitle",16,true)
+	var title:=_add_text("피난처 · 정착지 관리","BaseProgressTitle",16,true)
 	DarkPixelSkin.apply_heading(title,DarkPixelSkin.BRASS)
 	_add_resource_ledger()
 	var settlement=BaseSettlementViewScript.new();settlement.name="BaseSettlementMap"
+	settlement.minimum_map_height=220;settlement.fit_map_height=true
 	settlement.camera=_map_camera
 	settlement.building_selected.connect(_on_settlement_building_selected)
 	settlement.tile_pressed.connect(_on_placement_tile)
@@ -89,8 +94,8 @@ func _rebuild()->void:
 	settlement.set_placement_mode(_placement_active)
 	if _placement_active and not _placement_type.is_empty():
 		settlement.set_placement_ghost(_placement_ghost())
-	_add_last_return()
-	_add_work_status()
+	var sections:Array=[]
+	var start:=get_child_count()
 	if _placement_active:_add_construction_editor()
 	else:
 		if not _read_only:_add_build_entry()
@@ -101,16 +106,68 @@ func _rebuild()->void:
 		_add_production()
 		if _selected_id=="LODGE":_add_rest()
 		if _selected_id=="STORAGE":_add_trade_rows()
+	sections.append(_collect_section(start))
+	start=get_child_count();_add_gathering();sections.append(_collect_section(start))
+	start=get_child_count();_add_work_status();sections.append(_collect_section(start))
+	start=get_child_count()
 	var residents:Variant=_overview.get("residents",[])
 	var resident_count:int=residents.size() if residents is Array else 0
 	_add_section_heading("거주자 · 현재 %d인"%resident_count,"BaseResidentsHeading")
 	if residents is Array:
 		for index in range(residents.size()):
 			if residents[index] is Dictionary:_add_resident(residents[index])
+	sections.append(_collect_section(start))
+	_mount_sections(sections)
 	if _read_only:_add_return_action()
 
 
+func _collect_section(start:int)->Array:
+	var nodes:Array=[]
+	while get_child_count()>start:
+		var node:=get_child(start);remove_child(node);nodes.append(node)
+	return nodes
+
+
+func _mount_sections(sections:Array)->void:
+	var bar:=HBoxContainer.new();bar.name="BaseSectionTabs";add_child(bar)
+	for i in range(sections.size()):
+		var button:=_button(["시설","채집","작업","주민"][i],"BaseSectionTab%d"%i)
+		button.toggle_mode=true;button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		button.pressed.connect(func():select_section(i));bar.add_child(button)
+	for i in range(sections.size()):
+		var scroll:=ScrollContainer.new();scroll.name="BaseSectionScroll%d"%i
+		scroll.custom_minimum_size.y=210;scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+		add_child(scroll)
+		var content:=VBoxContainer.new();content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		content.add_theme_constant_override("separation",6);scroll.add_child(content)
+		for node in sections[i]:content.add_child(node)
+	select_section(section_tab,false)
+
+
+func select_section(index:int,notify:bool=true)->void:
+	section_tab=clampi(index,0,3)
+	for i in range(4):
+		var scroll:=find_child("BaseSectionScroll%d"%i,true,false)
+		if scroll!=null:scroll.visible=i==section_tab
+		var button:=find_child("BaseSectionTab%d"%i,true,false) as Button
+		if button!=null:button.set_pressed_no_signal(i==section_tab)
+	if notify:section_selected.emit(section_tab)
+
+
+func _add_gathering()->void:
+	_add_text("주변 자원 · 채집 후 창고로 운반","BaseGatherHeading",FONT_BODY,true)
+	for row in _overview.get("gathering",[]):
+		var toggle:=CheckButton.new();toggle.name="BaseGather"+str(row.resource_id)
+		toggle.custom_minimum_size.y=_touch_target()
+		toggle.text="%s · 잔량 %d"%[row.label,int(row.remaining)]
+		toggle.button_pressed=bool(row.enabled);toggle.disabled=_read_only
+		toggle.toggled.connect(func(enabled):gathering_requested.emit(str(row.resource_id),enabled))
+		add_child(toggle)
+	_add_text("켜두면 잔류 주민이 반복 채집합니다. 끄면 다음 주문을 멈춥니다. 진행 중 작업은 작업 탭에서 취소할 수 있습니다.","BaseGatherHelp",FONT_SMALL,true)
+
+
 func _on_settlement_building_selected(building_id:String)->void:
+	section_tab=0
 	_selected_id=building_id
 	building_selected.emit(building_id)
 	# The selected hit target is emitting this signal. Rebuild after its dispatch
@@ -123,7 +180,7 @@ func _rebuild_after_selection()->void:
 
 
 func _add_build_entry()->void:
-	if not (_overview.get("work",{}) as Dictionary).is_empty():return
+	if not bool(_overview.get("work_state",{}).get("enabled",false)) and not (_overview.get("work",{}) as Dictionary).is_empty():return
 	var options:=_build_options()
 	if options.is_empty():return
 	var button:=_button("건설","BaseConstructionOpen")
@@ -135,6 +192,10 @@ func _add_work_status()->void:
 	var rows:=VBoxContainer.new();rows.name="BaseWorkRows";add_child(rows)
 	_sync_work_rows()
 
+
+func _job_heading(job:Dictionary)->String:
+	if str(job.action)=="GATHER":return str(preload("res://sim/settlement_gathering_rules.gd").SITES[str(job.resource_id)].label)
+	return _building_label(str(job.type_id))
 
 func _sync_work_rows()->void:
 	var rows:=find_child("BaseWorkRows",true,false)
@@ -151,7 +212,7 @@ func _sync_work_rows()->void:
 			(existing.get_node("BaseWorkCancel"+suffix) as Button).disabled=_read_only or bool(job.get("cancel_requested",false))
 			continue
 		var row:=VBoxContainer.new();row.name=row_name;rows.add_child(row)
-		var title:=_new_label("%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)],"BaseWorkTitle"+suffix,FONT_BODY)
+		var title:=_new_label("%s · %s · %s"%[_job_heading(job),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)],"BaseWorkTitle"+suffix,FONT_BODY)
 		title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;row.add_child(title)
 		var reason:=_new_label(WorkLabels.reason_label(str(job.get("blocked_reason",""))),"BaseWorkReason"+suffix,FONT_SMALL)
 		reason.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;row.add_child(reason)
@@ -211,6 +272,11 @@ func update_work(overview:Dictionary)->void:
 	# Keep active touch targets and camera alive during automatic work ticks.
 	_overview=overview.duplicate(true)
 	_sync_work_rows()
+	for row in _overview.get("gathering",[]):
+		var toggle:=find_child("BaseGather"+str(row.resource_id),true,false) as CheckButton
+		if toggle!=null:
+			toggle.text="%s · 잔량 %d"%[row.label,int(row.remaining)]
+			toggle.set_pressed_no_signal(bool(row.enabled))
 	var map:=find_child("BaseSettlementMap",true,false)
 	if map!=null:map.present(_overview,_selected_id)
 	var progress:=find_child("BaseWorkProgress",true,false) as ProgressBar
@@ -222,7 +288,7 @@ func update_work(overview:Dictionary)->void:
 		var reason:=find_child("BaseWorkReason"+suffix,true,false) as Label
 		if reason!=null:reason.text=WorkLabels.reason_label(str(job.blocked_reason))
 		var title:=find_child("BaseWorkTitle"+suffix,true,false) as Label
-		if title!=null:title.text="%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)]
+		if title!=null:title.text="%s · %s · %s"%[_job_heading(job),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)]
 	for resident in _overview.get("residents",[]):
 		var card:=find_child("BaseResident%d"%int(resident.entity_id),true,false) as Button
 		if card!=null:card.text="%s · 체력 %d/%d · %s"%[resident.display_name,resident.health,resident.max_health,resident.activity]
@@ -231,6 +297,7 @@ func update_work(overview:Dictionary)->void:
 
 
 func _open_construction_editor()->void:
+	section_tab=0
 	_placement_active=true;_placement_type="";_placement_assessment={};call_deferred("_rebuild")
 
 
@@ -349,7 +416,7 @@ func _facility_by_id(facility_id:String)->Dictionary:
 func _stock_text()->String:
 	var materials:Dictionary=_overview.get("material_stock",{})
 	if materials.is_empty():return "보관 자원 · "+_resource_text(_overview.get("stock",{}))
-	return "창고 보유 %s\n예약 %s · 운반/현장 %s\n가용 %s"%[_resource_text(materials.physical),_resource_text(materials.reserved),_resource_text(materials.outside),_resource_text(materials.available)]
+	return "가용 %s\n예약 %d · 운반/현장 %d"%[_resource_text(materials.available),_resource_total(materials.reserved),_resource_total(materials.outside)]
 
 func _add_resource_ledger()->void:
 	var panel:=_section("BaseResourceLedger")
@@ -436,11 +503,16 @@ func _add_resident(resident:Dictionary)->void:
 	button.tooltip_text="마을에서 인물 상세 열기" if _read_only else "인물 상세 열기"
 	button.pressed.connect(func():resident_requested.emit(entity_id));add_child(button)
 	if _read_only:return
+	if not bool(resident.get("is_player",false)) and resident.has("active"):
+		var active:=bool(resident.active)
+		var assign_button:=_button("원정 동행 중 · 거점에 남기기" if active else "거점 잔류 중 · 다음 원정에 동행","BaseAssignment%d"%entity_id)
+		assign_button.pressed.connect(func():resident_assignment_requested.emit(entity_id,"RESERVE" if active else "ASSIGN"))
+		add_child(assign_button)
 	var priorities:Dictionary=resident.get("priorities",{"HAUL":2,"BUILD":2,"PRODUCE":2})
-	for kind in ["HAUL","BUILD","PRODUCE"]:
+	for kind in ["GATHER","HAUL","BUILD","PRODUCE"]:
 		var picker:=OptionButton.new();picker.name="BasePriority%d%s"%[entity_id,kind]
-		picker.custom_minimum_size.y=TOUCH_TARGET
-		var label:String={"HAUL":"운반","BUILD":"건설","PRODUCE":"생산"}[kind]
+		picker.custom_minimum_size.y=_touch_target()
+		var label:String={"GATHER":"채집","HAUL":"운반","BUILD":"건설","PRODUCE":"생산"}[kind]
 		for level in ["끄기","낮음","보통","높음"]:picker.add_item(label+" · "+level)
 		picker.select(int(priorities.get(kind,2)))
 		picker.item_selected.connect(func(priority):work_priority_requested.emit(entity_id,kind,priority))
@@ -480,7 +552,7 @@ func _add_trade_rows()->void:
 		var row:Dictionary=value;var resource_id:=str(row.get("resource_id",""))
 		var amount:=maxi(1,int(row.get("amount",1)))
 		var line:=HBoxContainer.new();line.name="BaseTrade%s"%resource_id
-		line.custom_minimum_size.y=TOUCH_TARGET;line.add_theme_constant_override("separation",4)
+		line.custom_minimum_size.y=_touch_target();line.add_theme_constant_override("separation",4)
 		add_child(line)
 		var label:=_new_label("%s %d개 → %d금화"%[str(row.get("label",_resource_label(resource_id))),
 			amount,int(row.get("unit_price",0))*amount],"BaseTradeLabel%s"%resource_id,FONT_SMALL)
@@ -513,9 +585,14 @@ func _section(node_name:String)->PanelContainer:
 	DarkPixelSkin.apply_panel(panel,"SECTION");add_child(panel);return panel
 
 
+func _touch_target()->float:
+	if not is_inside_tree():return TOUCH_TARGET
+	return ceilf(TOUCH_TARGET*maxf(1.0,get_viewport_rect().size.x/maxf(1.0,get_window().size.x)))
+
 func _button(text:String,node_name:String)->Button:
 	var button:=Button.new();button.name=node_name;button.text="[ %s ]"%text
-	button.custom_minimum_size=Vector2(72,TOUCH_TARGET);button.add_theme_font_size_override("font_size",FONT_SMALL)
+	button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.custom_minimum_size=Vector2(72,_touch_target());button.add_theme_font_size_override("font_size",FONT_SMALL)
 	button.focus_mode=Control.FOCUS_ALL;DarkPixelSkin.apply_action_button(button,DarkPixelSkin.CYAN)
 	return button
 
@@ -529,6 +606,7 @@ func _add_text(text:String,node_name:String,font_size:int,centered:bool)->Label:
 
 func _new_label(text:String,node_name:String,font_size:int)->Label:
 	var label:=Label.new();label.name=node_name;label.text=text
+	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size",font_size)
 	label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	return label

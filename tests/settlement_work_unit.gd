@@ -194,8 +194,10 @@ func mobile(s)->void:
 		panel._open_construction_editor();await process_frame;await process_frame
 		panel._choose_build_option("MARKET");await process_frame;await process_frame
 		check(panel.find_child("BasePlacementCancel",true,false)!=null or panel.find_child("BaseConstructionCancel",true,false)!=null,"placement cancel present")
-		scroll.scroll_vertical=200;await process_frame
-		check(scroll.scroll_vertical>0,"mobile scroll reaches resident priorities")
+		panel.select_section(3);await process_frame;await process_frame
+		var residents_scroll=panel.find_child("BaseSectionScroll3",true,false)
+		residents_scroll.scroll_vertical=200;await process_frame
+		check(residents_scroll.scroll_vertical>0,"resident panel scroll reaches priorities independently")
 		var cancel=panel.find_child("BasePlacementCancel",true,false)
 		if cancel!=null:cancel.pressed.emit();await process_frame;await process_frame
 		check(not panel._placement_active,"cancel exits blueprint placement")

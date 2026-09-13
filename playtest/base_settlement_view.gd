@@ -169,6 +169,11 @@ func _draw()->void:
 	for value in _settlement.get("buildings",[]):
 		if value is Dictionary:_draw_building(value)
 	_draw_work_and_residents()
+	for site in _overview.get("gathering",[]):
+		var center:=_map_origin()+(Vector2(_vector2i(site.tile))+Vector2.ONE*0.5)*_cell_size()
+		var tone:Color={"TIMBER":Color("73a760"),"STONE":Color("9eacb5"),"HERBS":Color("75b99b")}[str(site.resource_id)]
+		if int(site.remaining)<=0:tone=tone.darkened(0.6)
+		draw_circle(center,maxf(3,_cell_size()*0.3),tone)
 	_draw_placement_ghost()
 
 

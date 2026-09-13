@@ -7,6 +7,7 @@ const Production=preload("res://playtest/base_production_service.gd")
 const Recipes=preload("res://sim/base_production_rules.gd")
 const Rest=preload("res://playtest/base_rest_service.gd")
 const Legacy=preload("res://playtest/legacy_base_work_service.gd")
+const Gathering=preload("res://sim/settlement_gathering_rules.gd")
 
 static func reject(reason:String)->Dictionary:
 	return {"accepted":false,"reason":reason,"message":{
@@ -141,6 +142,8 @@ static func automatic_tick(session)->Dictionary:
 	var value:Dictionary=Rules.index(world).state
 	if bool(value.enabled) and Rules.active(value).is_empty():
 		var needed:=false
+		for resource in value.get("gathering",{}):
+			if bool(value.gathering[resource]) and Gathering.remaining(world,str(resource))>0:needed=true
 		for id in session.company_member_ids():
 			if not value.residents.has(str(id)) or (available(session,int(id)) and needs_rest(world,int(id))):
 				needed=true;break
@@ -179,6 +182,9 @@ static func commit(session,operation:Dictionary)->Dictionary:
 		else:
 			selected.state="BLOCKED";selected.blocked_reason="return_materials";selected.stage="RETURN"
 			selected.material_location="RECOVERY"
+	elif action=="GATHER_POLICY":
+		if not value.has("gathering"):value["gathering"]={}
+		value.gathering[str(operation.resource_id)]=bool(operation.enabled)
 	elif action=="PRIORITY":
 		var id:=str(operation.entity_id)
 		if not value.residents.has(id):return reject("base_worker_missing")
@@ -250,8 +256,12 @@ static func persist(world,before:Dictionary,value:Dictionary)->String:
 		if released==null:return "settlement_rest_release_failed"
 	var error:=Rules.audit(value,Rules.stock(world,value))
 	if not error.is_empty():return error
+	if value.has("gathering"):
+		error=Gathering.audit(world,value)
+		if not error.is_empty():return error
 	var delta:Dictionary={"enabled":value.enabled,"tick":value.tick,"next_job_id":value.next_job_id,
 		"last_step":value.last_step,"last_time":value.last_time,"schedule_revision":value.schedule_revision,"jobs":[],"residents":[]}
+	if value.has("gathering"):delta["gathering"]=value.gathering.duplicate(true)
 	for id in value.jobs:
 		if not before.jobs.has(id) or before.jobs[id]!=value.jobs[id]:delta.jobs.append(changed_row(before.jobs.get(id,{}),value.jobs[id],"job_id"))
 	for id in value.residents:
@@ -302,7 +312,7 @@ static func assign(session,value:Dictionary,resident:Dictionary)->void:
 		if kind in ["RETURN","HAUL"] or str(job.material_location)=="RECOVERY":kind="HAUL"
 		elif str(job.action)=="UPGRADE":kind="BUILD"
 		elif str(job.action)=="PRODUCE":kind="PRODUCE"
-		var priority:=3 if str(job.action)=="REST" else int(resident.priorities.get(kind,0))
+		var priority:=3 if str(job.action)=="REST" else int(resident.priorities.get(kind,2 if kind=="GATHER" else 0))
 		if priority==0:job.blocked_reason="priority_disabled";job.state="BLOCKED";continue
 		if not job.cost.is_empty() and not bool(job.materials_reserved):
 			if not Ledger.can_afford(available_stock,job.cost):
@@ -342,6 +352,20 @@ static func assign(session,value:Dictionary,resident:Dictionary)->void:
 static func advance_state(session,value:Dictionary)->Dictionary:
 	var world=session.sim.world;value.tick=int(value.tick)+1
 	sync_residents(session,value)
+	var gathering_resources:Array=value.get("gathering",{}).keys();gathering_resources.sort()
+	for resource in gathering_resources:
+		if not bool(value.gathering[resource]) or Gathering.remaining(world,str(resource))<=0:continue
+		var pending:=false
+		for job in Rules.active(value):
+			if str(job.get("resource_id",""))==str(resource):pending=true
+		if pending:continue
+		var site:Dictionary=Gathering.SITES[resource]
+		var gather_job:=new_job(world,value,"GATHER",{"cost":{},"gold_cost":0,"target_worker":-1,
+			"type_id":"STORAGE","tile_origin":site.tile.duplicate(),"footprint":[1,1],
+			"work_steps":int(site.steps),"resource_id":str(resource),"cargo":0})
+		var ordered=world.emit_event("base.local_gather_ordered",-1,-1,world.party_encounter.group_anchor,0,-1,{"resource_id":str(resource),"job_id":int(gather_job.job_id)})
+		if ordered==null:return reject("settlement_event_failed")
+		gather_job.order_id=int(ordered.id)
 	# Forced rest is paid through the existing lodge transaction. No invented fatigue meter.
 	for resident in value.residents.values():
 		var id:=int(resident.entity_id)
@@ -386,12 +410,18 @@ static func advance_state(session,value:Dictionary)->Dictionary:
 				if str(job.material_location)=="CARRIED":job.material_tile=resident.tile.duplicate()
 				continue
 			if str(job.material_location)=="RECOVERY":
-				job.material_location="CARRIED";job.stage="RETURN" if bool(job.cancel_requested) else "HAUL_SITE"
+				job.material_location="CARRIED";job.stage="RETURN" if bool(job.cancel_requested) or str(job.action)=="GATHER" else "HAUL_SITE"
 			elif str(job.stage)=="HAUL":
 				value.schedule_revision=int(value.schedule_revision)+1
 				job.material_location="CARRIED";job.stage="HAUL_SITE"
 			elif str(job.stage)=="RETURN":
 				value.schedule_revision=int(value.schedule_revision)+1
+				if str(job.action)=="GATHER":
+					var deposit=world.emit_event("base.local_resource_deposited",int(job.worker_id),-1,world.party_encounter.group_anchor,int(job.cargo),int(job.order_id),{"resource_id":str(job.resource_id),"amount":int(job.cargo)})
+					if deposit==null:return reject("settlement_event_failed")
+					job.cargo=0;job.material_location="CONSUMED";job.materials_reserved=false
+					job.state="CANCELLED" if bool(job.cancel_requested) else "COMPLETED"
+					job.worker_id=-1;job.slot=[];job.facility_slot="";resident.job_id=-1;completed=true;continue
 				job.material_location="STORAGE";job.materials_reserved=false;job.material_tile=[]
 				job.state="CANCELLED" if bool(job.cancel_requested) else "QUEUED"
 				job.stage="HAUL";job.worker_id=-1;job.slot=[];job.facility_slot="";resident.job_id=-1;continue
@@ -413,6 +443,19 @@ static func advance_state(session,value:Dictionary)->Dictionary:
 		if str(job.state)!="WORKING":continue
 		job.progress=int(job.progress)+1
 		if int(job.progress)<int(job.required):continue
+		if str(job.action)=="GATHER":
+			var harvested=world.emit_event("base.local_resource_harvested",int(job.worker_id),-1,world.party_encounter.group_anchor,1,int(job.order_id),{"resource_id":str(job.resource_id),"amount":1})
+			if harvested==null:return reject("settlement_event_failed")
+			job.cargo=1;job.material_location="CARRIED";job.materials_reserved=true;job.material_tile=resident.tile.duplicate()
+			job.stage="RETURN";job.state="MOVING";job.route=[resident.tile.duplicate()];job.route_cursor=0
+			var store:=storage(world)
+			var occupied:=occupied_tiles(session,value,int(resident.entity_id))
+			for other in Rules.active(value):
+				if int(other.job_id)!=int(job.job_id) and not other.slot.is_empty():occupied.append(other.slot)
+			var path:=Rules.route(resident.tile,store.tile_origin,store.footprint,Rules.obstacles(world,value),[],occupied)
+			if path.is_empty():release_worker(job,resident)
+			else:job.route=path;job.slot=path[-1].duplicate()
+			value.schedule_revision=int(value.schedule_revision)+1;continue
 		var result:=complete(session,job)
 		if not bool(result.accepted):return result
 		job.state="COMPLETED";job.material_location="CONSUMED";job.materials_reserved=false
