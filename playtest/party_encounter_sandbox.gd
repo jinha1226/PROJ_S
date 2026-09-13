@@ -5638,6 +5638,7 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
+	if str(row.get("definition_id","")).begins_with("ESSENCE_"):return true
 	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UTILITY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
@@ -5688,6 +5689,10 @@ func _item_stats_text(row:Dictionary)->String:
 	return "\n".join(lines)
 
 func _item_description_text(row:Dictionary)->String:
+	if str(row.get("definition_id","")).begins_with("ESSENCE_"):
+		var ability_id:=preload("res://sim/item_reward_rules.gd").ability_for_item(str(row.definition_id))
+		var effect:=preload("res://sim/abilities/ability_binding_rules.gd").effect_preview(ability_id)
+		return "포만감 +20 · %s 체득\n패시브: %s\n액티브: %s\n중복·빈 이능 칸 없음: 식사만. 배부름·적 근처: 섭취 불가."%[str(effect.get("label",ability_id)),str(effect.get("passive","")),str(effect.get("active",""))]
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
 	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
@@ -5791,7 +5796,7 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
 	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
 	member_item_use_button.disabled=not member_item_use_button.visible or not session.has_method("use_inventory_item")
-	member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
+	member_item_use_button.text="먹기" if str(row.get("definition_id","")).begins_with("ESSENCE_") else "읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -5935,6 +5940,16 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")-
 		action_feedback_text=notice_text;return
 
 	if selection.is_empty():
+		var item=session.sim.world.inventory_of(session.sim.world.party_control_actor_id()).item(member_item_selected_id)
+		if item!=null and str(item.definition_id).begins_with("ESSENCE_"):
+			var frozen_id:String=member_item_selected_id
+			var confirm:=ConfirmationDialog.new();confirm.title="몬스터 고기 먹기"
+			confirm.dialog_text="포만감 +20 · 새 이능은 빈 칸에 체득 (해제 불가)\n중복·빈 칸 없음: 식사만 적용됩니다."
+			confirm.ok_button_text="먹기";confirm.cancel_button_text="취소"
+			add_child(confirm)
+			confirm.confirmed.connect(func():confirm.queue_free();_on_item_use_selected({"meat_confirmed":true},frozen_id))
+			confirm.canceled.connect(confirm.queue_free)
+			confirm.popup_centered(Vector2i(300,180));return
 		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
 		if not choices.is_empty():
 			var frozen_id:String=member_item_selected_id
@@ -5949,6 +5964,8 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")-
 		_position_item_popover();return
 	var healed:=int(result.get("healed_amount",0))
 	notice_text=str(result.get("message","회복 물약 사용 · HP +%d"%healed))
+	if result.has("nutrition_milli"):
+		notice_text="고기 섭취 · 포만감 +%d%s"%[int(result.nutrition_milli/1000)," · 새 이능 체득" if result.get("gains_ability",false) else " · 식사만"]
 	action_feedback_text=notice_text
 	_hide_item_popover()
 	_record_result(result,true)

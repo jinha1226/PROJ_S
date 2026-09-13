@@ -49,11 +49,11 @@ func _ready()->void:
 	actions.visible=false
 	feedback=Label.new();feedback.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	feedback.add_theme_font_size_override("font_size",11);feedback.visible=false;add_child(feedback)
-	var label:=Label.new();label.text="보관 중인 정수";PixelSkin.apply_heading(label);add_child(label)
+	var label:=Label.new();label.text="보관 중인 몬스터 고기";PixelSkin.apply_heading(label);add_child(label)
 	picker=VBoxContainer.new();add_child(picker)
-	confirmation=ConfirmationDialog.new();confirmation.title="이능 결속 확인"
+	confirmation=ConfirmationDialog.new();confirmation.title="고기 섭취 확인"
 	confirmation.dialog_autowrap=true
-	confirmation.ok_button_text="소비하고 결속";confirmation.cancel_button_text="취소"
+	confirmation.ok_button_text="먹기";confirmation.cancel_button_text="취소"
 	confirmation.confirmed.connect(_confirm_binding)
 	confirmation.canceled.connect(func():pending_instance_id="")
 	add_child(confirmation)
@@ -94,7 +94,7 @@ func _refresh_detail()->void:
 	var filled:bool=not selected_item.is_empty() or str(row.get("state",""))=="BOUND"
 	detail_title.text=str(row.get("label","이능")) if filled else "빈 슬롯"
 	if not filled:
-		var empty:=Label.new();empty.text="정수를 선택해 효과를 확인하세요."
+		var empty:=Label.new();empty.text="고기를 선택해 이능과 식사 효과를 확인하세요."
 		empty.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;empty.add_theme_font_size_override("font_size",12);mode_rows.add_child(empty);return
 	var planned:bool=bool(row.get("planned",false))
 	var dual:bool=bool(row.get("dual_mode",false))
@@ -150,26 +150,26 @@ func _refresh()->void:
 		button.tooltip_text=str(row.get("label","잠금"))+" · Lv.%d 개방"%int(row.get("unlock_level",i+1))
 		button.disabled=state=="LOCKED"
 		PixelSkin.apply_action_button(button,PixelSkin.BRASS if i==selected_slot else PixelSkin.CYAN)
-	summary.text="이능 · 결속 %d / %d"%[bound,open_slots]
+	summary.text="이능 · 체득 %d / %d"%[bound,open_slots]
 	_refresh_detail()
 	remove_button.disabled=not remove_action.is_valid() or selected_slot>=binding_rows.size() or str(binding_rows[selected_slot].get("state",""))!="BOUND"
 	for child in picker.get_children():
 		picker.remove_child(child);child.queue_free()
 	if item_rows.is_empty():
-		var empty:=Label.new();empty.text="결속할 이능 획득물이 없습니다.";picker.add_child(empty)
+		var empty:=Label.new();empty.text="보관 중인 몬스터 고기가 없습니다.";picker.add_child(empty)
 	else:
 		for row in item_rows:
 			var line:=HBoxContainer.new();picker.add_child(line)
 			var button:=Button.new()
 			var preview:Dictionary=row.get("effect_preview",{}) if row.get("effect_preview",{}) is Dictionary else {}
-			button.text="%s · %d개"%[str(row.get("label","정수")),int(row.get("quantity",1))]
+			button.text="%s · %d개"%[str(row.get("label","고기")),int(row.get("quantity",1))]
 			button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			button.custom_minimum_size.y=48;button.clip_text=true
 			button.pressed.connect(_select_item.bind(str(row.get("instance_id",""))))
 			line.add_child(button);PixelSkin.apply_action_button(button)
-			var absorb:=Button.new();absorb.text="흡수";absorb.custom_minimum_size=Vector2(52,48)
+			var absorb:=Button.new();absorb.text="먹기";absorb.custom_minimum_size=Vector2(52,48)
 			absorb.disabled=bool(preview.get("planned",false)) or not bind_action.is_valid()
-			absorb.tooltip_text="효과 구현 전에는 정수를 소비하지 않습니다." if absorb.disabled else "정수 1개 소비 · 해제 불가"
+			absorb.tooltip_text="효과 미구현 고기는 먹을 수 없습니다." if absorb.disabled else "고기 1개 · 포만감 +20 · 새 이능은 해제 불가"
 			absorb.pressed.connect(_bind_item.bind(str(row.get("instance_id",""))))
 			line.add_child(absorb);PixelSkin.apply_action_button(absorb,PixelSkin.CYAN)
 
@@ -183,7 +183,7 @@ func _bind_item(instance_id:String)->void:
 		var preview:Dictionary=row.get("effect_preview",{})
 		if bool(preview.get("planned",false)):return
 		pending_instance_id=instance_id
-		confirmation.dialog_text="%s\nMP %d · 사거리 %d\n\n획득물 1개를 소비하고 빈 결속 한도 1칸을 사용합니다.\n현재 해제할 수 없습니다. 결속할까요?"%[
+		confirmation.dialog_text="%s\nMP %d · 사거리 %d\n\n포만감 +20 (최대치까지)\n새 이능은 빈 칸 1개에 체득하며 해제할 수 없습니다.\n중복이거나 빈 칸이 없으면 식사 효과만 적용됩니다.\n먹을까요?"%[
 			str(preview.get("label",row.get("ability_id","이능"))),
 			int(preview.get("cost",0)),int(preview.get("range",0))]
 		confirmation.popup_centered(Vector2i(300,220))
@@ -199,7 +199,7 @@ func _confirm_binding()->void:
 	if not result is Dictionary or not bool(result.get("accepted",false)):
 		feedback.text=str(result.get("message","이능을 결속할 수 없습니다.")) if result is Dictionary else "이능을 결속할 수 없습니다."
 		return
-	feedback.text="%s 결속 완료 · 아이템을 소비했습니다."%str(result.get("ability_id","이능"))
+	feedback.text="고기 섭취 · 포만감 +%d%s"%[int(result.get("nutrition_milli",0)/1000)," · 새 이능 체득" if bool(result.get("gains_ability",false)) else " · 식사만 적용"]
 	if result.get("bindings",[]) is Array:
 		binding_rows=result.bindings.duplicate(true)
 	for index in range(item_rows.size()-1,-1,-1):

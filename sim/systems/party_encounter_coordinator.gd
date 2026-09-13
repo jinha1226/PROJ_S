@@ -1637,14 +1637,14 @@ func _resolve_move_conflicts(rows: Array) -> String:
 	return ""
 
 func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: int,
-		tick_start_can_act_ids: Dictionary, allow_victory: bool = true) -> bool:
+		tick_start_can_act_ids: Dictionary, allow_victory: bool = true, committed_plans:Dictionary={}) -> bool:
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
 	if not preload("res://sim/field_turn_rules.gd").active(world) \
 		and not _update_enemy_awareness_batch(processed_step_index):return false
 	var state=world.party_encounter;var enemies:Array=_stream_enemy_ids();enemies.sort()
-	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world)
+	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world) if committed_plans.is_empty() else {}
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
 		var awareness=state.enemy_awareness(enemy_id)
@@ -1658,14 +1658,14 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id, world.world_time) \
 				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
-		var forecast := forecast_enemy_action(enemy_id,enemy_board)
+		var forecast:Dictionary = committed_plans[enemy_id] if committed_plans.has(enemy_id) else forecast_enemy_action(enemy_id,enemy_board)
 		if not bool(forecast.get("accepted", false)): continue
 		rows.append({"enemy_id": enemy_id, "target_id": int(forecast.target_id),
 			"original_action_order": rows.size(), "action_type": str(forecast.action_type),
 			"destination": forecast.destination.duplicate(true),
 			"terrain_id": str(forecast.terrain_id), "time_cost": int(forecast.time_cost),
 			"melee": str(forecast.action_type) == "MELEE"})
-	_resolve_enemy_move_reservations(rows)
+	if committed_plans.is_empty():_resolve_enemy_move_reservations(rows)
 	var melee_rows: Array[Dictionary] = []
 	for row in rows:
 		if bool(row.melee): melee_rows.append(row)

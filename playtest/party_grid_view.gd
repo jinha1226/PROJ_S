@@ -2748,6 +2748,10 @@ func _draw_ground_items()->void:
 		preload("res://playtest/base_resource_icon.gd").draw_icon(self,row[0],row[1])
 	for spec in ground_item_draw_specs():
 		if bool(spec.get("draw_image",false)):
+			# A compact backing separates loot from walkable terrain, even when
+			# several drops share a cell or a creature has just disappeared.
+			draw_rect(spec.image_rect.grow(1),Color(0.035,0.03,0.025,0.72))
+			draw_rect(spec.image_rect.grow(1),Color(0.78,0.64,0.36,0.65),false,1)
 			draw_texture_rect(spec.texture,spec.image_rect,false,Color.WHITE)
 			if not str(spec.get("appearance_mark","")).is_empty():draw_string(get_theme_default_font(),spec.image_rect.position+Vector2(0,10),str(spec.appearance_mark),HORIZONTAL_ALIGNMENT_LEFT,-1,10,Color.WHITE)
 			continue

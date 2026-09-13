@@ -86,7 +86,7 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
-const BALANCE_ID := "dcss-balance-0.34.1-v1"
+const BALANCE_ID := "dcss-balance-0.34.1-telegraph-meat-v2"
 const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"
@@ -252,6 +252,7 @@ var _presentation_visibility_cache:Dictionary={}
 # UI that asks every frame rebuilds only when the core actually moved. Never
 # serialized: a load rebuilds it from canonical state (spec §7).
 var _timeline_cache:Dictionary={}
+var _enemy_telegraph_cache:Dictionary={}
 var _base_progression_service
 var _base_settlement_service
 var _last_town_departure_profile:Dictionary={}
@@ -1295,6 +1296,10 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
+	var inventory=sim.world.inventory_of(hero.id)
+	var carried=inventory.item(instance_id) if inventory!=null else null
+	if carried!=null and not ItemRewardRulesScript.ability_for_item(str(carried.definition_id)).is_empty():
+		return bind_ability_item(hero.id,instance_id)
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
 		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
@@ -2637,7 +2642,7 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 				"passive":str(catalog.passive),"active":str(catalog.active)}
 		rows.append({"instance_id":str(item.instance_id),
 			"definition_id":str(item.definition_id),"quantity":int(item.quantity),
-			"ability_id":ability_id,"label":str(preview.get("label",ability_id)),
+			"ability_id":ability_id,"label":str(ItemRegistryScript.definition(str(item.definition_id)).label),
 			"effect_preview":preview})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return str(a.instance_id)<str(b.instance_id))
@@ -2647,6 +2652,7 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
+	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	var state=sim.world.party_encounter
 	var member=state.member(actor_id)
 	if member==null or actor_id not in state.party_member_ids:
@@ -2667,18 +2673,19 @@ func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	if ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id):
 		return _rejection_dto("not_ability_item")
 	ability_id=AbilityBindingRulesScript.canonical_id(ability_id)
+	# Ability meat is a deliberate meal, never an automatic ration. Legacy
+	# ESSENCE_* identifiers remain the save/content wire identity only.
+	if int(state.ration_milli)>=RationRulesScript.ration_max_milli():
+		return _rejection_dto("monster_meat_full")
+	if field_turns_active():
+		for enemy_id in state.enemy_ids:
+			if FieldTurns.Rules.visible(sim.world,enemy_id):return _rejection_dto("monster_meat_enemy_near")
 	var level:=ability_binding_level(actor_id)
 	var limit:=AbilityBindingRulesScript.slot_limit(level)
 	var bound:Array=member.bound_ability_ids.duplicate()
-	if ability_id in bound:
-		return _rejection_dto("ability_already_bound",null,null,{
-			"actor_id":actor_id,"ability_id":ability_id,"level":level,
-			"current_slots":bound.size(),"max_slots":limit})
-	if bound.size()>=limit:
-		return _rejection_dto("ability_binding_slots_full",null,null,{
-			"actor_id":actor_id,"ability_id":ability_id,"level":level,
-			"current_slots":bound.size(),"max_slots":limit})
+	var gains_ability:bool=ability_id not in bound and bound.size()<limit
 	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
+		"gains_ability":gains_ability,"nutrition_milli":20000,
 		"instance_id":instance_id,"ability_id":ability_id,"level":level,
 		"current_slots":bound.size(),"max_slots":limit,"slot_index":bound.size(),
 		"effect_preview":AbilityBindingRulesScript.effect_preview(ability_id),
@@ -2697,16 +2704,27 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 	next.inventory_rows[actor_id]=removed.inventory
 	next.revision=int(sim.world.item_state.revision)+1
 	var member=sim.world.party_encounter.member(actor_id)
-	member.bound_ability_ids.append(str(assessment.ability_id))
-	member.bound_ability_ids.sort()
+	if bool(assessment.gains_ability):
+		member.bound_ability_ids.append(str(assessment.ability_id))
+		member.bound_ability_ids.sort()
 	var position:Vector2i=sim.world.entities[actor_id].position
-	var event=sim.world.emit_event("party.ability_bound",actor_id,actor_id,position,1,-1,{
+	var event=null
+	if bool(assessment.gains_ability):event=sim.world.emit_event("party.ability_bound",actor_id,actor_id,position,1,-1,{
 		"schema_version":1,"ruleset_id":AbilityBindingRulesScript.RULESET_ID,
 		"ability_id":str(assessment.ability_id),"instance_id":instance_id,
 		"slot_index":int(assessment.slot_index)})
-	if event==null:
+	if bool(assessment.gains_ability) and event==null:
 		_restore_town_rollback(rollback)
 		return _rejection_dto("ability_binding_event_failed")
+	var party=sim.world.party_encounter
+	var before:int=party.ration_milli
+	party.ration_milli=mini(RationRulesScript.ration_max_milli(),before+int(assessment.nutrition_milli))
+	event=sim.world.emit_event("party.monster_meat_eaten",actor_id,actor_id,position,0,-1,{
+		"instance_id":instance_id,"ability_id":str(assessment.ability_id),
+		"gained_ability":bool(assessment.gains_ability),"nutrition_milli":party.ration_milli-before})
+	if event==null:
+		_restore_town_rollback(rollback)
+		return _rejection_dto("monster_meat_event_failed")
 	sim.world.item_state=next
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
@@ -2717,6 +2735,7 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 		"actor_id":str(actor_id),"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id)}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
+		"gains_ability":bool(assessment.gains_ability),"nutrition_milli":party.ration_milli-before,
 		"actor_id":actor_id,"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id),"slot_index":int(assessment.slot_index),
 		"bindings":ability_binding_rows(actor_id)})
@@ -2731,8 +2750,10 @@ func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
 		return _rejection_dto("invalid_ability_mode")
 	if member.presence in ["DEFEATED","EXILED","RECRUITABLE"] or not sim.world.combatant_states.has(actor_id) \
 			or sim.world.combatant_states[actor_id].life_state!="ACTIVE":return _rejection_dto("ability_binding_actor_unavailable")
-	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or not sim.world.is_settled() \
-			or preload("res://sim/field_turn_rules.gd").active(sim.world):return _rejection_dto("ability_binding_unsafe_phase")
+	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or not sim.world.is_settled():return _rejection_dto("ability_binding_unsafe_phase")
+	if field_turns_active():
+		for enemy_id in state.enemy_ids:
+			if FieldTurns.Rules.visible(sim.world,enemy_id):return _rejection_dto("ability_binding_unsafe_phase")
 	var old_mode:="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
 	if mode==old_mode:return _feedback_dto({"accepted":true,"reason":"ok","ability_id":ability_id,"mode":mode})
 	var rollback:Variant=sim.snapshot()
@@ -6426,6 +6447,11 @@ func turn_intent_overlays() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	if field_turns_active():
 		var world=sim.world
+		var plan_key:Array=[world.get_instance_id(),world.step_index,world.world_time,
+			world.events.size(),world.party_encounter.revision,world.item_state.revision]
+		if _enemy_telegraph_cache.get("key",[])!=plan_key:
+			_enemy_telegraph_cache={"key":plan_key,"rows":preload("res://sim/enemy_telegraph_rules.gd").overlays(sim)}
+		rows.assign(_enemy_telegraph_cache.rows.duplicate(true))
 		var control:int=world.party_control_actor_id()
 		var companions:Array=[]
 		for id in world.party_encounter.active_party_member_ids:
@@ -8057,7 +8083,7 @@ func _is_important_log_event(event)->bool:
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","item.identified","item.energy_restored","health.restored",
-			"party.ration_eaten","party.ration_missing","party.ration_changed",
+			"party.ration_eaten","party.ration_missing","party.ration_changed","party.monster_meat_eaten","party.ability_bound",
 			"party.ration_starve_tick",
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
@@ -9772,6 +9798,8 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
 		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",
 		"ability_already_bound":"이미 결속한 이능입니다. 효과가 중첩되지 않습니다.",
+		"monster_meat_full":"배가 불러 더 먹을 수 없습니다.",
+		"monster_meat_enemy_near":"보이는 적을 벗어난 뒤 고기를 먹을 수 있습니다.",
 		"ability_binding_slots_full":"열린 이능 슬롯이 가득 찼습니다.",
 		"ability_binding_event_failed":"이능 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
 		"ability_removal_policy_undefined":"이능 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
@@ -10011,7 +10039,8 @@ func _event_message(event) -> String:
 				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
 					"severed_parts_remain",false)) else ""]
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
-		"party.ability_bound":return "%s가 %s을(를) 결속했다."%[
+		"party.monster_meat_eaten":return "몬스터 고기 섭취 · 포만감 +%d"%int(event.data.get("nutrition_milli",0)/1000)
+		"party.ability_bound":return "%s가 %s을(를) 체득했다."%[
 			_subject(actor),str(event.data.get("ability_id","이능"))]
 		"party.morale_changed":
 			match _morale_band_change(event):

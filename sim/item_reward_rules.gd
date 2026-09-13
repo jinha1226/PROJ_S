@@ -11,7 +11,7 @@ const LABELS := {
 	"WEAPON_MATERIAL":"무기 업그레이드 소재",
 	"CRAFT_MATERIAL":"제작 재료",
 	"CURRENCY":"돈·환금품",
-	"MONSTER_ABILITY":"몬스터 이능",
+	"MONSTER_ABILITY":"이능 고기",
 	"BASE_MATERIAL":"거점 업그레이드 재료",
 	"SUPPLY":"보급품",
 	"SPECIAL":"특별 발견",
@@ -27,7 +27,7 @@ const ITEM_FAMILIES := {
 const ITEM_PURPOSES := {
 	"MATERIAL_IRON_INGOT":"무기 재제작용",
 	"MAGIC_STONE":"환금품·거래용",
-	"ESSENCE_FIRE_BOLT":"이능 흡수 전 보관",
+	"ESSENCE_FIRE_BOLT":"직접 먹기 · 포만감 +20 · 화염탄 이능 체득",
 	"FOOD_RATION":"원정 보급품",
 	"POTION_HEALING":"회복용 보급품",
 }
@@ -48,7 +48,7 @@ static func family_for_item(definition_id:String)->String:
 
 static func purpose_for_item(definition_id:String)->String:
 	if not preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id).is_empty():
-		return "정수를 결속한 뒤 패시브 또는 액티브 선택"
+		return "직접 먹기 · 포만감 +20 · 빈 이능 칸이 있으면 이능 획득 (패시브/액티브 선택). 중복·한도 초과는 식사만. 자동 섭취 안 함."
 	if ITEM_PURPOSES.has(definition_id):return str(ITEM_PURPOSES[definition_id])
 	match ItemCatalog.family(definition_id):
 		"MAGIC_STONE":return "환금품·거래용"
