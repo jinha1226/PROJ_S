@@ -13,8 +13,9 @@ func tick(ui,delta:float)->void:
 	elapsed+=minf(delta,0.1)
 	if elapsed<0.5:return
 	elapsed=0
-	var result:Dictionary=ui.session.base_work({"action":"TICK"})
+	var result:Dictionary=preload("res://playtest/settlement_work_service.gd").automatic_tick(ui.session)
 	if not bool(result.get("accepted",false)):return
+	if bool(result.get("idle",false)):return
 	if panel!=null:panel.update_work(ui.session.base_overview())
 	if bool(result.get("completed",false)):
 		ui.notice_text=str(result.message);completion_refresh_pending=true

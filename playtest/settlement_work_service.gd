@@ -14,6 +14,7 @@ static func reject(reason:String)->Dictionary:
 		"settlement_order_missing":"취소할 작업이 없습니다.",
 		"settlement_legacy_pending":"기존 작업을 완료하거나 취소한 뒤 새 작업을 주문하세요.",
 		"settlement_town_required":"거점에서 주문할 수 있습니다.",
+		"settlement_resident_in_footprint":"주민이 있는 자리입니다. 주민이 이동한 뒤 배치하세요.",
 		"settlement_rest_not_needed":"충분히 안정되어 있습니다.",
 		"settlement_production_limit":"진행 중 주문과 완성품이 보관 한도에 도달했습니다."}.get(reason,reason)}
 
@@ -78,6 +79,11 @@ static func assess(session,operation:Dictionary,value:Dictionary)->Dictionary:
 		var tile:=Vector2i(int(operation.tile_origin[0]),int(operation.tile_origin[1]))
 		var error:=Grid.placement_error(type_id,tile,0,rows)
 		if not error.is_empty():return reject(error)
+		var footprint:=Rect2i(tile,Grid.FOOTPRINTS[type_id])
+		for resident in value.residents.values():
+			var body=world.combatant_states.get(int(resident.entity_id))
+			if body!=null and body.life_state=="ACTIVE" and footprint.has_point(Vector2i(int(resident.tile[0]),int(resident.tile[1]))):
+				return reject("settlement_resident_in_footprint")
 		data.merge({"type_id":type_id,"tile_origin":[tile.x,tile.y],
 			"footprint":[Grid.FOOTPRINTS[type_id].x,Grid.FOOTPRINTS[type_id].y],
 			"cost":Grid.CONSTRUCTION_COSTS[type_id].duplicate(),"instance_id":Grid.next_instance_id(buildings,type_id)},true)
@@ -127,6 +133,19 @@ static func new_job(world,value:Dictionary,action:String,data:Dictionary)->Dicti
 		"cancel_requested":false,"recipe_id":"","from_level":0,"to_level":1,"instance_id":""}
 	job.merge(data,true);job.erase("accepted");job.erase("work_steps")
 	value.jobs[str(id)]=job;value.schedule_revision=int(value.schedule_revision)+1;return job
+
+# Only the live UI clock may skip idle ticks. Explicit/version-2 journal commands
+# keep their historical semantics so existing saves still replay exactly.
+static func automatic_tick(session)->Dictionary:
+	var world=session.sim.world
+	var value:Dictionary=Rules.index(world).state
+	if bool(value.enabled) and Rules.active(value).is_empty():
+		var needed:=false
+		for id in session.company_member_ids():
+			if not value.residents.has(str(id)) or (available(session,int(id)) and needs_rest(world,int(id))):
+				needed=true;break
+		if not needed:return {"accepted":true,"completed":false,"idle":true}
+	return session.base_work({"action":"TICK"})
 
 static func commit(session,operation:Dictionary)->Dictionary:
 	if session.sim==null or session.scenario_id!=session.DUO_SCENARIO_ID:return reject("base_scenario_unavailable")

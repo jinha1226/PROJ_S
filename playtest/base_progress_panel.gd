@@ -132,19 +132,39 @@ func _add_build_entry()->void:
 
 
 func _add_work_status()->void:
+	var rows:=VBoxContainer.new();rows.name="BaseWorkRows";add_child(rows)
+	_sync_work_rows()
+
+
+func _sync_work_rows()->void:
+	var rows:=find_child("BaseWorkRows",true,false)
+	if rows==null:return
 	var jobs:Array=_overview.get("jobs",[])
 	var work:Dictionary=_overview.get("work",{})
 	if jobs.is_empty() and not work.is_empty():jobs=[work]
+	var live:Dictionary={}
 	for job in jobs:
 		var id:=int(job.get("job_id",-1));var suffix:=str(id) if id>=0 else ""
-		_add_text("%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)],"BaseWorkTitle"+suffix,FONT_BODY,true)
-		_add_text(WorkLabels.reason_label(str(job.get("blocked_reason",""))),"BaseWorkReason"+suffix,FONT_SMALL,true)
+		var row_name:="BaseWorkRow"+suffix;live[row_name]=true
+		var existing:=rows.get_node_or_null(NodePath(row_name))
+		if existing!=null:
+			(existing.get_node("BaseWorkCancel"+suffix) as Button).disabled=_read_only or bool(job.get("cancel_requested",false))
+			continue
+		var row:=VBoxContainer.new();row.name=row_name;rows.add_child(row)
+		var title:=_new_label("%s · %s · %s"%[_building_label(str(job.type_id)),WorkLabels.action_label(str(job.action)),WorkLabels.status_label(job)],"BaseWorkTitle"+suffix,FONT_BODY)
+		title.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;row.add_child(title)
+		var reason:=_new_label(WorkLabels.reason_label(str(job.get("blocked_reason",""))),"BaseWorkReason"+suffix,FONT_SMALL)
+		reason.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;row.add_child(reason)
 		var progress:=ProgressBar.new();progress.name="BaseWorkProgress"+suffix
 		progress.max_value=float(job.required);progress.value=float(job.progress)
-		progress.custom_minimum_size.y=18;add_child(progress)
+		progress.custom_minimum_size.y=18;row.add_child(progress)
 		var cancel:=_button("작업 취소 · 미소비 재료 회수","BaseWorkCancel"+suffix)
+		if str(job.action)=="REST":cancel.text="휴식 취소 · 골드 반환"
 		cancel.disabled=_read_only or bool(job.get("cancel_requested",false))
-		cancel.pressed.connect(func():work_cancel_requested.emit(id));add_child(cancel)
+		cancel.pressed.connect(func():work_cancel_requested.emit(id));row.add_child(cancel)
+	for row in rows.get_children():
+		if not live.has(str(row.name)):
+			rows.remove_child(row);row.queue_free()
 
 
 func _add_rest()->void:
@@ -190,6 +210,7 @@ func _add_production()->void:
 func update_work(overview:Dictionary)->void:
 	# Keep active touch targets and camera alive during automatic work ticks.
 	_overview=overview.duplicate(true)
+	_sync_work_rows()
 	var map:=find_child("BaseSettlementMap",true,false)
 	if map!=null:map.present(_overview,_selected_id)
 	var progress:=find_child("BaseWorkProgress",true,false) as ProgressBar

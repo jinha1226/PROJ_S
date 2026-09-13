@@ -31,6 +31,7 @@ func run()->void:
 	for id in [hero,resident]:
 		party.member(id).stress=0
 		for emotion in ["FEAR","ANGER","SADNESS","GUILT"]:party.member(id).emotion_state.set_channel(emotion,0)
+	clock_placement_and_rows(s,hero)
 	var initial:Dictionary=Rules.stock(world).total
 	var potion:Dictionary=s.base_work({"action":"PRODUCE","recipe_id":"HEALING_POTION"})
 	var upgrade:Dictionary=s.base_work({"action":"UPGRADE","type_id":"STORAGE"})
@@ -113,6 +114,47 @@ func run()->void:
 	await mobile(s)
 	print("SETTLEMENT_WORK_UNIT ","PASS" if errors.is_empty() else errors)
 	quit(0 if errors.is_empty() else 1)
+
+func clock_placement_and_rows(s,hero:int)->void:
+	var world=s.sim.world
+	check(Service.automatic_tick(s).get("accepted",false),"clock initialization")
+	var events:int=world.events.size();var journal:int=s.command_journal.size()
+	var before:=Rules.state(world)
+	for i in range(100):check(Service.automatic_tick(s).get("idle",false),"idle live clock skips tick")
+	check(world.events.size()==events and s.command_journal.size()==journal and Rules.state(world)==before,"idle clock preserves journal and state")
+	check(s.base_work({"action":"TICK"}).get("accepted",false) and world.events.size()==events+1,"explicit historical tick still records for replay")
+	# Existing clinic fixture is at 1,8. Market footprint overlaps tile 11,9.
+	check(s.base_build_assessment("MARKET",[10,8]).get("accepted",false),"unoccupied site is otherwise valid")
+	before=Rules.state(world);var occupied:=before.duplicate(true)
+	occupied.residents[str(hero)].tile=[11,9]
+	check(Service.persist(world,before,occupied).is_empty(),"place resident on proposed footprint")
+	var rejected:Dictionary=s.base_work({"action":"BUILD","type_id":"MARKET","tile_origin":[10,8]})
+	check(not rejected.get("accepted",false) and rejected.get("reason","")=="settlement_resident_in_footprint","reject blueprint enclosing resident")
+	check(not s.base_build_assessment("MARKET",[10,8]).get("accepted",false),"preview rejects occupied footprint too")
+	var body=world.combatant_states[hero];var recovery:int=body.recovery_lock_until
+	body.recovery_lock_until=world.world_time+100
+	check(not s.base_build_assessment("MARKET",[10,8]).get("accepted",false),"recovering resident also blocks construction")
+	body.recovery_lock_until=recovery
+	check(Service.persist(world,Rules.state(world),before).is_empty(),"restore resident fixture")
+	var panel=BasePanel.new();root.add_child(panel);panel.present(s.base_overview(),false,"LODGE")
+	var map=panel.find_child("BaseSettlementMap",true,false)
+	var identity:int=map.get_instance_id();var rebuilds:int=panel.rebuild_count
+	world.party_encounter.member(hero).stress=650
+	check(Service.automatic_tick(s).get("accepted",false),"idle clock wakes for required rest")
+	var job:Dictionary=Rules.active(Rules.state(world))[0]
+	panel.update_work(s.base_overview())
+	var cancel=panel.find_child("BaseWorkCancel"+str(job.job_id),true,false)
+	check(cancel!=null,"automatic rest inserts cancel control without reopening")
+	var received:Array=[]
+	panel.work_cancel_requested.connect(func(id):received.append(id))
+	if cancel!=null:cancel.pressed.emit()
+	check(received==[int(job.job_id)],"inserted cancel targets rest job")
+	check(s.base_work({"action":"CANCEL","job_id":job.job_id}).get("accepted",false),"cancel inserted rest")
+	panel.update_work(s.base_overview())
+	check(panel.find_child("BaseWorkCancel"+str(job.job_id),true,false)==null,"cancelled row removed incrementally")
+	check(panel.rebuild_count==rebuilds and map.get_instance_id()==identity,"row reconciliation preserves map")
+	panel.free();world.party_encounter.member(hero).stress=0
+
 func mobile(s)->void:
 	for viewport in [Vector2i(360,640),Vector2i(390,844)]:
 		root.size=viewport
