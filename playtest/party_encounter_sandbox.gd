@@ -5062,7 +5062,6 @@ func _update_detail_vitals(detail:Dictionary)->void:
 	detail_mp_text.text="MP %d / %d"%[mp,max_mp] if member!=null else "MP —"
 
 static func _body_help(line:String)->String:
-	if line.begins_with("혈액"):return "현재 혈액 / 최대 혈액입니다. 신체 손상 시 출혈량만큼 줄어들며, 0이 되면 남은 HP와 관계없이 사망합니다. 일반 HP 회복만으로 혈액이 복구되지는 않습니다. 치유소에서 치료할 수 있습니다."
 	if line.begins_with("의식"):return "현재 기록된 의식 수준입니다. 현재 버전에서는 출혈·충격에 따라 의식을 갱신하거나 의식 수치로 행동을 제한하는 기능은 아직 연결되지 않았습니다."
 	if line.begins_with("피부"):return "베기·찌르기의 방어 장벽에 더해져 조직에 전달되는 힘을 줄입니다. 타격 상처의 깊이 계산에도 사용됩니다. 일반 방어력에 이 수치를 그대로 더하지는 않습니다."
 	if line.begins_with("연부"):return "타격 피해의 완충값입니다. 방어구의 충격 완충과 합산해 몸에 전달되는 힘을 줄입니다."
@@ -5087,9 +5086,6 @@ func _add_status_value(parent:GridContainer,title:String,value:String)->void:
 static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
 	if bool(body.get("available",false)):
-		var blood_capacity:=maxi(1,int(body.get("blood_capacity",1)))
-		var blood:=clampi(int(body.get("blood",0)),0,blood_capacity)
-		body_lines.append("혈액 %d/%d (%d%%)"%[blood,blood_capacity,int(blood*100/blood_capacity)])
 		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
 		body_lines.append("피부 질김 %d"%int(body.get("skin_toughness",0)))
 		body_lines.append("연부조직 완충 %d"%int(body.get("soft_tissue_cushioning",0)))

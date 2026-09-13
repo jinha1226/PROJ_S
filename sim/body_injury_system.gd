@@ -123,7 +123,7 @@ static func _apply_plan(body,plan:Dictionary,source_event_id:int)->Dictionary:
 		var layer_id:String=BodyRegistryScript.LAYER_IDS[layer_index]
 		body.parts[part_index].layers[layer_index].integrity=int(plan.projected_integrity[layer_id])
 	var resolution:Dictionary=plan.resolution
-	body.current_blood=maxi(0,body.current_blood-int(resolution.bleed))
+	# Blood fields remain in the save schema only; injury no longer spends a second life pool.
 	body.shock=mini(MAX_SMALL_VALUE,body.shock+int(resolution.shock))
 	if bool(plan.creates_wound):
 		var deepest_layer:String="SKIN"

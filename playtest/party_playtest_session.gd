@@ -2390,7 +2390,6 @@ func town_clinic_assessment(entity_id:int)->Dictionary:
 	var needs_care:bool=int(entity.health)<int(entity.max_health) \
 		or str(combatant.life_state)=="DOWNED" or not combatant.status_rows.is_empty() \
 		or body!=null and (not body.wounds.is_empty() or damaged_parts>0 \
-			or int(body.current_blood)<int(body.body_scalars.get("blood_capacity",0)) \
 			or int(body.shock)>0 or int(body.consciousness)<1000)
 	if not needs_care:return _rejection_dto("town_clinic_not_needed")
 	return _feedback_dto({"accepted":true,"reason":"ok","entity_id":entity_id,
@@ -8659,7 +8658,13 @@ func load_session_json(encoded: String) -> Dictionary:
 			var failed:=_rejection_dto("party_journal_replay_failed")
 			failed["replay_kind"]=str(row.kind);failed["replay_reason"]=str(replay_result.get("reason",""))
 			return failed
-	if replay.sim.snapshot()!=restored.snapshot():return _rejection_dto("party_journal_snapshot_mismatch")
+	# Retired blood bookkeeping may differ in older saves; all live gameplay fields
+	# still require exact replay equality. Do not mutate the installed snapshot.
+	var replay_snapshot:Dictionary=replay.sim.snapshot()
+	var stored_snapshot:Dictionary=restored.snapshot()
+	for body_row in replay_snapshot.get("body_states",[]):body_row.current_blood=0
+	for body_row in stored_snapshot.get("body_states",[]):body_row.current_blood=0
+	if replay_snapshot!=stored_snapshot:return _rejection_dto("party_journal_snapshot_mismatch")
 	var installed:=_install_restored_session(restored, decoded, parsed_world_seed,
 		parsed_personality_seed, parsed_scenario_id, replay._map_layout)
 	individual_battle._bind()

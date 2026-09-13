@@ -132,7 +132,7 @@ func _show_report(focus_id:int=-1)->void:
 			var body=model.body_bridge.bodies.get(int(actor.id))
 			if body!=null:
 				var functions:Dictionary=model.body_bridge.Functions.appraisal(body)
-				lines.append("육체: 상처 %d · 혈액 %d/%d · 충격 %d\n사용 가능 팔 %d · 다리 %d\n"%[body.wounds.size(),body.current_blood,body.body_scalars.blood_capacity,body.shock,functions.usable_arm_count,functions.usable_leg_count])
+				lines.append("육체: 상처 %d · 충격 %d\n사용 가능 팔 %d · 다리 %d\n"%[body.wounds.size(),body.shock,functions.usable_arm_count,functions.usable_leg_count])
 	lines.append("── 최근 행동부터 · 최대 100건 ──")
 	for index in range(model.history.size()-1,-1,-1):
 		if focus_id>0 and not str(model.actor(focus_id).name) in model.history[index]:continue

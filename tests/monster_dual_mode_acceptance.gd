@@ -61,5 +61,9 @@ func run():
 	loaded=restored.load_session_json(s.save_session_json())
 	check(loaded.accepted,"combat replay "+str(loaded.get("reason","")))
 	if loaded.accepted:check(restored.sim.snapshot()==s.sim.snapshot(),"combat replay equality")
+	var legacy:Dictionary=JSON.parse_string(s.save_session_json())
+	for body_row in legacy.snapshot.body_states:body_row.current_blood=0
+	loaded=restored.load_session_json(JSON.stringify(legacy))
+	check(loaded.accepted,"retired blood field does not block legacy journal replay")
 	print("MONSTER DUAL MODE ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)
