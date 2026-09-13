@@ -2843,6 +2843,8 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
 	_battle_target_prior_paused=autonomous_battle_clock.paused
+	if preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("target")=="SELF":
+		_commit_battle_target(actor_id);return
 	autonomous_battle_clock.paused=true
 	var reach:Dictionary=session.skill_reach_cells(actor_id,skill_id) \
 		if session.has_method("skill_reach_cells") else {}

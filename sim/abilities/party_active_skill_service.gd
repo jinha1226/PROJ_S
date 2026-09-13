@@ -41,6 +41,8 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	# attacks and movement stay available so the pressure reads as "pull back".
 	if MoraleModel.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
 		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
+	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id):
+		return preload("res://sim/abilities/monster_ability_runtime.gd").assess(world,actor_id,skill_id,target_id)
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
 	if skill_id in Registry.GROUND_SKILLS:
@@ -83,6 +85,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 					"passable",false)):
 				blocked[cell]=true
 	if skill_id=="SHOVE":
+		if preload("res://sim/abilities/monster_ability_runtime.gd").passive(world,target_id,"STONE_SKELETON") or preload("res://sim/abilities/monster_ability_runtime.gd").anchored(world,target_id):return _reject(rejected,"active_skill_shove_resisted","암석 골격으로 밀려나지 않습니다.")
 		var delta:=destination-origin
 		var landing:=destination+Vector2i(signi(delta.x),signi(delta.y))
 		for occupant in world.occupying_entities_at(landing):

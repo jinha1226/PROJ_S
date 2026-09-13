@@ -390,6 +390,11 @@ func equipment_modifiers(entity_id: int) -> Dictionary:
 				totals[key]=growth.mastery_scale("DEFENSE",base+int(totals.get(key,0)))-base
 				totals[key]=clampi(int(totals[key]),0,1000000 if key=="armor_flat" else 1000)
 			result["totals"]=totals
+	var monster_armor:int=preload("res://sim/abilities/monster_ability_runtime.gd").armor(self,entity_id)
+	if monster_armor>0:
+		result=result.duplicate(true)
+		var totals:Dictionary=result.get("totals",{})
+		totals["armor_flat"]=int(totals.get("armor_flat",0))+monster_armor;result["totals"]=totals
 	return result
 
 
@@ -2054,6 +2059,11 @@ func _ability_binding_history_error() -> String:
 			if mode=="PASSIVE":passive[event.actor_id].append(id)
 			else:passive[event.actor_id].erase(id)
 			continue
+		if event.type in ["ability.cast","ability.pulse"]:
+			var id:String=str(event.data.get("skill_id",event.data.get("ability_id","")))
+			if not expected.has(event.actor_id) or id not in expected[event.actor_id]:return "monster_ability_not_bound"
+			if (id in passive[event.actor_id])!=(event.type=="ability.pulse"):return "monster_ability_wrong_mode"
+			continue
 		if event.type!="party.ability_bound":continue
 		var keys:Array=event.data.keys();keys.sort()
 		if keys!=["ability_id","instance_id","ruleset_id","schema_version","slot_index"] \
@@ -2668,7 +2678,7 @@ func _restored_state_error() -> String:
 		if event.type == "combat.physical_damage":
 			var physical_cause = event_by_id(event.cause_id)
 			var valid_physical_source: bool = physical_cause != null \
-					and physical_cause.type in ["action.melee_attack", "action.skill",
+					and physical_cause.type in ["action.melee_attack", "action.skill", "ability.impact",
 						"status.tick", "environment.explosion_impact"]
 			var cause_is_canonical: bool = physical_cause != null \
 					and (physical_cause.data.get("schema_version") in [1, 3, 4] \
@@ -3099,7 +3109,7 @@ func _melee_action_event_error(event) -> String:
 		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id) \
 			if event.actor_id==party_encounter.protagonist_id else 0
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
-			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
+			int(attacker_profile.power), int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
 			int(target_profile.evasion_milli), int(target_profile.armor_flat),
 			ActorStatRulesScript.for_entity(self,event.actor_id),preload("res://sim/field_turn_rules.gd").enabled(self))
 		if weapon_spec.is_empty(): return "canonical_weapon_formula_invalid"
@@ -3306,7 +3316,7 @@ func _melee_defense_action_event_error(event) -> String:
 		var weapon_rank:=_progression_rank_before(weapon.proficiency_id,event.id) \
 			if party_encounter!=null and event.actor_id==party_encounter.protagonist_id else 0
 		weapon_spec=WeaponAttackRulesScript.build_attack_spec(weapon_id,weapon_rank,
-			int(attacker_profile.power),int(attacker_profile.accuracy_milli),
+			int(attacker_profile.power),int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
 			int(snapshot.effective_evasion_milli),int(snapshot.effective_armor_flat),
 			ActorStatRulesScript.for_entity(self,event.actor_id),preload("res://sim/field_turn_rules.gd").enabled(self))
 		if weapon_spec.is_empty():return "canonical_combined_weapon_formula_invalid"
@@ -3903,6 +3913,10 @@ func _canonical_typed_damage_event_error(event) -> String:
 	if event.magnitude > requested_damage:
 		return "canonical_typed_damage_applied_exceeds_requested"
 	var source=event_by_id(event.cause_id)
+	if source!=null and source.type=="ability.impact" and source.data.get("kind")==damage_type \
+			and preload("res://sim/abilities/monster_ability_runtime.gd").event_error(self,source).is_empty() \
+			and source.target_id==event.target_id and source.position==event.position \
+			and source.step_index==event.step_index and source.world_time==event.world_time and source.magnitude==requested_damage:return ""
 	if source!=null and source.type=="ability.passive_triggered" and damage_type=="fire" \
 			and preload("res://sim/abilities/monster_passive_service.gd").event_error(self,source,true).is_empty() \
 			and source.target_id==event.target_id and source.position==event.position \
@@ -5155,6 +5169,11 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			projected_health=mini(npc.max_health,projected_health+event.magnitude)
 			if int(event.data.health_after)!=projected_health:
 				return "opening_active_heal_projection_invalid"
+		elif event_type=="health.restored" and event.data.get("kind")=="MONSTER_ABILITY":
+			var monster_heal_error:String=preload("res://sim/abilities/monster_ability_runtime.gd").heal_error(self,event)
+			if not monster_heal_error.is_empty():return monster_heal_error
+			projected_health=mini(npc.max_health,projected_health+event.magnitude)
+			if int(event.data.health_after)!=projected_health:return "opening_monster_heal_projection_invalid"
 	if discovery_rows.size() != 1:
 		return "opening_discovery_event_count_invalid"
 	var discovery = discovery_rows[0]
@@ -5419,9 +5438,9 @@ func _party_health_restoration_error()->String:
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
-				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL","MONSTER_ABILITY"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
-					or restoration_kind!="ACTIVE_SKILL" and event.instigator_id!=hero_id \
+					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY"] and event.instigator_id!=hero_id \
 					or event.magnitude<=0 \
 					or int(event.data.get("health_after",-1))<1 \
 					or int(event.data.get("health_after",-1))>int(entities[hero_id].max_health):
@@ -5456,6 +5475,9 @@ func _party_health_restoration_error()->String:
 						or skill_source.data.get("skill_id")!="MEND" \
 						or event.data.ruleset_id!="party-active-skills-v1":
 					return "party_active_skill_restoration_cause_invalid"
+			elif restoration_kind=="MONSTER_ABILITY":
+				var monster_error:String=preload("res://sim/abilities/monster_ability_runtime.gd").heal_error(self,event)
+				if not monster_error.is_empty():return monster_error
 			else:return "party_health_restoration_kind_invalid"
 			projected=expected_after
 	if int(entities[hero_id].health)!=projected:return "party_health_restoration_projection_mismatch"
@@ -6879,14 +6901,21 @@ func _party_move_event_is_canonical(event) -> bool:
 	var from_position := Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
 	var to_position := Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
 	var definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
+	var leap_source=event_by_id(event.cause_id)
+	if leap_source!=null and leap_source.type=="ability.cast" and leap_source.data.get("skill_id")=="HUNTER_LEAP":
+		return event.actor_id==leap_source.actor_id and event.target_id==-1 and event.position==to_position \
+			and _party_distance(from_position,to_position) in range(1,5) and not definition.is_empty() and bool(definition.get("passable",false)) \
+			and event.magnitude==1 and event.data.move_time_cost==1 and event.step_index==leap_source.step_index and event.world_time==leap_source.world_time
 	var common_valid:bool=event.target_id == -1 and event.position == to_position \
 		and _party_distance(from_position,to_position) == 1 and not definition.is_empty() \
 		and bool(definition.get("passable",false)) and tile_at(to_position).terrain == event.data.terrain_id \
 		and event.magnitude == int(event.data.move_time_cost)
 	if not common_valid:return false
 	if event.cause_id==-1:
-		return int(event.data.move_time_cost)==preload("res://sim/field_action_timing.gd").duration(
-			self,event.actor_id,"MOVE",int(definition.move_time_cost))
+		var base:int=int(definition.move_time_cost)+preload("res://sim/abilities/monster_ability_runtime.gd").delay_before(self,event)
+		var member=party_encounter.member(event.actor_id) if party_encounter!=null else null
+		if member!=null and preload("res://sim/field_turn_rules.gd").enabled(self):base=maxi(1,(base*100+int(member.action_speeds.MOVE)-1)/int(member.action_speeds.MOVE))
+		return int(event.data.move_time_cost)==base
 	return ActiveSkillValidationScript.forced_move_error(self,event).is_empty()
 
 

@@ -64,7 +64,8 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	if attacker_profile.is_empty() or target_profile.is_empty(): return {}
 	# New human campaigns share equipment/talent defense for all people. Legacy
 	# actors retain their previous lane; downed targets keep the finisher lane.
-	var defense_snapshot:=_protagonist_defense_snapshot(target_id,target_profile) \
+	var attack_weapon=WeaponRegistryScript.definition(weapon_id) if not weapon_id.is_empty() else null
+	var defense_snapshot:=_protagonist_defense_snapshot(target_id,target_profile,str(attack_weapon.attack_form) if attack_weapon!=null else "IMPACT") \
 		if target_state.life_state == "ACTIVE" else {}
 	var equipment_defense:=not defense_snapshot.is_empty()
 	var target_evasion:=int(defense_snapshot.effective_evasion_milli) if equipment_defense \
@@ -78,7 +79,7 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		if weapon == null: return {}
 		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
-			int(attacker_profile.power), int(attacker_profile.accuracy_milli),
+			int(attacker_profile.power), int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(world,attacker_id,weapon_id),
 			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id),
 			preload("res://sim/field_turn_rules.gd").enabled(world))
 		if weapon_spec.is_empty(): return {}
@@ -404,13 +405,18 @@ func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
 	return 0
 
 
-func _protagonist_defense_snapshot(target_id:int,target_profile:Dictionary)->Dictionary:
+func _protagonist_defense_snapshot(target_id:int,target_profile:Dictionary,form:String="")->Dictionary:
 	if world.party_encounter==null:return {}
 	if target_id!=world.party_encounter.protagonist_id and preload(
-			"res://sim/personal_talent_rules.gd").for_entity(world.entities.get(target_id)).is_empty():return {}
+			"res://sim/personal_talent_rules.gd").for_entity(world.entities.get(target_id)).is_empty() \
+			and preload("res://sim/abilities/monster_ability_runtime.gd").armor(world,target_id,form)==0:return {}
 	var dto:Dictionary=world.equipment_modifiers(target_id)
 	if dto.is_empty():return {}
 	var totals:Variant=dto.get("totals",{})
+	if totals is Dictionary:
+		totals=totals.duplicate(true)
+		var effects=preload("res://sim/abilities/monster_ability_runtime.gd")
+		totals["armor_flat"]=int(totals.get("armor_flat",0))+effects.armor(world,target_id,form)-effects.armor(world,target_id)
 	return DefenseRulesScript.build_snapshot(int(target_profile.evasion_milli),
 		int(target_profile.armor_flat),totals if totals is Dictionary else {})
 

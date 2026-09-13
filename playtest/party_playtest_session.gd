@@ -4328,6 +4328,7 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 	var vision_illumination: int = VisionRulesScript.illumination(
 		sim.world, context.hero_position, vision_lighting)
 	return {"width": sim.world.width, "height": sim.world.height, "cells": cells,
+		"ability_markers":preload("res://sim/abilities/monster_ability_runtime.gd").markers(sim.world),
 		"phase":status, "grid_mapping": {"origin": [grid_origin.x,grid_origin.y],
 			"cell_count":mini(maxi(1,mapping_capacity),bounds.size.x*bounds.size.y)},
 		"visibility":{"mode":"LOS_RADIUS" if los_radius else "FULL",
@@ -9136,7 +9137,7 @@ func _journal_wire_error(journal: Array) -> String:
 					return "invalid_active_skill_journal"
 				var operation_keys:Array=row.operation.keys();operation_keys.sort()
 				if operation_keys!=["actor_id","skill_id","target_id"] \
-						or row.operation.get("skill_id") not in ActionScript.ACTIVE_SKILL_IDS \
+						or preload("res://sim/abilities/active_skill_registry.gd").definition(str(row.operation.get("skill_id",""))).is_empty() \
 						or not Int64CodecScript.is_canonical(row.operation.get("actor_id")) \
 						or Int64CodecScript.parse(row.operation.actor_id,"active skill actor")<=0 \
 						or not Int64CodecScript.is_canonical(row.operation.get("target_id")) \

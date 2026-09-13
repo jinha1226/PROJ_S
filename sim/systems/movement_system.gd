@@ -35,6 +35,9 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 		base["reason"] = "actor_not_found"
 		return TraversalAssessmentScript.new(base)
 	var actor = world.entities[actor_id]
+	if preload("res://sim/abilities/monster_ability_runtime.gd").anchored(world,actor_id):
+		base["reason"]="ability_anchored"
+		return TraversalAssessmentScript.new(base)
 	base["from_position"] = actor.position
 	if not world.can_act(actor_id, world.world_time):
 		base["reason"] = "actor_dead"

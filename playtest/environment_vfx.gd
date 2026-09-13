@@ -25,6 +25,9 @@ const STYLES := {
 const MAX_PER_BATCH := 24
 
 static func kind(event) -> String:
+	if event.type in ["ability.cast","ability.status","ability.impact","ability.charge"]:
+		var id:String=str(event.data.get("skill_id",event.data.get("ability_id","")))
+		return str({"PREDATOR_NERVE":"ENV_RUPTURE","THROWING_INSTINCT":"ENV_DEBRIS","HUNTER_LEAP":"ENV_RUPTURE","HIDE_PLATING":"ENV_CONDENSE","CARAPACE":"ENV_CONDENSE","CAUSTIC_BLOOD":"ENV_SPLASH","ECHO_SENSE":"ENV_CONDENSE","FROST_SILK":"ENV_FREEZE","CHARGE_ORGAN":"ENV_SPARK","VENOM_FANG":"ENV_SPLASH","REGENERATIVE_TISSUE":"ENV_CONDENSE","STONE_SKELETON":"ENV_DEBRIS","SHADOW_VEIL":"ENV_EXTINGUISH","BLOOD_SIPHON":"ENV_RUPTURE","DEEP_EYE":"ENV_CONDENSE"}.get(id,""))
 	if event.type=="ability.passive_triggered" and event.data.get("ability_id")=="FIREBOLT":return "ENV_IGNITE"
 	if event.type=="environment.explosion_wave" and event.data.get("kind")=="rupture":
 		return "ENV_RUPTURE"

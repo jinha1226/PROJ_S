@@ -18,7 +18,7 @@ const SKILLS:={
 }
 
 static func definition(id:String)->Dictionary:
-	return SKILLS.get(id,{}).duplicate(true)
+	return SKILLS[id].duplicate(true) if SKILLS.has(id) else preload("res://sim/abilities/monster_ability_definitions.gd").definition(id)
 
 static func error()->String:
 	for id in SKILLS:

@@ -81,6 +81,7 @@ static func visible_party_ids(world, enemy_id: int) -> Array[int]:
 	if profile.is_empty():
 		return result
 	for target_id in deployed_party_ids(world):
+		if preload("res://sim/abilities/monster_ability_runtime.gd").hidden_from(world,enemy.position,world.entities[target_id].position):continue
 		var observation:=VisionRulesScript.observe(world,enemy.position,
 			world.entities[target_id].position,VisionRulesScript.facing_for_entity(world,enemy_id),
 			VisionRulesScript.profile_for_entity(enemy),VisionRulesScript.lighting_for_world(world))

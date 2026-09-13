@@ -52,6 +52,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	if action_facing!=party.facing:party.facing=action_facing
 	var ok:=_commit_ally(sim,action,step_index,cost)
 	if ok:ok=preload("res://sim/abilities/monster_passive_service.gd").commit(sim,event_start)
+	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,event_start)
 	if ok:
 		party.group_anchor=world.entities[world.party_control_actor_id()].position
 		# An actual attack wakes its target immediately; sight alone is handled
@@ -72,6 +73,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 				if accepted:actor_queue.completed(sim,int(next.id))
 				return accepted)
 	world.world_time=end
+	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").tick(sim,start,end)
 	Perf.end("field.actor_loop",begun)
 	begun=Perf.begin()
 	party.group_anchor=world.entities[world.party_control_actor_id()].position
@@ -119,6 +121,7 @@ static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,da
 		ok=_commit_ally(sim,suggestion,step_index)
 	else:ok=_commit_enemy(sim,int(next.id),step_index)
 	if ok:ok=preload("res://sim/abilities/monster_passive_service.gd").commit(sim,leaf_start)
+	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,leaf_start)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:ok=_social(sim,leaf_start,int(next.id)==0)
 	Darkness.checkpoint(world,darkness_sample)

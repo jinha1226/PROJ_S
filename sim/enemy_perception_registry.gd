@@ -30,6 +30,7 @@ static func suspicion_gain(species_id:String,distance:int,hero_stealth:int=HERO_
 
 static func has_line_of_sight(world,origin:Vector2i,target:Vector2i)->bool:
 	if world==null or not world.in_bounds(origin) or not world.in_bounds(target):return false
+	if preload("res://sim/abilities/monster_ability_runtime.gd").hidden_from(world,origin,target):return false
 	if preload("res://sim/field_turn_rules.gd").enabled(world):
 		return preload("res://sim/combat_kernel.gd").sees(origin,target,world.combat_sight_blocked)
 	var x0:=origin.x;var y0:=origin.y;var x1:=target.x;var y1:=target.y

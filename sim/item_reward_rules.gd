@@ -48,7 +48,7 @@ static func family_for_item(definition_id:String)->String:
 
 static func purpose_for_item(definition_id:String)->String:
 	if not preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id).is_empty():
-		return "이능 정수 보관 · 패시브/액티브 선택 구현 예정"
+		return "정수를 결속한 뒤 패시브 또는 액티브 선택"
 	if ITEM_PURPOSES.has(definition_id):return str(ITEM_PURPOSES[definition_id])
 	match ItemCatalog.family(definition_id):
 		"MAGIC_STONE":return "환금품·거래용"
@@ -59,7 +59,9 @@ static func purpose_for_item(definition_id:String)->String:
 
 
 static func ability_for_item(definition_id:String)->String:
-	return {"ESSENCE_FIRE_BOLT":"FIREBOLT"}.get(definition_id,"")
+	if definition_id=="ESSENCE_FIRE_BOLT":return "FIREBOLT"
+	var row:Dictionary=preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id)
+	return str(row.get("ability_id",""))
 
 
 static func family_label(family:String)->String:

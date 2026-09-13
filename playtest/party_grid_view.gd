@@ -228,7 +228,9 @@ func uses_perspective_projection()->bool:
 func _exit_tree()->void:
 	_reset_pointer_gesture()
 
+var _ability_markers:Array=[]
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
+	_ability_markers=observation.get("ability_markers",[]).duplicate(true)
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
 	var phase_value:Variant=observation.get("phase",{})
@@ -2425,6 +2427,18 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var begun:=Perf.begin()
 	_draw_world_with_emphasis()
+	for marker in _ability_markers:
+		var point:=Vector2i(int(marker.position[0]),int(marker.position[1]))
+		if marker.kind=="LIFE" and is_world_cell_visible(point):continue
+		if marker.kind not in ["LIFE","DANGER"] and not is_world_cell_visible(point):continue
+		var center:=world_to_pixel_center(point)
+		var tint:Color=Color("8ccfe6") if marker.kind in ["LIFE","FROST_ZONE"] else Color("a4d86e") if marker.kind=="POISON" else Color("edba62")
+		if marker.kind=="FROST_ZONE":
+			for dy in range(-1,2):
+				for dx in range(-1,2):
+					var cell:Vector2i=point+Vector2i(dx,dy)
+					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
+		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
 	Perf.end("grid.draw_world",begun)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]

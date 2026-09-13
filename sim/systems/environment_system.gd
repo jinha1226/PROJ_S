@@ -338,6 +338,8 @@ func _apply_explosion_knockback(origin:Vector2i,candidates:Dictionary)->void:
 	var reserved:Dictionary={}
 	for entity_id_value in entity_ids:
 		var entity_id:=int(entity_id_value);var row:Dictionary=candidates[entity_id]
+		var monster=preload("res://sim/abilities/monster_ability_runtime.gd")
+		if monster.passive(world,entity_id,"STONE_SKELETON") or monster.anchored(world,entity_id):continue
 		var entity=row.entity;var from_position:Vector2i=row.from
 		if entity==null or entity.position!=from_position or not world.occupies_tile(entity_id):continue
 		var direction:=_blast_direction(origin,from_position)

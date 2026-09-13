@@ -8,6 +8,8 @@ const RULESET_ID := "party-active-skills-v1"
 const TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
+	if str(event.type).begins_with("ability.") and event.type!="ability.passive_triggered":return preload("res://sim/abilities/monster_ability_runtime.gd").event_error(world,event)
+	if event.type=="health.restored" and event.data.get("kind")=="MONSTER_ABILITY":return preload("res://sim/abilities/monster_ability_runtime.gd").heal_error(world,event)
 	if event.type=="ability.passive_triggered":return preload("res://sim/abilities/monster_passive_service.gd").event_error(world,event)
 	match str(event.type):
 		"action.skill": return _action_error(world,event)
@@ -179,7 +181,7 @@ static func energy_history_error(world)->String:
 	for member_id in world.party_encounter.member_rows:
 		projected[member_id]=int(Registry.MAX_ENERGY)
 	for event in world.events:
-		if event.type=="action.skill":
+		if event.type in ["action.skill","ability.cast"]:
 			if not projected.has(event.actor_id):return "active_skill_actor_missing"
 			projected[event.actor_id]-=int(event.data.get("cost",0))
 			if int(projected[event.actor_id])<0:return "active_skill_energy_overdrawn"

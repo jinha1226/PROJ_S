@@ -730,6 +730,7 @@ func _nearest_contact_enemy(position:Vector2i,processed_step_index:int=-1):
 
 
 func _line_of_sight(origin:Vector2i,target:Vector2i)->bool:
+	if preload("res://sim/abilities/monster_ability_runtime.gd").hidden_from(world,origin,target):return false
 	return VisionRulesScript.has_line_of_sight(world,origin,target)
 
 

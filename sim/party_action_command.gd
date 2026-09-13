@@ -54,7 +54,7 @@ static func wire_error(row: Variant) -> String:
 	if row.type=="SKILL" and (not row.skill_id is String \
 			or str(row.skill_id).is_empty()):
 		return "invalid_party_skill_id"
-	if row.type=="SKILL" and row.skill_id not in ACTIVE_SKILL_IDS:
+	if row.type=="SKILL" and row.skill_id not in ACTIVE_SKILL_IDS and not preload("res://sim/abilities/monster_ability_definitions.gd").has(str(row.skill_id)):
 		return "invalid_party_skill_id"
 	if not Int64CodecScript.is_canonical(row.actor_id) or Int64CodecScript.parse(row.actor_id,"actor")<=0:return "noncanonical_party_actor_id"
 	if not Int64CodecScript.is_canonical(row.target_id):return "noncanonical_party_target_id"
