@@ -88,6 +88,11 @@ const knowledge=read('sim/abilities/mutation_knowledge.gd');
 assert(knowledge.includes('result["effect_preview"]={}'));
 assert(knowledge.includes('party.monster_meat_eaten'));
 assert(read('playtest/party_encounter_sandbox.gd').includes('GridScript.GRAPHICS_MODE_TACTICAL'));
+// Regression: Projection is a Godot builtin type, not a safe preload alias.
+const boardLayer=read('playtest/tactical_board_layer.gd');
+assert(!/\bProjection\b/.test(boardLayer),'Do not shadow the Godot Projection builtin');
+assert(boardLayer.includes('const TacticalProjection=preload("res://playtest/tactical_board_projection.gd")'));
+assert.equal((boardLayer.match(/TacticalProjection\.half_width\(/g)||[]).length,2);
 for(const p of ['playtest/tactical_board_layer.gd','playtest/tactical_board_projection.gd','playtest/tactical_terrain_layout.gd','playtest/ordinary_food_service.gd','sim/abilities/mutation_knowledge.gd']){
   for(const [,ref] of read(p).matchAll(/preload\("res:\/\/([^"\n]+)"\)/g))assert(fs.existsSync(new URL(ref,root)),ref);
 }
