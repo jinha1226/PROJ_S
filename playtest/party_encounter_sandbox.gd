@@ -148,6 +148,12 @@ var base_close_button:Button
 var species_picker_modal:Control
 var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
+var species_picker_error:Label
+var _species_touch_index:=-1
+var _species_touch_button:Button
+var _species_touch_origin:=Vector2.ZERO
+var _species_touch_cancelled:=false
+var _species_ignore_mouse_until:=-1
 var selected_member_id:=-1
 var selected_target_id:=-1
 var enemy_vision_overlay_enabled:=false
@@ -422,6 +428,12 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
+	if event is InputEventMouse and event.device==InputEvent.DEVICE_ID_EMULATION \
+			and Time.get_ticks_msec()<_species_ignore_mouse_until:
+		get_viewport().set_input_as_handled();return
+	if species_picker_modal!=null and species_picker_modal.visible:
+		_handle_species_picker_touch(event)
+		return # Native mouse/keyboard still reach GUI; gameplay handlers do not.
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
 	if portrait_gesture.handle(self,event):return
 	if _handle_field_shortcuts(event):return
@@ -1227,10 +1239,46 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
+	species_picker_error=Label.new();species_picker_error.name="SpeciesPickerError"
+	species_picker_error.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	species_picker_error.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	species_picker_error.visible=false;stack.add_child(species_picker_error)
+
+func _handle_species_picker_touch(event:InputEvent)->void:
+	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return
+	get_viewport().set_input_as_handled()
+	_species_ignore_mouse_until=Time.get_ticks_msec()+500
+	if event is InputEventScreenTouch and event.pressed:
+		if _species_touch_index>=0:
+			_species_touch_cancelled=true;return
+		_species_touch_index=event.index;_species_touch_origin=event.position
+		_species_touch_cancelled=false;_species_touch_button=null
+		for button in species_picker_buttons.get_children():
+			if button is Button and not button.disabled and button.get_global_rect().has_point(event.position):
+				_species_touch_button=button;break
+		return
+	if event.index!=_species_touch_index:return
+	if event.position.distance_to(_species_touch_origin)>24.0:_species_touch_cancelled=true
+	if event is InputEventScreenDrag:return
+	var selected:=_species_touch_button
+	var activate:bool=not _species_touch_cancelled and not event.canceled \
+		and is_instance_valid(selected) and selected.get_global_rect().has_point(event.position)
+	_species_touch_index=-1;_species_touch_button=null;_species_touch_cancelled=false
+	if activate:selected.pressed.emit()
+
+func _show_species_picker_error(result:Dictionary)->void:
+	_species_picker_committed=false
+	var reason:=str(result.get("reason","unknown_error"))
+	notice_text="원정 시작 실패: %s (%s)"%[str(result.get("message","다시 선택해 주세요.")),reason]
+	species_picker_error.text=notice_text;species_picker_error.visible=true
+	push_error(notice_text)
 
 func show_species_picker_for_new_run()->void:
 	if species_picker_modal==null:_build_species_picker()
 	_species_picker_committed=false;species_picker_modal.visible=true
+	_species_touch_index=-1;_species_touch_button=null;_species_touch_cancelled=false
+	species_picker_error.text="";species_picker_error.visible=false
+	_layout_floating_surfaces()
 	if grid!=null:grid.modal_open=true
 
 func _commit_species_picker(species_id:String,frontier:bool=false)->void:
@@ -1240,14 +1288,13 @@ func _commit_species_picker(species_id:String,frontier:bool=false)->void:
 	_species_picker_committed=true
 	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
-		_species_picker_committed=false;return
+		_show_species_picker_error(result);return
 	# Journaled frontier start keeps the shelter; explicit legacy fixtures may
 	# still choose the old direct-dungeon entry.
 	var started:Dictionary=session.town_life_command({"action":"START","frontier":true} if frontier else {"action":"START"})
 	var departed:Dictionary=session.depart_town() if started.get("accepted",false) and not frontier else started
 	if not departed.get("accepted",false):
-		_species_picker_committed=false
-		notice_text=str(departed.get("message","원정 준비에 실패했습니다."));return
+		_show_species_picker_error(departed);return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()

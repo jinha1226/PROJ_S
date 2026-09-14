@@ -36,8 +36,10 @@ func run():
 	check(ui.cards.get_child_count()==1,"one portrait")
 	check(session.sim.world.world_state_error().is_empty(),"new world valid")
 	round_trip(session,"living solo save")
-	var departure:Dictionary=session.depart_town()
-	check(departure.accepted,"solo departure accepted: "+str(departure.get("reason","")))
+	# The product picker now performs departure itself; a second DEPART must
+	# not be required to get past species selection.
+	check(not ui.species_picker_modal.visible,"species picker closed")
+	check(session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON","picker already departed")
 	check(session.sim.world.party_encounter.active_party_member_ids.size()==1,"departure stays solo")
 	check(session.field_turns_active(),"solo departure uses field turns")
 	round_trip(session,"solo departure save")

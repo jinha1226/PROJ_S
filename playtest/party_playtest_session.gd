@@ -542,6 +542,18 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	# the sight rule their tests assume.
 	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
+	# Bootstrap must obey the same equipment requirements as gameplay. A dwarf
+	# can have DEX 3, below the default short sword's DEX 4 requirement. Keep all
+	# granted items, but equip the first legal starter (or leave the hand empty).
+	var starter_inventory=candidate.world.item_state.inventory_rows[protagonist.id]
+	var starter_stats:=ActorStatRulesScript.for_entity(candidate.world,protagonist.id)
+	starter_inventory.equipped["MAIN_HAND"]=""
+	for starter_id in ["LEGACY_MAIN_HAND","START_MACE_001","START_HAND_AXE_001",
+			"START_SPEAR_001","START_BOW_001","START_CROSSBOW_001"]:
+		var starter_item=starter_inventory.item(starter_id)
+		var starter_definition=ItemRegistryScript.definition(starter_item.definition_id)
+		if ActorStatRulesScript.requirements_error(starter_stats,starter_definition.requirements).is_empty():
+			starter_inventory.equipped["MAIN_HAND"]=starter_id;break
 	if duo:
 		protagonist.tags.append(FieldRules.TAG)
 		protagonist.tags.append(preload("res://sim/party_recovery_rules.gd").TAG)
@@ -555,7 +567,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if settlement_event==null:return false
 	if product_dungeon:
 		var finds_error:=preload("res://sim/dcss_equipment_finds.gd").initialise(candidate.world,map_layout,p_world_seed)
-		if not finds_error.is_empty():return false
+		if not finds_error.is_empty():
+			push_error("Starting equipment initialization: "+finds_error);return false
 	candidate.world.warm_rollback_memento_static_tiles()
 	var initial_world_error:String=candidate.world.world_state_error()
 	if not initial_world_error.is_empty():
