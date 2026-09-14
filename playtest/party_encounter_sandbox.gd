@@ -5078,11 +5078,20 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
 	body_cluster.add_child(_card_label("육체 상태","BodyStateSection",16))
 	var body:Dictionary=detail.get("body_state",{})
+	var body_lines:=body_status_lines(body)
+	if bool(body.get("available",false)):
+		var traits:=_card_label(body_lines[0],"BodyTraits",12)
+		traits.add_theme_font_size_override("font_size",12)
+		traits.autowrap_mode=TextServer.AUTOWRAP_OFF
+		traits.set_meta("stat_title","육체 특성")
+		traits.set_meta("stat_help",_body_help("피부")+"\n\n"+_body_help("근육")+"\n\n"+_body_help("뼈"))
+		body_cluster.add_child(traits)
 	var body_row:=HBoxContainer.new();body_cluster.add_child(body_row)
 	var silhouette:=preload("res://playtest/body_status_silhouette.gd").new();silhouette.body=body;body_row.add_child(silhouette)
 	var body_list:=VBoxContainer.new();body_list.name="StatusBodyRows";body_list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body_row.add_child(body_list)
-	for line in body_status_lines(body):
+	for line in body_lines.slice(1) if bool(body.get("available",false)) else body_lines:
 		var body_text:=_card_label(line,"BodyValue",14);body_text.clip_text=false
+		body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		body_text.custom_minimum_size.y=30;body_list.add_child(body_text)
 		body_text.set_meta("stat_title",line.get_slice(" ",0))
 		body_text.set_meta("stat_help",_body_help(line))
@@ -5169,21 +5178,27 @@ func _add_status_value(parent:GridContainer,title:String,value:String)->void:
 static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
 	if bool(body.get("available",false)):
-		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
-		body_lines.append("피부 질김 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("skin_toughness",0)),"SKIN"))
-		body_lines.append("근육 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("soft_tissue_cushioning",0)),"MUSCLE"))
-		body_lines.append("뼈 강도 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("bone_fracture_threshold",0)),"BONE"))
+		body_lines.append("피부 질김 %s / 근육 %s / 뼈 강도 %s"%[
+			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("skin_toughness",0)),"SKIN"),
+			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("soft_tissue_cushioning",0)),"MUSCLE"),
+			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("bone_fracture_threshold",0)),"BONE")])
 		var penalties:Dictionary=body.get("penalties",{})
-		body_lines.append("부상 보정\n공격력 %d%% · 이동 시간 %d%%\nHP 자연회복 %d%%"%[int(penalties.get("attack_milli",1000))/10,int(penalties.get("move_milli",1000))/10,int(penalties.get("recovery_milli",1000))/10])
-		body_lines.append("충격 %d/%d"%[int(body.get("shock",0)),maxi(1,int(body.get("shock_threshold",1)))])
-		body_lines.append("상처 %d"%int(body.get("wound_count",0)))
 		var part_states:Array[String]=[]
 		for part_value in body.get("parts",[]):
 			if not part_value is Dictionary:continue
 			var part:Dictionary=part_value
+			var condition:=str(part.get("condition","FUNCTIONAL"))
+			var stage:=str(part.get("injury_stage","정상"))
+			if condition=="FUNCTIONAL" and stage=="정상":
+				if int(part.get("integrity_milli",1000))>=1000:continue
+				stage="가벼운 상처"
 			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
-				_body_condition_label(str(part.condition)) if str(part.get("condition","FUNCTIONAL"))!="FUNCTIONAL" else str(part.get("injury_stage","정상"))])
+				_body_condition_label(condition) if condition!="FUNCTIONAL" else stage])
 		body_lines.append_array(part_states)
+		if int(body.get("consciousness",1000))<1000:body_lines.append("의식 %d%%"%int(int(body.consciousness)/10))
+		if int(body.get("shock",0))>0:body_lines.append("충격 %d/%d"%[int(body.shock),maxi(1,int(body.get("shock_threshold",1)))])
+		if int(penalties.get("attack_milli",1000))!=1000 or int(penalties.get("move_milli",1000))!=1000 or int(penalties.get("recovery_milli",1000))!=1000:
+			body_lines.append("부상 보정\n공격력 %d%% · 이동 시간 %d%%\nHP 자연회복 %d%%"%[int(penalties.get("attack_milli",1000))/10,int(penalties.get("move_milli",1000))/10,int(penalties.get("recovery_milli",1000))/10])
 	else:body_lines.append("육체 정보 없음")
 	return body_lines
 
