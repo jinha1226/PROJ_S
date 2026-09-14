@@ -21,7 +21,7 @@ static func incorporate(sim)->void:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
 	var ids:=newly_visible(w,r)
 	if ids.is_empty():return
-	var telegraphs:Dictionary=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
+	var telegraphs:Dictionary={} if Rules.individual(w) else preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
 	# Newly discovered actors append after the existing unexecuted suffix;
 	# no old participant loses its published position in the order.
 	for key in Rules.order(w,ids):
@@ -51,13 +51,21 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 	w.begin_step(step)
 	last_execution_error=""
 	var rows:Array=[];var ok:=true
+	var individual:=Rules.individual(w)
+	var ally_acted:=false
+	var initial_ally:bool=w.party_encounter.member(Rules.current_actor(w))!=null
 	while int(r.execution_cursor)<r.order.size():
 		var key:String=r.order[int(r.execution_cursor)];var id:=int(key)
+		var ally:bool=w.party_encounter.member(id)!=null
+		if individual and (ally_acted or not initial_ally) and ally and w.can_act(id,w.world_time) and Rules.engaged(w) and w.party_encounter.nine_room_floor.pending_exit.is_empty():
+			r.phase="PLANNING";break
 		var plan:Dictionary=r.plans[key]
 		var retreating:bool=preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()
 		var slot:Dictionary
 		if retreating and w.party_encounter.member(id)!=null:
 			slot={"accepted":true,"actor_id":id,"status":"CANCELLED","reason":"party_retreat","movement":[],"damage":[],"conditional":false}
+		elif individual and not Rules.engaged(w):slot={"accepted":true,"actor_id":id,"status":"CANCELLED","reason":"combat_ended","movement":[],"damage":[],"conditional":false}
+		elif individual and not ally:slot=execute_individual_enemy(sim,id,step,preview)
 		else:slot=execute_slot(sim,plan,step,preview)
 		rows.append(slot)
 		if not slot.get("accepted",false):
@@ -65,10 +73,24 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 			ok=false;break
 		if slot.get("interrupted",false):
 			r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
+		if individual:
+			incorporate(sim)
+			if ally:
+				ally_acted=true
+				var attack:bool=plan.action.type=="MELEE" and plan.item_operation.is_empty()
+				if attack and slot.status=="DONE":r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
+				var keep_turn:=retain_individual_turn(w,id,plan,slot)
+				if keep_turn:
+					r.plans[key]=Plans.pack(w,Action.hold(id),"USER")
+					r.slot_progress[key]=0
+					r.phase="PLANNING";break
+			# Opportunity budgets replace sub-action cooldown in this ruleset.
+			if ally:w.party_encounter.member(id).busy_until=w.world_time+Rules.ROUND_TIME
+			else:w.party_encounter.enemy_busy_rows[id]=w.world_time+Rules.ROUND_TIME
 		if key not in r.completed_actor_ids:r.completed_actor_ids.append(key)
 		r.execution_cursor=int(r.execution_cursor)+1
-		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
-	if ok and r.phase!="INTERRUPTED":
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not individual and not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
+	if ok and int(r.execution_cursor)>=r.order.size():
 		ok=finish_time(sim,step,darkness_sample,start_event)
 		if ok and preload("res://sim/stage_counterplay.gd").enabled(w):ok=preload("res://sim/stage_counterplay.gd").finish_round(sim)
 		if not ok and last_execution_error.is_empty():last_execution_error="time"
@@ -85,26 +107,63 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 		last_execution_error+="/"+w.runtime_step_postcondition_error(start_event)
 		sim.restore_rollback_memento(rollback)
 		return Plans.reject("round_execution_failed")
-	var completed:bool=r.phase!="INTERRUPTED"
+	var completed:bool=bool(r.round_time_committed)
+	if individual:r.plan_revision=int(r.plan_revision)+1
 	if completed:ok=Plans.begin(sim)
 	if not ok:
 		sim.restore_rollback_memento(rollback);return Plans.reject("round_plan_failed")
-	return {"accepted":true,"reason":"interrupted" if not completed else "ok",
+	return {"accepted":true,"reason":"interrupted" if r.phase=="INTERRUPTED" else "actor_action" if not completed else "ok",
 		"completed":completed,"time_cost":Rules.ROUND_TIME if completed else 0,
 		"slots":rows,"events_start":start_event,"events_end":w.events.size()}
 
-static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictionary:
+static func retain_individual_turn(w,id:int,plan:Dictionary,slot:Dictionary)->bool:
+	if not w.can_act(id,w.world_time) or not Rules.engaged(w):return false
+	if slot.status=="CANCELLED":return slot.reason not in ["incapacitated","combat_ended","party_retreat"]
+	if not plan.item_operation.is_empty() or plan.action.type=="SKILL":return false
+	if plan.action.type=="MELEE":return Rules.remaining_attacks(w,id)>0
+	return plan.action.type=="HOLD" and not plan.path.is_empty()
+
+static func execute_individual_enemy(sim,id:int,step:int,preview:bool)->Dictionary:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat;var key:=str(id)
+	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok","movement":[],"damage":[],"conditional":false,"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
+	if not w.can_act(id,w.world_time):return cancel(result,"incapacitated")
+	var movement_event=w.emit_event("stage.enemy_movement",id,-1,w.entities[id].position,0,-1,{"round_id":r.round_id,"room":preload("res://sim/stage_counterplay.gd").key(w)})
+	if movement_event==null:result.accepted=false;return result
+	# Forecast each leaf on this actor's turn, after earlier actors have acted.
+	for i in range(Rules.move_budget(w,id)):
+		var forecast:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
+		if forecast.get("action_type","")!="MOVE":break
+		var path:Array=[forecast.destination]
+		r.slot_progress[key]=0
+		var move:Dictionary=execute_slot(sim,Plans.pack(w,Action.hold(id),"AI",path),step,preview,movement_event.id)
+		if not move.accepted:return move
+		result.movement.append_array(move.movement)
+		if move.movement.is_empty() or not w.can_act(id,w.world_time):break
+	for i in range(Rules.attack_budget(w,id)):
+		var forecast:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
+		if forecast.get("action_type","")!="MELEE" or not w.can_act(id,w.world_time):break
+		r.slot_progress[key]=0
+		var attack:Dictionary=execute_slot(sim,Plans.pack(w,Action.melee(id,int(forecast.target_id)),"AI"),step,preview)
+		if not attack.accepted:return attack
+		result.damage.append_array(attack.damage)
+		if attack.status!="DONE":break
+		r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
+	r.slot_progress[key]=0
+	result["end_position"]=[w.entities[id].position.x,w.entities[id].position.y]
+	return result
+
+static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false,movement_cause:int=-1)->Dictionary:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat;var id:=int(p.actor_id)
 	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok","movement":[],"damage":[],"conditional":false,"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
 	if not w.can_act(id,w.world_time):return cancel(result,"incapacitated")
 	var member=w.party_encounter.member(id)
-	if member==null and preload("res://sim/stage_counterplay.gd").enabled(w) and [w.entities[id].position.x,w.entities[id].position.y]!=p.origin:return cancel(result,"attack_displaced")
-	if member!=null and member.busy_until>w.world_time:return cancel(result,"cooldown")
+	if not Rules.individual(w) and member==null and preload("res://sim/stage_counterplay.gd").enabled(w) and [w.entities[id].position.x,w.entities[id].position.y]!=p.origin:return cancel(result,"attack_displaced")
+	if not Rules.individual(w) and member!=null and member.busy_until>w.world_time:return cancel(result,"cooldown")
 	var progress:int=r.slot_progress.get(p.actor_id,0)
 	var spent:int=r.slot_spent.get(p.actor_id,0)
 	var budget:=mini(int(p.move_budget),Rules.move_budget(w,id))
 	for index in range(progress,p.path.size()):
-		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not Rules.individual(w) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
 		var cell:=Vector2i(p.path[index][0],p.path[index][1]);var cost:=Rules.terrain_cost(w,cell)
 		var assessment=sim.movement.assess_move(id,cell)
 		if spent+cost>budget or not assessment.accepted:
@@ -114,13 +173,13 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 			var exit_check:Dictionary=preload("res://sim/systems/room_transition_system.gd").begin_exit(sim,id,exit.portal_id)
 			if not exit_check.accepted:return cancel(result,exit_check.reason)
 		var event=sim.movement.commit_preflighted_move(id,cell,str(assessment.terrain_id),
-			Timing.duration(w,id,"MOVE",int(preload("res://sim/terrain_registry.gd").definition(str(assessment.terrain_id)).move_time_cost)))
+			Timing.duration(w,id,"MOVE",int(preload("res://sim/terrain_registry.gd").definition(str(assessment.terrain_id)).move_time_cost)),movement_cause)
 		if event==null:result.accepted=false;return result
 		spent+=cost;r.slot_progress[p.actor_id]=index+1;r.slot_spent[p.actor_id]=spent
 		result.movement.append([cell.x,cell.y])
 		load("res://sim/nine_room_care_rules.gd").mark_combat(w,id)
 		if not after_leaf(sim,w.events.size()-1):result.accepted=false;return result
-		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not Rules.individual(w) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
 	if preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty() and member!=null:return cancel(result,"party_retreat")
 	var action=Action.from_dict(p.action)
 	if action==null:result.accepted=false;return result
@@ -151,7 +210,8 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 		# resolver alone may hit any occupant, including another enemy.
 		var weapon_id:String=Items.equipped_weapon_id(w,id) if sim.party_coordinator._uses_weapon_combat(id) else ""
 		if not weapon_id.is_empty() and not Items.attack_error(w,id).is_empty():return cancel(result,"weapon_unavailable")
-		var context:="ROUND_ACTOR/%d/%s/%s/%d/%d"%[int(r.round_id),r.rng_commitment,p.actor_id,step,w.world_time]
+		var strike_commitment:=("%s/strike/%d"%[r.rng_commitment,int(r.slot_attacks.get(p.actor_id,0))]).sha256_text() if Rules.individual(w) else str(r.rng_commitment)
+		var context:="ROUND_ACTOR/%d/%s/%s/%d/%d"%[int(r.round_id),strike_commitment,p.actor_id,step,w.world_time]
 		var assessment:Dictionary=sim.melee.assess_attack(id,action.target_id,"DIRECT" if p.source=="USER" else "SUGGESTED",step,w.world_time,context,0,weapon_id,
 			sim.party_coordinator._weapon_occupants(id,action.target_id) if not weapon_id.is_empty() else {})
 		if assessment.is_empty():return cancel(result,"attack_out_of_range")
@@ -190,7 +250,7 @@ static func execute_stage_attack(sim,p:Dictionary,step:int,result:Dictionary)->D
 		if w.entities[target].position not in cells:continue
 		var leaf_start:int=w.events.size()
 		var r:Dictionary=w.party_encounter.round_combat
-		var target_commitment:=("%s/target/%d"%[r.rng_commitment,target]).sha256_text()
+		var target_commitment:=("%s/target/%d/strike/%d"%[r.rng_commitment,target,int(r.slot_attacks.get(p.actor_id,0))]).sha256_text()
 		var context:="ROUND_ACTOR/%d/%s/%s/%d/%d"%[int(r.round_id),target_commitment,p.actor_id,step,w.world_time]
 		var assessment:Dictionary=sim.melee.assess_attack(id,target,"SUGGESTED",step,w.world_time,context,0)
 		if assessment.is_empty():continue

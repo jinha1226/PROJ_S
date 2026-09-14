@@ -106,6 +106,7 @@ var _effect_epoch:=0
 var _queued_effects:Dictionary={}
 var stage_zoom:=1.10
 var deployment_cells:Array[Vector2i]=[]
+var movement_cells:Array[Vector2i]=[]
 
 func stage_motion_busy()->bool:
 	return Time.get_ticks_msec()<_stage_motion_until
@@ -744,7 +745,7 @@ func clear_transient_visuals()->void:
 	if melee_vfx!=null:melee_vfx.clear()
 	_awareness_pulses.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
-	_stage_motion_until=0;deployment_cells.clear()
+	_stage_motion_until=0;deployment_cells.clear();movement_cells.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
 	_speech_bubbles.clear();_callout_lifetimes.clear()
@@ -2541,6 +2542,9 @@ func _draw_world_with_emphasis()->void:
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_skill_reach_cells()
+	if _skill_reach_cells.is_empty():
+		for cell in movement_cells:
+			_draw_cell_overlay(cell,Color(0.2,0.6,1.0,0.10),Color(0.3,0.7,1.0,0.35),1.0)
 	for cell in deployment_cells:
 		_draw_cell_overlay(cell,Color(0.2,0.8,0.9,0.16),Color(0.3,0.9,1.0,0.6),1.0)
 	_draw_exploration_companion_follow_plan()

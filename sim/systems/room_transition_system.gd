@@ -26,6 +26,7 @@ static func request(sim,id:int,key:String,revision:int)->Dictionary:
 	var rollback:Dictionary=w.rollback_memento(false)
 	if RoundRules.active(w):
 		var r:Dictionary=w.party_encounter.round_combat
+		if RoundRules.individual(w) and id!=RoundRules.current_actor(w):return Rules.rejected("round_not_current_actor")
 		if r.phase=="DEPLOYMENT":return Rules.rejected("deployment_confirmation_required")
 		if r.phase not in ["PLANNING","INTERRUPTED"]:return Rules.rejected("room_exit_busy")
 		# The retreat request owns one existing round boundary; published enemy

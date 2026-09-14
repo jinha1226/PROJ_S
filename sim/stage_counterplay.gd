@@ -18,20 +18,6 @@ static func prepare(sim,r:Dictionary)->bool:
 	if not r.stage_rooms[room_key].started:
 		r.phase="DEPLOYMENT"
 		return true
-	# Movement happens before publishing attacks, never during UI observation.
-	for id in enemies(w):
-		if not w.can_act(id,w.world_time):continue
-		var phase_event=w.emit_event("stage.enemy_movement",id,-1,w.entities[id].position,0,-1,{"round_id":r.round_id,"room":room_key})
-		if phase_event==null:return false
-		for i in range(load("res://sim/round_combat_rules.gd").move_budget(w,id)):
-			var p:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
-			if p.get("action_type","")!="MOVE":break
-			var to:=Vector2i(p.destination[0],p.destination[1]);var assessment=sim.movement.assess_move(id,to)
-			if not assessment.accepted:break
-			var old:Vector2i=w.entities[id].position
-			var cost:int=preload("res://sim/field_action_timing.gd").duration(w,id,"MOVE",int(preload("res://sim/terrain_registry.gd").definition(str(assessment.terrain_id)).move_time_cost))
-			if sim.movement.commit_preflighted_move(id,to,str(assessment.terrain_id),cost,phase_event.id)==null:return false
-			w.reindex_entity_occupancy(id,old,to)
 	return true
 
 static func deployment_error(w,p:Dictionary)->String:

@@ -9,7 +9,7 @@ static func fresh()->Dictionary:
 		"round_start_time":"0","participants":[],"order":[],"plans":{},
 		"plan_revision":0,"execution_cursor":0,"completed_actor_ids":[],
 		"interrupt_reason":"","round_time_committed":false,"slot_progress":{},
-		"slot_spent":{},"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0","stage_rooms":{}}
+		"slot_spent":{},"slot_attacks":{},"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0","stage_rooms":{}}
 
 static func wire_error(row:Variant,width:int,height:int)->String:
 	if not row is Dictionary:return "round_state_shape"
@@ -42,7 +42,7 @@ static func wire_error(row:Variant,width:int,height:int)->String:
 	if row.order.size()!=row.participants.size() or row.execution_cursor>row.order.size():return "round_state_order"
 	for id in row.order:
 		if id not in row.participants:return "round_state_order"
-	if not row.plans is Dictionary or not row.slot_progress is Dictionary or not row.slot_spent is Dictionary:return "round_state_plans"
+	if not row.plans is Dictionary or not row.slot_progress is Dictionary or not row.slot_spent is Dictionary or not row.slot_attacks is Dictionary:return "round_state_plans"
 	if row.plans.size()!=row.order.size():return "round_state_plans"
 	for id in row.order:
 		if not row.plans.has(id):return "round_state_missing_plan"
@@ -54,6 +54,8 @@ static func wire_error(row:Variant,width:int,height:int)->String:
 		if id not in row.order or not integer(row.slot_progress[id]) or int(row.slot_progress[id])<0 or int(row.slot_progress[id])>row.plans[id].path.size():return "round_state_progress"
 	for id in row.slot_spent:
 		if id not in row.order or not integer(row.slot_spent[id]) or int(row.slot_spent[id])<0 or int(row.slot_spent[id])>12:return "round_state_spent"
+	for id in row.slot_attacks:
+		if id not in row.order or not integer(row.slot_attacks[id]) or int(row.slot_attacks[id])<0 or int(row.slot_attacks[id])>3:return "round_state_attacks"
 	return ""
 
 static func plan_error(p:Variant,width:int,height:int)->String:

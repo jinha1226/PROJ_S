@@ -1989,6 +1989,10 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
+	if session.round_active() and session.round_status().get("individual",false) and session.round_status().phase!="DEPLOYMENT":
+		var current:int=session.round_status().current_actor_id
+		if current in session.sim.world.party_encounter.active_party_member_ids and selected_member_id!=current:
+			selected_member_id=current;selected_target_id=-1;session._round_edit_actor_id=current
 	_validate_battle_targeting(status)
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
@@ -6761,7 +6765,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 		else:
 			selected_target_id=entity_id
 			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
-			notice_text="공격 예정 타일 · 같은 적을 다시 누르면 일반공격 예약"
+			notice_text="같은 적을 다시 누르면 현재 캐릭터의 일반공격 지정"
 		_request_refresh();return
 	if session.field_turns_active():
 		_on_actor(entity_id);return
@@ -7189,9 +7193,12 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
+
+	if grid!=null:
+		grid.movement_cells=preload("res://sim/round_combat_rules.gd").reachable_cells(session.sim.world)
 	if round_order_bar!=null:
-		if session.room_enabled():round_order_bar.hide()
-		else:round_order_bar.sync(self)
+		round_order_bar.sync(self)
+		if session.room_enabled() and session.round_status().phase=="DEPLOYMENT":round_order_bar.hide()
 	if stage_context_bar!=null:
 		stage_context_bar.sync(self)
 		if session.room_enabled():_apply_stage_chrome()
@@ -7905,10 +7912,8 @@ func _apply_stage_chrome()->void:
 	phase_label.add_theme_font_size_override("font_size",15)
 	if session.round_active():
 		var stage:Dictionary=preload("res://sim/stage_counterplay.gd").status(session.sim.world)
-		phase_label.text="배치 · 입구 2칸" if session.round_status().phase=="DEPLOYMENT" else "%d층 · 증원 %d턴"%[session.room_status().floor_index,stage.remaining]
-		if selected_target_id in session.sim.world.party_encounter.enemy_ids:
-			var role:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(session.sim.world,selected_target_id)
-			if not role.is_empty():phase_label.text="%s · 이동%d · 사거리%d–%d"%[role.label,preload("res://sim/round_combat_rules.gd").move_budget(session.sim.world,selected_target_id),role.min,role.max]
+		phase_label.text="배치 · 입구 2칸" if session.round_status().phase=="DEPLOYMENT" else "%d층 · 증원 %d라운드"%[session.room_status().floor_index,stage.remaining]
+
 	food_hud.custom_minimum_size.x=64;ration_label.text=str(int(food_meter.value))
 	var popup:=product_menu_button.get_popup()
 	popup.set_item_disabled(popup.get_item_index(25),session.round_active())
@@ -7916,7 +7921,7 @@ func _apply_stage_chrome()->void:
 	inset.add_theme_constant_override("margin_right",6)
 	event_label.max_lines_visible=3;event_surface.show()
 	if session.round_active() and session.round_status().phase=="DEPLOYMENT":
-		event_label.text="입구 주변 2칸 안에서 배치하세요.\n캐릭터 선택 → 목적지 선택\n배치 완료 후 적이 먼저 이동합니다."
+		event_label.text="입구 주변 2칸 안에서 배치하세요.\n캐릭터 선택 → 목적지 선택\n배치 완료 후 행동 순서대로 진행합니다."
 	elif event_label.text.strip_edges().is_empty():
 		event_label.text=preload("res://sim/stage_counterplay.gd").recent_log(session.sim.world)
 	root_layout.move_child(stage_context_bar,root_layout.get_child_count()-1)

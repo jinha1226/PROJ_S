@@ -14,7 +14,7 @@ static func pack(w,action,source:String,path:Array=[])->Dictionary:
 	var entity_policy:bool=action.type=="SKILL" and preload("res://sim/abilities/active_skill_registry.gd").definition(action.skill_id).get("target","") in ["ALLY","SELF"]
 	return {"actor_id":str(action.actor_id),"item_operation":{},"source":source,"origin":[origin.x,origin.y],
 		"destination":[destination.x,destination.y],"path":path.duplicate(true),
-		"action":final_action.to_dict(),"target_policy":"ENTITY" if entity_policy else "CELL",
+		"action":final_action.to_dict(),"target_policy":"ENTITY" if entity_policy or Rules.individual(w) else "CELL",
 		"target_cell":[target.x,target.y],"anchor":"WORLD_TILE","move_budget":Rules.move_budget(w,action.actor_id)}
 
 static func begin(sim)->bool:
@@ -36,20 +36,18 @@ static func begin(sim)->bool:
 		# an invisible party-slot attack. They continue pursuit at world ticks.
 		if Field.visible(w,id):ids.append(id);r.known_enemy_ids.append(str(id))
 	r.order=Rules.order(w,ids);r.participants=r.order.duplicate()
-	if staged:
-		r.order.sort_custom(func(a,b):return w.party_encounter.member(int(a))!=null and w.party_encounter.member(int(b))==null)
 	r.rng_commitment=("round-v1/%d/%d/%d"%[w.seed,r.round_id,w.world_time]).sha256_text()
 	var hold=Action.hold(w.party_encounter.protagonist_id)
 	var board:Dictionary=FieldTurns.Board.build(w,hold)
-	var enemy_plans:Dictionary=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
+	var enemy_plans:Dictionary={} if staged else preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
 	for id_wire in r.order:
 		var id:=int(id_wire);var action=Action.hold(id)
 		if w.party_encounter.member(id)!=null:
-			if r.phase!="DEPLOYMENT" and id!=w.party_encounter.protagonist_id and w.can_act(id,w.world_time):
+			if not staged and r.phase!="DEPLOYMENT" and id!=w.party_encounter.protagonist_id and w.can_act(id,w.world_time):
 				var decision:Dictionary=sim.party_coordinator._companion_decision(id,hold,board)
 				action=sim.party_coordinator._leaf_to_action(id,decision.selected_leaf)
 				if not sim.party_coordinator._action_error(action).is_empty():action=Action.hold(id)
-		elif r.phase!="DEPLOYMENT" and enemy_plans.has(id):
+		elif not staged and r.phase!="DEPLOYMENT" and enemy_plans.has(id):
 			var row:Dictionary=enemy_plans[id]
 			if row.action_type=="MELEE":action=Action.melee(id,int(row.target_id))
 			elif row.action_type=="MOVE" and not staged:action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
@@ -62,6 +60,7 @@ static func edit(sim,actor_id:int,draft:Dictionary,revision:int)->Dictionary:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
 	if r.phase not in ["DEPLOYMENT","PLANNING","INTERRUPTED"]:return reject("round_not_editable")
 	if revision!=int(r.plan_revision):return reject("round_revision_changed")
+	if Rules.individual(w) and r.phase!="DEPLOYMENT" and actor_id!=Rules.current_actor(w):return reject("round_not_current_actor")
 	var key:=str(actor_id)
 	if not r.plans.has(key) or w.party_encounter.member(actor_id)==null or key in r.completed_actor_ids:return reject("round_actor_not_editable")
 	var keys:Array=draft.keys();keys.sort()
@@ -86,11 +85,12 @@ static func edit(sim,actor_id:int,draft:Dictionary,revision:int)->Dictionary:
 	# Already committed prefix movement cannot be edited or replayed. A new
 	# interrupted draft starts at the current position, but keeps the original
 	# total budget and spent ledger. Repeated edits must never refund movement.
-	if r.phase=="INTERRUPTED":
+	if r.phase=="INTERRUPTED" or Rules.individual(w) and r.phase!="DEPLOYMENT":
 		var spent:int=int(r.slot_spent.get(key,0))
 		candidate.move_budget=int(r.plans[key].move_budget)
 		if budget>maxi(0,mini(int(candidate.move_budget),Rules.move_budget(w,actor_id))-spent):return reject("round_move_budget")
 		r.slot_progress[key]=0
+	if Rules.individual(w) and candidate.action.type=="MELEE" and Rules.remaining_attacks(w,actor_id)<=0:return reject("round_attack_budget")
 	r.plans[key]=candidate;r.plan_revision=int(r.plan_revision)+1
 	return {"accepted":true,"reason":"ok","plan_revision":int(r.plan_revision)}
 

@@ -35,15 +35,62 @@ static func order(w,ids:Array)->Array:
 		return left>right if left!=right else int(a)<int(b))
 	return result
 
+static func individual(w)->bool:
+	return enabled(w) and preload("res://sim/stage_counterplay.gd").enabled(w)
+
+static func current_actor(w)->int:
+	var r:Dictionary=w.party_encounter.round_combat
+	return int(r.order[int(r.execution_cursor)]) if active(w) and int(r.execution_cursor)<r.order.size() else -1
+
+static func attack_budget(w,id:int)->int:
+	var weapon=Weapons.definition(Items.equipped_weapon_id(w,id))
+	var base:int=maxi(1,int(weapon.attack_time)+int(weapon.reload_time)) if weapon!=null else 100
+	var member=w.party_encounter.member(id)
+	var rate:int=maxi(25,(int(member.action_speeds.ATTACK) if member!=null else 100)+Effects.rate(w,id))
+	var duration:int=maxi(1,(base*100+rate-1)/rate)
+	return clampi(ROUND_TIME/maxi(1,duration),1,3)
+
+static func remaining_move(w,id:int)->int:
+	return maxi(0,move_budget(w,id)-int(w.party_encounter.round_combat.slot_spent.get(str(id),0)))
+
+static func remaining_attacks(w,id:int)->int:
+	return maxi(0,attack_budget(w,id)-int(w.party_encounter.round_combat.slot_attacks.get(str(id),0)))
+
 static func move_budget(w,id:int)->int:
 	var m=w.party_encounter.member(id)
 	var rate:int=maxi(25,int(m.action_speeds.MOVE)+Effects.rate(w,id)) if m!=null else maxi(25,100+Effects.rate(w,id))
-	var base:=clampi(BASE_MOVE*rate/100,1,6)
+	var base:=maxi(1,2*rate/100) if individual(w) else clampi(BASE_MOVE*rate/100,1,6)
 	var enemy_role:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(w,id)
-	if not enemy_role.is_empty():base=clampi(int(enemy_role.move)*rate/100,1,6)
+	if not enemy_role.is_empty():base=maxi(1,int(enemy_role.move)*rate/100) if individual(w) else clampi(int(enemy_role.move)*rate/100,1,6)
 	var injury:int=preload("res://sim/body_penalty_rules.gd").current(w,id).move_milli
 	var delay:=maxi(0,Abilities.move_delay(w,id))
-	return maxi(1,base*1000*100/(injury*(100+delay)))
+	return clampi(base*1000*100/(injury*(100+delay)),1,3 if individual(w) else 6)
+
+static func reachable_cells(w)->Array[Vector2i]:
+	var result:Array[Vector2i]=[]
+	if not individual(w) or w.party_encounter.round_combat.phase!="PLANNING":return result
+	var id:=current_actor(w)
+	if w.party_encounter.member(id)==null or not w.can_act(id,w.world_time) or Abilities.anchored(w,id):return result
+	var budget:=remaining_move(w,id)
+	var origin:Vector2i=w.entities[id].position
+	var costs:Dictionary={origin:0};var pending:Array[Vector2i]=[origin]
+	var visible:=Field.visible_cells(w)
+	var rooms=preload("res://sim/room_transition_rules.gd")
+	var terrain=preload("res://sim/terrain_registry.gd")
+	while not pending.is_empty():
+		var from:Vector2i=pending.pop_front()
+		for direction in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN,Vector2i(1,1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(-1,-1)]:
+			var to:Vector2i=from+direction
+			if not w.in_bounds(to) or not rooms.same_room(w,origin,to) or not visible.has("%d:%d"%[to.x,to.y]):continue
+			if not terrain.definition(w.tile_at(to).terrain).get("passable",false) or not w.diagonal_step_terrain_allowed(from,to):continue
+			if w.occupying_entities_at(to).any(func(actor):return actor.id!=id):continue
+			var cost:int=int(costs[from])+terrain_cost(w,to)
+			if cost>budget or cost>=int(costs.get(to,1000)):continue
+			costs[to]=cost;pending.append(to)
+	for cell in costs:
+		if cell!=origin:result.append(cell)
+	result.sort_custom(func(a,b):return a.y<b.y if a.y!=b.y else a.x<b.x)
+	return result
 
 static func terrain_cost(w,cell:Vector2i)->int:
 	return maxi(1,ceili(float(preload("res://sim/terrain_registry.gd").definition(w.tile_at(cell).terrain).move_time_cost)/100.0))

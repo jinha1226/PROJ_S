@@ -48,7 +48,7 @@ func run():
 	ui._request_refresh()
 	for i in range(4):await process_frame
 	check(ui.stage_context_bar.get_child_count()==4,"four combat controls")
-	check(not ui.round_order_bar.visible and not ui.combat_action_area.visible,"old timeline and dock stay hidden")
+	check(not ui.round_order_bar.visible and not ui.combat_action_area.visible,"placement keeps timeline hidden")
 	check(Vector2i(10,17) in ui.grid.deployment_cells,"valid deployment cells highlighted")
 	var original:Vector2i=s.sim.world.entities[hero].position
 	var placement_screen:Vector2=ui.grid.global_position+ui.grid.world_to_pixel_center(Vector2i(10,17))
@@ -63,33 +63,41 @@ func run():
 	await tap(ui.stage_context_bar.get_node("StageProceed"))
 	check(s.command_journal.size()==journal+1,"touch confirms deployment exactly once")
 	check(s.sim.world.world_time==before,"placement does not spend a round")
-	check(s.round_status().phase=="PLANNING","enemy setup completes before our response")
-	check(sequence_seen,"deployment triggers sequential movement presentation")
+	check(s.round_status().phase=="PLANNING","placement enters individual planning")
+	check(not sequence_seen,"deployment never pre-moves enemies")
+	check(ui.round_order_bar.visible,"individual turn order shown")
+	check(Vector2i(11,18) in ui.grid.movement_cells and Vector2i(10,18) not in ui.grid.movement_cells,"movement radius marks floor and excludes pillar")
 	check(s.sim.world.entities[hero].position==Vector2i(10,17),"confirmation commits placement")
-	var enemy:=-1
-	for plan in s.sim.world.party_encounter.round_combat.plans.values():
-		if int(plan.actor_id) in s.sim.world.party_encounter.enemy_ids and plan.action.type=="MELEE":enemy=int(plan.actor_id);break
-	check(enemy>0,"an enemy announces an attack")
+	var enemy:int=s.sim.world.party_encounter.enemy_ids.filter(func(id):return s.FieldRules.visible(s.sim.world,id))[0]
 	var revision:int=s.round_status().plan_revision
 	ui._on_actor(enemy)
 	for i in range(4):await process_frame
 	check(ui.grid.selected_target_id==enemy,"enemy selection survives refresh")
-	check(s.round_status().plan_revision==revision,"first enemy tap only inspects attack")
+	check(s.round_status().plan_revision==revision,"first enemy tap only inspects target")
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		check(root.get_texture().get_image().save_png("/tmp/stage-selected-attack.png")==OK,"selected attack capture")
 	ui._on_actor(enemy)
 	for i in range(4):await process_frame
 	check(s.round_status().plan_revision==revision+1,"second tap reserves melee")
-	check(ui.stage_context_bar.get_node("StageProceed").text=="진행 ▶","proceed label changes after placement")
+	check(ui.stage_context_bar.get_node("StageProceed").text=="행동 실행","pending action label")
+	check(s.stage_round_action(Action.hold(hero)).accepted,"clear attack before movement test")
+	ui._on_cell(Vector2i(11,18))
+	for i in range(4):await process_frame
 	journal=s.command_journal.size();before=s.sim.world.world_time
 	await tap(ui.stage_context_bar.get_node("StageProceed"))
-	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before+100,"one touch executes exactly one response")
+	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before,"movement touch keeps same turn without boundary")
+	check(s.round_status().current_actor_id==hero,"movement retains current actor")
+	check(ui.round_order_bar.detail.text.contains("이동 1칸"),"remaining movement visible")
+	check(ui.stage_context_bar.get_node("StageProceed").text=="턴 종료","no pending command offers end turn")
+	journal=s.command_journal.size();before=s.sim.world.world_time
+	await tap(ui.stage_context_bar.get_node("StageProceed"))
+	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before+100,"end turn touch executes one cycle boundary")
 	for b in ui.stage_context_bar.get_children():
 		check(b.size.x>=44 and b.get_global_rect().end.x<=361 and b.get_global_rect().end.y<=801,"controls remain touch sized and on screen")
 	check(ui.event_label.max_lines_visible==3 and ui.phase_label.visible,"three logs and floor/countdown HUD visible")
 	check(s.sim.world.world_state_error().is_empty(),"UI actions leave valid world")
-	check(not ui.grid._played_effect_ids.is_empty(),"round effects reach the actual renderer")
+	check(sequence_seen,"committed movement reaches sequence renderer")
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		check(root.get_texture().get_image().save_png("/tmp/stage-context-runtime.png")==OK,"capture")

@@ -7311,6 +7311,7 @@ func commit_field_action(action)->Dictionary:
 func select_field_actor(actor_id:int)->Dictionary:
 	if round_active():
 		if str(actor_id) not in sim.world.party_encounter.round_combat.order or actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("round_actor_not_editable")
+		if RoundRules.individual(sim.world) and sim.world.party_encounter.round_combat.phase!="DEPLOYMENT" and actor_id!=RoundRules.current_actor(sim.world):return _rejection_dto("round_not_current_actor")
 		_round_edit_actor_id=actor_id
 		return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,"editing":true})
 	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
@@ -10518,10 +10519,13 @@ func round_status()->Dictionary:
 			"item_action":str(plan.item_operation.get("action","")) if seen else "",
 			"health":w.entities[id].health if seen else -1,"max_health":w.entities[id].max_health if seen else -1,
 			"source":plan.source if seen else "","skill_id":str(plan.action.get("skill_id","")) if seen else "",
-			"move_budget":int(plan.move_budget) if seen else 0})
+			"move_budget":RoundRules.remaining_move(w,id) if seen and RoundRules.individual(w) else int(plan.move_budget) if seen else 0,
+			"attack_budget":RoundRules.remaining_attacks(w,id) if seen else 0,
+			"current":id==RoundRules.current_actor(w)})
 	return {"active":RoundRules.active(w),"phase":str(r.phase),"round_id":int(r.round_id),
 		"plan_revision":int(r.plan_revision),"cursor":int(r.execution_cursor),"order":rows,
-		"interrupt_reason":str(r.interrupt_reason),"selected_actor_id":_round_edit_actor_id}
+		"interrupt_reason":str(r.interrupt_reason),"selected_actor_id":_round_edit_actor_id,
+		"individual":RoundRules.individual(w),"current_actor_id":RoundRules.current_actor(w)}
 
 func edit_round_plan(actor_id:int,draft:Dictionary,expected_revision:int)->Dictionary:
 	return round_command({"type":"EDIT","actor_id":str(actor_id),"draft":draft.duplicate(true),"revision":expected_revision})
@@ -10551,7 +10555,7 @@ func round_command(operation:Dictionary)->Dictionary:
 	command_journal.append({"kind":"round","operation":operation.duplicate(true)})
 	_clear_draft()
 	var dto:=_feedback_dto({"accepted":true,"reason":str(result.get("reason","ok")),
-		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "라운드 진행 완료"})
+		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "개별 행동 완료" if RoundRules.individual(sim.world) else "라운드 진행 완료"})
 	dto["round_result"]=result.duplicate(true)
 	dto["event_ids"]=[]
 	for index in range(int(result.get("events_start",0)),int(result.get("events_end",0))):
@@ -10564,7 +10568,7 @@ func round_command(operation:Dictionary)->Dictionary:
 	for effect in dto.visual_effects:
 		effect["delay_ms"]=int(delays.get(int(effect.event_id),delays.get(int(effect.cause_id),maxi(0,delay-240))))+int(effect.get("impact_delay_ms",0))
 	dto["presentation_lead_ms"]=delay+180 if not dto.visual_effects.is_empty() else 0
-	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 적이 이동했습니다. 공격 예고를 확인하세요."
+	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 표시된 행동 순서대로 진행하세요."
 	return dto
 
 func round_preview()->Dictionary:
@@ -10572,7 +10576,7 @@ func round_preview()->Dictionary:
 
 func stage_round_action(action)->Dictionary:
 	if action==null:return _rejection_dto("round_action_invalid")
-	var actor_id:int=_round_edit_actor_id if _round_edit_actor_id in sim.world.party_encounter.active_party_member_ids else sim.world.party_encounter.protagonist_id
+	var actor_id:int=action.actor_id if RoundRules.individual(sim.world) else _round_edit_actor_id if _round_edit_actor_id in sim.world.party_encounter.active_party_member_ids else sim.world.party_encounter.protagonist_id
 	var current:Dictionary=sim.world.party_encounter.round_combat.plans.get(str(actor_id),{})
 	if current.is_empty():return _rejection_dto("round_actor_not_editable")
 	var draft_action=ActionScript.new(action.type,actor_id,action.destination,action.target_id,action.skill_id)
@@ -10592,6 +10596,7 @@ func round_overlays()->Array[Dictionary]:
 	if status.phase=="DEPLOYMENT":return rows # Placement is not a movement/attack preview.
 	for row in status.order:
 		if not row.visible or row.completed:continue
+		if RoundRules.individual(w) and (not row.ally or not row.current):continue
 		var plan:Dictionary=w.party_encounter.round_combat.plans[str(row.actor_id)]
 		rows.append({"actor_id":row.actor_id,"actor_name":row.name,"role":"COMPANION" if row.ally else "ENEMY",
 			"from_position":plan.origin,"destination":plan.destination,"target_position":plan.target_cell,

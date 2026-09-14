@@ -20,7 +20,7 @@ func sync(host):
 	var selected:int=host.selected_member_id if host.selected_member_id in ids else s.sim.world.party_control_actor_id()
 	var skills:Array=s.active_skill_rows(selected) if active else []
 	var loot:int=s.ground_item_count_at_protagonist() if r.phase!="DEPLOYMENT" else 0
-	var signature:Array=[active,r.phase,selected,ids,skills.map(func(row):return row.skill_id),_page,loot]
+	var signature:Array=[active,r.phase,r.cursor,r.plan_revision,selected,ids,skills.map(func(row):return row.skill_id),_page,loot]
 	if signature!=_signature:
 		_signature=signature
 		for child in get_children():remove_child(child);child.queue_free()
@@ -59,6 +59,11 @@ func sync(host):
 			b.disabled=r.phase=="DEPLOYMENT" or row.is_empty() or host.grid.stage_motion_busy()
 			b.set_skin_accent(not row.is_empty() and host._battle_target_actor_id==selected and host._battle_target_skill_id==str(row.get("skill_id","")))
 			b.tooltip_text=str(row.get("message","변이를 획득하면 사용할 수 있습니다"))+" · 길게 눌러 다음 스킬"
-		get_node("StageProceed").disabled=r.phase=="RESOLVING" or host.grid.stage_motion_busy()
+		var proceed=get_node("StageProceed")
+		proceed.disabled=r.phase=="RESOLVING" or host.grid.stage_motion_busy()
+		if r.get("individual",false) and r.phase!="DEPLOYMENT":
+			var current:Dictionary=r.order[r.cursor] if r.cursor<r.order.size() else {}
+			proceed.text="적 턴 진행" if not current.get("ally",false) else "행동 실행" if current.get("type","HOLD")!="HOLD" or not current.get("path",[]).is_empty() else "턴 종료"
+			for i in range(2):get_node("StageSkill%d"%i).disabled=get_node("StageSkill%d"%i).disabled or not current.get("ally",false)
 	var pickup=get_node_or_null("StagePickup")
 	if pickup!=null:pickup.disabled=host.grid.stage_motion_busy() or r.phase=="RESOLVING"

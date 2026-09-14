@@ -22,7 +22,7 @@ func sync(host)->void:
 	if signature==_signature:return
 	_signature=signature
 	for child in line.get_children():line.remove_child(child);child.queue_free()
-	var preview:Dictionary=host.session.round_preview();var selected_result:Dictionary={}
+	var preview:Dictionary={} if status.get("individual",false) else host.session.round_preview();var selected_result:Dictionary={}
 	for slot in preview.get("slots",[]):
 		if int(slot.actor_id)==host.selected_member_id:selected_result=slot
 	for index in range(status.order.size()):
@@ -31,10 +31,10 @@ func sync(host)->void:
 		var action_label:String={"HOLD":"대기","MOVE":"이동","MELEE":"공격","SKILL":"이능","HIDDEN":"미확인"}.get(row.type,row.type)
 		if row.type=="ITEM":action_label=str({"USE":"아이템 사용","PICKUP":"줍기","EQUIP":"장착","UNEQUIP":"장비 해제","DROP":"버리기","DISCARD":"버리기"}.get(row.item_action,"아이템"))
 		if not row.path.is_empty():action_label="이동+"+action_label if row.type!="HOLD" else "이동"
-		button.text="%d %s\n%s%s"%[index+1,row.name,action_label," ✓" if row.completed else ""]
+		button.text="%d %s\n%s%s"%[index+1,row.name,"현재" if row.get("current",false) and status.get("individual",false) else "완료" if row.completed and status.get("individual",false) else "다음" if status.get("individual",false) else action_label," ✓" if row.completed else ""]
 		button.add_theme_font_size_override("font_size",11)
-		button.tooltip_text="%s · HP %d/%d · 이동 %d칸 · %s"%[row.name,row.health,row.max_health,row.move_budget,"자동 작성" if row.source=="AI" else "수정한 계획"] if row.visible else "이미 발견한 적이 시야 밖에 있습니다"
-		PixelSkin.apply_action_button(button,PixelSkin.BRASS if row.ally else PixelSkin.BLOOD,row.actor_id==host.selected_member_id or row.actor_id==host.selected_target_id)
+		button.tooltip_text="%s · HP %d/%d · 이동 %d칸 · %s"%[row.name,row.health,row.max_health,row.move_budget,"현재 차례" if row.get("current",false) else "다음 차례" if status.get("individual",false) else "자동 작성" if row.source=="AI" else "수정한 계획"] if row.visible else "이미 발견한 적이 시야 밖에 있습니다"
+		PixelSkin.apply_action_button(button,PixelSkin.BRASS if row.ally else PixelSkin.BLOOD,row.get("current",false) if status.get("individual",false) else row.actor_id==host.selected_member_id or row.actor_id==host.selected_target_id)
 		button.pressed.connect(func():
 			if row.ally:host._select_member(int(row.actor_id),str(row.name))
 			elif row.visible:host._focus_battle_enemy(int(row.actor_id))
@@ -42,4 +42,8 @@ func sync(host)->void:
 		line.add_child(button)
 	var suffix:String=" · 예상 취소: "+str(selected_result.get("reason","")) if selected_result.get("status")=="CANCELLED" else ""
 	detail.text="라운드 %d · %s%s"%[int(status.round_id),"새 위협 발견 · 남은 계획 확인 후 [계속 진행]" if status.phase=="INTERRUPTED" else "아군 선택 → 이동·공격·이능 수정 → [진행]",suffix]
+	if status.get("individual",false):
+		var current:Dictionary=status.order[status.cursor] if status.cursor<status.order.size() else {}
+		detail.text="%s 차례 · 이동 %d칸 · 공격 %d회"%[current.get("name","—"),current.get("move_budget",0),current.get("attack_budget",0)]
+		scroll.set_deferred("scroll_horizontal",maxi(0,status.cursor*71-70))
 	detail.tooltip_text="확률 결과는 기존 고정 난수로 예측합니다. 아직 드러나지 않은 변화가 있으면 실행을 멈춥니다."
