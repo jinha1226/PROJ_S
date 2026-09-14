@@ -1,17 +1,16 @@
 <!doctype html>
 <html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>공통 뼈대 · 64픽셀 캐릭터 작업실</title>
+<title>64픽셀 캐릭터 작업실</title>
 <style>
 *{box-sizing:border-box}body{margin:0 auto;padding:20px;max-width:1050px;background:#141c23;color:#e0e6e5;font:16px system-ui}h1{font-size:24px}p{line-height:1.65;color:#aebfc5}a{color:#b5d8bc}button,select{background:#293940;color:inherit;border:1px solid #5e737a;border-radius:6px;padding:12px;font:inherit}button[aria-pressed=true]{border-color:#d2bd82;background:#4c4c38}nav,.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:#1b2730;border:1px solid #3c505b;border-radius:10px;padding:12px}h2{font-size:18px;margin:4px 0}canvas{width:100%;height:auto;image-rendering:pixelated}.pose-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.pose-strip figure{margin:0;text-align:center;font-size:12px;color:#bac6ca}details{margin-top:20px}details img{width:100%;image-rendering:pixelated}label{display:inline-flex;align-items:center;gap:6px}@media(max-width:600px){body{padding:12px}.cards{grid-template-columns:1fr}}
 </style>
-<h1>공통 뼈대 · 64픽셀 캐릭터</h1><p><a href="preview.html">← 던전에서 보기</a> · 동일 모델/관절/포즈의 기본·장비 비교 · <a href="character-generated-lab.html">이전 생성 이미지와 비교</a></p>
+<h1>64픽셀 캐릭터 작업실</h1><p><a href="preview.html">← 던전에서 보기</a> · 같은 재생 시점의 기본/장비 버전을 나란히 비교합니다.</p>
 <nav id="directions" aria-label="몸 방향"></nav>
 <div class="controls"><label>동작 <select id="action"><option value="idle">기본 자세</option><option value="walk">이동</option><option value="attack">공격</option></select></label><button id="play">재생</button><button id="step">한 프레임</button><label>속도 <input id="speed" type="range" min="2" max="10" value="6"></label><label><input type="checkbox" id="anchors" checked>발 기준점</label></div>
 <p id="status" role="status">에셋 불러오는 중…</p>
-<label><input type="checkbox" id="skeleton">실제 뼈대 겹쳐 보기</label>
 <div class="cards"><section class="card"><h2>기본 · 무장 없음</h2><canvas id="base" width="320" height="270" aria-label="기본 캐릭터"></canvas></section><section class="card"><h2>장비 세트 · 갑옷 / 검 / 방패</h2><canvas id="equipped" width="320" height="270" aria-label="장비 착용 캐릭터"></canvas></section></div>
-<p>두 버전은 <strong>동일한 3D 몸체와 뼈대</strong>를 사용합니다. 갑옷은 몸통·어깨뼈, 검은 오른손, 방패는 왼팔에 연결했습니다. 현재 HTML 선택은 기본/전투장비 세트 두 가지이며, 개별 장비 선택은 후속 작업입니다.</p>
+<p>장비는 현재 <strong>완성형 세트 시트 전환</strong>입니다. 개별 검·갑옷·방패 레이어를 조합하는 기능은 아직 없습니다. 방향마다 기본/장비 얼굴과 손 위치에 차이가 남아 있어 검수용으로 함께 표시합니다.</p>
 <h2>현재 방향의 원본 포즈</h2><div id="poses" class="pose-strip"></div>
-<p>4방향 × 정지 1·보행 4·공격 4 × 기본/장비 = 72프레임. 64×64 직접 렌더와 3단계 명암을 사용합니다. 픽셀 아트 마감 전 저폴리곤 초안이며, 보행 접지·갑옷 간섭은 추가 조정 대상입니다.</p>
-<details><summary>모델·뼈대 원본 / 제작 기록</summary><p><a href="rigged-hero/hero-rig.blend">Blender 모델·뼈대·애니메이션</a> · <a href="rigged-character-notes.md">제작·검증 기록</a></p></details>
-<script src="rigged-hero/manifest.js"></script><script src="rigged-character-art.js"></script><script src="character-lab.js"></script></html>
+<p>방향당 정지 1장·보행 2장·타격 1장입니다. 이동은 보행과 정지를 연결하고, 공격은 준비 자세와 타격 자세를 연결한 짧은 시연입니다. 완성형 공격의 예비동작·중간 동작은 후속 제작 대상입니다.</p>
+<details><summary>생성 원본 / 제작 기록</summary><p><a href="character-preview-notes.md">규격·한계·프롬프트</a></p><img src="hero-base-source.png" alt="기본 4방향 16포즈 원본"><img src="hero-equipped-source.png" alt="장비 4방향 16포즈 원본"></details>
+<script src="character-art.js"></script><script src="character-lab.js"></script></html>

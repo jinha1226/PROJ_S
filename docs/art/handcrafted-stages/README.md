@@ -1,5 +1,7 @@
 # 8×8 전투 구역 3종 — 첫 플레이용 배치
 
+최신 `character-lab.html`은 공통 Blender 뼈대에서 렌더링한 72프레임을 사용한다. 기본/장비·4방향·이동/공격·실제 관절 표시를 확인할 수 있다. `rigged-character-notes.md` 참고. 이전 이미지 생성 방식은 `character-generated-lab.html`에 보존했다.
+
 캐릭터 시연은 `character-lab.html`: 기본/장비 비교, 4방향과 이동·공격 재생을 확인할 수 있다. 새 벽 밀도와 캐릭터 원본·검수 한계는 `character-preview-notes.md` 참고. 개별 장비 레이어는 아직 아니다.
 
 최신 HTML에는 횃불·상자, 벽면에 통합된 문, 동굴·숲의 자연 외곽 장식을 추가했다. 구현 범위와 검증은 `props-and-boundaries.md`, 인물·몬스터·장비의 후속 제작 규격은 `character-production-plan.ko.md` 참고.
