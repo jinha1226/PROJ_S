@@ -1,5 +1,8 @@
 # 8×8 전장 · 3×3 구역 던전 구현 계획
 
+후속 설계: [전술·입구 배치·식량과 개인별 휴식](nine-room-combat-rest-addendum.ko.md).
+식량 소모와 회복의 최신 계약은 후속 문서를 우선한다. 방 이동/전투에 식량을 소모하지 않고, 안전 휴식만 고정 비용을 사용하며 개인 회복량을 반영한다.
+
 ## 1. 목적과 인수인계
 
 작업 폴더: `/mnt/d/STARTU/living-world-legacy-integration`
