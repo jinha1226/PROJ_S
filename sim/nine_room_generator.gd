@@ -3,7 +3,7 @@ const Loader=preload("res://sim/json_content_loader.gd")
 const Handcrafted=preload("res://sim/handcrafted_room_templates.gd")
 static var CONFIG:Dictionary=Loader.load_document("res://data/content/nine_room_dungeon.json")
 const RULESET_ID:="nine-room-dungeon-v1"
-const VERSION:=5
+const VERSION:=6
 const FirstFloor=preload("res://sim/first_floor_stages.gd")
 const SIZE:=8
 static var generation_count:=0
@@ -87,7 +87,7 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 			room["biome"]=template.biome
 			var species:Array=["goblin","kobold","dcss_rat"] if floor_index==1 else ["dcss_orc","dcss_gnoll","goblin"]
 			if floor_index==1:
-				species={0:["goblin","kobold"],2:["goblin","dcss_frilled_lizard","kobold"],6:["dcss_rat","kobold"],7:["goblin"]}.get(int(room.room_id),species)
+				species={0:["goblin"],2:["dcss_frilled_lizard"],6:["dcss_rat"],7:["goblin"]}.get(int(room.room_id),["goblin"])
 			for i in range(mini(species.size(),int(CONFIG.enemies_per_combat_room))):
 				var cell:Array=template.enemy_cells[i]
 				var p:Vector2i=origin+Vector2i(cell[0],cell[1])

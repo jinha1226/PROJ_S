@@ -18,3 +18,7 @@ Godot 4.6.2 headless in an imported Linux runtime mirror `/tmp/handcrafted-runti
 - `stage_enemy_roles_acceptance.gd`: range, area dispatch, friendly fire and canonical audit. Its isolated three-actor area fixture now uses global enemy IDs rather than assuming the opening room has three enemies.
 
 The direct workspace test initially lacked an imported UI texture and was not accepted as validation. The imported runtime mirror passed the above tests. Physical mobile browser validation and the exact reported pillar tile remain unverified.
+
+## Follow-up: every first-floor combat room starts with one enemy
+
+Generator version 6 replaces the version 5 density above: rooms 0/2/6/7 each start with one enemy, regardless of approach direction. Safe, event and hazard rooms retain zero initial enemies. Second-floor rosters and timed reinforcements are unchanged. Authored `#` pillars remain walls; neither their locations nor collision were removed. `first_floor_solo_roster.gd` checks all rooms and pillar cells over three seeds, plus unchanged second-floor density. Start a new run to generate this roster.
