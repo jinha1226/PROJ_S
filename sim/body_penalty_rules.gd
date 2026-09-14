@@ -1,6 +1,7 @@
 extends RefCounted
 const TAG:="body_penalties_v1"
 const EVENT:="body.penalties_changed"
+const RECOVERY_RATES:={"SKIN":25,"SOFT_TISSUE":15,"BONE":8}
 static func enabled(world)->bool:
 	return world!=null and world.party_encounter!=null and world.entities.has(world.party_encounter.protagonist_id) and TAG in world.entities[world.party_encounter.protagonist_id].tags
 static func grade(value:int,kind:String)->String:
@@ -44,7 +45,7 @@ static func heal_layers(body,pulses:int)->Array:
 	for part in body.parts:
 		if part.condition=="SEVERED":continue
 		for layer in part.layers:
-			var rate:int={"SKIN":25,"SOFT_TISSUE":15,"BONE":8}[layer.layer_id]
+			var rate:int=RECOVERY_RATES[layer.layer_id]
 			var amount:=mini(1000-int(layer.integrity),rate*pulses)
 			if amount<=0:continue
 			layer.integrity+=amount

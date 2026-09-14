@@ -112,6 +112,7 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 		if event==null:result.accepted=false;return result
 		spent+=cost;r.slot_progress[p.actor_id]=index+1;r.slot_spent[p.actor_id]=spent
 		result.movement.append([cell.x,cell.y])
+		load("res://sim/nine_room_care_rules.gd").mark_combat(w,id)
 		if not after_leaf(sim,w.events.size()-1):result.accepted=false;return result
 		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
 	if preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty() and member!=null:return cancel(result,"party_retreat")
@@ -155,10 +156,12 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 		else:accepted=sim.party_coordinator._commit_hold(id,100)!=null
 	result.accepted=accepted
 	if not accepted:return result
+	if not p.item_operation.is_empty() or action.type in ["MELEE","SKILL"]:load("res://sim/nine_room_care_rules.gd").deny_combat(w,id)
 	if not after_leaf(sim,event_start):result.accepted=false;return result
 	for event in w.events_since(event_start):
 		if event.type.begins_with("combat.") and event.type.ends_with("_damage"):
 			result.damage.append({"target_id":event.target_id,"amount":event.magnitude})
+	if member!=null and p.item_operation.is_empty() and action.type not in ["MELEE","SKILL"] and (p.path.is_empty() or not result.movement.is_empty()):load("res://sim/nine_room_care_rules.gd").mark_combat(w,id)
 	result["end_position"]=[w.entities[id].position.x,w.entities[id].position.y]
 	return result
 
@@ -194,6 +197,7 @@ static func finish_time(sim,step:int,sample:Dictionary,event_start:int)->bool:
 	if not preload("res://sim/consumable_effects.gd").tick(sim,start,end):return false
 	if not Turns.Darkness.commit_boundary(w,start,end,sample):return false
 	w.party_encounter.group_anchor=w.entities[w.party_control_actor_id()].position
+	if not load("res://sim/nine_room_care_rules.gd").finish_combat(w):return false
 	if not preload("res://sim/systems/room_transition_system.gd").boundary(sim):return false
 	sim._reconcile_expedition_cycle()
 	return sim.party_coordinator.reconcile_liveness(false)

@@ -2221,6 +2221,8 @@ func runtime_party_health_error() -> String:
 
 
 func _restored_state_error() -> String:
+	var care_history_error:String=load("res://sim/nine_room_care_rules.gd").history_error(self)
+	if not care_history_error.is_empty():return care_history_error
 	if _active_step_index != -1:
 		return "active_step_context_not_settled"
 	var dimension_validation := dimensions_error(width, height)
@@ -5190,6 +5192,11 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			projected_health=mini(npc.max_health,projected_health+int(event.magnitude))
 			if int(event.data.get("health_after",-1))!=projected_health:
 				return "opening_town_restoration_projection_invalid"
+		elif event_type=="health.restored" and event.data.get("kind")=="CARE":
+			var care_error:String=load("res://sim/nine_room_care_rules.gd").event_error(self,event)
+			if not care_error.is_empty():return care_error
+			projected_health=mini(npc.max_health,projected_health+event.magnitude)
+			if int(event.data.get("health_after",-1))!=projected_health:return "opening_care_projection_invalid"
 		elif event_type=="health.restored" and event.data.get("kind")=="AUTO":
 			if event.actor_id!=npc_id or event.cause_id!=-1 or event.magnitude<=0 \
 					or event.data.get("ruleset_id")!="safe-exploration-recovery-v1" \
@@ -5479,9 +5486,9 @@ func _party_health_restoration_error()->String:
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
-				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL","MONSTER_ABILITY"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL","MONSTER_ABILITY","CARE"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
-					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY"] and event.instigator_id!=hero_id \
+					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY","CARE"] and event.instigator_id!=hero_id \
 					or event.magnitude<=0 \
 					or int(event.data.get("health_after",-1))<1 \
 					or int(event.data.get("health_after",-1))>int(entities[hero_id].max_health):
@@ -5505,6 +5512,9 @@ func _party_health_restoration_error()->String:
 						or clinic_source.target_id!=hero_id or clinic_source.id>=event.id \
 						or event.data.ruleset_id!="town-clinic-care-v1":
 					return "party_town_restoration_cause_invalid"
+			elif restoration_kind=="CARE":
+				var care_error:String=load("res://sim/nine_room_care_rules.gd").event_error(self,event)
+				if not care_error.is_empty():return care_error
 			elif restoration_kind=="AUTO":
 				if event.cause_id!=-1 or event.data.ruleset_id!="safe-exploration-recovery-v1" \
 						or int(event.data.get("safe_turn_count",0))<1:

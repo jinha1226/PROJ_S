@@ -56,6 +56,7 @@ func run():
 	if seed>=0:
 		var s=Session.new(seed,20260828,Session.DUO_SCENARIO_ID,"human",true);var w=s.sim.world;var state:Dictionary=w.party_encounter.nine_room_floor;var hero:int=w.party_encounter.protagonist_id
 		var hp:int=w.entities[hero].health;var xp:int=w.party_encounter.protagonist_progression.xp_total
+		var food:int=w.party_encounter.ration_milli
 		var ids:Array=w.entities.keys();var items:Dictionary=w.item_state.to_dict()
 		for trip in range(20):
 			var current:int=state.active_room_id;var exit:=Rules.cell(w,pair,current)
@@ -71,6 +72,7 @@ func run():
 			var result:=s.request_room_exit(hero,pair.portal_id,int(state.revision));check(result.accepted,"roundtrip "+str(trip))
 		check(w.entities.keys()==ids,"no entity duplication")
 		check(w.entities[hero].health==hp and w.party_encounter.protagonist_progression.xp_total==xp,"HP/XP persistence")
+		check(w.party_encounter.ration_milli==food,"twenty room trips no food cost")
 		check(w.item_state.to_dict()==items,"item ownership persistence")
 		check(state.visited.size()==2,"only two visited rooms")
 		var before:Dictionary=s.sim.snapshot();var journal:Array=s.command_journal.duplicate(true)

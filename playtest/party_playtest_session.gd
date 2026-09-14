@@ -1629,6 +1629,7 @@ func _advance_item_action_time()->Dictionary:
 
 
 func _apply_safe_exploration_recovery(event_start:int)->Dictionary:
+	if load("res://sim/nine_room_care_rules.gd").enabled(sim.world):return {"accepted":true}
 	# This is invoked after every canonical session time action. The mutable
 	# counter lives in PartyEncounterState, so save/load and journal replay follow
 	# exactly the same safe-turn cadence without trusting wall-clock presentation.
@@ -8618,6 +8619,9 @@ func load_session_json(encoded: String) -> Dictionary:
 	# Old field saves retain their original turn adapter during journal replay.
 	if RoundRules.TAG not in restored.world.entities[restored.world.party_encounter.protagonist_id].tags:
 		replay.sim.world.entities[replay.sim.world.party_encounter.protagonist_id].tags.erase(RoundRules.TAG)
+	if not restored.world.party_encounter.nine_room_floor.has("care") and replay.sim.world.party_encounter.nine_room_floor.has("care"):
+		replay.sim.world.party_encounter.nine_room_floor.erase("care")
+		replay.sim.world.party_encounter.nine_room_floor.schema_version=1
 	if legacy_progression_replay:
 		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
 		legacy_progression.legacy_reward_origin=true
@@ -8765,6 +8769,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
+			"care_rest":replay_result=replay.request_personal_rest(int(row.revision),int(row.request_id))
 			"room":replay_result=replay.request_room_exit(int(row.operation.actor_id),str(row.operation.portal_id),int(row.operation.revision))
 			"round":replay_result=replay.round_command(row.operation)
 			"field_action":
@@ -9279,6 +9284,8 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind"]:return "invalid_field_care_journal"
 			"darkness_rules":
 				if keys!=["kind"]:return "invalid_darkness_rules_journal"
+			"care_rest":
+				if keys!=["kind","request_id","revision"] or not _integer(row.request_id) or not _integer(row.revision) or row.request_id<1 or row.revision<1:return "invalid_care_rest_journal"
 			"room":
 				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_room_journal"
 				var room_keys:Array=row.operation.keys();room_keys.sort()
@@ -10617,3 +10624,26 @@ static func room_exit_message(reason:String)->String:
 		"room_arrival_full":return "옆방 입구에 진입 공간이 없습니다"
 		"room_revision_changed":return "방 상태가 바뀌었습니다 · 다시 이동해 주세요"
 	return "후퇴 조건을 유지하지 못해 현재 방에 남았습니다"
+
+# Food-funded care is an explicit command; ordinary waiting does not rest.
+func personal_rest_enabled()->bool:
+	return sim!=null and load("res://sim/nine_room_care_rules.gd").enabled(sim.world)
+
+func personal_rest_preview()->Dictionary:
+	return load("res://sim/nine_room_care_rules.gd").preview(self) if sim!=null else {"accepted":false,"reason":"세션이 없습니다"}
+
+func request_personal_rest(revision:int,request_id:int)->Dictionary:
+	if not personal_rest_enabled():return _rejection_dto("care_not_enabled")
+	var rollback:Dictionary=sim.capture_rollback_memento(false)
+	var result:Dictionary=load("res://sim/nine_room_care_rules.gd").commit(self,revision,request_id)
+	if not result.accepted:
+		var rejected:Dictionary=_feedback_dto(result)
+		rejected.message=str(result.reason);return rejected
+	if not RoundPlans.begin(sim):
+		sim.restore_rollback_memento(rollback);return _rejection_dto("care_plan_failed")
+	_advance_exile_world()
+	command_journal.append({"kind":"care_rest","revision":revision,"request_id":request_id})
+	_clear_draft()
+	var dto:Dictionary=_feedback_dto(result)
+	dto.message=str(result.message)
+	return dto

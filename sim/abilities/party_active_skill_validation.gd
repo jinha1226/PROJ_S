@@ -18,6 +18,7 @@ static func event_error(world, event) -> String:
 		"party.actor_command_issued": return _command_error(world,event)
 		"party.energy_refilled": return _refill_error(world,event)
 		"party.energy_recovered":
+			if event.data.get("ruleset_id")=="nine-room-care-v1":return load("res://sim/nine_room_care_rules.gd").event_error(world,event)
 			var keys:Array=event.data.keys();keys.sort()
 			if world.party_encounter==null or world.party_encounter.member(event.actor_id)==null \
 					or event.actor_id!=event.target_id or event.magnitude<=0 or event.cause_id!=-1 \

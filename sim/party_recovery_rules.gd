@@ -10,6 +10,9 @@ static func enabled(world)->bool:
 	return world!=null and world.party_encounter!=null and TAG in world.entities[world.party_encounter.protagonist_id].tags
 
 static func stats(world,id:int)->Dictionary:
+	if load("res://sim/nine_room_care_rules.gd").enabled(world):
+		var rates:Dictionary=load("res://sim/nine_room_care_rules.gd").profile(world,id)
+		return {"hp_recovery":float(rates.hp_milli)/1000.0,"mp_recovery":float(rates.mp_milli)/1000.0,"recovery_milli":preload("res://sim/body_penalty_rules.gd").current(world,id).recovery_milli,"interval":100,"safe_delay":0}
 	var core:=Stats.for_entity(world,id)
 	return {"hp_recovery":1+maxi(0,int(core.get("STR",5)))/20,
 		"mp_recovery":1+maxi(0,int(core.get("INT",5)))/20,
@@ -18,6 +21,7 @@ static func stats(world,id:int)->Dictionary:
 
 static func apply(session,event_start:int,elapsed:int)->Dictionary:
 	var world=session.sim.world;var party=world.party_encounter
+	if load("res://sim/nine_room_care_rules.gd").enabled(world):return {"accepted":true,"events":[]}
 	var result:={"accepted":true,"events":[]}
 	var damaged:=false
 	for event in world.events.slice(event_start):

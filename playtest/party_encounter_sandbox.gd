@@ -1,5 +1,8 @@
 class_name PartyEncounterSandbox
 extends Control
+var _personal_rest_dialog:ConfirmationDialog
+var _personal_rest_offer:Dictionary={}
+
 const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
@@ -4666,6 +4669,8 @@ func _on_product_interact()->void:
 func _on_product_rest()->void:
 	if session.round_active():_on_product_execute();return
 	if _product_rest_active:_cancel_product_rest("rest_user_stop");return
+	if session.personal_rest_enabled():
+		_show_personal_rest_preview();return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):return
 	if not _rest_needed():
@@ -4680,6 +4685,45 @@ func _on_product_rest()->void:
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
 	notice_text="휴식 중 · HP·MP와 피부·근육·뼈 회복 후 멈춥니다";action_feedback_text=notice_text
 	_request_refresh()
+
+func _show_personal_rest_preview()->void:
+	_personal_rest_offer=session.personal_rest_preview()
+	if not _personal_rest_offer.accepted:
+		_show_product_command_feedback(str(_personal_rest_offer.reason));return
+	if _personal_rest_dialog==null:
+		_personal_rest_dialog=ConfirmationDialog.new()
+		_personal_rest_dialog.name="PersonalRestPreview"
+		_personal_rest_dialog.title="개인별 휴식"
+		_personal_rest_dialog.ok_button_text="휴식 1회"
+		_personal_rest_dialog.cancel_button_text="취소"
+		_personal_rest_dialog.confirmed.connect(_commit_personal_rest_offer)
+		var repeat_button=_personal_rest_dialog.add_button("연속 휴식",true,"repeat")
+		repeat_button.pressed.connect(_begin_personal_continuous_rest)
+		add_child(_personal_rest_dialog)
+	var lines:Array[String]=["파티 식량 %d 소비 · 시간 %d"%[int(_personal_rest_offer.food_cost),int(_personal_rest_offer.time_cost)]]
+	for row in _personal_rest_offer.members:
+		lines.append("%s · HP +%d / MP +%d"%[str(row.name),int(row.hp),int(row.mp)])
+		if row.tissue_units>0:
+			lines.append("  피부 +%d / 근육 +%d / 뼈 +%d"%[int(row.tissues.SKIN),int(row.tissues.SOFT_TISSUE),int(row.tissues.BONE)])
+	lines.append("위협으로 중단되면 식량·시간 소비 유지")
+	_personal_rest_dialog.dialog_text="\n".join(lines)
+	_personal_rest_dialog.popup_centered(Vector2i(mini(350,int(get_viewport_rect().size.x)-16),0))
+
+func _commit_personal_rest_offer()->bool:
+	_cancel_product_auto_explore("auto_explore_user_command",false)
+	var result:Dictionary=session.request_personal_rest(int(_personal_rest_offer.revision),int(_personal_rest_offer.request_id))
+	_record_result(result,true)
+	_show_product_command_feedback(str(result.get("message",result.get("reason",""))))
+	_request_refresh()
+	return result.accepted and str(result.get("reason",""))!="interrupted"
+
+func _begin_personal_continuous_rest()->void:
+	_personal_rest_dialog.hide()
+	if not _commit_personal_rest_offer():return
+	if not session.personal_rest_preview().accepted:return
+	_product_rest_active=true;_product_rest_generation+=1
+	_product_rest_started_time=session.sim.world.world_time
+	_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
 
 func _rest_needed()->bool:
 	var world=session.sim.world
@@ -4731,6 +4775,17 @@ func _rest_block_detail()->String:
 
 func _continue_product_rest(expected_generation:int)->void:
 	if not _product_rest_active or expected_generation!=_product_rest_generation:return
+	if session.personal_rest_enabled():
+		var offer:Dictionary=session.personal_rest_preview()
+		if not offer.accepted:
+			_cancel_product_rest("rest_complete")
+			_show_product_command_feedback(str(offer.reason));return
+		var result:Dictionary=session.request_personal_rest(int(offer.revision),int(offer.request_id))
+		_record_result(result,true)
+		if not result.accepted or str(result.get("reason",""))=="interrupted":_cancel_product_rest("rest_interrupted")
+		_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
+		_show_product_command_feedback(str(result.get("message",result.get("reason",""))))
+		_request_refresh();return
 	var status:Dictionary=session.party_status()
 	var stop_reason:=""
 	if not session.field_turns_active() and str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"]:stop_reason="rest_encounter"
@@ -5133,7 +5188,9 @@ func _update_member_status_window(detail:Dictionary)->void:
 	emotion_label.clip_text=false;emotion_label.custom_minimum_size.y=32
 	if stress_band in ["ANXIOUS","PANIC"]:effects.add_child(_card_label("불안 · 기술 사용 제한","StatusStressNote",13))
 	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
-	effects.add_child(_card_label("기본 회복 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",13))
+	var recovery_text:="기본 회복 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)]
+	if session.personal_rest_enabled():recovery_text="전투 이동·대기 · HP +%.2f / MP +%.2f\n휴식 회복 ×%d"%[float(recovery.hp_recovery),float(recovery.mp_recovery),int(load("res://sim/nine_room_care_rules.gd").CONFIG.rest_recovery_units)]
+	effects.add_child(_card_label(recovery_text,"StatusRecoveryStats",13))
 	var talent:Dictionary=detail.get("personal_talent",{})
 	if not talent.is_empty():
 		var label:=_card_label("재능 · %s\n%s"%[talent.label,talent.description],"StatusPersonalTalent",13)
@@ -7700,6 +7757,7 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	# Use common square glyphs for the legacy text-only supply label.
 	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"■".repeat(filled)+"□".repeat(4-filled)
 	var ration_tone:Color=AsciiFrameScript.INK
+	if session!=null and session.personal_rest_enabled():ration_text="파티 식량 %d"%int(party.get("ration",0))
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
 	var food_count:=0
@@ -7746,6 +7804,9 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 		food_icon.configure(float(spec.ration)/maxi(1,int(spec.ration_max)))
 		ration_label.text="×%d\n%d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
 		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
+		if session.personal_rest_enabled():
+			ration_label.text="파티 식량\n%d"%int(spec.ration)
+			food_hud.tooltip_text="파티 공용 식량 · 이동/대기 무소모 · 휴식 1회%d 소비"%int(load("res://sim/nine_room_care_rules.gd").CONFIG.rest_food_cost)
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,

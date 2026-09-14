@@ -6,7 +6,7 @@ static func create(layout:Dictionary)->Dictionary:
 	for index in [1,2]:
 		var floor:Dictionary=layout.campaign_floors[index]
 		floors.append({"floor_index":index,"offset":floor.nine_offset.duplicate(),"rooms":floor.nine_rooms.duplicate(true),"portals":floor.nine_portals.duplicate(true)})
-	return {"schema_version":1,"ruleset_id":Generator.RULESET_ID,"generator_version":Generator.VERSION,"seed":str(layout.seed),"floor_index":int(layout.floor_index),"floors":floors,"active_room_id":4,"revision":1,"request_serial":0,"action_boundary":0,"visited":["1:4"],"discovered_portals":layout.campaign_floors[int(layout.floor_index)].nine_rooms[4].exits.duplicate(),"pending_exit":{},"pending_pursuit":[],"effect_processed_at":{}}
+	return {"schema_version":2,"care":load("res://sim/nine_room_care_rules.gd").create(),"ruleset_id":Generator.RULESET_ID,"generator_version":Generator.VERSION,"seed":str(layout.seed),"floor_index":int(layout.floor_index),"floors":floors,"active_room_id":4,"revision":1,"request_serial":0,"action_boundary":0,"visited":["1:4"],"discovered_portals":layout.campaign_floors[int(layout.floor_index)].nine_rooms[4].exits.duplicate(),"pending_exit":{},"pending_pursuit":[],"effect_processed_at":{}}
 
 static func normalize(value:Variant)->Dictionary:
 	return preload("res://sim/round_combat_state.gd").normalized(value) if value is Dictionary else {}
@@ -15,9 +15,12 @@ static func wire_error(s:Variant,width:int,height:int)->String:
 	if not s is Dictionary:return "room_state_shape"
 	if s.is_empty():return ""
 	s=normalize(s)
-	var keys:Array=s.keys();keys.sort()
+	var keys:Array=s.keys();keys.erase("care");keys.sort()
 	if keys!=["action_boundary","active_room_id","discovered_portals","effect_processed_at","floor_index","floors","generator_version","pending_exit","pending_pursuit","request_serial","revision","ruleset_id","schema_version","seed","visited"]:return "room_state_keys"
-	if s.schema_version!=1 or s.ruleset_id!=Generator.RULESET_ID or s.generator_version!=Generator.VERSION or not preload("res://sim/int64_codec.gd").is_canonical(s.seed):return "room_state_version"
+	if s.schema_version not in [1,2] or (s.schema_version==2)!=s.has("care") or s.ruleset_id!=Generator.RULESET_ID or s.generator_version!=Generator.VERSION or not preload("res://sim/int64_codec.gd").is_canonical(s.seed):return "room_state_version"
+	if s.has("care"):
+		var care_error:String=load("res://sim/nine_room_care_rules.gd").wire_error(s.care)
+		if not care_error.is_empty():return care_error
 	for field in ["revision","request_serial","action_boundary","floor_index","active_room_id"]:
 		if not integer(s[field]) or s[field]<0:return "room_state_counter"
 	if s.floor_index not in [1,2] or s.active_room_id not in range(9) or width!=48 or height!=24:return "room_state_bounds"
@@ -63,6 +66,9 @@ static func integer(v:Variant)->bool:
 static func world_error(w)->String:
 	var s:Dictionary=w.party_encounter.nine_room_floor
 	if s.is_empty():return ""
+	if s.has("care"):
+		for key in s.care.residuals.keys()+s.care.combat_actor_ids:
+			if int(key) not in w.party_encounter.party_member_ids:return "care_member_invalid"
 	if int(s.floor_index)!=int(w.party_encounter.expedition_cycle.floor_index):return "room_floor_scope_mismatch"
 	for key in s.effect_processed_at:
 		if not valid_room_key(key) or int(s.effect_processed_at[key])>w.world_time:return "room_effect_clock_invalid"
@@ -78,7 +84,9 @@ static func world_error(w)->String:
 	return ""
 
 static func event_error(w,e)->String:
-	if not str(e.type).begins_with("room."):return ""
+	if not str(e.type).begins_with("room."):
+		if str(e.type).begins_with("care.") or e.type=="health.restored" and e.data.get("kind")=="CARE" or e.type=="party.energy_recovered" and e.data.get("ruleset_id")=="nine-room-care-v1":return load("res://sim/nine_room_care_rules.gd").event_error(w,e)
+		return ""
 	var s:Dictionary=w.party_encounter.nine_room_floor
 	if s.is_empty():return "room_event_without_ruleset"
 	if e.type=="room.exit_requested":

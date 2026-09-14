@@ -25,6 +25,9 @@ static func active_member_count(world) -> int:
 static func process_tick(world, damage, processed_step_index: int) -> bool:
 	if world == null or world.party_encounter == null: return true
 	var state = world.party_encounter
+	if load("res://sim/nine_room_care_rules.gd").enabled(world):
+		state.ration_processed_at=int(world.world_time)
+		return true
 	if state.expedition_cycle == null or str(state.expedition_cycle.phase) != "DUNGEON":
 		# Town never drains; keep the clock current so departure starts fresh.
 		state.ration_processed_at = int(world.world_time)
