@@ -87,8 +87,10 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()
+		var transition:Dictionary=preload("res://sim/systems/room_transition_system.gd").resolve_pending_exit(sim)
+		ok=transition.accepted
 		world.finish_step()
-		ok=world.runtime_step_postcondition_error(event_start).is_empty()
+		ok=ok and world.runtime_step_postcondition_error(event_start).is_empty()
 	if not ok:
 		sim.restore_rollback_memento(rollback)
 		return Result.new(false,false,"field_turn_failed")

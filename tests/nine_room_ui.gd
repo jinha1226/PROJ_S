@@ -31,5 +31,15 @@ func run():
 		check(not ui.product_pickup_button.visible and not ui.product_tactics_button.visible and not ui.product_interact_button.visible,"five actions only")
 		check(ui.product_wait_guard_button.text=="[이동]" and ui.product_auto_button.text=="[변이]","primary labels")
 		var before:int=s.sim.world.world_time;ui._on_product_wait_guard();check(s.sim.world.world_time==before,"move selection costs no time")
+	var w=s.sim.world;var hero:int=w.party_encounter.protagonist_id;var old:Vector2i=w.entities[hero].position
+	w.entities[hero].position=Vector2i(11,14);w.reindex_entity_occupancy(hero,old,w.entities[hero].position);w.party_encounter.group_anchor=w.entities[hero].position
+	check(s.request_room_exit(hero,"F1_R4_R7",int(w.party_encounter.nine_room_floor.revision)).accepted,"UI combat entry")
+	ui._request_refresh()
+	for i in range(4):await process_frame
+	check(s.round_active(),"UI combat active")
+	check(ui.round_order_bar.global_position.y<ui.grid.global_position.y,"round order above board")
+	for button in [ui.product_wait_guard_button,ui.product_attack_button,ui.product_auto_button,ui.product_bag_button,ui.product_rest_button]:
+		var r:Rect2=button.get_global_rect();check(button.is_visible_in_tree() and r.end.y<=ui.size.y+1,"combat primary fits "+button.name+str(r))
+	check(not ui.battle_enemy_strip.visible,"combat duplicate enemy strip hidden")
 	ui.queue_free();await process_frame
 	print("NINE_ROOM_UI ","PASS" if failures.is_empty() else failures);quit(0 if failures.is_empty() else 1)

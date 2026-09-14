@@ -8615,6 +8615,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
 	# Items are world authority from snapshot v7 on. A nested party version says
 	# nothing about them any more, so replay keeps the canonical world item state.
+	# Old field saves retain their original turn adapter during journal replay.
+	if RoundRules.TAG not in restored.world.entities[restored.world.party_encounter.protagonist_id].tags:
+		replay.sim.world.entities[replay.sim.world.party_encounter.protagonist_id].tags.erase(RoundRules.TAG)
 	if legacy_progression_replay:
 		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
 		legacy_progression.legacy_reward_origin=true
@@ -10591,6 +10594,7 @@ func request_room_exit(actor_id:int,portal_id:String,expected_revision:int)->Dic
 	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 	_clear_draft();_advance_exile_world()
 	var dto:=_feedback_dto({"accepted":true,"reason":result.reason,"message":"옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))})
+	dto["message"]="옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))
 	dto["room_result"]=result;return dto
 
 func resolve_pending_exit()->Dictionary:

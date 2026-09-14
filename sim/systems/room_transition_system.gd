@@ -33,14 +33,14 @@ static func request(sim,id:int,key:String,revision:int)->Dictionary:
 		if not begun.accepted:return begun
 		var result:Dictionary=load("res://sim/systems/round_combat_system.gd").confirm(sim,int(r.round_id),int(r.plan_revision),r.phase=="INTERRUPTED")
 		if not result.accepted:sim.restore_rollback_memento(rollback);return result
-		return result.merged({"transitioned":int(sim.world.party_encounter.nine_room_floor.active_room_id)!=int(assessed.source_room)},true)
+		return result.merged({"transitioned":int(sim.world.party_encounter.nine_room_floor.active_room_id)!=int(assessed.source_room),"reason":exit_reason(sim.world,start_event)},true)
 	var begun:=begin_exit(sim,id,key)
 	if not begun.accepted:return begun
 	# Normal exploration movement already contains its terrain/injury cost.
 	var step=Field.step(sim,Action.move_to(id,assessed.exit_cell))
 	if not step.accepted:sim.restore_rollback_memento(rollback);return Rules.rejected(step.reason)
 	var result:=resolve_pending_exit(sim)
-	return {"accepted":true,"reason":result.reason,"transitioned":result.get("transitioned",false),"time_cost":step.time_cost,"events_start":start_event,"events_end":sim.world.events.size()}
+	return {"accepted":true,"reason":exit_reason(sim.world,start_event),"transitioned":int(sim.world.party_encounter.nine_room_floor.active_room_id)!=int(assessed.source_room),"time_cost":step.time_cost,"events_start":start_event,"events_end":sim.world.events.size()}
 
 static func resolve_pending_exit(sim)->Dictionary:
 	var w=sim.world
@@ -112,3 +112,8 @@ static func boundary(sim)->bool:
 		s.revision=int(s.revision)+1
 	s.pending_pursuit=remaining
 	return true
+
+static func exit_reason(w,event_start:int)->String:
+	for event in w.events_since(event_start):
+		if event.type=="room.exit_failed":return str(event.data.reason)
+	return "ok"

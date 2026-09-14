@@ -2227,6 +2227,7 @@ func _apply_product_root_order(product_hud:bool)->void:
 		root_layout.move_child(phase_panel,0)
 		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2)
 		root_layout.move_child(cards,3);root_layout.move_child(hero_skill_row,4)
+		if round_order_bar!=null:root_layout.move_child(round_order_bar,1)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -2777,6 +2778,7 @@ func _portrait_battle_controls_visible()->bool:
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
 
 func _enemy_strip_visible(status:Dictionary={})->bool:
+	if session!=null and session.round_active():return false
 	# Enemy portraits follow visibility, not the encounter phase: an enemy in
 	# view shows its portrait before, during and after a fight the same way.
 	if session==null or session.sim==null or not session.is_duo_autobattle():return false
