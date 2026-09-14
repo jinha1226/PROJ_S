@@ -2936,6 +2936,7 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		_restore_town_rollback(rollback)
 		_map_layout=rollback_layout
 		return _rejection_dto(state_error if not state_error.is_empty() \
+			else str(entered.get("reason","town_departure_failed")) if not entered.get("accepted",false) \
 			else "town_departure_failed")
 	command_journal.append({"kind":"town","operation":{"action":"DEPART",
 		"entry_mode":entry_mode,"floor_index":int(assessment.floor_index)}})

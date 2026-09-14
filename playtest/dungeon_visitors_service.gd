@@ -71,11 +71,23 @@ static func enter(session,layout:Dictionary)->bool:
 			var inventory=world.item_state.inventory(id)
 			if inventory==null:return false
 			if inventory.equipped_item("MAIN_HAND")==null:
-				var grant:Dictionary=Items.commit_grant(world,id,"WEAPON_SHORT_SWORD",1,chosen,"INDEPENDENT_EXPEDITION")
-				if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
-			if index!=2 and "frontier_survivor" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
+				var weapon:=starter_weapon(world,id)
+				# Random species/talents can have DEX below the dagger requirement.
+				# Never grant an unusable weapon and abort the entire departure.
+				if not weapon.is_empty():
+					var grant:Dictionary=Items.commit_grant(world,id,weapon,1,chosen,"INDEPENDENT_EXPEDITION")
+					if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
+			if index!=2 and "frontier_survivor" not in entity.tags and "first_companion_candidate" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
 				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
+
+static func starter_weapon(world,id:int)->String:
+	var stats:Dictionary=preload("res://sim/actor_stat_rules.gd").for_entity(world,id)
+	for weapon in ["WEAPON_SHORT_SWORD","WEAPON_DCSS_CLUB"]:
+		var definition=preload("res://sim/item_registry.gd").definition(weapon)
+		if definition!=null and preload("res://sim/actor_stat_rules.gd").requirements_error(stats,definition.requirements).is_empty():return weapon
+	# If no starter is legal, the explorer remains unarmed. Equipment rules stay intact.
+	return ""
 
 static func _exploration_goals(world,layout:Dictionary,start:Vector2i,ordinal:int)->Array:
 	# One bounded flood on arrival. Goals are journaled with the visitor, so
