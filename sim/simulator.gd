@@ -282,7 +282,10 @@ func step(command, supplied_rollback_memento: Variant = null):
 
 
 func snapshot() -> Variant:
-	return world.snapshot() if world != null else null
+	var started:=preload("res://sim/perf_probe.gd").begin()
+	var saved=world.snapshot() if world != null else null
+	preload("res://sim/perf_probe.gd").end("public_snapshot",started)
+	return saved
 
 
 func capture_rollback_memento(validate_state: bool = true) -> Variant:
@@ -670,7 +673,8 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 		if str(row.action.type)!="MELEE":continue
 		var target=world.entities.get(int(row.action.target_id))
 		var frozen=melee.freeze_assessment(row.combat_assessment,
-			target.health if target!=null else -1,row_index)
+			target.health if target!=null else -1,row_index,
+			world.party_encounter!=null and target!=null and target.id==world.party_encounter.protagonist_id)
 		if frozen==null:return false
 		frozen_rows.append(frozen);frozen_by_row[row_index]=frozen
 	var projected:Array=melee.project_batch(frozen_rows)

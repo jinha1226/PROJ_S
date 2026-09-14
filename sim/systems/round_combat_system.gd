@@ -8,6 +8,7 @@ const Turns=preload("res://sim/systems/field_turn_system.gd")
 const Skills=preload("res://sim/abilities/party_active_skill_service.gd")
 const Items=preload("res://sim/world_item_operations.gd")
 const Timing=preload("res://sim/field_action_timing.gd")
+static var last_execution_error:=""
 const Queue=preload("res://sim/systems/field_actor_queue.gd")
 
 static func newly_visible(w,r:Dictionary)->Array:
@@ -44,27 +45,39 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 	var darkness_sample:=Turns.Darkness.begin_sample(w)
 	r.phase="RESOLVING";r.interrupt_reason=""
 	w.begin_step(step)
+	last_execution_error=""
 	var rows:Array=[];var ok:=true
 	while int(r.execution_cursor)<r.order.size():
 		var key:String=r.order[int(r.execution_cursor)];var id:=int(key)
 		var plan:Dictionary=r.plans[key]
-		var slot:=execute_slot(sim,plan,step,preview)
+		var retreating:bool=preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()
+		var slot:Dictionary
+		if retreating and w.party_encounter.member(id)!=null:
+			slot={"accepted":true,"actor_id":id,"status":"CANCELLED","reason":"party_retreat","movement":[],"damage":[],"conditional":false}
+		else:slot=execute_slot(sim,plan,step,preview)
 		rows.append(slot)
-		if not slot.get("accepted",false):ok=false;break
+		if not slot.get("accepted",false):
+			last_execution_error+="/slot/%s/%s"%[key,slot.get("reason","")]
+			ok=false;break
 		if slot.get("interrupted",false):
 			r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
 		if key not in r.completed_actor_ids:r.completed_actor_ids.append(key)
 		r.execution_cursor=int(r.execution_cursor)+1
-		if not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
 	if ok and r.phase!="INTERRUPTED":
 		ok=finish_time(sim,step,darkness_sample,start_event)
+		if not ok and last_execution_error.is_empty():last_execution_error="time"
 		if ok:
 			r.round_time_committed=true;r.last_boundary_time=str(w.world_time)
 			r.phase="EXPLORATION"
+			var transition:Dictionary=preload("res://sim/systems/room_transition_system.gd").resolve_pending_exit(sim)
+			ok=bool(transition.accepted)
 	if ok:
 		w.finish_step()
 		ok=w.runtime_step_postcondition_error(start_event).is_empty()
 	if not ok:
+		w.finish_step()
+		last_execution_error+="/"+w.runtime_step_postcondition_error(start_event)
 		sim.restore_rollback_memento(rollback)
 		return Plans.reject("round_execution_failed")
 	var completed:bool=r.phase!="INTERRUPTED"
@@ -85,18 +98,23 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 	var spent:int=r.slot_spent.get(p.actor_id,0)
 	var budget:=mini(int(p.move_budget),Rules.move_budget(w,id))
 	for index in range(progress,p.path.size()):
-		if not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
 		var cell:=Vector2i(p.path[index][0],p.path[index][1]);var cost:=Rules.terrain_cost(w,cell)
 		var assessment=sim.movement.assess_move(id,cell)
 		if spent+cost>budget or not assessment.accepted:
 			result.reason="move_budget" if spent+cost>budget else "path_blocked";break
+		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(w,cell) if id==w.party_encounter.protagonist_id else {}
+		if not exit.is_empty():
+			var exit_check:Dictionary=preload("res://sim/systems/room_transition_system.gd").begin_exit(sim,id,exit.portal_id)
+			if not exit_check.accepted:return cancel(result,exit_check.reason)
 		var event=sim.movement.commit_preflighted_move(id,cell,str(assessment.terrain_id),
 			Timing.duration(w,id,"MOVE",int(preload("res://sim/terrain_registry.gd").definition(str(assessment.terrain_id)).move_time_cost)))
 		if event==null:result.accepted=false;return result
 		spent+=cost;r.slot_progress[p.actor_id]=index+1;r.slot_spent[p.actor_id]=spent
 		result.movement.append([cell.x,cell.y])
 		if not after_leaf(sim,w.events.size()-1):result.accepted=false;return result
-		if not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+	if preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty() and member!=null:return cancel(result,"party_retreat")
 	var action=Action.from_dict(p.action)
 	if action==null:result.accepted=false;return result
 	if action.type in ["MELEE","SKILL"] and p.target_policy=="CELL" and action.target_id>0:
@@ -148,10 +166,12 @@ static func cancel(result:Dictionary,reason:String)->Dictionary:
 	result.status="CANCELLED";result.reason=reason;return result
 
 static func after_leaf(sim,event_start:int)->bool:
-	sim.world.party_encounter.group_anchor=sim.world.entities[sim.world.party_encounter.protagonist_id].position
-	return preload("res://sim/abilities/monster_passive_service.gd").commit(sim,event_start) \
-		and preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,event_start) \
-		and Turns._social(sim,event_start,false) and sim.party_coordinator.reconcile_liveness(false)
+	if not preload("res://sim/abilities/monster_passive_service.gd").commit(sim,event_start):last_execution_error="passive";return false
+	if not preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,event_start):last_execution_error="reaction";return false
+	if not Turns._social(sim,event_start,false):last_execution_error="social";return false
+	if not sim.party_coordinator.reconcile_liveness(false):last_execution_error="liveness";return false
+	sim.world.party_encounter.group_anchor=sim.world.entities[sim.world.party_control_actor_id()].position
+	return true
 
 static func finish_time(sim,step:int,sample:Dictionary,event_start:int)->bool:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
@@ -173,6 +193,7 @@ static func finish_time(sim,step:int,sample:Dictionary,event_start:int)->bool:
 	if not preload("res://sim/abilities/monster_ability_runtime.gd").tick(sim,start,end):return false
 	if not preload("res://sim/consumable_effects.gd").tick(sim,start,end):return false
 	if not Turns.Darkness.commit_boundary(w,start,end,sample):return false
-	w.party_encounter.group_anchor=w.entities[w.party_encounter.protagonist_id].position
+	w.party_encounter.group_anchor=w.entities[w.party_control_actor_id()].position
+	if not preload("res://sim/systems/room_transition_system.gd").boundary(sim):return false
 	sim._reconcile_expedition_cycle()
 	return sim.party_coordinator.reconcile_liveness(false)

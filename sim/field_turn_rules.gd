@@ -34,6 +34,7 @@ static func active(world)->bool:
 		world.party_encounter.expedition_cycle.phase=="DUNGEON")
 
 static func visible(world,enemy_id:int)->bool:
+	if not preload("res://sim/room_transition_rules.gd").actor_active(world,enemy_id):return false
 	var enemy=world.entities.get(enemy_id)
 	if enemy==null or not world.is_autonomous_target(enemy_id):return false
 	return not preload("res://sim/party_perception_registry.gd").visible_party_members(

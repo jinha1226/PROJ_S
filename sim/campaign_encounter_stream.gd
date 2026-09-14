@@ -71,7 +71,7 @@ static func active_enemy_ids(world)->Array[int]:
 			and str(state.expedition_cycle.phase)!="DUNGEON":return []
 	var alive:Array[int]=[]
 	for enemy_id in current:
-		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id):
+		if world.entities.has(enemy_id) and world.is_unresolved_enemy(enemy_id) and preload("res://sim/room_transition_rules.gd").actor_active(world,enemy_id):
 			alive.append(enemy_id)
 	if alive.is_empty() or str(state.safe_phase)=="GROUPED_COMPLETE":return []
 	if preload("res://sim/field_turn_rules.gd").active(world):

@@ -30,6 +30,7 @@ static func process_tick(sim,step_index:int)->bool:
 		if not row is Dictionary:continue
 		var id:=int(row.get("entity_id","-1"))
 		if preload("res://sim/round_combat_rules.gd").active(world) and str(id) in party.round_combat.participants:continue
+		if not preload("res://sim/room_transition_rules.gd").actor_active(world,id):continue
 		if not world.entities.has(id) or not world.combatant_states.has(id):continue
 		var entity=world.entities[id];var member=party.member(id)
 		if member==null or not Rules.present(world,id):continue

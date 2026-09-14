@@ -37,7 +37,7 @@ func _draw()->void:
 		var p:PackedVector2Array=row.polygon
 		if p.size()!=4:continue
 		var memory:bool=str(row.visibility_state)!="VISIBLE"
-		var height:=TacticalProjection.half_width(viewport,count)*0.9
+		var height:=absf(p[1].x-p[0].x)*0.9
 		var lift:=Vector2(0,-height)
 		var top:=PackedVector2Array()
 		for point in p:top.append(point+lift)
@@ -52,7 +52,7 @@ func _draw()->void:
 func _detail(row:Dictionary,p:PackedVector2Array)->void:
 	var terrain:String=str(row.terrain.get("terrain_id",""))
 	var center:Vector2=(p[0]+p[2])*0.5
-	var h:=TacticalProjection.half_width(viewport,count)
+	var h:=absf(p[1].x-p[0].x)
 	if terrain=="rubble":
 		for offset in [Vector2(-0.35,0.02),Vector2(0.2,0.12),Vector2(0.04,-0.2)]:
 			var c:Vector2=center+offset*h

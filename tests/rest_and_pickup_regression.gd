@@ -18,6 +18,12 @@ func _pump(seconds:float)->void:
 
 func run()->void:
 	session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
+	# This macro regression covers the legacy field HUD; the nine-room MOVE
+	# dock and boundary stop are covered by nine_room_ui/transition tests.
+	session.reset_party(44,20260828,Session.DUO_SCENARIO_ID,
+		preload("res://playtest/campaign_world_map.gd").generate(44,1,true,true),
+		false,"human",true,true,true,true,true,false,true)
+	session.sim.world.entities[session.sim.world.party_encounter.protagonist_id].tags.erase(preload("res://sim/round_combat_rules.gd").TAG)
 	session.town_life_command({"action":"START"});session.depart_town()
 	ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);ui.size=Vector2(390,800);root.add_child(ui);ui.set_process(false)

@@ -392,6 +392,7 @@ func can_attack_with_weapon(attacker_id: int, target_id: int, weapon_id: String,
 		world.entities[target_id].position, weapon_id, occupants).is_empty()
 
 func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
+	if not preload("res://sim/room_transition_rules.gd").same_room(world,origin,target):return false
 	if not preload("res://sim/field_turn_rules.gd").enabled(world):return true
 	return preload("res://sim/combat_kernel.gd").sees(origin,target,world.combat_solid,
 		maxi(1,ceili(Vector2(target-origin).length())))

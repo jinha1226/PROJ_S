@@ -45,6 +45,7 @@ const FRAME_FONT_SIZE:=12
 var _world_width:=48
 var _world_height:=48
 var _cells:Dictionary={}
+var _room_map:Dictionary={}
 
 func _init()->void:
 	visible=false
@@ -63,6 +64,7 @@ func _ready()->void:
 	queue_redraw()
 
 func set_observation(observation:Dictionary)->void:
+	_room_map=observation.duplicate(true) if observation.get("room_minimap",false) else {}
 	_world_width=maxi(1,int(observation.get("width",48)))
 	_world_height=maxi(1,int(observation.get("height",48)))
 	_cells.clear()
@@ -221,6 +223,9 @@ func _draw()->void:
 	draw_rect(panel,PANEL,true)
 	_draw_vector_frame(panel)
 	draw_rect(map_rect,BLACK_FIELD,true)
+	if not _room_map.is_empty():
+		preload("res://playtest/party_minimap.gd").draw_room_map(self,map_rect,_room_map)
+		return
 	var slot:Vector2=layout.cell_size
 	for y in range(_world_height):
 		for x in range(_world_width):

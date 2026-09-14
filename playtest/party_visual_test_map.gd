@@ -73,7 +73,7 @@ static func uses_los_fov(scenario_id: String) -> bool:
 
 
 static func product_dungeon(seed: int) -> Dictionary:
-	return CampaignWorldMapScript.generate(seed,1)
+	return preload("res://sim/nine_room_generator.gd").world_layout(seed,1)
 
 static func authored_campaign_dungeon(seed:int)->Dictionary:
 	return CampaignWorldMapScript.generate(seed,1,false)

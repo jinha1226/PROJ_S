@@ -83,6 +83,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	var darkness_start:int=world.events.size()
 	if ok:ok=Darkness.commit_boundary(world,start,end,darkness_sample)
 	if ok:ok=Morale.commit_batch(world,Darkness.morale_sources(world,event_start,darkness_start),false)
+	if ok:ok=preload("res://sim/systems/room_transition_system.gd").boundary(sim)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()

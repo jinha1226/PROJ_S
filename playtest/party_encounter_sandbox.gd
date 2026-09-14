@@ -385,7 +385,7 @@ var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 func _notification(what:int)->void:
-	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT] and session!=null and session.round_active() and session.sim.world.is_settled():
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT] and session!=null and (session.round_active() or session.room_enabled()) and session.sim.world.is_settled():
 		var encoded:String=session.save_session_json()
 		if not encoded.is_empty():
 			var file=FileAccess.open(session.SAVE_PATH,FileAccess.WRITE)
@@ -859,6 +859,8 @@ func _ready()->void:
 			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID,"human",true)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
+	if _web_capture_preview_requested():
+		var bridge=preload("res://playtest/nine_room_review_bridge.gd").new();bridge.ui=self;add_child(bridge)
 	if not _initialized_for_headless_test and not _web_capture_preview_requested():
 		show_species_picker_for_new_run()
 	if _initialized_for_headless_test and auto_orchestration_enabled:
@@ -1007,6 +1009,10 @@ func _build_ui()->void:
 	menu_popup.add_item("적 시야 표시 전환",8)
 	menu_popup.add_item("원정 목표",9)
 	menu_popup.add_item("마을 귀환 · 입구에서",10)
+	menu_popup.add_separator()
+	menu_popup.add_item("줍기",20);menu_popup.add_item("상호작용 · 계단",21)
+	menu_popup.add_item("현재 방 자동 탐험",22);menu_popup.add_item("파티 전술",23)
+	menu_popup.add_item("대기",24)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1330,7 +1336,7 @@ func _position_build_label()->void:
 	# Build version: always the bottom-right corner of the game screen, drawn
 	# above whatever sits there. Input passes through it.
 	if build_label==null:return
-	build_label.visible=true
+	build_label.visible=not (session!=null and session.room_enabled())
 	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	build_label.offset_left=-110.0;build_label.offset_right=-4.0
 	build_label.offset_bottom=-2.0;build_label.offset_top=-18.0
@@ -4232,6 +4238,10 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
+	if session.room_enabled():
+		product_pickup_button.hide();product_tactics_button.hide();product_interact_button.hide()
+		combat_action_dock.move_child(product_wait_guard_button,0)
+		combat_action_dock.move_child(product_rest_button,combat_action_dock.get_child_count()-1)
 	_sync_product_control_state(status)
 
 func _sync_product_control_state(status_override:Dictionary={}) -> void:
@@ -4341,6 +4351,11 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		product_auto_button.text="[이능]";product_auto_button.disabled=terminal
 		product_wait_guard_button.tooltip_text="선택한 아군의 예정 행동을 대기로 수정합니다"
 		product_attack_button.tooltip_text="선택한 아군의 공격 계획을 지정합니다"
+
+	if session.room_enabled():
+		product_wait_guard_button.text="[이동]";product_wait_guard_button.tooltip_text="방 안의 목적지나 출구 칸을 누르세요"
+		product_auto_button.text="[변이]";product_auto_button.toggle_mode=false;product_auto_button.disabled=terminal
+		product_pickup_button.hide();product_tactics_button.hide();product_interact_button.hide()
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -4489,6 +4504,8 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
+	if session.room_enabled():
+		_open_member_detail(selected_member_id,"SKILL");return
 	if session.round_active():
 		_open_member_detail(selected_member_id);return
 	var opening:Dictionary=session.opening_event_status() \
@@ -4762,6 +4779,10 @@ func _cancel_product_rest(reason:String)->void:
 	_request_refresh()
 
 func _on_product_wait_guard()->void:
+	if session.room_enabled():
+		_round_attack_targeting=false;_cancel_battle_targeting()
+		_show_product_command_feedback("목적지 칸을 누르세요 · 출구로 이동하면 옆방으로 이어집니다")
+		return
 	if session.round_active():
 		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	var status:Dictionary=session.party_status()
@@ -6538,6 +6559,12 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
+	if session.room_enabled() and _battle_target_mode.is_empty():
+		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(session.sim.world,position)
+		var hero:int=session.sim.world.party_encounter.protagonist_id
+		if not exit.is_empty() and preload("res://sim/room_transition_rules.gd").distance(session.sim.world.entities[hero].position,position)==1:
+			_record_result(session.request_room_exit(hero,exit.portal_id,int(session.room_status().revision)),false)
+			_request_refresh();return
 	if session.round_active() and _battle_target_mode.is_empty():
 		var picked:=-1
 		for entity in session.sim.world.entities.values():
@@ -6804,6 +6831,7 @@ func _submit_product_melee(entity_id:int,status:Dictionary)->bool:
 	return true
 
 func _is_locked_visible_run_exit(position:Vector2i,progress:Dictionary)->bool:
+	if session.room_enabled():return false
 	if not bool(progress.get("available",false)):return false
 	var exit:Dictionary=progress.get("exit",{}) if progress.get("exit",{}) is Dictionary else {}
 	if bool(exit.get("open",false)):return false
@@ -7411,9 +7439,11 @@ func _dos_command_label(node_name:String,value:String)->String:
 		_:return "[ %s ]"%value
 
 func _current_grid_view_cell_count()->int:
+	if session!=null and session.room_enabled():return 8
 	return _product_zoom_cell_count if _is_solo_product_session() else 15
 
 func _current_grid_view_dimensions()->Vector2i:
+	if session!=null and session.room_enabled():return Vector2i(8,8)
 	var base_count:=_current_grid_view_cell_count()
 	if grid!=null and grid.uses_tactical_projection():return Vector2i(base_count,base_count)
 	if not _is_solo_product_session():return Vector2i(base_count,base_count)
@@ -7473,6 +7503,7 @@ func _product_zoom_control_has_point(_global_position:Vector2)->bool:
 	return false
 
 func _product_pinch_available()->bool:
+	if session!=null and session.room_enabled():return false
 	return _is_solo_product_session() and grid!=null and grid.visible \
 		and not grid.modal_open \
 		and (member_detail_modal==null or not member_detail_modal.visible) \
@@ -7542,6 +7573,7 @@ func _handle_product_pinch_zoom(event:InputEvent)->bool:
 	return _consume_product_pinch_event()
 
 func _on_product_zoom_step(index_delta:int)->void:
+	if session!=null and session.room_enabled():return
 	if not _is_solo_product_session():return
 	var current_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	if current_index<0:current_index=PRODUCT_ZOOM_CELL_COUNTS.find(PRODUCT_ZOOM_DEFAULT_CELL_COUNT)
@@ -7595,6 +7627,12 @@ func _on_product_menu_id(item_id:int)->void:
 	if item_id==9:
 		_show_product_command_feedback(preload("res://playtest/frontier_campaign.gd").objective(session));return
 	if item_id==10:_on_base_return_requested();return
+	if item_id==20:_on_product_pickup();return
+	if item_id==21:_on_product_interact();return
+	if item_id==22:_on_product_auto_explore_from_menu();return
+	if item_id==23:_on_product_tactics();return
+	if item_id==24:
+		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	match item_id:
 		0:
 			if bool(_current_run_progress().get("terminal",false)):
@@ -7825,3 +7863,15 @@ func _camera_priority_points(observation:Dictionary)->Array[Vector2i]:
 	if by_id.has(selected_member_id):points.append(by_id[selected_member_id])
 	if selected_target_id>0 and by_id.has(selected_target_id):points.append(by_id[selected_target_id])
 	return points
+
+func _on_product_auto_explore_from_menu()->void:
+	if session.auto_explore_state().get("running",false):
+		_cancel_product_auto_explore("auto_explore_user_cancel",true);return
+	_cancel_active_route()
+	_product_auto_explore_generation+=1
+	var started:=Time.get_ticks_msec()
+	_product_auto_last_hop_started_msec=started
+	var result:Dictionary=session.start_auto_explore()
+	_consume_product_auto_explore_result(result)
+	_refresh_continuous_exploration_surface(session.party_status(),true)
+	if result.get("running",false):_schedule_product_auto_explore(started)

@@ -17,6 +17,7 @@ func rebuild(sim)->void:
 
 func ready_at(sim,id:int)->int:
 	var world=sim.world;var party=world.party_encounter
+	if not preload("res://sim/room_transition_rules.gd").actor_active(world,id):return -1
 	if id in excluded_ids:return -1
 	if id==world.party_control_actor_id() or party.safe_phase=="PARTY_DEFEATED" or not world.can_act(id,world.world_time):return -1
 	var member=party.member(id)

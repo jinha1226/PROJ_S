@@ -67,6 +67,8 @@ var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var visible_row_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
+var _room_bounds:=Rect2i()
+var _room_exits:Array=[]
 var _graphics_mode := GRAPHICS_MODE_FLAT_2D
 var _terrain_theme_floor_index:=1
 var _cells: Dictionary = {}
@@ -233,7 +235,7 @@ func uses_tactical_projection()->bool:
 	return _graphics_mode==GRAPHICS_MODE_TACTICAL
 
 func _project_board_point(point:Vector2)->Vector2:
-	if uses_tactical_projection():return TacticalProjection.project(point,grid_rect(),visible_cell_count)
+	if uses_tactical_projection():return TacticalProjection.project(point,grid_rect(),visible_cell_count,_room_bounds.has_area())
 	return DioramaScript.project_camera_point(point,grid_rect(),visible_cell_count)
 
 func _exit_tree()->void:
@@ -241,6 +243,9 @@ func _exit_tree()->void:
 
 var _ability_markers:Array=[]
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
+	_room_exits=observation.get("room_exits",[]).duplicate(true)
+	var raw_room:Array=observation.get("room_bounds",[])
+	_room_bounds=Rect2i(raw_room[0],raw_room[1],8,8) if raw_room.size()==4 else Rect2i()
 	_ability_markers=observation.get("ability_markers",[]).duplicate(true)
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
@@ -495,6 +500,15 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		hero_actor_id:int=-1,settle_duration_msec:int=CAMERA_SETTLE_DURATION_MS,
 		row_count:int=-1)->void:
+	if _room_bounds.size==Vector2i(8,8):
+		var old_origin:=view_origin
+		visible_cell_count=8;visible_row_count=8;view_origin=_room_bounds.position
+		if old_origin!=view_origin and _hero_camera_position!=Vector2i(-1,-1):
+			_camera_settle={"from_offset_px":_projected_camera_step_offset(Vector2(view_origin-old_origin)),"started_at_ms":Time.get_ticks_msec(),"duration_ms":220,"curve":"CUBIC_EASE_OUT"}
+		elif old_origin==view_origin and not bool(camera_settle_draw_spec().active):_camera_settle.clear()
+		_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
+		if old_origin!=view_origin:_invalidate_static_projection_cache()
+		queue_redraw();return
 	# Product camera authority is the protagonist only. Negative origins are
 	# intentional at map edges: those screen cells render as void rather than
 	# pushing the hero away from the center cell.
@@ -1262,7 +1276,7 @@ func grid_rect() -> Rect2:
 	var extent := minf(size.x,size.y)
 	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
 func cell_size_px() -> float:
-	if uses_tactical_projection():return TacticalProjection.half_width(grid_rect(),visible_cell_count)*2.0
+	if uses_tactical_projection():return TacticalProjection.half_width(grid_rect(),visible_cell_count,_room_bounds.has_area())*2.0
 	return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
@@ -1272,7 +1286,7 @@ func world_cell_polygon(position:Vector2i)->PackedVector2Array:
 	return _camera_cell_polygon(position)
 func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 	if not view_bounds().has_point(position):return PackedVector2Array()
-	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,grid_rect(),visible_cell_count)
+	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,grid_rect(),visible_cell_count,_room_bounds.has_area())
 	if not uses_perspective_projection():
 		var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 		var top_left:=rect.position+Vector2(local.x,local.y)*cell
@@ -1303,7 +1317,7 @@ func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
 	if uses_tactical_projection():
-		var local:=TacticalProjection.unproject(pointer,rect,visible_cell_count)
+		var local:=TacticalProjection.unproject(pointer,rect,visible_cell_count,_room_bounds.has_area())
 		var cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
 		return cell if view_bounds().has_point(cell) and _world_in_bounds(cell) else Vector2i(-1,-1)
 	if not uses_perspective_projection():
@@ -2452,6 +2466,7 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var begun:=Perf.begin()
 	_draw_world_with_emphasis()
+	_draw_room_exits()
 	for marker in _ability_markers:
 		var point:=Vector2i(int(marker.position[0]),int(marker.position[1]))
 		if marker.kind=="LIFE" and is_world_cell_visible(point):continue
@@ -4168,3 +4183,17 @@ func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,col
 		if p.size()==4:
 			draw_line(p[0].lerp(p[1],0.5),p[2].lerp(p[3],0.5),color,1.4,true)
 			draw_line(p[1].lerp(p[2],0.5),p[3].lerp(p[0],0.5),color,1.4,true)
+
+func _draw_room_exits()->void:
+	for exit in _room_exits:
+		var p:=Vector2i(exit.cell[0],exit.cell[1])
+		if not is_world_cell_visible(p):continue
+		var local:=p-_room_bounds.position
+		var direction:=Vector2i.RIGHT if local.x==7 else Vector2i.LEFT if local.x==0 else Vector2i.DOWN if local.y==7 else Vector2i.UP
+		var center:=world_to_pixel_center(p)
+		var toward:=_project_board_point(Vector2(p+direction-view_origin)+Vector2.ONE*0.5)-_project_board_point(Vector2(p-view_origin)+Vector2.ONE*0.5)
+		var tip:=center+toward*0.35;var back:=center-toward*0.25
+		_draw_cell_overlay(p,Color(0.3,0.8,0.75,0.12),Color("#86d6c0"),2.0)
+		draw_line(back,tip,Color("#86d6c0"),2.0,true)
+		var side:=toward.orthogonal().normalized()*4.0
+		draw_colored_polygon(PackedVector2Array([tip,tip-toward.normalized()*7.0+side,tip-toward.normalized()*7.0-side]),Color("#86d6c0"))

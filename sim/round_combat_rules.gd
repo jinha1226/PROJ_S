@@ -49,6 +49,7 @@ static func terrain_cost(w,cell:Vector2i)->int:
 static func relevant_enemies(w)->Array:
 	var result:Array=[]
 	for id in w.party_encounter.enemy_ids:
+		if not preload("res://sim/room_transition_rules.gd").actor_active(w,id):continue
 		if not w.is_unresolved_enemy(id):continue
 		var a=w.party_encounter.enemy_awareness(id)
 		# Party enemy awareness stores only party pursuit, not unrelated NPC fights.

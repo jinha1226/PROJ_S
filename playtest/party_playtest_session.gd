@@ -342,9 +342,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if product_dungeon and not product_layout_override.is_empty() \
 		else (VisualTestMapScript.product_dungeon(p_world_seed) if product_dungeon else {}))
 	if product_dungeon and map_layout.is_empty(): return false
-	if product_dungeon and bootstrap_living and product_layout_override.is_empty():
+	if product_dungeon and bootstrap_living and product_layout_override.is_empty() and map_layout.get("ruleset_id","")!="nine-room-dungeon-v1":
 		map_layout=preload("res://playtest/campaign_world_map.gd").generate(p_world_seed,1,true,true)
-	if bootstrap_living and bootstrap_roster:
+	if bootstrap_living and bootstrap_roster and map_layout.get("ruleset_id","")!="nine-room-dungeon-v1":
 		map_layout=preload("res://playtest/seeded_roster.gd").apply_layout(map_layout,p_world_seed,p_personality_seed)
 	var world_width := int(map_layout.get("width", 15))
 	var world_height := int(map_layout.get("height", 15))
@@ -551,6 +551,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	# the sight rule their tests assume.
 	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
+	if map_layout.get("ruleset_id","")=="nine-room-dungeon-v1":state.nine_room_floor=preload("res://sim/nine_room_floor_state.gd").create(map_layout)
 	# Bootstrap must obey the same equipment requirements as gameplay. A dwarf
 	# can have DEX 3, below the default short sword's DEX 4 requirement. Keep all
 	# granted items, but equip the first legal starter (or leave the hand empty).
@@ -3099,10 +3100,13 @@ func floor_transition_assessment()->Dictionary:
 	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
+	if room_enabled():
+		for member_id in preload("res://sim/room_transition_rules.gd").party_ids(sim.world):
+			if not sim.world.can_act(member_id,sim.world.world_time):return _rejection_dto("room_party_cannot_move")
 	if RoundRules.enabled(sim.world):
 		for member_id in state.active_party_member_ids:
 			if sim.world.occupies_tile(member_id) and maxi(absi(sim.world.entities[member_id].position.x-hero.position.x),absi(sim.world.entities[member_id].position.y-hero.position.y))>1:return _rejection_dto("round_party_not_at_exit")
-	if state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
+	if state.nine_room_floor.is_empty() and state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
 		return _rejection_dto("floor_transition_locked")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"from_floor_index":floor_index,"to_floor_index":floor_index+1,
@@ -3155,6 +3159,17 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	# Changing cycle scope first detaches old-expedition monsters from collision.
 	# The party remains the same entities, inventories, bodies and social state.
 	_map_layout=target_layout
+	if not state.nine_room_floor.is_empty():
+		state.nine_room_floor.floor_index=floor_index;state.nine_room_floor.active_room_id=4
+		for portal_id in state.nine_room_floor.floors[floor_index-1].rooms[4].exits:
+			if portal_id not in state.nine_room_floor.discovered_portals:state.nine_room_floor.discovered_portals.append(portal_id)
+		state.nine_room_floor.pending_exit.clear();state.nine_room_floor.revision=int(state.nine_room_floor.revision)+1
+		var visit:="%d:4"%floor_index
+		if visit not in state.nine_room_floor.visited:state.nine_room_floor.visited.append(visit)
+		var previous_round:Dictionary=state.round_combat
+		state.round_combat=preload("res://sim/round_combat_state.gd").fresh()
+		state.round_combat.round_id=int(previous_round.round_id)
+		state.round_combat.plan_revision=int(previous_round.plan_revision)+1
 	state.safe_phase="GROUPED";state.contact_kind="NONE"
 	state.contact_enemy_id=-1;state.formation_id="NONE"
 	state.group_anchor=entry_position;state.facing=Vector2i.RIGHT
@@ -3249,6 +3264,10 @@ func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 func _spawn_campaign_floor_enemies(layout:Dictionary,
 		expedition_index:int)->Array[int]:
 	var result:Array[int]=[];var state=sim.world.party_encounter
+	if not state.nine_room_floor.is_empty():
+		for id in state.enemy_ids:
+			if "campaign_floor:%d"%int(layout.floor_index) in sim.world.entities[id].tags and "campaign_expedition:%d"%expedition_index in sim.world.entities[id].tags:result.append(id)
+		if not result.is_empty():return result
 	var introductory_groups:Array=[]
 	for row_value in layout.get("enemy_roster",[]):
 		if not row_value is Dictionary:return []
@@ -3259,7 +3278,7 @@ func _spawn_campaign_floor_enemies(layout:Dictionary,
 		var group_id:=str(row.get("group_id",""))
 		# Authored shallow entry encounters remain solo-friendly, regardless of
 		# current party size. Deeper groups retain the original composition.
-		if town_life_enabled() and int(layout.floor_index)==1:
+		if town_life_enabled() and int(layout.floor_index)==1 and state.nine_room_floor.is_empty():
 			if group_id not in introductory_groups:introductory_groups.append(group_id)
 			if introductory_groups.find(group_id)<3:
 				var already_spawned:=false
@@ -4156,6 +4175,7 @@ func enemy_vision_overlay() -> Dictionary:
 
 
 func observe_minimap()->Dictionary:
+	if room_enabled():return visible_room_minimap()
 	var context:=_party_observation_context()
 	return {} if context.is_empty() else _party_minimap_observation(context)
 
@@ -4177,14 +4197,16 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=rows
 	var viewport_origin:=Vector2i.ZERO if full_world_fits \
 		else hero_position-Vector2i(count/2,rows/2)
+	if room_enabled():viewport_origin=preload("res://sim/room_transition_rules.gd").bounds(sim.world).position;count=8;rows=8
 	var viewport_bounds:=Rect2i(viewport_origin,
 		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
 		else Vector2i(count,rows))
 	var _pg:=PerfProbeScript.begin()
 	var grid_dto:Dictionary=_party_rich_observation(context,viewport_bounds,viewport_origin,count*rows,omit_unseen)
+	if room_enabled():grid_dto["room_bounds"]=room_status().bounds;grid_dto["room_exits"]=room_status().exits
 	PerfProbeScript.end("obs.rich",_pg)
 	var _pn:=PerfProbeScript.begin()
-	var minimap_dto:Dictionary=_party_minimap_observation(context) if include_minimap else {}
+	var minimap_dto:Dictionary=(visible_room_minimap() if room_enabled() else _party_minimap_observation(context)) if include_minimap else {}
 	PerfProbeScript.end("obs.minimap",_pn)
 	return {"grid":grid_dto,"minimap":minimap_dto}
 
@@ -4205,6 +4227,10 @@ func _party_observation_context(include_decoration:bool=true)->Dictionary:
 	# The controlled actor is always a valid presentation anchor. Keep this
 	# explicit so grouped followers can safely fall back to the hero cell even if
 	# a future LOS implementation accidentally omits its origin.
+	if room_enabled():
+		for key in visible.keys():
+			var xy:PackedStringArray=str(key).split(":")
+			if xy.size()==2 and not preload("res://sim/room_transition_rules.gd").current(sim.world,Vector2i(int(xy[0]),int(xy[1]))):visible.erase(key)
 	visible[_position_key(hero_position)] = true
 	var _pexp:=PerfProbeScript.begin()
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
@@ -6958,6 +6984,9 @@ func auto_explore_state() -> Dictionary:
 
 
 func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
+	if room_enabled() and not preload("res://sim/room_transition_rules.gd").portal_at(sim.world,destination).is_empty():
+		_auto_explore.cancel("room_exit")
+		return _rejection_dto("room_auto_exit_stop")
 	if round_active():
 		_auto_explore.cancel("enemy_sighted")
 		return _rejection_dto("round_planning_requires_confirmation")
@@ -7216,6 +7245,9 @@ func _field_exploration_action(command):
 		else ActionScript.hold(command.actor_id) if command.type==CommandScript.Type.WAIT else null
 
 func commit_field_action(action)->Dictionary:
+	if room_enabled() and action!=null and action.type=="MOVE" and action.actor_id==sim.world.party_encounter.protagonist_id and not round_active():
+		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(sim.world,action.destination)
+		if not exit.is_empty():return request_room_exit(action.actor_id,exit.portal_id,int(sim.world.party_encounter.nine_room_floor.revision))
 	if round_active():return stage_round_action(action)
 	if _run_is_complete():return _rejection_dto("run_complete")
 	var begun:=PerfProbeScript.begin()
@@ -8480,7 +8512,8 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
-		if preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
+		if decoded.snapshot.party_encounter.get("nine_room_floor",{}).is_empty():current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1)
+		if decoded.snapshot.party_encounter.get("nine_room_floor",{}).is_empty() and preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
 			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true)
 			if preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot):
 				current_layout=preload("res://playtest/seeded_roster.gd").apply_layout(current_layout,parsed_world_seed,parsed_personality_seed)
@@ -8729,6 +8762,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
+			"room":replay_result=replay.request_room_exit(int(row.operation.actor_id),str(row.operation.portal_id),int(row.operation.revision))
 			"round":replay_result=replay.round_command(row.operation)
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
@@ -9242,6 +9276,10 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind"]:return "invalid_field_care_journal"
 			"darkness_rules":
 				if keys!=["kind"]:return "invalid_darkness_rules_journal"
+			"room":
+				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_room_journal"
+				var room_keys:Array=row.operation.keys();room_keys.sort()
+				if room_keys!=["actor_id","portal_id","revision"] or not Int64CodecScript.is_canonical(row.operation.actor_id) or not row.operation.portal_id is String or not preload("res://sim/nine_room_floor_state.gd").integer(row.operation.revision):return "invalid_room_journal"
 			"round":
 				if keys!=["kind","operation"] or not row.operation is Dictionary or row.operation.get("type") not in ["EDIT","CONFIRM","RESUME"]:return "invalid_round_journal"
 			"field_action":
@@ -9388,6 +9426,7 @@ func _run_is_complete() -> bool:
 
 
 func _position_is_locked_exit(value: Variant) -> bool:
+	if room_enabled():return false
 	var progress := run_progress()
 	if not bool(progress.get("available", false)) \
 			or bool(progress.get("exit", {}).get("open", false)):
@@ -10522,3 +10561,55 @@ func stage_round_item(action:String,instance_id:String,slot:String,selection:Dic
 	var assessed:=preload("res://sim/round_item_rules.gd").assess(sim.world,hero,operation)
 	if not assessed.get("accepted",false):return _rejection_dto(str(assessed.get("reason","item_unavailable")))
 	return edit_round_plan(hero,{"action":ActionScript.hold(hero).to_dict(),"path":[],"item_operation":operation},int(sim.world.party_encounter.round_combat.plan_revision))
+
+func room_enabled()->bool:
+	return preload("res://sim/room_transition_rules.gd").enabled(sim.world) if sim!=null else false
+
+func room_status()->Dictionary:
+	if not room_enabled():return {"enabled":false}
+	var rules=preload("res://sim/room_transition_rules.gd");var s:Dictionary=sim.world.party_encounter.nine_room_floor
+	var area:Rect2i=rules.bounds(sim.world);var exits:Array=[]
+	for p in rules.portals(sim.world):
+		if int(s.active_room_id) not in [int(p.a),int(p.b)]:continue
+		var cell:Vector2i=rules.cell(sim.world,p,int(s.active_room_id))
+		exits.append({"portal_id":p.portal_id,"cell":[cell.x,cell.y],"target_room":int(p.b) if int(p.a)==int(s.active_room_id) else int(p.a)})
+	return {"enabled":true,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
+
+func assess_room_exit(actor_id:int,portal_id:String)->Dictionary:
+	return preload("res://sim/room_transition_rules.gd").assess(sim.world,actor_id,portal_id,true) if room_enabled() else _rejection_dto("room_exit_unavailable")
+
+func request_room_exit(actor_id:int,portal_id:String,expected_revision:int)->Dictionary:
+	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
+	var event_start:int=sim.world.events.size();var rollback:Dictionary=sim.capture_rollback_memento(false)
+	var result:Dictionary=preload("res://sim/systems/room_transition_system.gd").request(sim,actor_id,portal_id,expected_revision)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,int(result.get("time_cost",0))) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
+	if not recovery.get("accepted",false):sim.restore_rollback_memento(rollback);return _rejection_dto("room_recovery_failed")
+	if not RoundPlans.begin(sim):sim.restore_rollback_memento(rollback);return _rejection_dto("room_plan_failed")
+	command_journal.append({"kind":"room","operation":{"actor_id":str(actor_id),"portal_id":portal_id,"revision":expected_revision}})
+	if _auto_explore!=null:_auto_explore.cancel("room_transition")
+	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
+	_clear_draft();_advance_exile_world()
+	var dto:=_feedback_dto({"accepted":true,"reason":result.reason,"message":"옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))})
+	dto["room_result"]=result;return dto
+
+func resolve_pending_exit()->Dictionary:
+	return preload("res://sim/systems/room_transition_system.gd").resolve_pending_exit(sim)
+
+func visible_room_minimap()->Dictionary:
+	if not room_enabled():return {}
+	var s:Dictionary=sim.world.party_encounter.nine_room_floor;var rooms:Array=[];var connections:Array=[]
+	for id in range(9):
+		if "%d:%d"%[s.floor_index,id] not in s.visited:continue
+		rooms.append({"room_id":id,"coord":[id%3,id/3],"active":id==int(s.active_room_id),"role":str(preload("res://sim/room_transition_rules.gd").current_floor(sim.world).rooms[id].role)})
+	for p in preload("res://sim/room_transition_rules.gd").portals(sim.world):
+		if p.portal_id in s.discovered_portals:connections.append({"a":int(p.a),"b":int(p.b)})
+	return {"room_minimap":true,"rooms":rooms,"connections":connections,"active_room_id":int(s.active_room_id),"width":3,"height":3}
+
+static func room_exit_message(reason:String)->String:
+	match reason:
+		"room_party_far":return "동료가 멀리 있습니다 · 출구 근처로 모여 주세요"
+		"room_party_cannot_move":return "이동할 수 없는 동료가 있습니다"
+		"room_arrival_full":return "옆방 입구에 진입 공간이 없습니다"
+		"room_revision_changed":return "방 상태가 바뀌었습니다 · 다시 이동해 주세요"
+	return "후퇴 조건을 유지하지 못해 현재 방에 남았습니다"

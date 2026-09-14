@@ -24,6 +24,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		"actor_id":actor_id,"target_id":target_id,"cost":0,"action_time":0}
 	if world==null or world.party_encounter==null:return rejected
 	if preload("res://sim/consumable_effects.gd").skill_blocked(world,actor_id):return _reject(rejected,"skill_sealed","봉인·혼란 중에는 기술을 사용할 수 없습니다.")
+	if world.entities.has(actor_id) and world.entities.has(target_id) and not preload("res://sim/room_transition_rules.gd").same_room(world,world.entities[actor_id].position,world.entities[target_id].position):return _reject(rejected,"room_target_outside","대상은 현재 방 안에 있어야 합니다.")
 	var state=world.party_encounter
 	if state.expedition_cycle!=null and str(state.expedition_cycle.phase)=="TOWN":
 		return _reject(rejected,"active_skill_combat_required","전투 중에만 사용할 수 있습니다.")
@@ -95,7 +96,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	caster.energy=member.energy
 	var target:=_actor(world,target_id,skill_id=="MEND")
 	var result:Dictionary=Effects.assess(skill_id,caster,target,actors,blocked,
-		Rect2i(Vector2i.ZERO,Vector2i(world.width,world.height)))
+		preload("res://sim/room_transition_rules.gd").bounds(world) if preload("res://sim/room_transition_rules.gd").enabled(world) else Rect2i(Vector2i.ZERO,Vector2i(world.width,world.height)))
 	if not bool(result.get("accepted",false)):
 		return _reject(rejected,_reason_code(str(result.get("reason",""))),
 			str(result.get("reason","기술을 사용할 수 없습니다.")))

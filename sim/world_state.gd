@@ -598,6 +598,7 @@ func is_autonomous_target(entity_id: int) -> bool:
 
 
 func _party_member_is_detached(entity_id: int) -> bool:
+	if preload("res://sim/room_transition_rules.gd").queued(self,entity_id):return true
 	var member = party_member_state(entity_id)
 	if member != null and member.presence in ["RECRUITABLE", "EXILED"]:
 		return not is_independent_visitor(entity_id)
@@ -2177,6 +2178,8 @@ func runtime_step_postcondition_error(event_start: int) -> String:
 			if cause == null or cause.id >= event.id or cause.world_time > event.world_time \
 					or event.instigator_id != cause.instigator_id:
 				return "runtime_event_cause_invalid"
+		var room_error:String=preload("res://sim/nine_room_floor_state.gd").event_error(self,event)
+		if not room_error.is_empty():return room_error
 		var active_error:String=ActiveSkillValidationScript.event_error(self,event)
 		if not active_error.is_empty():return active_error
 	PerfProbeScript.end("post.event_tail",_pev)
@@ -2598,6 +2601,8 @@ func _restored_state_error() -> String:
 					or event.magnitude<=0 \
 					or int(event.data.health_after)>entities[event.actor_id].max_health:
 				return "population_rest_event_invalid"
+		var room_event_error:String=preload("res://sim/nine_room_floor_state.gd").event_error(self,event)
+		if not room_event_error.is_empty():return room_event_error
 		var active_event_error:String=ActiveSkillValidationScript.event_error(self,event)
 		if not active_event_error.is_empty():return active_event_error
 		if event.type == "action.hold":
@@ -3765,12 +3770,12 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 	for event in events:
 		if event.id < first_action_id:
 			continue
-		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+		if event.type in ["dungeon.floor_entered","room.entered","room.pursuit_arrived"] and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.from!=final_projection:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			final_projection=transition.to
-			grouped_with_protagonist=entity_id!=party_encounter.protagonist_id
+			grouped_with_protagonist=event.type=="dungeon.floor_entered" and entity_id!=party_encounter.protagonist_id
 			continue
 		if event.type in ["party.member_regrouped","party.member_disengaged"] and event.actor_id == entity_id:
 			final_projection = event.position
@@ -4853,6 +4858,8 @@ func _party_runtime_error() -> String:
 	if width < 15 or height < 15: return "party_fixture_dimensions_invalid"
 	var encounter_wire_error:=PartyEncounterStateScript.wire_error(party_encounter.to_dict(),width,height)
 	if not encounter_wire_error.is_empty():return encounter_wire_error
+	var room_authority_error:String=preload("res://sim/nine_room_floor_state.gd").world_error(self)
+	if not room_authority_error.is_empty():return room_authority_error
 	var cycle=party_encounter.expedition_cycle
 	if cycle==null:return "missing_expedition_cycle"
 	if int(party_encounter.ration_processed_at) > int(world_time):
@@ -6683,7 +6690,7 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 					or _population_arrival_positions(event).to!=cursor:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			cursor=_population_arrival_positions(event).from;continue
-		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+		if event.type in ["dungeon.floor_entered","room.entered","room.pursuit_arrived"] and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.to!=cursor:
 				return {"ok":false,"position":Vector2i(-1,-1)}
@@ -6724,7 +6731,7 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 			if not bool(arrival.ok) or anchored and historical_cursor!=arrival.from:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			historical_cursor=arrival.to;anchored=true;continue
-		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+		if event.type in ["dungeon.floor_entered","room.entered","room.pursuit_arrived"] and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) \
 					or anchored and historical_cursor!=transition.from:
@@ -6793,7 +6800,7 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 			if not bool(arrival.ok) or arrival.to!=cursor:
 				return {"ok":false,"position":Vector2i(-1,-1)}
 			cursor=arrival.from;continue
-		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
+		if event.type in ["dungeon.floor_entered","room.entered","room.pursuit_arrived"] and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.to!=cursor:
 				return {"ok":false,"position":Vector2i(-1,-1)}
@@ -6822,7 +6829,7 @@ func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_p
 	var cursor := initial_position
 	for event in events:
 		if event.id <= event_id or event.actor_id != entity_id: continue
-		if event.type in ["party.member_regrouped","party.member_disengaged","dungeon.floor_entered"]:return ""
+		if event.type in ["party.member_regrouped","party.member_disengaged","dungeon.floor_entered","room.entered","room.pursuit_arrived"]:return ""
 		if event.type=="environment.knockback":
 			var knockback:=_environment_knockback_positions(event)
 			if not bool(knockback.ok) or knockback.from!=cursor:
@@ -6906,7 +6913,7 @@ func _environment_explosion_wave_valid_for_child(source,child)->bool:
 
 
 func _party_floor_entry_positions(event)->Dictionary:
-	if event==null or event.type!="dungeon.floor_entered" \
+	if event==null or event.type not in ["dungeon.floor_entered","room.entered","room.pursuit_arrived"] \
 			or not _party_metadata_position(event.data.get("from_position")) \
 			or not _party_metadata_position(event.data.get("to_position")):
 		return {"ok":false,"from":Vector2i(-1,-1),"to":Vector2i(-1,-1)}

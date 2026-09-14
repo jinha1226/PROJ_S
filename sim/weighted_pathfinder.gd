@@ -78,6 +78,7 @@ func _search(actor_id:int,start:Vector2i,goals:Array,projection:Dictionary,maxim
 
 
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
+	if not preload("res://sim/room_transition_rules.gd").same_room(world,from,to):return false
 	if not world.in_bounds(to):
 		return false
 	var definition: Dictionary = _cell_definition(to)

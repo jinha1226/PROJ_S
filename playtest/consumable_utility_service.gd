@@ -20,6 +20,7 @@ static func cells(w,actor:int,visible:bool=true)->Array:
 	for y in range(origin.y-5,origin.y+6):
 		for x in range(origin.x-5,origin.x+6):
 			var p:=Vector2i(x,y)
+			if not preload("res://sim/room_transition_rules.gd").same_room(w,origin,p):continue
 			if p==origin or not w.in_bounds(p) or not w.occupying_entities_at(p).is_empty():continue
 			if not safe_cell(w,p):continue
 			if not preload("res://sim/combat_kernel.gd").sees(origin,p,w.combat_sight_blocked):continue
@@ -95,7 +96,7 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 				for enemy in enemies(w,actor,4):ok=ok and Effects.add(w,actor,enemy,effect,source.id)
 			"NOISE":
 				for enemy in w.party_encounter.enemy_ids:
-					if Runtime.alive(w,enemy) and Runtime.distance(hero.position,w.entities[enemy].position)<=10:ok=ok and Effects.add(w,actor,enemy,effect,source.id)
+					if preload("res://sim/room_transition_rules.gd").same_room(w,hero.position,w.entities[enemy].position) and Runtime.alive(w,enemy) and Runtime.distance(hero.position,w.entities[enemy].position)<=10:ok=ok and Effects.add(w,actor,enemy,effect,source.id)
 			"PUSH":
 				for enemy in enemies(w,actor,2):
 					var origin:Vector2i=w.entities[enemy].position
@@ -103,7 +104,7 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 					var landing:Vector2i=origin
 					for n in range(2):
 						var p:Vector2i=landing+delta
-						if not safe_cell(w,p) or not w.diagonal_step_terrain_allowed(landing,p):break
+						if not preload("res://sim/room_transition_rules.gd").same_room(w,origin,p) or not safe_cell(w,p) or not w.diagonal_step_terrain_allowed(landing,p):break
 						landing=p
 					if landing!=origin:ok=ok and session.sim.movement.commit_preflighted_move(enemy,landing,str(w.tile_at(landing).terrain),1,source.id)!=null
 			"MAP":ok=w.emit_event("consumable.map",actor,actor,hero.position,10,source.id,{"schema_version":1,"floor":w.party_encounter.expedition_cycle.floor_index,"generation":w.party_encounter.expedition_cycle.expedition_index})!=null

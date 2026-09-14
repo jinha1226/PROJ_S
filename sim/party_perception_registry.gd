@@ -22,7 +22,7 @@ static func sight_range(world, state, member_id: int) -> int:
 	return result
 
 static func field_visible(world,origin:Vector2i,target:Vector2i)->bool:
-	return world.in_bounds(target) and preload("res://sim/combat_kernel.gd").sees(
+	return preload("res://sim/room_transition_rules.gd").same_room(world,origin,target) and world.in_bounds(target) and preload("res://sim/combat_kernel.gd").sees(
 		origin,target,world.combat_sight_blocked)
 
 
