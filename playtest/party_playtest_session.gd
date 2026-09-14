@@ -3183,6 +3183,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 		var previous_round:Dictionary=state.round_combat
 		state.round_combat=preload("res://sim/round_combat_state.gd").fresh()
 		state.round_combat.round_id=int(previous_round.round_id)
+		state.round_combat.stage_rooms=previous_round.stage_rooms.duplicate(true)
 		state.round_combat.plan_revision=int(previous_round.plan_revision)+1
 	state.safe_phase="GROUPED";state.contact_kind="NONE"
 	state.contact_enemy_id=-1;state.formation_id="NONE"
@@ -10543,6 +10544,7 @@ func round_command(operation:Dictionary)->Dictionary:
 	var dto:=_feedback_dto({"accepted":true,"reason":str(result.get("reason","ok")),
 		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "라운드 진행 완료"})
 	dto["round_result"]=result.duplicate(true)
+	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 적이 이동했습니다. 공격 예고를 확인하세요."
 	return dto
 
 func round_preview()->Dictionary:
@@ -10561,7 +10563,8 @@ func stage_round_action(action)->Dictionary:
 		path=[]
 		for point in route.path.slice(1):path.append([point.x,point.y])
 		draft_action=ActionScript.from_dict(current.action)
-	else:path=[] # A new attack/skill/hold replaces the suggested movement.
+	elif not (room_enabled() and current.source=="USER" and action.type in ["MELEE","SKILL"]):
+		path=[] # Replace AI movement, but preserve explicitly chosen stage movement before attacking.
 	return edit_round_plan(actor_id,{"action":draft_action.to_dict(),"path":path},int(sim.world.party_encounter.round_combat.plan_revision))
 
 func round_overlays()->Array[Dictionary]:

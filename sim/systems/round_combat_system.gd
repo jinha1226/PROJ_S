@@ -29,7 +29,7 @@ static func incorporate(sim)->void:
 		if telegraphs.has(id):
 			var row:Dictionary=telegraphs[id]
 			if row.action_type=="MELEE":action=Action.melee(id,int(row.target_id))
-			elif row.action_type=="MOVE":action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
+			elif row.action_type=="MOVE" and not preload("res://sim/stage_counterplay.gd").enabled(w):action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
 		var path:Array=[[action.destination.x,action.destination.y]] if action.type=="MOVE" else []
 		r.order.append(key);r.participants.append(key);r.known_enemy_ids.append(key)
 		r.plans[key]=Plans.pack(w,action,"AI",path)
@@ -37,6 +37,10 @@ static func incorporate(sim)->void:
 
 static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bool=false)->Dictionary:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	if r.phase=="DEPLOYMENT" and not resuming:
+		if not Rules.enabled(w) or not w.is_settled():return Plans.reject("round_not_ready")
+		if int(r.round_id)!=round_id or int(r.plan_revision)!=revision:return Plans.reject("round_revision_changed")
+		return preload("res://sim/stage_counterplay.gd").deploy(sim)
 	if not Rules.enabled(w) or r.phase not in (["INTERRUPTED"] if resuming else ["PLANNING"]):return Plans.reject("round_not_ready")
 	if int(r.round_id)!=round_id or int(r.plan_revision)!=revision:return Plans.reject("round_revision_changed")
 	if not w.is_settled():return Plans.reject("round_world_busy")
@@ -66,6 +70,7 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 		if not (preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty()) and not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
 	if ok and r.phase!="INTERRUPTED":
 		ok=finish_time(sim,step,darkness_sample,start_event)
+		if ok and preload("res://sim/stage_counterplay.gd").enabled(w):ok=preload("res://sim/stage_counterplay.gd").finish_round(sim)
 		if not ok and last_execution_error.is_empty():last_execution_error="time"
 		if ok:
 			r.round_time_committed=true;r.last_boundary_time=str(w.world_time)
@@ -93,6 +98,7 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok","movement":[],"damage":[],"conditional":false,"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
 	if not w.can_act(id,w.world_time):return cancel(result,"incapacitated")
 	var member=w.party_encounter.member(id)
+	if member==null and preload("res://sim/stage_counterplay.gd").enabled(w) and [w.entities[id].position.x,w.entities[id].position.y]!=p.origin:return cancel(result,"attack_displaced")
 	if member!=null and member.busy_until>w.world_time:return cancel(result,"cooldown")
 	var progress:int=r.slot_progress.get(p.actor_id,0)
 	var spent:int=r.slot_spent.get(p.actor_id,0)

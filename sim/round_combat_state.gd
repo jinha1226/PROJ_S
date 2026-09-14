@@ -1,7 +1,7 @@
 extends RefCounted
 
 const RULESET_ID:="round-planned-combat-v1"
-const PHASES:=["EXPLORATION","PLANNING","RESOLVING","INTERRUPTED"]
+const PHASES:=["EXPLORATION","DEPLOYMENT","PLANNING","RESOLVING","INTERRUPTED"]
 const Codec=preload("res://sim/int64_codec.gd")
 
 static func fresh()->Dictionary:
@@ -9,12 +9,25 @@ static func fresh()->Dictionary:
 		"round_start_time":"0","participants":[],"order":[],"plans":{},
 		"plan_revision":0,"execution_cursor":0,"completed_actor_ids":[],
 		"interrupt_reason":"","round_time_committed":false,"slot_progress":{},
-		"slot_spent":{},"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0"}
+		"slot_spent":{},"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0","stage_rooms":{}}
 
 static func wire_error(row:Variant,width:int,height:int)->String:
 	if not row is Dictionary:return "round_state_shape"
 	var keys:Array=row.keys();keys.sort();var expected:Array=fresh().keys();expected.sort()
 	if keys!=expected or row.schema!=1 or row.ruleset!=RULESET_ID or row.phase not in PHASES:return "round_state_header"
+	if not row.stage_rooms is Dictionary or row.stage_rooms.size()>18:return "stage_state_shape"
+	for room_key in row.stage_rooms:
+		if not room_key is String or not preload("res://sim/nine_room_floor_state.gd").valid_room_key(room_key):return "stage_room_key"
+		var stage:Variant=row.stage_rooms[room_key]
+		if not stage is Dictionary:return "stage_room_shape"
+		var fields:Array=stage.keys();fields.sort()
+		if fields!=["entry","started","turn","waves"] or not stage.started is bool:return "stage_room_shape"
+		for field in ["turn","waves"]:
+			if not integer(stage[field]) or stage[field]<0:return "stage_counter"
+		if not stage.entry is Array or stage.entry.size()!=2:return "stage_entry"
+		for coordinate in stage.entry:
+			if not integer(coordinate) or coordinate<0:return "stage_entry"
+		if stage.entry[0]>=width or stage.entry[1]>=height:return "stage_entry_bounds"
 	for key in ["round_id","plan_revision","execution_cursor"]:
 		if not integer(row[key]) or int(row[key])<0 or int(row[key])>1000000000:return "round_state_counter"
 	for key in ["round_start_time","last_boundary_time"]:

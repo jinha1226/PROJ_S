@@ -25,7 +25,10 @@ func run():
 				var p:=origin+Vector2i(x,y);var center:Vector2=ui.grid.world_to_pixel_center(p)
 				check(Rect2(Vector2.ZERO,ui.grid.size).has_point(center),"all 64 centers inside")
 				check(ui.grid.pixel_to_world_cell(center)==p,"touch projection roundtrip")
-		var buttons:Array=[ui.product_wait_guard_button,ui.product_attack_button,ui.product_auto_button,ui.product_bag_button,ui.product_rest_button]
+		check(not ui.round_order_bar.visible and not ui.combat_action_area.visible,"no timeline or permanent action dock")
+		check(ui.event_label.max_lines_visible==3,"three log lines retained")
+		var buttons:Array=ui.stage_context_bar.get_children()
+		check(buttons.size()==s.party_cards().size(),"exploration shows only party portraits")
 		for button in buttons:
 			check(button.is_visible_in_tree(),"primary visible "+button.name)
 			var r:Rect2=button.get_global_rect();check(r.position.x>=0 and r.end.x<=viewport_size.x+1 and r.end.y<=viewport_size.y+1,"primary fits "+button.name)
@@ -47,8 +50,10 @@ func run():
 	check(ui.grid._tactical_terrain!=null,"product uses retained tactical terrain")
 	if ui.grid._tactical_terrain!=null:
 		check(ui.grid._tactical_terrain.biome==preload("res://playtest/handcrafted_tile_assets.gd").biome_index(room.biome),"current room biome reaches art renderer")
-	check(ui.round_order_bar.global_position.y<ui.grid.global_position.y,"round order above board")
-	for button in [ui.product_wait_guard_button,ui.product_attack_button,ui.product_auto_button,ui.product_bag_button,ui.product_rest_button]:
+	check(not ui.round_order_bar.visible,"initiative strip removed")
+	check(ui.stage_context_bar.get_child_count()==4,"combat shows portrait, two skills, proceed")
+	check(ui.stage_context_bar.get_node("StageProceed").text=="배치 완료","deployment confirmation visible")
+	for button in ui.stage_context_bar.get_children():
 		var r:Rect2=button.get_global_rect();check(button.is_visible_in_tree() and r.end.y<=ui.size.y+1,"combat primary fits "+button.name+str(r))
 	check(not ui.battle_enemy_strip.visible,"combat duplicate enemy strip hidden")
 	if "--capture" in OS.get_cmdline_user_args():

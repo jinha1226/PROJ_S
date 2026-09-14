@@ -26,7 +26,7 @@ func run():
 			check(str(id) in round.participants,"all active enemies participate immediately")
 			check(hero in Board.visible_party_ids(w,id),"enemy knows party regardless of wall or distance")
 			var plan:Dictionary=round.plans.get(str(id),{})
-			check(not plan.is_empty() and (not plan.path.is_empty() or plan.action.type=="MELEE"),"enemy approaches or attacks on first round")
+			check(not plan.is_empty() and plan.path.is_empty() and plan.action.type=="HOLD","enemy waits for deployment confirmation")
 		else:
 			outside[id]=w.entities[id].position
 			check(not Field.visible(w,id) and str(id) not in round.participants,"other rooms remain hidden and inactive")

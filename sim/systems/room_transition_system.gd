@@ -26,6 +26,7 @@ static func request(sim,id:int,key:String,revision:int)->Dictionary:
 	var rollback:Dictionary=w.rollback_memento(false)
 	if RoundRules.active(w):
 		var r:Dictionary=w.party_encounter.round_combat
+		if r.phase=="DEPLOYMENT":return Rules.rejected("deployment_confirmation_required")
 		if r.phase not in ["PLANNING","INTERRUPTED"]:return Rules.rejected("room_exit_busy")
 		# The retreat request owns one existing round boundary; published enemy
 		# actions remain frozen. Already completed slots are never replayed.
@@ -83,6 +84,7 @@ static func resolve_pending_exit(sim)->Dictionary:
 	w.party_encounter.group_anchor=w.entities[w.party_encounter.protagonist_id].position
 	var old_round:Dictionary=w.party_encounter.round_combat
 	var next_round:=RoundState.fresh();next_round.round_id=int(old_round.round_id);next_round.plan_revision=int(old_round.plan_revision)+1
+	next_round.stage_rooms=old_round.stage_rooms.duplicate(true)
 	w.party_encounter.round_combat=next_round
 	w.party_encounter.safe_phase="GROUPED";w.party_encounter.contact_kind="NONE";w.party_encounter.contact_enemy_id=-1;w.party_encounter.formation_id="NONE"
 	w.set_meta("room_transition_visual",{"from_room":from,"to_room":int(s.active_room_id),"direction":Rules.membership(assessed.arrivals[0]),"revision":int(s.revision),"portal_id":p.portal_id})

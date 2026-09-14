@@ -354,6 +354,7 @@ var _battle_target_committing:=false
 var battle_drag:Control
 var _round_attack_targeting:=false
 var round_order_bar:VBoxContainer
+var stage_context_bar:HBoxContainer
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
 var _skill_pages:Dictionary={}
@@ -1016,6 +1017,7 @@ func _build_ui()->void:
 	menu_popup.add_item("줍기",20);menu_popup.add_item("상호작용 · 계단",21)
 	menu_popup.add_item("현재 방 자동 탐험",22);menu_popup.add_item("파티 전술",23)
 	menu_popup.add_item("대기",24)
+	menu_popup.add_item("휴식",25);menu_popup.add_item("전체 지도",26)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1123,6 +1125,8 @@ func _build_ui()->void:
 	root_layout.add_child(round_order_bar)
 	root_layout.move_child(round_order_bar,grid.get_index())
 	round_order_bar.hide()
+	stage_context_bar=preload("res://playtest/stage_context_bar.gd").new()
+	root_layout.add_child(stage_context_bar);stage_context_bar.hide()
 	grid.add_child(battle_enemy_strip);battle_enemy_strip.hide()
 	battle_enemy_strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	battle_enemy_strip.offset_bottom=48.0;battle_enemy_strip.z_index=20
@@ -6632,7 +6636,7 @@ func _on_cell(position:Vector2i)->void:
 		if picked in session.sim.world.party_encounter.active_party_member_ids:
 			_select_member(picked,_entity_display_name(picked));return
 		if picked>0:
-			if _round_attack_targeting:
+			if _round_attack_targeting or session.room_enabled() and session.round_status().phase!="DEPLOYMENT":
 				_round_attack_targeting=false
 				_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,picked)),false);_request_refresh()
 			else:_focus_battle_enemy(picked)
@@ -6742,7 +6746,7 @@ func _on_cell(position:Vector2i)->void:
 func _focus_battle_enemy(entity_id:int)->void:
 	if session.round_active():
 		if not session.FieldRules.visible(session.sim.world,entity_id):return
-		if _round_attack_targeting:
+		if _round_attack_targeting or session.room_enabled() and session.round_status().phase!="DEPLOYMENT":
 			_round_attack_targeting=false
 			_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,entity_id)),false)
 		else:
@@ -7166,9 +7170,14 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
-	if round_order_bar!=null:round_order_bar.sync(self)
+	if round_order_bar!=null:
+		if session.room_enabled():round_order_bar.hide()
+		else:round_order_bar.sync(self)
+	if stage_context_bar!=null:
+		stage_context_bar.sync(self)
+		if session.room_enabled():_apply_stage_chrome()
 	if battle_enemy_strip!=null:
-		if session.round_active():battle_enemy_strip.hide()
+		if session.round_active() or session.room_enabled():battle_enemy_strip.hide()
 		else:battle_enemy_strip.sync(self,status)
 	PerfProbeScript.end("fx.enemy_strip",_pfs)
 	var _pft:=PerfProbeScript.begin()
@@ -7690,6 +7699,8 @@ func _on_product_menu_id(item_id:int)->void:
 	if item_id==21:_on_product_interact();return
 	if item_id==22:_on_product_auto_explore_from_menu();return
 	if item_id==23:_on_product_tactics();return
+	if item_id==25:_on_product_rest();return
+	if item_id==26:_toggle_map_overlay();return
 	if item_id==24:
 		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	match item_id:
@@ -7845,6 +7856,35 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT
 	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
+
+func _apply_stage_chrome()->void:
+	# Preserve the board camera and zoom; only replace the surrounding chrome.
+	cards.hide();hero_skill_row.hide();combat_action_area.hide();bottom_navigation.hide()
+	minimap_frame.hide();record_button.hide();hero_detail_button.hide();enemy_vision_overlay_button.hide()
+	recent_event_label.hide();return_timer_label.hide();reward_badge.hide();expedition_floor_label.hide()
+	phase_panel.custom_minimum_size.y=48;top_hud_actions.custom_minimum_size.x=44
+	phase_label.show()
+	for panel in [phase_panel,event_surface]:
+		var flat:=StyleBoxFlat.new();flat.bg_color=Color("#0b131b");flat.border_color=Color("#344651")
+		flat.border_width_top=1;flat.border_width_bottom=1;flat.set_content_margin_all(4)
+		panel.add_theme_stylebox_override("panel",flat)
+	product_menu_button.custom_minimum_size=Vector2(44,44)
+	phase_label.text="%d층 · %s"%[session.room_status().floor_index,session.room_status().name]
+	phase_label.add_theme_font_size_override("font_size",15)
+	if session.round_active():
+		var stage:Dictionary=preload("res://sim/stage_counterplay.gd").status(session.sim.world)
+		phase_label.text="배치 · 입구 2칸" if session.round_status().phase=="DEPLOYMENT" else "%d층 · 증원 %d턴"%[session.room_status().floor_index,stage.remaining]
+	food_hud.custom_minimum_size.x=64;ration_label.text=str(int(food_meter.value))
+	var popup:=product_menu_button.get_popup()
+	popup.set_item_disabled(popup.get_item_index(25),session.round_active())
+	var inset=event_surface.get_node("EventSurfaceInset")
+	inset.add_theme_constant_override("margin_right",6)
+	event_label.max_lines_visible=3;event_surface.show()
+	if session.round_active() and session.round_status().phase=="DEPLOYMENT":
+		event_label.text="입구 주변 2칸 안에서 배치하세요.\n캐릭터 선택 → 목적지 선택\n배치 완료 후 적이 먼저 이동합니다."
+	elif event_label.text.strip_edges().is_empty():
+		event_label.text=preload("res://sim/stage_counterplay.gd").recent_log(session.sim.world)
+	root_layout.move_child(stage_context_bar,root_layout.get_child_count()-1)
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var banner:Dictionary=presentation.get("banner",{})

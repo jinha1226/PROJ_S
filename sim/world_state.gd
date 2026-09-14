@@ -6151,6 +6151,11 @@ func _party_patrol_history_error()->String:
 		if event.type not in ["action.move","action.hold"]:
 			continue
 		var forced_source=event_by_id(event.cause_id)
+		if forced_source!=null and forced_source.type=="stage.enemy_movement":
+			if not preload("res://sim/room_transition_rules.gd").enabled(self) or forced_source.actor_id!=event.actor_id or not _party_move_event_is_canonical(event):return "stage_move_invalid"
+			var prior:=_party_entity_position_at_event(event.actor_id,event.id-1)
+			if not prior.ok or prior.position!=Vector2i(event.data.from_position[0],event.data.from_position[1]):return "stage_move_history_invalid"
+			continue
 		if forced_source!=null and forced_source.type=="consumable.activated":
 			if not _party_move_event_is_canonical(event):return "consumable_patrol_move_invalid"
 			continue
@@ -6957,6 +6962,10 @@ func _party_move_event_is_canonical(event) -> bool:
 	var to_position := Vector2i(int(event.data.to_position[0]),int(event.data.to_position[1]))
 	var definition: Dictionary = TerrainRegistryScript.definition(str(event.data.terrain_id))
 	var leap_source=event_by_id(event.cause_id)
+	if leap_source!=null and leap_source.type=="stage.enemy_movement":
+		var cost:int=int(definition.get("move_time_cost",0))+preload("res://sim/abilities/monster_ability_runtime.gd").delay_before(self,event)
+		cost=maxi(1,(cost*int(preload("res://sim/body_penalty_rules.gd").historical(self,event.actor_id,event.id).move_milli)+999)/1000)
+		return event.actor_id==leap_source.actor_id and event.actor_id in party_encounter.enemy_ids and event.target_id==-1 and event.position==to_position and _party_distance(from_position,to_position)==1 and bool(definition.get("passable",false)) and event.magnitude==cost and event.data.move_time_cost==cost and event.world_time==leap_source.world_time and event.step_index==leap_source.step_index
 	if leap_source!=null and leap_source.type=="consumable.activated":
 		return event.target_id==-1 and event.position==to_position and not definition.is_empty() and bool(definition.get("passable",false)) and preload("res://sim/consumable_effects.gd").move_error(self,event).is_empty()
 	if leap_source!=null and leap_source.type=="ability.cast" and leap_source.data.get("skill_id")=="HUNTER_LEAP":
