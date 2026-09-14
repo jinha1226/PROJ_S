@@ -43,12 +43,16 @@ const StageDecor = (()=>{
   if(wallCache.has(column))return wallCache.get(column);
   const tile=document.createElement('canvas');tile.width=64;tile.height=64;
   const p=tile.getContext('2d');p.imageSmoothingEnabled=false;
-  p.drawImage(walls,column*walls.naturalWidth/4,0,walls.naturalWidth/4,walls.naturalHeight,0,0,64,64);
+  // One boundary spans half the horizontal 64px diamond. Match its pixel density.
+  const face=document.createElement('canvas');face.width=32;face.height=48;
+  const f=face.getContext('2d');f.imageSmoothingEnabled=false;
+  f.drawImage(walls,column*walls.naturalWidth/4,0,walls.naturalWidth/4,walls.naturalHeight,0,0,32,48);
+  p.drawImage(face,0,0,32,48,0,0,64,64);
   wallCache.set(column,tile);return tile;
  }
  function wallFace(a,b,height,column,outward){
   // Project a frontal texture onto the actual boundary plane. No sprite facing guesses.
-  const fullHeight=76;
+  const fullHeight=69;
   if(wallsReady){ctx.save();ctx.transform((b[0]-a[0])/64,(b[1]-a[1])/64,0,fullHeight/64,a[0],a[1]-fullHeight);
    const cut=64*(1-height/fullHeight);ctx.drawImage(wallTile(column),0,cut,64,64-cut,0,cut,64,64-cut);ctx.restore();
   }else poly([a,b,[b[0],b[1]-height],[a[0],a[1]-height]],'#4b5965');
@@ -67,6 +71,13 @@ const StageDecor = (()=>{
    }
   }
  }
+ function buttress(x,y){
+  const [a,b]=project(x,y),h=79;
+  const left=[a-10,b],front=[a,b+5],right=[a+10,b];
+  wallFace(left,front,h,0,[0,0]);wallFace(front,right,h,0,[0,0]);
+  poly([[a,b-5-h],[a+12,b-h],[a,b+6-h],[a-12,b-h]],'#85939b','#42525e');
+  poly([[a-12,b-h+5],[a,b-h+11],[a+12,b-h+5],[a+12,b-h],[a,b-h+6],[a-12,b-h]],'#667784','#42525e');
+ }
  function foreground(index){
   const connected=links(),door=doorMode(index);
   if(index!==0)naturalBorder(index,true);
@@ -75,18 +86,21 @@ const StageDecor = (()=>{
    const exit=connected.includes(d)&&n===3;
    if(index!==0&&!door)continue;
    if(connected.includes(d)&&!door&&(n===3||n===4))continue;
-   if(index!==0&&!door)continue;
    const x=d.id==='W'?0:d.id==='E'?7:n,y=d.id==='N'?0:d.id==='S'?7:n;
    const points=diamond(x,y),pair=d.id==='N'?[0,1]:d.id==='E'?[1,2]:d.id==='S'?[2,3]:[3,0];
    const rear=d.id==='N'||d.id==='W';
    const a=points[pair[0]],b=points[pair[1]],center=project(x,y);
    const outward=[((a[0]+b[0])/2-center[0])*.3,((a[1]+b[1])/2-center[1])*.3];
-   const h=rear?76:18;
+   const h=rear?69:18;
    if(exit&&!rear&&!state().doorsClosed){
     // Cut-away front doorway: preserve jambs and an unobstructed threshold, no floating arch.
     const mix=t=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
     wallFace(a,mix(.18),h,0,outward);wallFace(mix(.82),b,h,0,outward);
    }else wallFace(a,b,h,exit?(state().doorsClosed?2:1):n%3===0?3:0,outward);
+  }
+  if(index===0||door){
+   // Engaged masonry piers at the rear: depth and silhouette without blocking foreground cells.
+   for(const p of [[-.5,-.5],[1.5,-.5],[5.5,-.5],[-.5,1.5],[-.5,5.5]])buttress(...p);
   }
   for(const d of connected){
    const [x,y]=d.out;
@@ -114,7 +128,7 @@ const StageDecor = (()=>{
   if(doorMode(selected))for(const d of links()){
    const points=diamond(...d.cell),pair=d.id==='N'?[0,1]:d.id==='E'?[1,2]:d.id==='S'?[2,3]:[3,0];
    const a=points[pair[0]],b=points[pair[1]],u=(px-a[0])/(b[0]-a[0]);
-   const height=d.id==='N'||d.id==='W'?76:18,v=a[1]+u*(b[1]-a[1])-py;
+   const height=d.id==='N'||d.id==='W'?69:18,v=a[1]+u*(b[1]-a[1])-py;
    if(u>=0&&u<=1&&v>=0&&v<=height)return go(d.id);
   }
   for(const d of links())for(const p of [d.out,d.cell]){const [a,b]=project(...p);if(Math.abs(px-a)/46+Math.abs(py-b)/23<=1.25)return go(d.id);}
@@ -127,7 +141,7 @@ const StageDecor = (()=>{
   document.querySelector('#door-toggle').onclick=()=>{state().doorsClosed=!state().doorsClosed;render(selected);};
   canvas.addEventListener('click',e=>{const r=canvas.getBoundingClientRect();pick((e.clientX-r.left)*canvas.width/r.width,(e.clientY-r.top)*canvas.height/r.height);});
   sheet.onload=()=>{ready=true;render(selected);};sheet.onerror=()=>{ready=false;updateControls();};sheet.src='fantasy-props-pixel64-source.png';updateControls();
-  walls.onload=()=>{wallsReady=true;wallCache.clear();render(selected);};walls.onerror=()=>{wallsReady=false;render(selected);};walls.src='dungeon-wall-faces-pixel64.png';
+  walls.onload=()=>{wallsReady=true;wallCache.clear();render(selected);};walls.onerror=()=>{wallsReady=false;render(selected);};walls.src='dungeon-wall-faces-coarse64.png';
  }
  return {init,background,cell,foreground,go,pick,links,state,get coord(){return [...coord];},get ready(){return ready&&wallsReady;}};
 })();

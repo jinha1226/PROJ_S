@@ -7,10 +7,12 @@ h1{font-size:24px}p{color:#afbec3;line-height:1.65}nav{display:flex;gap:8px;flex
 canvas{width:100%;max-width:900px;display:block;margin:auto;image-rendering:pixelated}img{width:100%;background:#202830;border-radius:12px;image-rendering:pixelated}small{color:#afbec3}a{color:#a4d9c4}
 </style>
 <h1>8×8 전투 구역 · 64픽셀</h1>
+<p><a href="character-lab.html">캐릭터 작업실 → 4방향 · 이동/공격 재생 · 장비 비교</a></p>
 <p>64×64 타일 버퍼 · 64×32 발판 · 보간 없는 확대 · 테마별 바닥 4종. <a href="preview-detailed.html">이전 고밀도 버전 비교</a></p>
 <p>실제 8×8 배치 데이터에 생성 타일을 조합한 HTML 미리보기입니다. 게임 엔진의 그래픽 변경은 아닙니다.</p>
 <nav id="tabs"></nav><h2 id="name"></h2><p id="design"></p>
 <label><input id="markers" type="checkbox" checked> 입구·적·격자 표시</label>
+<label>모험가 <select id="hero-gear"><option value="base">기본 복장</option><option value="equipped">전투장비 세트</option></select></label>
 <p><label>연결 형태 <select id="edge-mode"><option value="theme">테마별 자동</option><option value="door">문과 통로</option><option value="open">열린 길</option></select></label> <button id="door-toggle" type="button">문 닫기</button> <button id="chest-toggle" type="button">상자 열기</button></p>
 <nav id="room-links" aria-label="인접 구역"></nav>
 <p id="room-state" role="status"></p>
@@ -22,6 +24,7 @@ canvas{width:100%;max-width:900px;display:block;margin:auto;image-rendering:pixe
 <h2>64픽셀 스타일 생성 원본</h2><p>위부터 던전·동굴·지하 숲. 왼쪽 네 칸은 바닥 변형, 다섯째는 장애물, 여섯째는 물입니다. 생성 원본은 고해상도이며 HTML이 각 타일을 실제 64×64 버퍼에 래스터화해 사용합니다. 실제 게임에는 아직 적용하지 않았습니다.</p>
 <img src="fantasy-terrain-pixel64-source.png" alt="굵은 픽셀 스타일의 세 테마 타일 18종">
 <script src="stage-decor.js"></script>
+<script src="character-art.js"></script>
 <script>
 const content={
   "schema_version": 1,
@@ -100,6 +103,7 @@ const kind=t.rows[y][x];
 if(kind==='#'){if(artReady)texture(x,y,index,4,true);else{const d=diamond(x,y),top=diamond(x,y,34);poly([top[3],top[2],d[2],d[3]],p[1]);poly([top[2],top[1],d[1],d[2]],'#283239');poly(top,p[0]);}}
 if(kind==='r'){const [a,b]=project(x,y);for(let i=0;i<4;i++)poly([[a-20+i*10,b-5],[a-15+i*10,b-10],[a-10+i*10,b-5],[a-15+i*10,b]],p[1]);}
 if(typeof StageDecor!=='undefined')StageDecor.cell(x,y,index);
+if(x===3&&y===3&&typeof CharacterArt!=='undefined'){const [a,b]=project(x,y);CharacterArt.draw(ctx,document.querySelector('#hero-gear').value,1,0,a,b,1.5);}
 }
 if(typeof StageDecor!=='undefined')StageDecor.foreground(index);
 if(document.querySelector('#markers').checked)for(let y=0;y<8;y++)for(let x=0;x<8;x++){
@@ -114,4 +118,5 @@ atlas.onload=()=>{artReady=true;tileCache.clear();document.querySelector('#asset
 atlas.onerror=()=>{artReady=false;tileCache.clear();document.querySelector('#asset-status').textContent='타일을 불러오지 못했습니다. HTML 옆에 fantasy-terrain-pixel64-source.png가 있는지 확인하세요. 기본 도식으로 표시합니다.';render(selected);};
 atlas.src='fantasy-terrain-pixel64-source.png';
 if(typeof StageDecor!=='undefined')StageDecor.init();
+if(typeof CharacterArt!=='undefined'){CharacterArt.load(()=>render(selected));document.querySelector('#hero-gear').onchange=()=>render(selected);}
 </script></html>

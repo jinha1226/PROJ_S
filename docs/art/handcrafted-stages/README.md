@@ -1,5 +1,7 @@
 # 8×8 전투 구역 3종 — 첫 플레이용 배치
 
+캐릭터 시연은 `character-lab.html`: 기본/장비 비교, 4방향과 이동·공격 재생을 확인할 수 있다. 새 벽 밀도와 캐릭터 원본·검수 한계는 `character-preview-notes.md` 참고. 개별 장비 레이어는 아직 아니다.
+
 최신 HTML에는 횃불·상자, 벽면에 통합된 문, 동굴·숲의 자연 외곽 장식을 추가했다. 구현 범위와 검증은 `props-and-boundaries.md`, 인물·몬스터·장비의 후속 제작 규격은 `character-production-plan.ko.md` 참고.
 
 `preview.html`을 브라우저에서 열면 세 배치에 64픽셀 타일을 조합한 모습을 전환해 볼 수 있다. `preview-detailed.html`은 이전 고밀도 타일 버전이다. 서버가 필요 없는 검토용 정적 사본이며, 실행 데이터의 원본은 JSON이다. 새 아트와 검증 기록은 `pixel64-notes.md`에 있다. 두 HTML 모두 실제 게임 엔진 적용 화면은 아니다.
