@@ -7858,6 +7858,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_stage_chrome()->void:
+	preload("res://playtest/stage_button_skin.gd").apply(product_menu_button)
 	# Preserve the board camera and zoom; only replace the surrounding chrome.
 	cards.hide();hero_skill_row.hide();combat_action_area.hide();bottom_navigation.hide()
 	minimap_frame.hide();record_button.hide();hero_detail_button.hide();enemy_vision_overlay_button.hide()

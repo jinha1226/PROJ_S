@@ -6,11 +6,7 @@ var _page:=0
 func _init():
 	name="StageContextBar";custom_minimum_size.y=84;add_theme_constant_override("separation",4)
 static func style_button(b:Button):
-	for state in ["normal","hover","pressed","disabled"]:
-		var box:=StyleBoxFlat.new();box.bg_color=Color("#101a22")
-		box.border_color=Color("#65c9dc") if state=="pressed" else Color("#425867")
-		box.set_border_width_all(1);box.set_content_margin_all(4)
-		b.add_theme_stylebox_override(state,box)
+	preload("res://playtest/stage_button_skin.gd").apply(b)
 func button(label:String,node_name:String)->Button:
 	var b=Touch.new();b.name=node_name;b.text=label;b.custom_minimum_size=Vector2(44,84)
 	b.size_flags_horizontal=Control.SIZE_EXPAND_FILL;b.clip_text=true
@@ -33,6 +29,7 @@ func sync(host):
 			var id:int=row.entity_id;var portrait=Portrait.new();portrait.name="StagePortrait%d"%id
 			portrait.custom_minimum_size=Vector2(64,84);portrait.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			style_button(portrait);add_child(portrait)
+			portrait.set_skin_accent(id==selected)
 			portrait.pressed.connect(func():host._open_member_detail(id,"STATUS"))
 			portrait.tooltip_text=str(row.display_name)+" · 상태 / 숙련 / 가방"
 		if active:
@@ -43,6 +40,7 @@ func sync(host):
 					var skill:Dictionary=b.get_meta("skill",{})
 					if not skill.is_empty():host._on_manual_skill_selected(selected,str(skill.skill_id),str(skill.label)))
 			var proceed:=button("배치 완료" if r.phase=="DEPLOYMENT" else "진행 ▶","StageProceed")
+			proceed.set_skin_accent(true)
 			proceed.pressed.connect(host._on_product_execute)
 	for row in members:
 		var portrait=get_node_or_null("StagePortrait%d"%int(row.entity_id))
@@ -55,6 +53,6 @@ func sync(host):
 			b.set_meta("skill",row)
 			b.text="%s\nMP %d"%[row.label,row.cost] if not row.is_empty() else "빈 슬롯"
 			b.disabled=r.phase=="DEPLOYMENT" or row.is_empty()
-			b.modulate=Color.WHITE if row.get("can_select",false) else Color("#84909d")
+			b.set_skin_accent(not row.is_empty() and host._battle_target_actor_id==selected and host._battle_target_skill_id==str(row.get("skill_id","")))
 			b.tooltip_text=str(row.get("message","변이를 획득하면 사용할 수 있습니다"))+" · 길게 눌러 다음 스킬"
 		get_node("StageProceed").disabled=r.phase=="RESOLVING"
