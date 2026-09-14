@@ -68,5 +68,22 @@ func run():
 	party.enemy_awareness(enemy).awareness_state="RETURNING"
 	Fixture.relocate(w,enemy,Vector2i(w.width-2,w.height-2))
 	check(enemy not in Rules.relevant_enemies(w),"unrelated returning enemy not party pursuer")
+	# Exhausted movement stays exhausted through repeated edits and a save.
+	var budget_session=Fixture.create();var bw=budget_session.sim.world
+	var br:Dictionary=bw.party_encounter.round_combat;var bh:int=bw.party_encounter.protagonist_id
+	var bk:=str(bh);br.phase="INTERRUPTED";br.interrupt_reason="new_threat"
+	br.slot_spent[bk]=int(br.plans[bk].move_budget)
+	var total:int=br.slot_spent[bk]
+	for attempt in range(3):
+		check(Plans.edit(budget_session.sim,bh,{"action":Action.hold(bh).to_dict(),"path":[]},br.plan_revision).accepted,"exhausted actor can edit hold")
+		check(int(br.slot_spent[bk])==total,"editing keeps spent movement")
+		var cell:Vector2i=bw.entities[bh].position+Vector2i.UP
+		var extra:=Plans.edit(budget_session.sim,bh,{"action":Action.hold(bh).to_dict(),"path":[[cell.x,cell.y]]},br.plan_revision)
+		check(not extra.accepted and extra.reason=="round_move_budget","repeat edit cannot create free movement")
+	var budget_snapshot=bw.snapshot()
+	check(budget_snapshot!=null,"spent budget snapshot valid")
+	if budget_snapshot!=null:
+		var budget_restored=Simulator.from_snapshot(budget_snapshot)
+		check(budget_restored!=null and int(budget_restored.world.party_encounter.round_combat.slot_spent[bk])==total,"spent budget survives reload")
 	print("ROUND_INTERRUPTION ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)

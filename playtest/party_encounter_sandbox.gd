@@ -349,6 +349,8 @@ var _battle_target_prompt:=""
 var _battle_target_prior_paused:=false
 var _battle_target_committing:=false
 var battle_drag:Control
+var _round_attack_targeting:=false
+var round_order_bar:VBoxContainer
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
 var _skill_pages:Dictionary={}
@@ -383,6 +385,11 @@ var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 func _notification(what:int)->void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT] and session!=null and session.round_active() and session.sim.world.is_settled():
+		var encoded:String=session.save_session_json()
+		if not encoded.is_empty():
+			var file=FileAccess.open(session.SAVE_PATH,FileAccess.WRITE)
+			if file!=null:file.store_string(encoded)
 	if what==NOTIFICATION_APPLICATION_FOCUS_OUT and portrait_gesture!=null:
 		portrait_gesture.actor_id=-1
 
@@ -1103,6 +1110,10 @@ func _build_ui()->void:
 	# over the map's top edge during a fight (party focus targets).
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
 	battle_enemy_strip=preload("res://playtest/battle_enemy_strip.gd").new()
+	round_order_bar=preload("res://playtest/round_order_bar.gd").new()
+	root_layout.add_child(round_order_bar)
+	root_layout.move_child(round_order_bar,grid.get_index())
+	round_order_bar.hide()
 	grid.add_child(battle_enemy_strip);battle_enemy_strip.hide()
 	battle_enemy_strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	battle_enemy_strip.offset_bottom=48.0;battle_enemy_strip.z_index=20
@@ -2868,7 +2879,7 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 			selected_row.get("reason","지금 사용할 수 없습니다."))));return
 	if session.field_turns_active():
 		_switch_field_member(actor_id)
-		if session.sim.world.party_control_actor_id()!=actor_id:return
+		if not session.round_active() and session.sim.world.party_control_actor_id()!=actor_id:return
 	_retreat_active=false
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
@@ -2921,7 +2932,9 @@ func _commit_battle_target(target_id:int)->void:
 	var assessment:Dictionary={}
 	var first_strike:bool=_battle_target_mode=="ACTIVE_SKILL" \
 		and str(session.party_status().get("safe_phase",""))=="GROUPED"
-	if session.field_turns_active() and _battle_target_mode=="ACTIVE_SKILL":
+	if session.round_active() and _battle_target_mode=="ACTIVE_SKILL":
+		assessment={"accepted":target_id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,target_id),"reason":"round_target_unseen"}
+	elif session.field_turns_active() and _battle_target_mode=="ACTIVE_SKILL":
 		assessment=session.FieldTurns.assess(session.sim,ActionScript.skill(
 			_battle_target_actor_id,_battle_target_skill_id,target_id))
 	elif first_strike:
@@ -2986,8 +2999,8 @@ func _clear_battle_targeting_state()->void:
 
 func _validate_battle_targeting(status:Dictionary)->void:
 	if _battle_target_mode.is_empty():return
-	var valid_phase:=str(status.get("view_mode",""))=="COMBAT" \
-		and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false))
+	var valid_phase:bool=(session.round_active() or (str(status.get("view_mode",""))=="COMBAT" \
+		and str(status.get("safe_phase",""))=="ENGAGED")) and not bool(status.get("terminal",false))
 	if session.field_turns_active():
 		valid_phase=str(status.get("view_mode","")) in ["EXPLORATION","COMBAT"] and not bool(status.get("terminal",false))
 	var caster_alive:=false
@@ -4320,6 +4333,15 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_interact_button.visible=not (product_interact_button.disabled \
 		and product_interact_button.text=="[INTERACT]")
 
+	if session.round_active():
+		var round_state:Dictionary=session.round_status()
+		product_rest_button.text="[계속 진행]" if round_state.phase=="INTERRUPTED" else "[진행]"
+		product_rest_button.tooltip_text="공개된 순서대로 전체 라운드를 진행합니다"
+		product_rest_button.disabled=terminal or round_state.phase=="RESOLVING"
+		product_auto_button.text="[이능]";product_auto_button.disabled=terminal
+		product_wait_guard_button.tooltip_text="선택한 아군의 예정 행동을 대기로 수정합니다"
+		product_attack_button.tooltip_text="선택한 아군의 공격 계획을 지정합니다"
+
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
 	var button:Button=preload("res://playtest/illustrated_action_button.gd").new();button.name=node_name;button.text=label
@@ -4467,6 +4489,8 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
+	if session.round_active():
+		_open_member_detail(selected_member_id);return
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	if bool(opening.get("can_interact",false)):
@@ -4621,6 +4645,7 @@ func _on_product_interact()->void:
 		_request_refresh();return
 
 func _on_product_rest()->void:
+	if session.round_active():_on_product_execute();return
 	if _product_rest_active:_cancel_product_rest("rest_user_stop");return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):return
@@ -4737,6 +4762,8 @@ func _cancel_product_rest(reason:String)->void:
 	_request_refresh()
 
 func _on_product_wait_guard()->void:
+	if session.round_active():
+		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	var status:Dictionary=session.party_status()
 	_retreat_active=false
 	if str(status.get("view_mode",""))=="EXPLORATION":
@@ -4821,6 +4848,9 @@ func _on_product_retreat()->void:
 	_request_refresh()
 
 func _on_product_attack_any()->void:
+	if session.round_active():
+		_round_attack_targeting=true
+		_show_product_command_feedback("공격할 적을 맵이나 순서창에서 고르세요");return
 	# [공격], exploration or fight alike: attack the nearest visible enemy if
 	# adjacent (a first strike before contact), otherwise take one step toward
 	# it. Movement and the attack stay separate taps.
@@ -4893,6 +4923,10 @@ func _strike_visible_enemy(entity_id:int)->void:
 		_request_refresh()
 
 func _on_product_execute()->void:
+	if session!=null and session.round_active():
+		var round_state:Dictionary=session.round_status()
+		var result:Dictionary=session.resume_round(round_state.round_id,round_state.plan_revision) if round_state.phase=="INTERRUPTED" else session.confirm_round(round_state.round_id,round_state.plan_revision)
+		_record_result(result,true,"라운드 진행 불가");_request_refresh();return
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
 		if battle_mode=="HERO_TURN":
 			autonomous_battle_clock.paused=false
@@ -4960,6 +4994,11 @@ func _on_compact_member_card_pressed(member_id:int,_display_name:String)->void:
 	_open_member_detail(member_id)
 
 func _switch_field_member(member_id:int)->void:
+	if session.round_active():
+		var result:Dictionary=session.select_field_actor(member_id)
+		if result.accepted:
+			selected_member_id=member_id;selected_target_id=-1;_clear_move_preview()
+		_request_refresh();return
 	_cancel_product_rest("rest_user_stop")
 	_cancel_product_auto_explore("auto_explore_user_command",false)
 	if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
@@ -6477,6 +6516,20 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
+	if session.round_active() and _battle_target_mode.is_empty():
+		var picked:=-1
+		for entity in session.sim.world.entities.values():
+			if entity.position==position and (entity.id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,entity.id)):
+				picked=entity.id;break
+		if picked in session.sim.world.party_encounter.active_party_member_ids:
+			_select_member(picked,_entity_display_name(picked));return
+		if picked>0:
+			if _round_attack_targeting:
+				_round_attack_targeting=false
+				_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,picked)),false);_request_refresh()
+			else:_focus_battle_enemy(picked)
+			return
+		_record_result(session.commit_field_action(ActionScript.move_to(selected_member_id,position)),false);_request_refresh();return
 	if not _battle_target_mode.is_empty():
 		if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.field_turns_active():
 			if _battle_target_committing:return
@@ -6579,6 +6632,15 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
+	if session.round_active():
+		if not session.FieldRules.visible(session.sim.world,entity_id):return
+		if _round_attack_targeting:
+			_round_attack_targeting=false
+			_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,entity_id)),false)
+		else:
+			selected_target_id=entity_id
+			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
+		_request_refresh();return
 	if session.field_turns_active():
 		_on_actor(entity_id);return
 	# Portrait tap: party focus during a fight; before contact it is the same as
@@ -6593,6 +6655,10 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
+	if session.round_active() and _battle_target_mode.is_empty():
+		if entity_id in session.sim.world.party_encounter.active_party_member_ids:_select_member(entity_id,_entity_display_name(entity_id))
+		else:_focus_battle_enemy(entity_id)
+		return
 	if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.sim.world.entities.has(entity_id):
 		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():
@@ -6991,7 +7057,10 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
-	if battle_enemy_strip!=null:battle_enemy_strip.sync(self,status)
+	if round_order_bar!=null:round_order_bar.sync(self)
+	if battle_enemy_strip!=null:
+		if session.round_active():battle_enemy_strip.hide()
+		else:battle_enemy_strip.sync(self,status)
 	PerfProbeScript.end("fx.enemy_strip",_pfs)
 	var _pft:=PerfProbeScript.begin()
 	PerfProbeScript.end("fx.timeline",_pft)

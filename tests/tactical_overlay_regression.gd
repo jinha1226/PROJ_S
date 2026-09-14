@@ -19,6 +19,15 @@ func run()->void:
 		for i in range(4):check(p[i].is_equal_approx(tile[i].lerp(center,0.08)),"same inset tile projection")
 		check(is_equal_approx(p[0].x,p[2].x) and is_equal_approx(p[1].y,p[3].y),"diamond axes")
 		check(is_equal_approx(p[1].distance_to(p[3]),2*p[0].distance_to(p[2])),"2:1 diamond")
+		var offset:=Vector2(-7,3)
+		var selection:Array=grid.selection_diamond_segments(cell,center+offset)
+		check(selection.size()==4,"selection has four diamond edges")
+		for i in range(4):
+			check(selection[i][0].is_equal_approx(p[i]+offset) and selection[i][1].is_equal_approx(p[(i+1)%4]+offset),"selection follows projected tile and interpolated actor")
+	grid._actors.assign([{"entity_id":1,"position":[10,10]}])
+	grid.set_selection(1)
+	var selected:Array=grid.selection_overlay_draw_specs()
+	check(selected.size()==1 and selected[0].segments.size()==4,"controlled actor actually uses diamond outline")
 	grid.set_route_overlay([[10,10],[11,10],[11,11]])
 	var route:Dictionary=grid.route_draw_spec()
 	check(route.draw_tile_cards and route.render_style=="TACTICAL_CELLS","tactical route rendering")
@@ -31,6 +40,7 @@ func run()->void:
 	grid.queue_redraw()
 	for i in range(3):await process_frame
 	grid.set_graphics_mode(Grid.GRAPHICS_MODE_FLAT_2D)
+	check(grid.selection_overlay_draw_specs()[0].segments.size()==8,"flat selection retains corner brackets")
 	check(not grid.route_draw_spec().draw_tile_cards,"flat route compatibility")
 	grid.queue_free();await process_frame
 	print("TACTICAL OVERLAYS: ",failures.size()," failures")

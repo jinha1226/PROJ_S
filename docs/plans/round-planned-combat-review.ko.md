@@ -6,6 +6,8 @@
 
 ## 판정: 메인 푸시 보류
 
+아래는 최초 검토 시점의 판정이다. 후속 사용자 승인으로 수정했으며 맨 아래 재검증 절을 참고한다.
+
 ### P1 — 로컬 UI 스크립트가 컴파일되지 않음
 
 - 위치: `playtest/party_encounter_sandbox.gd:3002`, `_validate_battle_targeting`.
@@ -47,3 +49,18 @@
 ## 다음 작업
 
 위 세 항목을 수정·커밋하고, 이동 예산 경계 회귀 및 시작/UI/라운드/중단·저장 검사를 재실행한 뒤 메인에 푸시한다. 현재 검토에서는 코드 수정 및 원격 푸시를 하지 않았다.
+
+## 후속 수정 — 2026-09-14
+
+사용자의 수정·푸시 승인 및 아이소매트릭 선택 테두리 요청에 따라 다음을 변경했다.
+
+- `valid_phase`를 명시적 bool로 선언하고 조건 그룹을 정리했다. 추가로 발견된 `round_order_bar.gd`의 내장 `Skin` 클래스명 충돌을 `PixelSkin` 별칭으로 해결했다.
+- 중단된 계획 편집은 원래 총 이동 예산과 사용량을 유지하고 경로 진행 인덱스만 초기화한다. 반복 편집으로 0 잔여 예산이 1로 늘어나지 않는다. 상태 스키마는 변경하지 않았다.
+- 기존 미커밋 UI 변경을 보존하면서 순서창·진행·동료 선택을 통합했다. 전투 요약에 필요한 `type_label`, `automatic_suggestion`, `reason`을 round overlay에 추가했다.
+- 적 조회와 아군 공격 계획 편집을 구별했다. 공격 선택 상태가 아닌 적 터치는 계획 revision을 바꾸지 않는다.
+- 캐릭터 선택 테두리는 아이소매트릭 타일 polygon의 네 변으로 그린다. 기존 노란색/얇은 선을 유지하고 이동 보간 중심에 맞춰 이동한다. 평면 모드의 모서리 괄호 표시는 유지한다.
+- 회귀 검사 추가: `round_combat_interruptions.gd`의 예산 소진 후 반복 편집/저장 복구, `tactical_overlay_regression.gd`의 마름모 선택/보간/평면 호환, `round_combat_ui.gd`의 360/390폭 화면·순서창·적 조회·동료 계획 수정·진행 연결.
+
+확인된 통과: `solo_start_acceptance.gd`, `tactical_overlay_regression.gd`, `round_combat_interruptions.gd`, `round_combat_advanced.gd`. 실제 휴대전화 시각·터치 검사와 100라운드 성능 측정은 이번 수정 범위에서 완료했다고 주장하지 않는다.
+
+최종 추가 확인: `round_combat_ui.gd` PASS(360×800 / 390×844 headless 입력 연결), Web release 내보내기 성공, `/tmp/round-ui-web-check`에서 원본 프로젝트 없이 `--main-pack index.pck --quit-after 5` 실행 성공. 최종 실행 로그에 스크립트 오류가 없음을 확인했다. 초기 UI 검사에서 나온 추가 필드 누락은 보완 후 새 프로세스로 재검사했다.

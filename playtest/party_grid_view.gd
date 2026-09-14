@@ -1735,11 +1735,14 @@ func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		var cell_rect:=world_cell_rect(position)
 		var visual_center:=actor_visual_center(entity_id,sample_time_ms)
 		var visual_rect:=Rect2(visual_center-cell_rect.size*0.5,cell_rect.size)
+		var segments:Array=AsciiStyleScript.bracket_segments(visual_rect)
+		if uses_tactical_projection():
+			segments=selection_diamond_segments(position,visual_center)
 		rows.append({"kind":"CONTROLLED" if entity_id==selected_actor_id else "TARGET","entity_id":entity_id,
 			"position":[position.x,position.y],"visual_center":visual_center,
 			"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70",
 			"line_width":1.25 if entity_id==selected_actor_id else 2.0,
-			"segments":AsciiStyleScript.bracket_segments(visual_rect)})
+			"segments":segments})
 	for ghost in _ghosts:
 		var position:=_position_from_actor(ghost)
 		if not is_world_cell_visible(position):continue
@@ -3949,6 +3952,14 @@ func _draw_exploration_companion_follow_plan()->void:
 				maxi(8,int(cell_size_px()*0.25)),Color(str(risk_badge.color_hex)))
 
 
+func selection_diamond_segments(position:Vector2i,visual_center:Vector2)->Array:
+	var polygon:=cell_overlay_polygon(position)
+	var offset:=visual_center-world_to_pixel_center(position)
+	var segments:Array=[]
+	for i in range(polygon.size()):
+		segments.append([polygon[i]+offset,polygon[(i+1)%polygon.size()]+offset])
+	return segments
+
 func _draw_actor_selection_overlays(sample_time_ms:int=-1)->void:
 	for row in selection_overlay_draw_specs(sample_time_ms):
 		var color:=Color(str(row.color_hex))
@@ -4127,6 +4138,14 @@ func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)
 
 func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,color:Color)->void:
 	var action:=str(spec.action_type)
+	if intent.get("path",[]) is Array and not intent.get("path",[]).is_empty():
+		var previous:Vector2i=origin
+		for raw in intent.path:
+			var cell:=_array_to_world_position(raw)
+			if _cell_allows_overlay(cell):
+				_draw_cell_overlay(cell,Color(color,color.a*0.08),color,1.0)
+				if _cell_allows_overlay(previous):draw_line(world_to_pixel_center(previous),world_to_pixel_center(cell),color,1.2,true)
+			previous=cell
 	var target:=origin
 	if action=="MOVE":target=_array_to_world_position(intent.get("destination",[]))
 	elif action in ["MELEE","SKILL"]:target=_array_to_world_position(intent.get("target_position",[]))

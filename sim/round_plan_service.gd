@@ -74,12 +74,13 @@ static func edit(sim,actor_id:int,draft:Dictionary,revision:int)->Dictionary:
 		budget+=Rules.terrain_cost(w,Vector2i(cell[0],cell[1]))
 	if budget>int(candidate.move_budget):return reject("round_move_budget")
 	# Already committed prefix movement cannot be edited or replayed. A new
-	# interrupted draft starts at the actor's current position with remaining budget.
+	# interrupted draft starts at the current position, but keeps the original
+	# total budget and spent ledger. Repeated edits must never refund movement.
 	if r.phase=="INTERRUPTED":
 		var spent:int=int(r.slot_spent.get(key,0))
-		if budget>maxi(0,int(r.plans[key].move_budget)-spent):return reject("round_move_budget")
-		candidate.move_budget=maxi(1,int(r.plans[key].move_budget)-spent)
-		r.slot_progress[key]=0;r.slot_spent[key]=0
+		candidate.move_budget=int(r.plans[key].move_budget)
+		if budget>maxi(0,mini(int(candidate.move_budget),Rules.move_budget(w,actor_id))-spent):return reject("round_move_budget")
+		r.slot_progress[key]=0
 	r.plans[key]=candidate;r.plan_revision=int(r.plan_revision)+1
 	return {"accepted":true,"reason":"ok","plan_revision":int(r.plan_revision)}
 

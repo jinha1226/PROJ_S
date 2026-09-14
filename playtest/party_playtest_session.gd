@@ -10414,6 +10414,8 @@ func round_overlays()->Array[Dictionary]:
 		rows.append({"actor_id":row.actor_id,"actor_name":row.name,"role":"COMPANION" if row.ally else "ENEMY",
 			"from_position":plan.origin,"destination":plan.destination,"target_position":plan.target_cell,
 			"target_id":int(plan.action.target_id),"type":plan.action.type if plan.path.is_empty() else "MOVE",
+			"type_label":"이동" if not plan.path.is_empty() else str({"HOLD":"대기","MELEE":"공격","SKILL":"이능"}.get(plan.action.type,plan.action.type)),
+			"automatic_suggestion":null,"reason":"공개된 계획대로 실행",
 			"skill_id":str(plan.action.get("skill_id","")),"source":plan.source,"source_label":"예정",
 			"source_color":"#75c8ff" if row.ally else "#ff6655","opacity":0.85 if row.actor_id==_round_edit_actor_id else 0.3,
 			"line_style":"SOLID","marker_style":"SQUARE","draw_connector":true,"approximate":false,
