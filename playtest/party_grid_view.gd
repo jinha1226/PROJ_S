@@ -70,6 +70,7 @@ var view_origin := Vector2i.ZERO
 var _room_bounds:=Rect2i()
 var _room_exits:Array=[]
 var _room_biome:="dungeon"
+var _room_name:=""
 var _graphics_mode := GRAPHICS_MODE_FLAT_2D
 var _terrain_theme_floor_index:=1
 var _cells: Dictionary = {}
@@ -244,6 +245,7 @@ func _exit_tree()->void:
 
 var _ability_markers:Array=[]
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
+	_room_name=str(observation.get("room_name",""))
 	var next_biome:String=str(observation.get("room_biome","dungeon"))
 	if next_biome!=_room_biome:
 		_room_biome=next_biome
@@ -2512,9 +2514,10 @@ func _draw() -> void:
 	for id in _actor_emphasis:
 		if actor_emphasis_active(int(id)):
 			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)
-	if not battle_notice.is_empty():
+	var heading:String=battle_notice if not battle_notice.is_empty() else _room_name
+	if not heading.is_empty():
 		draw_rect(Rect2(2,2,maxf(1,size.x-4),24),Color(0.04,0.07,0.09,0.9))
-		draw_string(get_theme_font("font"),Vector2(6,19),battle_notice,HORIZONTAL_ALIGNMENT_CENTER,
+		draw_string(get_theme_font("font"),Vector2(6,19),heading,HORIZONTAL_ALIGNMENT_CENTER,
 			maxf(1,size.x-12),12,Color("#ffe3a0"))
 
 func _draw_world_with_emphasis()->void:

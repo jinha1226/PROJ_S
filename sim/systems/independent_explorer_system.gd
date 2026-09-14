@@ -38,6 +38,8 @@ static func process_tick(sim,step_index:int)->bool:
 		if life!="ACTIVE":
 			row["state"]=life;row["activity"]=LABELS.get(life,life)
 			row["position"]=[entity.position.x,entity.position.y];changed=true;continue
+		# The authored encounter stays at its shelter until explicitly recruited.
+		if "first_floor_event_npc" in entity.tags:continue
 		var distant:=distance(entity.position,hero.position)>16
 		if member.busy_until>world.world_time or distant and not expanded \
 				or not world.can_act(id,world.world_time):continue

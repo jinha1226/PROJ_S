@@ -818,6 +818,15 @@ func company_member_ids()->Array:
 
 func _initial_ground_item_rows(candidate,hero_position:Vector2i,
 		map_layout:Dictionary)->Array:
+	if map_layout.get("ruleset_id","")=="nine-room-dungeon-v1":
+		var rows:Array=[]
+		var content=preload("res://sim/first_floor_stages.gd")
+		for id in range(9):
+			var spec:Dictionary=content.room(id)
+			for index in range(spec.loot.size()):
+				var drop:Dictionary=spec.loot[index]
+				rows.append({"position":[id%3*8+drop.cell[0],id/3*8+drop.cell[1]],"item":ItemScript.new("F1_ROOM_%d_LOOT_%d"%[id,index],drop.item,drop.quantity).to_dict()})
+		return rows
 	var blocked:Array=map_layout.get("door_positions",[]).duplicate()
 	blocked.append(map_layout.get("entry_position",Vector2i(-1,-1)))
 	blocked.append(map_layout.get("exit_position",Vector2i(-1,-1)))
@@ -2068,7 +2077,9 @@ func _ensure_town_guild_candidates()->bool:
 	var people:Array=preload("res://sim/town_population_rules.gd").PEOPLE
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if randomized:people=preload("res://playtest/seeded_roster.gd").population(world_seed,personality_seed)
+	if room_enabled():people=[{"name":"레아","species":"human","weapon":"WEAPON_SHORT_SWORD"}]
 	var candidate_count:int=people.size() if persistent_town else GUILD_CANDIDATE_COUNT
+	if room_enabled():candidate_count=1
 	for slot in range(candidate_count):
 		var species_id:=str(species_pool[(start+slot)%species_pool.size()])
 		if persistent_town:species_id=preload("res://sim/living_expedition_rules.gd").species(world_seed,slot) \
@@ -2085,6 +2096,7 @@ func _ensure_town_guild_candidates()->bool:
 				"guild_candidate"],species_id,"party")
 		if entity==null:
 			sim=SimulatorScript.from_snapshot(rollback);return false
+		if room_enabled():entity.tags.append("first_floor_event_npc")
 		state=sim.world.party_encounter
 		state.party_member_ids.append(entity.id);state.party_member_ids.sort()
 		state.member_rows[entity.id]=MemberScript.new(entity.id,0,"COMPANION",
@@ -3232,6 +3244,7 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 
 func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 		layout:Dictionary)->void:
+	if room_enabled() and floor_index==1:return
 	var instance_id:="GROUND_FLOOR%d_RATION"%floor_index
 	if sim.world.item_state.ground_items.item(instance_id)!=null:return
 	var blocked:Array=layout.get("door_positions",[]).duplicate()
@@ -4209,6 +4222,7 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 		var room:Dictionary=room_status()
 		grid_dto["room_bounds"]=room.bounds;grid_dto["room_exits"]=room.exits
 		grid_dto["room_biome"]=room.biome
+		grid_dto["room_name"]=room.get("name","")
 	PerfProbeScript.end("obs.rich",_pg)
 	var _pn:=PerfProbeScript.begin()
 	var minimap_dto:Dictionary=(visible_room_minimap() if room_enabled() else _party_minimap_observation(context)) if include_minimap else {}
@@ -8314,6 +8328,11 @@ func load_session_json(encoded: String) -> Dictionary:
 			or not Int64CodecScript.is_canonical(decoded.get("personality_seed")) \
 			or not decoded.get("journal") is Array or decoded.journal.size() > 10000:
 		return _rejection_dto("invalid_party_session_wire")
+	var saved_encounter:Variant=decoded.snapshot.get("party_encounter",{})
+	if not saved_encounter is Dictionary:return _rejection_dto("invalid_party_session_wire")
+	var saved_rooms:Variant=saved_encounter.get("nine_room_floor",{})
+	if saved_rooms is Dictionary and not saved_rooms.is_empty() and saved_rooms.get("generator_version",0)!=preload("res://sim/nine_room_generator.gd").VERSION:
+		return _feedback_dto({"accepted":false,"reason":"room_layout_version_changed","message":"1층의 9개 방 구성이 변경되어 새 게임이 필요합니다. 이전 저장 파일은 보존됩니다."})
 	var compatible_balance:=false
 	var saved_entities:Variant=decoded.snapshot.get("entities",[])
 	if saved_entities is Array:
@@ -10585,11 +10604,12 @@ func room_status()->Dictionary:
 	var rules=preload("res://sim/room_transition_rules.gd");var s:Dictionary=sim.world.party_encounter.nine_room_floor
 	var area:Rect2i=rules.bounds(sim.world);var exits:Array=[]
 	var biome:String=str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].get("biome","dungeon"))
+	var room_name:String=str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].get("template_name",""))
 	for p in rules.portals(sim.world):
 		if int(s.active_room_id) not in [int(p.a),int(p.b)]:continue
 		var cell:Vector2i=rules.cell(sim.world,p,int(s.active_room_id))
 		exits.append({"portal_id":p.portal_id,"cell":[cell.x,cell.y],"target_room":int(p.b) if int(p.a)==int(s.active_room_id) else int(p.a)})
-	return {"enabled":true,"biome":biome,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
+	return {"enabled":true,"name":room_name,"biome":biome,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
 
 func assess_room_exit(actor_id:int,portal_id:String)->Dictionary:
 	return preload("res://sim/room_transition_rules.gd").assess(sim.world,actor_id,portal_id,true) if room_enabled() else _rejection_dto("room_exit_unavailable")
@@ -10607,7 +10627,7 @@ func request_room_exit(actor_id:int,portal_id:String,expected_revision:int)->Dic
 	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 	_clear_draft();_advance_exile_world()
 	var dto:=_feedback_dto({"accepted":true,"reason":result.reason,"message":"옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))})
-	dto["message"]="옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))
+	dto["message"]=("%s · %s"%[room_status().get("name","옆방"),preload("res://sim/room_transition_rules.gd").current_floor(sim.world).rooms[int(sim.world.party_encounter.nine_room_floor.active_room_id)].get("hint","")]) if result.get("transitioned",false) else room_exit_message(str(result.reason))
 	dto["room_result"]=result;return dto
 
 func resolve_pending_exit()->Dictionary:

@@ -6,6 +6,8 @@ func check(ok:bool,label:String)->void:
 	if not ok:failures.append(label);printerr("FAIL ",label)
 func _init():call_deferred("run")
 func run():
+	var low_dex_world:Dictionary={"entities":{1:{"species_id":"dwarf","tags":[]}},"party_encounter":null}
+	check(preload("res://playtest/dungeon_visitors_service.gd").starter_weapon(low_dex_world,1)=="WEAPON_DCSS_CLUB","low dex NPC receives compatible club")
 	for seed in [40,41,44]:
 		var s=Session.new(seed,20260828,Session.DUO_SCENARIO_ID,"human",true)
 		check(s.start_new_run_with_species("human",true,true).accepted,"select species")
@@ -17,7 +19,6 @@ func run():
 		check(Items.equipped_requirements_error(s.sim.world).is_empty(),"all NPC equipment legal")
 		check(s.sim.world.world_state_error().is_empty(),"world audit")
 		if seed==40:
-			check(s.sim.world.events.any(func(e):return e.type=="item.granted" and e.data.get("definition_id")=="WEAPON_DCSS_CLUB"),"low dex NPC receives compatible club")
 			var saved:String=s.save_session_json();var clone=Session.new()
 			var loaded:Dictionary=clone.load_session_json(saved)
 			check(loaded.accepted,"startup journal replay: "+str(loaded.get("reason","")))

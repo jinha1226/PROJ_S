@@ -45,7 +45,7 @@ func _init() -> void:
 			var ids: Dictionary = {}
 			for room in generated.rooms:
 				if room.role == "COMBAT": ids[room.template_id] = true
-			check(ids.size() == 3, "all three templates per floor")
+			check(ids.size() == (4 if floor_index==1 else 3), "four authored first-floor combats / three second-floor templates")
 	for failure in failures: printerr(failure)
 	print("HANDCRAFTED_ROOMS ", "PASS" if failures.is_empty() else "FAIL")
 	quit(0 if failures.is_empty() else 1)

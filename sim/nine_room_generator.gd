@@ -3,7 +3,8 @@ const Loader=preload("res://sim/json_content_loader.gd")
 const Handcrafted=preload("res://sim/handcrafted_room_templates.gd")
 static var CONFIG:Dictionary=Loader.load_document("res://data/content/nine_room_dungeon.json")
 const RULESET_ID:="nine-room-dungeon-v1"
-const VERSION:=1
+const VERSION:=2
+const FirstFloor=preload("res://sim/first_floor_stages.gd")
 const SIZE:=8
 static var generation_count:=0
 
@@ -47,6 +48,9 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 	var roles:Dictionary={4:"SAFE",stairs:"STAIRS",remaining[0]:"SAFE"}
 	for i in range(1,3):roles[remaining[i]]="HAZARD"
 	for i in range(3,7):roles[remaining[i]]="COMBAT"
+	if floor_index==1:
+		edges=FirstFloor.CONTENT.edges.duplicate(true);stairs=1
+		for id in range(9):roles[id]=FirstFloor.room(id).role
 	var terrain:Array[String]=[];terrain.resize(24*24);terrain.fill("stone_floor")
 	var rooms:Array=[];var portals:Array=[];var enemies:Array=[];var supply:Array=[]
 	var doors:Array=[];var centers:Array=[]
@@ -70,8 +74,13 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 	var combat_index:=0
 	for room in rooms:
 		var origin:=Vector2i(room.bounds[0],room.bounds[1])
+		if floor_index==1:
+			FirstFloor.stamp(terrain,origin,room.room_id)
+			var authored:Dictionary=FirstFloor.room(room.room_id)
+			room["template_id"]=authored.id;room["template_name"]=authored.name
+			room["biome"]=authored.biome;room["hint"]=authored.hint
 		if room.role=="COMBAT":
-			var template:Dictionary=Handcrafted.stamp(terrain,24,origin,combat_index+floor_index-1)
+			var template:Dictionary=FirstFloor.room(room.room_id) if floor_index==1 else Handcrafted.stamp(terrain,24,origin,combat_index+floor_index-1)
 			combat_index+=1
 			room["template_id"]=template.id
 			room["template_name"]=template.name
@@ -82,7 +91,8 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 				var p:Vector2i=origin+Vector2i(cell[0],cell[1])
 				enemies.append({"position":p,"species_id":species[i],"group_id":"ROOM_%d"%room.room_id,"route_id":"ROOM_%d"%room.room_id})
 		elif room.role=="HAZARD":
-			for p in [Vector2i(4,4),Vector2i(4,5),Vector2i(5,4)]:terrain[(origin.y+p.y)*24+origin.x+p.x]="shallow_water" if floor_index==1 else "rubble"
+			if floor_index!=1:
+				for p in [Vector2i(4,4),Vector2i(4,5),Vector2i(5,4)]:terrain[(origin.y+p.y)*24+origin.x+p.x]="rubble"
 			supply.append(origin+Vector2i(5,5))
 	var entry:=Vector2i(11,11);var exit:Vector2i=centers[stairs]
 	return {"schema_version":1,"ruleset_id":RULESET_ID,"seed":seed,"floor_index":floor_index,"floor_label":"%d층 · 아홉 구역"%floor_index,"theme_id":"ERODED_BORDER_FOREST" if floor_index==1 else "ASHEN_FOUNDRY","width":24,"height":24,"terrain":terrain,"rooms":rooms,"portals":portals,"edges":edges,"door_positions":doors,"room_centers":centers,"entry_position":entry,"hero_position":entry,"anchor_portal_position":entry,"transition_portal_position":exit,"exit_position":exit,"enemy_roster":enemies,"runtime_enemy_roster":enemies.duplicate(true),"enemy_positions":enemies.map(func(e):return e.position),"supply_positions":supply,"visitor_positions":[Vector2i(12,12)],"landmarks":[],"regions":[],"field_regions":[],"routes":[],"floor_hazards":[],"anchor_portal_clear_radius":3,"planned_contact_count":4,"planned_enemy_count":enemies.size()}
@@ -105,6 +115,7 @@ static func world_layout(seed:int,selected_floor:int=1)->Dictionary:
 		var translated:Dictionary=preload("res://playtest/campaign_world_map.gd")._translated_floor(compatible(generated),offset)
 		translated["nine_rooms"]=generated.rooms.duplicate(true);translated["nine_portals"]=generated.portals.duplicate(true)
 		translated["nine_offset"]=[offset.x,offset.y]
+		if floor==1:translated["visitor_positions"]=[FirstFloor.npc_position()]
 		aggregate.campaign_floors[floor]=translated
 	return preload("res://playtest/campaign_world_map.gd").select_floor(aggregate,selected_floor)
 
