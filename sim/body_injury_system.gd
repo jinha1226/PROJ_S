@@ -49,6 +49,39 @@ static func _assess_packet_at_part(body,attack:Dictionary,armor:Dictionary,sourc
 	var resolution:Dictionary=ResolverScript.resolve(body,template,part_id,attack,armor)
 	if not bool(resolution.get("accepted",false)):
 		return {"accepted":false,"reason":str(resolution.get("reason","body_resolution_failed"))}
+	return _plan_from_resolution(body,resolution,source_id,part_id,attack,armor)
+
+# Production injury starts from HP actually lost, never pre-armour force.
+static func assess_hp_loss(body,form:String,hp_loss:int,max_hp:int,key:String,target_id:int,part_id:String="")->Dictionary:
+	if body==null or not body.validation_error().is_empty() or target_id!=body.entity_id \
+			or hp_loss<0 or max_hp<=0 or hp_loss>max_hp or key.length()!=64 \
+			or form not in ["SLASH","PIERCE","IMPACT","FIRE","ELECTRIC"]:
+		return {"accepted":false,"reason":"invalid_hp_injury_input"}
+	if part_id.is_empty():part_id=CombatRulesScript.select_part(body,key,target_id)
+	if part_id not in BodyRegistryScript.PART_IDS or body.part_condition(part_id)=="SEVERED":
+		return {"accepted":false,"reason":"invalid_hp_injury_part"}
+	var skin:int=body.body_scalars.skin_toughness
+	var muscle:int=body.body_scalars.soft_tissue_cushioning
+	var bone:int=body.body_scalars.bone_fracture_threshold
+	# Coefficients are per 1000; a 10% max-HP hit starts at 100 integrity.
+	var weights:Array={"SLASH":[2000,1000,250],"PIERCE":[1200,1600,500],
+		"IMPACT":[500,1000,2000],"FIRE":[1600,800,0],"ELECTRIC":[300,1000,0]}[form]
+	var resistance:Array=[skin,skin,bone] if form in ["SLASH","PIERCE"] else \
+		[muscle,muscle,muscle+bone] if form=="IMPACT" else [0,0,0]
+	var losses:Array=[]
+	for i in range(3):
+		# One final division avoids prematurely rounding small HP fractions.
+		losses.append(hp_loss*int(weights[i])*100/(max_hp*(100+int(resistance[i]))))
+	var resolution:={"accepted":true,"form":form,"damage":losses[0],"depth":losses[1],
+		"fracture":losses[2],"bleed":0,"shock":0}
+	var plan:=_plan_from_resolution(body,resolution,form,part_id,{}, {})
+	plan["ruleset_id"]="hp-derived-injury-v1"
+	plan["body_combat_ruleset_id"]="hp-derived-injury-v1"
+	plan["hp_loss"]=hp_loss;plan["max_hp"]=max_hp
+	return plan
+
+static func _plan_from_resolution(body,resolution:Dictionary,source_id:String,part_id:String,
+		attack:Dictionary,armor:Dictionary)->Dictionary:
 	var part_index:int=BodyRegistryScript.PART_IDS.find(part_id)
 	var layer_damage:Dictionary={};var projected_integrity:Dictionary={}
 	var resolution_keys:={"SKIN":"damage","SOFT_TISSUE":"depth","BONE":"fracture"}
@@ -84,7 +117,7 @@ static func _assess_packet_at_part(body,attack:Dictionary,armor:Dictionary,sourc
 			or not body.wounds.is_empty() and int(body.wounds[-1].wound_id)>=MAX_SMALL_VALUE):
 		return {"accepted":false,"reason":"body_injury_capacity_exhausted"}
 	return {"accepted":true,"reason":"","ruleset_id":RULESET_ID,
-		"body_combat_ruleset_id":CombatRulesScript.RULESET_ID,"target_id":target_id,
+		"body_combat_ruleset_id":CombatRulesScript.RULESET_ID,"target_id":body.entity_id,
 		"weapon_id":source_id,"part_id":part_id,
 		"attack_packet":attack,"armor_packet":armor,"resolution":resolution,
 		"layer_damage":layer_damage,"projected_integrity":projected_integrity,

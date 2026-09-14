@@ -93,7 +93,28 @@ func check_field_combat()->void:
 		if command.type=="MELEE":attacks+=1
 		if attacks>=3:break
 	check(attacks>=3,"real field melee attacks execute")
-	check(s.sim.world.world_state_error().is_empty(),"real combat world audit")
+	var audit_error:String=s.sim.world.world_state_error()
+	check(audit_error.is_empty(),"real combat world audit: "+audit_error)
+	if not audit_error.is_empty():
+		for body in s.sim.world.body_states.values():
+			for wound in body.wounds:
+				var source=s.sim.world.event_by_id(wound.source_event_id)
+				var attack=s.sim.world.event_by_id(source.cause_id)
+				if attack.type not in ["action.melee_attack","action.skill","environment.explosion_impact"]:
+					printerr("WOUND SOURCE ",body.entity_id," ",source.to_dict()," ",attack.to_dict())
+		return
+	var audited_wounds:=0
+	for target in s.sim.world.body_states:
+		var body=s.sim.world.body_states[target]
+		for wound in body.wounds:
+			var source=s.sim.world.event_by_id(int(wound.source_event_id))
+			var plan:Dictionary=preload("res://sim/body_injury_system.gd").assess_hp_loss(body,str(wound.form),
+				int(source.magnitude),s.sim.world.entities[target].max_health,"audit".sha256_text(),target,str(wound.part_id))
+			check(plan.accepted,"live wound can be derived from actual HP loss")
+			if plan.accepted:
+				check(int(wound.severity)==int(plan.resolution.damage)+int(plan.resolution.depth)+int(plan.resolution.fracture),"live wound matches HP-derived formula")
+			audited_wounds+=1
+	check(audited_wounds>0,"real combat creates HP-derived wounds")
 	var loaded=Session.new();var result:Dictionary=loaded.load_session_json(s.save_session_json())
 	check(result.accepted,"real combat journal replay: "+str(result.get("reason","")))
 	if result.accepted:check(loaded.sim.snapshot()==s.sim.snapshot(),"real combat replay exact")

@@ -86,7 +86,7 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
-const BALANCE_ID := "dcss-balance-0.34.1-body-penalties-v4"
+const BALANCE_ID := "dcss-balance-0.34.1-hp-injury-v5"
 const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"

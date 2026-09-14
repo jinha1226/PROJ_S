@@ -3068,10 +3068,15 @@ func _body_history_error(body)->String:
 				or source.data.get("damage_type")!=expected_type:
 			return "invalid_body_wound_source"
 		var attack=event_by_id(source.cause_id)
+		# Physical monster abilities now produce injuries from their canonical
+		# HP damage too. Their impact chain is audited by MonsterRuntime.
+		var hp_ability:bool=preload("res://sim/body_penalty_rules.gd").enabled(self) \
+			and attack!=null and attack.type=="ability.impact" \
+			and attack.data.get("schema_version")==1 and attack.data.get("kind")=="physical"
 		if attack==null \
 				or (expected_type=="physical" and (attack.target_id!=body.entity_id \
 					or attack.type not in ["action.melee_attack","action.skill",
-						"environment.explosion_impact"] \
+						"environment.explosion_impact"] and not hp_ability \
 					or attack.type=="action.melee_attack" and attack.data.get("outcome")!="HIT" \
 					or attack.type=="action.skill" and attack.data.get("ruleset_id")!="party-active-skills-v1")):
 			return "invalid_body_wound_attack_source"
