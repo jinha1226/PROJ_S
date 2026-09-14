@@ -4,18 +4,17 @@
 <style>
 *{box-sizing:border-box}body{margin:0;background:#151c23;color:#e4e9e9;font:16px system-ui,sans-serif;padding:20px;max-width:1200px;margin:auto}
 h1{font-size:24px}p{color:#afbec3;line-height:1.65}nav{display:flex;gap:8px;flex-wrap:wrap}button{background:#27333c;color:inherit;border:1px solid #657581;border-radius:8px;padding:12px;cursor:pointer}button[aria-pressed=true]{background:#385849;border-color:#9dccad}
-canvas{width:100%;max-width:900px;display:block;margin:auto;image-rendering:pixelated}img{width:100%;background:#202830;border-radius:12px;image-rendering:pixelated}small{color:#afbec3}a{color:#a4d9c4}
+canvas{width:100%;max-width:760px;display:block;margin:auto}img{width:100%;background:#202830;border-radius:12px}small{color:#afbec3}
 </style>
-<h1>8×8 전투 구역 · 64픽셀</h1>
-<p>64×64 타일 버퍼 · 64×32 발판 · 보간 없는 확대 · 테마별 바닥 4종. <a href="preview-detailed.html">이전 고밀도 버전 비교</a></p>
+<h1>8×8 전투 구역 3종</h1>
 <p>실제 8×8 배치 데이터에 생성 타일을 조합한 HTML 미리보기입니다. 게임 엔진의 그래픽 변경은 아닙니다.</p>
 <nav id="tabs"></nav><h2 id="name"></h2><p id="design"></p>
 <label><input id="markers" type="checkbox" checked> 입구·적·격자 표시</label>
 <p id="asset-status" role="status">타일 불러오는 중…</p>
 <canvas width="900" height="570" aria-label="아이소매트릭 맵 배치도"></canvas>
 <p>붉은 표식: 적 시작 위치 · 청록 테두리: 연결 가능한 입구 · 솟은 블록: 통행 차단 · 파랑: 얕은 물 · 점무늬: 잔해</p>
-<h2>64픽셀 스타일 생성 원본</h2><p>위부터 던전·동굴·지하 숲. 왼쪽 네 칸은 바닥 변형, 다섯째는 장애물, 여섯째는 물입니다. 생성 원본은 고해상도이며 HTML이 각 타일을 실제 64×64 버퍼에 래스터화해 사용합니다. 실제 게임에는 아직 적용하지 않았습니다.</p>
-<img src="fantasy-terrain-pixel64-source.png" alt="굵은 픽셀 스타일의 세 테마 타일 18종">
+<h2>타일 아트 원본</h2><p>위부터 던전·동굴·지하 숲. 아래 원본의 바닥과 장애물을 잘라 그리며 발판을 2:1 격자에 맞췄습니다. 잔해는 낮은 바닥 표식으로 유지합니다. 실제 게임에는 아직 적용하지 않았습니다.</p>
+<img src="fantasy-terrain-source.png" alt="세 테마의 모듈형 타일 18종">
 <script>
 const content={
   "schema_version": 1,
@@ -48,29 +47,18 @@ const atlas=new Image();
 let selected=0,artReady=false;
 // Hand-measured source anchors; the original PNG is never altered.
 // Floor top diamonds differ in aspect ratio from the engine's 2:1 grid.
-const centers=[151,445,740,1035,1330,1624];
-const floorTops=[110,365,638],floorHeights=[150,150,150];
-const objectTops=[48,320,552];
-const tileCache=new Map();
-function cachedTile(biome,column,obstacle){
- const key=`${biome}:${column}:${obstacle}`;
- if(tileCache.has(key))return tileCache.get(key);
- const tile=document.createElement('canvas');tile.width=64;tile.height=64;
- const pen=tile.getContext('2d');pen.imageSmoothingEnabled=false;
- const top=floorTops[biome],height=floorHeights[biome],sy=obstacle?objectTops[biome]:top;
- const outline=obstacle?[[0,48],[0,0],[64,0],[64,48],[32,64]]:[[32,32],[64,48],[32,64],[0,48]];
- pen.beginPath();outline.forEach(([x,y],i)=>i?pen.lineTo(x,y):pen.moveTo(x,y));pen.closePath();pen.clip();
- pen.drawImage(atlas,centers[column]-136,sy,272,top+height-sy,0,32+(sy-top)*32/height,64,(top+height-sy)*32/height);
- tileCache.set(key,tile);return tile;
-}
-function floorVariant(x,y,biome){
- // Stable spatial variation: revisiting or toggling UI never shuffles art.
- const n=((x*73856093)^(y*19349663)^((biome+1)*83492791))>>>0;
- const roll=n%10;return roll<5?0:roll<7?1:roll<9?3:2;
-}
+const centers=[149,445,740,1036,1332,1628];
+const floorTops=[83,359,636],floorHeights=[166,166,166];
+const objectTops=[36,308,554];
 function texture(x,y,biome,column,obstacle=false){
- const [a,b]=project(x,y);
- ctx.drawImage(cachedTile(biome,column,obstacle),a-46,b-69,92,92);
+ const [a,b]=project(x,y),cx=centers[column],top=floorTops[biome],height=floorHeights[biome];
+ ctx.save();ctx.beginPath();
+ const outline=obstacle?[[a-46,b],[a-46,b-85],[a+46,b-85],[a+46,b],[a,b+23]]:diamond(x,y);
+ outline.forEach(([u,v],i)=>i?ctx.lineTo(u,v):ctx.moveTo(u,v));ctx.closePath();ctx.clip();
+ const sy=obstacle?objectTops[biome]:top;
+ const sh=top+height-sy;
+ ctx.drawImage(atlas,cx-136,sy,272,sh,a-46,b-23+(sy-top)*46/height,92,sh*46/height);
+ ctx.restore();
 }
 const palettes=[['#64777d','#394953'],['#716856','#403e3e'],['#536a43','#303f33']];
 const project=(x,y)=>[450+(x-y)*46,83+(x+y)*23];
@@ -85,12 +73,12 @@ document.querySelectorAll('button').forEach((b,i)=>b.setAttribute('aria-pressed'
 for(let depth=0;depth<=14;depth++)for(let y=0;y<8;y++){let x=depth-y;if(x<0||x>7)continue;
 const kind=t.rows[y][x],d=diamond(x,y);poly([d[3],d[2],d[1],[d[1][0],d[1][1]+12],[d[2][0],d[2][1]+12],[d[3][0],d[3][1]+12]],p[1]);
 poly(d,kind==='~'?'#367482':p[0]);
-if(artReady)texture(x,y,index,kind==='~'?5:kind==='r'?2:floorVariant(x,y,index));
+if(artReady)texture(x,y,index,kind==='~'?4:kind==='r'?1:(x*3+y)%5===0?1:0);
 }
 // Draw obstacles after all floors, back to front; then tactical overlays last.
 for(let depth=0;depth<=14;depth++)for(let y=0;y<8;y++){let x=depth-y;if(x<0||x>7)continue;
 const kind=t.rows[y][x];
-if(kind==='#'){if(artReady)texture(x,y,index,4,true);else{const d=diamond(x,y),top=diamond(x,y,34);poly([top[3],top[2],d[2],d[3]],p[1]);poly([top[2],top[1],d[1],d[2]],'#283239');poly(top,p[0]);}}
+if(kind==='#'){if(artReady)texture(x,y,index,3,true);else{const d=diamond(x,y),top=diamond(x,y,34);poly([top[3],top[2],d[2],d[3]],p[1]);poly([top[2],top[1],d[1],d[2]],'#283239');poly(top,p[0]);}}
 if(kind==='r'){const [a,b]=project(x,y);for(let i=0;i<4;i++)poly([[a-20+i*10,b-5],[a-15+i*10,b-10],[a-10+i*10,b-5],[a-15+i*10,b]],p[1]);}
 }
 if(document.querySelector('#markers').checked)for(let y=0;y<8;y++)for(let x=0;x<8;x++){
@@ -101,7 +89,7 @@ if(t.enemy_cells.some(e=>e[0]===x&&e[1]===y)){const [a,b]=project(x,y);ctx.fillS
 }
 content.templates.forEach((t,i)=>{const b=document.createElement('button');b.textContent=t.name;b.onclick=()=>render(i);document.querySelector('#tabs').append(b);});render(0);
 document.querySelector('#markers').onchange=()=>render(selected);
-atlas.onload=()=>{artReady=true;tileCache.clear();document.querySelector('#asset-status').textContent='64픽셀 타일 적용 완료 · 8×8 / 64칸 · 바닥 4종';render(selected);};
-atlas.onerror=()=>{artReady=false;tileCache.clear();document.querySelector('#asset-status').textContent='타일을 불러오지 못했습니다. HTML 옆에 fantasy-terrain-pixel64-source.png가 있는지 확인하세요. 기본 도식으로 표시합니다.';render(selected);};
-atlas.src='fantasy-terrain-pixel64-source.png';
+atlas.onload=()=>{artReady=true;document.querySelector('#asset-status').textContent='타일 적용 완료 · 8×8 / 64칸';render(selected);};
+atlas.onerror=()=>{document.querySelector('#asset-status').textContent='타일을 불러오지 못했습니다. HTML 옆에 fantasy-terrain-source.png가 있는지 확인하세요. 기본 도식으로 표시합니다.';};
+atlas.src='fantasy-terrain-source.png';
 </script></html>
