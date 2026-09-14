@@ -186,6 +186,7 @@ static func _step_away(sim,id:int,threat:Vector2i,routing:Dictionary)->int:
 	var assessment=sim.movement.assess_move(id,best)
 	var definition:Dictionary=Terrain.definition(str(assessment.terrain_id))
 	var cost:int=int(definition.get("move_time_cost",100))
+	cost=preload("res://sim/body_penalty_rules.gd").move_cost(sim.world,id,cost)
 	if sim.movement.commit_preflighted_move(id,best,str(assessment.terrain_id),cost)==null:
 		routing[old_key]=id;return 0
 	routing["%d:%d"%[best.x,best.y]]=id
@@ -223,6 +224,7 @@ static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictio
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	var definition:Dictionary=Terrain.definition(str(assessment.terrain_id))
 	var cost:=int(definition.get("move_time_cost",100))
+	cost=preload("res://sim/body_penalty_rules.gd").move_cost(world,id,cost)
 	if sim.movement.commit_preflighted_move(id,next,str(assessment.terrain_id),cost)==null:
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	routing["%d:%d"%[next.x,next.y]]=id

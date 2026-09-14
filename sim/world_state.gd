@@ -3128,6 +3128,8 @@ func _melee_action_event_error(event) -> String:
 	var armor_reduction: int = int(weapon_spec.armor_reduction) if weapon_enabled \
 		else mini(int(target_profile.get("armor_flat", 0)), maxi(0, base_damage - 1))
 	var after_armor: int = base_damage - armor_reduction
+	base_damage=preload("res://sim/body_penalty_rules.gd").scale_damage(self,event.actor_id,base_damage,event.id)
+	after_armor=base_damage-armor_reduction
 	var action_keys := ["armor_flat", "armor_reduction", "attack_start_world_time", "attacker_profile_id",
 		"base_damage", "batch_context", "bleed_chance_milli", "bleed_proc_succeeded",
 		"bleed_roll_milli", "combat_ruleset_id", "commitment_hash", "final_damage",
@@ -3330,8 +3332,10 @@ func _melee_defense_action_event_error(event) -> String:
 			ActorStatRulesScript.for_entity(self,event.actor_id),preload("res://sim/field_turn_rules.gd").enabled(self))
 		if weapon_spec.is_empty():return "canonical_combined_weapon_formula_invalid"
 	var base_damage:int=int(weapon_spec.raw_damage) if combined_weapon else int(attacker_profile.power)
+	var uninjured_base_damage:int=base_damage
+	base_damage=preload("res://sim/body_penalty_rules.gd").scale_damage(self,event.actor_id,base_damage,event.id)
 	var armor_reduction:int=int(weapon_spec.armor_reduction) if combined_weapon \
-		else CombatDefenseRulesScript.armor_reduction(base_damage,0,snapshot)
+		else CombatDefenseRulesScript.armor_reduction(uninjured_base_damage,0,snapshot)
 	if armor_reduction < 0 or event.data.base_damage != base_damage \
 			or event.data.armor_reduction != armor_reduction or event.magnitude != base_damage:
 		return "canonical_defense_armor_formula_invalid"

@@ -4634,7 +4634,7 @@ func _on_product_rest()->void:
 	_product_rest_started_time=session.sim.world.world_time
 	_product_rest_due_msec=Time.get_ticks_msec()
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
-	notice_text="휴식 중 · 파티 HP·MP가 다 차면 멈춥니다";action_feedback_text=notice_text
+	notice_text="휴식 중 · HP·MP와 피부·근육·뼈 회복 후 멈춥니다";action_feedback_text=notice_text
 	_request_refresh()
 
 func _rest_needed()->bool:
@@ -4643,8 +4643,19 @@ func _rest_needed()->bool:
 		var entity=world.entities.get(int(id))
 		var member=world.party_encounter.member(int(id))
 		if entity!=null and world.can_act(int(id),world.world_time) and member.presence=="DEPLOYED" \
-				and (int(entity.health)<int(entity.max_health) or member.energy<member.max_energy):return true
+				and (int(entity.health)<int(entity.max_health) or member.energy<member.max_energy \
+				or preload("res://sim/body_penalty_rules.gd").enabled(world) and preload("res://sim/body_penalty_rules.gd").needs_recovery(world.body_states.get(int(id)))):return true
 	return false
+
+func _party_body_integrity_total()->int:
+	var total:=0;var world=session.sim.world
+	for id in world.party_encounter.active_party_member_ids:
+		var body=world.body_states.get(int(id))
+		if body==null:continue
+		for part in body.parts:
+			if part.condition=="SEVERED":continue
+			for layer in part.layers:total+=int(layer.integrity)
+	return total
 
 func _party_health_total()->int:
 	var total:=0;var world=session.sim.world
@@ -4686,6 +4697,7 @@ func _continue_product_rest(expected_generation:int)->void:
 	if stop_reason.is_empty():
 		var before:int=_party_health_total()
 		var energy_before:=_party_energy_total()
+		var body_before:=_party_body_integrity_total()
 		var result:Dictionary=session.commit_exploration_direction(Vector2i.ZERO)
 		if not bool(result.get("accepted",false)):
 			_cancel_product_rest("rest_interrupted")
@@ -4695,7 +4707,7 @@ func _continue_product_rest(expected_generation:int)->void:
 			_record_result(result,true)
 			var after:int=_party_health_total()
 			if after<before:stop_reason="rest_damaged"
-			elif after>before or _party_energy_total()>energy_before:_product_rest_idle_waits=0
+			elif after>before or _party_energy_total()>energy_before or _party_body_integrity_total()>body_before:_product_rest_idle_waits=0
 			else:
 				# Safe recovery pauses while any enemy is alert or the tile is risky;
 				# waiting forever there is not resting.
@@ -4714,12 +4726,12 @@ func _continue_product_rest(expected_generation:int)->void:
 func _cancel_product_rest(reason:String)->void:
 	if not _product_rest_active:return
 	_product_rest_active=false;_product_rest_generation+=1;_product_rest_due_msec=-1
-	notice_text={"rest_complete":"휴식 완료 · 파티 HP·MP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
+	notice_text={"rest_complete":"휴식 완료 · HP·MP와 회복 가능한 조직이 회복됐습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
 		"rest_damaged":"피해를 입어 휴식을 멈췄습니다","rest_starving":"굶주려서 쉴 수 없습니다",
 		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
 		"rest_encounter":"적이 나타나 휴식을 멈췄습니다",
 		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
-	if reason=="rest_no_progress":notice_text="HP·MP 회복 중단 · "+_rest_block_detail()
+	if reason=="rest_no_progress":notice_text="회복 중단 · "+_rest_block_detail()
 	action_feedback_text=notice_text
 	_product_auto_stop_feedback=notice_text
 	_request_refresh()
@@ -5050,7 +5062,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 	emotion_label.clip_text=false;emotion_label.custom_minimum_size.y=32
 	if stress_band in ["ANXIOUS","PANIC"]:effects.add_child(_card_label("불안 · 기술 사용 제한","StatusStressNote",13))
 	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
-	effects.add_child(_card_label("회복력 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",13))
+	effects.add_child(_card_label("기본 회복 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",13))
 	var talent:Dictionary=detail.get("personal_talent",{})
 	if not talent.is_empty():
 		var label:=_card_label("재능 · %s\n%s"%[talent.label,talent.description],"StatusPersonalTalent",13)
@@ -5095,10 +5107,11 @@ func _update_detail_vitals(detail:Dictionary)->void:
 static func _body_help(line:String)->String:
 	if line.begins_with("의식"):return "현재 기록된 의식 수준입니다. 현재 버전에서는 출혈·충격에 따라 의식을 갱신하거나 의식 수치로 행동을 제한하는 기능은 아직 연결되지 않았습니다."
 	if line.begins_with("피부"):return "베기·찌르기의 방어 장벽에 더해져 조직에 전달되는 힘을 줄입니다. 타격 상처의 깊이 계산에도 사용됩니다. 일반 방어력에 이 수치를 그대로 더하지는 않습니다."
-	if line.begins_with("연부"):return "타격 피해의 완충값입니다. 방어구의 충격 완충과 합산해 몸에 전달되는 힘을 줄입니다."
-	if line.begins_with("뼈"):return "골절 발생 계산의 저항 기준입니다. 높을수록 같은 공격에서 골절 위험이 줄어듭니다. 일반 HP 피해감소 수치가 아닙니다."
+	if line.begins_with("근육"):return "근육·지방 등 내부 조직의 타격 완충 능력입니다. 근력(STR)이나 HP 방어력과는 다르며, 타격에 의한 피부 손상과 충격을 줄입니다. 휴식 중 피부·근육·뼈 내구도가 회복되며, 절단은 재생되지 않습니다."
+	if line.begins_with("뼈"):return "같은 공격에서 뼈 손상이 덜 쌓이게 합니다. 뼈 내구도가 60% 이하이면 골절, 0이면 기능 상실입니다. 팔 골절은 공격력, 다리 골절은 이동 시간, 전체 부상은 HP 자연회복에 영향을 줍니다."
 	if line.begins_with("충격"):return "현재 신체 충격 / 충격 저항 기준입니다. 공격의 충격과 조직 손상으로 증가하며, 저항 기준이 높을수록 공격에서 발생하는 충격이 작아집니다."
-	if line.begins_with("상처"):return "현재 기록된 상처 수입니다. 상처의 종류·깊이·위치에 따라 출혈과 부위 기능 손상이 달라집니다."
+	if line.begins_with("상처"):return "누적 상처 기록 수입니다. 현재 부상 단계는 기록 개수가 아닌 남아 있는 조직 내구도로 결정합니다. 근육 내구도 70% 이하에서 깊은 상처가 됩니다. 출혈 피해는 사용하지 않습니다."
+	if line.begins_with("부상"):return "같은 부위는 가장 심한 단계 하나만 적용합니다. 양팔의 공격 감소, 양다리의 이동 시간 증가를 합산합니다. HP 자연회복은 가장 심한 부상을 기준으로 줄고 최소 40%를 유지합니다. 물약과 MP 회복은 줄이지 않습니다."
 	return "부위의 기능 상태입니다. 정상은 기능을 유지한 상태, 기능 상실은 사용할 수 없는 상태, 절단은 해당 부위가 분리된 상태입니다."
 
 func _status_gauge(title:String,value:int,maximum:int,color:Color)->Control:
@@ -5118,9 +5131,11 @@ static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
 	if bool(body.get("available",false)):
 		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
-		body_lines.append("피부 질김 %d"%int(body.get("skin_toughness",0)))
-		body_lines.append("연부조직 완충 %d"%int(body.get("soft_tissue_cushioning",0)))
-		body_lines.append("뼈 강도 %d"%int(body.get("bone_fracture_threshold",0)))
+		body_lines.append("피부 질김 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("skin_toughness",0)),"SKIN"))
+		body_lines.append("근육 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("soft_tissue_cushioning",0)),"MUSCLE"))
+		body_lines.append("뼈 강도 %s"%preload("res://sim/body_penalty_rules.gd").grade(int(body.get("bone_fracture_threshold",0)),"BONE"))
+		var penalties:Dictionary=body.get("penalties",{})
+		body_lines.append("부상 보정\n공격력 %d%% · 이동 시간 %d%%\nHP 자연회복 %d%%"%[int(penalties.get("attack_milli",1000))/10,int(penalties.get("move_milli",1000))/10,int(penalties.get("recovery_milli",1000))/10])
 		body_lines.append("충격 %d/%d"%[int(body.get("shock",0)),maxi(1,int(body.get("shock_threshold",1)))])
 		body_lines.append("상처 %d"%int(body.get("wound_count",0)))
 		var part_states:Array[String]=[]
@@ -5128,7 +5143,7 @@ static func body_status_lines(body:Dictionary)->Array[String]:
 			if not part_value is Dictionary:continue
 			var part:Dictionary=part_value
 			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
-				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
+				_body_condition_label(str(part.condition)) if str(part.get("condition","FUNCTIONAL"))!="FUNCTIONAL" else str(part.get("injury_stage","정상"))])
 		body_lines.append_array(part_states)
 	else:body_lines.append("육체 정보 없음")
 	return body_lines

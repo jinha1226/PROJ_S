@@ -86,7 +86,7 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
-const BALANCE_ID := "dcss-balance-0.34.1-mutation-board-v3"
+const BALANCE_ID := "dcss-balance-0.34.1-body-penalties-v4"
 const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"
@@ -377,6 +377,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
 	hero_tags.append(BALANCE_TAG)
+	hero_tags.append(preload("res://sim/body_penalty_rules.gd").TAG)
 	if duo:hero_tags.append("autonomous_party")
 	if duo and bootstrap_solo:hero_tags.append(SOLO_START_TAG)
 	if duo and bootstrap_survival:
@@ -7599,7 +7600,7 @@ func _member_combat_stats(entity_id:int,include_explanations:bool=false)->Dictio
 		spec=WeaponAttackRulesScript.build_attack_spec(str(weapon.weapon_id),rank,
 			int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
 			ActorStatRulesScript.for_entity(sim.world,entity_id),FieldRules.enabled(sim.world))
-	return {"attack_power":int(spec.get("raw_damage",profile.get("power",0))),
+	return {"attack_power":preload("res://sim/body_penalty_rules.gd").scale_damage(sim.world,entity_id,int(spec.get("raw_damage",profile.get("power",0)))),
 		"explanations":_combat_stat_explanations(entity_id,profile,spec,defense) if include_explanations else {},
 		"armor_flat":int(defense.get("effective_armor_flat",profile.get("armor_flat",0))),
 		"base_armor_flat":int(defense.get("base_armor_flat",profile.get("armor_flat",0))),
@@ -7628,6 +7629,9 @@ func _combat_stat_explanations(entity_id:int,profile:Dictionary,attack:Dictionar
 		scaling_lines.append("%s %d · 무기 보정 등급 %s"%[pair[1],int(attack.get("attacker_stats",{}).get(pair[0],0)),str(attack.get("weapon_scaling",{}).get(pair[0],"—"))])
 	descriptions["공격력"]="기본 %d + 무기 %d + 숙련 보정 %d = %d\n능력치 보정 × %.3f\n최종 공격력 %d (소수점 버림)\n\n숙련 레벨 %d · %s\n%s\n\n대상의 방어·막기 적용 전 수치입니다."%[base,weapon,training,base+weapon+training,1.0+scale/1000.0,int(attack.get("raw_damage",base)),int(attack.get("proficiency_rank",0)),str(attack.get("weapon_label","없음")),"\n".join(scaling_lines)]
 	var defense_rank:=0
+	var injury_rate:int=preload("res://sim/body_penalty_rules.gd").current(sim.world,entity_id).attack_milli
+	descriptions["공격력"]=str(descriptions["공격력"]).replace("최종 공격력","부상 전 공격력")
+	descriptions["공격력"]+="\n부상 보정 × %.2f → 최종 공격력 %d"%[injury_rate/1000.0,preload("res://sim/body_penalty_rules.gd").scale_damage(sim.world,entity_id,int(attack.get("raw_damage",base)))]
 	var party=sim.world.party_encounter
 	if party!=null and party.protagonist_id==entity_id:defense_rank=int(party.protagonist_growth.mastery_ranks.DEFENSE)
 	for entry in [["방어력","armor_flat","effective_armor_flat"],["회피율","dodge_milli","effective_evasion_milli"],["막기율","parry_milli","parry_milli"]]:
@@ -7754,9 +7758,11 @@ func _member_body_presentation(entity_id:int)->Dictionary:
 			if layer_value is Dictionary:
 				minimum_integrity=mini(minimum_integrity,int(layer_value.get("integrity",1000)))
 		part_rows.append({"part_id":str(part.get("part_id","")),
+			"injury_stage":preload("res://sim/body_penalty_rules.gd").stage_label(preload("res://sim/body_penalty_rules.gd").part_stage(part)),
 			"condition":str(part.get("condition","FUNCTIONAL")),
 			"integrity_milli":minimum_integrity})
 	return {"available":true,"blood":int(body.current_blood),
+		"penalties":preload("res://sim/body_penalty_rules.gd").current(sim.world,entity_id),
 		"blood_capacity":int(body.body_scalars.get("blood_capacity",0)),
 		"skin_toughness":int(body.body_scalars.get("skin_toughness",0)),
 		"soft_tissue_cushioning":int(body.body_scalars.get("soft_tissue_cushioning",0)),

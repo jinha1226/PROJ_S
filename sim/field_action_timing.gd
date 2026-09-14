@@ -4,7 +4,9 @@ extends RefCounted
 ## attacks and spellcasting remain independent; waiting has no speed bonus.
 static func duration(world,actor_id:int,kind:String,base:int,before:int=-1)->int:
 	if not preload("res://sim/field_turn_rules.gd").enabled(world):return base
-	if kind=="MOVE":base+=preload("res://sim/abilities/monster_ability_runtime.gd").move_delay(world,actor_id)
+	if kind=="MOVE":
+		base+=preload("res://sim/abilities/monster_ability_runtime.gd").move_delay(world,actor_id)
+		base=preload("res://sim/body_penalty_rules.gd").move_cost(world,actor_id,base)
 	var member=world.party_encounter.member(actor_id)
 	if member==null or kind=="HOLD":return base
 	var channel:="MOVE" if kind=="MOVE" else "ATTACK" if kind in ["MELEE","STRIKE","SHOVE"] else "CAST"

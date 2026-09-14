@@ -43,6 +43,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	# A terminal death synchronously emits one corpse materialization child.
 	var required_events := (4 + status_count) if terminal_immediate \
 		else ((2 if lethal else 1) + (1 if should_apply_bleed else 0))
+	if preload("res://sim/body_penalty_rules.gd").enabled(world):required_events+=1
 	var bleed_rows: Array = []
 	if entity != null and world.combatant_states.has(entity.id):
 		for status in world.combatant_states[entity.id].status_rows:
@@ -223,6 +224,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			return {"accepted":false,"event":damage_event,
 				"transition_event":transition_event,"death_event":death_event,
 				"status_event":status_event,"applied_health_damage":applied_damage}
+		if not preload("res://sim/body_penalty_rules.gd").record(world,entity.id,damage_event.id):
+			return {"accepted":false,"event":damage_event,"applied_health_damage":applied_damage}
 	return {"accepted": true, "event": damage_event,
 		"transition_event": transition_event, "death_event": death_event,
 		"status_event": status_event,
@@ -373,7 +376,7 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 	if entity == null or not world.combatant_states.has(entity.id) \
 			or world.combatant_states[entity.id].life_state != "ACTIVE" or amount <= 0 \
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
-			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
+			or not world.has_event_id_headroom((3 if amount >= entity.health else 1) + (1 if preload("res://sim/body_penalty_rules.gd").enabled(world) else 0)):
 		return 0
 	var resolved_position: Vector2i = entity.position if event_position == Vector2i(-1, -1) else event_position
 	var armor_context:Dictionary=_element_armor_context(entity,damage_type,amount,
@@ -394,6 +397,7 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			damage_type.to_upper(),damage,element_key,entity.id,damage_event.id,
 			str(armor_context.get("part_id","")))
 		if not injury.accepted:return 0
+		if not preload("res://sim/body_penalty_rules.gd").record(world,entity.id,damage_event.id):return 0
 	if entity.health == 0:
 		var death_event = world.emit_event(
 			"entity.died", -1, entity.id, resolved_position, 0, damage_event.id,

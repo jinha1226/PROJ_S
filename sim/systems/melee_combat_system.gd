@@ -91,6 +91,7 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		else int(attacker_profile.power)
 	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \
 		else int(basic.armor_reduction)
+	base_damage=preload("res://sim/body_penalty_rules.gd").scale_damage(world,attacker_id,base_damage)
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
 	var guard_rank:=0

@@ -28,7 +28,8 @@ func run()->void:
 		"inspection exposes exact authoritative body scalars")
 	var text:="\n".join(Sandbox.body_status_lines(body))
 	check(not "혈액" in text,"retired blood resource is hidden")
-	for label in ["피부 질김","연부조직 완충","뼈 강도","충격 %d/%d"%[
+	check(not "연부조직" in text,"soft tissue is presented as muscle")
+	for label in ["피부 질김","근육","뼈 강도","충격 %d/%d"%[
 			body.shock,body.shock_threshold],"상처"]:
 		check(str(label) in text,"body status includes %s"%str(label))
 	var portrait=Portrait.new();portrait.actor={"health":60,"max_health":120,

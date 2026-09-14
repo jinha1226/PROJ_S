@@ -594,6 +594,7 @@ func _commit_batch(intents: Array[Dictionary], mode_transitions: Array[Dictionar
 		match str(intent.leaf_action_id):
 			"MOVE":
 				var move_cost := int(intent.move_time_cost)
+				move_cost=preload("res://sim/body_penalty_rules.gd").move_cost(world,actor_id,move_cost)
 				movement.commit_preflighted_move(actor_id, intent.leaf_position, str(intent.move_terrain_id), move_cost, cause_id)
 				state.busy_until = now + move_cost
 			"MELEE_ATTACK":

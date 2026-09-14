@@ -28,7 +28,11 @@ func run()->void:
 		and ui.product_attack_button.text=="[공격]","the fixed dock has 공격, 대기 and 휴식 in exploration")
 	# Fight once so there is loot on the ground (and usually some damage).
 	var fought:=false
+	var attacked_enemy:=-1
 	for round in range(700):
+		# Shared field turns stay in exploration rather than entering ENGAGED.
+		if attacked_enemy>0 and world.combatant_states[attacked_enemy].life_state=="DEAD":
+			fought=true;break
 		var phase:=str(session.party_status().get("safe_phase",""))
 		if phase=="ENGAGED":
 			# [공격]: attack the nearest enemy when adjacent, otherwise one step closer.
@@ -50,6 +54,7 @@ func run()->void:
 			if d<target_distance:target_distance=d;target_enemy=int(id)
 		if target_enemy<0:break
 		if target_distance<=1:
+			attacked_enemy=target_enemy
 			ui.grid.actor_pressed.emit(target_enemy)
 		else:
 			var ep:Vector2i=world.entities[target_enemy].position
@@ -99,7 +104,7 @@ func run()->void:
 	_check(str(session.party_status().get("view_mode",""))=="EXPLORATION","exploration resumes before resting (phase %s)"%str(session.party_status().get("safe_phase","")))
 	# Rest until full.
 	var hero_entity=world.entities[hero]
-	if int(hero_entity.health)<int(hero_entity.max_health):
+	if ui._rest_needed():
 		ui._on_product_rest();await process_frame
 		_check(ui._product_rest_active,"[REST] starts resting")
 		var guard:=0
