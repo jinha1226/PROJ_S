@@ -10589,6 +10589,7 @@ func stage_round_action(action)->Dictionary:
 
 func round_overlays()->Array[Dictionary]:
 	var rows:Array[Dictionary]=[];var status:=round_status();var w=sim.world
+	if status.phase=="DEPLOYMENT":return rows # Placement is not a movement/attack preview.
 	for row in status.order:
 		if not row.visible or row.completed:continue
 		var plan:Dictionary=w.party_encounter.round_combat.plans[str(row.actor_id)]

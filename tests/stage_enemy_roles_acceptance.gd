@@ -29,8 +29,9 @@ func run():
 	var shadow=preload("res://sim/simulator.gd").from_snapshot(s.sim.snapshot())
 	check(shadow!=null,"snapshot clone before area fixture")
 	if shadow!=null:
-		var sw=shadow.world;var enemies:=Stage.enemies(sw)
+		var sw=shadow.world;var enemies:Array=sw.party_encounter.enemy_ids.duplicate()
 		var heavy:int=enemies[1]
+		sw.entities[heavy].species_id="dcss_hobgoblin"
 		var relocate=preload("res://tests/round_combat_fixture.gd")
 		relocate.relocate(sw,heavy,Vector2i(11,21))
 		relocate.relocate(sw,hero,Vector2i(12,21))

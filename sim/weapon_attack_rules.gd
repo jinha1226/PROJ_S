@@ -136,6 +136,7 @@ static func targeting_error(attacker_position: Vector2i, target_position: Vector
 		# An ally may brace aside for the thrust. An enemy or solid obstruction may not.
 		if not middle_kind.is_empty() and middle_kind != "ALLY": return "spear_line_blocked"
 	elif weapon.proficiency_id == "RANGED":
+		if delta.x!=0 and delta.y!=0:return "ranged_target_not_in_line"
 		for cell in _line_cells(attacker_position, target_position):
 			if occupants.has(cell): return "ranged_line_blocked"
 	return ""

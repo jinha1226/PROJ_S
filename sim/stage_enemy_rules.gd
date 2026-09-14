@@ -8,6 +8,7 @@ static func line(w,origin:Vector2i,target:Vector2i)->bool:
 	return Rooms.same_room(w,origin,target) and preload("res://sim/combat_kernel.gd").sees(origin,target,w.combat_solid,maxi(1,ceili(Vector2(target-origin).length())))
 static func aimable(w,origin:Vector2i,target:Vector2i,p:Dictionary)->bool:
 	var d:=Rooms.distance(origin,target)
+	if int(p.max)>1 and origin.x!=target.x and origin.y!=target.y:return false
 	return d>=int(p.min) and d<=int(p.max) and line(w,origin,target)
 static func cells(w,id:int,origin:Vector2i,target:Vector2i)->Array[Vector2i]:
 	var p:=profile(w,id);var result:Array[Vector2i]=[]

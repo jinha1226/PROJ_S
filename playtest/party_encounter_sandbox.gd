@@ -6625,6 +6625,7 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	if grid.stage_motion_busy():return
+	if session.round_status().phase=="DEPLOYMENT" and not _battle_target_mode.is_empty():_cancel_battle_targeting()
 	if session.room_enabled() and _battle_target_mode.is_empty() and session.round_status().phase!="DEPLOYMENT":
 		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(session.sim.world,position)
 		var hero:int=session.sim.world.party_encounter.protagonist_id
@@ -6638,6 +6639,8 @@ func _on_cell(position:Vector2i)->void:
 				var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(id),{})
 				if plan.get("destination",[])==[position.x,position.y]:
 					_select_member(id,_entity_display_name(id));return
+			_record_result(session.commit_field_action(ActionScript.move_to(selected_member_id,position)),false)
+			_request_refresh();return
 		for entity in session.sim.world.entities.values():
 			if entity.position==position and (entity.id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,entity.id)):
 				picked=entity.id;break
@@ -6775,6 +6778,8 @@ func _focus_battle_enemy(entity_id:int)->void:
 
 func _on_actor(entity_id:int)->void:
 	if grid.stage_motion_busy():return
+	if session.room_enabled() and entity_id==session.sim.world.party_control_actor_id() and session.round_status().phase!="DEPLOYMENT" and _battle_target_mode.is_empty() and session.ground_item_count_at_protagonist()>0:
+		_pickup_everything_here();_request_refresh();return
 	if session.round_active() and _battle_target_mode.is_empty():
 		if entity_id in session.sim.world.party_encounter.active_party_member_ids:_select_member(entity_id,_entity_display_name(entity_id))
 		else:_focus_battle_enemy(entity_id)
@@ -7003,6 +7008,9 @@ func _pickup_everything_here()->void:
 	var result:Dictionary=session.pickup_ground_item(str(rows[0].instance_id))
 	_record_result(result,true,"아이템을 주울 수 없습니다.")
 	if not bool(result.get("accepted",false)):return
+	if session.round_active():
+		notice_text="%s 줍기 예약 · 진행을 누르면 획득합니다."%str(rows[0].label)
+		action_feedback_text=notice_text;return
 	var remaining:int=session.ground_item_count_at_protagonist()
 	notice_text="%s 가방에 주웠습니다 (100시간)%s"%[str(rows[0].label),
 		" · %d개 남음"%remaining if remaining>0 else ""]
@@ -7208,6 +7216,7 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 	for value in result.get("event_ids",[]):
 		var event=session.sim.world.event_by_id(int(value))
 		if event!=null and str(event.type)=="action.move" and int(event.actor_id)>0:
+			if result.get("round_result",{}).get("reason","")=="deployment_complete" and event.actor_id in session.sim.world.party_encounter.active_party_member_ids:continue
 			moved[int(event.actor_id)]=true
 	if moved.is_empty():return
 	var status:Dictionary=session.party_status()

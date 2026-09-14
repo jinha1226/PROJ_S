@@ -19,7 +19,8 @@ func sync(host):
 	var members:Array=s.party_cards();var ids:Array=members.map(func(row):return int(row.entity_id))
 	var selected:int=host.selected_member_id if host.selected_member_id in ids else s.sim.world.party_control_actor_id()
 	var skills:Array=s.active_skill_rows(selected) if active else []
-	var signature:Array=[active,r.phase,selected,ids,skills.map(func(row):return row.skill_id),_page]
+	var loot:int=s.ground_item_count_at_protagonist() if r.phase!="DEPLOYMENT" else 0
+	var signature:Array=[active,r.phase,selected,ids,skills.map(func(row):return row.skill_id),_page,loot]
 	if signature!=_signature:
 		_signature=signature
 		for child in get_children():remove_child(child);child.queue_free()
@@ -42,6 +43,9 @@ func sync(host):
 			var proceed:=button("배치 완료" if r.phase=="DEPLOYMENT" else "진행 ▶","StageProceed")
 			proceed.set_skin_accent(true)
 			proceed.pressed.connect(host._on_product_execute)
+		if loot>0:
+			var pickup:=button("줍기\n%d"%loot,"StagePickup")
+			pickup.pressed.connect(func():host._on_product_pickup();host._request_refresh())
 	for row in members:
 		var portrait=get_node_or_null("StagePortrait%d"%int(row.entity_id))
 		if portrait!=null:portrait.actor=row;portrait.queue_redraw()
@@ -56,3 +60,5 @@ func sync(host):
 			b.set_skin_accent(not row.is_empty() and host._battle_target_actor_id==selected and host._battle_target_skill_id==str(row.get("skill_id","")))
 			b.tooltip_text=str(row.get("message","변이를 획득하면 사용할 수 있습니다"))+" · 길게 눌러 다음 스킬"
 		get_node("StageProceed").disabled=r.phase=="RESOLVING" or host.grid.stage_motion_busy()
+	var pickup=get_node_or_null("StagePickup")
+	if pickup!=null:pickup.disabled=host.grid.stage_motion_busy() or r.phase=="RESOLVING"

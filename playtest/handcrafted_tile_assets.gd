@@ -14,7 +14,7 @@ static func biome_index(biome: String) -> int:
 static func variant(position: Vector2i, biome: int) -> int:
 	var roll := ((position.x*73856093) ^ (position.y*19349663) ^ ((biome+1)*83492791)) & 0xffffffff
 	roll %= 10
-	return 0 if roll<5 else 1 if roll<7 else 3 if roll<9 else 2
+	return 0 if roll<5 else 1 if roll<8 else 3
 
 static func tile(biome: int, column: int) -> Texture2D:
 	var key := biome*6+column
