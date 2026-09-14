@@ -18,6 +18,7 @@ func run():
 	print("PICKER: real ready path and viewport input; no direct selection callback")
 	root.size=Vector2i(390,800)
 	var ui=Sandbox.new();ui.size=Vector2(390,800)
+	ui.set_personality_entropy_source_for_headless_test(func():return 20260828)
 	root.add_child(ui)
 	for i in range(3):await process_frame
 	var button=ui.species_picker_buttons.get_child(0)
