@@ -982,7 +982,7 @@ func _build_ui()->void:
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
 	var menu_popup:=product_menu_button.get_popup()
-	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
+	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 변이",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	if preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("적 시야 표시 전환",8)
@@ -1015,6 +1015,7 @@ func _build_ui()->void:
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+	grid.set_graphics_mode(GridScript.GRAPHICS_MODE_TACTICAL)
 	grid.animate_passive_terrain=false
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.actor_inspect_requested.connect(_open_member_detail)
@@ -1132,7 +1133,7 @@ func _build_bottom_navigation()->void:
 	bottom_navigation.add_theme_constant_override("separation",0);root_layout.add_child(bottom_navigation)
 	map_nav_button=_add_nav_button("[지도]","MapNavigation",_toggle_map_overlay);map_nav_button.toggle_mode=true
 	person_nav_button=_add_nav_button("[인물]","PersonNavigation",_open_hero_detail_tab.bind("STATUS"))
-	skill_nav_button=_add_nav_button("[숙련·이능]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
+	skill_nav_button=_add_nav_button("[숙련·변이]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
 	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
 	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
 
@@ -1351,7 +1352,7 @@ func _build_member_detail_modal()->void:
 	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
 	member_detail_tab_row.add_child(member_detail_relationship_tab);DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·이능"
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·변이"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
@@ -2726,7 +2727,7 @@ func _on_manual_actor_selected(actor_id:int)->void:
 	var detail:Dictionary=session.inspect_party_member(actor_id)
 	selected_member_id=actor_id;selected_target_id=-1
 	var actor_name:=str(detail.get("display_name","파티원"))
-	_show_manual_battle_feedback("%s 선택 · 액티브 스킬 / %s 개인 지침"%[
+	_show_manual_battle_feedback("%s 선택 · 사용 기술 / %s 개인 지침"%[
 		actor_name,actor_name])
 	_request_refresh()
 
@@ -2809,7 +2810,7 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 		session.individual_battle.cancel(actor_id)
 		_show_manual_battle_feedback("%s · 예약 취소"%skill_label);_request_refresh();return
 	if not session.has_method("active_skill_rows") or not session.has_method("use_active_skill"):
-		_show_manual_battle_feedback("액티브 스킬을 아직 사용할 수 없습니다.");return
+		_show_manual_battle_feedback("사용 기술을 아직 사용할 수 없습니다.");return
 	var selected_row:Dictionary={}
 	var available_rows:Array=session.active_skill_rows(actor_id) if session.field_turns_active() else _hero_skill_rows(session.party_status())
 	for row_value in available_rows:
@@ -2907,7 +2908,7 @@ func _commit_battle_target(target_id:int)->void:
 	_battle_target_committing=false
 	if bool(result.get("accepted",false)):
 		if caster_id==int(session.party_status().get("protagonist_id",-1)):_hero_turn_released=true
-		if mode=="ACTIVE_SKILL":_record_result(result,true,"액티브 스킬 실행 불가")
+		if mode=="ACTIVE_SKILL":_record_result(result,true,"사용 기술 실행 불가")
 		var target_name:=_entity_display_name(target_id)
 		var result_message:=str(result.get("message","적용됨"))
 		_show_manual_battle_feedback("%s · %s → %s · %s"%[
@@ -3960,7 +3961,7 @@ func _add_legacy_guild_tutorial()->void:
 			var accept:=_add_button(line,"수락","LegacyGuildAccept%s"%quest_id,_on_legacy_guild_tutorial_command.bind("ACCEPT",quest_id))
 			accept.custom_minimum_size=Vector2(80,TOUCH_TARGET)
 		if quest_id in ["GUILD_TUTORIAL_HEAL","GUILD_TUTORIAL_BIND"] and bool(row.get("accepted",false)) and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
-			var support:=_add_button(line,"지원 이능" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
+			var support:=_add_button(line,"지원 변이" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
 			support.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 		if bool(row.get("can_claim",false)):
 			var claim:=_add_button(line,"보상","LegacyGuildClaim%s"%quest_id,_on_legacy_guild_tutorial_command.bind("CLAIM",quest_id))
@@ -5303,9 +5304,9 @@ func _apply_member_detail_tab()->void:
 	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
 	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
-	var skill_tab_label:="숙련·이능"
+	var skill_tab_label:="숙련·변이"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
-	member_detail_skill_tab.tooltip_text="숙련 포인트 배분 · 이능 6칸 결속"
+	member_detail_skill_tab.tooltip_text="숙련 포인트 배분 · 변이 6칸 결속"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
@@ -5638,7 +5639,7 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
-	if str(row.get("definition_id","")).begins_with("ESSENCE_"):return true
+	if bool(row.get("special_part",false)) or str(row.get("use_kind",""))=="EAT":return true
 	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UTILITY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
@@ -5659,6 +5660,7 @@ func _item_row_text(row:Dictionary)->String:
 
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
+	if bool(row.get("special_part",false)):return ""
 	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
 	if str(row.get("use_kind",""))=="UTILITY":return str(row.get("compact_stat_text",""))
 	var lines:Array[String]=[]
@@ -5689,10 +5691,11 @@ func _item_stats_text(row:Dictionary)->String:
 	return "\n".join(lines)
 
 func _item_description_text(row:Dictionary)->String:
-	if str(row.get("definition_id","")).begins_with("ESSENCE_"):
-		var ability_id:=preload("res://sim/item_reward_rules.gd").ability_for_item(str(row.definition_id))
-		var effect:=preload("res://sim/abilities/ability_binding_rules.gd").effect_preview(ability_id)
-		return "포만감 +20 · %s 체득\n패시브: %s\n액티브: %s\n중복·빈 이능 칸 없음: 식사만. 배부름·적 근처: 섭취 불가."%[str(effect.get("label",ability_id)),str(effect.get("passive","")),str(effect.get("active",""))]
+	if bool(row.get("special_part",false)):
+		if not row.get("consumed_before",false):return ""
+		var effect:Dictionary=row.get("effect_preview",{})
+		return "%s\n상시 효과: %s\n사용 기술: %s"%[str(effect.get("label","")),str(effect.get("passive","")),str(effect.get("active",""))]
+	if str(row.get("use_kind",""))=="EAT":return "포만감 +%d"%int(preload("res://sim/item_catalog_registry.gd").nutrition_milli(str(row.definition_id))/1000)
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
 	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
@@ -5768,6 +5771,8 @@ func _find_item_row_button(instance_id:String,slot:String)->Button:
 func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_popover_title.text="%s  %s"%[str(row.get("glyph","*")),str(row.get("label","아이템"))]
 	member_item_popover_body.text="%s\n%s"%[_item_description_text(row),_item_stats_text(row)]
+	member_item_popover_body.visible=not member_item_popover_body.text.strip_edges().is_empty()
+	if row.get("special_part",false):member_item_popover_title.text=str(row.label)
 	var selected_equipped:=not member_item_selected_slot.is_empty()
 	var allowed_slots:Array=[]
 	var allowed_value:Variant=row.get("equip_slots",[])
@@ -5796,7 +5801,7 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
 	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
 	member_item_use_button.disabled=not member_item_use_button.visible or not session.has_method("use_inventory_item")
-	member_item_use_button.text="먹기" if str(row.get("definition_id","")).begins_with("ESSENCE_") else "읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
+	member_item_use_button.text="먹기" if row.get("special_part",false) or str(row.get("use_kind",""))=="EAT" else "읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -5940,16 +5945,6 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")-
 		action_feedback_text=notice_text;return
 
 	if selection.is_empty():
-		var item=session.sim.world.inventory_of(session.sim.world.party_control_actor_id()).item(member_item_selected_id)
-		if item!=null and str(item.definition_id).begins_with("ESSENCE_"):
-			var frozen_id:String=member_item_selected_id
-			var confirm:=ConfirmationDialog.new();confirm.title="몬스터 고기 먹기"
-			confirm.dialog_text="포만감 +20 · 새 이능은 빈 칸에 체득 (해제 불가)\n중복·빈 칸 없음: 식사만 적용됩니다."
-			confirm.ok_button_text="먹기";confirm.cancel_button_text="취소"
-			add_child(confirm)
-			confirm.confirmed.connect(func():confirm.queue_free();_on_item_use_selected({"meat_confirmed":true},frozen_id))
-			confirm.canceled.connect(confirm.queue_free)
-			confirm.popup_centered(Vector2i(300,180));return
 		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
 		if not choices.is_empty():
 			var frozen_id:String=member_item_selected_id
@@ -5965,7 +5960,7 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")-
 	var healed:=int(result.get("healed_amount",0))
 	notice_text=str(result.get("message","회복 물약 사용 · HP +%d"%healed))
 	if result.has("nutrition_milli"):
-		notice_text="고기 섭취 · 포만감 +%d%s"%[int(result.nutrition_milli/1000)," · 새 이능 체득" if result.get("gains_ability",false) else " · 식사만"]
+		notice_text="고기 섭취 · 포만감 +%d%s"%[int(result.nutrition_milli/1000)," · 새 변이 체득" if result.get("gains_ability",false) else " · 식사만"]
 	action_feedback_text=notice_text
 	_hide_item_popover()
 	_record_result(result,true)
@@ -7267,6 +7262,7 @@ func _current_grid_view_cell_count()->int:
 
 func _current_grid_view_dimensions()->Vector2i:
 	var base_count:=_current_grid_view_cell_count()
+	if grid!=null and grid.uses_tactical_projection():return Vector2i(base_count,base_count)
 	if not _is_solo_product_session():return Vector2i(base_count,base_count)
 	var status:Dictionary=session.party_status()
 	var members:Variant=status.get("party_member_ids",[])

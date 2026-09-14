@@ -18,7 +18,7 @@ static func commit(sim,event_start:int)->bool:
 		var attack=world.event_by_id(hit.cause_id)
 		if attack==null or attack.type!="action.melee_attack":continue
 		var member=world.party_encounter.member(attack.actor_id)
-		if member==null or "FIREBOLT" not in member.passive_ability_ids:continue
+		if member==null or "FIREBOLT" not in member.bound_ability_ids:continue
 		var target=world.entities.get(hit.target_id)
 		if target==null or world.combatant_states[target.id].life_state!="ACTIVE":continue
 		var power:=POWER
@@ -56,7 +56,7 @@ static func event_error(world,event,historical:bool=false)->String:
 			if prior.actor_id!=event.actor_id or prior.data.get("ability_id")!="FIREBOLT":continue
 			if prior.type=="party.ability_bound":bound=true
 			elif prior.type=="party.ability_mode_changed":passive=prior.data.get("mode")=="PASSIVE"
-		if not bound or not passive:return "monster_passive_not_equipped"
+		if not bound:return "monster_passive_not_equipped"
 		var per_rank:int=preload("res://game/rebuilt/progression.gd").DATA.attack_per_rank_milli
 		var expected:int=(POWER*(1000+magic_rank*per_rank)+500)/1000
 		expected=resisted(expected,str(world.entities[event.target_id].species_id))

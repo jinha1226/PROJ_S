@@ -54,7 +54,7 @@ func active_skill_ids() -> Array:
 	# Role kits were prototype grants, not acquired monster abilities.
 	var skills:Array=[]
 	for ability_id in bound_ability_ids:
-		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills and ability_id not in passive_ability_ids:
+		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills:
 			skills.append(ability_id)
 	return skills
 

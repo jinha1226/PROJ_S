@@ -62,7 +62,7 @@ const FILES:={
 static var cache:Dictionary={}
 static func texture_for_id(value:String)->Texture2D:
 	var key:=value.strip_edges().to_upper()
-	if key.begins_with("ESSENCE_"):key="ESSENCE_UNSPECIFIED"
+	if key.begins_with("ESSENCE_") or key.begins_with("ORGAN_") or key.begins_with("FOOD_MONSTER_"):key="ESSENCE_UNSPECIFIED"
 	elif key.begins_with("FOOD_"):key="FOOD_RATION"
 	elif key.begins_with("MAGIC_STONE"):key="MAGIC_STONE"
 	elif key.begins_with("POTION_"):key="POTION_UNSPECIFIED"

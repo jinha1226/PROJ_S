@@ -2062,7 +2062,7 @@ func _ability_binding_history_error() -> String:
 		if event.type in ["ability.cast","ability.pulse"]:
 			var id:String=str(event.data.get("skill_id",event.data.get("ability_id","")))
 			if not expected.has(event.actor_id) or id not in expected[event.actor_id]:return "monster_ability_not_bound"
-			if (id in passive[event.actor_id])!=(event.type=="ability.pulse"):return "monster_ability_wrong_mode"
+			# A consumed mutation supplies both its continuous effect and its skill.
 			continue
 		if event.type!="party.ability_bound":continue
 		var keys:Array=event.data.keys();keys.sort()

@@ -57,7 +57,7 @@ func refresh(owner_session)->void:
 		var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
 		rows[axis].title.text="%s %d/%d"%[definition.label,rank,status.max_rank]
 		rows[axis].info.text="%s\n+%d%%"%[
-			"방어·회피·막기" if axis=="DEFENSE" else "공격·이능 효과",rank*per_rank/10]
+			"방어·회피·막기" if axis=="DEFENSE" else "공격·변이 효과",rank*per_rank/10]
 		rows[axis].button.disabled=status.points<1 or rank>=status.max_rank or not safe
 		rows[axis].button.tooltip_text="전투 중에는 투자할 수 없습니다." if not safe else \
 			("숙련 포인트가 없습니다." if status.points<1 else ("최대 숙련입니다." if rank>=status.max_rank else "1점 투자"))
@@ -68,7 +68,7 @@ func preview(axis:String)->void:
 	var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
 	var multiplier:=1000+int(pending.rank)*per_rank
 	confirm.dialog_text="1점을 투자할까요?\n효과 ×%.2f → ×%.2f\n%s\n현재 재분배할 수 없습니다."%[multiplier/1000.0,(multiplier+per_rank)/1000.0,
-		"보호·회피·막기 수치 강화 (정수 반올림)" if axis=="DEFENSE" else "해당 계열 공격·이능 효과 강화"]
+		"보호·회피·막기 수치 강화 (정수 반올림)" if axis=="DEFENSE" else "해당 계열 공격·변이 효과 강화"]
 	confirm.popup_centered(Vector2i(mini(330,int(get_viewport_rect().size.x)-24),190))
 
 func commit()->void:

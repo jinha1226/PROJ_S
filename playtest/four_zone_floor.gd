@@ -47,6 +47,8 @@ static func generate(depth:int,seed:int)->Dictionary:
 	var camp:=Vector2i(8,24);var relic:=Vector2i(23,24)
 	var visitors:Array[Vector2i]=[Vector2i(9,25),Vector2i(19,8),Vector2i(20,40)]
 	for p in supplies+visitors+[entry,exit,anchor]:clear(terrain,p,1)
+	var tactical_obstacles:=preload("res://playtest/tactical_terrain_layout.gd").apply(
+		terrain,SIZE,rooms,routes,supplies+visitors+positions+[entry,exit,anchor,camp,relic],seed)
 	var materials:={"shallow_water":[],"metal":[],"wood_floor":[],"rubble":[]}
 	for y in range(SIZE):
 		for x in range(SIZE):
@@ -55,7 +57,7 @@ static func generate(depth:int,seed:int)->Dictionary:
 	return {"schema_version":1,"ruleset_id":RULESET_ID,"floor_index":depth,"theme_id":"FOUR_ZONE_DUNGEON","floor_label":"갈림길 미궁" if depth==1 else "심부 갈림길",
 		"seed":seed,"width":SIZE,"height":SIZE,"terrain":terrain,"rooms":rooms,"room_centers":centers,"regions":regions,"field_regions":regions.duplicate(true),"routes":routes,
 		"entry_position":entry,"hero_position":entry,"anchor_portal_position":anchor,"anchor_portal_clear_radius":2,"transition_portal_position":exit,"exit_position":exit,
-		"door_positions":[],"hazards":[],"material_positions":materials,"presentation_material_positions":{"grass":[],"ice":[],"fog":[]},
+		"door_positions":[],"hazards":[],"tactical_obstacles":tactical_obstacles,"material_positions":materials,"presentation_material_positions":{"grass":[],"ice":[],"fog":[]},
 		"encounter_groups":groups,"planned_contact_count":groups.size(),"planned_enemy_count":roster.size(),"runtime_enemy_roster":roster,"enemy_roster":roster.duplicate(true),"enemy_positions":roster.map(func(row):return row.position),"supply_positions":supplies,
 		"landmarks":[{"kind":"CAMP","label":"도움이 필요한 모험가","position":camp},{"kind":"RELIC","label":"갈림길 중계석","position":relic}],"visitor_positions":visitors}
 

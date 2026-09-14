@@ -86,7 +86,7 @@ const BaseSettlementServiceScript=preload("res://playtest/base_settlement_servic
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
 const SESSION_FORMAT_VERSION := 5
-const BALANCE_ID := "dcss-balance-0.34.1-telegraph-meat-v2"
+const BALANCE_ID := "dcss-balance-0.34.1-mutation-board-v3"
 const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"
@@ -757,7 +757,7 @@ func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dicti
 	var journal_row:Dictionary={"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}}
 	if not legacy_rules:journal_row["ruleset_id"]=GuildTutorialRulesScript.RULESET_ID
 	command_journal.append(journal_row)
-	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 이능 획득물을 지급했습니다." if quest_id=="GUILD_TUTORIAL_BIND" else "훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
+	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 변이 획득물을 지급했습니다." if quest_id=="GUILD_TUTORIAL_BIND" else "훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"quest_id":quest_id,"action":action,"message":str(messages[action]),
 		"guild_tutorial":guild_tutorial_overview()})
@@ -1300,6 +1300,8 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 	var carried=inventory.item(instance_id) if inventory!=null else null
 	if carried!=null and not ItemRewardRulesScript.ability_for_item(str(carried.definition_id)).is_empty():
 		return bind_ability_item(hero.id,instance_id)
+	if carried!=null and ItemCatalogScript.family(str(carried.definition_id))=="FOOD":
+		return preload("res://playtest/ordinary_food_service.gd").eat(self,instance_id)
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
 		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
@@ -1687,7 +1689,7 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		if str(definition.use_kind)=="HEALING":
 			parts.append("회복 +%d"%ItemCatalogScript.healing_amount(str(item.definition_id)))
 		result["compact_stat_text"]=" · ".join(parts)
-	return preload("res://sim/mystery_consumables.gd").decorate(sim.world,result).duplicate(true)
+	return preload("res://sim/abilities/mutation_knowledge.gd").decorate(sim.world,preload("res://sim/mystery_consumables.gd").decorate(sim.world,result)).duplicate(true)
 
 
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
@@ -2571,13 +2573,14 @@ func monster_ability_acquisition_rows()->Array[Dictionary]:
 	for ability_id in acquired:
 		var entry:Dictionary=acquired[ability_id]
 		var reward:Dictionary=entry.reward
+		if not preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(reward.get("definition_id",""))):continue
 		var definition:=ActiveSkillRegistryScript.definition(str(ability_id))
 		var owner:Dictionary=sim.world.item_owner(str(entry.instance_id))
 		rows.append({"ability_id":str(ability_id),"label":str(definition.get("name",ability_id)),
 			"definition_id":str(reward.get("definition_id","")),
 			"instance_id":str(entry.instance_id),"source_event_id":int(entry.event_id),
 			"stored":owner.kind=="ENTITY","on_ground":owner.kind=="GROUND",
-			"can_absorb":false,"message":"이능 서비스 준비 전까지 보관만 가능합니다."})
+			"can_absorb":false,"message":"변이 서비스 준비 전까지 보관만 가능합니다."})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.ability_id)<str(b.ability_id))
 	return rows.duplicate(true)
 
@@ -2611,7 +2614,7 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 		if slot_index<member.bound_ability_ids.size():
 			var ability_id:=str(member.bound_ability_ids[slot_index])
 			var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
-			preview["mode"]="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
+			preview["mode"]="BOTH"
 			preview.merge({"slot_index":slot_index,"state":"BOUND",
 				"unlock_level":slot_index+1,"removable":false},true)
 			rows.append(preview)
@@ -2642,8 +2645,10 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 				"passive":str(catalog.passive),"active":str(catalog.active)}
 		rows.append({"instance_id":str(item.instance_id),
 			"definition_id":str(item.definition_id),"quantity":int(item.quantity),
-			"ability_id":ability_id,"label":str(ItemRegistryScript.definition(str(item.definition_id)).label),
-			"effect_preview":preview})
+			"ability_id":ability_id if preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)) else "",
+			"label":str(ItemRegistryScript.definition(str(item.definition_id)).label),
+			"consumed_before":preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)),
+			"effect_preview":preview if preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)) else {}})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return str(a.instance_id)<str(b.instance_id))
 	return rows.duplicate(true)
@@ -2683,6 +2688,7 @@ func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	var level:=ability_binding_level(actor_id)
 	var limit:=AbilityBindingRulesScript.slot_limit(level)
 	var bound:Array=member.bound_ability_ids.duplicate()
+	if ability_id in bound or bound.size()>=limit:return _rejection_dto("mutation_cannot_eat")
 	var gains_ability:bool=ability_id not in bound and bound.size()<limit
 	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
 		"gains_ability":gains_ability,"nutrition_milli":20000,
@@ -2698,6 +2704,7 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 	var rollback:Variant=sim.snapshot()
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var next=sim.world.item_state.clone()
+	var consumed_definition_id:String=next.inventory(actor_id).item(instance_id).definition_id
 	var removed:=InventoryOperationsScript.commit_discard(next.inventory(actor_id),instance_id)
 	if not bool(removed.get("accepted",false)):
 		return _rejection_dto(str(removed.get("reason","ability_binding_item_failed")))
@@ -2720,6 +2727,7 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 	var before:int=party.ration_milli
 	party.ration_milli=mini(RationRulesScript.ration_max_milli(),before+int(assessment.nutrition_milli))
 	event=sim.world.emit_event("party.monster_meat_eaten",actor_id,actor_id,position,0,-1,{
+		"definition_id":consumed_definition_id,
 		"instance_id":instance_id,"ability_id":str(assessment.ability_id),
 		"gained_ability":bool(assessment.gains_ability),"nutrition_milli":party.ration_milli-before})
 	if event==null:
@@ -2742,6 +2750,9 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 
 
 func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
+	return _rejection_dto("mutation_modes_combined")
+
+func _legacy_set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	var member=state.member(actor_id)
@@ -7713,7 +7724,7 @@ static func _weapon_trait_label(trait_id:String)->String:
 
 
 static func _effect_trigger_label(trigger:String)->String:
-	return {"PASSIVE":"패시브","ON_HIT":"적중 시","ON_HURT":"피격 시",
+	return {"PASSIVE":"상시 효과","ON_HIT":"적중 시","ON_HURT":"피격 시",
 		"INTERACT":"상호작용"}.get(trigger,trigger)
 
 
@@ -9790,20 +9801,22 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"item_heal_not_needed":"체력이 가득 차 있어 회복 물약을 아꼈습니다.",
 			"item_user_unavailable":"쓰러진 상태에서는 물약을 사용할 수 없습니다.",
 		"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
-		"ability_item_missing":"흡수할 이능 획득물을 찾을 수 없습니다.",
-		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
+		"ability_item_missing":"흡수할 변이 획득물을 찾을 수 없습니다.",
+		"not_ability_item":"이 아이템은 변이 획득물이 아닙니다.",
 		"ability_binding_actor_missing":"결속할 캐릭터를 찾을 수 없습니다.",
 		"ability_binding_actor_unavailable":"현재 결속할 수 없는 상태의 캐릭터입니다.",
-		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 이능을 결속할 수 있습니다.",
+		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 변이을 결속할 수 있습니다.",
 		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
-		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",
-		"ability_already_bound":"이미 결속한 이능입니다. 효과가 중첩되지 않습니다.",
+		"ability_binding_equipped_item":"장착 중인 아이템은 변이으로 결속할 수 없습니다.",
+		"ability_already_bound":"이미 결속한 변이입니다. 효과가 중첩되지 않습니다.",
 		"monster_meat_full":"배가 불러 더 먹을 수 없습니다.",
+		"mutation_cannot_eat":"지금은 먹을 수 없습니다.",
+		"mutation_modes_combined":"상시 효과와 사용 기술이 함께 적용됩니다.",
 		"monster_meat_enemy_near":"보이는 적을 벗어난 뒤 고기를 먹을 수 있습니다.",
-		"ability_binding_slots_full":"열린 이능 슬롯이 가득 찼습니다.",
-		"ability_binding_event_failed":"이능 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
-		"ability_removal_policy_undefined":"이능 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
-		"ability_absorption_unavailable":"이능 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
+		"ability_binding_slots_full":"열린 변이 슬롯이 가득 찼습니다.",
+		"ability_binding_event_failed":"변이 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
+		"ability_removal_policy_undefined":"변이 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
+		"ability_absorption_unavailable":"변이 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
 		"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
 			"turn_draft_active":"준비 중인 전투 행동을 취소한 뒤 다시 시도하세요.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
@@ -10041,7 +10054,7 @@ func _event_message(event) -> String:
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
 		"party.monster_meat_eaten":return "몬스터 고기 섭취 · 포만감 +%d"%int(event.data.get("nutrition_milli",0)/1000)
 		"party.ability_bound":return "%s가 %s을(를) 체득했다."%[
-			_subject(actor),str(event.data.get("ability_id","이능"))]
+			_subject(actor),str(event.data.get("ability_id","변이"))]
 		"party.morale_changed":
 			match _morale_band_change(event):
 				"PANIC":return "%s 공황에 빠졌다."%_subject(actor)
@@ -10095,13 +10108,13 @@ func _event_message(event) -> String:
 			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
 		"growth.enemy_reward":
 			var level_up:=_growth_level_up_suffix(event)
-			return ("%s 이능 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
+			return ("%s 변이 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
 				_subject(actor),str(event.data.get("mutation_id","")),int(event.magnitude)] \
 				if bool(event.data.get("mutation_acquired",false)) \
 				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)])+level_up
 		"growth.stat_spent":return "%s 기본 능력을 단련했다."%_subject(actor)
 		"growth.species_point_spent":return "%s 종족 특성을 발전시켰다."%_subject(actor)
-		"growth.mutation_swapped":return "%s 이능 조합을 바꾸었다."%_subject(actor)
+		"growth.mutation_swapped":return "%s 변이 조합을 바꾸었다."%_subject(actor)
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
 		"party.contact_reported":
 			return "%s %s에서 적을 발견해 파티에 경고했다." % [

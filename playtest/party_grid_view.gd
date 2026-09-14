@@ -13,7 +13,11 @@ const GRID_SIZE := 15
 const WorldEffectAssets=preload("res://playtest/pixel24_world_effect_assets.gd")
 const GRAPHICS_MODE_FLAT_2D := "FLAT_2D"
 const GRAPHICS_MODE_DIORAMA_2_5D := "DIORAMA_2_5D"
-const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D]
+const GRAPHICS_MODE_TACTICAL := "TACTICAL_ISOMETRIC"
+const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D, GRAPHICS_MODE_TACTICAL]
+const TacticalProjection=preload("res://playtest/tactical_board_projection.gd")
+var _tactical_terrain:Node2D
+var _tactical_terrain_revision:=-1
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
@@ -223,7 +227,14 @@ func set_graphics_mode(mode:String)->bool:
 	return true
 
 func uses_perspective_projection()->bool:
-	return _graphics_mode==GRAPHICS_MODE_DIORAMA_2_5D
+	return _graphics_mode in [GRAPHICS_MODE_DIORAMA_2_5D,GRAPHICS_MODE_TACTICAL]
+
+func uses_tactical_projection()->bool:
+	return _graphics_mode==GRAPHICS_MODE_TACTICAL
+
+func _project_board_point(point:Vector2)->Vector2:
+	if uses_tactical_projection():return TacticalProjection.project(point,grid_rect(),visible_cell_count)
+	return DioramaScript.project_camera_point(point,grid_rect(),visible_cell_count)
 
 func _exit_tree()->void:
 	_reset_pointer_gesture()
@@ -555,9 +566,7 @@ func _projected_camera_step_offset(delta:Vector2)->Vector2:
 	if not uses_perspective_projection():return delta*cell_size_px()
 	var local_center:=Vector2(float(visible_cell_count)*0.5,
 		float(visible_cell_count)*0.5)
-	return DioramaScript.project_camera_point(local_center+delta,grid_rect(),
-		visible_cell_count)-DioramaScript.project_camera_point(local_center,
-		grid_rect(),visible_cell_count)
+	return _project_board_point(local_center+delta)-_project_board_point(local_center)
 
 func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
@@ -1237,6 +1246,7 @@ func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
 
 
 func grid_rect() -> Rect2:
+	if uses_tactical_projection():return Rect2(Vector2.ZERO,size)
 	if not uses_perspective_projection():
 		# Fill the control: the cell is sized by the axis that fits exactly and
 		# the other axis overflows symmetrically under clip_contents. Fitting both
@@ -1248,7 +1258,9 @@ func grid_rect() -> Rect2:
 		return Rect2((size-extent)*0.5,extent)
 	var extent := minf(size.x,size.y)
 	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
-func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
+func cell_size_px() -> float:
+	if uses_tactical_projection():return TacticalProjection.half_width(grid_rect(),visible_cell_count)*2.0
+	return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
 	return _camera_cell_rect(position)
@@ -1257,6 +1269,7 @@ func world_cell_polygon(position:Vector2i)->PackedVector2Array:
 	return _camera_cell_polygon(position)
 func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 	if not view_bounds().has_point(position):return PackedVector2Array()
+	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,grid_rect(),visible_cell_count)
 	if not uses_perspective_projection():
 		var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 		var top_left:=rect.position+Vector2(local.x,local.y)*cell
@@ -1274,6 +1287,7 @@ func _camera_cell_rect(position:Vector2i)->Rect2:
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
 	if not uses_perspective_projection():return _camera_cell_rect(position).get_center()
+	if uses_tactical_projection():return _project_board_point(Vector2(position-view_origin)+Vector2(0.5,0.5))
 	return DioramaScript.perspective_cell_center(position-view_origin,
 		grid_rect(),visible_cell_count)
 func _world_position_to_pixel_center(position:Vector2)->Vector2:
@@ -1281,10 +1295,14 @@ func _world_position_to_pixel_center(position:Vector2)->Vector2:
 		var local_flat:=position-Vector2(view_origin)
 		return grid_rect().position+(local_flat+Vector2(0.5,0.5))*cell_size_px()
 	var local:=position-Vector2(view_origin)+Vector2(0.5,0.5)
-	return DioramaScript.project_camera_point(local,grid_rect(),visible_cell_count)
+	return _project_board_point(local)
 func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
+	if uses_tactical_projection():
+		var local:=TacticalProjection.unproject(pointer,rect,visible_cell_count)
+		var cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
+		return cell if view_bounds().has_point(cell) and _world_in_bounds(cell) else Vector2i(-1,-1)
 	if not uses_perspective_projection():
 		var local:=pointer-rect.position;var cell:=cell_size_px()
 		var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
@@ -1601,7 +1619,7 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 	# paper-doll and bar locked together throughout companion and camera motion.
 	var bounds:Rect2
 	var bar_center_x:=0.0
-	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+	if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
 		var actor_spec:=fixed_front_actor_render_spec(actor,false,sample_time_ms,
 			camera_offset)
 		if bool(actor_spec.get("visible",false)) and bool(actor_spec.get("uses_sprite",false)):
@@ -2278,6 +2296,7 @@ func _sorted_visual_actor_rows()->Array[Dictionary]:
 	for ghost in _ghosts:rows.append({"actor":ghost,"ghost":true})
 	rows.sort_custom(func(a,b):
 		var pa:=_position_from_actor(a.actor);var pb:=_position_from_actor(b.actor)
+		if uses_tactical_projection() and pa.x+pa.y!=pb.x+pb.y:return pa.x+pa.y<pb.x+pb.y
 		if pa.y!=pb.y:return pa.y<pb.y
 		if pa.x!=pb.x:return pa.x<pb.x
 		var aid:=int(a.actor.get("entity_id",-1));var bid:=int(b.actor.get("entity_id",-1))
@@ -2481,6 +2500,14 @@ func _draw_world_with_emphasis()->void:
 	var frame_actor_sample_msec:=Time.get_ticks_msec()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	var retained:=_retain_terrain_commands and not uses_perspective_projection()
+	var tactical:=uses_tactical_projection()
+	if tactical and _tactical_terrain==null:
+		_tactical_terrain=preload("res://playtest/tactical_board_layer.gd").new()
+		_tactical_terrain.name="TacticalTerrain";_tactical_terrain.show_behind_parent=true;add_child(_tactical_terrain)
+	if _tactical_terrain!=null:_tactical_terrain.visible=tactical
+	if tactical and _tactical_terrain_revision!=_static_projection_rebuild_count:
+		_tactical_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,visible_cell_count)
+		_tactical_terrain_revision=_static_projection_rebuild_count
 	if retained and _retained_terrain==null:
 		_retained_terrain=preload("res://playtest/retained_terrain_layer.gd").new()
 		_retained_terrain.name="RetainedTerrain"
@@ -2491,10 +2518,11 @@ func _draw_world_with_emphasis()->void:
 		if _retained_terrain_revision!=_static_projection_rebuild_count:
 			_retained_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,cell_size_px(),palette)
 			_retained_terrain_revision=_static_projection_rebuild_count
-	else:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	elif not tactical:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec(frame_actor_sample_msec).offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	if retained:_retained_terrain.set_camera_offset(camera_offset+impact_offset)
+	if tactical:_tactical_terrain.position=camera_offset+impact_offset
 	draw_set_transform(camera_offset+impact_offset)
 	if not retained:_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	var begun:=Perf.begin()
@@ -2518,7 +2546,7 @@ func _draw_world_with_emphasis()->void:
 	Perf.end("grid.terrain_passes",begun)
 	begun=Perf.begin()
 	for visual_row in _sorted_visual_actor_rows():
-		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+		if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
 			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),
 				camera_offset,frame_actor_sample_msec)
 		else:
@@ -2637,7 +2665,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
 	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
-	var foot_y:=center.y+cell*0.42
+	var foot_y:=center.y+cell*(0.06 if uses_tactical_projection() else 0.42)
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var source_canvas:Vector2=layer_spec.get("source_canvas_size",Vector2(24,24))
 	var source_center_offset:Vector2=layer_spec.get(
@@ -3128,6 +3156,7 @@ func _darkness_vertex_color(sample:Dictionary)->Color:
 	return Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
+	if uses_tactical_projection():return
 	if _retained_terrain!=null and _retained_terrain.visible and not _retained_terrain.has_fallback:return
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3163,7 +3192,7 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 				_cell_is_visually_occupied(position),position)
 
 func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
-	if uses_perspective_projection() or not is_world_cell_visible(position):
+	if _graphics_mode==GRAPHICS_MODE_DIORAMA_2_5D or not is_world_cell_visible(position):
 		return {"visible":false,"draw_image":false,"changes_mapping":false,
 			"changes_fov":false}.duplicate(true)
 	var row:Dictionary=_cells.get(_key(position),{})
@@ -3207,6 +3236,7 @@ func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 		float(spec.get("glow_strength",0.0)))
 
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
+	if uses_tactical_projection():return []
 	# Runtime top-down wall tiles already contain their own connected silhouette.
 	# ASCII bridges are retained only for the optional diorama renderer.
 	if not uses_perspective_projection():return []
@@ -3268,6 +3298,7 @@ func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)
 		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
+	if uses_tactical_projection():return
 	if not uses_perspective_projection():return # Material identity is in the tile image.
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3636,7 +3667,7 @@ func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector
 	return points
 
 func _draw_feature_cue(rect:Rect2,feature_id:String,opacity:float=1.0,live:bool=true)->void:
-	if not uses_perspective_projection():
+	if not uses_perspective_projection() or uses_tactical_projection():
 		WorldEffectAssets.draw_icon(self,str(WorldEffectAssets.FEATURE_IDS.get(feature_id,"")),
 			rect,Color(1,1,1,opacity) if live else Color(0.46,0.47,0.48,opacity))
 		return

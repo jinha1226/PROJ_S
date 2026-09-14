@@ -9,7 +9,7 @@ static func distance(a:Vector2i,b:Vector2i)->int:return maxi(absi(a.x-b.x),absi(
 static func alive(world,id:int)->bool:return world.entities.has(id) and world.combatant_states.has(id) and world.combatant_states[id].life_state=="ACTIVE"
 static func passive(world,id:int,ability:String)->bool:
 	var member=world.party_encounter.member(id) if world.party_encounter!=null else null
-	return member!=null and ability in member.passive_ability_ids
+	return member!=null and ability in member.bound_ability_ids
 
 static func projection(world)->Dictionary:
 	var p:Dictionary=world.get_meta(KEY,{})
@@ -238,7 +238,7 @@ static func accuracy_bonus(world,actor:int,weapon_id:String,before:int=-1)->int:
 		enabled=false
 		for e in world.events:
 			if e.id>=before:break
-			if e.type=="party.ability_mode_changed" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=e.data.mode=="PASSIVE"
+			if e.type=="party.ability_bound" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=true
 	return penalty+(150 if enabled else 0)
 
 static func tick(sim,start:int,end:int)->bool:
