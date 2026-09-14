@@ -3747,7 +3747,7 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 		# Independent NPC strikes are sequential too: another actor may already
 		# have moved at this timestamp. Rewinding that move invents an out-of-range
 		# past attack, poisoning later full validation (potions/recovery/save).
-		if context.begins_with("FIELD_ACTOR/") or context.begins_with("INDEPENDENT/"):
+		if context.begins_with("FIELD_ACTOR/") or context.begins_with("ROUND_ACTOR/") or context.begins_with("INDEPENDENT/"):
 			return boundary_projection
 	var boundary_position: Vector2i = boundary_projection.position
 	var frozen_position := boundary_position
@@ -4097,6 +4097,11 @@ func _legacy_death_event_error(event) -> String:
 static func _combat_batch_context_valid(context: String, processed_step: int,
 		attack_start: int) -> bool:
 	var parts: PackedStringArray = context.split("/")
+	if parts.size()==6 and parts[0]=="ROUND_ACTOR":
+		return Int64CodecScript.is_canonical(parts[1]) and int(parts[1])>0 and parts[2].length()==64 \
+			and parts[2].is_valid_hex_number(false) and Int64CodecScript.is_canonical(parts[3]) and int(parts[3])>0 \
+			and Int64CodecScript.is_canonical(parts[4]) and int(parts[4])==processed_step \
+			and Int64CodecScript.is_canonical(parts[5]) and int(parts[5])==attack_start
 	if parts.size()==4 and parts[0]=="FIELD_ACTOR":
 		return Int64CodecScript.is_canonical(parts[1]) and int(parts[1])==processed_step \
 			and Int64CodecScript.is_canonical(parts[2]) and int(parts[2])>0 \

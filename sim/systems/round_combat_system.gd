@@ -1,0 +1,178 @@
+extends RefCounted
+const Rules=preload("res://sim/round_combat_rules.gd")
+const State=preload("res://sim/round_combat_state.gd")
+const Plans=preload("res://sim/round_plan_service.gd")
+const Action=preload("res://sim/party_action_command.gd")
+const Field=preload("res://sim/field_turn_rules.gd")
+const Turns=preload("res://sim/systems/field_turn_system.gd")
+const Skills=preload("res://sim/abilities/party_active_skill_service.gd")
+const Items=preload("res://sim/world_item_operations.gd")
+const Timing=preload("res://sim/field_action_timing.gd")
+const Queue=preload("res://sim/systems/field_actor_queue.gd")
+
+static func newly_visible(w,r:Dictionary)->Array:
+	var result:Array=[]
+	for id in w.party_encounter.enemy_ids:
+		if str(id) not in r.known_enemy_ids and Field.visible(w,id):result.append(id)
+	return result
+
+static func incorporate(sim)->void:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	var ids:=newly_visible(w,r)
+	if ids.is_empty():return
+	var telegraphs:Dictionary=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
+	# Newly discovered actors append after the existing unexecuted suffix;
+	# no old participant loses its published position in the order.
+	for key in Rules.order(w,ids):
+		var id:=int(key);var action=Action.hold(id)
+		if telegraphs.has(id):
+			var row:Dictionary=telegraphs[id]
+			if row.action_type=="MELEE":action=Action.melee(id,int(row.target_id))
+			elif row.action_type=="MOVE":action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
+		var path:Array=[[action.destination.x,action.destination.y]] if action.type=="MOVE" else []
+		r.order.append(key);r.participants.append(key);r.known_enemy_ids.append(key)
+		r.plans[key]=Plans.pack(w,action,"AI",path)
+	r.plan_revision=int(r.plan_revision)+1
+
+static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bool=false)->Dictionary:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	if not Rules.enabled(w) or r.phase not in (["INTERRUPTED"] if resuming else ["PLANNING"]):return Plans.reject("round_not_ready")
+	if int(r.round_id)!=round_id or int(r.plan_revision)!=revision:return Plans.reject("round_revision_changed")
+	if not w.is_settled():return Plans.reject("round_world_busy")
+	var rollback:Dictionary=w.rollback_memento(false)
+	var start_event:int=w.events.size();var step:int=w.step_index+1
+	var darkness_sample:=Turns.Darkness.begin_sample(w)
+	r.phase="RESOLVING";r.interrupt_reason=""
+	w.begin_step(step)
+	var rows:Array=[];var ok:=true
+	while int(r.execution_cursor)<r.order.size():
+		var key:String=r.order[int(r.execution_cursor)];var id:=int(key)
+		var plan:Dictionary=r.plans[key]
+		var slot:=execute_slot(sim,plan,step,preview)
+		rows.append(slot)
+		if not slot.get("accepted",false):ok=false;break
+		if slot.get("interrupted",false):
+			r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
+		if key not in r.completed_actor_ids:r.completed_actor_ids.append(key)
+		r.execution_cursor=int(r.execution_cursor)+1
+		if not newly_visible(w,r).is_empty():r.phase="INTERRUPTED";r.interrupt_reason="new_threat";break
+	if ok and r.phase!="INTERRUPTED":
+		ok=finish_time(sim,step,darkness_sample,start_event)
+		if ok:
+			r.round_time_committed=true;r.last_boundary_time=str(w.world_time)
+			r.phase="EXPLORATION"
+	if ok:
+		w.finish_step()
+		ok=w.runtime_step_postcondition_error(start_event).is_empty()
+	if not ok:
+		sim.restore_rollback_memento(rollback)
+		return Plans.reject("round_execution_failed")
+	var completed:bool=r.phase!="INTERRUPTED"
+	if completed:ok=Plans.begin(sim)
+	if not ok:
+		sim.restore_rollback_memento(rollback);return Plans.reject("round_plan_failed")
+	return {"accepted":true,"reason":"interrupted" if not completed else "ok",
+		"completed":completed,"time_cost":Rules.ROUND_TIME if completed else 0,
+		"slots":rows,"events_start":start_event,"events_end":w.events.size()}
+
+static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictionary:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat;var id:=int(p.actor_id)
+	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok","movement":[],"damage":[],"conditional":false,"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
+	if not w.can_act(id,w.world_time):return cancel(result,"incapacitated")
+	var member=w.party_encounter.member(id)
+	if member!=null and member.busy_until>w.world_time:return cancel(result,"cooldown")
+	var progress:int=r.slot_progress.get(p.actor_id,0)
+	var spent:int=r.slot_spent.get(p.actor_id,0)
+	var budget:=mini(int(p.move_budget),Rules.move_budget(w,id))
+	for index in range(progress,p.path.size()):
+		if not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+		var cell:=Vector2i(p.path[index][0],p.path[index][1]);var cost:=Rules.terrain_cost(w,cell)
+		var assessment=sim.movement.assess_move(id,cell)
+		if spent+cost>budget or not assessment.accepted:
+			result.reason="move_budget" if spent+cost>budget else "path_blocked";break
+		var event=sim.movement.commit_preflighted_move(id,cell,str(assessment.terrain_id),
+			Timing.duration(w,id,"MOVE",int(preload("res://sim/terrain_registry.gd").definition(str(assessment.terrain_id)).move_time_cost)))
+		if event==null:result.accepted=false;return result
+		spent+=cost;r.slot_progress[p.actor_id]=index+1;r.slot_spent[p.actor_id]=spent
+		result.movement.append([cell.x,cell.y])
+		if not after_leaf(sim,w.events.size()-1):result.accepted=false;return result
+		if not newly_visible(w,r).is_empty():result.interrupted=true;result.conditional=true;return result
+	var action=Action.from_dict(p.action)
+	if action==null:result.accepted=false;return result
+	if action.type in ["MELEE","SKILL"] and p.target_policy=="CELL" and action.target_id>0:
+		action.target_id=-1
+		for target in w.entities.values():
+			if target.id==id or not w.is_explicit_melee_target(target.id):continue
+			if [target.position.x,target.position.y]==p.target_cell:action.target_id=target.id;break
+		if action.target_id<1:return cancel(result,"target_cell_empty")
+	if action.type in ["MELEE","SKILL"] and action.target_id>0 and not w.is_explicit_melee_target(action.target_id):return cancel(result,"target_gone")
+	var event_start:int=w.events.size();var accepted:=false
+	if not p.item_operation.is_empty():
+		var item_events:int=w.events.size()
+		var item_result:=preload("res://sim/round_item_rules.gd").commit(sim,id,p.item_operation)
+		if not item_result.get("accepted",false):
+			if sim.world!=w or w.events.size()!=item_events:
+				result.accepted=false;return result
+			return cancel(result,str(item_result.get("reason","item_unavailable")))
+		accepted=true
+	elif action.type=="SKILL":
+		var assessment:Dictionary=Skills.assess(w,id,action.skill_id,action.target_id,false,true,action.destination)
+		if not assessment.get("accepted",false):return cancel(result,str(assessment.get("reason","skill_unavailable")))
+		accepted=sim._commit_skill_effect(id,action.skill_id,action.target_id,assessment,step)!=null
+	elif action.type=="MELEE":
+		# Host hostility checks remain in ordinary commands. This fixed-cell
+		# resolver alone may hit any occupant, including another enemy.
+		var weapon_id:String=Items.equipped_weapon_id(w,id) if sim.party_coordinator._uses_weapon_combat(id) else ""
+		if not weapon_id.is_empty() and not Items.attack_error(w,id).is_empty():return cancel(result,"weapon_unavailable")
+		var context:="ROUND_ACTOR/%d/%s/%s/%d/%d"%[int(r.round_id),r.rng_commitment,p.actor_id,step,w.world_time]
+		var assessment:Dictionary=sim.melee.assess_attack(id,action.target_id,"DIRECT" if p.source=="USER" else "SUGGESTED",step,w.world_time,context,0,weapon_id,
+			sim.party_coordinator._weapon_occupants(id,action.target_id) if not weapon_id.is_empty() else {})
+		if assessment.is_empty():return cancel(result,"attack_out_of_range")
+		var cost:int=Timing.duration(w,id,"MELEE",int(assessment.get("attack_time",100)))
+		accepted=sim._commit_active_ready_allies([{"action":action.to_dict(),"time_cost":cost,"combat_assessment":assessment}],step,w.world_time)
+	else:
+		# A move-only opportunity does not gain a free defensive HOLD buff.
+		if not p.path.is_empty():accepted=true
+		elif member!=null:accepted=Turns._commit_ally(sim,Action.hold(id),step,100)
+		else:accepted=sim.party_coordinator._commit_hold(id,100)!=null
+	result.accepted=accepted
+	if not accepted:return result
+	if not after_leaf(sim,event_start):result.accepted=false;return result
+	for event in w.events_since(event_start):
+		if event.type.begins_with("combat.") and event.type.ends_with("_damage"):
+			result.damage.append({"target_id":event.target_id,"amount":event.magnitude})
+	result["end_position"]=[w.entities[id].position.x,w.entities[id].position.y]
+	return result
+
+static func cancel(result:Dictionary,reason:String)->Dictionary:
+	result.status="CANCELLED";result.reason=reason;return result
+
+static func after_leaf(sim,event_start:int)->bool:
+	sim.world.party_encounter.group_anchor=sim.world.entities[sim.world.party_encounter.protagonist_id].position
+	return preload("res://sim/abilities/monster_passive_service.gd").commit(sim,event_start) \
+		and preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,event_start) \
+		and Turns._social(sim,event_start,false) and sim.party_coordinator.reconcile_liveness(false)
+
+static func finish_time(sim,step:int,sample:Dictionary,event_start:int)->bool:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	if r.round_time_committed:return false
+	var start:int=int(r.round_start_time);var end:int=start+Rules.ROUND_TIME
+	if end>sim.MAX_WORLD_TIME:return false
+	var q=Queue.new();q.excluded_ids=r.participants.map(func(id):return int(id))
+	for id in w.party_encounter.active_party_member_ids:
+		if id not in q.excluded_ids:q.excluded_ids.append(id)
+	var hold=Action.hold(w.party_encounter.protagonist_id)
+	var known_plans:Dictionary=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
+	var acted:Dictionary={}
+	while true:
+		var next:Dictionary=q.next(sim,end)
+		if next.is_empty():break
+		if not Turns._dispatch_kernel_action(sim,next,hold,step,sample,known_plans,acted):return false
+		q.completed(sim,int(next.id))
+	w.world_time=end
+	if not preload("res://sim/abilities/monster_ability_runtime.gd").tick(sim,start,end):return false
+	if not preload("res://sim/consumable_effects.gd").tick(sim,start,end):return false
+	if not Turns.Darkness.commit_boundary(w,start,end,sample):return false
+	w.party_encounter.group_anchor=w.entities[w.party_encounter.protagonist_id].position
+	sim._reconcile_expedition_cycle()
+	return sim.party_coordinator.reconcile_liveness(false)

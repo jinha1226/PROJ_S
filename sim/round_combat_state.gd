@@ -9,7 +9,7 @@ static func fresh()->Dictionary:
 		"round_start_time":"0","participants":[],"order":[],"plans":{},
 		"plan_revision":0,"execution_cursor":0,"completed_actor_ids":[],
 		"interrupt_reason":"","round_time_committed":false,"slot_progress":{},
-		"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0"}
+		"slot_spent":{},"known_enemy_ids":[],"rng_commitment":"","last_boundary_time":"0"}
 
 static func wire_error(row:Variant,width:int,height:int)->String:
 	if not row is Dictionary:return "round_state_shape"
@@ -29,7 +29,7 @@ static func wire_error(row:Variant,width:int,height:int)->String:
 	if row.order.size()!=row.participants.size() or row.execution_cursor>row.order.size():return "round_state_order"
 	for id in row.order:
 		if id not in row.participants:return "round_state_order"
-	if not row.plans is Dictionary or not row.slot_progress is Dictionary:return "round_state_plans"
+	if not row.plans is Dictionary or not row.slot_progress is Dictionary or not row.slot_spent is Dictionary:return "round_state_plans"
 	if row.plans.size()!=row.order.size():return "round_state_plans"
 	for id in row.order:
 		if not row.plans.has(id):return "round_state_missing_plan"
@@ -39,27 +39,39 @@ static func wire_error(row:Variant,width:int,height:int)->String:
 		if row.order.find(id)<0 or row.order.find(id)>=int(row.execution_cursor):return "round_state_completed"
 	for id in row.slot_progress:
 		if id not in row.order or not integer(row.slot_progress[id]) or int(row.slot_progress[id])<0 or int(row.slot_progress[id])>row.plans[id].path.size():return "round_state_progress"
+	for id in row.slot_spent:
+		if id not in row.order or not integer(row.slot_spent[id]) or int(row.slot_spent[id])<0 or int(row.slot_spent[id])>12:return "round_state_spent"
 	return ""
 
 static func plan_error(p:Variant,width:int,height:int)->String:
 	if not p is Dictionary:return "shape"
 	var keys:Array=p.keys();keys.sort()
-	if keys!=["action","actor_id","anchor","destination","move_budget","origin","path","source","target_cell","target_policy"]:return "keys"
+	if keys!=["action","actor_id","anchor","destination","item_operation","move_budget","origin","path","source","target_cell","target_policy"]:return "keys"
 	if not Codec.is_canonical(p.actor_id) or int(p.actor_id)<1 or p.source not in ["AI","USER"] or p.anchor!="WORLD_TILE" or p.target_policy not in ["CELL","ENTITY"]:return "identity"
 	if not p.action is Dictionary or not preload("res://sim/party_action_command.gd").wire_error(p.action).is_empty() or p.action.actor_id!=p.actor_id:return "action"
+	if not preload("res://sim/round_item_rules.gd").wire_error(p.item_operation).is_empty():return "item"
 	if not integer(p.move_budget) or int(p.move_budget)<1 or int(p.move_budget)>12 or not p.path is Array or p.path.size()>12:return "budget"
 	for cell in [p.origin,p.destination,p.target_cell]+p.path:
 		if not cell is Array or cell.size()!=2:return "cell"
 		for value in cell:
 			if not integer(value):return "cell"
-		if cell!=[-1,-1] and (int(cell[0])<0 or int(cell[1])<0 or int(cell[0])>=width or int(cell[1])>=height):return "bounds"
+		if not (int(cell[0])==-1 and int(cell[1])==-1) and (int(cell[0])<0 or int(cell[1])<0 or int(cell[0])>=width or int(cell[1])>=height):return "bounds"
 	var last:Vector2i=Vector2i(p.origin[0],p.origin[1])
 	for cell in p.path:
 		var next:=Vector2i(cell[0],cell[1]);var delta:=next-last
 		if maxi(absi(delta.x),absi(delta.y))!=1:return "path"
 		last=next
-	if [last.x,last.y]!=p.destination:return "destination"
+	if last!=Vector2i(p.destination[0],p.destination[1]):return "destination"
 	return ""
 
 static func integer(v:Variant)->bool:
 	return v is int or v is float and is_finite(v) and v==floor(v)
+
+static func normalized(value:Variant)->Variant:
+	if value is Dictionary:
+		var result:Dictionary={}
+		for key in value:result[key]=normalized(value[key])
+		return result
+	if value is Array:return value.map(func(v):return normalized(v))
+	if value is float and integer(value):return int(value)
+	return value

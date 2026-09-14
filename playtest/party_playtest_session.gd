@@ -85,6 +85,11 @@ const BaseSettlementRulesScript=preload("res://sim/base_settlement_rules.gd")
 const BaseSettlementServiceScript=preload("res://playtest/base_settlement_service.gd")
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
+const RoundRules=preload("res://sim/round_combat_rules.gd")
+const RoundPlans=preload("res://sim/round_plan_service.gd")
+const RoundSystem=preload("res://sim/systems/round_combat_system.gd")
+const RoundPreview=preload("res://sim/round_preview_service.gd")
+var _round_edit_actor_id:=-1
 const SESSION_FORMAT_VERSION := 5
 const BALANCE_ID := "dcss-balance-0.34.1-hp-injury-v5"
 const BALANCE_TAG := "balance:" + BALANCE_ID
@@ -377,6 +382,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
 	hero_tags.append(BALANCE_TAG)
+	if product_dungeon:hero_tags.append(RoundRules.TAG)
 	hero_tags.append(preload("res://sim/body_penalty_rules.gd").TAG)
 	if duo:hero_tags.append("autonomous_party")
 	if duo and bootstrap_solo:hero_tags.append(SOLO_START_TAG)
@@ -589,6 +595,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	else: _exploration_route.clear()
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
+	_round_edit_actor_id=sim.world.party_encounter.protagonist_id
+	if not RoundPlans.begin(sim):return false
 	return true
 
 
@@ -1301,6 +1309,7 @@ func discard_inventory_item(instance_id:String)->Dictionary:
 
 
 func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:Dictionary={})->Dictionary:
+	if round_active():return stage_round_item("USE",instance_id,"",selection)
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
@@ -1427,6 +1436,7 @@ func _use_field_potion(instance_id:String)->Dictionary:
 		"healed_amount":healed,"current_hp":int(hero.health),"inventory":protagonist_inventory(),"visual_effects":effects})
 
 func _commit_item_operation(action:String,instance_id:String,slot:String)->Dictionary:
+	if round_active():return stage_round_item(action,instance_id,slot,{})
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
@@ -1879,6 +1889,7 @@ func party_status() -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return {"ok": false, "reason": "session_not_initialized"}
 	var state = sim.world.party_encounter; var view_mode: String = {"GROUPED":"EXPLORATION", "GROUPED_COMPLETE":"EXPLORATION",
 		"CONTACT":"ENCOUNTER_PREVIEW", "ENGAGED":"COMBAT", "REGROUP_READY":"REGROUP", "PARTY_DEFEATED":"COMBAT"}[state.safe_phase]
+	if RoundRules.enabled(sim.world) and state.safe_phase!="PARTY_DEFEATED":view_mode="COMBAT" if round_active() else "EXPLORATION"
 	var visible_enemy_ids: Array = []
 	var cycle:Dictionary=expedition_cycle_status()
 	if str(cycle.get("phase","DUNGEON"))=="TOWN":
@@ -2995,6 +3006,7 @@ func _current_floor_enemy_ids()->Array[int]:
 
 
 func floor_transition_assessment()->Dictionary:
+	if round_active():return _rejection_dto("round_exit_unsafe")
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or not VisualTestMapScript.uses_product_dungeon(scenario_id):
 		return _rejection_dto("floor_transition_unavailable")
@@ -3010,6 +3022,9 @@ func floor_transition_assessment()->Dictionary:
 	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
+	if RoundRules.enabled(sim.world):
+		for member_id in state.active_party_member_ids:
+			if sim.world.occupies_tile(member_id) and maxi(absi(sim.world.entities[member_id].position.x-hero.position.x),absi(sim.world.entities[member_id].position.y-hero.position.y))>1:return _rejection_dto("round_party_not_at_exit")
 	if state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
 		return _rejection_dto("floor_transition_locked")
 	return _feedback_dto({"accepted":true,"reason":"ok",
@@ -6469,6 +6484,7 @@ func companion_decision_explanations() -> Dictionary:
 
 
 func turn_intent_overlays() -> Array[Dictionary]:
+	if round_active():return round_overlays()
 	var rows: Array[Dictionary] = []
 	if field_turns_active():
 		var world=sim.world
@@ -6865,6 +6881,9 @@ func auto_explore_state() -> Dictionary:
 
 
 func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
+	if round_active():
+		_auto_explore.cancel("enemy_sighted")
+		return _rejection_dto("round_planning_requires_confirmation")
 	# AUTO has already selected one adjacent, visible, fog-safe destination. Commit
 	# it through the same canonical one-cell seam used by route continuation, but
 	# avoid building and revalidating a throwaway one-step route plan around every
@@ -7049,6 +7068,7 @@ func commit_exploration(command,prevalidated_one_step:bool=false) -> Dictionary:
 
 func _commit_exploration_one(command, preserve_route: bool,
 		prevalidated_auto_hop: bool = false) -> Dictionary:
+	if round_active():return _rejection_dto("round_planning_requires_confirmation")
 	if FieldRules.active(sim.world):
 		return commit_field_action(_field_exploration_action(command))
 	if not prevalidated_auto_hop:
@@ -7119,6 +7139,7 @@ func _field_exploration_action(command):
 		else ActionScript.hold(command.actor_id) if command.type==CommandScript.Type.WAIT else null
 
 func commit_field_action(action)->Dictionary:
+	if round_active():return stage_round_action(action)
 	if _run_is_complete():return _rejection_dto("run_complete")
 	var begun:=PerfProbeScript.begin()
 	var rollback:Dictionary=sim.capture_rollback_memento(false)
@@ -7143,6 +7164,11 @@ func commit_field_action(action)->Dictionary:
 			sim.restore_rollback_memento(rollback);return _rejection_dto(str(settlement_result.get("reason","settlement_advance_failed")))
 		result.events.append_array(recovery.get("events",[]))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
+		if not RoundPlans.begin(sim):
+			sim.restore_rollback_memento(rollback);return _rejection_dto("round_plan_failed")
+		if round_active():
+			if _auto_explore!=null:_auto_explore.cancel("enemy_sighted")
+			if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 		command_journal.append({"kind":"field_action","action":action.to_dict()})
 		_advance_exile_world()
 	_clear_draft()
@@ -7153,6 +7179,10 @@ func commit_field_action(action)->Dictionary:
 	return dto
 
 func select_field_actor(actor_id:int)->Dictionary:
+	if round_active():
+		if str(actor_id) not in sim.world.party_encounter.round_combat.order or actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("round_actor_not_editable")
+		_round_edit_actor_id=actor_id
+		return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,"editing":true})
 	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
 	var world=sim.world;var party=world.party_encounter
 	if actor_id not in party.active_party_member_ids or not world.can_act(actor_id,world.world_time):
@@ -7274,6 +7304,7 @@ func strike_with_skill(skill_id: String, target_id: int) -> Dictionary:
 
 
 func party_retreat() -> Dictionary:
+	if round_active():return round_retreat_hint()
 	# One button: companions get the RETREAT directive and the hero's own
 	# automatic decision follows the same directive until another input.
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -8620,6 +8651,7 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
+			"round":replay_result=replay.round_command(row.operation)
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
 			"field_control":
@@ -9126,6 +9158,8 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind"]:return "invalid_field_care_journal"
 			"darkness_rules":
 				if keys!=["kind"]:return "invalid_darkness_rules_journal"
+			"round":
+				if keys!=["kind","operation"] or not row.operation is Dictionary or row.operation.get("type") not in ["EDIT","CONFIRM","RESUME"]:return "invalid_round_journal"
 			"field_action":
 				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
 					return "invalid_field_action_journal"
@@ -10296,3 +10330,107 @@ func _possessive(value:String)->String: return value + ("의")
 func _has_final(value:String)->bool:
 	if value.is_empty(): return false
 	var code := value.unicode_at(value.length()-1); return code >= 0xAC00 and code <= 0xD7A3 and (code-0xAC00)%28 != 0
+
+# Round APIs: selection is presentation only; every mutation is journalled.
+func round_active()->bool:
+	return sim!=null and RoundRules.active(sim.world)
+
+func round_status()->Dictionary:
+	if sim==null or sim.world.party_encounter==null:return {"active":false,"order":[]}
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	var rows:Array=[]
+	for key in r.order:
+		var id:=int(key);var ally:bool=id in w.party_encounter.active_party_member_ids
+		var seen:bool=ally or FieldRules.visible(w,id)
+		var plan:Dictionary=r.plans[key]
+		rows.append({"actor_id":id,"name":str(w.entities[id].display_name) if seen else "시야 밖 적",
+			"ally":ally,"visible":seen,"selected":id==_round_edit_actor_id,
+			"completed":key in r.completed_actor_ids,"position":plan.origin if seen else [-1,-1],
+			"destination":plan.destination if seen else [-1,-1],
+			"type":str(plan.action.type) if seen else "HIDDEN","path":plan.path.duplicate(true) if seen else [],
+			"health":w.entities[id].health if seen else -1,"max_health":w.entities[id].max_health if seen else -1,
+			"source":plan.source if seen else "","skill_id":str(plan.action.get("skill_id","")) if seen else "",
+			"move_budget":int(plan.move_budget) if seen else 0})
+	return {"active":RoundRules.active(w),"phase":str(r.phase),"round_id":int(r.round_id),
+		"plan_revision":int(r.plan_revision),"cursor":int(r.execution_cursor),"order":rows,
+		"interrupt_reason":str(r.interrupt_reason),"selected_actor_id":_round_edit_actor_id}
+
+func edit_round_plan(actor_id:int,draft:Dictionary,expected_revision:int)->Dictionary:
+	return round_command({"type":"EDIT","actor_id":str(actor_id),"draft":draft.duplicate(true),"revision":expected_revision})
+
+func confirm_round(expected_round_id:int,expected_revision:int)->Dictionary:
+	return round_command({"type":"CONFIRM","round_id":expected_round_id,"revision":expected_revision})
+
+func resume_round(expected_round_id:int,expected_revision:int)->Dictionary:
+	return round_command({"type":"RESUME","round_id":expected_round_id,"revision":expected_revision})
+
+func round_command(operation:Dictionary)->Dictionary:
+	if not round_active() or _run_is_complete():return _rejection_dto("round_not_active")
+	var keys:Array=operation.keys();keys.sort();var result:Dictionary
+	if operation.get("type")=="EDIT":
+		if keys!=["actor_id","draft","revision","type"] or not Int64CodecScript.is_canonical(operation.actor_id) or not operation.draft is Dictionary or not preload("res://sim/round_combat_state.gd").integer(operation.revision):return _rejection_dto("round_command_invalid")
+		result=RoundPlans.edit(sim,int(operation.actor_id),operation.draft,int(operation.revision))
+	else:
+		if keys!=["revision","round_id","type"] or operation.get("type") not in ["CONFIRM","RESUME"] or not preload("res://sim/round_combat_state.gd").integer(operation.revision) or not preload("res://sim/round_combat_state.gd").integer(operation.round_id):return _rejection_dto("round_command_invalid")
+		var rollback:Dictionary=sim.capture_rollback_memento(false)
+		result=RoundSystem.confirm(sim,int(operation.round_id),int(operation.revision),operation.type=="RESUME")
+		if result.get("accepted",false) and result.get("completed",false):
+			var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,int(result.events_start),int(result.time_cost)) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(int(result.events_start))
+			if not recovery.get("accepted",false):sim.restore_rollback_memento(rollback);return _rejection_dto("round_recovery_failed")
+			_advance_exile_world()
+		if result.get("accepted",false) and sim.world.party_encounter.round_combat.phase=="INTERRUPTED":RoundSystem.incorporate(sim)
+	if not result.get("accepted",false):return _rejection_dto(str(result.get("reason","round_failed")))
+	command_journal.append({"kind":"round","operation":operation.duplicate(true)})
+	_clear_draft()
+	var dto:=_feedback_dto({"accepted":true,"reason":str(result.get("reason","ok")),
+		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "라운드 진행 완료"})
+	dto["round_result"]=result.duplicate(true)
+	return dto
+
+func round_preview()->Dictionary:
+	return RoundPreview.preview(sim) if round_active() else {"accepted":false,"slots":[]}
+
+func stage_round_action(action)->Dictionary:
+	if action==null:return _rejection_dto("round_action_invalid")
+	var actor_id:int=_round_edit_actor_id if _round_edit_actor_id in sim.world.party_encounter.active_party_member_ids else sim.world.party_encounter.protagonist_id
+	var current:Dictionary=sim.world.party_encounter.round_combat.plans.get(str(actor_id),{})
+	if current.is_empty():return _rejection_dto("round_actor_not_editable")
+	var draft_action=ActionScript.new(action.type,actor_id,action.destination,action.target_id,action.skill_id)
+	var path:Array=current.path.duplicate(true)
+	if action.type=="MOVE":
+		var route:Dictionary=sim.party_coordinator.pathfinder.find_path(actor_id,action.destination)
+		if not route.get("found",false):return _rejection_dto("round_path_unreachable")
+		path=[]
+		for point in route.path.slice(1):path.append([point.x,point.y])
+		draft_action=ActionScript.from_dict(current.action)
+	elif action.type=="HOLD":path=[]
+	return edit_round_plan(actor_id,{"action":draft_action.to_dict(),"path":path},int(sim.world.party_encounter.round_combat.plan_revision))
+
+func round_overlays()->Array[Dictionary]:
+	var rows:Array[Dictionary]=[];var status:=round_status();var w=sim.world
+	for row in status.order:
+		if not row.visible or row.completed:continue
+		var plan:Dictionary=w.party_encounter.round_combat.plans[str(row.actor_id)]
+		rows.append({"actor_id":row.actor_id,"actor_name":row.name,"role":"COMPANION" if row.ally else "ENEMY",
+			"from_position":plan.origin,"destination":plan.destination,"target_position":plan.target_cell,
+			"target_id":int(plan.action.target_id),"type":plan.action.type if plan.path.is_empty() else "MOVE",
+			"skill_id":str(plan.action.get("skill_id","")),"source":plan.source,"source_label":"예정",
+			"source_color":"#75c8ff" if row.ally else "#ff6655","opacity":0.85 if row.actor_id==_round_edit_actor_id else 0.3,
+			"line_style":"SOLID","marker_style":"SQUARE","draw_connector":true,"approximate":false,
+			"ready_in":w.party_encounter.round_combat.order.find(str(row.actor_id))*100,"speech_headline":"",
+			"speech_reason_summary":"공개된 계획대로 실행","path":plan.path.duplicate(true)})
+	return rows
+
+func round_retreat_hint()->Dictionary:
+	return _feedback_dto({"accepted":true,"reason":"ok","released":false,
+		"message":"도주도 이동 계획으로 진행합니다 · 출구 방향으로 각 아군의 경로를 지정하세요"})
+
+func stage_round_item(action:String,instance_id:String,slot:String,selection:Dictionary)->Dictionary:
+	var hero:int=sim.world.party_encounter.protagonist_id
+	var operation:={"action":action,"instance_id":instance_id,"slot":slot,"selection":selection.duplicate(true)}
+	if action=="USE":
+		var inv=sim.world.inventory_of(hero);var item=inv.item(instance_id) if inv!=null else null
+		if item!=null and not preload("res://sim/mystery_consumables.gd").has(item.definition_id) and ItemCatalogScript.healing_amount(item.definition_id)<=0:return _rejection_dto("monster_meat_enemy_near")
+	var assessed:=preload("res://sim/round_item_rules.gd").assess(sim.world,hero,operation)
+	if not assessed.get("accepted",false):return _rejection_dto(str(assessed.get("reason","item_unavailable")))
+	return edit_round_plan(hero,{"action":ActionScript.hold(hero).to_dict(),"path":[],"item_operation":operation},int(sim.world.party_encounter.round_combat.plan_revision))

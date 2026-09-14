@@ -29,6 +29,7 @@ static func process_tick(sim,step_index:int)->bool:
 	for row in rows:
 		if not row is Dictionary:continue
 		var id:=int(row.get("entity_id","-1"))
+		if preload("res://sim/round_combat_rules.gd").active(world) and str(id) in party.round_combat.participants:continue
 		if not world.entities.has(id) or not world.combatant_states.has(id):continue
 		var entity=world.entities[id];var member=party.member(id)
 		if member==null or not Rules.present(world,id):continue
@@ -112,6 +113,7 @@ static func process_tick(sim,step_index:int)->bool:
 	var enemies:Array=sim.party_coordinator._stream_enemy_ids();enemies.sort()
 	for enemy_value in enemies:
 		var enemy_id:=int(enemy_value)
+		if preload("res://sim/round_combat_rules.gd").active(world) and str(enemy_id) in party.round_combat.participants:continue
 		if not world.entities.has(enemy_id) or not world.is_autonomous_target(enemy_id) \
 				or not world.can_act(enemy_id,world.world_time) \
 				or int(party.enemy_busy_rows.get(enemy_id,world.world_time+1))>world.world_time:continue

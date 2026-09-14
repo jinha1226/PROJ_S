@@ -711,7 +711,9 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 				if leaf!=null:pending.append({"action":leaf,"resolution":resolution,
 					"frozen":frozen})
 		if leaf==null:return false
-		world.party_encounter.member(actor_id).busy_until=start_time+int(row.time_cost)
+		var member=world.party_encounter.member(actor_id)
+		if member!=null:member.busy_until=start_time+int(row.time_cost)
+		else:world.party_encounter.enemy_busy_rows[actor_id]=start_time+int(row.time_cost)
 	for item in pending:
 		var leaf=item.action;var resolution=item.resolution
 		var target=world.entities.get(leaf.target_id)
@@ -727,6 +729,9 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 			if world.emit_event("combat.attack_missed",-1,leaf.target_id,leaf.position,0,
 					leaf.id,{"schema_version":1,"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,
 						"outcome":"MISS"})==null:return false
+		elif str(resolution.outcome)=="PARRIED":
+			if world.emit_event("combat.attack_parried",-1,leaf.target_id,leaf.position,0,leaf.id,
+				{ "schema_version":1,"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,"outcome":"PARRIED"})==null:return false
 		elif str(resolution.outcome)=="FINISHER":
 			if not bool(damage.apply_canonical_downed_finisher(target,
 				int(item.frozen.assessment.normal_final_damage),leaf.id,leaf.position,

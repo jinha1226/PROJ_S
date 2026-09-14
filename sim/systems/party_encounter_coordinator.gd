@@ -169,6 +169,9 @@ func _award_canonical_enemy_deaths(state) -> bool:
 				and preload("res://sim/living_expedition_rules.gd").independent(world,event.instigator_id) \
 				and event.instigator_id not in world._party_active_ids_at_event(event.id):
 			continue
+		# Enemy friendly-fire deaths award player XP regardless of player setup,
+		# including shove-induced
+		# kills. Keep the canonical death id as the exactly-once reward source.
 		if not state.protagonist_progression.award_enemy_death(event.id):return false
 		var xp_result:Dictionary=state.protagonist_growth.commit_award_xp(
 			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
@@ -2119,6 +2122,10 @@ func _has_active_combat_enemy()->bool:
 	return false
 
 func _disengage_to_exploration()->bool:
+	if preload("res://sim/round_combat_rules.gd").enabled(world):
+		# Planned combat keeps every companion at its actual cell. The round
+		# boundary owns pursuit/search expiry and exploration transition.
+		return true
 	var state=world.party_encounter
 	var hero=world.entities.get(world.party_control_actor_id())
 	if hero==null:return false

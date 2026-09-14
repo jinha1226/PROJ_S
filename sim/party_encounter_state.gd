@@ -169,7 +169,7 @@ func to_dict() -> Dictionary:
 static func from_dict(row: Dictionary):
 	var state = load("res://sim/party_encounter_state.gd").new()
 	state.schema_version = SCHEMA_VERSION
-	state.round_combat=row.get("round_combat",RoundState.fresh()).duplicate(true)
+	state.round_combat=RoundState.normalized(row.get("round_combat",RoundState.fresh()))
 	state.legacy_journal_origin = bool(row.get("legacy_journal_origin",
 		int(row.get("schema_version", 1)) < HEXACO_SCHEMA_VERSION))
 	state.legacy_contact_rule = bool(row.get("legacy_contact_rule",
