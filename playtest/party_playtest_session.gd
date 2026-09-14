@@ -4204,7 +4204,10 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 		else Vector2i(count,rows))
 	var _pg:=PerfProbeScript.begin()
 	var grid_dto:Dictionary=_party_rich_observation(context,viewport_bounds,viewport_origin,count*rows,omit_unseen)
-	if room_enabled():grid_dto["room_bounds"]=room_status().bounds;grid_dto["room_exits"]=room_status().exits
+	if room_enabled():
+		var room:Dictionary=room_status()
+		grid_dto["room_bounds"]=room.bounds;grid_dto["room_exits"]=room.exits
+		grid_dto["room_biome"]=room.biome
 	PerfProbeScript.end("obs.rich",_pg)
 	var _pn:=PerfProbeScript.begin()
 	var minimap_dto:Dictionary=(visible_room_minimap() if room_enabled() else _party_minimap_observation(context)) if include_minimap else {}
@@ -10579,11 +10582,12 @@ func room_status()->Dictionary:
 	if not room_enabled():return {"enabled":false}
 	var rules=preload("res://sim/room_transition_rules.gd");var s:Dictionary=sim.world.party_encounter.nine_room_floor
 	var area:Rect2i=rules.bounds(sim.world);var exits:Array=[]
+	var biome:String=str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].get("biome","dungeon"))
 	for p in rules.portals(sim.world):
 		if int(s.active_room_id) not in [int(p.a),int(p.b)]:continue
 		var cell:Vector2i=rules.cell(sim.world,p,int(s.active_room_id))
 		exits.append({"portal_id":p.portal_id,"cell":[cell.x,cell.y],"target_room":int(p.b) if int(p.a)==int(s.active_room_id) else int(p.a)})
-	return {"enabled":true,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
+	return {"enabled":true,"biome":biome,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
 
 func assess_room_exit(actor_id:int,portal_id:String)->Dictionary:
 	return preload("res://sim/room_transition_rules.gd").assess(sim.world,actor_id,portal_id,true) if room_enabled() else _rejection_dto("room_exit_unavailable")

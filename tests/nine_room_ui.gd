@@ -12,6 +12,7 @@ func run():
 	var ui=Sandbox.new();ui.size=Vector2(390,844);ui.initialize_for_headless_test(s,true)
 	root.add_child(ui);ui.set_process(false);ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	for viewport_size in [Vector2i(360,800),Vector2i(390,844)]:
+		root.content_scale_size=viewport_size
 		root.size=viewport_size;ui.size=Vector2(viewport_size);ui._request_refresh()
 		for i in range(4):await process_frame
 		check(ui.grid.visible_cell_count==8 and ui.grid.visible_row_count==8,"8x8 board "+str(viewport_size))
@@ -37,9 +38,17 @@ func run():
 	ui._request_refresh()
 	for i in range(4):await process_frame
 	check(s.round_active(),"UI combat active")
+	var room:Dictionary=s.room_status()
+	check(ui.grid._room_biome==room.biome,"current room biome reaches grid DTO")
+	check(ui.grid._tactical_terrain!=null,"product uses retained tactical terrain")
+	if ui.grid._tactical_terrain!=null:
+		check(ui.grid._tactical_terrain.biome==preload("res://playtest/handcrafted_tile_assets.gd").biome_index(room.biome),"current room biome reaches art renderer")
 	check(ui.round_order_bar.global_position.y<ui.grid.global_position.y,"round order above board")
 	for button in [ui.product_wait_guard_button,ui.product_attack_button,ui.product_auto_button,ui.product_bag_button,ui.product_rest_button]:
 		var r:Rect2=button.get_global_rect();check(button.is_visible_in_tree() and r.end.y<=ui.size.y+1,"combat primary fits "+button.name+str(r))
 	check(not ui.battle_enemy_strip.visible,"combat duplicate enemy strip hidden")
+	if "--capture" in OS.get_cmdline_user_args():
+		await RenderingServer.frame_post_draw
+		check(root.get_texture().get_image().save_png("/tmp/handcrafted64-game.png")==OK,"runtime screenshot")
 	ui.queue_free();await process_frame
 	print("NINE_ROOM_UI ","PASS" if failures.is_empty() else failures);quit(0 if failures.is_empty() else 1)

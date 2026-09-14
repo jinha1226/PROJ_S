@@ -69,6 +69,7 @@ var visible_row_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
 var _room_bounds:=Rect2i()
 var _room_exits:Array=[]
+var _room_biome:="dungeon"
 var _graphics_mode := GRAPHICS_MODE_FLAT_2D
 var _terrain_theme_floor_index:=1
 var _cells: Dictionary = {}
@@ -243,6 +244,10 @@ func _exit_tree()->void:
 
 var _ability_markers:Array=[]
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
+	var next_biome:String=str(observation.get("room_biome","dungeon"))
+	if next_biome!=_room_biome:
+		_room_biome=next_biome
+		_invalidate_static_projection_cache()
 	_room_exits=observation.get("room_exits",[]).duplicate(true)
 	var raw_room:Array=observation.get("room_bounds",[])
 	_room_bounds=Rect2i(raw_room[0],raw_room[1],8,8) if raw_room.size()==4 else Rect2i()
@@ -2527,7 +2532,7 @@ func _draw_world_with_emphasis()->void:
 		_tactical_terrain.name="TacticalTerrain";_tactical_terrain.show_behind_parent=true;add_child(_tactical_terrain)
 	if _tactical_terrain!=null:_tactical_terrain.visible=tactical
 	if tactical and _tactical_terrain_revision!=_static_projection_rebuild_count:
-		_tactical_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,visible_cell_count)
+		_tactical_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,visible_cell_count,_room_biome)
 		_tactical_terrain_revision=_static_projection_rebuild_count
 	if retained and _retained_terrain==null:
 		_retained_terrain=preload("res://playtest/retained_terrain_layer.gd").new()
