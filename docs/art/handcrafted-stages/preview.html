@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>8×8 구역 검토</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#151c23;color:#e4e9e9;font:16px system-ui,sans-serif;padding:20px;max-width:1200px;margin:auto}
+h1{font-size:24px}p{color:#afbec3;line-height:1.65}nav{display:flex;gap:8px;flex-wrap:wrap}button{background:#27333c;color:inherit;border:1px solid #657581;border-radius:8px;padding:12px;cursor:pointer}button[aria-pressed=true]{background:#385849;border-color:#9dccad}
+canvas{width:100%;max-width:760px;display:block;margin:auto}img{width:100%;background:#202830;border-radius:12px}small{color:#afbec3}
+</style>
+<h1>8×8 전투 구역 3종</h1>
+<p>정확한 데이터 기반 지형 배치도. 그림은 새 타일의 게임 적용 결과가 아닌 충돌·동선 검토용입니다.</p>
+<nav id="tabs"></nav><h2 id="name"></h2><p id="design"></p>
+<canvas width="900" height="570" aria-label="아이소매트릭 맵 배치도"></canvas>
+<p>붉은 표식: 적 시작 위치 · 청록 테두리: 연결 가능한 입구 · 솟은 블록: 통행 차단 · 파랑: 얕은 물 · 점무늬: 잔해</p>
+<h2>타일 아트 원본</h2><p>위부터 던전·동굴·지하 숲. 기준점과 크기를 정렬하기 전의 생성 시안입니다. 아래 아트는 위 배치도나 실제 게임에 아직 적용하지 않았습니다.</p>
+<img src="fantasy-terrain-source.png" alt="세 테마의 모듈형 타일 18종">
+<script>
+const content={
+  "schema_version": 1,
+  "legend": {".": "stone_floor", "#": "wall", "~": "shallow_water", "r": "rubble"},
+  "templates": [
+    {
+      "id": "broken_watchpost", "name": "무너진 감시소", "biome": "dungeon",
+      "rows": ["#......#", "........", "..#.#...", "........", "..#..#..", "........", "...rr...", "#......#"],
+      "enemy_cells": [[5,2], [5,5], [2,5]],
+      "design": "기둥 사이 중앙 직선로와 남쪽 잔해 우회로. 기둥을 끼고 적을 분리한다."
+    },
+    {
+      "id": "split_spring", "name": "갈라진 샘 동굴", "biome": "cave",
+      "rows": ["#......#", "........", "..##....", "....~~..", "..~~....", "...##...", "........", "#......#"],
+      "enemy_cells": [[5,2], [5,5], [2,5]],
+      "design": "두 암반과 얕은 물 사이의 짧은 중앙 길, 바깥의 넓은 우회로 중 선택한다."
+    },
+    {
+      "id": "rooted_cache", "name": "뿌리 덮인 저장터", "biome": "forest",
+      "rows": ["#......#", "........", "..#.....", "....#...", "..r.....", "....r...", "....#...", "#......#"],
+      "enemy_cells": [[5,2], [5,5], [2,5]],
+      "design": "엇갈린 나무 자리와 쓰러진 줄기를 돌아 세 방향에서 접근하는 적을 나누어 상대한다.",
+      "future_objective": {"type": "protect_supply", "cell": [3,4], "enabled": false}
+    }
+  ]
+}
+;
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
+const palettes=[['#64777d','#394953'],['#716856','#403e3e'],['#536a43','#303f33']];
+const project=(x,y)=>[450+(x-y)*46,83+(x+y)*23];
+function poly(points,fill,stroke='#26343b'){ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=1.3;ctx.stroke();}
+function diamond(x,y,h=0){const [a,b]=project(x,y);return [[a,b-23-h],[a+46,b-h],[a,b+23-h],[a-46,b-h]];}
+function render(index){
+const t=content.templates[index],p=palettes[index];ctx.clearRect(0,0,900,570);
+document.querySelector('#name').textContent=t.name;document.querySelector('#design').textContent=t.design;
+document.querySelectorAll('button').forEach((b,i)=>b.setAttribute('aria-pressed',i===index));
+for(let depth=0;depth<=14;depth++)for(let y=0;y<8;y++){let x=depth-y;if(x<0||x>7)continue;
+const kind=t.rows[y][x],d=diamond(x,y);poly([d[3],d[2],d[1],[d[1][0],d[1][1]+12],[d[2][0],d[2][1]+12],[d[3][0],d[3][1]+12]],p[1]);
+poly(d,kind==='~'?'#367482':p[0]);
+if(kind==='#'){const top=diamond(x,y,34);poly([top[3],top[2],d[2],d[3]],p[1]);poly([top[2],top[1],d[1],d[2]],'#283239');poly(top,p[0]);}
+if(kind==='r'){const [a,b]=project(x,y);for(let i=0;i<4;i++)poly([[a-20+i*10,b-5],[a-15+i*10,b-10],[a-10+i*10,b-5],[a-15+i*10,b]],p[1]);}
+if([[3,0],[7,3],[3,7],[0,3]].some(e=>e[0]===x&&e[1]===y)){ctx.beginPath();d.forEach(([a,b],i)=>i?ctx.lineTo(a,b):ctx.moveTo(a,b));ctx.closePath();ctx.lineWidth=3;ctx.strokeStyle='#92d9c3';ctx.stroke();}
+if(t.enemy_cells.some(e=>e[0]===x&&e[1]===y)){const [a,b]=project(x,y);ctx.fillStyle='#ed927f';ctx.beginPath();ctx.arc(a,b-9,9,0,Math.PI*2);ctx.fill();ctx.fillRect(a-9,b+1,18,9);}
+}
+}
+content.templates.forEach((t,i)=>{const b=document.createElement('button');b.textContent=t.name;b.onclick=()=>render(i);document.querySelector('#tabs').append(b);});render(0);
+</script></html>
+

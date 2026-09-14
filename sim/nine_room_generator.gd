@@ -1,5 +1,6 @@
 extends RefCounted
 const Loader=preload("res://sim/json_content_loader.gd")
+const Handcrafted=preload("res://sim/handcrafted_room_templates.gd")
 static var CONFIG:Dictionary=Loader.load_document("res://data/content/nine_room_dungeon.json")
 const RULESET_ID:="nine-room-dungeon-v1"
 const VERSION:=1
@@ -66,12 +67,19 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 		portals.append({"portal_id":key,"a":a,"b":b,"a_cell":[pa.x,pa.y],"b_cell":[pb.x,pb.y],"direction":[delta.x,delta.y]})
 		rooms[a].exits.append(key);rooms[b].exits.append(key);doors.append(pa);doors.append(pb)
 	rng.seed=seed ^ floor_index ^ 0x54455252
+	var combat_index:=0
 	for room in rooms:
 		var origin:=Vector2i(room.bounds[0],room.bounds[1])
 		if room.role=="COMBAT":
+			var template:Dictionary=Handcrafted.stamp(terrain,24,origin,combat_index+floor_index-1)
+			combat_index+=1
+			room["template_id"]=template.id
+			room["template_name"]=template.name
+			room["biome"]=template.biome
 			var species:Array=["goblin","kobold","dcss_rat"] if floor_index==1 else ["dcss_orc","dcss_gnoll","goblin"]
 			for i in range(int(CONFIG.enemies_per_combat_room)):
-				var p:Vector2i=origin+[Vector2i(4,4),Vector2i(5,4),Vector2i(4,5)][i]
+				var cell:Array=template.enemy_cells[i]
+				var p:Vector2i=origin+Vector2i(cell[0],cell[1])
 				enemies.append({"position":p,"species_id":species[i],"group_id":"ROOM_%d"%room.room_id,"route_id":"ROOM_%d"%room.room_id})
 		elif room.role=="HAZARD":
 			for p in [Vector2i(4,4),Vector2i(4,5),Vector2i(5,4)]:terrain[(origin.y+p.y)*24+origin.x+p.x]="shallow_water" if floor_index==1 else "rubble"
