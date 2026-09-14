@@ -36,6 +36,8 @@ static func prepare(sim,r:Dictionary)->bool:
 
 static func deployment_error(w,p:Dictionary)->String:
 	if p.action.type!="HOLD" or not p.item_operation.is_empty():return "deployment_move_only"
+	for other in w.party_encounter.round_combat.plans.values():
+		if other.actor_id!=p.actor_id and w.party_encounter.member(int(other.actor_id))!=null and other.destination==p.destination:return "deployment_occupied"
 	var entry:Array=current(w).entry;var origin:=Vector2i(entry[0],entry[1])
 	for raw in p.path:
 		var cell:=Vector2i(raw[0],raw[1])

@@ -101,6 +101,22 @@ var _played_effect_ids: Dictionary = {}
 var _played_effect_event_ids: Dictionary = {}
 var _actor_motion_requests: Dictionary = {}
 var _actor_motions: Dictionary = {}
+var _stage_motion_until:=0
+var deployment_cells:Array[Vector2i]=[]
+
+func stage_motion_busy()->bool:
+	return Time.get_ticks_msec()<_stage_motion_until
+
+func arm_stage_motion(paths:Dictionary)->int:
+	var delay:=0
+	for id in paths:
+		var path:Array=paths[id]
+		if path.size()<2:continue
+		var duration:=(path.size()-1)*preload("res://playtest/stage_motion_sequence.gd").STEP_MS
+		_actor_motion_requests[id]={"duration":duration,"continuous":false,"path":path,"delay":delay}
+		delay+=duration+80
+	_stage_motion_until=Time.get_ticks_msec()+delay
+	return delay
 var _actor_last_facing:Dictionary={}
 var _hero_camera_position:=Vector2i(-1,-1)
 var _hero_camera_actor_id:=-1
@@ -313,6 +329,11 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 				copy["display_position"]=[display_position.x,display_position.y]
 				copy["position"]=[display_position.x,display_position.y]
 				_actors.append(copy)
+	for actor in _actors:
+		var placements:Dictionary=observation.get("deployment_positions",{})
+		if placements.has(int(actor.entity_id)):
+			actor.display_position=placements[int(actor.entity_id)].duplicate()
+			actor.position=actor.display_position.duplicate()
 	_actors.sort_custom(func(a,b):
 		if bool(a.get("is_protagonist",false)) != bool(b.get("is_protagonist",false)): return bool(a.get("is_protagonist",false))
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
@@ -393,8 +414,7 @@ func actor_motion_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 			"eased_progress":1.0,"duration_ms":0}.duplicate(true)
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
-	var sample:=DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
-		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false)))
+	var sample:=preload("res://playtest/stage_motion_sequence.gd").sample(motion,now)
 	return {"active":bool(sample.active),"entity_id":entity_id,
 		"from_world":motion.from_world,"to_world":motion.to_world,
 		"world_position":sample.world_position,"progress":float(sample.progress),
@@ -430,6 +450,12 @@ func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:D
 			_actor_motions.erase(entity_id);continue
 		var previous:Dictionary=previous_actors[entity_id]
 		var next:Dictionary=next_actors[entity_id]
+		var request:Dictionary=_actor_motion_requests[entity_id]
+		if request.has("path"):
+			var path:Array=request.path
+			_actor_motions[entity_id]={"from_world":path.front(),"to_world":path.back(),"path":path,
+				"started_at_ms":observed_at_ms+int(request.delay),"duration_ms":request.duration,"continuous":false}
+			continue
 		var previous_logical:=_logical_position_from_actor(previous)
 		var next_logical:=_logical_position_from_actor(next)
 		var logical_delta:=next_logical-previous_logical
@@ -698,6 +724,7 @@ func clear_transient_visuals()->void:
 	if melee_vfx!=null:melee_vfx.clear()
 	_awareness_pulses.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
+	_stage_motion_until=0;deployment_cells.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
 	_speech_bubbles.clear();_callout_lifetimes.clear()
@@ -2186,8 +2213,7 @@ func _actor_visual_world_position(entity_id:int,sample_time_ms:int=-1)->Vector2:
 	if not _actor_motions.has(entity_id):return target
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
-	return DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
-		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false))).world_position
+	return preload("res://playtest/stage_motion_sequence.gd").sample(motion,now).world_position
 
 func _logical_position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("logical_position",actor.get("position",[]))
@@ -2494,6 +2520,8 @@ func _draw_world_with_emphasis()->void:
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_skill_reach_cells()
+	for cell in deployment_cells:
+		_draw_cell_overlay(cell,Color(0.2,0.8,0.9,0.16),Color(0.3,0.9,1.0,0.6),1.0)
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
 	Perf.end("grid.terrain_passes",begun)
@@ -3970,6 +3998,7 @@ func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
 		draw_line(start,finish,color,width,true)
 
 func _draw_intent(intent: Dictionary) -> void:
+	if stage_motion_busy():return
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return
 	var origin := Vector2i(int(intent.from_position[0]), int(intent.from_position[1]))
 	if not _cell_allows_overlay(origin):return
@@ -3977,6 +4006,8 @@ func _draw_intent(intent: Dictionary) -> void:
 	if not bool(spec.visible):return
 	var color := Color(str(spec.color_hex))
 	color.a*=float(spec.opacity)
+	if int(intent.get("actor_id",-1))==selected_target_id and str(intent.get("role",""))=="ENEMY":
+		color=Color(1.0,0.16,0.12,1.0)
 	var action_type := str(spec.action_type)
 	if uses_tactical_projection():
 		_draw_tactical_intent(intent,spec,origin,color)
@@ -4098,7 +4129,8 @@ func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,col
 	if action=="MOVE":target=_array_to_world_position(intent.get("destination",[]))
 	elif action in ["MELEE","SKILL"]:target=_array_to_world_position(intent.get("target_position",[]))
 	if not _cell_allows_overlay(target):return
-	_draw_cell_overlay(target,Color(color,color.a*(0.16 if action in ["MELEE","SKILL"] else 0.07)),color,1.2)
+	var selected_attack:=int(intent.get("actor_id",-1))==selected_target_id and str(intent.get("role",""))=="ENEMY" and action in ["MELEE","SKILL"]
+	_draw_cell_overlay(target,Color(color,0.5 if selected_attack else color.a*(0.16 if action in ["MELEE","SKILL"] else 0.07)),color,2.0 if selected_attack else 1.2)
 	var center:=world_to_pixel_center(target)
 	if action=="MOVE" or bool(spec.draw_connector):
 		var start:=world_to_pixel_center(origin)

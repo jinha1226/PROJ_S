@@ -52,7 +52,7 @@ func sync(host):
 			var row:Dictionary=skills[index] if index<skills.size() else {}
 			b.set_meta("skill",row)
 			b.text="%s\nMP %d"%[row.label,row.cost] if not row.is_empty() else "빈 슬롯"
-			b.disabled=r.phase=="DEPLOYMENT" or row.is_empty()
+			b.disabled=r.phase=="DEPLOYMENT" or row.is_empty() or host.grid.stage_motion_busy()
 			b.set_skin_accent(not row.is_empty() and host._battle_target_actor_id==selected and host._battle_target_skill_id==str(row.get("skill_id","")))
 			b.tooltip_text=str(row.get("message","변이를 획득하면 사용할 수 있습니다"))+" · 길게 눌러 다음 스킬"
-		get_node("StageProceed").disabled=r.phase=="RESOLVING"
+		get_node("StageProceed").disabled=r.phase=="RESOLVING" or host.grid.stage_motion_busy()

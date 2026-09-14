@@ -1,5 +1,7 @@
 extends "res://tests/first_floor_stages_acceptance.gd"
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
+var test_ui
+var sequence_seen:=false
 func tap(b:Control):
 	var p:=b.get_global_rect().get_center()
 	for down in [true,false]:
@@ -7,10 +9,28 @@ func tap(b:Control):
 		root.push_input(e,true)
 		await process_frame
 	for i in range(3):await process_frame
+	var grid=test_ui.grid
+	if grid!=null and grid.stage_motion_busy():
+		sequence_seen=true
+		var finish:=0
+		for motion in grid.actor_motion_state().values():
+			if not motion.has("path"):continue
+			check(int(motion.started_at_ms)>=finish,"enemy movements never overlap")
+			finish=int(motion.started_at_ms)+int(motion.duration_ms)
+			var sample=preload("res://playtest/stage_motion_sequence.gd").sample(motion,int(motion.started_at_ms)-1)
+			check(sample.world_position==motion.path.front(),"waiting enemy stays at its starting tile")
+			var end=preload("res://playtest/stage_motion_sequence.gd").sample(motion,finish)
+			check(end.world_position==motion.path.back(),"path animation reaches final tile")
+		var journal_size:int=test_ui.session.command_journal.size()
+		test_ui._on_product_execute()
+		check(test_ui.session.command_journal.size()==journal_size,"animation blocks duplicate progress")
+		await create_timer(float(maxi(0,grid._stage_motion_until-Time.get_ticks_msec())+100)/1000.0).timeout
+		for i in range(3):await process_frame
 func run():
 	root.size=Vector2i(360,800);root.content_scale_size=Vector2i(360,800)
 	var s=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
 	var ui=Sandbox.new();ui.size=Vector2(360,800);ui.initialize_for_headless_test(s,true)
+	test_ui=ui
 	root.add_child(ui);ui.set_process(false)
 	for i in range(4):await process_frame
 	check(ui.stage_context_bar.is_visible_in_tree(),"exploration footer shown")
@@ -26,11 +46,38 @@ func run():
 	for i in range(4):await process_frame
 	check(ui.stage_context_bar.get_child_count()==4,"four combat controls")
 	check(not ui.round_order_bar.visible and not ui.combat_action_area.visible,"old timeline and dock stay hidden")
+	check(Vector2i(10,17) in ui.grid.deployment_cells,"valid deployment cells highlighted")
+	var original:Vector2i=s.sim.world.entities[hero].position
+	var placement_screen:Vector2=ui.grid.global_position+ui.grid.world_to_pixel_center(Vector2i(10,17))
+	for down in [true,false]:
+		var e:=InputEventScreenTouch.new();e.index=0;e.pressed=down;e.position=placement_screen
+		root.push_input(e,true);await process_frame
+	for i in range(4):await process_frame
+	check(s.sim.world.entities[hero].position==original,"placement preview does not advance authority")
+	check(ui.grid._position_from_actor(ui.grid._actor_by_id(hero))==Vector2i(10,17),"placement preview visibly moves actor")
+	check(s.sim.world.party_encounter.round_combat.plans[str(hero)].destination==[10,17],"placement edits selected actor plan")
 	var journal:int=s.command_journal.size();before=s.sim.world.world_time
 	await tap(ui.stage_context_bar.get_node("StageProceed"))
 	check(s.command_journal.size()==journal+1,"touch confirms deployment exactly once")
 	check(s.sim.world.world_time==before,"placement does not spend a round")
 	check(s.round_status().phase=="PLANNING","enemy setup completes before our response")
+	check(sequence_seen,"deployment triggers sequential movement presentation")
+	check(s.sim.world.entities[hero].position==Vector2i(10,17),"confirmation commits placement")
+	var enemy:=-1
+	for plan in s.sim.world.party_encounter.round_combat.plans.values():
+		if int(plan.actor_id) in s.sim.world.party_encounter.enemy_ids and plan.action.type=="MELEE":enemy=int(plan.actor_id);break
+	check(enemy>0,"an enemy announces an attack")
+	var revision:int=s.round_status().plan_revision
+	ui._on_actor(enemy)
+	for i in range(4):await process_frame
+	check(ui.grid.selected_target_id==enemy,"enemy selection survives refresh")
+	check(s.round_status().plan_revision==revision,"first enemy tap only inspects attack")
+	if "--capture" in OS.get_cmdline_user_args():
+		await RenderingServer.frame_post_draw
+		check(root.get_texture().get_image().save_png("/tmp/stage-selected-attack.png")==OK,"selected attack capture")
+	ui._on_actor(enemy)
+	for i in range(4):await process_frame
+	check(s.round_status().plan_revision==revision+1,"second tap reserves melee")
 	check(ui.stage_context_bar.get_node("StageProceed").text=="진행 ▶","proceed label changes after placement")
 	journal=s.command_journal.size();before=s.sim.world.world_time
 	await tap(ui.stage_context_bar.get_node("StageProceed"))

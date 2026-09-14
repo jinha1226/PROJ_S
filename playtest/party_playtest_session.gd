@@ -10544,6 +10544,9 @@ func round_command(operation:Dictionary)->Dictionary:
 	var dto:=_feedback_dto({"accepted":true,"reason":str(result.get("reason","ok")),
 		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "라운드 진행 완료"})
 	dto["round_result"]=result.duplicate(true)
+	dto["event_ids"]=[]
+	for index in range(int(result.get("events_start",0)),int(result.get("events_end",0))):
+		dto.event_ids.append(str(sim.world.events[index].id))
 	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 적이 이동했습니다. 공격 예고를 확인하세요."
 	return dto
 

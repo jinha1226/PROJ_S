@@ -2105,6 +2105,7 @@ func _refresh()->void:
 	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
 		view_dimensions.y,true)
 	var observation:Dictionary=ui_observation.get("grid",{})
+	preload("res://playtest/stage_deployment_view.gd").apply(self,observation)
 	_decorate_visible_resource_caches(observation)
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -2129,7 +2130,7 @@ func _refresh()->void:
 	if product_hud:grid_style["vignette"]=false
 	grid.set_neutral_phase_map(product_hud)
 	grid.set_presentation_style(grid_style)
-	if direct_solo_combat:selected_target_id=-1
+	if direct_solo_combat and not session.round_active():selected_target_id=-1
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
 	var world_speeches:Array=[]
@@ -5005,6 +5006,7 @@ func _strike_visible_enemy(entity_id:int)->void:
 		_request_refresh()
 
 func _on_product_execute()->void:
+	if grid!=null and grid.stage_motion_busy():return
 	if session!=null and session.round_active():
 		var round_state:Dictionary=session.round_status()
 		var result:Dictionary=session.resume_round(round_state.round_id,round_state.plan_revision) if round_state.phase=="INTERRUPTED" else session.confirm_round(round_state.round_id,round_state.plan_revision)
@@ -6622,7 +6624,8 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
-	if session.room_enabled() and _battle_target_mode.is_empty():
+	if grid.stage_motion_busy():return
+	if session.room_enabled() and _battle_target_mode.is_empty() and session.round_status().phase!="DEPLOYMENT":
 		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(session.sim.world,position)
 		var hero:int=session.sim.world.party_encounter.protagonist_id
 		if not exit.is_empty() and preload("res://sim/room_transition_rules.gd").distance(session.sim.world.entities[hero].position,position)==1:
@@ -6630,16 +6633,18 @@ func _on_cell(position:Vector2i)->void:
 			_request_refresh();return
 	if session.round_active() and _battle_target_mode.is_empty():
 		var picked:=-1
+		if session.round_status().phase=="DEPLOYMENT":
+			for id in session.sim.world.party_encounter.active_party_member_ids:
+				var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(id),{})
+				if plan.get("destination",[])==[position.x,position.y]:
+					_select_member(id,_entity_display_name(id));return
 		for entity in session.sim.world.entities.values():
 			if entity.position==position and (entity.id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,entity.id)):
 				picked=entity.id;break
 		if picked in session.sim.world.party_encounter.active_party_member_ids:
 			_select_member(picked,_entity_display_name(picked));return
 		if picked>0:
-			if _round_attack_targeting or session.room_enabled() and session.round_status().phase!="DEPLOYMENT":
-				_round_attack_targeting=false
-				_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,picked)),false);_request_refresh()
-			else:_focus_battle_enemy(picked)
+			_focus_battle_enemy(picked)
 			return
 		_record_result(session.commit_field_action(ActionScript.move_to(selected_member_id,position)),false);_request_refresh();return
 	if not _battle_target_mode.is_empty():
@@ -6744,14 +6749,16 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
+	if grid.stage_motion_busy():return
 	if session.round_active():
 		if not session.FieldRules.visible(session.sim.world,entity_id):return
-		if _round_attack_targeting or session.room_enabled() and session.round_status().phase!="DEPLOYMENT":
+		if session.round_status().phase!="DEPLOYMENT" and (_round_attack_targeting or selected_target_id==entity_id):
 			_round_attack_targeting=false
 			_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,entity_id)),false)
 		else:
 			selected_target_id=entity_id
 			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
+			notice_text="공격 예정 타일 · 같은 적을 다시 누르면 일반공격 예약"
 		_request_refresh();return
 	if session.field_turns_active():
 		_on_actor(entity_id);return
@@ -6767,6 +6774,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
+	if grid.stage_motion_busy():return
 	if session.round_active() and _battle_target_mode.is_empty():
 		if entity_id in session.sim.world.party_encounter.active_party_member_ids:_select_member(entity_id,_entity_display_name(entity_id))
 		else:_focus_battle_enemy(entity_id)
@@ -7209,6 +7217,16 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec,
 		duration_override_msec==CONTINUOUS_EXPLORATION_MOTION_MSEC)
 	else:grid.arm_actor_motion(moved.keys())
+	if session.room_enabled() and result.get("round_result",{}).has("events_start"):
+		var rr:Dictionary=result.round_result;var paths:Dictionary={}
+		for index in range(int(rr.events_start),int(rr.events_end)):
+			var event=session.sim.world.events[index]
+			if event.type!="action.move" or event.actor_id not in session.sim.world.party_encounter.enemy_ids:continue
+			if not paths.has(event.actor_id):
+				paths[event.actor_id]=[Vector2(event.data.from_position[0],event.data.from_position[1])]
+			paths[event.actor_id].append(Vector2(event.position))
+		var duration:int=grid.arm_stage_motion(paths)
+		if duration>0:get_tree().create_timer(float(duration+50)/1000.0).timeout.connect(_request_refresh)
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
 	if auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending):_cancel_auto_pending(true)

@@ -70,6 +70,8 @@ static func edit(sim,actor_id:int,draft:Dictionary,revision:int)->Dictionary:
 	if action==null or action.actor_id!=actor_id or action.type=="MOVE" or not draft.path is Array:return reject("round_draft_invalid")
 	if action.type in ["MELEE","SKILL"] and action.target_id in w.party_encounter.enemy_ids and not Field.visible(w,action.target_id):return reject("round_target_unseen")
 	var candidate:=pack(w,action,"USER",draft.path)
+	# Placement is a zero-time setup, not the first combat movement allowance.
+	if r.phase=="DEPLOYMENT":candidate.move_budget=12
 	candidate.item_operation=draft.get("item_operation",{}).duplicate(true)
 	var error:=State.plan_error(candidate,w.width,w.height)
 	if not error.is_empty():return reject("round_draft_"+error)
