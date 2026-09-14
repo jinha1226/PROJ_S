@@ -964,6 +964,8 @@ func _draw_skill_reach_cells() -> void:
 	var edge := Color("#ff7b7b", 0.85) if _skill_reach_target != "ALLY" else Color("#8bffa6", 0.85)
 	for point in _skill_reach_cells:
 		if not _cell_allows_overlay(point): continue
+		if uses_tactical_projection():
+			_draw_cell_overlay(point,Color(fill,0.12),edge,1.0);continue
 		var rect := world_cell_rect(point).grow(-maxf(1.0, cell_size_px() * 0.06))
 		draw_rect(rect, fill, true)
 		draw_rect(rect, edge, false, 1.0)
@@ -1037,6 +1039,7 @@ func route_draw_spec() -> Dictionary:
 		var completed:=index<=_route_completed_steps
 		var kind:="START" if index==0 else ("GOAL" if index==_route_path.size()-1 else ("NEXT" if index==_route_completed_steps+1 else "STEP"))
 		tiles.append({"index":index,"position":[point.x,point.y],"visible":visible,
+			"polygon":cell_overlay_polygon(point) if visible else PackedVector2Array(),
 			"pixel_rect":world_cell_rect(point).grow(-maxf(1.0,cell_size_px()*0.08)) if visible else Rect2(),"kind":kind,"completed":completed,
 			"fill_hex":"#607078" if completed else color_hex,
 			"fill_alpha":0.03 if completed else (0.09 if kind in ["NEXT","GOAL"] else 0.05),
@@ -1062,7 +1065,7 @@ func route_draw_spec() -> Dictionary:
 				cue_center-direction*cue_length-perpendicular*cue_width]})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
 		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,
-		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false,
+		"color_hex":color_hex,"render_style":"TACTICAL_CELLS" if uses_tactical_projection() else "CHALK_CENTERLINE","draw_tile_cards":uses_tactical_projection(),
 		"draw_endpoint_markers":false,"draw_ground_markers":false}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
@@ -2456,20 +2459,20 @@ func _draw() -> void:
 			for dy in range(-1,2):
 				for dx in range(-1,2):
 					var cell:Vector2i=point+Vector2i(dx,dy)
-					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
+					if is_world_cell_visible(cell):_draw_cell_overlay(cell,Color(tint,0.18),Color.TRANSPARENT)
 		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
 	Perf.end("grid.draw_world",begun)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]
 		if not is_world_cell_visible(goal):continue
 		var center:=world_to_pixel_center(goal)
-		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.4,Vector2.ONE*cell_size_px()*0.8),Color("#87c9eb"),false,2)
+		_draw_cell_overlay(goal,Color(0.53,0.79,0.92,0.08),Color("#87c9eb"),1.0)
 		var actor_center:=actor_visual_center(id)
 		if actor_center.x>=0:draw_line(actor_center,center,Color(0.5,0.8,1,0.35),1,true)
 	if move_preview_position!=Vector2i(-1,-1) and is_world_cell_visible(move_preview_position):
 		var color:=Color("#87dfcb") if move_preview_valid else Color("#ff6363")
 		var center:=world_to_pixel_center(move_preview_position)
-		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.45,Vector2.ONE*cell_size_px()*0.9),color,false,3)
+		_draw_cell_overlay(move_preview_position,Color(color,0.10),color,1.2)
 	for id in danger_actor_ids:
 		var center:=actor_visual_center(id)
 		if center.x<0 or center.y<0:continue
@@ -3957,6 +3960,9 @@ func _draw_cursor_preview() -> void:
 	var spec:=cursor_preview_draw_spec()
 	if not bool(spec.visible):return
 	var color:=Color(str(spec.color_hex))
+	if uses_tactical_projection():
+		_draw_cell_overlay(cursor_cell,Color(color,0.08),color,1.0)
+		return
 	var center:Vector2=spec.pixel_center;var radius:=float(spec.radius)
 	draw_circle(center,radius,Color(color,0.10))
 	draw_arc(center,radius,0,TAU,20,color,3.0)
@@ -3975,6 +3981,12 @@ func cursor_preview_draw_spec()->Dictionary:
 func _draw_route_overlay() -> void:
 	if _route_path.size()<2:return
 	var spec:=route_draw_spec()
+	if uses_tactical_projection():
+		for tile in spec.tiles:
+			if not tile.visible or tile.completed:continue
+			var point:=Vector2i(int(tile.position[0]),int(tile.position[1]))
+			_draw_cell_overlay(point,Color(Color(tile.fill_hex),float(tile.fill_alpha)),
+				Color(Color(tile.border_hex),0.65 if tile.kind in ["NEXT","GOAL"] else 0.25),1.0)
 	for segment in spec.segments:
 		if not bool(segment.visible):continue
 		var segment_color:=Color(str(segment.color_hex))
@@ -4007,6 +4019,9 @@ func _draw_intent(intent: Dictionary) -> void:
 	var color := Color(str(spec.color_hex))
 	color.a*=float(spec.opacity)
 	var action_type := str(spec.action_type)
+	if uses_tactical_projection():
+		_draw_tactical_intent(intent,spec,origin,color)
+		return
 	if action_type == "MOVE" and intent.get("destination") is Array and intent.destination.size() == 2:
 		var destination := Vector2i(int(intent.destination[0]), int(intent.destination[1]))
 		if not _cell_allows_overlay(destination):return
@@ -4080,6 +4095,8 @@ func _draw_arrow(from: Vector2, to: Vector2, color: Color, width: float, dashed:
 	draw_colored_polygon(PackedVector2Array([to, to-direction*10.0+side*5.0, to-direction*10.0-side*5.0]), color)
 
 func _draw_source_marker(position: Vector2i, marker_style: String, color: Color) -> void:
+	if uses_tactical_projection():
+		_draw_cell_overlay(position,Color(color,0.10),color,1.0);return
 	var center := world_to_pixel_center(position); var radius := cell_size_px() * 0.24
 	if marker_style == "DIAMOND":
 		draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
@@ -4093,3 +4110,42 @@ func _draw_source_marker(position: Vector2i, marker_style: String, color: Color)
 		draw_circle(center,radius,Color(color,0.25)); draw_arc(center,radius,0,TAU,18,color,2.5)
 
 func _key(p:Vector2i)->String: return "%d:%d"%[p.x,p.y]
+
+func cell_overlay_polygon(position:Vector2i,inset_ratio:float=0.08)->PackedVector2Array:
+	var polygon:=world_cell_polygon(position)
+	if polygon.size()!=4:return PackedVector2Array()
+	var center:Vector2=(polygon[0]+polygon[2])*0.5
+	for i in range(polygon.size()):polygon[i]=polygon[i].lerp(center,clampf(inset_ratio,0.0,0.95))
+	return polygon
+
+func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)->void:
+	var polygon:=cell_overlay_polygon(position)
+	if polygon.size()!=4:return
+	if fill.a>0.0:draw_colored_polygon(polygon,fill)
+	if edge.a>0.0:
+		polygon.append(polygon[0]);draw_polyline(polygon,edge,width,true)
+
+func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,color:Color)->void:
+	var action:=str(spec.action_type)
+	var target:=origin
+	if action=="MOVE":target=_array_to_world_position(intent.get("destination",[]))
+	elif action in ["MELEE","SKILL"]:target=_array_to_world_position(intent.get("target_position",[]))
+	if not _cell_allows_overlay(target):return
+	_draw_cell_overlay(target,Color(color,color.a*(0.16 if action in ["MELEE","SKILL"] else 0.07)),color,1.2)
+	var center:=world_to_pixel_center(target)
+	if action=="MOVE" or bool(spec.draw_connector):
+		var start:=world_to_pixel_center(origin)
+		var delta:=center-start
+		if delta.length()>1.0:
+			var direction:=delta.normalized();var side:=Vector2(-direction.y,direction.x)
+			var tip:=center-direction*minf(5.0,delta.length()*0.12)
+			draw_line(start.lerp(center,0.22),tip,color,1.2,true)
+			var head:=clampf(cell_size_px()*0.10,2.5,5.0)
+			draw_polyline(PackedVector2Array([tip-direction*head+side*head*0.6,tip,
+				tip-direction*head-side*head*0.6]),color,1.2,true)
+	if action in ["MELEE","SKILL"]:
+		# Small floor-aligned cross, not a screen-space square or full-tile X.
+		var p:=cell_overlay_polygon(target,0.60)
+		if p.size()==4:
+			draw_line(p[0].lerp(p[1],0.5),p[2].lerp(p[3],0.5),color,1.4,true)
+			draw_line(p[1].lerp(p[2],0.5),p[3].lerp(p[0],0.5),color,1.4,true)
