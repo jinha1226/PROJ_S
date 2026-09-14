@@ -16,6 +16,9 @@ func run():
 		root.size=viewport_size;ui.size=Vector2(viewport_size);ui._request_refresh()
 		for i in range(4):await process_frame
 		check(ui.grid.visible_cell_count==8 and ui.grid.visible_row_count==8,"8x8 board "+str(viewport_size))
+		check(ui.nearby_npc_panel==null,"automatic NPC corner inspector is not built")
+		check(not ui.grid.monster_list_draw_spec().visible,"floating actor roster hidden")
+		check(ui.grid.nearby_actor_at_pointer(ui.grid.size-Vector2(8,8))==-1,"former roster corner does not intercept map input")
 		var origin:=Vector2i(s.room_status().bounds[0],s.room_status().bounds[1])
 		for y in range(8):
 			for x in range(8):
@@ -38,6 +41,7 @@ func run():
 	ui._request_refresh()
 	for i in range(4):await process_frame
 	check(s.round_active(),"UI combat active")
+	check(not ui.grid.monster_list_draw_spec().visible,"visible enemies do not restore corner roster")
 	var room:Dictionary=s.room_status()
 	check(ui.grid._room_biome==room.biome,"current room biome reaches grid DTO")
 	check(ui.grid._tactical_terrain!=null,"product uses retained tactical terrain")

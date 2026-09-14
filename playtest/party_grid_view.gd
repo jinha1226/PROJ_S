@@ -1515,85 +1515,9 @@ func monster_awareness_marker_draw_specs(sample_time_ms:int=-1)->Array[Dictionar
 	return rows.duplicate(true)
 
 func monster_list_draw_spec()->Dictionary:
-	var groups:Dictionary={};var priority:={"HUNTING":0,"ALERT":1,"SUSPICIOUS":2,
-		"SEARCHING":3,"RETURNING":4,"UNAWARE":5}
-	var hero_position:=Vector2i(-1,-1)
-	for actor in _actors:
-		if bool(actor.get("is_protagonist",false)):
-			hero_position=_position_from_actor(actor);break
-	for actor in _actors:
-		var position:=_position_from_actor(actor);var cell_row:Dictionary=_cells.get(_key(position),{})
-		if not is_world_cell_visible(position) or cell_row.is_empty() \
-				or AsciiStyleScript.visibility_state(cell_row)!="VISIBLE":continue
-		if _is_enemy_actor(actor):
-			var identity:Dictionary=AsciiStyleScript.monster_identity_spec(actor)
-			var awareness:Dictionary=AsciiStyleScript.awareness_spec(
-				actor.get("awareness_state","UNAWARE"))
-			# One row is one actor: a tap must never inspect an arbitrary member
-			# of a species/awareness group.
-			var key:="HOSTILE|%d"%int(actor.get("entity_id",-1))
-			if not groups.has(key):groups[key]={"row_kind":"HOSTILE",
-				"entity_id":int(actor.get("entity_id",-1)),
-				"species_id":str(identity.species_id),"glyph":str(identity.glyph),
-				"name":str(identity.name),"species_color_hex":str(identity.color_hex),
-				"state":str(awareness.state),"mark":str(awareness.glyph),
-				"mark_color_hex":str(awareness.color_hex),"count":0,
-				"distance":maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y)),
-				"priority":int(priority.get(str(awareness.state),99))}
-			groups[key].count=int(groups[key].count)+1
-		elif _is_nearby_npc(actor):
-			var style:Dictionary=actor_draw_spec(actor)
-			var life_state:=str(actor.get("life_state","ACTIVE")).to_upper()
-			var npc_state:="사망" if life_state=="DEAD" else (
-				"쓰러짐" if life_state=="DOWNED" else "NPC")
-			if life_state=="ACTIVE":npc_state=str(actor.get("activity","NPC"))
-			var npc_key:="NPC|%d"%int(actor.get("entity_id",-1))
-			groups[npc_key]={"row_kind":"NPC","entity_id":int(actor.get("entity_id",-1)),
-				"species_id":str(actor.get("species_id","")),"glyph":str(style.glyph),
-				"name":str(actor.get("display_name","주변 인물")),
-				"species_color_hex":str(style.color_hex),"state":"NPC_"+life_state,
-				"mark":npc_state,"mark_color_hex":"#8fd3e8" if life_state=="ACTIVE" \
-					else ("#e6b85c" if life_state=="DOWNED" else "#9a7a82"),
-				"count":1,"distance":maxi(absi(position.x-hero_position.x),
-					absi(position.y-hero_position.y)) if hero_position!=Vector2i(-1,-1) else 0,
-				"priority":6}
-	var grouped:Array[Dictionary]=[]
-	for value in groups.values():grouped.append((value as Dictionary).duplicate(true))
-	grouped.sort_custom(func(a:Dictionary,b:Dictionary):
-		return int(a.priority)<int(b.priority) if int(a.priority)!=int(b.priority) \
-			else (int(a.distance)<int(b.distance) if int(a.distance)!=int(b.distance) \
-			else (str(a.name)<str(b.name) if str(a.name)!=str(b.name) \
-			else (str(a.state)<str(b.state) if str(a.state)!=str(b.state) else int(a.entity_id)<int(b.entity_id)))))
-	var all_grouped:=grouped.duplicate(true)
-	if grouped.size()>MONSTER_LIST_MAX_ROWS:
-		grouped=grouped.slice(0,MONSTER_LIST_MAX_ROWS)
-		# Hostile awareness remains the first priority, but a visible NPC must not
-		# disappear merely because five hostile actors exist.
-		if grouped.all(func(row):return str(row.get("row_kind",""))!="NPC"):
-			var first_npc:Dictionary={}
-			for row in all_grouped:
-				if str(row.get("row_kind",""))=="NPC":first_npc=row;break
-			if not first_npc.is_empty():grouped[-1]=first_npc
-	if grouped.is_empty():return {"visible":false,"rows":[],"mouse_filter":"IGNORE"}.duplicate(true)
-	var font:=get_theme_default_font();var font_size:=clampi(int(cell_size_px()*0.43),10,13)
-	var row_height:=44.0;var padding:=6.0;var max_width:=0.0
-	for group in grouped:
-		group["count_text"]=" ×%d"%int(group.count) if int(group.count)>1 else ""
-		group["text"]="%s%s%s"%[str(group.name),
-			(" "+str(group.mark)) if not str(group.mark).is_empty() else "",str(group.count_text)]
-		max_width=maxf(max_width,font.get_string_size(str(group.text),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x)
-	var rect:=grid_rect();var panel_size:=Vector2(max_width+padding*2.0,row_height*grouped.size()+padding*2.0)
-	var bounds:=Rect2(rect.end-panel_size-Vector2(4,4),panel_size)
-	for index in range(grouped.size()):
-		grouped[index]["hit_rect"]=Rect2(bounds.position+Vector2(0,padding+row_height*index),Vector2(panel_size.x,row_height))
-		grouped[index]["baseline"]=bounds.position+Vector2(padding,padding+row_height*index+(row_height+font_size)*0.5-2)
-	return {"visible":true,"rows":grouped,"row_count":grouped.size(),"max_rows":MONSTER_LIST_MAX_ROWS,
-		"list_kind":"NEARBY_ACTORS",
-		"hostile_row_count":grouped.filter(func(row):return str(row.row_kind)=="HOSTILE").size(),
-		"npc_row_count":grouped.filter(func(row):return str(row.row_kind)=="NPC").size(),
-		"font_size":font_size,"row_height":row_height,"bounds":bounds,"background_hex":"#030608e8",
-		"border_hex":"#42666a","name_color_hex":"#d2c8ad","mouse_filter":"STOP",
-		"process":false,"fov_safe":true}.duplicate(true)
+	# Board actors and the turn timeline replace the floating corner roster.
+	# An empty spec also removes its invisible touch-blocking rectangles.
+	return {"visible":false,"rows":[],"mouse_filter":"IGNORE"}
 
 func nearby_actor_at_pointer(pointer:Vector2)->int:
 	var spec:=monster_list_draw_spec()

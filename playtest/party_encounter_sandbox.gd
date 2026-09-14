@@ -1051,7 +1051,7 @@ func _build_ui()->void:
 	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
 	_build_product_zoom_controls()
-	_build_nearby_npc_card()
+	# No automatic corner inspector. Explicit actor details remain available.
 	guild_tutorial_hud=preload("res://playtest/guild_tutorial_hud.gd").new()
 	grid.add_child(guild_tutorial_hud)
 	guild_tutorial_hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
