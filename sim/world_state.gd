@@ -3569,6 +3569,10 @@ func _canonical_overkill_history_error() -> String:
 				absi(attacker_position.y-target_position.y))
 			var range_min:=1
 			var range_max:=1
+			var role:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(self,action.actor_id)
+			if not role.is_empty() and str(action.data.get("batch_context","")).begins_with("ROUND_ACTOR/"):
+				range_min=1 if role.pattern=="CROSS" else int(role.min)
+				range_max=int(role.max)+(1 if role.pattern=="CROSS" else 0)
 			var action_weapon_id:=str(action.data.get("weapon_id",""))
 			if not action_weapon_id.is_empty():
 				var action_weapon=WeaponRegistryScript.definition(action_weapon_id)

@@ -62,6 +62,7 @@ func _find_path_to_any(actor_id: int, goals: Array, occupancy_projection: Dictio
 		if not value is Vector2i: continue
 		var goal: Vector2i = value
 		if not world.in_bounds(goal): continue
+		if preload("res://sim/room_transition_rules.gd").enabled(world) and actor_id in world.party_encounter.enemy_ids and goal in world.party_encounter.patrol_reserved_positions:continue
 		var definition: Dictionary = TerrainRegistryScript.definition_view(world.tile_at(goal).terrain)
 		if definition.is_empty() or not bool(definition.get("passable", false)) \
 				or _occupant(goal, actor_id, occupancy_projection) != -1: continue
@@ -79,6 +80,7 @@ func _search(actor_id:int,start:Vector2i,goals:Array,projection:Dictionary,maxim
 
 func _can_step(actor_id: int, from: Vector2i, to: Vector2i, projection: Dictionary) -> bool:
 	if not preload("res://sim/room_transition_rules.gd").same_room(world,from,to):return false
+	if preload("res://sim/room_transition_rules.gd").enabled(world) and actor_id in world.party_encounter.enemy_ids and to in world.party_encounter.patrol_reserved_positions:return false
 	if not world.in_bounds(to):
 		return false
 	var definition: Dictionary = _cell_definition(to)

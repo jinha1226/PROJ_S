@@ -11,6 +11,9 @@ func tap(b:Control):
 	for i in range(3):await process_frame
 	var grid=test_ui.grid
 	if grid!=null and grid.stage_motion_busy():
+		if "--capture" in OS.get_cmdline_user_args() and not grid._played_effect_ids.is_empty():
+			await RenderingServer.frame_post_draw
+			check(root.get_texture().get_image().save_png("/tmp/stage-impact-runtime.png")==OK,"impact capture")
 		sequence_seen=true
 		var finish:=0
 		for motion in grid.actor_motion_state().values():
@@ -86,6 +89,7 @@ func run():
 		check(b.size.x>=44 and b.get_global_rect().end.x<=361 and b.get_global_rect().end.y<=801,"controls remain touch sized and on screen")
 	check(ui.event_label.max_lines_visible==3 and ui.phase_label.visible,"three logs and floor/countdown HUD visible")
 	check(s.sim.world.world_state_error().is_empty(),"UI actions leave valid world")
+	check(not ui.grid._played_effect_ids.is_empty(),"round effects reach the actual renderer")
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		check(root.get_texture().get_image().save_png("/tmp/stage-context-runtime.png")==OK,"capture")

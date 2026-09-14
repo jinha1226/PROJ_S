@@ -35,6 +35,14 @@ func run():
 		ui._toggle_map_overlay();await process_frame
 		check(ui.map_overlay._room_map.rooms.size()==1,"full map uses discovered rooms")
 		ui._toggle_map_overlay()
+		check(ui._product_pinch_available(),"stage pinch available")
+		var initial_zoom:float=ui.grid.stage_zoom
+		var world_before:int=s.sim.world.world_time
+		ui._on_product_zoom_step(-1)
+		for i in range(3):await process_frame
+		check(ui.grid.stage_zoom>initial_zoom and s.sim.world.world_time==world_before,"zoom enlarges without a turn")
+		ui._on_product_zoom_step(1)
+		for i in range(3):await process_frame
 		check(not ui.product_pickup_button.visible and not ui.product_tactics_button.visible and not ui.product_interact_button.visible,"five actions only")
 		check(ui.product_wait_guard_button.text=="[이동]" and ui.product_auto_button.text=="[변이]","primary labels")
 		var before:int=s.sim.world.world_time;ui._on_product_wait_guard();check(s.sim.world.world_time==before,"move selection costs no time")

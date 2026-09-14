@@ -31,14 +31,13 @@ func _draw()->void:
 		var p:PackedVector2Array=row.polygon
 		if p.size()!=4:continue
 		var memory:bool=str(row.visibility_state)!="VISIBLE"
-		var tint:=Color(0.30,0.33,0.36,1) if memory else Color.WHITE
+		var tint:=Color(0.30,0.33,0.36,1) if memory else Color(0.72,0.77,0.80,1)
 		if not spec.get("is_wall",false):
 			var terrain:String=str(row.terrain.get("terrain_id",""))
 			var column:int=5 if terrain=="shallow_water" else Art.variant(row.position,biome)
 			_draw_tile(p,Art.tile(biome,column),tint)
 			var outline:=PackedVector2Array(p);outline.append(p[0])
-			draw_polyline(outline,Color(0.08,0.13,0.17,0.65),1.0)
-			if not memory and terrain!="shallow_water":_detail(row,p)
+			draw_polyline(outline,Color(0.08,0.13,0.17,0.25),1.0)
 	# Low, opaque faces keep walls readable without covering adjacent actors.
 	for row in cells:
 		var spec:Dictionary=row.get("tile_spec",{})
@@ -50,7 +49,7 @@ func _draw()->void:
 			var width:float=p[1].x-p[3].x
 			draw_texture_rect(Art.obstacle(biome),Rect2(Vector2(p[3].x,p[0].y-width*0.5),Vector2(width,width)),false,Color(0.30,0.33,0.36,1) if memory else Color.WHITE)
 			continue
-		var height:=absf(p[1].x-p[0].x)*0.9
+		var height:=absf(p[1].x-p[0].x)*0.65
 		var lift:=Vector2(0,-height)
 		var top:=PackedVector2Array()
 		for point in p:top.append(point+lift)

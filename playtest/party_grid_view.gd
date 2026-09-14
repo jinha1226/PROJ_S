@@ -102,13 +102,16 @@ var _played_effect_event_ids: Dictionary = {}
 var _actor_motion_requests: Dictionary = {}
 var _actor_motions: Dictionary = {}
 var _stage_motion_until:=0
+var _effect_epoch:=0
+var _queued_effects:Dictionary={}
+var stage_zoom:=1.10
 var deployment_cells:Array[Vector2i]=[]
 
 func stage_motion_busy()->bool:
 	return Time.get_ticks_msec()<_stage_motion_until
 
-func arm_stage_motion(paths:Dictionary)->int:
-	var delay:=0
+func arm_stage_motion(paths:Dictionary,lead_ms:int=0)->int:
+	var delay:=lead_ms
 	for id in paths:
 		var path:Array=paths[id]
 		if path.size()<2:continue
@@ -252,8 +255,14 @@ func uses_perspective_projection()->bool:
 func uses_tactical_projection()->bool:
 	return _graphics_mode==GRAPHICS_MODE_TACTICAL
 
+func tactical_projection_rect()->Rect2:
+	var rect:=grid_rect()
+	if not _room_bounds.has_area():return rect
+	var extent:=rect.size*stage_zoom
+	return Rect2(rect.get_center()-extent*0.5,extent)
+
 func _project_board_point(point:Vector2)->Vector2:
-	if uses_tactical_projection():return TacticalProjection.project(point,grid_rect(),visible_cell_count,_room_bounds.has_area())
+	if uses_tactical_projection():return TacticalProjection.project(point,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
 	return DioramaScript.project_camera_point(point,grid_rect(),visible_cell_count)
 
 func _exit_tree()->void:
@@ -642,6 +651,12 @@ func play_effects(rows:Array)->int:
 		if not raw is Dictionary:continue
 		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
 		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
+		if int(raw.get("delay_ms",0))>0:
+			if _queued_effects.has(effect_id):continue
+			_queued_effects[effect_id]=true
+			var pending:Dictionary=raw.duplicate(true);pending.erase("delay_ms")
+			get_tree().create_timer(float(raw.delay_ms)/1000.0).timeout.connect(_play_delayed_effect.bind(pending,_effect_epoch))
+			appended+=1;continue
 		var effect_position:=_array_to_world_position(raw.get("world_position",[]))
 		# Combat results remain authoritative in the event log, but spatial VFX
 		# must not reveal activity in MEMORY, UNSEEN, or off-camera cells.
@@ -695,6 +710,10 @@ func _next_floating_stack_slot(effect:Dictionary,started_at_ms:int)->int:
 			rapid_count+=1
 	return rapid_count%5
 
+func _play_delayed_effect(row:Dictionary,epoch:int)->void:
+	if epoch!=_effect_epoch:return
+	_queued_effects.erase(str(row.effect_id));play_effects([row]);queue_redraw()
+
 func _play_miss_attacker_bump(raw:Dictionary)->void:
 	_ensure_melee_vfx()
 	# Prefer the event-time pair. A combat.attack_missed event is a result leaf and
@@ -720,6 +739,7 @@ func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
 
 func clear_transient_visuals()->void:
+	_effect_epoch+=1;_queued_effects.clear()
 	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
 	if melee_vfx!=null:melee_vfx.clear()
 	_awareness_pulses.clear()
@@ -748,7 +768,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 				damage_type,"#fff0df")) as String
 	if kind=="DEATH":color_hex="#ff294d"
 	elif kind=="MISS":color_hex="#b8d5df" if product_style else "#b8e9ff"
-	var duration_ms:=int({"HIT_FLASH":210,"FLOATING_AMOUNT":650,
+	var duration_ms:=int({"PROJECTILE":140,"HIT_FLASH":210,"FLOATING_AMOUNT":650,
 		"MISS":500,"DEATH":560}.get(kind,360)) if product_style \
 		else (680 if kind=="DEATH" else (900 if kind=="FLOATING_AMOUNT" \
 		else (700 if kind=="MISS" else 520)))
@@ -787,7 +807,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
 		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"ASCII_BURST"}.get(kind,"NONE"))
-	if kind in ["FIREBALL","STEAM"]:primitive=kind
+	if kind in ["PROJECTILE","FIREBALL","STEAM"]:primitive=kind
 	if not reaction_style.is_empty():primitive=kind
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
@@ -1310,7 +1330,7 @@ func grid_rect() -> Rect2:
 	var extent := minf(size.x,size.y)
 	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
 func cell_size_px() -> float:
-	if uses_tactical_projection():return TacticalProjection.half_width(grid_rect(),visible_cell_count,_room_bounds.has_area())*2.0
+	if uses_tactical_projection():return TacticalProjection.half_width(tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())*2.0
 	return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
@@ -1320,7 +1340,7 @@ func world_cell_polygon(position:Vector2i)->PackedVector2Array:
 	return _camera_cell_polygon(position)
 func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 	if not view_bounds().has_point(position):return PackedVector2Array()
-	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,grid_rect(),visible_cell_count,_room_bounds.has_area())
+	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
 	if not uses_perspective_projection():
 		var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 		var top_left:=rect.position+Vector2(local.x,local.y)*cell
@@ -1351,7 +1371,7 @@ func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
 	if uses_tactical_projection():
-		var local:=TacticalProjection.unproject(pointer,rect,visible_cell_count,_room_bounds.has_area())
+		var local:=TacticalProjection.unproject(pointer,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
 		var cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
 		return cell if view_bounds().has_point(cell) and _world_in_bounds(cell) else Vector2i(-1,-1)
 	if not uses_perspective_projection():
@@ -1615,6 +1635,7 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 		bar_center_x=bounds.get_center().x
 	if bounds.size.x<=0.0:return hidden.duplicate(true)
 	var ratio:=clampf(float(health)/float(maximum),0.0,1.0)
+	if _room_bounds.has_area() and health>=maximum and entity_id not in [selected_actor_id,selected_target_id]:return hidden.duplicate(true)
 	var bar_size:=Vector2(clampf(cell_size_px()*0.78,10.0,24.0),
 		clampf(cell_size_px()*0.13,3.0,4.0))
 	var draw_rect:=Rect2(Vector2(bar_center_x-bar_size.x*0.5,
@@ -4117,6 +4138,13 @@ func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)
 
 func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,color:Color)->void:
 	var action:=str(spec.action_type)
+	if _room_bounds.has_area() and action=="HOLD":return
+	if intent.get("attack_cells",[]).size()>0:
+		var selected:=int(intent.get("actor_id",-1))==selected_target_id
+		for raw in intent.attack_cells:
+			var cell:=_array_to_world_position(raw)
+			if _cell_allows_overlay(cell):_draw_cell_overlay(cell,Color(color,0.45 if selected else 0.12),Color(color,1.0 if selected else 0.5),2.0 if selected else 1.0)
+		if not selected:return
 	if intent.get("path",[]) is Array and not intent.get("path",[]).is_empty():
 		var previous:Vector2i=origin
 		for raw in intent.path:
@@ -4132,7 +4160,7 @@ func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,col
 	var selected_attack:=int(intent.get("actor_id",-1))==selected_target_id and str(intent.get("role",""))=="ENEMY" and action in ["MELEE","SKILL"]
 	_draw_cell_overlay(target,Color(color,0.5 if selected_attack else color.a*(0.16 if action in ["MELEE","SKILL"] else 0.07)),color,2.0 if selected_attack else 1.2)
 	var center:=world_to_pixel_center(target)
-	if action=="MOVE" or bool(spec.draw_connector):
+	if action=="MOVE" or bool(spec.draw_connector) and (not _room_bounds.has_area() or int(intent.get("actor_id",-1))==selected_target_id):
 		var start:=world_to_pixel_center(origin)
 		var delta:=center-start
 		if delta.length()>1.0:

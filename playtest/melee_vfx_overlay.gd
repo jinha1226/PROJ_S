@@ -253,6 +253,12 @@ func _draw_generic_grid_effects(font:Font,presentation_offset:Vector2)->void:
 		var radius:=float(spec.radius)
 		var width:=float(spec.line_width)*(1.0-float(spec.age_ratio)*0.38)
 		match str(spec.primitive):
+			"PROJECTILE":
+				var origin:=Vector2(spec.projectile_origin)+presentation_offset
+				var head:=origin.lerp(center,clampf(float(spec.age_ratio),0.0,1.0))
+				var direction:=(center-origin).normalized()
+				draw_line(head-direction*8.0,head,Color("#ffe5a1"),2.0)
+				draw_rect(Rect2(head-Vector2.ONE,Vector2.ONE*2),Color.WHITE)
 			"ENV_IGNITE", "ENV_EXTINGUISH", "ENV_DEBRIS":
 				for i in range(5):
 					var angle:float=-PI*0.9+float(i)*PI*0.2

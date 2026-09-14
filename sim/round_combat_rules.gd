@@ -39,6 +39,8 @@ static func move_budget(w,id:int)->int:
 	var m=w.party_encounter.member(id)
 	var rate:int=maxi(25,int(m.action_speeds.MOVE)+Effects.rate(w,id)) if m!=null else maxi(25,100+Effects.rate(w,id))
 	var base:=clampi(BASE_MOVE*rate/100,1,6)
+	var enemy_role:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(w,id)
+	if not enemy_role.is_empty():base=clampi(int(enemy_role.move)*rate/100,1,6)
 	var injury:int=preload("res://sim/body_penalty_rules.gd").current(w,id).move_milli
 	var delay:=maxi(0,Abilities.move_delay(w,id))
 	return maxi(1,base*1000*100/(injury*(100+delay)))

@@ -1928,6 +1928,8 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 				rejected.terrain_id=str(world.tile_at(cell).terrain);rejected.action_type="MOVE"
 				rejected.time_cost=int(TerrainRegistryScript.definition(rejected.terrain_id).move_time_cost)
 		rejected.reason="fear_retreat";return rejected.duplicate(true)
+	var stage_plan:Dictionary=preload("res://sim/stage_enemy_rules.gd").forecast(self,enemy_id,target,rejected.duplicate(true))
+	if not stage_plan.is_empty():return stage_plan
 	if melee.can_attack(enemy_id, target.id):
 		rejected.reason = "target_adjacent"
 		rejected.action_type = "MELEE"

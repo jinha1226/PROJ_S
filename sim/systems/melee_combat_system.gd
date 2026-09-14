@@ -319,6 +319,12 @@ func can_attack(attacker_id: int, target_id: int) -> bool:
 	var weapon=WeaponRegistryScript.definition(
 		WorldItemOperationsScript.equipped_weapon_id(world,attacker_id))
 	if not BodyFunctionRulesScript.weapon_use_error(body,weapon).is_empty():return false
+	var stage_profile:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(world,attacker_id)
+	if not stage_profile.is_empty():
+		var distance:=maxi(absi(attacker.position.x-target.position.x),absi(attacker.position.y-target.position.y))
+		# CROSS fringe cells may be one tile beyond the aimed center's range.
+		var reach:int=int(stage_profile.max)+(1 if stage_profile.pattern=="CROSS" else 0)
+		return distance>=(1 if stage_profile.pattern=="CROSS" else int(stage_profile.min)) and distance<=reach and world.can_act(attacker_id,world.world_time) and world.is_explicit_melee_target(target_id)
 	return world.can_act(attacker_id, world.world_time) and world.is_explicit_melee_target(target_id) \
 		and maxi(absi(attacker.position.x - target.position.x), absi(attacker.position.y - target.position.y)) == 1
 

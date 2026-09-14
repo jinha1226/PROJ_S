@@ -23,7 +23,7 @@ static func prepare(sim,r:Dictionary)->bool:
 		if not w.can_act(id,w.world_time):continue
 		var phase_event=w.emit_event("stage.enemy_movement",id,-1,w.entities[id].position,0,-1,{"round_id":r.round_id,"room":room_key})
 		if phase_event==null:return false
-		for i in range(mini(int(CONFIG.enemy_move_steps),load("res://sim/round_combat_rules.gd").move_budget(w,id))):
+		for i in range(load("res://sim/round_combat_rules.gd").move_budget(w,id)):
 			var p:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
 			if p.get("action_type","")!="MOVE":break
 			var to:=Vector2i(p.destination[0],p.destination[1]);var assessment=sim.movement.assess_move(id,to)

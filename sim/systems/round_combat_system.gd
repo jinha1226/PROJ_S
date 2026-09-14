@@ -124,6 +124,8 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 	if preload("res://sim/room_transition_rules.gd").enabled(w) and not w.party_encounter.nine_room_floor.pending_exit.is_empty() and member!=null:return cancel(result,"party_retreat")
 	var action=Action.from_dict(p.action)
 	if action==null:result.accepted=false;return result
+	if member==null and action.type=="MELEE" and preload("res://sim/stage_counterplay.gd").enabled(w):
+		return execute_stage_attack(sim,p,step,result)
 	if action.type in ["MELEE","SKILL"] and p.target_policy=="CELL" and action.target_id>0:
 		action.target_id=-1
 		for target in w.entities.values():
@@ -173,6 +175,34 @@ static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false)->Dictiona
 
 static func cancel(result:Dictionary,reason:String)->Dictionary:
 	result.status="CANCELLED";result.reason=reason;return result
+
+static func execute_stage_attack(sim,p:Dictionary,step:int,result:Dictionary)->Dictionary:
+	var w=sim.world;var id:=int(p.actor_id)
+	var cells:Array[Vector2i]=preload("res://sim/stage_enemy_rules.gd").cells(w,id,Vector2i(p.origin[0],p.origin[1]),Vector2i(p.target_cell[0],p.target_cell[1]))
+	var targets:Array=[]
+	for target in w.entities.values():
+		if target.id!=id and target.position in cells and w.is_explicit_melee_target(target.id):targets.append(target.id)
+	targets.sort()
+	if targets.is_empty():return cancel(result,"target_cell_empty")
+	var start:int=w.events.size();var strikes:=0
+	for target in targets:
+		if not w.can_act(id,w.world_time) or w.entities[id].position!=Vector2i(p.origin[0],p.origin[1]):break
+		if w.entities[target].position not in cells:continue
+		var leaf_start:int=w.events.size()
+		var r:Dictionary=w.party_encounter.round_combat
+		var target_commitment:=("%s/target/%d"%[r.rng_commitment,target]).sha256_text()
+		var context:="ROUND_ACTOR/%d/%s/%s/%d/%d"%[int(r.round_id),target_commitment,p.actor_id,step,w.world_time]
+		var assessment:Dictionary=sim.melee.assess_attack(id,target,"SUGGESTED",step,w.world_time,context,0)
+		if assessment.is_empty():continue
+		var action=Action.melee(id,target)
+		if not sim._commit_active_ready_allies([{"action":action.to_dict(),"time_cost":100,"combat_assessment":assessment}],step,w.world_time):
+			result.accepted=false;return result
+		strikes+=1
+		if not after_leaf(sim,leaf_start):result.accepted=false;return result
+	if strikes==0:return cancel(result,"attack_out_of_range")
+	for event in w.events_since(start):
+		if event.type.begins_with("combat.") and event.type.ends_with("_damage"):result.damage.append({"target_id":event.target_id,"amount":event.magnitude})
+	return result
 
 static func after_leaf(sim,event_start:int)->bool:
 	if not preload("res://sim/abilities/monster_passive_service.gd").commit(sim,event_start):last_execution_error="passive";return false

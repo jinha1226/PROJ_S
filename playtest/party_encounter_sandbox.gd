@@ -7097,6 +7097,9 @@ func _flush_requested_refresh()->void:
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",
 		scroll_combat_log:bool=false,motion_duration_msec:int=-1)->void:
 	_arm_actor_motion_from_result(result,motion_duration_msec)
+	if int(result.get("presentation_lead_ms",0))>0:
+		grid._stage_motion_until=maxi(grid._stage_motion_until,Time.get_ticks_msec()+int(result.presentation_lead_ms))
+		get_tree().create_timer(float(result.presentation_lead_ms+100)/1000.0).timeout.connect(_request_refresh)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		for raw in result.get("visual_effects",[]):
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
@@ -7225,7 +7228,7 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 			if not paths.has(event.actor_id):
 				paths[event.actor_id]=[Vector2(event.data.from_position[0],event.data.from_position[1])]
 			paths[event.actor_id].append(Vector2(event.position))
-		var duration:int=grid.arm_stage_motion(paths)
+		var duration:int=grid.arm_stage_motion(paths,int(result.get("presentation_lead_ms",0)))
 		if duration>0:get_tree().create_timer(float(duration+50)/1000.0).timeout.connect(_request_refresh)
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
@@ -7589,8 +7592,7 @@ func _product_zoom_control_has_point(_global_position:Vector2)->bool:
 	return false
 
 func _product_pinch_available()->bool:
-	if session!=null and session.room_enabled():return false
-	return _is_solo_product_session() and grid!=null and grid.visible \
+	return (_is_solo_product_session() or session!=null and session.room_enabled()) and grid!=null and grid.visible \
 		and not grid.modal_open \
 		and (member_detail_modal==null or not member_detail_modal.visible) \
 		and (record_modal==null or not record_modal.visible) \
@@ -7659,7 +7661,9 @@ func _handle_product_pinch_zoom(event:InputEvent)->bool:
 	return _consume_product_pinch_event()
 
 func _on_product_zoom_step(index_delta:int)->void:
-	if session!=null and session.room_enabled():return
+	if session!=null and session.room_enabled():
+		grid.stage_zoom=clampf(grid.stage_zoom-float(index_delta)*0.15,1.0,1.7)
+		grid._invalidate_static_projection_cache();_request_refresh();return
 	if not _is_solo_product_session():return
 	var current_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	if current_index<0:current_index=PRODUCT_ZOOM_CELL_COUNTS.find(PRODUCT_ZOOM_DEFAULT_CELL_COUNT)
@@ -7893,6 +7897,9 @@ func _apply_stage_chrome()->void:
 	if session.round_active():
 		var stage:Dictionary=preload("res://sim/stage_counterplay.gd").status(session.sim.world)
 		phase_label.text="배치 · 입구 2칸" if session.round_status().phase=="DEPLOYMENT" else "%d층 · 증원 %d턴"%[session.room_status().floor_index,stage.remaining]
+		if selected_target_id in session.sim.world.party_encounter.enemy_ids:
+			var role:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(session.sim.world,selected_target_id)
+			if not role.is_empty():phase_label.text="%s · 이동%d · 사거리%d–%d"%[role.label,preload("res://sim/round_combat_rules.gd").move_budget(session.sim.world,selected_target_id),role.min,role.max]
 	food_hud.custom_minimum_size.x=64;ration_label.text=str(int(food_meter.value))
 	var popup:=product_menu_button.get_popup()
 	popup.set_item_disabled(popup.get_item_index(25),session.round_active())

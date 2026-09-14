@@ -9703,6 +9703,15 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			if str(event.data.get("outcome","")) in ["HIT","FINISHER"]:
 				var melee_row:=_melee_vfx_row(event,order)
 				if not melee_row.is_empty():rows.append(melee_row);order+=1
+				else:
+					var shot:=_visual_effect_row(event,"HIT_FLASH","ranged_hit",order,"physical",0,"")
+					var history:Dictionary=sim.world._entity_position_at_event(event.actor_id,event.id)
+					if history.get("ok",false):shot["attacker_grid_pos"]=[history.position.x,history.position.y]
+					var projectile:Dictionary=shot.duplicate(true)
+					projectile.kind="PROJECTILE";projectile.effect_id="%d:projectile"%event.id
+					rows.append(projectile);order+=1
+					shot["impact_delay_ms"]=140
+					rows.append(shot);order+=1
 		elif event_type == "combat.attack_missed":
 			var miss_row:=_visual_effect_row(event,"MISS","miss",order,
 				"physical",0,"빗나감")
@@ -10547,6 +10556,14 @@ func round_command(operation:Dictionary)->Dictionary:
 	dto["event_ids"]=[]
 	for index in range(int(result.get("events_start",0)),int(result.get("events_end",0))):
 		dto.event_ids.append(str(sim.world.events[index].id))
+	var events:Array=sim.world.events.slice(int(result.get("events_start",0)),int(result.get("events_end",0)))
+	dto.visual_effects=_visual_effects_from_result({"accepted":true,"events":events})
+	var delays:Dictionary={};var delay:=0
+	for event in events:
+		if event.type=="action.melee_attack" or event.type=="action.skill":delays[event.id]=delay;delay+=240
+	for effect in dto.visual_effects:
+		effect["delay_ms"]=int(delays.get(int(effect.event_id),delays.get(int(effect.cause_id),maxi(0,delay-240))))+int(effect.get("impact_delay_ms",0))
+	dto["presentation_lead_ms"]=delay+180 if not dto.visual_effects.is_empty() else 0
 	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 적이 이동했습니다. 공격 예고를 확인하세요."
 	return dto
 
@@ -10585,6 +10602,8 @@ func round_overlays()->Array[Dictionary]:
 			"line_style":"SOLID","marker_style":"SQUARE","draw_connector":true,"approximate":false,
 			"ready_in":w.party_encounter.round_combat.order.find(str(row.actor_id))*100,"speech_headline":"",
 			"speech_reason_summary":"공개된 계획대로 실행","path":plan.path.duplicate(true)})
+		if not row.ally and plan.action.type=="MELEE" and room_enabled():
+			rows.back()["attack_cells"]=preload("res://sim/stage_enemy_rules.gd").cells(w,int(row.actor_id),Vector2i(plan.origin[0],plan.origin[1]),Vector2i(plan.target_cell[0],plan.target_cell[1])).map(func(cell):return [cell.x,cell.y])
 	return rows
 
 func round_retreat_hint()->Dictionary:
