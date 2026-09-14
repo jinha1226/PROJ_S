@@ -20,6 +20,15 @@ static func actor_active(w,id:int)->bool:
 static func bounds(w)->Rect2i:
 	var s:Dictionary=w.party_encounter.nine_room_floor
 	return Rect2i((int(s.floor_index)-1)*24+int(s.active_room_id)%3*8,int(s.active_room_id)/3*8,8,8)
+static func stage_visible(w,a:Vector2i,b:Vector2i)->bool:
+	return enabled(w) and current(w,a) and current(w,b)
+static func stage_cells(w)->Dictionary:
+	var cells:Dictionary={}
+	if not enabled(w):return cells
+	var area:=bounds(w)
+	for y in range(area.position.y,area.end.y):
+		for x in range(area.position.x,area.end.x):cells["%d:%d"%[x,y]]=true
+	return cells
 static func current_floor(w)->Dictionary:
 	return w.party_encounter.nine_room_floor.floors[int(w.party_encounter.nine_room_floor.floor_index)-1]
 static func portals(w)->Array:

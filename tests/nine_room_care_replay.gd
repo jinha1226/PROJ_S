@@ -58,7 +58,19 @@ func run():
 	var offer:Dictionary=s.personal_rest_preview()
 	check(w.events.any(func(event):return event.type=="combat.physical_damage" and event.target_id==hero),"real enemy damage is journalled")
 	check(w.entities[hero].health<w.entities[hero].max_health or load("res://sim/body_penalty_rules.gd").needs_recovery(w.body_states[hero]),"real encounter leaves a correctable deficit")
-	check(offer.accepted,"rest available after escape "+str(offer.reason))
+	var pursuit_here:bool=w.party_encounter.nine_room_floor.pending_pursuit.any(func(row):return row.floor_index==w.party_encounter.nine_room_floor.floor_index and row.target_room==w.party_encounter.nine_room_floor.active_room_id)
+	if pursuit_here:
+		# Full-room aggro can now send a pursuer down this fixed escape route.
+		# A room with incoming pursuit is not a safe-rest fixture.
+		check(not offer.accepted and offer.reason=="추격 또는 방 이동 중입니다","incoming pursuit blocks rest")
+		var rest_before:Dictionary=s.sim.snapshot()
+		var care:Dictionary=w.party_encounter.nine_room_floor.care
+		check(not s.request_personal_rest(int(care.revision),int(care.request_serial)+1).accepted,"unsafe rest commit rejected")
+		check(rest_before==s.sim.snapshot(),"unsafe rest costs nothing")
+		var pursuit_clone=Session.new();var pursuit_loaded:Dictionary=pursuit_clone.load_session_json(s.save_session_json())
+		check(pursuit_loaded.accepted,"pursuit journal replay")
+		if pursuit_loaded.accepted:check(pursuit_clone.sim.snapshot()==s.sim.snapshot(),"pursuit replay exact")
+	else:check(offer.accepted,"rest available after safe escape "+str(offer.reason))
 	check(w.party_encounter.ration_milli==food,"walking battle retreat no food drain")
 	if offer.accepted:
 		var ui=Sandbox.new();ui.initialize_for_headless_test(s,true);root.size=Vector2i(360,800);root.add_child(ui);ui.set_process(false)

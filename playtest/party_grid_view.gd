@@ -3057,6 +3057,7 @@ func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
 	return true
 
 func _draw_radial_darkness_overlay()->void:
+	if _room_bounds.has_area():return
 	var begun:=Perf.begin()
 	var torch_lit:=_hero_torch_lit()
 	var key:="%d:%d:%d:%d:%d:%s"%[_darkness_revision,

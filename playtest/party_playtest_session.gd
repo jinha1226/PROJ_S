@@ -4654,6 +4654,7 @@ func _presentation_topology_fingerprint()->int:
 
 func _presentation_visible_cells(origin:Vector2i)->Dictionary:
 	if sim==null or sim.world==null:return {}
+	if room_enabled():return preload("res://sim/room_transition_rules.gd").stage_cells(sim.world)
 	var observer_id: int = sim.world.party_control_actor_id()
 	var observer = sim.world.entities.get(observer_id)
 	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)

@@ -599,6 +599,12 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		else int(visible_party_ids[0])
 	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
+	if observed!=null and preload("res://sim/room_transition_rules.gd").stage_visible(world,enemy.position,observed.position):
+		awareness.suspicion=1000
+		awareness.last_known_target_position=observed.position
+		awareness.last_seen_step=processed_step_index;awareness.last_seen_time=world.world_time
+		awareness.search_turns_remaining=0
+		return _set_awareness_state(awareness,"HUNTING",observed.position,previous_state,observed_id)
 	# Awareness rule: standing next to an unaware enemy is not an instant alarm.
 	# It gains the maximum suspicion per tick, so a party that sneaks up gets one
 	# action to strike first; a suspicious watcher still turns on you next tick.
@@ -1896,7 +1902,7 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 	var enemy = world.entities[enemy_id]
 	rejected.from_position = [enemy.position.x, enemy.position.y]
 	var awareness=world.party_encounter.enemy_awareness(enemy_id)
-	if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]:
+	if not preload("res://sim/room_transition_rules.gd").enabled(world) and (awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]):
 		rejected.reason="enemy_not_combat_aware"
 		return rejected.duplicate(true)
 	var board:Dictionary=squad_board if not squad_board.is_empty() \
