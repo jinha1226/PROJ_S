@@ -69,14 +69,17 @@ func run():
 		check(damage_events.any(func(e):return w.event_by_id(e.cause_id).actor_id==enemy_a),"enemy hits displaced enemy on fixed tile")
 		check(w.combatant_states[enemy_b].life_state=="DEAD","enemy friendly-fire kill")
 		check(party.protagonist_progression.xp_total>xp,"enemy friendly-fire kill grants player xp")
+		check(party.member(allies[1]).growth_xp>0 and party.member(allies[2]).growth_xp>0,"surviving companions also gain character XP")
 		var rewards:Array=w.events.filter(func(e):return e.type=="progression.enemy_reward" and e.target_id==enemy_b)
 		check(rewards.size()==1,"friendly-fire XP rewarded exactly once")
 		if rewards.size()==1:
 			var death=w.event_by_id(rewards[0].cause_id)
 			check(death!=null and death.type=="entity.died" and death.instigator_id==enemy_a,"friendly-fire XP preserves real killer")
 		var rewarded_xp:int=party.protagonist_progression.xp_total
+		var companion_xp:int=party.member(allies[1]).growth_xp
 		check(s.sim.party_coordinator.reconcile_liveness(false),"repeat friendly-fire reconciliation")
 		check(party.protagonist_progression.xp_total==rewarded_xp,"repeat reconciliation cannot duplicate XP")
+		check(party.member(allies[1]).growth_xp==companion_xp,"repeat reconciliation cannot duplicate NPC XP")
 		check(done.slots.any(func(row):return row.actor_id==enemy_b and row.status=="CANCELLED"),"dead actor's later slot cancelled")
 		for p in predicted.slots:
 			var actual:Array=done.slots.filter(func(row):return row.actor_id==p.actor_id)

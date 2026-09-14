@@ -31,12 +31,19 @@ static func enemies(w,actor:int,radius:int)->Array:
 	for id in w.party_encounter.enemy_ids:
 		if Runtime.alive(w,id) and w.is_autonomous_target(id) and Runtime.distance(w.entities[actor].position,w.entities[id].position)<=radius and preload("res://sim/party_perception_registry.gd").field_visible(w,w.entities[actor].position,w.entities[id].position):result.append(id)
 	return result
-static func options(session,instance:String)->Array:
-	var w=session.sim.world;var actor:int=w.party_control_actor_id();var item=w.inventory_of(actor).item(instance)
+static func options(session,instance:String,actor_id:int=-1)->Array:
+	var w=session.sim.world;var actor:int=session.consumable_actor_id() if actor_id==-1 else actor_id
+	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance)
+	var inventory=w.inventory_of(owner)
+	var item=inventory.item(instance) if inventory!=null else null
 	if item==null or not Mystery.has(item.definition_id) or not Mystery.known(w,item.definition_id):return []
-	return _options(session,instance)
-static func _options(session,instance:String)->Array:
-	var w=session.sim.world;var actor:int=w.party_control_actor_id();var item=w.inventory_of(actor).item(instance)
+	return _options(session,instance,actor)
+static func _options(session,instance:String,actor_id:int=-1)->Array:
+	var w=session.sim.world;var actor:int=session.consumable_actor_id() if actor_id==-1 else actor_id
+	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance)
+	var inventory=w.inventory_of(owner)
+	var item=inventory.item(instance) if inventory!=null else null
+	if item==null:return []
 	var effect:String=Specs.definition(item.definition_id).effect;var result:Array=[]
 	if effect=="POISON":result.append({"label":"직접 마시기","selection":{"target_id":actor}})
 	if effect in ["SEAL","POISON"]:
@@ -52,7 +59,7 @@ static func _options(session,instance:String)->Array:
 			seen[row.definition_id]=true;result.append({"label":str(row.label),"selection":{"item_id":str(row.instance_id)}})
 	return result
 static func use(session,instance:String,selection:Dictionary)->Dictionary:
-	var w=session.sim.world;var actor:int=w.party_control_actor_id();var hero=w.entities[actor]
+	var w=session.sim.world;var actor:int=session.consumable_actor_id();var hero=w.entities[actor]
 	var item=w.inventory_of(actor).item(instance)
 	if item==null or not selection_valid(selection):return session._rejection_dto("invalid_item_selection")
 	var id:String=item.definition_id;var d:Dictionary=Specs.definition(id);var effect:String=d.effect
@@ -102,7 +109,8 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 			"MAP":ok=w.emit_event("consumable.map",actor,actor,hero.position,10,source.id,{"schema_version":1,"floor":w.party_encounter.expedition_cycle.floor_index,"generation":w.party_encounter.expedition_cycle.expedition_index})!=null
 			"IDENTIFY":
 				if selection.has("item_id"):
-					var selected=w.inventory_of(actor).item(selection.item_id)
+					var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,selection.item_id)
+					var selected=w.inventory_of(owner).item(selection.item_id) if owner!=-1 else null
 					ok=selected!=null and w.emit_event("item.identified",actor,actor,hero.position,0,source.id,{"schema_version":1,"definition_id":selected.definition_id})!=null
 	if ok and not was_known:ok=w.emit_event("item.identified",actor,actor,w.event_by_id(int(consumed.event_id)).position,0,int(consumed.event_id),{"schema_version":1,"definition_id":id})!=null
 	w.party_encounter.revision+=1;session._clear_draft()

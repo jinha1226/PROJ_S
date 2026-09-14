@@ -294,6 +294,8 @@ static func commit_reload(world,entity_id:int)->Dictionary:
 static func _plan_pickup(world,entity_id:int,instance_id:String,position:Vector2i)->Dictionary:
 	var guard:=_guard(world,entity_id)
 	if not guard.is_empty():return _rejected(guard)
+	var bag_error:String=preload("res://sim/party_bag_rules.gd").pickup_error(world,entity_id)
+	if not bag_error.is_empty():return _rejected(bag_error)
 	var next=world.item_state.clone()
 	var result:=InventoryOperationsScript.commit_pickup(next.inventory(entity_id),
 		next.ground_items,instance_id,position,_bounds(world))
@@ -313,10 +315,14 @@ static func _plan_drop(world,entity_id:int,instance_id:String,position:Vector2i)
 	return _accepted({"item_state":next,"instance_id":instance_id})
 
 
-static func _plan_equip(world,entity_id:int,instance_id:String,slot:String)->Dictionary:
+static func _plan_equip(world,entity_id:int,instance_id:String,slot:String,source_id:int=-1)->Dictionary:
 	var guard:=_guard(world,entity_id)
 	if not guard.is_empty():return _rejected(guard)
 	var next=world.item_state.clone()
+	if source_id!=-1 and source_id!=entity_id:
+		var transfer:=_plan_transfer(world,source_id,entity_id,instance_id)
+		if not transfer.get("accepted",false):return transfer
+		next=transfer.item_state
 	var item=next.inventory(entity_id)._item_ref(instance_id)
 	if item!=null and str(item.definition_id)=="TORCH":return _rejected("torch_system_removed")
 	if item!=null:
@@ -336,6 +342,8 @@ static func _plan_equip(world,entity_id:int,instance_id:String,slot:String)->Dic
 static func _plan_unequip(world,entity_id:int,slot:String)->Dictionary:
 	var guard:=_guard(world,entity_id)
 	if not guard.is_empty():return _rejected(guard)
+	var bag_error:String=preload("res://sim/party_bag_rules.gd").pickup_error(world,entity_id)
+	if not bag_error.is_empty():return _rejected(bag_error)
 	var next=world.item_state.clone()
 	var result:=InventoryOperationsScript.commit_unequip(next.inventory(entity_id),slot)
 	if not bool(result.get("accepted",false)):return _rejected(str(result.reason))

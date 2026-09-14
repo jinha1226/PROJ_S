@@ -30,6 +30,10 @@ func run()->void:
 	check(w.party_encounter.round_combat.plans[str(companion)].source=="USER","wait edits companion plan")
 	ui._on_product_rest()
 	check(s.sim.world.world_time==before+100 or s.round_status().phase=="INTERRUPTED","progress executes round or pauses safely")
+	ui._open_member_detail(companion,"SKILL");await process_frame
+	check(ui.mastery_panel.visible and ui.mastery_panel.actor_id==companion,"companion mastery panel selected")
+	ui._open_member_detail(companion,"ITEM");await process_frame
+	check(ui.member_item_empty_text.text.begins_with("파티 공용 가방"),"companion item tab exposes common bag")
 	ui.queue_free();await process_frame
 	print("ROUND UI: ",failures)
 	quit(0 if failures.is_empty() else 1)

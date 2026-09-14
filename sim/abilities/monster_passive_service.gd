@@ -22,8 +22,8 @@ static func commit(sim,event_start:int)->bool:
 		var target=world.entities.get(hit.target_id)
 		if target==null or world.combatant_states[target.id].life_state!="ACTIVE":continue
 		var power:=POWER
-		if member.entity_id==world.party_encounter.protagonist_id and world.party_encounter.protagonist_growth!=null:
-			power=world.party_encounter.protagonist_growth.mastery_scale("MAGIC",power)
+		var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,member.entity_id)
+		if growth!=null:power=growth.mastery_scale("MAGIC",power)
 		power=resisted(power,str(target.species_id))
 		var source=world.emit_event("ability.passive_triggered",attack.actor_id,target.id,target.position,power,hit.id,
 			{"schema_version":1,"ability_id":"FIREBOLT","damage":power})
@@ -51,7 +51,7 @@ static func event_error(world,event,historical:bool=false)->String:
 		var bound:=false;var passive:=false;var magic_rank:=0
 		for prior in world.events:
 			if prior.id>=event.id:break
-			if prior.actor_id==event.actor_id and prior.type=="growth.mastery_spent" and prior.data.get("target_id")=="MAGIC":magic_rank+=1
+			if prior.actor_id==event.actor_id and prior.type in ["growth.mastery_spent","npc.mastery_spent"] and prior.data.get("target_id")=="MAGIC":magic_rank+=1
 			if prior.type=="ability.passive_triggered" and prior.cause_id==event.cause_id:return "monster_passive_duplicate"
 			if prior.actor_id!=event.actor_id or prior.data.get("ability_id")!="FIREBOLT":continue
 			if prior.type=="party.ability_bound":bound=true

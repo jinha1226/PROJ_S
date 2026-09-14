@@ -29,6 +29,7 @@ func sync(host)->void:
 		var row:Dictionary=status.order[index];var button:=Button.new()
 		button.name="RoundActor%d"%int(row.actor_id);button.custom_minimum_size=Vector2(68,44)
 		var action_label:String={"HOLD":"대기","MOVE":"이동","MELEE":"공격","SKILL":"이능","HIDDEN":"미확인"}.get(row.type,row.type)
+		if row.type=="ITEM":action_label=str({"USE":"아이템 사용","PICKUP":"줍기","EQUIP":"장착","UNEQUIP":"장비 해제","DROP":"버리기","DISCARD":"버리기"}.get(row.item_action,"아이템"))
 		if not row.path.is_empty():action_label="이동+"+action_label if row.type!="HOLD" else "이동"
 		button.text="%d %s\n%s%s"%[index+1,row.name,action_label," ✓" if row.completed else ""]
 		button.add_theme_font_size_override("font_size",11)

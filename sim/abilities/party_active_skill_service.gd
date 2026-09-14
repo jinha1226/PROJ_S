@@ -108,7 +108,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	var stat_id:="STR" if skill_id in ["STRIKE","SHOVE"] else "INT"
 	var scale:=1 if skill_id=="SHOVE" else 2
 	var bonus:=(int(stats.get(stat_id,5))-int(baseline.get(stat_id,5)))*scale
-	var growth=state.protagonist_growth if actor_id==state.protagonist_id else null
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,actor_id)
 	var axis:="MELEE" if skill_id in ["STRIKE","SHOVE"] else "MAGIC"
 	if int(result.damage)>0:
 		var raw:=maxi(1,int(definition.power)+bonus)

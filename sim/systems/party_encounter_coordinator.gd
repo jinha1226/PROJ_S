@@ -168,6 +168,7 @@ func _award_canonical_enemy_deaths(state) -> bool:
 		if preload("res://sim/living_expedition_rules.gd").enabled(world) \
 				and preload("res://sim/living_expedition_rules.gd").independent(world,event.instigator_id) \
 				and event.instigator_id not in world._party_active_ids_at_event(event.id):
+			if not preload("res://sim/party_growth_rules.gd").award_actor(world,event.instigator_id,event):return false
 			continue
 		# Enemy friendly-fire deaths award player XP regardless of player setup,
 		# including shove-induced
@@ -177,6 +178,7 @@ func _award_canonical_enemy_deaths(state) -> bool:
 			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
 		if not bool(xp_result.get("accepted",false)):return false
 		state.protagonist_growth=xp_result.state
+		if not preload("res://sim/party_growth_rules.gd").award_companions(world,event):return false
 		var enemy=world.entities.get(event.target_id)
 		if enemy==null:return false
 		var family_id:=GrowthBuildRegistryScript.monster_family_for_species(

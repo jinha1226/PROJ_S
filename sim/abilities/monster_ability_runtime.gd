@@ -35,8 +35,9 @@ static func add_status(world,actor:int,target:int,id:String,key:String,power:int
 		{"schema_version":1,"ability_id":id,"status":key,"until":str(world.world_time+duration)})!=null
 
 static func scale(world,id:int,ability:String,value:int)->int:
-	if world.party_encounter!=null and id==world.party_encounter.protagonist_id and world.party_encounter.protagonist_growth!=null:
-		return world.party_encounter.protagonist_growth.mastery_scale(str(Defs.definition(ability).get("axis","MAGIC")),value)
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,id)
+	if growth!=null:
+		return growth.mastery_scale(str(Defs.definition(ability).get("axis","MAGIC")),value)
 	return value
 
 static func assess(world,actor:int,id:String,target:int)->Dictionary:

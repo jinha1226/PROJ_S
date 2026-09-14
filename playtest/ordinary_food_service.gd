@@ -4,7 +4,7 @@ const Catalog=preload("res://sim/item_catalog_registry.gd")
 const Rations=preload("res://sim/party_ration_rules.gd")
 
 static func eat(session,instance_id:String)->Dictionary:
-	var w=session.sim.world;var actor:int=w.party_control_actor_id()
+	var w=session.sim.world;var actor:int=session.consumable_actor_id()
 	var food=w.inventory_of(actor).item(instance_id)
 	if food==null or Catalog.family(str(food.definition_id))!="FOOD":return session._rejection_dto("item_use_unimplemented")
 	if w.party_encounter.ration_milli>=Rations.ration_max_milli():return session._rejection_dto("monster_meat_full")
