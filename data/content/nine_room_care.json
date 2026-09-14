@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "nine-room-care-v1",
+  "rest_food_cost": 10,
+  "rest_recovery_units": 10,
+  "rest_time_cost": 100,
+  "combat_recovery_units": 1,
+  "base_recovery_milli": 1000,
+  "stat_recovery_milli": 50
+}
