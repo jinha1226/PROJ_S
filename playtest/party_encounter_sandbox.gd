@@ -1034,8 +1034,13 @@ func _build_ui()->void:
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 	grid.animate_passive_terrain=false
-	grid.set_graphics_mode(preload("res://playtest/graphics_mode_preferences.gd").load_mode(
-		graphics_settings_path,GridScript.GRAPHICS_MODES,GridScript.GRAPHICS_MODE_FLAT_2D))
+	var saved_graphics_mode:String=preload("res://playtest/graphics_mode_preferences.gd").load_mode(
+		graphics_settings_path,GridScript.GRAPHICS_MODES,GridScript.GRAPHICS_MODE_FLAT_2D)
+	# DIORAMA_2_5D was briefly exposed under the isometric label. Preserve the
+	# player's choice while moving that setting to the actual diamond projection.
+	if saved_graphics_mode==GridScript.GRAPHICS_MODE_DIORAMA_2_5D:
+		saved_graphics_mode=GridScript.GRAPHICS_MODE_TACTICAL
+	grid.set_graphics_mode(saved_graphics_mode)
 	_sync_graphics_mode_menu_label()
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.actor_inspect_requested.connect(_open_member_detail)
@@ -7554,7 +7559,7 @@ func _on_product_menu_id(item_id:int)->void:
 
 func _toggle_graphics_mode()->void:
 	if grid==null:return
-	var next_mode:=GridScript.GRAPHICS_MODE_DIORAMA_2_5D \
+	var next_mode:=GridScript.GRAPHICS_MODE_TACTICAL \
 		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_FLAT_2D \
 		else GridScript.GRAPHICS_MODE_FLAT_2D
 	if not grid.set_graphics_mode(next_mode):return
@@ -7569,7 +7574,7 @@ func _sync_graphics_mode_menu_label()->void:
 	var index:=popup.get_item_index(GRAPHICS_MENU_ID)
 	if index<0:return
 	popup.set_item_text(index,"그래픽 · %s"%("아이소메트릭" \
-		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_DIORAMA_2_5D else "탑뷰"))
+		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_TACTICAL else "탑뷰"))
 
 func _supply_icon_row(parent:Control,label:Label,kind:String)->Control:
 	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",2)

@@ -13,7 +13,10 @@ const GRID_SIZE := 15
 const WorldEffectAssets=preload("res://playtest/pixel24_world_effect_assets.gd")
 const GRAPHICS_MODE_FLAT_2D := "FLAT_2D"
 const GRAPHICS_MODE_DIORAMA_2_5D := "DIORAMA_2_5D"
-const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D]
+const GRAPHICS_MODE_TACTICAL := "TACTICAL_ISOMETRIC"
+const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D,
+	GRAPHICS_MODE_TACTICAL]
+const TacticalProjection=preload("res://playtest/tactical_board_projection.gd")
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
@@ -224,7 +227,18 @@ func set_graphics_mode(mode:String)->bool:
 	return true
 
 func uses_perspective_projection()->bool:
-	return _graphics_mode==GRAPHICS_MODE_DIORAMA_2_5D
+	return _graphics_mode in [GRAPHICS_MODE_DIORAMA_2_5D,GRAPHICS_MODE_TACTICAL]
+
+func uses_tactical_projection()->bool:
+	return _graphics_mode==GRAPHICS_MODE_TACTICAL
+
+func tactical_projection_rect()->Rect2:
+	return Rect2(Vector2.ZERO,size)
+
+func _project_board_point(point:Vector2)->Vector2:
+	if uses_tactical_projection():
+		return TacticalProjection.project(point,tactical_projection_rect(),visible_cell_count)
+	return DioramaScript.project_camera_point(point,grid_rect(),visible_cell_count)
 
 func _exit_tree()->void:
 	_reset_pointer_gesture()
@@ -556,9 +570,7 @@ func _projected_camera_step_offset(delta:Vector2)->Vector2:
 	if not uses_perspective_projection():return delta*cell_size_px()
 	var local_center:=Vector2(float(visible_cell_count)*0.5,
 		float(visible_cell_count)*0.5)
-	return DioramaScript.project_camera_point(local_center+delta,grid_rect(),
-		visible_cell_count)-DioramaScript.project_camera_point(local_center,
-		grid_rect(),visible_cell_count)
+	return _project_board_point(local_center+delta)-_project_board_point(local_center)
 
 func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
@@ -1285,6 +1297,7 @@ func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
 
 
 func grid_rect() -> Rect2:
+	if uses_tactical_projection():return Rect2(Vector2.ZERO,size)
 	if not uses_perspective_projection():
 		# Fill the control: the cell is sized by the axis that fits exactly and
 		# the other axis overflows symmetrically under clip_contents. Fitting both
@@ -1296,7 +1309,10 @@ func grid_rect() -> Rect2:
 		return Rect2((size-extent)*0.5,extent)
 	var extent := minf(size.x,size.y)
 	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
-func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
+func cell_size_px() -> float:
+	if uses_tactical_projection():
+		return TacticalProjection.half_width(tactical_projection_rect(),visible_cell_count)*2.0
+	return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
 	return _camera_cell_rect(position)
@@ -1305,6 +1321,9 @@ func world_cell_polygon(position:Vector2i)->PackedVector2Array:
 	return _camera_cell_polygon(position)
 func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 	if not view_bounds().has_point(position):return PackedVector2Array()
+	if uses_tactical_projection():
+		return TacticalProjection.polygon(position-view_origin,
+			tactical_projection_rect(),visible_cell_count)
 	if not uses_perspective_projection():
 		var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 		var top_left:=rect.position+Vector2(local.x,local.y)*cell
@@ -1322,6 +1341,8 @@ func _camera_cell_rect(position:Vector2i)->Rect2:
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
 	if not uses_perspective_projection():return _camera_cell_rect(position).get_center()
+	if uses_tactical_projection():
+		return _project_board_point(Vector2(position-view_origin)+Vector2(0.5,0.5))
 	return DioramaScript.perspective_cell_center(position-view_origin,
 		grid_rect(),visible_cell_count)
 func _world_position_to_pixel_center(position:Vector2)->Vector2:
@@ -1329,10 +1350,16 @@ func _world_position_to_pixel_center(position:Vector2)->Vector2:
 		var local_flat:=position-Vector2(view_origin)
 		return grid_rect().position+(local_flat+Vector2(0.5,0.5))*cell_size_px()
 	var local:=position-Vector2(view_origin)+Vector2(0.5,0.5)
-	return DioramaScript.project_camera_point(local,grid_rect(),visible_cell_count)
+	return _project_board_point(local)
 func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
+	if uses_tactical_projection():
+		var local:=TacticalProjection.unproject(pointer,tactical_projection_rect(),
+			visible_cell_count)
+		var tactical_cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
+		return tactical_cell if view_bounds().has_point(tactical_cell) \
+			and _world_in_bounds(tactical_cell) else Vector2i(-1,-1)
 	if not uses_perspective_projection():
 		var local:=pointer-rect.position;var cell:=cell_size_px()
 		var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))

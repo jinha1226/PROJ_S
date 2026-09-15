@@ -1248,15 +1248,36 @@ func test_product_graphics_mode_menu_switches_and_persists_without_touching_the_
 			and sandbox.grid.mapping_signature()==flat_mapping,
 		"ordinary product refresh preserves the exact 2D camera mapping")
 	sandbox._on_product_menu_id(sandbox.GRAPHICS_MENU_ID)
-	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_TACTICAL \
 			and "아이소메트릭" in popup.get_item_text(graphics_index),
 		"graphics menu switches immediately to the isometric presentation")
+	var projection_probe=Grid.new();projection_probe.size=Vector2(390,390)
+	var visible_probe_cells:Array=[]
+	for y in range(33,48):
+		for x in range(33,48):
+			visible_probe_cells.append({"position":[x,y],"terrain_id":"floor",
+				"visibility_state":"VISIBLE","actors":[]})
+	projection_probe.set_observation({"width":80,"height":80,"cells":visible_probe_cells})
+	projection_probe.set_graphics_mode(Grid.GRAPHICS_MODE_TACTICAL)
+	projection_probe.set_hero_centered_view(Vector2i(40,40),15,1)
+	var center_cell:=Vector2i(40,40)
+	var center_pixel:Vector2=projection_probe.world_to_pixel_center(center_cell)
+	var east_pixel:Vector2=projection_probe.world_to_pixel_center(center_cell+Vector2i.RIGHT)
+	var south_pixel:Vector2=projection_probe.world_to_pixel_center(center_cell+Vector2i.DOWN)
+	check(east_pixel.x>center_pixel.x and south_pixel.x<center_pixel.x \
+			and east_pixel.y>center_pixel.y and south_pixel.y>center_pixel.y,
+		"isometric mode projects the full scrolling grid on opposing diamond axes")
+	check_eq(projection_probe.pixel_to_world_cell(east_pixel),center_cell+Vector2i.RIGHT,
+		"isometric touch mapping returns the same canonical world cell")
+	check_eq(projection_probe.world_grid_size,Vector2i(80,80),
+		"isometric presentation does not replace the world with an 8x8 room")
+	projection_probe.free()
 	check_eq([session.sim.snapshot(),session.command_journal],[snapshot_before,journal_before],
 		"graphics presentation switching never touches the run")
 	var restored=Sandbox.new();restored.graphics_settings_path=settings_path
 	restored.initialize_for_headless_test(Session.new(44,20260828,
 		Session.SOLO_FIXTURE_SCENARIO_ID),false)
-	check(restored.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D,
+	check(restored.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_TACTICAL,
 		"a new UI restores the saved graphics mode")
 	restored._on_product_menu_id(restored.GRAPHICS_MENU_ID)
 	check(restored.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
