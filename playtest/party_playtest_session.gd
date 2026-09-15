@@ -7803,12 +7803,15 @@ func _member_body_presentation(entity_id:int)->Dictionary:
 	for part_value in body.parts:
 		var part:Dictionary=part_value
 		var minimum_integrity:=1000
+		var layer_rows:Array=[]
 		for layer_value in part.get("layers",[]):
 			if layer_value is Dictionary:
 				minimum_integrity=mini(minimum_integrity,int(layer_value.get("integrity",1000)))
+				layer_rows.append({"layer_id":str(layer_value.get("layer_id","")),
+					"integrity":int(layer_value.get("integrity",1000))})
 		part_rows.append({"part_id":str(part.get("part_id","")),
 			"condition":str(part.get("condition","FUNCTIONAL")),
-			"integrity_milli":minimum_integrity})
+			"integrity_milli":minimum_integrity,"layers":layer_rows})
 	return {"available":true,"blood":int(body.current_blood),
 		"blood_capacity":int(body.body_scalars.get("blood_capacity",0)),
 		"skin_toughness":int(body.body_scalars.get("skin_toughness",0)),

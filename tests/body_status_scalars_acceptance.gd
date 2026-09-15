@@ -28,9 +28,14 @@ func run()->void:
 		"inspection exposes exact authoritative body scalars")
 	var text:="\n".join(Sandbox.body_status_lines(body))
 	check(not "혈액" in text,"retired blood resource is hidden")
-	for label in ["피부 질김","연부조직 완충","뼈 강도","충격 %d/%d"%[
-			body.shock,body.shock_threshold],"상처"]:
-		check(str(label) in text,"body status includes %s"%str(label))
+	check(text.is_empty(),"normal skin muscle and bone state is omitted")
+	var injured:Dictionary=body.duplicate(true)
+	injured.parts=[{"part_id":"TORSO","condition":"FUNCTIONAL","integrity_milli":120,
+		"layers":[{"layer_id":"SKIN","integrity":850},
+			{"layer_id":"SOFT_TISSUE","integrity":500},
+			{"layer_id":"BONE","integrity":120}]}]
+	check(Sandbox.body_status_lines(injured)==["피부 상 · 근육 중 · 뼈 하"],
+		"damaged tissue grades share one compact line")
 	var portrait=Portrait.new();portrait.actor={"health":60,"max_health":120,
 		"energy":3,"max_energy":12,"stress":800}
 	var labels:=portrait.resource_labels(true)

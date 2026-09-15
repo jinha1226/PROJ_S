@@ -1788,6 +1788,9 @@ func _update_nearby_npc_card(observation:Dictionary,status:Dictionary,
 	nearby_npc_entity_id=-1;nearby_npc_story_state=""
 	if nearby_npc_panel==null:return
 	nearby_npc_panel.visible=false
+	# Nearby actors are selected directly on the map. The former top-left card
+	# duplicated that interaction and obscured the play field.
+	if not bool(nearby_npc_panel.get_meta("legacy_nearby_card_enabled",false)):return
 	if not product_hud or str(status.get("view_mode",""))!="EXPLORATION":return
 	var hero_raw:Variant=status.get("protagonist_position",[])
 	if not hero_raw is Array or hero_raw.size()!=2:return
@@ -5117,19 +5120,23 @@ func _add_status_value(parent:GridContainer,title:String,value:String)->void:
 static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
 	if bool(body.get("available",false)):
-		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
-		body_lines.append("피부 질김 %d"%int(body.get("skin_toughness",0)))
-		body_lines.append("연부조직 완충 %d"%int(body.get("soft_tissue_cushioning",0)))
-		body_lines.append("뼈 강도 %d"%int(body.get("bone_fracture_threshold",0)))
-		body_lines.append("충격 %d/%d"%[int(body.get("shock",0)),maxi(1,int(body.get("shock_threshold",1)))])
-		body_lines.append("상처 %d"%int(body.get("wound_count",0)))
-		var part_states:Array[String]=[]
+		var minimum_by_layer:={"SKIN":1000,"SOFT_TISSUE":1000,"BONE":1000}
 		for part_value in body.get("parts",[]):
 			if not part_value is Dictionary:continue
 			var part:Dictionary=part_value
-			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
-				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
-		body_lines.append_array(part_states)
+			for layer_value in part.get("layers",[]):
+				if not layer_value is Dictionary:continue
+				var layer_id:=str(layer_value.get("layer_id",""))
+				if minimum_by_layer.has(layer_id):minimum_by_layer[layer_id]=mini(
+					int(minimum_by_layer[layer_id]),int(layer_value.get("integrity",1000)))
+		var damaged:Array[String]=[]
+		for layer_id in ["SKIN","SOFT_TISSUE","BONE"]:
+			var integrity:=int(minimum_by_layer[layer_id])
+			if integrity>=1000:continue
+			var grade:="상" if integrity>=700 else ("중" if integrity>=350 else "하")
+			damaged.append("%s %s"%[{"SKIN":"피부","SOFT_TISSUE":"근육",
+				"BONE":"뼈"}[layer_id],grade])
+		if not damaged.is_empty():body_lines.append(" · ".join(damaged))
 	else:body_lines.append("육체 정보 없음")
 	return body_lines
 

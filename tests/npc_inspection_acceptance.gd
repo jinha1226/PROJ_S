@@ -79,23 +79,11 @@ func run()->void:
 	ui.grid.set_observation({"width":24,"height":24,"cells":cells})
 	ui.grid.set_hero_centered_view(Vector2i(9,9),15)
 	var spec:Dictionary=ui.grid.monster_list_draw_spec()
-	check(spec.visible and spec.rows.size()==3,"three distinct NPC list entries")
+	check(not spec.visible and spec.rows.is_empty(),"nearby NPC list stays removed")
 	var before_journal:int=session.command_journal.size()
-	for row in spec.rows:
-		var point:Vector2=Rect2(row.hit_rect).get_center()
-		for pressed in [true,false]:
-			var event:=InputEventScreenTouch.new();event.index=0;event.pressed=pressed
-			event.position=ui.grid.get_global_transform_with_canvas()*point
-			root.push_input(event,true)
-		check(ui.member_detail_entity_id==int(row.entity_id),"list click selects exact NPC")
-		ui._close_member_detail()
-	check(session.command_journal.size()==before_journal,"list cannot fall through to a movement command")
-	# A drag must cancel inspection, not activate the map beneath it.
-	var point:Vector2=Rect2(spec.rows[0].hit_rect).get_center()
-	ui.grid._begin_pointer_gesture("TOUCH",0,point)
-	ui.grid._update_pointer_gesture(point+Vector2(30,0))
-	ui.grid._finish_pointer_gesture("TOUCH",0,point+Vector2(30,0),false)
-	check(not ui.member_detail_modal.visible,"drag cancels list click")
+	check(ui.grid.nearby_actor_at_pointer(Vector2(359,799))==-1,
+		"retired list reserves no pointer target")
+	check(session.command_journal.size()==before_journal,"retired list does not change commands")
 	ui.autonomous_battle_clock.paused=true
 	ui._open_member_detail(int(visitors[0].entity_id));ui._close_member_detail()
 	check(ui.autonomous_battle_clock.paused,"explicit pause survives inspection")

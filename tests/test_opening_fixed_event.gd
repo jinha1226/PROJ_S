@@ -86,15 +86,8 @@ func test_opening_anchors_actor_and_hexaco_are_seeded_safe_and_exact() -> bool:
 	var opening_npc_id:=int(a.sim.world.party_encounter.opening_event.npc_entity_id)
 	var opening_ui=Sandbox.new();opening_ui.size=Vector2(360,640)
 	opening_ui.initialize_for_headless_test(a,false)
-	check(opening_ui.nearby_npc_panel.visible \
-			and opening_ui.nearby_npc_entity_id==opening_npc_id \
-			and opening_ui.nearby_npc_story_state=="OPENING_CHOICE",
-		"first encounter automatically exposes the wounded NPC information card")
-	check("성격" in opening_ui.nearby_npc_personality.text \
-			and "관계" in opening_ui.nearby_npc_affinity.text \
-			and "호감" not in opening_ui.nearby_npc_affinity.text \
-			and "물약 주기" in opening_ui.nearby_npc_recruitment.text,
-		"first encounter card merges protagonist affinity into relationship information")
+	check(not opening_ui.nearby_npc_panel.visible,
+		"first encounter keeps the retired nearby NPC card hidden")
 	opening_ui._on_actor(opening_npc_id)
 	check(opening_ui.member_detail_modal.visible \
 			and opening_ui.member_detail_entity_id==opening_npc_id,
@@ -340,26 +333,11 @@ func test_second_opening_encounter_exposes_stable_recruitment_and_resolves_once(
 		"opening recruitment chance and keyed roll are stable")
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,false)
-	check(sandbox.nearby_npc_panel.visible and sandbox.nearby_npc_entity_id==npc_id,
-		"second encounter automatically exposes the nearby NPC card")
-	check("성격" in sandbox.nearby_npc_personality.text \
-		and "관계" in sandbox.nearby_npc_affinity.text \
-		and "호감" not in sandbox.nearby_npc_affinity.text \
-		and str(first.probability_percent) in sandbox.nearby_npc_recruitment.text \
-		and "장비" in sandbox.nearby_npc_equipment.text,
-		"nearby NPC card exposes personality, relationship, equipment, and recruitment chance")
-	check(not sandbox.nearby_npc_action_button.disabled \
-		and ("영입 권유" in sandbox.nearby_npc_action_button.text \
-			or "동행 수락" in sandbox.nearby_npc_action_button.text),
-		"adjacent second encounter exposes a direct recruitment action")
-	sandbox._on_nearby_npc_detail()
-	check(sandbox.member_detail_modal.visible \
-		and sandbox.find_child("StatusCoreStats",true,false)!=null \
-		and sandbox.find_child("StatusBodyState",true,false)!=null \
-		and sandbox.find_child("StatusEquipmentSummary",true,false)!=null \
-		and sandbox.member_detail_attack.visible \
-		and not sandbox.member_detail_attack.disabled,
-		"nearby card opens NPC stats, body, equipment, and adjacent attack action")
+	check(not sandbox.nearby_npc_panel.visible,
+		"second encounter keeps the retired nearby NPC card hidden")
+	sandbox._on_actor(npc_id)
+	check(sandbox.member_detail_modal.visible and sandbox.member_detail_entity_id==npc_id,
+		"tapping the NPC on the map opens its full detail modal")
 	sandbox.free()
 	# Exercise hostility on a detached branch so this test can still verify the
 	# ordinary recruitment outcome against the original canonical session.

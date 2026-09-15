@@ -44,15 +44,8 @@ func test_visible_enemy_marks_list_grouping_and_transition_pulse_are_fov_safe()-
 		check(Rect2(mark.cell_rect).encloses(Rect2(mark.text_rect)),
 			"%s mark remains inside its own upper-right cell"%mark.state)
 	var list:=grid.monster_list_draw_spec()
-	check(list.visible and list.mouse_filter=="STOP" and list.row_count==5 \
-		and list.list_kind=="NEARBY_ACTORS" and list.npc_row_count==1,
-		"interactive list includes individual visible hostiles and one nearby NPC")
-	var alert_rows:Array=list.rows.filter(func(row):return row.state=="ALERT")
-	check_eq([alert_rows.size(),alert_rows[0].count,alert_rows[0].text],
-		[2,1,"고블린 !"],"same species remain individually inspectable")
-	var npc_rows:Array=list.rows.filter(func(row):return row.row_kind=="NPC")
-	check_eq([npc_rows.size(),npc_rows[0].text],[1,"부상당한 여행자 NPC"],
-		"nearby NPC keeps its own name and role instead of monster grouping")
+	check(not list.visible and list.mouse_filter=="IGNORE" and list.rows.is_empty(),
+		"retired nearby actor list draws nothing and claims no input")
 	var changed:=observation.duplicate(true)
 	for cell in changed.cells:
 		for actor in cell.actors:
@@ -65,7 +58,7 @@ func test_visible_enemy_marks_list_grouping_and_transition_pulse_are_fov_safe()-
 		and int(active.pulse_duration_ms)>=180 and int(active.pulse_duration_ms)<=250,
 		"state transition owns a bounded presentation-only pulse")
 	check_eq([grid.mapping_signature(),grid.actor_hit_rect(2)],[mapping,hit],
-		"mark, list, and pulse preserve mapping and hit authority")
+		"mark and pulse preserve mapping and hit authority")
 	grid.free();return finish()
 
 
@@ -84,9 +77,8 @@ func test_awareness_ui_fits_360_450_at_zoom_11_15_19_and_caps_five_rows()->bool:
 				"visibility_state":"VISIBLE","actors":[_npc(90,Vector2i(25,25),"행상인")]})
 			grid.set_observation(with_npc);grid.set_hero_centered_view(Vector2i(24,24),zoom)
 			var list:=grid.monster_list_draw_spec()
-			check(list.visible and int(list.row_count)<=5 and int(list.npc_row_count)>=1 \
-				and grid.grid_rect().encloses(Rect2(list.bounds)),
-				"%dpx zoom%d list reserves an NPC row, caps five, and stays clipped"%[viewport,zoom])
+			check(not list.visible and list.rows.is_empty() and list.mouse_filter=="IGNORE",
+				"%dpx zoom%d keeps the retired actor list absent"%[viewport,zoom])
 			for mark in grid.monster_awareness_marker_draw_specs():
 				var actor_spec:Dictionary=grid.actor_glyph_draw_spec(int(mark.entity_id))
 				check(grid.grid_rect().encloses(Rect2(mark.text_rect)) \

@@ -1494,6 +1494,13 @@ func monster_awareness_marker_draw_specs(sample_time_ms:int=-1)->Array[Dictionar
 	return rows.duplicate(true)
 
 func monster_list_draw_spec()->Dictionary:
+	# Actors are inspected on their map cells; the old bottom-right duplicate
+	# list is retired and must not reserve a pointer hit area.
+	if not bool(get_meta("legacy_nearby_actor_list_enabled",false)):
+		return {"visible":false,"rows":[],"row_count":0,"max_rows":0,
+			"list_kind":"RETIRED","hostile_row_count":0,"npc_row_count":0,
+			"bounds":Rect2(),"mouse_filter":"IGNORE","process":false,
+			"fov_safe":true}.duplicate(true)
 	var groups:Dictionary={};var priority:={"HUNTING":0,"ALERT":1,"SUSPICIOUS":2,
 		"SEARCHING":3,"RETURNING":4,"UNAWARE":5}
 	var hero_position:=Vector2i(-1,-1)

@@ -51,7 +51,7 @@ func run()->void:
 	check(ui.stat_help.timer.is_stopped(),"drag cancels hold")
 	ui.stat_help._cancel()
 	var lines:Array=ui.body_status_lines(s.inspect_party_member(hero).body_state)
-	check(lines.size()>=7 and not str(lines[0]).contains("의식"),"body values have independent rows")
+	check(lines.is_empty(),"normal tissue state does not create status rows")
 	# Obtain a canonical injury, never mutate HP behind the event journal.
 	ui._close_member_detail()
 	for i in range(160):
