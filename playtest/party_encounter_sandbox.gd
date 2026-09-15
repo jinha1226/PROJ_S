@@ -91,6 +91,10 @@ var enemy_vision_overlay_button:Button
 var top_hud_actions:HBoxContainer
 var product_menu_button:MenuButton
 var product_bag_button:Button
+var product_context_actions:HBoxContainer
+var product_give_button:Button
+var ground_pickup_menu:PopupMenu
+var ground_pickup_ids:Array[String]=[]
 var product_restart_confirm:ConfirmationDialog
 var graphics_settings_path:=GRAPHICS_SETTINGS_PATH
 var expedition_floor_label:Label
@@ -747,7 +751,7 @@ func _tick_portrait_long_press()->void:
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
-	controls.append_array([product_auto_button,
+	controls.append_array([product_auto_button,product_give_button,
 		product_tactics_button,product_rest_button,product_pickup_button,
 		product_interact_button,product_attack_button,product_wait_guard_button,
 		product_execute_button,product_bag_button,minimap_open_button,
@@ -792,6 +796,7 @@ func _activate_product_control(control_name:String)->void:
 		"ProductAttack":_on_product_attack()
 		"ProductPickup":_on_product_pickup()
 		"ProductAuto":_on_product_auto()
+		"ProductGivePotion":_on_product_give_potion()
 		"ProductInteract":_on_product_interact()
 		"ProductWaitGuard":_on_product_wait_guard()
 		"ProductExecute":_on_product_execute()
@@ -1090,6 +1095,8 @@ func _build_ui()->void:
 	action_feedback_label.add_theme_font_size_override("font_size",FONT_AUX);action_feedback_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	action_feedback_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;action_feedback_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	combat_action_area.add_child(action_feedback_label)
+	product_context_actions=HBoxContainer.new();product_context_actions.name="ContextActions"
+	product_context_actions.visible=false;combat_action_area.add_child(product_context_actions)
 	combat_action_dock=HBoxContainer.new(); combat_action_dock.name="CombatActionDock"; combat_action_dock.custom_minimum_size.y=TOUCH_TARGET
 	combat_action_dock.add_theme_constant_override("separation",4);combat_action_dock.visible=false;combat_action_area.add_child(combat_action_dock)
 	companion_order_editor=preload("res://playtest/companion_order_editor.gd").new()
@@ -2158,6 +2165,7 @@ func _refresh()->void:
 	_render_hero_skill_row(status,product_hud and not town_active)
 	_clear_container(deck)
 	_clear_container(combat_action_dock);combat_action_dock.visible=false
+	_clear_container(product_context_actions);product_context_actions.visible=false;product_give_button=null
 	action_feedback_label.visible=true
 	combat_action_area.visible=combat_actions_visible;_update_action_feedback(status)
 	_position_build_label();call_deferred("_position_build_label")
@@ -4182,7 +4190,7 @@ func _build_auto_combat_action_area(status:Dictionary)->void:
 		execute.size_flags_stretch_ratio=0.9
 
 func _product_controls_metrics(_party_count:int)->Dictionary:
-	# Movement and pickup remain map touches. The dock keeps the four frequent
+	# Movement and pickup remain map touches. The dock keeps the five frequent
 	# context commands visible under the portrait strip.
 	var gap:=3 if size.x>=450.0 else 2
 	return {"target":48,"gap":gap,"dock_height":48}.duplicate(true)
@@ -4214,26 +4222,21 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
 	# One fixed dock, the same in exploration and in a fight:
-	# [공격] [대기] [휴식] [탐험] [줍기] [전술] [가방] + the contextual interaction.
-	# Eight 44px+ touch targets must fit the narrowest phone width; the gap
-	# shrinks before the targets do.
-	if 8.0*44.0+float(gap)*7.0>size.x:gap=1;combat_action_dock.add_theme_constant_override("separation",gap)
-	var target:=clampi(int(floor((size.x-float(gap)*7.0)/8.0)),44,int(metrics.target))
+	# [공격] [대기/휴식] [탐험] [전술] [가방]. Context actions live above.
+	var target:=clampi(int(floor((size.x-float(gap)*4.0)/5.0)),44,int(metrics.target))
 	product_attack_button=_add_product_context_button(combat_action_dock,"[공격]","ProductAttack",
 		_on_product_attack_any,target)
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,"[대기]",
 		"ProductWaitGuard",_on_product_wait_guard,target)
-	product_rest_button=_add_product_context_button(combat_action_dock,"[휴식]","ProductRest",
-		_on_product_rest,target)
 	product_auto_button=_add_product_context_button(combat_action_dock,"[탐험]","ProductAuto",
 		_on_product_auto,target)
-	product_pickup_button=_add_product_context_button(combat_action_dock,"[줍기]","ProductPickup",
-		_on_product_pickup,target)
 	product_tactics_button=_add_product_context_button(combat_action_dock,"[전술]","ProductTactics",
 		_on_product_tactics,target)
 	product_bag_button=_add_product_context_button(combat_action_dock,"가방","ProductBag",
 		_open_hero_detail_tab.bind("ITEM"),target)
-	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
+	product_give_button=_add_product_context_button(product_context_actions,"물약 주기","ProductGivePotion",_on_product_give_potion,target)
+	product_give_button.hide()
+	product_interact_button=_add_product_context_button(product_context_actions,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
 	_sync_product_control_state(status)
@@ -4261,24 +4264,12 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_attack_button.disabled=terminal or mode=="TOWN"
 	product_attack_button.tooltip_text="가장 가까운 적을 공격합니다. 사거리 밖이면 한 칸 다가갑니다." \
 		if enemy_in_view else "시야 안에 적이 없습니다."
-	# [대기]: one turn. In a fight it is a guard, otherwise a plain wait.
+	# One shared wait/rest slot, evaluated again when the user activates it.
 	product_wait_guard_button.disabled=terminal or mode=="TOWN"
-	if duo_fight:product_wait_guard_button.tooltip_text="이번 차례는 자리를 지킵니다."
-	elif mode=="COMBAT":
-		var guard_actor:=selected_member_id if selected_member_id>0 else protagonist_id
-		product_wait_guard_button.tooltip_text="200 시간 동안 물리 피해를 %d%% 줄입니다." \
-			%_guard_percent_for_actor(guard_actor)
-	else:product_wait_guard_button.tooltip_text="현재 위치에서 한 턴 대기합니다."
-	# [휴식]: rest until full; refused with a reason while enemies are near.
-	product_rest_button.text="[STOP]" if _product_rest_active else "[휴식]"
-	product_rest_button.disabled=terminal or mode=="TOWN"
-	product_rest_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active \
-		else "HP가 다 찰 때까지 쉽니다. 적이 보이거나 피해를 입으면 멈춥니다."
-	# [줍기]: always in place, enabled when loot is underfoot.
-	var loot_here:int=session.ground_item_count_at_protagonist() if mode!="TOWN" else 0
-	product_pickup_button.disabled=terminal or loot_here==0
-	product_pickup_button.tooltip_text="발밑 아이템 %d개 · 한 번에 하나씩 줍습니다 (100시간)."%loot_here if loot_here>0 \
-		else "발밑에 주울 것이 없습니다."
+	var resting_allowed:=_wait_button_is_rest(status)
+	product_wait_guard_button.text="[휴식 중지]" if _product_rest_active else ("[휴식]" if resting_allowed else "[대기]")
+	product_wait_guard_button.tooltip_text="휴식을 멈춥니다." if _product_rest_active else (
+		"파티 HP·MP가 회복될 때까지 쉽니다. 적 발견·피해 시 중지합니다." if resting_allowed else "현재 위치에서 한 턴 대기합니다.")
 	# [전술]: party directives (focus, retreat, hold, cease, free). Always in
 	# place; the menu explains itself when there is no fight to direct.
 	product_tactics_button.disabled=terminal or mode=="TOWN"
@@ -4287,7 +4278,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_tactics_button.text="[전술 · 후퇴]" if _retreat_active and duo_fight else "[전술]"
 	product_tactics_button.tooltip_text="파티 전술: %s"%str({"ATTACK_TARGET":"집중 공격","RETREAT":"후퇴",
 		"STOP_ATTACK":"공격 중지","HOLD_POSITION":"자리 지키기","FOLLOW":"따라오기"}.get(current_tactic,"따라오기"))
-	# [탐험]: auto explore toggle; the opening event borrows it for the potion.
+	# Exploration stays fixed; contextual interactions use their own row.
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	var opening_choice:=bool(opening.get("can_interact",false))
@@ -4297,21 +4288,18 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	var floor_transition:Dictionary=session.floor_transition_assessment() \
 		if session.has_method("floor_transition_assessment") else {}
 	var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
+	product_give_button.visible=opening_choice
+	product_give_button.disabled=not bool(opening.get("give_enabled",false))
 	if opening_choice:
 		if event_label!=null:
 			event_label.text=str(opening.get("scene_summary",
 				"부상당한 여행자가 벽에 기대 숨을 몰아쉬고 있습니다."))
-		product_auto_button.toggle_mode=false;product_auto_button.set_pressed_no_signal(false)
-		product_auto_button.text="[물약 주기]"
-		product_auto_button.disabled=not bool(opening.get("give_enabled",false))
-		product_auto_button.tooltip_text="회복 물약 1개를 건네 실제 체력을 회복시킵니다."
-	else:
-		product_auto_button.toggle_mode=true
-		product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
-		product_auto_button.text="[탐험 ■]" if bool(auto_state.get("running",false)) else "[탐험]"
-		product_auto_button.disabled=terminal or mode=="TOWN" or not session.has_method("start_auto_explore")
-		product_auto_button.tooltip_text="출구 쪽 미탐색 지역으로 자동 탐험" if not duo_fight \
-			else "적이 보이는 동안은 자동 탐험이 멈춥니다."
+	product_auto_button.toggle_mode=true
+	product_auto_button.set_pressed_no_signal(bool(auto_state.get("running",false)))
+	product_auto_button.text="[중지]" if bool(auto_state.get("running",false)) else "[탐험]"
+	product_auto_button.disabled=terminal or mode=="TOWN" or not session.has_method("start_auto_explore")
+	product_auto_button.tooltip_text="출구 쪽 미탐색 지역으로 자동 탐험" if not duo_fight \
+		else "적이 보이는 동안은 자동 탐험이 멈춥니다."
 	# Contextual interaction: only when there is one.
 	product_interact_button.disabled=true;product_interact_button.text="[INTERACT]"
 	if bool(floor_transition.get("accepted",false)):
@@ -4336,6 +4324,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			else "쇠뇌를 장전합니다. 볼트 %d개 · %d시간"%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
 	product_interact_button.visible=not (product_interact_button.disabled \
 		and product_interact_button.text=="[INTERACT]")
+	product_context_actions.visible=product_interact_button.visible or product_give_button.visible
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -4476,14 +4465,36 @@ func _on_product_pickup()->void:
 		_show_product_command_feedback("현재 칸에 주울 아이템이 없습니다.")
 		_request_refresh();return
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
-	_pickup_everything_here()
+	var rows:Array=session.ground_items_at_protagonist()
+	if rows.size()==1:_pickup_everything_here()
+	else:_show_ground_pickup_menu(rows)
 	_request_refresh()
 
 func _show_product_command_feedback(message:String)->void:
 	notice_text=message;action_feedback_text=message
 	if event_label!=null:event_label.text=message
 
-func _on_product_auto()->void:
+func _show_ground_pickup_menu(rows:Array)->void:
+	if ground_pickup_menu==null:
+		ground_pickup_menu=PopupMenu.new();ground_pickup_menu.name="GroundPickupMenu"
+		add_child(ground_pickup_menu)
+		ground_pickup_menu.id_pressed.connect(_take_ground_pickup_choice)
+		ground_pickup_menu.popup_hide.connect(func():
+			grid.modal_open=member_detail_modal.visible or record_modal.visible or base_modal.visible or map_overlay.visible)
+	ground_pickup_menu.clear();ground_pickup_ids.clear()
+	for item in rows:
+		ground_pickup_ids.append(str(item.instance_id))
+		ground_pickup_menu.add_item(str(item.get("label",item.get("display_name","아이템"))),ground_pickup_ids.size()-1)
+	grid.cancel_pointer_gesture();grid.modal_open=true
+	ground_pickup_menu.popup_centered(Vector2i(mini(320,int(size.x)-24),0))
+
+func _take_ground_pickup_choice(index:int)->void:
+	if index<0 or index>=ground_pickup_ids.size():return
+	var result:Dictionary=session.pickup_ground_item(ground_pickup_ids[index])
+	_record_result(result,true,"아이템을 주울 수 없습니다.")
+	_request_refresh()
+
+func _on_product_give_potion()->void:
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	if bool(opening.get("can_interact",false)):
@@ -4495,10 +4506,9 @@ func _on_product_auto()->void:
 		if bool(choice_result.get("accepted",false)) \
 				and bool(choice_result.get("immediate_recruitment",{}).get("joined",false)):
 			_show_product_command_feedback("물약을 건넸습니다. 여행자가 바로 파티에 합류했습니다.")
-		# Giving the potion is a complete one-shot interaction. The same control is
-		# labelled AUTO after the HUD refresh, but this released touch must never be
-		# reinterpreted as a request to begin walking.
+		# A potion gift is one interaction, independent of the exploration button.
 		_request_refresh();return
+func _on_product_auto()->void:
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))=="EXPLORATION":
 		if not session.has_method("start_auto_explore"):return
@@ -4741,8 +4751,17 @@ func _cancel_product_rest(reason:String)->void:
 	_product_auto_stop_feedback=notice_text
 	_request_refresh()
 
+func _wait_button_is_rest(status:Dictionary)->bool:
+	return str(status.get("view_mode",""))=="EXPLORATION" \
+		and (status.get("visible_enemy_ids",[]) as Array).is_empty() \
+		and (session.field_turns_active() or str(status.get("safe_phase","")) not in ["CONTACT","ENGAGED"])
+
 func _on_product_wait_guard()->void:
 	var status:Dictionary=session.party_status()
+	if _product_rest_active:
+		_cancel_product_rest("rest_user_stop");return
+	if _wait_button_is_rest(status):
+		_on_product_rest();return
 	_retreat_active=false
 	if str(status.get("view_mode",""))=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
@@ -6517,6 +6536,9 @@ func _on_cell(position:Vector2i)->void:
 		_product_attack_targeting=false
 		_show_product_command_feedback("공격 선택을 취소했습니다.")
 		_sync_product_control_state(status);return
+	if position==session.sim.world.entities[session.sim.world.party_control_actor_id()].position:
+		if session.ground_item_count_at_protagonist()>0:_on_product_pickup()
+		return
 	if status.view_mode=="EXPLORATION":
 		_cancel_product_auto_explore("auto_explore_user_command",false)
 		# Navigation no longer pre-builds loot descriptions or schedules pickups.
@@ -6658,6 +6680,8 @@ func _on_actor(entity_id:int)->void:
 	if status.view_mode=="EXPLORATION" and entity_id in status.get("rescue_candidate_ids",[]):
 		if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
 		_open_member_detail(entity_id);return
+	if entity_id==session.sim.world.party_control_actor_id():
+		_on_cell(session.sim.world.entities[entity_id].position);return
 	if session.field_turns_active() and entity_id in status.party_member_ids:
 		_switch_field_member(entity_id);return
 	if status.view_mode=="EXPLORATION" \
@@ -6820,7 +6844,7 @@ func _pickup_pending_ground_item_if_reached()->void:
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
 	var count:int=session.ground_item_count_at_protagonist()
 	if count>0:
-		notice_text="발밑 아이템 %d개 · [줍기]로 획득"%count
+		notice_text="발밑 아이템 %d개 · 현재 타일을 다시 눌러 획득"%count
 		action_feedback_text=notice_text
 	if product_pickup_button!=null:
 		product_pickup_button.disabled=count==0
@@ -7012,6 +7036,8 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 	var _pfp:=PerfProbeScript.begin()
 	if status.is_empty():status=session.party_status()
 	if grid!=null:grid.set_party_focus(status.get("party_command",{}))
+	if grid!=null:grid.set_underfoot_pickup_actor(session.sim.world.party_control_actor_id() \
+		if session.ground_item_count_at_protagonist()>0 else -1)
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()

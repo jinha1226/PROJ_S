@@ -841,6 +841,11 @@ func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)-
 var _actor_emphasis:Dictionary={}
 var target_preview_id:=-1
 var party_focus_id:=-1
+var underfoot_pickup_actor:=-1
+
+func set_underfoot_pickup_actor(actor_id:int)->void:
+	if underfoot_pickup_actor==actor_id:return
+	underfoot_pickup_actor=actor_id;queue_redraw()
 var _party_focus_event_id:=-1
 var _party_focus_pulse_until:=0
 
@@ -2545,6 +2550,13 @@ func _draw() -> void:
 					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
 		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
 	Perf.end("grid.draw_world",begun)
+	var pickup_center:=actor_visual_center(underfoot_pickup_actor)
+	if pickup_center.x>=0:
+		pickup_center+=Vector2(cell_size_px()*0.36,cell_size_px()*0.25)
+		draw_circle(pickup_center,7,Color("#171b20"))
+		draw_arc(pickup_center,7,0,TAU,20,Color("#f5cc67"),1.5,true)
+		draw_line(pickup_center-Vector2(4,0),pickup_center+Vector2(4,0),Color("#f5cc67"),2,true)
+		draw_line(pickup_center-Vector2(0,4),pickup_center+Vector2(0,4),Color("#f5cc67"),2,true)
 	var focus_spec:=party_focus_draw_spec()
 	if bool(focus_spec.visible):
 		var center:Vector2=focus_spec.center

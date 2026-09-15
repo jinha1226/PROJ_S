@@ -982,10 +982,9 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		var sandbox=Sandbox.new();sandbox.size=viewport_size
 		sandbox.initialize_for_headless_test(session,true)
 		sandbox.size=viewport_size;sandbox._refresh()
-		var wait_button:Button=_button(sandbox,"ProductRest")
-		check(wait_button!=null and wait_button.text=="[휴식]" \
-			and "HP가 다 찰 때까지" in wait_button.tooltip_text,
-			"%s exploration rest button explains the rest macro"%viewport_size)
+		var wait_button:Button=_button(sandbox,"ProductWaitGuard")
+		check(wait_button!=null and wait_button.text in ["[휴식]","[대기]"],
+			"%s shared wait/rest button follows enemy visibility"%viewport_size)
 		var grid_id:int=sandbox.grid.get_instance_id()
 		var map_cell_count:int=sandbox.grid.visible_cell_count
 		var map_cell_size:float=sandbox.grid.cell_size_px()
@@ -1057,9 +1056,8 @@ func test_solo_combat_mobile_hides_party_management_and_enters_without_formation
 		var guard:Button=_button(sandbox,"ProductWaitGuard")
 		var expected_guard_target:=44.0
 		check(guard!=null and guard.custom_minimum_size.y>=expected_guard_target \
-			and guard.text=="[대기]" and "25%" in guard.tooltip_text \
-			and "200 시간" in guard.tooltip_text and "물리 피해" in guard.tooltip_text,
-			"%s unified WAIT keeps the combat hold effect contract"%viewport_size)
+			and guard.text=="[대기]" and "한 턴" in guard.tooltip_text,
+			"%s unified WAIT explains one turn"%viewport_size)
 		var enemy_summary:=sandbox.find_child("EnemyIntentSummary",true,false) as Label
 		check(enemy_summary==null,
 			"%s solo fixture does not reveal enemy target or direction"%viewport_size)

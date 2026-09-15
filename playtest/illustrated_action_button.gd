@@ -30,9 +30,15 @@ func _draw()->void:
 				draw_line(center+Vector2(-9*d,10),center+Vector2(9*d,-10),ink,3,false)
 				draw_line(center+Vector2(-10*d,2),center+Vector2(-2*d,9),ink,2,false)
 		"ProductWaitGuard":
-			var points:=PackedVector2Array([center+Vector2(-10,-10),center+Vector2(10,-10),center+Vector2(8,5),center+Vector2(0,11),center+Vector2(-8,5),center+Vector2(-10,-10)])
-			draw_polyline(points,ink,2,false)
-			draw_line(center+Vector2(0,-5),center+Vector2(0,5),ink,2,false)
+			if label.contains("휴식"):
+				draw_arc(center,10,0.3,TAU-0.8,24,ink,2,true)
+				draw_line(center+Vector2(1,-5),center+Vector2(7,-5),ink,2,true)
+				draw_line(center+Vector2(7,-5),center+Vector2(1,1),ink,2,true)
+				draw_line(center+Vector2(1,1),center+Vector2(7,1),ink,2,true)
+			else:
+				draw_arc(center,10,0,TAU,24,ink,2,true)
+				draw_line(center,center+Vector2(0,-7),ink,2,true)
+				draw_line(center,center+Vector2(5,2),ink,2,true)
 		"ProductTactics":
 			draw_rect(Rect2(center+Vector2(-7,-11),Vector2(2,22)),ink)
 			draw_rect(Rect2(center+Vector2(-5,-10),Vector2(14,8)),ink)

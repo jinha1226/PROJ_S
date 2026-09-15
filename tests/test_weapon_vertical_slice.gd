@@ -229,8 +229,8 @@ func test_product_pickup_button_collects_the_current_tile_without_an_empty_turn(
 	var sandbox=Sandbox.new();sandbox.size=Vector2(360,640)
 	sandbox.initialize_for_headless_test(session,true)
 	var pickup_button:Button=sandbox.find_child("ProductPickup",true,false) as Button
-	check(pickup_button!=null and pickup_button.visible,
-		"the pickup button appears in the context dock while loot lies on the hero tile")
+	check(pickup_button==null,
+		"pickup uses the occupied map tile instead of a dock button")
 	var hero_id:=int(session.party_status().protagonist_id)
 	var pickup_time:=int(session.sim.world.world_time)
 	var pickup_journal_size:int=session.command_journal.size()
