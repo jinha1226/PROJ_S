@@ -592,8 +592,8 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	if profile.is_empty():return true
 	var visible_party_ids: Array[int] = EnemySquadBlackboardScript.visible_party_ids(
 		world, enemy_id)
-	var observed_id: int = -1 if visible_party_ids.is_empty() \
-		else int(visible_party_ids[0])
+	var contest:Dictionary=_most_detectable_party_member(enemy_id,visible_party_ids)
+	var observed_id:int=int(contest.get("entity_id",-1))
 	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
 	# Awareness rule: standing next to an unaware enemy is not an instant alarm.
@@ -618,9 +618,8 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		return _set_awareness_state(awareness,"HUNTING",observed.position,
 			previous_state,observed_id)
 	if observed != null:
-		var distance:=_distance(enemy.position,observed.position)
 		awareness.suspicion=clampi(awareness.suspicion+
-			EnemyPerceptionRegistryScript.suspicion_gain(str(enemy.species_id),distance),0,1000)
+			int(contest.suspicion_gain),0,1000)
 		awareness.last_known_target_position=observed.position
 		awareness.last_seen_step=processed_step_index
 		awareness.last_seen_time=world.world_time
@@ -649,6 +648,30 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	var transition_position:Vector2i=awareness.last_known_target_position
 	if transition_position==Vector2i(-1,-1):transition_position=enemy.position
 	return _set_awareness_state(awareness,next_state,transition_position,previous_state)
+
+
+func _most_detectable_party_member(enemy_id:int,visible_party_ids:Array[int])->Dictionary:
+	var enemy=world.entities.get(enemy_id)
+	if enemy==null:return {}
+	var best:Dictionary={}
+	for party_id_value in visible_party_ids:
+		var party_id:=int(party_id_value)
+		var member=world.entities.get(party_id)
+		if member==null:continue
+		var distance:=_distance(enemy.position,member.position)
+		var equipment:Dictionary=world.equipment_modifiers(party_id)
+		var stealth:=EnemyPerceptionRegistryScript.HERO_BASE_STEALTH+int(
+			equipment.get("totals",{}).get("stealth",0))
+		var gain:=600 if distance<=1 else EnemyPerceptionRegistryScript.suspicion_gain(
+			str(enemy.species_id),distance,stealth)
+		var candidate:={"entity_id":party_id,"distance":distance,
+			"stealth":stealth,"suspicion_gain":gain}
+		if best.is_empty() or gain>int(best.suspicion_gain) \
+				or (gain==int(best.suspicion_gain) and distance<int(best.distance)) \
+				or (gain==int(best.suspicion_gain) and distance==int(best.distance) \
+					and party_id<int(best.entity_id)):
+			best=candidate
+	return best.duplicate(true)
 
 
 func _set_awareness_state(awareness,next_state:String,target_position:Vector2i,

@@ -6,6 +6,8 @@ const DungeonMap=preload("res://playtest/deterministic_dungeon_map.gd")
 const TerrainRegistry=preload("res://sim/terrain_registry.gd")
 const PerceptionRegistry=preload("res://sim/enemy_perception_registry.gd")
 const WorldState=preload("res://sim/world_state.gd")
+const EnemyBlackboard=preload("res://sim/enemy_squad_blackboard.gd")
+const WorldItems=preload("res://sim/world_item_operations.gd")
 
 func test_product_roster_is_deterministic_reachable_and_spawn_safe()->bool:
 	for seed in [44,45,46]:
@@ -84,6 +86,72 @@ func test_los_contest_is_monotonic_and_six_states_are_reachable()->bool:
 	check(PerceptionRegistry.suspicion_gain("goblin",4,700) \
 		<PerceptionRegistry.suspicion_gain("goblin",4,300),
 		"higher hero stealth deterministically lowers suspicion gain")
+	return finish()
+
+func test_party_uses_one_most_detectable_member_for_enemy_awareness()->bool:
+	var session=Session.new()
+	var world=session.sim.world;var state=world.party_encounter
+	check(state.active_party_member_ids.size()>=3,"fixture has a three-person field party")
+	if state.active_party_member_ids.size()<3:return finish()
+	var hero_id:=int(state.protagonist_id)
+	var near_id:=int(state.active_party_member_ids[1])
+	var third_id:=int(state.active_party_member_ids[2])
+	state.member(near_id).presence="DEPLOYED"
+	state.member(third_id).presence="DEPLOYED"
+	var enemy_id:=int(state.enemy_ids[0]);var enemy=world.entities[enemy_id]
+	enemy.position=Vector2i(10,7)
+	world.entities[hero_id].position=Vector2i(7,7)
+	world.entities[near_id].position=Vector2i(10,9)
+	world.entities[third_id].position=Vector2i(8,9)
+	for y in range(6,10):
+		for x in range(5,11):
+			world.tile_at(Vector2i(x,y)).terrain="floor"
+			world.tile_at(Vector2i(x,y)).smoke_amount=0
+	world._occupancy_index_ready=false
+	var robe:Dictionary=WorldItems.commit_grant(world,near_id,"ARMOR_CLOTH_ROBE",1,
+		world.entities[near_id].position,"STEALTH_CONTEST_TEST")
+	var chain:Dictionary=WorldItems.commit_grant(world,hero_id,"ARMOR_CHAIN",1,
+		world.entities[hero_id].position,"STEALTH_CONTEST_TEST")
+	var third_robe:Dictionary=WorldItems.commit_grant(world,third_id,"ARMOR_CLOTH_ROBE",1,
+		world.entities[third_id].position,"STEALTH_CONTEST_TEST")
+	check(bool(robe.accepted) and bool(chain.accepted) and bool(third_robe.accepted),
+		"stealth comparison armor is granted")
+	if bool(robe.accepted):check(bool(WorldItems.commit_equip(world,near_id,
+		str(robe.instance_id),"ARMOR",world.entities[near_id].position).accepted),
+		"near member equips quieter armor")
+	if bool(chain.accepted):check(bool(WorldItems.commit_equip(world,hero_id,
+		str(chain.instance_id),"ARMOR",world.entities[hero_id].position).accepted),
+		"far member equips noisier armor")
+	if bool(third_robe.accepted):check(bool(WorldItems.commit_equip(world,third_id,
+		str(third_robe.instance_id),"ARMOR",world.entities[third_id].position).accepted),
+		"third member equips quieter armor")
+	var visible:Array[int]=EnemyBlackboard.visible_party_ids(world,enemy_id)
+	check_eq(visible.size(),3,"one enemy sees all three party members")
+	var contest:Dictionary=session.sim.party_coordinator._most_detectable_party_member(
+		enemy_id,visible)
+	check_eq(int(contest.get("entity_id",-1)),hero_id,
+		"actual stealth can make the farther noisy member most detectable")
+	var candidate_gains:Array[int]=[]
+	for member_id in visible:
+		var distance:=maxi(absi(enemy.position.x-world.entities[member_id].position.x),
+			absi(enemy.position.y-world.entities[member_id].position.y))
+		var stealth:=PerceptionRegistry.HERO_BASE_STEALTH+int(
+			world.equipment_modifiers(member_id).get("totals",{}).get("stealth",0))
+		candidate_gains.append(PerceptionRegistry.suspicion_gain(
+			str(enemy.species_id),distance,stealth))
+	var awareness=state.enemy_awareness(enemy_id);awareness.suspicion=0
+	awareness.awareness_state="UNAWARE"
+	check(session.sim.party_coordinator._update_enemy_awareness(enemy_id,1),
+		"three-member awareness update succeeds")
+	check_eq(awareness.suspicion,candidate_gains.max(),
+		"three visible members contribute only the maximum single suspicion gain")
+	check(awareness.suspicion<candidate_gains.reduce(func(sum:int,value:int):return sum+value,0),
+		"party member checks are not accumulated")
+	check_eq(awareness.last_known_target_position,world.entities[hero_id].position,
+		"last known position follows the representative member")
+	var transition=world.events[-1]
+	check(transition.type=="enemy.awareness_changed" and int(transition.target_id)==hero_id,
+		"awareness transition targets the representative member")
 	return finish()
 
 func test_distant_monsters_do_not_join_combat_and_visible_dto_never_leaks_to_memory()->bool:
