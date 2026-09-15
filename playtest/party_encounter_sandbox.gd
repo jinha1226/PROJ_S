@@ -66,6 +66,8 @@ const PRODUCT_EMULATED_MOUSE_SUPPRESS_MSEC:=1500
 const PRODUCT_PINCH_STEP_RATIO:=1.12
 const ITEM_GRID_COLUMNS:=5
 const ITEM_SLOT_MINIMUM:=52
+const GRAPHICS_SETTINGS_PATH:="user://graphics_mode.cfg"
+const GRAPHICS_MENU_ID:=11
 
 var session
 var grid
@@ -90,6 +92,7 @@ var top_hud_actions:HBoxContainer
 var product_menu_button:MenuButton
 var product_bag_button:Button
 var product_restart_confirm:ConfirmationDialog
+var graphics_settings_path:=GRAPHICS_SETTINGS_PATH
 var expedition_floor_label:Label
 var return_timer_label:Label
 var ration_label:Label
@@ -435,6 +438,8 @@ func _input(event:InputEvent)->void:
 		_handle_species_picker_touch(event)
 		return # Native mouse/keyboard still reach GUI; gameplay handlers do not.
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
+	if battle_enemy_strip!=null and (battle_drag==null or not battle_drag.active) \
+			and battle_enemy_strip.handle_touch(self,event):return
 	if portrait_gesture.handle(self,event):return
 	if _handle_field_shortcuts(event):return
 	if grid!=null and (battle_drag==null or not battle_drag.active) \
@@ -997,6 +1002,7 @@ func _build_ui()->void:
 	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	if preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:menu_popup.add_item("거점 현황",7)
+	menu_popup.add_item("그래픽 · 탑뷰",GRAPHICS_MENU_ID)
 	menu_popup.add_item("적 시야 표시 전환",8)
 	menu_popup.add_item("원정 목표",9)
 	menu_popup.add_item("마을 귀환 · 입구에서",10)
@@ -1028,6 +1034,9 @@ func _build_ui()->void:
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
 	grid.animate_passive_terrain=false
+	grid.set_graphics_mode(preload("res://playtest/graphics_mode_preferences.gd").load_mode(
+		graphics_settings_path,GridScript.GRAPHICS_MODES,GridScript.GRAPHICS_MODE_FLAT_2D))
+	_sync_graphics_mode_menu_label()
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.actor_inspect_requested.connect(_open_member_detail)
 	grid.tile_long_pressed.connect(_on_tile_long_pressed)
@@ -6577,7 +6586,12 @@ func _on_cell(position:Vector2i)->void:
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
 	if session.field_turns_active():
-		_on_actor(entity_id);return
+		var command:Dictionary=session.issue_party_command("ATTACK_TARGET",entity_id)
+		if bool(command.get("accepted",false)):
+			_party_command_targeting=false;_retreat_active=false
+			_show_product_command_feedback("집중 공격 · %s"%_entity_display_name(entity_id))
+		else:_show_product_command_feedback(str(command.get("message",command.get("reason","지정할 수 없습니다."))))
+		_request_refresh();return
 	# Portrait tap: party focus during a fight; before contact it is the same as
 	# tapping the enemy on the map (strike when adjacent, hint otherwise).
 	if not _portrait_battle_controls_visible():_strike_visible_enemy(entity_id);return
@@ -6986,6 +7000,8 @@ func _settle_solo_product_contact()->void:
 
 func _flush_pending_visual_effects(status:Dictionary={})->int:
 	var _pfp:=PerfProbeScript.begin()
+	if status.is_empty():status=session.party_status()
+	if grid!=null:grid.set_party_focus(status.get("party_command",{}))
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
@@ -7498,6 +7514,8 @@ func _species(value:String)->String:return {"human":"인간","elf":"엘프","dwa
 	"orc":"오크","beastkin":"수인","goblin":"고블린","default":"미상"}.get(value,value)
 func _on_product_menu_id(item_id:int)->void:
 	if session==null:return
+	if item_id==GRAPHICS_MENU_ID:
+		_toggle_graphics_mode();return
 	if item_id==9:
 		_show_product_command_feedback(preload("res://playtest/frontier_campaign.gd").objective(session));return
 	if item_id==10:_on_base_return_requested();return
@@ -7528,6 +7546,25 @@ func _on_product_menu_id(item_id:int)->void:
 		5:_toggle_record_modal()
 		7:_open_base_modal()
 		8:_toggle_enemy_vision_overlay()
+
+func _toggle_graphics_mode()->void:
+	if grid==null:return
+	var next_mode:=GridScript.GRAPHICS_MODE_DIORAMA_2_5D \
+		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_FLAT_2D \
+		else GridScript.GRAPHICS_MODE_FLAT_2D
+	if not grid.set_graphics_mode(next_mode):return
+	preload("res://playtest/graphics_mode_preferences.gd").save_mode(
+		graphics_settings_path,next_mode,GridScript.GRAPHICS_MODES)
+	_sync_graphics_mode_menu_label()
+	_request_refresh()
+
+func _sync_graphics_mode_menu_label()->void:
+	if product_menu_button==null or grid==null:return
+	var popup:=product_menu_button.get_popup()
+	var index:=popup.get_item_index(GRAPHICS_MENU_ID)
+	if index<0:return
+	popup.set_item_text(index,"그래픽 · %s"%("아이소메트릭" \
+		if grid.graphics_mode_id()==GridScript.GRAPHICS_MODE_DIORAMA_2_5D else "탑뷰"))
 
 func _supply_icon_row(parent:Control,label:Label,kind:String)->Control:
 	var row:=HBoxContainer.new();row.add_theme_constant_override("separation",2)

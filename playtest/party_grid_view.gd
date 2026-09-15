@@ -828,6 +828,30 @@ func _reconcile_awareness_pulses(previous_actors:Dictionary,observed_at_ms:int)-
 
 var _actor_emphasis:Dictionary={}
 var target_preview_id:=-1
+var party_focus_id:=-1
+var _party_focus_event_id:=-1
+var _party_focus_pulse_until:=0
+
+func set_party_focus(command:Dictionary)->void:
+	var next_id:=int(command.get("target_id",-1)) if command.get("command_id","")=="ATTACK_TARGET" else -1
+	var event_id:=int(command.get("event_id",-1))
+	if next_id==party_focus_id and event_id==_party_focus_event_id:return
+	party_focus_id=next_id;_party_focus_event_id=event_id
+	_party_focus_pulse_until=Time.get_ticks_msec()+650 if next_id>0 else 0
+	_update_process_enabled();queue_redraw()
+
+func party_focus_draw_spec(sample_time_ms:int=-1)->Dictionary:
+	var actor:=_actor_by_id(party_focus_id)
+	# _actors contains only actors from VISIBLE observation cells. Their display
+	# positions may differ during movement; do not re-test FOV at that visual cell.
+	if actor.is_empty() or not is_world_cell_visible(_position_from_actor(actor)):
+		return {"visible":false}
+	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
+	var pulse:=clampf(float(_party_focus_pulse_until-now)/650.0,0.0,1.0)
+	return {"visible":true,"entity_id":party_focus_id,
+		"center":actor_visual_center(party_focus_id,sample_time_ms),
+		"radius":cell_size_px()*(0.38+0.28*pulse),"pulse":pulse}
+
 var target_preview_valid:=true
 var danger_actor_ids:Array[int]=[]
 var battle_move_goals:Dictionary={}
@@ -845,6 +869,9 @@ func actor_emphasis_active(entity_id:int)->bool:
 	return Time.get_ticks_msec()<int(_actor_emphasis.get(entity_id,-1)) and actor_visual_center(entity_id).x>=0
 
 func _process(_delta:float)->void:
+	if _party_focus_pulse_until>0:
+		queue_redraw()
+		if Time.get_ticks_msec()>=_party_focus_pulse_until:_party_focus_pulse_until=0
 	if not _intent_reveal_until.is_empty():
 		for actor_id in _intent_reveal_until.keys():
 			if Time.get_ticks_msec()>=int(_intent_reveal_until[actor_id]):
@@ -883,7 +910,7 @@ func _process(_delta:float)->void:
 		melee_vfx.queue_redraw()
 
 func _update_process_enabled()->void:
-	set_process(not _intent_reveal_until.is_empty() or not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
+	set_process(_party_focus_pulse_until>0 or not _intent_reveal_until.is_empty() or not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
 		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty() or not _actor_emphasis.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,
@@ -1736,7 +1763,7 @@ func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	for actor in _actors:
 		var entity_id:=int(actor.get("entity_id",-1))
-		if entity_id!=selected_target_id and entity_id!=selected_actor_id:continue
+		if entity_id!=selected_actor_id:continue
 		var position:=_position_from_actor(actor)
 		if not is_world_cell_visible(position):continue
 		var cell_rect:=world_cell_rect(position)
@@ -2468,6 +2495,17 @@ func _draw() -> void:
 					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
 		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
 	Perf.end("grid.draw_world",begun)
+	var focus_spec:=party_focus_draw_spec()
+	if bool(focus_spec.visible):
+		var center:Vector2=focus_spec.center
+		var radius:float=focus_spec.radius
+		var tint:=Color("#87dfcb")
+		for corner in [Vector2(-1,-1),Vector2(1,-1),Vector2(-1,1),Vector2(1,1)]:
+			var point:Vector2=center+corner*radius
+			for axis in [Vector2(corner.x,0),Vector2(0,corner.y)]:
+				draw_line(point,point-axis*8,Color(0,0,0,0.9),5,true)
+				draw_line(point,point-axis*8,tint,2.5,true)
+		draw_circle(center+Vector2(0,-radius-5),3,tint)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]
 		if not is_world_cell_visible(goal):continue
