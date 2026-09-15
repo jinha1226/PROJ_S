@@ -1220,17 +1220,21 @@ func test_solo_camera_stays_hero_centered_continuous_and_padding_is_void() -> bo
 	return finish()
 
 
-func test_product_graphics_surface_is_pure_2d_without_touching_the_run()->bool:
+func test_product_graphics_mode_menu_switches_and_persists_without_touching_the_run()->bool:
 	var session=Session.new(44,20260828,Session.SOLO_FIXTURE_SCENARIO_ID)
 	var sandbox=Sandbox.new();sandbox.size=Vector2(390,700)
+	var settings_path:="user://graphics-mode-menu-test.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(settings_path))
+	sandbox.graphics_settings_path=settings_path
 	sandbox.initialize_for_headless_test(session,false)
 	sandbox.grid.size=sandbox.grid.custom_minimum_size;sandbox._refresh()
 	var snapshot_before:Dictionary=session.sim.snapshot()
 	var journal_before:Array=session.command_journal.duplicate(true)
 	var flat_mapping:Array=sandbox.grid.mapping_signature()
-	check(sandbox.find_child("GraphicsModeToggle",true,false)==null \
-			and sandbox.find_child("Open3DModelLab",true,false)==null,
-		"product map does not construct legacy 2.5D or 3D controls")
+	var popup:PopupMenu=sandbox.product_menu_button.get_popup()
+	var graphics_index:int=popup.get_item_index(sandbox.GRAPHICS_MENU_ID)
+	check(graphics_index>=0 and "탑뷰" in popup.get_item_text(graphics_index),
+		"main menu exposes the current graphics mode")
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
 		"product map starts on the shipping 2D projection")
 	# Both probed rows must exist in the 15x15 fixture world and the 13-row view;
@@ -1243,9 +1247,22 @@ func test_product_graphics_surface_is_pure_2d_without_touching_the_run()->bool:
 	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D \
 			and sandbox.grid.mapping_signature()==flat_mapping,
 		"ordinary product refresh preserves the exact 2D camera mapping")
+	sandbox._on_product_menu_id(sandbox.GRAPHICS_MENU_ID)
+	check(sandbox.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D \
+			and "아이소메트릭" in popup.get_item_text(graphics_index),
+		"graphics menu switches immediately to the isometric presentation")
 	check_eq([session.sim.snapshot(),session.command_journal],[snapshot_before,journal_before],
-		"2D presentation refresh never touches the run")
-	sandbox.free();return finish()
+		"graphics presentation switching never touches the run")
+	var restored=Sandbox.new();restored.graphics_settings_path=settings_path
+	restored.initialize_for_headless_test(Session.new(44,20260828,
+		Session.SOLO_FIXTURE_SCENARIO_ID),false)
+	check(restored.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_DIORAMA_2_5D,
+		"a new UI restores the saved graphics mode")
+	restored._on_product_menu_id(restored.GRAPHICS_MENU_ID)
+	check(restored.grid.graphics_mode_id()==Grid.GRAPHICS_MODE_FLAT_2D,
+		"the same menu switches back to top view")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(settings_path))
+	restored.free();sandbox.free();return finish()
 
 func test_same_grid_survives_combat_regroup_complete_and_post_regroup_move() -> bool:
 	var sandbox=Sandbox.new();sandbox.size=Vector2(450,800);sandbox.initialize_for_headless_test(Session.new())
