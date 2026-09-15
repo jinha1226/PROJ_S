@@ -46,6 +46,11 @@ func run():
 		check(not ui.species_picker_modal.visible,species+" closes picker")
 		check(not ui.grid.modal_open,species+" unlocks map")
 		check(ui.session.player_species_id==species,species+" selected identity")
+		check(not ui.species_picker_error.visible,species+" no start error")
+		check(not ui.session.town_life_enabled(),species+" town life stays disabled")
+		check(not preload("res://playtest/frontier_campaign.gd").enabled(ui.session),species+" no frontier campaign")
+		for command in ui.session.command_journal:
+			check(str(command.get("kind","")) not in ["town_life","town"],species+" no town startup commands")
 		check(ui.session.sim.world.party_encounter.expedition_cycle.phase=="DUNGEON",species+" enters dungeon")
 		check(ui.session.sim.world.world_state_error().is_empty(),species+" valid world")
 		check(preload("res://sim/world_item_operations.gd").equipped_requirements_error(ui.session.sim.world).is_empty(),species+" legal starter equipment")

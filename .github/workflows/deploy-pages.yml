@@ -53,6 +53,16 @@ jobs:
             exit 1
           fi
 
+      - name: Validate new expedition entry
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./godot --headless --path . --script tests/species_picker_start_regression.gd 2>&1 | tee expedition-start-test.log
+          if grep -Eq 'SCRIPT ERROR:|^FAIL ' expedition-start-test.log; then
+            exit 1
+          fi
+
       - name: Inject Pages build ID
         shell: bash
         run: |

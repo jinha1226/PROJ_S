@@ -1307,23 +1307,25 @@ func show_species_picker_for_new_run()->void:
 	if grid!=null:grid.modal_open=true
 
 func _commit_species_picker(species_id:String,frontier:bool=false)->void:
-	frontier=frontier and preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED
+	var town_enabled:=preload("res://playtest/product_features.gd").TOWN_ENABLED
+	frontier=frontier and town_enabled and preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
 	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_show_species_picker_error(result);return
-	# Journaled frontier start keeps the shelter; explicit legacy fixtures may
-	# still choose the old direct-dungeon entry.
-	var started:Dictionary=session.town_life_command({"action":"START","frontier":true} if frontier else {"action":"START"})
-	var departed:Dictionary=session.depart_town() if started.get("accepted",false) and not frontier else started
-	if not departed.get("accepted",false):
-		_show_species_picker_error(departed);return
+	# A fresh run already starts in the dungeon. Do not initialize town life
+	# or journal a town departure while the product town feature is suspended.
+	if town_enabled:
+		var started:Dictionary=session.town_life_command({"action":"START","frontier":true} if frontier else {"action":"START"})
+		var departed:Dictionary=session.depart_town() if started.get("accepted",false) and not frontier else started
+		if not departed.get("accepted",false):
+			_show_species_picker_error(departed);return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
-	# START has already established the campaign's canonical initial location.
+	# reset_party established the canonical dungeon entry.
 	notice_text="던전 1층에서 원정을 시작합니다."
 	if frontier:notice_text="변방의 피난처에서 시작합니다. 숲길을 탐험해 첫 생존자를 데려오세요."
 	_request_refresh()
@@ -3512,6 +3514,10 @@ func _exploration_deck()->void:
 
 
 func _town_deck(status:Dictionary)->void:
+	if not preload("res://playtest/product_features.gd").TOWN_ENABLED:
+		_add_notice("원정이 종료되었습니다. 새 원정을 시작하세요.","ExpeditionEnded",FONT_KEY)
+		_add_button(deck,"새 원정 시작","NewDungeonRun",show_species_picker_for_new_run)
+		return
 	if session.town_life_enabled():
 		_town_life_deck(status);return
 	var base_enabled:bool=session.has_method("base_overview") \
@@ -3599,6 +3605,7 @@ func _town_life_deck(_status:Dictionary)->void:
 		deck.add_child(panel);panel.present()
 
 func _on_town_service_action(operation:Dictionary)->void:
+	if not preload("res://playtest/product_features.gd").TOWN_ENABLED:return
 	match str(operation.action):
 		"BUY":_on_town_market_buy(str(operation.definition_id))
 		"SELL":_on_base_sell_requested(str(operation.resource_id),1)
@@ -3611,6 +3618,7 @@ func _on_town_service_action(operation:Dictionary)->void:
 		"ROSTER":town_ui_state.filter="COMPANY";_on_town_facility_selected("INN")
 
 func _on_town_life_command(operation:Dictionary)->void:
+	if not preload("res://playtest/product_features.gd").TOWN_ENABLED:return
 	if operation.get("action")=="ACQUIRE" and not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return
 	var result:Dictionary
 	if str(operation.get("action",""))=="GUILD_TUTORIAL":
