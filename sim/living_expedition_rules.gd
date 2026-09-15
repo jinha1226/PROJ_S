@@ -33,3 +33,12 @@ static func present(world,id:int)->bool:
 		and FLOOR_TAG+str(party.expedition_cycle.floor_index) in entity.tags and "visitor_returned" not in entity.tags
 static func species(seed_value:int,index:int)->String:
 	return str(SPECIES[posmod(seed_value+index,SPECIES.size())])
+
+static func snapshot_procedural(snapshot:Dictionary)->bool:
+	for row in snapshot.get("events",[]):
+		if row.get("type","")==EVENT:return int(row.get("data",{}).get("version",1))>=5
+	return false
+
+static func procedural(world)->bool:
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
+	return event!=null and int(event.data.get("version",1))>=5

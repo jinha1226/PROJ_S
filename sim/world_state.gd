@@ -5101,7 +5101,8 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 		])
 	var talent = preload("res://sim/personal_talent_rules.gd").for_entity(npc)
 	if not talent.is_empty():expected_npc_tags.insert(1,"personal_talent:"+str(talent.id))
-	if npc.kind != "companion" or npc.species_id != ("human" if not talent.is_empty() else "elf") \
+	var opening_species:="elf" if preload("res://sim/living_expedition_rules.gd").procedural(self) else ("human" if not talent.is_empty() else "elf")
+	if npc.kind != "companion" or npc.species_id != opening_species \
 			or npc.faction_id != "neutral" or npc.tags != expected_npc_tags \
 			or not _terrain_is_passable(opening.spawn_position) \
 			or not _terrain_is_passable(opening.convergence_goal):

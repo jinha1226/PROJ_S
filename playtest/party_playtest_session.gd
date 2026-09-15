@@ -359,7 +359,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
 			candidate.world, map_layout): return false
 	if bootstrap_living:
-		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":4 if bootstrap_expanded_exploration else 3 if bootstrap_roster else 2})==null:return false
+		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":5 if bool(map_layout.get("procedural_generation",false)) else 4 if bootstrap_expanded_exploration else 3 if bootstrap_roster else 2})==null:return false
 	if duo and bootstrap_settlement and bootstrap_talents and (p_player_species_id=="human" or bootstrap_living):
 		var talent_rules=preload("res://sim/personal_talent_rules.gd")
 		if candidate.world.emit_event(talent_rules.EVENT_ID,-1,-1,Vector2i(-1,-1),0,-1,
@@ -3878,7 +3878,7 @@ func restart_same_run() -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, frozen_personality_seed,
-			frozen_scenario_id,{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
+			frozen_scenario_id,_restart_layout(),bool(_map_layout.get("procedural_generation",false)) or frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -3887,6 +3887,16 @@ func restart_same_run() -> Dictionary:
 
 func solo_start_enabled()->bool:
 	return sim!=null and sim.world.party_encounter!=null and SOLO_START_TAG in sim.world.entities[sim.world.party_encounter.protagonist_id].tags
+
+func _restart_layout()->Dictionary:
+	return preload("res://playtest/campaign_world_map.gd").generate(world_seed,1,true,true,true) if bool(_map_layout.get("procedural_generation",false)) else {}
+
+func start_procedural_run_with_species(species_id:String,new_world_seed:int,new_personality_seed:int)->Dictionary:
+	if not GrowthBuildRegistryScript.has_species(species_id):return _rejection_dto("unknown_player_species")
+	var layout:Dictionary=preload("res://playtest/campaign_world_map.gd").generate(new_world_seed,1,true,true,true)
+	if not reset_party(new_world_seed,new_personality_seed,scenario_id,layout,true,species_id,true,true,true,true,true,true,true):
+		return _rejection_dto("player_species_reset_failed")
+	return _feedback_dto({"accepted":true,"reason":"ok","player_species_id":player_species_id,"run_progress":run_progress()})
 
 func start_new_run_with_species(species_id:String,living:bool=false,solo_start:bool=false)->Dictionary:
 	if not GrowthBuildRegistryScript.has_species(species_id):
@@ -3979,7 +3989,7 @@ func restart_with_personality_seed(p_personality_seed: int) -> Dictionary:
 	var living:=preload("res://sim/living_expedition_rules.gd").enabled(sim.world)
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if not reset_party(frozen_world_seed, p_personality_seed, frozen_scenario_id,
-			{},frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
+			_restart_layout(),bool(_map_layout.get("procedural_generation",false)) or frozen_scenario_id!=DUO_SCENARIO_ID,frozen_species_id,true,true,true,living,randomized,solo_start_enabled(),living):
 		return _rejection_dto("run_restart_failed")
 	return _feedback_dto({"accepted":true, "reason":"ok",
 		"world_seed":str(world_seed), "personality_seed":str(personality_seed),
@@ -8478,7 +8488,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
 		if preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
-			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true)
+			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true,preload("res://sim/living_expedition_rules.gd").snapshot_procedural(decoded.snapshot))
 			if preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot):
 				current_layout=preload("res://playtest/seeded_roster.gd").apply_layout(current_layout,parsed_world_seed,parsed_personality_seed)
 		if int(decoded.snapshot.get("width",0))==360 and int(decoded.snapshot.get("height",0))==192:

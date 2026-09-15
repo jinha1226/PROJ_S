@@ -40,12 +40,16 @@ func run():
 		for i in range(2):await process_frame
 		point=species_button.get_global_rect().get_center()
 		var species:=str(species_button.get_meta("species_id"))
+		var old_world_seed:int=ui.session.world_seed
+		var old_personality_seed:int=ui.session.personality_seed
 		check(ui.species_picker_panel.get_global_rect().has_point(point),species+" button inside panel")
 		touch(point,true);touch(point,false)
 		for i in range(2):await process_frame
 		check(not ui.species_picker_modal.visible,species+" closes picker")
 		check(not ui.grid.modal_open,species+" unlocks map")
 		check(ui.session.player_species_id==species,species+" selected identity")
+		check(ui.session.world_seed!=old_world_seed and ui.session.personality_seed!=old_personality_seed,species+" fresh world and personality")
+		check(ui.session.sim.world.party_encounter.opening_event!=null,species+" guaranteed wounded NPC")
 		check(not ui.species_picker_error.visible,species+" no start error")
 		check(not ui.session.town_life_enabled(),species+" town life stays disabled")
 		check(not preload("res://playtest/frontier_campaign.gd").enabled(ui.session),species+" no frontier campaign")

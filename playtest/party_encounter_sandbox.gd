@@ -1312,7 +1312,9 @@ func _commit_species_picker(species_id:String,frontier:bool=false)->void:
 	if _species_picker_committed or species_picker_modal==null \
 			or not species_picker_modal.visible:return
 	_species_picker_committed=true
-	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
+	var result:Dictionary=session.start_procedural_run_with_species(species_id,
+		_issue_new_personality_seed(int(session.world_seed)),
+		_issue_new_personality_seed(int(session.personality_seed))) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_show_species_picker_error(result);return
 	# A fresh run already starts in the dungeon. Do not initialize town life

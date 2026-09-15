@@ -414,6 +414,7 @@ static func reachable(layout: Dictionary, from: Vector2i, to: Vector2i) -> bool:
 # Pure opening-event anchors. They depend only on the immutable generated layout
 # and the world seed, never on simulation RNG consumption or presentation time.
 static func opening_event_anchors(layout: Dictionary, world_seed: int) -> Dictionary:
+	if bool(layout.get("procedural_generation",false)):return _procedural_opening_anchors(layout,world_seed)
 	var entry: Variant = layout.get("entry_position")
 	var exit: Variant = layout.get("exit_position")
 	if not entry is Vector2i or not exit is Vector2i: return {}
@@ -611,3 +612,28 @@ static func _inside_border(position: Vector2i, width: int, height: int) -> bool:
 
 static func _index(position: Vector2i, width: int) -> int:
 	return position.y * width + position.x
+
+static func _procedural_opening_anchors(layout:Dictionary,seed:int)->Dictionary:
+	# Restrict to floor one; a campaign packs multiple floors in one topology.
+	var floor:Dictionary=layout.get("campaign_floors",{}).get(1,layout)
+	var entry:Vector2i=floor.entry_position;var exit:Vector2i=floor.exit_position
+	var protected:Dictionary={entry:true,exit:true,floor.anchor_portal_position:true}
+	for p in floor.get("enemy_positions",[]):protected[p]=true
+	for p in floor.get("supply_positions",[]):protected[p]=true
+	var queue:Array[Vector2i]=[entry];var seen:Dictionary={entry:true};var cursor:=0
+	var candidates:Array[Vector2i]=[]
+	while cursor<queue.size():
+		var p:Vector2i=queue[cursor];cursor+=1
+		if not protected.has(p) and terrain_at(layout,p)=="stone_floor":candidates.append(p)
+		for d in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:
+			var n:Vector2i=p+d
+			if seen.has(n) or terrain_at(layout,n) in ["","wall"]:continue
+			seen[n]=true;queue.append(n)
+	if candidates.is_empty():return {}
+	var rng:=RandomNumberGenerator.new();rng.seed=seed ^ 0x574F554E44
+	var spawn:Vector2i=candidates[rng.randi_range(0,candidates.size()-1)]
+	var path:=_shortest_cardinal_path(layout,spawn,exit)
+	var goal:Vector2i=path[mini(path.size()-1,6)]
+	# Only a local blood trace: no breadcrumb route exposing the random location.
+	return {"spawn_position":spawn,"spawn_route_index":0,"entry_exit_path":[],
+		"convergence_band":[goal],"convergence_goal":goal,"goal_index":0}
