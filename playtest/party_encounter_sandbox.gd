@@ -5686,6 +5686,7 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
+	if str(row.get("reward_family",""))=="MONSTER_ABILITY":return true
 	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UTILITY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
@@ -5707,6 +5708,10 @@ func _item_row_text(row:Dictionary)->String:
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
 	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
+	if str(row.get("reward_family",""))=="MONSTER_ABILITY":
+		var preview:Dictionary=row.get("ability_preview",{}) if row.get("ability_preview",{}) is Dictionary else {}
+		return "습득 이능 · %s\n패시브 · %s\n액티브 · %s"%[str(preview.get("label",row.get("label","이능"))),
+			str(preview.get("passive","-")),str(preview.get("active","-"))]
 	if str(row.get("use_kind",""))=="UTILITY":return str(row.get("compact_stat_text",""))
 	var lines:Array[String]=[]
 	if str(row.get("category",""))=="WEAPON":
@@ -5737,6 +5742,8 @@ func _item_stats_text(row:Dictionary)->String:
 
 func _item_description_text(row:Dictionary)->String:
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
+	if str(row.get("reward_family",""))=="MONSTER_ABILITY":
+		return "몬스터에게서 얻은 특수 부위입니다. 먹일 캐릭터를 고르면 부위 1개를 소모해 이능을 습득합니다."
 	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
 	match str(row.get("category","")):
@@ -5839,7 +5846,9 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
 	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
 	member_item_use_button.disabled=not member_item_use_button.visible or not session.has_method("use_inventory_item")
-	member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
+	member_item_use_button.text="먹기" if str(row.get("reward_family",""))=="MONSTER_ABILITY" \
+		else "읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") \
+		else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 

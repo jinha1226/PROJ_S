@@ -68,8 +68,12 @@ func run()->void:
 	party=w.party_encounter
 	grant=Items.commit_grant(w,hero,"ESSENCE_PREDATOR_NERVE",1,w.entities[hero].position,"RECIPIENT_ABILITY_UI_TEST")
 	var essence_id:String=str(grant.get("instance_id",""))
-	ui.member_item_selected_id=essence_id
-	ui._on_item_use_selected()
+	ui._refresh()
+	ui._on_item_row_selected(essence_id,"")
+	check(ui.member_item_use_button.visible,"special part is usable in item detail")
+	check(ui.member_item_use_button.text=="먹기","special part uses eat action")
+	check(ui.member_item_popover_body.text.contains("패시브") and ui.member_item_popover_body.text.contains("액티브"),"special part previews acquired ability")
+	ui.member_item_use_button.pressed.emit()
 	picker=ui.find_child("ConsumableTargetPicker",true,false)
 	check(picker!=null,"special-part recipient picker opens")
 	if picker!=null:

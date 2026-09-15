@@ -48,7 +48,7 @@ static func family_for_item(definition_id:String)->String:
 
 static func purpose_for_item(definition_id:String)->String:
 	if not preload("res://sim/abilities/monster_ability_catalog.gd").for_item(definition_id).is_empty():
-		return "정수를 결속한 뒤 패시브 또는 액티브 선택"
+		return "특수 부위를 먹으면 해당 캐릭터가 이능 습득"
 	if ITEM_PURPOSES.has(definition_id):return str(ITEM_PURPOSES[definition_id])
 	match ItemCatalog.family(definition_id):
 		"MAGIC_STONE":return "환금품·거래용"

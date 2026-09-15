@@ -1741,6 +1741,10 @@ func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dic
 		"compact_stat_text":""}
 	result.merge({"reward_family":ItemRewardRulesScript.family_for_item(str(item.definition_id)),
 		"purpose":ItemRewardRulesScript.purpose_for_item(str(item.definition_id))},true)
+	var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
+	if not ability_id.is_empty():
+		result.merge({"usable":true,"ability_id":ability_id,
+			"ability_preview":AbilityBindingRulesScript.effect_preview(ability_id)},true)
 	if str(item.definition_id)==TorchRulesScript.DEFINITION_ID:
 		result.merge({"equip_slots":[],"usable":false,"compact_stat_text":"폐기된 장비"},true)
 	if str(definition.category)=="WEAPON":
@@ -2666,7 +2670,8 @@ func monster_ability_acquisition_rows()->Array[Dictionary]:
 			"definition_id":str(reward.get("definition_id","")),
 			"instance_id":str(entry.instance_id),"source_event_id":int(entry.event_id),
 			"stored":owner.kind=="ENTITY","on_ground":owner.kind=="GROUND",
-			"can_absorb":false,"message":"이능 서비스 준비 전까지 보관만 가능합니다."})
+			"can_absorb":owner.kind=="ENTITY",
+			"message":"가방에서 특수 부위를 먹일 캐릭터를 선택하세요."})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.ability_id)<str(b.ability_id))
 	return rows.duplicate(true)
 
@@ -9889,7 +9894,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
 		"ability_binding_actor_missing":"결속할 캐릭터를 찾을 수 없습니다.",
 		"ability_binding_actor_unavailable":"현재 결속할 수 없는 상태의 캐릭터입니다.",
-		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 이능을 결속할 수 있습니다.",
+		"ability_binding_unsafe_phase":"교전이 끝난 안전한 상태에서만 특수 부위를 먹을 수 있습니다.",
 		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
 		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",
 		"ability_already_bound":"이미 결속한 이능입니다. 효과가 중첩되지 않습니다.",
@@ -10132,7 +10137,7 @@ func _event_message(event) -> String:
 				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
 					"severed_parts_remain",false)) else ""]
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
-		"party.ability_bound":return "%s가 %s을(를) 결속했다."%[
+		"party.ability_bound":return "%s가 특수 부위를 먹고 %s을(를) 습득했다."%[
 			_subject(actor),str(event.data.get("ability_id","이능"))]
 		"party.morale_changed":
 			match _morale_band_change(event):
