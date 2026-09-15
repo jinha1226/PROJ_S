@@ -24,6 +24,9 @@ func _draw()->void:
 		"RELOAD":label="재장전"
 		"RESTART":label="재시작"
 	match str(name):
+		"ProductSkills":
+			draw_polyline(PackedVector2Array([center+Vector2(-10,-9),center+Vector2(0,-6),center+Vector2(10,-9),center+Vector2(10,9),center+Vector2(0,12),center+Vector2(-10,9),center+Vector2(-10,-9)]),ink,2,true)
+			draw_line(center+Vector2(0,-6),center+Vector2(0,12),ink,2,true)
 		"ProductAttack":
 			for direction in [-1,1]:
 				var d:=float(direction)

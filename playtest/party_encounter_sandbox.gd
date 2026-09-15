@@ -49,10 +49,10 @@ const NEARBY_NPC_FONT_BUTTON:=12
 const TOUCH_TARGET:=44
 # Field-first product shell: compact fixed rails leave the remaining rectangle
 # to the dungeon camera instead of reserving a square map plus dead flex space.
-const PRODUCT_TOP_HUD_HEIGHT:=76
+const PRODUCT_TOP_HUD_HEIGHT:=60
 # Three Korean-font baselines plus dark panel padding.
 const PRODUCT_EVENT_HEIGHT:=66
-const PRODUCT_PARTY_CARD_HEIGHT:=84
+const PRODUCT_PARTY_CARD_HEIGHT:=68
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
 # all take the same 110ms, so the drawn hero never trails the logical one and the
@@ -119,6 +119,8 @@ var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
 var party_command_menu:MenuButton
+var product_skills_button:Button
+var _product_skills_open:=false
 var product_auto_button:Button
 var product_interact_button:Button
 var product_attack_button:Button
@@ -751,7 +753,7 @@ func _tick_portrait_long_press()->void:
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
-	controls.append_array([product_auto_button,product_give_button,
+	controls.append_array([product_skills_button,product_auto_button,product_give_button,
 		product_tactics_button,product_rest_button,product_pickup_button,
 		product_interact_button,product_attack_button,product_wait_guard_button,
 		product_execute_button,product_bag_button,minimap_open_button,
@@ -782,6 +784,7 @@ func _activate_product_control(control_name:String)->void:
 		_on_compact_member_card_pressed(int(control_name.trim_prefix("MemberCard")),"");return
 	match control_name:
 		"EnemyVisionOverlay":_toggle_enemy_vision_overlay()
+		"ProductSkills":_toggle_product_skills()
 		"ProductTactics":_on_product_tactics()
 		"ProductRest":_on_product_rest()
 		"ProductMoveNW":_on_product_direction(Vector2i(-1,-1))
@@ -1018,8 +1021,8 @@ func _build_ui()->void:
 	top_hud_actions.add_child(product_menu_button)
 	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
 	# One aligned rail: map / floor and return clock / food / menu.
-	minimap_frame.custom_minimum_size=Vector2(64,64)
-	minimap.custom_minimum_size=Vector2(54,54)
+	minimap_frame.custom_minimum_size=Vector2(52,52)
+	minimap.custom_minimum_size=Vector2(44,44)
 	return_timer_label.reparent(situation_stack)
 	return_timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
 	return_timer_label.add_theme_font_size_override("font_size",12)
@@ -1075,11 +1078,11 @@ func _build_ui()->void:
 	root_layout.add_child(event_surface)
 	var event_margin:=MarginContainer.new();event_margin.name="EventSurfaceInset"
 	event_margin.size_flags_vertical=Control.SIZE_EXPAND_FILL
-	event_margin.add_theme_constant_override("margin_left",6);event_margin.add_theme_constant_override("margin_right",100)
+	event_margin.add_theme_constant_override("margin_left",6);event_margin.add_theme_constant_override("margin_right",6)
 	event_surface.add_child(event_margin)
-	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_OFF;event_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	# Reserve three complete Korean-font baselines, including panel padding.
-	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=3
+	event_label.add_theme_font_size_override("font_size",FONT_AUX);event_label.max_lines_visible=3
 	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=54
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
@@ -1337,10 +1340,10 @@ func _build_build_label()->void:
 	add_child(build_label);_position_build_label()
 
 func _position_build_label()->void:
-	# Build version: always the bottom-right corner of the game screen, drawn
-	# above whatever sits there. Input passes through it.
+	# Keep build diagnostics off the product action labels.
 	if build_label==null:return
-	build_label.visible=true
+	build_label.visible=not _is_solo_product_session()
+	if product_menu_button!=null:product_menu_button.tooltip_text=BuildInfoScript.display_text()
 	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	build_label.offset_left=-110.0;build_label.offset_right=-4.0
 	build_label.offset_bottom=-2.0;build_label.offset_top=-18.0
@@ -2843,8 +2846,8 @@ func _hero_skill_rows(status:Dictionary)->Array:
 func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	if hero_skill_row==null:return
 	_clear_container(hero_skill_row)
-	hero_skill_row.visible=visible
-	if not visible:return
+	hero_skill_row.visible=visible and _product_skills_open
+	if not hero_skill_row.visible:return
 	# Keep the 48px rail on defeat/completion; hide actions, not map geometry.
 	if bool(status.get("terminal",false)) or str(status.get("safe_phase",""))=="PARTY_DEFEATED" \
 			or bool(_current_run_progress().get("complete",false)):return
@@ -3227,6 +3230,7 @@ func _add_member_card(row:Dictionary,speech:Dictionary={},layout_spec:Dictionary
 		var compact=CompactPortraitScript.new()
 		var member_id:=int(row.entity_id)
 		compact.name="MemberCard%d"%member_id;compact.actor=row.duplicate(true)
+		compact.compact_vitals=true
 		if _portrait_battle_controls_visible() or session.field_turns_active():
 			compact.actor["energy"]=session.sim.world.party_encounter.member(member_id).energy
 		compact.selected=member_id==selected_member_id
@@ -4240,9 +4244,9 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.disabled=false
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
-	# One fixed dock, the same in exploration and in a fight:
-	# [공격] [대기/휴식] [탐험] [전술] [가방]. Context actions live above.
+	# Contextual dock: skills, attack/explore, wait/rest, party orders, bag.
 	var target:=clampi(int(floor((size.x-float(gap)*4.0)/5.0)),44,int(metrics.target))
+	product_skills_button=_add_product_context_button(combat_action_dock,"기술","ProductSkills",_toggle_product_skills,target)
 	product_attack_button=_add_product_context_button(combat_action_dock,"[공격]","ProductAttack",
 		_on_product_attack_any,target)
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,"[대기]",
@@ -4344,6 +4348,15 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 	product_interact_button.visible=not (product_interact_button.disabled \
 		and product_interact_button.text=="[INTERACT]")
 	product_context_actions.visible=product_interact_button.visible or product_give_button.visible
+
+	# Only actions relevant to the current field state occupy the main dock.
+	product_attack_button.visible=enemy_in_view and not terminal
+	product_auto_button.visible=not enemy_in_view or bool(auto_state.get("running",false))
+	product_tactics_button.visible=(status.get("party_member_ids",[]) as Array).size()>1
+	if product_skills_button!=null and is_instance_valid(product_skills_button):
+		product_skills_button.text="기술 닫기" if _product_skills_open else "기술"
+		product_skills_button.disabled=terminal or mode=="TOWN"
+		product_skills_button.tooltip_text="현재 조작 인물의 기술을 펼칩니다. 선택 후 지도에서 대상을 누르세요."
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -7271,40 +7284,13 @@ func _combat_log_text(history:Dictionary)->String:
 	return "\n".join(lines)
 
 func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->String:
-	var groups:Variant=history.get("groups",[])
-	var collected:Array[String]=[]
-	if _product_rest_active:collected.append(notice_text)
-	if groups is Array:
-		for group_index in range(groups.size()-1,-1,-1):
-			if collected.size()>=3:break
-			var group:Variant=groups[group_index]
-			if not group is Dictionary:continue
-			var damage_lines:Array[String]=[];var other_lines:Array[String]=[]
-			var rows:Variant=group.get("rows",[])
-			if not rows is Array:continue
-			for row_index in range(rows.size()-1,-1,-1):
-				var row:Variant=rows[row_index]
-				if not row is Dictionary:continue
-				var message:=_combat_log_row_message(row).replace("\n"," ")
-				if message.is_empty() or _is_persistent_log_filler(message):continue
-				if str(row.get("type","")).begins_with("combat.") \
-						and str(row.get("type","")).ends_with("_damage"):
-					damage_lines.append(message)
-				else:other_lines.append(message)
-			if damage_lines.is_empty() and other_lines.is_empty():continue
-			# Damage wins only inside the newest meaningful turn. Older combat
-			# damage must never pin the compact feed while newer loot/level/world
-			# events are already visible in the full record.
-			var lines:Array[String]=damage_lines.slice(0,mini(3,damage_lines.size()))
-			for message in other_lines:
-				if lines.size()>=3:break
-				lines.append(message)
-			# Newest turn first; older turns fill the remaining lines of the
-			# three-line feed so the last few moments stay readable.
-			for message in lines:
-				if collected.size()>=3:break
-				collected.append(message)
-	return "\n".join(collected)
+	return preload("res://playtest/meaningful_event_summary.gd").summarize(history,
+		_combat_log_row_message,_is_persistent_log_filler,notice_text if _product_rest_active else "")
+
+func _toggle_product_skills()->void:
+	_product_skills_open=not _product_skills_open
+	if grid!=null:grid.cancel_pointer_gesture()
+	_request_refresh()
 
 func _full_meaningful_record_text(history:Dictionary)->String:
 	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
@@ -7403,7 +7389,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# HUD, map, event feed, hero skill row, party, command dock: the same stack in
 	# exploration and in a fight, so the map never changes size on contact.
 	# Projection must not depend on the previous refresh\'s skill visibility.
-	var skill_row_height:int=48
+	var skill_row_height:int=48 if _product_skills_open else 0
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-skill_row_height-party_height-48
 		-separation*5))
@@ -7740,7 +7726,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT
-	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
+	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud and _product_skills_open else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:

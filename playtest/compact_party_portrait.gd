@@ -7,6 +7,7 @@ var party_count:=1
 var party_index:=0
 var order_reserved:=false
 var danger:=false
+var compact_vitals:=false
 
 func _portrait(texture:Texture2D,rect:Rect2)->void:
 	var tones:=[Color("#508cb0"),Color("#bd853d"),Color("#61934e"),Color("#ac4949")]
@@ -41,6 +42,10 @@ func _ready()->void:
 	resized.connect(queue_redraw)
 
 func _draw()->void:
+	if compact_vitals:
+		_draw_mobile_vitals()
+		_draw_markers()
+		return
 	var texture:Texture2D=Assets.actor_layer_spec(actor).get("body_texture")
 	var maximum:=maxi(1,int(actor.get("max_health",1)))
 	var health:=int(actor.get("health",0))
@@ -68,6 +73,9 @@ func _draw()->void:
 	for index in range(combat_lines.size()):
 		draw_string(font,Vector2(4,54+index*12),combat_lines[index],HORIZONTAL_ALIGNMENT_LEFT,
 			maxf(1,size.x-8),9 if size.x<110 else 10,Color("#d0c8b4"))
+	_draw_markers()
+
+func _draw_markers()->void:
 	if selected:
 		draw_rect(Rect2(Vector2.ONE*2,size-Vector2.ONE*4),Color("#f5cc67"),false,3)
 		draw_circle(Vector2(9,9),3,Color("#f5cc67"))
@@ -136,3 +144,22 @@ func _draw_health(bar:Rect2,health:int,maximum:int)->void:
 	draw_rect(bar,Color("#030607"))
 	var fill:=bar;fill.size.x*=clampf(float(health)/maximum,0,1)
 	draw_rect(fill,Color("#a94c4c") if health*4<=maximum else Color("#72ad70"))
+
+func mobile_condition_text()->String:
+	if str(actor.get("life_state","ACTIVE"))!="ACTIVE":
+		return str(actor.get("readiness","전투불능"))
+	return str(actor.get("stress_band_label","평온"))
+
+func _draw_mobile_vitals()->void:
+	var font:=get_theme_font("font")
+	var wide:=size.x>=150
+	var left:=46.0 if wide else 5.0
+	var width:=size.x-left-5.0
+	if wide:_portrait(Assets.actor_layer_spec(actor).get("body_texture"),Rect2(4,5,38,38))
+	draw_string(font,Vector2(left,16),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,width,11,Color("#e5e4da"))
+	var labels:=resource_labels(wide)
+	for i in range(2):
+		draw_string(font,Vector2(left,30+i*12),labels[i],HORIZONTAL_ALIGNMENT_LEFT,width,10,[Color("#b7d99d"),Color("#88b9ce")][i])
+	_draw_health(Rect2(left,46,width,3),int(actor.get("health",0)),maxi(1,int(actor.get("max_health",1))))
+	draw_string(font,Vector2(5,61),mobile_condition_text(),HORIZONTAL_ALIGNMENT_LEFT,size.x-10,10,
+		Color("#ff8686") if str(actor.get("life_state","ACTIVE"))!="ACTIVE" else Color("#d0c8b4"))
