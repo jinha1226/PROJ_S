@@ -29,8 +29,8 @@ func push_actor(sim,id:int)->void:
 func next(sim,end:int)->Dictionary:
 	if not seeded:rebuild(sim)
 	var world=sim.world
-	var scheduled:Dictionary={}
-	if not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time)<=end:
+	var scheduled:Dictionary=preload("res://sim/party_rescue_rules.gd").next_deadline(world,end)
+	if not world.scheduled_entries.is_empty() and int(world.scheduled_entries[0].due_time)<=end and (scheduled.is_empty() or int(world.scheduled_entries[0].due_time)<int(scheduled.at)):
 		scheduled={"at":int(world.scheduled_entries[0].due_time),"id":0}
 	while not heap.empty():
 		var row:Array=heap.rows[0]
@@ -46,5 +46,5 @@ func completed(sim,id:int)->void:
 	# Environment cadence can spawn actors, revive or change multiple clocks.
 	# Rebuild after it; ordinary actor actions update just that actor's entry.
 	var party=sim.world.party_encounter
-	if id==0 or member_count!=party.active_party_member_ids.size() or enemy_count!=party.enemy_busy_rows.size():rebuild(sim)
+	if id<=0 or member_count!=party.active_party_member_ids.size() or enemy_count!=party.enemy_busy_rows.size():rebuild(sim)
 	else:push_actor(sim,id)

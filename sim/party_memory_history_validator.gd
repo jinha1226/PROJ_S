@@ -5,7 +5,7 @@ const ModelScript = preload("res://sim/party_memory_model.gd")
 const StateScript = preload("res://sim/party_memory_state.gd")
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const SOURCE_TYPES := ["combat.physical_damage", "combat.downed_damage",
-	"entity.downed", "entity.died", "health.restored", "party.override_committed"]
+	"entity.downed", "entity.died", "health.restored", "party.override_committed", "party.rescue_completed"]
 
 
 static func error(world) -> String:
@@ -137,6 +137,8 @@ static func _record_matches_source(world, observer_id: int,
 				and subject_id != observer_id \
 				and instigator_id == (source.instigator_id \
 					if source.instigator_id in world.party_encounter.enemy_ids else -1)
+		"RESCUED_BY":
+			return source.type == "party.rescue_completed" and source.target_id == observer_id and source.actor_id == subject_id and instigator_id == subject_id
 		"AID_RECEIVED":
 			return source.type == "health.restored" and source.target_id == observer_id \
 				and source.actor_id == subject_id and instigator_id == source.actor_id

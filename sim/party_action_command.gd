@@ -1,7 +1,7 @@
 class_name PartyActionCommand
 extends RefCounted
 
-const TYPES := ["HOLD", "MOVE", "MELEE", "SKILL"]
+const TYPES := ["HOLD", "MOVE", "MELEE", "SKILL", "ASSIST", "RELEASE", "CRISIS", "REASSURE", "PROMISE"]
 const ACTIVE_SKILL_IDS := ["STRIKE","SHOVE","FIREBOLT","MEND","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 var type: String
@@ -67,8 +67,8 @@ static func wire_error(row: Variant) -> String:
 		if target!=-1:return "party_target_forbidden"
 		if int(row.destination[0])<0 or int(row.destination[1])<0:return "skill_destination_required"
 		return ""
-	if row.type in ["MELEE","SKILL"] and target<=0:return "party_target_required"
-	if row.type not in ["MELEE","SKILL"] and target!=-1:return "party_target_forbidden"
+	if row.type in ["MELEE","SKILL","ASSIST","REASSURE","PROMISE"] and target<=0:return "party_target_required"
+	if row.type not in ["MELEE","SKILL","ASSIST","REASSURE","PROMISE"] and target!=-1:return "party_target_forbidden"
 	if row.type=="MOVE" and Vector2i(int(row.destination[0]),int(row.destination[1]))==Vector2i(-1,-1):return "move_destination_required"
 	if row.type!="MOVE" and Vector2i(int(row.destination[0]),int(row.destination[1]))!=Vector2i(-1,-1):return "party_destination_forbidden"
 	return ""

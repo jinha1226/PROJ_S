@@ -21,6 +21,10 @@ static func assess(sim,action)->Dictionary:
 	if action==null or not Rules.active(sim.world) or not sim.world.is_settled():return rejected
 	var world=sim.world
 	if action.actor_id!=world.party_control_actor_id():return rejected
+	if action.type=="CRISIS":
+		return {"accepted":preload("res://sim/party_rescue_rules.gd").enabled(world) and (not world.can_act(action.actor_id,world.world_time) or world.party_encounter.member(action.actor_id).busy_until>world.world_time),"reason":"crisis_wait_unavailable","time_cost":100}
+	var rescue_error: String = preload("res://sim/party_rescue_rules.gd").action_error(world,action)
+	if not rescue_error.is_empty():rejected.reason=rescue_error;return rejected
 	if world.party_encounter.member(action.actor_id).busy_until>world.world_time:
 		rejected.reason="field_actor_busy";return rejected
 	if action.type in ["MELEE","SKILL"] and action.target_id in world.party_encounter.enemy_ids \
@@ -62,6 +66,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 			awareness.suspicion=1000
 			ok=sim.party_coordinator._set_awareness_state(awareness,"HUNTING",
 				world.entities[action.actor_id].position,str(awareness.awareness_state),action.actor_id)
+	if ok:ok=preload("res://sim/party_rescue_rules.gd").settle(sim)
 	if ok:ok=_social(sim,event_start,false)
 	Darkness.checkpoint(world,darkness_sample)
 	var actor_queue=ActorQueue.new()
@@ -81,6 +86,9 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	var darkness_start:int=world.events.size()
 	if ok:ok=Darkness.commit_boundary(world,start,end,darkness_sample)
 	if ok:ok=Morale.commit_batch(world,Darkness.morale_sources(world,event_start,darkness_start),false)
+	if ok:ok=preload("res://sim/party_rescue_rules.gd").settle(sim)
+	if ok:ok=Memory.commit_batch(world,world.events_since(darkness_start))
+	if ok:ok=Relationships.commit_batch(world,world.events_since(darkness_start))
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()
@@ -110,7 +118,9 @@ static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,da
 	world.world_time=int(next.at)
 	var leaf_start:int=world.events.size()
 	var ok:bool
-	if int(next.id)==0:
+	if int(next.id)==-2:
+		ok=preload("res://sim/party_rescue_rules.gd").settle(sim)
+	elif int(next.id)==0:
 		var entry:Dictionary=world.take_next_schedule()
 		ok=sim._dispatch_schedule(entry,step_index,true,true)
 		world.requeue_repeating(entry)
@@ -123,6 +133,7 @@ static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,da
 	else:ok=_commit_enemy(sim,int(next.id),step_index)
 	if ok:ok=preload("res://sim/abilities/monster_passive_service.gd").commit(sim,leaf_start)
 	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,leaf_start)
+	if ok:ok=preload("res://sim/party_rescue_rules.gd").settle(sim)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:ok=_social(sim,leaf_start,int(next.id)==0)
 	Darkness.checkpoint(world,darkness_sample)
@@ -138,6 +149,9 @@ static func _social(sim,event_start:int,decay:bool)->bool:
 
 static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 	var world=sim.world;var coordinator=sim.party_coordinator
+	if action.type=="CRISIS":return world.emit_event("party.crisis_wait",action.actor_id,-1,world.entities[action.actor_id].position,100)!=null
+	if action.type in ["REASSURE","PROMISE"]:return preload("res://sim/party_rescue_rules.gd").commit_dialogue(sim,action)
+	if action.type in ["ASSIST","RELEASE"]:return preload("res://sim/party_rescue_rules.gd").commit_action(sim,action,100)
 	if action.type=="SKILL":
 		var skill:Dictionary=Skills.assess(world,action.actor_id,action.skill_id,action.target_id,false,true,action.destination)
 		return bool(skill.get("accepted",false)) and sim._commit_skill_effect(
@@ -152,7 +166,10 @@ static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 			world.world_time,"FIELD_ACTOR/%d/%d/%d"%[step_index,action.actor_id,world.world_time],0,weapon_id,
 			coordinator._weapon_occupants(action.actor_id,action.target_id) if not weapon_id.is_empty() else {})
 		if row.combat_assessment.is_empty():return false
-	return sim._commit_active_ready_allies([row],step_index,world.world_time)
+	if action.type=="MOVE" and preload("res://sim/party_rescue_rules.gd").links(world).has(action.actor_id) and not world.has_event_id_headroom(2):return false
+	var old: Vector2i=world.entities[action.actor_id].position
+	if not sim._commit_active_ready_allies([row],step_index,world.world_time):return false
+	return preload("res://sim/party_rescue_rules.gd").follow_move(sim,action.actor_id,old) if action.type=="MOVE" else true
 
 static func _commit_enemy(sim,id:int,step_index:int)->bool:
 	var world=sim.world;var party=world.party_encounter;var coordinator=sim.party_coordinator

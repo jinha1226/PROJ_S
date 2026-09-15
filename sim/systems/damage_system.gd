@@ -35,14 +35,15 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var lethal: bool = entity != null and resolved_requested_damage >= expected_health_before
 	var protagonist_target: bool = entity != null and world.party_encounter != null \
 		and world.party_encounter.protagonist_id == entity.id
-	var terminal_target:bool=protagonist_target or (entity!=null \
-		and world.lifecycle_succumbs(entity.id))
+	var terminal_target:bool=entity!=null and preload("res://sim/party_rescue_rules.gd").terminal(world,entity.id)
+	if entity!=null and preload("res://sim/party_rescue_rules.gd").member(world,entity.id):terminal_immediate=false
 	var status_count: int = world.combatant_states[entity.id].status_rows.size() \
 		if entity != null and world.combatant_states.has(entity.id) else 0
 	var should_apply_bleed: bool = apply_bleed_status and not terminal_immediate
 	# A terminal death synchronously emits one corpse materialization child.
 	var required_events := (4 + status_count) if terminal_immediate \
 		else ((2 if lethal else 1) + (1 if should_apply_bleed else 0))
+	if lethal and preload("res://sim/party_rescue_rules.gd").member(world,entity.id):required_events+=status_count+(1 if should_apply_bleed else 0)
 	var bleed_rows: Array = []
 	if entity != null and world.combatant_states.has(entity.id):
 		for status in world.combatant_states[entity.id].status_rows:
@@ -66,7 +67,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 				or int(cause.data.get("final_damage", -1)) != requested_damage)) \
 			or terminal_immediate != (lethal and terminal_target) \
 			or (lethal and not terminal_immediate \
-				and world.world_time > MAX_WORLD_TIME - 200) \
+				and world.world_time > MAX_WORLD_TIME - (1000 if preload("res://sim/party_rescue_rules.gd").member(world,entity.id) else 200)) \
 			or (should_apply_bleed and world.world_time > MAX_WORLD_TIME - 300) \
 			or not world.has_event_id_headroom(required_events):
 		return {"accepted": false, "event": null, "applied_health_damage": 0}
@@ -131,8 +132,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	var death_event = null
 	var status_event = null
 	if lethal:
-		var strict_boundary: int = (world.world_time / ACTOR_INTERVAL + 1) * ACTOR_INTERVAL
-		var resolve_at := -1 if terminal_immediate else strict_boundary + ACTOR_INTERVAL
+		var resolve_at: int = -1 if terminal_immediate else preload("res://sim/party_rescue_rules.gd").deadline(world,entity.id,world.world_time)
 		transition_event = world.emit_event("entity.downed", -1, entity.id,
 			resolved_position, 0, damage_event.id, {"schema_version": 1,
 				"life_ruleset_id": LIFE_RULESET_ID,
@@ -223,6 +223,8 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			return {"accepted":false,"event":damage_event,
 				"transition_event":transition_event,"death_event":death_event,
 				"status_event":status_event,"applied_health_damage":applied_damage}
+	if preload("res://sim/party_rescue_rules.gd").member(world,entity.id) and entity.health==0:
+		if not preload("res://sim/party_rescue_rules.gd").clear_status(world,entity.id):return {"accepted":false}
 	return {"accepted": true, "event": damage_event,
 		"transition_event": transition_event, "death_event": death_event,
 		"status_event": status_event,
@@ -237,6 +239,7 @@ func apply_canonical_downed_finisher(entity, requested_pressure: int, cause_id: 
 	var combatant = world.combatant_states.get(entity.id) if entity != null else null
 	var status_count: int = combatant.status_rows.size() if combatant != null else 0
 	if entity == null or combatant == null or combatant.life_state != "DOWNED" \
+			or preload("res://sim/party_rescue_rules.gd").member(world,entity.id) \
 			or entity.health != 0 or requested_pressure <= 0 \
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
 			or cause == null or cause.type != "action.melee_attack" \
@@ -293,8 +296,8 @@ func apply_canonical_downed_succumb(entity, cause_id: int, event_position: Vecto
 			or cause.id != combatant.downed_source_event_id \
 			or cause.target_id != entity.id \
 			or combatant.downed_resolve_at < 0 or world.world_time != combatant.downed_resolve_at \
-			or not world.lifecycle_succumbs(entity.id) \
-			or not world.has_event_id_headroom(2):
+			or not (world.lifecycle_succumbs(entity.id) or preload("res://sim/party_rescue_rules.gd").member(world,entity.id)) \
+			or not world.has_event_id_headroom(3):
 		return {"accepted": false, "event": null, "death_event": null}
 	var pressure = world.emit_event("combat.downed_damage", -1, entity.id,
 		resolved_position, 1, cause_id, {"schema_version": 1,
@@ -326,6 +329,7 @@ func apply_canonical_downed_bleedout(entity, requested_pressure: int, cause_id: 
 	var combatant = world.combatant_states.get(entity.id) if entity != null else null
 	var status_count: int = combatant.status_rows.size() if combatant != null else 0
 	if entity == null or combatant == null or combatant.life_state != "DOWNED" \
+			or preload("res://sim/party_rescue_rules.gd").member(world,entity.id) \
 			or entity.health != 0 or requested_pressure <= 0 \
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
 			or cause == null or cause.type != "status.tick" \
@@ -372,6 +376,7 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 		event_position: Vector2i, processed_step_index: int) -> int:
 	if entity == null or not world.combatant_states.has(entity.id) \
 			or world.combatant_states[entity.id].life_state != "ACTIVE" or amount <= 0 \
+			or (preload("res://sim/party_rescue_rules.gd").member(world,entity.id) and world.world_time>MAX_WORLD_TIME-1000) \
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
 			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
 		return 0
@@ -394,7 +399,16 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			damage_type.to_upper(),damage,element_key,entity.id,damage_event.id,
 			str(armor_context.get("part_id","")))
 		if not injury.accepted:return 0
-	if entity.health == 0:
+	if entity.health == 0 and preload("res://sim/party_rescue_rules.gd").member(world,entity.id):
+		var deadline:int=world.world_time+1000
+		var downed=world.emit_event("entity.downed",-1,entity.id,resolved_position,0,damage_event.id,
+			{"schema_version":1,"life_ruleset_id":LIFE_RULESET_ID,"previous_life_state":"ACTIVE","terminal_immediate":false,"downed_resolve_at":str(deadline)})
+		if downed==null:return 0
+		var c=world.combatant_states[entity.id]
+		c.life_state="DOWNED";c.downed_at=world.world_time;c.downed_resolve_at=deadline;c.downed_source_event_id=downed.id
+		c.guarded_until=0;c.guard_source_event_id=-1;c.recovery_lock_until=0;c.recovery_source_event_id=-1
+		if not preload("res://sim/party_rescue_rules.gd").clear_status(world,entity.id):return 0
+	elif entity.health == 0:
 		var death_event = world.emit_event(
 			"entity.died", -1, entity.id, resolved_position, 0, damage_event.id,
 			{"damage_type": damage_type}

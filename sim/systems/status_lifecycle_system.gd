@@ -133,7 +133,7 @@ func _process_due_statuses(processed_step_index: int) -> bool:
 		PerfProbeScript.end("bleed.active",_pad)
 		if not bool(applied.accepted):
 			return false
-		if combatant.life_state == "DEAD":
+		if combatant.life_state == "DEAD" or status not in combatant.status_rows:
 			continue
 		status.next_tick_at += STATUS_INTERVAL
 		if bool(due.natural):
@@ -154,6 +154,7 @@ func _process_due_recoveries(processed_step_index: int) -> bool:
 	for entity_id_value in combatant_ids:
 		var entity_id := int(entity_id_value)
 		var combatant = world.combatant_states[entity_id]
+		if preload("res://sim/party_rescue_rules.gd").member(world,entity_id):continue
 		if combatant.life_state != "DOWNED" or combatant.downed_resolve_at < 0 \
 				or world.world_time < combatant.downed_resolve_at:
 			continue

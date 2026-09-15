@@ -57,6 +57,9 @@ static func _appraise_event(world, observer_id: int, profile, state, event,
 		kind = "ALLY_LOST"; subject_id = target_id
 		remembered_instigator = instigator_id if instigator_id in enemy_ids else -1
 		salience = _social_salience(world, observer_id, target_id, profile, 780)
+	elif event_type == "party.rescue_completed" and target_id == observer_id and actor_id in party_ids:
+		kind = "RESCUED_BY"; subject_id = actor_id; remembered_instigator = actor_id
+		salience = _positive_salience(profile, 600)
 	elif event_type == "health.restored" and target_id == observer_id \
 			and actor_id > 0 and actor_id != observer_id and actor_id in party_ids:
 		kind = "AID_RECEIVED"; subject_id = actor_id; remembered_instigator = actor_id

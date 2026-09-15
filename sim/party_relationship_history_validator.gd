@@ -87,6 +87,7 @@ static func _expected_base(world, event, source, metadata: Dictionary) -> int:
 	var subject_id := int(event.target_id)
 	match str(metadata.reaction_kind):
 		"AID_RECEIVED":
+			if source.type=="party.rescue_completed" and source.target_id==observer_id and source.actor_id==subject_id and subject_id in world._party_active_ids_at_event(source.id):return 30
 			if source.type == "health.restored" and source.target_id == observer_id \
 					and source.actor_id == subject_id \
 					and subject_id in world._party_active_ids_at_event(source.id):

@@ -587,6 +587,7 @@ func is_environment_exposed(entity_id: int) -> bool:
 
 
 func is_explicit_melee_target(entity_id: int) -> bool:
+	if preload("res://sim/party_rescue_rules.gd").member(self,entity_id) and combatant_states[entity_id].life_state=="DOWNED":return false
 	var state = combatant_states.get(entity_id)
 	return state != null and state.life_state in ["ACTIVE", "DOWNED"] \
 		and not _party_member_is_detached(entity_id)
@@ -2218,6 +2219,8 @@ func runtime_party_health_error() -> String:
 
 
 func _restored_state_error() -> String:
+	var rescue_error:String=preload("res://sim/party_rescue_rules.gd").history_error(self)
+	if not rescue_error.is_empty():return rescue_error
 	if _active_step_index != -1:
 		return "active_step_context_not_settled"
 	var dimension_validation := dimensions_error(width, height)
@@ -2321,7 +2324,7 @@ func _restored_state_error() -> String:
 			if combatant.downed_resolve_at <= world_time or combatant.downed_resolve_at > MAX_WORLD_TIME:
 				return "downed_resolve_time_invalid"
 			if combatant.downed_at > MAX_WORLD_TIME - 200: return "downed_resolve_time_invalid"
-			var expected_downed_resolve: int = (combatant.downed_at / 100 + 1) * 100 + 100
+			var expected_downed_resolve: int = preload("res://sim/party_rescue_rules.gd").deadline(self,entity_id,combatant.downed_at)
 			if combatant.downed_resolve_at != expected_downed_resolve: return "downed_resolve_time_invalid"
 			var downed_source = event_by_id(combatant.downed_source_event_id)
 			if downed_source == null or downed_source.type != "entity.downed" \
@@ -3756,6 +3759,8 @@ func _canonical_batch_start_position(entity_id: int, first_action_id: int,
 	for event in events:
 		if event.id < first_action_id:
 			continue
+		if event.type=="party.assist_moved" and event.target_id==entity_id:
+			final_projection=event.position;continue
 		if event.type=="dungeon.floor_entered" and event.actor_id==entity_id:
 			var transition:=_party_floor_entry_positions(event)
 			if not bool(transition.ok) or transition.from!=final_projection:
@@ -4237,7 +4242,7 @@ func _status_history_error() -> String:
 						or event.data.get("schema_version") != 1 \
 						or event.data.get("status_ruleset_id") != STATUS_RULESET_ID \
 						or event.data.get("status_id") != "BLEEDING" \
-						or event.data.get("reason") not in ["NATURAL", "OWNER_DIED", "TOWN_CARE"]:
+						or event.data.get("reason") not in ["NATURAL", "OWNER_DIED", "TOWN_CARE", "RESCUE_GRACE"]:
 					return "status_expire_data_invalid"
 				var expiring_row: Dictionary = projected[status_key]
 				if event.data.reason == "NATURAL":
@@ -4249,6 +4254,10 @@ func _status_history_error() -> String:
 					if natural_tick == null or natural_tick.step_index != event.step_index \
 							or natural_tick.world_time != event.world_time or natural_tick.position != event.position:
 						return "natural_status_expire_envelope_invalid"
+				elif event.data.reason == "RESCUE_GRACE":
+					var downed = event_by_id(event.cause_id)
+					if not preload("res://sim/party_rescue_rules.gd").member_at(self,owner_id,event.id) or downed==null or downed.type!="entity.downed" or downed.target_id!=owner_id or event.world_time!=downed.world_time:
+						return "rescue_status_expire_invalid"
 				elif event.data.reason == "TOWN_CARE":
 					var clinic_source=event_by_id(event.cause_id)
 					if clinic_source==null or clinic_source.type!="town.clinic_service" \
@@ -4352,7 +4361,7 @@ func _lifecycle_history_error() -> String:
 			if damage_driver == null or damage_driver.type not in ["combat.physical_damage",
 					"combat.fire_damage", "combat.electric_damage",
 					"combat.starvation_damage"] \
-					or damage_driver.data.get("schema_version") not in [1, 3, 4] \
+					or (damage_driver.data.get("schema_version") not in [1, 3, 4] and not preload("res://sim/party_rescue_rules.gd").member_at(self,event.target_id,event.id)) \
 					or damage_driver.target_id != event.target_id \
 					or damage_driver.position != event.position \
 					or damage_driver.step_index != event.step_index \
@@ -4360,7 +4369,7 @@ func _lifecycle_history_error() -> String:
 				return "canonical_downed_damage_driver_invalid"
 			var protagonist: bool = party_encounter != null \
 					and party_encounter.protagonist_id == event.target_id
-			var terminal_target:bool=protagonist or bool(event.data.terminal_immediate)
+			var terminal_target:bool=(protagonist and not preload("res://sim/party_rescue_rules.gd").member_at(self,event.target_id,event.id)) or bool(event.data.terminal_immediate)
 			var encoded_deadline: int = Int64CodecScript.parse(
 				event.data.downed_resolve_at, "downed resolve time")
 			if terminal_target:
@@ -4424,7 +4433,7 @@ func _lifecycle_history_error() -> String:
 				continue
 			else:
 				if event.world_time > MAX_WORLD_TIME - 200 \
-						or encoded_deadline != _strict_next_actor_boundary(event.world_time) + 100 \
+						or encoded_deadline != preload("res://sim/party_rescue_rules.gd").deadline(self,event.target_id,event.world_time,event.id) \
 						or event.data.terminal_immediate != false:
 					return "canonical_downed_deadline_mismatch"
 			consumed_canonical_lifecycle_ids[event.id] = true
@@ -4452,15 +4461,17 @@ func _lifecycle_history_error() -> String:
 				and town_source.type=="town.clinic_service" \
 				and town_source.target_id==event.target_id \
 				and town_source.data.get("ruleset_id")=="town-clinic-care-v1"
-			var expected_health: int = maxi(1, int((entities[event.target_id].max_health + 9) / 10))
+			var rescue_recovery: bool = preload("res://sim/party_rescue_rules.gd").member_at(self,event.target_id,event.id) and not town_recovery
+			var expected_health: int = 1 if rescue_recovery else maxi(1, int((entities[event.target_id].max_health + 9) / 10))
 			var encoded_lock: int = Int64CodecScript.parse(
 				event.data.recovery_lock_until, "recovery lock time")
 			var position_history: Dictionary = _entity_position_at_event(event.target_id, event.id)
 			if downed_source == null \
 					or not town_recovery and event.cause_id != downed_source.id \
-					or not town_recovery and event.world_time != int(downed_projection.resolve_at) \
+					or not town_recovery and not rescue_recovery and event.world_time != int(downed_projection.resolve_at) \
+					or rescue_recovery and event.world_time >= int(downed_projection.resolve_at) \
 					or not town_recovery and event.step_index < downed_source.step_index \
-					or not town_recovery and event.world_time <= downed_source.world_time \
+					or not town_recovery and (event.world_time < downed_source.world_time if rescue_recovery else event.world_time <= downed_source.world_time) \
 					or town_recovery and (event.world_time!=town_source.world_time \
 						or event.step_index!=town_source.step_index \
 						or event.position!=town_source.position) \
@@ -4634,7 +4645,7 @@ func _lifecycle_history_error() -> String:
 					or event.magnitude <= 0 or projected_life[event.target_id] != "DOWNED" \
 					or not projected_downed.has(event.target_id) \
 					or active_bleed_owners.has(event.target_id) \
-					or not lifecycle_succumbs(event.target_id) \
+					or not (lifecycle_succumbs(event.target_id) or preload("res://sim/party_rescue_rules.gd").member_at(self,event.target_id,event.id)) \
 					or not _exact_keys(event.data, ["applied_health_damage", "combat_ruleset_id",
 						"damage_type", "reason", "requested_damage", "schema_version"]) \
 					or event.data.get("combat_ruleset_id") != COMBAT_RULESET_ID \
@@ -4946,7 +4957,7 @@ func _party_runtime_error() -> String:
 	match party_encounter.safe_phase:
 		"GROUPED":
 			var field:bool=preload("res://sim/field_turn_rules.gd").active(self)
-			if combatant_states[hero.id].life_state != "ACTIVE" or hero_member.presence != "DEPLOYED" \
+			if (combatant_states[hero.id].life_state != "ACTIVE" and not preload("res://sim/party_rescue_rules.gd").enabled(self)) or hero_member.presence != "DEPLOYED" \
 					or (not field and (deployed != 1 or alive_enemies == 0)) \
 					or party_encounter.contact_kind != "NONE" or party_encounter.formation_id != "NONE":
 				return "grouped_phase_invalid"
@@ -6669,6 +6680,10 @@ func _party_entity_position_at_event(entity_id: int, event_id: int) -> Dictionar
 	for index in range(events.size()-1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="party.assist_moved" and event.target_id==entity_id:
+			var from: Vector2i=Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+			if cursor!=event.position:return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=from;continue
 		if event.type=="population.arrived" and event.actor_id==entity_id:
 			if not _population_arrival_positions(event).ok \
 					or _population_arrival_positions(event).to!=cursor:
@@ -6710,6 +6725,10 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	var grouped_with_protagonist := false
 	for event in events:
 		if event.id >= event_id: break
+		if event.type=="party.assist_moved" and event.target_id==entity_id:
+			var from: Vector2i=Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+			if anchored and historical_cursor!=from:return {"ok":false,"position":Vector2i(-1,-1)}
+			historical_cursor=event.position;anchored=true;grouped_with_protagonist=false;continue
 		if event.type=="population.arrived" and event.actor_id==entity_id:
 			var arrival:=_population_arrival_positions(event)
 			if not bool(arrival.ok) or anchored and historical_cursor!=arrival.from:
@@ -6779,6 +6798,10 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 	for index in range(events.size() - 1, -1, -1):
 		var event = events[index]
 		if event.id <= event_id: break
+		if event.type=="party.assist_moved" and event.target_id==entity_id:
+			var from: Vector2i=Vector2i(int(event.data.from_position[0]),int(event.data.from_position[1]))
+			if cursor!=event.position:return {"ok":false,"position":Vector2i(-1,-1)}
+			cursor=from;continue
 		if event.type=="population.arrived" and event.actor_id==entity_id:
 			var arrival:=_population_arrival_positions(event)
 			if not bool(arrival.ok) or arrival.to!=cursor:
@@ -6812,7 +6835,11 @@ func _entity_position_at_event(entity_id: int, event_id: int) -> Dictionary:
 func _party_deployment_move_chain_error(entity_id: int, event_id: int, initial_position: Vector2i) -> String:
 	var cursor := initial_position
 	for event in events:
-		if event.id <= event_id or event.actor_id != entity_id: continue
+		if event.id <= event_id:continue
+		if event.type=="party.assist_moved" and event.target_id==entity_id:
+			if event.data.from_position!=[cursor.x,cursor.y]:return "party_member_move_history_mismatch"
+			cursor=event.position;continue
+		if event.actor_id != entity_id: continue
 		if event.type in ["party.member_regrouped","party.member_disengaged","dungeon.floor_entered"]:return ""
 		if event.type=="environment.knockback":
 			var knockback:=_environment_knockback_positions(event)
@@ -6948,6 +6975,7 @@ func _party_move_event_is_canonical(event) -> bool:
 		if member!=null and preload("res://sim/field_turn_rules.gd").enabled(self):
 			var rate:int=maxi(25,int(member.action_speeds.MOVE)+preload("res://sim/consumable_effects.gd").rate(self,event.actor_id,event.id))
 			base=maxi(1,(base*100+rate-1)/rate)
+		if preload("res://sim/party_rescue_rules.gd").links(self,event.id).has(event.actor_id):base=(base*3+1)/2
 		return int(event.data.move_time_cost)==base
 	return ActiveSkillValidationScript.forced_move_error(self,event).is_empty()
 

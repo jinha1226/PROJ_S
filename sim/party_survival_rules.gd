@@ -23,7 +23,7 @@ static func control_id(world,event_id:int=-1)->int:
 			var members:Array=party.active_party_member_ids if event_id<0 else world._party_active_ids_at_event(event_id)
 			if selected in members and _active_at(world,selected,event_id):return selected
 			break
-	if not enabled(world):return int(party.protagonist_id)
+	if not enabled(world) and not preload("res://sim/party_rescue_rules.gd").enabled(world):return int(party.protagonist_id)
 	var ids:Array=party.active_party_member_ids if event_id<0 else world._party_active_ids_at_event(event_id)
 	for id in ids:
 		if event_id<0:
@@ -49,6 +49,7 @@ static func _active_at(world,id:int,event_id:int)->bool:
 	return active
 
 static func defeated(world)->bool:
+	if preload("res://sim/party_rescue_rules.gd").enabled(world):return world.combatant_states[world.party_encounter.protagonist_id].life_state=="DEAD"
 	if not enabled(world):return world.combatant_states[world.party_encounter.protagonist_id].life_state!="ACTIVE"
 	for id in world.party_encounter.active_party_member_ids:
 		if world.combatant_states[id].life_state=="ACTIVE":return false

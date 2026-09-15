@@ -34,6 +34,9 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 	if not world.entities.has(actor_id):
 		base["reason"] = "actor_not_found"
 		return TraversalAssessmentScript.new(base)
+	var rescue_error: String = preload("res://sim/party_rescue_rules.gd").move_error(world,actor_id,destination)
+	if not rescue_error.is_empty():
+		base.reason=rescue_error;return TraversalAssessmentScript.new(base)
 	var actor = world.entities[actor_id]
 	if preload("res://sim/abilities/monster_ability_runtime.gd").anchored(world,actor_id):
 		base["reason"]="ability_anchored"

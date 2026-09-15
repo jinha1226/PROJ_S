@@ -68,7 +68,7 @@ static func appraise(world, actor_id: int, board: Dictionary) -> Dictionary:
 				memory_state.salience_for_instigator(enemy_id,
 					["ALLY_DOWNED", "ALLY_LOST"]))
 	var ally_loyalty: int = memory_state.salience_for_subject(ally_id,
-		["AID_RECEIVED"]) if memory_state != null and ally_id > 0 else 0
+		["AID_RECEIVED", "RESCUED_BY"]) if memory_state != null and ally_id > 0 else 0
 	return {
 		"threat_id": threat_id,
 		"distance": distance,

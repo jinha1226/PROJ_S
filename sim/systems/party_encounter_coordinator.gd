@@ -1059,6 +1059,8 @@ func _turn_rejection(request) -> String:
 
 func _action_error(action) -> String:
 	if action == null or action.type not in ActionScript.TYPES or not world.entities.has(action.actor_id): return "invalid_party_action"
+	var rescue_error: String = preload("res://sim/party_rescue_rules.gd").action_error(world,action)
+	if not rescue_error.is_empty():return rescue_error
 	var state = world.party_encounter; var member = state.member(action.actor_id)
 	if member == null or member.presence != "DEPLOYED" or not world.can_act(action.actor_id, world.world_time): return "party_actor_unavailable"
 	if member.busy_until > world.world_time: return "party_actor_busy"
@@ -1079,6 +1081,8 @@ func _action_error(action) -> String:
 	return ""
 
 func _suggest(actor_id: int, protagonist_action, board: Dictionary = {}):
+	var rescue=preload("res://sim/party_rescue_rules.gd").suggest(world,actor_id,movement)
+	if rescue!=null:return rescue
 	var decision := _companion_decision(actor_id, protagonist_action, board)
 	return _leaf_to_action(actor_id, decision.selected_leaf)
 
@@ -1587,7 +1591,8 @@ func _action_row(action, source: String, roster_slot: int) -> Dictionary:
 		var weapon = WeaponRegistryScript.definition(
 			WorldItemOperationsScript.equipped_weapon_id(world, action.actor_id))
 		if weapon != null: cost = int(weapon.attack_time)
-	cost=preload("res://sim/field_action_timing.gd").duration(world,action.actor_id,action.type,cost)
+	cost=100 if action.type in ["ASSIST","RELEASE","CRISIS","REASSURE","PROMISE"] else preload("res://sim/field_action_timing.gd").duration(world,action.actor_id,action.type,cost)
+	if action.type=="MOVE" and preload("res://sim/party_rescue_rules.gd").links(world).has(action.actor_id):cost=(cost*3+1)/2
 	return {"actor_id": action.actor_id, "roster_slot": roster_slot, "source": source, "action": action.to_dict(), "time_cost": cost,
 		"resolution_note": "", "suggestion": null, "overridden": false, "combat_assessment": null}
 

@@ -3,7 +3,7 @@ extends RefCounted
 
 const SCHEMA_VERSION := 1
 const MAX_RECORDS := 8
-const KINDS := ["SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "AID_RECEIVED",
+const KINDS := ["RESCUED_BY", "SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "AID_RECEIVED",
 	"COMMAND_CONFLICT"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const MAX_WORLD_TIME := 9223372036854775707

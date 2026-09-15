@@ -1,0 +1,124 @@
+{
+  "task": "PARTY-RESCUE-01",
+  "date": "2026-09-15",
+  "engine": "Godot 4.6.2",
+  "baseline": "d58f2dc",
+  "tests": [
+    {
+      "test": "party_rescue_acceptance.gd",
+      "command": "godot --headless --path . --script tests/party_rescue_acceptance.gd",
+      "summary": [
+        "PARTY RESCUE TRANSITIONS: PASS[]"
+      ],
+      "log_sha256": "68f04c8fee9eafa2cdfe6ecf2c357a7a539b652a000c5cd0f3a3dae5782ecc7c"
+    },
+    {
+      "test": "party_rescue_carry_history_acceptance.gd",
+      "command": "godot --headless --path . --script tests/party_rescue_carry_history_acceptance.gd",
+      "summary": [
+        "PARTY RESCUE CARRY HISTORY: PASS[]"
+      ],
+      "log_sha256": "dffe8fca2c835288f47db86eb94dab27b1e09b692ce31a666c54d40738d6912c"
+    },
+    {
+      "test": "party_rescue_ui_acceptance.gd",
+      "command": "godot --headless --path . --script tests/party_rescue_ui_acceptance.gd",
+      "summary": [
+        "PARTY RESCUE UI: PASS[]"
+      ],
+      "log_sha256": "5f29d26f8f62f37e5adaf60bfcbf98a18defd9fb92d8ef4df08a3e04c0108ba5"
+    },
+    {
+      "test": "party_rescue_replay_acceptance.gd",
+      "command": "godot --headless --path . --script tests/party_rescue_replay_acceptance.gd",
+      "summary": [
+        "PARTY RESCUE REPLAY: PASS[]"
+      ],
+      "log_sha256": "cd286f0fcae114c032e715a8fc5d4b542f496beeba6ef626f5c71503ba02e4a4"
+    },
+    {
+      "test": "field_lifecycle_acceptance.gd",
+      "command": "godot --headless --path . --script tests/field_lifecycle_acceptance.gd",
+      "summary": [
+        "FIELD LIFECYCLE: PASS []"
+      ],
+      "log_sha256": "3dd1604cde748f707a4319c4b66bd6ff95273050012ab77f6f00bf59836414ff"
+    },
+    {
+      "test": "run_party_memory_tests.gd",
+      "command": "godot --headless --path . --script tests/run_party_memory_tests.gd",
+      "summary": [
+        "PASS test_party_memory_system.gd :: test_memory_wire_is_bounded_canonical_and_keeps_stronger_events",
+        "PASS test_party_memory_system.gd :: test_personality_changes_memory_salience_without_mutating_world",
+        "PASS test_party_memory_system.gd :: test_persistent_harm_memory_changes_score_and_target_after_anger_is_gone",
+        "PASS test_party_memory_system.gd :: test_past_harm_changes_the_next_emotional_appraisal",
+        "PASS test_party_memory_system.gd :: test_committed_memory_event_saves_replays_and_has_player_facing_text",
+        "PASS test_party_memory_system.gd :: test_schema_twenty_save_migrates_to_empty_memory",
+        "---- Party memory: 6 tests, 0 failed ----"
+      ],
+      "log_sha256": "7cc9a23dd567190549f80c1f8fe68577bbcd421682af2214d0b7da64a4fed1f1"
+    },
+    {
+      "test": "party_rescue_lifecycle_acceptance.gd",
+      "command": "godot --headless --path . --script tests/party_rescue_lifecycle_acceptance.gd",
+      "summary": [
+        "PARTY RESCUE LIFECYCLE: PASS []"
+      ],
+      "log_sha256": "e5d6c88189ebc8e7fd30358365cfbb12190f1f66af10f55f05430587ca848a58"
+    }
+  ],
+  "environment_regression": {
+    "baseline": {
+      "passed": 76,
+      "failed": [
+        "FAIL test_environment_simulation.gd :: test_environment_armor_coverage_material_and_wetness_apply_once",
+        "FAIL test_torch_stage3.gd :: test_torch_registry_equip_ignite_and_dynamic_light",
+        "FAIL test_torch_stage3.gd :: test_torch_save_load_and_journal_replay_are_exact",
+        "FAIL test_torch_stage3.gd :: test_top_hud_reports_equipped_torch_remaining_fuel",
+        "FAIL test_torch_stage3.gd :: test_torch_depletion_removes_light_and_blocks_reignite",
+        "FAIL test_torch_stage3.gd :: test_inventory_equip_action_auto_ignites_fresh_torch",
+        "FAIL test_darkness_stage5.gd :: test_torch_removes_deep_dark_and_snapshot_preserves_exposure"
+      ],
+      "summary": [
+        "---- Environment regression: 83 tests, 7 failed ----"
+      ]
+    },
+    "implementation": {
+      "passed": 76,
+      "failed": [
+        "FAIL test_environment_simulation.gd :: test_environment_armor_coverage_material_and_wetness_apply_once",
+        "FAIL test_torch_stage3.gd :: test_torch_registry_equip_ignite_and_dynamic_light",
+        "FAIL test_torch_stage3.gd :: test_torch_save_load_and_journal_replay_are_exact",
+        "FAIL test_torch_stage3.gd :: test_top_hud_reports_equipped_torch_remaining_fuel",
+        "FAIL test_torch_stage3.gd :: test_torch_depletion_removes_light_and_blocks_reignite",
+        "FAIL test_torch_stage3.gd :: test_inventory_equip_action_auto_ignites_fresh_torch",
+        "FAIL test_darkness_stage5.gd :: test_torch_removes_deep_dark_and_snapshot_preserves_exposure"
+      ],
+      "summary": [
+        "---- Environment regression: 83 tests, 7 failed ----"
+      ]
+    }
+  },
+  "field_regression": {
+    "baseline": {
+      "passed": 0,
+      "failed": [
+        "FAIL field action 8 succeeds: active_skill_not_equipped",
+        "FAIL direct field attack resolves"
+      ],
+      "summary": []
+    },
+    "implementation": {
+      "passed": 0,
+      "failed": [
+        "FAIL field action 8 succeeds: active_skill_not_equipped",
+        "FAIL direct field attack resolves"
+      ],
+      "summary": []
+    }
+  },
+  "notes": [
+    "UI checks are headless geometry/input checks, not physical-device playtesting.",
+    "Mechanics fixture tests and session journal replay have separate scopes; see result document."
+  ]
+}

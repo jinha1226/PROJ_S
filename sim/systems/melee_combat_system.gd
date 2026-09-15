@@ -293,7 +293,7 @@ func project_batch(frozen_intents: Array) -> Array:
 			if resolution.outcome == "HIT":
 				health_after = maxi(0, health_before - resolution.final_damage)
 				if health_after == 0:
-					if intent.protagonist_terminal_if_lethal or world.lifecycle_succumbs(target_id):
+					if (intent.protagonist_terminal_if_lethal or world.lifecycle_succumbs(target_id)) and not preload("res://sim/party_rescue_rules.gd").member(world,target_id):
 						life_after = "DEAD"
 						resolution.terminal_immediate = true
 					else:

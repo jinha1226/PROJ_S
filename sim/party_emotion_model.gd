@@ -231,7 +231,7 @@ static func _remembered_aggressor_salience(world, observer_id: int,
 static func _remembered_aid_salience(world, observer_id: int,
 		helper_id: int) -> int:
 	var member = world.party_encounter.member(observer_id)
-	return member.memory_state.salience_for_subject(helper_id, ["AID_RECEIVED"]) \
+	return member.memory_state.salience_for_subject(helper_id, ["AID_RECEIVED", "RESCUED_BY"]) \
 		if member != null and member.memory_state != null and helper_id > 0 else 0
 
 

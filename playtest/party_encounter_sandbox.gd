@@ -860,6 +860,7 @@ func _ready()->void:
 	if not _initialized_for_headless_test and session==null:
 		session=SessionScript.new(SessionScript.DEFAULT_WORLD_SEED,
 			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID,"human",true)
+		session.rescue_new_runs=true;session.enable_party_rescue()
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
 	if not _initialized_for_headless_test and not _web_capture_preview_requested():
@@ -1975,9 +1976,27 @@ func _layout_floating_surfaces()->void:
 		species_picker_panel.size=Vector2(picker_width,picker_height)
 	if tile_popover!=null and tile_popover.visible:_position_tile_popover()
 
+var rescue_panel:PanelContainer
+var _last_rescue_downed_id:=-1
+
+func _refresh_rescue_panel()->void:
+	var w=session.sim.world
+	if preload("res://sim/party_rescue_rules.gd").enabled(w):
+		var latest:=-1
+		for id in preload("res://sim/party_rescue_rules.gd").downed_ids(w):latest=maxi(latest,w.combatant_states[id].downed_source_event_id)
+		if latest>_last_rescue_downed_id:
+			_last_rescue_downed_id=latest
+			_cancel_product_auto_explore("party_downed",false)
+			if _product_rest_active:_cancel_product_rest("rest_interrupted")
+	if rescue_panel==null:
+		rescue_panel=preload("res://playtest/party_rescue_panel.gd").new()
+		add_child(rescue_panel)
+	rescue_panel.refresh(self)
+
 func _refresh()->void:
 	_refresh_pending=false
 	if session==null:return
+	_refresh_rescue_panel()
 	_refresh_open_member_detail()
 	if get_node_or_null("ActiveCombatLab")!=null:return
 	# Presentation refreshes queued by the last AUTO hop must not erase a new
@@ -3319,7 +3338,7 @@ func _member_portrait(row:Dictionary,spec:Dictionary)->Control:
 	var portrait_actor:Dictionary=row.duplicate(true)
 	portrait_actor["is_protagonist"]=str(row.get("role",""))=="PROTAGONIST";portrait_actor["faction_id"]="party"
 	portrait_actor["species_id"]=str(row.get("species_id","human"))
-	portrait_actor["life_state"]="ACTIVE" if bool(row.get("alive",true)) else "DEAD"
+	portrait_actor["life_state"]=str(row.get("life_state","ACTIVE" if bool(row.get("alive",true)) else "DEAD"))
 	portrait_actor["status_ids"]=row.get("status_ids",[]).duplicate(true)
 	portrait_view.set_actor(portrait_actor);return portrait_view
 
@@ -3372,7 +3391,7 @@ func _add_solo_spotlight_summary(parent:VBoxContainer,row:Dictionary)->void:
 	var emotion:Dictionary=row.get("emotion",{}) if row.get("emotion",{}) is Dictionary else {}
 	var emotion_text:="%s%s"%[str(emotion.get("icon","")),str(emotion.get("label",""))]
 	if not emotion_text.strip_edges().is_empty():tokens.append(emotion_text)
-	if str(row.get("readiness","행동 준비"))!="행동 준비":tokens.append("행동 중")
+	if str(row.get("readiness","행동 준비"))!="행동 준비":tokens.append(str(row.readiness))
 	var status_ids:Variant=row.get("status_ids",[])
 	if status_ids is Array:
 		for status_id in status_ids:

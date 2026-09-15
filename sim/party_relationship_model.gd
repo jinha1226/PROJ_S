@@ -107,7 +107,9 @@ static func _reactions_for_event(world, event, eligible: Array[int]) -> Array[Di
 	var enemy_ids: Array = world.party_encounter.enemy_ids
 	if source_id <= 0:
 		return rows
-	if event_type == "health.restored" and target_id in eligible \
+	if event_type == "party.rescue_completed" and target_id in eligible and actor_id in active_ids and actor_id!=target_id:
+		rows.append(_row(world,target_id,actor_id,source_id,"AID_RECEIVED",30))
+	elif event_type == "health.restored" and target_id in eligible \
 			and actor_id in active_ids and actor_id != target_id:
 		rows.append(_row(world, target_id, actor_id, source_id,
 			"AID_RECEIVED", clampi(8 + magnitude * 2, 8, 45)))

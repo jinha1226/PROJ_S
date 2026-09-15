@@ -50,7 +50,7 @@ static func _source_event_ids(world, event_rows: Array) -> Array[int]:
 		var target_id := int(event.get("target_id", -1) if event is Dictionary else event.target_id)
 		var relevant := false
 		if event_type in ["combat.physical_damage", "combat.downed_damage",
-				"entity.downed", "entity.died", "health.restored"]:
+				"entity.downed", "entity.died", "health.restored", "party.rescue_completed"]:
 			relevant = target_id in world.party_encounter.party_member_ids
 		elif event_type == "party.override_committed":
 			relevant = actor_id in world.party_encounter.party_member_ids

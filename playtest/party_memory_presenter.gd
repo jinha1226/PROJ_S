@@ -4,6 +4,7 @@ extends RefCounted
 const ModelScript = preload("res://sim/party_memory_model.gd")
 const StateScript = preload("res://sim/party_memory_state.gd")
 const PRESENTATION := {
+	"RESCUED_BY":{"label":"나를 부축해 구함", "behavior":"구해 준 동료의 구조를 우선 고려"},
 	"SELF_HARM":{"label":"나를 해침", "behavior":"그 가해자를 더 위험하고 공격할 대상으로 판단"},
 	"ALLY_DOWNED":{"label":"동료를 쓰러뜨림", "behavior":"가해자를 경계하고 쓰러진 동료를 보호"},
 	"ALLY_LOST":{"label":"동료를 잃음", "behavior":"가해자를 오래 기억하고 우선 공격할 수 있음"},

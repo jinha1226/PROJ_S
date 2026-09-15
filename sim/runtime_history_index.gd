@@ -4,9 +4,9 @@ extends RefCounted
 static func sync(world)->Dictionary:
 	var cache:Dictionary=world.runtime_history_cache
 	var count:int=world.events.size()
-	if cache.is_empty() or int(cache.count)>count \
+	if cache.is_empty() or not cache.has("assist_links") or int(cache.count)>count \
 			or int(cache.count)>0 and cache.tail!=world.events[int(cache.count)-1]:
-		cache={"count":0,"tail":null,"latest":{},"first":{},"rescues":{},"deaths":{},"morale":{},"commands":[],"first_contact":-1}
+		cache={"count":0,"tail":null,"latest":{},"first":{},"rescues":{},"assist_links":{},"deaths":{},"morale":{},"commands":[],"first_contact":-1}
 	for i in range(int(cache.count),count):
 		var event=world.events[i]
 		if str(event.type) in ["party.regroup_completed","party.disengage_completed",
@@ -15,8 +15,12 @@ static func sync(world)->Dictionary:
 		elif str(event.type) in ["party.command_issued","party.actor_command_issued"]:
 			cache.commands.append(event)
 		match str(event.type):
-			"campaign.living_expedition_initialized","town.life_started":
+			"party.rescue_enabled","party.rescue_completed","campaign.living_expedition_initialized","town.life_started":
 				if not cache.first.has(str(event.type)):cache.first[str(event.type)]=event
+			"party.assist_started":cache.assist_links[int(event.actor_id)]={"target":int(event.target_id),"source":int(event.id),"moved":false}
+			"party.assist_moved":
+				if cache.assist_links.has(int(event.actor_id)):cache.assist_links[int(event.actor_id)].moved=true
+			"party.assist_ended":cache.assist_links.erase(int(event.actor_id))
 			"party.rescue_discovered":
 				if not cache.rescues.has(int(event.target_id)):cache.rescues[int(event.target_id)]=event
 			"party.field_formation_selected","party.field_control_selected","party.regroup_completed","party.contact_reported":

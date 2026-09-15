@@ -218,6 +218,7 @@ const GUILD_WEAPONS := {
 const TIMELINE_EVENT_WINDOW:=64
 
 var sim
+var rescue_new_runs := false
 var world_seed := DEFAULT_WORLD_SEED
 var personality_seed := DEFAULT_PERSONALITY_SEED
 var scenario_id := REGRESSION_SCENARIO_ID
@@ -588,6 +589,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	else: _exploration_route.clear()
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
+	if rescue_new_runs:enable_party_rescue()
 	return true
 
 
@@ -2190,9 +2192,11 @@ func base_sell(resource_id:String,amount:int=1)->Dictionary:
 	return _base_progression_service.base_sell(resource_id,amount)
 
 func base_return_assessment()->Dictionary:
+	if not preload("res://sim/party_rescue_rules.gd").downed_ids(sim.world).is_empty():return {"accepted":false,"reason":"resolve_downed_before_transition"}
 	return _base_progression_service.base_return_assessment()
 
 func base_return()->Dictionary:
+	if not preload("res://sim/party_rescue_rules.gd").downed_ids(sim.world).is_empty():return {"accepted":false,"reason":"resolve_downed_before_transition"}
 	return _base_progression_service.base_return()
 
 func base_build_assessment(type_id:String,tile_origin:Variant)->Dictionary:
@@ -3052,6 +3056,7 @@ func _current_floor_enemy_ids()->Array[int]:
 
 
 func floor_transition_assessment()->Dictionary:
+	if not preload("res://sim/party_rescue_rules.gd").downed_ids(sim.world).is_empty():return {"accepted":false,"reason":"resolve_downed_before_transition"}
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or not VisualTestMapScript.uses_product_dungeon(scenario_id):
 		return _rejection_dto("floor_transition_unavailable")
@@ -4818,6 +4823,10 @@ func party_cards() -> Array[Dictionary]:
 				and member.role == "PROTAGONIST" \
 			else _action_presentation(preview_by_actor.get(member_id, null))
 		var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
+		var life=sim.world.combatant_states[member_id]
+		if preload("res://sim/party_rescue_rules.gd").member(sim.world,member_id) and life.life_state=="DOWNED":
+			readiness="전투불능 · %.1f턴"%(maxi(0,life.downed_resolve_at-sim.world.world_time)/100.0)
+		elif life.life_state=="DEAD":readiness="사망"
 		var _pem:=PerfProbeScript.begin()
 		var emotion := _emotion_presentation(member, entity)
 		PerfProbeScript.end("cards.emotion",_pem)
@@ -4834,6 +4843,7 @@ func party_cards() -> Array[Dictionary]:
 		var darkness_stress:Dictionary=DarknessStressRulesScript.state(sim.world,member_id)
 		rows.append({"entity_id": member_id, "roster_slot": member.roster_slot, "role": member.role,
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
+			"life_state":str(life.life_state),
 			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress,
@@ -5581,6 +5591,7 @@ func _exile_record_for_member(entity_id:int):
 
 
 func dismiss_companion(entity_id: int) -> Dictionary:
+	if not preload("res://sim/party_rescue_rules.gd").downed_ids(sim.world).is_empty():return {"accepted":false,"reason":"resolve_downed_before_transition"}
 	return _apply_roster_change("DISMISS", entity_id)
 
 
@@ -7173,6 +7184,9 @@ func _field_exploration_action(command):
 		else ActionScript.hold(command.actor_id) if command.type==CommandScript.Type.WAIT else null
 
 func commit_field_action(action)->Dictionary:
+	if action!=null and action.type=="HOLD" and preload("res://sim/party_rescue_rules.gd").enabled(sim.world) and action.actor_id==sim.world.party_control_actor_id():
+		if not sim.world.can_act(action.actor_id,sim.world.world_time) or sim.world.party_encounter.member(action.actor_id).busy_until>sim.world.world_time:
+			action=ActionScript.new("CRISIS",action.actor_id)
 	if _run_is_complete():return _rejection_dto("run_complete")
 	var begun:=PerfProbeScript.begin()
 	var rollback:Dictionary=sim.capture_rollback_memento(false)
@@ -8578,6 +8592,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"rescue_enabled":replay_result=replay.enable_party_rescue()
 			"party_item":replay_result=replay.party_item_operation(str(row.action),str(row.instance_id),str(row.slot),int(row.actor_id))
 			"npc_mastery":replay_result=replay.spend_mastery_point(str(row.axis),int(row.actor_id))
 			"party_use":replay_result=replay.use_party_item(str(row.instance_id),int(row.actor_id),row.selection)
@@ -8913,6 +8928,8 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"rescue_enabled":
+				if keys!=["kind"]:return "invalid_rescue_journal"
 			"party_item":
 				if keys!=["action","actor_id","instance_id","kind","slot"] or not Int64CodecScript.is_canonical(row.actor_id) or row.action not in ["EQUIP","UNEQUIP","DROP","DISCARD"] or not row.instance_id is String or not row.slot is String:return "invalid_party_item_journal"
 			"npc_mastery":
@@ -10389,3 +10406,21 @@ func _possessive(value:String)->String: return value + ("의")
 func _has_final(value:String)->bool:
 	if value.is_empty(): return false
 	var code := value.unicode_at(value.length()-1); return code >= 0xAC00 and code <= 0xD7A3 and (code-0xAC00)%28 != 0
+
+func enable_party_rescue()->Dictionary:
+	var rules=preload("res://sim/party_rescue_rules.gd")
+	if sim==null or not FieldRules.enabled(sim.world):return {"accepted":false,"reason":"field_required"}
+	if rules.enabled(sim.world):return {"accepted":true,"reason":"already_enabled"}
+	if sim.world.step_index!=0:return {"accepted":false,"reason":"new_run_required"}
+	if sim.world.emit_event("party.rescue_enabled",sim.world.party_encounter.protagonist_id,-1,Vector2i(-1,-1),0,-1,{"ruleset_id":rules.RULESET})==null:return {"accepted":false,"reason":"event_failed"}
+	command_journal.append({"kind":"rescue_enabled"})
+	return {"accepted":true,"reason":"ok"}
+
+func assist_party_member(target_id:int)->Dictionary:
+	return commit_field_action(ActionScript.new("ASSIST",sim.world.party_control_actor_id(),Vector2i(-1,-1),target_id))
+
+func release_party_member()->Dictionary:
+	return commit_field_action(ActionScript.new("RELEASE",sim.world.party_control_actor_id()))
+
+func rescue_wait()->Dictionary:
+	return commit_field_action(ActionScript.new("CRISIS",sim.world.party_control_actor_id()))
