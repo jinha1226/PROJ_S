@@ -1747,7 +1747,7 @@ func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dic
 		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
 		if weapon!=null:
 			var state=sim.world.party_encounter
-			var inspected_actor:=actor_id if actor_id!=-1 else sim.world.party_control_actor_id()
+			var inspected_actor:int=actor_id if actor_id!=-1 else int(sim.world.party_control_actor_id())
 			var rank:int=sim.melee._weapon_proficiency_rank(inspected_actor,str(weapon.proficiency_id))
 			var combatant=sim.world.combatant_states.get(inspected_actor)
 			var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) \
