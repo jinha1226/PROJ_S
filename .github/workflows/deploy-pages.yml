@@ -96,6 +96,22 @@ jobs:
             exit 1
           fi
 
+      - name: Capture compact top-view UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ui-preview
+          xvfb-run -a ./godot --path . --script tools/capture_modular_topdown.gd
+          cp assets/generated/modular_topdown_v1/product_portrait_preview.png build/ui-preview/topview-450x800.png
+          test -s build/ui-preview/topview-450x800.png
+
+      - name: Upload compact top-view UI preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact-topview-ui-preview
+          path: build/ui-preview/topview-450x800.png
+          retention-days: 7
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
