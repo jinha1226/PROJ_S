@@ -8146,13 +8146,11 @@ func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 
 func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
-	# Independent visitors equip themselves when a floor is populated. Those
-	# actions are useful world history, but they are not player-facing news when
-	# they happen outside the party's currently observed space.
-	if event_type in ["item.equipped","item.unequipped"] \
-			and sim.world.party_encounter.member(int(event.actor_id))==null \
-			and field_turns_active():
-		if not _log_event_currently_visible(event):return false
+	# Remote NPC actions remain canonical world history, but they are not
+	# player-facing news until a party member can witness them.
+	if field_turns_active() and _log_event_has_nonparty_entity(event) \
+			and not _log_event_has_party_entity(event) \
+			and not _log_event_currently_visible(event):return false
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
 			"party.contact_reported",
 			"party.command_issued","party.npc_assaulted",
@@ -8210,11 +8208,36 @@ static func _snapshot_has_settlement_marker(snapshot:Dictionary)->bool:
 	return false
 
 func _log_event_currently_visible(event)->bool:
-	if str(event.type) not in ["item.equipped","item.unequipped"]:return true
-	if sim.world.party_encounter.member(int(event.actor_id))!=null:return true
 	if not field_turns_active():return true
-	return FieldRules.visible_cells(sim.world).has(
-		"%d:%d"%[event.position.x,event.position.y])
+	if _log_event_has_party_entity(event):return true
+	if not _log_event_has_nonparty_entity(event):return true
+	var position:Variant=_log_event_value(event,"position",Vector2i(-1,-1))
+	if not position is Vector2i:return false
+	return FieldRules.visible_cells(sim.world).has("%d:%d"%[position.x,position.y])
+
+
+func _log_event_has_party_entity(event)->bool:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return false
+	for key in ["actor_id","target_id","instigator_id"]:
+		var entity_id:=int(_log_event_value(event,key,-1))
+		if entity_id>0 and sim.world.party_encounter.member(entity_id)!=null:return true
+	return false
+
+
+func _log_event_has_nonparty_entity(event)->bool:
+	if sim==null or sim.world==null:return false
+	for key in ["actor_id","target_id","instigator_id"]:
+		var entity_id:=int(_log_event_value(event,key,-1))
+		if entity_id>0 and sim.world.entities.has(entity_id) \
+				and (sim.world.party_encounter==null \
+					or sim.world.party_encounter.member(entity_id)==null):return true
+	return false
+
+
+func _log_event_value(event,key:String,default_value:Variant)->Variant:
+	if event is Dictionary:return event.get(key,default_value)
+	var value:Variant=event.get(key)
+	return default_value if value==null else value
 
 func load_session_json(encoded: String) -> Dictionary:
 	var decoded = JSON.parse_string(encoded)

@@ -33,9 +33,24 @@ func run():
 				if not visible_cells.has("%d:%d"%[x,y]):unseen=Vector2i(x,y);break
 			if unseen!=Vector2i(-1,-1):break
 		var npc_id:int=s.sim.world.party_encounter.enemy_ids[0]
-		check(unseen!=Vector2i(-1,-1) and not s._log_event_currently_visible({
-			"type":"item.equipped","actor_id":npc_id,"position":unseen}),
-			"synthetic offscreen NPC equipment event is hidden")
+		var party_id:int=s.sim.world.party_encounter.protagonist_id
+		var visible_position:Vector2i=s.sim.world.entities[party_id].position
+		for event_type in ["item.equipped","action.melee_attack",
+				"combat.physical_damage","status.applied","item.used"]:
+			var hidden_event:={"type":event_type,"actor_id":npc_id,"target_id":npc_id,
+				"instigator_id":npc_id,"position":unseen}
+			check(unseen!=Vector2i(-1,-1) and not s._log_event_currently_visible(hidden_event),
+				"offscreen NPC %s event is hidden"%event_type)
+			check(not s._is_important_log_event(hidden_event),
+				"offscreen NPC %s never enters the indexed log"%event_type)
+			var visible_event:Dictionary=hidden_event.duplicate(true)
+			visible_event.position=visible_position
+			check(s._log_event_currently_visible(visible_event),
+				"visible NPC %s event remains readable"%event_type)
+		var party_target_event:={"type":"action.melee_attack","actor_id":npc_id,
+			"target_id":party_id,"instigator_id":npc_id,"position":unseen}
+		check(s._log_event_currently_visible(party_target_event),
+			"an NPC attack involving a party member remains readable")
 		if seed==40:
 			check(s.sim.world.events.any(func(e):return e.type=="item.granted" and e.data.get("definition_id")=="WEAPON_DCSS_CLUB"),"low dex NPC receives compatible club")
 			var saved:String=s.save_session_json();var clone=Session.new()
