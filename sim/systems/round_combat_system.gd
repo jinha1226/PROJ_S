@@ -66,6 +66,7 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 			slot={"accepted":true,"actor_id":id,"status":"CANCELLED","reason":"party_retreat","movement":[],"damage":[],"conditional":false}
 		elif individual and not Rules.engaged(w):slot={"accepted":true,"actor_id":id,"status":"CANCELLED","reason":"combat_ended","movement":[],"damage":[],"conditional":false}
 		elif individual and not ally:slot=execute_individual_enemy(sim,id,step,preview)
+		elif individual and ally:slot=execute_individual_ally(sim,plan,step,preview)
 		else:slot=execute_slot(sim,plan,step,preview)
 		rows.append(slot)
 		if not slot.get("accepted",false):
@@ -77,13 +78,6 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 			incorporate(sim)
 			if ally:
 				ally_acted=true
-				var attack:bool=plan.action.type=="MELEE" and plan.item_operation.is_empty()
-				if attack and slot.status=="DONE":r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
-				var keep_turn:=retain_individual_turn(w,id,plan,slot)
-				if keep_turn:
-					r.plans[key]=Plans.pack(w,Action.hold(id),"USER")
-					r.slot_progress[key]=0
-					r.phase="PLANNING";break
 			# Opportunity budgets replace sub-action cooldown in this ruleset.
 			if ally:w.party_encounter.member(id).busy_until=w.world_time+Rules.ROUND_TIME
 			else:w.party_encounter.enemy_busy_rows[id]=w.world_time+Rules.ROUND_TIME
@@ -116,12 +110,20 @@ static func confirm(sim,round_id:int,revision:int,resuming:bool=false,preview:bo
 		"completed":completed,"time_cost":Rules.ROUND_TIME if completed else 0,
 		"slots":rows,"events_start":start_event,"events_end":w.events.size()}
 
-static func retain_individual_turn(w,id:int,plan:Dictionary,slot:Dictionary)->bool:
-	if not w.can_act(id,w.world_time) or not Rules.engaged(w):return false
-	if slot.status=="CANCELLED":return slot.reason not in ["incapacitated","combat_ended","party_retreat"]
-	if not plan.item_operation.is_empty() or plan.action.type=="SKILL":return false
-	if plan.action.type=="MELEE":return Rules.remaining_attacks(w,id)>0
-	return plan.action.type=="HOLD" and not plan.path.is_empty()
+static func execute_individual_ally(sim,plan:Dictionary,step:int,preview:bool)->Dictionary:
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	var id:=int(plan.actor_id);var key:=str(id)
+	var result:=execute_slot(sim,plan,step,preview)
+	if not result.accepted or result.get("interrupted",false) or plan.action.type!="MELEE" or not plan.item_operation.is_empty():return result
+	if result.status!="DONE":return result
+	r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
+	while Rules.remaining_attacks(w,id)>0 and w.can_act(id,w.world_time) and w.is_explicit_melee_target(int(plan.action.target_id)):
+		var followup:=execute_slot(sim,Plans.pack(w,Action.melee(id,int(plan.action.target_id)),"USER"),step,preview)
+		if not followup.accepted:return followup
+		result.damage.append_array(followup.damage)
+		if followup.status!="DONE":break
+		r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
+	return result
 
 static func execute_individual_enemy(sim,id:int,step:int,preview:bool)->Dictionary:
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat;var key:=str(id)

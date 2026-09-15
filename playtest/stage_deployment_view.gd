@@ -20,8 +20,9 @@ static func apply(host,observation:Dictionary)->void:
 	if not plans.has(str(id)):id=w.party_control_actor_id()
 	var entry:Array=Stage.current(w).entry
 	var origin:=Vector2i(entry[0],entry[1])
-	for y in range(origin.y-2,origin.y+3):
-		for x in range(origin.x-2,origin.x+3):
+	var radius:=mini(2,int(Stage.CONFIG.deployment_radius))
+	for y in range(origin.y-radius,origin.y+radius+1):
+		for x in range(origin.x-radius,origin.x+radius+1):
 			var target:=Vector2i(x,y)
 			if not Stage.Rooms.current(w,target):continue
 			var route:Dictionary=s.sim.party_coordinator.pathfinder.find_path(id,target)

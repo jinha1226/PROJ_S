@@ -72,18 +72,9 @@ func budget_checks(sim,hero:int):
 	check(Rules.attack_budget(w,hero)==3,"very fast attacks cap at three")
 	member.action_speeds.ATTACK=200
 	check(Rules.attack_budget(w,hero)>=2 and Rules.attack_budget(w,hero)<=3,"fast attacks grant multiple strikes")
-	# Move one cell, then attack; no other actor may execute between those actions.
+	# Planning changes neither position nor health; one confirmation ends the actor.
 	var cell:=Vector2i(11,18)
-	var edited:=Plans.edit(sim,hero,{"action":Action.hold(hero).to_dict(),"path":[[cell.x,cell.y]]},r.plan_revision)
-	check(edited.accepted,"stage first movement "+str(edited.get("reason")))
-	var stale:int=r.plan_revision
-	var result:=System.confirm(sim,r.round_id,r.plan_revision)
-	check(result.accepted and not result.completed,"movement keeps current opportunity "+str(result.get("reason"))+System.last_execution_error)
-
-	check(Rules.current_actor(w)==hero and Rules.remaining_move(w,hero)==1,"movement ledger persists")
-	check(result.get("slots",[]).size()==1,"moving does not execute future actors")
-	check(not System.confirm(sim,r.round_id,stale).accepted,"duplicate stale confirmation rejected")
-	check(not Plans.edit(sim,hero,{"action":Action.hold(hero).to_dict(),"path":[[11,19],[11,20]]},r.plan_revision).accepted,"second movement cannot refund budget")
+	var initial:Vector2i=w.entities[hero].position
 	var enemy:int=Stage.enemies(w)[0]
 	var to:=cell+Vector2i.RIGHT
 	var route:Dictionary=sim.pathfinder.find_path(enemy,to)
@@ -96,19 +87,16 @@ func budget_checks(sim,hero:int):
 		w.reindex_entity_occupancy(enemy,old,next)
 	var strikes:int=Rules.attack_budget(w,hero)
 	var start_time:int=w.world_time
-	for i in range(strikes):
-		check(Plans.edit(sim,hero,{"action":Action.melee(hero,enemy).to_dict(),"path":[]},r.plan_revision).accepted,"stage strike %d"%i)
-		result=System.confirm(sim,r.round_id,r.plan_revision)
-		check(result.accepted,"strike accepted %d %s %s"%[i,str(result.get("reason")),System.last_execution_error])
-		if i<strikes-1:
-			check(Rules.current_actor(w)==hero and w.world_time==start_time,"extra strikes keep turn and time")
-			check(Rules.remaining_attacks(w,hero)==strikes-i-1,"attack ledger decrements once")
-			var mid=sim.snapshot()
-			check(mid!=null,"mid-turn snapshot valid")
-			if mid!=null:
-				var saved=preload("res://sim/simulator.gd").from_snapshot(mid)
-				check(saved!=null and saved.snapshot()==mid,"mid-turn move and attack ledgers restore")
-	check(w.world_time==start_time+100,"last strike completes cycle once")
+	var edited:=Plans.edit(sim,hero,{"action":Action.melee(hero,enemy).to_dict(),"path":[[cell.x,cell.y]]},r.plan_revision)
+	check(edited.accepted,"stage movement and attack together "+str(edited.get("reason")))
+	check(w.entities[hero].position==initial,"planning never moves authority")
+	var stale:int=r.plan_revision
+	var result:=System.confirm(sim,r.round_id,r.plan_revision)
+	check(result.accepted,"classic turn execution "+str(result.get("reason"))+System.last_execution_error)
+	check(w.entities[hero].position==cell,"confirmation moves to preview position")
+	check(int(r.slot_attacks.get(str(hero),0))>=1 and int(r.slot_attacks.get(str(hero),0))<=strikes,"same confirmation executes attack budget")
+	check(not System.confirm(sim,r.round_id,stale).accepted,"stale turn confirmation rejected")
+	check(w.world_time==start_time+100,"one confirmation completes solo cycle")
 	check(w.world_state_error().is_empty(),"budget fixture world audit "+w.world_state_error())
 	if w.party_encounter.party_member_ids.size()>1:mixed_checks(sim,hero)
 func mixed_checks(sim,hero:int):
@@ -120,6 +108,15 @@ func mixed_checks(sim,hero:int):
 	if companion not in w.party_encounter.active_party_member_ids:w.party_encounter.active_party_member_ids.append(companion)
 	Fixture.relocate(w,companion,Vector2i(9,17))
 	w.party_encounter.member(companion).action_speeds={"MOVE":25,"ATTACK":25,"CAST":25}
+	r.phase="EXPLORATION";Stage.current(w).started=false
+	check(Plans.begin(sim),"begin companion deployment")
+	r=w.party_encounter.round_combat
+	check(r.phase=="DEPLOYMENT","companion placement phase")
+	check(Plans.edit(sim,companion,{"action":Action.hold(companion).to_dict(),"path":[[10,17]]},r.plan_revision).accepted,"companion deployment editable before its initiative")
+	check(w.entities[companion].position==Vector2i(9,17),"companion deployment remains a preview")
+	check(System.confirm(sim,r.round_id,r.plan_revision).accepted,"confirm companion placement")
+	check(w.entities[companion].position==Vector2i(10,17),"companion deployment position committed")
+	r=w.party_encounter.round_combat
 	r.phase="EXPLORATION";member.action_speeds.ATTACK=100;member.action_speeds.MOVE=200
 	check(Plans.begin(sim),"begin mixed-party round")
 	r=w.party_encounter.round_combat

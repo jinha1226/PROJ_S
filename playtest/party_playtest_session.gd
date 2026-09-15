@@ -3248,6 +3248,9 @@ func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 	if room_enabled() and floor_index==1:return
 	var instance_id:="GROUND_FLOOR%d_RATION"%floor_index
 	if sim.world.item_state.ground_items.item(instance_id)!=null:return
+	# Pickup events survive consumption and room/floor revisits, unlike inventory presence.
+	for event in sim.world.events:
+		if event.type=="item.picked_up" and str(event.data.get("instance_id",""))==instance_id:return
 	var blocked:Array=layout.get("door_positions",[]).duplicate()
 	blocked.append(layout.get("entry_position",Vector2i(-1,-1)))
 	blocked.append(layout.get("exit_position",Vector2i(-1,-1)))
@@ -10586,7 +10589,7 @@ func stage_round_action(action)->Dictionary:
 		if not route.get("found",false):return _rejection_dto("round_path_unreachable")
 		path=[]
 		for point in route.path.slice(1):path.append([point.x,point.y])
-		draft_action=ActionScript.from_dict(current.action)
+		draft_action=ActionScript.hold(actor_id)
 	elif not (room_enabled() and current.source=="USER" and action.type in ["MELEE","SKILL"]):
 		path=[] # Replace AI movement, but preserve explicitly chosen stage movement before attacking.
 	return edit_round_plan(actor_id,{"action":draft_action.to_dict(),"path":path},int(sim.world.party_encounter.round_combat.plan_revision))

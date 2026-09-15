@@ -107,6 +107,9 @@ var _queued_effects:Dictionary={}
 var stage_zoom:=1.10
 var deployment_cells:Array[Vector2i]=[]
 var movement_cells:Array[Vector2i]=[]
+var supply_cache_cells:Array[Vector2i]=[]
+var srpg_attack_cells:Array[Vector2i]=[]
+var srpg_attack_target:=Vector2i(-1,-1)
 
 func stage_motion_busy()->bool:
 	return Time.get_ticks_msec()<_stage_motion_until
@@ -2545,10 +2548,16 @@ func _draw_world_with_emphasis()->void:
 	if _skill_reach_cells.is_empty():
 		for cell in movement_cells:
 			_draw_cell_overlay(cell,Color(0.2,0.6,1.0,0.10),Color(0.3,0.7,1.0,0.35),1.0)
+	for cell in srpg_attack_cells:
+		_draw_cell_overlay(cell,Color(1.0,0.35,0.2,0.12),Color(1.0,0.5,0.3,0.65),1.0)
 	for cell in deployment_cells:
 		_draw_cell_overlay(cell,Color(0.2,0.8,0.9,0.16),Color(0.3,0.9,1.0,0.6),1.0)
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
+	for position in supply_cache_cells:
+		var center:=world_to_pixel_center(position)
+		draw_rect(Rect2(center-Vector2(5,5),Vector2(10,10)),Color(0.2,0.65,0.35))
+		draw_line(center-Vector2(3,0),center+Vector2(3,0),Color.WHITE,1)
 	Perf.end("grid.terrain_passes",begun)
 	begun=Perf.begin()
 	for visual_row in _sorted_visual_actor_rows():
@@ -2560,6 +2569,11 @@ func _draw_world_with_emphasis()->void:
 				camera_offset,frame_actor_sample_msec)
 	_draw_radial_darkness_overlay()
 	Perf.end("grid.actors_darkness",begun)
+	if srpg_attack_target!=Vector2i(-1,-1):
+		var marker:=world_to_pixel_center(srpg_attack_target)-Vector2(0,cell_size_px()*0.8)
+		draw_circle(marker,9,Color(0.9,0.2,0.1))
+		draw_line(marker-Vector2(4,4),marker+Vector2(4,4),Color.WHITE,2)
+		draw_line(marker-Vector2(4,-4),marker+Vector2(4,-4),Color.WHITE,2)
 	_draw_actor_health_bars(frame_actor_sample_msec)
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:

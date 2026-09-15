@@ -2110,6 +2110,15 @@ func _refresh()->void:
 		view_dimensions.y,true)
 	var observation:Dictionary=ui_observation.get("grid",{})
 	preload("res://playtest/stage_deployment_view.gd").apply(self,observation)
+	if session.round_active() and session.round_status().phase!="DEPLOYMENT":
+		var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(selected_member_id),{})
+		if not plan.is_empty() and plan.source=="USER" and not plan.path.is_empty():
+			for cell in observation.get("cells",[]):
+				for actor in cell.get("actors",[]):
+					if int(actor.entity_id)==selected_member_id:
+						var ghost:Dictionary=actor.duplicate(true)
+						ghost.position=plan.destination.duplicate();ghost.display_position=plan.destination.duplicate()
+						ghosts.append(ghost)
 	_decorate_visible_resource_caches(observation)
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -2220,9 +2229,9 @@ func _refresh()->void:
 	else:info_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 
 func _decorate_visible_resource_caches(observation:Dictionary)->void:
-	# The session exposes cache authority only on observed cells. Reuse the
-	# established material glyph path so caches are visible without leaking an
-	# undiscovered coordinate or copying cache state into UI-owned authority.
+	# The session exposes cache authority only on observed cells. Draw supply
+	# caches separately so they can never look like a picked-up ground item.
+	grid.supply_cache_cells.clear()
 	var cells:Variant=observation.get("cells",[])
 	if not cells is Array:return
 	for value in cells:
@@ -2232,7 +2241,7 @@ func _decorate_visible_resource_caches(observation:Dictionary)->void:
 		if not cache is Dictionary or not bool(cache.get("available",false)):continue
 		var visibility:=str(row.get("visibility_state",row.get("visibility",""))).to_upper()
 		if visibility!="VISIBLE":continue
-		row["ground_item_glyph"]="*"
+		grid.supply_cache_cells.append(Vector2i(row.position[0],row.position[1]))
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
@@ -5086,6 +5095,7 @@ func _switch_field_member(member_id:int)->void:
 		var result:Dictionary=session.select_field_actor(member_id)
 		if result.accepted:
 			selected_member_id=member_id;selected_target_id=-1;_clear_move_preview()
+			if session.round_status().phase!="DEPLOYMENT":session.stage_round_action(ActionScript.hold(member_id))
 		_request_refresh();return
 	_cancel_product_rest("rest_user_stop")
 	_cancel_product_auto_explore("auto_explore_user_command",false)
@@ -6759,13 +6769,15 @@ func _focus_battle_enemy(entity_id:int)->void:
 	if grid.stage_motion_busy():return
 	if session.round_active():
 		if not session.FieldRules.visible(session.sim.world,entity_id):return
-		if session.round_status().phase!="DEPLOYMENT" and (_round_attack_targeting or selected_target_id==entity_id):
+		if session.round_status().phase!="DEPLOYMENT" :
 			_round_attack_targeting=false
-			_record_result(session.commit_field_action(ActionScript.melee(selected_member_id,entity_id)),false)
+			var result:Dictionary=session.commit_field_action(ActionScript.melee(selected_member_id,entity_id))
+			_record_result(result,false)
+			if result.get("accepted",false):selected_target_id=entity_id
 		else:
 			selected_target_id=entity_id
 			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
-			notice_text="같은 적을 다시 누르면 현재 캐릭터의 일반공격 지정"
+			notice_text="공격할 적을 선택하세요"
 		_request_refresh();return
 	if session.field_turns_active():
 		_on_actor(entity_id);return
@@ -7196,6 +7208,13 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 
 	if grid!=null:
 		grid.movement_cells=preload("res://sim/round_combat_rules.gd").reachable_cells(session.sim.world)
+		grid.srpg_attack_cells.clear();grid.srpg_attack_target=Vector2i(-1,-1)
+		if session.round_active() and session.round_status().phase!="DEPLOYMENT":
+			var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(selected_member_id),{})
+			if not plan.is_empty() and plan.source=="USER":
+				grid.movement_cells.clear()
+				grid.srpg_attack_cells=preload("res://sim/srpg_attack_preview.gd").cells(session.sim.world,selected_member_id,Vector2i(plan.destination[0],plan.destination[1]))
+				if plan.action.type=="MELEE":grid.srpg_attack_target=Vector2i(plan.target_cell[0],plan.target_cell[1])
 	if round_order_bar!=null:
 		round_order_bar.sync(self)
 		if session.room_enabled() and session.round_status().phase=="DEPLOYMENT":round_order_bar.hide()

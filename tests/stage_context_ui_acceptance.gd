@@ -1,5 +1,6 @@
 extends "res://tests/first_floor_stages_acceptance.gd"
 const Sandbox=preload("res://playtest/party_encounter_sandbox.gd")
+const RoundFixture=preload("res://tests/round_combat_fixture.gd")
 var test_ui
 var sequence_seen:=false
 func tap(b:Control):
@@ -47,7 +48,7 @@ func run():
 	check(s.request_room_exit(hero,"F1_R4_R7",s.sim.world.party_encounter.nine_room_floor.revision).accepted,"enter combat")
 	ui._request_refresh()
 	for i in range(4):await process_frame
-	check(ui.stage_context_bar.get_child_count()==4,"four combat controls")
+	check(ui.stage_context_bar.get_node("StagePortrait%d"%hero)!=null,"deployment actor control")
 	check(not ui.round_order_bar.visible and not ui.combat_action_area.visible,"placement keeps timeline hidden")
 	check(Vector2i(10,17) in ui.grid.deployment_cells,"valid deployment cells highlighted")
 	var original:Vector2i=s.sim.world.entities[hero].position
@@ -69,30 +70,29 @@ func run():
 	check(Vector2i(11,18) in ui.grid.movement_cells and Vector2i(10,18) not in ui.grid.movement_cells,"movement radius marks floor and excludes pillar")
 	check(s.sim.world.entities[hero].position==Vector2i(10,17),"confirmation commits placement")
 	var enemy:int=s.sim.world.party_encounter.enemy_ids.filter(func(id):return s.FieldRules.visible(s.sim.world,id))[0]
+	RoundFixture.relocate(s.sim.world,enemy,Vector2i(11,17))
 	var revision:int=s.round_status().plan_revision
 	ui._on_actor(enemy)
 	for i in range(4):await process_frame
-	check(ui.grid.selected_target_id==enemy,"enemy selection survives refresh")
-	check(s.round_status().plan_revision==revision,"first enemy tap only inspects target")
+	check(s.round_status().plan_revision==revision+1,"one enemy tap reserves attack")
+	check(ui.grid.srpg_attack_target==s.sim.world.entities[enemy].position,"attack icon shown above reserved target")
+
 	if "--capture" in OS.get_cmdline_user_args():
 		await RenderingServer.frame_post_draw
 		check(root.get_texture().get_image().save_png("/tmp/stage-selected-attack.png")==OK,"selected attack capture")
 	ui._on_actor(enemy)
 	for i in range(4):await process_frame
-	check(s.round_status().plan_revision==revision+1,"second tap reserves melee")
-	check(ui.stage_context_bar.get_node("StageProceed").text=="행동 실행","pending action label")
+	check(s.round_status().plan_revision>=revision,"target click preserves valid revision")
+	check(ui.stage_context_bar.get_node("StageProceed").text=="턴 종료","turn end label")
 	check(s.stage_round_action(Action.hold(hero)).accepted,"clear attack before movement test")
 	ui._on_cell(Vector2i(11,18))
 	for i in range(4):await process_frame
+	check(s.sim.world.entities[hero].position==Vector2i(10,17),"move selection preserves authority")
+	check(not ui.grid._ghosts.is_empty(),"destination silhouette shown")
+	check(not ui.grid.srpg_attack_cells.is_empty() and ui.grid.movement_cells.is_empty(),"destination changes movement range to attack range")
 	journal=s.command_journal.size();before=s.sim.world.world_time
 	await tap(ui.stage_context_bar.get_node("StageProceed"))
-	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before,"movement touch keeps same turn without boundary")
-	check(s.round_status().current_actor_id==hero,"movement retains current actor")
-	check(ui.round_order_bar.detail.text.contains("이동 1칸"),"remaining movement visible")
-	check(ui.stage_context_bar.get_node("StageProceed").text=="턴 종료","no pending command offers end turn")
-	journal=s.command_journal.size();before=s.sim.world.world_time
-	await tap(ui.stage_context_bar.get_node("StageProceed"))
-	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before+100,"end turn touch executes one cycle boundary")
+	check(s.command_journal.size()==journal+1 and s.sim.world.world_time==before+100,"turn end executes move and cycle once")
 	for b in ui.stage_context_bar.get_children():
 		check(b.size.x>=44 and b.get_global_rect().end.x<=361 and b.get_global_rect().end.y<=801,"controls remain touch sized and on screen")
 	check(ui.event_label.max_lines_visible==3 and ui.phase_label.visible,"three logs and floor/countdown HUD visible")

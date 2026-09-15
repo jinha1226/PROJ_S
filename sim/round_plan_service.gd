@@ -69,6 +69,9 @@ static func edit(sim,actor_id:int,draft:Dictionary,revision:int)->Dictionary:
 	if action==null or action.actor_id!=actor_id or action.type=="MOVE" or not draft.path is Array:return reject("round_draft_invalid")
 	if action.type in ["MELEE","SKILL"] and action.target_id in w.party_encounter.enemy_ids and not Field.visible(w,action.target_id):return reject("round_target_unseen")
 	var candidate:=pack(w,action,"USER",draft.path)
+	if Rules.individual(w) and r.phase!="DEPLOYMENT" and action.type=="MELEE":
+		var origin:=Vector2i(candidate.destination[0],candidate.destination[1])
+		if not w.entities.has(action.target_id) or not w.entities[action.target_id].position in preload("res://sim/srpg_attack_preview.gd").cells(w,actor_id,origin):return reject("target_out_of_range")
 	# Placement is a zero-time setup, not the first combat movement allowance.
 	if r.phase=="DEPLOYMENT":candidate.move_budget=12
 	candidate.item_operation=draft.get("item_operation",{}).duplicate(true)

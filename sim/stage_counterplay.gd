@@ -27,7 +27,7 @@ static func deployment_error(w,p:Dictionary)->String:
 	var entry:Array=current(w).entry;var origin:=Vector2i(entry[0],entry[1])
 	for raw in p.path:
 		var cell:=Vector2i(raw[0],raw[1])
-		if not Rooms.current(w,cell) or Rooms.distance(origin,cell)>int(CONFIG.deployment_radius):return "deployment_outside_entry"
+		if not Rooms.current(w,cell) or Rooms.distance(origin,cell)>mini(2,int(CONFIG.deployment_radius)):return "deployment_outside_entry"
 	return ""
 
 static func deploy(sim)->Dictionary:
