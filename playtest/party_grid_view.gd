@@ -3314,7 +3314,7 @@ func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
 
 func _observed_tile_spec(row:Dictionary,position:Vector2i)->Dictionary:
 	var neighbors:Dictionary={}
-	if str(row.get("terrain_id",""))=="wall":
+	if str(row.get("terrain_id","")) in ["wall","door_closed","door_open"]:
 		var offsets:={"N":Vector2i.UP,"E":Vector2i.RIGHT,"S":Vector2i.DOWN,"W":Vector2i.LEFT,
 			"NE":Vector2i(1,-1),"SE":Vector2i(1,1),"SW":Vector2i(-1,1),"NW":Vector2i(-1,-1)}
 		for side in offsets:
@@ -3324,6 +3324,11 @@ func _observed_tile_spec(row:Dictionary,position:Vector2i)->Dictionary:
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
+	if str(spec.get("asset_family",""))==TopdownTileAssets.FAMILY:
+		var generated_tint:=Color.WHITE if str(spec.visibility_state)=="VISIBLE" \
+			else Color(0.30,0.32,0.33,0.58)
+		draw_texture_rect(texture,rect.grow(0.35),false,generated_tint)
+		return
 	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
 		var tint:Color=spec.get("tint",Color.WHITE)
 		if str(spec.visibility_state)!="VISIBLE":tint*=Color(0.30,0.32,0.35,0.55)

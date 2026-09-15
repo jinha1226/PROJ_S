@@ -465,10 +465,10 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	check("/terrain/" not in asset_source and "/props/" not in asset_source \
 		and "/ui/" not in asset_source,
 		"actor registry remains isolated from tile and button textures")
-	check("floor1_atlas_16x1_24.png" in tile_source \
-			and "floor2_atlas_16x1_24.png" in tile_source \
-			and TopdownTileAssets.TILE_SIZE==24,
-		"both implemented campaign floors own explicit runtime atlases")
+	check("topdown_tactical64_v1" in tile_source \
+			and "topdown_walls_doors64_v1" in tile_source \
+			and TopdownTileAssets.TILE_SIZE==64,
+		"top view uses the recent generated terrain, wall and door set")
 	var empty_grid=Grid.new()
 	var empty_spec:Dictionary=empty_grid.terrain_glyph_draw_spec(Vector2i.ZERO)
 	check_eq([empty_spec.draw_image,empty_spec.draw_tile_border],[false,false],
@@ -481,9 +481,11 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 	var floor_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i(1,1))
 	var portal_tile:Dictionary=empty_grid.terrain_tile_draw_spec(Vector2i.ZERO)
 	check(bool(floor_tile.visible) and bool(floor_tile.draw_image) \
-			and int(floor_tile.floor_index)==2 and Rect2(floor_tile.region).size==Vector2(24,24),
-		"floor two terrain resolves a bounded atlas region")
-	check(int(portal_tile.tile_index)==15 and not bool(portal_tile.changes_mapping) \
+			and int(floor_tile.floor_index)==2 \
+			and floor_tile.texture.get_size()==Vector2(64,64),
+		"floor two terrain resolves a native generated 64px tile")
+	check(str(portal_tile.sprite_key)=="exit_rune" \
+			and not bool(portal_tile.changes_mapping) \
 			and not bool(portal_tile.changes_fov),
 		"active portal art remains presentation-only and mapping-neutral")
 	for floor_index in [1,2]:
@@ -492,9 +494,8 @@ func test_product_flat_camera_uses_floor_tiles_and_fixed_front_actor_layers() ->
 				var connected_fragment:Dictionary=TopdownTileAssets.tile_spec({
 					"visibility_state":"VISIBLE","terrain_id":terrain_id},position,
 					floor_index)
-				check(int(connected_fragment.get("tile_index",-1)) not in [4,5,6,7,13],
-					"floor %d %s never picks an unconnected road fragment"%[
-						floor_index,terrain_id])
+				check(connected_fragment.texture.get_size()==Vector2(64,64),
+					"floor %d %s resolves generated native art"%[floor_index,terrain_id])
 	empty_grid.free()
 	return finish()
 
