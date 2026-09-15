@@ -8012,7 +8012,8 @@ func _indexed_log_events()->Array:
 func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 	var checked_turn_limit := clampi(turn_limit,0,64)
 	var checked_row_limit := clampi(row_limit,0,500)
-	var important_events:Array=_indexed_log_events()
+	var important_events:Array=_indexed_log_events().filter(func(event):
+		return _log_event_currently_visible(event))
 	var selected_steps: Array = []
 	var selected_events: Array = []
 	if checked_turn_limit > 0 and checked_row_limit > 0:
@@ -8044,7 +8045,8 @@ func combat_log(turn_limit: int = 8, row_limit: int = 80) -> Dictionary:
 
 func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	var important_events:Array=_indexed_log_events()
+	var important_events:Array=_indexed_log_events().filter(func(event):
+		return _log_event_currently_visible(event))
 	var start := maxi(0,important_events.size()-clampi(limit,0,100))
 	for index in range(start,important_events.size()):
 		var event=important_events[index]
@@ -8055,6 +8057,13 @@ func recent_event_log(limit: int = 24) -> Array[Dictionary]:
 
 func _is_important_log_event(event)->bool:
 	var event_type:=str(event.type)
+	# Independent visitors equip themselves when a floor is populated. Those
+	# actions are useful world history, but they are not player-facing news when
+	# they happen outside the party's currently observed space.
+	if event_type in ["item.equipped","item.unequipped"] \
+			and sim.world.party_encounter.member(int(event.actor_id))==null \
+			and field_turns_active():
+		if not _log_event_currently_visible(event):return false
 	if event_type in ["encounter.detected","encounter.party_ambush","encounter.enemy_ambush",
 			"party.contact_reported",
 			"party.command_issued","party.npc_assaulted",
@@ -8110,6 +8119,13 @@ static func _snapshot_has_settlement_marker(snapshot:Dictionary)->bool:
 		if row is Dictionary and str(row.get("type",""))=="base.settlement_initialized":
 			return true
 	return false
+
+func _log_event_currently_visible(event)->bool:
+	if str(event.type) not in ["item.equipped","item.unequipped"]:return true
+	if sim.world.party_encounter.member(int(event.actor_id))!=null:return true
+	if not field_turns_active():return true
+	return FieldRules.visible_cells(sim.world).has(
+		"%d:%d"%[event.position.x,event.position.y])
 
 func load_session_json(encoded: String) -> Dictionary:
 	var decoded = JSON.parse_string(encoded)
