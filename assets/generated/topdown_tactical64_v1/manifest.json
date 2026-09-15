@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "tile_size": 64,
+  "columns": 4,
+  "rows": 4,
+  "view": "orthographic_topdown",
+  "style_reference": "res://assets/illustrated_front/terrain.png",
+  "atlas": "res://assets/generated/topdown_tactical64_v1/runtime/terrain_atlas_4x4_256.png",
+  "tiles": [
+    "stone_floor", "cracked_stone", "mossy_stone", "dirt",
+    "grass", "rubble", "shallow_water", "deep_water",
+    "wall_cap", "pillar", "low_cover", "crate",
+    "iron_plate", "spikes", "exit_rune", "lava"
+  ]
+}
