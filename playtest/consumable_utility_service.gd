@@ -36,8 +36,20 @@ static func options(session,instance:String,actor_id:int=-1)->Array:
 	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance)
 	var inventory=w.inventory_of(owner)
 	var item=inventory.item(instance) if inventory!=null else null
-	if item==null or not Mystery.has(item.definition_id) or not Mystery.known(w,item.definition_id):return []
+	if item==null:return []
+	if item.definition_id.begins_with("POTION_"):return _options(session,instance,actor)
+	if not Mystery.has(item.definition_id) or not Mystery.known(w,item.definition_id):return []
 	return _options(session,instance,actor)
+
+static func potion_targets(w,actor:int,radius:int=5)->Array:
+	var result:Array=[]
+	for id in w.entities:
+		if id==actor or not Runtime.alive(w,id) or not w.occupies_tile(id):continue
+		if Runtime.distance(w.entities[actor].position,w.entities[id].position)>radius:continue
+		if not preload("res://sim/party_perception_registry.gd").field_visible(w,w.entities[actor].position,w.entities[id].position):continue
+		result.append(id)
+	result.sort()
+	return result
 static func _options(session,instance:String,actor_id:int=-1)->Array:
 	var w=session.sim.world;var actor:int=session.consumable_actor_id() if actor_id==-1 else actor_id
 	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance)
@@ -45,6 +57,11 @@ static func _options(session,instance:String,actor_id:int=-1)->Array:
 	var item=inventory.item(instance) if inventory!=null else null
 	if item==null:return []
 	var effect:String=Specs.definition(item.definition_id).effect;var result:Array=[]
+	if item.definition_id.begins_with("POTION_"):
+		result.append({"label":"직접 마시기","selection":{"target_id":actor}})
+		for id in potion_targets(w,actor):
+			result.append({"label":"투척 · "+str(w.entities[id].display_name),"selection":{"target_id":id}})
+		return result
 	if effect=="POISON":result.append({"label":"직접 마시기","selection":{"target_id":actor}})
 	if effect in ["SEAL","POISON"]:
 		for id in enemies(w,actor,5):result.append({"label":("투척 · " if effect=="POISON" else "봉인 · ")+str(w.entities[id].display_name),"selection":{"target_id":id}})
@@ -64,11 +81,21 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 	if item==null or not selection_valid(selection):return session._rejection_dto("invalid_item_selection")
 	var id:String=item.definition_id;var d:Dictionary=Specs.definition(id);var effect:String=d.effect
 	var was_known:bool=Mystery.known(w,id);var choices:=_options(session,instance)
+	if id.begins_with("POTION_"):
+		if selection.is_empty():selection={"target_id":actor}
+		if not choices.any(func(r):return r.selection==selection):return {"accepted":false,"reason":"invalid_target","message":"선택할 수 없는 대상입니다."}
 	if effect in ["BLINK","SEAL","IDENTIFY","POISON"]:
 		if not selection.is_empty() and not choices.any(func(r):return r.selection==selection):return {"accepted":false,"reason":"invalid_target","message":"선택할 수 없는 대상입니다."}
 		if selection.is_empty() and not choices.is_empty():selection=choices[0].selection.duplicate(true)
 		if choices.is_empty() and was_known:return {"accepted":false,"reason":"no_target","message":"사용할 대상이 없습니다."}
-	elif not selection.is_empty():return session._rejection_dto("invalid_item_selection")
+	elif not selection.is_empty() and not id.begins_with("POTION_"):return session._rejection_dto("invalid_item_selection")
+	var target:int=int(selection.get("target_id",actor))
+	var target_entity=w.entities.get(target);var target_member=w.party_encounter.member(target)
+	if target_entity==null:return {"accepted":false,"reason":"invalid_target","message":"선택할 수 없는 대상입니다."}
+	var resource_amount:=0
+	if effect=="HEAL":resource_amount=mini(int(d.power),int(target_entity.max_health)-int(target_entity.health))
+	if effect=="ENERGY" and target_member!=null:resource_amount=mini(int(d.power),preload("res://sim/abilities/active_skill_registry.gd").MAX_ENERGY-int(target_member.energy))
+	if effect in ["HEAL","ENERGY"] and resource_amount<=0:return {"accepted":false,"reason":"resource_full","message":"대상의 자원이 이미 가득 찼습니다."}
 	var destination:Vector2i=hero.position
 	if effect=="BLINK" and selection.has("cell"):destination=Vector2i(selection.cell[0],selection.cell[1])
 	if effect=="TELEPORT":
@@ -80,13 +107,18 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 	var rollback:Dictionary=session.sim.capture_rollback_memento(false);var journal:int=session.command_journal.size();var start:int=w.events.size()
 	var consumed:Dictionary=Ops.commit_use(w,actor,instance,hero.position,session.ITEM_ACTION_TIME_COST)
 	if not consumed.get("accepted",false):return consumed
-	var target:int=int(selection.get("target_id",actor))
 	var source=w.emit_event("consumable.activated",actor,target,hero.position,0,int(consumed.event_id),{"schema_version":1,"definition_id":id,"selection":selection})
 	var ok:bool=source!=null
 	if ok:
 		match effect:
+			"HEAL":
+				target_entity.health+=resource_amount
+				ok=w.emit_event("health.restored",target,target,target_entity.position,resource_amount,source.id,{"schema_version":1,"ruleset_id":"healing-potion-v1","kind":"POTION","health_after":int(target_entity.health)})!=null
+			"ENERGY":
+				target_member.energy+=resource_amount
+				ok=w.emit_event("item.energy_restored",target,target,target_entity.position,resource_amount,source.id,{"schema_version":1,"energy_after":int(target_member.energy)})!=null
 			"HASTE","ARMOR","REGEN","POISON","SLOW","WEAK","CONFUSION":ok=Effects.add(w,actor,target,effect,source.id)
-			"CLEANSE":ok=w.emit_event("consumable.cleansed",actor,actor,hero.position,0,source.id,{"schema_version":1})!=null
+			"CLEANSE":ok=w.emit_event("consumable.cleansed",actor,target,target_entity.position,0,source.id,{"schema_version":1})!=null
 			"BLINK","TELEPORT":
 				if destination!=hero.position:ok=session.sim.movement.commit_preflighted_move(actor,destination,str(w.tile_at(destination).terrain),1,source.id)!=null
 			"SEAL":
@@ -112,7 +144,7 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 					var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,selection.item_id)
 					var selected=w.inventory_of(owner).item(selection.item_id) if owner!=-1 else null
 					ok=selected!=null and w.emit_event("item.identified",actor,actor,hero.position,0,source.id,{"schema_version":1,"definition_id":selected.definition_id})!=null
-	if ok and not was_known:ok=w.emit_event("item.identified",actor,actor,w.event_by_id(int(consumed.event_id)).position,0,int(consumed.event_id),{"schema_version":1,"definition_id":id})!=null
+	if ok and Mystery.has(id) and not was_known:ok=w.emit_event("item.identified",actor,actor,w.event_by_id(int(consumed.event_id)).position,0,int(consumed.event_id),{"schema_version":1,"definition_id":id})!=null
 	w.party_encounter.revision+=1;session._clear_draft()
 	var error:String=w.runtime_step_postcondition_error(start) if ok else "effect_failed"
 	var advanced:Dictionary=session._advance_item_action_time() if error.is_empty() else {"accepted":false,"reason":error}
@@ -122,4 +154,4 @@ static func use(session,instance:String,selection:Dictionary)->Dictionary:
 	while session.command_journal.size()>journal:session.command_journal.pop_back()
 	session.command_journal.append({"kind":"item","operation":{"action":"USE","instance_id":instance,"slot":"","selection":selection}})
 	session._deployment_plan.clear();session._invalidate_explored_presentation_cache()
-	return session._feedback_dto({"accepted":true,"reason":"ok","message":str(d.name)+" · "+str(d.text),"inventory":session.protagonist_inventory(),"visual_effects":advanced.get("visual_effects",[]),"time_cost":session.ITEM_ACTION_TIME_COST})
+	return session._feedback_dto({"accepted":true,"reason":"ok","message":str(d.name)+" · "+str(d.text),"inventory":session.protagonist_inventory(),"visual_effects":advanced.get("visual_effects",[]),"time_cost":session.ITEM_ACTION_TIME_COST,"healed_amount":resource_amount if effect=="HEAL" else 0,"energy_amount":resource_amount if effect=="ENERGY" else 0})

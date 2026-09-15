@@ -53,13 +53,18 @@ static func event_error(world,event)->String:
 	var source=world.event_by_id(event.cause_id)
 	if event.type=="item.identified" and source!=null and source.type=="consumable.activated":
 		return "" if Specs.definition(str(source.data.definition_id)).get("effect")=="IDENTIFY" and has(str(event.data.get("definition_id",""))) and event.actor_id==source.actor_id and event.world_time==source.world_time else "item_identification_invalid"
-	if source==null or source.type!="item.used" or source.actor_id!=event.actor_id or source.target_id!=event.target_id \
-			or source.world_time!=event.world_time or source.step_index!=event.step_index or source.position!=event.position \
-			or event.data.get("schema_version")!=1 or not has(str(source.data.get("definition_id",""))):return "mystery_item_source_invalid"
+	var used=source
+	var thrown:bool=source!=null and source.type=="consumable.activated"
+	if thrown:used=world.event_by_id(source.cause_id)
+	var source_valid:bool=used!=null and used.type=="item.used" and has(str(used.data.get("definition_id",""))) \
+		and used.world_time==event.world_time and used.step_index==event.step_index
+	if thrown:source_valid=source_valid and source.target_id==event.target_id and source.data.get("definition_id")==used.data.get("definition_id")
+	else:source_valid=source_valid and used.actor_id==event.actor_id and used.target_id==event.target_id and used.position==event.position
+	if not source_valid or event.data.get("schema_version")!=1:return "mystery_item_source_invalid"
 	if event.type=="item.identified":
 		if event.magnitude!=0 or event.data!={"schema_version":1,"definition_id":str(source.data.definition_id)}:return "item_identification_invalid"
 	else:
-		var d:=Catalog.definition(str(source.data.definition_id))
+		var d:=Catalog.definition(str(used.data.definition_id))
 		if d.effect_kind!="ENERGY" or event.magnitude<1 or event.magnitude>int(d.effect_power) \
 				or event.data.keys().size()!=2 or not event.data.get("energy_after") is int:return "item_energy_invalid"
 	return ""

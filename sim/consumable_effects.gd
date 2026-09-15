@@ -74,7 +74,7 @@ static func event_error(w,e)->String:
 		"consumable.status":
 			if e.data.get("effect")!=effect or not DURATIONS.has(effect) or e.data.get("until")!=str(e.world_time+int(DURATIONS[effect])) or e.magnitude!=1:return "consumable_status_invalid"
 		"consumable.cleansed":
-			if effect!="CLEANSE" or e.target_id!=e.actor_id:return "consumable_cleanse_invalid"
+			if effect!="CLEANSE" or e.target_id!=source.target_id:return "consumable_cleanse_invalid"
 		"consumable.map":
 			if effect!="MAP" or e.magnitude!=10:return "consumable_map_invalid"
 		_:return "unknown_consumable_event"

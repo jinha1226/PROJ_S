@@ -11,7 +11,9 @@ static func open(ui,rows:Array,choose:Callable)->void:
 	for row in rows:
 		var button:=Button.new();button.text=str(row.label);button.custom_minimum_size.y=48;list.add_child(button)
 		DarkSkin.apply_action_button(button,DarkSkin.CYAN)
-		button.pressed.connect(func():panel.hide();choose.call(row.selection))
+		# Defer the choice until the closing popup has left the tree. Chained
+		# recipient -> use-mode pickers otherwise race under one parent/name.
+		button.pressed.connect(func():panel.hide();choose.call_deferred(row.selection))
 	var cancel:=Button.new();cancel.text="취소";cancel.custom_minimum_size.y=48;layout.add_child(cancel)
 	DarkSkin.apply_action_button(cancel,DarkSkin.CYAN)
 	cancel.pressed.connect(panel.hide);panel.popup_hide.connect(panel.queue_free)

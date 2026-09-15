@@ -7,6 +7,7 @@ static func use(session,instance_id:String,selection:Dictionary={})->Dictionary:
 	var preview:Dictionary=Ops.preview_use(w,id,instance_id)
 	if not preview.get("accepted",false):return session._rejection_dto(str(preview.get("reason")))
 	var definition_id:String=str(preview.definition_id);var d:=Catalog.definition(definition_id)
+	if definition_id.begins_with("POTION_") and not selection.is_empty():return preload("res://playtest/consumable_utility_service.gd").use(session,instance_id,selection)
 	if d.effect_kind=="UTILITY":return preload("res://playtest/consumable_utility_service.gd").use(session,instance_id,selection)
 	var member=w.party_encounter.member(id);var max_energy:int=preload("res://sim/abilities/active_skill_registry.gd").MAX_ENERGY
 	var amount:int=mini(int(d.effect_power),hero.max_health-hero.health if d.effect_kind=="HEAL" else max_energy-member.energy)

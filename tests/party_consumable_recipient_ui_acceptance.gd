@@ -21,6 +21,11 @@ func find_button_with_text(node:Node,needle:String)->Button:
 		if nested!=null:return nested
 	return null
 
+func visible_picker(node:Node):
+	for picker in node.find_children("*","PopupPanel",true,false):
+		if picker.visible:return picker
+	return null
+
 func run()->void:
 	root.size=Vector2i(390,844)
 	var s=Session.new(44,20260828,Session.REGRESSION_SCENARIO_ID)
@@ -43,23 +48,30 @@ func run()->void:
 	var hero_hp:int=w.entities[hero].health
 	var quantity:int=w.inventory_of(hero).item(item_id).quantity
 	ui._on_item_use_selected()
-	var picker=ui.find_child("ConsumableTargetPicker",true,false)
+	var picker=visible_picker(ui)
 	check(picker!=null,"recipient picker opens from item use")
 	if picker!=null:
 		var companion_button:=find_button_with_text(picker,str(w.entities[companion].display_name))
 		check(companion_button!=null,"companion appears as recipient")
 		if companion_button!=null:companion_button.pressed.emit()
-	await process_frame
+	for i in range(3):await process_frame
+	picker=visible_picker(ui)
+	check(picker!=null,"potion use-mode picker opens")
+	if picker!=null:
+		var drink_button:=find_button_with_text(picker,"직접 마시기")
+		check(drink_button!=null,"direct drink remains available")
+		if drink_button!=null:drink_button.pressed.emit()
+	for i in range(3):await process_frame
 	w=s.sim.world
 	party=w.party_encounter
-	check(ui.notice_text.contains("체력이 가득"),"selected full-health companion is evaluated")
+	check(ui.notice_text.contains("이미 가득"),"selected full-health companion is evaluated")
 	check(w.entities[hero].health==hero_hp,"hero is unchanged when companion selected")
 	var remaining=w.inventory_of(hero).item(item_id)
 	check(remaining!=null and remaining.quantity==quantity,"refused companion potion is not consumed")
 	var before_cancel:Variant=s.sim.snapshot()
 	ui.member_item_selected_id=item_id
 	ui._on_item_use_selected()
-	picker=ui.find_child("ConsumableTargetPicker",true,false)
+	picker=visible_picker(ui)
 	check(picker!=null,"recipient picker reopens")
 	if picker!=null:picker.hide()
 	await process_frame
@@ -74,7 +86,7 @@ func run()->void:
 	check(ui.member_item_use_button.text=="먹기","special part uses eat action")
 	check(ui.member_item_popover_body.text.contains("패시브") and ui.member_item_popover_body.text.contains("액티브"),"special part previews acquired ability")
 	ui.member_item_use_button.pressed.emit()
-	picker=ui.find_child("ConsumableTargetPicker",true,false)
+	picker=visible_picker(ui)
 	check(picker!=null,"special-part recipient picker opens")
 	if picker!=null:
 		var essence_button:=find_button_with_text(picker,str(w.entities[companion].display_name))

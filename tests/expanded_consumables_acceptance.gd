@@ -34,7 +34,10 @@ func run():
 		if s.sim==null:check(false,"baseline restore");break
 		var actor:int=s.sim.world.party_control_actor_id();give(s,id)
 		if id=="SCROLL_MYSTERY_IDENTIFY":give(s,"POTION_MYSTERY_HASTE")
-		check(Utility.options(s,"EXP_"+id).is_empty(),"unknown does not expose targeting "+id)
+		var unknown_options:Array=Utility.options(s,"EXP_"+id)
+		if id.begins_with("POTION_"):
+			check(not unknown_options.is_empty() and str(unknown_options[0].label)=="직접 마시기","unknown potion exposes use mode without revealing effect "+id)
+		else:check(unknown_options.is_empty(),"unknown scroll does not expose targeting "+id)
 		var row:Dictionary=s.protagonist_inventory().backpack_rows.filter(func(r):return r.definition_id==id)[0]
 		check(row.use_kind=="UNIDENTIFIED" and row.compact_stat_text=="미감정","hidden "+id)
 		var before_hp:int=s.sim.world.entities[actor].health

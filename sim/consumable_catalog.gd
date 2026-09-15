@@ -1,6 +1,10 @@
 extends RefCounted
 ## Consumable catalogue. Legacy recovery scrolls remain loadable, but no longer drop.
 const SPECS={
+	"POTION_HEALING_MINOR":{"name":"소형 회복 물약","effect":"HEAL","power":20,"text":"HP +20","negative":false},
+	"POTION_HEALING":{"name":"회복 물약","effect":"HEAL","power":35,"text":"HP +35","negative":false},
+	"POTION_HEALING_GREATER":{"name":"상급 회복 물약","effect":"HEAL","power":60,"text":"HP +60","negative":false},
+	"POTION_UNSPECIFIED":{"name":"회복 물약","effect":"HEAL","power":35,"text":"HP +35","negative":false},
 	"POTION_MYSTERY_HEAL":{"name":"활력 물약","effect":"HEAL","power":40,"text":"HP +40","negative":false},
 	"POTION_MYSTERY_MANA":{"name":"마력 물약","effect":"ENERGY","power":6,"text":"MP +6","negative":false},
 	"POTION_MYSTERY_HASTE":{"name":"가속 물약","effect":"HASTE","power":1,"text":"행동 속도 +50% · 6턴","negative":false},

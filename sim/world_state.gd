@@ -5457,10 +5457,14 @@ func _party_health_restoration_error()->String:
 		elif event_type=="health.restored":
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
+			var restoration_source=event_by_id(event.cause_id)
+			var thrown_potion:bool=restoration_kind=="POTION" and restoration_source!=null \
+					and restoration_source.type=="consumable.activated" \
+					and restoration_source.target_id==hero_id
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
 				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL","MONSTER_ABILITY"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
-					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY"] and event.instigator_id!=hero_id \
+					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY"] and event.instigator_id!=hero_id and not thrown_potion \
 					or event.magnitude<=0 \
 					or int(event.data.get("health_after",-1))<1 \
 					or int(event.data.get("health_after",-1))>int(entities[hero_id].max_health):
@@ -5468,11 +5472,12 @@ func _party_health_restoration_error()->String:
 			var expected_after:=mini(int(entities[hero_id].max_health),projected+int(event.magnitude))
 			if int(event.data.health_after)!=expected_after:return "party_health_restoration_amount_invalid"
 			if restoration_kind=="POTION":
-				var source=event_by_id(event.cause_id)
+				var source=event_by_id(restoration_source.cause_id) if thrown_potion else restoration_source
 				var potion_power:=ItemCatalogScript.healing_amount(
 					str(source.data.get("definition_id","")) if source!=null else "")
-				if source==null or source.type!="item.used" or source.actor_id!=hero_id \
-						or source.target_id!=hero_id or source.id>=event.id \
+				if source==null or source.type!="item.used" or source.id>=event.id \
+						or (not thrown_potion and (source.actor_id!=hero_id or source.target_id!=hero_id)) \
+						or (thrown_potion and restoration_source.data.get("definition_id")!=source.data.get("definition_id")) \
 						or source.data.get("use_kind")!="HEALING" \
 						or event.data.ruleset_id!="healing-potion-v1" or potion_power<=0 \
 						or int(event.magnitude)!=mini(potion_power,

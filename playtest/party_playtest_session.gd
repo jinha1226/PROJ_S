@@ -1391,6 +1391,8 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
 		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
+	if carried!=null and str(carried.definition_id).begins_with("POTION_") and not selection.is_empty():
+		return preload("res://playtest/consumable_utility_service.gd").use(self,instance_id,selection)
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
 		sim.world,consumable_actor_id(),instance_id)
