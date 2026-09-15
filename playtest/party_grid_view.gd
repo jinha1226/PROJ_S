@@ -17,6 +17,8 @@ const GRAPHICS_MODE_TACTICAL := "TACTICAL_ISOMETRIC"
 const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D,
 	GRAPHICS_MODE_TACTICAL]
 const TacticalProjection=preload("res://playtest/tactical_board_projection.gd")
+var _tactical_terrain:Node2D
+var _tactical_terrain_revision:=-1
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
@@ -2609,6 +2611,18 @@ func _draw_world_with_emphasis()->void:
 	var frame_actor_sample_msec:=Time.get_ticks_msec()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	var retained:=_retain_terrain_commands and not uses_perspective_projection()
+	var tactical:=uses_tactical_projection()
+	if tactical and _tactical_terrain==null:
+		_tactical_terrain=preload("res://playtest/tactical_board_layer.gd").new()
+		_tactical_terrain.name="TacticalTerrain"
+		_tactical_terrain.show_behind_parent=true
+		add_child(_tactical_terrain)
+	if _tactical_terrain!=null:_tactical_terrain.visible=tactical
+	if tactical and _tactical_terrain_revision!=_static_projection_rebuild_count:
+		var tactical_theme:="cave" if _terrain_theme_floor_index==2 else "dungeon"
+		_tactical_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,
+			visible_cell_count,tactical_theme)
+		_tactical_terrain_revision=_static_projection_rebuild_count
 	if retained and _retained_terrain==null:
 		_retained_terrain=preload("res://playtest/retained_terrain_layer.gd").new()
 		_retained_terrain.name="RetainedTerrain"
@@ -2619,10 +2633,12 @@ func _draw_world_with_emphasis()->void:
 		if _retained_terrain_revision!=_static_projection_rebuild_count:
 			_retained_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,cell_size_px(),palette)
 			_retained_terrain_revision=_static_projection_rebuild_count
-	else:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	elif not tactical:
+		draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec(frame_actor_sample_msec).offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	if retained:_retained_terrain.set_camera_offset(camera_offset+impact_offset)
+	if tactical:_tactical_terrain.position=camera_offset+impact_offset
 	draw_set_transform(camera_offset+impact_offset)
 	if not retained:_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	var begun:=Perf.begin()
