@@ -397,6 +397,9 @@ func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
 
 
 func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
+	var actor_growth=preload("res://sim/party_growth_rules.gd").for_actor(world,attacker_id)
+	if actor_growth!=null and attacker_id!=world.party_encounter.protagonist_id:
+		return int(actor_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])
 	if world.party_encounter!=null and attacker_id==world.party_encounter.protagonist_id \
 			and preload("res://sim/field_turn_rules.gd").enabled(world):
 		return int(world.party_encounter.protagonist_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])

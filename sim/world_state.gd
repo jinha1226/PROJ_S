@@ -379,8 +379,8 @@ func equipment_modifiers(entity_id: int) -> Dictionary:
 	var row = _inventory_ref(entity_id)
 	var result:Dictionary=preload("res://sim/personal_talent_rules.gd").apply_combat(
 		entities.get(entity_id), row.combat_modifier_dto() if row != null else {})
-	if party_encounter!=null and entity_id==party_encounter.protagonist_id and party_encounter.protagonist_growth!=null:
-		var growth=party_encounter.protagonist_growth
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(self,entity_id)
+	if growth!=null:
 		if int(growth.mastery_ranks.DEFENSE)>0:
 			result=result.duplicate(true)
 			var totals:Dictionary=result.get("totals",{})
@@ -3115,7 +3115,7 @@ func _melee_action_event_error(event) -> String:
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return "canonical_weapon_missing"
 		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id) \
-			if event.actor_id==party_encounter.protagonist_id else 0
+			if event.actor_id==party_encounter.protagonist_id else _npc_mastery_before(event.actor_id,weapon.proficiency_id,event.id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
 			int(target_profile.evasion_milli), int(target_profile.armor_flat),
@@ -3323,7 +3323,7 @@ func _melee_defense_action_event_error(event) -> String:
 		var weapon=WeaponRegistryScript.definition(weapon_id)
 		if weapon==null:return "canonical_combined_weapon_missing"
 		var weapon_rank:=_progression_rank_before(weapon.proficiency_id,event.id) \
-			if party_encounter!=null and event.actor_id==party_encounter.protagonist_id else 0
+			if party_encounter!=null and event.actor_id==party_encounter.protagonist_id else _npc_mastery_before(event.actor_id,weapon.proficiency_id,event.id)
 		weapon_spec=WeaponAttackRulesScript.build_attack_spec(weapon_id,weapon_rank,
 			int(attacker_profile.power),int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
 			int(snapshot.effective_evasion_milli),int(snapshot.effective_armor_flat),
@@ -5002,6 +5002,8 @@ func _party_runtime_error() -> String:
 
 
 func _party_growth_build_error(hero) -> String:
+	var npc_error:String=preload("res://sim/party_growth_rules.gd").validation_error(self)
+	if not npc_error.is_empty():return npc_error
 	var growth=party_encounter.protagonist_growth
 	if growth==null or not growth.validation_error().is_empty():
 		return "party_growth_state_invalid"
@@ -5384,6 +5386,14 @@ func _party_progression_error()->String:
 
 func _progression_melee_rank_before(event_id:int)->int:
 	return _progression_rank_before("MELEE",event_id)
+
+func _npc_mastery_before(actor_id:int,skill_id:String,event_id:int)->int:
+	var axis:String="RANGED" if skill_id=="RANGED" else "MELEE"
+	var result:int=0
+	for event in events:
+		if event.id>=event_id:break
+		if event.actor_id==actor_id and event.type=="npc.mastery_spent" and event.data.get("target_id")==axis:result+=1
+	return result
 
 
 func _progression_rank_before(skill_id:String,event_id:int)->int:

@@ -5177,7 +5177,7 @@ func _finish_companion_order_edit()->void:
 	_request_refresh()
 
 func _bind_member_ability(instance_id:String,actor_id:int)->Dictionary:
-	var result:Dictionary=session.bind_ability_item(actor_id,instance_id)
+	var result:Dictionary=session.use_party_item(instance_id,actor_id)
 	if bool(result.get("accepted",false)):
 		_skill_pages[actor_id]=0
 		_request_refresh()
@@ -5207,7 +5207,7 @@ func _refresh_open_member_detail()->void:
 	_update_progression_window(detail.get("progression",{}))
 	member_skill_window.call("set_detail",detail)
 	member_relationship_window.call("set_detail",detail)
-	if member_detail_entity_id==int(party.protagonist_id):mastery_panel.refresh(session)
+	mastery_panel.refresh(session,member_detail_entity_id)
 	member_ability_window.update_rows(session.ability_binding_rows(member_detail_entity_id),session.ability_binding_item_rows(member_detail_entity_id))
 	call_deferred("_measure_member_detail_body")
 
@@ -5365,8 +5365,8 @@ func _apply_member_detail_tab()->void:
 	member_relationship_window.visible=relationship_selected
 	member_skill_window.visible=false
 	member_ability_window.visible=skill_selected
-	mastery_panel.visible=member_detail_entity_id==int(session.sim.world.party_encounter.protagonist_id)
-	if skill_selected and mastery_panel.visible:mastery_panel.refresh(session)
+	mastery_panel.visible=true
+	if skill_selected:mastery_panel.refresh(session,member_detail_entity_id)
 	member_status_equipment_window.visible=member_detail_has_skills \
 		and status_selected
 	member_progression_window.visible=false
@@ -5631,7 +5631,7 @@ func _update_item_inventory_ledger()->void:
 	_detach_item_ledger_children(member_item_equipment_rows)
 	_detach_item_ledger_children(member_item_equipment_grid)
 	_detach_item_ledger_children(member_item_backpack_rows)
-	var dto:Dictionary=session.protagonist_inventory()
+	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
 	var slot_labels:={"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
 		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}
 	var equipment_slots:Array=dto.get("equipment_slots",[])
@@ -5643,15 +5643,15 @@ func _update_item_inventory_ledger()->void:
 		_add_item_grid_slot(member_item_equipment_grid,row,index,slot)
 	var portrait:=PortraitScript.new();portrait.name="EquipmentPortrait";portrait.custom_minimum_size=Vector2(48,64)
 	member_item_equipment_grid.add_child(portrait);member_item_equipment_grid.move_child(portrait,mini(1,member_item_equipment_grid.get_child_count()-1))
-	portrait.set_actor(session.inspect_party_member(int(session.sim.world.party_encounter.protagonist_id)))
+	portrait.set_actor(session.inspect_party_member(member_detail_entity_id))
 	var backpack:Array=dto.get("backpack_rows",[])
 	var capacity:=int(dto.get("capacity",20))
-	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),capacity]
+	member_item_empty_text.text="파티 공용 가방 %d / %d"%[backpack.size(),capacity]
 	var filtered:Array=[]
 	for item in backpack:
 		var category:=str(item.get("category",""))
 		if _item_category=="ALL" or (_item_category=="GEAR" and category in ["WEAPON","ARMOR","ACCESSORY"]) or category==_item_category:filtered.append(item)
-	for index in range(capacity if _item_category=="ALL" else filtered.size()):
+	for index in range(maxi(capacity,filtered.size()) if _item_category=="ALL" else filtered.size()):
 		var row:Dictionary=filtered[index] if index<filtered.size() else {"empty":true}
 		_add_item_grid_slot(member_item_backpack_rows,row,index,"")
 	if member_item_popover!=null and member_item_popover.visible:
@@ -5788,7 +5788,7 @@ func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->
 	_sync_item_grid_selection()
 	if anchor==null:anchor=_find_item_row_button(instance_id,slot)
 	member_item_popover_anchor=anchor
-	var dto:Dictionary=session.protagonist_inventory()
+	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
 	var selected_row:=_selected_item_ledger_row(dto)
 	if selected_row.is_empty():_hide_item_popover();return
 	_configure_item_popover(selected_row,dto)
@@ -5920,7 +5920,7 @@ func _sync_item_grid_selection()->void:
 
 func _on_item_equip_selected()->void:
 	_cancel_navigation_for_item_operation()
-	var dto:Dictionary=session.protagonist_inventory()
+	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
 	var instance_id:=str(member_item_equip_button.get_meta(
 		"item_instance_id",member_item_selected_id)) if member_item_equip_button!=null \
 		else member_item_selected_id
@@ -5935,7 +5935,7 @@ func _on_item_equip_selected()->void:
 	if slot.is_empty():
 		notice_text="이 아이템은 장착할 수 없습니다."
 		action_feedback_text=notice_text;_request_refresh();return
-	var result:Dictionary=session.equip_inventory_item(instance_id,slot)
+	var result:Dictionary=session.party_item_operation("EQUIP",instance_id,slot,member_detail_entity_id)
 
 	_on_item_operation_result(result)
 
@@ -5958,7 +5958,7 @@ func _on_item_unequip_selected()->void:
 		"item_slot",member_item_selected_slot)) if member_item_unequip_button!=null \
 		else member_item_selected_slot
 	if slot.is_empty() and not member_item_selected_id.is_empty():
-		for row in session.protagonist_inventory().get("equipment_slots",[]):
+		for row in session.protagonist_inventory(member_detail_entity_id).get("equipment_slots",[]):
 			if str(row.get("instance_id",""))==member_item_selected_id:
 				slot=str(row.get("slot",""));break
 	_on_item_unequip_slot(slot)
@@ -5968,26 +5968,33 @@ func _on_item_unequip_slot(slot:String)->void:
 	if slot.is_empty():
 		notice_text="해제할 장비 슬롯을 선택하세요."
 		action_feedback_text=notice_text;_request_refresh();return
-	_on_item_operation_result(session.unequip_inventory_slot(slot))
+	_on_item_operation_result(session.party_item_operation("UNEQUIP","",slot,member_detail_entity_id))
 
 func _on_item_drop_selected()->void:
 	_cancel_navigation_for_item_operation()
-	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
+	_on_item_operation_result(session.party_item_operation("DROP",member_item_selected_id,"",member_detail_entity_id))
 
-func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")->void:
+func _on_item_use_selected(selection:Dictionary={},selected_instance:String="",recipient_id:int=-1)->void:
 	_cancel_navigation_for_item_operation()
 	if not selected_instance.is_empty():member_item_selected_id=selected_instance
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
 
+	if recipient_id==-1:
+		var recipients:Array=session.party_consumable_choices(member_item_selected_id)
+		if not recipients.is_empty():
+			var frozen_item:String=member_item_selected_id
+			preload("res://playtest/consumable_target_picker.gd").open(self,recipients,func(choice):_on_item_use_selected({},frozen_item,int(choice.recipient_id)))
+			return
 	if selection.is_empty():
-		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
+		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id,recipient_id)
 		if not choices.is_empty():
 			var frozen_id:String=member_item_selected_id
-			preload("res://playtest/consumable_target_picker.gd").open(self,choices,func(choice):_on_item_use_selected(choice,frozen_id))
+			preload("res://playtest/consumable_target_picker.gd").open(self,choices,func(choice):_on_item_use_selected(choice,frozen_id,recipient_id))
 			return
-	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id,true,selection)
+	var recipient:int=recipient_id if recipient_id!=-1 else session.sim.world.party_control_actor_id()
+	var result:Dictionary=session.use_party_item(member_item_selected_id,recipient,selection)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
 		action_feedback_text=notice_text

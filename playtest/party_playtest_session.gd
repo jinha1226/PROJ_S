@@ -85,6 +85,7 @@ const BaseSettlementRulesScript=preload("res://sim/base_settlement_rules.gd")
 const BaseSettlementServiceScript=preload("res://playtest/base_settlement_service.gd")
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
+var _item_actor_id:int=-1
 const SESSION_FORMAT_VERSION := 5
 const BALANCE_ID := "dcss-balance-0.34.1-v1"
 const BALANCE_TAG := "balance:" + BALANCE_ID
@@ -905,6 +906,17 @@ func _build_protagonist_progression()->Dictionary:
 		"skills":skills}.duplicate(true)
 
 
+func member_progression(actor_id:int)->Dictionary:
+	if actor_id==sim.world.party_encounter.protagonist_id:return protagonist_progression()
+	var status:=mastery_status(actor_id)
+	if status.is_empty():return {}
+	var floor_xp:int=GrowthBuildRegistryScript.xp_floor_for_level(status.level)
+	var next_xp:int=GrowthBuildRegistryScript.xp_floor_for_level(int(status.level)+1)
+	return {"available":true,"level":status.level,"xp_total":status.xp,"xp_current":int(status.xp)-floor_xp,
+		"xp_required":next_xp-floor_xp,"current_level_floor":floor_xp,"next_level_threshold":next_xp,
+		"skills":[],"combat_stats":_member_combat_stats(actor_id),
+		"equipment":{"available":true,"combat_summary":_member_combat_stats(actor_id)}}
+
 func protagonist_growth_build()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false,"reason":"session_not_initialized"}.duplicate(true)
@@ -968,16 +980,31 @@ func spend_species_trait_point(branch_id:String)->Dictionary:
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
 
 
-func spend_mastery_point(axis:String)->Dictionary:
+func spend_mastery_point(axis:String,actor_id:int=-1)->Dictionary:
 	var stop_snapshot:=_auto_explore_stop_snapshot()
 	if stop_snapshot.is_empty() or not stop_snapshot.get("visible_enemy_keys",{}).is_empty() \
 			or str(stop_snapshot.get("safe_phase","")) not in ["GROUPED","GROUPED_COMPLETE"]:
 		return _rejection_dto("mastery_requires_safety")
-	return _commit_growth_point("SPEND_MASTERY_POINT",axis)
+	if actor_id==-1 or actor_id==sim.world.party_encounter.protagonist_id:return _commit_growth_point("SPEND_MASTERY_POINT",axis)
+	var w=sim.world;var member=w.party_encounter.member(actor_id)
+	if member==null or actor_id not in w.party_encounter.active_party_member_ids:return _rejection_dto("mastery_actor_unavailable")
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(w,actor_id)
+	var result:Dictionary=growth.commit_spend_mastery_point(axis)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	var rollback:Dictionary=sim.capture_rollback_memento(false)
+	member.mastery_ranks=result.state.mastery_ranks.duplicate()
+	var event=w.emit_event("npc.mastery_spent",actor_id,actor_id,w.entities[actor_id].position,1,-1,{"target_id":axis})
+	w.party_encounter.revision+=1
+	if event==null or not w.world_state_error().is_empty():
+		sim.restore_rollback_memento(rollback);return _rejection_dto("mastery_commit_failed")
+	command_journal.append({"kind":"npc_mastery","actor_id":str(actor_id),"axis":axis})
+	return _feedback_dto({"accepted":true,"reason":"ok"})
 
-func mastery_status()->Dictionary:
+func mastery_status(actor_id:int=-1)->Dictionary:
 	if sim==null or sim.world.party_encounter==null:return {}
-	var growth=sim.world.party_encounter.protagonist_growth
+	if actor_id==-1:actor_id=sim.world.party_encounter.protagonist_id
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
+	if growth==null:return {}
 	return {"level":growth.level(),"xp":growth.xp_total,"points":growth.mastery_points_available(),
 		"ranks":growth.mastery_ranks.duplicate(),"max_rank":int(growth.Mastery.DATA.max_rank)}
 
@@ -1097,21 +1124,24 @@ func protagonist_equipment()->Dictionary:
 			sim.world.party_control_actor_id())}.duplicate(true)
 
 
-func protagonist_inventory()->Dictionary:
+func protagonist_inventory(actor_id:int=-1)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
 	var state=sim.world.party_encounter
-	var inventory=sim.world.inventory_of(sim.world.party_control_actor_id())
+	if actor_id==-1:actor_id=sim.world.party_control_actor_id()
+	var inventory=sim.world.inventory_of(actor_id)
 	if inventory==null:return {"schema_version":1,"available":false}.duplicate(true)
 	var slot_rows:Array=[]
 	for slot in preload("res://sim/item_definition.gd").EQUIPMENT_SLOTS:
 		var instance_id:=str(inventory.equipped.get(slot,""))
-		slot_rows.append(_item_presentation_row(inventory.item(instance_id),slot,true))
+		slot_rows.append(_item_presentation_row(inventory.item(instance_id),slot,true,actor_id))
 	var backpack_rows:Array=[]
-	for item in inventory.unequipped_items():
-		backpack_rows.append(_item_presentation_row(item,"",false))
-	return {"schema_version":1,"available":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
-		"used_backpack_slots":inventory.used_backpack_slots(),
+	for id in state.active_party_member_ids:
+		var bag=sim.world.inventory_of(id)
+		if bag==null:continue
+		for item in bag.unequipped_items():backpack_rows.append(_item_presentation_row(item,"",false,actor_id))
+	return {"schema_version":1,"available":true,"shared":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
+		"used_backpack_slots":backpack_rows.size(),
 		"equipment_slots":slot_rows,"backpack_rows":backpack_rows,
 		"equipment_bonuses":inventory.equipment_bonuses(),
 		"combat_modifiers":inventory.combat_modifier_dto()}.duplicate(true)
@@ -1298,22 +1328,72 @@ func discard_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DISCARD",instance_id,"")
 
 
+func party_item_operation(action:String,instance_id:String,slot:String,actor_id:int)->Dictionary:
+	if action not in ["EQUIP","UNEQUIP","DROP","DISCARD"]:return _rejection_dto("unknown_item_operation")
+	if actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("item_user_unavailable")
+	var rollback:Dictionary=sim.capture_rollback_memento(false);var journal_size:int=command_journal.size()
+	if action!="UNEQUIP":
+		var routed:Dictionary=preload("res://sim/party_bag_rules.gd").route(sim.world,instance_id,actor_id)
+		if not routed.get("accepted",false):return _rejection_dto(str(routed.reason))
+	_item_actor_id=actor_id
+	var result:=_commit_item_operation(action,instance_id,slot)
+	_item_actor_id=-1
+	if not result.get("accepted",false):
+		_rollback_session_transaction(rollback,journal_size);return result
+	while command_journal.size()>journal_size:command_journal.pop_back()
+	command_journal.append({"kind":"party_item","actor_id":str(actor_id),"action":action,"instance_id":instance_id,"slot":slot})
+	return result
+
+func consumable_actor_id()->int:
+	return _item_actor_id if _item_actor_id!=-1 else sim.world.party_control_actor_id()
+
+func party_consumable_choices(instance_id:String)->Array:
+	var choices:Array=[];var w=sim.world
+	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance_id)
+	if owner==-1:return choices
+	var item=w.inventory_of(owner).item(instance_id)
+	if item.definition_id.begins_with("SCROLL_"):return choices
+	for id in w.party_encounter.active_party_member_ids:
+		if not w.occupies_tile(id):continue
+		var entity=w.entities[id];var member=w.party_encounter.member(id)
+		choices.append({"label":"%s · Lv.%d · HP %d/%d · MP %d/%d"%[entity.display_name,ability_binding_level(id),entity.health,entity.max_health,member.energy,member.max_energy],"selection":{"recipient_id":id}})
+	return choices
+
+func use_party_item(instance_id:String,actor_id:int,selection:Dictionary={})->Dictionary:
+	var rollback:Dictionary=sim.capture_rollback_memento(false);var journal_size:int=command_journal.size()
+	var routed:Dictionary=preload("res://sim/party_bag_rules.gd").route(sim.world,instance_id,actor_id)
+	if not routed.get("accepted",false):return _rejection_dto(str(routed.reason))
+	_item_actor_id=actor_id
+	var result:=use_inventory_item(instance_id,true,selection)
+	_item_actor_id=-1
+	if not result.get("accepted",false):
+		_rollback_session_transaction(rollback,journal_size);return result
+	while command_journal.size()>journal_size:command_journal.pop_back()
+	command_journal.append({"kind":"party_use","instance_id":instance_id,"actor_id":str(actor_id),"selection":selection.duplicate(true)})
+	return result
+
 func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:Dictionary={})->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
-	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
+	var hero=sim.world.entities.get(consumable_actor_id())
+	var combatant=sim.world.combatant_states.get(consumable_actor_id())
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
+	var inventory=sim.world.inventory_of(hero.id)
+	var carried=inventory.item(instance_id) if inventory!=null else null
+	if carried!=null and not ItemRewardRulesScript.ability_for_item(str(carried.definition_id)).is_empty():
+		return bind_ability_item(hero.id,instance_id)
+	if carried!=null and ItemCatalogScript.family(str(carried.definition_id))=="FOOD":
+		return preload("res://playtest/ordinary_food_service.gd").eat(self,instance_id)
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
 		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
-		sim.world,sim.world.party_control_actor_id(),instance_id)
+		sim.world,consumable_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
 	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
@@ -1333,8 +1413,8 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
-	combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
+	state=sim.world.party_encounter;hero=sim.world.entities.get(consumable_actor_id())
+	combatant=sim.world.combatant_states.get(consumable_actor_id())
 	if hero==null or combatant==null or str(combatant.life_state)!="ACTIVE":
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1344,7 +1424,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_heal_not_needed")
 	var consumed:Dictionary=ItemOperationsScript.commit_use(
-		sim.world,sim.world.party_control_actor_id(),instance_id,hero.position,ITEM_ACTION_TIME_COST)
+		sim.world,consumable_actor_id(),instance_id,hero.position,ITEM_ACTION_TIME_COST)
 	if not bool(consumed.get("accepted",false)):
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1356,7 +1436,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 		return _rejection_dto("item_event_failed")
 	var healed:=mini(heal_power,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
-	var restored=sim.world.emit_event("health.restored",sim.world.party_control_actor_id(),sim.world.party_control_actor_id(),
+	var restored=sim.world.emit_event("health.restored",consumable_actor_id(),consumable_actor_id(),
 		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
 			"kind":"POTION","health_after":int(hero.health)})
 	state.revision+=1
@@ -1384,7 +1464,7 @@ func _use_field_potion(instance_id:String)->Dictionary:
 	var rollback:Variant=sim.capture_rollback_memento(false)
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var start:int=sim.world.events.size();var journal_size:=command_journal.size()
-	var id:int=sim.world.party_control_actor_id();var hero=sim.world.entities[id]
+	var id:int=consumable_actor_id();var hero=sim.world.entities[id]
 	var preview:Dictionary=ItemOperationsScript.preview_use(sim.world,id,instance_id)
 	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
 	if not bool(preview.get("accepted",false)) or heal_power<=0:
@@ -1426,10 +1506,10 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		return _rejection_dto("run_complete")
 	if not sim.world.is_settled():
 		return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
-	if hero==null or sim.world.item_state.inventory(sim.world.party_control_actor_id())==null:
+	var hero=sim.world.entities.get(consumable_actor_id())
+	if hero==null or sim.world.item_state.inventory(consumable_actor_id())==null:
 		return _rejection_dto("item_actor_missing")
-	var hero_id:int=sim.world.party_control_actor_id()
+	var hero_id:int=consumable_actor_id()
 
 	var preview:Dictionary
 	match action:
@@ -1457,8 +1537,8 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
-	hero_id=sim.world.party_control_actor_id()
+	state=sim.world.party_encounter;hero=sim.world.entities.get(consumable_actor_id())
+	hero_id=consumable_actor_id()
 	# The turn resolver already checked its response. Audit the item's new tail
 	# separately; save/load and rollback retain exhaustive history validation.
 	var item_event_start:int=sim.world.events.size()
@@ -1626,14 +1706,14 @@ func _commit_item_time_party_turn(hero_id:int)->Dictionary:
 	return commit_turn()
 
 
-func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
+func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dictionary:
 	if item==null:return {"slot":slot,"equipped":equipped,"empty":true}.duplicate(true)
 	var definition=ItemRegistryScript.definition(item.definition_id)
 	var requirements:Dictionary=definition.requirements.duplicate(true)
 	var stats:=ActorStatRulesScript.baseline_stats()
 	if sim!=null and sim.world!=null and sim.world.party_encounter!=null:
 		stats=ActorStatRulesScript.for_entity(sim.world,
-			int(sim.world.party_control_actor_id()))
+			actor_id if actor_id!=-1 else int(sim.world.party_control_actor_id()))
 	var requirement_parts:Array[String]=[]
 	for stat_id in ActorStatRulesScript.STAT_IDS:
 		var required:=int(requirements.get(stat_id,0))
@@ -1667,8 +1747,9 @@ func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 		var weapon=WeaponRegistryScript.definition(str(definition.weapon_id))
 		if weapon!=null:
 			var state=sim.world.party_encounter
-			var rank:int=sim.melee._weapon_proficiency_rank(sim.world.party_control_actor_id(),str(weapon.proficiency_id))
-			var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
+			var inspected_actor:=actor_id if actor_id!=-1 else sim.world.party_control_actor_id()
+			var rank:int=sim.melee._weapon_proficiency_rank(inspected_actor,str(weapon.proficiency_id))
+			var combatant=sim.world.combatant_states.get(inspected_actor)
 			var profile:=CombatProfileRegistryScript.profile(combatant.combat_profile_id) \
 				if combatant!=null else {}
 			var attack:=WeaponAttackRulesScript.build_attack_spec(weapon.weapon_id,rank,
@@ -2603,9 +2684,8 @@ func ability_binding_level(actor_id:int)->int:
 	if actor_id==int(state.protagonist_id) and state.protagonist_progression!=null:
 		return ProgressionRegistryScript.level_for_xp(
 			int(state.protagonist_progression.xp_total))
-	# Companion level progression is not yet an independent authority. Keep its
-	# safe baseline at level 1 rather than deriving a level from unrelated combat.
-	return 1
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
+	return growth.level() if growth!=null else 1
 
 
 func ability_binding_rows(actor_id:int)->Array[Dictionary]:
@@ -2637,9 +2717,11 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null:return rows
-	var inventory=sim.world.inventory_of(actor_id)
-	if inventory==null:return rows
-	for item in inventory.backpack:
+	var shared_items:Array=[]
+	for id in sim.world.party_encounter.active_party_member_ids:
+		var inventory=sim.world.inventory_of(id)
+		if inventory!=null:shared_items.append_array(inventory.unequipped_items())
+	for item in shared_items:
 		var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
 		var catalog:Dictionary=preload("res://sim/abilities/monster_ability_catalog.gd").for_item(str(item.definition_id))
 		if (ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id)) and catalog.is_empty():continue
@@ -7554,10 +7636,7 @@ func _member_combat_stats(entity_id:int,include_explanations:bool=false)->Dictio
 		ItemOperationsScript.equipped_weapon_id(sim.world,entity_id))
 	var rank:=0
 	var state=sim.world.party_encounter
-	if weapon!=null and state!=null and int(state.protagonist_id)==entity_id \
-			and state.protagonist_progression!=null:
-		rank=state.protagonist_progression.rank(str(weapon.proficiency_id))
-		if FieldRules.enabled(sim.world):rank=int(state.protagonist_growth.mastery_ranks["RANGED" if weapon.proficiency_id=="RANGED" else "MELEE"])
+	if weapon!=null:rank=sim.melee._weapon_proficiency_rank(entity_id,str(weapon.proficiency_id))
 	var spec:Dictionary={}
 	if weapon!=null:
 		spec=WeaponAttackRulesScript.build_attack_spec(str(weapon.weapon_id),rank,
@@ -7593,7 +7672,8 @@ func _combat_stat_explanations(entity_id:int,profile:Dictionary,attack:Dictionar
 	descriptions["공격력"]="기본 %d + 무기 %d + 숙련 보정 %d = %d\n능력치 보정 × %.3f\n최종 공격력 %d (소수점 버림)\n\n숙련 레벨 %d · %s\n%s\n\n대상의 방어·막기 적용 전 수치입니다."%[base,weapon,training,base+weapon+training,1.0+scale/1000.0,int(attack.get("raw_damage",base)),int(attack.get("proficiency_rank",0)),str(attack.get("weapon_label","없음")),"\n".join(scaling_lines)]
 	var defense_rank:=0
 	var party=sim.world.party_encounter
-	if party!=null and party.protagonist_id==entity_id:defense_rank=int(party.protagonist_growth.mastery_ranks.DEFENSE)
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,entity_id)
+	if growth!=null:defense_rank=int(growth.mastery_ranks.DEFENSE)
 	for entry in [["방어력","armor_flat","effective_armor_flat"],["회피율","dodge_milli","effective_evasion_milli"],["막기율","parry_milli","parry_milli"]]:
 		var label:=str(entry[0]);var key:=str(entry[1]);var result:=int(defense.get(entry[2],0))
 		var initial:=int(profile.get("armor_flat" if key=="armor_flat" else "evasion_milli",0)) if key!="parry_milli" else 0
@@ -7873,7 +7953,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
 		"attack_assessment":npc_attack_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" else {},
-		"progression":protagonist_progression() if member.role=="PROTAGONIST" else {},
+		"progression":member_progression(entity_id),
 		"growth_build":protagonist_growth_build() if member.role=="PROTAGONIST" else {},
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
@@ -8463,6 +8543,9 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
+			"party_item":replay_result=replay.party_item_operation(str(row.action),str(row.instance_id),str(row.slot),int(row.actor_id))
+			"npc_mastery":replay_result=replay.spend_mastery_point(str(row.axis),int(row.actor_id))
+			"party_use":replay_result=replay.use_party_item(str(row.instance_id),int(row.actor_id),row.selection)
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
 			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation,not row.has("ruleset_id"))
@@ -8795,6 +8878,12 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
+			"party_item":
+				if keys!=["action","actor_id","instance_id","kind","slot"] or not Int64CodecScript.is_canonical(row.actor_id) or row.action not in ["EQUIP","UNEQUIP","DROP","DISCARD"] or not row.instance_id is String or not row.slot is String:return "invalid_party_item_journal"
+			"npc_mastery":
+				if keys!=["actor_id","axis","kind"] or not Int64CodecScript.is_canonical(row.actor_id) or row.axis not in ["MELEE","RANGED","MAGIC","DEFENSE"]:return "invalid_npc_mastery_journal"
+			"party_use":
+				if keys!=["actor_id","instance_id","kind","selection"] or not Int64CodecScript.is_canonical(row.actor_id) or not row.instance_id is String or not row.selection is Dictionary or not preload("res://playtest/consumable_utility_service.gd").selection_valid(row.selection):return "invalid_party_use_journal"
 			"population":
 				if keys!=["kind","operation"] or not preload("res://sim/town_population_rules.gd").interaction_error(row.get("operation")).is_empty():
 					return "invalid_population_journal"
