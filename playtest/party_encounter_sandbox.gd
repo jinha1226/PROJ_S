@@ -2366,7 +2366,8 @@ func _refresh_continuous_exploration_surface(status:Dictionary,
 			CONTINUOUS_CAMERA_SETTLE_MSEC if continuous_motion \
 			else MANUAL_CAMERA_SETTLE_MSEC,view_dimensions.y)
 	else:grid.set_view_window(15)
-	grid.set_selection(selected_member_id,-1);grid.set_intent_overlays([])
+	grid.set_selection(selected_member_id,selected_target_id)
+	grid.set_intent_overlays(session.turn_intent_overlays())
 	grid.set_speech_bubbles(session.world_speech_bubbles() \
 		if session.has_method("world_speech_bubbles") else [])
 	PerfProbeScript.end("ui.camera_speech",_pcam)
@@ -6573,6 +6574,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
+	grid.set_actor_emphasis(entity_id,1400)
 	if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.sim.world.entities.has(entity_id):
 		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():

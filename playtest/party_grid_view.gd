@@ -69,6 +69,7 @@ var _cells: Dictionary = {}
 var _actors: Array[Dictionary] = []
 var _ghosts: Array[Dictionary] = []
 var _intent_overlays: Array[Dictionary] = []
+var _intent_reveal_until: Dictionary = {}
 var _secondary_intent_overlays: Array[Dictionary] = []
 var _enemy_vision_overlays: Array[Dictionary] = []
 var _route_path: Array[Vector2i] = []
@@ -669,7 +670,7 @@ func clear_transient_visuals()->void:
 	_awareness_pulses.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
-	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
+	_intent_overlays.clear();_secondary_intent_overlays.clear();_intent_reveal_until.clear();_ghosts.clear()
 	_speech_bubbles.clear();_callout_lifetimes.clear()
 	_route_path.clear();_route_completed_steps=0;_route_valid=false
 	_exploration_follow_plan.clear()
@@ -844,6 +845,11 @@ func actor_emphasis_active(entity_id:int)->bool:
 	return Time.get_ticks_msec()<int(_actor_emphasis.get(entity_id,-1)) and actor_visual_center(entity_id).x>=0
 
 func _process(_delta:float)->void:
+	if not _intent_reveal_until.is_empty():
+		for actor_id in _intent_reveal_until.keys():
+			if Time.get_ticks_msec()>=int(_intent_reveal_until[actor_id]):
+				_intent_reveal_until.erase(actor_id)
+		queue_redraw()
 	# Expiring the final motion still changes the rendered pose and camera.
 	# Draw that snapped endpoint before disabling processing; otherwise cached
 	# canvas commands retain the previous frame's offset until the next action.
@@ -877,7 +883,7 @@ func _process(_delta:float)->void:
 		melee_vfx.queue_redraw()
 
 func _update_process_enabled()->void:
-	set_process(not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
+	set_process(not _intent_reveal_until.is_empty() or not _active_visual_effects.is_empty() or not _actor_motions.is_empty() \
 		or not _camera_settle.is_empty() or not _awareness_pulses.is_empty() or not _actor_emphasis.is_empty())
 
 func view_bounds()->Rect2i:return Rect2i(view_origin,
@@ -1056,6 +1062,10 @@ func route_draw_spec() -> Dictionary:
 		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false,
 		"draw_endpoint_markers":false,"draw_ground_markers":false}.duplicate(true)
 
+func _intent_signature(row:Dictionary)->Array:
+	return [row.get("type",""),row.get("from_position",[]),row.get("destination",[]),
+		row.get("target_id",-1),row.get("target_position",[]),row.get("skill_id","")]
+
 func set_intent_overlays(rows: Array) -> void:
 	var next_intents:Array[Dictionary]=[];var next_secondary:Array[Dictionary]=[]
 	for row in rows:
@@ -1064,7 +1074,18 @@ func set_intent_overlays(rows: Array) -> void:
 		if secondary is Dictionary:next_secondary.append(secondary.duplicate(true))
 		next_intents.append(copy)
 	if _intent_overlays==next_intents and _secondary_intent_overlays==next_secondary:return
+	var previous:Dictionary={}
+	for row in _intent_overlays:previous[int(row.get("actor_id",-1))]=row
+	var present:Dictionary={}
+	for row in next_intents:
+		var actor_id:int=int(row.get("actor_id",-1))
+		present[actor_id]=true
+		if bool(row.get("compact_intent",false)) and _intent_signature(previous.get(actor_id,{}))!=_intent_signature(row):
+			_intent_reveal_until[actor_id]=Time.get_ticks_msec()+1200
+	for actor_id in _intent_reveal_until.keys():
+		if not present.has(actor_id):_intent_reveal_until.erase(actor_id)
 	_intent_overlays=next_intents;_secondary_intent_overlays=next_secondary
+	_update_process_enabled()
 	queue_redraw()
 
 
@@ -3969,6 +3990,9 @@ func _draw_intent(intent: Dictionary) -> void:
 	if not _cell_allows_overlay(origin):return
 	var spec := intent_draw_spec(intent)
 	if not bool(spec.visible):return
+	if bool(intent.get("compact_intent",false)):
+		_draw_compact_intent(intent,spec)
+		return
 	var color := Color(str(spec.color_hex))
 	color.a*=float(spec.opacity)
 	var action_type := str(spec.action_type)
@@ -3991,6 +4015,49 @@ func _draw_intent(intent: Dictionary) -> void:
 		var center := world_to_pixel_center(origin); var radius := cell_size_px() * 0.30
 		_draw_ring(center, radius, color, float(spec.line_width), bool(spec.dashed), int(spec.dash_segments))
 		_draw_source_marker(origin, str(spec.marker_style), color)
+
+func _draw_compact_intent(intent:Dictionary,spec:Dictionary)->void:
+	var kind:String=str(spec.action_type)
+	if kind not in ["MOVE","MELEE","SKILL"]:return
+	# A healing action must not look like an incoming attack.
+	if kind=="SKILL" and str(intent.get("skill_id",""))=="MEND":return
+	var actor_id:int=int(intent.get("actor_id",-1))
+	var detail:bool=actor_id==selected_actor_id or actor_id==selected_target_id or actor_emphasis_active(actor_id) or Time.get_ticks_msec()<int(_intent_reveal_until.get(actor_id,0))
+	if kind=="MOVE" and not detail:return
+	var origin:Vector2i=_array_to_world_position(intent.get("from_position",[]))
+	var target:Vector2i=_array_to_world_position(intent.get("destination",[]) if kind=="MOVE" else intent.get("target_position",[]))
+	if not _cell_allows_overlay(origin) or not _cell_allows_overlay(target):return
+	var start:Vector2=world_to_pixel_center(origin)
+	var finish:Vector2=world_to_pixel_center(target)
+	var delta:Vector2=finish-start
+	if delta.length()<1.0:return
+	var direction:Vector2=delta.normalized()
+	var side:Vector2=Vector2(-direction.y,direction.x)
+	var radius:float=cell_size_px()*0.30
+	var color:Color=Color(str(spec.color_hex))
+	color.a*=float(spec.opacity)
+	var outline:Color=Color(0.04,0.08,0.12,color.a*0.85)
+	var end:Vector2=finish-direction*radius
+	if detail:
+		var points:PackedVector2Array=PackedVector2Array()
+		var begin:Vector2=start+direction*radius
+		for index in range(17):
+			var t:float=float(index)/16.0
+			points.append(begin.lerp(end,t)+side*sin(t*PI)*minf(10.0,delta.length()*0.10))
+		for index in range(16):
+			if kind=="MOVE" and index%4>=2:continue
+			draw_line(points[index],points[index+1],outline,4.0,true)
+			draw_line(points[index],points[index+1],color,1.7,true)
+	if kind=="MOVE":
+		draw_arc(finish,cell_size_px()*0.13,0,TAU,20,outline,4.0,true)
+		draw_arc(finish,cell_size_px()*0.13,0,TAU,20,color,1.7,true)
+	else:
+		var tip:Vector2=end+direction*3.0
+		var back:Vector2=end-direction*5.0
+		var triangle:PackedVector2Array=PackedVector2Array([tip,back+side*4.0,back-side*4.0])
+		draw_colored_polygon(triangle,color)
+		draw_polyline(PackedVector2Array([triangle[0],triangle[1],triangle[2],triangle[0]]),outline,1.0,true)
+
 
 func intent_draw_spec(intent: Dictionary) -> Dictionary:
 	# Presentation DTO fields are authoritative. Source-based defaults only keep

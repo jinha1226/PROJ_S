@@ -6388,7 +6388,7 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return rows
 	var state = sim.world.party_encounter
-	if state.safe_phase != "ENGAGED": return rows
+	if state.safe_phase != "ENGAGED" and not field_turns_active(): return rows
 	var hero = sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero == null: return rows
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
@@ -6418,8 +6418,9 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 			headline = "%s · 방어" % _name(enemy_id)
 			reason = "접근할 길이 막혀 자리를 지키며 방어합니다."
 		rows.append({"schema_version":1, "source":"ENEMY_FORECAST",
-			"source_label":"적 현재 예상", "source_color":"#ff756b",
-			"line_style":"DASHED_THIN", "marker_style":"CIRCLE",
+			"source_label":"적 현재 예상", "source_color":"#ffa45b",
+			"compact_intent":true,"approximate":true,"automatic_suggestion":null,
+			"line_style":"DASHED_THIN" if action_type=="MOVE" else "SOLID", "marker_style":"CIRCLE",
 			"actor_id":enemy_id, "actor_name":_name(enemy_id),
 			"target_id":target_id, "target_name":_name(target_id),
 			"type":action_type, "type_label":{"HOLD":"방어", "MOVE":"이동",
@@ -6529,7 +6530,7 @@ func turn_intent_overlays() -> Array[Dictionary]:
 				companions.append(id)
 		# Solo travel has no companion intention to predict. Do not build an AI
 		# tactical board for an empty result on every portrait refresh.
-		if companions.is_empty():return rows
+		if companions.is_empty():return enemy_intent_forecasts()
 		var hold=FieldTurns.Action.hold(control)
 		var board:Dictionary=FieldTurns.Board.build(world,hold)
 		for id in companions:
@@ -6552,12 +6553,13 @@ func turn_intent_overlays() -> Array[Dictionary]:
 				"type_label":str({"HOLD":"대기","MOVE":"이동","MELEE":"공격","SKILL":"스킬"}.get(action.type,action.type)),
 				"source_label":"예상","automatic_suggestion":null,
 				"target_id":action.target_id,"target_position":[target.x,target.y],
-				"source_color":"#ff5555" if action.type in ["MELEE","SKILL"] else "#75c8ff",
-				"opacity":0.32,"skill_id":action.skill_id,"callout_key":"%s:%s:%d:%s"%[str(decision.get("selected_action_id","")),action.type,action.target_id,action.skill_id],
-				"line_style":"DASHED_THIN","marker_style":"CIRCLE","draw_connector":true,
+				"source_color":"#59d5e8","compact_intent":true,
+				"opacity":0.9,"skill_id":action.skill_id,"callout_key":"%s:%s:%d:%s"%[str(decision.get("selected_action_id","")),action.type,action.target_id,action.skill_id],
+				"line_style":"DASHED_THIN" if action.type=="MOVE" else "SOLID","marker_style":"CIRCLE","draw_connector":true,
 				"approximate":true,"ready_in":maxi(0,member.busy_until-world.world_time),
 				"speech_headline":callout,
 				"reason":"field_preview","resolution_note":"","speech_reason_summary":"입력 후 상황에 따라 변경","reason_text":""})
+		rows.append_array(enemy_intent_forecasts())
 		return rows
 	if _protagonist_draft == null: return rows
 	var explanation_by_actor: Dictionary = {}
