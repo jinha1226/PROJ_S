@@ -1690,7 +1690,7 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 	# paper-doll and bar locked together throughout companion and camera motion.
 	var bounds:Rect2
 	var bar_center_x:=0.0
-	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+	if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
 		var actor_spec:=fixed_front_actor_render_spec(actor,false,sample_time_ms,
 			camera_offset)
 		if bool(actor_spec.get("visible",false)) and bool(actor_spec.get("uses_sprite",false)):
@@ -2390,6 +2390,8 @@ func _sorted_visual_actor_rows()->Array[Dictionary]:
 	for ghost in _ghosts:rows.append({"actor":ghost,"ghost":true})
 	rows.sort_custom(func(a,b):
 		var pa:=_position_from_actor(a.actor);var pb:=_position_from_actor(b.actor)
+		if uses_tactical_projection() and pa.x+pa.y!=pb.x+pb.y:
+			return pa.x+pa.y<pb.x+pb.y
 		if pa.y!=pb.y:return pa.y<pb.y
 		if pa.x!=pb.x:return pa.x<pb.x
 		var aid:=int(a.actor.get("entity_id",-1));var bid:=int(b.actor.get("entity_id",-1))
@@ -2662,7 +2664,7 @@ func _draw_world_with_emphasis()->void:
 	Perf.end("grid.terrain_passes",begun)
 	begun=Perf.begin()
 	for visual_row in _sorted_visual_actor_rows():
-		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
+		if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
 			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),
 				camera_offset,frame_actor_sample_msec)
 		else:
@@ -2781,7 +2783,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
 	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
-	var foot_y:=center.y+cell*0.42
+	var foot_y:=center.y+cell*(0.06 if uses_tactical_projection() else 0.42)
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var source_canvas:Vector2=layer_spec.get("source_canvas_size",Vector2(24,24))
 	var source_center_offset:Vector2=layer_spec.get(
@@ -3268,6 +3270,7 @@ func _darkness_vertex_color(sample:Dictionary)->Color:
 	return Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
+	if uses_tactical_projection():return
 	if _retained_terrain!=null and _retained_terrain.visible and not _retained_terrain.has_fallback:return
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3349,6 +3352,7 @@ func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
 	# Runtime top-down wall tiles already contain their own connected silhouette.
 	# ASCII bridges are retained only for the optional diorama renderer.
+	if uses_tactical_projection():return []
 	if not uses_perspective_projection():return []
 	_ensure_static_projection_cache()
 	var rows:Array[Dictionary]=[]
@@ -3408,6 +3412,7 @@ func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)
 		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
+	if uses_tactical_projection():return
 	if not uses_perspective_projection():return # Material identity is in the tile image.
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3776,7 +3781,7 @@ func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector
 	return points
 
 func _draw_feature_cue(rect:Rect2,feature_id:String,opacity:float=1.0,live:bool=true)->void:
-	if not uses_perspective_projection():
+	if not uses_perspective_projection() or uses_tactical_projection():
 		WorldEffectAssets.draw_icon(self,str(WorldEffectAssets.FEATURE_IDS.get(feature_id,"")),
 			rect,Color(1,1,1,opacity) if live else Color(0.46,0.47,0.48,opacity))
 		return
@@ -4075,11 +4080,30 @@ func _draw_cursor_preview() -> void:
 	var spec:=cursor_preview_draw_spec()
 	if not bool(spec.visible):return
 	var color:=Color(str(spec.color_hex))
+	if uses_tactical_projection():
+		_draw_cell_overlay(cursor_cell,Color(color,0.08),color,1.0)
+		return
 	var center:Vector2=spec.pixel_center;var radius:=float(spec.radius)
 	draw_circle(center,radius,Color(color,0.10))
 	draw_arc(center,radius,0,TAU,20,color,3.0)
 	if preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
+
+func cell_overlay_polygon(position:Vector2i,inset_ratio:float=0.08)->PackedVector2Array:
+	var polygon:=world_cell_polygon(position)
+	if polygon.size()!=4:return PackedVector2Array()
+	var center:Vector2=(polygon[0]+polygon[2])*0.5
+	for index in range(polygon.size()):
+		polygon[index]=polygon[index].lerp(center,clampf(inset_ratio,0.0,0.95))
+	return polygon
+
+func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)->void:
+	var polygon:=cell_overlay_polygon(position)
+	if polygon.size()!=4:return
+	if fill.a>0.0:draw_colored_polygon(polygon,fill)
+	if edge.a>0.0:
+		polygon.append(polygon[0])
+		draw_polyline(polygon,edge,width,true)
 
 func cursor_preview_draw_spec()->Dictionary:
 	var suppressed_by_route:=_route_path.size()>=2
