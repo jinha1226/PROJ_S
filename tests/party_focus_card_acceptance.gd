@@ -68,7 +68,8 @@ func run():
 	if ui.grid._actor_by_id(target).is_empty():check(not spec.visible,"unseen target has no map marker")
 	check(session.sim.snapshot()==snapshot,"marker queries do not mutate world")
 	ui.grid.set_selection(hero,target)
-	check(ui.grid.selection_overlay_draw_specs().all(func(row):return row.kind!="TARGET"),"no personal target marker")
+	if not ui.grid._actor_by_id(target).is_empty():
+		check(ui.grid.selection_overlay_draw_specs().any(func(row):return row.kind=="TARGET" and row.entity_id==target),"personal target marker")
 	var loaded=Session.new()
 	check(loaded.load_session_json(session.save_session_json()).accepted,"command save loads")
 	check(loaded.sim.snapshot()==session.sim.snapshot(),"command replays exactly")

@@ -1761,15 +1761,38 @@ func ground_item_draw_specs()->Array[Dictionary]:
 
 func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
+	var targets:Dictionary={}
+	var predicted_actors:Dictionary={}
+	# Current companion intentions are forecasts, not the party focus directive.
+	# Only offensive actions against visible enemies receive target brackets.
+	for intent in _intent_overlays:
+		var source:=_actor_by_id(int(intent.get("actor_id",-1)))
+		if source.is_empty() or _is_enemy_actor(source):continue
+		predicted_actors[int(intent.get("actor_id",-1))]=true
+		if str(intent.get("type","")) not in ["MELEE","SKILL"]:continue
+		var target_id:=int(intent.get("target_id",-1))
+		var target:=_actor_by_id(target_id)
+		if target.is_empty() or not _is_enemy_actor(target) or int(target.get("health",0))<=0:continue
+		var label:="나" if bool(source.get("is_protagonist",false)) else "동료%d"%maxi(1,int(source.get("roster_slot",1)))
+		if not targets.has(target_id):targets[target_id]=[]
+		if label not in targets[target_id]:targets[target_id].append(label)
+	var selected:=_actor_by_id(selected_actor_id)
+	var personal_target:=_actor_by_id(selected_target_id)
+	if not predicted_actors.has(selected_actor_id) and not selected.is_empty() and not personal_target.is_empty() \
+			and _is_enemy_actor(personal_target) and int(personal_target.get("health",0))>0:
+		var label:="나" if bool(selected.get("is_protagonist",false)) else "동료%d"%maxi(1,int(selected.get("roster_slot",1)))
+		if not targets.has(selected_target_id):targets[selected_target_id]=[]
+		if label not in targets[selected_target_id]:targets[selected_target_id].append(label)
 	for actor in _actors:
 		var entity_id:=int(actor.get("entity_id",-1))
-		if entity_id!=selected_actor_id:continue
+		if entity_id!=selected_actor_id and not targets.has(entity_id):continue
 		var position:=_position_from_actor(actor)
 		if not is_world_cell_visible(position):continue
 		var cell_rect:=world_cell_rect(position)
 		var visual_center:=actor_visual_center(entity_id,sample_time_ms)
 		var visual_rect:=Rect2(visual_center-cell_rect.size*0.5,cell_rect.size)
 		rows.append({"kind":"CONTROLLED" if entity_id==selected_actor_id else "TARGET","entity_id":entity_id,
+			"attackers":targets.get(entity_id,[]).duplicate(),
 			"position":[position.x,position.y],"visual_center":visual_center,
 			"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70",
 			"line_width":1.25 if entity_id==selected_actor_id else 2.0,
@@ -3983,6 +4006,15 @@ func _draw_actor_selection_overlays(sample_time_ms:int=-1)->void:
 		color.a*=float(row.get("opacity",1.0))
 		for segment in row.segments:
 			draw_line(segment[0],segment[1],color,float(row.line_width),true)
+		if row.kind=="TARGET":
+			var label:="·".join(row.attackers)
+			var center:Vector2=row.visual_center
+			var font:Font=RegularFont
+			var font_size:=11
+			var extent:=font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+			var origin:=center+Vector2(-extent.x*0.5,cell_size_px()*0.5+12)
+			draw_rect(Rect2(origin-Vector2(2,font_size),extent+Vector2(4,3)),Color(0.02,0.03,0.04,0.9))
+			draw_string(font,origin,label,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
 
 func _draw_cursor_preview() -> void:
 	var spec:=cursor_preview_draw_spec()

@@ -6927,6 +6927,11 @@ func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefi
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
 	if bool(result.get("accepted",false)):
 		_product_attack_targeting=false
+		if session.field_turns_active() and not session.command_journal.is_empty():
+			var last:Dictionary=session.command_journal[-1]
+			if last.get("kind","")=="field_action":
+				var action:Dictionary=last.get("action",{})
+				selected_target_id=int(action.get("target_id",-1)) if action.get("type","") in ["MELEE","SKILL"] else -1
 		_maybe_open_battle_loot.call_deferred()
 		# Only a committed live UI action may arm the reward highlight. A loaded
 		# save or an arbitrary refresh synchronizes the badge without replaying it.
