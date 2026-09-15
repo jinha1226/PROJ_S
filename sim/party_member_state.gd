@@ -30,8 +30,6 @@ var bound_ability_ids:Array[String]=[]
 var passive_ability_ids:Array[String]=[]
 const DEFAULT_ACTION_SPEEDS:={"MOVE":100,"ATTACK":100,"CAST":100}
 var action_speeds:Dictionary=DEFAULT_ACTION_SPEEDS.duplicate()
-var growth_xp:int=0
-var mastery_ranks:Dictionary={"MELEE":0,"RANGED":0,"MAGIC":0,"DEFENSE":0}
 var max_energy: int:
 	get:return ActiveSkillRegistryScript.MAX_ENERGY
 
@@ -56,7 +54,7 @@ func active_skill_ids() -> Array:
 	# Role kits were prototype grants, not acquired monster abilities.
 	var skills:Array=[]
 	for ability_id in bound_ability_ids:
-		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills:
+		if AbilityBindingRulesScript.has(ability_id) and ability_id not in skills and ability_id not in passive_ability_ids:
 			skills.append(ability_id)
 	return skills
 
@@ -83,8 +81,6 @@ func to_dict(include_emotion_state: bool = true,
 		row["bound_ability_ids"] = bound_ability_ids.duplicate()
 		if not passive_ability_ids.is_empty():row["passive_ability_ids"]=passive_ability_ids.duplicate()
 	if action_speeds!=DEFAULT_ACTION_SPEEDS:row["action_speeds"]=action_speeds.duplicate()
-	if growth_xp>0 or mastery_ranks.values().any(func(rank):return rank!=0):
-		row["growth_xp"]=growth_xp;row["mastery_ranks"]=mastery_ranks.duplicate()
 	return row
 
 static func from_dict(row: Dictionary):
@@ -114,9 +110,6 @@ static func from_dict(row: Dictionary):
 	for ability_id in row.get("bound_ability_ids",[]):
 		state.bound_ability_ids.append(AbilityBindingRulesScript.canonical_id(str(ability_id)))
 	state.action_speeds=row.get("action_speeds",DEFAULT_ACTION_SPEEDS).duplicate()
-	state.growth_xp=int(row.get("growth_xp",0))
-	state.mastery_ranks=row.get("mastery_ranks",state.mastery_ranks).duplicate()
-	for axis in state.mastery_ranks:state.mastery_ranks[axis]=int(state.mastery_ranks[axis])
 	for channel in state.action_speeds:state.action_speeds[channel]=int(state.action_speeds[channel])
 	return state
 
@@ -126,16 +119,10 @@ static func wire_error(row: Variant, require_mental_mode: bool = true,
 		require_ability_bindings: bool = true) -> String:
 	if not row is Dictionary: return "invalid_party_member_shape"
 	var keys: Array = row.keys(); keys.sort()
-	if row.has("growth_xp") or row.has("mastery_ranks"):
-		if not _integer(row.get("growth_xp")) or not row.get("mastery_ranks") is Dictionary:return "invalid_member_growth"
-		var growth=preload("res://sim/growth_build_state.gd").new("human")
-		growth.xp_total=int(row.growth_xp);growth.mastery_ranks=row.mastery_ranks.duplicate()
-		if not growth.validation_error().is_empty():return "invalid_member_growth"
 	var expected := ["busy_until", "entity_id", "mental_mode", "personality_profile",
 		"presence", "role", "roster_slot", "stress"] if require_mental_mode else [
 		"busy_until", "entity_id", "personality_profile", "presence", "role",
 		"roster_slot", "stress"]
-	if row.has("growth_xp"):expected.append_array(["growth_xp","mastery_ranks"])
 	if require_emotion_state:
 		expected.append("emotion_state")
 	if require_memory_state:

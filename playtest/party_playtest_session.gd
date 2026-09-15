@@ -85,14 +85,8 @@ const BaseSettlementRulesScript=preload("res://sim/base_settlement_rules.gd")
 const BaseSettlementServiceScript=preload("res://playtest/base_settlement_service.gd")
 const GuildTutorialRulesScript=preload("res://sim/guild_tutorial_rules.gd")
 
-const RoundRules=preload("res://sim/round_combat_rules.gd")
-const RoundPlans=preload("res://sim/round_plan_service.gd")
-const RoundSystem=preload("res://sim/systems/round_combat_system.gd")
-const RoundPreview=preload("res://sim/round_preview_service.gd")
-var _round_edit_actor_id:=-1
-var _item_actor_id:int=-1
 const SESSION_FORMAT_VERSION := 5
-const BALANCE_ID := "dcss-balance-0.34.1-hp-injury-v5"
+const BALANCE_ID := "dcss-balance-0.34.1-v1"
 const BALANCE_TAG := "balance:" + BALANCE_ID
 const PRESENTATION_SCHEMA_VERSION := 1
 const SAVE_PATH := "user://living_world_field_turns_v1.json"
@@ -258,7 +252,6 @@ var _presentation_visibility_cache:Dictionary={}
 # UI that asks every frame rebuilds only when the core actually moved. Never
 # serialized: a load rebuilds it from canonical state (spec §7).
 var _timeline_cache:Dictionary={}
-var _enemy_telegraph_cache:Dictionary={}
 var _base_progression_service
 var _base_settlement_service
 var _last_town_departure_profile:Dictionary={}
@@ -342,9 +335,9 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if product_dungeon and not product_layout_override.is_empty() \
 		else (VisualTestMapScript.product_dungeon(p_world_seed) if product_dungeon else {}))
 	if product_dungeon and map_layout.is_empty(): return false
-	if product_dungeon and bootstrap_living and product_layout_override.is_empty() and map_layout.get("ruleset_id","")!="nine-room-dungeon-v1":
+	if product_dungeon and bootstrap_living and product_layout_override.is_empty():
 		map_layout=preload("res://playtest/campaign_world_map.gd").generate(p_world_seed,1,true,true)
-	if bootstrap_living and bootstrap_roster and map_layout.get("ruleset_id","")!="nine-room-dungeon-v1":
+	if bootstrap_living and bootstrap_roster:
 		map_layout=preload("res://playtest/seeded_roster.gd").apply_layout(map_layout,p_world_seed,p_personality_seed)
 	var world_width := int(map_layout.get("width", 15))
 	var world_height := int(map_layout.get("height", 15))
@@ -383,8 +376,6 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		else (VisualTestMapScript.ENEMY_POSITION if showcase_layout else Vector2i(11,7))
 	var hero_tags := ["party_member", "weapon_loadout"] if solo else ["party_member"]
 	hero_tags.append(BALANCE_TAG)
-	if product_dungeon:hero_tags.append(RoundRules.TAG)
-	hero_tags.append(preload("res://sim/body_penalty_rules.gd").TAG)
 	if duo:hero_tags.append("autonomous_party")
 	if duo and bootstrap_solo:hero_tags.append(SOLO_START_TAG)
 	if duo and bootstrap_survival:
@@ -551,19 +542,6 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	# the sight rule their tests assume.
 	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
-	if map_layout.get("ruleset_id","")=="nine-room-dungeon-v1":state.nine_room_floor=preload("res://sim/nine_room_floor_state.gd").create(map_layout)
-	# Bootstrap must obey the same equipment requirements as gameplay. A dwarf
-	# can have DEX 3, below the default short sword's DEX 4 requirement. Keep all
-	# granted items, but equip the first legal starter (or leave the hand empty).
-	var starter_inventory=candidate.world.item_state.inventory_rows[protagonist.id]
-	var starter_stats:=ActorStatRulesScript.for_entity(candidate.world,protagonist.id)
-	starter_inventory.equipped["MAIN_HAND"]=""
-	for starter_id in ["LEGACY_MAIN_HAND","START_MACE_001","START_HAND_AXE_001",
-			"START_SPEAR_001","START_BOW_001","START_CROSSBOW_001"]:
-		var starter_item=starter_inventory.item(starter_id)
-		var starter_definition=ItemRegistryScript.definition(starter_item.definition_id)
-		if ActorStatRulesScript.requirements_error(starter_stats,starter_definition.requirements).is_empty():
-			starter_inventory.equipped["MAIN_HAND"]=starter_id;break
 	if duo:
 		protagonist.tags.append(FieldRules.TAG)
 		protagonist.tags.append(preload("res://sim/party_recovery_rules.gd").TAG)
@@ -577,8 +555,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		if settlement_event==null:return false
 	if product_dungeon:
 		var finds_error:=preload("res://sim/dcss_equipment_finds.gd").initialise(candidate.world,map_layout,p_world_seed)
-		if not finds_error.is_empty():
-			push_error("Starting equipment initialization: "+finds_error);return false
+		if not finds_error.is_empty():return false
 	candidate.world.warm_rollback_memento_static_tiles()
 	var initial_world_error:String=candidate.world.world_state_error()
 	if not initial_world_error.is_empty():
@@ -597,8 +574,6 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	else: _exploration_route.clear()
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
 	else: _auto_explore.clear()
-	_round_edit_actor_id=sim.world.party_encounter.protagonist_id
-	if not RoundPlans.begin(sim):return false
 	return true
 
 
@@ -781,7 +756,7 @@ func guild_tutorial_command(operation:Dictionary,legacy_rules:bool=false)->Dicti
 	var journal_row:Dictionary={"kind":"guild_tutorial","operation":{"action":action,"quest_id":quest_id}}
 	if not legacy_rules:journal_row["ruleset_id"]=GuildTutorialRulesScript.RULESET_ID
 	command_journal.append(journal_row)
-	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 변이 획득물을 지급했습니다." if quest_id=="GUILD_TUTORIAL_BIND" else "훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
+	var messages:Dictionary={"ACCEPT":"의뢰를 수락했습니다.","SUPPORT":"훈련용 이능 획득물을 지급했습니다." if quest_id=="GUILD_TUTORIAL_BIND" else "훈련용 회복 물약을 지급했습니다.","CLAIM":"의뢰 보상을 받았습니다."}
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"quest_id":quest_id,"action":action,"message":str(messages[action]),
 		"guild_tutorial":guild_tutorial_overview()})
@@ -818,15 +793,6 @@ func company_member_ids()->Array:
 
 func _initial_ground_item_rows(candidate,hero_position:Vector2i,
 		map_layout:Dictionary)->Array:
-	if map_layout.get("ruleset_id","")=="nine-room-dungeon-v1":
-		var rows:Array=[]
-		var content=preload("res://sim/first_floor_stages.gd")
-		for id in range(9):
-			var spec:Dictionary=content.room(id)
-			for index in range(spec.loot.size()):
-				var drop:Dictionary=spec.loot[index]
-				rows.append({"position":[id%3*8+drop.cell[0],id/3*8+drop.cell[1]],"item":ItemScript.new("F1_ROOM_%d_LOOT_%d"%[id,index],drop.item,drop.quantity).to_dict()})
-		return rows
 	var blocked:Array=map_layout.get("door_positions",[]).duplicate()
 	blocked.append(map_layout.get("entry_position",Vector2i(-1,-1)))
 	blocked.append(map_layout.get("exit_position",Vector2i(-1,-1)))
@@ -926,17 +892,6 @@ func _build_protagonist_progression()->Dictionary:
 		"skills":skills}.duplicate(true)
 
 
-func member_progression(actor_id:int)->Dictionary:
-	if actor_id==sim.world.party_encounter.protagonist_id:return protagonist_progression()
-	var status:=mastery_status(actor_id)
-	if status.is_empty():return {}
-	var floor_xp:int=GrowthBuildRegistryScript.xp_floor_for_level(status.level)
-	var next_xp:int=GrowthBuildRegistryScript.xp_floor_for_level(int(status.level)+1)
-	return {"available":true,"level":status.level,"xp_total":status.xp,"xp_current":int(status.xp)-floor_xp,
-		"xp_required":next_xp-floor_xp,"current_level_floor":floor_xp,"next_level_threshold":next_xp,
-		"skills":[],"combat_stats":_member_combat_stats(actor_id),
-		"equipment":{"available":true,"combat_summary":_member_combat_stats(actor_id)}}
-
 func protagonist_growth_build()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false,"reason":"session_not_initialized"}.duplicate(true)
@@ -1000,31 +955,16 @@ func spend_species_trait_point(branch_id:String)->Dictionary:
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
 
 
-func spend_mastery_point(axis:String,actor_id:int=-1)->Dictionary:
+func spend_mastery_point(axis:String)->Dictionary:
 	var stop_snapshot:=_auto_explore_stop_snapshot()
 	if stop_snapshot.is_empty() or not stop_snapshot.get("visible_enemy_keys",{}).is_empty() \
 			or str(stop_snapshot.get("safe_phase","")) not in ["GROUPED","GROUPED_COMPLETE"]:
 		return _rejection_dto("mastery_requires_safety")
-	if actor_id==-1 or actor_id==sim.world.party_encounter.protagonist_id:return _commit_growth_point("SPEND_MASTERY_POINT",axis)
-	var w=sim.world;var member=w.party_encounter.member(actor_id)
-	if member==null or actor_id not in w.party_encounter.active_party_member_ids:return _rejection_dto("mastery_actor_unavailable")
-	var growth=preload("res://sim/party_growth_rules.gd").for_actor(w,actor_id)
-	var result:Dictionary=growth.commit_spend_mastery_point(axis)
-	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
-	var rollback:Dictionary=sim.capture_rollback_memento(false)
-	member.mastery_ranks=result.state.mastery_ranks.duplicate()
-	var event=w.emit_event("npc.mastery_spent",actor_id,actor_id,w.entities[actor_id].position,1,-1,{"target_id":axis})
-	w.party_encounter.revision+=1
-	if event==null or not w.world_state_error().is_empty():
-		sim.restore_rollback_memento(rollback);return _rejection_dto("mastery_commit_failed")
-	command_journal.append({"kind":"npc_mastery","actor_id":str(actor_id),"axis":axis})
-	return _feedback_dto({"accepted":true,"reason":"ok"})
+	return _commit_growth_point("SPEND_MASTERY_POINT",axis)
 
-func mastery_status(actor_id:int=-1)->Dictionary:
+func mastery_status()->Dictionary:
 	if sim==null or sim.world.party_encounter==null:return {}
-	if actor_id==-1:actor_id=sim.world.party_encounter.protagonist_id
-	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
-	if growth==null:return {}
+	var growth=sim.world.party_encounter.protagonist_growth
 	return {"level":growth.level(),"xp":growth.xp_total,"points":growth.mastery_points_available(),
 		"ranks":growth.mastery_ranks.duplicate(),"max_rank":int(growth.Mastery.DATA.max_rank)}
 
@@ -1144,24 +1084,21 @@ func protagonist_equipment()->Dictionary:
 			sim.world.party_control_actor_id())}.duplicate(true)
 
 
-func protagonist_inventory(actor_id:int=-1)->Dictionary:
+func protagonist_inventory()->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return {"schema_version":1,"available":false}.duplicate(true)
 	var state=sim.world.party_encounter
-	if actor_id==-1:actor_id=sim.world.party_control_actor_id()
-	var inventory=sim.world.inventory_of(actor_id)
+	var inventory=sim.world.inventory_of(sim.world.party_control_actor_id())
 	if inventory==null:return {"schema_version":1,"available":false}.duplicate(true)
 	var slot_rows:Array=[]
 	for slot in preload("res://sim/item_definition.gd").EQUIPMENT_SLOTS:
 		var instance_id:=str(inventory.equipped.get(slot,""))
-		slot_rows.append(_item_presentation_row(inventory.item(instance_id),slot,true,actor_id))
+		slot_rows.append(_item_presentation_row(inventory.item(instance_id),slot,true))
 	var backpack_rows:Array=[]
-	for id in state.active_party_member_ids:
-		var bag=sim.world.inventory_of(id)
-		if bag==null:continue
-		for item in bag.unequipped_items():backpack_rows.append(_item_presentation_row(item,"",false,actor_id))
-	return {"schema_version":1,"available":true,"shared":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
-		"used_backpack_slots":backpack_rows.size(),
+	for item in inventory.unequipped_items():
+		backpack_rows.append(_item_presentation_row(item,"",false))
+	return {"schema_version":1,"available":true,"capacity":InventoryScript.BACKPACK_CAPACITY,
+		"used_backpack_slots":inventory.used_backpack_slots(),
 		"equipment_slots":slot_rows,"backpack_rows":backpack_rows,
 		"equipment_bonuses":inventory.equipment_bonuses(),
 		"combat_modifiers":inventory.combat_modifier_dto()}.duplicate(true)
@@ -1348,75 +1285,22 @@ func discard_inventory_item(instance_id:String)->Dictionary:
 	return _commit_item_operation("DISCARD",instance_id,"")
 
 
-func party_item_operation(action:String,instance_id:String,slot:String,actor_id:int)->Dictionary:
-	if action not in ["EQUIP","UNEQUIP","DROP","DISCARD"]:return _rejection_dto("unknown_item_operation")
-	if actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("item_user_unavailable")
-	if round_active():return stage_round_item(action,instance_id,slot,{},actor_id)
-	var rollback:Dictionary=sim.capture_rollback_memento(false);var journal_size:int=command_journal.size()
-	if action!="UNEQUIP":
-		var routed:Dictionary=preload("res://sim/party_bag_rules.gd").route(sim.world,instance_id,actor_id)
-		if not routed.get("accepted",false):return _rejection_dto(str(routed.reason))
-	_item_actor_id=actor_id
-	var result:=_commit_item_operation(action,instance_id,slot)
-	_item_actor_id=-1
-	if not result.get("accepted",false):
-		_rollback_session_transaction(rollback,journal_size);return result
-	while command_journal.size()>journal_size:command_journal.pop_back()
-	command_journal.append({"kind":"party_item","actor_id":str(actor_id),"action":action,"instance_id":instance_id,"slot":slot})
-	return result
-
-func consumable_actor_id()->int:
-	return _item_actor_id if _item_actor_id!=-1 else sim.world.party_control_actor_id()
-
-func party_consumable_choices(instance_id:String)->Array:
-	var choices:Array=[];var w=sim.world
-	var owner:int=preload("res://sim/party_bag_rules.gd").owner(w,instance_id)
-	if owner==-1:return choices
-	var item=w.inventory_of(owner).item(instance_id)
-	if item.definition_id.begins_with("SCROLL_"):return choices
-	for id in w.party_encounter.active_party_member_ids:
-		if not w.occupies_tile(id):continue
-		var entity=w.entities[id];var member=w.party_encounter.member(id)
-		choices.append({"label":"%s · Lv.%d · HP %d/%d · MP %d/%d"%[entity.display_name,ability_binding_level(id),entity.health,entity.max_health,member.energy,member.max_energy],"selection":{"recipient_id":id}})
-	return choices
-
-func use_party_item(instance_id:String,actor_id:int,selection:Dictionary={})->Dictionary:
-	if round_active():return stage_round_item("USE",instance_id,"",selection,actor_id)
-	var rollback:Dictionary=sim.capture_rollback_memento(false);var journal_size:int=command_journal.size()
-	var routed:Dictionary=preload("res://sim/party_bag_rules.gd").route(sim.world,instance_id,actor_id)
-	if not routed.get("accepted",false):return _rejection_dto(str(routed.reason))
-	_item_actor_id=actor_id
-	var result:=use_inventory_item(instance_id,true,selection)
-	_item_actor_id=-1
-	if not result.get("accepted",false):
-		_rollback_session_transaction(rollback,journal_size);return result
-	while command_journal.size()>journal_size:command_journal.pop_back()
-	command_journal.append({"kind":"party_use","instance_id":instance_id,"actor_id":str(actor_id),"selection":selection.duplicate(true)})
-	return result
-
 func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:Dictionary={})->Dictionary:
-	if round_active():return stage_round_item("USE",instance_id,"",selection)
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	if state.safe_phase=="PARTY_DEFEATED" or _run_is_complete():return _rejection_dto("run_complete")
 	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(consumable_actor_id())
-	var combatant=sim.world.combatant_states.get(consumable_actor_id())
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	var combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null:return _rejection_dto("item_actor_missing")
 	if str(combatant.life_state)!="ACTIVE":return _rejection_dto("item_user_unavailable")
-	var inventory=sim.world.inventory_of(hero.id)
-	var carried=inventory.item(instance_id) if inventory!=null else null
-	if carried!=null and not ItemRewardRulesScript.ability_for_item(str(carried.definition_id)).is_empty():
-		return bind_ability_item(hero.id,instance_id)
-	if carried!=null and ItemCatalogScript.family(str(carried.definition_id))=="FOOD":
-		return preload("res://playtest/ordinary_food_service.gd").eat(self,instance_id)
 	var mystery_preview:Dictionary=ItemOperationsScript.preview_use(sim.world,hero.id,instance_id)
 	if mystery_preview.get("accepted",false) and preload("res://sim/mystery_consumables.gd").has(str(mystery_preview.definition_id)):
 		return preload("res://playtest/mystery_item_service.gd").use(self,instance_id,selection)
 	if int(hero.health)>=int(hero.max_health):return _rejection_dto("item_heal_not_needed")
 	var preview:Dictionary=ItemOperationsScript.preview_use(
-		sim.world,consumable_actor_id(),instance_id)
+		sim.world,sim.world.party_control_actor_id(),instance_id)
 	if not bool(preview.get("accepted",false)):return _rejection_dto(str(preview.get("reason","item_operation_failed")))
 	if str(preview.get("use_kind",""))!="HEALING":return _rejection_dto("item_use_unimplemented")
 	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
@@ -1436,8 +1320,8 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(consumable_actor_id())
-	combatant=sim.world.combatant_states.get(consumable_actor_id())
+	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	combatant=sim.world.combatant_states.get(sim.world.party_control_actor_id())
 	if hero==null or combatant==null or str(combatant.life_state)!="ACTIVE":
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1447,7 +1331,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_heal_not_needed")
 	var consumed:Dictionary=ItemOperationsScript.commit_use(
-		sim.world,consumable_actor_id(),instance_id,hero.position,ITEM_ACTION_TIME_COST)
+		sim.world,sim.world.party_control_actor_id(),instance_id,hero.position,ITEM_ACTION_TIME_COST)
 	if not bool(consumed.get("accepted",false)):
 		if not _rollback_session_transaction(rollback_memento,journal_size_before):
 			return _rejection_dto("rollback_restore_failed")
@@ -1459,7 +1343,7 @@ func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:
 		return _rejection_dto("item_event_failed")
 	var healed:=mini(heal_power,int(hero.max_health)-int(hero.health))
 	hero.health+=healed
-	var restored=sim.world.emit_event("health.restored",consumable_actor_id(),consumable_actor_id(),
+	var restored=sim.world.emit_event("health.restored",sim.world.party_control_actor_id(),sim.world.party_control_actor_id(),
 		hero.position,healed,used.id,{"schema_version":1,"ruleset_id":"healing-potion-v1",
 			"kind":"POTION","health_after":int(hero.health)})
 	state.revision+=1
@@ -1487,7 +1371,7 @@ func _use_field_potion(instance_id:String)->Dictionary:
 	var rollback:Variant=sim.capture_rollback_memento(false)
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var start:int=sim.world.events.size();var journal_size:=command_journal.size()
-	var id:int=consumable_actor_id();var hero=sim.world.entities[id]
+	var id:int=sim.world.party_control_actor_id();var hero=sim.world.entities[id]
 	var preview:Dictionary=ItemOperationsScript.preview_use(sim.world,id,instance_id)
 	var heal_power:=ItemCatalogScript.healing_amount(str(preview.get("definition_id","")))
 	if not bool(preview.get("accepted",false)) or heal_power<=0:
@@ -1522,7 +1406,6 @@ func _use_field_potion(instance_id:String)->Dictionary:
 		"healed_amount":healed,"current_hp":int(hero.health),"inventory":protagonist_inventory(),"visual_effects":effects})
 
 func _commit_item_operation(action:String,instance_id:String,slot:String)->Dictionary:
-	if round_active():return stage_round_item(action,instance_id,slot,{})
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
@@ -1530,10 +1413,10 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 		return _rejection_dto("run_complete")
 	if not sim.world.is_settled():
 		return _rejection_dto("world_not_settled")
-	var hero=sim.world.entities.get(consumable_actor_id())
-	if hero==null or sim.world.item_state.inventory(consumable_actor_id())==null:
+	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	if hero==null or sim.world.item_state.inventory(sim.world.party_control_actor_id())==null:
 		return _rejection_dto("item_actor_missing")
-	var hero_id:int=consumable_actor_id()
+	var hero_id:int=sim.world.party_control_actor_id()
 
 	var preview:Dictionary
 	match action:
@@ -1561,8 +1444,8 @@ func _commit_item_operation(action:String,instance_id:String,slot:String)->Dicti
 			return _rejection_dto("rollback_restore_failed")
 		return _rejection_dto("item_time_step_failed")
 	while command_journal.size()>journal_size_before:command_journal.pop_back()
-	state=sim.world.party_encounter;hero=sim.world.entities.get(consumable_actor_id())
-	hero_id=consumable_actor_id()
+	state=sim.world.party_encounter;hero=sim.world.entities.get(sim.world.party_control_actor_id())
+	hero_id=sim.world.party_control_actor_id()
 	# The turn resolver already checked its response. Audit the item's new tail
 	# separately; save/load and rollback retain exhaustive history validation.
 	var item_event_start:int=sim.world.events.size()
@@ -1638,7 +1521,6 @@ func _advance_item_action_time()->Dictionary:
 
 
 func _apply_safe_exploration_recovery(event_start:int)->Dictionary:
-	if load("res://sim/nine_room_care_rules.gd").enabled(sim.world):return {"accepted":true}
 	# This is invoked after every canonical session time action. The mutable
 	# counter lives in PartyEncounterState, so save/load and journal replay follow
 	# exactly the same safe-turn cadence without trusting wall-clock presentation.
@@ -1731,14 +1613,14 @@ func _commit_item_time_party_turn(hero_id:int)->Dictionary:
 	return commit_turn()
 
 
-func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dictionary:
+func _item_presentation_row(item,slot:String,equipped:bool)->Dictionary:
 	if item==null:return {"slot":slot,"equipped":equipped,"empty":true}.duplicate(true)
 	var definition=ItemRegistryScript.definition(item.definition_id)
 	var requirements:Dictionary=definition.requirements.duplicate(true)
 	var stats:=ActorStatRulesScript.baseline_stats()
 	if sim!=null and sim.world!=null and sim.world.party_encounter!=null:
 		stats=ActorStatRulesScript.for_entity(sim.world,
-			actor_id if actor_id!=-1 else int(sim.world.party_control_actor_id()))
+			int(sim.world.party_control_actor_id()))
 	var requirement_parts:Array[String]=[]
 	for stat_id in ActorStatRulesScript.STAT_IDS:
 		var required:=int(requirements.get(stat_id,0))
@@ -1800,7 +1682,7 @@ func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dic
 		if str(definition.use_kind)=="HEALING":
 			parts.append("회복 +%d"%ItemCatalogScript.healing_amount(str(item.definition_id)))
 		result["compact_stat_text"]=" · ".join(parts)
-	return preload("res://sim/abilities/mutation_knowledge.gd").decorate(sim.world,preload("res://sim/mystery_consumables.gd").decorate(sim.world,result)).duplicate(true)
+	return preload("res://sim/mystery_consumables.gd").decorate(sim.world,result).duplicate(true)
 
 
 func equip_protagonist_weapon(weapon_id:String)->Dictionary:
@@ -1976,7 +1858,6 @@ func party_status() -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return {"ok": false, "reason": "session_not_initialized"}
 	var state = sim.world.party_encounter; var view_mode: String = {"GROUPED":"EXPLORATION", "GROUPED_COMPLETE":"EXPLORATION",
 		"CONTACT":"ENCOUNTER_PREVIEW", "ENGAGED":"COMBAT", "REGROUP_READY":"REGROUP", "PARTY_DEFEATED":"COMBAT"}[state.safe_phase]
-	if RoundRules.enabled(sim.world) and state.safe_phase!="PARTY_DEFEATED":view_mode="COMBAT" if round_active() else "EXPLORATION"
 	var visible_enemy_ids: Array = []
 	var cycle:Dictionary=expedition_cycle_status()
 	if str(cycle.get("phase","DUNGEON"))=="TOWN":
@@ -2077,9 +1958,7 @@ func _ensure_town_guild_candidates()->bool:
 	var people:Array=preload("res://sim/town_population_rules.gd").PEOPLE
 	var randomized:=preload("res://sim/living_expedition_rules.gd").roster_randomized(sim.world)
 	if randomized:people=preload("res://playtest/seeded_roster.gd").population(world_seed,personality_seed)
-	if room_enabled():people=[{"name":"레아","species":"human","weapon":"WEAPON_SHORT_SWORD"}]
 	var candidate_count:int=people.size() if persistent_town else GUILD_CANDIDATE_COUNT
-	if room_enabled():candidate_count=1
 	for slot in range(candidate_count):
 		var species_id:=str(species_pool[(start+slot)%species_pool.size()])
 		if persistent_town:species_id=preload("res://sim/living_expedition_rules.gd").species(world_seed,slot) \
@@ -2096,7 +1975,6 @@ func _ensure_town_guild_candidates()->bool:
 				"guild_candidate"],species_id,"party")
 		if entity==null:
 			sim=SimulatorScript.from_snapshot(rollback);return false
-		if room_enabled():entity.tags.append("first_floor_event_npc")
 		state=sim.world.party_encounter
 		state.party_member_ids.append(entity.id);state.party_member_ids.sort()
 		state.member_rows[entity.id]=MemberScript.new(entity.id,0,"COMPANION",
@@ -2688,14 +2566,13 @@ func monster_ability_acquisition_rows()->Array[Dictionary]:
 	for ability_id in acquired:
 		var entry:Dictionary=acquired[ability_id]
 		var reward:Dictionary=entry.reward
-		if not preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(reward.get("definition_id",""))):continue
 		var definition:=ActiveSkillRegistryScript.definition(str(ability_id))
 		var owner:Dictionary=sim.world.item_owner(str(entry.instance_id))
 		rows.append({"ability_id":str(ability_id),"label":str(definition.get("name",ability_id)),
 			"definition_id":str(reward.get("definition_id","")),
 			"instance_id":str(entry.instance_id),"source_event_id":int(entry.event_id),
 			"stored":owner.kind=="ENTITY","on_ground":owner.kind=="GROUND",
-			"can_absorb":false,"message":"변이 서비스 준비 전까지 보관만 가능합니다."})
+			"can_absorb":false,"message":"이능 서비스 준비 전까지 보관만 가능합니다."})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):return str(a.ability_id)<str(b.ability_id))
 	return rows.duplicate(true)
 
@@ -2713,8 +2590,9 @@ func ability_binding_level(actor_id:int)->int:
 	if actor_id==int(state.protagonist_id) and state.protagonist_progression!=null:
 		return ProgressionRegistryScript.level_for_xp(
 			int(state.protagonist_progression.xp_total))
-	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
-	return growth.level() if growth!=null else 1
+	# Companion level progression is not yet an independent authority. Keep its
+	# safe baseline at level 1 rather than deriving a level from unrelated combat.
+	return 1
 
 
 func ability_binding_rows(actor_id:int)->Array[Dictionary]:
@@ -2728,7 +2606,7 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 		if slot_index<member.bound_ability_ids.size():
 			var ability_id:=str(member.bound_ability_ids[slot_index])
 			var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
-			preview["mode"]="BOTH"
+			preview["mode"]="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
 			preview.merge({"slot_index":slot_index,"state":"BOUND",
 				"unlock_level":slot_index+1,"removable":false},true)
 			rows.append(preview)
@@ -2746,11 +2624,9 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null:return rows
-	var shared_items:Array=[]
-	for id in sim.world.party_encounter.active_party_member_ids:
-		var inventory=sim.world.inventory_of(id)
-		if inventory!=null:shared_items.append_array(inventory.unequipped_items())
-	for item in shared_items:
+	var inventory=sim.world.inventory_of(actor_id)
+	if inventory==null:return rows
+	for item in inventory.backpack:
 		var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
 		var catalog:Dictionary=preload("res://sim/abilities/monster_ability_catalog.gd").for_item(str(item.definition_id))
 		if (ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id)) and catalog.is_empty():continue
@@ -2761,10 +2637,8 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 				"passive":str(catalog.passive),"active":str(catalog.active)}
 		rows.append({"instance_id":str(item.instance_id),
 			"definition_id":str(item.definition_id),"quantity":int(item.quantity),
-			"ability_id":ability_id if preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)) else "",
-			"label":str(ItemRegistryScript.definition(str(item.definition_id)).label),
-			"consumed_before":preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)),
-			"effect_preview":preview if preload("res://sim/abilities/mutation_knowledge.gd").known(sim.world,str(item.definition_id)) else {}})
+			"ability_id":ability_id,"label":str(preview.get("label",ability_id)),
+			"effect_preview":preview})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return str(a.instance_id)<str(b.instance_id))
 	return rows.duplicate(true)
@@ -2773,7 +2647,6 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
-	if not sim.world.is_settled():return _rejection_dto("world_not_settled")
 	var state=sim.world.party_encounter
 	var member=state.member(actor_id)
 	if member==null or actor_id not in state.party_member_ids:
@@ -2794,20 +2667,18 @@ func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	if ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id):
 		return _rejection_dto("not_ability_item")
 	ability_id=AbilityBindingRulesScript.canonical_id(ability_id)
-	# Ability meat is a deliberate meal, never an automatic ration. Legacy
-	# ESSENCE_* identifiers remain the save/content wire identity only.
-	if int(state.ration_milli)>=RationRulesScript.ration_max_milli():
-		return _rejection_dto("monster_meat_full")
-	if field_turns_active():
-		for enemy_id in state.enemy_ids:
-			if FieldTurns.Rules.visible(sim.world,enemy_id):return _rejection_dto("monster_meat_enemy_near")
 	var level:=ability_binding_level(actor_id)
 	var limit:=AbilityBindingRulesScript.slot_limit(level)
 	var bound:Array=member.bound_ability_ids.duplicate()
-	if ability_id in bound or bound.size()>=limit:return _rejection_dto("mutation_cannot_eat")
-	var gains_ability:bool=ability_id not in bound and bound.size()<limit
+	if ability_id in bound:
+		return _rejection_dto("ability_already_bound",null,null,{
+			"actor_id":actor_id,"ability_id":ability_id,"level":level,
+			"current_slots":bound.size(),"max_slots":limit})
+	if bound.size()>=limit:
+		return _rejection_dto("ability_binding_slots_full",null,null,{
+			"actor_id":actor_id,"ability_id":ability_id,"level":level,
+			"current_slots":bound.size(),"max_slots":limit})
 	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
-		"gains_ability":gains_ability,"nutrition_milli":20000,
 		"instance_id":instance_id,"ability_id":ability_id,"level":level,
 		"current_slots":bound.size(),"max_slots":limit,"slot_index":bound.size(),
 		"effect_preview":AbilityBindingRulesScript.effect_preview(ability_id),
@@ -2820,35 +2691,22 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 	var rollback:Variant=sim.snapshot()
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var next=sim.world.item_state.clone()
-	var consumed_definition_id:String=next.inventory(actor_id).item(instance_id).definition_id
 	var removed:=InventoryOperationsScript.commit_discard(next.inventory(actor_id),instance_id)
 	if not bool(removed.get("accepted",false)):
 		return _rejection_dto(str(removed.get("reason","ability_binding_item_failed")))
 	next.inventory_rows[actor_id]=removed.inventory
 	next.revision=int(sim.world.item_state.revision)+1
 	var member=sim.world.party_encounter.member(actor_id)
-	if bool(assessment.gains_ability):
-		member.bound_ability_ids.append(str(assessment.ability_id))
-		member.bound_ability_ids.sort()
+	member.bound_ability_ids.append(str(assessment.ability_id))
+	member.bound_ability_ids.sort()
 	var position:Vector2i=sim.world.entities[actor_id].position
-	var event=null
-	if bool(assessment.gains_ability):event=sim.world.emit_event("party.ability_bound",actor_id,actor_id,position,1,-1,{
+	var event=sim.world.emit_event("party.ability_bound",actor_id,actor_id,position,1,-1,{
 		"schema_version":1,"ruleset_id":AbilityBindingRulesScript.RULESET_ID,
 		"ability_id":str(assessment.ability_id),"instance_id":instance_id,
 		"slot_index":int(assessment.slot_index)})
-	if bool(assessment.gains_ability) and event==null:
-		_restore_town_rollback(rollback)
-		return _rejection_dto("ability_binding_event_failed")
-	var party=sim.world.party_encounter
-	var before:int=party.ration_milli
-	party.ration_milli=mini(RationRulesScript.ration_max_milli(),before+int(assessment.nutrition_milli))
-	event=sim.world.emit_event("party.monster_meat_eaten",actor_id,actor_id,position,0,-1,{
-		"definition_id":consumed_definition_id,
-		"instance_id":instance_id,"ability_id":str(assessment.ability_id),
-		"gained_ability":bool(assessment.gains_ability),"nutrition_milli":party.ration_milli-before})
 	if event==null:
 		_restore_town_rollback(rollback)
-		return _rejection_dto("monster_meat_event_failed")
+		return _rejection_dto("ability_binding_event_failed")
 	sim.world.item_state=next
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
@@ -2859,16 +2717,12 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 		"actor_id":str(actor_id),"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id)}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
-		"gains_ability":bool(assessment.gains_ability),"nutrition_milli":party.ration_milli-before,
 		"actor_id":actor_id,"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id),"slot_index":int(assessment.slot_index),
 		"bindings":ability_binding_rows(actor_id)})
 
 
 func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
-	return _rejection_dto("mutation_modes_combined")
-
-func _legacy_set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	var member=state.member(actor_id)
@@ -2877,10 +2731,8 @@ func _legacy_set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dicti
 		return _rejection_dto("invalid_ability_mode")
 	if member.presence in ["DEFEATED","EXILED","RECRUITABLE"] or not sim.world.combatant_states.has(actor_id) \
 			or sim.world.combatant_states[actor_id].life_state!="ACTIVE":return _rejection_dto("ability_binding_actor_unavailable")
-	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or not sim.world.is_settled():return _rejection_dto("ability_binding_unsafe_phase")
-	if field_turns_active():
-		for enemy_id in state.enemy_ids:
-			if FieldTurns.Rules.visible(sim.world,enemy_id):return _rejection_dto("ability_binding_unsafe_phase")
+	if state.safe_phase not in ["GROUPED","GROUPED_COMPLETE"] or not sim.world.is_settled() \
+			or preload("res://sim/field_turn_rules.gd").active(sim.world):return _rejection_dto("ability_binding_unsafe_phase")
 	var old_mode:="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
 	if mode==old_mode:return _feedback_dto({"accepted":true,"reason":"ok","ability_id":ability_id,"mode":mode})
 	var rollback:Variant=sim.snapshot()
@@ -3071,7 +2923,6 @@ func depart_town(floor_index:int=TOWN_STARTING_FLOOR,
 		_restore_town_rollback(rollback)
 		_map_layout=rollback_layout
 		return _rejection_dto(state_error if not state_error.is_empty() \
-			else str(entered.get("reason","town_departure_failed")) if not entered.get("accepted",false) \
 			else "town_departure_failed")
 	command_journal.append({"kind":"town","operation":{"action":"DEPART",
 		"entry_mode":entry_mode,"floor_index":int(assessment.floor_index)}})
@@ -3098,7 +2949,6 @@ func _current_floor_enemy_ids()->Array[int]:
 
 
 func floor_transition_assessment()->Dictionary:
-	if round_active():return _rejection_dto("round_exit_unsafe")
 	if sim==null or sim.world==null or sim.world.party_encounter==null \
 			or not VisualTestMapScript.uses_product_dungeon(scenario_id):
 		return _rejection_dto("floor_transition_unavailable")
@@ -3114,13 +2964,7 @@ func floor_transition_assessment()->Dictionary:
 	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
-	if room_enabled():
-		for member_id in preload("res://sim/room_transition_rules.gd").party_ids(sim.world):
-			if not sim.world.can_act(member_id,sim.world.world_time):return _rejection_dto("room_party_cannot_move")
-	if RoundRules.enabled(sim.world):
-		for member_id in state.active_party_member_ids:
-			if sim.world.occupies_tile(member_id) and maxi(absi(sim.world.entities[member_id].position.x-hero.position.x),absi(sim.world.entities[member_id].position.y-hero.position.y))>1:return _rejection_dto("round_party_not_at_exit")
-	if state.nine_room_floor.is_empty() and state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
+	if state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
 		return _rejection_dto("floor_transition_locked")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"from_floor_index":floor_index,"to_floor_index":floor_index+1,
@@ -3173,18 +3017,6 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	# Changing cycle scope first detaches old-expedition monsters from collision.
 	# The party remains the same entities, inventories, bodies and social state.
 	_map_layout=target_layout
-	if not state.nine_room_floor.is_empty():
-		state.nine_room_floor.floor_index=floor_index;state.nine_room_floor.active_room_id=4
-		for portal_id in state.nine_room_floor.floors[floor_index-1].rooms[4].exits:
-			if portal_id not in state.nine_room_floor.discovered_portals:state.nine_room_floor.discovered_portals.append(portal_id)
-		state.nine_room_floor.pending_exit.clear();state.nine_room_floor.revision=int(state.nine_room_floor.revision)+1
-		var visit:="%d:4"%floor_index
-		if visit not in state.nine_room_floor.visited:state.nine_room_floor.visited.append(visit)
-		var previous_round:Dictionary=state.round_combat
-		state.round_combat=preload("res://sim/round_combat_state.gd").fresh()
-		state.round_combat.round_id=int(previous_round.round_id)
-		state.round_combat.stage_rooms=previous_round.stage_rooms.duplicate(true)
-		state.round_combat.plan_revision=int(previous_round.plan_revision)+1
 	state.safe_phase="GROUPED";state.contact_kind="NONE"
 	state.contact_enemy_id=-1;state.formation_id="NONE"
 	state.group_anchor=entry_position;state.facing=Vector2i.RIGHT
@@ -3245,12 +3077,8 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 
 func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 		layout:Dictionary)->void:
-	if room_enabled() and floor_index==1:return
 	var instance_id:="GROUND_FLOOR%d_RATION"%floor_index
 	if sim.world.item_state.ground_items.item(instance_id)!=null:return
-	# Pickup events survive consumption and room/floor revisits, unlike inventory presence.
-	for event in sim.world.events:
-		if event.type=="item.picked_up" and str(event.data.get("instance_id",""))==instance_id:return
 	var blocked:Array=layout.get("door_positions",[]).duplicate()
 	blocked.append(layout.get("entry_position",Vector2i(-1,-1)))
 	blocked.append(layout.get("exit_position",Vector2i(-1,-1)))
@@ -3283,10 +3111,6 @@ func _place_floor_ration(floor_index:int,entry_position:Vector2i,
 func _spawn_campaign_floor_enemies(layout:Dictionary,
 		expedition_index:int)->Array[int]:
 	var result:Array[int]=[];var state=sim.world.party_encounter
-	if not state.nine_room_floor.is_empty():
-		for id in state.enemy_ids:
-			if "campaign_floor:%d"%int(layout.floor_index) in sim.world.entities[id].tags and "campaign_expedition:%d"%expedition_index in sim.world.entities[id].tags:result.append(id)
-		if not result.is_empty():return result
 	var introductory_groups:Array=[]
 	for row_value in layout.get("enemy_roster",[]):
 		if not row_value is Dictionary:return []
@@ -3297,7 +3121,7 @@ func _spawn_campaign_floor_enemies(layout:Dictionary,
 		var group_id:=str(row.get("group_id",""))
 		# Authored shallow entry encounters remain solo-friendly, regardless of
 		# current party size. Deeper groups retain the original composition.
-		if town_life_enabled() and int(layout.floor_index)==1 and state.nine_room_floor.is_empty():
+		if town_life_enabled() and int(layout.floor_index)==1:
 			if group_id not in introductory_groups:introductory_groups.append(group_id)
 			if introductory_groups.find(group_id)<3:
 				var already_spawned:=false
@@ -4194,7 +4018,6 @@ func enemy_vision_overlay() -> Dictionary:
 
 
 func observe_minimap()->Dictionary:
-	if room_enabled():return visible_room_minimap()
 	var context:=_party_observation_context()
 	return {} if context.is_empty() else _party_minimap_observation(context)
 
@@ -4216,20 +4039,14 @@ func observe_party_ui(cell_count:int=15,include_minimap:bool=true,
 	var full_world_fits:bool=sim.world.width<=count and sim.world.height<=rows
 	var viewport_origin:=Vector2i.ZERO if full_world_fits \
 		else hero_position-Vector2i(count/2,rows/2)
-	if room_enabled():viewport_origin=preload("res://sim/room_transition_rules.gd").bounds(sim.world).position;count=8;rows=8
 	var viewport_bounds:=Rect2i(viewport_origin,
 		Vector2i(sim.world.width,sim.world.height) if full_world_fits \
 		else Vector2i(count,rows))
 	var _pg:=PerfProbeScript.begin()
 	var grid_dto:Dictionary=_party_rich_observation(context,viewport_bounds,viewport_origin,count*rows,omit_unseen)
-	if room_enabled():
-		var room:Dictionary=room_status()
-		grid_dto["room_bounds"]=room.bounds;grid_dto["room_exits"]=room.exits
-		grid_dto["room_biome"]=room.biome
-		grid_dto["room_name"]=room.get("name","")
 	PerfProbeScript.end("obs.rich",_pg)
 	var _pn:=PerfProbeScript.begin()
-	var minimap_dto:Dictionary=(visible_room_minimap() if room_enabled() else _party_minimap_observation(context)) if include_minimap else {}
+	var minimap_dto:Dictionary=_party_minimap_observation(context) if include_minimap else {}
 	PerfProbeScript.end("obs.minimap",_pn)
 	return {"grid":grid_dto,"minimap":minimap_dto}
 
@@ -4250,10 +4067,6 @@ func _party_observation_context(include_decoration:bool=true)->Dictionary:
 	# The controlled actor is always a valid presentation anchor. Keep this
 	# explicit so grouped followers can safely fall back to the hero cell even if
 	# a future LOS implementation accidentally omits its origin.
-	if room_enabled():
-		for key in visible.keys():
-			var xy:PackedStringArray=str(key).split(":")
-			if xy.size()==2 and not preload("res://sim/room_transition_rules.gd").current(sim.world,Vector2i(int(xy[0]),int(xy[1]))):visible.erase(key)
 	visible[_position_key(hero_position)] = true
 	var _pexp:=PerfProbeScript.begin()
 	var explored:Dictionary=_explored_cells_from_hero_history(int(status.protagonist_id),
@@ -4672,7 +4485,6 @@ func _presentation_topology_fingerprint()->int:
 
 func _presentation_visible_cells(origin:Vector2i)->Dictionary:
 	if sim==null or sim.world==null:return {}
-	if room_enabled():return preload("res://sim/room_transition_rules.gd").stage_cells(sim.world)
 	var observer_id: int = sim.world.party_control_actor_id()
 	var observer = sim.world.entities.get(observer_id)
 	var profile: Dictionary = VisionRulesScript.profile_for_entity(observer)
@@ -6611,15 +6423,9 @@ func companion_decision_explanations() -> Dictionary:
 
 
 func turn_intent_overlays() -> Array[Dictionary]:
-	if round_active():return round_overlays()
 	var rows: Array[Dictionary] = []
 	if field_turns_active():
 		var world=sim.world
-		var plan_key:Array=[world.get_instance_id(),world.step_index,world.world_time,
-			world.events.size(),world.party_encounter.revision,world.item_state.revision]
-		if _enemy_telegraph_cache.get("key",[])!=plan_key:
-			_enemy_telegraph_cache={"key":plan_key,"rows":preload("res://sim/enemy_telegraph_rules.gd").overlays(sim)}
-		rows.assign(_enemy_telegraph_cache.rows.duplicate(true))
 		var control:int=world.party_control_actor_id()
 		var companions:Array=[]
 		for id in world.party_encounter.active_party_member_ids:
@@ -7008,12 +6814,6 @@ func auto_explore_state() -> Dictionary:
 
 
 func _commit_auto_explore_one(destination: Vector2i) -> Dictionary:
-	if room_enabled() and not preload("res://sim/room_transition_rules.gd").portal_at(sim.world,destination).is_empty():
-		_auto_explore.cancel("room_exit")
-		return _rejection_dto("room_auto_exit_stop")
-	if round_active():
-		_auto_explore.cancel("enemy_sighted")
-		return _rejection_dto("round_planning_requires_confirmation")
 	# AUTO has already selected one adjacent, visible, fog-safe destination. Commit
 	# it through the same canonical one-cell seam used by route continuation, but
 	# avoid building and revalidating a throwaway one-step route plan around every
@@ -7198,7 +6998,6 @@ func commit_exploration(command,prevalidated_one_step:bool=false) -> Dictionary:
 
 func _commit_exploration_one(command, preserve_route: bool,
 		prevalidated_auto_hop: bool = false) -> Dictionary:
-	if round_active():return _rejection_dto("round_planning_requires_confirmation")
 	if FieldRules.active(sim.world):
 		return commit_field_action(_field_exploration_action(command))
 	if not prevalidated_auto_hop:
@@ -7269,10 +7068,6 @@ func _field_exploration_action(command):
 		else ActionScript.hold(command.actor_id) if command.type==CommandScript.Type.WAIT else null
 
 func commit_field_action(action)->Dictionary:
-	if room_enabled() and action!=null and action.type=="MOVE" and action.actor_id==sim.world.party_encounter.protagonist_id and not round_active():
-		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(sim.world,action.destination)
-		if not exit.is_empty():return request_room_exit(action.actor_id,exit.portal_id,int(sim.world.party_encounter.nine_room_floor.revision))
-	if round_active():return stage_round_action(action)
 	if _run_is_complete():return _rejection_dto("run_complete")
 	var begun:=PerfProbeScript.begin()
 	var rollback:Dictionary=sim.capture_rollback_memento(false)
@@ -7297,11 +7092,6 @@ func commit_field_action(action)->Dictionary:
 			sim.restore_rollback_memento(rollback);return _rejection_dto(str(settlement_result.get("reason","settlement_advance_failed")))
 		result.events.append_array(recovery.get("events",[]))
 		if recovery.get("event")!=null:result.events.append(recovery.event)
-		if not RoundPlans.begin(sim):
-			sim.restore_rollback_memento(rollback);return _rejection_dto("round_plan_failed")
-		if round_active():
-			if _auto_explore!=null:_auto_explore.cancel("enemy_sighted")
-			if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 		command_journal.append({"kind":"field_action","action":action.to_dict()})
 		_advance_exile_world()
 	_clear_draft()
@@ -7312,11 +7102,6 @@ func commit_field_action(action)->Dictionary:
 	return dto
 
 func select_field_actor(actor_id:int)->Dictionary:
-	if round_active():
-		if str(actor_id) not in sim.world.party_encounter.round_combat.order or actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("round_actor_not_editable")
-		if RoundRules.individual(sim.world) and sim.world.party_encounter.round_combat.phase!="DEPLOYMENT" and actor_id!=RoundRules.current_actor(sim.world):return _rejection_dto("round_not_current_actor")
-		_round_edit_actor_id=actor_id
-		return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,"editing":true})
 	if not field_turns_active() or not sim.world.is_settled():return _rejection_dto("field_action_unavailable")
 	var world=sim.world;var party=world.party_encounter
 	if actor_id not in party.active_party_member_ids or not world.can_act(actor_id,world.world_time):
@@ -7438,7 +7223,6 @@ func strike_with_skill(skill_id: String, target_id: int) -> Dictionary:
 
 
 func party_retreat() -> Dictionary:
-	if round_active():return round_retreat_hint()
 	# One button: companions get the RETREAT directive and the hero's own
 	# automatic decision follows the same directive until another input.
 	if _run_is_complete(): return _rejection_dto("run_complete")
@@ -7756,13 +7540,16 @@ func _member_combat_stats(entity_id:int,include_explanations:bool=false)->Dictio
 		ItemOperationsScript.equipped_weapon_id(sim.world,entity_id))
 	var rank:=0
 	var state=sim.world.party_encounter
-	if weapon!=null:rank=sim.melee._weapon_proficiency_rank(entity_id,str(weapon.proficiency_id))
+	if weapon!=null and state!=null and int(state.protagonist_id)==entity_id \
+			and state.protagonist_progression!=null:
+		rank=state.protagonist_progression.rank(str(weapon.proficiency_id))
+		if FieldRules.enabled(sim.world):rank=int(state.protagonist_growth.mastery_ranks["RANGED" if weapon.proficiency_id=="RANGED" else "MELEE"])
 	var spec:Dictionary={}
 	if weapon!=null:
 		spec=WeaponAttackRulesScript.build_attack_spec(str(weapon.weapon_id),rank,
 			int(profile.get("power",0)),int(profile.get("accuracy_milli",0)),0,0,
 			ActorStatRulesScript.for_entity(sim.world,entity_id),FieldRules.enabled(sim.world))
-	return {"attack_power":preload("res://sim/body_penalty_rules.gd").scale_damage(sim.world,entity_id,int(spec.get("raw_damage",profile.get("power",0)))),
+	return {"attack_power":int(spec.get("raw_damage",profile.get("power",0))),
 		"explanations":_combat_stat_explanations(entity_id,profile,spec,defense) if include_explanations else {},
 		"armor_flat":int(defense.get("effective_armor_flat",profile.get("armor_flat",0))),
 		"base_armor_flat":int(defense.get("base_armor_flat",profile.get("armor_flat",0))),
@@ -7791,12 +7578,8 @@ func _combat_stat_explanations(entity_id:int,profile:Dictionary,attack:Dictionar
 		scaling_lines.append("%s %d · 무기 보정 등급 %s"%[pair[1],int(attack.get("attacker_stats",{}).get(pair[0],0)),str(attack.get("weapon_scaling",{}).get(pair[0],"—"))])
 	descriptions["공격력"]="기본 %d + 무기 %d + 숙련 보정 %d = %d\n능력치 보정 × %.3f\n최종 공격력 %d (소수점 버림)\n\n숙련 레벨 %d · %s\n%s\n\n대상의 방어·막기 적용 전 수치입니다."%[base,weapon,training,base+weapon+training,1.0+scale/1000.0,int(attack.get("raw_damage",base)),int(attack.get("proficiency_rank",0)),str(attack.get("weapon_label","없음")),"\n".join(scaling_lines)]
 	var defense_rank:=0
-	var injury_rate:int=preload("res://sim/body_penalty_rules.gd").current(sim.world,entity_id).attack_milli
-	descriptions["공격력"]=str(descriptions["공격력"]).replace("최종 공격력","부상 전 공격력")
-	descriptions["공격력"]+="\n부상 보정 × %.2f → 최종 공격력 %d"%[injury_rate/1000.0,preload("res://sim/body_penalty_rules.gd").scale_damage(sim.world,entity_id,int(attack.get("raw_damage",base)))]
 	var party=sim.world.party_encounter
-	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,entity_id)
-	if growth!=null:defense_rank=int(growth.mastery_ranks.DEFENSE)
+	if party!=null and party.protagonist_id==entity_id:defense_rank=int(party.protagonist_growth.mastery_ranks.DEFENSE)
 	for entry in [["방어력","armor_flat","effective_armor_flat"],["회피율","dodge_milli","effective_evasion_milli"],["막기율","parry_milli","parry_milli"]]:
 		var label:=str(entry[0]);var key:=str(entry[1]);var result:=int(defense.get(entry[2],0))
 		var initial:=int(profile.get("armor_flat" if key=="armor_flat" else "evasion_milli",0)) if key!="parry_milli" else 0
@@ -7904,7 +7687,7 @@ static func _weapon_trait_label(trait_id:String)->String:
 
 
 static func _effect_trigger_label(trigger:String)->String:
-	return {"PASSIVE":"상시 효과","ON_HIT":"적중 시","ON_HURT":"피격 시",
+	return {"PASSIVE":"패시브","ON_HIT":"적중 시","ON_HURT":"피격 시",
 		"INTERACT":"상호작용"}.get(trigger,trigger)
 
 
@@ -7921,11 +7704,9 @@ func _member_body_presentation(entity_id:int)->Dictionary:
 			if layer_value is Dictionary:
 				minimum_integrity=mini(minimum_integrity,int(layer_value.get("integrity",1000)))
 		part_rows.append({"part_id":str(part.get("part_id","")),
-			"injury_stage":preload("res://sim/body_penalty_rules.gd").stage_label(preload("res://sim/body_penalty_rules.gd").part_stage(part)),
 			"condition":str(part.get("condition","FUNCTIONAL")),
 			"integrity_milli":minimum_integrity})
 	return {"available":true,"blood":int(body.current_blood),
-		"penalties":preload("res://sim/body_penalty_rules.gd").current(sim.world,entity_id),
 		"blood_capacity":int(body.body_scalars.get("blood_capacity",0)),
 		"skin_toughness":int(body.body_scalars.get("skin_toughness",0)),
 		"soft_tissue_cushioning":int(body.body_scalars.get("soft_tissue_cushioning",0)),
@@ -8078,7 +7859,7 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 			if member.presence=="RECRUITABLE" and life_state=="DOWNED" else {},
 		"attack_assessment":npc_attack_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" else {},
-		"progression":member_progression(entity_id),
+		"progression":protagonist_progression() if member.role=="PROTAGONIST" else {},
 		"growth_build":protagonist_growth_build() if member.role=="PROTAGONIST" else {},
 		"recruitment_assessment":recruitment_assessment(entity_id) \
 			if member.presence=="RECRUITABLE" and _rescue_event_for(entity_id)!=null else {}}
@@ -8276,7 +8057,7 @@ func _is_important_log_event(event)->bool:
 			"party.exile_died","status.applied",
 			"status.expired","item.picked_up","item.equipped","item.unequipped",
 			"item.dropped","item.discarded","item.transferred","item.used","item.identified","item.energy_restored","health.restored",
-			"party.ration_eaten","party.ration_missing","party.ration_changed","party.monster_meat_eaten","party.ability_bound",
+			"party.ration_eaten","party.ration_missing","party.ration_changed",
 			"party.ration_starve_tick",
 			"progression.enemy_reward","opening.npc_discovered",
 			"opening.choice_committed","opening.potion_given",
@@ -8333,11 +8114,6 @@ func load_session_json(encoded: String) -> Dictionary:
 			or not Int64CodecScript.is_canonical(decoded.get("personality_seed")) \
 			or not decoded.get("journal") is Array or decoded.journal.size() > 10000:
 		return _rejection_dto("invalid_party_session_wire")
-	var saved_encounter:Variant=decoded.snapshot.get("party_encounter",{})
-	if not saved_encounter is Dictionary:return _rejection_dto("invalid_party_session_wire")
-	var saved_rooms:Variant=saved_encounter.get("nine_room_floor",{})
-	if saved_rooms is Dictionary and not saved_rooms.is_empty() and saved_rooms.get("generator_version",0)!=preload("res://sim/nine_room_generator.gd").VERSION:
-		return _feedback_dto({"accepted":false,"reason":"room_layout_version_changed","message":"1층의 9개 방 구성이 변경되어 새 게임이 필요합니다. 이전 저장 파일은 보존됩니다."})
 	var compatible_balance:=false
 	var saved_entities:Variant=decoded.snapshot.get("entities",[])
 	if saved_entities is Array:
@@ -8542,8 +8318,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	var replay_layout:Dictionary={}
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
-		if decoded.snapshot.party_encounter.get("nine_room_floor",{}).is_empty():current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1)
-		if decoded.snapshot.party_encounter.get("nine_room_floor",{}).is_empty() and preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
+		if preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
 			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true)
 			if preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot):
 				current_layout=preload("res://playtest/seeded_roster.gd").apply_layout(current_layout,parsed_world_seed,parsed_personality_seed)
@@ -8645,12 +8420,6 @@ func load_session_json(encoded: String) -> Dictionary:
 			parsed_personality_seed, parsed_scenario_id, replay._map_layout)
 	# Items are world authority from snapshot v7 on. A nested party version says
 	# nothing about them any more, so replay keeps the canonical world item state.
-	# Old field saves retain their original turn adapter during journal replay.
-	if RoundRules.TAG not in restored.world.entities[restored.world.party_encounter.protagonist_id].tags:
-		replay.sim.world.entities[replay.sim.world.party_encounter.protagonist_id].tags.erase(RoundRules.TAG)
-	if not restored.world.party_encounter.nine_room_floor.has("care") and replay.sim.world.party_encounter.nine_room_floor.has("care"):
-		replay.sim.world.party_encounter.nine_room_floor.erase("care")
-		replay.sim.world.party_encounter.nine_room_floor.schema_version=1
 	if legacy_progression_replay:
 		var legacy_progression=replay.sim.world.party_encounter.protagonist_progression
 		legacy_progression.legacy_reward_origin=true
@@ -8664,9 +8433,6 @@ func load_session_json(encoded: String) -> Dictionary:
 	for row in decoded.journal:
 		var replay_result:Dictionary={"accepted":false}
 		match str(row.kind):
-			"party_item":replay_result=replay.party_item_operation(str(row.action),str(row.instance_id),str(row.slot),int(row.actor_id))
-			"npc_mastery":replay_result=replay.spend_mastery_point(str(row.axis),int(row.actor_id))
-			"party_use":replay_result=replay.use_party_item(str(row.instance_id),int(row.actor_id),row.selection)
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
 			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation,not row.has("ruleset_id"))
@@ -8798,9 +8564,6 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
-			"care_rest":replay_result=replay.request_personal_rest(int(row.revision),int(row.request_id))
-			"room":replay_result=replay.request_room_exit(int(row.operation.actor_id),str(row.operation.portal_id),int(row.operation.revision))
-			"round":replay_result=replay.round_command(row.operation)
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
 			"field_control":
@@ -9002,12 +8765,6 @@ func _journal_wire_error(journal: Array) -> String:
 		if not row is Dictionary: return "invalid_party_journal"
 		var keys: Array = row.keys(); keys.sort()
 		match str(row.get("kind", "")):
-			"party_item":
-				if keys!=["action","actor_id","instance_id","kind","slot"] or not Int64CodecScript.is_canonical(row.actor_id) or row.action not in ["EQUIP","UNEQUIP","DROP","DISCARD"] or not row.instance_id is String or not row.slot is String:return "invalid_party_item_journal"
-			"npc_mastery":
-				if keys!=["actor_id","axis","kind"] or not Int64CodecScript.is_canonical(row.actor_id) or row.axis not in ["MELEE","RANGED","MAGIC","DEFENSE"]:return "invalid_npc_mastery_journal"
-			"party_use":
-				if keys!=["actor_id","instance_id","kind","selection"] or not Int64CodecScript.is_canonical(row.actor_id) or not row.instance_id is String or not row.selection is Dictionary or not preload("res://playtest/consumable_utility_service.gd").selection_valid(row.selection):return "invalid_party_use_journal"
 			"population":
 				if keys!=["kind","operation"] or not preload("res://sim/town_population_rules.gd").interaction_error(row.get("operation")).is_empty():
 					return "invalid_population_journal"
@@ -9313,14 +9070,6 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind"]:return "invalid_field_care_journal"
 			"darkness_rules":
 				if keys!=["kind"]:return "invalid_darkness_rules_journal"
-			"care_rest":
-				if keys!=["kind","request_id","revision"] or not _integer(row.request_id) or not _integer(row.revision) or row.request_id<1 or row.revision<1:return "invalid_care_rest_journal"
-			"room":
-				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_room_journal"
-				var room_keys:Array=row.operation.keys();room_keys.sort()
-				if room_keys!=["actor_id","portal_id","revision"] or not Int64CodecScript.is_canonical(row.operation.actor_id) or not row.operation.portal_id is String or not preload("res://sim/nine_room_floor_state.gd").integer(row.operation.revision):return "invalid_room_journal"
-			"round":
-				if keys!=["kind","operation"] or not row.operation is Dictionary or row.operation.get("type") not in ["EDIT","CONFIRM","RESUME"]:return "invalid_round_journal"
 			"field_action":
 				if keys!=["action","kind"] or not ActionScript.wire_error(row.get("action")).is_empty():
 					return "invalid_field_action_journal"
@@ -9465,7 +9214,6 @@ func _run_is_complete() -> bool:
 
 
 func _position_is_locked_exit(value: Variant) -> bool:
-	if room_enabled():return false
 	var progress := run_progress()
 	if not bool(progress.get("available", false)) \
 			or bool(progress.get("exit", {}).get("open", false)):
@@ -9707,15 +9455,6 @@ func _visual_effects_from_result(result) -> Array[Dictionary]:
 			if str(event.data.get("outcome","")) in ["HIT","FINISHER"]:
 				var melee_row:=_melee_vfx_row(event,order)
 				if not melee_row.is_empty():rows.append(melee_row);order+=1
-				else:
-					var shot:=_visual_effect_row(event,"HIT_FLASH","ranged_hit",order,"physical",0,"")
-					var history:Dictionary=sim.world._entity_position_at_event(event.actor_id,event.id)
-					if history.get("ok",false):shot["attacker_grid_pos"]=[history.position.x,history.position.y]
-					var projectile:Dictionary=shot.duplicate(true)
-					projectile.kind="PROJECTILE";projectile.effect_id="%d:projectile"%event.id
-					rows.append(projectile);order+=1
-					shot["impact_delay_ms"]=140
-					rows.append(shot);order+=1
 		elif event_type == "combat.attack_missed":
 			var miss_row:=_visual_effect_row(event,"MISS","miss",order,
 				"physical",0,"빗나감")
@@ -10025,22 +9764,18 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 			"item_heal_not_needed":"체력이 가득 차 있어 회복 물약을 아꼈습니다.",
 			"item_user_unavailable":"쓰러진 상태에서는 물약을 사용할 수 없습니다.",
 		"item_operation_unsafe_phase":"안전한 탐험 상태에서만 장비와 가방을 정리할 수 있습니다.",
-		"ability_item_missing":"흡수할 변이 획득물을 찾을 수 없습니다.",
-		"not_ability_item":"이 아이템은 변이 획득물이 아닙니다.",
+		"ability_item_missing":"흡수할 이능 획득물을 찾을 수 없습니다.",
+		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
 		"ability_binding_actor_missing":"결속할 캐릭터를 찾을 수 없습니다.",
 		"ability_binding_actor_unavailable":"현재 결속할 수 없는 상태의 캐릭터입니다.",
-		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 변이을 결속할 수 있습니다.",
+		"ability_binding_unsafe_phase":"안전한 정비 상태에서만 이능을 결속할 수 있습니다.",
 		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
-		"ability_binding_equipped_item":"장착 중인 아이템은 변이으로 결속할 수 없습니다.",
-		"ability_already_bound":"이미 결속한 변이입니다. 효과가 중첩되지 않습니다.",
-		"monster_meat_full":"배가 불러 더 먹을 수 없습니다.",
-		"mutation_cannot_eat":"지금은 먹을 수 없습니다.",
-		"mutation_modes_combined":"상시 효과와 사용 기술이 함께 적용됩니다.",
-		"monster_meat_enemy_near":"보이는 적을 벗어난 뒤 고기를 먹을 수 있습니다.",
-		"ability_binding_slots_full":"열린 변이 슬롯이 가득 찼습니다.",
-		"ability_binding_event_failed":"변이 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
-		"ability_removal_policy_undefined":"변이 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
-		"ability_absorption_unavailable":"변이 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
+		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",
+		"ability_already_bound":"이미 결속한 이능입니다. 효과가 중첩되지 않습니다.",
+		"ability_binding_slots_full":"열린 이능 슬롯이 가득 찼습니다.",
+		"ability_binding_event_failed":"이능 결속을 기록하지 못해 이전 상태로 돌아갔습니다.",
+		"ability_removal_policy_undefined":"이능 제거 정책이 확정되지 않아 현재는 제거할 수 없습니다.",
+		"ability_absorption_unavailable":"이능 흡수 서비스가 준비되지 않아 현재는 보관만 가능합니다.",
 		"world_not_settled":"진행 중인 세계 처리가 끝난 뒤 다시 시도하세요.",
 			"turn_draft_active":"준비 중인 전투 행동을 취소한 뒤 다시 시도하세요.",
 		"deployment_phase_required":"지금은 배치할 수 없습니다.", "unknown_formation":"알 수 없는 대형입니다.",
@@ -10276,9 +10011,8 @@ func _event_message(event) -> String:
 				" 절단된 부위는 그대로 남았다." if bool(event.data.get(
 					"severed_parts_remain",false)) else ""]
 		"town.shrine_service":return "%s 신전에서 긴장을 가라앉혔다."%_subject(target)
-		"party.monster_meat_eaten":return "몬스터 고기 섭취 · 포만감 +%d"%int(event.data.get("nutrition_milli",0)/1000)
-		"party.ability_bound":return "%s가 %s을(를) 체득했다."%[
-			_subject(actor),str(event.data.get("ability_id","변이"))]
+		"party.ability_bound":return "%s가 %s을(를) 결속했다."%[
+			_subject(actor),str(event.data.get("ability_id","이능"))]
 		"party.morale_changed":
 			match _morale_band_change(event):
 				"PANIC":return "%s 공황에 빠졌다."%_subject(actor)
@@ -10332,13 +10066,13 @@ func _event_message(event) -> String:
 			_subject(target),int(event.data.get("character_xp",0)),int(event.data.get("mastery_pool",0))]
 		"growth.enemy_reward":
 			var level_up:=_growth_level_up_suffix(event)
-			return ("%s 변이 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
+			return ("%s 이능 흔적을 얻었다 · %s · 성장 경험치 +%d"%[
 				_subject(actor),str(event.data.get("mutation_id","")),int(event.magnitude)] \
 				if bool(event.data.get("mutation_acquired",false)) \
 				else "%s 성장 경험치 +%d"%[_subject(actor),int(event.magnitude)])+level_up
 		"growth.stat_spent":return "%s 기본 능력을 단련했다."%_subject(actor)
 		"growth.species_point_spent":return "%s 종족 특성을 발전시켰다."%_subject(actor)
-		"growth.mutation_swapped":return "%s 변이 조합을 바꾸었다."%_subject(actor)
+		"growth.mutation_swapped":return "%s 이능 조합을 바꾸었다."%_subject(actor)
 		"party.rescue_discovered": return "%s 심하게 다친 채 쓰러져 있다." % _subject(target)
 		"party.contact_reported":
 			return "%s %s에서 적을 발견해 파티에 경고했다." % [
@@ -10501,209 +10235,3 @@ func _possessive(value:String)->String: return value + ("의")
 func _has_final(value:String)->bool:
 	if value.is_empty(): return false
 	var code := value.unicode_at(value.length()-1); return code >= 0xAC00 and code <= 0xD7A3 and (code-0xAC00)%28 != 0
-
-# Round APIs: selection is presentation only; every mutation is journalled.
-func round_active()->bool:
-	return sim!=null and RoundRules.active(sim.world)
-
-func round_status()->Dictionary:
-	if sim==null or sim.world.party_encounter==null:return {"active":false,"order":[]}
-	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
-	var rows:Array=[]
-	for key in r.order:
-		var id:=int(key);var ally:bool=id in w.party_encounter.active_party_member_ids
-		var seen:bool=ally or FieldRules.visible(w,id)
-		var plan:Dictionary=r.plans[key]
-		rows.append({"actor_id":id,"name":str(w.entities[id].display_name) if seen else "시야 밖 적",
-			"ally":ally,"visible":seen,"selected":id==_round_edit_actor_id,
-			"completed":key in r.completed_actor_ids,"position":plan.origin if seen else [-1,-1],
-			"destination":plan.destination if seen else [-1,-1],
-			"type":("ITEM" if not plan.item_operation.is_empty() else str(plan.action.type)) if seen else "HIDDEN","path":plan.path.duplicate(true) if seen else [],
-			"item_action":str(plan.item_operation.get("action","")) if seen else "",
-			"health":w.entities[id].health if seen else -1,"max_health":w.entities[id].max_health if seen else -1,
-			"source":plan.source if seen else "","skill_id":str(plan.action.get("skill_id","")) if seen else "",
-			"move_budget":RoundRules.remaining_move(w,id) if seen and RoundRules.individual(w) else int(plan.move_budget) if seen else 0,
-			"attack_budget":RoundRules.remaining_attacks(w,id) if seen else 0,
-			"current":id==RoundRules.current_actor(w)})
-	return {"active":RoundRules.active(w),"phase":str(r.phase),"round_id":int(r.round_id),
-		"plan_revision":int(r.plan_revision),"cursor":int(r.execution_cursor),"order":rows,
-		"interrupt_reason":str(r.interrupt_reason),"selected_actor_id":_round_edit_actor_id,
-		"individual":RoundRules.individual(w),"current_actor_id":RoundRules.current_actor(w)}
-
-func edit_round_plan(actor_id:int,draft:Dictionary,expected_revision:int)->Dictionary:
-	return round_command({"type":"EDIT","actor_id":str(actor_id),"draft":draft.duplicate(true),"revision":expected_revision})
-
-func confirm_round(expected_round_id:int,expected_revision:int)->Dictionary:
-	return round_command({"type":"CONFIRM","round_id":expected_round_id,"revision":expected_revision})
-
-func resume_round(expected_round_id:int,expected_revision:int)->Dictionary:
-	return round_command({"type":"RESUME","round_id":expected_round_id,"revision":expected_revision})
-
-func round_command(operation:Dictionary)->Dictionary:
-	if not round_active() or _run_is_complete():return _rejection_dto("round_not_active")
-	var keys:Array=operation.keys();keys.sort();var result:Dictionary
-	if operation.get("type")=="EDIT":
-		if keys!=["actor_id","draft","revision","type"] or not Int64CodecScript.is_canonical(operation.actor_id) or not operation.draft is Dictionary or not preload("res://sim/round_combat_state.gd").integer(operation.revision):return _rejection_dto("round_command_invalid")
-		result=RoundPlans.edit(sim,int(operation.actor_id),operation.draft,int(operation.revision))
-	else:
-		if keys!=["revision","round_id","type"] or operation.get("type") not in ["CONFIRM","RESUME"] or not preload("res://sim/round_combat_state.gd").integer(operation.revision) or not preload("res://sim/round_combat_state.gd").integer(operation.round_id):return _rejection_dto("round_command_invalid")
-		var rollback:Dictionary=sim.capture_rollback_memento(false)
-		result=RoundSystem.confirm(sim,int(operation.round_id),int(operation.revision),operation.type=="RESUME")
-		if result.get("accepted",false) and result.get("completed",false):
-			var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,int(result.events_start),int(result.time_cost)) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(int(result.events_start))
-			if not recovery.get("accepted",false):sim.restore_rollback_memento(rollback);return _rejection_dto("round_recovery_failed")
-			_advance_exile_world()
-		if result.get("accepted",false) and sim.world.party_encounter.round_combat.phase=="INTERRUPTED":RoundSystem.incorporate(sim)
-	if not result.get("accepted",false):return _rejection_dto(str(result.get("reason","round_failed")))
-	command_journal.append({"kind":"round","operation":operation.duplicate(true)})
-	_clear_draft()
-	var dto:=_feedback_dto({"accepted":true,"reason":str(result.get("reason","ok")),
-		"message":"새 위협을 발견해 멈췄습니다 · 남은 계획을 확인하세요" if str(result.get("reason",""))=="interrupted" else "예정 행동을 수정했습니다" if operation.type=="EDIT" else "개별 행동 완료" if RoundRules.individual(sim.world) else "라운드 진행 완료"})
-	dto["round_result"]=result.duplicate(true)
-	dto["event_ids"]=[]
-	for index in range(int(result.get("events_start",0)),int(result.get("events_end",0))):
-		dto.event_ids.append(str(sim.world.events[index].id))
-	var events:Array=sim.world.events.slice(int(result.get("events_start",0)),int(result.get("events_end",0)))
-	dto.visual_effects=_visual_effects_from_result({"accepted":true,"events":events})
-	var delays:Dictionary={};var delay:=0
-	for event in events:
-		if event.type=="action.melee_attack" or event.type=="action.skill":delays[event.id]=delay;delay+=240
-	for effect in dto.visual_effects:
-		effect["delay_ms"]=int(delays.get(int(effect.event_id),delays.get(int(effect.cause_id),maxi(0,delay-240))))+int(effect.get("impact_delay_ms",0))
-	dto["presentation_lead_ms"]=delay+180 if not dto.visual_effects.is_empty() else 0
-	if result.get("reason","")=="deployment_complete":dto.message="배치 완료 · 표시된 행동 순서대로 진행하세요."
-	return dto
-
-func round_preview()->Dictionary:
-	return RoundPreview.preview(sim) if round_active() else {"accepted":false,"slots":[]}
-
-func stage_round_action(action)->Dictionary:
-	if action==null:return _rejection_dto("round_action_invalid")
-	var actor_id:int=action.actor_id if RoundRules.individual(sim.world) else _round_edit_actor_id if _round_edit_actor_id in sim.world.party_encounter.active_party_member_ids else sim.world.party_encounter.protagonist_id
-	var current:Dictionary=sim.world.party_encounter.round_combat.plans.get(str(actor_id),{})
-	if current.is_empty():return _rejection_dto("round_actor_not_editable")
-	var draft_action=ActionScript.new(action.type,actor_id,action.destination,action.target_id,action.skill_id)
-	var path:Array=current.path.duplicate(true)
-	if action.type=="MOVE":
-		var route:Dictionary=sim.party_coordinator.pathfinder.find_path(actor_id,action.destination)
-		if not route.get("found",false):return _rejection_dto("round_path_unreachable")
-		path=[]
-		for point in route.path.slice(1):path.append([point.x,point.y])
-		draft_action=ActionScript.hold(actor_id)
-	elif not (room_enabled() and current.source=="USER" and action.type in ["MELEE","SKILL"]):
-		path=[] # Replace AI movement, but preserve explicitly chosen stage movement before attacking.
-	return edit_round_plan(actor_id,{"action":draft_action.to_dict(),"path":path},int(sim.world.party_encounter.round_combat.plan_revision))
-
-func round_overlays()->Array[Dictionary]:
-	var rows:Array[Dictionary]=[];var status:=round_status();var w=sim.world
-	if status.phase=="DEPLOYMENT":return rows # Placement is not a movement/attack preview.
-	for row in status.order:
-		if not row.visible or row.completed:continue
-		if RoundRules.individual(w) and (not row.ally or not row.current):continue
-		var plan:Dictionary=w.party_encounter.round_combat.plans[str(row.actor_id)]
-		rows.append({"actor_id":row.actor_id,"actor_name":row.name,"role":"COMPANION" if row.ally else "ENEMY",
-			"from_position":plan.origin,"destination":plan.destination,"target_position":plan.target_cell,
-			"target_id":int(plan.action.target_id),"type":plan.action.type if plan.path.is_empty() else "MOVE",
-			"type_label":"이동" if not plan.path.is_empty() else str({"HOLD":"대기","MELEE":"공격","SKILL":"이능"}.get(plan.action.type,plan.action.type)),
-			"automatic_suggestion":null,"reason":"공개된 계획대로 실행",
-			"skill_id":str(plan.action.get("skill_id","")),"source":plan.source,"source_label":"예정",
-			"source_color":"#75c8ff" if row.ally else "#ff6655","opacity":0.85 if row.actor_id==_round_edit_actor_id else 0.3,
-			"line_style":"SOLID","marker_style":"SQUARE","draw_connector":true,"approximate":false,
-			"ready_in":w.party_encounter.round_combat.order.find(str(row.actor_id))*100,"speech_headline":"",
-			"speech_reason_summary":"공개된 계획대로 실행","path":plan.path.duplicate(true)})
-		if not row.ally and plan.action.type=="MELEE" and room_enabled():
-			rows.back()["attack_cells"]=preload("res://sim/stage_enemy_rules.gd").cells(w,int(row.actor_id),Vector2i(plan.origin[0],plan.origin[1]),Vector2i(plan.target_cell[0],plan.target_cell[1])).map(func(cell):return [cell.x,cell.y])
-	return rows
-
-func round_retreat_hint()->Dictionary:
-	return _feedback_dto({"accepted":true,"reason":"ok","released":false,
-		"message":"도주도 이동 계획으로 진행합니다 · 출구 방향으로 각 아군의 경로를 지정하세요"})
-
-func stage_round_item(action:String,instance_id:String,slot:String,selection:Dictionary,recipient:int=-1)->Dictionary:
-	var hero:int=recipient if recipient!=-1 else sim.world.party_encounter.protagonist_id
-	var operation:={"action":action,"instance_id":instance_id,"slot":slot,"selection":selection.duplicate(true)}
-	if action=="USE":
-		var owner:int=preload("res://sim/party_bag_rules.gd").owner(sim.world,instance_id)
-		var inv=sim.world.inventory_of(owner);var item=inv.item(instance_id) if inv!=null else null
-		if item!=null and not preload("res://sim/mystery_consumables.gd").has(item.definition_id) and ItemCatalogScript.healing_amount(item.definition_id)<=0:return _rejection_dto("monster_meat_enemy_near")
-	var assessed:=preload("res://sim/round_item_rules.gd").assess(sim.world,hero,operation)
-	if not assessed.get("accepted",false):return _rejection_dto(str(assessed.get("reason","item_unavailable")))
-	return edit_round_plan(hero,{"action":ActionScript.hold(hero).to_dict(),"path":[],"item_operation":operation},int(sim.world.party_encounter.round_combat.plan_revision))
-
-func room_enabled()->bool:
-	return preload("res://sim/room_transition_rules.gd").enabled(sim.world) if sim!=null else false
-
-func room_status()->Dictionary:
-	if not room_enabled():return {"enabled":false}
-	var rules=preload("res://sim/room_transition_rules.gd");var s:Dictionary=sim.world.party_encounter.nine_room_floor
-	var area:Rect2i=rules.bounds(sim.world);var exits:Array=[]
-	var biome:String=str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].get("biome","dungeon"))
-	var room_name:String=str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].get("template_name",""))
-	for p in rules.portals(sim.world):
-		if int(s.active_room_id) not in [int(p.a),int(p.b)]:continue
-		var cell:Vector2i=rules.cell(sim.world,p,int(s.active_room_id))
-		exits.append({"portal_id":p.portal_id,"cell":[cell.x,cell.y],"target_room":int(p.b) if int(p.a)==int(s.active_room_id) else int(p.a)})
-	return {"enabled":true,"name":room_name,"biome":biome,"floor_index":int(s.floor_index),"active_room_id":int(s.active_room_id),"coord":[int(s.active_room_id)%3,int(s.active_room_id)/3],"role":str(rules.current_floor(sim.world).rooms[int(s.active_room_id)].role),"bounds":[area.position.x,area.position.y,8,8],"revision":int(s.revision),"exits":exits,"pursuit_warning":s.pending_pursuit.any(func(row):return int(row.floor_index)==int(s.floor_index) and int(row.target_room)==int(s.active_room_id))}
-
-func assess_room_exit(actor_id:int,portal_id:String)->Dictionary:
-	return preload("res://sim/room_transition_rules.gd").assess(sim.world,actor_id,portal_id,true) if room_enabled() else _rejection_dto("room_exit_unavailable")
-
-func request_room_exit(actor_id:int,portal_id:String,expected_revision:int)->Dictionary:
-	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
-	var event_start:int=sim.world.events.size();var rollback:Dictionary=sim.capture_rollback_memento(false)
-	var result:Dictionary=preload("res://sim/systems/room_transition_system.gd").request(sim,actor_id,portal_id,expected_revision)
-	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
-	var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,int(result.get("time_cost",0))) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
-	if not recovery.get("accepted",false):sim.restore_rollback_memento(rollback);return _rejection_dto("room_recovery_failed")
-	if not RoundPlans.begin(sim):sim.restore_rollback_memento(rollback);return _rejection_dto("room_plan_failed")
-	command_journal.append({"kind":"room","operation":{"actor_id":str(actor_id),"portal_id":portal_id,"revision":expected_revision}})
-	if _auto_explore!=null:_auto_explore.cancel("room_transition")
-	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
-	_clear_draft();_advance_exile_world()
-	var dto:=_feedback_dto({"accepted":true,"reason":result.reason,"message":"옆방으로 이동했습니다" if result.get("transitioned",false) else room_exit_message(str(result.reason))})
-	dto["message"]=("%s · %s"%[room_status().get("name","옆방"),preload("res://sim/room_transition_rules.gd").current_floor(sim.world).rooms[int(sim.world.party_encounter.nine_room_floor.active_room_id)].get("hint","")]) if result.get("transitioned",false) else room_exit_message(str(result.reason))
-	dto["room_result"]=result;return dto
-
-func resolve_pending_exit()->Dictionary:
-	return preload("res://sim/systems/room_transition_system.gd").resolve_pending_exit(sim)
-
-func visible_room_minimap()->Dictionary:
-	if not room_enabled():return {}
-	var s:Dictionary=sim.world.party_encounter.nine_room_floor;var rooms:Array=[];var connections:Array=[]
-	for id in range(9):
-		if "%d:%d"%[s.floor_index,id] not in s.visited:continue
-		rooms.append({"room_id":id,"coord":[id%3,id/3],"active":id==int(s.active_room_id),"role":str(preload("res://sim/room_transition_rules.gd").current_floor(sim.world).rooms[id].role)})
-	for p in preload("res://sim/room_transition_rules.gd").portals(sim.world):
-		if p.portal_id in s.discovered_portals:connections.append({"a":int(p.a),"b":int(p.b)})
-	return {"room_minimap":true,"rooms":rooms,"connections":connections,"active_room_id":int(s.active_room_id),"width":3,"height":3}
-
-static func room_exit_message(reason:String)->String:
-	match reason:
-		"room_party_far":return "동료가 멀리 있습니다 · 출구 근처로 모여 주세요"
-		"room_party_cannot_move":return "이동할 수 없는 동료가 있습니다"
-		"room_arrival_full":return "옆방 입구에 진입 공간이 없습니다"
-		"room_revision_changed":return "방 상태가 바뀌었습니다 · 다시 이동해 주세요"
-	return "후퇴 조건을 유지하지 못해 현재 방에 남았습니다"
-
-# Food-funded care is an explicit command; ordinary waiting does not rest.
-func personal_rest_enabled()->bool:
-	return sim!=null and load("res://sim/nine_room_care_rules.gd").enabled(sim.world)
-
-func personal_rest_preview()->Dictionary:
-	return load("res://sim/nine_room_care_rules.gd").preview(self) if sim!=null else {"accepted":false,"reason":"세션이 없습니다"}
-
-func request_personal_rest(revision:int,request_id:int)->Dictionary:
-	if not personal_rest_enabled():return _rejection_dto("care_not_enabled")
-	var rollback:Dictionary=sim.capture_rollback_memento(false)
-	var result:Dictionary=load("res://sim/nine_room_care_rules.gd").commit(self,revision,request_id)
-	if not result.accepted:
-		var rejected:Dictionary=_feedback_dto(result)
-		rejected.message=str(result.reason);return rejected
-	if not RoundPlans.begin(sim):
-		sim.restore_rollback_memento(rollback);return _rejection_dto("care_plan_failed")
-	_advance_exile_world()
-	command_journal.append({"kind":"care_rest","revision":revision,"request_id":request_id})
-	_clear_draft()
-	var dto:Dictionary=_feedback_dto(result)
-	dto.message=str(result.message)
-	return dto

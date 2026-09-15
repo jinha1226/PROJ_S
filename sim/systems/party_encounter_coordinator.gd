@@ -168,17 +168,12 @@ func _award_canonical_enemy_deaths(state) -> bool:
 		if preload("res://sim/living_expedition_rules.gd").enabled(world) \
 				and preload("res://sim/living_expedition_rules.gd").independent(world,event.instigator_id) \
 				and event.instigator_id not in world._party_active_ids_at_event(event.id):
-			if not preload("res://sim/party_growth_rules.gd").award_actor(world,event.instigator_id,event):return false
 			continue
-		# Enemy friendly-fire deaths award player XP regardless of player setup,
-		# including shove-induced
-		# kills. Keep the canonical death id as the exactly-once reward source.
 		if not state.protagonist_progression.award_enemy_death(event.id):return false
 		var xp_result:Dictionary=state.protagonist_growth.commit_award_xp(
 			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
 		if not bool(xp_result.get("accepted",false)):return false
 		state.protagonist_growth=xp_result.state
-		if not preload("res://sim/party_growth_rules.gd").award_companions(world,event):return false
 		var enemy=world.entities.get(event.target_id)
 		if enemy==null:return false
 		var family_id:=GrowthBuildRegistryScript.monster_family_for_species(
@@ -599,12 +594,6 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		else int(visible_party_ids[0])
 	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
-	if observed!=null and preload("res://sim/room_transition_rules.gd").stage_visible(world,enemy.position,observed.position):
-		awareness.suspicion=1000
-		awareness.last_known_target_position=observed.position
-		awareness.last_seen_step=processed_step_index;awareness.last_seen_time=world.world_time
-		awareness.search_turns_remaining=0
-		return _set_awareness_state(awareness,"HUNTING",observed.position,previous_state,observed_id)
 	# Awareness rule: standing next to an unaware enemy is not an instant alarm.
 	# It gains the maximum suspicion per tick, so a party that sneaks up gets one
 	# action to strike first; a suspicious watcher still turns on you next tick.
@@ -1648,14 +1637,14 @@ func _resolve_move_conflicts(rows: Array) -> String:
 	return ""
 
 func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: int,
-		tick_start_can_act_ids: Dictionary, allow_victory: bool = true, committed_plans:Dictionary={}) -> bool:
+		tick_start_can_act_ids: Dictionary, allow_victory: bool = true) -> bool:
 	if processed_step_index <= 0 or world._active_step_index != processed_step_index \
 			or actor_schedule_id <= 0 or due_time != world.world_time:
 		return false
 	if not preload("res://sim/field_turn_rules.gd").active(world) \
 		and not _update_enemy_awareness_batch(processed_step_index):return false
 	var state=world.party_encounter;var enemies:Array=_stream_enemy_ids();enemies.sort()
-	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world) if committed_plans.is_empty() else {}
+	var enemy_board:Dictionary=EnemySquadBlackboardScript.build(world)
 	var rows: Array[Dictionary] = []
 	for enemy_id in enemies:
 		var awareness=state.enemy_awareness(enemy_id)
@@ -1669,14 +1658,14 @@ func _enemy_batch(processed_step_index: int, actor_schedule_id: int, due_time: i
 		if not tick_start_can_act_ids.has(enemy_id) \
 				or not world.can_act(enemy_id, world.world_time) \
 				or int(state.enemy_busy_rows[enemy_id]) > world.world_time: continue
-		var forecast:Dictionary = committed_plans[enemy_id] if committed_plans.has(enemy_id) else forecast_enemy_action(enemy_id,enemy_board)
+		var forecast := forecast_enemy_action(enemy_id,enemy_board)
 		if not bool(forecast.get("accepted", false)): continue
 		rows.append({"enemy_id": enemy_id, "target_id": int(forecast.target_id),
 			"original_action_order": rows.size(), "action_type": str(forecast.action_type),
 			"destination": forecast.destination.duplicate(true),
 			"terrain_id": str(forecast.terrain_id), "time_cost": int(forecast.time_cost),
 			"melee": str(forecast.action_type) == "MELEE"})
-	if committed_plans.is_empty():_resolve_enemy_move_reservations(rows)
+	_resolve_enemy_move_reservations(rows)
 	var melee_rows: Array[Dictionary] = []
 	for row in rows:
 		if bool(row.melee): melee_rows.append(row)
@@ -1902,7 +1891,7 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 	var enemy = world.entities[enemy_id]
 	rejected.from_position = [enemy.position.x, enemy.position.y]
 	var awareness=world.party_encounter.enemy_awareness(enemy_id)
-	if not preload("res://sim/room_transition_rules.gd").enabled(world) and (awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]):
+	if awareness==null or awareness.awareness_state not in ["ALERT","HUNTING"]:
 		rejected.reason="enemy_not_combat_aware"
 		return rejected.duplicate(true)
 	var board:Dictionary=squad_board if not squad_board.is_empty() \
@@ -1928,8 +1917,6 @@ func forecast_enemy_action(enemy_id: int, squad_board: Dictionary = {}) -> Dicti
 				rejected.terrain_id=str(world.tile_at(cell).terrain);rejected.action_type="MOVE"
 				rejected.time_cost=int(TerrainRegistryScript.definition(rejected.terrain_id).move_time_cost)
 		rejected.reason="fear_retreat";return rejected.duplicate(true)
-	var stage_plan:Dictionary=preload("res://sim/stage_enemy_rules.gd").forecast(self,enemy_id,target,rejected.duplicate(true))
-	if not stage_plan.is_empty():return stage_plan
 	if melee.can_attack(enemy_id, target.id):
 		rejected.reason = "target_adjacent"
 		rejected.action_type = "MELEE"
@@ -2132,10 +2119,6 @@ func _has_active_combat_enemy()->bool:
 	return false
 
 func _disengage_to_exploration()->bool:
-	if preload("res://sim/round_combat_rules.gd").enabled(world):
-		# Planned combat keeps every companion at its actual cell. The round
-		# boundary owns pursuit/search expiry and exploration transition.
-		return true
 	var state=world.party_encounter
 	var hero=world.entities.get(world.party_control_actor_id())
 	if hero==null:return false

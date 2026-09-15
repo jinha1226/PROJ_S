@@ -18,12 +18,12 @@ static func commit(sim,event_start:int)->bool:
 		var attack=world.event_by_id(hit.cause_id)
 		if attack==null or attack.type!="action.melee_attack":continue
 		var member=world.party_encounter.member(attack.actor_id)
-		if member==null or "FIREBOLT" not in member.bound_ability_ids:continue
+		if member==null or "FIREBOLT" not in member.passive_ability_ids:continue
 		var target=world.entities.get(hit.target_id)
 		if target==null or world.combatant_states[target.id].life_state!="ACTIVE":continue
 		var power:=POWER
-		var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,member.entity_id)
-		if growth!=null:power=growth.mastery_scale("MAGIC",power)
+		if member.entity_id==world.party_encounter.protagonist_id and world.party_encounter.protagonist_growth!=null:
+			power=world.party_encounter.protagonist_growth.mastery_scale("MAGIC",power)
 		power=resisted(power,str(target.species_id))
 		var source=world.emit_event("ability.passive_triggered",attack.actor_id,target.id,target.position,power,hit.id,
 			{"schema_version":1,"ability_id":"FIREBOLT","damage":power})
@@ -51,12 +51,12 @@ static func event_error(world,event,historical:bool=false)->String:
 		var bound:=false;var passive:=false;var magic_rank:=0
 		for prior in world.events:
 			if prior.id>=event.id:break
-			if prior.actor_id==event.actor_id and prior.type in ["growth.mastery_spent","npc.mastery_spent"] and prior.data.get("target_id")=="MAGIC":magic_rank+=1
+			if prior.actor_id==event.actor_id and prior.type=="growth.mastery_spent" and prior.data.get("target_id")=="MAGIC":magic_rank+=1
 			if prior.type=="ability.passive_triggered" and prior.cause_id==event.cause_id:return "monster_passive_duplicate"
 			if prior.actor_id!=event.actor_id or prior.data.get("ability_id")!="FIREBOLT":continue
 			if prior.type=="party.ability_bound":bound=true
 			elif prior.type=="party.ability_mode_changed":passive=prior.data.get("mode")=="PASSIVE"
-		if not bound:return "monster_passive_not_equipped"
+		if not bound or not passive:return "monster_passive_not_equipped"
 		var per_rank:int=preload("res://game/rebuilt/progression.gd").DATA.attack_per_rank_milli
 		var expected:int=(POWER*(1000+magic_rank*per_rank)+500)/1000
 		expected=resisted(expected,str(world.entities[event.target_id].species_id))

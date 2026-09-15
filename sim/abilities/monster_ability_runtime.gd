@@ -9,7 +9,7 @@ static func distance(a:Vector2i,b:Vector2i)->int:return maxi(absi(a.x-b.x),absi(
 static func alive(world,id:int)->bool:return world.entities.has(id) and world.combatant_states.has(id) and world.combatant_states[id].life_state=="ACTIVE"
 static func passive(world,id:int,ability:String)->bool:
 	var member=world.party_encounter.member(id) if world.party_encounter!=null else null
-	return member!=null and ability in member.bound_ability_ids
+	return member!=null and ability in member.passive_ability_ids
 
 static func projection(world)->Dictionary:
 	var p:Dictionary=world.get_meta(KEY,{})
@@ -35,9 +35,8 @@ static func add_status(world,actor:int,target:int,id:String,key:String,power:int
 		{"schema_version":1,"ability_id":id,"status":key,"until":str(world.world_time+duration)})!=null
 
 static func scale(world,id:int,ability:String,value:int)->int:
-	var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,id)
-	if growth!=null:
-		return growth.mastery_scale(str(Defs.definition(ability).get("axis","MAGIC")),value)
+	if world.party_encounter!=null and id==world.party_encounter.protagonist_id and world.party_encounter.protagonist_growth!=null:
+		return world.party_encounter.protagonist_growth.mastery_scale(str(Defs.definition(ability).get("axis","MAGIC")),value)
 	return value
 
 static func assess(world,actor:int,id:String,target:int)->Dictionary:
@@ -65,7 +64,7 @@ static func assess(world,actor:int,id:String,target:int)->Dictionary:
 			var cell:Vector2i=position+delta
 			if not world.in_bounds(cell) or not Terrain.definition(str(world.tile_at(cell).terrain)).get("passable",false):continue
 			if cell!=origin and not world.occupying_entities_at(cell).is_empty():continue
-			if not preload("res://sim/room_transition_rules.gd").same_room(world,origin,cell) or not preload("res://sim/combat_kernel.gd").sees(origin,cell,world.combat_sight_blocked):continue
+			if not preload("res://sim/combat_kernel.gd").sees(origin,cell,world.combat_sight_blocked):continue
 			if landing==Vector2i(-1,-1) or distance(origin,cell)<distance(origin,landing):landing=cell
 		if landing==Vector2i(-1,-1):no.message="도약할 빈칸이 없습니다.";return no
 	return {"accepted":true,"reason":"ok","message":str(d.name),"actor_id":actor,"target_id":target,"skill_id":id,
@@ -131,7 +130,7 @@ static func commit(sim,actor:int,id:String,target:int,a:Dictionary):
 		"FROST":
 			ok=add_status(w,actor,target,id,"FROST_ZONE",1,300,e.id)
 			for enemy in w.party_encounter.enemy_ids:
-				if w.is_autonomous_target(enemy) and distance(w.entities[target].position,w.entities[enemy].position)<=1 and preload("res://sim/room_transition_rules.gd").same_room(w,w.entities[target].position,w.entities[enemy].position) and preload("res://sim/combat_kernel.gd").sees(w.entities[target].position,w.entities[enemy].position,w.combat_sight_blocked):ok=ok and add_status(w,actor,enemy,id,"SLOW",100,300,e.id)
+				if w.is_autonomous_target(enemy) and distance(w.entities[target].position,w.entities[enemy].position)<=1 and preload("res://sim/combat_kernel.gd").sees(w.entities[target].position,w.entities[enemy].position,w.combat_sight_blocked):ok=ok and add_status(w,actor,enemy,id,"SLOW",100,300,e.id)
 		"POISON":ok=poison(w,actor,target,3,e.id)
 		"DISCHARGE":
 			var stored:int=projection(w).charges.get(actor,0)
@@ -239,19 +238,14 @@ static func accuracy_bonus(world,actor:int,weapon_id:String,before:int=-1)->int:
 		enabled=false
 		for e in world.events:
 			if e.id>=before:break
-			if e.type=="party.ability_bound" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=true
+			if e.type=="party.ability_mode_changed" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=e.data.mode=="PASSIVE"
 	return penalty+(150 if enabled else 0)
 
-static func tick(sim,start:int,end:int,catchup_room:Vector2i=Vector2i(-1,-1))->bool:
+static func tick(sim,start:int,end:int)->bool:
 	var w=sim.world
 	# Snapshot the projection; emitted effects cannot recursively tick themselves.
 	var statuses:Array=projection(w).statuses.values().duplicate()
 	for s in statuses:
-		if preload("res://sim/room_transition_rules.gd").enabled(w):
-			var membership:Vector2i=preload("res://sim/room_transition_rules.gd").membership(w.entities[s.target_id].position)
-			if catchup_room!=Vector2i(-1,-1):
-				if membership!=catchup_room:continue
-			elif not preload("res://sim/room_transition_rules.gd").current(w,w.entities[s.target_id].position):continue
 		if s.data.status!="POISON" or not alive(w,s.target_id):continue
 		if int(preload("res://sim/consumable_effects.gd").projection(w).clears.get(s.target_id,-1))>s.id:continue
 		var until:int=mini(end,int(s.data.until))
@@ -259,13 +253,12 @@ static func tick(sim,start:int,end:int,catchup_room:Vector2i=Vector2i(-1,-1))->b
 		for n in range(mini(3,ticks)):
 			if not alive(w,s.target_id):break
 			if impact(sim,s.actor_id,s.target_id,"VENOM_FANG",s.magnitude*2,"physical",s.id)<0:return false
-	if catchup_room!=Vector2i(-1,-1):return true
 	if end/100==start/100:return true
 	for actor in w.party_encounter.active_party_member_ids:
 		if not alive(w,actor) or not passive(w,actor,"REGENERATIVE_TISSUE"):continue
 		var safe:=true
 		for enemy in w.party_encounter.enemy_ids:
-			if preload("res://sim/room_transition_rules.gd").same_room(w,w.entities[actor].position,w.entities[enemy].position) and alive(w,enemy) and distance(w.entities[actor].position,w.entities[enemy].position)<=6:safe=false;break
+			if alive(w,enemy) and distance(w.entities[actor].position,w.entities[enemy].position)<=6:safe=false;break
 		if safe and w.entities[actor].health<w.entities[actor].max_health:
 			var pulse=w.emit_event("ability.pulse",actor,actor,w.entities[actor].position,0,-1,{"schema_version":1,"ability_id":"REGENERATIVE_TISSUE"})
 			if pulse==null or impact(sim,actor,actor,"REGENERATIVE_TISSUE",2*mini(10,end/100-start/100),"HEAL",pulse.id)<0:return false
@@ -285,19 +278,18 @@ static func markers(world)->Array:
 		var key:String=str(e.data.status)
 		if key in ["FROST_ZONE","POISON","HIDE","SHELL","STONE","VEIL"] and world.entities.has(e.target_id):
 			var p:Vector2i=e.position if key=="FROST_ZONE" else world.entities[e.target_id].position
-			if preload("res://sim/room_transition_rules.gd").same_room(world,origin,p):result.append({"position":[p.x,p.y],"kind":key})
+			result.append({"position":[p.x,p.y],"kind":key})
 	if radius==0:return result
 	var direction:Vector2i=world.party_encounter.facing
 	for id in world.entities:
 		var entity=world.entities[id]
-		if not preload("res://sim/room_transition_rules.gd").same_room(world,origin,entity.position) or id==actor or not alive(world,id) or distance(origin,entity.position)>radius:continue
+		if id==actor or not alive(world,id) or distance(origin,entity.position)>radius:continue
 		if deep!=null and echo==null and Vector2(entity.position-origin).dot(Vector2(direction))<0:continue
 		result.append({"position":[entity.position.x,entity.position.y],"kind":"LIFE"})
 	if passive(world,actor,"DEEP_EYE") or deep!=null:
 		for y in range(maxi(0,origin.y-radius),mini(world.height,origin.y+radius+1)):
 			for x in range(maxi(0,origin.x-radius),mini(world.width,origin.x+radius+1)):
 				var p:=Vector2i(x,y);var tile=world.tile_at(p)
-				if not preload("res://sim/room_transition_rules.gd").same_room(world,origin,p):continue
 				if deep!=null and Vector2(p-origin).dot(Vector2(direction))<0:continue
 				if int(tile.temperature)>400 or int(tile.smoke_amount)>0 or str(tile.terrain) in ["deep_water","lava"]:result.append({"position":[x,y],"kind":"DANGER"})
 	return result

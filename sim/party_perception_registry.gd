@@ -22,8 +22,7 @@ static func sight_range(world, state, member_id: int) -> int:
 	return result
 
 static func field_visible(world,origin:Vector2i,target:Vector2i)->bool:
-	if preload("res://sim/room_transition_rules.gd").enabled(world):return preload("res://sim/room_transition_rules.gd").stage_visible(world,origin,target)
-	return preload("res://sim/room_transition_rules.gd").same_room(world,origin,target) and world.in_bounds(target) and preload("res://sim/combat_kernel.gd").sees(
+	return world.in_bounds(target) and preload("res://sim/combat_kernel.gd").sees(
 		origin,target,world.combat_sight_blocked)
 
 
@@ -39,9 +38,6 @@ static func visible_party_members(world, state, target_position: Vector2i) -> Ar
 		var origin: Vector2i = state.group_anchor if member.presence == "GROUPED" \
 			else world.entities[member_id].position
 		var member_range := sight_range(world, state, member_id)
-		if preload("res://sim/room_transition_rules.gd").enabled(world):
-			if field_visible(world,origin,target_position):rows.append({"entity_id":member_id,"distance":_distance(origin,target_position),"sight_range":8,"roster_slot":int(member.roster_slot)})
-			continue
 		# All registered lighting factors are <= 1000 and peripheral range is
 		# capped below. Reject distant targets before profiles, light sources and
 		# LOS; callers query every monster repeatedly during a UI refresh.

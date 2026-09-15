@@ -10,13 +10,11 @@ static func enter(session,layout:Dictionary)->bool:
 	if not session.town_life_enabled():return true
 	var world=session.sim.world;var party=world.party_encounter;var rows:Array=[]
 	var company:Array=session.company_member_ids()
-	var authored:bool=session.room_enabled()
 	var frontier:=bool(Life.state(world.events).get("frontier",false))
 	var candidates:Array=[]
 	for id in party.party_member_ids:
 		var member=party.member(id);var entity=world.entities.get(id)
 		if entity==null or member==null or id in company or member.presence!="RECRUITABLE":continue
-		if authored and "first_floor_event_npc" not in entity.tags:continue
 		if Rules.identity(str(entity.display_name)).explores:candidates.append(id)
 	var occupied:Array=[]
 	var entry:Vector2i=layout.entry_position
@@ -27,16 +25,13 @@ static func enter(session,layout:Dictionary)->bool:
 	for cache in session._base_progression_service._base_cache_rows():
 		var p:Array=cache.position
 		seeds.append(Vector2i(int(p[0]),int(p[1]))+Vector2i(2,0))
-	var visitor_limit:=3 if str(layout.get("floor_ruleset_id",""))=="four-zone-mobile-v1" else Rules.FLOOR_COUNT
-	if authored:visitor_limit=1 if int(layout.floor_index)==1 else 0
-	for index in range(mini(visitor_limit,candidates.size())):
+	for index in range(mini(Rules.FLOOR_COUNT,candidates.size())):
 		var seed:Vector2i=seeds[index%seeds.size()]
 		var chosen:=Vector2i(-1,-1)
 		for radius in range(0,9):
 			for dy in range(-radius,radius+1):
 				for dx in range(-radius,radius+1):
 					var p:=seed+Vector2i(dx,dy)
-					if authored and preload("res://sim/room_transition_rules.gd").membership(p)!=Vector2i(1,5):continue
 					if p in occupied or not _safe(world,p,entry,living):continue
 					var close:=false
 					for used in occupied:
@@ -70,30 +65,17 @@ static func enter(session,layout:Dictionary)->bool:
 				row["goals"]=_exploration_goals(world,layout,chosen,index)
 			row.activity=preload("res://sim/systems/independent_explorer_system.gd").LABELS[row.state]
 			row.needs_supplies=index==2
-			if authored or (frontier and "frontier_survivor" in entity.tags) or (index==0 and int(party.expedition_cycle.floor_index)==1 and str(layout.get("floor_ruleset_id",""))=="four-zone-mobile-v1"):
+			if frontier and "frontier_survivor" in entity.tags:
 				row.state="REST";row.rest_until=world.world_time+12000;row.needs_supplies=true
 				row.activity="식량을 기다리는 생존자"
-				if "first_companion_candidate" not in entity.tags:entity.tags.append("first_companion_candidate")
 			var inventory=world.item_state.inventory(id)
 			if inventory==null:return false
 			if inventory.equipped_item("MAIN_HAND")==null:
-				var weapon:=starter_weapon(world,id)
-				# Random species/talents can have DEX below the dagger requirement.
-				# Never grant an unusable weapon and abort the entire departure.
-				if not weapon.is_empty():
-					var grant:Dictionary=Items.commit_grant(world,id,weapon,1,chosen,"INDEPENDENT_EXPEDITION")
-					if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
-			if index!=2 and "frontier_survivor" not in entity.tags and "first_companion_candidate" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
+				var grant:Dictionary=Items.commit_grant(world,id,"WEAPON_SHORT_SWORD",1,chosen,"INDEPENDENT_EXPEDITION")
+				if not grant.get("accepted",false) or not Items.commit_equip(world,id,str(grant.instance_id),"MAIN_HAND",chosen,0).get("accepted",false):return false
+			if index!=2 and "frontier_survivor" not in entity.tags and preload("res://sim/systems/independent_explorer_system.gd").item_id(world,id,"FOOD_RATION").is_empty():
 				if not Items.commit_grant(world,id,"FOOD_RATION",2,chosen,"INDEPENDENT_EXPEDITION").get("accepted",false):return false
 	return _emit(world,"population.floor_arrived",rows)!=null
-
-static func starter_weapon(world,id:int)->String:
-	var stats:Dictionary=preload("res://sim/actor_stat_rules.gd").for_entity(world,id)
-	for weapon in ["WEAPON_SHORT_SWORD","WEAPON_DCSS_CLUB"]:
-		var definition=preload("res://sim/item_registry.gd").definition(weapon)
-		if definition!=null and preload("res://sim/actor_stat_rules.gd").requirements_error(stats,definition.requirements).is_empty():return weapon
-	# If no starter is legal, the explorer remains unarmed. Equipment rules stay intact.
-	return ""
 
 static func _exploration_goals(world,layout:Dictionary,start:Vector2i,ordinal:int)->Array:
 	# One bounded flood on arrival. Goals are journaled with the visitor, so

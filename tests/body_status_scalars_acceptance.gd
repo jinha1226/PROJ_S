@@ -28,22 +28,9 @@ func run()->void:
 		"inspection exposes exact authoritative body scalars")
 	var text:="\n".join(Sandbox.body_status_lines(body))
 	check(not "혈액" in text,"retired blood resource is hidden")
-	check(not "연부조직" in text,"soft tissue is presented as muscle")
-	for label in ["피부 질김","근육","뼈 강도"]:
+	for label in ["피부 질김","연부조직 완충","뼈 강도","충격 %d/%d"%[
+			body.shock,body.shock_threshold],"상처"]:
 		check(str(label) in text,"body status includes %s"%str(label))
-	var healthy:=body.duplicate(true)
-	healthy.consciousness=1000;healthy.shock=0;healthy.wound_count=5
-	healthy.penalties={"attack_milli":1000,"move_milli":1000,"recovery_milli":1000}
-	healthy.parts=[{"part_id":"HEAD","condition":"FUNCTIONAL","injury_stage":"정상","integrity_milli":1000}]
-	var lines:=Sandbox.body_status_lines(healthy)
-	check(lines.size()==1 and lines[0].count(" / ")==2,"healthy body shows traits on one line only, even with historical wounds")
-	healthy.parts.append({"part_id":"LEFT_ARM","condition":"FUNCTIONAL","injury_stage":"정상","integrity_milli":950})
-	healthy.parts.append({"part_id":"RIGHT_LEG","condition":"FUNCTIONAL","injury_stage":"골절","integrity_milli":500})
-	lines=Sandbox.body_status_lines(healthy)
-	check(lines.size()==3 and lines[1]=="왼팔 가벼운 상처" and lines[2]=="오른다리 골절","show only injured parts, including mild tissue damage")
-	check(not "머리" in "\n".join(lines) and not "정상" in "\n".join(lines),"normal parts hidden")
-	healthy.parts[1].condition="SEVERED"
-	check("왼팔 절단" in Sandbox.body_status_lines(healthy),"severed part stays visible")
 	var portrait=Portrait.new();portrait.actor={"health":60,"max_health":120,
 		"energy":3,"max_energy":12,"stress":800}
 	var labels:=portrait.resource_labels(true)

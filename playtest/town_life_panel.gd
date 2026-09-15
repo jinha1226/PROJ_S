@@ -113,7 +113,7 @@ func _guild()->void:
 			accept.pressed.connect(func():command_requested.emit({"action":"GUILD_TUTORIAL","quest_action":"ACCEPT","quest_id":quest_id}))
 		if quest_id in ["GUILD_TUTORIAL_HEAL","GUILD_TUTORIAL_BIND"] and bool(row.get("accepted",false)) \
 				and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
-			var support:=UI.button(actions,"지원 변이" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","GuildSupport%s"%quest_id)
+			var support:=UI.button(actions,"지원 이능" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","GuildSupport%s"%quest_id)
 			support.pressed.connect(func():command_requested.emit({"action":"GUILD_TUTORIAL","quest_action":"SUPPORT","quest_id":quest_id}))
 		if bool(row.get("can_claim",false)):
 			var claim:=UI.button(actions,"보상 받기","GuildClaim%s"%quest_id,true)

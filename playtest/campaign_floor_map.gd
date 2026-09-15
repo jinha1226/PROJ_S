@@ -53,7 +53,8 @@ const _FLOOR_PROFILES := {
 
 
 static func generate(floor_index:int, seed:int)->Dictionary:
-	return preload("res://playtest/four_zone_floor.gd").generate(floor_index,seed)
+	var authored:=generate_authored(floor_index,seed)
+	return CompactFloor.reduce(authored) if not authored.is_empty() else {}
 
 static func generate_authored(floor_index:int, seed:int)->Dictionary:
 	if not _FLOOR_PROFILES.has(floor_index): return {}
@@ -136,7 +137,7 @@ static func generate_authored(floor_index:int, seed:int)->Dictionary:
 
 
 static func floor_size(floor_index:int)->Vector2i:
-	return Vector2i(48,48) if _FLOOR_PROFILES.has(floor_index) \
+	return _FLOOR_PROFILES[floor_index].size/2 if _FLOOR_PROFILES.has(floor_index) \
 		else Vector2i.ZERO
 
 

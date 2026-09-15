@@ -43,7 +43,6 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 	# A terminal death synchronously emits one corpse materialization child.
 	var required_events := (4 + status_count) if terminal_immediate \
 		else ((2 if lethal else 1) + (1 if should_apply_bleed else 0))
-	if preload("res://sim/body_penalty_rules.gd").enabled(world):required_events+=1
 	var bleed_rows: Array = []
 	if entity != null and world.combatant_states.has(entity.id):
 		for status in world.combatant_states[entity.id].status_rows:
@@ -71,14 +70,11 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			or (should_apply_bleed and world.world_time > MAX_WORLD_TIME - 300) \
 			or not world.has_event_id_headroom(required_events):
 		return {"accepted": false, "event": null, "applied_health_damage": 0}
-	# Preflight the HP-derived injury before mutating HP. Old untagged fixtures
-	# retain B1 compatibility; production never resolves armour twice for wounds.
+	# B1 keeps legacy HP as the combat authority, but freezes a parallel body
+	# injury plan before mutating anything. It consumes only canonical attack data
+	# and the equipped weapon registry; no global RNG or UI state participates.
 	var body_injury_context:Dictionary={}
-	if _uses_hp_injury(entity,damage_type,cause_id):
-		var plan:Dictionary=_hp_injury_plan(entity,mini(expected_health_before,resolved_requested_damage),damage_type,cause_id,armor_context)
-		if not plan.get("accepted",false):return {"accepted":false,"event":null,"applied_health_damage":0}
-		body_injury_context={"body":world.body_states[entity.id],"hp_plan":plan}
-	elif damage_type=="physical" and (cause.type=="action.melee_attack" \
+	if damage_type=="physical" and (cause.type=="action.melee_attack" \
 			and cause.data.get("outcome")=="HIT" or cause.type=="action.skill" \
 			and cause.data.get("ruleset_id")=="party-active-skills-v1" \
 			or cause.type=="environment.explosion_impact"):
@@ -213,9 +209,7 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 		existing.source_event_id = status_event.id
 	if not body_injury_context.is_empty():
 		var injury:Dictionary
-		if body_injury_context.has("hp_plan"):
-			injury=BodyInjurySystemScript._apply_plan(body_injury_context.body,body_injury_context.hp_plan,damage_event.id)
-		elif body_injury_context.has("element"):
+		if body_injury_context.has("element"):
 			injury=BodyInjurySystemScript.apply_element_at_part(body_injury_context.body,
 				str(body_injury_context.element),int(body_injury_context.raw_damage),
 				str(body_injury_context.commitment_hash),entity.id,damage_event.id,
@@ -229,8 +223,6 @@ func apply_canonical_active_damage(entity, requested_damage: int, damage_type: S
 			return {"accepted":false,"event":damage_event,
 				"transition_event":transition_event,"death_event":death_event,
 				"status_event":status_event,"applied_health_damage":applied_damage}
-		if not preload("res://sim/body_penalty_rules.gd").record(world,entity.id,damage_event.id):
-			return {"accepted":false,"event":damage_event,"applied_health_damage":applied_damage}
 	return {"accepted": true, "event": damage_event,
 		"transition_event": transition_event, "death_event": death_event,
 		"status_event": status_event,
@@ -381,7 +373,7 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 	if entity == null or not world.combatant_states.has(entity.id) \
 			or world.combatant_states[entity.id].life_state != "ACTIVE" or amount <= 0 \
 			or processed_step_index <= 0 or processed_step_index != world._active_step_index \
-			or not world.has_event_id_headroom((3 if amount >= entity.health else 1) + (1 if preload("res://sim/body_penalty_rules.gd").enabled(world) else 0)):
+			or not world.has_event_id_headroom(3 if amount >= entity.health else 1):
 		return 0
 	var resolved_position: Vector2i = entity.position if event_position == Vector2i(-1, -1) else event_position
 	var armor_context:Dictionary=_element_armor_context(entity,damage_type,amount,
@@ -389,11 +381,7 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 	var damage := mini(entity.health, maxi(1, int(armor_context.get("final_damage",amount))))
 	var element_body=world.body_states.get(entity.id) if damage_type in ["fire","electric"] else null
 	var element_key:String=("element-body-legacy-v1|%d|%d|%d|%s"%[cause_id,entity.id,world.world_time,damage_type]).sha256_text()
-	var hp_plan:Dictionary={}
-	if _uses_hp_injury(entity,damage_type,cause_id):
-		hp_plan=_hp_injury_plan(entity,damage,damage_type,cause_id,armor_context)
-		if not hp_plan.get("accepted",false):return 0
-	elif element_body!=null and not BodyInjurySystemScript.assess_element_at_part(
+	if element_body!=null and not BodyInjurySystemScript.assess_element_at_part(
 			element_body,damage_type.to_upper(),damage,element_key,entity.id,
 			str(armor_context.get("part_id",""))).accepted:return 0
 	entity.health -= damage
@@ -401,16 +389,11 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 		"combat.%s_damage" % damage_type, -1, entity.id, resolved_position,
 		damage, cause_id, {"damage_type": damage_type}
 	)
-	if not hp_plan.is_empty() and damage_event!=null:
-		var injury:Dictionary=BodyInjurySystemScript._apply_plan(world.body_states[entity.id],hp_plan,damage_event.id)
-		if not injury.accepted:return 0
-		if not preload("res://sim/body_penalty_rules.gd").record(world,entity.id,damage_event.id):return 0
-	elif element_body!=null and damage_event!=null:
+	if element_body!=null and damage_event!=null:
 		var injury:Dictionary=BodyInjurySystemScript.apply_element_at_part(element_body,
 			damage_type.to_upper(),damage,element_key,entity.id,damage_event.id,
 			str(armor_context.get("part_id","")))
 		if not injury.accepted:return 0
-		if not preload("res://sim/body_penalty_rules.gd").record(world,entity.id,damage_event.id):return 0
 	if entity.health == 0:
 		var death_event = world.emit_event(
 			"entity.died", -1, entity.id, resolved_position, 0, damage_event.id,
@@ -425,30 +408,6 @@ func apply_damage(entity, amount: int, damage_type: String, cause_id: int,
 			combatant.status_rows.clear()
 	return damage
 
-
-func _uses_hp_injury(entity,damage_type:String,cause_id:int)->bool:
-	if not preload("res://sim/body_penalty_rules.gd").enabled(world) or not world.body_states.has(entity.id):return false
-	if damage_type in ["fire","electric"]:return true
-	if damage_type!="physical":return false
-	var cause=world.event_by_id(cause_id)
-	if cause==null:return false
-	# Status damage is not another blow: poison/legacy bleed must not fracture
-	# random limbs each tick. Starvation likewise stays an HP-only resource cost.
-	if cause.type=="ability.impact":return cause.data.get("ability_id")!="VENOM_FANG"
-	return cause.type in ["action.melee_attack","action.skill","environment.explosion_impact"]
-
-func _hp_injury_plan(entity,hp_loss:int,damage_type:String,cause_id:int,armor_context:Dictionary)->Dictionary:
-	var form:=damage_type.to_upper()
-	var cause=world.event_by_id(cause_id)
-	if damage_type=="physical":
-		form="IMPACT"
-		if cause!=null and cause.type=="action.melee_attack":
-			var weapon_id:String=str(cause.data.get("weapon_id",WorldItemOperationsScript.equipped_weapon_id(world,cause.actor_id)))
-			var weapon=WeaponRegistryScript.definition(weapon_id)
-			if weapon!=null:form=str(weapon.attack_form)
-	var key:String=("hp-injury-v1|%d|%d|%d|%d"%[world.seed,cause_id,entity.id,world.world_time]).sha256_text()
-	return BodyInjurySystemScript.assess_hp_loss(world.body_states[entity.id],form,hp_loss,
-		entity.max_health,key,entity.id,str(armor_context.get("part_id","")))
 
 func _element_armor_context(entity,damage_type:String,raw_damage:int,cause_id:int,
 		position:Vector2i)->Dictionary:

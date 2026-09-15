@@ -36,7 +36,6 @@ const PRIORITY_PORTAL:=31
 const PRIORITY_THREAT:=40
 const PRIORITY_HERO:=50
 
-var _room_map:Dictionary={}
 var _width:=15
 var _height:=15
 var _cells:Dictionary={}
@@ -66,8 +65,6 @@ func _ready()->void:
 	resized.connect(queue_redraw)
 
 func set_observation(observation:Dictionary)->void:
-	_room_map=observation.duplicate(true) if observation.get("room_minimap",false) else {}
-	if not _room_map.is_empty():queue_redraw();return
 	if not observation.has("cells"):return
 	var rows:Array=observation.get("cells",[]) if observation.get("cells",[]) is Array else []
 	var epoch:=str(observation.get("epoch",""))
@@ -267,8 +264,6 @@ func cartography_spec()->Dictionary:
 		"per_frame_process":false}.duplicate(true)
 
 func _draw()->void:
-	if not _room_map.is_empty():
-		_draw_room_map();return
 	if _width<=0 or _height<=0 or size.x<=0.0 or size.y<=0.0:return
 	draw_rect(Rect2(Vector2.ZERO,size),UNSEEN_COLOR,true)
 	var slot:=Vector2(size.x/float(SECTOR_COLUMNS),size.y/float(SECTOR_ROWS))
@@ -305,17 +300,3 @@ func _key(position:Vector2i)->String:
 func _position_from_key(value:String)->Vector2i:
 	var parts:=value.split(":")
 	return Vector2i(int(parts[0]),int(parts[1])) if parts.size()==2 else Vector2i(-1,-1)
-
-func _draw_room_map()->void:
-	draw_room_map(self,Rect2(Vector2.ZERO,size),_room_map)
-
-static func draw_room_map(canvas:Control,rect:Rect2,map:Dictionary)->void:
-	canvas.draw_rect(rect,UNSEEN_COLOR,true)
-	var slot:=rect.size/3.0
-	for connection in map.get("connections",[]):
-		var a:int=connection.a;var b:int=connection.b
-		canvas.draw_line(rect.position+(Vector2(a%3,a/3)+Vector2.ONE*0.5)*slot,rect.position+(Vector2(b%3,b/3)+Vector2.ONE*0.5)*slot,MEMORY_COLOR,2.0)
-	for room in map.get("rooms",[]):
-		var id:int=room.room_id;var center:Vector2=rect.position+(Vector2(id%3,id/3)+Vector2.ONE*0.5)*slot
-		var color:=HERO_COLOR if room.active else (EXIT_COLOR if room.role=="STAIRS" else MEMORY_COLOR)
-		canvas.draw_rect(Rect2(center-slot*0.28,slot*0.56),color,true)

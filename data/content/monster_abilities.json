@@ -144,60 +144,6 @@
       "passive": "가까운 숨은 위험 감지",
       "active": "지정 방향 집중 탐지",
       "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_rat",
-      "ability_id": "ECHO_SENSE",
-      "label": "반향 감각",
-      "essence_id": "ORGAN_DCSS_RAT",
-      "passive": "가까운 생명체 기척 감지",
-      "active": "넓은 범위 생명체 탐지",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_river_rat",
-      "ability_id": "VENOM_FANG",
-      "label": "독니",
-      "essence_id": "ORGAN_DCSS_RIVER_RAT",
-      "passive": "공격으로 독 축적",
-      "active": "강한 독 주입",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_gnoll",
-      "ability_id": "HUNTER_LEAP",
-      "label": "사냥꾼의 도약",
-      "essence_id": "ORGAN_DCSS_GNOLL",
-      "passive": "이동 직후 근접 공격 강화",
-      "active": "도약 공격",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_orc",
-      "ability_id": "PREDATOR_NERVE",
-      "label": "포식 신경",
-      "essence_id": "ORGAN_DCSS_ORC",
-      "passive": "다친 적에게 근접 추가 피해",
-      "active": "약점을 노리는 일격",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_hobgoblin",
-      "ability_id": "HIDE_PLATING",
-      "label": "질긴 가죽",
-      "essence_id": "ORGAN_DCSS_HOBGOBLIN",
-      "passive": "피부 보호 증가",
-      "active": "일시적으로 피부 경화",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
-    },
-    {
-      "species_id": "dcss_frilled_lizard",
-      "ability_id": "SHADOW_VEIL",
-      "label": "그림자막",
-      "essence_id": "ORGAN_DCSS_FRILLED_LIZARD",
-      "passive": "어둠 속 은신",
-      "active": "일시 은폐",
-      "effect_status": "IMPLEMENTED_DUAL_MODE"
     }
   ]
 }

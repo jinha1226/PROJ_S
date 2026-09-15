@@ -282,10 +282,7 @@ func step(command, supplied_rollback_memento: Variant = null):
 
 
 func snapshot() -> Variant:
-	var started:=preload("res://sim/perf_probe.gd").begin()
-	var saved=world.snapshot() if world != null else null
-	preload("res://sim/perf_probe.gd").end("public_snapshot",started)
-	return saved
+	return world.snapshot() if world != null else null
 
 
 func capture_rollback_memento(validate_state: bool = true) -> Variant:
@@ -673,8 +670,7 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 		if str(row.action.type)!="MELEE":continue
 		var target=world.entities.get(int(row.action.target_id))
 		var frozen=melee.freeze_assessment(row.combat_assessment,
-			target.health if target!=null else -1,row_index,
-			world.party_encounter!=null and target!=null and target.id==world.party_encounter.protagonist_id)
+			target.health if target!=null else -1,row_index)
 		if frozen==null:return false
 		frozen_rows.append(frozen);frozen_by_row[row_index]=frozen
 	var projected:Array=melee.project_batch(frozen_rows)
@@ -715,9 +711,7 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 				if leaf!=null:pending.append({"action":leaf,"resolution":resolution,
 					"frozen":frozen})
 		if leaf==null:return false
-		var member=world.party_encounter.member(actor_id)
-		if member!=null:member.busy_until=start_time+int(row.time_cost)
-		else:world.party_encounter.enemy_busy_rows[actor_id]=start_time+int(row.time_cost)
+		world.party_encounter.member(actor_id).busy_until=start_time+int(row.time_cost)
 	for item in pending:
 		var leaf=item.action;var resolution=item.resolution
 		var target=world.entities.get(leaf.target_id)
@@ -733,9 +727,6 @@ func _commit_active_ready_allies(rows:Array,processed_step_index:int,
 			if world.emit_event("combat.attack_missed",-1,leaf.target_id,leaf.position,0,
 					leaf.id,{"schema_version":1,"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,
 						"outcome":"MISS"})==null:return false
-		elif str(resolution.outcome)=="PARRIED":
-			if world.emit_event("combat.attack_parried",-1,leaf.target_id,leaf.position,0,leaf.id,
-				{ "schema_version":1,"combat_ruleset_id":MeleeScript.COMBAT_RULESET_ID,"outcome":"PARRIED"})==null:return false
 		elif str(resolution.outcome)=="FINISHER":
 			if not bool(damage.apply_canonical_downed_finisher(target,
 				int(item.frozen.assessment.normal_final_damage),leaf.id,leaf.position,

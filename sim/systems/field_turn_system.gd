@@ -45,8 +45,6 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	var rollback:Dictionary=supplied_rollback if supplied_rollback is Dictionary else world.rollback_memento(false)
 	Perf.end("field.assess_rollback",begun)
 	var start:int=world.world_time;var event_start:int=world.events.size()
-	var enemy_plans:=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
-	var enemy_acted:Dictionary={}
 	var step_index:int=world.step_index+1;var end:int=start+cost
 	world.begin_step(step_index)
 	var darkness_sample:=Darkness.begin_sample(world)
@@ -71,7 +69,7 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	if ok:
 		ok=Kernel.advance(end,func(until:int)->Dictionary:return actor_queue.next(sim,until),
 			func(next:Dictionary)->bool:
-				var accepted:=_dispatch_kernel_action(sim,next,action,step_index,darkness_sample,enemy_plans,enemy_acted)
+				var accepted:=_dispatch_kernel_action(sim,next,action,step_index,darkness_sample)
 				if accepted:actor_queue.completed(sim,int(next.id))
 				return accepted)
 	world.world_time=end
@@ -83,14 +81,11 @@ static func step(sim,action,wait_duration:int=100,supplied_rollback:Variant=null
 	var darkness_start:int=world.events.size()
 	if ok:ok=Darkness.commit_boundary(world,start,end,darkness_sample)
 	if ok:ok=Morale.commit_batch(world,Darkness.morale_sources(world,event_start,darkness_start),false)
-	if ok:ok=preload("res://sim/systems/room_transition_system.gd").boundary(sim)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
 	if ok:
 		sim._reconcile_expedition_cycle()
-		var transition:Dictionary=preload("res://sim/systems/room_transition_system.gd").resolve_pending_exit(sim)
-		ok=transition.accepted
 		world.finish_step()
-		ok=ok and world.runtime_step_postcondition_error(event_start).is_empty()
+		ok=world.runtime_step_postcondition_error(event_start).is_empty()
 	if not ok:
 		sim.restore_rollback_memento(rollback)
 		return Result.new(false,false,"field_turn_failed")
@@ -110,7 +105,7 @@ static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
 	if delta==Vector2i.ZERO:return fallback
 	return Vector2i(signi(delta.x),signi(delta.y))
 
-static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,darkness_sample:Dictionary,enemy_plans:Dictionary={},enemy_acted:Dictionary={})->bool:
+static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,darkness_sample:Dictionary)->bool:
 	var world=sim.world;var party=world.party_encounter
 	world.world_time=int(next.at)
 	var leaf_start:int=world.events.size()
@@ -125,7 +120,7 @@ static func _dispatch_kernel_action(sim,next:Dictionary,action,step_index:int,da
 		var suggestion=sim.party_coordinator._suggest(id,action,board)
 		if not sim.party_coordinator._action_error(suggestion).is_empty():suggestion=Action.hold(id)
 		ok=_commit_ally(sim,suggestion,step_index)
-	else:ok=_commit_enemy(sim,int(next.id),step_index,enemy_plans,enemy_acted)
+	else:ok=_commit_enemy(sim,int(next.id),step_index)
 	if ok:ok=preload("res://sim/abilities/monster_passive_service.gd").commit(sim,leaf_start)
 	if ok:ok=preload("res://sim/abilities/monster_ability_runtime.gd").reactions(sim,leaf_start)
 	if ok:ok=sim.party_coordinator.reconcile_liveness()
@@ -159,28 +154,9 @@ static func _commit_ally(sim,action,step_index:int,cost_override:int=0)->bool:
 		if row.combat_assessment.is_empty():return false
 	return sim._commit_active_ready_allies([row],step_index,world.world_time)
 
-static func _commit_enemy(sim,id:int,step_index:int,enemy_plans:Dictionary={},enemy_acted:Dictionary={})->bool:
+static func _commit_enemy(sim,id:int,step_index:int)->bool:
 	var world=sim.world;var party=world.party_encounter;var coordinator=sim.party_coordinator
 	var awareness=party.enemy_awareness(id)
-	if enemy_plans.has(id) or Rules.visible(world,id):
-		# A newly revealed enemy, or a fast enemy's second activation, waits for
-		# another player response instead of performing an unannounced attack.
-		if enemy_acted.has(id) or not enemy_plans.has(id):
-			party.enemy_busy_rows[id]=world.world_time+100
-			return coordinator._commit_hold(id,100)!=null
-		enemy_acted[id]=true
-		var plan:=preload("res://sim/enemy_telegraph_rules.gd").resolve(sim,id,enemy_plans[id])
-		if plan.action_type!="MELEE":
-			var cost:int=plan.time_cost
-			var event=null
-			if plan.action_type=="MOVE":
-				event=sim.movement.commit_preflighted_move(id,Vector2i(plan.destination[0],plan.destination[1]),str(plan.terrain_id),cost)
-			else:event=coordinator._commit_hold(id,cost)
-			party.enemy_busy_rows[id]=world.world_time+cost
-			return event!=null
-		var ok:bool=coordinator._enemy_batch(step_index,step_index,world.world_time,{id:true},false,{id:plan})
-		if int(party.enemy_busy_rows[id])<=world.world_time:party.enemy_busy_rows[id]=world.world_time+100
-		return ok
 	if awareness!=null and awareness.awareness_state in ["ALERT","HUNTING"]:
 		var ok:bool=coordinator._enemy_batch(step_index,step_index,world.world_time,{id:true},false)
 		if int(party.enemy_busy_rows[id])<=world.world_time:

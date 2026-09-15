@@ -1,7 +1,7 @@
 class_name PartyEncounterState
 extends RefCounted
 
-const SCHEMA_VERSION := 27
+const SCHEMA_VERSION := 25
 const LEGACY_SCHEMA_VERSION := 1
 const ROSTER_SCHEMA_VERSION := 2
 const PATROL_SCHEMA_VERSION := 3
@@ -42,10 +42,6 @@ const ACTIVE_SKILL_SCHEMA_VERSION := 23
 # the sight-based contact rule through legacy_contact_rule.
 const CONTACT_RULE_SCHEMA_VERSION := 24
 const ABILITY_BINDING_SCHEMA_VERSION := 25
-const ROOM_SCHEMA_VERSION := 27
-const RoomState=preload("res://sim/nine_room_floor_state.gd")
-const ROUND_SCHEMA_VERSION := 26
-const RoundState=preload("res://sim/round_combat_state.gd")
 const MAX_ACTIVE_PARTY_SIZE := 4
 const MAX_TRACKED_ENEMY_SIZE := 1024
 const PHASES := ["GROUPED", "CONTACT", "ENGAGED", "REGROUP_READY", "GROUPED_COMPLETE", "PARTY_DEFEATED"]
@@ -66,8 +62,6 @@ const PartyHexacoScript = preload("res://sim/dungeon_population/hexaco_profile.g
 const ExpeditionCycleScript = preload("res://sim/expedition_cycle_state.gd")
 const RationRulesScript = preload("res://sim/party_ration_rules.gd")
 
-var nine_room_floor:Dictionary={}
-var round_combat:Dictionary=RoundState.fresh()
 var schema_version := SCHEMA_VERSION
 var encounter_id: int = 1
 var safe_phase := "GROUPED"
@@ -166,15 +160,11 @@ func to_dict() -> Dictionary:
 		wire["ration_processed_at"] = str(ration_processed_at)
 	if schema_version >= CONTACT_RULE_SCHEMA_VERSION:
 		wire["legacy_contact_rule"] = legacy_contact_rule
-	if schema_version>=ROUND_SCHEMA_VERSION:wire["round_combat"]=round_combat.duplicate(true)
-	if schema_version>=ROOM_SCHEMA_VERSION:wire["nine_room_floor"]=nine_room_floor.duplicate(true)
 	return wire
 
 static func from_dict(row: Dictionary):
 	var state = load("res://sim/party_encounter_state.gd").new()
 	state.schema_version = SCHEMA_VERSION
-	state.nine_room_floor=RoomState.normalize(row.get("nine_room_floor",{}))
-	state.round_combat=RoundState.normalized(row.get("round_combat",RoundState.fresh()))
 	state.legacy_journal_origin = bool(row.get("legacy_journal_origin",
 		int(row.get("schema_version", 1)) < HEXACO_SCHEMA_VERSION))
 	state.legacy_contact_rule = bool(row.get("legacy_contact_rule",
@@ -321,8 +311,6 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 	var v23_keys:Array=v22_keys.duplicate()
 	var v24_keys:Array=v23_keys.duplicate();v24_keys.append("legacy_contact_rule");v24_keys.sort()
 	var v25_keys:Array=v24_keys.duplicate()
-	var v26_keys:Array=v25_keys.duplicate();v26_keys.append("round_combat");v26_keys.sort()
-	var v27_keys:Array=v26_keys.duplicate();v27_keys.append("nine_room_floor");v27_keys.sort()
 	if not _integer(row.get("schema_version")): return "unsupported_party_schema"
 	var parsed_schema_version := int(row.schema_version)
 	if (parsed_schema_version == LEGACY_SCHEMA_VERSION and keys != v1_keys) \
@@ -349,9 +337,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 		or (parsed_schema_version == RATION_SCHEMA_VERSION and keys != v22_keys) \
 		or (parsed_schema_version == ACTIVE_SKILL_SCHEMA_VERSION and keys != v23_keys) \
 		or (parsed_schema_version == CONTACT_RULE_SCHEMA_VERSION and keys != v24_keys) \
-		or (parsed_schema_version == ABILITY_BINDING_SCHEMA_VERSION and keys != v25_keys) \
-		or (parsed_schema_version == ROUND_SCHEMA_VERSION and keys != v26_keys) \
-		or (parsed_schema_version == ROOM_SCHEMA_VERSION and keys != v27_keys):
+		or (parsed_schema_version == ABILITY_BINDING_SCHEMA_VERSION and keys != v25_keys):
 		return "invalid_party_encounter_keys"
 	if parsed_schema_version not in [LEGACY_SCHEMA_VERSION, ROSTER_SCHEMA_VERSION,
 			PATROL_SCHEMA_VERSION,PROGRESSION_SCHEMA_VERSION,LOADOUT_SCHEMA_VERSION,
@@ -362,13 +348,7 @@ static func wire_error(row: Variant, width: int, height: int) -> String:
 			STAT_SCALING_SCHEMA_VERSION,EXPEDITION_CYCLE_SCHEMA_VERSION,
 			ANCHOR_PORTAL_SCHEMA_VERSION,EMOTION_STATE_SCHEMA_VERSION,
 			MEMORY_STATE_SCHEMA_VERSION,RATION_SCHEMA_VERSION,ACTIVE_SKILL_SCHEMA_VERSION,
-			CONTACT_RULE_SCHEMA_VERSION,ABILITY_BINDING_SCHEMA_VERSION,ROUND_SCHEMA_VERSION,ROOM_SCHEMA_VERSION]: return "unsupported_party_schema"
-	if parsed_schema_version>=ROOM_SCHEMA_VERSION:
-		var room_error:=RoomState.wire_error(row.nine_room_floor,width,height)
-		if not room_error.is_empty():return room_error
-	if parsed_schema_version>=ROUND_SCHEMA_VERSION:
-		var round_error:=RoundState.wire_error(row.round_combat,width,height)
-		if not round_error.is_empty():return round_error
+			CONTACT_RULE_SCHEMA_VERSION,ABILITY_BINDING_SCHEMA_VERSION]: return "unsupported_party_schema"
 	if parsed_schema_version >= HEXACO_SCHEMA_VERSION \
 			and not row.get("legacy_journal_origin") is bool:
 		return "invalid_legacy_journal_origin"

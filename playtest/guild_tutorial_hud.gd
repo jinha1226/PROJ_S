@@ -54,8 +54,8 @@ static func progress_text(row:Dictionary)->String:
 	if str(row.quest_id).ends_with("GUARD"):return "방어 %s · 공격 %s"%["✓" if p.hold_done else "—","✓" if p.attack_done else "—"]
 	if str(row.quest_id).ends_with("HEAL"):return "부상 후 물약 회복"
 	if str(row.quest_id).ends_with("RETURN"):return "1층 전리품 확보 후 귀환"
-	if str(row.quest_id).ends_with("BIND"):return "효과 확인 후 변이 결속"
-	if str(row.quest_id).ends_with("SKILL"):return "사용 기술 실행"
+	if str(row.quest_id).ends_with("BIND"):return "효과 확인 후 이능 결속"
+	if str(row.quest_id).ends_with("SKILL"):return "액티브 스킬 실행"
 	if str(row.quest_id).ends_with("UPGRADE"):return "마을에서 무기 재제작"
 	if str(row.quest_id).ends_with("INJURY"):return "자연스러운 전투 부상 시 안내"
 	if str(row.quest_id).ends_with("TREAT"):return "부상 후 치유소 · HP 물약과 별개"

@@ -13,11 +13,7 @@ const GRID_SIZE := 15
 const WorldEffectAssets=preload("res://playtest/pixel24_world_effect_assets.gd")
 const GRAPHICS_MODE_FLAT_2D := "FLAT_2D"
 const GRAPHICS_MODE_DIORAMA_2_5D := "DIORAMA_2_5D"
-const GRAPHICS_MODE_TACTICAL := "TACTICAL_ISOMETRIC"
-const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D, GRAPHICS_MODE_TACTICAL]
-const TacticalProjection=preload("res://playtest/tactical_board_projection.gd")
-var _tactical_terrain:Node2D
-var _tactical_terrain_revision:=-1
+const GRAPHICS_MODES := [GRAPHICS_MODE_FLAT_2D, GRAPHICS_MODE_DIORAMA_2_5D]
 const AsciiStyleScript = preload("res://playtest/ascii_visual_style.gd")
 const MaterialGrammar = preload("res://playtest/ascii_material_grammar.gd")
 const AsciiPortraitScript = preload("res://playtest/ascii_actor_portrait.gd")
@@ -67,10 +63,6 @@ var world_grid_size := Vector2i(GRID_SIZE,GRID_SIZE)
 var visible_cell_count := GRID_SIZE
 var visible_row_count := GRID_SIZE
 var view_origin := Vector2i.ZERO
-var _room_bounds:=Rect2i()
-var _room_exits:Array=[]
-var _room_biome:="dungeon"
-var _room_name:=""
 var _graphics_mode := GRAPHICS_MODE_FLAT_2D
 var _terrain_theme_floor_index:=1
 var _cells: Dictionary = {}
@@ -101,29 +93,6 @@ var _played_effect_ids: Dictionary = {}
 var _played_effect_event_ids: Dictionary = {}
 var _actor_motion_requests: Dictionary = {}
 var _actor_motions: Dictionary = {}
-var _stage_motion_until:=0
-var _effect_epoch:=0
-var _queued_effects:Dictionary={}
-var stage_zoom:=1.10
-var deployment_cells:Array[Vector2i]=[]
-var movement_cells:Array[Vector2i]=[]
-var supply_cache_cells:Array[Vector2i]=[]
-var srpg_attack_cells:Array[Vector2i]=[]
-var srpg_attack_target:=Vector2i(-1,-1)
-
-func stage_motion_busy()->bool:
-	return Time.get_ticks_msec()<_stage_motion_until
-
-func arm_stage_motion(paths:Dictionary,lead_ms:int=0)->int:
-	var delay:=lead_ms
-	for id in paths:
-		var path:Array=paths[id]
-		if path.size()<2:continue
-		var duration:=(path.size()-1)*preload("res://playtest/stage_motion_sequence.gd").STEP_MS
-		_actor_motion_requests[id]={"duration":duration,"continuous":false,"path":path,"delay":delay}
-		delay+=duration+80
-	_stage_motion_until=Time.get_ticks_msec()+delay
-	return delay
 var _actor_last_facing:Dictionary={}
 var _hero_camera_position:=Vector2i(-1,-1)
 var _hero_camera_actor_id:=-1
@@ -254,34 +223,13 @@ func set_graphics_mode(mode:String)->bool:
 	return true
 
 func uses_perspective_projection()->bool:
-	return _graphics_mode in [GRAPHICS_MODE_DIORAMA_2_5D,GRAPHICS_MODE_TACTICAL]
-
-func uses_tactical_projection()->bool:
-	return _graphics_mode==GRAPHICS_MODE_TACTICAL
-
-func tactical_projection_rect()->Rect2:
-	var rect:=grid_rect()
-	if not _room_bounds.has_area():return rect
-	var extent:=rect.size*stage_zoom
-	return Rect2(rect.get_center()-extent*0.5,extent)
-
-func _project_board_point(point:Vector2)->Vector2:
-	if uses_tactical_projection():return TacticalProjection.project(point,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
-	return DioramaScript.project_camera_point(point,grid_rect(),visible_cell_count)
+	return _graphics_mode==GRAPHICS_MODE_DIORAMA_2_5D
 
 func _exit_tree()->void:
 	_reset_pointer_gesture()
 
 var _ability_markers:Array=[]
 func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
-	_room_name=str(observation.get("room_name",""))
-	var next_biome:String=str(observation.get("room_biome","dungeon"))
-	if next_biome!=_room_biome:
-		_room_biome=next_biome
-		_invalidate_static_projection_cache()
-	_room_exits=observation.get("room_exits",[]).duplicate(true)
-	var raw_room:Array=observation.get("room_bounds",[])
-	_room_bounds=Rect2i(raw_room[0],raw_room[1],8,8) if raw_room.size()==4 else Rect2i()
 	_ability_markers=observation.get("ability_markers",[]).duplicate(true)
 	cancel_pointer_gesture()
 	var observed_at_ms:=Time.get_ticks_msec()
@@ -342,11 +290,6 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 				copy["display_position"]=[display_position.x,display_position.y]
 				copy["position"]=[display_position.x,display_position.y]
 				_actors.append(copy)
-	for actor in _actors:
-		var placements:Dictionary=observation.get("deployment_positions",{})
-		if placements.has(int(actor.entity_id)):
-			actor.display_position=placements[int(actor.entity_id)].duplicate()
-			actor.position=actor.display_position.duplicate()
 	_actors.sort_custom(func(a,b):
 		if bool(a.get("is_protagonist",false)) != bool(b.get("is_protagonist",false)): return bool(a.get("is_protagonist",false))
 		if int(a.get("roster_slot",99)) != int(b.get("roster_slot",99)): return int(a.get("roster_slot",99)) < int(b.get("roster_slot",99))
@@ -427,7 +370,8 @@ func actor_motion_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary:
 			"eased_progress":1.0,"duration_ms":0}.duplicate(true)
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
-	var sample:=preload("res://playtest/stage_motion_sequence.gd").sample(motion,now)
+	var sample:=DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
+		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false)))
 	return {"active":bool(sample.active),"entity_id":entity_id,
 		"from_world":motion.from_world,"to_world":motion.to_world,
 		"world_position":sample.world_position,"progress":float(sample.progress),
@@ -463,12 +407,6 @@ func _reconcile_actor_motions(previous_actors:Dictionary,previous_visual_world:D
 			_actor_motions.erase(entity_id);continue
 		var previous:Dictionary=previous_actors[entity_id]
 		var next:Dictionary=next_actors[entity_id]
-		var request:Dictionary=_actor_motion_requests[entity_id]
-		if request.has("path"):
-			var path:Array=request.path
-			_actor_motions[entity_id]={"from_world":path.front(),"to_world":path.back(),"path":path,
-				"started_at_ms":observed_at_ms+int(request.delay),"duration_ms":request.duration,"continuous":false}
-			continue
 		var previous_logical:=_logical_position_from_actor(previous)
 		var next_logical:=_logical_position_from_actor(next)
 		var logical_delta:=next_logical-previous_logical
@@ -546,15 +484,6 @@ func set_view_window(cell_count:int,focus_points:Array=[],priority_points:Array=
 func set_hero_centered_view(hero_position:Vector2i,cell_count:int=GRID_SIZE,
 		hero_actor_id:int=-1,settle_duration_msec:int=CAMERA_SETTLE_DURATION_MS,
 		row_count:int=-1)->void:
-	if _room_bounds.size==Vector2i(8,8):
-		var old_origin:=view_origin
-		visible_cell_count=8;visible_row_count=8;view_origin=_room_bounds.position
-		if old_origin!=view_origin and _hero_camera_position!=Vector2i(-1,-1):
-			_camera_settle={"from_offset_px":_projected_camera_step_offset(Vector2(view_origin-old_origin)),"started_at_ms":Time.get_ticks_msec(),"duration_ms":220,"curve":"CUBIC_EASE_OUT"}
-		elif old_origin==view_origin and not bool(camera_settle_draw_spec().active):_camera_settle.clear()
-		_hero_camera_position=hero_position;_hero_camera_actor_id=hero_actor_id
-		if old_origin!=view_origin:_invalidate_static_projection_cache()
-		queue_redraw();return
 	# Product camera authority is the protagonist only. Negative origins are
 	# intentional at map edges: those screen cells render as void rather than
 	# pushing the hero away from the center cell.
@@ -626,7 +555,9 @@ func _projected_camera_step_offset(delta:Vector2)->Vector2:
 	if not uses_perspective_projection():return delta*cell_size_px()
 	var local_center:=Vector2(float(visible_cell_count)*0.5,
 		float(visible_cell_count)*0.5)
-	return _project_board_point(local_center+delta)-_project_board_point(local_center)
+	return DioramaScript.project_camera_point(local_center+delta,grid_rect(),
+		visible_cell_count)-DioramaScript.project_camera_point(local_center,
+		grid_rect(),visible_cell_count)
 
 func _camera_input_blocked()->bool:
 	return bool(camera_settle_draw_spec().active)
@@ -655,12 +586,6 @@ func play_effects(rows:Array)->int:
 		if not raw is Dictionary:continue
 		var effect_id:=str(raw.get("effect_id",""));var event_id:=int(raw.get("event_id",-1))
 		if effect_id.is_empty() or event_id<0 or _played_effect_ids.has(effect_id):continue
-		if int(raw.get("delay_ms",0))>0:
-			if _queued_effects.has(effect_id):continue
-			_queued_effects[effect_id]=true
-			var pending:Dictionary=raw.duplicate(true);pending.erase("delay_ms")
-			get_tree().create_timer(float(raw.delay_ms)/1000.0).timeout.connect(_play_delayed_effect.bind(pending,_effect_epoch))
-			appended+=1;continue
 		var effect_position:=_array_to_world_position(raw.get("world_position",[]))
 		# Combat results remain authoritative in the event log, but spatial VFX
 		# must not reveal activity in MEMORY, UNSEEN, or off-camera cells.
@@ -714,10 +639,6 @@ func _next_floating_stack_slot(effect:Dictionary,started_at_ms:int)->int:
 			rapid_count+=1
 	return rapid_count%5
 
-func _play_delayed_effect(row:Dictionary,epoch:int)->void:
-	if epoch!=_effect_epoch:return
-	_queued_effects.erase(str(row.effect_id));play_effects([row]);queue_redraw()
-
 func _play_miss_attacker_bump(raw:Dictionary)->void:
 	_ensure_melee_vfx()
 	# Prefer the event-time pair. A combat.attack_missed event is a result leaf and
@@ -743,12 +664,10 @@ func has_played_effect_event(event_id:int)->bool:return _played_effect_event_ids
 func has_played_effect(effect_id:String)->bool:return _played_effect_ids.has(effect_id)
 
 func clear_transient_visuals()->void:
-	_effect_epoch+=1;_queued_effects.clear()
 	_active_visual_effects.clear();_played_effect_ids.clear();_played_effect_event_ids.clear()
 	if melee_vfx!=null:melee_vfx.clear()
 	_awareness_pulses.clear()
 	_actor_motion_requests.clear();_actor_motions.clear()
-	_stage_motion_until=0;deployment_cells.clear();movement_cells.clear()
 	_camera_settle.clear();_hero_camera_position=Vector2i(-1,-1);_hero_camera_actor_id=-1
 	_intent_overlays.clear();_secondary_intent_overlays.clear();_ghosts.clear()
 	_speech_bubbles.clear();_callout_lifetimes.clear()
@@ -772,7 +691,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 				damage_type,"#fff0df")) as String
 	if kind=="DEATH":color_hex="#ff294d"
 	elif kind=="MISS":color_hex="#b8d5df" if product_style else "#b8e9ff"
-	var duration_ms:=int({"PROJECTILE":140,"HIT_FLASH":210,"FLOATING_AMOUNT":650,
+	var duration_ms:=int({"HIT_FLASH":210,"FLOATING_AMOUNT":650,
 		"MISS":500,"DEATH":560}.get(kind,360)) if product_style \
 		else (680 if kind=="DEATH" else (900 if kind=="FLOATING_AMOUNT" \
 		else (700 if kind=="MISS" else 520)))
@@ -811,7 +730,7 @@ func visual_effect_draw_spec(effect:Dictionary,sample_time_ms:int=-1)->Dictionar
 	elif kind in ["FLOATING_AMOUNT","MISS"]:pixel_center.y-=cell_size_px()*0.52*age_ratio
 	var primitive:=str({"HIT_FLASH":"GLYPH_FLASH" if product_style else "FLASH_RING",
 		"FLOATING_AMOUNT":"TEXT","MISS":"TEXT","DEATH":"ASCII_BURST"}.get(kind,"NONE"))
-	if kind in ["PROJECTILE","FIREBALL","STEAM"]:primitive=kind
+	if kind in ["FIREBALL","STEAM"]:primitive=kind
 	if not reaction_style.is_empty():primitive=kind
 	var opacity:=clampf(1.0-age_ratio*0.88,0.12,1.0)
 	if product_style:
@@ -1036,8 +955,6 @@ func _draw_skill_reach_cells() -> void:
 	var edge := Color("#ff7b7b", 0.85) if _skill_reach_target != "ALLY" else Color("#8bffa6", 0.85)
 	for point in _skill_reach_cells:
 		if not _cell_allows_overlay(point): continue
-		if uses_tactical_projection():
-			_draw_cell_overlay(point,Color(fill,0.12),edge,1.0);continue
 		var rect := world_cell_rect(point).grow(-maxf(1.0, cell_size_px() * 0.06))
 		draw_rect(rect, fill, true)
 		draw_rect(rect, edge, false, 1.0)
@@ -1111,7 +1028,6 @@ func route_draw_spec() -> Dictionary:
 		var completed:=index<=_route_completed_steps
 		var kind:="START" if index==0 else ("GOAL" if index==_route_path.size()-1 else ("NEXT" if index==_route_completed_steps+1 else "STEP"))
 		tiles.append({"index":index,"position":[point.x,point.y],"visible":visible,
-			"polygon":cell_overlay_polygon(point) if visible else PackedVector2Array(),
 			"pixel_rect":world_cell_rect(point).grow(-maxf(1.0,cell_size_px()*0.08)) if visible else Rect2(),"kind":kind,"completed":completed,
 			"fill_hex":"#607078" if completed else color_hex,
 			"fill_alpha":0.03 if completed else (0.09 if kind in ["NEXT","GOAL"] else 0.05),
@@ -1137,7 +1053,7 @@ func route_draw_spec() -> Dictionary:
 				cue_center-direction*cue_length-perpendicular*cue_width]})
 	return {"path":path_rows,"valid":_route_valid,"completed_steps":_route_completed_steps,
 		"tiles":tiles,"segments":segments,"direction_cues":direction_cues,"markers":markers,
-		"color_hex":color_hex,"render_style":"TACTICAL_CELLS" if uses_tactical_projection() else "CHALK_CENTERLINE","draw_tile_cards":uses_tactical_projection(),
+		"color_hex":color_hex,"render_style":"CHALK_CENTERLINE","draw_tile_cards":false,
 		"draw_endpoint_markers":false,"draw_ground_markers":false}.duplicate(true)
 
 func set_intent_overlays(rows: Array) -> void:
@@ -1321,7 +1237,6 @@ func _bubble_overlaps_any(value:Rect2,occupied:Array[Rect2])->bool:
 
 
 func grid_rect() -> Rect2:
-	if uses_tactical_projection():return Rect2(Vector2.ZERO,size)
 	if not uses_perspective_projection():
 		# Fill the control: the cell is sized by the axis that fits exactly and
 		# the other axis overflows symmetrically under clip_contents. Fitting both
@@ -1333,9 +1248,7 @@ func grid_rect() -> Rect2:
 		return Rect2((size-extent)*0.5,extent)
 	var extent := minf(size.x,size.y)
 	return Rect2((size-Vector2(extent,extent))*0.5,Vector2(extent,extent))
-func cell_size_px() -> float:
-	if uses_tactical_projection():return TacticalProjection.half_width(tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())*2.0
-	return grid_rect().size.x / float(visible_cell_count)
+func cell_size_px() -> float: return grid_rect().size.x / float(visible_cell_count)
 func world_cell_rect(position: Vector2i) -> Rect2:
 	if not is_world_cell_visible(position):return Rect2()
 	return _camera_cell_rect(position)
@@ -1344,7 +1257,6 @@ func world_cell_polygon(position:Vector2i)->PackedVector2Array:
 	return _camera_cell_polygon(position)
 func _camera_cell_polygon(position:Vector2i)->PackedVector2Array:
 	if not view_bounds().has_point(position):return PackedVector2Array()
-	if uses_tactical_projection():return TacticalProjection.polygon(position-view_origin,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
 	if not uses_perspective_projection():
 		var rect:=grid_rect();var cell:=cell_size_px();var local:=position-view_origin
 		var top_left:=rect.position+Vector2(local.x,local.y)*cell
@@ -1362,7 +1274,6 @@ func _camera_cell_rect(position:Vector2i)->Rect2:
 func world_to_pixel_center(position: Vector2i) -> Vector2:
 	if not is_world_cell_visible(position):return Vector2(-1,-1)
 	if not uses_perspective_projection():return _camera_cell_rect(position).get_center()
-	if uses_tactical_projection():return _project_board_point(Vector2(position-view_origin)+Vector2(0.5,0.5))
 	return DioramaScript.perspective_cell_center(position-view_origin,
 		grid_rect(),visible_cell_count)
 func _world_position_to_pixel_center(position:Vector2)->Vector2:
@@ -1370,14 +1281,10 @@ func _world_position_to_pixel_center(position:Vector2)->Vector2:
 		var local_flat:=position-Vector2(view_origin)
 		return grid_rect().position+(local_flat+Vector2(0.5,0.5))*cell_size_px()
 	var local:=position-Vector2(view_origin)+Vector2(0.5,0.5)
-	return _project_board_point(local)
+	return DioramaScript.project_camera_point(local,grid_rect(),visible_cell_count)
 func pixel_to_world_cell(pointer:Vector2)->Vector2i:
 	var rect:=grid_rect()
 	if not rect.has_point(pointer):return Vector2i(-1,-1)
-	if uses_tactical_projection():
-		var local:=TacticalProjection.unproject(pointer,tactical_projection_rect(),visible_cell_count,_room_bounds.has_area())
-		var cell:=view_origin+Vector2i(floori(local.x),floori(local.y))
-		return cell if view_bounds().has_point(cell) and _world_in_bounds(cell) else Vector2i(-1,-1)
 	if not uses_perspective_projection():
 		var local:=pointer-rect.position;var cell:=cell_size_px()
 		var local_cell:=Vector2i(int(floor(local.x/cell)),int(floor(local.y/cell)))
@@ -1566,9 +1473,85 @@ func monster_awareness_marker_draw_specs(sample_time_ms:int=-1)->Array[Dictionar
 	return rows.duplicate(true)
 
 func monster_list_draw_spec()->Dictionary:
-	# Board actors and the turn timeline replace the floating corner roster.
-	# An empty spec also removes its invisible touch-blocking rectangles.
-	return {"visible":false,"rows":[],"mouse_filter":"IGNORE"}
+	var groups:Dictionary={};var priority:={"HUNTING":0,"ALERT":1,"SUSPICIOUS":2,
+		"SEARCHING":3,"RETURNING":4,"UNAWARE":5}
+	var hero_position:=Vector2i(-1,-1)
+	for actor in _actors:
+		if bool(actor.get("is_protagonist",false)):
+			hero_position=_position_from_actor(actor);break
+	for actor in _actors:
+		var position:=_position_from_actor(actor);var cell_row:Dictionary=_cells.get(_key(position),{})
+		if not is_world_cell_visible(position) or cell_row.is_empty() \
+				or AsciiStyleScript.visibility_state(cell_row)!="VISIBLE":continue
+		if _is_enemy_actor(actor):
+			var identity:Dictionary=AsciiStyleScript.monster_identity_spec(actor)
+			var awareness:Dictionary=AsciiStyleScript.awareness_spec(
+				actor.get("awareness_state","UNAWARE"))
+			# One row is one actor: a tap must never inspect an arbitrary member
+			# of a species/awareness group.
+			var key:="HOSTILE|%d"%int(actor.get("entity_id",-1))
+			if not groups.has(key):groups[key]={"row_kind":"HOSTILE",
+				"entity_id":int(actor.get("entity_id",-1)),
+				"species_id":str(identity.species_id),"glyph":str(identity.glyph),
+				"name":str(identity.name),"species_color_hex":str(identity.color_hex),
+				"state":str(awareness.state),"mark":str(awareness.glyph),
+				"mark_color_hex":str(awareness.color_hex),"count":0,
+				"distance":maxi(absi(position.x-hero_position.x),absi(position.y-hero_position.y)),
+				"priority":int(priority.get(str(awareness.state),99))}
+			groups[key].count=int(groups[key].count)+1
+		elif _is_nearby_npc(actor):
+			var style:Dictionary=actor_draw_spec(actor)
+			var life_state:=str(actor.get("life_state","ACTIVE")).to_upper()
+			var npc_state:="사망" if life_state=="DEAD" else (
+				"쓰러짐" if life_state=="DOWNED" else "NPC")
+			if life_state=="ACTIVE":npc_state=str(actor.get("activity","NPC"))
+			var npc_key:="NPC|%d"%int(actor.get("entity_id",-1))
+			groups[npc_key]={"row_kind":"NPC","entity_id":int(actor.get("entity_id",-1)),
+				"species_id":str(actor.get("species_id","")),"glyph":str(style.glyph),
+				"name":str(actor.get("display_name","주변 인물")),
+				"species_color_hex":str(style.color_hex),"state":"NPC_"+life_state,
+				"mark":npc_state,"mark_color_hex":"#8fd3e8" if life_state=="ACTIVE" \
+					else ("#e6b85c" if life_state=="DOWNED" else "#9a7a82"),
+				"count":1,"distance":maxi(absi(position.x-hero_position.x),
+					absi(position.y-hero_position.y)) if hero_position!=Vector2i(-1,-1) else 0,
+				"priority":6}
+	var grouped:Array[Dictionary]=[]
+	for value in groups.values():grouped.append((value as Dictionary).duplicate(true))
+	grouped.sort_custom(func(a:Dictionary,b:Dictionary):
+		return int(a.priority)<int(b.priority) if int(a.priority)!=int(b.priority) \
+			else (int(a.distance)<int(b.distance) if int(a.distance)!=int(b.distance) \
+			else (str(a.name)<str(b.name) if str(a.name)!=str(b.name) \
+			else (str(a.state)<str(b.state) if str(a.state)!=str(b.state) else int(a.entity_id)<int(b.entity_id)))))
+	var all_grouped:=grouped.duplicate(true)
+	if grouped.size()>MONSTER_LIST_MAX_ROWS:
+		grouped=grouped.slice(0,MONSTER_LIST_MAX_ROWS)
+		# Hostile awareness remains the first priority, but a visible NPC must not
+		# disappear merely because five hostile actors exist.
+		if grouped.all(func(row):return str(row.get("row_kind",""))!="NPC"):
+			var first_npc:Dictionary={}
+			for row in all_grouped:
+				if str(row.get("row_kind",""))=="NPC":first_npc=row;break
+			if not first_npc.is_empty():grouped[-1]=first_npc
+	if grouped.is_empty():return {"visible":false,"rows":[],"mouse_filter":"IGNORE"}.duplicate(true)
+	var font:=get_theme_default_font();var font_size:=clampi(int(cell_size_px()*0.43),10,13)
+	var row_height:=44.0;var padding:=6.0;var max_width:=0.0
+	for group in grouped:
+		group["count_text"]=" ×%d"%int(group.count) if int(group.count)>1 else ""
+		group["text"]="%s%s%s"%[str(group.name),
+			(" "+str(group.mark)) if not str(group.mark).is_empty() else "",str(group.count_text)]
+		max_width=maxf(max_width,font.get_string_size(str(group.text),HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x)
+	var rect:=grid_rect();var panel_size:=Vector2(max_width+padding*2.0,row_height*grouped.size()+padding*2.0)
+	var bounds:=Rect2(rect.end-panel_size-Vector2(4,4),panel_size)
+	for index in range(grouped.size()):
+		grouped[index]["hit_rect"]=Rect2(bounds.position+Vector2(0,padding+row_height*index),Vector2(panel_size.x,row_height))
+		grouped[index]["baseline"]=bounds.position+Vector2(padding,padding+row_height*index+(row_height+font_size)*0.5-2)
+	return {"visible":true,"rows":grouped,"row_count":grouped.size(),"max_rows":MONSTER_LIST_MAX_ROWS,
+		"list_kind":"NEARBY_ACTORS",
+		"hostile_row_count":grouped.filter(func(row):return str(row.row_kind)=="HOSTILE").size(),
+		"npc_row_count":grouped.filter(func(row):return str(row.row_kind)=="NPC").size(),
+		"font_size":font_size,"row_height":row_height,"bounds":bounds,"background_hex":"#030608e8",
+		"border_hex":"#42666a","name_color_hex":"#d2c8ad","mouse_filter":"STOP",
+		"process":false,"fov_safe":true}.duplicate(true)
 
 func nearby_actor_at_pointer(pointer:Vector2)->int:
 	var spec:=monster_list_draw_spec()
@@ -1618,7 +1601,7 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 	# paper-doll and bar locked together throughout companion and camera motion.
 	var bounds:Rect2
 	var bar_center_x:=0.0
-	if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
+	if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
 		var actor_spec:=fixed_front_actor_render_spec(actor,false,sample_time_ms,
 			camera_offset)
 		if bool(actor_spec.get("visible",false)) and bool(actor_spec.get("uses_sprite",false)):
@@ -1639,7 +1622,6 @@ func actor_health_bar_draw_spec(entity_id:int,sample_time_ms:int=-1)->Dictionary
 		bar_center_x=bounds.get_center().x
 	if bounds.size.x<=0.0:return hidden.duplicate(true)
 	var ratio:=clampf(float(health)/float(maximum),0.0,1.0)
-	if _room_bounds.has_area() and health>=maximum and entity_id not in [selected_actor_id,selected_target_id]:return hidden.duplicate(true)
 	var bar_size:=Vector2(clampf(cell_size_px()*0.78,10.0,24.0),
 		clampf(cell_size_px()*0.13,3.0,4.0))
 	var draw_rect:=Rect2(Vector2(bar_center_x-bar_size.x*0.5,
@@ -1732,14 +1714,11 @@ func selection_overlay_draw_specs(sample_time_ms:int=-1)->Array[Dictionary]:
 		var cell_rect:=world_cell_rect(position)
 		var visual_center:=actor_visual_center(entity_id,sample_time_ms)
 		var visual_rect:=Rect2(visual_center-cell_rect.size*0.5,cell_rect.size)
-		var segments:Array=AsciiStyleScript.bracket_segments(visual_rect)
-		if uses_tactical_projection():
-			segments=selection_diamond_segments(position,visual_center)
 		rows.append({"kind":"CONTROLLED" if entity_id==selected_actor_id else "TARGET","entity_id":entity_id,
 			"position":[position.x,position.y],"visual_center":visual_center,
 			"color_hex":"#f5cc67" if entity_id==selected_actor_id else "#ff6b70",
 			"line_width":1.25 if entity_id==selected_actor_id else 2.0,
-			"segments":segments})
+			"segments":AsciiStyleScript.bracket_segments(visual_rect)})
 	for ghost in _ghosts:
 		var position:=_position_from_actor(ghost)
 		if not is_world_cell_visible(position):continue
@@ -2238,7 +2217,8 @@ func _actor_visual_world_position(entity_id:int,sample_time_ms:int=-1)->Vector2:
 	if not _actor_motions.has(entity_id):return target
 	var motion:Dictionary=_actor_motions[entity_id]
 	var now:=Time.get_ticks_msec() if sample_time_ms<0 else sample_time_ms
-	return preload("res://playtest/stage_motion_sequence.gd").sample(motion,now).world_position
+	return DioramaScript.actor_motion_sample(motion.from_world,motion.to_world,
+		now-int(motion.started_at_ms),int(motion.duration_ms),bool(motion.get("continuous",false))).world_position
 
 func _logical_position_from_actor(actor:Dictionary)->Vector2i:
 	var value:Variant=actor.get("logical_position",actor.get("position",[]))
@@ -2298,7 +2278,6 @@ func _sorted_visual_actor_rows()->Array[Dictionary]:
 	for ghost in _ghosts:rows.append({"actor":ghost,"ghost":true})
 	rows.sort_custom(func(a,b):
 		var pa:=_position_from_actor(a.actor);var pb:=_position_from_actor(b.actor)
-		if uses_tactical_projection() and pa.x+pa.y!=pb.x+pb.y:return pa.x+pa.y<pb.x+pb.y
 		if pa.y!=pb.y:return pa.y<pb.y
 		if pa.x!=pb.x:return pa.x<pb.x
 		var aid:=int(a.actor.get("entity_id",-1));var bid:=int(b.actor.get("entity_id",-1))
@@ -2448,7 +2427,6 @@ func _diorama_visibility_state(row:Dictionary)->String:
 func _draw() -> void:
 	var begun:=Perf.begin()
 	_draw_world_with_emphasis()
-	_draw_room_exits()
 	for marker in _ability_markers:
 		var point:=Vector2i(int(marker.position[0]),int(marker.position[1]))
 		if marker.kind=="LIFE" and is_world_cell_visible(point):continue
@@ -2459,20 +2437,20 @@ func _draw() -> void:
 			for dy in range(-1,2):
 				for dx in range(-1,2):
 					var cell:Vector2i=point+Vector2i(dx,dy)
-					if is_world_cell_visible(cell):_draw_cell_overlay(cell,Color(tint,0.18),Color.TRANSPARENT)
+					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
 		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
 	Perf.end("grid.draw_world",begun)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]
 		if not is_world_cell_visible(goal):continue
 		var center:=world_to_pixel_center(goal)
-		_draw_cell_overlay(goal,Color(0.53,0.79,0.92,0.08),Color("#87c9eb"),1.0)
+		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.4,Vector2.ONE*cell_size_px()*0.8),Color("#87c9eb"),false,2)
 		var actor_center:=actor_visual_center(id)
 		if actor_center.x>=0:draw_line(actor_center,center,Color(0.5,0.8,1,0.35),1,true)
 	if move_preview_position!=Vector2i(-1,-1) and is_world_cell_visible(move_preview_position):
 		var color:=Color("#87dfcb") if move_preview_valid else Color("#ff6363")
 		var center:=world_to_pixel_center(move_preview_position)
-		_draw_cell_overlay(move_preview_position,Color(color,0.10),color,1.2)
+		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.45,Vector2.ONE*cell_size_px()*0.9),color,false,3)
 	for id in danger_actor_ids:
 		var center:=actor_visual_center(id)
 		if center.x<0 or center.y<0:continue
@@ -2489,10 +2467,9 @@ func _draw() -> void:
 	for id in _actor_emphasis:
 		if actor_emphasis_active(int(id)):
 			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)
-	var heading:String=battle_notice if not battle_notice.is_empty() else _room_name
-	if not heading.is_empty():
+	if not battle_notice.is_empty():
 		draw_rect(Rect2(2,2,maxf(1,size.x-4),24),Color(0.04,0.07,0.09,0.9))
-		draw_string(get_theme_font("font"),Vector2(6,19),heading,HORIZONTAL_ALIGNMENT_CENTER,
+		draw_string(get_theme_font("font"),Vector2(6,19),battle_notice,HORIZONTAL_ALIGNMENT_CENTER,
 			maxf(1,size.x-12),12,Color("#ffe3a0"))
 
 func _draw_world_with_emphasis()->void:
@@ -2504,14 +2481,6 @@ func _draw_world_with_emphasis()->void:
 	var frame_actor_sample_msec:=Time.get_ticks_msec()
 	var palette:=AsciiStyleScript.diorama_palette_spec()
 	var retained:=_retain_terrain_commands and not uses_perspective_projection()
-	var tactical:=uses_tactical_projection()
-	if tactical and _tactical_terrain==null:
-		_tactical_terrain=preload("res://playtest/tactical_board_layer.gd").new()
-		_tactical_terrain.name="TacticalTerrain";_tactical_terrain.show_behind_parent=true;add_child(_tactical_terrain)
-	if _tactical_terrain!=null:_tactical_terrain.visible=tactical
-	if tactical and _tactical_terrain_revision!=_static_projection_rebuild_count:
-		_tactical_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,visible_cell_count,_room_biome)
-		_tactical_terrain_revision=_static_projection_rebuild_count
 	if retained and _retained_terrain==null:
 		_retained_terrain=preload("res://playtest/retained_terrain_layer.gd").new()
 		_retained_terrain.name="RetainedTerrain"
@@ -2522,11 +2491,10 @@ func _draw_world_with_emphasis()->void:
 		if _retained_terrain_revision!=_static_projection_rebuild_count:
 			_retained_terrain.synchronize(_static_projection_cache,grid_rect(),view_origin,cell_size_px(),palette)
 			_retained_terrain_revision=_static_projection_rebuild_count
-	elif not tactical:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
+	else:draw_rect(grid_rect(),Color(str(palette.get("substrate_hex","#091017"))),true)
 	var camera_offset:Vector2=camera_settle_draw_spec(frame_actor_sample_msec).offset_px
 	var impact_offset:=melee_vfx.shake_offset_px() if melee_vfx!=null else Vector2.ZERO
 	if retained:_retained_terrain.set_camera_offset(camera_offset+impact_offset)
-	if tactical:_tactical_terrain.position=camera_offset+impact_offset
 	draw_set_transform(camera_offset+impact_offset)
 	if not retained:_draw_void_padding(Color(str(palette.get("void_hex","#010203"))))
 	var begun:=Perf.begin()
@@ -2545,23 +2513,12 @@ func _draw_world_with_emphasis()->void:
 	_draw_follower_footprints()
 	_draw_route_overlay()
 	_draw_skill_reach_cells()
-	if _skill_reach_cells.is_empty():
-		for cell in movement_cells:
-			_draw_cell_overlay(cell,Color(0.2,0.6,1.0,0.10),Color(0.3,0.7,1.0,0.35),1.0)
-	for cell in srpg_attack_cells:
-		_draw_cell_overlay(cell,Color(1.0,0.35,0.2,0.12),Color(1.0,0.5,0.3,0.65),1.0)
-	for cell in deployment_cells:
-		_draw_cell_overlay(cell,Color(0.2,0.8,0.9,0.16),Color(0.3,0.9,1.0,0.6),1.0)
 	_draw_exploration_companion_follow_plan()
 	_draw_ground_items()
-	for position in supply_cache_cells:
-		var center:=world_to_pixel_center(position)
-		draw_rect(Rect2(center-Vector2(5,5),Vector2(10,10)),Color(0.2,0.65,0.35))
-		draw_line(center-Vector2(3,0),center+Vector2(3,0),Color.WHITE,1)
 	Perf.end("grid.terrain_passes",begun)
 	begun=Perf.begin()
 	for visual_row in _sorted_visual_actor_rows():
-		if _graphics_mode in [GRAPHICS_MODE_FLAT_2D,GRAPHICS_MODE_TACTICAL]:
+		if _graphics_mode==GRAPHICS_MODE_FLAT_2D:
 			_draw_topdown_fixed_front_actor(visual_row.actor,bool(visual_row.ghost),
 				camera_offset,frame_actor_sample_msec)
 		else:
@@ -2569,11 +2526,6 @@ func _draw_world_with_emphasis()->void:
 				camera_offset,frame_actor_sample_msec)
 	_draw_radial_darkness_overlay()
 	Perf.end("grid.actors_darkness",begun)
-	if srpg_attack_target!=Vector2i(-1,-1):
-		var marker:=world_to_pixel_center(srpg_attack_target)-Vector2(0,cell_size_px()*0.8)
-		draw_circle(marker,9,Color(0.9,0.2,0.1))
-		draw_line(marker-Vector2(4,4),marker+Vector2(4,4),Color.WHITE,2)
-		draw_line(marker-Vector2(4,-4),marker+Vector2(4,-4),Color.WHITE,2)
 	_draw_actor_health_bars(frame_actor_sample_msec)
 	_draw_monster_awareness_marks()
 	for intent in _secondary_intent_overlays:
@@ -2685,7 +2637,7 @@ func fixed_front_actor_render_spec(actor:Dictionary,ghost:bool=false,
 	# Keep the paper doll at one constant world-space ratio. The former 42 px cap
 	# made close zoom enlarge only the terrain while the character stayed fixed.
 	var sprite_size:=cell*float(layer_spec.get("visual_cell_ratio",1.50))
-	var foot_y:=center.y+cell*(0.06 if uses_tactical_projection() else 0.42)
+	var foot_y:=center.y+cell*0.42
 	var foot_anchor_ratio:=float(layer_spec.foot_anchor_ratio)
 	var source_canvas:Vector2=layer_spec.get("source_canvas_size",Vector2(24,24))
 	var source_center_offset:Vector2=layer_spec.get(
@@ -2796,10 +2748,6 @@ func _draw_ground_items()->void:
 		preload("res://playtest/base_resource_icon.gd").draw_icon(self,row[0],row[1])
 	for spec in ground_item_draw_specs():
 		if bool(spec.get("draw_image",false)):
-			# A compact backing separates loot from walkable terrain, even when
-			# several drops share a cell or a creature has just disappeared.
-			draw_rect(spec.image_rect.grow(1),Color(0.035,0.03,0.025,0.72))
-			draw_rect(spec.image_rect.grow(1),Color(0.78,0.64,0.36,0.65),false,1)
 			draw_texture_rect(spec.texture,spec.image_rect,false,Color.WHITE)
 			if not str(spec.get("appearance_mark","")).is_empty():draw_string(get_theme_default_font(),spec.image_rect.position+Vector2(0,10),str(spec.appearance_mark),HORIZONTAL_ALIGNMENT_LEFT,-1,10,Color.WHITE)
 			continue
@@ -3051,7 +2999,6 @@ func _presentation_light_line_open(origin:Vector2i,target:Vector2i)->bool:
 	return true
 
 func _draw_radial_darkness_overlay()->void:
-	if _room_bounds.has_area():return
 	var begun:=Perf.begin()
 	var torch_lit:=_hero_torch_lit()
 	var key:="%d:%d:%d:%d:%d:%s"%[_darkness_revision,
@@ -3177,7 +3124,6 @@ func _darkness_vertex_color(sample:Dictionary)->Color:
 	return Color(0.002,0.004,0.008,clampf(alpha,0.0,0.96))
 
 func _draw_terrain_glyph_pass(visibility_state:String)->void:
-	if uses_tactical_projection():return
 	if _retained_terrain!=null and _retained_terrain.visible and not _retained_terrain.has_fallback:return
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3213,7 +3159,7 @@ func _draw_terrain_glyph_pass(visibility_state:String)->void:
 				_cell_is_visually_occupied(position),position)
 
 func terrain_tile_draw_spec(position:Vector2i)->Dictionary:
-	if _graphics_mode==GRAPHICS_MODE_DIORAMA_2_5D or not is_world_cell_visible(position):
+	if uses_perspective_projection() or not is_world_cell_visible(position):
 		return {"visible":false,"draw_image":false,"changes_mapping":false,
 			"changes_fov":false}.duplicate(true)
 	var row:Dictionary=_cells.get(_key(position),{})
@@ -3231,7 +3177,7 @@ func _observed_tile_spec(row:Dictionary,position:Vector2i)->Dictionary:
 func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
-	if str(spec.get("asset_family","")) in ["0X72_DUNGEON_II","DCSS_CC0"]:
+	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
 		var tint:Color=spec.get("tint",Color.WHITE)
 		if str(spec.visibility_state)!="VISIBLE":tint*=Color(0.30,0.32,0.35,0.55)
 		draw_texture_rect_region(texture,rect.grow(0.2),spec.region,tint)
@@ -3257,7 +3203,6 @@ func _draw_asciident_terrain_cluster(spec:Dictionary)->void:
 		float(spec.get("glow_strength",0.0)))
 
 func wall_connector_draw_specs(visibility_state:String)->Array[Dictionary]:
-	if uses_tactical_projection():return []
 	# Runtime top-down wall tiles already contain their own connected silhouette.
 	# ASCII bridges are retained only for the optional diorama renderer.
 	if not uses_perspective_projection():return []
@@ -3319,7 +3264,6 @@ func _draw_environment_underlay(rect:Rect2,terrain:Dictionary,motion:Dictionary)
 		draw_circle(center,rect.size.x*(0.34 if kind=="fire" else 0.24),glow)
 
 func _draw_material_mark_pass(visibility_state:String)->void:
-	if uses_tactical_projection():return
 	if not uses_perspective_projection():return # Material identity is in the tile image.
 	for y in range(visible_row_count):
 		for x in range(visible_cell_count):
@@ -3688,7 +3632,7 @@ func _ellipse_points(center:Vector2,radius_x:float,radius_y:float)->PackedVector
 	return points
 
 func _draw_feature_cue(rect:Rect2,feature_id:String,opacity:float=1.0,live:bool=true)->void:
-	if not uses_perspective_projection() or uses_tactical_projection():
+	if not uses_perspective_projection():
 		WorldEffectAssets.draw_icon(self,str(WorldEffectAssets.FEATURE_IDS.get(feature_id,"")),
 			rect,Color(1,1,1,opacity) if live else Color(0.46,0.47,0.48,opacity))
 		return
@@ -3967,14 +3911,6 @@ func _draw_exploration_companion_follow_plan()->void:
 				maxi(8,int(cell_size_px()*0.25)),Color(str(risk_badge.color_hex)))
 
 
-func selection_diamond_segments(position:Vector2i,visual_center:Vector2)->Array:
-	var polygon:=cell_overlay_polygon(position)
-	var offset:=visual_center-world_to_pixel_center(position)
-	var segments:Array=[]
-	for i in range(polygon.size()):
-		segments.append([polygon[i]+offset,polygon[(i+1)%polygon.size()]+offset])
-	return segments
-
 func _draw_actor_selection_overlays(sample_time_ms:int=-1)->void:
 	for row in selection_overlay_draw_specs(sample_time_ms):
 		var color:=Color(str(row.color_hex))
@@ -3986,9 +3922,6 @@ func _draw_cursor_preview() -> void:
 	var spec:=cursor_preview_draw_spec()
 	if not bool(spec.visible):return
 	var color:=Color(str(spec.color_hex))
-	if uses_tactical_projection():
-		_draw_cell_overlay(cursor_cell,Color(color,0.08),color,1.0)
-		return
 	var center:Vector2=spec.pixel_center;var radius:=float(spec.radius)
 	draw_circle(center,radius,Color(color,0.10))
 	draw_arc(center,radius,0,TAU,20,color,3.0)
@@ -4007,12 +3940,6 @@ func cursor_preview_draw_spec()->Dictionary:
 func _draw_route_overlay() -> void:
 	if _route_path.size()<2:return
 	var spec:=route_draw_spec()
-	if uses_tactical_projection():
-		for tile in spec.tiles:
-			if not tile.visible or tile.completed:continue
-			var point:=Vector2i(int(tile.position[0]),int(tile.position[1]))
-			_draw_cell_overlay(point,Color(Color(tile.fill_hex),float(tile.fill_alpha)),
-				Color(Color(tile.border_hex),0.65 if tile.kind in ["NEXT","GOAL"] else 0.25),1.0)
 	for segment in spec.segments:
 		if not bool(segment.visible):continue
 		var segment_color:=Color(str(segment.color_hex))
@@ -4037,7 +3964,6 @@ func _draw_chalk_segment(from:Vector2,to:Vector2,color:Color,width:float)->void:
 		draw_line(start,finish,color,width,true)
 
 func _draw_intent(intent: Dictionary) -> void:
-	if stage_motion_busy():return
 	if not intent.get("from_position") is Array or intent.from_position.size() != 2: return
 	var origin := Vector2i(int(intent.from_position[0]), int(intent.from_position[1]))
 	if not _cell_allows_overlay(origin):return
@@ -4045,12 +3971,7 @@ func _draw_intent(intent: Dictionary) -> void:
 	if not bool(spec.visible):return
 	var color := Color(str(spec.color_hex))
 	color.a*=float(spec.opacity)
-	if int(intent.get("actor_id",-1))==selected_target_id and str(intent.get("role",""))=="ENEMY":
-		color=Color(1.0,0.16,0.12,1.0)
 	var action_type := str(spec.action_type)
-	if uses_tactical_projection():
-		_draw_tactical_intent(intent,spec,origin,color)
-		return
 	if action_type == "MOVE" and intent.get("destination") is Array and intent.destination.size() == 2:
 		var destination := Vector2i(int(intent.destination[0]), int(intent.destination[1]))
 		if not _cell_allows_overlay(destination):return
@@ -4124,8 +4045,6 @@ func _draw_arrow(from: Vector2, to: Vector2, color: Color, width: float, dashed:
 	draw_colored_polygon(PackedVector2Array([to, to-direction*10.0+side*5.0, to-direction*10.0-side*5.0]), color)
 
 func _draw_source_marker(position: Vector2i, marker_style: String, color: Color) -> void:
-	if uses_tactical_projection():
-		_draw_cell_overlay(position,Color(color,0.10),color,1.0);return
 	var center := world_to_pixel_center(position); var radius := cell_size_px() * 0.24
 	if marker_style == "DIAMOND":
 		draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
@@ -4139,72 +4058,3 @@ func _draw_source_marker(position: Vector2i, marker_style: String, color: Color)
 		draw_circle(center,radius,Color(color,0.25)); draw_arc(center,radius,0,TAU,18,color,2.5)
 
 func _key(p:Vector2i)->String: return "%d:%d"%[p.x,p.y]
-
-func cell_overlay_polygon(position:Vector2i,inset_ratio:float=0.08)->PackedVector2Array:
-	var polygon:=world_cell_polygon(position)
-	if polygon.size()!=4:return PackedVector2Array()
-	var center:Vector2=(polygon[0]+polygon[2])*0.5
-	for i in range(polygon.size()):polygon[i]=polygon[i].lerp(center,clampf(inset_ratio,0.0,0.95))
-	return polygon
-
-func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)->void:
-	var polygon:=cell_overlay_polygon(position)
-	if polygon.size()!=4:return
-	if fill.a>0.0:draw_colored_polygon(polygon,fill)
-	if edge.a>0.0:
-		polygon.append(polygon[0]);draw_polyline(polygon,edge,width,true)
-
-func _draw_tactical_intent(intent:Dictionary,spec:Dictionary,origin:Vector2i,color:Color)->void:
-	var action:=str(spec.action_type)
-	if _room_bounds.has_area() and action=="HOLD":return
-	if intent.get("attack_cells",[]).size()>0:
-		var selected:=int(intent.get("actor_id",-1))==selected_target_id
-		for raw in intent.attack_cells:
-			var cell:=_array_to_world_position(raw)
-			if _cell_allows_overlay(cell):_draw_cell_overlay(cell,Color(color,0.45 if selected else 0.12),Color(color,1.0 if selected else 0.5),2.0 if selected else 1.0)
-		if not selected:return
-	if intent.get("path",[]) is Array and not intent.get("path",[]).is_empty():
-		var previous:Vector2i=origin
-		for raw in intent.path:
-			var cell:=_array_to_world_position(raw)
-			if _cell_allows_overlay(cell):
-				_draw_cell_overlay(cell,Color(color,color.a*0.08),color,1.0)
-				if _cell_allows_overlay(previous):draw_line(world_to_pixel_center(previous),world_to_pixel_center(cell),color,1.2,true)
-			previous=cell
-	var target:=origin
-	if action=="MOVE":target=_array_to_world_position(intent.get("destination",[]))
-	elif action in ["MELEE","SKILL"]:target=_array_to_world_position(intent.get("target_position",[]))
-	if not _cell_allows_overlay(target):return
-	var selected_attack:=int(intent.get("actor_id",-1))==selected_target_id and str(intent.get("role",""))=="ENEMY" and action in ["MELEE","SKILL"]
-	_draw_cell_overlay(target,Color(color,0.5 if selected_attack else color.a*(0.16 if action in ["MELEE","SKILL"] else 0.07)),color,2.0 if selected_attack else 1.2)
-	var center:=world_to_pixel_center(target)
-	if action=="MOVE" or bool(spec.draw_connector) and (not _room_bounds.has_area() or int(intent.get("actor_id",-1))==selected_target_id):
-		var start:=world_to_pixel_center(origin)
-		var delta:=center-start
-		if delta.length()>1.0:
-			var direction:=delta.normalized();var side:=Vector2(-direction.y,direction.x)
-			var tip:=center-direction*minf(5.0,delta.length()*0.12)
-			draw_line(start.lerp(center,0.22),tip,color,1.2,true)
-			var head:=clampf(cell_size_px()*0.10,2.5,5.0)
-			draw_polyline(PackedVector2Array([tip-direction*head+side*head*0.6,tip,
-				tip-direction*head-side*head*0.6]),color,1.2,true)
-	if action in ["MELEE","SKILL"]:
-		# Small floor-aligned cross, not a screen-space square or full-tile X.
-		var p:=cell_overlay_polygon(target,0.60)
-		if p.size()==4:
-			draw_line(p[0].lerp(p[1],0.5),p[2].lerp(p[3],0.5),color,1.4,true)
-			draw_line(p[1].lerp(p[2],0.5),p[3].lerp(p[0],0.5),color,1.4,true)
-
-func _draw_room_exits()->void:
-	for exit in _room_exits:
-		var p:=Vector2i(exit.cell[0],exit.cell[1])
-		if not is_world_cell_visible(p):continue
-		var local:=p-_room_bounds.position
-		var direction:=Vector2i.RIGHT if local.x==7 else Vector2i.LEFT if local.x==0 else Vector2i.DOWN if local.y==7 else Vector2i.UP
-		var center:=world_to_pixel_center(p)
-		var toward:=_project_board_point(Vector2(p+direction-view_origin)+Vector2.ONE*0.5)-_project_board_point(Vector2(p-view_origin)+Vector2.ONE*0.5)
-		var tip:=center+toward*0.35;var back:=center-toward*0.25
-		_draw_cell_overlay(p,Color(0.3,0.8,0.75,0.12),Color("#86d6c0"),2.0)
-		draw_line(back,tip,Color("#86d6c0"),2.0,true)
-		var side:=toward.orthogonal().normalized()*4.0
-		draw_colored_polygon(PackedVector2Array([tip,tip-toward.normalized()*7.0+side,tip-toward.normalized()*7.0-side]),Color("#86d6c0"))

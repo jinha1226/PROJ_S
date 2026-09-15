@@ -29,17 +29,12 @@ static func build(world) -> Dictionary:
 				var distance := _distance(world.entities[enemy_id].position,
 					world.entities[target_id].position)
 				var enemy=world.entities[enemy_id]
-				var visible_now:bool
-				if preload("res://sim/room_transition_rules.gd").enabled(world):
-					visible_now=preload("res://sim/room_transition_rules.gd").stage_visible(world,enemy.position,world.entities[target_id].position)
-				else:
-					var observation:=VisionRulesScript.observe(world,enemy.position,
-						world.entities[target_id].position,
-						VisionRulesScript.facing_for_entity(world,enemy_id),
-						VisionRulesScript.profile_for_entity(enemy),
-						VisionRulesScript.lighting_for_world(world))
-					visible_now=bool(observation.get("visible",false))
-				if visible_now:
+				var observation:=VisionRulesScript.observe(world,enemy.position,
+					world.entities[target_id].position,
+					VisionRulesScript.facing_for_entity(world,enemy_id),
+					VisionRulesScript.profile_for_entity(enemy),
+					VisionRulesScript.lighting_for_world(world))
+				if bool(observation.get("visible",false)):
 					visible.append(target_id)
 					target_pressure[target_id].visible_enemy_ids.append(enemy_id)
 				if distance <= 1:
@@ -86,9 +81,6 @@ static func visible_party_ids(world, enemy_id: int) -> Array[int]:
 	if profile.is_empty():
 		return result
 	for target_id in deployed_party_ids(world):
-		if preload("res://sim/room_transition_rules.gd").enabled(world):
-			if preload("res://sim/room_transition_rules.gd").stage_visible(world,enemy.position,world.entities[target_id].position):result.append(target_id)
-			continue
 		if preload("res://sim/abilities/monster_ability_runtime.gd").hidden_from(world,enemy.position,world.entities[target_id].position):continue
 		var observation:=VisionRulesScript.observe(world,enemy.position,
 			world.entities[target_id].position,VisionRulesScript.facing_for_entity(world,enemy_id),

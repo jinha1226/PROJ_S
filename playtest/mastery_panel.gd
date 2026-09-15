@@ -3,7 +3,6 @@ extends VBoxContainer
 const Growth=preload("res://game/rebuilt/progression.gd")
 const PixelSkin=preload("res://playtest/dark_pixel_ui_skin.gd")
 var session
-var actor_id:int=-1
 var summary:Label
 var progress:ProgressBar
 var rows:Dictionary={}
@@ -40,47 +39,44 @@ func _ready()->void:
 	confirm.cancel_button_text="취소";confirm.get_label().autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	confirm.confirmed.connect(commit);confirm.canceled.connect(func():pending.clear());add_child(confirm)
 
-func refresh(owner_session,member_id:int=-1)->void:
+func refresh(owner_session)->void:
 	session=owner_session
-	actor_id=member_id
-	var status:Dictionary=session.mastery_status(actor_id)
+	var status:Dictionary=session.mastery_status()
 	if status.is_empty():return
 	var registry=session.GrowthBuildRegistryScript
 	var floor_xp:int=registry.xp_floor_for_level(status.level)
 	var next_xp:int=registry.xp_floor_for_level(int(status.level)+1)
-	summary.text="Lv.%d · 남은 포인트 %d"%[status.level,status.points]
+	summary.text="숙련 · 남은 포인트 %d"%status.points
 	PixelSkin.apply_heading(summary)
 	progress.min_value=floor_xp;progress.max_value=maxi(floor_xp+1,next_xp);progress.value=status.xp
 	var safety:Dictionary=session._auto_explore_stop_snapshot()
 	var safe:bool=safety.get("visible_enemy_keys",{}).is_empty() and str(safety.get("safe_phase","")) in ["GROUPED","GROUPED_COMPLETE"]
-	if actor_id!=-1 and actor_id not in session.sim.world.party_encounter.active_party_member_ids:safe=false
 	if not safe:summary.text+=" · 전투 중"
 	for definition in Growth.DATA.axes:
 		var axis:String=definition.id;var rank:int=status.ranks[axis]
 		var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
 		rows[axis].title.text="%s %d/%d"%[definition.label,rank,status.max_rank]
 		rows[axis].info.text="%s\n+%d%%"%[
-			"방어·회피·막기" if axis=="DEFENSE" else "공격·변이 효과",rank*per_rank/10]
+			"방어·회피·막기" if axis=="DEFENSE" else "공격·이능 효과",rank*per_rank/10]
 		rows[axis].button.disabled=status.points<1 or rank>=status.max_rank or not safe
 		rows[axis].button.tooltip_text="전투 중에는 투자할 수 없습니다." if not safe else \
 			("숙련 포인트가 없습니다." if status.points<1 else ("최대 숙련입니다." if rank>=status.max_rank else "1점 투자"))
 
 func preview(axis:String)->void:
-	var status:Dictionary=session.mastery_status(actor_id)
-	pending={"axis":axis,"rank":status.ranks[axis],"points":status.points,"actor_id":actor_id}
+	var status:Dictionary=session.mastery_status()
+	pending={"axis":axis,"rank":status.ranks[axis],"points":status.points}
 	var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
 	var multiplier:=1000+int(pending.rank)*per_rank
 	confirm.dialog_text="1점을 투자할까요?\n효과 ×%.2f → ×%.2f\n%s\n현재 재분배할 수 없습니다."%[multiplier/1000.0,(multiplier+per_rank)/1000.0,
-		"보호·회피·막기 수치 강화 (정수 반올림)" if axis=="DEFENSE" else "해당 계열 공격·변이 효과 강화"]
+		"보호·회피·막기 수치 강화 (정수 반올림)" if axis=="DEFENSE" else "해당 계열 공격·이능 효과 강화"]
 	confirm.popup_centered(Vector2i(mini(330,int(get_viewport_rect().size.x)-24),190))
 
 func commit()->void:
 	var action:=pending.duplicate();pending.clear()
 	if action.is_empty():return
-	if action.actor_id!=actor_id:return
-	var status:Dictionary=session.mastery_status(actor_id)
+	var status:Dictionary=session.mastery_status()
 	if status.points!=action.points or status.ranks[action.axis]!=action.rank:return
-	var result:Dictionary=session.spend_mastery_point(action.axis,actor_id)
-	refresh(session,actor_id)
+	var result:Dictionary=session.spend_mastery_point(action.axis)
+	refresh(session)
 	if result.accepted:changed.emit()
 	else:summary.text+="\n지금은 투자할 수 없습니다. 안전한 곳에서 시도하세요."

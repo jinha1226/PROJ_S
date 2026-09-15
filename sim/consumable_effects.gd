@@ -41,15 +41,10 @@ static func summary(w,id:int)->String:
 	return " · ".join(parts)
 static func add(w,actor:int,target:int,effect:String,cause:int)->bool:
 	return w.emit_event("consumable.status",actor,target,w.entities[target].position,1,cause,{"schema_version":1,"effect":effect,"until":str(w.world_time+int(DURATIONS[effect]))})!=null
-static func tick(sim,start:int,end:int,catchup_room:Vector2i=Vector2i(-1,-1))->bool:
+static func tick(sim,start:int,end:int)->bool:
 	var w=sim.world;var runtime=load("res://sim/abilities/monster_ability_runtime.gd")
 	var p:=projection(w)
 	for s in p.statuses.values().duplicate():
-		if preload("res://sim/room_transition_rules.gd").enabled(w):
-			var membership:Vector2i=preload("res://sim/room_transition_rules.gd").membership(w.entities[s.target_id].position)
-			if catchup_room!=Vector2i(-1,-1):
-				if membership!=catchup_room:continue
-			elif not preload("res://sim/room_transition_rules.gd").current(w,w.entities[s.target_id].position):continue
 		var key:String=s.data.effect
 		if key not in ["POISON","REGEN"] or not runtime.alive(w,s.target_id):continue
 		if key=="POISON" and int(p.clears.get(s.target_id,-1))>s.id:continue

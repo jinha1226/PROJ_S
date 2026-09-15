@@ -479,14 +479,49 @@ func _check_nearby_npc_card_touch(viewport_size:Vector2)->void:
 	sandbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	sandbox.position=Vector2.ZERO;sandbox.size=viewport_size
 	sandbox.initialize_for_headless_test(session,false)
+	var npc_id:=int(session.opening_event_status().get("npc_entity_id",-1))
+	# Make the opening actor a valid inspectable/recruitable re-encounter fixture.
+	# Merely forcing its card visible while the opening is still undiscovered gives
+	# the buttons a domain-invalid actor and cannot prove input dispatch.
+	session.sim.world.party_encounter.opening_event.reencounter_event_id=1
+	sandbox.nearby_npc_entity_id=npc_id;sandbox.nearby_npc_story_state="REUNION_READY"
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_detail_button.disabled=false
+	sandbox.nearby_npc_action_button.disabled=false
+	sandbox.nearby_npc_attack_button.disabled=false
 	await process_frame;await process_frame
-	_check(sandbox.nearby_npc_panel==null,
-		"%s automatic NPC inspector must not be created"%viewport_size)
-	_check(not sandbox.grid.monster_list_draw_spec().visible,
-		"%s automatic corner actor list must stay hidden"%viewport_size)
-	var touch:=InputEventScreenTouch.new();touch.pressed=true;touch.position=Vector2(12,12)
-	_check(not sandbox._handle_nearby_npc_touch(touch),
-		"%s removed inspector must not consume screen touches"%viewport_size)
+	_check(sandbox.nearby_npc_name.get_theme_font_size("font_size")==16 \
+		and sandbox.nearby_npc_personality.get_theme_font_size("font_size")==12 \
+		and sandbox.nearby_npc_recruitment.get_theme_font_size("font_size")==11 \
+		and sandbox.nearby_npc_action_button.get_theme_font_size("font_size")==12,
+		"%s nearby NPC card typography was not compacted"%viewport_size)
+	var step_before:int=session.sim.world.step_index
+	await _screen_touch_plain_button(sandbox.nearby_npc_toggle_button,74)
+	_check(sandbox.nearby_npc_collapsed and not sandbox.nearby_npc_content.visible,
+		"%s nearby NPC card ScreenTouch did not collapse"%viewport_size)
+	await _screen_touch_plain_button(sandbox.nearby_npc_toggle_button,75)
+	_check(not sandbox.nearby_npc_collapsed and sandbox.nearby_npc_content.visible,
+		"%s nearby NPC card ScreenTouch did not expand"%viewport_size)
+	await _screen_touch_plain_button(sandbox.nearby_npc_detail_button,76)
+	_check(sandbox.member_detail_modal.visible,
+		"%s nearby NPC [상세] ScreenTouch was swallowed by the map"%viewport_size)
+	sandbox._close_member_detail();await process_frame
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_action_button.disabled=false
+	sandbox.action_feedback_text=""
+	await process_frame
+	await _screen_touch_plain_button(sandbox.nearby_npc_action_button,77)
+	_check(not sandbox.action_feedback_text.is_empty(),
+		"%s nearby NPC recruitment ScreenTouch did not reach its action"%viewport_size)
+	sandbox.nearby_npc_panel.visible=true;sandbox.nearby_npc_content.visible=true
+	sandbox.nearby_npc_entity_id=npc_id;sandbox.nearby_npc_attack_button.disabled=false
+	sandbox.action_feedback_text=""
+	await process_frame
+	await _screen_touch_plain_button(sandbox.nearby_npc_attack_button,78)
+	_check(not sandbox.action_feedback_text.is_empty(),
+		"%s nearby NPC attack ScreenTouch did not reach its action"%viewport_size)
+	_check(session.sim.world.step_index==step_before,
+		"%s nearby NPC card touch leaked through to map movement"%viewport_size)
 	sandbox.queue_free();await process_frame
 
 func _screen_touch_plain_button(button:Button,touch_index:int)->void:

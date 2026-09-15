@@ -91,7 +91,6 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 		else int(attacker_profile.power)
 	var armor_reduction := int(weapon_spec.armor_reduction) if not weapon_spec.is_empty() \
 		else int(basic.armor_reduction)
-	base_damage=preload("res://sim/body_penalty_rules.gd").scale_damage(world,attacker_id,base_damage)
 	var after_armor := base_damage - armor_reduction
 	var guarded: bool = target_state.life_state == "ACTIVE" and attack_start_world_time < target_state.guarded_until
 	var guard_rank:=0
@@ -319,12 +318,6 @@ func can_attack(attacker_id: int, target_id: int) -> bool:
 	var weapon=WeaponRegistryScript.definition(
 		WorldItemOperationsScript.equipped_weapon_id(world,attacker_id))
 	if not BodyFunctionRulesScript.weapon_use_error(body,weapon).is_empty():return false
-	var stage_profile:Dictionary=preload("res://sim/stage_enemy_rules.gd").profile(world,attacker_id)
-	if not stage_profile.is_empty():
-		var distance:=maxi(absi(attacker.position.x-target.position.x),absi(attacker.position.y-target.position.y))
-		# CROSS fringe cells may be one tile beyond the aimed center's range.
-		var reach:int=int(stage_profile.max)+(1 if stage_profile.pattern=="CROSS" else 0)
-		return distance>=(1 if stage_profile.pattern=="CROSS" else int(stage_profile.min)) and distance<=reach and world.can_act(attacker_id,world.world_time) and world.is_explicit_melee_target(target_id)
 	return world.can_act(attacker_id, world.world_time) and world.is_explicit_melee_target(target_id) \
 		and maxi(absi(attacker.position.x - target.position.x), absi(attacker.position.y - target.position.y)) == 1
 
@@ -398,16 +391,12 @@ func can_attack_with_weapon(attacker_id: int, target_id: int, weapon_id: String,
 		world.entities[target_id].position, weapon_id, occupants).is_empty()
 
 func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
-	if not preload("res://sim/room_transition_rules.gd").same_room(world,origin,target):return false
 	if not preload("res://sim/field_turn_rules.gd").enabled(world):return true
 	return preload("res://sim/combat_kernel.gd").sees(origin,target,world.combat_solid,
 		maxi(1,ceili(Vector2(target-origin).length())))
 
 
 func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
-	var actor_growth=preload("res://sim/party_growth_rules.gd").for_actor(world,attacker_id)
-	if actor_growth!=null and attacker_id!=world.party_encounter.protagonist_id:
-		return int(actor_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])
 	if world.party_encounter!=null and attacker_id==world.party_encounter.protagonist_id \
 			and preload("res://sim/field_turn_rules.gd").enabled(world):
 		return int(world.party_encounter.protagonist_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])

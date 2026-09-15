@@ -184,27 +184,6 @@
   "sell_price": 22,
   "effect_kind": "NONE",
   "effect_power": 0
-},
-    {"definition_id":"FOOD_MONSTER_ABERRATION","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_BAT","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_BEETLE","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_BOAR","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_FRILLED_LIZARD","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_GNOLL","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_HOBGOBLIN","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_ORC","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_RAT","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_DCSS_RIVER_RAT","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_ELECTRIC_EEL","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_FIRE_LIZARD","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_FROST_SPIDER","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_GOBLIN","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_KOBOLD","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_LEECH","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_SHADOW_BEAST","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_SLIME","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_TROLL","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_VIPER","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20},
-    {"definition_id":"FOOD_MONSTER_WOLF","family":"FOOD","tier":1,"min_depth":1,"buy_price":4,"sell_price":1,"effect_kind":"NUTRITION","effect_power":20}
+}
   ]
 }

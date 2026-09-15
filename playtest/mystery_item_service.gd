@@ -3,7 +3,7 @@ const Mystery=preload("res://sim/mystery_consumables.gd")
 const Catalog=preload("res://sim/item_catalog_registry.gd")
 const Ops=preload("res://sim/world_item_operations.gd")
 static func use(session,instance_id:String,selection:Dictionary={})->Dictionary:
-	var w=session.sim.world;var id:int=session.consumable_actor_id();var hero=w.entities[id]
+	var w=session.sim.world;var id:int=w.party_control_actor_id();var hero=w.entities[id]
 	var preview:Dictionary=Ops.preview_use(w,id,instance_id)
 	if not preview.get("accepted",false):return session._rejection_dto(str(preview.get("reason")))
 	var definition_id:String=str(preview.definition_id);var d:=Catalog.definition(definition_id)

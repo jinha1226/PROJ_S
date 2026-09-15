@@ -18,12 +18,6 @@ func _pump(seconds:float)->void:
 
 func run()->void:
 	session=Session.new(44,20260828,Session.DUO_SCENARIO_ID)
-	# This macro regression covers the legacy field HUD; the nine-room MOVE
-	# dock and boundary stop are covered by nine_room_ui/transition tests.
-	session.reset_party(44,20260828,Session.DUO_SCENARIO_ID,
-		preload("res://playtest/campaign_world_map.gd").generate(44,1,true,true),
-		false,"human",true,true,true,true,true,false,true)
-	session.sim.world.entities[session.sim.world.party_encounter.protagonist_id].tags.erase(preload("res://sim/round_combat_rules.gd").TAG)
 	session.town_life_command({"action":"START"});session.depart_town()
 	ui=Sandbox.new();ui.size=Vector2(390,800);ui.initialize_for_headless_test(session,true)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);ui.size=Vector2(390,800);root.add_child(ui);ui.set_process(false)
@@ -34,11 +28,7 @@ func run()->void:
 		and ui.product_attack_button.text=="[공격]","the fixed dock has 공격, 대기 and 휴식 in exploration")
 	# Fight once so there is loot on the ground (and usually some damage).
 	var fought:=false
-	var attacked_enemy:=-1
 	for round in range(700):
-		# Shared field turns stay in exploration rather than entering ENGAGED.
-		if attacked_enemy>0 and world.combatant_states[attacked_enemy].life_state=="DEAD":
-			fought=true;break
 		var phase:=str(session.party_status().get("safe_phase",""))
 		if phase=="ENGAGED":
 			# [공격]: attack the nearest enemy when adjacent, otherwise one step closer.
@@ -60,7 +50,6 @@ func run()->void:
 			if d<target_distance:target_distance=d;target_enemy=int(id)
 		if target_enemy<0:break
 		if target_distance<=1:
-			attacked_enemy=target_enemy
 			ui.grid.actor_pressed.emit(target_enemy)
 		else:
 			var ep:Vector2i=world.entities[target_enemy].position
@@ -110,7 +99,7 @@ func run()->void:
 	_check(str(session.party_status().get("view_mode",""))=="EXPLORATION","exploration resumes before resting (phase %s)"%str(session.party_status().get("safe_phase","")))
 	# Rest until full.
 	var hero_entity=world.entities[hero]
-	if ui._rest_needed():
+	if int(hero_entity.health)<int(hero_entity.max_health):
 		ui._on_product_rest();await process_frame
 		_check(ui._product_rest_active,"[REST] starts resting")
 		var guard:=0

@@ -1,8 +1,5 @@
 class_name PartyEncounterSandbox
 extends Control
-var _personal_rest_dialog:ConfirmationDialog
-var _personal_rest_offer:Dictionary={}
-
 const PerfProbeScript=preload("res://sim/perf_probe.gd")
 
 const EXPLORATION_ACTOR_MOTION_MSEC := 100
@@ -54,7 +51,7 @@ const TOUCH_TARGET:=44
 # to the dungeon camera instead of reserving a square map plus dead flex space.
 const PRODUCT_TOP_HUD_HEIGHT:=76
 # Three Korean-font baselines plus dark panel padding.
-const PRODUCT_EVENT_HEIGHT:=84
+const PRODUCT_EVENT_HEIGHT:=66
 const PRODUCT_PARTY_CARD_HEIGHT:=84
 const AUTO_FORMATION_ORDER:=["WEDGE","LINE","COLUMN"]
 # One hop per motion: the canonical step, its actor motion and the camera settle
@@ -151,12 +148,6 @@ var base_close_button:Button
 var species_picker_modal:Control
 var species_picker_panel:PanelContainer
 var species_picker_buttons:VBoxContainer
-var species_picker_error:Label
-var _species_touch_index:=-1
-var _species_touch_button:Button
-var _species_touch_origin:=Vector2.ZERO
-var _species_touch_cancelled:=false
-var _species_ignore_mouse_until:=-1
 var selected_member_id:=-1
 var selected_target_id:=-1
 var enemy_vision_overlay_enabled:=false
@@ -352,9 +343,6 @@ var _battle_target_prompt:=""
 var _battle_target_prior_paused:=false
 var _battle_target_committing:=false
 var battle_drag:Control
-var _round_attack_targeting:=false
-var round_order_bar:VBoxContainer
-var stage_context_bar:HBoxContainer
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
 var _skill_pages:Dictionary={}
@@ -389,11 +377,6 @@ var base_work_clock=preload("res://playtest/base_work_clock.gd").new()
 var base_map_camera=preload("res://playtest/base_map_camera.gd").new()
 
 func _notification(what:int)->void:
-	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT] and session!=null and (session.round_active() or session.room_enabled()) and session.sim.world.is_settled():
-		var encoded:String=session.save_session_json()
-		if not encoded.is_empty():
-			var file=FileAccess.open(session.SAVE_PATH,FileAccess.WRITE)
-			if file!=null:file.store_string(encoded)
 	if what==NOTIFICATION_APPLICATION_FOCUS_OUT and portrait_gesture!=null:
 		portrait_gesture.actor_id=-1
 
@@ -439,12 +422,6 @@ func _process(_delta:float)->void:
 			_continue_route_on_cadence(expected_route_generation)
 
 func _input(event:InputEvent)->void:
-	if event is InputEventMouse and event.device==InputEvent.DEVICE_ID_EMULATION \
-			and Time.get_ticks_msec()<_species_ignore_mouse_until:
-		get_viewport().set_input_as_handled();return
-	if species_picker_modal!=null and species_picker_modal.visible:
-		_handle_species_picker_touch(event)
-		return # Native mouse/keyboard still reach GUI; gameplay handlers do not.
 	if battle_loot_panel!=null and battle_loot_panel.visible:return
 	if portrait_gesture.handle(self,event):return
 	if _handle_field_shortcuts(event):return
@@ -863,8 +840,6 @@ func _ready()->void:
 			_issue_new_personality_seed(),SessionScript.DUO_SCENARIO_ID,"human",true)
 		auto_orchestration_enabled=true;_reset_auto_flow()
 	_refresh()
-	if _web_capture_preview_requested():
-		var bridge=preload("res://playtest/nine_room_review_bridge.gd").new();bridge.ui=self;add_child(bridge)
 	if not _initialized_for_headless_test and not _web_capture_preview_requested():
 		show_species_picker_for_new_run()
 	if _initialized_for_headless_test and auto_orchestration_enabled:
@@ -1007,17 +982,12 @@ func _build_ui()->void:
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
 	var menu_popup:=product_menu_button.get_popup()
-	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 변이",3)
+	menu_popup.add_item("인물 · 상태",2);menu_popup.add_item("숙련 · 이능",3)
 	menu_popup.add_item("가방 · 장비",4);menu_popup.add_item("사건 기록",5)
 	if preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:menu_popup.add_item("거점 현황",7)
 	menu_popup.add_item("적 시야 표시 전환",8)
 	menu_popup.add_item("원정 목표",9)
 	menu_popup.add_item("마을 귀환 · 입구에서",10)
-	menu_popup.add_separator()
-	menu_popup.add_item("줍기",20);menu_popup.add_item("상호작용 · 계단",21)
-	menu_popup.add_item("현재 방 자동 탐험",22);menu_popup.add_item("파티 전술",23)
-	menu_popup.add_item("대기",24)
-	menu_popup.add_item("휴식",25);menu_popup.add_item("전체 지도",26)
 	menu_popup.add_separator()
 	menu_popup.add_item("같은 원정 다시 시작",0);menu_popup.add_item("새 게임 · 새로운 재능",1)
 	menu_popup.id_pressed.connect(_on_product_menu_id)
@@ -1045,7 +1015,6 @@ func _build_ui()->void:
 	# second objective/time strip in the product layout.
 	run_objective_bar=phase_panel;run_objective_label=recent_event_label
 	grid=GridScript.new(); grid.name="PartyGrid"; grid.custom_minimum_size=Vector2(348,348); grid.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
-	grid.set_graphics_mode(GridScript.GRAPHICS_MODE_TACTICAL)
 	grid.animate_passive_terrain=false
 	grid.world_cell_pressed.connect(_on_cell); grid.actor_pressed.connect(_on_actor)
 	grid.actor_inspect_requested.connect(_open_member_detail)
@@ -1053,7 +1022,7 @@ func _build_ui()->void:
 	grid.pointer_gesture_started.connect(_on_grid_pointer_started)
 	grid.pointer_gesture_finished.connect(_on_grid_pointer_finished); root_layout.add_child(grid)
 	_build_product_zoom_controls()
-	# No automatic corner inspector. Explicit actor details remain available.
+	_build_nearby_npc_card()
 	guild_tutorial_hud=preload("res://playtest/guild_tutorial_hud.gd").new()
 	grid.add_child(guild_tutorial_hud)
 	guild_tutorial_hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -1067,7 +1036,7 @@ func _build_ui()->void:
 	var info:=VBoxContainer.new(); info.name="InformationStack"; info.size_flags_horizontal=Control.SIZE_EXPAND_FILL; info.add_theme_constant_override("separation",6); info_scroll.add_child(info)
 	deck=VBoxContainer.new(); deck.name="ContextDeck"; deck.add_theme_constant_override("separation",2); info.add_child(deck)
 	log_label=Label.new(); log_label.name="NarrativeLog"; log_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	log_label.add_theme_font_size_override("font_size",16); log_label.custom_minimum_size.y=66
+	log_label.add_theme_font_size_override("font_size",FONT_AUX); log_label.custom_minimum_size.y=44
 	log_label.max_lines_visible=3;log_label.clip_text=true;info.add_child(log_label)
 	event_surface=PanelContainer.new();event_surface.name="EventSurface";event_surface.visible=false
 	DarkPixelSkinScript.apply_panel(event_surface,"COMPACT")
@@ -1078,8 +1047,8 @@ func _build_ui()->void:
 	event_surface.add_child(event_margin)
 	event_label=Label.new();event_label.name="CompactMeaningfulEvent";event_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	# Reserve three complete Korean-font baselines, including panel padding.
-	event_label.add_theme_font_size_override("font_size",16);event_label.max_lines_visible=3
-	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=72
+	event_label.add_theme_font_size_override("font_size",FONT_MICRO);event_label.max_lines_visible=3
+	event_label.size_flags_vertical=Control.SIZE_EXPAND_FILL;event_label.custom_minimum_size.y=54
 	event_label.tooltip_text="전체 사건은 메뉴의 사건 기록에서 확인"
 	event_label.clip_text=true;event_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	event_label.mouse_filter=Control.MOUSE_FILTER_IGNORE;event_margin.add_child(event_label)
@@ -1121,12 +1090,6 @@ func _build_ui()->void:
 	# over the map's top edge during a fight (party focus targets).
 	battle_drag=preload("res://playtest/battle_target_drag.gd").new();add_child(battle_drag)
 	battle_enemy_strip=preload("res://playtest/battle_enemy_strip.gd").new()
-	round_order_bar=preload("res://playtest/round_order_bar.gd").new()
-	root_layout.add_child(round_order_bar)
-	root_layout.move_child(round_order_bar,grid.get_index())
-	round_order_bar.hide()
-	stage_context_bar=preload("res://playtest/stage_context_bar.gd").new()
-	root_layout.add_child(stage_context_bar);stage_context_bar.hide()
 	grid.add_child(battle_enemy_strip);battle_enemy_strip.hide()
 	battle_enemy_strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	battle_enemy_strip.offset_bottom=48.0;battle_enemy_strip.z_index=20
@@ -1169,7 +1132,7 @@ func _build_bottom_navigation()->void:
 	bottom_navigation.add_theme_constant_override("separation",0);root_layout.add_child(bottom_navigation)
 	map_nav_button=_add_nav_button("[지도]","MapNavigation",_toggle_map_overlay);map_nav_button.toggle_mode=true
 	person_nav_button=_add_nav_button("[인물]","PersonNavigation",_open_hero_detail_tab.bind("STATUS"))
-	skill_nav_button=_add_nav_button("[숙련·변이]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
+	skill_nav_button=_add_nav_button("[숙련·이능]","SkillNavigation",_open_hero_detail_tab.bind("SKILL"))
 	equipment_nav_button=_add_nav_button("[장비]","EquipmentNavigation",_open_hero_detail_tab.bind("ITEM"))
 	history_nav_button=_add_nav_button("[기록]","HistoryNavigation",_toggle_record_modal);history_nav_button.toggle_mode=true
 
@@ -1264,46 +1227,10 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
-	species_picker_error=Label.new();species_picker_error.name="SpeciesPickerError"
-	species_picker_error.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	species_picker_error.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	species_picker_error.visible=false;stack.add_child(species_picker_error)
-
-func _handle_species_picker_touch(event:InputEvent)->void:
-	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return
-	get_viewport().set_input_as_handled()
-	_species_ignore_mouse_until=Time.get_ticks_msec()+500
-	if event is InputEventScreenTouch and event.pressed:
-		if _species_touch_index>=0:
-			_species_touch_cancelled=true;return
-		_species_touch_index=event.index;_species_touch_origin=event.position
-		_species_touch_cancelled=false;_species_touch_button=null
-		for button in species_picker_buttons.get_children():
-			if button is Button and not button.disabled and button.get_global_rect().has_point(event.position):
-				_species_touch_button=button;break
-		return
-	if event.index!=_species_touch_index:return
-	if event.position.distance_to(_species_touch_origin)>24.0:_species_touch_cancelled=true
-	if event is InputEventScreenDrag:return
-	var selected:=_species_touch_button
-	var activate:bool=not _species_touch_cancelled and not event.canceled \
-		and is_instance_valid(selected) and selected.get_global_rect().has_point(event.position)
-	_species_touch_index=-1;_species_touch_button=null;_species_touch_cancelled=false
-	if activate:selected.pressed.emit()
-
-func _show_species_picker_error(result:Dictionary)->void:
-	_species_picker_committed=false
-	var reason:=str(result.get("reason","unknown_error"))
-	notice_text="원정 시작 실패: %s (%s)"%[str(result.get("message","다시 선택해 주세요.")),reason]
-	species_picker_error.text=notice_text;species_picker_error.visible=true
-	push_error(notice_text)
 
 func show_species_picker_for_new_run()->void:
 	if species_picker_modal==null:_build_species_picker()
 	_species_picker_committed=false;species_picker_modal.visible=true
-	_species_touch_index=-1;_species_touch_button=null;_species_touch_cancelled=false
-	species_picker_error.text="";species_picker_error.visible=false
-	_layout_floating_surfaces()
 	if grid!=null:grid.modal_open=true
 
 func _commit_species_picker(species_id:String,frontier:bool=false)->void:
@@ -1313,13 +1240,14 @@ func _commit_species_picker(species_id:String,frontier:bool=false)->void:
 	_species_picker_committed=true
 	var result:Dictionary=session.start_new_run_with_species(species_id,true,true) if session!=null else {}
 	if not bool(result.get("accepted",false)):
-		_show_species_picker_error(result);return
+		_species_picker_committed=false;return
 	# Journaled frontier start keeps the shelter; explicit legacy fixtures may
 	# still choose the old direct-dungeon entry.
 	var started:Dictionary=session.town_life_command({"action":"START","frontier":true} if frontier else {"action":"START"})
 	var departed:Dictionary=session.depart_town() if started.get("accepted",false) and not frontier else started
 	if not departed.get("accepted",false):
-		_show_species_picker_error(departed);return
+		_species_picker_committed=false
+		notice_text=str(departed.get("message","원정 준비에 실패했습니다."));return
 	species_picker_modal.visible=false
 	if grid!=null:grid.modal_open=false
 	_reset_run_ui_transients()
@@ -1343,7 +1271,7 @@ func _position_build_label()->void:
 	# Build version: always the bottom-right corner of the game screen, drawn
 	# above whatever sits there. Input passes through it.
 	if build_label==null:return
-	build_label.visible=not (session!=null and session.room_enabled())
+	build_label.visible=true
 	build_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	build_label.offset_left=-110.0;build_label.offset_right=-4.0
 	build_label.offset_bottom=-2.0;build_label.offset_top=-18.0
@@ -1423,7 +1351,7 @@ func _build_member_detail_modal()->void:
 	member_detail_relationship_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_relationship_tab.tooltip_text="나와 동료·NPC에 대한 관계";member_detail_relationship_tab.pressed.connect(_select_member_detail_tab.bind("RELATIONSHIP"))
 	member_detail_tab_row.add_child(member_detail_relationship_tab);DarkPixelSkinScript.apply_tab_button(member_detail_relationship_tab)
-	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·변이"
+	member_detail_skill_tab=Button.new();member_detail_skill_tab.name="MemberSkillTab";member_detail_skill_tab.text="숙련·이능"
 	member_detail_skill_tab.toggle_mode=true;member_detail_skill_tab.custom_minimum_size=Vector2(0,TOUCH_TARGET)
 	member_detail_skill_tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	member_detail_skill_tab.tooltip_text="무기 숙련 효과와 훈련 설정";member_detail_skill_tab.pressed.connect(_select_member_detail_tab.bind("SKILL"))
@@ -1989,10 +1917,6 @@ func _refresh()->void:
 	grid.cancel_pointer_gesture()
 	var status:Dictionary=session.party_status()
 	if not bool(status.get("ok",false)):return
-	if session.round_active() and session.round_status().get("individual",false) and session.round_status().phase!="DEPLOYMENT":
-		var current:int=session.round_status().current_actor_id
-		if current in session.sim.world.party_encounter.active_party_member_ids and selected_member_id!=current:
-			selected_member_id=current;selected_target_id=-1;session._round_edit_actor_id=current
 	_validate_battle_targeting(status)
 	if auto_orchestration_enabled:
 		_orchestrate_auto_phase(status)
@@ -2109,16 +2033,6 @@ func _refresh()->void:
 	var ui_observation:Dictionary=session.observe_party_ui(view_dimensions.x,true,
 		view_dimensions.y,true)
 	var observation:Dictionary=ui_observation.get("grid",{})
-	preload("res://playtest/stage_deployment_view.gd").apply(self,observation)
-	if session.round_active() and session.round_status().phase!="DEPLOYMENT":
-		var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(selected_member_id),{})
-		if not plan.is_empty() and plan.source=="USER" and not plan.path.is_empty():
-			for cell in observation.get("cells",[]):
-				for actor in cell.get("actors",[]):
-					if int(actor.entity_id)==selected_member_id:
-						var ghost:Dictionary=actor.duplicate(true)
-						ghost.position=plan.destination.duplicate();ghost.display_position=plan.destination.duplicate()
-						ghosts.append(ghost)
 	_decorate_visible_resource_caches(observation)
 	var direct_solo_combat:=_is_direct_solo_combat(status)
 	# A one-member product turn commits on the touched actor/cell. There is no
@@ -2143,7 +2057,7 @@ func _refresh()->void:
 	if product_hud:grid_style["vignette"]=false
 	grid.set_neutral_phase_map(product_hud)
 	grid.set_presentation_style(grid_style)
-	if direct_solo_combat and not session.round_active():selected_target_id=-1
+	if direct_solo_combat:selected_target_id=-1
 	grid.set_selection(selected_member_id,selected_target_id)
 	grid.set_intent_overlays(intent_overlays)
 	var world_speeches:Array=[]
@@ -2229,9 +2143,9 @@ func _refresh()->void:
 	else:info_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 
 func _decorate_visible_resource_caches(observation:Dictionary)->void:
-	# The session exposes cache authority only on observed cells. Draw supply
-	# caches separately so they can never look like a picked-up ground item.
-	grid.supply_cache_cells.clear()
+	# The session exposes cache authority only on observed cells. Reuse the
+	# established material glyph path so caches are visible without leaking an
+	# undiscovered coordinate or copying cache state into UI-owned authority.
 	var cells:Variant=observation.get("cells",[])
 	if not cells is Array:return
 	for value in cells:
@@ -2241,14 +2155,13 @@ func _decorate_visible_resource_caches(observation:Dictionary)->void:
 		if not cache is Dictionary or not bool(cache.get("available",false)):continue
 		var visibility:=str(row.get("visibility_state",row.get("visibility",""))).to_upper()
 		if visibility!="VISIBLE":continue
-		grid.supply_cache_cells.append(Vector2i(row.position[0],row.position[1]))
+		row["ground_item_glyph"]="*"
 
 func _apply_product_root_order(product_hud:bool)->void:
 	if product_hud:
 		root_layout.move_child(phase_panel,0)
 		root_layout.move_child(grid,1);root_layout.move_child(event_surface,2)
 		root_layout.move_child(cards,3);root_layout.move_child(hero_skill_row,4)
-		if round_order_bar!=null:root_layout.move_child(round_order_bar,1)
 		# The context dock is the only persistent footer. Hidden compatibility
 		# controls remain in the tree but consume no product-screen height.
 		root_layout.move_child(combat_action_area,root_layout.get_child_count()-1)
@@ -2799,7 +2712,6 @@ func _portrait_battle_controls_visible()->bool:
 		and session.sim.world.party_encounter.safe_phase=="ENGAGED"
 
 func _enemy_strip_visible(status:Dictionary={})->bool:
-	if session!=null and session.round_active():return false
 	# Enemy portraits follow visibility, not the encounter phase: an enemy in
 	# view shows its portrait before, during and after a fight the same way.
 	if session==null or session.sim==null or not session.is_duo_autobattle():return false
@@ -2814,7 +2726,7 @@ func _on_manual_actor_selected(actor_id:int)->void:
 	var detail:Dictionary=session.inspect_party_member(actor_id)
 	selected_member_id=actor_id;selected_target_id=-1
 	var actor_name:=str(detail.get("display_name","파티원"))
-	_show_manual_battle_feedback("%s 선택 · 사용 기술 / %s 개인 지침"%[
+	_show_manual_battle_feedback("%s 선택 · 액티브 스킬 / %s 개인 지침"%[
 		actor_name,actor_name])
 	_request_refresh()
 
@@ -2897,7 +2809,7 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 		session.individual_battle.cancel(actor_id)
 		_show_manual_battle_feedback("%s · 예약 취소"%skill_label);_request_refresh();return
 	if not session.has_method("active_skill_rows") or not session.has_method("use_active_skill"):
-		_show_manual_battle_feedback("사용 기술을 아직 사용할 수 없습니다.");return
+		_show_manual_battle_feedback("액티브 스킬을 아직 사용할 수 없습니다.");return
 	var selected_row:Dictionary={}
 	var available_rows:Array=session.active_skill_rows(actor_id) if session.field_turns_active() else _hero_skill_rows(session.party_status())
 	for row_value in available_rows:
@@ -2908,7 +2820,7 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 			selected_row.get("reason","지금 사용할 수 없습니다."))));return
 	if session.field_turns_active():
 		_switch_field_member(actor_id)
-		if not session.round_active() and session.sim.world.party_control_actor_id()!=actor_id:return
+		if session.sim.world.party_control_actor_id()!=actor_id:return
 	_retreat_active=false
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
@@ -2961,9 +2873,7 @@ func _commit_battle_target(target_id:int)->void:
 	var assessment:Dictionary={}
 	var first_strike:bool=_battle_target_mode=="ACTIVE_SKILL" \
 		and str(session.party_status().get("safe_phase",""))=="GROUPED"
-	if session.round_active() and _battle_target_mode=="ACTIVE_SKILL":
-		assessment={"accepted":target_id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,target_id),"reason":"round_target_unseen"}
-	elif session.field_turns_active() and _battle_target_mode=="ACTIVE_SKILL":
+	if session.field_turns_active() and _battle_target_mode=="ACTIVE_SKILL":
 		assessment=session.FieldTurns.assess(session.sim,ActionScript.skill(
 			_battle_target_actor_id,_battle_target_skill_id,target_id))
 	elif first_strike:
@@ -2997,7 +2907,7 @@ func _commit_battle_target(target_id:int)->void:
 	_battle_target_committing=false
 	if bool(result.get("accepted",false)):
 		if caster_id==int(session.party_status().get("protagonist_id",-1)):_hero_turn_released=true
-		if mode=="ACTIVE_SKILL":_record_result(result,true,"사용 기술 실행 불가")
+		if mode=="ACTIVE_SKILL":_record_result(result,true,"액티브 스킬 실행 불가")
 		var target_name:=_entity_display_name(target_id)
 		var result_message:=str(result.get("message","적용됨"))
 		_show_manual_battle_feedback("%s · %s → %s · %s"%[
@@ -3028,8 +2938,8 @@ func _clear_battle_targeting_state()->void:
 
 func _validate_battle_targeting(status:Dictionary)->void:
 	if _battle_target_mode.is_empty():return
-	var valid_phase:bool=(session.round_active() or (str(status.get("view_mode",""))=="COMBAT" \
-		and str(status.get("safe_phase",""))=="ENGAGED")) and not bool(status.get("terminal",false))
+	var valid_phase:=str(status.get("view_mode",""))=="COMBAT" \
+		and str(status.get("safe_phase",""))=="ENGAGED" and not bool(status.get("terminal",false))
 	if session.field_turns_active():
 		valid_phase=str(status.get("view_mode","")) in ["EXPLORATION","COMBAT"] and not bool(status.get("terminal",false))
 	var caster_alive:=false
@@ -4050,7 +3960,7 @@ func _add_legacy_guild_tutorial()->void:
 			var accept:=_add_button(line,"수락","LegacyGuildAccept%s"%quest_id,_on_legacy_guild_tutorial_command.bind("ACCEPT",quest_id))
 			accept.custom_minimum_size=Vector2(80,TOUCH_TARGET)
 		if quest_id in ["GUILD_TUTORIAL_HEAL","GUILD_TUTORIAL_BIND"] and bool(row.get("accepted",false)) and not bool(row.get("completed",false)) and not bool(row.get("support_granted",false)):
-			var support:=_add_button(line,"지원 변이" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
+			var support:=_add_button(line,"지원 이능" if quest_id=="GUILD_TUTORIAL_BIND" else "지원 물약","LegacyGuildSupport%s"%quest_id,_on_legacy_guild_tutorial_command.bind("SUPPORT",quest_id))
 			support.custom_minimum_size=Vector2(96,TOUCH_TARGET)
 		if bool(row.get("can_claim",false)):
 			var claim:=_add_button(line,"보상","LegacyGuildClaim%s"%quest_id,_on_legacy_guild_tutorial_command.bind("CLAIM",quest_id))
@@ -4261,10 +4171,6 @@ func _build_product_controls_dock(status:Dictionary)->void:
 	product_interact_button=_add_product_context_button(combat_action_dock,"[INTERACT]","ProductInteract",
 		_on_product_interact,target)
 	product_interact_button.tooltip_text="인접한 인물이나 사물과 상호작용합니다."
-	if session.room_enabled():
-		product_pickup_button.hide();product_tactics_button.hide();product_interact_button.hide()
-		combat_action_dock.move_child(product_wait_guard_button,0)
-		combat_action_dock.move_child(product_rest_button,combat_action_dock.get_child_count()-1)
 	_sync_product_control_state(status)
 
 func _sync_product_control_state(status_override:Dictionary={}) -> void:
@@ -4365,20 +4271,6 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 			else "쇠뇌를 장전합니다. 볼트 %d개 · %d시간"%[int(equipment.get("bolts",0)),int(equipment.get("reload_time",0))]
 	product_interact_button.visible=not (product_interact_button.disabled \
 		and product_interact_button.text=="[INTERACT]")
-
-	if session.round_active():
-		var round_state:Dictionary=session.round_status()
-		product_rest_button.text="[계속 진행]" if round_state.phase=="INTERRUPTED" else "[진행]"
-		product_rest_button.tooltip_text="공개된 순서대로 전체 라운드를 진행합니다"
-		product_rest_button.disabled=terminal or round_state.phase=="RESOLVING"
-		product_auto_button.text="[이능]";product_auto_button.disabled=terminal
-		product_wait_guard_button.tooltip_text="선택한 아군의 예정 행동을 대기로 수정합니다"
-		product_attack_button.tooltip_text="선택한 아군의 공격 계획을 지정합니다"
-
-	if session.room_enabled():
-		product_wait_guard_button.text="[이동]";product_wait_guard_button.tooltip_text="방 안의 목적지나 출구 칸을 누르세요"
-		product_auto_button.text="[변이]";product_auto_button.toggle_mode=false;product_auto_button.disabled=terminal
-		product_pickup_button.hide();product_tactics_button.hide();product_interact_button.hide()
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -4527,10 +4419,6 @@ func _show_product_command_feedback(message:String)->void:
 	if event_label!=null:event_label.text=message
 
 func _on_product_auto()->void:
-	if session.room_enabled():
-		_open_member_detail(selected_member_id,"SKILL");return
-	if session.round_active():
-		_open_member_detail(selected_member_id);return
 	var opening:Dictionary=session.opening_event_status() \
 		if session.has_method("opening_event_status") else {}
 	if bool(opening.get("can_interact",false)):
@@ -4685,10 +4573,7 @@ func _on_product_interact()->void:
 		_request_refresh();return
 
 func _on_product_rest()->void:
-	if session.round_active():_on_product_execute();return
 	if _product_rest_active:_cancel_product_rest("rest_user_stop");return
-	if session.personal_rest_enabled():
-		_show_personal_rest_preview();return
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))!="EXPLORATION" or bool(status.get("terminal",false)):return
 	if not _rest_needed():
@@ -4701,47 +4586,8 @@ func _on_product_rest()->void:
 	_product_rest_started_time=session.sim.world.world_time
 	_product_rest_due_msec=Time.get_ticks_msec()
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
-	notice_text="휴식 중 · HP·MP와 피부·근육·뼈 회복 후 멈춥니다";action_feedback_text=notice_text
+	notice_text="휴식 중 · 파티 HP·MP가 다 차면 멈춥니다";action_feedback_text=notice_text
 	_request_refresh()
-
-func _show_personal_rest_preview()->void:
-	_personal_rest_offer=session.personal_rest_preview()
-	if not _personal_rest_offer.accepted:
-		_show_product_command_feedback(str(_personal_rest_offer.reason));return
-	if _personal_rest_dialog==null:
-		_personal_rest_dialog=ConfirmationDialog.new()
-		_personal_rest_dialog.name="PersonalRestPreview"
-		_personal_rest_dialog.title="개인별 휴식"
-		_personal_rest_dialog.ok_button_text="휴식 1회"
-		_personal_rest_dialog.cancel_button_text="취소"
-		_personal_rest_dialog.confirmed.connect(_commit_personal_rest_offer)
-		var repeat_button=_personal_rest_dialog.add_button("연속 휴식",true,"repeat")
-		repeat_button.pressed.connect(_begin_personal_continuous_rest)
-		add_child(_personal_rest_dialog)
-	var lines:Array[String]=["파티 식량 %d 소비 · 시간 %d"%[int(_personal_rest_offer.food_cost),int(_personal_rest_offer.time_cost)]]
-	for row in _personal_rest_offer.members:
-		lines.append("%s · HP +%d / MP +%d"%[str(row.name),int(row.hp),int(row.mp)])
-		if row.tissue_units>0:
-			lines.append("  피부 +%d / 근육 +%d / 뼈 +%d"%[int(row.tissues.SKIN),int(row.tissues.SOFT_TISSUE),int(row.tissues.BONE)])
-	lines.append("위협으로 중단되면 식량·시간 소비 유지")
-	_personal_rest_dialog.dialog_text="\n".join(lines)
-	_personal_rest_dialog.popup_centered(Vector2i(mini(350,int(get_viewport_rect().size.x)-16),0))
-
-func _commit_personal_rest_offer()->bool:
-	_cancel_product_auto_explore("auto_explore_user_command",false)
-	var result:Dictionary=session.request_personal_rest(int(_personal_rest_offer.revision),int(_personal_rest_offer.request_id))
-	_record_result(result,true)
-	_show_product_command_feedback(str(result.get("message",result.get("reason",""))))
-	_request_refresh()
-	return result.accepted and str(result.get("reason",""))!="interrupted"
-
-func _begin_personal_continuous_rest()->void:
-	_personal_rest_dialog.hide()
-	if not _commit_personal_rest_offer():return
-	if not session.personal_rest_preview().accepted:return
-	_product_rest_active=true;_product_rest_generation+=1
-	_product_rest_started_time=session.sim.world.world_time
-	_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
 
 func _rest_needed()->bool:
 	var world=session.sim.world
@@ -4749,19 +4595,8 @@ func _rest_needed()->bool:
 		var entity=world.entities.get(int(id))
 		var member=world.party_encounter.member(int(id))
 		if entity!=null and world.can_act(int(id),world.world_time) and member.presence=="DEPLOYED" \
-				and (int(entity.health)<int(entity.max_health) or member.energy<member.max_energy \
-				or preload("res://sim/body_penalty_rules.gd").enabled(world) and preload("res://sim/body_penalty_rules.gd").needs_recovery(world.body_states.get(int(id)))):return true
+				and (int(entity.health)<int(entity.max_health) or member.energy<member.max_energy):return true
 	return false
-
-func _party_body_integrity_total()->int:
-	var total:=0;var world=session.sim.world
-	for id in world.party_encounter.active_party_member_ids:
-		var body=world.body_states.get(int(id))
-		if body==null:continue
-		for part in body.parts:
-			if part.condition=="SEVERED":continue
-			for layer in part.layers:total+=int(layer.integrity)
-	return total
 
 func _party_health_total()->int:
 	var total:=0;var world=session.sim.world
@@ -4793,17 +4628,6 @@ func _rest_block_detail()->String:
 
 func _continue_product_rest(expected_generation:int)->void:
 	if not _product_rest_active or expected_generation!=_product_rest_generation:return
-	if session.personal_rest_enabled():
-		var offer:Dictionary=session.personal_rest_preview()
-		if not offer.accepted:
-			_cancel_product_rest("rest_complete")
-			_show_product_command_feedback(str(offer.reason));return
-		var result:Dictionary=session.request_personal_rest(int(offer.revision),int(offer.request_id))
-		_record_result(result,true)
-		if not result.accepted or str(result.get("reason",""))=="interrupted":_cancel_product_rest("rest_interrupted")
-		_product_rest_due_msec=Time.get_ticks_msec()+PRODUCT_REST_CADENCE_MSEC
-		_show_product_command_feedback(str(result.get("message",result.get("reason",""))))
-		_request_refresh();return
 	var status:Dictionary=session.party_status()
 	var stop_reason:=""
 	if not session.field_turns_active() and str(status.get("safe_phase","")) in ["CONTACT","ENGAGED"]:stop_reason="rest_encounter"
@@ -4814,7 +4638,6 @@ func _continue_product_rest(expected_generation:int)->void:
 	if stop_reason.is_empty():
 		var before:int=_party_health_total()
 		var energy_before:=_party_energy_total()
-		var body_before:=_party_body_integrity_total()
 		var result:Dictionary=session.commit_exploration_direction(Vector2i.ZERO)
 		if not bool(result.get("accepted",false)):
 			_cancel_product_rest("rest_interrupted")
@@ -4824,7 +4647,7 @@ func _continue_product_rest(expected_generation:int)->void:
 			_record_result(result,true)
 			var after:int=_party_health_total()
 			if after<before:stop_reason="rest_damaged"
-			elif after>before or _party_energy_total()>energy_before or _party_body_integrity_total()>body_before:_product_rest_idle_waits=0
+			elif after>before or _party_energy_total()>energy_before:_product_rest_idle_waits=0
 			else:
 				# Safe recovery pauses while any enemy is alert or the tile is risky;
 				# waiting forever there is not resting.
@@ -4843,23 +4666,17 @@ func _continue_product_rest(expected_generation:int)->void:
 func _cancel_product_rest(reason:String)->void:
 	if not _product_rest_active:return
 	_product_rest_active=false;_product_rest_generation+=1;_product_rest_due_msec=-1
-	notice_text={"rest_complete":"휴식 완료 · HP·MP와 회복 가능한 조직이 회복됐습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
+	notice_text={"rest_complete":"휴식 완료 · 파티 HP·MP가 다 찼습니다","rest_enemy_sighted":"적이 보여 휴식을 멈췄습니다",
 		"rest_damaged":"피해를 입어 휴식을 멈췄습니다","rest_starving":"굶주려서 쉴 수 없습니다",
 		"rest_no_progress":"휴식해도 회복되지 않습니다 · 경계 중인 적이 있거나 위험한 자리입니다",
 		"rest_encounter":"적이 나타나 휴식을 멈췄습니다",
 		"rest_user_stop":"휴식을 멈췄습니다"}.get(reason,"휴식을 멈췄습니다")
-	if reason=="rest_no_progress":notice_text="회복 중단 · "+_rest_block_detail()
+	if reason=="rest_no_progress":notice_text="HP·MP 회복 중단 · "+_rest_block_detail()
 	action_feedback_text=notice_text
 	_product_auto_stop_feedback=notice_text
 	_request_refresh()
 
 func _on_product_wait_guard()->void:
-	if session.room_enabled():
-		_round_attack_targeting=false;_cancel_battle_targeting()
-		_show_product_command_feedback("목적지 칸을 누르세요 · 출구로 이동하면 옆방으로 이어집니다")
-		return
-	if session.round_active():
-		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	var status:Dictionary=session.party_status()
 	_retreat_active=false
 	if str(status.get("view_mode",""))=="EXPLORATION":
@@ -4944,9 +4761,6 @@ func _on_product_retreat()->void:
 	_request_refresh()
 
 func _on_product_attack_any()->void:
-	if session.round_active():
-		_round_attack_targeting=true
-		_show_product_command_feedback("공격할 적을 맵이나 순서창에서 고르세요");return
 	# [공격], exploration or fight alike: attack the nearest visible enemy if
 	# adjacent (a first strike before contact), otherwise take one step toward
 	# it. Movement and the attack stay separate taps.
@@ -5019,11 +4833,6 @@ func _strike_visible_enemy(entity_id:int)->void:
 		_request_refresh()
 
 func _on_product_execute()->void:
-	if grid!=null and grid.stage_motion_busy():return
-	if session!=null and session.round_active():
-		var round_state:Dictionary=session.round_status()
-		var result:Dictionary=session.resume_round(round_state.round_id,round_state.plan_revision) if round_state.phase=="INTERRUPTED" else session.confirm_round(round_state.round_id,round_state.plan_revision)
-		_record_result(result,true,"라운드 진행 불가");_request_refresh();return
 	if session!=null and session.is_duo_autobattle() and str(session.party_status().get("safe_phase",""))=="ENGAGED":
 		if battle_mode=="HERO_TURN":
 			autonomous_battle_clock.paused=false
@@ -5091,12 +4900,6 @@ func _on_compact_member_card_pressed(member_id:int,_display_name:String)->void:
 	_open_member_detail(member_id)
 
 func _switch_field_member(member_id:int)->void:
-	if session.round_active():
-		var result:Dictionary=session.select_field_actor(member_id)
-		if result.accepted:
-			selected_member_id=member_id;selected_target_id=-1;_clear_move_preview()
-			if session.round_status().phase!="DEPLOYMENT":session.stage_round_action(ActionScript.hold(member_id))
-		_request_refresh();return
 	_cancel_product_rest("rest_user_stop")
 	_cancel_product_auto_explore("auto_explore_user_command",false)
 	if bool(session.exploration_route_state().get("has_preview",false)):_cancel_active_route()
@@ -5176,20 +4979,11 @@ func _update_member_status_window(detail:Dictionary)->void:
 	var body_cluster:=_add_status_pixel_section(status_grid,"BodySealCluster")
 	body_cluster.add_child(_card_label("육체 상태","BodyStateSection",16))
 	var body:Dictionary=detail.get("body_state",{})
-	var body_lines:=body_status_lines(body)
-	if bool(body.get("available",false)):
-		var traits:=_card_label(body_lines[0],"BodyTraits",12)
-		traits.add_theme_font_size_override("font_size",12)
-		traits.autowrap_mode=TextServer.AUTOWRAP_OFF
-		traits.set_meta("stat_title","육체 특성")
-		traits.set_meta("stat_help",_body_help("피부")+"\n\n"+_body_help("근육")+"\n\n"+_body_help("뼈"))
-		body_cluster.add_child(traits)
 	var body_row:=HBoxContainer.new();body_cluster.add_child(body_row)
 	var silhouette:=preload("res://playtest/body_status_silhouette.gd").new();silhouette.body=body;body_row.add_child(silhouette)
 	var body_list:=VBoxContainer.new();body_list.name="StatusBodyRows";body_list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;body_row.add_child(body_list)
-	for line in body_lines.slice(1) if bool(body.get("available",false)) else body_lines:
+	for line in body_status_lines(body):
 		var body_text:=_card_label(line,"BodyValue",14);body_text.clip_text=false
-		body_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		body_text.custom_minimum_size.y=30;body_list.add_child(body_text)
 		body_text.set_meta("stat_title",line.get_slice(" ",0))
 		body_text.set_meta("stat_help",_body_help(line))
@@ -5208,9 +5002,7 @@ func _update_member_status_window(detail:Dictionary)->void:
 	emotion_label.clip_text=false;emotion_label.custom_minimum_size.y=32
 	if stress_band in ["ANXIOUS","PANIC"]:effects.add_child(_card_label("불안 · 기술 사용 제한","StatusStressNote",13))
 	var recovery:=preload("res://sim/party_recovery_rules.gd").stats(session.sim.world,int(detail.get("entity_id",member_detail_entity_id)))
-	var recovery_text:="기본 회복 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)]
-	if session.personal_rest_enabled():recovery_text="전투 이동·대기 · HP +%.2f / MP +%.2f\n휴식 회복 ×%d"%[float(recovery.hp_recovery),float(recovery.mp_recovery),int(load("res://sim/nine_room_care_rules.gd").CONFIG.rest_recovery_units)]
-	effects.add_child(_card_label(recovery_text,"StatusRecoveryStats",13))
+	effects.add_child(_card_label("회복력 · 체력 +%d / 기력 +%d"%[int(recovery.hp_recovery),int(recovery.mp_recovery)],"StatusRecoveryStats",13))
 	var talent:Dictionary=detail.get("personal_talent",{})
 	if not talent.is_empty():
 		var label:=_card_label("재능 · %s\n%s"%[talent.label,talent.description],"StatusPersonalTalent",13)
@@ -5254,12 +5046,11 @@ func _update_detail_vitals(detail:Dictionary)->void:
 
 static func _body_help(line:String)->String:
 	if line.begins_with("의식"):return "현재 기록된 의식 수준입니다. 현재 버전에서는 출혈·충격에 따라 의식을 갱신하거나 의식 수치로 행동을 제한하는 기능은 아직 연결되지 않았습니다."
-	if line.begins_with("피부"):return "실제로 잃은 HP의 최대 HP 대비 비율에서 부상을 계산합니다. 피부 질김은 베기·찌르기의 피부와 근육 손상을 줄입니다. HP 피해 자체를 추가로 줄이는 방어력은 아닙니다."
-	if line.begins_with("근육"):return "근육·지방 등 내부 조직의 타격 완충 능력입니다. 근력(STR)과는 다르며, 실제 HP 피해에서 파생되는 타격 부상을 줄이고 뼈도 보호합니다. 휴식 중 피부·근육·뼈 내구도가 회복되며, 절단은 재생되지 않습니다."
-	if line.begins_with("뼈"):return "같은 공격에서 뼈 손상이 덜 쌓이게 합니다. 뼈 내구도가 60% 이하이면 골절, 0이면 기능 상실입니다. 팔 골절은 공격력, 다리 골절은 이동 시간, 전체 부상은 HP 자연회복에 영향을 줍니다."
-	if line.begins_with("충격"):return "호환용 신체 충격 기록입니다. 현재 HP 연동 부상 계산에서는 별도 충격을 누적하거나 실신을 판정하지 않습니다."
-	if line.begins_with("상처"):return "누적 상처 기록 수입니다. 현재 부상 단계는 기록 개수가 아닌 남아 있는 조직 내구도로 결정합니다. 근육 내구도 70% 이하에서 깊은 상처가 됩니다. 출혈 피해는 사용하지 않습니다."
-	if line.begins_with("부상"):return "같은 부위는 가장 심한 단계 하나만 적용합니다. 양팔의 공격 감소, 양다리의 이동 시간 증가를 합산합니다. HP 자연회복은 가장 심한 부상을 기준으로 줄고 최소 40%를 유지합니다. 물약과 MP 회복은 줄이지 않습니다."
+	if line.begins_with("피부"):return "베기·찌르기의 방어 장벽에 더해져 조직에 전달되는 힘을 줄입니다. 타격 상처의 깊이 계산에도 사용됩니다. 일반 방어력에 이 수치를 그대로 더하지는 않습니다."
+	if line.begins_with("연부"):return "타격 피해의 완충값입니다. 방어구의 충격 완충과 합산해 몸에 전달되는 힘을 줄입니다."
+	if line.begins_with("뼈"):return "골절 발생 계산의 저항 기준입니다. 높을수록 같은 공격에서 골절 위험이 줄어듭니다. 일반 HP 피해감소 수치가 아닙니다."
+	if line.begins_with("충격"):return "현재 신체 충격 / 충격 저항 기준입니다. 공격의 충격과 조직 손상으로 증가하며, 저항 기준이 높을수록 공격에서 발생하는 충격이 작아집니다."
+	if line.begins_with("상처"):return "현재 기록된 상처 수입니다. 상처의 종류·깊이·위치에 따라 출혈과 부위 기능 손상이 달라집니다."
 	return "부위의 기능 상태입니다. 정상은 기능을 유지한 상태, 기능 상실은 사용할 수 없는 상태, 절단은 해당 부위가 분리된 상태입니다."
 
 func _status_gauge(title:String,value:int,maximum:int,color:Color)->Control:
@@ -5278,27 +5069,19 @@ func _add_status_value(parent:GridContainer,title:String,value:String)->void:
 static func body_status_lines(body:Dictionary)->Array[String]:
 	var body_lines:Array[String]=[]
 	if bool(body.get("available",false)):
-		body_lines.append("피부 질김 %s / 근육 %s / 뼈 강도 %s"%[
-			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("skin_toughness",0)),"SKIN"),
-			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("soft_tissue_cushioning",0)),"MUSCLE"),
-			preload("res://sim/body_penalty_rules.gd").grade(int(body.get("bone_fracture_threshold",0)),"BONE")])
-		var penalties:Dictionary=body.get("penalties",{})
+		body_lines.append("의식 %d%%"%int(int(body.get("consciousness",0))/10))
+		body_lines.append("피부 질김 %d"%int(body.get("skin_toughness",0)))
+		body_lines.append("연부조직 완충 %d"%int(body.get("soft_tissue_cushioning",0)))
+		body_lines.append("뼈 강도 %d"%int(body.get("bone_fracture_threshold",0)))
+		body_lines.append("충격 %d/%d"%[int(body.get("shock",0)),maxi(1,int(body.get("shock_threshold",1)))])
+		body_lines.append("상처 %d"%int(body.get("wound_count",0)))
 		var part_states:Array[String]=[]
 		for part_value in body.get("parts",[]):
 			if not part_value is Dictionary:continue
 			var part:Dictionary=part_value
-			var condition:=str(part.get("condition","FUNCTIONAL"))
-			var stage:=str(part.get("injury_stage","정상"))
-			if condition=="FUNCTIONAL" and stage=="정상":
-				if int(part.get("integrity_milli",1000))>=1000:continue
-				stage="가벼운 상처"
 			part_states.append("%s %s"%[_body_part_label(str(part.get("part_id",""))),
-				_body_condition_label(condition) if condition!="FUNCTIONAL" else stage])
+				_body_condition_label(str(part.get("condition","FUNCTIONAL")))])
 		body_lines.append_array(part_states)
-		if int(body.get("consciousness",1000))<1000:body_lines.append("의식 %d%%"%int(int(body.consciousness)/10))
-		if int(body.get("shock",0))>0:body_lines.append("충격 %d/%d"%[int(body.shock),maxi(1,int(body.get("shock_threshold",1)))])
-		if int(penalties.get("attack_milli",1000))!=1000 or int(penalties.get("move_milli",1000))!=1000 or int(penalties.get("recovery_milli",1000))!=1000:
-			body_lines.append("부상 보정\n공격력 %d%% · 이동 시간 %d%%\nHP 자연회복 %d%%"%[int(penalties.get("attack_milli",1000))/10,int(penalties.get("move_milli",1000))/10,int(penalties.get("recovery_milli",1000))/10])
 	else:body_lines.append("육체 정보 없음")
 	return body_lines
 
@@ -5347,7 +5130,7 @@ func _finish_companion_order_edit()->void:
 	_request_refresh()
 
 func _bind_member_ability(instance_id:String,actor_id:int)->Dictionary:
-	var result:Dictionary=session.use_party_item(instance_id,actor_id)
+	var result:Dictionary=session.bind_ability_item(actor_id,instance_id)
 	if bool(result.get("accepted",false)):
 		_skill_pages[actor_id]=0
 		_request_refresh()
@@ -5377,7 +5160,7 @@ func _refresh_open_member_detail()->void:
 	_update_progression_window(detail.get("progression",{}))
 	member_skill_window.call("set_detail",detail)
 	member_relationship_window.call("set_detail",detail)
-	mastery_panel.refresh(session,member_detail_entity_id)
+	if member_detail_entity_id==int(party.protagonist_id):mastery_panel.refresh(session)
 	member_ability_window.update_rows(session.ability_binding_rows(member_detail_entity_id),session.ability_binding_item_rows(member_detail_entity_id))
 	call_deferred("_measure_member_detail_body")
 
@@ -5520,9 +5303,9 @@ func _apply_member_detail_tab()->void:
 	member_detail_status_tab.text="[상태]" if status_selected else " 상태 "
 	member_detail_personality_tab.text="[성격]" if personality_selected else " 성격 "
 	member_detail_relationship_tab.text="[관계]" if relationship_selected else " 관계 "
-	var skill_tab_label:="숙련·변이"
+	var skill_tab_label:="숙련·이능"
 	member_detail_skill_tab.text="[%s]"%skill_tab_label if skill_selected else " %s "%skill_tab_label
-	member_detail_skill_tab.tooltip_text="숙련 포인트 배분 · 변이 6칸 결속"
+	member_detail_skill_tab.tooltip_text="숙련 포인트 배분 · 이능 6칸 결속"
 	member_detail_item_tab.text="[아이템]" if item_selected else " 아이템 "
 	DarkPixelSkinScript.apply_tab_button(member_detail_status_tab,status_selected)
 	DarkPixelSkinScript.apply_tab_button(member_detail_personality_tab,personality_selected)
@@ -5535,8 +5318,8 @@ func _apply_member_detail_tab()->void:
 	member_relationship_window.visible=relationship_selected
 	member_skill_window.visible=false
 	member_ability_window.visible=skill_selected
-	mastery_panel.visible=true
-	if skill_selected:mastery_panel.refresh(session,member_detail_entity_id)
+	mastery_panel.visible=member_detail_entity_id==int(session.sim.world.party_encounter.protagonist_id)
+	if skill_selected and mastery_panel.visible:mastery_panel.refresh(session)
 	member_status_equipment_window.visible=member_detail_has_skills \
 		and status_selected
 	member_progression_window.visible=false
@@ -5801,7 +5584,7 @@ func _update_item_inventory_ledger()->void:
 	_detach_item_ledger_children(member_item_equipment_rows)
 	_detach_item_ledger_children(member_item_equipment_grid)
 	_detach_item_ledger_children(member_item_backpack_rows)
-	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
+	var dto:Dictionary=session.protagonist_inventory()
 	var slot_labels:={"MAIN_HAND":"주무기","OFF_HAND":"보조","ARMOR":"갑옷",
 		"ACCESSORY_1":"장신구1","ACCESSORY_2":"장신구2"}
 	var equipment_slots:Array=dto.get("equipment_slots",[])
@@ -5813,15 +5596,15 @@ func _update_item_inventory_ledger()->void:
 		_add_item_grid_slot(member_item_equipment_grid,row,index,slot)
 	var portrait:=PortraitScript.new();portrait.name="EquipmentPortrait";portrait.custom_minimum_size=Vector2(48,64)
 	member_item_equipment_grid.add_child(portrait);member_item_equipment_grid.move_child(portrait,mini(1,member_item_equipment_grid.get_child_count()-1))
-	portrait.set_actor(session.inspect_party_member(member_detail_entity_id))
+	portrait.set_actor(session.inspect_party_member(int(session.sim.world.party_encounter.protagonist_id)))
 	var backpack:Array=dto.get("backpack_rows",[])
 	var capacity:=int(dto.get("capacity",20))
-	member_item_empty_text.text="파티 공용 가방 %d / %d"%[backpack.size(),capacity]
+	member_item_empty_text.text="가방 %d / %d"%[backpack.size(),capacity]
 	var filtered:Array=[]
 	for item in backpack:
 		var category:=str(item.get("category",""))
 		if _item_category=="ALL" or (_item_category=="GEAR" and category in ["WEAPON","ARMOR","ACCESSORY"]) or category==_item_category:filtered.append(item)
-	for index in range(maxi(capacity,filtered.size()) if _item_category=="ALL" else filtered.size()):
+	for index in range(capacity if _item_category=="ALL" else filtered.size()):
 		var row:Dictionary=filtered[index] if index<filtered.size() else {"empty":true}
 		_add_item_grid_slot(member_item_backpack_rows,row,index,"")
 	if member_item_popover!=null and member_item_popover.visible:
@@ -5855,7 +5638,6 @@ func _selected_item_ledger_row(dto:Dictionary)->Dictionary:
 
 func _is_healing_item_row(row:Dictionary)->bool:
 	if row.is_empty() or bool(row.get("empty",false)):return false
-	if bool(row.get("special_part",false)) or str(row.get("use_kind",""))=="EAT":return true
 	if str(row.get("use_kind","")) in ["HEALING","ENERGY","UTILITY","UNIDENTIFIED"]:return true
 	# Transitional DTO fallback: older item presentation rows do not expose
 	# `use_kind`, but both supported healing-potion ids are still authoritative.
@@ -5876,7 +5658,6 @@ func _item_row_text(row:Dictionary)->String:
 
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
-	if bool(row.get("special_part",false)):return ""
 	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
 	if str(row.get("use_kind",""))=="UTILITY":return str(row.get("compact_stat_text",""))
 	var lines:Array[String]=[]
@@ -5907,11 +5688,6 @@ func _item_stats_text(row:Dictionary)->String:
 	return "\n".join(lines)
 
 func _item_description_text(row:Dictionary)->String:
-	if bool(row.get("special_part",false)):
-		if not row.get("consumed_before",false):return ""
-		var effect:Dictionary=row.get("effect_preview",{})
-		return "%s\n상시 효과: %s\n사용 기술: %s"%[str(effect.get("label","")),str(effect.get("passive","")),str(effect.get("active",""))]
-	if str(row.get("use_kind",""))=="EAT":return "포만감 +%d"%int(preload("res://sim/item_catalog_registry.gd").nutrition_milli(str(row.definition_id))/1000)
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
 	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
@@ -5965,7 +5741,7 @@ func _on_item_row_selected(instance_id:String,slot:String,anchor:Control=null)->
 	_sync_item_grid_selection()
 	if anchor==null:anchor=_find_item_row_button(instance_id,slot)
 	member_item_popover_anchor=anchor
-	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
+	var dto:Dictionary=session.protagonist_inventory()
 	var selected_row:=_selected_item_ledger_row(dto)
 	if selected_row.is_empty():_hide_item_popover();return
 	_configure_item_popover(selected_row,dto)
@@ -5987,8 +5763,6 @@ func _find_item_row_button(instance_id:String,slot:String)->Button:
 func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_popover_title.text="%s  %s"%[str(row.get("glyph","*")),str(row.get("label","아이템"))]
 	member_item_popover_body.text="%s\n%s"%[_item_description_text(row),_item_stats_text(row)]
-	member_item_popover_body.visible=not member_item_popover_body.text.strip_edges().is_empty()
-	if row.get("special_part",false):member_item_popover_title.text=str(row.label)
 	var selected_equipped:=not member_item_selected_slot.is_empty()
 	var allowed_slots:Array=[]
 	var allowed_value:Variant=row.get("equip_slots",[])
@@ -6017,7 +5791,7 @@ func _configure_item_popover(row:Dictionary,dto:Dictionary)->void:
 	member_item_unequip_button.set_meta("item_slot",member_item_selected_slot)
 	member_item_use_button.visible=not selected_equipped and _is_healing_item_row(row)
 	member_item_use_button.disabled=not member_item_use_button.visible or not session.has_method("use_inventory_item")
-	member_item_use_button.text="먹기" if row.get("special_part",false) or str(row.get("use_kind",""))=="EAT" else "읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
+	member_item_use_button.text="읽기" if str(row.get("definition_id","")).begins_with("SCROLL_") else "마시기" if str(row.get("definition_id","")).begins_with("POTION_") else "사용"
 	member_item_drop_button.visible=not selected_equipped
 	member_item_drop_button.disabled=selected_equipped
 
@@ -6099,7 +5873,7 @@ func _sync_item_grid_selection()->void:
 
 func _on_item_equip_selected()->void:
 	_cancel_navigation_for_item_operation()
-	var dto:Dictionary=session.protagonist_inventory(member_detail_entity_id)
+	var dto:Dictionary=session.protagonist_inventory()
 	var instance_id:=str(member_item_equip_button.get_meta(
 		"item_instance_id",member_item_selected_id)) if member_item_equip_button!=null \
 		else member_item_selected_id
@@ -6114,7 +5888,7 @@ func _on_item_equip_selected()->void:
 	if slot.is_empty():
 		notice_text="이 아이템은 장착할 수 없습니다."
 		action_feedback_text=notice_text;_request_refresh();return
-	var result:Dictionary=session.party_item_operation("EQUIP",instance_id,slot,member_detail_entity_id)
+	var result:Dictionary=session.equip_inventory_item(instance_id,slot)
 
 	_on_item_operation_result(result)
 
@@ -6137,7 +5911,7 @@ func _on_item_unequip_selected()->void:
 		"item_slot",member_item_selected_slot)) if member_item_unequip_button!=null \
 		else member_item_selected_slot
 	if slot.is_empty() and not member_item_selected_id.is_empty():
-		for row in session.protagonist_inventory(member_detail_entity_id).get("equipment_slots",[]):
+		for row in session.protagonist_inventory().get("equipment_slots",[]):
 			if str(row.get("instance_id",""))==member_item_selected_id:
 				slot=str(row.get("slot",""));break
 	_on_item_unequip_slot(slot)
@@ -6147,33 +5921,26 @@ func _on_item_unequip_slot(slot:String)->void:
 	if slot.is_empty():
 		notice_text="해제할 장비 슬롯을 선택하세요."
 		action_feedback_text=notice_text;_request_refresh();return
-	_on_item_operation_result(session.party_item_operation("UNEQUIP","",slot,member_detail_entity_id))
+	_on_item_operation_result(session.unequip_inventory_slot(slot))
 
 func _on_item_drop_selected()->void:
 	_cancel_navigation_for_item_operation()
-	_on_item_operation_result(session.party_item_operation("DROP",member_item_selected_id,"",member_detail_entity_id))
+	_on_item_operation_result(session.drop_inventory_item(member_item_selected_id))
 
-func _on_item_use_selected(selection:Dictionary={},selected_instance:String="",recipient_id:int=-1)->void:
+func _on_item_use_selected(selection:Dictionary={},selected_instance:String="")->void:
 	_cancel_navigation_for_item_operation()
 	if not selected_instance.is_empty():member_item_selected_id=selected_instance
 	if member_item_selected_id.is_empty() or not session.has_method("use_inventory_item"):
 		notice_text="이 아이템은 지금 사용할 수 없습니다."
 		action_feedback_text=notice_text;return
 
-	if recipient_id==-1:
-		var recipients:Array=session.party_consumable_choices(member_item_selected_id)
-		if not recipients.is_empty():
-			var frozen_item:String=member_item_selected_id
-			preload("res://playtest/consumable_target_picker.gd").open(self,recipients,func(choice):_on_item_use_selected({},frozen_item,int(choice.recipient_id)))
-			return
 	if selection.is_empty():
-		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id,recipient_id)
+		var choices:Array=preload("res://playtest/consumable_utility_service.gd").options(session,member_item_selected_id)
 		if not choices.is_empty():
 			var frozen_id:String=member_item_selected_id
-			preload("res://playtest/consumable_target_picker.gd").open(self,choices,func(choice):_on_item_use_selected(choice,frozen_id,recipient_id))
+			preload("res://playtest/consumable_target_picker.gd").open(self,choices,func(choice):_on_item_use_selected(choice,frozen_id))
 			return
-	var recipient:int=recipient_id if recipient_id!=-1 else session.sim.world.party_control_actor_id()
-	var result:Dictionary=session.use_party_item(member_item_selected_id,recipient,selection)
+	var result:Dictionary=session.call("use_inventory_item",member_item_selected_id,true,selection)
 	if not bool(result.get("accepted",false)):
 		notice_text=str(result.get("message","물약을 사용할 수 없습니다."))
 		action_feedback_text=notice_text
@@ -6182,8 +5949,6 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="",r
 		_position_item_popover();return
 	var healed:=int(result.get("healed_amount",0))
 	notice_text=str(result.get("message","회복 물약 사용 · HP +%d"%healed))
-	if result.has("nutrition_milli"):
-		notice_text="고기 섭취 · 포만감 +%d%s"%[int(result.nutrition_milli/1000)," · 새 변이 체득" if result.get("gains_ability",false) else " · 식사만"]
 	action_feedback_text=notice_text
 	_hide_item_popover()
 	_record_result(result,true)
@@ -6638,32 +6403,6 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
-	if grid.stage_motion_busy():return
-	if session.round_status().phase=="DEPLOYMENT" and not _battle_target_mode.is_empty():_cancel_battle_targeting()
-	if session.room_enabled() and _battle_target_mode.is_empty() and session.round_status().phase!="DEPLOYMENT":
-		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(session.sim.world,position)
-		var hero:int=session.sim.world.party_encounter.protagonist_id
-		if not exit.is_empty() and preload("res://sim/room_transition_rules.gd").distance(session.sim.world.entities[hero].position,position)==1:
-			_record_result(session.request_room_exit(hero,exit.portal_id,int(session.room_status().revision)),false)
-			_request_refresh();return
-	if session.round_active() and _battle_target_mode.is_empty():
-		var picked:=-1
-		if session.round_status().phase=="DEPLOYMENT":
-			for id in session.sim.world.party_encounter.active_party_member_ids:
-				var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(id),{})
-				if plan.get("destination",[])==[position.x,position.y]:
-					_select_member(id,_entity_display_name(id));return
-			_record_result(session.commit_field_action(ActionScript.move_to(selected_member_id,position)),false)
-			_request_refresh();return
-		for entity in session.sim.world.entities.values():
-			if entity.position==position and (entity.id in session.sim.world.party_encounter.active_party_member_ids or session.FieldRules.visible(session.sim.world,entity.id)):
-				picked=entity.id;break
-		if picked in session.sim.world.party_encounter.active_party_member_ids:
-			_select_member(picked,_entity_display_name(picked));return
-		if picked>0:
-			_focus_battle_enemy(picked)
-			return
-		_record_result(session.commit_field_action(ActionScript.move_to(selected_member_id,position)),false);_request_refresh();return
 	if not _battle_target_mode.is_empty():
 		if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.field_turns_active():
 			if _battle_target_committing:return
@@ -6766,19 +6505,6 @@ func _on_cell(position:Vector2i)->void:
 		_record_result(session.set_actor_action(selected_member_id,"MOVE",[position.x,position.y]),
 			false,"%s 이동 불가"%_selected_name());_request_refresh()
 func _focus_battle_enemy(entity_id:int)->void:
-	if grid.stage_motion_busy():return
-	if session.round_active():
-		if not session.FieldRules.visible(session.sim.world,entity_id):return
-		if session.round_status().phase!="DEPLOYMENT" :
-			_round_attack_targeting=false
-			var result:Dictionary=session.commit_field_action(ActionScript.melee(selected_member_id,entity_id))
-			_record_result(result,false)
-			if result.get("accepted",false):selected_target_id=entity_id
-		else:
-			selected_target_id=entity_id
-			grid.set_selection(selected_member_id,entity_id);grid.set_actor_emphasis(entity_id,1400)
-			notice_text="공격할 적을 선택하세요"
-		_request_refresh();return
 	if session.field_turns_active():
 		_on_actor(entity_id);return
 	# Portrait tap: party focus during a fight; before contact it is the same as
@@ -6793,13 +6519,6 @@ func _focus_battle_enemy(entity_id:int)->void:
 	_refresh_battle_surface_lightly()
 
 func _on_actor(entity_id:int)->void:
-	if grid.stage_motion_busy():return
-	if session.room_enabled() and entity_id==session.sim.world.party_control_actor_id() and session.round_status().phase!="DEPLOYMENT" and _battle_target_mode.is_empty() and session.ground_item_count_at_protagonist()>0:
-		_pickup_everything_here();_request_refresh();return
-	if session.round_active() and _battle_target_mode.is_empty():
-		if entity_id in session.sim.world.party_encounter.active_party_member_ids:_select_member(entity_id,_entity_display_name(entity_id))
-		else:_focus_battle_enemy(entity_id)
-		return
 	if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.sim.world.entities.has(entity_id):
 		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():
@@ -6923,7 +6642,6 @@ func _submit_product_melee(entity_id:int,status:Dictionary)->bool:
 	return true
 
 func _is_locked_visible_run_exit(position:Vector2i,progress:Dictionary)->bool:
-	if session.room_enabled():return false
 	if not bool(progress.get("available",false)):return false
 	var exit:Dictionary=progress.get("exit",{}) if progress.get("exit",{}) is Dictionary else {}
 	if bool(exit.get("open",false)):return false
@@ -7024,9 +6742,6 @@ func _pickup_everything_here()->void:
 	var result:Dictionary=session.pickup_ground_item(str(rows[0].instance_id))
 	_record_result(result,true,"아이템을 주울 수 없습니다.")
 	if not bool(result.get("accepted",false)):return
-	if session.round_active():
-		notice_text="%s 줍기 예약 · 진행을 누르면 획득합니다."%str(rows[0].label)
-		action_feedback_text=notice_text;return
 	var remaining:int=session.ground_item_count_at_protagonist()
 	notice_text="%s 가방에 주웠습니다 (100시간)%s"%[str(rows[0].label),
 		" · %d개 남음"%remaining if remaining>0 else ""]
@@ -7121,9 +6836,6 @@ func _flush_requested_refresh()->void:
 func _record_result(result:Dictionary,consume_effects:bool=false,rejection_prefix:String="",
 		scroll_combat_log:bool=false,motion_duration_msec:int=-1)->void:
 	_arm_actor_motion_from_result(result,motion_duration_msec)
-	if int(result.get("presentation_lead_ms",0))>0:
-		grid._stage_motion_until=maxi(grid._stage_motion_until,Time.get_ticks_msec()+int(result.presentation_lead_ms))
-		get_tree().create_timer(float(result.presentation_lead_ms+100)/1000.0).timeout.connect(_request_refresh)
 	if consume_effects and bool(result.get("accepted",false)) and result.get("visual_effects",[]) is Array:
 		for raw in result.get("visual_effects",[]):
 			if raw is Dictionary:_pending_visual_effect_rows.append(raw.duplicate(true))
@@ -7205,25 +6917,7 @@ func _flush_pending_visual_effects(status:Dictionary={})->int:
 	battle_command_flow.paint(self)
 	PerfProbeScript.end("fx.paint",_pfp)
 	var _pfs:=PerfProbeScript.begin()
-
-	if grid!=null:
-		grid.movement_cells=preload("res://sim/round_combat_rules.gd").reachable_cells(session.sim.world)
-		grid.srpg_attack_cells.clear();grid.srpg_attack_target=Vector2i(-1,-1)
-		if session.round_active() and session.round_status().phase!="DEPLOYMENT":
-			var plan:Dictionary=session.sim.world.party_encounter.round_combat.plans.get(str(selected_member_id),{})
-			if not plan.is_empty() and plan.source=="USER":
-				grid.movement_cells.clear()
-				grid.srpg_attack_cells=preload("res://sim/srpg_attack_preview.gd").cells(session.sim.world,selected_member_id,Vector2i(plan.destination[0],plan.destination[1]))
-				if plan.action.type=="MELEE":grid.srpg_attack_target=Vector2i(plan.target_cell[0],plan.target_cell[1])
-	if round_order_bar!=null:
-		round_order_bar.sync(self)
-		if session.room_enabled() and session.round_status().phase=="DEPLOYMENT":round_order_bar.hide()
-	if stage_context_bar!=null:
-		stage_context_bar.sync(self)
-		if session.room_enabled():_apply_stage_chrome()
-	if battle_enemy_strip!=null:
-		if session.round_active() or session.room_enabled():battle_enemy_strip.hide()
-		else:battle_enemy_strip.sync(self,status)
+	if battle_enemy_strip!=null:battle_enemy_strip.sync(self,status)
 	PerfProbeScript.end("fx.enemy_strip",_pfs)
 	var _pft:=PerfProbeScript.begin()
 	PerfProbeScript.end("fx.timeline",_pft)
@@ -7242,7 +6936,6 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 	for value in result.get("event_ids",[]):
 		var event=session.sim.world.event_by_id(int(value))
 		if event!=null and str(event.type)=="action.move" and int(event.actor_id)>0:
-			if result.get("round_result",{}).get("reason","")=="deployment_complete" and event.actor_id in session.sim.world.party_encounter.active_party_member_ids:continue
 			moved[int(event.actor_id)]=true
 	if moved.is_empty():return
 	var status:Dictionary=session.party_status()
@@ -7255,16 +6948,6 @@ func _arm_actor_motion_from_result(result:Dictionary,duration_override_msec:int=
 	if duration_msec>0:grid.arm_actor_motion(moved.keys(),duration_msec,
 		duration_override_msec==CONTINUOUS_EXPLORATION_MOTION_MSEC)
 	else:grid.arm_actor_motion(moved.keys())
-	if session.room_enabled() and result.get("round_result",{}).has("events_start"):
-		var rr:Dictionary=result.round_result;var paths:Dictionary={}
-		for index in range(int(rr.events_start),int(rr.events_end)):
-			var event=session.sim.world.events[index]
-			if event.type!="action.move" or event.actor_id not in session.sim.world.party_encounter.enemy_ids:continue
-			if not paths.has(event.actor_id):
-				paths[event.actor_id]=[Vector2(event.data.from_position[0],event.data.from_position[1])]
-			paths[event.actor_id].append(Vector2(event.position))
-		var duration:int=grid.arm_stage_motion(paths,int(result.get("presentation_lead_ms",0)))
-		if duration>0:get_tree().create_timer(float(duration+50)/1000.0).timeout.connect(_request_refresh)
 
 func _set_action_rejection(result:Dictionary,prefix:String)->void:
 	if auto_orchestration_enabled and (auto_deployment_pending or auto_combat_pending):_cancel_auto_pending(true)
@@ -7563,13 +7246,10 @@ func _dos_command_label(node_name:String,value:String)->String:
 		_:return "[ %s ]"%value
 
 func _current_grid_view_cell_count()->int:
-	if session!=null and session.room_enabled():return 8
 	return _product_zoom_cell_count if _is_solo_product_session() else 15
 
 func _current_grid_view_dimensions()->Vector2i:
-	if session!=null and session.room_enabled():return Vector2i(8,8)
 	var base_count:=_current_grid_view_cell_count()
-	if grid!=null and grid.uses_tactical_projection():return Vector2i(base_count,base_count)
 	if not _is_solo_product_session():return Vector2i(base_count,base_count)
 	var status:Dictionary=session.party_status()
 	var members:Variant=status.get("party_member_ids",[])
@@ -7627,7 +7307,7 @@ func _product_zoom_control_has_point(_global_position:Vector2)->bool:
 	return false
 
 func _product_pinch_available()->bool:
-	return (_is_solo_product_session() or session!=null and session.room_enabled()) and grid!=null and grid.visible \
+	return _is_solo_product_session() and grid!=null and grid.visible \
 		and not grid.modal_open \
 		and (member_detail_modal==null or not member_detail_modal.visible) \
 		and (record_modal==null or not record_modal.visible) \
@@ -7696,9 +7376,6 @@ func _handle_product_pinch_zoom(event:InputEvent)->bool:
 	return _consume_product_pinch_event()
 
 func _on_product_zoom_step(index_delta:int)->void:
-	if session!=null and session.room_enabled():
-		grid.stage_zoom=clampf(grid.stage_zoom-float(index_delta)*0.15,1.0,1.7)
-		grid._invalidate_static_projection_cache();_request_refresh();return
 	if not _is_solo_product_session():return
 	var current_index:=PRODUCT_ZOOM_CELL_COUNTS.find(_product_zoom_cell_count)
 	if current_index<0:current_index=PRODUCT_ZOOM_CELL_COUNTS.find(PRODUCT_ZOOM_DEFAULT_CELL_COUNT)
@@ -7752,14 +7429,6 @@ func _on_product_menu_id(item_id:int)->void:
 	if item_id==9:
 		_show_product_command_feedback(preload("res://playtest/frontier_campaign.gd").objective(session));return
 	if item_id==10:_on_base_return_requested();return
-	if item_id==20:_on_product_pickup();return
-	if item_id==21:_on_product_interact();return
-	if item_id==22:_on_product_auto_explore_from_menu();return
-	if item_id==23:_on_product_tactics();return
-	if item_id==25:_on_product_rest();return
-	if item_id==26:_toggle_map_overlay();return
-	if item_id==24:
-		_record_result(session.commit_field_action(ActionScript.hold(selected_member_id)),false);_request_refresh();return
 	match item_id:
 		0:
 			if bool(_current_run_progress().get("terminal",false)):
@@ -7825,7 +7494,6 @@ func expedition_hud_spec(status:Dictionary={})->Dictionary:
 	# Use common square glyphs for the legacy text-only supply label.
 	var ration_text:="굶주림" if ration_band=="STARVING" else "식량 "+"■".repeat(filled)+"□".repeat(4-filled)
 	var ration_tone:Color=AsciiFrameScript.INK
-	if session!=null and session.personal_rest_enabled():ration_text="파티 식량 %d"%int(party.get("ration",0))
 	if ration_band=="STARVING":ration_tone=AsciiFrameScript.DANGER
 	elif ration_band=="HUNGRY":ration_tone=AsciiFrameScript.BRASS
 	var food_count:=0
@@ -7872,9 +7540,6 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 		food_icon.configure(float(spec.ration)/maxi(1,int(spec.ration_max)))
 		ration_label.text="×%d\n%d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
 		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
-		if session.personal_rest_enabled():
-			ration_label.text="파티 식량\n%d"%int(spec.ration)
-			food_hud.tooltip_text="파티 공용 식량 · 이동/대기 무소모 · 휴식 1회%d 소비"%int(load("res://sim/nine_room_care_rules.gd").CONFIG.rest_food_cost)
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
@@ -7913,37 +7578,6 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT
 	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
-
-func _apply_stage_chrome()->void:
-	preload("res://playtest/stage_button_skin.gd").apply(product_menu_button)
-	# Preserve the board camera and zoom; only replace the surrounding chrome.
-	cards.hide();hero_skill_row.hide();combat_action_area.hide();bottom_navigation.hide()
-	minimap_frame.hide();record_button.hide();hero_detail_button.hide();enemy_vision_overlay_button.hide()
-	recent_event_label.hide();return_timer_label.hide();reward_badge.hide();expedition_floor_label.hide()
-	phase_panel.custom_minimum_size.y=48;top_hud_actions.custom_minimum_size.x=44
-	phase_label.show()
-	for panel in [phase_panel,event_surface]:
-		var flat:=StyleBoxFlat.new();flat.bg_color=Color("#0b131b");flat.border_color=Color("#344651")
-		flat.border_width_top=1;flat.border_width_bottom=1;flat.set_content_margin_all(4)
-		panel.add_theme_stylebox_override("panel",flat)
-	product_menu_button.custom_minimum_size=Vector2(44,44)
-	phase_label.text="%d층 · %s"%[session.room_status().floor_index,session.room_status().name]
-	phase_label.add_theme_font_size_override("font_size",15)
-	if session.round_active():
-		var stage:Dictionary=preload("res://sim/stage_counterplay.gd").status(session.sim.world)
-		phase_label.text="배치 · 입구 2칸" if session.round_status().phase=="DEPLOYMENT" else "%d층 · 증원 %d라운드"%[session.room_status().floor_index,stage.remaining]
-
-	food_hud.custom_minimum_size.x=64;ration_label.text=str(int(food_meter.value))
-	var popup:=product_menu_button.get_popup()
-	popup.set_item_disabled(popup.get_item_index(25),session.round_active())
-	var inset=event_surface.get_node("EventSurfaceInset")
-	inset.add_theme_constant_override("margin_right",6)
-	event_label.max_lines_visible=3;event_surface.show()
-	if session.round_active() and session.round_status().phase=="DEPLOYMENT":
-		event_label.text="입구 주변 2칸 안에서 배치하세요.\n캐릭터 선택 → 목적지 선택\n배치 완료 후 행동 순서대로 진행합니다."
-	elif event_label.text.strip_edges().is_empty():
-		event_label.text=preload("res://sim/stage_counterplay.gd").recent_log(session.sim.world)
-	root_layout.move_child(stage_context_bar,root_layout.get_child_count()-1)
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
 	var banner:Dictionary=presentation.get("banner",{})
@@ -8025,15 +7659,3 @@ func _camera_priority_points(observation:Dictionary)->Array[Vector2i]:
 	if by_id.has(selected_member_id):points.append(by_id[selected_member_id])
 	if selected_target_id>0 and by_id.has(selected_target_id):points.append(by_id[selected_target_id])
 	return points
-
-func _on_product_auto_explore_from_menu()->void:
-	if session.auto_explore_state().get("running",false):
-		_cancel_product_auto_explore("auto_explore_user_cancel",true);return
-	_cancel_active_route()
-	_product_auto_explore_generation+=1
-	var started:=Time.get_ticks_msec()
-	_product_auto_last_hop_started_msec=started
-	var result:Dictionary=session.start_auto_explore()
-	_consume_product_auto_explore_result(result)
-	_refresh_continuous_exploration_surface(session.party_status(),true)
-	if result.get("running",false):_schedule_product_auto_explore(started)

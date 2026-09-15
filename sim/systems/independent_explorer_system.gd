@@ -29,8 +29,6 @@ static func process_tick(sim,step_index:int)->bool:
 	for row in rows:
 		if not row is Dictionary:continue
 		var id:=int(row.get("entity_id","-1"))
-		if preload("res://sim/round_combat_rules.gd").active(world) and str(id) in party.round_combat.participants:continue
-		if not preload("res://sim/room_transition_rules.gd").actor_active(world,id):continue
 		if not world.entities.has(id) or not world.combatant_states.has(id):continue
 		var entity=world.entities[id];var member=party.member(id)
 		if member==null or not Rules.present(world,id):continue
@@ -38,8 +36,6 @@ static func process_tick(sim,step_index:int)->bool:
 		if life!="ACTIVE":
 			row["state"]=life;row["activity"]=LABELS.get(life,life)
 			row["position"]=[entity.position.x,entity.position.y];changed=true;continue
-		# The authored encounter stays at its shelter until explicitly recruited.
-		if "first_floor_event_npc" in entity.tags:continue
 		var distant:=distance(entity.position,hero.position)>16
 		if member.busy_until>world.world_time or distant and not expanded \
 				or not world.can_act(id,world.world_time):continue
@@ -60,9 +56,6 @@ static func process_tick(sim,step_index:int)->bool:
 			"grievance":grievance,"can_attack":weapon!=null and int(weapon.range_min)<=1 \
 				and Items.attack_error(world,id).is_empty()},row,world.world_time)
 		var mode:String=decision.mode
-		# The first recruit waits for aid, but can still react to nearby danger.
-		if "first_companion_candidate" in entity.tags and food.is_empty() and enemy_distance>5:
-			mode="REST"
 		row["decision_mode"]=mode;row["decision_reason"]=str(decision.reason)
 		row["decision_until"]=int(decision.decision_until);row["decision_ruleset"]=Decision.RULESET_ID
 		var cost:int=100
@@ -116,7 +109,6 @@ static func process_tick(sim,step_index:int)->bool:
 	var enemies:Array=sim.party_coordinator._stream_enemy_ids();enemies.sort()
 	for enemy_value in enemies:
 		var enemy_id:=int(enemy_value)
-		if preload("res://sim/round_combat_rules.gd").active(world) and str(enemy_id) in party.round_combat.participants:continue
 		if not world.entities.has(enemy_id) or not world.is_autonomous_target(enemy_id) \
 				or not world.can_act(enemy_id,world.world_time) \
 				or int(party.enemy_busy_rows.get(enemy_id,world.world_time+1))>world.world_time:continue
@@ -191,7 +183,6 @@ static func _step_away(sim,id:int,threat:Vector2i,routing:Dictionary)->int:
 	var assessment=sim.movement.assess_move(id,best)
 	var definition:Dictionary=Terrain.definition(str(assessment.terrain_id))
 	var cost:int=int(definition.get("move_time_cost",100))
-	cost=preload("res://sim/body_penalty_rules.gd").move_cost(sim.world,id,cost)
 	if sim.movement.commit_preflighted_move(id,best,str(assessment.terrain_id),cost)==null:
 		routing[old_key]=id;return 0
 	routing["%d:%d"%[best.x,best.y]]=id
@@ -229,7 +220,6 @@ static func _walk(sim,id:int,goal:Vector2i,adjacent_ok:bool=false,routing:Dictio
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	var definition:Dictionary=Terrain.definition(str(assessment.terrain_id))
 	var cost:=int(definition.get("move_time_cost",100))
-	cost=preload("res://sim/body_penalty_rules.gd").move_cost(world,id,cost)
 	if sim.movement.commit_preflighted_move(id,next,str(assessment.terrain_id),cost)==null:
 		routing["%d:%d"%[old_position.x,old_position.y]]=id;return 100
 	routing["%d:%d"%[next.x,next.y]]=id

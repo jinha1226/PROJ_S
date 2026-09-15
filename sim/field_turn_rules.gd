@@ -34,15 +34,12 @@ static func active(world)->bool:
 		world.party_encounter.expedition_cycle.phase=="DUNGEON")
 
 static func visible(world,enemy_id:int)->bool:
-	if not preload("res://sim/room_transition_rules.gd").actor_active(world,enemy_id):return false
 	var enemy=world.entities.get(enemy_id)
 	if enemy==null or not world.is_autonomous_target(enemy_id):return false
-	if preload("res://sim/room_transition_rules.gd").enabled(world):return true
 	return not preload("res://sim/party_perception_registry.gd").visible_party_members(
 		world,world.party_encounter,enemy.position).is_empty()
 
 static func visible_cells(world)->Dictionary:
-	if preload("res://sim/room_transition_rules.gd").enabled(world):return preload("res://sim/room_transition_rules.gd").stage_cells(world)
 	var cells:Dictionary={}
 	var perception=preload("res://sim/party_perception_registry.gd")
 	for id in world.party_encounter.active_party_member_ids:

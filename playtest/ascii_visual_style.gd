@@ -178,11 +178,6 @@ static func diorama_palette_spec() -> Dictionary:
 
 
 static func graphics_mode_visual_spec(mode:String)->Dictionary:
-	if mode.to_upper()=="TACTICAL_ISOMETRIC":
-		return {"mode":"TACTICAL_ISOMETRIC","reference_family":"TACTICAL_BOARD",
-			"layered_ascii":false,"multi_character_objects":false,"visible_saturation":1.0,
-			"memory_saturation":0.0,"unseen_visible":false,"glow_strength":0.0,
-			"printable_ascii_only":false,"changes_mapping":false}
 	if mode.to_upper()=="DIORAMA_2_5D":
 		return {"mode":"DIORAMA_2_5D","reference_family":"ASCIIDENT",
 			"layered_ascii":true,"multi_character_objects":true,

@@ -42,18 +42,12 @@ func assess_move_in_projection(actor_id: int, destination: Vector2i,
 	if not world.can_act(actor_id, world.world_time):
 		base["reason"] = "actor_dead"
 		return TraversalAssessmentScript.new(base)
-	if not preload("res://sim/room_transition_rules.gd").same_room(world,actor.position,destination):
-		base["reason"]="room_boundary_requires_portal"
-		return TraversalAssessmentScript.new(base)
 	var delta: Vector2i = destination - actor.position
 	if delta == Vector2i.ZERO or maxi(absi(delta.x), absi(delta.y)) != 1:
 		base["reason"] = "move_not_adjacent"
 		return TraversalAssessmentScript.new(base)
 	if not world.in_bounds(destination):
 		base["reason"] = "move_out_of_bounds"
-		return TraversalAssessmentScript.new(base)
-	if preload("res://sim/room_transition_rules.gd").enabled(world) and actor_id in world.party_encounter.enemy_ids and destination in world.party_encounter.patrol_reserved_positions:
-		base["reason"]="room_exit_reserved"
 		return TraversalAssessmentScript.new(base)
 	var terrain_id: String = world.tile_at(destination).terrain
 	base["terrain_id"] = terrain_id

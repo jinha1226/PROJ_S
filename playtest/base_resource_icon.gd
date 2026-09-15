@@ -3,9 +3,7 @@ extends RefCounted
 const ItemAssets=preload("res://playtest/pixel24_item_assets.gd")
 
 static func draw_icon(canvas:CanvasItem,rect:Rect2,resource_id:String)->void:
-	# Old STONE used a full floor tile and TIMBER a crate from another atlas.
-	# Resource piles are small silhouettes, never replacement terrain tiles.
-	var texture:Texture2D=null if resource_id in ["STONE","TIMBER","HERBS"] else ItemAssets.texture_for_id(resource_id)
+	var texture:=ItemAssets.texture_for_id(resource_id)
 	if texture!=null:
 		var side:=minf(rect.size.x,rect.size.y)
 		canvas.draw_texture_rect(texture,preload("res://playtest/dungeon_0x72_assets.gd").fit(texture,

@@ -44,7 +44,7 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 		next.text="%d/%d\n›"%[page_index+1,page_count]
 		next.custom_minimum_size=Vector2(44,48)
 		next.set_meta("actor_id",actor_id);next.set_meta("next_page",(page_index+1)%page_count)
-		next.disabled=targeting;next.tooltip_text="다음 스킬 · 결속한 변이 포함"
+		next.disabled=targeting;next.tooltip_text="다음 스킬 · 결속한 이능 포함"
 		next.pressed.connect(func():
 			if not explicit_pointer_input:page_requested.emit(actor_id,(page_index+1)%page_count))
 		DarkSkin.apply_action_button(next);add_child(next)

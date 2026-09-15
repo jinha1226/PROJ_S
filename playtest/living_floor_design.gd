@@ -3,7 +3,6 @@ extends RefCounted
 const CARDINAL_DIRECTIONS=[Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,Vector2i.UP]
 const Terrain=preload("res://sim/terrain_registry.gd")
 static func apply(source:Dictionary,floor_index:int)->Dictionary:
-	if str(source.get("ruleset_id",""))=="four-zone-mobile-v1":return source.duplicate(true)
 	var out:Dictionary=source.duplicate(true)
 	var width:int=out.width;var height:int=out.height
 	var terrain:Array=out.terrain;var entry:Vector2i=out.entry_position
