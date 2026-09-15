@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "tile_size": 64,
+  "columns": 4,
+  "rows": 4,
+  "view": "orthographic_topdown",
+  "style_reference": "res://assets/generated/topdown_tactical64_v1/runtime/terrain_atlas_4x4_256.png",
+  "atlas": "res://assets/generated/topdown_walls_doors64_v1/runtime/walls_doors_atlas_4x4_256.png",
+  "tiles": [
+    "wall_stone", "wall_stone_moss", "wall_brick", "wall_stone_ruined",
+    "wall_timber", "wall_timber_reinforced", "wall_iron", "wall_natural_rock",
+    "door_stone_horizontal_closed", "door_stone_horizontal_open", "door_stone_vertical_closed", "door_stone_vertical_open",
+    "door_timber_horizontal_closed", "door_timber_horizontal_open", "door_timber_vertical_closed", "door_timber_vertical_open"
+  ]
+}
