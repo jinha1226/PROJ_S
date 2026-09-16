@@ -18,18 +18,17 @@ func run()->void:
 		"visibility_state":"VISIBLE"},Vector2i(2,2),1)
 	var wall_two:Dictionary=Tiles.tile_spec({"terrain_id":"wall",
 		"visibility_state":"VISIBLE"},Vector2i(2,2),2)
-	check(str(wall_one.sprite_key).begins_with("wall_stone"),"floor one uses stone wall set")
-	check(str(wall_two.sprite_key) in ["wall_brick","wall_iron","wall_natural_rock"],
-		"floor two uses foundry wall set")
+	check(wall_one.sprite_key=="wall_00","unexposed wall uses joined stone cap")
+	check(wall_two.sprite_key=="wall_00","approved stone pack is shared across floors")
 	var north_south:={"N":visible,"S":visible}
 	for state in ["closed","open"]:
 		var door:Dictionary=Tiles.tile_spec({"terrain_id":"door_"+state,
 			"visibility_state":"VISIBLE"},Vector2i(5,5),1,north_south)
-		check(door.sprite_key=="door_stone_horizontal_"+state,
+		check(door.sprite_key=="door_"+state,
 			"%s door uses state and corridor orientation"%state)
 	var exit_row:=visible.duplicate();exit_row.feature_id="floor_transition_portal"
-	check(Tiles.tile_spec(exit_row,Vector2i(7,7),1).sprite_key=="exit_rune",
-		"floor transition uses generated exit rune")
+	check(Tiles.tile_spec(exit_row,Vector2i(7,7),1).sprite_key=="stairs_down",
+		"floor transition uses generated descending stairs")
 	var memory:=visible.duplicate();memory.visibility_state="MEMORY"
 	var unseen:=visible.duplicate();unseen.visibility_state="UNSEEN"
 	check(Tiles.tile_spec(memory,Vector2i.ZERO,1).visible \

@@ -25,7 +25,7 @@ func _ready()->void:
 	focus_mode=Control.FOCUS_NONE
 	flat=true
 	clip_contents=true
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		add_theme_stylebox_override(state,StyleBoxEmpty.new())
@@ -108,10 +108,6 @@ func _draw()->void:
 	if _selected or is_hovered():draw_rect(bounds,border,false,2.0)
 	if _selected:_draw_selection_brackets(bounds)
 	var inner:=plate.grow(-4.0)
-	if str(_row.get("definition_id",""))=="SHIELD_WOOD":
-		preload("res://playtest/dungeon_0x72_assets.gd").draw_shield(self,inner.grow(-inner.size.x*0.20))
-		if equipped:_draw_equipped_corner(bounds)
-		return
 	if empty:
 		_draw_empty_slot(inner)
 		return

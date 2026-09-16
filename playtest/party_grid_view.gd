@@ -165,7 +165,7 @@ var animate_passive_terrain:=true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP; focus_mode = Control.FOCUS_ALL
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	clip_contents=true; resized.connect(_on_visual_geometry_changed)
 	_ensure_melee_vfx()
 	_torch_timer=Timer.new();_torch_timer.name="TorchFlickerTimer"
@@ -2703,8 +2703,8 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	# screen-pixel rim so they stay distinct from either biome without turning the
 	# compact silhouettes into black blobs at close zoom.
 	var body_texture:Texture2D=spec.get("body_texture",null)
-	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":
-		preload("res://playtest/dungeon_0x72_assets.gd").draw_actor(self,spec,bounds,modulate)
+	if str(spec.get("asset_family","")) in ["0X72_DUNGEON_II","FANTASY_PAWNS_V1"]:
+		preload("res://playtest/fantasy_pawn_assets.gd").draw_actor(self,spec,bounds,modulate)
 		body_texture=null
 	if body_texture!=null and bool(spec.get("outline_enabled",false)):
 		var outline_px:=float(spec.get("outline_px",1.0))
@@ -2722,7 +2722,7 @@ func _draw_topdown_fixed_front_actor(actor:Dictionary,ghost:bool,
 	elif body_texture!=null:
 		draw_texture_rect(body_texture,bounds,false,modulate)
 	for texture_key in ["armor_texture","offhand_texture","weapon_texture"]:
-		if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":break
+		if str(spec.get("asset_family","")) in ["0X72_DUNGEON_II","FANTASY_PAWNS_V1"]:break
 		var texture:Texture2D=spec.get(texture_key,null)
 		if texture!=null:draw_texture_rect(texture,bounds,false,modulate)
 	var foreground_texture:Texture2D=spec.get("foreground_texture",null)
@@ -3322,8 +3322,8 @@ func _draw_topdown_terrain_tile(rect:Rect2,spec:Dictionary)->void:
 	var texture:Texture2D=spec.get("texture",null)
 	if texture==null:return
 	if str(spec.get("asset_family",""))==TopdownTileAssets.FAMILY:
-		var generated_tint:=Color.WHITE if str(spec.visibility_state)=="VISIBLE" \
-			else Color(0.30,0.32,0.33,0.58)
+		var generated_tint:Color=spec.get("tint",Color.WHITE)
+		if str(spec.visibility_state)!="VISIBLE":generated_tint*=Color(0.30,0.32,0.33,0.58)
 		draw_texture_rect(texture,rect.grow(0.35),false,generated_tint)
 		return
 	if str(spec.get("asset_family",""))=="0X72_DUNGEON_II":

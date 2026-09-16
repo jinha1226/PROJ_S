@@ -1,101 +1,83 @@
 class_name TopdownTileAssets
 extends RefCounted
-## Presentation-only mapping for the generated orthographic 64px tile set.
+## Generated fantasy art, source-derived connected walls, legacy terrain fallback.
+const Legacy=preload("res://playtest/legacy_generated_tile_assets.gd")
 const TILE_SIZE:=64
-const FAMILY:="GENERATED_TOPDOWN_64_V1"
-const TERRAIN_TEXTURES={
-	"stone_floor":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/stone_floor.png"),
-	"cracked_stone":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/cracked_stone.png"),
-	"mossy_stone":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/mossy_stone.png"),
-	"dirt":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/dirt.png"),
-	"grass":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/grass.png"),
-	"rubble":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/rubble.png"),
-	"shallow_water":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/shallow_water.png"),
-	"deep_water":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/deep_water.png"),
-	"wall_cap":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/wall_cap.png"),
-	"pillar":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/pillar.png"),
-	"low_cover":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/low_cover.png"),
-	"crate":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/crate.png"),
-	"iron_plate":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/iron_plate.png"),
-	"spikes":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/spikes.png"),
-	"exit_rune":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/exit_rune.png"),
-	"lava":preload("res://assets/generated/topdown_tactical64_v1/runtime/tiles/lava.png"),
-}
-const WALL_TEXTURES={
-	"wall_stone":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_stone.png"),
-	"wall_stone_moss":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_stone_moss.png"),
-	"wall_brick":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_brick.png"),
-	"wall_stone_ruined":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_stone_ruined.png"),
-	"wall_timber":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_timber.png"),
-	"wall_timber_reinforced":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_timber_reinforced.png"),
-	"wall_iron":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_iron.png"),
-	"wall_natural_rock":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/wall_natural_rock.png"),
-	"door_stone_horizontal_closed":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_stone_horizontal_closed.png"),
-	"door_stone_horizontal_open":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_stone_horizontal_open.png"),
-	"door_stone_vertical_closed":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_stone_vertical_closed.png"),
-	"door_stone_vertical_open":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_stone_vertical_open.png"),
-	"door_timber_horizontal_closed":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_timber_horizontal_closed.png"),
-	"door_timber_horizontal_open":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_timber_horizontal_open.png"),
-	"door_timber_vertical_closed":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_timber_vertical_closed.png"),
-	"door_timber_vertical_open":preload("res://assets/generated/topdown_walls_doors64_v1/runtime/tiles/door_timber_vertical_open.png"),
-}
-const FLOOR_FEATURES={"floor_transition_portal":"exit_rune","run_exit_open":"exit_rune",
-	"run_exit_locked":"exit_rune","anchor_portal_active":"exit_rune",
-	"anchor_portal_inactive":"exit_rune","open_door":"exit_rune","pillar":"pillar",
-	"low_cover":"low_cover","crate":"crate"}
+const FAMILY:="FANTASY_PAWNS_TERRAIN_V1"
+const MATERIALS={"stone_floor":"stone_floor_a","cracked_stone":"cracked_floor",
+	"mossy_stone":"moss_floor","wood_floor":"wood_floor","rubble":"rubble",
+	"shallow_water":"water","deep_water":"water","pillar":"wall_end"}
+const FLOOR_FEATURES={"floor_transition_portal":"stairs_down","run_exit_open":"stairs_up",
+	"run_exit_locked":"stairs_up","anchor_portal_active":"stairs_up",
+	"anchor_portal_inactive":"stairs_up","open_door":"door_open","pillar":"wall_end"}
 
 static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int,
 		neighbors:Dictionary={})->Dictionary:
 	var visibility:=str(cell.get("visibility_state","UNSEEN")).to_upper()
-	if visibility=="UNSEEN":return _hidden(floor_index,visibility)
+	if visibility=="UNSEEN":return Legacy._hidden(floor_index,visibility)
 	var terrain:=str(cell.get("terrain_id","floor"))
-	var key:=_texture_key(cell,position,floor_index,neighbors)
-	var texture:Texture2D=WALL_TEXTURES.get(key,TERRAIN_TEXTURES.get(key,null))
-	if texture==null:key="stone_floor";texture=TERRAIN_TEXTURES[key]
-	return {"visible":true,"texture":texture,"region":Rect2(0,0,TILE_SIZE,TILE_SIZE),
+	var key:=""
+	if terrain=="wall":
+		var mask:=0
+		for side in ["N","E","S","W"]:
+			if Legacy._known_floor(neighbors,side):mask|={"N":1,"E":2,"S":4,"W":8}[side]
+		key="wall_%02d"%mask
+	elif terrain in ["door_closed","door_open"]:
+		key=terrain
+		if not Legacy._known_floor(neighbors,"N") and not Legacy._known_floor(neighbors,"S"):
+			key+="_vertical"
+	else:
+		var feature:=str(cell.get("feature_id",""))
+		var material:=str(cell.get("presentation_material_id",""))
+		if FLOOR_FEATURES.has(feature):key=FLOOR_FEATURES[feature]
+		elif MATERIALS.has(material):key=MATERIALS[material]
+		elif terrain in ["floor","stone_floor"]:
+			var variant:=Legacy._variant_index(position,floor_index,12)
+			key="cracked_floor" if variant==0 else "moss_floor" if variant==1 \
+				else "stone_floor_b" if variant%3==0 else "stone_floor_a"
+		elif MATERIALS.has(terrain):key=MATERIALS[terrain]
+	if key.is_empty():return Legacy.tile_spec(cell,position,floor_index,neighbors)
+	var texture:Texture2D=WALL_TEXTURES.get(key,TERRAIN_TEXTURES.get(key))
+	return {"visible":true,"texture":texture,"region":Rect2(0,0,64,64),
 		"is_wall":terrain=="wall","is_door":terrain in ["door_closed","door_open"],
 		"asset_family":FAMILY,"sprite_key":key,"floor_index":floor_index,
-		"tile_index":-1,"tint":Color.WHITE,"visibility_state":visibility,
-		"changes_mapping":false,"changes_fov":false,"draw_image":true}
-
-static func _texture_key(cell:Dictionary,position:Vector2i,floor_index:int,
-		neighbors:Dictionary)->String:
-	var terrain:=str(cell.get("terrain_id","floor"))
-	if terrain=="wall":
-		var choices:=["wall_stone","wall_stone_moss","wall_stone_ruined"] \
-			if floor_index<=1 else ["wall_brick","wall_iron","wall_natural_rock"]
-		return choices[_variant_index(position,floor_index,choices.size())]
-	if terrain in ["door_closed","door_open"]:
-		var material:="stone" if floor_index<=1 else "timber"
-		var orientation:="horizontal" if _known_floor(neighbors,"N") \
-			or _known_floor(neighbors,"S") else "vertical"
-		return "door_%s_%s_%s"%[material,orientation,
-			"closed" if terrain=="door_closed" else "open"]
-	var feature:=str(cell.get("feature_id",""))
-	if FLOOR_FEATURES.has(feature):return FLOOR_FEATURES[feature]
-	var presentation:=str(cell.get("presentation_material_id",""))
-	if TERRAIN_TEXTURES.has(presentation):return presentation
-	match terrain:
-		"floor","stone_floor":
-			var floors:=["stone_floor","cracked_stone","mossy_stone"]
-			return floors[_variant_index(position,floor_index,floors.size())]
-		"wood_floor":return "dirt"
-		"metal","rubber_floor":return "iron_plate"
-		"rubble","shallow_water","deep_water","lava","spikes","dirt","grass", \
-		"pillar","low_cover","crate":return terrain
-	return "stone_floor"
-
-static func _known_floor(neighbors:Dictionary,side:String)->bool:
-	var row:Dictionary=neighbors.get(side,{})
-	return str(row.get("visibility_state","UNSEEN")) in ["VISIBLE","MEMORY"] \
-		and str(row.get("terrain_id","wall"))!="wall"
-
-static func _hidden(floor_index:int,visibility:String)->Dictionary:
-	return {"visible":false,"texture":null,"region":Rect2(),"floor_index":floor_index,
-		"tile_index":-1,"visibility_state":visibility,"changes_mapping":false,
-		"changes_fov":false,"draw_image":false}
-
-static func _variant_index(position:Vector2i,floor_index:int,count:int)->int:
-	if count<=1:return 0
-	return posmod(position.x*73856093 ^ position.y*19349663 \
-		^ floor_index*83492791,count)
+		"tile_index":-1,"tint":Color(0.65,0.76,0.9) if terrain=="deep_water" else Color.WHITE,
+		"visibility_state":visibility,"changes_mapping":false,"changes_fov":false,"draw_image":true}
+const TERRAIN_TEXTURES={
+	"cracked_floor":preload("res://assets/fantasy_pawns_v1/tiles/cracked_floor.png"),
+	"door_closed":preload("res://assets/fantasy_pawns_v1/tiles/door_closed.png"),
+	"door_closed_vertical":preload("res://assets/fantasy_pawns_v1/tiles/door_closed_vertical.png"),
+	"door_open":preload("res://assets/fantasy_pawns_v1/tiles/door_open.png"),
+	"door_open_vertical":preload("res://assets/fantasy_pawns_v1/tiles/door_open_vertical.png"),
+	"moss_floor":preload("res://assets/fantasy_pawns_v1/tiles/moss_floor.png"),
+	"pit":preload("res://assets/fantasy_pawns_v1/tiles/pit.png"),
+	"rubble":preload("res://assets/fantasy_pawns_v1/tiles/rubble.png"),
+	"stairs_down":preload("res://assets/fantasy_pawns_v1/tiles/stairs_down.png"),
+	"stairs_up":preload("res://assets/fantasy_pawns_v1/tiles/stairs_up.png"),
+	"stone_floor_a":preload("res://assets/fantasy_pawns_v1/tiles/stone_floor_a.png"),
+	"stone_floor_b":preload("res://assets/fantasy_pawns_v1/tiles/stone_floor_b.png"),
+	"wall_corner_nw":preload("res://assets/fantasy_pawns_v1/tiles/wall_corner_nw.png"),
+	"wall_end":preload("res://assets/fantasy_pawns_v1/tiles/wall_end.png"),
+	"wall_north":preload("res://assets/fantasy_pawns_v1/tiles/wall_north.png"),
+	"wall_solid":preload("res://assets/fantasy_pawns_v1/tiles/wall_solid.png"),
+	"water":preload("res://assets/fantasy_pawns_v1/tiles/water.png"),
+	"wood_floor":preload("res://assets/fantasy_pawns_v1/tiles/wood_floor.png"),
+}
+const WALL_TEXTURES={
+	"wall_00":preload("res://assets/fantasy_pawns_v1/walls/wall_00.png"),
+	"wall_01":preload("res://assets/fantasy_pawns_v1/walls/wall_01.png"),
+	"wall_02":preload("res://assets/fantasy_pawns_v1/walls/wall_02.png"),
+	"wall_03":preload("res://assets/fantasy_pawns_v1/walls/wall_03.png"),
+	"wall_04":preload("res://assets/fantasy_pawns_v1/walls/wall_04.png"),
+	"wall_05":preload("res://assets/fantasy_pawns_v1/walls/wall_05.png"),
+	"wall_06":preload("res://assets/fantasy_pawns_v1/walls/wall_06.png"),
+	"wall_07":preload("res://assets/fantasy_pawns_v1/walls/wall_07.png"),
+	"wall_08":preload("res://assets/fantasy_pawns_v1/walls/wall_08.png"),
+	"wall_09":preload("res://assets/fantasy_pawns_v1/walls/wall_09.png"),
+	"wall_10":preload("res://assets/fantasy_pawns_v1/walls/wall_10.png"),
+	"wall_11":preload("res://assets/fantasy_pawns_v1/walls/wall_11.png"),
+	"wall_12":preload("res://assets/fantasy_pawns_v1/walls/wall_12.png"),
+	"wall_13":preload("res://assets/fantasy_pawns_v1/walls/wall_13.png"),
+	"wall_14":preload("res://assets/fantasy_pawns_v1/walls/wall_14.png"),
+	"wall_15":preload("res://assets/fantasy_pawns_v1/walls/wall_15.png"),
+}

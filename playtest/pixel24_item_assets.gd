@@ -5,7 +5,7 @@ const ITEM_TEXTURES=preload("res://playtest/dungeon_0x72_assets.gd").ITEMS
 
 
 static func texture_for_id(value:String)->Texture2D:
-	return preload("res://playtest/dungeon_0x72_assets.gd").item(value.strip_edges())
+	return preload("res://playtest/fantasy_pawn_assets.gd").item(value.strip_edges())
 
 
 static func texture_for_row(row:Dictionary)->Texture2D:
