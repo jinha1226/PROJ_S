@@ -29,6 +29,8 @@ static func body_texture(species_id:String)->Texture2D:
 
 static func item(value:String)->Texture2D:
 	var id:=value.strip_edges().to_upper()
+	if Equipment.ARMORS.has(id) and id!="ARMOR_LEATHER":return Equipment.ARMORS[id]
+	if Equipment.HELMETS.has(id):return Equipment.HELMETS[id]
 	if ITEM_IDS.has(id):return ICONS[ITEM_IDS[id]]
 	# Prefix suffixes encode weapon variants, not new weapon categories.
 	for base in ["WEAPON_SHORT_SWORD","WEAPON_THRUSTING_SWORD","WEAPON_HAND_AXE","WEAPON_BOW","WEAPON_STAFF","WEAPON_CROSSBOW","WEAPON_MACE","WEAPON_SPEAR"]:

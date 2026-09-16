@@ -1,5 +1,45 @@
 # 공용 장비 오버레이 정렬
 
+## 소재별 세트
+
+기존 방어구 카탈로그의 5종을 모두 공용 오버레이로 지원한다.
+갑옷·머리 장비는 세트별 색과 테두리를 공유하며, 종족별 장비 이미지는 만들지 않는다.
+
+| 세트 | 색·재질 | 몸통 아이템 | 머리 표시 키 |
+|---|---|---|---|
+| 천 | 남색 천, 아이보리 테두리 | ARMOR_CLOTH_ROBE | HELMET_CLOTH |
+| 가죽 | 황갈색 가죽, 짙은 갈색 테두리 | ARMOR_LEATHER | HELMET_LEATHER |
+| 누비 | 올리브 누비, 황토색 테두리 | ARMOR_PADDED | HELMET_PADDED |
+| 사슬 | 청회색 사슬, 강철 테두리 | ARMOR_CHAIN | HELMET_CHAIN |
+| 판금 | 회색 강철, 은색 중앙 보강 | ARMOR_PLATE | HELMET_PLATE / HELMET_IRON |
+
+![소재별 공용 에셋](material-assets.png)
+
+![5세트 × 6종족 실제 Godot 렌더링](material-species-fit.png)
+
+기존 가죽갑옷과 철투구는 그대로 재사용하고 8개 레이어를 추가했다.
+갑옷 5종은 실제 장착 표시에 연결되며, 머리 장비는 계속 미리보기 입력 전용이다.
+새 능력치·드롭·머리 슬롯은 추가하지 않는다. 천 로브도 현재 다리 없는 베이스에
+맞춘 짧은 몸통 표현을 사용한다.
+
+원본/프롬프트는 `art/sources/fantasy_equipment_materials_v1/manifest.json`에서 관리한다.
+생성 시 배경이 체크무늬로 구워진 파일은 기존에 승인된 코드 배경 제거로 처리하고,
+진짜 알파가 있는 파일은 알파를 유지한다. 밝은 금속을 배경으로 오인하지 않도록
+어두운 외곽선을 기준으로 추출한다.
+
+```
+python3 tools/art/build_equipment_materials.py
+godot --display-driver x11 --path . --script tools/art/review_equipment_materials.gd
+godot --headless --path . --script tests/equipment_materials_acceptance.gd
+```
+
+검증: Godot 4.6.2 import 성공, `equipment_materials_acceptance` 및
+`fantasy_item_expansion_acceptance` PASS. 30개 조합의 128px/40px 실제 렌더링을
+확인했다. 자동 검사는 카탈로그 방어구 누락·장착 표시 전달·베이스 유지·알파를 검증하며,
+미세한 정렬 품질은 위 비교 이미지의 시각 검토로 판단했다.
+
+## 최초 공용 레이어 기준
+
 캐릭터 완성 이미지를 종족별로 만들지 않고, 변경하지 않은 기존 종족 베이스에
 가죽갑옷 1장과 철투구 1장을 런타임에 겹친다. 다리는 사용하지 않는다.
 

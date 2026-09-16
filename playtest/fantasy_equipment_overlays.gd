@@ -2,6 +2,21 @@ extends RefCounted
 ## One texture per garment. Coordinates refer to the unchanged 128px species canvas.
 const LEATHER=preload("res://assets/fantasy_pawns_v1/equipment/leather.png")
 const HELMET=preload("res://assets/fantasy_pawns_v1/equipment/iron_helmet.png")
+const ARMORS={
+	"ARMOR_CLOTH_ROBE":preload("res://assets/fantasy_pawns_v1/equipment/cloth_armor.png"),
+	"ARMOR_LEATHER":LEATHER,
+	"ARMOR_PADDED":preload("res://assets/fantasy_pawns_v1/equipment/padded_armor.png"),
+	"ARMOR_CHAIN":preload("res://assets/fantasy_pawns_v1/equipment/chain_armor.png"),
+	"ARMOR_PLATE":preload("res://assets/fantasy_pawns_v1/equipment/plate_armor.png"),
+}
+const HELMETS={
+	"HELMET_CLOTH":preload("res://assets/fantasy_pawns_v1/equipment/cloth_helmet.png"),
+	"HELMET_LEATHER":preload("res://assets/fantasy_pawns_v1/equipment/leather_helmet.png"),
+	"HELMET_PADDED":preload("res://assets/fantasy_pawns_v1/equipment/padded_helmet.png"),
+	"HELMET_CHAIN":preload("res://assets/fantasy_pawns_v1/equipment/chain_helmet.png"),
+	"HELMET_PLATE":HELMET,
+	"HELMET_IRON":HELMET,
+}
 const FIT={
 	"human":[Rect2(25,56,77,65),Rect2(31,8,66,65),57,43,84,74],
 	"elf":[Rect2(31,60,65,61),Rect2(33,8,61,65),59,43,84,75],
@@ -30,13 +45,15 @@ static func draw_body(canvas:CanvasItem,spec:Dictionary,bounds:Rect2,tint:Color)
 		canvas.draw_texture_rect(body,bounds,false,tint)
 		return
 	var fit:Array=FIT[species]
-	if str(spec.get("armor_definition_id",""))=="ARMOR_LEATHER":
+	var armor:Texture2D=ARMORS.get(str(spec.get("armor_definition_id","")))
+	if armor!=null:
 		# Replace only the covered tunic region; sample the original head/neck over it.
-		canvas.draw_texture_rect(LEATHER,target(fit[0],bounds),false,tint)
+		canvas.draw_texture_rect(armor,target(fit[0],bounds),false,tint)
 		fragment(canvas,body,[Vector2.ZERO,Vector2(128,0),Vector2(128,fit[2]),Vector2(fit[4],fit[2]),Vector2(fit[4]-3,fit[5]),Vector2(fit[3]+3,fit[5]),Vector2(fit[3],fit[2]),Vector2(0,fit[2])],bounds,tint)
 		if species=="dwarf":fragment(canvas,body,BEARD,bounds,tint)
 	else:
 		canvas.draw_texture_rect(body,bounds,false,tint)
 	# Head slot is not yet authoritative: this key is also used by the fit-review fixture.
-	if str(spec.get("head_definition_id",""))=="HELMET_IRON":
-		canvas.draw_texture_rect(HELMET,target(fit[1],bounds),false,tint)
+	var helmet:Texture2D=HELMETS.get(str(spec.get("head_definition_id","")))
+	if helmet!=null:
+		canvas.draw_texture_rect(helmet,target(fit[1],bounds),false,tint)

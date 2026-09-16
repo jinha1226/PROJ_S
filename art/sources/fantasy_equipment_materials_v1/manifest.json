@@ -1,0 +1,40 @@
+{
+  "references": [
+    "assets/fantasy_pawns_v1/equipment/leather.png",
+    "assets/fantasy_pawns_v1/equipment/iron_helmet.png"
+  ],
+  "assets": [
+    {
+      "id": "cloth_armor",
+      "prompt": "Create ONE production game sprite, cloth armor. A hollow worn torso armor overlay ONLY, no character. EXACT SAME outer silhouette and proportions as reference 1: two connected small shoulder caps, short flared torso, scooped transparent neck opening, waist fastening. Preserve the width, height, shoulder and neckline landmarks exactly so it fits the same sprite rig. No sleeves, no arms, no skin, no legs. Material palette for this matching set: muted indigo blue cloth, broad warm ivory edging, simple cloth folds, dark brown fastening. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "cloth_helmet",
+      "prompt": "Create ONE production game sprite, cloth helmet. A hollow worn headgear overlay ONLY, no character. EXACT SAME outer rounded dome, cheek rim, open cheek cutouts and overall proportions as reference 2 so it fits the same sprite rig. Keep all face openings TRANSPARENT, not black or skin-filled. Cloth hood, open face with no rigid metal noseguard. Material palette for this matching set: muted indigo blue cloth, broad warm ivory edging, simple cloth folds, dark brown fastening. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "padded_armor",
+      "prompt": "Create ONE production game sprite, padded armor. A hollow worn torso armor overlay ONLY, no character. EXACT SAME outer silhouette and proportions as reference 1: two connected small shoulder caps, short flared torso, scooped transparent neck opening, waist fastening. Preserve the width, height, shoulder and neckline landmarks exactly so it fits the same sprite rig. No sleeves, no arms, no skin, no legs. Material palette for this matching set: muted olive green quilted fabric, broad tan edging, just 3 or 4 large quilted panels, brown fastening. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "padded_helmet",
+      "prompt": "Create ONE production game sprite, padded helmet. A hollow worn headgear overlay ONLY, no character. EXACT SAME outer rounded dome, cheek rim, open cheek cutouts and overall proportions as reference 2 so it fits the same sprite rig. Keep all face openings TRANSPARENT, not black or skin-filled. Quilted arming cap with chin rim, open face with no rigid metal noseguard. Material palette for this matching set: muted olive green quilted fabric, broad tan edging, just 3 or 4 large quilted panels, brown fastening. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "leather_helmet",
+      "prompt": "Create ONE production game sprite, leather helmet. A hollow worn headgear overlay ONLY, no character. EXACT SAME outer rounded dome, cheek rim, open cheek cutouts and overall proportions as reference 2 so it fits the same sprite rig. Keep all face openings TRANSPARENT, not black or skin-filled. Leather cap with cheek straps, open face, no metal dome. Material palette for this matching set: warm ochre brown leather matching the reference armor exactly, dark brown edging and one small dull silver rivet. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "chain_armor",
+      "prompt": "Create ONE production game sprite, chain armor. A hollow worn torso armor overlay ONLY, no character. EXACT SAME outer silhouette and proportions as reference 1: two connected small shoulder caps, short flared torso, scooped transparent neck opening, waist fastening. Preserve the width, height, shoulder and neckline landmarks exactly so it fits the same sprite rig. No sleeves, no arms, no skin, no legs. Material palette for this matching set: dark desaturated blue-gray iron chainmail, broad medium steel edging, only a few large scalloped chain pattern marks, no tiny detailed links. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "chain_helmet",
+      "prompt": "Create ONE production game sprite, chain helmet. A hollow worn headgear overlay ONLY, no character. EXACT SAME outer rounded dome, cheek rim, open cheek cutouts and overall proportions as reference 2 so it fits the same sprite rig. Keep all face openings TRANSPARENT, not black or skin-filled. Chainmail coif with broad steel forehead rim and open face. Material palette for this matching set: dark desaturated blue-gray iron chainmail, broad medium steel edging, only a few large scalloped chain pattern marks, no tiny detailed links. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    },
+    {
+      "id": "plate_armor",
+      "prompt": "Create ONE production game sprite, plate armor. A hollow worn torso armor overlay ONLY, no character. EXACT SAME outer silhouette and proportions as reference 1: two connected small shoulder caps, short flared torso, scooped transparent neck opening, waist fastening. Preserve the width, height, shoulder and neckline landmarks exactly so it fits the same sprite rig. No sleeves, no arms, no skin, no legs. Material palette for this matching set: medium neutral gray steel with pale silver broad highlights, charcoal outlines, a simple central silver reinforcement matching the reference helmet. Reference 1 defines torso silhouette/style; reference 2 defines head silhouette/style. Same bold near-black contours and very simple broad two-tone shading. Must read at 40px character scale. No ornament, spikes, horns, text, scene, shadow, mannequin, checkerboard. Centered isolated object with 10% transparent margin. TRUE transparent RGBA background and openings. Do not render both items."
+    }
+  ]
+}
